@@ -135,6 +135,32 @@ REDACTED
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "input.1.namespace").Exists())
 REDACTED
 
+func TestOpenAIGatewayService_OAuthHTTPStripsInputNamespacesBeforeFirstForward(t *testing.T) {
+	for _, path := range []string{"/v1/responses", "/v1/responses/compact"REDACTED {
+		t.Run(path, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.5","stream":false,"instructions":"test","input":[{"type":"message","role":"user","namespace":"remove","content":[{"type":"input_text","text":"hello","namespace":"nested-keep"REDACTED]REDACTED]REDACTED`)
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				newOpenAIRejectedFieldTestResponse(http.StatusOK, `{"id":"resp_namespace_ok","output":[],"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTEDREDACTED`),
+		REDACTEDREDACTED
+			c := newOpenAIRejectedFieldTestContext(body)
+			c.Request.URL.Path = path
+
+			result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+				context.Background(),
+				c,
+				newOpenAIOAuthNamespaceTestAccount(),
+				body,
+			)
+
+		REDACTED
+			require.NotNil(t, result)
+			require.Len(t, upstream.bodies, 1, "namespace must be removed before the first upstream request")
+			require.False(t, gjson.GetBytes(upstream.bodies[0], "input.0.namespace").Exists())
+			require.Equal(t, "nested-keep", gjson.GetBytes(upstream.bodies[0], "input.0.content.0.namespace").String())
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestOpenAIGatewayService_RetriesExplicitMaxOutputTokensRejection(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","stream":false,"max_output_tokens":4096,"input":[{"type":"message","role":"user","content":{"max_output_tokens":"keep"REDACTEDREDACTED]REDACTED`)
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
@@ -215,6 +241,22 @@ REDACTED
 		Extra: map[string]any{
 			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
 			openai_compat.ExtraKeyResponsesSupported: true,
+	REDACTED,
+		Status:      StatusActive,
+		Schedulable: true,
+REDACTED
+REDACTED
+
+func newOpenAIOAuthNamespaceTestAccount() *Account {
+REDACTED
+		ID:          5108,
+		Name:        "openai-oauth-namespace",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+REDACTED
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-account",
 	REDACTED,
 		Status:      StatusActive,
 		Schedulable: true,
