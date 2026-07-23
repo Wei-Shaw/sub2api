@@ -458,6 +458,11 @@ export default {
       bulkActions: {
         selected: '已选择 {count} 个账号',
         selectCurrentPage: '本页全选',
+        selectFiltered: '筛选全选',
+        selectingFiltered: '选择中…',
+        selectFilteredSuccess: '已选中筛选结果 {count} 个账号',
+        selectFilteredEmpty: '当前筛选条件下没有可选择的账号',
+        selectFilteredFailed: '筛选全选失败',
         clear: '清除选择',
         edit: '批量编辑账号',
         delete: '批量删除',

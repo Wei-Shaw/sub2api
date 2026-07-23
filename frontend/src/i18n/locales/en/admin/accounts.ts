@@ -389,6 +389,11 @@ export default {
       bulkActions: {
         selected: '{count} account(s) selected',
         selectCurrentPage: 'Select this page',
+        selectFiltered: 'Select all filtered',
+        selectingFiltered: 'Selecting…',
+        selectFilteredSuccess: 'Selected {count} account(s) matching filters',
+        selectFilteredEmpty: 'No accounts match the current filters',
+        selectFilteredFailed: 'Failed to select filtered accounts',
         clear: 'Clear selection',
         edit: 'Bulk Edit',
         delete: 'Bulk Delete',

@@ -177,6 +177,7 @@
       <template #table>
         <AccountBulkActionsBar
           :selected-ids="selIds"
+          :selecting-filtered="selectingFiltered"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
@@ -185,6 +186,7 @@
           @edit-filtered="openBulkEditFiltered"
           @clear="clearSelection"
           @select-page="selectPage"
+          @select-filtered="selectFiltered"
           @toggle-schedulable="handleBulkToggleSchedulable"
         />
         <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1491,6 +1493,7 @@ const toggleSelectAllVisible = (event: Event) => {
   const target = event.target as HTMLInputElement
   toggleVisible(target.checked)
 }
+
 const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); clearSelection(); reload() } catch (error) { console.error('Failed to bulk delete accounts:', error) } }
 const handleBulkResetStatus = async () => {
   if (!confirm(t('common.confirm'))) return
@@ -1672,6 +1675,47 @@ const buildBulkEditFilterSnapshot = () => {
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
+  }
+}
+
+const SELECT_FILTERED_PAGE_SIZE = 1000
+const SELECT_FILTERED_MAX_PAGES = 200
+const selectingFiltered = ref(false)
+
+const selectFiltered = async () => {
+  if (selectingFiltered.value) return
+  selectingFiltered.value = true
+  try {
+    const filters = {
+      ...buildBulkEditFilterSnapshot(),
+      include_scheduler_score: '0'
+    }
+    const ids: number[] = []
+    let page = 1
+    let total = Number.POSITIVE_INFINITY
+
+    while (ids.length < total && page <= SELECT_FILTERED_MAX_PAGES) {
+      const response = await adminAPI.accounts.list(page, SELECT_FILTERED_PAGE_SIZE, filters)
+      total = Number(response.total || 0)
+      const items = Array.isArray(response.items) ? response.items : []
+      for (const account of items) {
+        if (typeof account?.id === 'number') ids.push(account.id)
+      }
+      if (items.length === 0 || items.length < SELECT_FILTERED_PAGE_SIZE) break
+      page += 1
+    }
+
+    setSelectedIds(ids)
+    if (ids.length === 0) {
+      appStore.showInfo(t('admin.accounts.bulkActions.selectFilteredEmpty'))
+    } else {
+      appStore.showSuccess(t('admin.accounts.bulkActions.selectFilteredSuccess', { count: ids.length }))
+    }
+  } catch (error) {
+    console.error('Failed to select filtered accounts:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.bulkActions.selectFilteredFailed')))
+  } finally {
+    selectingFiltered.value = false
   }
 }
 

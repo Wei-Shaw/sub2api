@@ -81,12 +81,14 @@ const DataTableStub = {
 }
 
 const AccountBulkActionsBarStub = {
-  props: ['selectedIds'],
-  emits: ['edit-filtered', 'probe-upstream-billing'],
+  props: ['selectedIds', 'selectingFiltered'],
+  emits: ['edit-filtered', 'probe-upstream-billing', 'select-filtered'],
   template: `
     <div>
+      <span data-test="selected-count">{{ selectedIds?.length || 0 }}</span>
       <button data-test="edit-filtered" @click="$emit('edit-filtered')">edit filtered</button>
       <button data-test="probe-upstream-billing" @click="$emit('probe-upstream-billing')">probe</button>
+      <button data-test="select-filtered" @click="$emit('select-filtered')">select filtered</button>
     </div>
   `
 }
@@ -445,5 +447,94 @@ describe('admin AccountsView bulk edit scope', () => {
 
     expect(probeUpstreamBillingBatch).toHaveBeenCalledWith([7])
     expect(listAccounts).toHaveBeenCalledTimes(2)
+  })
+
+  it('selects all filtered account ids across pages for batch actions', async () => {
+    const account = (id: number) => ({
+      id,
+      name: `account-${id}`,
+      platform: 'anthropic',
+      type: 'oauth',
+      status: 'error',
+      schedulable: true,
+      created_at: '2026-07-13T00:00:00Z',
+      updated_at: '2026-07-13T00:00:00Z'
+    })
+
+    // Initial table load (page size from persisted settings, default 20)
+    listAccounts.mockImplementation(async (page: number, pageSize: number) => {
+      if (pageSize === 1000) {
+        if (page === 1) {
+          return {
+            items: Array.from({ length: 1000 }, (_, index) => account(index + 1)),
+            total: 1005,
+            page: 1,
+            page_size: 1000,
+            pages: 2
+          }
+        }
+        return {
+          items: [account(1001), account(1002), account(1003), account(1004), account(1005)],
+          total: 1005,
+          page: 2,
+          page_size: 1000,
+          pages: 2
+        }
+      }
+      return {
+        items: [account(1)],
+        total: 1005,
+        page: 1,
+        page_size: pageSize,
+        pages: Math.ceil(1005 / pageSize)
+      }
+    })
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
+          AccountTableFilters: { template: '<div></div>' },
+          AccountBulkActionsBar: AccountBulkActionsBarStub,
+          AccountActionMenu: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: BulkEditAccountModalStub,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="select-filtered"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="selected-count"]').text()).toBe('1005')
+    const filteredCalls = listAccounts.mock.calls.filter(([, pageSize]) => pageSize === 1000)
+    expect(filteredCalls).toHaveLength(2)
+    expect(filteredCalls[0][0]).toBe(1)
+    expect(filteredCalls[1][0]).toBe(2)
   })
 })
