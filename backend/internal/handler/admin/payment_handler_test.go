@@ -50,6 +50,7 @@ REDACTED
 
 func TestAdminSubscriptionPlansForResponseIncludesCompositeGroupInfo(t *testing.T) {
 	weekly := 25.0
+	now := time.Now()
 	plans := []*dbent.SubscriptionPlan{
 		{
 			ID:           11,
@@ -57,12 +58,15 @@ func TestAdminSubscriptionPlansForResponseIncludesCompositeGroupInfo(t *testing.
 			Name:         "All models",
 			Description:  "Composite access",
 			Price:        19.99,
+			Currency:     "CNY",
 			ValidityDays: 30,
 			ValidityUnit: "days",
 			Features:     "OpenAI\nClaude\nGemini\nGrok",
 			ProductName:  "Sub2API",
 			ForSale:      true,
 			SortOrder:    1,
+			CreatedAt:    now,
+			UpdatedAt:    now,
 	REDACTED,
 REDACTED
 	groupInfo := map[int64]service.PlanGroupInfo{
@@ -91,5 +95,13 @@ REDACTED
 REDACTED
 	if strings.Join(got[0].ModelScopes, ",") != "openai,claude,gemini,grok" {
 		t.Fatalf("expected model scopes to be preserved, got %#v", got[0].ModelScopes)
+REDACTED
+	// 投影必须保留 ent 原始响应的全部套餐字段：currency 丢失曾导致编辑保存时
+	// 静默清空套餐货币（PlanEditDialog 回传空串 → SetCurrency("")）。
+	if got[0].Currency != "CNY" {
+		t.Fatalf("expected currency to be preserved, got %q", got[0].Currency)
+REDACTED
+	if !got[0].CreatedAt.Equal(now) || !got[0].UpdatedAt.Equal(now) {
+		t.Fatalf("expected created_at/updated_at to be preserved, got %v / %v", got[0].CreatedAt, got[0].UpdatedAt)
 REDACTED
 REDACTED
