@@ -32,7 +32,7 @@ func Logger() gin.HandlerFunc {
 
 		method := c.Request.Method
 		statusCode := c.Writer.Status()
-		clientIP := ip.GetClientIP(c)
+		clientIP := ip.ExactClientIP(c)
 		protocol := c.Request.Proto
 		accountID, hasAccountID := c.Request.Context().Value(ctxkey.AccountID).(int64)
 		platform, _ := c.Request.Context().Value(ctxkey.Platform).(string)

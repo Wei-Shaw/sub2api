@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	clientip "github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 )
 
 // ErrSessionBindingMismatch 会话绑定的 IP/UA 发生变化，会话已失效。
@@ -24,7 +25,7 @@ func (b *SessionBinding) Hash() string {
 	if b == nil {
 		return ""
 	}
-	ip := strings.TrimSpace(b.IP)
+	ip := clientip.SessionBindingIP(strings.TrimSpace(b.IP))
 	ua := strings.TrimSpace(b.UserAgent)
 	if ip == "" && ua == "" {
 		return ""

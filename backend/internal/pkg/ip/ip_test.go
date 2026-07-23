@@ -32,6 +32,48 @@ func TestGetTrustedClientIPUsesGinClientIP(t *testing.T) {
 	require.Equal(t, "9.9.9.9", w.Body.String())
 }
 
+func TestResolveClientIdentitySeparatesExactIPAndAbusePrefix(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name       string
+		remoteAddr string
+		exact      string
+		prefix     string
+	}{
+		{name: "ipv4", remoteAddr: "192.0.2.9:1234", exact: "192.0.2.9", prefix: "192.0.2.9/32"},
+		{name: "ipv6", remoteAddr: "[2001:db8:1234:5678:abcd::1]:1234", exact: "2001:db8:1234:5678:abcd::1", prefix: "2001:db8:1234:5678::/64"},
+		{name: "mapped ipv4", remoteAddr: "[::ffff:192.0.2.10]:1234", exact: "192.0.2.10", prefix: "192.0.2.10/32"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			r := gin.New()
+			require.NoError(t, r.SetTrustedProxies(nil))
+			r.GET("/t", func(c *gin.Context) {
+				require.Equal(t, test.exact, ExactClientIP(c))
+				require.Equal(t, test.prefix, AbuseClientPrefix(c))
+				c.Status(200)
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest("GET", "/t", nil)
+			req.RemoteAddr = test.remoteAddr
+			r.ServeHTTP(w, req)
+			require.Equal(t, 200, w.Code)
+		})
+	}
+}
+
+func TestAbusePrefixForIPRejectsInvalidAddress(t *testing.T) {
+	require.Empty(t, AbusePrefixForIP("not-an-ip"))
+}
+
+func TestSessionBindingIPPreservesIPv4AndGroupsIPv6(t *testing.T) {
+	require.Equal(t, "192.0.2.10", SessionBindingIP("192.0.2.10"))
+	require.Equal(t, "2001:db8:1234:5678::/64", SessionBindingIP("2001:db8:1234:5678:abcd::1"))
+}
+
 func TestGetClientIPPreservesLegacyDockerForwardedHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -607,7 +607,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 		userAgent := c.GetHeader("User-Agent")
-		clientIP := ip.GetClientIP(c)
+		clientIP := ip.ExactClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
@@ -1113,7 +1113,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		}
 
 		userAgent := c.GetHeader("User-Agent")
-		clientIP := ip.GetClientIP(c)
+		clientIP := ip.ExactClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
@@ -1393,7 +1393,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 	reqLog.Info("openai.websocket_ingress_started")
-	clientIP := ip.GetClientIP(c)
+	clientIP := ip.ExactClientIP(c)
 	userAgent := strings.TrimSpace(c.GetHeader("User-Agent"))
 	ctx := c.Request.Context()
 	maxIngressConnections := 0
@@ -2777,7 +2777,7 @@ func (h *OpenAIGatewayHandler) enqueueCyberSessionBlockedOpsEntry(c *gin.Context
 	if c.Request != nil {
 		meta.ClientRequestID, _ = c.Request.Context().Value(ctxkey.ClientRequestID).(string)
 		meta.UserAgent = c.GetHeader("User-Agent")
-		meta.ClientIP = strings.TrimSpace(ip.GetClientIP(c))
+		meta.ClientIP = strings.TrimSpace(ip.ExactClientIP(c))
 	}
 	meta.APIKeyID = apiKey.ID
 	meta.GroupID = apiKey.GroupID
@@ -2844,7 +2844,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 	if c.Request != nil {
 		clientRequestID, _ = c.Request.Context().Value(ctxkey.ClientRequestID).(string)
 		userAgent = c.GetHeader("User-Agent")
-		clientIPStr = strings.TrimSpace(ip.GetClientIP(c))
+		clientIPStr = strings.TrimSpace(ip.ExactClientIP(c))
 	}
 	apiKeyPrefix := ""
 	if apiKey != nil {

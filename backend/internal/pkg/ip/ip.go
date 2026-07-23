@@ -3,12 +3,102 @@ package ip
 
 import (
 	"net"
+	"net/netip"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 const forwardedIPSettingsKey = "sub2api.forwarded_ip_settings"
+
+const clientIdentityKey = "sub2api.client_identity"
+
+// ClientIdentity keeps the exact trusted address separate from the prefix used
+// for abuse controls. IPv4 identities use /32; IPv6 identities use /64.
+type ClientIdentity struct {
+	Exact       string
+	AbusePrefix string
+}
+
+// ResolveClientIdentity resolves Gin's trusted-proxy chain once per request.
+// Invalid addresses are returned as empty so security callers can fail closed.
+func ResolveClientIdentity(c *gin.Context) ClientIdentity {
+	if c == nil {
+		return ClientIdentity{}
+	}
+	if value, ok := c.Get(clientIdentityKey); ok {
+		if identity, ok := value.(ClientIdentity); ok {
+			return identity
+		}
+	}
+
+	identity := identityFromAddress(c.ClientIP())
+	c.Set(clientIdentityKey, identity)
+	return identity
+}
+
+// ExactClientIP returns the complete, normalized address from Gin's trusted
+// proxy chain. It is appropriate for audit records and exact ACL checks.
+func ExactClientIP(c *gin.Context) string {
+	return ResolveClientIdentity(c).Exact
+}
+
+// AbuseClientPrefix returns an IPv4 /32 or IPv6 /64 prefix for rate limits and
+// other anti-abuse controls.
+func AbuseClientPrefix(c *gin.Context) string {
+	return ResolveClientIdentity(c).AbusePrefix
+}
+
+// AbusePrefixForIP derives the anti-abuse prefix from an already trusted IP.
+func AbusePrefixForIP(raw string) string {
+	return identityFromAddress(raw).AbusePrefix
+}
+
+// SessionBindingIP preserves exact IPv4 behavior while grouping IPv6 privacy
+// addresses by /64 to avoid unnecessary session invalidation.
+func SessionBindingIP(raw string) string {
+	identity := identityFromAddress(raw)
+	if identity.Exact == "" {
+		return ""
+	}
+	addr, ok := parseAddress(identity.Exact)
+	if ok && addr.Is6() {
+		return identity.AbusePrefix
+	}
+	return identity.Exact
+}
+
+func identityFromAddress(raw string) ClientIdentity {
+	addr, ok := parseAddress(raw)
+	if !ok {
+		return ClientIdentity{}
+	}
+	bits := 64
+	if addr.Is4() {
+		bits = 32
+	}
+	return ClientIdentity{
+		Exact:       addr.String(),
+		AbusePrefix: netip.PrefixFrom(addr, bits).Masked().String(),
+	}
+}
+
+func parseAddress(raw string) (netip.Addr, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return netip.Addr{}, false
+	}
+	if addrPort, err := netip.ParseAddrPort(raw); err == nil {
+		addr := addrPort.Addr().Unmap().WithZone("")
+		return addr, addr.IsValid()
+	}
+	addr, err := netip.ParseAddr(raw)
+	if err != nil {
+		return netip.Addr{}, false
+	}
+	addr = addr.Unmap().WithZone("")
+	return addr, addr.IsValid()
+}
 
 type forwardedIPSettings struct {
 	trustForwarded bool
@@ -146,10 +236,7 @@ func resolveLegacyForwardedHeaderIP(c *gin.Context) (string, string) {
 // 该方法依赖 gin.Engine.SetTrustedProxies 配置，不会优先直接信任原始转发头值。
 // 适用于 ACL / 风控等安全敏感场景。
 func GetTrustedClientIP(c *gin.Context) string {
-	if c == nil {
-		return ""
-	}
-	return normalizeIP(c.ClientIP())
+	return ExactClientIP(c)
 }
 
 // GetSecurityClientIP returns the address used by security-sensitive paths.

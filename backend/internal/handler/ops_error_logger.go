@@ -952,7 +952,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			}
 
 			var clientIP string
-			if ip := strings.TrimSpace(ip.GetClientIP(c)); ip != "" {
+			if ip := strings.TrimSpace(ip.ExactClientIP(c)); ip != "" {
 				clientIP = ip
 				entry.ClientIP = &clientIP
 			}
@@ -1091,7 +1091,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		}
 
 		var clientIP string
-		if ip := strings.TrimSpace(ip.GetClientIP(c)); ip != "" {
+		if ip := strings.TrimSpace(ip.ExactClientIP(c)); ip != "" {
 			clientIP = ip
 			entry.ClientIP = &clientIP
 		}
@@ -1237,7 +1237,7 @@ func logOpsStreamError(c *gin.Context, ops *service.OpsService, wireStatus int) 
 		}
 	}
 
-	if clientIP := strings.TrimSpace(ip.GetClientIP(c)); clientIP != "" {
+	if clientIP := strings.TrimSpace(ip.ExactClientIP(c)); clientIP != "" {
 		entry.ClientIP = &clientIP
 	}
 

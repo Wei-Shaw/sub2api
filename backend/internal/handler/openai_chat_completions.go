@@ -331,7 +331,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 
 		userAgent := c.GetHeader("User-Agent")
-		clientIP := ip.GetClientIP(c)
+		clientIP := ip.ExactClientIP(c)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)

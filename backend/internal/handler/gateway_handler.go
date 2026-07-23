@@ -247,7 +247,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	// 计算粘性会话hash
 	parsedReq.SessionContext = &service.SessionContext{
-		ClientIP:  ip.GetClientIP(c),
+		ClientIP:  ip.ExactClientIP(c),
 		UserAgent: c.GetHeader("User-Agent"),
 		APIKeyID:  apiKey.ID,
 	}
@@ -505,7 +505,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 			userAgent := c.GetHeader("User-Agent")
-			clientIP := ip.GetClientIP(c)
+			clientIP := ip.ExactClientIP(c)
 			requestPayloadHash := service.HashUsageRequestPayload(body)
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
@@ -941,7 +941,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 			userAgent := c.GetHeader("User-Agent")
-			clientIP := ip.GetClientIP(c)
+			clientIP := ip.ExactClientIP(c)
 			// Forward 内部可能继续改写 body，usage 去重指纹必须使用最终上游接受的当前 body。
 			requestPayloadHash := service.HashUsageRequestPayload(attemptParsedReq.Body.Bytes())
 			inboundEndpoint := GetInboundEndpoint(c)
@@ -1918,7 +1918,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 
 	// 计算粘性会话 hash
 	parsedReq.SessionContext = &service.SessionContext{
-		ClientIP:  ip.GetClientIP(c),
+		ClientIP:  ip.ExactClientIP(c),
 		UserAgent: c.GetHeader("User-Agent"),
 		APIKeyID:  apiKey.ID,
 	}

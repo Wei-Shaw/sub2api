@@ -56,7 +56,7 @@ func (h *ComplianceHandler) Accept(c *gin.Context) {
 		AdminUserID: subject.UserID,
 		Phrase:      req.Phrase,
 		Language:    req.Language,
-		IPAddress:   ip.GetClientIP(c),
+		IPAddress:   ip.ExactClientIP(c),
 		UserAgent:   strings.TrimSpace(c.GetHeader("User-Agent")),
 	})
 	if err != nil {

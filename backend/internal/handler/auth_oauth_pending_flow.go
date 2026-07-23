@@ -564,7 +564,7 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.ExactClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

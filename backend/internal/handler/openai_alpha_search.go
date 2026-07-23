@@ -232,7 +232,7 @@ func (h *OpenAIGatewayHandler) recordAlphaSearchUsage(
 	userID int64,
 ) {
 	userAgent := c.GetHeader("User-Agent")
-	clientIP := ip.GetClientIP(c)
+	clientIP := ip.ExactClientIP(c)
 	requestPayloadHash := service.HashUsageRequestPayload(body)
 	inboundEndpoint := GetInboundEndpoint(c)
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
