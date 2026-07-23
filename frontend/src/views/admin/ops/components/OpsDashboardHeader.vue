@@ -10,6 +10,11 @@ import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRe
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
 import { formatNumber } from '@/utils/format'
+import {
+  backgroundTasksAPI,
+  type BackgroundTask,
+  type BackgroundTaskStatus
+} from '@/api/admin/backgroundTasks'
 
 type RealtimeWindow = '1min' | '5min' | '30min' | '1h'
 
@@ -645,6 +650,13 @@ function formatTimeShort(ts?: string | null): string {
   return d.toLocaleTimeString()
 }
 
+function formatDateTime(ts?: string | null): string {
+  if (!ts) return '-'
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return '-'
+  return d.toLocaleString()
+}
+
 const cpuPercentValue = computed<number | null>(() => {
   const v = systemMetrics.value?.cpu_usage_percent
   return typeof v === 'number' && Number.isFinite(v) ? v : null
@@ -848,9 +860,100 @@ const jobsStatusClass = computed(() => {
 })
 
 const showJobsDetails = ref(false)
+const jobsDetailTab = ref<'runner' | 'tasks'>('runner')
+const backgroundTasks = ref<BackgroundTask[]>([])
+const backgroundTasksLoading = ref(false)
+const backgroundTasksError = ref('')
+const backgroundTasksPage = ref(1)
+const backgroundTasksPageSize = 10
+const backgroundTasksTotal = ref(0)
+const backgroundTaskActionID = ref<number | null>(null)
+let backgroundTasksLoadGeneration = 0
+const backgroundTaskPages = computed(() => Math.max(1, Math.ceil(backgroundTasksTotal.value / backgroundTasksPageSize)))
 
 function openJobsDetails() {
   showJobsDetails.value = true
+  void loadBackgroundTasks()
+}
+
+function openBackgroundTaskTab() {
+  jobsDetailTab.value = 'tasks'
+  void loadBackgroundTasks()
+}
+
+async function loadBackgroundTasks() {
+  const requestGeneration = ++backgroundTasksLoadGeneration
+  const page = backgroundTasksPage.value
+  backgroundTasksLoading.value = true
+  backgroundTasksError.value = ''
+  try {
+    const result = await backgroundTasksAPI.list({
+      page,
+      page_size: backgroundTasksPageSize
+    })
+    if (requestGeneration !== backgroundTasksLoadGeneration || page !== backgroundTasksPage.value) return
+    backgroundTasks.value = result.items
+    backgroundTasksTotal.value = result.total
+  } catch (error) {
+    if (requestGeneration !== backgroundTasksLoadGeneration) return
+    const value = error as { message?: string }
+    backgroundTasksError.value = value?.message || t('common.error')
+  } finally {
+    if (requestGeneration === backgroundTasksLoadGeneration) {
+      backgroundTasksLoading.value = false
+    }
+  }
+}
+
+async function changeBackgroundTaskPage(page: number) {
+  if (backgroundTasksLoading.value || page < 1 || page > backgroundTaskPages.value || page === backgroundTasksPage.value) return
+  backgroundTasksPage.value = page
+  await loadBackgroundTasks()
+}
+
+async function cancelBackgroundTask(task: BackgroundTask) {
+  if (!task.can_cancel || backgroundTaskActionID.value != null) return
+  backgroundTaskActionID.value = task.id
+  backgroundTasksError.value = ''
+  try {
+    await backgroundTasksAPI.cancel(task.id)
+    await loadBackgroundTasks()
+  } catch (error) {
+    const value = error as { message?: string }
+    const message = value?.message || t('common.error')
+    await loadBackgroundTasks()
+    backgroundTasksError.value = message
+  } finally {
+    backgroundTaskActionID.value = null
+  }
+}
+
+async function retryBackgroundTask(task: BackgroundTask) {
+  if (!task.can_retry || backgroundTaskActionID.value != null) return
+  backgroundTaskActionID.value = task.id
+  backgroundTasksError.value = ''
+  try {
+    await backgroundTasksAPI.retry(task.id)
+    await loadBackgroundTasks()
+  } catch (error) {
+    const value = error as { message?: string }
+    const message = value?.message || t('common.error')
+    await loadBackgroundTasks()
+    backgroundTasksError.value = message
+  } finally {
+    backgroundTaskActionID.value = null
+  }
+}
+
+function backgroundTaskStatusLabel(status: BackgroundTaskStatus): string {
+  return t(`admin.ops.backgroundTasks.statuses.${status}`)
+}
+
+function backgroundTaskStatusClass(status: BackgroundTaskStatus): string {
+  if (status === 'succeeded') return 'text-emerald-600 dark:text-emerald-400'
+  if (status === 'failed' || status === 'indeterminate') return 'text-rose-600 dark:text-rose-400'
+  if (status === 'running' || status === 'retry_wait') return 'text-amber-600 dark:text-amber-400'
+  return 'text-gray-600 dark:text-gray-300'
 }
 
 function handleToolbarRefresh() {
@@ -1526,7 +1629,7 @@ function handleToolbarRefresh() {
               <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.jobs') }}</div>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.jobs')" />
             </div>
-            <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openJobsDetails">
+            <button v-if="!props.fullscreen" data-testid="ops-jobs-details" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openJobsDetails">
               {{ t('admin.ops.requestDetails.details') }}
             </button>
           </div>
@@ -1544,10 +1647,30 @@ function handleToolbarRefresh() {
     </div>
 
     <BaseDialog :show="showJobsDetails" :title="t('admin.ops.jobs')" width="wide" @close="showJobsDetails = false">
-      <div v-if="!jobHeartbeats.length" class="text-sm text-gray-500 dark:text-gray-400">
+      <div class="mb-4 flex border-b border-gray-200 dark:border-dark-700">
+        <button
+          type="button"
+          class="border-b-2 px-4 py-2 text-sm font-medium"
+          :class="jobsDetailTab === 'runner' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500'"
+          @click="jobsDetailTab = 'runner'"
+        >
+          {{ t('admin.ops.backgroundTasks.runnerTab') }}
+        </button>
+        <button
+          type="button"
+          data-testid="ops-background-tasks-tab"
+          class="border-b-2 px-4 py-2 text-sm font-medium"
+          :class="jobsDetailTab === 'tasks' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500'"
+          @click="openBackgroundTaskTab"
+        >
+          {{ t('admin.ops.backgroundTasks.instancesTab') }}
+        </button>
+      </div>
+
+      <div v-if="jobsDetailTab === 'runner' && !jobHeartbeats.length" class="text-sm text-gray-500 dark:text-gray-400">
         {{ t('admin.ops.noData') }}
       </div>
-      <div v-else class="space-y-3">
+      <div v-else-if="jobsDetailTab === 'runner'" class="space-y-3">
         <div
           v-for="hb in jobHeartbeats"
           :key="hb.job_name"
@@ -1579,6 +1702,77 @@ function handleToolbarRefresh() {
           >
             {{ hb.last_error }}
           </div>
+        </div>
+      </div>
+
+      <div v-else class="space-y-3">
+        <div v-if="backgroundTasksError" class="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+          {{ backgroundTasksError }}
+        </div>
+        <div v-if="backgroundTasksLoading" class="py-8 text-center text-sm text-gray-500">
+          {{ t('admin.ops.loadingText') }}
+        </div>
+        <div v-else-if="!backgroundTasks.length" class="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          {{ t('admin.ops.noData') }}
+        </div>
+        <div v-else class="overflow-x-auto">
+          <table class="w-full min-w-[760px] text-left text-xs">
+            <thead class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-gray-400">
+              <tr>
+                <th class="px-2 py-2 font-medium">{{ t('admin.ops.backgroundTasks.account') }}</th>
+                <th class="px-2 py-2 font-medium">{{ t('admin.ops.backgroundTasks.type') }}</th>
+                <th class="px-2 py-2 font-medium">{{ t('admin.ops.backgroundTasks.runAt') }}</th>
+                <th class="px-2 py-2 font-medium">{{ t('admin.ops.backgroundTasks.status') }}</th>
+                <th class="px-2 py-2 font-medium">{{ t('admin.ops.backgroundTasks.attempts') }}</th>
+                <th class="px-2 py-2 font-medium">{{ t('admin.ops.result') }}</th>
+                <th class="px-2 py-2 text-right font-medium">{{ t('common.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr v-for="task in backgroundTasks" :key="task.id">
+                <td class="px-2 py-2 text-gray-900 dark:text-white">{{ task.account_name || task.resource_id }}</td>
+                <td class="px-2 py-2 font-mono text-gray-600 dark:text-gray-300">{{ task.task_type }}</td>
+                <td class="px-2 py-2 tabular-nums text-gray-600 dark:text-gray-300">{{ formatDateTime(task.run_at) }}</td>
+                <td class="px-2 py-2 font-medium" :class="backgroundTaskStatusClass(task.status)">{{ backgroundTaskStatusLabel(task.status) }}</td>
+                <td class="px-2 py-2 font-mono text-gray-600 dark:text-gray-300">{{ task.attempt_count }} / {{ task.dispatch_count }}</td>
+                <td class="max-w-[220px] truncate px-2 py-2 text-gray-600 dark:text-gray-300" :title="task.last_error_message || task.result_code || ''">
+                  {{ task.last_error_message || task.result_code || '-' }}
+                </td>
+                <td class="px-2 py-2 text-right">
+                  <button
+                    v-if="task.can_cancel"
+                    type="button"
+                    :data-testid="`cancel-background-task-${task.id}`"
+                    class="text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"
+                    :disabled="backgroundTaskActionID != null"
+                    @click="cancelBackgroundTask(task)"
+                  >
+                    {{ t('common.cancel') }}
+                  </button>
+                  <button
+                    v-else-if="task.can_retry"
+                    type="button"
+                    :data-testid="`retry-background-task-${task.id}`"
+                    class="text-emerald-600 hover:underline disabled:opacity-50 dark:text-emerald-400"
+                    :disabled="backgroundTaskActionID != null"
+                    @click="retryBackgroundTask(task)"
+                  >
+                    {{ t('admin.ops.backgroundTasks.retry') }}
+                  </button>
+                  <span v-else class="text-gray-400">-</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-if="backgroundTaskPages > 1" class="flex items-center justify-end gap-3 text-xs text-gray-500">
+          <button type="button" data-testid="background-task-page-back" class="rounded border px-2 py-1 disabled:opacity-40 dark:border-dark-600" :disabled="backgroundTasksLoading || backgroundTasksPage <= 1" @click="changeBackgroundTaskPage(backgroundTasksPage - 1)">
+            {{ t('common.back') }}
+          </button>
+          <span>{{ backgroundTasksPage }} / {{ backgroundTaskPages }}</span>
+          <button type="button" data-testid="background-task-page-next" class="rounded border px-2 py-1 disabled:opacity-40 dark:border-dark-600" :disabled="backgroundTasksLoading || backgroundTasksPage >= backgroundTaskPages" @click="changeBackgroundTaskPage(backgroundTasksPage + 1)">
+            {{ t('common.next') }}
+          </button>
         </div>
       </div>
     </BaseDialog>

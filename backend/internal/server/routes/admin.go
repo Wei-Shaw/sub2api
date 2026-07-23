@@ -75,6 +75,9 @@ func RegisterAdminRoutes(
 		// 运维监控（Ops）
 		registerOpsRoutes(admin, h)
 
+		// Durable background task instances
+		registerBackgroundTaskRoutes(admin, h)
+
 		// 系统管理
 		registerSystemRoutes(admin, h)
 
@@ -264,6 +267,15 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
+func registerBackgroundTaskRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	tasks := admin.Group("/background-tasks")
+	{
+		tasks.GET("", h.Admin.BackgroundTask.List)
+		tasks.POST("/:id/cancel", h.Admin.BackgroundTask.Cancel)
+		tasks.POST("/:id/retry", h.Admin.BackgroundTask.Retry)
+	}
+}
+
 func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	dashboard := admin.Group("/dashboard")
 	{
@@ -426,6 +438,7 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		openai.POST("/create-from-codex-pat", h.Admin.OpenAIOAuth.CreateAccountFromCodexPAT)
 		openai.GET("/accounts/:id/quota", h.Admin.OpenAIOAuth.QueryQuota)
 		openai.POST("/accounts/:id/reset-quota", h.Admin.OpenAIOAuth.ResetQuota)
+		openai.POST("/accounts/:id/quota-reset-tasks", h.Admin.BackgroundTask.CreateOpenAIQuotaReset)
 	}
 }
 

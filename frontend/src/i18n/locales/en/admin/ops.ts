@@ -13,6 +13,26 @@ export default {
       goroutines: 'Goroutines',
       jobs: 'Jobs',
       jobsHelp: 'Click “Details” to view job heartbeats and recent errors',
+      backgroundTasks: {
+        runnerTab: 'Runner status',
+        instancesTab: 'Task instances',
+        account: 'Account',
+        type: 'Type',
+        runAt: 'Scheduled',
+        status: 'Status',
+        attempts: 'Attempts / requests',
+        retry: 'Retry task',
+        statuses: {
+          pending: 'Scheduled',
+          running: 'Running',
+          retry_wait: 'Retry waiting',
+          succeeded: 'Succeeded',
+          skipped: 'Skipped',
+          failed: 'Failed',
+          canceled: 'Canceled',
+          indeterminate: 'Indeterminate'
+        }
+      },
       active: 'active',
       idle: 'idle',
       waiting: 'waiting',

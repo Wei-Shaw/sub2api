@@ -176,6 +176,18 @@ func TestResetCreditShadowRejected(t *testing.T) {
 		"shadow ResetCredit 应映射为 409 Conflict 而非 500")
 }
 
+func TestListResetCreditsShadowRejected(t *testing.T) {
+	parentID := int64(100)
+	shadow := &Account{
+		ID: 201, ParentAccountID: &parentID,
+		Platform: PlatformOpenAI, Type: AccountTypeOAuth, QuotaDimension: QuotaDimensionSpark,
+	}
+	svc := &OpenAIQuotaService{accountRepo: &stubQuotaAccountRepo{accounts: map[int64]*Account{shadow.ID: shadow}}}
+	_, err := svc.ListResetCredits(context.Background(), shadow.ID)
+	require.ErrorIs(t, err, ErrSparkShadowResetNotSupported)
+	require.Equal(t, http.StatusConflict, infraerrors.Code(err))
+}
+
 func TestResetCreditAgentIdentityUsesAssertionAndRecoversInvalidTaskOnce(t *testing.T) {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -197,6 +209,7 @@ func TestResetCreditAgentIdentityUsesAssertionAndRecoversInvalidTaskOnce(t *test
 	resetCalls := 0
 	registerCalls := 0
 	var assertions []string
+	var resetBodies []map[string]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
 		if strings.Contains(r.URL.Path, "/task/register") {
@@ -206,6 +219,9 @@ func TestResetCreditAgentIdentityUsesAssertionAndRecoversInvalidTaskOnce(t *test
 		}
 		resetCalls++
 		assertions = append(assertions, r.Header.Get("authorization"))
+		var resetBody map[string]string
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&resetBody))
+		resetBodies = append(resetBodies, resetBody)
 		require.Equal(t, "account-reset-recovery", r.Header.Get("chatgpt-account-id"))
 		if resetCalls == 1 {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -223,7 +239,7 @@ func TestResetCreditAgentIdentityUsesAssertionAndRecoversInvalidTaskOnce(t *test
 	svc := NewOpenAIQuotaService(repo, nil, nil, newQuotaRedirectingFactory(srv))
 	svc.agentIdentityWS = invalidator
 
-	result, err := svc.ResetCredit(context.Background(), account.ID)
+	result, err := svc.ResetCreditByID(context.Background(), account.ID, "agent-request-fixed", "agent-credit-fixed")
 	require.NoError(t, err)
 	require.Equal(t, "ok", result.Code)
 	require.Equal(t, 2, result.WindowsReset)
@@ -233,6 +249,10 @@ func TestResetCreditAgentIdentityUsesAssertionAndRecoversInvalidTaskOnce(t *test
 	require.True(t, strings.HasPrefix(assertions[0], "AgentAssertion "))
 	require.True(t, strings.HasPrefix(assertions[1], "AgentAssertion "))
 	require.NotEqual(t, assertions[0], assertions[1])
+	require.Equal(t, []map[string]string{
+		{"redeem_request_id": "agent-request-fixed", "credit_id": "agent-credit-fixed"},
+		{"redeem_request_id": "agent-request-fixed", "credit_id": "agent-credit-fixed"},
+	}, resetBodies)
 	require.Equal(t, "task-reset-new", account.GetCredential("task_id"))
 	require.Equal(t, []int64{account.ID}, invalidator.accountIDs)
 }
