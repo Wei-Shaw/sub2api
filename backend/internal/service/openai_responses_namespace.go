@@ -79,13 +79,13 @@ REDACTED
 
 	var rebuilt bytes.Buffer
 	rebuilt.Grow(len(input.Raw))
-	rebuilt.WriteByte('[')
+	_ = rebuilt.WriteByte('[')
 	changed := false
 	first := true
 	var stripErr error
 	input.ForEach(func(_, item gjson.Result) bool {
 		if !first {
-			rebuilt.WriteByte(',')
+			_ = rebuilt.WriteByte(',')
 	REDACTED
 		first = false
 		itemBody := []byte(item.Raw)
@@ -96,7 +96,7 @@ REDACTED
 		REDACTED
 			changed = true
 	REDACTED
-		rebuilt.Write(itemBody)
+		_, _ = rebuilt.Write(itemBody)
 		return true
 REDACTED)
 	if stripErr != nil {
@@ -105,7 +105,7 @@ REDACTED
 	if !changed {
 		return body, nil
 REDACTED
-	rebuilt.WriteByte(']')
+	_ = rebuilt.WriteByte(']')
 	stripped, err := sjson.SetRawBytes(body, "input", rebuilt.Bytes())
 	if err != nil {
 		return body, fmt.Errorf("replace OpenAI input after namespace deletion: %w", err)
