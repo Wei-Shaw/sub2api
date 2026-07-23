@@ -286,9 +286,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("image generation disabled for group")
 	}
 
+	disableDefaultCodexInstructions := account.IsOpenAIDefaultCodexInstructionsDisabled()
 	instructions := gjson.GetBytes(body, "instructions")
 	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
-	if instructionsEmpty && !compatMessagesBridge && !nativeDeepSeekResponses {
+	if instructionsEmpty && !compatMessagesBridge && !nativeDeepSeekResponses && !disableDefaultCodexInstructions {
 		markPatchSet("instructions", defaultCodexSynthInstructions(reqModel))
 	}
 
@@ -409,13 +410,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if decodeErr != nil {
 			return nil, decodeErr
 		}
-		codexResult := codexTransformResult{}
-		if compatMessagesBridge {
-			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{IsCodexCLI: isCodexCLI, IsCompact: isCompactRequest, SkipDefaultInstructions: true, PreserveToolCallIDs: true})
+		codexResult := applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{
+			IsCodexCLI:              isCodexCLI,
+			IsCompact:               isCompactRequest,
+			SkipDefaultInstructions: compatMessagesBridge || disableDefaultCodexInstructions,
+			PreserveToolCallIDs:     compatMessagesBridge,
+		})
+		if compatMessagesBridge || disableDefaultCodexInstructions {
+			// ChatGPT internal endpoints expect the field to exist even when the
+			// account opts out of Sub2API's embedded Codex base prompt.
 			ensureCodexOAuthInstructionsField(decoded)
 			markDecodedModified()
-		} else {
-			codexResult = applyCodexOAuthTransform(decoded, isCodexCLI, isCompactRequest)
 		}
 		if codexResult.Modified {
 			markDecodedModified()

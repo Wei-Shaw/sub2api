@@ -1972,6 +1972,17 @@ func (a *Account) IsOpenAIPassthroughEnabled() bool {
 	return false
 }
 
+// IsOpenAIDefaultCodexInstructionsDisabled 返回账号是否禁用 Sub2API 内置的
+// Codex base instructions 默认注入。该开关不影响客户端显式传入的 instructions。
+// 字段：accounts.extra.openai_disable_default_codex_instructions。
+func (a *Account) IsOpenAIDefaultCodexInstructionsDisabled() bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false
+	}
+	disabled, ok := a.Extra["openai_disable_default_codex_instructions"].(bool)
+	return ok && disabled
+}
+
 // IsOpenAIResponsesWebSocketV2Enabled 返回 OpenAI 账号是否开启 Responses WebSocket v2。
 //
 // 分类型新字段：
