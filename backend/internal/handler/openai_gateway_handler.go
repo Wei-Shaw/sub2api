@@ -385,6 +385,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	stopImageJSONKeepalive := func() {}
+	imageJSONKeepaliveStarted := false
+	defer func() { stopImageJSONKeepalive() }()
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 
 	// 生图意图的 /v1/responses 请求必须调度到确实支持 Responses API 的账号，否则
@@ -475,13 +478,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if !acquired {
 			return
 		}
+		if !imageJSONKeepaliveStarted {
+			stopImageJSONKeepalive = h.startOpenAIResponsesImageJSONKeepalive(c, imageIntent, reqStream)
+			imageJSONKeepaliveStarted = service.OpenAIImagesJSONKeepalivePresent(c)
+		}
 
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		// 用扣除 compact 心跳字节的口径快照：心跳注释不构成语义响应，
-		// 不能因心跳字节变化而放弃 failover 换号（#3887）。
-		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
+		// 心跳字节不构成语义响应，不能因其变化而放弃 failover 换号。
+		writerSizeBeforeForward := openAIForwardAdjustedWrittenSize(c)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -2411,10 +2417,8 @@ func openAIForwardErrorAlreadyCommunicated(c *gin.Context, writerSizeBeforeForwa
 	if err == nil || c == nil || c.Writer == nil {
 		return false
 	}
-	// 与快照同口径：排除 compact 心跳字节，避免"仅心跳写出"被误判为
-	// 响应已写出（#3887）。
-	if service.OpenAICompactKeepaliveAdjustedWrittenSize(c) == writerSizeBeforeForward ||
-		service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) == writerSizeBeforeForward {
+	// 与快照同口径：排除心跳字节，避免"仅心跳写出"被误判为响应已写出。
+	if openAIForwardAdjustedWrittenSize(c) == writerSizeBeforeForward {
 		return false
 	}
 
@@ -2442,10 +2446,17 @@ func openAIForwardMayFailover(c *gin.Context, writerSizeBeforeForward int, failo
 	if c == nil || c.Writer == nil {
 		return false
 	}
-	if service.OpenAICompactKeepaliveAdjustedWrittenSize(c) == writerSizeBeforeForward {
+	if openAIForwardAdjustedWrittenSize(c) == writerSizeBeforeForward {
 		return true
 	}
 	return failoverErr != nil && failoverErr.SafeToFailoverAfterWrite
+}
+
+func openAIForwardAdjustedWrittenSize(c *gin.Context) int {
+	if service.OpenAIImagesJSONKeepalivePresent(c) {
+		return service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
+	}
+	return service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
 }
 
 func openAIRequestAllowsFailoverReplay(c *gin.Context) bool {
@@ -2491,6 +2502,13 @@ func (h *OpenAIGatewayHandler) openAICompactKeepaliveInterval() time.Duration {
 		return 0
 	}
 	return time.Duration(h.cfg.Gateway.StreamKeepaliveInterval) * time.Second
+}
+
+func (h *OpenAIGatewayHandler) startOpenAIResponsesImageJSONKeepalive(c *gin.Context, imageIntent, stream bool) func() {
+	if !imageIntent || stream {
+		return func() {}
+	}
+	return service.StartOpenAIImagesJSONKeepalive(c, h.openAIImagesJSONKeepaliveInterval())
 }
 
 func setOpenAIClientTransportHTTP(c *gin.Context) {

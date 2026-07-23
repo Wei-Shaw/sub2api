@@ -424,6 +424,53 @@ func TestOpenAIEnsureForwardErrorResponse_FastImageJSONKeepalivePreservesComplet
 	require.Equal(t, "ZmFzdC1pbWFnZQ==", gjson.Get(w.Body.String(), "data.0.b64_json").String())
 }
 
+func TestStartOpenAIResponsesImageJSONKeepalive(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name        string
+		imageIntent bool
+		stream      bool
+		interval    int
+		wantStarted bool
+	}{
+		{name: "nonstream image", imageIntent: true, interval: 15, wantStarted: true},
+		{name: "stream image", imageIntent: true, stream: true, interval: 15},
+		{name: "non-image request", interval: 15},
+		{name: "disabled", imageIntent: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+			h := &OpenAIGatewayHandler{cfg: &config.Config{Gateway: config.GatewayConfig{
+				ImageNonstreamKeepaliveInterval: tt.interval,
+			}}}
+
+			stop := h.startOpenAIResponsesImageJSONKeepalive(c, tt.imageIntent, tt.stream)
+			defer stop()
+
+			require.Equal(t, tt.wantStarted, service.OpenAIImagesJSONKeepalivePresent(c))
+			require.False(t, c.Writer.Written(), "the first heartbeat must remain delayed")
+		})
+	}
+}
+
+func TestOpenAIForwardMayFailoverWithImageJSONKeepalive(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+
+	stop := service.StartOpenAIImagesJSONKeepalive(c, 5*time.Millisecond)
+	defer stop()
+	before := openAIForwardAdjustedWrittenSize(c)
+	require.Eventually(t, c.Writer.Written, time.Second, time.Millisecond)
+	require.Equal(t, before, openAIForwardAdjustedWrittenSize(c))
+	require.True(t, openAIForwardMayFailover(c, before, &service.UpstreamFailoverError{}))
+}
+
 func TestShouldLogOpenAIForwardFailureAsWarn(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

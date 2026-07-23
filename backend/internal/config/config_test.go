@@ -253,6 +253,24 @@ func TestLoadTrustedProxiesPresenceFromYAML(t *testing.T) {
 	}
 }
 
+func TestComposeFilesForwardImageNonstreamKeepalive(t *testing.T) {
+	const expected = "GATEWAY_IMAGE_NONSTREAM_KEEPALIVE_INTERVAL=${GATEWAY_IMAGE_NONSTREAM_KEEPALIVE_INTERVAL:-0}"
+	composeFiles := []string{
+		"docker-compose.yml",
+		"docker-compose.dev.yml",
+		"docker-compose.local.yml",
+		"docker-compose.standalone.yml",
+	}
+
+	for _, name := range composeFiles {
+		t.Run(name, func(t *testing.T) {
+			content, err := os.ReadFile(filepath.Join("..", "..", "..", "deploy", name))
+			require.NoError(t, err)
+			require.Contains(t, string(content), expected)
+		})
+	}
+}
+
 func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	viper.Reset()
 	t.Setenv("JWT_SECRET", "")
