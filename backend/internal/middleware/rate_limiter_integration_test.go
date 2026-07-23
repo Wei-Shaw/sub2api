@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	clientip "github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
@@ -37,7 +39,7 @@ func TestRateLimiterSetsTTLAndDoesNotRefresh(t *testing.T) {
 	recorder := performRequest(router)
 	require.Equal(t, http.StatusOK, recorder.Code)
 
-	redisKey := limiter.prefix + "ttl-test:127.0.0.1"
+	redisKey := limiter.prefix + "ttl-test:" + clientip.AbusePrefixForIP("127.0.0.1")
 	ttlBefore, err := rdb.PTTL(ctx, redisKey).Result()
 	require.NoError(t, err)
 	require.Greater(t, ttlBefore, time.Duration(0))
@@ -66,7 +68,7 @@ func TestRateLimiterFixesMissingTTL(t *testing.T) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
-	redisKey := limiter.prefix + "ttl-missing:127.0.0.1"
+	redisKey := limiter.prefix + "ttl-missing:" + clientip.AbusePrefixForIP("127.0.0.1")
 	require.NoError(t, rdb.Set(ctx, redisKey, 5, 0).Err())
 
 	ttlBefore, err := rdb.PTTL(ctx, redisKey).Result()
