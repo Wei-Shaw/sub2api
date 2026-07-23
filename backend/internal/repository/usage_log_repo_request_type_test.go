@@ -96,6 +96,7 @@ REDACTED
 			sqlmock.AnyArg(), // billing_tier
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
+			sqlmock.AnyArg(), // session_id
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"REDACTED).AddRow(int64(99), createdAt))
@@ -185,6 +186,7 @@ REDACTED
 			sqlmock.AnyArg(), // billing_tier
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
+			sqlmock.AnyArg(), // session_id
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"REDACTED).AddRow(int64(100), createdAt))
@@ -826,6 +828,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullFloat64{REDACTED,
+			sql.NullString{REDACTED,
 			now,
 	REDACTEDREDACTED)
 	REDACTED
@@ -900,6 +903,7 @@ REDACTED)
 			sql.NullString{REDACTED,  // billing_tier
 			sql.NullString{REDACTED,  // billing_mode
 			sql.NullFloat64{REDACTED, // account_stats_cost
+			sql.NullString{REDACTED,  // session_id
 			now,
 	REDACTEDREDACTED)
 	REDACTED
@@ -957,6 +961,7 @@ REDACTED)
 			sql.NullString{REDACTED,  // billing_tier
 			sql.NullString{REDACTED,  // billing_mode
 			sql.NullFloat64{REDACTED, // account_stats_cost
+			sql.NullString{REDACTED,  // session_id
 			now,
 	REDACTEDREDACTED)
 	REDACTED
@@ -1014,6 +1019,7 @@ REDACTED)
 			sql.NullString{REDACTED,  // billing_tier
 			sql.NullString{REDACTED,  // billing_mode
 			sql.NullFloat64{REDACTED, // account_stats_cost
+			sql.NullString{REDACTED,  // session_id
 			now,
 	REDACTEDREDACTED)
 	REDACTED

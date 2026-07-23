@@ -125,6 +125,11 @@ func isGrokRequestContext(c *gin.Context) bool {
 	if c == nil {
 		return false
 REDACTED
+	if c.Request != nil {
+		if platform, ok := ResolvedTargetPlatformFromContext(c.Request.Context()); ok {
+			return platform == PlatformGrok
+	REDACTED
+REDACTED
 	v, exists := c.Get("api_key")
 	if !exists {
 		return false

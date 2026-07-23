@@ -42,6 +42,9 @@ REDACTED
 	if !h.checkSecurityAuditBeforeSubmit(c, &req) {
 		return
 REDACTED
+	if sessionID := service.ExtractClientSessionID(c); sessionID != "" {
+		req.SessionID = &sessionID
+REDACTED
 	got, err := h.service.Submit(c.Request.Context(), owner, req, c.GetHeader("Idempotency-Key"))
 	if err != nil {
 		batchImageError(c, err)
