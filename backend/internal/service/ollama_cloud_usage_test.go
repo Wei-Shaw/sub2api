@@ -54,14 +54,17 @@ REDACTED
 		if _, match := wanted[fingerprint]; !ok || !match {
 			continue
 	REDACTED
-		clone := *account
-		clone.Extra = make(map[string]any, len(account.Extra))
-		for key, value := range account.Extra {
-			clone.Extra[key] = value
-	REDACTED
-		result = append(result, clone)
+		result = append(result, cloneOllamaUsageTestAccount(*account))
 REDACTED
 	return result, nil
+REDACTED
+
+// cloneOllamaUsageTestAccount 深拷贝共享 map，模拟真实仓储每次查询返回全新行：
+// 组写在 r.mu 下改成员 map，浅拷贝会让 RunDue 过滤循环无锁读到同一 map 而竞争。
+func cloneOllamaUsageTestAccount(account Account) Account {
+	account.Credentials = mergeMap(nil, account.Credentials)
+	account.Extra = mergeMap(nil, account.Extra)
+	return account
 REDACTED
 
 func (r *ollamaUsageTestRepo) SaveOllamaCloudUsageSession(_ context.Context, expected *Account, ciphertext string, autoRefresh bool) error {
@@ -183,14 +186,18 @@ REDACTED
 REDACTED
 
 func (r *ollamaUsageTestRepo) ListDueOllamaCloudUsageAccounts(_ context.Context, _ time.Time, limit int) ([]Account, error) {
-	if len(r.due) > 0 {
-		return append([]Account(nil), r.due[:min(limit, len(r.due))]...), nil
-REDACTED
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if len(r.due) > 0 {
+		out := make([]Account, 0, min(limit, len(r.due)))
+		for _, account := range r.due[:min(limit, len(r.due))] {
+			out = append(out, cloneOllamaUsageTestAccount(account))
+	REDACTED
+		return out, nil
+REDACTED
 	out := make([]Account, 0, len(r.accounts))
 	for _, account := range r.accounts {
-		out = append(out, *account)
+		out = append(out, cloneOllamaUsageTestAccount(*account))
 		if len(out) == limit {
 			break
 	REDACTED
