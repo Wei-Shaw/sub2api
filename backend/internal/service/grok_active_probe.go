@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/google/uuid"
 )
 
@@ -32,10 +33,18 @@ const (
 	grokActiveProbeCadenceLockKey = "grok:active-probe:cadence"
 	grokActiveProbeRunLockTTL     = 45 * time.Minute
 	grokActiveProbeCadenceLockTTL = 2 * grokActiveProbeScanInterval
+	grokProbeAllRunLockKey        = "grok:active-probe:all"
+	grokProbeAllRunLockMinTTL     = 5 * time.Minute
+	grokProbeAllRunLockGrace      = 5 * time.Minute
+	grokProbeAllPace              = 300 * time.Millisecond
 )
 
 type grokActiveProbeAccountLister interface {
 	ListByPlatform(ctx context.Context, platform string) ([]Account, error)
+}
+
+type grokActiveProbeCandidateLister interface {
+	ListGrokActiveProbeCandidates(ctx context.Context) ([]Account, error)
 }
 
 type grokActiveProbeProber interface {
@@ -45,6 +54,18 @@ type grokActiveProbeProber interface {
 type grokActiveProbeCandidate struct {
 	account *Account
 	score   uint64
+}
+
+type GrokProbeAllStatus struct {
+	RunID        string         `json:"run_id"`
+	Total        int            `json:"total"`
+	Completed    int            `json:"completed"`
+	Succeeded    int            `json:"succeeded"`
+	Failed       int            `json:"failed"`
+	Running      bool           `json:"running"`
+	StartedAt    *time.Time     `json:"started_at"`
+	FinishedAt   *time.Time     `json:"finished_at"`
+	StatusCounts map[string]int `json:"status_counts"`
 }
 
 // GrokActiveProbeService periodically verifies eligible Grok OAuth accounts
@@ -74,6 +95,11 @@ type GrokActiveProbeService struct {
 	lockCache      LeaderLockCache
 	db             *sql.DB
 	instanceID     string
+
+	probeAllMu       sync.Mutex
+	probeAllStatus   GrokProbeAllStatus
+	probeAllPace     time.Duration
+	probeAllStarting bool
 }
 
 func NewGrokActiveProbeService(
@@ -103,6 +129,7 @@ func newGrokActiveProbeService(
 		enabled:        grokProbeEnabledFromEnv(),
 		now:            time.Now,
 		instanceID:     uuid.NewString(),
+		probeAllPace:   grokProbeAllPace,
 	}
 }
 
@@ -171,6 +198,219 @@ func (s *GrokActiveProbeService) RunOnce(ctx context.Context) error {
 	return s.runOnce(ctx, false)
 }
 
+func (s *GrokActiveProbeService) StartProbeAll(ctx context.Context) (*GrokProbeAllStatus, error) {
+	if s == nil || s.accountLister == nil || s.prober == nil {
+		return nil, infraerrors.New(http.StatusServiceUnavailable, "GROK_PROBE_ALL_DISABLED", "Grok active probe service is not enabled")
+	}
+
+	s.probeAllMu.Lock()
+	if s.probeAllStatus.Running {
+		status := cloneGrokProbeAllStatus(s.probeAllStatus)
+		s.probeAllMu.Unlock()
+		return &status, nil
+	}
+	if s.probeAllStarting {
+		s.probeAllMu.Unlock()
+		return nil, infraerrors.New(http.StatusConflict, "GROK_PROBE_ALL_STARTING", "A Grok full probe is starting")
+	}
+	s.probeAllStarting = true
+	s.probeAllMu.Unlock()
+
+	started := false
+	defer func() {
+		if started {
+			return
+		}
+		s.probeAllMu.Lock()
+		s.probeAllStarting = false
+		s.probeAllMu.Unlock()
+	}()
+
+	accounts, err := s.listAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	now := s.currentTime().UTC()
+	accountIDs := make([]int64, 0, len(accounts))
+	for i := range accounts {
+		if grokActiveProbeAccountEnabled(&accounts[i], now) {
+			accountIDs = append(accountIDs, accounts[i].ID)
+		}
+	}
+	lockTTL := grokProbeAllLockTTL(len(accountIDs), s.accountTimeout, s.probeAllPace)
+	owner := s.instanceID + ":all:" + uuid.NewString()
+	allRelease, acquired := tryAcquireSingletonLeaderLock(
+		ctx, s.lockCache, s.db, grokProbeAllRunLockKey, owner, lockTTL,
+	)
+	if !acquired {
+		return nil, infraerrors.New(http.StatusConflict, "GROK_PROBE_ALL_RUNNING", "A Grok full probe is already running")
+	}
+	activeRelease, acquired := tryAcquireSingletonLeaderLock(
+		ctx, s.lockCache, s.db, grokActiveProbeRunLockKey, owner, lockTTL,
+	)
+	if !acquired {
+		allRelease()
+		return nil, infraerrors.New(http.StatusConflict, "GROK_ACTIVE_PROBE_RUNNING", "A Grok active probe cycle is already running")
+	}
+
+	status := GrokProbeAllStatus{
+		RunID:        uuid.NewString(),
+		Total:        len(accountIDs),
+		Running:      true,
+		StartedAt:    &now,
+		StatusCounts: make(map[string]int),
+	}
+	s.probeAllMu.Lock()
+	if s.probeAllStatus.Running {
+		existing := cloneGrokProbeAllStatus(s.probeAllStatus)
+		s.probeAllMu.Unlock()
+		activeRelease()
+		allRelease()
+		return &existing, nil
+	}
+	s.probeAllStatus = status
+	s.probeAllStarting = false
+	s.probeAllMu.Unlock()
+	started = true
+
+	s.lifecycleMu.Lock()
+	if s.stopped {
+		s.lifecycleMu.Unlock()
+		activeRelease()
+		allRelease()
+		finishedAt := s.currentTime().UTC()
+		s.probeAllMu.Lock()
+		s.probeAllStatus.Running = false
+		s.probeAllStatus.FinishedAt = &finishedAt
+		s.probeAllMu.Unlock()
+		return nil, infraerrors.New(http.StatusServiceUnavailable, "GROK_PROBE_ALL_STOPPED", "Grok active probe service is stopped")
+	}
+	s.wg.Add(1)
+	s.lifecycleMu.Unlock()
+
+	go s.runProbeAll(accountIDs, activeRelease, allRelease)
+	result := cloneGrokProbeAllStatus(status)
+	return &result, nil
+}
+
+func (s *GrokActiveProbeService) ProbeAllStatus() GrokProbeAllStatus {
+	if s == nil {
+		return GrokProbeAllStatus{StatusCounts: map[string]int{}}
+	}
+	s.probeAllMu.Lock()
+	defer s.probeAllMu.Unlock()
+	return cloneGrokProbeAllStatus(s.probeAllStatus)
+}
+
+func (s *GrokActiveProbeService) runProbeAll(accountIDs []int64, activeRelease, allRelease func()) {
+	defer s.wg.Done()
+	defer activeRelease()
+	defer allRelease()
+
+	s.cycleMu.Lock()
+	defer s.cycleMu.Unlock()
+	ctx := s.parentCtx
+	jobs := make(chan int64)
+	workerCount := grokActiveProbeConcurrency
+	if len(accountIDs) < workerCount {
+		workerCount = len(accountIDs)
+	}
+	var workers sync.WaitGroup
+	for range workerCount {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for accountID := range jobs {
+				probeCtx, cancelProbe := context.WithTimeout(ctx, s.accountTimeout)
+				s.runProbeAllAccount(probeCtx, accountID)
+				cancelProbe()
+			}
+		}()
+	}
+
+enqueue:
+	for index, accountID := range accountIDs {
+		if index > 0 && s.probeAllPace > 0 {
+			timer := time.NewTimer(s.probeAllPace)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				break enqueue
+			case <-timer.C:
+			}
+		}
+		select {
+		case <-ctx.Done():
+			break enqueue
+		case jobs <- accountID:
+		}
+	}
+	close(jobs)
+	workers.Wait()
+
+	finishedAt := s.currentTime().UTC()
+	s.probeAllMu.Lock()
+	s.probeAllStatus.Running = false
+	s.probeAllStatus.FinishedAt = &finishedAt
+	s.probeAllMu.Unlock()
+}
+
+func (s *GrokActiveProbeService) runProbeAllAccount(ctx context.Context, accountID int64) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Error("grok_probe_all_panic", "account_id", accountID, "panic", recovered)
+			s.recordProbeAllResult(&GrokQuotaProbeResult{StatusCode: http.StatusBadGateway}, fmt.Errorf("probe panic"))
+		}
+	}()
+
+	result, err := s.prober.probeUsage(ctx, accountID)
+	s.recordProbeAllResult(result, err)
+}
+
+func (s *GrokActiveProbeService) recordProbeAllResult(result *GrokQuotaProbeResult, probeErr error) {
+	statusCode := http.StatusBadGateway
+	if result != nil && result.StatusCode > 0 {
+		statusCode = result.StatusCode
+	}
+	s.probeAllMu.Lock()
+	defer s.probeAllMu.Unlock()
+	s.probeAllStatus.Completed++
+	s.probeAllStatus.StatusCounts[strconv.Itoa(statusCode)]++
+	if probeErr == nil && statusCode >= http.StatusOK && statusCode < http.StatusBadRequest {
+		s.probeAllStatus.Succeeded++
+	} else {
+		s.probeAllStatus.Failed++
+	}
+}
+
+func cloneGrokProbeAllStatus(status GrokProbeAllStatus) GrokProbeAllStatus {
+	clone := status
+	clone.StatusCounts = make(map[string]int, len(status.StatusCounts))
+	for key, value := range status.StatusCounts {
+		clone.StatusCounts[key] = value
+	}
+	return clone
+}
+
+func grokProbeAllLockTTL(accountCount int, accountTimeout, pace time.Duration) time.Duration {
+	if accountCount < 0 {
+		accountCount = 0
+	}
+	if accountTimeout < 0 {
+		accountTimeout = 0
+	}
+	if pace < 0 {
+		pace = 0
+	}
+	waves := (accountCount + grokActiveProbeConcurrency - 1) / grokActiveProbeConcurrency
+	perWaveBudget := accountTimeout + grokCredentialMutationTimeout
+	budget := time.Duration(waves)*perWaveBudget + time.Duration(maxInt(accountCount-1, 0))*pace + grokProbeAllRunLockGrace
+	if budget < grokProbeAllRunLockMinTTL {
+		return grokProbeAllRunLockMinTTL
+	}
+	return budget
+}
+
 func (s *GrokActiveProbeService) runOnce(ctx context.Context, paced bool) error {
 	if s == nil || s.accountLister == nil || s.prober == nil {
 		return nil
@@ -203,7 +443,7 @@ func (s *GrokActiveProbeService) runOnce(ctx context.Context, paced bool) error 
 		defer release()
 	}
 
-	accounts, err := s.accountLister.ListByPlatform(ctx, PlatformGrok)
+	accounts, err := s.listAccounts(ctx)
 	if err != nil {
 		return err
 	}
@@ -440,4 +680,11 @@ func (s *GrokActiveProbeService) currentTime() time.Time {
 		return s.now()
 	}
 	return time.Now()
+}
+
+func (s *GrokActiveProbeService) listAccounts(ctx context.Context) ([]Account, error) {
+	if lister, ok := s.accountLister.(grokActiveProbeCandidateLister); ok {
+		return lister.ListGrokActiveProbeCandidates(ctx)
+	}
+	return s.accountLister.ListByPlatform(ctx, PlatformGrok)
 }

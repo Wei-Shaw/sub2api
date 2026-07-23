@@ -1,5 +1,5 @@
-import { defineComponent } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, nextTick } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import AccountsView from '../AccountsView.vue'
@@ -11,6 +11,8 @@ const {
   getBatchTodayStats,
   getAllProxies,
   getAllGroups,
+  startProbeAll,
+  getProbeAllStatus,
   showSuccess,
   showError
 } = vi.hoisted(() => ({
@@ -20,6 +22,8 @@ const {
   getBatchTodayStats: vi.fn(),
   getAllProxies: vi.fn(),
   getAllGroups: vi.fn(),
+  startProbeAll: vi.fn(),
+  getProbeAllStatus: vi.fn(),
   showSuccess: vi.fn(),
   showError: vi.fn()
 }))
@@ -32,6 +36,10 @@ vi.mock('@/api/admin', () => ({
       getById: getAccountById,
       getBatchTodayStats,
       getUpstreamBillingProbeSettings: vi.fn().mockResolvedValue({ enabled: true, interval_minutes: 30 })
+    },
+    grok: {
+      startProbeAll,
+      getProbeAllStatus
     },
     proxies: { getAll: getAllProxies },
     groups: { getAll: getAllGroups }
@@ -54,7 +62,11 @@ vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
-    useI18n: () => ({ t: (key: string) => key })
+    useI18n: () => ({
+      t: (key: string, params?: Record<string, unknown>) => (
+        params ? `${key}:${Object.values(params).join('/')}` : key
+      )
+    })
   }
 })
 
@@ -151,6 +163,10 @@ const mountView = () => mount(AccountsView, {
 })
 
 describe('admin AccountsView Grok account refresh', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
     localStorage.clear()
     for (const mock of [
@@ -160,6 +176,8 @@ describe('admin AccountsView Grok account refresh', () => {
       getBatchTodayStats,
       getAllProxies,
       getAllGroups,
+      startProbeAll,
+      getProbeAllStatus,
       showSuccess,
       showError
     ]) {
@@ -177,6 +195,28 @@ describe('admin AccountsView Grok account refresh', () => {
     getBatchTodayStats.mockResolvedValue({ stats: {} })
     getAllProxies.mockResolvedValue([])
     getAllGroups.mockResolvedValue([])
+    getProbeAllStatus.mockResolvedValue({
+      run_id: '',
+      running: false,
+      total: 0,
+      completed: 0,
+      succeeded: 0,
+      failed: 0,
+      started_at: null,
+      finished_at: null,
+      status_counts: {}
+    })
+    startProbeAll.mockResolvedValue({
+      run_id: 'probe-1',
+      running: true,
+      total: 2,
+      completed: 0,
+      succeeded: 0,
+      failed: 0,
+      started_at: '2026-07-22T12:00:00Z',
+      finished_at: null,
+      status_counts: {}
+    })
     getAccountById.mockResolvedValue({
       ...activeAccount,
       status: 'error',
@@ -241,6 +281,113 @@ describe('admin AccountsView Grok account refresh', () => {
 
     expect(getAccountById).toHaveBeenCalledTimes(2)
     expect(wrapper.get('[data-test="grok-probe-state"]').text()).toBe('error|false')
+    wrapper.unmount()
+  })
+
+  it('shows and refreshes probe-all only for the Grok platform filter', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const setupState = wrapper.vm.$.setupState as {
+      params: { platform: string }
+    }
+
+    expect(wrapper.find('[data-test="grok-probe-all"]').exists()).toBe(false)
+    expect(getProbeAllStatus).not.toHaveBeenCalled()
+
+    setupState.params.platform = 'openai'
+    await nextTick()
+    expect(wrapper.find('[data-test="grok-probe-all"]').exists()).toBe(false)
+    expect(getProbeAllStatus).not.toHaveBeenCalled()
+
+    setupState.params.platform = 'grok'
+    await nextTick()
+    await flushPromises()
+    expect(wrapper.find('[data-test="grok-probe-all"]').exists()).toBe(true)
+    expect(getProbeAllStatus).toHaveBeenCalledTimes(1)
+
+    setupState.params.platform = ''
+    await nextTick()
+    expect(wrapper.find('[data-test="grok-probe-all"]').exists()).toBe(false)
+
+    setupState.params.platform = 'grok'
+    await nextTick()
+    await flushPromises()
+    expect(wrapper.find('[data-test="grok-probe-all"]').exists()).toBe(true)
+    expect(getProbeAllStatus).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('starts one shared probe job, displays progress, and refreshes on completion', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const setupState = wrapper.vm.$.setupState as {
+      params: { platform: string }
+      refreshGrokProbeAllStatus: () => Promise<void>
+    }
+    setupState.params.platform = 'grok'
+    await nextTick()
+    await flushPromises()
+
+    const probeAllButton = wrapper.get('[data-test="grok-probe-all"]')
+    await probeAllButton.trigger('click')
+    await probeAllButton.trigger('click')
+    await flushPromises()
+
+    expect(startProbeAll).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-test="grok-probe-all"]').text()).toContain(
+      'admin.accounts.grokProbeAllRunning:0/2'
+    )
+
+    getProbeAllStatus.mockResolvedValueOnce({
+      run_id: 'probe-1',
+      running: false,
+      total: 2,
+      completed: 2,
+      succeeded: 1,
+      failed: 1,
+      started_at: '2026-07-22T12:00:00Z',
+      finished_at: '2026-07-22T12:00:03Z',
+      status_counts: { '200': 1, '402': 1 }
+    })
+    await setupState.refreshGrokProbeAllStatus()
+    await flushPromises()
+
+    expect(listWithEtag).toHaveBeenCalledTimes(1)
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.grokProbeAllCompleted:1/1')
+    expect(wrapper.get('[data-test="grok-probe-all"]').attributes('title')).toContain('402: 1')
+    wrapper.unmount()
+  })
+
+  it('stops probe status polling after leaving the Grok platform filter', async () => {
+    vi.useFakeTimers()
+    getProbeAllStatus.mockResolvedValue({
+      run_id: 'probe-running',
+      running: true,
+      total: 2,
+      completed: 0,
+      succeeded: 0,
+      failed: 0,
+      started_at: '2026-07-22T12:00:00Z',
+      finished_at: null,
+      status_counts: {}
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    const setupState = wrapper.vm.$.setupState as {
+      params: { platform: string }
+    }
+
+    setupState.params.platform = 'grok'
+    await nextTick()
+    await flushPromises()
+    expect(getProbeAllStatus).toHaveBeenCalledTimes(1)
+
+    setupState.params.platform = 'openai'
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(2500)
+
+    expect(wrapper.find('[data-test="grok-probe-all"]').exists()).toBe(false)
+    expect(getProbeAllStatus).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 })

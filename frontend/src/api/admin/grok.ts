@@ -119,6 +119,18 @@ export interface GrokQuotaResetResult {
   message: string
 }
 
+export interface GrokProbeAllStatus {
+  run_id: string
+  running: boolean
+  total: number
+  completed: number
+  succeeded: number
+  failed: number
+  started_at: string | null
+  finished_at: string | null
+  status_counts: Record<string, number>
+}
+
 export async function generateAuthUrl(
   payload: GrokAuthUrlRequest
 ): Promise<GrokAuthUrlResponse> {
@@ -161,6 +173,16 @@ export async function resetQuota(id: number): Promise<GrokQuotaResetResult> {
   return data
 }
 
+export async function startProbeAll(): Promise<GrokProbeAllStatus> {
+  const { data } = await apiClient.post<GrokProbeAllStatus>('/admin/grok/accounts/probe-all')
+  return data
+}
+
+export async function getProbeAllStatus(): Promise<GrokProbeAllStatus> {
+  const { data } = await apiClient.get<GrokProbeAllStatus>('/admin/grok/accounts/probe-all/status')
+  return data
+}
+
 export async function createFromSSO(payload: GrokSSOToOAuthRequest): Promise<GrokSSOToOAuthResponse> {
   const { data } = await apiClient.post<GrokSSOToOAuthResponse>(
     '/admin/grok/sso-to-oauth',
@@ -170,4 +192,13 @@ export async function createFromSSO(payload: GrokSSOToOAuthRequest): Promise<Gro
   return data
 }
 
-export default { generateAuthUrl, exchangeCode, refreshGrokToken, queryQuota, resetQuota, createFromSSO }
+export default {
+  generateAuthUrl,
+  exchangeCode,
+  refreshGrokToken,
+  queryQuota,
+  resetQuota,
+  startProbeAll,
+  getProbeAllStatus,
+  createFromSSO
+}

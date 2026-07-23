@@ -17,6 +17,24 @@
             @create="showCreate = true"
           >
             <template #after>
+              <button
+                v-if="showGrokProbeAll"
+                type="button"
+                data-test="grok-probe-all"
+                class="btn btn-secondary min-w-36 justify-center whitespace-nowrap px-2 md:px-3"
+                :disabled="grokProbeAllStarting || grokProbeAllStatusFetching || grokProbeAllStatus?.running"
+                :title="grokProbeAllTitle"
+                :aria-busy="grokProbeAllStarting || grokProbeAllStatus?.running"
+                @click="handleStartGrokProbeAll"
+              >
+                <Icon
+                  :name="grokProbeAllStarting || grokProbeAllStatus?.running ? 'refresh' : 'play'"
+                  size="sm"
+                  :class="{ 'animate-spin': grokProbeAllStarting || grokProbeAllStatus?.running }"
+                />
+                <span>{{ grokProbeAllButtonLabel }}</span>
+              </button>
+
               <!-- Auto Refresh Dropdown -->
               <div class="relative" ref="autoRefreshDropdownRef">
                 <button
@@ -474,6 +492,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import type { GrokProbeAllStatus } from '@/api/admin/grok'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -678,6 +697,13 @@ const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
 const grokAccountRefreshKeys = new Map<number, string>()
 const grokAccountRefreshRequests = new Map<number, Promise<void>>()
+const grokProbeAllStatus = ref<GrokProbeAllStatus | null>(null)
+const grokProbeAllStarting = ref(false)
+const grokProbeAllStatusFetching = ref(false)
+const GROK_PROBE_ALL_POLL_INTERVAL_MS = 2000
+let grokProbeAllPollTimer: number | null = null
+let grokProbeAllObservedRunning = false
+let grokProbeAllDisposed = false
 
 const buildDefaultTodayStats = (): WindowStats => ({
   requests: 0,
@@ -913,6 +939,38 @@ const {
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
+})
+
+const showGrokProbeAll = computed(() => params.platform === 'grok')
+
+const grokProbeAllButtonLabel = computed(() => {
+  if (grokProbeAllStarting.value) return t('admin.accounts.grokProbeAllStarting')
+  const status = grokProbeAllStatus.value
+  if (status?.running) {
+    return t('admin.accounts.grokProbeAllRunning', {
+      completed: status.completed,
+      total: status.total
+    })
+  }
+  return t('admin.accounts.grokProbeAll')
+})
+
+const grokProbeAllTitle = computed(() => {
+  const parts = [t('admin.accounts.grokProbeAllTooltip')]
+  const status = grokProbeAllStatus.value
+  if (!status) return parts[0]
+
+  parts.push(t('admin.accounts.grokProbeAllProgress', {
+    completed: status.completed,
+    total: status.total,
+    succeeded: status.succeeded,
+    failed: status.failed
+  }))
+  const counts = Object.entries(status.status_counts || {})
+    .filter(([, count]) => count > 0)
+    .map(([code, count]) => `${code}: ${count}`)
+  if (counts.length > 0) parts.push(counts.join(', '))
+  return parts.join('\n')
 })
 
 const {
@@ -1177,6 +1235,88 @@ const refreshAccountsIncrementally = async () => {
     autoRefreshFetching.value = false
   }
 }
+
+const stopGrokProbeAllPolling = () => {
+  if (grokProbeAllPollTimer === null) return
+  window.clearTimeout(grokProbeAllPollTimer)
+  grokProbeAllPollTimer = null
+}
+
+const scheduleGrokProbeAllPoll = () => {
+  if (grokProbeAllDisposed || !showGrokProbeAll.value) return
+  stopGrokProbeAllPolling()
+  grokProbeAllPollTimer = window.setTimeout(() => {
+    grokProbeAllPollTimer = null
+    void refreshGrokProbeAllStatus()
+  }, GROK_PROBE_ALL_POLL_INTERVAL_MS)
+}
+
+const applyGrokProbeAllStatus = async (status: GrokProbeAllStatus, startedLocally = false) => {
+  if (grokProbeAllDisposed) return
+  const shouldFinalize = !status.running && (grokProbeAllObservedRunning || startedLocally)
+  grokProbeAllStatus.value = status
+
+  if (status.running) {
+    grokProbeAllObservedRunning = true
+    scheduleGrokProbeAllPoll()
+    return
+  }
+
+  stopGrokProbeAllPolling()
+  if (!shouldFinalize) return
+  grokProbeAllObservedRunning = false
+  resetAutoRefreshCache()
+  await refreshAccountsIncrementally()
+  if (grokProbeAllDisposed) return
+  usageManualRefreshToken.value += 1
+  appStore.showSuccess(t('admin.accounts.grokProbeAllCompleted', {
+    succeeded: status.succeeded,
+    failed: status.failed
+  }))
+}
+
+const refreshGrokProbeAllStatus = async () => {
+  if (grokProbeAllDisposed || !showGrokProbeAll.value || grokProbeAllStatusFetching.value) return
+  grokProbeAllStatusFetching.value = true
+  try {
+    const status = await adminAPI.grok.getProbeAllStatus()
+    if (grokProbeAllDisposed) return
+    await applyGrokProbeAllStatus(status)
+  } catch (error) {
+    console.error('Failed to load Grok probe-all status:', error)
+    if (grokProbeAllStatus.value?.running) scheduleGrokProbeAllPoll()
+  } finally {
+    grokProbeAllStatusFetching.value = false
+  }
+}
+
+const handleStartGrokProbeAll = async () => {
+  if (
+    grokProbeAllDisposed ||
+    !showGrokProbeAll.value ||
+    grokProbeAllStarting.value ||
+    grokProbeAllStatusFetching.value ||
+    grokProbeAllStatus.value?.running
+  ) return
+
+  grokProbeAllStarting.value = true
+  try {
+    const status = await adminAPI.grok.startProbeAll()
+    await applyGrokProbeAllStatus(status, true)
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.grokProbeAllStartFailed')))
+  } finally {
+    grokProbeAllStarting.value = false
+  }
+}
+
+watch(showGrokProbeAll, (visible) => {
+  if (!visible) {
+    stopGrokProbeAllPolling()
+    return
+  }
+  void refreshGrokProbeAllStatus()
+}, { immediate: true })
 
 const handleManualRefresh = async () => {
   await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
@@ -2155,6 +2295,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  grokProbeAllDisposed = true
+  stopGrokProbeAllPolling()
   window.removeEventListener('scroll', handleScroll, true)
   window.removeEventListener('resize', handleViewportResize)
   document.removeEventListener('click', handleClickOutside)

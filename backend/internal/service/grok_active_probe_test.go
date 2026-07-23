@@ -32,6 +32,22 @@ func (s *grokActiveProbeAccountListerStub) ListByPlatform(context.Context, strin
 	return append([]Account(nil), s.accounts...), nil
 }
 
+type grokActiveProbeCandidateListerStub struct {
+	accounts       []Account
+	candidateCalls int
+	fallbackCalls  int
+}
+
+func (s *grokActiveProbeCandidateListerStub) ListGrokActiveProbeCandidates(context.Context) ([]Account, error) {
+	s.candidateCalls++
+	return append([]Account(nil), s.accounts...), nil
+}
+
+func (s *grokActiveProbeCandidateListerStub) ListByPlatform(context.Context, string) ([]Account, error) {
+	s.fallbackCalls++
+	return append([]Account(nil), s.accounts...), nil
+}
+
 type grokActiveProbeIntegratedRepo struct {
 	*grokQuotaAccountRepo
 	accounts []Account
@@ -46,6 +62,42 @@ type grokActiveProberStub struct {
 	calls      []int64
 	statusCode int
 	probeErr   error
+}
+
+type grokProbeAllProberStub struct {
+	mu    sync.Mutex
+	calls []int64
+}
+
+func (s *grokProbeAllProberStub) probeUsage(_ context.Context, accountID int64) (*GrokQuotaProbeResult, error) {
+	s.mu.Lock()
+	s.calls = append(s.calls, accountID)
+	s.mu.Unlock()
+	if accountID == 2 {
+		return &GrokQuotaProbeResult{StatusCode: http.StatusPaymentRequired}, errors.New("payment required")
+	}
+	return &GrokQuotaProbeResult{StatusCode: http.StatusOK}, nil
+}
+
+func (s *grokProbeAllProberStub) accountIDs() []int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := append([]int64(nil), s.calls...)
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	return result
+}
+
+type grokCancelableProberStub struct {
+	started  chan struct{}
+	finished chan struct{}
+	once     sync.Once
+}
+
+func (s *grokCancelableProberStub) probeUsage(ctx context.Context, _ int64) (*GrokQuotaProbeResult, error) {
+	s.once.Do(func() { close(s.started) })
+	<-ctx.Done()
+	close(s.finished)
+	return nil, ctx.Err()
 }
 
 func (s *grokActiveProberStub) probeUsage(_ context.Context, accountID int64) (*GrokQuotaProbeResult, error) {
@@ -114,6 +166,7 @@ type grokProbeLeaderLockCache struct {
 	keys     []string
 	ttls     []time.Duration
 	releases []string
+	blocked  map[string]bool
 }
 
 func (s *grokProbeLeaderLockCache) TryAcquireLeaderLock(_ context.Context, key, _ string, ttl time.Duration) (bool, error) {
@@ -121,6 +174,9 @@ func (s *grokProbeLeaderLockCache) TryAcquireLeaderLock(_ context.Context, key, 
 	defer s.mu.Unlock()
 	s.keys = append(s.keys, key)
 	s.ttls = append(s.ttls, ttl)
+	if s.blocked[key] {
+		return false, nil
+	}
 	return true, nil
 }
 
@@ -175,6 +231,19 @@ func TestGrokActiveProbeAccountEligibilityAndCooldowns(t *testing.T) {
 
 	require.NoError(t, svc.RunOnce(context.Background()))
 	require.Equal(t, []int64{1, 9}, prober.accountIDs())
+}
+
+func TestGrokActiveProbeUsesLightweightCandidateLister(t *testing.T) {
+	now := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
+	account := schedulableGrokOAuthAccount(10)
+	lister := &grokActiveProbeCandidateListerStub{accounts: []Account{account}}
+	svc := newGrokActiveProbeService(lister, &grokActiveProberStub{statusCode: http.StatusOK})
+	svc.now = func() time.Time { return now }
+	svc.lastAttempts[account.ID] = now.Add(-svc.interval)
+
+	require.NoError(t, svc.RunOnce(context.Background()))
+	require.Equal(t, 1, lister.candidateCalls)
+	require.Zero(t, lister.fallbackCalls)
 }
 
 func TestGrokActiveProbeChecksEachAccountEveryFifteenMinutes(t *testing.T) {
@@ -452,4 +521,158 @@ func TestGrokActiveProbeStartAndStopAreIdempotent(t *testing.T) {
 	}
 	require.NotPanics(t, svc.Stop)
 	require.NotPanics(t, svc.Stop)
+}
+
+func TestGrokProbeAllRunsEligibleAccountsAndReportsProgress(t *testing.T) {
+	now := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
+	future := now.Add(time.Hour)
+	accounts := []Account{
+		schedulableGrokOAuthAccount(1),
+		schedulableGrokOAuthAccount(2),
+		{ID: 3, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusError, Schedulable: false},
+		{ID: 4, Platform: PlatformGrok, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true},
+		schedulableGrokOAuthAccount(5),
+	}
+	accounts[4].TempUnschedulableUntil = &future
+	prober := &grokProbeAllProberStub{}
+	svc := newGrokActiveProbeService(&grokActiveProbeAccountListerStub{accounts: accounts}, prober)
+	svc.now = func() time.Time { return now }
+	svc.probeAllPace = 0
+
+	started, err := svc.StartProbeAll(context.Background())
+	require.NoError(t, err)
+	require.True(t, started.Running)
+	require.Equal(t, 2, started.Total)
+	require.NotEmpty(t, started.RunID)
+
+	require.Eventually(t, func() bool {
+		return !svc.ProbeAllStatus().Running
+	}, time.Second, 10*time.Millisecond)
+	status := svc.ProbeAllStatus()
+	require.Equal(t, []int64{1, 2}, prober.accountIDs())
+	require.Equal(t, 2, status.Completed)
+	require.Equal(t, 1, status.Succeeded)
+	require.Equal(t, 1, status.Failed)
+	require.Equal(t, 1, status.StatusCounts["200"])
+	require.Equal(t, 1, status.StatusCounts["402"])
+	require.NotNil(t, status.FinishedAt)
+}
+
+func TestGrokProbeAllReusesRunningJobAndBoundsConcurrency(t *testing.T) {
+	accounts := make([]Account, 8)
+	for i := range accounts {
+		accounts[i] = schedulableGrokOAuthAccount(int64(i + 201))
+	}
+	prober := &grokProbeConcurrencyRecorder{
+		started: make(chan struct{}, len(accounts)),
+		release: make(chan struct{}),
+	}
+	svc := newGrokActiveProbeService(&grokActiveProbeAccountListerStub{accounts: accounts}, prober)
+	svc.probeAllPace = 0
+
+	first, err := svc.StartProbeAll(context.Background())
+	require.NoError(t, err)
+	for range grokActiveProbeConcurrency {
+		select {
+		case <-prober.started:
+		case <-time.After(time.Second):
+			t.Fatal("expected four concurrent full probes")
+		}
+	}
+	second, err := svc.StartProbeAll(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, first.RunID, second.RunID)
+	select {
+	case <-prober.started:
+		t.Fatal("full probe exceeded the concurrency limit")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(prober.release)
+	require.Eventually(t, func() bool {
+		return !svc.ProbeAllStatus().Running
+	}, time.Second, 10*time.Millisecond)
+	prober.mu.Lock()
+	defer prober.mu.Unlock()
+	require.Equal(t, grokActiveProbeConcurrency, prober.maximum)
+}
+
+func TestGrokProbeAllUsesPacingAndCrossInstanceLocks(t *testing.T) {
+	lockCache := &grokProbeLeaderLockCache{}
+	svc := newGrokActiveProbeService(&grokActiveProbeAccountListerStub{}, &grokActiveProberStub{})
+	svc.lockCache = lockCache
+	require.Equal(t, 300*time.Millisecond, svc.probeAllPace)
+
+	_, err := svc.StartProbeAll(context.Background())
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return !svc.ProbeAllStatus().Running
+	}, time.Second, 10*time.Millisecond)
+
+	lockCache.mu.Lock()
+	defer lockCache.mu.Unlock()
+	require.Equal(t, []string{grokProbeAllRunLockKey, grokActiveProbeRunLockKey}, lockCache.keys)
+	expectedTTL := grokProbeAllLockTTL(0, svc.accountTimeout, svc.probeAllPace)
+	require.Equal(t, []time.Duration{expectedTTL, expectedTTL}, lockCache.ttls)
+	require.Contains(t, lockCache.releases, grokProbeAllRunLockKey)
+	require.Contains(t, lockCache.releases, grokActiveProbeRunLockKey)
+}
+
+func TestGrokProbeAllLockTTLCoversLargeSlowPool(t *testing.T) {
+	const accountCount = 1109
+	waves := (accountCount + grokActiveProbeConcurrency - 1) / grokActiveProbeConcurrency
+	worstCase := time.Duration(waves)*(grokActiveProbeAccountTimeout+grokCredentialMutationTimeout) +
+		time.Duration(accountCount-1)*grokProbeAllPace
+
+	lockTTL := grokProbeAllLockTTL(accountCount, grokActiveProbeAccountTimeout, grokProbeAllPace)
+	require.Greater(t, lockTTL, worstCase)
+	require.Greater(t, lockTTL, 2*time.Hour)
+}
+
+func TestGrokProbeAllRejectsPeerJob(t *testing.T) {
+	lockCache := &grokProbeLeaderLockCache{blocked: map[string]bool{grokProbeAllRunLockKey: true}}
+	svc := newGrokActiveProbeService(&grokActiveProbeAccountListerStub{}, &grokActiveProberStub{})
+	svc.lockCache = lockCache
+
+	status, err := svc.StartProbeAll(context.Background())
+	require.Error(t, err)
+	require.Nil(t, status)
+	require.False(t, svc.ProbeAllStatus().Running)
+}
+
+func TestGrokProbeAllStopCancelsAndWaitsForInFlightProbe(t *testing.T) {
+	prober := &grokCancelableProberStub{
+		started:  make(chan struct{}),
+		finished: make(chan struct{}),
+	}
+	svc := newGrokActiveProbeService(
+		&grokActiveProbeAccountListerStub{accounts: []Account{schedulableGrokOAuthAccount(81)}},
+		prober,
+	)
+	svc.probeAllPace = 0
+
+	_, err := svc.StartProbeAll(context.Background())
+	require.NoError(t, err)
+	select {
+	case <-prober.started:
+	case <-time.After(time.Second):
+		t.Fatal("full probe did not start")
+	}
+
+	stopped := make(chan struct{})
+	go func() {
+		svc.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("Stop did not wait for and cancel the in-flight probe")
+	}
+	select {
+	case <-prober.finished:
+	default:
+		t.Fatal("in-flight probe did not observe service cancellation")
+	}
+	require.False(t, svc.ProbeAllStatus().Running)
 }

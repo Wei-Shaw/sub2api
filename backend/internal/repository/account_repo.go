@@ -1112,6 +1112,42 @@ func (r *accountRepository) ListByPlatform(ctx context.Context, platform string)
 	return r.accountsToService(ctx, accounts)
 }
 
+// ListGrokActiveProbeCandidates avoids hydrating credentials, proxies, and
+// group bindings during the frequent Grok health-check scan.
+func (r *accountRepository) ListGrokActiveProbeCandidates(ctx context.Context) ([]service.Account, error) {
+	accounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.PlatformEQ(service.PlatformGrok),
+			dbaccount.StatusEQ(service.StatusActive),
+		).
+		Select(
+			dbaccount.FieldID,
+			dbaccount.FieldPlatform,
+			dbaccount.FieldType,
+			dbaccount.FieldExtra,
+			dbaccount.FieldExpiresAt,
+			dbaccount.FieldAutoPauseOnExpired,
+			dbaccount.FieldSchedulable,
+			dbaccount.FieldRateLimitResetAt,
+			dbaccount.FieldOverloadUntil,
+			dbaccount.FieldTempUnschedulableUntil,
+			dbaccount.FieldStatus,
+		).
+		Order(dbent.Asc(dbaccount.FieldPriority), dbent.Asc(dbaccount.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]service.Account, 0, len(accounts))
+	for _, account := range accounts {
+		if converted := accountEntityToService(account); converted != nil {
+			result = append(result, *converted)
+		}
+	}
+	return result, nil
+}
+
 func (r *accountRepository) UpdateLastUsed(ctx context.Context, id int64) error {
 	now := time.Now()
 	_, err := r.client.Account.Update().

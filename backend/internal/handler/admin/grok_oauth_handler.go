@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,12 @@ type GrokOAuthHandler struct {
 	quotaService     *service.GrokQuotaService
 	importProber     grokImportProber
 	reconciler       service.GrokOAuthReconciler
+	probeAllRunner   grokProbeAllRunner
+}
+
+type grokProbeAllRunner interface {
+	StartProbeAll(context.Context) (*service.GrokProbeAllStatus, error)
+	ProbeAllStatus() service.GrokProbeAllStatus
 }
 
 func NewGrokOAuthHandler(
@@ -39,6 +46,24 @@ func NewGrokOAuthHandler(
 		quotaService:     quotaService,
 		importProber:     quotaService,
 		reconciler:       reconciler,
+	}
+}
+
+func ProvideGrokOAuthHandler(
+	grokOAuthService *service.GrokOAuthService,
+	adminService service.AdminService,
+	quotaService *service.GrokQuotaService,
+	reconciler service.GrokOAuthReconciler,
+	probeAllRunner *service.GrokActiveProbeService,
+) *GrokOAuthHandler {
+	handler := NewGrokOAuthHandler(grokOAuthService, adminService, quotaService, reconciler)
+	handler.SetProbeAllRunner(probeAllRunner)
+	return handler
+}
+
+func (h *GrokOAuthHandler) SetProbeAllRunner(runner grokProbeAllRunner) {
+	if h != nil {
+		h.probeAllRunner = runner
 	}
 }
 
@@ -523,6 +548,27 @@ func (h *GrokOAuthHandler) QueryQuota(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+func (h *GrokOAuthHandler) StartProbeAll(c *gin.Context) {
+	if h.probeAllRunner == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Grok active probe service is not enabled")
+		return
+	}
+	status, err := h.probeAllRunner.StartProbeAll(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
+func (h *GrokOAuthHandler) ProbeAllStatus(c *gin.Context) {
+	if h.probeAllRunner == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Grok active probe service is not enabled")
+		return
+	}
+	response.Success(c, h.probeAllRunner.ProbeAllStatus())
 }
 
 func (h *GrokOAuthHandler) ResetQuota(c *gin.Context) {
