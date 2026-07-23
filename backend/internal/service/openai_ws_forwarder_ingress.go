@@ -197,12 +197,6 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				nil,
 			)
 		}
-		if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
-			if capped, changed := ApplyOpenAIReasoningEffortPolicy(normalized, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
-				normalized = capped
-			}
-		}
-
 		originalModel := strings.TrimSpace(values[1].String())
 		modelMissing := originalModel == ""
 		if originalModel == "" {
@@ -218,6 +212,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					"model is required in response.create payload",
 					nil,
 				)
+			}
+		}
+		if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0 || len(hooks.ModelReasoningEffortRules) > 0) {
+			if capped, changed := ApplyOpenAIReasoningEffortPolicyForModel(
+				normalized,
+				originalModel,
+				hooks.MaxReasoningEffort,
+				hooks.ReasoningEffortMappings,
+				hooks.ModelReasoningEffortRules,
+			); changed {
+				normalized = capped
 			}
 		}
 		promptCacheKey := strings.TrimSpace(values[2].String())

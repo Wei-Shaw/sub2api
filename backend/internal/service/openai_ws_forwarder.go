@@ -215,8 +215,10 @@ type OpenAIWSIngressHooks struct {
 	MaxReasoningEffort string
 	// ReasoningEffortMappings rewrites explicit effort values for this WS session.
 	ReasoningEffortMappings []ReasoningEffortMapping
-	BeforeTurn              func(turn int) error
-	BeforeRequest           func(turn int, payload []byte, originalModel string) error
+	// ModelReasoningEffortRules overrides the default policy for exact client models.
+	ModelReasoningEffortRules []ModelReasoningEffortRule
+	BeforeTurn                func(turn int) error
+	BeforeRequest             func(turn int, payload []byte, originalModel string) error
 	// MapRequestModel resolves the current turn's client model to the model
 	// that must be written into the upstream response.create frame.
 	MapRequestModel func(turn int, originalModel string) (string, error)

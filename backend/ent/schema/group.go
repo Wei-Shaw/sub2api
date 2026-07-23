@@ -234,6 +234,10 @@ func (Group) Fields() []ent.Field {
 			Default([]domain.ReasoningEffortMapping{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("OpenAI reasoning effort 自定义精确映射；先映射再应用上限"),
+		field.JSON("model_reasoning_effort_rules", []domain.ModelReasoningEffortRule{}).
+			Default([]domain.ModelReasoningEffortRule{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("按客户端请求模型精确匹配的 OpenAI reasoning effort 覆盖规则"),
 	}
 }
 
