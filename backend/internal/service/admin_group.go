@@ -78,7 +78,11 @@ REDACTED
 		seen[model] = struct{REDACTED{REDACTED
 REDACTED
 	for _, acc := range accounts {
-		if acc.Platform != platform {
+		if platform == PlatformComposite {
+			if !isConcreteRequestPlatform(acc.Platform) {
+				continue
+		REDACTED
+	REDACTED else if acc.Platform != platform {
 			continue
 	REDACTED
 		for model := range acc.GetModelMapping() {
@@ -94,6 +98,134 @@ REDACTED
 	REDACTED
 REDACTED
 	return candidates, nil
+REDACTED
+
+func (s *adminServiceImpl) ListCompositeRoutes(ctx context.Context, groupID int64) ([]CompositeModelRoute, error) {
+	if err := s.requireCompositeGroup(ctx, groupID); err != nil {
+		return nil, err
+REDACTED
+	if s.compositeRouteRepo == nil {
+		return nil, fmt.Errorf("composite route repository is not configured")
+REDACTED
+	return s.compositeRouteRepo.ListByGroup(ctx, groupID, true)
+REDACTED
+
+func (s *adminServiceImpl) CreateCompositeRoute(ctx context.Context, groupID int64, input CompositeRouteInput) (*CompositeModelRoute, error) {
+	if err := s.requireCompositeGroup(ctx, groupID); err != nil {
+		return nil, err
+REDACTED
+	if s.compositeRouteRepo == nil {
+		return nil, fmt.Errorf("composite route repository is not configured")
+REDACTED
+	route, err := compositeRouteFromInput(groupID, input)
+	if err != nil {
+		return nil, err
+REDACTED
+	if err := s.compositeRouteRepo.Create(ctx, route); err != nil {
+		return nil, err
+REDACTED
+	return route, nil
+REDACTED
+
+func (s *adminServiceImpl) UpdateCompositeRoute(ctx context.Context, groupID, routeID int64, input CompositeRouteInput) (*CompositeModelRoute, error) {
+	if err := s.requireCompositeGroup(ctx, groupID); err != nil {
+		return nil, err
+REDACTED
+	if s.compositeRouteRepo == nil {
+		return nil, fmt.Errorf("composite route repository is not configured")
+REDACTED
+	if ok, err := s.compositeRouteBelongsToGroup(ctx, groupID, routeID); err != nil {
+		return nil, err
+REDACTED else if !ok {
+		return nil, ErrCompositeRouteNotFound
+REDACTED
+	route, err := compositeRouteFromInput(groupID, input)
+	if err != nil {
+		return nil, err
+REDACTED
+	route.ID = routeID
+	if err := s.compositeRouteRepo.Update(ctx, route); err != nil {
+		return nil, err
+REDACTED
+	return route, nil
+REDACTED
+
+func (s *adminServiceImpl) DeleteCompositeRoute(ctx context.Context, groupID, routeID int64) error {
+	if err := s.requireCompositeGroup(ctx, groupID); err != nil {
+		return err
+REDACTED
+	if s.compositeRouteRepo == nil {
+		return fmt.Errorf("composite route repository is not configured")
+REDACTED
+	if ok, err := s.compositeRouteBelongsToGroup(ctx, groupID, routeID); err != nil {
+		return err
+REDACTED else if !ok {
+		return ErrCompositeRouteNotFound
+REDACTED
+	return s.compositeRouteRepo.Delete(ctx, routeID)
+REDACTED
+
+func (s *adminServiceImpl) PreviewCompositeRoute(ctx context.Context, groupID int64, input CompositeRoutePreviewRequest) (*CompositeRouteDecision, error) {
+	if err := s.requireCompositeGroup(ctx, groupID); err != nil {
+		return nil, err
+REDACTED
+	resolver := s.compositeResolver
+	if resolver == nil {
+		resolver = NewCompositeRouteResolver(s.compositeRouteRepo)
+REDACTED
+	decision, err := resolver.Resolve(ctx, groupID, input.Model, input.Endpoint)
+	if err != nil {
+		return nil, err
+REDACTED
+	return &decision, nil
+REDACTED
+
+func (s *adminServiceImpl) requireCompositeGroup(ctx context.Context, groupID int64) error {
+	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+	if err != nil {
+		return err
+REDACTED
+	if group.Platform != PlatformComposite {
+		return fmt.Errorf("group %d is not a composite group", groupID)
+REDACTED
+	return nil
+REDACTED
+
+func (s *adminServiceImpl) compositeRouteBelongsToGroup(ctx context.Context, groupID, routeID int64) (bool, error) {
+	routes, err := s.compositeRouteRepo.ListByGroup(ctx, groupID, true)
+	if err != nil {
+		return false, err
+REDACTED
+	for i := range routes {
+		if routes[i].ID == routeID {
+			return true, nil
+	REDACTED
+REDACTED
+	return false, nil
+REDACTED
+
+func compositeRouteFromInput(groupID int64, input CompositeRouteInput) (*CompositeModelRoute, error) {
+	input = normalizeCompositeRouteInput(input)
+	if input.PublicModel == "" {
+		return nil, fmt.Errorf("public_model is required")
+REDACTED
+	if !isConcreteRequestPlatform(input.TargetPlatform) {
+		return nil, fmt.Errorf("target_platform must be a concrete provider")
+REDACTED
+	if input.Priority == 0 {
+		input.Priority = 100
+REDACTED
+	return &CompositeModelRoute{
+		GroupID:        groupID,
+		PublicModel:    input.PublicModel,
+		MatchType:      input.MatchType,
+		TargetPlatform: input.TargetPlatform,
+		UpstreamModel:  input.UpstreamModel,
+		Endpoint:       input.Endpoint,
+		Priority:       input.Priority,
+		Enabled:        input.Enabled,
+		Notes:          input.Notes,
+REDACTED, nil
 REDACTED
 
 func defaultModelsListCandidateIDs(platform string) []string {
@@ -115,6 +247,8 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return ids
 	case PlatformGrok:
 		return xai.DefaultModelIDs()
+	case PlatformComposite:
+		return compositeDefaultModelsListCandidateIDs()
 	default:
 		ids := make([]string, 0, len(claude.DefaultModels))
 		for _, model := range claude.DefaultModels {
@@ -128,6 +262,37 @@ func defaultAllowImageGenerationForPlatform(platform string) bool {
 	// Grok image and video generation routes share the legacy image-generation gate.
 	// Older clients send the false zero value, so Grok groups must default enabled.
 	return platform == PlatformGrok
+REDACTED
+
+func compositeDefaultModelsListCandidateIDs() []string {
+	seen := make(map[string]struct{REDACTED)
+	ids := make([]string, 0)
+	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrokREDACTED {
+		for _, id := range defaultModelsListCandidateIDs(platform) {
+			if _, ok := seen[id]; ok {
+				continue
+		REDACTED
+			seen[id] = struct{REDACTED{REDACTED
+			ids = append(ids, id)
+	REDACTED
+REDACTED
+	return ids
+REDACTED
+
+func canCopyAccountsFromGroupPlatform(targetPlatform, sourcePlatform string) bool {
+	if targetPlatform == PlatformComposite {
+		return sourcePlatform == PlatformComposite || isConcreteRequestPlatform(sourcePlatform)
+REDACTED
+	return sourcePlatform == targetPlatform
+REDACTED
+
+func groupSupportsOAuthOnlyFilter(platform string) bool {
+	return platform == PlatformOpenAI ||
+		platform == PlatformAntigravity ||
+		platform == PlatformAnthropic ||
+		platform == PlatformGemini ||
+		platform == PlatformGrok ||
+		platform == PlatformComposite
 REDACTED
 
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
@@ -255,7 +420,7 @@ REDACTED
 			if err != nil {
 				return nil, fmt.Errorf("source group %d not found: %w", srcGroupID, err)
 		REDACTED
-			if srcGroup.Platform != platform {
+			if !canCopyAccountsFromGroupPlatform(platform, srcGroup.Platform) {
 				return nil, fmt.Errorf("source group %d platform mismatch: expected %s, got %s", srcGroupID, platform, srcGroup.Platform)
 		REDACTED
 	REDACTED
@@ -321,7 +486,7 @@ REDACTED
 REDACTED
 
 	// require_oauth_only: 过滤掉 apikey 类型账号
-	if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini || group.Platform == PlatformGrok) && len(accountIDsToCopy) > 0 {
+	if group.RequireOAuthOnly && groupSupportsOAuthOnlyFilter(group.Platform) && len(accountIDsToCopy) > 0 {
 		accounts, err := s.accountRepo.GetByIDs(ctx, accountIDsToCopy)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch accounts for oauth filter: %w", err)
@@ -678,7 +843,7 @@ REDACTED
 			if err != nil {
 				return nil, fmt.Errorf("source group %d not found: %w", srcGroupID, err)
 		REDACTED
-			if srcGroup.Platform != group.Platform {
+			if !canCopyAccountsFromGroupPlatform(group.Platform, srcGroup.Platform) {
 				return nil, fmt.Errorf("source group %d platform mismatch: expected %s, got %s", srcGroupID, group.Platform, srcGroup.Platform)
 		REDACTED
 	REDACTED
@@ -695,7 +860,7 @@ REDACTED
 	REDACTED
 
 		// require_oauth_only: 过滤掉 apikey 类型账号
-		if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini || group.Platform == PlatformGrok) && len(accountIDsToCopy) > 0 {
+		if group.RequireOAuthOnly && groupSupportsOAuthOnlyFilter(group.Platform) && len(accountIDsToCopy) > 0 {
 			accounts, err := s.accountRepo.GetByIDs(ctx, accountIDsToCopy)
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch accounts for oauth filter: %w", err)

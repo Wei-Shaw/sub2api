@@ -1970,6 +1970,8 @@ REDACTED{
 		{"gemini matches gemini", PlatformGemini, PlatformGemini, trueREDACTED,
 		{"gemini does NOT match antigravity", PlatformGemini, PlatformAntigravity, falseREDACTED,
 		{"gemini does NOT match anthropic", PlatformGemini, PlatformAnthropic, falseREDACTED,
+		{"composite matches openai pricing", PlatformComposite, PlatformOpenAI, trueREDACTED,
+		{"composite matches gemini pricing", PlatformComposite, PlatformGemini, trueREDACTED,
 		{"empty string matches nothing", "", PlatformAnthropic, falseREDACTED,
 		{"empty string matches empty", "", "", trueREDACTED,
 REDACTED
@@ -1995,6 +1997,7 @@ REDACTED{
 		{"anthropic returns itself", PlatformAnthropic, []string{PlatformAnthropicREDACTEDREDACTED,
 		{"gemini returns itself", PlatformGemini, []string{PlatformGeminiREDACTEDREDACTED,
 		{"openai returns itself", PlatformOpenAI, []string{PlatformOpenAIREDACTEDREDACTED,
+		{"composite returns concrete platforms", PlatformComposite, []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrokREDACTEDREDACTED,
 REDACTED
 
 	for _, tt := range tests {
@@ -2003,6 +2006,43 @@ REDACTED
 			require.Equal(t, tt.want, result)
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestCompositeChannelLookupUsesResolvedTargetPlatform(t *testing.T) {
+	channel := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{99REDACTED,
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformOpenAI, Models: []string{"gpt-*"REDACTEDREDACTED,
+			{Platform: PlatformAnthropic, Models: []string{"claude-*"REDACTEDREDACTED,
+	REDACTED,
+		ModelMapping: map[string]map[string]string{
+			PlatformOpenAI: {
+				"gpt-5": "gpt-5-mini",
+		REDACTED,
+			PlatformAnthropic: {
+				"claude-*": "claude-sonnet-4-5",
+		REDACTED,
+	REDACTED,
+REDACTED
+	cache := populateChannelCache([]Channel{channelREDACTED, map[int64]string{99: PlatformCompositeREDACTED)
+	svc := &ChannelService{REDACTED
+	svc.cache.Store(cache)
+
+	openAICtx := WithResolvedTargetPlatform(context.Background(), PlatformOpenAI)
+	require.NotNil(t, svc.GetChannelModelPricing(openAICtx, 99, "gpt-5"))
+	require.Nil(t, svc.GetChannelModelPricing(openAICtx, 99, "claude-sonnet-4-5"))
+	openAIResult := svc.ResolveChannelMapping(openAICtx, 99, "gpt-5")
+	require.True(t, openAIResult.Mapped)
+	require.Equal(t, "gpt-5-mini", openAIResult.MappedModel)
+
+	anthropicCtx := WithResolvedTargetPlatform(context.Background(), PlatformAnthropic)
+	require.NotNil(t, svc.GetChannelModelPricing(anthropicCtx, 99, "claude-sonnet-4-5"))
+	require.Nil(t, svc.GetChannelModelPricing(anthropicCtx, 99, "gpt-5"))
+	anthropicResult := svc.ResolveChannelMapping(anthropicCtx, 99, "claude-3-5-sonnet")
+	require.True(t, anthropicResult.Mapped)
+	require.Equal(t, "claude-sonnet-4-5", anthropicResult.MappedModel)
 REDACTED
 
 // ===========================================================================

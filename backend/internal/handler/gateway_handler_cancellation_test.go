@@ -41,7 +41,7 @@ REDACTED
 	schedulerSnapshot := service.NewSchedulerSnapshotService(schedulerCache, nil, nil, nil, nil)
 	gatewayService := service.NewGatewayService(
 		nil, &fakeGroupRepo{group: groupREDACTED, nil, nil, nil, nil, nil, nil, nil,
-		schedulerSnapshot, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		schedulerSnapshot, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
 	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
 	billingCacheService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)

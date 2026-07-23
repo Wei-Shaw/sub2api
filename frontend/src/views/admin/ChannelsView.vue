@@ -799,7 +799,7 @@ function togglePlatform(platform: GroupPlatform) {
 REDACTED
 
 function getGroupsForPlatform(platform: GroupPlatform): AdminGroup[] {
-  return allGroups.value.filter(g => g.platform === platform)
+  return allGroups.value.filter(g => g.platform === platform || g.platform === 'composite')
 REDACTED
 
 // ── Group helpers ──
@@ -1117,6 +1117,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
       REDACTED)
     REDACTED
   REDACTED
+  const uniqueGroupIds = Array.from(new Set(group_ids))
 
   // Collect web_search_emulation (only anthropic platform supports it)
   // Always write the key so that disabling in the UI correctly sets platform to false,
@@ -1160,7 +1161,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     delete featuresConfig.bedrock_cc_compat
   REDACTED
 
-  return { group_ids, model_pricing, model_mapping, features_config: featuresConfig REDACTED
+  return { group_ids: uniqueGroupIds, model_pricing, model_mapping, features_config: featuresConfig REDACTED
 REDACTED
 
 function apiToForm(channel: Channel): PlatformSection[] {
@@ -1174,7 +1175,11 @@ function apiToForm(channel: Channel): PlatformSection[] {
   const activePlatforms = new Set<GroupPlatform>()
   for (const gid of channel.group_ids || []) {
     const p = groupPlatformMap.get(gid)
-    if (p) activePlatforms.add(p)
+    if (p === 'composite') {
+      platformOrder.forEach(platform => activePlatforms.add(platform))
+    REDACTED else if (p) {
+      activePlatforms.add(p)
+    REDACTED
   REDACTED
   for (const p of channel.model_pricing || []) {
     if (p.platform) activePlatforms.add(p.platform as GroupPlatform)
@@ -1188,7 +1193,10 @@ function apiToForm(channel: Channel): PlatformSection[] {
   for (const platform of platformOrder) {
     if (!activePlatforms.has(platform)) continue
 
-    const groupIds = (channel.group_ids || []).filter(gid => groupPlatformMap.get(gid) === platform)
+    const groupIds = (channel.group_ids || []).filter(gid => {
+      const groupPlatform = groupPlatformMap.get(gid)
+      return groupPlatform === platform || groupPlatform === 'composite'
+    REDACTED)
     const mapping = (channel.model_mapping || {REDACTED)[platform] || {REDACTED
     const pricing = (channel.model_pricing || [])
       .filter(p => (p.platform || 'anthropic') === platform)
@@ -1364,7 +1372,7 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
     const platforms = new Set<GroupPlatform>()
     for (const gid of apiRule.group_ids || []) {
       const p = groupPlatformMap.get(gid)
-      if (p) platforms.add(p)
+      if (p && p !== 'composite') platforms.add(p)
     REDACTED
     // If pricing has a platform field, use that as fallback
     if (platforms.size === 0 && apiRule.pricing?.length > 0) {

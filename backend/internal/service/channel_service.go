@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/tidwall/gjson"
@@ -332,15 +333,37 @@ REDACTED
 // invalidateCache 使缓存失效，让下次读取时自然重建
 
 // isPlatformPricingMatch 判断定价条目的平台是否匹配分组平台。
-// 各平台（antigravity / anthropic / gemini / openai）严格独立，不跨平台匹配。
+// Concrete platforms stay isolated; composite groups may carry concrete-provider
+// pricing rows that are selected by the request's resolved target platform.
 func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
+	if groupPlatform == PlatformComposite {
+		return isConcreteRequestPlatform(pricingPlatform)
+REDACTED
 	return groupPlatform == pricingPlatform
 REDACTED
 
 // matchingPlatforms 返回分组平台对应的可匹配平台列表。
-// 各平台严格独立，只返回自身。
+// Concrete platforms return themselves; composite is a configuration-time
+// fallback used before a request target has been resolved.
 func matchingPlatforms(groupPlatform string) []string {
+	if groupPlatform == PlatformComposite {
+		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrokREDACTED
+REDACTED
 	return []string{groupPlatformREDACTED
+REDACTED
+
+func channelLookupPlatform(ctx context.Context, groupPlatform string) string {
+	if ctx != nil {
+		if forcePlatform, ok := ctx.Value(ctxkey.ForcePlatform).(string); ok && strings.TrimSpace(forcePlatform) != "" {
+			return strings.TrimSpace(forcePlatform)
+	REDACTED
+		if groupPlatform == PlatformComposite {
+			if platform, ok := ResolvedTargetPlatformFromContext(ctx); ok {
+				return platform
+		REDACTED
+	REDACTED
+REDACTED
+	return groupPlatform
 REDACTED
 func (s *ChannelService) invalidateCache() {
 	s.cache.Store((*channelCache)(nil))
@@ -456,7 +479,7 @@ REDACTED
 	return &channelLookup{
 		cache:    cache,
 		channel:  ch,
-		platform: cache.groupPlatform[groupID],
+		platform: channelLookupPlatform(ctx, cache.groupPlatform[groupID]),
 REDACTED, nil
 REDACTED
 
