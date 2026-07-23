@@ -757,6 +757,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	httpInvalidEncryptedContentRetryTried := false
 	agentTaskRecoveryTried := false
 	rejectedFieldRetryState := newOpenAIResponsesRejectedFieldRetryState(body)
+	chatGPTWorkspaceHeaderRetryTried := false
 	for {
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
@@ -775,6 +776,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				headerGuard.close()
 			}
 			return nil, err
+		}
+		if chatGPTWorkspaceHeaderRetryTried {
+			// A stale workspace id can be attached to an otherwise valid OAuth
+			// token. The retry is deliberately request-local and single-use.
+			upstreamReq.Header.Del("chatgpt-account-id")
 		}
 
 		// Get proxy URL
@@ -822,6 +828,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 			upstreamCode := extractUpstreamErrorCode(respBody)
+			if !chatGPTWorkspaceHeaderRetryTried && account.IsOpenAIOAuth() &&
+				strings.TrimSpace(upstreamReq.Header.Get("chatgpt-account-id")) != "" &&
+				isChatGPTWorkspaceAccountMismatch(resp.StatusCode, respBody) {
+				chatGPTWorkspaceHeaderRetryTried = true
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying once without stale chatgpt-account-id (account: %s)", account.Name)
+				continue
+			}
+			if chatGPTWorkspaceHeaderRetryTried && account.IsOpenAIOAuth() &&
+				isChatGPTWorkspaceAccountMismatch(resp.StatusCode, respBody) {
+				s.blockChatGPTWorkspaceMismatch(account)
+				return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, false)
+			}
 			if !agentTaskRecoveryTried && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 				agentTaskRecoveryTried = true
 				expectedTaskID := account.GetCredential("task_id")

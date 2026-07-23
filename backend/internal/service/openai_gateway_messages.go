@@ -337,28 +337,66 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// account/cache identity. Match forwardGrokResponses: one strip+retry before
 	// treating the 400 as a hard failure / failover trigger.
 	var resp *http.Response
+	chatGPTWorkspaceHeaderRetryTried := false
 	for attempt := 0; ; attempt++ {
 		if attempt > 0 {
-			if account.Platform != PlatformGrok {
+			upstreamCtxRetry, releaseRetry := detachUpstreamContext(ctx)
+			if account.Platform == PlatformGrok {
+				upstreamReq, err = buildGrokResponsesRequest(upstreamCtxRetry, c, account, responsesBody, token, grokCacheIdentity, s.cfg)
+			} else if chatGPTWorkspaceHeaderRetryTried {
+				upstreamReq, err = s.buildUpstreamRequest(upstreamCtxRetry, c, account, responsesBody, token, isStream, promptCacheKey, false)
+			} else {
+				releaseRetry()
 				break
 			}
-			upstreamCtxRetry, releaseRetry := detachUpstreamContext(ctx)
-			upstreamReq, err = buildGrokResponsesRequest(upstreamCtxRetry, c, account, responsesBody, token, grokCacheIdentity, s.cfg)
 			releaseRetry()
 			if err != nil {
 				return nil, fmt.Errorf("build grok retry request: %w", err)
+			}
+			if chatGPTWorkspaceHeaderRetryTried && account.Platform != PlatformGrok {
+				upstreamReq.Header.Del("chatgpt-account-id")
+				if promptCacheKey != "" {
+					isolatedSessionID := generateSessionUUID(isolateOpenAISessionID(apiKeyID, promptCacheKey))
+					upstreamReq.Header.Set("session_id", isolatedSessionID)
+					if upstreamReq.Header.Get("conversation_id") != "" {
+						upstreamReq.Header.Set("conversation_id", isolatedSessionID)
+					}
+				}
+				if account.Type == AccountTypeOAuth {
+					ensureCodexIdentityHeaders(upstreamReq.Header)
+					enforceCodexIdentityHeaders(upstreamReq.Header)
+				}
+				if account.Type == AccountTypeOAuth && promptCacheKey != "" && strings.TrimSpace(c.GetHeader("conversation_id")) == "" {
+					upstreamReq.Header.Del("conversation_id")
+				}
+				if compatTurnState != "" && upstreamReq.Header.Get("x-codex-turn-state") == "" {
+					upstreamReq.Header.Set("x-codex-turn-state", compatTurnState)
+				}
 			}
 		}
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 		}
-		if account.Platform != PlatformGrok || attempt > 0 || resp.StatusCode != http.StatusBadRequest {
+		if account.Platform == PlatformGrok && (attempt > 0 || resp.StatusCode != http.StatusBadRequest) {
 			break
 		}
 		respBody := s.readUpstreamErrorBody(resp)
 		if resp.Body != nil {
 			_ = resp.Body.Close()
+		}
+		if !chatGPTWorkspaceHeaderRetryTried && account.IsOpenAIOAuth() && account.Platform != PlatformGrok &&
+			strings.TrimSpace(upstreamReq.Header.Get("chatgpt-account-id")) != "" &&
+			isChatGPTWorkspaceAccountMismatch(resp.StatusCode, respBody) {
+			chatGPTWorkspaceHeaderRetryTried = true
+			logger.L().Info("openai messages: retrying without stale chatgpt-account-id",
+				zap.Int64("account_id", account.ID),
+			)
+			continue
+		}
+		if account.Platform != PlatformGrok {
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			break
 		}
 		// Prefer explicit decrypt errors; also strip once on any 400 when the
 		// outbound body still carries reasoning.encrypted_content (account
@@ -389,6 +427,11 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		if chatGPTWorkspaceHeaderRetryTried && account.IsOpenAIOAuth() &&
+			isChatGPTWorkspaceAccountMismatch(resp.StatusCode, respBody) {
+			s.blockChatGPTWorkspaceMismatch(account)
+			return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, false)
+		}
 		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 			expectedTaskID := account.GetCredential("task_id")
 			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {

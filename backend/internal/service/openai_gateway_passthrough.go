@@ -184,6 +184,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	agentTaskRecoveryTried := false
+	chatGPTWorkspaceHeaderRetryTried := false
 	var resp *http.Response
 	for {
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
@@ -191,6 +192,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		releaseUpstreamCtx()
 		if buildErr != nil {
 			return nil, buildErr
+		}
+		if chatGPTWorkspaceHeaderRetryTried {
+			upstreamReq.Header.Del("chatgpt-account-id")
 		}
 
 		upstreamStart := time.Now()
@@ -210,6 +214,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		probeBody := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(probeBody))
+		if !chatGPTWorkspaceHeaderRetryTried && account.IsOpenAIOAuth() &&
+			strings.TrimSpace(upstreamReq.Header.Get("chatgpt-account-id")) != "" &&
+			isChatGPTWorkspaceAccountMismatch(resp.StatusCode, probeBody) {
+			chatGPTWorkspaceHeaderRetryTried = true
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Retrying once without stale chatgpt-account-id (account: %s)", account.Name)
+			continue
+		}
 		if !agentTaskRecoveryTried && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, probeBody) {
 			agentTaskRecoveryTried = true
 			expectedTaskID := account.GetCredential("task_id")
@@ -458,6 +469,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 }
 
 func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, responseBody []byte) bool {
+	if account != nil && account.Platform == PlatformOpenAI && account.IsOpenAIOAuth() &&
+		isChatGPTWorkspaceAccountMismatch(statusCode, responseBody) {
+		return true
+	}
 	if isOpenAIContextWindowError("", responseBody) {
 		return false
 	}
@@ -580,7 +595,14 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
 	reqModel, _, _ := extractOpenAIRequestMetaFromBody(requestBody)
 	canonicalModel := canonicalOpenAIAccountSchedulingModel(account, reqModel)
-	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, canonicalModel)
+	workspaceMismatch := account != nil && account.Platform == PlatformOpenAI && account.IsOpenAIOAuth() &&
+		isChatGPTWorkspaceAccountMismatch(resp.StatusCode, body)
+	shouldDisable := workspaceMismatch
+	if !workspaceMismatch {
+		shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, canonicalModel)
+	} else {
+		s.blockChatGPTWorkspaceMismatch(account)
+	}
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		Platform:             account.Platform,
 		AccountID:            account.ID,
