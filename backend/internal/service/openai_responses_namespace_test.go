@@ -37,6 +37,36 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestShouldStripOpenAIResponsesInputNamespaces(t *testing.T) {
+	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	setupToken := &Account{Platform: PlatformOpenAI, Type: AccountTypeSetupTokenREDACTED
+	grokOAuth := &Account{Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+
+	tests := []struct {
+		name               string
+		account            *Account
+		transport          OpenAIUpstreamTransport
+		passthroughEnabled bool
+		want               bool
+REDACTED{
+		{name: "oauth_http", account: oauth, transport: OpenAIUpstreamTransportHTTPSSE, want: trueREDACTED,
+		{name: "apikey_http", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, want: trueREDACTED,
+		{name: "oauth_wsv2", account: oauth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, want: falseREDACTED,
+		{name: "apikey_wsv2", account: apiKey, transport: OpenAIUpstreamTransportResponsesWebsocketV2, want: falseREDACTED,
+		{name: "oauth_wsv2_passthrough", account: oauth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, passthroughEnabled: true, want: trueREDACTED,
+		{name: "apikey_wsv2_passthrough", account: apiKey, transport: OpenAIUpstreamTransportResponsesWebsocketV2, passthroughEnabled: true, want: trueREDACTED,
+		{name: "setup_token_http", account: setupToken, transport: OpenAIUpstreamTransportHTTPSSE, want: falseREDACTED,
+		{name: "grok_oauth_http", account: grokOAuth, transport: OpenAIUpstreamTransportHTTPSSE, want: falseREDACTED,
+		{name: "nil_account", account: nil, transport: OpenAIUpstreamTransportHTTPSSE, want: falseREDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, shouldStripOpenAIResponsesInputNamespaces(tt.account, tt.transport, tt.passthroughEnabled))
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestStripOpenAIResponsesInputNamespaces(t *testing.T) {
 	body := []byte(`{
 		"meta":9007199254740993,

@@ -28,6 +28,19 @@ REDACTED
 	return true
 REDACTED
 
+// shouldStripOpenAIResponsesInputNamespaces removes residual input item
+// namespaces for OpenAI OAuth and API Key HTTP forwarding. Native WSv2 keeps
+// namespaces because that protocol supports them and does not restore payloads.
+func shouldStripOpenAIResponsesInputNamespaces(account *Account, transport OpenAIUpstreamTransport, passthroughEnabled bool) bool {
+	if account == nil || (!account.IsOpenAIOAuth() && !account.IsOpenAIApiKey()) {
+		return false
+REDACTED
+	if transport == OpenAIUpstreamTransportResponsesWebsocketV2 && !passthroughEnabled {
+		return false
+REDACTED
+	return true
+REDACTED
+
 func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, error) {
 	if !bytes.Contains(body, []byte(`"namespace"`)) {
 		return body, nil

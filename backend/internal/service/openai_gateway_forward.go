@@ -71,6 +71,8 @@ REDACTED
 		REDACTEDREDACTED)
 			return nil, err
 	REDACTED
+REDACTED
+	if shouldStripOpenAIResponsesInputNamespaces(account, wsDecision.Transport, passthroughEnabled) {
 		body, err = stripOpenAIResponsesInputNamespaces(body)
 		if err != nil {
 			setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
