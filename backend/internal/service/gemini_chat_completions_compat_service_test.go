@@ -109,20 +109,26 @@ REDACTED
 REDACTED
 
 	withInlineData, _ := convertGeminiToClaudeMessage(geminiResp, "gemini-test", rawData, true)
-	contentWithInlineData := withInlineData["content"].([]any)
+	contentWithInlineData, ok := withInlineData["content"].([]any)
+	require.True(t, ok)
 	require.Len(t, contentWithInlineData, 4)
 	require.Equal(t, map[string]any{"type": "text", "text": "before"REDACTED, contentWithInlineData[0])
 	require.Equal(t, map[string]any{"type": "text", "text": "![image](data:image/png;base64,aW1hZ2U=)"REDACTED, contentWithInlineData[1])
-	require.Equal(t, "tool_use", contentWithInlineData[2].(map[string]any)["type"])
-	require.Equal(t, "get_weather", contentWithInlineData[2].(map[string]any)["name"])
+	toolUse, ok := contentWithInlineData[2].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "tool_use", toolUse["type"])
+	require.Equal(t, "get_weather", toolUse["name"])
 	require.Equal(t, map[string]any{"type": "text", "text": "after"REDACTED, contentWithInlineData[3])
 
 	withoutInlineData, _ := convertGeminiToClaudeMessage(geminiResp, "gemini-test", rawData, false)
-	contentWithoutInlineData := withoutInlineData["content"].([]any)
+	contentWithoutInlineData, ok := withoutInlineData["content"].([]any)
+	require.True(t, ok)
 	require.Len(t, contentWithoutInlineData, 3)
 	require.Equal(t, map[string]any{"type": "text", "text": "before"REDACTED, contentWithoutInlineData[0])
-	require.Equal(t, "tool_use", contentWithoutInlineData[1].(map[string]any)["type"])
-	require.Equal(t, "get_weather", contentWithoutInlineData[1].(map[string]any)["name"])
+	toolUseWithoutInlineData, ok := contentWithoutInlineData[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "tool_use", toolUseWithoutInlineData["type"])
+	require.Equal(t, "get_weather", toolUseWithoutInlineData["name"])
 	require.Equal(t, map[string]any{"type": "text", "text": "after"REDACTED, contentWithoutInlineData[2])
 REDACTED
 
