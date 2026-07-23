@@ -136,6 +136,40 @@ func TestOpenAIGatewayServiceDoesNotRetryUnrelatedConflict(t *testing.T) {
 	require.Equal(t, "workspace-id", upstream.requests[0].Header.Get("chatgpt-account-id"))
 }
 
+func TestOpenAIGatewayServiceBlocksAccountWhenWorkspaceRetryStillFails(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","stream":false,"instructions":"Reply OK","input":[]}`)
+	workspaceError := `{"detail":{"error_code":"sa_server_user_does_not_belong_to_workspace"}}`
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusConflict, workspaceError),
+		newOpenAIRejectedFieldTestResponse(http.StatusConflict, workspaceError),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+		}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          5112,
+		Name:        "workspace-header-block",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "workspace-id",
+		},
+	}
+
+	_, err := svc.Forward(context.Background(), newOpenAIRejectedFieldTestContext(body), account, body)
+	require.Error(t, err)
+	require.Len(t, upstream.requests, 2)
+	require.Empty(t, upstream.requests[1].Header.Get("chatgpt-account-id"))
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
 func TestOpenAIGatewayServiceBlocksAccountAfterWorkspaceRetryFails(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","stream":false,"instructions":"Reply OK","input":[]}`)
 	workspaceError := `{"detail":{"error_code":"sa_server_user_does_not_belong_to_workspace","error":"User user-123 does not belong to declared workspace ws-456"}}`
