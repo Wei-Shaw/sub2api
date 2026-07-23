@@ -181,6 +181,7 @@ type APIKeyAuthCacheInvalidator interface {
 type CreateAPIKeyRequest struct {
 	Name        string   `json:"name"`
 	GroupID     *int64   `json:"group_id"`
+	GroupIDs    []int64  `json:"group_ids"`
 	CustomKey   *string  `json:"custom_key"`   // 可选的自定义key
 	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
@@ -199,9 +200,10 @@ type CreateAPIKeyRequest struct {
 type UpdateAPIKeyRequest struct {
 	Name        *string   `json:"name"`
 	GroupID     *int64    `json:"group_id"`
+	GroupIDs    []int64   `json:"group_ids"`
 	Status      *string   `json:"status"`
-	IPWhitelist *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
-	IPBlacklist *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
+	IPWhitelist *[]string `json:"ip_whitelist"` // IP ????nil ??????????
+	IPBlacklist *[]string `json:"ip_blacklist"` // IP ????nil ??????????
 
 	// Quota fields
 	Quota           *float64   `json:"quota"`       // Quota limit in USD (nil = no change, 0 = unlimited)
@@ -214,6 +216,57 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+}
+
+func normalizeAPIKeyGroupIDs(primary *int64, groupIDs []int64) (*int64, []int64, error) {
+	if groupIDs == nil {
+		return primary, nil, nil
+	}
+	if len(groupIDs) == 0 {
+		return nil, []int64{}, nil
+	}
+	seen := make(map[int64]struct{}, len(groupIDs))
+	ordered := make([]int64, 0, len(groupIDs))
+	for _, id := range groupIDs {
+		if id <= 0 {
+			return nil, nil, fmt.Errorf("invalid group id: %d", id)
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ordered = append(ordered, id)
+	}
+	if len(ordered) == 0 {
+		return nil, []int64{}, nil
+	}
+	return &ordered[0], append([]int64(nil), ordered[1:]...), nil
+}
+
+func (s *APIKeyService) validateAPIKeyGroups(ctx context.Context, user *User, primary *int64, fallbackIDs []int64) error {
+	if primary == nil {
+		if len(fallbackIDs) > 0 {
+			return fmt.Errorf("fallback groups require a primary group")
+		}
+		return nil
+	}
+	primaryGroup, err := s.groupRepo.GetByID(ctx, *primary)
+	if err != nil {
+		return fmt.Errorf("get group: %w", err)
+	}
+	if !s.canUserBindGroup(ctx, user, primaryGroup) {
+		return ErrGroupNotAllowed
+	}
+	for _, groupID := range fallbackIDs {
+		group, err := s.groupRepo.GetByID(ctx, groupID)
+		if err != nil {
+			return fmt.Errorf("get fallback group: %w", err)
+		}
+		if !s.canUserBindGroup(ctx, user, group) {
+			return ErrGroupNotAllowed
+		}
+	}
+	return nil
 }
 
 // APIKeyService API Key服务
@@ -419,17 +472,12 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		}
 	}
 
-	// 验证分组权限（如果指定了分组）
-	if req.GroupID != nil {
-		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
-		if err != nil {
-			return nil, fmt.Errorf("get group: %w", err)
-		}
-
-		// 检查用户是否可以绑定该分组
-		if !s.canUserBindGroup(ctx, user, group) {
-			return nil, ErrGroupNotAllowed
-		}
+	primaryGroupID, fallbackGroupIDs, err := normalizeAPIKeyGroupIDs(req.GroupID, req.GroupIDs)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.validateAPIKeyGroups(ctx, user, primaryGroupID, fallbackGroupIDs); err != nil {
+		return nil, err
 	}
 
 	var key string
@@ -469,18 +517,19 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:      userID,
-		Key:         key,
-		Name:        html.EscapeString(req.Name),
-		GroupID:     req.GroupID,
-		Status:      StatusActive,
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
-		Quota:       req.Quota,
-		QuotaUsed:   0,
-		RateLimit5h: req.RateLimit5h,
-		RateLimit1d: req.RateLimit1d,
-		RateLimit7d: req.RateLimit7d,
+		UserID:           userID,
+		Key:              key,
+		Name:             html.EscapeString(req.Name),
+		GroupID:          primaryGroupID,
+		FallbackGroupIDs: fallbackGroupIDs,
+		Status:           StatusActive,
+		IPWhitelist:      req.IPWhitelist,
+		IPBlacklist:      req.IPBlacklist,
+		Quota:            req.Quota,
+		QuotaUsed:        0,
+		RateLimit5h:      req.RateLimit5h,
+		RateLimit1d:      req.RateLimit1d,
+		RateLimit7d:      req.RateLimit7d,
 	}
 
 	// Set expiration time if specified
@@ -723,23 +772,20 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		apiKey.Name = html.EscapeString(*req.Name)
 	}
 
-	if req.GroupID != nil {
-		// 验证分组权限
+	if req.GroupIDs != nil || req.GroupID != nil {
+		primaryGroupID, fallbackGroupIDs, err := normalizeAPIKeyGroupIDs(req.GroupID, req.GroupIDs)
+		if err != nil {
+			return nil, err
+		}
 		user, err := s.userRepo.GetByID(ctx, userID)
 		if err != nil {
 			return nil, fmt.Errorf("get user: %w", err)
 		}
-
-		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
-		if err != nil {
-			return nil, fmt.Errorf("get group: %w", err)
+		if err := s.validateAPIKeyGroups(ctx, user, primaryGroupID, fallbackGroupIDs); err != nil {
+			return nil, err
 		}
-
-		if !s.canUserBindGroup(ctx, user, group) {
-			return nil, ErrGroupNotAllowed
-		}
-
-		apiKey.GroupID = req.GroupID
+		apiKey.GroupID = primaryGroupID
+		apiKey.FallbackGroupIDs = fallbackGroupIDs
 	}
 
 	if req.Status != nil {
@@ -779,7 +825,7 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		}
 	}
 
-	// 更新 IP 限制（nil 不修改，空数组清空设置）
+	// 更新 IP 限制（空数组会清空设置）
 	if req.IPWhitelist != nil {
 		apiKey.IPWhitelist = *req.IPWhitelist
 	}

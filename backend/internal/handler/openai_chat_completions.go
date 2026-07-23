@@ -80,6 +80,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			body = cappedBody
 		}
 	}
+	if resolvedKey, fallbackUsed := h.gatewayService.ResolveAPIKeyGroupFallback(c.Request.Context(), apiKey, reqModel); fallbackUsed {
+		apiKey = resolvedKey
+		reqLog = reqLog.With(zap.Int64p("fallback_group_id", apiKey.GroupID))
+	}
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)

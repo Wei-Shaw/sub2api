@@ -74,6 +74,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		return
 	}
 	requestModel := parsed.Model
+	if resolvedKey, fallbackUsed := h.gatewayService.ResolveAPIKeyGroupFallback(c.Request.Context(), apiKey, requestModel); fallbackUsed {
+		apiKey = resolvedKey
+		reqLog = reqLog.With(zap.Int64p("fallback_group_id", apiKey.GroupID))
+	}
 
 	reqLog = reqLog.With(
 		zap.String("model", requestModel),
