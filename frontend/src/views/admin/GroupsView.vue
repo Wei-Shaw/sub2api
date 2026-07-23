@@ -616,6 +616,7 @@
           :platform="createForm.platform"
           v-model:max-effort="createForm.max_reasoning_effort"
           v-model:mappings="createForm.reasoning_effort_mappings"
+          v-model:model-rules="createForm.model_reasoning_effort_rules"
         />
         <div
           v-if="createForm.subscription_type !== 'subscription'"
@@ -2136,6 +2137,7 @@
           :platform="editForm.platform"
           v-model:max-effort="editForm.max_reasoning_effort"
           v-model:mappings="editForm.reasoning_effort_mappings"
+          v-model:model-rules="editForm.model_reasoning_effort_rules"
         />
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
@@ -4016,10 +4018,13 @@ import {
 import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import {
+  modelReasoningEffortRulesToAPI,
+  modelReasoningEffortRulesToRows,
   normalizeReasoningEffortForPlatform,
   reasoningEffortMappingsToAPI,
   reasoningEffortMappingsToRows,
   type ReasoningEffortMappingRow,
+  type ModelReasoningEffortRuleRow,
 } from "./groupsReasoningEffort";
 import {
   getDefaultImagePreviewPrice,
@@ -4554,6 +4559,7 @@ const createForm = reactive({
   rpm_limit: 0 as number,
   max_reasoning_effort: "",
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
+  model_reasoning_effort_rules: [] as ModelReasoningEffortRuleRow[],
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -4904,6 +4910,7 @@ const editForm = reactive({
   rpm_limit: 0 as number,
   max_reasoning_effort: "",
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
+  model_reasoning_effort_rules: [] as ModelReasoningEffortRuleRow[],
 });
 
 type ImagePricingFormState = {
@@ -5295,6 +5302,7 @@ const closeCreateModal = () => {
   createForm.rpm_limit = 0;
   createForm.max_reasoning_effort = "";
   createForm.reasoning_effort_mappings = [];
+  createForm.model_reasoning_effort_rules = [];
   createReasoningEffortPolicyRef.value?.resetValidation();
   resetModelsListState(createModelsListState);
   createModelRoutingRules.value = [];
@@ -5375,6 +5383,9 @@ const handleCreateGroup = async () => {
           : undefined,
       reasoning_effort_mappings: reasoningEffortMappingsToAPI(
         createForm.reasoning_effort_mappings,
+      ),
+      model_reasoning_effort_rules: modelReasoningEffortRulesToAPI(
+        createForm.model_reasoning_effort_rules,
       ),
     };
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
@@ -5498,6 +5509,10 @@ const handleEdit = async (group: AdminGroup) => {
     group.reasoning_effort_mappings,
     group.platform,
   );
+  editForm.model_reasoning_effort_rules = modelReasoningEffortRulesToRows(
+    group.model_reasoning_effort_rules,
+    group.platform,
+  );
   resetModelsListState(editModelsListState, group.models_list_config);
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
@@ -5516,6 +5531,7 @@ const closeEditModal = () => {
   editingGroup.value = null;
   editForm.max_reasoning_effort = "";
   editForm.reasoning_effort_mappings = [];
+  editForm.model_reasoning_effort_rules = [];
   editReasoningEffortPolicyRef.value?.resetValidation();
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
@@ -5587,6 +5603,9 @@ const handleUpdateGroup = async () => {
           : undefined,
       reasoning_effort_mappings: reasoningEffortMappingsToAPI(
         editForm.reasoning_effort_mappings,
+      ),
+      model_reasoning_effort_rules: modelReasoningEffortRulesToAPI(
+        editForm.model_reasoning_effort_rules,
       ),
     };
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
@@ -5943,6 +5962,10 @@ watch(
       reasoningEffortMappingsToAPI(createForm.reasoning_effort_mappings),
       newVal,
     );
+    createForm.model_reasoning_effort_rules = modelReasoningEffortRulesToRows(
+      modelReasoningEffortRulesToAPI(createForm.model_reasoning_effort_rules),
+      newVal,
+    );
     createReasoningEffortPolicyRef.value?.resetValidation();
     if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
       createForm.require_oauth_only = false;
@@ -5983,6 +6006,10 @@ watch(
     );
     editForm.reasoning_effort_mappings = reasoningEffortMappingsToRows(
       reasoningEffortMappingsToAPI(editForm.reasoning_effort_mappings),
+      newVal,
+    );
+    editForm.model_reasoning_effort_rules = modelReasoningEffortRulesToRows(
+      modelReasoningEffortRulesToAPI(editForm.model_reasoning_effort_rules),
       newVal,
     );
     editReasoningEffortPolicyRef.value?.resetValidation();

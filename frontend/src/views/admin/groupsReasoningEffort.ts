@@ -1,4 +1,8 @@
-import type { GroupPlatform, ReasoningEffortMapping } from "@/types";
+import type {
+  GroupPlatform,
+  ModelReasoningEffortRule,
+  ReasoningEffortMapping,
+} from "@/types";
 
 const openAIReasoningEffortValues = [
   "minimal",
@@ -50,6 +54,7 @@ export type ReasoningEffortMappingErrors = Record<
 >;
 
 let nextMappingRowID = 0;
+let nextModelRuleRowID = 0;
 
 export function createReasoningEffortMappingRow(
   mapping: Partial<ReasoningEffortMapping> = {},
@@ -113,6 +118,100 @@ export function validateReasoningEffortMappings(
     if (duplicateRows.length < 2) return;
     duplicateRows.forEach((row) => {
       errors[row.id] = { ...errors[row.id], from: "duplicateFrom" };
+    });
+  });
+
+  return errors;
+}
+
+export interface ModelReasoningEffortRuleRow {
+  id: string;
+  model: string;
+  max_reasoning_effort: string;
+  reasoning_effort_mappings: ReasoningEffortMappingRow[];
+}
+
+export type ModelReasoningEffortRuleErrorCode =
+  | "modelRequired"
+  | "duplicateModel";
+
+export interface ModelReasoningEffortRuleErrors {
+  model?: ModelReasoningEffortRuleErrorCode;
+  mappings: ReasoningEffortMappingErrors;
+}
+
+export function createModelReasoningEffortRuleRow(
+  rule: Partial<ModelReasoningEffortRule> = {},
+  platform: GroupPlatform = "openai",
+): ModelReasoningEffortRuleRow {
+  nextModelRuleRowID += 1;
+  return {
+    id: `model-reasoning-effort-rule-${nextModelRuleRowID}`,
+    model: rule.model ?? "",
+    max_reasoning_effort: normalizeReasoningEffortForPlatform(
+      platform,
+      rule.max_reasoning_effort,
+    ),
+    reasoning_effort_mappings: reasoningEffortMappingsToRows(
+      rule.reasoning_effort_mappings,
+      platform,
+    ),
+  };
+}
+
+export function modelReasoningEffortRulesToRows(
+  rules?: ModelReasoningEffortRule[] | null,
+  platform: GroupPlatform = "openai",
+): ModelReasoningEffortRuleRow[] {
+  if (platform !== "openai") return [];
+  return (rules ?? []).map((rule) =>
+    createModelReasoningEffortRuleRow(rule, platform),
+  );
+}
+
+export function modelReasoningEffortRulesToAPI(
+  rows: ModelReasoningEffortRuleRow[],
+): ModelReasoningEffortRule[] {
+  return rows.map((row) => ({
+    model: row.model.trim(),
+    max_reasoning_effort: row.max_reasoning_effort.trim(),
+    reasoning_effort_mappings: reasoningEffortMappingsToAPI(
+      row.reasoning_effort_mappings,
+    ),
+  }));
+}
+
+export function validateModelReasoningEffortRules(
+  rows: ModelReasoningEffortRuleRow[],
+  platform: GroupPlatform = "openai",
+): Record<string, ModelReasoningEffortRuleErrors> {
+  const errors: Record<string, ModelReasoningEffortRuleErrors> = {};
+  const modelRows = new Map<string, ModelReasoningEffortRuleRow[]>();
+
+  rows.forEach((row) => {
+    const model = row.model.trim();
+    const mappings = validateReasoningEffortMappings(
+      row.reasoning_effort_mappings,
+      platform,
+    );
+    if (!model) {
+      errors[row.id] = { model: "modelRequired", mappings };
+    } else {
+      modelRows.set(model, [...(modelRows.get(model) ?? []), row]);
+      if (Object.keys(mappings).length > 0) {
+        errors[row.id] = { mappings };
+      }
+    }
+  });
+
+  modelRows.forEach((duplicateRows) => {
+    if (duplicateRows.length < 2) return;
+    duplicateRows.forEach((row) => {
+      errors[row.id] = {
+        ...errors[row.id],
+        model: "duplicateModel",
+        mappings: errors[row.id]?.mappings ?? {},
+      };
     });
   });
 

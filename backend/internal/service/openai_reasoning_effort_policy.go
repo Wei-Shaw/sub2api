@@ -9,8 +9,10 @@ import (
 )
 
 const (
-	maxReasoningEffortMappings = 64
-	maxReasoningEffortValueLen = 64
+	maxReasoningEffortMappings   = 64
+	maxReasoningEffortValueLen   = 64
+	maxModelReasoningEffortRules = 64
+	maxReasoningEffortModelLen   = 200
 )
 
 var openAIReasoningEffortValues = []string{"minimal", "low", "medium", "high", "xhigh", "max"}
@@ -124,6 +126,49 @@ func NormalizeReasoningEffortMappings(platform string, raw []ReasoningEffortMapp
 	return normalized, nil
 }
 
+// NormalizeModelReasoningEffortRules validates exact model overrides. A rule
+// with an empty ceiling and empty mappings is intentional: it disables the
+// group default policy for that model.
+func NormalizeModelReasoningEffortRules(platform string, raw []ModelReasoningEffortRule) ([]ModelReasoningEffortRule, error) {
+	if len(raw) > maxModelReasoningEffortRules {
+		return nil, fmt.Errorf("model reasoning effort rules cannot exceed %d entries", maxModelReasoningEffortRules)
+	}
+	if len(raw) > 0 && platform != PlatformOpenAI {
+		return nil, fmt.Errorf("model reasoning effort rules are only supported for platform %q", PlatformOpenAI)
+	}
+
+	normalized := make([]ModelReasoningEffortRule, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for i, rule := range raw {
+		model := strings.TrimSpace(rule.Model)
+		if model == "" {
+			return nil, fmt.Errorf("model reasoning effort rule %d has an empty model", i+1)
+		}
+		if len(model) > maxReasoningEffortModelLen {
+			return nil, fmt.Errorf("model reasoning effort rule %d model cannot exceed %d characters", i+1, maxReasoningEffortModelLen)
+		}
+		if _, exists := seen[model]; exists {
+			return nil, fmt.Errorf("duplicate model reasoning effort rule for model %q", model)
+		}
+		seen[model] = struct{}{}
+
+		maxEffort, err := normalizeMaxReasoningEffortForPlatform(platform, rule.MaxReasoningEffort)
+		if err != nil {
+			return nil, fmt.Errorf("model reasoning effort rule %d ceiling: %w", i+1, err)
+		}
+		mappings, err := NormalizeReasoningEffortMappings(platform, rule.ReasoningEffortMappings)
+		if err != nil {
+			return nil, fmt.Errorf("model reasoning effort rule %d mappings: %w", i+1, err)
+		}
+		normalized = append(normalized, ModelReasoningEffortRule{
+			Model:                   model,
+			MaxReasoningEffort:      maxEffort,
+			ReasoningEffortMappings: mappings,
+		})
+	}
+	return normalized, nil
+}
+
 func mapReasoningEffort(raw string, mappings []ReasoningEffortMapping) (string, bool) {
 	value := strings.TrimSpace(raw)
 	canonical := NormalizeMaxReasoningEffort(value)
@@ -141,14 +186,48 @@ func sanitizeGroupReasoningEffortPolicy(group *Group) {
 	}
 	maxEffort, maxErr := normalizeMaxReasoningEffortForPlatform(group.Platform, group.MaxReasoningEffort)
 	mappings, mappingsErr := NormalizeReasoningEffortMappings(group.Platform, group.ReasoningEffortMappings)
+	modelRules, modelRulesErr := NormalizeModelReasoningEffortRules(group.Platform, group.ModelReasoningEffortRules)
 	if maxErr != nil {
 		maxEffort = ""
 	}
 	if mappingsErr != nil {
 		mappings = []ReasoningEffortMapping{}
 	}
+	if modelRulesErr != nil {
+		modelRules = []ModelReasoningEffortRule{}
+	}
 	group.MaxReasoningEffort = maxEffort
 	group.ReasoningEffortMappings = mappings
+	group.ModelReasoningEffortRules = modelRules
+}
+
+func reasoningEffortPolicyForModel(
+	model string,
+	defaultMaxEffort string,
+	defaultMappings []ReasoningEffortMapping,
+	modelRules []ModelReasoningEffortRule,
+) (string, []ReasoningEffortMapping) {
+	model = strings.TrimSpace(model)
+	for _, rule := range modelRules {
+		if strings.TrimSpace(rule.Model) == model {
+			return rule.MaxReasoningEffort, rule.ReasoningEffortMappings
+		}
+	}
+	return defaultMaxEffort, defaultMappings
+}
+
+// ApplyOpenAIReasoningEffortPolicyForModel selects an exact model override
+// before applying the policy. The model is the client-requested model before
+// account or upstream model mapping.
+func ApplyOpenAIReasoningEffortPolicyForModel(
+	body []byte,
+	model string,
+	defaultMaxEffort string,
+	defaultMappings []ReasoningEffortMapping,
+	modelRules []ModelReasoningEffortRule,
+) ([]byte, bool) {
+	maxEffort, mappings := reasoningEffortPolicyForModel(model, defaultMaxEffort, defaultMappings, modelRules)
+	return ApplyOpenAIReasoningEffortPolicy(body, maxEffort, mappings)
 }
 
 // ApplyOpenAIReasoningEffortPolicy applies one exact mapping and then caps

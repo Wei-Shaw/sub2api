@@ -269,7 +269,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
-		if cappedBody, changed := service.ApplyOpenAIReasoningEffortPolicy(body, apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings); changed {
+		if cappedBody, changed := service.ApplyOpenAIReasoningEffortPolicyForModel(
+			body,
+			reqModel,
+			apiKey.Group.MaxReasoningEffort,
+			apiKey.Group.ReasoningEffortMappings,
+			apiKey.Group.ModelReasoningEffortRules,
+		); changed {
 			body = cappedBody
 		}
 	}
@@ -1762,15 +1768,18 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 		maxReasoningEffort := ""
 		var reasoningEffortMappings []service.ReasoningEffortMapping
+		var modelReasoningEffortRules []service.ModelReasoningEffortRule
 		if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
 			maxReasoningEffort = apiKey.Group.MaxReasoningEffort
 			reasoningEffortMappings = apiKey.Group.ReasoningEffortMappings
+			modelReasoningEffortRules = apiKey.Group.ModelReasoningEffortRules
 		}
 		var requestPayloadHash string
 		hooks := &service.OpenAIWSIngressHooks{
-			InitialRequestModel:     reqModel,
-			MaxReasoningEffort:      maxReasoningEffort,
-			ReasoningEffortMappings: reasoningEffortMappings,
+			InitialRequestModel:       reqModel,
+			MaxReasoningEffort:        maxReasoningEffort,
+			ReasoningEffortMappings:   reasoningEffortMappings,
+			ModelReasoningEffortRules: modelReasoningEffortRules,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
 				if turn == 1 {
 					return nil

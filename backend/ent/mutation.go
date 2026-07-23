@@ -21921,6 +21921,8 @@ type GroupMutation struct {
 	max_reasoning_effort                    *string
 	reasoning_effort_mappings               *[]domain.ReasoningEffortMapping
 	appendreasoning_effort_mappings         []domain.ReasoningEffortMapping
+	model_reasoning_effort_rules            *[]domain.ModelReasoningEffortRule
+	appendmodel_reasoning_effort_rules      []domain.ModelReasoningEffortRule
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -24549,6 +24551,57 @@ func (m *GroupMutation) ResetReasoningEffortMappings() {
 	m.appendreasoning_effort_mappings = nil
 }
 
+// SetModelReasoningEffortRules sets the "model_reasoning_effort_rules" field.
+func (m *GroupMutation) SetModelReasoningEffortRules(drer []domain.ModelReasoningEffortRule) {
+	m.model_reasoning_effort_rules = &drer
+	m.appendmodel_reasoning_effort_rules = nil
+}
+
+// ModelReasoningEffortRules returns the value of the "model_reasoning_effort_rules" field in the mutation.
+func (m *GroupMutation) ModelReasoningEffortRules() (r []domain.ModelReasoningEffortRule, exists bool) {
+	v := m.model_reasoning_effort_rules
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModelReasoningEffortRules returns the old "model_reasoning_effort_rules" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldModelReasoningEffortRules(ctx context.Context) (v []domain.ModelReasoningEffortRule, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelReasoningEffortRules is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelReasoningEffortRules requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelReasoningEffortRules: %w", err)
+	}
+	return oldValue.ModelReasoningEffortRules, nil
+}
+
+// AppendModelReasoningEffortRules adds drer to the "model_reasoning_effort_rules" field.
+func (m *GroupMutation) AppendModelReasoningEffortRules(drer []domain.ModelReasoningEffortRule) {
+	m.appendmodel_reasoning_effort_rules = append(m.appendmodel_reasoning_effort_rules, drer...)
+}
+
+// AppendedModelReasoningEffortRules returns the list of values that were appended to the "model_reasoning_effort_rules" field in this mutation.
+func (m *GroupMutation) AppendedModelReasoningEffortRules() ([]domain.ModelReasoningEffortRule, bool) {
+	if len(m.appendmodel_reasoning_effort_rules) == 0 {
+		return nil, false
+	}
+	return m.appendmodel_reasoning_effort_rules, true
+}
+
+// ResetModelReasoningEffortRules resets all changes to the "model_reasoning_effort_rules" field.
+func (m *GroupMutation) ResetModelReasoningEffortRules() {
+	m.model_reasoning_effort_rules = nil
+	m.appendmodel_reasoning_effort_rules = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -24907,7 +24960,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 51)
+	fields := make([]string, 0, 52)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -25061,6 +25114,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.reasoning_effort_mappings != nil {
 		fields = append(fields, group.FieldReasoningEffortMappings)
 	}
+	if m.model_reasoning_effort_rules != nil {
+		fields = append(fields, group.FieldModelReasoningEffortRules)
+	}
 	return fields
 }
 
@@ -25171,6 +25227,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MaxReasoningEffort()
 	case group.FieldReasoningEffortMappings:
 		return m.ReasoningEffortMappings()
+	case group.FieldModelReasoningEffortRules:
+		return m.ModelReasoningEffortRules()
 	}
 	return nil, false
 }
@@ -25282,6 +25340,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMaxReasoningEffort(ctx)
 	case group.FieldReasoningEffortMappings:
 		return m.OldReasoningEffortMappings(ctx)
+	case group.FieldModelReasoningEffortRules:
+		return m.OldModelReasoningEffortRules(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -25647,6 +25707,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetReasoningEffortMappings(v)
+		return nil
+	case group.FieldModelReasoningEffortRules:
+		v, ok := value.([]domain.ModelReasoningEffortRule)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModelReasoningEffortRules(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -26203,6 +26270,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldReasoningEffortMappings:
 		m.ResetReasoningEffortMappings()
+		return nil
+	case group.FieldModelReasoningEffortRules:
+		m.ResetModelReasoningEffortRules()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

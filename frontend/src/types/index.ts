@@ -508,6 +508,12 @@ export interface ReasoningEffortMapping {
   to: string
 }
 
+export interface ModelReasoningEffortRule {
+  model: string
+  max_reasoning_effort: string
+  reasoning_effort_mappings: ReasoningEffortMapping[]
+}
+
 export interface Group {
   id: number
   name: string
@@ -517,6 +523,7 @@ export interface Group {
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   max_reasoning_effort?: string // OpenAI/Codex reasoning ceiling; empty means unlimited
   reasoning_effort_mappings?: ReasoningEffortMapping[]
+  model_reasoning_effort_rules?: ModelReasoningEffortRule[]
   is_exclusive: boolean
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
@@ -749,6 +756,7 @@ export interface CreateGroupRequest {
   rpm_limit?: number
   max_reasoning_effort?: string
   reasoning_effort_mappings?: ReasoningEffortMapping[]
+  model_reasoning_effort_rules?: ModelReasoningEffortRule[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   // 从指定分组复制账号
@@ -799,6 +807,7 @@ export interface UpdateGroupRequest {
   rpm_limit?: number
   max_reasoning_effort?: string
   reasoning_effort_mappings?: ReasoningEffortMapping[]
+  model_reasoning_effort_rules?: ModelReasoningEffortRule[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   copy_accounts_from_group_ids?: number[]

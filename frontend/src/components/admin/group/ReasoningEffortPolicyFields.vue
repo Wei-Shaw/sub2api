@@ -18,13 +18,13 @@
     </div>
 
     <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
-      <div class="mb-3 flex items-center justify-between gap-3">
+      <div class="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
         <label class="input-label mb-0">
           {{ t("admin.groups.form.reasoningEffortMappings") }}
         </label>
         <button
           type="button"
-          class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:text-primary-400 dark:hover:bg-primary-900/20 dark:hover:text-primary-300"
+          class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:text-primary-400 dark:hover:bg-primary-900/20 dark:hover:text-primary-300"
           @click="addMapping"
         >
           <Icon name="plus" size="sm" />
@@ -108,6 +108,203 @@
         </div>
       </div>
     </div>
+
+    <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div class="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <label class="input-label mb-0">
+            {{ t("admin.groups.form.modelReasoningEffortRules") }}
+          </label>
+          <p class="input-hint">
+            {{ t("admin.groups.form.modelReasoningEffortRulesHint") }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:text-primary-400 dark:hover:bg-primary-900/20 dark:hover:text-primary-300"
+          @click="addModelRule"
+        >
+          <Icon name="plus" size="sm" />
+          {{ t("admin.groups.form.addModelReasoningEffortRule") }}
+        </button>
+      </div>
+
+      <div v-if="modelRules.length > 0" class="space-y-3">
+        <div
+          v-for="rule in modelRules"
+          :key="rule.id"
+          class="rounded-lg border border-gray-200 p-3 dark:border-dark-600"
+        >
+          <div class="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] md:items-start">
+            <div>
+              <label :for="`${idPrefix}-${rule.id}-model`" class="input-label">
+                {{ t("admin.groups.form.reasoningEffortModel") }}
+              </label>
+              <input
+                :id="`${idPrefix}-${rule.id}-model`"
+                :value="rule.model"
+                type="text"
+                maxlength="200"
+                class="input"
+                :class="{
+                  'border-red-500 focus:border-red-500 focus:ring-red-500':
+                    showValidation && !!modelValidationErrors[rule.id]?.model,
+                }"
+                :placeholder="t('admin.groups.form.reasoningEffortModelPlaceholder')"
+                :aria-describedby="
+                  showValidation && modelValidationErrors[rule.id]?.model
+                    ? `${idPrefix}-${rule.id}-model-error`
+                    : undefined
+                "
+                @input="updateModelRule(rule.id, 'model', ($event.target as HTMLInputElement).value)"
+              />
+              <p
+                v-if="showValidation && modelValidationErrors[rule.id]?.model"
+                :id="`${idPrefix}-${rule.id}-model-error`"
+                class="mt-1 text-xs text-red-600 dark:text-red-400"
+                role="alert"
+              >
+                {{ modelRuleErrorText(modelValidationErrors[rule.id]?.model) }}
+              </p>
+            </div>
+
+            <div>
+              <label :for="`${idPrefix}-${rule.id}-max-effort`" class="input-label">
+                {{ t("admin.groups.form.maxReasoningEffort") }}
+              </label>
+              <Select
+                :id="`${idPrefix}-${rule.id}-max-effort`"
+                :model-value="rule.max_reasoning_effort"
+                :options="reasoningEffortOptions"
+                :placeholder="t('admin.groups.form.modelReasoningEffortUnlimited')"
+                :aria-label="t('admin.groups.form.maxReasoningEffort')"
+                :searchable="false"
+                clearable
+                @update:model-value="
+                  updateModelRule(rule.id, 'max_reasoning_effort', asString($event))
+                "
+              />
+            </div>
+
+            <button
+              type="button"
+              class="flex h-11 w-11 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 md:mt-6 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+              :title="t('admin.groups.form.removeModelReasoningEffortRule')"
+              :aria-label="t('admin.groups.form.removeModelReasoningEffortRule')"
+              @click="removeModelRule(rule.id)"
+            >
+              <Icon name="trash" size="sm" />
+            </button>
+          </div>
+
+          <div class="mt-3 border-t border-gray-200 pt-3 dark:border-dark-600">
+            <div class="mb-2 flex items-center justify-between gap-3">
+              <label class="input-label mb-0">
+                {{ t("admin.groups.form.reasoningEffortMappings") }}
+              </label>
+              <button
+                type="button"
+                class="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:text-primary-400 dark:hover:bg-primary-900/20 dark:hover:text-primary-300"
+                @click="addModelRuleMapping(rule.id)"
+              >
+                <Icon name="plus" size="sm" />
+                {{ t("admin.groups.form.addReasoningEffortMapping") }}
+              </button>
+            </div>
+
+            <div
+              v-for="mapping in rule.reasoning_effort_mappings"
+              :key="mapping.id"
+              class="grid gap-3 border-t border-gray-100 py-3 first:border-t-0 first:pt-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] md:items-start dark:border-dark-700"
+            >
+              <div>
+                <label :for="`${idPrefix}-${rule.id}-${mapping.id}-from`" class="input-label">
+                  {{ t("admin.groups.form.reasoningEffortFrom") }}
+                </label>
+                <Select
+                  :id="`${idPrefix}-${rule.id}-${mapping.id}-from`"
+                  :model-value="mapping.from"
+                  :options="reasoningEffortOptions"
+                  :placeholder="t('admin.groups.form.reasoningEffortFromPlaceholder')"
+                  :error="
+                    showValidation &&
+                    !!modelValidationErrors[rule.id]?.mappings[mapping.id]?.from
+                  "
+                  :searchable="false"
+                  clearable
+                  @update:model-value="
+                    updateModelRuleMapping(rule.id, mapping.id, 'from', $event)
+                  "
+                />
+                <p
+                  v-if="
+                    showValidation &&
+                    modelValidationErrors[rule.id]?.mappings[mapping.id]?.from
+                  "
+                  class="mt-1 text-xs text-red-600 dark:text-red-400"
+                  role="alert"
+                >
+                  {{
+                    mappingErrorText(
+                      modelValidationErrors[rule.id]?.mappings[mapping.id]?.from,
+                    )
+                  }}
+                </p>
+              </div>
+
+              <div class="hidden pt-8 text-gray-400 md:block dark:text-dark-400">
+                <Icon name="arrowRight" size="sm" />
+              </div>
+
+              <div>
+                <label :for="`${idPrefix}-${rule.id}-${mapping.id}-to`" class="input-label">
+                  {{ t("admin.groups.form.reasoningEffortTo") }}
+                </label>
+                <Select
+                  :id="`${idPrefix}-${rule.id}-${mapping.id}-to`"
+                  :model-value="mapping.to"
+                  :options="reasoningEffortOptions"
+                  :placeholder="t('admin.groups.form.reasoningEffortToPlaceholder')"
+                  :error="
+                    showValidation &&
+                    !!modelValidationErrors[rule.id]?.mappings[mapping.id]?.to
+                  "
+                  :searchable="false"
+                  clearable
+                  @update:model-value="
+                    updateModelRuleMapping(rule.id, mapping.id, 'to', $event)
+                  "
+                />
+                <p
+                  v-if="
+                    showValidation &&
+                    modelValidationErrors[rule.id]?.mappings[mapping.id]?.to
+                  "
+                  class="mt-1 text-xs text-red-600 dark:text-red-400"
+                  role="alert"
+                >
+                  {{
+                    mappingErrorText(
+                      modelValidationErrors[rule.id]?.mappings[mapping.id]?.to,
+                    )
+                  }}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                class="flex h-11 w-11 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 md:mt-6 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                :title="t('admin.groups.form.removeReasoningEffortMapping')"
+                :aria-label="t('admin.groups.form.removeReasoningEffortMapping')"
+                @click="removeModelRuleMapping(rule.id, mapping.id)"
+              >
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -119,8 +316,12 @@ import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
 import {
   createReasoningEffortMappingRow,
+  createModelReasoningEffortRuleRow,
   reasoningEffortOptionsForPlatform,
+  validateModelReasoningEffortRules,
   validateReasoningEffortMappings,
+  type ModelReasoningEffortRuleErrorCode,
+  type ModelReasoningEffortRuleRow,
   type ReasoningEffortMappingErrorCode,
   type ReasoningEffortMappingRow,
 } from "@/views/admin/groupsReasoningEffort";
@@ -130,11 +331,13 @@ const props = defineProps<{
   platform: GroupPlatform;
   maxEffort: string;
   mappings: ReasoningEffortMappingRow[];
+  modelRules: ModelReasoningEffortRuleRow[];
 }>();
 
 const emit = defineEmits<{
   (event: "update:maxEffort", value: string): void;
   (event: "update:mappings", value: ReasoningEffortMappingRow[]): void;
+  (event: "update:modelRules", value: ModelReasoningEffortRuleRow[]): void;
 }>();
 
 const { t } = useI18n();
@@ -144,6 +347,9 @@ const reasoningEffortOptions = computed(() =>
 );
 const validationErrors = computed(() =>
   validateReasoningEffortMappings(props.mappings, props.platform),
+);
+const modelValidationErrors = computed(() =>
+  validateModelReasoningEffortRules(props.modelRules, props.platform),
 );
 
 const asString = (value: string | number | boolean | null): string =>
@@ -180,13 +386,104 @@ const removeMapping = (id: string) => {
   );
 };
 
+const updateModelRule = (
+  id: string,
+  field: "model" | "max_reasoning_effort",
+  value: string,
+) => {
+  emit(
+    "update:modelRules",
+    props.modelRules.map((rule) =>
+      rule.id === id ? { ...rule, [field]: value } : rule,
+    ),
+  );
+};
+
+const addModelRule = () => {
+  emit("update:modelRules", [
+    ...props.modelRules,
+    createModelReasoningEffortRuleRow({}, props.platform),
+  ]);
+};
+
+const removeModelRule = (id: string) => {
+  emit(
+    "update:modelRules",
+    props.modelRules.filter((rule) => rule.id !== id),
+  );
+};
+
+const updateModelRuleMapping = (
+  ruleID: string,
+  mappingID: string,
+  field: "from" | "to",
+  value: string | number | boolean | null,
+) => {
+  emit(
+    "update:modelRules",
+    props.modelRules.map((rule) =>
+      rule.id === ruleID
+        ? {
+            ...rule,
+            reasoning_effort_mappings: rule.reasoning_effort_mappings.map(
+              (mapping) =>
+                mapping.id === mappingID
+                  ? { ...mapping, [field]: asString(value) }
+                  : mapping,
+            ),
+          }
+        : rule,
+    ),
+  );
+};
+
+const addModelRuleMapping = (ruleID: string) => {
+  emit(
+    "update:modelRules",
+    props.modelRules.map((rule) =>
+      rule.id === ruleID
+        ? {
+            ...rule,
+            reasoning_effort_mappings: [
+              ...rule.reasoning_effort_mappings,
+              createReasoningEffortMappingRow(),
+            ],
+          }
+        : rule,
+    ),
+  );
+};
+
+const removeModelRuleMapping = (ruleID: string, mappingID: string) => {
+  emit(
+    "update:modelRules",
+    props.modelRules.map((rule) =>
+      rule.id === ruleID
+        ? {
+            ...rule,
+            reasoning_effort_mappings: rule.reasoning_effort_mappings.filter(
+              (mapping) => mapping.id !== mappingID,
+            ),
+          }
+        : rule,
+    ),
+  );
+};
+
 const mappingErrorText = (
   code: ReasoningEffortMappingErrorCode | undefined,
 ): string => (code ? t(`admin.groups.form.${code}`) : "");
 
+const modelRuleErrorText = (
+  code: ModelReasoningEffortRuleErrorCode | undefined,
+): string => (code ? t(`admin.groups.form.${code}`) : "");
+
 const validate = (): boolean => {
   showValidation.value = true;
-  return Object.keys(validationErrors.value).length === 0;
+  return (
+    Object.keys(validationErrors.value).length === 0 &&
+    Object.keys(modelValidationErrors.value).length === 0
+  );
 };
 
 const resetValidation = () => {

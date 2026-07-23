@@ -939,6 +939,18 @@ func (_u *GroupUpdate) AppendReasoningEffortMappings(v []domain.ReasoningEffortM
 	return _u
 }
 
+// SetModelReasoningEffortRules sets the "model_reasoning_effort_rules" field.
+func (_u *GroupUpdate) SetModelReasoningEffortRules(v []domain.ModelReasoningEffortRule) *GroupUpdate {
+	_u.mutation.SetModelReasoningEffortRules(v)
+	return _u
+}
+
+// AppendModelReasoningEffortRules appends value to the "model_reasoning_effort_rules" field.
+func (_u *GroupUpdate) AppendModelReasoningEffortRules(v []domain.ModelReasoningEffortRule) *GroupUpdate {
+	_u.mutation.AppendModelReasoningEffortRules(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1525,6 +1537,14 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AppendedReasoningEffortMappings(); ok {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, group.FieldReasoningEffortMappings, value)
+		})
+	}
+	if value, ok := _u.mutation.ModelReasoningEffortRules(); ok {
+		_spec.SetField(group.FieldModelReasoningEffortRules, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedModelReasoningEffortRules(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldModelReasoningEffortRules, value)
 		})
 	}
 	if _u.mutation.APIKeysCleared() {
@@ -2744,6 +2764,18 @@ func (_u *GroupUpdateOne) AppendReasoningEffortMappings(v []domain.ReasoningEffo
 	return _u
 }
 
+// SetModelReasoningEffortRules sets the "model_reasoning_effort_rules" field.
+func (_u *GroupUpdateOne) SetModelReasoningEffortRules(v []domain.ModelReasoningEffortRule) *GroupUpdateOne {
+	_u.mutation.SetModelReasoningEffortRules(v)
+	return _u
+}
+
+// AppendModelReasoningEffortRules appends value to the "model_reasoning_effort_rules" field.
+func (_u *GroupUpdateOne) AppendModelReasoningEffortRules(v []domain.ModelReasoningEffortRule) *GroupUpdateOne {
+	_u.mutation.AppendModelReasoningEffortRules(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -3360,6 +3392,14 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	if value, ok := _u.mutation.AppendedReasoningEffortMappings(); ok {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, group.FieldReasoningEffortMappings, value)
+		})
+	}
+	if value, ok := _u.mutation.ModelReasoningEffortRules(); ok {
+		_spec.SetField(group.FieldModelReasoningEffortRules, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedModelReasoningEffortRules(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldModelReasoningEffortRules, value)
 		})
 	}
 	if _u.mutation.APIKeysCleared() {

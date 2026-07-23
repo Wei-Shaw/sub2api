@@ -627,12 +627,21 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		}
 		firstClientMessage = liteFirstMessage
 	}
-	if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
-		if capped, changed := ApplyOpenAIReasoningEffortPolicy(firstClientMessage, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
+	requestModel := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String())
+	if requestModel == "" && hooks != nil {
+		requestModel = strings.TrimSpace(hooks.InitialRequestModel)
+	}
+	if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0 || len(hooks.ModelReasoningEffortRules) > 0) {
+		if capped, changed := ApplyOpenAIReasoningEffortPolicyForModel(
+			firstClientMessage,
+			requestModel,
+			hooks.MaxReasoningEffort,
+			hooks.ReasoningEffortMappings,
+			hooks.ModelReasoningEffortRules,
+		); changed {
 			firstClientMessage = capped
 		}
 	}
-	requestModel := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String())
 	requestPreviousResponseID := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "previous_response_id").String())
 	logOpenAIWSV2Passthrough(
 		"relay_start account_id=%d model=%s previous_response_id=%s first_message_type=%s first_message_bytes=%d",
@@ -852,6 +861,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			}
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			isResponseCreate := eventType == "response.create"
+			requestModel := ""
 			acceptedTurn := false
 			if isResponseCreate {
 				if !turnLifecycle.beginResponseCreate(clientFrameConn.markTurnStarted) {
@@ -865,6 +875,10 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}()
 			}
 			if isResponseCreate {
+				requestModel = usageMeta.requestModelForFrame(payload)
+				if requestModel == "" {
+					requestModel = capturedSessionModel
+				}
 				if account.IsOpenAIOAuth() && isOpenAIResponsesLiteWebSocketPayload(payload) {
 					litePayload, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(payload)
 					if liteErr != nil {
@@ -872,8 +886,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					}
 					payload = litePayload
 				}
-				if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
-					if capped, changed := ApplyOpenAIReasoningEffortPolicy(payload, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
+				if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0 || len(hooks.ModelReasoningEffortRules) > 0) {
+					if capped, changed := ApplyOpenAIReasoningEffortPolicyForModel(
+						payload,
+						requestModel,
+						hooks.MaxReasoningEffort,
+						hooks.ReasoningEffortMappings,
+						hooks.ModelReasoningEffortRules,
+					); changed {
 						payload = capped
 					}
 				}
@@ -882,10 +902,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				turnNo := int(completedTurns.Load()) + 1
 				if turnNo < 2 {
 					turnNo = 2
-				}
-				requestModel := usageMeta.requestModelForFrame(payload)
-				if requestModel == "" {
-					requestModel = capturedSessionModel
 				}
 				if err := hooks.BeforeRequest(turnNo, payload, requestModel); err != nil {
 					return payload, nil, err
