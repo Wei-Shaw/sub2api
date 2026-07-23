@@ -152,34 +152,52 @@ type modelDef struct {
 }
 
 // Antigravity 支持的 Claude 模型
+// 须覆盖 domain.DefaultAntigravityModelMapping 中的客户端可见 ID（#3701）。
 var claudeModels = []modelDef{
 	{ID: "claude-fable-5", DisplayName: "Claude Fable 5", CreatedAt: "2026-06-09T00:00:00Z"},
 	{ID: "claude-opus-4-5-thinking", DisplayName: "Claude Opus 4.5 Thinking", CreatedAt: "2025-11-01T00:00:00Z"},
+	{ID: "claude-opus-4-5-20251101", DisplayName: "Claude Opus 4.5 (20251101)", CreatedAt: "2025-11-01T00:00:00Z"},
 	{ID: "claude-sonnet-4-5", DisplayName: "Claude Sonnet 4.5", CreatedAt: "2025-09-29T00:00:00Z"},
 	{ID: "claude-sonnet-4-5-thinking", DisplayName: "Claude Sonnet 4.5 Thinking", CreatedAt: "2025-09-29T00:00:00Z"},
+	{ID: "claude-sonnet-4-5-20250929", DisplayName: "Claude Sonnet 4.5 (20250929)", CreatedAt: "2025-09-29T00:00:00Z"},
 	{ID: "claude-opus-4-6", DisplayName: "Claude Opus 4.6", CreatedAt: "2026-02-05T00:00:00Z"},
 	{ID: "claude-opus-4-6-thinking", DisplayName: "Claude Opus 4.6 Thinking", CreatedAt: "2026-02-05T00:00:00Z"},
 	{ID: "claude-opus-4-7", DisplayName: "Claude Opus 4.7", CreatedAt: "2026-04-17T00:00:00Z"},
 	{ID: "claude-opus-4-8", DisplayName: "Claude Opus 4.8", CreatedAt: "2026-05-29T00:00:00Z"},
 	{ID: "claude-sonnet-4-6", DisplayName: "Claude Sonnet 4.6", CreatedAt: "2026-02-17T00:00:00Z"},
+	{ID: "claude-haiku-4-5", DisplayName: "Claude Haiku 4.5", CreatedAt: "2025-10-01T00:00:00Z"},
+	{ID: "claude-haiku-4-5-20251001", DisplayName: "Claude Haiku 4.5 (20251001)", CreatedAt: "2025-10-01T00:00:00Z"},
 }
 
 // Antigravity 支持的 Gemini 模型
+// 须覆盖 domain.DefaultAntigravityModelMapping 中的客户端可见 ID（#3701）。
 var geminiModels = []modelDef{
 	{ID: "gemini-2.5-flash", DisplayName: "Gemini 2.5 Flash", CreatedAt: "2025-01-01T00:00:00Z"},
 	{ID: "gemini-2.5-flash-image", DisplayName: "Gemini 2.5 Flash Image", CreatedAt: "2025-01-01T00:00:00Z"},
 	{ID: "gemini-2.5-flash-image-preview", DisplayName: "Gemini 2.5 Flash Image Preview", CreatedAt: "2025-01-01T00:00:00Z"},
 	{ID: "gemini-2.5-flash-lite", DisplayName: "Gemini 2.5 Flash Lite", CreatedAt: "2025-01-01T00:00:00Z"},
 	{ID: "gemini-2.5-flash-thinking", DisplayName: "Gemini 2.5 Flash Thinking", CreatedAt: "2025-01-01T00:00:00Z", IsReasoning: true},
+	{ID: "gemini-2.5-pro", DisplayName: "Gemini 2.5 Pro", CreatedAt: "2025-01-01T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3-flash", DisplayName: "Gemini 3 Flash", CreatedAt: "2025-06-01T00:00:00Z"},
+	{ID: "gemini-3-flash-preview", DisplayName: "Gemini 3 Flash Preview", CreatedAt: "2025-06-01T00:00:00Z"},
 	{ID: "gemini-3-pro-low", DisplayName: "Gemini 3 Pro Low", CreatedAt: "2025-06-01T00:00:00Z"},
 	{ID: "gemini-3-pro-high", DisplayName: "Gemini 3 Pro High", CreatedAt: "2025-06-01T00:00:00Z", IsReasoning: true},
+	{ID: "gemini-3-pro-preview", DisplayName: "Gemini 3 Pro Preview", CreatedAt: "2025-06-01T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.1-pro-low", DisplayName: "Gemini 3.1 Pro Low", CreatedAt: "2026-02-19T00:00:00Z"},
 	{ID: "gemini-3.1-pro-high", DisplayName: "Gemini 3.1 Pro High", CreatedAt: "2026-02-19T00:00:00Z", IsReasoning: true},
+	{ID: "gemini-3.1-pro", DisplayName: "Gemini 3.1 Pro", CreatedAt: "2026-02-19T00:00:00Z", IsReasoning: true},
+	{ID: "gemini-3.1-pro-preview", DisplayName: "Gemini 3.1 Pro Preview", CreatedAt: "2026-02-19T00:00:00Z", IsReasoning: true},
+	{ID: "gemini-pro-agent", DisplayName: "Gemini Pro Agent", CreatedAt: "2026-02-19T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.1-flash-image", DisplayName: "Gemini 3.1 Flash Image", CreatedAt: "2026-02-19T00:00:00Z"},
 	{ID: "gemini-3.1-flash-image-preview", DisplayName: "Gemini 3.1 Flash Image Preview", CreatedAt: "2026-02-19T00:00:00Z"},
-	{ID: "gemini-3-pro-preview", DisplayName: "Gemini 3 Pro Preview", CreatedAt: "2025-06-01T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3-pro-image", DisplayName: "Gemini 3 Pro Image", CreatedAt: "2025-06-01T00:00:00Z"},
+	{ID: "gemini-3-pro-image-preview", DisplayName: "Gemini 3 Pro Image Preview", CreatedAt: "2025-06-01T00:00:00Z"},
+}
+
+// Antigravity 其它官方模型（非 Claude/Gemini 主线）
+var otherModels = []modelDef{
+	{ID: "gpt-oss-120b-medium", DisplayName: "GPT OSS 120B Medium", CreatedAt: "2025-06-01T00:00:00Z"},
+	{ID: "tab_flash_lite_preview", DisplayName: "Tab Flash Lite Preview", CreatedAt: "2025-06-01T00:00:00Z"},
 }
 
 // ========== Claude API 格式 (/v1/models) ==========
@@ -192,9 +210,12 @@ type ClaudeModel struct {
 	CreatedAt   string `json:"created_at"`
 }
 
-// DefaultModels 返回 Claude API 格式的模型列表（Claude + Gemini）
+// DefaultModels 返回 Claude API 格式的模型列表（Claude + Gemini + 其它）
 func DefaultModels() []ClaudeModel {
-	all := append(claudeModels, geminiModels...)
+	all := make([]modelDef, 0, len(claudeModels)+len(geminiModels)+len(otherModels))
+	all = append(all, claudeModels...)
+	all = append(all, geminiModels...)
+	all = append(all, otherModels...)
 	result := make([]ClaudeModel, len(all))
 	for i, m := range all {
 		result[i] = ClaudeModel{ID: m.ID, Type: "model", DisplayName: m.DisplayName, CreatedAt: m.CreatedAt}
