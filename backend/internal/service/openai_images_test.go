@@ -3,8 +3,12 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -1528,6 +1532,8 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingDrainsAfterClientDisco
 
 func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	sourcePNG := encodeOpenAIImagesWireTestPNG(t, false)
+	maskPNG := encodeOpenAIImagesWireTestPNG(t, true)
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -1542,7 +1548,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t
 	imageHeader.Set("Content-Type", "image/png")
 	imagePart, err := writer.CreatePart(imageHeader)
 	require.NoError(t, err)
-	_, err = imagePart.Write([]byte("png-image-content"))
+	_, err = imagePart.Write(sourcePNG)
 	require.NoError(t, err)
 
 	maskHeader := make(textproto.MIMEHeader)
@@ -1550,7 +1556,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t
 	maskHeader.Set("Content-Type", "image/png")
 	maskPart, err := writer.CreatePart(maskHeader)
 	require.NoError(t, err)
-	_, err = maskPart.Write([]byte("png-mask-content"))
+	_, err = maskPart.Write(maskPNG)
 	require.NoError(t, err)
 
 	require.NoError(t, writer.Close())
@@ -1599,11 +1605,35 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t
 	require.Equal(t, "edit", gjson.GetBytes(upstream.lastBody, "tools.0.action").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "tools.0.input_fidelity").Exists())
 	require.Equal(t, "webp", gjson.GetBytes(upstream.lastBody, "tools.0.output_format").String())
-	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String(), "data:image/png;base64,"))
-	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "tools.0.input_image_mask.image_url").String(), "data:image/png;base64,"))
+	require.Equal(t,
+		"data:image/png;base64,"+base64.StdEncoding.EncodeToString(sourcePNG),
+		gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String(),
+	)
+	require.Equal(t,
+		"data:image/png;base64,"+base64.StdEncoding.EncodeToString(maskPNG),
+		gjson.GetBytes(upstream.lastBody, "tools.0.input_image_mask.image_url").String(),
+	)
 	require.Equal(t, "replace background with aurora", gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
 	require.Equal(t, "ZWRpdGVk", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 	require.Equal(t, "replace background with aurora", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
+}
+
+func encodeOpenAIImagesWireTestPNG(t *testing.T, withAlpha bool) []byte {
+	t.Helper()
+
+	var img image.Image
+	if withAlpha {
+		value := image.NewNRGBA(image.Rect(0, 0, 2, 1))
+		value.SetNRGBA(0, 0, color.NRGBA{R: 255, G: 255, B: 255, A: 0})
+		value.SetNRGBA(1, 0, color.NRGBA{R: 255, G: 255, B: 255, A: 255})
+		img = value
+	} else {
+		img = image.NewGray(image.Rect(0, 0, 2, 1))
+	}
+
+	var encoded bytes.Buffer
+	require.NoError(t, png.Encode(&encoded, img))
+	return encoded.Bytes()
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthEditsStreamingTransformsEvents(t *testing.T) {
