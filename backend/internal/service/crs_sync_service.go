@@ -1160,21 +1160,39 @@ func reconcileCRSUpstreamBillingProbeExtra(
 	targetCredentials map[string]any,
 	extra map[string]any,
 ) {
-	delete(extra, UpstreamBillingProbeEnabledExtraKey)
-	delete(extra, UpstreamBillingProbeExtraKey)
+	for _, key := range []string{
+		UpstreamBillingProbeEnabledExtraKey,
+		UpstreamBillingProbeExtraKey,
+		OllamaCloudUsageSessionExtraKey,
+		OllamaCloudUsageAutoRefreshExtraKey,
+		OllamaCloudUsageSnapshotExtraKey,
+REDACTED {
+		delete(extra, key)
+REDACTED
 	if existing == nil {
 		return
 REDACTED
-	if targetPlatform != PlatformOpenAI || targetType != AccountTypeAPIKey {
-		return
-REDACTED
-	if enabled, ok := existing.Extra[UpstreamBillingProbeEnabledExtraKey]; ok {
-		extra[UpstreamBillingProbeEnabledExtraKey] = enabled
-REDACTED
 	target := &Account{Platform: targetPlatform, Type: targetType, Credentials: targetCredentialsREDACTED
-	if reflect.DeepEqual(upstreamBillingProbeIdentity(existing), upstreamBillingProbeIdentity(target)) {
-		if snapshot, ok := existing.Extra[UpstreamBillingProbeExtraKey]; ok {
-			extra[UpstreamBillingProbeExtraKey] = snapshot
+	if targetPlatform == PlatformOpenAI && targetType == AccountTypeAPIKey {
+		if enabled, ok := existing.Extra[UpstreamBillingProbeEnabledExtraKey]; ok {
+			extra[UpstreamBillingProbeEnabledExtraKey] = enabled
+	REDACTED
+		if reflect.DeepEqual(upstreamBillingProbeIdentity(existing), upstreamBillingProbeIdentity(target)) {
+			if snapshot, ok := existing.Extra[UpstreamBillingProbeExtraKey]; ok {
+				extra[UpstreamBillingProbeExtraKey] = snapshot
+		REDACTED
+	REDACTED
+REDACTED
+	if IsOllamaCloudUsageAccount(existing) && IsOllamaCloudUsageAccount(target) &&
+		reflect.DeepEqual(ollamaCloudUsageIdentity(existing), ollamaCloudUsageIdentity(target)) {
+		if session, ok := existing.Extra[OllamaCloudUsageSessionExtraKey]; ok {
+			extra[OllamaCloudUsageSessionExtraKey] = session
+	REDACTED
+		if enabled, ok := existing.Extra[OllamaCloudUsageAutoRefreshExtraKey]; ok {
+			extra[OllamaCloudUsageAutoRefreshExtraKey] = enabled
+	REDACTED
+		if snapshot, ok := existing.Extra[OllamaCloudUsageSnapshotExtraKey]; ok {
+			extra[OllamaCloudUsageSnapshotExtraKey] = snapshot
 	REDACTED
 REDACTED
 REDACTED
