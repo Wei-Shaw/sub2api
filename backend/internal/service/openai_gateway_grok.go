@@ -390,7 +390,11 @@ func patchGrokResponsesBodyWithClientTools(body []byte, upstreamModel string) ([
 	if !json.Valid(body) {
 		return nil, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("invalid json request body")
 	}
-	promoted, err := sanitizeGrokResponsesInput(body)
+	normalized, err := normalizeGrokResponsesPromptFields(body)
+	if err != nil {
+		return nil, apicompat.ResponsesClientToolMapping{}, err
+	}
+	promoted, err := sanitizeGrokResponsesInput(normalized)
 	if err != nil {
 		return nil, apicompat.ResponsesClientToolMapping{}, err
 	}
@@ -403,6 +407,102 @@ func patchGrokResponsesBodyWithClientTools(body []byte, upstreamModel string) ([
 		return nil, apicompat.ResponsesClientToolMapping{}, err
 	}
 	return patched, mapping, nil
+}
+
+// normalizeGrokResponsesPromptFields adapts OpenAI/Codex-only request fields
+// to the shape emitted by grok-build. grok-build puts its rendered system
+// prompt in input[0] and does not send the top-level instructions field.
+// xAI also rejects the Codex-only reasoning.context and client_metadata
+// fields, so remove them before the request reaches the Responses endpoint.
+func normalizeGrokResponsesPromptFields(body []byte) ([]byte, error) {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("decode Grok Responses request body: %w", err)
+	}
+
+	changed := false
+	if rawInstructions, ok := payload["instructions"]; ok {
+		var instructions string
+		if err := json.Unmarshal(rawInstructions, &instructions); err == nil && strings.TrimSpace(instructions) != "" {
+			inputItems, err := grokResponsesInputItemsWithSystemPrompt(payload["input"], instructions)
+			if err != nil {
+				return nil, err
+			}
+			encoded, err := json.Marshal(inputItems)
+			if err != nil {
+				return nil, fmt.Errorf("encode Grok Responses system input: %w", err)
+			}
+			payload["input"] = encoded
+		}
+		// Grok-build leaves this field unset. Drop it even when it is empty or
+		// has an invalid type so xAI never sees an unsupported top-level field.
+		delete(payload, "instructions")
+		changed = true
+	}
+
+	if rawReasoning, ok := payload["reasoning"]; ok {
+		var reasoning map[string]json.RawMessage
+		if err := json.Unmarshal(rawReasoning, &reasoning); err == nil {
+			if _, exists := reasoning["context"]; exists {
+				delete(reasoning, "context")
+				encoded, marshalErr := json.Marshal(reasoning)
+				if marshalErr != nil {
+					return nil, fmt.Errorf("encode Grok Responses reasoning: %w", marshalErr)
+				}
+				payload["reasoning"] = encoded
+				changed = true
+			}
+		}
+	}
+
+	if _, ok := payload["client_metadata"]; ok {
+		delete(payload, "client_metadata")
+		changed = true
+	}
+
+	if !changed {
+		return body, nil
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("encode normalized Grok Responses request: %w", err)
+	}
+	return encoded, nil
+}
+
+func grokResponsesInputItemsWithSystemPrompt(rawInput json.RawMessage, instructions string) ([]json.RawMessage, error) {
+	systemItem, err := json.Marshal(map[string]any{
+		"type":    "message",
+		"role":    "system",
+		"content": instructions,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode Grok Responses system message: %w", err)
+	}
+
+	items := []json.RawMessage{systemItem}
+	if len(rawInput) == 0 || string(rawInput) == "null" {
+		return items, nil
+	}
+
+	var inputString string
+	if err := json.Unmarshal(rawInput, &inputString); err == nil {
+		userItem, marshalErr := json.Marshal(map[string]any{
+			"type":    "message",
+			"role":    "user",
+			"content": inputString,
+		})
+		if marshalErr != nil {
+			return nil, fmt.Errorf("encode Grok Responses user message: %w", marshalErr)
+		}
+		return append(items, userItem), nil
+	}
+
+	var inputItems []json.RawMessage
+	if err := json.Unmarshal(rawInput, &inputItems); err != nil {
+		return nil, fmt.Errorf("decode Grok Responses input: %w", err)
+	}
+	return append(items, inputItems...), nil
 }
 
 func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, error) {

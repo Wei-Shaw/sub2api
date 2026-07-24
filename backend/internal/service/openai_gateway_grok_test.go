@@ -45,6 +45,69 @@ func TestPatchGrokResponsesBodySetsMappedModelAndDropsUnsupportedFields(t *testi
 	require.Equal(t, "reasoning.encrypted_content", gjson.GetBytes(patched, "include.0").String())
 }
 
+func TestPatchGrokResponsesBodyWithClientToolsMatchesGrokBuildPromptShape(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok",
+		"instructions": "Follow the workspace rules.",
+		"client_metadata": {"x-codex-window-id": "window-1"},
+		"input": "Inspect the repository.",
+		"reasoning": {"effort": "medium", "summary": "concise", "context": {"turn": 1}}
+	}`)
+
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
+	require.NoError(t, err)
+
+	require.False(t, gjson.GetBytes(patched, "instructions").Exists())
+	require.False(t, gjson.GetBytes(patched, "client_metadata").Exists())
+	require.False(t, gjson.GetBytes(patched, "reasoning.context").Exists())
+	require.Equal(t, "system", gjson.GetBytes(patched, "input.0.role").String())
+	require.Equal(t, "Follow the workspace rules.", gjson.GetBytes(patched, "input.0.content").String())
+	require.Equal(t, "user", gjson.GetBytes(patched, "input.1.role").String())
+	require.Equal(t, "Inspect the repository.", gjson.GetBytes(patched, "input.1.content").String())
+	require.Equal(t, "medium", gjson.GetBytes(patched, "reasoning.effort").String())
+	require.Equal(t, "concise", gjson.GetBytes(patched, "reasoning.summary").String())
+}
+
+func TestPatchGrokResponsesBodyWithClientToolsPrependsInstructionsToExistingInput(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"instructions": "System rules",
+		"input": [
+			{"type":"message","role":"user","content":"hello"},
+			{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}"}
+		]
+	}`)
+
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
+	require.NoError(t, err)
+	require.Equal(t, 3, len(gjson.GetBytes(patched, "input").Array()))
+	require.Equal(t, "system", gjson.GetBytes(patched, "input.0.role").String())
+	require.Equal(t, "System rules", gjson.GetBytes(patched, "input.0.content").String())
+	require.Equal(t, "user", gjson.GetBytes(patched, "input.1.role").String())
+	require.Equal(t, "function_call", gjson.GetBytes(patched, "input.2.type").String())
+}
+
+func TestPatchGrokResponsesBodyWithClientToolsDropsEmptyOrInvalidPromptMetadata(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"instructions": null,
+		"client_metadata": {"installation": "test"},
+		"input": [{"type":"message","role":"user","content":"hello"}],
+		"reasoning": {"context": "private"}
+	}`)
+
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(patched, "instructions").Exists())
+	require.False(t, gjson.GetBytes(patched, "client_metadata").Exists())
+	require.False(t, gjson.GetBytes(patched, "reasoning.context").Exists())
+	require.Equal(t, "user", gjson.GetBytes(patched, "input.0.role").String())
+}
+
 func TestPatchGrokResponsesBodySanitizesComposerReasoningParameters(t *testing.T) {
 	t.Parallel()
 
