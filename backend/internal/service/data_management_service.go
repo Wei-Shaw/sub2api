@@ -10,16 +10,10 @@ import (
 
 const (
 	DefaultDataManagementAgentSocketPath = "/tmp/sub2api-datamanagement.sock"
-	LegacyBackupAgentSocketPath          = "/tmp/sub2api-backup.sock"
 
 	DataManagementDeprecatedReason         = "DATA_MANAGEMENT_DEPRECATED"
 	DataManagementAgentSocketMissingReason = "DATA_MANAGEMENT_AGENT_SOCKET_MISSING"
 	DataManagementAgentUnavailableReason   = "DATA_MANAGEMENT_AGENT_UNAVAILABLE"
-
-	// Deprecated: keep old names for compatibility.
-	DefaultBackupAgentSocketPath   = DefaultDataManagementAgentSocketPath
-	BackupAgentSocketMissingReason = DataManagementAgentSocketMissingReason
-	BackupAgentUnavailableReason   = DataManagementAgentUnavailableReason
 )
 
 var (
@@ -35,10 +29,6 @@ var (
 		DataManagementAgentUnavailableReason,
 		"data management agent is unavailable",
 	)
-
-	// Deprecated: keep old names for compatibility.
-	ErrBackupAgentSocketMissing = ErrDataManagementAgentSocketMissing
-	ErrBackupAgentUnavailable   = ErrDataManagementAgentUnavailable
 )
 
 type DataManagementAgentHealth struct {

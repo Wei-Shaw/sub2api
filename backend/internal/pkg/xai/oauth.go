@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logredact"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/urlvalidator"
 )
 
 const (

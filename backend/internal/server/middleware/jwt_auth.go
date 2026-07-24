@@ -107,5 +107,3 @@ func jwtAuth(
 		c.Next()
 	}
 }
-
-// Deprecated: prefer GetAuthSubjectFromContext in auth_subject.go.

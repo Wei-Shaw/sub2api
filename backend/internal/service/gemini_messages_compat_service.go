@@ -23,8 +23,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/responseheaders"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/urlvalidator"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"

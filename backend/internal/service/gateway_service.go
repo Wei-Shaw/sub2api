@@ -20,7 +20,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/responseheaders"
 	"github.com/cespare/xxhash/v2"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/tidwall/gjson"
@@ -146,23 +146,6 @@ func GatewayUserPlatformQuotaIncrStats() (mainPathErr, legacyPathErr, sentinelSe
 	return userPlatformQuotaDBIncrErrorTotal.Load(),
 		userPlatformQuotaDBIncrLegacyErrorTotal.Load(),
 		userPlatformQuotaSentinelSetCacheErrorTotal.Load()
-}
-
-// GatewayUserPlatformQuotaFlusherStats 暴露 flusher 运行指标供 ops/health 面板查询。
-func GatewayUserPlatformQuotaFlusherStats(f *UserPlatformQuotaUsageFlusher) map[string]int64 {
-	if f == nil || f.metrics == nil {
-		return nil
-	}
-	m := f.metrics
-	return map[string]int64{
-		"flush_success":        m.FlushSuccessTotal.Load(),
-		"flush_error":          m.FlushErrorTotal.Load(),
-		"flush_batch_size":     m.FlushBatchSizeTotal.Load(),
-		"flush_latency_ms_max": m.FlushLatencyMsMax.Load(),
-		"dirty_readd":          m.DirtyReaddTotal.Load(),
-		"dirty_lost":           m.DirtyLostTotal.Load(),
-		"flush_fk_violation":   m.FlushFKViolationTotal.Load(),
-	}
 }
 
 func openAIStreamEventIsTerminal(data string) bool {
