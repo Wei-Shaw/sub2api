@@ -614,6 +614,8 @@
           ref="createReasoningEffortPolicyRef"
           id-prefix="create-group-reasoning"
           :platform="createForm.platform"
+          :model-options="createReasoningEffortModelOptions"
+          :model-options-loading="createModelsListLoading"
           v-model:max-effort="createForm.max_reasoning_effort"
           v-model:mappings="createForm.reasoning_effort_mappings"
           v-model:model-rules="createForm.model_reasoning_effort_rules"
@@ -2135,6 +2137,8 @@
           ref="editReasoningEffortPolicyRef"
           id-prefix="edit-group-reasoning"
           :platform="editForm.platform"
+          :model-options="editReasoningEffortModelOptions"
+          :model-options-loading="editModelsListLoading"
           v-model:max-effort="editForm.max_reasoning_effort"
           v-model:mappings="editForm.reasoning_effort_mappings"
           v-model:model-rules="editForm.model_reasoning_effort_rules"
@@ -4499,6 +4503,12 @@ const createModelsListSelectedCount = computed(
 );
 const editModelsListSelectedCount = computed(
   () => editModelsListState.items.filter((item) => item.selected).length,
+);
+const createReasoningEffortModelOptions = computed(() =>
+  createModelsListState.items.map((item) => item.id),
+);
+const editReasoningEffortModelOptions = computed(() =>
+  editModelsListState.items.map((item) => item.id),
 );
 
 const createForm = reactive({

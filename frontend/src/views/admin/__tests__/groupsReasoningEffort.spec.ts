@@ -14,11 +14,10 @@ import {
 } from "../groupsReasoningEffort";
 
 describe("groupsReasoningEffort", () => {
-  it("provides fixed OpenAI choices without none", () => {
+  it("provides fixed OpenAI choices without none or minimal", () => {
     expect(
       reasoningEffortOptionsForPlatform("openai").map((option) => option.value),
     ).toEqual([
-      "minimal",
       "low",
       "medium",
       "high",

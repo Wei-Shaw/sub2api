@@ -5,7 +5,6 @@ import type {
 } from "@/types";
 
 const openAIReasoningEffortValues = [
-  "minimal",
   "low",
   "medium",
   "high",
