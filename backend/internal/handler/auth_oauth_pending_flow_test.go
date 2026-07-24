@@ -21,6 +21,7 @@ import (
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	portpromo "github.com/Wei-Shaw/sub2api/internal/port/promo"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/pquerna/otp/totp"
@@ -2368,7 +2369,7 @@ type oauthPendingFlowTestHandlerOptions struct {
 	emailVerifyEnabled bool
 	emailCache         service.EmailCache
 	settingValues      map[string]string
-	promoRepo          service.PromoCodeRepository
+	promoRepo          portpromo.PromoCodeRepository
 	defaultSubAssigner service.DefaultSubscriptionAssigner
 	affiliateService   *service.AffiliateService
 	affiliateFactory   func(*dbent.Client, *service.SettingService) *service.AffiliateService

@@ -833,6 +833,22 @@ func PromoCodeUsageFromService(u *service.PromoCodeUsage) *PromoCodeUsage {
 		UserID:      u.UserID,
 		BonusAmount: u.BonusAmount,
 		UsedAt:      u.UsedAt,
-		User:        UserFromServiceShallow(u.User),
+		User:        UserFromPromoUsageUser(u.User),
+	}
+}
+
+// UserFromPromoUsageUser maps the promo BC's shallow user projection into the
+// HTTP DTO User. Full service.User mapping remains UserFromServiceShallow.
+func UserFromPromoUsageUser(u *service.PromoUsageUser) *User {
+	if u == nil {
+		return nil
+	}
+	return &User{
+		ID:       u.ID,
+		Email:    u.Email,
+		Username: u.Username,
+		Role:     u.Role,
+		Balance:  u.Balance,
+		Status:   u.Status,
 	}
 }

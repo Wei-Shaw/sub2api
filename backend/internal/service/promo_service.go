@@ -9,22 +9,23 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	portpromo "github.com/Wei-Shaw/sub2api/internal/port/promo"
 )
 
 var (
-	ErrPromoCodeNotFound    = infraerrors.NotFound("PROMO_CODE_NOT_FOUND", "promo code not found")
-	ErrPromoCodeExpired     = infraerrors.BadRequest("PROMO_CODE_EXPIRED", "promo code has expired")
-	ErrPromoCodeDisabled    = infraerrors.BadRequest("PROMO_CODE_DISABLED", "promo code is disabled")
-	ErrPromoCodeMaxUsed     = infraerrors.BadRequest("PROMO_CODE_MAX_USED", "promo code has reached maximum uses")
-	ErrPromoCodeAlreadyUsed = infraerrors.Conflict("PROMO_CODE_ALREADY_USED", "you have already used this promo code")
-	ErrPromoCodeInvalid     = infraerrors.BadRequest("PROMO_CODE_INVALID", "invalid promo code")
+	ErrPromoCodeNotFound    = domain.ErrPromoCodeNotFound
+	ErrPromoCodeExpired     = domain.ErrPromoCodeExpired
+	ErrPromoCodeDisabled    = domain.ErrPromoCodeDisabled
+	ErrPromoCodeMaxUsed     = domain.ErrPromoCodeMaxUsed
+	ErrPromoCodeAlreadyUsed = domain.ErrPromoCodeAlreadyUsed
+	ErrPromoCodeInvalid     = domain.ErrPromoCodeInvalid
 )
 
 // PromoService 优惠码服务
 type PromoService struct {
-	promoRepo            PromoCodeRepository
+	promoRepo            portpromo.PromoCodeRepository
 	userRepo             UserRepository
 	billingCacheService  *BillingCacheService
 	entClient            *dbent.Client
@@ -33,7 +34,7 @@ type PromoService struct {
 
 // NewPromoService 创建优惠码服务实例
 func NewPromoService(
-	promoRepo PromoCodeRepository,
+	promoRepo portpromo.PromoCodeRepository,
 	userRepo UserRepository,
 	billingCacheService *BillingCacheService,
 	entClient *dbent.Client,

@@ -7,8 +7,9 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	portpromo "github.com/Wei-Shaw/sub2api/internal/port/promo"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -17,11 +18,11 @@ type promoCodeRepository struct {
 	client *dbent.Client
 }
 
-func NewPromoCodeRepository(client *dbent.Client) service.PromoCodeRepository {
+func NewPromoCodeRepository(client *dbent.Client) portpromo.PromoCodeRepository {
 	return &promoCodeRepository{client: client}
 }
 
-func (r *promoCodeRepository) Create(ctx context.Context, code *service.PromoCode) error {
+func (r *promoCodeRepository) Create(ctx context.Context, code *domain.PromoCode) error {
 	client := clientFromContext(ctx, r.client)
 	builder := client.PromoCode.Create().
 		SetCode(code.Code).
@@ -46,33 +47,33 @@ func (r *promoCodeRepository) Create(ctx context.Context, code *service.PromoCod
 	return nil
 }
 
-func (r *promoCodeRepository) GetByID(ctx context.Context, id int64) (*service.PromoCode, error) {
+func (r *promoCodeRepository) GetByID(ctx context.Context, id int64) (*domain.PromoCode, error) {
 	m, err := r.client.PromoCode.Query().
 		Where(promocode.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return nil, service.ErrPromoCodeNotFound
+			return nil, domain.ErrPromoCodeNotFound
 		}
 		return nil, err
 	}
-	return promoCodeEntityToService(m), nil
+	return promoCodeEntityToDomain(m), nil
 }
 
-func (r *promoCodeRepository) GetByCode(ctx context.Context, code string) (*service.PromoCode, error) {
+func (r *promoCodeRepository) GetByCode(ctx context.Context, code string) (*domain.PromoCode, error) {
 	m, err := r.client.PromoCode.Query().
 		Where(promocode.CodeEqualFold(code)).
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return nil, service.ErrPromoCodeNotFound
+			return nil, domain.ErrPromoCodeNotFound
 		}
 		return nil, err
 	}
-	return promoCodeEntityToService(m), nil
+	return promoCodeEntityToDomain(m), nil
 }
 
-func (r *promoCodeRepository) GetByCodeForUpdate(ctx context.Context, code string) (*service.PromoCode, error) {
+func (r *promoCodeRepository) GetByCodeForUpdate(ctx context.Context, code string) (*domain.PromoCode, error) {
 	client := clientFromContext(ctx, r.client)
 	m, err := client.PromoCode.Query().
 		Where(promocode.CodeEqualFold(code)).
@@ -80,14 +81,14 @@ func (r *promoCodeRepository) GetByCodeForUpdate(ctx context.Context, code strin
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return nil, service.ErrPromoCodeNotFound
+			return nil, domain.ErrPromoCodeNotFound
 		}
 		return nil, err
 	}
-	return promoCodeEntityToService(m), nil
+	return promoCodeEntityToDomain(m), nil
 }
 
-func (r *promoCodeRepository) Update(ctx context.Context, code *service.PromoCode) error {
+func (r *promoCodeRepository) Update(ctx context.Context, code *domain.PromoCode) error {
 	client := clientFromContext(ctx, r.client)
 	builder := client.PromoCode.UpdateOneID(code.ID).
 		SetCode(code.Code).
@@ -106,7 +107,7 @@ func (r *promoCodeRepository) Update(ctx context.Context, code *service.PromoCod
 	updated, err := builder.Save(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return service.ErrPromoCodeNotFound
+			return domain.ErrPromoCodeNotFound
 		}
 		return err
 	}
@@ -121,11 +122,11 @@ func (r *promoCodeRepository) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
-func (r *promoCodeRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.PromoCode, *pagination.PaginationResult, error) {
+func (r *promoCodeRepository) List(ctx context.Context, params pagination.PaginationParams) ([]domain.PromoCode, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, "", "")
 }
 
-func (r *promoCodeRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, search string) ([]service.PromoCode, *pagination.PaginationResult, error) {
+func (r *promoCodeRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, search string) ([]domain.PromoCode, *pagination.PaginationResult, error) {
 	q := r.client.PromoCode.Query()
 
 	if status != "" {
@@ -152,7 +153,7 @@ func (r *promoCodeRepository) ListWithFilters(ctx context.Context, params pagina
 		return nil, nil, err
 	}
 
-	outCodes := promoCodeEntitiesToService(codes)
+	outCodes := promoCodeEntitiesToDomain(codes)
 
 	return outCodes, paginationResultFromTotal(int64(total), params), nil
 }
@@ -183,7 +184,7 @@ func promoCodeListOrder(params pagination.PaginationParams) []func(*entsql.Selec
 	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(promocode.FieldID)}
 }
 
-func (r *promoCodeRepository) CreateUsage(ctx context.Context, usage *service.PromoCodeUsage) error {
+func (r *promoCodeRepository) CreateUsage(ctx context.Context, usage *domain.PromoCodeUsage) error {
 	client := clientFromContext(ctx, r.client)
 	created, err := client.PromoCodeUsage.Create().
 		SetPromoCodeID(usage.PromoCodeID).
@@ -199,7 +200,7 @@ func (r *promoCodeRepository) CreateUsage(ctx context.Context, usage *service.Pr
 	return nil
 }
 
-func (r *promoCodeRepository) GetUsageByPromoCodeAndUser(ctx context.Context, promoCodeID, userID int64) (*service.PromoCodeUsage, error) {
+func (r *promoCodeRepository) GetUsageByPromoCodeAndUser(ctx context.Context, promoCodeID, userID int64) (*domain.PromoCodeUsage, error) {
 	m, err := r.client.PromoCodeUsage.Query().
 		Where(
 			promocodeusage.PromoCodeIDEQ(promoCodeID),
@@ -212,10 +213,10 @@ func (r *promoCodeRepository) GetUsageByPromoCodeAndUser(ctx context.Context, pr
 		}
 		return nil, err
 	}
-	return promoCodeUsageEntityToService(m), nil
+	return promoCodeUsageEntityToDomain(m), nil
 }
 
-func (r *promoCodeRepository) ListUsagesByPromoCode(ctx context.Context, promoCodeID int64, params pagination.PaginationParams) ([]service.PromoCodeUsage, *pagination.PaginationResult, error) {
+func (r *promoCodeRepository) ListUsagesByPromoCode(ctx context.Context, promoCodeID int64, params pagination.PaginationParams) ([]domain.PromoCodeUsage, *pagination.PaginationResult, error) {
 	q := r.client.PromoCodeUsage.Query().
 		Where(promocodeusage.PromoCodeIDEQ(promoCodeID))
 
@@ -234,7 +235,7 @@ func (r *promoCodeRepository) ListUsagesByPromoCode(ctx context.Context, promoCo
 		return nil, nil, err
 	}
 
-	outUsages := promoCodeUsageEntitiesToService(usages)
+	outUsages := promoCodeUsageEntitiesToDomain(usages)
 
 	return outUsages, paginationResultFromTotal(int64(total), params), nil
 }
@@ -247,13 +248,13 @@ func (r *promoCodeRepository) IncrementUsedCount(ctx context.Context, id int64) 
 	return err
 }
 
-// Entity to Service conversions
+// Entity to domain conversions
 
-func promoCodeEntityToService(m *dbent.PromoCode) *service.PromoCode {
+func promoCodeEntityToDomain(m *dbent.PromoCode) *domain.PromoCode {
 	if m == nil {
 		return nil
 	}
-	return &service.PromoCode{
+	return &domain.PromoCode{
 		ID:          m.ID,
 		Code:        m.Code,
 		BonusAmount: m.BonusAmount,
@@ -267,21 +268,21 @@ func promoCodeEntityToService(m *dbent.PromoCode) *service.PromoCode {
 	}
 }
 
-func promoCodeEntitiesToService(models []*dbent.PromoCode) []service.PromoCode {
-	out := make([]service.PromoCode, 0, len(models))
+func promoCodeEntitiesToDomain(models []*dbent.PromoCode) []domain.PromoCode {
+	out := make([]domain.PromoCode, 0, len(models))
 	for i := range models {
-		if s := promoCodeEntityToService(models[i]); s != nil {
+		if s := promoCodeEntityToDomain(models[i]); s != nil {
 			out = append(out, *s)
 		}
 	}
 	return out
 }
 
-func promoCodeUsageEntityToService(m *dbent.PromoCodeUsage) *service.PromoCodeUsage {
+func promoCodeUsageEntityToDomain(m *dbent.PromoCodeUsage) *domain.PromoCodeUsage {
 	if m == nil {
 		return nil
 	}
-	out := &service.PromoCodeUsage{
+	out := &domain.PromoCodeUsage{
 		ID:          m.ID,
 		PromoCodeID: m.PromoCodeID,
 		UserID:      m.UserID,
@@ -289,17 +290,33 @@ func promoCodeUsageEntityToService(m *dbent.PromoCodeUsage) *service.PromoCodeUs
 		UsedAt:      m.UsedAt,
 	}
 	if m.Edges.User != nil {
-		out.User = userEntityToService(m.Edges.User)
+		out.User = promoUsageUserFromEntity(m.Edges.User)
 	}
 	return out
 }
 
-func promoCodeUsageEntitiesToService(models []*dbent.PromoCodeUsage) []service.PromoCodeUsage {
-	out := make([]service.PromoCodeUsage, 0, len(models))
+func promoCodeUsageEntitiesToDomain(models []*dbent.PromoCodeUsage) []domain.PromoCodeUsage {
+	out := make([]domain.PromoCodeUsage, 0, len(models))
 	for i := range models {
-		if s := promoCodeUsageEntityToService(models[i]); s != nil {
+		if s := promoCodeUsageEntityToDomain(models[i]); s != nil {
 			out = append(out, *s)
 		}
 	}
 	return out
+}
+
+// promoUsageUserFromEntity maps the embedded ent user edge into the promo BC's
+// shallow user projection. Avoids pulling service.User into the repository layer.
+func promoUsageUserFromEntity(u *dbent.User) *domain.PromoUsageUser {
+	if u == nil {
+		return nil
+	}
+	return &domain.PromoUsageUser{
+		ID:       u.ID,
+		Email:    u.Email,
+		Username: u.Username,
+		Role:     u.Role,
+		Balance:  u.Balance,
+		Status:   u.Status,
+	}
 }
