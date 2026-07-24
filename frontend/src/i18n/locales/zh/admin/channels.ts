@@ -135,7 +135,7 @@ export default {
         tierLabel: '层级',
         resolution: '分辨率',
         modelMapping: '模型映射',
-        modelMappingHint: '将请求中的模型名映射为实际模型名。在账号级别映射之前执行。',
+        modelMappingHint: '将请求中的模型名映射为实际模型名。在账号级别映射之前执行。源和目标都支持末尾通配符 *：当目标也是通配符时（如 deepseek-v4* → deepseek-v4*，或直接填 *），会保留具体请求模型作为上游模型（deepseek-v4-flash、deepseek-v4-pro 各自原样转发）。',
         noMappingRules: '暂无映射规则，点击"添加"创建',
         mappingSource: '源模型',
         mappingTarget: '目标模型',

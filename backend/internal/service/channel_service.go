@@ -397,16 +397,44 @@ func (c *channelCache) matchWildcard(groupID int64, platform, modelLower string)
 	return nil
 }
 
-// matchWildcardMapping 在通配符映射中查找匹配项（最先匹配到优先）
-func (c *channelCache) matchWildcardMapping(groupID int64, platform, modelLower string) string {
+// matchWildcardMapping 在通配符映射中查找匹配项（最先匹配到优先）。
+// model 是原始大小写的请求模型名，modelLower 是其小写形式（前缀匹配用）。
+func (c *channelCache) matchWildcardMapping(groupID int64, platform, model, modelLower string) string {
 	gpKey := channelGroupPlatformKey{groupID: groupID, platform: platform}
 	wildcards := c.wildcardMappingByGP[gpKey]
 	for _, wc := range wildcards {
 		if strings.HasPrefix(modelLower, wc.prefix) {
-			return wc.target
+			return resolveWildcardMappingTarget(wc, model)
 		}
 	}
 	return ""
+}
+
+// resolveWildcardMappingTarget 计算命中通配符映射后转发给上游的模型名。
+//
+// 当目标本身是通配符（以 "*" 结尾）时，保留具体的请求模型：把源前缀替换为
+// 目标前缀，其余部分沿用原始请求模型（保持大小写）。这样管理员配置
+// "deepseek-v4* → deepseek-v4*"（或 "deepseek-v4* → *"）后，调用
+// deepseek-v4-flash / deepseek-v4-pro 都会各自原样转发，而不是被写成固定的
+// 某一个上游模型，也不会把字面量 "deepseek-v4*" 发给上游。
+//
+// 目标为非通配符时保持原有行为：所有命中该前缀的请求都改写为同一个固定模型。
+func resolveWildcardMappingTarget(wc *wildcardMappingEntry, model string) string {
+	if !strings.HasSuffix(wc.target, "*") {
+		return wc.target
+	}
+	targetPrefix := wc.target[:len(wc.target)-1]
+	if targetPrefix == "" {
+		// 目标为裸 "*"：整体透传原始请求模型（等价于把请求模型直接作为上游模型）。
+		return model
+	}
+	// wc.prefix 是源前缀的小写形式；modelLower 已确认以它为前缀，ASCII 小写不改变
+	// 长度，因此可直接在原始 model 上按同长度切片，保留后缀的原始大小写。
+	suffix := model
+	if len(wc.prefix) <= len(model) {
+		suffix = model[len(wc.prefix):]
+	}
+	return targetPrefix + suffix
 }
 
 // lookupPricingAcrossPlatforms 在分组平台内查找模型定价。
@@ -430,7 +458,7 @@ func lookupPricingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatf
 
 // lookupMappingAcrossPlatforms 在分组平台内查找模型映射。
 // 逻辑与 lookupPricingAcrossPlatforms 相同：先精确查找，再通配符。
-func lookupMappingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatform, modelLower string) string {
+func lookupMappingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatform, model, modelLower string) string {
 	for _, p := range matchingPlatforms(groupPlatform) {
 		key := channelModelKey{groupID: groupID, platform: p, model: modelLower}
 		if mapped, ok := cache.mappingByGroupModel[key]; ok {
@@ -438,7 +466,7 @@ func lookupMappingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatf
 		}
 	}
 	for _, p := range matchingPlatforms(groupPlatform) {
-		if mapped := cache.matchWildcardMapping(groupID, p, modelLower); mapped != "" {
+		if mapped := cache.matchWildcardMapping(groupID, p, model, modelLower); mapped != "" {
 			return mapped
 		}
 	}
@@ -569,7 +597,7 @@ func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappi
 	}
 
 	modelLower := strings.ToLower(model)
-	if mapped := lookupMappingAcrossPlatforms(lk.cache, groupID, lk.platform, modelLower); mapped != "" {
+	if mapped := lookupMappingAcrossPlatforms(lk.cache, groupID, lk.platform, model, modelLower); mapped != "" {
 		result.MappedModel = mapped
 		result.Mapped = true
 	}

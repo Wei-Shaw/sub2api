@@ -902,6 +902,117 @@ func TestResolveChannelMapping_WildcardFirstMatch(t *testing.T) {
 	require.Contains(t, []string{"target1", "target2"}, result.MappedModel)
 }
 
+// TestResolveChannelMapping_WildcardTargetPassthrough 验证：当通配符映射的目标
+// 也是通配符时，保留具体的请求模型作为上游模型（前缀匹配透传）。
+// 这样 "deepseek-v4* → deepseek-v4*" 下，deepseek-v4-flash 与 deepseek-v4-pro
+// 都能各自原样转发，而不是被写成固定模型或字面量 "deepseek-v4*"。
+func TestResolveChannelMapping_WildcardTargetPassthrough(t *testing.T) {
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {
+				"deepseek-v4*": "deepseek-v4*",
+			},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
+	svc := newTestChannelService(repo)
+
+	for _, model := range []string{"deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4"} {
+		result := svc.ResolveChannelMapping(context.Background(), 10, model)
+		require.True(t, result.Mapped, "model %q should be mapped", model)
+		require.Equal(t, model, result.MappedModel, "model %q should pass through verbatim", model)
+	}
+}
+
+// TestResolveChannelMapping_WildcardTargetBareStar 验证目标为裸 "*" 时整体透传。
+func TestResolveChannelMapping_WildcardTargetBareStar(t *testing.T) {
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {
+				"deepseek-v4*": "*",
+			},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
+	svc := newTestChannelService(repo)
+
+	result := svc.ResolveChannelMapping(context.Background(), 10, "deepseek-v4-pro")
+	require.True(t, result.Mapped)
+	require.Equal(t, "deepseek-v4-pro", result.MappedModel)
+}
+
+// TestResolveChannelMapping_WildcardTargetPrefixRewrite 验证目标通配符会做前缀替换：
+// 源前缀被替换为目标前缀，其余部分沿用请求模型。
+func TestResolveChannelMapping_WildcardTargetPrefixRewrite(t *testing.T) {
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {
+				"deepseek-*": "ds-*",
+			},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
+	svc := newTestChannelService(repo)
+
+	result := svc.ResolveChannelMapping(context.Background(), 10, "deepseek-v4-flash")
+	require.True(t, result.Mapped)
+	require.Equal(t, "ds-v4-flash", result.MappedModel)
+}
+
+// TestResolveChannelMapping_WildcardTargetPreservesSuffixCase 验证透传时保留请求模型
+// 后缀的原始大小写（前缀部分沿用管理员在目标里配置的写法）。
+func TestResolveChannelMapping_WildcardTargetPreservesSuffixCase(t *testing.T) {
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {
+				"deepseek-v4*": "deepseek-v4*",
+			},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
+	svc := newTestChannelService(repo)
+
+	// 大小写不敏感命中前缀；后缀 "-Flash" 的大小写按请求原样保留。
+	result := svc.ResolveChannelMapping(context.Background(), 10, "deepseek-v4-Flash")
+	require.True(t, result.Mapped)
+	require.Equal(t, "deepseek-v4-Flash", result.MappedModel)
+}
+
+// TestResolveChannelMapping_WildcardTargetExactUnchanged 验证目标为非通配符时行为不变：
+// 命中同一前缀的所有请求都改写为固定模型。
+func TestResolveChannelMapping_WildcardTargetExactUnchanged(t *testing.T) {
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {
+				"deepseek-v4*": "deepseek-v4-flash",
+			},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
+	svc := newTestChannelService(repo)
+
+	for _, model := range []string{"deepseek-v4-flash", "deepseek-v4-pro"} {
+		result := svc.ResolveChannelMapping(context.Background(), 10, model)
+		require.True(t, result.Mapped)
+		require.Equal(t, "deepseek-v4-flash", result.MappedModel)
+	}
+}
+
 func TestResolveChannelMapping_NoMapping(t *testing.T) {
 	ch := Channel{
 		ID:       1,

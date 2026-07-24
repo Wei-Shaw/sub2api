@@ -135,7 +135,7 @@ export default {
         tierLabel: 'Tier',
         resolution: 'Resolution',
         modelMapping: 'Model Mapping',
-        modelMappingHint: 'Map request model names to actual model names. Runs before account-level mapping.',
+        modelMappingHint: 'Map request model names to actual model names. Runs before account-level mapping. Both source and target support a trailing wildcard *: when the target is also a wildcard (e.g. deepseek-v4* → deepseek-v4*, or just *), the concrete requested model is preserved as the upstream model (deepseek-v4-flash and deepseek-v4-pro each forward verbatim).',
         noMappingRules: 'No mapping rules. Click "Add" to create one.',
         mappingSource: 'Source model',
         mappingTarget: 'Target model',
