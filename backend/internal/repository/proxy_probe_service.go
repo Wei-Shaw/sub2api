@@ -11,11 +11,12 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	portproxy "github.com/Wei-Shaw/sub2api/internal/port/proxy"
 )
 
-func NewProxyExitInfoProber(cfg *config.Config) service.ProxyExitInfoProber {
+func NewProxyExitInfoProber(cfg *config.Config) portproxy.ExitInfoProber {
 	insecure := false
 	allowPrivate := false
 	validateResolvedIP := true
@@ -61,7 +62,7 @@ type proxyProbeService struct {
 	maxResponseBytes   int64
 }
 
-func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
+func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*domain.ProxyExitInfo, int64, error) {
 	client, err := httpclient.GetClient(httpclient.Options{
 		ProxyURL:           proxyURL,
 		Timeout:            defaultProxyProbeTimeout,
@@ -85,7 +86,7 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 	return nil, 0, fmt.Errorf("all probe URLs failed, last error: %w", lastErr)
 }
 
-func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Client, url string, parser string) (*service.ProxyExitInfo, int64, error) {
+func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Client, url string, parser string) (*domain.ProxyExitInfo, int64, error) {
 	startTime := time.Now()
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -126,7 +127,7 @@ func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Clien
 	}
 }
 
-func (s *proxyProbeService) parseIPAPI(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
+func (s *proxyProbeService) parseIPAPI(body []byte, latencyMs int64) (*domain.ProxyExitInfo, int64, error) {
 	var ipInfo struct {
 		Status      string `json:"status"`
 		Message     string `json:"message"`
@@ -156,7 +157,7 @@ func (s *proxyProbeService) parseIPAPI(body []byte, latencyMs int64) (*service.P
 	if region == "" {
 		region = ipInfo.Region
 	}
-	return &service.ProxyExitInfo{
+	return &domain.ProxyExitInfo{
 		IP:          ipInfo.Query,
 		City:        ipInfo.City,
 		Region:      region,
@@ -165,7 +166,7 @@ func (s *proxyProbeService) parseIPAPI(body []byte, latencyMs int64) (*service.P
 	}, latencyMs, nil
 }
 
-func (s *proxyProbeService) parseIPify(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
+func (s *proxyProbeService) parseIPify(body []byte, latencyMs int64) (*domain.ProxyExitInfo, int64, error) {
 	var result struct {
 		IP string `json:"ip"`
 	}
@@ -175,7 +176,7 @@ func (s *proxyProbeService) parseIPify(body []byte, latencyMs int64) (*service.P
 	if result.IP == "" {
 		return nil, latencyMs, fmt.Errorf("ipify: no IP found in response")
 	}
-	return &service.ProxyExitInfo{
+	return &domain.ProxyExitInfo{
 		IP: result.IP,
 	}, latencyMs, nil
 }

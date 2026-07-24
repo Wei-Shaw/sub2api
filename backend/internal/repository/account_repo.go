@@ -290,7 +290,7 @@ func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*servi
 
 		// Prefer the preloaded proxy edge when available.
 		if entAcc.Edges.Proxy != nil {
-			out.Proxy = proxyEntityToService(entAcc.Edges.Proxy)
+			out.Proxy = proxyEntityToDomain(entAcc.Edges.Proxy)
 		}
 
 		if groups, ok := groupsByAccount[entAcc.ID]; ok {
@@ -2940,7 +2940,7 @@ func (r *accountRepository) loadProxies(ctx context.Context, proxyIDs []int64) (
 			return nil, err
 		}
 		for _, p := range proxies {
-			proxyMap[p.ID] = proxyEntityToService(p)
+			proxyMap[p.ID] = proxyEntityToDomain(p)
 		}
 	}
 	return proxyMap, nil

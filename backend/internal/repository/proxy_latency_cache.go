@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	portproxy "github.com/Wei-Shaw/sub2api/internal/port/proxy"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -19,12 +20,12 @@ type proxyLatencyCache struct {
 	rdb *redis.Client
 }
 
-func NewProxyLatencyCache(rdb *redis.Client) service.ProxyLatencyCache {
+func NewProxyLatencyCache(rdb *redis.Client) portproxy.LatencyCache {
 	return &proxyLatencyCache{rdb: rdb}
 }
 
-func (c *proxyLatencyCache) GetProxyLatencies(ctx context.Context, proxyIDs []int64) (map[int64]*service.ProxyLatencyInfo, error) {
-	results := make(map[int64]*service.ProxyLatencyInfo)
+func (c *proxyLatencyCache) GetProxyLatencies(ctx context.Context, proxyIDs []int64) (map[int64]*domain.ProxyLatencyInfo, error) {
+	results := make(map[int64]*domain.ProxyLatencyInfo)
 	if len(proxyIDs) == 0 {
 		return results, nil
 	}
@@ -52,7 +53,7 @@ func (c *proxyLatencyCache) GetProxyLatencies(ctx context.Context, proxyIDs []in
 		default:
 			continue
 		}
-		var info service.ProxyLatencyInfo
+		var info domain.ProxyLatencyInfo
 		if err := json.Unmarshal(payload, &info); err != nil {
 			continue
 		}
@@ -62,7 +63,7 @@ func (c *proxyLatencyCache) GetProxyLatencies(ctx context.Context, proxyIDs []in
 	return results, nil
 }
 
-func (c *proxyLatencyCache) SetProxyLatency(ctx context.Context, proxyID int64, info *service.ProxyLatencyInfo) error {
+func (c *proxyLatencyCache) SetProxyLatency(ctx context.Context, proxyID int64, info *domain.ProxyLatencyInfo) error {
 	if info == nil {
 		return nil
 	}

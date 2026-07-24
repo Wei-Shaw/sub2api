@@ -3,39 +3,19 @@ package service
 import (
 	"context"
 	"fmt"
-	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	portproxy "github.com/Wei-Shaw/sub2api/internal/port/proxy"
 )
 
 var (
-	ErrProxyNotFound = infraerrors.NotFound("PROXY_NOT_FOUND", "proxy not found")
-	ErrProxyInUse    = infraerrors.Conflict("PROXY_IN_USE", "proxy is in use by accounts")
+	ErrProxyNotFound = domain.ErrProxyNotFound
+	ErrProxyInUse    = domain.ErrProxyInUse
 )
 
-type ProxyRepository interface {
-	Create(ctx context.Context, proxy *Proxy) error
-	GetByID(ctx context.Context, id int64) (*Proxy, error)
-	ListByIDs(ctx context.Context, ids []int64) ([]Proxy, error)
-	Update(ctx context.Context, proxy *Proxy) error
-	Delete(ctx context.Context, id int64) error
-
-	List(ctx context.Context, params pagination.PaginationParams) ([]Proxy, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]Proxy, *pagination.PaginationResult, error)
-	ListWithFiltersAndAccountCount(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]ProxyWithAccountCount, *pagination.PaginationResult, error)
-	ListActive(ctx context.Context) ([]Proxy, error)
-	ListActiveWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error)
-
-	ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error)
-	CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error)
-	ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error)
-
-	SweepExpiredProxies(ctx context.Context, now time.Time) (changed int64, err error)
-	ListAllForFallback(ctx context.Context) ([]Proxy, error)
-	CountExpired(ctx context.Context) (int64, error)
-	CountExpiringSoon(ctx context.Context, now time.Time) (int64, error)
-}
+// Port type alias keeps existing service call sites compiling.
+type ProxyRepository = portproxy.Repository
 
 // CreateProxyRequest 创建代理请求
 type CreateProxyRequest struct {
@@ -60,11 +40,11 @@ type UpdateProxyRequest struct {
 
 // ProxyService 代理管理服务
 type ProxyService struct {
-	proxyRepo ProxyRepository
+	proxyRepo portproxy.Repository
 }
 
 // NewProxyService 创建代理服务实例
-func NewProxyService(proxyRepo ProxyRepository) *ProxyService {
+func NewProxyService(proxyRepo portproxy.Repository) *ProxyService {
 	return &ProxyService{
 		proxyRepo: proxyRepo,
 	}

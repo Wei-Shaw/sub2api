@@ -9,9 +9,10 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	portproxy "github.com/Wei-Shaw/sub2api/internal/port/proxy"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -25,7 +26,7 @@ type proxyRepository struct {
 
 const proxyProbeOutboxAccountChunkSize = 500
 
-func NewProxyRepository(client *dbent.Client, sqlDB *sql.DB) service.ProxyRepository {
+func NewProxyRepository(client *dbent.Client, sqlDB *sql.DB) portproxy.Repository {
 	return newProxyRepositoryWithSQL(client, sqlDB)
 }
 
@@ -33,7 +34,7 @@ func newProxyRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *proxyRep
 	return &proxyRepository{client: client, sql: sqlq}
 }
 
-func (r *proxyRepository) Create(ctx context.Context, proxyIn *service.Proxy) error {
+func (r *proxyRepository) Create(ctx context.Context, proxyIn *domain.Proxy) error {
 	builder := r.client.Proxy.Create().
 		SetName(proxyIn.Name).
 		SetProtocol(proxyIn.Protocol).
@@ -57,25 +58,25 @@ func (r *proxyRepository) Create(ctx context.Context, proxyIn *service.Proxy) er
 
 	created, err := builder.Save(ctx)
 	if err == nil {
-		applyProxyEntityToService(proxyIn, created)
+		applyProxyEntityToDomain(proxyIn, created)
 	}
 	return err
 }
 
-func (r *proxyRepository) GetByID(ctx context.Context, id int64) (*service.Proxy, error) {
+func (r *proxyRepository) GetByID(ctx context.Context, id int64) (*domain.Proxy, error) {
 	m, err := r.client.Proxy.Get(ctx, id)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return nil, service.ErrProxyNotFound
+			return nil, domain.ErrProxyNotFound
 		}
 		return nil, err
 	}
-	return proxyEntityToService(m), nil
+	return proxyEntityToDomain(m), nil
 }
 
-func (r *proxyRepository) ListByIDs(ctx context.Context, ids []int64) ([]service.Proxy, error) {
+func (r *proxyRepository) ListByIDs(ctx context.Context, ids []int64) ([]domain.Proxy, error) {
 	if len(ids) == 0 {
-		return []service.Proxy{}, nil
+		return []domain.Proxy{}, nil
 	}
 
 	proxies, err := r.client.Proxy.Query().
@@ -85,14 +86,14 @@ func (r *proxyRepository) ListByIDs(ctx context.Context, ids []int64) ([]service
 		return nil, err
 	}
 
-	out := make([]service.Proxy, 0, len(proxies))
+	out := make([]domain.Proxy, 0, len(proxies))
 	for i := range proxies {
-		out = append(out, *proxyEntityToService(proxies[i]))
+		out = append(out, *proxyEntityToDomain(proxies[i]))
 	}
 	return out, nil
 }
 
-func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) error {
+func (r *proxyRepository) Update(ctx context.Context, proxyIn *domain.Proxy) error {
 	client := r.client
 	var tx *dbent.Tx
 	if contextTx := dbent.TxFromContext(ctx); contextTx != nil {
@@ -119,7 +120,7 @@ func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) er
 			return err
 		}
 	}
-	applyProxyEntityToService(proxyIn, updated)
+	applyProxyEntityToDomain(proxyIn, updated)
 	return nil
 }
 
@@ -132,7 +133,7 @@ type proxyProbeIdentity struct {
 	status   string
 }
 
-func proxyProbeIdentityFromService(proxyIn *service.Proxy) proxyProbeIdentity {
+func proxyProbeIdentityFromService(proxyIn *domain.Proxy) proxyProbeIdentity {
 	return proxyProbeIdentity{
 		protocol: proxyIn.Protocol,
 		host:     proxyIn.Host,
@@ -143,7 +144,7 @@ func proxyProbeIdentityFromService(proxyIn *service.Proxy) proxyProbeIdentity {
 	}
 }
 
-func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.Client, proxyIn *service.Proxy) (*dbent.Proxy, error) {
+func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.Client, proxyIn *domain.Proxy) (*dbent.Proxy, error) {
 	currentIdentity, err := lockProxyProbeIdentity(ctx, client, proxyIn.ID)
 	if err != nil {
 		return nil, err
@@ -179,7 +180,7 @@ func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.C
 
 	updated, err := builder.Save(ctx)
 	if dbent.IsNotFound(err) {
-		return nil, service.ErrProxyNotFound
+		return nil, domain.ErrProxyNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -212,7 +213,7 @@ func lockProxyProbeIdentity(ctx context.Context, client *dbent.Client, proxyID i
 		if err := rows.Err(); err != nil {
 			return proxyProbeIdentity{}, err
 		}
-		return proxyProbeIdentity{}, service.ErrProxyNotFound
+		return proxyProbeIdentity{}, domain.ErrProxyNotFound
 	}
 	var identity proxyProbeIdentity
 	if err := rows.Scan(&identity.protocol, &identity.host, &identity.port, &identity.username, &identity.password, &identity.status); err != nil {
@@ -259,7 +260,7 @@ func enqueueProxyProbeAccountChanges(ctx context.Context, exec sqlExecutor, acco
 			end = len(accountIDs)
 		}
 		payload := map[string]any{"account_ids": accountIDs[start:end]}
-		if err := enqueueSchedulerOutbox(ctx, exec, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+		if err := enqueueSchedulerOutbox(ctx, exec, "account_bulk_changed", nil, nil, payload); err != nil {
 			return err
 		}
 	}
@@ -271,12 +272,12 @@ func (r *proxyRepository) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
-func (r *proxyRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Proxy, *pagination.PaginationResult, error) {
+func (r *proxyRepository) List(ctx context.Context, params pagination.PaginationParams) ([]domain.Proxy, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, "", "", "")
 }
 
 // ListWithFilters lists proxies with optional filtering by protocol, status, and search query
-func (r *proxyRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]service.Proxy, *pagination.PaginationResult, error) {
+func (r *proxyRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]domain.Proxy, *pagination.PaginationResult, error) {
 	q := r.client.Proxy.Query()
 	if protocol != "" {
 		q = q.Where(proxy.ProtocolEQ(protocol))
@@ -305,16 +306,16 @@ func (r *proxyRepository) ListWithFilters(ctx context.Context, params pagination
 		return nil, nil, err
 	}
 
-	outProxies := make([]service.Proxy, 0, len(proxies))
+	outProxies := make([]domain.Proxy, 0, len(proxies))
 	for i := range proxies {
-		outProxies = append(outProxies, *proxyEntityToService(proxies[i]))
+		outProxies = append(outProxies, *proxyEntityToDomain(proxies[i]))
 	}
 
 	return outProxies, paginationResultFromTotal(int64(total), params), nil
 }
 
 // ListWithFiltersAndAccountCount lists proxies with filters and includes account count per proxy
-func (r *proxyRepository) ListWithFiltersAndAccountCount(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]service.ProxyWithAccountCount, *pagination.PaginationResult, error) {
+func (r *proxyRepository) ListWithFiltersAndAccountCount(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]domain.ProxyWithAccountCount, *pagination.PaginationResult, error) {
 	q := r.client.Proxy.Query()
 	if protocol != "" {
 		q = q.Where(proxy.ProtocolEQ(protocol))
@@ -350,7 +351,7 @@ func (r *proxyRepository) ListWithFiltersAndAccountCount(ctx context.Context, pa
 	return r.buildProxyWithAccountCountResult(ctx, proxies, params, int64(total))
 }
 
-func (r *proxyRepository) listWithAccountCountSort(ctx context.Context, q *dbent.ProxyQuery, params pagination.PaginationParams, total int) ([]service.ProxyWithAccountCount, *pagination.PaginationResult, error) {
+func (r *proxyRepository) listWithAccountCountSort(ctx context.Context, q *dbent.ProxyQuery, params pagination.PaginationParams, total int) ([]domain.ProxyWithAccountCount, *pagination.PaginationResult, error) {
 	proxies, err := q.
 		Order(dbent.Desc(proxy.FieldID)).
 		All(ctx)
@@ -377,19 +378,19 @@ func (r *proxyRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 	return paginateSlice(result, params), paginationResultFromTotal(int64(total), params), nil
 }
 
-func (r *proxyRepository) buildProxyWithAccountCountResult(ctx context.Context, proxies []*dbent.Proxy, params pagination.PaginationParams, total int64) ([]service.ProxyWithAccountCount, *pagination.PaginationResult, error) {
+func (r *proxyRepository) buildProxyWithAccountCountResult(ctx context.Context, proxies []*dbent.Proxy, params pagination.PaginationParams, total int64) ([]domain.ProxyWithAccountCount, *pagination.PaginationResult, error) {
 	counts, err := r.GetAccountCountsForProxies(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	result := make([]service.ProxyWithAccountCount, 0, len(proxies))
+	result := make([]domain.ProxyWithAccountCount, 0, len(proxies))
 	for i := range proxies {
-		proxyOut := proxyEntityToService(proxies[i])
+		proxyOut := proxyEntityToDomain(proxies[i])
 		if proxyOut == nil {
 			continue
 		}
-		result = append(result, service.ProxyWithAccountCount{
+		result = append(result, domain.ProxyWithAccountCount{
 			Proxy:        *proxyOut,
 			AccountCount: counts[proxyOut.ID],
 		})
@@ -428,16 +429,16 @@ func proxyListOrder(params pagination.PaginationParams) []func(*entsql.Selector)
 	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(proxy.FieldID)}
 }
 
-func (r *proxyRepository) ListActive(ctx context.Context) ([]service.Proxy, error) {
+func (r *proxyRepository) ListActive(ctx context.Context) ([]domain.Proxy, error) {
 	proxies, err := r.client.Proxy.Query().
-		Where(proxy.StatusEQ(service.StatusActive)).
+		Where(proxy.StatusEQ(domain.StatusActive)).
 		All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	outProxies := make([]service.Proxy, 0, len(proxies))
+	outProxies := make([]domain.Proxy, 0, len(proxies))
 	for i := range proxies {
-		outProxies = append(outProxies, *proxyEntityToService(proxies[i]))
+		outProxies = append(outProxies, *proxyEntityToDomain(proxies[i]))
 	}
 	return outProxies, nil
 }
@@ -471,7 +472,7 @@ func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID in
 	return count, nil
 }
 
-func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
+func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]domain.ProxyAccountSummary, error) {
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT id, name, platform, type, notes
 		FROM accounts
@@ -483,7 +484,7 @@ func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, pro
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make([]service.ProxyAccountSummary, 0)
+	out := make([]domain.ProxyAccountSummary, 0)
 	for rows.Next() {
 		var (
 			id       int64
@@ -499,7 +500,7 @@ func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, pro
 		if notes.Valid {
 			notesPtr = &notes.String
 		}
-		out = append(out, service.ProxyAccountSummary{
+		out = append(out, domain.ProxyAccountSummary{
 			ID:       id,
 			Name:     name,
 			Platform: platform,
@@ -541,9 +542,9 @@ func (r *proxyRepository) GetAccountCountsForProxies(ctx context.Context) (count
 }
 
 // ListActiveWithAccountCount returns all active proxies with account count, sorted by creation time descending
-func (r *proxyRepository) ListActiveWithAccountCount(ctx context.Context) ([]service.ProxyWithAccountCount, error) {
+func (r *proxyRepository) ListActiveWithAccountCount(ctx context.Context) ([]domain.ProxyWithAccountCount, error) {
 	proxies, err := r.client.Proxy.Query().
-		Where(proxy.StatusEQ(service.StatusActive)).
+		Where(proxy.StatusEQ(domain.StatusActive)).
 		Order(dbent.Desc(proxy.FieldCreatedAt)).
 		All(ctx)
 	if err != nil {
@@ -557,13 +558,13 @@ func (r *proxyRepository) ListActiveWithAccountCount(ctx context.Context) ([]ser
 	}
 
 	// Build result with account counts
-	result := make([]service.ProxyWithAccountCount, 0, len(proxies))
+	result := make([]domain.ProxyWithAccountCount, 0, len(proxies))
 	for i := range proxies {
-		proxyOut := proxyEntityToService(proxies[i])
+		proxyOut := proxyEntityToDomain(proxies[i])
 		if proxyOut == nil {
 			continue
 		}
-		result = append(result, service.ProxyWithAccountCount{
+		result = append(result, domain.ProxyWithAccountCount{
 			Proxy:        *proxyOut,
 			AccountCount: counts[proxyOut.ID],
 		})
@@ -572,11 +573,11 @@ func (r *proxyRepository) ListActiveWithAccountCount(ctx context.Context) ([]ser
 	return result, nil
 }
 
-func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
+func proxyEntityToDomain(m *dbent.Proxy) *domain.Proxy {
 	if m == nil {
 		return nil
 	}
-	out := &service.Proxy{
+	out := &domain.Proxy{
 		ID:             m.ID,
 		Name:           m.Name,
 		Protocol:       m.Protocol,
@@ -599,7 +600,7 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 	return out
 }
 
-func applyProxyEntityToService(dst *service.Proxy, src *dbent.Proxy) {
+func applyProxyEntityToDomain(dst *domain.Proxy, src *dbent.Proxy) {
 	if dst == nil || src == nil {
 		return
 	}
@@ -609,14 +610,14 @@ func applyProxyEntityToService(dst *service.Proxy, src *dbent.Proxy) {
 }
 
 // ListAllForFallback 返回所有代理（含过期/非活跃），供改投逻辑使用。
-func (r *proxyRepository) ListAllForFallback(ctx context.Context) ([]service.Proxy, error) {
+func (r *proxyRepository) ListAllForFallback(ctx context.Context) ([]domain.Proxy, error) {
 	proxies, err := r.client.Proxy.Query().All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]service.Proxy, 0, len(proxies))
+	out := make([]domain.Proxy, 0, len(proxies))
 	for i := range proxies {
-		out = append(out, *proxyEntityToService(proxies[i]))
+		out = append(out, *proxyEntityToDomain(proxies[i]))
 	}
 	return out, nil
 }
@@ -632,7 +633,7 @@ func (r *proxyRepository) SweepExpiredProxies(ctx context.Context, now time.Time
 	if err != nil {
 		return 0, err
 	}
-	byID := make(map[int64]service.Proxy, len(all))
+	byID := make(map[int64]domain.Proxy, len(all))
 	for _, p := range all {
 		byID[p.ID] = p
 	}
@@ -641,12 +642,12 @@ func (r *proxyRepository) SweepExpiredProxies(ctx context.Context, now time.Time
 	allChangedAccountIDs := make([]int64, 0)
 
 	for _, p := range all {
-		if p.Status != service.StatusActive || !p.IsExpired(now) {
+		if p.Status != domain.StatusActive || !p.IsExpired(now) {
 			continue
 		}
 
-		target, change := service.ResolveProxyFallbackTarget(p, byID, now)
-		if !change && p.FallbackMode == service.FallbackModeProxy {
+		target, change := domain.ResolveProxyFallbackTarget(p, byID, now)
+		if !change && p.FallbackMode == domain.FallbackModeProxy {
 			// 配置了 proxy 回退但链路无解（成环或全部已过期），记录告警日志
 			logger.LegacyPrintf("repository.proxy", "[ProxyExpiry] proxy %d expired but fallback chain unresolved (cycle/all-expired); accounts kept", p.ID)
 		}
@@ -664,7 +665,7 @@ func (r *proxyRepository) SweepExpiredProxies(ctx context.Context, now time.Time
 		// 各代理的改投事务已经提交；这里仅汇总真实被 UPDATE 命中的账号，
 		// 避免代理到期时用全量重建刷新所有调度分桶。
 		payload := map[string]any{"account_ids": changedAccountIDs}
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+		if err := enqueueSchedulerOutbox(ctx, r.sql, "account_bulk_changed", nil, nil, payload); err != nil {
 			logger.LegacyPrintf("repository.proxy", "[SchedulerOutbox] enqueue proxy expiry account changes failed: err=%v", err)
 		}
 	}
@@ -718,7 +719,7 @@ func (r *proxyRepository) sweepOneExpiredProxy(ctx context.Context, proxyID int6
 func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec sqlExecutor, proxyID int64, target *int64, change bool) ([]int64, error) {
 	if _, err := exec.ExecContext(ctx,
 		`UPDATE proxies SET status=$1, updated_at=NOW() WHERE id=$2 AND deleted_at IS NULL`,
-		service.StatusExpired, proxyID); err != nil {
+		domain.StatusExpired, proxyID); err != nil {
 		return nil, err
 	}
 	if !change {
@@ -785,7 +786,7 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 // CountExpired 返回已过期（status=expired）的代理数量。
 func (r *proxyRepository) CountExpired(ctx context.Context) (int64, error) {
 	var c int64
-	err := scanSingleRow(ctx, r.sql, `SELECT COUNT(*) FROM proxies WHERE status=$1 AND deleted_at IS NULL`, []any{service.StatusExpired}, &c)
+	err := scanSingleRow(ctx, r.sql, `SELECT COUNT(*) FROM proxies WHERE status=$1 AND deleted_at IS NULL`, []any{domain.StatusExpired}, &c)
 	return c, err
 }
 
@@ -796,6 +797,6 @@ func (r *proxyRepository) CountExpiringSoon(ctx context.Context, now time.Time) 
 		SELECT COUNT(*) FROM proxies
 		WHERE deleted_at IS NULL AND status=$1 AND expires_at IS NOT NULL
 		  AND expires_at > $2 AND expires_at <= $2 + (expiry_warn_days || ' days')::interval`,
-		[]any{service.StatusActive, now}, &c)
+		[]any{domain.StatusActive, now}, &c)
 	return c, err
 }

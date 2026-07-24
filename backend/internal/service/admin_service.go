@@ -1,6 +1,9 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	portproxy "github.com/Wei-Shaw/sub2api/internal/port/proxy"
+
 	"context"
 	"net/http"
 	"time"
@@ -531,19 +534,10 @@ type ProxyQualityCheckItem struct {
 	CFRay      string `json:"cf_ray,omitempty"`
 }
 
-// ProxyExitInfo represents proxy exit information from ip-api.com
-type ProxyExitInfo struct {
-	IP          string
-	City        string
-	Region      string
-	Country     string
-	CountryCode string
-}
-
-// ProxyExitInfoProber tests proxy connectivity and retrieves exit information
-type ProxyExitInfoProber interface {
-	ProbeProxy(ctx context.Context, proxyURL string) (*ProxyExitInfo, int64, error)
-}
+// ProxyExitInfo / ProxyExitInfoProber live in domain + port/proxy.
+// Aliases keep admin service call sites compiling during Phase 3 migration.
+type ProxyExitInfo = domain.ProxyExitInfo
+type ProxyExitInfoProber = portproxy.ExitInfoProber
 
 type groupExistenceBatchReader interface {
 	ExistsByIDs(ctx context.Context, ids []int64) (map[int64]bool, error)
