@@ -7,24 +7,26 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	portaffiliate "github.com/Wei-Shaw/sub2api/internal/port/affiliate"
 )
 
 var (
-	ErrAffiliateProfileNotFound = infraerrors.NotFound("AFFILIATE_PROFILE_NOT_FOUND", "affiliate profile not found")
-	ErrAffiliateCodeInvalid     = infraerrors.BadRequest("AFFILIATE_CODE_INVALID", "invalid affiliate code")
-	ErrAffiliateCodeTaken       = infraerrors.Conflict("AFFILIATE_CODE_TAKEN", "affiliate code already in use")
-	ErrAffiliateAlreadyBound    = infraerrors.Conflict("AFFILIATE_ALREADY_BOUND", "affiliate inviter already bound")
-	ErrAffiliateQuotaEmpty      = infraerrors.BadRequest("AFFILIATE_QUOTA_EMPTY", "no affiliate quota available to transfer")
+	ErrAffiliateProfileNotFound = domain.ErrAffiliateProfileNotFound
+	ErrAffiliateCodeInvalid     = domain.ErrAffiliateCodeInvalid
+	ErrAffiliateCodeTaken       = domain.ErrAffiliateCodeTaken
+	ErrAffiliateAlreadyBound    = domain.ErrAffiliateAlreadyBound
+	ErrAffiliateQuotaEmpty      = domain.ErrAffiliateQuotaEmpty
 )
 
 const (
 	affiliateInviteesLimit = 100
 	// AffiliateCodeMinLength / AffiliateCodeMaxLength bound both system-generated
 	// 12-char codes and admin-customized codes (e.g. "VIP2026").
-	AffiliateCodeMinLength = 4
-	AffiliateCodeMaxLength = 32
+	AffiliateCodeMinLength = domain.AffiliateCodeMinLength
+	AffiliateCodeMaxLength = domain.AffiliateCodeMaxLength
 )
 
 // affiliateCodeValidChar accepts uppercase letters, digits, underscore and dash.
@@ -57,28 +59,20 @@ func isValidAffiliateCodeFormat(code string) bool {
 	return true
 }
 
-type AffiliateSummary struct {
-	UserID               int64     `json:"user_id"`
-	AffCode              string    `json:"aff_code"`
-	AffCodeCustom        bool      `json:"aff_code_custom"`
-	AffRebateRatePercent *float64  `json:"aff_rebate_rate_percent,omitempty"`
-	InviterID            *int64    `json:"inviter_id,omitempty"`
-	AffCount             int       `json:"aff_count"`
-	AffQuota             float64   `json:"aff_quota"`
-	AffFrozenQuota       float64   `json:"aff_frozen_quota"`
-	AffHistoryQuota      float64   `json:"aff_history_quota"`
-	CreatedAt            time.Time `json:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
-}
+// Type aliases keep existing service call sites compiling while the affiliate BC
+// owns its domain types and ports.
+type AffiliateSummary = domain.AffiliateSummary
+type AffiliateInvitee = domain.AffiliateInvitee
+type AffiliateAdminEntry = domain.AffiliateAdminEntry
+type AffiliateInviteRecord = domain.AffiliateInviteRecord
+type AffiliateRebateRecord = domain.AffiliateRebateRecord
+type AffiliateTransferRecord = domain.AffiliateTransferRecord
+type AffiliateUserOverview = domain.AffiliateUserOverview
+type AffiliateRepository = portaffiliate.Repository
+type AffiliateAdminFilter = portaffiliate.AdminFilter
+type AffiliateRecordFilter = portaffiliate.RecordFilter
 
-type AffiliateInvitee struct {
-	UserID      int64      `json:"user_id"`
-	Email       string     `json:"email"`
-	Username    string     `json:"username"`
-	CreatedAt   *time.Time `json:"created_at,omitempty"`
-	TotalRebate float64    `json:"total_rebate"`
-}
-
+// AffiliateDetail is an application-layer view model (invitees + effective rate).
 type AffiliateDetail struct {
 	UserID          int64   `json:"user_id"`
 	AffCode         string  `json:"aff_code"`
@@ -94,124 +88,14 @@ type AffiliateDetail struct {
 	Invitees                   []AffiliateInvitee `json:"invitees"`
 }
 
-type AffiliateRepository interface {
-	EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error)
-	GetAffiliateByCode(ctx context.Context, code string) (*AffiliateSummary, error)
-	BindInviter(ctx context.Context, userID, inviterID int64) (bool, error)
-	AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error)
-	GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
-	ThawFrozenQuota(ctx context.Context, userID int64) (float64, error)
-	TransferQuotaToBalance(ctx context.Context, userID int64) (float64, float64, error)
-	ListInvitees(ctx context.Context, inviterID int64, limit int) ([]AffiliateInvitee, error)
-
-	// 管理端：用户级专属配置
-	UpdateUserAffCode(ctx context.Context, userID int64, newCode string) error
-	ResetUserAffCode(ctx context.Context, userID int64) (string, error)
-	SetUserRebateRate(ctx context.Context, userID int64, ratePercent *float64) error
-	BatchSetUserRebateRate(ctx context.Context, userIDs []int64, ratePercent *float64) error
-	ListUsersWithCustomSettings(ctx context.Context, filter AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error)
-	ListAffiliateInviteRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error)
-	ListAffiliateRebateRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateRebateRecord, int64, error)
-	ListAffiliateTransferRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateTransferRecord, int64, error)
-	GetAffiliateUserOverview(ctx context.Context, userID int64) (*AffiliateUserOverview, error)
-}
-
-// AffiliateAdminFilter 列表筛选条件
-type AffiliateAdminFilter struct {
-	Search   string
-	Page     int
-	PageSize int
-}
-
-// AffiliateAdminEntry 专属用户列表条目
-type AffiliateAdminEntry struct {
-	UserID               int64    `json:"user_id"`
-	Email                string   `json:"email"`
-	Username             string   `json:"username"`
-	AffCode              string   `json:"aff_code"`
-	AffCodeCustom        bool     `json:"aff_code_custom"`
-	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent,omitempty"`
-	AffCount             int      `json:"aff_count"`
-}
-
-type AffiliateRecordFilter struct {
-	Search   string
-	Page     int
-	PageSize int
-	StartAt  *time.Time
-	EndAt    *time.Time
-	SortBy   string
-	SortDesc bool
-}
-
-type AffiliateInviteRecord struct {
-	InviterID       int64     `json:"inviter_id"`
-	InviterEmail    string    `json:"inviter_email"`
-	InviterUsername string    `json:"inviter_username"`
-	InviteeID       int64     `json:"invitee_id"`
-	InviteeEmail    string    `json:"invitee_email"`
-	InviteeUsername string    `json:"invitee_username"`
-	AffCode         string    `json:"aff_code"`
-	TotalRebate     float64   `json:"total_rebate"`
-	CreatedAt       time.Time `json:"created_at"`
-}
-
-type AffiliateRebateRecord struct {
-	OrderID         int64     `json:"order_id"`
-	OutTradeNo      string    `json:"out_trade_no"`
-	InviterID       int64     `json:"inviter_id"`
-	InviterEmail    string    `json:"inviter_email"`
-	InviterUsername string    `json:"inviter_username"`
-	InviteeID       int64     `json:"invitee_id"`
-	InviteeEmail    string    `json:"invitee_email"`
-	InviteeUsername string    `json:"invitee_username"`
-	OrderAmount     float64   `json:"order_amount"`
-	PayAmount       float64   `json:"pay_amount"`
-	RebateAmount    float64   `json:"rebate_amount"`
-	PaymentType     string    `json:"payment_type"`
-	OrderStatus     string    `json:"order_status"`
-	CreatedAt       time.Time `json:"created_at"`
-}
-
-type AffiliateTransferRecord struct {
-	LedgerID            int64     `json:"ledger_id"`
-	UserID              int64     `json:"user_id"`
-	UserEmail           string    `json:"user_email"`
-	Username            string    `json:"username"`
-	Amount              float64   `json:"amount"`
-	BalanceAfter        *float64  `json:"balance_after,omitempty"`
-	AvailableQuotaAfter *float64  `json:"available_quota_after,omitempty"`
-	FrozenQuotaAfter    *float64  `json:"frozen_quota_after,omitempty"`
-	HistoryQuotaAfter   *float64  `json:"history_quota_after,omitempty"`
-	SnapshotAvailable   bool      `json:"snapshot_available"`
-	CurrentBalance      float64   `json:"-"`
-	RemainingQuota      float64   `json:"-"`
-	FrozenQuota         float64   `json:"-"`
-	HistoryQuota        float64   `json:"-"`
-	CreatedAt           time.Time `json:"created_at"`
-}
-
-type AffiliateUserOverview struct {
-	UserID              int64   `json:"user_id"`
-	Email               string  `json:"email"`
-	Username            string  `json:"username"`
-	AffCode             string  `json:"aff_code"`
-	RebateRatePercent   float64 `json:"rebate_rate_percent"`
-	RebateRateCustom    bool    `json:"-"`
-	InvitedCount        int     `json:"invited_count"`
-	RebatedInviteeCount int     `json:"rebated_invitee_count"`
-	AvailableQuota      float64 `json:"available_quota"`
-	HistoryQuota        float64 `json:"history_quota"`
-}
-
 type AffiliateService struct {
-	repo                 AffiliateRepository
+	repo                 portaffiliate.Repository
 	settingService       *SettingService
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	billingCacheService  *BillingCacheService
 }
 
-func NewAffiliateService(repo AffiliateRepository, settingService *SettingService, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService) *AffiliateService {
+func NewAffiliateService(repo portaffiliate.Repository, settingService *SettingService, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService) *AffiliateService {
 	return &AffiliateService{
 		repo:                 repo,
 		settingService:       settingService,

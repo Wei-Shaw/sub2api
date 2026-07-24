@@ -11,7 +11,8 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	portaffiliate "github.com/Wei-Shaw/sub2api/internal/port/affiliate"
 	"github.com/lib/pq"
 )
 
@@ -59,19 +60,19 @@ type affiliateRepository struct {
 	client *dbent.Client
 }
 
-func NewAffiliateRepository(client *dbent.Client, _ *sql.DB) service.AffiliateRepository {
+func NewAffiliateRepository(client *dbent.Client, _ *sql.DB) portaffiliate.Repository {
 	return &affiliateRepository{client: client}
 }
 
-func (r *affiliateRepository) EnsureUserAffiliate(ctx context.Context, userID int64) (*service.AffiliateSummary, error) {
+func (r *affiliateRepository) EnsureUserAffiliate(ctx context.Context, userID int64) (*domain.AffiliateSummary, error) {
 	if userID <= 0 {
-		return nil, service.ErrUserNotFound
+		return nil, domain.ErrUserNotFound
 	}
 	client := clientFromContext(ctx, r.client)
 	return ensureUserAffiliateWithClient(ctx, client, userID)
 }
 
-func (r *affiliateRepository) GetAffiliateByCode(ctx context.Context, code string) (*service.AffiliateSummary, error) {
+func (r *affiliateRepository) GetAffiliateByCode(ctx context.Context, code string) (*domain.AffiliateSummary, error) {
 	client := clientFromContext(ctx, r.client)
 	return queryAffiliateByCode(ctx, client, code)
 }
@@ -273,7 +274,7 @@ FROM cleared`, userID)
 			if err := rows.Err(); err != nil {
 				return err
 			}
-			return service.ErrAffiliateQuotaEmpty
+			return domain.ErrAffiliateQuotaEmpty
 		}
 		if err := rows.Scan(&transferred); err != nil {
 			_ = rows.Close()
@@ -283,7 +284,7 @@ FROM cleared`, userID)
 			return err
 		}
 		if transferred <= 0 {
-			return service.ErrAffiliateQuotaEmpty
+			return domain.ErrAffiliateQuotaEmpty
 		}
 
 		affected, err := txClient.User.Update().
@@ -295,7 +296,7 @@ FROM cleared`, userID)
 			return fmt.Errorf("credit user balance by affiliate quota: %w", err)
 		}
 		if affected == 0 {
-			return service.ErrUserNotFound
+			return domain.ErrUserNotFound
 		}
 
 		newBalance, err = queryUserBalance(txCtx, txClient, userID)
@@ -341,7 +342,7 @@ VALUES ($1, 'transfer', $2, NULL, $3, $4, $5, $6, NOW(), NOW())`,
 	return transferred, newBalance, nil
 }
 
-func (r *affiliateRepository) ListInvitees(ctx context.Context, inviterID int64, limit int) ([]service.AffiliateInvitee, error) {
+func (r *affiliateRepository) ListInvitees(ctx context.Context, inviterID int64, limit int) ([]domain.AffiliateInvitee, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -367,9 +368,9 @@ LIMIT $2`, inviterID, limit)
 	}
 	defer func() { _ = rows.Close() }()
 
-	invitees := make([]service.AffiliateInvitee, 0)
+	invitees := make([]domain.AffiliateInvitee, 0)
 	for rows.Next() {
-		var item service.AffiliateInvitee
+		var item domain.AffiliateInvitee
 		var createdAt time.Time
 		if err := rows.Scan(&item.UserID, &item.Email, &item.Username, &createdAt, &item.TotalRebate); err != nil {
 			return nil, err
@@ -383,7 +384,7 @@ LIMIT $2`, inviterID, limit)
 	return invitees, nil
 }
 
-func (r *affiliateRepository) ListAffiliateInviteRecords(ctx context.Context, filter service.AffiliateRecordFilter) ([]service.AffiliateInviteRecord, int64, error) {
+func (r *affiliateRepository) ListAffiliateInviteRecords(ctx context.Context, filter portaffiliate.RecordFilter) ([]domain.AffiliateInviteRecord, int64, error) {
 	client := clientFromContext(ctx, r.client)
 	where, args := buildAffiliateRecordWhere(filter, "ua.created_at", []string{
 		"inviter.email", "inviter.username", "invitee.email", "invitee.username",
@@ -436,9 +437,9 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]service.AffiliateInviteRecord, 0)
+	items := make([]domain.AffiliateInviteRecord, 0)
 	for rows.Next() {
-		var item service.AffiliateInviteRecord
+		var item domain.AffiliateInviteRecord
 		if err := rows.Scan(
 			&item.InviterID,
 			&item.InviterEmail,
@@ -460,7 +461,7 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	return items, total, nil
 }
 
-func (r *affiliateRepository) ListAffiliateRebateRecords(ctx context.Context, filter service.AffiliateRecordFilter) ([]service.AffiliateRebateRecord, int64, error) {
+func (r *affiliateRepository) ListAffiliateRebateRecords(ctx context.Context, filter portaffiliate.RecordFilter) ([]domain.AffiliateRebateRecord, int64, error) {
 	client := clientFromContext(ctx, r.client)
 	where, args := buildAffiliateRecordWhere(filter, "ual.created_at", []string{
 		"inviter.email", "inviter.username", "invitee.email", "invitee.username",
@@ -517,9 +518,9 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]service.AffiliateRebateRecord, 0)
+	items := make([]domain.AffiliateRebateRecord, 0)
 	for rows.Next() {
-		var item service.AffiliateRebateRecord
+		var item domain.AffiliateRebateRecord
 		if err := rows.Scan(
 			&item.OrderID,
 			&item.OutTradeNo,
@@ -546,7 +547,7 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	return items, total, nil
 }
 
-func (r *affiliateRepository) ListAffiliateTransferRecords(ctx context.Context, filter service.AffiliateRecordFilter) ([]service.AffiliateTransferRecord, int64, error) {
+func (r *affiliateRepository) ListAffiliateTransferRecords(ctx context.Context, filter portaffiliate.RecordFilter) ([]domain.AffiliateTransferRecord, int64, error) {
 	client := clientFromContext(ctx, r.client)
 	where, args := buildAffiliateRecordWhere(filter, "ual.created_at", []string{
 		"u.email", "u.username", "u.id::text",
@@ -593,9 +594,9 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]service.AffiliateTransferRecord, 0)
+	items := make([]domain.AffiliateTransferRecord, 0)
 	for rows.Next() {
-		var item service.AffiliateTransferRecord
+		var item domain.AffiliateTransferRecord
 		var balanceAfter sql.NullFloat64
 		var availableQuotaAfter sql.NullFloat64
 		var frozenQuotaAfter sql.NullFloat64
@@ -630,9 +631,9 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	return items, total, nil
 }
 
-func (r *affiliateRepository) GetAffiliateUserOverview(ctx context.Context, userID int64) (*service.AffiliateUserOverview, error) {
+func (r *affiliateRepository) GetAffiliateUserOverview(ctx context.Context, userID int64) (*domain.AffiliateUserOverview, error) {
 	if userID <= 0 {
-		return nil, service.ErrUserNotFound
+		return nil, domain.ErrUserNotFound
 	}
 	client := clientFromContext(ctx, r.client)
 	rows, err := client.QueryContext(ctx, affiliateUserOverviewSQL, userID)
@@ -645,10 +646,10 @@ func (r *affiliateRepository) GetAffiliateUserOverview(ctx context.Context, user
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
-		return nil, service.ErrUserNotFound
+		return nil, domain.ErrUserNotFound
 	}
 
-	var overview service.AffiliateUserOverview
+	var overview domain.AffiliateUserOverview
 	var customRate float64
 	var hasCustomRate bool
 	if err := rows.Scan(
@@ -672,7 +673,7 @@ func (r *affiliateRepository) GetAffiliateUserOverview(ctx context.Context, user
 	return &overview, rows.Err()
 }
 
-func buildAffiliateRecordWhere(filter service.AffiliateRecordFilter, timeColumn string, searchColumns []string) (string, []any) {
+func buildAffiliateRecordWhere(filter portaffiliate.RecordFilter, timeColumn string, searchColumns []string) (string, []any) {
 	clauses := make([]string, 0, 3)
 	args := make([]any, 0, 3)
 	if filter.StartAt != nil {
@@ -698,7 +699,7 @@ func buildAffiliateRecordWhere(filter service.AffiliateRecordFilter, timeColumn 
 	return "WHERE " + strings.Join(clauses, " AND "), args
 }
 
-func buildAffiliateRecordOrderBy(filter service.AffiliateRecordFilter, sortColumns map[string]string, fallbackColumn string) string {
+func buildAffiliateRecordOrderBy(filter portaffiliate.RecordFilter, sortColumns map[string]string, fallbackColumn string) string {
 	column := sortColumns[filter.SortBy]
 	if column == "" {
 		column = fallbackColumn
@@ -748,12 +749,12 @@ func (r *affiliateRepository) withTx(ctx context.Context, fn func(txCtx context.
 	return nil
 }
 
-func ensureUserAffiliateWithClient(ctx context.Context, client affiliateQueryExecer, userID int64) (*service.AffiliateSummary, error) {
+func ensureUserAffiliateWithClient(ctx context.Context, client affiliateQueryExecer, userID int64) (*domain.AffiliateSummary, error) {
 	summary, err := queryAffiliateByUserID(ctx, client, userID)
 	if err == nil {
 		return summary, nil
 	}
-	if !errors.Is(err, service.ErrAffiliateProfileNotFound) {
+	if !errors.Is(err, domain.ErrAffiliateProfileNotFound) {
 		return nil, err
 	}
 
@@ -778,7 +779,7 @@ ON CONFLICT (user_id) DO NOTHING`, userID, code)
 	return queryAffiliateByUserID(ctx, client, userID)
 }
 
-func queryAffiliateByUserID(ctx context.Context, client affiliateQueryExecer, userID int64) (*service.AffiliateSummary, error) {
+func queryAffiliateByUserID(ctx context.Context, client affiliateQueryExecer, userID int64) (*domain.AffiliateSummary, error) {
 	rows, err := client.QueryContext(ctx, `
 SELECT user_id,
        aff_code,
@@ -801,10 +802,10 @@ WHERE user_id = $1`, userID)
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
-		return nil, service.ErrAffiliateProfileNotFound
+		return nil, domain.ErrAffiliateProfileNotFound
 	}
 
-	var out service.AffiliateSummary
+	var out domain.AffiliateSummary
 	var inviterID sql.NullInt64
 	var rebateRate sql.NullFloat64
 	if err := rows.Scan(
@@ -832,7 +833,7 @@ WHERE user_id = $1`, userID)
 	return &out, nil
 }
 
-func queryAffiliateByCode(ctx context.Context, client affiliateQueryExecer, code string) (*service.AffiliateSummary, error) {
+func queryAffiliateByCode(ctx context.Context, client affiliateQueryExecer, code string) (*domain.AffiliateSummary, error) {
 	rows, err := client.QueryContext(ctx, `
 SELECT user_id,
        aff_code,
@@ -857,10 +858,10 @@ LIMIT 1`, strings.ToUpper(strings.TrimSpace(code)))
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
-		return nil, service.ErrAffiliateProfileNotFound
+		return nil, domain.ErrAffiliateProfileNotFound
 	}
 
-	var out service.AffiliateSummary
+	var out domain.AffiliateSummary
 	var inviterID sql.NullInt64
 	var rebateRate sql.NullFloat64
 	if err := rows.Scan(
@@ -901,7 +902,7 @@ func queryUserBalance(ctx context.Context, client affiliateQueryExecer, userID i
 		if err := rows.Err(); err != nil {
 			return 0, err
 		}
-		return 0, service.ErrUserNotFound
+		return 0, domain.ErrUserNotFound
 	}
 	var balance float64
 	if err := rows.Scan(&balance); err != nil {
@@ -936,7 +937,7 @@ LIMIT 1`, userID)
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
-		return nil, service.ErrUserNotFound
+		return nil, domain.ErrUserNotFound
 	}
 
 	var snapshot affiliateTransferSnapshot
@@ -981,11 +982,11 @@ func isAffiliateUniqueViolation(err error) bool {
 // 唯一性冲突返回 ErrAffiliateCodeTaken。
 func (r *affiliateRepository) UpdateUserAffCode(ctx context.Context, userID int64, newCode string) error {
 	if userID <= 0 {
-		return service.ErrUserNotFound
+		return domain.ErrUserNotFound
 	}
 	code := strings.ToUpper(strings.TrimSpace(newCode))
 	if code == "" {
-		return service.ErrAffiliateCodeInvalid
+		return domain.ErrAffiliateCodeInvalid
 	}
 
 	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
@@ -1000,13 +1001,13 @@ SET aff_code = $1,
 WHERE user_id = $2`, code, userID)
 		if err != nil {
 			if isAffiliateUniqueViolation(err) {
-				return service.ErrAffiliateCodeTaken
+				return domain.ErrAffiliateCodeTaken
 			}
 			return fmt.Errorf("update aff_code: %w", err)
 		}
 		affected, _ := res.RowsAffected()
 		if affected == 0 {
-			return service.ErrUserNotFound
+			return domain.ErrUserNotFound
 		}
 		return nil
 	})
@@ -1015,7 +1016,7 @@ WHERE user_id = $2`, code, userID)
 // ResetUserAffCode 把 aff_code 还原为系统随机码，并清除 aff_code_custom 标记。
 func (r *affiliateRepository) ResetUserAffCode(ctx context.Context, userID int64) (string, error) {
 	if userID <= 0 {
-		return "", service.ErrUserNotFound
+		return "", domain.ErrUserNotFound
 	}
 	var newCode string
 	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
@@ -1041,7 +1042,7 @@ WHERE user_id = $2`, candidate, userID)
 			}
 			affected, _ := res.RowsAffected()
 			if affected == 0 {
-				return service.ErrUserNotFound
+				return domain.ErrUserNotFound
 			}
 			newCode = candidate
 			return nil
@@ -1057,7 +1058,7 @@ WHERE user_id = $2`, candidate, userID)
 // SetUserRebateRate 设置或清除用户专属返利比例。ratePercent==nil 表示清除（沿用全局）。
 func (r *affiliateRepository) SetUserRebateRate(ctx context.Context, userID int64, ratePercent *float64) error {
 	if userID <= 0 {
-		return service.ErrUserNotFound
+		return domain.ErrUserNotFound
 	}
 	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
 		if _, err := ensureUserAffiliateWithClient(txCtx, txClient, userID); err != nil {
@@ -1075,7 +1076,7 @@ WHERE user_id = $2`, nullableArg(ratePercent), userID)
 		}
 		affected, _ := res.RowsAffected()
 		if affected == 0 {
-			return service.ErrUserNotFound
+			return domain.ErrUserNotFound
 		}
 		return nil
 	})
@@ -1128,7 +1129,7 @@ func nullableInt64Arg(v *int64) any {
 // 单一查询同时处理"无搜索"与"按邮箱/用户名模糊搜索"：
 // 空 search 时拼接出的 LIKE 模式为 "%%"，匹配所有行；非空时按 ILIKE 子串匹配。
 // 这避免了为两种情况维护两份 SQL 模板。
-func (r *affiliateRepository) ListUsersWithCustomSettings(ctx context.Context, filter service.AffiliateAdminFilter) ([]service.AffiliateAdminEntry, int64, error) {
+func (r *affiliateRepository) ListUsersWithCustomSettings(ctx context.Context, filter portaffiliate.AdminFilter) ([]domain.AffiliateAdminEntry, int64, error) {
 	page := filter.Page
 	if page < 1 {
 		page = 1
@@ -1170,9 +1171,9 @@ LIMIT $2 OFFSET $3`
 	}
 	defer func() { _ = rows.Close() }()
 
-	entries := make([]service.AffiliateAdminEntry, 0)
+	entries := make([]domain.AffiliateAdminEntry, 0)
 	for rows.Next() {
-		var e service.AffiliateAdminEntry
+		var e domain.AffiliateAdminEntry
 		var rebate sql.NullFloat64
 		if err := rows.Scan(&e.UserID, &e.Email, &e.Username, &e.AffCode,
 			&e.AffCodeCustom, &rebate, &e.AffCount); err != nil {

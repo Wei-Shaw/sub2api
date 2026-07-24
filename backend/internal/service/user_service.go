@@ -1,6 +1,8 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -29,7 +31,7 @@ import (
 )
 
 var (
-	ErrUserNotFound             = infraerrors.NotFound("USER_NOT_FOUND", "user not found")
+	ErrUserNotFound             = domain.ErrUserNotFound
 	ErrPasswordIncorrect        = infraerrors.BadRequest("PASSWORD_INCORRECT", "current password is incorrect")
 	ErrInsufficientPerms        = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
 	ErrNotifyCodeUserRateLimit  = infraerrors.TooManyRequests("NOTIFY_CODE_USER_RATE_LIMIT", "too many verification codes requested, please try again later")
