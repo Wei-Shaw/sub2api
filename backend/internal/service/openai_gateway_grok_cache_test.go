@@ -35,6 +35,7 @@ func TestResolveGrokCacheIdentityStableAcrossAppendOnlyTurns(t *testing.T) {
 
 	require.NotEmpty(t, first)
 	require.Len(t, first, 36)
+	require.Equal(t, "7", first[14:15])
 	require.Equal(t, first, second)
 }
 

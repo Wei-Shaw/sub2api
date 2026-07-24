@@ -1,6 +1,7 @@
 package service
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -98,7 +99,20 @@ func resolveGrokCacheIdentity(c *gin.Context, body []byte, explicitKey, upstream
 	// Include a versioned namespace so this identity cannot collide with other
 	// upstream session identifiers derived by sub2api.
 	isolatedSeed := fmt.Sprintf("grok-prompt-cache:v1:%d:%s:%s", apiKeyID, model, seed)
-	return generateSessionUUID(isolatedSeed)
+	return generateGrokCacheUUID(isolatedSeed)
+}
+
+// generateGrokCacheUUID returns a deterministic UUID with the UUID v7 wire
+// shape used by Grok Build session IDs. The timestamp bits are derived from
+// the stable seed rather than wall-clock time so the same cache seed keeps the
+// same upstream identity across requests and process restarts.
+func generateGrokCacheUUID(seed string) string {
+	hash := sha256.Sum256([]byte(seed))
+	bytes := hash[:16]
+	bytes[6] = (bytes[6] & 0x0f) | 0x70 // UUID version 7
+	bytes[8] = (bytes[8] & 0x3f) | 0x80 // RFC 9562 variant
+	return fmt.Sprintf("%x-%x-%x-%x-%x",
+		bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
 }
 
 func explicitGrokCacheSeed(c *gin.Context, body []byte, explicitKey string) string {
