@@ -4,8 +4,10 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -59,4 +61,30 @@ REDACTED
 	require.Equal(t, "item_output", gjson.GetBytes(forwarded, "input.4.id").String())
 	require.Equal(t, "call_123", gjson.GetBytes(forwarded, "input.4.call_id").String())
 	require.Equal(t, "item_unconstrained", gjson.GetBytes(forwarded, "input.5.id").String())
+REDACTED
+
+func TestSanitizeOpenAIResponsesInputItemIDs_AllocationGrowthIsLinear(t *testing.T) {
+	makeBody := func(itemCount int) []byte {
+		items := make([]string, itemCount)
+		for i := range items {
+			items[i] = fmt.Sprintf(`{"type":"message","id":"item_%d","role":"user","content":[{"type":"input_text","text":"hello"REDACTED]REDACTED`, i)
+	REDACTED
+		return []byte(`{"model":"gpt-5.6-sol","input":[` + strings.Join(items, ",") + `]REDACTED`)
+REDACTED
+	allocatedBytes := func(body []byte) uint64 {
+		runtime.GC()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		sanitized, changed, err := sanitizeOpenAIResponsesInputItemIDs(body)
+		runtime.ReadMemStats(&after)
+	REDACTED
+		require.True(t, changed)
+		require.NotEmpty(t, sanitized)
+		return after.TotalAlloc - before.TotalAlloc
+REDACTED
+
+	smallAllocated := allocatedBytes(makeBody(20))
+	largeAllocated := allocatedBytes(makeBody(200))
+	require.Less(t, largeAllocated, smallAllocated*30,
+		"10x more input items must not cause quadratic whole-body allocation growth")
 REDACTED
