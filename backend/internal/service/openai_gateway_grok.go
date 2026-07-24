@@ -69,6 +69,15 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		// The Grok-build default is useful for internal Chat bridge requests,
+		// but native Responses clients may not support the Grok-specific
+		// reasoning.encrypted_content include. Preserve the client's original
+		// include contract on the native Responses path.
+		patchedBody, err = preserveGrokClientResponsesInclude(patchedBody, body)
+		if err != nil {
+			return nil, fmt.Errorf("preserve client Responses include: %w", err)
+		}
 	}
 	// Derive the identity from the request xAI will actually see. This makes
 	// Codex Responses Lite additional_tools part of the stable tool prefix.
@@ -407,6 +416,21 @@ func patchGrokResponsesBodyWithClientTools(body []byte, upstreamModel string) ([
 		return nil, apicompat.ResponsesClientToolMapping{}, err
 	}
 	return patched, mapping, nil
+}
+
+// preserveGrokClientResponsesInclude prevents applyGrokResponsesDefaults from
+// expanding a native client's Responses contract. Chat bridge requests are
+// internal and may use the Grok-build default, but a native Responses request
+// must not receive reasoning.encrypted_content unless the client requested it.
+func preserveGrokClientResponsesInclude(body, clientBody []byte) ([]byte, error) {
+	clientInclude := gjson.GetBytes(clientBody, "include")
+	if !clientInclude.Exists() || clientInclude.Type == gjson.Null {
+		if !gjson.GetBytes(body, "include").Exists() {
+			return body, nil
+		}
+		return sjson.DeleteBytes(body, "include")
+	}
+	return sjson.SetRawBytes(body, "include", []byte(clientInclude.Raw))
 }
 
 // normalizeGrokResponsesPromptFields adapts OpenAI/Codex-only request fields

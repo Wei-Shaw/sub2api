@@ -23,6 +23,24 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestPreserveGrokClientResponsesInclude(t *testing.T) {
+	t.Parallel()
+
+	withoutInclude, err := preserveGrokClientResponsesInclude(
+		[]byte(`{"include":["reasoning.encrypted_content"],"store":false}`),
+		[]byte(`{"input":"hello"}`),
+	)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(withoutInclude, "include").Exists())
+
+	withExplicitInclude, err := preserveGrokClientResponsesInclude(
+		[]byte(`{"include":["reasoning.encrypted_content"],"store":false}`),
+		[]byte(`{"include":["reasoning.summary"]}`),
+	)
+	require.NoError(t, err)
+	require.Equal(t, "reasoning.summary", gjson.GetBytes(withExplicitInclude, "include.0").String())
+}
+
 func TestPatchGrokResponsesBodySetsMappedModelAndDropsUnsupportedFields(t *testing.T) {
 	t.Parallel()
 
@@ -443,6 +461,7 @@ func TestForwardGrokResponsesCodexAdditionalToolsUsesMixedCacheIntent(t *testing
 	require.NotEmpty(t, identity)
 	require.Equal(t, identity, upstream.lastReq.Header.Get(grokConversationIDHeader))
 	require.Empty(t, upstream.lastReq.Header.Get(grokClientToolCacheOptInHeader))
+	require.False(t, gjson.GetBytes(upstream.lastBody, "include").Exists())
 }
 
 func TestForwardGrokResponsesClaudeDesktopClientToolsUseCacheRoute(t *testing.T) {
