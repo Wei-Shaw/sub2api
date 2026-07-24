@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	porterrorpassthrough "github.com/Wei-Shaw/sub2api/internal/port/errorpassthrough"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -20,19 +20,19 @@ const (
 
 type errorPassthroughCache struct {
 	rdb        *redis.Client
-	localCache []*model.ErrorPassthroughRule
+	localCache []*domain.ErrorPassthroughRule
 	localMu    sync.RWMutex
 }
 
 // NewErrorPassthroughCache 创建错误透传规则缓存
-func NewErrorPassthroughCache(rdb *redis.Client) service.ErrorPassthroughCache {
+func NewErrorPassthroughCache(rdb *redis.Client) porterrorpassthrough.RuleCache {
 	return &errorPassthroughCache{
 		rdb: rdb,
 	}
 }
 
 // Get 从缓存获取规则列表
-func (c *errorPassthroughCache) Get(ctx context.Context) ([]*model.ErrorPassthroughRule, bool) {
+func (c *errorPassthroughCache) Get(ctx context.Context) ([]*domain.ErrorPassthroughRule, bool) {
 	// 先检查本地缓存
 	c.localMu.RLock()
 	if c.localCache != nil {
@@ -51,7 +51,7 @@ func (c *errorPassthroughCache) Get(ctx context.Context) ([]*model.ErrorPassthro
 		return nil, false
 	}
 
-	var rules []*model.ErrorPassthroughRule
+	var rules []*domain.ErrorPassthroughRule
 	if err := json.Unmarshal(data, &rules); err != nil {
 		log.Printf("[ErrorPassthroughCache] Failed to unmarshal rules: %v", err)
 		return nil, false
@@ -66,7 +66,7 @@ func (c *errorPassthroughCache) Get(ctx context.Context) ([]*model.ErrorPassthro
 }
 
 // Set 设置缓存
-func (c *errorPassthroughCache) Set(ctx context.Context, rules []*model.ErrorPassthroughRule) error {
+func (c *errorPassthroughCache) Set(ctx context.Context, rules []*domain.ErrorPassthroughRule) error {
 	data, err := json.Marshal(rules)
 	if err != nil {
 		return err

@@ -5,8 +5,8 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
-	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	porterrorpassthrough "github.com/Wei-Shaw/sub2api/internal/port/errorpassthrough"
 )
 
 type errorPassthroughRepository struct {
@@ -14,12 +14,12 @@ type errorPassthroughRepository struct {
 }
 
 // NewErrorPassthroughRepository 创建错误透传规则仓库
-func NewErrorPassthroughRepository(client *ent.Client) service.ErrorPassthroughRepository {
+func NewErrorPassthroughRepository(client *ent.Client) porterrorpassthrough.RuleRepository {
 	return &errorPassthroughRepository{client: client}
 }
 
 // List 获取所有规则
-func (r *errorPassthroughRepository) List(ctx context.Context) ([]*model.ErrorPassthroughRule, error) {
+func (r *errorPassthroughRepository) List(ctx context.Context) ([]*domain.ErrorPassthroughRule, error) {
 	rules, err := r.client.ErrorPassthroughRule.Query().
 		Order(ent.Asc(errorpassthroughrule.FieldPriority)).
 		All(ctx)
@@ -27,15 +27,15 @@ func (r *errorPassthroughRepository) List(ctx context.Context) ([]*model.ErrorPa
 		return nil, err
 	}
 
-	result := make([]*model.ErrorPassthroughRule, len(rules))
+	result := make([]*domain.ErrorPassthroughRule, len(rules))
 	for i, rule := range rules {
-		result[i] = r.toModel(rule)
+		result[i] = r.toDomain(rule)
 	}
 	return result, nil
 }
 
 // GetByID 根据 ID 获取规则
-func (r *errorPassthroughRepository) GetByID(ctx context.Context, id int64) (*model.ErrorPassthroughRule, error) {
+func (r *errorPassthroughRepository) GetByID(ctx context.Context, id int64) (*domain.ErrorPassthroughRule, error) {
 	rule, err := r.client.ErrorPassthroughRule.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -43,11 +43,11 @@ func (r *errorPassthroughRepository) GetByID(ctx context.Context, id int64) (*mo
 		}
 		return nil, err
 	}
-	return r.toModel(rule), nil
+	return r.toDomain(rule), nil
 }
 
 // Create 创建规则
-func (r *errorPassthroughRepository) Create(ctx context.Context, rule *model.ErrorPassthroughRule) (*model.ErrorPassthroughRule, error) {
+func (r *errorPassthroughRepository) Create(ctx context.Context, rule *domain.ErrorPassthroughRule) (*domain.ErrorPassthroughRule, error) {
 	builder := r.client.ErrorPassthroughRule.Create().
 		SetName(rule.Name).
 		SetEnabled(rule.Enabled).
@@ -80,11 +80,11 @@ func (r *errorPassthroughRepository) Create(ctx context.Context, rule *model.Err
 	if err != nil {
 		return nil, err
 	}
-	return r.toModel(created), nil
+	return r.toDomain(created), nil
 }
 
 // Update 更新规则
-func (r *errorPassthroughRepository) Update(ctx context.Context, rule *model.ErrorPassthroughRule) (*model.ErrorPassthroughRule, error) {
+func (r *errorPassthroughRepository) Update(ctx context.Context, rule *domain.ErrorPassthroughRule) (*domain.ErrorPassthroughRule, error) {
 	builder := r.client.ErrorPassthroughRule.UpdateOneID(rule.ID).
 		SetName(rule.Name).
 		SetEnabled(rule.Enabled).
@@ -130,7 +130,7 @@ func (r *errorPassthroughRepository) Update(ctx context.Context, rule *model.Err
 	if err != nil {
 		return nil, err
 	}
-	return r.toModel(updated), nil
+	return r.toDomain(updated), nil
 }
 
 // Delete 删除规则
@@ -138,9 +138,9 @@ func (r *errorPassthroughRepository) Delete(ctx context.Context, id int64) error
 	return r.client.ErrorPassthroughRule.DeleteOneID(id).Exec(ctx)
 }
 
-// toModel 将 Ent 实体转换为服务模型
-func (r *errorPassthroughRepository) toModel(e *ent.ErrorPassthroughRule) *model.ErrorPassthroughRule {
-	rule := &model.ErrorPassthroughRule{
+// toDomain 将 Ent 实体转换为 domain 模型
+func (r *errorPassthroughRepository) toDomain(e *ent.ErrorPassthroughRule) *domain.ErrorPassthroughRule {
+	rule := &domain.ErrorPassthroughRule{
 		ID:              int64(e.ID),
 		Name:            e.Name,
 		Enabled:         e.Enabled,

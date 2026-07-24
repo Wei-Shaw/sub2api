@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
@@ -1556,7 +1556,7 @@ func TestOpenAIStreamingContextWindowResponseFailedBeforeOutputAppliesPassthroug
 	rule.PassthroughBody = true
 	rule.CustomMessage = nil
 	ruleSvc := &ErrorPassthroughService{}
-	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+	ruleSvc.setLocalCache([]*domain.ErrorPassthroughRule{rule})
 	BindErrorPassthroughService(c, ruleSvc)
 
 	upstreamMessage := "Your input exceeds the context window of this model. Please adjust your input and try again."
@@ -1947,7 +1947,7 @@ func TestOpenAIStreamingPassthroughContextWindowResponseFailedBeforeOutputApplie
 	rule.PassthroughBody = true
 	rule.CustomMessage = nil
 	ruleSvc := &ErrorPassthroughService{}
-	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+	ruleSvc.setLocalCache([]*domain.ErrorPassthroughRule{rule})
 	BindErrorPassthroughService(c, ruleSvc)
 
 	upstreamMessage := "Your input exceeds the context window of this model. Please adjust your input and try again."

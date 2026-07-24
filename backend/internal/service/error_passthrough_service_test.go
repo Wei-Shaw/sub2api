@@ -8,14 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // mockErrorPassthroughRepo 用于测试的 mock repository
 type mockErrorPassthroughRepo struct {
-	rules     []*model.ErrorPassthroughRule
+	rules     []*domain.ErrorPassthroughRule
 	listErr   error
 	getErr    error
 	createErr error
@@ -24,7 +24,7 @@ type mockErrorPassthroughRepo struct {
 }
 
 type mockErrorPassthroughCache struct {
-	rules            []*model.ErrorPassthroughRule
+	rules            []*domain.ErrorPassthroughRule
 	hasData          bool
 	getCalled        int
 	setCalled        int
@@ -32,14 +32,14 @@ type mockErrorPassthroughCache struct {
 	notifyCalled     int
 }
 
-func newMockErrorPassthroughCache(rules []*model.ErrorPassthroughRule, hasData bool) *mockErrorPassthroughCache {
+func newMockErrorPassthroughCache(rules []*domain.ErrorPassthroughRule, hasData bool) *mockErrorPassthroughCache {
 	return &mockErrorPassthroughCache{
 		rules:   cloneRules(rules),
 		hasData: hasData,
 	}
 }
 
-func (m *mockErrorPassthroughCache) Get(ctx context.Context) ([]*model.ErrorPassthroughRule, bool) {
+func (m *mockErrorPassthroughCache) Get(ctx context.Context) ([]*domain.ErrorPassthroughRule, bool) {
 	m.getCalled++
 	if !m.hasData {
 		return nil, false
@@ -47,7 +47,7 @@ func (m *mockErrorPassthroughCache) Get(ctx context.Context) ([]*model.ErrorPass
 	return cloneRules(m.rules), true
 }
 
-func (m *mockErrorPassthroughCache) Set(ctx context.Context, rules []*model.ErrorPassthroughRule) error {
+func (m *mockErrorPassthroughCache) Set(ctx context.Context, rules []*domain.ErrorPassthroughRule) error {
 	m.setCalled++
 	m.rules = cloneRules(rules)
 	m.hasData = true
@@ -70,23 +70,23 @@ func (m *mockErrorPassthroughCache) SubscribeUpdates(ctx context.Context, handle
 	// 单测中无需订阅行为
 }
 
-func cloneRules(rules []*model.ErrorPassthroughRule) []*model.ErrorPassthroughRule {
+func cloneRules(rules []*domain.ErrorPassthroughRule) []*domain.ErrorPassthroughRule {
 	if rules == nil {
 		return nil
 	}
-	out := make([]*model.ErrorPassthroughRule, len(rules))
+	out := make([]*domain.ErrorPassthroughRule, len(rules))
 	copy(out, rules)
 	return out
 }
 
-func (m *mockErrorPassthroughRepo) List(ctx context.Context) ([]*model.ErrorPassthroughRule, error) {
+func (m *mockErrorPassthroughRepo) List(ctx context.Context) ([]*domain.ErrorPassthroughRule, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
 	return m.rules, nil
 }
 
-func (m *mockErrorPassthroughRepo) GetByID(ctx context.Context, id int64) (*model.ErrorPassthroughRule, error) {
+func (m *mockErrorPassthroughRepo) GetByID(ctx context.Context, id int64) (*domain.ErrorPassthroughRule, error) {
 	if m.getErr != nil {
 		return nil, m.getErr
 	}
@@ -98,7 +98,7 @@ func (m *mockErrorPassthroughRepo) GetByID(ctx context.Context, id int64) (*mode
 	return nil, nil
 }
 
-func (m *mockErrorPassthroughRepo) Create(ctx context.Context, rule *model.ErrorPassthroughRule) (*model.ErrorPassthroughRule, error) {
+func (m *mockErrorPassthroughRepo) Create(ctx context.Context, rule *domain.ErrorPassthroughRule) (*domain.ErrorPassthroughRule, error) {
 	if m.createErr != nil {
 		return nil, m.createErr
 	}
@@ -107,7 +107,7 @@ func (m *mockErrorPassthroughRepo) Create(ctx context.Context, rule *model.Error
 	return rule, nil
 }
 
-func (m *mockErrorPassthroughRepo) Update(ctx context.Context, rule *model.ErrorPassthroughRule) (*model.ErrorPassthroughRule, error) {
+func (m *mockErrorPassthroughRepo) Update(ctx context.Context, rule *domain.ErrorPassthroughRule) (*domain.ErrorPassthroughRule, error) {
 	if m.updateErr != nil {
 		return nil, m.updateErr
 	}
@@ -134,7 +134,7 @@ func (m *mockErrorPassthroughRepo) Delete(ctx context.Context, id int64) error {
 }
 
 // newTestService 创建测试用的服务实例
-func newTestService(rules []*model.ErrorPassthroughRule) *ErrorPassthroughService {
+func newTestService(rules []*domain.ErrorPassthroughRule) *ErrorPassthroughService {
 	repo := &mockErrorPassthroughRepo{rules: rules}
 	svc := &ErrorPassthroughService{
 		repo:  repo,
@@ -145,8 +145,8 @@ func newTestService(rules []*model.ErrorPassthroughRule) *ErrorPassthroughServic
 	return svc
 }
 
-// newCachedRuleForTest 从 model.ErrorPassthroughRule 创建 cachedPassthroughRule（测试用）
-func newCachedRuleForTest(rule *model.ErrorPassthroughRule) *cachedPassthroughRule {
+// newCachedRuleForTest 从 domain.ErrorPassthroughRule 创建 cachedPassthroughRule（测试用）
+func newCachedRuleForTest(rule *domain.ErrorPassthroughRule) *cachedPassthroughRule {
 	cr := &cachedPassthroughRule{ErrorPassthroughRule: rule}
 	if len(rule.Keywords) > 0 {
 		cr.lowerKeywords = make([]string, len(rule.Keywords))
@@ -176,11 +176,11 @@ func newCachedRuleForTest(rule *model.ErrorPassthroughRule) *cachedPassthroughRu
 func TestRuleMatches_NoConditions(t *testing.T) {
 	// 没有配置任何条件时，不应该匹配
 	svc := newTestService(nil)
-	rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
+	rule := newCachedRuleForTest(&domain.ErrorPassthroughRule{
 		Enabled:    true,
 		ErrorCodes: []int{},
 		Keywords:   []string{},
-		MatchMode:  model.MatchModeAny,
+		MatchMode:  domain.MatchModeAny,
 	})
 
 	var bodyLower string
@@ -191,11 +191,11 @@ func TestRuleMatches_NoConditions(t *testing.T) {
 
 func TestRuleMatches_OnlyErrorCodes_AnyMode(t *testing.T) {
 	svc := newTestService(nil)
-	rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
+	rule := newCachedRuleForTest(&domain.ErrorPassthroughRule{
 		Enabled:    true,
 		ErrorCodes: []int{422, 400},
 		Keywords:   []string{},
-		MatchMode:  model.MatchModeAny,
+		MatchMode:  domain.MatchModeAny,
 	})
 
 	tests := []struct {
@@ -222,11 +222,11 @@ func TestRuleMatches_OnlyErrorCodes_AnyMode(t *testing.T) {
 
 func TestRuleMatches_OnlyKeywords_AnyMode(t *testing.T) {
 	svc := newTestService(nil)
-	rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
+	rule := newCachedRuleForTest(&domain.ErrorPassthroughRule{
 		Enabled:    true,
 		ErrorCodes: []int{},
 		Keywords:   []string{"context limit", "model not supported"},
-		MatchMode:  model.MatchModeAny,
+		MatchMode:  domain.MatchModeAny,
 	})
 
 	tests := []struct {
@@ -254,11 +254,11 @@ func TestRuleMatches_OnlyKeywords_AnyMode(t *testing.T) {
 func TestRuleMatches_BothConditions_AnyMode(t *testing.T) {
 	// any 模式：错误码 OR 关键词
 	svc := newTestService(nil)
-	rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
+	rule := newCachedRuleForTest(&domain.ErrorPassthroughRule{
 		Enabled:    true,
 		ErrorCodes: []int{422, 400},
 		Keywords:   []string{"context limit"},
-		MatchMode:  model.MatchModeAny,
+		MatchMode:  domain.MatchModeAny,
 	})
 
 	tests := []struct {
@@ -311,11 +311,11 @@ func TestRuleMatches_BothConditions_AnyMode(t *testing.T) {
 func TestRuleMatches_BothConditions_AllMode(t *testing.T) {
 	// all 模式：错误码 AND 关键词
 	svc := newTestService(nil)
-	rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
+	rule := newCachedRuleForTest(&domain.ErrorPassthroughRule{
 		Enabled:    true,
 		ErrorCodes: []int{422, 400},
 		Keywords:   []string{"context limit"},
-		MatchMode:  model.MatchModeAll,
+		MatchMode:  domain.MatchModeAll,
 	})
 
 	tests := []struct {
@@ -424,7 +424,7 @@ func TestPlatformMatches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
+			rule := newCachedRuleForTest(&domain.ErrorPassthroughRule{
 				Platforms: tt.rulePlatforms,
 			})
 			result := svc.platformMatchesCached(rule, strings.ToLower(tt.requestPlatform))
@@ -439,14 +439,14 @@ func TestPlatformMatches(t *testing.T) {
 
 func TestMatchRule_Priority(t *testing.T) {
 	// 测试规则按优先级排序，优先级小的先匹配
-	rules := []*model.ErrorPassthroughRule{
+	rules := []*domain.ErrorPassthroughRule{
 		{
 			ID:         1,
 			Name:       "Low Priority",
 			Enabled:    true,
 			Priority:   10,
 			ErrorCodes: []int{422},
-			MatchMode:  model.MatchModeAny,
+			MatchMode:  domain.MatchModeAny,
 		},
 		{
 			ID:         2,
@@ -454,7 +454,7 @@ func TestMatchRule_Priority(t *testing.T) {
 			Enabled:    true,
 			Priority:   1,
 			ErrorCodes: []int{422},
-			MatchMode:  model.MatchModeAny,
+			MatchMode:  domain.MatchModeAny,
 		},
 	}
 
@@ -467,14 +467,14 @@ func TestMatchRule_Priority(t *testing.T) {
 }
 
 func TestMatchRule_DisabledRule(t *testing.T) {
-	rules := []*model.ErrorPassthroughRule{
+	rules := []*domain.ErrorPassthroughRule{
 		{
 			ID:         1,
 			Name:       "Disabled Rule",
 			Enabled:    false,
 			Priority:   1,
 			ErrorCodes: []int{422},
-			MatchMode:  model.MatchModeAny,
+			MatchMode:  domain.MatchModeAny,
 		},
 		{
 			ID:         2,
@@ -482,7 +482,7 @@ func TestMatchRule_DisabledRule(t *testing.T) {
 			Enabled:    true,
 			Priority:   10,
 			ErrorCodes: []int{422},
-			MatchMode:  model.MatchModeAny,
+			MatchMode:  domain.MatchModeAny,
 		},
 	}
 
@@ -494,7 +494,7 @@ func TestMatchRule_DisabledRule(t *testing.T) {
 }
 
 func TestMatchRule_PlatformFilter(t *testing.T) {
-	rules := []*model.ErrorPassthroughRule{
+	rules := []*domain.ErrorPassthroughRule{
 		{
 			ID:         1,
 			Name:       "Anthropic Only",
@@ -502,7 +502,7 @@ func TestMatchRule_PlatformFilter(t *testing.T) {
 			Priority:   1,
 			ErrorCodes: []int{422},
 			Platforms:  []string{"anthropic"},
-			MatchMode:  model.MatchModeAny,
+			MatchMode:  domain.MatchModeAny,
 		},
 		{
 			ID:         2,
@@ -511,7 +511,7 @@ func TestMatchRule_PlatformFilter(t *testing.T) {
 			Priority:   2,
 			ErrorCodes: []int{422},
 			Platforms:  []string{"openai"},
-			MatchMode:  model.MatchModeAny,
+			MatchMode:  domain.MatchModeAny,
 		},
 		{
 			ID:         3,
@@ -520,7 +520,7 @@ func TestMatchRule_PlatformFilter(t *testing.T) {
 			Priority:   3,
 			ErrorCodes: []int{422},
 			Platforms:  []string{},
-			MatchMode:  model.MatchModeAny,
+			MatchMode:  domain.MatchModeAny,
 		},
 	}
 
@@ -552,14 +552,14 @@ func TestMatchRule_PlatformFilter(t *testing.T) {
 }
 
 func TestMatchRule_NoMatch(t *testing.T) {
-	rules := []*model.ErrorPassthroughRule{
+	rules := []*domain.ErrorPassthroughRule{
 		{
 			ID:         1,
 			Name:       "Rule for 422",
 			Enabled:    true,
 			Priority:   1,
 			ErrorCodes: []int{422},
-			MatchMode:  model.MatchModeAny,
+			MatchMode:  domain.MatchModeAny,
 		},
 	}
 
@@ -570,21 +570,21 @@ func TestMatchRule_NoMatch(t *testing.T) {
 }
 
 func TestMatchRule_EmptyRules(t *testing.T) {
-	svc := newTestService([]*model.ErrorPassthroughRule{})
+	svc := newTestService([]*domain.ErrorPassthroughRule{})
 	matched := svc.MatchRule("anthropic", 422, []byte("error"))
 
 	assert.Nil(t, matched, "没有规则时应返回 nil")
 }
 
 func TestMatchRule_CaseInsensitiveKeyword(t *testing.T) {
-	rules := []*model.ErrorPassthroughRule{
+	rules := []*domain.ErrorPassthroughRule{
 		{
 			ID:        1,
 			Name:      "Context Limit",
 			Enabled:   true,
 			Priority:  1,
 			Keywords:  []string{"Context Limit"},
-			MatchMode: model.MatchModeAny,
+			MatchMode: domain.MatchModeAny,
 		},
 	}
 
@@ -620,7 +620,7 @@ func TestMatchRule_CaseInsensitiveKeyword(t *testing.T) {
 
 func TestMatchRule_RealWorldScenario_ContextLimitPassthrough(t *testing.T) {
 	// 场景：上游返回 422 + "context limit has been reached"，需要透传给客户端
-	rules := []*model.ErrorPassthroughRule{
+	rules := []*domain.ErrorPassthroughRule{
 		{
 			ID:              1,
 			Name:            "Context Limit Passthrough",
@@ -628,7 +628,7 @@ func TestMatchRule_RealWorldScenario_ContextLimitPassthrough(t *testing.T) {
 			Priority:        1,
 			ErrorCodes:      []int{422},
 			Keywords:        []string{"context limit"},
-			MatchMode:       model.MatchModeAll, // 必须同时满足
+			MatchMode:       domain.MatchModeAll, // 必须同时满足
 			Platforms:       []string{"anthropic", "antigravity"},
 			PassthroughCode: true,
 			PassthroughBody: true,
@@ -679,14 +679,14 @@ func TestMatchRule_RealWorldScenario_CustomErrorMessage(t *testing.T) {
 	// 场景：某些错误需要返回自定义消息，隐藏上游详细信息
 	customMsg := "Service temporarily unavailable, please try again later"
 	responseCode := 503
-	rules := []*model.ErrorPassthroughRule{
+	rules := []*domain.ErrorPassthroughRule{
 		{
 			ID:              1,
 			Name:            "Hide Internal Errors",
 			Enabled:         true,
 			Priority:        1,
 			ErrorCodes:      []int{500, 502, 503},
-			MatchMode:       model.MatchModeAny,
+			MatchMode:       domain.MatchModeAny,
 			PassthroughCode: false,
 			ResponseCode:    &responseCode,
 			PassthroughBody: false,
@@ -711,15 +711,15 @@ func TestMatchRule_RealWorldScenario_CustomErrorMessage(t *testing.T) {
 func TestErrorPassthroughRule_Validate(t *testing.T) {
 	tests := []struct {
 		name        string
-		rule        *model.ErrorPassthroughRule
+		rule        *domain.ErrorPassthroughRule
 		expectError bool
 		errorField  string
 	}{
 		{
 			name: "有效规则 - 透传模式（含错误码）",
-			rule: &model.ErrorPassthroughRule{
+			rule: &domain.ErrorPassthroughRule{
 				Name:            "Valid Rule",
-				MatchMode:       model.MatchModeAny,
+				MatchMode:       domain.MatchModeAny,
 				ErrorCodes:      []int{422},
 				PassthroughCode: true,
 				PassthroughBody: true,
@@ -728,9 +728,9 @@ func TestErrorPassthroughRule_Validate(t *testing.T) {
 		},
 		{
 			name: "有效规则 - 透传模式（含关键词）",
-			rule: &model.ErrorPassthroughRule{
+			rule: &domain.ErrorPassthroughRule{
 				Name:            "Valid Rule",
-				MatchMode:       model.MatchModeAny,
+				MatchMode:       domain.MatchModeAny,
 				Keywords:        []string{"context limit"},
 				PassthroughCode: true,
 				PassthroughBody: true,
@@ -739,9 +739,9 @@ func TestErrorPassthroughRule_Validate(t *testing.T) {
 		},
 		{
 			name: "有效规则 - 自定义响应",
-			rule: &model.ErrorPassthroughRule{
+			rule: &domain.ErrorPassthroughRule{
 				Name:            "Valid Rule",
-				MatchMode:       model.MatchModeAll,
+				MatchMode:       domain.MatchModeAll,
 				ErrorCodes:      []int{500},
 				Keywords:        []string{"internal error"},
 				PassthroughCode: false,
@@ -753,9 +753,9 @@ func TestErrorPassthroughRule_Validate(t *testing.T) {
 		},
 		{
 			name: "缺少名称",
-			rule: &model.ErrorPassthroughRule{
+			rule: &domain.ErrorPassthroughRule{
 				Name:            "",
-				MatchMode:       model.MatchModeAny,
+				MatchMode:       domain.MatchModeAny,
 				ErrorCodes:      []int{422},
 				PassthroughCode: true,
 				PassthroughBody: true,
@@ -765,7 +765,7 @@ func TestErrorPassthroughRule_Validate(t *testing.T) {
 		},
 		{
 			name: "无效的匹配模式",
-			rule: &model.ErrorPassthroughRule{
+			rule: &domain.ErrorPassthroughRule{
 				Name:            "Invalid Mode",
 				MatchMode:       "invalid",
 				ErrorCodes:      []int{422},
@@ -777,9 +777,9 @@ func TestErrorPassthroughRule_Validate(t *testing.T) {
 		},
 		{
 			name: "缺少匹配条件（错误码和关键词都为空）",
-			rule: &model.ErrorPassthroughRule{
+			rule: &domain.ErrorPassthroughRule{
 				Name:            "No Conditions",
-				MatchMode:       model.MatchModeAny,
+				MatchMode:       domain.MatchModeAny,
 				ErrorCodes:      []int{},
 				Keywords:        []string{},
 				PassthroughCode: true,
@@ -790,9 +790,9 @@ func TestErrorPassthroughRule_Validate(t *testing.T) {
 		},
 		{
 			name: "缺少匹配条件（nil切片）",
-			rule: &model.ErrorPassthroughRule{
+			rule: &domain.ErrorPassthroughRule{
 				Name:            "Nil Conditions",
-				MatchMode:       model.MatchModeAny,
+				MatchMode:       domain.MatchModeAny,
 				ErrorCodes:      nil,
 				Keywords:        nil,
 				PassthroughCode: true,
@@ -803,9 +803,9 @@ func TestErrorPassthroughRule_Validate(t *testing.T) {
 		},
 		{
 			name: "自定义状态码但未提供值",
-			rule: &model.ErrorPassthroughRule{
+			rule: &domain.ErrorPassthroughRule{
 				Name:            "Missing Code",
-				MatchMode:       model.MatchModeAny,
+				MatchMode:       domain.MatchModeAny,
 				ErrorCodes:      []int{422},
 				PassthroughCode: false,
 				ResponseCode:    nil,
@@ -816,9 +816,9 @@ func TestErrorPassthroughRule_Validate(t *testing.T) {
 		},
 		{
 			name: "自定义消息但未提供值",
-			rule: &model.ErrorPassthroughRule{
+			rule: &domain.ErrorPassthroughRule{
 				Name:            "Missing Message",
-				MatchMode:       model.MatchModeAny,
+				MatchMode:       domain.MatchModeAny,
 				ErrorCodes:      []int{422},
 				PassthroughCode: true,
 				PassthroughBody: false,
@@ -829,9 +829,9 @@ func TestErrorPassthroughRule_Validate(t *testing.T) {
 		},
 		{
 			name: "自定义消息为空字符串",
-			rule: &model.ErrorPassthroughRule{
+			rule: &domain.ErrorPassthroughRule{
 				Name:            "Empty Message",
-				MatchMode:       model.MatchModeAny,
+				MatchMode:       domain.MatchModeAny,
 				ErrorCodes:      []int{422},
 				PassthroughCode: true,
 				PassthroughBody: false,
@@ -847,7 +847,7 @@ func TestErrorPassthroughRule_Validate(t *testing.T) {
 			err := tt.rule.Validate()
 			if tt.expectError {
 				require.Error(t, err)
-				validationErr, ok := err.(*model.ValidationError)
+				validationErr, ok := err.(*domain.ValidationError)
 				require.True(t, ok, "应该返回 ValidationError")
 				assert.Equal(t, tt.errorField, validationErr.Field)
 			} else {
@@ -865,11 +865,11 @@ func TestCreate_ForceRefreshCacheAfterWrite(t *testing.T) {
 	ctx := context.Background()
 
 	staleRule := newPassthroughRuleForWritePathTest(99, "service temporarily unavailable after multiple", "旧缓存消息")
-	repo := &mockErrorPassthroughRepo{rules: []*model.ErrorPassthroughRule{}}
-	cache := newMockErrorPassthroughCache([]*model.ErrorPassthroughRule{staleRule}, true)
+	repo := &mockErrorPassthroughRepo{rules: []*domain.ErrorPassthroughRule{}}
+	cache := newMockErrorPassthroughCache([]*domain.ErrorPassthroughRule{staleRule}, true)
 
 	svc := &ErrorPassthroughService{repo: repo, cache: cache}
-	svc.setLocalCache([]*model.ErrorPassthroughRule{staleRule})
+	svc.setLocalCache([]*domain.ErrorPassthroughRule{staleRule})
 
 	newRule := newPassthroughRuleForWritePathTest(0, "service temporarily unavailable after multiple", "上游请求失败")
 	created, err := svc.Create(ctx, newRule)
@@ -894,11 +894,11 @@ func TestUpdate_ForceRefreshCacheAfterWrite(t *testing.T) {
 	ctx := context.Background()
 
 	originalRule := newPassthroughRuleForWritePathTest(1, "old keyword", "旧消息")
-	repo := &mockErrorPassthroughRepo{rules: []*model.ErrorPassthroughRule{originalRule}}
-	cache := newMockErrorPassthroughCache([]*model.ErrorPassthroughRule{originalRule}, true)
+	repo := &mockErrorPassthroughRepo{rules: []*domain.ErrorPassthroughRule{originalRule}}
+	cache := newMockErrorPassthroughCache([]*domain.ErrorPassthroughRule{originalRule}, true)
 
 	svc := &ErrorPassthroughService{repo: repo, cache: cache}
-	svc.setLocalCache([]*model.ErrorPassthroughRule{originalRule})
+	svc.setLocalCache([]*domain.ErrorPassthroughRule{originalRule})
 
 	updatedRule := newPassthroughRuleForWritePathTest(1, "new keyword", "新消息")
 	_, err := svc.Update(ctx, updatedRule)
@@ -925,11 +925,11 @@ func TestDelete_ForceRefreshCacheAfterWrite(t *testing.T) {
 	ctx := context.Background()
 
 	rule := newPassthroughRuleForWritePathTest(1, "to be deleted", "删除前消息")
-	repo := &mockErrorPassthroughRepo{rules: []*model.ErrorPassthroughRule{rule}}
-	cache := newMockErrorPassthroughCache([]*model.ErrorPassthroughRule{rule}, true)
+	repo := &mockErrorPassthroughRepo{rules: []*domain.ErrorPassthroughRule{rule}}
+	cache := newMockErrorPassthroughCache([]*domain.ErrorPassthroughRule{rule}, true)
 
 	svc := &ErrorPassthroughService{repo: repo, cache: cache}
-	svc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+	svc.setLocalCache([]*domain.ErrorPassthroughRule{rule})
 
 	err := svc.Delete(ctx, 1)
 	require.NoError(t, err)
@@ -948,8 +948,8 @@ func TestNewService_StartupReloadFromDBToHealStaleCache(t *testing.T) {
 	staleRule := newPassthroughRuleForWritePathTest(99, "stale keyword", "旧缓存消息")
 	latestRule := newPassthroughRuleForWritePathTest(1, "fresh keyword", "最新消息")
 
-	repo := &mockErrorPassthroughRepo{rules: []*model.ErrorPassthroughRule{latestRule}}
-	cache := newMockErrorPassthroughCache([]*model.ErrorPassthroughRule{staleRule}, true)
+	repo := &mockErrorPassthroughRepo{rules: []*domain.ErrorPassthroughRule{latestRule}}
+	cache := newMockErrorPassthroughCache([]*domain.ErrorPassthroughRule{staleRule}, true)
 
 	svc := NewErrorPassthroughService(repo, cache)
 
@@ -969,13 +969,13 @@ func TestUpdate_RefreshFailureShouldNotKeepStaleEnabledRule(t *testing.T) {
 
 	staleRule := newPassthroughRuleForWritePathTest(1, "service temporarily unavailable after multiple", "旧缓存消息")
 	repo := &mockErrorPassthroughRepo{
-		rules:   []*model.ErrorPassthroughRule{staleRule},
+		rules:   []*domain.ErrorPassthroughRule{staleRule},
 		listErr: errors.New("db list failed"),
 	}
-	cache := newMockErrorPassthroughCache([]*model.ErrorPassthroughRule{staleRule}, true)
+	cache := newMockErrorPassthroughCache([]*domain.ErrorPassthroughRule{staleRule}, true)
 
 	svc := &ErrorPassthroughService{repo: repo, cache: cache}
-	svc.setLocalCache([]*model.ErrorPassthroughRule{staleRule})
+	svc.setLocalCache([]*domain.ErrorPassthroughRule{staleRule})
 
 	disabledRule := *staleRule
 	disabledRule.Enabled = false
@@ -991,16 +991,16 @@ func TestUpdate_RefreshFailureShouldNotKeepStaleEnabledRule(t *testing.T) {
 	svc.localCacheMu.RUnlock()
 }
 
-func newPassthroughRuleForWritePathTest(id int64, keyword, customMsg string) *model.ErrorPassthroughRule {
+func newPassthroughRuleForWritePathTest(id int64, keyword, customMsg string) *domain.ErrorPassthroughRule {
 	responseCode := 503
-	rule := &model.ErrorPassthroughRule{
+	rule := &domain.ErrorPassthroughRule{
 		ID:              id,
 		Name:            "write-path-cache-refresh",
 		Enabled:         true,
 		Priority:        1,
 		ErrorCodes:      []int{503},
 		Keywords:        []string{keyword},
-		MatchMode:       model.MatchModeAll,
+		MatchMode:       domain.MatchModeAll,
 		PassthroughCode: false,
 		ResponseCode:    &responseCode,
 		PassthroughBody: false,

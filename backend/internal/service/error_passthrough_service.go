@@ -7,42 +7,29 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	porterrorpassthrough "github.com/Wei-Shaw/sub2api/internal/port/errorpassthrough"
 )
 
-// ErrorPassthroughRepository 定义错误透传规则的数据访问接口
-type ErrorPassthroughRepository interface {
-	// List 获取所有规则
-	List(ctx context.Context) ([]*model.ErrorPassthroughRule, error)
-	// GetByID 根据 ID 获取规则
-	GetByID(ctx context.Context, id int64) (*model.ErrorPassthroughRule, error)
-	// Create 创建规则
-	Create(ctx context.Context, rule *model.ErrorPassthroughRule) (*model.ErrorPassthroughRule, error)
-	// Update 更新规则
-	Update(ctx context.Context, rule *model.ErrorPassthroughRule) (*model.ErrorPassthroughRule, error)
-	// Delete 删除规则
-	Delete(ctx context.Context, id int64) error
-}
+// Port type aliases keep existing service call sites compiling while ports live
+// in internal/port/errorpassthrough.
+type ErrorPassthroughRepository = porterrorpassthrough.RuleRepository
+type ErrorPassthroughCache = porterrorpassthrough.RuleCache
 
-// ErrorPassthroughCache 定义错误透传规则的缓存接口
-type ErrorPassthroughCache interface {
-	// Get 从缓存获取规则列表
-	Get(ctx context.Context) ([]*model.ErrorPassthroughRule, bool)
-	// Set 设置缓存
-	Set(ctx context.Context, rules []*model.ErrorPassthroughRule) error
-	// Invalidate 使缓存失效
-	Invalidate(ctx context.Context) error
-	// NotifyUpdate 通知其他实例刷新缓存
-	NotifyUpdate(ctx context.Context) error
-	// SubscribeUpdates 订阅缓存更新通知
-	SubscribeUpdates(ctx context.Context, handler func())
-}
+// Domain type alias for incremental migration of call sites.
+type ErrorPassthroughRule = domain.ErrorPassthroughRule
+
+// Match-mode aliases for service-local call sites / tests.
+const (
+	MatchModeAny = domain.MatchModeAny
+	MatchModeAll = domain.MatchModeAll
+)
 
 // ErrorPassthroughService 错误透传规则服务
 type ErrorPassthroughService struct {
-	repo  ErrorPassthroughRepository
-	cache ErrorPassthroughCache
+	repo  porterrorpassthrough.RuleRepository
+	cache porterrorpassthrough.RuleCache
 
 	// 本地内存缓存，用于快速匹配
 	localCache   []*cachedPassthroughRule
@@ -51,7 +38,7 @@ type ErrorPassthroughService struct {
 
 // cachedPassthroughRule 预计算的规则缓存，避免运行时重复 ToLower
 type cachedPassthroughRule struct {
-	*model.ErrorPassthroughRule
+	*domain.ErrorPassthroughRule
 	lowerKeywords  []string         // 预计算的小写关键词
 	lowerPlatforms []string         // 预计算的小写平台
 	errorCodeSet   map[int]struct{} // 预计算的 error code set
@@ -61,8 +48,8 @@ const maxBodyMatchLen = 8 << 10 // 8KB，错误信息不会在 8KB 之后才出�
 
 // NewErrorPassthroughService 创建错误透传规则服务
 func NewErrorPassthroughService(
-	repo ErrorPassthroughRepository,
-	cache ErrorPassthroughCache,
+	repo porterrorpassthrough.RuleRepository,
+	cache porterrorpassthrough.RuleCache,
 ) *ErrorPassthroughService {
 	svc := &ErrorPassthroughService{
 		repo:  repo,
@@ -91,17 +78,17 @@ func NewErrorPassthroughService(
 }
 
 // List 获取所有规则
-func (s *ErrorPassthroughService) List(ctx context.Context) ([]*model.ErrorPassthroughRule, error) {
+func (s *ErrorPassthroughService) List(ctx context.Context) ([]*domain.ErrorPassthroughRule, error) {
 	return s.repo.List(ctx)
 }
 
 // GetByID 根据 ID 获取规则
-func (s *ErrorPassthroughService) GetByID(ctx context.Context, id int64) (*model.ErrorPassthroughRule, error) {
+func (s *ErrorPassthroughService) GetByID(ctx context.Context, id int64) (*domain.ErrorPassthroughRule, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
 // Create 创建规则
-func (s *ErrorPassthroughService) Create(ctx context.Context, rule *model.ErrorPassthroughRule) (*model.ErrorPassthroughRule, error) {
+func (s *ErrorPassthroughService) Create(ctx context.Context, rule *domain.ErrorPassthroughRule) (*domain.ErrorPassthroughRule, error) {
 	if err := rule.Validate(); err != nil {
 		return nil, err
 	}
@@ -120,7 +107,7 @@ func (s *ErrorPassthroughService) Create(ctx context.Context, rule *model.ErrorP
 }
 
 // Update 更新规则
-func (s *ErrorPassthroughService) Update(ctx context.Context, rule *model.ErrorPassthroughRule) (*model.ErrorPassthroughRule, error) {
+func (s *ErrorPassthroughService) Update(ctx context.Context, rule *domain.ErrorPassthroughRule) (*domain.ErrorPassthroughRule, error) {
 	if err := rule.Validate(); err != nil {
 		return nil, err
 	}
@@ -154,7 +141,7 @@ func (s *ErrorPassthroughService) Delete(ctx context.Context, id int64) error {
 
 // MatchRule 匹配透传规则
 // 返回第一个匹配的规则，如果没有匹配则返回 nil
-func (s *ErrorPassthroughService) MatchRule(platform string, statusCode int, body []byte) *model.ErrorPassthroughRule {
+func (s *ErrorPassthroughService) MatchRule(platform string, statusCode int, body []byte) *domain.ErrorPassthroughRule {
 	rules := s.getCachedRules()
 	if len(rules) == 0 {
 		return nil
@@ -236,7 +223,7 @@ func (s *ErrorPassthroughService) reloadRulesFromDB(ctx context.Context) error {
 }
 
 // setLocalCache 设置本地缓存，预计算小写值和 set 以避免运行时重复计算
-func (s *ErrorPassthroughService) setLocalCache(rules []*model.ErrorPassthroughRule) {
+func (s *ErrorPassthroughService) setLocalCache(rules []*domain.ErrorPassthroughRule) {
 	cached := make([]*cachedPassthroughRule, len(rules))
 	for i, r := range rules {
 		cr := &cachedPassthroughRule{ErrorPassthroughRule: r}
@@ -345,7 +332,7 @@ func (s *ErrorPassthroughService) ruleMatchesOptimized(rule *cachedPassthroughRu
 
 	codeMatch := !hasErrorCodes || s.containsIntSet(rule.errorCodeSet, statusCode)
 
-	if rule.MatchMode == model.MatchModeAll {
+	if rule.MatchMode == domain.MatchModeAll {
 		// "all" 模式：所有配置的条件都必须满足，短路
 		if hasErrorCodes && !codeMatch {
 			return false

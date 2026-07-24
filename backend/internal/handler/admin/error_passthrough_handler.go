@@ -3,7 +3,7 @@ package admin
 import (
 	"strconv"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -95,7 +95,7 @@ func (h *ErrorPassthroughHandler) Create(c *gin.Context) {
 		return
 	}
 
-	rule := &model.ErrorPassthroughRule{
+	rule := &domain.ErrorPassthroughRule{
 		Name:       req.Name,
 		Priority:   req.Priority,
 		ErrorCodes: req.ErrorCodes,
@@ -112,7 +112,7 @@ func (h *ErrorPassthroughHandler) Create(c *gin.Context) {
 	if req.MatchMode != "" {
 		rule.MatchMode = req.MatchMode
 	} else {
-		rule.MatchMode = model.MatchModeAny
+		rule.MatchMode = domain.MatchModeAny
 	}
 	if req.PassthroughCode != nil {
 		rule.PassthroughCode = *req.PassthroughCode
@@ -144,7 +144,7 @@ func (h *ErrorPassthroughHandler) Create(c *gin.Context) {
 
 	created, err := h.service.Create(c.Request.Context(), rule)
 	if err != nil {
-		if _, ok := err.(*model.ValidationError); ok {
+		if _, ok := err.(*domain.ValidationError); ok {
 			response.BadRequest(c, err.Error())
 			return
 		}
@@ -182,7 +182,7 @@ func (h *ErrorPassthroughHandler) Update(c *gin.Context) {
 	}
 
 	// 部分更新：只更新请求中提供的字段
-	rule := &model.ErrorPassthroughRule{
+	rule := &domain.ErrorPassthroughRule{
 		ID:              id,
 		Name:            existing.Name,
 		Enabled:         existing.Enabled,
@@ -253,7 +253,7 @@ func (h *ErrorPassthroughHandler) Update(c *gin.Context) {
 
 	updated, err := h.service.Update(c.Request.Context(), rule)
 	if err != nil {
-		if _, ok := err.(*model.ValidationError); ok {
+		if _, ok := err.(*domain.ValidationError); ok {
 			response.BadRequest(c, err.Error())
 			return
 		}

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -29,11 +29,11 @@ func bindPassthroughRule(c *gin.Context, platform string, keywords []string, res
 	for i, kw := range keywords {
 		code := responseCode
 		rules = append(rules, &cachedPassthroughRule{
-			ErrorPassthroughRule: &model.ErrorPassthroughRule{
+			ErrorPassthroughRule: &domain.ErrorPassthroughRule{
 				ID:              int64(i + 1),
 				Enabled:         true,
 				Platforms:       []string{platform},
-				MatchMode:       model.MatchModeAny,
+				MatchMode:       domain.MatchModeAny,
 				Keywords:        []string{kw},
 				ResponseCode:    &code,
 				PassthroughBody: true,
@@ -145,7 +145,7 @@ func TestForwardAsChatCompletions_ResponseFailed_NoRule_Still502(t *testing.T) {
 // bindStatusCodePassthroughRule 绑定一条按错误码+关键词双条件(MatchModeAll)匹配的规则。
 // 此类规则依赖语义状态码推断才能在协议转换路径命中（response.failed 无真实 HTTP 状态码）。
 func bindStatusCodePassthroughRule(c *gin.Context, platform string, statusCode int, keyword string, responseCode int) {
-	rule := &model.ErrorPassthroughRule{
+	rule := &domain.ErrorPassthroughRule{
 		ID:              1,
 		Name:            "status-code-rule",
 		Enabled:         true,
@@ -153,12 +153,12 @@ func bindStatusCodePassthroughRule(c *gin.Context, platform string, statusCode i
 		Platforms:       []string{platform},
 		ErrorCodes:      []int{statusCode},
 		Keywords:        []string{keyword},
-		MatchMode:       model.MatchModeAll,
+		MatchMode:       domain.MatchModeAll,
 		ResponseCode:    &responseCode,
 		PassthroughBody: true,
 	}
 	svc := &ErrorPassthroughService{}
-	svc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+	svc.setLocalCache([]*domain.ErrorPassthroughRule{rule})
 	BindErrorPassthroughService(c, svc)
 }
 
