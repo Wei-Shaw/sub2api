@@ -18,6 +18,7 @@ type IdempotencyCleanupService struct {
 	startOnce sync.Once
 	stopOnce  sync.Once
 	stopCh    chan struct{}
+	wg        sync.WaitGroup
 }
 
 func NewIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Config) *IdempotencyCleanupService {
@@ -45,6 +46,7 @@ func (s *IdempotencyCleanupService) Start() {
 	}
 	s.startOnce.Do(func() {
 		logger.LegacyPrintf("service.idempotency_cleanup", "[IdempotencyCleanup] started interval=%s batch=%d", s.interval, s.batch)
+		s.wg.Add(1)
 		go s.runLoop()
 	})
 }
@@ -57,9 +59,11 @@ func (s *IdempotencyCleanupService) Stop() {
 		close(s.stopCh)
 		logger.LegacyPrintf("service.idempotency_cleanup", "[IdempotencyCleanup] stopped")
 	})
+	s.wg.Wait()
 }
 
 func (s *IdempotencyCleanupService) runLoop() {
+	defer s.wg.Done()
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 

@@ -30,14 +30,19 @@ Example: `017_add_gemini_tier_id.sql`
 - 创建索引：`CREATE INDEX CONCURRENTLY IF NOT EXISTS ...`
 - 删除索引：`DROP INDEX CONCURRENTLY IF EXISTS ...`
 
-这样可以保证灾备重放、重复执行时不会因对象已存在/不存在而失败。
+这些保护词是迁移文件的编写约束。运行器会为每个非事务步骤持久化恢复记录；
+对于 `CREATE INDEX CONCURRENTLY`，实际执行时会按解析出的 token 边界移除
+`IF NOT EXISTS`，确保成功返回代表本次确实创建了索引，而不是静默复用同名对象。
 
 ## Migration File Structure
 
-This project uses a custom migration runner (`internal/repository/migrations_runner.go`) that executes the full SQL file content as-is.
+This project uses a custom migration runner (`internal/repository/migrations_runner.go`).
 
 - Regular migrations (`*.sql`): executed in a transaction.
-- Non-transactional migrations (`*_notx.sql`): split by statement and executed without transaction (for `CONCURRENTLY`).
+- Non-transactional migrations (`*_notx.sql`): split by statement and executed
+  without transaction (for `CONCURRENTLY`). Concurrent creates use a durable
+  pending/completed journal containing the created index OID and PostgreSQL
+  index definition; only an exact healthy proof can be reused after restart.
 
 ```sql
 -- Forward-only migration (recommended)

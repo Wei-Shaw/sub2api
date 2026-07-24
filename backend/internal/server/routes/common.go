@@ -3,6 +3,8 @@ package routes
 import (
 	"net/http"
 
+	"github.com/Wei-Shaw/sub2api/internal/backgroundruntime"
+	"github.com/Wei-Shaw/sub2api/internal/httpdrain"
 	"github.com/gin-gonic/gin"
 )
 
@@ -10,7 +12,12 @@ import (
 func RegisterCommonRoutes(r *gin.Engine) {
 	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		c.Header("Cache-Control", "no-store")
+		c.JSON(http.StatusOK, gin.H{
+			"status":             "ok",
+			"deployment_runtime": backgroundruntime.Status(),
+			"drain":              httpdrain.Status(),
+		})
 	})
 
 	// Claude Code 遥测日志（忽略，直接返回200）

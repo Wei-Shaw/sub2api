@@ -264,7 +264,7 @@ func ProvideOllamaCloudUsageService(
 	svc := NewOllamaCloudUsageService(accountRepo, httpUpstream, settingService, encryptor, keyConfigured)
 	svc.lockCache = lockCache
 	svc.db = db
-	svc.Start()
+	startProcessBackground("ollama_cloud_usage", svc.Start)
 	return svc
 }
 

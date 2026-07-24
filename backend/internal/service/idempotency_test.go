@@ -171,6 +171,91 @@ func (r *inMemoryIdempotencyRepo) DeleteExpired(_ context.Context, now time.Time
 	return deleted, nil
 }
 
+type terminalContextIdempotencyRepo struct {
+	*inMemoryIdempotencyRepo
+	markSucceededCtxErr      error
+	markSucceededHasDeadline bool
+	markFailedCtxErr         error
+	markFailedHasDeadline    bool
+}
+
+func (r *terminalContextIdempotencyRepo) MarkSucceeded(ctx context.Context, id int64, responseStatus int, responseBody string, expiresAt time.Time) error {
+	r.markSucceededCtxErr = ctx.Err()
+	_, r.markSucceededHasDeadline = ctx.Deadline()
+	if r.markSucceededCtxErr != nil {
+		return r.markSucceededCtxErr
+	}
+	return r.inMemoryIdempotencyRepo.MarkSucceeded(ctx, id, responseStatus, responseBody, expiresAt)
+}
+
+func (r *terminalContextIdempotencyRepo) MarkFailedRetryable(ctx context.Context, id int64, errorReason string, lockedUntil, expiresAt time.Time) error {
+	r.markFailedCtxErr = ctx.Err()
+	_, r.markFailedHasDeadline = ctx.Deadline()
+	if r.markFailedCtxErr != nil {
+		return r.markFailedCtxErr
+	}
+	return r.inMemoryIdempotencyRepo.MarkFailedRetryable(ctx, id, errorReason, lockedUntil, expiresAt)
+}
+
+func TestIdempotencyCoordinator_PersistsSucceededAfterRequestCancellation(t *testing.T) {
+	repo := &terminalContextIdempotencyRepo{inMemoryIdempotencyRepo: newInMemoryIdempotencyRepo()}
+	coordinator := NewIdempotencyCoordinator(repo, DefaultIdempotencyConfig())
+	requestCtx, cancelRequest := context.WithCancel(context.Background())
+
+	opts := IdempotencyExecuteOptions{
+		Scope:          "test.scope.canceled-success",
+		Method:         "POST",
+		Route:          "/test/canceled-success",
+		ActorScope:     "admin:1",
+		RequireKey:     true,
+		IdempotencyKey: "canceled-success",
+		Payload:        map[string]any{"a": 1},
+	}
+	result, err := coordinator.Execute(requestCtx, opts, func(context.Context) (any, error) {
+		cancelRequest()
+		return map[string]any{"ok": true}, nil
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NoError(t, repo.markSucceededCtxErr)
+	require.True(t, repo.markSucceededHasDeadline, "terminal write context must be bounded")
+	record, err := repo.GetByScopeAndKeyHash(context.Background(), opts.Scope, HashIdempotencyKey(opts.IdempotencyKey))
+	require.NoError(t, err)
+	require.NotNil(t, record)
+	require.Equal(t, IdempotencyStatusSucceeded, record.Status)
+}
+
+func TestIdempotencyCoordinator_PersistsRetryableFailureAfterRequestCancellation(t *testing.T) {
+	repo := &terminalContextIdempotencyRepo{inMemoryIdempotencyRepo: newInMemoryIdempotencyRepo()}
+	coordinator := NewIdempotencyCoordinator(repo, DefaultIdempotencyConfig())
+	requestCtx, cancelRequest := context.WithCancel(context.Background())
+	businessErr := errors.New("deployment rejected")
+
+	opts := IdempotencyExecuteOptions{
+		Scope:          "test.scope.canceled-failure",
+		Method:         "POST",
+		Route:          "/test/canceled-failure",
+		ActorScope:     "admin:1",
+		RequireKey:     true,
+		IdempotencyKey: "canceled-failure",
+		Payload:        map[string]any{"a": 1},
+	}
+	result, err := coordinator.Execute(requestCtx, opts, func(context.Context) (any, error) {
+		cancelRequest()
+		return nil, businessErr
+	})
+
+	require.Nil(t, result)
+	require.ErrorIs(t, err, businessErr)
+	require.NoError(t, repo.markFailedCtxErr)
+	require.True(t, repo.markFailedHasDeadline, "terminal write context must be bounded")
+	record, err := repo.GetByScopeAndKeyHash(context.Background(), opts.Scope, HashIdempotencyKey(opts.IdempotencyKey))
+	require.NoError(t, err)
+	require.NotNil(t, record)
+	require.Equal(t, IdempotencyStatusFailedRetryable, record.Status)
+}
+
 func TestIdempotencyCoordinator_RequireKey(t *testing.T) {
 	resetIdempotencyMetricsForTest()
 	repo := newInMemoryIdempotencyRepo()

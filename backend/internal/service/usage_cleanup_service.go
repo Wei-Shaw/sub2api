@@ -22,6 +22,8 @@ const (
 	usageCleanupWorkerName = "usage_cleanup_worker"
 )
 
+var errUsageCleanupStopped = errors.New("usage cleanup service is stopping")
+
 // UsageCleanupService 负责创建与执行使用记录清理任务
 type UsageCleanupService struct {
 	repo        UsageCleanupRepository
@@ -29,9 +31,12 @@ type UsageCleanupService struct {
 	dashboard   *DashboardAggregationService
 	cfg         *config.Config
 
-	running   int32
-	startOnce sync.Once
-	stopOnce  sync.Once
+	running     int32
+	startOnce   sync.Once
+	lifecycleMu sync.Mutex
+	started     bool
+	stopped     bool
+	workerWG    sync.WaitGroup
 
 	workerCtx    context.Context
 	workerCancel context.CancelFunc
@@ -94,25 +99,81 @@ func (s *UsageCleanupService) Start() {
 	}
 
 	interval := s.workerInterval()
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.stopped {
+		return
+	}
 	s.startOnce.Do(func() {
-		s.timingWheel.ScheduleRecurring(usageCleanupWorkerName, interval, s.runOnce)
+		s.started = true
+		s.timingWheel.ScheduleRecurring(usageCleanupWorkerName, interval, s.runManagedOnce)
 		logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] started (interval=%s max_range_days=%d batch_size=%d task_timeout=%s)", interval, s.maxRangeDays(), s.batchSize(), s.taskTimeout())
 	})
 }
 
-func (s *UsageCleanupService) Stop() {
-	if s == nil {
+func (s *UsageCleanupService) runManagedOnce() {
+	if err := s.beginManagedRun(); err != nil {
 		return
 	}
-	s.stopOnce.Do(func() {
+	defer s.workerWG.Done()
+	s.runOnce()
+}
+
+func (s *UsageCleanupService) Stop() {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultBackgroundStopTimeout)
+	defer cancel()
+	if err := s.StopContext(ctx); err != nil {
+		logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] shutdown incomplete: %v", err)
+	}
+}
+
+func (s *UsageCleanupService) StopContext(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	s.lifecycleMu.Lock()
+	if !s.stopped {
+		s.stopped = true
 		if s.workerCancel != nil {
 			s.workerCancel()
 		}
-		if s.timingWheel != nil {
+		if s.started && s.timingWheel != nil {
 			s.timingWheel.Cancel(usageCleanupWorkerName)
 		}
-		logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] stopped")
-	})
+	}
+	s.lifecycleMu.Unlock()
+	if err := waitForBackgroundWorkers(ctx, &s.workerWG); err != nil {
+		return err
+	}
+	logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] stopped")
+	return nil
+}
+
+func (s *UsageCleanupService) beginManagedRun() error {
+	if err := requireActiveDeploymentRuntime(); err != nil {
+		return err
+	}
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if err := requireActiveDeploymentRuntime(); err != nil {
+		return err
+	}
+	if s.stopped {
+		return errUsageCleanupStopped
+	}
+	s.workerWG.Add(1)
+	return nil
+}
+
+func (s *UsageCleanupService) launchManagedOnce() error {
+	if err := s.beginManagedRun(); err != nil {
+		return err
+	}
+	go func() {
+		defer s.workerWG.Done()
+		s.runOnce()
+	}()
+	return nil
 }
 
 func (s *UsageCleanupService) ListTasks(ctx context.Context, params pagination.PaginationParams) ([]UsageCleanupTask, *pagination.PaginationResult, error) {
@@ -125,6 +186,9 @@ func (s *UsageCleanupService) ListTasks(ctx context.Context, params pagination.P
 func (s *UsageCleanupService) CreateTask(ctx context.Context, filters UsageCleanupFilters, createdBy int64) (*UsageCleanupTask, error) {
 	if s == nil || s.repo == nil {
 		return nil, fmt.Errorf("cleanup service not ready")
+	}
+	if err := requireActiveDeploymentRuntime(); err != nil {
+		return nil, err
 	}
 	if s.cfg != nil && !s.cfg.UsageCleanup.Enabled {
 		return nil, infraerrors.New(http.StatusServiceUnavailable, "USAGE_CLEANUP_DISABLED", "usage cleanup is disabled")
@@ -150,7 +214,10 @@ func (s *UsageCleanupService) CreateTask(ctx context.Context, filters UsageClean
 		return nil, fmt.Errorf("create cleanup task: %w", err)
 	}
 	logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] create_task persisted: task=%d operator=%d status=%s deleted_rows=%d %s", task.ID, createdBy, task.Status, task.DeletedRows, describeUsageCleanupFilters(filters))
-	go s.runOnce()
+	if err := s.launchManagedOnce(); err != nil {
+		// The durable pending task remains available to the next active worker.
+		logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] immediate task launch skipped: task=%d err=%v", task.ID, err)
+	}
 	return task, nil
 }
 

@@ -142,6 +142,8 @@ type BackupService struct {
 	cronSched   *cron.Cron
 	cronEntryID cron.EntryID
 
+	lifecycleMu  sync.Mutex
+	started      bool
 	wg           sync.WaitGroup     // 追踪活跃的备份/恢复 goroutine
 	shuttingDown atomic.Bool        // 阻止新备份启动
 	bgCtx        context.Context    // 所有后台操作的 parent context
@@ -170,8 +172,17 @@ func NewBackupService(
 
 // Start 启动定时备份调度器并清理孤立记录
 func (s *BackupService) Start() {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.started || s.shuttingDown.Load() {
+		return
+	}
+	s.started = true
+
+	s.cronMu.Lock()
 	s.cronSched = cron.New()
 	s.cronSched.Start()
+	s.cronMu.Unlock()
 
 	// 清理重启后孤立的 running 记录
 	s.recoverStaleRecords()
@@ -218,38 +229,63 @@ func (s *BackupService) recoverStaleRecords() {
 	}
 }
 
-// Stop 停止定时备份并等待活跃操作完成
+// Stop stops the scheduler, cancels active work, and waits for it to finish.
 func (s *BackupService) Stop() {
-	s.shuttingDown.Store(true)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultBackgroundStopTimeout)
+	defer cancel()
+	if err := s.StopContext(ctx); err != nil {
+		logger.LegacyPrintf("service.backup", "[Backup] shutdown incomplete: %v", err)
+	}
+}
 
+// StopContext uses the caller's shutdown budget. Cancellation happens before
+// waiting so a deployment is never held open for the operation's 30-minute
+// runtime timeout.
+func (s *BackupService) StopContext(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.lifecycleMu.Lock()
+	s.shuttingDown.Store(true)
+	s.lifecycleMu.Unlock()
+
+	var cronDone context.Context
 	s.cronMu.Lock()
 	if s.cronSched != nil {
-		s.cronSched.Stop()
+		cronDone = s.cronSched.Stop()
 	}
 	s.cronMu.Unlock()
-
-	// 等待活跃备份/恢复完成（最多 5 分钟）
-	done := make(chan struct{})
-	go func() {
-		s.wg.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-		logger.LegacyPrintf("service.backup", "[Backup] all active operations finished")
-	case <-time.After(5 * time.Minute):
-		logger.LegacyPrintf("service.backup", "[Backup] shutdown timeout after 5min, cancelling active operations")
-		if s.bgCancel != nil {
-			s.bgCancel() // 取消所有后台操作
-		}
-		// 给 goroutine 时间响应取消并完成清理
+	if s.bgCancel != nil {
+		s.bgCancel()
+	}
+	if cronDone != nil {
 		select {
-		case <-done:
-			logger.LegacyPrintf("service.backup", "[Backup] active operations cancelled and cleaned up")
-		case <-time.After(10 * time.Second):
-			logger.LegacyPrintf("service.backup", "[Backup] goroutine cleanup timed out")
+		case <-cronDone.Done():
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
+
+	if err := waitForBackgroundWorkers(ctx, &s.wg); err != nil {
+		return err
+	}
+	logger.LegacyPrintf("service.backup", "[Backup] all active operations stopped")
+	return nil
+}
+
+// beginTrackedOperation serializes the stop gate with WaitGroup admission.
+// Once it returns nil, StopContext is guaranteed to observe this operation.
+func (s *BackupService) beginTrackedOperation() error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.shuttingDown.Load() {
+		return infraerrors.ServiceUnavailable("SERVER_SHUTTING_DOWN", "server is shutting down")
+	}
+	s.wg.Add(1)
+	return nil
 }
 
 // ─── S3 配置管理 ───
@@ -276,6 +312,9 @@ func (s *BackupService) GetS3Config(ctx context.Context) (*BackupS3Config, error
 }
 
 func (s *BackupService) UpdateS3Config(ctx context.Context, cfg BackupS3Config) (*BackupS3Config, error) {
+	if err := requireActiveDeploymentRuntime(); err != nil {
+		return nil, err
+	}
 	// 如果没提供 secret，保留原有值
 	if cfg.SecretAccessKey == "" {
 		old, _ := s.loadS3Config(ctx)
@@ -349,6 +388,9 @@ func (s *BackupService) GetSchedule(ctx context.Context) (*BackupScheduleConfig,
 }
 
 func (s *BackupService) UpdateSchedule(ctx context.Context, cfg BackupScheduleConfig) (*BackupScheduleConfig, error) {
+	if err := requireActiveDeploymentRuntime(); err != nil {
+		return nil, err
+	}
 	if cfg.Enabled && cfg.CronExpr == "" {
 		return nil, infraerrors.BadRequest("INVALID_CRON", "cron expression is required when schedule is enabled")
 	}
@@ -416,7 +458,9 @@ func (s *BackupService) removeCronSchedule() {
 }
 
 func (s *BackupService) runScheduledBackup() {
-	s.wg.Add(1)
+	if err := s.beginTrackedOperation(); err != nil {
+		return
+	}
 	defer s.wg.Done()
 
 	ctx, cancel := context.WithTimeout(s.bgCtx, 30*time.Minute)
@@ -455,6 +499,9 @@ func (s *BackupService) runScheduledBackup() {
 // CreateBackup 创建全量数据库备份并上传到 S3（流式处理）
 // expireDays: 备份过期天数，0=永不过期，默认14天
 func (s *BackupService) CreateBackup(ctx context.Context, triggeredBy string, expireDays int) (*BackupRecord, error) {
+	if err := requireActiveDeploymentRuntime(); err != nil {
+		return nil, err
+	}
 	if s.shuttingDown.Load() {
 		return nil, infraerrors.ServiceUnavailable("SERVER_SHUTTING_DOWN", "server is shutting down")
 	}
@@ -572,9 +619,18 @@ func (s *BackupService) CreateBackup(ctx context.Context, triggeredBy string, ex
 
 // StartBackup 异步创建备份，立即返回 running 状态的记录
 func (s *BackupService) StartBackup(ctx context.Context, triggeredBy string, expireDays int) (*BackupRecord, error) {
-	if s.shuttingDown.Load() {
-		return nil, infraerrors.ServiceUnavailable("SERVER_SHUTTING_DOWN", "server is shutting down")
+	if err := requireActiveDeploymentRuntime(); err != nil {
+		return nil, err
 	}
+	if err := s.beginTrackedOperation(); err != nil {
+		return nil, err
+	}
+	workerStarted := false
+	defer func() {
+		if !workerStarted {
+			s.wg.Done()
+		}
+	}()
 
 	s.opMu.Lock()
 	if s.backingUp {
@@ -638,7 +694,6 @@ func (s *BackupService) StartBackup(ctx context.Context, triggeredBy string, exp
 	// 在启动 goroutine 前完成拷贝，避免数据竞争
 	result := *record
 
-	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		defer func() {
@@ -658,6 +713,7 @@ func (s *BackupService) StartBackup(ctx context.Context, triggeredBy string, exp
 		}()
 		s.executeBackup(record, objectStore)
 	}()
+	workerStarted = true
 
 	return &result, nil
 }
@@ -740,6 +796,9 @@ func (s *BackupService) executeBackup(record *BackupRecord, objectStore BackupOb
 
 // RestoreBackup 从 S3 下载备份并流式恢复到数据库
 func (s *BackupService) RestoreBackup(ctx context.Context, backupID string) error {
+	if err := requireActiveDeploymentRuntime(); err != nil {
+		return err
+	}
 	s.opMu.Lock()
 	if s.restoring {
 		s.opMu.Unlock()
@@ -794,9 +853,18 @@ func (s *BackupService) RestoreBackup(ctx context.Context, backupID string) erro
 
 // StartRestore 异步恢复备份，立即返回
 func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*BackupRecord, error) {
-	if s.shuttingDown.Load() {
-		return nil, infraerrors.ServiceUnavailable("SERVER_SHUTTING_DOWN", "server is shutting down")
+	if err := requireActiveDeploymentRuntime(); err != nil {
+		return nil, err
 	}
+	if err := s.beginTrackedOperation(); err != nil {
+		return nil, err
+	}
+	workerStarted := false
+	defer func() {
+		if !workerStarted {
+			s.wg.Done()
+		}
+	}()
 
 	s.opMu.Lock()
 	if s.restoring {
@@ -839,7 +907,6 @@ func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*Bac
 	launched = true
 	result := *record
 
-	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		defer func() {
@@ -857,6 +924,7 @@ func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*Bac
 		}()
 		s.executeRestore(record, objectStore)
 	}()
+	workerStarted = true
 
 	return &result, nil
 }
@@ -926,6 +994,9 @@ func (s *BackupService) GetBackupRecord(ctx context.Context, backupID string) (*
 }
 
 func (s *BackupService) DeleteBackup(ctx context.Context, backupID string) error {
+	if err := requireActiveDeploymentRuntime(); err != nil {
+		return err
+	}
 	s.recordsMu.Lock()
 	defer s.recordsMu.Unlock()
 

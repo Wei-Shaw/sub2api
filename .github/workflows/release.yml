@@ -3,62 +3,161 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*-ts.*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Fork tag to release (e.g., v0.1.162-ts.3)'
+        description: 'Fork tag to release (e.g., v0.1.165-ts.1)'
         required: true
         type: string
-      simple_release:
-        description: 'Simple release: only x86_64 GHCR image, skip other artifacts'
-        required: false
-        type: boolean
-        default: false
 
-# 环境变量：合并 workflow_dispatch 输入和 repository variable
-# tag push 触发时读取 vars.SIMPLE_RELEASE，workflow_dispatch 时使用输入参数
 env:
-  SIMPLE_RELEASE: ${{ github.event.inputs.simple_release == 'true' || vars.SIMPLE_RELEASE == 'true' }}
+  # v0.1.164-ts.1 is the final release before protocol-v2 managed updates.
+  # Use the immutable commit, never the movable tag, as the cumulative schema baseline.
+  MIGRATION_BASELINE_COMMIT: 0572569c6e0187fd02655bec2d9439e30d9edc04
+  MIGRATION_BOOTSTRAP_RELEASE_TAG: v0.1.164-ts.1
+  RELEASE_BOOTSTRAP_GHCR_DIGEST: sha256:0bcc87a178132539f24570c1af1adbcafd479c7f16a4f3f188fcf09d699c960e
+  RELEASE_BOOTSTRAP_DOCKERHUB_DIGEST: ${{ vars.RELEASE_BOOTSTRAP_DOCKERHUB_DIGEST }}
+  RELEASE_COMPLETION_ASSET: sub2api-release-complete.json
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
-  # Update VERSION file with tag version
-  update-version:
+  release-gate:
     runs-on: ubuntu-latest
+    outputs:
+      release_commit: ${{ steps.release_ref.outputs.commit }}
+      release_tag_object: ${{ steps.release_ref.outputs.tag_object }}
+      previous_release_tag: ${{ steps.release_ref.outputs.previous_tag }}
+      previous_release_commit: ${{ steps.release_ref.outputs.previous_commit }}
+      previous_release_tag_object: ${{ steps.release_ref.outputs.previous_tag_object }}
     steps:
-      - name: Checkout
+      - name: Checkout release ref
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - name: Update VERSION file
+      - name: Validate fork release tag
+        id: release_ref
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG_RULESET_ID: ${{ vars.RELEASE_TAG_RULESET_ID }}
         run: |
-          TAG_NAME="$RELEASE_TAG"
-          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-ts\.[1-9][0-9]*$ ]]; then
-            echo "Invalid fork release tag: $TAG_NAME" >&2
-            echo "Expected v<upstream-major>.<upstream-minor>.<upstream-patch>-ts.<revision>" >&2
+          bash .github/scripts/release-safety.sh fetch origin main
+          if [[ ! "$RELEASE_TAG_RULESET_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "RELEASE_TAG_RULESET_ID must identify the immutable fork-release tag ruleset" >&2
             exit 1
           fi
-          VERSION=${TAG_NAME#v}
-          echo "$VERSION" > backend/cmd/server/VERSION
-          echo "Updated VERSION file to: $VERSION"
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" > "$RUNNER_TEMP/release-tag-ruleset.json"
+          bash .github/scripts/release-safety.sh verify-ruleset-json "$RUNNER_TEMP/release-tag-ruleset.json"
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          bash .github/scripts/release-safety.sh assert-unpublished-json "$RELEASE_TAG" "$RUNNER_TEMP/releases.json"
+          PREVIOUS_RELEASE_TAG=$(bash .github/scripts/release-safety.sh previous-release-json \
+            "$RELEASE_TAG" \
+            "$RUNNER_TEMP/releases.json" \
+            "$MIGRATION_BOOTSTRAP_RELEASE_TAG")
+          RELEASE_METADATA=$(bash .github/scripts/release-safety.sh validate "$RELEASE_TAG" "$PREVIOUS_RELEASE_TAG" refs/remotes/origin/main)
+          IFS=$'\t' read -r \
+            RELEASE_COMMIT \
+            RELEASE_TAG_OBJECT \
+            PREVIOUS_RELEASE_TAG \
+            PREVIOUS_RELEASE_COMMIT \
+            PREVIOUS_RELEASE_TAG_OBJECT <<<"$RELEASE_METADATA"
+          if [[ ! "$RELEASE_COMMIT" =~ ^[0-9a-fA-F]{40,64}$ ]]; then
+            echo "Release validation returned an invalid commit: $RELEASE_COMMIT" >&2
+            exit 1
+          fi
+          if [[ ! "$RELEASE_TAG_OBJECT" =~ ^[0-9a-fA-F]{40,64}$ ]]; then
+            echo "Release validation returned an invalid annotated tag object: $RELEASE_TAG_OBJECT" >&2
+            exit 1
+          fi
+          if [[ ! "$PREVIOUS_RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-ts\.[1-9][0-9]*$ ]]; then
+            echo "Release validation returned an invalid previous tag: $PREVIOUS_RELEASE_TAG" >&2
+            exit 1
+          fi
+          if [[ ! "$PREVIOUS_RELEASE_COMMIT" =~ ^[0-9a-fA-F]{40,64}$ ]]; then
+            echo "Release validation returned an invalid previous commit: $PREVIOUS_RELEASE_COMMIT" >&2
+            exit 1
+          fi
+          if [[ ! "$PREVIOUS_RELEASE_TAG_OBJECT" =~ ^[0-9a-fA-F]{40,64}$ ]]; then
+            echo "Release validation returned an invalid previous tag object: $PREVIOUS_RELEASE_TAG_OBJECT" >&2
+            exit 1
+          fi
+          printf 'commit=%s\n' "$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+          printf 'tag_object=%s\n' "$RELEASE_TAG_OBJECT" >> "$GITHUB_OUTPUT"
+          printf 'previous_tag=%s\n' "$PREVIOUS_RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          printf 'previous_commit=%s\n' "$PREVIOUS_RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+          printf 'previous_tag_object=%s\n' "$PREVIOUS_RELEASE_TAG_OBJECT" >> "$GITHUB_OUTPUT"
+          bash .github/scripts/release-safety.sh verify-version-file "$RELEASE_TAG" backend/cmd/server/VERSION
+          if [[ "$PREVIOUS_RELEASE_TAG" != "$MIGRATION_BOOTSTRAP_RELEASE_TAG" ]]; then
+            mkdir -p "$RUNNER_TEMP/previous-release"
+            gh release download "$PREVIOUS_RELEASE_TAG" \
+              --pattern "$RELEASE_COMPLETION_ASSET" \
+              --dir "$RUNNER_TEMP/previous-release"
+            gh release download "$PREVIOUS_RELEASE_TAG" \
+              --pattern sub2api-deployer-checksums.txt \
+              --dir "$RUNNER_TEMP/previous-release"
+            PREVIOUS_VERSION=${PREVIOUS_RELEASE_TAG#v}
+            PREVIOUS_IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:${PREVIOUS_VERSION}"
+            bash .github/scripts/release-safety.sh verify-completion-json \
+              "$RUNNER_TEMP/previous-release/$RELEASE_COMPLETION_ASSET" \
+              "$PREVIOUS_RELEASE_TAG" \
+              "$PREVIOUS_RELEASE_COMMIT" \
+              "$PREVIOUS_RELEASE_TAG_OBJECT" \
+              "$PREVIOUS_IMAGE"
+            bash .github/scripts/release-safety.sh verify-completion-deployer-checksums \
+              "$RUNNER_TEMP/previous-release/$RELEASE_COMPLETION_ASSET" \
+              "$RUNNER_TEMP/previous-release/sub2api-deployer-checksums.txt"
+          fi
 
-      - name: Upload VERSION artifact
-        uses: actions/upload-artifact@v7
+      - name: Setup Go
+        uses: actions/setup-go@v6
         with:
-          name: version-file
-          path: backend/cmd/server/VERSION
-          retention-days: 1
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache-dependency-path: backend/go.sum
+
+      - name: Verify rollback-compatible migrations
+        env:
+          RELEASE_COMMIT: ${{ steps.release_ref.outputs.commit }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          backend/scripts/check-release-migrations-history.sh \
+            "$MIGRATION_BASELINE_COMMIT" \
+            "$RELEASE_COMMIT" \
+            "$RELEASE_TAG"
+
+      - name: Verify Go module graph is already tidy
+        working-directory: backend
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Test release safety gates and deployment assets
+        run: |
+          bash .github/scripts/test-release-safety.sh
+          backend/scripts/check-release-migrations-test.sh
+          deploy/tests/managed-update-assets-test.sh
+
+      - name: Run backend unit tests
+        working-directory: backend
+        run: go test -tags unit ./...
 
   build-frontend:
+    needs: [release-gate]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-gate.outputs.release_commit }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -76,6 +175,14 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: frontend
 
+      - name: Lint frontend
+        run: pnpm run lint:check
+        working-directory: frontend
+
+      - name: Test frontend
+        run: pnpm run test:run
+        working-directory: frontend
+
       - name: Build frontend
         run: pnpm run build
         working-directory: frontend
@@ -87,27 +194,65 @@ jobs:
           path: backend/internal/web/dist/
           retention-days: 1
 
-  release:
-    needs: [update-version, build-frontend]
+  build-deployer:
+    needs: [release-gate]
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-gate.outputs.release_commit }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache-dependency-path: backend/go.sum
+
+      - name: Build deployer binaries and checksums
+        working-directory: backend
+        run: |
+          mkdir -p ../deployer-dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o ../deployer-dist/sub2api-deployer-linux-amd64 ./cmd/deployer
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o ../deployer-dist/sub2api-deployer-linux-arm64 ./cmd/deployer
+          cd ../deployer-dist
+          sha256sum sub2api-deployer-linux-amd64 sub2api-deployer-linux-arm64 > sub2api-deployer-checksums.txt
+
+      - name: Upload deployer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: deployer-binaries
+          path: deployer-dist/
+          retention-days: 1
+
+  release:
+    needs: [release-gate, build-frontend, build-deployer]
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    permissions:
+      actions: read
+      contents: write
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.tag || github.ref }}
-
-      - name: Download VERSION artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: version-file
-          path: backend/cmd/server/
+          ref: ${{ needs.release-gate.outputs.release_commit }}
 
       - name: Download frontend artifact
         uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: backend/internal/web/dist/
+
+      - name: Download deployer binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: deployer-binaries
+          path: ${{ runner.temp }}/deployer-dist/
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -143,54 +288,316 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Fetch tags with annotations
+      - name: Fetch release refs with pruning
         run: |
-          # 确保获取完整的 annotated tag 信息
-          git fetch --tags --force
+          bash .github/scripts/release-safety.sh fetch origin main
 
       - name: Get tag message
         id: tag_message
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          VALIDATED_RELEASE_TAG_OBJECT: ${{ needs.release-gate.outputs.release_tag_object }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG_NAME=${{ github.event.inputs.tag }}
-          else
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-          fi
-          echo "Processing tag: $TAG_NAME"
-
-          # 获取完整的 tag message（跳过第一行标题）
-          TAG_MESSAGE=$(git tag -l --format='%(contents:body)' "$TAG_NAME")
-
-          # 调试输出
-          echo "Tag message length: ${#TAG_MESSAGE}"
-          echo "Tag message preview:"
-          echo "$TAG_MESSAGE" | head -10
-
-          # 使用 EOF 分隔符处理多行内容
-          echo "message<<EOF" >> $GITHUB_OUTPUT
-          echo "$TAG_MESSAGE" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          bash .github/scripts/release-safety.sh write-output "$RELEASE_TAG" "$VALIDATED_RELEASE_TAG_OBJECT" "$GITHUB_OUTPUT"
 
       - name: Set lowercase owner for GHCR
         id: lowercase
-        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        env:
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: printf 'owner=%s\n' "$(printf '%s' "$REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Final immutable release preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG_RULESET_ID: ${{ vars.RELEASE_TAG_RULESET_ID }}
+          VALIDATED_RELEASE_COMMIT: ${{ needs.release-gate.outputs.release_commit }}
+          VALIDATED_RELEASE_TAG_OBJECT: ${{ needs.release-gate.outputs.release_tag_object }}
+          VALIDATED_PREVIOUS_RELEASE_TAG: ${{ needs.release-gate.outputs.previous_release_tag }}
+          VALIDATED_PREVIOUS_RELEASE_COMMIT: ${{ needs.release-gate.outputs.previous_release_commit }}
+          VALIDATED_PREVIOUS_RELEASE_TAG_OBJECT: ${{ needs.release-gate.outputs.previous_release_tag_object }}
+          GHCR_OWNER: ${{ steps.lowercase.outputs.owner }}
+        run: |
+          bash .github/scripts/release-safety.sh fetch origin main
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" > "$RUNNER_TEMP/release-tag-ruleset-final.json"
+          bash .github/scripts/release-safety.sh verify-ruleset-json "$RUNNER_TEMP/release-tag-ruleset-final.json"
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$RUNNER_TEMP/releases-final.json"
+          bash .github/scripts/release-safety.sh assert-unpublished-json "$RELEASE_TAG" "$RUNNER_TEMP/releases-final.json"
+          CURRENT_PREVIOUS_RELEASE_TAG=$(bash .github/scripts/release-safety.sh previous-release-json \
+            "$RELEASE_TAG" \
+            "$RUNNER_TEMP/releases-final.json" \
+            "$MIGRATION_BOOTSTRAP_RELEASE_TAG")
+          if [[ "$CURRENT_PREVIOUS_RELEASE_TAG" != "$VALIDATED_PREVIOUS_RELEASE_TAG" ]]; then
+            echo "Previous completed release changed after validation" >&2
+            exit 1
+          fi
+          bash .github/scripts/release-safety.sh verify-version-file "$RELEASE_TAG" backend/cmd/server/VERSION
+          bash .github/scripts/release-safety.sh verify-tag \
+            "$RELEASE_TAG" \
+            "$VALIDATED_RELEASE_COMMIT" \
+            "$VALIDATED_RELEASE_TAG_OBJECT" \
+            "$VALIDATED_PREVIOUS_RELEASE_TAG" \
+            "$VALIDATED_PREVIOUS_RELEASE_COMMIT" \
+            "$VALIDATED_PREVIOUS_RELEASE_TAG_OBJECT" \
+            refs/remotes/origin/main
+          backend/scripts/check-release-migrations-history.sh \
+            "$MIGRATION_BASELINE_COMMIT" \
+            "$VALIDATED_RELEASE_COMMIT" \
+            "$RELEASE_TAG"
+
+          if [[ "$VALIDATED_PREVIOUS_RELEASE_TAG" != "$MIGRATION_BOOTSTRAP_RELEASE_TAG" ]]; then
+            mkdir -p "$RUNNER_TEMP/previous-release-final"
+            gh release download "$VALIDATED_PREVIOUS_RELEASE_TAG" \
+              --pattern "$RELEASE_COMPLETION_ASSET" \
+              --dir "$RUNNER_TEMP/previous-release-final"
+            gh release download "$VALIDATED_PREVIOUS_RELEASE_TAG" \
+              --pattern sub2api-deployer-checksums.txt \
+              --dir "$RUNNER_TEMP/previous-release-final"
+            PREVIOUS_VERSION=${VALIDATED_PREVIOUS_RELEASE_TAG#v}
+            PREVIOUS_IMAGE="ghcr.io/${GHCR_OWNER}/${GITHUB_REPOSITORY#*/}:${PREVIOUS_VERSION}"
+            PREVIOUS_DOCKERHUB_IMAGE=""
+            if [[ -n "$DOCKERHUB_USERNAME" ]]; then
+              PREVIOUS_DOCKERHUB_IMAGE="${DOCKERHUB_USERNAME}/sub2api:${PREVIOUS_VERSION}"
+            fi
+            if [[ -n "$DOCKERHUB_USERNAME" ]]; then
+              bash .github/scripts/release-safety.sh verify-completion-json \
+                "$RUNNER_TEMP/previous-release-final/$RELEASE_COMPLETION_ASSET" \
+                "$VALIDATED_PREVIOUS_RELEASE_TAG" \
+                "$VALIDATED_PREVIOUS_RELEASE_COMMIT" \
+                "$VALIDATED_PREVIOUS_RELEASE_TAG_OBJECT" \
+                "$PREVIOUS_IMAGE" \
+                "$PREVIOUS_DOCKERHUB_IMAGE"
+            else
+              bash .github/scripts/release-safety.sh verify-completion-json \
+                "$RUNNER_TEMP/previous-release-final/$RELEASE_COMPLETION_ASSET" \
+                "$VALIDATED_PREVIOUS_RELEASE_TAG" \
+                "$VALIDATED_PREVIOUS_RELEASE_COMMIT" \
+                "$VALIDATED_PREVIOUS_RELEASE_TAG_OBJECT" \
+                "$PREVIOUS_IMAGE"
+            fi
+            bash .github/scripts/release-safety.sh verify-completion-deployer-checksums \
+              "$RUNNER_TEMP/previous-release-final/$RELEASE_COMPLETION_ASSET" \
+              "$RUNNER_TEMP/previous-release-final/sub2api-deployer-checksums.txt"
+            docker buildx imagetools inspect "$PREVIOUS_IMAGE" --format '{{json .}}' > "$RUNNER_TEMP/previous-manifest.json"
+            bash .github/scripts/release-safety.sh verify-completion-manifest \
+              "$RUNNER_TEMP/previous-release-final/$RELEASE_COMPLETION_ASSET" \
+              "$RUNNER_TEMP/previous-manifest.json"
+            PREVIOUS_GHCR_DIGEST=$(jq -er '.image_digest' \
+              "$RUNNER_TEMP/previous-release-final/$RELEASE_COMPLETION_ASSET")
+            if [[ -n "$DOCKERHUB_USERNAME" ]]; then
+              PREVIOUS_DOCKERHUB_DIGEST=$(jq -er '.dockerhub_image_digest' \
+                "$RUNNER_TEMP/previous-release-final/$RELEASE_COMPLETION_ASSET")
+            fi
+          else
+            # The bootstrap predates completion markers. Its version tags are
+            # the one-time legacy baseline; all later releases are bound by the
+            # validated GitHub completion asset above.
+            PREVIOUS_VERSION=${VALIDATED_PREVIOUS_RELEASE_TAG#v}
+            PREVIOUS_IMAGE="ghcr.io/${GHCR_OWNER}/${GITHUB_REPOSITORY#*/}:${PREVIOUS_VERSION}"
+            docker buildx imagetools inspect "$PREVIOUS_IMAGE" --format '{{json .}}' > "$RUNNER_TEMP/bootstrap-previous-manifest.json"
+            ACTUAL_BOOTSTRAP_GHCR_DIGEST=$(jq -er \
+              '.manifest.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' \
+              "$RUNNER_TEMP/bootstrap-previous-manifest.json")
+            if [[ "$ACTUAL_BOOTSTRAP_GHCR_DIGEST" != "$RELEASE_BOOTSTRAP_GHCR_DIGEST" ]]; then
+              echo "Bootstrap GHCR version tag drifted from its pinned digest" >&2
+              exit 1
+            fi
+            PREVIOUS_GHCR_DIGEST=$RELEASE_BOOTSTRAP_GHCR_DIGEST
+            if [[ -n "$DOCKERHUB_USERNAME" ]]; then
+              if [[ ! "$RELEASE_BOOTSTRAP_DOCKERHUB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                echo "DockerHub cannot be enabled for the first protocol-v2 release until its bootstrap image is seeded and RELEASE_BOOTSTRAP_DOCKERHUB_DIGEST is configured" >&2
+                exit 1
+              fi
+              PREVIOUS_DOCKERHUB_IMAGE="${DOCKERHUB_USERNAME}/sub2api:${PREVIOUS_VERSION}"
+              docker buildx imagetools inspect "$PREVIOUS_DOCKERHUB_IMAGE" --format '{{json .}}' > "$RUNNER_TEMP/bootstrap-previous-dockerhub-manifest.json"
+              ACTUAL_BOOTSTRAP_DOCKERHUB_DIGEST=$(jq -er \
+                '.manifest.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' \
+                "$RUNNER_TEMP/bootstrap-previous-dockerhub-manifest.json")
+              if [[ "$ACTUAL_BOOTSTRAP_DOCKERHUB_DIGEST" != "$RELEASE_BOOTSTRAP_DOCKERHUB_DIGEST" ]]; then
+                echo "Bootstrap DockerHub version tag drifted from its configured digest" >&2
+                exit 1
+              fi
+              PREVIOUS_DOCKERHUB_DIGEST=$RELEASE_BOOTSTRAP_DOCKERHUB_DIGEST
+            fi
+          fi
+          printf 'PREVIOUS_GHCR_DIGEST=%s\n' "$PREVIOUS_GHCR_DIGEST" >> "$GITHUB_ENV"
+          if [[ -n "$DOCKERHUB_USERNAME" ]]; then
+            printf 'PREVIOUS_DOCKERHUB_DIGEST=%s\n' "$PREVIOUS_DOCKERHUB_DIGEST" >> "$GITHUB_ENV"
+          fi
+
+          CURRENT_GHCR_LATEST_DIGEST=$(bash .github/scripts/release-safety.sh \
+            image-tag-digest-or-missing "ghcr.io/${GHCR_OWNER}/${GITHUB_REPOSITORY#*/}:latest")
+          if [[ "$CURRENT_GHCR_LATEST_DIGEST" != "$PREVIOUS_GHCR_DIGEST" ]]; then
+            echo "GHCR latest is missing or drifted from the previous completed release" >&2
+            exit 1
+          fi
+          if [[ -n "$DOCKERHUB_USERNAME" ]]; then
+            CURRENT_DOCKERHUB_LATEST_DIGEST=$(bash .github/scripts/release-safety.sh \
+              image-tag-digest-or-missing "${DOCKERHUB_USERNAME}/sub2api:latest")
+            if [[ "$CURRENT_DOCKERHUB_LATEST_DIGEST" != "$PREVIOUS_DOCKERHUB_DIGEST" ]]; then
+              echo "DockerHub latest is missing or drifted from the previous completed release" >&2
+              exit 1
+            fi
+          fi
+
+          VERSION=${RELEASE_TAG#v}
+          GHCR_IMAGE="ghcr.io/${GHCR_OWNER}/${GITHUB_REPOSITORY#*/}"
+          bash .github/scripts/release-safety.sh assert-image-absent "${GHCR_IMAGE}:${VERSION}"
+          bash .github/scripts/release-safety.sh assert-image-absent "${GHCR_IMAGE}:${VERSION}-amd64"
+          bash .github/scripts/release-safety.sh assert-image-absent "${GHCR_IMAGE}:${VERSION}-arm64"
+          if [[ -n "$DOCKERHUB_USERNAME" ]]; then
+            DOCKERHUB_IMAGE="${DOCKERHUB_USERNAME}/sub2api"
+            bash .github/scripts/release-safety.sh assert-image-absent "${DOCKERHUB_IMAGE}:${VERSION}"
+            bash .github/scripts/release-safety.sh assert-image-absent "${DOCKERHUB_IMAGE}:${VERSION}-amd64"
+            bash .github/scripts/release-safety.sh assert-image-absent "${DOCKERHUB_IMAGE}:${VERSION}-arm64"
+          fi
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
-          version: '~> v2'
-          args: release --clean --skip=validate ${{ env.SIMPLE_RELEASE == 'true' && '--config=.goreleaser.simple.yaml' || '' }}
+          version: v2.17.0
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          GORELEASER_PREVIOUS_TAG: ${{ needs.release-gate.outputs.previous_release_tag }}
           TAG_MESSAGE: ${{ steps.tag_message.outputs.message }}
           GITHUB_REPO_OWNER: ${{ github.repository_owner }}
           GITHUB_REPO_OWNER_LOWER: ${{ steps.lowercase.outputs.owner }}
           GITHUB_REPO_NAME: ${{ github.event.repository.name }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || 'skip' }}
 
+      - name: Attach deployer binaries to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/deployer-dist/"*
+
+      - name: Verify and publish completed release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_COMMIT: ${{ needs.release-gate.outputs.release_commit }}
+          RELEASE_TAG_OBJECT: ${{ needs.release-gate.outputs.release_tag_object }}
+          GHCR_OWNER: ${{ steps.lowercase.outputs.owner }}
+        run: |
+          cd "$RUNNER_TEMP/deployer-dist"
+          sha256sum --check sub2api-deployer-checksums.txt
+          cd "$GITHUB_WORKSPACE"
+
+          VERSION=${RELEASE_TAG#v}
+          GHCR_REPOSITORY="ghcr.io/${GHCR_OWNER}/${GITHUB_REPOSITORY#*/}"
+          GHCR_IMAGE="${GHCR_REPOSITORY}:${VERSION}"
+          EXPECTED_IMAGE_DIGEST=$(bash .github/scripts/release-safety.sh \
+            goreleaser-image-digest dist/artifacts.json "$GHCR_IMAGE")
+          docker buildx imagetools inspect "$GHCR_IMAGE" --format '{{json .}}' > "$RUNNER_TEMP/release-manifest.json"
+          jq -e '
+            [.manifest.manifests[]?
+              | select(.platform.os == "linux")
+              | .platform.architecture]
+            | sort == ["amd64", "arm64"]
+          ' "$RUNNER_TEMP/release-manifest.json" >/dev/null
+
+          IMAGE_DIGEST=$(jq -er '.manifest.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' "$RUNNER_TEMP/release-manifest.json")
+          if [[ "$IMAGE_DIGEST" != "$EXPECTED_IMAGE_DIGEST" ]]; then
+            echo "GHCR version tag does not match this GoReleaser build (expected $EXPECTED_IMAGE_DIGEST, got $IMAGE_DIGEST)" >&2
+            exit 1
+          fi
+          if [[ -n "$DOCKERHUB_USERNAME" ]]; then
+            DOCKERHUB_REPOSITORY="${DOCKERHUB_USERNAME}/sub2api"
+            DOCKERHUB_IMAGE="${DOCKERHUB_REPOSITORY}:${VERSION}"
+            EXPECTED_DOCKERHUB_DIGEST=$(bash .github/scripts/release-safety.sh \
+              goreleaser-image-digest dist/artifacts.json "$DOCKERHUB_IMAGE")
+            docker buildx imagetools inspect "$DOCKERHUB_IMAGE" --format '{{json .}}' > "$RUNNER_TEMP/dockerhub-release-manifest.json"
+            jq -e '
+              [.manifest.manifests[]?
+                | select(.platform.os == "linux")
+                | .platform.architecture]
+              | sort == ["amd64", "arm64"]
+            ' "$RUNNER_TEMP/dockerhub-release-manifest.json" >/dev/null
+            DOCKERHUB_DIGEST=$(jq -er '.manifest.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' "$RUNNER_TEMP/dockerhub-release-manifest.json")
+            if [[ "$DOCKERHUB_DIGEST" != "$EXPECTED_DOCKERHUB_DIGEST" ]]; then
+              echo "DockerHub version tag does not match this GoReleaser build (expected $EXPECTED_DOCKERHUB_DIGEST, got $DOCKERHUB_DIGEST)" >&2
+              exit 1
+            fi
+          fi
+          DEPLOYER_CHECKSUMS_DIGEST="sha256:$(sha256sum "$RUNNER_TEMP/deployer-dist/sub2api-deployer-checksums.txt" | awk '{print $1}')"
+          COMPLETION_PATH="$RUNNER_TEMP/$RELEASE_COMPLETION_ASSET"
+          jq -n \
+            --arg tag "$RELEASE_TAG" \
+            --arg commit "$RELEASE_COMMIT" \
+            --arg tag_object "$RELEASE_TAG_OBJECT" \
+            --arg image "$GHCR_IMAGE" \
+            --arg image_digest "$IMAGE_DIGEST" \
+            --arg dockerhub_image "${DOCKERHUB_IMAGE:-}" \
+            --arg dockerhub_image_digest "${DOCKERHUB_DIGEST:-}" \
+            --arg deployer_checksums_sha256 "$DEPLOYER_CHECKSUMS_DIGEST" \
+            '{
+              schema: 2,
+              tag: $tag,
+              commit: $commit,
+              tag_object: $tag_object,
+              image: $image,
+              image_digest: $image_digest,
+              immutable_image: ($image + "@" + $image_digest),
+              dockerhub_image: (if $dockerhub_image == "" then null else $dockerhub_image end),
+              dockerhub_image_digest: (if $dockerhub_image_digest == "" then null else $dockerhub_image_digest end),
+              dockerhub_immutable_image: (
+                if $dockerhub_image == "" then null
+                else ($dockerhub_image + "@" + $dockerhub_image_digest)
+                end
+              ),
+              architectures: ["amd64", "arm64"],
+              deployer_checksums_sha256: $deployer_checksums_sha256
+            }' > "$COMPLETION_PATH"
+
+          bash .github/scripts/release-safety.sh verify-completion-json \
+            "$COMPLETION_PATH" \
+            "$RELEASE_TAG" \
+            "$RELEASE_COMMIT" \
+            "$RELEASE_TAG_OBJECT" \
+            "$GHCR_IMAGE" \
+            "${DOCKERHUB_IMAGE:-}"
+          bash .github/scripts/release-safety.sh verify-completion-manifest \
+            "$COMPLETION_PATH" \
+            "$RUNNER_TEMP/release-manifest.json"
+          bash .github/scripts/release-safety.sh verify-completion-deployer-checksums \
+            "$COMPLETION_PATH" \
+            "$RUNNER_TEMP/deployer-dist/sub2api-deployer-checksums.txt"
+
+          gh release upload "$RELEASE_TAG" "$COMPLETION_PATH"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" > "$RUNNER_TEMP/draft-release.json"
+          jq -e --arg completion_asset "$RELEASE_COMPLETION_ASSET" '
+            .draft == true
+            and ([.assets[]? | select(.name == $completion_asset)] | length == 1)
+          ' "$RUNNER_TEMP/draft-release.json" >/dev/null
+
+          if [[ -n "$DOCKERHUB_USERNAME" ]]; then
+            bash .github/scripts/release-safety.sh publish-release-with-latest \
+              "$RELEASE_TAG" \
+              "$GHCR_REPOSITORY" \
+              "$IMAGE_DIGEST" \
+              "$PREVIOUS_GHCR_DIGEST" \
+              "$DOCKERHUB_REPOSITORY" \
+              "$DOCKERHUB_DIGEST" \
+              "$PREVIOUS_DOCKERHUB_DIGEST"
+          else
+            bash .github/scripts/release-safety.sh publish-release-with-latest \
+              "$RELEASE_TAG" \
+              "$GHCR_REPOSITORY" \
+              "$IMAGE_DIGEST" \
+              "$PREVIOUS_GHCR_DIGEST"
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" > "$RUNNER_TEMP/published-release.json"
+          jq -e --arg completion_asset "$RELEASE_COMPLETION_ASSET" '
+            .draft == false
+            and ([.assets[]? | select(.name == $completion_asset)] | length == 1)
+          ' "$RUNNER_TEMP/published-release.json" >/dev/null
+
       # Update DockerHub description
       - name: Update DockerHub description
-        if: ${{ env.SIMPLE_RELEASE != 'true' && env.DOCKERHUB_USERNAME != '' }}
+        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        continue-on-error: true
         uses: peter-evans/dockerhub-description@v5
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -203,11 +610,13 @@ jobs:
 
       # Send Telegram notification
       - name: Send Telegram Notification
-        if: ${{ env.SIMPLE_RELEASE != 'true' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_NOTES: ${{ steps.tag_message.outputs.message }}
+          REPOSITORY: ${{ github.repository }}
         continue-on-error: true
         run: |
           # 检查必要的环境变量
@@ -216,17 +625,13 @@ jobs:
             exit 0
           fi
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG_NAME=${{ github.event.inputs.tag }}
-          else
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-          fi
+          TAG_NAME="$RELEASE_TAG"
           VERSION=${TAG_NAME#v}
-          REPO="${{ github.repository }}"
+          REPO="$REPOSITORY"
           GHCR_IMAGE="ghcr.io/${REPO,,}"  # ${,,} converts to lowercase
 
           # 获取 tag message 内容并转义 Markdown 特殊字符
-          TAG_MESSAGE='${{ steps.tag_message.outputs.message }}'
+          TAG_MESSAGE="$RELEASE_NOTES"
           TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed 's/\([_*`\[]\)/\\\1/g')
 
           # 限制消息长度（Telegram 消息限制 4096 字符，预留空间给头尾固定内容）
@@ -274,36 +679,3 @@ jobs:
                 parse_mode: "Markdown",
                 disable_web_page_preview: true
               }')"
-
-  sync-version-file:
-    needs: [release]
-    if: ${{ needs.release.result == 'success' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout default branch
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-
-      - name: Sync VERSION file to released tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION=${{ github.event.inputs.tag }}
-            VERSION=${VERSION#v}
-          else
-            VERSION=${GITHUB_REF#refs/tags/v}
-          fi
-
-          CURRENT_VERSION=$(tr -d '\r\n' < backend/cmd/server/VERSION || true)
-          if [ "$CURRENT_VERSION" = "$VERSION" ]; then
-            echo "VERSION file already matches $VERSION"
-            exit 0
-          fi
-
-          echo "$VERSION" > backend/cmd/server/VERSION
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/cmd/server/VERSION
-          git commit -m "chore: sync VERSION to ${VERSION} [skip ci]"
-          git push origin HEAD:${{ github.event.repository.default_branch }}

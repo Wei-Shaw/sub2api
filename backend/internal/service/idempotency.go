@@ -21,6 +21,7 @@ const (
 	IdempotencyStatusProcessing      = "processing"
 	IdempotencyStatusSucceeded       = "succeeded"
 	IdempotencyStatusFailedRetryable = "failed_retryable"
+	idempotencyTerminalWriteTimeout  = 5 * time.Second
 )
 
 var (
@@ -97,6 +98,16 @@ type IdempotencyExecuteResult struct {
 type IdempotencyCoordinator struct {
 	repo IdempotencyRepository
 	cfg  IdempotencyConfig
+}
+
+// idempotencyTerminalContext lets an accepted operation persist its terminal
+// state even when the HTTP client disconnects, while still bounding the write.
+func idempotencyTerminalContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	return context.WithTimeout(base, idempotencyTerminalWriteTimeout)
 }
 
 var (
@@ -408,7 +419,10 @@ func (c *IdempotencyCoordinator) Execute(
 		logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->failed_retryable", false, map[string]string{
 			"reason": reason,
 		})
-		if markErr := c.repo.MarkFailedRetryable(ctx, record.ID, reason, backoffUntil, expiresAt); markErr != nil {
+		terminalCtx, cancel := idempotencyTerminalContext(ctx)
+		markErr := c.repo.MarkFailedRetryable(terminalCtx, record.ID, reason, backoffUntil, expiresAt)
+		cancel()
+		if markErr != nil {
 			RecordIdempotencyStoreUnavailable(opts.Route, opts.Scope, "mark_failed_retryable_error")
 			logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->store_unavailable", false, map[string]string{
 				"operation": "mark_failed_retryable",
@@ -425,7 +439,10 @@ func (c *IdempotencyCoordinator) Execute(
 		})
 		return nil, ErrIdempotencyStoreUnavail.WithCause(marshalErr)
 	}
-	if markErr := c.repo.MarkSucceeded(ctx, record.ID, 200, storedBody, expiresAt); markErr != nil {
+	terminalCtx, cancel := idempotencyTerminalContext(ctx)
+	markErr := c.repo.MarkSucceeded(terminalCtx, record.ID, 200, storedBody, expiresAt)
+	cancel()
+	if markErr != nil {
 		RecordIdempotencyStoreUnavailable(opts.Route, opts.Scope, "mark_succeeded_error")
 		logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->store_unavailable", false, map[string]string{
 			"operation": "mark_succeeded",

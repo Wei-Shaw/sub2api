@@ -5,12 +5,15 @@
 # It only packages the pre-built binary, no compilation needed.
 # =============================================================================
 
-ARG ALPINE_IMAGE=alpine:3.21
-ARG POSTGRES_IMAGE=postgres:18-alpine
+ARG ALPINE_IMAGE=alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
+ARG POSTGRES_IMAGE=postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+ARG TARGETPLATFORM
 
 FROM ${POSTGRES_IMAGE} AS pg-client
 
 FROM ${ALPINE_IMAGE}
+
+ARG TARGETPLATFORM
 
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
 LABEL description="Sub2API - AI API Gateway Platform"
@@ -42,8 +45,8 @@ RUN addgroup -g 1000 sub2api && \
 
 WORKDIR /app
 
-# Copy pre-built binary from GoReleaser
-COPY sub2api /app/sub2api
+# dockers_v2 places each pre-built binary under its target platform.
+COPY ${TARGETPLATFORM}/sub2api /app/sub2api
 
 # Create data directory
 RUN mkdir -p /app/data && chown -R sub2api:sub2api /app

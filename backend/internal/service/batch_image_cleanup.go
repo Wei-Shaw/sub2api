@@ -26,9 +26,10 @@ type BatchImageCleanupService struct {
 	AccountResolver  BatchImageAccountResolver
 	Config           *config.Config
 
-	cancel context.CancelFunc
-	done   chan struct{}
-	mu     sync.Mutex
+	cancel  context.CancelFunc
+	done    chan struct{}
+	mu      sync.Mutex
+	stopped bool
 }
 
 func NewBatchImageCleanupService(repo BatchImageRepository, accountRepo AccountRepository, cfg *config.Config) *BatchImageCleanupService {
@@ -140,7 +141,7 @@ func (s *BatchImageCleanupService) Start() {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.cancel != nil {
+	if s.cancel != nil || s.stopped {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -166,6 +167,7 @@ func (s *BatchImageCleanupService) Stop() {
 		return
 	}
 	s.mu.Lock()
+	s.stopped = true
 	cancel := s.cancel
 	done := s.done
 	s.cancel = nil

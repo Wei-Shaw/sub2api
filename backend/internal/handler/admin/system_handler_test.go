@@ -34,6 +34,11 @@ type systemHandlerUpdateServiceStub struct {
 	rollbackVersions      []service.RollbackVersion
 	rollbackVersionsErr   error
 	rollbackVersionsCall  int
+	deploymentMode        string
+	managedJob            *service.DeploymentJob
+	managedUpdateCalls    int
+	managedRollbackCalls  int
+	managedRollbackTarget string
 }
 
 func (s *systemHandlerUpdateServiceStub) CheckUpdate(_ context.Context, force bool) (*service.UpdateInfo, error) {
@@ -66,21 +71,97 @@ func (s *systemHandlerUpdateServiceStub) RollbackToVersion(ctx context.Context, 
 	return s.rollbackToErr
 }
 
+func (s *systemHandlerUpdateServiceStub) DeploymentMode() string { return s.deploymentMode }
+
+func (s *systemHandlerUpdateServiceStub) StartManagedUpdate(context.Context, string) (*service.DeploymentJob, error) {
+	s.managedUpdateCalls++
+	return s.managedJob, nil
+}
+
+func (s *systemHandlerUpdateServiceStub) StartManagedRollback(_ context.Context, version, _ string) (*service.DeploymentJob, error) {
+	s.managedRollbackCalls++
+	s.managedRollbackTarget = version
+	return s.managedJob, nil
+}
+
+func (s *systemHandlerUpdateServiceStub) DeploymentJob(context.Context, string) (*service.DeploymentJob, error) {
+	return s.managedJob, nil
+}
+
+func (s *systemHandlerUpdateServiceStub) CurrentDeploymentJob(context.Context) (*service.DeploymentJob, error) {
+	return s.managedJob, nil
+}
+
 type systemUpdateResponseEnvelope struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    struct {
-		Message         string `json:"message"`
-		AlreadyUpToDate bool   `json:"already_up_to_date"`
-		CurrentVersion  string `json:"current_version"`
-		LatestVersion   string `json:"latest_version"`
-		OperationID     string `json:"operation_id"`
+		Message         string                 `json:"message"`
+		AlreadyUpToDate bool                   `json:"already_up_to_date"`
+		CurrentVersion  string                 `json:"current_version"`
+		LatestVersion   string                 `json:"latest_version"`
+		OperationID     string                 `json:"operation_id"`
+		Job             *service.DeploymentJob `json:"job"`
 	} `json:"data"`
+}
+
+func TestSystemHandlerStartsManagedDockerUpdateWithoutReplacingBinary(t *testing.T) {
+	updateSvc := &systemHandlerUpdateServiceStub{
+		deploymentMode: service.DeploymentModeDockerManaged,
+		managedJob: &service.DeploymentJob{
+			ID:            "sysop-managed-update",
+			Action:        "update",
+			TargetVersion: "0.1.165-ts.1",
+			Status:        "running",
+			Stage:         "pulling",
+		},
+	}
+	repo := newMemoryIdempotencyRepoStub()
+	router := newSystemHandlerTestRouter(t, updateSvc, repo)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/system/update", nil)
+	req.Header.Set("Idempotency-Key", "managed-update")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, updateSvc.managedUpdateCalls)
+	require.Zero(t, updateSvc.performCall)
+	var body systemUpdateResponseEnvelope
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.NotNil(t, body.Data.Job)
+	require.Equal(t, "sysop-managed-update", body.Data.Job.ID)
+	requireSystemLockStatus(t, repo, service.IdempotencyStatusSucceeded)
+}
+
+func TestSystemHandlerStartsManagedDockerRollback(t *testing.T) {
+	updateSvc := &systemHandlerUpdateServiceStub{
+		deploymentMode: service.DeploymentModeDockerManaged,
+		managedJob: &service.DeploymentJob{
+			ID:            "sysop-managed-rollback",
+			Action:        "rollback",
+			TargetVersion: "0.1.163-ts.1",
+			Status:        "running",
+			Stage:         "pulling",
+		},
+	}
+	repo := newMemoryIdempotencyRepoStub()
+	router := newSystemHandlerTestRouter(t, updateSvc, repo)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/system/rollback", strings.NewReader(`{"version":"0.1.163-ts.1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "managed-rollback")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, updateSvc.managedRollbackCalls)
+	require.Equal(t, "0.1.163-ts.1", updateSvc.managedRollbackTarget)
+	require.Zero(t, updateSvc.rollbackToCall)
 }
 
 type systemUpdateErrorEnvelope struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Reason  string `json:"reason"`
 }
 
 func newSystemHandlerTestRouter(t *testing.T, updateSvc *systemHandlerUpdateServiceStub, repo *memoryIdempotencyRepoStub) *gin.Engine {
@@ -100,8 +181,35 @@ func newSystemHandlerTestRouter(t *testing.T, updateSvc *systemHandlerUpdateServ
 	router := gin.New()
 	router.POST("/api/v1/admin/system/update", handler.PerformUpdate)
 	router.POST("/api/v1/admin/system/rollback", handler.Rollback)
+	router.POST("/api/v1/admin/system/restart", handler.RestartService)
 	router.GET("/api/v1/admin/system/rollback-versions", handler.GetRollbackVersions)
 	return router
+}
+
+func TestSystemHandlerRejectsManagedDockerRestartBeforeObserveOnlyIdempotency(t *testing.T) {
+	updateSvc := &systemHandlerUpdateServiceStub{
+		deploymentMode: service.DeploymentModeDockerManaged,
+	}
+	repo := newMemoryIdempotencyRepoStub()
+	router := newSystemHandlerTestRouter(t, updateSvc, repo)
+	cfg := service.DefaultIdempotencyConfig()
+	cfg.ObserveOnly = true
+	service.SetDefaultIdempotencyCoordinator(service.NewIdempotencyCoordinator(repo, cfg))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/system/restart", nil)
+	// Deliberately omit Idempotency-Key: observe-only mode must not allow the
+	// unsafe restart path to run before or during a host deployment.
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	var body systemUpdateErrorEnvelope
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, "DOCKER_MANAGED_RESTART_UNSUPPORTED", body.Reason)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Empty(t, repo.data, "rejected restart must not claim an idempotency record or system lock")
 }
 
 func requireSystemLockStatus(t *testing.T, repo *memoryIdempotencyRepoStub, wantStatus string) {

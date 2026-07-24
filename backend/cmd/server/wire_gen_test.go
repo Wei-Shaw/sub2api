@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -63,6 +64,11 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // apiKeyService
 		nil, // authCacheInvalidationWorker
 		schedulerSnapshotSvc,
+		nil, // concurrencyService
+		nil, // dashboardAggregation
+		nil, // deferredService
+		nil, // userMessageQueue
+		nil, // timingWheel
 		tokenRefreshSvc,
 		accountExpirySvc,
 		proxyExpirySvc,
@@ -94,6 +100,21 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 	)
 
 	require.NotPanics(t, func() {
-		cleanup()
+		cleanup(context.Background())
 	})
+}
+
+func TestHTTPDrainBudgetReservesCleanupTail(t *testing.T) {
+	tests := []struct {
+		total time.Duration
+		want  time.Duration
+	}{
+		{total: 90 * time.Second, want: 80 * time.Second},
+		{total: 30 * time.Second, want: 20 * time.Second},
+		{total: 6 * time.Second, want: 4 * time.Second},
+		{total: 0, want: 0},
+	}
+	for _, tt := range tests {
+		require.Equal(t, tt.want, httpDrainBudget(tt.total))
+	}
 }

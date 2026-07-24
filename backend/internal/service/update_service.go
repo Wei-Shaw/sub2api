@@ -23,8 +23,17 @@ import (
 )
 
 var (
-	ErrNoUpdateAvailable         = infraerrors.Conflict("ALREADY_UP_TO_DATE", "no update available; current version is latest")
-	ErrRollbackVersionNotAllowed = infraerrors.BadRequest("ROLLBACK_VERSION_NOT_ALLOWED", "version is not in the allowed rollback list")
+	ErrNoUpdateAvailable          = infraerrors.Conflict("ALREADY_UP_TO_DATE", "no update available; current version is latest")
+	ErrRollbackVersionNotAllowed  = infraerrors.BadRequest("ROLLBACK_VERSION_NOT_ALLOWED", "version is not in the allowed rollback list")
+	ErrManagedDeployerUnavailable = infraerrors.ServiceUnavailable("DEPLOYER_UNAVAILABLE", "Docker deployment agent is unavailable")
+	ErrDockerManualUpdate         = infraerrors.Conflict("DOCKER_MANUAL_UPDATE_REQUIRED", "this Docker deployment is not connected to the deployment agent")
+)
+
+const (
+	DeploymentModeSource           = "source"
+	DeploymentModeStandaloneBinary = "standalone-binary"
+	DeploymentModeDockerManual     = "docker-manual"
+	DeploymentModeDockerManaged    = "docker-managed"
 )
 
 const (
@@ -65,27 +74,46 @@ type UpdateService struct {
 	githubClient   GitHubReleaseClient
 	currentVersion string
 	buildType      string // "source" for manual builds, "release" for CI builds
+	deploymentMode string
+	deployer       DeploymentClient
 }
 
 // NewUpdateService creates a new UpdateService
 func NewUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, version, buildType string) *UpdateService {
+	mode := DeploymentModeStandaloneBinary
+	if buildType == "source" {
+		mode = DeploymentModeSource
+	}
 	return &UpdateService{
 		cache:          cache,
 		githubClient:   githubClient,
 		currentVersion: version,
 		buildType:      buildType,
+		deploymentMode: mode,
 	}
+}
+
+func (s *UpdateService) ConfigureDeployment(mode string, deployer DeploymentClient) {
+	s.deploymentMode = normalizeDeploymentMode(mode, s.buildType)
+	s.deployer = deployer
+}
+
+func (s *UpdateService) DeploymentMode() string {
+	return s.deploymentMode
 }
 
 // UpdateInfo contains update information
 type UpdateInfo struct {
-	CurrentVersion string       `json:"current_version"`
-	LatestVersion  string       `json:"latest_version"`
-	HasUpdate      bool         `json:"has_update"`
-	ReleaseInfo    *ReleaseInfo `json:"release_info,omitempty"`
-	Cached         bool         `json:"cached"`
-	Warning        string       `json:"warning,omitempty"`
-	BuildType      string       `json:"build_type"` // "source" or "release"
+	CurrentVersion    string       `json:"current_version"`
+	LatestVersion     string       `json:"latest_version"`
+	HasUpdate         bool         `json:"has_update"`
+	ReleaseInfo       *ReleaseInfo `json:"release_info,omitempty"`
+	Cached            bool         `json:"cached"`
+	Warning           string       `json:"warning,omitempty"`
+	BuildType         string       `json:"build_type"` // "source" or "release"
+	DeploymentMode    string       `json:"deployment_mode"`
+	DeploymentReady   bool         `json:"deployment_ready"`
+	DeploymentMessage string       `json:"deployment_message,omitempty"`
 }
 
 // ReleaseInfo contains GitHub release details
@@ -134,6 +162,7 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 	// Try cache first
 	if !force {
 		if cached, err := s.getFromCache(ctx); err == nil && cached != nil {
+			s.decorateDeployment(ctx, cached)
 			return cached, nil
 		}
 	}
@@ -144,25 +173,35 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 		// Return cached on error
 		if cached, cacheErr := s.getFromCache(ctx); cacheErr == nil && cached != nil {
 			cached.Warning = "Using cached data: " + err.Error()
+			s.decorateDeployment(ctx, cached)
 			return cached, nil
 		}
-		return &UpdateInfo{
+		fallback := &UpdateInfo{
 			CurrentVersion: s.currentVersion,
 			LatestVersion:  s.currentVersion,
 			HasUpdate:      false,
 			Warning:        err.Error(),
 			BuildType:      s.buildType,
-		}, nil
+		}
+		s.decorateDeployment(ctx, fallback)
+		return fallback, nil
 	}
 
 	// Cache result
 	s.saveToCache(ctx, info)
+	s.decorateDeployment(ctx, info)
 	return info, nil
 }
 
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+	if s.deploymentMode == DeploymentModeDockerManual {
+		return ErrDockerManualUpdate
+	}
+	if s.deploymentMode == DeploymentModeDockerManaged {
+		return ErrManagedDeployerUnavailable
+	}
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return err
@@ -281,6 +320,12 @@ func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []
 
 // Rollback restores the previous version
 func (s *UpdateService) Rollback() error {
+	if s.deploymentMode == DeploymentModeDockerManual {
+		return ErrDockerManualUpdate
+	}
+	if s.deploymentMode == DeploymentModeDockerManaged {
+		return ErrManagedDeployerUnavailable
+	}
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -327,6 +372,12 @@ func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVer
 // The target must be one of the versions returned by ListRollbackVersions;
 // anything else (including the current version) is rejected.
 func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) error {
+	if s.deploymentMode == DeploymentModeDockerManual {
+		return ErrDockerManualUpdate
+	}
+	if s.deploymentMode == DeploymentModeDockerManaged {
+		return ErrManagedDeployerUnavailable
+	}
 	target := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if target == "" {
 		return ErrRollbackVersionNotAllowed

@@ -3,14 +3,23 @@
     <!-- Admin: Full version badge with dropdown -->
     <template v-if="isAdmin">
       <button
+        data-testid="version-badge"
         @click="toggleDropdown"
         class="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors"
         :class="[
-          hasUpdate
+          hasDangerousDeploymentState
+            ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50'
+            : hasUpdate
             ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'
             : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-800 dark:text-dark-400 dark:hover:bg-dark-700'
         ]"
-        :title="hasUpdate ? t('version.updateAvailable') : t('version.upToDate')"
+        :title="
+          hasDangerousDeploymentState
+            ? displayedUpdateError
+            : hasUpdate
+              ? t('version.updateAvailable')
+              : t('version.upToDate')
+        "
       >
         <span v-if="currentVersion" class="font-medium">v{{ currentVersion }}</span>
         <span
@@ -18,7 +27,10 @@
           class="h-3 w-12 animate-pulse rounded bg-gray-200 font-medium dark:bg-dark-600"
         ></span>
         <!-- Update indicator -->
-        <span v-if="hasUpdate" class="relative flex h-2 w-2">
+        <span v-if="hasDangerousDeploymentState" class="relative flex h-2 w-2">
+          <span class="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
+        </span>
+        <span v-else-if="hasUpdate" class="relative flex h-2 w-2">
           <span
             class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"
           ></span>
@@ -32,7 +44,7 @@
           v-if="dropdownOpen"
           ref="dropdownRef"
           class="absolute left-0 z-50 mt-2 overflow-hidden whitespace-normal rounded-xl border border-gray-200 bg-white shadow-lg transition-all duration-200 dark:border-dark-700 dark:bg-dark-800"
-          :class="rollbackPanelOpen && isReleaseBuild ? 'w-80' : 'w-64'"
+          :class="(rollbackPanelOpen && isReleaseBuild) || deploymentJob ? 'w-80' : 'w-64'"
         >
           <!-- Header with refresh button -->
           <div
@@ -42,6 +54,7 @@
               t('version.currentVersion')
             }}</span>
             <button
+              data-testid="version-refresh"
               @click="refreshVersion(true)"
               class="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-dark-200"
               :disabled="loading"
@@ -114,8 +127,56 @@
                 </p>
               </div>
 
+              <!-- Deployment progress persists while Nginx switches between containers. -->
+              <div
+                v-if="deploymentJob?.status === 'running'"
+                class="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800/50 dark:bg-blue-900/20"
+              >
+                <div class="flex items-start gap-3">
+                  <svg
+                    class="mt-0.5 h-5 w-5 flex-shrink-0 animate-spin text-blue-600 dark:text-blue-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                    ></circle>
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-blue-700 dark:text-blue-300">
+                      {{ deploymentStageLabel }}
+                    </p>
+                    <p class="mt-0.5 text-xs text-blue-600/70 dark:text-blue-400/70">
+                      v{{ deploymentJob.target_version }}
+                    </p>
+                  </div>
+                  <span class="text-xs tabular-nums text-blue-600 dark:text-blue-400">
+                    {{ deploymentProgress }}%
+                  </span>
+                </div>
+                <div class="h-1.5 overflow-hidden rounded bg-blue-100 dark:bg-blue-950/50">
+                  <div
+                    class="h-full rounded bg-blue-500 transition-all duration-500"
+                    :style="{ width: deploymentProgress + '%' }"
+                  ></div>
+                </div>
+                <p class="text-[11px] leading-4 text-blue-600/70 dark:text-blue-400/70">
+                  {{ t('version.deploymentRefresh') }}
+                </p>
+              </div>
+
               <!-- Priority 1: Update error (must check before hasUpdate) -->
-              <div v-if="updateError" class="space-y-2">
+              <div v-else-if="displayedUpdateError" data-testid="deployment-error" class="space-y-2">
                 <div
                   class="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800/50 dark:bg-red-900/20"
                 >
@@ -133,20 +194,46 @@
                     <p class="text-sm font-medium text-red-700 dark:text-red-300">
                       {{ t('version.updateFailed') }}
                     </p>
-                    <p class="truncate text-xs text-red-600/70 dark:text-red-400/70">
-                      {{ updateError }}
+                    <p class="break-words text-xs text-red-600/70 dark:text-red-400/70">
+                      {{ displayedUpdateError }}
                     </p>
                   </div>
                 </div>
 
                 <!-- Retry button -->
                 <button
-                  @click="handleUpdate"
+                  v-if="!hasDangerousDeploymentState"
+                  @click="retryFailedOperation"
                   :disabled="updating"
                   class="flex w-full items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {{ t('version.retry') }}
                 </button>
+              </div>
+
+              <div v-else-if="updateSuccess && !needRestart" class="space-y-2">
+                <div
+                  class="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800/50 dark:bg-green-900/20"
+                >
+                  <Icon
+                    name="check"
+                    size="sm"
+                    :stroke-width="2"
+                    class="flex-shrink-0 text-green-600 dark:text-green-400"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-green-700 dark:text-green-300">
+                      {{
+                        successKind === 'rollback'
+                          ? t('version.rollbackComplete')
+                          : t('version.updateComplete')
+                      }}
+                    </p>
+                    <p class="text-xs text-green-600/70 dark:text-green-400/70">
+                      {{ t('version.deploymentRefresh') }}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <!-- Priority 2: Update success - need restart -->
@@ -320,7 +407,7 @@
                 <!-- Update button -->
                 <button
                   @click="handleUpdate"
-                  :disabled="updating"
+                  :disabled="updating || !canOnlineUpdate"
                   class="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <svg v-if="updating" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -341,6 +428,13 @@
                   <Icon v-else name="download" size="sm" :stroke-width="2" />
                   {{ updating ? t('version.updating') : t('version.updateNow') }}
                 </button>
+
+                <p
+                  v-if="!canOnlineUpdate"
+                  class="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs leading-4 text-amber-700 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-300"
+                >
+                  {{ deploymentMessage || t('version.deploymentUnavailable') }}
+                </p>
 
                 <!-- View release link -->
                 <a
@@ -517,54 +611,57 @@
                         <!-- Selected version: manual command (per deploy method) + confirm -->
                         <transition name="rollback">
                           <div v-if="selectedRollbackVersion" class="space-y-2">
-                            <p class="px-0.5 text-[11px] text-gray-400 dark:text-dark-500">
-                              {{ t('version.manualRollbackCommand') }}
-                            </p>
+                            <template v-if="!isManagedDocker">
+                              <p class="px-0.5 text-[11px] text-gray-400 dark:text-dark-500">
+                                {{ t('version.manualRollbackCommand') }}
+                              </p>
 
-                            <!-- Terminal-style block with deploy-method tabs -->
-                            <div
-                              class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-600"
-                            >
+                              <!-- Terminal-style block with deploy-method tabs -->
                               <div
-                                class="flex items-center justify-between border-b border-gray-200 bg-gray-100 px-2 py-1.5 dark:border-dark-600 dark:bg-dark-700"
+                                class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-600"
                               >
                                 <div
-                                  class="flex items-center gap-0.5 rounded-md bg-gray-200/70 p-0.5 dark:bg-dark-600/70"
+                                  class="flex items-center justify-between border-b border-gray-200 bg-gray-100 px-2 py-1.5 dark:border-dark-600 dark:bg-dark-700"
                                 >
-                                  <button
-                                    v-for="tab in manualTabs"
-                                    :key="tab.key"
-                                    @click="manualTab = tab.key"
-                                    class="rounded px-2 py-0.5 text-[11px] font-medium transition-colors"
-                                    :class="
-                                      manualTab === tab.key
-                                        ? 'bg-white text-gray-700 shadow-sm dark:bg-dark-800 dark:text-dark-100'
-                                        : 'text-gray-400 hover:text-gray-600 dark:text-dark-400 dark:hover:text-dark-200'
-                                    "
+                                  <div
+                                    class="flex items-center gap-0.5 rounded-md bg-gray-200/70 p-0.5 dark:bg-dark-600/70"
                                   >
-                                    {{ tab.label }}
+                                    <button
+                                      v-for="tab in manualTabs"
+                                      :key="tab.key"
+                                      @click="manualTab = tab.key"
+                                      class="rounded px-2 py-0.5 text-[11px] font-medium transition-colors"
+                                      :class="
+                                        manualTab === tab.key
+                                          ? 'bg-white text-gray-700 shadow-sm dark:bg-dark-800 dark:text-dark-100'
+                                          : 'text-gray-400 hover:text-gray-600 dark:text-dark-400 dark:hover:text-dark-200'
+                                      "
+                                    >
+                                      {{ tab.label }}
+                                    </button>
+                                  </div>
+                                  <button
+                                    @click="copyToClipboard(activeManualCommand)"
+                                    class="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-dark-400 dark:hover:bg-dark-600 dark:hover:text-dark-200"
+                                  >
+                                    <Icon
+                                      :name="copied ? 'check' : 'copy'"
+                                      size="xs"
+                                      :stroke-width="2"
+                                      :class="copied ? 'text-gray-500' : ''"
+                                    />
+                                    {{ copied ? t('version.copied') : t('version.copyCommand') }}
                                   </button>
                                 </div>
-                                <button
-                                  @click="copyToClipboard(activeManualCommand)"
-                                  class="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-dark-400 dark:hover:bg-dark-600 dark:hover:text-dark-200"
+                                <code
+                                  class="block select-all whitespace-pre-wrap break-all bg-gray-50 p-2.5 font-mono text-[10px] leading-relaxed text-gray-600 dark:bg-dark-900 dark:text-dark-300"
+                                  >{{ activeManualCommand }}</code
                                 >
-                                  <Icon
-                                    :name="copied ? 'check' : 'copy'"
-                                    size="xs"
-                                    :stroke-width="2"
-                                    :class="copied ? 'text-gray-500' : ''"
-                                  />
-                                  {{ copied ? t('version.copied') : t('version.copyCommand') }}
-                                </button>
                               </div>
-                              <code
-                                class="block select-all whitespace-pre-wrap break-all bg-gray-50 p-2.5 font-mono text-[10px] leading-relaxed text-gray-600 dark:bg-dark-900 dark:text-dark-300"
-                                >{{ activeManualCommand }}</code
-                              >
-                            </div>
+                            </template>
 
                             <p
+                              v-if="canOnlineUpdate"
                               class="flex items-start gap-1.5 px-0.5 text-[11px] leading-4 text-amber-600 dark:text-amber-400"
                             >
                               <Icon
@@ -577,6 +674,13 @@
                             </p>
 
                             <p
+                              v-else
+                              class="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs leading-4 text-amber-700 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-300"
+                            >
+                              {{ deploymentMessage || t('version.deploymentUnavailable') }}
+                            </p>
+
+                            <p
                               v-if="rollbackError"
                               class="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-600 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400"
                             >
@@ -584,6 +688,7 @@
                             </p>
 
                             <button
+                              v-if="canOnlineUpdate"
                               @click="handleRollback"
                               :disabled="rollingBack"
                               class="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -640,9 +745,15 @@ import { useAuthStore, useAppStore } from '@/stores'
 import {
   performUpdate,
   restartService,
+  getVersion,
   getRollbackVersions,
+  getDeploymentJob,
+  getCurrentDeploymentJob,
+  replayOrRecoverCurrentDeployment,
+  reconcileDeploymentVersion,
   rollback as rollbackAPI,
-  type RollbackVersionInfo
+  type RollbackVersionInfo,
+  type DeploymentJob
 } from '@/api/admin/system'
 import { useClipboard } from '@/composables/useClipboard'
 import Icon from '@/components/icons/Icon.vue'
@@ -672,6 +783,13 @@ const latestVersion = computed(() => appStore.latestVersion)
 const hasUpdate = computed(() => appStore.hasUpdate)
 const releaseInfo = computed(() => appStore.releaseInfo)
 const buildType = computed(() => appStore.buildType)
+const deploymentMode = computed(() => appStore.deploymentMode)
+const deploymentReady = computed(() => appStore.deploymentReady)
+const deploymentMessage = computed(() => appStore.deploymentMessage)
+const isManagedDocker = computed(() => deploymentMode.value === 'docker-managed')
+const canOnlineUpdate = computed(
+  () => deploymentMode.value === 'standalone-binary' || (isManagedDocker.value && deploymentReady.value)
+)
 
 // Update process states (local to this component)
 const updating = ref(false)
@@ -682,6 +800,38 @@ const updateSuccess = ref(false)
 const restartCountdown = ref(0)
 // Distinguishes the success + restart panel between update and rollback flows
 const successKind = ref<'update' | 'rollback'>('update')
+const deploymentJob = ref<DeploymentJob | null>(null)
+const hasDangerousDeploymentState = computed(() => isDangerousDeploymentJob(deploymentJob.value))
+const displayedUpdateError = computed(() => {
+  if (hasDangerousDeploymentState.value && deploymentJob.value) {
+    return deploymentFailureMessage(deploymentJob.value)
+  }
+  return updateError.value
+})
+let deploymentPollToken = 0
+let reloadTimer: ReturnType<typeof setTimeout> | null = null
+
+const deploymentStages = [
+  'pulling',
+  'preparing',
+  'starting_candidate',
+  'checking_candidate',
+  'switching_traffic',
+  'stabilizing',
+  'draining',
+  'activating_background',
+  'completed'
+]
+const deploymentProgress = computed(() => {
+  if (!deploymentJob.value) return 0
+  const index = deploymentStages.indexOf(deploymentJob.value.stage)
+  if (index < 0) return 5
+  return Math.round(((index + 1) / deploymentStages.length) * 100)
+})
+const deploymentStageLabel = computed(() => {
+  const stage = deploymentJob.value?.stage
+  return stage ? t(`version.deploymentStages.${stage}`) : t('version.deploymentStarting')
+})
 
 // Rollback states
 const rollbackPanelOpen = ref(false)
@@ -745,28 +895,62 @@ async function refreshVersion(force = true) {
   resetRollbackState()
 
   await appStore.fetchVersion(force)
+  await recoverCurrentDeployment()
 }
 
 async function handleUpdate() {
-  if (updating.value) return
+  if (updating.value || !canOnlineUpdate.value) return
 
   updating.value = true
   updateError.value = ''
   updateSuccess.value = false
+  const attemptStartedAt = Date.now()
 
   try {
-    const result = await performUpdate()
-    successKind.value = 'update'
-    updateSuccess.value = true
-    needRestart.value = result.need_restart
-    // Clear version cache to reflect update completed
-    appStore.clearVersionCache()
+    applyUpdateResult(await performUpdate())
   } catch (error: unknown) {
+    if (isAmbiguousSystemRequestError(error)) {
+      const recovered = await replayOrRecoverCurrentDeployment(
+        performUpdate,
+        'update',
+        latestVersion.value,
+        attemptStartedAt
+      )
+      if (recovered?.result) {
+        applyUpdateResult(recovered.result)
+        return
+      }
+      if (recovered?.job) {
+        trackDeployment(recovered.job, 'update')
+        return
+      }
+    }
     const err = error as { response?: { data?: { message?: string } }; message?: string }
     updateError.value = err.response?.data?.message || err.message || t('version.updateFailed')
   } finally {
-    updating.value = false
+    if (!deploymentJob.value || deploymentJob.value.status !== 'running') {
+      updating.value = false
+    }
   }
+}
+
+function applyUpdateResult(result: Awaited<ReturnType<typeof performUpdate>>) {
+  if (result.job) {
+    trackDeployment(result.job, 'update')
+    return
+  }
+  successKind.value = 'update'
+  updateSuccess.value = true
+  needRestart.value = result.need_restart
+  appStore.clearVersionCache()
+}
+
+function retryFailedOperation() {
+  if (successKind.value === 'rollback') {
+    void handleRollback()
+    return
+  }
+  void handleUpdate()
 }
 
 function resetRollbackState() {
@@ -823,25 +1007,161 @@ function formatPublishedAt(publishedAt: string): string {
 
 async function handleRollback() {
   if (!isAdmin.value) return
-  if (rollingBack.value || !selectedRollbackVersion.value) return
+  if (rollingBack.value || !selectedRollbackVersion.value || !canOnlineUpdate.value) return
 
   rollingBack.value = true
   rollbackError.value = ''
+  const attemptStartedAt = Date.now()
 
   try {
-    const result = await rollbackAPI(selectedRollbackVersion.value)
-    successKind.value = 'rollback'
-    updateSuccess.value = true
-    needRestart.value = result.need_restart
-    rollbackPanelOpen.value = false
-    // Clear version cache so the next check reflects the rolled-back version
-    appStore.clearVersionCache()
+    applyRollbackResult(await rollbackAPI(selectedRollbackVersion.value))
   } catch (error: unknown) {
+    if (isAmbiguousSystemRequestError(error)) {
+      const recovered = await replayOrRecoverCurrentDeployment(
+        () => rollbackAPI(selectedRollbackVersion.value),
+        'rollback',
+        selectedRollbackVersion.value,
+        attemptStartedAt
+      )
+      if (recovered?.result) {
+        applyRollbackResult(recovered.result)
+        return
+      }
+      if (recovered?.job) {
+        trackDeployment(recovered.job, 'rollback')
+        return
+      }
+    }
     const err = error as { response?: { data?: { message?: string } }; message?: string }
     rollbackError.value = err.response?.data?.message || err.message || t('version.rollbackFailed')
   } finally {
-    rollingBack.value = false
+    if (!deploymentJob.value || deploymentJob.value.status !== 'running') {
+      rollingBack.value = false
+    }
   }
+}
+
+function applyRollbackResult(result: Awaited<ReturnType<typeof rollbackAPI>>) {
+  if (result.job) {
+    trackDeployment(result.job, 'rollback')
+    return
+  }
+  successKind.value = 'rollback'
+  updateSuccess.value = true
+  needRestart.value = result.need_restart
+  rollbackPanelOpen.value = false
+  appStore.clearVersionCache()
+}
+
+function isAmbiguousSystemRequestError(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } }).response?.status
+  return status === undefined || status === 408 || status >= 500
+}
+
+function isDangerousDeploymentJob(job: DeploymentJob | null): boolean {
+  return job?.status === 'degraded' || job?.status === 'rollback_failed' || Boolean(job?.rollback_error)
+}
+
+function deploymentFailureMessage(job: DeploymentJob): string {
+  const fallback =
+    job.status === 'degraded'
+      ? t('version.deploymentDegraded')
+      : job.status === 'rollback_failed'
+        ? t('version.deploymentRollbackFailed')
+        : job.rollback_performed
+          ? t('version.deploymentRolledBack')
+          : t('version.updateFailed')
+  const details = [job.error, job.rollback_error].filter(
+    (value, index, values): value is string => Boolean(value) && values.indexOf(value) === index
+  )
+  return details.length > 0 ? `${fallback}: ${details.join('; ')}` : fallback
+}
+
+function trackDeployment(job: DeploymentJob, kind: 'update' | 'rollback') {
+  deploymentJob.value = job
+  successKind.value = kind
+  updating.value = kind === 'update'
+  rollingBack.value = kind === 'rollback'
+  rollbackPanelOpen.value = false
+  const token = ++deploymentPollToken
+  void pollDeployment(job.id, token)
+}
+
+async function pollDeployment(jobID: string, token: number) {
+  let transientFailures = 0
+  while (token === deploymentPollToken) {
+    try {
+      const job = await getDeploymentJob(jobID)
+      if (token !== deploymentPollToken) return
+      deploymentJob.value = job
+      transientFailures = 0
+      if (job.status === 'running') {
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        continue
+      }
+      updating.value = false
+      rollingBack.value = false
+      if (job.status === 'succeeded') {
+        updateSuccess.value = true
+        needRestart.value = false
+        updateError.value = ''
+        appStore.clearVersionCache()
+        reloadTimer = setTimeout(() => window.location.reload(), 2500)
+      } else {
+        updateError.value = deploymentFailureMessage(job)
+      }
+      return
+    } catch (error) {
+      transientFailures++
+      const status = (error as { response?: { status?: number } }).response?.status
+      if (status === 404 && transientFailures >= 3 && transientFailures % 3 === 0) {
+        const reconciled = await reconcileLegacyDeployment(deploymentJob.value)
+        if (reconciled) return
+      }
+      // A few failed polls are expected while Nginx replaces its upstream.
+      if (transientFailures >= 40) {
+        updating.value = false
+        rollingBack.value = false
+        updateError.value = t('version.deploymentUnavailable')
+        return
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+    }
+  }
+}
+
+async function reconcileLegacyDeployment(job: DeploymentJob | null): Promise<boolean> {
+  if (!job) return false
+  try {
+    const current = (await getVersion()).version
+    const reconciliation = reconcileDeploymentVersion(job, current)
+    if (reconciliation === 'succeeded') {
+      deploymentJob.value = { ...job, status: 'succeeded', stage: 'completed' }
+      updating.value = false
+      rollingBack.value = false
+      updateSuccess.value = true
+      needRestart.value = false
+      updateError.value = ''
+      appStore.clearVersionCache()
+      reloadTimer = setTimeout(() => window.location.reload(), 2500)
+      return true
+    }
+    if (reconciliation === 'rolled_back') {
+      deploymentJob.value = {
+        ...job,
+        status: 'failed',
+        stage: 'failed',
+        rollback_performed: true
+      }
+      updating.value = false
+      rollingBack.value = false
+      updateError.value = t('version.deploymentRolledBack')
+      return true
+    }
+  } catch {
+    // Keep polling while Nginx or the restored legacy container is starting.
+  }
+  return false
 }
 
 async function handleRestart() {
@@ -905,15 +1225,40 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
-onMounted(() => {
+async function recoverCurrentDeployment() {
+  try {
+    // This request is intentionally independent of the version response. During
+    // an Nginx slot switch, /check-updates can fail while the durable host job
+    // remains available from the container that receives the next request.
+    const job = await getCurrentDeploymentJob()
+    if (job.status === 'running') {
+      trackDeployment(job, job.action)
+    } else if (isDangerousDeploymentJob(job)) {
+      deploymentJob.value = job
+      successKind.value = job.action
+      updating.value = false
+      rollingBack.value = false
+      updateSuccess.value = false
+      needRestart.value = false
+    }
+  } catch {
+    // Source/manual deployments and a first request during a switch normally
+    // have no recoverable managed job. A later manual refresh retries this.
+  }
+}
+
+onMounted(async () => {
   if (isAdmin.value) {
     // Use cached version if available, otherwise fetch
-    appStore.fetchVersion(false)
+    await appStore.fetchVersion(false)
+    await recoverCurrentDeployment()
   }
   document.addEventListener('click', handleClickOutside)
 })
 
 onBeforeUnmount(() => {
+  deploymentPollToken++
+  if (reloadTimer) clearTimeout(reloadTimer)
   document.removeEventListener('click', handleClickOutside)
 })
 </script>
