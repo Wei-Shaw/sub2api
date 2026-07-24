@@ -90,6 +90,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { useAnnouncementStore } from '@/stores/announcements'
 import { formatRelativeWithDateTime } from '@/utils/format'
+import '@/styles/announcement-markdown.css'
 
 const { t } = useI18n()
 const announcementStore = useAnnouncementStore()
