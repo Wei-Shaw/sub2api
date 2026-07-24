@@ -7147,6 +7147,19 @@
                       >
                     </div>
                   </div>
+                  <div class="min-w-64 flex-1">
+                    <div class="flex items-center justify-between gap-3">
+                      <div>
+                        <label class="input-label">{{
+                          t("admin.settings.payment.refundRequestUserEmail")
+                        }}</label>
+                        <p class="mt-0.5 text-xs text-gray-400">
+                          {{ t("admin.settings.payment.refundRequestUserEmailHint") }}
+                        </p>
+                      </div>
+                      <Toggle v-model="form.payment_refund_request_user_email_enabled" />
+                    </div>
+                  </div>
                   <div>
                     <label class="input-label">{{
                       t("admin.settings.payment.alipayForceQRCode")
@@ -8584,6 +8597,7 @@ const form = reactive<SettingsForm>({
   payment_enabled_types: [],
   payment_help_image_url: "",
   payment_help_text: "",
+  payment_refund_request_user_email_enabled: false,
   payment_product_name_prefix: "",
   payment_product_name_suffix: "",
   payment_load_balance_strategy: "round-robin",
@@ -10260,6 +10274,8 @@ async function saveSettings() {
       payment_product_name_suffix: form.payment_product_name_suffix,
       payment_help_image_url: form.payment_help_image_url,
       payment_help_text: form.payment_help_text,
+      payment_refund_request_user_email_enabled:
+        form.payment_refund_request_user_email_enabled,
       payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
       payment_cancel_rate_limit_max:
         Number(form.payment_cancel_rate_limit_max) || 10,

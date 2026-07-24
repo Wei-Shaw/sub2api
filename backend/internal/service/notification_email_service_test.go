@@ -137,6 +137,7 @@ func TestNotificationEmailAdditionalEventsAreListedAndPreviewable(t *testing.T) 
 		placeholder string
 	}{
 		{NotificationEmailEventNotificationEmailVerifyCode, "verification_code"},
+		{NotificationEmailEventRefundRequestedUser, "refund_reason"},
 		{NotificationEmailEventAccountQuotaAlert, "account_name"},
 		{NotificationEmailEventContentModerationViolation, "moderation_category"},
 		{NotificationEmailEventContentModerationDisabled, "violation_count"},
@@ -453,6 +454,45 @@ func TestNotificationEmailSendDeduplicatesSubscriptionExpiryReminder(t *testing.
 
 	require.NoError(t, svc.Send(ctx, input))
 	require.Equal(t, int64(1), smtpServer.messageCount())
+}
+
+func TestNotificationEmailSendDeduplicatesRefundRequestConfirmation(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	smtpServer := startNotificationEmailTestSMTPServer(t)
+	require.NoError(t, repo.SetMultiple(ctx, smtpServer.settings()))
+
+	emailSvc := NewEmailService(repo, nil)
+	svc := NewNotificationEmailService(repo, emailSvc)
+	_, err := svc.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{Channels: []NotificationEmailChannelPolicy{{
+		ID:                 NotificationEmailChannelRefundUser,
+		Enabled:            true,
+		IncludeUserPrimary: true,
+	}}})
+	require.NoError(t, err)
+
+	input := NotificationEmailSendInput{
+		Event:          NotificationEmailEventRefundRequestedUser,
+		RecipientEmail: "refund-user@example.com",
+		RecipientName:  "Refund User",
+		UserID:         42,
+		SourceType:     "payment_refund_request",
+		SourceID:       "123",
+		ReminderKey:    "2026-07-24T01:02:03Z",
+		Variables: map[string]string{
+			"order_id":        "123",
+			"refund_amount":   "88.00",
+			"refund_currency": "CNY",
+			"refund_reason":   "duplicate charge",
+			"refund_status":   OrderStatusRefundRequested,
+			"requested_at":    "2026-07-24T01:02:03Z",
+		},
+	}
+
+	require.NoError(t, svc.Send(ctx, input))
+	require.NoError(t, svc.Send(ctx, input))
+	require.Equal(t, int64(1), smtpServer.messageCount())
+	require.Contains(t, smtpServer.lastMessage(), "duplicate charge")
 }
 
 func TestNotificationEmailSendRespectsLegacyDeliveryKey(t *testing.T) {

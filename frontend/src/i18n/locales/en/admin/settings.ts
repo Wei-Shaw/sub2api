@@ -599,6 +599,8 @@ export default {
         cancelRateLimitWindow: 'Window',
         cancelRateLimitUnit: 'Unit',
         cancelRateLimitMax: 'Max Cancels',
+        refundRequestUserEmail: 'Refund Request Confirmation Email',
+        refundRequestUserEmailHint: 'Send a confirmation after a user submits a refund request; the User Refund Notifications master switch in Email Settings must also be enabled',
         cancelRateLimitUnitMinute: 'Minutes',
         cancelRateLimitUnitHour: 'Hours',
         cancelRateLimitUnitDay: 'Days',

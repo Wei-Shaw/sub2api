@@ -27,6 +27,7 @@ const (
 	NotificationEmailEventSubscriptionExpiryReminder  = "subscription.expiry_reminder"
 	NotificationEmailEventBalanceLow                  = "balance.low"
 	NotificationEmailEventBalanceRechargeSuccess      = "balance.recharge_success"
+	NotificationEmailEventRefundRequestedUser         = "billing.refund_requested_user"
 	NotificationEmailEventAccountQuotaAlert           = "account.quota_alert"
 	NotificationEmailEventContentModerationViolation  = "content_moderation.violation_notice"
 	NotificationEmailEventContentModerationDisabled   = "content_moderation.account_disabled"
@@ -1034,6 +1035,7 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventSubscriptionExpiryReminder,
 	NotificationEmailEventBalanceLow,
 	NotificationEmailEventBalanceRechargeSuccess,
+	NotificationEmailEventRefundRequestedUser,
 	NotificationEmailEventAccountQuotaAlert,
 	NotificationEmailEventContentModerationViolation,
 	NotificationEmailEventContentModerationDisabled,
@@ -1098,6 +1100,15 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Category:     "billing",
 		Optional:     false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "recharge_amount", "current_balance", "order_id"),
+	},
+	NotificationEmailEventRefundRequestedUser: {
+		Event:       NotificationEmailEventRefundRequestedUser,
+		Label:       "Refund request received",
+		Description: "Sent after a user's refund request is accepted for review.",
+		Category:    "billing",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"order_id", "refund_amount", "refund_currency", "refund_reason", "refund_status", "requested_at"),
 	},
 	NotificationEmailEventAccountQuotaAlert: {
 		Event:       NotificationEmailEventAccountQuotaAlert,
@@ -1296,6 +1307,30 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p>您的余额充值 <strong>${{recharge_amount}}</strong> 已完成。</p>
 <p>当前余额：<strong>${{current_balance}}</strong></p>
 			<p>订单号：{{order_id}}</p>`),
+		},
+	},
+	NotificationEmailEventRefundRequestedUser: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Refund request received",
+			HTML: notificationEmailCard("#2563eb", "Refund request received", `
+<p>Hello {{recipient_name}},</p>
+<p>We received your refund request and it is now awaiting review.</p>
+<p>Order ID: <strong>{{order_id}}</strong></p>
+<p>Requested refund: <strong>{{refund_amount}} {{refund_currency}}</strong></p>
+<p>Reason: {{refund_reason}}</p>
+<p>Status: <strong>{{refund_status}}</strong></p>
+<p>Submitted at: {{requested_at}}</p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 已收到退款申请",
+			HTML: notificationEmailCard("#2563eb", "已收到退款申请", `
+<p>{{recipient_name}}，您好：</p>
+<p>我们已收到您的退款申请，当前正在等待审核。</p>
+<p>订单号：<strong>{{order_id}}</strong></p>
+<p>申请退款金额：<strong>{{refund_amount}} {{refund_currency}}</strong></p>
+<p>申请原因：{{refund_reason}}</p>
+<p>当前状态：<strong>{{refund_status}}</strong></p>
+<p>提交时间：{{requested_at}}</p>`),
 		},
 	},
 	NotificationEmailEventAccountQuotaAlert: {

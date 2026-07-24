@@ -594,6 +594,8 @@ export default {
         cancelRateLimitWindow: '时间窗口',
         cancelRateLimitUnit: '周期',
         cancelRateLimitMax: '最大取消次数',
+        refundRequestUserEmail: '退款申请确认邮件',
+        refundRequestUserEmailHint: '用户提交退款申请后发送确认邮件；邮件设置中的“用户退款通知”总开关也必须开启',
         cancelRateLimitUnitMinute: '分钟',
         cancelRateLimitUnitHour: '小时',
         cancelRateLimitUnitDay: '天',

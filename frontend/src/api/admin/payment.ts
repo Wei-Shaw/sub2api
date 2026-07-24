@@ -31,6 +31,7 @@ export interface AdminPaymentConfig {
   product_name_suffix: string
   help_image_url: string
   help_text: string
+  refund_request_user_email_enabled: boolean
 }
 
 /** Fields accepted by PUT /admin/payment/config (all optional via pointer semantics) */
@@ -51,6 +52,7 @@ export interface UpdatePaymentConfigRequest {
   product_name_suffix?: string
   help_image_url?: string
   help_text?: string
+  refund_request_user_email_enabled?: boolean
 }
 
 export interface RefundResult {

@@ -22,6 +22,7 @@ func TestNotificationEmailPolicyDefaultsPreserveExistingBehavior(t *testing.T) {
 	require.True(t, channels[NotificationEmailChannelAccountQuota].Enabled)
 	require.False(t, channels[NotificationEmailChannelRefundAdmin].Enabled)
 	require.False(t, channels[NotificationEmailChannelRefundUser].Enabled)
+	require.Contains(t, channels[NotificationEmailChannelRefundUser].Events, NotificationEmailEventRefundRequestedUser)
 	require.False(t, channels[NotificationEmailChannelOpsAlert].Enabled)
 	require.False(t, channels[NotificationEmailChannelOpsReport].Enabled)
 	require.Equal(t, NotificationEmailRecipientKindExplicit, channels[NotificationEmailChannelAuthVerification].RecipientKind)
@@ -29,6 +30,17 @@ func TestNotificationEmailPolicyDefaultsPreserveExistingBehavior(t *testing.T) {
 	require.False(t, channels[NotificationEmailChannelBalance].IncludeUserPrimary)
 	require.True(t, channels[NotificationEmailChannelBalance].IncludeVerifiedAdditional)
 	require.Equal(t, NotificationEmailRecipientGroupAccountQuota, channels[NotificationEmailChannelAccountQuota].RecipientGroup)
+}
+
+func TestNotificationEmailPolicyKeepsNewRefundEventOffUntilPolicyIsSaved(t *testing.T) {
+	ctx := context.Background()
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+
+	err := svc.Send(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventRefundRequestedUser,
+		RecipientEmail: "user@example.com",
+	})
+	require.ErrorIs(t, err, ErrNotificationEmailChannelDisabled)
 }
 
 func TestNotificationEmailPolicyImportsLegacyRecipientsWithoutActivatingUnverifiedAddresses(t *testing.T) {

@@ -246,22 +246,23 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string  `json:"openai_advanced_scheduler_effective_weight_session_sticky"`
 
 	// Payment configuration
-	PaymentEnabled                   bool     `json:"payment_enabled"`
-	PaymentMinAmount                 float64  `json:"payment_min_amount"`
-	PaymentMaxAmount                 float64  `json:"payment_max_amount"`
-	PaymentDailyLimit                float64  `json:"payment_daily_limit"`
-	PaymentOrderTimeoutMin           int      `json:"payment_order_timeout_minutes"`
-	PaymentMaxPendingOrders          int      `json:"payment_max_pending_orders"`
-	PaymentEnabledTypes              []string `json:"payment_enabled_types"`
-	PaymentBalanceDisabled           bool     `json:"payment_balance_disabled"`
-	PaymentBalanceRechargeMultiplier float64  `json:"payment_balance_recharge_multiplier"`
-	PaymentSubscriptionUSDToCNYRate  float64  `json:"payment_subscription_usd_to_cny_rate"`
-	PaymentRechargeFeeRate           float64  `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          string   `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         string   `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         string   `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              string   `json:"payment_help_image_url"`
-	PaymentHelpText                  string   `json:"payment_help_text"`
+	PaymentEnabled                       bool     `json:"payment_enabled"`
+	PaymentMinAmount                     float64  `json:"payment_min_amount"`
+	PaymentMaxAmount                     float64  `json:"payment_max_amount"`
+	PaymentDailyLimit                    float64  `json:"payment_daily_limit"`
+	PaymentOrderTimeoutMin               int      `json:"payment_order_timeout_minutes"`
+	PaymentMaxPendingOrders              int      `json:"payment_max_pending_orders"`
+	PaymentEnabledTypes                  []string `json:"payment_enabled_types"`
+	PaymentBalanceDisabled               bool     `json:"payment_balance_disabled"`
+	PaymentBalanceRechargeMultiplier     float64  `json:"payment_balance_recharge_multiplier"`
+	PaymentSubscriptionUSDToCNYRate      float64  `json:"payment_subscription_usd_to_cny_rate"`
+	PaymentRechargeFeeRate               float64  `json:"payment_recharge_fee_rate"`
+	PaymentLoadBalanceStrat              string   `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix             string   `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix             string   `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL                  string   `json:"payment_help_image_url"`
+	PaymentHelpText                      string   `json:"payment_help_text"`
+	PaymentRefundRequestUserEmailEnabled bool     `json:"payment_refund_request_user_email_enabled"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`

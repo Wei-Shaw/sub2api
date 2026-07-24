@@ -119,6 +119,9 @@ func TestParsePaymentConfig(t *testing.T) {
 		if cfg.AlipayMobilePrecreateDeepLink {
 			t.Fatal("expected AlipayMobilePrecreateDeepLink=false by default")
 		}
+		if cfg.RefundRequestUserEmailEnabled {
+			t.Fatal("expected RefundRequestUserEmailEnabled=false by default")
+		}
 	})
 
 	t.Run("all values populated", func(t *testing.T) {
@@ -135,6 +138,7 @@ func TestParsePaymentConfig(t *testing.T) {
 			SettingLoadBalanceStrategy:           "least_amount",
 			SettingProductNamePrefix:             "PRE",
 			SettingProductNameSuffix:             "SUF",
+			SettingRefundRequestUserEmailEnabled: "true",
 			SettingAlipayMobilePrecreateDeepLink: "true",
 		}
 		cfg := svc.parsePaymentConfig(vals)
@@ -177,6 +181,9 @@ func TestParsePaymentConfig(t *testing.T) {
 		}
 		if !cfg.AlipayMobilePrecreateDeepLink {
 			t.Fatal("expected AlipayMobilePrecreateDeepLink=true")
+		}
+		if !cfg.RefundRequestUserEmailEnabled {
+			t.Fatal("expected RefundRequestUserEmailEnabled=true")
 		}
 	})
 
@@ -235,6 +242,27 @@ func TestParsePaymentConfig(t *testing.T) {
 			t.Fatalf("expected empty EnabledTypes for empty string, got %v", cfg.EnabledTypes)
 		}
 	})
+}
+
+func TestUpdatePaymentConfigPersistsRefundRequestUserEmailSwitch(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	svc := NewPaymentConfigService(nil, repo, nil)
+	enabled := true
+
+	if err := svc.UpdatePaymentConfig(ctx, UpdatePaymentConfigRequest{
+		RefundRequestUserEmailEnabled: &enabled,
+	}); err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+
+	cfg, err := svc.GetPaymentConfig(ctx)
+	if err != nil {
+		t.Fatalf("GetPaymentConfig returned error: %v", err)
+	}
+	if !cfg.RefundRequestUserEmailEnabled {
+		t.Fatal("expected persisted refund request email switch to be enabled")
+	}
 }
 
 func TestGetBasePaymentType(t *testing.T) {

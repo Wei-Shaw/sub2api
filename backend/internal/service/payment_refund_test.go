@@ -15,6 +15,82 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestRequestRefundEmailFailureDoesNotRollbackOrDuplicateRequest(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("refund-email-failure@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-email-failure-user").
+		Save(ctx)
+	require.NoError(t, err)
+	providerInstance, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("refund-email-provider").
+		SetConfig("{}").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetAllowUserRefund(true).
+		SetRefundEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(88).
+		SetPayAmount(100).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-EMAIL-FAILURE").
+		SetOutTradeNo("sub2_refund_email_failure").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-email-failure").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderInstanceID(strconv.FormatInt(providerInstance.ID, 10)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	settingRepo := newNotificationEmailMemorySettingRepo()
+	require.NoError(t, settingRepo.Set(ctx, SettingRefundRequestUserEmailEnabled, "true"))
+	notificationSvc := NewNotificationEmailService(settingRepo, nil)
+	_, err = notificationSvc.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{Channels: []NotificationEmailChannelPolicy{{
+		ID:                 NotificationEmailChannelRefundUser,
+		Enabled:            true,
+		IncludeUserPrimary: true,
+	}}})
+	require.NoError(t, err)
+
+	svc := &PaymentService{
+		entClient:                client,
+		configService:            NewPaymentConfigService(client, settingRepo, nil),
+		userRepo:                 &mockUserRepo{getByIDUser: &User{ID: user.ID, Balance: 200}},
+		notificationEmailService: notificationSvc,
+	}
+	require.NoError(t, svc.RequestRefund(ctx, order.ID, user.ID, "duplicate charge"))
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusRefundRequested, reloaded.Status)
+	require.Error(t, svc.RequestRefund(ctx, order.ID, user.ID, "duplicate charge"))
+
+	require.Eventually(t, func() bool {
+		count, countErr := client.PaymentAuditLog.Query().
+			Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)), paymentauditlog.ActionEQ("REFUND_REQUEST_EMAIL_FAILED")).
+			Count(ctx)
+		return countErr == nil && count == 1
+	}, time.Second, 10*time.Millisecond)
+
+	reloaded, err = client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusRefundRequested, reloaded.Status)
+}
+
 func TestValidateRefundRequestRejectsLegacyGuessedProviderInstance(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)

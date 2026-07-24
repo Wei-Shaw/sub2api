@@ -177,7 +177,60 @@ func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reas
 		return infraerrors.Conflict("CONFLICT", "order status changed")
 	}
 	s.writeAuditLog(ctx, oid, "REFUND_REQUESTED", fmt.Sprintf("user:%d", uid), map[string]any{"amount": o.Amount, "reason": nr})
+	s.dispatchRefundRequestNotification(ctx, o, now, nr)
 	return nil
+}
+
+func (s *PaymentService) dispatchRefundRequestNotification(ctx context.Context, o *dbent.PaymentOrder, requestedAt time.Time, reason string) {
+	if s == nil || s.notificationEmailService == nil || s.configService == nil || o == nil {
+		return
+	}
+	cfg, err := s.configService.GetPaymentConfig(ctx)
+	if err != nil {
+		slog.Warn("refund request notification setting lookup failed", "order_id", o.ID, "err", err.Error())
+		return
+	}
+	if !cfg.RefundRequestUserEmailEnabled {
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
+		defer cancel()
+		if err := s.sendRefundRequestNotification(ctx, o, requestedAt, reason); err != nil {
+			if errors.Is(err, ErrNotificationEmailChannelDisabled) {
+				return
+			}
+			slog.Warn("refund request notification email failed", "order_id", o.ID, "err", err.Error())
+			s.writeAuditLog(ctx, o.ID, "REFUND_REQUEST_EMAIL_FAILED", "system", map[string]any{"detail": err.Error()})
+			return
+		}
+		s.writeAuditLog(ctx, o.ID, "REFUND_REQUEST_EMAIL_SENT", "system", nil)
+	}()
+}
+
+func (s *PaymentService) sendRefundRequestNotification(ctx context.Context, o *dbent.PaymentOrder, requestedAt time.Time, reason string) error {
+	if s == nil || s.notificationEmailService == nil || o == nil {
+		return nil
+	}
+	currency := PaymentOrderCurrency(o)
+	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventRefundRequestedUser,
+		RecipientEmail: o.UserEmail,
+		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
+		UserID:         o.UserID,
+		SourceType:     "payment_refund_request",
+		SourceID:       strconv.FormatInt(o.ID, 10),
+		ReminderKey:    requestedAt.UTC().Format(time.RFC3339Nano),
+		Variables: map[string]string{
+			"order_id":        strconv.FormatInt(o.ID, 10),
+			"refund_amount":   payment.FormatAmountForCurrency(o.PayAmount, currency),
+			"refund_currency": currency,
+			"refund_reason":   reason,
+			"refund_status":   OrderStatusRefundRequested,
+			"requested_at":    requestedAt.UTC().Format(time.RFC3339),
+		},
+	})
 }
 
 func (s *PaymentService) validateRefundRequest(ctx context.Context, oid, uid int64) (*dbent.PaymentOrder, error) {
