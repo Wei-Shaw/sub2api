@@ -276,11 +276,11 @@ func consumeDoubleQuoted(src []byte, quote int, line *int) (int, string, error) 
 			(*line)++
 		}
 		if src[i] != '"' {
-			value.WriteByte(src[i])
+			_ = value.WriteByte(src[i])
 			continue
 		}
 		if i+1 < len(src) && src[i+1] == '"' {
-			value.WriteByte('"')
+			_ = value.WriteByte('"')
 			i++
 			continue
 		}

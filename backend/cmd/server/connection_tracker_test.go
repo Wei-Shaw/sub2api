@@ -37,7 +37,12 @@ func startHijackedConnectionServer(t *testing.T) (*http.Server, *connectionTrack
 	hijacked := make(chan net.Conn, 1)
 	server := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			connection, rw, err := w.(http.Hijacker).Hijack()
+			hijacker, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("response writer does not support hijacking")
+				return
+			}
+			connection, rw, err := hijacker.Hijack()
 			if err != nil {
 				t.Errorf("hijack: %v", err)
 				return
@@ -138,8 +143,8 @@ func TestShutdownTrackedServerForceClosesAtOverallDeadline(t *testing.T) {
 
 func TestConnectionTrackerWaitIncludesAcceptInProgress(t *testing.T) {
 	serverConnection, peerConnection := net.Pipe()
-	defer peerConnection.Close()
-	defer serverConnection.Close()
+	t.Cleanup(func() { _ = peerConnection.Close() })
+	t.Cleanup(func() { _ = serverConnection.Close() })
 
 	listener := &gatedAcceptListener{
 		connection: serverConnection,
@@ -206,7 +211,7 @@ func TestTrackedTCPConnectionPreservesHalfClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	t.Cleanup(func() { _ = listener.Close() })
 
 	tracker := newConnectionTracker()
 	type acceptResult struct {
@@ -223,7 +228,7 @@ func TestTrackedTCPConnectionPreservesHalfClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	t.Cleanup(func() { _ = client.Close() })
 
 	var result acceptResult
 	select {
@@ -234,7 +239,7 @@ func TestTrackedTCPConnectionPreservesHalfClose(t *testing.T) {
 	if result.err != nil {
 		t.Fatalf("Accept failed: %v", result.err)
 	}
-	defer result.connection.Close()
+	t.Cleanup(func() { _ = result.connection.Close() })
 
 	writer, ok := result.connection.(closeWriter)
 	if !ok {

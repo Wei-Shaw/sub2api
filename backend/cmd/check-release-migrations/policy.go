@@ -438,23 +438,6 @@ func consumeLiteralValue(tokens []sqlToken, start int) (int, bool) {
 	}
 }
 
-func hasTopLevelKeyword(tokens []sqlToken, start int, expected string) bool {
-	depth := 0
-	for i := start; i < len(tokens); i++ {
-		switch {
-		case symbolAt(tokens, i, "("):
-			depth++
-		case symbolAt(tokens, i, ")"):
-			if depth > 0 {
-				depth--
-			}
-		case depth == 0 && keywordAt(tokens, i) == expected:
-			return true
-		}
-	}
-	return false
-}
-
 func skipBalancedParentheses(tokens []sqlToken, start int) (int, bool) {
 	if !symbolAt(tokens, start, "(") {
 		return start, false

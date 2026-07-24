@@ -15,7 +15,7 @@ func TestProcessLockIsExclusiveAndReusableAfterRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer first.Close()
+	t.Cleanup(func() { _ = first.Close() })
 
 	if _, err := AcquireProcessLock(statePath); !errors.Is(err, ErrProcessLocked) {
 		t.Fatalf("second lock error=%v, want ErrProcessLocked", err)
@@ -27,7 +27,7 @@ func TestProcessLockIsExclusiveAndReusableAfterRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire after release: %v", err)
 	}
-	defer second.Close()
+	t.Cleanup(func() { _ = second.Close() })
 	if _, err := os.Stat(filepath.Join(filepath.Dir(statePath), "deployer.lock")); err != nil {
 		t.Fatalf("stat fixed process lock: %v", err)
 	}

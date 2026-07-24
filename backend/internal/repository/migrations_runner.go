@@ -1053,7 +1053,7 @@ func (c *sqlCursor) identifier() (string, bool, error) {
 	}
 	if c.pos+2 < len(c.statement) && (c.statement[c.pos] == 'u' || c.statement[c.pos] == 'U') &&
 		c.statement[c.pos+1] == '&' && c.statement[c.pos+2] == '"' {
-		return "", false, errors.New("Unicode escaped index identifiers are not supported")
+		return "", false, errors.New("unicode escaped index identifiers are not supported")
 	}
 	if c.statement[c.pos] == '"' {
 		start := c.pos

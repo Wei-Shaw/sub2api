@@ -19,7 +19,7 @@ func TestListenAndServeRefusesLiveUnixSocket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	t.Cleanup(func() { _ = listener.Close() })
 
 	server := NewHTTPServer(cfg, &Manager{})
 	err = server.ListenAndServe()

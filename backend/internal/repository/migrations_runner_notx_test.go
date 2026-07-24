@@ -73,7 +73,7 @@ INSERT INTO audit_log(message) VALUES ('CREATE INDEX CONCURRENTLY; still data');
 			`CREATE INDEX CONCURRENTLY IF NOT EXISTS U&"idx\0061" ON t(a);`,
 		)
 		require.False(t, nonTx)
-		require.ErrorContains(t, err, "Unicode escaped index identifiers")
+		require.ErrorContains(t, err, "unicode escaped index identifiers")
 	})
 }
 

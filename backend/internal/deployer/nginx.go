@@ -109,7 +109,11 @@ func (m *Manager) confirmTrafficRoute(ctx context.Context, target, previous traf
 }
 
 func (m *Manager) freshProbeClient() *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	transport := &http.Transport{}
+	if ok {
+		transport = defaultTransport.Clone()
+	}
 	transport.DisableKeepAlives = true
 	timeout := 4 * time.Second
 	if m.httpClient != nil && m.httpClient.Timeout > 0 {
@@ -226,23 +230,23 @@ func stripNginxComments(value string) string {
 	for index := 0; index < len(value); index++ {
 		char := value[index]
 		if escaped {
-			result.WriteByte(char)
+			_ = result.WriteByte(char)
 			escaped = false
 			continue
 		}
 		if char == '\\' && (inSingle || inDouble) {
-			result.WriteByte(char)
+			_ = result.WriteByte(char)
 			escaped = true
 			continue
 		}
 		if char == '\'' && !inDouble {
 			inSingle = !inSingle
-			result.WriteByte(char)
+			_ = result.WriteByte(char)
 			continue
 		}
 		if char == '"' && !inSingle {
 			inDouble = !inDouble
-			result.WriteByte(char)
+			_ = result.WriteByte(char)
 			continue
 		}
 		if char == '#' && !inSingle && !inDouble {
@@ -250,11 +254,11 @@ func stripNginxComments(value string) string {
 				index++
 			}
 			if index < len(value) {
-				result.WriteByte('\n')
+				_ = result.WriteByte('\n')
 			}
 			continue
 		}
-		result.WriteByte(char)
+		_ = result.WriteByte(char)
 	}
 	return result.String()
 }

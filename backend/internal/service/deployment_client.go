@@ -133,7 +133,7 @@ func (c *UnixDeploymentClient) do(ctx context.Context, method, path string, inpu
 	if err != nil {
 		return ErrManagedDeployerUnavailable.WithCause(fmt.Errorf("deployment agent request failed: %w", err))
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if err != nil {
 		return err

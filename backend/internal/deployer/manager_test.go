@@ -286,6 +286,20 @@ func (f *fakeRunner) Run(_ context.Context, _ map[string]string, name string, ar
 	return "ok", nil
 }
 
+func listenerTCPPort(t *testing.T, listener net.Listener) int {
+	t.Helper()
+	address, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("listener address type = %T, want *net.TCPAddr", listener.Addr())
+	}
+	return address.Port
+}
+
+func atomicString(value *atomic.Value) string {
+	result, _ := value.Load().(string)
+	return result
+}
+
 func testConfig(t *testing.T, candidatePort int) Config {
 	t.Helper()
 	dir := t.TempDir()
@@ -293,7 +307,7 @@ func testConfig(t *testing.T, candidatePort int) Config {
 	if err != nil {
 		t.Fatal(err)
 	}
-	initialPort := initialListener.Addr().(*net.TCPAddr).Port
+	initialPort := listenerTCPPort(t, initialListener)
 	initialServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok","deployment_runtime":{"state":"active"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`))
@@ -324,7 +338,7 @@ func testConfig(t *testing.T, candidatePort int) Config {
 			http.Error(w, requestErr.Error(), http.StatusBadGateway)
 			return
 		}
-		defer response.Body.Close()
+		defer func() { _ = response.Body.Close() }()
 		w.Header().Set("Content-Type", response.Header.Get("Content-Type"))
 		w.WriteHeader(response.StatusCode)
 		_, _ = io.Copy(w, response.Body)
@@ -377,12 +391,12 @@ func TestManagedDeploymentSucceedsAndPinsDigest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
+	port := listenerTCPPort(t, listener)
 	var runtimeState atomic.Value
 	runtimeState.Store("standby")
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, runtimeState.Load().(string))
+		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, atomicString(&runtimeState))
 	})}
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Close() })
@@ -454,7 +468,7 @@ func TestDrainTimeoutKeepsBothContainersAndReconcileCompletesLater(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldPort := oldListener.Addr().(*net.TCPAddr).Port
+	oldPort := listenerTCPPort(t, oldListener)
 	var blockers atomic.Int64
 	blockers.Store(1)
 	oldServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -469,12 +483,12 @@ func TestDrainTimeoutKeepsBothContainersAndReconcileCompletesLater(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidatePort := candidateListener.Addr().(*net.TCPAddr).Port
+	candidatePort := listenerTCPPort(t, candidateListener)
 	var runtimeState atomic.Value
 	runtimeState.Store("standby")
 	candidateServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, runtimeState.Load().(string))
+		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, atomicString(&runtimeState))
 	})}
 	go func() { _ = candidateServer.Serve(candidateListener) }()
 	t.Cleanup(func() { _ = candidateServer.Close() })
@@ -551,7 +565,7 @@ func TestDrainTimeoutKeepsBothContainersAndReconcileCompletesLater(t *testing.T)
 	if health := manager.Health(); health.Degraded || health.ActiveContainer != "sub2api-green" {
 		t.Fatalf("reconciliation did not activate candidate: %+v", health)
 	}
-	if runtimeState.Load().(string) != "active" {
+	if atomicString(&runtimeState) != "active" {
 		t.Fatalf("candidate background runtime state=%q, want active", runtimeState.Load())
 	}
 }
@@ -570,7 +584,7 @@ func TestLegacyDrainRequiresExplicitReconcileOverride(t *testing.T) {
 
 	cfg := testConfig(t, 18081)
 	manager := &Manager{cfg: cfg, httpClient: &http.Client{Timeout: time.Second}, now: time.Now}
-	port := listener.Addr().(*net.TCPAddr).Port
+	port := listenerTCPPort(t, listener)
 	if err := manager.waitForOldDrain(context.Background(), port, false); !errors.Is(err, ErrDrainUnobservable) {
 		t.Fatalf("legacy drain error=%v, want ErrDrainUnobservable", err)
 	}
@@ -767,12 +781,12 @@ func TestRestartRecoveryFinishesHealthySwitchedCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
+	port := listenerTCPPort(t, listener)
 	var runtimeState atomic.Value
 	runtimeState.Store("active")
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, runtimeState.Load().(string))
+		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, atomicString(&runtimeState))
 	})}
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Close() })
@@ -843,7 +857,7 @@ func TestRestartRecoveryActivatesCandidateWhenPreviousContainerIsAlreadyStopped(
 			if err != nil {
 				t.Fatal(err)
 			}
-			oldPort := oldListener.Addr().(*net.TCPAddr).Port
+			oldPort := listenerTCPPort(t, oldListener)
 			oldServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(`{"status":"ok","deployment_runtime":{"state":"active","slot":"blue"},"drain":{"supported":true,"active_requests":1,"hijacked_connections":0,"blockers":1}}`))
@@ -855,12 +869,12 @@ func TestRestartRecoveryActivatesCandidateWhenPreviousContainerIsAlreadyStopped(
 			if err != nil {
 				t.Fatal(err)
 			}
-			candidatePort := candidateListener.Addr().(*net.TCPAddr).Port
+			candidatePort := listenerTCPPort(t, candidateListener)
 			var runtimeState atomic.Value
 			runtimeState.Store("standby")
 			candidateServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, runtimeState.Load().(string))
+				_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, atomicString(&runtimeState))
 			})}
 			go func() { _ = candidateServer.Serve(candidateListener) }()
 			t.Cleanup(func() { _ = candidateServer.Close() })
@@ -938,7 +952,7 @@ func TestRestartRecoveryActivatesCandidateWhenPreviousContainerIsAlreadyStopped(
 			if job.Status != JobStatusSucceeded || !job.BackgroundActivated {
 				t.Fatalf("stopped-old recovery did not complete: %+v", job)
 			}
-			if runtimeState.Load().(string) != "active" {
+			if atomicString(&runtimeState) != "active" {
 				t.Fatalf("candidate runtime state=%q, want active", runtimeState.Load())
 			}
 			marker, err := os.ReadFile(cfg.DeploymentStatePath)
@@ -963,12 +977,12 @@ func TestRestartRecoverySkipsDrainAfterJournalBoundOldContainerStopped(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidatePort := listener.Addr().(*net.TCPAddr).Port
+	candidatePort := listenerTCPPort(t, listener)
 	var runtimeState atomic.Value
 	runtimeState.Store("standby")
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, runtimeState.Load().(string))
+		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, atomicString(&runtimeState))
 	})}
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Close() })
@@ -977,7 +991,7 @@ func TestRestartRecoverySkipsDrainAfterJournalBoundOldContainerStopped(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldPort := deadListener.Addr().(*net.TCPAddr).Port
+	oldPort := listenerTCPPort(t, deadListener)
 	if err := deadListener.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -1069,12 +1083,12 @@ func TestRestartRecoveryCompletesDurableHandoffBeforeOldContainerStop(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidatePort := listener.Addr().(*net.TCPAddr).Port
+	candidatePort := listenerTCPPort(t, listener)
 	var runtimeState atomic.Value
 	runtimeState.Store("standby")
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, runtimeState.Load().(string))
+		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, atomicString(&runtimeState))
 	})}
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Close() })
@@ -1158,7 +1172,7 @@ func TestRestartRecoveryRequiresFullCandidateStabilization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
+	port := listenerTCPPort(t, listener)
 	var healthCalls atomic.Int64
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if healthCalls.Add(1) >= 4 {
@@ -1237,7 +1251,7 @@ func TestRestartRecoveryCompletesRollbackAlreadyInProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldPort := oldListener.Addr().(*net.TCPAddr).Port
+	oldPort := listenerTCPPort(t, oldListener)
 	oldServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok","drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`))
@@ -1249,7 +1263,7 @@ func TestRestartRecoveryCompletesRollbackAlreadyInProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidatePort := candidateListener.Addr().(*net.TCPAddr).Port
+	candidatePort := listenerTCPPort(t, candidateListener)
 	candidateServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok","deployment_runtime":{"state":"active","slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`))
@@ -1330,7 +1344,7 @@ func TestRestartRecoveryRejectsSameNameCandidateReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidatePort := candidateListener.Addr().(*net.TCPAddr).Port
+	candidatePort := listenerTCPPort(t, candidateListener)
 	candidateServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok","deployment_runtime":{"state":"active","slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`))
@@ -1408,7 +1422,7 @@ func TestRollbackToRetainedPreviousContainerSkipsPullAndSwapsSlots(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	activePort := activeListener.Addr().(*net.TCPAddr).Port
+	activePort := listenerTCPPort(t, activeListener)
 	activeServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok","deployment_runtime":{"state":"active","slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`))
@@ -1420,12 +1434,12 @@ func TestRollbackToRetainedPreviousContainerSkipsPullAndSwapsSlots(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	previousPort := listener.Addr().(*net.TCPAddr).Port
+	previousPort := listenerTCPPort(t, listener)
 	var runtimeState atomic.Value
 	runtimeState.Store("standby")
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"blue"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, runtimeState.Load().(string))
+		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":"blue"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, atomicString(&runtimeState))
 	})}
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Close() })
@@ -1492,7 +1506,7 @@ func TestRollbackToLegacyInitialContainerAllowsEmptyRuntimeSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	activePort := activeListener.Addr().(*net.TCPAddr).Port
+	activePort := listenerTCPPort(t, activeListener)
 	activeServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok","deployment_runtime":{"state":"active","slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`))
@@ -1548,7 +1562,7 @@ func TestActivationFailureRestoresOldTrafficAndStopsCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldPort := oldListener.Addr().(*net.TCPAddr).Port
+	oldPort := listenerTCPPort(t, oldListener)
 	oldServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok","drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`))
@@ -1560,7 +1574,7 @@ func TestActivationFailureRestoresOldTrafficAndStopsCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidatePort := candidateListener.Addr().(*net.TCPAddr).Port
+	candidatePort := listenerTCPPort(t, candidateListener)
 	candidateServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok","deployment_runtime":{"state":"standby","slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`))
@@ -1645,7 +1659,7 @@ func TestAmbiguousReloadClassifiesLiveCandidateByRoutedSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidatePort := candidateListener.Addr().(*net.TCPAddr).Port
+	candidatePort := listenerTCPPort(t, candidateListener)
 	candidateServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok","deployment_runtime":{"state":"standby","slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`))
@@ -1686,9 +1700,10 @@ func TestTrafficConfirmationUsesFreshConnectionAfterReload(t *testing.T) {
 	liveSlot.Store("")
 	var connectionSlots sync.Map
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assigned, _ := connectionSlots.LoadOrStore(r.RemoteAddr, liveSlot.Load().(string))
+		assigned, _ := connectionSlots.LoadOrStore(r.RemoteAddr, atomicString(&liveSlot))
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":"standby","slot":%q},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, assigned.(string))
+		assignedSlot, _ := assigned.(string)
+		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":"standby","slot":%q},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, assignedSlot)
 	}))
 	t.Cleanup(proxy.Close)
 	cfg.NginxProbeURL = proxy.URL
@@ -2263,7 +2278,7 @@ func TestSecondDeploymentPreparationRemovesLegacyContainerFromInactiveSlot(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	greenPort := greenListener.Addr().(*net.TCPAddr).Port
+	greenPort := listenerTCPPort(t, greenListener)
 	greenServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok","deployment_runtime":{"state":"active","slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`))
@@ -2340,7 +2355,7 @@ func newLivePortProxy(t *testing.T, livePort *atomic.Int64) *httptest.Server {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
-		defer response.Body.Close()
+		defer func() { _ = response.Body.Close() }()
 		w.Header().Set("Content-Type", response.Header.Get("Content-Type"))
 		w.WriteHeader(response.StatusCode)
 		_, _ = io.Copy(w, response.Body)

@@ -194,7 +194,7 @@ func (m *Manager) ReconcileWithOptions(ctx context.Context, slotName string, all
 	}
 	runtimeSlot := strings.TrimSpace(health.DeploymentRuntime.Slot)
 	allowEmpty := container.Name == m.cfg.InitialContainer
-	if runtimeSlot != slotName && !(allowEmpty && runtimeSlot == "") {
+	if runtimeSlot != slotName && (!allowEmpty || runtimeSlot != "") {
 		return fmt.Errorf("selected container reports deployment runtime slot %q, expected %q", runtimeSlot, slotName)
 	}
 	if err := m.validateManagedRoute(ctx, slot.Port); err != nil {
@@ -606,7 +606,7 @@ func (m *Manager) execute(jobID string) {
 			return
 		}
 		oldRuntimeSlot := strings.TrimSpace(health.DeploymentRuntime.Slot)
-		if oldRuntimeSlot != job.OldSlot && !(job.OldContainer == m.cfg.InitialContainer && oldRuntimeSlot == "") {
+		if oldRuntimeSlot != job.OldSlot && (job.OldContainer != m.cfg.InitialContainer || oldRuntimeSlot != "") {
 			_ = m.fail(jobID, fmt.Errorf("previous deployment runtime slot mismatch: expected %q, got %q", job.OldSlot, oldRuntimeSlot))
 			return
 		}
@@ -950,7 +950,7 @@ func (m *Manager) restoreOldDeployment(ctx context.Context, job *Job, forceTraff
 				failures = append(failures, "persist restored traffic state: "+err.Error())
 			} else if observedState != TrafficStateOld {
 				if switchErr == nil {
-					switchErr = errors.New("Nginx route after restoration is unknown")
+					switchErr = errors.New("nginx route after restoration is unknown")
 				}
 				failures = append(failures, "restore nginx upstream: "+switchErr.Error())
 			} else {
@@ -1359,7 +1359,7 @@ func (m *Manager) waitForCandidate(ctx context.Context, container containerRef, 
 				health, runtimeErr := m.applicationHealth(ctx, port)
 				if runtimeErr != nil {
 					lastErr = runtimeErr
-				} else if actualSlot := strings.TrimSpace(health.DeploymentRuntime.Slot); expectedRuntimeSlot != "" && actualSlot != expectedRuntimeSlot && !(allowEmptyRuntimeSlot && actualSlot == "") {
+				} else if actualSlot := strings.TrimSpace(health.DeploymentRuntime.Slot); expectedRuntimeSlot != "" && actualSlot != expectedRuntimeSlot && (!allowEmptyRuntimeSlot || actualSlot != "") {
 					return fmt.Errorf("candidate runtime slot mismatch: expected %q, got %q", expectedRuntimeSlot, health.DeploymentRuntime.Slot)
 				} else if requireStandby && strings.TrimSpace(health.DeploymentRuntime.State) != "standby" {
 					return fmt.Errorf("candidate runtime mismatch: expected standby, got %q", health.DeploymentRuntime.State)
@@ -1648,7 +1648,7 @@ func (m *Manager) fetchApplicationHealthWithClient(ctx context.Context, client *
 	if err != nil {
 		return applicationHealth{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if readErr != nil {
 		return applicationHealth{}, readErr
@@ -2132,7 +2132,7 @@ func (m *Manager) stopContainer(ctx context.Context, container containerRef) err
 	if container.ID == "" {
 		return fmt.Errorf("container %s has no persisted ID", container.Name)
 	}
-	seconds := int(m.cfg.StopTimeout.Duration.Round(time.Second) / time.Second)
+	seconds := int(m.cfg.StopTimeout.Round(time.Second) / time.Second)
 	if seconds < 1 {
 		seconds = 1
 	}
