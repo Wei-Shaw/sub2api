@@ -90,6 +90,7 @@ import { marked REDACTED from 'marked'
 import DOMPurify from 'dompurify'
 import { useAnnouncementStore REDACTED from '@/stores/announcements'
 import { formatRelativeWithDateTime REDACTED from '@/utils/format'
+import '@/styles/announcement-markdown.css'
 
 const { t REDACTED = useI18n()
 const announcementStore = useAnnouncementStore()
