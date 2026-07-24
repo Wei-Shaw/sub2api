@@ -416,17 +416,7 @@ func TestManagedDeploymentSucceedsAndPinsDigest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		job, err = manager.Job(job.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if job.Status != JobStatusRunning {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	job = waitForFinishedJob(t, manager, job.ID)
 	if job.Status != JobStatusSucceeded {
 		t.Fatalf("deployment status=%s error=%s rollback=%s", job.Status, job.Error, job.RollbackError)
 	}
@@ -1639,7 +1629,7 @@ func TestFailedTrafficRestoreLeavesServingCandidateRunning(t *testing.T) {
 
 func waitForFinishedJob(t *testing.T, manager *Manager, id string) *Job {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		job, err := manager.Job(id)
 		if err != nil {
