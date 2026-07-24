@@ -203,6 +203,17 @@ func (h *AccountHandler) respondAccountList(
 	lite bool,
 	includeSchedulerScore bool,
 ) {
+	if h.ollamaCloudUsage != nil && len(accounts) > 0 {
+		accountPointers := make([]*service.Account, len(accounts))
+		for i := range accounts {
+			accountPointers[i] = &accounts[i]
+		}
+		if err := h.ollamaCloudUsage.ResolveAccounts(c.Request.Context(), accountPointers); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
+
 	accountIDs := make([]int64, len(accounts))
 	for i, acc := range accounts {
 		accountIDs[i] = acc.ID
@@ -237,7 +248,7 @@ func (h *AccountHandler) respondAccountList(
 	for i := range accounts {
 		acc := &accounts[i]
 		result[i] = AccountWithConcurrency{
-			Account:            dto.AccountFromService(acc),
+			Account:            h.accountResponseFromService(acc),
 			CurrentConcurrency: concurrencyCounts[acc.ID],
 			SchedulerScore:     schedulerScores[acc.ID],
 			SchedulerScores:    schedulerGroupScores[acc.ID],

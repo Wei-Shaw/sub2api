@@ -137,14 +137,85 @@ func (errorSettingRepository) GetMultiple(context.Context, []string) (map[string
 	return nil, errors.New("settings unavailable")
 }
 
-func TestConfigManagerStartupLoadFailureFailsClosedWithoutSnapshot(t *testing.T) {
+func TestConfigManagerStartupLoadFailureDoesNotBlockWhenBlockingNotIntended(t *testing.T) {
+	// Settings unavailable and no prior blocking intent: stay ModeOff so the
+	// gateway remains usable and admins can still disable/configure Prompt Audit.
 	manager := NewConfigManager(nil, errorSettingRepository{}, nil, prefixEncryptor{})
 	err := manager.Start(context.Background())
 	require.Error(t, err)
 	require.True(t, manager.configUntrusted.Load())
+	require.False(t, manager.BlockingActivationDegraded())
+	require.Equal(t, ModeOff, manager.EffectiveMode())
+
+	service := &PromptService{config: manager, evaluator: NewGuardEvaluator(nil, nil, nil)}
+	decision, evalErr := service.Evaluate(context.Background(), Request{
+		Protocol: "openai_chat_completions",
+		Body:     []byte(`{"messages":[{"role":"user","content":"hi"}]}`),
+	})
+	require.NoError(t, evalErr)
+	require.NotNil(t, decision)
+	require.Equal(t, DecisionAllow, decision.Kind)
+	require.NoError(t, manager.Shutdown(context.Background()))
+}
+
+func TestConfigManagerStartupLoadFailureFailsClosedWhenBlockingIntended(t *testing.T) {
+	manager := NewConfigManager(nil, errorSettingRepository{}, nil, prefixEncryptor{})
+	// Simulate intent observed before a later load failure (e.g. decrypt error).
+	manager.observeExpectedState(`{"enabled":true,"blocking_enabled":true,"config_version":3}`, true)
+	manager.markConfigUntrusted()
 	require.True(t, manager.BlockingActivationDegraded())
 	require.Equal(t, ModeBlocking, manager.EffectiveMode())
-	require.NoError(t, manager.Shutdown(context.Background()))
+
+	service := &PromptService{config: manager, evaluator: NewGuardEvaluator(nil, nil, nil)}
+	decision, err := service.Evaluate(context.Background(), Request{
+		Protocol: "openai_chat_completions",
+		Body:     []byte(`{"messages":[{"role":"user","content":"hi"}]}`),
+	})
+	require.Error(t, err)
+	require.Nil(t, decision)
+	var guardErr *GuardError
+	require.ErrorAs(t, err, &guardErr)
+	require.Equal(t, ErrorCodeUnavailable, guardErr.Code)
+}
+
+func TestConfigManagerUntrustedClearsOnSuccessfulDisable(t *testing.T) {
+	// After a degraded fail-closed period, saving disabled config must restore ModeOff.
+	manager := &ConfigManager{encryptor: prefixEncryptor{}, clock: fixedClock{}}
+	manager.observeExpectedState(`{"enabled":true,"blocking_enabled":true,"config_version":5}`, true)
+	manager.markConfigUntrusted()
+	require.Equal(t, ModeBlocking, manager.EffectiveMode())
+
+	// Install a trusted disabled snapshot the same way Save does after commit.
+	disabled := DefaultStorageConfig()
+	disabled.ConfigVersion = 6
+	disabled.Enabled = false
+	disabled.BlockingEnabled = false
+	active, err := ActiveFromStorage(disabled, true, manager.encryptor)
+	require.NoError(t, err)
+	manager.expected.Store(disabled.ConfigVersion)
+	manager.expectedBlocking.Store(false)
+	manager.snapshot.Store(&activeConfigSnapshot{storage: disabled, active: active, loadedAt: manager.clock.Now()})
+	manager.configUntrusted.Store(false)
+
+	require.False(t, manager.BlockingActivationDegraded())
+	require.Equal(t, ModeOff, manager.EffectiveMode())
+
+	service := &PromptService{config: manager, evaluator: NewGuardEvaluator(nil, nil, nil)}
+	decision, evalErr := service.Evaluate(context.Background(), Request{
+		Protocol: "openai_chat_completions",
+		Body:     []byte(`{"messages":[{"role":"user","content":"hi"}]}`),
+	})
+	require.NoError(t, evalErr)
+	require.Equal(t, DecisionAllow, decision.Kind)
+}
+
+func TestConfigManagerUntrustedWithoutBlockingDoesNotForceBlockingMode(t *testing.T) {
+	manager := &ConfigManager{}
+	manager.observeExpectedState(`{"enabled":true,"blocking_enabled":false,"config_version":2}`, true)
+	manager.markConfigUntrusted()
+	require.False(t, manager.expectedBlocking.Load())
+	require.False(t, manager.BlockingActivationDegraded())
+	require.Equal(t, ModeOff, manager.EffectiveMode(), "async intent + untrusted must not force blocking unavailable")
 }
 
 func TestParseLegacyConfigDefaultsMissingFieldsWithoutEnablingBlocking(t *testing.T) {

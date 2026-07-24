@@ -7,6 +7,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func requireOpenAICodexProbeHeaders(t *testing.T, h http.Header) {
+	t.Helper()
+	require.Equal(t, codexCLIUserAgent, h.Get("User-Agent"))
+	require.Equal(t, "codex_cli_rs", h.Get("Originator"))
+	require.Equal(t, codexCLIVersion, h.Get("Version"))
+	require.Equal(t, "responses=experimental", h.Get("OpenAI-Beta"))
+	require.NotEmpty(t, h.Get("X-Codex-Window-ID"))
+}
+
 func TestEnsureCodexIdentityHeaders(t *testing.T) {
 	t.Run("补齐缺失身份头", func(t *testing.T) {
 		h := make(http.Header)
