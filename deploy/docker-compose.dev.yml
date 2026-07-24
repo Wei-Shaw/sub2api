@@ -36,6 +36,7 @@ services:
       - DATABASE_SSLMODE=disable
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_USERNAME=${REDIS_USERNAME:-}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=${REDIS_DB:-0}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.local}
@@ -57,6 +58,9 @@ services:
       - GATEWAY_OPENAI_HTTP2_FALLBACK_ERROR_THRESHOLD=${GATEWAY_OPENAI_HTTP2_FALLBACK_ERROR_THRESHOLD:-2}
       - GATEWAY_OPENAI_HTTP2_FALLBACK_WINDOW_SECONDS=${GATEWAY_OPENAI_HTTP2_FALLBACK_WINDOW_SECONDS:-60}
       - GATEWAY_OPENAI_HTTP2_FALLBACK_TTL_SECONDS=${GATEWAY_OPENAI_HTTP2_FALLBACK_TTL_SECONDS:-600}
+      - GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_FAILURE_THRESHOLD=${GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_FAILURE_THRESHOLD:-2}
+      - GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_WINDOW_SECONDS=${GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_WINDOW_SECONDS:-60}
+      - GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_TTL_SECONDS=${GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_TTL_SECONDS:-600}
       - GATEWAY_IMAGE_STREAM_DATA_INTERVAL_TIMEOUT=${GATEWAY_IMAGE_STREAM_DATA_INTERVAL_TIMEOUT:-900}
       - GATEWAY_IMAGE_STREAM_KEEPALIVE_INTERVAL=${GATEWAY_IMAGE_STREAM_KEEPALIVE_INTERVAL:-10}
       - GATEWAY_IMAGE_CONCURRENCY_ENABLED=${GATEWAY_IMAGE_CONCURRENCY_ENABLED:-false}
@@ -114,12 +118,16 @@ services:
     restart: unless-stopped
     volumes:
       - ./redis_data:/data:Z
+    # The command is one quoted script for the inner `sh -c`. Compose keeps
+    # the newlines inside the quoted string, so every line needs a trailing
+    # `\` — without it, `redis-server` on the first line runs with no flags
+    # at all, and the --save/--appendonly/--appendfsync lines are never read.
     command: >
         sh -c '
-          redis-server
-          --save 60 1
-          --appendonly yes
-          --appendfsync everysec
+          redis-server \
+          --save 60 1 \
+          --appendonly yes \
+          --appendfsync everysec \
           ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
     environment:
       - TZ=${TZ:-Asia/Shanghai}

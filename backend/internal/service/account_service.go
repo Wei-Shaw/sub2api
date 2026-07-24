@@ -91,6 +91,13 @@ type AccountRepository interface {
 	ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error)
 	ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error)
 	ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]Account, error)
+	// ListModelAvailabilityCandidates returns accounts that are enabled by
+	// persistent configuration (active + schedulable) for model-support
+	// diagnosis. It deliberately does not filter transient runtime state such
+	// as rate-limit, overload, temporary-unschedulable, or expiry windows.
+	// When groupID is nil, includeGrouped controls whether the query scans all
+	// matching accounts or only accounts without a group binding.
+	ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]Account, error)
 
 	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
 	SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error
@@ -144,6 +151,7 @@ type AccountBulkUpdate struct {
 	Schedulable    *bool
 	Credentials    map[string]any
 	Extra          map[string]any
+	ProbeEnabled   *bool
 }
 
 // CreateAccountRequest 创建账号请求
@@ -307,7 +315,14 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	if req.Extra != nil {
-		account.Extra = *req.Extra
+		extra := make(map[string]any, len(*req.Extra))
+		for key, value := range *req.Extra {
+			extra[key] = value
+		}
+		delete(extra, OllamaCloudUsageSessionExtraKey)
+		delete(extra, OllamaCloudUsageAutoRefreshExtraKey)
+		delete(extra, OllamaCloudUsageSnapshotExtraKey)
+		account.Extra = extra
 	}
 
 	if req.ProxyID != nil {

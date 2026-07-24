@@ -27,9 +27,24 @@ server:
   # 用于生成邮件中的外部链接（例如：重置密码链接）的前端基础地址
   # Example: "https://example.com"
   frontend_url: ""
-  # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
-  # 信任的代理地址（CIDR/IP 格式），用于解析 X-Forwarded-For 头。留空则禁用代理信任。
-  trusted_proxies: []
+  # Maximum time to receive complete request headers. Does not limit response streams.
+  # 完整读取请求头的最大时间；不限制响应流持续时间。
+  read_header_timeout: 10
+  # Request header limit in bytes (64 KiB); also bounds the HTTP/2 header list.
+  # 请求头上限（字节，默认 64 KiB）；同时约束 HTTP/2 header list。
+  max_header_bytes: 65536
+  # Keep-alive idle timeout in seconds.
+  # Keep-Alive 空闲连接超时（秒）。
+  idle_timeout: 120
+  # Trusted proxies used when security.trust_forwarded_ip_for_api_key_acl is false.
+  # List only the exact proxy addresses that connect directly to Sub2API.
+  # Set [] explicitly to disable forwarded-IP trust in high-security mode.
+  # security.trust_forwarded_ip_for_api_key_acl=false 时使用的可信代理。
+  # 只填写直接连接 Sub2API 的精确代理地址；显式设置 [] 可在高安全模式下
+  # 禁用转发 IP 信任。
+  trusted_proxies:
+    - 127.0.0.1/32
+    - ::1/128
   # Global max request body size in bytes (default: 256MB)
   # 全局最大请求体大小（字节，默认 256MB）
   # Applies to all requests, especially important for h2c first request memory protection
@@ -86,6 +101,22 @@ cors:
 # 安全配置
 # =============================================================================
 security:
+  # Legacy compatibility switch. When true, raw forwarded headers take over
+  # server.trusted_proxies. Set false to enforce the trusted proxy chain above.
+  # 旧版兼容开关。开启时原始转发头会接管 server.trusted_proxies；关闭后严格
+  # 使用上方配置的可信代理链。示例配置采用高安全模式。
+  trust_forwarded_ip_for_api_key_acl: false
+  # Optional client-IP headers for third-party CDNs, checked in list order before
+  # CF-Connecting-IP, X-Real-IP, and X-Forwarded-For. Valid only while the legacy
+  # compatibility switch above is true; maximum 16 unique HTTP header names.
+  # 第三方 CDN 的可选客户端 IP 请求头，按列表顺序优先于内置请求头解析。
+  # 仅在上方旧版兼容开关为 true 时生效；最多配置 16 个不重复的合法 HTTP 头名。
+  # Environment / 环境变量: SECURITY_FORWARDED_CLIENT_IP_HEADERS=True-Client-IP,X-CDN-Client-IP
+  forwarded_client_ip_headers: []
+  # Example / 示例:
+  # forwarded_client_ip_headers:
+  #   - "True-Client-IP"
+  #   - "X-CDN-Client-IP"
   url_allowlist:
     # Enable URL allowlist validation (disable to skip all URL checks)
     # 启用 URL 白名单验证（禁用则跳过所有 URL 检查）
@@ -167,6 +198,9 @@ gateway:
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
+  # Pure-text endpoint body limit (embeddings and alpha/search), default 32 MiB.
+  # 纯文本端点请求体上限（embeddings、alpha/search），默认 32 MiB。
+  text_max_body_size: 33554432
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608
@@ -261,9 +295,10 @@ gateway:
   openai_compact_model: "gpt-5.4"
   # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
   openai_ws:
-    # 新版 WS mode 路由（默认关闭）。关闭时保持当前 legacy 实现行为。
+    # 新版 WS mode 路由（默认关闭）。关闭时忽略账号级 WS mode（包括 http_bridge），保持 legacy ctx_pool 行为。
+    # 环境变量：GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true
     mode_router_v2_enabled: false
-    # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效）
+    # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效；关闭时账号级 WS mode 被忽略）
     # 兼容旧值：shared/dedicated 会按 ctx_pool 处理。
     ingress_mode_default: ctx_pool
     # 完整读取并解压首条客户端消息的总超时（秒）；大请求或慢链路可调高到 120-300。
@@ -366,6 +401,11 @@ gateway:
     fallback_error_threshold: 2
     fallback_window_seconds: 60
     fallback_ttl_seconds: 600
+  # OpenAI Responses SSE 代理断流熔断；按 proxy_id 跨账号隔离，仅影响下一次调度。
+  openai_proxy_stream_circuit:
+    failure_threshold: 2
+    window_seconds: 60
+    ttl_seconds: 600
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
@@ -708,6 +748,23 @@ api_key_auth_cache:
   # Enable singleflight for cache misses
   # 缓存未命中时启用 singleflight 合并回源
   singleflight: true
+  # Maximum concurrent database lookups for authentication cache misses
+  # 认证缓存未命中时允许并发回源数据库的最大数量
+  lookup_concurrency: 64
+  # Process-local invalid-auth abuse protection. Counts only missing, malformed,
+  # deprecated-query, and confirmed invalid credentials; valid requests and
+  # Redis/DB failures do not consume the budget.
+  # 本机无效鉴权防护：仅统计缺失、格式错误、废弃 query 及确认无效的凭据。
+  invalid_abuse:
+    enabled: true
+    # Invalid attempts per trusted client IP (IPv6 grouped by /64) per window.
+    # 每个可信客户端 IP（IPv6 按 /64 聚合）在窗口内允许的无效次数。
+    threshold: 120
+    window_seconds: 60
+    block_seconds: 60
+    # Maximum tracked client identities per process; memory remains bounded.
+    # 每进程最多跟踪的客户端身份数量，确保内存有界。
+    capacity: 16384
 
 # =============================================================================
 # Dashboard Cache Configuration
@@ -868,6 +925,9 @@ redis:
   # Redis port
   # Redis 端口
   port: 6379
+  # Redis ACL username (leave empty for default user)
+  # Redis ACL 用户名（使用默认用户时留空）
+  username: ""
   # Redis password (leave empty if no password is set)
   # Redis 密码（如果未设置密码则留空）
   password: ""

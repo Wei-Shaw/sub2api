@@ -207,6 +207,7 @@ type UsageInfo struct {
 	GrokLastQuotaProbeAt   string              `json:"grok_last_quota_probe_at,omitempty"`
 	GrokLastHeadersSeenAt  string              `json:"grok_last_headers_seen_at,omitempty"`
 	GrokLastStatusCode     int                 `json:"grok_last_status_code,omitempty"`
+	GrokFreeTokenLimit     int64               `json:"grok_free_token_limit,omitempty"`
 	GrokLocalUsage         *WindowStats        `json:"grok_local_usage,omitempty"`
 	GrokLocalUsage24h      *WindowStats        `json:"grok_local_usage_24h,omitempty"`
 	GrokLocalUsage7d       *WindowStats        `json:"grok_local_usage_7d,omitempty"`

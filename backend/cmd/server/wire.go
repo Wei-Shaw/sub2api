@@ -81,6 +81,10 @@ func provideCleanup(
 	opsCleanup *service.OpsCleanupService,
 	opsScheduledReport *service.OpsScheduledReportService,
 	opsSystemLogSink *service.OpsSystemLogSink,
+	opsService *service.OpsService,
+	opsIngressReject *service.OpsIngressRejectAggregator,
+	apiKeyService *service.APIKeyService,
+	authCacheInvalidationWorker *service.AuthCacheInvalidationWorker,
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
@@ -107,6 +111,7 @@ func provideCleanup(
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
+	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
 	promptAudit *securityaudit.PromptService,
 ) func() {
@@ -121,6 +126,30 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"OpsIngressRejectAggregator", func() error {
+				if opsIngressReject != nil {
+					opsIngressReject.Stop()
+				}
+				return nil
+			}},
+			{"AuthCacheInvalidationWorker", func() error {
+				if authCacheInvalidationWorker != nil {
+					authCacheInvalidationWorker.Stop()
+				}
+				return nil
+			}},
+			{"AuthCacheInvalidationSubscriber", func() error {
+				if apiKeyService != nil {
+					apiKeyService.StopAuthCacheInvalidationSubscriber()
+				}
+				return nil
+			}},
+			{"OpsRuntimeSettingsRefresh", func() error {
+				if opsService != nil {
+					opsService.StopRuntimeSettingsRefresh()
+				}
+				return nil
+			}},
 			{"PromptAuditService", func() error {
 				if promptAudit != nil {
 					return promptAudit.Shutdown(ctx)
@@ -300,6 +329,12 @@ func provideCleanup(
 			{"UpstreamBillingProbeService", func() error {
 				if upstreamBillingProbe != nil {
 					upstreamBillingProbe.Stop()
+				}
+				return nil
+			}},
+			{"OllamaCloudUsageService", func() error {
+				if ollamaCloudUsage != nil {
+					ollamaCloudUsage.Stop()
 				}
 				return nil
 			}},

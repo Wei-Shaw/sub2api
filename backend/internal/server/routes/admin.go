@@ -235,6 +235,11 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/request-errors/:id/upstream-errors", h.Admin.Ops.ListRequestErrorUpstreamErrors)
 		ops.PUT("/request-errors/:id/resolve", h.Admin.Ops.ResolveRequestError)
 
+		// Bounded ingress-admission rejection aggregates.
+		ops.GET("/ingress-rejections", h.Admin.Ops.ListIngressRejects)
+		ops.GET("/ingress-rejections/health", h.Admin.Ops.GetIngressRejectHealth)
+		ops.GET("/auth-cache-invalidation/health", h.Admin.Ops.GetAuthCacheInvalidationHealth)
+
 		// Upstream errors (independent upstream failures)
 		ops.GET("/upstream-errors", h.Admin.Ops.ListUpstreamErrors)
 		ops.GET("/upstream-errors/:id", h.Admin.Ops.GetUpstreamError)
@@ -314,6 +319,11 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		groups.GET("/capacity-summary", h.Admin.Group.GetCapacitySummary)
 		groups.PUT("/sort-order", h.Admin.Group.UpdateSortOrder)
 		groups.GET("/:id/models-list-candidates", h.Admin.Group.GetModelsListCandidates)
+		groups.GET("/:id/composite-routes", h.Admin.Group.ListCompositeRoutes)
+		groups.POST("/:id/composite-routes", h.Admin.Group.CreateCompositeRoute)
+		groups.POST("/:id/composite-routes/preview", h.Admin.Group.PreviewCompositeRoute)
+		groups.PUT("/:id/composite-routes/:route_id", h.Admin.Group.UpdateCompositeRoute)
+		groups.DELETE("/:id/composite-routes/:route_id", h.Admin.Group.DeleteCompositeRoute)
 		groups.GET("/:id", h.Admin.Group.GetByID)
 		groups.POST("", h.Admin.Group.Create)
 		groups.POST("/:id/duplicate", h.Admin.Group.Duplicate)
@@ -336,6 +346,8 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.GET("/upstream-billing-probe/settings", h.Admin.Account.GetUpstreamBillingProbeSettings)
 		accounts.PUT("/upstream-billing-probe/settings", h.Admin.Account.UpdateUpstreamBillingProbeSettings)
 		accounts.POST("/upstream-billing-probe/batch", h.Admin.Account.ProbeUpstreamBillingBatch)
+		accounts.GET("/ollama-cloud-usage/settings", h.Admin.Account.GetOllamaCloudUsageSettings)
+		accounts.PUT("/ollama-cloud-usage/settings", h.Admin.Account.UpdateOllamaCloudUsageSettings)
 		accounts.GET("/:id", h.Admin.Account.GetByID)
 		accounts.POST("", h.Admin.Account.Create)
 		accounts.POST("/:id/duplicate", h.Admin.Account.Duplicate)
@@ -346,6 +358,11 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.PUT("/:id", h.Admin.Account.Update)
 		accounts.PUT("/:id/upstream-billing-probe", h.Admin.Account.SetUpstreamBillingProbeEnabled)
 		accounts.POST("/:id/upstream-billing-probe", h.Admin.Account.ProbeUpstreamBilling)
+		accounts.GET("/:id/ollama-cloud-usage", h.Admin.Account.GetOllamaCloudUsage)
+		accounts.PUT("/:id/ollama-cloud-usage/session", h.Admin.Account.SaveOllamaCloudUsageSession)
+		accounts.DELETE("/:id/ollama-cloud-usage/session", h.Admin.Account.DeleteOllamaCloudUsageSession)
+		accounts.PUT("/:id/ollama-cloud-usage/auto-refresh", h.Admin.Account.SetOllamaCloudUsageAutoRefresh)
+		accounts.POST("/:id/ollama-cloud-usage/refresh", h.Admin.Account.RefreshOllamaCloudUsage)
 		accounts.DELETE("/:id", h.Admin.Account.Delete)
 		accounts.POST("/:id/test", h.Admin.Account.Test)
 		accounts.POST("/:id/recover-state", h.Admin.Account.RecoverState)
@@ -574,6 +591,12 @@ func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAut
 		backup.PUT("/s3-config", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.UpdateS3Config)
 		backup.POST("/s3-config/test", h.Admin.Backup.TestS3Connection)
 
+		// 异步生图对象存储配置（与备份共用 S3 客户端，可直接复用备份凭证）
+		backup.GET("/image-storage", h.Admin.Backup.GetImageStorageConfig)
+		// 同 S3 配置：改写对象存储目标可将生成内容导向外部账号——要求 step-up 2FA
+		backup.PUT("/image-storage", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.UpdateImageStorageConfig)
+		backup.POST("/image-storage/test", h.Admin.Backup.TestImageStorageConnection)
+
 		// 定时备份配置
 		backup.GET("/schedule", h.Admin.Backup.GetSchedule)
 		backup.PUT("/schedule", h.Admin.Backup.UpdateSchedule)
@@ -586,8 +609,8 @@ func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAut
 		// 备份下载链接可直接取走整库数据——要求 step-up 2FA
 		backup.GET("/:id/download-url", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.GetDownloadURL)
 
-		// 恢复操作
-		backup.POST("/:id/restore", h.Admin.Backup.RestoreBackup)
+		// 恢复操作：整库覆盖可回滚安全设置（含 step-up 开关本身）——要求 step-up 2FA
+		backup.POST("/:id/restore", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.RestoreBackup)
 	}
 }
 

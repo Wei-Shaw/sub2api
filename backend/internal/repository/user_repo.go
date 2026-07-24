@@ -1039,24 +1039,44 @@ func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, cl
 		return nil
 	}
 
-	// Keep join table as the source of truth for reads.
-	if _, err := client.UserAllowedGroup.Delete().Where(userallowedgroup.UserIDEQ(userID)).Exec(ctx); err != nil {
+	existingRows, err := client.UserAllowedGroup.Query().
+		Where(userallowedgroup.UserIDEQ(userID)).
+		All(ctx)
+	if err != nil {
 		return err
 	}
 
-	unique := make(map[int64]struct{}, len(groupIDs))
+	desired := make(map[int64]struct{}, len(groupIDs))
 	for _, id := range groupIDs {
 		if id <= 0 {
 			continue
 		}
-		unique[id] = struct{}{}
+		desired[id] = struct{}{}
 	}
 
-	if len(unique) > 0 {
-		creates := make([]*dbent.UserAllowedGroupCreate, 0, len(unique))
-		for groupID := range unique {
+	existing := make(map[int64]struct{}, len(existingRows))
+	removed := make([]int64, 0)
+	for _, row := range existingRows {
+		existing[row.GroupID] = struct{}{}
+		if _, keep := desired[row.GroupID]; !keep {
+			removed = append(removed, row.GroupID)
+		}
+	}
+	if len(removed) > 0 {
+		if _, err := client.UserAllowedGroup.Delete().
+			Where(userallowedgroup.UserIDEQ(userID), userallowedgroup.GroupIDIn(removed...)).
+			Exec(ctx); err != nil {
+			return err
+		}
+	}
+
+	creates := make([]*dbent.UserAllowedGroupCreate, 0, len(desired))
+	for groupID := range desired {
+		if _, present := existing[groupID]; !present {
 			creates = append(creates, client.UserAllowedGroup.Create().SetUserID(userID).SetGroupID(groupID))
 		}
+	}
+	if len(creates) > 0 {
 		if err := client.UserAllowedGroup.
 			CreateBulk(creates...).
 			OnConflictColumns(userallowedgroup.FieldUserID, userallowedgroup.FieldGroupID).

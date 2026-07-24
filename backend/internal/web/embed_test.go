@@ -114,6 +114,41 @@ func TestInjectSiteTitle(t *testing.T) {
 	})
 }
 
+func TestInjectSiteFavicon(t *testing.T) {
+	t.Run("replaces_favicon_with_site_logo", func(t *testing.T) {
+		html := []byte(`<html><head><link rel="icon" type="image/png" href="/logo.png" /></head></html>`)
+		settingsJSON := []byte(`{"site_logo":"https://example.com/custom-logo.png"}`)
+
+		result := injectSiteFavicon(html, settingsJSON)
+
+		assert.Contains(t, string(result), `<link rel="icon" href="https://example.com/custom-logo.png" />`)
+		assert.NotContains(t, string(result), `/logo.png`)
+	})
+
+	t.Run("supports_relative_and_data_image_urls", func(t *testing.T) {
+		html := []byte(`<link rel="icon" href="/logo.png" />`)
+
+		assert.Contains(t, string(injectSiteFavicon(html, []byte(`{"site_logo":"/uploads/logo.svg"}`))), `/uploads/logo.svg`)
+		assert.Contains(t, string(injectSiteFavicon(html, []byte(`{"site_logo":"data:image/png;base64,abc"}`))), `data:image/png;base64,abc`)
+	})
+
+	t.Run("rejects_unsafe_logo_urls", func(t *testing.T) {
+		html := []byte(`<link rel="icon" href="/logo.png" />`)
+
+		result := injectSiteFavicon(html, []byte(`{"site_logo":"javascript:alert(1)"}`))
+
+		assert.Equal(t, string(html), string(result))
+	})
+
+	t.Run("escapes_logo_url_for_html", func(t *testing.T) {
+		html := []byte(`<link rel="icon" href="/logo.png" />`)
+
+		result := injectSiteFavicon(html, []byte(`{"site_logo":"https://example.com/logo.png?a=1&b=2"}`))
+
+		assert.Contains(t, string(result), `a=1&amp;b=2`)
+	})
+}
+
 func TestReplaceNoncePlaceholder(t *testing.T) {
 	t.Run("replaces_single_placeholder", func(t *testing.T) {
 		html := []byte(`<script nonce="__CSP_NONCE_VALUE__">console.log('test');</script>`)

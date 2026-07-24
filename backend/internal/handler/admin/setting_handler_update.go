@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -27,7 +28,8 @@ type UpdateSettingsRequest struct {
 	FrontendURL                      string                       `json:"frontend_url"`
 	InvitationCodeEnabled            bool                         `json:"invitation_code_enabled"`
 	TotpEnabled                      bool                         `json:"totp_enabled"`             // TOTP 双因素认证
-	SessionBindingEnabled            bool                         `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
+	SessionBindingEnabled            *bool                        `json:"session_binding_enabled"`  // 会话 IP/UA 绑定（省略=保持现值）
+	StepUpEnabled                    *bool                        `json:"step_up_enabled"`          // 敏感操作 step-up 2FA（省略=保持现值）
 	AuditLogRetentionDays            int                          `json:"audit_log_retention_days"` // 审计日志保留天数
 	LoginAgreementEnabled            bool                         `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                       `json:"login_agreement_mode"`
@@ -49,7 +51,8 @@ type UpdateSettingsRequest struct {
 	TurnstileSecretKey string `json:"turnstile_secret_key"`
 
 	// API Key IP 访问控制设置
-	APIKeyACLTrustForwardedIP *bool `json:"api_key_acl_trust_forwarded_ip"`
+	APIKeyACLTrustForwardedIP *bool     `json:"api_key_acl_trust_forwarded_ip"`
+	ForwardedClientIPHeaders  *[]string `json:"forwarded_client_ip_headers"`
 
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled      bool   `json:"linuxdo_connect_enabled"`
@@ -297,6 +300,8 @@ type UpdateSettingsRequest struct {
 
 	// Force Alipay mobile clients to use QR code payment instead of mobile redirect
 	PaymentAlipayForceQRCode *bool `json:"payment_alipay_force_qrcode"`
+	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
+	PaymentAlipayMobilePrecreateDeepLink *bool `json:"payment_alipay_mobile_precreate_deep_link"`
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                *bool `json:"channel_monitor_enabled"`
@@ -335,6 +340,41 @@ type UpdateSettingsRequest struct {
 
 // UpdateSettings 更新系统设置
 // PUT /api/v1/admin/settings
+// ensureActorTotpForStepUp 校验当前操作者具备开启 step-up 门控的条件：
+// 必须是真人管理员会话（admin API key 无法完成 TOTP step-up，拒绝）且本人已启用 TOTP。
+// 校验失败时写入错误响应并返回 false。
+func (h *SettingHandler) ensureActorTotpForStepUp(c *gin.Context) bool {
+	if c.GetString("auth_method") == service.AuditAuthMethodAdminAPIKey {
+		response.ErrorWithDetails(c, http.StatusForbidden,
+			"Admin API key cannot enable step-up verification; use an admin session with TOTP enabled",
+			"STEP_UP_ADMIN_API_KEY_FORBIDDEN", nil)
+		return false
+	}
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.ErrorWithDetails(c, http.StatusForbidden,
+			"Enabling step-up verification requires an authenticated admin session",
+			"STEP_UP_ENABLE_REQUIRES_TOTP", nil)
+		return false
+	}
+	if h.userService == nil {
+		response.InternalError(c, "Step-up precondition check unavailable")
+		return false
+	}
+	user, err := h.userService.GetByID(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return false
+	}
+	if !user.TotpEnabled {
+		response.ErrorWithDetails(c, http.StatusBadRequest,
+			"Enable two-factor authentication (TOTP) for your account before turning on step-up verification",
+			"STEP_UP_ENABLE_REQUIRES_TOTP", nil)
+		return false
+	}
+	return true
+}
+
 func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	var req UpdateSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -351,6 +391,38 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// 两个安全开关的请求字段为指针：省略字段=保持现值，避免旧客户端/脚本
+	// 用不含新字段的全量 payload 保存设置时把安全开关静默重置。
+	sessionBindingEnabled := previousSettings.SessionBindingEnabled
+	if req.SessionBindingEnabled != nil {
+		sessionBindingEnabled = *req.SessionBindingEnabled
+	}
+	stepUpEnabled := previousSettings.StepUpEnabled
+	if req.StepUpEnabled != nil {
+		stepUpEnabled = *req.StepUpEnabled
+	}
+	forwardedClientIPHeaders := append([]string(nil), previousSettings.ForwardedClientIPHeaders...)
+	if req.ForwardedClientIPHeaders != nil {
+		forwardedClientIPHeaders = append([]string(nil), (*req.ForwardedClientIPHeaders)...)
+	}
+
+	// 开启敏感操作 step-up 门控属自锁风险操作：仅允许本人已启用 TOTP 的管理员会话开启，
+	// 否则开启后操作者立即被挡在所有敏感操作之外。仅在 false→true 的开启瞬间校验，
+	// 保持开启状态的常规设置保存不受影响。
+	if stepUpEnabled && !previousSettings.StepUpEnabled {
+		if !h.ensureActorTotpForStepUp(c) {
+			return
+		}
+	}
+	// 关闭 step-up 门控本身就是敏感操作：防止拿到管理员会话的攻击者先关闸再执行导出/备份。
+	// previousSettings 已证实开关处于开启状态，使用无条件门控变体，
+	// 避免门控内部二次读取开关时因存储故障 fail-open（前端捕获 STEP_UP_REQUIRED 弹码重试）。
+	if !stepUpEnabled && previousSettings.StepUpEnabled {
+		if !middleware.EnforceStepUpAlways(c, h.totpService, h.userService) {
+			return
+		}
 	}
 
 	// 验证参数
@@ -1181,7 +1253,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FrontendURL:                      req.FrontendURL,
 		InvitationCodeEnabled:            req.InvitationCodeEnabled,
 		TotpEnabled:                      req.TotpEnabled,
-		SessionBindingEnabled:            req.SessionBindingEnabled,
+		SessionBindingEnabled:            sessionBindingEnabled,
+		StepUpEnabled:                    stepUpEnabled,
 		AuditLogRetentionDays:            req.AuditLogRetentionDays,
 		LoginAgreementEnabled:            req.LoginAgreementEnabled,
 		LoginAgreementMode:               loginAgreementMode,
@@ -1203,6 +1276,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.APIKeyACLTrustForwardedIP
 		}(),
+		ForwardedClientIPHeaders:               forwardedClientIPHeaders,
 		LinuxDoConnectEnabled:                  req.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                 req.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecret:             req.LinuxDoConnectClientSecret,
@@ -1622,6 +1696,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if h.opsService != nil {
+		h.opsService.SetMonitoringEnabled(settings.OpsMonitoringEnabled)
+	}
 
 	// Update OpenAI fast policy (stored under dedicated key, only when provided).
 	if req.OpenAIFastPolicySettings != nil {
@@ -1635,28 +1712,29 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	// Skip if no payment fields were provided (prevents accidental wipe).
 	if h.paymentConfigService != nil && hasPaymentFields(req) {
 		paymentReq := service.UpdatePaymentConfigRequest{
-			Enabled:                   req.PaymentEnabled,
-			MinAmount:                 req.PaymentMinAmount,
-			MaxAmount:                 req.PaymentMaxAmount,
-			DailyLimit:                req.PaymentDailyLimit,
-			OrderTimeoutMin:           req.PaymentOrderTimeoutMin,
-			MaxPendingOrders:          req.PaymentMaxPendingOrders,
-			EnabledTypes:              req.PaymentEnabledTypes,
-			BalanceDisabled:           req.PaymentBalanceDisabled,
-			BalanceRechargeMultiplier: req.PaymentBalanceRechargeMultiplier,
-			SubscriptionUSDToCNYRate:  req.PaymentSubscriptionUSDToCNYRate,
-			RechargeFeeRate:           req.PaymentRechargeFeeRate,
-			LoadBalanceStrategy:       req.PaymentLoadBalanceStrat,
-			ProductNamePrefix:         req.PaymentProductNamePrefix,
-			ProductNameSuffix:         req.PaymentProductNameSuffix,
-			HelpImageURL:              req.PaymentHelpImageURL,
-			HelpText:                  req.PaymentHelpText,
-			CancelRateLimitEnabled:    req.PaymentCancelRateLimitEnabled,
-			CancelRateLimitMax:        req.PaymentCancelRateLimitMax,
-			CancelRateLimitWindow:     req.PaymentCancelRateLimitWindow,
-			CancelRateLimitUnit:       req.PaymentCancelRateLimitUnit,
-			CancelRateLimitMode:       req.PaymentCancelRateLimitMode,
-			AlipayForceQRCode:         req.PaymentAlipayForceQRCode,
+			Enabled:                       req.PaymentEnabled,
+			MinAmount:                     req.PaymentMinAmount,
+			MaxAmount:                     req.PaymentMaxAmount,
+			DailyLimit:                    req.PaymentDailyLimit,
+			OrderTimeoutMin:               req.PaymentOrderTimeoutMin,
+			MaxPendingOrders:              req.PaymentMaxPendingOrders,
+			EnabledTypes:                  req.PaymentEnabledTypes,
+			BalanceDisabled:               req.PaymentBalanceDisabled,
+			BalanceRechargeMultiplier:     req.PaymentBalanceRechargeMultiplier,
+			SubscriptionUSDToCNYRate:      req.PaymentSubscriptionUSDToCNYRate,
+			RechargeFeeRate:               req.PaymentRechargeFeeRate,
+			LoadBalanceStrategy:           req.PaymentLoadBalanceStrat,
+			ProductNamePrefix:             req.PaymentProductNamePrefix,
+			ProductNameSuffix:             req.PaymentProductNameSuffix,
+			HelpImageURL:                  req.PaymentHelpImageURL,
+			HelpText:                      req.PaymentHelpText,
+			CancelRateLimitEnabled:        req.PaymentCancelRateLimitEnabled,
+			CancelRateLimitMax:            req.PaymentCancelRateLimitMax,
+			CancelRateLimitWindow:         req.PaymentCancelRateLimitWindow,
+			CancelRateLimitUnit:           req.PaymentCancelRateLimitUnit,
+			CancelRateLimitMode:           req.PaymentCancelRateLimitMode,
+			AlipayForceQRCode:             req.PaymentAlipayForceQRCode,
+			AlipayMobilePrecreateDeepLink: req.PaymentAlipayMobilePrecreateDeepLink,
 		}
 		if err := h.paymentConfigService.UpdatePaymentConfig(c.Request.Context(), paymentReq); err != nil {
 			response.ErrorFrom(c, err)
@@ -1710,6 +1788,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TotpEnabled:                                            updatedSettings.TotpEnabled,
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
 		SessionBindingEnabled:                                  updatedSettings.SessionBindingEnabled,
+		StepUpEnabled:                                          updatedSettings.StepUpEnabled,
 		AuditLogRetentionDays:                                  updatedSettings.AuditLogRetentionDays,
 		LoginAgreementEnabled:                                  updatedSettings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     updatedSettings.LoginAgreementMode,
@@ -1726,6 +1805,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TurnstileSiteKey:                                       updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:                           updatedSettings.TurnstileSecretKeyConfigured,
 		APIKeyACLTrustForwardedIP:                              updatedSettings.APIKeyACLTrustForwardedIP,
+		ForwardedClientIPHeaders:                               updatedSettings.ForwardedClientIPHeaders,
 		LinuxDoConnectEnabled:                                  updatedSettings.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                                 updatedSettings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured:                   updatedSettings.LinuxDoConnectClientSecretConfigured,
@@ -1908,6 +1988,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentCancelRateLimitUnit:                             updatedPaymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:                             updatedPaymentCfg.CancelRateLimitMode,
 		PaymentAlipayForceQRCode:                               updatedPaymentCfg.AlipayForceQRCode,
+		PaymentAlipayMobilePrecreateDeepLink:                   updatedPaymentCfg.AlipayMobilePrecreateDeepLink,
 
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
@@ -1961,7 +2042,7 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
 		req.PaymentCancelRateLimitMax != nil || req.PaymentCancelRateLimitWindow != nil ||
 		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil ||
-		req.PaymentAlipayForceQRCode != nil
+		req.PaymentAlipayForceQRCode != nil || req.PaymentAlipayMobilePrecreateDeepLink != nil
 }
 
 // ensureDingTalkSyncAttributes 在保存 settings 后，按 admin 配置的 (attr key, attr name)

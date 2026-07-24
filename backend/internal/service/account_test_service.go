@@ -610,6 +610,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// Set common headers
 	req.Header.Set("Content-Type", "application/json")
+	if !isOAuth {
+		applyOpenAICodexProbeHeaders(req.Header)
+	}
 	if credentialAccount.IsOpenAIAgentIdentity() {
 		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount)
 		if authErr != nil {
@@ -711,7 +714,9 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 			return s.sendErrorAndEnd(c, "Grok token provider not configured")
 		}
 		var err error
-		authToken, err = s.grokTokenProvider.GetAccessToken(ctx, account)
+		// 手动测试不走生产调度资格门：关闭调度、限流/过载/临时冷却中的账号
+		// 也应能被管理员探测（#4598），与 Codex/OpenAI 测试行为一致。
+		authToken, err = s.grokTokenProvider.GetAccessTokenForManualTest(ctx, account)
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to get Grok access token: %s", err.Error()))
 		}
@@ -735,11 +740,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payloadBytes, err := json.Marshal(map[string]any{
-		"model":  testModelID,
-		"input":  "hi",
-		"stream": true,
-	})
+	payloadBytes, err := buildGrokQuotaProbeBody(testModelID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Grok test payload")
 	}
@@ -939,10 +940,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	} else {
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
-	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("Originator", "codex_cli_rs")
-	req.Header.Set("User-Agent", codexCLIUserAgent)
-	req.Header.Set("Version", codexCLIVersion)
+	applyOpenAICodexProbeHeaders(req.Header)
 	probeSessionID := compactProbeSessionID(account.ID)
 	req.Header.Set("Session_ID", probeSessionID)
 	req.Header.Set("Conversation_ID", probeSessionID)

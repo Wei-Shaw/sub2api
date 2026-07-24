@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -62,6 +63,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		normalizedWhitelist = []string{}
 	}
 	settings.RegistrationEmailSuffixWhitelist = normalizedWhitelist
+	normalizedForwardedClientIPHeaders, err := config.NormalizeForwardedClientIPHeaders(settings.ForwardedClientIPHeaders)
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_FORWARDED_CLIENT_IP_HEADERS", err.Error())
+	}
+	settings.ForwardedClientIPHeaders = normalizedForwardedClientIPHeaders
 	alipaySource, err := normalizeVisibleMethodSettingSource("alipay", settings.PaymentVisibleMethodAlipaySource, settings.PaymentVisibleMethodAlipayEnabled)
 	if err != nil {
 		return nil, err
@@ -122,6 +128,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyInvitationCodeEnabled] = strconv.FormatBool(settings.InvitationCodeEnabled)
 	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
 	updates[SettingKeySessionBindingEnabled] = strconv.FormatBool(settings.SessionBindingEnabled)
+	updates[SettingKeyStepUpEnabled] = strconv.FormatBool(settings.StepUpEnabled)
 	updates[SettingKeyAuditLogRetentionDays] = strconv.Itoa(settings.AuditLogRetentionDays)
 	settings.LoginAgreementMode = normalizeLoginAgreementMode(settings.LoginAgreementMode)
 	settings.LoginAgreementUpdatedAt = strings.TrimSpace(settings.LoginAgreementUpdatedAt)
@@ -155,6 +162,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		updates[SettingKeyTurnstileSecretKey] = settings.TurnstileSecretKey
 	}
 	updates[SettingKeyAPIKeyACLTrustForwardedIP] = strconv.FormatBool(settings.APIKeyACLTrustForwardedIP)
+	forwardedClientIPHeadersJSON, err := json.Marshal(settings.ForwardedClientIPHeaders)
+	if err != nil {
+		return nil, fmt.Errorf("marshal forwarded client IP headers: %w", err)
+	}
+	updates[SettingKeyForwardedClientIPHeaders] = string(forwardedClientIPHeadersJSON)
 
 	// LinuxDo Connect OAuth 登录
 	updates[SettingKeyLinuxDoConnectEnabled] = strconv.FormatBool(settings.LinuxDoConnectEnabled)
@@ -578,7 +590,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		})
 	}
 	if s.cfg != nil {
-		s.cfg.SetTrustForwardedIPForAPIKeyACL(settings.APIKeyACLTrustForwardedIP)
+		s.cfg.SetForwardedClientIPSettings(settings.APIKeyACLTrustForwardedIP, settings.ForwardedClientIPHeaders)
 	}
 	// codex_cli_only 加固策略缓存：设置更新后强制下次重载（涉及 4 个键 + JSON 解析，直接置过期）。
 	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")

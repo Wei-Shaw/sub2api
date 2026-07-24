@@ -34,7 +34,7 @@ func TestCalculateProgress_BasicFields(t *testing.T) {
 	assert.Equal(t, int64(100), progress.ID)
 	assert.Equal(t, "Premium", progress.GroupName)
 	assert.Equal(t, sub.ExpiresAt, progress.ExpiresAt)
-	assert.True(t, progress.ExpiresInDays == 29 || progress.ExpiresInDays == 30, "ExpiresInDays should be 29 or 30, got %d", progress.ExpiresInDays)
+	assert.Equal(t, 30, progress.ExpiresInDays)
 	assert.Nil(t, progress.Daily, "无日限额时 Daily 应为 nil")
 	assert.Nil(t, progress.Weekly, "无周限额时 Weekly 应为 nil")
 	assert.Nil(t, progress.Monthly, "无月限额时 Monthly 应为 nil")

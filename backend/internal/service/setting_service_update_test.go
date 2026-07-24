@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"strconv"
 	"testing"
@@ -16,7 +17,8 @@ import (
 )
 
 type settingUpdateRepoStub struct {
-	updates map[string]string
+	updates        map[string]string
+	setMultipleErr error
 }
 
 func (s *settingUpdateRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
@@ -40,7 +42,7 @@ func (s *settingUpdateRepoStub) SetMultiple(ctx context.Context, settings map[st
 	for k, v := range settings {
 		s.updates[k] = v
 	}
-	return nil
+	return s.setMultipleErr
 }
 
 func (s *settingUpdateRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
@@ -84,6 +86,62 @@ func (s *settingGetAllRepoStub) GetAll(ctx context.Context) (map[string]string, 
 }
 
 func (s *settingGetAllRepoStub) Delete(ctx context.Context, key string) error {
+	panic("unexpected Delete call")
+}
+
+type forwardedIPMigrationRepoStub struct {
+	values         map[string]string
+	updates        map[string]string
+	getMultipleErr error
+	setMultipleErr error
+}
+
+func (s *forwardedIPMigrationRepoStub) Get(context.Context, string) (*Setting, error) {
+	panic("unexpected Get call")
+}
+
+func (s *forwardedIPMigrationRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	value, ok := s.values[key]
+	if !ok {
+		return "", ErrSettingNotFound
+	}
+	return value, nil
+}
+
+func (s *forwardedIPMigrationRepoStub) Set(context.Context, string, string) error {
+	panic("unexpected Set call")
+}
+
+func (s *forwardedIPMigrationRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	if s.getMultipleErr != nil {
+		return nil, s.getMultipleErr
+	}
+	result := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := s.values[key]; ok {
+			result[key] = value
+		}
+	}
+	return result, nil
+}
+
+func (s *forwardedIPMigrationRepoStub) SetMultiple(_ context.Context, values map[string]string) error {
+	if s.setMultipleErr != nil {
+		return s.setMultipleErr
+	}
+	s.updates = make(map[string]string, len(values))
+	for key, value := range values {
+		s.values[key] = value
+		s.updates[key] = value
+	}
+	return nil
+}
+
+func (s *forwardedIPMigrationRepoStub) GetAll(context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+}
+
+func (s *forwardedIPMigrationRepoStub) Delete(context.Context, string) error {
 	panic("unexpected Delete call")
 }
 
@@ -495,6 +553,16 @@ func TestSettingService_UpdateSettings_AntigravityUserAgentVersion(t *testing.T)
 	require.Equal(t, "1.23.2", repo.updates[SettingKeyAntigravityUserAgentVersion])
 }
 
+func TestSettingService_InitializeDefaultSettingsPersistsConfiguredForwardedClientIPHeaders(t *testing.T) {
+	repo := &forwardedIPMigrationRepoStub{values: map[string]string{}}
+	cfg := &config.Config{}
+	cfg.SetForwardedClientIPSettings(true, []string{"X-Cdn-Ip", "True-Client-Ip"})
+	svc := NewSettingService(repo, cfg)
+
+	require.NoError(t, svc.InitializeDefaultSettings(context.Background()))
+	require.JSONEq(t, `["X-Cdn-Ip","True-Client-Ip"]`, repo.values[SettingKeyForwardedClientIPHeaders])
+}
+
 func TestSettingService_UpdateSettings_APIKeyACLTrustForwardedIPRefreshesConfig(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	cfg := &config.Config{}
@@ -502,11 +570,51 @@ func TestSettingService_UpdateSettings_APIKeyACLTrustForwardedIPRefreshesConfig(
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		APIKeyACLTrustForwardedIP: true,
+		ForwardedClientIPHeaders:  []string{" x-cdn-ip ", "X-CDN-IP", "true-client-ip"},
 	})
 	require.NoError(t, err)
 	require.Equal(t, "true", repo.updates[SettingKeyAPIKeyACLTrustForwardedIP])
-	require.True(t, cfg.Security.TrustForwardedIPForAPIKeyACL)
-	require.True(t, cfg.TrustForwardedIPForAPIKeyACL())
+	require.JSONEq(t, `["X-Cdn-Ip","True-Client-Ip"]`, repo.updates[SettingKeyForwardedClientIPHeaders])
+	runtimeSettings := cfg.ForwardedClientIPSettings()
+	require.True(t, runtimeSettings.TrustForwardedIP)
+	require.Equal(t, []string{"X-Cdn-Ip", "True-Client-Ip"}, runtimeSettings.Headers)
+
+	runtimeSettings.Headers[0] = "X-Mutated"
+	require.Equal(t, []string{"X-Cdn-Ip", "True-Client-Ip"}, cfg.ForwardedClientIPSettings().Headers)
+}
+
+func TestSettingService_UpdateSettings_RejectsInvalidForwardedClientIPHeadersWithoutRefreshing(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	cfg := &config.Config{}
+	cfg.SetForwardedClientIPSettings(true, []string{"X-Existing-IP"})
+	svc := NewSettingService(repo, cfg)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		ForwardedClientIPHeaders: []string{"X Invalid"},
+	})
+
+	require.Error(t, err)
+	require.Nil(t, repo.updates)
+	runtimeSettings := cfg.ForwardedClientIPSettings()
+	require.True(t, runtimeSettings.TrustForwardedIP)
+	require.Equal(t, []string{"X-Existing-IP"}, runtimeSettings.Headers)
+}
+
+func TestSettingService_UpdateSettings_WriteFailureDoesNotRefreshForwardedIPRuntime(t *testing.T) {
+	repo := &settingUpdateRepoStub{setMultipleErr: errors.New("database unavailable")}
+	cfg := &config.Config{}
+	cfg.SetForwardedClientIPSettings(false, []string{"X-Existing-IP"})
+	svc := NewSettingService(repo, cfg)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		APIKeyACLTrustForwardedIP: true,
+		ForwardedClientIPHeaders:  []string{"X-New-IP"},
+	})
+
+	require.ErrorContains(t, err, "database unavailable")
+	runtimeSettings := cfg.ForwardedClientIPSettings()
+	require.False(t, runtimeSettings.TrustForwardedIP)
+	require.Equal(t, []string{"X-Existing-IP"}, runtimeSettings.Headers)
 }
 
 func TestSettingService_ParseSettings_APIKeyACLTrustForwardedIPFallsBackToConfigWhenMissing(t *testing.T) {
@@ -517,6 +625,194 @@ func TestSettingService_ParseSettings_APIKeyACLTrustForwardedIPFallsBackToConfig
 	got := svc.parseSettings(map[string]string{})
 
 	require.True(t, got.APIKeyACLTrustForwardedIP)
+}
+
+func TestSettingService_ParseSettings_APIKeyACLTrustForwardedIPUsesStoredValue(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.SetTrustForwardedIPForAPIKeyACL(true)
+	svc := NewSettingService(&settingUpdateRepoStub{}, cfg)
+
+	got := svc.parseSettings(map[string]string{SettingKeyAPIKeyACLTrustForwardedIP: "false"})
+
+	require.False(t, got.APIKeyACLTrustForwardedIP)
+}
+
+func TestSettingService_ParseSettings_ForwardedClientIPHeaders(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.SetForwardedClientIPSettings(true, []string{"X-Config-IP"})
+	svc := NewSettingService(&settingUpdateRepoStub{}, cfg)
+
+	t.Run("stored value is normalized", func(t *testing.T) {
+		got := svc.parseSettings(map[string]string{
+			SettingKeyForwardedClientIPHeaders: `[" x-cdn-ip ","X-CDN-IP","true-client-ip"]`,
+		})
+		require.Equal(t, []string{"X-Cdn-Ip", "True-Client-Ip"}, got.ForwardedClientIPHeaders)
+	})
+
+	t.Run("missing value falls back to config", func(t *testing.T) {
+		got := svc.parseSettings(map[string]string{})
+		require.Equal(t, []string{"X-Config-IP"}, got.ForwardedClientIPHeaders)
+	})
+
+	t.Run("malformed value disables forwarded trust", func(t *testing.T) {
+		got := svc.parseSettings(map[string]string{
+			SettingKeyAPIKeyACLTrustForwardedIP: "true",
+			SettingKeyForwardedClientIPHeaders:  `{"not":"an array"}`,
+		})
+		require.False(t, got.APIKeyACLTrustForwardedIP)
+		require.Empty(t, got.ForwardedClientIPHeaders)
+	})
+}
+
+func TestSettingService_LoadForwardedClientIPSettingsMigration(t *testing.T) {
+	tests := []struct {
+		name                   string
+		values                 map[string]string
+		trustedProxiesSet      bool
+		configDefault          bool
+		wantEnabled            bool
+		wantForwardedIPUpdate  string
+		wantMigrationMarkerSet bool
+	}{
+		{
+			name:                   "missing setting follows configured default",
+			values:                 map[string]string{},
+			configDefault:          true,
+			wantEnabled:            true,
+			wantMigrationMarkerSet: true,
+		},
+		{
+			name:                   "legacy false without proxy config migrates to compatibility",
+			values:                 map[string]string{SettingKeyAPIKeyACLTrustForwardedIP: "false"},
+			wantEnabled:            true,
+			wantForwardedIPUpdate:  "true",
+			wantMigrationMarkerSet: true,
+		},
+		{
+			name:                   "legacy false with explicit proxy config stays secure",
+			values:                 map[string]string{SettingKeyAPIKeyACLTrustForwardedIP: "false"},
+			trustedProxiesSet:      true,
+			wantEnabled:            false,
+			wantMigrationMarkerSet: true,
+		},
+		{
+			name: "completed migration preserves later false choice",
+			values: map[string]string{
+				SettingKeyAPIKeyACLTrustForwardedIP: "false",
+				settingKeyForwardedClientIPModeV2:   "true",
+			},
+			wantEnabled: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := &forwardedIPMigrationRepoStub{values: test.values}
+			cfg := &config.Config{Server: config.ServerConfig{TrustedProxiesConfigured: test.trustedProxiesSet}}
+			cfg.Security.TrustForwardedIPForAPIKeyACL = test.configDefault
+			svc := NewSettingService(repo, cfg)
+
+			require.NoError(t, svc.LoadForwardedClientIPSettings(context.Background()))
+			require.Equal(t, test.wantEnabled, cfg.TrustForwardedIPForAPIKeyACL())
+			require.Equal(t, test.wantForwardedIPUpdate, repo.updates[SettingKeyAPIKeyACLTrustForwardedIP])
+			require.JSONEq(t, `[]`, repo.updates[SettingKeyForwardedClientIPHeaders])
+			if test.wantMigrationMarkerSet {
+				require.Equal(t, "true", repo.updates[settingKeyForwardedClientIPModeV2])
+			} else {
+				require.NotContains(t, repo.updates, settingKeyForwardedClientIPModeV2)
+			}
+		})
+	}
+}
+
+func TestSettingService_LoadForwardedClientIPSettingsLoadsHeaders(t *testing.T) {
+	repo := &forwardedIPMigrationRepoStub{values: map[string]string{
+		SettingKeyAPIKeyACLTrustForwardedIP: "true",
+		SettingKeyForwardedClientIPHeaders:  `[" x-cdn-ip ","true-client-ip"]`,
+		settingKeyForwardedClientIPModeV2:   "true",
+	}}
+	cfg := &config.Config{}
+	svc := NewSettingService(repo, cfg)
+
+	require.NoError(t, svc.LoadForwardedClientIPSettings(context.Background()))
+	runtimeSettings := cfg.ForwardedClientIPSettings()
+	require.True(t, runtimeSettings.TrustForwardedIP)
+	require.Equal(t, []string{"X-Cdn-Ip", "True-Client-Ip"}, runtimeSettings.Headers)
+	require.Nil(t, repo.updates)
+}
+
+func TestSettingService_LoadForwardedClientIPSettingsMalformedHeadersDisablesCustomTrust(t *testing.T) {
+	repo := &forwardedIPMigrationRepoStub{values: map[string]string{
+		SettingKeyAPIKeyACLTrustForwardedIP: "true",
+		SettingKeyForwardedClientIPHeaders:  `["X Invalid"]`,
+	}}
+	cfg := &config.Config{}
+	svc := NewSettingService(repo, cfg)
+
+	err := svc.LoadForwardedClientIPSettings(context.Background())
+
+	require.ErrorContains(t, err, "load forwarded client ip headers")
+	runtimeSettings := cfg.ForwardedClientIPSettings()
+	require.False(t, runtimeSettings.TrustForwardedIP)
+	require.Empty(t, runtimeSettings.Headers)
+	require.Equal(t, "true", repo.updates[settingKeyForwardedClientIPModeV2])
+	require.NotContains(t, repo.updates, SettingKeyAPIKeyACLTrustForwardedIP)
+}
+
+func TestSettingService_LoadForwardedClientIPSettingsBackfillsConfigHeaders(t *testing.T) {
+	repo := &forwardedIPMigrationRepoStub{values: map[string]string{
+		settingKeyForwardedClientIPModeV2: "true",
+	}}
+	cfg := &config.Config{}
+	cfg.SetForwardedClientIPSettings(false, []string{"X-Config-IP"})
+	svc := NewSettingService(repo, cfg)
+
+	require.NoError(t, svc.LoadForwardedClientIPSettings(context.Background()))
+	require.JSONEq(t, `["X-Config-IP"]`, repo.updates[SettingKeyForwardedClientIPHeaders])
+	require.Equal(t, []string{"X-Config-IP"}, cfg.ForwardedClientIPSettings().Headers)
+}
+
+func TestSettingService_LoadForwardedClientIPSettingsReadFailureFailsClosed(t *testing.T) {
+	repo := &forwardedIPMigrationRepoStub{
+		getMultipleErr: errors.New("database unavailable"),
+	}
+	cfg := &config.Config{}
+	cfg.SetTrustForwardedIPForAPIKeyACL(true)
+	svc := NewSettingService(repo, cfg)
+
+	err := svc.LoadForwardedClientIPSettings(context.Background())
+
+	require.ErrorContains(t, err, "get forwarded client ip settings")
+	runtimeSettings := cfg.ForwardedClientIPSettings()
+	require.False(t, runtimeSettings.TrustForwardedIP)
+	require.Empty(t, runtimeSettings.Headers)
+}
+
+func TestSettingService_LoadForwardedClientIPSettingsWriteFailureUsesComputedMode(t *testing.T) {
+	tests := []struct {
+		name              string
+		trustedProxiesSet bool
+		wantEnabled       bool
+	}{
+		{name: "compatibility migration remains effective", wantEnabled: true},
+		{name: "explicit proxy policy remains secure", trustedProxiesSet: true, wantEnabled: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := &forwardedIPMigrationRepoStub{
+				values:         map[string]string{SettingKeyAPIKeyACLTrustForwardedIP: "false"},
+				setMultipleErr: errors.New("database unavailable"),
+			}
+			cfg := &config.Config{Server: config.ServerConfig{TrustedProxiesConfigured: test.trustedProxiesSet}}
+			svc := NewSettingService(repo, cfg)
+
+			err := svc.LoadForwardedClientIPSettings(context.Background())
+
+			require.ErrorContains(t, err, "migrate forwarded client ip setting")
+			require.Equal(t, test.wantEnabled, cfg.TrustForwardedIPForAPIKeyACL())
+		})
+	}
 }
 
 func TestSettingService_GetAntigravityUserAgentVersion_Precedence(t *testing.T) {

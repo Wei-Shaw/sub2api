@@ -37,6 +37,7 @@ type SystemSettings struct {
 	TotpEnabled                      bool                     `json:"totp_enabled"`                   // TOTP 双因素认证
 	TotpEncryptionKeyConfigured      bool                     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
 	SessionBindingEnabled            bool                     `json:"session_binding_enabled"`        // 会话 IP/UA 绑定
+	StepUpEnabled                    bool                     `json:"step_up_enabled"`                // 敏感操作 step-up 2FA
 	AuditLogRetentionDays            int                      `json:"audit_log_retention_days"`       // 审计日志保留天数
 	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                   `json:"login_agreement_mode"`
@@ -51,10 +52,11 @@ type SystemSettings struct {
 	SMTPFromName           string `json:"smtp_from_name"`
 	SMTPUseTLS             bool   `json:"smtp_use_tls"`
 
-	TurnstileEnabled             bool   `json:"turnstile_enabled"`
-	TurnstileSiteKey             string `json:"turnstile_site_key"`
-	TurnstileSecretKeyConfigured bool   `json:"turnstile_secret_key_configured"`
-	APIKeyACLTrustForwardedIP    bool   `json:"api_key_acl_trust_forwarded_ip"`
+	TurnstileEnabled             bool     `json:"turnstile_enabled"`
+	TurnstileSiteKey             string   `json:"turnstile_site_key"`
+	TurnstileSecretKeyConfigured bool     `json:"turnstile_secret_key_configured"`
+	APIKeyACLTrustForwardedIP    bool     `json:"api_key_acl_trust_forwarded_ip"`
+	ForwardedClientIPHeaders     []string `json:"forwarded_client_ip_headers"`
 
 	LinuxDoConnectEnabled                bool   `json:"linuxdo_connect_enabled"`
 	LinuxDoConnectClientID               string `json:"linuxdo_connect_client_id"`
@@ -266,6 +268,8 @@ type SystemSettings struct {
 
 	// Force Alipay mobile clients to use QR code payment instead of mobile redirect
 	PaymentAlipayForceQRCode bool `json:"payment_alipay_force_qrcode"`
+	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
+	PaymentAlipayMobilePrecreateDeepLink bool `json:"payment_alipay_mobile_precreate_deep_link"`
 
 	// 余额、订阅到期与账号限额通知
 	BalanceLowNotifyEnabled         bool               `json:"balance_low_notify_enabled"`

@@ -38,11 +38,12 @@ type noAccountErrorClassification struct {
 // The classifier intentionally does not consume the original error: the
 // selection layer never tells us *why* the pool came up empty (rate-limited
 // vs. unsupported model are both wrapped as ErrNoAvailableAccounts). Instead
-// we re-check pool composition through DiagnoseModelAvailabilityForPlatform,
-// which only inspects model_mapping configuration and ignores transient
-// state. That guarantees a 404 is only returned when no operator action
-// short of editing the account's model_mapping could make this request
-// succeed.
+// we re-check pool composition through DiagnoseModelAvailabilityForPlatform.
+// Its dedicated database query considers only persistent eligibility
+// (active status + schedulable setting) and model_mapping, bypassing scheduler
+// snapshots and transient filters. That guarantees a 404 is only returned
+// when persistent account/group/model configuration must change before the
+// request can succeed.
 //
 // routingModel is the model name that account selection actually compared
 // against (i.e. after group-level dispatch mapping). displayModel is the
@@ -115,13 +116,17 @@ func classifyOpenAICompatibleNoAccountErrorFromGin(
 	routingModel string,
 	displayModel string,
 ) noAccountErrorClassification {
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
 	return classifyNoAccountErrorFromGin(
 		c,
 		diag,
 		apiKey,
 		routingModel,
 		displayModel,
-		openAICompatibleRequestPlatform(apiKey),
+		openAICompatibleRequestPlatform(ctx, apiKey),
 	)
 }
 
