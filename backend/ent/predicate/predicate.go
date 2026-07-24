@@ -27,9 +27,6 @@ type AuthIdentity func(*sql.Selector)
 // AuthIdentityChannel is the predicate function for authidentitychannel builders.
 type AuthIdentityChannel func(*sql.Selector)
 
-// BatchImageEvent is the predicate function for batchimageevent builders.
-type BatchImageEvent func(*sql.Selector)
-
 // BatchImageItem is the predicate function for batchimageitem builders.
 type BatchImageItem func(*sql.Selector)
 
@@ -38,9 +35,6 @@ type BatchImageJob func(*sql.Selector)
 
 // ChannelMonitor is the predicate function for channelmonitor builders.
 type ChannelMonitor func(*sql.Selector)
-
-// ChannelMonitorDailyRollup is the predicate function for channelmonitordailyrollup builders.
-type ChannelMonitorDailyRollup func(*sql.Selector)
 
 // ChannelMonitorHistory is the predicate function for channelmonitorhistory builders.
 type ChannelMonitorHistory func(*sql.Selector)

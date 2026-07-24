@@ -474,71 +474,29 @@ func TestStartOfDay(t *testing.T) {
 	}
 }
 
-func TestDecryptConfig_PlaintextAndLegacyCompat(t *testing.T) {
+func TestDecryptConfig(t *testing.T) {
 	t.Parallel()
 
-	key := make([]byte, AES256KeySize)
-	for i := range key {
-		key[i] = byte(i + 1)
-	}
-	wrongKey := make([]byte, AES256KeySize)
-	for i := range wrongKey {
-		wrongKey[i] = byte(0xFF - i)
-	}
-
 	plaintextJSON := `{"appId":"app-123","secret":"sec-xyz"}`
-
-	legacyEncrypted, err := Encrypt(plaintextJSON, key)
-	if err != nil {
-		t.Fatalf("seed Encrypt: %v", err)
-	}
 
 	tests := []struct {
 		name   string
 		stored string
-		key    []byte
 		want   map[string]string
 	}{
 		{
 			name:   "empty stored returns nil map",
 			stored: "",
-			key:    key,
 			want:   nil,
 		},
 		{
 			name:   "plaintext JSON parses directly",
 			stored: plaintextJSON,
-			key:    nil,
 			want:   map[string]string{"appId": "app-123", "secret": "sec-xyz"},
-		},
-		{
-			name:   "plaintext JSON works even with key present",
-			stored: plaintextJSON,
-			key:    key,
-			want:   map[string]string{"appId": "app-123", "secret": "sec-xyz"},
-		},
-		{
-			name:   "legacy ciphertext with correct key decrypts",
-			stored: legacyEncrypted,
-			key:    key,
-			want:   map[string]string{"appId": "app-123", "secret": "sec-xyz"},
-		},
-		{
-			name:   "legacy ciphertext with no key treated as empty",
-			stored: legacyEncrypted,
-			key:    nil,
-			want:   nil,
-		},
-		{
-			name:   "legacy ciphertext with wrong key treated as empty",
-			stored: legacyEncrypted,
-			key:    wrongKey,
-			want:   nil,
 		},
 		{
 			name:   "garbage data treated as empty",
 			stored: "not-json-and-not-ciphertext",
-			key:    key,
 			want:   nil,
 		},
 	}
@@ -546,7 +504,7 @@ func TestDecryptConfig_PlaintextAndLegacyCompat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			lb := NewDefaultLoadBalancer(nil, tt.key)
+			lb := NewDefaultLoadBalancer(nil, nil)
 			got, err := lb.decryptConfig(tt.stored)
 			if err != nil {
 				t.Fatalf("decryptConfig unexpected error: %v", err)

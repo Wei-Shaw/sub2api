@@ -41,15 +41,14 @@ func (p webhookProviderTestDouble) Refund(context.Context, payment.RefundRequest
 	panic("unexpected call")
 }
 
+// encryptWebhookProviderConfig stores a provider config as plaintext JSON.
+// (Legacy AES ciphertext storage was removed; provider configs are now plaintext.)
 func encryptWebhookProviderConfig(t *testing.T, config map[string]string) string {
 	t.Helper()
 
 	data, err := json.Marshal(config)
 	require.NoError(t, err)
-
-	encrypted, err := payment.Encrypt(string(data), []byte(webhookProviderTestEncryptionKey))
-	require.NoError(t, err)
-	return encrypted
+	return string(data)
 }
 
 func newWebhookProviderTestLoadBalancer(client *dbent.Client) payment.LoadBalancer {

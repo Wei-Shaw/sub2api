@@ -489,15 +489,9 @@ func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newCon
 	return existing, nil
 }
 
-// decryptConfig parses a stored provider config.
-// New records are plaintext JSON; legacy records are AES-256-GCM ciphertext
-// ("iv:authTag:ciphertext"). Values that cannot be parsed as either — including
-// legacy ciphertext with no/invalid TOTP_ENCRYPTION_KEY — are treated as empty,
-// letting the admin re-enter the config via the UI to complete the migration.
-//
-// TODO(deprecated-legacy-ciphertext): The AES fallback branch is a transitional
-// shim for pre-plaintext records. Remove it (and the encryptionKey field) after
-// a few releases once all live deployments have re-saved their provider configs.
+// decryptConfig parses a stored provider config. Records are plaintext JSON.
+// Values that cannot be parsed are treated as empty, letting the admin re-enter
+// the config via the UI.
 func (s *PaymentConfigService) decryptConfig(stored string) (map[string]string, error) {
 	if stored == "" {
 		return nil, nil
@@ -505,15 +499,6 @@ func (s *PaymentConfigService) decryptConfig(stored string) (map[string]string, 
 	var cfg map[string]string
 	if err := json.Unmarshal([]byte(stored), &cfg); err == nil {
 		return cfg, nil
-	}
-	// Deprecated: legacy AES-256-GCM ciphertext fallback — scheduled for removal.
-	if len(s.encryptionKey) == payment.AES256KeySize {
-		//nolint:staticcheck // SA1019: intentional legacy fallback, scheduled for removal
-		if plaintext, err := payment.Decrypt(stored, s.encryptionKey); err == nil {
-			if err := json.Unmarshal([]byte(plaintext), &cfg); err == nil {
-				return cfg, nil
-			}
-		}
 	}
 	slog.Warn("payment provider config unreadable, treating as empty for re-entry",
 		"stored_len", len(stored))

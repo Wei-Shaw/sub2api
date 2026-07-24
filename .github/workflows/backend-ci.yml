@@ -30,6 +30,9 @@ jobs:
       - name: Verify Go version
         run: |
           go version | grep -q 'go1.26.5'
+      - name: Build all packages
+        working-directory: backend
+        run: go build ./...
       - name: Unit tests
         working-directory: backend
         run: make test-unit

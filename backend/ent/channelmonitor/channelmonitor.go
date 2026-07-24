@@ -55,8 +55,6 @@ const (
 	FieldBodyOverride = "body_override"
 	// EdgeHistory holds the string denoting the history edge name in mutations.
 	EdgeHistory = "history"
-	// EdgeDailyRollups holds the string denoting the daily_rollups edge name in mutations.
-	EdgeDailyRollups = "daily_rollups"
 	// EdgeRequestTemplate holds the string denoting the request_template edge name in mutations.
 	EdgeRequestTemplate = "request_template"
 	// Table holds the table name of the channelmonitor in the database.
@@ -68,13 +66,6 @@ const (
 	HistoryInverseTable = "channel_monitor_histories"
 	// HistoryColumn is the table column denoting the history relation/edge.
 	HistoryColumn = "monitor_id"
-	// DailyRollupsTable is the table that holds the daily_rollups relation/edge.
-	DailyRollupsTable = "channel_monitor_daily_rollups"
-	// DailyRollupsInverseTable is the table name for the ChannelMonitorDailyRollup entity.
-	// It exists in this package in order to avoid circular dependency with the "channelmonitordailyrollup" package.
-	DailyRollupsInverseTable = "channel_monitor_daily_rollups"
-	// DailyRollupsColumn is the table column denoting the daily_rollups relation/edge.
-	DailyRollupsColumn = "monitor_id"
 	// RequestTemplateTable is the table that holds the request_template relation/edge.
 	RequestTemplateTable = "channel_monitors"
 	// RequestTemplateInverseTable is the table name for the ChannelMonitorRequestTemplate entity.
@@ -286,20 +277,6 @@ func ByHistory(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
-// ByDailyRollupsCount orders the results by daily_rollups count.
-func ByDailyRollupsCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newDailyRollupsStep(), opts...)
-	}
-}
-
-// ByDailyRollups orders the results by daily_rollups terms.
-func ByDailyRollups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newDailyRollupsStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
 // ByRequestTemplateField orders the results by request_template field.
 func ByRequestTemplateField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -311,13 +288,6 @@ func newHistoryStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(HistoryInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, HistoryTable, HistoryColumn),
-	)
-}
-func newDailyRollupsStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(DailyRollupsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, DailyRollupsTable, DailyRollupsColumn),
 	)
 }
 func newRequestTemplateStep() *sqlgraph.Step {

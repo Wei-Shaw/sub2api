@@ -22,11 +22,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
-	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
@@ -76,16 +74,12 @@ type Client struct {
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
 	AuthIdentityChannel *AuthIdentityChannelClient
-	// BatchImageEvent is the client for interacting with the BatchImageEvent builders.
-	BatchImageEvent *BatchImageEventClient
 	// BatchImageItem is the client for interacting with the BatchImageItem builders.
 	BatchImageItem *BatchImageItemClient
 	// BatchImageJob is the client for interacting with the BatchImageJob builders.
 	BatchImageJob *BatchImageJobClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
-	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
-	ChannelMonitorDailyRollup *ChannelMonitorDailyRollupClient
 	// ChannelMonitorHistory is the client for interacting with the ChannelMonitorHistory builders.
 	ChannelMonitorHistory *ChannelMonitorHistoryClient
 	// ChannelMonitorRequestTemplate is the client for interacting with the ChannelMonitorRequestTemplate builders.
@@ -156,11 +150,9 @@ func (c *Client) init() {
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
 	c.AuthIdentity = NewAuthIdentityClient(c.config)
 	c.AuthIdentityChannel = NewAuthIdentityChannelClient(c.config)
-	c.BatchImageEvent = NewBatchImageEventClient(c.config)
 	c.BatchImageItem = NewBatchImageItemClient(c.config)
 	c.BatchImageJob = NewBatchImageJobClient(c.config)
 	c.ChannelMonitor = NewChannelMonitorClient(c.config)
-	c.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(c.config)
 	c.ChannelMonitorHistory = NewChannelMonitorHistoryClient(c.config)
 	c.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(c.config)
 	c.ErrorPassthroughRule = NewErrorPassthroughRuleClient(c.config)
@@ -286,11 +278,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
-		BatchImageEvent:               NewBatchImageEventClient(cfg),
 		BatchImageItem:                NewBatchImageItemClient(cfg),
 		BatchImageJob:                 NewBatchImageJobClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
-		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
 		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
 		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
@@ -343,11 +333,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
-		BatchImageEvent:               NewBatchImageEventClient(cfg),
 		BatchImageItem:                NewBatchImageItemClient(cfg),
 		BatchImageJob:                 NewBatchImageJobClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
-		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
 		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
 		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
@@ -404,9 +392,8 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
-		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
-		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
+		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageItem, c.BatchImageJob,
+		c.ChannelMonitor, c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
 		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
 		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
@@ -424,9 +411,8 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
-		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
-		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
+		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageItem, c.BatchImageJob,
+		c.ChannelMonitor, c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
 		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
 		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
@@ -456,16 +442,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AuthIdentity.mutate(ctx, m)
 	case *AuthIdentityChannelMutation:
 		return c.AuthIdentityChannel.mutate(ctx, m)
-	case *BatchImageEventMutation:
-		return c.BatchImageEvent.mutate(ctx, m)
 	case *BatchImageItemMutation:
 		return c.BatchImageItem.mutate(ctx, m)
 	case *BatchImageJobMutation:
 		return c.BatchImageJob.mutate(ctx, m)
 	case *ChannelMonitorMutation:
 		return c.ChannelMonitor.mutate(ctx, m)
-	case *ChannelMonitorDailyRollupMutation:
-		return c.ChannelMonitorDailyRollup.mutate(ctx, m)
 	case *ChannelMonitorHistoryMutation:
 		return c.ChannelMonitorHistory.mutate(ctx, m)
 	case *ChannelMonitorRequestTemplateMutation:
@@ -1697,139 +1679,6 @@ func (c *AuthIdentityChannelClient) mutate(ctx context.Context, m *AuthIdentityC
 	}
 }
 
-// BatchImageEventClient is a client for the BatchImageEvent schema.
-type BatchImageEventClient struct {
-	config
-}
-
-// NewBatchImageEventClient returns a client for the BatchImageEvent from the given config.
-func NewBatchImageEventClient(c config) *BatchImageEventClient {
-	return &BatchImageEventClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `batchimageevent.Hooks(f(g(h())))`.
-func (c *BatchImageEventClient) Use(hooks ...Hook) {
-	c.hooks.BatchImageEvent = append(c.hooks.BatchImageEvent, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `batchimageevent.Intercept(f(g(h())))`.
-func (c *BatchImageEventClient) Intercept(interceptors ...Interceptor) {
-	c.inters.BatchImageEvent = append(c.inters.BatchImageEvent, interceptors...)
-}
-
-// Create returns a builder for creating a BatchImageEvent entity.
-func (c *BatchImageEventClient) Create() *BatchImageEventCreate {
-	mutation := newBatchImageEventMutation(c.config, OpCreate)
-	return &BatchImageEventCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of BatchImageEvent entities.
-func (c *BatchImageEventClient) CreateBulk(builders ...*BatchImageEventCreate) *BatchImageEventCreateBulk {
-	return &BatchImageEventCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *BatchImageEventClient) MapCreateBulk(slice any, setFunc func(*BatchImageEventCreate, int)) *BatchImageEventCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &BatchImageEventCreateBulk{err: fmt.Errorf("calling to BatchImageEventClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*BatchImageEventCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &BatchImageEventCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for BatchImageEvent.
-func (c *BatchImageEventClient) Update() *BatchImageEventUpdate {
-	mutation := newBatchImageEventMutation(c.config, OpUpdate)
-	return &BatchImageEventUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *BatchImageEventClient) UpdateOne(_m *BatchImageEvent) *BatchImageEventUpdateOne {
-	mutation := newBatchImageEventMutation(c.config, OpUpdateOne, withBatchImageEvent(_m))
-	return &BatchImageEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *BatchImageEventClient) UpdateOneID(id int64) *BatchImageEventUpdateOne {
-	mutation := newBatchImageEventMutation(c.config, OpUpdateOne, withBatchImageEventID(id))
-	return &BatchImageEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for BatchImageEvent.
-func (c *BatchImageEventClient) Delete() *BatchImageEventDelete {
-	mutation := newBatchImageEventMutation(c.config, OpDelete)
-	return &BatchImageEventDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *BatchImageEventClient) DeleteOne(_m *BatchImageEvent) *BatchImageEventDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *BatchImageEventClient) DeleteOneID(id int64) *BatchImageEventDeleteOne {
-	builder := c.Delete().Where(batchimageevent.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &BatchImageEventDeleteOne{builder}
-}
-
-// Query returns a query builder for BatchImageEvent.
-func (c *BatchImageEventClient) Query() *BatchImageEventQuery {
-	return &BatchImageEventQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeBatchImageEvent},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a BatchImageEvent entity by its id.
-func (c *BatchImageEventClient) Get(ctx context.Context, id int64) (*BatchImageEvent, error) {
-	return c.Query().Where(batchimageevent.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *BatchImageEventClient) GetX(ctx context.Context, id int64) *BatchImageEvent {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *BatchImageEventClient) Hooks() []Hook {
-	return c.hooks.BatchImageEvent
-}
-
-// Interceptors returns the client interceptors.
-func (c *BatchImageEventClient) Interceptors() []Interceptor {
-	return c.inters.BatchImageEvent
-}
-
-func (c *BatchImageEventClient) mutate(ctx context.Context, m *BatchImageEventMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&BatchImageEventCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&BatchImageEventUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&BatchImageEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&BatchImageEventDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown BatchImageEvent mutation op: %q", m.Op())
-	}
-}
-
 // BatchImageItemClient is a client for the BatchImageItem schema.
 type BatchImageItemClient struct {
 	config
@@ -2220,22 +2069,6 @@ func (c *ChannelMonitorClient) QueryHistory(_m *ChannelMonitor) *ChannelMonitorH
 	return query
 }
 
-// QueryDailyRollups queries the daily_rollups edge of a ChannelMonitor.
-func (c *ChannelMonitorClient) QueryDailyRollups(_m *ChannelMonitor) *ChannelMonitorDailyRollupQuery {
-	query := (&ChannelMonitorDailyRollupClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(channelmonitor.Table, channelmonitor.FieldID, id),
-			sqlgraph.To(channelmonitordailyrollup.Table, channelmonitordailyrollup.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, channelmonitor.DailyRollupsTable, channelmonitor.DailyRollupsColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
 // QueryRequestTemplate queries the request_template edge of a ChannelMonitor.
 func (c *ChannelMonitorClient) QueryRequestTemplate(_m *ChannelMonitor) *ChannelMonitorRequestTemplateQuery {
 	query := (&ChannelMonitorRequestTemplateClient{config: c.config}).Query()
@@ -2274,155 +2107,6 @@ func (c *ChannelMonitorClient) mutate(ctx context.Context, m *ChannelMonitorMuta
 		return (&ChannelMonitorDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ChannelMonitor mutation op: %q", m.Op())
-	}
-}
-
-// ChannelMonitorDailyRollupClient is a client for the ChannelMonitorDailyRollup schema.
-type ChannelMonitorDailyRollupClient struct {
-	config
-}
-
-// NewChannelMonitorDailyRollupClient returns a client for the ChannelMonitorDailyRollup from the given config.
-func NewChannelMonitorDailyRollupClient(c config) *ChannelMonitorDailyRollupClient {
-	return &ChannelMonitorDailyRollupClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `channelmonitordailyrollup.Hooks(f(g(h())))`.
-func (c *ChannelMonitorDailyRollupClient) Use(hooks ...Hook) {
-	c.hooks.ChannelMonitorDailyRollup = append(c.hooks.ChannelMonitorDailyRollup, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `channelmonitordailyrollup.Intercept(f(g(h())))`.
-func (c *ChannelMonitorDailyRollupClient) Intercept(interceptors ...Interceptor) {
-	c.inters.ChannelMonitorDailyRollup = append(c.inters.ChannelMonitorDailyRollup, interceptors...)
-}
-
-// Create returns a builder for creating a ChannelMonitorDailyRollup entity.
-func (c *ChannelMonitorDailyRollupClient) Create() *ChannelMonitorDailyRollupCreate {
-	mutation := newChannelMonitorDailyRollupMutation(c.config, OpCreate)
-	return &ChannelMonitorDailyRollupCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of ChannelMonitorDailyRollup entities.
-func (c *ChannelMonitorDailyRollupClient) CreateBulk(builders ...*ChannelMonitorDailyRollupCreate) *ChannelMonitorDailyRollupCreateBulk {
-	return &ChannelMonitorDailyRollupCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *ChannelMonitorDailyRollupClient) MapCreateBulk(slice any, setFunc func(*ChannelMonitorDailyRollupCreate, int)) *ChannelMonitorDailyRollupCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &ChannelMonitorDailyRollupCreateBulk{err: fmt.Errorf("calling to ChannelMonitorDailyRollupClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*ChannelMonitorDailyRollupCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &ChannelMonitorDailyRollupCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for ChannelMonitorDailyRollup.
-func (c *ChannelMonitorDailyRollupClient) Update() *ChannelMonitorDailyRollupUpdate {
-	mutation := newChannelMonitorDailyRollupMutation(c.config, OpUpdate)
-	return &ChannelMonitorDailyRollupUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *ChannelMonitorDailyRollupClient) UpdateOne(_m *ChannelMonitorDailyRollup) *ChannelMonitorDailyRollupUpdateOne {
-	mutation := newChannelMonitorDailyRollupMutation(c.config, OpUpdateOne, withChannelMonitorDailyRollup(_m))
-	return &ChannelMonitorDailyRollupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *ChannelMonitorDailyRollupClient) UpdateOneID(id int64) *ChannelMonitorDailyRollupUpdateOne {
-	mutation := newChannelMonitorDailyRollupMutation(c.config, OpUpdateOne, withChannelMonitorDailyRollupID(id))
-	return &ChannelMonitorDailyRollupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for ChannelMonitorDailyRollup.
-func (c *ChannelMonitorDailyRollupClient) Delete() *ChannelMonitorDailyRollupDelete {
-	mutation := newChannelMonitorDailyRollupMutation(c.config, OpDelete)
-	return &ChannelMonitorDailyRollupDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *ChannelMonitorDailyRollupClient) DeleteOne(_m *ChannelMonitorDailyRollup) *ChannelMonitorDailyRollupDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *ChannelMonitorDailyRollupClient) DeleteOneID(id int64) *ChannelMonitorDailyRollupDeleteOne {
-	builder := c.Delete().Where(channelmonitordailyrollup.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &ChannelMonitorDailyRollupDeleteOne{builder}
-}
-
-// Query returns a query builder for ChannelMonitorDailyRollup.
-func (c *ChannelMonitorDailyRollupClient) Query() *ChannelMonitorDailyRollupQuery {
-	return &ChannelMonitorDailyRollupQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeChannelMonitorDailyRollup},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a ChannelMonitorDailyRollup entity by its id.
-func (c *ChannelMonitorDailyRollupClient) Get(ctx context.Context, id int64) (*ChannelMonitorDailyRollup, error) {
-	return c.Query().Where(channelmonitordailyrollup.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *ChannelMonitorDailyRollupClient) GetX(ctx context.Context, id int64) *ChannelMonitorDailyRollup {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// QueryMonitor queries the monitor edge of a ChannelMonitorDailyRollup.
-func (c *ChannelMonitorDailyRollupClient) QueryMonitor(_m *ChannelMonitorDailyRollup) *ChannelMonitorQuery {
-	query := (&ChannelMonitorClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(channelmonitordailyrollup.Table, channelmonitordailyrollup.FieldID, id),
-			sqlgraph.To(channelmonitor.Table, channelmonitor.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, channelmonitordailyrollup.MonitorTable, channelmonitordailyrollup.MonitorColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// Hooks returns the client hooks.
-func (c *ChannelMonitorDailyRollupClient) Hooks() []Hook {
-	return c.hooks.ChannelMonitorDailyRollup
-}
-
-// Interceptors returns the client interceptors.
-func (c *ChannelMonitorDailyRollupClient) Interceptors() []Interceptor {
-	return c.inters.ChannelMonitorDailyRollup
-}
-
-func (c *ChannelMonitorDailyRollupClient) mutate(ctx context.Context, m *ChannelMonitorDailyRollupMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&ChannelMonitorDailyRollupCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&ChannelMonitorDailyRollupUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&ChannelMonitorDailyRollupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&ChannelMonitorDailyRollupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown ChannelMonitorDailyRollup mutation op: %q", m.Op())
 	}
 }
 
@@ -6667,25 +6351,25 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
-		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
-		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
-		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
+		AuthIdentityChannel, BatchImageItem, BatchImageJob, ChannelMonitor,
+		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
+		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
+		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
+		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
+		UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
-		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
-		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
-		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Interceptor
+		AuthIdentityChannel, BatchImageItem, BatchImageJob, ChannelMonitor,
+		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
+		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
+		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
+		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
+		UserSubscription []ent.Interceptor
 	}
 )
 

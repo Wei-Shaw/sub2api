@@ -435,41 +435,6 @@ var (
 			},
 		},
 	}
-	// BatchImageEventsColumns holds the columns for the "batch_image_events" table.
-	BatchImageEventsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeInt64, Increment: true},
-		{Name: "job_id", Type: field.TypeString, Size: 64},
-		{Name: "event_type", Type: field.TypeString, Size: 64},
-		{Name: "payload", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
-		{Name: "event_hash", Type: field.TypeString, Nullable: true, Size: 128},
-		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
-	}
-	// BatchImageEventsTable holds the schema information for the "batch_image_events" table.
-	BatchImageEventsTable = &schema.Table{
-		Name:       "batch_image_events",
-		Columns:    BatchImageEventsColumns,
-		PrimaryKey: []*schema.Column{BatchImageEventsColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "batchimageevent_job_id_created_at",
-				Unique:  false,
-				Columns: []*schema.Column{BatchImageEventsColumns[1], BatchImageEventsColumns[5]},
-			},
-			{
-				Name:    "batchimageevent_event_type",
-				Unique:  false,
-				Columns: []*schema.Column{BatchImageEventsColumns[2]},
-			},
-			{
-				Name:    "batchimageevent_job_id_event_hash",
-				Unique:  true,
-				Columns: []*schema.Column{BatchImageEventsColumns[1], BatchImageEventsColumns[4]},
-				Annotation: &entsql.IndexAnnotation{
-					Where: "event_hash IS NOT NULL AND event_hash <> ''",
-				},
-			},
-		},
-	}
 	// BatchImageItemsColumns holds the columns for the "batch_image_items" table.
 	BatchImageItemsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -678,50 +643,6 @@ var (
 				Name:    "channelmonitor_template_id",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorsColumns[19]},
-			},
-		},
-	}
-	// ChannelMonitorDailyRollupsColumns holds the columns for the "channel_monitor_daily_rollups" table.
-	ChannelMonitorDailyRollupsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeInt64, Increment: true},
-		{Name: "model", Type: field.TypeString, Size: 200},
-		{Name: "bucket_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
-		{Name: "total_checks", Type: field.TypeInt, Default: 0},
-		{Name: "ok_count", Type: field.TypeInt, Default: 0},
-		{Name: "operational_count", Type: field.TypeInt, Default: 0},
-		{Name: "degraded_count", Type: field.TypeInt, Default: 0},
-		{Name: "failed_count", Type: field.TypeInt, Default: 0},
-		{Name: "error_count", Type: field.TypeInt, Default: 0},
-		{Name: "sum_latency_ms", Type: field.TypeInt64, Default: 0},
-		{Name: "count_latency", Type: field.TypeInt, Default: 0},
-		{Name: "sum_ping_latency_ms", Type: field.TypeInt64, Default: 0},
-		{Name: "count_ping_latency", Type: field.TypeInt, Default: 0},
-		{Name: "computed_at", Type: field.TypeTime},
-		{Name: "monitor_id", Type: field.TypeInt64},
-	}
-	// ChannelMonitorDailyRollupsTable holds the schema information for the "channel_monitor_daily_rollups" table.
-	ChannelMonitorDailyRollupsTable = &schema.Table{
-		Name:       "channel_monitor_daily_rollups",
-		Columns:    ChannelMonitorDailyRollupsColumns,
-		PrimaryKey: []*schema.Column{ChannelMonitorDailyRollupsColumns[0]},
-		ForeignKeys: []*schema.ForeignKey{
-			{
-				Symbol:     "channel_monitor_daily_rollups_channel_monitors_daily_rollups",
-				Columns:    []*schema.Column{ChannelMonitorDailyRollupsColumns[14]},
-				RefColumns: []*schema.Column{ChannelMonitorsColumns[0]},
-				OnDelete:   schema.Cascade,
-			},
-		},
-		Indexes: []*schema.Index{
-			{
-				Name:    "channelmonitordailyrollup_monitor_id_model_bucket_date",
-				Unique:  true,
-				Columns: []*schema.Column{ChannelMonitorDailyRollupsColumns[14], ChannelMonitorDailyRollupsColumns[1], ChannelMonitorDailyRollupsColumns[2]},
-			},
-			{
-				Name:    "channelmonitordailyrollup_bucket_date",
-				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorDailyRollupsColumns[2]},
 			},
 		},
 	}
@@ -2007,11 +1928,9 @@ var (
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
-		BatchImageEventsTable,
 		BatchImageItemsTable,
 		BatchImageJobsTable,
 		ChannelMonitorsTable,
-		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
 		ErrorPassthroughRulesTable,
@@ -2073,9 +1992,6 @@ func init() {
 	AuthIdentityChannelsTable.Annotation = &entsql.Annotation{
 		Table: "auth_identity_channels",
 	}
-	BatchImageEventsTable.Annotation = &entsql.Annotation{
-		Table: "batch_image_events",
-	}
 	BatchImageItemsTable.Annotation = &entsql.Annotation{
 		Table: "batch_image_items",
 	}
@@ -2085,10 +2001,6 @@ func init() {
 	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitors",
-	}
-	ChannelMonitorDailyRollupsTable.ForeignKeys[0].RefTable = ChannelMonitorsTable
-	ChannelMonitorDailyRollupsTable.Annotation = &entsql.Annotation{
-		Table: "channel_monitor_daily_rollups",
 	}
 	ChannelMonitorHistoriesTable.ForeignKeys[0].RefTable = ChannelMonitorsTable
 	ChannelMonitorHistoriesTable.Annotation = &entsql.Annotation{

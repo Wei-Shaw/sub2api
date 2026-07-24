@@ -67,13 +67,11 @@ type ChannelMonitor struct {
 type ChannelMonitorEdges struct {
 	// History holds the value of the history edge.
 	History []*ChannelMonitorHistory `json:"history,omitempty"`
-	// DailyRollups holds the value of the daily_rollups edge.
-	DailyRollups []*ChannelMonitorDailyRollup `json:"daily_rollups,omitempty"`
 	// RequestTemplate holds the value of the request_template edge.
 	RequestTemplate *ChannelMonitorRequestTemplate `json:"request_template,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [2]bool
 }
 
 // HistoryOrErr returns the History value or an error if the edge
@@ -85,21 +83,12 @@ func (e ChannelMonitorEdges) HistoryOrErr() ([]*ChannelMonitorHistory, error) {
 	return nil, &NotLoadedError{edge: "history"}
 }
 
-// DailyRollupsOrErr returns the DailyRollups value or an error if the edge
-// was not loaded in eager-loading.
-func (e ChannelMonitorEdges) DailyRollupsOrErr() ([]*ChannelMonitorDailyRollup, error) {
-	if e.loadedTypes[1] {
-		return e.DailyRollups, nil
-	}
-	return nil, &NotLoadedError{edge: "daily_rollups"}
-}
-
 // RequestTemplateOrErr returns the RequestTemplate value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
 func (e ChannelMonitorEdges) RequestTemplateOrErr() (*ChannelMonitorRequestTemplate, error) {
 	if e.RequestTemplate != nil {
 		return e.RequestTemplate, nil
-	} else if e.loadedTypes[2] {
+	} else if e.loadedTypes[1] {
 		return nil, &NotFoundError{label: channelmonitorrequesttemplate.Label}
 	}
 	return nil, &NotLoadedError{edge: "request_template"}
@@ -279,11 +268,6 @@ func (_m *ChannelMonitor) Value(name string) (ent.Value, error) {
 // QueryHistory queries the "history" edge of the ChannelMonitor entity.
 func (_m *ChannelMonitor) QueryHistory() *ChannelMonitorHistoryQuery {
 	return NewChannelMonitorClient(_m.config).QueryHistory(_m)
-}
-
-// QueryDailyRollups queries the "daily_rollups" edge of the ChannelMonitor entity.
-func (_m *ChannelMonitor) QueryDailyRollups() *ChannelMonitorDailyRollupQuery {
-	return NewChannelMonitorClient(_m.config).QueryDailyRollups(_m)
 }
 
 // QueryRequestTemplate queries the "request_template" edge of the ChannelMonitor entity.

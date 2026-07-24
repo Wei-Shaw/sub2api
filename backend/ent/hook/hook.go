@@ -93,18 +93,6 @@ func (f AuthIdentityChannelFunc) Mutate(ctx context.Context, m ent.Mutation) (en
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuthIdentityChannelMutation", m)
 }
 
-// The BatchImageEventFunc type is an adapter to allow the use of ordinary
-// function as BatchImageEvent mutator.
-type BatchImageEventFunc func(context.Context, *ent.BatchImageEventMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f BatchImageEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.BatchImageEventMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BatchImageEventMutation", m)
-}
-
 // The BatchImageItemFunc type is an adapter to allow the use of ordinary
 // function as BatchImageItem mutator.
 type BatchImageItemFunc func(context.Context, *ent.BatchImageItemMutation) (ent.Value, error)
@@ -139,18 +127,6 @@ func (f ChannelMonitorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChannelMonitorMutation", m)
-}
-
-// The ChannelMonitorDailyRollupFunc type is an adapter to allow the use of ordinary
-// function as ChannelMonitorDailyRollup mutator.
-type ChannelMonitorDailyRollupFunc func(context.Context, *ent.ChannelMonitorDailyRollupMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f ChannelMonitorDailyRollupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.ChannelMonitorDailyRollupMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChannelMonitorDailyRollupMutation", m)
 }
 
 // The ChannelMonitorHistoryFunc type is an adapter to allow the use of ordinary
