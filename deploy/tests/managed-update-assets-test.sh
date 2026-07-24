@@ -85,6 +85,14 @@ grep -Fq 'latest reachable fork tag' "$RELEASE_SAFETY_TEST"
 grep -Fq 'GORELEASER_CURRENT_TAG: ${{ github.event.inputs.tag || github.ref_name }}' "$RELEASE_WORKFLOW"
 grep -Fq 'goreleaser-image-digest dist/artifacts.json "$GHCR_IMAGE"' "$RELEASE_WORKFLOW"
 grep -Fq 'release-safety.sh publish-release-with-latest \' "$RELEASE_WORKFLOW"
+if [[ $(grep -Fc 'gh release view "$RELEASE_TAG" --json tagName,isDraft,assets' "$RELEASE_WORKFLOW") -ne 2 ]]; then
+  echo "draft and published release verification must use the CLI path that can resolve draft releases" >&2
+  exit 1
+fi
+if grep -Fq 'releases/tags/${RELEASE_TAG}' "$RELEASE_WORKFLOW"; then
+  echo "draft releases must not be queried through the public release-by-tag endpoint" >&2
+  exit 1
+fi
 grep -Fq 'gh release edit "$release_tag" --draft=false --latest' "$RELEASE_SAFETY"
 grep -Fq 'trap rollback_latest_tags EXIT' "$RELEASE_SAFETY"
 if grep -Fq 'VERSION_MAJOR' "$RELEASE_WORKFLOW" || grep -Fq 'VERSION_MINOR' "$RELEASE_WORKFLOW"; then
