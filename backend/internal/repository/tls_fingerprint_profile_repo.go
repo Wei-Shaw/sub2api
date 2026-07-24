@@ -5,8 +5,8 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
-	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	porttlsfp "github.com/Wei-Shaw/sub2api/internal/port/tlsfingerprint"
 )
 
 type tlsFingerprintProfileRepository struct {
@@ -14,12 +14,12 @@ type tlsFingerprintProfileRepository struct {
 }
 
 // NewTLSFingerprintProfileRepository 创建 TLS 指纹模板仓库
-func NewTLSFingerprintProfileRepository(client *ent.Client) service.TLSFingerprintProfileRepository {
+func NewTLSFingerprintProfileRepository(client *ent.Client) porttlsfp.ProfileRepository {
 	return &tlsFingerprintProfileRepository{client: client}
 }
 
 // List 获取所有模板
-func (r *tlsFingerprintProfileRepository) List(ctx context.Context) ([]*model.TLSFingerprintProfile, error) {
+func (r *tlsFingerprintProfileRepository) List(ctx context.Context) ([]*domain.TLSFingerprintProfile, error) {
 	profiles, err := r.client.TLSFingerprintProfile.Query().
 		Order(ent.Asc(tlsfingerprintprofile.FieldName)).
 		All(ctx)
@@ -27,15 +27,15 @@ func (r *tlsFingerprintProfileRepository) List(ctx context.Context) ([]*model.TL
 		return nil, err
 	}
 
-	result := make([]*model.TLSFingerprintProfile, len(profiles))
+	result := make([]*domain.TLSFingerprintProfile, len(profiles))
 	for i, p := range profiles {
-		result[i] = r.toModel(p)
+		result[i] = r.toDomain(p)
 	}
 	return result, nil
 }
 
 // GetByID 根据 ID 获取模板
-func (r *tlsFingerprintProfileRepository) GetByID(ctx context.Context, id int64) (*model.TLSFingerprintProfile, error) {
+func (r *tlsFingerprintProfileRepository) GetByID(ctx context.Context, id int64) (*domain.TLSFingerprintProfile, error) {
 	p, err := r.client.TLSFingerprintProfile.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -43,11 +43,11 @@ func (r *tlsFingerprintProfileRepository) GetByID(ctx context.Context, id int64)
 		}
 		return nil, err
 	}
-	return r.toModel(p), nil
+	return r.toDomain(p), nil
 }
 
 // Create 创建模板
-func (r *tlsFingerprintProfileRepository) Create(ctx context.Context, p *model.TLSFingerprintProfile) (*model.TLSFingerprintProfile, error) {
+func (r *tlsFingerprintProfileRepository) Create(ctx context.Context, p *domain.TLSFingerprintProfile) (*domain.TLSFingerprintProfile, error) {
 	builder := r.client.TLSFingerprintProfile.Create().
 		SetName(p.Name).
 		SetEnableGrease(p.EnableGREASE)
@@ -87,11 +87,11 @@ func (r *tlsFingerprintProfileRepository) Create(ctx context.Context, p *model.T
 	if err != nil {
 		return nil, err
 	}
-	return r.toModel(created), nil
+	return r.toDomain(created), nil
 }
 
 // Update 更新模板
-func (r *tlsFingerprintProfileRepository) Update(ctx context.Context, p *model.TLSFingerprintProfile) (*model.TLSFingerprintProfile, error) {
+func (r *tlsFingerprintProfileRepository) Update(ctx context.Context, p *domain.TLSFingerprintProfile) (*domain.TLSFingerprintProfile, error) {
 	builder := r.client.TLSFingerprintProfile.UpdateOneID(p.ID).
 		SetName(p.Name).
 		SetEnableGrease(p.EnableGREASE)
@@ -152,7 +152,7 @@ func (r *tlsFingerprintProfileRepository) Update(ctx context.Context, p *model.T
 	if err != nil {
 		return nil, err
 	}
-	return r.toModel(updated), nil
+	return r.toDomain(updated), nil
 }
 
 // Delete 删除模板
@@ -160,9 +160,9 @@ func (r *tlsFingerprintProfileRepository) Delete(ctx context.Context, id int64) 
 	return r.client.TLSFingerprintProfile.DeleteOneID(id).Exec(ctx)
 }
 
-// toModel 将 Ent 实体转换为服务模型
-func (r *tlsFingerprintProfileRepository) toModel(e *ent.TLSFingerprintProfile) *model.TLSFingerprintProfile {
-	p := &model.TLSFingerprintProfile{
+// toDomain 将 Ent 实体转换为 domain 模型
+func (r *tlsFingerprintProfileRepository) toDomain(e *ent.TLSFingerprintProfile) *domain.TLSFingerprintProfile {
+	p := &domain.TLSFingerprintProfile{
 		ID:                  e.ID,
 		Name:                e.Name,
 		Description:         e.Description,

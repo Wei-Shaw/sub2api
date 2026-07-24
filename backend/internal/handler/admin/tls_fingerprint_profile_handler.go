@@ -3,7 +3,7 @@ package admin
 import (
 	"strconv"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -93,7 +93,7 @@ func (h *TLSFingerprintProfileHandler) Create(c *gin.Context) {
 		return
 	}
 
-	profile := &model.TLSFingerprintProfile{
+	profile := &domain.TLSFingerprintProfile{
 		Name:                req.Name,
 		Description:         req.Description,
 		CipherSuites:        req.CipherSuites,
@@ -113,7 +113,7 @@ func (h *TLSFingerprintProfileHandler) Create(c *gin.Context) {
 
 	created, err := h.service.Create(c.Request.Context(), profile)
 	if err != nil {
-		if _, ok := err.(*model.ValidationError); ok {
+		if _, ok := err.(*domain.ValidationError); ok {
 			response.BadRequest(c, err.Error())
 			return
 		}
@@ -150,7 +150,7 @@ func (h *TLSFingerprintProfileHandler) Update(c *gin.Context) {
 	}
 
 	// 部分更新
-	profile := &model.TLSFingerprintProfile{
+	profile := &domain.TLSFingerprintProfile{
 		ID:                  id,
 		Name:                existing.Name,
 		Description:         existing.Description,
@@ -205,7 +205,7 @@ func (h *TLSFingerprintProfileHandler) Update(c *gin.Context) {
 
 	updated, err := h.service.Update(c.Request.Context(), profile)
 	if err != nil {
-		if _, ok := err.(*model.ValidationError); ok {
+		if _, ok := err.(*domain.ValidationError); ok {
 			response.BadRequest(c, err.Error())
 			return
 		}

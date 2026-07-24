@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	porttlsfp "github.com/Wei-Shaw/sub2api/internal/port/tlsfingerprint"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -20,19 +20,19 @@ const (
 
 type tlsFingerprintProfileCache struct {
 	rdb        *redis.Client
-	localCache []*model.TLSFingerprintProfile
+	localCache []*domain.TLSFingerprintProfile
 	localMu    sync.RWMutex
 }
 
 // NewTLSFingerprintProfileCache 创建 TLS 指纹模板缓存
-func NewTLSFingerprintProfileCache(rdb *redis.Client) service.TLSFingerprintProfileCache {
+func NewTLSFingerprintProfileCache(rdb *redis.Client) porttlsfp.ProfileCache {
 	return &tlsFingerprintProfileCache{
 		rdb: rdb,
 	}
 }
 
 // Get 从缓存获取模板列表
-func (c *tlsFingerprintProfileCache) Get(ctx context.Context) ([]*model.TLSFingerprintProfile, bool) {
+func (c *tlsFingerprintProfileCache) Get(ctx context.Context) ([]*domain.TLSFingerprintProfile, bool) {
 	c.localMu.RLock()
 	if c.localCache != nil {
 		profiles := c.localCache
@@ -49,7 +49,7 @@ func (c *tlsFingerprintProfileCache) Get(ctx context.Context) ([]*model.TLSFinge
 		return nil, false
 	}
 
-	var profiles []*model.TLSFingerprintProfile
+	var profiles []*domain.TLSFingerprintProfile
 	if err := json.Unmarshal(data, &profiles); err != nil {
 		slog.Warn("tls_fp_profile_cache_unmarshal_failed", "error", err)
 		return nil, false
@@ -63,7 +63,7 @@ func (c *tlsFingerprintProfileCache) Get(ctx context.Context) ([]*model.TLSFinge
 }
 
 // Set 设置缓存
-func (c *tlsFingerprintProfileCache) Set(ctx context.Context, profiles []*model.TLSFingerprintProfile) error {
+func (c *tlsFingerprintProfileCache) Set(ctx context.Context, profiles []*domain.TLSFingerprintProfile) error {
 	data, err := json.Marshal(profiles)
 	if err != nil {
 		return err

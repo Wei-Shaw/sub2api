@@ -6,48 +6,40 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	porttlsfp "github.com/Wei-Shaw/sub2api/internal/port/tlsfingerprint"
 )
 
-// TLSFingerprintProfileRepository 定义 TLS 指纹模板的数据访问接口
-type TLSFingerprintProfileRepository interface {
-	List(ctx context.Context) ([]*model.TLSFingerprintProfile, error)
-	GetByID(ctx context.Context, id int64) (*model.TLSFingerprintProfile, error)
-	Create(ctx context.Context, profile *model.TLSFingerprintProfile) (*model.TLSFingerprintProfile, error)
-	Update(ctx context.Context, profile *model.TLSFingerprintProfile) (*model.TLSFingerprintProfile, error)
-	Delete(ctx context.Context, id int64) error
-}
+// Port type aliases keep existing service call sites compiling while ports live
+// in internal/port/tlsfingerprint.
+type TLSFingerprintProfileRepository = porttlsfp.ProfileRepository
+type TLSFingerprintProfileCache = porttlsfp.ProfileCache
 
-// TLSFingerprintProfileCache 定义 TLS 指纹模板的缓存接口
-type TLSFingerprintProfileCache interface {
-	Get(ctx context.Context) ([]*model.TLSFingerprintProfile, bool)
-	Set(ctx context.Context, profiles []*model.TLSFingerprintProfile) error
-	Invalidate(ctx context.Context) error
-	NotifyUpdate(ctx context.Context) error
-	SubscribeUpdates(ctx context.Context, handler func())
-}
+// Domain type alias for incremental migration of call sites that still import
+// service-level names via model → domain move.
+type TLSFingerprintProfile = domain.TLSFingerprintProfile
 
 // TLSFingerprintProfileService TLS 指纹模板管理服务
 type TLSFingerprintProfileService struct {
-	repo  TLSFingerprintProfileRepository
-	cache TLSFingerprintProfileCache
+	repo  porttlsfp.ProfileRepository
+	cache porttlsfp.ProfileCache
 
 	// 本地 ID→Profile 映射缓存，用于 DoWithTLS 热路径快速查找
-	localCache map[int64]*model.TLSFingerprintProfile
+	localCache map[int64]*domain.TLSFingerprintProfile
 	localMu    sync.RWMutex
 }
 
 // NewTLSFingerprintProfileService 创建 TLS 指纹模板服务
 func NewTLSFingerprintProfileService(
-	repo TLSFingerprintProfileRepository,
-	cache TLSFingerprintProfileCache,
+	repo porttlsfp.ProfileRepository,
+	cache porttlsfp.ProfileCache,
 ) *TLSFingerprintProfileService {
 	svc := &TLSFingerprintProfileService{
 		repo:       repo,
 		cache:      cache,
-		localCache: make(map[int64]*model.TLSFingerprintProfile),
+		localCache: make(map[int64]*domain.TLSFingerprintProfile),
 	}
 
 	ctx := context.Background()
@@ -72,17 +64,17 @@ func NewTLSFingerprintProfileService(
 // --- CRUD ---
 
 // List 获取所有模板
-func (s *TLSFingerprintProfileService) List(ctx context.Context) ([]*model.TLSFingerprintProfile, error) {
+func (s *TLSFingerprintProfileService) List(ctx context.Context) ([]*domain.TLSFingerprintProfile, error) {
 	return s.repo.List(ctx)
 }
 
 // GetByID 根据 ID 获取模板
-func (s *TLSFingerprintProfileService) GetByID(ctx context.Context, id int64) (*model.TLSFingerprintProfile, error) {
+func (s *TLSFingerprintProfileService) GetByID(ctx context.Context, id int64) (*domain.TLSFingerprintProfile, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
 // Create 创建模板
-func (s *TLSFingerprintProfileService) Create(ctx context.Context, profile *model.TLSFingerprintProfile) (*model.TLSFingerprintProfile, error) {
+func (s *TLSFingerprintProfileService) Create(ctx context.Context, profile *domain.TLSFingerprintProfile) (*domain.TLSFingerprintProfile, error) {
 	if err := profile.Validate(); err != nil {
 		return nil, err
 	}
@@ -100,7 +92,7 @@ func (s *TLSFingerprintProfileService) Create(ctx context.Context, profile *mode
 }
 
 // Update 更新模板
-func (s *TLSFingerprintProfileService) Update(ctx context.Context, profile *model.TLSFingerprintProfile) (*model.TLSFingerprintProfile, error) {
+func (s *TLSFingerprintProfileService) Update(ctx context.Context, profile *domain.TLSFingerprintProfile) (*domain.TLSFingerprintProfile, error) {
 	if err := profile.Validate(); err != nil {
 		return nil, err
 	}
@@ -155,7 +147,7 @@ func (s *TLSFingerprintProfileService) getRandomProfile() *tlsfingerprint.Profil
 	}
 
 	// 收集所有 profile
-	profiles := make([]*model.TLSFingerprintProfile, 0, len(s.localCache))
+	profiles := make([]*domain.TLSFingerprintProfile, 0, len(s.localCache))
 	for _, p := range s.localCache {
 		if p != nil {
 			profiles = append(profiles, p)
@@ -222,8 +214,8 @@ func (s *TLSFingerprintProfileService) reloadFromDB(ctx context.Context) error {
 	return nil
 }
 
-func (s *TLSFingerprintProfileService) setLocalCache(profiles []*model.TLSFingerprintProfile) {
-	m := make(map[int64]*model.TLSFingerprintProfile, len(profiles))
+func (s *TLSFingerprintProfileService) setLocalCache(profiles []*domain.TLSFingerprintProfile) {
+	m := make(map[int64]*domain.TLSFingerprintProfile, len(profiles))
 	for _, p := range profiles {
 		m[p.ID] = p
 	}
@@ -247,7 +239,7 @@ func (s *TLSFingerprintProfileService) invalidateAndNotify(ctx context.Context) 
 	if err := s.reloadFromDB(ctx); err != nil {
 		logger.LegacyPrintf("service.tls_fp_profile", "[TLSFPProfileService] Failed to refresh local cache: %v", err)
 		s.localMu.Lock()
-		s.localCache = make(map[int64]*model.TLSFingerprintProfile)
+		s.localCache = make(map[int64]*domain.TLSFingerprintProfile)
 		s.localMu.Unlock()
 	}
 
