@@ -793,6 +793,42 @@ export default {
         sending: '发送中...',
         enterRecipientHint: '请输入收件人邮箱地址'
       },
+      emailPolicy: {
+        title: '发件通道与收件人',
+        description: '统一控制各类邮件是否允许发送及其默认收件范围。',
+        recipientGroup: '收件人组',
+        recipientGroups: '管理员收件人组',
+        userPrimary: '用户主邮箱',
+        verifiedAdditional: '已验证附加邮箱',
+        eventRecipient: '由当前业务事件指定收件人',
+        groupRecipientSummary: '发送到选定的管理员收件人组',
+        userRecipientSummary: '发送到事件关联用户的选定邮箱',
+        explicitRecipientSummary: '验证码或链接只发送到当前操作指定的邮箱',
+        addRecipient: '添加收件人',
+        emailPlaceholder: "name{'@'}example.com",
+        noRecipients: '暂无收件人',
+        legacyUnverified: '历史未验证',
+        saveSuccess: '发件通道策略已保存',
+        channels: {
+          authVerification: '身份与通知邮箱验证',
+          passwordReset: '密码重置',
+          subscription: '订阅通知',
+          balance: '余额通知',
+          accountQuota: '账号配额告警',
+          riskControl: '安全与风控通知',
+          refundAdmin: '退款管理通知',
+          refundUser: '退款状态通知',
+          opsAlert: '运维即时告警',
+          opsReport: '运维定时报表'
+        },
+        groups: {
+          finance: '财务与退款',
+          accountQuota: '账号配额',
+          security: '安全与风控',
+          opsAlert: '运维告警',
+          opsReport: '运维报告'
+        }
+      },
       emailTemplates: {
         title: '邮件模板',
         description: '按事件和语言自定义通知邮件主题与 HTML 内容。',

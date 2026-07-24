@@ -377,6 +377,12 @@ func (s *NotificationEmailService) Send(ctx context.Context, input NotificationE
 	if err != nil {
 		return notificationEmailTemplateErr(err)
 	}
+	if err := s.requireEventChannelEnabled(ctx, normalizedEvent); err != nil {
+		if errors.Is(err, ErrNotificationEmailChannelDisabled) {
+			return err
+		}
+		return notificationEmailConfigErr(err)
+	}
 	recipient := strings.TrimSpace(input.RecipientEmail)
 	if recipient == "" {
 		return nil

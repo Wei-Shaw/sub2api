@@ -798,6 +798,42 @@ export default {
         sending: 'Sending...',
         enterRecipientHint: 'Please enter a recipient email address'
       },
+      emailPolicy: {
+        title: 'Mail Channels and Recipients',
+        description: 'Control whether each mail function may send and where it sends by default.',
+        recipientGroup: 'Recipient group',
+        recipientGroups: 'Admin recipient groups',
+        userPrimary: 'User primary email',
+        verifiedAdditional: 'Verified additional emails',
+        eventRecipient: 'Recipient supplied by the current business event',
+        groupRecipientSummary: 'Sends to the selected admin recipient group',
+        userRecipientSummary: 'Sends to selected addresses for the related user',
+        explicitRecipientSummary: 'Codes and links only go to the address supplied by the current action',
+        addRecipient: 'Add recipient',
+        emailPlaceholder: "name{'@'}example.com",
+        noRecipients: 'No recipients',
+        legacyUnverified: 'Legacy unverified',
+        saveSuccess: 'Mail channel policy saved',
+        channels: {
+          authVerification: 'Identity and Notification Email Verification',
+          passwordReset: 'Password Reset',
+          subscription: 'Subscription Notifications',
+          balance: 'Balance Notifications',
+          accountQuota: 'Account Quota Alerts',
+          riskControl: 'Security and Risk Notifications',
+          refundAdmin: 'Refund Administration',
+          refundUser: 'Refund Status Notifications',
+          opsAlert: 'Ops Immediate Alerts',
+          opsReport: 'Ops Scheduled Reports'
+        },
+        groups: {
+          finance: 'Finance and Refunds',
+          accountQuota: 'Account Quota',
+          security: 'Security and Risk',
+          opsAlert: 'Ops Alerts',
+          opsReport: 'Ops Reports'
+        }
+      },
       emailTemplates: {
         title: 'Email Templates',
         description: 'Customize notification email subjects and HTML content for each event and locale.',

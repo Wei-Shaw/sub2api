@@ -1073,6 +1073,60 @@ export interface EmailTemplatePreviewResponse {
   html: string;
 }
 
+export type NotificationEmailRecipientKind = "explicit" | "user" | "group";
+
+export interface NotificationEmailChannelPolicy {
+  id: string;
+  enabled: boolean;
+  recipient_kind: NotificationEmailRecipientKind;
+  recipient_group?: string;
+  allow_user_primary?: boolean;
+  allow_verified_additional?: boolean;
+  include_user_primary?: boolean;
+  include_verified_additional?: boolean;
+  events: string[];
+}
+
+export interface NotificationEmailRecipientMember {
+  email: string;
+  enabled: boolean;
+  status: "verified" | "admin_trusted" | "legacy_unverified";
+}
+
+export interface NotificationEmailRecipientGroup {
+  id: string;
+  members: NotificationEmailRecipientMember[];
+}
+
+export interface NotificationEmailPolicy {
+  version: number;
+  configured: boolean;
+  channels: NotificationEmailChannelPolicy[];
+  recipient_groups: NotificationEmailRecipientGroup[];
+}
+
+export interface UpdateNotificationEmailPolicyRequest {
+  channels: NotificationEmailChannelPolicy[];
+  recipient_groups: NotificationEmailRecipientGroup[];
+}
+
+export async function getNotificationEmailPolicy(): Promise<NotificationEmailPolicy> {
+  const { data } = await apiClient.get<NotificationEmailPolicy>(
+    "/admin/settings/email-notification-policy",
+  );
+  return data;
+}
+
+export async function updateNotificationEmailPolicy(
+  request: UpdateNotificationEmailPolicyRequest,
+): Promise<NotificationEmailPolicy> {
+  const { data } = await apiClient.put<NotificationEmailPolicy>(
+    "/admin/settings/email-notification-policy",
+    request,
+  );
+  return data;
+}
+
 export async function getEmailTemplates(): Promise<EmailTemplateListResponse> {
   const { data } = await apiClient.get<EmailTemplateListResponse>(
     "/admin/settings/email-templates",
@@ -1429,6 +1483,8 @@ export const settingsAPI = {
   updateSettings,
   testSmtpConnection,
   sendTestEmail,
+  getNotificationEmailPolicy,
+  updateNotificationEmailPolicy,
   getEmailTemplates,
   getEmailTemplate,
   updateEmailTemplate,

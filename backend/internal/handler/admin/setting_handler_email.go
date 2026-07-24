@@ -284,6 +284,39 @@ func (h *SettingHandler) PreviewEmailTemplate(c *gin.Context) {
 	response.Success(c, dto.EmailTemplatePreviewResponse{Subject: preview.Subject, HTML: preview.HTML})
 }
 
+// GetNotificationEmailPolicy returns global mail-channel switches and recipient routing.
+func (h *SettingHandler) GetNotificationEmailPolicy(c *gin.Context) {
+	if h.notificationEmailService == nil {
+		response.BadRequest(c, "Notification email service is not configured")
+		return
+	}
+	policy, err := h.notificationEmailService.GetPolicy(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, policy)
+}
+
+// UpdateNotificationEmailPolicy updates global mail-channel switches and recipient routing.
+func (h *SettingHandler) UpdateNotificationEmailPolicy(c *gin.Context) {
+	if h.notificationEmailService == nil {
+		response.BadRequest(c, "Notification email service is not configured")
+		return
+	}
+	var req service.NotificationEmailPolicyUpdate
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	policy, err := h.notificationEmailService.UpdatePolicy(c.Request.Context(), req)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, policy)
+}
+
 func emailTemplateEventOptionsToDTO(events []service.NotificationEmailEventInfo) []dto.EmailTemplateEventOption {
 	items := make([]dto.EmailTemplateEventOption, 0, len(events))
 	for _, event := range events {

@@ -522,6 +522,7 @@ function mountView() {
         ProxySelector: true,
         ImageUpload: ImageUploadStub,
         BackupSettings: true,
+        EmailNotificationPolicyCard: true,
       },
     },
   });

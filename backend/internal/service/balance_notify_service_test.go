@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -223,7 +224,7 @@ func TestBuildQuotaDimsFromState_UsesStateValues(t *testing.T) {
 func TestCollectBalanceNotifyRecipients_Empty(t *testing.T) {
 	s := &BalanceNotifyService{}
 	u := &User{BalanceNotifyExtraEmails: nil}
-	require.Empty(t, s.collectBalanceNotifyRecipients(u))
+	require.Empty(t, s.collectBalanceNotifyRecipients(context.Background(), u))
 }
 
 func TestCollectBalanceNotifyRecipients_FiltersDisabledAndUnverified(t *testing.T) {
@@ -236,7 +237,7 @@ func TestCollectBalanceNotifyRecipients_FiltersDisabledAndUnverified(t *testing.
 			{Email: "d@example.com", Verified: true, Disabled: false},
 		},
 	}
-	got := s.collectBalanceNotifyRecipients(u)
+	got := s.collectBalanceNotifyRecipients(context.Background(), u)
 	require.Equal(t, []string{"a@example.com", "d@example.com"}, got)
 }
 
@@ -249,7 +250,7 @@ func TestCollectBalanceNotifyRecipients_DeduplicatesCaseInsensitive(t *testing.T
 			{Email: "USER@EXAMPLE.COM", Verified: true},
 		},
 	}
-	got := s.collectBalanceNotifyRecipients(u)
+	got := s.collectBalanceNotifyRecipients(context.Background(), u)
 	require.Len(t, got, 1)
 	// The original casing of the first entry is preserved.
 	require.Equal(t, "User@Example.com", got[0])
@@ -264,7 +265,7 @@ func TestCollectBalanceNotifyRecipients_SkipsEmpty(t *testing.T) {
 			{Email: "valid@example.com", Verified: true},
 		},
 	}
-	got := s.collectBalanceNotifyRecipients(u)
+	got := s.collectBalanceNotifyRecipients(context.Background(), u)
 	require.Equal(t, []string{"valid@example.com"}, got)
 }
 
@@ -275,6 +276,6 @@ func TestCollectBalanceNotifyRecipients_TrimsWhitespace(t *testing.T) {
 			{Email: "  trimmed@example.com  ", Verified: true},
 		},
 	}
-	got := s.collectBalanceNotifyRecipients(u)
+	got := s.collectBalanceNotifyRecipients(context.Background(), u)
 	require.Equal(t, []string{"trimmed@example.com"}, got)
 }
