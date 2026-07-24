@@ -110,7 +110,7 @@
     </div>
 
     <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
-      <div class="mb-3 flex items-center justify-between gap-3">
+      <div class="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <label class="input-label mb-0">
             {{ t("admin.groups.form.modelReasoningEffortRules") }}
@@ -121,7 +121,7 @@
         </div>
         <button
           type="button"
-          class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:text-primary-400 dark:hover:bg-primary-900/20 dark:hover:text-primary-300"
+          class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:text-primary-400 dark:hover:bg-primary-900/20 dark:hover:text-primary-300"
           @click="addModelRule"
         >
           <Icon name="plus" size="sm" />
@@ -140,23 +140,22 @@
               <label :for="`${idPrefix}-${rule.id}-model`" class="input-label">
                 {{ t("admin.groups.form.reasoningEffortModel") }}
               </label>
-              <input
+              <Select
                 :id="`${idPrefix}-${rule.id}-model`"
-                :value="rule.model"
-                type="text"
-                maxlength="200"
-                class="input"
-                :class="{
-                  'border-red-500 focus:border-red-500 focus:ring-red-500':
-                    showValidation && !!modelValidationErrors[rule.id]?.model,
-                }"
+                :model-value="rule.model"
+                :options="modelOptionsForRule(rule.id)"
                 :placeholder="t('admin.groups.form.reasoningEffortModelPlaceholder')"
+                :error="showValidation && !!modelValidationErrors[rule.id]?.model"
+                :disabled="modelOptionsLoading"
+                :aria-label="t('admin.groups.form.reasoningEffortModel')"
                 :aria-describedby="
                   showValidation && modelValidationErrors[rule.id]?.model
                     ? `${idPrefix}-${rule.id}-model-error`
                     : undefined
                 "
-                @input="updateModelRule(rule.id, 'model', ($event.target as HTMLInputElement).value)"
+                searchable
+                clearable
+                @update:model-value="updateModelRule(rule.id, 'model', asString($event))"
               />
               <p
                 v-if="showValidation && modelValidationErrors[rule.id]?.model"
@@ -178,6 +177,7 @@
                 :options="reasoningEffortOptions"
                 :placeholder="t('admin.groups.form.modelReasoningEffortUnlimited')"
                 :aria-label="t('admin.groups.form.maxReasoningEffort')"
+                :disabled="!rule.model"
                 :searchable="false"
                 clearable
                 @update:model-value="
@@ -198,13 +198,14 @@
           </div>
 
           <div class="mt-3 border-t border-gray-200 pt-3 dark:border-dark-600">
-            <div class="mb-2 flex items-center justify-between gap-3">
+            <div class="mb-2 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
               <label class="input-label mb-0">
                 {{ t("admin.groups.form.reasoningEffortMappings") }}
               </label>
               <button
                 type="button"
-                class="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:text-primary-400 dark:hover:bg-primary-900/20 dark:hover:text-primary-300"
+                class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-900/20 dark:hover:text-primary-300"
+                :disabled="!rule.model"
                 @click="addModelRuleMapping(rule.id)"
               >
                 <Icon name="plus" size="sm" />
@@ -230,6 +231,7 @@
                     showValidation &&
                     !!modelValidationErrors[rule.id]?.mappings[mapping.id]?.from
                   "
+                  :disabled="!rule.model"
                   :searchable="false"
                   clearable
                   @update:model-value="
@@ -269,6 +271,7 @@
                     showValidation &&
                     !!modelValidationErrors[rule.id]?.mappings[mapping.id]?.to
                   "
+                  :disabled="!rule.model"
                   :searchable="false"
                   clearable
                   @update:model-value="
@@ -332,6 +335,8 @@ const props = defineProps<{
   maxEffort: string;
   mappings: ReasoningEffortMappingRow[];
   modelRules: ModelReasoningEffortRuleRow[];
+  modelOptions: string[];
+  modelOptionsLoading?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -345,6 +350,16 @@ const showValidation = ref(false);
 const reasoningEffortOptions = computed(() =>
   reasoningEffortOptionsForPlatform(props.platform),
 );
+const availableModelOptions = computed(() => {
+  const seen = new Set<string>();
+  return [...props.modelOptions, ...props.modelRules.map((rule) => rule.model)]
+    .map((model) => model.trim())
+    .filter((model) => {
+      if (!model || seen.has(model)) return false;
+      seen.add(model);
+      return true;
+    });
+});
 const validationErrors = computed(() =>
   validateReasoningEffortMappings(props.mappings, props.platform),
 );
@@ -354,6 +369,20 @@ const modelValidationErrors = computed(() =>
 
 const asString = (value: string | number | boolean | null): string =>
   value == null ? "" : String(value);
+
+const modelOptionsForRule = (ruleID: string) => {
+  const selectedByOtherRules = new Set(
+    props.modelRules
+      .filter((rule) => rule.id !== ruleID)
+      .map((rule) => rule.model.trim())
+      .filter(Boolean),
+  );
+  return availableModelOptions.value.map((model) => ({
+    value: model,
+    label: model,
+    disabled: selectedByOtherRules.has(model),
+  }));
+};
 
 const updateMaxEffort = (value: string | number | boolean | null) => {
   emit("update:maxEffort", asString(value));
