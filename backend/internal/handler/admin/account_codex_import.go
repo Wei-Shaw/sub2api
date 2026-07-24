@@ -111,7 +111,8 @@ type codexJWTOpenAIClaims struct {
 }
 
 type codexAccountIndex struct {
-	accountsByKey map[string][]service.Account
+	accountsByKey   map[string][]service.Account
+	keysByAccountID map[int64]map[string]struct{}
 }
 
 func (h *AccountHandler) ImportCodexSession(c *gin.Context) {
@@ -932,7 +933,10 @@ func buildCodexStoredIdentityKeys(accountID, userID, email, accessToken string) 
 }
 
 func buildCodexAccountIndex(accounts []service.Account) *codexAccountIndex {
-	index := &codexAccountIndex{accountsByKey: map[string][]service.Account{}}
+	index := &codexAccountIndex{
+		accountsByKey:   map[string][]service.Account{},
+		keysByAccountID: map[int64]map[string]struct{}{},
+	}
 	for _, account := range accounts {
 		index.Add(account)
 	}
@@ -946,40 +950,71 @@ func (i *codexAccountIndex) Add(account service.Account) {
 	if i.accountsByKey == nil {
 		i.accountsByKey = map[string][]service.Account{}
 	}
-	i.remove(account.ID)
+	if i.keysByAccountID == nil {
+		i.keysByAccountID = map[int64]map[string]struct{}{}
+	}
 	keys := buildCodexStoredIdentityKeys(
 		codexCredentialString(account.Credentials, "chatgpt_account_id"),
 		codexCredentialString(account.Credentials, "chatgpt_user_id"),
 		codexCredentialString(account.Credentials, "email"),
 		codexCredentialString(account.Credentials, "access_token"),
 	)
+	orderedKeys := make([]string, 0, len(keys)+1)
+	accountKeys := make(map[string]struct{}, len(keys)+1)
 	for _, key := range keys {
-		i.accountsByKey[key] = upsertCodexAccount(i.accountsByKey[key], account)
+		if _, exists := accountKeys[key]; exists {
+			continue
+		}
+		accountKeys[key] = struct{}{}
+		orderedKeys = append(orderedKeys, key)
 	}
 	if runtimeID := codexCredentialString(account.Credentials, "agent_runtime_id"); runtimeID != "" {
 		key := "agent:" + runtimeID
-		i.accountsByKey[key] = upsertCodexAccount(i.accountsByKey[key], account)
-	}
-}
-
-func (i *codexAccountIndex) remove(accountID int64) {
-	for key, accounts := range i.accountsByKey {
-		kept := accounts[:0]
-		for _, account := range accounts {
-			if account.ID != accountID {
-				kept = append(kept, account)
-			}
+		if _, exists := accountKeys[key]; !exists {
+			accountKeys[key] = struct{}{}
+			orderedKeys = append(orderedKeys, key)
 		}
-		if len(kept) == 0 {
-			delete(i.accountsByKey, key)
+	}
+
+	previousKeys := i.keysByAccountID[account.ID]
+	for key := range previousKeys {
+		if _, retained := accountKeys[key]; retained {
+			i.accountsByKey[key] = upsertCodexAccount(i.accountsByKey[key], account)
 			continue
 		}
-		i.accountsByKey[key] = kept
+		i.removeFromKey(key, account.ID)
 	}
+	for _, key := range orderedKeys {
+		if _, retained := previousKeys[key]; retained {
+			continue
+		}
+		i.accountsByKey[key] = append(i.accountsByKey[key], account)
+	}
+
+	if len(accountKeys) > 0 {
+		i.keysByAccountID[account.ID] = accountKeys
+		return
+	}
+	delete(i.keysByAccountID, account.ID)
 }
 
-// upsertCodexAccount 保留同一键下的全部候选账号（共享的 account: 键可对应
-// 团队内多个账号），同一账号重复 Add 时原位替换为最新状态。
+func (i *codexAccountIndex) removeFromKey(key string, accountID int64) {
+	accounts := i.accountsByKey[key]
+	kept := accounts[:0]
+	for _, account := range accounts {
+		if account.ID != accountID {
+			kept = append(kept, account)
+		}
+	}
+	if len(kept) == 0 {
+		delete(i.accountsByKey, key)
+		return
+	}
+	i.accountsByKey[key] = kept
+}
+
+// upsertCodexAccount keeps all candidates for shared keys while replacing an
+// existing account in place so ambiguous legacy matches retain their order.
 func upsertCodexAccount(accounts []service.Account, account service.Account) []service.Account {
 	for idx := range accounts {
 		if accounts[idx].ID == account.ID {
