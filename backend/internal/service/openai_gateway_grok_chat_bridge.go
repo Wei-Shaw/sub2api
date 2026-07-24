@@ -535,10 +535,10 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	if responsesReq.Reasoning != nil {
 		responsesReq.Reasoning.Summary = "concise"
 	}
-	// Keep Chat and native Responses paths aligned for OpenAI-compatible
-	// service_tier aliases (for example, "fast" -> "priority"). Unknown
-	// values are omitted by the shared normalizer instead of reaching xAI.
-	normalizeResponsesRequestServiceTier(responsesReq)
+	// Match grok-build's native Responses request defaults. Its ConversationRequest
+	// conversion omits service_tier, forces store=false, and the sampler adds
+	// reasoning.encrypted_content to include before serializing the request.
+	applyGrokBuildResponsesDefaults(responsesReq)
 	responsesBody, err := json.Marshal(responsesReq)
 	if err != nil {
 		return nil, fmt.Errorf("marshal grok responses bridge request: %w", err)
@@ -643,4 +643,24 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 		result.ReasoningEffort = extractOpenAIReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)
 	}
 	return result, err
+}
+
+func applyGrokBuildResponsesDefaults(req *apicompat.ResponsesRequest) {
+	if req == nil {
+		return
+	}
+
+	// grok-build's ConversationRequest -> CreateResponse conversion does not
+	// carry service_tier onto the native Grok Responses wire request.
+	req.ServiceTier = ""
+
+	storeFalse := false
+	req.Store = &storeFalse
+
+	for _, include := range req.Include {
+		if include == "reasoning.encrypted_content" {
+			return
+		}
+	}
+	req.Include = append(req.Include, "reasoning.encrypted_content")
 }
