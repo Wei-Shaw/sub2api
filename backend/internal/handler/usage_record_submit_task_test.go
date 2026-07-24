@@ -114,6 +114,16 @@ func TestOpenAIGatewayHandlerSubmitUsageRecordTask_NilTask(t *testing.T) {
 	})
 }
 
+func TestUsageRecordContextPreservesResolvedCompositeTargetPlatform(t *testing.T) {
+	parent := service.WithResolvedTargetPlatform(context.Background(), service.PlatformOpenAI)
+
+	workerCtx := usageRecordContext(parent, context.Background())
+
+	platform, ok := service.ResolvedTargetPlatformFromContext(workerCtx)
+	require.True(t, ok)
+	require.Equal(t, service.PlatformOpenAI, platform)
+}
+
 func TestOpenAIGatewayHandlerSubmitUsageRecordTask_WithoutPool_TaskPanicRecovered(t *testing.T) {
 	h := &OpenAIGatewayHandler{}
 	var called atomic.Bool

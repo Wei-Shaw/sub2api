@@ -138,6 +138,23 @@ func TestOpenAIForwardSucceededForScheduling(t *testing.T) {
 	}))
 }
 
+func TestOpenAIAccountScheduleModelUsesActualUpstreamModel(t *testing.T) {
+	account := &service.Account{
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gpt-image-1": "mapped-image-model",
+			},
+		},
+	}
+
+	require.Equal(t, "mapped-image-model", openAIAccountScheduleModel(account, "gpt-image-1", nil))
+	require.Equal(t, "actual-upstream-model", openAIAccountScheduleModel(account, "gpt-image-1", &service.OpenAIForwardResult{
+		UpstreamModel: "actual-upstream-model",
+	}))
+	require.Equal(t, "mapped-image-model", openAIAccountScheduleModel(account, "gpt-image-1", &service.OpenAIForwardResult{}))
+	require.Equal(t, "gpt-image-1", openAIAccountScheduleModel(nil, " gpt-image-1 ", nil))
+}
+
 func TestOpenAIResponsesRequiredCapability(t *testing.T) {
 	tests := []struct {
 		name        string

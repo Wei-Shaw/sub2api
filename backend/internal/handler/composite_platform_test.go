@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http/httptest"
 	"testing"
 
@@ -9,6 +10,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type handlerCompositeRouteRepoStub struct {
+	service.CompositeModelRouteRepository
+	routes []service.CompositeModelRoute
+}
+
+func (s handlerCompositeRouteRepoStub) ListByGroup(context.Context, int64, bool) ([]service.CompositeModelRoute, error) {
+	return append([]service.CompositeModelRoute(nil), s.routes...), nil
+}
 
 func TestCompositeTargetPlatformAllowedResolvesKnownAllowedModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -97,4 +107,54 @@ func TestClientRequestedModelUsesCompositePublicModel(t *testing.T) {
 	require.Equal(t, "public-alias", fields.OriginalModel)
 	require.Equal(t, "public-alias", fields.ChannelMappedModel)
 	require.Equal(t, "public-alias\u2192gpt-5", fields.ModelMappingChain)
+}
+
+func TestResolveCompositeResponsesWebSocketRouteUsesExplicitMapping(t *testing.T) {
+	groupID := int64(7)
+	resolver := service.NewCompositeRouteResolver(handlerCompositeRouteRepoStub{
+		routes: []service.CompositeModelRoute{
+			{
+				ID:             1,
+				GroupID:        groupID,
+				PublicModel:    "gpt-5",
+				MatchType:      service.CompositeRouteMatchExact,
+				TargetPlatform: service.PlatformGrok,
+				UpstreamModel:  "grok-4.3",
+				Endpoint:       service.CompositeRouteEndpointResponses,
+				Enabled:        true,
+			},
+		},
+	})
+	h := &OpenAIGatewayHandler{compositeResolver: resolver}
+	apiKey := &service.APIKey{
+		GroupID: &groupID,
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	}
+
+	route, err := h.resolveCompositeResponsesWebSocketRoute(
+		context.Background(),
+		apiKey,
+		[]byte(`{"type":"response.create","model":"gpt-5"}`),
+	)
+
+	require.NoError(t, err)
+	require.True(t, route.decision.Matched)
+	require.Equal(t, service.CompositeRouteSourceExplicit, route.decision.Source)
+	require.Equal(t, service.PlatformGrok, route.decision.TargetPlatform)
+	require.Equal(t, "grok-4.3", route.decision.UpstreamModel)
+	require.JSONEq(t, `{"type":"response.create","model":"grok-4.3"}`, string(route.firstMessage))
+}
+
+func TestResolveCompositeResponsesWebSocketRouteRequiresResolver(t *testing.T) {
+	groupID := int64(7)
+	h := &OpenAIGatewayHandler{}
+	apiKey := &service.APIKey{Group: &service.Group{ID: groupID, Platform: service.PlatformComposite}}
+
+	_, err := h.resolveCompositeResponsesWebSocketRoute(
+		context.Background(),
+		apiKey,
+		[]byte(`{"type":"response.create","model":"gpt-5"}`),
+	)
+
+	require.EqualError(t, err, "composite route resolver is unavailable")
 }

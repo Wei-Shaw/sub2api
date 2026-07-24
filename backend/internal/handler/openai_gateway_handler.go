@@ -23,6 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
 
@@ -34,6 +35,7 @@ type OpenAIGatewayHandler struct {
 	usageRecordWorkerPool      *service.UsageRecordWorkerPool
 	errorPassthroughService    *service.ErrorPassthroughService
 	contentModerationService   *service.ContentModerationService
+	compositeResolver          *service.CompositeRouteResolver
 	securityAuditCoordinator   *securityaudit.Coordinator
 	grokMediaEligibilityProber grokMediaEligibilityProber
 	opsService                 *service.OpsService
@@ -51,6 +53,16 @@ const maxOpenAIFirstOutputTimeoutSwitches = 1
 
 func openAIForwardSucceededForScheduling(result *service.OpenAIForwardResult) bool {
 	return result.SucceededForScheduling()
+}
+
+func openAIAccountScheduleModel(account *service.Account, routingModel string, result *service.OpenAIForwardResult) string {
+	if result != nil && strings.TrimSpace(result.UpstreamModel) != "" {
+		return result.UpstreamModel
+	}
+	if account == nil {
+		return strings.TrimSpace(routingModel)
+	}
+	return account.GetMappedModel(routingModel)
 }
 
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
@@ -105,7 +117,50 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
 	}
+	if platform, ok := service.ResolvedTargetPlatformFromContext(parent); ok {
+		base = service.WithResolvedTargetPlatform(base, platform)
+	}
 	return base
+}
+
+type compositeResponsesWebSocketRoute struct {
+	decision     service.CompositeRouteDecision
+	firstMessage []byte
+}
+
+func (h *OpenAIGatewayHandler) resolveCompositeResponsesWebSocketRoute(
+	ctx context.Context,
+	apiKey *service.APIKey,
+	firstMessage []byte,
+) (compositeResponsesWebSocketRoute, error) {
+	result := compositeResponsesWebSocketRoute{firstMessage: firstMessage}
+	if h == nil || h.compositeResolver == nil {
+		return result, errors.New("composite route resolver is unavailable")
+	}
+	if apiKey == nil || apiKey.Group == nil {
+		return result, errors.New("composite group is unavailable")
+	}
+
+	publicModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
+	decision, err := h.compositeResolver.Resolve(ctx, apiKey.Group.ID, publicModel, service.CompositeRouteEndpointResponses)
+	if err != nil {
+		return result, err
+	}
+	result.decision = decision
+	if !decision.Matched {
+		return result, nil
+	}
+
+	upstreamModel := strings.TrimSpace(decision.UpstreamModel)
+	if upstreamModel == "" || upstreamModel == publicModel {
+		return result, nil
+	}
+	rewritten, err := sjson.SetBytes(firstMessage, "model", upstreamModel)
+	if err != nil {
+		return result, fmt.Errorf("rewrite composite websocket model: %w", err)
+	}
+	result.firstMessage = rewritten
+	return result, nil
 }
 
 func wrapUsageRecordTaskContext(parent context.Context, task service.UsageRecordTask) service.UsageRecordTask {
@@ -1491,20 +1546,28 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid JSON payload")
 		return
 	}
-	reqModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
-	if reqModel == "" {
+	clientRequestModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
+	if clientRequestModel == "" {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
 		return
 	}
-	ensureCompositeTargetPlatform(c, apiKey, reqModel)
-	ctx = c.Request.Context()
+	reqModel := clientRequestModel
 	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
-		platform, ok := service.ResolvedTargetPlatformFromContext(ctx)
-		if !ok || (platform != service.PlatformOpenAI && platform != service.PlatformGrok) {
+		route, resolveErr := h.resolveCompositeResponsesWebSocketRoute(c.Request.Context(), apiKey, firstMessage)
+		if resolveErr != nil {
+			reqLog.Error("openai.websocket_composite_route_resolve_failed", zap.Error(resolveErr))
+			closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to resolve composite model route")
+			return
+		}
+		if !route.decision.Matched || (route.decision.TargetPlatform != service.PlatformOpenAI && route.decision.TargetPlatform != service.PlatformGrok) {
 			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "Responses WebSocket API only supports OpenAI-compatible models for composite groups")
 			return
 		}
+		firstMessage = route.firstMessage
+		reqModel = strings.TrimSpace(route.decision.UpstreamModel)
+		c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), route.decision))
 	}
+	ctx = c.Request.Context()
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(firstMessage, "previous_response_id").String())
 	previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 	if previousResponseID != "" && previousResponseIDKind == service.OpenAIPreviousResponseIDKindMessageID {
@@ -1515,11 +1578,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	previousResponseCanMove := !firstMessageToolCoverage.HasFunctionCallOutput || firstMessageToolCoverage.ContextCoversAllCallIDs
 	reqLog = reqLog.With(
 		zap.Bool("ws_ingress", true),
-		zap.String("model", reqModel),
+		zap.String("model", clientRequestModel),
+		zap.String("routing_model", reqModel),
 		zap.Bool("has_previous_response_id", previousResponseID != ""),
 		zap.String("previous_response_id_kind", previousResponseIDKind),
 	)
-	setOpsRequestContext(c, reqModel, true)
+	setOpsRequestContext(c, clientRequestModel, true)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeWSV2))
 
 	if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, firstMessage, "first_turn"); decision != nil && !decision.AllowNextStage {
