@@ -41,6 +41,8 @@ func TestPatchGrokResponsesBodySetsMappedModelAndDropsUnsupportedFields(t *testi
 	require.False(t, gjson.GetBytes(patched, "prompt_cache_retention").Exists())
 	require.False(t, gjson.GetBytes(patched, "safety_identifier").Exists())
 	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning.effort").String())
+	require.False(t, gjson.GetBytes(patched, "store").Bool())
+	require.Equal(t, "reasoning.encrypted_content", gjson.GetBytes(patched, "include.0").String())
 }
 
 func TestPatchGrokResponsesBodySanitizesComposerReasoningParameters(t *testing.T) {
@@ -83,6 +85,31 @@ func TestPatchGrokResponsesBodySanitizesComposerReasoningParameters(t *testing.T
 			require.False(t, gjson.GetBytes(patched, "reasoning").Exists())
 			require.False(t, gjson.GetBytes(patched, "reasoning_effort").Exists())
 			require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
+		})
+	}
+}
+
+func TestPatchGrokResponsesBodyPreservesGrok45ResponsesReasoningEffort(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "minimal", want: "minimal"},
+		{input: "low", want: "low"},
+		{input: "medium", want: "medium"},
+		{input: "high", want: "high"},
+		{input: "xhigh", want: "xhigh"},
+		{input: "max", want: "max"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			body := []byte(`{"input":"hello","reasoning":{"effort":"` + tt.input + `"}}`)
+			patched, err := patchGrokResponsesBody(body, "grok-4.5")
+			require.NoError(t, err)
+			require.Equal(t, tt.want, gjson.GetBytes(patched, "reasoning.effort").String())
 		})
 	}
 }
@@ -1516,7 +1543,7 @@ func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *test
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"input":"hi","stream":true,"reasoning_effort":"high"}`)
+	body := []byte(`{"input":"hi","stream":true,"reasoning":{"effort":"high","summary":"auto"}}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("OpenAI-Beta", "responses=experimental")
@@ -1563,7 +1590,8 @@ func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *test
 	require.Equal(t, "web_search", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
 	require.Equal(t, "x_search", gjson.GetBytes(upstream.lastBody, "tools.1.type").String())
 	require.Equal(t, "none", gjson.GetBytes(upstream.lastBody, "tool_choice").String())
-	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "reasoning_effort").String())
+	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning_effort").Exists())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.True(t, result.Stream)
 	require.Equal(t, "resp_grok", result.ResponseID)

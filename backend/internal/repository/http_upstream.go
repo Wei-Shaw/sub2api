@@ -76,7 +76,7 @@ const (
 	// allowing operators to bump it without waiting for a Sub2API release.
 	grokCLIProxyHost       = "cli-chat-proxy.grok.com"
 	grokOfficialAPIHost    = "api.x.ai"
-	grokCLIStableVersion   = "0.2.93"
+	grokCLIStableVersion   = "0.2.111"
 	grokCLIVersionOverride = "XAI_GROK_CLI_VERSION"
 	grokFallbackBodyLimit  = 64 << 10
 )
@@ -391,6 +391,9 @@ func newGrokOfficialAPIFallbackRequest(req *http.Request) (*http.Request, error)
 	for _, header := range []string{
 		"X-XAI-Token-Auth",
 		"X-Grok-Client-Version",
+		"X-Grok-Client-Identifier",
+		"X-AuthenticateResponse",
+		"X-Grok-Client-Mode",
 		"X-Grok-Client-Surface",
 		"X-UserID",
 		"X-Email",
@@ -433,10 +436,11 @@ type prefixedReadCloser struct {
 	io.Closer
 }
 
-// applyGrokCLIProxyHeaders applies the official Grok Build client identity at
-// the final shared transport boundary. Keying this behavior to the exact CLI
-// proxy host keeps direct api.x.ai traffic unchanged and automatically covers
-// Responses, Chat Completions, media, quota probes, and account tests.
+// applyGrokCLIProxyHeaders applies the official Grok Build Windows client
+// identity at the final shared transport boundary. Keying this behavior to the
+// exact CLI proxy host keeps direct api.x.ai traffic unchanged and
+// automatically covers Responses, Chat Completions, media, quota probes, and
+// account tests.
 func applyGrokCLIProxyHeaders(req *http.Request) {
 	if req == nil || req.URL == nil || !strings.EqualFold(strings.TrimSpace(req.URL.Hostname()), grokCLIProxyHost) {
 		return
@@ -450,7 +454,10 @@ func applyGrokCLIProxyHeaders(req *http.Request) {
 	}
 	req.Header.Set("X-XAI-Token-Auth", "xai-grok-cli")
 	req.Header.Set("x-grok-client-version", version)
-	req.Header.Set("User-Agent", "xai-grok-workspace/"+version)
+	req.Header.Set("User-Agent", "grok-shell/"+version+" (windows; x86_64)")
+	req.Header.Set("x-grok-client-identifier", "grok-shell")
+	req.Header.Set("x-authenticateresponse", "authenticate-response")
+	req.Header.Set("x-grok-client-mode", "interactive")
 }
 
 func isSupportedGrokCLIVersion(version string) bool {

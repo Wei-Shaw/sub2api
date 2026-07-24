@@ -23,7 +23,7 @@ const (
 	grokComposerImageBridgeVisionModel     = "grok-build-0.1"
 	grokComposerImageBridgeMaxOutputTokens = 512
 	grokUpstreamUserAgent                  = "sub2api-grok/1.0"
-	grokCLIVersion                         = "0.2.93"
+	grokCLIVersion                         = "0.2.111"
 	grokDefaultResponsesModel              = "grok-4.5"
 	grokRateLimitFallbackCooldown          = 2 * time.Minute
 	grokRateLimitRepeatCooldown            = 10 * time.Minute
@@ -417,6 +417,10 @@ func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
+	out, err = applyGrokResponsesDefaults(out)
+	if err != nil {
+		return nil, err
+	}
 	for _, unsupportedField := range []string{"prompt_cache_retention", "safety_identifier"} {
 		if gjson.GetBytes(out, unsupportedField).Exists() {
 			out, err = sjson.DeleteBytes(out, unsupportedField)
@@ -488,6 +492,40 @@ func grokModelRejectsReasoningEffort(model string) bool {
 	default:
 		return false
 	}
+}
+
+// applyGrokResponsesDefaults mirrors Grok Build's Responses request defaults.
+func applyGrokResponsesDefaults(body []byte) ([]byte, error) {
+	out := body
+	var err error
+	if !gjson.GetBytes(out, "store").Exists() {
+		out, err = sjson.SetBytes(out, "store", false)
+		if err != nil {
+			return nil, fmt.Errorf("set Grok Responses store default: %w", err)
+		}
+	}
+
+	includes := gjson.GetBytes(out, "include")
+	if !includes.Exists() {
+		out, err = sjson.SetBytes(out, "include", []string{"reasoning.encrypted_content"})
+		if err != nil {
+			return nil, fmt.Errorf("set Grok Responses include default: %w", err)
+		}
+		return out, nil
+	}
+	if !includes.IsArray() {
+		return out, nil
+	}
+	for _, value := range includes.Array() {
+		if value.String() == "reasoning.encrypted_content" {
+			return out, nil
+		}
+	}
+	out, err = sjson.SetBytes(out, "include.-1", "reasoning.encrypted_content")
+	if err != nil {
+		return nil, fmt.Errorf("append Grok Responses include default: %w", err)
+	}
+	return out, nil
 }
 
 var grokResponsesUnsupportedRecursiveFields = map[string]struct{}{
