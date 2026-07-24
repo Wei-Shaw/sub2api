@@ -34,6 +34,8 @@ REDACTED
 		"/chat/completions":         {"gateway_handler_chat_completions.go", "openai_chat_completions.go"REDACTED,
 		"/embeddings":               {"openai_embeddings.go"REDACTED,
 		"/alpha/search":             {"openai_alpha_search.go"REDACTED,
+		"/live":                     {"openai_live.go"REDACTED,
+		"/realtime/calls":           {"openai_live.go"REDACTED,
 		"/images/generations":       {"openai_images.go", "grok_media.go"REDACTED,
 		"/images/edits":             {"openai_images.go", "grok_media.go"REDACTED,
 		"/images/generations/async": {"image_task_handler.go"REDACTED,

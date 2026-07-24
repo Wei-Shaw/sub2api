@@ -938,6 +938,7 @@ REDACTED
 		{Name: "supported_model_scopes", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
 		{Name: "sort_order", Type: field.TypeInt, Default: 0REDACTED,
 		{Name: "allow_messages_dispatch", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "allow_live", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "require_oauth_only", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "require_privacy_set", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "default_mapped_model", Type: field.TypeString, Size: 100, Default: ""REDACTED,
