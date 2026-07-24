@@ -538,6 +538,86 @@ func TestExchangePendingOAuthCompletionLoginFalseFalseBindsIdentityWithoutAdopti
 	require.NotNil(t, storedSession.ConsumedAt)
 }
 
+func TestExchangePendingOAuthCompletionRegistersDingTalkSyntheticUser(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		dingTalkConfig: config.DingTalkConnectConfig{
+			ClientID:            "test-client",
+			ClientSecret:        "test-secret",
+			AuthorizeURL:        "https://example.com/oauth2/auth",
+			TokenURL:            "https://example.com/oauth2/token",
+			UserInfoURL:         "https://example.com/oauth2/userinfo",
+			RedirectURL:         "https://example.com/callback",
+			FrontendRedirectURL: "https://example.com/auth/callback",
+			DingTalkAppKind:     "internal_app",
+			AppType:             "internal",
+		},
+		settingValues: map[string]string{
+			service.SettingKeyRegistrationEnabled:                  "false",
+			service.SettingKeyDingTalkConnectEnabled:               "true",
+			service.SettingKeyDingTalkConnectBypassRegistration:    "true",
+			service.SettingKeyDingTalkConnectCorpRestrictionPolicy: "internal_only",
+		},
+	})
+	ctx := context.Background()
+	email := "dingtalk-new-user@dingtalk-connect.invalid"
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("dingtalk-synthetic-session-token").
+		SetIntent("login").
+		SetProviderType("dingtalk").
+		SetProviderKey("dingtalk").
+		SetProviderSubject("new-user").
+		SetResolvedEmail(email).
+		SetBrowserSessionKey("dingtalk-synthetic-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "DingTalk User",
+			"suggested_display_name": "DingTalk User",
+		}).
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"redirect":        "/dashboard",
+				"synthetic_email": email,
+			},
+		}).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/pending/exchange", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue(session.BrowserSessionKey)})
+	ginCtx.Request = req
+
+	handler.ExchangePendingOAuthCompletion(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	payload := decodeJSONResponseData(t, recorder)
+	require.NotEmpty(t, payload["access_token"])
+	require.Equal(t, "/dashboard", payload["redirect"])
+
+	userEntity, err := client.User.Query().Where(dbuser.EmailEQ(email)).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "DingTalk User", userEntity.Username)
+	require.Equal(t, "dingtalk", userEntity.SignupSource)
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("dingtalk"),
+			authidentity.ProviderKeyEQ("dingtalk"),
+			authidentity.ProviderSubjectEQ("new-user"),
+		).
+		Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, userEntity.ID, identity.UserID)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+	require.NoError(t, err)
+	require.NotNil(t, storedSession.ConsumedAt)
+}
+
 func TestExchangePendingOAuthCompletionLoginReassignsExistingDecisionIdentityReference(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()
@@ -2375,6 +2455,7 @@ type oauthPendingFlowTestHandlerOptions struct {
 	totpCache          service.TotpCache
 	totpEncryptor      service.SecretEncryptor
 	userRepoOptions    oauthPendingFlowUserRepoOptions
+	dingTalkConfig     config.DingTalkConnectConfig
 }
 
 func newOAuthPendingFlowTestHandlerWithDependencies(
@@ -2441,6 +2522,7 @@ CREATE TABLE IF NOT EXISTS user_affiliates (
 			UserBalance:     0,
 			UserConcurrency: 1,
 		},
+		DingTalk: options.dingTalkConfig,
 	}
 	settingValues := map[string]string{
 		service.SettingKeyRegistrationEnabled:              "true",

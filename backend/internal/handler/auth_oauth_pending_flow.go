@@ -1937,6 +1937,59 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 	}
 	applySuggestedProfileToCompletionResponse(payload, session.UpstreamIdentityClaims)
 
+	if pendingDingTalkSyntheticSignup(session, payload) {
+		if err := h.ensureBackendModeAllowsNewUserLogin(c.Request.Context()); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+
+		email := strings.TrimSpace(session.ResolvedEmail)
+		username := pendingSessionStringValue(session.UpstreamIdentityClaims, "username")
+		if username == "" {
+			username = strings.TrimSuffix(strings.TrimPrefix(email, "dingtalk-"), service.DingTalkConnectSyntheticEmailDomain)
+		}
+		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPairAndPromoCode(
+			c.Request.Context(),
+			email,
+			username,
+			"",
+			"",
+			pendingOAuthPromoCode(session),
+			"dingtalk",
+		)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		decision, err := h.ensurePendingOAuthAdoptionDecision(c, session.ID, adoptionDecision)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if err := applyPendingOAuthAdoptionAndConsumeSession(
+			c.Request.Context(),
+			h.entClient(),
+			h.authService,
+			h.userService,
+			session,
+			decision,
+			user.ID,
+		); err != nil {
+			respondPendingOAuthBindingApplyError(c, err)
+			return
+		}
+
+		h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+		h.maybeSyncDingTalkAfterRegistration(c.Request.Context(), session, user.ID)
+		payload["access_token"] = tokenPair.AccessToken
+		payload["refresh_token"] = tokenPair.RefreshToken
+		payload["expires_in"] = tokenPair.ExpiresIn
+		payload["token_type"] = "Bearer"
+		clearCookies()
+		response.Success(c, payload)
+		return
+	}
+
 	canIssueTokenPair := pendingOAuthCompletionCanIssueTokenPair(session, payload)
 	var loginUser *service.User
 	if canIssueTokenPair {
@@ -2037,4 +2090,19 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 
 	clearCookies()
 	response.Success(c, payload)
+}
+
+func pendingDingTalkSyntheticSignup(session *dbent.PendingAuthSession, payload map[string]any) bool {
+	if session == nil || session.TargetUserID != nil {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(session.ProviderType), "dingtalk") {
+		return false
+	}
+	email := strings.ToLower(strings.TrimSpace(session.ResolvedEmail))
+	syntheticEmail, _ := payload["synthetic_email"].(string)
+	return email != "" &&
+		email == strings.ToLower(strings.TrimSpace(syntheticEmail)) &&
+		strings.HasPrefix(email, "dingtalk-") &&
+		strings.HasSuffix(email, service.DingTalkConnectSyntheticEmailDomain)
 }
