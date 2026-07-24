@@ -36,6 +36,13 @@ export async function create(req: CreateScheduledTestPlanRequest): Promise<Sched
   return data
 }
 
+export async function createMissingForAllAccounts(): Promise<{ created: number }> {
+  const { data } = await apiClient.post<{ created: number }>(
+    '/admin/scheduled-test-plans/bulk-create-missing'
+  )
+  return data
+}
+
 /**
  * Update an existing scheduled test plan
  * @param id - Plan ID
@@ -77,6 +84,7 @@ export async function listResults(planId: number, limit?: number): Promise<Sched
 export const scheduledTestsAPI = {
   listByAccount,
   create,
+  createMissingForAllAccounts,
   update,
   delete: deletePlan,
   listResults

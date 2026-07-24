@@ -121,6 +121,16 @@
                           {{ t('admin.accounts.toolActions') }}
                         </div>
                       </div>
+                      <button
+                        class="account-tools-menu-item"
+                        :disabled="creatingMissingScheduledTests"
+                        @click="openCreateMissingScheduledTests"
+                      >
+                        <span class="account-tools-menu-icon bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-300">
+                          <Icon name="clock" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.scheduledTests.createMissing') }}</span>
+                      </button>
                       <button class="account-tools-menu-item" @click="openErrorPassthrough">
                         <span class="account-tools-menu-icon bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
                           <Icon name="shield" size="sm" />
@@ -437,6 +447,13 @@
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
+    <ConfirmDialog
+      :show="showCreateMissingScheduledTests"
+      :title="t('admin.scheduledTests.createMissingTitle')"
+      :message="t('admin.scheduledTests.createMissingConfirm')"
+      @confirm="confirmCreateMissingScheduledTests"
+      @cancel="showCreateMissingScheduledTests = false"
+    />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
@@ -586,6 +603,8 @@ const statsAcc = ref<Account | null>(null)
 const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
+const showCreateMissingScheduledTests = ref(false)
+const creatingMissingScheduledTests = ref(false)
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
@@ -1066,6 +1085,7 @@ const isAnyModalOpen = computed(() => {
     showTest.value ||
     showStats.value ||
     showSchedulePanel.value ||
+    showCreateMissingScheduledTests.value ||
     showErrorPassthrough.value ||
     showTLSFingerprintProfiles.value
   )
@@ -1226,6 +1246,26 @@ const openImportData = () => {
 const openExportDataDialogFromMenu = () => {
   closeAccountToolsDropdown()
   openExportDataDialog()
+}
+
+const openCreateMissingScheduledTests = () => {
+  closeAccountToolsDropdown()
+  showCreateMissingScheduledTests.value = true
+}
+
+const confirmCreateMissingScheduledTests = async () => {
+  if (creatingMissingScheduledTests.value) return
+  showCreateMissingScheduledTests.value = false
+  creatingMissingScheduledTests.value = true
+  try {
+    const result = await adminAPI.scheduledTests.createMissingForAllAccounts()
+    appStore.showSuccess(t('admin.scheduledTests.createMissingSuccess', { count: result.created }))
+  } catch (error) {
+    console.error('Failed to create missing scheduled test plans:', error)
+    appStore.showError(t('admin.scheduledTests.createMissingFailed'))
+  } finally {
+    creatingMissingScheduledTests.value = false
+  }
 }
 
 const openErrorPassthrough = () => {
