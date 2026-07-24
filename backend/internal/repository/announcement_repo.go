@@ -7,8 +7,9 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	portannouncement "github.com/Wei-Shaw/sub2api/internal/port/announcement"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -17,11 +18,11 @@ type announcementRepository struct {
 	client *dbent.Client
 }
 
-func NewAnnouncementRepository(client *dbent.Client) service.AnnouncementRepository {
+func NewAnnouncementRepository(client *dbent.Client) portannouncement.AnnouncementRepository {
 	return &announcementRepository{client: client}
 }
 
-func (r *announcementRepository) Create(ctx context.Context, a *service.Announcement) error {
+func (r *announcementRepository) Create(ctx context.Context, a *domain.Announcement) error {
 	client := clientFromContext(ctx, r.client)
 	builder := client.Announcement.Create().
 		SetTitle(a.Title).
@@ -52,17 +53,17 @@ func (r *announcementRepository) Create(ctx context.Context, a *service.Announce
 	return nil
 }
 
-func (r *announcementRepository) GetByID(ctx context.Context, id int64) (*service.Announcement, error) {
+func (r *announcementRepository) GetByID(ctx context.Context, id int64) (*domain.Announcement, error) {
 	m, err := r.client.Announcement.Query().
 		Where(announcement.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
-		return nil, translatePersistenceError(err, service.ErrAnnouncementNotFound, nil)
+		return nil, translatePersistenceError(err, domain.ErrAnnouncementNotFound, nil)
 	}
 	return announcementEntityToService(m), nil
 }
 
-func (r *announcementRepository) Update(ctx context.Context, a *service.Announcement) error {
+func (r *announcementRepository) Update(ctx context.Context, a *domain.Announcement) error {
 	client := clientFromContext(ctx, r.client)
 	builder := client.Announcement.UpdateOneID(a.ID).
 		SetTitle(a.Title).
@@ -94,7 +95,7 @@ func (r *announcementRepository) Update(ctx context.Context, a *service.Announce
 
 	updated, err := builder.Save(ctx)
 	if err != nil {
-		return translatePersistenceError(err, service.ErrAnnouncementNotFound, nil)
+		return translatePersistenceError(err, domain.ErrAnnouncementNotFound, nil)
 	}
 
 	a.UpdatedAt = updated.UpdatedAt
@@ -110,8 +111,8 @@ func (r *announcementRepository) Delete(ctx context.Context, id int64) error {
 func (r *announcementRepository) List(
 	ctx context.Context,
 	params pagination.PaginationParams,
-	filters service.AnnouncementListFilters,
-) ([]service.Announcement, *pagination.PaginationResult, error) {
+	filters portannouncement.AnnouncementListFilters,
+) ([]domain.Announcement, *pagination.PaginationResult, error) {
 	q := r.client.Announcement.Query()
 
 	if filters.Status != "" {
@@ -197,10 +198,10 @@ func announcementListOrders(params pagination.PaginationParams) []func(*entsql.S
 	}
 }
 
-func (r *announcementRepository) ListActive(ctx context.Context, now time.Time) ([]service.Announcement, error) {
+func (r *announcementRepository) ListActive(ctx context.Context, now time.Time) ([]domain.Announcement, error) {
 	q := r.client.Announcement.Query().
 		Where(
-			announcement.StatusEQ(service.AnnouncementStatusActive),
+			announcement.StatusEQ(domain.AnnouncementStatusActive),
 			announcement.Or(announcement.StartsAtIsNil(), announcement.StartsAtLTE(now)),
 			announcement.Or(announcement.EndsAtIsNil(), announcement.EndsAtGT(now)),
 		).
@@ -214,7 +215,7 @@ func (r *announcementRepository) ListActive(ctx context.Context, now time.Time) 
 	return announcementEntitiesToService(items), nil
 }
 
-func applyAnnouncementEntityToService(dst *service.Announcement, src *dbent.Announcement) {
+func applyAnnouncementEntityToService(dst *domain.Announcement, src *dbent.Announcement) {
 	if dst == nil || src == nil {
 		return
 	}
@@ -223,11 +224,11 @@ func applyAnnouncementEntityToService(dst *service.Announcement, src *dbent.Anno
 	dst.UpdatedAt = src.UpdatedAt
 }
 
-func announcementEntityToService(m *dbent.Announcement) *service.Announcement {
+func announcementEntityToService(m *dbent.Announcement) *domain.Announcement {
 	if m == nil {
 		return nil
 	}
-	return &service.Announcement{
+	return &domain.Announcement{
 		ID:         m.ID,
 		Title:      m.Title,
 		Content:    m.Content,
@@ -243,8 +244,8 @@ func announcementEntityToService(m *dbent.Announcement) *service.Announcement {
 	}
 }
 
-func announcementEntitiesToService(models []*dbent.Announcement) []service.Announcement {
-	out := make([]service.Announcement, 0, len(models))
+func announcementEntitiesToService(models []*dbent.Announcement) []domain.Announcement {
+	out := make([]domain.Announcement, 0, len(models))
 	for i := range models {
 		if s := announcementEntityToService(models[i]); s != nil {
 			out = append(out, *s)

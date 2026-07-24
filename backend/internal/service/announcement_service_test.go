@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	portannouncement "github.com/Wei-Shaw/sub2api/internal/port/announcement"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +35,7 @@ func (*announcementRepoStub) Delete(context.Context, int64) error {
 	return nil
 }
 
-func (*announcementRepoStub) List(context.Context, pagination.PaginationParams, AnnouncementListFilters) ([]Announcement, *pagination.PaginationResult, error) {
+func (*announcementRepoStub) List(context.Context, pagination.PaginationParams, portannouncement.AnnouncementListFilters) ([]Announcement, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
 

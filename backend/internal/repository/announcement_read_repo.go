@@ -6,14 +6,14 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	portannouncement "github.com/Wei-Shaw/sub2api/internal/port/announcement"
 )
 
 type announcementReadRepository struct {
 	client *dbent.Client
 }
 
-func NewAnnouncementReadRepository(client *dbent.Client) service.AnnouncementReadRepository {
+func NewAnnouncementReadRepository(client *dbent.Client) portannouncement.AnnouncementReadRepository {
 	return &announcementReadRepository{client: client}
 }
 

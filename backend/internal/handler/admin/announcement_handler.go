@@ -8,6 +8,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	portannouncement "github.com/Wei-Shaw/sub2api/internal/port/announcement"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -68,7 +69,7 @@ func (h *AnnouncementHandler) List(c *gin.Context) {
 	items, paginationResult, err := h.announcementService.List(
 		c.Request.Context(),
 		params,
-		service.AnnouncementListFilters{Status: status, Search: search},
+		portannouncement.AnnouncementListFilters{Status: status, Search: search},
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)

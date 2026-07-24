@@ -9,18 +9,19 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	portannouncement "github.com/Wei-Shaw/sub2api/internal/port/announcement"
 )
 
 type AnnouncementService struct {
-	announcementRepo AnnouncementRepository
-	readRepo         AnnouncementReadRepository
+	announcementRepo portannouncement.AnnouncementRepository
+	readRepo         portannouncement.AnnouncementReadRepository
 	userRepo         UserRepository
 	userSubRepo      UserSubscriptionRepository
 }
 
 func NewAnnouncementService(
-	announcementRepo AnnouncementRepository,
-	readRepo AnnouncementReadRepository,
+	announcementRepo portannouncement.AnnouncementRepository,
+	readRepo portannouncement.AnnouncementReadRepository,
 	userRepo UserRepository,
 	userSubRepo UserSubscriptionRepository,
 ) *AnnouncementService {
@@ -211,7 +212,7 @@ func (s *AnnouncementService) GetByID(ctx context.Context, id int64) (*Announcem
 	return s.announcementRepo.GetByID(ctx, id)
 }
 
-func (s *AnnouncementService) List(ctx context.Context, params pagination.PaginationParams, filters AnnouncementListFilters) ([]Announcement, *pagination.PaginationResult, error) {
+func (s *AnnouncementService) List(ctx context.Context, params pagination.PaginationParams, filters portannouncement.AnnouncementListFilters) ([]Announcement, *pagination.PaginationResult, error) {
 	return s.announcementRepo.List(ctx, params, filters)
 }
 
