@@ -373,6 +373,37 @@ func TestPromptSnapshotConversationTurnSelectionByProtocol(t *testing.T) {
 	}
 }
 
+func TestPromptSnapshotResponsesCodexAndMCPToolOutputs(t *testing.T) {
+	body := []byte(`{
+		"input":[
+			{"role":"user","content":"old user"},
+			{"type":"function_call","arguments":"FUNCTION_ARGUMENTS_CANARY"},
+			{"type":"custom_tool_call","input":"CUSTOM_INPUT_CANARY"},
+			{"type":"mcp_tool_call","arguments":"MCP_ARGUMENTS_CANARY"},
+			{"type":"tool_search_call","arguments":{"query":"SEARCH_ARGUMENTS_CANARY"}},
+			{"role":"user","content":"latest user"},
+			{"type":"custom_tool_call_output","call_id":"call_custom","output":"custom tool result"},
+			{"type":"mcp_tool_call_output","call_id":"call_mcp","output":{"content":[{"type":"text","text":"mcp text result"},{"type":"image","data":"data:image/png;base64,IMAGE_CANARY"}],"structuredContent":{"summary":"mcp structured result"}}},
+			{"type":"tool_search_output","call_id":"call_search","output":{"groups":["loaded tool group"]},"tools":[{"name":"TOOL_SCHEMA_CANARY","description":"TOOL_SCHEMA_DESCRIPTION_CANARY"}]},
+			{"type":"mcp_call","name":"hosted_mcp","arguments":"HOSTED_MCP_ARGUMENTS_CANARY","output":"hosted mcp result"}
+		]
+	}`)
+
+	snapshot, err := ExtractPromptSnapshot(Request{
+		Protocol: "openai_responses", Stage: "subsequent_turn", Body: body,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "latest user\n\ncustom tool result\n\nmcp text result\n\nmcp structured result\n\nloaded tool group\n\nhosted mcp result", metadataTextForTest(snapshot.ScanText))
+	for _, excluded := range []string{
+		"old user", "FUNCTION_ARGUMENTS_CANARY", "CUSTOM_INPUT_CANARY", "MCP_ARGUMENTS_CANARY",
+		"SEARCH_ARGUMENTS_CANARY", "HOSTED_MCP_ARGUMENTS_CANARY", "TOOL_SCHEMA_CANARY",
+		"TOOL_SCHEMA_DESCRIPTION_CANARY", "IMAGE_CANARY",
+	} {
+		require.NotContains(t, snapshot.ScanText, excluded)
+		require.NotContains(t, snapshot.FullPrompt, excluded)
+	}
+}
+
 func TestPromptSnapshotWebSocketStageOverridesHistoryDetection(t *testing.T) {
 	body := []byte(`{"type":"response.create","response":{"instructions":"websocket system","input":[{"role":"assistant","content":"old assistant"},{"role":"user","content":"latest websocket"}]}}`)
 	first, err := ExtractPromptSnapshot(Request{Protocol: "responses_websocket", Stage: "first_turn", Body: body})
@@ -382,6 +413,18 @@ func TestPromptSnapshotWebSocketStageOverridesHistoryDetection(t *testing.T) {
 	subsequent, err := ExtractPromptSnapshot(Request{Protocol: "responses_websocket", Stage: "subsequent_turn", Body: body})
 	require.NoError(t, err)
 	require.Equal(t, "latest websocket", subsequent.ScanText)
+}
+
+func TestPromptSnapshotWebSocketIncludesCodexToolOutputs(t *testing.T) {
+	body := []byte(`{"type":"response.create","response":{"input":[
+		{"role":"user","content":"latest websocket"},
+		{"type":"custom_tool_call_output","call_id":"call_custom","output":"websocket custom result"},
+		{"type":"mcp_tool_call_output","call_id":"call_mcp","output":"websocket mcp result"}
+	]}}`)
+
+	snapshot, err := ExtractPromptSnapshot(Request{Protocol: "responses_websocket", Stage: "subsequent_turn", Body: body})
+	require.NoError(t, err)
+	require.Equal(t, "latest websocket\n\nwebsocket custom result\n\nwebsocket mcp result", metadataTextForTest(snapshot.ScanText))
 }
 
 func TestPromptSnapshotToolResultWithoutUserAndAssistantHistoryOnly(t *testing.T) {

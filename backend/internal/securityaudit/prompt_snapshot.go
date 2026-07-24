@@ -233,12 +233,14 @@ func extractResponses(extracted *promptExtraction, value any) {
 func extractResponseEntry(extracted *promptExtraction, entry map[string]any) {
 	typeName := strings.ToLower(stringValue(entry["type"]))
 	switch typeName {
-	case "function_call_output":
+	case "function_call_output", "custom_tool_call_output", "mcp_tool_call_output", "tool_search_output", "mcp_call":
+		// All supported Responses/Codex result items expose the model-visible
+		// payload through output. Do not inspect tool definitions or call inputs.
 		extracted.appendToolResult(entry["output"])
 		return
-	case "function_call":
-		// Function calls are assistant history, not a tool result. In particular,
-		// never send their arguments to the guard model.
+	case "function_call", "tool_call", "local_shell_call", "tool_search_call", "custom_tool_call", "mcp_tool_call":
+		// Calls are assistant history, not a tool result. In particular, never
+		// send their arguments or freeform input to the guard model.
 		extracted.hasHistory = true
 		return
 	}
