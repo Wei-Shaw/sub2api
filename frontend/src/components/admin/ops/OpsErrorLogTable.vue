@@ -188,7 +188,7 @@ import IpGeoCell from '@/components/common/IpGeoCell.vue'
 import IpGeoBatchToolbar from '@/components/common/IpGeoBatchToolbar.vue'
 import type { OpsErrorLog } from '@/api/admin/ops'
 import type { Column } from '@/components/common/types'
-import { getSeverityClass, formatDateTime } from '../utils/opsFormatters'
+import { getSeverityClass, formatDateTime } from './utils/opsFormatters'
 import { mapErrorCategory } from '@/utils/errorCategory'
 import { mapErrorSortKey, statusCodeBadgeClass } from '@/utils/errorBadges'
 

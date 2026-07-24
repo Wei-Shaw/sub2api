@@ -203,7 +203,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsErrorDetail } from '@/api/admin/ops'
 import { formatDateTime } from '@/utils/format'
-import { resolvePrimaryResponseBody, resolveUpstreamPayload } from '../utils/errorDetailResponse'
+import { resolvePrimaryResponseBody, resolveUpstreamPayload } from './utils/errorDetailResponse'
 
 interface Props {
   show: boolean

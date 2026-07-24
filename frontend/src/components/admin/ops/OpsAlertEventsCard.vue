@@ -7,8 +7,8 @@ import Select from '@/components/common/Select.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { opsAPI, type AlertEventsQuery } from '@/api/admin/ops'
-import type { AlertEvent } from '../types'
-import { formatDateTime } from '../utils/opsFormatters'
+import type { AlertEvent } from './types'
+import { formatDateTime } from './utils/opsFormatters'
 
 const { t } = useI18n()
 const appStore = useAppStore()

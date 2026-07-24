@@ -14,8 +14,8 @@ import {
 } from 'chart.js'
 import { Line } from 'vue-chartjs'
 import type { OpsThroughputTrendPoint } from '@/api/admin/ops'
-import type { ChartState } from '../types'
-import { formatHistoryLabel, sumNumbers } from '../utils/opsFormatters'
+import type { ChartState } from './types'
+import { formatHistoryLabel, sumNumbers } from './utils/opsFormatters'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 

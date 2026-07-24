@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import PlanEditDialog from '../PlanEditDialog.vue'
+import PlanEditDialog from '@/components/admin/orders/PlanEditDialog.vue'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({

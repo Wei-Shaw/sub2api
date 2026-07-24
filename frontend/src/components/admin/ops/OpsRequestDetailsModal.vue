@@ -7,7 +7,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsRequestDetailsParams, type OpsRequestDetail } from '@/api/admin/ops'
-import { parseTimeRangeMinutes, formatDateTime } from '../utils/opsFormatters'
+import { parseTimeRangeMinutes, formatDateTime } from './utils/opsFormatters'
 
 export interface OpsRequestDetailsPreset {
   title: string

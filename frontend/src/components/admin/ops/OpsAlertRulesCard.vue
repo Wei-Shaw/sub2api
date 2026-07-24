@@ -8,9 +8,9 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import { adminAPI } from '@/api'
 import { opsAPI } from '@/api/admin/ops'
-import type { AlertRule, MetricType, Operator } from '../types'
+import type { AlertRule, MetricType, Operator } from './types'
 import type { OpsSeverity } from '@/api/admin/ops'
-import { formatDateTime } from '../utils/opsFormatters'
+import { formatDateTime } from './utils/opsFormatters'
 
 const { t } = useI18n()
 const appStore = useAppStore()
