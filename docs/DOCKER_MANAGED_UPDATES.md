@@ -85,6 +85,13 @@ the index is valid, ready, and live. A healthy index with only a pending proof
 fails closed instead of opening a live uniqueness or performance gap by dropping
 an unproven object.
 
+PostgreSQL backups acquire the same migration advisory lock on a dedicated
+database session before `pg_dump` starts. The lock remains held until the dump
+stream is closed and the process has exited, so a backup cannot capture a
+partially finalized non-transactional migration journal or index. An unlock
+failure discards the database session instead of returning a possibly
+lock-owning connection to the pool.
+
 Existing migration files are immutable. Drops (including constraints and
 defaults), renames, type changes, constraints on existing tables, truncation,
 and data updates/deletes/merges/copies require a maintenance release after all
