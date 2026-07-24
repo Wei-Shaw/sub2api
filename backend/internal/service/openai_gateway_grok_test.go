@@ -152,19 +152,20 @@ func TestPatchGrokResponsesBodySanitizesComposerReasoningParameters(t *testing.T
 	}
 }
 
-func TestPatchGrokResponsesBodyPreservesGrok45ResponsesReasoningEffort(t *testing.T) {
+func TestPatchGrokResponsesBodyNormalizesGrok45ResponsesReasoningEffort(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		input string
 		want  string
 	}{
-		{input: "minimal", want: "minimal"},
+		{input: "minimal", want: "low"},
 		{input: "low", want: "low"},
 		{input: "medium", want: "medium"},
 		{input: "high", want: "high"},
-		{input: "xhigh", want: "xhigh"},
-		{input: "max", want: "max"},
+		{input: "xhigh", want: "high"},
+		{input: "max", want: "high"},
+		{input: "unknown", want: "medium"},
 	}
 
 	for _, tt := range tests {
@@ -175,6 +176,23 @@ func TestPatchGrokResponsesBodyPreservesGrok45ResponsesReasoningEffort(t *testin
 			require.Equal(t, tt.want, gjson.GetBytes(patched, "reasoning.effort").String())
 		})
 	}
+}
+
+func TestPatchGrokResponsesBodyNormalizesAllGrok45ReasoningAliases(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"input":"hello",
+		"reasoning":{"effort":"xhigh"},
+		"reasoning_effort":"max",
+		"reasoningEffort":"minimal"
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "xai/grok-4.5")
+	require.NoError(t, err)
+	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning.effort").String())
+	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning_effort").String())
+	require.Equal(t, "low", gjson.GetBytes(patched, "reasoningEffort").String())
 }
 
 func TestExtractGrokResponsesReasoningEffortSupportsOpenAICompatibleField(t *testing.T) {

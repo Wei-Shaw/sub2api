@@ -563,6 +563,9 @@ func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, erro
 }
 
 func sanitizeGrokResponsesModelCapabilities(body []byte, upstreamModel string) ([]byte, error) {
+	if grokModelSupportsOnlyStandardReasoningEffort(upstreamModel) {
+		return normalizeGrok45ReasoningEffortFields(body)
+	}
 	if !grokModelRejectsReasoningEffort(upstreamModel) {
 		return body, nil
 	}
@@ -579,6 +582,49 @@ func sanitizeGrokResponsesModelCapabilities(body []byte, upstreamModel string) (
 		}
 	}
 	return out, nil
+}
+
+func normalizeGrok45ReasoningEffortFields(body []byte) ([]byte, error) {
+	out := body
+	for _, field := range []string{"reasoning.effort", "reasoning_effort", "reasoningEffort"} {
+		value := gjson.GetBytes(out, field)
+		if !value.Exists() || value.Type != gjson.String {
+			continue
+		}
+		normalized := normalizeGrok45ReasoningEffort(value.String())
+		if normalized == "" || normalized == value.String() {
+			continue
+		}
+		updated, err := sjson.SetBytes(out, field, normalized)
+		if err != nil {
+			return nil, fmt.Errorf("normalize Grok 4.5 %s: %w", field, err)
+		}
+		out = updated
+	}
+	return out, nil
+}
+
+func normalizeGrok45ReasoningEffort(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "minimal", "none", "low":
+		return "low"
+	case "medium":
+		return "medium"
+	case "high", "xhigh", "extrahigh", "max":
+		return "high"
+	default:
+		// Keep the request within Grok 4.5's accepted enum even when a
+		// client sends a provider-specific or future effort name.
+		return "medium"
+	}
+}
+
+func grokModelSupportsOnlyStandardReasoningEffort(model string) bool {
+	model = strings.TrimSpace(strings.ToLower(model))
+	if slash := strings.LastIndex(model, "/"); slash >= 0 {
+		model = strings.TrimSpace(model[slash+1:])
+	}
+	return model == "grok-4.5"
 }
 
 func grokModelRejectsReasoningEffort(model string) bool {
