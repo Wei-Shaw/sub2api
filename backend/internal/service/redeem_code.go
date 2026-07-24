@@ -1,56 +1,19 @@
 package service
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"time"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-type RedeemCode struct {
-	ID        int64
-	Code      string
-	Type      string
-	Value     float64
-	Status    string
-	UsedBy    *int64
-	UsedAt    *time.Time
-	Notes     string
-	CreatedAt time.Time
-	ExpiresAt *time.Time
+// Type aliases keep existing service call sites compiling while the redeem BC
+// owns its domain types. Mirror of promo_code.go / announcement.go.
 
-	GroupID      *int64
-	ValidityDays int
+type RedeemCode = domain.RedeemCode
 
-	User  *User
-	Group *Group
-}
+type RedeemUsageUser = domain.RedeemUsageUser
 
-func (r *RedeemCode) IsUsed() bool {
-	return r.Status == StatusUsed
-}
+type RedeemUsageGroup = domain.RedeemUsageGroup
 
-func (r *RedeemCode) IsExpired() bool {
-	return r.IsExpiredAt(time.Now())
-}
-
-func (r *RedeemCode) IsExpiredAt(now time.Time) bool {
-	if r == nil {
-		return false
-	}
-	if r.Status == StatusExpired {
-		return true
-	}
-	return r.Status == StatusUnused && r.ExpiresAt != nil && !r.ExpiresAt.After(now)
-}
-
-func (r *RedeemCode) CanUse() bool {
-	return r.Status == StatusUnused && !r.IsExpired()
-}
-
+// GenerateRedeemCode re-exports the domain helper.
 func GenerateRedeemCode() (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
+	return domain.GenerateRedeemCode()
 }

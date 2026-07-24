@@ -564,8 +564,8 @@ func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 		ExpiresAt:    rc.ExpiresAt,
 		GroupID:      rc.GroupID,
 		ValidityDays: rc.ValidityDays,
-		User:         UserFromServiceShallow(rc.User),
-		Group:        GroupFromServiceShallow(rc.Group),
+		User:         UserFromRedeemUsageUser(rc.User),
+		Group:        GroupFromRedeemUsageGroup(rc.Group),
 	}
 	if rc.IsExpired() {
 		out.Status = service.StatusExpired
@@ -578,6 +578,37 @@ func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 	}
 
 	return out
+}
+
+// UserFromRedeemUsageUser maps the redeem BC's shallow user projection into the
+// HTTP DTO User. Full service.User mapping remains UserFromServiceShallow.
+func UserFromRedeemUsageUser(u *service.RedeemUsageUser) *User {
+	if u == nil {
+		return nil
+	}
+	return &User{
+		ID:       u.ID,
+		Email:    u.Email,
+		Username: u.Username,
+		Role:     u.Role,
+		Balance:  u.Balance,
+		Status:   u.Status,
+	}
+}
+
+// GroupFromRedeemUsageGroup maps the redeem BC's shallow group projection into
+// the HTTP DTO Group. Admin UI currently only needs id/name for redeem rows.
+func GroupFromRedeemUsageGroup(g *service.RedeemUsageGroup) *Group {
+	if g == nil {
+		return nil
+	}
+	return &Group{
+		ID:               g.ID,
+		Name:             g.Name,
+		Platform:         g.Platform,
+		Status:           g.Status,
+		SubscriptionType: g.SubscriptionType,
+	}
 }
 
 // AccountSummaryFromService returns a minimal AccountSummary for usage log display.

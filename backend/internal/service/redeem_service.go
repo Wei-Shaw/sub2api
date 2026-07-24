@@ -10,18 +10,20 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	portredeem "github.com/Wei-Shaw/sub2api/internal/port/redeem"
 )
 
 var (
-	ErrRedeemCodeNotFound  = infraerrors.NotFound("REDEEM_CODE_NOT_FOUND", "redeem code not found")
-	ErrRedeemCodeUsed      = infraerrors.Conflict("REDEEM_CODE_USED", "redeem code already used")
-	ErrRedeemCodeExpired   = infraerrors.Conflict("REDEEM_CODE_EXPIRED", "redeem code expired")
+	ErrRedeemCodeNotFound  = domain.ErrRedeemCodeNotFound
+	ErrRedeemCodeUsed      = domain.ErrRedeemCodeUsed
+	ErrRedeemCodeExpired   = domain.ErrRedeemCodeExpired
 	ErrInsufficientBalance = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
-	ErrRedeemRateLimited   = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrRedeemCodeLocked    = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
+	ErrRedeemRateLimited   = domain.ErrRedeemRateLimited
+	ErrRedeemCodeLocked    = domain.ErrRedeemCodeLocked
 )
 
 const (
@@ -39,34 +41,13 @@ func ContextSkipRedeemAffiliate(ctx context.Context) context.Context {
 	return context.WithValue(ctx, ctxKeySkipRedeemAffiliate{}, true)
 }
 
-// RedeemCache defines cache operations for redeem service
-type RedeemCache interface {
-	GetRedeemAttemptCount(ctx context.Context, userID int64) (int, error)
-	IncrementRedeemAttemptCount(ctx context.Context, userID int64) error
-
-	AcquireRedeemLock(ctx context.Context, code string, ttl time.Duration) (bool, error)
-	ReleaseRedeemLock(ctx context.Context, code string) error
-}
-
-type RedeemCodeRepository interface {
-	Create(ctx context.Context, code *RedeemCode) error
-	CreateBatch(ctx context.Context, codes []RedeemCode) error
-	GetByID(ctx context.Context, id int64) (*RedeemCode, error)
-	GetByCode(ctx context.Context, code string) (*RedeemCode, error)
-	Update(ctx context.Context, code *RedeemCode) error
-	BatchUpdate(ctx context.Context, ids []int64, fields RedeemCodeBatchUpdateFields) (int64, error)
-	Delete(ctx context.Context, id int64) error
-	Use(ctx context.Context, id, userID int64) error
-
-	List(ctx context.Context, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]RedeemCode, *pagination.PaginationResult, error)
-	ListByUser(ctx context.Context, userID int64, limit int) ([]RedeemCode, error)
-	// ListByUserPaginated returns paginated balance/concurrency history for a specific user.
-	// codeType filter is optional - pass empty string to return all types.
-	ListByUserPaginated(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]RedeemCode, *pagination.PaginationResult, error)
-	// SumPositiveBalanceByUser returns the total recharged amount (sum of positive balance values) for a user.
-	SumPositiveBalanceByUser(ctx context.Context, userID int64) (float64, error)
-}
+// Port type aliases keep service call sites compiling while ports live in
+// internal/port/redeem.
+type RedeemCache = portredeem.RedeemCache
+type RedeemCodeRepository = portredeem.RedeemCodeRepository
+type NullableTimeUpdate = portredeem.NullableTimeUpdate
+type NullableInt64Update = portredeem.NullableInt64Update
+type RedeemCodeBatchUpdateFields = portredeem.RedeemCodeBatchUpdateFields
 
 // GenerateCodesRequest 生成兑换码请求
 type GenerateCodesRequest struct {
@@ -83,45 +64,6 @@ type RedeemCodeResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type NullableTimeUpdate struct {
-	Set   bool
-	Value *time.Time
-}
-
-type NullableInt64Update struct {
-	Set   bool
-	Value *int64
-}
-
-type RedeemCodeBatchUpdateFields struct {
-	Status    *string
-	ExpiresAt NullableTimeUpdate
-	Notes     *string
-	GroupID   NullableInt64Update
-
-	// Core fields are intentionally modeled only so service validation can
-	// reject payloads that try to mutate redemption value semantics in bulk.
-	Type  *string
-	Value *float64
-}
-
-func (f RedeemCodeBatchUpdateFields) HasChanges() bool {
-	return f.Status != nil ||
-		f.ExpiresAt.Set ||
-		f.Notes != nil ||
-		f.GroupID.Set ||
-		f.Type != nil ||
-		f.Value != nil
-}
-
-func (f RedeemCodeBatchUpdateFields) HasCoreFieldChanges() bool {
-	return f.Type != nil || f.Value != nil
-}
-
-func (f RedeemCodeBatchUpdateFields) TouchesUsedSensitiveFields() bool {
-	return f.Status != nil || f.ExpiresAt.Set || f.GroupID.Set
-}
-
 type RedeemCodeBatchUpdateInput struct {
 	IDs    []int64
 	Fields RedeemCodeBatchUpdateFields
@@ -133,11 +75,11 @@ type RedeemCodeBatchUpdateResult struct {
 
 // RedeemService 兑换码服务
 type RedeemService struct {
-	redeemRepo           RedeemCodeRepository
+	redeemRepo           portredeem.RedeemCodeRepository
 	userRepo             UserRepository
 	redeemUserRepo       RedeemUserAdjustmentRepository
 	subscriptionService  *SubscriptionService
-	cache                RedeemCache
+	cache                portredeem.RedeemCache
 	billingCacheService  *BillingCacheService
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
@@ -146,10 +88,10 @@ type RedeemService struct {
 
 // NewRedeemService 创建兑换码服务实例
 func NewRedeemService(
-	redeemRepo RedeemCodeRepository,
+	redeemRepo portredeem.RedeemCodeRepository,
 	userRepo UserRepository,
 	subscriptionService *SubscriptionService,
-	cache RedeemCache,
+	cache portredeem.RedeemCache,
 	billingCacheService *BillingCacheService,
 	entClient *dbent.Client,
 	authCacheInvalidator APIKeyAuthCacheInvalidator,
