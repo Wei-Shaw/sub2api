@@ -1,0 +1,3 @@
+INSERT INTO settings (key, value)
+VALUES ('MANAGED_DEPLOYMENT_ENABLED', 'false')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

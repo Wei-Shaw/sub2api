@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -27,7 +26,7 @@ import (
 type Application struct {
 	Server      *http.Server
 	PromptAudit *securityaudit.PromptService
-	Cleanup     func()
+	Cleanup     func(context.Context)
 }
 
 func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
@@ -86,6 +85,11 @@ func provideCleanup(
 	apiKeyService *service.APIKeyService,
 	authCacheInvalidationWorker *service.AuthCacheInvalidationWorker,
 	schedulerSnapshot *service.SchedulerSnapshotService,
+	concurrencyService *service.ConcurrencyService,
+	dashboardAggregation *service.DashboardAggregationService,
+	deferredService *service.DeferredService,
+	userMessageQueue *service.UserMessageQueueService,
+	timingWheel *service.TimingWheelService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
 	proxyExpiry *service.ProxyExpiryService,
@@ -114,10 +118,11 @@ func provideCleanup(
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
 	promptAudit *securityaudit.PromptService,
-) func() {
-	return func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+) func(context.Context) {
+	return func(ctx context.Context) {
+		if ctx == nil {
+			ctx = context.Background()
+		}
 
 		type cleanupStep struct {
 			name string
@@ -188,7 +193,7 @@ func provideCleanup(
 			}},
 			{"OpsAggregationService", func() error {
 				if opsAggregation != nil {
-					opsAggregation.Stop()
+					return opsAggregation.StopContext(ctx)
 				}
 				return nil
 			}},
@@ -204,9 +209,33 @@ func provideCleanup(
 				}
 				return nil
 			}},
+			{"ConcurrencyMaintenance", func() error {
+				if concurrencyService != nil {
+					concurrencyService.StopSlotCleanupWorker()
+				}
+				return nil
+			}},
+			{"DashboardAggregationService", func() error {
+				if dashboardAggregation != nil {
+					return dashboardAggregation.StopContext(ctx)
+				}
+				return nil
+			}},
+			{"DeferredService", func() error {
+				if deferredService != nil {
+					deferredService.Stop()
+				}
+				return nil
+			}},
+			{"UserMessageQueueService", func() error {
+				if userMessageQueue != nil {
+					userMessageQueue.Stop()
+				}
+				return nil
+			}},
 			{"UsageCleanupService", func() error {
 				if usageCleanup != nil {
-					usageCleanup.Stop()
+					return usageCleanup.StopContext(ctx)
 				}
 				return nil
 			}},
@@ -304,7 +333,7 @@ func provideCleanup(
 			}},
 			{"BackupService", func() error {
 				if backupSvc != nil {
-					backupSvc.Stop()
+					return backupSvc.StopContext(ctx)
 				}
 				return nil
 			}},
@@ -341,6 +370,12 @@ func provideCleanup(
 		}
 
 		infraSteps := []cleanupStep{
+			{"TimingWheelService", func() error {
+				if timingWheel != nil {
+					timingWheel.Stop()
+				}
+				return nil
+			}},
 			{"Redis", func() error {
 				if rdb == nil {
 					return nil
@@ -355,7 +390,7 @@ func provideCleanup(
 			}},
 		}
 
-		runParallel := func(steps []cleanupStep) {
+		runParallel := func(steps []cleanupStep) error {
 			var wg sync.WaitGroup
 			for i := range steps {
 				step := steps[i]
@@ -369,29 +404,46 @@ func provideCleanup(
 					log.Printf("[Cleanup] %s succeeded", step.name)
 				}()
 			}
-			wg.Wait()
-		}
-
-		runSequential := func(steps []cleanupStep) {
-			for i := range steps {
-				step := steps[i]
-				if err := step.fn(); err != nil {
-					log.Printf("[Cleanup] %s failed: %v", step.name, err)
-					continue
-				}
-				log.Printf("[Cleanup] %s succeeded", step.name)
+			done := make(chan struct{})
+			go func() {
+				wg.Wait()
+				close(done)
+			}()
+			select {
+			case <-done:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
 			}
 		}
 
-		runParallel(parallelSteps)
-		runSequential(infraSteps)
-
-		// Check if context timed out
-		select {
-		case <-ctx.Done():
-			log.Printf("[Cleanup] Warning: cleanup timed out after 10 seconds")
-		default:
-			log.Printf("[Cleanup] All cleanup steps completed")
+		runSequential := func(steps []cleanupStep) error {
+			for i := range steps {
+				step := steps[i]
+				done := make(chan error, 1)
+				go func() { done <- step.fn() }()
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case err := <-done:
+					if err == nil {
+						log.Printf("[Cleanup] %s succeeded", step.name)
+						continue
+					}
+					log.Printf("[Cleanup] %s failed: %v", step.name, err)
+				}
+			}
+			return nil
 		}
+
+		if err := runParallel(parallelSteps); err != nil {
+			log.Printf("[Cleanup] budget exhausted before workers stopped: %v", err)
+			return
+		}
+		if err := runSequential(infraSteps); err != nil {
+			log.Printf("[Cleanup] budget exhausted while closing infrastructure: %v", err)
+			return
+		}
+		log.Printf("[Cleanup] All cleanup steps completed")
 	}
 }

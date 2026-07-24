@@ -121,6 +121,10 @@ tests
 CLAUDE.md
 .claude
 scripts
+!.github/scripts/
+.github/scripts/*
+!.github/scripts/release-safety.sh
+!.github/scripts/test-release-safety.sh
 !backend/scripts/
 !backend/scripts/resolve-version.sh
 .code-review-state
@@ -136,6 +140,7 @@ docs/*
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/ASYNC_IMAGE_TASKS.md
+!docs/DOCKER_MANAGED_UPDATES.md
 !docs/legal/
 !docs/legal/*.md
 .serena/

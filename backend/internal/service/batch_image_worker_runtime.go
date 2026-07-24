@@ -57,7 +57,7 @@ func ProvideBatchImageWorkerRuntime(
 		StaleAfter: NewBatchImageWorkerOptionsFromConfig(cfg).StaleActiveAfter,
 		Limit:      NewBatchImageWorkerOptionsFromConfig(cfg).RecoverLimit,
 	}
-	runtime.Start()
+	startProcessBackground("batch_image_worker", runtime.Start)
 	return runtime
 }
 

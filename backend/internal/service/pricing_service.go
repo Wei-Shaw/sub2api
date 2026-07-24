@@ -172,8 +172,11 @@ type PricingService struct {
 	localHash    string
 
 	// 停止信号
-	stopCh chan struct{}
-	wg     sync.WaitGroup
+	lifecycleMu sync.Mutex
+	started     bool
+	stopped     bool
+	stopCh      chan struct{}
+	wg          sync.WaitGroup
 }
 
 // NewPricingService 创建价格服务
@@ -189,6 +192,14 @@ func NewPricingService(cfg *config.Config, remoteClient PricingRemoteClient) *Pr
 
 // Initialize 初始化价格服务
 func (s *PricingService) Initialize() error {
+	if err := s.initializeData(); err != nil {
+		return err
+	}
+	s.startUpdateScheduler()
+	return nil
+}
+
+func (s *PricingService) initializeData() error {
 	// 确保数据目录存在
 	if err := os.MkdirAll(s.cfg.Pricing.DataDir, 0755); err != nil {
 		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to create data directory: %v", err)
@@ -202,29 +213,49 @@ func (s *PricingService) Initialize() error {
 		}
 	}
 
-	// 启动定时更新
-	s.startUpdateScheduler()
-
 	logger.LegacyPrintf("service.pricing", "[Pricing] Service initialized with %d models", len(s.pricingData))
 	return nil
 }
 
 // Stop 停止价格服务
 func (s *PricingService) Stop() {
-	close(s.stopCh)
+	if s == nil {
+		return
+	}
+	s.lifecycleMu.Lock()
+	if s.stopped {
+		s.lifecycleMu.Unlock()
+		return
+	}
+	s.stopped = true
+	if s.stopCh != nil {
+		close(s.stopCh)
+	}
+	s.lifecycleMu.Unlock()
 	s.wg.Wait()
 	logger.LegacyPrintf("service.pricing", "%s", "[Pricing] Service stopped")
 }
 
 // startUpdateScheduler 启动定时更新调度器
 func (s *PricingService) startUpdateScheduler() {
+	if s == nil {
+		return
+	}
+	s.lifecycleMu.Lock()
+	if s.started || s.stopped {
+		s.lifecycleMu.Unlock()
+		return
+	}
+	s.started = true
+	s.wg.Add(1)
+	s.lifecycleMu.Unlock()
+
 	// 定期检查哈希更新
 	hashInterval := time.Duration(s.cfg.Pricing.HashCheckIntervalMinutes) * time.Minute
 	if hashInterval < time.Minute {
 		hashInterval = 10 * time.Minute
 	}
 
-	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		ticker := time.NewTicker(hashInterval)

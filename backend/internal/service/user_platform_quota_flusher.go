@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -59,6 +60,9 @@ type UserPlatformQuotaUsageFlusher struct {
 	batchSize    int
 	flushTimeout time.Duration
 	metrics      *FlusherMetrics
+	lifecycleMu  sync.Mutex
+	flushMu      sync.Mutex
+	started      atomic.Bool
 	stopped      atomic.Bool
 }
 
@@ -226,6 +230,8 @@ func (s *UserPlatformQuotaUsageFlusher) flush() {
 	if s == nil {
 		return
 	}
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
 	parentCtx := context.Background()
 	for b := 0; b < flusherMaxBatchesPerTick; b++ {
 		if !s.flushOneBatch(parentCtx) {
@@ -253,6 +259,11 @@ func (s *UserPlatformQuotaUsageFlusher) Start() {
 	if s == nil || !s.enabled {
 		return
 	}
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.stopped.Load() || !s.started.CompareAndSwap(false, true) {
+		return
+	}
 	s.timingWheel.ScheduleRecurring("deferred:platform_quota", s.interval, s.tick)
 }
 
@@ -261,7 +272,17 @@ func (s *UserPlatformQuotaUsageFlusher) Stop() {
 	if s == nil {
 		return
 	}
-	s.stopped.Store(true)
-	s.timingWheel.Cancel("deferred:platform_quota")
-	s.flush()
+	s.lifecycleMu.Lock()
+	if !s.stopped.CompareAndSwap(false, true) {
+		s.lifecycleMu.Unlock()
+		return
+	}
+	started := s.started.Load()
+	if started {
+		s.timingWheel.Cancel("deferred:platform_quota")
+	}
+	s.lifecycleMu.Unlock()
+	if started {
+		s.flush()
+	}
 }

@@ -13,6 +13,10 @@ type DeferredService struct {
 	timingWheel *TimingWheelService
 	interval    time.Duration
 
+	lifecycleMu     sync.Mutex
+	flushMu         sync.Mutex
+	started         bool
+	stopped         bool
 	lastUsedUpdates sync.Map
 }
 
@@ -27,13 +31,38 @@ func NewDeferredService(accountRepo AccountRepository, timingWheel *TimingWheelS
 
 // Start starts the deferred service
 func (s *DeferredService) Start() {
+	if s == nil {
+		return
+	}
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.started || s.stopped {
+		return
+	}
+	s.started = true
 	s.timingWheel.ScheduleRecurring("deferred:last_used", s.interval, s.flushLastUsed)
 	log.Printf("[DeferredService] Started (interval: %v)", s.interval)
 }
 
 // Stop stops the deferred service
 func (s *DeferredService) Stop() {
-	s.timingWheel.Cancel("deferred:last_used")
+	if s == nil {
+		return
+	}
+	s.lifecycleMu.Lock()
+	if s.stopped {
+		s.lifecycleMu.Unlock()
+		return
+	}
+	s.stopped = true
+	started := s.started
+	if started {
+		s.timingWheel.Cancel("deferred:last_used")
+	}
+	s.lifecycleMu.Unlock()
+	if !started {
+		return
+	}
 	s.flushLastUsed()
 	log.Printf("[DeferredService] Service stopped")
 }
@@ -43,6 +72,8 @@ func (s *DeferredService) ScheduleLastUsedUpdate(accountID int64) {
 }
 
 func (s *DeferredService) flushLastUsed() {
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
 	updates := make(map[int64]time.Time)
 	s.lastUsedUpdates.Range(func(key, value any) bool {
 		id, ok := key.(int64)

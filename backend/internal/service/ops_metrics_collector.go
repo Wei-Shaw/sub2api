@@ -61,6 +61,7 @@ type OpsMetricsCollector struct {
 	stopCh    chan struct{}
 	startOnce sync.Once
 	stopOnce  sync.Once
+	wg        sync.WaitGroup
 
 	skipLogMu sync.Mutex
 	skipLogAt time.Time
@@ -95,6 +96,7 @@ func (c *OpsMetricsCollector) Start() {
 		if c.stopCh == nil {
 			c.stopCh = make(chan struct{})
 		}
+		c.wg.Add(1)
 		go c.run()
 	})
 }
@@ -108,9 +110,11 @@ func (c *OpsMetricsCollector) Stop() {
 			close(c.stopCh)
 		}
 	})
+	c.wg.Wait()
 }
 
 func (c *OpsMetricsCollector) run() {
+	defer c.wg.Done()
 	// First run immediately so the dashboard has data soon after startup.
 	c.collectOnce()
 

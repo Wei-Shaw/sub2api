@@ -8,14 +8,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 // ─── Mocks ───
@@ -23,6 +26,26 @@ import (
 type mockSettingRepo struct {
 	mu   sync.Mutex
 	data map[string]string
+}
+
+type blockingBackupSettingRepo struct {
+	*mockSettingRepo
+	key     string
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (r *blockingBackupSettingRepo) GetValue(ctx context.Context, key string) (string, error) {
+	if key == r.key {
+		r.once.Do(func() { close(r.entered) })
+		select {
+		case <-r.release:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	return r.mockSettingRepo.GetValue(ctx, key)
 }
 
 func newMockSettingRepo() *mockSettingRepo {
@@ -573,6 +596,81 @@ func TestBackupService_TestS3Connection_Incomplete(t *testing.T) {
 	require.Contains(t, err.Error(), "incomplete")
 }
 
+func TestBackupService_StandbyRejectsEverySharedStateMutation(t *testing.T) {
+	configureServiceStandby(t, "backup-standby")
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+	store := newMockObjectStore()
+	svc := newTestBackupService(repo, &mockDumper{dumpData: []byte("data")}, store)
+	record := &BackupRecord{ID: "existing", Status: "completed", S3Key: "backups/existing.sql.gz"}
+	require.NoError(t, svc.saveRecord(context.Background(), record))
+
+	repo.mu.Lock()
+	wantSettings := make(map[string]string, len(repo.data))
+	for key, value := range repo.data {
+		wantSettings[key] = value
+	}
+	repo.mu.Unlock()
+
+	operations := []struct {
+		name string
+		run  func() error
+	}{
+		{"update s3 config", func() error {
+			_, err := svc.UpdateS3Config(context.Background(), BackupS3Config{Bucket: "changed", AccessKeyID: "ak", SecretAccessKey: "sk"})
+			return err
+		}},
+		{"update schedule", func() error {
+			_, err := svc.UpdateSchedule(context.Background(), BackupScheduleConfig{Enabled: true, CronExpr: "0 2 * * *"})
+			return err
+		}},
+		{"create backup", func() error {
+			_, err := svc.CreateBackup(context.Background(), "manual", 14)
+			return err
+		}},
+		{"start backup", func() error {
+			_, err := svc.StartBackup(context.Background(), "manual", 14)
+			return err
+		}},
+		{"restore backup", func() error {
+			return svc.RestoreBackup(context.Background(), record.ID)
+		}},
+		{"start restore", func() error {
+			_, err := svc.StartRestore(context.Background(), record.ID)
+			return err
+		}},
+		{"delete backup", func() error {
+			return svc.DeleteBackup(context.Background(), record.ID)
+		}},
+	}
+
+	for _, operation := range operations {
+		t.Run(operation.name, func(t *testing.T) {
+			err := operation.run()
+			require.ErrorIs(t, err, ErrDeploymentStandby)
+			require.Equal(t, http.StatusServiceUnavailable, infraerrors.Code(err))
+			require.Equal(t, "DEPLOYMENT_STANDBY", infraerrors.Reason(err))
+		})
+	}
+
+	repo.mu.Lock()
+	require.Equal(t, wantSettings, repo.data)
+	repo.mu.Unlock()
+	store.mu.Lock()
+	require.Empty(t, store.objects)
+	store.mu.Unlock()
+}
+
+func TestBackupService_StandbyAllowsReadOnlyS3ConnectionTest(t *testing.T) {
+	configureServiceStandby(t, "backup-readonly")
+	svc := newTestBackupService(newMockSettingRepo(), &mockDumper{}, newMockObjectStore())
+	require.NoError(t, svc.TestS3Connection(context.Background(), BackupS3Config{
+		Bucket:          "test",
+		AccessKeyID:     "ak",
+		SecretAccessKey: "sk",
+	}))
+}
+
 func TestBackupService_Schedule_CronValidation(t *testing.T) {
 	repo := newMockSettingRepo()
 	svc := newTestBackupService(repo, &mockDumper{}, newMockObjectStore())
@@ -690,7 +788,7 @@ func TestRecoverStaleRecords(t *testing.T) {
 	require.Contains(t, r2.RestoreError, "server restart")
 }
 
-func TestGracefulShutdown(t *testing.T) {
+func TestGracefulShutdownCancelsActiveBackupBeforeWaiting(t *testing.T) {
 	repo := newMockSettingRepo()
 	seedS3Config(t, repo)
 
@@ -701,31 +799,86 @@ func TestGracefulShutdown(t *testing.T) {
 	_, err := svc.StartBackup(context.Background(), "manual", 14)
 	require.NoError(t, err)
 
-	// Stop 应该等待备份完成
-	done := make(chan struct{})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	started := time.Now()
+	require.NoError(t, svc.StopContext(ctx))
+	require.Less(t, time.Since(started), time.Second)
+}
+
+func TestStartBackupAdmissionSerializesWithStopContext(t *testing.T) {
+	baseRepo := newMockSettingRepo()
+	seedS3Config(t, baseRepo)
+	repo := &blockingBackupSettingRepo{
+		mockSettingRepo: baseRepo,
+		key:             settingKeyBackupS3Config,
+		entered:         make(chan struct{}),
+		release:         make(chan struct{}),
+	}
+	svc := newTestBackupService(baseRepo, &mockDumper{dumpData: []byte("data")}, newMockObjectStore())
+	svc.settingRepo = repo
+
+	startDone := make(chan error, 1)
 	go func() {
-		svc.Stop()
-		close(done)
+		_, err := svc.StartBackup(context.Background(), "manual", 14)
+		startDone <- err
 	}()
-
-	// 短暂等待确认 Stop 还在等待
 	select {
-	case <-done:
-		t.Fatal("Stop returned before backup finished")
-	case <-time.After(100 * time.Millisecond):
-		// 预期：Stop 还在等待
+	case <-repo.entered:
+	case <-time.After(time.Second):
+		t.Fatal("StartBackup did not enter initialization")
 	}
 
-	// 释放备份
-	close(dumper.blockCh)
-
-	// 现在 Stop 应该完成
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer stopCancel()
+	stopDone := make(chan error, 1)
+	go func() { stopDone <- svc.StopContext(stopCtx) }()
 	select {
-	case <-done:
-		// 预期
-	case <-time.After(5 * time.Second):
-		t.Fatal("Stop did not return after backup finished")
+	case err := <-stopDone:
+		t.Fatalf("StopContext returned before admitted StartBackup finished: %v", err)
+	case <-time.After(50 * time.Millisecond):
 	}
+
+	close(repo.release)
+	require.NoError(t, <-startDone)
+	select {
+	case err := <-stopDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("StopContext did not finish after StartBackup initialization was released")
+	}
+}
+
+func TestStopContextWaitsForCronCallbacks(t *testing.T) {
+	svc := newTestBackupService(newMockSettingRepo(), &mockDumper{}, newMockObjectStore())
+	scheduler := cron.New(cron.WithSeconds())
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	_, err := scheduler.AddFunc("*/1 * * * * *", func() {
+		once.Do(func() { close(entered) })
+		<-release
+	})
+	require.NoError(t, err)
+	svc.cronMu.Lock()
+	svc.cronSched = scheduler
+	svc.cronMu.Unlock()
+	scheduler.Start()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cron callback did not start")
+	}
+
+	deadlineCtx, deadlineCancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	err = svc.StopContext(deadlineCtx)
+	deadlineCancel()
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	close(release)
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), time.Second)
+	defer cleanupCancel()
+	require.NoError(t, svc.StopContext(cleanupCtx))
 }
 
 func TestStartRestore_Async(t *testing.T) {

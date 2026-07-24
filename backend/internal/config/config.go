@@ -158,7 +158,10 @@ type UpdateConfig struct {
 	// ProxyURL 用于访问 GitHub 的代理地址
 	// 支持 http/https/socks5/socks5h 协议
 	// 例如: "http://127.0.0.1:7890", "socks5://127.0.0.1:1080"
-	ProxyURL string `mapstructure:"proxy_url"`
+	ProxyURL               string `mapstructure:"proxy_url"`
+	Mode                   string `mapstructure:"mode"`
+	DeployerSocket         string `mapstructure:"deployer_socket"`
+	DeployerTimeoutSeconds int    `mapstructure:"deployer_timeout_seconds"`
 }
 
 type IdempotencyConfig struct {
@@ -665,6 +668,7 @@ type ServerConfig struct {
 	ReadHeaderTimeout        int       `mapstructure:"read_header_timeout"`   // 读取请求头超时（秒）
 	MaxHeaderBytes           int       `mapstructure:"max_header_bytes"`      // 请求头最大字节数（HTTP/2 映射为 header-list 上限）
 	IdleTimeout              int       `mapstructure:"idle_timeout"`          // 空闲连接超时（秒）
+	ShutdownTimeout          int       `mapstructure:"shutdown_timeout"`      // graceful shutdown timeout (seconds)
 	TrustedProxies           []string  `mapstructure:"trusted_proxies"`       // 可信代理列表（CIDR/IP）
 	TrustedProxiesConfigured bool      `mapstructure:"-" json:"-" yaml:"-"`   // 是否显式配置了可信代理列表
 	MaxRequestBodySize       int64     `mapstructure:"max_request_body_size"` // 全局最大请求体限制
@@ -1833,6 +1837,7 @@ func setDefaults() {
 	viper.SetDefault("server.read_header_timeout", 10) // 10秒读取请求头
 	viper.SetDefault("server.max_header_bytes", 64*1024)
 	viper.SetDefault("server.idle_timeout", 120) // 120秒空闲超时
+	viper.SetDefault("server.shutdown_timeout", 30)
 	viper.SetDefault("server.max_request_body_size", int64(256*1024*1024))
 	// H2C 默认配置
 	viper.SetDefault("server.h2c.enabled", false)
@@ -2382,6 +2387,9 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("gateway.session_idle_timeout_minutes", 0)
 	viper.SetDefault("gateway.user_message_queue.mode", "")
 	viper.SetDefault("update.proxy_url", "")
+	viper.SetDefault("update.mode", "auto")
+	viper.SetDefault("update.deployer_socket", "/run/sub2api-deployer/deployer.sock")
+	viper.SetDefault("update.deployer_timeout_seconds", 5)
 
 	// sticky_escape_enabled is the one exception to the zero-value rule: its
 	// effective default is true, applied post-unmarshal via a viper.IsSet guard.
@@ -2456,6 +2464,23 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.IdleTimeout <= 0 {
 		return fmt.Errorf("server.idle_timeout must be positive")
+	}
+	if c.Server.ShutdownTimeout != 0 && (c.Server.ShutdownTimeout < 5 || c.Server.ShutdownTimeout > 600) {
+		return fmt.Errorf("server.shutdown_timeout must be between 5 and 600 seconds")
+	}
+	updateMode := strings.ToLower(strings.TrimSpace(c.Update.Mode))
+	switch updateMode {
+	case "", "auto", "source", "binary", "standalone-binary", "docker", "docker-manual", "docker-managed":
+	default:
+		return fmt.Errorf("update.mode is invalid: %s", c.Update.Mode)
+	}
+	if updateMode == "docker" || updateMode == "docker-managed" {
+		if strings.TrimSpace(c.Update.DeployerSocket) == "" {
+			return fmt.Errorf("update.deployer_socket is required for managed Docker updates")
+		}
+		if c.Update.DeployerTimeoutSeconds != 0 && (c.Update.DeployerTimeoutSeconds < 1 || c.Update.DeployerTimeoutSeconds > 30) {
+			return fmt.Errorf("update.deployer_timeout_seconds must be between 1 and 30")
+		}
 	}
 	if c.Server.MaxRequestBodySize < 0 {
 		return fmt.Errorf("server.max_request_body_size must be non-negative")

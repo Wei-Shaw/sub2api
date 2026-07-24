@@ -1,0 +1,18 @@
+services:
+  sub2api:
+    image: ${SUB2API_IMAGE:?SUB2API_IMAGE is required}
+    group_add:
+      - "${SUB2API_DEPLOYER_SOCKET_GID:?SUB2API_DEPLOYER_SOCKET_GID is required}"
+    volumes:
+      - /run/sub2api-deployer:/run/sub2api-deployer:ro
+      - /var/lib/sub2api-deployer/runtime:/run/sub2api-deployment:ro
+    environment:
+      UPDATE_MODE: docker-managed
+      UPDATE_DEPLOYER_SOCKET: /run/sub2api-deployer/deployer.sock
+      SERVER_SHUTDOWN_TIMEOUT: "90"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 45s

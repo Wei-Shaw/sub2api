@@ -1,0 +1,42 @@
+{
+  "socket_path": "/run/sub2api-deployer/deployer.sock",
+  "socket_mode": 432,
+  "socket_gid": 1000,
+  "state_path": "/var/lib/sub2api-deployer/state.json",
+  "image_state_path": "/var/lib/sub2api-deployer/image.env",
+  "image_repository": "ghcr.io/ssharkkky/sub2api",
+  "required_image_labels": {
+    "org.opencontainers.image.source": "https://github.com/ssharkkky/sub2api",
+    "io.tokensupply.sub2api.update-protocol": "2"
+  },
+  "docker_binary": "/usr/bin/docker",
+  "compose_work_dir": "/opt/sub2api",
+  "compose_project": "sub2api",
+  "compose_env_files": [".env", "/var/lib/sub2api-deployer/image.env"],
+  "compose_files": ["compose.yaml", "compose.deployer.yml"],
+  "compose_service": "sub2api",
+  "image_environment": "SUB2API_IMAGE",
+  "container_port": 8080,
+  "deployment_state_path": "/var/lib/sub2api-deployer/runtime/active-slot",
+  "deployment_state_file": "/run/sub2api-deployment/active-slot",
+  "slots": [
+    {"name": "sub2api-blue", "host": "127.0.0.1", "port": 18080},
+    {"name": "sub2api-green", "host": "127.0.0.1", "port": 18081}
+  ],
+  "initial_container": "sub2api",
+  "initial_version": "0.1.162-ts.3",
+  "nginx_upstream_path": "/var/lib/sub2api-deployer/nginx/managed-upstream.conf",
+  "nginx_site_path": "/etc/nginx/sites-enabled/tokensupply.conf",
+  "nginx_upstream_name": "sub2api_managed",
+  "nginx_probe_url": "http://127.0.0.1/health",
+  "nginx_probe_host": "tokensupply.net",
+  "nginx_test_command": ["/usr/sbin/nginx", "-t"],
+  "nginx_dump_command": ["/usr/sbin/nginx", "-T"],
+  "nginx_reload_command": ["/usr/bin/systemctl", "reload", "nginx"],
+  "health_path": "/health",
+  "health_timeout": "2m",
+  "stabilize_duration": "20s",
+  "drain_duration": "15s",
+  "drain_timeout": "30m",
+  "stop_timeout": "2m"
+}

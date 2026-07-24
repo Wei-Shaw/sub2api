@@ -28,6 +28,28 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 );
 `
 
+const schemaMigrationStepsTableDDL = `
+CREATE TABLE IF NOT EXISTS schema_migration_steps (
+	filename            TEXT NOT NULL,
+		migration_checksum  TEXT NOT NULL,
+		statement_index     INTEGER NOT NULL CHECK (statement_index > 0),
+		statement_checksum  TEXT NOT NULL,
+		index_schema        TEXT NULL,
+		index_name          TEXT NULL,
+		target_relation_oid BIGINT NULL,
+		created_index_oid   BIGINT NULL,
+		created_index_definition TEXT NULL,
+		created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	PRIMARY KEY (filename, statement_index)
+);
+`
+
+const schemaMigrationStepsProofColumnsDDL = `
+	ALTER TABLE schema_migration_steps
+		ADD COLUMN IF NOT EXISTS created_index_oid BIGINT NULL,
+		ADD COLUMN IF NOT EXISTS created_index_definition TEXT NULL;
+`
+
 const atlasSchemaRevisionsTableDDL = `
 CREATE TABLE IF NOT EXISTS atlas_schema_revisions (
 	version TEXT PRIMARY KEY,
@@ -52,11 +74,7 @@ const migrationsAdvisoryLockID int64 = 694208311321144027
 const migrationsLockRetryInterval = 500 * time.Millisecond
 const nonTransactionalMigrationSuffix = "_notx.sql"
 const paymentOrdersOutTradeNoUniqueMigration = "120_enforce_payment_orders_out_trade_no_unique_notx.sql"
-const paymentOrdersOutTradeNoUniqueIndex = "paymentorder_out_trade_no_unique"
-const schedulerOutboxPendingDedupKeyMigration = "153_scheduler_outbox_pending_dedup_key_index_notx.sql"
-const schedulerOutboxPendingDedupKeyIndex = "idx_scheduler_outbox_pending_dedup_key"
-const latestAPIKeyIPIndexMigration = "174_add_usage_logs_api_key_latest_ip_index_notx.sql"
-const latestAPIKeyIPIndex = "idx_usage_logs_api_key_latest_ip"
+const postgresIdentifierMaxBytes = 63
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -150,6 +168,12 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	if _, err := lockConn.ExecContext(ctx, schemaMigrationsTableDDL); err != nil {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
+	if _, err := lockConn.ExecContext(ctx, schemaMigrationStepsTableDDL); err != nil {
+		return fmt.Errorf("create schema_migration_steps: %w", err)
+	}
+	if _, err := lockConn.ExecContext(ctx, schemaMigrationStepsProofColumnsDDL); err != nil {
+		return fmt.Errorf("upgrade schema_migration_steps proof columns: %w", err)
+	}
 
 	// 自动对齐 Atlas 基线（如果检测到 legacy schema_migrations 且缺失 atlas_schema_revisions）。
 	if err := ensureAtlasBaselineAligned(ctx, lockConn, fsys); err != nil {
@@ -215,27 +239,8 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		}
 
 		if nonTx {
-			if err := prepareNonTransactionalMigration(ctx, lockConn, name); err != nil {
-				return fmt.Errorf("prepare migration %s: %w", name, err)
-			}
-
-			// *_notx.sql：用于 CREATE/DROP INDEX CONCURRENTLY 场景，必须非事务执行。
-			// 逐条语句执行，避免将多条 CONCURRENTLY 语句放入同一个隐式事务块。
-			statements := splitSQLStatements(content)
-			for i, stmt := range statements {
-				trimmed := strings.TrimSpace(stmt)
-				if trimmed == "" {
-					continue
-				}
-				if stripSQLLineComment(trimmed) == "" {
-					continue
-				}
-				if _, err := lockConn.ExecContext(ctx, trimmed); err != nil {
-					return fmt.Errorf("apply migration %s (non-tx statement %d): %w", name, i+1, err)
-				}
-			}
-			if _, err := lockConn.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2)", name, checksum); err != nil {
-				return fmt.Errorf("record migration %s (non-tx): %w", name, err)
+			if err := applyNonTransactionalMigration(ctx, lockConn, name, checksum, content); err != nil {
+				return err
 			}
 			continue
 		}
@@ -275,17 +280,253 @@ type migrationConnection interface {
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 }
 
-func prepareNonTransactionalMigration(ctx context.Context, db migrationConnection, name string) error {
-	switch name {
-	case paymentOrdersOutTradeNoUniqueMigration:
-		return preparePaymentOrdersOutTradeNoUniqueMigration(ctx, db)
-	case schedulerOutboxPendingDedupKeyMigration:
-		return dropInvalidIndexIfPresent(ctx, db, schedulerOutboxPendingDedupKeyIndex)
-	case latestAPIKeyIPIndexMigration:
-		return dropInvalidIndexIfPresent(ctx, db, latestAPIKeyIPIndex)
-	default:
-		return nil
+func applyNonTransactionalMigration(ctx context.Context, db migrationConnection, name, checksum, content string) error {
+	if err := prepareNonTransactionalMigration(ctx, db, name); err != nil {
+		return fmt.Errorf("prepare migration %s: %w", name, err)
 	}
+
+	statements, err := splitSQLStatements(content)
+	if err != nil {
+		return fmt.Errorf("split migration %s: %w", name, err)
+	}
+	for i, statement := range statements {
+		trimmed := strings.TrimSpace(statement)
+		if !statementHasCode(trimmed) {
+			continue
+		}
+
+		definition, createsIndex, err := parseCreateConcurrentIndex(trimmed)
+		if err != nil {
+			return fmt.Errorf("parse migration %s (non-tx statement %d): %w", name, i+1, err)
+		}
+		var index *qualifiedIndexName
+		executionStatement := trimmed
+		if createsIndex {
+			resolved, err := resolveConcurrentIndexName(ctx, db, definition)
+			if err != nil {
+				return fmt.Errorf("resolve migration %s (non-tx statement %d): %w", name, i+1, err)
+			}
+			index = &resolved
+			executionStatement = definition.strictStatement
+		}
+
+		stepChecksum := checksumText(trimmed)
+		intent := nonTransactionalStepIntent{
+			filename:          name,
+			migrationChecksum: checksum,
+			statementIndex:    i + 1,
+			statementChecksum: stepChecksum,
+			index:             index,
+		}
+		journal, err := loadNonTransactionalStepIntent(ctx, db, intent)
+		if err != nil {
+			return fmt.Errorf("journal migration %s (non-tx statement %d): %w", name, i+1, err)
+		}
+
+		var indexState existingIndexState
+		if index != nil {
+			var completed bool
+			indexState, completed, err = inspectConcurrentIndexStep(ctx, db, *index, journal)
+			if err != nil {
+				return fmt.Errorf("prepare migration %s (non-tx statement %d): %w", name, i+1, err)
+			}
+			if completed {
+				continue
+			}
+		}
+		if !journal.exists {
+			if err := createNonTransactionalStepIntent(ctx, db, intent); err != nil {
+				return fmt.Errorf("journal migration %s (non-tx statement %d): %w", name, i+1, err)
+			}
+		}
+		if index != nil && indexState.exists {
+			if _, err := db.ExecContext(ctx, "DROP INDEX CONCURRENTLY IF EXISTS "+index.SQLName()); err != nil {
+				return fmt.Errorf("prepare migration %s (non-tx statement %d): drop invalid index %s before retry: %w", name, i+1, index.SQLName(), err)
+			}
+		}
+
+		if _, err := db.ExecContext(ctx, executionStatement); err != nil {
+			return fmt.Errorf("apply migration %s (non-tx statement %d): %w", name, i+1, err)
+		}
+		if index != nil {
+			state, err := inspectExistingIndex(ctx, db, *index)
+			if err != nil {
+				return fmt.Errorf("verify migration %s (non-tx statement %d): %w", name, i+1, err)
+			}
+			if !state.exists || state.targetRelationOID != index.targetRelationOID || !state.healthy {
+				return fmt.Errorf("verify migration %s (non-tx statement %d): concurrent index %s is not valid and ready on the expected relation", name, i+1, index.SQLName())
+			}
+			if err := completeNonTransactionalIndexStep(ctx, db, intent, state); err != nil {
+				return fmt.Errorf("journal migration %s (non-tx statement %d) completion: %w", name, i+1, err)
+			}
+		}
+	}
+
+	if err := finalizeNonTransactionalMigration(ctx, db, name, checksum); err != nil {
+		return fmt.Errorf("record migration %s (non-tx): %w", name, err)
+	}
+	return nil
+}
+
+func checksumText(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
+type nonTransactionalStepIntent struct {
+	filename          string
+	migrationChecksum string
+	statementIndex    int
+	statementChecksum string
+	index             *qualifiedIndexName
+}
+
+type nonTransactionalStepJournal struct {
+	exists                 bool
+	indexCompleted         bool
+	createdIndexOID        int64
+	createdIndexDefinition string
+}
+
+func loadNonTransactionalStepIntent(ctx context.Context, db migrationConnection, expected nonTransactionalStepIntent) (nonTransactionalStepJournal, error) {
+	var (
+		migrationChecksum      string
+		statementChecksum      string
+		indexSchema            sql.NullString
+		indexName              sql.NullString
+		targetRelationOID      sql.NullInt64
+		createdIndexOID        sql.NullInt64
+		createdIndexDefinition sql.NullString
+	)
+	err := db.QueryRowContext(ctx, `
+		SELECT migration_checksum, statement_checksum, index_schema, index_name, target_relation_oid,
+		       created_index_oid, created_index_definition
+		FROM schema_migration_steps
+		WHERE filename = $1 AND statement_index = $2
+	`, expected.filename, expected.statementIndex).Scan(
+		&migrationChecksum,
+		&statementChecksum,
+		&indexSchema,
+		&indexName,
+		&targetRelationOID,
+		&createdIndexOID,
+		&createdIndexDefinition,
+	)
+	if err == nil {
+		if migrationChecksum != expected.migrationChecksum || statementChecksum != expected.statementChecksum ||
+			!stepIntentIndexMatches(expected.index, indexSchema, indexName, targetRelationOID) {
+			return nonTransactionalStepJournal{}, errors.New("stored non-transactional migration intent does not match the current immutable statement")
+		}
+		if createdIndexOID.Valid != createdIndexDefinition.Valid {
+			return nonTransactionalStepJournal{}, errors.New("stored non-transactional migration index proof is incomplete")
+		}
+		if createdIndexOID.Valid && (createdIndexOID.Int64 <= 0 || createdIndexDefinition.String == "") {
+			return nonTransactionalStepJournal{}, errors.New("stored non-transactional migration index proof is invalid")
+		}
+		if expected.index == nil && createdIndexOID.Valid {
+			return nonTransactionalStepJournal{}, errors.New("stored non-index migration step has an unexpected index proof")
+		}
+		return nonTransactionalStepJournal{
+			exists:                 true,
+			indexCompleted:         createdIndexOID.Valid,
+			createdIndexOID:        createdIndexOID.Int64,
+			createdIndexDefinition: createdIndexDefinition.String,
+		}, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nonTransactionalStepJournal{}, err
+	}
+	return nonTransactionalStepJournal{}, nil
+}
+
+func createNonTransactionalStepIntent(ctx context.Context, db migrationConnection, expected nonTransactionalStepIntent) error {
+	var schemaValue, nameValue any
+	var oidValue any
+	if expected.index != nil {
+		schemaValue = expected.index.schema
+		nameValue = expected.index.name
+		oidValue = expected.index.targetRelationOID
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO schema_migration_steps (
+			filename, migration_checksum, statement_index, statement_checksum,
+			index_schema, index_name, target_relation_oid
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, expected.filename, expected.migrationChecksum, expected.statementIndex, expected.statementChecksum, schemaValue, nameValue, oidValue); err != nil {
+		return err
+	}
+	return nil
+}
+
+func completeNonTransactionalIndexStep(ctx context.Context, db migrationConnection, expected nonTransactionalStepIntent, state existingIndexState) error {
+	if expected.index == nil {
+		return errors.New("cannot complete index proof for a non-index migration step")
+	}
+	if !state.exists || !state.healthy || state.indexOID <= 0 || state.definition == "" || state.targetRelationOID != expected.index.targetRelationOID {
+		return errors.New("cannot persist proof for an invalid concurrent index state")
+	}
+	result, err := db.ExecContext(ctx, `
+		UPDATE schema_migration_steps
+		SET created_index_oid = $8, created_index_definition = $9
+		WHERE filename = $1
+		  AND migration_checksum = $2
+		  AND statement_index = $3
+		  AND statement_checksum = $4
+		  AND index_schema = $5
+		  AND index_name = $6
+		  AND target_relation_oid = $7
+		  AND created_index_oid IS NULL
+		  AND created_index_definition IS NULL
+	`, expected.filename, expected.migrationChecksum, expected.statementIndex, expected.statementChecksum,
+		expected.index.schema, expected.index.name, expected.index.targetRelationOID,
+		state.indexOID, state.definition)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read completed index proof update result: %w", err)
+	}
+	if rows != 1 {
+		return fmt.Errorf("completed index proof update affected %d rows instead of 1", rows)
+	}
+	return nil
+}
+
+func stepIntentIndexMatches(expected *qualifiedIndexName, schema, name sql.NullString, targetOID sql.NullInt64) bool {
+	if expected == nil {
+		return !schema.Valid && !name.Valid && !targetOID.Valid
+	}
+	return schema.Valid && schema.String == expected.schema &&
+		name.Valid && name.String == expected.name &&
+		targetOID.Valid && targetOID.Int64 == expected.targetRelationOID
+}
+
+func finalizeNonTransactionalMigration(ctx context.Context, db migrationConnection, name, checksum string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2)", name, checksum); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM schema_migration_steps WHERE filename = $1", name); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return nil
+}
+
+func prepareNonTransactionalMigration(ctx context.Context, db migrationConnection, name string) error {
+	if name == paymentOrdersOutTradeNoUniqueMigration {
+		return preparePaymentOrdersOutTradeNoUniqueMigration(ctx, db)
+	}
+	return nil
 }
 
 func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db migrationConnection) error {
@@ -301,22 +542,99 @@ func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db migra
 		)
 	}
 
-	return dropInvalidIndexIfPresent(ctx, db, paymentOrdersOutTradeNoUniqueIndex)
+	return nil
 }
 
-func dropInvalidIndexIfPresent(ctx context.Context, db migrationConnection, indexName string) error {
-	invalid, err := indexIsInvalid(ctx, db, indexName)
-	if err != nil {
-		return fmt.Errorf("check invalid index %s: %w", indexName, err)
-	}
-	if !invalid {
-		return nil
-	}
+type qualifiedIndexName struct {
+	schema            string
+	name              string
+	targetRelationOID int64
+}
 
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP INDEX CONCURRENTLY IF EXISTS %s", indexName)); err != nil {
-		return fmt.Errorf("drop invalid index %s: %w", indexName, err)
+type qualifiedRelationName struct {
+	schema string
+	name   string
+}
+
+func (n qualifiedRelationName) SQLName() string {
+	if n.schema == "" {
+		return quoteSQLIdentifier(n.name)
 	}
-	return nil
+	return quoteSQLIdentifier(n.schema) + "." + quoteSQLIdentifier(n.name)
+}
+
+type concurrentIndexDefinition struct {
+	name            string
+	table           qualifiedRelationName
+	strictStatement string
+}
+
+func (n qualifiedIndexName) SQLName() string {
+	return quoteSQLIdentifier(n.schema) + "." + quoteSQLIdentifier(n.name)
+}
+
+func quoteSQLIdentifier(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+}
+
+func resolveConcurrentIndexName(ctx context.Context, db migrationConnection, definition concurrentIndexDefinition) (qualifiedIndexName, error) {
+	var schema string
+	var targetRelationOID int64
+	err := db.QueryRowContext(ctx, `
+		SELECT ns.nspname, target.oid::bigint
+		FROM pg_class target
+		JOIN pg_namespace ns ON ns.oid = target.relnamespace
+		WHERE target.oid = to_regclass($1)
+	`, definition.table.SQLName()).Scan(&schema, &targetRelationOID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return qualifiedIndexName{}, fmt.Errorf("target relation %s does not exist", definition.table.SQLName())
+	}
+	if err != nil {
+		return qualifiedIndexName{}, fmt.Errorf("resolve target relation %s: %w", definition.table.SQLName(), err)
+	}
+	return qualifiedIndexName{schema: schema, name: definition.name, targetRelationOID: targetRelationOID}, nil
+}
+
+type existingIndexState struct {
+	exists            bool
+	indexOID          int64
+	targetRelationOID int64
+	healthy           bool
+	definition        string
+}
+
+func inspectConcurrentIndexStep(ctx context.Context, db migrationConnection, index qualifiedIndexName, journal nonTransactionalStepJournal) (existingIndexState, bool, error) {
+	state, err := inspectExistingIndex(ctx, db, index)
+	if err != nil {
+		return existingIndexState{}, false, fmt.Errorf("inspect existing index %s: %w", index.SQLName(), err)
+	}
+	if !state.exists {
+		if journal.indexCompleted {
+			return existingIndexState{}, false, fmt.Errorf("completed index proof for %s no longer resolves to an index", index.SQLName())
+		}
+		return state, false, nil
+	}
+	if state.targetRelationOID != index.targetRelationOID {
+		return existingIndexState{}, false, fmt.Errorf(
+			"index name collision: %s belongs to relation OID %d, expected target relation OID %d",
+			index.SQLName(),
+			state.targetRelationOID,
+			index.targetRelationOID,
+		)
+	}
+	if journal.indexCompleted {
+		if !state.healthy || state.indexOID != journal.createdIndexOID || state.definition != journal.createdIndexDefinition {
+			return existingIndexState{}, false, fmt.Errorf("completed index proof for %s does not match the current index object and definition", index.SQLName())
+		}
+		return state, true, nil
+	}
+	if state.healthy {
+		if !journal.exists {
+			return existingIndexState{}, false, fmt.Errorf("healthy index %s already exists without a matching migration recovery intent", index.SQLName())
+		}
+		return existingIndexState{}, false, fmt.Errorf("healthy index %s has only a pending migration intent; refusing to drop an unproven live index", index.SQLName())
+	}
+	return state, false, nil
 }
 
 func findDuplicatePaymentOrderOutTradeNos(ctx context.Context, db migrationConnection) ([]string, error) {
@@ -351,20 +669,27 @@ func findDuplicatePaymentOrderOutTradeNos(ctx context.Context, db migrationConne
 	return duplicates, nil
 }
 
-func indexIsInvalid(ctx context.Context, db migrationConnection, indexName string) (bool, error) {
-	var invalid bool
+func inspectExistingIndex(ctx context.Context, db migrationConnection, index qualifiedIndexName) (existingIndexState, error) {
+	var state existingIndexState
 	err := db.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM pg_class idx
-			JOIN pg_namespace ns ON ns.oid = idx.relnamespace
-			JOIN pg_index i ON i.indexrelid = idx.oid
-			WHERE ns.nspname = 'public'
-			  AND idx.relname = $1
-			  AND NOT i.indisvalid
-		)
-	`, indexName).Scan(&invalid)
-	return invalid, err
+		SELECT idx.oid::bigint,
+		       i.indrelid::bigint,
+		       i.indisvalid AND i.indisready AND i.indislive,
+		       pg_get_indexdef(idx.oid)
+		FROM pg_class idx
+		JOIN pg_namespace ns ON ns.oid = idx.relnamespace
+		JOIN pg_index i ON i.indexrelid = idx.oid
+		WHERE ns.nspname = $1
+		  AND idx.relname = $2
+	`, index.schema, index.name).Scan(&state.indexOID, &state.targetRelationOID, &state.healthy, &state.definition)
+	if errors.Is(err, sql.ErrNoRows) {
+		return existingIndexState{}, nil
+	}
+	if err != nil {
+		return existingIndexState{}, err
+	}
+	state.exists = true
+	return state, nil
 }
 
 func ensureAtlasBaselineAligned(ctx context.Context, db migrationConnection, fsys fs.FS) error {
@@ -472,68 +797,437 @@ func isMigrationChecksumCompatible(name, dbChecksum, fileChecksum string) bool {
 
 func validateMigrationExecutionMode(name, content string) (bool, error) {
 	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	upperContent := strings.ToUpper(content)
 	nonTx := strings.HasSuffix(normalizedName, nonTransactionalMigrationSuffix)
+	statements, err := splitSQLStatements(content)
+	if err != nil {
+		return false, err
+	}
 
 	if !nonTx {
-		if strings.Contains(upperContent, "CONCURRENTLY") {
-			return false, errors.New("CONCURRENTLY statements must be placed in *_notx.sql migrations")
+		for _, statement := range statements {
+			if statementContainsKeyword(statement, "CONCURRENTLY") {
+				return false, errors.New("CONCURRENTLY statements must be placed in *_notx.sql migrations")
+			}
 		}
 		return false, nil
 	}
 
-	if strings.Contains(upperContent, "BEGIN") || strings.Contains(upperContent, "COMMIT") || strings.Contains(upperContent, "ROLLBACK") {
-		return false, errors.New("*_notx.sql must not contain transaction control statements (BEGIN/COMMIT/ROLLBACK)")
-	}
-
-	statements := splitSQLStatements(content)
 	for _, stmt := range statements {
-		normalizedStmt := strings.ToUpper(stripSQLLineComment(strings.TrimSpace(stmt)))
-		if normalizedStmt == "" {
+		if !statementHasCode(stmt) {
 			continue
 		}
 
-		if strings.Contains(normalizedStmt, "CONCURRENTLY") {
-			isCreateIndex := strings.Contains(normalizedStmt, "CREATE") && strings.Contains(normalizedStmt, "INDEX")
-			isDropIndex := strings.Contains(normalizedStmt, "DROP") && strings.Contains(normalizedStmt, "INDEX")
-			if !isCreateIndex && !isDropIndex {
-				return false, errors.New("*_notx.sql currently only supports CREATE/DROP INDEX CONCURRENTLY statements")
-			}
-			if isCreateIndex && !strings.Contains(normalizedStmt, "IF NOT EXISTS") {
-				return false, errors.New("CREATE INDEX CONCURRENTLY in *_notx.sql must include IF NOT EXISTS for idempotency")
-			}
-			if isDropIndex && !strings.Contains(normalizedStmt, "IF EXISTS") {
-				return false, errors.New("DROP INDEX CONCURRENTLY in *_notx.sql must include IF EXISTS for idempotency")
-			}
+		_, isCreate, err := parseCreateConcurrentIndex(stmt)
+		if err != nil {
+			return false, err
+		}
+		if isCreate {
 			continue
 		}
-
-		return false, errors.New("*_notx.sql must not mix non-CONCURRENTLY SQL statements")
+		isDrop, err := parseDropConcurrentIndex(stmt)
+		if err != nil {
+			return false, err
+		}
+		if isDrop {
+			continue
+		}
+		return false, errors.New("*_notx.sql currently only supports CREATE/DROP INDEX CONCURRENTLY statements")
 	}
 
 	return true, nil
 }
 
-func splitSQLStatements(content string) []string {
-	parts := strings.Split(content, ";")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if strings.TrimSpace(part) == "" {
-			continue
+func splitSQLStatements(content string) ([]string, error) {
+	statements := make([]string, 0, strings.Count(content, ";")+1)
+	statementStart := 0
+	for i := 0; i < len(content); {
+		switch {
+		case strings.HasPrefix(content[i:], "--"):
+			i = skipSQLLineComment(content, i)
+		case strings.HasPrefix(content[i:], "/*"):
+			next, err := skipSQLBlockComment(content, i)
+			if err != nil {
+				return nil, err
+			}
+			i = next
+		case content[i] == '\'':
+			next, err := skipSQLSingleQuoted(content, i, isEscapeStringPrefix(content, i))
+			if err != nil {
+				return nil, err
+			}
+			i = next
+		case content[i] == '"':
+			next, err := skipSQLDoubleQuoted(content, i)
+			if err != nil {
+				return nil, err
+			}
+			i = next
+		case content[i] == '$':
+			delimiter, ok := dollarQuoteDelimiterAt(content, i)
+			if !ok {
+				i++
+				continue
+			}
+			closingOffset := strings.Index(content[i+len(delimiter):], delimiter)
+			if closingOffset < 0 {
+				return nil, fmt.Errorf("unterminated dollar-quoted string starting at byte %d", i)
+			}
+			i += len(delimiter) + closingOffset + len(delimiter)
+		case content[i] == ';':
+			if statement := content[statementStart:i]; strings.TrimSpace(statement) != "" {
+				statements = append(statements, statement)
+			}
+			i++
+			statementStart = i
+		default:
+			i++
 		}
-		out = append(out, part)
 	}
-	return out
+	if statement := content[statementStart:]; strings.TrimSpace(statement) != "" {
+		statements = append(statements, statement)
+	}
+	return statements, nil
 }
 
-func stripSQLLineComment(s string) string {
-	lines := strings.Split(s, "\n")
-	for i, line := range lines {
-		if idx := strings.Index(line, "--"); idx >= 0 {
-			lines[i] = line[:idx]
+func skipSQLLineComment(content string, start int) int {
+	if newline := strings.IndexByte(content[start+2:], '\n'); newline >= 0 {
+		return start + 2 + newline + 1
+	}
+	return len(content)
+}
+
+func skipSQLBlockComment(content string, start int) (int, error) {
+	depth := 1
+	for i := start + 2; i < len(content); {
+		switch {
+		case strings.HasPrefix(content[i:], "/*"):
+			depth++
+			i += 2
+		case strings.HasPrefix(content[i:], "*/"):
+			depth--
+			i += 2
+			if depth == 0 {
+				return i, nil
+			}
+		default:
+			i++
 		}
 	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	return 0, fmt.Errorf("unterminated block comment starting at byte %d", start)
+}
+
+func skipSQLSingleQuoted(content string, start int, escapeBackslash bool) (int, error) {
+	for i := start + 1; i < len(content); i++ {
+		if escapeBackslash && content[i] == '\\' {
+			i++
+			continue
+		}
+		if content[i] != '\'' {
+			continue
+		}
+		if i+1 < len(content) && content[i+1] == '\'' {
+			i++
+			continue
+		}
+		return i + 1, nil
+	}
+	return 0, fmt.Errorf("unterminated string literal starting at byte %d", start)
+}
+
+func skipSQLDoubleQuoted(content string, start int) (int, error) {
+	for i := start + 1; i < len(content); i++ {
+		if content[i] != '"' {
+			continue
+		}
+		if i+1 < len(content) && content[i+1] == '"' {
+			i++
+			continue
+		}
+		return i + 1, nil
+	}
+	return 0, fmt.Errorf("unterminated quoted identifier starting at byte %d", start)
+}
+
+func isEscapeStringPrefix(content string, quote int) bool {
+	return quote >= 1 && (content[quote-1] == 'e' || content[quote-1] == 'E') &&
+		(quote == 1 || !isSQLIdentifierContinue(content[quote-2]))
+}
+
+func dollarQuoteDelimiterAt(content string, start int) (string, bool) {
+	if start+1 >= len(content) {
+		return "", false
+	}
+	if start > 0 && isSQLIdentifierContinue(content[start-1]) {
+		return "", false
+	}
+	if content[start+1] == '$' {
+		return "$$", true
+	}
+	if !isSQLIdentifierStart(content[start+1]) {
+		return "", false
+	}
+	for i := start + 2; i < len(content); i++ {
+		if content[i] == '$' {
+			return content[start : i+1], true
+		}
+		if !isSQLIdentifierContinue(content[i]) || content[i] == '$' {
+			return "", false
+		}
+	}
+	return "", false
+}
+
+func isSQLIdentifierStart(ch byte) bool {
+	return ch == '_' || ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z'
+}
+
+func isSQLIdentifierContinue(ch byte) bool {
+	return isSQLIdentifierStart(ch) || ch >= '0' && ch <= '9' || ch == '$'
+}
+
+func isSQLWhitespace(ch byte) bool {
+	return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\f'
+}
+
+type sqlCursor struct {
+	statement string
+	pos       int
+}
+
+func (c *sqlCursor) skipSpaceAndComments() error {
+	for c.pos < len(c.statement) {
+		switch {
+		case isSQLWhitespace(c.statement[c.pos]):
+			c.pos++
+		case strings.HasPrefix(c.statement[c.pos:], "--"):
+			c.pos = skipSQLLineComment(c.statement, c.pos)
+		case strings.HasPrefix(c.statement[c.pos:], "/*"):
+			next, err := skipSQLBlockComment(c.statement, c.pos)
+			if err != nil {
+				return err
+			}
+			c.pos = next
+		default:
+			return nil
+		}
+	}
+	return nil
+}
+
+func (c *sqlCursor) keyword(expected string) (bool, error) {
+	if err := c.skipSpaceAndComments(); err != nil {
+		return false, err
+	}
+	start := c.pos
+	if start >= len(c.statement) || !isSQLIdentifierStart(c.statement[start]) {
+		return false, nil
+	}
+	c.pos++
+	for c.pos < len(c.statement) && isSQLIdentifierContinue(c.statement[c.pos]) {
+		c.pos++
+	}
+	if !strings.EqualFold(c.statement[start:c.pos], expected) {
+		c.pos = start
+		return false, nil
+	}
+	return true, nil
+}
+
+func (c *sqlCursor) requireKeyword(expected string) error {
+	ok, err := c.keyword(expected)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("expected %s", expected)
+	}
+	return nil
+}
+
+func (c *sqlCursor) identifier() (string, bool, error) {
+	if err := c.skipSpaceAndComments(); err != nil {
+		return "", false, err
+	}
+	if c.pos >= len(c.statement) {
+		return "", false, nil
+	}
+	if c.pos+2 < len(c.statement) && (c.statement[c.pos] == 'u' || c.statement[c.pos] == 'U') &&
+		c.statement[c.pos+1] == '&' && c.statement[c.pos+2] == '"' {
+		return "", false, errors.New("unicode escaped index identifiers are not supported")
+	}
+	if c.statement[c.pos] == '"' {
+		start := c.pos
+		next, err := skipSQLDoubleQuoted(c.statement, start)
+		if err != nil {
+			return "", false, err
+		}
+		encoded := c.statement[start+1 : next-1]
+		c.pos = next
+		value := strings.ReplaceAll(encoded, `""`, `"`)
+		if len(value) > postgresIdentifierMaxBytes {
+			return "", false, fmt.Errorf("quoted identifier exceeds PostgreSQL's %d-byte limit", postgresIdentifierMaxBytes)
+		}
+		return value, true, nil
+	}
+	if !isSQLIdentifierStart(c.statement[c.pos]) {
+		return "", false, nil
+	}
+	start := c.pos
+	c.pos++
+	for c.pos < len(c.statement) && isSQLIdentifierContinue(c.statement[c.pos]) {
+		c.pos++
+	}
+	value := c.statement[start:c.pos]
+	if len(value) > postgresIdentifierMaxBytes {
+		return "", false, fmt.Errorf("unquoted identifier exceeds PostgreSQL's %d-byte limit", postgresIdentifierMaxBytes)
+	}
+	return strings.ToLower(value), true, nil
+}
+
+func (c *sqlCursor) qualifiedRelationName(defaultSchema string) (qualifiedRelationName, error) {
+	first, ok, err := c.identifier()
+	if err != nil {
+		return qualifiedRelationName{}, err
+	}
+	if !ok {
+		return qualifiedRelationName{}, errors.New("expected relation name")
+	}
+	if err := c.skipSpaceAndComments(); err != nil {
+		return qualifiedRelationName{}, err
+	}
+	if c.pos >= len(c.statement) || c.statement[c.pos] != '.' {
+		return qualifiedRelationName{schema: defaultSchema, name: first}, nil
+	}
+	c.pos++
+	second, ok, err := c.identifier()
+	if err != nil {
+		return qualifiedRelationName{}, err
+	}
+	if !ok {
+		return qualifiedRelationName{}, errors.New("expected relation name after schema qualifier")
+	}
+	return qualifiedRelationName{schema: first, name: second}, nil
+}
+
+func parseCreateConcurrentIndex(statement string) (concurrentIndexDefinition, bool, error) {
+	cursor := sqlCursor{statement: statement}
+	isCreate, err := cursor.keyword("CREATE")
+	if err != nil || !isCreate {
+		return concurrentIndexDefinition{}, false, err
+	}
+	_, err = cursor.keyword("UNIQUE")
+	if err != nil {
+		return concurrentIndexDefinition{}, false, err
+	}
+	for _, keyword := range []string{"INDEX", "CONCURRENTLY"} {
+		if err := cursor.requireKeyword(keyword); err != nil {
+			return concurrentIndexDefinition{}, false, fmt.Errorf("CREATE INDEX CONCURRENTLY IF NOT EXISTS: %w", err)
+		}
+	}
+	ifNotExistsStart := cursor.pos
+	for _, keyword := range []string{"IF", "NOT", "EXISTS"} {
+		if err := cursor.requireKeyword(keyword); err != nil {
+			return concurrentIndexDefinition{}, false, fmt.Errorf("CREATE INDEX CONCURRENTLY IF NOT EXISTS: %w", err)
+		}
+	}
+	ifNotExistsEnd := cursor.pos
+	indexName, ok, err := cursor.identifier()
+	if err != nil {
+		return concurrentIndexDefinition{}, false, fmt.Errorf("CREATE INDEX CONCURRENTLY IF NOT EXISTS: %w", err)
+	}
+	if !ok {
+		return concurrentIndexDefinition{}, false, errors.New("CREATE INDEX CONCURRENTLY IF NOT EXISTS: expected index name")
+	}
+	if err := cursor.requireKeyword("ON"); err != nil {
+		return concurrentIndexDefinition{}, false, fmt.Errorf("CREATE INDEX CONCURRENTLY IF NOT EXISTS: %w", err)
+	}
+	_, err = cursor.keyword("ONLY")
+	if err != nil {
+		return concurrentIndexDefinition{}, false, err
+	}
+	table, err := cursor.qualifiedRelationName("")
+	if err != nil {
+		return concurrentIndexDefinition{}, false, fmt.Errorf("CREATE INDEX CONCURRENTLY IF NOT EXISTS: target table: %w", err)
+	}
+	return concurrentIndexDefinition{
+		name:            indexName,
+		table:           table,
+		strictStatement: statement[:ifNotExistsStart] + statement[ifNotExistsEnd:],
+	}, true, nil
+}
+
+func parseDropConcurrentIndex(statement string) (bool, error) {
+	cursor := sqlCursor{statement: statement}
+	isDrop, err := cursor.keyword("DROP")
+	if err != nil || !isDrop {
+		return false, err
+	}
+	for _, keyword := range []string{"INDEX", "CONCURRENTLY", "IF", "EXISTS"} {
+		if err := cursor.requireKeyword(keyword); err != nil {
+			return false, fmt.Errorf("DROP INDEX CONCURRENTLY IF EXISTS: %w", err)
+		}
+	}
+	if _, err := cursor.qualifiedRelationName("public"); err != nil {
+		return false, fmt.Errorf("DROP INDEX CONCURRENTLY IF EXISTS: %w", err)
+	}
+	return true, nil
+}
+
+func statementHasCode(statement string) bool {
+	cursor := sqlCursor{statement: statement}
+	return cursor.skipSpaceAndComments() == nil && cursor.pos < len(statement)
+}
+
+func statementContainsKeyword(statement, keyword string) bool {
+	for i := 0; i < len(statement); {
+		switch {
+		case isSQLWhitespace(statement[i]):
+			i++
+		case strings.HasPrefix(statement[i:], "--"):
+			i = skipSQLLineComment(statement, i)
+		case strings.HasPrefix(statement[i:], "/*"):
+			next, err := skipSQLBlockComment(statement, i)
+			if err != nil {
+				return false
+			}
+			i = next
+		case statement[i] == '\'':
+			next, err := skipSQLSingleQuoted(statement, i, isEscapeStringPrefix(statement, i))
+			if err != nil {
+				return false
+			}
+			i = next
+		case statement[i] == '"':
+			next, err := skipSQLDoubleQuoted(statement, i)
+			if err != nil {
+				return false
+			}
+			i = next
+		case statement[i] == '$':
+			delimiter, ok := dollarQuoteDelimiterAt(statement, i)
+			if !ok {
+				i++
+				continue
+			}
+			closingOffset := strings.Index(statement[i+len(delimiter):], delimiter)
+			if closingOffset < 0 {
+				return false
+			}
+			i += len(delimiter) + closingOffset + len(delimiter)
+		case isSQLIdentifierStart(statement[i]):
+			start := i
+			i++
+			for i < len(statement) && isSQLIdentifierContinue(statement[i]) {
+				i++
+			}
+			if strings.EqualFold(statement[start:i], keyword) {
+				return true
+			}
+		default:
+			i++
+		}
+	}
+	return false
 }
 
 // pgAdvisoryLock 获取 PostgreSQL Advisory Lock。

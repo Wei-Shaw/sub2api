@@ -1,0 +1,35 @@
+[Unit]
+Description=Sub2API managed Docker deployer
+After=docker.service nginx.service network-online.target
+Requires=docker.service nginx.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0007
+RuntimeDirectory=sub2api-deployer
+RuntimeDirectoryMode=0755
+StateDirectory=sub2api-deployer
+StateDirectoryMode=0700
+Environment=DOCKER_CONFIG=/etc/sub2api-deployer/docker
+ExecStart=/usr/local/sbin/sub2api-deployer -config /etc/sub2api-deployer/config.json
+ExecStartPre=/usr/local/sbin/sub2api-deployer -config /etc/sub2api-deployer/config.json -check
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/run/sub2api-deployer /var/lib/sub2api-deployer -/var/log/nginx
+
+[Install]
+WantedBy=multi-user.target

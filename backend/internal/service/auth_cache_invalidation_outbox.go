@@ -288,6 +288,6 @@ func (w *AuthCacheInvalidationWorker) Health(ctx context.Context) AuthCacheInval
 
 func ProvideAuthCacheInvalidationWorker(repo AuthCacheInvalidationOutboxRepository, cache APIKeyCache, apiKeyService *APIKeyService) *AuthCacheInvalidationWorker {
 	worker := NewAuthCacheInvalidationWorker(repo, cache, apiKeyService)
-	worker.Start()
+	startProcessBackground("auth_cache_invalidation_outbox", worker.Start)
 	return worker
 }

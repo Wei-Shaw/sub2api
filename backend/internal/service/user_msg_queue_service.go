@@ -38,11 +38,15 @@ type QueueLockResult struct {
 // UserMessageQueueService 用户消息串行队列服务
 // 对真实用户消息实施账号级串行化 + RPM 自适应延迟
 type UserMessageQueueService struct {
-	cache    UserMsgQueueCache
-	rpmCache RPMCache
-	cfg      *config.UserMessageQueueConfig
-	stopCh   chan struct{} // graceful shutdown
-	stopOnce sync.Once     // 确保 Stop() 并发安全
+	cache     UserMsgQueueCache
+	rpmCache  RPMCache
+	cfg       *config.UserMessageQueueConfig
+	stopCh    chan struct{} // graceful shutdown
+	stopOnce  sync.Once     // 确保 Stop() 并发安全
+	cleanupMu sync.Mutex
+	started   bool
+	stopped   bool
+	cleanupWG sync.WaitGroup
 }
 
 // NewUserMessageQueueService 创建用户消息串行队列服务
@@ -250,6 +254,14 @@ func (s *UserMessageQueueService) StartCleanupWorker(interval time.Duration) {
 	if s == nil || s.cache == nil || interval <= 0 {
 		return
 	}
+	s.cleanupMu.Lock()
+	if s.started || s.stopped {
+		s.cleanupMu.Unlock()
+		return
+	}
+	s.started = true
+	s.cleanupWG.Add(1)
+	s.cleanupMu.Unlock()
 
 	runCleanup := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -268,6 +280,7 @@ func (s *UserMessageQueueService) StartCleanupWorker(interval time.Duration) {
 	}
 
 	go func() {
+		defer s.cleanupWG.Done()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -284,9 +297,13 @@ func (s *UserMessageQueueService) StartCleanupWorker(interval time.Duration) {
 // Stop 停止后台 cleanup worker
 func (s *UserMessageQueueService) Stop() {
 	if s != nil && s.stopCh != nil {
+		s.cleanupMu.Lock()
+		s.stopped = true
 		s.stopOnce.Do(func() {
 			close(s.stopCh)
 		})
+		s.cleanupMu.Unlock()
+		s.cleanupWG.Wait()
 	}
 }
 

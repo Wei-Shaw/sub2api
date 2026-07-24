@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/sysutil"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -27,6 +28,11 @@ type SystemHandler struct {
 // above the GitHub download client timeout (10 minutes) so the download owns
 // its own deadline.
 const systemUpdateTimeout = 15 * time.Minute
+
+var errDockerManagedRestartUnsupported = infraerrors.Conflict(
+	"DOCKER_MANAGED_RESTART_UNSUPPORTED",
+	"application-managed restart is unavailable while Docker deployments are managed by the host agent",
+)
 
 // systemUpdateContext detaches a long-running update/rollback from the HTTP
 // request lifetime. Browsers and reverse proxies commonly abort idle requests
@@ -49,6 +55,14 @@ type systemUpdateService interface {
 	Rollback() error
 	ListRollbackVersions(ctx context.Context) ([]service.RollbackVersion, error)
 	RollbackToVersion(ctx context.Context, version string) error
+}
+
+type managedSystemUpdateService interface {
+	DeploymentMode() string
+	StartManagedUpdate(ctx context.Context, requestID string) (*service.DeploymentJob, error)
+	StartManagedRollback(ctx context.Context, version, requestID string) (*service.DeploymentJob, error)
+	DeploymentJob(ctx context.Context, id string) (*service.DeploymentJob, error)
+	CurrentDeploymentJob(ctx context.Context) (*service.DeploymentJob, error)
 }
 
 // NewSystemHandler creates a new SystemHandler
@@ -98,6 +112,27 @@ func (h *SystemHandler) PerformUpdate(c *gin.Context) {
 
 		updateCtx, cancel := systemUpdateContext(ctx)
 		defer cancel()
+		if managed, ok := h.updateSvc.(managedSystemUpdateService); ok {
+			switch managed.DeploymentMode() {
+			case service.DeploymentModeDockerManaged:
+				job, startErr := managed.StartManagedUpdate(updateCtx, lock.OperationID())
+				if startErr != nil {
+					releaseReason = "SYSTEM_UPDATE_FAILED"
+					return nil, startErr
+				}
+				succeeded = true
+				return gin.H{
+					"message":         "Docker deployment started",
+					"need_restart":    false,
+					"deployment_mode": service.DeploymentModeDockerManaged,
+					"job":             job,
+					"operation_id":    lock.OperationID(),
+				}, nil
+			case service.DeploymentModeDockerManual:
+				releaseReason = "SYSTEM_UPDATE_FAILED"
+				return nil, service.ErrDockerManualUpdate
+			}
+		}
 
 		if err := h.updateSvc.PerformUpdate(updateCtx); err != nil {
 			if errors.Is(err, service.ErrNoUpdateAvailable) {
@@ -175,6 +210,35 @@ func (h *SystemHandler) Rollback(c *gin.Context) {
 			release(releaseReason, succeeded)
 		}()
 
+		if managed, ok := h.updateSvc.(managedSystemUpdateService); ok {
+			switch managed.DeploymentMode() {
+			case service.DeploymentModeDockerManaged:
+				if targetVersion == "" {
+					releaseReason = "SYSTEM_ROLLBACK_FAILED"
+					return nil, service.ErrRollbackVersionNotAllowed
+				}
+				rollbackCtx, cancel := systemUpdateContext(ctx)
+				defer cancel()
+				job, startErr := managed.StartManagedRollback(rollbackCtx, targetVersion, lock.OperationID())
+				if startErr != nil {
+					releaseReason = "SYSTEM_ROLLBACK_FAILED"
+					return nil, startErr
+				}
+				succeeded = true
+				return gin.H{
+					"message":         "Docker rollback deployment started",
+					"need_restart":    false,
+					"deployment_mode": service.DeploymentModeDockerManaged,
+					"version":         targetVersion,
+					"job":             job,
+					"operation_id":    lock.OperationID(),
+				}, nil
+			case service.DeploymentModeDockerManual:
+				releaseReason = "SYSTEM_ROLLBACK_FAILED"
+				return nil, service.ErrDockerManualUpdate
+			}
+		}
+
 		if targetVersion != "" {
 			// 指定版本回退同样要下载完整二进制，与更新一样和请求生命周期解耦。
 			rollbackCtx, cancel := systemUpdateContext(ctx)
@@ -198,9 +262,47 @@ func (h *SystemHandler) Rollback(c *gin.Context) {
 	})
 }
 
+// GetDeploymentJob returns durable host-agent progress for a Docker deployment.
+// GET /api/v1/admin/system/deployment-jobs/:id
+func (h *SystemHandler) GetDeploymentJob(c *gin.Context) {
+	managed, ok := h.updateSvc.(managedSystemUpdateService)
+	if !ok || managed.DeploymentMode() != service.DeploymentModeDockerManaged {
+		response.ErrorFrom(c, service.ErrManagedDeployerUnavailable)
+		return
+	}
+	job, err := managed.DeploymentJob(c.Request.Context(), strings.TrimSpace(c.Param("id")))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, job)
+}
+
+// GetCurrentDeploymentJob lets a reloaded frontend recover an in-flight job.
+// GET /api/v1/admin/system/deployment-jobs/current
+func (h *SystemHandler) GetCurrentDeploymentJob(c *gin.Context) {
+	managed, ok := h.updateSvc.(managedSystemUpdateService)
+	if !ok || managed.DeploymentMode() != service.DeploymentModeDockerManaged {
+		response.ErrorFrom(c, service.ErrManagedDeployerUnavailable)
+		return
+	}
+	job, err := managed.CurrentDeploymentJob(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, job)
+}
+
 // RestartService restarts the systemd service
 // POST /api/v1/admin/system/restart
 func (h *SystemHandler) RestartService(c *gin.Context) {
+	if managed, ok := h.updateSvc.(managedSystemUpdateService); ok &&
+		managed.DeploymentMode() == service.DeploymentModeDockerManaged {
+		response.ErrorFrom(c, errDockerManagedRestartUnsupported)
+		return
+	}
+
 	operationID := buildSystemOperationID(c, "restart")
 	payload := gin.H{"operation_id": operationID}
 	executeAdminIdempotentJSON(c, "admin.system.restart", payload, service.DefaultSystemOperationIdempotencyTTL(), func(ctx context.Context) (any, error) {
