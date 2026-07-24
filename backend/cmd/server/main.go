@@ -168,7 +168,7 @@ func runMainServer() {
 		}
 	}
 	promote := make(chan os.Signal, 1)
-	signal.Notify(promote, syscall.SIGUSR1)
+	notifyPromotionSignal(promote)
 	defer signal.Stop(promote)
 	go func() {
 		for range promote {
