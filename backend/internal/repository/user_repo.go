@@ -904,6 +904,39 @@ func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool,
 	return r.client.User.Query().Where(userEmailLookupPredicate(email)).Exist(ctx)
 REDACTED
 
+// ListEmailsByDomains returns the emails of all users whose domain matches one
+// of the given domains (case-insensitive). It is used by registration alias
+// dedup (service.existsByEmailOrAlias) to scan the candidate set for plus /
+// dot-trick collisions. Soft-delete filtering follows the same default as
+// ExistsByEmail (via r.client.User.Query()).
+func (r *userRepository) ListEmailsByDomains(ctx context.Context, domains []string) ([]string, error) {
+	if len(domains) == 0 {
+		return nil, nil
+REDACTED
+	preds := make([]predicate.User, 0, len(domains))
+	for _, domain := range domains {
+		suffix := "@" + strings.ToLower(strings.TrimSpace(domain))
+		if suffix == "@" {
+			continue
+	REDACTED
+		preds = append(preds, predicate.User(func(s *entsql.Selector) {
+			s.Where(entsql.P(func(b *entsql.Builder) {
+				b.WriteString("LOWER(").
+					Ident(s.C(dbuser.FieldEmail)).
+					WriteString(") LIKE ").
+					Arg("%" + suffix)
+		REDACTED))
+	REDACTED))
+REDACTED
+	if len(preds) == 0 {
+		return nil, nil
+REDACTED
+	return r.client.User.Query().
+		Where(dbuser.Or(preds...)).
+		Select(dbuser.FieldEmail).
+		Strings(ctx)
+REDACTED
+
 func ensureNormalizedEmailAvailableWithClient(ctx context.Context, client *dbent.Client, userID int64, email string) error {
 	client = clientFromContext(ctx, client)
 	if client == nil {
