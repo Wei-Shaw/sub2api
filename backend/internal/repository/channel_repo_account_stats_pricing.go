@@ -6,14 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/lib/pq"
 )
 
 // --- 账号统计定价规则 ---
 
 // batchLoadAccountStatsPricingRules 批量加载多个渠道的账号统计定价规则（含模型定价）
-func (r *channelRepository) batchLoadAccountStatsPricingRules(ctx context.Context, channelIDs []int64) (map[int64][]service.AccountStatsPricingRule, error) {
+func (r *channelRepository) batchLoadAccountStatsPricingRules(ctx context.Context, channelIDs []int64) (map[int64][]domain.AccountStatsPricingRule, error) {
 	// 1. 查询规则
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, channel_id, name, group_ids, account_ids, sort_order, created_at, updated_at
@@ -25,10 +25,10 @@ func (r *channelRepository) batchLoadAccountStatsPricingRules(ctx context.Contex
 	}
 	defer func() { _ = rows.Close() }()
 
-	var allRules []service.AccountStatsPricingRule
+	var allRules []domain.AccountStatsPricingRule
 	var ruleIDs []int64
 	for rows.Next() {
-		var rule service.AccountStatsPricingRule
+		var rule domain.AccountStatsPricingRule
 		if err := rows.Scan(
 			&rule.ID, &rule.ChannelID, &rule.Name,
 			pq.Array(&rule.GroupIDs), pq.Array(&rule.AccountIDs),
@@ -50,7 +50,7 @@ func (r *channelRepository) batchLoadAccountStatsPricingRules(ctx context.Contex
 	}
 
 	// 3. 按 channelID 分组并关联定价
-	result := make(map[int64][]service.AccountStatsPricingRule, len(channelIDs))
+	result := make(map[int64][]domain.AccountStatsPricingRule, len(channelIDs))
 	for i := range allRules {
 		allRules[i].Pricing = pricingMap[allRules[i].ID]
 		result[allRules[i].ChannelID] = append(result[allRules[i].ChannelID], allRules[i])
@@ -60,9 +60,9 @@ func (r *channelRepository) batchLoadAccountStatsPricingRules(ctx context.Contex
 }
 
 // batchLoadAccountStatsModelPricing 批量加载规则的模型定价
-func (r *channelRepository) batchLoadAccountStatsModelPricing(ctx context.Context, ruleIDs []int64) (map[int64][]service.ChannelModelPricing, error) {
+func (r *channelRepository) batchLoadAccountStatsModelPricing(ctx context.Context, ruleIDs []int64) (map[int64][]domain.ChannelModelPricing, error) {
 	if len(ruleIDs) == 0 {
-		return make(map[int64][]service.ChannelModelPricing), nil
+		return make(map[int64][]domain.ChannelModelPricing), nil
 	}
 
 	rows, err := r.db.QueryContext(ctx,
@@ -76,9 +76,9 @@ func (r *channelRepository) batchLoadAccountStatsModelPricing(ctx context.Contex
 	}
 	defer func() { _ = rows.Close() }()
 
-	pricingMap := make(map[int64][]service.ChannelModelPricing, len(ruleIDs))
+	pricingMap := make(map[int64][]domain.ChannelModelPricing, len(ruleIDs))
 	for rows.Next() {
-		var p service.ChannelModelPricing
+		var p domain.ChannelModelPricing
 		var ruleID int64
 		var modelsJSON []byte
 		if err := rows.Scan(
@@ -121,7 +121,7 @@ func (r *channelRepository) batchLoadAccountStatsModelPricing(ctx context.Contex
 }
 
 // loadAccountStatsPricingRules 加载单个渠道的账号统计定价规则（供 GetByID 使用）
-func (r *channelRepository) loadAccountStatsPricingRules(ctx context.Context, channelID int64) ([]service.AccountStatsPricingRule, error) {
+func (r *channelRepository) loadAccountStatsPricingRules(ctx context.Context, channelID int64) ([]domain.AccountStatsPricingRule, error) {
 	result, err := r.batchLoadAccountStatsPricingRules(ctx, []int64{channelID})
 	if err != nil {
 		return nil, err
@@ -130,7 +130,7 @@ func (r *channelRepository) loadAccountStatsPricingRules(ctx context.Context, ch
 }
 
 // replaceAccountStatsPricingRulesTx 在事务中替换渠道的账号统计定价规则（删除旧的 + 插入新的）
-func replaceAccountStatsPricingRulesTx(ctx context.Context, tx *sql.Tx, channelID int64, rules []service.AccountStatsPricingRule) error {
+func replaceAccountStatsPricingRulesTx(ctx context.Context, tx *sql.Tx, channelID int64, rules []domain.AccountStatsPricingRule) error {
 	// CASCADE 会自动删除关联的 model_pricing
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM channel_account_stats_pricing_rules WHERE channel_id = $1`, channelID,
@@ -148,7 +148,7 @@ func replaceAccountStatsPricingRulesTx(ctx context.Context, tx *sql.Tx, channelI
 }
 
 // createAccountStatsPricingRuleTx 在事务中创建单条账号统计定价规则及其模型定价
-func createAccountStatsPricingRuleTx(ctx context.Context, tx *sql.Tx, rule *service.AccountStatsPricingRule) error {
+func createAccountStatsPricingRuleTx(ctx context.Context, tx *sql.Tx, rule *domain.AccountStatsPricingRule) error {
 	err := tx.QueryRowContext(ctx,
 		`INSERT INTO channel_account_stats_pricing_rules (channel_id, name, group_ids, account_ids, sort_order)
 		 VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at, updated_at`,
@@ -167,14 +167,14 @@ func createAccountStatsPricingRuleTx(ctx context.Context, tx *sql.Tx, rule *serv
 }
 
 // createAccountStatsModelPricingTx 在事务中创建单条账号统计模型定价
-func createAccountStatsModelPricingTx(ctx context.Context, tx *sql.Tx, ruleID int64, pricing *service.ChannelModelPricing) error {
+func createAccountStatsModelPricingTx(ctx context.Context, tx *sql.Tx, ruleID int64, pricing *domain.ChannelModelPricing) error {
 	modelsJSON, err := json.Marshal(pricing.Models)
 	if err != nil {
 		return fmt.Errorf("marshal models: %w", err)
 	}
 	billingMode := pricing.BillingMode
 	if billingMode == "" {
-		billingMode = service.BillingModeToken
+		billingMode = domain.BillingModeToken
 	}
 	platform := pricing.Platform
 	err = tx.QueryRowContext(ctx,
@@ -199,7 +199,7 @@ func createAccountStatsModelPricingTx(ctx context.Context, tx *sql.Tx, ruleID in
 }
 
 // createAccountStatsIntervalTx inserts a single interval for an account stats pricing entry.
-func createAccountStatsIntervalTx(ctx context.Context, tx *sql.Tx, iv *service.PricingInterval) error {
+func createAccountStatsIntervalTx(ctx context.Context, tx *sql.Tx, iv *domain.PricingInterval) error {
 	return tx.QueryRowContext(ctx,
 		`INSERT INTO channel_account_stats_pricing_intervals
 		 (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_read_price, per_request_price, sort_order)
@@ -211,7 +211,7 @@ func createAccountStatsIntervalTx(ctx context.Context, tx *sql.Tx, iv *service.P
 }
 
 // batchLoadAccountStatsIntervals loads intervals for account stats pricing entries.
-func (r *channelRepository) batchLoadAccountStatsIntervals(ctx context.Context, pricingIDs []int64) (map[int64][]service.PricingInterval, error) {
+func (r *channelRepository) batchLoadAccountStatsIntervals(ctx context.Context, pricingIDs []int64) (map[int64][]domain.PricingInterval, error) {
 	if len(pricingIDs) == 0 {
 		return nil, nil
 	}
@@ -228,9 +228,9 @@ func (r *channelRepository) batchLoadAccountStatsIntervals(ctx context.Context, 
 	}
 	defer func() { _ = rows.Close() }()
 
-	result := make(map[int64][]service.PricingInterval)
+	result := make(map[int64][]domain.PricingInterval)
 	for rows.Next() {
-		var iv service.PricingInterval
+		var iv domain.PricingInterval
 		if err := rows.Scan(
 			&iv.ID, &iv.PricingID, &iv.MinTokens, &iv.MaxTokens, &iv.TierLabel,
 			&iv.InputPrice, &iv.OutputPrice, &iv.CacheWritePrice, &iv.CacheReadPrice,

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -32,7 +33,7 @@ const (
 	tokenEstimateDivisor       = 4
 
 	// featureKeyWebSearchEmulation is the key used in Account.Extra and Channel.FeaturesConfig.
-	featureKeyWebSearchEmulation = "web_search_emulation"
+	featureKeyWebSearchEmulation = domain.FeatureKeyWebSearchEmulation
 )
 
 // webSearchManagerPtr stores *websearch.Manager atomically for concurrent safety.

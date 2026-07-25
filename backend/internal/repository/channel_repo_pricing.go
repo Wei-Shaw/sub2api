@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/lib/pq"
 )
 
 // --- 模型定价 ---
 
-func (r *channelRepository) ListModelPricing(ctx context.Context, channelID int64) ([]service.ChannelModelPricing, error) {
+func (r *channelRepository) ListModelPricing(ctx context.Context, channelID int64) ([]domain.ChannelModelPricing, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price, created_at, updated_at
 		 FROM channel_model_pricing WHERE channel_id = $1 ORDER BY id`, channelID,
@@ -42,18 +42,18 @@ func (r *channelRepository) ListModelPricing(ctx context.Context, channelID int6
 	return result, nil
 }
 
-func (r *channelRepository) CreateModelPricing(ctx context.Context, pricing *service.ChannelModelPricing) error {
+func (r *channelRepository) CreateModelPricing(ctx context.Context, pricing *domain.ChannelModelPricing) error {
 	return createModelPricingExec(ctx, r.db, pricing)
 }
 
-func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *service.ChannelModelPricing) error {
+func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *domain.ChannelModelPricing) error {
 	modelsJSON, err := json.Marshal(pricing.Models)
 	if err != nil {
 		return fmt.Errorf("marshal models: %w", err)
 	}
 	billingMode := pricing.BillingMode
 	if billingMode == "" {
-		billingMode = service.BillingModeToken
+		billingMode = domain.BillingModeToken
 	}
 	result, err := r.db.ExecContext(ctx,
 		`UPDATE channel_model_pricing
@@ -80,7 +80,7 @@ func (r *channelRepository) DeleteModelPricing(ctx context.Context, id int64) er
 	return nil
 }
 
-func (r *channelRepository) ReplaceModelPricing(ctx context.Context, channelID int64, pricingList []service.ChannelModelPricing) error {
+func (r *channelRepository) ReplaceModelPricing(ctx context.Context, channelID int64, pricingList []domain.ChannelModelPricing) error {
 	return r.runInTx(ctx, func(tx *sql.Tx) error {
 		return replaceModelPricingTx(ctx, tx, channelID, pricingList)
 	})
@@ -89,7 +89,7 @@ func (r *channelRepository) ReplaceModelPricing(ctx context.Context, channelID i
 // --- 批量加载辅助方法 ---
 
 // batchLoadModelPricing 批量加载多个渠道的模型定价（含区间）
-func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelIDs []int64) (map[int64][]service.ChannelModelPricing, error) {
+func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelIDs []int64) (map[int64][]domain.ChannelModelPricing, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price, created_at, updated_at
 		 FROM channel_model_pricing WHERE channel_id = ANY($1) ORDER BY channel_id, id`,
@@ -106,7 +106,7 @@ func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelID
 	}
 
 	// 按 channelID 分组
-	pricingMap := make(map[int64][]service.ChannelModelPricing, len(channelIDs))
+	pricingMap := make(map[int64][]domain.ChannelModelPricing, len(channelIDs))
 	for _, p := range allPricing {
 		pricingMap[p.ChannelID] = append(pricingMap[p.ChannelID], p)
 	}
@@ -128,7 +128,7 @@ func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelID
 }
 
 // batchLoadIntervals 批量加载多个定价条目的区间
-func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs []int64) (map[int64][]service.PricingInterval, error) {
+func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs []int64) (map[int64][]domain.PricingInterval, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, pricing_id, min_tokens, max_tokens, tier_label,
 		        input_price, output_price, cache_write_price, cache_read_price,
@@ -142,9 +142,9 @@ func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs [
 	}
 	defer func() { _ = rows.Close() }()
 
-	intervalMap := make(map[int64][]service.PricingInterval, len(pricingIDs))
+	intervalMap := make(map[int64][]domain.PricingInterval, len(pricingIDs))
 	for rows.Next() {
-		var iv service.PricingInterval
+		var iv domain.PricingInterval
 		if err := rows.Scan(
 			&iv.ID, &iv.PricingID, &iv.MinTokens, &iv.MaxTokens, &iv.TierLabel,
 			&iv.InputPrice, &iv.OutputPrice, &iv.CacheWritePrice, &iv.CacheReadPrice,
@@ -163,11 +163,11 @@ func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs [
 // --- 共享 scan 辅助 ---
 
 // scanModelPricingRows 扫描 model pricing 行，返回结果列表和 ID 列表
-func scanModelPricingRows(rows *sql.Rows) ([]service.ChannelModelPricing, []int64, error) {
-	var result []service.ChannelModelPricing
+func scanModelPricingRows(rows *sql.Rows) ([]domain.ChannelModelPricing, []int64, error) {
+	var result []domain.ChannelModelPricing
 	var pricingIDs []int64
 	for rows.Next() {
-		var p service.ChannelModelPricing
+		var p domain.ChannelModelPricing
 		var modelsJSON []byte
 		if err := rows.Scan(
 			&p.ID, &p.ChannelID, &p.Platform, &modelsJSON, &p.BillingMode,
@@ -215,14 +215,14 @@ func setGroupIDsTx(ctx context.Context, exec dbExec, channelID int64, groupIDs [
 	return nil
 }
 
-func createModelPricingExec(ctx context.Context, exec dbExec, pricing *service.ChannelModelPricing) error {
+func createModelPricingExec(ctx context.Context, exec dbExec, pricing *domain.ChannelModelPricing) error {
 	modelsJSON, err := json.Marshal(pricing.Models)
 	if err != nil {
 		return fmt.Errorf("marshal models: %w", err)
 	}
 	billingMode := pricing.BillingMode
 	if billingMode == "" {
-		billingMode = service.BillingModeToken
+		billingMode = domain.BillingModeToken
 	}
 	platform := pricing.Platform
 	if platform == "" {
@@ -249,7 +249,7 @@ func createModelPricingExec(ctx context.Context, exec dbExec, pricing *service.C
 	return nil
 }
 
-func createIntervalExec(ctx context.Context, exec dbExec, iv *service.PricingInterval) error {
+func createIntervalExec(ctx context.Context, exec dbExec, iv *domain.PricingInterval) error {
 	return exec.QueryRowContext(ctx,
 		`INSERT INTO channel_pricing_intervals
 		 (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_read_price, per_request_price, sort_order)
@@ -260,7 +260,7 @@ func createIntervalExec(ctx context.Context, exec dbExec, iv *service.PricingInt
 	).Scan(&iv.ID, &iv.CreatedAt, &iv.UpdatedAt)
 }
 
-func replaceModelPricingTx(ctx context.Context, exec dbExec, channelID int64, pricingList []service.ChannelModelPricing) error {
+func replaceModelPricingTx(ctx context.Context, exec dbExec, channelID int64, pricingList []domain.ChannelModelPricing) error {
 	if _, err := exec.ExecContext(ctx, `DELETE FROM channel_model_pricing WHERE channel_id = $1`, channelID); err != nil {
 		return fmt.Errorf("delete old model pricing: %w", err)
 	}

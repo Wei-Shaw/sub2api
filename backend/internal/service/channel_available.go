@@ -87,7 +87,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		}
 		sort.SliceStable(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
 
-		ch.normalizeBillingModelSource()
+		ch.NormalizeBillingModelSource()
 
 		supported := ch.SupportedModels()
 		s.fillGlobalPricingFallback(supported)

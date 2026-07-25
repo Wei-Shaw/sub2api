@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	portchannel "github.com/Wei-Shaw/sub2api/internal/port/channel"
 	"github.com/lib/pq"
 )
 
@@ -17,7 +18,7 @@ type channelRepository struct {
 }
 
 // NewChannelRepository 创建渠道数据访问实例
-func NewChannelRepository(db *sql.DB) service.ChannelRepository {
+func NewChannelRepository(db *sql.DB) portchannel.Repository {
 	return &channelRepository{db: db}
 }
 
@@ -35,7 +36,7 @@ func (r *channelRepository) runInTx(ctx context.Context, fn func(tx *sql.Tx) err
 	return tx.Commit()
 }
 
-func (r *channelRepository) Create(ctx context.Context, channel *service.Channel) error {
+func (r *channelRepository) Create(ctx context.Context, channel *domain.Channel) error {
 	return r.runInTx(ctx, func(tx *sql.Tx) error {
 		modelMappingJSON, err := marshalModelMapping(channel.ModelMapping)
 		if err != nil {
@@ -52,7 +53,7 @@ func (r *channelRepository) Create(ctx context.Context, channel *service.Channel
 		).Scan(&channel.ID, &channel.CreatedAt, &channel.UpdatedAt)
 		if err != nil {
 			if isUniqueViolation(err) {
-				return service.ErrChannelExists
+				return domain.ErrChannelExists
 			}
 			return fmt.Errorf("insert channel: %w", err)
 		}
@@ -82,15 +83,15 @@ func (r *channelRepository) Create(ctx context.Context, channel *service.Channel
 	})
 }
 
-func (r *channelRepository) GetByID(ctx context.Context, id int64) (*service.Channel, error) {
-	ch := &service.Channel{}
+func (r *channelRepository) GetByID(ctx context.Context, id int64) (*domain.Channel, error) {
+	ch := &domain.Channel{}
 	var modelMappingJSON, featuresConfigJSON []byte
 	err := r.db.QueryRowContext(ctx,
 		`SELECT id, name, description, status, model_mapping, billing_model_source, restrict_models, features, features_config, apply_pricing_to_account_stats, created_at, updated_at
 		 FROM channels WHERE id = $1`, id,
 	).Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.Features, &featuresConfigJSON, &ch.ApplyPricingToAccountStats, &ch.CreatedAt, &ch.UpdatedAt)
 	if err == sql.ErrNoRows {
-		return nil, service.ErrChannelNotFound
+		return nil, domain.ErrChannelNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get channel: %w", err)
@@ -119,7 +120,7 @@ func (r *channelRepository) GetByID(ctx context.Context, id int64) (*service.Cha
 	return ch, nil
 }
 
-func (r *channelRepository) Update(ctx context.Context, channel *service.Channel) error {
+func (r *channelRepository) Update(ctx context.Context, channel *domain.Channel) error {
 	return r.runInTx(ctx, func(tx *sql.Tx) error {
 		modelMappingJSON, err := marshalModelMapping(channel.ModelMapping)
 		if err != nil {
@@ -136,13 +137,13 @@ func (r *channelRepository) Update(ctx context.Context, channel *service.Channel
 		)
 		if err != nil {
 			if isUniqueViolation(err) {
-				return service.ErrChannelExists
+				return domain.ErrChannelExists
 			}
 			return fmt.Errorf("update channel: %w", err)
 		}
 		rows, _ := result.RowsAffected()
 		if rows == 0 {
-			return service.ErrChannelNotFound
+			return domain.ErrChannelNotFound
 		}
 
 		// 更新分组关联
@@ -177,12 +178,12 @@ func (r *channelRepository) Delete(ctx context.Context, id int64) error {
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return service.ErrChannelNotFound
+		return domain.ErrChannelNotFound
 	}
 	return nil
 }
 
-func (r *channelRepository) List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]service.Channel, *pagination.PaginationResult, error) {
+func (r *channelRepository) List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]domain.Channel, *pagination.PaginationResult, error) {
 	where := []string{"1=1"}
 	args := []any{}
 	argIdx := 1
@@ -228,10 +229,10 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 	}
 	defer func() { _ = rows.Close() }()
 
-	var channels []service.Channel
+	var channels []domain.Channel
 	var channelIDs []int64
 	for rows.Next() {
-		var ch service.Channel
+		var ch domain.Channel
 		var modelMappingJSON, featuresConfigJSON []byte
 		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.Features, &featuresConfigJSON, &ch.ApplyPricingToAccountStats, &ch.CreatedAt, &ch.UpdatedAt); err != nil {
 			return nil, nil, fmt.Errorf("scan channel: %w", err)
@@ -306,7 +307,7 @@ func channelListOrderBy(params pagination.PaginationParams) string {
 	return fmt.Sprintf("%s %s, c.id %s", column, sortOrder, sortOrder)
 }
 
-func (r *channelRepository) ListAll(ctx context.Context) ([]service.Channel, error) {
+func (r *channelRepository) ListAll(ctx context.Context) ([]domain.Channel, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, name, description, status, model_mapping, billing_model_source, restrict_models, features, features_config, apply_pricing_to_account_stats, created_at, updated_at FROM channels ORDER BY id`,
 	)
@@ -315,10 +316,10 @@ func (r *channelRepository) ListAll(ctx context.Context) ([]service.Channel, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	var channels []service.Channel
+	var channels []domain.Channel
 	var channelIDs []int64
 	for rows.Next() {
-		var ch service.Channel
+		var ch domain.Channel
 		var modelMappingJSON, featuresConfigJSON []byte
 		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.Features, &featuresConfigJSON, &ch.ApplyPricingToAccountStats, &ch.CreatedAt, &ch.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan channel: %w", err)

@@ -1,8 +1,12 @@
 package service
 
-import "strings"
+import (
+	"strings"
 
-const featureKeyCodexImageGenerationBridge = "codex_image_generation_bridge"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+)
+
+const featureKeyCodexImageGenerationBridge = domain.FeatureKeyCodexImageGenerationBridge
 
 const (
 	featureKeyCodexImageGenerationExplicitToolPolicy = "codex_image_generation_explicit_tool_policy"
@@ -46,36 +50,6 @@ func normalizeCodexImageGenerationExplicitToolPolicy(value string) string {
 	default:
 		return codexImageGenerationExplicitToolPolicyAllow
 	}
-}
-
-func platformBoolOverride(values map[string]any, key string, platform string) *bool {
-	if values == nil {
-		return nil
-	}
-	if v, ok := values[key].(bool); ok {
-		return boolOverridePtr(v)
-	}
-	raw, ok := values[key].(map[string]any)
-	if !ok {
-		return nil
-	}
-	platform = strings.TrimSpace(platform)
-	if platform == "" {
-		return nil
-	}
-	if v, ok := raw[platform].(bool); ok {
-		return boolOverridePtr(v)
-	}
-	return nil
-}
-
-// CodexImageGenerationBridgeOverride returns the channel-level override for Codex
-// image_generation bridge injection. Nil means follow the global/account policy.
-func (c *Channel) CodexImageGenerationBridgeOverride(platform string) *bool {
-	if c == nil {
-		return nil
-	}
-	return platformBoolOverride(c.FeaturesConfig, featureKeyCodexImageGenerationBridge, platform)
 }
 
 // CodexImageGenerationBridgeOverride returns the account-level override for Codex

@@ -8,49 +8,28 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	portchannel "github.com/Wei-Shaw/sub2api/internal/port/channel"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"golang.org/x/sync/singleflight"
 )
 
 var (
-	ErrChannelNotFound       = infraerrors.NotFound("CHANNEL_NOT_FOUND", "channel not found")
-	ErrChannelExists         = infraerrors.Conflict("CHANNEL_EXISTS", "channel name already exists")
+	// Channel domain errors re-exported for incremental migration.
+	ErrChannelNotFound = domain.ErrChannelNotFound
+	ErrChannelExists   = domain.ErrChannelExists
+	// ErrGroupAlreadyInChannel stays in service (group-binding concern).
 	ErrGroupAlreadyInChannel = infraerrors.Conflict(
 		"GROUP_ALREADY_IN_CHANNEL",
 		"one or more groups already belong to another channel",
 	)
 )
 
-// ChannelRepository 渠道数据访问接口
-type ChannelRepository interface {
-	Create(ctx context.Context, channel *Channel) error
-	GetByID(ctx context.Context, id int64) (*Channel, error)
-	Update(ctx context.Context, channel *Channel) error
-	Delete(ctx context.Context, id int64) error
-	List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]Channel, *pagination.PaginationResult, error)
-	ListAll(ctx context.Context) ([]Channel, error)
-	ExistsByName(ctx context.Context, name string) (bool, error)
-	ExistsByNameExcluding(ctx context.Context, name string, excludeID int64) (bool, error)
-
-	// 分组关联
-	GetGroupIDs(ctx context.Context, channelID int64) ([]int64, error)
-	SetGroupIDs(ctx context.Context, channelID int64, groupIDs []int64) error
-	GetChannelIDByGroupID(ctx context.Context, groupID int64) (int64, error)
-	GetGroupsInOtherChannels(ctx context.Context, channelID int64, groupIDs []int64) ([]int64, error)
-
-	// 分组平台查询
-	GetGroupPlatforms(ctx context.Context, groupIDs []int64) (map[int64]string, error)
-
-	// 模型定价
-	ListModelPricing(ctx context.Context, channelID int64) ([]ChannelModelPricing, error)
-	CreateModelPricing(ctx context.Context, pricing *ChannelModelPricing) error
-	UpdateModelPricing(ctx context.Context, pricing *ChannelModelPricing) error
-	DeleteModelPricing(ctx context.Context, id int64) error
-	ReplaceModelPricing(ctx context.Context, channelID int64, pricingList []ChannelModelPricing) error
-}
+// ChannelRepository is a type alias for the channel persistence port.
+type ChannelRepository = portchannel.Repository
 
 // channelModelKey 渠道缓存复合键（显式包含 platform 防止跨平台同名模型冲突）
 type channelModelKey struct {
@@ -140,7 +119,7 @@ const (
 
 // ChannelService 渠道管理服务
 type ChannelService struct {
-	repo                 ChannelRepository
+	repo                 portchannel.Repository
 	groupRepo            GroupRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	pricingService       *PricingService // 用于「可用渠道」展示时回落到全局定价；可为 nil（测试场景）
@@ -152,7 +131,7 @@ type ChannelService struct {
 // NewChannelService 创建渠道服务实例。
 // pricingService 仅供 ListAvailable 在渠道未配置定价时回落到全局 LiteLLM 数据；
 // 计费热路径走独立的 ModelPricingResolver，与此参数无关。可传 nil。
-func NewChannelService(repo ChannelRepository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, pricingService *PricingService) *ChannelService {
+func NewChannelService(repo portchannel.Repository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, pricingService *PricingService) *ChannelService {
 	s := &ChannelService{
 		repo:                 repo,
 		groupRepo:            groupRepo,
@@ -315,7 +294,7 @@ func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *
 	cache.loadedAt = time.Now()
 
 	for i := range channels {
-		channels[i].normalizeBillingModelSource()
+		channels[i].NormalizeBillingModelSource()
 		ch := &channels[i]
 		cache.byID[ch.ID] = ch
 		for _, gid := range ch.GroupIDs {
@@ -709,7 +688,7 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		ApplyPricingToAccountStats: input.ApplyPricingToAccountStats,
 		AccountStatsPricingRules:   input.AccountStatsPricingRules,
 	}
-	channel.normalizeBillingModelSource()
+	channel.NormalizeBillingModelSource()
 
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
@@ -729,7 +708,7 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 	if err != nil {
 		return nil, err
 	}
-	created.normalizeBillingModelSource()
+	created.NormalizeBillingModelSource()
 	return created, nil
 }
 
@@ -740,7 +719,7 @@ func (s *ChannelService) GetByID(ctx context.Context, id int64) (*Channel, error
 	if err != nil {
 		return nil, err
 	}
-	ch.normalizeBillingModelSource()
+	ch.NormalizeBillingModelSource()
 	return ch, nil
 }
 
@@ -777,7 +756,7 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 	if err != nil {
 		return nil, err
 	}
-	updated.normalizeBillingModelSource()
+	updated.NormalizeBillingModelSource()
 	return updated, nil
 }
 
@@ -901,7 +880,7 @@ func (s *ChannelService) List(ctx context.Context, params pagination.PaginationP
 		return nil, nil, err
 	}
 	for i := range channels {
-		channels[i].normalizeBillingModelSource()
+		channels[i].NormalizeBillingModelSource()
 	}
 	return channels, res, nil
 }
