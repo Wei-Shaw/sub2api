@@ -376,6 +376,7 @@ const granularityOptions = computed<SelectOption[]>(() => [
 const requestTypeOptions = computed<SelectOption[]>(() => [
   { value: null, label: t('admin.usage.allTypes') REDACTED,
   { value: 'ws_v2', label: t('usage.ws') REDACTED,
+  { value: 'live', label: t('usage.live') REDACTED,
   { value: 'stream', label: t('usage.stream') REDACTED,
   { value: 'sync', label: t('usage.sync') REDACTED,
 ])
@@ -595,6 +596,7 @@ REDACTED
 const getRequestTypeExportText = (log: UsageLog): string => {
   const requestType = resolveUsageRequestType(log)
   if (requestType === 'cyber') return 'Cyber'
+  if (requestType === 'live') return 'Live'
   if (requestType === 'ws_v2') return 'WS'
   if (requestType === 'stream') return 'Stream'
   if (requestType === 'sync') return 'Sync'

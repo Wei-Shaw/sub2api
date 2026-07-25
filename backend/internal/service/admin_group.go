@@ -470,6 +470,7 @@ REDACTED
 		MCPXMLInject:                    mcpXMLInject,
 		SupportedModelScopes:            input.SupportedModelScopes,
 		AllowMessagesDispatch:           input.AllowMessagesDispatch,
+		AllowLive:                       input.AllowLive,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
@@ -480,6 +481,9 @@ REDACTED
 		ReasoningEffortMappings:         reasoningEffortMappings,
 REDACTED
 	sanitizeGroupMessagesDispatchFields(group)
+	if group.Platform != PlatformOpenAI {
+		group.AllowLive = false
+REDACTED
 	sanitizeGroupReasoningEffortPolicy(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
@@ -777,6 +781,9 @@ REDACTED
 	if input.AllowMessagesDispatch != nil {
 		group.AllowMessagesDispatch = *input.AllowMessagesDispatch
 REDACTED
+	if input.AllowLive != nil {
+		group.AllowLive = *input.AllowLive
+REDACTED
 	if input.RequireOAuthOnly != nil {
 		group.RequireOAuthOnly = *input.RequireOAuthOnly
 REDACTED
@@ -810,6 +817,9 @@ REDACTED
 		group.ReasoningEffortMappings = reasoningEffortMappings
 REDACTED
 	sanitizeGroupMessagesDispatchFields(group)
+	if group.Platform != PlatformOpenAI {
+		group.AllowLive = false
+REDACTED
 	sanitizeGroupReasoningEffortPolicy(group)
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
