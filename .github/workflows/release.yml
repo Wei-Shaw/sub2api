@@ -566,9 +566,10 @@ jobs:
             "$RUNNER_TEMP/deployer-dist/sub2api-deployer-checksums.txt"
 
           gh release upload "$RELEASE_TAG" "$COMPLETION_PATH"
-          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" > "$RUNNER_TEMP/draft-release.json"
-          jq -e --arg completion_asset "$RELEASE_COMPLETION_ASSET" '
-            .draft == true
+          gh release view "$RELEASE_TAG" --json tagName,isDraft,assets > "$RUNNER_TEMP/draft-release.json"
+          jq -e --arg release_tag "$RELEASE_TAG" --arg completion_asset "$RELEASE_COMPLETION_ASSET" '
+            .tagName == $release_tag
+            and .isDraft == true
             and ([.assets[]? | select(.name == $completion_asset)] | length == 1)
           ' "$RUNNER_TEMP/draft-release.json" >/dev/null
 
@@ -588,9 +589,10 @@ jobs:
               "$IMAGE_DIGEST" \
               "$PREVIOUS_GHCR_DIGEST"
           fi
-          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" > "$RUNNER_TEMP/published-release.json"
-          jq -e --arg completion_asset "$RELEASE_COMPLETION_ASSET" '
-            .draft == false
+          gh release view "$RELEASE_TAG" --json tagName,isDraft,assets > "$RUNNER_TEMP/published-release.json"
+          jq -e --arg release_tag "$RELEASE_TAG" --arg completion_asset "$RELEASE_COMPLETION_ASSET" '
+            .tagName == $release_tag
+            and .isDraft == false
             and ([.assets[]? | select(.name == $completion_asset)] | length == 1)
           ' "$RUNNER_TEMP/published-release.json" >/dev/null
 
