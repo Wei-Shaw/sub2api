@@ -209,6 +209,60 @@ REDACTED
 	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
 REDACTED
 
+func TestSanitizeGrokResponsesToolsKeepsToolChoiceOnlyWithSupportedTools(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		body           string
+		wantTools      bool
+		wantToolChoice bool
+REDACTED{
+		{
+			name: "missing tools with string tool choice",
+			body: `{"input":"hello","tool_choice":"auto"REDACTED`,
+	REDACTED,
+		{
+			name: "missing tools with object tool choice",
+			body: `{"input":"hello","tool_choice":{"type":"function","name":"lookup"REDACTEDREDACTED`,
+	REDACTED,
+		{
+			name:      "empty tools",
+			body:      `{"input":"hello","tools":[],"tool_choice":"auto"REDACTED`,
+			wantTools: true,
+	REDACTED,
+		{
+			name: "all tools unsupported",
+			body: `{"input":"hello","tools":[{"type":"namespace","name":"client_tools"REDACTED],"tool_choice":"auto"REDACTED`,
+	REDACTED,
+		{
+			name:           "supported tool",
+			body:           `{"input":"hello","tools":[{"type":"function","name":"lookup"REDACTED],"tool_choice":"auto"REDACTED`,
+			wantTools:      true,
+			wantToolChoice: true,
+	REDACTED,
+		{
+			name:           "malformed non-array tools remain untouched",
+			body:           `{"input":"hello","tools":{"type":"function","name":"lookup"REDACTED,"tool_choice":"auto"REDACTED`,
+			wantTools:      true,
+			wantToolChoice: true,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			patched, err := sanitizeGrokResponsesTools([]byte(tt.body))
+		REDACTED
+			require.True(t, json.Valid(patched))
+			require.Equal(t, tt.wantTools, gjson.GetBytes(patched, "tools").Exists())
+			require.Equal(t, tt.wantToolChoice, gjson.GetBytes(patched, "tool_choice").Exists())
+			if tt.wantToolChoice {
+				require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestPatchGrokResponsesBodyPromotesCodexAdditionalTools(t *testing.T) {
 	t.Parallel()
 
