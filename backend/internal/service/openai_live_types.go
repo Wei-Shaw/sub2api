@@ -22,6 +22,17 @@ var (
 	ErrLiveControllerChanged = errors.New("live controller changed")
 )
 
+type LiveAttestationUnavailableError struct {
+	Reason string
+REDACTED
+
+func (e *LiveAttestationUnavailableError) Error() string {
+	if e == nil || e.Reason == "" {
+		return "Live attestation is unavailable"
+REDACTED
+	return "Live attestation is unavailable: " + e.Reason
+REDACTED
+
 // LiveCallRequest 是两个下游创建协议归一后的请求。Session 不做结构改写。
 type LiveCallRequest struct {
 	SDP     string          `json:"sdp"`
@@ -55,6 +66,8 @@ type LiveCallRecord struct {
 	UserAgent       string
 	IPAddress       string
 	InboundEndpoint string
+	// AttestationCiphertext 仅用于让同一会话的 Sideband 复用创建时的证明。
+	AttestationCiphertext string
 REDACTED
 
 type LiveCallCreated struct {

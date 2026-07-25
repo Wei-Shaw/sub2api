@@ -1098,7 +1098,7 @@ export default {
       openaiLive: {
         title: 'OpenAI Live',
         allow: 'Allow Live access',
-        hint: 'When enabled, API keys in this OpenAI group can create and control Live voice sessions. Disabled by default.'
+        hint: 'When enabled, API keys in this OpenAI group can create and control Live voice sessions. Disabled by default. The Sub2API server must run on macOS with the official ChatGPT app installed; client platforms are unrestricted.'
       REDACTED,
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',

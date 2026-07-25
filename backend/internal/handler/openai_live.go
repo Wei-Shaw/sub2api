@@ -171,6 +171,11 @@ func (h *OpenAIGatewayHandler) writeLiveCreateError(c *gin.Context, err error) {
 	case errors.Is(err, service.ErrLiveUnavailable):
 		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Live is unavailable")
 	default:
+		var attestationErr *service.LiveAttestationUnavailableError
+		if errors.As(err, &attestationErr) {
+			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", attestationErr.Error())
+			return
+	REDACTED
 		var upstreamErr *service.UpstreamFailoverError
 		if errors.As(err, &upstreamErr) && upstreamErr.StatusCode >= 400 && upstreamErr.StatusCode < 500 {
 			h.errorResponse(c, upstreamErr.StatusCode, "invalid_request_error", "Live upstream rejected the request")

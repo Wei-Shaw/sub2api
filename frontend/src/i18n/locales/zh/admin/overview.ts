@@ -1096,7 +1096,7 @@ export default {
       openaiLive: {
         title: 'OpenAI Live',
         allow: '允许访问 Live',
-        hint: '启用后，此 OpenAI 分组的 API Key 可以创建并控制 Live 语音会话。默认关闭。'
+        hint: '启用后，此 OpenAI 分组的 API Key 可以创建并控制 Live 语音会话。默认关闭。运行 Sub2API 的服务端必须是 macOS，并安装官方 ChatGPT App；客户端平台不受限制。'
       REDACTED,
       invalidRequestFallback: {
         title: '无效请求兜底分组',

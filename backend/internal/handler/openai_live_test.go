@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"mime/multipart"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -86,6 +87,19 @@ REDACTED))
 	require.True(t, liveEnabledForAPIKey(&service.APIKey{
 		Group: &service.Group{Platform: service.PlatformOpenAI, AllowLive: trueREDACTED,
 REDACTED))
+REDACTED
+
+func TestLiveAttestationErrorIsExplicit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+
+	(&OpenAIGatewayHandler{REDACTED).writeLiveCreateError(context, &service.LiveAttestationUnavailableError{
+		Reason: "Live attestation is only supported when Sub2API runs on macOS",
+REDACTED)
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "Sub2API runs on macOS")
 REDACTED
 
 func jsonPathString(t *testing.T, raw json.RawMessage, keys ...string) string {

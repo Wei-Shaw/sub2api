@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 )
@@ -347,6 +348,12 @@ REDACTED
 		ExpiresAt:  time.Now().Add(time.Minute),
 		Controller: LiveControllerPending,
 REDACTED
+	attestationCipher := newLiveAttestationCipher(&config.Config{
+		JWT: config.JWTConfig{Secret: "live-sideband-test-secret"REDACTED,
+REDACTED)
+	var err error
+	record.AttestationCiphertext, err = attestationCipher.Encrypt(`{"v":1,"s":0,"t":"v1.sideband"REDACTED`)
+REDACTED
 	store := &liveTestStore{REDACTED
 	require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
 	upstream := newLiveTestFrameConn()
@@ -355,6 +362,7 @@ REDACTED
 		accountRepo:               &liveTestAccountRepo{account: accountREDACTED,
 		cache:                     store,
 		openaiWSPassthroughDialer: dialer,
+		liveAttestationCipher:     attestationCipher,
 REDACTED
 	proxyResult := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -403,6 +411,7 @@ REDACTED
 	require.Equal(t, "wss://chatgpt.com/backend-api/codex/call_proxy", dialer.url)
 	require.Equal(t, "Bearer test-access-token", dialer.headers.Get("Authorization"))
 	require.Equal(t, "acct_test", dialer.headers.Get("Chatgpt-Account-Id"))
+	require.Equal(t, `{"v":1,"s":0,"t":"v1.sideband"REDACTED`, dialer.headers.Get(liveAttestationHeader))
 	upstream.reads <- liveTestFrame{err: coderws.CloseError{Code: coderws.StatusNormalClosureREDACTEDREDACTED
 	require.ErrorIs(t, <-proxyResult, ErrLiveCallNotFound)
 REDACTED
