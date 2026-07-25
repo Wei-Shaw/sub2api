@@ -18,20 +18,23 @@
               {{ t('payment.methods.' + method.type, method.type) REDACTEDREDACTED
             </span>
           </div>
-          <div class="text-right">
-            <span class="text-sm font-medium text-gray-900 dark:text-white">
-              ${{ method.amount.toFixed(2) REDACTEDREDACTED
+          <div class="space-y-1 text-right">
+            <span v-for="[currency, amount] in sortedAmounts(method.amount)" :key="currency" class="block text-sm font-medium text-gray-900 dark:text-white">
+              {{ formatMoney(currency, amount) REDACTEDREDACTED
             </span>
             <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
               ({{ method.count REDACTEDREDACTED)
             </span>
           </div>
         </div>
-        <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
-          <div
-            :class="['h-full rounded-full transition-all', barColorMap[method.type] || 'bg-gray-400']"
-            :style="{ width: barWidth(method.amount) + '%' REDACTED"
-          ></div>
+        <div v-for="[currency, amount] in sortedAmounts(method.amount)" :key="currency" class="flex items-center gap-2">
+          <span class="w-10 text-xs text-gray-500 dark:text-gray-400">{{ currency REDACTEDREDACTED</span>
+          <div class="h-2 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+            <div
+              :class="['h-full rounded-full transition-all', barColorMap[method.type] || 'bg-gray-400']"
+              :style="{ width: barWidth(currency, amount) + '%' REDACTED"
+            ></div>
+          </div>
         </div>
       </div>
     </div>
@@ -41,11 +44,12 @@
 <script setup lang="ts">
 import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
+import type { CurrencyAmounts, PaymentMethodStats REDACTED from '@/types/payment'
 
 const { t REDACTED = useI18n()
 
 const props = defineProps<{
-  methods: { type: string; amount: number; count: number REDACTED[]
+  methods: PaymentMethodStats[]
 REDACTED>()
 
 const colorMap: Record<string, string> = {
@@ -64,12 +68,24 @@ const barColorMap: Record<string, string> = {
   stripe: 'bg-purple-500',
 REDACTED
 
-const maxAmount = computed(() => {
-  if (!props.methods?.length) return 1
-  return Math.max(...props.methods.map(m => m.amount), 1)
+const maxAmounts = computed<CurrencyAmounts>(() => {
+  return props.methods.reduce<CurrencyAmounts>((maximums, method) => {
+    for (const [currency, amount] of Object.entries(method.amount)) {
+      maximums[currency] = Math.max(maximums[currency] || 0, amount)
+    REDACTED
+    return maximums
+  REDACTED, {REDACTED)
 REDACTED)
 
-function barWidth(amount: number): number {
-  return Math.min((amount / maxAmount.value) * 100, 100)
+function sortedAmounts(amounts: CurrencyAmounts): [string, number][] {
+  return Object.entries(amounts).sort(([left], [right]) => left.localeCompare(right))
+REDACTED
+
+function barWidth(currency: string, amount: number): number {
+  return Math.min((amount / (maxAmounts.value[currency] || 1)) * 100, 100)
+REDACTED
+
+function formatMoney(currency: string, amount: number): string {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency REDACTED).format(amount)
 REDACTED
 </script>

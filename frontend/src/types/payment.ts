@@ -222,13 +222,33 @@ export interface CreateOrderResult {
   jsapi_payload?: WechatJSAPIPayload
 REDACTED
 
+export type CurrencyAmounts = Record<string, number>
+
+export interface DailyPaymentStats {
+  date: string
+  amount: CurrencyAmounts
+  count: number
+REDACTED
+
+export interface PaymentMethodStats {
+  type: string
+  amount: CurrencyAmounts
+  count: number
+REDACTED
+
+export interface TopUserPaymentStats {
+  user_id: number
+  email: string
+  amount: number
+REDACTED
+
 export interface DashboardStats {
-  today_amount: number
-  total_amount: number
+  today_amount: CurrencyAmounts
+  total_amount: CurrencyAmounts
   today_count: number
   total_count: number
-  avg_amount: number
-  daily_series: { date: string; amount: number; count: number REDACTED[]
-  payment_methods: { type: string; amount: number; count: number REDACTED[]
-  top_users: { user_id: number; email: string; amount: number REDACTED[]
+  avg_amount: CurrencyAmounts
+  daily_series: DailyPaymentStats[]
+  payment_methods: PaymentMethodStats[]
+  top_users: Record<string, TopUserPaymentStats[]>
 REDACTED
