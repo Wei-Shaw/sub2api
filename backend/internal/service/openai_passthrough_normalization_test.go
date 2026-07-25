@@ -85,3 +85,27 @@ func TestNormalizeOpenAIPassthroughOAuthBody_ArrayInputUnchanged(t *testing.T) {
 	require.Len(t, input.Array(), 1)
 	require.Equal(t, "message", input.Array()[0].Get("type").String())
 }
+
+func TestNormalizeOpenAIPassthroughOAuthBody_StripsReasoningID(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","input":[{"type":"reasoning","id":"item_badprefix","encrypted_content":"cipher","summary":[]},{"type":"message","id":"msg_valid","role":"user","content":"continue"}]}`)
+
+	normalized, changed, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	input := gjson.GetBytes(normalized, "input").Array()
+	require.Len(t, input, 2)
+	require.Equal(t, "reasoning", input[0].Get("type").String())
+	require.False(t, input[0].Get("id").Exists())
+	require.Equal(t, "cipher", input[0].Get("encrypted_content").String())
+	require.True(t, input[0].Get("summary").IsArray())
+	require.Equal(t, "msg_valid", input[1].Get("id").String(), "non-reasoning ids must remain unchanged")
+}
+
+func TestNormalizeOpenAIPassthroughOAuthBody_CompactPreservesReasoningID(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","input":[{"type":"reasoning","id":"rs_valid","encrypted_content":"cipher","summary":[]}]}`)
+
+	normalized, _, err := normalizeOpenAIPassthroughOAuthBody(body, true)
+	require.NoError(t, err)
+	require.Equal(t, "rs_valid", gjson.GetBytes(normalized, "input.0.id").String())
+}

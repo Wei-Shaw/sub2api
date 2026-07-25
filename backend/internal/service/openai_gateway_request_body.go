@@ -603,6 +603,27 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 		}
 	}
 
+	if !compact {
+		// Non-compact OAuth passthrough forces store=false below. Under that
+		// contract, replaying a reasoning item by id makes the ChatGPT backend
+		// look up an item that was never stored. Strip the id while preserving
+		// encrypted_content, summary, and all other reasoning fields. This
+		// mirrors filterCodexInputWithOptions on the transformed OAuth path and
+		// also recovers histories polluted by compatibility bridges that emitted
+		// a generic item_* reasoning id.
+		for i, item := range gjson.GetBytes(normalized, "input").Array() {
+			if item.Get("type").String() != "reasoning" || !item.Get("id").Exists() {
+				continue
+			}
+			next, err := sjson.DeleteBytes(normalized, fmt.Sprintf("input.%d.id", i))
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body delete reasoning id: %w", err)
+			}
+			normalized = next
+			changed = true
+		}
+	}
+
 	if compact {
 		if store := gjson.GetBytes(normalized, "store"); store.Exists() {
 			next, err := sjson.DeleteBytes(normalized, "store")
