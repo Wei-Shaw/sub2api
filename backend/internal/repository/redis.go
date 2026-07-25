@@ -1,10 +1,11 @@
 package repository
 
 import (
-	"crypto/tls"
+	"fmt"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redistls"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -20,13 +21,17 @@ import (
 // 1. PoolSize: 控制最大并发连接数（默认 128）
 // 2. MinIdleConns: 保持最小空闲连接，减少冷启动延迟（默认 10）
 // 3. DialTimeout/ReadTimeout/WriteTimeout: 精确控制各阶段超时
-func InitRedis(cfg *config.Config) *redis.Client {
-	return redis.NewClient(buildRedisOptions(cfg))
+func InitRedis(cfg *config.Config) (*redis.Client, error) {
+	opts, err := buildRedisOptions(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("build Redis options: %w", err)
+	}
+	return redis.NewClient(opts), nil
 }
 
 // buildRedisOptions 构建 Redis 连接选项
 // 从配置文件读取连接池和超时参数，支持生产环境调优
-func buildRedisOptions(cfg *config.Config) *redis.Options {
+func buildRedisOptions(cfg *config.Config) (*redis.Options, error) {
 	opts := &redis.Options{
 		Addr:         cfg.Redis.Address(),
 		Password:     cfg.Redis.Password,
@@ -38,12 +43,11 @@ func buildRedisOptions(cfg *config.Config) *redis.Options {
 		MinIdleConns: cfg.Redis.MinIdleConns,                                     // 最小空闲连接
 	}
 
-	if cfg.Redis.EnableTLS {
-		opts.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ServerName: cfg.Redis.Host,
-		}
+	tlsConfig, err := redistls.Config(cfg.Redis.EnableTLS, cfg.Redis.Host, cfg.Redis.CACertFile)
+	if err != nil {
+		return nil, err
 	}
+	opts.TLSConfig = tlsConfig
 
-	return opts
+	return opts, nil
 }

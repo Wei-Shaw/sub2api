@@ -1173,6 +1173,8 @@ type RedisConfig struct {
 	MinIdleConns int `mapstructure:"min_idle_conns"`
 	// EnableTLS: 是否启用 TLS/SSL 连接
 	EnableTLS bool `mapstructure:"enable_tls"`
+	// CACertFile: 可选的 PEM CA 证书文件，用于私有 CA 签发的 Redis 服务
+	CACertFile string `mapstructure:"ca_cert_file"`
 }
 
 func (r *RedisConfig) Address() string {
@@ -1710,6 +1712,7 @@ func setDefaults() {
 	viper.SetDefault("redis.pool_size", 1024)
 	viper.SetDefault("redis.min_idle_conns", 128)
 	viper.SetDefault("redis.enable_tls", false)
+	viper.SetDefault("redis.ca_cert_file", "")
 
 	// Ops (vNext)
 	viper.SetDefault("ops.enabled", true)

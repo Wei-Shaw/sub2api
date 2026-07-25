@@ -23,7 +23,8 @@ func TestBuildRedisOptions(t *testing.T) {
 		},
 	}
 
-	opts := buildRedisOptions(cfg)
+	opts, err := buildRedisOptions(cfg)
+	require.NoError(t, err)
 	require.Equal(t, "localhost:6379", opts.Addr)
 	require.Equal(t, "secret", opts.Password)
 	require.Equal(t, 2, opts.DB)
@@ -41,7 +42,21 @@ func TestBuildRedisOptions(t *testing.T) {
 			EnableTLS: true,
 		},
 	}
-	optsTLS := buildRedisOptions(cfgTLS)
+	optsTLS, err := buildRedisOptions(cfgTLS)
+	require.NoError(t, err)
 	require.NotNil(t, optsTLS.TLSConfig)
 	require.Equal(t, "localhost", optsTLS.TLSConfig.ServerName)
+}
+
+func TestBuildRedisOptionsRejectsMissingCAFile(t *testing.T) {
+	cfg := &config.Config{
+		Redis: config.RedisConfig{
+			Host:       "redis.internal",
+			EnableTLS:  true,
+			CACertFile: "/missing/ca.crt",
+		},
+	}
+
+	_, err := buildRedisOptions(cfg)
+	require.ErrorContains(t, err, "read Redis CA certificate")
 }

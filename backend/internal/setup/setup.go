@@ -3,7 +3,6 @@ package setup
 import (
 	"context"
 	"crypto/rand"
-	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redistls"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -91,11 +91,12 @@ type DatabaseConfig struct {
 }
 
 type RedisConfig struct {
-	Host      string `json:"host" yaml:"host"`
-	Port      int    `json:"port" yaml:"port"`
-	Password  string `json:"password" yaml:"password"`
-	DB        int    `json:"db" yaml:"db"`
-	EnableTLS bool   `json:"enable_tls" yaml:"enable_tls"`
+	Host       string `json:"host" yaml:"host"`
+	Port       int    `json:"port" yaml:"port"`
+	Password   string `json:"password" yaml:"password"`
+	DB         int    `json:"db" yaml:"db"`
+	EnableTLS  bool   `json:"enable_tls" yaml:"enable_tls"`
+	CACertFile string `json:"ca_cert_file,omitempty" yaml:"ca_cert_file,omitempty"`
 }
 
 type AdminConfig struct {
@@ -253,12 +254,11 @@ func TestRedisConnection(cfg *RedisConfig) error {
 		DB:       cfg.DB,
 	}
 
-	if cfg.EnableTLS {
-		opts.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ServerName: cfg.Host,
-		}
+	tlsConfig, err := redistls.Config(cfg.EnableTLS, cfg.Host, cfg.CACertFile)
+	if err != nil {
+		return fmt.Errorf("configure TLS: %w", err)
 	}
+	opts.TLSConfig = tlsConfig
 
 	rdb := redis.NewClient(opts)
 	defer func() {
@@ -559,11 +559,12 @@ func AutoSetupFromEnv() error {
 			SSLMode:  getEnvOrDefault("DATABASE_SSLMODE", "disable"),
 		},
 		Redis: RedisConfig{
-			Host:      getEnvOrDefault("REDIS_HOST", "localhost"),
-			Port:      getEnvIntOrDefault("REDIS_PORT", 6379),
-			Password:  getEnvOrDefault("REDIS_PASSWORD", ""),
-			DB:        getEnvIntOrDefault("REDIS_DB", 0),
-			EnableTLS: getEnvOrDefault("REDIS_ENABLE_TLS", "false") == "true",
+			Host:       getEnvOrDefault("REDIS_HOST", "localhost"),
+			Port:       getEnvIntOrDefault("REDIS_PORT", 6379),
+			Password:   getEnvOrDefault("REDIS_PASSWORD", ""),
+			DB:         getEnvIntOrDefault("REDIS_DB", 0),
+			EnableTLS:  getEnvOrDefault("REDIS_ENABLE_TLS", "false") == "true",
+			CACertFile: getEnvOrDefault("REDIS_CA_CERT_FILE", ""),
 		},
 		Admin: AdminConfig{
 			Email:    getEnvOrDefault("ADMIN_EMAIL", "admin@sub2api.local"),

@@ -196,6 +196,6 @@ func ProvideSQLDB(client *ent.Client) (*sql.DB, error) {
 //
 // 依赖：config.Config
 // 提供：*redis.Client
-func ProvideRedis(cfg *config.Config) *redis.Client {
+func ProvideRedis(cfg *config.Config) (*redis.Client, error) {
 	return InitRedis(cfg)
 }
