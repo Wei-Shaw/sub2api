@@ -702,7 +702,8 @@ func TestForwardGrokChatReasoningEffortBridgesToResponses(t *testing.T) {
 	require.NotNil(t, result)
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, grokChatResponsesEndpoint, result.UpstreamEndpoint)
-	require.Equal(t, "xhigh", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	// Grok 4.5 only accepts low/medium/high; xhigh is normalized upstream.
+	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
 	require.Equal(t, "concise", gjson.GetBytes(upstream.lastBody, "reasoning.summary").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning_effort").Exists())
 }
