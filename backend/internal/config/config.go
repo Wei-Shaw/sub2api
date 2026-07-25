@@ -1115,12 +1115,13 @@ type GatewayOpenAIWSConfig struct {
 	// OAuthMaxConnsFactor: OAuth 账号连接池系数（effective=ceil(concurrency*factor)）
 	OAuthMaxConnsFactor float64 `mapstructure:"oauth_max_conns_factor"`
 	// APIKeyMaxConnsFactor: API Key 账号连接池系数（effective=ceil(concurrency*factor)）
-	APIKeyMaxConnsFactor  float64 `mapstructure:"apikey_max_conns_factor"`
-	DialTimeoutSeconds    int     `mapstructure:"dial_timeout_seconds"`
-	ReadTimeoutSeconds    int     `mapstructure:"read_timeout_seconds"`
-	WriteTimeoutSeconds   int     `mapstructure:"write_timeout_seconds"`
-	PoolTargetUtilization float64 `mapstructure:"pool_target_utilization"`
-	QueueLimitPerConn     int     `mapstructure:"queue_limit_per_conn"`
+	APIKeyMaxConnsFactor        float64 `mapstructure:"apikey_max_conns_factor"`
+	DialTimeoutSeconds          int     `mapstructure:"dial_timeout_seconds"`
+	ReadTimeoutSeconds          int     `mapstructure:"read_timeout_seconds"`
+	WriteTimeoutSeconds         int     `mapstructure:"write_timeout_seconds"`
+	MessagesDrainTimeoutSeconds int     `mapstructure:"messages_drain_timeout_seconds"`
+	PoolTargetUtilization       float64 `mapstructure:"pool_target_utilization"`
+	QueueLimitPerConn           int     `mapstructure:"queue_limit_per_conn"`
 	// EventFlushBatchSize: WS 流式写出批量 flush 阈值（事件条数）
 	EventFlushBatchSize int `mapstructure:"event_flush_batch_size"`
 	// EventFlushIntervalMS: WS 流式写出最大等待时间（毫秒）；0 表示仅按 batch 触发
@@ -2204,6 +2205,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.dial_timeout_seconds", 10)
 	viper.SetDefault("gateway.openai_ws.read_timeout_seconds", 900)
 	viper.SetDefault("gateway.openai_ws.write_timeout_seconds", 120)
+	viper.SetDefault("gateway.openai_ws.messages_drain_timeout_seconds", 30)
 	viper.SetDefault("gateway.openai_ws.pool_target_utilization", 0.7)
 	viper.SetDefault("gateway.openai_ws.queue_limit_per_conn", 64)
 	viper.SetDefault("gateway.openai_ws.event_flush_batch_size", 1)
@@ -3147,6 +3149,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIWS.WriteTimeoutSeconds <= 0 {
 		return fmt.Errorf("gateway.openai_ws.write_timeout_seconds must be positive")
+	}
+	if c.Gateway.OpenAIWS.MessagesDrainTimeoutSeconds <= 0 {
+		return fmt.Errorf("gateway.openai_ws.messages_drain_timeout_seconds must be positive")
 	}
 	if c.Gateway.OpenAIWS.PoolTargetUtilization <= 0 || c.Gateway.OpenAIWS.PoolTargetUtilization > 1 {
 		return fmt.Errorf("gateway.openai_ws.pool_target_utilization must be within (0,1]")

@@ -595,7 +595,15 @@ func AccountSummaryFromService(a *service.Account) *AccountSummary {
 func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 	// 普通用户 DTO：严禁包含管理员字段（例如 account_rate_multiplier、account、upstream_model）。
 	requestType := l.EffectiveRequestType()
+	// Messages HTTP 兼容路径可能同时保留下游 stream/sync 语义与上游 WS 标记。
+	// 展示层强制 WS 优先：只要上游走了 Responses WSv2，就按 ws_v2 输出。
+	if l.OpenAIWSMode && requestType != service.RequestTypeCyberBlocked {
+		requestType = service.RequestTypeWSV2
+	}
 	stream, openAIWSMode := service.ApplyLegacyRequestFields(requestType, l.Stream, l.OpenAIWSMode)
+	if l.OpenAIWSMode {
+		openAIWSMode = true
+	}
 	requestedModel := l.RequestedModel
 	if requestedModel == "" {
 		requestedModel = l.Model

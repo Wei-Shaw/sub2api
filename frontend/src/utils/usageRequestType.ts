@@ -13,11 +13,16 @@ export const isUsageRequestType = (value: unknown): value is UsageRequestType =>
 }
 
 export const resolveUsageRequestType = (value: UsageRequestTypeLike): UsageRequestType => {
-  if (isUsageRequestType(value.request_type)) {
-    return value.request_type
+  // cyber 与 transport 正交，始终优先保留。
+  if (value.request_type === 'cyber') {
+    return 'cyber'
   }
+  // 上游 Responses WSv2 标记优先于下游 stream/sync 展示。
   if (value.openai_ws_mode) {
     return 'ws_v2'
+  }
+  if (isUsageRequestType(value.request_type)) {
+    return value.request_type
   }
   return value.stream ? 'stream' : 'sync'
 }

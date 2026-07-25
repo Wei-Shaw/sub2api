@@ -113,6 +113,9 @@ func TestOpenAISelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedul
 					"api_key":       "sk-live",
 					"model_mapping": map[string]any{"gpt-4": "gpt-4"},
 				},
+				Extra: map[string]any{
+					OpenAIMessagesWebSocketV2ExtraKey: true,
+				},
 			},
 		},
 	}
@@ -133,6 +136,9 @@ func TestOpenAISelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedul
 	}
 	if got := selection.Account.GetOpenAIApiKey(); got != "sk-live" {
 		t.Fatalf("expected hydrated api key, got %q", got)
+	}
+	if enabled, _ := selection.Account.Extra[OpenAIMessagesWebSocketV2ExtraKey].(bool); !enabled {
+		t.Fatalf("expected hydrated messages websocket flag")
 	}
 }
 

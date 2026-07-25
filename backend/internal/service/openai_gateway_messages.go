@@ -42,6 +42,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	startTime := time.Now()
+	messagesWSEnabled := account.IsOpenAIMessagesWebSocketV2Enabled()
 
 	// 1. Parse Anthropic request
 	var anthropicReq apicompat.AnthropicRequest
@@ -92,7 +93,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	compatReplayTrimmed := false
 	compatReplayGuardEnabled := shouldAutoInjectPromptCacheKeyForCompat(upstreamModel)
-	compatContinuationEnabled := openAICompatContinuationEnabled(account, upstreamModel)
+	compatContinuationEnabled := !messagesWSEnabled && openAICompatContinuationEnabled(account, upstreamModel)
 	previousResponseID := ""
 	if compatContinuationEnabled {
 		previousResponseID = s.getOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey)
@@ -278,7 +279,46 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// 5. Get access token
 	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {
-		return nil, fmt.Errorf("get access token: %w", err)
+		credentialErr := fmt.Errorf("get access token: %w", err)
+		if messagesWSEnabled {
+			return nil, openAIMessagesWSPrewriteFailover(credentialErr, http.StatusBadGateway, nil, nil)
+		}
+		return nil, credentialErr
+	}
+
+	if messagesWSEnabled {
+		result, forwardErr := s.forwardOpenAIMessagesSingleTurnWS(
+			ctx,
+			c,
+			account,
+			responsesBody,
+			token,
+			promptCacheKey,
+			clientStream,
+			originalModel,
+			billingModel,
+			upstreamModel,
+			startTime,
+		)
+		if forwardErr == nil && result != nil {
+			if responsesReq.ServiceTier != "" {
+				st := responsesReq.ServiceTier
+				result.ServiceTier = &st
+			}
+			if responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
+				re := responsesReq.Reasoning.Effort
+				result.ReasoningEffort = &re
+			}
+			if promptCacheKey != "" && anthropicDigestChain != "" {
+				s.bindOpenAICompatAnthropicDigestPromptCacheKey(account, apiKeyID, anthropicDigestChain, promptCacheKey, anthropicMatchedDigestChain)
+			}
+			if account.Type == AccountTypeOAuth && !account.IsShadow() {
+				if snapshot := ParseCodexRateLimitHeaders(result.ResponseHeaders); snapshot != nil {
+					s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
+				}
+			}
+		}
+		return result, forwardErr
 	}
 
 	// 6. Build upstream request
@@ -603,7 +643,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 
 func isOpenAICompatResponsesTerminalEvent(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
-	case "response.completed", "response.done", "response.incomplete", "response.failed":
+	case "response.completed", "response.done", "response.incomplete", "response.failed", "response.cancelled", "response.canceled":
 		return true
 	default:
 		return false

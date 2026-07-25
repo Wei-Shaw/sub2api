@@ -1660,6 +1660,19 @@ func (a *Account) IsOpenAIPassthroughEnabled() bool {
 	return false
 }
 
+const OpenAIMessagesWebSocketV2ExtraKey = "openai_oauth_messages_websockets_v2_enabled"
+
+// IsOpenAIMessagesWebSocketV2Enabled 返回 OpenAI OAuth 账号是否为
+// Anthropic Messages 兼容入口启用单轮 Responses WebSocket v2 上游。
+// 字段缺失、类型错误、非 OAuth 或非 OpenAI 账号均按关闭处理。
+func (a *Account) IsOpenAIMessagesWebSocketV2Enabled() bool {
+	if a == nil || !a.IsOpenAIOAuth() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra[OpenAIMessagesWebSocketV2ExtraKey].(bool)
+	return ok && enabled
+}
+
 // IsOpenAIResponsesWebSocketV2Enabled 返回 OpenAI 账号是否开启 Responses WebSocket v2。
 //
 // 分类型新字段：

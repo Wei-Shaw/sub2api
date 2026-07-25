@@ -1730,6 +1730,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "gateway.openai_ws.apikey_max_conns_factor",
 		},
 		{
+			name:    "gateway openai ws messages drain timeout",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.MessagesDrainTimeoutSeconds = 0 },
+			wantErr: "gateway.openai_ws.messages_drain_timeout_seconds",
+		},
+		{
 			name:    "gateway openai http2 fallback threshold",
 			mutate:  func(c *Config) { c.Gateway.OpenAIHTTP2.FallbackErrorThreshold = -1 },
 			wantErr: "gateway.openai_http2.fallback_error_threshold",
@@ -2402,6 +2407,9 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 	}
 	if cfg.Gateway.StreamDataIntervalTimeout != 180 {
 		t.Fatalf("stream_data_interval_timeout = %d, want 180", cfg.Gateway.StreamDataIntervalTimeout)
+	}
+	if cfg.Gateway.OpenAIWS.MessagesDrainTimeoutSeconds != 30 {
+		t.Fatalf("openai_ws.messages_drain_timeout_seconds = %d, want 30", cfg.Gateway.OpenAIWS.MessagesDrainTimeoutSeconds)
 	}
 	if cfg.Gateway.StreamKeepaliveInterval != 10 {
 		t.Fatalf("stream_keepalive_interval = %d, want 10", cfg.Gateway.StreamKeepaliveInterval)

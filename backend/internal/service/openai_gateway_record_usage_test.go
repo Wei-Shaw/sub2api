@@ -2524,6 +2524,48 @@ func TestRecordUsageMarksCyberRequestType(t *testing.T) {
 	require.Equal(t, 100, logStub.lastLog.InputTokens, "计费 token 不变(正常计费)")
 }
 
+func TestOpenAIGatewayServiceRecordUsage_PreservesMessagesWSRequestType(t *testing.T) {
+	tests := []struct {
+		name        string
+		requestType RequestType
+		stream      bool
+	}{
+		{name: "sync", requestType: RequestTypeSync, stream: false},
+		{name: "stream", requestType: RequestTypeStream, stream: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			logStub := &openAIRecordUsageLogRepoStub{inserted: true}
+			svc := newOpenAIRecordUsageServiceForTest(
+				logStub,
+				&openAIRecordUsageUserRepoStub{},
+				&openAIRecordUsageSubRepoStub{},
+				nil,
+			)
+			err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{
+					Model:        "gpt-5",
+					Duration:     time.Second,
+					Stream:       test.stream,
+					RequestType:  test.requestType,
+					OpenAIWSMode: true,
+					Usage:        OpenAIUsage{InputTokens: 1, OutputTokens: 1},
+				},
+				APIKey:  &APIKey{ID: 2},
+				User:    &User{ID: 1},
+				Account: &Account{ID: 3},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, logStub.lastLog)
+			require.Equal(t, test.requestType, logStub.lastLog.RequestType)
+			require.Equal(t, test.stream, logStub.lastLog.Stream)
+			require.True(t, logStub.lastLog.OpenAIWSMode)
+		})
+	}
+}
+
 func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingNormalizesMissingSizeTier(t *testing.T) {
 	groupID := int64(128)
 	defaultPrice := 0.10

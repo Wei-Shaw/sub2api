@@ -967,6 +967,63 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.False(t, log.OpenAIWSMode)
 	})
 
+	t.Run("stream_request_type_preserves_openai_ws_mode", func(t *testing.T) {
+		now := time.Now().UTC()
+		log, err := scanUsageLog(usageLogScannerStub{values: []any{
+			int64(5),
+			int64(14),
+			int64(24),
+			int64(34),
+			sql.NullString{Valid: true, String: "req-ws-stream"},
+			"gpt-5.6-sol",
+			sql.NullString{Valid: true, String: "gpt-5.6-sol"},
+			sql.NullString{},
+			sql.NullInt64{},
+			sql.NullInt64{},
+			1, 2, 3, 4, 5, 6,
+			0, 0.0,
+			0, 0.0,
+			0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
+			1.0,
+			sql.NullFloat64{},
+			int16(service.BillingTypeBalance),
+			int16(service.RequestTypeStream),
+			true,  // downstream stream
+			true,  // upstream openai ws
+			sql.NullInt64{},
+			sql.NullInt64{},
+			sql.NullString{},
+			sql.NullString{},
+			0,
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			0,
+			sql.NullString{},
+			sql.NullInt64{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{Valid: true, String: "/v1/messages"},
+			sql.NullString{Valid: true, String: "/v1/responses"},
+			false,
+			false,
+			sql.NullInt64{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullFloat64{},
+			now,
+		}})
+		require.NoError(t, err)
+		// DB 可能同时保留 request_type=stream 与 openai_ws_mode=true。
+		// scan 后必须保留 WS 标记，展示层再强制 ws_v2 优先。
+		require.Equal(t, service.RequestTypeStream, log.RequestType)
+		require.True(t, log.Stream)
+		require.True(t, log.OpenAIWSMode)
+	})
+
 	t.Run("service_tier_is_scanned", func(t *testing.T) {
 		now := time.Now().UTC()
 		log, err := scanUsageLog(usageLogScannerStub{values: []any{

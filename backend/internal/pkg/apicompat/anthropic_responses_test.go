@@ -8,6 +8,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestResponsesEventToAnthropicEventsHandlesWSCancelledTerminal(t *testing.T) {
+	for _, eventType := range []string{"response.cancelled", "response.canceled"} {
+		t.Run(eventType, func(t *testing.T) {
+			state := NewResponsesEventToAnthropicState()
+			state.MessageStartSent = true
+			events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+				Type: eventType,
+				Response: &ResponsesResponse{
+					Status: "cancelled",
+					Usage:  &ResponsesUsage{InputTokens: 3, OutputTokens: 1},
+				},
+			}, state)
+
+			require.Len(t, events, 2)
+			assert.Equal(t, "message_delta", events[0].Type)
+			assert.Equal(t, 3, events[0].Usage.InputTokens)
+			assert.Equal(t, 1, events[0].Usage.OutputTokens)
+			assert.Equal(t, "message_stop", events[1].Type)
+			assert.True(t, state.MessageStopSent)
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // AnthropicToResponses tests
 // ---------------------------------------------------------------------------

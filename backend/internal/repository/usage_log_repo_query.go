@@ -579,11 +579,13 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		LongContextBillingApplied: longContextBillingApplied,
 		CreatedAt:                 createdAt,
 	}
-	// 先回填 legacy 字段，再基于 legacy + request_type 计算最终请求类型，保证历史数据兼容。
+	// 先回填 legacy 字段，再同步 request_type/legacy。
+	// 兼容路径可能同时保留下游 stream/sync 与上游 openai_ws_mode=true，
+	// 必须走 SyncRequestTypeAndLegacyFields，避免 ApplyLegacyRequestFields 在
+	// request_type=stream/sync 时把 openai_ws_mode 冲掉。
 	log.Stream = stream
 	log.OpenAIWSMode = openaiWSMode
-	log.RequestType = log.EffectiveRequestType()
-	log.Stream, log.OpenAIWSMode = service.ApplyLegacyRequestFields(log.RequestType, stream, openaiWSMode)
+	log.SyncRequestTypeAndLegacyFields()
 
 	if requestID.Valid {
 		log.RequestID = requestID.String

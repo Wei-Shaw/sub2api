@@ -90,6 +90,22 @@ func TestUsageLogSyncRequestTypeAndLegacyFields(t *testing.T) {
 	require.True(t, log.OpenAIWSMode)
 }
 
+func TestUsageLogSyncRequestTypePreservesWSUpstreamMarker(t *testing.T) {
+	t.Parallel()
+
+	streamLog := &UsageLog{RequestType: RequestTypeStream, Stream: true, OpenAIWSMode: true}
+	streamLog.SyncRequestTypeAndLegacyFields()
+	require.Equal(t, RequestTypeStream, streamLog.RequestType)
+	require.True(t, streamLog.Stream)
+	require.True(t, streamLog.OpenAIWSMode)
+
+	syncLog := &UsageLog{RequestType: RequestTypeSync, Stream: false, OpenAIWSMode: true}
+	syncLog.SyncRequestTypeAndLegacyFields()
+	require.Equal(t, RequestTypeSync, syncLog.RequestType)
+	require.False(t, syncLog.Stream)
+	require.True(t, syncLog.OpenAIWSMode)
+}
+
 func TestUsageLogEffectiveRequestTypeFallback(t *testing.T) {
 	t.Parallel()
 

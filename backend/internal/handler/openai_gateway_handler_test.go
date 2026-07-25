@@ -125,6 +125,29 @@ func TestOpenAIHandleStreamingAwareErrorWithCode_EmitsStableClassification(t *te
 	require.Equal(t, http.StatusBadGateway, streamErr.IntendedStatus)
 }
 
+func TestSettleOpenAIMessagesUsageOnceFailedResultExactlyOnce(t *testing.T) {
+	result := &service.OpenAIForwardResult{
+		OpenAIWSMode:          true,
+		UpstreamTerminalEvent: "response.failed",
+		Usage:                 service.OpenAIUsage{InputTokens: 3},
+	}
+	calls := 0
+	settleUsage := settleOpenAIMessagesUsageOnce(result, func() {
+		calls++
+		require.Equal(t, 3, result.Usage.InputTokens)
+	})
+	settleUsage()
+	settleUsage()
+	require.Equal(t, 1, calls)
+}
+
+func TestSettleOpenAIMessagesUsageOnceSkipsNilResult(t *testing.T) {
+	calls := 0
+	settleUsage := settleOpenAIMessagesUsageOnce(nil, func() { calls++ })
+	settleUsage()
+	require.Zero(t, calls)
+}
+
 func TestOpenAIForwardSucceededForScheduling(t *testing.T) {
 	require.True(t, openAIForwardSucceededForScheduling(nil))
 	require.True(t, openAIForwardSucceededForScheduling(&service.OpenAIForwardResult{}))
@@ -132,10 +155,12 @@ func TestOpenAIForwardSucceededForScheduling(t *testing.T) {
 		OpenAIWSMode:          true,
 		UpstreamTerminalEvent: "response.completed",
 	}))
-	require.False(t, openAIForwardSucceededForScheduling(&service.OpenAIForwardResult{
-		OpenAIWSMode:          true,
-		UpstreamTerminalEvent: "response.failed",
-	}))
+	for _, terminal := range []string{"response.failed", "response.incomplete", "response.cancelled", "response.canceled"} {
+		require.False(t, openAIForwardSucceededForScheduling(&service.OpenAIForwardResult{
+			OpenAIWSMode:          true,
+			UpstreamTerminalEvent: terminal,
+		}), terminal)
+	}
 }
 
 func TestOpenAIResponsesRequiredCapability(t *testing.T) {

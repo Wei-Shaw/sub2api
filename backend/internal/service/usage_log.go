@@ -212,5 +212,13 @@ func (u *UsageLog) SyncRequestTypeAndLegacyFields() {
 	}
 	requestType := u.EffectiveRequestType()
 	u.RequestType = requestType
+	if requestType == RequestTypeSync || requestType == RequestTypeStream {
+		// Some compatibility routes use WS upstream while remaining sync/stream
+		// HTTP requests downstream. Preserve that independent transport marker.
+		if u.OpenAIWSMode {
+			u.Stream = requestType == RequestTypeStream
+			return
+		}
+	}
 	u.Stream, u.OpenAIWSMode = ApplyLegacyRequestFields(requestType, u.Stream, u.OpenAIWSMode)
 }

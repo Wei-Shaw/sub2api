@@ -50,6 +50,35 @@ func TestUsageLogFromService_PrefersRequestTypeForLegacyFields(t *testing.T) {
 	require.True(t, adminDTO.OpenAIWSMode)
 }
 
+func TestUsageLogFromService_PrefersOpenAIWSModeOverStreamSync(t *testing.T) {
+	t.Parallel()
+
+	streamLog := &service.UsageLog{
+		RequestID:    "req_ws_stream",
+		Model:        "gpt-5.6-sol",
+		RequestType:  service.RequestTypeStream,
+		Stream:       true,
+		OpenAIWSMode: true,
+	}
+	syncLog := &service.UsageLog{
+		RequestID:    "req_ws_sync",
+		Model:        "gpt-5.6-sol",
+		RequestType:  service.RequestTypeSync,
+		Stream:       false,
+		OpenAIWSMode: true,
+	}
+
+	streamDTO := UsageLogFromService(streamLog)
+	syncDTO := UsageLogFromServiceAdmin(syncLog)
+
+	require.Equal(t, "ws_v2", streamDTO.RequestType)
+	require.True(t, streamDTO.OpenAIWSMode)
+	require.True(t, streamDTO.Stream)
+	require.Equal(t, "ws_v2", syncDTO.RequestType)
+	require.True(t, syncDTO.OpenAIWSMode)
+	require.True(t, syncDTO.Stream)
+}
+
 func TestUsageCleanupTaskFromService_RequestTypeMapping(t *testing.T) {
 	t.Parallel()
 

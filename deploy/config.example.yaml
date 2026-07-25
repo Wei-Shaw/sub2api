@@ -342,6 +342,8 @@ gateway:
     dial_timeout_seconds: 10
     read_timeout_seconds: 900
     write_timeout_seconds: 120
+    # Messages 客户端断开或 converter 结束后，等待上游 terminal usage 的最长时间（秒）；实际值不超过 read_timeout_seconds。
+    messages_drain_timeout_seconds: 30
     pool_target_utilization: 0.7
     queue_limit_per_conn: 64
     # 流式写出批量 flush 参数

@@ -243,6 +243,9 @@ type OpenAIForwardResult struct {
 	ReasoningEffort *string
 	Stream          bool
 	OpenAIWSMode    bool
+	// RequestType overrides legacy transport-derived request classification when
+	// the downstream request shape and upstream transport differ.
+	RequestType RequestType
 	// UpstreamTerminalEvent is the normalized terminal event observed on an
 	// upstream Responses WebSocket turn. Empty preserves legacy/non-WS success.
 	UpstreamTerminalEvent string

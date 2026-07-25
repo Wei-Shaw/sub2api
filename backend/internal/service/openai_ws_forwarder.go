@@ -306,6 +306,17 @@ func (s *OpenAIGatewayService) openAIWSReadTimeout() time.Duration {
 	return 15 * time.Minute
 }
 
+func (s *OpenAIGatewayService) openAIMessagesWSDrainTimeout() time.Duration {
+	timeout := 30 * time.Second
+	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.MessagesDrainTimeoutSeconds > 0 {
+		timeout = time.Duration(s.cfg.Gateway.OpenAIWS.MessagesDrainTimeoutSeconds) * time.Second
+	}
+	if readTimeout := s.openAIWSReadTimeout(); readTimeout > 0 && timeout > readTimeout {
+		return readTimeout
+	}
+	return timeout
+}
+
 func (s *OpenAIGatewayService) openAIWSPassthroughIdleTimeout() time.Duration {
 	if timeout := s.openAIWSReadTimeout(); timeout > 0 {
 		return timeout
