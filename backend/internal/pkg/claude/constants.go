@@ -16,7 +16,6 @@ const (
 	BetaInterleavedThinking      = "interleaved-thinking-2025-05-14"
 	BetaFineGrainedToolStreaming = "fine-grained-tool-streaming-2025-05-14"
 	BetaTokenCounting            = "token-counting-2024-11-01"
-	BetaContext1M                = "context-1m-2025-08-07"
 	BetaFastMode                 = "fast-mode-2026-02-01"
 
 	// 新增（对齐官方 CLI 2.1.9x 以来的流量）
@@ -33,17 +32,6 @@ var DroppedBetas = []string{}
 
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
 const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
-
-// MessageBetaHeaderNoTools /v1/messages 在无工具时的 beta header
-//
-// NOTE: Claude Code OAuth credentials are scoped to Claude Code. When we "mimic"
-// Claude Code for non-Claude-Code clients, we must include the claude-code beta
-// even if the request doesn't use tools, otherwise upstream may reject the
-// request as a non-Claude-Code API request.
-const MessageBetaHeaderNoTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking
-
-// MessageBetaHeaderWithTools /v1/messages 在有工具时的 beta header
-const MessageBetaHeaderWithTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking
 
 // CountTokensBetaHeader count_tokens 请求使用的 anthropic-beta header
 const CountTokensBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaTokenCounting
