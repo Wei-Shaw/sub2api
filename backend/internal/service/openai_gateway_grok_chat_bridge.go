@@ -494,9 +494,8 @@ func grokChatResponsesCacheIntentBody(body []byte) ([]byte, error) {
 	return json.Marshal(root)
 }
 
-func grokChatResponsesRuntimeEligible(upstreamModel, _ string) bool {
-	// The official catalog currently declares grok-4.5 with api_backend=responses.
-	return strings.TrimSpace(upstreamModel) == "grok-4.5"
+func grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity string) bool {
+	return strings.TrimSpace(upstreamModel) == "grok-4.5" && strings.TrimSpace(cacheIdentity) != ""
 }
 
 // forwardGrokChatCompletionsViaResponses converts a strictly compatible Chat

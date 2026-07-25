@@ -220,7 +220,7 @@ func TestGrokChatResponsesRuntimeEligibility(t *testing.T) {
 	require.True(t, grokChatResponsesRuntimeEligible("grok-4.5", "isolated-id"))
 	require.False(t, grokChatResponsesRuntimeEligible("grok-4.3", "isolated-id"))
 	require.False(t, grokChatResponsesRuntimeEligible("grok-4.5-build-free", "isolated-id"))
-	require.True(t, grokChatResponsesRuntimeEligible("grok-4.5", ""))
+	require.False(t, grokChatResponsesRuntimeEligible("grok-4.5", ""))
 }
 
 func TestForwardGrokChatViaResponsesNonStreamingCachesAndReturnsChat(t *testing.T) {
@@ -484,7 +484,7 @@ func TestForwardGrokChatViaResponsesStreamingPropagatesCachedUsage(t *testing.T)
 	require.Contains(t, recorder.Body.String(), "data: [DONE]")
 }
 
-func TestForwardNonResponsesGrokModelUsesRawChat(t *testing.T) {
+func TestForwardGrokChatRuntimeGateFallsBackToRaw(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
@@ -493,6 +493,7 @@ func TestForwardNonResponsesGrokModelUsesRawChat(t *testing.T) {
 		mappedModel  string
 		wantUpstream string
 	}{
+		{name: "missing cache identity", wantUpstream: "grok-4.5"},
 		{name: "non cache capable mapped model", setAPIKey: true, mappedModel: "grok-4.3", wantUpstream: "grok-4.3"},
 	}
 
@@ -536,32 +537,6 @@ func TestForwardNonResponsesGrokModelUsesRawChat(t *testing.T) {
 			require.Equal(t, "raw ok", gjson.Get(recorder.Body.String(), "choices.0.message.content").String())
 		})
 	}
-}
-
-func TestForwardGrok45ChatWithoutCacheIdentityUsesResponses(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	body := []byte(`{"model":"grok","messages":[{"role":"user","content":"hi"}],"stream":false}`)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, grokChatRawEndpoint, bytes.NewReader(body))
-
-	account := grokChatBridgeTestAccount(741)
-	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
-		accountsByID: map[int64]*Account{account.ID: account},
-	}}
-	upstream := &httpUpstreamRecorder{resp: grokChatBridgeCompletedResponse("resp_grok45_no_cache", 0)}
-	svc := &OpenAIGatewayService{
-		httpUpstream:      upstream,
-		grokTokenProvider: NewGrokTokenProvider(repo, nil),
-		accountRepo:       repo,
-	}
-
-	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
-	require.Equal(t, grokChatResponsesEndpoint, result.UpstreamEndpoint)
 }
 
 func TestForwardGrokChatViaResponses429UsesGrokRateLimitPolicy(t *testing.T) {
