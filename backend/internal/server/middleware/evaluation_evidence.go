@@ -83,6 +83,10 @@ func finalizeEvaluationRouteEvidence(
 	if provider == "" {
 		provider = latest.Provider
 	}
+	region := latest.Region
+	if region == "" {
+		region = snapshot.Region
+	}
 
 	return service.RouteEvidence{
 		RouteTraceID:        evaluation.RouteTraceID,
@@ -96,7 +100,7 @@ func finalizeEvaluationRouteEvidence(
 		Provider:            provider,
 		ChannelRef:          latest.ChannelRef,
 		AccountPoolRef:      latest.AccountPoolRef,
-		Region:              latest.Region,
+		Region:              region,
 		Attempts:            snapshot.Attempts,
 		FallbackChain:       append([]service.RouteFallbackEntry(nil), snapshot.FallbackChain...),
 		TransportStatus:     classifyEvaluationTransportStatus(status, ctx.Err(), snapshot),

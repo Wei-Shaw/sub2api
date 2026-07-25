@@ -36,6 +36,7 @@ type EvaluationEvidenceRepository interface {
 
 type RouteTraceConfig struct {
 	HashKey []byte
+	Region  string
 }
 
 type RouteAttempt struct {
@@ -136,7 +137,12 @@ type RouteTrace struct {
 }
 
 func NewRouteTrace(_ EvaluationContext, cfg RouteTraceConfig) *RouteTrace {
-	return &RouteTrace{hashKey: append([]byte(nil), cfg.HashKey...)}
+	return &RouteTrace{
+		hashKey: append([]byte(nil), cfg.HashKey...),
+		evidence: RouteEvidence{
+			Region: strings.TrimSpace(cfg.Region),
+		},
+	}
 }
 
 func (t *RouteTrace) RecordAttempt(attempt RouteAttempt) {
@@ -184,6 +190,7 @@ func (t *RouteTrace) Snapshot() RouteEvidence {
 	return RouteEvidence{
 		Attempts:      t.evidence.Attempts,
 		FallbackChain: append([]RouteFallbackEntry(nil), t.evidence.FallbackChain...),
+		Region:        t.evidence.Region,
 	}
 }
 

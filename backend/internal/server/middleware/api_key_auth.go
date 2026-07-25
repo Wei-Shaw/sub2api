@@ -167,7 +167,10 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		}
 		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID)
 		c.Request = c.Request.WithContext(ctx)
-		if bindErr := bindEvaluationContext(c, apiKey, evaluationSigner, service.RouteTraceConfig{HashKey: []byte(cfg.Radar.HashingSecret)}, time.Now()); bindErr != nil {
+		if bindErr := bindEvaluationContext(c, apiKey, evaluationSigner, service.RouteTraceConfig{
+			HashKey: []byte(cfg.Radar.HashingSecret),
+			Region:  cfg.Radar.Region,
+		}, time.Now()); bindErr != nil {
 			abortWithEvaluationContextError(c, bindErr)
 			return
 		}

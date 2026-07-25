@@ -132,7 +132,10 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			abortWithGoogleError(c, 403, "API Key 所属专属分组不再允许当前用户使用")
 			return
 		}
-		if bindErr := bindEvaluationContext(c, apiKey, evaluationSigner, service.RouteTraceConfig{HashKey: []byte(cfg.Radar.HashingSecret)}, time.Now()); bindErr != nil {
+		if bindErr := bindEvaluationContext(c, apiKey, evaluationSigner, service.RouteTraceConfig{
+			HashKey: []byte(cfg.Radar.HashingSecret),
+			Region:  cfg.Radar.Region,
+		}, time.Now()); bindErr != nil {
 			abortWithGoogleEvaluationContextError(c, bindErr)
 			return
 		}

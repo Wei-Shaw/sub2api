@@ -130,6 +130,35 @@ func TestEvaluationEvidencePersistsFinalizedRouteAfterHandler(t *testing.T) {
 	require.NotNil(t, got.FinishedAt)
 }
 
+func TestFinalizeEvaluationRouteEvidencePreservesConfiguredRegionBeforeFirstAttempt(t *testing.T) {
+	evaluation := service.EvaluationContext{
+		RunID:                "018f4f20-3d12-7e50-9000-000000000001",
+		SampleID:             "018f4f20-3d12-7e50-9000-000000000002",
+		ExpectedModelAlias:   "expected-model",
+		ExpectedRouteProfile: "route-v42",
+		APIKeyID:             41,
+		RouteTraceID:         "trace-before-routing",
+	}
+	trace := service.NewRouteTrace(evaluation, service.RouteTraceConfig{
+		HashKey: []byte("test-route-hash-key"),
+		Region:  "cn-east",
+	})
+
+	evidence := finalizeEvaluationRouteEvidence(
+		context.Background(),
+		evaluation,
+		trace.Snapshot(),
+		http.StatusInternalServerError,
+		time.Now().Add(-time.Second),
+		time.Now(),
+	)
+
+	require.Equal(t, "gateway_failed", evidence.TransportStatus)
+	require.Equal(t, "cn-east", evidence.Region)
+	require.Zero(t, evidence.Attempts)
+	require.Empty(t, evidence.FallbackChain)
+}
+
 func TestEvaluationEvidencePersistenceFailureDoesNotChangeResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &evaluationEvidenceRepoStub{err: errors.New("database unavailable")}
