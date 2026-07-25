@@ -1696,6 +1696,12 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config error: %w", err)
 	}
+	if signingSecret, ok := os.LookupEnv("RADAR_CONTEXT_SIGNING_KEY"); ok {
+		cfg.Radar.SigningSecret = signingSecret
+	}
+	if hashingSecret, ok := os.LookupEnv("RADAR_EVIDENCE_HASH_KEY"); ok {
+		cfg.Radar.HashingSecret = hashingSecret
+	}
 	if trustedProxiesEnvConfigured {
 		cfg.Server.TrustedProxies = normalizeStringSlice(strings.Split(trustedProxiesEnv, ","))
 	}

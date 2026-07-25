@@ -91,6 +91,18 @@ func TestEvaluationRouteEvidenceRepository_BillingThenTransportReplacesPlacehold
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestEvaluationRouteEvidenceRepository_NilFallbackChainPersistsEmptyJSONArray(t *testing.T) {
+	repo, exec, mock := newCapturedEvaluationEvidenceRepository(t)
+	transport := completeTransportEvidence()
+	transport.FallbackChain = nil
+
+	require.NoError(t, repo.UpsertTransport(evaluationEvidenceContext(), transport))
+
+	require.Len(t, exec.args, 1)
+	require.Equal(t, []byte("[]"), exec.args[0][13])
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestEvaluationRouteEvidenceRepository_ZeroRowsAlwaysReturnsIdentityConflict(t *testing.T) {
 	tests := []struct {
 		name string

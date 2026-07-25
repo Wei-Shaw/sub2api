@@ -18,7 +18,11 @@ func NewEvaluationRouteEvidenceRepository(db *sql.DB) service.EvaluationEvidence
 }
 
 func (r *evaluationRouteEvidenceRepository) UpsertTransport(ctx context.Context, evidence service.RouteEvidence) error {
-	fallbackChain, err := json.Marshal(evidence.FallbackChain)
+	fallbackEntries := evidence.FallbackChain
+	if fallbackEntries == nil {
+		fallbackEntries = []service.RouteFallbackEntry{}
+	}
+	fallbackChain, err := json.Marshal(fallbackEntries)
 	if err != nil {
 		return fmt.Errorf("marshal route fallback chain: %w", err)
 	}
