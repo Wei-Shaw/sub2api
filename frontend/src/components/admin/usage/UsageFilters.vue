@@ -523,5 +523,7 @@ const setUserKeyword = (email: string) => {
   showUserDropdown.value = false
 REDACTED
 
-defineExpose({ setUserKeyword REDACTED)
+const getUserSearchRevision = () => userSearchSequence
+
+defineExpose({ getUserSearchRevision, setUserKeyword REDACTED)
 </script>
