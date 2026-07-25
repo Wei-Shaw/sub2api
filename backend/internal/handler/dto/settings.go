@@ -309,6 +309,8 @@ type SystemSettings struct {
 
 	// Force Alipay mobile clients to use QR code payment instead of mobile redirect
 	PaymentAlipayForceQRCode bool `json:"payment_alipay_force_qrcode"`
+	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
+	PaymentAlipayMobilePrecreateDeepLink bool `json:"payment_alipay_mobile_precreate_deep_link"`
 
 	// 充值赠送活动配置（与 BalanceRechargeMultiplier 互不影响，叠加方式为加法）。
 	// 当未配置或活动关闭时返回 nil，前端据此判断是否渲染 banner / 红点。

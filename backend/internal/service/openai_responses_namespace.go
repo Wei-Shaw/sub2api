@@ -17,7 +17,7 @@ const openAIResponsesNamespaceNamesContextKey = "openai_responses_namespace_name
 // 平名无法还原会破坏客户端工具匹配，因此实际走 WSv2 分支的请求保持 namespace
 // 原样。透传账号先于 WSv2 分支经 HTTP 转发返回，仍需摊平。
 func shouldFlattenOpenAIResponsesNamespaces(account *Account, transport OpenAIUpstreamTransport, passthroughEnabled bool) bool {
-	if account == nil || account.Type != AccountTypeOAuth {
+	if account == nil || !account.IsOpenAIOAuth() {
 		return false
 	}
 	if transport == OpenAIUpstreamTransportResponsesWebsocketV2 && !passthroughEnabled {

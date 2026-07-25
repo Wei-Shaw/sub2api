@@ -50,6 +50,7 @@ func TestGatewayServiceCalculateTokenCost_KiroAutoUsesConservativeFallback(t *te
 		nil,
 		nil,
 		nil,
+		nil,
 		nil, // userPlatformQuotaRepo
 	)
 

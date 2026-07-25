@@ -12,6 +12,7 @@ import (
 
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 type GroupModelsListConfig = domain.GroupModelsListConfig
+type ReasoningEffortMapping = domain.ReasoningEffortMapping
 
 type Group struct {
 	ID             int64
@@ -122,6 +123,11 @@ type Group struct {
 	// "q"   = AWS Q (q.{region}.amazonaws.com)，默认，与其它工具共用限流池
 	// "krs" = Kiro Runtime Service (runtime.us-east-1.kiro.dev)，独立限流池
 	KiroEndpointMode string
+	// MaxReasoningEffort limits the effective OpenAI/Codex reasoning effort.
+	// Empty means unlimited; supported values are minimal/low/medium/high/xhigh/max.
+	MaxReasoningEffort string
+	// ReasoningEffortMappings rewrites explicit request values before applying the ceiling.
+	ReasoningEffortMappings []ReasoningEffortMapping
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

@@ -35,6 +35,7 @@ func SetupRouter(
 	subscriptionService *service.SubscriptionService,
 	opsService *service.OpsService,
 	settingService *service.SettingService,
+	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 	redisClient *redis.Client,
 	inboxHandler *inbox.Handler,
@@ -93,7 +94,7 @@ func SetupRouter(
 	}
 
 	// 注册路由
-	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient, inboxHandler, inboxWS)
+	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient, inboxHandler, inboxWS)
 
 	return r
 }
@@ -112,6 +113,7 @@ func registerRoutes(
 	subscriptionService *service.SubscriptionService,
 	opsService *service.OpsService,
 	settingService *service.SettingService,
+	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 	redisClient *redis.Client,
 	inboxHandler *inbox.Handler,
@@ -128,7 +130,7 @@ func registerRoutes(
 	routes.RegisterUserRoutes(v1, h, jwtAuth, auditLog, settingService)
 	routes.RegisterSupportRoutes(v1, h, jwtAuth, optionalJWTAuth, settingService, middleware.NewRateLimiter(redisClient))
 	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService)
-	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
+	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, h.Admin.RechargePromo, jwtAuth, adminAuth, auditLog, settingService)
 	routes.RegisterPlazaRoutes(v1, h, redisClient)
 	routes.RegisterOidcProviderRoutes(r, h)

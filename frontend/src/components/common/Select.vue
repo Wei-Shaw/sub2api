@@ -7,7 +7,9 @@
       :disabled="disabled"
       :aria-expanded="isOpen"
       :aria-haspopup="true"
-      aria-label="Select option"
+      :id="id"
+      :aria-label="ariaLabel ?? 'Select option'"
+      :aria-describedby="ariaDescribedby"
       :class="[
         'select-trigger',
         size === 'sm' && 'select-trigger-sm',
@@ -66,6 +68,7 @@
               v-model="searchQuery"
               type="text"
               :placeholder="searchPlaceholderText"
+              :aria-label="searchPlaceholderText"
               class="select-search-input"
               @click.stop
             />
@@ -150,6 +153,9 @@ interface Props {
   creatablePrefix?: string
   size?: 'sm' | 'md'
   clearable?: boolean
+  id?: string
+  ariaLabel?: string
+  ariaDescribedby?: string
 }
 
 interface Emits {

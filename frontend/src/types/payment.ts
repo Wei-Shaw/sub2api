@@ -82,6 +82,8 @@ export interface CheckoutInfoResponse {
    * 前端不要把两者乘起来。
    */
   recharge_promo?: RechargePromo
+  /** When true, official Alipay mobile orders use precreate plus an Alipay app deep link */
+  alipay_mobile_precreate_deep_link?: boolean
 }
 
 /** 一个赠送档位：当 pay_amount ≥ min_amount 时按 bonus_rate 赠送（取最高匹配档）。 */
@@ -254,6 +256,7 @@ export interface CreateOrderResult {
   out_trade_no?: string
   payment_mode?: string
   resume_token?: string
+  alipay_mobile_precreate_deep_link?: boolean
   oauth?: WechatOAuthInfo
   jsapi?: WechatJSAPIPayload
   jsapi_payload?: WechatJSAPIPayload

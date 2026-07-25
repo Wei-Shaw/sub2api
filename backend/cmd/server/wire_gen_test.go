@@ -92,6 +92,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // supportChatLegacyDetector
 		nil, // asyncMediaReconciler
 		nil, // upstreamBillingProbe
+		nil, // ollamaCloudUsage
 		nil, // auditLog
 		nil, // promptAudit
 	)
