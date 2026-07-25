@@ -84,6 +84,11 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
 		return
 	}
+	apiKey, err = h.resolveAutoRoutingGroup(c, apiKey, requestModel, nil)
+	if err != nil {
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", err.Error())
+		return
+	}
 
 	reqLog = reqLog.With(
 		zap.String("model", clientRequestModel),

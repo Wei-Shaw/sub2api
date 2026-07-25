@@ -21862,6 +21862,9 @@ type GroupMutation struct {
 	is_exclusive                            *bool
 	status                                  *string
 	duplicate_operation_id                  *string
+	routing_mode                            *string
+	auto_candidate_group_ids                *[]int64
+	appendauto_candidate_group_ids          []int64
 	platform                                *string
 	subscription_type                       *string
 	daily_limit_usd                         *float64
@@ -22588,6 +22591,93 @@ func (m *GroupMutation) DuplicateOperationIDCleared() bool {
 func (m *GroupMutation) ResetDuplicateOperationID() {
 	m.duplicate_operation_id = nil
 	delete(m.clearedFields, group.FieldDuplicateOperationID)
+}
+
+// SetRoutingMode sets the "routing_mode" field.
+func (m *GroupMutation) SetRoutingMode(s string) {
+	m.routing_mode = &s
+}
+
+// RoutingMode returns the value of the "routing_mode" field in the mutation.
+func (m *GroupMutation) RoutingMode() (r string, exists bool) {
+	v := m.routing_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoutingMode returns the old "routing_mode" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldRoutingMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoutingMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoutingMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoutingMode: %w", err)
+	}
+	return oldValue.RoutingMode, nil
+}
+
+// ResetRoutingMode resets all changes to the "routing_mode" field.
+func (m *GroupMutation) ResetRoutingMode() {
+	m.routing_mode = nil
+}
+
+// SetAutoCandidateGroupIds sets the "auto_candidate_group_ids" field.
+func (m *GroupMutation) SetAutoCandidateGroupIds(i []int64) {
+	m.auto_candidate_group_ids = &i
+	m.appendauto_candidate_group_ids = nil
+}
+
+// AutoCandidateGroupIds returns the value of the "auto_candidate_group_ids" field in the mutation.
+func (m *GroupMutation) AutoCandidateGroupIds() (r []int64, exists bool) {
+	v := m.auto_candidate_group_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAutoCandidateGroupIds returns the old "auto_candidate_group_ids" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAutoCandidateGroupIds(ctx context.Context) (v []int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAutoCandidateGroupIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAutoCandidateGroupIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAutoCandidateGroupIds: %w", err)
+	}
+	return oldValue.AutoCandidateGroupIds, nil
+}
+
+// AppendAutoCandidateGroupIds adds i to the "auto_candidate_group_ids" field.
+func (m *GroupMutation) AppendAutoCandidateGroupIds(i []int64) {
+	m.appendauto_candidate_group_ids = append(m.appendauto_candidate_group_ids, i...)
+}
+
+// AppendedAutoCandidateGroupIds returns the list of values that were appended to the "auto_candidate_group_ids" field in this mutation.
+func (m *GroupMutation) AppendedAutoCandidateGroupIds() ([]int64, bool) {
+	if len(m.appendauto_candidate_group_ids) == 0 {
+		return nil, false
+	}
+	return m.appendauto_candidate_group_ids, true
+}
+
+// ResetAutoCandidateGroupIds resets all changes to the "auto_candidate_group_ids" field.
+func (m *GroupMutation) ResetAutoCandidateGroupIds() {
+	m.auto_candidate_group_ids = nil
+	m.appendauto_candidate_group_ids = nil
 }
 
 // SetPlatform sets the "platform" field.
@@ -24907,7 +24997,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 51)
+	fields := make([]string, 0, 53)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -24946,6 +25036,12 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.duplicate_operation_id != nil {
 		fields = append(fields, group.FieldDuplicateOperationID)
+	}
+	if m.routing_mode != nil {
+		fields = append(fields, group.FieldRoutingMode)
+	}
+	if m.auto_candidate_group_ids != nil {
+		fields = append(fields, group.FieldAutoCandidateGroupIds)
 	}
 	if m.platform != nil {
 		fields = append(fields, group.FieldPlatform)
@@ -25095,6 +25191,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.Status()
 	case group.FieldDuplicateOperationID:
 		return m.DuplicateOperationID()
+	case group.FieldRoutingMode:
+		return m.RoutingMode()
+	case group.FieldAutoCandidateGroupIds:
+		return m.AutoCandidateGroupIds()
 	case group.FieldPlatform:
 		return m.Platform()
 	case group.FieldSubscriptionType:
@@ -25206,6 +25306,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldStatus(ctx)
 	case group.FieldDuplicateOperationID:
 		return m.OldDuplicateOperationID(ctx)
+	case group.FieldRoutingMode:
+		return m.OldRoutingMode(ctx)
+	case group.FieldAutoCandidateGroupIds:
+		return m.OldAutoCandidateGroupIds(ctx)
 	case group.FieldPlatform:
 		return m.OldPlatform(ctx)
 	case group.FieldSubscriptionType:
@@ -25381,6 +25485,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDuplicateOperationID(v)
+		return nil
+	case group.FieldRoutingMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoutingMode(v)
+		return nil
+	case group.FieldAutoCandidateGroupIds:
+		v, ok := value.([]int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAutoCandidateGroupIds(v)
 		return nil
 	case group.FieldPlatform:
 		v, ok := value.(string)
@@ -26089,6 +26207,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldDuplicateOperationID:
 		m.ResetDuplicateOperationID()
+		return nil
+	case group.FieldRoutingMode:
+		m.ResetRoutingMode()
+		return nil
+	case group.FieldAutoCandidateGroupIds:
+		m.ResetAutoCandidateGroupIds()
 		return nil
 	case group.FieldPlatform:
 		m.ResetPlatform()
@@ -43079,6 +43203,8 @@ type UsageLogMutation struct {
 	model_mapping_chain          *string
 	billing_tier                 *string
 	billing_mode                 *string
+	auto_group_id                *int64
+	addauto_group_id             *int64
 	input_tokens                 *int
 	addinput_tokens              *int
 	output_tokens                *int
@@ -43787,6 +43913,76 @@ func (m *UsageLogMutation) GroupIDCleared() bool {
 func (m *UsageLogMutation) ResetGroupID() {
 	m.group = nil
 	delete(m.clearedFields, usagelog.FieldGroupID)
+}
+
+// SetAutoGroupID sets the "auto_group_id" field.
+func (m *UsageLogMutation) SetAutoGroupID(i int64) {
+	m.auto_group_id = &i
+	m.addauto_group_id = nil
+}
+
+// AutoGroupID returns the value of the "auto_group_id" field in the mutation.
+func (m *UsageLogMutation) AutoGroupID() (r int64, exists bool) {
+	v := m.auto_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAutoGroupID returns the old "auto_group_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldAutoGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAutoGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAutoGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAutoGroupID: %w", err)
+	}
+	return oldValue.AutoGroupID, nil
+}
+
+// AddAutoGroupID adds i to the "auto_group_id" field.
+func (m *UsageLogMutation) AddAutoGroupID(i int64) {
+	if m.addauto_group_id != nil {
+		*m.addauto_group_id += i
+	} else {
+		m.addauto_group_id = &i
+	}
+}
+
+// AddedAutoGroupID returns the value that was added to the "auto_group_id" field in this mutation.
+func (m *UsageLogMutation) AddedAutoGroupID() (r int64, exists bool) {
+	v := m.addauto_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearAutoGroupID clears the value of the "auto_group_id" field.
+func (m *UsageLogMutation) ClearAutoGroupID() {
+	m.auto_group_id = nil
+	m.addauto_group_id = nil
+	m.clearedFields[usagelog.FieldAutoGroupID] = struct{}{}
+}
+
+// AutoGroupIDCleared returns if the "auto_group_id" field was cleared in this mutation.
+func (m *UsageLogMutation) AutoGroupIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldAutoGroupID]
+	return ok
+}
+
+// ResetAutoGroupID resets all changes to the "auto_group_id" field.
+func (m *UsageLogMutation) ResetAutoGroupID() {
+	m.auto_group_id = nil
+	m.addauto_group_id = nil
+	delete(m.clearedFields, usagelog.FieldAutoGroupID)
 }
 
 // SetSubscriptionID sets the "subscription_id" field.
@@ -45719,7 +45915,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 45)
+	fields := make([]string, 0, 46)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -45755,6 +45951,9 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.group != nil {
 		fields = append(fields, usagelog.FieldGroupID)
+	}
+	if m.auto_group_id != nil {
+		fields = append(fields, usagelog.FieldAutoGroupID)
 	}
 	if m.subscription != nil {
 		fields = append(fields, usagelog.FieldSubscriptionID)
@@ -45887,6 +46086,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.BillingMode()
 	case usagelog.FieldGroupID:
 		return m.GroupID()
+	case usagelog.FieldAutoGroupID:
+		return m.AutoGroupID()
 	case usagelog.FieldSubscriptionID:
 		return m.SubscriptionID()
 	case usagelog.FieldInputTokens:
@@ -45986,6 +46187,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldBillingMode(ctx)
 	case usagelog.FieldGroupID:
 		return m.OldGroupID(ctx)
+	case usagelog.FieldAutoGroupID:
+		return m.OldAutoGroupID(ctx)
 	case usagelog.FieldSubscriptionID:
 		return m.OldSubscriptionID(ctx)
 	case usagelog.FieldInputTokens:
@@ -46144,6 +46347,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGroupID(v)
+		return nil
+	case usagelog.FieldAutoGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAutoGroupID(v)
 		return nil
 	case usagelog.FieldSubscriptionID:
 		v, ok := value.(int64)
@@ -46387,6 +46597,9 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addchannel_id != nil {
 		fields = append(fields, usagelog.FieldChannelID)
 	}
+	if m.addauto_group_id != nil {
+		fields = append(fields, usagelog.FieldAutoGroupID)
+	}
 	if m.addinput_tokens != nil {
 		fields = append(fields, usagelog.FieldInputTokens)
 	}
@@ -46457,6 +46670,8 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case usagelog.FieldChannelID:
 		return m.AddedChannelID()
+	case usagelog.FieldAutoGroupID:
+		return m.AddedAutoGroupID()
 	case usagelog.FieldInputTokens:
 		return m.AddedInputTokens()
 	case usagelog.FieldOutputTokens:
@@ -46512,6 +46727,13 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddChannelID(v)
+		return nil
+	case usagelog.FieldAutoGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAutoGroupID(v)
 		return nil
 	case usagelog.FieldInputTokens:
 		v, ok := value.(int)
@@ -46682,6 +46904,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldGroupID) {
 		fields = append(fields, usagelog.FieldGroupID)
 	}
+	if m.FieldCleared(usagelog.FieldAutoGroupID) {
+		fields = append(fields, usagelog.FieldAutoGroupID)
+	}
 	if m.FieldCleared(usagelog.FieldSubscriptionID) {
 		fields = append(fields, usagelog.FieldSubscriptionID)
 	}
@@ -46755,6 +46980,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldGroupID:
 		m.ClearGroupID()
+		return nil
+	case usagelog.FieldAutoGroupID:
+		m.ClearAutoGroupID()
 		return nil
 	case usagelog.FieldSubscriptionID:
 		m.ClearSubscriptionID()
@@ -46838,6 +47066,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldGroupID:
 		m.ResetGroupID()
+		return nil
+	case usagelog.FieldAutoGroupID:
+		m.ResetAutoGroupID()
 		return nil
 	case usagelog.FieldSubscriptionID:
 		m.ResetSubscriptionID()

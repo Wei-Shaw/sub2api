@@ -152,6 +152,8 @@ type Group struct {
 // 注意：普通用户接口不得返回 model_routing/account_count/account_groups 等内部信息。
 type AdminGroup struct {
 	Group
+	RoutingMode           string  `json:"routing_mode"`
+	AutoCandidateGroupIDs []int64 `json:"auto_candidate_group_ids"`
 
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
@@ -539,6 +541,10 @@ type UsageLog struct {
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。
 type AdminUsageLog struct {
 	UsageLog
+
+	// AutoGroupID marks records routed through an automatic group while group_id
+	// continues to identify the actual group that served and billed the request.
+	AutoGroupID *int64 `json:"auto_group_id,omitempty"`
 
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).

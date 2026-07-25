@@ -255,6 +255,8 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 			Platform:              PlatformOpenAI,
 			Status:                StatusActive,
 			SubscriptionType:      SubscriptionTypeStandard,
+			RoutingMode:           GroupRoutingModeAutoLowestCost,
+			AutoCandidateGroupIDs: []int64{12, 13},
 			RateMultiplier:        1,
 			AllowMessagesDispatch: true,
 			DefaultMappedModel:    "gpt-5.4",
@@ -275,6 +277,8 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 	require.NotNil(t, roundTrip)
 	require.Equal(t, apiKey.Name, roundTrip.Name)
 	require.NotNil(t, roundTrip.Group)
+	require.Equal(t, apiKey.Group.RoutingMode, roundTrip.Group.RoutingMode)
+	require.Equal(t, apiKey.Group.AutoCandidateGroupIDs, roundTrip.Group.AutoCandidateGroupIDs)
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
 }
 

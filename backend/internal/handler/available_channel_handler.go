@@ -92,9 +92,15 @@ type userPricingIntervalDTO struct {
 
 // userSupportedModel 用户可见的支持模型条目。
 type userSupportedModel struct {
-	Name     string                     `json:"name"`
-	Platform string                     `json:"platform"`
-	Pricing  *userSupportedModelPricing `json:"pricing"`
+	Name               string                                `json:"name"`
+	Platform           string                                `json:"platform"`
+	Pricing            *userSupportedModelPricing            `json:"pricing"`
+	AutoCandidateRates []userSupportedModelAutoCandidateRate `json:"auto_candidate_rates,omitempty"`
+}
+
+type userSupportedModelAutoCandidateRate struct {
+	GroupID        int64   `json:"group_id"`
+	RateMultiplier float64 `json:"rate_multiplier"`
 }
 
 // userChannelPlatformSection 单渠道内某个平台的子视图：用户可见的分组 + 该平台
@@ -249,10 +255,25 @@ func toUserSupportedModels(
 			}
 		}
 		out = append(out, userSupportedModel{
-			Name:     m.Name,
-			Platform: m.Platform,
-			Pricing:  toUserPricing(m.Pricing),
+			Name:               m.Name,
+			Platform:           m.Platform,
+			Pricing:            toUserPricing(m.Pricing),
+			AutoCandidateRates: toUserAutoCandidateRates(m.AutoCandidateRates),
 		})
+	}
+	return out
+}
+
+func toUserAutoCandidateRates(src []service.SupportedModelAutoCandidateRate) []userSupportedModelAutoCandidateRate {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]userSupportedModelAutoCandidateRate, len(src))
+	for i := range src {
+		out[i] = userSupportedModelAutoCandidateRate{
+			GroupID:        src[i].GroupID,
+			RateMultiplier: src[i].RateMultiplier,
+		}
 	}
 	return out
 }

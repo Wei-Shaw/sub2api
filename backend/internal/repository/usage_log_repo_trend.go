@@ -312,10 +312,7 @@ func (r *usageLogRepository) getUsageTrendWithFilters(ctx context.Context, start
 		query += fmt.Sprintf(" AND account_id = $%d", len(args)+1)
 		args = append(args, accountID)
 	}
-	if groupID > 0 {
-		query += fmt.Sprintf(" AND group_id = $%d", len(args)+1)
-		args = append(args, groupID)
-	}
+	query, args = appendUsageLogGroupQueryFilter(query, args, groupID, "")
 	query, args = appendUsageLogModelQueryFilter(query, args, model, modelSource)
 	query, args = appendRequestTypeOrStreamQueryFilter(query, args, requestType, stream)
 	if billingType != nil {
@@ -473,10 +470,7 @@ func (r *usageLogRepository) getModelStatsWithFiltersBySource(ctx context.Contex
 		query += fmt.Sprintf(" AND account_id = $%d", len(args)+1)
 		args = append(args, accountID)
 	}
-	if groupID > 0 {
-		query += fmt.Sprintf(" AND group_id = $%d", len(args)+1)
-		args = append(args, groupID)
-	}
+	query, args = appendUsageLogGroupQueryFilter(query, args, groupID, "")
 	if strings.TrimSpace(model) != "" {
 		query += fmt.Sprintf(" AND %s = $%d", modelExpr, len(args)+1)
 		args = append(args, model)
@@ -546,10 +540,7 @@ func (r *usageLogRepository) getGroupStatsWithFilters(ctx context.Context, start
 		query += fmt.Sprintf(" AND ul.account_id = $%d", len(args)+1)
 		args = append(args, accountID)
 	}
-	if groupID > 0 {
-		query += fmt.Sprintf(" AND ul.group_id = $%d", len(args)+1)
-		args = append(args, groupID)
-	}
+	query, args = appendUsageLogGroupQueryFilter(query, args, groupID, "ul")
 	if strings.TrimSpace(model) != "" {
 		modelExpr := resolveModelDimensionExpressionWithAlias(usagestats.ModelSourceRequested, "ul")
 		query += fmt.Sprintf(" AND %s = $%d", modelExpr, len(args)+1)
@@ -616,10 +607,7 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 	`
 	args := []any{startTime, endTime}
 
-	if dim.GroupID > 0 {
-		query += fmt.Sprintf(" AND ul.group_id = $%d", len(args)+1)
-		args = append(args, dim.GroupID)
-	}
+	query, args = appendUsageLogGroupQueryFilter(query, args, dim.GroupID, "ul")
 	if dim.Model != "" {
 		query += fmt.Sprintf(" AND %s = $%d", resolveModelDimensionExpression(dim.ModelType), len(args)+1)
 		args = append(args, dim.Model)

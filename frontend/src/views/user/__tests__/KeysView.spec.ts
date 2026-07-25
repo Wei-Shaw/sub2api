@@ -170,6 +170,7 @@ const DataTableStub = {
           <slot name="cell-id" :value="row.id" :row="row" />
         </div>
         <slot name="cell-name" :value="row.name" :row="row" />
+        <slot name="cell-group" :value="row.group" :row="row" />
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
         </div>
@@ -215,6 +216,11 @@ const IconStub = {
   template: '<span data-test="icon">{{ name }}</span>',
 }
 
+const GroupBadgeStub = {
+  props: ['name', 'routingMode'],
+  template: '<span data-test="group-badge">{{ name }}:{{ routingMode }}</span>',
+}
+
 const mountView = async () => {
   const wrapper = mount(KeysView, {
     global: {
@@ -231,7 +237,7 @@ const mountView = async () => {
         Icon: IconStub,
         UseKeyModal: true,
         EndpointPopover: true,
-        GroupBadge: true,
+        GroupBadge: GroupBadgeStub,
         GroupOptionItem: true,
         Teleport: true,
       },
@@ -303,6 +309,31 @@ describe('user KeysView column settings', () => {
     expect(visibleColumnKeys(wrapper)).not.toContain('last_used_at')
     expect(visibleColumnKeys(wrapper)).not.toContain('last_used_ip')
     expect(visibleColumnKeys(wrapper)).not.toContain('id')
+  })
+
+  it('passes auto routing mode to the selected key group badge', async () => {
+    listKeys.mockResolvedValue({
+      items: [{
+        ...createApiKey(),
+        group_id: 34,
+        group: {
+          id: 34,
+          name: 'Auto group',
+          platform: 'auto',
+          subscription_type: 'standard',
+          rate_multiplier: 1,
+          routing_mode: 'auto_lowest_cost',
+        },
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-test="group-badge"]').text()).toBe('Auto group:auto_lowest_cost')
   })
 
   it('shows a hidden column when toggled and persists the preference', async () => {

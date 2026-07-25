@@ -19,6 +19,15 @@ type gatewayModelsAccountRepoStub struct {
 	byGroup map[int64][]service.Account
 }
 
+type gatewayModelsGroupRepoStub struct {
+	service.GroupRepository
+	byID map[int64]*service.Group
+}
+
+func (s *gatewayModelsGroupRepoStub) GetByIDLite(_ context.Context, id int64) (*service.Group, error) {
+	return s.byID[id], nil
+}
+
 type gatewayModelsResponseForTest struct {
 	Object string                    `json:"object"`
 	Data   []gatewayModelItemForTest `json:"data"`
@@ -52,13 +61,49 @@ func (s *gatewayModelsAccountRepoStub) ListSchedulableByGroupID(ctx context.Cont
 }
 
 func newGatewayModelsHandlerForTest(repo service.AccountRepository) *GatewayHandler {
+	return newGatewayModelsHandlerWithGroupRepoForTest(repo, nil)
+}
+
+func newGatewayModelsHandlerWithGroupRepoForTest(repo service.AccountRepository, groupRepo service.GroupRepository) *GatewayHandler {
 	return &GatewayHandler{
 		gatewayService: service.NewGatewayService(
-			repo,
-			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+			repo, groupRepo,
+			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		),
 	}
+}
+
+func TestGatewayModels_AutoGroupAggregatesPublicCandidateModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	autoGroup := &service.Group{
+		ID: 20, Platform: service.PlatformAuto, Status: service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		RoutingMode:           service.GroupRoutingModeAutoLowestCost,
+		AutoCandidateGroupIDs: []int64{10, 11, 12},
+	}
+	groups := &gatewayModelsGroupRepoStub{byID: map[int64]*service.Group{
+		10: {ID: 10, Platform: service.PlatformOpenAI, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard},
+		11: {ID: 11, Platform: service.PlatformAnthropic, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard},
+		12: {ID: 12, Platform: service.PlatformOpenAI, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard, IsExclusive: true},
+	}}
+	h := newGatewayModelsHandlerWithGroupRepoForTest(&gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
+		10: {{ID: 1, Platform: service.PlatformOpenAI, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"}}}},
+		11: {{ID: 2, Platform: service.PlatformAnthropic, Credentials: map[string]any{"model_mapping": map[string]any{"claude-sonnet-4-6": "claude-sonnet-4-6"}}}},
+		12: {{ID: 3, Platform: service.PlatformOpenAI, Credentials: map[string]any{"model_mapping": map[string]any{"exclusive-model": "exclusive-model"}}}},
+	}}, groups)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: autoGroup})
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, []string{"claude-sonnet-4-6", "gpt-5.4"}, modelIDsForTest(got.Data))
 }
 
 func TestDefaultModelIDsForCompositeIncludesAntigravityDefaults(t *testing.T) {

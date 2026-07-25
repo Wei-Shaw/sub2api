@@ -28,11 +28,14 @@ func IsWindowExpired(windowStart *time.Time, duration time.Duration) bool {
 }
 
 type APIKey struct {
-	ID          int64
-	UserID      int64
-	Key         string
-	Name        string
-	GroupID     *int64
+	ID      int64
+	UserID  int64
+	Key     string
+	Name    string
+	GroupID *int64
+	// AutoGroupID is request-scoped and records the source auto-routing group.
+	// Persisted API keys leave this nil; routed clones carry it into usage logs.
+	AutoGroupID *int64
 	Status      string
 	IPWhitelist []string
 	IPBlacklist []string

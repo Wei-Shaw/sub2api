@@ -881,6 +881,13 @@ export default {
       optionalDescription: 'Optional description',
       platformHint: 'Select the platform this group is associated with',
       platformNotEditable: 'Platform cannot be changed after creation',
+      autoRouting: {
+        title: 'Automatically select lowest-cost group',
+        hint: 'Keep the requested model unchanged and select the available candidate with the lowest effective rate',
+        candidates: 'Candidate balance groups',
+        noCandidates: 'No eligible balance groups are available for this platform',
+        balanceOnlyHint: 'Balance groups only. Subscription, cross-platform, and nested automatic groups are excluded.'
+      },
       saving: 'Saving...',
       noGroups: 'No groups yet',
       noGroupsDescription: 'Create a group to better manage API keys and rates.',

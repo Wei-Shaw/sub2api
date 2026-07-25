@@ -31,7 +31,9 @@ type Group struct {
 	Hydrated           bool // indicates the group was loaded from a trusted repository source
 	// DuplicateOperationID is internal persistence metadata used only to recover
 	// an already committed one-click copy. It must never be mapped to API DTOs.
-	DuplicateOperationID string
+	DuplicateOperationID  string
+	RoutingMode           string
+	AutoCandidateGroupIDs []int64
 
 	SubscriptionType    string
 	DailyLimitUSD       *float64
@@ -105,6 +107,10 @@ type Group struct {
 	AccountCount            int64
 	ActiveAccountCount      int64
 	RateLimitedAccountCount int64
+}
+
+func (g *Group) IsAutoLowestCostRouting() bool {
+	return g != nil && g.RoutingMode == GroupRoutingModeAutoLowestCost
 }
 
 func (g *Group) IsActive() bool {

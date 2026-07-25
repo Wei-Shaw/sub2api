@@ -120,6 +120,11 @@ func DuplicateOperationID(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDuplicateOperationID, v))
 }
 
+// RoutingMode applies equality check predicate on the "routing_mode" field. It's identical to RoutingModeEQ.
+func RoutingMode(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldRoutingMode, v))
+}
+
 // Platform applies equality check predicate on the "platform" field. It's identical to PlatformEQ.
 func Platform(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldPlatform, v))
@@ -923,6 +928,71 @@ func DuplicateOperationIDEqualFold(v string) predicate.Group {
 // DuplicateOperationIDContainsFold applies the ContainsFold predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDuplicateOperationID, v))
+}
+
+// RoutingModeEQ applies the EQ predicate on the "routing_mode" field.
+func RoutingModeEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldRoutingMode, v))
+}
+
+// RoutingModeNEQ applies the NEQ predicate on the "routing_mode" field.
+func RoutingModeNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldRoutingMode, v))
+}
+
+// RoutingModeIn applies the In predicate on the "routing_mode" field.
+func RoutingModeIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldRoutingMode, vs...))
+}
+
+// RoutingModeNotIn applies the NotIn predicate on the "routing_mode" field.
+func RoutingModeNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldRoutingMode, vs...))
+}
+
+// RoutingModeGT applies the GT predicate on the "routing_mode" field.
+func RoutingModeGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldRoutingMode, v))
+}
+
+// RoutingModeGTE applies the GTE predicate on the "routing_mode" field.
+func RoutingModeGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldRoutingMode, v))
+}
+
+// RoutingModeLT applies the LT predicate on the "routing_mode" field.
+func RoutingModeLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldRoutingMode, v))
+}
+
+// RoutingModeLTE applies the LTE predicate on the "routing_mode" field.
+func RoutingModeLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldRoutingMode, v))
+}
+
+// RoutingModeContains applies the Contains predicate on the "routing_mode" field.
+func RoutingModeContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldRoutingMode, v))
+}
+
+// RoutingModeHasPrefix applies the HasPrefix predicate on the "routing_mode" field.
+func RoutingModeHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldRoutingMode, v))
+}
+
+// RoutingModeHasSuffix applies the HasSuffix predicate on the "routing_mode" field.
+func RoutingModeHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldRoutingMode, v))
+}
+
+// RoutingModeEqualFold applies the EqualFold predicate on the "routing_mode" field.
+func RoutingModeEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldRoutingMode, v))
+}
+
+// RoutingModeContainsFold applies the ContainsFold predicate on the "routing_mode" field.
+func RoutingModeContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldRoutingMode, v))
 }
 
 // PlatformEQ applies the EQ predicate on the "platform" field.

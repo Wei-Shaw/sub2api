@@ -42,6 +42,43 @@ func TestAPIKeyService_RejectsV10AuthSnapshotWithoutModelsListConfig(t *testing.
 	}
 }
 
+func TestAPIKeyService_RejectsV15AuthSnapshotWithoutAutoRoutingConfig(t *testing.T) {
+	groupID := int64(9)
+	svc := &APIKeyService{}
+
+	apiKey, ok, err := svc.applyAuthCacheEntry("k-legacy-auto-routing", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{
+			Version:  15,
+			APIKeyID: 1,
+			UserID:   2,
+			GroupID:  &groupID,
+			Status:   StatusActive,
+			User: APIKeyAuthUserSnapshot{
+				ID:          2,
+				Status:      StatusActive,
+				Role:        RoleUser,
+				Balance:     10,
+				Concurrency: 3,
+			},
+			Group: &APIKeyAuthGroupSnapshot{
+				ID:               groupID,
+				Name:             "openai",
+				Platform:         PlatformOpenAI,
+				Status:           StatusActive,
+				SubscriptionType: SubscriptionTypeStandard,
+				RateMultiplier:   1,
+			},
+		},
+	})
+
+	if err != nil {
+		t.Fatalf("expected stale snapshot to be ignored without error, got %v", err)
+	}
+	if ok || apiKey != nil {
+		t.Fatalf("expected v15 auth snapshot to be rejected after auto routing was added")
+	}
+}
+
 func TestAPIKeyService_RejectsV15AuthSnapshotWithoutReasoningEffortPolicy(t *testing.T) {
 	svc := &APIKeyService{}
 

@@ -45,10 +45,16 @@ export interface UserSupportedModelPricing {
   intervals: UserPricingInterval[]
 }
 
+export interface UserSupportedModelAutoCandidateRate {
+  group_id: number
+  rate_multiplier: number
+}
+
 export interface UserSupportedModel {
   name: string
   platform: string
   pricing: UserSupportedModelPricing | null
+  auto_candidate_rates?: UserSupportedModelAutoCandidateRate[]
 }
 
 /**

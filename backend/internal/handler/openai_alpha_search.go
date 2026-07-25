@@ -82,6 +82,11 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
+	apiKey, err = h.resolveAutoRoutingGroup(c, apiKey, requestedModel, nil)
+	if err != nil {
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", err.Error())
+		return
+	}
 
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, requestedModel)
 	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)

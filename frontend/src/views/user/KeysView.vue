@@ -147,6 +147,7 @@
                   :platform="row.group.platform"
                   :subscription-type="row.group.subscription_type"
                   :rate-multiplier="row.group.rate_multiplier"
+                  :routing-mode="row.group.routing_mode || 'fixed'"
                   :user-rate-multiplier="userGroupRates[row.group.id]"
                   :peak-rate-enabled="row.group.peak_rate_enabled"
                   :peak-start="row.group.peak_start"
@@ -481,6 +482,7 @@
                 :platform="(option as unknown as GroupOption).platform"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
+                :routing-mode="(option as unknown as GroupOption).routingMode"
                 :user-rate-multiplier="(option as unknown as GroupOption).userRate"
                 :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
                 :peak-start="(option as unknown as GroupOption).peakStart"
@@ -495,6 +497,7 @@
                 :platform="(option as unknown as GroupOption).platform"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
+                :routing-mode="(option as unknown as GroupOption).routingMode"
                 :user-rate-multiplier="(option as unknown as GroupOption).userRate"
                 :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
                 :peak-start="(option as unknown as GroupOption).peakStart"
@@ -1094,6 +1097,7 @@
               :platform="option.platform"
               :subscription-type="option.subscriptionType"
               :rate-multiplier="option.rate"
+              :routing-mode="option.routingMode"
               :user-rate-multiplier="option.userRate"
               :peak-rate-enabled="option.peakRateEnabled"
               :peak-start="option.peakStart"
@@ -1140,7 +1144,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
+	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, GroupRoutingMode, UpdateApiKeyRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1162,6 +1166,7 @@ interface GroupOption {
   label: string
   description: string | null
   rate: number
+  routingMode: GroupRoutingMode
   userRate: number | null
   peakRateEnabled: boolean
   peakStart: string
@@ -1414,6 +1419,7 @@ const groupOptions = computed(() =>
     label: group.name,
     description: group.description,
     rate: group.rate_multiplier,
+    routingMode: group.routing_mode || 'fixed',
     userRate: userGroupRates.value[group.id] ?? null,
     peakRateEnabled: group.peak_rate_enabled,
     peakStart: group.peak_start,

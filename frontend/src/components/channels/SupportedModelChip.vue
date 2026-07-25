@@ -65,6 +65,23 @@
               <span>{{ billingModeLabel }}</span>
             </div>
 
+            <div
+              v-if="autoCandidateRates.length > 0"
+              class="rounded-md border border-cyan-500/20 bg-cyan-500/5 px-2 py-1.5 text-[11px] text-cyan-800 dark:text-cyan-200"
+            >
+              <div class="mb-1 font-medium">{{ t('admin.groups.automatic') }}</div>
+              <div class="flex flex-wrap gap-1">
+                <span
+                  v-for="rate in autoCandidateRates"
+                  :key="rate.group_id"
+                  class="inline-flex items-center gap-1 rounded bg-white/70 px-1.5 py-0.5 dark:bg-dark-900/50"
+                >
+                  <span>#{{ rate.group_id }}</span>
+                  <span class="font-semibold">{{ formatRate(rate.rate_multiplier) }}x</span>
+                </span>
+              </div>
+            </div>
+
             <template v-if="model.pricing.billing_mode === BILLING_MODE_TOKEN">
               <PricingRow
                 :label="t(prefixKey('inputPrice'))"
@@ -233,6 +250,13 @@ const billingModeLabel = computed(() => {
       return '-'
   }
 })
+
+const autoCandidateRates = computed(() => props.model.auto_candidate_rates || [])
+
+function formatRate(value: number): string {
+  if (!Number.isFinite(value)) return '-'
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)))
+}
 
 function formatRange(min: number, max: number | null): string {
   const maxLabel = max == null ? '∞' : String(max)

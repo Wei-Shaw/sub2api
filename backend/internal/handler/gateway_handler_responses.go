@@ -89,6 +89,16 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	bodyRef := service.NewRequestBodyRef(body)
+	parsedReq, _ := service.ParseGatewayRequest(bodyRef, "responses")
+	if parsedReq == nil {
+		parsedReq = &service.ParsedRequest{Model: reqModel, Stream: reqStream, Body: bodyRef}
+	}
+	apiKey, err = h.resolveAutoRoutingGroup(c, apiKey, reqModel, parsedReq)
+	if err != nil {
+		h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", err.Error())
+		return
+	}
 	requestCtx := c.Request.Context()
 	if service.IsImageGenerationIntentForPlatform("/v1/responses", reqModel, body, openAICompatibleRequestPlatform(c.Request.Context(), apiKey)) {
 		requestCtx = service.WithOpenAIImageGenerationIntent(requestCtx)
@@ -145,12 +155,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	// Parse request for session hash
-	bodyRef := service.NewRequestBodyRef(body)
-	parsedReq, _ := service.ParseGatewayRequest(bodyRef, "responses")
-	if parsedReq == nil {
-		parsedReq = &service.ParsedRequest{Model: reqModel, Stream: reqStream, Body: bodyRef}
-	}
+	// Complete the request context used by account and auto-group stickiness.
 	parsedReq.SessionContext = &service.SessionContext{
 		ClientIP:  ip.GetClientIP(c),
 		UserAgent: c.GetHeader("User-Agent"),

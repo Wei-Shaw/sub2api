@@ -27,7 +27,10 @@
       <div class="flex shrink-0 flex-col items-end gap-1">
         <!-- Rate pill (platform color) -->
         <span v-if="rateMultiplier !== undefined" :class="['inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', ratePillClass]">
-          <template v-if="hasCustomRate">
+          <template v-if="routingMode === 'auto_lowest_cost'">
+            {{ t('admin.groups.automatic') }}
+          </template>
+          <template v-else-if="hasCustomRate">
             <span class="mr-1 line-through opacity-50">{{ rateMultiplier }}x</span>
             <span class="font-bold">{{ userRateMultiplier }}x</span>
           </template>
@@ -62,7 +65,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
-import type { SubscriptionType, GroupPlatform } from '@/types'
+import type { SubscriptionType, GroupPlatform, GroupRoutingMode } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 
@@ -73,6 +76,7 @@ interface Props {
   platform: GroupPlatform
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
+  routingMode?: GroupRoutingMode
   userRateMultiplier?: number | null
   peakRateEnabled?: boolean
   peakStart?: string
@@ -85,6 +89,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
+  routingMode: 'fixed',
   selected: false,
   showCheckmark: true,
   userRateMultiplier: null,
@@ -126,12 +131,16 @@ const peakRateTitle = computed(() => {
 // Rate pill color matches platform badge color
 const ratePillClass = computed(() => {
   switch (props.platform) {
+    case 'auto':
+      return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300'
     case 'anthropic':
       return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
     case 'openai':
       return 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
     case 'gemini':
       return 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400'
+    case 'grok':
+      return 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
     default: // antigravity and others
       return 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-400'
   }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
@@ -1086,6 +1087,45 @@ func TestAdminService_ValidateFallbackGroup_DetectsCycle(t *testing.T) {
 
 type groupRepoStubForFallbackCycle struct {
 	groups map[int64]*Group
+}
+
+func TestValidateAutoRoutingConfig_BalanceGroupsOnlyAndDeduplicates(t *testing.T) {
+	repo := &groupRepoStubForFallbackCycle{groups: map[int64]*Group{
+		2: {ID: 2, Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+		3: {ID: 3, Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription},
+		4: {ID: 4, Platform: PlatformGemini, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+		5: {ID: 5, Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, IsExclusive: true},
+	}}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	ids, err := svc.validateAutoRoutingConfig(context.Background(), 10, PlatformAuto, SubscriptionTypeStandard, GroupRoutingModeAutoLowestCost, []int64{2, 4, 2})
+	require.NoError(t, err)
+	require.Equal(t, []int64{2, 4}, ids)
+
+	_, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformAuto, SubscriptionTypeStandard, GroupRoutingModeAutoLowestCost, []int64{3})
+	require.ErrorContains(t, err, "balance group")
+
+	_, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformAuto, SubscriptionTypeStandard, GroupRoutingModeAutoLowestCost, []int64{5})
+	require.ErrorContains(t, err, "exclusive")
+
+	_, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformAuto, SubscriptionTypeStandard, GroupRoutingModeAutoLowestCost, []int64{10})
+	require.ErrorContains(t, err, "cannot select itself")
+
+	_, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformAuto, SubscriptionTypeSubscription, GroupRoutingModeAutoLowestCost, []int64{2})
+	require.ErrorContains(t, err, "only supported for balance groups")
+	require.True(t, infraerrors.IsBadRequest(err))
+
+	ids, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformOpenAI, SubscriptionTypeSubscription, GroupRoutingModeFixed, []int64{2})
+	require.NoError(t, err)
+	require.Empty(t, ids)
+
+	_, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformAuto, SubscriptionTypeStandard, GroupRoutingModeFixed, nil)
+	require.ErrorContains(t, err, "auto platform requires auto_lowest_cost routing")
+	require.True(t, infraerrors.IsBadRequest(err))
+
+	_, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformOpenAI, SubscriptionTypeStandard, GroupRoutingModeAutoLowestCost, []int64{2})
+	require.ErrorContains(t, err, "auto_lowest_cost routing requires auto platform")
+	require.True(t, infraerrors.IsBadRequest(err))
 }
 
 func (s *groupRepoStubForFallbackCycle) Create(_ context.Context, _ *Group) error {

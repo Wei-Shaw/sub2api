@@ -42,6 +42,10 @@ const (
 	FieldStatus = "status"
 	// FieldDuplicateOperationID holds the string denoting the duplicate_operation_id field in the database.
 	FieldDuplicateOperationID = "duplicate_operation_id"
+	// FieldRoutingMode holds the string denoting the routing_mode field in the database.
+	FieldRoutingMode = "routing_mode"
+	// FieldAutoCandidateGroupIds holds the string denoting the auto_candidate_group_ids field in the database.
+	FieldAutoCandidateGroupIds = "auto_candidate_group_ids"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
 	// FieldSubscriptionType holds the string denoting the subscription_type field in the database.
@@ -206,6 +210,8 @@ var Columns = []string{
 	FieldIsExclusive,
 	FieldStatus,
 	FieldDuplicateOperationID,
+	FieldRoutingMode,
+	FieldAutoCandidateGroupIds,
 	FieldPlatform,
 	FieldSubscriptionType,
 	FieldDailyLimitUsd,
@@ -303,6 +309,12 @@ var (
 	StatusValidator func(string) error
 	// DuplicateOperationIDValidator is a validator for the "duplicate_operation_id" field. It is called by the builders before save.
 	DuplicateOperationIDValidator func(string) error
+	// DefaultRoutingMode holds the default value on creation for the "routing_mode" field.
+	DefaultRoutingMode string
+	// RoutingModeValidator is a validator for the "routing_mode" field. It is called by the builders before save.
+	RoutingModeValidator func(string) error
+	// DefaultAutoCandidateGroupIds holds the default value on creation for the "auto_candidate_group_ids" field.
+	DefaultAutoCandidateGroupIds []int64
 	// DefaultPlatform holds the default value on creation for the "platform" field.
 	DefaultPlatform string
 	// PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
@@ -434,6 +446,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByDuplicateOperationID orders the results by the duplicate_operation_id field.
 func ByDuplicateOperationID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDuplicateOperationID, opts...).ToFunc()
+}
+
+// ByRoutingMode orders the results by the routing_mode field.
+func ByRoutingMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRoutingMode, opts...).ToFunc()
 }
 
 // ByPlatform orders the results by the platform field.

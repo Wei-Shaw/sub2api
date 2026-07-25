@@ -909,6 +909,13 @@ export default {
       optionalDescription: '可选描述',
       platformHint: '选择此分组关联的平台',
       platformNotEditable: '创建后不可更改平台',
+      autoRouting: {
+        title: '自动选择最低成本分组',
+        hint: '请求模型保持不变，自动选择当前可用且实际倍率最低的候选分组',
+        candidates: '候选余额分组',
+        noCandidates: '当前平台没有可用的余额分组',
+        balanceOnlyHint: '仅支持余额分组；订阅分组、跨平台分组和其他自动分组不会参与选择。'
+      },
       noGroupsYet: '暂无分组',
       createFirstGroup: '创建您的第一个分组来组织 API 密钥。',
       creating: '创建中...',

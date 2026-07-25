@@ -5,10 +5,11 @@
  * instead of defining their own color mappings.
  */
 
-export type Platform = 'anthropic' | 'openai' | 'antigravity' | 'gemini' | 'grok' | 'composite'
+export type Platform = 'auto' | 'anthropic' | 'openai' | 'antigravity' | 'gemini' | 'grok' | 'composite'
 
 // ── Badge (bg + text + border, for inline badges with border) ───────
 const BADGE: Record<Platform, string> = {
+  auto: 'bg-cyan-500/10 text-cyan-700 border-cyan-500/30 dark:text-cyan-300',
   anthropic: 'bg-orange-500/10 text-orange-600 border-orange-500/30 dark:text-orange-400',
   openai: 'bg-green-500/10 text-green-600 border-green-500/30 dark:text-green-400',
   antigravity: 'bg-purple-500/10 text-purple-600 border-purple-500/30 dark:text-purple-400',
@@ -20,6 +21,7 @@ const BADGE_DEFAULT = 'bg-slate-500/10 text-slate-600 border-slate-500/30 dark:t
 
 // ── Light badge (softer bg, no border) ──────────────────────────────
 const BADGE_LIGHT: Record<Platform, string> = {
+  auto: 'bg-cyan-500/10 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300',
   anthropic: 'bg-orange-500/10 text-orange-600 dark:bg-orange-500/10 dark:text-orange-300',
   openai: 'bg-green-500/10 text-green-600 dark:bg-green-500/10 dark:text-green-300',
   antigravity: 'bg-purple-500/10 text-purple-600 dark:bg-purple-500/10 dark:text-purple-300',
@@ -30,6 +32,7 @@ const BADGE_LIGHT: Record<Platform, string> = {
 
 // ── Border ──────────────────────────────────────────────────────────
 const BORDER: Record<Platform, string> = {
+  auto: 'border-cyan-500/20 dark:border-cyan-500/20',
   anthropic: 'border-orange-500/20 dark:border-orange-500/20',
   openai: 'border-green-500/20 dark:border-green-500/20',
   antigravity: 'border-purple-500/20 dark:border-purple-500/20',
@@ -41,6 +44,7 @@ const BORDER_DEFAULT = 'border-gray-200 dark:border-dark-700'
 
 // ── Accent bar (gradient) ───────────────────────────────────────────
 const ACCENT_BAR: Record<Platform, string> = {
+  auto: 'bg-gradient-to-r from-cyan-400 to-cyan-500',
   anthropic: 'bg-gradient-to-r from-orange-400 to-orange-500',
   openai: 'bg-gradient-to-r from-emerald-400 to-emerald-500',
   antigravity: 'bg-gradient-to-r from-purple-400 to-purple-500',
@@ -52,6 +56,7 @@ const ACCENT_BAR_DEFAULT = 'bg-gradient-to-r from-primary-400 to-primary-500'
 
 // ── Text (price, icon) ─────────────────────────────────────────────
 const TEXT: Record<Platform, string> = {
+  auto: 'text-cyan-700 dark:text-cyan-300',
   anthropic: 'text-orange-600 dark:text-orange-400',
   openai: 'text-emerald-600 dark:text-emerald-400',
   antigravity: 'text-purple-600 dark:text-purple-400',
@@ -63,6 +68,7 @@ const TEXT_DEFAULT = 'text-primary-600 dark:text-primary-400'
 
 // ── Icon (check mark etc.) ──────────────────────────────────────────
 const ICON: Record<Platform, string> = {
+  auto: 'text-cyan-500 dark:text-cyan-300',
   anthropic: 'text-orange-500 dark:text-orange-400',
   openai: 'text-emerald-500 dark:text-emerald-400',
   antigravity: 'text-purple-500 dark:text-purple-400',
@@ -74,6 +80,7 @@ const ICON_DEFAULT = 'text-primary-500 dark:text-primary-400'
 
 // ── Button (solid bg) ───────────────────────────────────────────────
 const BUTTON: Record<Platform, string> = {
+  auto: 'bg-cyan-600 text-white hover:bg-cyan-700 active:bg-cyan-800 dark:bg-cyan-600/80 dark:hover:bg-cyan-600',
   anthropic: 'bg-orange-500 text-white hover:bg-orange-600 active:bg-orange-700 dark:bg-orange-500/80 dark:hover:bg-orange-500',
   openai: 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800 dark:bg-green-600/80 dark:hover:bg-green-600',
   antigravity: 'bg-purple-500 text-white hover:bg-purple-600 active:bg-purple-700 dark:bg-purple-500/80 dark:hover:bg-purple-500',
@@ -85,6 +92,7 @@ const BUTTON_DEFAULT = 'bg-primary-500 text-white hover:bg-primary-600 dark:bg-p
 
 // ── Discount badge ──────────────────────────────────────────────────
 const DISCOUNT: Record<Platform, string> = {
+  auto: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
   anthropic: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
   openai: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   antigravity: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
@@ -96,6 +104,7 @@ const DISCOUNT_DEFAULT = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-r
 
 // ── Header gradient (subscription confirm) ─────────────────────────
 const GRADIENT: Record<Platform, string> = {
+  auto: 'from-cyan-500 to-cyan-600',
   anthropic: 'from-orange-500 to-orange-600',
   openai: 'from-emerald-500 to-emerald-600',
   antigravity: 'from-purple-500 to-purple-600',
@@ -107,6 +116,7 @@ const GRADIENT_DEFAULT = 'from-primary-500 to-primary-600'
 
 // ── Header text (light text on gradient bg) ────────────────────────
 const GRADIENT_TEXT: Record<Platform, string> = {
+  auto: 'text-cyan-100',
   anthropic: 'text-orange-100',
   openai: 'text-emerald-100',
   antigravity: 'text-purple-100',
@@ -117,6 +127,7 @@ const GRADIENT_TEXT: Record<Platform, string> = {
 const GRADIENT_TEXT_DEFAULT = 'text-primary-100'
 
 const GRADIENT_SUBTEXT: Record<Platform, string> = {
+  auto: 'text-cyan-200',
   anthropic: 'text-orange-200',
   openai: 'text-emerald-200',
   antigravity: 'text-purple-200',
@@ -129,7 +140,7 @@ const GRADIENT_SUBTEXT_DEFAULT = 'text-primary-200'
 // ── Public API ──────────────────────────────────────────────────────
 
 function isPlatform(p: string): p is Platform {
-  return p === 'anthropic' || p === 'openai' || p === 'antigravity' || p === 'gemini' || p === 'grok' || p === 'composite'
+  return p === 'auto' || p === 'anthropic' || p === 'openai' || p === 'antigravity' || p === 'gemini' || p === 'grok' || p === 'composite'
 }
 
 export function platformBadgeClass(p: string): string {
@@ -178,6 +189,7 @@ export function platformGradientSubtextClass(p: string): string {
 
 export function platformLabel(p: string): string {
   switch (p) {
+    case 'auto': return 'Auto'
     case 'anthropic': return 'Anthropic'
     case 'openai': return 'OpenAI'
     case 'antigravity': return 'Antigravity'

@@ -171,6 +171,28 @@ func buildWhere(conditions []string) string {
 	return "WHERE " + strings.Join(conditions, " AND ")
 }
 
+func appendUsageLogGroupWhereCondition(conditions []string, args []any, groupID int64, alias string) ([]string, []any) {
+	if groupID <= 0 {
+		return conditions, args
+	}
+	prefix := ""
+	if alias != "" {
+		prefix = alias + "."
+	}
+	placeholder := fmt.Sprintf("$%d", len(args)+1)
+	conditions = append(conditions, fmt.Sprintf("(%sgroup_id = %s OR %sauto_group_id = %s)", prefix, placeholder, prefix, placeholder))
+	args = append(args, groupID)
+	return conditions, args
+}
+
+func appendUsageLogGroupQueryFilter(query string, args []any, groupID int64, alias string) (string, []any) {
+	conditions, args := appendUsageLogGroupWhereCondition(nil, args, groupID, alias)
+	if len(conditions) == 0 {
+		return query, args
+	}
+	return query + " AND " + conditions[0], args
+}
+
 func appendRequestTypeOrStreamWhereCondition(conditions []string, args []any, requestType *int16, stream *bool) ([]string, []any) {
 	if requestType != nil {
 		condition, conditionArgs := buildRequestTypeFilterCondition(len(args)+1, *requestType)

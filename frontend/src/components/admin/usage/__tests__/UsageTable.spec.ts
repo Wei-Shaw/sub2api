@@ -69,6 +69,7 @@ const DataTableStub = {
     <div>
       <div v-for="row in data" :key="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
+        <slot name="cell-group" :row="row" />
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
@@ -76,6 +77,45 @@ const DataTableStub = {
     </div>
   `,
 }
+
+describe('admin UsageTable auto routing marker', () => {
+  it('shows Auto in billing mode while keeping the actual group', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-auto',
+            group: { id: 20, name: 'OpenAI Low Cost' },
+            auto_group_id: 10,
+          },
+          {
+            ...baseImageRow,
+            request_id: 'req-fixed',
+            group: { id: 20, name: 'OpenAI Low Cost' },
+            auto_group_id: null,
+          },
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const billingModes = wrapper.findAll('[data-testid="billing-mode-value"]')
+    expect(billingModes).toHaveLength(2)
+    expect(billingModes[0].text()).toBe('Auto')
+    expect(billingModes[1].text()).toBe('Image')
+    expect(wrapper.text()).toContain('OpenAI Low Cost')
+  })
+})
 
 const baseImageRow = {
   request_id: 'req-admin-image',

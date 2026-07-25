@@ -138,7 +138,9 @@
             <span
               :class="[
                 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                value === 'anthropic'
+                    value === 'auto'
+                      ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300'
+                      : value === 'anthropic'
                   ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
                   : value === 'openai'
                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
@@ -161,8 +163,8 @@
                 :class="[
                   'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
                   row.subscription_type === 'subscription'
-                    ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+                      ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
+                      : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
                 ]"
               >
                 {{
@@ -249,9 +251,9 @@
             </div>
           </template>
 
-          <template #cell-rate_multiplier="{ value }">
+          <template #cell-rate_multiplier="{ row }">
             <span class="text-sm text-gray-700 dark:text-gray-300"
-              >{{ value }}x</span
+              >{{ row.platform === "auto" ? t("admin.groups.automatic") : groupRateMultiplierDisplay(row) }}</span
             >
           </template>
 
@@ -587,6 +589,15 @@
             t("admin.groups.form.rateMultiplier")
           }}</label>
           <input
+            v-if="createForm.platform === 'auto'"
+            :value="t('admin.groups.automatic')"
+            type="text"
+            disabled
+            class="input"
+            data-tour="group-form-multiplier"
+          />
+          <input
+            v-else
             v-model.number="createForm.rate_multiplier"
             type="number"
             step="0.001"
@@ -699,8 +710,9 @@
               t("admin.groups.subscription.type")
             }}</label>
             <Select
-              v-model="createForm.subscription_type"
+              v-model="createGroupType"
               :options="subscriptionTypeOptions"
+              :disabled="createForm.platform === 'auto'"
             />
             <p class="input-hint">
               {{ t("admin.groups.subscription.typeHint") }}
@@ -753,6 +765,12 @@
             </div>
           </div>
         </div>
+
+        <GroupAutoRoutingFields
+          v-if="createForm.platform === 'auto'"
+          v-model:candidate-group-ids="createForm.auto_candidate_group_ids"
+          :groups="autoRoutingGroups"
+        />
 
         <div class="border-t pt-4">
           <div class="mb-3 flex items-center justify-between gap-3">
@@ -2108,6 +2126,15 @@
             t("admin.groups.form.rateMultiplier")
           }}</label>
           <input
+            v-if="editForm.platform === 'auto'"
+            :value="t('admin.groups.automatic')"
+            type="text"
+            disabled
+            class="input"
+            data-tour="group-form-multiplier"
+          />
+          <input
+            v-else
             v-model.number="editForm.rate_multiplier"
             type="number"
             step="0.001"
@@ -2220,12 +2247,16 @@
               t("admin.groups.subscription.type")
             }}</label>
             <Select
-              v-model="editForm.subscription_type"
+              v-model="editGroupType"
               :options="subscriptionTypeOptions"
-              :disabled="true"
+              :disabled="editForm.subscription_type === 'subscription' || editForm.platform === 'auto'"
             />
             <p class="input-hint">
-              {{ t("admin.groups.subscription.typeNotEditable") }}
+              {{
+                editForm.subscription_type === "subscription"
+                  ? t("admin.groups.subscription.typeNotEditable")
+                  : t("admin.groups.subscription.typeHint")
+              }}
             </p>
           </div>
 
@@ -2275,6 +2306,13 @@
             </div>
           </div>
         </div>
+
+        <GroupAutoRoutingFields
+          v-if="editForm.platform === 'auto'"
+          v-model:candidate-group-ids="editForm.auto_candidate_group_ids"
+          :groups="autoRoutingGroups"
+          :current-group-id="editingGroup.id"
+        />
 
         <div class="border-t pt-4">
           <div class="mb-3 flex items-center justify-between gap-3">
@@ -3976,6 +4014,7 @@ import type {
   CompositeRouteEndpoint,
   CompositeRouteMatchType,
   GroupPlatform,
+  GroupRoutingMode,
   SubscriptionType,
 } from "@/types";
 import type { Column } from "@/components/common/types";
@@ -3991,6 +4030,7 @@ import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
+import GroupAutoRoutingFields from "@/components/admin/group/GroupAutoRoutingFields.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import { VueDraggable } from "vue-draggable-plus";
@@ -4015,6 +4055,13 @@ import {
 } from "./groupsModelsList";
 import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
+import {
+  groupPlatformConfiguration,
+  groupRateMultiplierDisplay,
+  groupTypeConfiguration,
+  groupTypeSelection,
+  type GroupTypeSelection,
+} from "./groupsAutoRouting";
 import {
   normalizeReasoningEffortForPlatform,
   reasoningEffortMappingsToAPI,
@@ -4211,6 +4258,7 @@ const exclusiveOptions = computed(() => [
 ]);
 
 const platformOptions = computed(() => [
+  { value: "auto", label: t("admin.groups.automatic") },
   { value: "anthropic", label: "Anthropic" },
   { value: "openai", label: "OpenAI" },
   { value: "gemini", label: "Gemini" },
@@ -4390,6 +4438,7 @@ const copyAccountsGroupOptionsForEdit = computed(() => {
 });
 
 const groups = ref<AdminGroup[]>([]);
+const autoRoutingGroups = ref<AdminGroup[]>([]);
 const loading = ref(false);
 type GroupUsageSummary = {
   today_cost: number;
@@ -4503,6 +4552,8 @@ const createForm = reactive({
   rate_multiplier: 1.0,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
+  routing_mode: "fixed" as GroupRoutingMode,
+  auto_candidate_group_ids: [] as number[],
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -4852,6 +4903,8 @@ const editForm = reactive({
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
+  routing_mode: "fixed" as GroupRoutingMode,
+  auto_candidate_group_ids: [] as number[],
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -4904,6 +4957,28 @@ const editForm = reactive({
   rpm_limit: 0 as number,
   max_reasoning_effort: "",
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
+});
+
+const applyGroupTypeSelection = (
+  form: typeof createForm | typeof editForm,
+  selection: GroupTypeSelection,
+) => {
+  const config = groupTypeConfiguration(selection);
+  form.subscription_type = config.subscriptionType;
+  form.routing_mode = config.routingMode;
+  if (config.routingMode === "fixed") {
+    form.auto_candidate_group_ids = [];
+  }
+};
+
+const createGroupType = computed<GroupTypeSelection>({
+  get: () => groupTypeSelection(createForm),
+  set: (selection) => applyGroupTypeSelection(createForm, selection),
+});
+
+const editGroupType = computed<GroupTypeSelection>({
+  get: () => groupTypeSelection(editForm),
+  set: (selection) => applyGroupTypeSelection(editForm, selection),
 });
 
 type ImagePricingFormState = {
@@ -5244,8 +5319,18 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadGroups();
 };
 
+const loadAutoRoutingGroups = async () => {
+  try {
+    autoRoutingGroups.value = await adminAPI.groups.getAll();
+  } catch (error) {
+    console.error("Error loading auto-routing candidate groups:", error);
+    autoRoutingGroups.value = [];
+  }
+};
+
 const openCreateModal = () => {
   showCreateModal.value = true;
+  void loadAutoRoutingGroups();
   loadModelsListCandidates("create", 0, createForm.platform);
 };
 
@@ -5261,6 +5346,8 @@ const closeCreateModal = () => {
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
+  createForm.routing_mode = "fixed";
+  createForm.auto_candidate_group_ids = [];
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
@@ -5503,6 +5590,11 @@ const handleEdit = async (group: AdminGroup) => {
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,
   );
+  await loadAutoRoutingGroups();
+  editForm.routing_mode = group.routing_mode || "fixed";
+  editForm.auto_candidate_group_ids = [
+    ...(group.auto_candidate_group_ids || []),
+  ];
   loadModelsListCandidates("edit", group.id, group.platform);
   showEditModal.value = true;
 };
@@ -5519,6 +5611,8 @@ const closeEditModal = () => {
   editReasoningEffortPolicyRef.value?.resetValidation();
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
+  editForm.routing_mode = "fixed";
+  editForm.auto_candidate_group_ids = [];
   editForm.peak_rate_enabled = false;
   editForm.peak_start = "";
   editForm.peak_end = "";
@@ -5904,6 +5998,8 @@ watch(
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
       createForm.fallback_group_id_on_invalid_request = null;
+      createForm.routing_mode = "fixed";
+      createForm.auto_candidate_group_ids = [];
     } else {
       createForm.peak_rate_enabled = false;
       createForm.peak_start = "";
@@ -5922,6 +6018,9 @@ watch(
       editForm.peak_start = "";
       editForm.peak_end = "";
       editForm.peak_rate_multiplier = 1.0;
+    } else {
+      editForm.routing_mode = "fixed";
+      editForm.auto_candidate_group_ids = [];
     }
   },
 );
@@ -5929,6 +6028,14 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
+    createForm.auto_candidate_group_ids = [];
+    if (newVal === "auto") {
+      const routing = groupPlatformConfiguration(newVal);
+      createForm.subscription_type = routing.subscriptionType;
+      createForm.routing_mode = routing.routingMode;
+    } else if (createForm.routing_mode === "auto_lowest_cost") {
+      createForm.routing_mode = "fixed";
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
@@ -5971,6 +6078,7 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
+    editForm.auto_candidate_group_ids = [];
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }

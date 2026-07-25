@@ -107,6 +107,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	if h.rejectIfCyberSessionBlocked(c, apiKey, body, reqModel, cyberBlockFormatChat) {
 		return
 	}
+	apiKey, err = h.resolveAutoRoutingGroup(c, apiKey, reqModel, body)
+	if err != nil {
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", err.Error())
+		return
+	}
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)

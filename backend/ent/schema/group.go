@@ -72,6 +72,14 @@ func (Group) Fields() []ent.Field {
 			Nillable().
 			Immutable().
 			Comment("内部幂等恢复标识，不对 API 暴露"),
+		field.String("routing_mode").
+			MaxLen(32).
+			Default("fixed").
+			Comment("Group request routing mode: fixed or auto_lowest_cost"),
+		field.JSON("auto_candidate_group_ids", []int64{}).
+			Default([]int64{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Candidate balance groups for auto_lowest_cost routing"),
 
 		// Subscription-related fields (added by migration 003)
 		field.String("platform").

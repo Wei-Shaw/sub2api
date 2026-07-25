@@ -64,6 +64,8 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetSortOrder(groupIn.SortOrder).
 		SetIsExclusive(groupIn.IsExclusive).
 		SetStatus(groupIn.Status).
+		SetRoutingMode(groupIn.RoutingMode).
+		SetAutoCandidateGroupIds(groupIn.AutoCandidateGroupIDs).
 		SetSubscriptionType(groupIn.SubscriptionType).
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
@@ -232,6 +234,8 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetRateMultiplier(groupIn.RateMultiplier).
 		SetIsExclusive(groupIn.IsExclusive).
 		SetStatus(groupIn.Status).
+		SetRoutingMode(groupIn.RoutingMode).
+		SetAutoCandidateGroupIds(groupIn.AutoCandidateGroupIDs).
 		SetSubscriptionType(groupIn.SubscriptionType).
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
