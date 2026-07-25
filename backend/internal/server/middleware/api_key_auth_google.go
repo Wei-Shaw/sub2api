@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
@@ -23,6 +24,7 @@ func APIKeyAuthGoogle(apiKeyService *service.APIKeyService, cfg *config.Config) 
 //
 // It is intended for Gemini native endpoints (/v1beta) to match Gemini SDK expectations.
 func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
+	evaluationSigner := evaluationContextSignerFromConfig(cfg)
 	return func(c *gin.Context) {
 		if rejectInvalidAuthAbuse(c, apiKeyService) {
 			abortWithGoogleError(c, 429, "Too many invalid authentication attempts; retry later")
@@ -128,6 +130,10 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
 			MarkIngressRejected(c, IngressRejectGroupNotAllowed)
 			abortWithGoogleError(c, 403, "API Key 所属专属分组不再允许当前用户使用")
+			return
+		}
+		if bindErr := bindEvaluationContext(c, apiKey, evaluationSigner, time.Now()); bindErr != nil {
+			abortWithGoogleEvaluationContextError(c, bindErr)
 			return
 		}
 
