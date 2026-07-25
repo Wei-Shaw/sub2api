@@ -253,6 +253,7 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 ) (*LiveCallCreated, error) {
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
+		logLiveCreateStageFailure(ctx, account.ID, "access_token", err)
 		return nil, err
 REDACTED
 	body, err := json.Marshal(struct {
@@ -272,6 +273,7 @@ REDACTED
 REDACTED
 	authHeaders, err := s.buildOpenAIAuthenticationHeaders(ctx, account, token)
 	if err != nil {
+		logLiveCreateStageFailure(ctx, account.ID, "authentication_headers", err)
 		return nil, err
 REDACTED
 	for key, values := range authHeaders {
@@ -281,6 +283,7 @@ REDACTED
 REDACTED
 	upstreamReq.Host = "chatgpt.com"
 	if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, upstreamReq.Header, account); err != nil {
+		logLiveCreateStageFailure(ctx, account.ID, "account_headers", err)
 		return nil, err
 REDACTED
 	upstreamReq.Header.Set("Content-Type", "application/json")
@@ -289,6 +292,7 @@ REDACTED
 
 	resp, err := s.httpUpstream.Do(upstreamReq, resolveAccountProxyURL(account), account.ID, account.Concurrency)
 	if err != nil {
+		logLiveCreateStageFailure(ctx, account.ID, "upstream_transport", err)
 		return nil, err
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
@@ -316,6 +320,15 @@ REDACTED
 		CallID:   callID,
 		Location: resp.Header.Get("Location"),
 REDACTED, nil
+REDACTED
+
+func logLiveCreateStageFailure(ctx context.Context, accountID int64, stage string, err error) {
+	logger.FromContext(ctx).Warn(
+		"OpenAI Live 创建阶段失败",
+		zap.Int64("account_id", accountID),
+		zap.String("stage", stage),
+		zap.String("error_type", fmt.Sprintf("%T", err)),
+	)
 REDACTED
 
 func logLiveUpstreamFailure(
@@ -376,6 +389,12 @@ func applyLiveUpstreamIdentityHeaders(headers http.Header) {
 	headers.Set("OpenAI-Alpha", "quicksilver=v2")
 	ensureCodexIdentityHeaders(headers)
 	enforceCodexIdentityHeaders(headers)
+	if strings.TrimSpace(headers.Get("session-id")) == "" {
+		headers.Set("session-id", uuid.NewString())
+REDACTED
+	if strings.TrimSpace(headers.Get("thread-id")) == "" {
+		headers.Set("thread-id", uuid.NewString())
+REDACTED
 	// Realtime/Live 不使用 Responses 的实验头。
 	headers.Del("OpenAI-Beta")
 REDACTED
