@@ -8,13 +8,15 @@ import (
 	"sync/atomic"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	portsetting "github.com/Wei-Shaw/sub2api/internal/port/setting"
 	"golang.org/x/sync/singleflight"
 )
 
 var (
 	ErrRegistrationDisabled   = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
-	ErrSettingNotFound        = infraerrors.NotFound("SETTING_NOT_FOUND", "setting not found")
+	ErrSettingNotFound        = domain.ErrSettingNotFound
 	ErrDefaultSubGroupInvalid = infraerrors.BadRequest(
 		"DEFAULT_SUBSCRIPTION_GROUP_INVALID",
 		"default subscription group must exist and be subscription type",
@@ -25,15 +27,8 @@ var (
 	)
 )
 
-type SettingRepository interface {
-	Get(ctx context.Context, key string) (*Setting, error)
-	GetValue(ctx context.Context, key string) (string, error)
-	Set(ctx context.Context, key, value string) error
-	GetMultiple(ctx context.Context, keys []string) (map[string]string, error)
-	SetMultiple(ctx context.Context, settings map[string]string) error
-	GetAll(ctx context.Context) (map[string]string, error)
-	Delete(ctx context.Context, key string) error
-}
+// SettingRepository is a type alias for the setting persistence port.
+type SettingRepository = portsetting.Repository
 
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
@@ -46,7 +41,7 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	settingRepo                 SettingRepository
+	settingRepo                 portsetting.Repository
 	defaultSubGroupReader       DefaultSubscriptionGroupReader
 	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
 	cfg                         *config.Config
@@ -200,7 +195,7 @@ const (
 )
 
 // NewSettingService 创建系统设置服务实例
-func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *SettingService {
+func NewSettingService(settingRepo portsetting.Repository, cfg *config.Config) *SettingService {
 	return &SettingService{
 		settingRepo: settingRepo,
 		cfg:         cfg,

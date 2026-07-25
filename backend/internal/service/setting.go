@@ -1,10 +1,6 @@
 package service
 
-import "time"
+import "github.com/Wei-Shaw/sub2api/internal/domain"
 
-type Setting struct {
-	ID        int64
-	Key       string
-	Value     string
-	UpdatedAt time.Time
-}
+// Setting lives in domain; re-export for existing call sites.
+type Setting = domain.Setting
