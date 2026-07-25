@@ -79,10 +79,31 @@ func recordEvaluationRouteAttempt(ctx context.Context, cfg *config.Config, accou
 
 func recordEvaluationRouteFailover(ctx context.Context, failoverErr *service.UpstreamFailoverError) {
 	trace, ok := service.RouteTraceFromContext(ctx)
-	if !ok || failoverErr == nil || failoverErr.StatusCode <= 0 {
+	if !ok || failoverErr == nil {
 		return
 	}
-	trace.RecordLatestAttemptError(strconv.Itoa(failoverErr.StatusCode))
+	if failoverErr.StatusCode > 0 {
+		trace.RecordLatestAttemptError(strconv.Itoa(failoverErr.StatusCode))
+		return
+	}
+	if reason := stableRouteFailureReason(failoverErr.Reason); reason != "" {
+		trace.RecordLatestAttemptError(reason)
+	}
+}
+
+func stableRouteFailureReason(reason service.GatewayFailureReason) string {
+	value := strings.TrimSpace(string(reason))
+	if value == "" {
+		return ""
+	}
+	for _, character := range value {
+		if (character < 'a' || character > 'z') &&
+			(character < '0' || character > '9') &&
+			character != '_' && character != '-' {
+			return ""
+		}
+	}
+	return value
 }
 
 // NewGatewayHandler creates a new GatewayHandler

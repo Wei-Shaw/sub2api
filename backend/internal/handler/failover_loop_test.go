@@ -266,6 +266,22 @@ func TestHandleFailoverError_BasicSwitch(t *testing.T) {
 	})
 }
 
+func TestRecordEvaluationRouteFailoverPreservesCredentialReason(t *testing.T) {
+	trace := service.NewRouteTrace(service.EvaluationContext{}, service.RouteTraceConfig{HashKey: []byte("route-evidence-test-key")})
+	trace.RecordAttempt(service.RouteAttempt{Provider: service.PlatformGrok, AccountID: 12, ResolvedModel: "grok-4", Region: "cn-east"})
+	ctx := service.WithRouteTrace(context.Background(), trace)
+
+	recordEvaluationRouteFailover(ctx, &service.UpstreamFailoverError{
+		Stage:         service.GatewayFailureStageAccountAuth,
+		Scope:         service.GatewayFailureScopeAccount,
+		Reason:        service.GrokCredentialReasonRevoked,
+		ClientMessage: "refresh_token=must-not-leak",
+	})
+
+	got := trace.Snapshot()
+	require.Equal(t, string(service.GrokCredentialReasonRevoked), got.FallbackChain[0].ErrorCode)
+}
+
 // ---------------------------------------------------------------------------
 // HandleFailoverError — 缓存计费 (ForceCacheBilling)
 // ---------------------------------------------------------------------------
