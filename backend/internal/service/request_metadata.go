@@ -18,6 +18,7 @@ type RequestMetadata struct {
 	PrefetchedStickyGroupID    *int64
 	SingleAccountRetry         *bool
 	AccountSwitchCount         *int
+	RouteTrace                 *RouteTrace
 }
 
 var (

@@ -59,6 +59,32 @@ type GatewayHandler struct {
 	settingService            *service.SettingService
 }
 
+func recordEvaluationRouteAttempt(ctx context.Context, cfg *config.Config, account *service.Account, requestedModel string) {
+	trace, ok := service.RouteTraceFromContext(ctx)
+	if !ok || account == nil {
+		return
+	}
+
+	region := ""
+	if cfg != nil {
+		region = cfg.Radar.Region
+	}
+	trace.RecordAttempt(service.RouteAttempt{
+		Provider:      account.Platform,
+		AccountID:     account.ID,
+		ResolvedModel: account.GetMappedModel(requestedModel),
+		Region:        region,
+	})
+}
+
+func recordEvaluationRouteFailover(ctx context.Context, failoverErr *service.UpstreamFailoverError) {
+	trace, ok := service.RouteTraceFromContext(ctx)
+	if !ok || failoverErr == nil || failoverErr.StatusCode <= 0 {
+		return
+	}
+	trace.RecordLatestAttemptError(strconv.Itoa(failoverErr.StatusCode))
+}
+
 // NewGatewayHandler creates a new GatewayHandler
 func NewGatewayHandler(
 	gatewayService *service.GatewayService,
@@ -353,6 +379,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			account := selection.Account
 			setOpsSelectedAccount(c, account.ID, account.Platform)
+			recordEvaluationRouteAttempt(c.Request.Context(), h.cfg, account, reqModel)
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
@@ -457,6 +484,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if err != nil {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					recordEvaluationRouteFailover(c.Request.Context(), failoverErr)
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
 						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, true)
@@ -643,6 +671,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			account := selection.Account
 			setOpsSelectedAccount(c, account.ID, account.Platform)
+			recordEvaluationRouteAttempt(c.Request.Context(), h.cfg, account, reqModel)
 
 			// [DEBUG-STICKY] 打印账号选择结果
 			reqLog.Info("sticky.account_selected",
@@ -884,6 +913,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					recordEvaluationRouteFailover(c.Request.Context(), failoverErr)
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
