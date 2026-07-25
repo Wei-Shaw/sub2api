@@ -162,7 +162,12 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))
 		for i := range g.AccountGroups {
 			ag := g.AccountGroups[i]
-			out.AccountGroups = append(out.AccountGroups, *AccountGroupFromService(&ag))
+			out.AccountGroups = append(out.AccountGroups, AccountGroup{
+				AccountID: ag.AccountID,
+				GroupID:   ag.GroupID,
+				Priority:  ag.Priority,
+				CreatedAt: ag.CreatedAt,
+			})
 		}
 	}
 	return out

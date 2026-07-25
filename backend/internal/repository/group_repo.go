@@ -10,9 +10,10 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	portgroup "github.com/Wei-Shaw/sub2api/internal/port/group"
 	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -28,13 +29,13 @@ type groupRepository struct {
 	sql    sqlExecutor
 }
 
-func NewGroupRepository(client *dbent.Client, sqlDB *sql.DB) service.GroupRepository {
+func NewGroupRepository(client *dbent.Client, sqlDB *sql.DB) portgroup.Repository {
 	return newGroupRepositoryWithSQL(client, sqlDB)
 }
 
 // NewAdminGroupRepository exposes the atomic group-duplication capability as
 // an explicit dependency of the admin service.
-func NewAdminGroupRepository(client *dbent.Client, sqlDB *sql.DB) service.AdminGroupRepository {
+func NewAdminGroupRepository(client *dbent.Client, sqlDB *sql.DB) portgroup.AdminRepository {
 	return newGroupRepositoryWithSQL(client, sqlDB)
 }
 
@@ -42,17 +43,17 @@ func newGroupRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *groupRep
 	return &groupRepository{client: client, sql: sqlq}
 }
 
-func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) error {
+func (r *groupRepository) Create(ctx context.Context, groupIn *domain.Group) error {
 	if err := createGroupRecord(ctx, r.client, groupIn); err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, r.sql, "group_changed", nil, &groupIn.ID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group create failed: group=%d err=%v", groupIn.ID, err)
 	}
 	return nil
 }
 
-func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *service.Group) error {
+func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *domain.Group) error {
 	if groupIn == nil {
 		return errors.New("group is nil")
 	}
@@ -116,7 +117,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 
 	created, err := builder.Save(ctx)
 	if err != nil {
-		return translatePersistenceError(err, nil, service.ErrGroupExists)
+		return translatePersistenceError(err, nil, domain.ErrGroupExists)
 	}
 	groupIn.ID = created.ID
 	groupIn.CreatedAt = created.CreatedAt
@@ -124,7 +125,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 	return nil
 }
 
-func (r *groupRepository) FindByDuplicateOperationID(ctx context.Context, operationID string) (*service.Group, error) {
+func (r *groupRepository) FindByDuplicateOperationID(ctx context.Context, operationID string) (*domain.Group, error) {
 	operationID = strings.TrimSpace(operationID)
 	if operationID == "" {
 		return nil, nil
@@ -144,7 +145,7 @@ func (r *groupRepository) FindByDuplicateOperationID(ctx context.Context, operat
 
 // CreateFromSource atomically persists a copied group, clones the source
 // account bindings with their exact priorities, and writes its scheduler event.
-func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service.Group, sourceGroupID int64) error {
+func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *domain.Group, sourceGroupID int64) error {
 	if groupIn == nil {
 		return errors.New("group is nil")
 	}
@@ -178,7 +179,7 @@ func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service
 		sourceGroupID,
 		groupIn.ID,
 		groupIn.RequireOAuthOnly,
-		service.AccountTypeAPIKey,
+		domain.AccountTypeAPIKey,
 	)
 	if err != nil {
 		return err
@@ -186,7 +187,7 @@ func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service
 	if count, countErr := result.RowsAffected(); countErr == nil {
 		groupIn.AccountCount = count
 	}
-	if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, txClient, "group_changed", nil, &groupIn.ID, nil); err != nil {
 		return err
 	}
 
@@ -198,7 +199,7 @@ func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service
 	return nil
 }
 
-func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+func (r *groupRepository) GetByID(ctx context.Context, id int64) (*domain.Group, error) {
 	out, err := r.GetByIDLite(ctx, id)
 	if err != nil {
 		return nil, err
@@ -213,18 +214,18 @@ func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group
 	return out, nil
 }
 
-func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
+func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*domain.Group, error) {
 	// AccountCount is intentionally not loaded here; use GetByID when needed.
 	m, err := r.client.Group.Query().
 		Where(group.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
-		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
+		return nil, translatePersistenceError(err, domain.ErrGroupNotFound, nil)
 	}
 	return groupEntityToService(m), nil
 }
 
-func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
+func (r *groupRepository) Update(ctx context.Context, groupIn *domain.Group) error {
 	builder := r.client.Group.UpdateOneID(groupIn.ID).
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
@@ -345,10 +346,10 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 
 	updated, err := builder.Save(ctx)
 	if err != nil {
-		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
+		return translatePersistenceError(err, domain.ErrGroupNotFound, domain.ErrGroupExists)
 	}
 	groupIn.UpdatedAt = updated.UpdatedAt
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, r.sql, "group_changed", nil, &groupIn.ID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group update failed: group=%d err=%v", groupIn.ID, err)
 	}
 	return nil
@@ -357,19 +358,19 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 func (r *groupRepository) Delete(ctx context.Context, id int64) error {
 	_, err := r.client.Group.Delete().Where(group.IDEQ(id)).Exec(ctx)
 	if err != nil {
-		return translatePersistenceError(err, service.ErrGroupNotFound, nil)
+		return translatePersistenceError(err, domain.ErrGroupNotFound, nil)
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &id, nil); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, r.sql, "group_changed", nil, &id, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group delete failed: group=%d err=%v", id, err)
 	}
 	return nil
 }
 
-func (r *groupRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Group, *pagination.PaginationResult, error) {
+func (r *groupRepository) List(ctx context.Context, params pagination.PaginationParams) ([]domain.Group, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, "", "", "", nil)
 }
 
-func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]service.Group, *pagination.PaginationResult, error) {
+func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]domain.Group, *pagination.PaginationResult, error) {
 	q := r.client.Group.Query()
 
 	if platform != "" {
@@ -410,7 +411,7 @@ func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination
 	}
 
 	groupIDs := make([]int64, 0, len(groups))
-	outGroups := make([]service.Group, 0, len(groups))
+	outGroups := make([]domain.Group, 0, len(groups))
 	for i := range groups {
 		g := groupEntityToService(groups[i])
 		outGroups = append(outGroups, *g)
@@ -430,7 +431,7 @@ func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination
 	return outGroups, paginationResultFromTotal(int64(total), params), nil
 }
 
-func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent.GroupQuery, params pagination.PaginationParams, total int) ([]service.Group, *pagination.PaginationResult, error) {
+func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent.GroupQuery, params pagination.PaginationParams, total int) ([]domain.Group, *pagination.PaginationResult, error) {
 	// 第一步：只查 ID + sort_order（轻量，不做分页 — 需要全量排序 account_count）。
 	rows, err := q.Clone().
 		Select(group.FieldID, group.FieldSortOrder).
@@ -502,7 +503,7 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 		return nil, nil, err
 	}
 
-	outGroups := make([]service.Group, len(page))
+	outGroups := make([]domain.Group, len(page))
 	for i := range groups {
 		g := groupEntityToService(groups[i])
 		c := counts[g.ID]
@@ -571,9 +572,9 @@ func groupListOrder(params pagination.PaginationParams) []func(*entsql.Selector)
 	return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(tieField)}
 }
 
-func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, error) {
+func (r *groupRepository) ListActive(ctx context.Context) ([]domain.Group, error) {
 	groups, err := r.client.Group.Query().
-		Where(group.StatusEQ(service.StatusActive)).
+		Where(group.StatusEQ(domain.StatusActive)).
 		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
 		All(ctx)
 	if err != nil {
@@ -581,7 +582,7 @@ func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, erro
 	}
 
 	groupIDs := make([]int64, 0, len(groups))
-	outGroups := make([]service.Group, 0, len(groups))
+	outGroups := make([]domain.Group, 0, len(groups))
 	for i := range groups {
 		g := groupEntityToService(groups[i])
 		outGroups = append(outGroups, *g)
@@ -609,7 +610,7 @@ func (r *groupRepository) ListActiveIDs(ctx context.Context) ([]int64, error) {
 			WHERE status = $1
 			  AND deleted_at IS NULL
 			ORDER BY sort_order ASC, id ASC
-		`, service.StatusActive)
+		`, domain.StatusActive)
 		if err != nil {
 			return nil, err
 		}
@@ -630,7 +631,7 @@ func (r *groupRepository) ListActiveIDs(ctx context.Context) ([]int64, error) {
 	}
 
 	groups, err := r.client.Group.Query().
-		Where(group.StatusEQ(service.StatusActive)).
+		Where(group.StatusEQ(domain.StatusActive)).
 		Select(group.FieldID).
 		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
 		All(ctx)
@@ -644,9 +645,9 @@ func (r *groupRepository) ListActiveIDs(ctx context.Context) ([]int64, error) {
 	return ids, nil
 }
 
-func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform string) ([]service.Group, error) {
+func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform string) ([]domain.Group, error) {
 	groups, err := r.client.Group.Query().
-		Where(group.StatusEQ(service.StatusActive), group.PlatformEQ(platform)).
+		Where(group.StatusEQ(domain.StatusActive), group.PlatformEQ(platform)).
 		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
 		All(ctx)
 	if err != nil {
@@ -654,7 +655,7 @@ func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform str
 	}
 
 	groupIDs := make([]int64, 0, len(groups))
-	outGroups := make([]service.Group, 0, len(groups))
+	outGroups := make([]domain.Group, 0, len(groups))
 	for i := range groups {
 		g := groupEntityToService(groups[i])
 		outGroups = append(outGroups, *g)
@@ -745,7 +746,7 @@ func (r *groupRepository) DeleteAccountGroupsByGroupID(ctx context.Context, grou
 		return 0, err
 	}
 	affected, _ := res.RowsAffected()
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupID, nil); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, r.sql, "group_changed", nil, &groupID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group account clear failed: group=%d err=%v", groupID, err)
 	}
 	return affected, nil
@@ -754,7 +755,7 @@ func (r *groupRepository) DeleteAccountGroupsByGroupID(ctx context.Context, grou
 func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64, error) {
 	g, err := r.client.Group.Query().Where(group.IDEQ(id)).Only(ctx)
 	if err != nil {
-		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
+		return nil, translatePersistenceError(err, domain.ErrGroupNotFound, nil)
 	}
 	groupSvc := groupEntityToService(g)
 
@@ -793,7 +794,7 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 		return nil, err
 	}
 	if lockedID == 0 {
-		return nil, service.ErrGroupNotFound
+		return nil, domain.ErrGroupNotFound
 	}
 
 	var affectedUserIDs []int64
@@ -845,7 +846,7 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 			return nil, err
 		}
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &id, nil); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, r.sql, "group_changed", nil, &id, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group cascade delete failed: group=%d err=%v", id, err)
 	}
 
@@ -974,7 +975,7 @@ func (r *groupRepository) BindAccountsToGroup(ctx context.Context, groupID int64
 	}
 
 	// 发送调度器事件
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupID, nil); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, r.sql, "group_changed", nil, &groupID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue bind accounts to group failed: group=%d err=%v", groupID, err)
 	}
 
@@ -982,7 +983,7 @@ func (r *groupRepository) BindAccountsToGroup(ctx context.Context, groupID int64
 }
 
 // UpdateSortOrders 批量更新分组排序
-func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []service.GroupSortOrderUpdate) error {
+func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []portgroup.SortOrderUpdate) error {
 	if len(updates) == 0 {
 		return nil
 	}
@@ -1015,7 +1016,7 @@ func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []servic
 		return err
 	}
 	if existingCount != len(groupIDs) {
-		return service.ErrGroupNotFound
+		return domain.ErrGroupNotFound
 	}
 
 	args := make([]any, 0, len(groupIDs)*2+1)
@@ -1046,11 +1047,11 @@ func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []servic
 		return err
 	}
 	if affected != int64(len(groupIDs)) {
-		return service.ErrGroupNotFound
+		return domain.ErrGroupNotFound
 	}
 
 	for _, id := range groupIDs {
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &id, nil); err != nil {
+		if err := enqueueSchedulerOutbox(ctx, r.sql, "group_changed", nil, &id, nil); err != nil {
 			logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group sort update failed: group=%d err=%v", id, err)
 		}
 	}

@@ -3,6 +3,7 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"context"
 	"errors"
 	"strings"
@@ -62,7 +63,7 @@ func cloneGroupForDuplicateTest(group *Group) *Group {
 	cloned.SupportedModelScopes = append([]string(nil), group.SupportedModelScopes...)
 	cloned.MessagesDispatchModelConfig = cloneGroupMessagesDispatchModelConfig(group.MessagesDispatchModelConfig)
 	cloned.ModelsListConfig.Models = append([]string(nil), group.ModelsListConfig.Models...)
-	cloned.AccountGroups = append([]AccountGroup(nil), group.AccountGroups...)
+	cloned.AccountGroups = append([]domain.AccountGroupLink(nil), group.AccountGroups...)
 	return &cloned
 }
 
@@ -181,7 +182,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 		ActiveAccountCount:      8,
 		RateLimitedAccountCount: 2,
 		DuplicateOperationID:    "old-operation-must-not-copy",
-		AccountGroups:           []AccountGroup{{AccountID: 13, GroupID: 41, Priority: 37}},
+		AccountGroups:           []domain.AccountGroupLink{{AccountID: 13, GroupID: 41, Priority: 37}},
 	}
 	repo := newDuplicateGroupRepoStub(source)
 	repo.sourceBindings[source.ID] = []AccountGroup{

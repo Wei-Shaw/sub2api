@@ -57,7 +57,7 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 	if apiKey == nil || apiKey.Group == nil {
 		return ""
 	}
-	return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))
+	return strings.TrimSpace(service.ResolveMessagesDispatchModel(apiKey.Group, requestedModel))
 }
 
 type openAIModelBodyReplaceFunc func([]byte, string) []byte

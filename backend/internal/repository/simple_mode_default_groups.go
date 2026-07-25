@@ -6,7 +6,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 func ensureSimpleModeDefaultGroups(ctx context.Context, client *dbent.Client) error {
@@ -15,11 +15,11 @@ func ensureSimpleModeDefaultGroups(ctx context.Context, client *dbent.Client) er
 	}
 
 	requiredByPlatform := map[string]int{
-		service.PlatformAnthropic:   1,
-		service.PlatformOpenAI:      1,
-		service.PlatformGemini:      1,
-		service.PlatformAntigravity: 2,
-		service.PlatformGrok:        1,
+		domain.PlatformAnthropic:   1,
+		domain.PlatformOpenAI:      1,
+		domain.PlatformGemini:      1,
+		domain.PlatformAntigravity: 2,
+		domain.PlatformGrok:        1,
 	}
 
 	for platform, minCount := range requiredByPlatform {
@@ -30,7 +30,7 @@ func ensureSimpleModeDefaultGroups(ctx context.Context, client *dbent.Client) er
 			return fmt.Errorf("count groups for platform %s: %w", platform, err)
 		}
 
-		if platform == service.PlatformAntigravity {
+		if platform == domain.PlatformAntigravity {
 			if count < minCount {
 				for i := count; i < minCount; i++ {
 					name := fmt.Sprintf("%s-default-%d", platform, i+1)
@@ -67,8 +67,8 @@ func createGroupIfNotExists(ctx context.Context, client *dbent.Client, name, pla
 		SetName(name).
 		SetDescription("Auto-created default group").
 		SetPlatform(platform).
-		SetStatus(service.StatusActive).
-		SetSubscriptionType(service.SubscriptionTypeStandard).
+		SetStatus(domain.StatusActive).
+		SetSubscriptionType(domain.SubscriptionTypeStandard).
 		SetRateMultiplier(1.0).
 		SetIsExclusive(false).
 		Save(ctx)

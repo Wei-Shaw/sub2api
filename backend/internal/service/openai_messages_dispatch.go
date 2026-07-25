@@ -59,7 +59,10 @@ func claudeMessagesDispatchFamily(model string) string {
 	}
 }
 
-func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
+// ResolveMessagesDispatchModel maps a requested Claude-family model to the
+// group's configured OpenAI/Grok dispatch target. Free function because Group
+// is a domain type alias and cannot grow service-package methods.
+func ResolveMessagesDispatchModel(g *Group, requestedModel string) string {
 	if g == nil {
 		return ""
 	}

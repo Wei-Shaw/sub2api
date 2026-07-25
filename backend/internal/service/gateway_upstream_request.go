@@ -1,6 +1,8 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+
 	"bytes"
 	"context"
 	"fmt"
@@ -710,7 +712,7 @@ func betaPolicyScopeMatches(scope string, isOAuth bool, isBedrock bool) bool {
 // Reuses matchModelPattern from group.go which supports exact and wildcard prefix matching.
 func matchModelWhitelist(model string, whitelist []string) bool {
 	for _, pattern := range whitelist {
-		if matchModelPattern(pattern, model) {
+		if domain.MatchModelPattern(pattern, model) {
 			return true
 		}
 	}

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+
 	"bytes"
 	"context"
 	"database/sql"
@@ -789,8 +791,8 @@ func upstreamBillingPeakMultiplierAt(data map[string]any, now time.Time) (float6
 	end, endOK := data["peak_end"].(string)
 	timezoneName, timezoneOK := data["timezone"].(string)
 	peakMultiplier, multiplierOK := resolveAccountExtraNumber(data, "peak_rate_multiplier")
-	startMinute, validStart := parseMinutes(start)
-	endMinute, validEnd := parseMinutes(end)
+	startMinute, validStart := domain.ParseMinutes(start)
+	endMinute, validEnd := domain.ParseMinutes(end)
 	if !startOK || !endOK || !timezoneOK || !multiplierOK || !validStart || !validEnd ||
 		startMinute >= endMinute || peakMultiplier < 0 || math.IsNaN(peakMultiplier) || math.IsInf(peakMultiplier, 0) {
 		return 0, false

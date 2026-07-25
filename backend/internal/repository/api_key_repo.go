@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 
@@ -905,11 +906,11 @@ func userEntityToService(u *dbent.User) *service.User {
 	return out
 }
 
-func groupEntityToService(g *dbent.Group) *service.Group {
+func groupEntityToService(g *dbent.Group) *domain.Group {
 	if g == nil {
 		return nil
 	}
-	return &service.Group{
+	return &domain.Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
 		Description:                     derefString(g.Description),
