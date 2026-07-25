@@ -124,6 +124,11 @@ REDACTED)
 		return err
 REDACTED
 
+	// Transport attempt reached the network path; count as Ollama Cloud activity.
+	if s != nil {
+		scheduleOllamaCloudUsageActivity(s.deferredService, account)
+REDACTED
+
 	if classifyOpenAITransportError(err).Persistent {
 		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr)
 REDACTED
