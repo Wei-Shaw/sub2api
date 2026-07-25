@@ -82,19 +82,24 @@ func (c *liveTestFrameConn) Close() error {
 }
 
 type liveTestDialer struct {
-	conn    *liveTestFrameConn
-	url     string
-	headers http.Header
+	conn      *liveTestFrameConn
+	url       string
+	headers   http.Header
+	proxyURL  string
+	accountID int64
 }
 
 func (d *liveTestDialer) Dial(
 	_ context.Context,
 	wsURL string,
 	headers http.Header,
-	_ string,
+	proxyURL string,
+	accountID int64,
 ) (openAIWSClientConn, int, http.Header, error) {
 	d.url = wsURL
 	d.headers = headers.Clone()
+	d.proxyURL = proxyURL
+	d.accountID = accountID
 	return d.conn, http.StatusSwitchingProtocols, nil, nil
 }
 
@@ -328,10 +333,13 @@ func TestGetLiveCallForIdentityRejectsMismatchedCaller(t *testing.T) {
 }
 
 func TestProxyLiveSidebandForwardsTextAndBinary(t *testing.T) {
+	proxyID := int64(7)
 	account := &Account{
 		ID:          11,
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeOAuth,
+		ProxyID:     &proxyID,
+		Proxy:       &Proxy{Protocol: ProxyProtocolHTTP, Host: "127.0.0.1", Port: 8080},
 		Concurrency: 2,
 		Credentials: map[string]any{
 			"access_token":       "test-access-token",
@@ -410,6 +418,8 @@ func TestProxyLiveSidebandForwardsTextAndBinary(t *testing.T) {
 	require.Equal(t, []byte{4, 5, 6}, payload)
 
 	require.Equal(t, "wss://chatgpt.com/backend-api/codex/call_proxy", dialer.url)
+	require.Equal(t, "http://127.0.0.1:8080", dialer.proxyURL)
+	require.Equal(t, account.ID, dialer.accountID)
 	require.Equal(t, "Bearer test-access-token", dialer.headers.Get("Authorization"))
 	require.Equal(t, "acct_test", dialer.headers.Get("Chatgpt-Account-Id"))
 	require.Equal(t, `{"v":1,"s":0,"t":"v1.sideband"}`, dialer.headers.Get(liveAttestationHeader))
