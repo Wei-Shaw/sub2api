@@ -8,6 +8,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	gocache "github.com/patrickmn/go-cache"
 )
@@ -78,12 +79,12 @@ func appendUsageLogBillingModeWhereConditionWithAlias(conditions []string, args 
 		return alias + "." + name
 	}
 	placeholder := fmt.Sprintf("$%d", len(args)+1)
-	switch service.BillingMode(mode) {
-	case service.BillingModeImage:
+	switch domain.BillingMode(mode) {
+	case domain.BillingModeImage:
 		conditions = append(conditions, fmt.Sprintf("(%s = %s OR ((%s IS NULL OR %s = '') AND COALESCE(%s, 0) > 0))", column("billing_mode"), placeholder, column("billing_mode"), column("billing_mode"), column("image_count")))
-	case service.BillingModeVideo:
+	case domain.BillingModeVideo:
 		conditions = append(conditions, fmt.Sprintf("%s = %s", column("billing_mode"), placeholder))
-	case service.BillingModeToken:
+	case domain.BillingModeToken:
 		conditions = append(conditions, fmt.Sprintf("(%s = %s OR ((%s IS NULL OR %s = '') AND COALESCE(%s, 0) <= 0))", column("billing_mode"), placeholder, column("billing_mode"), column("billing_mode"), column("image_count")))
 	default:
 		conditions = append(conditions, fmt.Sprintf("%s = %s", column("billing_mode"), placeholder))
@@ -203,19 +204,19 @@ func buildRequestTypeFilterCondition(startArgIndex int, requestType int16) (stri
 }
 
 func buildRequestTypeFilterConditionWithAlias(startArgIndex int, requestType int16, alias string) (string, []any) {
-	normalized := service.RequestTypeFromInt16(requestType)
+	normalized := domain.RequestTypeFromInt16(requestType)
 	requestTypeArg := int16(normalized)
 	prefix := ""
 	if alias != "" {
 		prefix = alias + "."
 	}
 	switch normalized {
-	case service.RequestTypeSync:
-		return fmt.Sprintf("(%srequest_type = $%d OR (%srequest_type = %d AND %sstream = FALSE AND %sopenai_ws_mode = FALSE))", prefix, startArgIndex, prefix, int16(service.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
-	case service.RequestTypeStream:
-		return fmt.Sprintf("(%srequest_type = $%d OR (%srequest_type = %d AND %sstream = TRUE AND %sopenai_ws_mode = FALSE))", prefix, startArgIndex, prefix, int16(service.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
-	case service.RequestTypeWSV2:
-		return fmt.Sprintf("(%srequest_type = $%d OR (%srequest_type = %d AND %sopenai_ws_mode = TRUE))", prefix, startArgIndex, prefix, int16(service.RequestTypeUnknown), prefix), []any{requestTypeArg}
+	case domain.RequestTypeSync:
+		return fmt.Sprintf("(%srequest_type = $%d OR (%srequest_type = %d AND %sstream = FALSE AND %sopenai_ws_mode = FALSE))", prefix, startArgIndex, prefix, int16(domain.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
+	case domain.RequestTypeStream:
+		return fmt.Sprintf("(%srequest_type = $%d OR (%srequest_type = %d AND %sstream = TRUE AND %sopenai_ws_mode = FALSE))", prefix, startArgIndex, prefix, int16(domain.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
+	case domain.RequestTypeWSV2:
+		return fmt.Sprintf("(%srequest_type = $%d OR (%srequest_type = %d AND %sopenai_ws_mode = TRUE))", prefix, startArgIndex, prefix, int16(domain.RequestTypeUnknown), prefix), []any{requestTypeArg}
 	default:
 		return fmt.Sprintf("%srequest_type = $%d", prefix, startArgIndex), []any{requestTypeArg}
 	}

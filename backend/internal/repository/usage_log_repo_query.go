@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	dbusersub "github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -39,7 +40,7 @@ func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *servic
 		if err = rows.Err(); err != nil {
 			return nil, err
 		}
-		return nil, service.ErrUsageLogNotFound
+		return nil, domain.ErrUsageLogNotFound
 	}
 	log, err = scanUsageLog(rows)
 	if err != nil {
@@ -572,7 +573,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		RateMultiplier:            rateMultiplier,
 		AccountRateMultiplier:     nullFloat64Ptr(accountRateMultiplier),
 		BillingType:               int8(billingType),
-		RequestType:               service.RequestTypeFromInt16(requestTypeRaw),
+		RequestType:               domain.RequestTypeFromInt16(requestTypeRaw),
 		ImageCount:                imageCount,
 		VideoCount:                videoCount,
 		CacheTTLOverridden:        cacheTTLOverridden,
