@@ -518,6 +518,7 @@ type ContentModerationService struct {
 	runtimeSnapshot          atomic.Pointer[contentModerationRuntimeSnapshot]
 	runtimeRefreshMu         sync.Mutex
 	runtimeCacheTTL          time.Duration
+	runtimeRefreshTimeout    time.Duration
 	runtimeRefreshRetryAt    atomic.Int64
 	keyHealthMu              sync.Mutex
 	keyHealth                map[string]*contentModerationKeyHealth
@@ -1497,7 +1498,9 @@ func (s *ContentModerationService) loadRuntimeSnapshot(ctx context.Context) (*co
 	if snapshot := s.runtimeSnapshot.Load(); snapshot != nil {
 		return snapshot, nil
 	}
-	return s.refreshRuntimeSnapshot(ctx)
+	refreshCtx, cancel := context.WithTimeout(ctx, s.runtimeSnapshotRefreshTimeout())
+	defer cancel()
+	return s.refreshRuntimeSnapshot(refreshCtx)
 }
 
 func (s *ContentModerationService) runtimeSnapshotTTL() time.Duration {
@@ -1505,6 +1508,13 @@ func (s *ContentModerationService) runtimeSnapshotTTL() time.Duration {
 		return s.runtimeCacheTTL
 	}
 	return contentModerationRuntimeCacheTTL
+}
+
+func (s *ContentModerationService) runtimeSnapshotRefreshTimeout() time.Duration {
+	if s != nil && s.runtimeRefreshTimeout > 0 {
+		return s.runtimeRefreshTimeout
+	}
+	return contentModerationRuntimeRefreshTimeout
 }
 
 func (s *ContentModerationService) triggerRuntimeSnapshotRefresh() {
@@ -1517,7 +1527,7 @@ func (s *ContentModerationService) triggerRuntimeSnapshotRefresh() {
 	}
 	go func() {
 		defer s.runtimeRefreshMu.Unlock()
-		ctx, cancel := context.WithTimeout(context.Background(), contentModerationRuntimeRefreshTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), s.runtimeSnapshotRefreshTimeout())
 		defer cancel()
 		if _, err := s.refreshRuntimeSnapshot(ctx); err != nil {
 			s.runtimeRefreshRetryAt.Store(time.Now().Add(s.runtimeSnapshotTTL()).UnixNano())
