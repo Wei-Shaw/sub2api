@@ -196,6 +196,10 @@ REDACTED
 	if settings == nil {
 		return infraerrors.BadRequest("INVALID_OLLAMA_CLOUD_USAGE_SETTINGS", "settings cannot be nil")
 REDACTED
+	if settings.DebounceMinutes == 0 {
+		// Legacy clients that omit debounce_minutes keep the fail-safe default.
+		settings.DebounceMinutes = ollamaCloudUsageDefaultDebounceMinutes
+REDACTED
 	if settings.IntervalMinutes < ollamaCloudUsageMinIntervalMinutes || settings.IntervalMinutes > ollamaCloudUsageMaxIntervalMinutes {
 		return infraerrors.BadRequest(
 			"INVALID_OLLAMA_CLOUD_USAGE_INTERVAL",
