@@ -601,6 +601,10 @@ export default {
         cancelRateLimitMax: 'Max Cancels',
         refundRequestUserEmail: 'Refund Request Confirmation Email',
         refundRequestUserEmailHint: 'Send a confirmation after a user submits a refund request; the User Refund Notifications master switch in Email Settings must also be enabled',
+        refundRequestAdminEmail: 'Finance Refund Request Email',
+        refundRequestAdminEmailHint: 'Notify the finance recipient group after a user submits a refund request; the Refund Administration master switch in Email Settings must also be enabled',
+        refundResultUserEmail: 'Refund Result Email',
+        refundResultUserEmailHint: 'Notify users after a refund succeeds or reaches a terminal failure; the User Refund Notifications master switch in Email Settings must also be enabled',
         cancelRateLimitUnitMinute: 'Minutes',
         cancelRateLimitUnitHour: 'Hours',
         cancelRateLimitUnitDay: 'Days',
@@ -834,6 +838,25 @@ export default {
           security: 'Security and Risk',
           opsAlert: 'Ops Alerts',
           opsReport: 'Ops Reports'
+        },
+        deliveries: {
+          title: 'Recent Deliveries',
+          allStatuses: 'All statuses',
+          event: 'Event',
+          recipient: 'Recipient',
+          source: 'Business source',
+          status: 'Status',
+          updatedAt: 'Updated',
+          retry: 'Retry delivery',
+          empty: 'No delivery records',
+          statuses: {
+            pending: 'Pending',
+            processing: 'Processing',
+            retry_wait: 'Waiting to retry',
+            sent: 'Sent',
+            failed: 'Failed',
+            suppressed: 'Suppressed'
+          }
         }
       },
       emailTemplates: {

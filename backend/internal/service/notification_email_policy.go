@@ -104,8 +104,8 @@ var notificationEmailChannelDefinitions = []notificationEmailChannelDefinition{
 	{ID: NotificationEmailChannelBalance, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: true, AllowUserPrimary: true, AllowVerifiedAdditional: true, DefaultIncludeAdditional: true, Events: []string{NotificationEmailEventBalanceLow, NotificationEmailEventBalanceRechargeSuccess}},
 	{ID: NotificationEmailChannelAccountQuota, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupAccountQuota, DefaultEnabled: true, Events: []string{NotificationEmailEventAccountQuotaAlert}},
 	{ID: NotificationEmailChannelRiskControl, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: true, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventContentModerationViolation, NotificationEmailEventContentModerationDisabled, NotificationEmailEventCyberPolicyNotice}},
-	{ID: NotificationEmailChannelRefundAdmin, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupFinance, DefaultEnabled: false},
-	{ID: NotificationEmailChannelRefundUser, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: false, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventRefundRequestedUser}},
+	{ID: NotificationEmailChannelRefundAdmin, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupFinance, DefaultEnabled: false, Events: []string{NotificationEmailEventRefundRequestedAdmin}},
+	{ID: NotificationEmailChannelRefundUser, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: false, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventRefundRequestedUser, NotificationEmailEventRefundSucceededUser, NotificationEmailEventRefundFailedUser}},
 	{ID: NotificationEmailChannelOpsAlert, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupOpsAlert, DefaultEnabled: false, Events: []string{NotificationEmailEventOpsAlert}},
 	{ID: NotificationEmailChannelOpsReport, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupOpsReport, DefaultEnabled: false, Events: []string{NotificationEmailEventOpsScheduledReport}},
 }
@@ -126,7 +126,10 @@ var notificationEmailEventChannels = map[string]string{
 	NotificationEmailEventSubscriptionExpiryReminder:  NotificationEmailChannelSubscription,
 	NotificationEmailEventBalanceLow:                  NotificationEmailChannelBalance,
 	NotificationEmailEventBalanceRechargeSuccess:      NotificationEmailChannelBalance,
+	NotificationEmailEventRefundRequestedAdmin:        NotificationEmailChannelRefundAdmin,
 	NotificationEmailEventRefundRequestedUser:         NotificationEmailChannelRefundUser,
+	NotificationEmailEventRefundSucceededUser:         NotificationEmailChannelRefundUser,
+	NotificationEmailEventRefundFailedUser:            NotificationEmailChannelRefundUser,
 	NotificationEmailEventAccountQuotaAlert:           NotificationEmailChannelAccountQuota,
 	NotificationEmailEventContentModerationViolation:  NotificationEmailChannelRiskControl,
 	NotificationEmailEventContentModerationDisabled:   NotificationEmailChannelRiskControl,
@@ -172,7 +175,7 @@ func (s *NotificationEmailService) requireEventChannelEnabled(ctx context.Contex
 	if !configured {
 		// Refund mail is new and has no legacy behavior to preserve. Its
 		// default-off policy remains closed until an administrator saves it.
-		if channelID == NotificationEmailChannelRefundUser && !policy.Channels[channelID].Enabled {
+		if (channelID == NotificationEmailChannelRefundUser || channelID == NotificationEmailChannelRefundAdmin) && !policy.Channels[channelID].Enabled {
 			return fmt.Errorf("%w: %s", ErrNotificationEmailChannelDisabled, channelID)
 		}
 		return nil

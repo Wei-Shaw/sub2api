@@ -27,7 +27,10 @@ const (
 	NotificationEmailEventSubscriptionExpiryReminder  = "subscription.expiry_reminder"
 	NotificationEmailEventBalanceLow                  = "balance.low"
 	NotificationEmailEventBalanceRechargeSuccess      = "balance.recharge_success"
+	NotificationEmailEventRefundRequestedAdmin        = "billing.refund_requested_admin"
 	NotificationEmailEventRefundRequestedUser         = "billing.refund_requested_user"
+	NotificationEmailEventRefundSucceededUser         = "billing.refund_succeeded_user"
+	NotificationEmailEventRefundFailedUser            = "billing.refund_failed_user"
 	NotificationEmailEventAccountQuotaAlert           = "account.quota_alert"
 	NotificationEmailEventContentModerationViolation  = "content_moderation.violation_notice"
 	NotificationEmailEventContentModerationDisabled   = "content_moderation.account_disabled"
@@ -374,28 +377,37 @@ func (s *NotificationEmailService) PreviewTemplate(ctx context.Context, input No
 }
 
 func (s *NotificationEmailService) Send(ctx context.Context, input NotificationEmailSendInput) error {
+	_, err := s.deliver(ctx, input, true)
+	return err
+}
+
+// deliver returns suppressed=true when policy, recipient preference, or an
+// existing synchronous delivery marker intentionally prevents SMTP delivery.
+// Durable queue workers disable the legacy settings-table marker because the
+// queue row itself is the delivery state machine.
+func (s *NotificationEmailService) deliver(ctx context.Context, input NotificationEmailSendInput, useLegacyDeliveryMarker bool) (bool, error) {
 	info, normalizedEvent, err := s.eventInfo(input.Event)
 	if err != nil {
-		return notificationEmailTemplateErr(err)
+		return false, notificationEmailTemplateErr(err)
 	}
 	if err := s.requireEventChannelEnabled(ctx, normalizedEvent); err != nil {
 		if errors.Is(err, ErrNotificationEmailChannelDisabled) {
-			return err
+			return false, err
 		}
-		return notificationEmailConfigErr(err)
+		return false, notificationEmailConfigErr(err)
 	}
 	recipient := strings.TrimSpace(input.RecipientEmail)
 	if recipient == "" {
-		return nil
+		return true, nil
 	}
 	if info.Optional {
 		unsubscribed, err := s.IsUnsubscribed(ctx, recipient, normalizedEvent)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if unsubscribed {
 			slog.Info("notification email suppressed by unsubscribe preference", "event", normalizedEvent, "recipient_hash", notificationEmailHash(recipient))
-			return nil
+			return true, nil
 		}
 	}
 
@@ -405,37 +417,40 @@ func (s *NotificationEmailService) Send(ctx context.Context, input NotificationE
 	}
 	tmpl, err := s.GetTemplate(ctx, normalizedEvent, locale)
 	if err != nil {
-		return notificationEmailTemplateErr(err)
+		return false, notificationEmailTemplateErr(err)
 	}
 	variables := s.runtimeVariables(ctx, normalizedEvent, locale, input)
 	rendered, err := renderNotificationEmail(normalizedEvent, tmpl.Subject, tmpl.HTML, variables, input.RawHTMLVariables)
 	if err != nil {
-		return notificationEmailTemplateErr(err)
+		return false, notificationEmailTemplateErr(err)
 	}
 
 	deliveryKey := notificationEmailDeliveryKey(normalizedEvent, input.SourceType, input.SourceID, recipient, input.ReminderKey)
-	if deliveryKey != "" {
+	if useLegacyDeliveryMarker && deliveryKey != "" {
 		sent, err := s.deliveryExists(ctx, deliveryKey, legacyNotificationEmailDeliveryKey(normalizedEvent, input.SourceType, input.SourceID, recipient, input.ReminderKey))
 		if err != nil {
-			return err
+			return false, err
 		}
 		if sent {
-			return nil
+			return true, nil
 		}
 	}
 
 	if s.emailService == nil {
-		return notificationEmailConfigErr(errors.New("email service is not configured"))
+		return false, notificationEmailConfigErr(errors.New("email service is not configured"))
 	}
 	if err := s.emailService.SendEmail(ctx, recipient, rendered.Subject, rendered.HTML); err != nil {
-		return notificationEmailDeliveryErr(err)
+		if errors.Is(err, ErrEmailNotConfigured) {
+			return false, notificationEmailConfigErr(err)
+		}
+		return false, notificationEmailDeliveryErr(err)
 	}
-	if deliveryKey != "" {
+	if useLegacyDeliveryMarker && deliveryKey != "" {
 		if err := s.settingRepo.Set(ctx, deliveryKey, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-			return err
+			return false, err
 		}
 	}
-	return nil
+	return false, nil
 }
 
 func (s *NotificationEmailService) RememberRecipientLocale(ctx context.Context, userID int64, email, acceptLanguage string) {
@@ -920,6 +935,15 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 			"recharge_url":        "https://example.com/recharge",
 			"recharge_amount":     "50.00",
 			"order_id":            "1024",
+			"refund_amount":       "50.00",
+			"refund_currency":     "CNY",
+			"refund_reason":       "重复购买",
+			"refund_status":       "refunded",
+			"refund_user_id":      "1001",
+			"refund_user_email":   "user@example.com",
+			"refund_user_name":    "示例用户",
+			"requested_at":        "2026-07-26T08:00:00Z",
+			"completed_at":        "2026-07-26T08:05:00Z",
 			"unsubscribe_url":     "https://example.com/unsubscribe",
 			"account_id":          "1001",
 			"account_name":        "openai-main",
@@ -968,6 +992,15 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 		"recharge_url":        "https://example.com/recharge",
 		"recharge_amount":     "50.00",
 		"order_id":            "1024",
+		"refund_amount":       "50.00",
+		"refund_currency":     "USD",
+		"refund_reason":       "Duplicate purchase",
+		"refund_status":       "refunded",
+		"refund_user_id":      "1001",
+		"refund_user_email":   "user@example.com",
+		"refund_user_name":    "Example User",
+		"requested_at":        "2026-07-26T08:00:00Z",
+		"completed_at":        "2026-07-26T08:05:00Z",
 		"unsubscribe_url":     "https://example.com/unsubscribe",
 		"account_id":          "1001",
 		"account_name":        "openai-main",
@@ -1035,7 +1068,10 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventSubscriptionExpiryReminder,
 	NotificationEmailEventBalanceLow,
 	NotificationEmailEventBalanceRechargeSuccess,
+	NotificationEmailEventRefundRequestedAdmin,
 	NotificationEmailEventRefundRequestedUser,
+	NotificationEmailEventRefundSucceededUser,
+	NotificationEmailEventRefundFailedUser,
 	NotificationEmailEventAccountQuotaAlert,
 	NotificationEmailEventContentModerationViolation,
 	NotificationEmailEventContentModerationDisabled,
@@ -1101,6 +1137,16 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Optional:     false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "recharge_amount", "current_balance", "order_id"),
 	},
+	NotificationEmailEventRefundRequestedAdmin: {
+		Event:       NotificationEmailEventRefundRequestedAdmin,
+		Label:       "Refund request for finance review",
+		Description: "Sent to the configured finance group after a user requests a refund.",
+		Category:    "billing",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"order_id", "refund_amount", "refund_currency", "refund_reason", "refund_status", "requested_at",
+			"refund_user_id", "refund_user_email", "refund_user_name"),
+	},
 	NotificationEmailEventRefundRequestedUser: {
 		Event:       NotificationEmailEventRefundRequestedUser,
 		Label:       "Refund request received",
@@ -1109,6 +1155,24 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Optional:    false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
 			"order_id", "refund_amount", "refund_currency", "refund_reason", "refund_status", "requested_at"),
+	},
+	NotificationEmailEventRefundSucceededUser: {
+		Event:       NotificationEmailEventRefundSucceededUser,
+		Label:       "Refund completed",
+		Description: "Sent to a user after a refund is finalized successfully.",
+		Category:    "billing",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"order_id", "refund_amount", "refund_currency", "refund_reason", "refund_status", "completed_at"),
+	},
+	NotificationEmailEventRefundFailedUser: {
+		Event:       NotificationEmailEventRefundFailedUser,
+		Label:       "Refund failed",
+		Description: "Sent to a user after a refund reaches a terminal failed state.",
+		Category:    "billing",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"order_id", "refund_amount", "refund_currency", "refund_reason", "refund_status", "completed_at"),
 	},
 	NotificationEmailEventAccountQuotaAlert: {
 		Event:       NotificationEmailEventAccountQuotaAlert,
@@ -1309,6 +1373,30 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 			<p>订单号：{{order_id}}</p>`),
 		},
 	},
+	NotificationEmailEventRefundRequestedAdmin: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Refund request requires review - #{{order_id}}",
+			HTML: notificationEmailCard("#d97706", "Refund request requires review", `
+	<p>A user submitted a refund request.</p>
+	<p>Order ID: <strong>{{order_id}}</strong></p>
+	<p>User: <strong>{{refund_user_name}}</strong> (ID {{refund_user_id}}, {{refund_user_email}})</p>
+	<p>Requested refund: <strong>{{refund_amount}} {{refund_currency}}</strong></p>
+	<p>Reason: {{refund_reason}}</p>
+	<p>Status: <strong>{{refund_status}}</strong></p>
+	<p>Submitted at: {{requested_at}}</p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 新退款申请待审核 - #{{order_id}}",
+			HTML: notificationEmailCard("#d97706", "新退款申请待审核", `
+	<p>有用户提交了退款申请。</p>
+	<p>订单号：<strong>{{order_id}}</strong></p>
+	<p>用户：<strong>{{refund_user_name}}</strong>（ID {{refund_user_id}}，{{refund_user_email}}）</p>
+	<p>申请退款金额：<strong>{{refund_amount}} {{refund_currency}}</strong></p>
+	<p>申请原因：{{refund_reason}}</p>
+	<p>当前状态：<strong>{{refund_status}}</strong></p>
+	<p>提交时间：{{requested_at}}</p>`),
+		},
+	},
 	NotificationEmailEventRefundRequestedUser: {
 		notificationEmailDefaultLocale: {
 			Subject: "[{{site_name}}] Refund request received",
@@ -1331,6 +1419,50 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p>申请原因：{{refund_reason}}</p>
 <p>当前状态：<strong>{{refund_status}}</strong></p>
 <p>提交时间：{{requested_at}}</p>`),
+		},
+	},
+	NotificationEmailEventRefundSucceededUser: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Refund completed - #{{order_id}}",
+			HTML: notificationEmailCard("#16a34a", "Refund completed", `
+	<p>Hello {{recipient_name}},</p>
+	<p>Your refund has been completed successfully.</p>
+	<p>Order ID: <strong>{{order_id}}</strong></p>
+	<p>Refund amount: <strong>{{refund_amount}} {{refund_currency}}</strong></p>
+	<p>Status: <strong>{{refund_status}}</strong></p>
+	<p>Completed at: {{completed_at}}</p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 退款已完成 - #{{order_id}}",
+			HTML: notificationEmailCard("#16a34a", "退款已完成", `
+	<p>{{recipient_name}}，您好：</p>
+	<p>您的退款已成功完成。</p>
+	<p>订单号：<strong>{{order_id}}</strong></p>
+	<p>退款金额：<strong>{{refund_amount}} {{refund_currency}}</strong></p>
+	<p>当前状态：<strong>{{refund_status}}</strong></p>
+	<p>完成时间：{{completed_at}}</p>`),
+		},
+	},
+	NotificationEmailEventRefundFailedUser: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Refund could not be completed - #{{order_id}}",
+			HTML: notificationEmailCard("#dc2626", "Refund could not be completed", `
+	<p>Hello {{recipient_name}},</p>
+	<p>The payment provider could not complete your refund. Please contact support if you need help.</p>
+	<p>Order ID: <strong>{{order_id}}</strong></p>
+	<p>Refund amount: <strong>{{refund_amount}} {{refund_currency}}</strong></p>
+	<p>Status: <strong>{{refund_status}}</strong></p>
+	<p>Updated at: {{completed_at}}</p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 退款未能完成 - #{{order_id}}",
+			HTML: notificationEmailCard("#dc2626", "退款未能完成", `
+	<p>{{recipient_name}}，您好：</p>
+	<p>支付渠道未能完成您的退款。如需帮助，请联系客服。</p>
+	<p>订单号：<strong>{{order_id}}</strong></p>
+	<p>退款金额：<strong>{{refund_amount}} {{refund_currency}}</strong></p>
+	<p>当前状态：<strong>{{refund_status}}</strong></p>
+	<p>更新时间：{{completed_at}}</p>`),
 		},
 	},
 	NotificationEmailEventAccountQuotaAlert: {

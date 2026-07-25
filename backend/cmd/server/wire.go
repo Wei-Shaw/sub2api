@@ -84,6 +84,7 @@ func provideCleanup(
 	opsIngressReject *service.OpsIngressRejectAggregator,
 	apiKeyService *service.APIKeyService,
 	authCacheInvalidationWorker *service.AuthCacheInvalidationWorker,
+	notificationEmailDeliveryWorker *service.NotificationEmailDeliveryWorker,
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	concurrencyService *service.ConcurrencyService,
 	dashboardAggregation *service.DashboardAggregationService,
@@ -140,6 +141,12 @@ func provideCleanup(
 			{"AuthCacheInvalidationWorker", func() error {
 				if authCacheInvalidationWorker != nil {
 					authCacheInvalidationWorker.Stop()
+				}
+				return nil
+			}},
+			{"NotificationEmailDeliveryWorker", func() error {
+				if notificationEmailDeliveryWorker != nil {
+					notificationEmailDeliveryWorker.Stop()
 				}
 				return nil
 			}},

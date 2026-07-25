@@ -2,6 +2,7 @@ package admin
 
 import (
 	"html"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -315,6 +316,49 @@ func (h *SettingHandler) UpdateNotificationEmailPolicy(c *gin.Context) {
 		return
 	}
 	response.Success(c, policy)
+}
+
+// ListNotificationEmailDeliveries returns redacted delivery metadata only.
+func (h *SettingHandler) ListNotificationEmailDeliveries(c *gin.Context) {
+	if h.notificationEmailDispatcher == nil {
+		response.BadRequest(c, "Notification email dispatcher is not configured")
+		return
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	result, err := h.notificationEmailDispatcher.List(c.Request.Context(), service.NotificationEmailDeliveryListFilter{
+		Page: page, PageSize: pageSize, Event: c.Query("event"), Status: c.Query("status"),
+		SourceType: c.Query("source_type"), SourceID: c.Query("source_id"),
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// RetryNotificationEmailDelivery retries failures that are safe after transport,
+// configuration, or template remediation.
+func (h *SettingHandler) RetryNotificationEmailDelivery(c *gin.Context) {
+	if h.notificationEmailDispatcher == nil {
+		response.BadRequest(c, "Notification email dispatcher is not configured")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid delivery id")
+		return
+	}
+	retried, err := h.notificationEmailDispatcher.Retry(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !retried {
+		response.BadRequest(c, "Delivery is not retryable")
+		return
+	}
+	response.Success(c, gin.H{"retried": true})
 }
 
 func emailTemplateEventOptionsToDTO(events []service.NotificationEmailEventInfo) []dto.EmailTemplateEventOption {

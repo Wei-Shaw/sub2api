@@ -124,6 +124,90 @@
           </div>
         </div>
       </section>
+
+      <section class="border-t border-gray-200 dark:border-dark-600">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
+          <h3 class="text-base font-medium text-gray-900 dark:text-white">
+            {{ t("admin.settings.emailPolicy.deliveries.title") }}
+          </h3>
+          <div class="flex items-center gap-2">
+            <select v-model="deliveryStatus" class="input h-9 w-36" @change="loadDeliveries">
+              <option value="">{{ t("admin.settings.emailPolicy.deliveries.allStatuses") }}</option>
+              <option v-for="status in deliveryStatuses" :key="status" :value="status">
+                {{ deliveryStatusLabel(status) }}
+              </option>
+            </select>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm px-2"
+              :disabled="deliveriesLoading"
+              :title="t('common.refresh')"
+              @click="loadDeliveries"
+            >
+              <Icon name="refresh" size="sm" :class="deliveriesLoading ? 'animate-spin' : ''" />
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[760px] text-left text-sm">
+            <thead class="border-y border-gray-100 bg-gray-50 text-xs text-gray-500 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400">
+              <tr>
+                <th class="px-6 py-2.5 font-medium">{{ t("admin.settings.emailPolicy.deliveries.event") }}</th>
+                <th class="px-4 py-2.5 font-medium">{{ t("admin.settings.emailPolicy.deliveries.recipient") }}</th>
+                <th class="px-4 py-2.5 font-medium">{{ t("admin.settings.emailPolicy.deliveries.source") }}</th>
+                <th class="px-4 py-2.5 font-medium">{{ t("admin.settings.emailPolicy.deliveries.status") }}</th>
+                <th class="px-4 py-2.5 font-medium">{{ t("admin.settings.emailPolicy.deliveries.updatedAt") }}</th>
+                <th class="w-12 px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr v-for="delivery in deliveries" :key="delivery.id" class="text-gray-700 dark:text-gray-300">
+                <td class="max-w-56 px-6 py-3">
+                  <div class="truncate font-medium" :title="delivery.event">{{ delivery.event }}</div>
+                  <div v-if="delivery.last_error" class="mt-1 truncate text-xs text-red-600 dark:text-red-400" :title="delivery.last_error">
+                    {{ delivery.last_error }}
+                  </div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs">{{ delivery.recipient }}</td>
+                <td class="max-w-48 px-4 py-3">
+                  <div class="truncate" :title="`${delivery.source_type}:${delivery.source_id}`">
+                    {{ delivery.source_type }}:{{ delivery.source_id }}
+                  </div>
+                </td>
+                <td class="px-4 py-3">
+                  <span :class="deliveryStatusClass(delivery.status)" class="inline-flex rounded px-2 py-1 text-xs font-medium">
+                    {{ deliveryStatusLabel(delivery.status) }}
+                  </span>
+                  <div v-if="delivery.attempt_count" class="mt-1 text-xs text-gray-400">
+                    {{ delivery.attempt_count }}/{{ delivery.max_attempts }}
+                  </div>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                  {{ formatDateTime(delivery.updated_at) }}
+                </td>
+                <td class="px-4 py-3">
+                  <button
+                    v-if="isRetryable(delivery)"
+                    type="button"
+                    class="btn btn-secondary btn-sm px-2"
+                    :disabled="retryingDeliveryID === delivery.id"
+                    :title="t('admin.settings.emailPolicy.deliveries.retry')"
+                    @click="retryDelivery(delivery.id)"
+                  >
+                    <Icon name="refresh" size="xs" :class="retryingDeliveryID === delivery.id ? 'animate-spin' : ''" />
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="!deliveriesLoading && deliveries.length === 0">
+                <td colspan="6" class="px-6 py-8 text-center text-sm text-gray-400">
+                  {{ t("admin.settings.emailPolicy.deliveries.empty") }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </template>
   </div>
 </template>
@@ -133,6 +217,8 @@ import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
 import type {
+  NotificationEmailDelivery,
+  NotificationEmailDeliveryStatus,
   NotificationEmailChannelPolicy,
   NotificationEmailPolicy,
   NotificationEmailRecipientGroup,
@@ -141,12 +227,18 @@ import Toggle from "@/components/common/Toggle.vue";
 import Icon from "@/components/icons/Icon.vue";
 import { useAppStore } from "@/stores";
 import { extractApiErrorMessage } from "@/utils/apiError";
+import { formatDateTime } from "@/utils/format";
 
 const { t } = useI18n();
 const appStore = useAppStore();
 const loading = ref(false);
 const saving = ref(false);
 const policy = ref<NotificationEmailPolicy | null>(null);
+const deliveries = ref<NotificationEmailDelivery[]>([]);
+const deliveriesLoading = ref(false);
+const deliveryStatus = ref("");
+const retryingDeliveryID = ref<number | null>(null);
+const deliveryStatuses: NotificationEmailDeliveryStatus[] = ["pending", "processing", "retry_wait", "sent", "failed", "suppressed"];
 
 const channelTranslationKeys: Record<string, string> = {
   auth_verification: "authVerification",
@@ -220,5 +312,55 @@ async function savePolicy(): Promise<void> {
   }
 }
 
-onMounted(loadPolicy);
+async function loadDeliveries(): Promise<void> {
+  deliveriesLoading.value = true;
+  try {
+    const page = await adminAPI.settings.getNotificationEmailDeliveries({
+      page: 1,
+      page_size: 20,
+      status: deliveryStatus.value || undefined,
+    });
+    deliveries.value = page.items;
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t("common.error")));
+  } finally {
+    deliveriesLoading.value = false;
+  }
+}
+
+function deliveryStatusLabel(status: string): string {
+  return t(`admin.settings.emailPolicy.deliveries.statuses.${status}`);
+}
+
+function deliveryStatusClass(status: NotificationEmailDeliveryStatus): string {
+  if (status === "sent") return "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400";
+  if (status === "failed") return "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400";
+  if (status === "suppressed") return "bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300";
+  if (status === "retry_wait") return "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400";
+  return "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400";
+}
+
+function isRetryable(delivery: NotificationEmailDelivery): boolean {
+  return (
+    (delivery.status === "failed" || delivery.status === "retry_wait") &&
+    (["transport", "internal", "configuration", "template"] as string[]).includes(delivery.last_error_category || "")
+  );
+}
+
+async function retryDelivery(id: number): Promise<void> {
+  retryingDeliveryID.value = id;
+  try {
+    await adminAPI.settings.retryNotificationEmailDelivery(id);
+    await loadDeliveries();
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t("common.error")));
+  } finally {
+    retryingDeliveryID.value = null;
+  }
+}
+
+onMounted(() => {
+  void loadPolicy();
+  void loadDeliveries();
+});
 </script>

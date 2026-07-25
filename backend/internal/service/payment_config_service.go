@@ -27,20 +27,22 @@ const (
 	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
 	// SettingSubscriptionUSDToCNYRate 是订阅 CNY 换算汇率（1 USD = X CNY）。
 	// 0/未配置 = 关闭换算（订阅按 price 数值直付），显式配置后 CNY 通道订阅按 price × rate 收款。
-	SettingSubscriptionUSDToCNYRate      = "SUBSCRIPTION_USD_TO_CNY_RATE"
-	SettingRechargeFeeRate               = "RECHARGE_FEE_RATE"
-	SettingProductNamePrefix             = "PRODUCT_NAME_PREFIX"
-	SettingProductNameSuffix             = "PRODUCT_NAME_SUFFIX"
-	SettingHelpImageURL                  = "PAYMENT_HELP_IMAGE_URL"
-	SettingHelpText                      = "PAYMENT_HELP_TEXT"
-	SettingCancelRateLimitOn             = "CANCEL_RATE_LIMIT_ENABLED"
-	SettingCancelRateLimitMax            = "CANCEL_RATE_LIMIT_MAX"
-	SettingCancelWindowSize              = "CANCEL_RATE_LIMIT_WINDOW"
-	SettingCancelWindowUnit              = "CANCEL_RATE_LIMIT_UNIT"
-	SettingCancelWindowMode              = "CANCEL_RATE_LIMIT_WINDOW_MODE"
-	SettingRefundRequestUserEmailEnabled = "REFUND_REQUEST_USER_EMAIL_ENABLED"
-	SettingAlipayForceQRCode             = "ALIPAY_FORCE_QRCODE"
-	SettingAlipayMobilePrecreateDeepLink = "ALIPAY_MOBILE_PRECREATE_DEEP_LINK"
+	SettingSubscriptionUSDToCNYRate       = "SUBSCRIPTION_USD_TO_CNY_RATE"
+	SettingRechargeFeeRate                = "RECHARGE_FEE_RATE"
+	SettingProductNamePrefix              = "PRODUCT_NAME_PREFIX"
+	SettingProductNameSuffix              = "PRODUCT_NAME_SUFFIX"
+	SettingHelpImageURL                   = "PAYMENT_HELP_IMAGE_URL"
+	SettingHelpText                       = "PAYMENT_HELP_TEXT"
+	SettingCancelRateLimitOn              = "CANCEL_RATE_LIMIT_ENABLED"
+	SettingCancelRateLimitMax             = "CANCEL_RATE_LIMIT_MAX"
+	SettingCancelWindowSize               = "CANCEL_RATE_LIMIT_WINDOW"
+	SettingCancelWindowUnit               = "CANCEL_RATE_LIMIT_UNIT"
+	SettingCancelWindowMode               = "CANCEL_RATE_LIMIT_WINDOW_MODE"
+	SettingRefundRequestUserEmailEnabled  = "REFUND_REQUEST_USER_EMAIL_ENABLED"
+	SettingRefundRequestAdminEmailEnabled = "REFUND_REQUEST_ADMIN_EMAIL_ENABLED"
+	SettingRefundResultUserEmailEnabled   = "REFUND_RESULT_USER_EMAIL_ENABLED"
+	SettingAlipayForceQRCode              = "ALIPAY_FORCE_QRCODE"
+	SettingAlipayMobilePrecreateDeepLink  = "ALIPAY_MOBILE_PRECREATE_DEEP_LINK"
 )
 
 // Default values for payment configuration settings.
@@ -71,12 +73,14 @@ type PaymentConfig struct {
 	StripePublishableKey     string  `json:"stripe_publishable_key,omitempty"`
 
 	// Cancel rate limit settings
-	CancelRateLimitEnabled        bool   `json:"cancel_rate_limit_enabled"`
-	CancelRateLimitMax            int    `json:"cancel_rate_limit_max"`
-	CancelRateLimitWindow         int    `json:"cancel_rate_limit_window"`
-	CancelRateLimitUnit           string `json:"cancel_rate_limit_unit"`
-	CancelRateLimitMode           string `json:"cancel_rate_limit_window_mode"`
-	RefundRequestUserEmailEnabled bool   `json:"refund_request_user_email_enabled"`
+	CancelRateLimitEnabled         bool   `json:"cancel_rate_limit_enabled"`
+	CancelRateLimitMax             int    `json:"cancel_rate_limit_max"`
+	CancelRateLimitWindow          int    `json:"cancel_rate_limit_window"`
+	CancelRateLimitUnit            string `json:"cancel_rate_limit_unit"`
+	CancelRateLimitMode            string `json:"cancel_rate_limit_window_mode"`
+	RefundRequestUserEmailEnabled  bool   `json:"refund_request_user_email_enabled"`
+	RefundRequestAdminEmailEnabled bool   `json:"refund_request_admin_email_enabled"`
+	RefundResultUserEmailEnabled   bool   `json:"refund_result_user_email_enabled"`
 
 	// Force Alipay mobile users to use QR code instead of mobile redirect
 	AlipayForceQRCode bool `json:"alipay_force_qrcode"`
@@ -104,12 +108,14 @@ type UpdatePaymentConfigRequest struct {
 	HelpText                  *string  `json:"help_text"`
 
 	// Cancel rate limit settings
-	CancelRateLimitEnabled        *bool   `json:"cancel_rate_limit_enabled"`
-	CancelRateLimitMax            *int    `json:"cancel_rate_limit_max"`
-	CancelRateLimitWindow         *int    `json:"cancel_rate_limit_window"`
-	CancelRateLimitUnit           *string `json:"cancel_rate_limit_unit"`
-	CancelRateLimitMode           *string `json:"cancel_rate_limit_window_mode"`
-	RefundRequestUserEmailEnabled *bool   `json:"refund_request_user_email_enabled"`
+	CancelRateLimitEnabled         *bool   `json:"cancel_rate_limit_enabled"`
+	CancelRateLimitMax             *int    `json:"cancel_rate_limit_max"`
+	CancelRateLimitWindow          *int    `json:"cancel_rate_limit_window"`
+	CancelRateLimitUnit            *string `json:"cancel_rate_limit_unit"`
+	CancelRateLimitMode            *string `json:"cancel_rate_limit_window_mode"`
+	RefundRequestUserEmailEnabled  *bool   `json:"refund_request_user_email_enabled"`
+	RefundRequestAdminEmailEnabled *bool   `json:"refund_request_admin_email_enabled"`
+	RefundResultUserEmailEnabled   *bool   `json:"refund_result_user_email_enabled"`
 
 	// Force Alipay mobile users to use QR code instead of mobile redirect
 	AlipayForceQRCode *bool `json:"alipay_force_qrcode"`
@@ -227,7 +233,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
-		SettingRefundRequestUserEmailEnabled,
+		SettingRefundRequestUserEmailEnabled, SettingRefundRequestAdminEmailEnabled, SettingRefundResultUserEmailEnabled,
 		SettingAlipayForceQRCode, SettingAlipayMobilePrecreateDeepLink,
 		SettingPaymentVisibleMethodAlipayEnabled, SettingPaymentVisibleMethodAlipaySource,
 		SettingPaymentVisibleMethodWxpayEnabled, SettingPaymentVisibleMethodWxpaySource,
@@ -260,12 +266,14 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		HelpImageURL:              vals[SettingHelpImageURL],
 		HelpText:                  vals[SettingHelpText],
 
-		CancelRateLimitEnabled:        vals[SettingCancelRateLimitOn] == "true",
-		CancelRateLimitMax:            pcParseInt(vals[SettingCancelRateLimitMax], 10),
-		CancelRateLimitWindow:         pcParseInt(vals[SettingCancelWindowSize], 1),
-		CancelRateLimitUnit:           vals[SettingCancelWindowUnit],
-		CancelRateLimitMode:           vals[SettingCancelWindowMode],
-		RefundRequestUserEmailEnabled: vals[SettingRefundRequestUserEmailEnabled] == "true",
+		CancelRateLimitEnabled:         vals[SettingCancelRateLimitOn] == "true",
+		CancelRateLimitMax:             pcParseInt(vals[SettingCancelRateLimitMax], 10),
+		CancelRateLimitWindow:          pcParseInt(vals[SettingCancelWindowSize], 1),
+		CancelRateLimitUnit:            vals[SettingCancelWindowUnit],
+		CancelRateLimitMode:            vals[SettingCancelWindowMode],
+		RefundRequestUserEmailEnabled:  vals[SettingRefundRequestUserEmailEnabled] == "true",
+		RefundRequestAdminEmailEnabled: vals[SettingRefundRequestAdminEmailEnabled] == "true",
+		RefundResultUserEmailEnabled:   vals[SettingRefundResultUserEmailEnabled] == "true",
 
 		AlipayForceQRCode:             vals[SettingAlipayForceQRCode] == "true",
 		AlipayMobilePrecreateDeepLink: vals[SettingAlipayMobilePrecreateDeepLink] == "true",
@@ -370,6 +378,8 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingCancelWindowUnit:                  derefStr(req.CancelRateLimitUnit),
 		SettingCancelWindowMode:                  derefStr(req.CancelRateLimitMode),
 		SettingRefundRequestUserEmailEnabled:     formatBoolOrEmpty(req.RefundRequestUserEmailEnabled),
+		SettingRefundRequestAdminEmailEnabled:    formatBoolOrEmpty(req.RefundRequestAdminEmailEnabled),
+		SettingRefundResultUserEmailEnabled:      formatBoolOrEmpty(req.RefundResultUserEmailEnabled),
 		SettingAlipayForceQRCode:                 formatBoolOrEmpty(req.AlipayForceQRCode),
 		SettingAlipayMobilePrecreateDeepLink:     formatBoolOrEmpty(req.AlipayMobilePrecreateDeepLink),
 		SettingPaymentVisibleMethodAlipaySource:  derefStr(req.VisibleMethodAlipaySource),

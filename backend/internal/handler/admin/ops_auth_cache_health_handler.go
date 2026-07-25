@@ -19,3 +19,16 @@ func (h *OpsHandler) GetAuthCacheInvalidationHealth(c *gin.Context) {
 	}
 	response.Success(c, h.opsService.GetAuthCacheInvalidationHealth(c.Request.Context()))
 }
+
+// GetNotificationEmailDeliveryHealth exposes only aggregate queue/worker health.
+func (h *OpsHandler) GetNotificationEmailDeliveryHealth(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, h.opsService.GetNotificationEmailDeliveryHealth(c.Request.Context()))
+}

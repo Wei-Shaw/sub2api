@@ -61,6 +61,7 @@ type OpsService struct {
 	systemLogSink               *OpsSystemLogSink
 	ingressRejectAggregator     *OpsIngressRejectAggregator
 	authCacheInvalidationWorker *AuthCacheInvalidationWorker
+	notificationEmailWorker     *NotificationEmailDeliveryWorker
 	apiKeyService               *APIKeyService
 
 	// cleanupReloader 由 wire 在 OpsCleanupService 构造完成后通过 SetCleanupReloader 注入。

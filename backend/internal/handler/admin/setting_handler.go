@@ -51,16 +51,17 @@ func firstNonEmpty(values ...string) string {
 
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
-	settingService           *service.SettingService
-	emailService             *service.EmailService
-	turnstileService         *service.TurnstileService
-	opsService               *service.OpsService
-	paymentConfigService     *service.PaymentConfigService
-	paymentService           *service.PaymentService
-	userAttributeService     *service.UserAttributeService
-	notificationEmailService *service.NotificationEmailService
-	totpService              *service.TotpService
-	userService              *service.UserService
+	settingService              *service.SettingService
+	emailService                *service.EmailService
+	turnstileService            *service.TurnstileService
+	opsService                  *service.OpsService
+	paymentConfigService        *service.PaymentConfigService
+	paymentService              *service.PaymentService
+	userAttributeService        *service.UserAttributeService
+	notificationEmailService    *service.NotificationEmailService
+	notificationEmailDispatcher *service.NotificationEmailDispatcher
+	totpService                 *service.TotpService
+	userService                 *service.UserService
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -80,6 +81,10 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 // the constructor signature used by existing unit tests.
 func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
 	h.notificationEmailService = notificationEmailService
+}
+
+func (h *SettingHandler) SetNotificationEmailDispatcher(dispatcher *service.NotificationEmailDispatcher) {
+	h.notificationEmailDispatcher = dispatcher
 }
 
 // SetStepUpDeps attaches the services backing the step-up switch preconditions
@@ -338,6 +343,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentHelpImageURL:                                    paymentCfg.HelpImageURL,
 		PaymentHelpText:                                        paymentCfg.HelpText,
 		PaymentRefundRequestUserEmailEnabled:                   paymentCfg.RefundRequestUserEmailEnabled,
+		PaymentRefundRequestAdminEmailEnabled:                  paymentCfg.RefundRequestAdminEmailEnabled,
+		PaymentRefundResultUserEmailEnabled:                    paymentCfg.RefundResultUserEmailEnabled,
 		PaymentCancelRateLimitEnabled:                          paymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              paymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           paymentCfg.CancelRateLimitWindow,

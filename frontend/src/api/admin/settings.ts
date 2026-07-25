@@ -606,6 +606,8 @@ export interface SystemSettings {
   payment_help_image_url: string;
   payment_help_text: string;
   payment_refund_request_user_email_enabled: boolean;
+  payment_refund_request_admin_email_enabled: boolean;
+  payment_refund_result_user_email_enabled: boolean;
   payment_cancel_rate_limit_enabled: boolean;
   payment_cancel_rate_limit_max: number;
   payment_cancel_rate_limit_window: number;
@@ -893,6 +895,8 @@ export interface UpdateSettingsRequest {
   payment_help_image_url?: string;
   payment_help_text?: string;
   payment_refund_request_user_email_enabled?: boolean;
+  payment_refund_request_admin_email_enabled?: boolean;
+  payment_refund_result_user_email_enabled?: boolean;
   payment_cancel_rate_limit_enabled?: boolean;
   payment_cancel_rate_limit_max?: number;
   payment_cancel_rate_limit_window?: number;
@@ -1127,6 +1131,58 @@ export async function updateNotificationEmailPolicy(
     request,
   );
   return data;
+}
+
+export type NotificationEmailDeliveryStatus =
+  | "pending"
+  | "processing"
+  | "retry_wait"
+  | "sent"
+  | "failed"
+  | "suppressed";
+
+export interface NotificationEmailDelivery {
+  id: number;
+  event: string;
+  channel: string;
+  recipient: string;
+  source_type: string;
+  source_id: string;
+  status: NotificationEmailDeliveryStatus;
+  attempt_count: number;
+  max_attempts: number;
+  next_attempt_at: string;
+  last_error_category?: string;
+  last_error?: string;
+  created_at: string;
+  updated_at: string;
+  sent_at?: string;
+}
+
+export interface NotificationEmailDeliveryPage {
+  items: NotificationEmailDelivery[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export async function getNotificationEmailDeliveries(params: {
+  page?: number;
+  page_size?: number;
+  event?: string;
+  status?: string;
+  source_type?: string;
+  source_id?: string;
+} = {}): Promise<NotificationEmailDeliveryPage> {
+  const { data } = await apiClient.get<NotificationEmailDeliveryPage>(
+    "/admin/settings/email-deliveries",
+    { params },
+  );
+  return data;
+}
+
+export async function retryNotificationEmailDelivery(id: number): Promise<void> {
+  await apiClient.post(`/admin/settings/email-deliveries/${id}/retry`);
 }
 
 export async function getEmailTemplates(): Promise<EmailTemplateListResponse> {
@@ -1487,6 +1543,8 @@ export const settingsAPI = {
   sendTestEmail,
   getNotificationEmailPolicy,
   updateNotificationEmailPolicy,
+  getNotificationEmailDeliveries,
+  retryNotificationEmailDelivery,
   getEmailTemplates,
   getEmailTemplate,
   updateEmailTemplate,

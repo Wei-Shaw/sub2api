@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	stdsql "database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -169,68 +170,174 @@ func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reas
 	nr := strings.TrimSpace(reason)
 	now := time.Now()
 	by := fmt.Sprintf("%d", uid)
-	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.UserIDEQ(uid), paymentorder.StatusEQ(OrderStatusCompleted), paymentorder.OrderTypeEQ(payment.OrderTypeBalance)).SetStatus(OrderStatusRefundRequested).SetRefundRequestedAt(now).SetRefundRequestReason(nr).SetRefundRequestedBy(by).SetRefundAmount(o.Amount).Save(ctx)
+	err = s.withRefundNotificationTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		c, updateErr := txClient.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.UserIDEQ(uid), paymentorder.StatusEQ(OrderStatusCompleted), paymentorder.OrderTypeEQ(payment.OrderTypeBalance)).SetStatus(OrderStatusRefundRequested).SetRefundRequestedAt(now).SetRefundRequestReason(nr).SetRefundRequestedBy(by).SetRefundAmount(o.Amount).Save(txCtx)
+		if updateErr != nil {
+			return fmt.Errorf("update: %w", updateErr)
+		}
+		if c == 0 {
+			return infraerrors.Conflict("CONFLICT", "order status changed")
+		}
+		if dispatchErr := s.dispatchRefundRequestNotifications(txCtx, o, now, nr); dispatchErr != nil {
+			return fmt.Errorf("enqueue refund request notification: %w", dispatchErr)
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("update: %w", err)
-	}
-	if c == 0 {
-		return infraerrors.Conflict("CONFLICT", "order status changed")
+		s.recordRefundNotificationError(oid, err)
+		return err
 	}
 	s.writeAuditLog(ctx, oid, "REFUND_REQUESTED", fmt.Sprintf("user:%d", uid), map[string]any{"amount": o.Amount, "reason": nr})
-	s.dispatchRefundRequestNotification(ctx, o, now, nr)
 	return nil
 }
 
-func (s *PaymentService) dispatchRefundRequestNotification(ctx context.Context, o *dbent.PaymentOrder, requestedAt time.Time, reason string) {
-	if s == nil || s.notificationEmailService == nil || s.configService == nil || o == nil {
-		return
+func (s *PaymentService) dispatchRefundRequestNotifications(ctx context.Context, o *dbent.PaymentOrder, requestedAt time.Time, reason string) error {
+	if s == nil || s.notificationEmailDispatcher == nil || s.configService == nil || o == nil {
+		return nil
 	}
 	cfg, err := s.configService.GetPaymentConfig(ctx)
 	if err != nil {
 		slog.Warn("refund request notification setting lookup failed", "order_id", o.ID, "err", err.Error())
-		return
-	}
-	if !cfg.RefundRequestUserEmailEnabled {
-		return
-	}
-
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
-		defer cancel()
-		if err := s.sendRefundRequestNotification(ctx, o, requestedAt, reason); err != nil {
-			if errors.Is(err, ErrNotificationEmailChannelDisabled) {
-				return
-			}
-			slog.Warn("refund request notification email failed", "order_id", o.ID, "err", err.Error())
-			s.writeAuditLog(ctx, o.ID, "REFUND_REQUEST_EMAIL_FAILED", "system", map[string]any{"detail": err.Error()})
-			return
-		}
-		s.writeAuditLog(ctx, o.ID, "REFUND_REQUEST_EMAIL_SENT", "system", nil)
-	}()
-}
-
-func (s *PaymentService) sendRefundRequestNotification(ctx context.Context, o *dbent.PaymentOrder, requestedAt time.Time, reason string) error {
-	if s == nil || s.notificationEmailService == nil || o == nil {
 		return nil
 	}
-	currency := PaymentOrderCurrency(o)
-	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
-		Event:          NotificationEmailEventRefundRequestedUser,
-		RecipientEmail: o.UserEmail,
-		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
-		UserID:         o.UserID,
-		SourceType:     "payment_refund_request",
-		SourceID:       strconv.FormatInt(o.ID, 10),
-		ReminderKey:    requestedAt.UTC().Format(time.RFC3339Nano),
-		Variables: map[string]string{
-			"order_id":        strconv.FormatInt(o.ID, 10),
-			"refund_amount":   payment.FormatAmountForCurrency(o.PayAmount, currency),
-			"refund_currency": currency,
-			"refund_reason":   reason,
-			"refund_status":   OrderStatusRefundRequested,
-			"requested_at":    requestedAt.UTC().Format(time.RFC3339),
-		},
+	baseInput := NotificationEmailSendInput{
+		SourceType:  "payment_refund_request",
+		SourceID:    strconv.FormatInt(o.ID, 10),
+		ReminderKey: requestedAt.UTC().Format(time.RFC3339Nano),
+		Variables:   refundNotificationVariables(o, calculateGatewayRefundAmount(o.Amount, o.PayAmount, o.Amount, PaymentOrderCurrency(o)), reason, OrderStatusRefundRequested, requestedAt),
+	}
+	if cfg.RefundRequestUserEmailEnabled {
+		input := baseInput
+		input.Event = NotificationEmailEventRefundRequestedUser
+		input.RecipientEmail = o.UserEmail
+		input.RecipientName = firstNonEmpty(o.UserName, o.UserEmail)
+		input.UserID = o.UserID
+		if _, err := s.notificationEmailDispatcher.Enqueue(ctx, input); err != nil && !errors.Is(err, ErrNotificationEmailChannelDisabled) {
+			return refundNotificationEnqueueError{Event: NotificationEmailEventRefundRequestedUser, Err: err}
+		}
+	}
+	if cfg.RefundRequestAdminEmailEnabled {
+		input := baseInput
+		input.Event = NotificationEmailEventRefundRequestedAdmin
+		input.Variables = cloneNotificationEmailVariables(baseInput.Variables)
+		input.Variables["refund_user_id"] = strconv.FormatInt(o.UserID, 10)
+		input.Variables["refund_user_email"] = strings.TrimSpace(o.UserEmail)
+		input.Variables["refund_user_name"] = strings.TrimSpace(o.UserName)
+		if _, err := s.notificationEmailDispatcher.EnqueueGroup(ctx, input); err != nil && !errors.Is(err, ErrNotificationEmailChannelDisabled) {
+			return refundNotificationEnqueueError{Event: NotificationEmailEventRefundRequestedAdmin, Err: err}
+		}
+	}
+	return nil
+}
+
+func (s *PaymentService) dispatchRefundResultNotification(ctx context.Context, o *dbent.PaymentOrder, event, status string, gatewayAmount float64, reason string, completedAt time.Time) error {
+	if s == nil || s.notificationEmailDispatcher == nil || s.configService == nil || o == nil {
+		return nil
+	}
+	cfg, err := s.configService.GetPaymentConfig(ctx)
+	if err != nil || !cfg.RefundResultUserEmailEnabled {
+		if err != nil {
+			slog.Warn("refund result notification setting lookup failed", "order_id", o.ID, "err", err.Error())
+		}
+		return nil
+	}
+	_, err = s.notificationEmailDispatcher.Enqueue(ctx, NotificationEmailSendInput{
+		Event: event, RecipientEmail: o.UserEmail, RecipientName: firstNonEmpty(o.UserName, o.UserEmail), UserID: o.UserID,
+		SourceType: "payment_refund_result", SourceID: strconv.FormatInt(o.ID, 10), ReminderKey: status,
+		Variables: refundNotificationVariables(o, gatewayAmount, reason, status, completedAt),
 	})
+	if err != nil && !errors.Is(err, ErrNotificationEmailChannelDisabled) {
+		return refundNotificationEnqueueError{Event: event, Err: err}
+	}
+	return nil
+}
+
+type refundNotificationEnqueueError struct {
+	Event string
+	Err   error
+}
+
+type refundNotificationSQLExecutor interface {
+	ExecContext(context.Context, string, ...any) (stdsql.Result, error)
+}
+
+func (e refundNotificationEnqueueError) Error() string { return e.Err.Error() }
+func (e refundNotificationEnqueueError) Unwrap() error { return e.Err }
+
+func (s *PaymentService) recordRefundNotificationError(orderID int64, err error) {
+	var enqueueErr refundNotificationEnqueueError
+	if errors.As(err, &enqueueErr) {
+		s.recordRefundNotificationEnqueueFailure(orderID, enqueueErr.Event, enqueueErr.Err)
+	}
+}
+
+func (s *PaymentService) withRefundNotificationTx(ctx context.Context, fn func(context.Context, *dbent.Client) error) error {
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return fn(ctx, tx.Client())
+	}
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin refund notification transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+	if err := fn(txCtx, tx.Client()); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit refund notification transaction: %w", err)
+	}
+	return nil
+}
+
+// tryRefundResultNotification isolates the outbox insert behind a savepoint.
+// A provider result is an external side effect and must still commit when only
+// notification persistence fails.
+func tryRefundResultNotification(ctx context.Context, txClient *dbent.Client, fn func() error) (notificationErr, fatalErr error) {
+	exec, ok := txClient.Driver().(refundNotificationSQLExecutor)
+	if !ok {
+		return nil, errors.New("refund notification transaction does not support savepoints")
+	}
+	if _, err := exec.ExecContext(ctx, "SAVEPOINT refund_notification_outbox"); err != nil {
+		return nil, fmt.Errorf("create refund notification savepoint: %w", err)
+	}
+	if err := fn(); err != nil {
+		if _, rollbackErr := exec.ExecContext(ctx, "ROLLBACK TO SAVEPOINT refund_notification_outbox"); rollbackErr != nil {
+			return nil, fmt.Errorf("rollback refund notification savepoint after %v: %w", err, rollbackErr)
+		}
+		if _, releaseErr := exec.ExecContext(ctx, "RELEASE SAVEPOINT refund_notification_outbox"); releaseErr != nil {
+			return nil, fmt.Errorf("release failed refund notification savepoint after %v: %w", err, releaseErr)
+		}
+		return err, nil
+	}
+	if _, err := exec.ExecContext(ctx, "RELEASE SAVEPOINT refund_notification_outbox"); err != nil {
+		return nil, fmt.Errorf("release refund notification savepoint: %w", err)
+	}
+	return nil, nil
+}
+
+func refundNotificationVariables(o *dbent.PaymentOrder, gatewayAmount float64, reason, status string, at time.Time) map[string]string {
+	currency := PaymentOrderCurrency(o)
+	variables := map[string]string{
+		"order_id": strconv.FormatInt(o.ID, 10), "refund_amount": payment.FormatAmountForCurrency(gatewayAmount, currency),
+		"refund_currency": currency, "refund_reason": strings.TrimSpace(reason), "refund_status": status,
+	}
+	if status == OrderStatusRefundRequested {
+		variables["requested_at"] = at.UTC().Format(time.RFC3339)
+	} else {
+		variables["completed_at"] = at.UTC().Format(time.RFC3339)
+	}
+	return variables
+}
+
+func (s *PaymentService) recordRefundNotificationEnqueueFailure(orderID int64, event string, err error) {
+	if err == nil {
+		return
+	}
+	slog.Warn("refund notification enqueue failed", "order_id", orderID, "event", event, "err", boundedNotificationEmailError(err))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s.writeAuditLog(ctx, orderID, "REFUND_EMAIL_ENQUEUE_FAILED", "system", map[string]any{"event": event, "detail": boundedNotificationEmailError(err)})
 }
 
 func (s *PaymentService) validateRefundRequest(ctx context.Context, oid, uid int64) (*dbent.PaymentOrder, error) {
@@ -562,7 +669,22 @@ func (s *PaymentService) applyRefundFinalDeduction(ctx context.Context, p *Refun
 
 func (s *PaymentService) finalizeRefundFailed(ctx context.Context, o *dbent.PaymentOrder, gErr error) (*RefundResult, error) {
 	now := time.Now()
-	_, _ = s.entClient.PaymentOrder.UpdateOneID(o.ID).SetStatus(OrderStatusRefundFailed).SetFailedAt(now).SetFailedReason(psErrMsg(gErr)).Save(ctx)
+	var notificationErr error
+	err := s.withRefundNotificationTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		if _, updateErr := txClient.PaymentOrder.UpdateOneID(o.ID).SetStatus(OrderStatusRefundFailed).SetFailedAt(now).SetFailedReason(psErrMsg(gErr)).Save(txCtx); updateErr != nil {
+			return updateErr
+		}
+		gatewayAmount := calculateGatewayRefundAmount(o.Amount, o.PayAmount, o.RefundAmount, PaymentOrderCurrency(o))
+		var fatalErr error
+		notificationErr, fatalErr = tryRefundResultNotification(txCtx, txClient, func() error {
+			return s.dispatchRefundResultNotification(txCtx, o, NotificationEmailEventRefundFailedUser, OrderStatusRefundFailed, gatewayAmount, psStringValue(o.RefundReason), now)
+		})
+		return fatalErr
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mark refund failed: %w", err)
+	}
+	s.recordRefundNotificationError(o.ID, notificationErr)
 	s.writeAuditLog(ctx, o.ID, "REFUND_FAILED", "admin", map[string]any{"detail": psErrMsg(gErr)})
 	return &RefundResult{Success: false, Warning: "gateway refund failed: " + psErrMsg(gErr)}, nil
 }
@@ -606,7 +728,21 @@ func (s *PaymentService) handleGwFail(ctx context.Context, p *RefundPlan, gErr e
 		return &RefundResult{Success: false, Warning: "gateway failed: " + psErrMsg(gErr) + ", rolled back"}, nil
 	}
 	now := time.Now()
-	_, _ = s.entClient.PaymentOrder.UpdateOneID(p.OrderID).SetStatus(OrderStatusRefundFailed).SetFailedAt(now).SetFailedReason(psErrMsg(gErr)).Save(ctx)
+	var notificationErr error
+	err := s.withRefundNotificationTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		if _, updateErr := txClient.PaymentOrder.UpdateOneID(p.OrderID).SetStatus(OrderStatusRefundFailed).SetFailedAt(now).SetFailedReason(psErrMsg(gErr)).Save(txCtx); updateErr != nil {
+			return updateErr
+		}
+		var fatalErr error
+		notificationErr, fatalErr = tryRefundResultNotification(txCtx, txClient, func() error {
+			return s.dispatchRefundResultNotification(txCtx, p.Order, NotificationEmailEventRefundFailedUser, OrderStatusRefundFailed, p.GatewayAmount, p.Reason, now)
+		})
+		return fatalErr
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mark refund failed: %w", err)
+	}
+	s.recordRefundNotificationError(p.OrderID, notificationErr)
 	s.writeAuditLog(ctx, p.OrderID, "REFUND_FAILED", "admin", map[string]any{"detail": psErrMsg(gErr)})
 	return nil, infraerrors.InternalServer("REFUND_FAILED", psErrMsg(gErr))
 }
@@ -617,10 +753,21 @@ func (s *PaymentService) markRefundOk(ctx context.Context, p *RefundPlan) (*Refu
 		fs = OrderStatusPartiallyRefunded
 	}
 	now := time.Now()
-	_, err := s.entClient.PaymentOrder.UpdateOneID(p.OrderID).SetStatus(fs).SetRefundAmount(p.RefundAmount).SetRefundReason(p.Reason).SetRefundAt(now).SetForceRefund(p.Force).Save(ctx)
+	var notificationErr error
+	err := s.withRefundNotificationTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		if _, updateErr := txClient.PaymentOrder.UpdateOneID(p.OrderID).SetStatus(fs).SetRefundAmount(p.RefundAmount).SetRefundReason(p.Reason).SetRefundAt(now).SetForceRefund(p.Force).Save(txCtx); updateErr != nil {
+			return updateErr
+		}
+		var fatalErr error
+		notificationErr, fatalErr = tryRefundResultNotification(txCtx, txClient, func() error {
+			return s.dispatchRefundResultNotification(txCtx, p.Order, NotificationEmailEventRefundSucceededUser, fs, p.GatewayAmount, p.Reason, now)
+		})
+		return fatalErr
+	})
 	if err != nil {
 		return nil, fmt.Errorf("mark refund: %w", err)
 	}
+	s.recordRefundNotificationError(p.OrderID, notificationErr)
 	s.writeAuditLog(ctx, p.OrderID, "REFUND_SUCCESS", "admin", map[string]any{"refundAmount": p.RefundAmount, "reason": p.Reason, "balanceDeducted": p.BalanceToDeduct, "force": p.Force})
 	return &RefundResult{Success: true, BalanceDeducted: p.BalanceToDeduct, SubDaysDeducted: p.SubDaysToDeduct}, nil
 }

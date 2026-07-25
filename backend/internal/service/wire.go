@@ -607,6 +607,7 @@ func ProvideOpsService(
 	systemLogSink *OpsSystemLogSink,
 	settingService *SettingService,
 	authCacheInvalidationWorker *AuthCacheInvalidationWorker,
+	notificationEmailWorker *NotificationEmailDeliveryWorker,
 	apiKeyService *APIKeyService,
 ) *OpsService {
 	svc := NewOpsService(
@@ -629,6 +630,7 @@ func ProvideOpsService(
 		settingService.WarmOpenAIQuotaAutoPauseSettings(context.Background())
 	}
 	svc.authCacheInvalidationWorker = authCacheInvalidationWorker
+	svc.SetNotificationEmailDeliveryWorker(notificationEmailWorker)
 	svc.apiKeyService = apiKeyService
 	svc.StartRuntimeSettingsRefresh(context.Background())
 	return svc
@@ -766,6 +768,8 @@ var ProviderSet = wire.NewSet(
 	ProvideOpsScheduledReportService,
 	NewEmailService,
 	NewNotificationEmailService,
+	NewNotificationEmailDispatcher,
+	ProvideNotificationEmailDeliveryWorker,
 	ProvideEmailQueueService,
 	NewTurnstileService,
 	NewSubscriptionService,
@@ -835,9 +839,10 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 }
 
 // ProvidePaymentService creates PaymentService and attaches notification email delivery.
-func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService) *PaymentService {
+func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService, notificationEmailDispatcher *NotificationEmailDispatcher) *PaymentService {
 	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
 	svc.SetNotificationEmailService(notificationEmailService)
+	svc.SetNotificationEmailDispatcher(notificationEmailDispatcher)
 	return svc
 }
 

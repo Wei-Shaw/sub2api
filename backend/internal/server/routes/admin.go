@@ -239,6 +239,7 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/ingress-rejections", h.Admin.Ops.ListIngressRejects)
 		ops.GET("/ingress-rejections/health", h.Admin.Ops.GetIngressRejectHealth)
 		ops.GET("/auth-cache-invalidation/health", h.Admin.Ops.GetAuthCacheInvalidationHealth)
+		ops.GET("/notification-email/health", h.Admin.Ops.GetNotificationEmailDeliveryHealth)
 
 		// Upstream errors (independent upstream failures)
 		ops.GET("/upstream-errors", h.Admin.Ops.ListUpstreamErrors)
@@ -528,6 +529,8 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
 		adminSettings.GET("/email-notification-policy", h.Admin.Setting.GetNotificationEmailPolicy)
 		adminSettings.PUT("/email-notification-policy", h.Admin.Setting.UpdateNotificationEmailPolicy)
+		adminSettings.GET("/email-deliveries", h.Admin.Setting.ListNotificationEmailDeliveries)
+		adminSettings.POST("/email-deliveries/:id/retry", h.Admin.Setting.RetryNotificationEmailDelivery)
 		adminSettings.GET("/email-templates", h.Admin.Setting.ListEmailTemplates)
 		adminSettings.POST("/email-template-preview", h.Admin.Setting.PreviewEmailTemplate)
 		adminSettings.GET("/email-templates/:event/:locale", h.Admin.Setting.GetEmailTemplate)

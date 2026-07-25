@@ -596,6 +596,10 @@ export default {
         cancelRateLimitMax: '最大取消次数',
         refundRequestUserEmail: '退款申请确认邮件',
         refundRequestUserEmailHint: '用户提交退款申请后发送确认邮件；邮件设置中的“用户退款通知”总开关也必须开启',
+        refundRequestAdminEmail: '退款申请财务通知',
+        refundRequestAdminEmailHint: '用户提交退款申请后通知财务收件组；邮件设置中的“退款管理通知”总开关也必须开启',
+        refundResultUserEmail: '退款结果通知邮件',
+        refundResultUserEmailHint: '退款成功或最终失败后通知用户；邮件设置中的“用户退款通知”总开关也必须开启',
         cancelRateLimitUnitMinute: '分钟',
         cancelRateLimitUnitHour: '小时',
         cancelRateLimitUnitDay: '天',
@@ -829,6 +833,25 @@ export default {
           security: '安全与风控',
           opsAlert: '运维告警',
           opsReport: '运维报告'
+        },
+        deliveries: {
+          title: '最近投递',
+          allStatuses: '全部状态',
+          event: '事件',
+          recipient: '收件人',
+          source: '业务来源',
+          status: '状态',
+          updatedAt: '更新时间',
+          retry: '重新投递',
+          empty: '暂无投递记录',
+          statuses: {
+            pending: '待投递',
+            processing: '投递中',
+            retry_wait: '等待重试',
+            sent: '已发送',
+            failed: '失败',
+            suppressed: '已抑制'
+          }
         }
       },
       emailTemplates: {
