@@ -484,6 +484,13 @@ func normalizeGrokResponsesPromptFields(body []byte) ([]byte, error) {
 		changed = true
 	}
 
+	if normalizedInput, rolesChanged, err := normalizeGrokResponsesInputRoles(payload["input"]); err != nil {
+		return nil, err
+	} else if rolesChanged {
+		payload["input"] = normalizedInput
+		changed = true
+	}
+
 	if !changed {
 		return body, nil
 	}
@@ -492,6 +499,47 @@ func normalizeGrokResponsesPromptFields(body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("encode normalized Grok Responses request: %w", err)
 	}
 	return encoded, nil
+}
+
+// normalizeGrokResponsesInputRoles folds OpenAI's developer role into xAI's
+// system role. Grok Responses accepts system/user/assistant message roles but
+// rejects developer as a ModelInput variant.
+func normalizeGrokResponsesInputRoles(rawInput json.RawMessage) (json.RawMessage, bool, error) {
+	var items []json.RawMessage
+	if err := json.Unmarshal(rawInput, &items); err != nil {
+		return rawInput, false, nil // String and null input forms contain no roles.
+	}
+
+	changed := false
+	for i, rawItem := range items {
+		var item map[string]json.RawMessage
+		if err := json.Unmarshal(rawItem, &item); err != nil || item == nil {
+			continue
+		}
+		var role string
+		if json.Unmarshal(item["role"], &role) != nil || !strings.EqualFold(role, "developer") {
+			continue
+		}
+		var typ string
+		if rawType, exists := item["type"]; exists && json.Unmarshal(rawType, &typ) == nil && typ != "" && typ != "message" {
+			continue
+		}
+		item["role"] = json.RawMessage(`"system"`)
+		encoded, err := json.Marshal(item)
+		if err != nil {
+			return nil, false, fmt.Errorf("encode Grok Responses message role: %w", err)
+		}
+		items[i] = encoded
+		changed = true
+	}
+	if !changed {
+		return rawInput, false, nil
+	}
+	encoded, err := json.Marshal(items)
+	if err != nil {
+		return nil, false, fmt.Errorf("encode Grok Responses input roles: %w", err)
+	}
+	return encoded, true, nil
 }
 
 func grokResponsesInputItemsWithSystemPrompt(rawInput json.RawMessage, instructions string) ([]json.RawMessage, error) {

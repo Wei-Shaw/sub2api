@@ -126,6 +126,29 @@ func TestPatchGrokResponsesBodyWithClientToolsDropsEmptyOrInvalidPromptMetadata(
 	require.Equal(t, "user", gjson.GetBytes(patched, "input.0.role").String())
 }
 
+func TestPatchGrokResponsesBodyWithClientToolsNormalizesCodexHistoryWithoutTools(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"tools": [],
+		"input": [
+			{"type":"message","role":"developer","content":[{"type":"input_text","text":"rules"}]},
+			{"type":"reasoning","content":null,"encrypted_content":"ciphertext"},
+			{"type":"custom_tool_call","call_id":"call_1","name":"apply_patch","input":"*** Begin Patch"},
+			{"type":"custom_tool_call_output","call_id":"call_1","output":"Done!"}
+		]
+	}`)
+
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
+	require.NoError(t, err)
+	require.Equal(t, "system", gjson.GetBytes(patched, "input.0.role").String())
+	require.False(t, gjson.GetBytes(patched, "input.1.content").Exists())
+	require.Equal(t, "function_call", gjson.GetBytes(patched, "input.2.type").String())
+	require.JSONEq(t, `{"input":"*** Begin Patch"}`, gjson.GetBytes(patched, "input.2.arguments").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.3.type").String())
+	require.False(t, bytes.Contains(patched, []byte(`"custom_tool_call`)))
+}
+
 func TestPatchGrokResponsesBodySanitizesComposerReasoningParameters(t *testing.T) {
 	t.Parallel()
 
@@ -390,7 +413,7 @@ func TestPatchGrokResponsesBodyPromotesCodexAdditionalTools(t *testing.T) {
 	require.False(t, gjson.GetBytes(patched, `tools.#(type=="custom")`).Exists())
 	require.False(t, gjson.GetBytes(patched, `tools.#(type=="namespace")`).Exists())
 	require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
-	require.Equal(t, "developer", gjson.GetBytes(patched, "input.0.role").String())
+	require.Equal(t, "system", gjson.GetBytes(patched, "input.0.role").String())
 	require.Equal(t, "system prompt", gjson.GetBytes(patched, "input.0.content.0.text").String())
 	require.Equal(t, "user", gjson.GetBytes(patched, "input.1.role").String())
 	require.Equal(t, "hello", gjson.GetBytes(patched, "input.1.content.0.text").String())
