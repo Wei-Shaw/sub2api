@@ -18,9 +18,14 @@ func TestBatchImageSettlementService_SettlesAndChargesSuccessfulImagesOnly(t *te
 	job.SuccessCount = 3
 	job.FailCount = 2
 	job.ItemCount = 5
+	job.SessionID = batchImageStringPtr("batch-settlement-session")
 	repo.jobs[job.BatchID] = job
 	billing := &fakeBatchImageBillingRepo{REDACTED
-	svc := &BatchImageSettlementService{Repo: repo, BillingRepo: billing, Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.25REDACTEDREDACTED
+	usageLogs := &openAIRecordUsageLogRepoStub{REDACTED
+	svc := &BatchImageSettlementService{
+		Repo: repo, BillingRepo: billing, Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.25REDACTED,
+		UsageLogRepo: usageLogs,
+REDACTED
 
 	result, err := svc.Settle(context.Background(), job.BatchID)
 REDACTED
@@ -32,6 +37,7 @@ REDACTED
 	require.Equal(t, 0.75, *repo.jobs[job.BatchID].ActualCost)
 	require.NotEmpty(t, batchImageDerefString(repo.jobs[job.BatchID].ManifestHash))
 	require.NotNil(t, repo.jobs[job.BatchID].SettledAt)
+	require.Equal(t, "batch-settlement-session", batchImageDerefString(usageLogs.lastLog.SessionID))
 	require.Len(t, billing.captures, 1)
 	require.Equal(t, int64(321), billing.captures[0].APIKeyID)
 	require.Equal(t, job.UserID, billing.captures[0].UserID)

@@ -209,6 +209,60 @@ REDACTED
 	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
 REDACTED
 
+func TestSanitizeGrokResponsesToolsKeepsToolChoiceOnlyWithSupportedTools(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		body           string
+		wantTools      bool
+		wantToolChoice bool
+REDACTED{
+		{
+			name: "missing tools with string tool choice",
+			body: `{"input":"hello","tool_choice":"auto"REDACTED`,
+	REDACTED,
+		{
+			name: "missing tools with object tool choice",
+			body: `{"input":"hello","tool_choice":{"type":"function","name":"lookup"REDACTEDREDACTED`,
+	REDACTED,
+		{
+			name:      "empty tools",
+			body:      `{"input":"hello","tools":[],"tool_choice":"auto"REDACTED`,
+			wantTools: true,
+	REDACTED,
+		{
+			name: "all tools unsupported",
+			body: `{"input":"hello","tools":[{"type":"namespace","name":"client_tools"REDACTED],"tool_choice":"auto"REDACTED`,
+	REDACTED,
+		{
+			name:           "supported tool",
+			body:           `{"input":"hello","tools":[{"type":"function","name":"lookup"REDACTED],"tool_choice":"auto"REDACTED`,
+			wantTools:      true,
+			wantToolChoice: true,
+	REDACTED,
+		{
+			name:           "malformed non-array tools remain untouched",
+			body:           `{"input":"hello","tools":{"type":"function","name":"lookup"REDACTED,"tool_choice":"auto"REDACTED`,
+			wantTools:      true,
+			wantToolChoice: true,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			patched, err := sanitizeGrokResponsesTools([]byte(tt.body))
+		REDACTED
+			require.True(t, json.Valid(patched))
+			require.Equal(t, tt.wantTools, gjson.GetBytes(patched, "tools").Exists())
+			require.Equal(t, tt.wantToolChoice, gjson.GetBytes(patched, "tool_choice").Exists())
+			if tt.wantToolChoice {
+				require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestPatchGrokResponsesBodyPromotesCodexAdditionalTools(t *testing.T) {
 	t.Parallel()
 
@@ -2473,6 +2527,43 @@ REDACTED
 			require.True(t, repo.lastTempUnschedUntil.Before(before.Add(tt.wantMaxCooldown)))
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestHandleGrokAccountUpstreamError5xxRespectsPoolMode(t *testing.T) {
+	t.Run("pool mode keeps scheduling state", func(t *testing.T) {
+		account := &Account{
+			ID:       611,
+			Platform: PlatformGrok,
+			Type:     AccountTypeAPIKey,
+	REDACTED
+				"pool_mode": true,
+		REDACTED,
+	REDACTED
+		repo := &grokQuotaAccountRepo{REDACTED
+		svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+
+		svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusBadGateway, nil, nil)
+
+		require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+		require.Zero(t, repo.tempUnschedCalls)
+		require.Nil(t, account.TempUnschedulableUntil)
+		require.Empty(t, account.TempUnschedulableReason)
+REDACTED)
+
+	t.Run("non-pool mode keeps two minute cooldown", func(t *testing.T) {
+		account := &Account{ID: 612, Platform: PlatformGrok, Type: AccountTypeAPIKeyREDACTED
+		repo := &grokQuotaAccountRepo{REDACTED
+		svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+		before := time.Now()
+
+		svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusBadGateway, nil, nil)
+
+		require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+		require.Equal(t, 1, repo.tempUnschedCalls)
+		require.Equal(t, account.ID, repo.lastTempUnschedID)
+		require.Equal(t, "grok upstream temporary error", repo.lastTempUnschedReason)
+		require.WithinDuration(t, before.Add(2*time.Minute), repo.lastTempUnschedUntil, time.Second)
+REDACTED)
 REDACTED
 
 func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testing.T) {

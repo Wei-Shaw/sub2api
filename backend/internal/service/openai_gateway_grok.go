@@ -663,7 +663,13 @@ REDACTED
 
 func sanitizeGrokResponsesTools(body []byte) ([]byte, error) {
 	tools := gjson.GetBytes(body, "tools")
-	if !tools.Exists() || !tools.IsArray() {
+	if !tools.Exists() {
+		if gjson.GetBytes(body, "tool_choice").Exists() {
+			return sjson.DeleteBytes(body, "tool_choice")
+	REDACTED
+		return body, nil
+REDACTED
+	if !tools.IsArray() {
 		return body, nil
 REDACTED
 
@@ -1363,7 +1369,7 @@ REDACTED
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs both runtime and durable rate-limit state.
 	default:
-		if statusCode >= 500 {
+		if statusCode >= 500 && !account.IsPoolMode() {
 			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")
 	REDACTED
 REDACTED
