@@ -12,58 +12,16 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+
+	portcm "github.com/Wei-Shaw/sub2api/internal/port/channelmonitor"
 )
 
-// ChannelMonitorRepository 渠道监控数据访问接口。
-// 入参/返回的指针类型均使用 service 包的 ChannelMonitor 模型，
-// repository 实现负责与 ent 模型互转，并保持 api_key_encrypted 字段为密文。
-type ChannelMonitorRepository interface {
-	// CRUD
-	Create(ctx context.Context, m *ChannelMonitor) error
-	GetByID(ctx context.Context, id int64) (*ChannelMonitor, error)
-	Update(ctx context.Context, m *ChannelMonitor) error
-	Delete(ctx context.Context, id int64) error
-	List(ctx context.Context, params ChannelMonitorListParams) ([]*ChannelMonitor, int64, error)
-	FindByDuplicateOperationID(ctx context.Context, operationID string) (*ChannelMonitor, error)
-
-	// 调度器辅助
-	ListEnabled(ctx context.Context) ([]*ChannelMonitor, error)
-	MarkChecked(ctx context.Context, id int64, checkedAt time.Time) error
-	InsertHistoryBatch(ctx context.Context, rows []*ChannelMonitorHistoryRow) error
-	DeleteHistoryBefore(ctx context.Context, before time.Time) (int64, error)
-
-	// 历史记录
-	ListHistory(ctx context.Context, monitorID int64, model string, limit int) ([]*ChannelMonitorHistoryEntry, error)
-
-	// 用户视图聚合
-	ListLatestPerModel(ctx context.Context, monitorID int64) ([]*ChannelMonitorLatest, error)
-	ComputeAvailability(ctx context.Context, monitorID int64, windowDays int) ([]*ChannelMonitorAvailability, error)
-
-	// 批量聚合（admin/user list 用，避免 N+1）
-	ListLatestForMonitorIDs(ctx context.Context, ids []int64) (map[int64][]*ChannelMonitorLatest, error)
-	ComputeAvailabilityForMonitors(ctx context.Context, ids []int64, windowDays int) (map[int64][]*ChannelMonitorAvailability, error)
-	// ListRecentHistoryForMonitors 批量取多个 monitor 各自主模型（primaryModels[monitorID]）最近 perMonitorLimit 条历史。
-	// 返回的 entry 已按 checked_at DESC 排序（最新在前），不含 message 字段。
-	ListRecentHistoryForMonitors(ctx context.Context, ids []int64, primaryModels map[int64]string, perMonitorLimit int) (map[int64][]*ChannelMonitorHistoryEntry, error)
-
-	// ---------- 聚合维护（OpsCleanupService 调用） ----------
-
-	// UpsertDailyRollupsFor 把 targetDate 当天的明细按 (monitor_id, model, bucket_date)
-	// 聚合到 channel_monitor_daily_rollups。targetDate 会被截断到日期；
-	// 用 ON CONFLICT DO UPDATE 实现幂等回填，返回 upsert 影响的行数。
-	UpsertDailyRollupsFor(ctx context.Context, targetDate time.Time) (int64, error)
-	// DeleteRollupsBefore 软删 bucket_date < beforeDate 的聚合行，返回删除行数。
-	DeleteRollupsBefore(ctx context.Context, beforeDate time.Time) (int64, error)
-	// LoadAggregationWatermark 读 watermark（id=1）。
-	// 返回 nil 表示从未聚合过；watermark 表本身预期已存在单行（migration 110 写入）。
-	LoadAggregationWatermark(ctx context.Context) (*time.Time, error)
-	// UpdateAggregationWatermark 写 watermark（UPSERT 到 id=1）。
-	UpdateAggregationWatermark(ctx context.Context, date time.Time) error
-}
+// ChannelMonitorRepository is a type alias for the channel_monitor persistence port.
+type ChannelMonitorRepository = portcm.Repository
 
 // ChannelMonitorService 渠道监控管理服务。
 type ChannelMonitorService struct {
-	repo      ChannelMonitorRepository
+	repo      portcm.Repository
 	encryptor SecretEncryptor
 	// scheduler 由 wire 通过 SetScheduler 注入；CRUD 后调用对应钩子即时同步任务。
 	// 测试或未注入场景下保持 nil，所有钩子调用变为 no-op。
@@ -72,14 +30,8 @@ type ChannelMonitorService struct {
 
 const maxChannelMonitorNameRunes = 100
 
-// ChannelMonitorDuplicateOperationIDMetadataKey is stored in the existing
-// extra_headers JSON column to avoid a schema migration. The colon makes it an
-// invalid HTTP header name, and repository adapters remove it before exposing
-// ExtraHeaders to the service layer.
-const ChannelMonitorDuplicateOperationIDMetadataKey = "sub2api:duplicate_operation_id"
-
 // NewChannelMonitorService 创建渠道监控服务实例。
-func NewChannelMonitorService(repo ChannelMonitorRepository, encryptor SecretEncryptor) *ChannelMonitorService {
+func NewChannelMonitorService(repo portcm.Repository, encryptor SecretEncryptor) *ChannelMonitorService {
 	return &ChannelMonitorService{repo: repo, encryptor: encryptor}
 }
 

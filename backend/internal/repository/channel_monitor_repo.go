@@ -10,14 +10,15 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	portcm "github.com/Wei-Shaw/sub2api/internal/port/channelmonitor"
 	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
 )
 
-// channelMonitorRepository 实现 service.ChannelMonitorRepository。
+// channelMonitorRepository 实现 portcm.Repository。
 //
 // 选型说明：
 //   - CRUD 走 ent，复用项目的事务上下文支持
@@ -29,13 +30,13 @@ type channelMonitorRepository struct {
 }
 
 // NewChannelMonitorRepository 创建仓储实例。
-func NewChannelMonitorRepository(client *dbent.Client, db *sql.DB) service.ChannelMonitorRepository {
+func NewChannelMonitorRepository(client *dbent.Client, db *sql.DB) portcm.Repository {
 	return &channelMonitorRepository{client: client, db: db}
 }
 
 // ---------- CRUD ----------
 
-func (r *channelMonitorRepository) Create(ctx context.Context, m *service.ChannelMonitor) error {
+func (r *channelMonitorRepository) Create(ctx context.Context, m *domain.ChannelMonitor) error {
 	client := clientFromContext(ctx, r.client)
 	builder := client.ChannelMonitor.Create().
 		SetName(m.Name).
@@ -61,7 +62,7 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 
 	created, err := builder.Save(ctx)
 	if err != nil {
-		return translatePersistenceError(err, service.ErrChannelMonitorNotFound, nil)
+		return translatePersistenceError(err, domain.ErrChannelMonitorNotFound, nil)
 	}
 	m.ID = created.ID
 	m.CreatedAt = created.CreatedAt
@@ -69,7 +70,7 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 	return nil
 }
 
-func (r *channelMonitorRepository) FindByDuplicateOperationID(ctx context.Context, operationID string) (*service.ChannelMonitor, error) {
+func (r *channelMonitorRepository) FindByDuplicateOperationID(ctx context.Context, operationID string) (*domain.ChannelMonitor, error) {
 	if strings.TrimSpace(operationID) == "" {
 		return nil, nil
 	}
@@ -79,7 +80,7 @@ func (r *channelMonitorRepository) FindByDuplicateOperationID(ctx context.Contex
 			selector.Where(sqljson.ValueEQ(
 				channelmonitor.FieldExtraHeaders,
 				operationID,
-				sqljson.Path(service.ChannelMonitorDuplicateOperationIDMetadataKey),
+				sqljson.Path(domain.ChannelMonitorDuplicateOperationIDMetadataKey),
 			))
 		}).
 		Order(dbent.Asc(channelmonitor.FieldID)).
@@ -93,17 +94,17 @@ func (r *channelMonitorRepository) FindByDuplicateOperationID(ctx context.Contex
 	return entToServiceMonitor(row), nil
 }
 
-func (r *channelMonitorRepository) GetByID(ctx context.Context, id int64) (*service.ChannelMonitor, error) {
+func (r *channelMonitorRepository) GetByID(ctx context.Context, id int64) (*domain.ChannelMonitor, error) {
 	row, err := r.client.ChannelMonitor.Query().
 		Where(channelmonitor.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
-		return nil, translatePersistenceError(err, service.ErrChannelMonitorNotFound, nil)
+		return nil, translatePersistenceError(err, domain.ErrChannelMonitorNotFound, nil)
 	}
 	return entToServiceMonitor(row), nil
 }
 
-func (r *channelMonitorRepository) Update(ctx context.Context, m *service.ChannelMonitor) error {
+func (r *channelMonitorRepository) Update(ctx context.Context, m *domain.ChannelMonitor) error {
 	client := clientFromContext(ctx, r.client)
 	updater := client.ChannelMonitor.UpdateOneID(m.ID).
 		SetName(m.Name).
@@ -132,7 +133,7 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 
 	updated, err := updater.Save(ctx)
 	if err != nil {
-		return translatePersistenceError(err, service.ErrChannelMonitorNotFound, nil)
+		return translatePersistenceError(err, domain.ErrChannelMonitorNotFound, nil)
 	}
 	m.UpdatedAt = updated.UpdatedAt
 	return nil
@@ -141,12 +142,12 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 func (r *channelMonitorRepository) Delete(ctx context.Context, id int64) error {
 	client := clientFromContext(ctx, r.client)
 	if err := client.ChannelMonitor.DeleteOneID(id).Exec(ctx); err != nil {
-		return translatePersistenceError(err, service.ErrChannelMonitorNotFound, nil)
+		return translatePersistenceError(err, domain.ErrChannelMonitorNotFound, nil)
 	}
 	return nil
 }
 
-func (r *channelMonitorRepository) List(ctx context.Context, params service.ChannelMonitorListParams) ([]*service.ChannelMonitor, int64, error) {
+func (r *channelMonitorRepository) List(ctx context.Context, params domain.ChannelMonitorListParams) ([]*domain.ChannelMonitor, int64, error) {
 	q := r.client.ChannelMonitor.Query()
 	if params.Provider != "" {
 		q = q.Where(channelmonitor.ProviderEQ(channelmonitor.Provider(params.Provider)))
@@ -185,7 +186,7 @@ func (r *channelMonitorRepository) List(ctx context.Context, params service.Chan
 		return nil, 0, fmt.Errorf("list monitors: %w", err)
 	}
 
-	out := make([]*service.ChannelMonitor, 0, len(rows))
+	out := make([]*domain.ChannelMonitor, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, entToServiceMonitor(row))
 	}
@@ -194,14 +195,14 @@ func (r *channelMonitorRepository) List(ctx context.Context, params service.Chan
 
 // ---------- 调度器辅助 ----------
 
-func (r *channelMonitorRepository) ListEnabled(ctx context.Context) ([]*service.ChannelMonitor, error) {
+func (r *channelMonitorRepository) ListEnabled(ctx context.Context) ([]*domain.ChannelMonitor, error) {
 	rows, err := r.client.ChannelMonitor.Query().
 		Where(channelmonitor.EnabledEQ(true)).
 		All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list enabled monitors: %w", err)
 	}
-	out := make([]*service.ChannelMonitor, 0, len(rows))
+	out := make([]*domain.ChannelMonitor, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, entToServiceMonitor(row))
 	}
@@ -213,12 +214,12 @@ func (r *channelMonitorRepository) MarkChecked(ctx context.Context, id int64, ch
 	if err := client.ChannelMonitor.UpdateOneID(id).
 		SetLastCheckedAt(checkedAt).
 		Exec(ctx); err != nil {
-		return translatePersistenceError(err, service.ErrChannelMonitorNotFound, nil)
+		return translatePersistenceError(err, domain.ErrChannelMonitorNotFound, nil)
 	}
 	return nil
 }
 
-func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows []*service.ChannelMonitorHistoryRow) error {
+func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows []*domain.ChannelMonitorHistoryRow) error {
 	if len(rows) == 0 {
 		return nil
 	}
@@ -253,7 +254,7 @@ func (r *channelMonitorRepository) DeleteHistoryBefore(ctx context.Context, befo
 
 // ListHistory 按 checked_at 倒序返回某个监控的最近 N 条历史记录。
 // model 为空时不过滤；非空时只返回该模型的记录。
-func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID int64, model string, limit int) ([]*service.ChannelMonitorHistoryEntry, error) {
+func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID int64, model string, limit int) ([]*domain.ChannelMonitorHistoryEntry, error) {
 	q := r.client.ChannelMonitorHistory.Query().
 		Where(channelmonitorhistory.MonitorIDEQ(monitorID))
 	if strings.TrimSpace(model) != "" {
@@ -266,9 +267,9 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 	if err != nil {
 		return nil, fmt.Errorf("list history: %w", err)
 	}
-	out := make([]*service.ChannelMonitorHistoryEntry, 0, len(rows))
+	out := make([]*domain.ChannelMonitorHistoryEntry, 0, len(rows))
 	for _, row := range rows {
-		entry := &service.ChannelMonitorHistoryEntry{
+		entry := &domain.ChannelMonitorHistoryEntry{
 			ID:            row.ID,
 			Model:         row.Model,
 			Status:        string(row.Status),
@@ -286,7 +287,7 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 
 // ListLatestPerModel 用 DISTINCT ON 取每个 (monitor_id, model) 的最近一条记录。
 // 借助 (monitor_id, model, checked_at DESC) 索引可走 Index Scan。
-func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monitorID int64) ([]*service.ChannelMonitorLatest, error) {
+func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monitorID int64) ([]*domain.ChannelMonitorLatest, error) {
 	const q = `
 		SELECT DISTINCT ON (model)
 		    model, status, latency_ms, ping_latency_ms, checked_at
@@ -300,9 +301,9 @@ func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monit
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make([]*service.ChannelMonitorLatest, 0)
+	out := make([]*domain.ChannelMonitorLatest, 0)
 	for rows.Next() {
-		l := &service.ChannelMonitorLatest{}
+		l := &domain.ChannelMonitorLatest{}
 		var latency, ping sql.NullInt64
 		if err := rows.Scan(&l.Model, &l.Status, &latency, &ping, &l.CheckedAt); err != nil {
 			return nil, fmt.Errorf("scan latest row: %w", err)
@@ -330,7 +331,7 @@ func assignNullInt(dst **int, n sql.NullInt64) {
 // 数据来源：明细表只保留 1 天；窗口前其余天数走聚合表。
 // 明细保留 30 天（monitorHistoryRetentionDays），窗口 <= 30 天时直接扫 histories，
 // 精度到秒，避免与聚合表 UNION 带来的 UTC 日切精度损失。
-func (r *channelMonitorRepository) ComputeAvailability(ctx context.Context, monitorID int64, windowDays int) ([]*service.ChannelMonitorAvailability, error) {
+func (r *channelMonitorRepository) ComputeAvailability(ctx context.Context, monitorID int64, windowDays int) ([]*domain.ChannelMonitorAvailability, error) {
 	if windowDays <= 0 {
 		windowDays = 7
 	}
@@ -352,7 +353,7 @@ func (r *channelMonitorRepository) ComputeAvailability(ctx context.Context, moni
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make([]*service.ChannelMonitorAvailability, 0)
+	out := make([]*domain.ChannelMonitorAvailability, 0)
 	for rows.Next() {
 		row, err := scanAvailabilityRow(rows, windowDays)
 		if err != nil {
@@ -365,8 +366,8 @@ func (r *channelMonitorRepository) ComputeAvailability(ctx context.Context, moni
 
 // scanAvailabilityRow 把单行 (model, total, ok, avg_latency) 扫描为 ChannelMonitorAvailability。
 // 仅服务于 ComputeAvailability（4 列）；批量版本因为多一列 monitor_id 直接 inline 调 finalizeAvailabilityRow。
-func scanAvailabilityRow(rows interface{ Scan(...any) error }, windowDays int) (*service.ChannelMonitorAvailability, error) {
-	row := &service.ChannelMonitorAvailability{WindowDays: windowDays}
+func scanAvailabilityRow(rows interface{ Scan(...any) error }, windowDays int) (*domain.ChannelMonitorAvailability, error) {
+	row := &domain.ChannelMonitorAvailability{WindowDays: windowDays}
 	var avgLatency sql.NullFloat64
 	if err := rows.Scan(&row.Model, &row.TotalChecks, &row.OperationalChecks, &avgLatency); err != nil {
 		return nil, fmt.Errorf("scan availability row: %w", err)
@@ -377,7 +378,7 @@ func scanAvailabilityRow(rows interface{ Scan(...any) error }, windowDays int) (
 
 // finalizeAvailabilityRow 根据 OperationalChecks/TotalChecks 算出可用率，
 // 并把 sql.NullFloat64 的平均延迟解包为 *int。两处复用避免维护漂移。
-func finalizeAvailabilityRow(row *service.ChannelMonitorAvailability, avgLatency sql.NullFloat64) {
+func finalizeAvailabilityRow(row *domain.ChannelMonitorAvailability, avgLatency sql.NullFloat64) {
 	if row.TotalChecks > 0 {
 		row.AvailabilityPct = float64(row.OperationalChecks) * 100.0 / float64(row.TotalChecks)
 	}
@@ -389,8 +390,8 @@ func finalizeAvailabilityRow(row *service.ChannelMonitorAvailability, avgLatency
 
 // ListLatestForMonitorIDs 一次性查询多个监控的"每个 (monitor_id, model) 最近一条"记录。
 // 利用 PG 的 DISTINCT ON 特性，借助 (monitor_id, model, checked_at DESC) 索引可走 Index Scan。
-func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, ids []int64) (map[int64][]*service.ChannelMonitorLatest, error) {
-	out := make(map[int64][]*service.ChannelMonitorLatest, len(ids))
+func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, ids []int64) (map[int64][]*domain.ChannelMonitorLatest, error) {
+	out := make(map[int64][]*domain.ChannelMonitorLatest, len(ids))
 	if len(ids) == 0 {
 		return out, nil
 	}
@@ -409,7 +410,7 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 
 	for rows.Next() {
 		var monitorID int64
-		l := &service.ChannelMonitorLatest{}
+		l := &domain.ChannelMonitorLatest{}
 		var latency, ping sql.NullInt64
 		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &latency, &ping, &l.CheckedAt); err != nil {
 			return nil, fmt.Errorf("scan latest batch row: %w", err)
@@ -436,8 +437,8 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 	ids []int64,
 	primaryModels map[int64]string,
 	perMonitorLimit int,
-) (map[int64][]*service.ChannelMonitorHistoryEntry, error) {
-	out := make(map[int64][]*service.ChannelMonitorHistoryEntry, len(ids))
+) (map[int64][]*domain.ChannelMonitorHistoryEntry, error) {
+	out := make(map[int64][]*domain.ChannelMonitorHistoryEntry, len(ids))
 	pairIDs, pairModels := buildMonitorModelPairs(ids, primaryModels)
 	if len(pairIDs) == 0 {
 		return out, nil
@@ -473,7 +474,7 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 
 	for rows.Next() {
 		var monitorID int64
-		entry := &service.ChannelMonitorHistoryEntry{}
+		entry := &domain.ChannelMonitorHistoryEntry{}
 		var latency, ping sql.NullInt64
 		if err := rows.Scan(&monitorID, &entry.Status, &latency, &ping, &entry.CheckedAt); err != nil {
 			return nil, fmt.Errorf("scan recent history row: %w", err)
@@ -527,8 +528,8 @@ func clampTimelineLimit(n int) int {
 
 // ComputeAvailabilityForMonitors 一次性计算多个监控在某个窗口内的每模型可用率与平均延迟。
 // 明细保留 30 天，直接扫 histories（窗口 <= 30 天时无需聚合）。
-func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Context, ids []int64, windowDays int) (map[int64][]*service.ChannelMonitorAvailability, error) {
-	out := make(map[int64][]*service.ChannelMonitorAvailability, len(ids))
+func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Context, ids []int64, windowDays int) (map[int64][]*domain.ChannelMonitorAvailability, error) {
+	out := make(map[int64][]*domain.ChannelMonitorAvailability, len(ids))
 	if len(ids) == 0 {
 		return out, nil
 	}
@@ -556,7 +557,7 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 
 	for rows.Next() {
 		var monitorID int64
-		row := &service.ChannelMonitorAvailability{WindowDays: windowDays}
+		row := &domain.ChannelMonitorAvailability{WindowDays: windowDays}
 		var avgLatency sql.NullFloat64
 		if err := rows.Scan(&monitorID, &row.Model, &row.TotalChecks, &row.OperationalChecks, &avgLatency); err != nil {
 			return nil, fmt.Errorf("scan availability batch row: %w", err)
@@ -723,7 +724,7 @@ func (r *channelMonitorRepository) UpdateAggregationWatermark(ctx context.Contex
 
 // ---------- helpers ----------
 
-func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
+func entToServiceMonitor(row *dbent.ChannelMonitor) *domain.ChannelMonitor {
 	if row == nil {
 		return nil
 	}
@@ -735,9 +736,9 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 	for key, value := range row.ExtraHeaders {
 		headers[key] = value
 	}
-	duplicateOperationID := headers[service.ChannelMonitorDuplicateOperationIDMetadataKey]
-	delete(headers, service.ChannelMonitorDuplicateOperationIDMetadataKey)
-	out := &service.ChannelMonitor{
+	duplicateOperationID := headers[domain.ChannelMonitorDuplicateOperationIDMetadataKey]
+	delete(headers, domain.ChannelMonitorDuplicateOperationIDMetadataKey)
+	out := &domain.ChannelMonitor{
 		ID:                   row.ID,
 		Name:                 row.Name,
 		Provider:             string(row.Provider),
@@ -766,24 +767,24 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 	return out
 }
 
-func channelMonitorHeadersForPersistence(m *service.ChannelMonitor) map[string]string {
+func channelMonitorHeadersForPersistence(m *domain.ChannelMonitor) map[string]string {
 	if m == nil {
 		return map[string]string{}
 	}
 	headers := make(map[string]string, len(m.ExtraHeaders)+1)
 	for key, value := range m.ExtraHeaders {
-		if key == service.ChannelMonitorDuplicateOperationIDMetadataKey {
+		if key == domain.ChannelMonitorDuplicateOperationIDMetadataKey {
 			continue
 		}
 		headers[key] = value
 	}
 	if operationID := strings.TrimSpace(m.DuplicateOperationID); operationID != "" {
-		headers[service.ChannelMonitorDuplicateOperationIDMetadataKey] = operationID
+		headers[domain.ChannelMonitorDuplicateOperationIDMetadataKey] = operationID
 	}
 	return headers
 }
 
-// emptyHeadersIfNilRepo 与 service.emptyHeadersIfNil 功能一致，
+// emptyHeadersIfNilRepo 把 nil map 归一成空 map（repo 层写库时 JSONB 需要非 nil），
 // repo 独立一份避免 import 循环。
 func emptyHeadersIfNilRepo(h map[string]string) map[string]string {
 	if h == nil {

@@ -3,7 +3,7 @@ package service
 import (
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // ChannelMonitor 全局常量。
@@ -56,12 +56,6 @@ const (
 	// providerGeminiPathTemplate Gemini generateContent 路径模板（含 model 占位）。
 	providerGeminiPathTemplate = "/v1beta/models/%s:generateContent"
 
-	// MonitorProviderOpenAI / Anthropic / Gemini / Grok provider 字符串常量（也是 ent enum 的实际值）。
-	MonitorProviderOpenAI    = "openai"
-	MonitorProviderAnthropic = "anthropic"
-	MonitorProviderGemini    = "gemini"
-	MonitorProviderGrok      = "grok"
-
 	// MonitorDefaultGrokModel 是新增 Grok 监控未显式指定模型时使用的轻量测活模型。
 	MonitorDefaultGrokModel = "grok-4.5"
 
@@ -112,48 +106,20 @@ const (
 	monitorDialKeepAlive = 30 * time.Second
 )
 
-// 业务错误（统一在此声明，避免散落）。
+// 业务错误（domain 重新导出，避免散落）。
 var (
-	ErrChannelMonitorNotFound = infraerrors.NotFound(
-		"CHANNEL_MONITOR_NOT_FOUND", "channel monitor not found",
-	)
-	ErrChannelMonitorInvalidProvider = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_INVALID_PROVIDER", "provider must be one of openai/anthropic/gemini/grok",
-	)
-	ErrChannelMonitorInvalidAPIMode = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_INVALID_API_MODE", "api_mode must be chat_completions or responses; responses is only supported for openai",
-	)
-	ErrChannelMonitorInvalidRequestBody = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_INVALID_REQUEST_BODY", "openai-compatible replace-mode body_override must include non-empty messages for chat_completions or non-empty instructions and input for responses",
-	)
-	ErrChannelMonitorInvalidInterval = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_INVALID_INTERVAL", "interval_seconds must be in [15, 3600]",
-	)
-	ErrChannelMonitorInvalidJitter = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_INVALID_JITTER", "jitter_seconds must be >= 0 and interval_seconds - jitter_seconds must be >= 15",
-	)
-	ErrChannelMonitorInvalidEndpoint = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_INVALID_ENDPOINT", "endpoint must be a valid https URL",
-	)
-	ErrChannelMonitorEndpointScheme = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ENDPOINT_SCHEME", "endpoint must use https scheme",
-	)
-	ErrChannelMonitorEndpointPath = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ENDPOINT_PATH", "endpoint must be base origin only (no path/query/fragment)",
-	)
-	ErrChannelMonitorEndpointPrivate = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ENDPOINT_PRIVATE", "endpoint must be a public host",
-	)
-	ErrChannelMonitorEndpointUnreachable = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ENDPOINT_UNREACHABLE", "endpoint hostname could not be resolved",
-	)
-	ErrChannelMonitorMissingAPIKey = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_MISSING_API_KEY", "api_key is required when creating a monitor",
-	)
-	ErrChannelMonitorMissingPrimaryModel = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_MISSING_PRIMARY_MODEL", "primary_model is required",
-	)
-	ErrChannelMonitorAPIKeyDecryptFailed = infraerrors.InternalServer(
-		"CHANNEL_MONITOR_KEY_DECRYPT_FAILED", "api key decryption failed; please re-edit the monitor with a fresh key",
-	)
+	ErrChannelMonitorNotFound            = domain.ErrChannelMonitorNotFound
+	ErrChannelMonitorInvalidProvider     = domain.ErrChannelMonitorInvalidProvider
+	ErrChannelMonitorInvalidAPIMode      = domain.ErrChannelMonitorInvalidAPIMode
+	ErrChannelMonitorInvalidRequestBody  = domain.ErrChannelMonitorInvalidRequestBody
+	ErrChannelMonitorInvalidInterval     = domain.ErrChannelMonitorInvalidInterval
+	ErrChannelMonitorInvalidJitter       = domain.ErrChannelMonitorInvalidJitter
+	ErrChannelMonitorInvalidEndpoint     = domain.ErrChannelMonitorInvalidEndpoint
+	ErrChannelMonitorEndpointScheme      = domain.ErrChannelMonitorEndpointScheme
+	ErrChannelMonitorEndpointPath        = domain.ErrChannelMonitorEndpointPath
+	ErrChannelMonitorEndpointPrivate     = domain.ErrChannelMonitorEndpointPrivate
+	ErrChannelMonitorEndpointUnreachable = domain.ErrChannelMonitorEndpointUnreachable
+	ErrChannelMonitorMissingAPIKey       = domain.ErrChannelMonitorMissingAPIKey
+	ErrChannelMonitorMissingPrimaryModel = domain.ErrChannelMonitorMissingPrimaryModel
+	ErrChannelMonitorAPIKeyDecryptFailed = domain.ErrChannelMonitorAPIKeyDecryptFailed
 )

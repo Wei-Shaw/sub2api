@@ -9,11 +9,12 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	portcm "github.com/Wei-Shaw/sub2api/internal/port/channelmonitor"
 	"github.com/lib/pq"
 )
 
-// channelMonitorRequestTemplateRepository 实现 service.ChannelMonitorRequestTemplateRepository。
+// channelMonitorRequestTemplateRepository 实现 portcm.TemplateRepository。
 // 与 channelMonitorRepository 分开一个文件，职责清晰。
 type channelMonitorRequestTemplateRepository struct {
 	client *dbent.Client
@@ -21,13 +22,13 @@ type channelMonitorRequestTemplateRepository struct {
 }
 
 // NewChannelMonitorRequestTemplateRepository 创建模板仓储实例。
-func NewChannelMonitorRequestTemplateRepository(client *dbent.Client, db *sql.DB) service.ChannelMonitorRequestTemplateRepository {
+func NewChannelMonitorRequestTemplateRepository(client *dbent.Client, db *sql.DB) portcm.TemplateRepository {
 	return &channelMonitorRequestTemplateRepository{client: client, db: db}
 }
 
 // ---------- CRUD ----------
 
-func (r *channelMonitorRequestTemplateRepository) Create(ctx context.Context, t *service.ChannelMonitorRequestTemplate) error {
+func (r *channelMonitorRequestTemplateRepository) Create(ctx context.Context, t *domain.ChannelMonitorRequestTemplate) error {
 	client := clientFromContext(ctx, r.client)
 	builder := client.ChannelMonitorRequestTemplate.Create().
 		SetName(t.Name).
@@ -42,7 +43,7 @@ func (r *channelMonitorRequestTemplateRepository) Create(ctx context.Context, t 
 
 	created, err := builder.Save(ctx)
 	if err != nil {
-		return translatePersistenceError(err, service.ErrChannelMonitorTemplateNotFound, nil)
+		return translatePersistenceError(err, domain.ErrChannelMonitorTemplateNotFound, nil)
 	}
 	t.ID = created.ID
 	t.CreatedAt = created.CreatedAt
@@ -50,17 +51,17 @@ func (r *channelMonitorRequestTemplateRepository) Create(ctx context.Context, t 
 	return nil
 }
 
-func (r *channelMonitorRequestTemplateRepository) GetByID(ctx context.Context, id int64) (*service.ChannelMonitorRequestTemplate, error) {
+func (r *channelMonitorRequestTemplateRepository) GetByID(ctx context.Context, id int64) (*domain.ChannelMonitorRequestTemplate, error) {
 	row, err := r.client.ChannelMonitorRequestTemplate.Query().
 		Where(channelmonitorrequesttemplate.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
-		return nil, translatePersistenceError(err, service.ErrChannelMonitorTemplateNotFound, nil)
+		return nil, translatePersistenceError(err, domain.ErrChannelMonitorTemplateNotFound, nil)
 	}
 	return entToServiceTemplate(row), nil
 }
 
-func (r *channelMonitorRequestTemplateRepository) Update(ctx context.Context, t *service.ChannelMonitorRequestTemplate) error {
+func (r *channelMonitorRequestTemplateRepository) Update(ctx context.Context, t *domain.ChannelMonitorRequestTemplate) error {
 	client := clientFromContext(ctx, r.client)
 	updater := client.ChannelMonitorRequestTemplate.UpdateOneID(t.ID).
 		SetName(t.Name).
@@ -75,7 +76,7 @@ func (r *channelMonitorRequestTemplateRepository) Update(ctx context.Context, t 
 	}
 	updated, err := updater.Save(ctx)
 	if err != nil {
-		return translatePersistenceError(err, service.ErrChannelMonitorTemplateNotFound, nil)
+		return translatePersistenceError(err, domain.ErrChannelMonitorTemplateNotFound, nil)
 	}
 	t.UpdatedAt = updated.UpdatedAt
 	return nil
@@ -84,12 +85,12 @@ func (r *channelMonitorRequestTemplateRepository) Update(ctx context.Context, t 
 func (r *channelMonitorRequestTemplateRepository) Delete(ctx context.Context, id int64) error {
 	client := clientFromContext(ctx, r.client)
 	if err := client.ChannelMonitorRequestTemplate.DeleteOneID(id).Exec(ctx); err != nil {
-		return translatePersistenceError(err, service.ErrChannelMonitorTemplateNotFound, nil)
+		return translatePersistenceError(err, domain.ErrChannelMonitorTemplateNotFound, nil)
 	}
 	return nil
 }
 
-func (r *channelMonitorRequestTemplateRepository) List(ctx context.Context, params service.ChannelMonitorRequestTemplateListParams) ([]*service.ChannelMonitorRequestTemplate, error) {
+func (r *channelMonitorRequestTemplateRepository) List(ctx context.Context, params domain.ChannelMonitorRequestTemplateListParams) ([]*domain.ChannelMonitorRequestTemplate, error) {
 	q := r.client.ChannelMonitorRequestTemplate.Query()
 	if params.Provider != "" {
 		q = q.Where(channelmonitorrequesttemplate.ProviderEQ(channelmonitorrequesttemplate.Provider(params.Provider)))
@@ -103,7 +104,7 @@ func (r *channelMonitorRequestTemplateRepository) List(ctx context.Context, para
 	if err != nil {
 		return nil, fmt.Errorf("list monitor templates: %w", err)
 	}
-	out := make([]*service.ChannelMonitorRequestTemplate, 0, len(rows))
+	out := make([]*domain.ChannelMonitorRequestTemplate, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, entToServiceTemplate(row))
 	}
@@ -148,7 +149,7 @@ func (r *channelMonitorRequestTemplateRepository) applyToMonitorsWithClient(
 		Where(channelmonitorrequesttemplate.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
-		return 0, translatePersistenceError(err, service.ErrChannelMonitorTemplateNotFound, nil)
+		return 0, translatePersistenceError(err, domain.ErrChannelMonitorTemplateNotFound, nil)
 	}
 
 	updater := client.ChannelMonitor.Update().
@@ -174,7 +175,7 @@ func (r *channelMonitorRequestTemplateRepository) applyToMonitorsWithClient(
 		return 0, nil
 	}
 
-	templateHeaders := channelMonitorHeadersForPersistence(&service.ChannelMonitor{
+	templateHeaders := channelMonitorHeadersForPersistence(&domain.ChannelMonitor{
 		ExtraHeaders: tpl.ExtraHeaders,
 	})
 	templateHeadersJSON, err := json.Marshal(templateHeaders)
@@ -192,7 +193,7 @@ func (r *channelMonitorRequestTemplateRepository) applyToMonitorsWithClient(
 		  AND id = ANY($4)
 		  AND provider = $5
 		  AND api_mode = $6
-	`, string(templateHeadersJSON), service.ChannelMonitorDuplicateOperationIDMetadataKey,
+	`, string(templateHeadersJSON), domain.ChannelMonitorDuplicateOperationIDMetadataKey,
 		id, pq.Array(monitorIDs), string(tpl.Provider), defaultAPIModeRepo(tpl.APIMode))
 	if err != nil {
 		return 0, fmt.Errorf("apply template headers to monitors: %w", err)
@@ -220,7 +221,7 @@ func (r *channelMonitorRequestTemplateRepository) CountAssociatedMonitors(ctx co
 
 // ListAssociatedMonitors 列出模板关联的所有监控简略字段。
 // ORDER BY name 稳定输出方便前端展示。
-func (r *channelMonitorRequestTemplateRepository) ListAssociatedMonitors(ctx context.Context, id int64) ([]*service.AssociatedMonitorBrief, error) {
+func (r *channelMonitorRequestTemplateRepository) ListAssociatedMonitors(ctx context.Context, id int64) ([]*domain.AssociatedMonitorBrief, error) {
 	rows, err := r.client.ChannelMonitor.Query().
 		Where(channelmonitor.TemplateIDEQ(id)).
 		Order(dbent.Asc(channelmonitor.FieldName)).
@@ -228,9 +229,9 @@ func (r *channelMonitorRequestTemplateRepository) ListAssociatedMonitors(ctx con
 	if err != nil {
 		return nil, fmt.Errorf("list associated monitors for template %d: %w", id, err)
 	}
-	out := make([]*service.AssociatedMonitorBrief, 0, len(rows))
+	out := make([]*domain.AssociatedMonitorBrief, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, &service.AssociatedMonitorBrief{
+		out = append(out, &domain.AssociatedMonitorBrief{
 			ID:       row.ID,
 			Name:     row.Name,
 			Provider: string(row.Provider),
@@ -243,7 +244,7 @@ func (r *channelMonitorRequestTemplateRepository) ListAssociatedMonitors(ctx con
 
 // ---------- helpers ----------
 
-func entToServiceTemplate(row *dbent.ChannelMonitorRequestTemplate) *service.ChannelMonitorRequestTemplate {
+func entToServiceTemplate(row *dbent.ChannelMonitorRequestTemplate) *domain.ChannelMonitorRequestTemplate {
 	if row == nil {
 		return nil
 	}
@@ -251,7 +252,7 @@ func entToServiceTemplate(row *dbent.ChannelMonitorRequestTemplate) *service.Cha
 	if headers == nil {
 		headers = map[string]string{}
 	}
-	return &service.ChannelMonitorRequestTemplate{
+	return &domain.ChannelMonitorRequestTemplate{
 		ID:               row.ID,
 		Name:             row.Name,
 		Provider:         string(row.Provider),

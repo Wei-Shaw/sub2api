@@ -5,43 +5,20 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	portcm "github.com/Wei-Shaw/sub2api/internal/port/channelmonitor"
 )
 
-// ChannelMonitorRequestTemplateRepository 模板数据访问接口。
-type ChannelMonitorRequestTemplateRepository interface {
-	Create(ctx context.Context, t *ChannelMonitorRequestTemplate) error
-	GetByID(ctx context.Context, id int64) (*ChannelMonitorRequestTemplate, error)
-	Update(ctx context.Context, t *ChannelMonitorRequestTemplate) error
-	Delete(ctx context.Context, id int64) error
-	List(ctx context.Context, params ChannelMonitorRequestTemplateListParams) ([]*ChannelMonitorRequestTemplate, error)
-	// ApplyToMonitors 把模板当前的 api_mode / extra_headers / body_override_mode / body_override
-	// 批量覆盖到指定 monitorIDs 的监控上（同时还要求这些监控当前 template_id = id，
-	// 防止误覆盖未关联的监控）。monitorIDs 必须非空；空列表直接返回 0 不写库。
-	// 返回被覆盖的监控数量。
-	ApplyToMonitors(ctx context.Context, id int64, monitorIDs []int64) (int64, error)
-	// CountAssociatedMonitors 统计 template_id = id 的监控数（用于 UI 展示「应用到 N 个配置」）。
-	CountAssociatedMonitors(ctx context.Context, id int64) (int64, error)
-	// ListAssociatedMonitors 列出所有 template_id = id 的监控简略信息（id/name/provider/api_mode/enabled）
-	// 给 apply picker UI 用，避免前端再做一次 list+filter。
-	ListAssociatedMonitors(ctx context.Context, id int64) ([]*AssociatedMonitorBrief, error)
-}
-
-// AssociatedMonitorBrief 模板关联监控的简略信息（picker / 列表展示用）。
-type AssociatedMonitorBrief struct {
-	ID       int64
-	Name     string
-	Provider string
-	APIMode  string
-	Enabled  bool
-}
+// ChannelMonitorRequestTemplateRepository is a type alias for the template persistence port.
+type ChannelMonitorRequestTemplateRepository = portcm.TemplateRepository
 
 // ChannelMonitorRequestTemplateService 模板管理 service。
 type ChannelMonitorRequestTemplateService struct {
-	repo ChannelMonitorRequestTemplateRepository
+	repo portcm.TemplateRepository
 }
 
 // NewChannelMonitorRequestTemplateService 创建模板 service。
-func NewChannelMonitorRequestTemplateService(repo ChannelMonitorRequestTemplateRepository) *ChannelMonitorRequestTemplateService {
+func NewChannelMonitorRequestTemplateService(repo portcm.TemplateRepository) *ChannelMonitorRequestTemplateService {
 	return &ChannelMonitorRequestTemplateService{repo: repo}
 }
 
