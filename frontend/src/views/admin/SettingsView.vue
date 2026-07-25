@@ -4189,6 +4189,70 @@
             </div>
           </div>
 
+          <!-- Ollama Cloud Usage Settings -->
+          <div class="card" data-testid="ollama-cloud-usage-global-settings">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.ollamaCloudUsage.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.ollamaCloudUsage.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div v-if="ollamaCloudUsageLoading" class="flex items-center gap-2 text-gray-500">
+                <div class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"></div>
+                {{ t("common.loading") }}
+              </div>
+              <template v-else>
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.ollamaCloudUsage.enabled") }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.ollamaCloudUsage.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="ollamaCloudUsageForm.enabled"
+                    :aria-label="t('admin.settings.ollamaCloudUsage.enabled')"
+                    data-testid="ollama-cloud-usage-global-enabled"
+                  />
+                </div>
+                <div v-if="ollamaCloudUsageForm.enabled" class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300" for="ollama-cloud-usage-interval">
+                    {{ t("admin.settings.ollamaCloudUsage.intervalMinutes") }}
+                  </label>
+                  <input
+                    id="ollama-cloud-usage-interval"
+                    v-model.number="ollamaCloudUsageForm.interval_minutes"
+                    type="number"
+                    min="15"
+                    max="1440"
+                    class="input w-32"
+                    data-testid="ollama-cloud-usage-global-interval"
+                    @keydown.enter.prevent="saveOllamaCloudUsageSettings"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.ollamaCloudUsage.intervalHint") }}
+                  </p>
+                </div>
+                <div class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="ollamaCloudUsageSaving"
+                    data-testid="ollama-cloud-usage-global-save"
+                    @click="saveOllamaCloudUsageSettings"
+                  >
+                    {{ ollamaCloudUsageSaving ? t("common.saving") : t("common.save") }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Gateway Scheduling Settings -->
           <div class="card">
             <div
@@ -7865,6 +7929,13 @@ const upstreamBillingProbeForm = reactive({
   interval_minutes: 30,
 });
 
+const ollamaCloudUsageLoading = ref(true);
+const ollamaCloudUsageSaving = ref(false);
+const ollamaCloudUsageForm = reactive({
+  enabled: false,
+  interval_minutes: 60,
+});
+
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true);
 const overloadCooldownSaving = ref(false);
@@ -10481,6 +10552,37 @@ async function saveUpstreamBillingProbeSettings() {
   }
 }
 
+async function loadOllamaCloudUsageSettings() {
+  ollamaCloudUsageLoading.value = true;
+  try {
+    Object.assign(
+      ollamaCloudUsageForm,
+      await adminAPI.accounts.getOllamaCloudUsageSettings(),
+    );
+  } catch (_error: unknown) {
+    // Keep the fail-safe disabled defaults when this optional setting cannot be loaded.
+  } finally {
+    ollamaCloudUsageLoading.value = false;
+  }
+}
+
+async function saveOllamaCloudUsageSettings() {
+  ollamaCloudUsageSaving.value = true;
+  try {
+    const updated = await adminAPI.accounts.updateOllamaCloudUsageSettings({
+      ...ollamaCloudUsageForm,
+    });
+    Object.assign(ollamaCloudUsageForm, updated);
+    appStore.showSuccess(t("admin.settings.ollamaCloudUsage.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.settings.ollamaCloudUsage.saveFailed")),
+    );
+  } finally {
+    ollamaCloudUsageSaving.value = false;
+  }
+}
+
 // Overload Cooldown 方法
 async function loadOverloadCooldownSettings() {
   overloadCooldownLoading.value = true;
@@ -11178,6 +11280,7 @@ onMounted(() => {
   loadSubscriptionGroups();
   loadAdminApiKey();
   loadUpstreamBillingProbeSettings();
+  loadOllamaCloudUsageSettings();
   loadOverloadCooldownSettings();
   loadRateLimit429CooldownSettings();
   loadStreamTimeoutSettings();
