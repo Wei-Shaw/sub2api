@@ -313,16 +313,21 @@ golangci-lint run ./...
 ## 六、项目结构速览
 
 ```
-sub2api-bmai/
+sub2api/
 ├── backend/
-│   ├── cmd/server/          # 主程序入口
+│   ├── cmd/server/          # 主程序入口（wire DI）
 │   ├── ent/                 # Ent ORM 生成代码
 │   │   └── schema/          # 数据库 Schema 定义
 │   ├── internal/
-│   │   ├── handler/         # HTTP 处理器
-│   │   ├── service/         # 业务逻辑
-│   │   ├── repository/      # 数据访问层
-│   │   └── server/          # 服务器配置
+│   │   ├── handler/         # HTTP 处理器（+ dto/ 子包）
+│   │   ├── service/         # 应用服务（用例编排；仍持有未提取实体的 type alias）
+│   │   ├── repository/      # 数据访问层（Ent/SQL/Redis 实现 port 接口）
+│   │   ├── domain/          # 领域实体 + 错误 + 纯函数（跨 BC 共享内核）
+│   │   ├── port/            # BC 仓储端口（接口；repository 实现、service 依赖）
+│   │   ├── pkg/             # 通用工具库（不依赖 service/repository/handler）
+│   │   ├── securityaudit/   # 提示词审计 BC（半独立）
+│   │   ├── payment/         # 支付 provider 内核
+│   │   └── server/          # 服务器配置 / 路由 / 中间件
 │   ├── migrations/          # 数据库迁移脚本
 │   └── config.yaml          # 配置文件
 ├── frontend/
@@ -337,6 +342,32 @@ sub2api-bmai/
 └── .claude/
     └── CLAUDE.md            # 本文档
 ```
+
+### 6.1 分层与 BC 端口约定
+
+后端正按**有界上下文（BC）**增量拆分 `service` 上帝包。已提取的 BC 遵循以下层级，贡献者改 repository / service 时请遵循同一模式：
+
+```
+handler ──► service（应用）──► port/<bc> ──► repository（实现）
+                │                  ▲
+                └──  domain  ◄─────┘
+```
+
+- `internal/domain/`：实体、领域错误、纯函数（无外部依赖，除 `pkg/errors` 等）。
+- `internal/port/<bc>/`：每个 BC 一个子包，只放**仓储/缓存端口接口**，签名用 `domain.*` 类型。
+- `internal/repository/`：实现 `port/<bc>` 接口，**不再 import `internal/service`**（已提取的 BC）。
+- `internal/service/`：保留应用服务 + type alias（`type Group = domain.Group`、`type GroupRepository = portgroup.Repository`）+ 错误再导出，保证现有调用点与测试桩渐进迁移。
+
+已提取的 BC（`internal/port/` 子包）：announcement、promo、redeem、tlsfingerprint、errorpassthrough、affiliate、proxy、group、user、apikey、setting、channel、channelmonitor。`internal/model/` 包已删除（类型迁入 `domain`）。
+
+**提取一个新 BC 的固定步骤**（参考 announcement pilot 与后续 commit）：
+1. 实体 + 错误 + 纯函数 → `internal/domain/<bc>.go`
+2. 仓储接口 → `internal/port/<bc>/<bc>.go`（签名用 `domain.*`）
+3. 改写 `repository/<bc>_repo.go`：实现 port、返回 domain、去掉 service import
+4. service 改为 type alias + 错误再导出
+5. 验证：`go build ./...` + `go vet` + 该 BC 测试 + `rg -l 'internal/service' backend/internal/repository --type go -g '!*_test.go' | wc -l` 计数下降
+
+**注意**：跨 BC 实体依赖会阻塞提取。例如 `UsageLog` 嵌套 `*Account`，而 `Account` 尚未进 domain——此时只搬已解锁部分（如 `RequestType`），不要强行（会破坏 admin UI 或引入反向依赖）。先拆被依赖的实体（Account），再拆下游。
 
 ## 七、参考资源
 
