@@ -19,6 +19,37 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+const (
+	openCodeSessionAffinityHeader = "X-Session-Affinity"
+	openCodeSessionIDHeader       = "X-Session-Id"
+	openCodeNativeSessionHeader   = "X-OpenCode-Session"
+	codeBuddyConversationHeader   = "X-Conversation-ID"
+)
+
+// explicitOpenAIHeaderSessionID resolves stable conversation identifiers sent
+// by OpenAI-compatible clients. Keep this list limited to session-scoped
+// fields: request/message IDs rotate every turn and would defeat sticky routing
+// and upstream prompt caching.
+func explicitOpenAIHeaderSessionID(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+
+	for _, header := range []string{
+		"session_id",
+		"conversation_id",
+		openCodeSessionAffinityHeader,
+		openCodeSessionIDHeader,
+		openCodeNativeSessionHeader,
+		codeBuddyConversationHeader,
+	} {
+		if sessionID := strings.TrimSpace(c.GetHeader(header)); sessionID != "" {
+			return sessionID
+		}
+	}
+	return ""
+}
+
 // ExtractSessionID extracts the raw session ID from headers or body without hashing.
 // Used by ForwardAsAnthropic to pass as prompt_cache_key for upstream cache.
 func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) string {
@@ -30,10 +61,7 @@ func explicitOpenAISessionID(c *gin.Context, body []byte) string {
 		return ""
 	}
 
-	sessionID := strings.TrimSpace(c.GetHeader("session_id"))
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
-	}
+	sessionID := explicitOpenAIHeaderSessionID(c)
 	if sessionID == "" && len(body) > 0 {
 		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
 	}
@@ -49,10 +77,7 @@ func explicitOpenAIRequestSessionID(c *gin.Context, body []byte) string {
 		return ""
 	}
 
-	sessionID := strings.TrimSpace(c.GetHeader("session_id"))
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
-	}
+	sessionID := explicitOpenAIHeaderSessionID(c)
 	if sessionID == "" && isGrokRequestContext(c) {
 		sessionID = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
 	}
@@ -81,9 +106,11 @@ func (s *OpenAIGatewayService) GenerateExplicitSessionHash(c *gin.Context, body 
 // Priority:
 //  1. Header: session_id
 //  2. Header: conversation_id
-//  3. Header: x-grok-conv-id (Grok groups only)
-//  4. Body:   prompt_cache_key (opencode)
-//  5. Body:   content-based fallback (model + system + tools + first user message)
+//  3. Header: x-session-affinity / x-session-id / x-opencode-session (OpenCode)
+//  4. Header: x-conversation-id (CodeBuddy)
+//  5. Header: x-grok-conv-id (Grok groups only)
+//  6. Body:   prompt_cache_key
+//  7. Body:   content-based fallback (model + system + tools + first user message)
 func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) string {
 	if c == nil {
 		return ""
@@ -1214,6 +1241,9 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 	if s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel) {
 		return nil
 	}
+	if s.isOpenAIProxyStreamQuarantined(fresh) {
+		return nil
+	}
 	return fresh
 }
 
@@ -1243,6 +1273,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 			return nil
 		}
+		if s.isOpenAIProxyStreamQuarantined(account) {
+			return nil
+		}
 		return account
 	}
 
@@ -1260,6 +1293,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		return nil
 	}
 	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
+		return nil
+	}
+	if s.isOpenAIProxyStreamQuarantined(latest) {
 		return nil
 	}
 	return latest

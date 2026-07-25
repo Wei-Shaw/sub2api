@@ -109,6 +109,14 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	alipayMobilePrecreateDeepLink := false
+	if cfg.AlipayMobilePrecreateDeepLink {
+		alipayMobilePrecreateDeepLink, err = h.configService.UsesOfficialAlipayVisibleMethod(ctx)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
 
 	// Fetch plans with group info
 	plans, _ := h.configService.ListPlansForSale(ctx)
@@ -133,18 +141,19 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 	}
 
 	resp := checkoutInfoResponse{
-		Methods:                   limitsResp.Methods,
-		GlobalMin:                 limitsResp.GlobalMin,
-		GlobalMax:                 limitsResp.GlobalMax,
-		Plans:                     planList,
-		BalanceDisabled:           cfg.BalanceDisabled,
-		BalanceRechargeMultiplier: cfg.BalanceRechargeMultiplier,
-		SubscriptionUSDToCNYRate:  cfg.SubscriptionUSDToCNYRate,
-		RechargeFeeRate:           cfg.RechargeFeeRate,
-		HelpText:                  cfg.HelpText,
-		HelpImageURL:              cfg.HelpImageURL,
-		StripePublishableKey:      cfg.StripePublishableKey,
-		AlipayForceQRCode:         cfg.AlipayForceQRCode,
+		Methods:                       limitsResp.Methods,
+		GlobalMin:                     limitsResp.GlobalMin,
+		GlobalMax:                     limitsResp.GlobalMax,
+		Plans:                         planList,
+		BalanceDisabled:               cfg.BalanceDisabled,
+		BalanceRechargeMultiplier:     cfg.BalanceRechargeMultiplier,
+		SubscriptionUSDToCNYRate:      cfg.SubscriptionUSDToCNYRate,
+		RechargeFeeRate:               cfg.RechargeFeeRate,
+		HelpText:                      cfg.HelpText,
+		HelpImageURL:                  cfg.HelpImageURL,
+		StripePublishableKey:          cfg.StripePublishableKey,
+		AlipayForceQRCode:             cfg.AlipayForceQRCode,
+		AlipayMobilePrecreateDeepLink: alipayMobilePrecreateDeepLink,
 	}
 	// 仅在活动开启 + 当前时刻位于有效期内时把 RechargePromo 透出，否则保持 nil 以让前端
 	// 直接判断 `if (recharge_promo)` 而不必在每个调用点重复时间窗与 enabled 的判断。
@@ -155,19 +164,20 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 }
 
 type checkoutInfoResponse struct {
-	Methods                   map[string]service.MethodLimits `json:"methods"`
-	GlobalMin                 float64                         `json:"global_min"`
-	GlobalMax                 float64                         `json:"global_max"`
-	Plans                     []checkoutPlan                  `json:"plans"`
-	BalanceDisabled           bool                            `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64                         `json:"balance_recharge_multiplier"`
-	SubscriptionUSDToCNYRate  float64                         `json:"subscription_usd_to_cny_rate"`
-	RechargeFeeRate           float64                         `json:"recharge_fee_rate"`
-	HelpText                  string                          `json:"help_text"`
-	HelpImageURL              string                          `json:"help_image_url"`
-	StripePublishableKey      string                          `json:"stripe_publishable_key"`
-	AlipayForceQRCode         bool                            `json:"alipay_force_qrcode"`
-	RechargePromo             *checkoutRechargePromo          `json:"recharge_promo,omitempty"`
+	Methods                       map[string]service.MethodLimits `json:"methods"`
+	GlobalMin                     float64                         `json:"global_min"`
+	GlobalMax                     float64                         `json:"global_max"`
+	Plans                         []checkoutPlan                  `json:"plans"`
+	BalanceDisabled               bool                            `json:"balance_disabled"`
+	BalanceRechargeMultiplier     float64                         `json:"balance_recharge_multiplier"`
+	SubscriptionUSDToCNYRate      float64                         `json:"subscription_usd_to_cny_rate"`
+	RechargeFeeRate               float64                         `json:"recharge_fee_rate"`
+	HelpText                      string                          `json:"help_text"`
+	HelpImageURL                  string                          `json:"help_image_url"`
+	StripePublishableKey          string                          `json:"stripe_publishable_key"`
+	AlipayForceQRCode             bool                            `json:"alipay_force_qrcode"`
+	RechargePromo                 *checkoutRechargePromo          `json:"recharge_promo,omitempty"`
+	AlipayMobilePrecreateDeepLink bool                            `json:"alipay_mobile_precreate_deep_link"`
 }
 
 // checkoutRechargePromo 是返回给前端的活动配置（区别于服务层的 RechargePromo：

@@ -50,6 +50,7 @@ func ProvideRouter(
 	settingService *service.SettingService,
 	oidcProvider *service.OidcProviderService,
 	oidcSigning *service.OidcSigningService,
+	compositeResolver *service.CompositeRouteResolver,
 	redisClient *redis.Client,
 	inboxHandler *inbox.Handler,
 	inboxWS *inbox.WSHandler,
@@ -138,7 +139,7 @@ func ProvideRouter(
 		go inboxCleaner.Start(ctx, time.Hour, cleanupLeader.TryAcquire)
 	}
 
-	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient, inboxHandler, inboxWS)
+	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient, inboxHandler, inboxWS)
 }
 
 // ProvideHTTPServer 提供 HTTP 服务器

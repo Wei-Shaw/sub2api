@@ -44,13 +44,13 @@ require (
 	github.com/zeromicro/go-zero v1.9.4
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.24.0
-	golang.org/x/crypto v0.51.0
-	golang.org/x/image v0.43.0
-	golang.org/x/mod v0.36.0
-	golang.org/x/net v0.55.0
-	golang.org/x/sync v0.21.0
-	golang.org/x/term v0.43.0
-	golang.org/x/text v0.38.0
+	golang.org/x/crypto v0.53.0
+	golang.org/x/image v0.44.0
+	golang.org/x/mod v0.37.0
+	golang.org/x/net v0.56.0
+	golang.org/x/sync v0.22.0
+	golang.org/x/term v0.44.0
+	golang.org/x/text v0.40.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -194,8 +194,8 @@ require (
 	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/tools v0.45.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/tools v0.47.0 // indirect
 	google.golang.org/grpc v1.75.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	modernc.org/libc v1.67.6 // indirect

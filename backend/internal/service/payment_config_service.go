@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 
@@ -41,7 +42,8 @@ const (
 	// SettingRechargePromo 已废弃（充值赠送配置已迁移到 recharge_promo_activities 活动表）。
 	// 保留常量定义但不再读写：旧部署遗留的 system_settings.RECHARGE_PROMO 行可由
 	// admin 工具人工清理；运行时不再依赖该 key。
-	SettingRechargePromo = "RECHARGE_PROMO"
+	SettingRechargePromo                 = "RECHARGE_PROMO"
+	SettingAlipayMobilePrecreateDeepLink = "ALIPAY_MOBILE_PRECREATE_DEEP_LINK"
 )
 
 // Default values for payment configuration settings.
@@ -83,6 +85,8 @@ type PaymentConfig struct {
 
 	// 充值赠送活动（与 BalanceRechargeMultiplier 完全独立的市场促销）。nil 或 Enabled=false 视作未开启。
 	RechargePromo *RechargePromo `json:"recharge_promo,omitempty"`
+	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
+	AlipayMobilePrecreateDeepLink bool `json:"alipay_mobile_precreate_deep_link"`
 }
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
@@ -113,6 +117,8 @@ type UpdatePaymentConfigRequest struct {
 
 	// Force Alipay mobile users to use QR code instead of mobile redirect
 	AlipayForceQRCode *bool `json:"alipay_force_qrcode"`
+	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
+	AlipayMobilePrecreateDeepLink *bool `json:"alipay_mobile_precreate_deep_link"`
 
 	VisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
 	VisibleMethodWxpaySource   *string `json:"payment_visible_method_wxpay_source"`
@@ -238,7 +244,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
-		SettingAlipayForceQRCode,
+		SettingAlipayForceQRCode, SettingAlipayMobilePrecreateDeepLink,
 		SettingPaymentVisibleMethodAlipayEnabled, SettingPaymentVisibleMethodAlipaySource,
 		SettingPaymentVisibleMethodWxpayEnabled, SettingPaymentVisibleMethodWxpaySource,
 	}
@@ -283,11 +289,13 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		CancelRateLimitUnit:    vals[SettingCancelWindowUnit],
 		CancelRateLimitMode:    vals[SettingCancelWindowMode],
 
-		AlipayForceQRCode: vals[SettingAlipayForceQRCode] == "true",
-
-		// RechargePromo 由 GetPaymentConfig 在 parsePaymentConfig 之后从活动表回填，
-		// parsePaymentConfig 自身不再读 system_settings.RECHARGE_PROMO。
+		AlipayForceQRCode:             vals[SettingAlipayForceQRCode] == "true",
+		AlipayMobilePrecreateDeepLink: vals[SettingAlipayMobilePrecreateDeepLink] == "true",
 	}
+	cfg.AlipayMobilePrecreateDeepLink = pcEnvBoolOverride(
+		SettingAlipayMobilePrecreateDeepLink,
+		cfg.AlipayMobilePrecreateDeepLink,
+	)
 	if cfg.LoadBalanceStrategy == "" {
 		cfg.LoadBalanceStrategy = payment.DefaultLoadBalanceStrategy
 	}
@@ -302,6 +310,18 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		cfg.EnabledTypes = NormalizeVisibleMethods(types)
 	}
 	return cfg
+}
+
+func pcEnvBoolOverride(key string, fallback bool) bool {
+	raw, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return fallback
+	}
+	value, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return fallback
+	}
+	return value
 }
 
 // getStripePublishableKey finds the publishable key from the first enabled Stripe provider instance.
@@ -372,6 +392,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingCancelWindowUnit:                  derefStr(req.CancelRateLimitUnit),
 		SettingCancelWindowMode:                  derefStr(req.CancelRateLimitMode),
 		SettingAlipayForceQRCode:                 formatBoolOrEmpty(req.AlipayForceQRCode),
+		SettingAlipayMobilePrecreateDeepLink:     formatBoolOrEmpty(req.AlipayMobilePrecreateDeepLink),
 		SettingPaymentVisibleMethodAlipaySource:  derefStr(req.VisibleMethodAlipaySource),
 		SettingPaymentVisibleMethodWxpaySource:   derefStr(req.VisibleMethodWxpaySource),
 		SettingPaymentVisibleMethodAlipayEnabled: formatBoolOrEmpty(req.VisibleMethodAlipayEnabled),

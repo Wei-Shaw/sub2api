@@ -135,6 +135,10 @@ type Group struct {
 	KiroCacheEmulationRatio float64 `json:"kiro_cache_emulation_ratio,omitempty"`
 	// Kiro 推理 endpoint：q=AWS Q (q.{region}.amazonaws.com), krs=Kiro Runtime Service (runtime.us-east-1.kiro.dev)
 	KiroEndpointMode string `json:"kiro_endpoint_mode,omitempty"`
+	// OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max
+	MaxReasoningEffort string `json:"max_reasoning_effort,omitempty"`
+	// OpenAI reasoning effort 自定义精确映射；先映射再应用上限
+	ReasoningEffortMappings []domain.ReasoningEffortMapping `json:"reasoning_effort_mappings,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -241,7 +245,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldImagePricingMatrix, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
+		case group.FieldImagePricingMatrix, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldImagePreferFal, group.FieldImageDecodeSizeOnRsp, group.FieldImageUpscaleOnRsp, group.FieldVideoRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldKiroCacheEmulationEnabled, group.FieldKiroAutoStickyEnabled:
 			values[i] = new(sql.NullBool)
@@ -249,7 +253,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit, group.FieldKiroStickySessionTTLSeconds:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel, group.FieldKiroEndpointMode:
+		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel, group.FieldKiroEndpointMode, group.FieldMaxReasoningEffort:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -647,6 +651,20 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.KiroEndpointMode = value.String
 			}
+		case group.FieldMaxReasoningEffort:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field max_reasoning_effort", values[i])
+			} else if value.Valid {
+				_m.MaxReasoningEffort = value.String
+			}
+		case group.FieldReasoningEffortMappings:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field reasoning_effort_mappings", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ReasoningEffortMappings); err != nil {
+					return fmt.Errorf("unmarshal field reasoning_effort_mappings: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -926,6 +944,12 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("kiro_endpoint_mode=")
 	builder.WriteString(_m.KiroEndpointMode)
+	builder.WriteString(", ")
+	builder.WriteString("max_reasoning_effort=")
+	builder.WriteString(_m.MaxReasoningEffort)
+	builder.WriteString(", ")
+	builder.WriteString("reasoning_effort_mappings=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ReasoningEffortMappings))
 	builder.WriteByte(')')
 	return builder.String()
 }
