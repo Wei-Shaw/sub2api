@@ -10,14 +10,20 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/server/routes"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -27,186 +33,292 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-const radarP0PostgresImage = "postgres:18.1-alpine3.23"
+const (
+	radarP0PostgresImage     = "postgres:18.1-alpine3.23"
+	radarP0RequestedModel    = "public-coder"
+	radarP0UpstreamModel     = "claude-sonnet-4"
+	radarP0UpstreamRequestID = "upstream-radar-request-123"
+	radarP0AccountID         = int64(991)
+	radarP0ChannelID         = int64(772)
+)
 
-type radarP0APIKeyRepo struct {
-	service.APIKeyRepository
-	keys map[string]*service.APIKey
+type radarP0TestDatabase struct {
+	SQL *sql.DB
+	Ent *dbent.Client
 }
 
-func (r *radarP0APIKeyRepo) GetByKeyForAuth(_ context.Context, key string) (*service.APIKey, error) {
-	apiKey, ok := r.keys[key]
-	if !ok {
-		return nil, service.ErrAPIKeyNotFound
-	}
-	clone := *apiKey
-	return &clone, nil
+type radarP0Fixture struct {
+	router          http.Handler
+	signer          *service.EvaluationContextSigner
+	normalKey       string
+	evaluationKey   string
+	normalKeyID     int64
+	evaluationKeyID int64
 }
 
-func (r *radarP0APIKeyRepo) UpdateLastUsed(context.Context, int64, time.Time) error {
-	return nil
+type radarP0Evidence struct {
+	RouteTraceID   string
+	RunID          string
+	SampleID       string
+	APIKeyID       int64
+	RequestID      string
+	RequestedModel string
+	ResolvedModel  string
+	RouteProfile   string
+	Provider       string
+	ChannelRef     string
+	AccountRef     string
+	Region         string
+	Attempts       int
+	FallbackJSON   []byte
+	Status         string
+	ErrorCode      string
+	InputTokens    sql.NullInt64
+	OutputTokens   sql.NullInt64
+	TTFT           sql.NullInt64
+	Latency        sql.NullInt64
+	BilledAmount   sql.NullString
 }
 
 func TestRadarP0EvaluationIsolationAndEvidenceLifecycle(t *testing.T) {
 	db := radarP0Database(t)
 	gin.SetMode(gin.TestMode)
 
+	var upstreamCalls atomic.Int64
+	upstream := httptest.NewServer(radarP0AnthropicUpstream(&upstreamCalls))
+	t.Cleanup(upstream.Close)
+
+	fixture := newRadarP0Fixture(t, db, upstream.URL)
+	copiedToken := radarP0Token(t, fixture.signer, fixture.evaluationKeyID, uuid.NewString(), uuid.NewString())
+
+	normalResponse := radarP0Request(fixture.router, fixture.normalKey, copiedToken)
+	require.Equal(t, http.StatusForbidden, normalResponse.Code)
+	require.Zero(t, upstreamCalls.Load(), "normal keys with copied evaluation headers must not reach inference")
+	requireRadarP0EvidenceCount(t, db.SQL, fixture.normalKeyID, 0)
+
+	missingTokenResponse := radarP0Request(fixture.router, fixture.evaluationKey, "")
+	require.Equal(t, http.StatusForbidden, missingTokenResponse.Code)
+	require.Zero(t, upstreamCalls.Load(), "evaluation keys without a signed token must not reach inference")
+	requireRadarP0EvidenceCount(t, db.SQL, fixture.evaluationKeyID, 0)
+
+	runID := uuid.NewString()
+	sampleID := uuid.NewString()
+	validToken := radarP0Token(t, fixture.signer, fixture.evaluationKeyID, runID, sampleID)
+	response := radarP0Request(fixture.router, fixture.evaluationKey, validToken)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, int64(1), upstreamCalls.Load(), "valid evaluation requests must traverse the real upstream transport")
+
+	var responseBody struct {
+		Model string `json:"model"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &responseBody))
+	require.Equal(t, radarP0UpstreamModel, responseBody.Model)
+
+	clientRequestID := response.Header().Get("X-Client-Request-ID")
+	require.NotEmpty(t, clientRequestID)
+	evidence := loadRadarP0Evidence(t, db.SQL, runID, fixture.evaluationKeyID)
+	assertRadarP0Evidence(t, evidence, runID, sampleID, fixture.evaluationKeyID, clientRequestID)
+	assertRadarP0UsageMatchesEvidence(t, db.SQL, fixture.evaluationKeyID, evidence)
+}
+
+func radarP0AnthropicUpstream(calls *atomic.Int64) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/messages" || r.URL.Query().Get("beta") != "true" {
+			http.Error(w, "unexpected upstream request", http.StatusBadRequest)
+			return
+		}
+		if r.Header.Get("x-api-key") != "radar-upstream-key" {
+			http.Error(w, "unexpected upstream credentials", http.StatusUnauthorized)
+			return
+		}
+
+		var requestBody struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil || requestBody.Model != radarP0UpstreamModel {
+			http.Error(w, "unexpected upstream model", http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("x-request-id", radarP0UpstreamRequestID)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":          "msg_radar_p0",
+			"type":        "message",
+			"role":        "assistant",
+			"model":       radarP0UpstreamModel,
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+			"stop_reason": "end_turn",
+			"usage": map[string]any{
+				"input_tokens":  101,
+				"output_tokens": 37,
+			},
+		})
+	})
+}
+
+func newRadarP0Fixture(
+	t *testing.T,
+	db *radarP0TestDatabase,
+	upstreamURL string,
+) *radarP0Fixture {
+	t.Helper()
+
 	const (
 		normalKeyValue     = "sk-radar-p0-normal"
 		evaluationKeyValue = "sk-radar-p0-evaluation"
-		accountID          = int64(991)
-		channelID          = int64(772)
 	)
-	userID, groupID, normalKeyID, evaluationKeyID := provisionRadarP0Principals(t, db, normalKeyValue, evaluationKeyValue)
-	secret := strings.Repeat("s", 32)
+	userID, groupID, normalKeyID, evaluationKeyID := provisionRadarP0Principals(
+		t,
+		db.SQL,
+		upstreamURL,
+		normalKeyValue,
+		evaluationKeyValue,
+	)
+
 	cfg := &config.Config{
-		RunMode: config.RunModeSimple,
+		RunMode: config.RunModeStandard,
+		Default: config.DefaultConfig{RateMultiplier: 1},
+		Gateway: config.GatewayConfig{
+			MaxBodySize:        1 << 20,
+			TextMaxBodySize:    1 << 20,
+			MaxAccountSwitches: 1,
+		},
+		Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{
+				Enabled:           false,
+				AllowPrivateHosts: true,
+				AllowInsecureHTTP: true,
+			},
+		},
 		Radar: config.RadarConfig{
 			Enabled:              true,
-			SigningSecret:        secret,
+			SigningSecret:        strings.Repeat("s", 32),
 			HashingSecret:        strings.Repeat("h", 32),
 			MaxContextTTLSeconds: 300,
 			Region:               "cn-east",
 			RouteProfileVersion:  "route-v42",
 		},
 	}
-	user := &service.User{ID: userID, Role: service.RoleUser, Status: service.StatusActive, Balance: 10, Concurrency: 1}
-	group := &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive}
-	authRepo := &radarP0APIKeyRepo{keys: map[string]*service.APIKey{
-		normalKeyValue: {
-			ID: normalKeyID, UserID: user.ID, Key: normalKeyValue, GroupID: &groupID,
-			Status: service.StatusActive, User: user, Group: group,
-		},
-		evaluationKeyValue: {
-			ID: evaluationKeyID, UserID: user.ID, Key: evaluationKeyValue, GroupID: &groupID,
-			Status: service.StatusActive, IsEvaluation: true, User: user, Group: group,
-		},
-	}}
-	apiKeyService := service.NewAPIKeyService(authRepo, nil, nil, nil, nil, nil, cfg)
-	evidenceRepo := repository.NewEvaluationRouteEvidenceRepository(db)
 
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/rate-limit" {
-			w.WriteHeader(http.StatusTooManyRequests)
-			_, _ = w.Write([]byte(`{"error":{"code":"rate_limited"}}`))
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"model":"qwen3-coder-2026-07","usage":{"input_tokens":101,"output_tokens":37,"ttft_ms":123,"latency_ms":1250,"billed_amount":"0.00012345"}}`))
-	}))
-	t.Cleanup(upstream.Close)
+	apiKeyRepo := repository.NewAPIKeyRepository(db.Ent, db.SQL)
+	userRepo := repository.NewUserRepository(db.Ent, db.SQL)
+	groupRepo := repository.NewGroupRepository(db.Ent, db.SQL)
+	accountRepo := repository.NewAccountRepository(db.Ent, db.SQL, nil)
+	userSubRepo := repository.NewUserSubscriptionRepository(db.Ent)
+	userGroupRateRepo := repository.NewUserGroupRateRepository(db.SQL)
+	usageLogRepo := repository.NewUsageLogRepository(db.Ent, db.SQL)
+	usageBillingRepo := repository.NewUsageBillingRepository(db.Ent, db.SQL)
+	channelRepo := repository.NewChannelRepository(db.SQL)
+	evidenceRepo := repository.NewEvaluationRouteEvidenceRepository(db.SQL)
 
-	var inferenceCalls atomic.Int64
-	router := gin.New()
-	router.POST(
-		"/v1/radar/:mode",
-		gin.HandlerFunc(servermiddleware.NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)),
-		gin.HandlerFunc(servermiddleware.NewEvaluationEvidenceMiddleware(evidenceRepo)),
-		func(c *gin.Context) {
-			inferenceCalls.Add(1)
-			ctx := service.WithCompositeRouteDecision(c.Request.Context(), service.CompositeRouteDecision{
-				Matched: true, PublicModel: "public-coder", TargetPlatform: "qwen",
-				UpstreamModel: "qwen3-coder-2026-07",
-			})
-			c.Request = c.Request.WithContext(ctx)
-
-			switch c.Param("mode") {
-			case "success", "upstream":
-				trace, ok := service.RouteTraceFromContext(ctx)
-				require.True(t, ok)
-				attempt := service.RouteAttempt{
-					Provider: "qwen", AccountID: accountID, ChannelID: channelID,
-					ResolvedModel: "qwen3-coder-2026-07", Region: "cn-east",
-				}
-				if c.Param("mode") == "upstream" {
-					attempt.ErrorCode = "rate_limited"
-				}
-				trace.RecordAttempt(attempt)
-				path := "/success"
-				if c.Param("mode") == "upstream" {
-					path = "/rate-limit"
-				}
-				upstreamRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, upstream.URL+path, nil)
-				require.NoError(t, err)
-				response, err := http.DefaultClient.Do(upstreamRequest)
-				require.NoError(t, err)
-				defer response.Body.Close()
-				if response.StatusCode != http.StatusOK {
-					c.JSON(http.StatusBadGateway, gin.H{"error": "upstream_failed"})
-					return
-				}
-				var payload struct {
-					Model string `json:"model"`
-					Usage struct {
-						InputTokens  int    `json:"input_tokens"`
-						OutputTokens int    `json:"output_tokens"`
-						TTFT         int    `json:"ttft_ms"`
-						Latency      int    `json:"latency_ms"`
-						BilledAmount string `json:"billed_amount"`
-					} `json:"usage"`
-				}
-				require.NoError(t, json.NewDecoder(response.Body).Decode(&payload))
-				evaluation, ok := service.EvaluationContextFromContext(ctx)
-				require.True(t, ok)
-				repo, ok := service.EvaluationEvidenceRepositoryFromContext(ctx)
-				require.True(t, ok)
-				require.NoError(t, repo.AttachBilling(ctx, evaluation.RouteTraceID, service.RouteUsageEvidence{
-					InputTokens: payload.Usage.InputTokens, OutputTokens: payload.Usage.OutputTokens,
-					TTFT: &payload.Usage.TTFT, Latency: &payload.Usage.Latency,
-					BilledAmount: decimal.RequireFromString(payload.Usage.BilledAmount), FinishReason: "stop",
-				}))
-				c.JSON(http.StatusOK, gin.H{"model": payload.Model})
-			case "protocol":
-				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
-			case "cancelled":
-				cancelled, cancel := context.WithCancel(ctx)
-				cancel()
-				c.Request = c.Request.WithContext(cancelled)
-				c.Status(499)
-			case "gateway":
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "gateway_failed"})
-			}
-		},
+	apiKeyService := service.NewAPIKeyService(
+		apiKeyRepo,
+		userRepo,
+		groupRepo,
+		userSubRepo,
+		userGroupRateRepo,
+		nil,
+		cfg,
+	)
+	channelService := service.NewChannelService(channelRepo, groupRepo, apiKeyService, nil)
+	concurrencyService := service.NewConcurrencyService(nil)
+	billingCacheService := service.NewBillingCacheService(
+		nil,
+		userRepo,
+		userSubRepo,
+		apiKeyRepo,
+		nil,
+		userGroupRateRepo,
+		cfg,
+		nil,
+	)
+	t.Cleanup(billingCacheService.Stop)
+	billingService := service.NewBillingService(cfg, nil)
+	rateLimitService := service.NewRateLimitService(accountRepo, usageLogRepo, cfg, nil, nil)
+	deferredService := service.NewDeferredService(accountRepo, nil, time.Minute)
+	gatewayService := service.NewGatewayService(
+		accountRepo,
+		groupRepo,
+		usageLogRepo,
+		usageBillingRepo,
+		userRepo,
+		userSubRepo,
+		userGroupRateRepo,
+		nil,
+		cfg,
+		nil,
+		concurrencyService,
+		billingService,
+		rateLimitService,
+		billingCacheService,
+		nil,
+		repository.NewHTTPUpstream(cfg),
+		deferredService,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		channelService,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	gatewayHandler := handler.NewGatewayHandler(
+		gatewayService,
+		nil,
+		nil,
+		nil,
+		nil,
+		concurrencyService,
+		billingCacheService,
+		nil,
+		apiKeyService,
+		nil,
+		nil,
+		nil,
+		nil,
+		cfg,
+		nil,
 	)
 
-	signer, err := service.NewEvaluationContextSigner([]byte(secret), 5*time.Minute)
+	router := gin.New()
+	routes.RegisterGatewayRoutes(
+		router,
+		&handler.Handlers{
+			Gateway:       gatewayHandler,
+			OpenAIGateway: &handler.OpenAIGatewayHandler{},
+		},
+		servermiddleware.NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg),
+		servermiddleware.NewEvaluationEvidenceMiddleware(evidenceRepo),
+		apiKeyService,
+		nil,
+		nil,
+		nil,
+		nil,
+		cfg,
+	)
+
+	signer, err := service.NewEvaluationContextSigner([]byte(cfg.Radar.SigningSecret), 5*time.Minute)
 	require.NoError(t, err)
-	copiedToken := radarP0Token(t, signer, evaluationKeyID, uuid.NewString(), uuid.NewString())
+	require.NotZero(t, userID)
+	require.NotZero(t, groupID)
 
-	normalResponse := radarP0Request(router, normalKeyValue, copiedToken, "success")
-	require.Equal(t, http.StatusForbidden, normalResponse.Code)
-	require.Zero(t, inferenceCalls.Load(), "normal keys with copied evaluation headers must not reach inference")
-	requireRadarP0EvidenceCount(t, db, normalKeyID, 0)
-
-	missingTokenResponse := radarP0Request(router, evaluationKeyValue, "", "success")
-	require.Equal(t, http.StatusForbidden, missingTokenResponse.Code)
-	require.Zero(t, inferenceCalls.Load(), "evaluation keys without a signed token must not reach inference")
-	requireRadarP0EvidenceCount(t, db, evaluationKeyID, 0)
-
-	terminalCases := []struct {
-		mode       string
-		wantStatus int
-		wantClass  string
-	}{
-		{mode: "success", wantStatus: http.StatusOK, wantClass: "succeeded"},
-		{mode: "upstream", wantStatus: http.StatusBadGateway, wantClass: "upstream_failed"},
-		{mode: "protocol", wantStatus: http.StatusBadRequest, wantClass: "protocol_failed"},
-		{mode: "cancelled", wantStatus: 499, wantClass: "client_cancelled"},
-		{mode: "gateway", wantStatus: http.StatusInternalServerError, wantClass: "gateway_failed"},
-	}
-	for _, test := range terminalCases {
-		t.Run(test.mode, func(t *testing.T) {
-			runID := uuid.NewString()
-			sampleID := uuid.NewString()
-			token := radarP0Token(t, signer, evaluationKeyID, runID, sampleID)
-			response := radarP0Request(router, evaluationKeyValue, token, test.mode)
-			require.Equal(t, test.wantStatus, response.Code)
-			assertRadarP0Evidence(t, db, runID, sampleID, evaluationKeyID, test.wantClass, test.mode == "success")
-		})
+	return &radarP0Fixture{
+		router:          router,
+		signer:          signer,
+		normalKey:       normalKeyValue,
+		evaluationKey:   evaluationKeyValue,
+		normalKeyID:     normalKeyID,
+		evaluationKeyID: evaluationKeyID,
 	}
 }
 
-func radarP0Database(t *testing.T) *sql.DB {
+func radarP0Database(t *testing.T) *radarP0TestDatabase {
 	t.Helper()
 	ctx := context.Background()
 	cmd := exec.CommandContext(ctx, "docker", "info")
@@ -225,56 +337,150 @@ func radarP0Database(t *testing.T) *sql.DB {
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, container.Terminate(context.Background())) })
+
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable", "TimeZone=UTC")
 	require.NoError(t, err)
-	db, err := sql.Open("postgres", dsn)
+	sqlDB, err := sql.Open("postgres", dsn)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	require.Eventually(t, func() bool { return db.PingContext(ctx) == nil }, 30*time.Second, 250*time.Millisecond)
-	require.NoError(t, repository.ApplyMigrations(ctx, db))
-	return db
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	require.Eventually(t, func() bool { return sqlDB.PingContext(ctx) == nil }, 30*time.Second, 250*time.Millisecond)
+	require.NoError(t, repository.ApplyMigrations(ctx, sqlDB))
+
+	entClient := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, sqlDB)))
+	t.Cleanup(func() { require.NoError(t, entClient.Close()) })
+	return &radarP0TestDatabase{SQL: sqlDB, Ent: entClient}
 }
 
-func provisionRadarP0Principals(t *testing.T, db *sql.DB, normalKey, evaluationKey string) (int64, int64, int64, int64) {
+func provisionRadarP0Principals(
+	t *testing.T,
+	db *sql.DB,
+	upstreamURL string,
+	normalKey string,
+	evaluationKey string,
+) (int64, int64, int64, int64) {
 	t.Helper()
 	ctx := context.Background()
 	suffix := uuid.NewString()
+
 	var groupID int64
+	var accountID int64
 	require.NoError(t, db.QueryRowContext(ctx, `
-		INSERT INTO groups (name, platform, status)
-		VALUES ($1, 'openai', 'active') RETURNING id`, "radar-p0-"+suffix).Scan(&groupID))
+		INSERT INTO groups (name, platform, status, subscription_type, rate_multiplier)
+		VALUES ($1, 'anthropic', 'active', 'standard', 1) RETURNING id`,
+		"radar-p0-"+suffix,
+	).Scan(&groupID))
+
 	var userID int64
 	require.NoError(t, db.QueryRowContext(ctx, `
 		INSERT INTO users (email, username, password_hash, role, balance, concurrency, status)
-		VALUES ($1, $2, 'not-a-login-secret', 'user', 10, 1, 'active') RETURNING id`,
-		"radar-p0-"+suffix+"@example.com", "radar-p0-"+suffix).Scan(&userID))
+		VALUES ($1, $2, 'not-a-login-secret', 'user', 10, 0, 'active') RETURNING id`,
+		"radar-p0-"+suffix+"@example.com",
+		"radar-p0-"+suffix,
+	).Scan(&userID))
+
 	var normalKeyID int64
 	require.NoError(t, db.QueryRowContext(ctx, `
 		INSERT INTO api_keys (user_id, key, name, group_id, status, is_evaluation)
 		VALUES ($1, $2, 'normal', $3, 'active', false) RETURNING id`,
-		userID, normalKey, groupID).Scan(&normalKeyID))
+		userID,
+		normalKey,
+		groupID,
+	).Scan(&normalKeyID))
+
 	var evaluationKeyID int64
 	require.NoError(t, db.QueryRowContext(ctx, `
 		INSERT INTO api_keys (user_id, key, name, group_id, status, is_evaluation)
 		VALUES ($1, $2, 'evaluation', $3, 'active', true) RETURNING id`,
-		userID, evaluationKey, groupID).Scan(&evaluationKeyID))
+		userID,
+		evaluationKey,
+		groupID,
+	).Scan(&evaluationKeyID))
+
+	credentials, err := json.Marshal(map[string]any{
+		"api_key":  "radar-upstream-key",
+		"base_url": upstreamURL,
+		"model_mapping": map[string]string{
+			radarP0RequestedModel: radarP0UpstreamModel,
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.QueryRowContext(ctx, `
+		INSERT INTO accounts (
+			id, name, platform, type, credentials, extra, concurrency,
+			priority, status, schedulable, rate_multiplier
+		) VALUES (
+			$1, $2, 'anthropic', 'apikey', $3, '{}'::jsonb, 0,
+			1, 'active', true, 1
+		) RETURNING id`,
+		radarP0AccountID,
+		"radar-p0-account-"+suffix,
+		string(credentials),
+	).Scan(&accountID))
+	require.Equal(t, radarP0AccountID, accountID)
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO account_groups (account_id, group_id, priority)
+		VALUES ($1, $2, 1)`,
+		radarP0AccountID,
+		groupID,
+	)
+	require.NoError(t, err)
+
+	channelMapping, err := json.Marshal(map[string]map[string]string{
+		service.PlatformAnthropic: {
+			radarP0RequestedModel: radarP0UpstreamModel,
+		},
+	})
+	require.NoError(t, err)
+	var channelID int64
+	require.NoError(t, db.QueryRowContext(ctx, `
+		INSERT INTO channels (
+			id, name, description, status, model_mapping,
+			billing_model_source, restrict_models
+		) VALUES (
+			$1, $2, '', 'active', $3, 'upstream', false
+		) RETURNING id`,
+		radarP0ChannelID,
+		"radar-p0-channel-"+suffix,
+		string(channelMapping),
+	).Scan(&channelID))
+	require.Equal(t, radarP0ChannelID, channelID)
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO channel_groups (channel_id, group_id)
+		VALUES ($1, $2)`,
+		radarP0ChannelID,
+		groupID,
+	)
+	require.NoError(t, err)
+
 	return userID, groupID, normalKeyID, evaluationKeyID
 }
 
-func radarP0Token(t *testing.T, signer *service.EvaluationContextSigner, apiKeyID int64, runID, sampleID string) string {
+func radarP0Token(
+	t *testing.T,
+	signer *service.EvaluationContextSigner,
+	apiKeyID int64,
+	runID string,
+	sampleID string,
+) string {
 	t.Helper()
 	now := time.Now().UTC()
 	token, err := signer.Sign(service.EvaluationContext{
-		RunID: runID, SampleID: sampleID, DatasetVersion: "dataset-v1",
-		ExpectedModelAlias: "public-coder", ExpectedRouteProfile: "route-v42",
-		APIKeyID: apiKeyID, IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(2 * time.Minute),
+		RunID:                runID,
+		SampleID:             sampleID,
+		DatasetVersion:       "dataset-v1",
+		ExpectedModelAlias:   radarP0RequestedModel,
+		ExpectedRouteProfile: "route-v42",
+		APIKeyID:             apiKeyID,
+		IssuedAt:             now.Add(-time.Second),
+		ExpiresAt:            now.Add(2 * time.Minute),
 	})
 	require.NoError(t, err)
 	return token
 }
 
-func radarP0Request(router http.Handler, key, token, mode string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodPost, "/v1/radar/"+mode, strings.NewReader(`{"model":"public-coder"}`))
+func radarP0Request(router http.Handler, key string, token string) *httptest.ResponseRecorder {
+	body := `{"model":"` + radarP0RequestedModel + `","max_tokens":32,"messages":[{"role":"user","content":"hello"}]}`
+	request := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer "+key)
 	request.Header.Set("Content-Type", "application/json")
 	if token != "" {
@@ -288,49 +494,181 @@ func radarP0Request(router http.Handler, key, token, mode string) *httptest.Resp
 func requireRadarP0EvidenceCount(t *testing.T, db *sql.DB, apiKeyID int64, want int) {
 	t.Helper()
 	var count int
-	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM evaluation_route_evidence WHERE api_key_id = $1`, apiKeyID).Scan(&count))
+	require.NoError(t, db.QueryRow(
+		`SELECT COUNT(*) FROM evaluation_route_evidence WHERE api_key_id = $1`,
+		apiKeyID,
+	).Scan(&count))
 	require.Equal(t, want, count)
 }
 
-func assertRadarP0Evidence(t *testing.T, db *sql.DB, runID, sampleID string, apiKeyID int64, wantClass string, wantBilling bool) {
+func loadRadarP0Evidence(t *testing.T, db *sql.DB, runID string, apiKeyID int64) radarP0Evidence {
 	t.Helper()
+
 	var count int
-	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM evaluation_route_evidence WHERE evaluation_run_id = $1`, runID).Scan(&count))
+	require.NoError(t, db.QueryRow(
+		`SELECT COUNT(*) FROM evaluation_route_evidence WHERE evaluation_run_id = $1`,
+		runID,
+	).Scan(&count))
 	require.Equal(t, 1, count, "one server-generated trace must produce one row")
 
+	var evidence radarP0Evidence
+	require.NoError(t, db.QueryRow(`
+		SELECT
+			route_trace_id::text,
+			evaluation_run_id::text,
+			sample_id::text,
+			api_key_id,
+			COALESCE(request_id, ''),
+			requested_model,
+			COALESCE(resolved_model, ''),
+			route_profile_version,
+			COALESCE(provider, ''),
+			COALESCE(channel_ref, ''),
+			COALESCE(account_pool_ref, ''),
+			region,
+			attempts,
+			fallback_chain,
+			transport_status,
+			COALESCE(error_code, ''),
+			input_tokens,
+			output_tokens,
+			ttft_ms,
+			latency_ms,
+			billed_amount::text
+		FROM evaluation_route_evidence
+		WHERE evaluation_run_id = $1 AND api_key_id = $2`,
+		runID,
+		apiKeyID,
+	).Scan(
+		&evidence.RouteTraceID,
+		&evidence.RunID,
+		&evidence.SampleID,
+		&evidence.APIKeyID,
+		&evidence.RequestID,
+		&evidence.RequestedModel,
+		&evidence.ResolvedModel,
+		&evidence.RouteProfile,
+		&evidence.Provider,
+		&evidence.ChannelRef,
+		&evidence.AccountRef,
+		&evidence.Region,
+		&evidence.Attempts,
+		&evidence.FallbackJSON,
+		&evidence.Status,
+		&evidence.ErrorCode,
+		&evidence.InputTokens,
+		&evidence.OutputTokens,
+		&evidence.TTFT,
+		&evidence.Latency,
+		&evidence.BilledAmount,
+	))
+	return evidence
+}
+
+func assertRadarP0Evidence(
+	t *testing.T,
+	evidence radarP0Evidence,
+	runID string,
+	sampleID string,
+	apiKeyID int64,
+	clientRequestID string,
+) {
+	t.Helper()
+
+	_, err := uuid.Parse(evidence.RouteTraceID)
+	require.NoError(t, err, "route_trace_id must be server-generated")
+	require.NotEqual(t, runID, evidence.RouteTraceID)
+	require.Equal(t, runID, evidence.RunID)
+	require.Equal(t, sampleID, evidence.SampleID)
+	require.Equal(t, apiKeyID, evidence.APIKeyID)
+	require.Equal(t, "client:"+clientRequestID, evidence.RequestID)
+	require.Equal(t, radarP0RequestedModel, evidence.RequestedModel)
+	require.Equal(t, radarP0UpstreamModel, evidence.ResolvedModel)
+	require.Equal(t, "route-v42", evidence.RouteProfile)
+	require.Equal(t, service.PlatformAnthropic, evidence.Provider)
+	require.Equal(t, "cn-east", evidence.Region)
+	require.Equal(t, 1, evidence.Attempts)
+	require.Equal(t, "succeeded", evidence.Status)
+	require.Empty(t, evidence.ErrorCode)
+	require.NotEmpty(t, evidence.AccountRef)
+	require.NotEmpty(t, evidence.ChannelRef)
+	require.NotEqual(t, strconv.FormatInt(radarP0AccountID, 10), evidence.AccountRef)
+	require.NotEqual(t, strconv.FormatInt(radarP0ChannelID, 10), evidence.ChannelRef)
+
+	var fallback []service.RouteFallbackEntry
+	require.NoError(t, json.Unmarshal(evidence.FallbackJSON, &fallback))
+	require.Len(t, fallback, 1)
+	require.Equal(t, 1, fallback[0].Ordinal)
+	require.Equal(t, service.PlatformAnthropic, fallback[0].Provider)
+	require.Equal(t, evidence.AccountRef, fallback[0].AccountPoolRef)
+	require.Equal(t, evidence.ChannelRef, fallback[0].ChannelRef)
+	require.Equal(t, radarP0UpstreamModel, fallback[0].ResolvedModel)
+	require.Equal(t, "cn-east", fallback[0].Region)
+	require.Empty(t, fallback[0].ErrorCode)
+	require.NotContains(t, string(evidence.FallbackJSON), `"account_pool_ref":"`+strconv.FormatInt(radarP0AccountID, 10)+`"`)
+	require.NotContains(t, string(evidence.FallbackJSON), `"channel_ref":"`+strconv.FormatInt(radarP0ChannelID, 10)+`"`)
+	require.NotContains(t, string(evidence.FallbackJSON), "account_id")
+	require.NotContains(t, string(evidence.FallbackJSON), "channel_id")
+
+	require.True(t, evidence.InputTokens.Valid)
+	require.Equal(t, int64(101), evidence.InputTokens.Int64)
+	require.True(t, evidence.OutputTokens.Valid)
+	require.Equal(t, int64(37), evidence.OutputTokens.Int64)
+	require.False(t, evidence.TTFT.Valid, "non-stream responses should not invent TTFT")
+	require.True(t, evidence.Latency.Valid)
+	require.GreaterOrEqual(t, evidence.Latency.Int64, int64(0))
+	require.True(t, evidence.BilledAmount.Valid)
+	require.True(t, decimal.RequireFromString(evidence.BilledAmount.String).IsPositive())
+}
+
+func assertRadarP0UsageMatchesEvidence(
+	t *testing.T,
+	db *sql.DB,
+	apiKeyID int64,
+	evidence radarP0Evidence,
+) {
+	t.Helper()
+
 	var (
-		storedSampleID, requestedModel, resolvedModel, routeProfile, status string
-		fallbackJSON                                                        []byte
-		inputTokens, outputTokens, ttft, latency                            sql.NullInt64
-		billedAmount                                                        sql.NullString
+		requestID      string
+		requestedModel string
+		upstreamModel  string
+		inputTokens    int64
+		outputTokens   int64
+		durationMS     int64
+		actualCost     string
+		channelID      sql.NullInt64
 	)
 	require.NoError(t, db.QueryRow(`
-		SELECT sample_id::text, requested_model, COALESCE(resolved_model, ''),
-			route_profile_version, transport_status, fallback_chain,
-			input_tokens, output_tokens, ttft_ms, latency_ms, billed_amount::text
-		FROM evaluation_route_evidence
-		WHERE evaluation_run_id = $1 AND api_key_id = $2`, runID, apiKeyID).Scan(
-		&storedSampleID, &requestedModel, &resolvedModel, &routeProfile, &status, &fallbackJSON,
-		&inputTokens, &outputTokens, &ttft, &latency, &billedAmount,
+		SELECT
+			request_id,
+			requested_model,
+			COALESCE(NULLIF(upstream_model, ''), model),
+			input_tokens,
+			output_tokens,
+			COALESCE(duration_ms, 0),
+			actual_cost::text,
+			channel_id
+		FROM usage_logs
+		WHERE api_key_id = $1`,
+		apiKeyID,
+	).Scan(
+		&requestID,
+		&requestedModel,
+		&upstreamModel,
+		&inputTokens,
+		&outputTokens,
+		&durationMS,
+		&actualCost,
+		&channelID,
 	))
-	require.Equal(t, sampleID, storedSampleID)
-	require.Equal(t, "public-coder", requestedModel)
-	require.Equal(t, "qwen3-coder-2026-07", resolvedModel)
-	require.Equal(t, "route-v42", routeProfile)
-	require.Equal(t, wantClass, status)
-	require.NotContains(t, string(fallbackJSON), "account_id")
-	require.NotContains(t, string(fallbackJSON), "channel_id")
-	var fallback []service.RouteFallbackEntry
-	require.NoError(t, json.Unmarshal(fallbackJSON, &fallback))
-	for _, attempt := range fallback {
-		require.NotEqual(t, "991", attempt.AccountPoolRef)
-		require.NotEqual(t, "772", attempt.ChannelRef)
-	}
-	if wantBilling {
-		require.Equal(t, int64(101), inputTokens.Int64)
-		require.Equal(t, int64(37), outputTokens.Int64)
-		require.Equal(t, int64(123), ttft.Int64)
-		require.Equal(t, int64(1250), latency.Int64)
-		require.Equal(t, "0.00012345", billedAmount.String)
-	}
+	require.Equal(t, evidence.RequestID, requestID)
+	require.Equal(t, evidence.RequestedModel, requestedModel)
+	require.Equal(t, evidence.ResolvedModel, upstreamModel)
+	require.Equal(t, evidence.InputTokens.Int64, inputTokens)
+	require.Equal(t, evidence.OutputTokens.Int64, outputTokens)
+	require.Equal(t, evidence.Latency.Int64, durationMS)
+	require.True(t, channelID.Valid)
+	require.Equal(t, radarP0ChannelID, channelID.Int64)
+	require.True(t, decimal.RequireFromString(evidence.BilledAmount.String).Equal(decimal.RequireFromString(actualCost)))
 }

@@ -59,7 +59,7 @@ type GatewayHandler struct {
 	settingService            *service.SettingService
 }
 
-func recordEvaluationRouteAttempt(ctx context.Context, cfg *config.Config, account *service.Account, requestedModel string) {
+func recordEvaluationRouteAttempt(ctx context.Context, cfg *config.Config, account *service.Account, channelID int64, requestedModel string) {
 	trace, ok := service.RouteTraceFromContext(ctx)
 	if !ok || account == nil {
 		return
@@ -72,6 +72,7 @@ func recordEvaluationRouteAttempt(ctx context.Context, cfg *config.Config, accou
 	trace.RecordAttempt(service.RouteAttempt{
 		Provider:      account.Platform,
 		AccountID:     account.ID,
+		ChannelID:     channelID,
 		ResolvedModel: account.GetMappedModel(requestedModel),
 		Region:        region,
 	})
@@ -400,7 +401,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			account := selection.Account
 			setOpsSelectedAccount(c, account.ID, account.Platform)
-			recordEvaluationRouteAttempt(c.Request.Context(), h.cfg, account, reqModel)
+			recordEvaluationRouteAttempt(c.Request.Context(), h.cfg, account, channelMapping.ChannelID, reqModel)
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
@@ -692,7 +693,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			account := selection.Account
 			setOpsSelectedAccount(c, account.ID, account.Platform)
-			recordEvaluationRouteAttempt(c.Request.Context(), h.cfg, account, reqModel)
+			recordEvaluationRouteAttempt(c.Request.Context(), h.cfg, account, channelMapping.ChannelID, reqModel)
 
 			// [DEBUG-STICKY] 打印账号选择结果
 			reqLog.Info("sticky.account_selected",
