@@ -132,7 +132,8 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		return nil, nil, err
 	}
 
-	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
+	// 含 +别名 / Gmail 点号 / FQDN 根点变体归一化：该路径同样发放注册赠额，不能被单个收件箱刷号。
+	existsEmail, err := s.existsByEmailOrAlias(ctx, email)
 	if err != nil {
 		slog.Error("oauth email register: ExistsByEmail failed", "email", email, "error", err.Error())
 		return nil, nil, ErrServiceUnavailable
@@ -159,7 +160,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		SignupSource: signupSource,
 	}
 
-	if err := s.userRepo.Create(ctx, user); err != nil {
+	if err := s.userRepo.CreateWithEmailAliasGuard(ctx, user); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
 		}
@@ -211,7 +212,8 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		return nil, nil, err
 	}
 
-	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
+	// 与本地注册同口径：同一收件箱的别名变体不能各自建号（该路径也发放注册赠额）。
+	existsEmail, err := s.existsByEmailOrAlias(ctx, email)
 	if err != nil {
 		return nil, nil, ErrServiceUnavailable
 	}
@@ -241,7 +243,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		SignupSource: signupSource,
 	}
 
-	if err := s.userRepo.Create(ctx, user); err != nil {
+	if err := s.userRepo.CreateWithEmailAliasGuard(ctx, user); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
 		}

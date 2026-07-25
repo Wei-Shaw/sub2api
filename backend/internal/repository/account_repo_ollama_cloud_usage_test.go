@@ -190,13 +190,15 @@ func TestListDueOllamaCloudUsageAccountsFiltersOrdersAndLimits(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	now := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
+	debounce := time.Minute
+	maxWait := time.Hour
 	var capturedSQL string
-	mock.ExpectQuery("WITH candidates AS").
-		WithArgs(now, 20).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+	mock.ExpectQuery("WITH eligible AS").
+		WithArgs(now.UTC(), debounce.Seconds(), maxWait.Seconds(), 20, service.OllamaCloudUsageMinFetchInterval.Seconds()).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "group_last_used_at"}))
 	repo := newAccountRepositoryWithSQL(nil, captureQuerySQL{db: db, captured: &capturedSQL}, nil)
 
-	accounts, err := repo.ListDueOllamaCloudUsageAccounts(context.Background(), now, 20)
+	accounts, err := repo.ListDueOllamaCloudUsageAccounts(context.Background(), now, debounce, maxWait, 20)
 
 	require.NoError(t, err)
 	require.Empty(t, accounts)
@@ -209,10 +211,24 @@ func TestListDueOllamaCloudUsageAccountsFiltersOrdersAndLimits(t *testing.T) {
 		ollamaCloudBaseURLMatchesSQL("credentials ->> 'base_url'"),
 		"jsonb_typeof(extra -> 'ollama_cloud_usage_session') = 'string'",
 		`extra @> '{"ollama_cloud_usage_auto_refresh": true}'::jsonb`,
-		"parsed_next_refresh_at::timestamptz <= $1",
+		"MAX(last_used_at) AS group_last_used_at",
 		"PARTITION BY api_key",
 		"WHERE group_rank = 1",
-		"LIMIT $2",
+		"LIMIT $4",
+		"make_interval(secs => $2::double precision)",
+		"make_interval(secs => $3::double precision)",
+		// Minimum interval floor between successful fetches.
+		"make_interval(secs => $5::double precision)",
+		// jsonpath .datetime() only accepts the ISO-8601 "Z" designator from
+		// PostgreSQL 17 on, and this service writes UTC timestamps. Without this
+		// rewrite every parsed_* column is NULL on 14-16 and the due filter
+		// collapses into its fail-open branch.
+		`regexp_replace( regexp_replace( fetched_at, '(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$', '\1\2' ), 'Z$', '+00:00' )`,
+		"group_last_used_at > parsed_fetched_at::timestamptz",
+		"group_last_used_at > parsed_last_attempt_at::timestamptz",
+		"$1 >= activity_due_at",
+		"COALESCE(parsed_next_refresh_at::timestamptz, '-infinity'::timestamptz)",
+		"ORDER BY due_class, due_at NULLS FIRST, id",
 	} {
 		require.Contains(t, normalized, clause)
 	}
