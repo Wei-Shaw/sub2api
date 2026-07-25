@@ -356,15 +356,32 @@ REDACTED
 
 // ollamaCloudUsageParseRFC3339SQL reuses the verified RFC3339(/Nano) parse path
 // for a snapshot timestamp expression. Invalid or missing values fail open to NULL.
+//
+// The value is rewritten twice before it reaches jsonpath:
+//  1. Sub-second precision beyond 6 digits is truncated, because .datetime()
+//     rejects more than microsecond resolution while Go emits 9 digits.
+//  2. A trailing "Z" is rewritten to "+00:00". jsonpath .datetime() only learned
+//     to accept the ISO-8601 "Z" designator in PostgreSQL 17, and every timestamp
+//     this service writes is UTC (hence "Z"). Without this rewrite the parse
+//     silently yields NULL on PostgreSQL <= 16, which makes every due column NULL
+//     and collapses ListDueOllamaCloudUsageAccounts into its fail-open branch.
+//
+// jsonpath (rather than a direct ::timestamptz cast) is required so that values
+// passing the shape regex but naming an impossible date (e.g. 2026-02-30) fail
+// open to NULL instead of aborting the whole query.
 func ollamaCloudUsageParseRFC3339SQL(expression string) string {
 	return `CASE
 		WHEN ` + expression + ` IS NULL THEN NULL
 		WHEN ` + expression + ` ~ '^[0-9]{4REDACTED-[0-9]{2REDACTED-[0-9]{2REDACTEDT[0-9]{2REDACTED:[0-9]{2REDACTED:[0-9]{2REDACTED(\.[0-9]+)?(Z|[+-][0-9]{2REDACTED:[0-9]{2REDACTED)$'
 			THEN jsonb_path_query_first_tz(
 				to_jsonb(regexp_replace(
-					` + expression + `,
-					'(\.[0-9]{6REDACTED)[0-9]+(Z|[+-][0-9]{2REDACTED:[0-9]{2REDACTED)$',
-					'\1\2'
+					regexp_replace(
+						` + expression + `,
+						'(\.[0-9]{6REDACTED)[0-9]+(Z|[+-][0-9]{2REDACTED:[0-9]{2REDACTED)$',
+						'\1\2'
+					),
+					'Z$',
+					'+00:00'
 				)),
 				'$.datetime()', '{REDACTED'::jsonb, true
 			) #>> '{REDACTED'
@@ -378,9 +395,10 @@ REDACTED
 // Account.LastUsedAt is stamped with the group MAX(last_used_at) for a service
 // pure-function recheck against races between list and refresh.
 //
-// Rules mirror service.ollamaCloudUsageAutoRefreshDueAt:
+// Rules mirror service.ollamaCloudUsageAutoRefreshDueAt (keep both in sync):
 //   - missing/invalid snapshot or times → fail-open first due
-//   - success: activity after fetched_at; due_at = LEAST(last_used+debounce, fetched+maxWait)
+//   - success: activity after fetched_at;
+//     due_at = GREATEST(LEAST(last_used+debounce, fetched+maxWait), fetched+minFetchInterval)
 //   - failed/unauthorized: activity after last_attempt; activity_due = LEAST(...);
 //     final due_at is not earlier than a valid next_refresh_at (invalid/missing fail-open)
 func (r *accountRepository) ListDueOllamaCloudUsageAccounts(
@@ -403,6 +421,7 @@ REDACTED
 REDACTED
 	debounceSeconds := debounce.Seconds()
 	maxWaitSeconds := maxWait.Seconds()
+	minFetchIntervalSeconds := service.OllamaCloudUsageMinFetchInterval.Seconds()
 	rows, err := r.sql.QueryContext(ctx, `
 		WITH eligible AS (
 			SELECT id,
@@ -444,9 +463,12 @@ REDACTED
 						AND parsed_fetched_at IS NOT NULL
 						AND group_last_used_at IS NOT NULL
 						AND group_last_used_at > parsed_fetched_at::timestamptz
-					THEN LEAST(
-						group_last_used_at + make_interval(secs => $2::double precision),
-						parsed_fetched_at::timestamptz + make_interval(secs => $3::double precision)
+					THEN GREATEST(
+						LEAST(
+							group_last_used_at + make_interval(secs => $2::double precision),
+							parsed_fetched_at::timestamptz + make_interval(secs => $3::double precision)
+						),
+						parsed_fetched_at::timestamptz + make_interval(secs => $5::double precision)
 					)
 					WHEN status IN ('failed', 'unauthorized')
 						AND parsed_last_attempt_at IS NOT NULL
@@ -490,7 +512,7 @@ REDACTED
 		WHERE group_rank = 1
 		ORDER BY due_class, due_at NULLS FIRST, id
 		LIMIT $4
-	`, now.UTC(), debounceSeconds, maxWaitSeconds, limit)
+	`, now.UTC(), debounceSeconds, maxWaitSeconds, limit, minFetchIntervalSeconds)
 	if err != nil {
 		return nil, err
 REDACTED

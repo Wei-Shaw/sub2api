@@ -194,7 +194,7 @@ REDACTED
 	maxWait := time.Hour
 	var capturedSQL string
 	mock.ExpectQuery("WITH eligible AS").
-		WithArgs(now.UTC(), debounce.Seconds(), maxWait.Seconds(), 20).
+		WithArgs(now.UTC(), debounce.Seconds(), maxWait.Seconds(), 20, service.OllamaCloudUsageMinFetchInterval.Seconds()).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "group_last_used_at"REDACTED))
 	repo := newAccountRepositoryWithSQL(nil, captureQuerySQL{db: db, captured: &capturedSQLREDACTED, nil)
 
@@ -217,6 +217,13 @@ REDACTED
 		"LIMIT $4",
 		"make_interval(secs => $2::double precision)",
 		"make_interval(secs => $3::double precision)",
+		// Minimum interval floor between successful fetches.
+		"make_interval(secs => $5::double precision)",
+		// jsonpath .datetime() only accepts the ISO-8601 "Z" designator from
+		// PostgreSQL 17 on, and this service writes UTC timestamps. Without this
+		// rewrite every parsed_* column is NULL on 14-16 and the due filter
+		// collapses into its fail-open branch.
+		`regexp_replace( regexp_replace( fetched_at, '(\.[0-9]{6REDACTED)[0-9]+(Z|[+-][0-9]{2REDACTED:[0-9]{2REDACTED)$', '\1\2' ), 'Z$', '+00:00' )`,
 		"group_last_used_at > parsed_fetched_at::timestamptz",
 		"group_last_used_at > parsed_last_attempt_at::timestamptz",
 		"$1 >= activity_due_at",

@@ -72,6 +72,81 @@ REDACTED
 	require.Equal(t, proxy.URL(), accounts[0].Proxy.URL())
 REDACTED
 
+// TestListDueOllamaCloudUsageAccountsParsesAllRFC3339Precisions pins the SQL
+// timestamp parse path across the sub-second precisions and zone spellings that
+// actually reach the database.
+//
+// Each fixture stores a fetched_at only two minutes old with activity 30s later,
+// so a correctly parsed row is NOT due (debounce and the min fetch interval both
+// place it in the future). A row whose timestamp fails to parse becomes NULL and
+// falls into the fail-open branch, which makes it due. Asserting on absence is
+// therefore what makes this test able to fail:
+//
+//   - Go writes UTC times, i.e. the "Z" designator. jsonpath .datetime() only
+//     accepts "Z" from PostgreSQL 17 on, so without the Z -> +00:00 rewrite in
+//     ollamaCloudUsageParseRFC3339SQL every fixture here goes due on 14-16.
+//   - 7/8/9 sub-second digits exceed the microsecond resolution .datetime()
+//     allows and must be truncated first.
+//
+// Run against the oldest supported server to exercise the version-sensitive path:
+//
+//	SUB2API_TEST_POSTGRES_IMAGE=postgres:15-alpine go test -tags integration ./internal/repository/
+func TestListDueOllamaCloudUsageAccountsParsesAllRFC3339Precisions(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	now := time.Date(2026, time.July, 22, 14, 0, 0, 0, time.UTC)
+	activity := now.Add(-30 * time.Second)
+
+	// All three spell the same instant, now-2m, with different precision/zone.
+	notDue := map[string]string{
+		"nano-z":         "2026-07-22T13:58:00.123456789Z",
+		"eight-positive": "2026-07-22T14:58:00.12345678+01:00",
+		"seven-negative": "2026-07-22T11:58:00.1234567-02:00",
+REDACTED
+	for name, fetchedAt := range notDue {
+		_ = mustCreateAccount(t, tx.Client(), &service.Account{
+			Name: "ollama-precision-" + name, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+	REDACTED"api_key": "precision-" + name, "base_url": "https://ollama.com"REDACTED,
+			Extra: map[string]any{
+				service.OllamaCloudUsageSessionExtraKey:     "cipher:wos-session=fixture",
+				service.OllamaCloudUsageAutoRefreshExtraKey: true,
+				service.OllamaCloudUsageSnapshotExtraKey: map[string]any{
+					"status":          service.OllamaCloudUsageStatusOK,
+					"fetched_at":      fetchedAt,
+					"last_attempt_at": fetchedAt,
+			REDACTED,
+		REDACTED,
+			LastUsedAt: &activity,
+	REDACTED)
+REDACTED
+
+	// Guards against a vacuous pass: an genuinely due row must still come back.
+	staleFetched := now.Add(-2 * time.Hour)
+	due := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name: "ollama-precision-due", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+REDACTED"api_key": "precision-due", "base_url": "https://ollama.com"REDACTED,
+		Extra: map[string]any{
+			service.OllamaCloudUsageSessionExtraKey:     "cipher:wos-session=fixture",
+			service.OllamaCloudUsageAutoRefreshExtraKey: true,
+			service.OllamaCloudUsageSnapshotExtraKey: map[string]any{
+				"status":          service.OllamaCloudUsageStatusOK,
+				"fetched_at":      staleFetched.UTC().Format(time.RFC3339Nano),
+				"last_attempt_at": staleFetched.UTC().Format(time.RFC3339Nano),
+		REDACTED,
+	REDACTED,
+		LastUsedAt: &activity,
+REDACTED)
+
+	accounts, err := repo.ListDueOllamaCloudUsageAccounts(ctx, now, time.Minute, time.Hour, 10)
+
+REDACTED
+	ids := accountIDs(accounts)
+	require.Contains(t, ids, due.ID, "a stale snapshot with fresh activity must be due")
+	require.Len(t, ids, 1,
+		"only the stale group may be due; extra rows mean a timestamp failed to parse and fell into the fail-open branch")
+REDACTED
+
 func TestListDueOllamaCloudUsageAccountsUsesGroupMaxLastUsedAndFailsOpen(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)
