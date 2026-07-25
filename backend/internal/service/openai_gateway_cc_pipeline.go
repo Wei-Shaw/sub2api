@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -227,6 +228,9 @@ type ccStreamScanState struct {
 	// Usage 为 include_usage chunk 中最近一次出现的用量（上游可能重复发送，
 	// 总是保留最新值）；终态事件中的用量由调用方在 finalize 阶段自行覆盖。
 	Usage OpenAIUsage
+	// OutputText 累计上游 delta 中的 content / reasoning_content / tool 参数，
+	// 供上游忽略 stream_options.include_usage 时本地估算 output_tokens。
+	OutputText strings.Builder
 	// FirstTokenMs 为首个实际输出 chunk（排除 usage-only chunk）的到达时延。
 	FirstTokenMs *int
 	// SawDone 表示上游发出了 [DONE] 哨兵。
@@ -278,6 +282,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 			)
 			continue
 		}
+		appendCCStreamOutputText(&st.OutputText, &chunk)
 		if st.FirstTokenMs == nil && !isOpenAIChatUsageOnlyStreamChunk(payload) && chatChunkStartsResponsesOutput(&chunk) {
 			ms := int(time.Since(startTime).Milliseconds())
 			st.FirstTokenMs = &ms
@@ -295,6 +300,200 @@ func (s *OpenAIGatewayService) scanCCStream(
 		st.Err = err
 	}
 	return st
+}
+
+// openAIUsageIsEmpty reports whether usage has no billable token counters.
+// Some upstreams ignore stream_options.include_usage and leave every field at 0.
+func openAIUsageIsEmpty(u OpenAIUsage) bool {
+	return u.InputTokens == 0 &&
+		u.OutputTokens == 0 &&
+		u.CacheCreationInputTokens == 0 &&
+		u.CacheReadInputTokens == 0 &&
+		u.ImageInputTokens == 0 &&
+		u.ImageOutputTokens == 0
+}
+
+// appendCCStreamOutputText accumulates assistant-visible stream text for local
+// token estimation when the upstream omits a terminal usage chunk.
+func appendCCStreamOutputText(b *strings.Builder, chunk *apicompat.ChatCompletionsChunk) {
+	if b == nil || chunk == nil {
+		return
+	}
+	for _, choice := range chunk.Choices {
+		if choice.Delta.Content != nil {
+			b.WriteString(*choice.Delta.Content)
+		}
+		if choice.Delta.ReasoningContent != nil {
+			b.WriteString(*choice.Delta.ReasoningContent)
+		}
+		for _, toolCall := range choice.Delta.ToolCalls {
+			if toolCall.Function.Name != "" {
+				b.WriteString(toolCall.Function.Name)
+			}
+			if toolCall.Function.Arguments != "" {
+				b.WriteString(toolCall.Function.Arguments)
+			}
+		}
+	}
+}
+
+// resolveCCStreamUsage returns upstream usage when present; otherwise estimates
+// input/output tokens from the request body and accumulated stream text.
+// Estimation is intentionally conservative and only used as a billing fallback
+// for vendors that ignore stream_options.include_usage.
+func resolveCCStreamUsage(
+	usage OpenAIUsage,
+	requestBody []byte,
+	outputText string,
+	model string,
+	logPrefix string,
+	requestID string,
+) OpenAIUsage {
+	if !openAIUsageIsEmpty(usage) {
+		return usage
+	}
+
+	estimated := estimateMissingCCStreamUsage(requestBody, outputText, model)
+	if openAIUsageIsEmpty(estimated) {
+		return usage
+	}
+
+	logger.L().Warn(logPrefix+": upstream stream omitted usage; using local token estimate",
+		zap.String("request_id", requestID),
+		zap.String("model", model),
+		zap.Int("input_tokens", estimated.InputTokens),
+		zap.Int("output_tokens", estimated.OutputTokens),
+		zap.Int("output_chars", len(outputText)),
+	)
+	return estimated
+}
+
+func estimateMissingCCStreamUsage(requestBody []byte, outputText, model string) OpenAIUsage {
+	inputTokens := estimateCCRequestInputTokens(requestBody, model)
+	outputTokens := estimateCCTextTokens(outputText, model)
+	if inputTokens == 0 && outputTokens == 0 {
+		return OpenAIUsage{}
+	}
+	if inputTokens == 0 {
+		// Keep settlement rows non-zero when the model produced output but the
+		// request text extractor found nothing useful.
+		inputTokens = openAIInputTokensFallbackMinimum
+	}
+	return OpenAIUsage{
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+	}
+}
+
+func estimateCCRequestInputTokens(requestBody []byte, model string) int {
+	text := extractCCRequestTextForEstimate(requestBody)
+	return estimateCCTextTokens(text, model)
+}
+
+func extractCCRequestTextForEstimate(requestBody []byte) string {
+	if len(bytes.TrimSpace(requestBody)) == 0 {
+		return ""
+	}
+
+	var parts []string
+	appendText := func(s string) {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			parts = append(parts, s)
+		}
+	}
+	appendContent := func(content gjson.Result) {
+		if !content.Exists() {
+			return
+		}
+		if content.Type == gjson.String {
+			appendText(content.String())
+			return
+		}
+		if content.IsArray() {
+			content.ForEach(func(_, part gjson.Result) bool {
+				if t := part.Get("text").String(); t != "" {
+					appendText(t)
+				}
+				if t := part.Get("content").String(); t != "" {
+					appendText(t)
+				}
+				if t := part.Get("input_text").String(); t != "" {
+					appendText(t)
+				}
+				if t := part.Get("thinking").String(); t != "" {
+					appendText(t)
+				}
+				return true
+			})
+			return
+		}
+		if content.IsObject() {
+			if t := content.Get("text").String(); t != "" {
+				appendText(t)
+			}
+		}
+	}
+
+	if system := gjson.GetBytes(requestBody, "system"); system.Exists() {
+		appendContent(system)
+	}
+	if instructions := gjson.GetBytes(requestBody, "instructions").String(); instructions != "" {
+		appendText(instructions)
+	}
+
+	gjson.GetBytes(requestBody, "messages").ForEach(func(_, msg gjson.Result) bool {
+		appendContent(msg.Get("content"))
+		appendText(msg.Get("reasoning_content").String())
+		msg.Get("tool_calls").ForEach(func(_, tool gjson.Result) bool {
+			appendText(tool.Get("function.name").String())
+			appendText(tool.Get("function.arguments").String())
+			return true
+		})
+		appendText(msg.Get("name").String())
+		return true
+	})
+
+	// Responses-shaped bodies (rare on pure CC path, but cheap to support).
+	if input := gjson.GetBytes(requestBody, "input"); input.Exists() {
+		if input.Type == gjson.String {
+			appendText(input.String())
+		} else if input.IsArray() {
+			input.ForEach(func(_, item gjson.Result) bool {
+				appendContent(item.Get("content"))
+				appendText(item.Get("text").String())
+				return true
+			})
+		}
+	}
+
+	gjson.GetBytes(requestBody, "tools").ForEach(func(_, tool gjson.Result) bool {
+		appendText(tool.Get("function.name").String())
+		appendText(tool.Get("function.description").String())
+		if params := tool.Get("function.parameters").Raw; params != "" {
+			appendText(params)
+		}
+		return true
+	})
+
+	return strings.Join(parts, "\n")
+}
+
+func estimateCCTextTokens(text, model string) int {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return 0
+	}
+	if codec, err := openAIInputTokensCodecForModel(model); err == nil {
+		if n, err := codec.Count(text); err == nil && n > 0 {
+			return n
+		}
+	}
+	n := estimateTokensForText(text)
+	if n < 1 {
+		return 1
+	}
+	return n
 }
 
 // logCCStreamMissingDoneSentinel 记录"上游未发 [DONE] 哨兵即结束"的 debug 日志。

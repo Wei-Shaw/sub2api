@@ -113,7 +113,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 
 	// 5. Convert response
 	if clientStream {
-		return s.streamChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsAnthropic(c, resp, chatBody, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	return s.bufferChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
@@ -156,6 +156,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 	c *gin.Context,
 	resp *http.Response,
+	requestBody []byte,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -194,7 +195,14 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 	}
 
 	scan := s.scanCCStream(resp, "openai messages chat fallback", requestID, startTime, emitChunk)
-	usage := scan.Usage
+	usage := resolveCCStreamUsage(
+		scan.Usage,
+		requestBody,
+		scan.OutputText.String(),
+		billingModel,
+		"openai messages chat fallback",
+		requestID,
+	)
 
 	if scan.Err != nil {
 		// Broken upstream read: skip finalization so no synthetic message_stop
@@ -213,6 +221,15 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 			FirstTokenMs:     scan.FirstTokenMs,
 			ClientDisconnect: clientDisconnected,
 		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
+	}
+
+	// Inject estimated usage into the Anthropic finalize path when upstream
+	// omitted include_usage, so message_delta also carries non-zero tokens.
+	if openAIUsageIsEmpty(scan.Usage) && !openAIUsageIsEmpty(usage) {
+		anthropicState.InputTokens = usage.InputTokens
+		anthropicState.OutputTokens = usage.OutputTokens
+		anthropicState.CacheReadInputTokens = usage.CacheReadInputTokens
+		anthropicState.CacheCreationInputTokens = usage.CacheCreationInputTokens
 	}
 
 	// Finalize: close open blocks + emit message_delta/message_stop.
