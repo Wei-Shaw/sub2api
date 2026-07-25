@@ -1671,6 +1671,12 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if err := viper.BindEnv("server.enable_server_timing", "ENABLE_SERVER_TIMING"); err != nil {
 		return nil, fmt.Errorf("bind ENABLE_SERVER_TIMING: %w", err)
 	}
+	if err := viper.BindEnv("radar.signing_secret", "RADAR_CONTEXT_SIGNING_KEY", "RADAR_SIGNING_SECRET"); err != nil {
+		return nil, fmt.Errorf("bind RADAR_CONTEXT_SIGNING_KEY: %w", err)
+	}
+	if err := viper.BindEnv("radar.hashing_secret", "RADAR_EVIDENCE_HASH_KEY", "RADAR_HASHING_SECRET"); err != nil {
+		return nil, fmt.Errorf("bind RADAR_EVIDENCE_HASH_KEY: %w", err)
+	}
 
 	// 默认值
 	setDefaults()

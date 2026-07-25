@@ -155,7 +155,7 @@ func (r *evaluationRouteEvidenceRepository) checkIdentityConflict(
 	if err != nil {
 		return fmt.Errorf("%w: load route evidence identity: %w", service.ErrRouteEvidenceIdentityConflict, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return fmt.Errorf("%w: load route evidence identity: %w", service.ErrRouteEvidenceIdentityConflict, err)

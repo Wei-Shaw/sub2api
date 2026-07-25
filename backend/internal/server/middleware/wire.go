@@ -14,11 +14,15 @@ type AdminAuthMiddleware gin.HandlerFunc
 // APIKeyAuthMiddleware API Key 认证中间件类型
 type APIKeyAuthMiddleware gin.HandlerFunc
 
+// EvaluationEvidenceMiddleware finalizes evaluation route evidence after a gateway request.
+type EvaluationEvidenceMiddleware gin.HandlerFunc
+
 // ProviderSet 中间件层的依赖注入
 var ProviderSet = wire.NewSet(
 	NewJWTAuthMiddleware,
 	NewAdminAuthMiddleware,
 	NewAPIKeyAuthMiddleware,
+	NewEvaluationEvidenceMiddleware,
 	NewAuditLogMiddleware,
 	NewStepUpAuthMiddleware,
 )

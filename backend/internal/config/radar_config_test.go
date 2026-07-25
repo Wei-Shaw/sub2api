@@ -37,6 +37,21 @@ func TestLoadRadarConfigFromEnvironment(t *testing.T) {
 	require.Equal(t, "route-v42", cfg.Radar.RouteProfileVersion)
 }
 
+func TestLoadRadarConfigFromOperationalEnvironmentNames(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("RADAR_ENABLED", "true")
+	t.Setenv("RADAR_CONTEXT_SIGNING_KEY", strings.Repeat("c", 32))
+	t.Setenv("RADAR_EVIDENCE_HASH_KEY", strings.Repeat("e", 32))
+	t.Setenv("RADAR_MAX_CONTEXT_TTL_SECONDS", "600")
+	t.Setenv("RADAR_REGION", "cn-east")
+	t.Setenv("RADAR_ROUTE_PROFILE_VERSION", "route-v42")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, strings.Repeat("c", 32), cfg.Radar.SigningSecret)
+	require.Equal(t, strings.Repeat("e", 32), cfg.Radar.HashingSecret)
+}
+
 func TestLoadRejectsInvalidEnabledRadarConfig(t *testing.T) {
 	tests := []struct {
 		name    string

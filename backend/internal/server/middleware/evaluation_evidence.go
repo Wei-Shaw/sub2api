@@ -20,6 +20,10 @@ func EvaluationEvidencePersistenceFailureCount() uint64 {
 	return service.EvaluationEvidencePersistenceFailureCount()
 }
 
+func NewEvaluationEvidenceMiddleware(repo service.EvaluationEvidenceRepository) EvaluationEvidenceMiddleware {
+	return EvaluationEvidenceMiddleware(EvaluationEvidence(repo))
+}
+
 func EvaluationEvidence(repo service.EvaluationEvidenceRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request == nil {

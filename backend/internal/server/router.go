@@ -26,6 +26,7 @@ func SetupRouter(
 	jwtAuth middleware2.JWTAuthMiddleware,
 	adminAuth middleware2.AdminAuthMiddleware,
 	apiKeyAuth middleware2.APIKeyAuthMiddleware,
+	evaluationEvidence middleware2.EvaluationEvidenceMiddleware,
 	auditLog middleware2.AuditLogMiddleware,
 	stepUpAuth middleware2.StepUpAuthMiddleware,
 	apiKeyService *service.APIKeyService,
@@ -89,7 +90,7 @@ func SetupRouter(
 	}
 
 	// 注册路由
-	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient)
+	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, evaluationEvidence, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient)
 
 	return r
 }
@@ -101,6 +102,7 @@ func registerRoutes(
 	jwtAuth middleware2.JWTAuthMiddleware,
 	adminAuth middleware2.AdminAuthMiddleware,
 	apiKeyAuth middleware2.APIKeyAuthMiddleware,
+	evaluationEvidence middleware2.EvaluationEvidenceMiddleware,
 	auditLog middleware2.AuditLogMiddleware,
 	stepUpAuth middleware2.StepUpAuthMiddleware,
 	apiKeyService *service.APIKeyService,
@@ -121,7 +123,7 @@ func registerRoutes(
 	routes.RegisterAuthRoutes(v1, h, jwtAuth, auditLog, redisClient, settingService)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, auditLog, settingService)
 	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService)
-	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg)
+	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, evaluationEvidence, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, auditLog, settingService)
 
 	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)
