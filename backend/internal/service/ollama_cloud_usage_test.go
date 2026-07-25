@@ -333,6 +333,16 @@ REDACTED
 	require.Equal(t, 90, settings.IntervalMinutes)
 	require.Equal(t, 2, settings.DebounceMinutes)
 
+	// debounce >= interval would make the debounce term unreachable in
+	// min(lastUsed+debounce, fetchedAt+maxWait), silently ignoring the operator's
+	// setting, so it is rejected rather than accepted and dropped.
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 15, DebounceMinutes: 15REDACTED)
+	require.Error(t, err, "debounce equal to interval must be rejected")
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 15, DebounceMinutes: 60REDACTED)
+	require.Error(t, err, "debounce greater than interval must be rejected")
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 16, DebounceMinutes: 15REDACTED)
+	require.NoError(t, err, "debounce below interval stays valid")
+
 	// Legacy JSON without debounce_minutes defaults to 1.
 	repo.values[SettingKeyOllamaCloudUsageSettings] = `{"enabled":true,"interval_minutes":45REDACTED`
 	settings, err = settingsService.GetOllamaCloudUsageSettings(context.Background())
@@ -382,6 +392,46 @@ REDACTED
 	require.True(t, ollamaCloudUsageIsAutoRefreshDue(&OllamaCloudUsageSnapshot{
 		Status: OllamaCloudUsageStatusOK, LastAttemptAt: now,
 REDACTED, nil, now, debounce, maxWait), "ok without fetched_at fails open")
+REDACTED
+
+// The success path stopped consulting next_refresh_at, which is where
+// nextOllamaCloudUsageDelay used to apply the minimum interval. Activity may pull
+// a refresh forward only as far as that floor, otherwise request traffic spaced
+// just wider than the debounce drives the group's outbound rate far above the
+// pre-existing minimum.
+func TestOllamaCloudUsageAutoRefreshDueAtHonoursMinFetchInterval(t *testing.T) {
+	debounce := time.Minute
+	maxWait := time.Hour
+	now := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
+	ptr := func(ts time.Time) *time.Time { return &ts REDACTED
+
+	// Debounce elapsed, but the last successful fetch is inside the floor.
+	recent := now.Add(-5 * time.Minute)
+	recentSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, FetchedAt: ptr(recent), LastAttemptAt: recent,
+REDACTED
+	dueAt, ok := ollamaCloudUsageAutoRefreshDueAt(recentSnap, ptr(now.Add(-2*time.Minute)), debounce, maxWait)
+	require.True(t, ok)
+	require.Equal(t, recent.Add(OllamaCloudUsageMinFetchInterval), dueAt,
+		"due time must be clamped to fetched_at + min fetch interval")
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(recentSnap, ptr(now.Add(-2*time.Minute)), now, debounce, maxWait),
+		"debounce alone must not refresh within the min fetch interval")
+
+	// Once the floor has passed the debounce governs again.
+	atFloor := now.Add(-OllamaCloudUsageMinFetchInterval)
+	floorSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, FetchedAt: ptr(atFloor), LastAttemptAt: atFloor,
+REDACTED
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(floorSnap, ptr(now.Add(-2*time.Minute)), now, debounce, maxWait),
+		"past the floor a quiet debounce window is due")
+
+	// The floor never delays a refresh that max-wait has already forced.
+	stale := now.Add(-2 * time.Hour)
+	staleSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, FetchedAt: ptr(stale), LastAttemptAt: stale,
+REDACTED
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(staleSnap, ptr(now), now, debounce, maxWait),
+		"max-wait still forces due on a stale snapshot")
 REDACTED
 
 func TestScheduleOllamaCloudUsageActivityOnlyForOllama(t *testing.T) {

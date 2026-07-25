@@ -32,6 +32,13 @@ const (
 	OllamaCloudUsageAutoRefreshExtraKey = "ollama_cloud_usage_auto_refresh"
 	OllamaCloudUsageSnapshotExtraKey    = "ollama_cloud_usage_snapshot"
 
+	// OllamaCloudUsageMinFetchInterval is the hard floor between two successful
+	// fetches of the same group, mirroring the floor nextOllamaCloudUsageDelay
+	// applies to next_refresh_at. Activity may bring a refresh forward to this
+	// bound but never past it. Exported so the repository can apply the same
+	// floor inside the SQL due filter.
+	OllamaCloudUsageMinFetchInterval = ollamaCloudUsageMinIntervalMinutes * time.Minute
+
 	ollamaCloudUsageSettingsURL            = "https://ollama.com/settings"
 	ollamaCloudUsageDefaultIntervalMinutes = 60
 	ollamaCloudUsageMinIntervalMinutes     = 15
@@ -212,6 +219,15 @@ REDACTED
 			fmt.Sprintf("debounce_minutes must be between %d and %d", ollamaCloudUsageMinDebounceMinutes, ollamaCloudUsageMaxDebounceMinutes),
 		)
 REDACTED
+	// The due time is min(lastUsed+debounce, fetchedAt+maxWait). Once the debounce
+	// reaches the max wait the debounce term can never win, so the knob would be
+	// silently inert instead of doing what the operator asked for.
+	if settings.DebounceMinutes >= settings.IntervalMinutes {
+		return infraerrors.BadRequest(
+			"INVALID_OLLAMA_CLOUD_USAGE_DEBOUNCE",
+			fmt.Sprintf("debounce_minutes (%d) must be less than interval_minutes (%d)", settings.DebounceMinutes, settings.IntervalMinutes),
+		)
+REDACTED
 	normalizeOllamaCloudUsageSettings(settings)
 	data, err := json.Marshal(settings)
 	if err != nil {
@@ -301,7 +317,16 @@ REDACTED
 			return time.Time{REDACTED, false
 	REDACTED
 		lastUsed := groupLastUsedAt.UTC()
-		return minTime(lastUsed.Add(debounce), fetchedAt.Add(maxWait)), true
+		dueAt := minTime(lastUsed.Add(debounce), fetchedAt.Add(maxWait))
+		// Keep the pre-existing hard floor between successful fetches. The success
+		// path no longer consults next_refresh_at, which is where
+		// nextOllamaCloudUsageDelay used to apply ollamaCloudUsageMinIntervalMinutes;
+		// without this, request traffic spaced slightly wider than the debounce
+		// drives the group's outbound rate far above the previous minimum.
+		if floor := fetchedAt.Add(OllamaCloudUsageMinFetchInterval); dueAt.Before(floor) {
+			return floor, true
+	REDACTED
+		return dueAt, true
 	case OllamaCloudUsageStatusFailed, OllamaCloudUsageStatusUnauthorized:
 		if snapshot.LastAttemptAt.IsZero() {
 			return time.Time{REDACTED, true
@@ -801,7 +826,15 @@ REDACTED
 		REDACTED
 			groupLastUsed := account.LastUsedAt
 			if writer, ok := s.accountRepo.(ollamaCloudUsageRepository); ok {
-				if siblings, listErr := writer.ListOllamaCloudUsageGroupAccounts(ctx, []*Account{accountREDACTED); listErr == nil {
+				siblings, listErr := writer.ListOllamaCloudUsageGroupAccounts(ctx, []*Account{accountREDACTED)
+				if listErr != nil {
+					// Fall back to this account's own last_used_at. That is a narrower
+					// activity signal than the group maximum, so the due check may skip a
+					// refresh it would otherwise have run; surface it rather than
+					// silently changing the due semantics.
+					logger.LegacyPrintf("service.ollama_cloud_usage",
+						"group_last_used_lookup_failed: account_id=%d err=%v", account.ID, listErr)
+			REDACTED else {
 					groupLastUsed = maxOllamaCloudUsageGroupLastUsed(siblings)
 			REDACTED
 		REDACTED
