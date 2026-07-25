@@ -554,16 +554,24 @@ REDACTED()
 	runErr := s.runLiveController(proxyCtx, record, upstream, errCh)
 	cancel()
 	_, _ = store.ReleaseLiveController(context.Background(), record.CallHash, owner)
-	if errors.Is(runErr, ErrLiveCallNotFound) {
+	if liveSessionEnded(runErr) || !time.Now().Before(record.ExpiresAt) {
 		s.finalizeLiveCall(record)
 		return runErr
 REDACTED
-	if !errors.Is(runErr, context.DeadlineExceeded) && time.Now().Before(record.ExpiresAt) {
-		go s.observeLiveCall(record.CallHash)
-		return runErr
-REDACTED
-	s.finalizeLiveCall(record)
+	go s.observeLiveCall(record.CallHash)
 	return runErr
+REDACTED
+
+// liveSessionEnded 判断控制连接的退出原因是否意味着会话已终结（应 finalize：写
+// usage log 并释放租约），而不是可以交给 observer 重连的临时错误。
+//
+// ErrLiveUnavailable 在控制循环里只会来自租约续租失败。RefreshLiveLease 的 Lua 在
+// leaseID 被 GC 后不会重新写入，重连也拿不回并发槽 —— 若按临时错误重试，会话会以
+// 约 1 秒一轮的节奏空转到 ExpiresAt，期间持着上游连接却不计入任何并发限制。
+func liveSessionEnded(err error) bool {
+	return errors.Is(err, ErrLiveCallNotFound) ||
+		errors.Is(err, ErrLiveUnavailable) ||
+		errors.Is(err, context.DeadlineExceeded)
 REDACTED
 
 func (s *OpenAIGatewayService) runLiveController(
@@ -626,7 +634,7 @@ REDACTED
 		if errors.Is(runErr, ErrLiveControllerChanged) {
 			return
 	REDACTED
-		if errors.Is(runErr, context.DeadlineExceeded) || errors.Is(runErr, ErrLiveCallNotFound) {
+		if liveSessionEnded(runErr) {
 			s.finalizeLiveCall(record)
 			return
 	REDACTED
@@ -706,7 +714,9 @@ func (s *OpenAIGatewayService) waitForLiveObserverRetry(record *LiveCallRecord) 
 		return false
 REDACTED
 	controller, err := store.GetLiveController(context.Background(), record.CallHash)
-	return err == nil && controller == LiveControllerObserver && time.Now().Before(record.ExpiresAt)
+	// 过期不在此处判定：返回 true 让调用方回到循环顶部的过期分支，由它 finalize
+	// （写 usage log + 释放租约）。在这里直接返回 false 会让会话静默结束、不留记录。
+	return err == nil && controller == LiveControllerObserver
 REDACTED
 
 func (s *OpenAIGatewayService) refreshLiveLease(record *LiveCallRecord) bool {
