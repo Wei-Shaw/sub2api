@@ -354,9 +354,31 @@ REDACTED
 	return string(encoded)
 REDACTED
 
-// ListDueOllamaCloudUsageAccounts returns at most one due representative per
-// exact API key before hydration, preventing one shared group from consuming a
-// whole runner cycle.
+// ollamaCloudUsageParseRFC3339SQL reuses the verified RFC3339(/Nano) parse path
+// for a snapshot timestamp expression. Invalid or missing values fail open to NULL.
+func ollamaCloudUsageParseRFC3339SQL(expression string) string {
+	return `CASE
+		WHEN ` + expression + ` IS NULL THEN NULL
+		WHEN ` + expression + ` ~ '^[0-9]{4REDACTED-[0-9]{2REDACTED-[0-9]{2REDACTEDT[0-9]{2REDACTED:[0-9]{2REDACTED:[0-9]{2REDACTED(\.[0-9]+)?(Z|[+-][0-9]{2REDACTED:[0-9]{2REDACTED)$'
+			THEN jsonb_path_query_first_tz(
+				to_jsonb(regexp_replace(
+					` + expression + `,
+					'(\.[0-9]{6REDACTED)[0-9]+(Z|[+-][0-9]{2REDACTED:[0-9]{2REDACTED)$',
+					'\1\2'
+				)),
+				'$.datetime()', '{REDACTED'::jsonb, true
+			) #>> '{REDACTED'
+		ELSE NULL
+	END`
+REDACTED
+
+// ListDueOllamaCloudUsageAccounts returns at most one activity-driven candidate
+// per exact API key. It stamps Account.LastUsedAt with the group MAX(last_used_at)
+// so the service due pure function can decide without hydrating the whole table.
+//
+// SQL only prefilters potential candidates (missing/invalid snapshot, or group
+// activity after the last successful fetch / failed attempt). Final due timing
+// (debounce, max-wait, failure backoff) is evaluated in service code.
 func (r *accountRepository) ListDueOllamaCloudUsageAccounts(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
 	if limit <= 0 {
 		return []service.Account{REDACTED, nil
@@ -364,64 +386,90 @@ REDACTED
 	if r == nil || r.sql == nil {
 		return nil, errors.New("account repository SQL executor not configured")
 REDACTED
+	// now is retained in the signature for callers; activity due is evaluated in service.
+	_ = now
 	rows, err := r.sql.QueryContext(ctx, `
-		WITH candidates AS (
-			SELECT id, credentials ->> 'api_key' AS api_key,
-				extra #>> '{ollama_cloud_usage_snapshot,next_refresh_atREDACTED' AS next_refresh_at
+		WITH eligible AS (
+			SELECT id,
+				credentials ->> 'api_key' AS api_key,
+				last_used_at,
+				extra -> 'ollama_cloud_usage_snapshot' AS snapshot
 			FROM accounts
 			WHERE deleted_at IS NULL
 				AND status = 'active'
 				AND `+ollamaCloudUsageEligibleSQL+`
 				AND jsonb_typeof(extra -> 'ollama_cloud_usage_session') = 'string'
 				AND extra @> '{"ollama_cloud_usage_auto_refresh": trueREDACTED'::jsonb
+		), group_activity AS (
+			SELECT credentials ->> 'api_key' AS api_key,
+				MAX(last_used_at) AS group_last_used_at
+			FROM accounts
+			WHERE deleted_at IS NULL
+				AND `+ollamaCloudUsageEligibleSQL+`
+				AND jsonb_typeof(credentials -> 'api_key') = 'string'
+			GROUP BY credentials ->> 'api_key'
+		), joined AS (
+			SELECT e.id, e.api_key, e.snapshot, g.group_last_used_at,
+				e.snapshot #>> '{statusREDACTED' AS status,
+				e.snapshot #>> '{fetched_atREDACTED' AS fetched_at,
+				e.snapshot #>> '{last_attempt_atREDACTED' AS last_attempt_at
+			FROM eligible e
+			JOIN group_activity g ON g.api_key = e.api_key
 		), parsed AS MATERIALIZED (
-			SELECT id, api_key, next_refresh_at,
-				next_refresh_at ~ '^[0-9]{4REDACTED-[0-9]{2REDACTED-[0-9]{2REDACTEDT[0-9]{2REDACTED:[0-9]{2REDACTED:[0-9]{2REDACTED(\.[0-9]+)?(Z|[+-][0-9]{2REDACTED:[0-9]{2REDACTED)$' AS rfc3339_shape,
-				jsonb_path_query_first_tz(
-					to_jsonb(regexp_replace(
-						next_refresh_at,
-						'(\.[0-9]{6REDACTED)[0-9]+(Z|[+-][0-9]{2REDACTED:[0-9]{2REDACTED)$',
-						'\1\2'
-					)),
-					'$.datetime()', '{REDACTED'::jsonb, true
-				) #>> '{REDACTED' AS parsed_next_refresh_at
-			FROM candidates
-		), due AS (
+			SELECT id, api_key, snapshot, group_last_used_at, status,
+				`+ollamaCloudUsageParseRFC3339SQL("fetched_at")+` AS parsed_fetched_at,
+				`+ollamaCloudUsageParseRFC3339SQL("last_attempt_at")+` AS parsed_last_attempt_at
+			FROM joined
+		), candidates AS (
 			SELECT *,
-				CASE WHEN next_refresh_at IS NULL OR NOT rfc3339_shape OR parsed_next_refresh_at IS NULL THEN 0 ELSE 1 END AS due_class
+				CASE
+					WHEN snapshot IS NULL OR snapshot = 'null'::jsonb OR status IS NULL
+						OR status NOT IN ('ok', 'failed', 'unauthorized') THEN 0
+					WHEN status = 'ok' AND parsed_fetched_at IS NULL THEN 0
+					WHEN status IN ('failed', 'unauthorized') AND parsed_last_attempt_at IS NULL THEN 0
+					WHEN status = 'ok'
+						AND group_last_used_at IS NOT NULL
+						AND group_last_used_at > parsed_fetched_at::timestamptz THEN 1
+					WHEN status IN ('failed', 'unauthorized')
+						AND group_last_used_at IS NOT NULL
+						AND group_last_used_at > parsed_last_attempt_at::timestamptz THEN 1
+					ELSE NULL
+				END AS due_class
 			FROM parsed
-			WHERE next_refresh_at IS NULL
-				OR NOT rfc3339_shape
-				OR parsed_next_refresh_at IS NULL
-				OR parsed_next_refresh_at::timestamptz <= $1
 		), ranked AS (
-			SELECT *, row_number() OVER (
-				PARTITION BY api_key
-				ORDER BY due_class,
-					CASE WHEN rfc3339_shape AND parsed_next_refresh_at IS NOT NULL THEN parsed_next_refresh_at::timestamptz END NULLS FIRST,
-					id
-			) AS group_rank
-			FROM due
+			SELECT id, api_key, group_last_used_at, due_class,
+				row_number() OVER (
+					PARTITION BY api_key
+					ORDER BY due_class,
+						group_last_used_at NULLS FIRST,
+						id
+				) AS group_rank
+			FROM candidates
+			WHERE due_class IS NOT NULL
 		)
-		SELECT id
+		SELECT id, group_last_used_at
 		FROM ranked
 		WHERE group_rank = 1
-		ORDER BY due_class,
-			CASE WHEN rfc3339_shape AND parsed_next_refresh_at IS NOT NULL THEN parsed_next_refresh_at::timestamptz END NULLS FIRST,
-			id
-		LIMIT $2
-	`, now.UTC(), limit)
+		ORDER BY due_class, group_last_used_at NULLS FIRST, id
+		LIMIT $1
+	`, limit)
 	if err != nil {
 		return nil, err
 REDACTED
 	defer func() { _ = rows.Close() REDACTED()
+	type dueRow struct {
+		id            int64
+		groupLastUsed *time.Time
+REDACTED
+	rowsOut := make([]dueRow, 0, limit)
 	ids := make([]int64, 0, limit)
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var row dueRow
+		if err := rows.Scan(&row.id, &row.groupLastUsed); err != nil {
 			return nil, err
 	REDACTED
-		ids = append(ids, id)
+		rowsOut = append(rowsOut, row)
+		ids = append(ids, row.id)
 REDACTED
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -430,11 +478,26 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	result := make([]service.Account, 0, len(accounts))
+	byID := make(map[int64]*service.Account, len(accounts))
 	for _, account := range accounts {
 		if account != nil {
-			result = append(result, *account)
+			byID[account.ID] = account
 	REDACTED
+REDACTED
+	result := make([]service.Account, 0, len(rowsOut))
+	for _, row := range rowsOut {
+		account := byID[row.id]
+		if account == nil {
+			continue
+	REDACTED
+		// Stamp group MAX(last_used_at) for service due evaluation.
+		if row.groupLastUsed != nil {
+			ts := row.groupLastUsed.UTC()
+			account.LastUsedAt = &ts
+	REDACTED else {
+			account.LastUsedAt = nil
+	REDACTED
+		result = append(result, *account)
 REDACTED
 	return result, nil
 REDACTED

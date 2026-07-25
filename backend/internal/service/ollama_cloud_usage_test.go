@@ -313,15 +313,87 @@ func TestOllamaCloudUsageSettingsDefaultOffAndValidation(t *testing.T) {
 REDACTED
 	require.False(t, settings.Enabled)
 	require.Equal(t, 60, settings.IntervalMinutes)
+	require.Equal(t, 1, settings.DebounceMinutes)
 
-	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 14REDACTED)
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 14, DebounceMinutes: 1REDACTED)
 REDACTED
-	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 90REDACTED)
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 90, DebounceMinutes: 0REDACTED)
+REDACTED
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 90, DebounceMinutes: 61REDACTED)
+REDACTED
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 90, DebounceMinutes: 2REDACTED)
 REDACTED
 	settings, err = settingsService.GetOllamaCloudUsageSettings(context.Background())
 REDACTED
 	require.True(t, settings.Enabled)
 	require.Equal(t, 90, settings.IntervalMinutes)
+	require.Equal(t, 2, settings.DebounceMinutes)
+
+	// Legacy JSON without debounce_minutes defaults to 1.
+	repo.values[SettingKeyOllamaCloudUsageSettings] = `{"enabled":true,"interval_minutes":45REDACTED`
+	settings, err = settingsService.GetOllamaCloudUsageSettings(context.Background())
+REDACTED
+	require.Equal(t, 45, settings.IntervalMinutes)
+	require.Equal(t, 1, settings.DebounceMinutes)
+REDACTED
+
+func TestOllamaCloudUsageIsAutoRefreshDue(t *testing.T) {
+	debounce := time.Minute
+	maxWait := time.Hour
+	now := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
+	fetched := now.Add(-30 * time.Minute)
+	ptr := func(ts time.Time) *time.Time { return &ts REDACTED
+
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(nil, nil, now, debounce, maxWait), "missing snapshot first due")
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(&OllamaCloudUsageSnapshot{Status: "bogus"REDACTED, nil, now, debounce, maxWait), "invalid status first due")
+
+	okSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, FetchedAt: ptr(fetched),
+		LastAttemptAt: fetched, NextRefreshAt: fetched.Add(maxWait),
+REDACTED
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(okSnap, nil, now, debounce, maxWait), "no request after success")
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(okSnap, ptr(fetched), now, debounce, maxWait), "request not after fetched_at")
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(okSnap, ptr(now.Add(-30*time.Second)), now, debounce, maxWait), "debounce not elapsed")
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(okSnap, ptr(now.Add(-time.Minute)), now, debounce, maxWait), "single request quiet for debounce")
+
+	// Continuous requests: last used is now, but max-wait from old fetch forces due.
+	oldFetched := now.Add(-2 * time.Hour)
+	oldSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, FetchedAt: ptr(oldFetched),
+		LastAttemptAt: oldFetched, NextRefreshAt: oldFetched.Add(maxWait),
+REDACTED
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(oldSnap, ptr(now), now, debounce, maxWait), "max-wait forces due while requests continue")
+	// First request after a very old snapshot is immediately due because fetched+maxWait is past.
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(oldSnap, ptr(now.Add(-time.Second)), now, debounce, maxWait), "stale snapshot first request immediate")
+
+	failSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusFailed, FetchedAt: ptr(fetched),
+		LastAttemptAt: now.Add(-10 * time.Minute), NextRefreshAt: now.Add(20 * time.Minute),
+REDACTED
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(failSnap, nil, now, debounce, maxWait), "failure without new request")
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(failSnap, ptr(now.Add(-time.Minute)), now, debounce, maxWait), "failure blocked by backoff")
+	failSnap.NextRefreshAt = now.Add(-time.Second)
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(failSnap, ptr(now.Add(-time.Minute)), now, debounce, maxWait), "failure after backoff with new request")
+
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(&OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, LastAttemptAt: now,
+REDACTED, nil, now, debounce, maxWait), "ok without fetched_at fails open")
+REDACTED
+
+func TestScheduleOllamaCloudUsageActivityOnlyForOllama(t *testing.T) {
+	deferred := NewDeferredService(nil, nil, time.Second)
+	ollama := ollamaUsageAccount(1)
+	other := ollamaUsageAccount(2)
+	other.Credentials["base_url"] = "https://api.openai.com"
+
+	scheduleOllamaCloudUsageActivity(deferred, ollama)
+	scheduleOllamaCloudUsageActivity(deferred, other)
+	scheduleOllamaCloudUsageActivity(nil, ollama)
+
+	_, ok := deferred.lastUsedUpdates.Load(int64(1))
+	require.True(t, ok)
+	_, ok = deferred.lastUsedUpdates.Load(int64(2))
+	require.False(t, ok)
 REDACTED
 
 func TestIsOllamaCloudUsageAccountStrictOfficialHost(t *testing.T) {

@@ -273,4 +273,5 @@ func TestGetOllamaCloudUsageSettingsHandlerSuccess(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Contains(t, recorder.Body.String(), `"enabled":false`)
 	require.Contains(t, recorder.Body.String(), `"interval_minutes":60`)
+	require.Contains(t, recorder.Body.String(), `"debounce_minutes":1`)
 REDACTED
