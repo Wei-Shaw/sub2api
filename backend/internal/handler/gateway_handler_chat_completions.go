@@ -298,6 +298,7 @@ REDACTED
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		sessionID := service.ExtractClientSessionID(c)
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 				Result:             result,
@@ -312,6 +313,7 @@ REDACTED
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
+				SessionID:          sessionID,
 				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 		REDACTED); err != nil {
 				reqLog.Error("gateway.cc.record_usage_failed",

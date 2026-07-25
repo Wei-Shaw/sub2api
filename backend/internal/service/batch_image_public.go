@@ -57,6 +57,7 @@ type BatchImageSubmitRequest struct {
 	AspectRatio      string                 `json:"aspect_ratio"`
 	ImageSize        string                 `json:"image_size"`
 	Metadata         map[string]string      `json:"metadata"`
+	SessionID        *string                `json:"-"`
 REDACTED
 
 type BatchImageSubmitItem struct {
@@ -281,6 +282,7 @@ REDACTED
 		HoldID:                  &holdID,
 		IdempotencyKey:          batchImageOptionalStringPtr(idempotencyKey),
 		RequestHash:             batchImageStringPtr(requestHash),
+		SessionID:               normalized.SessionID,
 REDACTED)
 	if err != nil {
 		return nil, err

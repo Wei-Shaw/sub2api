@@ -38,7 +38,7 @@ describe('admin Ollama Cloud usage API', () => {
   REDACTED)
 
   it('uses dedicated global settings endpoints', async () => {
-    const settings = { enabled: false, interval_minutes: 60 REDACTED
+    const settings = { enabled: false, interval_minutes: 60, debounce_minutes: 1 REDACTED
     get.mockResolvedValueOnce({ data: settings REDACTED)
     put.mockResolvedValueOnce({ data: settings REDACTED)
 

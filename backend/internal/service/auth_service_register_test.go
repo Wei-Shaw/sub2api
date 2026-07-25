@@ -365,6 +365,30 @@ REDACTED, nil, nil)
 	require.ErrorIs(t, err, ErrEmailExists)
 REDACTED
 
+func TestAuthService_Register_AliasDuplicateRejected(t *testing.T) {
+	repo := &userRepoStub{aliasExists: trueREDACTED
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+REDACTED, nil, nil)
+
+	_, _, err := service.Register(context.Background(), "some.one+bulk294@gmail.com", "password")
+	require.ErrorIs(t, err, ErrEmailExists)
+	require.Empty(t, repo.created)
+REDACTED
+
+func TestAuthService_Register_UsesAliasGuardedCreate(t *testing.T) {
+	// 注册必须走带别名兜底的创建路径：服务层前置查重与写入之间存在竞态窗口。
+	repo := &userRepoStub{nextID: 91REDACTED
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+REDACTED, nil, nil)
+
+	_, user, err := service.Register(context.Background(), "newuser@gmail.com", "password")
+REDACTED
+	require.NotNil(t, user)
+	require.Equal(t, 1, repo.guardedCreates)
+REDACTED
+
 func TestAuthService_Register_CheckEmailError(t *testing.T) {
 	repo := &userRepoStub{existsErr: errors.New("db down")REDACTED
 	service := newAuthService(repo, map[string]string{
