@@ -8,6 +8,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logredact"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/gin-gonic/gin"
 )
 
@@ -137,12 +138,7 @@ func Paginated(c *gin.Context, items any, total int64, page, pageSize int) {
 }
 
 // PaginationResult 分页结果（与pagination.PaginationResult兼容）
-type PaginationResult struct {
-	Total    int64
-	Page     int
-	PageSize int
-	Pages    int
-}
+type PaginationResult = pagination.PaginationResult
 
 // PaginatedWithResult 使用PaginationResult返回分页数据
 func PaginatedWithResult(c *gin.Context, items any, pagination *PaginationResult) {
