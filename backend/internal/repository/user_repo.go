@@ -975,8 +975,11 @@ REDACTED
 	return false, nil
 REDACTED
 
-// dotStrippedEmailExpr 渲染 REPLACE(LOWER(TRIM(email)), '.', '')：去掉大小写、首尾空白
-// （与 userEmailLookupPredicate 的精确匹配口径一致，历史数据存在带空白的行）以及全部点号。
+// dotStrippedEmailExpr 渲染下面的表达式：去掉存量邮箱的大小写、首尾空白（与
+// userEmailLookupPredicate 的精确匹配口径一致，历史数据存在带空白的行）以及全部点号。
+//
+//	REPLACE(LOWER(TRIM(email)), '.', '')
+//
 // 两侧都去点，因此一个域名探针即可同时覆盖 Gmail 点号变体与 FQDN 根点（user@gmail.com.）。
 // migrations/190 为同一表达式建了索引。
 func dotStrippedEmailExpr(b *entsql.Builder, s *entsql.Selector) *entsql.Builder {
