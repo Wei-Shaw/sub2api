@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,6 +68,37 @@ func TestOpenAIGatewayServiceRecordUsage_RejectsNilInput(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	require.Error(t, svc.RecordUsage(context.Background(), nil))
 	require.Error(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{}))
+}
+
+func TestOpenAIGatewayServiceRecordUsage_AttachesFinalizedBillingEvidenceBestEffort(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	evidenceRepo := &recordUsageEvidenceRepoStub{err: errors.New("evidence unavailable")}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	ttft := 87
+	beforeFailures := EvaluationEvidencePersistenceFailureCount()
+
+	err := svc.RecordUsage(evaluationRecordUsageContext(evidenceRepo, "trace-openai-usage"), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "openai_evidence", Usage: OpenAIUsage{InputTokens: 12, OutputTokens: 3},
+			Model: "gpt-5.1", Duration: 1750 * time.Millisecond, FirstTokenMs: &ttft,
+		},
+		APIKey: &APIKey{ID: 501, Quota: 100}, User: &User{ID: 601}, Account: &Account{ID: 701, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err, "evidence persistence must not change billing behavior")
+	require.Equal(t, 1, billingRepo.calls)
+	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 1, evidenceRepo.attachCalls)
+	require.Equal(t, "trace-openai-usage", evidenceRepo.traceID)
+	require.Equal(t, 12, evidenceRepo.usage.InputTokens)
+	require.Equal(t, 3, evidenceRepo.usage.OutputTokens)
+	require.Equal(t, &ttft, evidenceRepo.usage.TTFT)
+	require.Equal(t, 1750, *evidenceRepo.usage.Latency)
+	require.Equal(t, decimal.NewFromFloat(usageRepo.lastLog.ActualCost), evidenceRepo.usage.BilledAmount)
+	require.Empty(t, evidenceRepo.usage.FinishReason)
+	require.NoError(t, evidenceRepo.lastCtxErr)
+	require.Equal(t, beforeFailures+1, EvaluationEvidencePersistenceFailureCount())
 }
 
 func TestRecordCyberPolicyUsageLog_BillsRealUpstreamTokens(t *testing.T) {

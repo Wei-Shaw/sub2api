@@ -105,6 +105,12 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
 	}
+	if evaluation, ok := service.EvaluationContextFromContext(parent); ok {
+		base = service.WithEvaluationContext(base, evaluation)
+	}
+	if repo, ok := service.EvaluationEvidenceRepositoryFromContext(parent); ok {
+		base = service.WithEvaluationEvidenceRepository(base, repo)
+	}
 	return base
 }
 

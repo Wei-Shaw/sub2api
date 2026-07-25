@@ -5,10 +5,34 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/shopspring/decimal"
+	"go.uber.org/zap"
 )
+
+var ErrRouteEvidenceIdentityConflict = errors.New("route evidence identity conflict")
+
+var evaluationEvidencePersistenceFailures atomic.Uint64
+
+func RecordEvaluationEvidencePersistenceFailure() {
+	evaluationEvidencePersistenceFailures.Add(1)
+}
+
+func EvaluationEvidencePersistenceFailureCount() uint64 {
+	return evaluationEvidencePersistenceFailures.Load()
+}
+
+type EvaluationEvidenceRepository interface {
+	UpsertTransport(ctx context.Context, evidence RouteEvidence) error
+	AttachBilling(ctx context.Context, traceID string, usage RouteUsageEvidence) error
+}
 
 type RouteTraceConfig struct {
 	HashKey []byte
@@ -34,8 +58,74 @@ type RouteFallbackEntry struct {
 }
 
 type RouteEvidence struct {
-	Attempts      int                  `json:"attempts"`
-	FallbackChain []RouteFallbackEntry `json:"fallback_chain"`
+	RouteTraceID        string               `json:"route_trace_id"`
+	EvaluationRunID     string               `json:"evaluation_run_id"`
+	SampleID            string               `json:"sample_id"`
+	APIKeyID            int64                `json:"api_key_id"`
+	RequestID           string               `json:"request_id"`
+	RequestedModel      string               `json:"requested_model"`
+	ResolvedModel       string               `json:"resolved_model"`
+	RouteProfileVersion string               `json:"route_profile_version"`
+	Provider            string               `json:"provider"`
+	ChannelRef          string               `json:"channel_ref"`
+	AccountPoolRef      string               `json:"account_pool_ref"`
+	Region              string               `json:"region"`
+	Attempts            int                  `json:"attempts"`
+	FallbackChain       []RouteFallbackEntry `json:"fallback_chain"`
+	TransportStatus     string               `json:"transport_status"`
+	ErrorCode           string               `json:"error_code"`
+	StartedAt           time.Time            `json:"started_at"`
+	FinishedAt          *time.Time           `json:"finished_at"`
+}
+
+type RouteUsageEvidence struct {
+	InputTokens  int
+	OutputTokens int
+	TTFT         *int
+	Latency      *int
+	BilledAmount decimal.Decimal
+	FinishReason string
+}
+
+type evaluationEvidenceRepositoryContextKey struct{}
+
+func WithEvaluationEvidenceRepository(ctx context.Context, repo EvaluationEvidenceRepository) context.Context {
+	return context.WithValue(ctx, evaluationEvidenceRepositoryContextKey{}, repo)
+}
+
+func EvaluationEvidenceRepositoryFromContext(ctx context.Context) (EvaluationEvidenceRepository, bool) {
+	repo, ok := ctx.Value(evaluationEvidenceRepositoryContextKey{}).(EvaluationEvidenceRepository)
+	return repo, ok && repo != nil
+}
+
+func attachEvaluationBillingEvidence(ctx context.Context, usageLog *UsageLog, finishReason string) {
+	if usageLog == nil {
+		return
+	}
+	evaluation, ok := EvaluationContextFromContext(ctx)
+	if !ok {
+		return
+	}
+	repo, ok := EvaluationEvidenceRepositoryFromContext(ctx)
+	if !ok {
+		return
+	}
+
+	usage := RouteUsageEvidence{
+		InputTokens:  usageLog.InputTokens,
+		OutputTokens: usageLog.OutputTokens,
+		TTFT:         usageLog.FirstTokenMs,
+		Latency:      usageLog.DurationMs,
+		BilledAmount: decimal.NewFromFloat(usageLog.ActualCost),
+		FinishReason: strings.TrimSpace(finishReason),
+	}
+	if err := repo.AttachBilling(ctx, evaluation.RouteTraceID, usage); err != nil {
+		RecordEvaluationEvidencePersistenceFailure()
+		logger.FromContext(ctx).Warn("evaluation billing evidence persistence failed",
+			zap.String("route_trace_id", evaluation.RouteTraceID),
+			zap.Error(err),
+		)
+	}
 }
 
 // RouteTrace collects only redacted routing information for one evaluation request.
