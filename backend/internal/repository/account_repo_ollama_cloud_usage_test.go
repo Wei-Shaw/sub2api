@@ -190,13 +190,15 @@ func TestListDueOllamaCloudUsageAccountsFiltersOrdersAndLimits(t *testing.T) {
 REDACTED
 	t.Cleanup(func() { _ = db.Close() REDACTED)
 	now := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
+	debounce := time.Minute
+	maxWait := time.Hour
 	var capturedSQL string
 	mock.ExpectQuery("WITH eligible AS").
-		WithArgs(20).
+		WithArgs(now.UTC(), debounce.Seconds(), maxWait.Seconds(), 20).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "group_last_used_at"REDACTED))
 	repo := newAccountRepositoryWithSQL(nil, captureQuerySQL{db: db, captured: &capturedSQLREDACTED, nil)
 
-	accounts, err := repo.ListDueOllamaCloudUsageAccounts(context.Background(), now, 20)
+	accounts, err := repo.ListDueOllamaCloudUsageAccounts(context.Background(), now, debounce, maxWait, 20)
 
 REDACTED
 	require.Empty(t, accounts)
@@ -212,9 +214,14 @@ REDACTED
 		"MAX(last_used_at) AS group_last_used_at",
 		"PARTITION BY api_key",
 		"WHERE group_rank = 1",
-		"LIMIT $1",
+		"LIMIT $4",
+		"make_interval(secs => $2::double precision)",
+		"make_interval(secs => $3::double precision)",
 		"group_last_used_at > parsed_fetched_at::timestamptz",
 		"group_last_used_at > parsed_last_attempt_at::timestamptz",
+		"$1 >= activity_due_at",
+		"COALESCE(parsed_next_refresh_at::timestamptz, '-infinity'::timestamptz)",
+		"ORDER BY due_class, due_at NULLS FIRST, id",
 REDACTED {
 		require.Contains(t, normalized, clause)
 REDACTED

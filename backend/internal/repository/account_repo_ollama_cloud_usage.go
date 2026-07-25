@@ -372,22 +372,37 @@ func ollamaCloudUsageParseRFC3339SQL(expression string) string {
 	END`
 REDACTED
 
-// ListDueOllamaCloudUsageAccounts returns at most one activity-driven candidate
-// per exact API key. It stamps Account.LastUsedAt with the group MAX(last_used_at)
-// so the service due pure function can decide without hydrating the whole table.
+// ListDueOllamaCloudUsageAccounts returns at most one truly-due activity-driven
+// candidate per exact API key. Due timing (debounce, max-wait, failure backoff)
+// is evaluated in SQL before LIMIT so non-due active groups cannot starve due ones.
+// Account.LastUsedAt is stamped with the group MAX(last_used_at) for a service
+// pure-function recheck against races between list and refresh.
 //
-// SQL only prefilters potential candidates (missing/invalid snapshot, or group
-// activity after the last successful fetch / failed attempt). Final due timing
-// (debounce, max-wait, failure backoff) is evaluated in service code.
-func (r *accountRepository) ListDueOllamaCloudUsageAccounts(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
+// Rules mirror service.ollamaCloudUsageAutoRefreshDueAt:
+//   - missing/invalid snapshot or times → fail-open first due
+//   - success: activity after fetched_at; due_at = LEAST(last_used+debounce, fetched+maxWait)
+//   - failed/unauthorized: activity after last_attempt; activity_due = LEAST(...);
+//     final due_at is not earlier than a valid next_refresh_at (invalid/missing fail-open)
+func (r *accountRepository) ListDueOllamaCloudUsageAccounts(
+	ctx context.Context,
+	now time.Time,
+	debounce, maxWait time.Duration,
+	limit int,
+) ([]service.Account, error) {
 	if limit <= 0 {
 		return []service.Account{REDACTED, nil
 REDACTED
 	if r == nil || r.sql == nil {
 		return nil, errors.New("account repository SQL executor not configured")
 REDACTED
-	// now is retained in the signature for callers; activity due is evaluated in service.
-	_ = now
+	if debounce <= 0 {
+		debounce = time.Minute
+REDACTED
+	if maxWait <= 0 {
+		maxWait = time.Hour
+REDACTED
+	debounceSeconds := debounce.Seconds()
+	maxWaitSeconds := maxWait.Seconds()
 	rows, err := r.sql.QueryContext(ctx, `
 		WITH eligible AS (
 			SELECT id,
@@ -412,14 +427,41 @@ REDACTED
 			SELECT e.id, e.api_key, e.snapshot, g.group_last_used_at,
 				e.snapshot #>> '{statusREDACTED' AS status,
 				e.snapshot #>> '{fetched_atREDACTED' AS fetched_at,
-				e.snapshot #>> '{last_attempt_atREDACTED' AS last_attempt_at
+				e.snapshot #>> '{last_attempt_atREDACTED' AS last_attempt_at,
+				e.snapshot #>> '{next_refresh_atREDACTED' AS next_refresh_at
 			FROM eligible e
 			JOIN group_activity g ON g.api_key = e.api_key
 		), parsed AS MATERIALIZED (
 			SELECT id, api_key, snapshot, group_last_used_at, status,
 				`+ollamaCloudUsageParseRFC3339SQL("fetched_at")+` AS parsed_fetched_at,
-				`+ollamaCloudUsageParseRFC3339SQL("last_attempt_at")+` AS parsed_last_attempt_at
+				`+ollamaCloudUsageParseRFC3339SQL("last_attempt_at")+` AS parsed_last_attempt_at,
+				`+ollamaCloudUsageParseRFC3339SQL("next_refresh_at")+` AS parsed_next_refresh_at
 			FROM joined
+		), timed AS (
+			SELECT *,
+				CASE
+					WHEN status = 'ok'
+						AND parsed_fetched_at IS NOT NULL
+						AND group_last_used_at IS NOT NULL
+						AND group_last_used_at > parsed_fetched_at::timestamptz
+					THEN LEAST(
+						group_last_used_at + make_interval(secs => $2::double precision),
+						parsed_fetched_at::timestamptz + make_interval(secs => $3::double precision)
+					)
+					WHEN status IN ('failed', 'unauthorized')
+						AND parsed_last_attempt_at IS NOT NULL
+						AND group_last_used_at IS NOT NULL
+						AND group_last_used_at > parsed_last_attempt_at::timestamptz
+					THEN GREATEST(
+						LEAST(
+							group_last_used_at + make_interval(secs => $2::double precision),
+							parsed_last_attempt_at::timestamptz + make_interval(secs => $3::double precision)
+						),
+						COALESCE(parsed_next_refresh_at::timestamptz, '-infinity'::timestamptz)
+					)
+					ELSE NULL
+				END AS activity_due_at
+			FROM parsed
 		), candidates AS (
 			SELECT *,
 				CASE
@@ -427,21 +469,17 @@ REDACTED
 						OR status NOT IN ('ok', 'failed', 'unauthorized') THEN 0
 					WHEN status = 'ok' AND parsed_fetched_at IS NULL THEN 0
 					WHEN status IN ('failed', 'unauthorized') AND parsed_last_attempt_at IS NULL THEN 0
-					WHEN status = 'ok'
-						AND group_last_used_at IS NOT NULL
-						AND group_last_used_at > parsed_fetched_at::timestamptz THEN 1
-					WHEN status IN ('failed', 'unauthorized')
-						AND group_last_used_at IS NOT NULL
-						AND group_last_used_at > parsed_last_attempt_at::timestamptz THEN 1
+					WHEN activity_due_at IS NOT NULL AND $1 >= activity_due_at THEN 1
 					ELSE NULL
-				END AS due_class
-			FROM parsed
+				END AS due_class,
+				activity_due_at AS due_at
+			FROM timed
 		), ranked AS (
-			SELECT id, api_key, group_last_used_at, due_class,
+			SELECT id, api_key, group_last_used_at, due_class, due_at,
 				row_number() OVER (
 					PARTITION BY api_key
 					ORDER BY due_class,
-						group_last_used_at NULLS FIRST,
+						due_at NULLS FIRST,
 						id
 				) AS group_rank
 			FROM candidates
@@ -450,9 +488,9 @@ REDACTED
 		SELECT id, group_last_used_at
 		FROM ranked
 		WHERE group_rank = 1
-		ORDER BY due_class, group_last_used_at NULLS FIRST, id
-		LIMIT $1
-	`, limit)
+		ORDER BY due_class, due_at NULLS FIRST, id
+		LIMIT $4
+	`, now.UTC(), debounceSeconds, maxWaitSeconds, limit)
 	if err != nil {
 		return nil, err
 REDACTED

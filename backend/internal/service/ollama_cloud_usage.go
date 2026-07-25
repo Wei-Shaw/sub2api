@@ -156,7 +156,7 @@ type ollamaCloudUsageRepository interface {
 	SetOllamaCloudUsageAutoRefresh(context.Context, *Account, bool) error
 	UpdateOllamaCloudUsageSnapshot(context.Context, *Account, *OllamaCloudUsageSnapshot) error
 	DisableOllamaCloudUsageAutoRefresh(context.Context, *Account) error
-	ListDueOllamaCloudUsageAccounts(context.Context, time.Time, int) ([]Account, error)
+	ListDueOllamaCloudUsageAccounts(context.Context, time.Time, time.Duration, time.Duration, int) ([]Account, error)
 REDACTED
 
 // GetOllamaCloudUsageSettings returns fail-safe defaults when the setting is absent.
@@ -703,7 +703,7 @@ REDACTED
 REDACTED
 	now := s.currentTime()
 	debounce, maxWait := ollamaCloudUsageDurations(settings)
-	accounts, err := writer.ListDueOllamaCloudUsageAccounts(ctx, now, ollamaCloudUsageMaxPerCycle)
+	accounts, err := writer.ListDueOllamaCloudUsageAccounts(ctx, now, debounce, maxWait, ollamaCloudUsageMaxPerCycle)
 	if err != nil {
 		return fmt.Errorf("list due Ollama Cloud usage accounts: %w", err)
 REDACTED

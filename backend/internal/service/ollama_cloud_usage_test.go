@@ -185,7 +185,7 @@ func applyOllamaUsageTestManagedExtra(account, source *Account) {
 REDACTED
 REDACTED
 
-func (r *ollamaUsageTestRepo) ListDueOllamaCloudUsageAccounts(_ context.Context, _ time.Time, limit int) ([]Account, error) {
+func (r *ollamaUsageTestRepo) ListDueOllamaCloudUsageAccounts(_ context.Context, _ time.Time, _, _ time.Duration, limit int) ([]Account, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.due) > 0 {
