@@ -356,6 +356,8 @@ func (s *GatewayService) readUpstreamErrorBody(resp *http.Response) ([]byte, err
 }
 
 func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, requestedModel ...string) (*ForwardResult, error) {
+	// Upstream returned a non-success HTTP status; count Ollama Cloud activity.
+	scheduleOllamaCloudUsageActivity(s.deferredService, account)
 	body, readErr := s.readUpstreamErrorBody(resp)
 	if readErr != nil {
 		// 读取失败时 body 可能被截断，错误分类会基于不完整数据；记录日志以便排查，

@@ -26,6 +26,15 @@ const (
 	codeBuddyConversationHeader   = "X-Conversation-ID"
 )
 
+var explicitOpenAIHeaderSessionNames = []string{
+	"session_id",
+	"conversation_id",
+	openCodeSessionAffinityHeader,
+	openCodeSessionIDHeader,
+	openCodeNativeSessionHeader,
+	codeBuddyConversationHeader,
+}
+
 // explicitOpenAIHeaderSessionID resolves stable conversation identifiers sent
 // by OpenAI-compatible clients. Keep this list limited to session-scoped
 // fields: request/message IDs rotate every turn and would defeat sticky routing
@@ -35,14 +44,7 @@ func explicitOpenAIHeaderSessionID(c *gin.Context) string {
 		return ""
 	}
 
-	for _, header := range []string{
-		"session_id",
-		"conversation_id",
-		openCodeSessionAffinityHeader,
-		openCodeSessionIDHeader,
-		openCodeNativeSessionHeader,
-		codeBuddyConversationHeader,
-	} {
+	for _, header := range explicitOpenAIHeaderSessionNames {
 		if sessionID := strings.TrimSpace(c.GetHeader(header)); sessionID != "" {
 			return sessionID
 		}
