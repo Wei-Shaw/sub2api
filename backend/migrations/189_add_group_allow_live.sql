@@ -1,0 +1,1 @@
+ALTER TABLE groups ADD COLUMN allow_live BOOLEAN NOT NULL DEFAULT false;

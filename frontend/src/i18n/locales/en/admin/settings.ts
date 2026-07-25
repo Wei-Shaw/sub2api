@@ -333,6 +333,16 @@ export default {
         saved: 'Upstream rate auto detection settings saved',
         saveFailed: 'Failed to save upstream rate auto detection settings'
       },
+      ollamaCloudUsage: {
+        title: 'Ollama Cloud Usage Refresh',
+        description: 'Periodically refresh official Ollama settings-page usage for individually opted-in accounts. Disabled by default.',
+        enabled: 'Enable global automatic refresh',
+        enabledHint: 'Only accounts with a stored browser session and their own automatic refresh switch enabled are refreshed. Manual refresh remains available.',
+        intervalMinutes: 'Refresh interval (minutes)',
+        intervalHint: 'Range: 15–1440 minutes. Failures use bounded exponential backoff.',
+        saved: 'Ollama Cloud usage refresh settings saved',
+        saveFailed: 'Failed to save Ollama Cloud usage refresh settings'
+      },
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',
@@ -585,6 +595,8 @@ export default {
         cancelRateLimitWindowModeFixed: 'Fixed',
         alipayForceQRCode: 'Force Alipay QR Code',
         alipayForceQRCodeHint: 'When enabled, mobile Alipay users always see a QR code instead of being redirected to the mobile payment page',
+        alipayMobilePrecreateDeepLink: 'Mobile Alipay Precreate Handoff',
+        alipayMobilePrecreateDeepLinkHint: 'Use official Alipay precreate on mobile, open the Alipay app, and show the dynamic QR only if handoff fails. This takes priority over Force Alipay QR Code',
         helpText: 'Help Text',
         helpImageUrl: 'Help Image URL',
         manageProviders: 'Manage Providers',
