@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
-import type { DashboardStats } from '@/types'
+import type { AdminDashboardStats } from '@/types'
 import DashboardView from '../DashboardView.vue'
 
 const { getSnapshotV2, getUserUsageTrend, getUserSpendingRanking } = vi.hoisted(() => ({
@@ -50,7 +50,7 @@ const formatLocalDate = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
-const createDashboardStats = (): DashboardStats => ({
+const createDashboardStats = (): AdminDashboardStats => ({
   total_users: 0,
   today_new_users: 0,
   active_users: 0,
