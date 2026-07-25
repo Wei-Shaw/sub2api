@@ -28,6 +28,7 @@ import (
 type grokCredentialHandlerRepo struct {
 	service.AccountRepository
 	mu             sync.Mutex
+	billingRepo    *grokCredentialHandlerBillingRepo
 	accounts       []service.Account
 	setErrorIDs    []int64
 	setTempIDs     []int64
@@ -39,7 +40,10 @@ type grokCredentialHandlerRepo struct {
 	missingOnGet   map[int64]bool
 }
 
-type grokCredentialHandlerBillingRepo struct{}
+type grokCredentialHandlerBillingRepo struct {
+	mu             sync.Mutex
+	lastSettlement *service.GrokVideoSettlement
+}
 
 type grokTokenPricingChannelRepo struct {
 	service.ChannelRepository
@@ -80,10 +84,24 @@ func (r *grokCredentialHandlerBillingRepo) ReleaseBatchImageBalance(context.Cont
 }
 
 func (r *grokCredentialHandlerBillingRepo) CreateGrokVideoSettlement(_ context.Context, settlement *service.GrokVideoSettlement) (*service.GrokVideoSettlement, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if settlement.ID == 0 {
 		settlement.ID = 1
 	}
+	clone := *settlement
+	r.lastSettlement = &clone
 	return settlement, nil
+}
+
+func (r *grokCredentialHandlerBillingRepo) settlement() *service.GrokVideoSettlement {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.lastSettlement == nil {
+		return nil
+	}
+	clone := *r.lastSettlement
+	return &clone
 }
 
 func (r *grokCredentialHandlerBillingRepo) GetGrokVideoSettlementForOwner(context.Context, string, int64, int64) (*service.GrokVideoSettlement, error) {
@@ -662,6 +680,32 @@ func TestResponsesGrok429FailoverIsBounded(t *testing.T) {
 	})
 }
 
+func TestResponsesGrok402FailoverCooldown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	_, repo, upstream, router, cleanup := newGrokCredentialFailoverHandler(t, "first_402")
+	defer cleanup()
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/responses", bytes.NewBufferString(`{"model":"grok","input":"hello","stream":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Contains(t, recorder.Body.String(), "resp_healthy")
+	require.Equal(t, []int64{801, 802}, upstream.accountHits())
+	require.Equal(t, []int64{801}, repo.setTempIDs)
+	before := repo.selectorCalls()
+
+	second := httptest.NewRecorder()
+	secondReq := httptest.NewRequest(http.MethodPost, "/openai/v1/responses", bytes.NewBufferString(`{"model":"grok","input":"again","stream":false}`))
+	secondReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(second, secondReq)
+
+	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
+	require.Equal(t, before+1, repo.selectorCalls())
+	require.Equal(t, []int64{801, 802, 802}, upstream.accountHits(), "cooldown must exclude the 402 account from later requests")
+}
+
 func TestResponsesGrok429FailoverHandlesMixedStatuses(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -755,6 +799,70 @@ func TestGrokVideoTokenPricingPreflightStopsBeforeUpstream(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, recorder.Code, recorder.Body.String())
 	require.Contains(t, recorder.Body.String(), "billing_configuration_error")
 	require.Empty(t, upstream.accountHits(), "token-priced submissions without billable usage must fail before upstream.Do")
+}
+
+func TestGrokVideoSettlementCapturesClientSessionID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("prepared submission", func(t *testing.T) {
+		_, repo, upstream, router, cleanup := newGrokCredentialFailoverHandler(t, "revoked")
+		defer cleanup()
+		upstream.mu.Lock()
+		upstream.successBody = `{"request_id":"video-session-prepared","status":"pending"}`
+		upstream.mu.Unlock()
+
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/openai/v1/videos/generations",
+			bytes.NewBufferString(`{"model":"grok-imagine-video","prompt":"waves"}`),
+		)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("session_id", "prepared-session")
+
+		router.ServeHTTP(recorder, req)
+
+		require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+		settlement := repo.billingRepo.settlement()
+		require.NotNil(t, settlement)
+		require.Equal(t, "prepared-session", settlement.SessionID)
+	})
+
+	t.Run("registration fallback", func(t *testing.T) {
+		h, repo, _, _, cleanup := newGrokCredentialFailoverHandler(t, "revoked")
+		defer cleanup()
+		account, err := repo.GetByID(context.Background(), 802)
+		require.NoError(t, err)
+		require.NotNil(t, account)
+		groupID := int64(901)
+		apiKey := &service.APIKey{
+			ID: 902, GroupID: &groupID, User: &service.User{ID: 903, Status: service.StatusActive},
+			Group: &service.Group{ID: groupID, Platform: service.PlatformGrok, Status: service.StatusActive},
+		}
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(
+			http.MethodPost,
+			"/openai/v1/videos/generations",
+			bytes.NewBufferString(`{"model":"grok-imagine-video","prompt":"waves"}`),
+		)
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Request.Header.Set("session_id", "fallback-session")
+
+		err = registerGrokVideoSettlement(
+			c, h, apiKey, middleware.AuthSubject{UserID: 903}, nil, account,
+			&service.OpenAIForwardResult{
+				ResponseID: "video-session-fallback", BillingModel: "grok-imagine-video",
+				UpstreamModel: "grok-imagine-video", VideoResolution: service.VideoBillingResolution480P,
+				VideoDurationSeconds: 8,
+			},
+			"grok-imagine-video", []byte(`{"model":"grok-imagine-video","prompt":"waves"}`), nil,
+		)
+
+		require.NoError(t, err)
+		settlement := repo.billingRepo.settlement()
+		require.NotNil(t, settlement)
+		require.Equal(t, "fallback-session", settlement.SessionID)
+	})
 }
 
 func TestGrokOAuthCredentialFailoverAcrossHTTPHandlers(t *testing.T) {
@@ -924,7 +1032,7 @@ func newGrokCredentialFailoverHandler(t *testing.T, mode string) (*OpenAIGateway
 			Extra: map[string]any{service.GrokMediaEligibleExtraKey: true},
 		},
 	}
-	if mode == "postmap_cancel" || mode == "first_429" || mode == "all_429" || mode == "mixed_429_500" || mode == "mixed_500_429" || mode == "oauth_429_apikey_500" {
+	if mode == "postmap_cancel" || mode == "first_402" || mode == "first_429" || mode == "all_429" || mode == "mixed_429_500" || mode == "mixed_500_429" || mode == "oauth_429_apikey_500" {
 		accounts[0].Credentials["expires_at"] = time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
 	}
 	if mode == "all_429" || mode == "mixed_429_500" || mode == "mixed_500_429" || mode == "oauth_429_apikey_500" {
@@ -974,6 +1082,8 @@ func newGrokCredentialFailoverHandler(t *testing.T, mode string) (*OpenAIGateway
 		upstream.successBody = `{"request_id":"video-token-priced","status":"pending"}`
 	}
 	switch mode {
+	case "first_402":
+		upstream.failAccountID = 801
 	case "first_429":
 		upstream.rateLimitIDs = map[int64]bool{801: true}
 	case "all_429":
@@ -992,6 +1102,7 @@ func newGrokCredentialFailoverHandler(t *testing.T, mode string) (*OpenAIGateway
 	cfg.Gateway.MaxAccountSwitches = 3
 	billingCache := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	billingRepo := &grokCredentialHandlerBillingRepo{}
+	repo.billingRepo = billingRepo
 	billingService := service.NewBillingService(cfg, nil)
 	var pricingResolver *service.ModelPricingResolver
 	var channelService *service.ChannelService

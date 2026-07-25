@@ -152,7 +152,14 @@ export default {
         description: '控制 API Key 白/黑名单、操作审计日志与会话 IP/UA 绑定使用哪个客户端 IP 判断',
         trustForwardedIp: '信任反代传递的客户端 IP',
         trustForwardedIpHint:
-          '默认关闭。仅在源站只允许 Cloudflare 或 Nginx 反代访问时开启；开启后 API Key IP 白/黑名单、操作审计日志与会话 IP/UA 绑定会使用 CF-Connecting-IP、X-Real-IP 或 X-Forwarded-For，与使用记录中的请求 IP 保持一致。切换本开关会改变已登录会话的 IP 指纹，开启会话绑定时现有会话需重新登录。'
+          '为保证升级兼容默认开启。开启后 CF-Connecting-IP、X-Real-IP 或 X-Forwarded-For 会直接接管客户端 IP 解析并覆盖 server.trusted_proxies；关闭后严格使用 server.trusted_proxies 配置的 Gin 可信代理链。仅在源站无法被直接访问时开启接管模式。切换会改变现有会话的 IP 指纹。',
+        forwardedClientIpHeaders: '自定义客户端 IP 请求头',
+        forwardedClientIpHeadersHint: '添加 CDN 或反代请求头名称，解析时优先于内置请求头。',
+        forwardedClientIpHeadersPlaceholder: 'X-Client-IP',
+        forwardedClientIpHeadersRiskHint: '源站可被直接访问时，这些原始请求头可被伪造；请先限制源站访问再信任它们。',
+        forwardedClientIpHeaderInvalid: '请输入有效的 HTTP 请求头名称。',
+        forwardedClientIpHeadersLimit: '自定义客户端 IP 请求头最多允许 {max} 个。',
+        removeForwardedClientIpHeader: '移除 {header}'
       },
       linuxdo: {
         title: 'LinuxDo Connect 登录',
@@ -318,6 +325,16 @@ export default {
         intervalHint: '范围 5–1440 分钟。成功探测结果的有效期为两个探测周期。',
         saved: '上游倍率自动探测设置已保存',
         saveFailed: '保存上游倍率自动探测设置失败'
+      },
+      ollamaCloudUsage: {
+        title: 'Ollama Cloud 用量刷新',
+        description: '定期刷新账号在 Ollama 官方设置页展示的用量；默认关闭。',
+        enabled: '启用全局自动刷新',
+        enabledHint: '仅刷新已保存浏览器会话且账号自身也开启自动刷新的账号；手动刷新不受影响。',
+        intervalMinutes: '刷新周期（分钟）',
+        intervalHint: '范围 15–1440 分钟。失败后按有上限的指数退避重试。',
+        saved: 'Ollama Cloud 用量刷新设置已保存',
+        saveFailed: '保存 Ollama Cloud 用量刷新设置失败'
       },
       gatewayForwarding: {
         title: '请求转发行为',
@@ -573,6 +590,8 @@ export default {
         cancelRateLimitWindowModeFixed: '固定',
         alipayForceQRCode: '支付宝强制二维码支付',
         alipayForceQRCodeHint: '启用后，移动端支付宝用户将统一使用二维码扫码支付，不再跳转至手机网站支付',
+        alipayMobilePrecreateDeepLink: '支付宝移动端当面付唤起',
+        alipayMobilePrecreateDeepLinkHint: '启用后，移动端官方支付宝订单调用当面付并尝试打开支付宝；失败时显示动态二维码。该设置优先于强制二维码支付',
         helpText: '帮助文本',
         helpImageUrl: '帮助图片链接',
         manageProviders: '管理服务商',
@@ -637,6 +656,7 @@ export default {
         customMethodType: '支付方式',
         customMethodUpstreamType: '上游 type',
         customMethodDisplayName: '显示名称',
+        customMethodDisplayNamePlaceholder: '如：信用卡',
         stripeWebhookHint: '请在 Stripe Dashboard 中将以下地址配置为 Webhook 端点：',
         stripeWebhookApiVersionHint: 'Webhook 端点的 API 版本请与当前集成的 Stripe SDK 对齐，建议选择 {version}；版本不一致可能导致回调事件解析失败。',
         airwallexWebhookHint: '请在 Airwallex 后台将以下地址配置为 Webhook 端点；事件至少选择 Payment Intent -> Succeeded（payment_intent.succeeded），建议同时选择 Payment Intent -> Cancelled（payment_intent.cancelled）；API version 选择账户默认或最新稳定版本。',
@@ -669,7 +689,7 @@ export default {
         guideOpenLabel: '开通：',
         guideCallLabel: '调用：',
         guideFallbackLabel: '降级：',
-        alipayGuideSummary: '桌面优先扫码单，失败再走收银台；移动优先手机网站支付。',
+        alipayGuideSummary: '桌面优先扫码单，失败再走收银台；移动默认手机网站支付，也可启用当面付唤起。',
         alipayGuideFaceToFaceTitle: '当面付 / 扫码支付',
         alipayGuideFaceToFaceOpen: '需开通当面付或扫码支付能力。',
         alipayGuideFaceToFaceCall: '桌面端下单时优先调用 alipay.trade.precreate，前台直接渲染二维码。',
@@ -680,7 +700,7 @@ export default {
         alipayGuidePagePayFallback: '同时保留打开收银台入口，用户可手动重新拉起支付页。',
         alipayGuideWapTitle: '手机网站支付',
         alipayGuideWapOpen: '需开通手机网站支付。',
-        alipayGuideWapCall: '移动端优先调用 alipay.trade.wap.pay，跳转支付宝收银台。',
+        alipayGuideWapCall: '默认调用 alipay.trade.wap.pay；开启移动端当面付唤起后改用 alipay.trade.precreate。',
         alipayGuideWapFallback: '未开通或返回异常时，前端自动改走扫码支付并提示未开通移动支付。',
         wxpayGuideSummary: '桌面优先 Native 扫码，移动端按浏览器环境走 JSAPI 或 H5。',
         wxpayGuideNote: '当前表单默认共用一个 App ID，适合同主体下统一配置网页、移动和公众号场景。',

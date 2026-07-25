@@ -112,6 +112,7 @@ func TestRegisterGrokVideoSettlementNormalizesImmutableSnapshot(t *testing.T) {
 	settlement := &GrokVideoSettlement{
 		RequestID:      " video-request-1 ",
 		RequestedModel: " grok-imagine-video ",
+		SessionID:      " client-session-1 ",
 	}
 
 	err := svc.RegisterGrokVideoSettlement(context.Background(), settlement, apiKey, account, nil)
@@ -122,12 +123,23 @@ func TestRegisterGrokVideoSettlementNormalizesImmutableSnapshot(t *testing.T) {
 	require.Equal(t, "grok-imagine-video", settlement.BillingModel)
 	require.Equal(t, VideoBillingResolution480P, settlement.VideoResolution)
 	require.Equal(t, VideoBillingDefaultDurationSeconds, settlement.VideoDurationSeconds)
+	require.Equal(t, "client-session-1", settlement.SessionID)
 	require.Equal(t, GrokVideoSettlementStatusPending, settlement.Status)
 	require.Equal(t, GrokVideoPricingSnapshotVersion, settlement.PricingSnapshotVersion)
 	require.Equal(t, GrokVideoPricingBasisVideoSecond, settlement.PricingBasis)
 	require.Equal(t, string(BillingModeVideo), settlement.BillingMode)
 	require.InDelta(t, 0.4, settlement.ActualCost, 1e-12)
 	require.Len(t, settlement.RequestFingerprint, 64)
+}
+
+func TestGrokVideoSettlementFingerprintIncludesSessionID(t *testing.T) {
+	left := &GrokVideoSettlement{RequestID: "video-request-1", SessionID: "session-a"}
+	right := &GrokVideoSettlement{RequestID: "video-request-1", SessionID: "session-b"}
+
+	left.Normalize()
+	right.Normalize()
+
+	require.NotEqual(t, left.RequestFingerprint, right.RequestFingerprint)
 }
 
 func TestPrepareGrokVideoSettlementRejectsTokenPricingWithoutUpstreamRequest(t *testing.T) {
@@ -331,6 +343,7 @@ func TestSettleGrokVideoStatusDoneBillsExactlyOnceAPIKeyAndOAuth(t *testing.T) {
 				VideoDurationSeconds:   8,
 				RequestDuration:        time.Second,
 				RequestPayloadHash:     "payload-hash",
+				SessionID:              "client-session-done",
 				QuotaPlatform:          PlatformGrok,
 				ChannelUsageFields:     ChannelUsageFields{OriginalModel: "grok-imagine-video", ChannelMappedModel: "grok-imagine-video"},
 				Status:                 GrokVideoSettlementStatusPending,
@@ -361,6 +374,8 @@ func TestSettleGrokVideoStatusDoneBillsExactlyOnceAPIKeyAndOAuth(t *testing.T) {
 			require.Equal(t, 1, usageRepo.calls)
 			require.NotNil(t, usageRepo.lastLog.VideoDurationSeconds)
 			require.Equal(t, 10, *usageRepo.lastLog.VideoDurationSeconds)
+			require.NotNil(t, usageRepo.lastLog.SessionID)
+			require.Equal(t, "client-session-done", *usageRepo.lastLog.SessionID)
 			require.Equal(t, 1, settlementRepo.markSettledCalls)
 			require.Equal(t, GrokVideoSettlementStatusSettled, settlementRepo.settlement.Status)
 

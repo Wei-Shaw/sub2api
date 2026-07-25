@@ -102,6 +102,19 @@ export default {
         testFailed: 'S3 connection test failed',
         saved: 'S3 configuration saved'
       },
+      imageStorage: {
+        title: 'Async image object storage',
+        description: 'Enables the asynchronous image endpoints and offloads generated images to object storage, keeping only short links in Redis. Shares the S3 client with backups and takes effect on save — no restart needed.',
+        enabled: 'Enable async image tasks',
+        reuseBackupS3: 'Reuse the backup S3 configuration above (different bucket/prefix only)',
+        bucket: 'Bucket',
+        bucketInherited: 'Leave empty to use the backup bucket',
+        prefix: 'Key prefix',
+        publicBaseUrl: 'Public base URL',
+        publicBaseUrlPlaceholder: 'Leave empty to return presigned links',
+        presignExpiryHours: 'Presigned link TTL (hours)',
+        saved: 'Async image object storage saved'
+      },
       schedule: {
         title: 'Scheduled Backup',
         description: 'Configure automatic scheduled backups',
@@ -835,6 +848,21 @@ export default {
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
+        maxReasoningEffort: 'Max reasoning effort',
+        maxReasoningEffortUnlimited: 'Unlimited (follow request)',
+        maxReasoningEffortHint: 'Limits explicit OpenAI reasoning effort requests only. Higher values are capped; omitted effort stays omitted. The ceiling takes precedence over reasoning effort mappings.',
+        reasoningEffortMappings: 'Reasoning effort mappings',
+        addReasoningEffortMapping: 'Add mapping',
+        removeReasoningEffortMapping: 'Remove mapping',
+        reasoningEffortFrom: 'Request value',
+        reasoningEffortTo: 'Forwarded value',
+        reasoningEffortFromPlaceholder: 'Select A',
+        reasoningEffortToPlaceholder: 'Select B',
+        fromRequired: 'Select request value A',
+        toRequired: 'Select forwarded value B',
+        unsupportedFrom: 'Request value is not supported by this platform',
+        unsupportedTo: 'Forwarded value is not supported by this platform',
+        duplicateFrom: 'Request value A must be unique',
         exclusiveLabel: 'Exclusive Group',
         exclusiveHint: 'Exclusive group, can be manually assigned to users',
         platformLabel: 'Platform Restriction',
@@ -916,6 +944,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        composite: 'Composite',
       },
       deleteConfirm:
         "Are you sure you want to delete '{name}'? All associated API keys will no longer belong to any group.",
@@ -986,6 +1015,55 @@ export default {
         selectAll: 'Select all',
         invertSelection: 'Invert'
       },
+      compositeRoutes: {
+        action: 'Routes',
+        title: 'Composite Routes',
+        titleWithGroup: 'Composite Routes: {name}',
+        routes: 'Saved Routes',
+        empty: 'No composite routes configured',
+        publicModel: 'Public Model',
+        target: 'Target',
+        scope: 'Scope',
+        priority: 'Priority',
+        addRoute: 'Add Route',
+        editRoute: 'Edit Route',
+        matchType: 'Match',
+        endpoint: 'Endpoint',
+        targetPlatform: 'Target Platform',
+        upstreamModel: 'Upstream Model',
+        notes: 'Notes',
+        enabled: 'Enabled',
+        preview: 'Preview',
+        matched: 'Matched',
+        notMatched: 'No Match',
+        publicModelRequired: 'Public model is required',
+        routeCreated: 'Composite route created',
+        routeUpdated: 'Composite route updated',
+        routeDeleted: 'Composite route deleted',
+        failedToLoad: 'Failed to load composite routes',
+        failedToSave: 'Failed to save composite route',
+        failedToDelete: 'Failed to delete composite route',
+        failedToPreview: 'Failed to preview composite route',
+        deleteConfirm: 'Delete this composite route?',
+        endpoints: {
+          any: 'Any',
+          messages: 'Messages',
+          countTokens: 'Count Tokens',
+          responses: 'Responses',
+          chatCompletions: 'Chat Completions',
+          embeddings: 'Embeddings',
+          images: 'Images',
+          gemini: 'Gemini Native'
+        },
+        match: {
+          exact: 'Exact',
+          prefix: 'Prefix'
+        },
+        sources: {
+          route: 'Route',
+          detector: 'Detector'
+        }
+      },
       claudeCode: {
         title: 'Claude Code Client Restriction',
         tooltip: 'When enabled, this group only allows official Claude Code clients. Non-Claude Code requests will be rejected or fallback to the specified group.',
@@ -1016,6 +1094,14 @@ export default {
         targetModel: 'Target Model',
         targetModelPlaceholder: 'e.g., gpt-5.4',
         removeExactMapping: 'Remove Exact Mapping'
+      },
+      openaiLive: {
+        title: 'OpenAI Live',
+        allow: 'Allow Live access',
+        hint: 'When enabled, API keys in this OpenAI group can create and control Live voice sessions. Disabled by default. The Sub2API server must run on Apple Silicon macOS with the official ChatGPT app installed; client platforms are unrestricted.',
+        unsupportedTitle: 'Current server does not support Live',
+        unsupportedMessage: 'This Sub2API server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
+        enableAnyway: 'Enable anyway'
       },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',

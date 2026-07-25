@@ -20,7 +20,7 @@
     "@stripe/stripe-js": "^9.0.1",
     "@tanstack/vue-virtual": "^3.13.23",
     "@vueuse/core": "^10.7.0",
-    "axios": "^1.16.0",
+    "axios": "^1.18.0",
     "chart.js": "^4.4.1",
     "dompurify": "^3.3.1",
     "driver.js": "^1.4.0",
@@ -62,7 +62,8 @@
   "pnpm": {
     "overrides": {
       "js-cookie": "3.0.7",
-      "form-data@<4.0.6": ">=4.0.6"
+      "form-data@<4.0.6": ">=4.0.6",
+      "postcss@<8.5.18": ">=8.5.18"
     }
   }
 }

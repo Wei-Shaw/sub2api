@@ -15,7 +15,7 @@ const props = withDefaults(defineProps<Props>(), {
       <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-4 dark:border-dark-700">
         <div class="space-y-2">
           <div class="h-6 w-44 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
-          <div class="h-3 w-80 animate-pulse rounded bg-gray-100 dark:bg-dark-700/70"></div>
+          <div class="h-3 w-80 max-w-full animate-pulse rounded bg-gray-100 dark:bg-dark-700/70"></div>
         </div>
         <div v-if="!props.fullscreen" class="flex flex-wrap items-center gap-3">
           <div class="h-9 w-[140px] animate-pulse rounded-xl bg-gray-200 dark:bg-dark-700"></div>
@@ -92,7 +92,7 @@ const props = withDefaults(defineProps<Props>(), {
         <div v-for="i in 6" :key="i" class="flex items-center justify-between gap-4 rounded-2xl bg-gray-50 p-4 dark:bg-dark-900/30">
           <div class="flex-1 space-y-2">
             <div class="h-3 w-56 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
-            <div class="h-3 w-80 animate-pulse rounded bg-gray-100 dark:bg-dark-700/70"></div>
+            <div class="h-3 w-80 max-w-full animate-pulse rounded bg-gray-100 dark:bg-dark-700/70"></div>
           </div>
           <div class="h-7 w-20 animate-pulse rounded-xl bg-gray-200 dark:bg-dark-700"></div>
         </div>

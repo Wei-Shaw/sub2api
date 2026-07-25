@@ -77,6 +77,7 @@ type GrokVideoSettlement struct {
 	UpstreamEndpoint          string
 	UserAgent                 string
 	IPAddress                 string
+	SessionID                 string
 	QuotaPlatform             string
 	ChannelUsageFields
 	Status     string
@@ -107,6 +108,7 @@ func (s *GrokVideoSettlement) Normalize() {
 	s.UpstreamEndpoint = strings.TrimSpace(s.UpstreamEndpoint)
 	s.UserAgent = strings.TrimSpace(s.UserAgent)
 	s.IPAddress = strings.TrimSpace(s.IPAddress)
+	s.SessionID = sanitizeSessionID(s.SessionID)
 	s.QuotaPlatform = strings.TrimSpace(s.QuotaPlatform)
 	s.ChannelMappedModel = strings.TrimSpace(s.ChannelMappedModel)
 	s.BillingModelSource = strings.TrimSpace(s.BillingModelSource)
@@ -159,6 +161,7 @@ func grokVideoSettlementFingerprint(s *GrokVideoSettlement) string {
 		UpstreamEndpoint            string
 		UserAgent                   string
 		IPAddress                   string
+		SessionID                   string
 		QuotaPlatform               string
 		ChannelUsageFields          ChannelUsageFields
 	}{
@@ -175,6 +178,7 @@ func grokVideoSettlementFingerprint(s *GrokVideoSettlement) string {
 		VideoDurationSeconds: s.VideoDurationSeconds, RequestDurationMilliseconds: s.RequestDuration.Milliseconds(),
 		RequestPayloadHash: s.RequestPayloadHash, InboundEndpoint: s.InboundEndpoint,
 		UpstreamEndpoint: s.UpstreamEndpoint, UserAgent: s.UserAgent, IPAddress: s.IPAddress,
+		SessionID:     s.SessionID,
 		QuotaPlatform: s.QuotaPlatform, ChannelUsageFields: s.ChannelUsageFields,
 	}
 	raw, _ := json.Marshal(payload)
@@ -445,6 +449,7 @@ func (s *OpenAIGatewayService) SettleGrokVideoStatus(ctx context.Context, input 
 		UpstreamEndpoint:      settlement.UpstreamEndpoint,
 		UserAgent:             settlement.UserAgent,
 		IPAddress:             settlement.IPAddress,
+		SessionID:             settlement.SessionID,
 		RequestPayloadHash:    settlement.RequestPayloadHash,
 		APIKeyService:         input.APIKeyService,
 		QuotaPlatform:         settlement.QuotaPlatform,

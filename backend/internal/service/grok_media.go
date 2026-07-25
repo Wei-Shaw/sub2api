@@ -662,7 +662,7 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		return nil, fmt.Errorf("grok video content is unavailable while status is %q", videoStatus)
 	}
 
-	contentURL, err := grokMediaSignedVideoContentURL(statusBody)
+	contentURL, err := grokMediaSignedVideoContentURL(statusBody, requestID)
 	if err != nil {
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		return nil, err
@@ -728,9 +728,16 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 	return result, nil
 }
 
-func grokMediaSignedVideoContentURL(body []byte) (string, error) {
+func grokMediaSignedVideoContentURL(body []byte, requestID string) (string, error) {
 	rawURL := strings.TrimSpace(gjson.GetBytes(body, "video.url").String())
 	if rawURL == "" {
+		return "", nil
+	}
+	// An upstream Sub2API rewrites protected content URLs to its own proxy
+	// endpoint. Treat that as an authenticated relay path, not as a signed URL;
+	// the caller will rebuild it against the configured account base URL and
+	// attach the upstream API key.
+	if isGrokMediaVideoContentURL(rawURL, requestID) {
 		return "", nil
 	}
 	parsed, err := url.Parse(rawURL)
@@ -1000,6 +1007,22 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 		upstreamDetail = truncateString(string(body), maxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+	if isGrokContentPolicyRejection(resp.StatusCode, body) {
+		clientMsg := grokContentPolicyClientMessage(body)
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  requestIDHeader,
+			Kind:               "http_error",
+			Message:            clientMsg,
+			Detail:             upstreamDetail,
+		})
+		MarkResponseCommitted(c)
+		writeGrokMediaErrorResponse(c, http.StatusForbidden, "invalid_request_error", clientMsg)
+		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
+	}
 
 	if status, errType, errMsg, matched := applyErrorPassthroughRule(
 		c,
@@ -1032,7 +1055,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	}
 
 	kind := "http_error"
-	if s.shouldFailoverUpstreamError(resp.StatusCode) {
+	if s.shouldFailoverGrokUpstreamError(resp.StatusCode, body) {
 		kind = "failover"
 	}
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{

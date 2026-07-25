@@ -1,4 +1,4 @@
--- Persist Grok asynchronous video requests until their terminal status is
+-- Migration 190: persist Grok asynchronous video requests until their terminal status is
 -- observed. Billing is applied only after a successful status lookup.
 
 CREATE TABLE IF NOT EXISTS grok_video_settlements (
@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS grok_video_settlements (
     upstream_endpoint VARCHAR(255) NOT NULL DEFAULT '',
     user_agent VARCHAR(512) NOT NULL DEFAULT '',
     ip_address VARCHAR(45) NOT NULL DEFAULT '',
+    session_id VARCHAR(255) NOT NULL DEFAULT '',
     quota_platform VARCHAR(32) NOT NULL DEFAULT '',
     channel_id BIGINT NOT NULL DEFAULT 0,
     channel_mapped_model VARCHAR(100) NOT NULL DEFAULT '',
@@ -70,8 +71,13 @@ CREATE TABLE IF NOT EXISTS grok_video_settlements (
             image_output_cost >= 0 AND cache_creation_cost >= 0 AND cache_read_cost >= 0 AND
             total_cost >= 0 AND actual_cost >= 0 AND rate_multiplier >= 0 AND
             account_rate_multiplier >= 0 AND (account_stats_cost IS NULL OR account_stats_cost >= 0)
-        )
+    )
 );
+
+-- A pre-merge build may already have created this table from the original
+-- migration number. CREATE TABLE IF NOT EXISTS does not add new columns.
+ALTER TABLE grok_video_settlements
+    ADD COLUMN IF NOT EXISTS session_id VARCHAR(255) NOT NULL DEFAULT '';
 
 CREATE UNIQUE INDEX IF NOT EXISTS grok_video_settlements_request_api_key_uq
     ON grok_video_settlements (request_id, api_key_id);

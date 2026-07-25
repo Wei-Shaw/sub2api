@@ -332,8 +332,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				UpstreamEndpoint:     GetUpstreamEndpoint(c, account.Platform),
 				UserAgent:            c.GetHeader("User-Agent"),
 				IPAddress:            ip.GetClientIP(c),
+				SessionID:            service.ExtractClientSessionID(c),
 				QuotaPlatform:        service.QuotaPlatform(c.Request.Context(), apiKey),
-				ChannelUsageFields:   grokMediaChannelUsageFields(requestModel),
+				ChannelUsageFields:   grokMediaChannelUsageFields(c, requestModel),
 			}
 			if err := h.gatewayService.PrepareGrokVideoSettlement(
 				requestCtx, preparedVideoSettlement, apiKey, account, subscription,
@@ -532,9 +533,9 @@ func shouldRecordGrokMediaUsage(endpoint service.GrokMediaEndpoint, requestModel
 	}
 }
 
-func grokMediaChannelUsageFields(requestModel string) service.ChannelUsageFields {
+func grokMediaChannelUsageFields(c *gin.Context, requestModel string) service.ChannelUsageFields {
 	return service.ChannelUsageFields{
-		OriginalModel:      requestModel,
+		OriginalModel:      clientRequestedModel(c, requestModel),
 		ChannelMappedModel: requestModel,
 	}
 }
@@ -577,8 +578,9 @@ func registerGrokVideoSettlement(
 			UpstreamEndpoint:     GetUpstreamEndpoint(c, account.Platform),
 			UserAgent:            c.GetHeader("User-Agent"),
 			IPAddress:            ip.GetClientIP(c),
+			SessionID:            service.ExtractClientSessionID(c),
 			QuotaPlatform:        service.QuotaPlatform(c.Request.Context(), apiKey),
-			ChannelUsageFields:   grokMediaChannelUsageFields(requestModel),
+			ChannelUsageFields:   grokMediaChannelUsageFields(c, requestModel),
 		}
 	} else {
 		clone := *settlement
@@ -643,6 +645,7 @@ func recordGrokMediaUsage(
 ) {
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)
+	sessionID := service.ExtractClientSessionID(c)
 	payloadForHash := body
 	if len(payloadForHash) == 0 && strings.TrimSpace(requestID) != "" {
 		payloadForHash = []byte(requestID)
@@ -650,7 +653,10 @@ func recordGrokMediaUsage(
 	inboundEndpoint := GetInboundEndpoint(c)
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
-	channelUsageFields := grokMediaChannelUsageFields(requestModel)
+	// OriginalModel 记录客户端请求的模型：composite 分组下 body 已被改写为具体模型，
+	// 公开别名需从 context 取回，与其他端点的用量归因口径一致（计费不受影响：
+	// BillingModelSource 为空不会触发来源覆盖）。
+	channelUsageFields := grokMediaChannelUsageFields(c, requestModel)
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,
@@ -665,6 +671,7 @@ func recordGrokMediaUsage(
 			RequestPayloadHash: service.HashUsageRequestPayload(payloadForHash),
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
+			SessionID:          sessionID,
 			ChannelUsageFields: channelUsageFields,
 		}); err != nil {
 			logger.L().With(

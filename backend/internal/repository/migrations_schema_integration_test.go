@@ -55,6 +55,9 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "accounts", "session_window_status", "character varying", 20, true)
 	requireIndex(t, tx, "accounts", "idx_accounts_autopause_expiry_due")
 
+	// groups: OpenAI Live 默认关闭，管理员显式开启后才可访问。
+	requireColumn(t, tx, "groups", "allow_live", "boolean", 0, false)
+
 	// api_keys: key length should be 128
 	requireColumn(t, tx, "api_keys", "key", "character varying", 128, false)
 
@@ -119,6 +122,7 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.grok_video_settlements')").Scan(&grokVideoSettlementsRegclass))
 	require.True(t, grokVideoSettlementsRegclass.Valid, "expected grok_video_settlements table to exist")
 	requireColumn(t, tx, "grok_video_settlements", "request_fingerprint", "character varying", 64, false)
+	requireColumn(t, tx, "grok_video_settlements", "session_id", "character varying", 255, false)
 	requireColumn(t, tx, "grok_video_settlements", "status", "character varying", 16, false)
 	requireColumn(t, tx, "grok_video_settlements", "settled_at", "timestamp with time zone", 0, true)
 	requireColumn(t, tx, "grok_video_settlements", "pricing_snapshot_version", "integer", 0, false)

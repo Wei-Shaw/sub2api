@@ -24,7 +24,7 @@ func TestGetGrokVideoSettlementForOwnerScansBillingSnapshot(t *testing.T) {
 		"upstream_model", "input_tokens", "output_tokens", "cache_creation_tokens",
 		"cache_read_tokens", "image_input_tokens", "image_output_tokens", "video_resolution",
 		"video_duration_seconds", "request_duration_ms", "request_payload_hash",
-		"inbound_endpoint", "upstream_endpoint", "user_agent", "ip_address", "quota_platform",
+		"inbound_endpoint", "upstream_endpoint", "user_agent", "ip_address", "session_id", "quota_platform",
 		"channel_id", "channel_mapped_model", "billing_model_source", "model_mapping_chain",
 		"pricing_snapshot_version", "pricing_basis", "billing_mode", "billing_type",
 		"input_cost", "image_input_cost", "output_cost", "image_output_cost",
@@ -36,7 +36,7 @@ func TestGetGrokVideoSettlementForOwnerScansBillingSnapshot(t *testing.T) {
 		int64(13), service.AccountTypeOAuth, nil, "grok-imagine-video", "grok-imagine-video",
 		"vendor-video", 1, 2, 3, 4, 5, 6, service.VideoBillingResolution720P,
 		10, int64(1250), "payload-hash", "/v1/videos/generations", "/v1/videos/generations",
-		"test-agent", "192.0.2.1", service.PlatformGrok, int64(9), "mapped-video",
+		"test-agent", "192.0.2.1", "client-session-1", service.PlatformGrok, int64(9), "mapped-video",
 		service.BillingModelSourceChannelMapped, "requested->mapped",
 		service.GrokVideoPricingSnapshotVersion, service.GrokVideoPricingBasisVideoSecond,
 		string(service.BillingModeVideo), service.BillingTypeBalance,
@@ -60,10 +60,65 @@ func TestGetGrokVideoSettlementForOwnerScansBillingSnapshot(t *testing.T) {
 	require.Equal(t, int64(9), got.ChannelID)
 	require.Equal(t, "mapped-video", got.ChannelMappedModel)
 	require.Equal(t, service.BillingModelSourceChannelMapped, got.BillingModelSource)
+	require.Equal(t, "client-session-1", got.SessionID)
 	require.Equal(t, service.GrokVideoPricingBasisVideoSecond, got.PricingBasis)
 	require.InDelta(t, 0.8, got.ActualCost, 1e-12)
 	require.InDelta(t, 1.25, got.RateMultiplier, 1e-12)
 	require.Nil(t, got.SubscriptionID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateGrokVideoSettlementPersistsSessionID(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	groupID := int64(7)
+	settlement := &service.GrokVideoSettlement{
+		RequestID: "video-request-create", UserID: 11, APIKeyID: 12, GroupID: &groupID,
+		AccountID: 13, AccountType: service.AccountTypeOAuth,
+		RequestedModel: "grok-imagine-video", BillingModel: "grok-imagine-video", UpstreamModel: "vendor-video",
+		Usage: service.OpenAIUsage{
+			InputTokens: 1, OutputTokens: 2, CacheCreationInputTokens: 3,
+			CacheReadInputTokens: 4, ImageInputTokens: 5, ImageOutputTokens: 6,
+		},
+		VideoResolution: service.VideoBillingResolution720P, VideoDurationSeconds: 10,
+		RequestDuration: 1250 * time.Millisecond, RequestPayloadHash: "payload-hash",
+		InboundEndpoint: "/v1/videos/generations", UpstreamEndpoint: "/v1/videos/generations",
+		UserAgent: "test-agent", IPAddress: "192.0.2.1", SessionID: "client-session-create",
+		QuotaPlatform: service.PlatformGrok,
+		ChannelUsageFields: service.ChannelUsageFields{
+			ChannelID: 9, ChannelMappedModel: "mapped-video",
+			BillingModelSource: service.BillingModelSourceChannelMapped, ModelMappingChain: "requested->mapped",
+		},
+		PricingSnapshotVersion: service.GrokVideoPricingSnapshotVersion,
+		PricingBasis:           service.GrokVideoPricingBasisVideoSecond,
+		BillingMode:            string(service.BillingModeVideo), BillingType: service.BillingTypeBalance,
+		InputCost: 0.1, ImageInputCost: 0.2, OutputCost: 0.3, ImageOutputCost: 0.4,
+		CacheCreationCost: 0.5, CacheReadCost: 0.6, TotalCost: 0.7, ActualCost: 0.8,
+		RateMultiplier: 1.25, AccountRateMultiplier: 0.9,
+	}
+	mock.ExpectQuery(`(?s)INSERT INTO grok_video_settlements \(.*ip_address, session_id, quota_platform.*\).*VALUES \(.*\$48.*\).*RETURNING`).
+		WithArgs(
+			"video-request-create", sqlmock.AnyArg(), int64(11), int64(12), groupID,
+			int64(13), service.AccountTypeOAuth, nil, "grok-imagine-video", "grok-imagine-video",
+			"vendor-video", 1, 2, 3, 4, 5, 6, service.VideoBillingResolution720P,
+			10, int64(1250), "payload-hash", "/v1/videos/generations", "/v1/videos/generations",
+			"test-agent", "192.0.2.1", "client-session-create", service.PlatformGrok,
+			int64(9), "mapped-video", service.BillingModelSourceChannelMapped, "requested->mapped",
+			service.GrokVideoPricingSnapshotVersion, service.GrokVideoPricingBasisVideoSecond,
+			string(service.BillingModeVideo), service.BillingTypeBalance,
+			0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1.25, 0.9, false, nil,
+			service.GrokVideoSettlementStatusPending,
+		).
+		WillReturnRows(newGrokVideoSettlementRows(now, "video-request-create", "client-session-create"))
+
+	repo := &usageBillingRepository{db: db}
+	created, err := repo.CreateGrokVideoSettlement(context.Background(), settlement)
+
+	require.NoError(t, err)
+	require.Equal(t, "client-session-create", created.SessionID)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -138,4 +193,33 @@ func TestMarkGrokVideoSettlementSettledTxRequiresMatchingPendingRow(t *testing.T
 		require.NoError(t, tx.Rollback())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func newGrokVideoSettlementRows(now time.Time, requestID, sessionID string) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "request_id", "request_fingerprint", "user_id", "api_key_id", "group_id",
+		"account_id", "account_type", "subscription_id", "requested_model", "billing_model",
+		"upstream_model", "input_tokens", "output_tokens", "cache_creation_tokens",
+		"cache_read_tokens", "image_input_tokens", "image_output_tokens", "video_resolution",
+		"video_duration_seconds", "request_duration_ms", "request_payload_hash",
+		"inbound_endpoint", "upstream_endpoint", "user_agent", "ip_address", "session_id", "quota_platform",
+		"channel_id", "channel_mapped_model", "billing_model_source", "model_mapping_chain",
+		"pricing_snapshot_version", "pricing_basis", "billing_mode", "billing_type",
+		"input_cost", "image_input_cost", "output_cost", "image_output_cost",
+		"cache_creation_cost", "cache_read_cost", "total_cost", "actual_cost",
+		"rate_multiplier", "account_rate_multiplier", "long_context_billing_applied", "account_stats_cost",
+		"status", "terminal_at", "settled_at", "created_at", "updated_at",
+	}).AddRow(
+		int64(1), requestID, "fingerprint", int64(11), int64(12), int64(7),
+		int64(13), service.AccountTypeOAuth, nil, "grok-imagine-video", "grok-imagine-video",
+		"vendor-video", 1, 2, 3, 4, 5, 6, service.VideoBillingResolution720P,
+		10, int64(1250), "payload-hash", "/v1/videos/generations", "/v1/videos/generations",
+		"test-agent", "192.0.2.1", sessionID, service.PlatformGrok, int64(9), "mapped-video",
+		service.BillingModelSourceChannelMapped, "requested->mapped",
+		service.GrokVideoPricingSnapshotVersion, service.GrokVideoPricingBasisVideoSecond,
+		string(service.BillingModeVideo), service.BillingTypeBalance,
+		0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1.25, 0.9, false, nil,
+		service.GrokVideoSettlementStatusPending,
+		nil, nil, now, now,
+	)
 }

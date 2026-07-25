@@ -10,12 +10,14 @@ import (
 type BackupHandler struct {
 	backupService *service.BackupService
 	userService   *service.UserService
+	imageStorage  *service.ImageStorageSettingService
 }
 
-func NewBackupHandler(backupService *service.BackupService, userService *service.UserService) *BackupHandler {
+func NewBackupHandler(backupService *service.BackupService, userService *service.UserService, imageStorage *service.ImageStorageSettingService) *BackupHandler {
 	return &BackupHandler{
 		backupService: backupService,
 		userService:   userService,
+		imageStorage:  imageStorage,
 	}
 }
 
@@ -202,4 +204,49 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		return
 	}
 	response.Accepted(c, record)
+}
+
+// ─── 异步生图对象存储配置 ───
+//
+// 与备份共用一套 S3 客户端构造，因此放在同一个页面下：勾选"复用备份 S3"即可直接
+// 借用备份已配置的端点与密钥，只用不同的前缀区分对象（备份走 backups/，图片走 images/）。
+
+func (h *BackupHandler) GetImageStorageConfig(c *gin.Context) {
+	ctx := c.Request.Context()
+	cfg, err := h.imageStorage.Get(ctx)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"config":            cfg,
+		"secret_configured": h.imageStorage.SecretConfigured(ctx),
+	})
+}
+
+func (h *BackupHandler) UpdateImageStorageConfig(c *gin.Context) {
+	var req service.ImageStorageSettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	cfg, err := h.imageStorage.Update(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
+}
+
+func (h *BackupHandler) TestImageStorageConnection(c *gin.Context) {
+	var req service.ImageStorageSettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.imageStorage.TestConnection(c.Request.Context(), req); err != nil {
+		response.Success(c, gin.H{"ok": false, "message": err.Error()})
+		return
+	}
+	response.Success(c, gin.H{"ok": true, "message": "connection successful"})
 }
