@@ -18,6 +18,9 @@ type UsageBillingCommand struct {
 	APIKeyID           int64
 	RequestFingerprint string
 	RequestPayloadHash string
+	// GrokVideoSettlementID atomically marks a deferred video settlement as
+	// settled in the same transaction as its billing effects.
+	GrokVideoSettlementID int64
 
 	UserID              int64
 	AccountID           int64

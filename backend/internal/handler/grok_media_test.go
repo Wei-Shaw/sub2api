@@ -41,10 +41,10 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 			want:     true,
 		},
 		{
-			name:     "video generation records usage",
+			name:     "video generation defers usage",
 			endpoint: service.GrokMediaEndpointVideosGenerations,
 			model:    "grok-imagine-video-1.5",
-			want:     true,
+			want:     false,
 		},
 		{
 			name:     "video status skips empty model usage",

@@ -117,7 +117,8 @@ func (s *OpenAIGatewayService) getRequestCredential(ctx context.Context, c *gin.
 			message: "Grok OAuth credential provider is unavailable",
 		})
 	}
-	if s.isOpenAIAccountRuntimeBlocked(account) {
+	lookupCredential := isGrokOAuthLookupCredential(ctx)
+	if !lookupCredential && s.isOpenAIAccountRuntimeBlocked(account) {
 		return "", "", s.newGrokCredentialFailover(c, account, grokCredentialFailureClass{
 			scope:   GatewayFailureScopeAccount,
 			reason:  GrokCredentialReasonAccountChanged,
@@ -141,7 +142,7 @@ func (s *OpenAIGatewayService) getRequestCredential(ctx context.Context, c *gin.
 
 	token, kind, err := s.GetAccessToken(credentialCtx, account)
 	if err == nil {
-		if s.isOpenAIAccountRuntimeBlocked(account) {
+		if !lookupCredential && s.isOpenAIAccountRuntimeBlocked(account) {
 			return "", "", s.newGrokCredentialFailover(c, account, grokCredentialFailureClass{
 				scope:   GatewayFailureScopeAccount,
 				reason:  GrokCredentialReasonAccountChanged,

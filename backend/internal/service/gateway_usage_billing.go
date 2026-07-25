@@ -76,6 +76,7 @@ type postUsageBillingParams struct {
 	Account               *Account
 	Subscription          *UserSubscription
 	RequestPayloadHash    string
+	GrokVideoSettlementID int64
 	IsSubscriptionBill    bool
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
@@ -228,12 +229,13 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	}
 
 	cmd := &UsageBillingCommand{
-		RequestID:          requestID,
-		APIKeyID:           p.APIKey.ID,
-		UserID:             p.User.ID,
-		AccountID:          p.Account.ID,
-		AccountType:        p.Account.Type,
-		RequestPayloadHash: strings.TrimSpace(p.RequestPayloadHash),
+		RequestID:             requestID,
+		APIKeyID:              p.APIKey.ID,
+		UserID:                p.User.ID,
+		AccountID:             p.Account.ID,
+		AccountType:           p.Account.Type,
+		RequestPayloadHash:    strings.TrimSpace(p.RequestPayloadHash),
+		GrokVideoSettlementID: p.GrokVideoSettlementID,
 	}
 	if usageLog != nil {
 		cmd.Model = usageLog.Model

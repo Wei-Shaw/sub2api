@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -113,6 +114,62 @@ func TestForwardGrokMediaContentUsesUpstreamCredentialAndStreamsRange(t *testing
 	require.Equal(t, "bytes", recorder.Header().Get("Accept-Ranges"))
 	require.Equal(t, `attachment; filename="task-1.mp4"`, recorder.Header().Get("Content-Disposition"))
 	require.True(t, IsResponseCommitted(c))
+	require.Equal(t, GrokVideoUpstreamStatusDone, result.GrokVideoStatus)
+}
+
+func TestForwardGrokMediaContentRequiresExplicitDoneStatus(t *testing.T) {
+	for _, status := range []string{"pending", "failed", "mystery"} {
+		t.Run(status, func(t *testing.T) {
+			upstream := &grokMediaContentUpstreamStub{
+				responses: []*http.Response{grokMediaContentStatusResponse(`{"status":"` + status + `"}`)},
+			}
+			svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+			c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1/content", nil)
+			callbackStatus := ""
+
+			result, err := svc.ForwardGrokMediaBeforeResponse(
+				context.Background(), c, grokMediaContentTestAccount(),
+				GrokMediaEndpointVideoContent, "task-1", nil, "",
+				func(result *OpenAIForwardResult) error {
+					callbackStatus = result.GrokVideoStatus
+					return nil
+				},
+			)
+
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Equal(t, NormalizeGrokVideoUpstreamStatus(status), callbackStatus)
+			require.Len(t, upstream.requests, 1, "content must not be fetched before the task is done")
+			require.Zero(t, recorder.Body.Len())
+		})
+	}
+}
+
+func TestForwardGrokMediaContentSettlesBeforeFetchingBytes(t *testing.T) {
+	upstream := &grokMediaContentUpstreamStub{
+		responses: []*http.Response{grokMediaContentStatusResponse(`{"status":"completed","video":{"duration":10}}`), {
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("video-payload")),
+		}},
+	}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1/content", nil)
+	wantErr := errors.New("billing unavailable")
+
+	result, err := svc.ForwardGrokMediaBeforeResponse(
+		context.Background(), c, grokMediaContentTestAccount(),
+		GrokMediaEndpointVideoContent, "task-1", nil, "",
+		func(result *OpenAIForwardResult) error {
+			require.Equal(t, GrokVideoUpstreamStatusDone, result.GrokVideoStatus)
+			require.Equal(t, 10, result.VideoDurationSeconds)
+			return wantErr
+		},
+	)
+
+	require.ErrorIs(t, err, wantErr)
+	require.Nil(t, result)
+	require.Len(t, upstream.requests, 1, "billing must complete before content bytes are requested")
+	require.Zero(t, recorder.Body.Len())
 }
 
 func TestForwardGrokMediaContentStreamsFullResponseWithSafeDefaults(t *testing.T) {

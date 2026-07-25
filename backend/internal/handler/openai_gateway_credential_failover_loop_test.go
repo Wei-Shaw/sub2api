@@ -39,6 +39,65 @@ type grokCredentialHandlerRepo struct {
 	missingOnGet   map[int64]bool
 }
 
+type grokCredentialHandlerBillingRepo struct{}
+
+type grokTokenPricingChannelRepo struct {
+	service.ChannelRepository
+	groupID int64
+}
+
+func (r *grokTokenPricingChannelRepo) ListAll(context.Context) ([]service.Channel, error) {
+	inputPrice := 3e-6
+	outputPrice := 15e-6
+	return []service.Channel{{
+		ID: 1, Status: service.StatusActive, GroupIDs: []int64{r.groupID},
+		ModelPricing: []service.ChannelModelPricing{{
+			ID: 1, ChannelID: 1, Platform: service.PlatformGrok,
+			Models: []string{"grok-imagine-video"}, BillingMode: service.BillingModeToken,
+			InputPrice: &inputPrice, OutputPrice: &outputPrice,
+		}},
+	}}, nil
+}
+
+func (r *grokTokenPricingChannelRepo) GetGroupPlatforms(context.Context, []int64) (map[int64]string, error) {
+	return map[int64]string{r.groupID: service.PlatformGrok}, nil
+}
+
+func (r *grokCredentialHandlerBillingRepo) Apply(context.Context, *service.UsageBillingCommand) (*service.UsageBillingApplyResult, error) {
+	return &service.UsageBillingApplyResult{Applied: true}, nil
+}
+
+func (r *grokCredentialHandlerBillingRepo) ReserveBatchImageBalance(context.Context, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	return &service.BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+func (r *grokCredentialHandlerBillingRepo) CaptureBatchImageBalance(context.Context, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	return &service.BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+func (r *grokCredentialHandlerBillingRepo) ReleaseBatchImageBalance(context.Context, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	return &service.BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+func (r *grokCredentialHandlerBillingRepo) CreateGrokVideoSettlement(_ context.Context, settlement *service.GrokVideoSettlement) (*service.GrokVideoSettlement, error) {
+	if settlement.ID == 0 {
+		settlement.ID = 1
+	}
+	return settlement, nil
+}
+
+func (r *grokCredentialHandlerBillingRepo) GetGrokVideoSettlementForOwner(context.Context, string, int64, int64) (*service.GrokVideoSettlement, error) {
+	return nil, service.ErrGrokVideoSettlementNotFound
+}
+
+func (r *grokCredentialHandlerBillingRepo) MarkGrokVideoSettlementTerminal(context.Context, int64, string) error {
+	return nil
+}
+
+func (r *grokCredentialHandlerBillingRepo) MarkGrokVideoSettlementSettled(context.Context, int64) error {
+	return nil
+}
+
 func (r *grokCredentialHandlerRepo) ListSchedulableByPlatform(_ context.Context, platform string) ([]service.Account, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -316,6 +375,7 @@ type grokCredentialHandlerUpstream struct {
 	hits          []int64
 	requestURLs   []string
 	authorization []string
+	successBody   string
 	failAccountID int64
 	rateLimitIDs  map[int64]bool
 	failureStatus map[int64]int
@@ -335,6 +395,7 @@ func (u *grokCredentialHandlerUpstream) Do(req *http.Request, _ string, accountI
 	rateLimited := u.rateLimitIDs[accountID]
 	failureStatus := u.failureStatus[accountID]
 	cancelRequest := u.cancelRequest
+	successBody := u.successBody
 	u.mu.Unlock()
 	if rateLimited {
 		return &http.Response{
@@ -361,6 +422,13 @@ func (u *grokCredentialHandlerUpstream) Do(req *http.Request, _ string, accountI
 			StatusCode: http.StatusPaymentRequired,
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
 			Body:       io.NopCloser(bytes.NewBufferString(`{"error":{"message":"payment required"}}`)),
+		}, nil
+	}
+	if successBody != "" {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewBufferString(successBody)),
 		}, nil
 	}
 	if bytes.Contains(requestBody, []byte(`"stream":true`)) {
@@ -669,6 +737,26 @@ func TestGrokMedia429FailoverIsBounded(t *testing.T) {
 	})
 }
 
+func TestGrokVideoTokenPricingPreflightStopsBeforeUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	_, _, upstream, router, cleanup := newGrokCredentialFailoverHandler(t, "token_pricing_no_usage")
+	defer cleanup()
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/openai/v1/videos/generations",
+		bytes.NewBufferString(`{"model":"grok-imagine-video","prompt":"waves"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code, recorder.Body.String())
+	require.Contains(t, recorder.Body.String(), "billing_configuration_error")
+	require.Empty(t, upstream.accountHits(), "token-priced submissions without billable usage must fail before upstream.Do")
+}
+
 func TestGrokOAuthCredentialFailoverAcrossHTTPHandlers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	endpoints := []struct {
@@ -854,6 +942,10 @@ func newGrokCredentialFailoverHandler(t *testing.T, mode string) (*OpenAIGateway
 		accounts[1].Type = service.AccountTypeAPIKey
 		accounts[1].Credentials = map[string]any{"api_key": "third-party-key"}
 	}
+	if mode == "token_pricing_no_usage" {
+		accounts[0].Type = service.AccountTypeAPIKey
+		accounts[0].Credentials = map[string]any{"api_key": "token-pricing-key"}
+	}
 	if mode == "all_revoked" {
 		accounts[1].Credentials["expires_at"] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
 	}
@@ -878,6 +970,9 @@ func newGrokCredentialFailoverHandler(t *testing.T, mode string) (*OpenAIGateway
 		provider.SetRefreshAPI(service.NewOAuthRefreshAPI(repo, tokenCache), refresher)
 	}
 	upstream := &grokCredentialHandlerUpstream{}
+	if mode == "token_pricing_no_usage" {
+		upstream.successBody = `{"request_id":"video-token-priced","status":"pending"}`
+	}
 	switch mode {
 	case "first_429":
 		upstream.rateLimitIDs = map[int64]bool{801: true}
@@ -896,10 +991,18 @@ func newGrokCredentialFailoverHandler(t *testing.T, mode string) (*OpenAIGateway
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	cfg.Gateway.MaxAccountSwitches = 3
 	billingCache := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	billingRepo := &grokCredentialHandlerBillingRepo{}
+	billingService := service.NewBillingService(cfg, nil)
+	var pricingResolver *service.ModelPricingResolver
+	var channelService *service.ChannelService
+	if mode == "token_pricing_no_usage" {
+		channelService = service.NewChannelService(&grokTokenPricingChannelRepo{groupID: groupID}, nil, nil, nil)
+		pricingResolver = service.NewModelPricingResolver(channelService, billingService)
+	}
 	gateway := service.NewOpenAIGatewayService(
-		repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
-		service.NewBillingService(cfg, nil), nil, billingCache, upstream,
-		&service.DeferredService{}, nil, provider, nil, nil, nil, nil, nil,
+		repo, nil, billingRepo, nil, nil, nil, nil, cfg, nil, nil,
+		billingService, nil, billingCache, upstream,
+		&service.DeferredService{}, nil, provider, pricingResolver, channelService, nil, nil, nil,
 	)
 	cache := &concurrencyCacheMock{
 		acquireUserSlotFn:    func(context.Context, int64, int, string) (bool, error) { return true, nil },

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -16,11 +17,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+type grokAccountRecordingUpstream struct {
+	*httpUpstreamRecorder
+	accountIDs []int64
+}
+
+func (u *grokAccountRecordingUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	u.accountIDs = append(u.accountIDs, accountID)
+	return u.httpUpstreamRecorder.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+func (u *grokAccountRecordingUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
 
 func TestPatchGrokResponsesBodySetsMappedModelAndDropsUnsupportedFields(t *testing.T) {
 	t.Parallel()
@@ -983,6 +999,162 @@ func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.JSONEq(t, `{"id":"request-123","status":"completed"}`, recorder.Body.String())
 	require.Equal(t, "xai-video-req", result.RequestID)
+	require.Equal(t, GrokVideoUpstreamStatusDone, result.GrokVideoStatus)
+}
+
+func TestForwardGrokMediaVideoStatusUsesBoundOAuthCredentialWhenAccountIsUnschedulable(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/request-oauth", nil)
+	account := &Account{
+		ID: 67, Name: "paused-grok", Platform: PlatformGrok, Type: AccountTypeOAuth,
+		Status: StatusDisabled, Schedulable: false, Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "lookup-oauth-token", "refresh_token": "lookup-refresh-token",
+			"expires_at": time.Now().Add(2 * grokTokenRefreshSkew).UTC().Format(time.RFC3339),
+			"base_url":   "https://xai.test/v1",
+		},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"request-oauth","status":"pending"}`)),
+	}}
+	svc := &OpenAIGatewayService{
+		httpUpstream: upstream, grokTokenProvider: NewGrokTokenProvider(nil, nil),
+	}
+
+	result, err := svc.ForwardGrokMedia(
+		context.Background(), c, account, GrokMediaEndpointVideoStatus, "request-oauth", nil, "",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "Bearer lookup-oauth-token", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, GrokVideoUpstreamStatusPending, result.GrokVideoStatus)
+}
+
+func TestForwardGrokMediaVideoStatusRefreshesBoundOAuthCredentialWhenAccountIsUnschedulable(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/request-oauth-refresh", nil)
+	account := &Account{
+		ID: 68, Name: "paused-grok-expired", Platform: PlatformGrok, Type: AccountTypeOAuth,
+		Status: StatusDisabled, Schedulable: false, Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":  "expired-lookup-token",
+			"refresh_token": "lookup-refresh-token",
+			"expires_at":    time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
+			"base_url":      "https://xai.test/v1",
+			"client_id":     "client-id",
+		},
+	}
+	repo := &tokenRefreshAccountRepo{}
+	repo.accountsByID = map[int64]*Account{account.ID: account}
+	cache := &grokTokenCacheForProviderTest{lockResult: true}
+	oauthSvc := NewGrokOAuthService(nil, &grokOAuthClientStub{
+		refreshResponse: &xai.TokenResponse{
+			AccessToken: "refreshed-lookup-token",
+			TokenType:   "Bearer",
+			ExpiresIn:   3600,
+		},
+	})
+	defer oauthSvc.Stop()
+
+	provider := NewGrokTokenProvider(repo, cache)
+	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, cache), NewGrokTokenRefresher(oauthSvc))
+	upstream := &grokAccountRecordingUpstream{httpUpstreamRecorder: &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"request-oauth-refresh","status":"pending"}`)),
+	}}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream, grokTokenProvider: provider}
+
+	result, err := svc.ForwardGrokMedia(
+		context.Background(), c, account, GrokMediaEndpointVideoStatus, "request-oauth-refresh", nil, "",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{account.ID}, upstream.accountIDs)
+	require.Equal(t, "Bearer refreshed-lookup-token", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "https://xai.test/v1/videos/request-oauth-refresh", upstream.lastReq.URL.String())
+	require.Equal(t, 1, repo.conditionalSuccessCalls)
+	require.Equal(t, 1, repo.updateCredentialsCalls)
+	require.Equal(t, "refreshed-lookup-token", repo.accountsByID[account.ID].GetGrokAccessToken())
+	require.Equal(t, StatusDisabled, repo.accountsByID[account.ID].Status)
+	require.False(t, repo.accountsByID[account.ID].Schedulable)
+	require.Equal(t, GrokVideoUpstreamStatusPending, result.GrokVideoStatus)
+	require.Equal(t, http.StatusOK, recorder.Code)
+}
+
+func TestForwardGrokMediaVideoGenerationRejectsMissingRequestID(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok-imagine-video","prompt":"waves"}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	account := &Account{
+		ID: 64, Platform: PlatformGrok, Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "api-key", "base_url": "https://xai.test/v1"},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"status":"pending"}`)),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Zero(t, recorder.Body.Len(), "an untrackable upstream job must not be returned as a successful submission")
+}
+
+func TestForwardGrokMediaVideoSubmissionRunsPersistenceBeforeWritingResponse(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok-imagine-video","prompt":"waves"}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	account := &Account{
+		ID: 65, Platform: PlatformGrok, Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "api-key", "base_url": "https://xai.test/v1"},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"request_id":"video-request-persist"}`)),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	wantErr := errors.New("settlement insert failed")
+	callbackCalls := 0
+
+	result, err := svc.ForwardGrokMediaBeforeResponse(
+		context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json",
+		func(result *OpenAIForwardResult) error {
+			callbackCalls++
+			require.Equal(t, "video-request-persist", result.ResponseID)
+			require.Zero(t, recorder.Body.Len(), "the accepted task id must remain buffered until persistence succeeds")
+			return wantErr
+		},
+	)
+
+	require.ErrorIs(t, err, wantErr)
+	require.Nil(t, result)
+	require.Equal(t, 1, callbackCalls)
+	require.Zero(t, recorder.Body.Len())
 }
 
 func TestForwardGrokMediaVideoMutationEndpoints(t *testing.T) {

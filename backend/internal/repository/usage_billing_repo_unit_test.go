@@ -99,6 +99,121 @@ func TestApplyUsageBillingEffects_FlagsBalanceOverdraft(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestApplyUsageBillingEffects_SubscriptionSoftDeletePolicy(t *testing.T) {
+	tests := []struct {
+		name                  string
+		grokVideoSettlementID int64
+		updateSQL             string
+	}{
+		{
+			name:      "ordinary billing requires active subscription and group",
+			updateSQL: `(?s)UPDATE user_subscriptions us.*FROM groups g.*us\.deleted_at IS NULL.*g\.deleted_at IS NULL`,
+		},
+		{
+			name:                  "deferred grok billing updates frozen subscription",
+			grokVideoSettlementID: 99,
+			updateSQL:             `(?s)UPDATE user_subscriptions\s+SET.*WHERE id = \$2 AND user_id = \$3`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+
+			mock.ExpectBegin()
+			tx, err := db.BeginTx(ctx, nil)
+			require.NoError(t, err)
+			update := mock.ExpectExec(tt.updateSQL)
+			if tt.grokVideoSettlementID > 0 {
+				update.WithArgs(1.25, int64(44), int64(11))
+			} else {
+				update.WithArgs(1.25, int64(44))
+			}
+			update.WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectRollback()
+
+			subscriptionID := int64(44)
+			err = (&usageBillingRepository{}).applyUsageBillingEffects(ctx, tx, &service.UsageBillingCommand{
+				GrokVideoSettlementID: tt.grokVideoSettlementID,
+				UserID:                11,
+				SubscriptionID:        &subscriptionID,
+				SubscriptionCost:      1.25,
+			}, &service.UsageBillingApplyResult{})
+			require.NoError(t, err)
+			require.NoError(t, tx.Rollback())
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestUsageBillingApplyRollsBackWhenDeferredSettlementOwnerDoesNotMatch(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`(?s)INSERT INTO usage_billing_dedup.*RETURNING id`).
+		WithArgs("grok-video:test", int64(12), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(1)))
+	mock.ExpectQuery(`(?s)SELECT request_fingerprint.*FROM usage_billing_dedup_archive`).
+		WithArgs("grok-video:test", int64(12)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(conditionalBalanceDeductSQL).
+		WithArgs(2.5, int64(11)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(7.5))
+	mock.ExpectExec(`(?s)UPDATE grok_video_settlements.*WHERE id = \$1 AND user_id = \$2 AND api_key_id = \$3.*account_id = \$4 AND subscription_id IS NOT DISTINCT FROM \$5.*status = 'pending'`).
+		WithArgs(int64(99), int64(11), int64(12), int64(13), nil).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
+
+	repo := &usageBillingRepository{db: db}
+	_, err = repo.Apply(ctx, &service.UsageBillingCommand{
+		RequestID: "grok-video:test", GrokVideoSettlementID: 99,
+		UserID: 11, APIKeyID: 12, AccountID: 13, AccountType: service.AccountTypeAPIKey,
+		BalanceCost: 2.5,
+	})
+
+	require.ErrorIs(t, err, service.ErrGrokVideoSettlementNotPending)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageBillingApplyRollsBackWhenDeferredSettlementSubscriptionDoesNotMatch(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	subscriptionID := int64(44)
+	mock.ExpectBegin()
+	mock.ExpectQuery(`(?s)INSERT INTO usage_billing_dedup.*RETURNING id`).
+		WithArgs("grok-video:subscription-mismatch", int64(12), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(1)))
+	mock.ExpectQuery(`(?s)SELECT request_fingerprint.*FROM usage_billing_dedup_archive`).
+		WithArgs("grok-video:subscription-mismatch", int64(12)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec(`(?s)UPDATE user_subscriptions\s+SET.*WHERE id = \$2 AND user_id = \$3`).
+		WithArgs(1.25, subscriptionID, int64(11)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`(?s)UPDATE grok_video_settlements.*WHERE id = \$1 AND user_id = \$2 AND api_key_id = \$3.*account_id = \$4 AND subscription_id IS NOT DISTINCT FROM \$5.*status = 'pending'`).
+		WithArgs(int64(99), int64(11), int64(12), int64(13), subscriptionID).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
+
+	repo := &usageBillingRepository{db: db}
+	_, err = repo.Apply(ctx, &service.UsageBillingCommand{
+		RequestID: "grok-video:subscription-mismatch", GrokVideoSettlementID: 99,
+		UserID: 11, APIKeyID: 12, AccountID: 13, AccountType: service.AccountTypeAPIKey,
+		SubscriptionID: &subscriptionID, SubscriptionCost: 1.25,
+	})
+
+	require.ErrorIs(t, err, service.ErrGrokVideoSettlementNotPending)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestDeductUsageBillingBalance_ReturnsUserNotFoundWhenNoUserUpdated(t *testing.T) {
 	ctx := context.Background()
 	db, mock, err := sqlmock.New()

@@ -54,12 +54,46 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	if err := r.applyUsageBillingEffects(ctx, tx, cmd, result); err != nil {
 		return nil, err
 	}
+	if cmd.GrokVideoSettlementID > 0 {
+		if err := markGrokVideoSettlementSettledTx(ctx, tx, cmd); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	tx = nil
 	return result, nil
+}
+
+func markGrokVideoSettlementSettledTx(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) error {
+	if cmd == nil {
+		return service.ErrGrokVideoSettlementNotPending
+	}
+	var subscriptionID any
+	if cmd.SubscriptionID != nil {
+		subscriptionID = *cmd.SubscriptionID
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE grok_video_settlements
+		SET status = 'settled', terminal_at = COALESCE(terminal_at, NOW()),
+			settled_at = COALESCE(settled_at, NOW()), updated_at = NOW()
+		WHERE id = $1 AND user_id = $2 AND api_key_id = $3
+			AND account_id = $4 AND subscription_id IS NOT DISTINCT FROM $5
+			AND status = 'pending'
+	`, cmd.GrokVideoSettlementID, cmd.UserID, cmd.APIKeyID, cmd.AccountID, subscriptionID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return service.ErrGrokVideoSettlementNotPending
+	}
+	return nil
 }
 
 func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) (bool, error) {
@@ -173,7 +207,13 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
 	if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
-		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost); err != nil {
+		var err error
+		if cmd.GrokVideoSettlementID > 0 {
+			err = incrementDeferredUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.UserID, cmd.SubscriptionCost)
+		} else {
+			err = incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -227,6 +267,32 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 			AND g.deleted_at IS NULL
 	`
 	res, err := tx.ExecContext(ctx, updateSQL, costUSD, subscriptionID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected > 0 {
+		return nil
+	}
+	return service.ErrSubscriptionNotFound
+}
+
+// Deferred Grok billing targets the subscription frozen at submission time.
+// Its lifecycle may have ended while the upstream video was still processing.
+func incrementDeferredUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID, userID int64, costUSD float64) error {
+	const updateSQL = `
+		UPDATE user_subscriptions
+		SET
+			daily_usage_usd = daily_usage_usd + $1,
+			weekly_usage_usd = weekly_usage_usd + $1,
+			monthly_usage_usd = monthly_usage_usd + $1,
+			updated_at = NOW()
+		WHERE id = $2 AND user_id = $3
+	`
+	res, err := tx.ExecContext(ctx, updateSQL, costUSD, subscriptionID, userID)
 	if err != nil {
 		return err
 	}

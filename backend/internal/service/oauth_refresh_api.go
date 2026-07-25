@@ -225,14 +225,15 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 	if freshAccount.ID != account.ID {
 		return nil, fmt.Errorf("%w: account identity mismatch", errOAuthRefreshAccountRereadFailed)
 	}
-	if !freshAccount.IsActive() {
+	allowGrokLookup := freshAccount.Platform == PlatformGrok && isGrokOAuthLookupCredential(ctx)
+	if !freshAccount.IsActive() && !allowGrokLookup {
 		if requestPath {
 			return nil, fmt.Errorf("%w: account is not active", errOAuthRefreshAccountStateChanged)
 		}
 		return &OAuthRefreshResult{Account: freshAccount}, nil
 	}
 	if requestPath && freshAccount.Platform == PlatformGrok {
-		if eligibilityErr := grokOAuthRequestAccountEligibilityError(freshAccount); eligibilityErr != nil {
+		if eligibilityErr := grokOAuthRequestAccountEligibilityErrorForContext(ctx, freshAccount); eligibilityErr != nil {
 			return nil, withGrokCredentialFailureSnapshot(eligibilityErr, freshAccount)
 		}
 	}
@@ -267,7 +268,7 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 		if isInvalidGrantError(refreshErr) {
 			if recoveredAccount, recovered := api.tryRecoverFromRefreshRace(ctx, freshAccount); recovered {
 				if requestPath && recoveredAccount.Platform == PlatformGrok {
-					if eligibilityErr := grokOAuthRequestAccountEligibilityError(recoveredAccount); eligibilityErr != nil {
+					if eligibilityErr := grokOAuthRequestAccountEligibilityErrorForContext(ctx, recoveredAccount); eligibilityErr != nil {
 						return nil, withGrokCredentialFailureSnapshot(eligibilityErr, recoveredAccount)
 					}
 				}
@@ -360,7 +361,7 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 	}
 
 	if requestPath && freshAccount.Platform == PlatformGrok {
-		if eligibilityErr := grokOAuthRequestAccountEligibilityError(freshAccount); eligibilityErr != nil {
+		if eligibilityErr := grokOAuthRequestAccountEligibilityErrorForContext(ctx, freshAccount); eligibilityErr != nil {
 			return nil, withGrokCredentialFailureSnapshot(eligibilityErr, freshAccount)
 		}
 	}

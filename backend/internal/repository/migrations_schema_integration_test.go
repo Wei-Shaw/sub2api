@@ -114,6 +114,20 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "usage_billing_dedup_archive", "request_fingerprint", "character varying", 64, false)
 	requireIndex(t, tx, "usage_billing_dedup_archive", "usage_billing_dedup_archive_pkey")
 
+	// grok_video_settlements: durable async-video ownership and deferred billing snapshots
+	var grokVideoSettlementsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.grok_video_settlements')").Scan(&grokVideoSettlementsRegclass))
+	require.True(t, grokVideoSettlementsRegclass.Valid, "expected grok_video_settlements table to exist")
+	requireColumn(t, tx, "grok_video_settlements", "request_fingerprint", "character varying", 64, false)
+	requireColumn(t, tx, "grok_video_settlements", "status", "character varying", 16, false)
+	requireColumn(t, tx, "grok_video_settlements", "settled_at", "timestamp with time zone", 0, true)
+	requireColumn(t, tx, "grok_video_settlements", "pricing_snapshot_version", "integer", 0, false)
+	requireColumn(t, tx, "grok_video_settlements", "pricing_basis", "character varying", 24, false)
+	requireColumn(t, tx, "grok_video_settlements", "actual_cost", "numeric", 0, false)
+	requireColumn(t, tx, "grok_video_settlements", "account_rate_multiplier", "numeric", 0, false)
+	requireIndex(t, tx, "grok_video_settlements", "grok_video_settlements_request_api_key_uq")
+	requireIndex(t, tx, "grok_video_settlements", "grok_video_settlements_pending_idx")
+
 	// settings table should exist
 	var settingsRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.settings')").Scan(&settingsRegclass))
