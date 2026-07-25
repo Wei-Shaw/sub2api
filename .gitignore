@@ -120,6 +120,9 @@ tests
 !deploy/tests/**
 CLAUDE.md
 .claude
+# Agent orchestration state (local only, never commit)
+.omc/
+.superpowers/
 scripts
 !backend/scripts/
 !backend/scripts/resolve-version.sh
