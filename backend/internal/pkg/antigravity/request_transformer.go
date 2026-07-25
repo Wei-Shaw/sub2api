@@ -216,6 +216,7 @@ type modelInfo struct {
 // 注意：模型映射逻辑在网关层完成；这里仅用于按模型前缀判断是否注入身份提示词。
 var modelInfoMap = map[string]modelInfo{
 	"claude-fable-5":    {DisplayName: "Claude Fable 5", CanonicalID: "claude-fable-5"},
+	"claude-opus-5":     {DisplayName: "Claude Opus 5", CanonicalID: "claude-opus-5"},
 	"claude-opus-4-8":   {DisplayName: "Claude Opus 4.8", CanonicalID: "claude-opus-4-8"},
 	"claude-opus-4-7":   {DisplayName: "Claude Opus 4.7", CanonicalID: "claude-opus-4-7"},
 	"claude-opus-4-5":   {DisplayName: "Claude Opus 4.5", CanonicalID: "claude-opus-4-5-20250929"},
@@ -608,7 +609,8 @@ func isAntigravityOpusHighTierModel(model string) bool {
 	lower := strings.ToLower(model)
 	return strings.HasPrefix(lower, "claude-opus-4-6") ||
 		strings.HasPrefix(lower, "claude-opus-4-7") ||
-		strings.HasPrefix(lower, "claude-opus-4-8")
+		strings.HasPrefix(lower, "claude-opus-4-8") ||
+		strings.HasPrefix(lower, "claude-opus-5")
 }
 
 func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {

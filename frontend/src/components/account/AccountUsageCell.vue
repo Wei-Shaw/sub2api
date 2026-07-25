@@ -800,7 +800,7 @@ const antigravityClaudeUsageFromAPI = computed(() =>
     'claude-fable-5',
     'claude-sonnet-4-5', 'claude-opus-4-5-thinking',
     'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-opus-4-6-thinking',
-    'claude-opus-4-7', 'claude-opus-4-8',
+    'claude-opus-4-7', 'claude-opus-4-8', 'claude-opus-5',
   ])
 )
 

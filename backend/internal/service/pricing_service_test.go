@@ -601,3 +601,44 @@ func TestListModelNamesByProvider_EmptyCatalog(t *testing.T) {
 	require.NotNil(t, got)
 	require.Empty(t, got)
 }
+
+func TestDefaultPricingIncludesClaudeOpus5(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+
+	pricingSvc := &PricingService{}
+	pricingData, err := pricingSvc.parsePricingData(data)
+	require.NoError(t, err)
+	pricingSvc.pricingData = pricingData
+
+	got := pricingSvc.GetModelPricing("claude-opus-5")
+	require.NotNil(t, got)
+	require.InDelta(t, 5e-6, got.InputCostPerToken, 1e-12)
+	require.InDelta(t, 2.5e-5, got.OutputCostPerToken, 1e-12)
+	require.InDelta(t, 6.25e-6, got.CacheCreationInputTokenCost, 1e-12)
+	require.InDelta(t, 5e-7, got.CacheReadInputTokenCost, 1e-12)
+	require.Equal(t, "anthropic", got.LiteLLMProvider)
+}
+
+func TestGetModelPricing_ClaudeOpus5FamilyMatchOrder(t *testing.T) {
+	opus5 := &LiteLLMModelPricing{InputCostPerToken: 5e-6, OutputCostPerToken: 25e-6}
+	opus48 := &LiteLLMModelPricing{InputCostPerToken: 5e-6, OutputCostPerToken: 25e-6}
+	opus47 := &LiteLLMModelPricing{InputCostPerToken: 5e-6, OutputCostPerToken: 25e-6}
+	opus3 := &LiteLLMModelPricing{InputCostPerToken: 15e-6, OutputCostPerToken: 75e-6}
+
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"claude-opus-5":   opus5,
+			"claude-opus-4-8": opus48,
+			"claude-opus-4-7": opus47,
+			"claude-3-opus":   opus3,
+		},
+	}
+
+	// exact
+	require.Same(t, opus5, svc.GetModelPricing("claude-opus-5"))
+	// family match for unknown dated variant prefers opus-5 over older families
+	require.Same(t, opus5, svc.GetModelPricing("claude-opus-5-20260725"))
+	// more specific 4.8 must not fall through to generic opus-4 / 3-opus
+	require.Same(t, opus48, svc.GetModelPricing("claude-opus-4-8-preview"))
+}

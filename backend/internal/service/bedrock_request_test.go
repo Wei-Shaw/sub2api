@@ -527,6 +527,20 @@ func TestResolveBedrockModelID(t *testing.T) {
 		assert.Equal(t, "eu.anthropic.claude-opus-4-8-v1", modelID)
 	})
 
+	t.Run("default opus 5 mapping uses regional Bedrock model id", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeBedrock,
+			Credentials: map[string]any{
+				"aws_region": "eu-west-1",
+			},
+		}
+
+		modelID, ok := ResolveBedrockModelID(account, "claude-opus-5")
+		require.True(t, ok)
+		assert.Equal(t, "eu.anthropic.claude-opus-5", modelID)
+	})
+
 	t.Run("默认 Fable 5 映射使用官方 Bedrock 模型 ID", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformAnthropic,
@@ -748,7 +762,9 @@ func TestIsBedrockOpus47OrNewer(t *testing.T) {
 		{"us.anthropic.claude-opus-4-7-v1", true},
 		{"us.anthropic.claude-opus-4-6-v1", false},
 		{"us.anthropic.claude-opus-4-5-20251101-v1:0", false},
-		{"us.anthropic.claude-opus-5-0-v1", true},
+		{"us.anthropic.claude-opus-5", true},
+		{"claude-opus-5", true},
+		{"us.anthropic.claude-opus-5-0-v1", true}, // major.minor parse compat
 		// Sonnet 4.7 is not Opus → false
 		{"us.anthropic.claude-sonnet-4-7-v1", false},
 		{"us.anthropic.claude-sonnet-4-6", false},
@@ -938,6 +954,7 @@ func TestIsBedrockOpus47OrNewer_EdgeCases(t *testing.T) {
 		// Forward() passes parsed.Model (standard names), not Bedrock IDs
 		{"claude-opus-4-8", true},
 		{"claude-opus-4-7", true},
+		{"claude-opus-5", true},
 		{"claude-opus-4-6", false},
 		{"claude-sonnet-4-7", false},
 	}
