@@ -188,7 +188,6 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		costCopy := frozen.Cost
 		cost = &costCopy
 		multiplier = frozen.RateMultiplier
-		baseMultiplier = frozen.RateMultiplier
 		imageMultiplier = frozen.RateMultiplier
 		videoMultiplier = frozen.RateMultiplier
 	} else {

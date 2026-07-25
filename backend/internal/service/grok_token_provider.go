@@ -329,10 +329,6 @@ func (p *GrokTokenProvider) waitForRefreshedToken(ctx context.Context, account *
 	}
 }
 
-func grokOAuthRequestAccountEligibilityError(account *Account) error {
-	return grokOAuthRequestAccountEligibilityErrorForContext(context.Background(), account)
-}
-
 func grokOAuthRequestAccountEligibilityErrorForContext(ctx context.Context, account *Account) error {
 	if account == nil || !account.IsGrokOAuth() || (!isGrokOAuthLookupCredential(ctx) && !account.IsSchedulable()) {
 		return errOAuthRefreshAccountStateChanged
