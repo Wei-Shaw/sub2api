@@ -153,20 +153,20 @@ func (r *evaluationRouteEvidenceRepository) checkIdentityConflict(
 		FROM evaluation_route_evidence
 		WHERE route_trace_id = $1`, traceID)
 	if err != nil {
-		return fmt.Errorf("load route evidence identity: %w", err)
+		return fmt.Errorf("%w: load route evidence identity: %w", service.ErrRouteEvidenceIdentityConflict, err)
 	}
 	defer rows.Close()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
-			return fmt.Errorf("load route evidence identity: %w", err)
+			return fmt.Errorf("%w: load route evidence identity: %w", service.ErrRouteEvidenceIdentityConflict, err)
 		}
-		return fmt.Errorf("load route evidence identity: %w", sql.ErrNoRows)
+		return fmt.Errorf("%w: route evidence disappeared after guarded upsert: %w", service.ErrRouteEvidenceIdentityConflict, sql.ErrNoRows)
 	}
 	if err := rows.Scan(&existingRunID, &existingSampleID, &existingAPIKeyID); err != nil {
-		return fmt.Errorf("scan route evidence identity: %w", err)
+		return fmt.Errorf("%w: scan route evidence identity: %w", service.ErrRouteEvidenceIdentityConflict, err)
 	}
 	if existingRunID != runID || existingSampleID != sampleID || existingAPIKeyID != apiKeyID {
 		return fmt.Errorf("%w: route_trace_id %q", service.ErrRouteEvidenceIdentityConflict, traceID)
 	}
-	return nil
+	return fmt.Errorf("%w: guarded upsert affected no rows for matching identity %q", service.ErrRouteEvidenceIdentityConflict, traceID)
 }

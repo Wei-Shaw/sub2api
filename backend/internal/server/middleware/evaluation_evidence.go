@@ -14,6 +14,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const evaluationEvidencePersistenceTimeout = 5 * time.Second
+
 func EvaluationEvidencePersistenceFailureCount() uint64 {
 	return service.EvaluationEvidencePersistenceFailureCount()
 }
@@ -40,7 +42,9 @@ func EvaluationEvidence(repo service.EvaluationEvidenceRepository) gin.HandlerFu
 		snapshot := trace.Snapshot()
 		finishedAt := time.Now()
 		evidence := finalizeEvaluationRouteEvidence(c.Request.Context(), evaluation, snapshot, c.Writer.Status(), startedAt, finishedAt)
-		if err := repo.UpsertTransport(c.Request.Context(), evidence); err != nil {
+		persistenceCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), evaluationEvidencePersistenceTimeout)
+		defer cancel()
+		if err := repo.UpsertTransport(persistenceCtx, evidence); err != nil {
 			service.RecordEvaluationEvidencePersistenceFailure()
 			logger.FromContext(c.Request.Context()).Warn("evaluation route evidence persistence failed",
 				zap.String("route_trace_id", evaluation.RouteTraceID),

@@ -17,14 +17,20 @@ import (
 )
 
 type evaluationEvidenceRepoStub struct {
-	transport service.RouteEvidence
-	err       error
-	calls     int
+	transport  service.RouteEvidence
+	err        error
+	calls      int
+	ctxErr     error
+	hasExpiry  bool
+	evaluation service.EvaluationContext
 }
 
-func (s *evaluationEvidenceRepoStub) UpsertTransport(_ context.Context, evidence service.RouteEvidence) error {
+func (s *evaluationEvidenceRepoStub) UpsertTransport(ctx context.Context, evidence service.RouteEvidence) error {
 	s.calls++
 	s.transport = evidence
+	s.ctxErr = ctx.Err()
+	_, s.hasExpiry = ctx.Deadline()
+	s.evaluation, _ = service.EvaluationContextFromContext(ctx)
 	return s.err
 }
 
@@ -152,3 +158,40 @@ func TestEvaluationEvidencePersistenceFailureDoesNotChangeResponse(t *testing.T)
 	require.JSONEq(t, `{"ok":true}`, recorder.Body.String())
 	require.Equal(t, before+1, EvaluationEvidencePersistenceFailureCount())
 }
+
+func TestEvaluationEvidenceClientCancellationPersistsWithDetachedBoundedContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &evaluationEvidenceRepoStub{}
+	evaluation := service.EvaluationContext{
+		RunID: "018f4f20-3d12-7e50-9000-000000000001", SampleID: "018f4f20-3d12-7e50-9000-000000000002",
+		ExpectedModelAlias: "model", ExpectedRouteProfile: "route-v42", APIKeyID: 41, RouteTraceID: "trace-cancelled",
+	}
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		ctx := service.WithEvaluationContext(c.Request.Context(), evaluation)
+		ctx = service.WithRouteTrace(ctx, service.NewRouteTrace(evaluation, service.RouteTraceConfig{HashKey: []byte("test-route-hash-key")}))
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	})
+	router.Use(EvaluationEvidence(repo))
+	router.GET("/test", func(c *gin.Context) {
+		cancel, ok := c.Request.Context().Value(cancelEvaluationRequestContextKey{}).(context.CancelFunc)
+		require.True(t, ok)
+		cancel()
+		c.Status(499)
+	})
+
+	requestCtx, cancel := context.WithCancel(context.Background())
+	requestCtx = context.WithValue(requestCtx, cancelEvaluationRequestContextKey{}, context.CancelFunc(cancel))
+	request := httptest.NewRequest(http.MethodGet, "/test", nil).WithContext(requestCtx)
+	router.ServeHTTP(httptest.NewRecorder(), request)
+
+	require.Equal(t, 1, repo.calls)
+	require.NoError(t, repo.ctxErr, "persistence must be detached from client cancellation")
+	require.True(t, repo.hasExpiry, "detached persistence must remain bounded")
+	require.Equal(t, evaluation, repo.evaluation, "detachment must retain verified evaluation values")
+	require.Equal(t, "client_cancelled", repo.transport.TransportStatus)
+}
+
+type cancelEvaluationRequestContextKey struct{}

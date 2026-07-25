@@ -91,22 +91,45 @@ func TestEvaluationRouteEvidenceRepository_BillingThenTransportReplacesPlacehold
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestEvaluationRouteEvidenceRepository_RejectsImmutableIdentityConflict(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
+func TestEvaluationRouteEvidenceRepository_ZeroRowsAlwaysReturnsIdentityConflict(t *testing.T) {
+	tests := []struct {
+		name string
+		rows *sqlmock.Rows
+	}{
+		{
+			name: "matching row",
+			rows: sqlmock.NewRows([]string{"evaluation_run_id", "sample_id", "api_key_id"}).
+				AddRow(testRunID, testSampleID, int64(41)),
+		},
+		{
+			name: "conflicting row",
+			rows: sqlmock.NewRows([]string{"evaluation_run_id", "sample_id", "api_key_id"}).
+				AddRow("018f4f20-3d12-7e50-9000-000000000099", testSampleID, int64(41)),
+		},
+		{
+			name: "row disappeared",
+			rows: sqlmock.NewRows([]string{"evaluation_run_id", "sample_id", "api_key_id"}),
+		},
+	}
 
-	exec := &capturedEvidenceExec{db: db, rowsAffected: []int64{0}}
-	repo := &evaluationRouteEvidenceRepository{sql: exec}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
 
-	mock.ExpectQuery("SELECT evaluation_run_id::text, sample_id::text, api_key_id").
-		WithArgs(testRouteTraceID).
-		WillReturnRows(sqlmock.NewRows([]string{"evaluation_run_id", "sample_id", "api_key_id"}).
-			AddRow("018f4f20-3d12-7e50-9000-000000000099", testSampleID, int64(41)))
+			exec := &capturedEvidenceExec{db: db, rowsAffected: []int64{0}}
+			repo := &evaluationRouteEvidenceRepository{sql: exec}
 
-	err = repo.UpsertTransport(evaluationEvidenceContext(), completeTransportEvidence())
-	require.ErrorIs(t, err, service.ErrRouteEvidenceIdentityConflict)
-	require.NoError(t, mock.ExpectationsWereMet())
+			mock.ExpectQuery("SELECT evaluation_run_id::text, sample_id::text, api_key_id").
+				WithArgs(testRouteTraceID).
+				WillReturnRows(tt.rows)
+
+			err = repo.UpsertTransport(evaluationEvidenceContext(), completeTransportEvidence())
+			require.ErrorIs(t, err, service.ErrRouteEvidenceIdentityConflict)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
 
 func newCapturedEvaluationEvidenceRepository(t *testing.T) (*evaluationRouteEvidenceRepository, *capturedEvidenceExec, sqlmock.Sqlmock) {
