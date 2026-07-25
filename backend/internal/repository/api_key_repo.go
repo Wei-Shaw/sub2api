@@ -14,7 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	portapikey "github.com/Wei-Shaw/sub2api/internal/port/apikey"
 	"github.com/lib/pq"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -28,7 +28,7 @@ type apiKeyRepository struct {
 	sql    sqlExecutor
 }
 
-func NewAPIKeyRepository(client *dbent.Client, sqlDB *sql.DB) service.APIKeyRepository {
+func NewAPIKeyRepository(client *dbent.Client, sqlDB *sql.DB) portapikey.Repository {
 	return newAPIKeyRepositoryWithSQL(client, sqlDB)
 }
 
@@ -41,7 +41,7 @@ func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 	return r.client.APIKey.Query().Where(apikey.DeletedAtIsNil())
 }
 
-func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
+func (r *apiKeyRepository) Create(ctx context.Context, key *domain.APIKey) error {
 	builder := r.client.APIKey.Create().
 		SetUserID(key.UserID).
 		SetKey(key.Key).
@@ -70,10 +70,10 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		key.CreatedAt = created.CreatedAt
 		key.UpdatedAt = created.UpdatedAt
 	}
-	return translatePersistenceError(err, nil, service.ErrAPIKeyExists)
+	return translatePersistenceError(err, nil, domain.ErrAPIKeyExists)
 }
 
-func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIKey, error) {
+func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*domain.APIKey, error) {
 	m, err := r.activeQuery().
 		Where(apikey.IDEQ(id)).
 		WithUser().
@@ -81,11 +81,11 @@ func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIK
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return nil, service.ErrAPIKeyNotFound
+			return nil, domain.ErrAPIKeyNotFound
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	return apiKeyEntityToDomain(m), nil
 }
 
 // GetKeyAndOwnerID 根据 API Key ID 获取其 key 与所有者（用户）ID。
@@ -100,14 +100,14 @@ func (r *apiKeyRepository) GetKeyAndOwnerID(ctx context.Context, id int64) (stri
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return "", 0, service.ErrAPIKeyNotFound
+			return "", 0, domain.ErrAPIKeyNotFound
 		}
 		return "", 0, err
 	}
 	return m.Key, m.UserID, nil
 }
 
-func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
+func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*domain.APIKey, error) {
 	m, err := r.activeQuery().
 		Where(apikey.KeyEQ(key)).
 		WithUser(func(q *dbent.UserQuery) {
@@ -119,14 +119,14 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return nil, service.ErrAPIKeyNotFound
+			return nil, domain.ErrAPIKeyNotFound
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	return apiKeyEntityToDomain(m), nil
 }
 
-func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
+func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*domain.APIKey, error) {
 	m, err := r.activeQuery().
 		Where(apikey.KeyEQ(key)).
 		Select(
@@ -215,14 +215,14 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return nil, service.ErrAPIKeyNotFound
+			return nil, domain.ErrAPIKeyNotFound
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	return apiKeyEntityToDomain(m), nil
 }
 
-func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) error {
+func (r *apiKeyRepository) Update(ctx context.Context, key *domain.APIKey) error {
 	// 使用原子操作：将软删除检查与更新合并到同一语句，避免竞态条件。
 	// 之前的实现先检查 Exist 再 UpdateOneID，若在两步之间发生软删除，
 	// 则会更新已删除的记录。
@@ -291,7 +291,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 	}
 	if affected == 0 {
 		// 更新影响行数为 0，说明记录不存在或已被软删除。
-		return service.ErrAPIKeyNotFound
+		return domain.ErrAPIKeyNotFound
 	}
 
 	// 使用同一时间戳回填，避免并发删除导致二次查询失败。
@@ -310,7 +310,7 @@ func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 		Save(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return service.ErrAPIKeyNotFound
+			return domain.ErrAPIKeyNotFound
 		}
 		return err
 	}
@@ -324,7 +324,7 @@ func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 		if exists {
 			return nil
 		}
-		return service.ErrAPIKeyNotFound
+		return domain.ErrAPIKeyNotFound
 	}
 	return nil
 }
@@ -382,12 +382,12 @@ func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.
 		if exists {
 			return nil
 		}
-		return service.ErrAPIKeyNotFound
+		return domain.ErrAPIKeyNotFound
 	}
 	return nil
 }
 
-func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters service.APIKeyListFilters) *dbent.APIKeyQuery {
+func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters domain.APIKeyListFilters) *dbent.APIKeyQuery {
 	q := r.activeQuery().Where(apikey.UserIDEQ(userID))
 
 	if filters.Search != "" {
@@ -410,7 +410,7 @@ func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters service
 	return q
 }
 
-func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters domain.APIKeyListFilters) ([]domain.APIKey, *pagination.PaginationResult, error) {
 	q := r.apiKeyListByUserIDQuery(userID, filters)
 
 	total, err := q.Count(ctx)
@@ -431,9 +431,9 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 		return nil, nil, err
 	}
 
-	outKeys := make([]service.APIKey, 0, len(keys))
+	outKeys := make([]domain.APIKey, 0, len(keys))
 	for i := range keys {
-		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
+		outKeys = append(outKeys, *apiKeyEntityToDomain(keys[i]))
 	}
 	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
 		return nil, nil, err
@@ -442,7 +442,7 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
 }
 
-func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, filters service.APIKeyListFilters) ([]service.APIKey, error) {
+func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, filters domain.APIKeyListFilters) ([]domain.APIKey, error) {
 	keys, err := r.apiKeyListByUserIDQuery(userID, filters).
 		WithGroup().
 		Order(dbent.Asc(apikey.FieldID)).
@@ -451,9 +451,9 @@ func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, fi
 		return nil, err
 	}
 
-	outKeys := make([]service.APIKey, 0, len(keys))
+	outKeys := make([]domain.APIKey, 0, len(keys))
 	for i := range keys {
-		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
+		outKeys = append(outKeys, *apiKeyEntityToDomain(keys[i]))
 	}
 	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
 		return nil, err
@@ -461,7 +461,7 @@ func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, fi
 	return outKeys, nil
 }
 
-func (r *apiKeyRepository) attachLastUsedIPs(ctx context.Context, keys []service.APIKey) error {
+func (r *apiKeyRepository) attachLastUsedIPs(ctx context.Context, keys []domain.APIKey) error {
 	if len(keys) == 0 || r.sql == nil {
 		return nil
 	}
@@ -574,7 +574,7 @@ func (r *apiKeyRepository) ExistsByKey(ctx context.Context, key string) (bool, e
 	return count > 0, err
 }
 
-func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
+func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]domain.APIKey, *pagination.PaginationResult, error) {
 	q := r.activeQuery().Where(apikey.GroupIDEQ(groupID))
 
 	total, err := q.Count(ctx)
@@ -595,9 +595,9 @@ func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, par
 		return nil, nil, err
 	}
 
-	outKeys := make([]service.APIKey, 0, len(keys))
+	outKeys := make([]domain.APIKey, 0, len(keys))
 	for i := range keys {
-		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
+		outKeys = append(outKeys, *apiKeyEntityToDomain(keys[i]))
 	}
 
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
@@ -640,7 +640,7 @@ func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector
 }
 
 // SearchAPIKeys searches API keys by user ID and/or keyword (name)
-func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]service.APIKey, error) {
+func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]domain.APIKey, error) {
 	q := r.activeQuery()
 	if userID > 0 {
 		q = q.Where(apikey.UserIDEQ(userID))
@@ -655,9 +655,9 @@ func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyw
 		return nil, err
 	}
 
-	outKeys := make([]service.APIKey, 0, len(keys))
+	outKeys := make([]domain.APIKey, 0, len(keys))
 	for i := range keys {
-		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
+		outKeys = append(outKeys, *apiKeyEntityToDomain(keys[i]))
 	}
 	return outKeys, nil
 }
@@ -717,7 +717,7 @@ func (r *apiKeyRepository) IncrementQuotaUsed(ctx context.Context, id int64, amo
 		Save(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return 0, service.ErrAPIKeyNotFound
+			return 0, domain.ErrAPIKeyNotFound
 		}
 		return 0, err
 	}
@@ -726,7 +726,7 @@ func (r *apiKeyRepository) IncrementQuotaUsed(ctx context.Context, id int64, amo
 
 // IncrementQuotaUsedAndGetState atomically increments quota_used, conditionally marks the key
 // as quota_exhausted, and returns the latest quota state in one round trip.
-func (r *apiKeyRepository) IncrementQuotaUsedAndGetState(ctx context.Context, id int64, amount float64) (*service.APIKeyQuotaUsageState, error) {
+func (r *apiKeyRepository) IncrementQuotaUsedAndGetState(ctx context.Context, id int64, amount float64) (*domain.APIKeyQuotaUsageState, error) {
 	query := `
 		UPDATE api_keys
 		SET
@@ -740,10 +740,10 @@ func (r *apiKeyRepository) IncrementQuotaUsedAndGetState(ctx context.Context, id
 		RETURNING quota_used, quota, key, status
 	`
 
-	state := &service.APIKeyQuotaUsageState{}
-	if err := scanSingleRow(ctx, r.sql, query, []any{amount, service.StatusAPIKeyQuotaExhausted, id}, &state.QuotaUsed, &state.Quota, &state.Key, &state.Status); err != nil {
+	state := &domain.APIKeyQuotaUsageState{}
+	if err := scanSingleRow(ctx, r.sql, query, []any{amount, domain.StatusAPIKeyQuotaExhausted, id}, &state.QuotaUsed, &state.Quota, &state.Key, &state.Status); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, service.ErrAPIKeyNotFound
+			return nil, domain.ErrAPIKeyNotFound
 		}
 		return nil, err
 	}
@@ -760,7 +760,7 @@ func (r *apiKeyRepository) UpdateLastUsed(ctx context.Context, id int64, usedAt 
 		return err
 	}
 	if affected == 0 {
-		return service.ErrAPIKeyNotFound
+		return domain.ErrAPIKeyNotFound
 	}
 	return nil
 }
@@ -799,7 +799,7 @@ func (r *apiKeyRepository) ResetRateLimitWindows(ctx context.Context, id int64) 
 }
 
 // GetRateLimitData returns the current rate limit usage and window start times for an API key.
-func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (result *service.APIKeyRateLimitData, err error) {
+func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (result *domain.APIKeyRateLimitData, err error) {
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT usage_5h, usage_1d, usage_7d, window_5h_start, window_1d_start, window_7d_start
 		FROM api_keys
@@ -814,20 +814,20 @@ func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (resu
 		}
 	}()
 	if !rows.Next() {
-		return nil, service.ErrAPIKeyNotFound
+		return nil, domain.ErrAPIKeyNotFound
 	}
-	data := &service.APIKeyRateLimitData{}
+	data := &domain.APIKeyRateLimitData{}
 	if err := rows.Scan(&data.Usage5h, &data.Usage1d, &data.Usage7d, &data.Window5hStart, &data.Window1dStart, &data.Window7dStart); err != nil {
 		return nil, err
 	}
 	return data, rows.Err()
 }
 
-func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
+func apiKeyEntityToDomain(m *dbent.APIKey) *domain.APIKey {
 	if m == nil {
 		return nil
 	}
-	out := &service.APIKey{
+	out := &domain.APIKey{
 		ID:            m.ID,
 		UserID:        m.UserID,
 		Key:           m.Key,

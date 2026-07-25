@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -429,9 +430,9 @@ func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID 
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
 		RETURNING quota > 0 AND quota_used >= quota AND quota_used - $1 < quota
-	`, amount, apiKeyID, service.StatusAPIKeyActive, service.StatusAPIKeyQuotaExhausted).Scan(&exhausted)
+	`, amount, apiKeyID, domain.StatusAPIKeyActive, domain.StatusAPIKeyQuotaExhausted).Scan(&exhausted)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, service.ErrAPIKeyNotFound
+		return false, domain.ErrAPIKeyNotFound
 	}
 	if err != nil {
 		return false, err
@@ -459,7 +460,7 @@ func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, apiKe
 		return err
 	}
 	if affected == 0 {
-		return service.ErrAPIKeyNotFound
+		return domain.ErrAPIKeyNotFound
 	}
 	return nil
 }

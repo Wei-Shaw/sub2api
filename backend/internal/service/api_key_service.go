@@ -14,32 +14,33 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	portapikey "github.com/Wei-Shaw/sub2api/internal/port/apikey"
 	"github.com/dgraph-io/ristretto"
 	"golang.org/x/sync/singleflight"
 )
 
 var (
-	ErrAPIKeyNotFound       = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
-	ErrGroupNotAllowed      = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
-	ErrAPIKeyExists         = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
-	ErrAPIKeyTooShort       = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
-	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
-	ErrAPIKeyRateLimited    = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrAPIKeyAuthOverloaded = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
-	ErrInvalidIPPattern     = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
-	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
-	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
-	// ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key quota exhausted")
-	ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key 额度已用完")
+	// API-key domain errors re-exported for incremental migration.
+	ErrAPIKeyNotFound            = domain.ErrAPIKeyNotFound
+	ErrAPIKeyExists              = domain.ErrAPIKeyExists
+	ErrAPIKeyTooShort            = domain.ErrAPIKeyTooShort
+	ErrAPIKeyInvalidChars        = domain.ErrAPIKeyInvalidChars
+	ErrAPIKeyRateLimited         = domain.ErrAPIKeyRateLimited
+	ErrAPIKeyAuthOverloaded      = domain.ErrAPIKeyAuthOverloaded
+	ErrInvalidIPPattern          = domain.ErrInvalidIPPattern
+	ErrAPIKeyExpired             = domain.ErrAPIKeyExpired
+	ErrAPIKeyQuotaExhausted      = domain.ErrAPIKeyQuotaExhausted
+	ErrAPIKeyRateLimit5hExceeded = domain.ErrAPIKeyRateLimit5hExceeded
+	ErrAPIKeyRateLimit1dExceeded = domain.ErrAPIKeyRateLimit1dExceeded
+	ErrAPIKeyRateLimit7dExceeded = domain.ErrAPIKeyRateLimit7dExceeded
 
-	// Rate limit errors
-	ErrAPIKeyRateLimit5hExceeded = infraerrors.TooManyRequests("API_KEY_RATE_5H_EXCEEDED", "api key 5小时限额已用完")
-	ErrAPIKeyRateLimit1dExceeded = infraerrors.TooManyRequests("API_KEY_RATE_1D_EXCEEDED", "api key 日限额已用完")
-	ErrAPIKeyRateLimit7dExceeded = infraerrors.TooManyRequests("API_KEY_RATE_7D_EXCEEDED", "api key 7天限额已用完")
+	// ErrGroupNotAllowed stays in service (group-binding concern, not apikey aggregate).
+	ErrGroupNotAllowed = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
 )
 
 const (
@@ -53,89 +54,8 @@ const (
 	apiKeyLastUsedFailBackoff = 5 * time.Second
 )
 
-type APIKeyRepository interface {
-	Create(ctx context.Context, key *APIKey) error
-	GetByID(ctx context.Context, id int64) (*APIKey, error)
-	// GetKeyAndOwnerID 仅获取 API Key 的 key 与所有者 ID，用于删除等轻量场景
-	GetKeyAndOwnerID(ctx context.Context, id int64) (string, int64, error)
-	GetByKey(ctx context.Context, key string) (*APIKey, error)
-	// GetByKeyForAuth 认证专用查询，返回最小字段集
-	GetByKeyForAuth(ctx context.Context, key string) (*APIKey, error)
-	Update(ctx context.Context, key *APIKey) error
-	Delete(ctx context.Context, id int64) error
-	// DeleteWithAudit keeps the legacy interface name for rolling-upgrade compatibility.
-	// Implementations must tombstone the key and soft-delete it atomically without
-	// retaining the deleted credential material.
-	DeleteWithAudit(ctx context.Context, id int64) error
-
-	ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error)
-	VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error)
-	CountByUserID(ctx context.Context, userID int64) (int64, error)
-	ExistsByKey(ctx context.Context, key string) (bool, error)
-	ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error)
-	SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error)
-	ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error)
-	// UpdateGroupIDByUserAndGroup 将用户下绑定 oldGroupID 的所有 Key 迁移到 newGroupID
-	UpdateGroupIDByUserAndGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error)
-	CountByGroupID(ctx context.Context, groupID int64) (int64, error)
-	ListKeysByUserID(ctx context.Context, userID int64) ([]string, error)
-	ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error)
-
-	// Quota methods
-	IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error)
-	UpdateLastUsed(ctx context.Context, id int64, usedAt time.Time) error
-
-	// Rate limit methods
-	IncrementRateLimitUsage(ctx context.Context, id int64, cost float64) error
-	ResetRateLimitWindows(ctx context.Context, id int64) error
-	GetRateLimitData(ctx context.Context, id int64) (*APIKeyRateLimitData, error)
-}
-
 type apiKeyAllByUserIDLister interface {
 	ListAllByUserID(ctx context.Context, userID int64, filters APIKeyListFilters) ([]APIKey, error)
-}
-
-// APIKeyRateLimitData holds rate limit usage and window state for an API key.
-type APIKeyRateLimitData struct {
-	Usage5h       float64
-	Usage1d       float64
-	Usage7d       float64
-	Window5hStart *time.Time
-	Window1dStart *time.Time
-	Window7dStart *time.Time
-}
-
-// EffectiveUsage5h returns the 5h window usage, or 0 if the window has expired.
-func (d *APIKeyRateLimitData) EffectiveUsage5h() float64 {
-	if IsWindowExpired(d.Window5hStart, RateLimitWindow5h) {
-		return 0
-	}
-	return d.Usage5h
-}
-
-// EffectiveUsage1d returns the 1d window usage, or 0 if the window has expired.
-func (d *APIKeyRateLimitData) EffectiveUsage1d() float64 {
-	if IsWindowExpired(d.Window1dStart, RateLimitWindow1d) {
-		return 0
-	}
-	return d.Usage1d
-}
-
-// EffectiveUsage7d returns the 7d window usage, or 0 if the window has expired.
-func (d *APIKeyRateLimitData) EffectiveUsage7d() float64 {
-	if IsWindowExpired(d.Window7dStart, RateLimitWindow7d) {
-		return 0
-	}
-	return d.Usage7d
-}
-
-// APIKeyQuotaUsageState captures the latest quota fields after an atomic quota update.
-// It is intentionally small so repositories can return it from a single SQL statement.
-type APIKeyQuotaUsageState struct {
-	QuotaUsed float64
-	Quota     float64
-	Key       string
-	Status    string
 }
 
 // APIKeyCache defines cache operations for API key service
@@ -223,7 +143,7 @@ type RateLimitCacheInvalidator interface {
 }
 
 type APIKeyService struct {
-	apiKeyRepo                APIKeyRepository
+	apiKeyRepo                portapikey.Repository
 	userRepo                  UserRepository
 	groupRepo                 GroupRepository
 	userSubRepo               UserSubscriptionRepository
@@ -272,7 +192,7 @@ func (s *APIKeyService) AuthLookupMetrics() APIKeyAuthLookupMetrics {
 
 // NewAPIKeyService 创建API Key服务实例
 func NewAPIKeyService(
-	apiKeyRepo APIKeyRepository,
+	apiKeyRepo portapikey.Repository,
 	userRepo UserRepository,
 	groupRepo GroupRepository,
 	userSubRepo UserSubscriptionRepository,

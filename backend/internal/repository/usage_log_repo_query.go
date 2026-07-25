@@ -373,7 +373,7 @@ func (r *usageLogRepository) loadAPIKeys(ctx context.Context, ids []int64) (map[
 		return nil, err
 	}
 	for _, m := range models {
-		out[m.ID] = apiKeyEntityToService(m)
+		out[m.ID] = apiKeyEntityToDomain(m)
 	}
 	return out, nil
 }
