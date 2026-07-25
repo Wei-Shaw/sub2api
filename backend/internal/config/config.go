@@ -98,6 +98,16 @@ type Config struct {
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+	Radar                   RadarConfig                   `mapstructure:"radar"`
+}
+
+type RadarConfig struct {
+	Enabled              bool   `mapstructure:"enabled"`
+	SigningSecret        string `mapstructure:"signing_secret"`
+	HashingSecret        string `mapstructure:"hashing_secret"`
+	MaxContextTTLSeconds int    `mapstructure:"max_context_ttl_seconds"`
+	Region               string `mapstructure:"region"`
+	RouteProfileVersion  string `mapstructure:"route_profile_version"`
 }
 
 type LogConfig struct {
@@ -1758,6 +1768,10 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
 	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
+	cfg.Radar.SigningSecret = strings.TrimSpace(cfg.Radar.SigningSecret)
+	cfg.Radar.HashingSecret = strings.TrimSpace(cfg.Radar.HashingSecret)
+	cfg.Radar.Region = strings.TrimSpace(cfg.Radar.Region)
+	cfg.Radar.RouteProfileVersion = strings.TrimSpace(cfg.Radar.RouteProfileVersion)
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 		if err != nil {
@@ -1830,6 +1844,12 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 
 func setDefaults() {
 	viper.SetDefault("run_mode", RunModeStandard)
+	viper.SetDefault("radar.enabled", false)
+	viper.SetDefault("radar.signing_secret", "")
+	viper.SetDefault("radar.hashing_secret", "")
+	viper.SetDefault("radar.max_context_ttl_seconds", 900)
+	viper.SetDefault("radar.region", "")
+	viper.SetDefault("radar.route_profile_version", "")
 
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")
@@ -2507,6 +2527,23 @@ func (c *Config) Validate() error {
 	// 选择 bytes 而不是 rune 计数，确保二进制/随机串的长度语义更接近“熵”而非“字符数”。
 	if len([]byte(jwtSecret)) < 32 {
 		return fmt.Errorf("jwt.secret must be at least 32 bytes")
+	}
+	if c.Radar.MaxContextTTLSeconds <= 0 || c.Radar.MaxContextTTLSeconds > 900 {
+		return fmt.Errorf("radar.max_context_ttl_seconds must be between 1 and 900")
+	}
+	if c.Radar.Enabled {
+		if len([]byte(strings.TrimSpace(c.Radar.SigningSecret))) < 32 {
+			return fmt.Errorf("radar.signing_secret must be at least 32 bytes when radar.enabled=true")
+		}
+		if len([]byte(strings.TrimSpace(c.Radar.HashingSecret))) < 32 {
+			return fmt.Errorf("radar.hashing_secret must be at least 32 bytes when radar.enabled=true")
+		}
+		if strings.TrimSpace(c.Radar.Region) == "" {
+			return fmt.Errorf("radar.region is required when radar.enabled=true")
+		}
+		if strings.TrimSpace(c.Radar.RouteProfileVersion) == "" {
+			return fmt.Errorf("radar.route_profile_version is required when radar.enabled=true")
+		}
 	}
 	switch c.Log.Level {
 	case "debug", "info", "warn", "error":
