@@ -201,6 +201,18 @@ func (f ErrorPassthroughRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ErrorPassthroughRuleMutation", m)
 }
 
+// The EvaluationRouteEvidenceFunc type is an adapter to allow the use of ordinary
+// function as EvaluationRouteEvidence mutator.
+type EvaluationRouteEvidenceFunc func(context.Context, *ent.EvaluationRouteEvidenceMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EvaluationRouteEvidenceFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EvaluationRouteEvidenceMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EvaluationRouteEvidenceMutation", m)
+}
+
 // The GroupFunc type is an adapter to allow the use of ordinary
 // function as Group mutator.
 type GroupFunc func(context.Context, *ent.GroupMutation) (ent.Value, error)

@@ -18,6 +18,7 @@ var (
 		{Name: "key", Type: field.TypeString, Unique: true, Size: 128},
 		{Name: "name", Type: field.TypeString, Size: 100},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "is_evaluation", Type: field.TypeBool, Default: false},
 		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
 		{Name: "ip_whitelist", Type: field.TypeJSON, Nullable: true},
 		{Name: "ip_blacklist", Type: field.TypeJSON, Nullable: true},
@@ -44,13 +45,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "api_keys_groups_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[22]},
+				Columns:    []*schema.Column{APIKeysColumns[23]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "api_keys_users_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[23]},
+				Columns:    []*schema.Column{APIKeysColumns[24]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -59,12 +60,12 @@ var (
 			{
 				Name:    "apikey_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[23]},
+				Columns: []*schema.Column{APIKeysColumns[24]},
 			},
 			{
 				Name:    "apikey_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[22]},
+				Columns: []*schema.Column{APIKeysColumns[23]},
 			},
 			{
 				Name:    "apikey_status",
@@ -79,17 +80,17 @@ var (
 			{
 				Name:    "apikey_last_used_at",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[7]},
+				Columns: []*schema.Column{APIKeysColumns[8]},
 			},
 			{
 				Name:    "apikey_quota_quota_used",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[10], APIKeysColumns[11]},
+				Columns: []*schema.Column{APIKeysColumns[11], APIKeysColumns[12]},
 			},
 			{
 				Name:    "apikey_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[12]},
+				Columns: []*schema.Column{APIKeysColumns[13]},
 			},
 		},
 	}
@@ -889,6 +890,61 @@ var (
 				Name:    "errorpassthroughrule_priority",
 				Unique:  false,
 				Columns: []*schema.Column{ErrorPassthroughRulesColumns[5]},
+			},
+		},
+	}
+	// EvaluationRouteEvidenceColumns holds the columns for the "evaluation_route_evidence" table.
+	EvaluationRouteEvidenceColumns = []*schema.Column{
+		{Name: "route_trace_id", Type: field.TypeString, Size: 64},
+		{Name: "evaluation_run_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "uuid"}},
+		{Name: "sample_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "uuid"}},
+		{Name: "request_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "requested_model", Type: field.TypeString, Size: 200},
+		{Name: "resolved_model", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "route_profile_version", Type: field.TypeString, Size: 100},
+		{Name: "provider", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "channel_ref", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "account_pool_ref", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "region", Type: field.TypeString, Size: 64},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "fallback_chain", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "finish_reason", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "input_tokens", Type: field.TypeInt, Nullable: true},
+		{Name: "output_tokens", Type: field.TypeInt, Nullable: true},
+		{Name: "ttft_ms", Type: field.TypeInt, Nullable: true},
+		{Name: "latency_ms", Type: field.TypeInt, Nullable: true},
+		{Name: "billed_amount", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "transport_status", Type: field.TypeString, Size: 24, Default: "started"},
+		{Name: "error_code", Type: field.TypeString, Nullable: true, Size: 100},
+		{Name: "started_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "api_key_id", Type: field.TypeInt64},
+	}
+	// EvaluationRouteEvidenceTable holds the schema information for the "evaluation_route_evidence" table.
+	EvaluationRouteEvidenceTable = &schema.Table{
+		Name:       "evaluation_route_evidence",
+		Columns:    EvaluationRouteEvidenceColumns,
+		PrimaryKey: []*schema.Column{EvaluationRouteEvidenceColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "evaluation_route_evidence_api_keys_evaluation_route_evidence",
+				Columns:    []*schema.Column{EvaluationRouteEvidenceColumns[25]},
+				RefColumns: []*schema.Column{APIKeysColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "evaluationrouteevidence_evaluation_run_id_sample_id",
+				Unique:  false,
+				Columns: []*schema.Column{EvaluationRouteEvidenceColumns[1], EvaluationRouteEvidenceColumns[2]},
+			},
+			{
+				Name:    "evaluationrouteevidence_requested_model_finished_at",
+				Unique:  false,
+				Columns: []*schema.Column{EvaluationRouteEvidenceColumns[4], EvaluationRouteEvidenceColumns[22]},
 			},
 		},
 	}
@@ -2079,6 +2135,7 @@ var (
 		ChannelMonitorRequestTemplatesTable,
 		CompositeModelRoutesTable,
 		ErrorPassthroughRulesTable,
+		EvaluationRouteEvidenceTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
@@ -2167,6 +2224,10 @@ func init() {
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",
+	}
+	EvaluationRouteEvidenceTable.ForeignKeys[0].RefTable = APIKeysTable
+	EvaluationRouteEvidenceTable.Annotation = &entsql.Annotation{
+		Table: "evaluation_route_evidence",
 	}
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",

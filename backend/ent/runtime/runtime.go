@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
+	"github.com/Wei-Shaw/sub2api/ent/evaluationrouteevidence"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
@@ -113,36 +114,40 @@ func init() {
 	apikey.DefaultStatus = apikeyDescStatus.Default.(string)
 	// apikey.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	apikey.StatusValidator = apikeyDescStatus.Validators[0].(func(string) error)
+	// apikeyDescIsEvaluation is the schema descriptor for is_evaluation field.
+	apikeyDescIsEvaluation := apikeyFields[5].Descriptor()
+	// apikey.DefaultIsEvaluation holds the default value on creation for the is_evaluation field.
+	apikey.DefaultIsEvaluation = apikeyDescIsEvaluation.Default.(bool)
 	// apikeyDescQuota is the schema descriptor for quota field.
-	apikeyDescQuota := apikeyFields[8].Descriptor()
+	apikeyDescQuota := apikeyFields[9].Descriptor()
 	// apikey.DefaultQuota holds the default value on creation for the quota field.
 	apikey.DefaultQuota = apikeyDescQuota.Default.(float64)
 	// apikeyDescQuotaUsed is the schema descriptor for quota_used field.
-	apikeyDescQuotaUsed := apikeyFields[9].Descriptor()
+	apikeyDescQuotaUsed := apikeyFields[10].Descriptor()
 	// apikey.DefaultQuotaUsed holds the default value on creation for the quota_used field.
 	apikey.DefaultQuotaUsed = apikeyDescQuotaUsed.Default.(float64)
 	// apikeyDescRateLimit5h is the schema descriptor for rate_limit_5h field.
-	apikeyDescRateLimit5h := apikeyFields[11].Descriptor()
+	apikeyDescRateLimit5h := apikeyFields[12].Descriptor()
 	// apikey.DefaultRateLimit5h holds the default value on creation for the rate_limit_5h field.
 	apikey.DefaultRateLimit5h = apikeyDescRateLimit5h.Default.(float64)
 	// apikeyDescRateLimit1d is the schema descriptor for rate_limit_1d field.
-	apikeyDescRateLimit1d := apikeyFields[12].Descriptor()
+	apikeyDescRateLimit1d := apikeyFields[13].Descriptor()
 	// apikey.DefaultRateLimit1d holds the default value on creation for the rate_limit_1d field.
 	apikey.DefaultRateLimit1d = apikeyDescRateLimit1d.Default.(float64)
 	// apikeyDescRateLimit7d is the schema descriptor for rate_limit_7d field.
-	apikeyDescRateLimit7d := apikeyFields[13].Descriptor()
+	apikeyDescRateLimit7d := apikeyFields[14].Descriptor()
 	// apikey.DefaultRateLimit7d holds the default value on creation for the rate_limit_7d field.
 	apikey.DefaultRateLimit7d = apikeyDescRateLimit7d.Default.(float64)
 	// apikeyDescUsage5h is the schema descriptor for usage_5h field.
-	apikeyDescUsage5h := apikeyFields[14].Descriptor()
+	apikeyDescUsage5h := apikeyFields[15].Descriptor()
 	// apikey.DefaultUsage5h holds the default value on creation for the usage_5h field.
 	apikey.DefaultUsage5h = apikeyDescUsage5h.Default.(float64)
 	// apikeyDescUsage1d is the schema descriptor for usage_1d field.
-	apikeyDescUsage1d := apikeyFields[15].Descriptor()
+	apikeyDescUsage1d := apikeyFields[16].Descriptor()
 	// apikey.DefaultUsage1d holds the default value on creation for the usage_1d field.
 	apikey.DefaultUsage1d = apikeyDescUsage1d.Default.(float64)
 	// apikeyDescUsage7d is the schema descriptor for usage_7d field.
-	apikeyDescUsage7d := apikeyFields[16].Descriptor()
+	apikeyDescUsage7d := apikeyFields[17].Descriptor()
 	// apikey.DefaultUsage7d holds the default value on creation for the usage_7d field.
 	apikey.DefaultUsage7d = apikeyDescUsage7d.Default.(float64)
 	accountMixin := schema.Account{}.Mixin()
@@ -994,6 +999,90 @@ func init() {
 	errorpassthroughruleDescSkipMonitoring := errorpassthroughruleFields[11].Descriptor()
 	// errorpassthroughrule.DefaultSkipMonitoring holds the default value on creation for the skip_monitoring field.
 	errorpassthroughrule.DefaultSkipMonitoring = errorpassthroughruleDescSkipMonitoring.Default.(bool)
+	evaluationrouteevidenceFields := schema.EvaluationRouteEvidence{}.Fields()
+	_ = evaluationrouteevidenceFields
+	// evaluationrouteevidenceDescRequestID is the schema descriptor for request_id field.
+	evaluationrouteevidenceDescRequestID := evaluationrouteevidenceFields[4].Descriptor()
+	// evaluationrouteevidence.RequestIDValidator is a validator for the "request_id" field. It is called by the builders before save.
+	evaluationrouteevidence.RequestIDValidator = evaluationrouteevidenceDescRequestID.Validators[0].(func(string) error)
+	// evaluationrouteevidenceDescRequestedModel is the schema descriptor for requested_model field.
+	evaluationrouteevidenceDescRequestedModel := evaluationrouteevidenceFields[5].Descriptor()
+	// evaluationrouteevidence.RequestedModelValidator is a validator for the "requested_model" field. It is called by the builders before save.
+	evaluationrouteevidence.RequestedModelValidator = evaluationrouteevidenceDescRequestedModel.Validators[0].(func(string) error)
+	// evaluationrouteevidenceDescResolvedModel is the schema descriptor for resolved_model field.
+	evaluationrouteevidenceDescResolvedModel := evaluationrouteevidenceFields[6].Descriptor()
+	// evaluationrouteevidence.ResolvedModelValidator is a validator for the "resolved_model" field. It is called by the builders before save.
+	evaluationrouteevidence.ResolvedModelValidator = evaluationrouteevidenceDescResolvedModel.Validators[0].(func(string) error)
+	// evaluationrouteevidenceDescRouteProfileVersion is the schema descriptor for route_profile_version field.
+	evaluationrouteevidenceDescRouteProfileVersion := evaluationrouteevidenceFields[7].Descriptor()
+	// evaluationrouteevidence.RouteProfileVersionValidator is a validator for the "route_profile_version" field. It is called by the builders before save.
+	evaluationrouteevidence.RouteProfileVersionValidator = evaluationrouteevidenceDescRouteProfileVersion.Validators[0].(func(string) error)
+	// evaluationrouteevidenceDescProvider is the schema descriptor for provider field.
+	evaluationrouteevidenceDescProvider := evaluationrouteevidenceFields[8].Descriptor()
+	// evaluationrouteevidence.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	evaluationrouteevidence.ProviderValidator = evaluationrouteevidenceDescProvider.Validators[0].(func(string) error)
+	// evaluationrouteevidenceDescChannelRef is the schema descriptor for channel_ref field.
+	evaluationrouteevidenceDescChannelRef := evaluationrouteevidenceFields[9].Descriptor()
+	// evaluationrouteevidence.ChannelRefValidator is a validator for the "channel_ref" field. It is called by the builders before save.
+	evaluationrouteevidence.ChannelRefValidator = evaluationrouteevidenceDescChannelRef.Validators[0].(func(string) error)
+	// evaluationrouteevidenceDescAccountPoolRef is the schema descriptor for account_pool_ref field.
+	evaluationrouteevidenceDescAccountPoolRef := evaluationrouteevidenceFields[10].Descriptor()
+	// evaluationrouteevidence.AccountPoolRefValidator is a validator for the "account_pool_ref" field. It is called by the builders before save.
+	evaluationrouteevidence.AccountPoolRefValidator = evaluationrouteevidenceDescAccountPoolRef.Validators[0].(func(string) error)
+	// evaluationrouteevidenceDescRegion is the schema descriptor for region field.
+	evaluationrouteevidenceDescRegion := evaluationrouteevidenceFields[11].Descriptor()
+	// evaluationrouteevidence.RegionValidator is a validator for the "region" field. It is called by the builders before save.
+	evaluationrouteevidence.RegionValidator = evaluationrouteevidenceDescRegion.Validators[0].(func(string) error)
+	// evaluationrouteevidenceDescAttempts is the schema descriptor for attempts field.
+	evaluationrouteevidenceDescAttempts := evaluationrouteevidenceFields[12].Descriptor()
+	// evaluationrouteevidence.DefaultAttempts holds the default value on creation for the attempts field.
+	evaluationrouteevidence.DefaultAttempts = evaluationrouteevidenceDescAttempts.Default.(int)
+	// evaluationrouteevidence.AttemptsValidator is a validator for the "attempts" field. It is called by the builders before save.
+	evaluationrouteevidence.AttemptsValidator = evaluationrouteevidenceDescAttempts.Validators[0].(func(int) error)
+	// evaluationrouteevidenceDescFinishReason is the schema descriptor for finish_reason field.
+	evaluationrouteevidenceDescFinishReason := evaluationrouteevidenceFields[14].Descriptor()
+	// evaluationrouteevidence.FinishReasonValidator is a validator for the "finish_reason" field. It is called by the builders before save.
+	evaluationrouteevidence.FinishReasonValidator = evaluationrouteevidenceDescFinishReason.Validators[0].(func(string) error)
+	// evaluationrouteevidenceDescInputTokens is the schema descriptor for input_tokens field.
+	evaluationrouteevidenceDescInputTokens := evaluationrouteevidenceFields[15].Descriptor()
+	// evaluationrouteevidence.InputTokensValidator is a validator for the "input_tokens" field. It is called by the builders before save.
+	evaluationrouteevidence.InputTokensValidator = evaluationrouteevidenceDescInputTokens.Validators[0].(func(int) error)
+	// evaluationrouteevidenceDescOutputTokens is the schema descriptor for output_tokens field.
+	evaluationrouteevidenceDescOutputTokens := evaluationrouteevidenceFields[16].Descriptor()
+	// evaluationrouteevidence.OutputTokensValidator is a validator for the "output_tokens" field. It is called by the builders before save.
+	evaluationrouteevidence.OutputTokensValidator = evaluationrouteevidenceDescOutputTokens.Validators[0].(func(int) error)
+	// evaluationrouteevidenceDescTtftMs is the schema descriptor for ttft_ms field.
+	evaluationrouteevidenceDescTtftMs := evaluationrouteevidenceFields[17].Descriptor()
+	// evaluationrouteevidence.TtftMsValidator is a validator for the "ttft_ms" field. It is called by the builders before save.
+	evaluationrouteevidence.TtftMsValidator = evaluationrouteevidenceDescTtftMs.Validators[0].(func(int) error)
+	// evaluationrouteevidenceDescLatencyMs is the schema descriptor for latency_ms field.
+	evaluationrouteevidenceDescLatencyMs := evaluationrouteevidenceFields[18].Descriptor()
+	// evaluationrouteevidence.LatencyMsValidator is a validator for the "latency_ms" field. It is called by the builders before save.
+	evaluationrouteevidence.LatencyMsValidator = evaluationrouteevidenceDescLatencyMs.Validators[0].(func(int) error)
+	// evaluationrouteevidenceDescTransportStatus is the schema descriptor for transport_status field.
+	evaluationrouteevidenceDescTransportStatus := evaluationrouteevidenceFields[20].Descriptor()
+	// evaluationrouteevidence.DefaultTransportStatus holds the default value on creation for the transport_status field.
+	evaluationrouteevidence.DefaultTransportStatus = evaluationrouteevidenceDescTransportStatus.Default.(string)
+	// evaluationrouteevidence.TransportStatusValidator is a validator for the "transport_status" field. It is called by the builders before save.
+	evaluationrouteevidence.TransportStatusValidator = evaluationrouteevidenceDescTransportStatus.Validators[0].(func(string) error)
+	// evaluationrouteevidenceDescErrorCode is the schema descriptor for error_code field.
+	evaluationrouteevidenceDescErrorCode := evaluationrouteevidenceFields[21].Descriptor()
+	// evaluationrouteevidence.ErrorCodeValidator is a validator for the "error_code" field. It is called by the builders before save.
+	evaluationrouteevidence.ErrorCodeValidator = evaluationrouteevidenceDescErrorCode.Validators[0].(func(string) error)
+	// evaluationrouteevidenceDescCreatedAt is the schema descriptor for created_at field.
+	evaluationrouteevidenceDescCreatedAt := evaluationrouteevidenceFields[24].Descriptor()
+	// evaluationrouteevidence.DefaultCreatedAt holds the default value on creation for the created_at field.
+	evaluationrouteevidence.DefaultCreatedAt = evaluationrouteevidenceDescCreatedAt.Default.(func() time.Time)
+	// evaluationrouteevidenceDescUpdatedAt is the schema descriptor for updated_at field.
+	evaluationrouteevidenceDescUpdatedAt := evaluationrouteevidenceFields[25].Descriptor()
+	// evaluationrouteevidence.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	evaluationrouteevidence.DefaultUpdatedAt = evaluationrouteevidenceDescUpdatedAt.Default.(func() time.Time)
+	// evaluationrouteevidence.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	evaluationrouteevidence.UpdateDefaultUpdatedAt = evaluationrouteevidenceDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// evaluationrouteevidenceDescID is the schema descriptor for id field.
+	evaluationrouteevidenceDescID := evaluationrouteevidenceFields[0].Descriptor()
+	// evaluationrouteevidence.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	evaluationrouteevidence.IDValidator = evaluationrouteevidenceDescID.Validators[0].(func(string) error)
 	groupMixin := schema.Group{}.Mixin()
 	groupMixinHooks1 := groupMixin[1].Hooks()
 	group.Hooks[0] = groupMixinHooks1[0]

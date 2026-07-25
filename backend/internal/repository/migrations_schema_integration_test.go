@@ -60,6 +60,13 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// api_keys: key length should be 128
 	requireColumn(t, tx, "api_keys", "key", "character varying", 128, false)
+	requireColumn(t, tx, "api_keys", "is_evaluation", "boolean", 0, false)
+
+	// evaluation_route_evidence: immutable identity plus redacted routing and billing evidence
+	requireColumn(t, tx, "evaluation_route_evidence", "route_trace_id", "character varying", 64, false)
+	requireColumn(t, tx, "evaluation_route_evidence", "fallback_chain", "jsonb", 0, false)
+	requireColumn(t, tx, "evaluation_route_evidence", "billed_amount", "numeric", 0, true)
+	requireNumericColumn(t, tx, "evaluation_route_evidence", "billed_amount", 20, 8)
 
 	// redeem_codes: subscription fields
 	requireColumn(t, tx, "redeem_codes", "group_id", "bigint", 0, true)
@@ -352,4 +359,20 @@ WHERE table_schema = 'public'
 	} else {
 		require.Equal(t, "NO", row.Nullable, "nullable mismatch for %s.%s", table, column)
 	}
+}
+
+func requireNumericColumn(t *testing.T, tx *sql.Tx, table, column string, precision, scale int) {
+	t.Helper()
+
+	var actualPrecision, actualScale sql.NullInt64
+	err := tx.QueryRowContext(context.Background(), `
+SELECT numeric_precision, numeric_scale
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = $1
+  AND column_name = $2
+`, table, column).Scan(&actualPrecision, &actualScale)
+	require.NoError(t, err, "query numeric metadata for %s.%s", table, column)
+	require.Equal(t, int64(precision), actualPrecision.Int64, "numeric precision mismatch for %s.%s", table, column)
+	require.Equal(t, int64(scale), actualScale.Int64, "numeric scale mismatch for %s.%s", table, column)
 }

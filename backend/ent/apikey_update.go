@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/evaluationrouteevidence"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -130,6 +131,20 @@ func (_u *APIKeyUpdate) SetStatus(v string) *APIKeyUpdate {
 func (_u *APIKeyUpdate) SetNillableStatus(v *string) *APIKeyUpdate {
 	if v != nil {
 		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetIsEvaluation sets the "is_evaluation" field.
+func (_u *APIKeyUpdate) SetIsEvaluation(v bool) *APIKeyUpdate {
+	_u.mutation.SetIsEvaluation(v)
+	return _u
+}
+
+// SetNillableIsEvaluation sets the "is_evaluation" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableIsEvaluation(v *bool) *APIKeyUpdate {
+	if v != nil {
+		_u.SetIsEvaluation(*v)
 	}
 	return _u
 }
@@ -463,6 +478,21 @@ func (_u *APIKeyUpdate) AddUsageLogs(v ...*UsageLog) *APIKeyUpdate {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddEvaluationRouteEvidenceIDs adds the "evaluation_route_evidence" edge to the EvaluationRouteEvidence entity by IDs.
+func (_u *APIKeyUpdate) AddEvaluationRouteEvidenceIDs(ids ...string) *APIKeyUpdate {
+	_u.mutation.AddEvaluationRouteEvidenceIDs(ids...)
+	return _u
+}
+
+// AddEvaluationRouteEvidence adds the "evaluation_route_evidence" edges to the EvaluationRouteEvidence entity.
+func (_u *APIKeyUpdate) AddEvaluationRouteEvidence(v ...*EvaluationRouteEvidence) *APIKeyUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddEvaluationRouteEvidenceIDs(ids...)
+}
+
 // Mutation returns the APIKeyMutation object of the builder.
 func (_u *APIKeyUpdate) Mutation() *APIKeyMutation {
 	return _u.mutation
@@ -499,6 +529,27 @@ func (_u *APIKeyUpdate) RemoveUsageLogs(v ...*UsageLog) *APIKeyUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearEvaluationRouteEvidence clears all "evaluation_route_evidence" edges to the EvaluationRouteEvidence entity.
+func (_u *APIKeyUpdate) ClearEvaluationRouteEvidence() *APIKeyUpdate {
+	_u.mutation.ClearEvaluationRouteEvidence()
+	return _u
+}
+
+// RemoveEvaluationRouteEvidenceIDs removes the "evaluation_route_evidence" edge to EvaluationRouteEvidence entities by IDs.
+func (_u *APIKeyUpdate) RemoveEvaluationRouteEvidenceIDs(ids ...string) *APIKeyUpdate {
+	_u.mutation.RemoveEvaluationRouteEvidenceIDs(ids...)
+	return _u
+}
+
+// RemoveEvaluationRouteEvidence removes "evaluation_route_evidence" edges to EvaluationRouteEvidence entities.
+func (_u *APIKeyUpdate) RemoveEvaluationRouteEvidence(v ...*EvaluationRouteEvidence) *APIKeyUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveEvaluationRouteEvidenceIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -595,6 +646,9 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.IsEvaluation(); ok {
+		_spec.SetField(apikey.FieldIsEvaluation, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -799,6 +853,51 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.EvaluationRouteEvidenceCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.EvaluationRouteEvidenceTable,
+			Columns: []string{apikey.EvaluationRouteEvidenceColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(evaluationrouteevidence.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedEvaluationRouteEvidenceIDs(); len(nodes) > 0 && !_u.mutation.EvaluationRouteEvidenceCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.EvaluationRouteEvidenceTable,
+			Columns: []string{apikey.EvaluationRouteEvidenceColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(evaluationrouteevidence.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.EvaluationRouteEvidenceIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.EvaluationRouteEvidenceTable,
+			Columns: []string{apikey.EvaluationRouteEvidenceColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(evaluationrouteevidence.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{apikey.Label}
@@ -917,6 +1016,20 @@ func (_u *APIKeyUpdateOne) SetStatus(v string) *APIKeyUpdateOne {
 func (_u *APIKeyUpdateOne) SetNillableStatus(v *string) *APIKeyUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetIsEvaluation sets the "is_evaluation" field.
+func (_u *APIKeyUpdateOne) SetIsEvaluation(v bool) *APIKeyUpdateOne {
+	_u.mutation.SetIsEvaluation(v)
+	return _u
+}
+
+// SetNillableIsEvaluation sets the "is_evaluation" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableIsEvaluation(v *bool) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetIsEvaluation(*v)
 	}
 	return _u
 }
@@ -1250,6 +1363,21 @@ func (_u *APIKeyUpdateOne) AddUsageLogs(v ...*UsageLog) *APIKeyUpdateOne {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddEvaluationRouteEvidenceIDs adds the "evaluation_route_evidence" edge to the EvaluationRouteEvidence entity by IDs.
+func (_u *APIKeyUpdateOne) AddEvaluationRouteEvidenceIDs(ids ...string) *APIKeyUpdateOne {
+	_u.mutation.AddEvaluationRouteEvidenceIDs(ids...)
+	return _u
+}
+
+// AddEvaluationRouteEvidence adds the "evaluation_route_evidence" edges to the EvaluationRouteEvidence entity.
+func (_u *APIKeyUpdateOne) AddEvaluationRouteEvidence(v ...*EvaluationRouteEvidence) *APIKeyUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddEvaluationRouteEvidenceIDs(ids...)
+}
+
 // Mutation returns the APIKeyMutation object of the builder.
 func (_u *APIKeyUpdateOne) Mutation() *APIKeyMutation {
 	return _u.mutation
@@ -1286,6 +1414,27 @@ func (_u *APIKeyUpdateOne) RemoveUsageLogs(v ...*UsageLog) *APIKeyUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearEvaluationRouteEvidence clears all "evaluation_route_evidence" edges to the EvaluationRouteEvidence entity.
+func (_u *APIKeyUpdateOne) ClearEvaluationRouteEvidence() *APIKeyUpdateOne {
+	_u.mutation.ClearEvaluationRouteEvidence()
+	return _u
+}
+
+// RemoveEvaluationRouteEvidenceIDs removes the "evaluation_route_evidence" edge to EvaluationRouteEvidence entities by IDs.
+func (_u *APIKeyUpdateOne) RemoveEvaluationRouteEvidenceIDs(ids ...string) *APIKeyUpdateOne {
+	_u.mutation.RemoveEvaluationRouteEvidenceIDs(ids...)
+	return _u
+}
+
+// RemoveEvaluationRouteEvidence removes "evaluation_route_evidence" edges to EvaluationRouteEvidence entities.
+func (_u *APIKeyUpdateOne) RemoveEvaluationRouteEvidence(v ...*EvaluationRouteEvidence) *APIKeyUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveEvaluationRouteEvidenceIDs(ids...)
 }
 
 // Where appends a list predicates to the APIKeyUpdate builder.
@@ -1412,6 +1561,9 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.IsEvaluation(); ok {
+		_spec.SetField(apikey.FieldIsEvaluation, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -1609,6 +1761,51 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.EvaluationRouteEvidenceCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.EvaluationRouteEvidenceTable,
+			Columns: []string{apikey.EvaluationRouteEvidenceColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(evaluationrouteevidence.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedEvaluationRouteEvidenceIDs(); len(nodes) > 0 && !_u.mutation.EvaluationRouteEvidenceCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.EvaluationRouteEvidenceTable,
+			Columns: []string{apikey.EvaluationRouteEvidenceColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(evaluationrouteevidence.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.EvaluationRouteEvidenceIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.EvaluationRouteEvidenceTable,
+			Columns: []string{apikey.EvaluationRouteEvidenceColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(evaluationrouteevidence.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {
