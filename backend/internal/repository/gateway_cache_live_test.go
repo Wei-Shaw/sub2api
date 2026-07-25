@@ -14,8 +14,10 @@ import (
 func TestGatewayCacheLiveCallIdentityAndController(t *testing.T) {
 	redisServer := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()REDACTED)
-	cache := NewGatewayCache(client).(service.LiveCallStore)
-	otherInstance := NewGatewayCache(client).(service.LiveCallStore)
+	cache, ok := NewGatewayCache(client).(service.LiveCallStore)
+	require.True(t, ok)
+	otherInstance, ok := NewGatewayCache(client).(service.LiveCallStore)
+	require.True(t, ok)
 	record := &service.LiveCallRecord{
 		CallID:                "call_secret",
 		CallHash:              HashLiveCallID("call_secret"),

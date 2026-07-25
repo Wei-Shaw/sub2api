@@ -9,7 +9,11 @@ import (
 )
 
 func TestUnsupportedProviderReturnsExplicitPlatformError(t *testing.T) {
-	_, err := NewProvider().Generate(context.Background())
+	provider := NewProvider()
+	if err := provider.Check(context.Background()); !errors.Is(err, ErrUnsupportedPlatform) {
+		t.Fatalf("Check() error = %v, want ErrUnsupportedPlatform", err)
+REDACTED
+	_, err := provider.Generate(context.Background())
 	if !errors.Is(err, ErrUnsupportedPlatform) {
 		t.Fatalf("Generate() error = %v, want ErrUnsupportedPlatform", err)
 REDACTED

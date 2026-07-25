@@ -371,7 +371,7 @@ REDACTED
 			proxyResult <- err
 			return
 	REDACTED
-		defer downstream.CloseNow()
+		defer func() { _ = downstream.CloseNow() REDACTED()
 		proxyResult <- service.ProxyLiveSideband(request.Context(), record, downstream)
 REDACTED))
 	defer server.Close()
@@ -382,7 +382,7 @@ REDACTED))
 		nil,
 	)
 REDACTED
-	defer client.CloseNow()
+	defer func() { _ = client.CloseNow() REDACTED()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

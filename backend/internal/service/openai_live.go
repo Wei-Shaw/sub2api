@@ -511,7 +511,7 @@ REDACTED
 		go s.observeLiveCall(record.CallHash)
 		return err
 REDACTED
-	defer upstream.Close()
+	defer func() { _ = upstream.Close() REDACTED()
 	downstream.SetReadLimit(openAIWSMessageReadLimitBytes)
 
 	proxyCtx, cancel := context.WithCancel(ctx)

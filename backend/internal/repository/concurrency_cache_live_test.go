@@ -15,7 +15,8 @@ func TestLiveLeaseReplacesRegularSlotsAndCountsTowardLimits(t *testing.T) {
 	redisServer := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()REDACTED)
 	regular := NewConcurrencyCache(client, 15, 900)
-	live := regular.(service.LiveConcurrencyCache)
+	live, ok := regular.(service.LiveConcurrencyCache)
+	require.True(t, ok)
 	ctx := context.Background()
 
 	accountAcquired, err := regular.AcquireAccountSlot(ctx, 10, 1, "regular-account")
@@ -54,7 +55,8 @@ func TestLiveLeaseExpiresWithoutRefresh(t *testing.T) {
 	redisServer := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()REDACTED)
 	regular := NewConcurrencyCache(client, 15, 900)
-	live := regular.(service.LiveConcurrencyCache)
+	live, ok := regular.(service.LiveConcurrencyCache)
+	require.True(t, ok)
 	ctx := context.Background()
 
 	acquired, err := live.AcquireLiveLease(ctx, 10, 1, 20, 1, 30, "expired-live", false)
