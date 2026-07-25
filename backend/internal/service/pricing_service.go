@@ -695,16 +695,24 @@ REDACTED
 REDACTED
 
 func (s *PricingService) buildModelLookupCandidates(modelLower string) []string {
-	// Prefer canonical model name first (this also improves billing compatibility with "models/xxx").
-	candidates := []string{
-		normalizeModelNameForPricing(modelLower),
+	rawCandidates := []string{
 		modelLower,
-REDACTED
-	candidates = append(candidates,
 		strings.TrimPrefix(modelLower, "models/"),
 		lastSegment(modelLower),
 		lastSegment(strings.TrimPrefix(modelLower, "models/")),
-	)
+REDACTED
+	normalized := normalizeModelNameForPricing(modelLower)
+
+	// A tier-specific entry should take precedence when the pricing catalog gains
+	// one later. Today Antigravity's Gemini 3.6 Flash tiers share the base rate,
+	// so the normalized base remains the fallback after the exact aliases.
+	candidates := rawCandidates
+	if normalizeGeminiThinkingTierAlias(lastSegment(modelLower)) != lastSegment(modelLower) {
+		candidates = append(candidates, normalized)
+REDACTED else {
+		// Prefer canonical model names for all other aliases (including models/xxx).
+		candidates = append([]string{normalizedREDACTED, candidates...)
+REDACTED
 
 	seen := make(map[string]struct{REDACTED, len(candidates))
 	out := make([]string, 0, len(candidates))
@@ -751,6 +759,20 @@ REDACTED
 			return "gpt-5.6-sol"
 	REDACTED
 		return canonical
+REDACTED
+	return normalizeGeminiThinkingTierAlias(model)
+REDACTED
+
+// normalizeGeminiThinkingTierAlias maps Antigravity's Gemini 3.6 Flash
+// thinking-tier model IDs to the public base model. The tier controls reasoning
+// behavior, not the published token rate, so this keeps -high/-low/-medium and
+// -tiered requests on the same price card as gemini-3.6-flash.
+func normalizeGeminiThinkingTierAlias(model string) string {
+	const baseModel = "gemini-3.6-flash"
+	for _, tier := range []string{"-high", "-low", "-medium", "-tiered"REDACTED {
+		if model == baseModel+tier {
+			return baseModel
+	REDACTED
 REDACTED
 	return model
 REDACTED
