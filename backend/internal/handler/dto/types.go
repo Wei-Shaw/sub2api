@@ -96,10 +96,19 @@ type Group struct {
 	IsExclusive    bool    `json:"is_exclusive"`
 	Status         string  `json:"status"`
 
-	SubscriptionType string   `json:"subscription_type"`
-	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
+	SubscriptionType      string   `json:"subscription_type"`
+	DailyLimitUSD         *float64 `json:"daily_limit_usd"`
+	WeeklyLimitUSD        *float64 `json:"weekly_limit_usd"`
+	MonthlyLimitUSD       *float64 `json:"monthly_limit_usd"`
+	QuotaDailyResetMode   string   `json:"quota_daily_reset_mode"`
+	QuotaDailyResetHour   int      `json:"quota_daily_reset_hour"`
+	QuotaWeeklyResetMode  string   `json:"quota_weekly_reset_mode"`
+	QuotaWeeklyResetDay   int      `json:"quota_weekly_reset_day"`
+	QuotaWeeklyResetHour  int      `json:"quota_weekly_reset_hour"`
+	QuotaMonthlyResetMode string   `json:"quota_monthly_reset_mode"`
+	QuotaMonthlyResetDay  int      `json:"quota_monthly_reset_day"`
+	QuotaMonthlyResetHour int      `json:"quota_monthly_reset_hour"`
+	QuotaResetTimezone    string   `json:"quota_reset_timezone"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         bool    `json:"allow_image_generation"`

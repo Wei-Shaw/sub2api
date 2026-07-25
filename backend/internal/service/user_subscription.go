@@ -2,7 +2,12 @@ package service
 
 import "time"
 
-const subscriptionDayDuration = 24 * time.Hour
+const (
+	subscriptionDayDuration = 24 * time.Hour
+	dailyQuotaWindow        = 24 * time.Hour
+	weeklyQuotaWindow       = 7 * dailyQuotaWindow
+	monthlyQuotaWindow      = 30 * dailyQuotaWindow
+)
 
 type UserSubscription struct {
 	ID      int64
@@ -63,13 +68,6 @@ func (s *UserSubscription) IsWindowActivated() bool {
 	return s.DailyWindowStart != nil || s.WeeklyWindowStart != nil || s.MonthlyWindowStart != nil
 }
 
-func (s *UserSubscription) HasOneTimeDailyQuota() bool {
-	if s == nil || s.StartsAt.IsZero() || s.ExpiresAt.IsZero() {
-		return false
-	}
-	return !s.ExpiresAt.After(s.StartsAt.AddDate(0, 0, 1))
-}
-
 func (s *UserSubscription) NeedsDailyReset() bool {
 	return s.NeedsDailyResetAt(time.Now())
 }
@@ -78,51 +76,84 @@ func (s *UserSubscription) NeedsDailyResetAt(now time.Time) bool {
 	if s.DailyWindowStart == nil {
 		return false
 	}
-	if s.HasOneTimeDailyQuota() {
+	if !s.ExpiresAt.IsZero() && !now.Before(s.ExpiresAt) {
 		return false
 	}
-	return !now.Before(s.DailyWindowStart.Add(24 * time.Hour))
+	return s.CurrentDailyWindowStart(now).After(*s.DailyWindowStart)
 }
 
 func (s *UserSubscription) NeedsWeeklyReset() bool {
+	return s.NeedsWeeklyResetAt(time.Now())
+}
+
+func (s *UserSubscription) NeedsWeeklyResetAt(now time.Time) bool {
 	if s.WeeklyWindowStart == nil {
 		return false
 	}
-	return time.Since(*s.WeeklyWindowStart) >= 7*24*time.Hour
+	if !s.ExpiresAt.IsZero() && !now.Before(s.ExpiresAt) {
+		return false
+	}
+	return s.CurrentWeeklyWindowStart(now).After(*s.WeeklyWindowStart)
 }
 
 func (s *UserSubscription) NeedsMonthlyReset() bool {
+	return s.NeedsMonthlyResetAt(time.Now())
+}
+
+func (s *UserSubscription) NeedsMonthlyResetAt(now time.Time) bool {
 	if s.MonthlyWindowStart == nil {
 		return false
 	}
-	return time.Since(*s.MonthlyWindowStart) >= 30*24*time.Hour
+	if !s.ExpiresAt.IsZero() && !now.Before(s.ExpiresAt) {
+		return false
+	}
+	return s.CurrentMonthlyWindowStart(now).After(*s.MonthlyWindowStart)
 }
 
 func (s *UserSubscription) DailyResetTime() *time.Time {
-	if s.DailyWindowStart == nil {
-		return nil
-	}
-	if s.HasOneTimeDailyQuota() {
-		t := s.ExpiresAt
-		return &t
-	}
-	t := s.DailyWindowStart.Add(24 * time.Hour)
-	return &t
+	return s.windowResetTime(s.DailyWindowStart, dailyQuotaWindow)
 }
 
 func (s *UserSubscription) WeeklyResetTime() *time.Time {
-	if s.WeeklyWindowStart == nil {
-		return nil
-	}
-	t := s.WeeklyWindowStart.Add(7 * 24 * time.Hour)
-	return &t
+	return s.windowResetTime(s.WeeklyWindowStart, weeklyQuotaWindow)
 }
 
 func (s *UserSubscription) MonthlyResetTime() *time.Time {
-	if s.MonthlyWindowStart == nil {
+	return s.windowResetTime(s.MonthlyWindowStart, monthlyQuotaWindow)
+}
+
+func (s *UserSubscription) CurrentDailyWindowStart(now time.Time) time.Time {
+	return s.currentWindowStart(now, dailyQuotaWindow)
+}
+
+func (s *UserSubscription) CurrentWeeklyWindowStart(now time.Time) time.Time {
+	return s.currentWindowStart(now, weeklyQuotaWindow)
+}
+
+func (s *UserSubscription) CurrentMonthlyWindowStart(now time.Time) time.Time {
+	return s.currentWindowStart(now, monthlyQuotaWindow)
+}
+
+func (s *UserSubscription) currentWindowStart(now time.Time, window time.Duration) time.Time {
+	if s == nil || s.StartsAt.IsZero() || window <= 0 {
+		return startOfDay(now)
+	}
+	if now.Before(s.StartsAt) {
+		return s.StartsAt
+	}
+	elapsed := now.Sub(s.StartsAt)
+	periods := elapsed / window
+	return s.StartsAt.Add(periods * window)
+}
+
+func (s *UserSubscription) windowResetTime(windowStart *time.Time, window time.Duration) *time.Time {
+	if windowStart == nil {
 		return nil
 	}
-	t := s.MonthlyWindowStart.Add(30 * 24 * time.Hour)
+	t := windowStart.Add(window)
+	if !s.ExpiresAt.IsZero() && t.After(s.ExpiresAt) {
+		t = s.ExpiresAt
+	}
 	return &t
 }
 
