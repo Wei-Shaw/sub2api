@@ -300,7 +300,7 @@
             <input
               v-model.number="poolModeRetryCount"
               type="number"
-              min="0"
+              min="-1"
               :max="MAX_POOL_MODE_RETRY_COUNT"
               step="1"
               class="input"
@@ -1082,7 +1082,7 @@
             <input
               v-model.number="poolModeRetryCount"
               type="number"
-              min="0"
+              min="-1"
               :max="MAX_POOL_MODE_RETRY_COUNT"
               step="1"
               class="input"
@@ -3177,11 +3177,16 @@ const expiresAtInput = computed({
 })
 
 // Watchers
+const UNLIMITED_POOL_MODE_RETRY_COUNT = -1
 const normalizePoolModeRetryCount = (value: number) => {
   if (!Number.isFinite(value)) {
     return DEFAULT_POOL_MODE_RETRY_COUNT
   }
   const normalized = Math.trunc(value)
+  // -1 means unlimited same-account retries in pool mode.
+  if (normalized === UNLIMITED_POOL_MODE_RETRY_COUNT) {
+    return UNLIMITED_POOL_MODE_RETRY_COUNT
+  }
   if (normalized < 0) {
     return 0
   }
@@ -3503,7 +3508,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Load pool mode for bedrock
     poolModeEnabled.value = bedrockCreds.pool_mode === true
     const retryCount = bedrockCreds.pool_mode_retry_count
-    poolModeRetryCount.value = (typeof retryCount === 'number' && retryCount >= 0) ? retryCount : DEFAULT_POOL_MODE_RETRY_COUNT
+    poolModeRetryCount.value = (typeof retryCount === 'number' && (retryCount === UNLIMITED_POOL_MODE_RETRY_COUNT || retryCount >= 0)) ? retryCount : DEFAULT_POOL_MODE_RETRY_COUNT
     poolModeRetryStatusCodesInput.value = formatPoolModeRetryStatusCodes(bedrockCreds.pool_mode_retry_status_codes)
 
     // Load quota limits for bedrock

@@ -84,14 +84,15 @@ func (s *FailoverState) HandleFailoverError(
 	}
 
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
-	sameAccountRetry := failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < retryLimit
+	// retryLimit < 0（pool_mode_retry_count=-1）表示无限同账号重试。
+	sameAccountRetry := failoverErr.RetryableOnSameAccount && allowsSameAccountRetry(s.SameAccountRetryCount[accountID], retryLimit)
 	if needForceCacheBilling(s.hasBoundSession, failoverErr, sameAccountRetry) {
 		s.ForceCacheBilling = true
 	}
 
 	// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试。
-	// 重试次数上限 retryLimit 由调用方传入（账号级 pool_mode_retry_count 配置）。
-	if failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < retryLimit {
+	// 重试次数上限 retryLimit 由调用方传入（账号级 pool_mode_retry_count 配置；-1=无限）。
+	if sameAccountRetry {
 		s.SameAccountRetryCount[accountID]++
 		logger.FromContext(ctx).Warn("gateway.failover_same_account_retry",
 			zap.Int64("account_id", accountID),
@@ -172,6 +173,15 @@ func (s *FailoverState) HandleSelectionExhausted(ctx context.Context) FailoverAc
 		return FailoverContinue
 	}
 	return FailoverExhausted
+}
+
+// allowsSameAccountRetry 判断当前已用次数是否仍可在同账号上重试。
+// retryLimit < 0 表示无限重试（pool_mode_retry_count=-1）。
+func allowsSameAccountRetry(used, retryLimit int) bool {
+	if retryLimit < 0 {
+		return true
+	}
+	return used < retryLimit
 }
 
 // needForceCacheBilling 判断 failover 时是否需要强制缓存计费。
