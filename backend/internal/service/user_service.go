@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	portuser "github.com/Wei-Shaw/sub2api/internal/port/user"
 
 	"bytes"
 	"context"
@@ -32,13 +33,14 @@ import (
 
 var (
 	ErrUserNotFound             = domain.ErrUserNotFound
+	// ErrEmailExists is re-exported from auth_service.go (domain.ErrEmailExists).
 	ErrPasswordIncorrect        = infraerrors.BadRequest("PASSWORD_INCORRECT", "current password is incorrect")
 	ErrInsufficientPerms        = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
 	ErrNotifyCodeUserRateLimit  = infraerrors.TooManyRequests("NOTIFY_CODE_USER_RATE_LIMIT", "too many verification codes requested, please try again later")
 	ErrAvatarInvalid            = infraerrors.BadRequest("AVATAR_INVALID", "avatar must be a valid image data URL or http(s) URL")
 	ErrAvatarTooLarge           = infraerrors.BadRequest("AVATAR_TOO_LARGE", "avatar image must be 100KB or smaller")
 	ErrAvatarNotImage           = infraerrors.BadRequest("AVATAR_NOT_IMAGE", "avatar content must be an image")
-	ErrIdentityProviderInvalid  = infraerrors.BadRequest("IDENTITY_PROVIDER_INVALID", "identity provider is invalid")
+	ErrIdentityProviderInvalid  = domain.ErrIdentityProviderInvalid
 	ErrIdentityRedirectInvalid  = infraerrors.BadRequest("IDENTITY_REDIRECT_INVALID", "identity redirect path is invalid")
 	ErrIdentityUnbindLastMethod = infraerrors.Conflict(
 		"IDENTITY_UNBIND_LAST_METHOD",
@@ -65,84 +67,9 @@ var (
 	avatarQualitySteps = []int{88, 80, 72, 64, 56, 48, 40, 32}
 )
 
-// UserListFilters contains all filter options for listing users
-type UserListFilters struct {
-	Status    string // User status filter
-	Role      string // User role filter
-	Search    string // Search in email, username
-	GroupName string // Filter by allowed group name (fuzzy match)
-	// APIKeyGroupID filters users who own at least one non-soft-deleted API key
-	// bound to this group (api_keys.group_id). 0 = no filter. Covers all three
-	// group types since it matches the key's group directly, not allowed_groups.
-	APIKeyGroupID int64
-	Attributes    map[int64]string // Custom attribute filters: attributeID -> value
-	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
-	// For large datasets this can be expensive; admin list pages should enable it on demand.
-	// nil means not specified (default: load subscriptions for backward compatibility).
-	IncludeSubscriptions *bool
-	// IncludeDeleted 为 true 时绕过软删除过滤，返回含已删除（deleted_at 非空）的用户。
-	// 仅供 /admin/usage 的 SearchUsers 端点使用，其他列表调用方不要设置。
-	IncludeDeleted bool
-}
-
-type UserRepository interface {
-	Create(ctx context.Context, user *User) error
-	GetByID(ctx context.Context, id int64) (*User, error)
-	// GetByIDIncludeDeleted 绕过软删除过滤按 ID 取用户（含已删）。仅供管理员审计/usage 点击使用。
-	GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error)
-	GetByEmail(ctx context.Context, email string) (*User, error)
-	GetFirstAdmin(ctx context.Context) (*User, error)
-	Update(ctx context.Context, user *User) error
-	Delete(ctx context.Context, id int64) error
-	GetUserAvatar(ctx context.Context, userID int64) (*UserAvatar, error)
-	UpsertUserAvatar(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error)
-	DeleteUserAvatar(ctx context.Context, userID int64) error
-
-	List(ctx context.Context, params pagination.PaginationParams) ([]User, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UserListFilters) ([]User, *pagination.PaginationResult, error)
-	GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error)
-	GetLatestUsedAtByUserID(ctx context.Context, userID int64) (*time.Time, error)
-	UpdateUserLastActiveAt(ctx context.Context, userID int64, activeAt time.Time) error
-
-	UpdateBalance(ctx context.Context, id int64, amount float64) error
-	DeductBalance(ctx context.Context, id int64, amount float64) error
-	UpdateConcurrency(ctx context.Context, id int64, amount int) error
-	BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error)
-	BatchAddConcurrency(ctx context.Context, userIDs []int64, delta int) (int, error)
-	BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error)
-	ExistsByEmail(ctx context.Context, email string) (bool, error)
-	RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error)
-	// AddGroupToAllowedGroups 将指定分组增量添加到用户的 allowed_groups（幂等，冲突忽略）
-	AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error
-	// RemoveGroupFromUserAllowedGroups 移除单个用户的指定分组权限
-	RemoveGroupFromUserAllowedGroups(ctx context.Context, userID int64, groupID int64) error
-	ListUserAuthIdentities(ctx context.Context, userID int64) ([]UserAuthIdentityRecord, error)
-	UnbindUserAuthProvider(ctx context.Context, userID int64, provider string) error
-
-	// TOTP 双因素认证
-	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
-	EnableTotp(ctx context.Context, userID int64) error
-	DisableTotp(ctx context.Context, userID int64) error
-}
-
-// RedeemUserAdjustmentRepository provides the atomic, floor-at-zero updates
-// used by negative-value redeem codes. It is intentionally narrower than
-// UserRepository because normal usage billing is allowed to overdraw.
-type RedeemUserAdjustmentRepository interface {
-	ApplyRedeemBalanceAdjustment(ctx context.Context, id int64, delta float64) error
-	ApplyRedeemConcurrencyAdjustment(ctx context.Context, id int64, delta int) error
-}
-
-type UserAuthIdentityRecord struct {
-	ProviderType    string
-	ProviderKey     string
-	ProviderSubject string
-	VerifiedAt      *time.Time
-	Issuer          *string
-	Metadata        map[string]any
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-}
+// UserListFilters / UserRepository / RedeemUserAdjustmentRepository /
+// UserAuthIdentityRecord / UserAvatar / UpsertUserAvatarInput live in
+// domain + port/user and are re-exported from user.go.
 
 type UserIdentitySummary struct {
 	Provider      string     `json:"provider"`
@@ -196,23 +123,7 @@ type UpdateProfileRequest struct {
 	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold"`
 }
 
-type UserAvatar struct {
-	StorageProvider string
-	StorageKey      string
-	URL             string
-	ContentType     string
-	ByteSize        int
-	SHA256          string
-}
-
-type UpsertUserAvatarInput struct {
-	StorageProvider string
-	StorageKey      string
-	URL             string
-	ContentType     string
-	ByteSize        int
-	SHA256          string
-}
+// UserAvatar / UpsertUserAvatarInput live in domain and are re-exported from user.go.
 
 type userProfileIdentityTxRunner interface {
 	WithUserProfileIdentityTx(ctx context.Context, fn func(txCtx context.Context) error) error
@@ -226,7 +137,7 @@ type ChangePasswordRequest struct {
 
 // UserService 用户服务
 type UserService struct {
-	userRepo             UserRepository
+	userRepo             portuser.Repository
 	settingRepo          SettingRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	billingCache         BillingCache
@@ -235,7 +146,7 @@ type UserService struct {
 }
 
 // NewUserService 创建用户服务实例
-func NewUserService(userRepo UserRepository, settingRepo SettingRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCache BillingCache) *UserService {
+func NewUserService(userRepo portuser.Repository, settingRepo SettingRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCache BillingCache) *UserService {
 	return &UserService{
 		userRepo:             userRepo,
 		settingRepo:          settingRepo,

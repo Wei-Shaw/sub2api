@@ -66,6 +66,8 @@ const (
 	SubscriptionStatusActive    = "active"
 	SubscriptionStatusExpired   = "expired"
 	SubscriptionStatusSuspended = "suspended"
+	// SubscriptionStatusRevoked is the API display status for soft-deleted subscriptions.
+	SubscriptionStatusRevoked = "revoked"
 )
 
 // AntigravityGemini31ProAgentModel is the upstream route for Gemini 3.1 Pro High.

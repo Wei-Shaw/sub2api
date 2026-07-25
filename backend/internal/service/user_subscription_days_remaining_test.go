@@ -31,7 +31,7 @@ func TestUserSubscriptionDaysRemainingAt(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sub := &UserSubscription{ExpiresAt: tt.expiresAt}
-			require.Equal(t, tt.want, sub.daysRemainingAt(now))
+			require.Equal(t, tt.want, sub.DaysRemainingAt(now))
 		})
 	}
 }

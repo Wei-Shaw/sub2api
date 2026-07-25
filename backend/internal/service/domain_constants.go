@@ -109,20 +109,16 @@ const (
 	SubscriptionStatusExpired   = domain.SubscriptionStatusExpired
 	SubscriptionStatusSuspended = domain.SubscriptionStatusSuspended
 	// SubscriptionStatusRevoked 是 soft-deleted 订阅的 API 展示态，不写入 status 字段。
-	SubscriptionStatusRevoked = "revoked"
+	SubscriptionStatusRevoked = domain.SubscriptionStatusRevoked
 )
 
-// LinuxDoConnectSyntheticEmailDomain 是 LinuxDo Connect 用户的合成邮箱后缀（RFC 保留域名）。
-const LinuxDoConnectSyntheticEmailDomain = "@linuxdo-connect.invalid"
-
-// OIDCConnectSyntheticEmailDomain 是 OIDC 用户的合成邮箱后缀（RFC 保留域名）。
-const OIDCConnectSyntheticEmailDomain = "@oidc-connect.invalid"
-
-// WeChatConnectSyntheticEmailDomain 是 WeChat Connect 用户的合成邮箱后缀（RFC 保留域名）。
-const WeChatConnectSyntheticEmailDomain = "@wechat-connect.invalid"
-
-// DingTalkConnectSyntheticEmailDomain 是 DingTalk Connect 用户的合成邮箱后缀（RFC 保留域名）。
-const DingTalkConnectSyntheticEmailDomain = "@dingtalk-connect.invalid"
+// Synthetic email domains re-exported from domain.
+const (
+	LinuxDoConnectSyntheticEmailDomain  = domain.LinuxDoConnectSyntheticEmailDomain
+	OIDCConnectSyntheticEmailDomain     = domain.OIDCConnectSyntheticEmailDomain
+	WeChatConnectSyntheticEmailDomain   = domain.WeChatConnectSyntheticEmailDomain
+	DingTalkConnectSyntheticEmailDomain = domain.DingTalkConnectSyntheticEmailDomain
+)
 
 // Setting keys
 const (

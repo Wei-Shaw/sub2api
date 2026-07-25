@@ -19,8 +19,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
 	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 var (
@@ -332,7 +332,7 @@ func (r *userRepository) GetUserByChannelIdentity(ctx context.Context, key AuthI
 	}, nil
 }
 
-func (r *userRepository) ListUserAuthIdentities(ctx context.Context, userID int64) ([]service.UserAuthIdentityRecord, error) {
+func (r *userRepository) ListUserAuthIdentities(ctx context.Context, userID int64) ([]domain.UserAuthIdentityRecord, error) {
 	identities, err := clientFromContext(ctx, r.client).AuthIdentity.Query().
 		Where(authidentity.UserIDEQ(userID)).
 		All(ctx)
@@ -340,12 +340,12 @@ func (r *userRepository) ListUserAuthIdentities(ctx context.Context, userID int6
 		return nil, err
 	}
 
-	records := make([]service.UserAuthIdentityRecord, 0, len(identities))
+	records := make([]domain.UserAuthIdentityRecord, 0, len(identities))
 	for _, identity := range identities {
 		if identity == nil {
 			continue
 		}
-		records = append(records, service.UserAuthIdentityRecord{
+		records = append(records, domain.UserAuthIdentityRecord{
 			ProviderType:    strings.TrimSpace(identity.ProviderType),
 			ProviderKey:     strings.TrimSpace(identity.ProviderKey),
 			ProviderSubject: strings.TrimSpace(identity.ProviderSubject),
@@ -363,7 +363,7 @@ func (r *userRepository) ListUserAuthIdentities(ctx context.Context, userID int6
 func (r *userRepository) UnbindUserAuthProvider(ctx context.Context, userID int64, provider string) error {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if provider == "" || provider == "email" {
-		return service.ErrIdentityProviderInvalid
+		return domain.ErrIdentityProviderInvalid
 	}
 
 	return r.WithUserProfileIdentityTx(ctx, func(txCtx context.Context) error {
@@ -727,7 +727,7 @@ func (r *userRepository) UpdateUserLastActiveAt(ctx context.Context, userID int6
 	return err
 }
 
-func (r *userRepository) GetUserAvatar(ctx context.Context, userID int64) (*service.UserAvatar, error) {
+func (r *userRepository) GetUserAvatar(ctx context.Context, userID int64) (*domain.UserAvatar, error) {
 	exec, err := r.userProfileIdentitySQL(ctx)
 	if err != nil {
 		return nil, err
@@ -746,7 +746,7 @@ WHERE user_id = $1`, userID)
 		return nil, rows.Err()
 	}
 
-	var avatar service.UserAvatar
+	var avatar domain.UserAvatar
 	if err := rows.Scan(
 		&avatar.StorageProvider,
 		&avatar.StorageKey,
@@ -763,7 +763,7 @@ WHERE user_id = $1`, userID)
 	return &avatar, nil
 }
 
-func (r *userRepository) UpsertUserAvatar(ctx context.Context, userID int64, input service.UpsertUserAvatarInput) (*service.UserAvatar, error) {
+func (r *userRepository) UpsertUserAvatar(ctx context.Context, userID int64, input domain.UpsertUserAvatarInput) (*domain.UserAvatar, error) {
 	exec, err := r.userProfileIdentitySQL(ctx)
 	if err != nil {
 		return nil, err
@@ -792,7 +792,7 @@ ON CONFLICT (user_id) DO UPDATE SET
 		return nil, err
 	}
 
-	return &service.UserAvatar{
+	return &domain.UserAvatar{
 		StorageProvider: strings.TrimSpace(input.StorageProvider),
 		StorageKey:      strings.TrimSpace(input.StorageKey),
 		URL:             strings.TrimSpace(input.URL),

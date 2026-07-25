@@ -40,13 +40,7 @@ func UserFromService(u *service.User) *User {
 		return nil
 	}
 	out := UserFromServiceShallow(u)
-	if len(u.APIKeys) > 0 {
-		out.APIKeys = make([]APIKey, 0, len(u.APIKeys))
-		for i := range u.APIKeys {
-			k := u.APIKeys[i]
-			out.APIKeys = append(out.APIKeys, *APIKeyFromService(&k))
-		}
-	}
+	// API keys are loaded via dedicated endpoints; User aggregate no longer nests them.
 	if len(u.Subscriptions) > 0 {
 		out.Subscriptions = make([]UserSubscription, 0, len(u.Subscriptions))
 		for i := range u.Subscriptions {

@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -22,7 +23,7 @@ func NewUserSubscriptionRepository(client *dbent.Client) service.UserSubscriptio
 	return &userSubscriptionRepository{client: client}
 }
 
-func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.UserSubscription) error {
+func (r *userSubscriptionRepository) Create(ctx context.Context, sub *domain.UserSubscription) error {
 	if sub == nil {
 		return service.ErrSubscriptionNilInput
 	}
@@ -61,7 +62,7 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 	return translatePersistenceError(err, nil, service.ErrSubscriptionAlreadyExists)
 }
 
-func (r *userSubscriptionRepository) GetByID(ctx context.Context, id int64) (*service.UserSubscription, error) {
+func (r *userSubscriptionRepository) GetByID(ctx context.Context, id int64) (*domain.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	m, err := client.UserSubscription.Query().
 		Where(usersubscription.IDEQ(id)).
@@ -75,7 +76,7 @@ func (r *userSubscriptionRepository) GetByID(ctx context.Context, id int64) (*se
 	return userSubscriptionEntityToService(m), nil
 }
 
-func (r *userSubscriptionRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
+func (r *userSubscriptionRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*domain.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	queryCtx := mixins.SkipSoftDelete(ctx)
 	m, err := client.UserSubscription.Query().
@@ -90,7 +91,7 @@ func (r *userSubscriptionRepository) GetByIDIncludeDeleted(ctx context.Context, 
 	return userSubscriptionEntityToServicePreserveStatus(m), nil
 }
 
-func (r *userSubscriptionRepository) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+func (r *userSubscriptionRepository) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*domain.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	m, err := client.UserSubscription.Query().
 		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID)).
@@ -102,13 +103,13 @@ func (r *userSubscriptionRepository) GetByUserIDAndGroupID(ctx context.Context, 
 	return userSubscriptionEntityToService(m), nil
 }
 
-func (r *userSubscriptionRepository) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+func (r *userSubscriptionRepository) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*domain.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	m, err := client.UserSubscription.Query().
 		Where(
 			usersubscription.UserIDEQ(userID),
 			usersubscription.GroupIDEQ(groupID),
-			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.StatusEQ(domain.SubscriptionStatusActive),
 			usersubscription.ExpiresAtGT(time.Now()),
 		).
 		WithGroup().
@@ -119,7 +120,7 @@ func (r *userSubscriptionRepository) GetActiveByUserIDAndGroupID(ctx context.Con
 	return userSubscriptionEntityToService(m), nil
 }
 
-func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.UserSubscription) error {
+func (r *userSubscriptionRepository) Update(ctx context.Context, sub *domain.UserSubscription) error {
 	if sub == nil {
 		return service.ErrSubscriptionNilInput
 	}
@@ -156,7 +157,7 @@ func (r *userSubscriptionRepository) Delete(ctx context.Context, id int64) error
 	return err
 }
 
-func (r *userSubscriptionRepository) Restore(ctx context.Context, subscriptionID int64, restoredStatus string) (*service.UserSubscription, error) {
+func (r *userSubscriptionRepository) Restore(ctx context.Context, subscriptionID int64, restoredStatus string) (*domain.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	queryCtx := mixins.SkipSoftDelete(ctx)
 	_, err := client.UserSubscription.UpdateOneID(subscriptionID).
@@ -170,7 +171,7 @@ func (r *userSubscriptionRepository) Restore(ctx context.Context, subscriptionID
 	return r.GetByID(ctx, subscriptionID)
 }
 
-func (r *userSubscriptionRepository) ListByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
+func (r *userSubscriptionRepository) ListByUserID(ctx context.Context, userID int64) ([]domain.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	subs, err := client.UserSubscription.Query().
 		Where(usersubscription.UserIDEQ(userID)).
@@ -183,12 +184,12 @@ func (r *userSubscriptionRepository) ListByUserID(ctx context.Context, userID in
 	return userSubscriptionEntitiesToService(subs), nil
 }
 
-func (r *userSubscriptionRepository) ListActiveByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
+func (r *userSubscriptionRepository) ListActiveByUserID(ctx context.Context, userID int64) ([]domain.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	subs, err := client.UserSubscription.Query().
 		Where(
 			usersubscription.UserIDEQ(userID),
-			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.StatusEQ(domain.SubscriptionStatusActive),
 			usersubscription.ExpiresAtGT(time.Now()),
 		).
 		WithGroup().
@@ -200,7 +201,7 @@ func (r *userSubscriptionRepository) ListActiveByUserID(ctx context.Context, use
 	return userSubscriptionEntitiesToService(subs), nil
 }
 
-func (r *userSubscriptionRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.UserSubscription, *pagination.PaginationResult, error) {
+func (r *userSubscriptionRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]domain.UserSubscription, *pagination.PaginationResult, error) {
 	client := clientFromContext(ctx, r.client)
 	q := client.UserSubscription.Query().Where(usersubscription.GroupIDEQ(groupID))
 
@@ -223,10 +224,10 @@ func (r *userSubscriptionRepository) ListByGroupID(ctx context.Context, groupID 
 	return userSubscriptionEntitiesToService(subs), paginationResultFromTotal(int64(total), params), nil
 }
 
-func (r *userSubscriptionRepository) List(ctx context.Context, params pagination.PaginationParams, userID, groupID *int64, status, platform, sortBy, sortOrder string) ([]service.UserSubscription, *pagination.PaginationResult, error) {
+func (r *userSubscriptionRepository) List(ctx context.Context, params pagination.PaginationParams, userID, groupID *int64, status, platform, sortBy, sortOrder string) ([]domain.UserSubscription, *pagination.PaginationResult, error) {
 	client := clientFromContext(ctx, r.client)
 	q := client.UserSubscription.Query()
-	includeSoftDeleted := status == "" || status == service.SubscriptionStatusRevoked
+	includeSoftDeleted := status == "" || status == domain.SubscriptionStatusRevoked
 	if userID != nil {
 		q = q.Where(usersubscription.UserIDEQ(*userID))
 	}
@@ -244,24 +245,24 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 	// Status filtering with real-time expiration check
 	now := time.Now()
 	switch status {
-	case service.SubscriptionStatusActive:
+	case domain.SubscriptionStatusActive:
 		// Active: status is active AND not yet expired
 		q = q.Where(
-			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.StatusEQ(domain.SubscriptionStatusActive),
 			usersubscription.ExpiresAtGT(now),
 		)
-	case service.SubscriptionStatusExpired:
+	case domain.SubscriptionStatusExpired:
 		// Expired: status is expired OR (status is active but already expired)
 		q = q.Where(
 			usersubscription.Or(
-				usersubscription.StatusEQ(service.SubscriptionStatusExpired),
+				usersubscription.StatusEQ(domain.SubscriptionStatusExpired),
 				usersubscription.And(
-					usersubscription.StatusEQ(service.SubscriptionStatusActive),
+					usersubscription.StatusEQ(domain.SubscriptionStatusActive),
 					usersubscription.ExpiresAtLTE(now),
 				),
 			),
 		)
-	case service.SubscriptionStatusRevoked:
+	case domain.SubscriptionStatusRevoked:
 		// Revoked is a DTO/API display state backed by user_subscriptions.deleted_at.
 		q = q.Where(usersubscription.DeletedAtNotNil())
 	case "":
@@ -488,21 +489,21 @@ func (r *userSubscriptionRepository) BatchUpdateExpiredStatus(ctx context.Contex
 	client := clientFromContext(ctx, r.client)
 	n, err := client.UserSubscription.Update().
 		Where(
-			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.StatusEQ(domain.SubscriptionStatusActive),
 			usersubscription.ExpiresAtLTE(time.Now()),
 		).
-		SetStatus(service.SubscriptionStatusExpired).
+		SetStatus(domain.SubscriptionStatusExpired).
 		Save(ctx)
 	return int64(n), err
 }
 
 // Extra repository helpers (currently used only by integration tests).
 
-func (r *userSubscriptionRepository) ListExpired(ctx context.Context) ([]service.UserSubscription, error) {
+func (r *userSubscriptionRepository) ListExpired(ctx context.Context) ([]domain.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	subs, err := client.UserSubscription.Query().
 		Where(
-			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.StatusEQ(domain.SubscriptionStatusActive),
 			usersubscription.ExpiresAtLTE(time.Now()),
 		).
 		All(ctx)
@@ -523,7 +524,7 @@ func (r *userSubscriptionRepository) CountActiveByGroupID(ctx context.Context, g
 	count, err := client.UserSubscription.Query().
 		Where(
 			usersubscription.GroupIDEQ(groupID),
-			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.StatusEQ(domain.SubscriptionStatusActive),
 			usersubscription.ExpiresAtGT(time.Now()),
 		).
 		Count(ctx)
@@ -536,7 +537,7 @@ func (r *userSubscriptionRepository) DeleteByGroupID(ctx context.Context, groupI
 	return int64(n), err
 }
 
-func (r *userSubscriptionRepository) attachUserSubscriptionRelations(ctx context.Context, subs []service.UserSubscription) error {
+func (r *userSubscriptionRepository) attachUserSubscriptionRelations(ctx context.Context, subs []domain.UserSubscription) error {
 	if len(subs) == 0 {
 		return nil
 	}
@@ -557,7 +558,7 @@ func (r *userSubscriptionRepository) attachUserSubscriptionRelations(ctx context
 	if err != nil {
 		return err
 	}
-	userByID := make(map[int64]*service.User, len(users))
+	userByID := make(map[int64]*domain.User, len(users))
 	for _, u := range users {
 		userByID[u.ID] = userEntityToService(u)
 	}
@@ -566,18 +567,18 @@ func (r *userSubscriptionRepository) attachUserSubscriptionRelations(ctx context
 	if err != nil {
 		return err
 	}
-	groupByID := make(map[int64]*service.Group, len(groups))
+	groupByID := make(map[int64]*domain.Group, len(groups))
 	for _, g := range groups {
 		groupByID[g.ID] = groupEntityToService(g)
 	}
 
-	assignedByID := map[int64]*service.User{}
+	assignedByID := map[int64]*domain.User{}
 	if len(assignedByIDs) > 0 {
 		assignedUsers, err := client.User.Query().Where(user.IDIn(uniqueInt64s(assignedByIDs)...)).All(ctx)
 		if err != nil {
 			return err
 		}
-		assignedByID = make(map[int64]*service.User, len(assignedUsers))
+		assignedByID = make(map[int64]*domain.User, len(assignedUsers))
 		for _, u := range assignedUsers {
 			assignedByID[u.ID] = userEntityToService(u)
 		}
@@ -606,23 +607,23 @@ func uniqueInt64s(values []int64) []int64 {
 	return out
 }
 
-func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSubscription {
+func userSubscriptionEntityToService(m *dbent.UserSubscription) *domain.UserSubscription {
 	return userSubscriptionEntityToServiceWithStatusMapping(m, true)
 }
 
-func userSubscriptionEntityToServicePreserveStatus(m *dbent.UserSubscription) *service.UserSubscription {
+func userSubscriptionEntityToServicePreserveStatus(m *dbent.UserSubscription) *domain.UserSubscription {
 	return userSubscriptionEntityToServiceWithStatusMapping(m, false)
 }
 
-func userSubscriptionEntityToServiceWithStatusMapping(m *dbent.UserSubscription, mapDeletedToRevoked bool) *service.UserSubscription {
+func userSubscriptionEntityToServiceWithStatusMapping(m *dbent.UserSubscription, mapDeletedToRevoked bool) *domain.UserSubscription {
 	if m == nil {
 		return nil
 	}
 	status := m.Status
 	if mapDeletedToRevoked && m.DeletedAt != nil {
-		status = service.SubscriptionStatusRevoked
+		status = domain.SubscriptionStatusRevoked
 	}
-	out := &service.UserSubscription{
+	out := &domain.UserSubscription{
 		ID:                 m.ID,
 		UserID:             m.UserID,
 		GroupID:            m.GroupID,
@@ -654,8 +655,8 @@ func userSubscriptionEntityToServiceWithStatusMapping(m *dbent.UserSubscription,
 	return out
 }
 
-func userSubscriptionEntitiesToService(models []*dbent.UserSubscription) []service.UserSubscription {
-	out := make([]service.UserSubscription, 0, len(models))
+func userSubscriptionEntitiesToService(models []*dbent.UserSubscription) []domain.UserSubscription {
+	out := make([]domain.UserSubscription, 0, len(models))
 	for i := range models {
 		if s := userSubscriptionEntityToService(models[i]); s != nil {
 			out = append(out, *s)
@@ -664,7 +665,7 @@ func userSubscriptionEntitiesToService(models []*dbent.UserSubscription) []servi
 	return out
 }
 
-func applyUserSubscriptionEntityToService(dst *service.UserSubscription, src *dbent.UserSubscription) {
+func applyUserSubscriptionEntityToService(dst *domain.UserSubscription, src *dbent.UserSubscription) {
 	if dst == nil || src == nil {
 		return
 	}

@@ -869,11 +869,11 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	return out
 }
 
-func userEntityToService(u *dbent.User) *service.User {
+func userEntityToService(u *dbent.User) *domain.User {
 	if u == nil {
 		return nil
 	}
-	out := &service.User{
+	out := &domain.User{
 		ID:                         u.ID,
 		Email:                      u.Email,
 		Username:                   u.Username,
@@ -901,7 +901,7 @@ func userEntityToService(u *dbent.User) *service.User {
 	}
 	// Parse extra emails JSON (supports both old []string and new []NotifyEmailEntry format)
 	if u.BalanceNotifyExtraEmails != "" && u.BalanceNotifyExtraEmails != "[]" {
-		out.BalanceNotifyExtraEmails = service.ParseNotifyEmails(u.BalanceNotifyExtraEmails)
+		out.BalanceNotifyExtraEmails = domain.ParseNotifyEmails(u.BalanceNotifyExtraEmails)
 	}
 	return out
 }
