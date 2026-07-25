@@ -63,12 +63,12 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import type { DashboardStats } from '@/types/payment'
+import type { PaymentDashboardStats } from '@/types/payment'
 
 const { t } = useI18n()
 
 defineProps<{
-  stats: DashboardStats
+  stats: PaymentDashboardStats
 }>()
 
 function formatMoney(value: number): string {

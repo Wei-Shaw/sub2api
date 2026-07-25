@@ -130,7 +130,7 @@ async function fetchErrorLogs() {
     rows.value = res.items || []
     total.value = res.total || 0
   } catch (err) {
-    console.error('[OpsErrorDetailsModal] Failed to fetch error logs', err)
+    console.error('[OpsErrorLogsModal] Failed to fetch error logs', err)
     rows.value = []
     total.value = 0
   } finally {

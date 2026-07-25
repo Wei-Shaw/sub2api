@@ -219,7 +219,7 @@ export interface CreateOrderResult {
   jsapi_payload?: WechatJSAPIPayload
 }
 
-export interface DashboardStats {
+export interface PaymentDashboardStats {
   today_amount: number
   total_amount: number
   today_count: number

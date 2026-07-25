@@ -1574,7 +1574,7 @@ export interface RedeemCodeRequest {
 
 // ==================== Dashboard & Statistics ====================
 
-export interface DashboardStats {
+export interface AdminDashboardStats {
   // 用户统计
   total_users: number
   today_new_users: number // 今日新增用户数

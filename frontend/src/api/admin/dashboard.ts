@@ -5,7 +5,7 @@
 
 import { apiClient } from '../client'
 import type {
-  DashboardStats,
+  AdminDashboardStats,
   TrendDataPoint,
   ModelStat,
   GroupStat,
@@ -20,8 +20,8 @@ import type {
  * Get dashboard statistics
  * @returns Dashboard statistics including users, keys, accounts, and token usage
  */
-export async function getStats(): Promise<DashboardStats> {
-  const { data } = await apiClient.get<DashboardStats>('/admin/dashboard/stats')
+export async function getStats(): Promise<AdminDashboardStats> {
+  const { data } = await apiClient.get<AdminDashboardStats>('/admin/dashboard/stats')
   return data
 }
 
@@ -132,7 +132,7 @@ export interface DashboardSnapshotV2Params extends TrendParams {
   users_trend_limit?: number
 }
 
-export interface DashboardSnapshotV2Stats extends DashboardStats {
+export interface DashboardSnapshotV2Stats extends AdminDashboardStats {
   uptime: number
 }
 

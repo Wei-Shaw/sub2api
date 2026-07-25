@@ -349,7 +349,7 @@ import { useAppStore } from '@/stores/app'
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
 import type {
-  DashboardStats,
+  AdminDashboardStats,
   TrendDataPoint,
   ModelStat,
   UserUsageTrendPoint,
@@ -390,7 +390,7 @@ ChartJS.register(
 const appStore = useAppStore()
 const router = useRouter()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
-const stats = ref<DashboardStats | null>(null)
+const stats = ref<AdminDashboardStats | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
 const userTrendLoading = ref(false)

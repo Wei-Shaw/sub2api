@@ -5,7 +5,7 @@
 
 import { apiClient } from '../client'
 import type {
-  DashboardStats,
+  PaymentDashboardStats,
   PaymentOrder,
   PaymentChannel,
   SubscriptionPlan,
@@ -78,7 +78,7 @@ export const adminPaymentAPI = {
 
   /** Get payment dashboard statistics */
   getDashboard(days?: number) {
-    return apiClient.get<DashboardStats>('/admin/payment/dashboard', {
+    return apiClient.get<PaymentDashboardStats>('/admin/payment/dashboard', {
       params: days ? { days } : undefined
     })
   },

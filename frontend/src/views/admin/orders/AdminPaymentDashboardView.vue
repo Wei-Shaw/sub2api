@@ -73,7 +73,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminPaymentAPI } from '@/api/admin/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
-import type { DashboardStats } from '@/types/payment'
+import type { PaymentDashboardStats } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -86,7 +86,7 @@ const appStore = useAppStore()
 const DAYS_OPTIONS = [7, 30, 90] as const
 const days = ref<number>(30)
 const loading = ref(false)
-const stats = ref<DashboardStats | null>(null)
+const stats = ref<PaymentDashboardStats | null>(null)
 
 function methodColor(type: string): string {
   const c: Record<string, string> = {

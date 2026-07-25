@@ -111,7 +111,7 @@
           <OpsAlertRulesCard />
         </BaseDialog>
 
-        <OpsErrorDetailsModal
+        <OpsErrorLogsModal
           :show="showErrorDetails"
           :time-range="timeRange"
           :platform="platform"
@@ -158,7 +158,7 @@ import OpsDashboardSkeleton from '@/components/admin/ops/OpsDashboardSkeleton.vu
 import OpsConcurrencyCard from '@/components/admin/ops/OpsConcurrencyCard.vue'
 import OpsErrorDetailModal from '@/components/admin/ops/OpsErrorDetailModal.vue'
 import OpsErrorDistributionChart from '@/components/admin/ops/OpsErrorDistributionChart.vue'
-import OpsErrorDetailsModal from '@/components/admin/ops/OpsErrorDetailsModal.vue'
+import OpsErrorLogsModal from '@/components/admin/ops/OpsErrorLogsModal.vue'
 import OpsErrorTrendChart from '@/components/admin/ops/OpsErrorTrendChart.vue'
 import OpsLatencyChart from '@/components/admin/ops/OpsLatencyChart.vue'
 import OpsThroughputTrendChart from '@/components/admin/ops/OpsThroughputTrendChart.vue'
