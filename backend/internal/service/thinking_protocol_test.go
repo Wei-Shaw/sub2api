@@ -22,6 +22,10 @@ REDACTED{
 		{"deepseek-r2-thinking", "deepseek-r2-thinking", ThinkingProtocolPassbackRequiredREDACTED,
 		{"kimi-coding", "kimi-coding-v2", ThinkingProtocolPassbackRequiredREDACTED,
 		{"kimi-k2-thinking", "kimi-k2-thinking", ThinkingProtocolPassbackRequiredREDACTED,
+		{"kimi-k3 platform", "kimi-k3", ThinkingProtocolPassbackRequiredREDACTED,
+		{"kimi-k3 anthropic 1m", "kimi-k3[1m]", ThinkingProtocolPassbackRequiredREDACTED,
+		{"kimi code bare k3", "k3", ThinkingProtocolPassbackRequiredREDACTED,
+		{"kimi code bare k3-256k", "k3-256k", ThinkingProtocolPassbackRequiredREDACTED,
 		{"moonshot-v1", "moonshot-v1-32k", ThinkingProtocolPassbackRequiredREDACTED,
 		{"glm-5.1", "glm-5.1", ThinkingProtocolPassbackRequiredREDACTED,
 		{"qwen-2 thinking variant", "qwen-2-72b-thinking", ThinkingProtocolPassbackRequiredREDACTED,
@@ -44,6 +48,8 @@ REDACTED{
 		{"qwen3 non-thinking", "qwen3-32b", ThinkingProtocolUnknownREDACTED,
 		{"qwen2 non-thinking", "qwen-2-72b", ThinkingProtocolUnknownREDACTED,
 		{"random vendor", "yi-large", ThinkingProtocolUnknownREDACTED,
+		// 相似但未知的 k3 型号：不得因含 k3 被宽泛匹配为 passback-required
+		{"k3-like unknown", "foo-k3-bar", ThinkingProtocolUnknownREDACTED,
 		// MiniMax 非 M 系列（如 abab、speech 等其他产品线）—— unknown
 		{"minimax abab non-M", "abab6.5-chat", ThinkingProtocolUnknownREDACTED,
 		// Doubao 走 OpenAI 协议，不属于本网关 Anthropic 路径——归 unknown
