@@ -2047,6 +2047,14 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	case isUpstreamModelNotFoundError(statusCode, responseBody):
 		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFoundReason
 	case isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody):
+		// Image models rejected by the Codex text endpoints are a deterministic
+		// endpoint mismatch, not an account capability gap: the same account still
+		// serves them over /v1/images/*. Cooling down the model here would take the
+		// whole pool offline for correct image requests, so fail the attempt over
+		// without recording a per-model cooldown.
+		if IsGPTImageGenerationModel(requestedModel) {
+			return true
+		}
 		cooldown, reason = upstreamCodexPlanGatedModelCooldown, upstreamCodexPlanGatedModelReason
 	default:
 		return false
