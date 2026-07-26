@@ -3632,6 +3632,16 @@ func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error 
 	if err != nil {
 		return err
 	}
+
+	// Gemini 账号的配额统计从 usage_logs 表实时聚合，需一并删除以使重置生效。
+	// 其他平台（Claude/OpenAI）使用 accounts.extra 字段计数，不依赖 usage_logs。
+	// 删除 usage_logs 会导致该账号历史用量记录清空，符合"重置配额"的语义。
+	_, err = r.sql.ExecContext(ctx, `DELETE FROM usage_logs WHERE account_id = $1`, id)
+	if err != nil {
+		// 即使删除失败也不中断重置流程，避免整体功能不可用
+		logger.LegacyPrintf("repository.account", "reset quota: failed to delete usage_logs for account=%d: %v", id, err)
+	}
+
 	// 重置配额后触发调度快照刷新，使账号重新参与调度
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota reset failed: account=%d err=%v", id, err)
