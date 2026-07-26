@@ -17,12 +17,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, image_input_tokens, image_input_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, video_count, video_resolution, video_duration_seconds, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, long_context_billing_applied, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
 
-func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *service.UsageLog, err error) {
+func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *domain.UsageLog, err error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE id = $1"
 	rows, err := r.sql.QueryContext(ctx, query, id)
 	if err != nil {
@@ -52,37 +51,37 @@ func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *servic
 	return log, nil
 }
 
-func (r *usageLogRepository) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]domain.UsageLog, *pagination.PaginationResult, error) {
 	return r.listUsageLogsWithPagination(ctx, "WHERE user_id = $1", []any{userID}, params)
 }
 
-func (r *usageLogRepository) ListByAPIKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByAPIKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]domain.UsageLog, *pagination.PaginationResult, error) {
 	return r.listUsageLogsWithPagination(ctx, "WHERE api_key_id = $1", []any{apiKeyID}, params)
 }
 
-func (r *usageLogRepository) ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]domain.UsageLog, *pagination.PaginationResult, error) {
 	return r.listUsageLogsWithPagination(ctx, "WHERE account_id = $1", []any{accountID}, params)
 }
 
-func (r *usageLogRepository) ListByUserAndTimeRange(ctx context.Context, userID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByUserAndTimeRange(ctx context.Context, userID int64, startTime, endTime time.Time) ([]domain.UsageLog, *pagination.PaginationResult, error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE user_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000"
 	logs, err := r.queryUsageLogs(ctx, query, userID, startTime, endTime)
 	return logs, nil, err
 }
 
-func (r *usageLogRepository) ListByAPIKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByAPIKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]domain.UsageLog, *pagination.PaginationResult, error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE api_key_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000"
 	logs, err := r.queryUsageLogs(ctx, query, apiKeyID, startTime, endTime)
 	return logs, nil, err
 }
 
-func (r *usageLogRepository) ListByAccountAndTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByAccountAndTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]domain.UsageLog, *pagination.PaginationResult, error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE account_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000"
 	logs, err := r.queryUsageLogs(ctx, query, accountID, startTime, endTime)
 	return logs, nil, err
 }
 
-func (r *usageLogRepository) ListByModelAndTimeRange(ctx context.Context, modelName string, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByModelAndTimeRange(ctx context.Context, modelName string, startTime, endTime time.Time) ([]domain.UsageLog, *pagination.PaginationResult, error) {
 	query := fmt.Sprintf("SELECT %s FROM usage_logs WHERE %s = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000", usageLogSelectColumns, rawUsageLogModelColumn)
 	logs, err := r.queryUsageLogs(ctx, query, modelName, startTime, endTime)
 	return logs, nil, err
@@ -97,7 +96,7 @@ func (r *usageLogRepository) Delete(ctx context.Context, id int64) error {
 type UsageLogFilters = usagestats.UsageLogFilters
 
 // ListWithFilters lists usage logs with optional filters (for admin)
-func (r *usageLogRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UsageLogFilters) ([]domain.UsageLog, *pagination.PaginationResult, error) {
 	conditions := make([]string, 0, 9)
 	args := make([]any, 0, 9)
 
@@ -135,7 +134,7 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 
 	whereClause := buildWhere(conditions)
 	var (
-		logs []service.UsageLog
+		logs []domain.UsageLog
 		page *pagination.PaginationResult
 		err  error
 	)
@@ -162,7 +161,7 @@ func shouldUseFastUsageLogTotal(filters UsageLogFilters) bool {
 	return filters.UserID == 0 && filters.APIKeyID == 0 && filters.AccountID == 0
 }
 
-func (r *usageLogRepository) listUsageLogsWithPagination(ctx context.Context, whereClause string, args []any, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) listUsageLogsWithPagination(ctx context.Context, whereClause string, args []any, params pagination.PaginationParams) ([]domain.UsageLog, *pagination.PaginationResult, error) {
 	countQuery := "SELECT COUNT(*) FROM usage_logs " + whereClause
 	var total int64
 	if err := scanSingleRow(ctx, r.sql, countQuery, args, &total); err != nil {
@@ -180,7 +179,7 @@ func (r *usageLogRepository) listUsageLogsWithPagination(ctx context.Context, wh
 	return logs, paginationResultFromTotal(total, params), nil
 }
 
-func (r *usageLogRepository) listUsageLogsWithFastPagination(ctx context.Context, whereClause string, args []any, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) listUsageLogsWithFastPagination(ctx context.Context, whereClause string, args []any, params pagination.PaginationParams) ([]domain.UsageLog, *pagination.PaginationResult, error) {
 	limit := params.Limit()
 	offset := params.Offset()
 
@@ -229,7 +228,7 @@ func usageLogOrderBy(params pagination.PaginationParams) string {
 	return fmt.Sprintf("%s %s, id %s", column, sortOrder, sortOrder)
 }
 
-func (r *usageLogRepository) queryUsageLogs(ctx context.Context, query string, args ...any) (logs []service.UsageLog, err error) {
+func (r *usageLogRepository) queryUsageLogs(ctx context.Context, query string, args ...any) (logs []domain.UsageLog, err error) {
 	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -243,9 +242,9 @@ func (r *usageLogRepository) queryUsageLogs(ctx context.Context, query string, a
 		}
 	}()
 
-	logs = make([]service.UsageLog, 0)
+	logs = make([]domain.UsageLog, 0)
 	for rows.Next() {
-		var log *service.UsageLog
+		var log *domain.UsageLog
 		log, err = scanUsageLog(rows)
 		if err != nil {
 			return nil, err
@@ -258,7 +257,7 @@ func (r *usageLogRepository) queryUsageLogs(ctx context.Context, query string, a
 	return logs, nil
 }
 
-func (r *usageLogRepository) hydrateUsageLogAssociations(ctx context.Context, logs []service.UsageLog) error {
+func (r *usageLogRepository) hydrateUsageLogAssociations(ctx context.Context, logs []domain.UsageLog) error {
 	// 关联数据使用 Ent 批量加载，避免把复杂 SQL 继续膨胀。
 	if len(logs) == 0 {
 		return nil
@@ -318,7 +317,7 @@ type usageLogIDs struct {
 	subscriptionIDs []int64
 }
 
-func collectUsageLogIDs(logs []service.UsageLog) usageLogIDs {
+func collectUsageLogIDs(logs []domain.UsageLog) usageLogIDs {
 	idSet := func() map[int64]struct{} { return make(map[int64]struct{}) }
 
 	userIDs := idSet()
@@ -348,8 +347,8 @@ func collectUsageLogIDs(logs []service.UsageLog) usageLogIDs {
 	}
 }
 
-func (r *usageLogRepository) loadUsers(ctx context.Context, ids []int64) (map[int64]*service.User, error) {
-	out := make(map[int64]*service.User)
+func (r *usageLogRepository) loadUsers(ctx context.Context, ids []int64) (map[int64]*domain.User, error) {
+	out := make(map[int64]*domain.User)
 	if len(ids) == 0 {
 		return out, nil
 	}
@@ -364,8 +363,8 @@ func (r *usageLogRepository) loadUsers(ctx context.Context, ids []int64) (map[in
 	return out, nil
 }
 
-func (r *usageLogRepository) loadAPIKeys(ctx context.Context, ids []int64) (map[int64]*service.APIKey, error) {
-	out := make(map[int64]*service.APIKey)
+func (r *usageLogRepository) loadAPIKeys(ctx context.Context, ids []int64) (map[int64]*domain.APIKey, error) {
+	out := make(map[int64]*domain.APIKey)
 	if len(ids) == 0 {
 		return out, nil
 	}
@@ -379,8 +378,8 @@ func (r *usageLogRepository) loadAPIKeys(ctx context.Context, ids []int64) (map[
 	return out, nil
 }
 
-func (r *usageLogRepository) loadAccounts(ctx context.Context, ids []int64) (map[int64]*service.Account, error) {
-	out := make(map[int64]*service.Account)
+func (r *usageLogRepository) loadAccounts(ctx context.Context, ids []int64) (map[int64]*domain.Account, error) {
+	out := make(map[int64]*domain.Account)
 	if len(ids) == 0 {
 		return out, nil
 	}
@@ -394,8 +393,8 @@ func (r *usageLogRepository) loadAccounts(ctx context.Context, ids []int64) (map
 	return out, nil
 }
 
-func (r *usageLogRepository) loadGroups(ctx context.Context, ids []int64) (map[int64]*service.Group, error) {
-	out := make(map[int64]*service.Group)
+func (r *usageLogRepository) loadGroups(ctx context.Context, ids []int64) (map[int64]*domain.Group, error) {
+	out := make(map[int64]*domain.Group)
 	if len(ids) == 0 {
 		return out, nil
 	}
@@ -409,8 +408,8 @@ func (r *usageLogRepository) loadGroups(ctx context.Context, ids []int64) (map[i
 	return out, nil
 }
 
-func (r *usageLogRepository) loadSubscriptions(ctx context.Context, ids []int64) (map[int64]*service.UserSubscription, error) {
-	out := make(map[int64]*service.UserSubscription)
+func (r *usageLogRepository) loadSubscriptions(ctx context.Context, ids []int64) (map[int64]*domain.UserSubscription, error) {
+	out := make(map[int64]*domain.UserSubscription)
 	if len(ids) == 0 {
 		return out, nil
 	}
@@ -424,7 +423,7 @@ func (r *usageLogRepository) loadSubscriptions(ctx context.Context, ids []int64)
 	return out, nil
 }
 
-func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, error) {
+func scanUsageLog(scanner interface{ Scan(...any) error }) (*domain.UsageLog, error) {
 	var (
 		id                        int64
 		userID                    int64
@@ -547,7 +546,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		return nil, err
 	}
 
-	log := &service.UsageLog{
+	log := &domain.UsageLog{
 		ID:                        id,
 		UserID:                    userID,
 		APIKeyID:                  apiKeyID,
@@ -584,7 +583,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	log.Stream = stream
 	log.OpenAIWSMode = openaiWSMode
 	log.RequestType = log.EffectiveRequestType()
-	log.Stream, log.OpenAIWSMode = service.ApplyLegacyRequestFields(log.RequestType, stream, openaiWSMode)
+	log.Stream, log.OpenAIWSMode = domain.ApplyLegacyRequestFields(log.RequestType, stream, openaiWSMode)
 
 	if requestID.Valid {
 		log.RequestID = requestID.String
