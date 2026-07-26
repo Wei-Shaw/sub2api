@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/dashboard"
 	"github.com/lib/pq"
 )
 
@@ -21,7 +21,7 @@ const usageLogsCleanupBatchSize = 10000
 const usageBillingDedupCleanupBatchSize = 10000
 
 // NewDashboardAggregationRepository 创建仪表盘预聚合仓储。
-func NewDashboardAggregationRepository(sqlDB *sql.DB) service.DashboardAggregationRepository {
+func NewDashboardAggregationRepository(sqlDB *sql.DB) dashboard.DashboardAggregationRepository {
 	if sqlDB == nil {
 		return nil
 	}

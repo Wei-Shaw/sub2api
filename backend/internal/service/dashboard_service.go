@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/port/dashboard"
 )
 
 const (
@@ -20,14 +21,10 @@ const (
 )
 
 // ErrDashboardStatsCacheMiss 标记仪表盘缓存未命中。
-var ErrDashboardStatsCacheMiss = errors.New("仪表盘缓存未命中")
+var ErrDashboardStatsCacheMiss = dashboard.ErrDashboardStatsCacheMiss
 
 // DashboardStatsCache 定义仪表盘统计缓存接口。
-type DashboardStatsCache interface {
-	GetDashboardStats(ctx context.Context) (string, error)
-	SetDashboardStats(ctx context.Context, data string, ttl time.Duration) error
-	DeleteDashboardStats(ctx context.Context) error
-}
+type DashboardStatsCache = dashboard.DashboardStatsCache
 
 type dashboardStatsRangeFetcher interface {
 	GetDashboardStatsWithRange(ctx context.Context, start, end time.Time) (*usagestats.DashboardStats, error)
