@@ -2,7 +2,6 @@ package openai
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 )
 
 // OpenAI OAuth Constants (from CRS project - Codex CLI client)
@@ -165,15 +166,7 @@ func GenerateCodeVerifier() (string, error) {
 // GenerateCodeChallenge generates a PKCE code challenge using S256 method
 // Uses base64url encoding as per RFC 7636
 func GenerateCodeChallenge(verifier string) string {
-	hash := sha256.Sum256([]byte(verifier))
-	return base64URLEncode(hash[:])
-}
-
-// base64URLEncode encodes bytes to base64url without padding
-func base64URLEncode(data []byte) string {
-	encoded := base64.URLEncoding.EncodeToString(data)
-	// Remove padding
-	return strings.TrimRight(encoded, "=")
+	return oauth.GenerateCodeChallenge(verifier)
 }
 
 // BuildAuthorizationURL builds the OpenAI OAuth authorization URL

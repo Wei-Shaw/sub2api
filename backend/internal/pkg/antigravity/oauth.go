@@ -3,7 +3,6 @@ package antigravity
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 )
 
 const (
@@ -384,8 +384,7 @@ func GenerateCodeVerifier() (string, error) {
 }
 
 func GenerateCodeChallenge(verifier string) string {
-	hash := sha256.Sum256([]byte(verifier))
-	return base64URLEncode(hash[:])
+	return oauth.GenerateCodeChallenge(verifier)
 }
 
 func base64URLEncode(data []byte) string {

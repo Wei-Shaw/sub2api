@@ -2,7 +2,6 @@ package xai
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logredact"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/urlvalidator"
 )
 
@@ -443,8 +443,7 @@ func GenerateCodeVerifier() (string, error) {
 }
 
 func GenerateCodeChallenge(verifier string) string {
-	hash := sha256.Sum256([]byte(verifier))
-	return base64URLEncode(hash[:])
+	return oauth.GenerateCodeChallenge(verifier)
 }
 
 func base64URLEncode(data []byte) string {
