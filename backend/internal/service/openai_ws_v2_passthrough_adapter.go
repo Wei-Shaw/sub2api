@@ -1237,6 +1237,14 @@ func openAIWSPassthroughRelayClientClose(exit openaiwsv2.RelayExit, completedTur
 		return 0, "", false
 	}
 	if !exit.Graceful && exit.Stage == "read_upstream" {
+		// First-turn upstream dead connection: WriteFrame succeeded but ReadFrame
+		// immediately failed (EOF/broken pipe/reset), and no content was written
+		// downstream yet. Return empty close signal so the caller's failover logic
+		// (line 1184) can retry with another account. Only the first turn is safe
+		// to replay — later turns would duplicate already-delivered content.
+		if completedTurns == 0 && !exit.WroteDownstream {
+			return 0, "", false
+		}
 		return coderws.StatusInternalError, "upstream websocket proxy failed", true
 	}
 	return 0, "", false
