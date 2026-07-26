@@ -137,3 +137,30 @@ type ContentModerationHashCache interface {
 	ClearFlaggedInputHashes(ctx context.Context) (int64, error)
 	CountFlaggedInputHashes(ctx context.Context) (int64, error)
 }
+
+// Internal500CounterCache 追踪 Antigravity 账号连续 INTERNAL 500 失败轮数
+type Internal500CounterCache interface {
+	// IncrementInternal500Count 原子递增计数并返回当前值
+	IncrementInternal500Count(ctx context.Context, accountID int64) (int64, error)
+	// ResetInternal500Count 清零计数器（成功响应时调用）
+	ResetInternal500Count(ctx context.Context, accountID int64) error
+}
+
+// OpenAI403CounterCache 追踪 OpenAI 账号连续 403 失败次数。
+type OpenAI403CounterCache interface {
+	// IncrementOpenAI403Count 原子递增 403 计数并返回当前值。
+	IncrementOpenAI403Count(ctx context.Context, accountID int64, windowMinutes int) (int64, error)
+	// ResetOpenAI403Count 成功后清零计数器。
+	ResetOpenAI403Count(ctx context.Context, accountID int64) error
+}
+
+// GeminiTokenCache stores short-lived access tokens and coordinates refresh to avoid stampedes.
+type GeminiTokenCache interface {
+	// cacheKey should be stable for the token scope; for GeminiCli OAuth we primarily use project_id.
+	GetAccessToken(ctx context.Context, cacheKey string) (string, error)
+	SetAccessToken(ctx context.Context, cacheKey string, token string, ttl time.Duration) error
+	DeleteAccessToken(ctx context.Context, cacheKey string) error
+
+	AcquireRefreshLock(ctx context.Context, cacheKey string, ttl time.Duration) (bool, error)
+	ReleaseRefreshLock(ctx context.Context, cacheKey string) error
+}

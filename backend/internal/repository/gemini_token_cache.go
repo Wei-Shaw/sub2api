@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -19,7 +19,7 @@ type geminiTokenCache struct {
 	rdb *redis.Client
 }
 
-func NewGeminiTokenCache(rdb *redis.Client) service.GeminiTokenCache {
+func NewGeminiTokenCache(rdb *redis.Client) cache.GeminiTokenCache {
 	return &geminiTokenCache{rdb: rdb}
 }
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -32,7 +32,7 @@ type internal500CounterCache struct {
 }
 
 // NewInternal500CounterCache 创建 INTERNAL 500 连续失败计数器缓存实例
-func NewInternal500CounterCache(rdb *redis.Client) service.Internal500CounterCache {
+func NewInternal500CounterCache(rdb *redis.Client) cache.Internal500CounterCache {
 	return &internal500CounterCache{rdb: rdb}
 }
 
