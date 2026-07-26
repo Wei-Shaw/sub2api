@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -101,19 +100,14 @@ func NewAccountTestService(
 }
 
 func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error) {
-	if s.cfg == nil {
-		return "", errors.New("config is not available")
+	p := urlvalidator.UpstreamBaseURLPolicy{Present: s.cfg != nil}
+	if s.cfg != nil {
+		a := s.cfg.Security.URLAllowlist
+		p.Enabled, p.AllowInsecureHTTP, p.UpstreamHosts, p.AllowPrivateHosts = a.Enabled, a.AllowInsecureHTTP, a.UpstreamHosts, a.AllowPrivateHosts
 	}
-	if !s.cfg.Security.URLAllowlist.Enabled {
-		return urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
-	}
-	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
-		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
-		RequireAllowlist: true,
-		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
-	})
+	normalized, err := urlvalidator.ValidateUpstreamBaseURL(raw, p)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
 	return normalized, nil
 }
