@@ -8,7 +8,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 const (
@@ -32,7 +32,7 @@ func ensureSimpleModeAdminConcurrency(ctx context.Context, client *dbent.Client)
 
 	if _, err := client.User.Update().
 		Where(
-			dbuser.RoleEQ(service.RoleAdmin),
+			dbuser.RoleEQ(domain.RoleAdmin),
 			dbuser.ConcurrencyEQ(simpleModeLegacyAdminConcurrency),
 		).
 		SetConcurrency(simpleModeTargetAdminConcurrency).
