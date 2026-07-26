@@ -19,6 +19,7 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
@@ -92,7 +93,7 @@ func TestRadarP0EvaluationIsolationAndEvidenceLifecycle(t *testing.T) {
 	copiedToken := radarP0Token(t, fixture.signer, fixture.evaluationKeyID, uuid.NewString(), uuid.NewString())
 
 	normalResponse := radarP0Request(fixture.router, fixture.normalKey, copiedToken)
-	require.Equal(t, http.StatusForbidden, normalResponse.Code)
+	require.Equal(t, http.StatusForbidden, normalResponse.Code, normalResponse.Body.String())
 	require.Zero(t, upstreamCalls.Load(), "normal keys with copied evaluation headers must not reach inference")
 	requireRadarP0EvidenceCount(t, db.SQL, fixture.normalKeyID, 0)
 
