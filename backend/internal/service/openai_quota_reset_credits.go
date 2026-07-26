@@ -8,11 +8,16 @@ import (
 )
 
 type openAIRateLimitResetCreditDetailPayload struct {
+	ID             string `json:"id,omitempty"`
 	ExpiresAt      string `json:"expires_at,omitempty"`
 	ExpiresAtCamel string `json:"expiresAt,omitempty"`
+	GrantedAt      string `json:"granted_at,omitempty"`
+	GrantedAtCamel string `json:"grantedAt,omitempty"`
 	ResetType      string `json:"reset_type,omitempty"`
 	ResetTypeCamel string `json:"resetType,omitempty"`
 	Status         string `json:"status,omitempty"`
+	Title          string `json:"title,omitempty"`
+	Description    string `json:"description,omitempty"`
 }
 
 type openAIRateLimitResetCreditDetailsPayload struct {
@@ -29,6 +34,7 @@ type openAIRateLimitResetCreditDetails struct {
 	AvailableCreditCount int
 	CreditListPresent    bool
 	Credits              []OpenAIRateLimitResetCreditDetail
+	SelectableCredits    []OpenAIRateLimitResetCredit
 }
 
 func parseOpenAIRateLimitResetCreditDetails(body []byte) (openAIRateLimitResetCreditDetails, error) {
@@ -64,6 +70,7 @@ func parseOpenAIRateLimitResetCreditDetails(body []byte) (openAIRateLimitResetCr
 	}
 
 	credits := make([]OpenAIRateLimitResetCreditDetail, 0, len(rawCredits))
+	selectableCredits := make([]OpenAIRateLimitResetCredit, 0, len(rawCredits))
 	availableCreditCount := 0
 	for _, raw := range rawCredits {
 		if raw == nil {
@@ -76,25 +83,57 @@ func parseOpenAIRateLimitResetCreditDetails(body []byte) (openAIRateLimitResetCr
 		if resetType != "" && !strings.EqualFold(resetType, "codex_rate_limits") {
 			continue
 		}
-		if status := strings.TrimSpace(raw.Status); status != "" && !strings.EqualFold(status, "available") {
+		status := strings.TrimSpace(raw.Status)
+		if status != "" && !strings.EqualFold(status, "available") {
 			continue
+		}
+		if resetType == "" {
+			resetType = "codex_rate_limits"
+		}
+		if status == "" {
+			status = "available"
 		}
 		availableCreditCount++
 		expiresAt := strings.TrimSpace(raw.ExpiresAt)
 		if expiresAt == "" {
 			expiresAt = strings.TrimSpace(raw.ExpiresAtCamel)
 		}
-		if expiresAt == "" {
+		if expiresAt != "" {
+			credits = append(credits, OpenAIRateLimitResetCreditDetail{ExpiresAt: expiresAt})
+		}
+
+		id := strings.TrimSpace(raw.ID)
+		if id == "" {
 			continue
 		}
-		credits = append(credits, OpenAIRateLimitResetCreditDetail{ExpiresAt: expiresAt})
+		grantedAt := strings.TrimSpace(raw.GrantedAt)
+		if grantedAt == "" {
+			grantedAt = strings.TrimSpace(raw.GrantedAtCamel)
+		}
+		selectableCredits = append(selectableCredits, OpenAIRateLimitResetCredit{
+			ID:          id,
+			ResetType:   resetType,
+			Status:      status,
+			GrantedAt:   grantedAt,
+			ExpiresAt:   optionalString(expiresAt),
+			Title:       strings.TrimSpace(raw.Title),
+			Description: strings.TrimSpace(raw.Description),
+		})
 	}
 	return openAIRateLimitResetCreditDetails{
 		AvailableCount:       availableCount,
 		AvailableCreditCount: availableCreditCount,
 		CreditListPresent:    creditListPresent,
 		Credits:              credits,
+		SelectableCredits:    selectableCredits,
 	}, nil
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func parseOpenAIResetCreditAvailableCount(values ...json.RawMessage) *int {

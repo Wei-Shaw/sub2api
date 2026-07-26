@@ -104,3 +104,36 @@ func TestCreateShadow_BadBody(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
+
+func TestConsumeResetCreditRequiresIdempotencyKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	h := NewOpenAIOAuthHandler(nil, &stubAdminService{}, service.NewOpenAIQuotaService(nil, nil, nil, nil))
+	router := gin.New()
+	router.POST("/api/v1/admin/openai/accounts/:id/reset-credits/consume", h.ConsumeResetCredit)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/openai/accounts/42/reset-credits/consume", strings.NewReader(`{"credit_id":"credit-1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+}
+
+func TestConsumeResetCreditRequiresCreditID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	h := NewOpenAIOAuthHandler(nil, &stubAdminService{}, service.NewOpenAIQuotaService(nil, nil, nil, nil))
+	router := gin.New()
+	router.POST("/api/v1/admin/openai/accounts/:id/reset-credits/consume", h.ConsumeResetCredit)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/openai/accounts/42/reset-credits/consume", strings.NewReader(`{"credit_id":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "550e8400-e29b-41d4-a716-446655440000")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+}
