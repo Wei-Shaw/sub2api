@@ -21911,6 +21911,7 @@ type GroupMutation struct {
 	sort_order                              *int
 	addsort_order                           *int
 	allow_messages_dispatch                 *bool
+	allow_live                              *bool
 	require_oauth_only                      *bool
 	require_privacy_set                     *bool
 	default_mapped_model                    *string
@@ -24226,6 +24227,42 @@ func (m *GroupMutation) ResetAllowMessagesDispatch() {
 	m.allow_messages_dispatch = nil
 }
 
+// SetAllowLive sets the "allow_live" field.
+func (m *GroupMutation) SetAllowLive(b bool) {
+	m.allow_live = &b
+}
+
+// AllowLive returns the value of the "allow_live" field in the mutation.
+func (m *GroupMutation) AllowLive() (r bool, exists bool) {
+	v := m.allow_live
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowLive returns the old "allow_live" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAllowLive(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowLive is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowLive requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowLive: %w", err)
+	}
+	return oldValue.AllowLive, nil
+}
+
+// ResetAllowLive resets all changes to the "allow_live" field.
+func (m *GroupMutation) ResetAllowLive() {
+	m.allow_live = nil
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (m *GroupMutation) SetRequireOauthOnly(b bool) {
 	m.require_oauth_only = &b
@@ -24907,7 +24944,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 51)
+	fields := make([]string, 0, 52)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -25037,6 +25074,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.allow_messages_dispatch != nil {
 		fields = append(fields, group.FieldAllowMessagesDispatch)
 	}
+	if m.allow_live != nil {
+		fields = append(fields, group.FieldAllowLive)
+	}
 	if m.require_oauth_only != nil {
 		fields = append(fields, group.FieldRequireOauthOnly)
 	}
@@ -25155,6 +25195,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.SortOrder()
 	case group.FieldAllowMessagesDispatch:
 		return m.AllowMessagesDispatch()
+	case group.FieldAllowLive:
+		return m.AllowLive()
 	case group.FieldRequireOauthOnly:
 		return m.RequireOauthOnly()
 	case group.FieldRequirePrivacySet:
@@ -25266,6 +25308,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldSortOrder(ctx)
 	case group.FieldAllowMessagesDispatch:
 		return m.OldAllowMessagesDispatch(ctx)
+	case group.FieldAllowLive:
+		return m.OldAllowLive(ctx)
 	case group.FieldRequireOauthOnly:
 		return m.OldRequireOauthOnly(ctx)
 	case group.FieldRequirePrivacySet:
@@ -25591,6 +25635,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAllowMessagesDispatch(v)
+		return nil
+	case group.FieldAllowLive:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowLive(v)
 		return nil
 	case group.FieldRequireOauthOnly:
 		v, ok := value.(bool)
@@ -26179,6 +26230,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldAllowMessagesDispatch:
 		m.ResetAllowMessagesDispatch()
+		return nil
+	case group.FieldAllowLive:
+		m.ResetAllowLive()
 		return nil
 	case group.FieldRequireOauthOnly:
 		m.ResetRequireOauthOnly()
