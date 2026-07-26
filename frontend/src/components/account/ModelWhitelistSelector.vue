@@ -119,33 +119,11 @@
       </button>
     </div>
 
-    <!-- Custom Model Input -->
-    <div class="mb-3">
-      <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.customModelName') }}</label>
-      <div class="flex gap-2">
-        <input
-          v-model="customModel"
-          type="text"
-          class="input flex-1"
-          :placeholder="t('admin.accounts.enterCustomModelName')"
-          @keydown.enter.prevent="handleEnter"
-          @compositionstart="isComposing = true"
-          @compositionend="isComposing = false"
-        />
-        <button
-          type="button"
-          @click="addCustom"
-          class="rounded-lg bg-primary-50 px-4 py-2 text-sm font-medium text-primary-600 hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-400 dark:hover:bg-primary-900/50"
-        >
-          {{ t('admin.accounts.addModel') }}
-        </button>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
@@ -153,7 +131,11 @@ import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
 import { useClipboard } from '@/composables/useClipboard'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
+import {
+  fetchCatalogModelCandidates,
+  filterCatalogModelSelection,
+  mergeModelCandidateOptions
+} from '@/composables/useCatalogModelCandidates'
 
 const { t } = useI18n()
 
@@ -179,9 +161,8 @@ const { copyToClipboard } = useClipboard()
 
 const showDropdown = ref(false)
 const searchQuery = ref('')
-const customModel = ref('')
-const isComposing = ref(false)
 const isSyncingUpstream = ref(false)
+const catalogModels = ref<string[] | null>(null)
 const normalizedPlatforms = computed(() => {
   const rawPlatforms =
     props.platforms && props.platforms.length > 0
@@ -199,6 +180,44 @@ const normalizedPlatforms = computed(() => {
   )
 })
 
+let candidateRequestID = 0
+watch(
+  normalizedPlatforms,
+  async platforms => {
+    const requestID = ++candidateRequestID
+    catalogModels.value = null
+    if (platforms.length === 0) return
+
+    try {
+      const models = await fetchCatalogModelCandidates(platforms)
+      if (requestID === candidateRequestID) {
+        catalogModels.value = models
+      }
+    } catch {
+      // Fail closed: whitelist options must come from the shared catalog endpoint.
+      if (requestID === candidateRequestID) {
+        catalogModels.value = null
+      }
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  [catalogModels, () => props.modelValue],
+  ([models, selectedModels]) => {
+    if (models === null) return
+    const selection = filterCatalogModelSelection(selectedModels, models)
+    if (
+      selection.length === selectedModels.length &&
+      selection.every((model, index) => model === selectedModels[index])
+    ) {
+      return
+    }
+    emit('update:modelValue', selection)
+  }
+)
+
 const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'antigravity', 'grok'])
 const canSyncUpstream = computed(() => {
   if (props.accountId) {
@@ -212,19 +231,10 @@ const canSyncUpstream = computed(() => {
 })
 
 const availableOptions = computed(() => {
-  if (normalizedPlatforms.value.length === 0) {
-    return allModels
-  }
-
-  const allowedModels = new Set<string>()
-  for (const platform of normalizedPlatforms.value) {
-    for (const model of getModelsByPlatform(platform)) {
-      allowedModels.add(model)
-    }
-  }
-
-  return allModels.filter(model => allowedModels.has(model.value))
+  return mergeModelCandidateOptions(catalogModels.value)
 })
+
+const availableModelValues = computed(() => new Set(availableOptions.value.map(option => option.value)))
 
 const filteredModels = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
@@ -255,28 +265,11 @@ const copyModelId = async (model: string) => {
   await copyToClipboard(model)
 }
 
-const addCustom = () => {
-  const model = customModel.value.trim()
-  if (!model) return
-  if (props.modelValue.includes(model)) {
-    appStore.showInfo(t('admin.accounts.modelExists'))
-    return
-  }
-  emit('update:modelValue', [...props.modelValue, model])
-  customModel.value = ''
-}
-
-const handleEnter = () => {
-  if (!isComposing.value) addCustom()
-}
-
 const fillRelated = () => {
   const newModels = [...props.modelValue]
-  for (const platform of normalizedPlatforms.value) {
-    for (const model of getModelsByPlatform(platform)) {
-      if (!newModels.includes(model)) {
-        newModels.push(model)
-      }
+  for (const option of availableOptions.value) {
+    if (!newModels.includes(option.value)) {
+      newModels.push(option.value)
     }
   }
   emit('update:modelValue', newModels)
@@ -306,6 +299,7 @@ const syncUpstreamModels = async () => {
     const newModels = [...props.modelValue]
     let addedCount = 0
     for (const model of upstreamModels) {
+      if (!availableModelValues.value.has(model)) continue
       if (!newModels.includes(model)) {
         newModels.push(model)
         addedCount += 1

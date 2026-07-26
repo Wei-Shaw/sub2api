@@ -108,7 +108,7 @@ export async function getById(id: number): Promise<AdminGroup> {
  */
 export async function getModelsListCandidates(
   id: number,
-  platform?: GroupPlatform
+  platform?: string
 ): Promise<string[]> {
   const { data } = await apiClient.get<{ models: string[] }>(
     `/admin/groups/${id}/models-list-candidates`,

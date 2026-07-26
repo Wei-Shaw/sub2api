@@ -4,6 +4,10 @@ import BulkEditAccountModal from '../BulkEditAccountModal.vue'
 import ModelWhitelistSelector from '../ModelWhitelistSelector.vue'
 import { adminAPI } from '@/api/admin'
 
+const { getModelsListCandidates } = vi.hoisted(() => ({
+  getModelsListCandidates: vi.fn()
+}))
+
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError: vi.fn(),
@@ -22,7 +26,15 @@ vi.mock('@/api/admin', () => ({
 }))
 
 vi.mock('@/api/admin/accounts', () => ({
-  getAntigravityDefaultModelMapping: vi.fn()
+  getAntigravityDefaultModelMapping: vi.fn(),
+  accountsAPI: {
+    syncUpstreamModels: vi.fn(),
+    syncUpstreamModelsPreview: vi.fn()
+  }
+}))
+
+vi.mock('@/api/admin/groups', () => ({
+  getModelsListCandidates
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -77,6 +89,7 @@ describe('BulkEditAccountModal', () => {
   beforeEach(() => {
     vi.mocked(adminAPI.accounts.bulkUpdate).mockReset()
     vi.mocked(adminAPI.accounts.checkMixedChannelRisk).mockReset()
+    getModelsListCandidates.mockReset()
 
     vi.mocked(adminAPI.accounts.bulkUpdate).mockResolvedValue({
       success: 2,
@@ -86,6 +99,7 @@ describe('BulkEditAccountModal', () => {
     vi.mocked(adminAPI.accounts.checkMixedChannelRisk).mockResolvedValue({
       has_risk: false
     } as any)
+    getModelsListCandidates.mockResolvedValue(['gemini-3.1-flash-image', 'gemini-2.5-flash-image'])
   })
 
   it('antigravity whitelist contains Gemini image models and filters normal GPT models', async () => {
@@ -93,6 +107,7 @@ describe('BulkEditAccountModal', () => {
     const selector = wrapper.findComponent(ModelWhitelistSelector)
     expect(selector.exists()).toBe(true)
 
+    await flushPromises()
     await selector.find('div.cursor-pointer').trigger('click')
 
     expect(wrapper.text()).toContain('gemini-3.1-flash-image')

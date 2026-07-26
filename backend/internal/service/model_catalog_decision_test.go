@@ -13,6 +13,7 @@ func TestCatalogModelDecisionPubliclyListableRequiresEnabledPresentAndPricing(t 
 		OperatorState: CatalogOperatorStateEnabled,
 		SourceState:   CatalogSourceStatePresent,
 		HasPricing:    true,
+		PricingSource: "catalog-source",
 	}
 	require.True(t, base.PubliclyListable())
 
@@ -31,6 +32,9 @@ func TestCatalogModelDecisionPubliclyListableRequiresEnabledPresentAndPricing(t 
 		},
 		"unpriced": func(decision *CatalogModelDecision) {
 			decision.HasPricing = false
+		},
+		"pricing source missing": func(decision *CatalogModelDecision) {
+			decision.PricingSource = ""
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

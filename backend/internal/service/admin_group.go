@@ -9,15 +9,9 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 // Group management implementations
@@ -64,39 +58,12 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 		platform = PlatformAnthropic
 	}
 
-	candidates := defaultModelsListCandidateIDs(platform)
-	if id <= 0 || s.accountRepo == nil {
-		return candidates, nil
-	}
-
-	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, id)
+	candidates, _, err := s.publishedModelsListCandidateIDs(platform)
 	if err != nil {
 		return nil, err
 	}
-
-	seen := make(map[string]struct{}, len(candidates))
-	for _, model := range candidates {
-		seen[model] = struct{}{}
-	}
-	for _, acc := range accounts {
-		if platform == PlatformComposite {
-			if !isConcreteRequestPlatform(acc.Platform) {
-				continue
-			}
-		} else if acc.Platform != platform {
-			continue
-		}
-		for model := range acc.GetModelMapping() {
-			model = strings.TrimSpace(model)
-			if model == "" {
-				continue
-			}
-			if _, ok := seen[model]; ok {
-				continue
-			}
-			seen[model] = struct{}{}
-			candidates = append(candidates, model)
-		}
+	if candidates == nil {
+		candidates = []string{}
 	}
 	return candidates, nil
 }
@@ -229,61 +196,69 @@ func compositeRouteFromInput(groupID int64, input CompositeRouteInput) (*Composi
 	}, nil
 }
 
-func defaultModelsListCandidateIDs(platform string) []string {
-	switch platform {
-	case PlatformOpenAI:
-		return openai.DefaultModelIDs()
-	case PlatformGemini:
-		ids := make([]string, 0, len(geminicli.DefaultModels))
-		for _, model := range geminicli.DefaultModels {
-			ids = append(ids, model.ID)
-		}
-		return ids
-	case PlatformAntigravity:
-		models := antigravity.DefaultModels()
-		ids := make([]string, 0, len(models))
-		for _, model := range models {
-			ids = append(ids, model.ID)
-		}
-		return ids
-	case PlatformGrok:
-		return xai.DefaultModelIDs()
-	case PlatformComposite:
-		return compositeDefaultModelsListCandidateIDs()
-	case PlatformKiro:
-		ids := make([]string, 0, len(kiropkg.DefaultModels))
-		for _, model := range kiropkg.DefaultModels {
-			ids = append(ids, model.ID)
-		}
-		return ids
-	default:
-		ids := make([]string, 0, len(claude.DefaultModels))
-		for _, model := range claude.DefaultModels {
-			ids = append(ids, model.ID)
-		}
-		return ids
+func (s *adminServiceImpl) publishedModelsListCandidateIDs(platform string) ([]string, bool, error) {
+	if s.modelCatalogReader == nil {
+		return nil, false, nil
 	}
+	view, err := s.modelCatalogReader.BeginDecision(time.Now().UTC())
+	if err != nil {
+		if errors.Is(err, ErrCatalogUnavailable) {
+			return nil, false, nil
+		}
+		return nil, true, fmt.Errorf("read published model catalog candidates: %w", err)
+	}
+
+	models := view.PublicModels()
+	candidates := make([]string, 0, len(models))
+	for _, model := range models {
+		if catalogModelMatchesGroupPlatform(model, platform) {
+			candidates = append(candidates, model.CanonicalKey)
+		}
+	}
+	return candidates, true, nil
+}
+
+func catalogModelMatchesGroupPlatform(model CatalogModelDecision, platform string) bool {
+	platform = strings.ToLower(strings.TrimSpace(platform))
+	if platform == PlatformComposite {
+		return true
+	}
+
+	allowed := map[string]struct{}{
+		platform: {},
+	}
+	switch platform {
+	case PlatformAnthropic, PlatformKiro:
+		allowed["anthropic"] = struct{}{}
+	case PlatformAntigravity:
+		allowed["anthropic"] = struct{}{}
+		allowed["gemini"] = struct{}{}
+		allowed["google"] = struct{}{}
+		allowed["vertex_ai"] = struct{}{}
+	case PlatformGemini:
+		allowed["gemini"] = struct{}{}
+		allowed["google"] = struct{}{}
+		allowed["vertex_ai"] = struct{}{}
+	case PlatformOpenAI:
+		allowed["openai"] = struct{}{}
+	case PlatformGrok:
+		allowed["grok"] = struct{}{}
+		allowed["xai"] = struct{}{}
+	default:
+		allowed[platform] = struct{}{}
+	}
+
+	provider := strings.ToLower(strings.TrimSpace(model.Provider))
+	modelPlatform := strings.ToLower(strings.TrimSpace(model.Platform))
+	_, providerAllowed := allowed[provider]
+	_, platformAllowed := allowed[modelPlatform]
+	return providerAllowed || platformAllowed
 }
 
 func defaultAllowImageGenerationForPlatform(platform string) bool {
 	// Grok image and video generation routes share the legacy image-generation gate.
 	// Older clients send the false zero value, so Grok groups must default enabled.
 	return platform == PlatformGrok
-}
-
-func compositeDefaultModelsListCandidateIDs() []string {
-	seen := make(map[string]struct{})
-	ids := make([]string, 0)
-	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok} {
-		for _, id := range defaultModelsListCandidateIDs(platform) {
-			if _, ok := seen[id]; ok {
-				continue
-			}
-			seen[id] = struct{}{}
-			ids = append(ids, id)
-		}
-	}
-	return ids
 }
 
 func canCopyAccountsFromGroupPlatform(targetPlatform, sourcePlatform string) bool {

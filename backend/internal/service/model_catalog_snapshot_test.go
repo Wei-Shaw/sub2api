@@ -68,6 +68,52 @@ func TestCatalogReadViewReturnsPricingByValue(t *testing.T) {
 	require.Equal(t, 5e-6, second.Pricing.InputCostPerToken)
 }
 
+func TestCatalogReadViewPublicModelsReturnsOnlyEnabledPresentPricedModels(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	spec := CatalogSnapshotSpec{
+		Scope:      CatalogScopeGlobal,
+		Epoch:      12,
+		RevisionID: 1200,
+		Revision:   12,
+		Checksum:   "public-models",
+		VerifiedAt: now,
+		Models: []CatalogSnapshotModelSpec{
+			{
+				ID: 1, RevisionID: 101, CanonicalKey: "claude-opus-5",
+				OperatorState: CatalogOperatorStateEnabled, SourceState: CatalogSourceStatePresent,
+				Provider: "anthropic", Platform: "anthropic", PricingValid: true, PricingSource: "official:anthropic",
+				Pricing: &LiteLLMModelPricing{InputCostPerToken: 1e-6},
+			},
+			{
+				ID: 2, RevisionID: 102, CanonicalKey: "disabled-model",
+				OperatorState: CatalogOperatorStateDisabled, SourceState: CatalogSourceStatePresent,
+				Provider: "anthropic", Platform: "anthropic", PricingValid: true, PricingSource: "official:anthropic",
+				Pricing: &LiteLLMModelPricing{InputCostPerToken: 1e-6},
+			},
+			{
+				ID: 3, RevisionID: 103, CanonicalKey: "missing-source",
+				OperatorState: CatalogOperatorStateEnabled, SourceState: CatalogSourceStateMissing,
+				Provider: "anthropic", Platform: "anthropic", PricingValid: true, PricingSource: "official:anthropic",
+				Pricing: &LiteLLMModelPricing{InputCostPerToken: 1e-6},
+			},
+			{
+				ID: 4, RevisionID: 104, CanonicalKey: "unpriced-model",
+				OperatorState: CatalogOperatorStateEnabled, SourceState: CatalogSourceStatePresent,
+				Provider: "anthropic", Platform: "anthropic", PricingValid: false,
+			},
+		},
+	}
+	view := mustCatalogSnapshot(t, spec).readView()
+
+	models := view.PublicModels()
+
+	require.Len(t, models, 1)
+	require.Equal(t, "claude-opus-5", models[0].CanonicalKey)
+	require.Equal(t, "anthropic", models[0].Provider)
+}
+
 func TestCatalogSnapshotScopedAliasPrecedenceAndLifecycle(t *testing.T) {
 	t.Parallel()
 
@@ -88,6 +134,7 @@ func TestCatalogSnapshotScopedAliasPrecedenceAndLifecycle(t *testing.T) {
 				SourceState:   CatalogSourceStatePresent,
 				Platform:      "global",
 				PricingValid:  true,
+				PricingSource: "catalog-source",
 				Pricing:       &LiteLLMModelPricing{InputCostPerToken: 1e-6},
 				Aliases:       []CatalogAliasSpec{{Alias: "shared", PlatformScope: CatalogPlatformScopeAny}},
 			},
@@ -99,6 +146,7 @@ func TestCatalogSnapshotScopedAliasPrecedenceAndLifecycle(t *testing.T) {
 				SourceState:   CatalogSourceStatePresent,
 				Platform:      "openai",
 				PricingValid:  true,
+				PricingSource: "catalog-source",
 				Pricing:       &LiteLLMModelPricing{InputCostPerToken: 2e-6},
 				Aliases:       []CatalogAliasSpec{{Alias: "shared", PlatformScope: "openai"}},
 			},
@@ -110,6 +158,7 @@ func TestCatalogSnapshotScopedAliasPrecedenceAndLifecycle(t *testing.T) {
 				SourceState:   CatalogSourceStateMissing,
 				Platform:      "anthropic",
 				PricingValid:  true,
+				PricingSource: "catalog-source",
 				Pricing:       &LiteLLMModelPricing{InputCostPerToken: 3e-6},
 			},
 			{
@@ -313,6 +362,7 @@ func catalogSnapshotFixture(epoch, modelRevisionID int64, verifiedAt time.Time, 
 				Platform:      "openai",
 				Mode:          "chat",
 				PricingValid:  true,
+				PricingSource: "catalog-source",
 				Pricing: &LiteLLMModelPricing{
 					InputCostPerToken:   inputPrice,
 					OutputCostPerToken:  inputPrice * 6,

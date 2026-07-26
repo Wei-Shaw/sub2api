@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -168,12 +169,13 @@ func (m CatalogModelDecision) Lifecycle() CatalogLifecycle {
 }
 
 // PubliclyListable reports whether this catalog decision is eligible for the
-// public model marketplace. Group/channel visibility is applied separately by
-// the marketplace service.
+// public model marketplace and admin selectors. Group/channel visibility is
+// applied separately by the marketplace service.
 func (m CatalogModelDecision) PubliclyListable() bool {
 	return m.OperatorState == CatalogOperatorStateEnabled &&
 		m.SourceState == CatalogSourceStatePresent &&
-		m.HasPricing
+		m.HasPricing &&
+		strings.TrimSpace(m.PricingSource) != ""
 }
 
 // CatalogReadView pins one immutable publication for one admission/billing
@@ -237,11 +239,33 @@ func (v CatalogReadView) PublicModelCount() int {
 			OperatorState: model.operatorState,
 			SourceState:   model.sourceState,
 			HasPricing:    model.pricingValid,
+			PricingSource: model.pricingSource,
 		}).PubliclyListable() {
 			count++
 		}
 	}
 	return count
+}
+
+// PublicModels returns the enabled, source-present models that have usable
+// pricing. Callers use this as the shared source for admin model selectors so
+// a successfully published pricing model cannot disappear from another list.
+func (v CatalogReadView) PublicModels() []CatalogModelDecision {
+	if v.snapshot == nil {
+		return nil
+	}
+	models := make([]CatalogModelDecision, 0, v.PublicModelCount())
+	for _, model := range v.snapshot.models {
+		decision := v.modelDecision(model)
+		if !decision.PubliclyListable() {
+			continue
+		}
+		models = append(models, decision)
+	}
+	sort.Slice(models, func(i, j int) bool {
+		return models[i].CanonicalKey < models[j].CanonicalKey
+	})
+	return models
 }
 
 func (v CatalogReadView) Resolve(modelName, platform string) (CatalogModelDecision, bool) {
@@ -272,6 +296,10 @@ func (v CatalogReadView) Resolve(modelName, platform string) (CatalogModelDecisi
 	if !ok {
 		return CatalogModelDecision{}, false
 	}
+	return v.modelDecision(model), true
+}
+
+func (v CatalogReadView) modelDecision(model catalogSnapshotModel) CatalogModelDecision {
 	return CatalogModelDecision{
 		ID:                   model.id,
 		RevisionID:           model.revisionID,
@@ -291,7 +319,7 @@ func (v CatalogReadView) Resolve(modelName, platform string) (CatalogModelDecisi
 		HasPricing:           model.pricingValid,
 		Pricing:              model.pricing,
 		SourceHash:           model.sourceHash,
-	}, true
+	}
 }
 
 // ModelCatalogReader is the only catalog dependency request-path services
