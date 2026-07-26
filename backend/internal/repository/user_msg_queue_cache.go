@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -89,7 +89,7 @@ type userMsgQueueCache struct {
 }
 
 // NewUserMsgQueueCache 创建用户消息队列缓存
-func NewUserMsgQueueCache(rdb *redis.Client) service.UserMsgQueueCache {
+func NewUserMsgQueueCache(rdb *redis.Client) cache.UserMsgQueueCache {
 	return &userMsgQueueCache{rdb: rdb}
 }
 

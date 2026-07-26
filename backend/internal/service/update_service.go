@@ -20,6 +20,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 )
 
 var (
@@ -46,10 +47,7 @@ const (
 )
 
 // UpdateCache defines cache operations for update service
-type UpdateCache interface {
-	GetUpdateInfo(ctx context.Context) (string, error)
-	SetUpdateInfo(ctx context.Context, data string, ttl time.Duration) error
-}
+type UpdateCache = cache.UpdateCache
 
 // GitHubReleaseClient 获取 GitHub release 信息的接口
 type GitHubReleaseClient interface {

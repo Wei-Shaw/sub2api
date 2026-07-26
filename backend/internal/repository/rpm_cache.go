@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -41,7 +41,7 @@ type RPMCacheImpl struct {
 }
 
 // NewRPMCache 创建 RPM 计数器缓存
-func NewRPMCache(rdb *redis.Client) service.RPMCache {
+func NewRPMCache(rdb *redis.Client) cache.RPMCache {
 	return &RPMCacheImpl{rdb: rdb}
 }
 

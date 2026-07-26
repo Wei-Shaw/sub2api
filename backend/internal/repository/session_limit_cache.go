@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -162,7 +162,7 @@ type sessionLimitCache struct {
 
 // NewSessionLimitCache 创建会话限制缓存
 // defaultIdleTimeoutMinutes: 默认空闲超时时间（分钟），用于无参数查询
-func NewSessionLimitCache(rdb *redis.Client, defaultIdleTimeoutMinutes int) service.SessionLimitCache {
+func NewSessionLimitCache(rdb *redis.Client, defaultIdleTimeoutMinutes int) cache.SessionLimitCache {
 	if defaultIdleTimeoutMinutes <= 0 {
 		defaultIdleTimeoutMinutes = 5 // 默认 5 分钟
 	}

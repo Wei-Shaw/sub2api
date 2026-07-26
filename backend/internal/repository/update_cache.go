@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -14,7 +14,7 @@ type updateCache struct {
 	rdb *redis.Client
 }
 
-func NewUpdateCache(rdb *redis.Client) service.UpdateCache {
+func NewUpdateCache(rdb *redis.Client) cache.UpdateCache {
 	return &updateCache{rdb: rdb}
 }
 

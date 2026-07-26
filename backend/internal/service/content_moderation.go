@@ -23,6 +23,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 )
 
 const (
@@ -481,13 +482,7 @@ type ContentModerationRepository interface {
 	UpdateLogEmailSent(ctx context.Context, id int64, sent bool) error
 }
 
-type ContentModerationHashCache interface {
-	RecordFlaggedInputHash(ctx context.Context, inputHash string) error
-	HasFlaggedInputHash(ctx context.Context, inputHash string) (bool, error)
-	DeleteFlaggedInputHash(ctx context.Context, inputHash string) (bool, error)
-	ClearFlaggedInputHashes(ctx context.Context) (int64, error)
-	CountFlaggedInputHashes(ctx context.Context) (int64, error)
-}
+type ContentModerationHashCache = cache.ContentModerationHashCache
 
 type ContentModerationService struct {
 	settingRepo              SettingRepository
