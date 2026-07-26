@@ -364,6 +364,10 @@ var (
 		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "api_key_id", Type: field.TypeInt64},
 		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "organization_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "payer_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "balance_source", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "authz_generation", Type: field.TypeInt64, Nullable: true},
 		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "channel_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "facade", Type: field.TypeString, Size: 16, Default: "openai"},
@@ -409,6 +413,11 @@ var (
 				Columns: []*schema.Column{AsyncMediaTasksColumns[9]},
 			},
 			{
+				Name:    "asyncmediatask_organization_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[10], AsyncMediaTasksColumns[1]},
+			},
+			{
 				Name:    "asyncmediatask_api_key_id",
 				Unique:  false,
 				Columns: []*schema.Column{AsyncMediaTasksColumns[8]},
@@ -421,12 +430,12 @@ var (
 			{
 				Name:    "asyncmediatask_status",
 				Unique:  false,
-				Columns: []*schema.Column{AsyncMediaTasksColumns[18]},
+				Columns: []*schema.Column{AsyncMediaTasksColumns[22]},
 			},
 			{
 				Name:    "asyncmediatask_status_fail_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{AsyncMediaTasksColumns[18], AsyncMediaTasksColumns[26]},
+				Columns: []*schema.Column{AsyncMediaTasksColumns[22], AsyncMediaTasksColumns[30]},
 			},
 			{
 				Name:    "asyncmediatask_created_at",
@@ -526,6 +535,10 @@ var (
 		{Name: "request_id", Type: field.TypeString, Size: 128},
 		{Name: "app_id", Type: field.TypeString, Size: 64},
 		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "organization_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "payer_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "balance_source", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "authz_generation", Type: field.TypeInt64, Nullable: true},
 		{Name: "kind", Type: field.TypeInt8},
 		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "refunded_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
@@ -553,7 +566,7 @@ var (
 			{
 				Name:    "balanceledger_refund_of",
 				Unique:  false,
-				Columns: []*schema.Column{BalanceLedgerColumns[9]},
+				Columns: []*schema.Column{BalanceLedgerColumns[13]},
 			},
 		},
 	}
@@ -641,6 +654,10 @@ var (
 		{Name: "id", Type: field.TypeInt64, Increment: true},
 		{Name: "batch_id", Type: field.TypeString, Size: 64},
 		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "organization_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "payer_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "balance_source", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "authz_generation", Type: field.TypeInt64, Nullable: true},
 		{Name: "api_key_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "provider", Type: field.TypeString, Size: 32},
@@ -694,22 +711,27 @@ var (
 			{
 				Name:    "batchimagejob_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[2], BatchImageJobsColumns[35]},
+				Columns: []*schema.Column{BatchImageJobsColumns[2], BatchImageJobsColumns[39]},
+			},
+			{
+				Name:    "batchimagejob_organization_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{BatchImageJobsColumns[3], BatchImageJobsColumns[39]},
 			},
 			{
 				Name:    "batchimagejob_status",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[8]},
+				Columns: []*schema.Column{BatchImageJobsColumns[12]},
 			},
 			{
 				Name:    "batchimagejob_provider_status",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[5], BatchImageJobsColumns[8]},
+				Columns: []*schema.Column{BatchImageJobsColumns[9], BatchImageJobsColumns[12]},
 			},
 			{
 				Name:    "batchimagejob_idempotency_key",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[23]},
+				Columns: []*schema.Column{BatchImageJobsColumns[27]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "idempotency_key IS NOT NULL AND idempotency_key <> ''",
 				},
@@ -717,7 +739,7 @@ var (
 			{
 				Name:    "batchimagejob_manifest_hash",
 				Unique:  true,
-				Columns: []*schema.Column{BatchImageJobsColumns[25]},
+				Columns: []*schema.Column{BatchImageJobsColumns[29]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "manifest_hash IS NOT NULL AND manifest_hash <> ''",
 				},
@@ -725,17 +747,17 @@ var (
 			{
 				Name:    "batchimagejob_output_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[28]},
+				Columns: []*schema.Column{BatchImageJobsColumns[32]},
 			},
 			{
 				Name:    "batchimagejob_downloaded_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[31]},
+				Columns: []*schema.Column{BatchImageJobsColumns[35]},
 			},
 			{
 				Name:    "batchimagejob_user_deleted_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[32]},
+				Columns: []*schema.Column{BatchImageJobsColumns[36]},
 			},
 		},
 	}
@@ -935,6 +957,49 @@ var (
 				Name:    "channelmonitorrequesttemplate_provider_api_mode",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[4], ChannelMonitorRequestTemplatesColumns[5]},
+			},
+		},
+	}
+	// CompanyUpgradeApplicationsColumns holds the columns for the "company_upgrade_applications" table.
+	CompanyUpgradeApplicationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "applicant_user_id", Type: field.TypeInt64},
+		{Name: "requested_name", Type: field.TypeString, Size: 255},
+		{Name: "normalized_name", Type: field.TypeString, Size: 255},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "fee_amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "fee_currency", Type: field.TypeString, Size: 8, Default: "USD"},
+		{Name: "idempotency_key", Type: field.TypeString, Size: 128},
+		{Name: "reviewer_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "review_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "organization_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "decided_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// CompanyUpgradeApplicationsTable holds the schema information for the "company_upgrade_applications" table.
+	CompanyUpgradeApplicationsTable = &schema.Table{
+		Name:       "company_upgrade_applications",
+		Columns:    CompanyUpgradeApplicationsColumns,
+		PrimaryKey: []*schema.Column{CompanyUpgradeApplicationsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "companyupgradeapplication_status_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{CompanyUpgradeApplicationsColumns[4], CompanyUpgradeApplicationsColumns[12]},
+			},
+			{
+				Name:    "companyupgradeapplication_applicant_user_id_idempotency_key",
+				Unique:  true,
+				Columns: []*schema.Column{CompanyUpgradeApplicationsColumns[1], CompanyUpgradeApplicationsColumns[7]},
+			},
+			{
+				Name:    "companyupgradeapplication_applicant_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{CompanyUpgradeApplicationsColumns[1]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "status = 'pending'",
+				},
 			},
 		},
 	}
@@ -1228,6 +1293,108 @@ var (
 			},
 		},
 	}
+	// ManagedPoliciesColumns holds the columns for the "managed_policies" table.
+	ManagedPoliciesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "policy_key", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "display_name", Type: field.TypeString, Size: 128},
+		{Name: "policy_type", Type: field.TypeString, Size: 32, Default: "system"},
+		{Name: "description", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "version", Type: field.TypeInt, Default: 1},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ManagedPoliciesTable holds the schema information for the "managed_policies" table.
+	ManagedPoliciesTable = &schema.Table{
+		Name:       "managed_policies",
+		Columns:    ManagedPoliciesColumns,
+		PrimaryKey: []*schema.Column{ManagedPoliciesColumns[0]},
+	}
+	// ManagedPolicyActionsColumns holds the columns for the "managed_policy_actions" table.
+	ManagedPolicyActionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "policy_id", Type: field.TypeInt64},
+		{Name: "action", Type: field.TypeString, Size: 160},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ManagedPolicyActionsTable holds the schema information for the "managed_policy_actions" table.
+	ManagedPolicyActionsTable = &schema.Table{
+		Name:       "managed_policy_actions",
+		Columns:    ManagedPolicyActionsColumns,
+		PrimaryKey: []*schema.Column{ManagedPolicyActionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "managedpolicyaction_policy_id_action",
+				Unique:  true,
+				Columns: []*schema.Column{ManagedPolicyActionsColumns[1], ManagedPolicyActionsColumns[2]},
+			},
+		},
+	}
+	// MemberPolicyAttachmentsColumns holds the columns for the "member_policy_attachments" table.
+	MemberPolicyAttachmentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "organization_id", Type: field.TypeInt64},
+		{Name: "membership_id", Type: field.TypeInt64},
+		{Name: "policy_id", Type: field.TypeInt64},
+		{Name: "policy_version", Type: field.TypeInt},
+		{Name: "attached_by_user_id", Type: field.TypeInt64},
+		{Name: "detached_by_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "detached_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// MemberPolicyAttachmentsTable holds the schema information for the "member_policy_attachments" table.
+	MemberPolicyAttachmentsTable = &schema.Table{
+		Name:       "member_policy_attachments",
+		Columns:    MemberPolicyAttachmentsColumns,
+		PrimaryKey: []*schema.Column{MemberPolicyAttachmentsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "memberpolicyattachment_membership_id_policy_id",
+				Unique:  true,
+				Columns: []*schema.Column{MemberPolicyAttachmentsColumns[2], MemberPolicyAttachmentsColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "detached_at IS NULL",
+				},
+			},
+			{
+				Name:    "memberpolicyattachment_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{MemberPolicyAttachmentsColumns[1]},
+			},
+		},
+	}
+	// NotificationOutboxColumns holds the columns for the "notification_outbox" table.
+	NotificationOutboxColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "dedup_key", Type: field.TypeString, Unique: true, Size: 255},
+		{Name: "event", Type: field.TypeString, Size: 128},
+		{Name: "recipient", Type: field.TypeString, Size: 255},
+		{Name: "locale", Type: field.TypeString, Size: 16, Default: "en-US"},
+		{Name: "variables", Type: field.TypeJSON, Nullable: true},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
+		{Name: "next_attempt_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "claimed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "claimed_by_worker_id", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "delivered_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_error", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// NotificationOutboxTable holds the schema information for the "notification_outbox" table.
+	NotificationOutboxTable = &schema.Table{
+		Name:       "notification_outbox",
+		Columns:    NotificationOutboxColumns,
+		PrimaryKey: []*schema.Column{NotificationOutboxColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notificationoutbox_status_next_attempt_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{NotificationOutboxColumns[6], NotificationOutboxColumns[8], NotificationOutboxColumns[0]},
+			},
+		},
+	}
 	// OidcAccessTokensColumns holds the columns for the "oidc_access_tokens" table.
 	OidcAccessTokensColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1403,6 +1570,155 @@ var (
 				Name:    "oidcrefreshtoken_expires_at",
 				Unique:  false,
 				Columns: []*schema.Column{OidcRefreshTokensColumns[8]},
+			},
+		},
+	}
+	// OrganizationsColumns holds the columns for the "organizations" table.
+	OrganizationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "account_id", Type: field.TypeString, Unique: true, Size: 16},
+		{Name: "owner_user_id", Type: field.TypeInt64},
+		{Name: "name", Type: field.TypeString, Size: 255},
+		{Name: "normalized_name", Type: field.TypeString, Size: 255},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "active"},
+		{Name: "member_limit", Type: field.TypeInt, Default: 20},
+		{Name: "effective_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OrganizationsTable holds the schema information for the "organizations" table.
+	OrganizationsTable = &schema.Table{
+		Name:       "organizations",
+		Columns:    OrganizationsColumns,
+		PrimaryKey: []*schema.Column{OrganizationsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "organization_owner_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OrganizationsColumns[2]},
+			},
+			{
+				Name:    "organization_status",
+				Unique:  false,
+				Columns: []*schema.Column{OrganizationsColumns[5]},
+			},
+		},
+	}
+	// OrganizationAuditEventsColumns holds the columns for the "organization_audit_events" table.
+	OrganizationAuditEventsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "organization_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "actor_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "subject_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "action", Type: field.TypeString, Size: 128},
+		{Name: "result", Type: field.TypeString, Size: 32},
+		{Name: "correlation_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OrganizationAuditEventsTable holds the schema information for the "organization_audit_events" table.
+	OrganizationAuditEventsTable = &schema.Table{
+		Name:       "organization_audit_events",
+		Columns:    OrganizationAuditEventsColumns,
+		PrimaryKey: []*schema.Column{OrganizationAuditEventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "organizationauditevent_organization_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{OrganizationAuditEventsColumns[1], OrganizationAuditEventsColumns[8]},
+			},
+		},
+	}
+	// OrganizationFinancialLedgerColumns holds the columns for the "organization_financial_ledger" table.
+	OrganizationFinancialLedgerColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "idempotency_key", Type: field.TypeString, Unique: true, Size: 160},
+		{Name: "kind", Type: field.TypeString, Size: 32},
+		{Name: "organization_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "application_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "actor_user_id", Type: field.TypeInt64},
+		{Name: "source_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "destination_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "currency", Type: field.TypeString, Size: 8, Default: "USD"},
+		{Name: "source_balance_after", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "destination_balance_after", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OrganizationFinancialLedgerTable holds the schema information for the "organization_financial_ledger" table.
+	OrganizationFinancialLedgerTable = &schema.Table{
+		Name:       "organization_financial_ledger",
+		Columns:    OrganizationFinancialLedgerColumns,
+		PrimaryKey: []*schema.Column{OrganizationFinancialLedgerColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "organizationfinancialledger_organization_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{OrganizationFinancialLedgerColumns[3], OrganizationFinancialLedgerColumns[12]},
+			},
+		},
+	}
+	// OrganizationMembershipsColumns holds the columns for the "organization_memberships" table.
+	OrganizationMembershipsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "organization_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64, Unique: true},
+		{Name: "role", Type: field.TypeString, Size: 16},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "active"},
+		{Name: "authz_generation", Type: field.TypeInt64, Default: 1},
+		{Name: "archived_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OrganizationMembershipsTable holds the schema information for the "organization_memberships" table.
+	OrganizationMembershipsTable = &schema.Table{
+		Name:       "organization_memberships",
+		Columns:    OrganizationMembershipsColumns,
+		PrimaryKey: []*schema.Column{OrganizationMembershipsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "organizationmembership_organization_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{OrganizationMembershipsColumns[1], OrganizationMembershipsColumns[4]},
+			},
+			{
+				Name:    "organizationmembership_organization_id",
+				Unique:  true,
+				Columns: []*schema.Column{OrganizationMembershipsColumns[1]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "role = 'owner'",
+				},
+			},
+		},
+	}
+	// OrganizationNameChangeRequestsColumns holds the columns for the "organization_name_change_requests" table.
+	OrganizationNameChangeRequestsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "organization_id", Type: field.TypeInt64},
+		{Name: "applicant_user_id", Type: field.TypeInt64},
+		{Name: "old_name", Type: field.TypeString, Size: 255},
+		{Name: "new_name", Type: field.TypeString, Size: 255},
+		{Name: "normalized_name", Type: field.TypeString, Size: 255},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "reviewer_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "review_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "decided_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OrganizationNameChangeRequestsTable holds the schema information for the "organization_name_change_requests" table.
+	OrganizationNameChangeRequestsTable = &schema.Table{
+		Name:       "organization_name_change_requests",
+		Columns:    OrganizationNameChangeRequestsColumns,
+		PrimaryKey: []*schema.Column{OrganizationNameChangeRequestsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "organizationnamechangerequest_organization_id",
+				Unique:  true,
+				Columns: []*schema.Column{OrganizationNameChangeRequestsColumns[1]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "status = 'pending'",
+				},
 			},
 		},
 	}
@@ -2260,6 +2576,10 @@ var (
 	// UsageLogsColumns holds the columns for the "usage_logs" table.
 	UsageLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "organization_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "payer_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "balance_source", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "authz_generation", Type: field.TypeInt64, Nullable: true},
 		{Name: "request_id", Type: field.TypeString, Size: 64},
 		{Name: "model", Type: field.TypeString, Size: 100},
 		{Name: "requested_model", Type: field.TypeString, Nullable: true, Size: 100},
@@ -2318,95 +2638,100 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "usage_logs_api_keys_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[45]},
+				Columns:    []*schema.Column{UsageLogsColumns[49]},
 				RefColumns: []*schema.Column{APIKeysColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_accounts_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[46]},
+				Columns:    []*schema.Column{UsageLogsColumns[50]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_groups_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[47]},
+				Columns:    []*schema.Column{UsageLogsColumns[51]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "usage_logs_users_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[48]},
+				Columns:    []*schema.Column{UsageLogsColumns[52]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_user_subscriptions_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[49]},
+				Columns:    []*schema.Column{UsageLogsColumns[53]},
 				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 		},
 		Indexes: []*schema.Index{
 			{
+				Name:    "usagelog_organization_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[1], UsageLogsColumns[48]},
+			},
+			{
 				Name:    "usagelog_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[48]},
+				Columns: []*schema.Column{UsageLogsColumns[52]},
 			},
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[45]},
+				Columns: []*schema.Column{UsageLogsColumns[49]},
 			},
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[46]},
+				Columns: []*schema.Column{UsageLogsColumns[50]},
 			},
 			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[47]},
+				Columns: []*schema.Column{UsageLogsColumns[51]},
 			},
 			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[49]},
+				Columns: []*schema.Column{UsageLogsColumns[53]},
 			},
 			{
 				Name:    "usagelog_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[44]},
+				Columns: []*schema.Column{UsageLogsColumns[48]},
 			},
 			{
 				Name:    "usagelog_model",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[2]},
+				Columns: []*schema.Column{UsageLogsColumns[6]},
 			},
 			{
 				Name:    "usagelog_requested_model",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[3]},
+				Columns: []*schema.Column{UsageLogsColumns[7]},
 			},
 			{
 				Name:    "usagelog_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[1]},
+				Columns: []*schema.Column{UsageLogsColumns[5]},
 			},
 			{
 				Name:    "usagelog_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[48], UsageLogsColumns[44]},
+				Columns: []*schema.Column{UsageLogsColumns[52], UsageLogsColumns[48]},
 			},
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[45], UsageLogsColumns[44]},
+				Columns: []*schema.Column{UsageLogsColumns[49], UsageLogsColumns[48]},
 			},
 			{
 				Name:    "usagelog_group_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[47], UsageLogsColumns[44]},
+				Columns: []*schema.Column{UsageLogsColumns[51], UsageLogsColumns[48]},
 			},
 		},
 	}
@@ -2416,7 +2741,15 @@ var (
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
-		{Name: "email", Type: field.TypeString, Size: 255},
+		{Name: "email", Type: field.TypeString, Nullable: true, Size: 255},
+		{Name: "account_id", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "external_user_id", Type: field.TypeString, Nullable: true, Size: 18},
+		{Name: "identity_type", Type: field.TypeString, Size: 16, Default: "root"},
+		{Name: "login_name", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "must_change_password", Type: field.TypeBool, Default: false},
+		{Name: "recovery_email", Type: field.TypeString, Nullable: true, Size: 255},
+		{Name: "recovery_email_verified_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "authz_generation", Type: field.TypeInt64, Default: 1},
 		{Name: "password_hash", Type: field.TypeString, Size: 255},
 		{Name: "role", Type: field.TypeString, Size: 20, Default: "user"},
 		{Name: "balance", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
@@ -2447,12 +2780,25 @@ var (
 			{
 				Name:    "user_status",
 				Unique:  false,
-				Columns: []*schema.Column{UsersColumns[10]},
+				Columns: []*schema.Column{UsersColumns[18]},
 			},
 			{
 				Name:    "user_deleted_at",
 				Unique:  false,
 				Columns: []*schema.Column{UsersColumns[3]},
+			},
+			{
+				Name:    "user_external_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{UsersColumns[6]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "external_user_id IS NOT NULL AND external_user_id <> ''",
+				},
+			},
+			{
+				Name:    "user_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{UsersColumns[5]},
 			},
 		},
 	}
@@ -2730,16 +3076,26 @@ var (
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
+		CompanyUpgradeApplicationsTable,
 		CompositeModelRoutesTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		ManagedPoliciesTable,
+		ManagedPolicyActionsTable,
+		MemberPolicyAttachmentsTable,
+		NotificationOutboxTable,
 		OidcAccessTokensTable,
 		OidcAuthorizationCodesTable,
 		OidcClientsTable,
 		OidcConsentsTable,
 		OidcRefreshTokensTable,
+		OrganizationsTable,
+		OrganizationAuditEventsTable,
+		OrganizationFinancialLedgerTable,
+		OrganizationMembershipsTable,
+		OrganizationNameChangeRequestsTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
@@ -2838,6 +3194,9 @@ func init() {
 	ChannelMonitorRequestTemplatesTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitor_request_templates",
 	}
+	CompanyUpgradeApplicationsTable.Annotation = &entsql.Annotation{
+		Table: "company_upgrade_applications",
+	}
 	CompositeModelRoutesTable.ForeignKeys[0].RefTable = GroupsTable
 	CompositeModelRoutesTable.Annotation = &entsql.Annotation{
 		Table: "composite_model_routes",
@@ -2856,6 +3215,18 @@ func init() {
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
 	}
+	ManagedPoliciesTable.Annotation = &entsql.Annotation{
+		Table: "managed_policies",
+	}
+	ManagedPolicyActionsTable.Annotation = &entsql.Annotation{
+		Table: "managed_policy_actions",
+	}
+	MemberPolicyAttachmentsTable.Annotation = &entsql.Annotation{
+		Table: "member_policy_attachments",
+	}
+	NotificationOutboxTable.Annotation = &entsql.Annotation{
+		Table: "notification_outbox",
+	}
 	OidcAccessTokensTable.Annotation = &entsql.Annotation{
 		Table: "oidc_access_tokens",
 	}
@@ -2870,6 +3241,21 @@ func init() {
 	}
 	OidcRefreshTokensTable.Annotation = &entsql.Annotation{
 		Table: "oidc_refresh_tokens",
+	}
+	OrganizationsTable.Annotation = &entsql.Annotation{
+		Table: "organizations",
+	}
+	OrganizationAuditEventsTable.Annotation = &entsql.Annotation{
+		Table: "organization_audit_events",
+	}
+	OrganizationFinancialLedgerTable.Annotation = &entsql.Annotation{
+		Table: "organization_financial_ledger",
+	}
+	OrganizationMembershipsTable.Annotation = &entsql.Annotation{
+		Table: "organization_memberships",
+	}
+	OrganizationNameChangeRequestsTable.Annotation = &entsql.Annotation{
+		Table: "organization_name_change_requests",
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",

@@ -1,6 +1,24 @@
 <template>
   <AppLayout>
     <div
+      v-if="isCompanyUpgradePage"
+      data-testid="company-upgrade-page"
+      class="mx-auto max-w-[950px] space-y-5"
+    >
+      <router-link
+        to="/profile"
+        data-testid="back-to-profile"
+        class="btn btn-secondary inline-flex items-center gap-2"
+      >
+        <Icon name="arrowLeft" size="sm" />
+        {{ t('organization.upgrade.backToProfile') }}
+      </router-link>
+
+      <CompanyUpgradeView />
+    </div>
+
+    <div
+      v-else
       data-testid="profile-shell"
       class="mx-auto max-w-[950px] space-y-6"
     >
@@ -13,6 +31,7 @@
         :wechat-enabled="wechatOAuthEnabled"
         :wechat-open-enabled="wechatOAuthOpenEnabled"
         :wechat-mp-enabled="wechatOAuthMPEnabled"
+        :company-applications-enabled="companyApplicationsEnabled"
       />
 
       <div
@@ -34,6 +53,8 @@
 
       <ProfilePasswordForm />
 
+	  <ProfileIAMRecoveryEmailCard v-if="user?.identity_type === 'iam'" />
+
       <ProfileBalanceNotifyCard
         v-if="user && balanceLowNotifyEnabled"
         :enabled="user.balance_notify_enabled ?? true"
@@ -51,20 +72,26 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { Icon } from '@/components/icons'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ProfileBalanceNotifyCard from '@/components/user/profile/ProfileBalanceNotifyCard.vue'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
+import ProfileIAMRecoveryEmailCard from '@/components/user/profile/ProfileIAMRecoveryEmailCard.vue'
 import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
 import ProfileTotpCard from '@/components/user/profile/ProfileTotpCard.vue'
 import { isWeChatWebOAuthEnabled } from '@/api/auth'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import CompanyUpgradeView from '@/views/user/CompanyUpgradeView.vue'
 
 const { t } = useI18n()
+const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
+const isCompanyUpgradePage = computed(() => route.name === 'CompanyUpgrade')
+const companyApplicationsEnabled = computed(() => appStore.cachedPublicSettings?.company_applications_enabled === true)
 
 const contactInfo = ref('')
 const balanceLowNotifyEnabled = ref(false)

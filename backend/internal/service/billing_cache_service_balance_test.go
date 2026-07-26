@@ -21,13 +21,26 @@ type balanceEligibilityCacheStub struct {
 	invalidated              atomic.Bool
 	deductCalls              atomic.Int64
 	invalidateCalls          atomic.Int64
+	lastUserID               atomic.Int64
 }
 
-func (s *balanceEligibilityCacheStub) GetUserBalance(context.Context, int64) (float64, error) {
+func (s *balanceEligibilityCacheStub) GetUserBalance(_ context.Context, userID int64) (float64, error) {
+	s.lastUserID.Store(userID)
 	if s.cacheMissAfterInvalidate && s.invalidated.Load() {
 		return 0, errors.New("cache miss")
 	}
 	return s.balance, nil
+}
+
+type billingEligibilityResolverStub struct {
+	result *BillingContext
+	err    error
+	calls  atomic.Int64
+}
+
+func (s *billingEligibilityResolverStub) Resolve(context.Context, int64) (*BillingContext, error) {
+	s.calls.Add(1)
+	return s.result, s.err
 }
 
 func (s *balanceEligibilityCacheStub) DeductUserBalance(context.Context, int64, float64) error {
@@ -61,6 +74,50 @@ func TestCheckBillingEligibility_AllowsBalanceAtMinimumReserve(t *testing.T) {
 
 	err := svc.CheckBillingEligibility(context.Background(), &User{ID: 1}, nil, nil, nil, "")
 	require.NoError(t, err)
+}
+
+func TestCheckBillingEligibility_SharedBalanceChecksRootPayer(t *testing.T) {
+	cache := &balanceEligibilityCacheStub{balance: 1}
+	resolver := &billingEligibilityResolverStub{result: &BillingContext{
+		ConsumerUserID: 20,
+		PayerUserID:    10,
+		BalanceSource:  "shared",
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc.SetBillingContextResolver(resolver)
+	t.Cleanup(svc.Stop)
+
+	require.NoError(t, svc.CheckBillingEligibility(context.Background(), &User{ID: 20}, nil, nil, nil, ""))
+	require.Equal(t, int64(10), cache.lastUserID.Load())
+	require.Equal(t, int64(1), resolver.calls.Load())
+}
+
+func TestCheckBillingEligibility_AllocatedBalanceChecksMemberPayer(t *testing.T) {
+	cache := &balanceEligibilityCacheStub{balance: 1}
+	resolver := &billingEligibilityResolverStub{result: &BillingContext{
+		ConsumerUserID: 20,
+		PayerUserID:    20,
+		BalanceSource:  "allocated",
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc.SetBillingContextResolver(resolver)
+	t.Cleanup(svc.Stop)
+
+	require.NoError(t, svc.CheckBillingEligibility(context.Background(), &User{ID: 20}, nil, nil, nil, ""))
+	require.Equal(t, int64(20), cache.lastUserID.Load())
+}
+
+func TestCheckBillingEligibility_PayerResolutionFailsClosed(t *testing.T) {
+	cache := &balanceEligibilityCacheStub{balance: 1}
+	expected := errors.New("payer resolution unavailable")
+	resolver := &billingEligibilityResolverStub{err: expected}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc.SetBillingContextResolver(resolver)
+	t.Cleanup(svc.Stop)
+
+	err := svc.CheckBillingEligibility(context.Background(), &User{ID: 20}, nil, nil, nil, "")
+	require.ErrorIs(t, err, expected)
+	require.Zero(t, cache.lastUserID.Load())
 }
 
 func TestSyncBalanceCacheAfterDeduction_InvalidatesExhaustedBalance(t *testing.T) {

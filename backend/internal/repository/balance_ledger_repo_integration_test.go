@@ -4,7 +4,9 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -152,4 +154,53 @@ func TestBalanceLedgerRepository_Refund_OriginalNotFoundOrCrossApp(t *testing.T)
 		AppID: otherAppID, RefundRequestID: ledgerID("r2"), OriginalRequestID: deductID, Amount: 1, Description: "x",
 	})
 	require.ErrorIs(t, err, service.ErrOriginalDeductNotFound)
+}
+
+func TestBalanceLedgerRepository_Refund_ConcurrentPartialRefundsNeverOverRefund(t *testing.T) {
+	ctx := context.Background()
+	repo := NewBalanceLedgerRepository(integrationDB)
+	userID := newLedgerTestUser(t, 100)
+	appID, ledgerID := newLedgerTestScope()
+	deductID := ledgerID("deduct")
+
+	_, err := repo.Deduct(ctx, &service.LedgerDeductCommand{
+		AppID: appID, RequestID: deductID, UserID: userID, Amount: 10, Description: "buy",
+	})
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for _, refundID := range []string{ledgerID("refund-a"), ledgerID("refund-b")} {
+		wg.Add(1)
+		go func(refundID string) {
+			defer wg.Done()
+			_, refundErr := repo.Refund(ctx, &service.LedgerRefundCommand{
+				AppID: appID, RefundRequestID: refundID, OriginalRequestID: deductID,
+				Amount: 6, Description: "concurrent partial refund",
+			})
+			errs <- refundErr
+		}(refundID)
+	}
+	wg.Wait()
+	close(errs)
+
+	succeeded, overRefunded := 0, 0
+	for refundErr := range errs {
+		switch {
+		case refundErr == nil:
+			succeeded++
+		case errors.Is(refundErr, service.ErrOverRefund):
+			overRefunded++
+		default:
+			require.NoError(t, refundErr)
+		}
+	}
+	require.Equal(t, 1, succeeded)
+	require.Equal(t, 1, overRefunded)
+
+	var balance, refunded float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance FROM users WHERE id=$1`, userID).Scan(&balance))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT refunded_amount FROM balance_ledger WHERE app_id=$1 AND request_id=$2`, appID, deductID).Scan(&refunded))
+	require.InDelta(t, 96, balance, 1e-9)
+	require.InDelta(t, 6, refunded, 1e-9)
 }

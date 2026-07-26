@@ -213,6 +213,18 @@ func (f ChannelMonitorRequestTemplateFunc) Mutate(ctx context.Context, m ent.Mut
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChannelMonitorRequestTemplateMutation", m)
 }
 
+// The CompanyUpgradeApplicationFunc type is an adapter to allow the use of ordinary
+// function as CompanyUpgradeApplication mutator.
+type CompanyUpgradeApplicationFunc func(context.Context, *ent.CompanyUpgradeApplicationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CompanyUpgradeApplicationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CompanyUpgradeApplicationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CompanyUpgradeApplicationMutation", m)
+}
+
 // The CompositeModelRouteFunc type is an adapter to allow the use of ordinary
 // function as CompositeModelRoute mutator.
 type CompositeModelRouteFunc func(context.Context, *ent.CompositeModelRouteMutation) (ent.Value, error)
@@ -273,6 +285,54 @@ func (f IdentityAdoptionDecisionFunc) Mutate(ctx context.Context, m ent.Mutation
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IdentityAdoptionDecisionMutation", m)
 }
 
+// The ManagedPolicyFunc type is an adapter to allow the use of ordinary
+// function as ManagedPolicy mutator.
+type ManagedPolicyFunc func(context.Context, *ent.ManagedPolicyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ManagedPolicyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ManagedPolicyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ManagedPolicyMutation", m)
+}
+
+// The ManagedPolicyActionFunc type is an adapter to allow the use of ordinary
+// function as ManagedPolicyAction mutator.
+type ManagedPolicyActionFunc func(context.Context, *ent.ManagedPolicyActionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ManagedPolicyActionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ManagedPolicyActionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ManagedPolicyActionMutation", m)
+}
+
+// The MemberPolicyAttachmentFunc type is an adapter to allow the use of ordinary
+// function as MemberPolicyAttachment mutator.
+type MemberPolicyAttachmentFunc func(context.Context, *ent.MemberPolicyAttachmentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MemberPolicyAttachmentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MemberPolicyAttachmentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MemberPolicyAttachmentMutation", m)
+}
+
+// The NotificationOutboxFunc type is an adapter to allow the use of ordinary
+// function as NotificationOutbox mutator.
+type NotificationOutboxFunc func(context.Context, *ent.NotificationOutboxMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f NotificationOutboxFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.NotificationOutboxMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.NotificationOutboxMutation", m)
+}
+
 // The OidcAccessTokenFunc type is an adapter to allow the use of ordinary
 // function as OidcAccessToken mutator.
 type OidcAccessTokenFunc func(context.Context, *ent.OidcAccessTokenMutation) (ent.Value, error)
@@ -331,6 +391,66 @@ func (f OidcRefreshTokenFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OidcRefreshTokenMutation", m)
+}
+
+// The OrganizationFunc type is an adapter to allow the use of ordinary
+// function as Organization mutator.
+type OrganizationFunc func(context.Context, *ent.OrganizationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OrganizationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OrganizationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrganizationMutation", m)
+}
+
+// The OrganizationAuditEventFunc type is an adapter to allow the use of ordinary
+// function as OrganizationAuditEvent mutator.
+type OrganizationAuditEventFunc func(context.Context, *ent.OrganizationAuditEventMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OrganizationAuditEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OrganizationAuditEventMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrganizationAuditEventMutation", m)
+}
+
+// The OrganizationFinancialLedgerFunc type is an adapter to allow the use of ordinary
+// function as OrganizationFinancialLedger mutator.
+type OrganizationFinancialLedgerFunc func(context.Context, *ent.OrganizationFinancialLedgerMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OrganizationFinancialLedgerFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OrganizationFinancialLedgerMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrganizationFinancialLedgerMutation", m)
+}
+
+// The OrganizationMembershipFunc type is an adapter to allow the use of ordinary
+// function as OrganizationMembership mutator.
+type OrganizationMembershipFunc func(context.Context, *ent.OrganizationMembershipMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OrganizationMembershipFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OrganizationMembershipMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrganizationMembershipMutation", m)
+}
+
+// The OrganizationNameChangeRequestFunc type is an adapter to allow the use of ordinary
+// function as OrganizationNameChangeRequest mutator.
+type OrganizationNameChangeRequestFunc func(context.Context, *ent.OrganizationNameChangeRequestMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OrganizationNameChangeRequestFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OrganizationNameChangeRequestMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrganizationNameChangeRequestMutation", m)
 }
 
 // The PaymentAuditLogFunc type is an adapter to allow the use of ordinary

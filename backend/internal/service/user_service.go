@@ -451,6 +451,9 @@ func (s *UserService) updateProfile(ctx context.Context, userID int64, req Updat
 
 	// 更新字段
 	if req.Email != nil {
+		if user.IsIAM() {
+			return nil, oldConcurrency, infraerrors.BadRequest("IAM_PRIMARY_EMAIL_UNSUPPORTED", "IAM users must use a verified recovery email")
+		}
 		// 检查新邮箱是否已被使用
 		exists, err := s.userRepo.ExistsByEmail(ctx, *req.Email)
 		if err != nil {

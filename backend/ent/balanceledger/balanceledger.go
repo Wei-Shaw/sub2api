@@ -23,6 +23,14 @@ const (
 	FieldAppID = "app_id"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldOrganizationID holds the string denoting the organization_id field in the database.
+	FieldOrganizationID = "organization_id"
+	// FieldPayerUserID holds the string denoting the payer_user_id field in the database.
+	FieldPayerUserID = "payer_user_id"
+	// FieldBalanceSource holds the string denoting the balance_source field in the database.
+	FieldBalanceSource = "balance_source"
+	// FieldAuthzGeneration holds the string denoting the authz_generation field in the database.
+	FieldAuthzGeneration = "authz_generation"
 	// FieldKind holds the string denoting the kind field in the database.
 	FieldKind = "kind"
 	// FieldAmount holds the string denoting the amount field in the database.
@@ -49,6 +57,10 @@ var Columns = []string{
 	FieldRequestID,
 	FieldAppID,
 	FieldUserID,
+	FieldOrganizationID,
+	FieldPayerUserID,
+	FieldBalanceSource,
+	FieldAuthzGeneration,
 	FieldKind,
 	FieldAmount,
 	FieldRefundedAmount,
@@ -79,6 +91,8 @@ var (
 	RequestIDValidator func(string) error
 	// AppIDValidator is a validator for the "app_id" field. It is called by the builders before save.
 	AppIDValidator func(string) error
+	// BalanceSourceValidator is a validator for the "balance_source" field. It is called by the builders before save.
+	BalanceSourceValidator func(string) error
 	// DefaultRefundedAmount holds the default value on creation for the "refunded_amount" field.
 	DefaultRefundedAmount float64
 	// RefundOfValidator is a validator for the "refund_of" field. It is called by the builders before save.
@@ -120,6 +134,26 @@ func ByAppID(opts ...sql.OrderTermOption) OrderOption {
 // ByUserID orders the results by the user_id field.
 func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
+}
+
+// ByOrganizationID orders the results by the organization_id field.
+func ByOrganizationID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOrganizationID, opts...).ToFunc()
+}
+
+// ByPayerUserID orders the results by the payer_user_id field.
+func ByPayerUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPayerUserID, opts...).ToFunc()
+}
+
+// ByBalanceSource orders the results by the balance_source field.
+func ByBalanceSource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBalanceSource, opts...).ToFunc()
+}
+
+// ByAuthzGeneration orders the results by the authz_generation field.
+func ByAuthzGeneration(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAuthzGeneration, opts...).ToFunc()
 }
 
 // ByKind orders the results by the kind field.

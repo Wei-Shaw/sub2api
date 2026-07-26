@@ -99,6 +99,26 @@ func UserID(v int64) predicate.AsyncMediaTask {
 	return predicate.AsyncMediaTask(sql.FieldEQ(FieldUserID, v))
 }
 
+// OrganizationID applies equality check predicate on the "organization_id" field. It's identical to OrganizationIDEQ.
+func OrganizationID(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldEQ(FieldOrganizationID, v))
+}
+
+// PayerUserID applies equality check predicate on the "payer_user_id" field. It's identical to PayerUserIDEQ.
+func PayerUserID(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldEQ(FieldPayerUserID, v))
+}
+
+// BalanceSource applies equality check predicate on the "balance_source" field. It's identical to BalanceSourceEQ.
+func BalanceSource(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldEQ(FieldBalanceSource, v))
+}
+
+// AuthzGeneration applies equality check predicate on the "authz_generation" field. It's identical to AuthzGenerationEQ.
+func AuthzGeneration(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldEQ(FieldAuthzGeneration, v))
+}
+
 // GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
 func GroupID(v int64) predicate.AsyncMediaTask {
 	return predicate.AsyncMediaTask(sql.FieldEQ(FieldGroupID, v))
@@ -697,6 +717,231 @@ func UserIDLT(v int64) predicate.AsyncMediaTask {
 // UserIDLTE applies the LTE predicate on the "user_id" field.
 func UserIDLTE(v int64) predicate.AsyncMediaTask {
 	return predicate.AsyncMediaTask(sql.FieldLTE(FieldUserID, v))
+}
+
+// OrganizationIDEQ applies the EQ predicate on the "organization_id" field.
+func OrganizationIDEQ(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldEQ(FieldOrganizationID, v))
+}
+
+// OrganizationIDNEQ applies the NEQ predicate on the "organization_id" field.
+func OrganizationIDNEQ(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNEQ(FieldOrganizationID, v))
+}
+
+// OrganizationIDIn applies the In predicate on the "organization_id" field.
+func OrganizationIDIn(vs ...int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldIn(FieldOrganizationID, vs...))
+}
+
+// OrganizationIDNotIn applies the NotIn predicate on the "organization_id" field.
+func OrganizationIDNotIn(vs ...int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNotIn(FieldOrganizationID, vs...))
+}
+
+// OrganizationIDGT applies the GT predicate on the "organization_id" field.
+func OrganizationIDGT(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldGT(FieldOrganizationID, v))
+}
+
+// OrganizationIDGTE applies the GTE predicate on the "organization_id" field.
+func OrganizationIDGTE(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldGTE(FieldOrganizationID, v))
+}
+
+// OrganizationIDLT applies the LT predicate on the "organization_id" field.
+func OrganizationIDLT(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldLT(FieldOrganizationID, v))
+}
+
+// OrganizationIDLTE applies the LTE predicate on the "organization_id" field.
+func OrganizationIDLTE(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldLTE(FieldOrganizationID, v))
+}
+
+// OrganizationIDIsNil applies the IsNil predicate on the "organization_id" field.
+func OrganizationIDIsNil() predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldIsNull(FieldOrganizationID))
+}
+
+// OrganizationIDNotNil applies the NotNil predicate on the "organization_id" field.
+func OrganizationIDNotNil() predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNotNull(FieldOrganizationID))
+}
+
+// PayerUserIDEQ applies the EQ predicate on the "payer_user_id" field.
+func PayerUserIDEQ(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldEQ(FieldPayerUserID, v))
+}
+
+// PayerUserIDNEQ applies the NEQ predicate on the "payer_user_id" field.
+func PayerUserIDNEQ(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNEQ(FieldPayerUserID, v))
+}
+
+// PayerUserIDIn applies the In predicate on the "payer_user_id" field.
+func PayerUserIDIn(vs ...int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldIn(FieldPayerUserID, vs...))
+}
+
+// PayerUserIDNotIn applies the NotIn predicate on the "payer_user_id" field.
+func PayerUserIDNotIn(vs ...int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNotIn(FieldPayerUserID, vs...))
+}
+
+// PayerUserIDGT applies the GT predicate on the "payer_user_id" field.
+func PayerUserIDGT(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldGT(FieldPayerUserID, v))
+}
+
+// PayerUserIDGTE applies the GTE predicate on the "payer_user_id" field.
+func PayerUserIDGTE(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldGTE(FieldPayerUserID, v))
+}
+
+// PayerUserIDLT applies the LT predicate on the "payer_user_id" field.
+func PayerUserIDLT(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldLT(FieldPayerUserID, v))
+}
+
+// PayerUserIDLTE applies the LTE predicate on the "payer_user_id" field.
+func PayerUserIDLTE(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldLTE(FieldPayerUserID, v))
+}
+
+// PayerUserIDIsNil applies the IsNil predicate on the "payer_user_id" field.
+func PayerUserIDIsNil() predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldIsNull(FieldPayerUserID))
+}
+
+// PayerUserIDNotNil applies the NotNil predicate on the "payer_user_id" field.
+func PayerUserIDNotNil() predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNotNull(FieldPayerUserID))
+}
+
+// BalanceSourceEQ applies the EQ predicate on the "balance_source" field.
+func BalanceSourceEQ(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldEQ(FieldBalanceSource, v))
+}
+
+// BalanceSourceNEQ applies the NEQ predicate on the "balance_source" field.
+func BalanceSourceNEQ(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNEQ(FieldBalanceSource, v))
+}
+
+// BalanceSourceIn applies the In predicate on the "balance_source" field.
+func BalanceSourceIn(vs ...string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldIn(FieldBalanceSource, vs...))
+}
+
+// BalanceSourceNotIn applies the NotIn predicate on the "balance_source" field.
+func BalanceSourceNotIn(vs ...string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNotIn(FieldBalanceSource, vs...))
+}
+
+// BalanceSourceGT applies the GT predicate on the "balance_source" field.
+func BalanceSourceGT(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldGT(FieldBalanceSource, v))
+}
+
+// BalanceSourceGTE applies the GTE predicate on the "balance_source" field.
+func BalanceSourceGTE(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldGTE(FieldBalanceSource, v))
+}
+
+// BalanceSourceLT applies the LT predicate on the "balance_source" field.
+func BalanceSourceLT(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldLT(FieldBalanceSource, v))
+}
+
+// BalanceSourceLTE applies the LTE predicate on the "balance_source" field.
+func BalanceSourceLTE(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldLTE(FieldBalanceSource, v))
+}
+
+// BalanceSourceContains applies the Contains predicate on the "balance_source" field.
+func BalanceSourceContains(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldContains(FieldBalanceSource, v))
+}
+
+// BalanceSourceHasPrefix applies the HasPrefix predicate on the "balance_source" field.
+func BalanceSourceHasPrefix(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldHasPrefix(FieldBalanceSource, v))
+}
+
+// BalanceSourceHasSuffix applies the HasSuffix predicate on the "balance_source" field.
+func BalanceSourceHasSuffix(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldHasSuffix(FieldBalanceSource, v))
+}
+
+// BalanceSourceIsNil applies the IsNil predicate on the "balance_source" field.
+func BalanceSourceIsNil() predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldIsNull(FieldBalanceSource))
+}
+
+// BalanceSourceNotNil applies the NotNil predicate on the "balance_source" field.
+func BalanceSourceNotNil() predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNotNull(FieldBalanceSource))
+}
+
+// BalanceSourceEqualFold applies the EqualFold predicate on the "balance_source" field.
+func BalanceSourceEqualFold(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldEqualFold(FieldBalanceSource, v))
+}
+
+// BalanceSourceContainsFold applies the ContainsFold predicate on the "balance_source" field.
+func BalanceSourceContainsFold(v string) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldContainsFold(FieldBalanceSource, v))
+}
+
+// AuthzGenerationEQ applies the EQ predicate on the "authz_generation" field.
+func AuthzGenerationEQ(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldEQ(FieldAuthzGeneration, v))
+}
+
+// AuthzGenerationNEQ applies the NEQ predicate on the "authz_generation" field.
+func AuthzGenerationNEQ(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNEQ(FieldAuthzGeneration, v))
+}
+
+// AuthzGenerationIn applies the In predicate on the "authz_generation" field.
+func AuthzGenerationIn(vs ...int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldIn(FieldAuthzGeneration, vs...))
+}
+
+// AuthzGenerationNotIn applies the NotIn predicate on the "authz_generation" field.
+func AuthzGenerationNotIn(vs ...int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNotIn(FieldAuthzGeneration, vs...))
+}
+
+// AuthzGenerationGT applies the GT predicate on the "authz_generation" field.
+func AuthzGenerationGT(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldGT(FieldAuthzGeneration, v))
+}
+
+// AuthzGenerationGTE applies the GTE predicate on the "authz_generation" field.
+func AuthzGenerationGTE(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldGTE(FieldAuthzGeneration, v))
+}
+
+// AuthzGenerationLT applies the LT predicate on the "authz_generation" field.
+func AuthzGenerationLT(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldLT(FieldAuthzGeneration, v))
+}
+
+// AuthzGenerationLTE applies the LTE predicate on the "authz_generation" field.
+func AuthzGenerationLTE(v int64) predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldLTE(FieldAuthzGeneration, v))
+}
+
+// AuthzGenerationIsNil applies the IsNil predicate on the "authz_generation" field.
+func AuthzGenerationIsNil() predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldIsNull(FieldAuthzGeneration))
+}
+
+// AuthzGenerationNotNil applies the NotNil predicate on the "authz_generation" field.
+func AuthzGenerationNotNil() predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNotNull(FieldAuthzGeneration))
 }
 
 // GroupIDEQ applies the EQ predicate on the "group_id" field.

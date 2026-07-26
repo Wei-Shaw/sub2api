@@ -60,6 +60,7 @@ type BatchImageSettlementService struct {
 	UsageLogRepo UsageLogRepository
 	Pricing      BatchImagePricingResolver
 	AuthCache    APIKeyAuthCacheInvalidator
+	BalanceCache UserBalanceCacheInvalidator
 	Config       *config.Config
 }
 
@@ -156,7 +157,7 @@ func (s *BatchImageSettlementService) Settle(ctx context.Context, batchID string
 		}
 		return nil, err
 	}
-	s.invalidateAuthCache(ctx, job.UserID)
+	s.invalidateBillingCaches(ctx, batchImagePayerUserID(job))
 
 	now := time.Now()
 	outputExpiresAt := now.Add(s.outputRetentionAfterTerminal())
@@ -230,7 +231,7 @@ func (s *BatchImageSettlementService) failExhaustedSettlement(ctx context.Contex
 		}
 		return ErrBatchImageSettlementBillingFailed.WithCause(err)
 	}
-	s.invalidateAuthCache(ctx, job.UserID)
+	s.invalidateBillingCaches(ctx, batchImagePayerUserID(job))
 	msg := strings.TrimSpace(message)
 	if msg == "" {
 		msg = "settlement billing retry limit reached"
@@ -260,6 +261,10 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 	imageSize := "1K"
 	usageLog := &UsageLog{
 		UserID:                job.UserID,
+		OrganizationID:        job.OrganizationID,
+		PayerUserID:           job.PayerUserID,
+		BalanceSource:         job.BalanceSource,
+		AuthzGeneration:       job.AuthzGeneration,
 		APIKeyID:              *job.APIKeyID,
 		AccountID:             *job.AccountID,
 		RequestID:             strings.TrimSpace(requestID),
@@ -282,9 +287,14 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 	writeUsageLogBestEffort(ctx, s.UsageLogRepo, usageLog, "service.batch_image_settlement")
 }
 
-func (s *BatchImageSettlementService) invalidateAuthCache(ctx context.Context, userID int64) {
+func (s *BatchImageSettlementService) invalidateBillingCaches(ctx context.Context, userID int64) {
 	if s != nil && s.AuthCache != nil && userID > 0 {
 		s.AuthCache.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+	if s != nil && s.BalanceCache != nil && userID > 0 {
+		if err := s.BalanceCache.InvalidateUserBalance(ctx, userID); err != nil {
+			logger.L().Warn("batch_image.balance_cache_invalidate_failed", zap.Int64("payer_user_id", userID), zap.Error(err))
+		}
 	}
 }
 

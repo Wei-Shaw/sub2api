@@ -23,6 +23,22 @@ const (
 	FieldDeletedAt = "deleted_at"
 	// FieldEmail holds the string denoting the email field in the database.
 	FieldEmail = "email"
+	// FieldAccountID holds the string denoting the account_id field in the database.
+	FieldAccountID = "account_id"
+	// FieldExternalUserID holds the string denoting the external_user_id field in the database.
+	FieldExternalUserID = "external_user_id"
+	// FieldIdentityType holds the string denoting the identity_type field in the database.
+	FieldIdentityType = "identity_type"
+	// FieldLoginName holds the string denoting the login_name field in the database.
+	FieldLoginName = "login_name"
+	// FieldMustChangePassword holds the string denoting the must_change_password field in the database.
+	FieldMustChangePassword = "must_change_password"
+	// FieldRecoveryEmail holds the string denoting the recovery_email field in the database.
+	FieldRecoveryEmail = "recovery_email"
+	// FieldRecoveryEmailVerifiedAt holds the string denoting the recovery_email_verified_at field in the database.
+	FieldRecoveryEmailVerifiedAt = "recovery_email_verified_at"
+	// FieldAuthzGeneration holds the string denoting the authz_generation field in the database.
+	FieldAuthzGeneration = "authz_generation"
 	// FieldPasswordHash holds the string denoting the password_hash field in the database.
 	FieldPasswordHash = "password_hash"
 	// FieldRole holds the string denoting the role field in the database.
@@ -207,6 +223,14 @@ var Columns = []string{
 	FieldUpdatedAt,
 	FieldDeletedAt,
 	FieldEmail,
+	FieldAccountID,
+	FieldExternalUserID,
+	FieldIdentityType,
+	FieldLoginName,
+	FieldMustChangePassword,
+	FieldRecoveryEmail,
+	FieldRecoveryEmailVerifiedAt,
+	FieldAuthzGeneration,
 	FieldPasswordHash,
 	FieldRole,
 	FieldBalance,
@@ -261,6 +285,22 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// EmailValidator is a validator for the "email" field. It is called by the builders before save.
 	EmailValidator func(string) error
+	// AccountIDValidator is a validator for the "account_id" field. It is called by the builders before save.
+	AccountIDValidator func(string) error
+	// ExternalUserIDValidator is a validator for the "external_user_id" field. It is called by the builders before save.
+	ExternalUserIDValidator func(string) error
+	// DefaultIdentityType holds the default value on creation for the "identity_type" field.
+	DefaultIdentityType string
+	// IdentityTypeValidator is a validator for the "identity_type" field. It is called by the builders before save.
+	IdentityTypeValidator func(string) error
+	// LoginNameValidator is a validator for the "login_name" field. It is called by the builders before save.
+	LoginNameValidator func(string) error
+	// DefaultMustChangePassword holds the default value on creation for the "must_change_password" field.
+	DefaultMustChangePassword bool
+	// RecoveryEmailValidator is a validator for the "recovery_email" field. It is called by the builders before save.
+	RecoveryEmailValidator func(string) error
+	// DefaultAuthzGeneration holds the default value on creation for the "authz_generation" field.
+	DefaultAuthzGeneration int64
 	// PasswordHashValidator is a validator for the "password_hash" field. It is called by the builders before save.
 	PasswordHashValidator func(string) error
 	// DefaultRole holds the default value on creation for the "role" field.
@@ -327,6 +367,46 @@ func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByEmail orders the results by the email field.
 func ByEmail(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEmail, opts...).ToFunc()
+}
+
+// ByAccountID orders the results by the account_id field.
+func ByAccountID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccountID, opts...).ToFunc()
+}
+
+// ByExternalUserID orders the results by the external_user_id field.
+func ByExternalUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExternalUserID, opts...).ToFunc()
+}
+
+// ByIdentityType orders the results by the identity_type field.
+func ByIdentityType(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIdentityType, opts...).ToFunc()
+}
+
+// ByLoginName orders the results by the login_name field.
+func ByLoginName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLoginName, opts...).ToFunc()
+}
+
+// ByMustChangePassword orders the results by the must_change_password field.
+func ByMustChangePassword(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMustChangePassword, opts...).ToFunc()
+}
+
+// ByRecoveryEmail orders the results by the recovery_email field.
+func ByRecoveryEmail(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRecoveryEmail, opts...).ToFunc()
+}
+
+// ByRecoveryEmailVerifiedAt orders the results by the recovery_email_verified_at field.
+func ByRecoveryEmailVerifiedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRecoveryEmailVerifiedAt, opts...).ToFunc()
+}
+
+// ByAuthzGeneration orders the results by the authz_generation field.
+func ByAuthzGeneration(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAuthzGeneration, opts...).ToFunc()
 }
 
 // ByPasswordHash orders the results by the password_hash field.

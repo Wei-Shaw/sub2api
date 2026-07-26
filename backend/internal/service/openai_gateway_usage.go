@@ -357,6 +357,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			tokens, cost.TotalCost,
 		)
 	}
+	resolvedBillingContext, err := resolveAndSnapshotBillingContext(ctx, usageLog, user, s.billingContextResolver)
+	if err != nil {
+		return err
+	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
@@ -384,6 +388,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
 			Platform:              quotaPlatform,
+			BillingContext:        resolvedBillingContext,
 		}, s.billingDeps(), s.usageBillingRepo)
 		return err
 	}()

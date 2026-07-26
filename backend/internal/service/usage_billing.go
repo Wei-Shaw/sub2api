@@ -20,6 +20,10 @@ type UsageBillingCommand struct {
 	RequestPayloadHash string
 
 	UserID              int64
+	OrganizationID      *int64
+	PayerUserID         int64
+	BalanceSource       string
+	AuthzGeneration     int64
 	AccountID           int64
 	SubscriptionID      *int64
 	AccountType         string
@@ -56,8 +60,12 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 		return ""
 	}
 	raw := fmt.Sprintf(
-		"%d|%d|%d|%s|%s|%s|%s|%d|%d|%d|%d|%d|%d|%s|%d|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f",
+		"%d|%d|%d|%d|%s|%d|%d|%s|%s|%s|%s|%d|%d|%d|%d|%d|%d|%s|%d|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f",
 		c.UserID,
+		valueOrZero(c.OrganizationID),
+		c.PayerUserID,
+		c.AuthzGeneration,
+		strings.TrimSpace(c.BalanceSource),
 		c.AccountID,
 		c.APIKeyID,
 		strings.TrimSpace(c.AccountType),
@@ -117,6 +125,10 @@ type UsageBillingApplyResult struct {
 	NewBalance           *float64           // post-deduction balance (nil = no balance deduction)
 	BalanceOverdrafted   bool               // true when the sufficient-balance guard missed and debt was still recorded
 	QuotaState           *AccountQuotaState // post-increment quota state (nil = no quota increment)
+	OrganizationID       *int64
+	PayerUserID          int64
+	BalanceSource        string
+	AuthzGeneration      int64
 }
 
 // BatchImageBalanceHoldCommand describes an idempotent balance hold operation.
@@ -126,6 +138,10 @@ type BatchImageBalanceHoldCommand struct {
 	RequestFingerprint string
 	RequestPayloadHash string
 	UserID             int64
+	OrganizationID     *int64
+	PayerUserID        int64
+	BalanceSource      string
+	AuthzGeneration    int64
 	BatchID            string
 	HoldAmount         float64
 	ActualAmount       float64
@@ -147,8 +163,12 @@ func buildBatchImageBalanceHoldFingerprint(c *BatchImageBalanceHoldCommand) stri
 		return ""
 	}
 	raw := fmt.Sprintf(
-		"%d|%d|%s|%0.10f|%0.10f",
+		"%d|%d|%d|%d|%s|%d|%s|%0.10f|%0.10f",
 		c.UserID,
+		valueOrZero(c.OrganizationID),
+		c.PayerUserID,
+		c.AuthzGeneration,
+		strings.TrimSpace(c.BalanceSource),
 		c.APIKeyID,
 		strings.TrimSpace(c.BatchID),
 		c.HoldAmount,

@@ -37,6 +37,14 @@ vi.mock('vue-i18n', async (importOriginal) => {
         if (key === 'profile.authBindings.providers.linuxdo') return 'LinuxDo'
         if (key === 'profile.authBindings.providers.wechat') return 'WeChat'
         if (key === 'profile.authBindings.providers.oidc') return params?.providerName || 'OIDC'
+        if (key === 'organization.accountId') return 'Account ID'
+        if (key === 'organization.accountType.label') return 'Account type'
+        if (key === 'organization.accountType.personal') return 'Personal account'
+        if (key === 'organization.accountType.company') return 'Company account'
+        if (key === 'organization.accountIdentity.label') return 'Account identity'
+        if (key === 'organization.accountIdentity.root') return 'Main account'
+        if (key === 'organization.accountIdentity.iam') return 'Sub-account'
+        if (key === 'organization.upgrade.title') return 'Upgrade to company account'
         if (key === 'profile.authBindings.source.avatar') {
           return `Avatar synced from ${params?.providerName || 'provider'}`
         }
@@ -77,7 +85,8 @@ describe('ProfileInfoCard', () => {
       },
       global: {
         stubs: {
-          Icon: true
+          Icon: true,
+          RouterLink: true,
         }
       }
     })
@@ -87,6 +96,79 @@ describe('ProfileInfoCard', () => {
     expect(wrapper.text()).toContain('User')
     expect(wrapper.get('[data-testid="profile-basics-panel"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="profile-auth-bindings-panel"]').exists()).toBe(true)
+  })
+
+  it('shows account ID, personal account type, and the company upgrade action', () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: createUser({ account_id: '1719905235756637', identity_type: 'root' }),
+        companyApplicationsEnabled: true,
+      },
+      global: {
+        stubs: {
+          Icon: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a :data-to="to"><slot /></a>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-testid="profile-account-id"]').text()).toBe('1719905235756637')
+    expect(wrapper.get('[data-testid="profile-account-type"]').text()).toBe('Personal account')
+    expect(wrapper.get('[data-testid="profile-account-identity-type"]').text()).toBe('Main account')
+    expect(wrapper.get('[data-testid="profile-company-upgrade"]').attributes('data-to')).toBe('/profile/company-upgrade')
+    expect(wrapper.get('[data-testid="profile-company-upgrade"]').classes()).toContain('btn-sm')
+    expect(wrapper.get('[data-testid="profile-account-identity"]').element.parentElement).toBe(
+      wrapper.get('[data-testid="profile-primary-email"]').element.parentElement,
+    )
+  })
+
+  it('shows company account type without the upgrade action for organization users', () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: createUser({
+          account_id: '1719905235756637',
+          identity_type: 'root',
+          organization: { organization_id: 1 } as User['organization'],
+        }),
+        companyApplicationsEnabled: true,
+      },
+      global: {
+        stubs: {
+          Icon: true,
+          RouterLink: true,
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-testid="profile-account-type"]').text()).toBe('Company account')
+    expect(wrapper.find('[data-testid="profile-company-upgrade"]').exists()).toBe(false)
+  })
+
+  it('identifies IAM users as sub-accounts', () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: createUser({
+          account_id: '1719905235756637',
+          external_user_id: '201705485041478971',
+          identity_type: 'iam',
+          organization: { organization_id: 1 } as User['organization'],
+        }),
+        companyApplicationsEnabled: true,
+      },
+      global: {
+        stubs: {
+          Icon: true,
+          RouterLink: true,
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-testid="profile-account-type"]').text()).toBe('Company account')
+    expect(wrapper.get('[data-testid="profile-account-identity-type"]').text()).toBe('Sub-account')
+    expect(wrapper.find('[data-testid="profile-company-upgrade"]').exists()).toBe(false)
   })
 
   it('renders third-party source hints from profile sources', () => {
@@ -102,7 +184,8 @@ describe('ProfileInfoCard', () => {
       },
       global: {
         stubs: {
-          Icon: true
+          Icon: true,
+          RouterLink: true,
         }
       }
     })
@@ -123,7 +206,8 @@ describe('ProfileInfoCard', () => {
       },
       global: {
         stubs: {
-          Icon: true
+          Icon: true,
+          RouterLink: true,
         }
       }
     })
@@ -144,7 +228,8 @@ describe('ProfileInfoCard', () => {
       },
       global: {
         stubs: {
-          Icon: true
+          Icon: true,
+          RouterLink: true,
         }
       }
     })
@@ -164,7 +249,8 @@ describe('ProfileInfoCard', () => {
       },
       global: {
         stubs: {
-          Icon: true
+          Icon: true,
+          RouterLink: true,
         }
       }
     })
@@ -179,7 +265,8 @@ describe('ProfileInfoCard', () => {
       },
       global: {
         stubs: {
-          Icon: true
+          Icon: true,
+          RouterLink: true,
         }
       }
     })

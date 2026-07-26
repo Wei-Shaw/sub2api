@@ -15,6 +15,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	entuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -53,10 +54,13 @@ const refreshTokenPrefix = "rt_"
 
 // JWTClaims JWT载荷数据
 type JWTClaims struct {
-	UserID       int64  `json:"user_id"`
-	Email        string `json:"email"`
-	Role         string `json:"role"`
-	TokenVersion int64  `json:"token_version"` // Used to invalidate tokens on password change
+	UserID             int64  `json:"user_id"`
+	Email              string `json:"email"`
+	Role               string `json:"role"`
+	TokenVersion       int64  `json:"token_version"` // Used to invalidate tokens on password change
+	IdentityType       string `json:"identity_type,omitempty"`
+	AuthzGeneration    int64  `json:"authz_generation,omitempty"`
+	MustChangePassword bool   `json:"must_change_password,omitempty"`
 	// SessionID 会话 ID（与 refresh token family 对应），用于单会话撤销与 step-up 授权绑定。
 	SessionID string `json:"sid,omitempty"`
 	// BindingHash 会话指纹哈希（IP+UA），会话绑定开启时校验；空值表示旧 token（平滑升级）。
@@ -1236,12 +1240,15 @@ func (s *AuthService) generateAccessToken(user *User, sessionID, bindingHash str
 	}
 
 	claims := &JWTClaims{
-		UserID:       user.ID,
-		Email:        user.Email,
-		Role:         user.Role,
-		TokenVersion: resolvedTokenVersion(user),
-		SessionID:    sessionID,
-		BindingHash:  bindingHash,
+		UserID:             user.ID,
+		Email:              user.Email,
+		Role:               user.Role,
+		TokenVersion:       resolvedTokenVersion(user),
+		IdentityType:       user.IdentityType,
+		AuthzGeneration:    user.AuthzGeneration,
+		MustChangePassword: user.MustChangePassword,
+		SessionID:          sessionID,
+		BindingHash:        bindingHash,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -1341,11 +1348,10 @@ func (s *AuthService) IsPasswordResetEnabled(ctx context.Context) bool {
 // shouldProceed is false when we should silently return success (to prevent enumeration)
 func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendBaseURL string) (string, string, bool) {
 	// Check if user exists (but don't reveal this to the caller)
-	user, err := s.userRepo.GetByEmail(ctx, email)
+	user, err := s.resolvePasswordResetUser(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
-			// Security: Log but don't reveal that user doesn't exist
-			logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for non-existent email: %s", email)
+			logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for unknown email")
 			return "", "", false
 		}
 		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email for password reset: %v", err)
@@ -1354,7 +1360,7 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 
 	// Check if user is active
 	if !user.IsActive() {
-		logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for inactive user: %s", email)
+		logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for inactive user")
 		return "", "", false
 	}
 
@@ -1368,6 +1374,97 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 	resetURL := fmt.Sprintf("%s/reset-password", strings.TrimSuffix(frontendBaseURL, "/"))
 
 	return siteName, resetURL, true
+}
+
+// resolvePasswordResetUser preserves personal email recovery while allowing a
+// verified IAM recovery address. Recovery addresses are never login identifiers.
+func (s *AuthService) resolvePasswordResetUser(ctx context.Context, email string) (*User, error) {
+	email = strings.TrimSpace(email)
+	if user, err := s.userRepo.GetByEmail(ctx, email); err == nil {
+		return user, nil
+	} else if !errors.Is(err, ErrUserNotFound) {
+		return nil, err
+	}
+	if s.entClient == nil {
+		return nil, ErrUserNotFound
+	}
+	ids, err := s.entClient.User.Query().
+		Where(
+			entuser.IdentityTypeEQ(IdentityTypeIAM),
+			entuser.RecoveryEmailEqualFold(email),
+			entuser.RecoveryEmailVerifiedAtNotNil(),
+		).
+		Limit(2).
+		IDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) != 1 {
+		return nil, ErrUserNotFound
+	}
+	return s.userRepo.GetByID(ctx, ids[0])
+}
+
+// SendIAMRecoveryEmailCode stores the requested address as unverified before
+// sending a code. A failed delivery leaves no trusted recovery route behind.
+func (s *AuthService) SendIAMRecoveryEmailCode(ctx context.Context, userID int64, email string, locale ...string) error {
+	if s.emailService == nil || s.entClient == nil {
+		return ErrServiceUnavailable
+	}
+	email = strings.TrimSpace(email)
+	parsed, err := mail.ParseAddress(email)
+	if err != nil || !strings.EqualFold(parsed.Address, email) {
+		return infraerrors.BadRequest("RECOVERY_EMAIL_INVALID", "recovery email is invalid")
+	}
+	updated, err := s.entClient.User.Update().
+		Where(entuser.IDEQ(userID), entuser.IdentityTypeEQ(IdentityTypeIAM), entuser.StatusEQ(StatusActive)).
+		SetRecoveryEmail(email).
+		ClearRecoveryEmailVerifiedAt().
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return ErrUserNotFound
+	}
+	siteName := "Sub2API"
+	if s.settingService != nil {
+		siteName = s.settingService.GetSiteName(ctx)
+	}
+	return s.emailService.SendVerifyCode(ctx, email, siteName, firstEmailLocale(locale))
+}
+
+func (s *AuthService) VerifyIAMRecoveryEmail(ctx context.Context, userID int64, email, code string) error {
+	if s.emailService == nil || s.entClient == nil {
+		return ErrServiceUnavailable
+	}
+	email = strings.TrimSpace(email)
+	if err := s.emailService.VerifyCode(ctx, email, strings.TrimSpace(code)); err != nil {
+		return err
+	}
+	duplicate, err := s.entClient.User.Query().Where(
+		entuser.IDNEQ(userID),
+		entuser.IdentityTypeEQ(IdentityTypeIAM),
+		entuser.RecoveryEmailEqualFold(email),
+		entuser.RecoveryEmailVerifiedAtNotNil(),
+	).Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if duplicate {
+		return infraerrors.Conflict("RECOVERY_EMAIL_IN_USE", "recovery email is already in use")
+	}
+	updated, err := s.entClient.User.Update().
+		Where(entuser.IDEQ(userID), entuser.IdentityTypeEQ(IdentityTypeIAM), entuser.RecoveryEmailEqualFold(email)).
+		SetRecoveryEmailVerifiedAt(time.Now().UTC()).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return ErrUserNotFound
+	}
+	return nil
 }
 
 // RequestPasswordReset 请求密码重置（同步发送）
@@ -1436,7 +1533,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 	}
 
 	// Get user
-	user, err := s.userRepo.GetByEmail(ctx, email)
+	user, err := s.resolvePasswordResetUser(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return ErrInvalidResetToken // Token was valid but user was deleted
@@ -1456,11 +1553,16 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 		return fmt.Errorf("hash password: %w", err)
 	}
 
-	// Update password and increment TokenVersion
-	user.PasswordHash = hashedPassword
-	user.TokenVersion++ // Invalidate all existing tokens
-
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	// Update password and generations atomically so existing access tokens and
+	// organization authorization caches become stale immediately.
+	if s.entClient == nil {
+		return ErrServiceUnavailable
+	}
+	if _, err := s.entClient.User.UpdateOneID(user.ID).
+		SetPasswordHash(hashedPassword).
+		SetMustChangePassword(false).
+		AddAuthzGeneration(1).
+		Save(ctx); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Database error updating password for user %d: %v", user.ID, err)
 		return ErrServiceUnavailable
 	}
@@ -1471,7 +1573,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 		// Don't return error - password was already changed successfully
 	}
 
-	logger.LegacyPrintf("service.auth", "[Auth] Password reset successful for user: %s", email)
+	logger.LegacyPrintf("service.auth", "[Auth] Password reset successful for user %d", user.ID)
 	return nil
 }
 

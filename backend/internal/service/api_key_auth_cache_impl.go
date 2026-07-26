@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 17 // v17: combined image matrix, batch image, video, peak-rate, Kiro fields and web search per-call pricing
+const apiKeyAuthSnapshotVersion = 18 // v18: public identity and organization authorization generation
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -165,8 +165,9 @@ func (s *APIKeyService) invalidateLocalAuthCache(cacheKey string) {
 }
 
 type AuthCacheInvalidationSubscriberHealth struct {
-	Connected bool   `json:"connected"`
-	Failures  uint64 `json:"failures"`
+	Connected         bool   `json:"connected"`
+	Failures          uint64 `json:"failures"`
+	DatabaseFallbacks uint64 `json:"database_fallbacks"`
 }
 
 func (s *APIKeyService) AuthCacheInvalidationSubscriberHealth() AuthCacheInvalidationSubscriberHealth {
@@ -174,8 +175,9 @@ func (s *APIKeyService) AuthCacheInvalidationSubscriberHealth() AuthCacheInvalid
 		return AuthCacheInvalidationSubscriberHealth{}
 	}
 	return AuthCacheInvalidationSubscriberHealth{
-		Connected: s.authInvalidationConnected.Load(),
-		Failures:  s.authInvalidationFailures.Load(),
+		Connected:         s.authInvalidationConnected.Load(),
+		Failures:          s.authInvalidationFailures.Load(),
+		DatabaseFallbacks: s.organizationAuthDBFallbacks.Load(),
 	}
 }
 
@@ -352,6 +354,11 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		RateLimit7d: apiKey.RateLimit7d,
 		User: APIKeyAuthUserSnapshot{
 			ID:                         apiKey.User.ID,
+			IdentityType:               apiKey.User.IdentityType,
+			AccountID:                  apiKey.User.AccountID,
+			ExternalUserID:             apiKey.User.ExternalUserID,
+			AuthzGeneration:            apiKey.User.AuthzGeneration,
+			MustChangePassword:         apiKey.User.MustChangePassword,
 			Status:                     apiKey.User.Status,
 			Role:                       apiKey.User.Role,
 			Balance:                    apiKey.User.Balance,
@@ -455,6 +462,11 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		RateLimit7d: snapshot.RateLimit7d,
 		User: &User{
 			ID:                         snapshot.User.ID,
+			IdentityType:               snapshot.User.IdentityType,
+			AccountID:                  snapshot.User.AccountID,
+			ExternalUserID:             snapshot.User.ExternalUserID,
+			AuthzGeneration:            snapshot.User.AuthzGeneration,
+			MustChangePassword:         snapshot.User.MustChangePassword,
 			Status:                     snapshot.User.Status,
 			Role:                       snapshot.User.Role,
 			Balance:                    snapshot.User.Balance,

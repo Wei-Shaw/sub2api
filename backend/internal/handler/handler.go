@@ -83,6 +83,7 @@ type Handlers struct {
 	OidcProvider              *OidcProviderHandler
 	AsyncImage                *AsyncImageHandler
 	BatchImage                *BatchImageHandler
+	Organization              *OrganizationHandler
 }
 
 // BuildInfo contains build-time information

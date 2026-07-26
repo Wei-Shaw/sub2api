@@ -157,6 +157,11 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
 			return
 		}
+		if err := apiKeyService.ValidateOrganizationAccess(c.Request.Context(), apiKey.User); err != nil {
+			MarkIngressRejected(c, IngressRejectUserInactive)
+			AbortWithError(c, 403, "ORGANIZATION_ACCESS_DENIED", "Organization access is unavailable")
+			return
+		}
 		if abortIfAPIKeyGroupUnavailable(c, apiKey) {
 			return
 		}

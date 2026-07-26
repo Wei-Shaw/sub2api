@@ -332,6 +332,37 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultCompanyFeatureFlagsDisabled(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.Company.ApplicationsEnabled)
+	require.False(t, cfg.Company.IAMEnabled)
+	require.False(t, cfg.Company.PublicIDsFinalized)
+	require.False(t, cfg.Company.BillingIntegrationEnabled)
+}
+
+func TestValidateCompanyFeatureFlagsRequireRolloutReadiness(t *testing.T) {
+	for _, feature := range []string{"applications", "iam"} {
+		t.Run(feature, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			cfg, err := Load()
+			require.NoError(t, err)
+			if feature == "applications" {
+				cfg.Company.ApplicationsEnabled = true
+			} else {
+				cfg.Company.IAMEnabled = true
+			}
+
+			require.ErrorContains(t, cfg.Validate(), "company features require public_ids_finalized and billing_integration_enabled")
+			cfg.Company.PublicIDsFinalized = true
+			cfg.Company.BillingIntegrationEnabled = true
+			require.NoError(t, cfg.Validate())
+		})
+	}
+}
+
 func TestLoadDefaultOpenAIFirstOutputTimeoutsDisabled(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

@@ -101,18 +101,23 @@ type subscriptionCacheInvalidationPubSub interface {
 	SubscribeSubscriptionCacheInvalidation(ctx context.Context, handler func(cacheKey string)) error
 }
 
+type billingEligibilityContextResolver interface {
+	Resolve(ctx context.Context, consumerUserID int64) (*BillingContext, error)
+}
+
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
-	cache                 BillingCache
-	userRepo              UserRepository
-	subRepo               UserSubscriptionRepository
-	apiKeyRateLimitLoader apiKeyRateLimitLoader
-	userRPMCache          UserRPMCache
-	userGroupRateRepo     UserGroupRateRepository
-	cfg                   *config.Config
-	circuitBreaker        *billingCircuitBreaker
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	cache                  BillingCache
+	userRepo               UserRepository
+	subRepo                UserSubscriptionRepository
+	apiKeyRateLimitLoader  apiKeyRateLimitLoader
+	userRPMCache           UserRPMCache
+	userGroupRateRepo      UserGroupRateRepository
+	cfg                    *config.Config
+	circuitBreaker         *billingCircuitBreaker
+	userPlatformQuotaRepo  UserPlatformQuotaRepository
+	billingContextResolver billingEligibilityContextResolver
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -126,6 +131,14 @@ type BillingCacheService struct {
 	cacheWriteDropFullLastLog   int64
 	cacheWriteDropClosedCount   uint64
 	cacheWriteDropClosedLastLog int64
+}
+
+// SetBillingContextResolver makes balance preflight use the same effective
+// payer selection as the eventual usage deduction.
+func (s *BillingCacheService) SetBillingContextResolver(resolver billingEligibilityContextResolver) {
+	if s != nil {
+		s.billingContextResolver = resolver
+	}
 }
 
 // NewBillingCacheService 创建计费缓存服务
@@ -749,7 +762,19 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 			return err
 		}
 	} else {
-		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+		payerUserID := user.ID
+		if s.billingContextResolver != nil {
+			resolved, err := s.billingContextResolver.Resolve(ctx, user.ID)
+			if err != nil {
+				logger.LegacyPrintf("service.billing_cache", "ALERT: billing payer resolution failed for user %d: %v", user.ID, err)
+				return err
+			}
+			if resolved == nil || resolved.PayerUserID <= 0 {
+				return ErrBillingServiceUnavailable.WithCause(fmt.Errorf("invalid billing payer for user %d", user.ID))
+			}
+			payerUserID = resolved.PayerUserID
+		}
+		if err := s.checkBalanceEligibility(ctx, payerUserID); err != nil {
 			return err
 		}
 	}

@@ -1254,6 +1254,26 @@ update:
   proxy_url: ""
 
 # =============================================================================
+# Company Accounts And IAM (企业账户与 IAM)
+# =============================================================================
+company:
+  # Keep both product switches off until the public-ID backfill, final
+  # constraints, billing-path acceptance tests, and reconciliation checks pass.
+  # 在公共 ID 回填、最终约束、计费链路验收和对账检查通过前保持关闭。
+  applications_enabled: false
+  iam_enabled: false
+  public_ids_finalized: false
+  billing_integration_enabled: false
+  upgrade_fee: 20
+  upgrade_currency: "USD"
+  default_member_limit: 20
+  outbox_poll_seconds: 5
+  outbox_max_attempts: 10
+  reconcile_interval_seconds: 300
+  review_queue_alert_seconds: 86400
+  outbox_lag_alert_seconds: 300
+
+# =============================================================================
 # Image Storage (异步图片任务结果对象存储)
 # =============================================================================
 # 长耗时生图套 Cloudflare 会 524 超时，异步图片任务接口（/v1/images/generations/async

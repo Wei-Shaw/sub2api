@@ -132,6 +132,27 @@ func RegisterAdminRoutes(
 		registerBillingAppRoutes(admin, h)
 
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+
+		registerOrganizationAdminRoutes(admin, h)
+	}
+}
+
+func registerOrganizationAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h == nil || h.Organization == nil {
+		return
+	}
+	organizations := admin.Group("/organizations")
+	{
+		organizations.GET("", h.Organization.AdminListOrganizations)
+		organizations.GET("/operations", h.Organization.AdminOperations)
+		organizations.GET("/applications", h.Organization.AdminListApplications)
+		organizations.GET("/applications/:application_id", h.Organization.AdminGetApplication)
+		organizations.POST("/applications/:application_id/decision", h.Organization.AdminDecideApplication)
+		organizations.GET("/name-change-requests", h.Organization.AdminListNameChanges)
+		organizations.GET("/name-change-requests/:request_id", h.Organization.AdminGetNameChange)
+		organizations.POST("/name-change-requests/:request_id/decision", h.Organization.AdminDecideNameChange)
+		organizations.GET("/:organization_id", h.Organization.AdminGetOrganization)
+		organizations.PATCH("/:organization_id/status", h.Organization.AdminSetOrganizationStatus)
 	}
 }
 

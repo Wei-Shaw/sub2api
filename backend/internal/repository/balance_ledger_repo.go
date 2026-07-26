@@ -20,6 +20,43 @@ func NewBalanceLedgerRepository(sqlDB *sql.DB) service.BalanceLedgerRepository {
 	return &balanceLedgerRepository{db: sqlDB}
 }
 
+func (r *balanceLedgerRepository) FindDeduct(ctx context.Context, cmd *service.LedgerDeductCommand) (*service.LedgerDeductResult, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("balance ledger repository db is nil")
+	}
+	var (
+		userID          int64
+		amount          float64
+		balanceAfter    sql.NullFloat64
+		organizationID  sql.NullInt64
+		payerUserID     int64
+		balanceSource   string
+		authzGeneration sql.NullInt64
+	)
+	err := r.db.QueryRowContext(ctx, `
+		SELECT user_id,amount,balance_after,organization_id,COALESCE(payer_user_id,user_id),
+		       COALESCE(balance_source,'self'),authz_generation
+		FROM balance_ledger WHERE app_id=$1 AND request_id=$2 AND kind=1`, cmd.AppID, cmd.RequestID).
+		Scan(&userID, &amount, &balanceAfter, &organizationID, &payerUserID, &balanceSource, &authzGeneration)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if userID != cmd.UserID || !floatEqual(amount, cmd.Amount) {
+		return nil, service.ErrLedgerRequestConflict
+	}
+	var orgID *int64
+	if organizationID.Valid {
+		orgID = &organizationID.Int64
+	}
+	return &service.LedgerDeductResult{
+		Applied: false, BalanceAfter: balanceAfter.Float64, OrganizationID: orgID,
+		PayerUserID: payerUserID, BalanceSource: balanceSource, AuthzGeneration: authzGeneration.Int64,
+	}, nil
+}
+
 func normalizeLedgerExtra(extra string) string {
 	if extra == "" {
 		return "{}"
@@ -31,6 +68,14 @@ func normalizeLedgerExtra(extra string) string {
 func (r *balanceLedgerRepository) Deduct(ctx context.Context, cmd *service.LedgerDeductCommand) (_ *service.LedgerDeductResult, err error) {
 	if r == nil || r.db == nil {
 		return nil, errors.New("balance ledger repository db is nil")
+	}
+	payerUserID := cmd.PayerUserID
+	if payerUserID == 0 {
+		payerUserID = cmd.UserID
+	}
+	balanceSource := cmd.BalanceSource
+	if balanceSource == "" {
+		balanceSource = "self"
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -46,11 +91,12 @@ func (r *balanceLedgerRepository) Deduct(ctx context.Context, cmd *service.Ledge
 	// 1. 幂等占位：插入 deduct 流水；冲突即已处理过。
 	var ledgerID int64
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO balance_ledger (request_id, app_id, user_id, kind, amount, refunded_amount, description, extra)
-		VALUES ($1, $2, $3, 1, $4, 0, $5, $6::jsonb)
+		INSERT INTO balance_ledger (request_id, app_id, user_id, kind, amount, refunded_amount, description, extra,
+			organization_id,payer_user_id,balance_source,authz_generation)
+		VALUES ($1, $2, $3, 1, $4, 0, $5, $6::jsonb,$7,$8,$9,$10)
 		ON CONFLICT (app_id, request_id) DO NOTHING
 		RETURNING id
-	`, cmd.RequestID, cmd.AppID, cmd.UserID, cmd.Amount, cmd.Description, normalizeLedgerExtra(cmd.Extra)).Scan(&ledgerID)
+	`, cmd.RequestID, cmd.AppID, cmd.UserID, cmd.Amount, cmd.Description, normalizeLedgerExtra(cmd.Extra), cmd.OrganizationID, payerUserID, balanceSource, cmd.AuthzGeneration).Scan(&ledgerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		// 幂等重放：返回首次结果。
 		return r.replayDeduct(ctx, tx, cmd)
@@ -65,10 +111,10 @@ func (r *balanceLedgerRepository) Deduct(ctx context.Context, cmd *service.Ledge
 		UPDATE users SET balance = balance - $1, updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL AND balance >= $1
 		RETURNING balance
-	`, cmd.Amount, cmd.UserID).Scan(&newBalance)
+	`, cmd.Amount, payerUserID).Scan(&newBalance)
 	if errors.Is(err, sql.ErrNoRows) {
 		// 区分「用户不存在」与「余额不足」。
-		return nil, r.classifyDeductFailure(ctx, tx, cmd.UserID)
+		return nil, r.classifyDeductFailure(ctx, tx, payerUserID)
 	}
 	if err != nil {
 		return nil, err
@@ -83,19 +129,23 @@ func (r *balanceLedgerRepository) Deduct(ctx context.Context, cmd *service.Ledge
 		return nil, err
 	}
 	tx = nil
-	return &service.LedgerDeductResult{Applied: true, BalanceAfter: newBalance}, nil
+	return &service.LedgerDeductResult{Applied: true, BalanceAfter: newBalance, OrganizationID: cmd.OrganizationID, PayerUserID: payerUserID, BalanceSource: balanceSource, AuthzGeneration: cmd.AuthzGeneration}, nil
 }
 
 func (r *balanceLedgerRepository) replayDeduct(ctx context.Context, tx *sql.Tx, cmd *service.LedgerDeductCommand) (*service.LedgerDeductResult, error) {
 	var (
-		userID       int64
-		amount       float64
-		balanceAfter sql.NullFloat64
+		userID          int64
+		amount          float64
+		balanceAfter    sql.NullFloat64
+		organizationID  sql.NullInt64
+		payerUserID     int64
+		balanceSource   string
+		authzGeneration sql.NullInt64
 	)
 	if err := tx.QueryRowContext(ctx, `
-		SELECT user_id, amount, balance_after FROM balance_ledger
+		SELECT user_id, amount, balance_after, organization_id, COALESCE(payer_user_id,user_id), COALESCE(balance_source,'self'), authz_generation FROM balance_ledger
 		WHERE app_id = $1 AND request_id = $2
-	`, cmd.AppID, cmd.RequestID).Scan(&userID, &amount, &balanceAfter); err != nil {
+	`, cmd.AppID, cmd.RequestID).Scan(&userID, &amount, &balanceAfter, &organizationID, &payerUserID, &balanceSource, &authzGeneration); err != nil {
 		return nil, err
 	}
 	// 同一 request_id 必须对应一致的参数，否则视为冲突。
@@ -105,7 +155,11 @@ func (r *balanceLedgerRepository) replayDeduct(ctx context.Context, tx *sql.Tx, 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &service.LedgerDeductResult{Applied: false, BalanceAfter: balanceAfter.Float64}, nil
+	var orgID *int64
+	if organizationID.Valid {
+		orgID = &organizationID.Int64
+	}
+	return &service.LedgerDeductResult{Applied: false, BalanceAfter: balanceAfter.Float64, OrganizationID: orgID, PayerUserID: payerUserID, BalanceSource: balanceSource, AuthzGeneration: authzGeneration.Int64}, nil
 }
 
 func (r *balanceLedgerRepository) classifyDeductFailure(ctx context.Context, tx *sql.Tx, userID int64) error {
@@ -137,16 +191,20 @@ func (r *balanceLedgerRepository) Refund(ctx context.Context, cmd *service.Ledge
 
 	// 1. 锁原扣流水（同时串行化并发部分退，防止超额）。
 	var (
-		origID       int64
-		origUserID   int64
-		origAmount   float64
-		origRefunded float64
+		origID              int64
+		origUserID          int64
+		origAmount          float64
+		origRefunded        float64
+		origOrganizationID  sql.NullInt64
+		origPayerUserID     int64
+		origBalanceSource   string
+		origAuthzGeneration sql.NullInt64
 	)
 	err = tx.QueryRowContext(ctx, `
-		SELECT id, user_id, amount, refunded_amount FROM balance_ledger
+		SELECT id, user_id, amount, refunded_amount, organization_id, COALESCE(payer_user_id,user_id), COALESCE(balance_source,'self'), authz_generation FROM balance_ledger
 		WHERE app_id = $1 AND request_id = $2 AND kind = 1
 		FOR UPDATE
-	`, cmd.AppID, cmd.OriginalRequestID).Scan(&origID, &origUserID, &origAmount, &origRefunded)
+	`, cmd.AppID, cmd.OriginalRequestID).Scan(&origID, &origUserID, &origAmount, &origRefunded, &origOrganizationID, &origPayerUserID, &origBalanceSource, &origAuthzGeneration)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrOriginalDeductNotFound
 	}
@@ -157,11 +215,12 @@ func (r *balanceLedgerRepository) Refund(ctx context.Context, cmd *service.Ledge
 	// 2. 退款幂等占位。
 	var refundID int64
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO balance_ledger (request_id, app_id, user_id, kind, amount, refunded_amount, refund_of, description, extra)
-		VALUES ($1, $2, $3, 2, $4, 0, $5, $6, $7::jsonb)
+		INSERT INTO balance_ledger (request_id, app_id, user_id, kind, amount, refunded_amount, refund_of, description, extra,
+			organization_id,payer_user_id,balance_source,authz_generation)
+		VALUES ($1, $2, $3, 2, $4, 0, $5, $6, $7::jsonb,$8,$9,$10,$11)
 		ON CONFLICT (app_id, request_id) DO NOTHING
 		RETURNING id
-	`, cmd.RefundRequestID, cmd.AppID, origUserID, cmd.Amount, cmd.OriginalRequestID, cmd.Description, normalizeLedgerExtra(cmd.Extra)).Scan(&refundID)
+	`, cmd.RefundRequestID, cmd.AppID, origUserID, cmd.Amount, cmd.OriginalRequestID, cmd.Description, normalizeLedgerExtra(cmd.Extra), nullInt64Value(origOrganizationID), origPayerUserID, origBalanceSource, nullInt64Value(origAuthzGeneration)).Scan(&refundID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r.replayRefund(ctx, tx, cmd, origRefunded)
 	}
@@ -183,7 +242,7 @@ func (r *balanceLedgerRepository) Refund(ctx context.Context, cmd *service.Ledge
 		UPDATE users SET balance = balance + $1, updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
 		RETURNING balance
-	`, cmd.Amount, origUserID).Scan(&newBalance)
+	`, cmd.Amount, origPayerUserID).Scan(&newBalance)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrUserNotFound
 	}
@@ -199,23 +258,37 @@ func (r *balanceLedgerRepository) Refund(ctx context.Context, cmd *service.Ledge
 	}
 	tx = nil
 	return &service.LedgerRefundResult{
-		Applied:       true,
-		UserID:        origUserID,
-		BalanceAfter:  newBalance,
-		RefundedTotal: origRefunded + cmd.Amount,
+		Applied:         true,
+		UserID:          origPayerUserID,
+		PayerUserID:     origPayerUserID,
+		BalanceAfter:    newBalance,
+		RefundedTotal:   origRefunded + cmd.Amount,
+		BalanceSource:   origBalanceSource,
+		AuthzGeneration: origAuthzGeneration.Int64,
 	}, nil
+}
+
+func nullInt64Value(value sql.NullInt64) any {
+	if value.Valid {
+		return value.Int64
+	}
+	return nil
 }
 
 func (r *balanceLedgerRepository) replayRefund(ctx context.Context, tx *sql.Tx, cmd *service.LedgerRefundCommand, origRefunded float64) (*service.LedgerRefundResult, error) {
 	var (
-		amount       float64
-		balanceAfter sql.NullFloat64
-		userID       int64
+		amount          float64
+		balanceAfter    sql.NullFloat64
+		userID          int64
+		organizationID  sql.NullInt64
+		payerUserID     int64
+		balanceSource   string
+		authzGeneration sql.NullInt64
 	)
 	if err := tx.QueryRowContext(ctx, `
-		SELECT user_id, amount, balance_after FROM balance_ledger
+		SELECT user_id, amount, balance_after, organization_id, COALESCE(payer_user_id,user_id), COALESCE(balance_source,'self'), authz_generation FROM balance_ledger
 		WHERE app_id = $1 AND request_id = $2 AND kind = 2
-	`, cmd.AppID, cmd.RefundRequestID).Scan(&userID, &amount, &balanceAfter); err != nil {
+	`, cmd.AppID, cmd.RefundRequestID).Scan(&userID, &amount, &balanceAfter, &organizationID, &payerUserID, &balanceSource, &authzGeneration); err != nil {
 		return nil, err
 	}
 	if !floatEqual(amount, cmd.Amount) {
@@ -225,10 +298,13 @@ func (r *balanceLedgerRepository) replayRefund(ctx context.Context, tx *sql.Tx, 
 		return nil, err
 	}
 	return &service.LedgerRefundResult{
-		Applied:       false,
-		UserID:        userID,
-		BalanceAfter:  balanceAfter.Float64,
-		RefundedTotal: origRefunded,
+		Applied:         false,
+		UserID:          payerUserID,
+		PayerUserID:     payerUserID,
+		BalanceAfter:    balanceAfter.Float64,
+		RefundedTotal:   origRefunded,
+		BalanceSource:   balanceSource,
+		AuthzGeneration: authzGeneration.Int64,
 	}, nil
 }
 

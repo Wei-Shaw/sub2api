@@ -15,6 +15,12 @@ func UserFromServiceShallow(u *service.User) *User {
 	return &User{
 		ID:                         u.ID,
 		Email:                      u.Email,
+		AccountID:                  u.AccountID,
+		ExternalUserID:             u.ExternalUserID,
+		IdentityType:               u.IdentityType,
+		LoginName:                  u.LoginName,
+		IAMPrincipal:               u.IAMPrincipal(),
+		MustChangePassword:         u.MustChangePassword,
 		Username:                   u.Username,
 		Role:                       u.Role,
 		Balance:                    u.Balance,

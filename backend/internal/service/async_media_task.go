@@ -35,11 +35,15 @@ type AsyncMediaTask struct {
 	StatusURL         *string
 	ResponseURL       *string
 
-	AccountID *int64
-	APIKeyID  int64
-	UserID    int64
-	GroupID   *int64
-	ChannelID *int64
+	AccountID       *int64
+	APIKeyID        int64
+	UserID          int64
+	OrganizationID  *int64
+	PayerUserID     *int64
+	BalanceSource   *string
+	AuthzGeneration *int64
+	GroupID         *int64
+	ChannelID       *int64
 
 	Facade         string
 	RequestedModel string
@@ -97,10 +101,14 @@ func (t *AsyncMediaTask) ResultURLs() []string {
 // 异步媒体任务在终态（成功结算 / 退费）时追加写一条 usage_log，
 // 通过独立、隔离的 INSERT 实现，避免触碰高并发批处理写入路径。
 type TerminalUsageLogInput struct {
-	UserID    int64
-	APIKeyID  int64
-	AccountID int64 // usage_logs.account_id NOT NULL
-	RequestID string
+	UserID          int64
+	APIKeyID        int64
+	AccountID       int64 // usage_logs.account_id NOT NULL
+	RequestID       string
+	OrganizationID  *int64
+	PayerUserID     *int64
+	BalanceSource   *string
+	AuthzGeneration *int64
 
 	Model          string // 落库 model 列（NOT NULL），通常为上游模型
 	RequestedModel string

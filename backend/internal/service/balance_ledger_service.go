@@ -20,8 +20,15 @@ var (
 // BalanceLedgerService 薄账本服务：扣费 / 退费 / 查询余额。
 // 扣/退由仓储在单事务内原子完成，提交后同步失效该用户的 Redis 余额缓存。
 type BalanceLedgerService struct {
-	repo  BalanceLedgerRepository
-	cache *BillingCacheService
+	repo     BalanceLedgerRepository
+	cache    *BillingCacheService
+	resolver *BillingContextResolver
+}
+
+func (s *BalanceLedgerService) SetBillingContextResolver(resolver *BillingContextResolver) {
+	if s != nil {
+		s.resolver = resolver
+	}
 }
 
 // NewBalanceLedgerService 构造账本服务。
@@ -44,13 +51,33 @@ func (s *BalanceLedgerService) Deduct(ctx context.Context, cmd *LedgerDeductComm
 	if cmd.Description == "" {
 		return nil, ErrLedgerDescriptionRequired
 	}
+	existing, err := s.repo.FindDeduct(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return existing, nil
+	}
+	if s.resolver != nil {
+		billing, err := s.resolver.Resolve(ctx, cmd.UserID)
+		if err != nil {
+			return nil, err
+		}
+		cmd.OrganizationID = billing.OrganizationID
+		cmd.PayerUserID = billing.PayerUserID
+		cmd.BalanceSource = billing.BalanceSource
+		cmd.AuthzGeneration = billing.AuthzGeneration
+	} else {
+		cmd.PayerUserID = cmd.UserID
+		cmd.BalanceSource = "self"
+	}
 
 	res, err := s.repo.Deduct(ctx, cmd)
 	if err != nil {
 		return nil, err
 	}
 	// 提交后同步失效缓存：下次 GetBalance / 网关 preflight 立刻读到新余额。
-	s.invalidateBalance(ctx, cmd.UserID)
+	s.invalidateBalance(ctx, res.PayerUserID)
 	return res, nil
 }
 
@@ -74,16 +101,28 @@ func (s *BalanceLedgerService) Refund(ctx context.Context, cmd *LedgerRefundComm
 	if err != nil {
 		return nil, err
 	}
-	s.invalidateBalance(ctx, res.UserID)
+	s.invalidateBalance(ctx, res.PayerUserID)
 	return res, nil
 }
 
 // GetBalance 返回用户当前余额（缓存优先，未命中回源 DB）。
-func (s *BalanceLedgerService) GetBalance(ctx context.Context, userID int64) (float64, error) {
+func (s *BalanceLedgerService) GetBalance(ctx context.Context, userID int64) (*BillingBalanceResult, error) {
 	if s == nil || s.cache == nil {
-		return 0, fmt.Errorf("balance ledger: nil cache")
+		return nil, fmt.Errorf("balance ledger: nil cache")
 	}
-	return s.cache.GetUserBalance(ctx, userID)
+	billing := &BillingContext{ConsumerUserID: userID, PayerUserID: userID, BalanceSource: "self"}
+	if s.resolver != nil {
+		resolved, err := s.resolver.Resolve(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		billing = resolved
+	}
+	balance, err := s.cache.GetUserBalance(ctx, billing.PayerUserID)
+	if err != nil {
+		return nil, err
+	}
+	return &BillingBalanceResult{Balance: balance, OrganizationID: billing.OrganizationID, PayerUserID: billing.PayerUserID, BalanceSource: billing.BalanceSource, AuthzGeneration: billing.AuthzGeneration}, nil
 }
 
 // AppStats 返回某接入方的累计扣/退统计。

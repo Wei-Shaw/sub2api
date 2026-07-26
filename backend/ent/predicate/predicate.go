@@ -57,6 +57,9 @@ type ChannelMonitorHistory func(*sql.Selector)
 // ChannelMonitorRequestTemplate is the predicate function for channelmonitorrequesttemplate builders.
 type ChannelMonitorRequestTemplate func(*sql.Selector)
 
+// CompanyUpgradeApplication is the predicate function for companyupgradeapplication builders.
+type CompanyUpgradeApplication func(*sql.Selector)
+
 // CompositeModelRoute is the predicate function for compositemodelroute builders.
 type CompositeModelRoute func(*sql.Selector)
 
@@ -72,6 +75,18 @@ type IdempotencyRecord func(*sql.Selector)
 // IdentityAdoptionDecision is the predicate function for identityadoptiondecision builders.
 type IdentityAdoptionDecision func(*sql.Selector)
 
+// ManagedPolicy is the predicate function for managedpolicy builders.
+type ManagedPolicy func(*sql.Selector)
+
+// ManagedPolicyAction is the predicate function for managedpolicyaction builders.
+type ManagedPolicyAction func(*sql.Selector)
+
+// MemberPolicyAttachment is the predicate function for memberpolicyattachment builders.
+type MemberPolicyAttachment func(*sql.Selector)
+
+// NotificationOutbox is the predicate function for notificationoutbox builders.
+type NotificationOutbox func(*sql.Selector)
+
 // OidcAccessToken is the predicate function for oidcaccesstoken builders.
 type OidcAccessToken func(*sql.Selector)
 
@@ -86,6 +101,21 @@ type OidcConsent func(*sql.Selector)
 
 // OidcRefreshToken is the predicate function for oidcrefreshtoken builders.
 type OidcRefreshToken func(*sql.Selector)
+
+// Organization is the predicate function for organization builders.
+type Organization func(*sql.Selector)
+
+// OrganizationAuditEvent is the predicate function for organizationauditevent builders.
+type OrganizationAuditEvent func(*sql.Selector)
+
+// OrganizationFinancialLedger is the predicate function for organizationfinancialledger builders.
+type OrganizationFinancialLedger func(*sql.Selector)
+
+// OrganizationMembership is the predicate function for organizationmembership builders.
+type OrganizationMembership func(*sql.Selector)
+
+// OrganizationNameChangeRequest is the predicate function for organizationnamechangerequest builders.
+type OrganizationNameChangeRequest func(*sql.Selector)
 
 // PaymentAuditLog is the predicate function for paymentauditlog builders.
 type PaymentAuditLog func(*sql.Selector)

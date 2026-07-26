@@ -99,6 +99,14 @@ export interface User {
   created_at: string
   updated_at: string
   deleted_at?: string | null
+  account_id?: string
+  external_user_id?: string
+  identity_type?: 'root' | 'iam'
+  login_name?: string
+  iam_principal?: string
+  must_change_password?: boolean
+  organization?: import('./organization').OrganizationContext
+  organization_finance?: import('./organization').FinanceSummary
 }
 
 export interface AdminUser extends User {
@@ -258,6 +266,8 @@ export interface PublicSettings {
   github_oauth_enabled: boolean
   google_oauth_enabled: boolean
   backend_mode_enabled: boolean
+  company_applications_enabled: boolean
+  company_iam_enabled: boolean
   version: string
   // 服务器全局时区（IANA 名称与当前 UTC 偏移），高峰时段等服务端本地时间窗口的展示标注用；
   // 可选：注入的 __APP_CONFIG__ 旧缓存可能缺失
@@ -299,6 +309,8 @@ export interface AuthResponse {
 export interface CurrentUserResponse extends User {
   run_mode?: 'standard' | 'simple'
 }
+
+export * from './organization'
 
 // ==================== Subscription Types ====================
 

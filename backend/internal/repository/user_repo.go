@@ -21,6 +21,7 @@ import (
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/accountid"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
@@ -43,9 +44,55 @@ func newUserRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *userRepos
 	return &userRepository{client: client, sql: sqlq}
 }
 
+const publicIDCreateAttempts = 20
+
 func (r *userRepository) Create(ctx context.Context, userIn *service.User) error {
 	if userIn == nil {
 		return nil
+	}
+	if userIn.IdentityType == "" {
+		userIn.IdentityType = "root"
+	}
+	for attempt := 0; attempt < publicIDCreateAttempts; attempt++ {
+		if userIn.ExternalUserID == "" {
+			var generated string
+			var err error
+			if userIn.IdentityType == "iam" {
+				generated, err = accountid.GenerateIAM()
+			} else {
+				generated, err = accountid.GenerateRoot()
+				userIn.AccountID = generated
+			}
+			if err != nil {
+				return err
+			}
+			userIn.ExternalUserID = generated
+		}
+		err := r.createWithPublicID(ctx, userIn)
+		if err == nil {
+			return nil
+		}
+		if !dbent.IsConstraintError(err) || !strings.Contains(strings.ToLower(err.Error()), "external_user_id") {
+			return err
+		}
+		accountid.RecordCollisionRetry()
+		userIn.ExternalUserID = ""
+		if userIn.IdentityType == "root" {
+			userIn.AccountID = ""
+		}
+	}
+	return fmt.Errorf("public account ID collision retry limit exhausted")
+}
+
+func (r *userRepository) createWithPublicID(ctx context.Context, userIn *service.User) error {
+	if userIn.IdentityType == "root" && userIn.AccountID != userIn.ExternalUserID {
+		return fmt.Errorf("root account ID and external user ID must match")
+	}
+	if userIn.IdentityType == "iam" && userIn.AccountID == "" {
+		return fmt.Errorf("IAM account ID is required")
+	}
+	if userIn.ExternalUserID == "" {
+		return fmt.Errorf("external user ID is required")
 	}
 
 	// 统一使用 ent 的事务：保证用户与允许分组的更新原子化，
@@ -70,23 +117,27 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		}
 	}
 
-	releaseEmailLock, err := lockRepositoryScopedKeys(
-		txCtx,
-		txClient,
-		txAwareSQLExecutor(txCtx, r.sql, r.client),
-		normalizedEmailUniquenessLockKey(userIn.Email),
-	)
-	if err != nil {
-		return err
+	releaseEmailLock := func() {}
+	if strings.TrimSpace(userIn.Email) != "" {
+		releaseEmailLock, err = lockRepositoryScopedKeys(
+			txCtx,
+			txClient,
+			txAwareSQLExecutor(txCtx, r.sql, r.client),
+			normalizedEmailUniquenessLockKey(userIn.Email),
+		)
+		if err != nil {
+			return err
+		}
 	}
 	defer releaseEmailLock()
 
-	if err := ensureNormalizedEmailAvailableWithClient(txCtx, txClient, 0, userIn.Email); err != nil {
-		return err
+	if strings.TrimSpace(userIn.Email) != "" {
+		if err := ensureNormalizedEmailAvailableWithClient(txCtx, txClient, 0, userIn.Email); err != nil {
+			return err
+		}
 	}
 
-	created, err := txClient.User.Create().
-		SetEmail(userIn.Email).
+	createOp := txClient.User.Create().
 		SetUsername(userIn.Username).
 		SetNotes(userIn.Notes).
 		SetPasswordHash(userIn.PasswordHash).
@@ -98,16 +149,34 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		SetNillableLastLoginAt(userIn.LastLoginAt).
 		SetNillableLastActiveAt(userIn.LastActiveAt).
 		SetRpmLimit(userIn.RPMLimit).
-		Save(txCtx)
+		SetAccountID(userIn.AccountID).
+		SetExternalUserID(userIn.ExternalUserID).
+		SetIdentityType(userIn.IdentityType).
+		SetMustChangePassword(userIn.MustChangePassword).
+		SetRecoveryEmail(userIn.RecoveryEmail).
+		SetNillableRecoveryEmailVerifiedAt(userIn.RecoveryEmailVerifiedAt).
+		SetAuthzGeneration(max(userIn.AuthzGeneration, 1))
+	if userIn.Email != "" {
+		createOp.SetEmail(userIn.Email)
+	}
+	if userIn.LoginName != "" {
+		createOp.SetLoginName(userIn.LoginName)
+	}
+	created, err := createOp.Save(txCtx)
 	if err != nil {
+		if dbent.IsConstraintError(err) && strings.Contains(strings.ToLower(err.Error()), "external_user_id") {
+			return err
+		}
 		return translatePersistenceError(err, nil, service.ErrEmailExists)
 	}
 
 	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, created.ID, userIn.AllowedGroups); err != nil {
 		return err
 	}
-	if err := ensureEmailAuthIdentityWithClient(txCtx, txClient, created.ID, created.Email, "user_repo_create"); err != nil {
-		return err
+	if created.Email != "" {
+		if err := ensureEmailAuthIdentityWithClient(txCtx, txClient, created.ID, created.Email, "user_repo_create"); err != nil {
+			return err
+		}
 	}
 
 	if tx != nil {
@@ -1147,6 +1216,14 @@ func applyUserEntityToService(dst *service.User, src *dbent.User) {
 		return
 	}
 	dst.ID = src.ID
+	dst.AccountID = src.AccountID
+	dst.ExternalUserID = src.ExternalUserID
+	dst.IdentityType = src.IdentityType
+	dst.LoginName = src.LoginName
+	dst.MustChangePassword = src.MustChangePassword
+	dst.RecoveryEmail = src.RecoveryEmail
+	dst.RecoveryEmailVerifiedAt = src.RecoveryEmailVerifiedAt
+	dst.AuthzGeneration = src.AuthzGeneration
 	dst.SignupSource = src.SignupSource
 	dst.LastLoginAt = src.LastLoginAt
 	dst.LastActiveAt = src.LastActiveAt

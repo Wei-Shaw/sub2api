@@ -1,6 +1,14 @@
 <template>
   <AuthLayout>
     <div class="space-y-6">
+      <div v-if="companyIAMEnabled" class="grid grid-cols-2 rounded-md bg-gray-100 p-1 dark:bg-dark-800">
+        <span class="rounded bg-white px-3 py-2 text-center text-sm font-medium text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white">
+          {{ t('organization.login.personal') }}
+        </span>
+        <router-link to="/iam-login" class="rounded px-3 py-2 text-center text-sm text-gray-600 dark:text-dark-300">
+          {{ t('organization.login.iam') }}
+        </router-link>
+      </div>
       <!-- Title -->
       <div class="text-center">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
@@ -247,6 +255,7 @@ const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
 const githubOAuthEnabled = ref<boolean>(false)
 const googleOAuthEnabled = ref<boolean>(false)
+const companyIAMEnabled = ref<boolean>(appStore.cachedPublicSettings?.company_iam_enabled === true)
 const passwordResetEnabled = ref<boolean>(false)
 const loginAgreementEnabled = ref<boolean>(false)
 const loginAgreementMode = ref<'modal' | 'checkbox' | string>('modal')
@@ -336,6 +345,7 @@ onMounted(async () => {
     githubOAuthEnabled.value = settings.github_oauth_enabled
     googleOAuthEnabled.value = settings.google_oauth_enabled
     backendModeEnabled.value = settings.backend_mode_enabled
+    companyIAMEnabled.value = settings.company_iam_enabled === true
     passwordResetEnabled.value = settings.password_reset_enabled
     applyLoginAgreementSettings(settings)
   } catch (error) {

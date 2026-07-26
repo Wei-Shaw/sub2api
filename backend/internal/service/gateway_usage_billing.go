@@ -80,6 +80,7 @@ type postUsageBillingParams struct {
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	BillingContext        *BillingContext
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -130,11 +131,15 @@ func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
 // postUsageBilling is the legacy fallback billing path used when the unified
 // billing repo is unavailable (nil). Production uses applyUsageBilling → repo.Apply
 // for atomic billing. This path only runs in tests or degraded mode.
-func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps) {
+func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, resolved *BillingContext) {
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
 
 	cost := p.Cost
+	payerUserID := p.User.ID
+	if resolved != nil && resolved.PayerUserID > 0 {
+		payerUserID = resolved.PayerUserID
+	}
 
 	if p.IsSubscriptionBill {
 		// Subscription usage tracked by ActualCost so group rate multiplier
@@ -146,11 +151,11 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		}
 	} else {
 		if cost.ActualCost > 0 {
-			if err := deps.userRepo.DeductBalance(billingCtx, p.User.ID, cost.ActualCost); err != nil {
-				slog.Error("deduct balance failed", "user_id", p.User.ID, "error", err)
+			if err := deps.userRepo.DeductBalance(billingCtx, payerUserID, cost.ActualCost); err != nil {
+				slog.Error("deduct balance failed", "consumer_user_id", p.User.ID, "payer_user_id", payerUserID, "error", err)
 			} else if deps.billingCacheService != nil {
-				if err := deps.billingCacheService.InvalidateUserBalance(billingCtx, p.User.ID); err != nil {
-					slog.Warn("invalidate balance cache after legacy deduction failed", "user_id", p.User.ID, "error", err)
+				if err := deps.billingCacheService.InvalidateUserBalance(billingCtx, payerUserID); err != nil {
+					slog.Warn("invalidate balance cache after legacy deduction failed", "payer_user_id", payerUserID, "error", err)
 				}
 			}
 		}
@@ -293,14 +298,29 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		return false, nil
 	}
 
-	cmd := buildUsageBillingCommand(requestID, usageLog, p)
-	if cmd == nil || cmd.RequestID == "" || repo == nil {
-		postUsageBilling(ctx, p, deps)
-		return true, nil
-	}
-
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
+
+	resolved := p.BillingContext
+	if resolved == nil {
+		var err error
+		resolved, err = resolveAndSnapshotBillingContext(billingCtx, usageLog, p.User, deps.billingContextResolver)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	cmd := buildUsageBillingCommand(requestID, usageLog, p)
+	if cmd == nil || cmd.RequestID == "" || repo == nil {
+		postUsageBilling(ctx, p, deps, resolved)
+		return true, nil
+	}
+	cmd.OrganizationID = resolved.OrganizationID
+	cmd.PayerUserID = resolved.PayerUserID
+	cmd.BalanceSource = resolved.BalanceSource
+	cmd.AuthzGeneration = resolved.AuthzGeneration
+	cmd.RequestFingerprint = ""
+	cmd.Normalize()
 
 	result, err := repo.Apply(billingCtx, cmd)
 	if err != nil {
@@ -320,6 +340,31 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 
 	finalizePostUsageBilling(billingCtx, p, deps, result)
 	return true, nil
+}
+
+func usageBillingInt64Ptr(value int64) *int64 { return &value }
+
+func usageBillingStringPtr(value string) *string { return &value }
+
+func resolveAndSnapshotBillingContext(ctx context.Context, usageLog *UsageLog, user *User, resolver *BillingContextResolver) (*BillingContext, error) {
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+	resolved := &BillingContext{ConsumerUserID: user.ID, PayerUserID: user.ID, BalanceSource: "self"}
+	if resolver != nil {
+		var err error
+		resolved, err = resolver.Resolve(ctx, user.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if usageLog != nil {
+		usageLog.OrganizationID = resolved.OrganizationID
+		usageLog.PayerUserID = usageBillingInt64Ptr(resolved.PayerUserID)
+		usageLog.BalanceSource = usageBillingStringPtr(resolved.BalanceSource)
+		usageLog.AuthzGeneration = usageBillingInt64Ptr(resolved.AuthzGeneration)
+	}
+	return resolved, nil
 }
 
 func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
@@ -385,10 +430,11 @@ func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingPara
 	if p == nil || p.Cost == nil || p.User == nil || deps == nil || deps.billingCacheService == nil {
 		return
 	}
+	payerUserID := effectiveUsagePayerID(p, result)
 	if result != nil && result.NewBalance != nil && deps.billingCacheService.balanceBelowEligibilityThreshold(*result.NewBalance) {
-		if err := deps.billingCacheService.InvalidateUserBalance(ctx, p.User.ID); err != nil {
+		if err := deps.billingCacheService.InvalidateUserBalance(ctx, payerUserID); err != nil {
 			slog.Warn("invalidate balance cache after exhausted deduction failed",
-				"user_id", p.User.ID,
+				"user_id", payerUserID,
 				"new_balance", *result.NewBalance,
 				"balance_overdrafted", result.BalanceOverdrafted,
 				"error", err,
@@ -396,7 +442,17 @@ func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingPara
 		}
 		return
 	}
-	deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
+	deps.billingCacheService.QueueDeductBalance(payerUserID, p.Cost.ActualCost)
+}
+
+func effectiveUsagePayerID(p *postUsageBillingParams, result *UsageBillingApplyResult) int64 {
+	if result != nil && result.PayerUserID > 0 {
+		return result.PayerUserID
+	}
+	if p != nil && p.User != nil {
+		return p.User.ID
+	}
+	return 0
 }
 
 // notifyBalanceLow sends balance low notification after deduction.
@@ -418,16 +474,26 @@ func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *Usag
 		return
 	}
 
+	targetUser := p.User
+	payerUserID := effectiveUsagePayerID(p, result)
+	if payerUserID != p.User.ID && deps.userRepo != nil {
+		payer, err := deps.userRepo.GetByID(context.Background(), payerUserID)
+		if err != nil {
+			slog.Warn("load effective payer for balance notification failed", "payer_user_id", payerUserID, "error", err)
+			return
+		}
+		targetUser = payer
+	}
 	oldBalance := resolveOldBalance(p, result)
 	slog.Debug("notifyBalanceLow: calling CheckBalanceAfterDeduction",
-		"user_id", p.User.ID,
+		"user_id", payerUserID,
 		"old_balance", oldBalance,
 		"cost", p.Cost.ActualCost,
-		"notify_enabled", p.User.BalanceNotifyEnabled,
-		"threshold", p.User.BalanceNotifyThreshold,
+		"notify_enabled", targetUser.BalanceNotifyEnabled,
+		"threshold", targetUser.BalanceNotifyThreshold,
 		"result_has_new_balance", result != nil && result.NewBalance != nil,
 	)
-	deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, oldBalance, p.Cost.ActualCost)
+	deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), targetUser, oldBalance, p.Cost.ActualCost)
 }
 
 // resolveOldBalance returns the pre-deduction balance.
@@ -498,26 +564,28 @@ func detachUpstreamContext(ctx context.Context) (context.Context, context.Cancel
 
 // billingDeps 扣费逻辑依赖的服务（由各 gateway service 提供）
 type billingDeps struct {
-	accountRepo           AccountRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	billingCacheService   *BillingCacheService
-	deferredService       *DeferredService
-	balanceNotifyService  *BalanceNotifyService
-	userPlatformQuotaRepo UserPlatformQuotaRepository
-	cfg                   *config.Config
+	accountRepo            AccountRepository
+	userRepo               UserRepository
+	userSubRepo            UserSubscriptionRepository
+	billingCacheService    *BillingCacheService
+	deferredService        *DeferredService
+	balanceNotifyService   *BalanceNotifyService
+	userPlatformQuotaRepo  UserPlatformQuotaRepository
+	cfg                    *config.Config
+	billingContextResolver *BillingContextResolver
 }
 
 func (s *GatewayService) billingDeps() *billingDeps {
 	return &billingDeps{
-		accountRepo:           s.accountRepo,
-		userRepo:              s.userRepo,
-		userSubRepo:           s.userSubRepo,
-		billingCacheService:   s.billingCacheService,
-		deferredService:       s.deferredService,
-		balanceNotifyService:  s.balanceNotifyService,
-		userPlatformQuotaRepo: s.userPlatformQuotaRepo,
-		cfg:                   s.cfg,
+		accountRepo:            s.accountRepo,
+		userRepo:               s.userRepo,
+		userSubRepo:            s.userSubRepo,
+		billingCacheService:    s.billingCacheService,
+		deferredService:        s.deferredService,
+		balanceNotifyService:   s.balanceNotifyService,
+		userPlatformQuotaRepo:  s.userPlatformQuotaRepo,
+		cfg:                    s.cfg,
+		billingContextResolver: s.billingContextResolver,
 	}
 }
 
@@ -743,6 +811,10 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 			cost.TotalCost,
 		)
 	}
+	resolvedBillingContext, err := resolveAndSnapshotBillingContext(ctx, usageLog, user, s.billingContextResolver)
+	if err != nil {
+		return err
+	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
@@ -773,6 +845,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		AccountRateMultiplier: accountRateMultiplier,
 		APIKeyService:         input.APIKeyService,
 		Platform:              quotaPlatform,
+		BillingContext:        resolvedBillingContext,
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {

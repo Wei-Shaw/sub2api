@@ -99,6 +99,10 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // image_urls
 			sqlmock.AnyArg(), // cos_url
 			sqlmock.AnyArg(), // kiro_credits
+			sqlmock.AnyArg(), // organization_id
+			sqlmock.AnyArg(), // payer_user_id
+			sqlmock.AnyArg(), // balance_source
+			sqlmock.AnyArg(), // authz_generation
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
@@ -191,6 +195,10 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // image_urls
 			sqlmock.AnyArg(), // cos_url
 			sqlmock.AnyArg(), // kiro_credits
+			sqlmock.AnyArg(), // organization_id
+			sqlmock.AnyArg(), // payer_user_id
+			sqlmock.AnyArg(), // balance_source
+			sqlmock.AnyArg(), // authz_generation
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
@@ -837,6 +845,10 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{}, // cos_urls_json
 			sql.NullString{}, // billing_status
 			sql.NullFloat64{},
+			sql.NullInt64{},
+			sql.NullInt64{},
+			sql.NullString{},
+			sql.NullInt64{},
 			now,
 		}})
 		require.NoError(t, err)
@@ -916,6 +928,10 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // cos_urls_json
 			sql.NullString{},  // billing_status
 			sql.NullFloat64{}, // kiro_credits
+			sql.NullInt64{},   // organization_id
+			sql.NullInt64{},   // payer_user_id
+			sql.NullString{},  // balance_source
+			sql.NullInt64{},   // authz_generation
 			now,
 		}})
 		require.NoError(t, err)
@@ -978,6 +994,10 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // cos_urls_json
 			sql.NullString{},  // billing_status
 			sql.NullFloat64{}, // kiro_credits
+			sql.NullInt64{},   // organization_id
+			sql.NullInt64{},   // payer_user_id
+			sql.NullString{},  // balance_source
+			sql.NullInt64{},   // authz_generation
 			now,
 		}})
 		require.NoError(t, err)
@@ -1040,6 +1060,10 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // cos_urls_json
 			sql.NullString{},  // billing_status
 			sql.NullFloat64{}, // kiro_credits
+			sql.NullInt64{},   // organization_id
+			sql.NullInt64{},   // payer_user_id
+			sql.NullString{},  // balance_source
+			sql.NullInt64{},   // authz_generation
 			now,
 		}})
 		require.NoError(t, err)

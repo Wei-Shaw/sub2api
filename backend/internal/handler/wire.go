@@ -9,6 +9,23 @@ import (
 	"github.com/google/wire"
 )
 
+func ProvideAuthHandler(
+	cfg *config.Config,
+	authService *service.AuthService,
+	userService *service.UserService,
+	settingService *service.SettingService,
+	promoService *service.PromoService,
+	redeemService *service.RedeemService,
+	totpService *service.TotpService,
+	userAttributeService *service.UserAttributeService,
+	ssoSessionService *service.SsoSessionService,
+	organizationService *service.OrganizationService,
+) *AuthHandler {
+	h := NewAuthHandler(cfg, authService, userService, settingService, promoService, redeemService, totpService, userAttributeService, ssoSessionService)
+	h.SetOrganizationService(organizationService)
+	return h
+}
+
 // ProvideAdminHandlers creates the AdminHandlers struct
 func ProvideAdminHandlers(
 	dashboardHandler *admin.DashboardHandler,
@@ -131,7 +148,11 @@ func ProvideGatewayHandler(
 	cfg *config.Config,
 	settingService *service.SettingService,
 	coordinator *securityaudit.Coordinator,
+	billingContextResolver *service.BillingContextResolver,
 ) *GatewayHandler {
+	gatewayService.SetBillingContextResolver(billingContextResolver)
+	openAIGatewayService.SetBillingContextResolver(billingContextResolver)
+	usageService.SetBillingContextResolver(billingContextResolver)
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService)
@@ -217,6 +238,7 @@ func ProvideHandlers(
 	oidcProviderHandler *OidcProviderHandler,
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
+	organizationHandler *OrganizationHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -246,13 +268,14 @@ func ProvideHandlers(
 		OidcProvider:              oidcProviderHandler,
 		AsyncImage:                asyncImageHandler,
 		BatchImage:                batchImageHandler,
+		Organization:              organizationHandler,
 	}
 }
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
-	NewAuthHandler,
+	ProvideAuthHandler,
 	NewUserHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
@@ -276,6 +299,7 @@ var ProviderSet = wire.NewSet(
 	NewOidcProviderHandler,
 	NewAsyncImageHandler,
 	ProvideBatchImageHandler,
+	NewOrganizationHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

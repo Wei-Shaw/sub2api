@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -76,6 +77,26 @@ func TestGetVerificationMethodRegularUserFollowsEmailVerifySetting(t *testing.T)
 	method, err = svcEmailOff.GetVerificationMethod(context.Background(), user.ID)
 	require.NoError(t, err)
 	require.Equal(t, "password", method.Method)
+}
+
+func TestGetVerificationMethodIAMRequiresVerifiedRecoveryEmail(t *testing.T) {
+	iam := &User{ID: 3, IdentityType: IdentityTypeIAM, RecoveryEmail: "recovery@example.com", Role: RoleUser}
+	svc, _ := newTotpVMService(t, iam, true)
+	method, err := svc.GetVerificationMethod(context.Background(), iam.ID)
+	require.NoError(t, err)
+	require.Equal(t, "password", method.Method)
+
+	verifiedAt := time.Now().UTC()
+	iam.RecoveryEmailVerifiedAt = &verifiedAt
+	method, err = svc.GetVerificationMethod(context.Background(), iam.ID)
+	require.NoError(t, err)
+	require.Equal(t, "email", method.Method)
+	require.Equal(t, "recovery@example.com", totpVerificationEmail(iam))
+}
+
+func TestTotpIAMAccountNameUsesPrincipalNotRecoveryEmail(t *testing.T) {
+	iam := &User{IdentityType: IdentityTypeIAM, LoginName: "reader", AccountID: "1719905235756637", RecoveryEmail: "recovery@example.com"}
+	require.Equal(t, "reader@1719905235756637", totpAccountName(iam))
 }
 
 func TestTotpDisableAdminUsesPasswordEvenWithEmailVerifyEnabled(t *testing.T) {

@@ -83,6 +83,126 @@ func (_c *UserCreate) SetEmail(v string) *UserCreate {
 	return _c
 }
 
+// SetNillableEmail sets the "email" field if the given value is not nil.
+func (_c *UserCreate) SetNillableEmail(v *string) *UserCreate {
+	if v != nil {
+		_c.SetEmail(*v)
+	}
+	return _c
+}
+
+// SetAccountID sets the "account_id" field.
+func (_c *UserCreate) SetAccountID(v string) *UserCreate {
+	_c.mutation.SetAccountID(v)
+	return _c
+}
+
+// SetNillableAccountID sets the "account_id" field if the given value is not nil.
+func (_c *UserCreate) SetNillableAccountID(v *string) *UserCreate {
+	if v != nil {
+		_c.SetAccountID(*v)
+	}
+	return _c
+}
+
+// SetExternalUserID sets the "external_user_id" field.
+func (_c *UserCreate) SetExternalUserID(v string) *UserCreate {
+	_c.mutation.SetExternalUserID(v)
+	return _c
+}
+
+// SetNillableExternalUserID sets the "external_user_id" field if the given value is not nil.
+func (_c *UserCreate) SetNillableExternalUserID(v *string) *UserCreate {
+	if v != nil {
+		_c.SetExternalUserID(*v)
+	}
+	return _c
+}
+
+// SetIdentityType sets the "identity_type" field.
+func (_c *UserCreate) SetIdentityType(v string) *UserCreate {
+	_c.mutation.SetIdentityType(v)
+	return _c
+}
+
+// SetNillableIdentityType sets the "identity_type" field if the given value is not nil.
+func (_c *UserCreate) SetNillableIdentityType(v *string) *UserCreate {
+	if v != nil {
+		_c.SetIdentityType(*v)
+	}
+	return _c
+}
+
+// SetLoginName sets the "login_name" field.
+func (_c *UserCreate) SetLoginName(v string) *UserCreate {
+	_c.mutation.SetLoginName(v)
+	return _c
+}
+
+// SetNillableLoginName sets the "login_name" field if the given value is not nil.
+func (_c *UserCreate) SetNillableLoginName(v *string) *UserCreate {
+	if v != nil {
+		_c.SetLoginName(*v)
+	}
+	return _c
+}
+
+// SetMustChangePassword sets the "must_change_password" field.
+func (_c *UserCreate) SetMustChangePassword(v bool) *UserCreate {
+	_c.mutation.SetMustChangePassword(v)
+	return _c
+}
+
+// SetNillableMustChangePassword sets the "must_change_password" field if the given value is not nil.
+func (_c *UserCreate) SetNillableMustChangePassword(v *bool) *UserCreate {
+	if v != nil {
+		_c.SetMustChangePassword(*v)
+	}
+	return _c
+}
+
+// SetRecoveryEmail sets the "recovery_email" field.
+func (_c *UserCreate) SetRecoveryEmail(v string) *UserCreate {
+	_c.mutation.SetRecoveryEmail(v)
+	return _c
+}
+
+// SetNillableRecoveryEmail sets the "recovery_email" field if the given value is not nil.
+func (_c *UserCreate) SetNillableRecoveryEmail(v *string) *UserCreate {
+	if v != nil {
+		_c.SetRecoveryEmail(*v)
+	}
+	return _c
+}
+
+// SetRecoveryEmailVerifiedAt sets the "recovery_email_verified_at" field.
+func (_c *UserCreate) SetRecoveryEmailVerifiedAt(v time.Time) *UserCreate {
+	_c.mutation.SetRecoveryEmailVerifiedAt(v)
+	return _c
+}
+
+// SetNillableRecoveryEmailVerifiedAt sets the "recovery_email_verified_at" field if the given value is not nil.
+func (_c *UserCreate) SetNillableRecoveryEmailVerifiedAt(v *time.Time) *UserCreate {
+	if v != nil {
+		_c.SetRecoveryEmailVerifiedAt(*v)
+	}
+	return _c
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_c *UserCreate) SetAuthzGeneration(v int64) *UserCreate {
+	_c.mutation.SetAuthzGeneration(v)
+	return _c
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_c *UserCreate) SetNillableAuthzGeneration(v *int64) *UserCreate {
+	if v != nil {
+		_c.SetAuthzGeneration(*v)
+	}
+	return _c
+}
+
 // SetPasswordHash sets the "password_hash" field.
 func (_c *UserCreate) SetPasswordHash(v string) *UserCreate {
 	_c.mutation.SetPasswordHash(v)
@@ -616,6 +736,18 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.IdentityType(); !ok {
+		v := user.DefaultIdentityType
+		_c.mutation.SetIdentityType(v)
+	}
+	if _, ok := _c.mutation.MustChangePassword(); !ok {
+		v := user.DefaultMustChangePassword
+		_c.mutation.SetMustChangePassword(v)
+	}
+	if _, ok := _c.mutation.AuthzGeneration(); !ok {
+		v := user.DefaultAuthzGeneration
+		_c.mutation.SetAuthzGeneration(v)
+	}
 	if _, ok := _c.mutation.Role(); !ok {
 		v := user.DefaultRole
 		_c.mutation.SetRole(v)
@@ -683,13 +815,44 @@ func (_c *UserCreate) check() error {
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "User.updated_at"`)}
 	}
-	if _, ok := _c.mutation.Email(); !ok {
-		return &ValidationError{Name: "email", err: errors.New(`ent: missing required field "User.email"`)}
-	}
 	if v, ok := _c.mutation.Email(); ok {
 		if err := user.EmailValidator(v); err != nil {
 			return &ValidationError{Name: "email", err: fmt.Errorf(`ent: validator failed for field "User.email": %w`, err)}
 		}
+	}
+	if v, ok := _c.mutation.AccountID(); ok {
+		if err := user.AccountIDValidator(v); err != nil {
+			return &ValidationError{Name: "account_id", err: fmt.Errorf(`ent: validator failed for field "User.account_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.ExternalUserID(); ok {
+		if err := user.ExternalUserIDValidator(v); err != nil {
+			return &ValidationError{Name: "external_user_id", err: fmt.Errorf(`ent: validator failed for field "User.external_user_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.IdentityType(); !ok {
+		return &ValidationError{Name: "identity_type", err: errors.New(`ent: missing required field "User.identity_type"`)}
+	}
+	if v, ok := _c.mutation.IdentityType(); ok {
+		if err := user.IdentityTypeValidator(v); err != nil {
+			return &ValidationError{Name: "identity_type", err: fmt.Errorf(`ent: validator failed for field "User.identity_type": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.LoginName(); ok {
+		if err := user.LoginNameValidator(v); err != nil {
+			return &ValidationError{Name: "login_name", err: fmt.Errorf(`ent: validator failed for field "User.login_name": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.MustChangePassword(); !ok {
+		return &ValidationError{Name: "must_change_password", err: errors.New(`ent: missing required field "User.must_change_password"`)}
+	}
+	if v, ok := _c.mutation.RecoveryEmail(); ok {
+		if err := user.RecoveryEmailValidator(v); err != nil {
+			return &ValidationError{Name: "recovery_email", err: fmt.Errorf(`ent: validator failed for field "User.recovery_email": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.AuthzGeneration(); !ok {
+		return &ValidationError{Name: "authz_generation", err: errors.New(`ent: missing required field "User.authz_generation"`)}
 	}
 	if _, ok := _c.mutation.PasswordHash(); !ok {
 		return &ValidationError{Name: "password_hash", err: errors.New(`ent: missing required field "User.password_hash"`)}
@@ -803,6 +966,38 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Email(); ok {
 		_spec.SetField(user.FieldEmail, field.TypeString, value)
 		_node.Email = value
+	}
+	if value, ok := _c.mutation.AccountID(); ok {
+		_spec.SetField(user.FieldAccountID, field.TypeString, value)
+		_node.AccountID = value
+	}
+	if value, ok := _c.mutation.ExternalUserID(); ok {
+		_spec.SetField(user.FieldExternalUserID, field.TypeString, value)
+		_node.ExternalUserID = value
+	}
+	if value, ok := _c.mutation.IdentityType(); ok {
+		_spec.SetField(user.FieldIdentityType, field.TypeString, value)
+		_node.IdentityType = value
+	}
+	if value, ok := _c.mutation.LoginName(); ok {
+		_spec.SetField(user.FieldLoginName, field.TypeString, value)
+		_node.LoginName = value
+	}
+	if value, ok := _c.mutation.MustChangePassword(); ok {
+		_spec.SetField(user.FieldMustChangePassword, field.TypeBool, value)
+		_node.MustChangePassword = value
+	}
+	if value, ok := _c.mutation.RecoveryEmail(); ok {
+		_spec.SetField(user.FieldRecoveryEmail, field.TypeString, value)
+		_node.RecoveryEmail = value
+	}
+	if value, ok := _c.mutation.RecoveryEmailVerifiedAt(); ok {
+		_spec.SetField(user.FieldRecoveryEmailVerifiedAt, field.TypeTime, value)
+		_node.RecoveryEmailVerifiedAt = &value
+	}
+	if value, ok := _c.mutation.AuthzGeneration(); ok {
+		_spec.SetField(user.FieldAuthzGeneration, field.TypeInt64, value)
+		_node.AuthzGeneration = value
 	}
 	if value, ok := _c.mutation.PasswordHash(); ok {
 		_spec.SetField(user.FieldPasswordHash, field.TypeString, value)
@@ -1206,6 +1401,78 @@ func (u *UserUpsert) UpdateEmail() *UserUpsert {
 	return u
 }
 
+// ClearEmail clears the value of the "email" field.
+func (u *UserUpsert) ClearEmail() *UserUpsert {
+	u.SetNull(user.FieldEmail)
+	return u
+}
+
+// SetMustChangePassword sets the "must_change_password" field.
+func (u *UserUpsert) SetMustChangePassword(v bool) *UserUpsert {
+	u.Set(user.FieldMustChangePassword, v)
+	return u
+}
+
+// UpdateMustChangePassword sets the "must_change_password" field to the value that was provided on create.
+func (u *UserUpsert) UpdateMustChangePassword() *UserUpsert {
+	u.SetExcluded(user.FieldMustChangePassword)
+	return u
+}
+
+// SetRecoveryEmail sets the "recovery_email" field.
+func (u *UserUpsert) SetRecoveryEmail(v string) *UserUpsert {
+	u.Set(user.FieldRecoveryEmail, v)
+	return u
+}
+
+// UpdateRecoveryEmail sets the "recovery_email" field to the value that was provided on create.
+func (u *UserUpsert) UpdateRecoveryEmail() *UserUpsert {
+	u.SetExcluded(user.FieldRecoveryEmail)
+	return u
+}
+
+// ClearRecoveryEmail clears the value of the "recovery_email" field.
+func (u *UserUpsert) ClearRecoveryEmail() *UserUpsert {
+	u.SetNull(user.FieldRecoveryEmail)
+	return u
+}
+
+// SetRecoveryEmailVerifiedAt sets the "recovery_email_verified_at" field.
+func (u *UserUpsert) SetRecoveryEmailVerifiedAt(v time.Time) *UserUpsert {
+	u.Set(user.FieldRecoveryEmailVerifiedAt, v)
+	return u
+}
+
+// UpdateRecoveryEmailVerifiedAt sets the "recovery_email_verified_at" field to the value that was provided on create.
+func (u *UserUpsert) UpdateRecoveryEmailVerifiedAt() *UserUpsert {
+	u.SetExcluded(user.FieldRecoveryEmailVerifiedAt)
+	return u
+}
+
+// ClearRecoveryEmailVerifiedAt clears the value of the "recovery_email_verified_at" field.
+func (u *UserUpsert) ClearRecoveryEmailVerifiedAt() *UserUpsert {
+	u.SetNull(user.FieldRecoveryEmailVerifiedAt)
+	return u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *UserUpsert) SetAuthzGeneration(v int64) *UserUpsert {
+	u.Set(user.FieldAuthzGeneration, v)
+	return u
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *UserUpsert) UpdateAuthzGeneration() *UserUpsert {
+	u.SetExcluded(user.FieldAuthzGeneration)
+	return u
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *UserUpsert) AddAuthzGeneration(v int64) *UserUpsert {
+	u.Add(user.FieldAuthzGeneration, v)
+	return u
+}
+
 // SetPasswordHash sets the "password_hash" field.
 func (u *UserUpsert) SetPasswordHash(v string) *UserUpsert {
 	u.Set(user.FieldPasswordHash, v)
@@ -1526,6 +1793,18 @@ func (u *UserUpsertOne) UpdateNewValues() *UserUpsertOne {
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(user.FieldCreatedAt)
 		}
+		if _, exists := u.create.mutation.AccountID(); exists {
+			s.SetIgnore(user.FieldAccountID)
+		}
+		if _, exists := u.create.mutation.ExternalUserID(); exists {
+			s.SetIgnore(user.FieldExternalUserID)
+		}
+		if _, exists := u.create.mutation.IdentityType(); exists {
+			s.SetIgnore(user.FieldIdentityType)
+		}
+		if _, exists := u.create.mutation.LoginName(); exists {
+			s.SetIgnore(user.FieldLoginName)
+		}
 	}))
 	return u
 }
@@ -1603,6 +1882,90 @@ func (u *UserUpsertOne) SetEmail(v string) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateEmail() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateEmail()
+	})
+}
+
+// ClearEmail clears the value of the "email" field.
+func (u *UserUpsertOne) ClearEmail() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearEmail()
+	})
+}
+
+// SetMustChangePassword sets the "must_change_password" field.
+func (u *UserUpsertOne) SetMustChangePassword(v bool) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetMustChangePassword(v)
+	})
+}
+
+// UpdateMustChangePassword sets the "must_change_password" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateMustChangePassword() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateMustChangePassword()
+	})
+}
+
+// SetRecoveryEmail sets the "recovery_email" field.
+func (u *UserUpsertOne) SetRecoveryEmail(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRecoveryEmail(v)
+	})
+}
+
+// UpdateRecoveryEmail sets the "recovery_email" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateRecoveryEmail() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRecoveryEmail()
+	})
+}
+
+// ClearRecoveryEmail clears the value of the "recovery_email" field.
+func (u *UserUpsertOne) ClearRecoveryEmail() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearRecoveryEmail()
+	})
+}
+
+// SetRecoveryEmailVerifiedAt sets the "recovery_email_verified_at" field.
+func (u *UserUpsertOne) SetRecoveryEmailVerifiedAt(v time.Time) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRecoveryEmailVerifiedAt(v)
+	})
+}
+
+// UpdateRecoveryEmailVerifiedAt sets the "recovery_email_verified_at" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateRecoveryEmailVerifiedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRecoveryEmailVerifiedAt()
+	})
+}
+
+// ClearRecoveryEmailVerifiedAt clears the value of the "recovery_email_verified_at" field.
+func (u *UserUpsertOne) ClearRecoveryEmailVerifiedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearRecoveryEmailVerifiedAt()
+	})
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *UserUpsertOne) SetAuthzGeneration(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetAuthzGeneration(v)
+	})
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *UserUpsertOne) AddAuthzGeneration(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddAuthzGeneration(v)
+	})
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateAuthzGeneration() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateAuthzGeneration()
 	})
 }
 
@@ -2142,6 +2505,18 @@ func (u *UserUpsertBulk) UpdateNewValues() *UserUpsertBulk {
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(user.FieldCreatedAt)
 			}
+			if _, exists := b.mutation.AccountID(); exists {
+				s.SetIgnore(user.FieldAccountID)
+			}
+			if _, exists := b.mutation.ExternalUserID(); exists {
+				s.SetIgnore(user.FieldExternalUserID)
+			}
+			if _, exists := b.mutation.IdentityType(); exists {
+				s.SetIgnore(user.FieldIdentityType)
+			}
+			if _, exists := b.mutation.LoginName(); exists {
+				s.SetIgnore(user.FieldLoginName)
+			}
 		}
 	}))
 	return u
@@ -2220,6 +2595,90 @@ func (u *UserUpsertBulk) SetEmail(v string) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateEmail() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateEmail()
+	})
+}
+
+// ClearEmail clears the value of the "email" field.
+func (u *UserUpsertBulk) ClearEmail() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearEmail()
+	})
+}
+
+// SetMustChangePassword sets the "must_change_password" field.
+func (u *UserUpsertBulk) SetMustChangePassword(v bool) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetMustChangePassword(v)
+	})
+}
+
+// UpdateMustChangePassword sets the "must_change_password" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateMustChangePassword() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateMustChangePassword()
+	})
+}
+
+// SetRecoveryEmail sets the "recovery_email" field.
+func (u *UserUpsertBulk) SetRecoveryEmail(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRecoveryEmail(v)
+	})
+}
+
+// UpdateRecoveryEmail sets the "recovery_email" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateRecoveryEmail() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRecoveryEmail()
+	})
+}
+
+// ClearRecoveryEmail clears the value of the "recovery_email" field.
+func (u *UserUpsertBulk) ClearRecoveryEmail() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearRecoveryEmail()
+	})
+}
+
+// SetRecoveryEmailVerifiedAt sets the "recovery_email_verified_at" field.
+func (u *UserUpsertBulk) SetRecoveryEmailVerifiedAt(v time.Time) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRecoveryEmailVerifiedAt(v)
+	})
+}
+
+// UpdateRecoveryEmailVerifiedAt sets the "recovery_email_verified_at" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateRecoveryEmailVerifiedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRecoveryEmailVerifiedAt()
+	})
+}
+
+// ClearRecoveryEmailVerifiedAt clears the value of the "recovery_email_verified_at" field.
+func (u *UserUpsertBulk) ClearRecoveryEmailVerifiedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearRecoveryEmailVerifiedAt()
+	})
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *UserUpsertBulk) SetAuthzGeneration(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetAuthzGeneration(v)
+	})
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *UserUpsertBulk) AddAuthzGeneration(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddAuthzGeneration(v)
+	})
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateAuthzGeneration() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateAuthzGeneration()
 	})
 }
 

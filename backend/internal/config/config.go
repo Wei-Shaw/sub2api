@@ -101,6 +101,22 @@ type Config struct {
 	BalanceRPC              BalanceRPCConfig              `mapstructure:"balance_rpc"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+	Company                 CompanyConfig                 `mapstructure:"company"`
+}
+
+type CompanyConfig struct {
+	ApplicationsEnabled       bool    `mapstructure:"applications_enabled"`
+	IAMEnabled                bool    `mapstructure:"iam_enabled"`
+	PublicIDsFinalized        bool    `mapstructure:"public_ids_finalized"`
+	BillingIntegrationEnabled bool    `mapstructure:"billing_integration_enabled"`
+	UpgradeFee                float64 `mapstructure:"upgrade_fee"`
+	UpgradeCurrency           string  `mapstructure:"upgrade_currency"`
+	DefaultMemberLimit        int     `mapstructure:"default_member_limit"`
+	OutboxPollSeconds         int     `mapstructure:"outbox_poll_seconds"`
+	OutboxMaxAttempts         int     `mapstructure:"outbox_max_attempts"`
+	ReconcileIntervalSeconds  int     `mapstructure:"reconcile_interval_seconds"`
+	ReviewQueueAlertSeconds   int     `mapstructure:"review_queue_alert_seconds"`
+	OutboxLagAlertSeconds     int     `mapstructure:"outbox_lag_alert_seconds"`
 }
 
 // AsyncMediaConfig 异步媒体（fal 等异步图片平台）任务相关配置。
@@ -2488,9 +2504,43 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("balance_rpc.host", "")
 	viper.SetDefault("balance_rpc.port", 0)
 	viper.SetDefault("balance_rpc.encryption_key", "")
+
+	// Company account and IAM rollout gates default closed. Operators must
+	// explicitly attest that public IDs and every billing path are ready.
+	viper.SetDefault("company.applications_enabled", false)
+	viper.SetDefault("company.iam_enabled", false)
+	viper.SetDefault("company.public_ids_finalized", false)
+	viper.SetDefault("company.billing_integration_enabled", false)
+	viper.SetDefault("company.upgrade_fee", 20.0)
+	viper.SetDefault("company.upgrade_currency", "USD")
+	viper.SetDefault("company.default_member_limit", 20)
+	viper.SetDefault("company.outbox_poll_seconds", 5)
+	viper.SetDefault("company.outbox_max_attempts", 10)
+	viper.SetDefault("company.reconcile_interval_seconds", 300)
+	viper.SetDefault("company.review_queue_alert_seconds", 86400)
+	viper.SetDefault("company.outbox_lag_alert_seconds", 300)
 }
 
 func (c *Config) Validate() error {
+	c.Company.UpgradeCurrency = strings.ToUpper(strings.TrimSpace(c.Company.UpgradeCurrency))
+	if math.IsNaN(c.Company.UpgradeFee) || math.IsInf(c.Company.UpgradeFee, 0) || c.Company.UpgradeFee <= 0 {
+		return fmt.Errorf("company.upgrade_fee must be a positive finite amount")
+	}
+	if c.Company.UpgradeCurrency != "USD" {
+		return fmt.Errorf("company.upgrade_currency must be USD")
+	}
+	if c.Company.DefaultMemberLimit < 1 || c.Company.DefaultMemberLimit > 10000 {
+		return fmt.Errorf("company.default_member_limit must be between 1 and 10000")
+	}
+	if c.Company.OutboxPollSeconds < 1 || c.Company.OutboxMaxAttempts < 1 {
+		return fmt.Errorf("company outbox poll seconds and max attempts must be positive")
+	}
+	if c.Company.ReconcileIntervalSeconds < 1 || c.Company.ReviewQueueAlertSeconds < 1 || c.Company.OutboxLagAlertSeconds < 1 {
+		return fmt.Errorf("company reconciliation interval and alert thresholds must be positive")
+	}
+	if (c.Company.ApplicationsEnabled || c.Company.IAMEnabled) && (!c.Company.PublicIDsFinalized || !c.Company.BillingIntegrationEnabled) {
+		return fmt.Errorf("company features require public_ids_finalized and billing_integration_enabled")
+	}
 	forwardedClientIPHeaders, err := NormalizeForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)
 	if err != nil {
 		return fmt.Errorf("security.forwarded_client_ip_headers: %w", err)

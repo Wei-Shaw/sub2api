@@ -60,18 +60,26 @@ type AppLedgerStats struct {
 
 // LedgerDeductCommand 一次扣费请求。
 type LedgerDeductCommand struct {
-	AppID       string
-	RequestID   string // 幂等键
-	UserID      int64
-	Amount      float64
-	Description string // 必填，扣费原因
-	Extra       string // jsonb 文本，接入方自存
+	AppID           string
+	RequestID       string // 幂等键
+	UserID          int64
+	Amount          float64
+	Description     string // 必填，扣费原因
+	Extra           string // jsonb 文本，接入方自存
+	OrganizationID  *int64
+	PayerUserID     int64
+	BalanceSource   string
+	AuthzGeneration int64
 }
 
 // LedgerDeductResult 扣费结果。
 type LedgerDeductResult struct {
-	Applied      bool    // false = 幂等重放
-	BalanceAfter float64 // 扣后余额
+	Applied         bool    // false = 幂等重放
+	BalanceAfter    float64 // 扣后余额
+	OrganizationID  *int64
+	PayerUserID     int64
+	BalanceSource   string
+	AuthzGeneration int64
 }
 
 // LedgerRefundCommand 一次退费请求（部分退）。
@@ -86,14 +94,29 @@ type LedgerRefundCommand struct {
 
 // LedgerRefundResult 退费结果。
 type LedgerRefundResult struct {
-	Applied       bool    // false = 幂等重放
-	UserID        int64   // 被退费用户（由原扣流水推导，供缓存失效用）
-	BalanceAfter  float64 // 退后余额
-	RefundedTotal float64 // 原扣累计已退
+	Applied         bool    // false = 幂等重放
+	UserID          int64   // 被退费用户（由原扣流水推导，供缓存失效用）
+	BalanceAfter    float64 // 退后余额
+	RefundedTotal   float64 // 原扣累计已退
+	OrganizationID  *int64
+	PayerUserID     int64
+	BalanceSource   string
+	AuthzGeneration int64
+}
+
+type BillingBalanceResult struct {
+	Balance         float64
+	OrganizationID  *int64
+	PayerUserID     int64
+	BalanceSource   string
+	AuthzGeneration int64
 }
 
 // BalanceLedgerRepository 余额账本仓储：扣/退在单事务内原子完成。
 type BalanceLedgerRepository interface {
+	// FindDeduct returns a committed result before current authorization is
+	// resolved, so an idempotent replay preserves the original payer snapshot.
+	FindDeduct(ctx context.Context, cmd *LedgerDeductCommand) (*LedgerDeductResult, error)
 	// Deduct 不透支扣费 + (app_id, request_id) 幂等。
 	Deduct(ctx context.Context, cmd *LedgerDeductCommand) (*LedgerDeductResult, error)
 	// Refund 部分退 + 凭原流水冲销 + (app_id, refund_request_id) 幂等。

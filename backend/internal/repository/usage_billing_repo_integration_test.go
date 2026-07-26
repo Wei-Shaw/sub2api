@@ -80,6 +80,83 @@ func TestUsageBillingRepositoryApply_DeduplicatesBalanceBilling(t *testing.T) {
 	require.Equal(t, 1, dedupCount)
 }
 
+func TestUsageBillingRepository_BatchImageReleaseUsesOriginalPayerAfterLifecycleChanges(t *testing.T) {
+	isolateOrganizationIntegrationTest(t)
+	ctx := context.Background()
+	client := testEntClient(t)
+	billingRepo := NewUsageBillingRepository(client, integrationDB)
+	organizationRepo := NewOrganizationRepository(integrationDB)
+
+	tests := []struct {
+		name   string
+		mutate func(ownerID, memberID, organizationID int64) error
+	}{
+		{
+			name: "shared policy revoked after hold",
+			mutate: func(ownerID, memberID, _ int64) error {
+				return organizationRepo.SetPolicyAttachment(ctx, ownerID, memberID, service.PolicyCompanySharedBalance, false, uuid.NewString())
+			},
+		},
+		{
+			name: "member disabled after hold",
+			mutate: func(ownerID, memberID, _ int64) error {
+				return organizationRepo.SetIAMMemberStatus(ctx, ownerID, memberID, service.MembershipStatusDisabled)
+			},
+		},
+		{
+			name: "member archived after hold",
+			mutate: func(ownerID, memberID, _ int64) error {
+				return organizationRepo.SetIAMMemberStatus(ctx, ownerID, memberID, service.MembershipStatusArchived)
+			},
+		},
+		{
+			name: "organization suspended after hold",
+			mutate: func(ownerID, _ int64, organizationID int64) error {
+				admin := createOrganizationRoot(t, client, 0, service.RoleAdmin)
+				return organizationRepo.SetOrganizationStatus(ctx, admin.ID, organizationID, service.OrganizationStatusSuspended)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			owner := createOrganizationRoot(t, client, 100, service.RoleUser)
+			organizationID := createActiveOrganization(t, owner, 20)
+			memberID := createIAMMemberForOrganizationTest(t, owner.ID, "snapshot-"+uuid.NewString())
+			require.NoError(t, organizationRepo.SetPolicyAttachment(ctx, owner.ID, memberID, service.PolicyCompanySharedBalance, true, uuid.NewString()))
+			resolved, err := organizationRepo.ResolveBillingContext(ctx, memberID)
+			require.NoError(t, err)
+			require.Equal(t, owner.ID, resolved.PayerUserID)
+
+			apiKey := mustCreateApiKey(t, client, &service.APIKey{
+				UserID: memberID, Key: "sk-snapshot-" + uuid.NewString(), Name: "snapshot",
+			})
+			batchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+			hold := &service.BatchImageBalanceHoldCommand{
+				RequestID: service.BatchImageHoldRequestID(batchID), APIKeyID: apiKey.ID,
+				UserID: memberID, OrganizationID: resolved.OrganizationID,
+				PayerUserID: resolved.PayerUserID, BalanceSource: resolved.BalanceSource,
+				AuthzGeneration: resolved.AuthzGeneration, BatchID: batchID, HoldAmount: 10,
+			}
+			reserved, err := billingRepo.ReserveBatchImageBalance(ctx, hold)
+			require.NoError(t, err)
+			require.True(t, reserved.Applied)
+			assertUserBalances(t, owner.ID, "90.00000000", "10.00000000")
+			assertUserBalances(t, memberID, "0.00000000", "0.00000000")
+
+			require.NoError(t, tt.mutate(owner.ID, memberID, organizationID))
+			release := *hold
+			release.RequestID = service.BatchImageReleaseRequestID(batchID)
+			released, err := billingRepo.ReleaseBatchImageBalance(ctx, &release)
+			require.NoError(t, err)
+			require.True(t, released.Applied)
+			assertUserBalances(t, owner.ID, "100.00000000", "0.00000000")
+			assertUserBalances(t, memberID, "0.00000000", "0.00000000")
+			assertCombinedAvailableBalance(t, owner.ID, memberID, "100.00000000")
+		})
+	}
+}
+
 func TestUsageBillingRepositoryApply_DeduplicatesSubscriptionBilling(t *testing.T) {
 	ctx := context.Background()
 	client := testEntClient(t)

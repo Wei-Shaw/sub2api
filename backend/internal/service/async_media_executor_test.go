@@ -25,14 +25,25 @@ import (
 // fakeUserRepo 仅实现余额扣减/退还，其余方法继承 nil 接口（不会被调用）。
 type fakeUserRepo struct {
 	UserRepository
-	mu        sync.Mutex
-	balance   float64
-	deducts   []float64
-	refunds   []float64
-	deductErr error
+	mu            sync.Mutex
+	balance       float64
+	deducts       []float64
+	deductUserIDs []int64
+	refunds       []float64
+	refundUserIDs []int64
+	deductErr     error
 }
 
-func (r *fakeUserRepo) DeductBalance(_ context.Context, _ int64, amount float64) error {
+type fakeBalanceInvalidator struct {
+	userIDs []int64
+}
+
+func (f *fakeBalanceInvalidator) InvalidateUserBalance(_ context.Context, userID int64) error {
+	f.userIDs = append(f.userIDs, userID)
+	return nil
+}
+
+func (r *fakeUserRepo) DeductBalance(_ context.Context, userID int64, amount float64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.deductErr != nil {
@@ -40,15 +51,34 @@ func (r *fakeUserRepo) DeductBalance(_ context.Context, _ int64, amount float64)
 	}
 	r.balance -= amount
 	r.deducts = append(r.deducts, amount)
+	r.deductUserIDs = append(r.deductUserIDs, userID)
 	return nil
 }
 
-func (r *fakeUserRepo) UpdateBalance(_ context.Context, _ int64, amount float64) error {
+func (r *fakeUserRepo) UpdateBalance(_ context.Context, userID int64, amount float64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.balance += amount
 	r.refunds = append(r.refunds, amount)
+	r.refundUserIDs = append(r.refundUserIDs, userID)
 	return nil
+}
+
+func TestAsyncMediaFailedRefundUsesSnapshottedPayer(t *testing.T) {
+	taskRepo := newFakeTaskRepo()
+	userRepo := &fakeUserRepo{}
+	cache := &fakeBalanceInvalidator{}
+	svc := &AsyncMediaService{taskRepo: taskRepo, userRepo: userRepo, balanceCache: cache}
+	payerID := int64(99)
+	task := &AsyncMediaTask{ID: 1, UserID: 22, PayerUserID: &payerID, HeldCost: 3.5, Status: AsyncMediaStatusRunning}
+	taskRepo.byID[task.ID] = task
+
+	svc.markFailedAndRefund(context.Background(), task, BillingTypeBalance, "failed")
+
+	require.Equal(t, []int64{payerID}, userRepo.refundUserIDs)
+	require.Equal(t, BillingStatusRefunded, taskRepo.lastUsageLog().BillingStatus)
+	require.Equal(t, &payerID, taskRepo.lastUsageLog().PayerUserID)
+	require.Equal(t, []int64{payerID}, cache.userIDs)
 }
 
 func (r *fakeUserRepo) totalRefunded() float64 {

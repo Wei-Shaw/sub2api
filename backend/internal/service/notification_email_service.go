@@ -41,7 +41,14 @@ const (
 	// 双向复用同一事件：admin 回复 → 通知工单 owner；用户回复 → 通知管理员。
 	// 模板内通过 is_admin_reply（"true"/"false" 字符串）分支渲染 "客服回复" / "用户回复"。
 	// 变量：ticket_id / title / excerpt / actor_name / is_admin_reply / portal_url。
-	NotificationEmailEventSupportTicketNewReply = "support_ticket.new_reply"
+	NotificationEmailEventSupportTicketNewReply   = "support_ticket.new_reply"
+	NotificationEmailEventCompanyUpgradeSubmitted = "company.upgrade.submitted"
+	NotificationEmailEventCompanyUpgradeApproved  = "company.upgrade.approved"
+	NotificationEmailEventCompanyUpgradeRejected  = "company.upgrade.rejected"
+	NotificationEmailEventCompanyUpgradeWithdrawn = "company.upgrade.withdrawn"
+	NotificationEmailEventCompanyNameSubmitted    = "company.name.submitted"
+	NotificationEmailEventCompanyNameApproved     = "company.name.approved"
+	NotificationEmailEventCompanyNameRejected     = "company.name.rejected"
 
 	notificationEmailTemplateKeyPrefix    = "notification_email_template:"
 	notificationEmailPreferenceKeyPrefix  = "notification_email_preference:"
@@ -1045,6 +1052,13 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventOpsScheduledReport,
 	NotificationEmailEventSupportTicketNewTicket,
 	NotificationEmailEventSupportTicketNewReply,
+	NotificationEmailEventCompanyUpgradeSubmitted,
+	NotificationEmailEventCompanyUpgradeApproved,
+	NotificationEmailEventCompanyUpgradeRejected,
+	NotificationEmailEventCompanyUpgradeWithdrawn,
+	NotificationEmailEventCompanyNameSubmitted,
+	NotificationEmailEventCompanyNameApproved,
+	NotificationEmailEventCompanyNameRejected,
 }
 
 var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
@@ -1183,6 +1197,20 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
 			"ticket_id", "title", "excerpt", "actor_name", "reply_kind_label", "portal_url"),
 	},
+	NotificationEmailEventCompanyUpgradeSubmitted: companyNotificationEventInfo(NotificationEmailEventCompanyUpgradeSubmitted, "Company upgrade submitted", "Sent to system administrators when a paid company upgrade enters review."),
+	NotificationEmailEventCompanyUpgradeApproved:  companyNotificationEventInfo(NotificationEmailEventCompanyUpgradeApproved, "Company upgrade approved", "Sent to the applicant after company activation."),
+	NotificationEmailEventCompanyUpgradeRejected:  companyNotificationEventInfo(NotificationEmailEventCompanyUpgradeRejected, "Company upgrade rejected", "Sent to the applicant after review rejection."),
+	NotificationEmailEventCompanyUpgradeWithdrawn: companyNotificationEventInfo(NotificationEmailEventCompanyUpgradeWithdrawn, "Company upgrade withdrawn", "Sent to the applicant after withdrawal."),
+	NotificationEmailEventCompanyNameSubmitted:    companyNotificationEventInfo(NotificationEmailEventCompanyNameSubmitted, "Company name change submitted", "Sent to system administrators when a company name change enters review."),
+	NotificationEmailEventCompanyNameApproved:     companyNotificationEventInfo(NotificationEmailEventCompanyNameApproved, "Company name change approved", "Sent to the organization owner after approval."),
+	NotificationEmailEventCompanyNameRejected:     companyNotificationEventInfo(NotificationEmailEventCompanyNameRejected, "Company name change rejected", "Sent to the organization owner after rejection."),
+}
+
+func companyNotificationEventInfo(event, label, description string) NotificationEmailEventInfo {
+	return NotificationEmailEventInfo{
+		Event: event, Label: label, Description: description, Category: "company", Optional: false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "company_name", "fee", "currency", "reason"),
+	}
 }
 
 var notificationEmailOfficialTemplates = map[string]map[string]notificationEmailOfficialTemplate{
@@ -1517,6 +1545,47 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p><a class="button" href="{{portal_url}}">查看工单</a></p>`),
 		},
 	},
+	NotificationEmailEventCompanyUpgradeSubmitted: companyNotificationTemplates(
+		"Company upgrade awaiting review", "企业账户升级待审批",
+		"A company upgrade application for <strong>{{company_name}}</strong> is awaiting review. The reserved fee is {{fee}} {{currency}}.",
+		"企业 <strong>{{company_name}}</strong> 的账户升级申请正在等待审批，已冻结费用 {{fee}} {{currency}}。"),
+	NotificationEmailEventCompanyUpgradeApproved: companyNotificationTemplates(
+		"Company upgrade approved", "企业账户升级已通过",
+		"Your company account <strong>{{company_name}}</strong> is now active. The upgrade fee of {{fee}} {{currency}} has been captured.",
+		"您的企业账户 <strong>{{company_name}}</strong> 已生效，升级费用 {{fee}} {{currency}} 已结算。"),
+	NotificationEmailEventCompanyUpgradeRejected: companyNotificationTemplates(
+		"Company upgrade rejected", "企业账户升级未通过",
+		"Your company upgrade for <strong>{{company_name}}</strong> was rejected. Reason: {{reason}}. The reserved fee has been released.",
+		"您的企业 <strong>{{company_name}}</strong> 升级申请未通过。原因：{{reason}}。冻结费用已退回可用余额。"),
+	NotificationEmailEventCompanyUpgradeWithdrawn: companyNotificationTemplates(
+		"Company upgrade withdrawn", "企业账户升级已撤回",
+		"Your company upgrade for <strong>{{company_name}}</strong> was withdrawn and the reserved fee was released.",
+		"您的企业 <strong>{{company_name}}</strong> 升级申请已撤回，冻结费用已退回可用余额。"),
+	NotificationEmailEventCompanyNameSubmitted: companyNotificationTemplates(
+		"Company name change awaiting review", "企业名称变更待审批",
+		"A company name change to <strong>{{company_name}}</strong> is awaiting review.",
+		"企业名称变更为 <strong>{{company_name}}</strong> 的申请正在等待审批。"),
+	NotificationEmailEventCompanyNameApproved: companyNotificationTemplates(
+		"Company name change approved", "企业名称变更已通过",
+		"The company name change to <strong>{{company_name}}</strong> has been approved.",
+		"企业名称变更为 <strong>{{company_name}}</strong> 的申请已通过。"),
+	NotificationEmailEventCompanyNameRejected: companyNotificationTemplates(
+		"Company name change rejected", "企业名称变更未通过",
+		"The company name change to <strong>{{company_name}}</strong> was rejected. Reason: {{reason}}.",
+		"企业名称变更为 <strong>{{company_name}}</strong> 的申请未通过。原因：{{reason}}。"),
+}
+
+func companyNotificationTemplates(titleEN, titleZH, bodyEN, bodyZH string) map[string]notificationEmailOfficialTemplate {
+	return map[string]notificationEmailOfficialTemplate{
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] " + titleEN,
+			HTML:    notificationEmailCard("#0f766e", titleEN, "<p>Hello {{recipient_name}},</p><p>"+bodyEN+"</p>"),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] " + titleZH,
+			HTML:    notificationEmailCard("#0f766e", titleZH, "<p>{{recipient_name}}，您好：</p><p>"+bodyZH+"</p>"),
+		},
+	}
 }
 
 func notificationEmailOpsScheduledReportTemplate(locale string) string {

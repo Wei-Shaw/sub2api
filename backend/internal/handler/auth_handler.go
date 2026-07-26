@@ -29,9 +29,16 @@ type AuthHandler struct {
 	totpService          *service.TotpService
 	userAttributeService *service.UserAttributeService
 	ssoSessionService    *service.SsoSessionService
+	organizationService  *service.OrganizationService
 
 	dingTalkClientInstance *DingTalkClient
 	dingTalkClientMu       sync.Mutex
+}
+
+func (h *AuthHandler) SetOrganizationService(organization *service.OrganizationService) {
+	if h != nil {
+		h.organizationService = organization
+	}
 }
 
 // NewAuthHandler creates a new AuthHandler
@@ -481,7 +488,9 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 
 	type UserResponse struct {
 		userProfileResponse
-		RunMode string `json:"run_mode"`
+		RunMode      string                       `json:"run_mode"`
+		Organization *service.OrganizationContext `json:"organization,omitempty"`
+		Finance      *service.FinanceSummary      `json:"organization_finance,omitempty"`
 	}
 
 	runMode := config.RunModeStandard
@@ -489,9 +498,19 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		runMode = h.cfg.RunMode
 	}
 
+	var organization *service.OrganizationContext
+	var finance *service.FinanceSummary
+	if h.organizationService != nil {
+		organization, _ = h.organizationService.Context(c.Request.Context(), subject.UserID)
+		if organization != nil {
+			finance, _ = h.organizationService.FinanceSummary(c.Request.Context(), subject.UserID)
+		}
+	}
 	response.Success(c, UserResponse{
 		userProfileResponse: userProfileResponseFromService(user, identities),
 		RunMode:             runMode,
+		Organization:        organization,
+		Finance:             finance,
 	})
 }
 

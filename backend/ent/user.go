@@ -25,6 +25,22 @@ type User struct {
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// Email holds the value of the "email" field.
 	Email string `json:"email,omitempty"`
+	// AccountID holds the value of the "account_id" field.
+	AccountID string `json:"account_id,omitempty"`
+	// ExternalUserID holds the value of the "external_user_id" field.
+	ExternalUserID string `json:"external_user_id,omitempty"`
+	// IdentityType holds the value of the "identity_type" field.
+	IdentityType string `json:"identity_type,omitempty"`
+	// LoginName holds the value of the "login_name" field.
+	LoginName string `json:"login_name,omitempty"`
+	// MustChangePassword holds the value of the "must_change_password" field.
+	MustChangePassword bool `json:"must_change_password,omitempty"`
+	// RecoveryEmail holds the value of the "recovery_email" field.
+	RecoveryEmail string `json:"recovery_email,omitempty"`
+	// RecoveryEmailVerifiedAt holds the value of the "recovery_email_verified_at" field.
+	RecoveryEmailVerifiedAt *time.Time `json:"recovery_email_verified_at,omitempty"`
+	// AuthzGeneration holds the value of the "authz_generation" field.
+	AuthzGeneration int64 `json:"authz_generation,omitempty"`
 	// PasswordHash holds the value of the "password_hash" field.
 	PasswordHash string `json:"password_hash,omitempty"`
 	// Role holds the value of the "role" field.
@@ -248,15 +264,15 @@ func (*User) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case user.FieldTotpEnabled, user.FieldBalanceNotifyEnabled:
+		case user.FieldMustChangePassword, user.FieldTotpEnabled, user.FieldBalanceNotifyEnabled:
 			values[i] = new(sql.NullBool)
 		case user.FieldBalance, user.FieldFrozenBalance, user.FieldBalanceNotifyThreshold, user.FieldTotalRecharged:
 			values[i] = new(sql.NullFloat64)
-		case user.FieldID, user.FieldConcurrency, user.FieldRpmLimit:
+		case user.FieldID, user.FieldAuthzGeneration, user.FieldConcurrency, user.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
+		case user.FieldEmail, user.FieldAccountID, user.FieldExternalUserID, user.FieldIdentityType, user.FieldLoginName, user.FieldRecoveryEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
 			values[i] = new(sql.NullString)
-		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt, user.FieldLastLoginAt, user.FieldLastActiveAt:
+		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldRecoveryEmailVerifiedAt, user.FieldTotpEnabledAt, user.FieldLastLoginAt, user.FieldLastActiveAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -303,6 +319,55 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field email", values[i])
 			} else if value.Valid {
 				_m.Email = value.String
+			}
+		case user.FieldAccountID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field account_id", values[i])
+			} else if value.Valid {
+				_m.AccountID = value.String
+			}
+		case user.FieldExternalUserID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field external_user_id", values[i])
+			} else if value.Valid {
+				_m.ExternalUserID = value.String
+			}
+		case user.FieldIdentityType:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field identity_type", values[i])
+			} else if value.Valid {
+				_m.IdentityType = value.String
+			}
+		case user.FieldLoginName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field login_name", values[i])
+			} else if value.Valid {
+				_m.LoginName = value.String
+			}
+		case user.FieldMustChangePassword:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field must_change_password", values[i])
+			} else if value.Valid {
+				_m.MustChangePassword = value.Bool
+			}
+		case user.FieldRecoveryEmail:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field recovery_email", values[i])
+			} else if value.Valid {
+				_m.RecoveryEmail = value.String
+			}
+		case user.FieldRecoveryEmailVerifiedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field recovery_email_verified_at", values[i])
+			} else if value.Valid {
+				_m.RecoveryEmailVerifiedAt = new(time.Time)
+				*_m.RecoveryEmailVerifiedAt = value.Time
+			}
+		case user.FieldAuthzGeneration:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field authz_generation", values[i])
+			} else if value.Valid {
+				_m.AuthzGeneration = value.Int64
 			}
 		case user.FieldPasswordHash:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -553,6 +618,32 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("email=")
 	builder.WriteString(_m.Email)
+	builder.WriteString(", ")
+	builder.WriteString("account_id=")
+	builder.WriteString(_m.AccountID)
+	builder.WriteString(", ")
+	builder.WriteString("external_user_id=")
+	builder.WriteString(_m.ExternalUserID)
+	builder.WriteString(", ")
+	builder.WriteString("identity_type=")
+	builder.WriteString(_m.IdentityType)
+	builder.WriteString(", ")
+	builder.WriteString("login_name=")
+	builder.WriteString(_m.LoginName)
+	builder.WriteString(", ")
+	builder.WriteString("must_change_password=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MustChangePassword))
+	builder.WriteString(", ")
+	builder.WriteString("recovery_email=")
+	builder.WriteString(_m.RecoveryEmail)
+	builder.WriteString(", ")
+	if v := _m.RecoveryEmailVerifiedAt; v != nil {
+		builder.WriteString("recovery_email_verified_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("authz_generation=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AuthzGeneration))
 	builder.WriteString(", ")
 	builder.WriteString("password_hash=")
 	builder.WriteString(_m.PasswordHash)

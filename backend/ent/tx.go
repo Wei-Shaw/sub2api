@@ -48,6 +48,8 @@ type Tx struct {
 	ChannelMonitorHistory *ChannelMonitorHistoryClient
 	// ChannelMonitorRequestTemplate is the client for interacting with the ChannelMonitorRequestTemplate builders.
 	ChannelMonitorRequestTemplate *ChannelMonitorRequestTemplateClient
+	// CompanyUpgradeApplication is the client for interacting with the CompanyUpgradeApplication builders.
+	CompanyUpgradeApplication *CompanyUpgradeApplicationClient
 	// CompositeModelRoute is the client for interacting with the CompositeModelRoute builders.
 	CompositeModelRoute *CompositeModelRouteClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
@@ -58,6 +60,14 @@ type Tx struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// IdentityAdoptionDecision is the client for interacting with the IdentityAdoptionDecision builders.
 	IdentityAdoptionDecision *IdentityAdoptionDecisionClient
+	// ManagedPolicy is the client for interacting with the ManagedPolicy builders.
+	ManagedPolicy *ManagedPolicyClient
+	// ManagedPolicyAction is the client for interacting with the ManagedPolicyAction builders.
+	ManagedPolicyAction *ManagedPolicyActionClient
+	// MemberPolicyAttachment is the client for interacting with the MemberPolicyAttachment builders.
+	MemberPolicyAttachment *MemberPolicyAttachmentClient
+	// NotificationOutbox is the client for interacting with the NotificationOutbox builders.
+	NotificationOutbox *NotificationOutboxClient
 	// OidcAccessToken is the client for interacting with the OidcAccessToken builders.
 	OidcAccessToken *OidcAccessTokenClient
 	// OidcAuthorizationCode is the client for interacting with the OidcAuthorizationCode builders.
@@ -68,6 +78,16 @@ type Tx struct {
 	OidcConsent *OidcConsentClient
 	// OidcRefreshToken is the client for interacting with the OidcRefreshToken builders.
 	OidcRefreshToken *OidcRefreshTokenClient
+	// Organization is the client for interacting with the Organization builders.
+	Organization *OrganizationClient
+	// OrganizationAuditEvent is the client for interacting with the OrganizationAuditEvent builders.
+	OrganizationAuditEvent *OrganizationAuditEventClient
+	// OrganizationFinancialLedger is the client for interacting with the OrganizationFinancialLedger builders.
+	OrganizationFinancialLedger *OrganizationFinancialLedgerClient
+	// OrganizationMembership is the client for interacting with the OrganizationMembership builders.
+	OrganizationMembership *OrganizationMembershipClient
+	// OrganizationNameChangeRequest is the client for interacting with the OrganizationNameChangeRequest builders.
+	OrganizationNameChangeRequest *OrganizationNameChangeRequestClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
 	PaymentAuditLog *PaymentAuditLogClient
 	// PaymentOrder is the client for interacting with the PaymentOrder builders.
@@ -276,16 +296,26 @@ func (tx *Tx) init() {
 	tx.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(tx.config)
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)
 	tx.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(tx.config)
+	tx.CompanyUpgradeApplication = NewCompanyUpgradeApplicationClient(tx.config)
 	tx.CompositeModelRoute = NewCompositeModelRouteClient(tx.config)
 	tx.ErrorPassthroughRule = NewErrorPassthroughRuleClient(tx.config)
 	tx.Group = NewGroupClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)
 	tx.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(tx.config)
+	tx.ManagedPolicy = NewManagedPolicyClient(tx.config)
+	tx.ManagedPolicyAction = NewManagedPolicyActionClient(tx.config)
+	tx.MemberPolicyAttachment = NewMemberPolicyAttachmentClient(tx.config)
+	tx.NotificationOutbox = NewNotificationOutboxClient(tx.config)
 	tx.OidcAccessToken = NewOidcAccessTokenClient(tx.config)
 	tx.OidcAuthorizationCode = NewOidcAuthorizationCodeClient(tx.config)
 	tx.OidcClient = NewOidcClientClient(tx.config)
 	tx.OidcConsent = NewOidcConsentClient(tx.config)
 	tx.OidcRefreshToken = NewOidcRefreshTokenClient(tx.config)
+	tx.Organization = NewOrganizationClient(tx.config)
+	tx.OrganizationAuditEvent = NewOrganizationAuditEventClient(tx.config)
+	tx.OrganizationFinancialLedger = NewOrganizationFinancialLedgerClient(tx.config)
+	tx.OrganizationMembership = NewOrganizationMembershipClient(tx.config)
+	tx.OrganizationNameChangeRequest = NewOrganizationNameChangeRequestClient(tx.config)
 	tx.PaymentAuditLog = NewPaymentAuditLogClient(tx.config)
 	tx.PaymentOrder = NewPaymentOrderClient(tx.config)
 	tx.PaymentProviderInstance = NewPaymentProviderInstanceClient(tx.config)

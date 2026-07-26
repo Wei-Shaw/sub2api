@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/accountid"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -424,12 +425,17 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 	if err := admin.SetPassword(cfg.Admin.Password); err != nil {
 		return false, "", err
 	}
+	publicID, err := accountid.GenerateRoot()
+	if err != nil {
+		return false, "", fmt.Errorf("generate admin account ID: %w", err)
+	}
 
 	_, err = db.ExecContext(
 		ctx,
-		`INSERT INTO users (email, password_hash, role, balance, concurrency, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		`INSERT INTO users (email, account_id, external_user_id, identity_type, password_hash, role, balance, concurrency, status, created_at, updated_at)
+		 VALUES ($1, $2, $2, 'root', $3, $4, $5, $6, $7, $8, $9)`,
 		admin.Email,
+		publicID,
 		admin.PasswordHash,
 		admin.Role,
 		admin.Balance,

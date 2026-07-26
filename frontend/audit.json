@@ -157,52 +157,6 @@
       "github_advisory_id": "GHSA-v6wh-96g9-6wx3",
       "url": "https://github.com/advisories/GHSA-v6wh-96g9-6wx3"
     },
-    "1120800": {
-      "findings": [
-        {
-          "version": "3.4.3",
-          "paths": [
-            ".>dompurify",
-            ".>@types/dompurify>dompurify"
-          ],
-          "dev": false,
-          "optional": false,
-          "bundled": false
-        }
-      ],
-      "id": 1120800,
-      "title": "DOMPurify: `IN_PLACE` mode trusts attacker-controlled `nodeName` on live non-form nodes, allowing script retention and XSS via attacker-supplied DOM objects",
-      "module_name": "dompurify",
-      "vulnerable_versions": "<=3.4.6",
-      "patched_versions": ">=3.4.7",
-      "severity": "low",
-      "cwe": "CWE-79",
-      "github_advisory_id": "GHSA-x4vx-rjvf-j5p4",
-      "url": "https://github.com/advisories/GHSA-x4vx-rjvf-j5p4"
-    },
-    "1120801": {
-      "findings": [
-        {
-          "version": "3.4.3",
-          "paths": [
-            ".>dompurify",
-            ".>@types/dompurify>dompurify"
-          ],
-          "dev": false,
-          "optional": false,
-          "bundled": false
-        }
-      ],
-      "id": 1120801,
-      "title": "DOMPurify: Hook mutation of `data.allowedTags` / `data.allowedAttributes` permanently pollutes `DEFAULT_ALLOWED_TAGS` / `DEFAULT_ALLOWED_ATTR`",
-      "module_name": "dompurify",
-      "vulnerable_versions": "<3.4.7",
-      "patched_versions": ">=3.4.7",
-      "severity": "moderate",
-      "cwe": "CWE-501, CWE-693",
-      "github_advisory_id": "GHSA-76mc-f452-cxcm",
-      "url": "https://github.com/advisories/GHSA-76mc-f452-cxcm"
-    },
     "1120802": {
       "findings": [
         {
@@ -249,52 +203,6 @@
       "github_advisory_id": "GHSA-r47g-fvhr-h676",
       "url": "https://github.com/advisories/GHSA-r47g-fvhr-h676"
     },
-    "1120805": {
-      "findings": [
-        {
-          "version": "3.4.3",
-          "paths": [
-            ".>dompurify",
-            ".>@types/dompurify>dompurify"
-          ],
-          "dev": false,
-          "optional": false,
-          "bundled": false
-        }
-      ],
-      "id": 1120805,
-      "title": "DOMPurify: Trusted Types policy survives `clearConfig()` and can poison later `RETURN_TRUSTED_TYPE` output",
-      "module_name": "dompurify",
-      "vulnerable_versions": "<3.4.9",
-      "patched_versions": ">=3.4.9",
-      "severity": "low",
-      "cwe": "CWE-693",
-      "github_advisory_id": "GHSA-vxr8-fq34-vvx9",
-      "url": "https://github.com/advisories/GHSA-vxr8-fq34-vvx9"
-    },
-    "1120812": {
-      "findings": [
-        {
-          "version": "3.4.3",
-          "paths": [
-            ".>dompurify",
-            ".>@types/dompurify>dompurify"
-          ],
-          "dev": false,
-          "optional": false,
-          "bundled": false
-        }
-      ],
-      "id": 1120812,
-      "title": "DOMPurify: SAFE_FOR_TEMPLATES bypass - template expressions survive sanitization inside <template> content when using DOM output modes",
-      "module_name": "dompurify",
-      "vulnerable_versions": ">=3.0.0 <=3.4.7",
-      "patched_versions": ">=3.4.8",
-      "severity": "low",
-      "cwe": "CWE-79",
-      "github_advisory_id": "GHSA-gvmj-g25r-r7wr",
-      "url": "https://github.com/advisories/GHSA-gvmj-g25r-r7wr"
-    },
     "1120813": {
       "findings": [
         {
@@ -317,76 +225,6 @@
       "cwe": "CWE-79",
       "github_advisory_id": "GHSA-rp9w-3fw7-7cwq",
       "url": "https://github.com/advisories/GHSA-rp9w-3fw7-7cwq"
-    },
-    "1121192": {
-      "findings": [
-        {
-          "version": "3.4.3",
-          "paths": [
-            ".>dompurify",
-            ".>@types/dompurify>dompurify"
-          ],
-          "dev": false,
-          "optional": false,
-          "bundled": false
-        }
-      ],
-      "id": 1121192,
-      "title": "DOMPurify: Permanent `ALLOWED_ATTR` pollution via `setConfig()` bypassing the hook clone-guard (incomplete fix of the 3.4.7 hook-pollution patch)",
-      "module_name": "dompurify",
-      "vulnerable_versions": "<=3.4.10",
-      "patched_versions": ">=3.4.11",
-      "severity": "moderate",
-      "cwe": "CWE-79, CWE-471, CWE-665",
-      "github_advisory_id": "GHSA-cmwh-pvxp-8882",
-      "url": "https://github.com/advisories/GHSA-cmwh-pvxp-8882"
-    },
-    "1121860": {
-      "findings": [
-        {
-          "version": "4.1.1",
-          "paths": [
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/parser>eslint>@eslint/eslintrc>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/parser>eslint>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>@typescript-eslint/utils>@eslint-community/eslint-utils>eslint>@eslint/eslintrc>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>@typescript-eslint/utils>@eslint-community/eslint-utils>eslint>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>@typescript-eslint/utils>eslint>@eslint/eslintrc>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>@typescript-eslint/utils>eslint>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>eslint>@eslint/eslintrc>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>eslint>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/utils>@eslint-community/eslint-utils>eslint>@eslint/eslintrc>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/utils>@eslint-community/eslint-utils>eslint>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/utils>eslint>@eslint/eslintrc>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/utils>eslint>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>eslint>@eslint/eslintrc>js-yaml",
-            ".>@typescript-eslint/eslint-plugin>eslint>js-yaml",
-            ".>@typescript-eslint/parser>eslint>@eslint/eslintrc>js-yaml",
-            ".>@typescript-eslint/parser>eslint>js-yaml",
-            ".>eslint>@eslint/eslintrc>js-yaml",
-            ".>eslint>js-yaml",
-            ".>eslint-plugin-vue>@eslint-community/eslint-utils>eslint>@eslint/eslintrc>js-yaml",
-            ".>eslint-plugin-vue>@eslint-community/eslint-utils>eslint>js-yaml",
-            ".>eslint-plugin-vue>eslint>@eslint/eslintrc>js-yaml",
-            ".>eslint-plugin-vue>eslint>js-yaml",
-            ".>eslint-plugin-vue>vue-eslint-parser>eslint>@eslint/eslintrc>js-yaml",
-            ".>eslint-plugin-vue>vue-eslint-parser>eslint>js-yaml",
-            ".>vite-plugin-checker>eslint>@eslint/eslintrc>js-yaml",
-            ".>vite-plugin-checker>eslint>js-yaml"
-          ],
-          "dev": true,
-          "optional": false,
-          "bundled": false
-        }
-      ],
-      "id": 1121860,
-      "title": "JS-YAML: Quadratic-complexity DoS in merge key handling via repeated aliases",
-      "module_name": "js-yaml",
-      "vulnerable_versions": ">=4.0.0 <=4.1.1",
-      "patched_versions": ">=4.1.2",
-      "severity": "moderate",
-      "cwe": "CWE-407",
-      "github_advisory_id": "GHSA-h67p-54hq-rp68",
-      "url": "https://github.com/advisories/GHSA-h67p-54hq-rp68"
     },
     "1123259": {
       "findings": [
@@ -441,19 +279,157 @@
       "cwe": "CWE-22, CWE-200",
       "github_advisory_id": "GHSA-fx2h-pf6j-xcff",
       "url": "https://github.com/advisories/GHSA-fx2h-pf6j-xcff"
+    },
+    "1124022": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1124022,
+      "title": "DOMPurify: `CUSTOM_ELEMENT_HANDLING` bypasses `afterSanitizeElements` for allowed custom elements.",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<=3.4.11",
+      "patched_versions": ">=3.4.12",
+      "severity": "low",
+      "cwe": "CWE-79, CWE-184, CWE-693",
+      "github_advisory_id": "GHSA-c2j3-45gr-mqc4",
+      "url": "https://github.com/advisories/GHSA-c2j3-45gr-mqc4"
+    },
+    "1124233": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1124233,
+      "title": "DOMPurify: Permanent `ALLOWED_ATTR` pollution via `setConfig()` bypassing the hook clone-guard (incomplete fix of the 3.4.7 hook-pollution patch)",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<=3.4.10",
+      "patched_versions": ">=3.4.11",
+      "severity": "moderate",
+      "cwe": "CWE-79, CWE-471, CWE-665",
+      "github_advisory_id": "GHSA-cmwh-pvxp-8882",
+      "url": "https://github.com/advisories/GHSA-cmwh-pvxp-8882"
+    },
+    "1124234": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1124234,
+      "title": "DOMPurify: Trusted Types policy survives `clearConfig()` and can poison later `RETURN_TRUSTED_TYPE` output",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<3.4.9",
+      "patched_versions": ">=3.4.9",
+      "severity": "low",
+      "cwe": "CWE-693",
+      "github_advisory_id": "GHSA-vxr8-fq34-vvx9",
+      "url": "https://github.com/advisories/GHSA-vxr8-fq34-vvx9"
+    },
+    "1124235": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1124235,
+      "title": "DOMPurify: SAFE_FOR_TEMPLATES bypass - template expressions survive sanitization inside <template> content when using DOM output modes",
+      "module_name": "dompurify",
+      "vulnerable_versions": ">=3.0.0 <=3.4.7",
+      "patched_versions": ">=3.4.8",
+      "severity": "low",
+      "cwe": "CWE-79",
+      "github_advisory_id": "GHSA-gvmj-g25r-r7wr",
+      "url": "https://github.com/advisories/GHSA-gvmj-g25r-r7wr"
+    },
+    "1124236": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1124236,
+      "title": "DOMPurify: `IN_PLACE` mode trusts attacker-controlled `nodeName` on live non-form nodes, allowing script retention and XSS via attacker-supplied DOM objects",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<=3.4.6",
+      "patched_versions": ">=3.4.7",
+      "severity": "low",
+      "cwe": "CWE-79",
+      "github_advisory_id": "GHSA-x4vx-rjvf-j5p4",
+      "url": "https://github.com/advisories/GHSA-x4vx-rjvf-j5p4"
+    },
+    "1124237": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1124237,
+      "title": "DOMPurify: Hook mutation of `data.allowedTags` / `data.allowedAttributes` permanently pollutes `DEFAULT_ALLOWED_TAGS` / `DEFAULT_ALLOWED_ATTR`",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<3.4.7",
+      "patched_versions": ">=3.4.7",
+      "severity": "moderate",
+      "cwe": "CWE-501, CWE-693",
+      "github_advisory_id": "GHSA-76mc-f452-cxcm",
+      "url": "https://github.com/advisories/GHSA-76mc-f452-cxcm"
     }
   },
   "metadata": {
     "vulnerabilities": {
       "info": 0,
-      "low": 3,
-      "moderate": 9,
+      "low": 4,
+      "moderate": 8,
       "high": 4,
       "critical": 1
     },
     "dependencies": 670,
-    "devDependencies": 345,
+    "devDependencies": 341,
     "optionalDependencies": 50,
-    "totalDependencies": 1015
+    "totalDependencies": 1011
   }
 }

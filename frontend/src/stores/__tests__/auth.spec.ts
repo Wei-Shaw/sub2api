@@ -9,6 +9,7 @@ const mockLogout = vi.fn()
 const mockGetCurrentUser = vi.fn()
 const mockRegister = vi.fn()
 const mockRefreshToken = vi.fn()
+const mockLoginIAM = vi.fn()
 
 vi.mock('@/api', () => ({
   authAPI: {
@@ -18,6 +19,9 @@ vi.mock('@/api', () => ({
     getCurrentUser: (...args: any[]) => mockGetCurrentUser(...args),
     register: (...args: any[]) => mockRegister(...args),
     refreshToken: (...args: any[]) => mockRefreshToken(...args),
+  },
+  organizationAPI: {
+    loginIAM: (...args: any[]) => mockLoginIAM(...args),
   },
   isTotp2FARequired: (response: any) => response?.requires_2fa === true,
 }))
@@ -102,6 +106,29 @@ describe('useAuthStore', () => {
       expect(result).toEqual(twoFAResponse)
       expect(store.token).toBeNull()
       expect(store.isAuthenticated).toBe(false)
+    })
+  })
+
+  describe('IAM session', () => {
+    it('stores organization context returned by IAM login', async () => {
+      const organization = { organization_id: 8, role: 'member', actions: [], organization_status: 'active', membership_status: 'active' }
+      mockLoginIAM.mockResolvedValue({ ...fakeAuthResponse, user: { ...fakeUser }, organization })
+      const store = useAuthStore()
+
+      await store.loginIAM({ login_name: 'reader', account_id: '1719905235756637', password: 'secret' })
+
+      expect(mockLoginIAM).toHaveBeenCalledWith({ login_name: 'reader', account_id: '1719905235756637', password: 'secret' })
+      expect(store.user?.organization).toEqual(organization)
+    })
+
+    it('atomically replaces a restricted session after initial password change', () => {
+      const store = useAuthStore()
+      store.applyAuthResponse({ ...fakeAuthResponse, access_token: 'restricted', user: { ...fakeUser, must_change_password: true } })
+      store.applyAuthResponse({ ...fakeAuthResponse, access_token: 'unrestricted', user: { ...fakeUser, must_change_password: false } })
+
+      expect(store.token).toBe('unrestricted')
+      expect(store.user?.must_change_password).toBe(false)
+      expect(localStorage.getItem('auth_token')).toBe('unrestricted')
     })
   })
 

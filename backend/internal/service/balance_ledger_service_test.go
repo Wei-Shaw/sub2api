@@ -7,11 +7,30 @@ import (
 )
 
 type fakeBalanceLedgerRepo struct {
+	findCalled   bool
 	deductCalled bool
 	refundCalled bool
 	deductRes    *LedgerDeductResult
 	refundRes    *LedgerRefundResult
 	err          error
+	existing     *LedgerDeductResult
+}
+
+type failingBillingContextRepository struct {
+	OrganizationRepository
+	err error
+}
+
+func (r *failingBillingContextRepository) ResolveBillingContext(context.Context, int64) (*BillingContext, error) {
+	return nil, r.err
+}
+
+func (f *fakeBalanceLedgerRepo) FindDeduct(_ context.Context, _ *LedgerDeductCommand) (*LedgerDeductResult, error) {
+	f.findCalled = true
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.existing, nil
 }
 
 func (f *fakeBalanceLedgerRepo) Deduct(_ context.Context, _ *LedgerDeductCommand) (*LedgerDeductResult, error) {
@@ -84,5 +103,23 @@ func TestBalanceLedgerService_Refund_Validation(t *testing.T) {
 	}
 	if !repo.refundCalled || res == nil || res.RefundedTotal != 1 {
 		t.Fatalf("expected repo called, got called=%v res=%+v", repo.refundCalled, res)
+	}
+}
+
+func TestBalanceLedgerService_DeductReplayDoesNotResolveCurrentAuthorization(t *testing.T) {
+	existing := &LedgerDeductResult{Applied: false, PayerUserID: 99, BalanceSource: "shared", BalanceAfter: 7}
+	repo := &fakeBalanceLedgerRepo{existing: existing}
+	svc := NewBalanceLedgerService(repo, nil)
+	svc.SetBillingContextResolver(NewBillingContextResolver(&failingBillingContextRepository{err: errors.New("organization suspended")}))
+
+	result, err := svc.Deduct(context.Background(), &LedgerDeductCommand{
+		AppID: "billing-app", RequestID: "request-1", UserID: 22, Amount: 1, Description: "usage",
+	})
+
+	if err != nil {
+		t.Fatalf("replay must not resolve current authorization: %v", err)
+	}
+	if result != existing || repo.deductCalled {
+		t.Fatalf("expected committed replay without a new deduction, result=%+v called=%v", result, repo.deductCalled)
 	}
 }

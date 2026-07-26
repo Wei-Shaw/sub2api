@@ -48,12 +48,35 @@ func buildBatchImageHoldCommand(job *BatchImageJob, requestID string, actualAmou
 		RequestID:          requestID,
 		APIKeyID:           *job.APIKeyID,
 		UserID:             job.UserID,
+		OrganizationID:     job.OrganizationID,
+		PayerUserID:        batchImagePayerUserID(job),
+		BalanceSource:      batchImageDerefString(job.BalanceSource),
+		AuthzGeneration:    batchImageDerefInt64(job.AuthzGeneration),
 		BatchID:            job.BatchID,
 		HoldAmount:         holdAmount,
 		ActualAmount:       actualAmount,
 		RequestPayloadHash: strings.TrimSpace(payloadHash),
 	}, nil
 }
+
+func batchImagePayerUserID(job *BatchImageJob) int64 {
+	if job != nil && job.PayerUserID != nil && *job.PayerUserID > 0 {
+		return *job.PayerUserID
+	}
+	if job != nil {
+		return job.UserID
+	}
+	return 0
+}
+
+func batchImageDerefInt64(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func batchImageInt64Ptr(value int64) *int64 { return &value }
 
 func reserveBatchImageBalanceHold(ctx context.Context, repo UsageBillingRepository, job *BatchImageJob, payloadHash string) error {
 	if repo == nil {

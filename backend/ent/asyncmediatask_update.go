@@ -178,6 +178,107 @@ func (_u *AsyncMediaTaskUpdate) AddUserID(v int64) *AsyncMediaTaskUpdate {
 	return _u
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_u *AsyncMediaTaskUpdate) SetOrganizationID(v int64) *AsyncMediaTaskUpdate {
+	_u.mutation.ResetOrganizationID()
+	_u.mutation.SetOrganizationID(v)
+	return _u
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_u *AsyncMediaTaskUpdate) SetNillableOrganizationID(v *int64) *AsyncMediaTaskUpdate {
+	if v != nil {
+		_u.SetOrganizationID(*v)
+	}
+	return _u
+}
+
+// AddOrganizationID adds value to the "organization_id" field.
+func (_u *AsyncMediaTaskUpdate) AddOrganizationID(v int64) *AsyncMediaTaskUpdate {
+	_u.mutation.AddOrganizationID(v)
+	return _u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (_u *AsyncMediaTaskUpdate) ClearOrganizationID() *AsyncMediaTaskUpdate {
+	_u.mutation.ClearOrganizationID()
+	return _u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_u *AsyncMediaTaskUpdate) SetPayerUserID(v int64) *AsyncMediaTaskUpdate {
+	_u.mutation.ResetPayerUserID()
+	_u.mutation.SetPayerUserID(v)
+	return _u
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_u *AsyncMediaTaskUpdate) SetNillablePayerUserID(v *int64) *AsyncMediaTaskUpdate {
+	if v != nil {
+		_u.SetPayerUserID(*v)
+	}
+	return _u
+}
+
+// AddPayerUserID adds value to the "payer_user_id" field.
+func (_u *AsyncMediaTaskUpdate) AddPayerUserID(v int64) *AsyncMediaTaskUpdate {
+	_u.mutation.AddPayerUserID(v)
+	return _u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (_u *AsyncMediaTaskUpdate) ClearPayerUserID() *AsyncMediaTaskUpdate {
+	_u.mutation.ClearPayerUserID()
+	return _u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_u *AsyncMediaTaskUpdate) SetBalanceSource(v string) *AsyncMediaTaskUpdate {
+	_u.mutation.SetBalanceSource(v)
+	return _u
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_u *AsyncMediaTaskUpdate) SetNillableBalanceSource(v *string) *AsyncMediaTaskUpdate {
+	if v != nil {
+		_u.SetBalanceSource(*v)
+	}
+	return _u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (_u *AsyncMediaTaskUpdate) ClearBalanceSource() *AsyncMediaTaskUpdate {
+	_u.mutation.ClearBalanceSource()
+	return _u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_u *AsyncMediaTaskUpdate) SetAuthzGeneration(v int64) *AsyncMediaTaskUpdate {
+	_u.mutation.ResetAuthzGeneration()
+	_u.mutation.SetAuthzGeneration(v)
+	return _u
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_u *AsyncMediaTaskUpdate) SetNillableAuthzGeneration(v *int64) *AsyncMediaTaskUpdate {
+	if v != nil {
+		_u.SetAuthzGeneration(*v)
+	}
+	return _u
+}
+
+// AddAuthzGeneration adds value to the "authz_generation" field.
+func (_u *AsyncMediaTaskUpdate) AddAuthzGeneration(v int64) *AsyncMediaTaskUpdate {
+	_u.mutation.AddAuthzGeneration(v)
+	return _u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (_u *AsyncMediaTaskUpdate) ClearAuthzGeneration() *AsyncMediaTaskUpdate {
+	_u.mutation.ClearAuthzGeneration()
+	return _u
+}
+
 // SetGroupID sets the "group_id" field.
 func (_u *AsyncMediaTaskUpdate) SetGroupID(v int64) *AsyncMediaTaskUpdate {
 	_u.mutation.ResetGroupID()
@@ -677,6 +778,11 @@ func (_u *AsyncMediaTaskUpdate) check() error {
 			return &ValidationError{Name: "response_url", err: fmt.Errorf(`ent: validator failed for field "AsyncMediaTask.response_url": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BalanceSource(); ok {
+		if err := asyncmediatask.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "AsyncMediaTask.balance_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Facade(); ok {
 		if err := asyncmediatask.FacadeValidator(v); err != nil {
 			return &ValidationError{Name: "facade", err: fmt.Errorf(`ent: validator failed for field "AsyncMediaTask.facade": %w`, err)}
@@ -796,6 +902,39 @@ func (_u *AsyncMediaTaskUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(asyncmediatask.FieldUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.OrganizationID(); ok {
+		_spec.SetField(asyncmediatask.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOrganizationID(); ok {
+		_spec.AddField(asyncmediatask.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if _u.mutation.OrganizationIDCleared() {
+		_spec.ClearField(asyncmediatask.FieldOrganizationID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PayerUserID(); ok {
+		_spec.SetField(asyncmediatask.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPayerUserID(); ok {
+		_spec.AddField(asyncmediatask.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.PayerUserIDCleared() {
+		_spec.ClearField(asyncmediatask.FieldPayerUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BalanceSource(); ok {
+		_spec.SetField(asyncmediatask.FieldBalanceSource, field.TypeString, value)
+	}
+	if _u.mutation.BalanceSourceCleared() {
+		_spec.ClearField(asyncmediatask.FieldBalanceSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.AuthzGeneration(); ok {
+		_spec.SetField(asyncmediatask.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedAuthzGeneration(); ok {
+		_spec.AddField(asyncmediatask.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if _u.mutation.AuthzGenerationCleared() {
+		_spec.ClearField(asyncmediatask.FieldAuthzGeneration, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(asyncmediatask.FieldGroupID, field.TypeInt64, value)
@@ -1102,6 +1241,107 @@ func (_u *AsyncMediaTaskUpdateOne) SetNillableUserID(v *int64) *AsyncMediaTaskUp
 // AddUserID adds value to the "user_id" field.
 func (_u *AsyncMediaTaskUpdateOne) AddUserID(v int64) *AsyncMediaTaskUpdateOne {
 	_u.mutation.AddUserID(v)
+	return _u
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (_u *AsyncMediaTaskUpdateOne) SetOrganizationID(v int64) *AsyncMediaTaskUpdateOne {
+	_u.mutation.ResetOrganizationID()
+	_u.mutation.SetOrganizationID(v)
+	return _u
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_u *AsyncMediaTaskUpdateOne) SetNillableOrganizationID(v *int64) *AsyncMediaTaskUpdateOne {
+	if v != nil {
+		_u.SetOrganizationID(*v)
+	}
+	return _u
+}
+
+// AddOrganizationID adds value to the "organization_id" field.
+func (_u *AsyncMediaTaskUpdateOne) AddOrganizationID(v int64) *AsyncMediaTaskUpdateOne {
+	_u.mutation.AddOrganizationID(v)
+	return _u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (_u *AsyncMediaTaskUpdateOne) ClearOrganizationID() *AsyncMediaTaskUpdateOne {
+	_u.mutation.ClearOrganizationID()
+	return _u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_u *AsyncMediaTaskUpdateOne) SetPayerUserID(v int64) *AsyncMediaTaskUpdateOne {
+	_u.mutation.ResetPayerUserID()
+	_u.mutation.SetPayerUserID(v)
+	return _u
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_u *AsyncMediaTaskUpdateOne) SetNillablePayerUserID(v *int64) *AsyncMediaTaskUpdateOne {
+	if v != nil {
+		_u.SetPayerUserID(*v)
+	}
+	return _u
+}
+
+// AddPayerUserID adds value to the "payer_user_id" field.
+func (_u *AsyncMediaTaskUpdateOne) AddPayerUserID(v int64) *AsyncMediaTaskUpdateOne {
+	_u.mutation.AddPayerUserID(v)
+	return _u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (_u *AsyncMediaTaskUpdateOne) ClearPayerUserID() *AsyncMediaTaskUpdateOne {
+	_u.mutation.ClearPayerUserID()
+	return _u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_u *AsyncMediaTaskUpdateOne) SetBalanceSource(v string) *AsyncMediaTaskUpdateOne {
+	_u.mutation.SetBalanceSource(v)
+	return _u
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_u *AsyncMediaTaskUpdateOne) SetNillableBalanceSource(v *string) *AsyncMediaTaskUpdateOne {
+	if v != nil {
+		_u.SetBalanceSource(*v)
+	}
+	return _u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (_u *AsyncMediaTaskUpdateOne) ClearBalanceSource() *AsyncMediaTaskUpdateOne {
+	_u.mutation.ClearBalanceSource()
+	return _u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_u *AsyncMediaTaskUpdateOne) SetAuthzGeneration(v int64) *AsyncMediaTaskUpdateOne {
+	_u.mutation.ResetAuthzGeneration()
+	_u.mutation.SetAuthzGeneration(v)
+	return _u
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_u *AsyncMediaTaskUpdateOne) SetNillableAuthzGeneration(v *int64) *AsyncMediaTaskUpdateOne {
+	if v != nil {
+		_u.SetAuthzGeneration(*v)
+	}
+	return _u
+}
+
+// AddAuthzGeneration adds value to the "authz_generation" field.
+func (_u *AsyncMediaTaskUpdateOne) AddAuthzGeneration(v int64) *AsyncMediaTaskUpdateOne {
+	_u.mutation.AddAuthzGeneration(v)
+	return _u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (_u *AsyncMediaTaskUpdateOne) ClearAuthzGeneration() *AsyncMediaTaskUpdateOne {
+	_u.mutation.ClearAuthzGeneration()
 	return _u
 }
 
@@ -1617,6 +1857,11 @@ func (_u *AsyncMediaTaskUpdateOne) check() error {
 			return &ValidationError{Name: "response_url", err: fmt.Errorf(`ent: validator failed for field "AsyncMediaTask.response_url": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BalanceSource(); ok {
+		if err := asyncmediatask.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "AsyncMediaTask.balance_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Facade(); ok {
 		if err := asyncmediatask.FacadeValidator(v); err != nil {
 			return &ValidationError{Name: "facade", err: fmt.Errorf(`ent: validator failed for field "AsyncMediaTask.facade": %w`, err)}
@@ -1753,6 +1998,39 @@ func (_u *AsyncMediaTaskUpdateOne) sqlSave(ctx context.Context) (_node *AsyncMed
 	}
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(asyncmediatask.FieldUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.OrganizationID(); ok {
+		_spec.SetField(asyncmediatask.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOrganizationID(); ok {
+		_spec.AddField(asyncmediatask.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if _u.mutation.OrganizationIDCleared() {
+		_spec.ClearField(asyncmediatask.FieldOrganizationID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PayerUserID(); ok {
+		_spec.SetField(asyncmediatask.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPayerUserID(); ok {
+		_spec.AddField(asyncmediatask.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.PayerUserIDCleared() {
+		_spec.ClearField(asyncmediatask.FieldPayerUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BalanceSource(); ok {
+		_spec.SetField(asyncmediatask.FieldBalanceSource, field.TypeString, value)
+	}
+	if _u.mutation.BalanceSourceCleared() {
+		_spec.ClearField(asyncmediatask.FieldBalanceSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.AuthzGeneration(); ok {
+		_spec.SetField(asyncmediatask.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedAuthzGeneration(); ok {
+		_spec.AddField(asyncmediatask.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if _u.mutation.AuthzGenerationCleared() {
+		_spec.ClearField(asyncmediatask.FieldAuthzGeneration, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(asyncmediatask.FieldGroupID, field.TypeInt64, value)

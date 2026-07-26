@@ -395,19 +395,21 @@ type PublicSettings struct {
 	CustomMenuVersion           string // 自定义菜单派生版本 hash（缓存值，前端红点周期锚点）
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	LinuxDoOAuthEnabled      bool
-	DingTalkOAuthEnabled     bool
-	WeChatOAuthEnabled       bool
-	WeChatOAuthOpenEnabled   bool
-	WeChatOAuthMPEnabled     bool
-	WeChatOAuthMobileEnabled bool
-	BackendModeEnabled       bool
-	PaymentEnabled           bool
-	OIDCOAuthEnabled         bool
-	OIDCOAuthProviderName    string
-	GitHubOAuthEnabled       bool
-	GoogleOAuthEnabled       bool
-	Version                  string
+	LinuxDoOAuthEnabled        bool
+	DingTalkOAuthEnabled       bool
+	WeChatOAuthEnabled         bool
+	WeChatOAuthOpenEnabled     bool
+	WeChatOAuthMPEnabled       bool
+	WeChatOAuthMobileEnabled   bool
+	BackendModeEnabled         bool
+	CompanyApplicationsEnabled bool
+	CompanyIAMEnabled          bool
+	PaymentEnabled             bool
+	OIDCOAuthEnabled           bool
+	OIDCOAuthProviderName      string
+	GitHubOAuthEnabled         bool
+	GoogleOAuthEnabled         bool
+	Version                    string
 
 	BalanceLowNotifyEnabled     bool
 	AccountQuotaNotifyEnabled   bool

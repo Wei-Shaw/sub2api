@@ -91,6 +91,22 @@ func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	require.True(t, settings.ForceEmailOnThirdPartySignup)
 }
 
+func TestSettingService_GetPublicSettings_ExposesCompanyApplicationsFeature(t *testing.T) {
+	repo := &settingPublicRepoStub{values: map[string]string{}}
+	disabled, err := NewSettingService(repo, &config.Config{}).GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, disabled.CompanyApplicationsEnabled)
+	require.False(t, disabled.CompanyIAMEnabled)
+
+	cfg := &config.Config{}
+	cfg.Company.ApplicationsEnabled = true
+	cfg.Company.IAMEnabled = true
+	enabled, err := NewSettingService(repo, cfg).GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, enabled.CompanyApplicationsEnabled)
+	require.True(t, enabled.CompanyIAMEnabled)
+}
+
 func TestSettingService_GetPublicSettings_ExposesAllowUserViewErrorRequests(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

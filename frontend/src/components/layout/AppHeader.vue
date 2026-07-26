@@ -55,7 +55,7 @@
         <LocaleSwitcher />
 
         <!-- Subscription Progress (for users with active subscriptions) -->
-        <SubscriptionProgressMini v-if="user" />
+        <SubscriptionProgressMini v-if="user && user.identity_type !== 'iam'" />
 
         <!-- Balance Display -->
         <div
@@ -133,13 +133,30 @@
 
           <!-- Dropdown Menu -->
           <transition name="dropdown">
-            <div v-if="dropdownOpen" class="dropdown right-0 mt-2 w-56">
+            <div v-if="dropdownOpen" class="dropdown right-0 mt-2 w-72 max-w-[calc(100vw-1rem)]">
               <!-- User Info -->
               <div class="border-b border-gray-100 px-4 py-3 dark:border-dark-700">
                 <div class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ displayName }}
                 </div>
-                <div class="text-xs text-gray-500 dark:text-dark-400">{{ user.email }}</div>
+                <div data-testid="user-menu-email" class="text-xs text-gray-500 dark:text-dark-400">{{ user.email }}</div>
+                <div
+                  v-if="user.account_id"
+                  data-testid="user-menu-account-id"
+                  class="mt-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-dark-400"
+                >
+                  <span>{{ t('organization.accountId') }}:</span>
+                  <span class="break-all font-mono text-gray-700 dark:text-dark-200">{{ user.account_id }}</span>
+                </div>
+                <dl class="mt-3 space-y-1.5 text-xs">
+                  <div data-testid="user-menu-account-identity" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.accountIdentity.label') }}</dt><dd>{{ t(user.identity_type === 'iam' ? 'organization.accountIdentity.iam' : 'organization.accountIdentity.root') }}</dd></div>
+                  <div v-if="user.identity_type === 'iam' && user.external_user_id" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.iamUserId') }}</dt><dd class="break-all font-mono text-right">{{ user.external_user_id }}</dd></div>
+                  <div v-if="user.iam_principal" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.principal') }}</dt><dd class="break-all font-mono text-right">{{ user.iam_principal }}</dd></div>
+                  <div v-if="organization" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.companyName') }}</dt><dd class="text-right">{{ organization.company_name }}</dd></div>
+                  <div v-if="organization" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.role') }}</dt><dd>{{ t(`organization.roleValue.${organization.role}`) }} / {{ t(`organization.status.${organization.membership_status}`) }}</dd></div>
+                  <div v-if="organization?.policy_names?.length"><dt class="text-gray-500">{{ t('organization.policies') }}</dt><dd class="mt-1 break-words">{{ organization.policy_names.join(', ') }}</dd></div>
+                  <div v-if="user.organization_finance?.balance_source" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.balanceSource.label') }}</dt><dd>{{ t(`organization.balanceSource.${user.organization_finance.balance_source}`) }}</dd></div>
+                </dl>
               </div>
 
               <!-- Balance (mobile only) -->
@@ -155,6 +172,17 @@
                 </div>
               </div>
 
+              <div
+                v-if="canOpenCompanyUpgrade"
+                data-testid="company-upgrade-menu-section"
+                class="border-b border-gray-100 py-1 dark:border-dark-700"
+              >
+                <router-link to="/profile/company-upgrade" @click="closeDropdown" class="dropdown-item">
+                  <Icon name="users" size="sm" />
+                  {{ t('organization.upgrade.title') }}
+                </router-link>
+              </div>
+
               <div class="py-1">
                 <router-link to="/profile" @click="closeDropdown" class="dropdown-item">
                   <Icon name="user" size="sm" />
@@ -164,6 +192,11 @@
                 <router-link to="/keys" @click="closeDropdown" class="dropdown-item">
                   <Icon name="key" size="sm" />
                   {{ t('nav.apiKeys') }}
+                </router-link>
+
+                <router-link v-if="canOpenOrganizationConsole" to="/organization" @click="closeDropdown" class="dropdown-item">
+                  <Icon name="users" size="sm" />
+                  {{ t('organization.console') }}
                 </router-link>
 
                 <a
@@ -264,6 +297,7 @@ import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMi
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
+import { canOpenCompanyUpgrade as canOpenCompanyUpgradeForUser } from '@/router/organizationAccess'
 
 const router = useRouter()
 const route = useRoute()
@@ -274,6 +308,15 @@ const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
 
 const user = computed(() => authStore.user)
+const organization = computed(() => user.value?.organization)
+const canOpenOrganizationConsole = computed(() => {
+  const current = organization.value
+  return Boolean(current && current.organization_status === 'active' && current.membership_status === 'active' && (current.role === 'owner' || current.actions.includes('organization.finance.balance.read')))
+})
+const canOpenCompanyUpgrade = computed(() => canOpenCompanyUpgradeForUser(
+  user.value,
+  appStore.cachedPublicSettings?.company_applications_enabled === true,
+))
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)

@@ -47,6 +47,8 @@ function createPublicSettings(overrides: Partial<PublicSettings> = {}): PublicSe
     github_oauth_enabled: false,
     google_oauth_enabled: false,
     backend_mode_enabled: false,
+    company_applications_enabled: false,
+    company_iam_enabled: false,
     version: '1.0.0',
     balance_low_notify_enabled: false,
     account_quota_notify_enabled: false,

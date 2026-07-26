@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/pquerna/otp/totp"
@@ -146,7 +147,36 @@ func (s *TotpService) GetStatus(ctx context.Context, userID int64) (*TotpStatus,
 // 且管理员凭证失守时攻击者往往同时控制通知邮箱，邮箱验证码不构成有效防线。
 // 普通用户维持原有行为：开启邮箱验证时用邮箱验证码，否则用密码。
 func (s *TotpService) usesEmailVerification(ctx context.Context, user *User) bool {
-	return user.Role != RoleAdmin && s.settingService.IsEmailVerifyEnabled(ctx)
+	if user == nil || user.Role == RoleAdmin || !s.settingService.IsEmailVerifyEnabled(ctx) {
+		return false
+	}
+	if user.IsIAM() {
+		return strings.TrimSpace(user.RecoveryEmail) != "" && user.RecoveryEmailVerifiedAt != nil
+	}
+	return strings.TrimSpace(user.Email) != ""
+}
+
+func totpVerificationEmail(user *User) string {
+	if user == nil {
+		return ""
+	}
+	if user.IsIAM() {
+		if user.RecoveryEmailVerifiedAt == nil {
+			return ""
+		}
+		return strings.TrimSpace(user.RecoveryEmail)
+	}
+	return strings.TrimSpace(user.Email)
+}
+
+func totpAccountName(user *User) string {
+	if user == nil {
+		return ""
+	}
+	if user.IsIAM() && user.LoginName != "" && user.AccountID != "" {
+		return user.LoginName + "@" + user.AccountID
+	}
+	return user.Email
 }
 
 // verifyIdentity 按 usesEmailVerification 的结果校验邮箱验证码或密码。
@@ -155,7 +185,7 @@ func (s *TotpService) verifyIdentity(ctx context.Context, user *User, emailCode,
 		if emailCode == "" {
 			return ErrVerifyCodeRequired
 		}
-		return s.emailService.VerifyCode(ctx, user.Email, emailCode)
+		return s.emailService.VerifyCode(ctx, totpVerificationEmail(user), emailCode)
 	}
 	if password == "" {
 		return ErrPasswordRequired
@@ -191,7 +221,7 @@ func (s *TotpService) InitiateSetup(ctx context.Context, userID int64, emailCode
 	// Generate a new TOTP key
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      totpIssuer,
-		AccountName: user.Email,
+		AccountName: totpAccountName(user),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("generate totp key: %w", err)
@@ -557,5 +587,9 @@ func (s *TotpService) SendVerifyCode(ctx context.Context, userID int64, locale .
 	siteName := s.settingService.GetSiteName(ctx)
 
 	// Send verification code via queue
-	return s.emailQueueService.EnqueueVerifyCode(user.Email, siteName, firstEmailLocale(locale))
+	email := totpVerificationEmail(user)
+	if email == "" {
+		return ErrPasswordRequired
+	}
+	return s.emailQueueService.EnqueueVerifyCode(email, siteName, firstEmailLocale(locale))
 }

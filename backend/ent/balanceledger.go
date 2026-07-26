@@ -27,6 +27,14 @@ type BalanceLedger struct {
 	AppID string `json:"app_id,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID int64 `json:"user_id,omitempty"`
+	// OrganizationID holds the value of the "organization_id" field.
+	OrganizationID *int64 `json:"organization_id,omitempty"`
+	// PayerUserID holds the value of the "payer_user_id" field.
+	PayerUserID *int64 `json:"payer_user_id,omitempty"`
+	// BalanceSource holds the value of the "balance_source" field.
+	BalanceSource *string `json:"balance_source,omitempty"`
+	// AuthzGeneration holds the value of the "authz_generation" field.
+	AuthzGeneration *int64 `json:"authz_generation,omitempty"`
 	// Kind holds the value of the "kind" field.
 	Kind int8 `json:"kind,omitempty"`
 	// Amount holds the value of the "amount" field.
@@ -51,9 +59,9 @@ func (*BalanceLedger) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case balanceledger.FieldAmount, balanceledger.FieldRefundedAmount, balanceledger.FieldBalanceAfter:
 			values[i] = new(sql.NullFloat64)
-		case balanceledger.FieldID, balanceledger.FieldUserID, balanceledger.FieldKind:
+		case balanceledger.FieldID, balanceledger.FieldUserID, balanceledger.FieldOrganizationID, balanceledger.FieldPayerUserID, balanceledger.FieldAuthzGeneration, balanceledger.FieldKind:
 			values[i] = new(sql.NullInt64)
-		case balanceledger.FieldRequestID, balanceledger.FieldAppID, balanceledger.FieldRefundOf, balanceledger.FieldDescription, balanceledger.FieldExtra:
+		case balanceledger.FieldRequestID, balanceledger.FieldAppID, balanceledger.FieldBalanceSource, balanceledger.FieldRefundOf, balanceledger.FieldDescription, balanceledger.FieldExtra:
 			values[i] = new(sql.NullString)
 		case balanceledger.FieldCreatedAt, balanceledger.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -107,6 +115,34 @@ func (_m *BalanceLedger) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field user_id", values[i])
 			} else if value.Valid {
 				_m.UserID = value.Int64
+			}
+		case balanceledger.FieldOrganizationID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field organization_id", values[i])
+			} else if value.Valid {
+				_m.OrganizationID = new(int64)
+				*_m.OrganizationID = value.Int64
+			}
+		case balanceledger.FieldPayerUserID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field payer_user_id", values[i])
+			} else if value.Valid {
+				_m.PayerUserID = new(int64)
+				*_m.PayerUserID = value.Int64
+			}
+		case balanceledger.FieldBalanceSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field balance_source", values[i])
+			} else if value.Valid {
+				_m.BalanceSource = new(string)
+				*_m.BalanceSource = value.String
+			}
+		case balanceledger.FieldAuthzGeneration:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field authz_generation", values[i])
+			} else if value.Valid {
+				_m.AuthzGeneration = new(int64)
+				*_m.AuthzGeneration = value.Int64
 			}
 		case balanceledger.FieldKind:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -202,6 +238,26 @@ func (_m *BalanceLedger) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UserID))
+	builder.WriteString(", ")
+	if v := _m.OrganizationID; v != nil {
+		builder.WriteString("organization_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.PayerUserID; v != nil {
+		builder.WriteString("payer_user_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.BalanceSource; v != nil {
+		builder.WriteString("balance_source=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.AuthzGeneration; v != nil {
+		builder.WriteString("authz_generation=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("kind=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Kind))

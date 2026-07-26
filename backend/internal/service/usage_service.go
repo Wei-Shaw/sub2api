@@ -60,6 +60,7 @@ type UsageService struct {
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	billingResolver      *BillingContextResolver
 }
 
 // NewUsageService 创建使用统计服务实例
@@ -72,8 +73,23 @@ func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entC
 	}
 }
 
+func (s *UsageService) SetBillingContextResolver(resolver *BillingContextResolver) {
+	if s != nil {
+		s.billingResolver = resolver
+	}
+}
+
 // Create 创建使用日志
 func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*UsageLog, error) {
+	billingContext := &BillingContext{ConsumerUserID: req.UserID, PayerUserID: req.UserID, BalanceSource: "self"}
+	if s.billingResolver != nil {
+		resolved, err := s.billingResolver.Resolve(ctx, req.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve billing context: %w", err)
+		}
+		billingContext = resolved
+	}
+
 	// 使用数据库事务保证「使用日志插入」与「扣费」的原子性，避免重复扣费或漏扣风险。
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
@@ -95,6 +111,10 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	// 创建使用日志
 	usageLog := &UsageLog{
 		UserID:                req.UserID,
+		OrganizationID:        billingContext.OrganizationID,
+		PayerUserID:           usageInt64Ptr(billingContext.PayerUserID),
+		BalanceSource:         usageStringPtr(billingContext.BalanceSource),
+		AuthzGeneration:       usageInt64Ptr(billingContext.AuthzGeneration),
 		APIKeyID:              req.APIKeyID,
 		AccountID:             req.AccountID,
 		RequestID:             req.RequestID,
@@ -124,7 +144,7 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	// 扣除用户余额
 	balanceUpdated := false
 	if inserted && req.ActualCost > 0 {
-		if err := s.userRepo.UpdateBalance(txCtx, req.UserID, -req.ActualCost); err != nil {
+		if err := s.userRepo.UpdateBalance(txCtx, billingContext.PayerUserID, -req.ActualCost); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
 		}
 		balanceUpdated = true
@@ -136,10 +156,13 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 		}
 	}
 
-	s.invalidateUsageCaches(ctx, req.UserID, balanceUpdated)
+	s.invalidateUsageCaches(ctx, billingContext.PayerUserID, balanceUpdated)
 
 	return usageLog, nil
 }
+
+func usageInt64Ptr(value int64) *int64    { return &value }
+func usageStringPtr(value string) *string { return &value }
 
 func (s *UsageService) invalidateUsageCaches(ctx context.Context, userID int64, balanceUpdated bool) {
 	if !balanceUpdated || s.authCacheInvalidator == nil {

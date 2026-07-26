@@ -1,0 +1,19 @@
+export default {
+  organization: {
+    console: 'Company console', accountId: 'Account ID', accountType: { label: 'Account type', personal: 'Personal account', company: 'Company account' }, accountIdentity: { label: 'Account identity', root: 'Main account', iam: 'Sub-account' }, iamUserId: 'IAM user ID', principal: 'Principal', companyName: 'Company name', role: 'Role', policies: 'Policies', reviewReason: 'Review reason',
+    roleValue: { owner: 'Organization owner', member: 'IAM user' },
+    status: { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', active: 'Active', disabled: 'Disabled', archived: 'Archived', suspended: 'Suspended' },
+    tabs: { members: 'Members', authorization: 'Authorization', allocation: 'Allocation', finance: 'Finance', usage: 'Usage' },
+    login: { personal: 'Personal account', iam: 'IAM login', title: 'IAM user login', subtitle: 'Sign in with a login name, root account ID, and password', loginName: 'Login name', genericError: 'The login name, account ID, or password is incorrect' },
+    upgrade: { title: 'Upgrade to company account', backToProfile: 'Back to profile', feeLabel: 'Upgrade fee', feeNotice: 'The fee is frozen from your available balance when you submit. It is charged only after the upgrade is approved. If the upgrade is rejected or withdrawn, the frozen amount is returned to your balance.', chargedFee: 'Fee snapshot', submit: 'Submit for review', withdraw: 'Cancel application', insufficientBalance: 'Your balance cannot cover the upgrade fee', ineligible: { not_personal_root: 'This identity cannot request a company upgrade.', already_company_account: 'This account is already a company account.', application_pending: 'An upgrade application is already pending.', unknown: 'This account is not eligible for a company upgrade.' } },
+	nameChange: { action: 'Request rename', title: 'Request company rename', submit: 'Submit for review', pending: 'The rename request is pending. The current company name remains active until approval.' },
+    password: { title: 'Change initial password', new: 'New password', confirm: 'Confirm password', mismatch: 'The passwords do not match' },
+	recovery: { title: 'IAM recovery email', code: 'Verification code', send: 'Send code', verify: 'Verify email', change: 'Change email', sent: 'Verification code sent.', verified: 'Recovery email verified.' },
+	members: { slots: 'IAM users {used}/{limit}', create: 'Create IAM user', recoveryEmail: 'Recovery email (optional)', resetPassword: 'Reset password', disable: 'Disable', enable: 'Enable', archive: 'Archive', archiveConfirm: 'Archive IAM user {name}? This cannot be undone.', oneTimeCredential: 'One-time credentials', oneTimeWarning: 'This password cannot be displayed again after closing.', copied: 'Credentials copied' },
+    allocation: { amount: 'Amount', allocate: 'Allocate', reclaim: 'Reclaim', rootAvailable: 'Root balance available to allocate: {amount}' },
+    finance: { available: 'Available', frozen: 'Frozen', total: 'Total' },
+    balanceSource: { label: 'Balance source', self: 'Root balance', allocated: 'Allocated member balance', shared: 'Shared root balance' },
+    usage: { member: 'Member', allMembers: 'All members', apiKey: 'API key', apiKeyId: 'API key ID', model: 'Model', endpoint: 'Endpoint', tokens: 'Tokens', charge: 'Charge', duration: 'Duration (ms)', time: 'Request time', start: 'Start time', end: 'End time', charged: 'Charged', refunded: 'Refunded', total: '{total} records', previous: 'Previous', next: 'Next' },
+    admin: { title: 'Company account reviews', applicant: 'Applicant', similar: 'Similar names', approve: 'Approve', reject: 'Reject', upgrades: 'Account upgrades', nameChanges: 'Name changes', organizations: 'Organizations', currentName: 'Current name', requestedName: 'Requested name', audit: 'Audit history', members: 'IAM members', suspend: 'Suspend', reactivate: 'Reactivate' }
+  }
+}

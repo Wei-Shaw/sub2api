@@ -25,16 +25,26 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/ent/companyupgradeapplication"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/managedpolicy"
+	"github.com/Wei-Shaw/sub2api/ent/managedpolicyaction"
+	"github.com/Wei-Shaw/sub2api/ent/memberpolicyattachment"
+	"github.com/Wei-Shaw/sub2api/ent/notificationoutbox"
 	"github.com/Wei-Shaw/sub2api/ent/oidcaccesstoken"
 	"github.com/Wei-Shaw/sub2api/ent/oidcauthorizationcode"
 	"github.com/Wei-Shaw/sub2api/ent/oidcclient"
 	"github.com/Wei-Shaw/sub2api/ent/oidcconsent"
 	"github.com/Wei-Shaw/sub2api/ent/oidcrefreshtoken"
+	"github.com/Wei-Shaw/sub2api/ent/organization"
+	"github.com/Wei-Shaw/sub2api/ent/organizationauditevent"
+	"github.com/Wei-Shaw/sub2api/ent/organizationfinancialledger"
+	"github.com/Wei-Shaw/sub2api/ent/organizationmembership"
+	"github.com/Wei-Shaw/sub2api/ent/organizationnamechangerequest"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -583,6 +593,33 @@ func (f TraverseChannelMonitorRequestTemplate) Traverse(ctx context.Context, q e
 	return fmt.Errorf("unexpected query type %T. expect *ent.ChannelMonitorRequestTemplateQuery", q)
 }
 
+// The CompanyUpgradeApplicationFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CompanyUpgradeApplicationFunc func(context.Context, *ent.CompanyUpgradeApplicationQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CompanyUpgradeApplicationFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CompanyUpgradeApplicationQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CompanyUpgradeApplicationQuery", q)
+}
+
+// The TraverseCompanyUpgradeApplication type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCompanyUpgradeApplication func(context.Context, *ent.CompanyUpgradeApplicationQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCompanyUpgradeApplication) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCompanyUpgradeApplication) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CompanyUpgradeApplicationQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CompanyUpgradeApplicationQuery", q)
+}
+
 // The CompositeModelRouteFunc type is an adapter to allow the use of ordinary function as a Querier.
 type CompositeModelRouteFunc func(context.Context, *ent.CompositeModelRouteQuery) (ent.Value, error)
 
@@ -718,6 +755,114 @@ func (f TraverseIdentityAdoptionDecision) Traverse(ctx context.Context, q ent.Qu
 	return fmt.Errorf("unexpected query type %T. expect *ent.IdentityAdoptionDecisionQuery", q)
 }
 
+// The ManagedPolicyFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ManagedPolicyFunc func(context.Context, *ent.ManagedPolicyQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ManagedPolicyFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ManagedPolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ManagedPolicyQuery", q)
+}
+
+// The TraverseManagedPolicy type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseManagedPolicy func(context.Context, *ent.ManagedPolicyQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseManagedPolicy) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseManagedPolicy) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ManagedPolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ManagedPolicyQuery", q)
+}
+
+// The ManagedPolicyActionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ManagedPolicyActionFunc func(context.Context, *ent.ManagedPolicyActionQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ManagedPolicyActionFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ManagedPolicyActionQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ManagedPolicyActionQuery", q)
+}
+
+// The TraverseManagedPolicyAction type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseManagedPolicyAction func(context.Context, *ent.ManagedPolicyActionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseManagedPolicyAction) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseManagedPolicyAction) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ManagedPolicyActionQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ManagedPolicyActionQuery", q)
+}
+
+// The MemberPolicyAttachmentFunc type is an adapter to allow the use of ordinary function as a Querier.
+type MemberPolicyAttachmentFunc func(context.Context, *ent.MemberPolicyAttachmentQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f MemberPolicyAttachmentFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.MemberPolicyAttachmentQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.MemberPolicyAttachmentQuery", q)
+}
+
+// The TraverseMemberPolicyAttachment type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseMemberPolicyAttachment func(context.Context, *ent.MemberPolicyAttachmentQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseMemberPolicyAttachment) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseMemberPolicyAttachment) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.MemberPolicyAttachmentQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.MemberPolicyAttachmentQuery", q)
+}
+
+// The NotificationOutboxFunc type is an adapter to allow the use of ordinary function as a Querier.
+type NotificationOutboxFunc func(context.Context, *ent.NotificationOutboxQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f NotificationOutboxFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.NotificationOutboxQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.NotificationOutboxQuery", q)
+}
+
+// The TraverseNotificationOutbox type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseNotificationOutbox func(context.Context, *ent.NotificationOutboxQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseNotificationOutbox) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseNotificationOutbox) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.NotificationOutboxQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.NotificationOutboxQuery", q)
+}
+
 // The OidcAccessTokenFunc type is an adapter to allow the use of ordinary function as a Querier.
 type OidcAccessTokenFunc func(context.Context, *ent.OidcAccessTokenQuery) (ent.Value, error)
 
@@ -851,6 +996,141 @@ func (f TraverseOidcRefreshToken) Traverse(ctx context.Context, q ent.Query) err
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.OidcRefreshTokenQuery", q)
+}
+
+// The OrganizationFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OrganizationFunc func(context.Context, *ent.OrganizationQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OrganizationFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OrganizationQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OrganizationQuery", q)
+}
+
+// The TraverseOrganization type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOrganization func(context.Context, *ent.OrganizationQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOrganization) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOrganization) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OrganizationQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OrganizationQuery", q)
+}
+
+// The OrganizationAuditEventFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OrganizationAuditEventFunc func(context.Context, *ent.OrganizationAuditEventQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OrganizationAuditEventFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OrganizationAuditEventQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OrganizationAuditEventQuery", q)
+}
+
+// The TraverseOrganizationAuditEvent type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOrganizationAuditEvent func(context.Context, *ent.OrganizationAuditEventQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOrganizationAuditEvent) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOrganizationAuditEvent) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OrganizationAuditEventQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OrganizationAuditEventQuery", q)
+}
+
+// The OrganizationFinancialLedgerFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OrganizationFinancialLedgerFunc func(context.Context, *ent.OrganizationFinancialLedgerQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OrganizationFinancialLedgerFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OrganizationFinancialLedgerQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OrganizationFinancialLedgerQuery", q)
+}
+
+// The TraverseOrganizationFinancialLedger type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOrganizationFinancialLedger func(context.Context, *ent.OrganizationFinancialLedgerQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOrganizationFinancialLedger) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOrganizationFinancialLedger) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OrganizationFinancialLedgerQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OrganizationFinancialLedgerQuery", q)
+}
+
+// The OrganizationMembershipFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OrganizationMembershipFunc func(context.Context, *ent.OrganizationMembershipQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OrganizationMembershipFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OrganizationMembershipQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OrganizationMembershipQuery", q)
+}
+
+// The TraverseOrganizationMembership type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOrganizationMembership func(context.Context, *ent.OrganizationMembershipQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOrganizationMembership) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOrganizationMembership) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OrganizationMembershipQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OrganizationMembershipQuery", q)
+}
+
+// The OrganizationNameChangeRequestFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OrganizationNameChangeRequestFunc func(context.Context, *ent.OrganizationNameChangeRequestQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OrganizationNameChangeRequestFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OrganizationNameChangeRequestQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OrganizationNameChangeRequestQuery", q)
+}
+
+// The TraverseOrganizationNameChangeRequest type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOrganizationNameChangeRequest func(context.Context, *ent.OrganizationNameChangeRequestQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOrganizationNameChangeRequest) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOrganizationNameChangeRequest) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OrganizationNameChangeRequestQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OrganizationNameChangeRequestQuery", q)
 }
 
 // The PaymentAuditLogFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1700,6 +1980,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ChannelMonitorHistoryQuery, predicate.ChannelMonitorHistory, channelmonitorhistory.OrderOption]{typ: ent.TypeChannelMonitorHistory, tq: q}, nil
 	case *ent.ChannelMonitorRequestTemplateQuery:
 		return &query[*ent.ChannelMonitorRequestTemplateQuery, predicate.ChannelMonitorRequestTemplate, channelmonitorrequesttemplate.OrderOption]{typ: ent.TypeChannelMonitorRequestTemplate, tq: q}, nil
+	case *ent.CompanyUpgradeApplicationQuery:
+		return &query[*ent.CompanyUpgradeApplicationQuery, predicate.CompanyUpgradeApplication, companyupgradeapplication.OrderOption]{typ: ent.TypeCompanyUpgradeApplication, tq: q}, nil
 	case *ent.CompositeModelRouteQuery:
 		return &query[*ent.CompositeModelRouteQuery, predicate.CompositeModelRoute, compositemodelroute.OrderOption]{typ: ent.TypeCompositeModelRoute, tq: q}, nil
 	case *ent.ErrorPassthroughRuleQuery:
@@ -1710,6 +1992,14 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.IdempotencyRecordQuery, predicate.IdempotencyRecord, idempotencyrecord.OrderOption]{typ: ent.TypeIdempotencyRecord, tq: q}, nil
 	case *ent.IdentityAdoptionDecisionQuery:
 		return &query[*ent.IdentityAdoptionDecisionQuery, predicate.IdentityAdoptionDecision, identityadoptiondecision.OrderOption]{typ: ent.TypeIdentityAdoptionDecision, tq: q}, nil
+	case *ent.ManagedPolicyQuery:
+		return &query[*ent.ManagedPolicyQuery, predicate.ManagedPolicy, managedpolicy.OrderOption]{typ: ent.TypeManagedPolicy, tq: q}, nil
+	case *ent.ManagedPolicyActionQuery:
+		return &query[*ent.ManagedPolicyActionQuery, predicate.ManagedPolicyAction, managedpolicyaction.OrderOption]{typ: ent.TypeManagedPolicyAction, tq: q}, nil
+	case *ent.MemberPolicyAttachmentQuery:
+		return &query[*ent.MemberPolicyAttachmentQuery, predicate.MemberPolicyAttachment, memberpolicyattachment.OrderOption]{typ: ent.TypeMemberPolicyAttachment, tq: q}, nil
+	case *ent.NotificationOutboxQuery:
+		return &query[*ent.NotificationOutboxQuery, predicate.NotificationOutbox, notificationoutbox.OrderOption]{typ: ent.TypeNotificationOutbox, tq: q}, nil
 	case *ent.OidcAccessTokenQuery:
 		return &query[*ent.OidcAccessTokenQuery, predicate.OidcAccessToken, oidcaccesstoken.OrderOption]{typ: ent.TypeOidcAccessToken, tq: q}, nil
 	case *ent.OidcAuthorizationCodeQuery:
@@ -1720,6 +2010,16 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.OidcConsentQuery, predicate.OidcConsent, oidcconsent.OrderOption]{typ: ent.TypeOidcConsent, tq: q}, nil
 	case *ent.OidcRefreshTokenQuery:
 		return &query[*ent.OidcRefreshTokenQuery, predicate.OidcRefreshToken, oidcrefreshtoken.OrderOption]{typ: ent.TypeOidcRefreshToken, tq: q}, nil
+	case *ent.OrganizationQuery:
+		return &query[*ent.OrganizationQuery, predicate.Organization, organization.OrderOption]{typ: ent.TypeOrganization, tq: q}, nil
+	case *ent.OrganizationAuditEventQuery:
+		return &query[*ent.OrganizationAuditEventQuery, predicate.OrganizationAuditEvent, organizationauditevent.OrderOption]{typ: ent.TypeOrganizationAuditEvent, tq: q}, nil
+	case *ent.OrganizationFinancialLedgerQuery:
+		return &query[*ent.OrganizationFinancialLedgerQuery, predicate.OrganizationFinancialLedger, organizationfinancialledger.OrderOption]{typ: ent.TypeOrganizationFinancialLedger, tq: q}, nil
+	case *ent.OrganizationMembershipQuery:
+		return &query[*ent.OrganizationMembershipQuery, predicate.OrganizationMembership, organizationmembership.OrderOption]{typ: ent.TypeOrganizationMembership, tq: q}, nil
+	case *ent.OrganizationNameChangeRequestQuery:
+		return &query[*ent.OrganizationNameChangeRequestQuery, predicate.OrganizationNameChangeRequest, organizationnamechangerequest.OrderOption]{typ: ent.TypeOrganizationNameChangeRequest, tq: q}, nil
 	case *ent.PaymentAuditLogQuery:
 		return &query[*ent.PaymentAuditLogQuery, predicate.PaymentAuditLog, paymentauditlog.OrderOption]{typ: ent.TypePaymentAuditLog, tq: q}, nil
 	case *ent.PaymentOrderQuery:

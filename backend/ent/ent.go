@@ -29,16 +29,26 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/ent/companyupgradeapplication"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/managedpolicy"
+	"github.com/Wei-Shaw/sub2api/ent/managedpolicyaction"
+	"github.com/Wei-Shaw/sub2api/ent/memberpolicyattachment"
+	"github.com/Wei-Shaw/sub2api/ent/notificationoutbox"
 	"github.com/Wei-Shaw/sub2api/ent/oidcaccesstoken"
 	"github.com/Wei-Shaw/sub2api/ent/oidcauthorizationcode"
 	"github.com/Wei-Shaw/sub2api/ent/oidcclient"
 	"github.com/Wei-Shaw/sub2api/ent/oidcconsent"
 	"github.com/Wei-Shaw/sub2api/ent/oidcrefreshtoken"
+	"github.com/Wei-Shaw/sub2api/ent/organization"
+	"github.com/Wei-Shaw/sub2api/ent/organizationauditevent"
+	"github.com/Wei-Shaw/sub2api/ent/organizationfinancialledger"
+	"github.com/Wei-Shaw/sub2api/ent/organizationmembership"
+	"github.com/Wei-Shaw/sub2api/ent/organizationnamechangerequest"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -146,16 +156,26 @@ func checkColumn(t, c string) error {
 			channelmonitordailyrollup.Table:     channelmonitordailyrollup.ValidColumn,
 			channelmonitorhistory.Table:         channelmonitorhistory.ValidColumn,
 			channelmonitorrequesttemplate.Table: channelmonitorrequesttemplate.ValidColumn,
+			companyupgradeapplication.Table:     companyupgradeapplication.ValidColumn,
 			compositemodelroute.Table:           compositemodelroute.ValidColumn,
 			errorpassthroughrule.Table:          errorpassthroughrule.ValidColumn,
 			group.Table:                         group.ValidColumn,
 			idempotencyrecord.Table:             idempotencyrecord.ValidColumn,
 			identityadoptiondecision.Table:      identityadoptiondecision.ValidColumn,
+			managedpolicy.Table:                 managedpolicy.ValidColumn,
+			managedpolicyaction.Table:           managedpolicyaction.ValidColumn,
+			memberpolicyattachment.Table:        memberpolicyattachment.ValidColumn,
+			notificationoutbox.Table:            notificationoutbox.ValidColumn,
 			oidcaccesstoken.Table:               oidcaccesstoken.ValidColumn,
 			oidcauthorizationcode.Table:         oidcauthorizationcode.ValidColumn,
 			oidcclient.Table:                    oidcclient.ValidColumn,
 			oidcconsent.Table:                   oidcconsent.ValidColumn,
 			oidcrefreshtoken.Table:              oidcrefreshtoken.ValidColumn,
+			organization.Table:                  organization.ValidColumn,
+			organizationauditevent.Table:        organizationauditevent.ValidColumn,
+			organizationfinancialledger.Table:   organizationfinancialledger.ValidColumn,
+			organizationmembership.Table:        organizationmembership.ValidColumn,
+			organizationnamechangerequest.Table: organizationnamechangerequest.ValidColumn,
 			paymentauditlog.Table:               paymentauditlog.ValidColumn,
 			paymentorder.Table:                  paymentorder.ValidColumn,
 			paymentproviderinstance.Table:       paymentproviderinstance.ValidColumn,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html"
 	"sort"
@@ -223,32 +224,34 @@ type RateLimitCacheInvalidator interface {
 }
 
 type APIKeyService struct {
-	apiKeyRepo                APIKeyRepository
-	userRepo                  UserRepository
-	groupRepo                 GroupRepository
-	userSubRepo               UserSubscriptionRepository
-	userGroupRateRepo         UserGroupRateRepository
-	cache                     APIKeyCache
-	rateLimitCacheInvalid     RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
-	concurrencyService        *ConcurrencyService
-	cfg                       *config.Config
-	authCacheL1               *ristretto.Cache
-	authNegativeCacheL1       *ristretto.Cache
-	authCfg                   apiKeyAuthCacheConfig
-	authGroup                 singleflight.Group
-	authLookupSlots           chan struct{}
-	authLookupTotal           atomic.Uint64
-	authLookupRejected        atomic.Uint64
-	authLookupInFlight        atomic.Int64
-	invalidAuthAbuse          *invalidAuthAbuseLimiter
-	authInvalidationStart     sync.Once
-	authInvalidationStop      sync.Once
-	authInvalidationCancel    context.CancelFunc
-	authInvalidationWG        sync.WaitGroup
-	authInvalidationConnected atomic.Bool
-	authInvalidationFailures  atomic.Uint64
-	lastUsedTouchL1           sync.Map // keyID -> nextAllowedAt(time.Time)
-	lastUsedTouchSF           singleflight.Group
+	apiKeyRepo                  APIKeyRepository
+	userRepo                    UserRepository
+	groupRepo                   GroupRepository
+	userSubRepo                 UserSubscriptionRepository
+	userGroupRateRepo           UserGroupRateRepository
+	cache                       APIKeyCache
+	rateLimitCacheInvalid       RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
+	concurrencyService          *ConcurrencyService
+	cfg                         *config.Config
+	authCacheL1                 *ristretto.Cache
+	authNegativeCacheL1         *ristretto.Cache
+	authCfg                     apiKeyAuthCacheConfig
+	authGroup                   singleflight.Group
+	authLookupSlots             chan struct{}
+	authLookupTotal             atomic.Uint64
+	authLookupRejected          atomic.Uint64
+	authLookupInFlight          atomic.Int64
+	invalidAuthAbuse            *invalidAuthAbuseLimiter
+	authInvalidationStart       sync.Once
+	authInvalidationStop        sync.Once
+	authInvalidationCancel      context.CancelFunc
+	authInvalidationWG          sync.WaitGroup
+	authInvalidationConnected   atomic.Bool
+	authInvalidationFailures    atomic.Uint64
+	organizationAuthDBFallbacks atomic.Uint64
+	lastUsedTouchL1             sync.Map // keyID -> nextAllowedAt(time.Time)
+	lastUsedTouchSF             singleflight.Group
+	organizationRepo            OrganizationRepository
 }
 
 type APIKeyAuthLookupMetrics struct {
@@ -307,6 +310,33 @@ func (s *APIKeyService) SetRateLimitCacheInvalidator(inv RateLimitCacheInvalidat
 
 func (s *APIKeyService) SetConcurrencyService(concurrencyService *ConcurrencyService) {
 	s.concurrencyService = concurrencyService
+}
+
+func (s *APIKeyService) SetOrganizationRepository(repo OrganizationRepository) {
+	s.organizationRepo = repo
+}
+
+func (s *APIKeyService) ValidateOrganizationAccess(ctx context.Context, user *User) error {
+	if s == nil || s.organizationRepo == nil || user == nil {
+		return nil
+	}
+	if user.IsIAM() && !s.authInvalidationConnected.Load() {
+		s.organizationAuthDBFallbacks.Add(1)
+	}
+	org, err := s.organizationRepo.GetContextForUser(ctx, user.ID)
+	if errors.Is(err, ErrCompanyNotFound) && !user.IsIAM() {
+		return nil
+	}
+	if err != nil || org == nil || !org.Active() {
+		return ErrOrganizationPermission
+	}
+	if user.AuthzGeneration != 0 && user.AuthzGeneration != org.AuthzGeneration {
+		return ErrOrganizationPermission
+	}
+	if user.IsIAM() && user.MustChangePassword {
+		return ErrOrganizationPermission
+	}
+	return nil
 }
 
 func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {

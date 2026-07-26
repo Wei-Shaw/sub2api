@@ -22,7 +22,7 @@ func NewAsyncMediaTaskRepository(_ *dbent.Client, sqlDB *sql.DB) service.AsyncMe
 
 const asyncMediaTaskColumns = `
 	id, internal_request_id, upstream_request_id, status_url, response_url,
-	account_id, api_key_id, user_id, group_id, channel_id,
+	account_id, api_key_id, user_id, organization_id, payer_user_id, balance_source, authz_generation, group_id, channel_id,
 	facade, requested_model, upstream_model,
 	image_size, quality, num_images,
 	status, held_cost, final_cost, rate_multiplier, size_tier,
@@ -60,7 +60,7 @@ func (r *asyncMediaTaskRepository) Create(ctx context.Context, task *service.Asy
 	query := `
 		INSERT INTO async_media_tasks (
 			internal_request_id, upstream_request_id, status_url, response_url,
-			account_id, api_key_id, user_id, group_id, channel_id,
+			account_id, api_key_id, user_id, organization_id, payer_user_id, balance_source, authz_generation, group_id, channel_id,
 			facade, requested_model, upstream_model,
 			image_size, quality, num_images,
 			status, held_cost, final_cost, rate_multiplier, size_tier,
@@ -69,18 +69,18 @@ func (r *asyncMediaTaskRepository) Create(ctx context.Context, task *service.Asy
 			client_ip, user_agent, inbound_endpoint, upstream_endpoint
 		) VALUES (
 			$1, $2, $3, $4,
-			$5, $6, $7, $8, $9,
-			$10, $11, $12,
-			$13, $14, $15,
-			$16, $17, $18, $19, $20,
-			$21, $22,
-			$23, $24, $25,
-			$26, $27, $28, $29
+			$5, $6, $7, $8, $9, $10, $11, $12, $13,
+			$14, $15, $16,
+			$17, $18, $19,
+			$20, $21, $22, $23, $24,
+			$25, $26,
+			$27, $28, $29,
+			$30, $31, $32, $33
 		) RETURNING id, created_at, updated_at`
 
 	return scanSingleRow(ctx, r.sql, query, []any{
 		task.InternalRequestID, task.UpstreamRequestID, task.StatusURL, task.ResponseURL,
-		task.AccountID, task.APIKeyID, task.UserID, task.GroupID, task.ChannelID,
+		task.AccountID, task.APIKeyID, task.UserID, task.OrganizationID, task.PayerUserID, task.BalanceSource, task.AuthzGeneration, task.GroupID, task.ChannelID,
 		task.Facade, task.RequestedModel, task.UpstreamModel,
 		task.ImageSize, task.Quality, task.NumImages,
 		task.Status, task.HeldCost, task.FinalCost, task.RateMultiplier, task.SizeTier,
@@ -274,6 +274,7 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 			billing_mode, billing_tier,
 			task_id, image_urls, cos_url, billing_status,
 			inbound_endpoint, upstream_endpoint, duration_ms, ip_address, user_agent,
+			organization_id, payer_user_id, balance_source, authz_generation,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4,
@@ -285,6 +286,7 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 			$17, $18,
 			$19, $20, $21, $22,
 			$23, $24, $25, $26, $27,
+			$28, $29, $30, $31,
 			NOW()
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING`
@@ -299,6 +301,7 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 		string(service.BillingModeImage), nullIfEmpty(in.BillingTier),
 		taskID, imageURLsJSON, cosURLsJSON, nullIfEmpty(in.BillingStatus),
 		nullIfEmpty(in.InboundEndpoint), nullIfEmpty(in.UpstreamEndpoint), durationMs, nullIfEmpty(in.ClientIP), nullIfEmpty(in.UserAgent),
+		in.OrganizationID, in.PayerUserID, in.BalanceSource, in.AuthzGeneration,
 	)
 	if err != nil {
 		return false, err
@@ -331,7 +334,7 @@ func scanAsyncMediaTask(rows *sql.Rows) (*service.AsyncMediaTask, error) {
 	var imageURLsJSON, cosURLsJSON []byte
 	if err := rows.Scan(
 		&task.ID, &task.InternalRequestID, &task.UpstreamRequestID, &task.StatusURL, &task.ResponseURL,
-		&task.AccountID, &task.APIKeyID, &task.UserID, &task.GroupID, &task.ChannelID,
+		&task.AccountID, &task.APIKeyID, &task.UserID, &task.OrganizationID, &task.PayerUserID, &task.BalanceSource, &task.AuthzGeneration, &task.GroupID, &task.ChannelID,
 		&task.Facade, &task.RequestedModel, &task.UpstreamModel,
 		&task.ImageSize, &task.Quality, &task.NumImages,
 		&task.Status, &task.HeldCost, &task.FinalCost, &task.RateMultiplier, &task.SizeTier,

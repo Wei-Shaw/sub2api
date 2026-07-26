@@ -103,6 +103,14 @@ func jwtAuth(
 			AbortWithError(c, 401, "TOKEN_REVOKED", "Token has been revoked (password changed)")
 			return
 		}
+		if claims.AuthzGeneration != 0 && claims.AuthzGeneration != user.AuthzGeneration {
+			AbortWithError(c, 401, "AUTHORIZATION_REVOKED", "Authorization has changed; sign in again")
+			return
+		}
+		if user.IsIAM() && user.MustChangePassword && c.Request.URL.Path != "/api/v1/organization/password" {
+			AbortWithError(c, 403, "PASSWORD_CHANGE_REQUIRED", "Password change is required")
+			return
+		}
 
 		// 会话绑定校验：IP/UA 任一变化即撤销会话（功能可在系统设置中关闭）
 		if !enforceSessionBinding(c, authService, settingService, auditService, claims) {
@@ -166,6 +174,14 @@ func optionalJWTAuth(authService *service.AuthService, userService jwtUserReader
 			return
 		}
 		if claims.TokenVersion != user.TokenVersion {
+			c.Next()
+			return
+		}
+		if claims.AuthzGeneration != 0 && claims.AuthzGeneration != user.AuthzGeneration {
+			c.Next()
+			return
+		}
+		if user.IsIAM() && user.MustChangePassword {
 			c.Next()
 			return
 		}

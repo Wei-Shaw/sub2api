@@ -13,6 +13,7 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import { canAccessOrganizationRoute, canOpenCompanyUpgrade, isIAMFinancialRouteRestricted } from './organizationAccess'
 
 /**
  * Route definitions with lazy loading
@@ -48,6 +49,12 @@ const routes: RouteRecordRaw[] = [
       title: 'Login',
       titleKey: 'home.login'
     }
+  },
+  {
+    path: '/iam-login',
+    name: 'IAMLogin',
+    component: () => import('@/views/auth/IAMLoginView.vue'),
+    meta: { requiresAuth: false, requiresIAM: true, titleKey: 'organization.login.title' }
   },
   {
     path: '/register',
@@ -357,6 +364,28 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/profile/company-upgrade',
+    name: 'CompanyUpgrade',
+    component: () => import('@/views/user/ProfileView.vue'),
+    meta: { requiresAuth: true, titleKey: 'organization.upgrade.title' }
+  },
+  {
+    path: '/organization/upgrade',
+    redirect: '/profile/company-upgrade'
+  },
+  {
+    path: '/organization',
+    name: 'OrganizationConsole',
+    component: () => import('@/views/user/OrganizationConsoleView.vue'),
+    meta: { requiresAuth: true, requiresOrganization: true, requiresOrganizationAction: 'organization.finance.balance.read', titleKey: 'organization.console' }
+  },
+  {
+    path: '/organization/change-password',
+    name: 'IAMPasswordChange',
+    component: () => import('@/views/user/IAMPasswordChangeView.vue'),
+    meta: { requiresAuth: true, allowFirstLogin: true, titleKey: 'organization.password.title' }
+  },
+  {
     path: '/subscriptions',
     name: 'Subscriptions',
     component: () => import('@/views/user/SubscriptionsView.vue'),
@@ -516,6 +545,12 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'admin.users.title',
       descriptionKey: 'admin.users.description'
     }
+  },
+  {
+    path: '/admin/company-applications',
+    name: 'AdminCompanyApplications',
+    component: () => import('@/views/admin/CompanyApplicationsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, titleKey: 'organization.admin.title' }
   },
   {
     path: '/admin/groups',
@@ -951,10 +986,24 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
+  const needsCompanySettings = to.meta.requiresIAM || to.name === 'CompanyUpgrade'
+  if (needsCompanySettings && !appStore.publicSettingsLoaded) {
+    try {
+      await appStore.fetchPublicSettings()
+    } catch (error) {
+      console.warn('Failed to load public settings for IAM login', error)
+    }
+  }
+
+  if (to.meta.requiresIAM && appStore.cachedPublicSettings?.company_iam_enabled !== true) {
+    next('/login')
+    return
+  }
+
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
-    if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
+    if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/iam-login' || to.path === '/register')) {
       // In backend mode, non-admin users should NOT be redirected away from login
       // (they are blocked from all protected routes, so redirecting would cause a loop)
       if (appStore.backendModeEnabled && !authStore.isAdmin) {
@@ -985,6 +1034,27 @@ router.beforeEach(async (to, _from, next) => {
       query: { redirect: to.fullPath } // Save intended destination
     })
     return
+  }
+
+  const currentUser = authStore.user
+	if (isIAMFinancialRouteRestricted(to.path, currentUser)) {
+		next('/dashboard')
+		return
+	}
+	if (to.name === 'CompanyUpgrade' && !canOpenCompanyUpgrade(currentUser, appStore.cachedPublicSettings?.company_applications_enabled === true)) {
+		next('/dashboard')
+		return
+	}
+  if (currentUser?.must_change_password && to.meta.allowFirstLogin !== true) {
+    next('/organization/change-password')
+    return
+  }
+
+  if (to.meta.requiresOrganization) {
+    if (!canAccessOrganizationRoute(currentUser, to.meta.requiresOrganizationAction, to.meta.requiresOrganizationOwner === true)) {
+      next('/dashboard')
+      return
+    }
   }
 
   // Check admin requirement
