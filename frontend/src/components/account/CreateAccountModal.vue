@@ -3778,8 +3778,7 @@ const applyGrokOAuthUpstreamConfig = (credentials: Record<string, unknown>) => {
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
-const openAILongContextBillingEnabled = ref(false)
-const openAILongContextBillingTouched = ref(false)
+const openAILongContextBillingEnabled = ref(true)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
@@ -3795,7 +3794,6 @@ const webSearchGlobalEnabled = ref(false)
 
 const toggleOpenAILongContextBilling = () => {
   openAILongContextBillingEnabled.value = !openAILongContextBillingEnabled.value
-  openAILongContextBillingTouched.value = true
 }
 const {
   globalEnabled: quotaNotifyGlobalEnabled,
@@ -4656,8 +4654,7 @@ const resetForm = () => {
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
-  openAILongContextBillingEnabled.value = false
-  openAILongContextBillingTouched.value = false
+  openAILongContextBillingEnabled.value = true
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
@@ -4777,14 +4774,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
 }
 
 const buildOpenAICodexImportExtra = (): Record<string, unknown> | undefined => {
-  const extra = buildOpenAIExtra()
-  if (!extra) {
-    return undefined
-  }
-  if (!openAILongContextBillingTouched.value) {
-    delete extra.openai_long_context_billing_enabled
-  }
-  return Object.keys(extra).length > 0 ? extra : undefined
+  return buildOpenAIExtra()
 }
 
 const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
