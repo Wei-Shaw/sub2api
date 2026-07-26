@@ -10,16 +10,6 @@ REDACTED
 	return &trimmed
 REDACTED
 
-// optionalNonEqualStringPtr returns a pointer to value if it is non-empty and
-// differs from compare; otherwise nil. Usage logging passes the requested
-// model as compare so a channel mapping still records its effective upstream.
-func optionalNonEqualStringPtr(value, compare string) *string {
-	if value == "" || value == compare {
-		return nil
-REDACTED
-	return &value
-REDACTED
-
 func forwardResultBillingModel(requestedModel, upstreamModel string) string {
 	if trimmed := strings.TrimSpace(requestedModel); trimmed != "" {
 		return trimmed

@@ -223,6 +223,35 @@ REDACTED
 	require.Equal(t, "gpt-5.6-terra", *usageRepo.lastLog.UpstreamModel)
 REDACTED
 
+func TestGatewayServiceRecordUsage_PreservesLoopedChannelAndAccountUpstreamModel(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:     "gateway_looped_mapping_models",
+			Usage:         ClaudeUsage{InputTokens: 10, OutputTokens: 6REDACTED,
+			Model:         "gpt-5.6-terra",
+			UpstreamModel: "gpt-5.6-sol",
+			Duration:      time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 501, Quota: 100REDACTED,
+		User:    &User{ID: 601REDACTED,
+		Account: &Account{ID: 701REDACTED,
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel:      "gpt-5.6-sol",
+			ChannelMappedModel: "gpt-5.6-terra",
+	REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "gpt-5.6-sol", usageRepo.lastLog.RequestedModel)
+	require.Equal(t, "gpt-5.6-terra", usageRepo.lastLog.Model)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, "gpt-5.6-sol", *usageRepo.lastLog.UpstreamModel)
+REDACTED
+
 func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersistence(t *testing.T) {
 	imagePrice2K := 0.19
 	groupID := int64(901)
