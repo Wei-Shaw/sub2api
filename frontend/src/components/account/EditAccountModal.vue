@@ -1740,6 +1740,7 @@
           :quotaNotifyTotalEnabled="quotaNotifyState.total.enabled"
           :quotaNotifyTotalThreshold="quotaNotifyState.total.threshold"
           :quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType"
+          :syncFromUpstream="editQuotaSyncFromUpstream"
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
@@ -1758,6 +1759,7 @@
           @update:quotaNotifyTotalEnabled="quotaNotifyState.total.enabled = $event"
           @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
           @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
+          @update:syncFromUpstream="editQuotaSyncFromUpstream = $event"
         />
       </div>
       <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
@@ -1791,6 +1793,7 @@
           :quotaNotifyTotalEnabled="quotaNotifyState.total.enabled"
           :quotaNotifyTotalThreshold="quotaNotifyState.total.threshold"
           :quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType"
+          :syncFromUpstream="editQuotaSyncFromUpstream"
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
@@ -1809,6 +1812,7 @@
           @update:quotaNotifyTotalEnabled="quotaNotifyState.total.enabled = $event"
           @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
           @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
+          @update:syncFromUpstream="editQuotaSyncFromUpstream = $event"
         />
       </div>
 
@@ -2882,6 +2886,8 @@ const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
 const editWeeklyResetDay = ref<number | null>(null)
 const editWeeklyResetHour = ref<number | null>(null)
 const editResetTimezone = ref<string | null>(null)
+// 同步上游配额二级开关：仅 apikey 账号（非 bedrock）启用
+const editQuotaSyncFromUpstream = ref<boolean>(false)
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
@@ -3374,6 +3380,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editResetTimezone.value = (extra?.quota_reset_timezone as string) || null
     // Load quota notify config
     loadQuotaNotifyFromExtra(extra)
+    // 同步上游配额开关仅在 apikey 账号（非 bedrock）上启用
+    editQuotaSyncFromUpstream.value = newAccount.type === 'apikey'
+      ? extra?.upstream_quota_sync_enabled === true
+      : false
   } else {
     editQuotaLimit.value = null
     editQuotaDailyLimit.value = null
@@ -3384,6 +3394,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editWeeklyResetDay.value = null
     editWeeklyResetHour.value = null
     editResetTimezone.value = null
+    editQuotaSyncFromUpstream.value = false
     resetQuotaNotify()
   }
 
@@ -4653,6 +4664,22 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      // 同步上游配额开关：仅 apikey 账号（非 bedrock）持久化；bedrock 强制 false
+      if (props.account.type === 'apikey') {
+        if (editQuotaSyncFromUpstream.value) {
+          newExtra.upstream_quota_sync_enabled = true
+          // 启用同步上游后：quota_limit/used 由后端定期同步快照维护，
+          // 提交时不写入手动 total limit，避免覆盖即将被同步覆盖的值。
+          // 但保留 daily/weekly 维度（已由 QuotaLimitCard 在开启同步时清空）。
+        } else {
+          delete newExtra.upstream_quota_sync_enabled
+          // 关闭同步时清空旧快照，避免显示陈旧同步数据
+          delete newExtra.upstream_quota_sync
+        }
+      } else {
+        delete newExtra.upstream_quota_sync_enabled
+        delete newExtra.upstream_quota_sync
+      }
       updatePayload.extra = newExtra
     }
 

@@ -63,12 +63,18 @@ type AccountHandler struct {
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
+	upstreamQuotaSync       *service.UpstreamQuotaSyncService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
 func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamBillingProbeService) {
 	h.upstreamBillingProbe = probe
+}
+
+// SetUpstreamQuotaSyncService attaches the optional upstream quota sync service.
+func (h *AccountHandler) SetUpstreamQuotaSyncService(sync *service.UpstreamQuotaSyncService) {
+	h.upstreamQuotaSync = sync
 }
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {

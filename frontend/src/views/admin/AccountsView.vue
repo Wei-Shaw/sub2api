@@ -314,6 +314,8 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
+              :manual-refreshing-upstream-quota-sync="refreshingUpstreamQuotaSync.has(row.id)"
+              @refresh-upstream-quota-sync="handleRefreshUpstreamQuotaSync(row)"
             />
           </template>
           <template #cell-proxy="{ row }">
@@ -590,6 +592,7 @@ const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
+const refreshingUpstreamQuotaSync = reactive(new Set<number>())
 const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
 const upstreamBillingNow = ref(Date.now())
 let lastUpstreamBillingSortRefreshMinute = -1
@@ -1953,6 +1956,32 @@ const handleResetQuota = async (a: Account) => {
     appStore.showSuccess(t('common.success'))
   } catch (error) {
     console.error('Failed to reset quota:', error)
+  }
+}
+
+// 手动触发单账号上游配额同步：调用后端 /upstream-quota-sync/refresh 立即拉取上游 /v1/usage。
+const handleRefreshUpstreamQuotaSync = async (a: Account) => {
+  if (refreshingUpstreamQuotaSync.has(a.id)) return
+  refreshingUpstreamQuotaSync.add(a.id)
+  try {
+    const result = await adminAPI.accounts.refreshUpstreamQuotaSync(a.id)
+    if (result.account) {
+      patchAccountInList(result.account)
+    }
+    enterAutoRefreshSilentWindow()
+    const snapshot = result.snapshot
+    if (snapshot && snapshot.status === 'ok') {
+      appStore.showSuccess(t('admin.accounts.upstreamQuotaSync.refreshSuccess'))
+    } else if (snapshot && snapshot.status === 'unsupported') {
+      appStore.showWarning(t('admin.accounts.upstreamQuotaSync.unsupported'))
+    } else if (snapshot && snapshot.status === 'failed') {
+      appStore.showError(t('admin.accounts.upstreamQuotaSync.refreshFailed'))
+    }
+  } catch (error: any) {
+    console.error('Failed to refresh upstream quota sync:', error)
+    appStore.showError(error?.response?.data?.message || t('admin.accounts.upstreamQuotaSync.refreshFailed'))
+  } finally {
+    refreshingUpstreamQuotaSync.delete(a.id)
   }
 }
 

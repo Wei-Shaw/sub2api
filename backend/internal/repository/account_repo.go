@@ -58,6 +58,7 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_7d_",
 	"passive_usage_",
 	"upstream_billing_probe",
+	"upstream_quota_sync",
 	"ollama_cloud_usage",
 }
 
@@ -3478,6 +3479,17 @@ const weeklyExpiredExpr = `(
 	END
 )`
 
+// monthlyExpiredExpr is a SQL expression that evaluates to TRUE when monthly quota period has expired.
+// Supports both rolling (30d from start) and fixed (pre-computed reset_at) modes.
+// 月维度由上游配额同步订阅模式写入，支持 fixed（reset_at）与 rolling（30d）两种模式。
+const monthlyExpiredExpr = `(
+	CASE WHEN COALESCE(extra->>'quota_monthly_reset_mode', 'rolling') = 'fixed'
+	THEN NOW() >= COALESCE((extra->>'quota_monthly_reset_at')::timestamptz, '1970-01-01'::timestamptz)
+	ELSE COALESCE((extra->>'quota_monthly_start')::timestamptz, '1970-01-01'::timestamptz)
+		+ '720 hours'::interval <= NOW()
+	END
+)`
+
 // nextDailyResetAtExpr is a SQL expression to compute the next daily reset_at when a reset occurs.
 // For fixed mode: computes the next future reset time based on NOW(), timezone, and configured hour.
 // This correctly handles long-inactive accounts by jumping directly to the next valid reset point.
@@ -3589,6 +3601,23 @@ func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, am
 				   THEN jsonb_build_object('quota_weekly_reset_at', `+nextWeeklyResetAtExpr+`)
 				   ELSE '{}'::jsonb END
 			ELSE '{}'::jsonb END
+			-- 月额度：仅在 quota_monthly_limit > 0 时处理（由上游配额同步订阅模式写入）
+			|| CASE WHEN COALESCE((extra->>'quota_monthly_limit')::numeric, 0) > 0 THEN
+				jsonb_build_object(
+					'quota_monthly_used',
+					CASE WHEN `+monthlyExpiredExpr+`
+					THEN $1
+					ELSE COALESCE((extra->>'quota_monthly_used')::numeric, 0) + $1 END,
+					'quota_monthly_start',
+					CASE WHEN `+monthlyExpiredExpr+`
+					THEN `+nowUTC+`
+					ELSE COALESCE(extra->>'quota_monthly_start', `+nowUTC+`) END
+				)
+				-- 月额度固定 30 天滚动窗口，下次重置时间 = start + 30d
+				|| CASE WHEN `+monthlyExpiredExpr+`
+				   THEN jsonb_build_object('quota_monthly_reset_at', `+nowUTC+` + interval '30 days')
+				   ELSE '{}'::jsonb END
+			ELSE '{}'::jsonb END
 		), updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
 		RETURNING
@@ -3625,8 +3654,8 @@ func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error 
 	_, err := r.sql.ExecContext(ctx,
 		`UPDATE accounts SET extra = (
 			COALESCE(extra, '{}'::jsonb)
-			|| '{"quota_used": 0, "quota_daily_used": 0, "quota_weekly_used": 0}'::jsonb
-		) - 'quota_daily_start' - 'quota_weekly_start' - 'quota_daily_reset_at' - 'quota_weekly_reset_at', updated_at = NOW()
+			|| '{"quota_used": 0, "quota_daily_used": 0, "quota_weekly_used": 0, "quota_monthly_used": 0}'::jsonb
+		) - 'quota_daily_start' - 'quota_weekly_start' - 'quota_monthly_start' - 'quota_daily_reset_at' - 'quota_weekly_reset_at' - 'quota_monthly_reset_at', updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id)
 	if err != nil {

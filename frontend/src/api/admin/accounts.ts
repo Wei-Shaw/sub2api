@@ -23,6 +23,7 @@ import type {
   CheckMixedChannelResponse,
   UpstreamBillingProbeResult,
   UpstreamBillingProbeSettings,
+  UpstreamQuotaSyncSnapshot,
   OllamaCloudUsageSettings,
   OllamaCloudUsageState
 } from '@/types'
@@ -884,6 +885,18 @@ export async function probeUpstreamBillingBatch(accountIds: number[]): Promise<U
   return data.results
 }
 
+// 手动触发单账号上游配额同步（订阅/余额/quota_limited 模式均支持）。
+// 后端忽略二级开关与节流，立即调用上游 /v1/usage 并刷新 extra 快照。
+export interface UpstreamQuotaSyncRefreshResult {
+  account?: Account
+  snapshot?: UpstreamQuotaSyncSnapshot
+}
+
+export async function refreshUpstreamQuotaSync(id: number): Promise<UpstreamQuotaSyncRefreshResult> {
+  const { data } = await apiClient.post<UpstreamQuotaSyncRefreshResult>(`/admin/accounts/${id}/upstream-quota-sync/refresh`)
+  return data
+}
+
 export async function getOllamaCloudUsageSettings(): Promise<OllamaCloudUsageSettings> {
   const { data } = await apiClient.get<OllamaCloudUsageSettings>('/admin/accounts/ollama-cloud-usage/settings')
   return data
@@ -980,6 +993,7 @@ export const accountsAPI = {
   setUpstreamBillingProbeEnabled,
   probeUpstreamBilling,
   probeUpstreamBillingBatch,
+  refreshUpstreamQuotaSync,
   getOllamaCloudUsageSettings,
   updateOllamaCloudUsageSettings,
   getOllamaCloudUsage,

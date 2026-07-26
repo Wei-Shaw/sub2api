@@ -2094,6 +2094,17 @@ func (a *Account) GetQuotaWeeklyUsed() float64 {
 	return a.getExtraFloat64("quota_weekly_used")
 }
 
+// GetQuotaMonthlyLimit 获取月额度限制（美元），0 表示未启用。
+// 仅由上游配额同步（订阅模式）写入；手动配额不支持月维度。
+func (a *Account) GetQuotaMonthlyLimit() float64 {
+	return a.getExtraFloat64("quota_monthly_limit")
+}
+
+// GetQuotaMonthlyUsed 获取本月已用额度（美元）
+func (a *Account) GetQuotaMonthlyUsed() float64 {
+	return a.getExtraFloat64("quota_monthly_used")
+}
+
 // getExtraFloat64 从 Extra 中读取指定 key 的 float64 值
 func (a *Account) getExtraFloat64(key string) float64 {
 	if a.Extra == nil {
@@ -2519,6 +2530,20 @@ func (a *Account) IsWeeklyQuotaPeriodExpired() bool {
 	return isPeriodExpired(start, 7*24*time.Hour)
 }
 
+// IsMonthlyQuotaPeriodExpired 检查月配额周期是否已过期（用于显示层判断是否需要将 used 归零）
+// 月维度由上游配额同步订阅模式写入：fixed 模式读取 quota_monthly_reset_at；rolling 模式按 30 天滚动。
+func (a *Account) IsMonthlyQuotaPeriodExpired() bool {
+	start := a.getExtraTime("quota_monthly_start")
+	if a.getExtraString("quota_monthly_reset_mode") == "fixed" {
+		resetAt := a.getExtraTime("quota_monthly_reset_at")
+		if resetAt.IsZero() {
+			return true
+		}
+		return time.Now().UTC().After(resetAt)
+	}
+	return isPeriodExpired(start, 30*24*time.Hour)
+}
+
 // IsQuotaExceeded 检查 API Key 账号配额是否已超限（任一维度超限即返回 true）
 func (a *Account) IsQuotaExceeded() bool {
 	// 总额度
@@ -2548,6 +2573,12 @@ func (a *Account) IsQuotaExceeded() bool {
 			expired = isPeriodExpired(start, 7*24*time.Hour)
 		}
 		if !expired && a.GetQuotaWeeklyUsed() >= limit {
+			return true
+		}
+	}
+	// 月额度（由上游配额同步订阅模式写入）
+	if limit := a.GetQuotaMonthlyLimit(); limit > 0 {
+		if !a.IsMonthlyQuotaPeriodExpired() && a.GetQuotaMonthlyUsed() >= limit {
 			return true
 		}
 	}

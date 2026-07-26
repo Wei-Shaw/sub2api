@@ -1853,6 +1853,7 @@
           :weeklyResetDay="editWeeklyResetDay"
           :weeklyResetHour="editWeeklyResetHour"
           :resetTimezone="editResetTimezone"
+          :syncFromUpstream="editQuotaSyncFromUpstream"
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
@@ -1871,6 +1872,7 @@
           @update:weeklyResetDay="editWeeklyResetDay = $event"
           @update:weeklyResetHour="editWeeklyResetHour = $event"
           @update:resetTimezone="editResetTimezone = $event"
+          @update:syncFromUpstream="editQuotaSyncFromUpstream = $event"
         />
       </div>
 
@@ -1905,6 +1907,7 @@
           :weeklyResetDay="editWeeklyResetDay"
           :weeklyResetHour="editWeeklyResetHour"
           :resetTimezone="editResetTimezone"
+          :syncFromUpstream="editQuotaSyncFromUpstream"
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
@@ -1923,6 +1926,7 @@
           @update:weeklyResetDay="editWeeklyResetDay = $event"
           @update:weeklyResetHour="editWeeklyResetHour = $event"
           @update:resetTimezone="editResetTimezone = $event"
+          @update:syncFromUpstream="editQuotaSyncFromUpstream = $event"
         />
       </div>
 
@@ -3707,6 +3711,8 @@ const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
 const editWeeklyResetDay = ref<number | null>(null)
 const editWeeklyResetHour = ref<number | null>(null)
 const editResetTimezone = ref<string | null>(null)
+// 同步上游配额二级开关：仅 apikey 账号（非 bedrock）启用
+const editQuotaSyncFromUpstream = ref<boolean>(false)
 const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
@@ -4633,6 +4639,7 @@ const resetForm = () => {
   editWeeklyResetDay.value = null
   editWeeklyResetHour.value = null
   editResetTimezone.value = null
+  editQuotaSyncFromUpstream.value = false
   modelMappings.value = []
   openAICompactModelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
@@ -5213,6 +5220,10 @@ const createAccountAndFinish = async (
     }
     // Quota notify config
     writeQuotaNotifyToExtra(quotaExtra, 'create')
+    // 同步上游配额开关：仅 apikey 账号（非 bedrock）持久化
+    if (type === 'apikey' && editQuotaSyncFromUpstream.value) {
+      quotaExtra.upstream_quota_sync_enabled = true
+    }
     if (Object.keys(quotaExtra).length > 0) {
       finalExtra = quotaExtra
     }

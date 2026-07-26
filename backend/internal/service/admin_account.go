@@ -99,13 +99,19 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"crs_kind":       {},
 	"crs_synced_at":  {},
 	// Local quota usage and derived window timestamps must start fresh.
-	"quota_used":            {},
-	"quota_daily_used":      {},
-	"quota_weekly_used":     {},
-	"quota_daily_start":     {},
-	"quota_weekly_start":    {},
-	"quota_daily_reset_at":  {},
-	"quota_weekly_reset_at": {},
+	"quota_used":             {},
+	"quota_daily_used":       {},
+	"quota_weekly_used":      {},
+	"quota_monthly_used":     {},
+	"quota_daily_start":      {},
+	"quota_weekly_start":     {},
+	"quota_monthly_start":    {},
+	"quota_daily_reset_at":   {},
+	"quota_weekly_reset_at":  {},
+	"quota_monthly_reset_at": {},
+	// Upstream quota sync snapshot belongs to the source account's identity.
+	UpstreamQuotaSyncExtraKey:         {},
+	UpstreamQuotaSyncEnabledExtraKey:  {},
 	// Provider observations, capability probes, and transient scheduling state.
 	"model_rate_limits":                      {},
 	"session_window_utilization":             {},
@@ -692,6 +698,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			grokBillingExtraKey,
 			UpstreamBillingProbeEnabledExtraKey,
 			UpstreamBillingProbeExtraKey,
+			UpstreamQuotaSyncExtraKey,
 			OllamaCloudUsageSessionExtraKey,
 			OllamaCloudUsageAutoRefreshExtraKey,
 			OllamaCloudUsageSnapshotExtraKey,
@@ -741,6 +748,11 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		delete(account.Extra, UpstreamBillingProbeExtraKey)
 		if !isUpstreamBillingProbeAccount(account) {
 			delete(account.Extra, UpstreamBillingProbeEnabledExtraKey)
+		}
+		// 凭据/代理身份变化同样让上游配额同步快照失效，避免基于旧 identity 的快照残留。
+		delete(account.Extra, UpstreamQuotaSyncExtraKey)
+		if !isUpstreamQuotaSyncAccount(account) {
+			delete(account.Extra, UpstreamQuotaSyncEnabledExtraKey)
 		}
 	}
 	if account.Extra != nil {
