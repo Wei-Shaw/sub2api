@@ -588,19 +588,19 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 	}
 
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
-	delete(extra, service.UpstreamBillingProbeEnabledExtraKey)
-	delete(extra, service.UpstreamBillingProbeExtraKey)
+	delete(extra, domain.UpstreamBillingProbeEnabledExtraKey)
+	delete(extra, domain.UpstreamBillingProbeExtraKey)
 	probeExplicitlyDisabled := false
 	probeAccount := account.Platform == domain.PlatformOpenAI && account.Type == domain.AccountTypeAPIKey
 	if probeAccount && explicitProbeEnabled != nil {
-		extra[service.UpstreamBillingProbeEnabledExtraKey] = *explicitProbeEnabled
+		extra[domain.UpstreamBillingProbeEnabledExtraKey] = *explicitProbeEnabled
 		probeExplicitlyDisabled = !*explicitProbeEnabled
 	} else if probeAccount && len(currentEnabled) > 0 && string(currentEnabled) != "null" {
 		var enabled any
 		if err := json.Unmarshal(currentEnabled, &enabled); err != nil {
 			return nil, err
 		}
-		extra[service.UpstreamBillingProbeEnabledExtraKey] = enabled
+		extra[domain.UpstreamBillingProbeEnabledExtraKey] = enabled
 		if value, ok := enabled.(bool); ok && !value {
 			probeExplicitlyDisabled = true
 		}
@@ -612,7 +612,7 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 	if err := json.Unmarshal(currentSnapshot, &snapshot); err != nil {
 		return nil, err
 	}
-	extra[service.UpstreamBillingProbeExtraKey] = snapshot
+	extra[domain.UpstreamBillingProbeExtraKey] = snapshot
 	return extra, nil
 }
 
@@ -2443,7 +2443,7 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 func (r *accountRepository) UpdateUpstreamBillingProbeSnapshot(
 	ctx context.Context,
 	account *domain.Account,
-	snapshot *service.UpstreamBillingProbeSnapshot,
+	snapshot *domain.UpstreamBillingProbeSnapshot,
 ) error {
 	if account == nil || snapshot == nil {
 		return domain.ErrAccountNilInput
@@ -2475,9 +2475,9 @@ func (r *accountRepository) UpdateUpstreamBillingProbeSnapshot(
 func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 	ctx context.Context,
 	account *domain.Account,
-	snapshot *service.UpstreamBillingProbeSnapshot,
+	snapshot *domain.UpstreamBillingProbeSnapshot,
 ) error {
-	payload, err := json.Marshal(map[string]any{service.UpstreamBillingProbeExtraKey: snapshot})
+	payload, err := json.Marshal(map[string]any{domain.UpstreamBillingProbeExtraKey: snapshot})
 	if err != nil {
 		return err
 	}
@@ -2487,7 +2487,7 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 	}
 	var expectedSnapshot any
 	if account.Extra != nil {
-		expectedSnapshot = account.Extra[service.UpstreamBillingProbeExtraKey]
+		expectedSnapshot = account.Extra[domain.UpstreamBillingProbeExtraKey]
 	}
 	expectedSnapshotJSON, err := json.Marshal(expectedSnapshot)
 	if err != nil {
@@ -2495,7 +2495,7 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 	}
 	var expectedEnabled any
 	if account.Extra != nil {
-		expectedEnabled = account.Extra[service.UpstreamBillingProbeEnabledExtraKey]
+		expectedEnabled = account.Extra[domain.UpstreamBillingProbeEnabledExtraKey]
 	}
 	expectedEnabledJSON, err := json.Marshal(expectedEnabled)
 	if err != nil {
@@ -2507,7 +2507,7 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 		return err
 	}
 	if !proxyMatches {
-		return service.ErrUpstreamBillingProbeIdentityChanged
+		return domain.ErrUpstreamBillingProbeIdentityChanged
 	}
 	var proxyID any
 	if account.ProxyID != nil {
@@ -2533,7 +2533,7 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 		return err
 	}
 	if affected == 0 {
-		return service.ErrUpstreamBillingProbeIdentityChanged
+		return domain.ErrUpstreamBillingProbeIdentityChanged
 	}
 	return enqueueSchedulerOutbox(ctx, client, domain.SchedulerOutboxEventAccountChanged, &account.ID, nil, nil)
 }
@@ -2598,12 +2598,12 @@ func isSchedulerNeutralExtraKey(key string) bool {
 }
 
 func upstreamBillingProbeExplicitlyDisabled(extra map[string]any) bool {
-	enabled, ok := extra[service.UpstreamBillingProbeEnabledExtraKey].(bool)
+	enabled, ok := extra[domain.UpstreamBillingProbeEnabledExtraKey].(bool)
 	return ok && !enabled
 }
 
 func upstreamBillingProbeSnapshotClearRequested(extra map[string]any) bool {
-	value, ok := extra[service.UpstreamBillingProbeExtraKey]
+	value, ok := extra[domain.UpstreamBillingProbeExtraKey]
 	return ok && value == nil
 }
 
@@ -2669,7 +2669,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		if updates.Extra == nil {
 			updates.Extra = make(map[string]any)
 		}
-		updates.Extra[service.UpstreamBillingProbeEnabledExtraKey] = *updates.ProbeEnabled
+		updates.Extra[domain.UpstreamBillingProbeEnabledExtraKey] = *updates.ProbeEnabled
 	}
 	// JSONB 需要合并而非覆盖，使用 raw SQL 保持旧行为。
 	if len(updates.Credentials) > 0 {
@@ -2748,7 +2748,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			expectedRows++
 		}
 		if rows != expectedRows {
-			return 0, service.ErrUpstreamBillingProbeAccountInvalid
+			return 0, domain.ErrUpstreamBillingProbeAccountInvalid
 		}
 	}
 	if rows > 0 {
