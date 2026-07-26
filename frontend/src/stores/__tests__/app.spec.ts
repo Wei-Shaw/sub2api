@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAppStore } from '@/stores/app'
 import { getPublicSettings } from '@/api/auth'
+import { checkUpdates } from '@/api/admin/system'
 import type { PublicSettings } from '@/types'
 
 function createDeferred<T>() {
@@ -75,6 +76,7 @@ describe('useAppStore', () => {
     vi.useFakeTimers()
     localStorage.clear()
     vi.mocked(getPublicSettings).mockReset()
+    vi.mocked(checkUpdates).mockReset()
     // 清除 window.__APP_CONFIG__
     delete (window as any).__APP_CONFIG__
   })
@@ -319,6 +321,31 @@ describe('useAppStore', () => {
   })
 
   // --- 公开设置 ---
+
+  describe('版本信息', () => {
+    it('保留后端更新检查告警并在缓存响应中返回', async () => {
+      vi.mocked(checkUpdates).mockResolvedValue({
+        current_version: '0.1.164-ts.5',
+        latest_version: '0.1.164-ts.5',
+        has_update: false,
+        cached: false,
+        warning: 'release feed unavailable',
+        build_type: 'release',
+        deployment_mode: 'docker-managed',
+        deployment_ready: true,
+      })
+      const store = useAppStore()
+
+      await expect(store.fetchVersion()).resolves.toMatchObject({
+        warning: 'release feed unavailable',
+      })
+      expect(store.versionWarning).toBe('release feed unavailable')
+      await expect(store.fetchVersion()).resolves.toMatchObject({
+        warning: 'release feed unavailable',
+        cached: true,
+      })
+    })
+  })
 
   describe('公开设置加载', () => {
     it('并发调用复用并等待同一个请求，包括 force 调用', async () => {

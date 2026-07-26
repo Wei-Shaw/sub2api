@@ -10,6 +10,7 @@ Group=root
 UMask=0007
 RuntimeDirectory=sub2api-deployer
 RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
 StateDirectory=sub2api-deployer
 StateDirectoryMode=0700
 Environment=DOCKER_CONFIG=/etc/sub2api-deployer/docker

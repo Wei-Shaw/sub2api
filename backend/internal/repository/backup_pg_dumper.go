@@ -107,6 +107,23 @@ func discardSQLConnection(conn *sql.Conn) {
 
 // Restore executes psql to restore from a streaming reader
 func (d *PgDumper) Restore(ctx context.Context, data io.Reader) error {
+	if d.db == nil {
+		return errors.New("acquire restore migration lock: nil sql db")
+	}
+	lockConn, err := d.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire restore migration lock connection: %w", err)
+	}
+	if err := pgAdvisoryLock(ctx, lockConn); err != nil {
+		// Lock acquisition can fail after PostgreSQL accepted the request. Discard
+		// the session because ownership is ambiguous and advisory locks are session-scoped.
+		discardSQLConnection(lockConn)
+		return fmt.Errorf("acquire restore migration lock: %w", err)
+	}
+	releaseLock := func() error {
+		return releaseBackupMigrationLock(lockConn)
+	}
+
 	args := []string{
 		"-h", d.cfg.Host,
 		"-p", fmt.Sprintf("%d", d.cfg.Port),
@@ -115,7 +132,11 @@ func (d *PgDumper) Restore(ctx context.Context, data io.Reader) error {
 		"--single-transaction",
 	}
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	commandContext := d.commandContext
+	if commandContext == nil {
+		commandContext = exec.CommandContext
+	}
+	cmd := commandContext(ctx, "psql", args...)
 	if d.cfg.Password != "" {
 		cmd.Env = append(cmd.Environ(), "PGPASSWORD="+d.cfg.Password)
 	}
@@ -125,11 +146,12 @@ func (d *PgDumper) Restore(ctx context.Context, data io.Reader) error {
 
 	cmd.Stdin = data
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%v: %s", err, string(output))
+	output, commandErr := cmd.CombinedOutput()
+	unlockErr := releaseLock()
+	if commandErr != nil {
+		return errors.Join(fmt.Errorf("psql restore failed: %v: %s", commandErr, string(output)), unlockErr)
 	}
-	return nil
+	return unlockErr
 }
 
 // cmdReadCloser wraps a command stdout pipe and waits for the process on Close

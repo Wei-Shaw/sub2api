@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	routeConfirmationTimeout  = 2 * time.Second
-	routeConfirmationInterval = 100 * time.Millisecond
+	routeConfirmationInterval  = 100 * time.Millisecond
+	routeConfirmationSuccesses = 2
 )
 
 type trafficRoute struct {
@@ -82,19 +82,31 @@ func (m *Manager) observeTrafficRoute(ctx context.Context, target, previous traf
 }
 
 func (m *Manager) confirmTrafficRoute(ctx context.Context, target, previous trafficEndpoint, expectedPort int) (trafficRoute, error) {
-	confirmationCtx, cancel := context.WithTimeout(ctx, routeConfirmationTimeout)
+	timeout := m.cfg.RouteConfirmationTimeout.Duration
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	confirmationCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var lastRoute trafficRoute
 	var lastErr error
+	consecutiveSuccesses := 0
 	for {
 		route, err := m.observeTrafficRoute(confirmationCtx, target, previous)
 		if route.Known {
 			lastRoute = route
 			if route.Port == expectedPort {
-				return route, nil
+				consecutiveSuccesses++
+				if consecutiveSuccesses >= routeConfirmationSuccesses {
+					return route, nil
+				}
+				lastErr = nil
+			} else {
+				consecutiveSuccesses = 0
+				lastErr = fmt.Errorf("observed route port %d, expected %d", route.Port, expectedPort)
 			}
-			lastErr = fmt.Errorf("observed route port %d, expected %d", route.Port, expectedPort)
 		} else if err != nil {
+			consecutiveSuccesses = 0
 			lastErr = err
 		}
 		select {

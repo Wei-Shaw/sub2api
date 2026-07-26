@@ -185,9 +185,17 @@ MANIFEST_DIGEST="sha256:$(printf 'a%.0s' {1..64})"
 DOCKERHUB_MANIFEST_DIGEST="sha256:$(printf 'e%.0s' {1..64})"
 jq -n --arg digest "$MANIFEST_DIGEST" '{manifest: {digest: $digest, manifests: []}}' > "$MANIFEST_FILE"
 COMPLETION_FILE="$TEST_ROOT/sub2api-release-complete.json"
-DEPLOYER_CHECKSUMS_DIGEST="sha256:$(printf 'deployer checksums' | sha256sum | awk '{print $1}')"
 DEPLOYER_CHECKSUMS_FILE="$TEST_ROOT/sub2api-deployer-checksums.txt"
-printf 'deployer checksums' > "$DEPLOYER_CHECKSUMS_FILE"
+DEPLOYER_AMD64_SHA=$(printf 'amd64 binary' | sha256sum | awk '{print $1}')
+DEPLOYER_ARM64_SHA=$(printf 'arm64 binary' | sha256sum | awk '{print $1}')
+DEPLOYER_BUNDLE_AMD64_SHA=$(printf 'amd64 bundle' | sha256sum | awk '{print $1}')
+DEPLOYER_BUNDLE_ARM64_SHA=$(printf 'arm64 bundle' | sha256sum | awk '{print $1}')
+printf '%s  %s\n' \
+  "$DEPLOYER_AMD64_SHA" sub2api-deployer-linux-amd64 \
+  "$DEPLOYER_ARM64_SHA" sub2api-deployer-linux-arm64 \
+  "$DEPLOYER_BUNDLE_AMD64_SHA" sub2api-deployer-linux-amd64.tar.gz \
+  "$DEPLOYER_BUNDLE_ARM64_SHA" sub2api-deployer-linux-arm64.tar.gz > "$DEPLOYER_CHECKSUMS_FILE"
+DEPLOYER_CHECKSUMS_DIGEST="sha256:$(sha256sum "$DEPLOYER_CHECKSUMS_FILE" | awk '{print $1}')"
 jq -n \
   --arg tag v1.0.0-ts.10 \
   --arg commit "$MAIN_COMMIT" \
@@ -197,8 +205,12 @@ jq -n \
   --arg dockerhub_image docker.io/example/sub2api:1.0.0-ts.10 \
   --arg dockerhub_image_digest "$DOCKERHUB_MANIFEST_DIGEST" \
   --arg deployer_checksums_sha256 "$DEPLOYER_CHECKSUMS_DIGEST" \
+  --arg deployer_amd64_sha256 "sha256:$DEPLOYER_AMD64_SHA" \
+  --arg deployer_arm64_sha256 "sha256:$DEPLOYER_ARM64_SHA" \
+  --arg deployer_bundle_amd64_sha256 "sha256:$DEPLOYER_BUNDLE_AMD64_SHA" \
+  --arg deployer_bundle_arm64_sha256 "sha256:$DEPLOYER_BUNDLE_ARM64_SHA" \
   '{
-    schema: 2,
+    schema: 3,
     tag: $tag,
     commit: $commit,
     tag_object: $tag_object,
@@ -209,7 +221,13 @@ jq -n \
     dockerhub_image_digest: $dockerhub_image_digest,
     dockerhub_immutable_image: ($dockerhub_image + "@" + $dockerhub_image_digest),
     architectures: ["amd64", "arm64"],
-    deployer_checksums_sha256: $deployer_checksums_sha256
+    deployer_checksums_sha256: $deployer_checksums_sha256,
+    deployer_assets: {
+      "sub2api-deployer-linux-amd64": $deployer_amd64_sha256,
+      "sub2api-deployer-linux-arm64": $deployer_arm64_sha256,
+      "sub2api-deployer-linux-amd64.tar.gz": $deployer_bundle_amd64_sha256,
+      "sub2api-deployer-linux-arm64.tar.gz": $deployer_bundle_arm64_sha256
+    }
   }' > "$COMPLETION_FILE"
 bash "$SAFETY_SCRIPT" verify-completion-json \
   "$COMPLETION_FILE" \
@@ -227,6 +245,17 @@ bash "$SAFETY_SCRIPT" verify-completion-json \
 bash "$SAFETY_SCRIPT" verify-completion-manifest "$COMPLETION_FILE" "$MANIFEST_FILE"
 bash "$SAFETY_SCRIPT" verify-completion-deployer-checksums \
   "$COMPLETION_FILE" "$DEPLOYER_CHECKSUMS_FILE"
+LEGACY_COMPLETION_FILE="$TEST_ROOT/sub2api-release-complete-schema2.json"
+jq '.schema = 2 | del(.deployer_assets)' "$COMPLETION_FILE" > "$LEGACY_COMPLETION_FILE"
+bash "$SAFETY_SCRIPT" verify-completion-json \
+  "$LEGACY_COMPLETION_FILE" \
+  v1.0.0-ts.10 \
+  "$MAIN_COMMIT" \
+  "$VALIDATED_TAG_OBJECT" \
+  ghcr.io/example/sub2api:1.0.0-ts.10 \
+  docker.io/example/sub2api:1.0.0-ts.10
+bash "$SAFETY_SCRIPT" verify-completion-deployer-checksums \
+  "$LEGACY_COMPLETION_FILE" "$DEPLOYER_CHECKSUMS_FILE"
 jq '.architectures = ["amd64"]' "$COMPLETION_FILE" > "$TEST_ROOT/bad-completion.json"
 expect_failure 'does not match' bash "$SAFETY_SCRIPT" verify-completion-json \
   "$TEST_ROOT/bad-completion.json" \

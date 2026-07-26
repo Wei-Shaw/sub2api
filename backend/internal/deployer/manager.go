@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -179,11 +180,10 @@ func (m *Manager) ReconcileWithOptions(ctx context.Context, slotName string, all
 		return fmt.Errorf("no known container belongs to deployment slot %q", slotName)
 	}
 
-	if err := m.markDegraded("operator reconciliation in progress for slot " + slotName); err != nil {
-		return fmt.Errorf("persist reconciliation intent: %w", err)
-	}
-	if _, found, err := m.inspectContainerRef(ctx, container); err != nil || !found {
+	if _, found, err := m.inspectContainerRef(ctx, container); err != nil {
 		return fmt.Errorf("selected container identity is not valid: %w", err)
+	} else if !found {
+		return errors.New("selected container identity is not valid: container is absent")
 	}
 	if err := m.containerHealthy(ctx, container, slot.Port); err != nil {
 		return fmt.Errorf("selected container is not healthy: %w", err)
@@ -203,8 +203,12 @@ func (m *Manager) ReconcileWithOptions(ctx context.Context, slotName string, all
 	if err := m.verifyRoutedHealth(ctx, slotName, allowEmpty); err != nil {
 		return fmt.Errorf("selected slot is not serving through Nginx: %w", err)
 	}
+	if err := m.markDegraded("operator reconciliation in progress for slot " + slotName); err != nil {
+		return fmt.Errorf("persist reconciliation intent: %w", err)
+	}
+	log.Printf("sub2api-deployer action=reconcile selected_slot=%q selected_container_id=%q", slotName, container.ID)
 	var handedOffOld containerRef
-	if interruptedJob != nil && interruptedJob.CandidateSlot == slotName && interruptedJob.TrafficState == TrafficStateCandidate && interruptedJob.OldContainer != "" {
+	if interruptedJob != nil && interruptedJob.CandidateSlot == slotName && interruptedJob.OldContainer != "" && interruptedJob.OldContainer != container.Name {
 		if err := m.prepareOldContainerHandoff(ctx, interruptedJob.ID); err != nil {
 			return fmt.Errorf("persist previous container handoff before reconciliation: %w", err)
 		}
@@ -270,7 +274,7 @@ func (m *Manager) ReconcileWithOptions(ctx context.Context, slotName string, all
 	next.DegradedReason = ""
 	next.UpdatedAt = now
 	if next.Job != nil && next.Job.Status != JobStatusSucceeded && next.Job.Status != JobStatusFailed {
-		completedCandidate := next.Job.Status == JobStatusDegraded && next.Job.CandidateSlot == slot.Name && next.Job.TrafficState == TrafficStateCandidate
+		completedCandidate := next.Job.CandidateSlot == slot.Name
 		if completedCandidate {
 			next.Job.Status = JobStatusSucceeded
 			next.Job.Stage = StageCompleted
@@ -298,6 +302,7 @@ func (m *Manager) ReconcileWithOptions(ctx context.Context, slotName string, all
 		return err
 	}
 	m.state = next
+	log.Printf("sub2api-deployer action=reconcile status=completed active_slot=%q active_container_id=%q", slot.Name, container.ID)
 	return nil
 }
 
@@ -368,6 +373,7 @@ func (m *Manager) Start(req DeployRequest) (*Job, error) {
 	m.state = next
 	copy := *job
 	m.mu.Unlock()
+	log.Printf("sub2api-deployer job_id=%q action=%q from_version=%q target_version=%q stage=%q", job.ID, job.Action, job.FromVersion, job.TargetVersion, job.Stage)
 
 	go m.execute(req.RequestID)
 	return &copy, nil
@@ -504,6 +510,7 @@ func (m *Manager) recoverInterruptedJob() error {
 	job := *m.state.Job
 	m.mu.RUnlock()
 	normalizeLegacyTrafficState(&job)
+	log.Printf("sub2api-deployer job_id=%q action=recover stage=%q recorded_traffic=%q", job.ID, job.Stage, job.TrafficState)
 
 	ctx, cancel := context.WithTimeout(context.Background(), m.recoveryTimeout())
 	defer cancel()
@@ -543,7 +550,8 @@ func (m *Manager) recoverInterruptedJob() error {
 				return err
 			}
 			job = *currentJob
-			recoveryErr = m.completeOldContainerHandoff(ctx, &job, job.CandidatePort, job.CandidateSlot, allowEmptyCandidateSlot, false)
+			allowUnobservableDrain := job.OldContainer == m.cfg.InitialContainer
+			recoveryErr = m.completeOldContainerHandoff(ctx, &job, job.CandidatePort, job.CandidateSlot, allowEmptyCandidateSlot, allowUnobservableDrain)
 			if recoveryErr != nil {
 				return m.degradeDrain(job.ID, fmt.Errorf("could not safely complete the previous container handoff after restart: %w", recoveryErr))
 			}
@@ -591,7 +599,7 @@ func (m *Manager) recoverInterruptedJob() error {
 }
 
 func (m *Manager) execute(jobID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), m.executionTimeout())
 	defer cancel()
 
 	job, err := m.Job(jobID)
@@ -778,6 +786,7 @@ func (m *Manager) finishCandidateDeployment(ctx context.Context, jobID string, c
 		trafficEndpoint{Port: m.activePortForJob(job), Slot: previousSlot, AllowEmpty: allowEmptyPrevious},
 	)
 	nextTrafficState := m.trafficStateForRoute(job, route)
+	log.Printf("sub2api-deployer job_id=%q action=switch observed_route_known=%t observed_port=%d traffic_state=%q", jobID, route.Known, route.Port, nextTrafficState)
 	if switchErr != nil {
 		if err := m.updateJob(jobID, StageSwitchingTraffic, "Nginx traffic switch did not complete", func(current *Job) {
 			current.TrafficState = nextTrafficState
@@ -820,7 +829,8 @@ func (m *Manager) finishCandidateDeployment(ctx context.Context, jobID string, c
 	if err != nil {
 		return
 	}
-	if err := m.completeOldContainerHandoff(ctx, job, candidate.Port, candidate.Name, allowEmptyCandidateSlot, false); err != nil {
+	allowUnobservableDrain := job.OldContainer == m.cfg.InitialContainer
+	if err := m.completeOldContainerHandoff(ctx, job, candidate.Port, candidate.Name, allowEmptyCandidateSlot, allowUnobservableDrain); err != nil {
 		_ = m.degradeDrain(jobID, fmt.Errorf("candidate remains routed but the previous container handoff could not be completed safely: %w", err))
 		return
 	}
@@ -888,6 +898,7 @@ func (m *Manager) fail(jobID string, cause error) error {
 			return err
 		}
 		m.state = next
+		log.Printf("sub2api-deployer job_id=%q status=%q stage=%q rollback_performed=%t", jobID, status, StageFailed, next.Job.RollbackPerformed)
 	}
 	return nil
 }
@@ -914,12 +925,14 @@ func (m *Manager) degradeDrain(jobID string, cause error) error {
 		return err
 	}
 	m.state = next
+	log.Printf("sub2api-deployer job_id=%q status=%q stage=%q", jobID, JobStatusDegraded, StageDraining)
 	return nil
 }
 
 func (m *Manager) restoreOldDeployment(ctx context.Context, job *Job, forceTrafficRestore bool) error {
 	normalizeLegacyTrafficState(job)
 	var failures []string
+	log.Printf("sub2api-deployer job_id=%q action=restore_previous recorded_traffic=%q force=%t", job.ID, job.TrafficState, forceTrafficRestore)
 	needsTrafficRestore := job.TrafficState != TrafficStateOld || forceTrafficRestore
 	trafficRestored := !needsTrafficRestore
 	oldPort := m.activePortForJob(job)
@@ -940,6 +953,7 @@ func (m *Manager) restoreOldDeployment(ctx context.Context, job *Job, forceTraff
 				trafficEndpoint{Port: job.CandidatePort, Slot: job.CandidateSlot},
 			)
 			observedState := m.trafficStateForRoute(job, route)
+			log.Printf("sub2api-deployer job_id=%q action=restore_route observed_route_known=%t observed_port=%d traffic_state=%q", job.ID, route.Known, route.Port, observedState)
 			if observedState != TrafficStateOld {
 				observedState = TrafficStateUnknown
 			}
@@ -969,16 +983,25 @@ func (m *Manager) restoreOldDeployment(ctx context.Context, job *Job, forceTraff
 	}
 	if trafficRestored {
 		if job.CandidateContainer != "" && job.CandidateContainer != job.OldContainer {
-			if err := m.stopContainer(ctx, job.candidateContainerRef()); err != nil {
-				failures = append(failures, "stop candidate: "+err.Error())
-			} else if err := m.removeContainerIfPresent(ctx, job.candidateContainerRef()); err != nil {
-				failures = append(failures, "remove candidate: "+err.Error())
+			if job.CandidateContainerID == "" {
+				if trafficMayHaveSwitched(job) {
+					failures = append(failures, "stop candidate: candidate has no persisted immutable ID")
+				} else if err := m.appendCleanupWarning(job.ID, "candidate identity was not persisted; deferred cleanup until the next deployment"); err != nil {
+					failures = append(failures, "persist deferred candidate cleanup warning: "+err.Error())
+				}
+			} else if err := m.stopContainer(ctx, job.candidateContainerRef()); err != nil {
+				if trafficMayHaveSwitched(job) {
+					failures = append(failures, "stop candidate: "+err.Error())
+				} else {
+					warning := "candidate could not be stopped after previous traffic was restored; deferred cleanup until the next deployment: " + err.Error()
+					if warningErr := m.appendCleanupWarning(job.ID, warning); warningErr != nil {
+						failures = append(failures, "persist deferred candidate cleanup warning: "+warningErr.Error())
+					}
+				}
 			}
 		}
-		if len(failures) == 0 {
-			if err := m.ensureBackgroundActive(ctx, job.oldContainerRef(), oldPort, job.OldSlot); err != nil {
-				failures = append(failures, "activate previous background services: "+err.Error())
-			}
+		if err := m.ensureBackgroundActive(ctx, job.oldContainerRef(), oldPort, job.OldSlot); err != nil {
+			failures = append(failures, "activate previous background services: "+err.Error())
 		}
 		if len(failures) == 0 && job.FromImage != "" {
 			line := m.cfg.ImageEnvironment + "=" + job.FromImage + "\n"
@@ -1046,6 +1069,43 @@ func (m *Manager) recoveryTimeout() time.Duration {
 	return timeout
 }
 
+func (m *Manager) executionTimeout() time.Duration {
+	// Pulling and registry resolution share the parent context, so reserve a
+	// bounded overhead in addition to every configured deployment phase.
+	timeout := 10*time.Minute + 2*m.cfg.HealthTimeout.Duration + m.cfg.StabilizeDuration.Duration +
+		m.cfg.DrainTimeout.Duration + 2*m.cfg.StopTimeout.Duration + 2*m.cfg.RouteConfirmationTimeout.Duration
+	if timeout < 15*time.Minute {
+		return 15 * time.Minute
+	}
+	return timeout
+}
+
+func (m *Manager) appendCleanupWarning(jobID, warning string) error {
+	warning = strings.TrimSpace(warning)
+	if warning == "" {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.state.Job == nil || m.state.Job.ID != jobID {
+		return ErrJobNotFound
+	}
+	next := cloneState(m.state)
+	if next.Job.CleanupWarning == "" {
+		next.Job.CleanupWarning = warning
+	} else if !strings.Contains(next.Job.CleanupWarning, warning) {
+		next.Job.CleanupWarning += "; " + warning
+	}
+	next.Job.UpdatedAt = m.now().UTC()
+	next.UpdatedAt = next.Job.UpdatedAt
+	if err := saveState(m.cfg.StatePath, next); err != nil {
+		return err
+	}
+	m.state = next
+	log.Printf("sub2api-deployer job_id=%q cleanup_warning=%q", jobID, warning)
+	return nil
+}
+
 func (m *Manager) persistSuccessfulDeployment(job *Job) error {
 	line := m.cfg.ImageEnvironment + "=" + job.TargetImage + "\n"
 	if err := atomicWrite(m.cfg.ImageStatePath, []byte(line), 0600); err != nil {
@@ -1073,6 +1133,7 @@ func (m *Manager) persistSuccessfulDeployment(job *Job) error {
 		return err
 	}
 	m.state = next
+	log.Printf("sub2api-deployer job_id=%q deployment_state_persisted=true active_slot=%q active_container_id=%q active_version=%q", job.ID, next.ActiveSlot, next.ActiveContainerID, next.ActiveVersion)
 	return nil
 }
 
@@ -1096,6 +1157,7 @@ func (m *Manager) complete(jobID, message, cleanupWarning string) error {
 		return err
 	}
 	m.state = next
+	log.Printf("sub2api-deployer job_id=%q status=%q stage=%q cleanup_warning=%q", jobID, JobStatusSucceeded, StageCompleted, cleanupWarning)
 	return nil
 }
 
@@ -1128,6 +1190,7 @@ func (m *Manager) finishRecoveredJob(job Job, status, message, jobError string) 
 		return err
 	}
 	m.state = next
+	log.Printf("sub2api-deployer job_id=%q status=%q stage=%q", job.ID, status, next.Job.Stage)
 	return nil
 }
 
@@ -1149,6 +1212,7 @@ func (m *Manager) updateJob(jobID, stage, message string, mutate func(*Job)) err
 		return err
 	}
 	m.state = next
+	log.Printf("sub2api-deployer job_id=%q status=%q stage=%q", jobID, JobStatusRunning, stage)
 	return nil
 }
 
@@ -1315,20 +1379,28 @@ func (m *Manager) startCandidate(ctx context.Context, jobID string, slot Slot, i
 		m.cfg.ImageEnvironment:        image,
 		"SUB2API_DEPLOYER_SOCKET_GID": strconv.Itoa(m.cfg.SocketGID),
 	}
-	if _, err := m.runner.Run(ctx, env, m.cfg.DockerBinary, args...); err != nil {
-		return fmt.Errorf("start candidate container: %w", err)
-	}
+	_, runErr := m.runner.Run(ctx, env, m.cfg.DockerBinary, args...)
 	candidate, found, err := m.inspectContainerRef(ctx, containerRef{Name: slot.Name})
 	if err != nil {
+		if runErr != nil {
+			return fmt.Errorf("start candidate container: %v; inspect residual candidate: %w", runErr, err)
+		}
 		return fmt.Errorf("verify candidate container ownership: %w", err)
 	}
 	if !found {
+		if runErr != nil {
+			return fmt.Errorf("start candidate container: %w", runErr)
+		}
 		return errors.New("candidate container is absent after compose run")
 	}
 	if err := m.updateJob(jobID, StageStartingCandidate, "Candidate container identity is durable", func(job *Job) {
 		job.CandidateContainerID = candidate.ID
 	}); err != nil {
 		return fmt.Errorf("persist candidate container identity: %w", err)
+	}
+	log.Printf("sub2api-deployer job_id=%q action=candidate_identified slot=%q container_id=%q", jobID, slot.Name, candidate.ID)
+	if runErr != nil {
+		return fmt.Errorf("start candidate container: %w", runErr)
 	}
 	verified, found, err := m.inspectContainerRef(ctx, candidate)
 	if err != nil {
@@ -1529,6 +1601,7 @@ func (m *Manager) completeOldContainerHandoff(ctx context.Context, job *Job, can
 		return fmt.Errorf("inspect journal-bound previous container: %w", err)
 	}
 	if running {
+		log.Printf("sub2api-deployer job_id=%q action=drain_previous old_container_id=%q allow_unobservable=%t", job.ID, old.ID, allowUnobservableDrain)
 		if err := m.waitForOldDrain(ctx, m.activePortForJob(job), allowUnobservableDrain); err != nil {
 			_, stillRunning, inspectErr := m.inspectContainerRunning(ctx, old)
 			if inspectErr != nil {
@@ -1538,6 +1611,9 @@ func (m *Manager) completeOldContainerHandoff(ctx context.Context, job *Job, can
 				return fmt.Errorf("wait for previous container drain: %w", err)
 			}
 			running = false
+		}
+		if running {
+			log.Printf("sub2api-deployer job_id=%q action=drain_previous status=complete old_container_id=%q", job.ID, old.ID)
 		}
 	}
 	if err := m.validateManagedRoute(ctx, candidatePort); err != nil {
@@ -1563,6 +1639,7 @@ func (m *Manager) completeOldContainerHandoff(ctx context.Context, job *Job, can
 		}
 		return errors.New("journal-bound previous container is still running after docker stop")
 	}
+	log.Printf("sub2api-deployer job_id=%q action=stop_previous status=stopped old_container_id=%q", job.ID, old.ID)
 	return nil
 }
 
@@ -1620,6 +1697,9 @@ func (m *Manager) waitForOldDrain(ctx context.Context, port int, allowUnobservab
 		select {
 		case <-drainCtx.Done():
 			timer.Stop()
+			if ctx.Err() != nil {
+				return fmt.Errorf("deployment context ended while draining: %w", ctx.Err())
+			}
 			if lastErr != nil {
 				return fmt.Errorf("%w: %v", ErrDrainTimeout, lastErr)
 			}
@@ -2069,6 +2149,10 @@ func (m *Manager) knownContainersForSlot(slotName string, excluded ...string) []
 	if m.state.Job != nil {
 		add(m.state.Job.OldSlot, m.state.Job.OldContainer, m.state.Job.OldContainerID)
 		add(m.state.Job.CandidateSlot, m.state.Job.CandidateContainer, m.state.Job.CandidateContainerID)
+	}
+	for i := range m.state.JobHistory {
+		add(m.state.JobHistory[i].OldSlot, m.state.JobHistory[i].OldContainer, m.state.JobHistory[i].OldContainerID)
+		add(m.state.JobHistory[i].CandidateSlot, m.state.JobHistory[i].CandidateContainer, m.state.JobHistory[i].CandidateContainerID)
 	}
 	containers := make([]containerRef, 0, len(seen))
 	for _, container := range seen {

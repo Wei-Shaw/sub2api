@@ -31,6 +31,7 @@ if [[ "${1:-}" == "-c" ]]; then
     %u:%a) echo 0:600 ;;
     %a) echo 755 ;;
     %u:%g) echo 0:0 ;;
+    %i) echo 424242 ;;
     *) echo "unsupported fake stat format: ${2:-}" >&2; exit 1 ;;
   esac
   exit 0
@@ -42,6 +43,28 @@ EOF
 cat > "$FAKE_BIN/chown" <<'EOF'
 #!/usr/bin/env bash
 exit 0
+EOF
+
+cat > "$FAKE_BIN/getent" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${1:-}" == "group" && "${2:-}" == "sub2api-deployer" ]] || exit 2
+[[ -f "$FAKE_CONTROL_DIR/socket-group" ]] || exit 2
+printf '%s\n' 'sub2api-deployer:x:987:'
+EOF
+
+cat > "$FAKE_BIN/groupadd" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${1:-}" == "--system" && "${2:-}" == "sub2api-deployer" ]]
+: > "$FAKE_CONTROL_DIR/socket-group"
+EOF
+
+cat > "$FAKE_BIN/groupdel" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${1:-}" == "sub2api-deployer" ]]
+rm -f -- "$FAKE_CONTROL_DIR/socket-group"
 EOF
 
 cat > "$FAKE_BIN/sleep" <<'EOF'
@@ -180,7 +203,18 @@ case "${1:-}" in
     printf '%s\n' "$FAKE_DOCKER_PORT_OUTPUT"
     ;;
   exec)
-    printf 'Sub2API %s (commit: test)\n' "$FAKE_CURRENT_VERSION"
+    if [[ " $* " == *" /app/sub2api --version "* ]]; then
+      printf 'Sub2API %s (commit: test)\n' "$FAKE_CURRENT_VERSION"
+    elif [[ " $* " == *" stat -c %i /run/sub2api-deployer "* ]]; then
+      printf '%s\n' 424242
+    elif [[ " $* " == *" /proc/1/status "* ]]; then
+      printf '%s\n' 1000
+    elif [[ " $* " == *" test -S /run/sub2api-deployer/deployer.sock "* ]]; then
+      [[ "${FAKE_CONTAINER_SOCKET_UNAVAILABLE:-0}" != 1 ]]
+    else
+      echo "unsupported fake docker exec: $*" >&2
+      exit 1
+    fi
     ;;
   compose)
     if [[ " $* " == *" config --quiet "* ]]; then
@@ -235,6 +269,7 @@ make_root() {
     "$root/control" \
     "$root/etc/nginx/conf.d" \
     "$root/etc/systemd/system" \
+    "$root/etc/tmpfiles.d" \
     "$root/home/protected" \
     "$root/nginx" \
     "$root/run" \
@@ -253,10 +288,13 @@ EOF
   sed \
     -e "s#^CONFIG_DIR=.*#CONFIG_DIR=\"$root/etc/sub2api-deployer\"#" \
     -e "s#^SERVICE_FILE=.*#SERVICE_FILE=\"$root/etc/systemd/system/sub2api-deployer.service\"#" \
+    -e "s#^TMPFILES_FILE=.*#TMPFILES_FILE=\"$root/etc/tmpfiles.d/sub2api-deployer.conf\"#" \
+    -e "s#^RUNTIME_PRESERVE_DROPIN=.*#RUNTIME_PRESERVE_DROPIN=\"$root/run/systemd/system/sub2api-deployer.service.d/10-preserve-runtime.conf\"#" \
     -e "s#^INSTALLED_BINARY=.*#INSTALLED_BINARY=\"$root/usr/local/sbin/sub2api-deployer\"#" \
     -e "s#^STATE_DIR=.*#STATE_DIR=\"$root/var/lib/sub2api-deployer\"#" \
     -e "s#^NGINX_LOADER_FILE=.*#NGINX_LOADER_FILE=\"$root/etc/nginx/conf.d/sub2api-managed-upstream.conf\"#" \
     -e "s#^INSTALL_LOCK_FILE=.*#INSTALL_LOCK_FILE=\"$root/run/sub2api-deployer-install.lock\"#" \
+    -e "s#^SOCKET_DIRECTORY=.*#SOCKET_DIRECTORY=\"$root/run/sub2api-deployer\"#" \
     "$INSTALLER_SOURCE" > "$root/installer.sh"
   chmod +x "$root/installer.sh"
 }
@@ -363,11 +401,13 @@ if ! jq -e \
     and .compose_env_files == [$work + "/.env", $state]
     and .compose_service == "sub2api"
     and .image_repository == "ghcr.io/ssharkkky/sub2api"
+    and .socket_gid == 987
   ' "$UPGRADE_ROOT/etc/sub2api-deployer/config.json" >/dev/null; then
   jq . "$UPGRADE_ROOT/etc/sub2api-deployer/config.json" >&2
   echo "first install did not persist the normalized Compose contract" >&2
   exit 1
 fi
+[[ -f "$UPGRADE_ROOT/control/socket-group" ]]
 mkdir -p "$UPGRADE_ROOT/var/lib/sub2api-deployer"
 jq -n \
   --arg id "$CONTAINER_ID" \
@@ -422,6 +462,23 @@ grep -Fq 'Environment=DOCKER_CONFIG=/etc/sub2api-deployer/docker' "$AUTH_ROOT/et
 make_deployer_binary "$AUTH_ROOT/deployer-v2" v2
 run_installer "$AUTH_ROOT" "$AUTH_ROOT/deployer-v2" >"$AUTH_ROOT/upgrade.log" 2>&1
 jq -e '.auths["ghcr.io"].auth == "test-token"' "$AUTH_ROOT/etc/sub2api-deployer/docker/config.json" >/dev/null
+
+# An upgrade is not committed unless the existing application user can still
+# access the socket through its original bind mount after the deployer restart.
+SOCKET_ROOT="$TEST_DIR/container-socket-failure"
+make_root "$SOCKET_ROOT"
+make_deployer_binary "$SOCKET_ROOT/deployer-v1" v1
+run_installer "$SOCKET_ROOT" "$SOCKET_ROOT/deployer-v1" >"$SOCKET_ROOT/install.log" 2>&1
+write_active_state "$SOCKET_ROOT"
+cp -a -- "$SOCKET_ROOT/usr/local/sbin/sub2api-deployer" "$SOCKET_ROOT/original-deployer"
+make_deployer_binary "$SOCKET_ROOT/deployer-v2" v2
+if FAKE_CONTAINER_SOCKET_UNAVAILABLE=1 run_installer "$SOCKET_ROOT" "$SOCKET_ROOT/deployer-v2" >"$SOCKET_ROOT/upgrade.log" 2>&1; then
+  echo "container-side socket verification failure unexpectedly succeeded" >&2
+  exit 1
+fi
+grep -Fq 'running application user cannot access' "$SOCKET_ROOT/upgrade.log"
+cmp -s "$SOCKET_ROOT/original-deployer" "$SOCKET_ROOT/usr/local/sbin/sub2api-deployer"
+[[ -f "$SOCKET_ROOT/control/active" ]]
 
 # ProtectHome hides Compose projects under these paths from the daemon. The
 # installer rejects the layout before mutating any managed asset.

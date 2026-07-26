@@ -60,8 +60,9 @@ describe('CustomerServiceModal', () => {
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await nextTick()
-    await new Promise((resolve) => window.setTimeout(resolve, 200))
-    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    })
     expect(document.body.style.overflow).toBe('')
 
     wrapper.unmount()

@@ -20,40 +20,41 @@ var (
 )
 
 type Config struct {
-	SocketPath          string            `json:"socket_path"`
-	SocketMode          uint32            `json:"socket_mode"`
-	SocketGID           int               `json:"socket_gid"`
-	StatePath           string            `json:"state_path"`
-	ImageStatePath      string            `json:"image_state_path"`
-	ImageRepository     string            `json:"image_repository"`
-	RequiredImageLabels map[string]string `json:"required_image_labels"`
-	DockerBinary        string            `json:"docker_binary"`
-	ComposeWorkDir      string            `json:"compose_work_dir"`
-	ComposeProject      string            `json:"compose_project"`
-	ComposeEnvFiles     []string          `json:"compose_env_files"`
-	ComposeFiles        []string          `json:"compose_files"`
-	ComposeService      string            `json:"compose_service"`
-	ImageEnvironment    string            `json:"image_environment"`
-	ContainerPort       int               `json:"container_port"`
-	DeploymentStatePath string            `json:"deployment_state_path"`
-	DeploymentStateFile string            `json:"deployment_state_file"`
-	Slots               []Slot            `json:"slots"`
-	InitialContainer    string            `json:"initial_container"`
-	InitialVersion      string            `json:"initial_version"`
-	NginxUpstreamPath   string            `json:"nginx_upstream_path"`
-	NginxSitePath       string            `json:"nginx_site_path"`
-	NginxUpstreamName   string            `json:"nginx_upstream_name"`
-	NginxTestCommand    []string          `json:"nginx_test_command"`
-	NginxDumpCommand    []string          `json:"nginx_dump_command"`
-	NginxReloadCommand  []string          `json:"nginx_reload_command"`
-	NginxProbeURL       string            `json:"nginx_probe_url"`
-	NginxProbeHost      string            `json:"nginx_probe_host,omitempty"`
-	HealthPath          string            `json:"health_path"`
-	HealthTimeout       Duration          `json:"health_timeout"`
-	StabilizeDuration   Duration          `json:"stabilize_duration"`
-	DrainDuration       Duration          `json:"drain_duration"`
-	DrainTimeout        Duration          `json:"drain_timeout"`
-	StopTimeout         Duration          `json:"stop_timeout"`
+	SocketPath               string            `json:"socket_path"`
+	SocketMode               uint32            `json:"socket_mode"`
+	SocketGID                int               `json:"socket_gid"`
+	StatePath                string            `json:"state_path"`
+	ImageStatePath           string            `json:"image_state_path"`
+	ImageRepository          string            `json:"image_repository"`
+	RequiredImageLabels      map[string]string `json:"required_image_labels"`
+	DockerBinary             string            `json:"docker_binary"`
+	ComposeWorkDir           string            `json:"compose_work_dir"`
+	ComposeProject           string            `json:"compose_project"`
+	ComposeEnvFiles          []string          `json:"compose_env_files"`
+	ComposeFiles             []string          `json:"compose_files"`
+	ComposeService           string            `json:"compose_service"`
+	ImageEnvironment         string            `json:"image_environment"`
+	ContainerPort            int               `json:"container_port"`
+	DeploymentStatePath      string            `json:"deployment_state_path"`
+	DeploymentStateFile      string            `json:"deployment_state_file"`
+	Slots                    []Slot            `json:"slots"`
+	InitialContainer         string            `json:"initial_container"`
+	InitialVersion           string            `json:"initial_version"`
+	NginxUpstreamPath        string            `json:"nginx_upstream_path"`
+	NginxSitePath            string            `json:"nginx_site_path"`
+	NginxUpstreamName        string            `json:"nginx_upstream_name"`
+	NginxTestCommand         []string          `json:"nginx_test_command"`
+	NginxDumpCommand         []string          `json:"nginx_dump_command"`
+	NginxReloadCommand       []string          `json:"nginx_reload_command"`
+	NginxProbeURL            string            `json:"nginx_probe_url"`
+	NginxProbeHost           string            `json:"nginx_probe_host,omitempty"`
+	RouteConfirmationTimeout Duration          `json:"route_confirmation_timeout"`
+	HealthPath               string            `json:"health_path"`
+	HealthTimeout            Duration          `json:"health_timeout"`
+	StabilizeDuration        Duration          `json:"stabilize_duration"`
+	DrainDuration            Duration          `json:"drain_duration"`
+	DrainTimeout             Duration          `json:"drain_timeout"`
+	StopTimeout              Duration          `json:"stop_timeout"`
 }
 
 type Duration struct {
@@ -116,8 +117,11 @@ func (c *Config) applyDefaults() {
 	if c.HealthPath == "" {
 		c.HealthPath = "/health"
 	}
+	if c.RouteConfirmationTimeout.Duration == 0 {
+		c.RouteConfirmationTimeout.Duration = 10 * time.Second
+	}
 	if c.HealthTimeout.Duration == 0 {
-		c.HealthTimeout.Duration = 2 * time.Minute
+		c.HealthTimeout.Duration = 12 * time.Minute
 	}
 	if c.StabilizeDuration.Duration == 0 {
 		c.StabilizeDuration.Duration = 15 * time.Second
@@ -223,8 +227,11 @@ func (c Config) validate() error {
 	if len(c.RequiredImageLabels) == 0 {
 		return errors.New("required_image_labels must not be empty")
 	}
-	if c.HealthTimeout.Duration < time.Second || c.DrainTimeout.Duration < time.Second || c.StopTimeout.Duration < time.Second {
-		return errors.New("health_timeout, drain_timeout, and stop_timeout must be at least one second")
+	if c.RouteConfirmationTimeout.Duration < time.Second || c.HealthTimeout.Duration < time.Second || c.DrainTimeout.Duration < time.Second || c.StopTimeout.Duration < time.Second {
+		return errors.New("route_confirmation_timeout, health_timeout, drain_timeout, and stop_timeout must be at least one second")
+	}
+	if c.HealthTimeout.Duration < 10*time.Minute {
+		return errors.New("health_timeout must cover the 10 minute application migration budget")
 	}
 	if c.StabilizeDuration.Duration < 0 || c.DrainDuration.Duration < 0 {
 		return errors.New("stabilize_duration and drain_duration must not be negative")

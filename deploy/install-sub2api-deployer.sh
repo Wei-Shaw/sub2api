@@ -4,13 +4,16 @@ set -euo pipefail
 umask 077
 
 SOURCE_DIR=""
+ASSET_DIR=""
 NGINX_SITE=""
 NGINX_PROBE_URL=""
 NGINX_PROBE_HOST=""
 INSTALL_DIR="/opt/sub2api"
 CONTAINER_NAME="sub2api"
-SOCKET_GID="1000"
+SOCKET_GID=""
 SOCKET_GID_SET=0
+SOCKET_GROUP_NAME="sub2api-deployer"
+SOCKET_GROUP_CREATED=0
 DEPLOYER_BINARY=""
 DEPLOYER_CHECKSUMS=""
 DOCKER_CONFIG_SOURCE=""
@@ -31,6 +34,8 @@ CONFIG_FILE="$CONFIG_DIR/config.json"
 DOCKER_CONFIG_DIR="$CONFIG_DIR/docker"
 DOCKER_CONFIG_FILE="$DOCKER_CONFIG_DIR/config.json"
 SERVICE_FILE="/etc/systemd/system/sub2api-deployer.service"
+TMPFILES_FILE="/etc/tmpfiles.d/sub2api-deployer.conf"
+RUNTIME_PRESERVE_DROPIN="/run/systemd/system/sub2api-deployer.service.d/10-preserve-runtime.conf"
 INSTALLED_BINARY="/usr/local/sbin/sub2api-deployer"
 STATE_DIR="/var/lib/sub2api-deployer"
 IMAGE_STATE_FILE="$STATE_DIR/image.env"
@@ -43,6 +48,8 @@ NGINX_LOADER_FILE="/etc/nginx/conf.d/sub2api-managed-upstream.conf"
 INSTALL_LOCK_FILE="/run/sub2api-deployer-install.lock"
 INSTALL_LOCK_FD=""
 STATE_LOCK_FD=""
+SOCKET_DIRECTORY="/run/sub2api-deployer"
+SOCKET_DIRECTORY_INODE=""
 
 declare -a BACKUP_TARGETS=()
 declare -a BACKUP_FILES=()
@@ -54,12 +61,14 @@ declare -a DIRECTORY_OWNERS=()
 
 usage() {
   cat <<'EOF'
-Usage: sudo install-sub2api-deployer.sh --source <repo> --nginx-site <site-file> --nginx-probe-url <url> [options]
+Usage: sudo install-sub2api-deployer.sh --nginx-site <site-file> --nginx-probe-url <url> [options]
 
 Options:
+  --assets-dir <path>          Directory containing the packaged deploy assets
+  --source <repo>              Source checkout used only to build the deployer locally
   --install-dir <path>          Compose working directory (default: /opt/sub2api)
   --container <name>            Current application container (default: sub2api)
-  --socket-gid <gid>            Supplementary GID granted to app containers (default: 1000)
+  --socket-gid <gid>            Supplementary GID granted to app containers
   --nginx-probe-url <url>       Required loopback Nginx health URL (for example http://127.0.0.1/health)
   --nginx-probe-host <host>     Optional Host header used to select the Nginx virtual host
   --deployer-binary <path>      Prebuilt release binary (recommended)
@@ -67,8 +76,11 @@ Options:
   --docker-config <path>        Optional Docker config.json for private registries
   --activation-version <ver>    Version to use in the printed first-deployment command
 
-When no prebuilt binary is supplied, the installer builds cmd/deployer from
-the source checkout and requires Go on the host. Installation uses best-effort
+With a prebuilt binary, assets default to the deploy directory beside this
+installer. When no prebuilt binary is supplied, --source is required and the
+installer builds cmd/deployer with Go. Fresh installs create a dedicated
+sub2api-deployer system group unless --socket-gid is supplied; upgrades retain
+the configured GID. Installation uses best-effort
 transactional rollback for files, Nginx, and the previous systemd service state;
 an incomplete rollback preserves its recovery backups. The running application
 container is never recreated or stopped.
@@ -78,6 +90,7 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --source) SOURCE_DIR="${2:-}"; shift 2 ;;
+    --assets-dir) ASSET_DIR="${2:-}"; shift 2 ;;
     --nginx-site) NGINX_SITE="${2:-}"; shift 2 ;;
     --nginx-probe-url) NGINX_PROBE_URL="${2:-}"; shift 2 ;;
     --nginx-probe-host) NGINX_PROBE_HOST="${2:-}"; shift 2 ;;
@@ -334,6 +347,8 @@ rollback_install() {
     metadata_restored=0
     failed=1
   fi
+  rm -f -- "$RUNTIME_PRESERVE_DROPIN"
+  rmdir -- "$(dirname -- "$RUNTIME_PRESERVE_DROPIN")" 2>/dev/null || true
   if ! systemctl daemon-reload >/dev/null 2>&1; then
     echo "CRITICAL: systemd daemon-reload failed after restoration" >&2
     daemon_reloaded=0
@@ -380,6 +395,9 @@ on_exit() {
   trap - EXIT
   if (( status != 0 && MUTATION_STARTED == 1 && COMMITTED == 0 )); then
     rollback_install
+  fi
+  if (( status != 0 && SOCKET_GROUP_CREATED == 1 && COMMITTED == 0 )); then
+    groupdel "$SOCKET_GROUP_NAME" >/dev/null 2>&1 || true
   fi
   if (( ROLLBACK_INCOMPLETE == 1 )); then
     echo "Recovery backups were preserved at $TEMP_DIR" >&2
@@ -558,11 +576,18 @@ compose_preflight() {
 if [[ $(id -u) -ne 0 ]]; then
   fail "This installer must run as root"
 fi
-if [[ -z "$SOURCE_DIR" || ! -f "$SOURCE_DIR/backend/go.mod" ]]; then
-  fail "--source must point to a Sub2API repository checkout"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+if [[ -z "$ASSET_DIR" && -d "$SCRIPT_DIR/deploy" ]]; then
+  ASSET_DIR="$SCRIPT_DIR/deploy"
 fi
-for source_asset in compose.deployer.yml sub2api-deployer.service sub2api-managed-upstream.conf; do
-  [[ -f "$SOURCE_DIR/deploy/$source_asset" ]] || fail "Source checkout is missing deploy/$source_asset"
+if [[ -z "$ASSET_DIR" && -n "$SOURCE_DIR" ]]; then
+  ASSET_DIR="$SOURCE_DIR/deploy"
+fi
+if [[ -z "$ASSET_DIR" || ! -d "$ASSET_DIR" ]]; then
+  fail "--assets-dir must point to the packaged deploy assets (or use an installer beside deploy/)"
+fi
+for source_asset in compose.deployer.yml sub2api-deployer.service sub2api-deployer-tmpfiles.conf sub2api-managed-upstream.conf; do
+  [[ -f "$ASSET_DIR/$source_asset" ]] || fail "Deploy assets are missing $source_asset"
 done
 if [[ -z "$NGINX_SITE" || ! -f "$NGINX_SITE" ]]; then
   fail "--nginx-site must point to the active Nginx site file"
@@ -583,14 +608,17 @@ if [[ -n "$NGINX_PROBE_HOST" ]] && ! [[ "$NGINX_PROBE_HOST" =~ ^[A-Za-z0-9.-]+(:
   fail "--nginx-probe-host must be a hostname with an optional numeric port"
 fi
 NGINX_SITE=$(readlink -f "$NGINX_SITE")
-SOURCE_DIR=$(readlink -f "$SOURCE_DIR")
+ASSET_DIR=$(readlink -f "$ASSET_DIR")
+if [[ -n "$SOURCE_DIR" ]]; then
+  SOURCE_DIR=$(readlink -f "$SOURCE_DIR")
+fi
 INSTALL_DIR=$(readlink -f "$INSTALL_DIR")
 case "$INSTALL_DIR" in
   /root|/root/*|/home|/home/*|/run/user|/run/user/*)
     fail "--install-dir must not be under /root, /home, or /run/user because the hardened deployer service cannot read those paths"
     ;;
 esac
-if ! [[ "$SOCKET_GID" =~ ^[0-9]+$ ]] || (( 10#$SOCKET_GID > 2147483647 )); then
+if (( SOCKET_GID_SET == 1 )) && { ! [[ "$SOCKET_GID" =~ ^[0-9]+$ ]] || (( 10#$SOCKET_GID > 2147483647 )); }; then
   fail "--socket-gid must be a valid numeric GID"
 fi
 if [[ -n "$ACTIVATION_VERSION" ]] && ! [[ "$ACTIVATION_VERSION" =~ ^[0-9][0-9A-Za-z.-]{0,63}$ ]]; then
@@ -604,7 +632,7 @@ if [[ -n "$DOCKER_CONFIG_SOURCE" ]]; then
   DOCKER_CONFIG_SOURCE=$(readlink -f "$DOCKER_CONFIG_SOURCE")
   jq -e 'type == "object"' "$DOCKER_CONFIG_SOURCE" >/dev/null || fail "--docker-config must contain a valid Docker config JSON object"
 fi
-for value in "$SOURCE_DIR" "$NGINX_SITE" "$NGINX_PROBE_URL" "$NGINX_PROBE_HOST" "$INSTALL_DIR" "$CONTAINER_NAME" "$DOCKER_CONFIG_SOURCE"; do
+for value in "$SOURCE_DIR" "$ASSET_DIR" "$NGINX_SITE" "$NGINX_PROBE_URL" "$NGINX_PROBE_HOST" "$INSTALL_DIR" "$CONTAINER_NAME" "$DOCKER_CONFIG_SOURCE"; do
   reject_json_unsafe "path, URL, host, or container name" "$value"
 done
 validate_container_name "--container" "$CONTAINER_NAME"
@@ -613,6 +641,7 @@ for command in docker nginx systemctl ss sed grep readlink install mktemp sha256
   command -v "$command" >/dev/null || fail "Missing command: $command"
 done
 if [[ -z "$DEPLOYER_BINARY" ]]; then
+  [[ -n "$SOURCE_DIR" && -f "$SOURCE_DIR/backend/go.mod" ]] || fail "--source must point to a Sub2API repository checkout when building the deployer"
   command -v go >/dev/null || fail "Missing command: go (or provide a release deployer binary)"
 else
   [[ -f "$DEPLOYER_BINARY" ]] || fail "Deployer binary not found: $DEPLOYER_BINARY"
@@ -701,10 +730,27 @@ if [[ -f "$CONFIG_FILE" ]]; then
     jq -e '.status == "ok" and .degraded == false and .job_running == false' <<<"$EXISTING_HEALTH" >/dev/null || \
       fail "Existing deployer is not healthy and idle"
 
+    SOCKET_DIRECTORY_INODE=$(stat -c '%i' "$SOCKET_DIRECTORY") || \
+      fail "Could not capture the existing deployer socket directory inode"
+    [[ "$SOCKET_DIRECTORY_INODE" =~ ^[0-9]+$ ]] || fail "Existing deployer socket directory returned an invalid inode"
+
+    # Load a volatile compatibility drop-in before stopping an older unit. The
+    # ts.4 unit otherwise deletes RuntimeDirectory and strands the live app's
+    # bind mount on an unlinked inode before the ts.6 unit can be installed.
+    MUTATION_STARTED=1
+    install -d -m 0755 "$(dirname -- "$RUNTIME_PRESERVE_DROPIN")"
+    cat > "$RUNTIME_PRESERVE_DROPIN" <<'EOF'
+[Service]
+RuntimeDirectoryPreserve=yes
+EOF
+    chmod 0644 "$RUNTIME_PRESERVE_DROPIN"
+    systemctl daemon-reload
+
     # Quiesce the update control plane before taking the migration snapshot.
     # The application and Nginx keep serving normally while it is stopped.
-    MUTATION_STARTED=1
     systemctl stop sub2api-deployer.service
+    [[ $(stat -c '%i' "$SOCKET_DIRECTORY") == "$SOCKET_DIRECTORY_INODE" ]] || \
+      fail "Stopping the existing deployer replaced its socket directory inode"
   elif curl --fail --silent --max-time 2 --unix-socket "$OLD_SOCKET_PATH" http://localhost/v1/health >/dev/null 2>&1; then
     fail "A deployer is still accepting requests on $OLD_SOCKET_PATH outside the systemd service"
   fi
@@ -813,12 +859,25 @@ if [[ -f "$CONFIG_FILE" ]]; then
       | .nginx_upstream_path = $upstream
       | .nginx_probe_url = $probe_url
       | .nginx_dump_command = [$nginx_binary, "-T"]
+      | .route_confirmation_timeout = (.route_confirmation_timeout // "10s")
+      | if .health_timeout == "2m" then .health_timeout = "12m" else . end
       | .socket_gid = $socket_gid
       | if $probe_host == "" then del(.nginx_probe_host) else .nginx_probe_host = $probe_host end
     ' "$CONFIG_FILE" > "$TEMP_DIR/config.json"
   cp -a "$OLD_IMAGE_STATE_FILE" "$TEMP_DIR/image.env"
   cp -a "$OLD_UPSTREAM_FILE" "$TEMP_DIR/managed-upstream.conf"
 else
+  if (( SOCKET_GID_SET == 0 )); then
+    for command in getent groupadd groupdel cut; do
+      command -v "$command" >/dev/null || fail "Missing command: $command (or provide --socket-gid)"
+    done
+    if ! getent group "$SOCKET_GROUP_NAME" >/dev/null; then
+      groupadd --system "$SOCKET_GROUP_NAME"
+      SOCKET_GROUP_CREATED=1
+    fi
+    SOCKET_GID=$(getent group "$SOCKET_GROUP_NAME" | cut -d: -f3)
+    [[ "$SOCKET_GID" =~ ^[0-9]+$ ]] || fail "Could not resolve the dedicated $SOCKET_GROUP_NAME group GID"
+  fi
   load_compose_identity "$CONTAINER_NAME" "$CONFIGURED_SERVICE"
   load_single_loopback_port "$INSPECTED_CONTAINER_ID"
   CURRENT_PORT="$INSPECTED_PORT"
@@ -899,7 +958,8 @@ EOF
         nginx_probe_url: $nginx_probe_url,
         nginx_probe_host: $nginx_probe_host,
         health_path: "/health",
-        health_timeout: "2m",
+        route_confirmation_timeout: "10s",
+        health_timeout: "12m",
         stabilize_duration: "20s",
         drain_duration: "15s",
         drain_timeout: "30m",
@@ -929,7 +989,7 @@ if [[ -f "$TEMP_DIR/active-slot" ]]; then
   chmod 0644 "$TEMP_DIR/active-slot"
 fi
 "$TEMP_DIR/sub2api-deployer" -config "$TEMP_DIR/config.json" -check >/dev/null
-compose_preflight "$TEMP_DIR/config.json" "$SOURCE_DIR/deploy/compose.deployer.yml"
+compose_preflight "$TEMP_DIR/config.json" "$ASSET_DIR/compose.deployer.yml"
 
 EXPECTED_PROXY="proxy_pass http://127.0.0.1:$CURRENT_PORT;"
 MANAGED_PROXY="proxy_pass http://sub2api_managed;"
@@ -962,7 +1022,7 @@ fi
 # catches a wrong vhost before any Nginx file is changed.
 probe_nginx || fail "The Nginx probe did not reach the current application; verify --nginx-probe-url and --nginx-probe-host"
 
-cp -a -- "$SOURCE_DIR/deploy/sub2api-deployer.service" "$TEMP_DIR/sub2api-deployer.service"
+cp -a -- "$ASSET_DIR/sub2api-deployer.service" "$TEMP_DIR/sub2api-deployer.service"
 chmod 0644 "$TEMP_DIR/sub2api-deployer.service"
 
 for target in \
@@ -975,6 +1035,7 @@ for target in \
   "$DOCKER_CONFIG_FILE" \
   "$NGINX_SITE" \
   "$SERVICE_FILE" \
+  "$TMPFILES_FILE" \
   "$STATE_FILE" \
   "$RUNTIME_MARKER"; do
   backup_target "$target"
@@ -991,7 +1052,7 @@ fi
 install -d -m 0700 "$STATE_DIR"
 install -d -m 0755 "$RUNTIME_DIR" "$NGINX_STATE_DIR"
 install -m 0755 "$TEMP_DIR/sub2api-deployer" "$INSTALLED_BINARY"
-install -m 0644 "$SOURCE_DIR/deploy/compose.deployer.yml" "$INSTALL_DIR/compose.deployer.yml"
+install -m 0644 "$ASSET_DIR/compose.deployer.yml" "$INSTALL_DIR/compose.deployer.yml"
 if [[ -f "$TEMP_DIR/docker-config.json" ]]; then
   install -m 0600 "$TEMP_DIR/docker-config.json" "$DOCKER_CONFIG_FILE"
 fi
@@ -1006,7 +1067,7 @@ if [[ -f "$TEMP_DIR/active-slot" ]]; then
 else
   rm -f -- "$RUNTIME_MARKER"
 fi
-install -m 0644 "$SOURCE_DIR/deploy/sub2api-managed-upstream.conf" "$NGINX_LOADER_FILE"
+install -m 0644 "$ASSET_DIR/sub2api-managed-upstream.conf" "$NGINX_LOADER_FILE"
 install -m 0600 "$TEMP_DIR/config.json" "$CONFIG_FILE"
 install -m 0644 "$TEMP_DIR/nginx-site.conf" "$NGINX_SITE"
 
@@ -1022,6 +1083,9 @@ systemctl reload nginx
 probe_nginx || fail "Nginx reload succeeded but the managed route health probe failed"
 
 install -m 0644 "$TEMP_DIR/sub2api-deployer.service" "$SERVICE_FILE"
+install -m 0644 "$ASSET_DIR/sub2api-deployer-tmpfiles.conf" "$TMPFILES_FILE"
+rm -f -- "$RUNTIME_PRESERVE_DROPIN"
+rmdir -- "$(dirname -- "$RUNTIME_PRESERVE_DROPIN")" 2>/dev/null || true
 systemctl daemon-reload
 systemctl enable sub2api-deployer.service
 release_state_lock
@@ -1048,6 +1112,22 @@ for ((attempt=0; attempt<40; attempt++)); do
   sleep 0.25
 done
 (( DEPLOYER_READY == 1 )) || fail "Deployer health check failed after restart"
+
+if (( EXISTING_INSTALL == 1 )); then
+  [[ $(stat -c '%i' "$SOCKET_DIRECTORY") == "$SOCKET_DIRECTORY_INODE" ]] || \
+    fail "Deployer restart replaced the socket directory inode used by the running application container"
+  assert_container_name_id "$ACTIVE_CONTAINER" "$INSPECTED_CONTAINER_ID"
+  CONTAINER_SOCKET_DIRECTORY_INODE=$(docker exec "$INSPECTED_CONTAINER_ID" stat -c '%i' /run/sub2api-deployer) || \
+    fail "Could not inspect the deployer socket directory from the running application container"
+  [[ "$CONTAINER_SOCKET_DIRECTORY_INODE" == "$SOCKET_DIRECTORY_INODE" ]] || \
+    fail "The running application container is bound to a stale deployer socket directory inode"
+  APPLICATION_UID=$(docker exec "$INSPECTED_CONTAINER_ID" sh -ceu "awk '/^Uid:/{print \$2}' /proc/1/status") || \
+    fail "Could not identify the running application user"
+  [[ "$APPLICATION_UID" =~ ^[0-9]+$ ]] || fail "The running application returned an invalid process UID"
+  docker exec --user "$APPLICATION_UID" "$INSPECTED_CONTAINER_ID" sh -ceu \
+    'test -S /run/sub2api-deployer/deployer.sock && test -r /run/sub2api-deployer/deployer.sock && test -w /run/sub2api-deployer/deployer.sock' || \
+    fail "The running application user cannot access the restarted deployer socket"
+fi
 
 COMMITTED=1
 

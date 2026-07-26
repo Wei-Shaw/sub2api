@@ -45,3 +45,21 @@ func TestConfigRejectsDrainQuietPeriodAtOrAboveTimeout(t *testing.T) {
 		t.Fatal("drain quiet period equal to timeout unexpectedly passed validation")
 	}
 }
+
+func TestConfigDefaultsRouteConfirmationTimeout(t *testing.T) {
+	cfg := testConfig(t, 19081)
+	cfg.RouteConfirmationTimeout = Duration{}
+	cfg.applyDefaults()
+	if cfg.RouteConfirmationTimeout.Duration != 10*time.Second {
+		t.Fatalf("route confirmation timeout=%s", cfg.RouteConfirmationTimeout.Duration)
+	}
+}
+
+func TestConfigRejectsHealthTimeoutBelowMigrationBudget(t *testing.T) {
+	cfg := testConfig(t, 19081)
+	cfg.RouteConfirmationTimeout = Duration{Duration: time.Second}
+	cfg.HealthTimeout = Duration{Duration: 9*time.Minute + 59*time.Second}
+	if err := cfg.validate(); err == nil {
+		t.Fatal("health timeout below the migration budget unexpectedly passed validation")
+	}
+}

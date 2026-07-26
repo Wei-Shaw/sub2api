@@ -179,20 +179,20 @@ Prerequisites:
 - `jq`, `curl`, and the standard GNU/Linux administration tools
 - A running `sub2api` Compose service container, with its project/service labels,
   exposing container port 8080 on loopback
-- A local repository checkout containing this release
-- The release deployer binary and checksum file for the host architecture
-  (or a Go toolchain as a controlled fallback)
+- The self-contained deployer bundle for the host architecture
 
 Run:
 
 ```bash
-sudo ./deploy/install-sub2api-deployer.sh \
-  --source /path/to/sub2api \
+tar -xzf sub2api-deployer-linux-amd64.tar.gz
+cd sub2api-deployer-linux-amd64
+sha256sum --check MANIFEST.sha256
+sudo ./install-sub2api-deployer.sh \
   --nginx-site /etc/nginx/sites-enabled/tokensupply.conf \
   --nginx-probe-url http://127.0.0.1/health \
   --nginx-probe-host tokensupply.net \
-  --deployer-binary /path/to/sub2api-deployer-linux-amd64 \
-  --deployer-checksums /path/to/sub2api-deployer-checksums.txt \
+  --deployer-binary ./sub2api-deployer-linux-amd64 \
+  --deployer-checksums ./MANIFEST.sha256 \
   --docker-config /root/.docker/config.json \
   --activation-version VERSION_WITH_PROTOCOL_V2
 ```
@@ -226,8 +226,10 @@ restores the old paths and service while application traffic continues through
 Nginx; heed the critical error and preserved backup path if rollback is incomplete.
 
 The application container receives the deployer socket group as a supplementary
-group through the Compose override. `--socket-gid` may therefore use any valid
-host GID; it is not tied to the application's primary GID.
+group through the Compose override. Fresh installations create a dedicated
+`sub2api-deployer` system group. Existing installations retain their configured
+GID so a deployer-only upgrade cannot revoke access from the running container.
+`--socket-gid` remains available for an explicit operator-selected GID.
 
 The first protocol-v2 release is deployed through the same blue-green state
 machine over the host Unix socket. Do not bootstrap it with `docker compose up`,
@@ -241,9 +243,10 @@ curl --fail --show-error --max-time 10 \
   http://localhost/v1/deployments
 ```
 
-The socket directory is mounted instead of the socket inode. This is important:
-after a deployer restart, a container that mounts only the socket file would keep
-the stale inode and lose connectivity.
+The socket directory is mounted instead of the socket inode. The systemd unit
+preserves that directory across service restarts, and tmpfiles.d recreates it
+after a host reboot. The installer compares the host and running-container inode
+and verifies socket access as the application UID before committing an upgrade.
 
 ## Verification
 
@@ -334,7 +337,9 @@ on the traffic route in standby, and reports `degraded` instead of interrupting
 long WebSocket connections. A later stopped-daemon `-reconcile-slot` waits again
 and completes once the blockers drain.
 
-Legacy images without drain metrics fail closed. During the one-time transition
-from such an image, an operator may explicitly combine `-reconcile-slot` with
-`-force-unobservable-drain` after independently confirming it is acceptable to
-stop that legacy slot. The override is never used during normal managed updates.
+Legacy images without drain metrics fail closed during normal managed updates.
+The single initial container recorded by a fresh deployer installation is the
+only bootstrap exception: after the healthy candidate is continuously confirmed
+on the Nginx route, the deployer gracefully stops that initial container using
+`stop_timeout`. A recovery that cannot prove this exact initial-container case
+still requires the explicit stopped-daemon `-force-unobservable-drain` override.

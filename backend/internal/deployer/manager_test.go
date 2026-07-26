@@ -22,12 +22,14 @@ import (
 type fakeRunner struct {
 	mu             sync.Mutex
 	candidate      bool
+	composeRunErr  error
 	reloadFailures int
 	commands       []string
 	runtimeState   *atomic.Value
 	versions       map[string]string
 	unhealthy      map[string]bool
 	stopped        map[string]bool
+	stopFailures   map[string]bool
 }
 
 type ambiguousReloadRunner struct {
@@ -232,6 +234,9 @@ func (f *fakeRunner) Run(_ context.Context, _ map[string]string, name string, ar
 	}
 	if strings.Contains(command, " stop --time ") {
 		container := fakeContainerName(args[len(args)-1])
+		if f.stopFailures[container] {
+			return "", errors.New("injected stop failure")
+		}
 		if f.stopped == nil {
 			f.stopped = make(map[string]bool)
 		}
@@ -248,6 +253,9 @@ func (f *fakeRunner) Run(_ context.Context, _ map[string]string, name string, ar
 	}
 	if strings.Contains(command, " compose ") && strings.Contains(command, " run ") {
 		f.candidate = true
+		if f.composeRunErr != nil {
+			return "", f.composeRunErr
+		}
 		return "candidate-id", nil
 	}
 	if strings.Contains(command, "kill --signal=USR1") && f.runtimeState != nil {
@@ -377,12 +385,13 @@ func testConfig(t *testing.T, candidatePort int) Config {
 		NginxReloadCommand: []string{
 			"/usr/bin/systemctl", "reload", "nginx",
 		},
-		HealthPath:        "/health",
-		HealthTimeout:     Duration{Duration: time.Second},
-		StabilizeDuration: Duration{Duration: 10 * time.Millisecond},
-		DrainDuration:     Duration{Duration: time.Millisecond},
-		DrainTimeout:      Duration{Duration: time.Second},
-		StopTimeout:       Duration{Duration: time.Second},
+		RouteConfirmationTimeout: Duration{Duration: time.Second},
+		HealthPath:               "/health",
+		HealthTimeout:            Duration{Duration: time.Second},
+		StabilizeDuration:        Duration{Duration: 10 * time.Millisecond},
+		DrainDuration:            Duration{Duration: time.Millisecond},
+		DrainTimeout:             Duration{Duration: time.Second},
+		StopTimeout:              Duration{Duration: time.Second},
 	}
 }
 
@@ -460,8 +469,10 @@ func TestDrainTimeoutKeepsBothContainersAndReconcileCompletesLater(t *testing.T)
 	}
 	oldPort := listenerTCPPort(t, oldListener)
 	var blockers atomic.Int64
+	var oldHealthRequests atomic.Int64
 	blockers.Store(1)
 	oldServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		oldHealthRequests.Add(1)
 		count := blockers.Load()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":"active"},"drain":{"supported":true,"active_requests":%d,"hijacked_connections":0,"blockers":%d}}`, count, count)
@@ -547,6 +558,16 @@ func TestDrainTimeoutKeepsBothContainersAndReconcileCompletesLater(t *testing.T)
 		t.Fatalf("candidate route was not preserved: port=%d err=%v", port, err)
 	}
 
+	manager.mu.Lock()
+	next := cloneState(manager.state)
+	next.Job.TrafficState = TrafficStateUnknown
+	if err := saveState(cfg.StatePath, next); err != nil {
+		manager.mu.Unlock()
+		t.Fatal(err)
+	}
+	manager.state = next
+	manager.mu.Unlock()
+	requestsBeforeReconcile := oldHealthRequests.Load()
 	blockers.Store(0)
 	manager.cfg.DrainTimeout = Duration{Duration: time.Second}
 	if err := manager.Reconcile(context.Background(), "sub2api-green"); err != nil {
@@ -557,6 +578,9 @@ func TestDrainTimeoutKeepsBothContainersAndReconcileCompletesLater(t *testing.T)
 	}
 	if atomicString(&runtimeState) != "active" {
 		t.Fatalf("candidate background runtime state=%q, want active", runtimeState.Load())
+	}
+	if oldHealthRequests.Load() <= requestsBeforeReconcile {
+		t.Fatal("reconcile trusted stale traffic state and stopped the previous container without observing drain")
 	}
 }
 
@@ -1604,8 +1628,207 @@ func TestActivationFailureRestoresOldTrafficAndStopsCandidate(t *testing.T) {
 	runner.mu.Lock()
 	commands := strings.Join(runner.commands, "\n")
 	runner.mu.Unlock()
-	if !strings.Contains(commands, "docker rm -f "+fakeContainerID("sub2api-green")) {
-		t.Fatalf("failed candidate was not removed by immutable ID:\n%s", commands)
+	if !strings.Contains(commands, "docker stop --time 1 "+fakeContainerID("sub2api-green")) {
+		t.Fatalf("failed candidate was not stopped by immutable ID:\n%s", commands)
+	}
+	if strings.Contains(commands, "docker rm -f "+fakeContainerID("sub2api-green")) {
+		t.Fatalf("failure recovery deleted a rollback candidate:\n%s", commands)
+	}
+}
+
+func TestFailedRetainedRollbackStopsButPreservesCandidate(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	runner := &fakeRunner{candidate: true}
+	manager := &Manager{cfg: cfg, runner: runner, httpClient: &http.Client{Timeout: time.Second}, now: time.Now}
+	job := &Job{
+		ID:                   "failed-retained-rollback-0001",
+		Action:               "rollback",
+		Status:               JobStatusRunning,
+		OldContainer:         cfg.InitialContainer,
+		OldContainerID:       fakeContainerID(cfg.InitialContainer),
+		OldSlot:              cfg.Slots[0].Name,
+		OldRuntimeSlot:       "",
+		OldSlotCaptured:      true,
+		CandidateContainer:   cfg.Slots[1].Name,
+		CandidateContainerID: fakeContainerID(cfg.Slots[1].Name),
+		CandidateSlot:        cfg.Slots[1].Name,
+		CandidatePort:        cfg.Slots[1].Port,
+		TrafficState:         TrafficStateOld,
+	}
+	if err := manager.restoreOldDeployment(context.Background(), job, false); err != nil {
+		t.Fatalf("restore old deployment: %v", err)
+	}
+	runner.mu.Lock()
+	commands := strings.Join(runner.commands, "\n")
+	runner.mu.Unlock()
+	if !strings.Contains(commands, "docker stop --time 1 "+fakeContainerID(cfg.Slots[1].Name)) {
+		t.Fatalf("failed retained candidate was not stopped:\n%s", commands)
+	}
+	if strings.Contains(commands, "docker rm -f "+fakeContainerID(cfg.Slots[1].Name)) {
+		t.Fatalf("failed retained candidate was deleted:\n%s", commands)
+	}
+}
+
+func TestCandidateStopFailureStillReactivatesPreviousBackgroundRuntime(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	now := time.Now().UTC()
+	job := &Job{
+		ID:                   "candidate-stop-failure-0001",
+		Status:               JobStatusRunning,
+		OldContainer:         cfg.InitialContainer,
+		OldContainerID:       fakeContainerID(cfg.InitialContainer),
+		OldSlot:              cfg.Slots[0].Name,
+		OldRuntimeSlot:       "",
+		OldSlotCaptured:      true,
+		CandidateContainer:   cfg.Slots[1].Name,
+		CandidateContainerID: fakeContainerID(cfg.Slots[1].Name),
+		CandidateSlot:        cfg.Slots[1].Name,
+		CandidatePort:        cfg.Slots[1].Port,
+		TrafficState:         TrafficStateOld,
+		CreatedAt:            now,
+		StartedAt:            now,
+		UpdatedAt:            now,
+	}
+	runner := &fakeRunner{
+		candidate:    true,
+		stopFailures: map[string]bool{cfg.Slots[1].Name: true},
+	}
+	manager := &Manager{
+		cfg:        cfg,
+		runner:     runner,
+		httpClient: &http.Client{Timeout: time.Second},
+		now:        time.Now,
+		state:      State{Job: job},
+	}
+	if err := saveState(cfg.StatePath, manager.state); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.restoreOldDeployment(context.Background(), job, false); err != nil {
+		t.Fatalf("restore old deployment: %v", err)
+	}
+	current, err := manager.Job(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(current.CleanupWarning, "candidate could not be stopped") {
+		t.Fatalf("cleanup warning=%q", current.CleanupWarning)
+	}
+	runner.mu.Lock()
+	commands := strings.Join(runner.commands, "\n")
+	runner.mu.Unlock()
+	if !strings.Contains(commands, "docker container inspect --format") || !strings.Contains(commands, fakeContainerID(cfg.InitialContainer)) {
+		t.Fatalf("previous background runtime was not rechecked after candidate stop failure:\n%s", commands)
+	}
+	marker, err := os.ReadFile(cfg.DeploymentStatePath)
+	if err != nil || strings.TrimSpace(string(marker)) != cfg.Slots[0].Name {
+		t.Fatalf("previous background runtime marker=%q err=%v", marker, err)
+	}
+}
+
+func TestComposeRunFailurePersistsCreatedCandidateIdentity(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	now := time.Now().UTC()
+	runner := &fakeRunner{composeRunErr: errors.New("port is already allocated")}
+	manager := &Manager{
+		cfg:    cfg,
+		runner: runner,
+		now:    time.Now,
+		state: State{Job: &Job{
+			ID:                 "compose-created-candidate-0001",
+			Status:             JobStatusRunning,
+			Stage:              StageStartingCandidate,
+			CandidateContainer: cfg.Slots[1].Name,
+			CandidateSlot:      cfg.Slots[1].Name,
+			CandidatePort:      cfg.Slots[1].Port,
+			CreatedAt:          now,
+			StartedAt:          now,
+			UpdatedAt:          now,
+		}},
+	}
+	if err := saveState(cfg.StatePath, manager.state); err != nil {
+		t.Fatal(err)
+	}
+	err := manager.startCandidate(context.Background(), manager.state.Job.ID, cfg.Slots[1], "example.invalid/sub2api@sha256:"+strings.Repeat("a", 64))
+	if err == nil || !strings.Contains(err.Error(), "port is already allocated") {
+		t.Fatalf("startCandidate error=%v", err)
+	}
+	job, jobErr := manager.Job(manager.state.Job.ID)
+	if jobErr != nil {
+		t.Fatal(jobErr)
+	}
+	if job.CandidateContainerID != fakeContainerID(cfg.Slots[1].Name) {
+		t.Fatalf("candidate ID=%q, want %q", job.CandidateContainerID, fakeContainerID(cfg.Slots[1].Name))
+	}
+}
+
+func TestPreSwitchFailureWithoutCandidateIDDoesNotDegrade(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	now := time.Now().UTC()
+	runner := &fakeRunner{candidate: true}
+	manager := &Manager{
+		cfg:        cfg,
+		runner:     runner,
+		httpClient: &http.Client{Timeout: time.Second},
+		now:        time.Now,
+		state: State{
+			ActiveSlot:        cfg.Slots[0].Name,
+			ActiveContainer:   cfg.InitialContainer,
+			ActiveContainerID: fakeContainerID(cfg.InitialContainer),
+			ActivePort:        cfg.Slots[0].Port,
+			ActiveVersion:     cfg.InitialVersion,
+			Job: &Job{
+				ID:                 "pre-switch-no-id-0001",
+				Status:             JobStatusRunning,
+				Stage:              StageStartingCandidate,
+				OldContainer:       cfg.InitialContainer,
+				OldContainerID:     fakeContainerID(cfg.InitialContainer),
+				OldSlot:            cfg.Slots[0].Name,
+				OldSlotCaptured:    true,
+				CandidateContainer: cfg.Slots[1].Name,
+				CandidateSlot:      cfg.Slots[1].Name,
+				CandidatePort:      cfg.Slots[1].Port,
+				TrafficState:       TrafficStateOld,
+				CreatedAt:          now,
+				StartedAt:          now,
+				UpdatedAt:          now,
+			},
+		},
+	}
+	if err := saveState(cfg.StatePath, manager.state); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.fail(manager.state.Job.ID, errors.New("candidate startup failed")); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Job("pre-switch-no-id-0001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != JobStatusFailed || manager.Health().Degraded {
+		t.Fatalf("job status=%s degraded=%t rollback_error=%q", job.Status, manager.Health().Degraded, job.RollbackError)
+	}
+}
+
+func TestExecutionTimeoutIncludesConfiguredDrainBudget(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	cfg.HealthTimeout = Duration{Duration: 2 * time.Minute}
+	cfg.StabilizeDuration = Duration{Duration: 20 * time.Second}
+	cfg.DrainTimeout = Duration{Duration: 2 * time.Hour}
+	cfg.StopTimeout = Duration{Duration: 2 * time.Minute}
+	manager := &Manager{cfg: cfg}
+	if got := manager.executionTimeout(); got <= cfg.DrainTimeout.Duration {
+		t.Fatalf("execution timeout=%s does not include drain=%s plus other phases", got, cfg.DrainTimeout.Duration)
+	}
+}
+
+func TestDrainReportsParentCancellationSeparately(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	manager := &Manager{cfg: cfg, httpClient: &http.Client{Timeout: time.Second}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := manager.waitForOldDrain(ctx, cfg.Slots[0].Port, false)
+	if err == nil || errors.Is(err, ErrDrainTimeout) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("waitForOldDrain error=%v", err)
 	}
 }
 
@@ -1756,6 +1979,7 @@ func TestEffectiveNginxValidationRejectsCommentsAndDuplicateProxyPass(t *testing
 
 func TestConfigRequiresLocalExactNginxHealthProbe(t *testing.T) {
 	cfg := testConfig(t, 18081)
+	cfg.HealthTimeout = Duration{Duration: 10 * time.Minute}
 	if err := cfg.validate(); err != nil {
 		t.Fatalf("valid test config rejected: %v", err)
 	}
