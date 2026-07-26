@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ptr"
 )
 
 type chatMessageContent struct {
@@ -330,7 +332,7 @@ func parseChatContent(raw json.RawMessage) (string, error) {
 
 func parseChatMessageContent(raw json.RawMessage) (chatMessageContent, error) {
 	if len(raw) == 0 {
-		return chatMessageContent{Text: stringPtr("")}, nil
+		return chatMessageContent{Text: ptr.Of("")}, nil
 	}
 
 	var s string
@@ -407,10 +409,6 @@ func flattenChatContentParts(parts []ChatContentPart) string {
 		}
 	}
 	return strings.Join(textParts, "")
-}
-
-func stringPtr(s string) *string {
-	return &s
 }
 
 // convertChatToolsToResponses maps Chat Completions tool definitions and legacy

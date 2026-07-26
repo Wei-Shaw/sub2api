@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ptr"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -760,19 +761,19 @@ func TestEstimateGeminiCountTokens(t *testing.T) {
 			name:      "空 parts",
 			input:     `{"contents":[{"parts":[]}]}`,
 			wantGt0:   false,
-			wantExact: intPtr(0),
+			wantExact: ptr.Of(0),
 		},
 		{
 			name:      "非文本 parts（inlineData）",
 			input:     `{"contents":[{"parts":[{"inlineData":{"mimeType":"image/png"}}]}]}`,
 			wantGt0:   false,
-			wantExact: intPtr(0),
+			wantExact: ptr.Of(0),
 		},
 		{
 			name:      "空白文本",
 			input:     `{"contents":[{"parts":[{"text":"   "}]}]}`,
 			wantGt0:   false,
-			wantExact: intPtr(0),
+			wantExact: ptr.Of(0),
 		},
 	}
 

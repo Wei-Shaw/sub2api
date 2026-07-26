@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ptr"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ func TestOpsServiceRecordErrorBatch_SanitizesAndBatches(t *testing.T) {
 	entries := []*OpsInsertErrorLogInput{
 		{
 			ErrorBody:            `{"error":"bad","access_token":"secret"}`,
-			UpstreamStatusCode:   intPtr(-10),
+			UpstreamStatusCode:   ptr.Of(-10),
 			UpstreamErrorMessage: strPtr(msg),
 			UpstreamErrorDetail:  strPtr(detail),
 			UpstreamErrors: []*OpsUpstreamErrorEvent{

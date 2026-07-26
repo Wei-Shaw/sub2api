@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ptr"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -320,8 +321,8 @@ func (c *OpsMetricsCollector) collectAndPersist(ctx context.Context) error {
 
 		TokenConsumed:      tokenConsumed,
 		AccountSwitchCount: accountSwitchCount,
-		QPS:                float64Ptr(roundTo1DP(qps)),
-		TPS:                float64Ptr(roundTo1DP(tps)),
+		QPS:                ptr.Of(roundTo1DP(qps)),
+		TPS:                ptr.Of(roundTo1DP(tps)),
 
 		DurationP50Ms: duration.p50,
 		DurationP90Ms: duration.p90,
@@ -342,25 +343,25 @@ func (c *OpsMetricsCollector) collectAndPersist(ctx context.Context) error {
 		MemoryTotalMB:      sys.memoryTotalMB,
 		MemoryUsagePercent: sys.memoryUsagePercent,
 
-		DBOK:    boolPtr(dbOK),
-		RedisOK: boolPtr(redisOK),
+		DBOK:    ptr.Of(dbOK),
+		RedisOK: ptr.Of(redisOK),
 
 		RedisConnTotal: func() *int {
 			if !redisStatsOK {
 				return nil
 			}
-			return intPtr(redisTotal)
+			return ptr.Of(redisTotal)
 		}(),
 		RedisConnIdle: func() *int {
 			if !redisStatsOK {
 				return nil
 			}
-			return intPtr(redisIdle)
+			return ptr.Of(redisIdle)
 		}(),
 
-		DBConnActive:          intPtr(active),
-		DBConnIdle:            intPtr(idle),
-		GoroutineCount:        intPtr(goroutines),
+		DBConnActive:          ptr.Of(active),
+		DBConnIdle:            ptr.Of(idle),
+		GoroutineCount:        ptr.Of(goroutines),
 		ConcurrencyQueueDepth: concurrencyQueueDepth,
 	}
 
@@ -937,19 +938,4 @@ func truncateString(s string, max int) string {
 		cut = cut[:len(cut)-1]
 	}
 	return cut
-}
-
-func boolPtr(v bool) *bool {
-	out := v
-	return &out
-}
-
-func intPtr(v int) *int {
-	out := v
-	return &out
-}
-
-func float64Ptr(v float64) *float64 {
-	out := v
-	return &out
 }

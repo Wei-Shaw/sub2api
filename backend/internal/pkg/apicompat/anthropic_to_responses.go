@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ptr"
 )
 
 // AnthropicToResponses converts an Anthropic Messages request directly into
@@ -455,14 +457,10 @@ func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
 			Name:        t.Name,
 			Description: t.Description,
 			Parameters:  normalizeToolParameters(t.InputSchema),
-			Strict:      boolPtr(false),
+			Strict:      ptr.Of(false),
 		})
 	}
 	return out
-}
-
-func boolPtr(v bool) *bool {
-	return &v
 }
 
 // isReasoningModel reports whether model is a reasoning model that does not

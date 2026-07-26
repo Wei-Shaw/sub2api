@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ptr"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
@@ -277,8 +278,8 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				Status:         OpsAlertStatusFiring,
 				Title:          fmt.Sprintf("%s: %s", strings.TrimSpace(rule.Severity), strings.TrimSpace(rule.Name)),
 				Description:    buildOpsAlertDescription(rule, metricValue, windowMinutes, scopePlatform, scopeGroupID),
-				MetricValue:    float64Ptr(metricValue),
-				ThresholdValue: float64Ptr(rule.Threshold),
+				MetricValue:    ptr.Of(metricValue),
+				ThresholdValue: ptr.Of(rule.Threshold),
 				Dimensions:     buildOpsAlertDimensions(scopePlatform, scopeGroupID),
 				FiredAt:        now,
 				CreatedAt:      now,

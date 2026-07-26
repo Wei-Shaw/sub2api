@@ -8,6 +8,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ptr"
 )
 
 func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashboardFilter) (*OpsDashboardOverview, error) {
@@ -48,10 +49,10 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 		// These are best-effort and should never block the dashboard rendering.
 		if s != nil && s.cfg != nil {
 			if s.cfg.Database.MaxOpenConns > 0 {
-				metrics.DBMaxOpenConns = intPtr(s.cfg.Database.MaxOpenConns)
+				metrics.DBMaxOpenConns = ptr.Of(s.cfg.Database.MaxOpenConns)
 			}
 			if s.cfg.Redis.PoolSize > 0 {
-				metrics.RedisPoolSize = intPtr(s.cfg.Redis.PoolSize)
+				metrics.RedisPoolSize = ptr.Of(s.cfg.Redis.PoolSize)
 			}
 		}
 		overview.SystemMetrics = metrics

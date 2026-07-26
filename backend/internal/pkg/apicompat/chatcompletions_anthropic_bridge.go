@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ptr"
 )
 
 // This file implements a DIRECT bridge between Anthropic Messages and OpenAI
@@ -307,7 +309,7 @@ func anthropicToolsToChatTools(tools []AnthropicTool) []ChatTool {
 				Name:        t.Name,
 				Description: t.Description,
 				Parameters:  normalizeToolParameters(t.InputSchema),
-				Strict:      boolPtr(false),
+				Strict:      ptr.Of(false),
 			},
 		})
 	}
