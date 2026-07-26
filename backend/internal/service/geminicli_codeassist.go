@@ -1,13 +1,8 @@
 package service
 
 import (
-	"context"
-
-	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/port/oauthclient"
 )
 
 // GeminiCliCodeAssistClient calls GeminiCli internal Code Assist endpoints.
-type GeminiCliCodeAssistClient interface {
-	LoadCodeAssist(ctx context.Context, accessToken, proxyURL string, req *geminicli.LoadCodeAssistRequest) (*geminicli.LoadCodeAssistResponse, error)
-	OnboardUser(ctx context.Context, accessToken, proxyURL string, req *geminicli.OnboardUserRequest) (*geminicli.OnboardUserResponse, error)
-}
+type GeminiCliCodeAssistClient = oauthclient.GeminiCliCodeAssistClient

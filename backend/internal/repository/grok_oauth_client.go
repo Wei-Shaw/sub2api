@@ -12,7 +12,7 @@ import (
 	sharedhttp "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logredact"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/oauthclient"
 
 	"github.com/imroc/req/v3"
 )
@@ -21,7 +21,7 @@ type grokOAuthClient struct {
 	tokenURL string
 }
 
-func NewGrokOAuthClient() service.GrokOAuthClient {
+func NewGrokOAuthClient() oauthclient.GrokOAuthClient {
 	return &grokOAuthClient{tokenURL: xai.EffectiveTokenURL()}
 }
 

@@ -7,23 +7,14 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/Wei-Shaw/sub2api/internal/port/oauthclient"
 )
 
 // OpenAIOAuthClient interface for OpenAI OAuth operations
-type OpenAIOAuthClient interface {
-	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error)
-	RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*openai.TokenResponse, error)
-	RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error)
-}
+type OpenAIOAuthClient = oauthclient.OpenAIOAuthClient
 
 // GrokOAuthClient interface for xAI/Grok OAuth operations.
-type GrokOAuthClient interface {
-	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*xai.TokenResponse, error)
-	RefreshToken(ctx context.Context, refreshToken, proxyURL, clientID string) (*xai.TokenResponse, error)
-	ConvertSSOToBuild(ctx context.Context, ssoToken, proxyURL string) (*xai.TokenResponse, error)
-}
+type GrokOAuthClient = oauthclient.GrokOAuthClient
 
 // GrokOAuthTokenService is the narrow refresh port used by Grok token providers.
 type GrokOAuthTokenService interface {
@@ -32,12 +23,7 @@ type GrokOAuthTokenService interface {
 }
 
 // ClaudeOAuthClient handles HTTP requests for Claude OAuth flows
-type ClaudeOAuthClient interface {
-	GetOrganizationUUID(ctx context.Context, sessionKey, proxyURL string) (string, error)
-	GetAuthorizationCode(ctx context.Context, sessionKey, orgUUID, scope, codeChallenge, state, proxyURL string) (string, error)
-	ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error)
-	RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error)
-}
+type ClaudeOAuthClient = oauthclient.ClaudeOAuthClient
 
 // OAuthService handles OAuth authentication flows
 type OAuthService struct {

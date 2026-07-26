@@ -13,12 +13,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logredact"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/oauthclient"
 
 	"github.com/imroc/req/v3"
 )
 
-func NewClaudeOAuthClient() service.ClaudeOAuthClient {
+func NewClaudeOAuthClient() oauthclient.ClaudeOAuthClient {
 	return &claudeOAuthService{
 		baseURL:       "https://claude.ai",
 		tokenURL:      oauth.TokenURL,
