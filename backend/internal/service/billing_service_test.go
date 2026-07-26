@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/stretchr/testify/require"
 )
 
@@ -181,24 +183,55 @@ func TestGetModelPricing_UnknownClaudeModelFallsBackToSonnet(t *testing.T) {
 }
 
 // Antigravity upstream model IDs must resolve to billable rates (#3701).
+// requireBillable asserts a model resolves to pricing with positive token rates.
+func requireBillable(t *testing.T, svc *BillingService, model string) {
+	t.Helper()
+	pricing, err := svc.GetModelPricing(model)
+	require.NoError(t, err, "model %s", model)
+	require.NotNil(t, pricing, "model %s", model)
+	require.Greater(t, pricing.InputPricePerToken+pricing.OutputPricePerToken, 0.0, "model %s", model)
+}
+
+// Antigravity 不变量（#3701 彻底修复）：默认映射表的每个 key 与 target、
+// DefaultModels 的每个 ID 都必须可计费。以后新增模型若漏配价格，
+// 此测试在 CI 直接失败，零计费无法静默进入生产。
 func TestGetModelPricing_AntigravityMappedModelsAreBillable(t *testing.T) {
 	svc := newTestBillingService()
 
-	models := []string{
-		"gemini-3-pro-high",
-		"gemini-3-pro-low",
-		"gemini-pro-agent",
-		"gemini-2.5-flash-thinking",
-		"claude-opus-4-5-thinking",
-		"claude-fable-5",
-		"gpt-oss-120b-medium",
-		"tab_flash_lite_preview",
+	for from, to := range domain.DefaultAntigravityModelMapping {
+		requireBillable(t, svc, from)
+		requireBillable(t, svc, to)
 	}
-	for _, model := range models {
+	for _, m := range antigravity.DefaultModels() {
+		requireBillable(t, svc, m.ID)
+	}
+}
+
+// 未知 Gemini 新版本/内部名必须命中族系档位兑底，不得零计费。
+// gemini-3.6-flash-tiered 是真实回归案例：发布后因版本枚举未覆盖而计费为 0。
+func TestGetModelPricing_UnknownGeminiVariantsFallBackByTier(t *testing.T) {
+	svc := newTestBillingService()
+
+	flashTier := []string{
+		"gemini-3.6-flash-tiered",
+		"gemini-3.6-flash",
+		"gemini-4-flash-lite",
+		"gemini-4.2-flash-thinking-exp",
+	}
+	proTier := []string{
+		"gemini-3.6-pro",
+		"gemini-4-pro-preview",
+		"gemini-4-pro-high-tiered",
+	}
+	for _, model := range flashTier {
 		pricing, err := svc.GetModelPricing(model)
 		require.NoError(t, err, "model %s", model)
-		require.NotNil(t, pricing, "model %s", model)
-		require.Greater(t, pricing.InputPricePerToken+pricing.OutputPricePerToken, 0.0, "model %s", model)
+		require.InDelta(t, 0.3e-6, pricing.InputPricePerToken, 1e-12, "model %s should bill at flash tier", model)
+	}
+	for _, model := range proTier {
+		pricing, err := svc.GetModelPricing(model)
+		require.NoError(t, err, "model %s", model)
+		require.InDelta(t, 2e-6, pricing.InputPricePerToken, 1e-12, "model %s should bill at pro tier", model)
 	}
 }
 
@@ -472,7 +505,10 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		{name: "claude opus 4.5 alt separator", model: "claude-opus-4-5-20260101", expectedInput: 5e-6},
 		{name: "claude generic model fallback sonnet", model: "claude-foo-bar", expectedInput: 3e-6},
 		{name: "gemini explicit fallback", model: "gemini-3-1-pro", expectedInput: 2e-6},
-		{name: "gemini unknown no fallback", model: "gemini-2.0-pro", expectNilPricing: true},
+		// 旧策略对未知 Gemini fail-closed（返回 nil → 零计费），正是
+		// gemini-3.6-flash-tiered 零计费事故的根因；现改为档位兑底。
+		{name: "gemini unknown pro falls back to pro tier", model: "gemini-2.0-pro", expectedInput: 2e-6},
+		{name: "gemini unknown flash variant falls back to flash tier", model: "gemini-3.6-flash-tiered", expectedInput: 0.3e-6},
 		{name: "openai gpt5.4", model: "gpt-5.4", expectedInput: 2.5e-6},
 		{name: "openai gpt5.4 mini", model: "gpt-5.4-mini", expectedInput: 7.5e-7},
 		{name: "openai gpt5.3 codex", model: "gpt-5.3-codex", expectedInput: 1.5e-6},

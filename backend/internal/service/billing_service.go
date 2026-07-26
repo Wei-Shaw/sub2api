@@ -627,6 +627,16 @@ func canonicalizeAntigravityBillingModel(model string) string {
 	case "gpt-oss-120b-medium", "tab_flash_lite_preview":
 		return "gemini-2.5-flash"
 	default:
+		// 未知 Gemini 内部名：剥离层级/变体后缀后再查 LiteLLM，使
+		// gemini-3.6-flash-tiered 这类新名能命中公开价卡；仍未命中时
+		// 由 getFallbackPricing 的族系档位分类兑底，不会零计费。
+		if strings.HasPrefix(model, "gemini") {
+			for _, suffix := range []string{"-tiered", "-exp"} {
+				if trimmed := strings.TrimSuffix(model, suffix); trimmed != model {
+					return trimmed
+				}
+			}
+		}
 		return model
 	}
 }
@@ -672,19 +682,19 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	// Antigravity Gemini 系列：上游映射名（gemini-3-pro-high / gemini-pro-agent 等）
 	// 常不在 LiteLLM 表中，必须有 fallback 否则可调用却无法计费（#3701）。
-	if strings.Contains(modelLower, "gemini-pro-agent") ||
-		strings.Contains(modelLower, "gemini-3.1-pro") ||
-		strings.Contains(modelLower, "gemini-3-1-pro") ||
-		strings.Contains(modelLower, "gemini-3-pro") {
-		return s.fallbackPrices["gemini-3.1-pro"]
-	}
-	if strings.Contains(modelLower, "gemini-2.5-pro") {
-		return s.fallbackPrices["gemini-3.1-pro"]
-	}
-	if strings.Contains(modelLower, "gemini-2.5-flash") ||
-		strings.Contains(modelLower, "gemini-3-flash") ||
-		strings.Contains(modelLower, "gemini-3.1-flash") ||
-		strings.Contains(modelLower, "gemini-flash") {
+	// 族系+档位通用分类，不枚举版本号：上游会持续发布新版本与内部名
+	// （如 gemini-3.6-flash-tiered），版本枚举必然滞后并导致静默零计费。
+	// 与 Claude 的 contains("claude") → Sonnet 兑底同构：
+	//   含 "image" → flash 档（token 部分；图片单价另行处理）
+	//   含 "pro"   → gemini-3.1-pro 档
+	//   其余（flash / lite / tiered / 未知） → gemini-2.5-flash 档
+	if strings.Contains(modelLower, "gemini") {
+		if strings.Contains(modelLower, "image") {
+			return s.fallbackPrices["gemini-2.5-flash"]
+		}
+		if strings.Contains(modelLower, "pro") {
+			return s.fallbackPrices["gemini-3.1-pro"]
+		}
 		return s.fallbackPrices["gemini-2.5-flash"]
 	}
 	if strings.Contains(modelLower, "gpt-oss") || strings.Contains(modelLower, "tab_flash") {
