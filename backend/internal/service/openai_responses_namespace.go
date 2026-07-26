@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
@@ -65,9 +66,11 @@ func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, erro
 }
 
 // stripOpenAIResponsesInputNamespaces removes namespace only from direct input
-// array items. Namespace declarations and nested namespace fields are left
-// untouched. Rebuilding the input array once keeps this linear for long
-// histories and avoids decoding JSON numbers through float64.
+// array items whose Responses schema does not carry it. Function and custom
+// tool calls must retain namespace so Codex can round-trip namespaced tools.
+// Namespace declarations and nested namespace fields are left untouched.
+// Rebuilding the input array once keeps this linear for long histories and
+// avoids decoding JSON numbers through float64.
 func stripOpenAIResponsesInputNamespaces(body []byte) ([]byte, error) {
 	if !bytes.Contains(body, []byte(`"namespace"`)) {
 		return body, nil
@@ -89,7 +92,7 @@ func stripOpenAIResponsesInputNamespaces(body []byte) ([]byte, error) {
 		}
 		first = false
 		itemBody := []byte(item.Raw)
-		if item.IsObject() && item.Get("namespace").Exists() {
+		if item.IsObject() && item.Get("namespace").Exists() && !openAIResponsesInputItemSupportsNamespace(item) {
 			itemBody, stripErr = sjson.DeleteBytes(itemBody, "namespace")
 			if stripErr != nil {
 				return false
@@ -111,6 +114,15 @@ func stripOpenAIResponsesInputNamespaces(body []byte) ([]byte, error) {
 		return body, fmt.Errorf("replace OpenAI input after namespace deletion: %w", err)
 	}
 	return stripped, nil
+}
+
+func openAIResponsesInputItemSupportsNamespace(item gjson.Result) bool {
+	switch strings.TrimSpace(item.Get("type").String()) {
+	case "function_call", "custom_tool_call":
+		return true
+	default:
+		return false
+	}
 }
 
 func setOpenAIResponsesNamespaceNames(c *gin.Context, names map[string]apicompat.ResponsesNamespaceName) {
