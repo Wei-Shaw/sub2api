@@ -360,6 +360,8 @@ handler ──► service（应用）──► port/<bc> ──► repository（
 
 已提取的 BC（`internal/port/` 子包）：announcement、promo、redeem、tlsfingerprint、errorpassthrough、affiliate、proxy、group、user、apikey、setting、channel、channelmonitor、account、**usagelog**（第 15 个，UsageLog）。`internal/model/` 包已删除（类型迁入 `domain`）。
 
+另有按「基础设施端口」归组的 `port/cache`（RPM/Session/Timeout/LeaderLock/Update/UserMsgQueue/ContentModeration/Internal500/OpenAI403/GeminiToken/Email/RefreshToken/Identity/Totp 等 Redis 缓存契约 + 伴生数据类型）与 `port/oauthclient`（OpenAI/Grok/Claude/Gemini/GeminiCliCodeAssist 五个 OAuth 客户端契约）——它们是跨 BC 的纯 stdlib/`pkg/*` 接口，不属于单一 BC，故按用途归组而非塞进某个 BC 端口包。
+
 **Account BC 备注**（`dd50614`）：
 - `domain.Account` + ~150 个纯方法；`domain.AccountGroup` 随 Account 一起迁入（嵌套 `*Account`/`*Group`，不可单独先搬）。
 - `port/account` 仓储接口保持原方法集（ISP 拆分留作后续；67 个测试桩靠 type alias 继续满足）。
@@ -380,6 +382,8 @@ handler ──► service（应用）──► port/<bc> ──► repository（
 5. 验证：`go build ./...` + `go vet` + 该 BC 测试（含相关 stub）；可选检查 `rg -l 'internal/service' backend/internal/repository --type go -g '!*_test.go' | wc -l`
 
 **注意**：跨 BC 实体依赖会阻塞提取。`Account` 与 `UsageLog` 均已在 domain。后续可优先拆 billing/dashboard 读模型、或 account_repo 残留的 16 个非 Account service 符号所属 BC。先拆被依赖的实体，再拆下游。
+
+**当前反转 KPI**（`rg -l 'internal/service"' backend/internal/repository --type go -g '!*_test.go' | wc -l`）：**49**（本会话从 69 降至此——account_repo domain 换包、RoleAdmin、port/cache + port/oauthclient 两批基础设施端口提取）。剩余 repo 文件多为未提取 BC 的实体/读模型（Ops/dashboard、BatchImage、billing、scheduler-outbox 等）以及若干单接口阻塞（SecretEncryptor/ImageStorage/PricingRemoteClient/DBDumper，分属 auth/image/pricing/backup 等待提取 BC）——这些应随各自 BC 成体拆迁，而非提前单接口提取。
 
 ## 七、参考资源
 
