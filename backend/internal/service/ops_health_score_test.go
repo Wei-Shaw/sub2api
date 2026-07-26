@@ -84,8 +84,8 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(true),
 					RedisOK:            ptr.Of(true),
-					CPUUsagePercent:    ptr.Of(30),
-					MemoryUsagePercent: ptr.Of(40),
+					CPUUsagePercent:    ptr.Of(30.0),
+					MemoryUsagePercent: ptr.Of(40.0),
 				},
 			},
 			wantMin: 100,
@@ -104,8 +104,8 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(true),
 					RedisOK:            ptr.Of(true),
-					CPUUsagePercent:    ptr.Of(50),
-					MemoryUsagePercent: ptr.Of(60),
+					CPUUsagePercent:    ptr.Of(50.0),
+					MemoryUsagePercent: ptr.Of(60.0),
 				},
 			},
 			wantMin: 95,
@@ -124,8 +124,8 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(true),
 					RedisOK:            ptr.Of(true),
-					CPUUsagePercent:    ptr.Of(70),
-					MemoryUsagePercent: ptr.Of(75),
+					CPUUsagePercent:    ptr.Of(70.0),
+					MemoryUsagePercent: ptr.Of(75.0),
 				},
 			},
 			wantMin: 96,
@@ -143,8 +143,8 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(false),
 					RedisOK:            ptr.Of(true),
-					CPUUsagePercent:    ptr.Of(30),
-					MemoryUsagePercent: ptr.Of(40),
+					CPUUsagePercent:    ptr.Of(30.0),
+					MemoryUsagePercent: ptr.Of(40.0),
 				},
 			},
 			wantMin: 70,
@@ -162,8 +162,8 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(true),
 					RedisOK:            ptr.Of(false),
-					CPUUsagePercent:    ptr.Of(30),
-					MemoryUsagePercent: ptr.Of(40),
+					CPUUsagePercent:    ptr.Of(30.0),
+					MemoryUsagePercent: ptr.Of(40.0),
 				},
 			},
 			wantMin: 85,
@@ -181,8 +181,8 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(true),
 					RedisOK:            ptr.Of(true),
-					CPUUsagePercent:    ptr.Of(95),
-					MemoryUsagePercent: ptr.Of(40),
+					CPUUsagePercent:    ptr.Of(95.0),
+					MemoryUsagePercent: ptr.Of(40.0),
 				},
 			},
 			wantMin: 85,
@@ -200,8 +200,8 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(true),
 					RedisOK:            ptr.Of(true),
-					CPUUsagePercent:    ptr.Of(20),
-					MemoryUsagePercent: ptr.Of(30),
+					CPUUsagePercent:    ptr.Of(20.0),
+					MemoryUsagePercent: ptr.Of(30.0),
 				},
 			},
 			wantMin: 84,
@@ -219,8 +219,8 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(false),
 					RedisOK:            ptr.Of(false),
-					CPUUsagePercent:    ptr.Of(95),
-					MemoryUsagePercent: ptr.Of(95),
+					CPUUsagePercent:    ptr.Of(95.0),
+					MemoryUsagePercent: ptr.Of(95.0),
 				},
 			},
 			wantMin: 70,
@@ -356,8 +356,8 @@ func TestComputeInfraHealth(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(true),
 					RedisOK:            ptr.Of(true),
-					CPUUsagePercent:    ptr.Of(30),
-					MemoryUsagePercent: ptr.Of(40),
+					CPUUsagePercent:    ptr.Of(30.0),
+					MemoryUsagePercent: ptr.Of(40.0),
 				},
 			},
 			wantMin: 100,
@@ -370,8 +370,8 @@ func TestComputeInfraHealth(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(false),
 					RedisOK:            ptr.Of(true),
-					CPUUsagePercent:    ptr.Of(30),
-					MemoryUsagePercent: ptr.Of(40),
+					CPUUsagePercent:    ptr.Of(30.0),
+					MemoryUsagePercent: ptr.Of(40.0),
 				},
 			},
 			wantMin: 50,
@@ -384,8 +384,8 @@ func TestComputeInfraHealth(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(true),
 					RedisOK:            ptr.Of(false),
-					CPUUsagePercent:    ptr.Of(30),
-					MemoryUsagePercent: ptr.Of(40),
+					CPUUsagePercent:    ptr.Of(30.0),
+					MemoryUsagePercent: ptr.Of(40.0),
 				},
 			},
 			wantMin: 80,
@@ -398,8 +398,8 @@ func TestComputeInfraHealth(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(true),
 					RedisOK:            ptr.Of(true),
-					CPUUsagePercent:    ptr.Of(90),
-					MemoryUsagePercent: ptr.Of(40),
+					CPUUsagePercent:    ptr.Of(90.0),
+					MemoryUsagePercent: ptr.Of(40.0),
 				},
 			},
 			wantMin: 85,
@@ -412,8 +412,8 @@ func TestComputeInfraHealth(t *testing.T) {
 				SystemMetrics: &OpsSystemMetricsSnapshot{
 					DBOK:               ptr.Of(true),
 					RedisOK:            ptr.Of(true),
-					CPUUsagePercent:    ptr.Of(30),
-					MemoryUsagePercent: ptr.Of(40),
+					CPUUsagePercent:    ptr.Of(30.0),
+					MemoryUsagePercent: ptr.Of(40.0),
 				},
 				JobHeartbeats: []*OpsJobHeartbeat{
 					{

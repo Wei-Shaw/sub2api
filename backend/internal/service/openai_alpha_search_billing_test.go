@@ -27,7 +27,7 @@ func TestCalculateWebSearchCostDefaultAndOverride(t *testing.T) {
 	require.InDelta(t, 0.05, cost.ActualCost, 1e-12)
 
 	// 0 = 免费（区别于 nil = 默认价）
-	cost = s.CalculateWebSearchCost(1, ptr.Of(0), 3.0)
+	cost = s.CalculateWebSearchCost(1, ptr.Of(0.0), 3.0)
 	require.Zero(t, cost.TotalCost)
 	require.Zero(t, cost.ActualCost)
 
