@@ -21,15 +21,15 @@
     </div>
 
     <div class="px-6 py-6">
-      <div v-if="!enabled" class="text-sm text-gray-500 dark:text-gray-400">
+      <div v-if="!enabled" class="mb-5 text-sm text-gray-500 dark:text-gray-400">
         {{ t('profile.passkey.featureDisabled') REDACTEDREDACTED
       </div>
-      <div v-else-if="!supported" class="text-sm text-amber-600 dark:text-amber-400">
+      <div v-if="enabled && !supported" class="mb-5 text-sm text-amber-600 dark:text-amber-400">
         {{ t('profile.passkey.unsupported') REDACTEDREDACTED
       </div>
-      <div v-else>
+      <div>
         <form
-          v-if="showAddForm"
+          v-if="enabled && supported && showAddForm"
           class="mb-5 flex flex-col gap-3 rounded-lg border border-gray-200 p-4 dark:border-dark-700 sm:flex-row sm:items-end"
           @submit.prevent="addPasskey"
         >
@@ -135,7 +135,6 @@ const newName = ref('')
 const credentials = ref<PasskeyCredentialSummary[]>([])
 
 async function loadCredentials(): Promise<void> {
-  if (!supported) return
   loading.value = true
   try {
     credentials.value = await passkeyAPI.list()
@@ -209,8 +208,8 @@ REDACTED
 
 watch(
   () => props.enabled,
-  (enabled) => {
-    if (enabled) void loadCredentials()
+  () => {
+    void loadCredentials()
   REDACTED,
   { immediate: true REDACTED
 )
