@@ -524,8 +524,12 @@ func TestTryModelFilePricing_WithImageOutput(t *testing.T) {
 	}
 	result := tryModelFilePricing(bs, "claude-sonnet-4", tokens)
 	require.NotNil(t, result)
-	// 100*0.001 + 50*0.002 + 10*0.01 = 0.1 + 0.1 + 0.1 = 0.3
-	require.InDelta(t, 0.3, *result, 1e-12)
+	// Canonical CalculateCost splits text vs image output:
+	//   text output (50-10)*0.002 = 0.08, image output 10*0.01 = 0.1,
+	//   input 100*0.001 = 0.1 → total 0.28.
+	// (Old hand-roll double-counted image output by pricing all 50 OutputTokens
+	// at the text rate AND 10 ImageOutputTokens at the image rate, yielding 0.3.)
+	require.InDelta(t, 0.28, *result, 1e-12)
 }
 
 func TestTryModelFilePricing_WithCacheTokens(t *testing.T) {
@@ -548,6 +552,117 @@ func TestTryModelFilePricing_WithCacheTokens(t *testing.T) {
 	// 100*0.001 + 50*0.002 + 200*0.003 + 300*0.0005
 	// = 0.1 + 0.1 + 0.6 + 0.15 = 0.95
 	require.InDelta(t, 0.95, *result, 1e-12)
+}
+
+// TestTryModelFilePricing_MatchesCanonical asserts that tryModelFilePricing
+// returns the same value as the canonical BillingService.CalculateCost path
+// (or both nil) across plain, image-input, image-output, cache-tier and
+// long-context cases. This encodes the invariant "stats cost == charge path
+// canonical cost" and prevents future drift between the two.
+//
+// Model names are chosen so getFallbackPricing's pattern resolver routes each
+// to a distinct key in the per-case fallbackPrices map (which overrides the
+// default BillingService prices): claude-sonnet-4 → "claude-sonnet-4",
+// claude-opus-4.5 → "claude-opus-4.5", claude-3-opus → "claude-3-opus",
+// claude-3-5-sonnet → "claude-3-5-sonnet", claude-3-haiku → "claude-3-haiku".
+func TestTryModelFilePricing_MatchesCanonical(t *testing.T) {
+	type tc struct {
+		name    string
+		model   string
+		tokens  UsageTokens
+		pricing *ModelPricing
+	}
+	cases := []tc{
+		{
+			name:    "plain",
+			model:   "claude-sonnet-4",
+			tokens:  UsageTokens{InputTokens: 100, OutputTokens: 50},
+			pricing: &ModelPricing{InputPricePerToken: 0.001, OutputPricePerToken: 0.002},
+		},
+		{
+			name:  "imageInput",
+			model: "claude-opus-4.5",
+			tokens: UsageTokens{
+				InputTokens:      100,
+				ImageInputTokens: 40,
+				OutputTokens:     50,
+			},
+			pricing: &ModelPricing{
+				InputPricePerToken:      0.001,
+				ImageInputPricePerToken: 0.01,
+				OutputPricePerToken:     0.002,
+			},
+		},
+		{
+			name:  "imageOutput",
+			model: "claude-3-opus",
+			tokens: UsageTokens{
+				InputTokens:       100,
+				OutputTokens:      50,
+				ImageOutputTokens: 10,
+			},
+			pricing: &ModelPricing{
+				InputPricePerToken:       0.001,
+				OutputPricePerToken:      0.002,
+				ImageOutputPricePerToken: 0.01,
+			},
+		},
+		{
+			name:  "cacheTier",
+			model: "claude-3-5-sonnet",
+			tokens: UsageTokens{
+				InputTokens:           100,
+				OutputTokens:          50,
+				CacheCreation5mTokens: 100,
+				CacheCreation1hTokens: 50,
+			},
+			pricing: &ModelPricing{
+				InputPricePerToken:     0.001,
+				OutputPricePerToken:    0.002,
+				SupportsCacheBreakdown: true,
+				CacheCreation5mPrice:   0.003,
+				CacheCreation1hPrice:   0.006,
+			},
+		},
+		{
+			name:  "longContext",
+			model: "claude-3-haiku",
+			tokens: UsageTokens{
+				InputTokens:     101,
+				OutputTokens:    10,
+				CacheReadTokens: 5,
+			},
+			pricing: &ModelPricing{
+				InputPricePerToken:          0.001,
+				OutputPricePerToken:         0.002,
+				CacheReadPricePerToken:      0.0001,
+				LongContextInputThreshold:   100,
+				LongContextInputMultiplier:  2,
+				LongContextOutputMultiplier: 1.5,
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+				c.model: c.pricing,
+			})
+
+			got := tryModelFilePricing(bs, c.model, c.tokens)
+
+			breakdown, err := bs.CalculateCost(c.model, c.tokens, 1)
+			require.NoError(t, err)
+
+			if breakdown == nil || breakdown.TotalCost <= 0 {
+				require.Nil(t, got, "expected nil when canonical cost is non-positive")
+				return
+			}
+			require.NotNil(t, got, "expected non-nil when canonical cost is positive")
+			require.InDelta(t, breakdown.TotalCost, *got, 1e-12,
+				"tryModelFilePricing should match CalculateCost.TotalCost")
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
