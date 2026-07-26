@@ -444,14 +444,24 @@ var allowedHeaders = map[string]bool{
 	"x-client-request-id":                       true,
 REDACTED
 
+// ErrStickySessionNotFound is returned by GatewayCache.GetSessionAccountID
+// when no binding exists for the session. It abstracts away the underlying
+// cache implementation (e.g. redis.Nil), mirroring ErrRefreshTokenNotFound.
+var ErrStickySessionNotFound = errors.New("sticky session not found")
+
 // GatewayCache 定义网关服务的缓存操作接口。
 // 提供粘性会话（Sticky Session）的存储、查询、刷新和删除功能。
 //
 // GatewayCache defines cache operations for gateway service.
 // Provides sticky session storage, retrieval, refresh and deletion capabilities.
 type GatewayCache interface {
-	// GetSessionAccountID 获取粘性会话绑定的账号 ID
-	// Get the account ID bound to a sticky session
+	// GetSessionAccountID 获取粘性会话绑定的账号 ID；无绑定时返回
+	// ErrStickySessionNotFound，使 service 层无需依赖具体缓存实现即可
+	// 区分"未绑定"与真实读取失败。
+	// Get the account ID bound to a sticky session. Returns
+	// ErrStickySessionNotFound when no binding exists so service code can
+	// distinguish a miss from a real read failure without importing the
+	// cache driver.
 	GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error)
 	// SetSessionAccountID 设置粘性会话与账号的绑定关系
 	// Set the binding between sticky session and account
@@ -871,6 +881,34 @@ func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, 
 		return nil
 REDACTED
 	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
+REDACTED
+
+// bindGatewayStickySessionDuringSelection preserves the normal eager sticky
+// behavior unless a profit gate is installed. Profit-controlled requests bind
+// only after the terminal post-slot check, otherwise a rejected candidate could
+// overwrite a healthy pre-existing sticky binding.
+func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	if gatewayProfitControlGateActive(ctx) {
+		return nil
+REDACTED
+	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
+REDACTED
+
+// BindStickySessionAfterProfitAdmission records a successful terminal
+// selection for a profit-controlled request without replacing the binding
+// observed at request start. A temporarily ineligible sticky account remains
+// bound and automatically becomes eligible again if its account rate recovers.
+func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID, existingAccountID int64) error {
+	if sessionHash == "" || accountID <= 0 || s.cache == nil {
+		return nil
+REDACTED
+	if !gatewayProfitControlGateActive(ctx) {
+		return nil
+REDACTED
+	if existingAccountID > 0 && existingAccountID != accountID {
+		return nil
+REDACTED
+	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 REDACTED
 
 // GetCachedSessionAccountID retrieves the account ID bound to a sticky session.

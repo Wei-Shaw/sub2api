@@ -114,6 +114,13 @@ type APIKeyAuthGroupSnapshot struct {
 	PeakStart          string  `json:"peak_start"`
 	PeakEnd            string  `json:"peak_end"`
 	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
+
+	// 分组利润控制：调度准入门按 schedulerSnapshot 实时读取分组配置，
+	// 不依赖本快照；此处随快照缓存只为保证 apiKey.Group 字段完整，
+	// 任何消费方都不会读到误导性的零值。
+	ProfitControlEnabled bool    `json:"profit_control_enabled"`
+	ProfitMinMargin      float64 `json:"profit_min_margin"`
+	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
 REDACTED
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

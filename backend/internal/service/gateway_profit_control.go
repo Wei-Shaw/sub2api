@@ -1,0 +1,113 @@
+package service
+
+import (
+	"context"
+	"log/slog"
+	"math"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+)
+
+// withGatewayProfitControlGate installs the gate only for explicitly marked
+// token requests. This keeps media, metadata, and models-list paths outside
+// the profit-control surface by construction.
+func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, groupID *int64) context.Context {
+	if _, ok := gatewayTokenRequestPricingAtFromContext(ctx); !ok || groupID == nil || *groupID <= 0 {
+		return ctx
+REDACTED
+	if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{REDACTED).(*openAIProfitControlGate); ok && existing != nil && existing.groupID == *groupID {
+		return ctx
+REDACTED
+
+	group, err := s.resolveProfitControlGroup(ctx, *groupID)
+	if err != nil {
+		slog.Warn("profit_control_group_load_failed", "group_id", *groupID, "error", err)
+		return s.clearForeignProfitControlGate(ctx, groupID)
+REDACTED
+	if group == nil || !group.ProfitControlEnabled || !profitControlPlatformSupported(group.Platform) {
+		return s.clearForeignProfitControlGate(ctx, groupID)
+REDACTED
+
+	pricingAt, _ := gatewayTokenRequestPricingAtFromContext(ctx)
+	billingGroup := gatewayTokenRequestBillingGroupFromContext(ctx)
+	if billingGroup == nil {
+		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) {
+			billingGroup = ctxGroup
+	REDACTED else {
+			billingGroup = group
+	REDACTED
+REDACTED
+
+	downstream := billingGroup.RateMultiplier
+	if userID, _ := ctx.Value(ctxkey.UserID).(int64); userID > 0 {
+		downstream = s.ResolveUserGroupRateMultiplier(ctx, userID, billingGroup.ID, billingGroup.RateMultiplier)
+REDACTED
+	downstream *= billingGroup.PeakMultiplierAt(pricingAt)
+	threshold := downstream * (1 - group.ProfitMinMargin - group.ProfitSafetyBuffer)
+	if math.IsNaN(threshold) || math.IsInf(threshold, 0) || threshold < 0 {
+		threshold = 0
+REDACTED
+
+	gate := &openAIProfitControlGate{
+		groupID:   group.ID,
+		platform:  group.Platform,
+		threshold: threshold,
+		pricingAt: pricingAt,
+REDACTED
+	openAIProfitControlObserverInstance.recordInstall(gate.groupID, gate.platform, gate.threshold)
+	return context.WithValue(ctx, openAIProfitControlGateCtxKey{REDACTED, gate)
+REDACTED
+
+func (s *GatewayService) clearForeignProfitControlGate(ctx context.Context, groupID *int64) context.Context {
+	existing, ok := ctx.Value(openAIProfitControlGateCtxKey{REDACTED).(*openAIProfitControlGate)
+	if !ok || existing == nil || groupID == nil || existing.groupID == *groupID {
+		return ctx
+REDACTED
+	return context.WithValue(ctx, openAIProfitControlGateCtxKey{REDACTED, (*openAIProfitControlGate)(nil))
+REDACTED
+
+func (s *GatewayService) resolveProfitControlGroup(ctx context.Context, groupID int64) (*Group, error) {
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.ID == groupID {
+		return group, nil
+REDACTED
+	if s.schedulerSnapshot != nil {
+		return s.schedulerSnapshot.GetGroupByID(ctx, groupID)
+REDACTED
+	return s.resolveGroupByID(ctx, groupID)
+REDACTED
+
+// GatewayProfitControlVetoLatest performs the terminal post-slot check against
+// the latest scheduler snapshot. Snapshot read failures are deliberately
+// fail-open to preserve availability, but are observable.
+func (s *GatewayService) GatewayProfitControlVetoLatest(ctx context.Context, selected *Account) (*Account, bool, string) {
+	return profitControlVetoLatest(ctx, selected, s.schedulerSnapshot)
+REDACTED
+
+func profitControlVetoLatest(ctx context.Context, selected *Account, snapshot *SchedulerSnapshotService) (*Account, bool, string) {
+	gate, _ := ctx.Value(openAIProfitControlGateCtxKey{REDACTED).(*openAIProfitControlGate)
+	if gate == nil || selected == nil {
+		return selected, false, ""
+REDACTED
+	latest := selected
+	if snapshot != nil {
+		refreshed, err := snapshot.GetAccount(ctx, selected.ID)
+		if err != nil || refreshed == nil {
+			slog.Warn("profit_control_account_refresh_failed", "group_id", gate.groupID, "platform", gate.platform, "account_id", selected.ID, "error", err)
+			openAIProfitControlObserverInstance.recordRefreshFailure(gate.groupID, gate.platform, gate.threshold)
+	REDACTED else {
+			latest = refreshed
+	REDACTED
+REDACTED
+	vetoed, reason := openAIProfitControlVetoReason(ctx, latest)
+	return latest, vetoed, reason
+REDACTED
+
+func (s *GatewayService) isGatewayAccountProfitEligible(ctx context.Context, account *Account) bool {
+	vetoed, _ := openAIProfitControlVetoReason(ctx, account)
+	return !vetoed
+REDACTED
+
+func gatewayProfitControlGateActive(ctx context.Context) bool {
+	gate, _ := ctx.Value(openAIProfitControlGateCtxKey{REDACTED).(*openAIProfitControlGate)
+	return gate != nil
+REDACTED
