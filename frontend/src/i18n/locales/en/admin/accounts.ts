@@ -225,7 +225,11 @@ export default {
       upstreamBilling: {
         trustWarning: 'This rate is declared by the upstream site for the current API key. Sub2API cannot verify that it matches actual charges. The upstream site or an intermediary may return forged, stale, or modified data. Verify it against bills, balance changes, and actual usage.',
         autoProbe: 'Automatically probe upstream declared rate',
-        autoProbeHint: 'Probe this account\'s upstream declared rate on the global interval when global probing is enabled.',
+        autoProbeHint: 'Refresh the upstream declared rate on the global interval. This switch alone does not change the account rate.',
+        syncRate: 'Sync upstream declared rate',
+        syncRateHint: 'Update the account rate after each successful probe. Failed or invalid declarations leave it unchanged.',
+        syncRateManagedHint: 'The current rate is maintained automatically from the upstream declared rate.',
+        syncedRateTooltip: 'This account rate is synchronized from the upstream declared rate',
         manualProbe: 'Probe upstream rate now',
         stale: 'Stale',
         unsupported: 'Unsupported',
@@ -420,6 +424,8 @@ export default {
         failed: 'Bulk update failed',
         noSelection: 'Please select accounts to edit',
         noFieldsSelected: 'Select at least one field to update',
+        rateSyncWarning: 'Accounts with upstream rate sync enabled cannot be changed in bulk. Disable sync in the account editor first.',
+        rateSyncConflict: 'Cannot change account rates: {countREDACTED target account(s) have upstream rate sync enabled.',
         mixedPlatformWarning: 'Selected accounts span multiple platforms ({platformsREDACTED). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.'
       REDACTED,
       bulkDeleteTitle: 'Bulk Delete Accounts',

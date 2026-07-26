@@ -110,7 +110,12 @@ REDACTED
 	return nil
 REDACTED
 
-func (r *upstreamBillingProbeAccountRepo) UpdateUpstreamBillingProbeSnapshot(_ context.Context, expected *Account, snapshot *UpstreamBillingProbeSnapshot) error {
+func (r *upstreamBillingProbeAccountRepo) UpdateUpstreamBillingProbeSnapshot(
+	_ context.Context,
+	expected *Account,
+	snapshot *UpstreamBillingProbeSnapshot,
+	rateMultiplier *float64,
+) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	account := r.accounts[expected.ID]
@@ -121,6 +126,12 @@ REDACTED
 		account.Extra = make(map[string]any)
 REDACTED
 	account.Extra[UpstreamBillingProbeExtraKey] = snapshot
+	if snapshot.Status == UpstreamBillingProbeStatusOK &&
+		rateMultiplier != nil &&
+		upstreamBillingRateSyncEnabled(account) {
+		value := *rateMultiplier
+		account.RateMultiplier = &value
+REDACTED
 	return nil
 REDACTED
 
@@ -259,6 +270,7 @@ REDACTED
 REDACTED
 
 func TestUpstreamBillingProbeSuccessPersistsSanitizedSnapshot(t *testing.T) {
+	initialRate := 0.25
 	account := &Account{
 		ID:          17,
 		Platform:    PlatformOpenAI,
@@ -269,6 +281,11 @@ REDACTED
 			"api_key":  "sk-sensitive",
 			"base_url": "https://upstream.example/v1",
 	REDACTED,
+		Extra: map[string]any{
+			UpstreamBillingProbeEnabledExtraKey:    true,
+			UpstreamBillingRateSyncEnabledExtraKey: true,
+	REDACTED,
+		RateMultiplier: &initialRate,
 REDACTED
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -307,6 +324,8 @@ REDACTED
 	require.Equal(t, fixedNow.Add(time.Hour), *snapshot.FreshUntil)
 	require.False(t, snapshot.NextProbeAt.Before(fixedNow.Add(24*time.Minute)))
 	require.False(t, snapshot.NextProbeAt.After(fixedNow.Add(36*time.Minute)))
+	require.NotNil(t, account.RateMultiplier)
+	require.Equal(t, 0.9, *account.RateMultiplier)
 	require.Equal(t, "https://upstream.example/v1/sub2api/billing", upstream.lastReq.URL.String())
 	require.Equal(t, http.MethodGet, upstream.lastReq.Method)
 	require.Equal(t, "Bearer sk-sensitive", upstream.lastReq.Header.Get("Authorization"))
@@ -315,6 +334,98 @@ REDACTED
 	persisted := decodeUpstreamBillingProbeSnapshot(account.Extra)
 	require.NotNil(t, persisted)
 	require.Equal(t, snapshot.Status, persisted.Status)
+REDACTED
+
+func TestUpstreamBillingProbeSyncsEffectiveRateForAllAPIKeyPlatforms(t *testing.T) {
+	for _, platform := range []string{
+		PlatformOpenAI,
+		PlatformAnthropic,
+		PlatformGemini,
+		PlatformAntigravity,
+		PlatformGrok,
+REDACTED {
+		t.Run(platform, func(t *testing.T) {
+			initialRate := 0.25
+			account := &Account{
+				ID:             17,
+				Platform:       platform,
+				Type:           AccountTypeAPIKey,
+				Status:         StatusActive,
+				Concurrency:    1,
+				RateMultiplier: &initialRate,
+		REDACTED
+					"api_key":  "sk-sensitive",
+					"base_url": "https://upstream.example",
+			REDACTED,
+				Extra: map[string]any{
+					UpstreamBillingProbeEnabledExtraKey:    true,
+					UpstreamBillingRateSyncEnabledExtraKey: true,
+			REDACTED,
+		REDACTED
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+			svc := newUpstreamBillingProbeTestService(repo, &upstreamBillingProbeHTTPStub{REDACTED, &upstreamBillingProbeSettingRepo{REDACTED)
+
+			snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
+		REDACTED
+			require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+			require.NotNil(t, account.RateMultiplier)
+			require.Equal(t, 0.8, *account.RateMultiplier)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestUpstreamBillingProbeOnlyDoesNotChangeAccountRate(t *testing.T) {
+	initialRate := 0.25
+	account := &Account{
+		ID:             18,
+		Platform:       PlatformGrok,
+		Type:           AccountTypeAPIKey,
+		Status:         StatusActive,
+		Concurrency:    1,
+		RateMultiplier: &initialRate,
+REDACTED
+			"api_key":  "sk-sensitive",
+			"base_url": "https://upstream.example",
+	REDACTED,
+		Extra: map[string]any{UpstreamBillingProbeEnabledExtraKey: trueREDACTED,
+REDACTED
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+	svc := newUpstreamBillingProbeTestService(repo, &upstreamBillingProbeHTTPStub{REDACTED, &upstreamBillingProbeSettingRepo{REDACTED)
+
+	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
+REDACTED
+	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+	require.NotNil(t, account.RateMultiplier)
+	require.Equal(t, initialRate, *account.RateMultiplier)
+	require.Contains(t, account.Extra, UpstreamBillingProbeExtraKey)
+REDACTED
+
+func TestUpstreamBillingProbeAccountRateMatchesDatabasePrecision(t *testing.T) {
+	tests := []struct {
+		name  string
+		value float64
+		want  float64
+		ok    bool
+REDACTED{
+		{name: "zero", value: 0, want: 0, ok: trueREDACTED,
+		{name: "round to four decimals", value: 0.07654, want: 0.0765, ok: trueREDACTED,
+		{name: "maximum", value: upstreamBillingProbeAccountRateMax, want: upstreamBillingProbeAccountRateMax, ok: trueREDACTED,
+		{name: "positive below database precision", value: 0.00001, ok: falseREDACTED,
+		{name: "overflow before rounding", value: 999999.99991, ok: falseREDACTED,
+		{name: "overflow after rounding", value: 999999.99996, ok: falseREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := upstreamBillingProbeAccountRate(map[string]any{"effective_rate_multiplier": tt.valueREDACTED)
+			require.Equal(t, tt.ok, ok)
+			if tt.ok {
+				require.Equal(t, tt.want, got)
+		REDACTED
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestUpstreamBillingProbeRejectsMissingRequiredMultiplier(t *testing.T) {
@@ -456,6 +567,7 @@ REDACTED
 
 func TestUpstreamBillingProbeFailurePreservesLastSuccessAndRetryAfter(t *testing.T) {
 	receivedAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
+	initialRate := 0.35
 	previous := &UpstreamBillingProbeSnapshot{
 		Status:       UpstreamBillingProbeStatusOK,
 		Data:         map[string]any{"effective_rate_multiplier": 0.5REDACTED,
@@ -463,13 +575,17 @@ func TestUpstreamBillingProbeFailurePreservesLastSuccessAndRetryAfter(t *testing
 		FailureCount: 1,
 REDACTED
 	account := &Account{
-		ID:          18,
-		Platform:    PlatformOpenAI,
-		Type:        AccountTypeAPIKey,
-		Status:      StatusActive,
-		Concurrency: 1,
-REDACTED"api_key": "sk-test", "base_url": "https://upstream.example"REDACTED,
-		Extra:       map[string]any{UpstreamBillingProbeExtraKey: previousREDACTED,
+		ID:             18,
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeAPIKey,
+		Status:         StatusActive,
+		Concurrency:    1,
+		RateMultiplier: &initialRate,
+		Credentials:    map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"REDACTED,
+		Extra: map[string]any{
+			UpstreamBillingProbeEnabledExtraKey: true,
+			UpstreamBillingProbeExtraKey:        previous,
+	REDACTED,
 REDACTED
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -492,6 +608,8 @@ REDACTED
 	require.Equal(t, "http_error", snapshot.LastError)
 	require.False(t, snapshot.NextProbeAt.Before(fixedNow.Add(4*time.Hour)))
 	require.NotContains(t, snapshot.LastError, "do not persist")
+	require.NotNil(t, account.RateMultiplier)
+	require.Equal(t, initialRate, *account.RateMultiplier)
 REDACTED
 
 func TestUpstreamBillingProbeRetryAfterIsNotShortened(t *testing.T) {
@@ -611,6 +729,7 @@ REDACTEDREDACTED
 
 	require.NoError(t, svc.SetAccountEnabled(context.Background(), account.ID, true))
 	require.Equal(t, true, account.Extra[UpstreamBillingProbeEnabledExtraKey])
+	account.Extra[UpstreamBillingRateSyncEnabledExtraKey] = true
 	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
 REDACTED
 	require.Equal(t, UpstreamBillingProbeStatusUnsupported, snapshot.Status)
@@ -624,6 +743,9 @@ REDACTED
 	require.Equal(t, 2, snapshot.FailureCount)
 	require.False(t, snapshot.NextProbeAt.Before(fixedNow.Add(192*time.Minute)))
 	require.False(t, snapshot.NextProbeAt.After(fixedNow.Add(288*time.Minute)))
+	require.NoError(t, svc.SetAccountEnabled(context.Background(), account.ID, false))
+	require.Equal(t, false, account.Extra[UpstreamBillingProbeEnabledExtraKey])
+	require.Equal(t, false, account.Extra[UpstreamBillingRateSyncEnabledExtraKey])
 
 	invalid := &Account{ID: 20, Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED
 	repo.accounts[invalid.ID] = invalid
@@ -662,10 +784,14 @@ REDACTEDREDACTED
 	require.Equal(t, int64(20), upstream.calls.Load())
 
 	accounts[25].Extra[UpstreamBillingProbeEnabledExtraKey] = false
+	manualRate := 0.25
+	accounts[25].RateMultiplier = &manualRate
 	snapshot, err := svc.ProbeAccount(context.Background(), 25)
 REDACTED
 	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
 	require.Equal(t, int64(21), upstream.calls.Load())
+	require.NotNil(t, accounts[25].RateMultiplier)
+	require.Equal(t, manualRate, *accounts[25].RateMultiplier)
 REDACTED
 
 func TestUpstreamBillingProbeRunnerRechecksEnabledAfterDueSelection(t *testing.T) {
