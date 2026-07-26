@@ -147,6 +147,24 @@ func TestAccountHandlerUpdateMixedChannelConflictSimplifiedResponse(t *testing.T
 	require.False(t, hasRequireConfirmation)
 }
 
+func TestAccountHandlerUpdateRejectsManagedUpstreamBillingProbeSetting(t *testing.T) {
+	adminSvc := newStubAdminService()
+	router := setupAccountMixedChannelRouter(adminSvc)
+
+	body, _ := json.Marshal(map[string]any{
+		"upstream_billing_probe_enabled": false,
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/accounts/3", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "upstream_billing_probe_enabled is managed by the account name", resp["message"])
+}
+
 func TestAccountHandlerBulkUpdateMixedChannelConflict(t *testing.T) {
 	adminSvc := newStubAdminService()
 	adminSvc.bulkUpdateAccountErr = &service.MixedChannelError{
