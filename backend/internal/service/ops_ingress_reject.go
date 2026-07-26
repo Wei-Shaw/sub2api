@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 const (
@@ -18,39 +20,11 @@ const (
 	ingressRejectFlushTimeout      = 5 * time.Second
 )
 
-type OpsIngressRejectAggregate struct {
-	ID           int64     `json:"id"`
-	BucketStart  time.Time `json:"bucket_start"`
-	RejectReason string    `json:"reject_reason"`
-	RouteFamily  string    `json:"route_family"`
-	Protocol     string    `json:"protocol"`
-	ClientIP     string    `json:"client_ip"`
-	UserID       *int64    `json:"user_id,omitempty"`
-	APIKeyID     *int64    `json:"api_key_id,omitempty"`
-	RequestCount int64     `json:"request_count"`
-	FirstSeen    time.Time `json:"first_seen"`
-	LastSeen     time.Time `json:"last_seen"`
-}
+type OpsIngressRejectAggregate = domain.OpsIngressRejectAggregate
 
-type OpsIngressRejectFilter struct {
-	StartTime    *time.Time
-	EndTime      *time.Time
-	RejectReason string
-	RouteFamily  string
-	Protocol     string
-	ClientIP     string
-	UserID       *int64
-	APIKeyID     *int64
-	Page         int
-	PageSize     int
-}
+type OpsIngressRejectFilter = domain.OpsIngressRejectFilter
 
-type OpsIngressRejectList struct {
-	Items    []*OpsIngressRejectAggregate `json:"items"`
-	Total    int                          `json:"total"`
-	Page     int                          `json:"page"`
-	PageSize int                          `json:"page_size"`
-}
+type OpsIngressRejectList = domain.OpsIngressRejectList
 
 type OpsIngressRejectHealth struct {
 	Cardinality    int64  `json:"cardinality"`

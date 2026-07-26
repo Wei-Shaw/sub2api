@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 const ingressRejectUpsertChunkSize = 500
 
-func (r *opsRepository) BatchUpsertIngressRejects(ctx context.Context, items []*service.OpsIngressRejectAggregate) error {
+func (r *opsRepository) BatchUpsertIngressRejects(ctx context.Context, items []*domain.OpsIngressRejectAggregate) error {
 	if r == nil || r.db == nil || len(items) == 0 {
 		return nil
 	}
@@ -25,7 +25,7 @@ func (r *opsRepository) BatchUpsertIngressRejects(ctx context.Context, items []*
 		if end > len(items) {
 			end = len(items)
 		}
-		valid := make([]*service.OpsIngressRejectAggregate, 0, end-start)
+		valid := make([]*domain.OpsIngressRejectAggregate, 0, end-start)
 		for _, item := range items[start:end] {
 			if item != nil && item.RequestCount > 0 {
 				valid = append(valid, item)
@@ -70,12 +70,12 @@ DO UPDATE SET request_count = ops_ingress_reject_aggregates.request_count + EXCL
 	return tx.Commit()
 }
 
-func (r *opsRepository) ListIngressRejects(ctx context.Context, filter *service.OpsIngressRejectFilter) (*service.OpsIngressRejectList, error) {
+func (r *opsRepository) ListIngressRejects(ctx context.Context, filter *domain.OpsIngressRejectFilter) (*domain.OpsIngressRejectList, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
 	if filter == nil {
-		filter = &service.OpsIngressRejectFilter{}
+		filter = &domain.OpsIngressRejectFilter{}
 	}
 	page, pageSize := filter.Page, filter.PageSize
 	if page <= 0 {
@@ -133,11 +133,11 @@ FROM ops_ingress_reject_aggregates %s ORDER BY bucket_start DESC,id DESC LIMIT $
 	}
 	defer func() { _ = rows.Close() }()
 
-	result := &service.OpsIngressRejectList{
-		Items: make([]*service.OpsIngressRejectAggregate, 0, pageSize), Total: total, Page: page, PageSize: pageSize,
+	result := &domain.OpsIngressRejectList{
+		Items: make([]*domain.OpsIngressRejectAggregate, 0, pageSize), Total: total, Page: page, PageSize: pageSize,
 	}
 	for rows.Next() {
-		item := &service.OpsIngressRejectAggregate{}
+		item := &domain.OpsIngressRejectAggregate{}
 		var userID, apiKeyID int64
 		if err := rows.Scan(&item.ID, &item.BucketStart, &item.RejectReason, &item.RouteFamily, &item.Protocol,
 			&item.ClientIP, &userID, &apiKeyID, &item.RequestCount, &item.FirstSeen, &item.LastSeen); err != nil {
