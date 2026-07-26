@@ -1017,4 +1017,29 @@ describe('EditAccountModal', () => {
       'antigravity_project_id'
     )
   })
+
+  it('round-trips account per-request upstream pricing without changing the normal billing payload', async () => {
+    const account = buildAccount()
+    account.extra = {
+      account_per_request_pricing: {
+        enabled: true,
+        model_prices: { 'gpt-5.4': 0 }
+      }
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.findAll('[data-testid="account-per-request-pricing-add"]').length).toBe(1)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.account_per_request_pricing).toEqual({
+      enabled: true,
+      model_prices: { 'gpt-5.4': 0 }
+    })
+  })
 })

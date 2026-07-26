@@ -797,6 +797,17 @@ export default {
       priorityHint: 'Lower value accounts are used first',
       billingRateMultiplier: 'Billing Rate Multiplier',
       billingRateMultiplierHint: '0 = free, affects account billing only',
+      perRequestPricing: {
+        title: 'Enable Per-Request Pricing',
+        hint: 'Records fixed account upstream cost by final upstream model. It does not affect user balance or channel billing. Models without a price cannot use this account.',
+        upstreamModel: 'Final Upstream Model',
+        upstreamModelPlaceholder: 'e.g. gpt-5.4',
+        pricePerRequest: 'Cost per Request (USD)',
+        addModel: 'Add Model',
+        modelRequired: 'Add at least one model and price',
+        invalidEntry: 'A model name and a price greater than or equal to 0 are required',
+        duplicateModel: 'Models cannot be duplicated'
+      },
       expiresAt: 'Expires At',
       expiresAtHint: 'Leave empty for no expiration',
       higherPriorityFirst: 'Lower value means higher priority',

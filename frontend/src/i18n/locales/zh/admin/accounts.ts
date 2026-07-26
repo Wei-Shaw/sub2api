@@ -852,6 +852,17 @@ export default {
       priorityHint: '优先级越小的账号优先使用',
       billingRateMultiplier: '账号计费倍率',
       billingRateMultiplierHint: '0 表示不计费，仅影响账号计费',
+      perRequestPricing: {
+        title: '启用按次计费',
+        hint: '按最终上游模型记录账号单次成本；不影响用户余额和渠道计费。未配置价格的模型不能使用此账号。',
+        upstreamModel: '最终上游模型',
+        upstreamModelPlaceholder: '例如 gpt-5.4',
+        pricePerRequest: '每次成本 (USD)',
+        addModel: '添加模型',
+        modelRequired: '请至少添加一个模型和价格',
+        invalidEntry: '模型名称不能为空，价格必须为大于等于 0 的数字',
+        duplicateModel: '模型不能重复'
+      },
       expiresAt: '过期时间',
       expiresAtHint: '留空表示不过期',
       higherPriorityFirst: '数值越小优先级越高',

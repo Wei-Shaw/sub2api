@@ -2458,16 +2458,47 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 			return false
 		}
 		// 应用 thinking 后缀后检查最终模型是否在账号映射中
+		finalModel := mapped
 		if enabled, ok := ThinkingEnabledFromContext(ctx); ok {
-			finalModel := applyThinkingModelSuffix(mapped, enabled)
-			if finalModel == mapped {
-				return true // thinking 后缀未改变模型名，映射已通过
+			finalModel = applyThinkingModelSuffix(mapped, enabled)
+			if finalModel != mapped && !account.IsModelSupported(finalModel) {
+				return false
 			}
-			return account.IsModelSupported(finalModel)
 		}
+		return s.isAccountPerRequestModelPriced(account, finalModel)
+	}
+	return s.isModelSupportedByAccount(account, requestedModel) && s.isAccountPerRequestModelPriced(account, s.finalUpstreamModelForAccount(account, requestedModel))
+}
+
+// isAccountPerRequestModelPriced applies the optional account-scoped model
+// gate. When enabled, an account may only be scheduled for final upstream
+// models which have an explicit cost entry, including a deliberate zero cost.
+func (s *GatewayService) isAccountPerRequestModelPriced(account *Account, upstreamModel string) bool {
+	if account == nil || !account.AccountPerRequestPricingEnabled() {
 		return true
 	}
-	return s.isModelSupportedByAccount(account, requestedModel)
+	_, ok := account.AccountPerRequestPrice(upstreamModel)
+	return ok
+}
+
+func (s *GatewayService) finalUpstreamModelForAccount(account *Account, requestedModel string) string {
+	if account == nil {
+		return ""
+	}
+	if account.IsBedrock() {
+		if mapped, ok := ResolveBedrockModelID(account, requestedModel); ok {
+			return mapped
+		}
+		return ""
+	}
+	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
+		if account.Type == AccountTypeServiceAccount {
+			requestedModel = normalizeVertexAnthropicModelID(claude.NormalizeModelID(requestedModel))
+		} else {
+			requestedModel = claude.NormalizeModelID(requestedModel)
+		}
+	}
+	return account.GetMappedModel(requestedModel)
 }
 
 // isModelSupportedByAccount 根据账户平台检查模型支持（无 context，用于非 Antigravity 平台）
@@ -2480,11 +2511,11 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	}
 	if account.IsBedrock() {
 		_, ok := ResolveBedrockModelID(account, requestedModel)
-		return ok
+		return ok && s.isAccountPerRequestModelPriced(account, s.finalUpstreamModelForAccount(account, requestedModel))
 	}
 	// OpenAI 透传模式：仅替换认证，允许所有模型
 	if account.Platform == PlatformOpenAI && account.IsOpenAIPassthroughEnabled() {
-		return true
+		return s.isAccountPerRequestModelPriced(account, requestedModel)
 	}
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
@@ -2495,5 +2526,5 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		}
 	}
 	// 其他平台使用账户的模型支持检查
-	return account.IsModelSupported(requestedModel)
+	return account.IsModelSupported(requestedModel) && s.isAccountPerRequestModelPriced(account, account.GetMappedModel(requestedModel))
 }

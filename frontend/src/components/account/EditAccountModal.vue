@@ -1451,6 +1451,52 @@
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') }}</p>
       </div>
 
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.perRequestPricing.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.perRequestPricing.hint') }}
+            </p>
+          </div>
+          <Toggle
+            v-model="accountPerRequestPricingEnabled"
+            data-testid="account-per-request-pricing-toggle"
+            :aria-label="t('admin.accounts.perRequestPricing.title')"
+          />
+        </div>
+
+        <div v-if="accountPerRequestPricingEnabled" class="mt-4 space-y-3">
+          <div class="grid grid-cols-[minmax(0,1fr)_9rem_2.5rem] gap-2 px-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+            <span>{{ t('admin.accounts.perRequestPricing.upstreamModel') }}</span>
+            <span>{{ t('admin.accounts.perRequestPricing.pricePerRequest') }}</span>
+            <span class="sr-only">{{ t('common.actions') }}</span>
+          </div>
+          <div
+            v-for="(entry, index) in accountPerRequestPrices"
+            :key="getAccountPerRequestPriceKey(entry)"
+            class="grid grid-cols-[minmax(0,1fr)_9rem_2.5rem] gap-2"
+          >
+            <input v-model="entry.model" type="text" class="input font-mono text-sm" :placeholder="t('admin.accounts.perRequestPricing.upstreamModelPlaceholder')" />
+            <input v-model.number="entry.price" type="number" min="0" step="0.000001" class="input" :aria-label="t('admin.accounts.perRequestPricing.pricePerRequest')" />
+            <button
+              type="button"
+              class="btn btn-secondary !px-2 text-red-600 hover:text-red-700 dark:text-red-400"
+              :aria-label="t('common.delete')"
+              @click="accountPerRequestPrices.splice(index, 1)"
+            >
+              <Icon name="trash" size="sm" />
+            </button>
+          </div>
+          <p v-if="accountPerRequestPricingError" class="text-xs text-red-600 dark:text-red-400">
+            {{ accountPerRequestPricingError }}
+          </p>
+          <button type="button" class="btn btn-secondary text-sm" data-testid="account-per-request-pricing-add" @click="addAccountPerRequestPrice">
+            {{ t('admin.accounts.perRequestPricing.addModel') }}
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
@@ -2699,6 +2745,11 @@ interface ModelMapping {
   to: string
 }
 
+interface AccountPerRequestPriceForm {
+  model: string
+  price: number | null
+}
+
 interface TempUnschedRuleForm {
   error_code: number | null
   keywords: string
@@ -2791,6 +2842,9 @@ const autoPause7dThreshold = ref<number | null>(null)
 const autoPause5hDisabled = ref(false)
 const autoPause7dDisabled = ref(false)
 const upstreamBillingAutoProbeEnabled = ref(false)
+const accountPerRequestPricingEnabled = ref(false)
+const accountPerRequestPrices = ref<AccountPerRequestPriceForm[]>([])
+const accountPerRequestPricingError = ref('')
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const antigravityProjectId = ref('')
@@ -2804,6 +2858,38 @@ const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-mod
 const getOpenAICompactModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-openai-compact-model-mapping')
 const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-antigravity-model-mapping')
 const getTempUnschedRuleKey = createStableObjectKeyResolver<TempUnschedRuleForm>('edit-temp-unsched-rule')
+const getAccountPerRequestPriceKey = createStableObjectKeyResolver<AccountPerRequestPriceForm>('edit-account-per-request-price')
+
+const addAccountPerRequestPrice = () => {
+  accountPerRequestPrices.value.push({ model: '', price: null })
+}
+
+const buildAccountPerRequestPricing = (): Record<string, unknown> | null => {
+  accountPerRequestPricingError.value = ''
+  const modelPrices: Record<string, number> = {}
+  const seen = new Set<string>()
+
+  for (const entry of accountPerRequestPrices.value) {
+    const model = entry.model.trim()
+    const normalized = model.toLowerCase()
+    if (!model || entry.price == null || !Number.isFinite(entry.price) || entry.price < 0) {
+      accountPerRequestPricingError.value = t('admin.accounts.perRequestPricing.invalidEntry')
+      return null
+    }
+    if (seen.has(normalized)) {
+      accountPerRequestPricingError.value = t('admin.accounts.perRequestPricing.duplicateModel')
+      return null
+    }
+    seen.add(normalized)
+    modelPrices[model] = entry.price
+  }
+
+  if (accountPerRequestPricingEnabled.value && Object.keys(modelPrices).length === 0) {
+    accountPerRequestPricingError.value = t('admin.accounts.perRequestPricing.modelRequired')
+    return null
+  }
+  return { enabled: accountPerRequestPricingEnabled.value, model_prices: modelPrices }
+}
 
 const showMixedChannelWarning = ref(false)
 const mixedChannelWarningDetails = ref<{ groupName: string; currentPlatform: string; otherPlatform: string } | null>(
@@ -3273,6 +3359,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
 	autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
 	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
+	const perRequestPricing = extra?.account_per_request_pricing as Record<string, unknown> | undefined
+	accountPerRequestPricingEnabled.value = perRequestPricing?.enabled === true
+	const modelPrices = perRequestPricing?.model_prices as Record<string, unknown> | undefined
+	accountPerRequestPrices.value = modelPrices && typeof modelPrices === 'object'
+	  ? Object.entries(modelPrices)
+	      .filter(([, price]) => typeof price === 'number' && Number.isFinite(price) && price >= 0)
+	      .map(([model, price]) => ({ model, price: price as number }))
+	  : []
+	accountPerRequestPricingError.value = ''
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
@@ -4653,6 +4748,17 @@ const handleSubmit = async () => {
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
+    }
+
+    const perRequestPricing = buildAccountPerRequestPricing()
+    if (perRequestPricing == null) {
+      return
+    }
+    const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+      (props.account.extra as Record<string, unknown>) || {}
+    updatePayload.extra = {
+      ...currentExtra,
+      account_per_request_pricing: perRequestPricing
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

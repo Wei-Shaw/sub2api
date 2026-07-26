@@ -6,6 +6,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -17,6 +18,98 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
+
+const AccountPerRequestPricingExtraKey = "account_per_request_pricing"
+
+// AccountPerRequestPricing records the fixed upstream cost for each final
+// upstream model. It is intentionally independent from user-facing billing.
+type AccountPerRequestPricing struct {
+	Enabled     bool               `json:"enabled"`
+	ModelPrices map[string]float64 `json:"model_prices"`
+}
+
+func normalizeAccountPerRequestPricingModel(model string) string {
+	return strings.ToLower(strings.TrimSpace(model))
+}
+
+// ParseAccountPerRequestPricing reads the account-scoped pricing config. The
+// second return value reports whether the feature is enabled; malformed enabled
+// configuration deliberately remains enabled with no prices so scheduling fails
+// closed instead of accidentally using an unpriced model.
+func ParseAccountPerRequestPricing(extra map[string]any) (AccountPerRequestPricing, bool) {
+	if extra == nil {
+		return AccountPerRequestPricing{}, false
+	}
+	raw, ok := extra[AccountPerRequestPricingExtraKey].(map[string]any)
+	if !ok || raw == nil || raw["enabled"] != true {
+		return AccountPerRequestPricing{}, false
+	}
+	config := AccountPerRequestPricing{Enabled: true, ModelPrices: make(map[string]float64)}
+	prices, ok := raw["model_prices"].(map[string]any)
+	if !ok {
+		return config, true
+	}
+	for model, value := range prices {
+		price, ok := value.(float64)
+		if !ok || math.IsNaN(price) || math.IsInf(price, 0) || price < 0 {
+			continue
+		}
+		if normalized := normalizeAccountPerRequestPricingModel(model); normalized != "" {
+			config.ModelPrices[normalized] = price
+		}
+	}
+	return config, true
+}
+
+// ValidateAccountPerRequestPricingExtra validates administrator-supplied
+// account pricing before it is persisted.
+func ValidateAccountPerRequestPricingExtra(extra map[string]any) error {
+	if extra == nil {
+		return nil
+	}
+	rawValue, exists := extra[AccountPerRequestPricingExtraKey]
+	if !exists || rawValue == nil {
+		return nil
+	}
+	raw, ok := rawValue.(map[string]any)
+	if !ok {
+		return errors.New("account_per_request_pricing must be an object")
+	}
+	enabled, enabledExists := raw["enabled"].(bool)
+	if !enabledExists {
+		return errors.New("account_per_request_pricing.enabled must be a boolean")
+	}
+	pricesValue, pricesExists := raw["model_prices"]
+	if !pricesExists {
+		if enabled {
+			return errors.New("account_per_request_pricing requires at least one model price when enabled")
+		}
+		return nil
+	}
+	prices, ok := pricesValue.(map[string]any)
+	if !ok {
+		return errors.New("account_per_request_pricing.model_prices must be an object")
+	}
+	if enabled && len(prices) == 0 {
+		return errors.New("account_per_request_pricing requires at least one model price when enabled")
+	}
+	seen := make(map[string]struct{}, len(prices))
+	for model, value := range prices {
+		normalized := normalizeAccountPerRequestPricingModel(model)
+		if normalized == "" {
+			return errors.New("account_per_request_pricing model name is required")
+		}
+		if _, duplicate := seen[normalized]; duplicate {
+			return errors.New("account_per_request_pricing contains duplicate model names")
+		}
+		seen[normalized] = struct{}{}
+		price, ok := value.(float64)
+		if !ok || math.IsNaN(price) || math.IsInf(price, 0) || price < 0 {
+			return errors.New("account_per_request_pricing price must be a non-negative number")
+		}
+	}
+	return nil
+}
 
 type Account struct {
 	ID                      int64
@@ -148,6 +241,30 @@ func (a *Account) BillingRateMultiplier() float64 {
 		return 1.0
 	}
 	return *a.RateMultiplier
+}
+
+func (a *Account) AccountPerRequestPricing() (AccountPerRequestPricing, bool) {
+	if a == nil {
+		return AccountPerRequestPricing{}, false
+	}
+	return ParseAccountPerRequestPricing(a.Extra)
+}
+
+func (a *Account) AccountPerRequestPricingEnabled() bool {
+	_, enabled := a.AccountPerRequestPricing()
+	return enabled
+}
+
+// AccountPerRequestPrice returns the configured fixed upstream cost for a
+// final upstream model. A zero price is valid and means the upstream call is
+// free while still being explicitly allowed for scheduling.
+func (a *Account) AccountPerRequestPrice(upstreamModel string) (float64, bool) {
+	config, enabled := a.AccountPerRequestPricing()
+	if !enabled {
+		return 0, false
+	}
+	price, ok := config.ModelPrices[normalizeAccountPerRequestPricingModel(upstreamModel)]
+	return price, ok
 }
 
 func (a *Account) EffectiveLoadFactor() int {
