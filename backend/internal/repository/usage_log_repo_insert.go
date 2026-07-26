@@ -81,6 +81,7 @@ var usageLogInsertArgTypes = [...]string{
 	"numeric",     // account_stats_cost
 	"bigint",      // custom_domain_id
 	"text",        // custom_domain
+	"text",        // session_id
 	"timestamptz", // created_at
 }
 
@@ -278,6 +279,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			account_stats_cost,
 			custom_domain_id,
 			custom_domain,
+			session_id,
 			created_at
 		) VALUES (%s)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -727,6 +729,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			account_stats_cost,
 			custom_domain_id,
 			custom_domain,
+			session_id,
 			created_at
 		) AS (VALUES `)
 
@@ -816,6 +819,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				account_stats_cost,
 				custom_domain_id,
 				custom_domain,
+				session_id,
 				created_at
 			)
 			SELECT
@@ -876,6 +880,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				account_stats_cost,
 				custom_domain_id,
 				custom_domain,
+				session_id,
 				created_at
 			FROM input
 			ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -976,6 +981,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			account_stats_cost,
 			custom_domain_id,
 			custom_domain,
+			session_id,
 			created_at
 		) AS (VALUES `)
 
@@ -1062,6 +1068,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			account_stats_cost,
 			custom_domain_id,
 			custom_domain,
+			session_id,
 			created_at
 		)
 		SELECT
@@ -1122,6 +1129,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			account_stats_cost,
 			custom_domain_id,
 			custom_domain,
+			session_id,
 			created_at
 		FROM input
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -1190,6 +1198,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			account_stats_cost,
 			custom_domain_id,
 			custom_domain,
+			session_id,
 			created_at
 		) VALUES (%s)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -1242,6 +1251,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	billingMode := nullString(log.BillingMode)
 	customDomainID := nullInt64(log.CustomDomainID)
 	customDomain := nullString(log.CustomDomain)
+	sessionID := nullString(log.SessionID)
 	requestedModel := strings.TrimSpace(log.RequestedModel)
 	if requestedModel == "" {
 		requestedModel = strings.TrimSpace(log.Model)
@@ -1316,6 +1326,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.AccountStatsCost, // account_stats_cost
 			customDomainID,
 			customDomain,
+			sessionID, // session_id
 			createdAt,
 		},
 	}

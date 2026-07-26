@@ -98,6 +98,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // custom_domain_id
 			sqlmock.AnyArg(), // custom_domain
+			sqlmock.AnyArg(), // session_id
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
@@ -189,6 +190,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // custom_domain_id
 			sqlmock.AnyArg(), // custom_domain
+			sqlmock.AnyArg(), // session_id
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
@@ -830,8 +832,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullFloat64{},
-			sql.NullInt64{},
-			sql.NullString{},
+			sql.NullInt64{},  // custom_domain_id
+			sql.NullString{}, // custom_domain
+			sql.NullString{}, // session_id
 			now,
 		}})
 		require.NoError(t, err)
@@ -908,6 +911,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullInt64{},   // custom_domain_id
 			sql.NullString{},  // custom_domain
+			sql.NullString{},  // session_id
 			now,
 		}})
 		require.NoError(t, err)
@@ -967,6 +971,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullInt64{},   // custom_domain_id
 			sql.NullString{},  // custom_domain
+			sql.NullString{},  // session_id
 			now,
 		}})
 		require.NoError(t, err)
@@ -1026,6 +1031,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullInt64{},   // custom_domain_id
 			sql.NullString{},  // custom_domain
+			sql.NullString{},  // session_id
 			now,
 		}})
 		require.NoError(t, err)
