@@ -530,7 +530,7 @@ func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountI
 			return nil, err
 		}
 		_ = rows.Close()
-		return nil, service.ErrAccountNotFound
+		return nil, domain.ErrAccountNotFound
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
