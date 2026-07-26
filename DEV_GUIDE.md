@@ -358,13 +358,19 @@ handler ──► service（应用）──► port/<bc> ──► repository（
 - `internal/repository/`：实现 `port/<bc>` 接口，签名用 `domain.*`。目标是**不再 import `internal/service`**，但若该 repo 还依赖其他未提取 BC 的 service 类型（缓存、探针、事件等），可暂留 import——以实体 + 端口落地为准，反转计数下降是最终态而非每一步硬指标。
 - `internal/service/`：保留应用服务 + type alias（`type Group = domain.Group`、`type GroupRepository = portgroup.Repository`）+ 错误再导出，保证现有调用点与测试桩渐进迁移。
 
-已提取的 BC（`internal/port/` 子包）：announcement、promo、redeem、tlsfingerprint、errorpassthrough、affiliate、proxy、group、user、apikey、setting、channel、channelmonitor、**account**（第 14 个）。`internal/model/` 包已删除（类型迁入 `domain`）。
+已提取的 BC（`internal/port/` 子包）：announcement、promo、redeem、tlsfingerprint、errorpassthrough、affiliate、proxy、group、user、apikey、setting、channel、channelmonitor、account、**usage**（第 15 个，UsageLog）。`internal/model/` 包已删除（类型迁入 `domain`）。
 
 **Account BC 备注**（`dd50614`）：
 - `domain.Account` + ~150 个纯方法；`domain.AccountGroup` 随 Account 一起迁入（嵌套 `*Account`/`*Group`，不可单独先搬）。
 - `port/account` 仓储接口保持原方法集（ISP 拆分留作后续；67 个测试桩靠 type alias 继续满足）。
 - 2 个 impure 方法 + 11 个 ctx 级联方法改为 service 自由函数（`AccountSupportsOpenAIEndpointCapability`、`AccountIsSchedulableForModelWithContext` 等），避免把 request-metadata / metrics / gateway helper 拉进 domain。
-- `repository/account_repo.go` 实现 port 并返回 `domain.Account`，但仍 import `internal/service`（SchedulerCache、UpstreamBillingProbe*、并发/容量/Grok 凭证等 16 个非 Account 符号，属其他 BC）。反转 KPI 当前 **72**（本 PR 未下降；后续拆那些 BC 再降）。
+- `repository/account_repo.go` 实现 port 并返回 `domain.Account`，但仍 import `internal/service`（SchedulerCache、UpstreamBillingProbe*、并发/容量/Grok 凭证等 16 个非 Account 符号，属其他 BC）。
+
+**UsageLog BC 备注**（`5f0bcc9`，Account 解锁后）：
+- `domain.UsageLog` + 3 纯方法（`TotalTokens` / `EffectiveRequestType` / `SyncRequestTypeAndLegacyFields`）；嵌套 `*User/*APIKey/*Account/*Group/*UserSubscription` 均已是 domain 类型。
+- `port/usage.Repository` 38 方法原样；17 个测试桩靠 service alias 继续绿。
+- repo：`usage_log_repo{,_query,_dashboard}.go` **已 drop** service import；`_insert` 保留（`MarkUsageLogCreate*`）、`_stats` 保留（`GeminiUsageTotals`）。
+- 反转 KPI：**72 → 69**（UsageLog 三文件 drop）。
 
 **提取一个新 BC 的固定步骤**（参考 announcement pilot 与 Account keystone）：
 1. 实体 + 错误 + 纯函数 → `internal/domain/<bc>.go`
@@ -373,7 +379,7 @@ handler ──► service（应用）──► port/<bc> ──► repository（
 4. service 改为 type alias + 错误再导出；impure 方法改自由函数
 5. 验证：`go build ./...` + `go vet` + 该 BC 测试（含相关 stub）；可选检查 `rg -l 'internal/service' backend/internal/repository --type go -g '!*_test.go' | wc -l`
 
-**注意**：跨 BC 实体依赖会阻塞提取。`Account` 现已在 domain，**UsageLog**（嵌套 `*Account`）是下一个可解阻塞的关键。先拆被依赖的实体，再拆下游。
+**注意**：跨 BC 实体依赖会阻塞提取。`Account` 与 `UsageLog` 均已在 domain。后续可优先拆 billing/dashboard 读模型、或 account_repo 残留的 16 个非 Account service 符号所属 BC。先拆被依赖的实体，再拆下游。
 
 ## 七、参考资源
 
