@@ -1101,6 +1101,131 @@ func injectAnthropicCacheControlTTL1h(body []byte) []byte {
 	return forceEphemeralCacheControlTTL(body, cacheTTLTarget1h)
 }
 
+// normalizeAnthropicCacheControlTTLOrder 修复 Anthropic 对 cache_control.ttl 的顺序约束。
+//
+// Anthropic 按 tools → system → messages 处理缓存断点，且禁止出现：
+//
+//	先 ttl=5m（含省略 ttl 的 ephemeral，默认 5m），再 ttl=1h。
+//
+// 典型触发场景：
+//   - 客户端（Pi + PI_CACHE_RETENTION=long）在 messages 上打 1h
+//   - 网关 OAuth 伪装在 system/tools 上注入 DefaultCacheControlTTL=5m
+//     → 上游 400 invalid_request_error
+//
+// 策略：若更靠后的断点声明了 1h，则把其前方所有 5m/缺省 ttl 的 ephemeral 断点升级为 1h，
+// 保留客户端长缓存意图，同时满足"1h 不得出现在 5m 之后"的约束。
+// 1h 之后再出现 5m 是合法的（TTL 递减），不会被改写。
+func normalizeAnthropicCacheControlTTLOrder(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+
+	type ccRef struct {
+		ttlPath string
+		ttl     string // "" means omitted (Anthropic defaults to 5m)
+	}
+
+	var refs []ccRef
+	appendRef := func(basePath string, node gjson.Result) {
+		cc := node.Get("cache_control")
+		if !cc.Exists() || cc.Get("type").String() != "ephemeral" {
+			return
+		}
+		ttl := ""
+		if t := cc.Get("ttl"); t.Exists() {
+			ttl = t.String()
+		}
+		refs = append(refs, ccRef{ttlPath: basePath + ".cache_control.ttl", ttl: ttl})
+	}
+
+	// Process order required by Anthropic: tools → system → messages.
+	if tools := gjson.GetBytes(body, "tools"); tools.IsArray() {
+		idx := -1
+		tools.ForEach(func(_, tool gjson.Result) bool {
+			idx++
+			appendRef(fmt.Sprintf("tools.%d", idx), tool)
+			return true
+		})
+	}
+	if system := gjson.GetBytes(body, "system"); system.IsArray() {
+		idx := -1
+		system.ForEach(func(_, block gjson.Result) bool {
+			idx++
+			appendRef(fmt.Sprintf("system.%d", idx), block)
+			return true
+		})
+	} else if system := gjson.GetBytes(body, "system"); system.IsObject() {
+		// rare: single system object with cache_control
+		appendRef("system", system)
+	}
+	if messages := gjson.GetBytes(body, "messages"); messages.IsArray() {
+		msgIdx := -1
+		messages.ForEach(func(_, msg gjson.Result) bool {
+			msgIdx++
+			content := msg.Get("content")
+			if content.IsArray() {
+				cIdx := -1
+				content.ForEach(func(_, block gjson.Result) bool {
+					cIdx++
+					appendRef(fmt.Sprintf("messages.%d.content.%d", msgIdx, cIdx), block)
+					return true
+				})
+			}
+			return true
+		})
+	}
+
+	if len(refs) < 2 {
+		return body
+	}
+
+	effective := func(ttl string) string {
+		if ttl == "" || ttl == cacheTTLTarget5m {
+			return cacheTTLTarget5m
+		}
+		if ttl == cacheTTLTarget1h {
+			return cacheTTLTarget1h
+		}
+		// Unknown values: treat as 5m for ordering safety.
+		return cacheTTLTarget5m
+	}
+
+	// Has a later 1h after this index?
+	hasLater1h := make([]bool, len(refs))
+	seen1h := false
+	for i := len(refs) - 1; i >= 0; i-- {
+		hasLater1h[i] = seen1h
+		if effective(refs[i].ttl) == cacheTTLTarget1h {
+			seen1h = true
+		}
+	}
+
+	out := body
+	modified := false
+	for i, ref := range refs {
+		if !hasLater1h[i] {
+			continue
+		}
+		if effective(ref.ttl) != cacheTTLTarget5m {
+			continue
+		}
+		// Upgrade 5m / omitted ttl → 1h so a later 1h is legal.
+		if ref.ttl == cacheTTLTarget1h {
+			continue
+		}
+		next, err := sjson.SetBytes(out, ref.ttlPath, cacheTTLTarget1h)
+		if err != nil {
+			continue
+		}
+		out = next
+		modified = true
+	}
+	if modified {
+		return out
+	}
+	return body
+}
+
 func forceEphemeralCacheControlTTL(body []byte, ttl string) []byte {
 	if len(body) == 0 || ttl == "" {
 		return body

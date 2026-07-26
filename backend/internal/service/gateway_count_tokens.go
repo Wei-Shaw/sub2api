@@ -78,6 +78,9 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 				return err
 			}
 		}
+		if err := replaceBody(normalizeAnthropicCacheControlTTLOrder(body)); err != nil {
+			return err
+		}
 	}
 
 	// Antigravity 账户不支持 count_tokens，返回 404 让客户端 fallback 到本地估算。

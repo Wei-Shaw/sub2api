@@ -292,6 +292,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			return nil, err
 		}
 	}
+	// Anthropic 禁止 1h 出现在 5m 之后（处理顺序 tools→system→messages）。
+	// 网关默认 5m 注入 + 客户端 long cache(1h) 会触发 400，这里做顺序归一。
+	if err := replaceBody(normalizeAnthropicCacheControlTTLOrder(body)); err != nil {
+		return nil, err
+	}
 
 	// 获取凭证
 	token, tokenType, err := s.GetAccessToken(ctx, account)

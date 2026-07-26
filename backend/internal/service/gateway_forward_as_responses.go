@@ -101,8 +101,12 @@ func (s *GatewayService) ForwardAsResponses(
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
 	}
 
-	// 7. Enforce cache_control block limit
+	// 7. Enforce cache_control block limit + TTL order (1h must not follow 5m)
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
+	if s.shouldInjectAnthropicCacheTTL1h(ctx, account) {
+		anthropicBody = injectAnthropicCacheControlTTL1h(anthropicBody)
+	}
+	anthropicBody = normalizeAnthropicCacheControlTTLOrder(anthropicBody)
 
 	// 8. Get access token
 	token, tokenType, err := s.GetAccessToken(ctx, account)

@@ -221,3 +221,58 @@ func TestGatewayCacheTTLGlobalSetting_RequestInjectionScope(t *testing.T) {
 	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{})
 	require.False(t, svc.shouldInjectAnthropicCacheTTL1h(context.Background(), &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuth}))
 }
+
+func TestNormalizeAnthropicCacheControlTTLOrder_UpgradesEarlier5mWhenLater1h(t *testing.T) {
+	// tools(5m) → system(5m) → messages(1h) 是 Pi long-cache + 网关默认 5m 的典型冲突。
+	body := []byte(`{
+		"tools":[{"name":"a","input_schema":{},"cache_control":{"type":"ephemeral","ttl":"5m"}}],
+		"system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral","ttl":"5m"}}],
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"q1"}]},
+			{"role":"assistant","content":[{"type":"text","text":"a1"}]},
+			{"role":"user","content":[{"type":"text","text":"q2","cache_control":{"type":"ephemeral","ttl":"1h"}}]}
+		]
+	}`)
+
+	result := normalizeAnthropicCacheControlTTLOrder(body)
+	require.Equal(t, "1h", gjson.GetBytes(result, "tools.0.cache_control.ttl").String())
+	require.Equal(t, "1h", gjson.GetBytes(result, "system.0.cache_control.ttl").String())
+	require.Equal(t, "1h", gjson.GetBytes(result, "messages.2.content.0.cache_control.ttl").String())
+}
+
+func TestNormalizeAnthropicCacheControlTTLOrder_UpgradesOmittedTTLTreatedAs5m(t *testing.T) {
+	// 省略 ttl 的 ephemeral 按 Anthropic 默认视为 5m，后面不能再出现 1h。
+	body := []byte(`{
+		"system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral"}}],
+		"messages":[{"role":"user","content":[
+			{"type":"text","text":"a","cache_control":{"type":"ephemeral","ttl":"1h"}},
+			{"type":"text","text":"b","cache_control":{"type":"ephemeral","ttl":"1h"}}
+		]}]
+	}`)
+
+	result := normalizeAnthropicCacheControlTTLOrder(body)
+	require.Equal(t, "1h", gjson.GetBytes(result, "system.0.cache_control.ttl").String())
+	require.Equal(t, "1h", gjson.GetBytes(result, "messages.0.content.0.cache_control.ttl").String())
+	require.Equal(t, "1h", gjson.GetBytes(result, "messages.0.content.1.cache_control.ttl").String())
+}
+
+func TestNormalizeAnthropicCacheControlTTLOrder_KeepsDecreasing1hThen5m(t *testing.T) {
+	// 1h 在前、5m 在后是合法递减，不应改写。
+	body := []byte(`{
+		"tools":[{"name":"a","input_schema":{},"cache_control":{"type":"ephemeral","ttl":"1h"}}],
+		"system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral","ttl":"1h"}}],
+		"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"5m"}}]}]
+	}`)
+
+	result := normalizeAnthropicCacheControlTTLOrder(body)
+	require.JSONEq(t, string(body), string(result))
+}
+
+func TestNormalizeAnthropicCacheControlTTLOrder_NoOpWhenUniform5m(t *testing.T) {
+	body := []byte(`{
+		"tools":[{"name":"a","input_schema":{},"cache_control":{"type":"ephemeral","ttl":"5m"}}],
+		"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"5m"}}]}]
+	}`)
+	result := normalizeAnthropicCacheControlTTLOrder(body)
+	require.JSONEq(t, string(body), string(result))
+}
