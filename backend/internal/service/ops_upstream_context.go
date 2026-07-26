@@ -6,7 +6,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
+
+// OpsUpstreamErrorEvent moved to internal/domain (pure-scalar read model).
+// The impure gin-context helpers below stay in service.
+type OpsUpstreamErrorEvent = domain.OpsUpstreamErrorEvent
 
 // Gin context keys used by Ops error logger for capturing upstream error details.
 // These keys are set by gateway services and consumed by handler/ops_error_logger.go.
@@ -185,43 +191,6 @@ func setOpsUpstreamError(c *gin.Context, upstreamStatusCode int, upstreamMessage
 	if detail := strings.TrimSpace(upstreamDetail); detail != "" {
 		c.Set(OpsUpstreamErrorDetailKey, detail)
 	}
-}
-
-// OpsUpstreamErrorEvent describes one upstream error attempt during a single gateway request.
-// It is stored in ops_error_logs.upstream_errors as a JSON array.
-type OpsUpstreamErrorEvent struct {
-	AtUnixMs int64 `json:"at_unix_ms,omitempty"`
-
-	// Passthrough 表示本次请求是否命中“原样透传（仅替换认证）”分支。
-	// 该字段用于排障与灰度评估；存入 JSON，不涉及 DB schema 变更。
-	Passthrough bool `json:"passthrough,omitempty"`
-
-	// Context
-	Platform    string `json:"platform,omitempty"`
-	AccountID   int64  `json:"account_id,omitempty"`
-	AccountName string `json:"account_name,omitempty"`
-
-	// Outcome
-	UpstreamStatusCode int    `json:"upstream_status_code,omitempty"`
-	UpstreamRequestID  string `json:"upstream_request_id,omitempty"`
-
-	// UpstreamURL is the actual upstream URL that was called (host + path, query/fragment stripped).
-	// Helps debug 404/routing errors by showing which endpoint was targeted.
-	UpstreamURL string `json:"upstream_url,omitempty"`
-
-	// Best-effort upstream response capture (sanitized+trimmed).
-	UpstreamResponseBody string `json:"upstream_response_body,omitempty"`
-
-	// Kind: http_error | request_error | retry_exhausted | failover
-	Kind string `json:"kind,omitempty"`
-	// Stage/Scope/Reason distinguish credential acquisition from inference
-	// without overloading upstream_status_code with a synthetic HTTP status.
-	Stage  string `json:"stage,omitempty"`
-	Scope  string `json:"scope,omitempty"`
-	Reason string `json:"reason,omitempty"`
-
-	Message string `json:"message,omitempty"`
-	Detail  string `json:"detail,omitempty"`
 }
 
 func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {

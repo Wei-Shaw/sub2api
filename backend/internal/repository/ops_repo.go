@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/ops"
 	"github.com/lib/pq"
 )
 
@@ -60,11 +61,11 @@ INSERT INTO ops_error_logs (
   $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
 )`
 
-func NewOpsRepository(db *sql.DB) service.OpsRepository {
+func NewOpsRepository(db *sql.DB) ops.OpsRepository {
 	return &opsRepository{db: db}
 }
 
-func (r *opsRepository) InsertErrorLog(ctx context.Context, input *service.OpsInsertErrorLogInput) (int64, error) {
+func (r *opsRepository) InsertErrorLog(ctx context.Context, input *domain.OpsInsertErrorLogInput) (int64, error) {
 	if r == nil || r.db == nil {
 		return 0, fmt.Errorf("nil ops repository")
 	}
@@ -84,7 +85,7 @@ func (r *opsRepository) InsertErrorLog(ctx context.Context, input *service.OpsIn
 	return id, nil
 }
 
-func (r *opsRepository) BatchInsertErrorLogs(ctx context.Context, inputs []*service.OpsInsertErrorLogInput) (int64, error) {
+func (r *opsRepository) BatchInsertErrorLogs(ctx context.Context, inputs []*domain.OpsInsertErrorLogInput) (int64, error) {
 	if r == nil || r.db == nil {
 		return 0, fmt.Errorf("nil ops repository")
 	}
@@ -127,7 +128,7 @@ func (r *opsRepository) BatchInsertErrorLogs(ctx context.Context, inputs []*serv
 	return inserted, nil
 }
 
-func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
+func opsInsertErrorLogArgs(input *domain.OpsInsertErrorLogInput) []any {
 	return []any{
 		opsNullString(input.RequestID),
 		opsNullString(input.ClientRequestID),
@@ -173,7 +174,7 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 // opsErrorLogsOrderBy builds the ORDER BY clause from a whitelist, mirroring
 // usageLogOrderBy semantics. Unknown SortBy falls back to created_at; e.id is
 // always appended as tiebreaker for stable pagination.
-func opsErrorLogsOrderBy(filter *service.OpsErrorLogFilter) string {
+func opsErrorLogsOrderBy(filter *domain.OpsErrorLogFilter) string {
 	sortBy := ""
 	sortOrder := ""
 	if filter != nil {
@@ -201,12 +202,12 @@ func opsErrorLogsOrderBy(filter *service.OpsErrorLogFilter) string {
 	return fmt.Sprintf("%s %s, e.id %s", column, dir, dir)
 }
 
-func (r *opsRepository) ListErrorLogs(ctx context.Context, filter *service.OpsErrorLogFilter) (*service.OpsErrorLogList, error) {
+func (r *opsRepository) ListErrorLogs(ctx context.Context, filter *domain.OpsErrorLogFilter) (*domain.OpsErrorLogList, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
 	if filter == nil {
-		filter = &service.OpsErrorLogFilter{}
+		filter = &domain.OpsErrorLogFilter{}
 	}
 
 	page := filter.Page
@@ -284,9 +285,9 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make([]*service.OpsErrorLog, 0, pageSize)
+	out := make([]*domain.OpsErrorLog, 0, pageSize)
 	for rows.Next() {
-		var item service.OpsErrorLog
+		var item domain.OpsErrorLog
 		var statusCode sql.NullInt64
 		var clientIP sql.NullString
 		var userID sql.NullInt64
@@ -386,7 +387,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 		return nil, err
 	}
 
-	return &service.OpsErrorLogList{
+	return &domain.OpsErrorLogList{
 		Errors:   out,
 		Total:    total,
 		Page:     page,
@@ -394,7 +395,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 	}, nil
 }
 
-func (r *opsRepository) GetErrorLogByID(ctx context.Context, id int64) (*service.OpsErrorLogDetail, error) {
+func (r *opsRepository) GetErrorLogByID(ctx context.Context, id int64) (*domain.OpsErrorLogDetail, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -458,7 +459,7 @@ LEFT JOIN api_keys ak ON ak.id = e.api_key_id
 WHERE e.id = $1
 LIMIT 1`
 
-	var out service.OpsErrorLogDetail
+	var out domain.OpsErrorLogDetail
 	var statusCode sql.NullInt64
 	var upstreamStatusCode sql.NullInt64
 	var resolvedAt sql.NullTime
@@ -633,7 +634,7 @@ WHERE id = $1`
 	return err
 }
 
-func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*service.OpsInsertSystemLogInput) (int64, error) {
+func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*domain.OpsInsertSystemLogInput) (int64, error) {
 	if r == nil || r.db == nil {
 		return 0, fmt.Errorf("nil ops repository")
 	}
@@ -726,12 +727,12 @@ func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*ser
 	return inserted, nil
 }
 
-func (r *opsRepository) ListSystemLogs(ctx context.Context, filter *service.OpsSystemLogFilter) (*service.OpsSystemLogList, error) {
+func (r *opsRepository) ListSystemLogs(ctx context.Context, filter *domain.OpsSystemLogFilter) (*domain.OpsSystemLogList, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
 	if filter == nil {
-		filter = &service.OpsSystemLogFilter{}
+		filter = &domain.OpsSystemLogFilter{}
 	}
 
 	page := filter.Page
@@ -782,9 +783,9 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 	}
 	defer func() { _ = rows.Close() }()
 
-	logs := make([]*service.OpsSystemLog, 0, pageSize)
+	logs := make([]*domain.OpsSystemLog, 0, pageSize)
 	for rows.Next() {
-		item := &service.OpsSystemLog{}
+		item := &domain.OpsSystemLog{}
 		var userID sql.NullInt64
 		var apiKeyID sql.NullInt64
 		var accountID sql.NullInt64
@@ -832,7 +833,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 		return nil, err
 	}
 
-	return &service.OpsSystemLogList{
+	return &domain.OpsSystemLogList{
 		Logs:     logs,
 		Total:    total,
 		Page:     page,
@@ -840,12 +841,12 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 	}, nil
 }
 
-func (r *opsRepository) DeleteSystemLogs(ctx context.Context, filter *service.OpsSystemLogCleanupFilter) (int64, error) {
+func (r *opsRepository) DeleteSystemLogs(ctx context.Context, filter *domain.OpsSystemLogCleanupFilter) (int64, error) {
 	if r == nil || r.db == nil {
 		return 0, fmt.Errorf("nil ops repository")
 	}
 	if filter == nil {
-		filter = &service.OpsSystemLogCleanupFilter{}
+		filter = &domain.OpsSystemLogCleanupFilter{}
 	}
 
 	where, args, hasConstraint := buildOpsSystemLogsCleanupWhere(filter)
@@ -861,7 +862,7 @@ func (r *opsRepository) DeleteSystemLogs(ctx context.Context, filter *service.Op
 	return res.RowsAffected()
 }
 
-func (r *opsRepository) InsertSystemLogCleanupAudit(ctx context.Context, input *service.OpsSystemLogCleanupAudit) error {
+func (r *opsRepository) InsertSystemLogCleanupAudit(ctx context.Context, input *domain.OpsSystemLogCleanupAudit) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("nil ops repository")
 	}
@@ -891,7 +892,7 @@ func escapeLikePattern(s string) string {
 	return likePatternReplacer.Replace(s)
 }
 
-func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
+func buildOpsErrorLogsWhere(filter *domain.OpsErrorLogFilter) (string, []any) {
 	clauses := make([]string, 0, 12)
 	args := make([]any, 0, 12)
 	clauses = append(clauses, "1=1")
@@ -1042,7 +1043,7 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	return "WHERE " + strings.Join(clauses, " AND "), args
 }
 
-func opsFilterIncludesRecoveredProviderRows(filter *service.OpsErrorLogFilter, phaseFilter string) bool {
+func opsFilterIncludesRecoveredProviderRows(filter *domain.OpsErrorLogFilter, phaseFilter string) bool {
 	if filter == nil || !filter.IncludeRecoveredUpstream {
 		return false
 	}
@@ -1064,7 +1065,7 @@ func opsFilterIncludesRecoveredProviderRows(filter *service.OpsErrorLogFilter, p
 	return sawProviderPhase
 }
 
-func buildOpsSystemLogsWhere(filter *service.OpsSystemLogFilter) (string, []any, bool) {
+func buildOpsSystemLogsWhere(filter *domain.OpsSystemLogFilter) (string, []any, bool) {
 	clauses := make([]string, 0, 10)
 	args := make([]any, 0, 10)
 	clauses = append(clauses, "1=1")
@@ -1143,11 +1144,11 @@ func buildOpsSystemLogsWhere(filter *service.OpsSystemLogFilter) (string, []any,
 	return "WHERE " + strings.Join(clauses, " AND "), args, hasConstraint
 }
 
-func buildOpsSystemLogsCleanupWhere(filter *service.OpsSystemLogCleanupFilter) (string, []any, bool) {
+func buildOpsSystemLogsCleanupWhere(filter *domain.OpsSystemLogCleanupFilter) (string, []any, bool) {
 	if filter == nil {
-		filter = &service.OpsSystemLogCleanupFilter{}
+		filter = &domain.OpsSystemLogCleanupFilter{}
 	}
-	listFilter := &service.OpsSystemLogFilter{
+	listFilter := &domain.OpsSystemLogFilter{
 		StartTime:       filter.StartTime,
 		EndTime:         filter.EndTime,
 		Host:            filter.Host,

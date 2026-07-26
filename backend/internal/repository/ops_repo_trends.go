@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-func (r *opsRepository) GetThroughputTrend(ctx context.Context, filter *service.OpsDashboardFilter, bucketSeconds int) (*service.OpsThroughputTrendResponse, error) {
+func (r *opsRepository) GetThroughputTrend(ctx context.Context, filter *domain.OpsDashboardFilter, bucketSeconds int) (*domain.OpsThroughputTrendResponse, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -105,7 +105,7 @@ ORDER BY bucket ASC`
 	}
 	defer func() { _ = rows.Close() }()
 
-	points := make([]*service.OpsThroughputTrendPoint, 0, 256)
+	points := make([]*domain.OpsThroughputTrendPoint, 0, 256)
 	for rows.Next() {
 		var bucket time.Time
 		var requests int64
@@ -130,7 +130,7 @@ ORDER BY bucket ASC`
 		qps := roundTo1DP(float64(requests) / denom)
 		tps := roundTo1DP(float64(tokenConsumed) / denom)
 
-		points = append(points, &service.OpsThroughputTrendPoint{
+		points = append(points, &domain.OpsThroughputTrendPoint{
 			BucketStart:   bucket.UTC(),
 			RequestCount:  requests,
 			TokenConsumed: tokenConsumed,
@@ -146,8 +146,8 @@ ORDER BY bucket ASC`
 	// Fill missing buckets with zeros so charts render continuous timelines.
 	points = fillOpsThroughputBuckets(start, end, bucketSeconds, points)
 
-	var byPlatform []*service.OpsThroughputPlatformBreakdownItem
-	var topGroups []*service.OpsThroughputGroupBreakdownItem
+	var byPlatform []*domain.OpsThroughputPlatformBreakdownItem
+	var topGroups []*domain.OpsThroughputGroupBreakdownItem
 
 	platform := ""
 	if filter != nil {
@@ -175,7 +175,7 @@ ORDER BY bucket ASC`
 		topGroups = items
 	}
 
-	return &service.OpsThroughputTrendResponse{
+	return &domain.OpsThroughputTrendResponse{
 		Bucket: opsBucketLabel(bucketSeconds),
 		Points: points,
 
@@ -184,7 +184,7 @@ ORDER BY bucket ASC`
 	}, nil
 }
 
-func (r *opsRepository) getThroughputBreakdownByPlatform(ctx context.Context, start, end time.Time) ([]*service.OpsThroughputPlatformBreakdownItem, error) {
+func (r *opsRepository) getThroughputBreakdownByPlatform(ctx context.Context, start, end time.Time) ([]*domain.OpsThroughputPlatformBreakdownItem, error) {
 	q := `
 WITH usage_totals AS (
   SELECT COALESCE(NULLIF(g.platform,''), a.platform) AS platform,
@@ -224,7 +224,7 @@ ORDER BY request_count DESC`
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]*service.OpsThroughputPlatformBreakdownItem, 0, 8)
+	items := make([]*domain.OpsThroughputPlatformBreakdownItem, 0, 8)
 	for rows.Next() {
 		var platform string
 		var requests int64
@@ -236,7 +236,7 @@ ORDER BY request_count DESC`
 		if tokens.Valid {
 			tokenConsumed = tokens.Int64
 		}
-		items = append(items, &service.OpsThroughputPlatformBreakdownItem{
+		items = append(items, &domain.OpsThroughputPlatformBreakdownItem{
 			Platform:      platform,
 			RequestCount:  requests,
 			TokenConsumed: tokenConsumed,
@@ -248,7 +248,7 @@ ORDER BY request_count DESC`
 	return items, nil
 }
 
-func (r *opsRepository) getThroughputTopGroupsByPlatform(ctx context.Context, start, end time.Time, platform string, limit int) ([]*service.OpsThroughputGroupBreakdownItem, error) {
+func (r *opsRepository) getThroughputTopGroupsByPlatform(ctx context.Context, start, end time.Time, platform string, limit int) ([]*domain.OpsThroughputGroupBreakdownItem, error) {
 	if strings.TrimSpace(platform) == "" {
 		return nil, nil
 	}
@@ -301,7 +301,7 @@ LIMIT $4`
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]*service.OpsThroughputGroupBreakdownItem, 0, limit)
+	items := make([]*domain.OpsThroughputGroupBreakdownItem, 0, limit)
 	for rows.Next() {
 		var groupID int64
 		var groupName sql.NullString
@@ -318,7 +318,7 @@ LIMIT $4`
 		if groupName.Valid {
 			name = groupName.String
 		}
-		items = append(items, &service.OpsThroughputGroupBreakdownItem{
+		items = append(items, &domain.OpsThroughputGroupBreakdownItem{
 			GroupID:       groupID,
 			GroupName:     name,
 			RequestCount:  requests,
@@ -382,7 +382,7 @@ func opsFloorToBucketStart(t time.Time, bucketSeconds int) time.Time {
 	return time.Unix(floored, 0).UTC()
 }
 
-func fillOpsThroughputBuckets(start, end time.Time, bucketSeconds int, points []*service.OpsThroughputTrendPoint) []*service.OpsThroughputTrendPoint {
+func fillOpsThroughputBuckets(start, end time.Time, bucketSeconds int, points []*domain.OpsThroughputTrendPoint) []*domain.OpsThroughputTrendPoint {
 	if bucketSeconds <= 0 {
 		bucketSeconds = 60
 	}
@@ -399,7 +399,7 @@ func fillOpsThroughputBuckets(start, end time.Time, bucketSeconds int, points []
 	last := opsFloorToBucketStart(endMinus, bucketSeconds)
 	step := time.Duration(bucketSeconds) * time.Second
 
-	existing := make(map[int64]*service.OpsThroughputTrendPoint, len(points))
+	existing := make(map[int64]*domain.OpsThroughputTrendPoint, len(points))
 	for _, p := range points {
 		if p == nil {
 			continue
@@ -407,13 +407,13 @@ func fillOpsThroughputBuckets(start, end time.Time, bucketSeconds int, points []
 		existing[p.BucketStart.UTC().Unix()] = p
 	}
 
-	out := make([]*service.OpsThroughputTrendPoint, 0, int(last.Sub(first)/step)+1)
+	out := make([]*domain.OpsThroughputTrendPoint, 0, int(last.Sub(first)/step)+1)
 	for cursor := first; !cursor.After(last); cursor = cursor.Add(step) {
 		if p, ok := existing[cursor.Unix()]; ok && p != nil {
 			out = append(out, p)
 			continue
 		}
-		out = append(out, &service.OpsThroughputTrendPoint{
+		out = append(out, &domain.OpsThroughputTrendPoint{
 			BucketStart:   cursor,
 			RequestCount:  0,
 			TokenConsumed: 0,
@@ -425,7 +425,7 @@ func fillOpsThroughputBuckets(start, end time.Time, bucketSeconds int, points []
 	return out
 }
 
-func (r *opsRepository) GetErrorTrend(ctx context.Context, filter *service.OpsDashboardFilter, bucketSeconds int) (*service.OpsErrorTrendResponse, error) {
+func (r *opsRepository) GetErrorTrend(ctx context.Context, filter *domain.OpsDashboardFilter, bucketSeconds int) (*domain.OpsErrorTrendResponse, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -468,14 +468,14 @@ ORDER BY 1 ASC`
 	}
 	defer func() { _ = rows.Close() }()
 
-	points := make([]*service.OpsErrorTrendPoint, 0, 256)
+	points := make([]*domain.OpsErrorTrendPoint, 0, 256)
 	for rows.Next() {
 		var bucket time.Time
 		var total, businessLimited, sla, upstreamExcl, upstream429, upstream529 int64
 		if err := rows.Scan(&bucket, &total, &businessLimited, &sla, &upstreamExcl, &upstream429, &upstream529); err != nil {
 			return nil, err
 		}
-		points = append(points, &service.OpsErrorTrendPoint{
+		points = append(points, &domain.OpsErrorTrendPoint{
 			BucketStart: bucket.UTC(),
 
 			ErrorCountTotal:      total,
@@ -493,13 +493,13 @@ ORDER BY 1 ASC`
 
 	points = fillOpsErrorTrendBuckets(start, end, bucketSeconds, points)
 
-	return &service.OpsErrorTrendResponse{
+	return &domain.OpsErrorTrendResponse{
 		Bucket: opsBucketLabel(bucketSeconds),
 		Points: points,
 	}, nil
 }
 
-func fillOpsErrorTrendBuckets(start, end time.Time, bucketSeconds int, points []*service.OpsErrorTrendPoint) []*service.OpsErrorTrendPoint {
+func fillOpsErrorTrendBuckets(start, end time.Time, bucketSeconds int, points []*domain.OpsErrorTrendPoint) []*domain.OpsErrorTrendPoint {
 	if bucketSeconds <= 0 {
 		bucketSeconds = 60
 	}
@@ -516,7 +516,7 @@ func fillOpsErrorTrendBuckets(start, end time.Time, bucketSeconds int, points []
 	last := opsFloorToBucketStart(endMinus, bucketSeconds)
 	step := time.Duration(bucketSeconds) * time.Second
 
-	existing := make(map[int64]*service.OpsErrorTrendPoint, len(points))
+	existing := make(map[int64]*domain.OpsErrorTrendPoint, len(points))
 	for _, p := range points {
 		if p == nil {
 			continue
@@ -524,13 +524,13 @@ func fillOpsErrorTrendBuckets(start, end time.Time, bucketSeconds int, points []
 		existing[p.BucketStart.UTC().Unix()] = p
 	}
 
-	out := make([]*service.OpsErrorTrendPoint, 0, int(last.Sub(first)/step)+1)
+	out := make([]*domain.OpsErrorTrendPoint, 0, int(last.Sub(first)/step)+1)
 	for cursor := first; !cursor.After(last); cursor = cursor.Add(step) {
 		if p, ok := existing[cursor.Unix()]; ok && p != nil {
 			out = append(out, p)
 			continue
 		}
-		out = append(out, &service.OpsErrorTrendPoint{
+		out = append(out, &domain.OpsErrorTrendPoint{
 			BucketStart: cursor,
 
 			ErrorCountTotal:      0,
@@ -545,7 +545,7 @@ func fillOpsErrorTrendBuckets(start, end time.Time, bucketSeconds int, points []
 	return out
 }
 
-func (r *opsRepository) GetErrorDistribution(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsErrorDistributionResponse, error) {
+func (r *opsRepository) GetErrorDistribution(ctx context.Context, filter *domain.OpsDashboardFilter) (*domain.OpsErrorDistributionResponse, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -579,7 +579,7 @@ LIMIT 20`
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]*service.OpsErrorDistributionItem, 0, 16)
+	items := make([]*domain.OpsErrorDistributionItem, 0, 16)
 	var total int64
 	for rows.Next() {
 		var statusCode int
@@ -588,7 +588,7 @@ LIMIT 20`
 			return nil, err
 		}
 		total += cntTotal
-		items = append(items, &service.OpsErrorDistributionItem{
+		items = append(items, &domain.OpsErrorDistributionItem{
 			StatusCode:      statusCode,
 			Total:           cntTotal,
 			SLA:             cntSLA,
@@ -599,7 +599,7 @@ LIMIT 20`
 		return nil, err
 	}
 
-	return &service.OpsErrorDistributionResponse{
+	return &domain.OpsErrorDistributionResponse{
 		Total: total,
 		Items: items,
 	}, nil

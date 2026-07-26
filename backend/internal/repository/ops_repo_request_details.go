@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.OpsRequestDetailFilter) ([]*service.OpsRequestDetail, int64, error) {
+func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *domain.OpsRequestDetailFilter) ([]*domain.OpsRequestDetail, int64, error) {
 	if r == nil || r.db == nil {
 		return nil, 0, fmt.Errorf("nil ops repository")
 	}
@@ -31,7 +31,7 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 
 	if filter != nil {
 		if kind := strings.TrimSpace(strings.ToLower(filter.Kind)); kind != "" && kind != "all" {
-			if kind != string(service.OpsRequestKindSuccess) && kind != string(service.OpsRequestKindError) {
+			if kind != string(domain.OpsRequestKindSuccess) && kind != string(domain.OpsRequestKindError) {
 				return nil, 0, fmt.Errorf("invalid kind")
 			}
 			addCondition(fmt.Sprintf("kind = $%d", len(args)+1), kind)
@@ -204,7 +204,7 @@ LIMIT $%d OFFSET $%d
 		return &i
 	}
 
-	out := make([]*service.OpsRequestDetail, 0, pageSize)
+	out := make([]*domain.OpsRequestDetail, 0, pageSize)
 	for rows.Next() {
 		var (
 			kind      string
@@ -250,8 +250,8 @@ LIMIT $%d OFFSET $%d
 			return nil, 0, err
 		}
 
-		item := &service.OpsRequestDetail{
-			Kind:      service.OpsRequestKind(kind),
+		item := &domain.OpsRequestDetail{
+			Kind:      domain.OpsRequestKind(kind),
 			CreatedAt: createdAt,
 			RequestID: strings.TrimSpace(requestID.String),
 			Platform:  strings.TrimSpace(platform.String),

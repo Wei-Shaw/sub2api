@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-func (r *opsRepository) InsertSystemMetrics(ctx context.Context, input *service.OpsInsertSystemMetricsInput) error {
+func (r *opsRepository) InsertSystemMetrics(ctx context.Context, input *domain.OpsInsertSystemMetricsInput) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("nil ops repository")
 	}
@@ -149,7 +149,7 @@ INSERT INTO ops_system_metrics (
 	return err
 }
 
-func (r *opsRepository) GetLatestSystemMetrics(ctx context.Context, windowMinutes int) (*service.OpsSystemMetricsSnapshot, error) {
+func (r *opsRepository) GetLatestSystemMetrics(ctx context.Context, windowMinutes int) (*domain.OpsSystemMetricsSnapshot, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -188,7 +188,7 @@ WHERE window_minutes = $1
 ORDER BY created_at DESC
 LIMIT 1`
 
-	var out service.OpsSystemMetricsSnapshot
+	var out domain.OpsSystemMetricsSnapshot
 	var cpu sql.NullFloat64
 	var memUsed sql.NullInt64
 	var memTotal sql.NullInt64
@@ -286,7 +286,7 @@ LIMIT 1`
 	return &out, nil
 }
 
-func (r *opsRepository) UpsertJobHeartbeat(ctx context.Context, input *service.OpsUpsertJobHeartbeatInput) error {
+func (r *opsRepository) UpsertJobHeartbeat(ctx context.Context, input *domain.OpsUpsertJobHeartbeatInput) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("nil ops repository")
 	}
@@ -342,7 +342,7 @@ ON CONFLICT (job_name) DO UPDATE SET
 	return err
 }
 
-func (r *opsRepository) ListJobHeartbeats(ctx context.Context) ([]*service.OpsJobHeartbeat, error) {
+func (r *opsRepository) ListJobHeartbeats(ctx context.Context) ([]*domain.OpsJobHeartbeat, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -366,9 +366,9 @@ ORDER BY job_name ASC`
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make([]*service.OpsJobHeartbeat, 0, 8)
+	out := make([]*domain.OpsJobHeartbeat, 0, 8)
 	for rows.Next() {
-		var item service.OpsJobHeartbeat
+		var item domain.OpsJobHeartbeat
 		var lastRun sql.NullTime
 		var lastSuccess sql.NullTime
 		var lastErrorAt sql.NullTime

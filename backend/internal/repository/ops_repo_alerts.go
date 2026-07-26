@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-func (r *opsRepository) ListAlertRules(ctx context.Context) ([]*service.OpsAlertRule, error) {
+func (r *opsRepository) ListAlertRules(ctx context.Context) ([]*domain.OpsAlertRule, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -43,9 +43,9 @@ ORDER BY id DESC`
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := []*service.OpsAlertRule{}
+	out := []*domain.OpsAlertRule{}
 	for rows.Next() {
-		var rule service.OpsAlertRule
+		var rule domain.OpsAlertRule
 		var filtersRaw []byte
 		var lastTriggeredAt sql.NullTime
 		if err := rows.Scan(
@@ -86,7 +86,7 @@ ORDER BY id DESC`
 	return out, nil
 }
 
-func (r *opsRepository) CreateAlertRule(ctx context.Context, input *service.OpsAlertRule) (*service.OpsAlertRule, error) {
+func (r *opsRepository) CreateAlertRule(ctx context.Context, input *domain.OpsAlertRule) (*domain.OpsAlertRule, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -136,7 +136,7 @@ RETURNING
   created_at,
   updated_at`
 
-	var out service.OpsAlertRule
+	var out domain.OpsAlertRule
 	var filtersRaw []byte
 	var lastTriggeredAt sql.NullTime
 
@@ -189,7 +189,7 @@ RETURNING
 	return &out, nil
 }
 
-func (r *opsRepository) UpdateAlertRule(ctx context.Context, input *service.OpsAlertRule) (*service.OpsAlertRule, error) {
+func (r *opsRepository) UpdateAlertRule(ctx context.Context, input *domain.OpsAlertRule) (*domain.OpsAlertRule, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -240,7 +240,7 @@ RETURNING
   created_at,
   updated_at`
 
-	var out service.OpsAlertRule
+	var out domain.OpsAlertRule
 	var filtersRaw []byte
 	var lastTriggeredAt sql.NullTime
 
@@ -317,12 +317,12 @@ func (r *opsRepository) DeleteAlertRule(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *opsRepository) ListAlertEvents(ctx context.Context, filter *service.OpsAlertEventFilter) ([]*service.OpsAlertEvent, error) {
+func (r *opsRepository) ListAlertEvents(ctx context.Context, filter *domain.OpsAlertEventFilter) ([]*domain.OpsAlertEvent, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
 	if filter == nil {
-		filter = &service.OpsAlertEventFilter{}
+		filter = &domain.OpsAlertEventFilter{}
 	}
 
 	limit := filter.Limit
@@ -363,9 +363,9 @@ LIMIT ` + limitArg
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := []*service.OpsAlertEvent{}
+	out := []*domain.OpsAlertEvent{}
 	for rows.Next() {
-		var ev service.OpsAlertEvent
+		var ev domain.OpsAlertEvent
 		var metricValue sql.NullFloat64
 		var thresholdValue sql.NullFloat64
 		var dimensionsRaw []byte
@@ -413,7 +413,7 @@ LIMIT ` + limitArg
 	return out, nil
 }
 
-func (r *opsRepository) GetAlertEventByID(ctx context.Context, eventID int64) (*service.OpsAlertEvent, error) {
+func (r *opsRepository) GetAlertEventByID(ctx context.Context, eventID int64) (*domain.OpsAlertEvent, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -450,7 +450,7 @@ WHERE id = $1`
 	return ev, nil
 }
 
-func (r *opsRepository) GetActiveAlertEvent(ctx context.Context, ruleID int64) (*service.OpsAlertEvent, error) {
+func (r *opsRepository) GetActiveAlertEvent(ctx context.Context, ruleID int64) (*domain.OpsAlertEvent, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -478,7 +478,7 @@ WHERE rule_id = $1 AND status = $2
 ORDER BY fired_at DESC
 LIMIT 1`
 
-	row := r.db.QueryRowContext(ctx, q, ruleID, service.OpsAlertStatusFiring)
+	row := r.db.QueryRowContext(ctx, q, ruleID, domain.OpsAlertStatusFiring)
 	ev, err := scanOpsAlertEvent(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -489,7 +489,7 @@ LIMIT 1`
 	return ev, nil
 }
 
-func (r *opsRepository) GetLatestAlertEvent(ctx context.Context, ruleID int64) (*service.OpsAlertEvent, error) {
+func (r *opsRepository) GetLatestAlertEvent(ctx context.Context, ruleID int64) (*domain.OpsAlertEvent, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -528,7 +528,7 @@ LIMIT 1`
 	return ev, nil
 }
 
-func (r *opsRepository) CreateAlertEvent(ctx context.Context, event *service.OpsAlertEvent) (*service.OpsAlertEvent, error) {
+func (r *opsRepository) CreateAlertEvent(ctx context.Context, event *domain.OpsAlertEvent) (*domain.OpsAlertEvent, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -628,7 +628,7 @@ type opsAlertEventRow interface {
 	Scan(dest ...any) error
 }
 
-func (r *opsRepository) CreateAlertSilence(ctx context.Context, input *service.OpsAlertSilence) (*service.OpsAlertSilence, error) {
+func (r *opsRepository) CreateAlertSilence(ctx context.Context, input *domain.OpsAlertSilence) (*domain.OpsAlertSilence, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -673,7 +673,7 @@ RETURNING id, rule_id, platform, group_id, region, until, COALESCE(reason,''), c
 		opsNullInt64(input.CreatedBy),
 	)
 
-	var out service.OpsAlertSilence
+	var out domain.OpsAlertSilence
 	var groupID sql.NullInt64
 	var region sql.NullString
 	var createdBy sql.NullInt64
@@ -743,8 +743,8 @@ LIMIT 1`
 	return true, nil
 }
 
-func scanOpsAlertEvent(row opsAlertEventRow) (*service.OpsAlertEvent, error) {
-	var ev service.OpsAlertEvent
+func scanOpsAlertEvent(row opsAlertEventRow) (*domain.OpsAlertEvent, error) {
+	var ev domain.OpsAlertEvent
 	var metricValue sql.NullFloat64
 	var thresholdValue sql.NullFloat64
 	var dimensionsRaw []byte
@@ -788,7 +788,7 @@ func scanOpsAlertEvent(row opsAlertEventRow) (*service.OpsAlertEvent, error) {
 	return &ev, nil
 }
 
-func buildOpsAlertEventsWhere(filter *service.OpsAlertEventFilter) (string, []any) {
+func buildOpsAlertEventsWhere(filter *domain.OpsAlertEventFilter) (string, []any) {
 	clauses := []string{"1=1"}
 	args := []any{}
 

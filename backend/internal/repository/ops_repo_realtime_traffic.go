@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-func (r *opsRepository) GetRealtimeTrafficSummary(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsRealtimeTrafficSummary, error) {
+func (r *opsRepository) GetRealtimeTrafficSummary(ctx context.Context, filter *domain.OpsDashboardFilter) (*domain.OpsRealtimeTrafficSummary, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -110,17 +110,17 @@ FROM combined`
 	qpsPeak := roundTo1DP(float64(peakRequestsPerMin) / 60.0)
 	tpsPeak := roundTo1DP(float64(peakTokensPerMin) / 60.0)
 
-	return &service.OpsRealtimeTrafficSummary{
+	return &domain.OpsRealtimeTrafficSummary{
 		StartTime: start,
 		EndTime:   end,
 		Platform:  strings.TrimSpace(filter.Platform),
 		GroupID:   filter.GroupID,
-		QPS: service.OpsRateSummary{
+		QPS: domain.OpsRateSummary{
 			Current: qpsCurrent,
 			Peak:    qpsPeak,
 			Avg:     qpsAvg,
 		},
-		TPS: service.OpsRateSummary{
+		TPS: domain.OpsRateSummary{
 			Current: tpsCurrent,
 			Peak:    tpsPeak,
 			Avg:     tpsAvg,

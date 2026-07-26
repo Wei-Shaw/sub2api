@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	opsport "github.com/Wei-Shaw/sub2api/internal/port/ops"
 )
 
 const (
@@ -39,10 +40,8 @@ type OpsIngressRejectHealth struct {
 	LastError      string `json:"last_error,omitempty"`
 }
 
-type OpsIngressRejectRepository interface {
-	BatchUpsertIngressRejects(ctx context.Context, items []*OpsIngressRejectAggregate) error
-	ListIngressRejects(ctx context.Context, filter *OpsIngressRejectFilter) (*OpsIngressRejectList, error)
-}
+// OpsIngressRejectRepository interface moved to internal/port/ops.
+type OpsIngressRejectRepository = opsport.OpsIngressRejectRepository
 
 type ingressRejectKey struct {
 	reason      string

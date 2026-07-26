@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-func (r *opsRepository) GetOpenAITokenStats(ctx context.Context, filter *service.OpsOpenAITokenStatsFilter) (*service.OpsOpenAITokenStatsResponse, error) {
+func (r *opsRepository) GetOpenAITokenStats(ctx context.Context, filter *domain.OpsOpenAITokenStatsFilter) (*domain.OpsOpenAITokenStatsResponse, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -24,7 +24,7 @@ func (r *opsRepository) GetOpenAITokenStats(ctx context.Context, filter *service
 		return nil, fmt.Errorf("start_time must be <= end_time")
 	}
 
-	dashboardFilter := &service.OpsDashboardFilter{
+	dashboardFilter := &domain.OpsDashboardFilter{
 		StartTime: filter.StartTime.UTC(),
 		EndTime:   filter.EndTime.UTC(),
 		Platform:  strings.TrimSpace(strings.ToLower(filter.Platform)),
@@ -95,9 +95,9 @@ ORDER BY request_count DESC, model ASC`
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]*service.OpsOpenAITokenStatsItem, 0, 32)
+	items := make([]*domain.OpsOpenAITokenStatsItem, 0, 32)
 	for rows.Next() {
-		item := &service.OpsOpenAITokenStatsItem{}
+		item := &domain.OpsOpenAITokenStatsItem{}
 		var avgTPS sql.NullFloat64
 		var avgFirstToken sql.NullFloat64
 		if err := rows.Scan(
@@ -125,7 +125,7 @@ ORDER BY request_count DESC, model ASC`
 		return nil, err
 	}
 
-	resp := &service.OpsOpenAITokenStatsResponse{
+	resp := &domain.OpsOpenAITokenStatsResponse{
 		TimeRange: strings.TrimSpace(filter.TimeRange),
 		StartTime: dashboardFilter.StartTime,
 		EndTime:   dashboardFilter.EndTime,

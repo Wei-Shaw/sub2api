@@ -2,41 +2,27 @@ package service
 
 import (
 	"errors"
-	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-type OpsQueryMode string
+type OpsQueryMode = domain.OpsQueryMode
 
 const (
-	OpsQueryModeAuto   OpsQueryMode = "auto"
-	OpsQueryModeRaw    OpsQueryMode = "raw"
-	OpsQueryModePreagg OpsQueryMode = "preagg"
+	OpsQueryModeAuto   = domain.OpsQueryModeAuto
+	OpsQueryModeRaw    = domain.OpsQueryModeRaw
+	OpsQueryModePreagg = domain.OpsQueryModePreagg
 )
 
-// ErrOpsPreaggregatedNotPopulated indicates that raw logs exist for a window, but the
-// pre-aggregation tables are not populated yet. This is primarily used to implement
-// the forced `preagg` mode UX.
-var ErrOpsPreaggregatedNotPopulated = errors.New("ops pre-aggregated tables not populated")
+// ErrOpsPreaggregatedNotPopulated moved to internal/domain; service re-exports it
+// so existing call sites and tests that reference service.Err... keep compiling.
+var ErrOpsPreaggregatedNotPopulated = domain.ErrOpsPreaggregatedNotPopulated
 
+// ParseOpsQueryMode / OpsQueryMode.IsValid moved to internal/domain as pure helpers.
+// Service re-exports ParseOpsQueryMode as a thin wrapper so existing call sites
+// (free-function references do not follow type aliases) keep compiling.
 func ParseOpsQueryMode(raw string) OpsQueryMode {
-	v := strings.ToLower(strings.TrimSpace(raw))
-	switch v {
-	case string(OpsQueryModeRaw):
-		return OpsQueryModeRaw
-	case string(OpsQueryModePreagg):
-		return OpsQueryModePreagg
-	default:
-		return OpsQueryModeAuto
-	}
-}
-
-func (m OpsQueryMode) IsValid() bool {
-	switch m {
-	case OpsQueryModeAuto, OpsQueryModeRaw, OpsQueryModePreagg:
-		return true
-	default:
-		return false
-	}
+	return domain.ParseOpsQueryMode(raw)
 }
 
 func shouldFallbackOpsPreagg(filter *OpsDashboardFilter, err error) bool {

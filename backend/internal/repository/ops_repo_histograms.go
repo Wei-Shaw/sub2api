@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-func (r *opsRepository) GetLatencyHistogram(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsLatencyHistogramResponse, error) {
+func (r *opsRepository) GetLatencyHistogram(ctx context.Context, filter *domain.OpsDashboardFilter) (*domain.OpsLatencyHistogramResponse, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -60,15 +60,15 @@ ORDER BY 3 ASC`
 		return nil, err
 	}
 
-	buckets := make([]*service.OpsLatencyHistogramBucket, 0, len(latencyHistogramOrderedRanges))
+	buckets := make([]*domain.OpsLatencyHistogramBucket, 0, len(latencyHistogramOrderedRanges))
 	for _, label := range latencyHistogramOrderedRanges {
-		buckets = append(buckets, &service.OpsLatencyHistogramBucket{
+		buckets = append(buckets, &domain.OpsLatencyHistogramBucket{
 			Range: label,
 			Count: counts[label],
 		})
 	}
 
-	return &service.OpsLatencyHistogramResponse{
+	return &domain.OpsLatencyHistogramResponse{
 		StartTime:     start,
 		EndTime:       end,
 		Platform:      strings.TrimSpace(filter.Platform),
