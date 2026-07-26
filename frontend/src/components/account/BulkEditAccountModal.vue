@@ -905,8 +905,8 @@
         </div>
       </div>
 
-      <!-- Upstream billing auto probe (OpenAI API Key only) -->
-      <div v-if="allOpenAIAPIKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <!-- Upstream billing auto probe (any API-key platform) -->
+      <div v-if="allBillingProbeCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <div class="flex-1 pr-4">
             <label
@@ -1396,6 +1396,15 @@ const allOpenAIAPIKey = computed(() => {
   return (
     targetSelectedPlatforms.value.length === 1 &&
     targetSelectedPlatforms.value[0] === 'openai' &&
+    targetSelectedTypes.value.length > 0 &&
+    targetSelectedTypes.value.every(t => t === 'apikey')
+  )
+REDACTED)
+
+// 上游倍率自动探测已放宽到全部 API-key 平台：只要求所选类型全为 apikey，
+// 平台不限（sub2api 上游即可应答 /v1/sub2api/billing）。
+const allBillingProbeCapable = computed(() => {
+  return (
     targetSelectedTypes.value.length > 0 &&
     targetSelectedTypes.value.every(t => t === 'apikey')
   )

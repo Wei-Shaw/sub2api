@@ -387,6 +387,23 @@ describe('BulkEditAccountModal', () => {
     REDACTED)
   REDACTED)
 
+  it('非 OpenAI 平台的 API Key 批量编辑同样可开启上游倍率自动探测', async () => {
+    // 探测已放宽到全部 API-key 平台，混合平台选择只要求类型全为 apikey。
+    const wrapper = mountModal({
+      selectedPlatforms: ['grok', 'anthropic'],
+      selectedTypes: ['apikey']
+    REDACTED)
+
+    await wrapper.get('#bulk-edit-upstream-billing-auto-probe-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      upstream_billing_probe_enabled: true
+    REDACTED)
+  REDACTED)
+
   it('OpenAI API Key 批量编辑可统一关闭上游倍率自动探测', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],

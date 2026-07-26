@@ -153,3 +153,54 @@ REDACTED
 REDACTED
 	require.Equal(t, want, got)
 REDACTED
+
+// 探测资格放宽回归：任何 API-key 平台的启用账号都进入定时探测候选并按
+// 到期时间排序；OAuth 与未启用账号仍被排除。
+func TestListDueUpstreamBillingProbeAccountsIncludesAllAPIKeyPlatforms(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	now := time.Date(2026, time.July, 26, 3, 0, 0, 0, time.UTC)
+	_, err := tx.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = extra - 'upstream_billing_probe_enabled' - 'upstream_billing_probe'
+	`)
+REDACTED
+
+	insert := func(name, platform, accountType, nextProbeAt string) int64 {
+	REDACTED
+		var id int64
+		extra := fmt.Sprintf(`{
+			"upstream_billing_probe_enabled": true,
+			"upstream_billing_probe": {"status": "ok", "next_probe_at": %qREDACTED
+	REDACTED`, nextProbeAt)
+		err := scanSingleRow(ctx, tx, `
+			INSERT INTO accounts (name, platform, type, status, extra)
+			VALUES ($1, $2, $3, 'active', $4::jsonb)
+			RETURNING id
+		`, []any{name, platform, accountType, extraREDACTED, &id)
+	REDACTED
+		return id
+REDACTED
+
+	openaiDue := insert("probe-openai-due", "openai", service.AccountTypeAPIKey, "2026-07-26T02:57:00Z")
+	anthropicDue := insert("probe-anthropic-due", "anthropic", service.AccountTypeAPIKey, "2026-07-26T02:58:00Z")
+	grokDue := insert("probe-grok-due", "grok", service.AccountTypeAPIKey, "2026-07-26T02:59:00Z")
+	// OAuth 账号即便误持有启用标记也不得入选。
+	_ = insert("probe-grok-oauth-excluded", "grok", service.AccountTypeOAuth, "2026-07-26T02:59:00Z")
+	// 未启用探测的 API-key 账号不入选。
+	var disabledID int64
+	err = scanSingleRow(ctx, tx, `
+		INSERT INTO accounts (name, platform, type, status, extra)
+		VALUES ('probe-grok-disabled', 'grok', $1, 'active', '{REDACTED'::jsonb)
+		RETURNING id
+	`, []any{service.AccountTypeAPIKeyREDACTED, &disabledID)
+REDACTED
+
+	accounts, err := repo.ListDueUpstreamBillingProbeAccounts(ctx, now, 20)
+REDACTED
+	require.Len(t, accounts, 3)
+	require.Equal(t, openaiDue, accounts[0].ID)
+	require.Equal(t, anthropicDue, accounts[1].ID)
+	require.Equal(t, grokDue, accounts[2].ID)
+REDACTED

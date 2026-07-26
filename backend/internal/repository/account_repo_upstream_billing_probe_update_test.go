@@ -227,8 +227,8 @@ REDACTED
 
 	enabled := true
 	mock.ExpectBegin()
-	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* WHERE id = ANY\(\$2\) AND deleted_at IS NULL AND platform = \$3 AND type = \$4`).
-		WithArgs(sqlmock.AnyArg(), `{27,28REDACTED`, service.PlatformOpenAI, service.AccountTypeAPIKey).
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* WHERE id = ANY\(\$2\) AND deleted_at IS NULL AND type = \$3`).
+		WithArgs(sqlmock.AnyArg(), `{27,28REDACTED`, service.AccountTypeAPIKey).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectRollback()
 

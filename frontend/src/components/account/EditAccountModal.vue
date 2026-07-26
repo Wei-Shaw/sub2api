@@ -1650,7 +1650,7 @@
       </div>
 
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'apikey'"
+        v-if="account?.type === 'apikey'"
         class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div>
@@ -4584,7 +4584,6 @@ const handleSubmit = async () => {
         REDACTED else {
           newExtra.openai_responses_mode = openAIResponsesMode.value
         REDACTED
-			newExtra.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value
 	REDACTED
 		if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
 			newExtra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100
@@ -4649,6 +4648,11 @@ const handleSubmit = async () => {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {REDACTED
       const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
+      // 上游倍率自动探测对全部 API-key 平台开放（sub2api 上游即可应答），
+      // Bedrock 凭证无静态 Key 不参与。
+      if (props.account.type === 'apikey') {
+        newExtra.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value
+      REDACTED
       // Total quota
       if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
         newExtra.quota_limit = editQuotaLimit.value

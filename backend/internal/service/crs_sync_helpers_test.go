@@ -151,16 +151,31 @@ REDACTED)
 		require.NotContains(t, extra, UpstreamBillingProbeExtraKey)
 REDACTED)
 
+	// API-key 平台间切换：探测资格保留（放宽后不再限 OpenAI），开关沿用本地值，
+	// 但平台属于探测身份，快照必须作废。
+	for _, target := range []struct {
+		name     string
+		platform string
+REDACTED{
+		{name: "anthropic api key", platform: PlatformAnthropicREDACTED,
+		{name: "gemini api key", platform: PlatformGeminiREDACTED,
+REDACTED {
+		t.Run(target.name+" keeps enabled and clears snapshot", func(t *testing.T) {
+			extra := mergeMap(existing.Extra, remote)
+			reconcileCRSUpstreamBillingProbeExtra(existing, target.platform, AccountTypeAPIKey, existing.Credentials, extra)
+			require.Equal(t, false, extra[UpstreamBillingProbeEnabledExtraKey])
+			require.NotContains(t, extra, UpstreamBillingProbeExtraKey)
+	REDACTED)
+REDACTED
+
 	for _, target := range []struct {
 		name     string
 		platform string
 		typeName string
 REDACTED{
 		{name: "anthropic oauth", platform: PlatformAnthropic, typeName: AccountTypeOAuthREDACTED,
-		{name: "anthropic api key", platform: PlatformAnthropic, typeName: AccountTypeAPIKeyREDACTED,
 		{name: "openai oauth", platform: PlatformOpenAI, typeName: AccountTypeOAuthREDACTED,
 		{name: "gemini oauth", platform: PlatformGemini, typeName: AccountTypeOAuthREDACTED,
-		{name: "gemini api key", platform: PlatformGemini, typeName: AccountTypeAPIKeyREDACTED,
 REDACTED {
 		t.Run(target.name+" removes inapplicable state", func(t *testing.T) {
 			extra := mergeMap(existing.Extra, remote)
