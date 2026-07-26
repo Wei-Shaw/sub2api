@@ -8,9 +8,11 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tiktoken-go/tokenizer"
@@ -21,6 +23,9 @@ const (
 	openAIResponsesInputItemTokenOverhead = 3
 	openAIResponsesContentPartOverhead    = 1
 	openAIInputTokensFallbackMinimum      = 1
+	openAIInputTokensSourceHeader         = "X-Sub2API-Input-Tokens-Source"
+	openAIInputTokensSourceUpstream       = "upstream"
+	openAIInputTokensSourceLocalFallback  = "local-fallback"
 )
 
 type openAIInputTokensCountRequest struct {
@@ -37,6 +42,180 @@ type openAIInputTokensCountPrepared struct {
 	NormalizedModel string
 	BillingModel    string
 	UpstreamModel   string
+}
+
+type openAIDirectInputTokensPrepared struct {
+	Request       openAIInputTokensCountRequest
+	UpstreamBody  []byte
+	OriginalModel string
+	UpstreamModel string
+}
+
+// ForwardInputTokens forwards a direct Responses input-token count request
+// through exactly one selected account. OAuth 401/403/404 responses fall back
+// locally without invoking generic rate-limit/account-state handling.
+func (s *OpenAIGatewayService) ForwardInputTokens(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+) error {
+	if account == nil {
+		writeOpenAIInputTokensError(c, http.StatusServiceUnavailable, "api_error", "No available OpenAI accounts")
+		return fmt.Errorf("input_tokens: missing account")
+	}
+
+	prepared, err := s.prepareDirectOpenAIInputTokensRequest(body, account)
+	if err != nil {
+		writeOpenAIInputTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return err
+	}
+
+	token, _, err := s.GetAccessToken(ctx, account)
+	if err != nil {
+		writeOpenAIInputTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to get access token")
+		return fmt.Errorf("get input_tokens access token: %w", err)
+	}
+
+	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator")) ||
+		(s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
+	promptCacheKey := strings.TrimSpace(gjson.GetBytes(prepared.UpstreamBody, "prompt_cache_key").String())
+	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, prepared.UpstreamBody, token, false, promptCacheKey, isCodexCLI)
+	if err != nil {
+		writeOpenAIInputTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
+		return fmt.Errorf("build direct input_tokens request: %w", err)
+	}
+	// The generic Responses builder defaults OAuth requests to SSE. This
+	// subresource is unary JSON, so override Accept after all common headers
+	// have been assembled.
+	upstreamReq.Header.Set("accept", "application/json")
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	upstreamStart := time.Now()
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+	if err != nil {
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		setOpsUpstreamError(c, 0, safeErr, "")
+		writeOpenAIInputTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+		return fmt.Errorf("direct input_tokens upstream request failed: %s", safeErr)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeOpenAIInputTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
+		return fmt.Errorf("read direct input_tokens response: %w", err)
+	}
+
+	if account.Type == AccountTypeOAuth && isOpenAIDirectInputTokensFallbackStatus(resp.StatusCode) {
+		writeOpenAIDirectInputTokensFallback(c, account, prepared, resp.StatusCode)
+		return nil
+	}
+
+	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	c.Header(openAIInputTokensSourceHeader, openAIInputTokensSourceUpstream)
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	c.Data(resp.StatusCode, contentType, respBody)
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+		upstreamDetail := ""
+		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+			maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+			if maxBytes <= 0 {
+				maxBytes = 2048
+			}
+			upstreamDetail = truncateString(string(respBody), maxBytes)
+		}
+		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+		if upstreamMsg == "" {
+			return fmt.Errorf("direct input_tokens upstream error: %d", resp.StatusCode)
+		}
+		return fmt.Errorf("direct input_tokens upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+	}
+
+	return nil
+}
+
+func (s *OpenAIGatewayService) prepareDirectOpenAIInputTokensRequest(body []byte, account *Account) (*openAIDirectInputTokensPrepared, error) {
+	var req openAIInputTokensCountRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil, fmt.Errorf("parse direct input_tokens request: %w", err)
+	}
+	req.Model = strings.TrimSpace(req.Model)
+	if req.Model == "" {
+		return nil, fmt.Errorf("parse direct input_tokens request: model is required")
+	}
+
+	originalModel := req.Model
+	normalizedModel := NormalizeOpenAICompatRequestedModel(originalModel)
+	billingModel := resolveOpenAIForwardModel(account, normalizedModel, "")
+	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	if strings.TrimSpace(upstreamModel) == "" {
+		upstreamModel = normalizedModel
+	}
+	req.Model = upstreamModel
+
+	return &openAIDirectInputTokensPrepared{
+		Request:       req,
+		UpstreamBody:  s.ReplaceModelInBody(body, upstreamModel),
+		OriginalModel: originalModel,
+		UpstreamModel: upstreamModel,
+	}, nil
+}
+
+func isOpenAIDirectInputTokensFallbackStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+func writeOpenAIDirectInputTokensFallback(c *gin.Context, account *Account, prepared *openAIDirectInputTokensPrepared, statusCode int) {
+	estimated := openAIInputTokensFallbackMinimum
+	if got, err := estimateOpenAIInputTokens(prepared.Request); err == nil {
+		if got > 0 {
+			estimated = got
+		}
+		logger.L().Info("openai direct input_tokens: oauth fallback to local tiktoken estimate",
+			zap.Int64("account_id", account.ID),
+			zap.Int("upstream_status", statusCode),
+			zap.Int("estimated_input_tokens", estimated),
+			zap.String("upstream_model", prepared.UpstreamModel),
+		)
+	} else {
+		logger.L().Warn("openai direct input_tokens: oauth local tiktoken fallback failed, using minimum estimate",
+			zap.Int64("account_id", account.ID),
+			zap.Int("upstream_status", statusCode),
+			zap.Int("estimated_input_tokens", estimated),
+			zap.String("upstream_model", prepared.UpstreamModel),
+			zap.Error(err),
+		)
+	}
+
+	c.Header(openAIInputTokensSourceHeader, openAIInputTokensSourceLocalFallback)
+	c.JSON(http.StatusOK, gin.H{
+		"object":       "response.input_tokens",
+		"input_tokens": estimated,
+	})
+}
+
+func writeOpenAIInputTokensError(c *gin.Context, status int, errType, message string) {
+	c.JSON(status, gin.H{
+		"error": gin.H{
+			"type":    errType,
+			"message": message,
+		},
+	})
 }
 
 // EstimateGrokCountTokens estimates an Anthropic-compatible count_tokens request

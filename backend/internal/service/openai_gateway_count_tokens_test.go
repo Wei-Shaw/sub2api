@@ -37,6 +37,181 @@ func (r *countTokensRuntimeStateRepo) SetError(_ context.Context, _ int64, _ str
 	return nil
 }
 
+func TestOpenAIGatewayService_ForwardInputTokens_OAuthUsesCodexEndpointOnceAndPreservesResult(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.6-sol","instructions":"Be concise.","input":"hello"}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/input_tokens", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/1.0.0")
+
+	upstreamBody := `{"object":"response.input_tokens","input_tokens":42}`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"application/json"},
+			"X-Request-Id": []string{"req_input_tokens"},
+		},
+		Body: io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	proxyID := int64(901)
+	account := &Account{
+		ID:          401,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-account",
+		},
+		ProxyID: &proxyID,
+		Proxy: &Proxy{
+			ID:       proxyID,
+			Protocol: "http",
+			Host:     "172.31.250.1",
+			Port:     3129,
+			Username: "proxy0001",
+			Password: "proxy-password",
+		},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+
+	err := svc.ForwardInputTokens(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, upstreamBody, rec.Body.String())
+	require.Equal(t, openAIInputTokensSourceUpstream, rec.Header().Get(openAIInputTokensSourceHeader))
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://chatgpt.com/backend-api/codex/responses/input_tokens", upstream.lastReq.URL.String())
+	require.Equal(t, "chatgpt.com", upstream.lastReq.Host)
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Accept"))
+	require.Equal(t, "Bearer oauth-token", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "chatgpt-account", upstream.lastReq.Header.Get("Chatgpt-Account-Id"))
+	require.Equal(t, "http://proxy0001:proxy-password@172.31.250.1:3129", upstream.lastProxyURL)
+}
+
+func TestOpenAIGatewayService_ForwardInputTokens_OAuthAuthAndUnsupportedStatusesFallbackWithoutAccountMutation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.6-sol","instructions":"Be concise.","input":"hello"}`)
+	account := &Account{
+		ID:          402,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "oauth-token",
+		},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	cases := []struct {
+		name       string
+		statusCode int
+		body       string
+	}{
+		{
+			name:       "401",
+			statusCode: http.StatusUnauthorized,
+			body:       `{"error":{"message":"missing scope"}}`,
+		},
+		{
+			name:       "generic_html_403",
+			statusCode: http.StatusForbidden,
+			body:       `<html><head><meta http-equiv="refresh" content="360"></head></html>`,
+		},
+		{
+			name:       "404",
+			statusCode: http.StatusNotFound,
+			body:       `{"detail":"Not Found"}`,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/input_tokens", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: tt.statusCode,
+				Header:     http.Header{"Content-Type": []string{"text/html"}},
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}}
+			repo := &countTokensRuntimeStateRepo{}
+			svc := &OpenAIGatewayService{
+				cfg:              &config.Config{},
+				httpUpstream:     upstream,
+				rateLimitService: &RateLimitService{accountRepo: repo, cfg: &config.Config{}},
+			}
+			prepared, err := svc.prepareDirectOpenAIInputTokensRequest(body, account)
+			require.NoError(t, err)
+			expectedEstimate, err := estimateOpenAIInputTokens(prepared.Request)
+			require.NoError(t, err)
+
+			err = svc.ForwardInputTokens(context.Background(), c, account, body)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.JSONEq(t, `{"object":"response.input_tokens","input_tokens":`+strconv.Itoa(expectedEstimate)+`}`, rec.Body.String())
+			require.Equal(t, openAIInputTokensSourceLocalFallback, rec.Header().Get(openAIInputTokensSourceHeader))
+			require.Len(t, upstream.requests, 1, "input_tokens must never switch accounts or retry upstream")
+			require.Zero(t, repo.tempUnschedCalls, "direct OAuth input_tokens errors must not temp-unschedule the account")
+			require.Zero(t, repo.setErrorCalls, "direct OAuth input_tokens errors must not mark the account error")
+		})
+	}
+}
+
+func TestOpenAIGatewayService_ForwardInputTokens_APIKeyUsesPlatformEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.6-sol","input":"hello"}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/input_tokens", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"object":"response.input_tokens","input_tokens":9}`)),
+	}}
+	account := &Account{
+		ID:          403,
+		Name:        "openai-api-key",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-test",
+		},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+
+	err := svc.ForwardInputTokens(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, openAIInputTokensSourceUpstream, rec.Header().Get(openAIInputTokensSourceHeader))
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://api.openai.com/v1/responses/input_tokens", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+}
+
 func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_APIKeyUsesResponsesInputTokens(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

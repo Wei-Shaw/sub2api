@@ -1191,6 +1191,19 @@ func TestSetOpsEndpointContext_NilContext(t *testing.T) {
 	})
 }
 
+func TestIsCountTokensPathIncludesResponsesInputTokensAliases(t *testing.T) {
+	for _, path := range []string{
+		"/v1/messages/count_tokens",
+		"/v1/responses/input_tokens",
+		"/responses/input_tokens",
+		"/backend-api/codex/responses/input_tokens",
+		"/v1/responses/input_tokens/",
+	} {
+		require.True(t, isCountTokensPath(path), "path=%s", path)
+	}
+	require.False(t, isCountTokensPath("/v1/responses"), "normal Responses requests are not token-count probes")
+}
+
 func TestGetOpsAPIKeyFallsBackToOpsFallbackKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
