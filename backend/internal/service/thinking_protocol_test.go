@@ -23,7 +23,6 @@ REDACTED{
 		{"kimi-coding", "kimi-coding-v2", ThinkingProtocolPassbackRequiredREDACTED,
 		{"kimi-k2-thinking", "kimi-k2-thinking", ThinkingProtocolPassbackRequiredREDACTED,
 		{"kimi-k3 platform", "kimi-k3", ThinkingProtocolPassbackRequiredREDACTED,
-		{"kimi-k3 anthropic 1m", "kimi-k3[1m]", ThinkingProtocolPassbackRequiredREDACTED,
 		{"kimi code bare k3", "k3", ThinkingProtocolPassbackRequiredREDACTED,
 		{"kimi code bare k3-256k", "k3-256k", ThinkingProtocolPassbackRequiredREDACTED,
 		{"moonshot-v1", "moonshot-v1-32k", ThinkingProtocolPassbackRequiredREDACTED,
