@@ -68,6 +68,7 @@
         <div class="select-options">
           <!-- No Proxy option -->
           <div
+            v-if="allowNoProxy"
             @click="selectOption(null)"
             :class="['select-option', modelValue === null && 'select-option-selected']"
           >
@@ -190,10 +191,12 @@ interface Props {
   modelValue: number | null
   proxies: Proxy[]
   disabled?: boolean
+  allowNoProxy?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  disabled: false
+  disabled: false,
+  allowNoProxy: true
 })
 
 const emit = defineEmits<{
@@ -217,7 +220,7 @@ const selectedProxy = computed(() => {
 
 const selectedLabel = computed(() => {
   if (!selectedProxy.value) {
-    return t('admin.accounts.noProxy')
+    return props.allowNoProxy ? t('admin.accounts.noProxy') : t('common.selectOption')
   }
   const proxy = selectedProxy.value
   return `${proxy.name} (${proxy.protocol}://${proxy.host}:${proxy.port})`

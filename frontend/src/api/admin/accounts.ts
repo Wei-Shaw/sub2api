@@ -452,26 +452,38 @@ export async function batchUpdateCredentials(request: {
 export async function bulkUpdate(
   accountIdsOrPayload: number[] | Record<string, unknown>,
   updates?: Record<string, unknown>
-): Promise<{
-  success: number
-  failed: number
-  success_ids?: number[]
-  failed_ids?: number[]
-  results: Array<{ account_id: number; success: boolean; error?: string }>
-  }> {
+): Promise<BulkAccountUpdateResult> {
   const payload = Array.isArray(accountIdsOrPayload)
     ? {
         account_ids: accountIdsOrPayload,
         ...(updates ?? {})
       }
     : accountIdsOrPayload
-  const { data } = await apiClient.post<{
-    success: number
-    failed: number
-    success_ids?: number[]
-    failed_ids?: number[]
-    results: Array<{ account_id: number; success: boolean; error?: string }>
-  }>('/admin/accounts/bulk-update', payload)
+  const { data } = await apiClient.post<BulkAccountUpdateResult>('/admin/accounts/bulk-update', payload)
+  return data
+}
+
+export interface BulkAccountUpdateResult {
+  success: number
+  failed: number
+  success_ids?: number[]
+  failed_ids?: number[]
+  results: Array<{ account_id: number; success: boolean; error?: string }>
+}
+
+/** Bind every account in one group to the selected proxy. */
+export async function bindProxyByGroup(
+  groupId: number,
+  proxyId: number
+): Promise<BulkAccountUpdateResult> {
+  const { data } = await apiClient.post<BulkAccountUpdateResult>(
+    '/admin/accounts/bulk-update',
+    {
+      filters: { group: String(groupId) },
+      proxy_id: proxyId
+    },
+    { timeout: 600000 }
+  )
   return data
 }
 
@@ -961,6 +973,7 @@ export const accountsAPI = {
   batchCreate,
   batchUpdateCredentials,
   bulkUpdate,
+  bindProxyByGroup,
   previewFromCrs,
   syncFromCrs,
   exportData,
