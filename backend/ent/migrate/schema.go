@@ -855,6 +855,95 @@ var (
 			},
 		},
 	}
+	// CustomDomainsColumns holds the columns for the "custom_domains" table.
+	CustomDomainsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "domain", Type: field.TypeString, Size: 253},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "pending_dns"},
+		{Name: "all_users", Type: field.TypeBool, Default: false},
+		{Name: "verification_token", Type: field.TypeString, Size: 128},
+		{Name: "verification_txt_name", Type: field.TypeString, Size: 253},
+		{Name: "verification_txt_value", Type: field.TypeString, Size: 256},
+		{Name: "cname_target", Type: field.TypeString, Nullable: true, Size: 253},
+		{Name: "verified_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "disabled_at", Type: field.TypeTime, Nullable: true},
+		{Name: "disabled_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// CustomDomainsTable holds the schema information for the "custom_domains" table.
+	CustomDomainsTable = &schema.Table{
+		Name:       "custom_domains",
+		Columns:    CustomDomainsColumns,
+		PrimaryKey: []*schema.Column{CustomDomainsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "custom_domains_users_custom_domains",
+				Columns:    []*schema.Column{CustomDomainsColumns[16]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "customdomain_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{CustomDomainsColumns[16]},
+			},
+			{
+				Name:    "customdomain_status",
+				Unique:  false,
+				Columns: []*schema.Column{CustomDomainsColumns[5]},
+			},
+			{
+				Name:    "customdomain_all_users",
+				Unique:  false,
+				Columns: []*schema.Column{CustomDomainsColumns[6]},
+			},
+			{
+				Name:    "customdomain_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{CustomDomainsColumns[3]},
+			},
+		},
+	}
+	// CustomDomainUsersColumns holds the columns for the "custom_domain_users" table.
+	CustomDomainUsersColumns = []*schema.Column{
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "custom_domain_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// CustomDomainUsersTable holds the schema information for the "custom_domain_users" table.
+	CustomDomainUsersTable = &schema.Table{
+		Name:       "custom_domain_users",
+		Columns:    CustomDomainUsersColumns,
+		PrimaryKey: []*schema.Column{CustomDomainUsersColumns[2], CustomDomainUsersColumns[1]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "custom_domain_users_custom_domains_custom_domain",
+				Columns:    []*schema.Column{CustomDomainUsersColumns[1]},
+				RefColumns: []*schema.Column{CustomDomainsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "custom_domain_users_users_user",
+				Columns:    []*schema.Column{CustomDomainUsersColumns[2]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "customdomainuser_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{CustomDomainUsersColumns[2]},
+			},
+		},
+	}
 	// ErrorPassthroughRulesColumns holds the columns for the "error_passthrough_rules" table.
 	ErrorPassthroughRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1621,6 +1710,8 @@ var (
 		{Name: "model_mapping_chain", Type: field.TypeString, Nullable: true, Size: 500},
 		{Name: "billing_tier", Type: field.TypeString, Nullable: true, Size: 50},
 		{Name: "billing_mode", Type: field.TypeString, Nullable: true, Size: 20},
+		{Name: "custom_domain_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "custom_domain", Type: field.TypeString, Nullable: true, Size: 253},
 		{Name: "input_tokens", Type: field.TypeInt, Default: 0},
 		{Name: "output_tokens", Type: field.TypeInt, Default: 0},
 		{Name: "cache_creation_tokens", Type: field.TypeInt, Default: 0},
@@ -1667,31 +1758,31 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "usage_logs_api_keys_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[41]},
+				Columns:    []*schema.Column{UsageLogsColumns[43]},
 				RefColumns: []*schema.Column{APIKeysColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_accounts_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[42]},
+				Columns:    []*schema.Column{UsageLogsColumns[44]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_groups_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[43]},
+				Columns:    []*schema.Column{UsageLogsColumns[45]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "usage_logs_users_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[44]},
+				Columns:    []*schema.Column{UsageLogsColumns[46]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_user_subscriptions_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[45]},
+				Columns:    []*schema.Column{UsageLogsColumns[47]},
 				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1700,32 +1791,42 @@ var (
 			{
 				Name:    "usagelog_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[44]},
+				Columns: []*schema.Column{UsageLogsColumns[46]},
 			},
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[41]},
+				Columns: []*schema.Column{UsageLogsColumns[43]},
 			},
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[42]},
+				Columns: []*schema.Column{UsageLogsColumns[44]},
 			},
 			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[43]},
+				Columns: []*schema.Column{UsageLogsColumns[45]},
 			},
 			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[45]},
+				Columns: []*schema.Column{UsageLogsColumns[47]},
+			},
+			{
+				Name:    "usagelog_custom_domain_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[9], UsageLogsColumns[42]},
+			},
+			{
+				Name:    "usagelog_custom_domain_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[10], UsageLogsColumns[42]},
 			},
 			{
 				Name:    "usagelog_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[40]},
+				Columns: []*schema.Column{UsageLogsColumns[42]},
 			},
 			{
 				Name:    "usagelog_model",
@@ -1745,17 +1846,17 @@ var (
 			{
 				Name:    "usagelog_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[44], UsageLogsColumns[40]},
+				Columns: []*schema.Column{UsageLogsColumns[46], UsageLogsColumns[42]},
 			},
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[41], UsageLogsColumns[40]},
+				Columns: []*schema.Column{UsageLogsColumns[43], UsageLogsColumns[42]},
 			},
 			{
 				Name:    "usagelog_group_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[43], UsageLogsColumns[40]},
+				Columns: []*schema.Column{UsageLogsColumns[45], UsageLogsColumns[42]},
 			},
 		},
 	}
@@ -2077,6 +2178,8 @@ var (
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
 		CompositeModelRoutesTable,
+		CustomDomainsTable,
+		CustomDomainUsersTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -2163,6 +2266,15 @@ func init() {
 	CompositeModelRoutesTable.ForeignKeys[0].RefTable = GroupsTable
 	CompositeModelRoutesTable.Annotation = &entsql.Annotation{
 		Table: "composite_model_routes",
+	}
+	CustomDomainsTable.ForeignKeys[0].RefTable = UsersTable
+	CustomDomainsTable.Annotation = &entsql.Annotation{
+		Table: "custom_domains",
+	}
+	CustomDomainUsersTable.ForeignKeys[0].RefTable = CustomDomainsTable
+	CustomDomainUsersTable.ForeignKeys[1].RefTable = UsersTable
+	CustomDomainUsersTable.Annotation = &entsql.Annotation{
+		Table: "custom_domain_users",
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

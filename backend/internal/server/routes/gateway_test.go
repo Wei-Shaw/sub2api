@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,10 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 }
 
 func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string) *gin.Engine {
+	return newGatewayRoutesTestRouterWithCustomDomain(cfg, nil, platform...)
+}
+
+func newGatewayRoutesTestRouterWithCustomDomain(cfg *config.Config, customDomainService *service.CustomDomainService, platform ...string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
@@ -52,10 +57,92 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 		nil,
 		nil,
 		nil,
+		customDomainService,
 		cfg,
 	)
 
 	return router
+}
+
+type gatewayCustomDomainRepo struct {
+	domain *service.CustomDomain
+}
+
+func (r gatewayCustomDomainRepo) Create(context.Context, *service.CustomDomain) (*service.CustomDomain, error) {
+	return nil, nil
+}
+func (r gatewayCustomDomainRepo) GetByID(context.Context, int64) (*service.CustomDomain, error) {
+	return r.domain, nil
+}
+func (r gatewayCustomDomainRepo) GetByDomain(_ context.Context, domain string) (*service.CustomDomain, error) {
+	if r.domain == nil || r.domain.Domain != domain {
+		return nil, service.ErrCustomDomainNotFound
+	}
+	copy := *r.domain
+	return &copy, nil
+}
+func (r gatewayCustomDomainRepo) ListByUserID(context.Context, int64) ([]service.CustomDomain, error) {
+	return nil, nil
+}
+func (r gatewayCustomDomainRepo) ListAll(context.Context, service.CustomDomainListFilters) ([]service.CustomDomain, error) {
+	return nil, nil
+}
+func (r gatewayCustomDomainRepo) Update(_ context.Context, domain *service.CustomDomain) (*service.CustomDomain, error) {
+	return domain, nil
+}
+func (r gatewayCustomDomainRepo) Delete(context.Context, int64) error { return nil }
+func (r gatewayCustomDomainRepo) SetAccess(context.Context, int64, bool, []int64) (*service.CustomDomain, error) {
+	return r.domain, nil
+}
+
+type gatewayCustomDomainSettings map[string]string
+
+func (s gatewayCustomDomainSettings) Get(context.Context, string) (*service.Setting, error) {
+	return nil, nil
+}
+func (s gatewayCustomDomainSettings) GetValue(_ context.Context, key string) (string, error) {
+	return s[key], nil
+}
+func (s gatewayCustomDomainSettings) Set(_ context.Context, key, value string) error {
+	s[key] = value
+	return nil
+}
+func (s gatewayCustomDomainSettings) GetMultiple(context.Context, []string) (map[string]string, error) {
+	return nil, nil
+}
+func (s gatewayCustomDomainSettings) SetMultiple(context.Context, map[string]string) error {
+	return nil
+}
+func (s gatewayCustomDomainSettings) GetAll(context.Context) (map[string]string, error) {
+	return s, nil
+}
+func (s gatewayCustomDomainSettings) Delete(_ context.Context, key string) error {
+	delete(s, key)
+	return nil
+}
+
+func TestGatewayRoutesRejectInactiveCustomDomainAfterAPIKeyAuthentication(t *testing.T) {
+	domain := &service.CustomDomain{
+		ID:     73,
+		UserID: 41,
+		Domain: "api.example.com",
+		Status: service.CustomDomainStatusDisabled,
+	}
+	settings := gatewayCustomDomainSettings{
+		service.SettingKeyCustomDomainsEnabled: "true",
+		service.SettingKeyAPIBaseURL:           "https://gateway.example.com",
+	}
+	svc := service.NewCustomDomainService(gatewayCustomDomainRepo{domain: domain}, settings, nil)
+	router := newGatewayRoutesTestRouterWithCustomDomain(&config.Config{}, svc)
+	req := httptest.NewRequest(http.MethodPost, "https://api.example.com/v1/messages", strings.NewReader(`{"model":"gpt-5"}`))
+	req.Host = "api.example.com"
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "CUSTOM_DOMAIN_INACTIVE")
 }
 
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {

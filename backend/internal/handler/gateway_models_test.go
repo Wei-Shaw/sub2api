@@ -69,6 +69,25 @@ func TestDefaultModelIDsForCompositeIncludesAntigravityDefaults(t *testing.T) {
 	require.Contains(t, compositeIDs, antigravityIDs[0])
 }
 
+func TestCompositeAvailableModelsFallsBackOnlyForSchedulablePlatforms(t *testing.T) {
+	groupID := int64(19)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{ID: 1, Platform: service.PlatformGemini},
+				},
+			},
+		},
+	)
+
+	models := h.compositeAvailableModels(context.Background(), &groupID)
+
+	require.Contains(t, models, "gemini-2.5-flash")
+	require.NotContains(t, models, "claude-sonnet-4-6")
+	require.NotContains(t, models, "gpt-5.4")
+}
+
 func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -83,6 +83,14 @@ func RegisterUserRoutes(
 			channels.GET("/available", h.AvailableChannel.List)
 		}
 
+		customDomains := authenticated.Group("/custom-domains")
+		{
+			customDomains.GET("", h.CustomDomain.List)
+			customDomains.POST("", h.CustomDomain.Create)
+			customDomains.POST("/:id/verify", h.CustomDomain.Verify)
+			customDomains.DELETE("/:id", h.CustomDomain.Delete)
+		}
+
 		// 使用记录
 		usage := authenticated.Group("/usage")
 		{

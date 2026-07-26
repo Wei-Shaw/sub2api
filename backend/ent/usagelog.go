@@ -49,6 +49,10 @@ type UsageLog struct {
 	GroupID *int64 `json:"group_id,omitempty"`
 	// SubscriptionID holds the value of the "subscription_id" field.
 	SubscriptionID *int64 `json:"subscription_id,omitempty"`
+	// CustomDomainID holds the value of the "custom_domain_id" field.
+	CustomDomainID *int64 `json:"custom_domain_id,omitempty"`
+	// CustomDomain holds the value of the "custom_domain" field.
+	CustomDomain *string `json:"custom_domain,omitempty"`
 	// InputTokens holds the value of the "input_tokens" field.
 	InputTokens int `json:"input_tokens,omitempty"`
 	// OutputTokens holds the value of the "output_tokens" field.
@@ -202,9 +206,9 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
+		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldCustomDomainID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldCustomDomain, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -314,6 +318,20 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.SubscriptionID = new(int64)
 				*_m.SubscriptionID = value.Int64
+			}
+		case usagelog.FieldCustomDomainID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field custom_domain_id", values[i])
+			} else if value.Valid {
+				_m.CustomDomainID = new(int64)
+				*_m.CustomDomainID = value.Int64
+			}
+		case usagelog.FieldCustomDomain:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field custom_domain", values[i])
+			} else if value.Valid {
+				_m.CustomDomain = new(string)
+				*_m.CustomDomain = value.String
 			}
 		case usagelog.FieldInputTokens:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -634,6 +652,16 @@ func (_m *UsageLog) String() string {
 	if v := _m.SubscriptionID; v != nil {
 		builder.WriteString("subscription_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.CustomDomainID; v != nil {
+		builder.WriteString("custom_domain_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.CustomDomain; v != nil {
+		builder.WriteString("custom_domain=")
+		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
 	builder.WriteString("input_tokens=")

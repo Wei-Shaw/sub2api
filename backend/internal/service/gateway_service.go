@@ -1169,6 +1169,35 @@ func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (s
 	return accessToken, "oauth", nil
 }
 
+// GetSchedulablePlatforms returns the distinct normalized platforms represented
+// by schedulable accounts, optionally constrained to one group.
+func (s *GatewayService) GetSchedulablePlatforms(ctx context.Context, groupID *int64) map[string]struct{} {
+	platforms := make(map[string]struct{})
+	if s == nil || s.accountRepo == nil {
+		return platforms
+	}
+
+	var (
+		accounts []Account
+		err      error
+	)
+	if groupID != nil {
+		accounts, err = s.accountRepo.ListSchedulableByGroupID(ctx, *groupID)
+	} else {
+		accounts, err = s.accountRepo.ListSchedulable(ctx)
+	}
+	if err != nil {
+		return platforms
+	}
+	for _, account := range accounts {
+		platform := strings.TrimSpace(account.Platform)
+		if platform != "" {
+			platforms[platform] = struct{}{}
+		}
+	}
+	return platforms
+}
+
 // GetAvailableModels returns the list of models available for a group
 // It aggregates model_mapping keys from all schedulable accounts in the group
 func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {

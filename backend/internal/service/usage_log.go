@@ -183,6 +183,9 @@ type UsageLog struct {
 	VideoResolution      *string
 	VideoDurationSeconds *int
 
+	CustomDomainID *int64
+	CustomDomain   *string
+
 	CreatedAt time.Time
 
 	User         *User

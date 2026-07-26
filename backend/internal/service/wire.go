@@ -640,6 +640,10 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	return svc
 }
 
+func ProvideCustomDomainService(repo CustomDomainRepository, settingRepo SettingRepository) *CustomDomainService {
+	return NewCustomDomainService(repo, settingRepo, nil)
+}
+
 // ProvideBillingCacheService wires BillingCacheService with its RPM dependencies.
 func ProvideBillingCacheService(
 	cache BillingCache,
@@ -778,6 +782,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelService,
 	NewModelPricingResolver,
 	NewContentModerationService,
+	ProvideCustomDomainService,
 	NewAffiliateService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,

@@ -40,6 +40,10 @@ const (
 	FieldGroupID = "group_id"
 	// FieldSubscriptionID holds the string denoting the subscription_id field in the database.
 	FieldSubscriptionID = "subscription_id"
+	// FieldCustomDomainID holds the string denoting the custom_domain_id field in the database.
+	FieldCustomDomainID = "custom_domain_id"
+	// FieldCustomDomain holds the string denoting the custom_domain field in the database.
+	FieldCustomDomain = "custom_domain"
 	// FieldInputTokens holds the string denoting the input_tokens field in the database.
 	FieldInputTokens = "input_tokens"
 	// FieldOutputTokens holds the string denoting the output_tokens field in the database.
@@ -169,6 +173,8 @@ var Columns = []string{
 	FieldBillingMode,
 	FieldGroupID,
 	FieldSubscriptionID,
+	FieldCustomDomainID,
+	FieldCustomDomain,
 	FieldInputTokens,
 	FieldOutputTokens,
 	FieldCacheCreationTokens,
@@ -228,6 +234,8 @@ var (
 	BillingTierValidator func(string) error
 	// BillingModeValidator is a validator for the "billing_mode" field. It is called by the builders before save.
 	BillingModeValidator func(string) error
+	// CustomDomainValidator is a validator for the "custom_domain" field. It is called by the builders before save.
+	CustomDomainValidator func(string) error
 	// DefaultInputTokens holds the default value on creation for the "input_tokens" field.
 	DefaultInputTokens int
 	// DefaultOutputTokens holds the default value on creation for the "output_tokens" field.
@@ -355,6 +363,16 @@ func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
 // BySubscriptionID orders the results by the subscription_id field.
 func BySubscriptionID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSubscriptionID, opts...).ToFunc()
+}
+
+// ByCustomDomainID orders the results by the custom_domain_id field.
+func ByCustomDomainID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCustomDomainID, opts...).ToFunc()
+}
+
+// ByCustomDomain orders the results by the custom_domain field.
+func ByCustomDomain(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCustomDomain, opts...).ToFunc()
 }
 
 // ByInputTokens orders the results by the input_tokens field.

@@ -169,6 +169,34 @@ func (_c *UsageLogCreate) SetNillableSubscriptionID(v *int64) *UsageLogCreate {
 	return _c
 }
 
+// SetCustomDomainID sets the "custom_domain_id" field.
+func (_c *UsageLogCreate) SetCustomDomainID(v int64) *UsageLogCreate {
+	_c.mutation.SetCustomDomainID(v)
+	return _c
+}
+
+// SetNillableCustomDomainID sets the "custom_domain_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCustomDomainID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetCustomDomainID(*v)
+	}
+	return _c
+}
+
+// SetCustomDomain sets the "custom_domain" field.
+func (_c *UsageLogCreate) SetCustomDomain(v string) *UsageLogCreate {
+	_c.mutation.SetCustomDomain(v)
+	return _c
+}
+
+// SetNillableCustomDomain sets the "custom_domain" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCustomDomain(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetCustomDomain(*v)
+	}
+	return _c
+}
+
 // SetInputTokens sets the "input_tokens" field.
 func (_c *UsageLogCreate) SetInputTokens(v int) *UsageLogCreate {
 	_c.mutation.SetInputTokens(v)
@@ -803,6 +831,11 @@ func (_c *UsageLogCreate) check() error {
 			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_mode": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.CustomDomain(); ok {
+		if err := usagelog.CustomDomainValidator(v); err != nil {
+			return &ValidationError{Name: "custom_domain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.custom_domain": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.InputTokens(); !ok {
 		return &ValidationError{Name: "input_tokens", err: errors.New(`ent: missing required field "UsageLog.input_tokens"`)}
 	}
@@ -965,6 +998,14 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.BillingMode(); ok {
 		_spec.SetField(usagelog.FieldBillingMode, field.TypeString, value)
 		_node.BillingMode = &value
+	}
+	if value, ok := _c.mutation.CustomDomainID(); ok {
+		_spec.SetField(usagelog.FieldCustomDomainID, field.TypeInt64, value)
+		_node.CustomDomainID = &value
+	}
+	if value, ok := _c.mutation.CustomDomain(); ok {
+		_spec.SetField(usagelog.FieldCustomDomain, field.TypeString, value)
+		_node.CustomDomain = &value
 	}
 	if value, ok := _c.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)
@@ -1438,6 +1479,48 @@ func (u *UsageLogUpsert) UpdateSubscriptionID() *UsageLogUpsert {
 // ClearSubscriptionID clears the value of the "subscription_id" field.
 func (u *UsageLogUpsert) ClearSubscriptionID() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldSubscriptionID)
+	return u
+}
+
+// SetCustomDomainID sets the "custom_domain_id" field.
+func (u *UsageLogUpsert) SetCustomDomainID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldCustomDomainID, v)
+	return u
+}
+
+// UpdateCustomDomainID sets the "custom_domain_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCustomDomainID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCustomDomainID)
+	return u
+}
+
+// AddCustomDomainID adds v to the "custom_domain_id" field.
+func (u *UsageLogUpsert) AddCustomDomainID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldCustomDomainID, v)
+	return u
+}
+
+// ClearCustomDomainID clears the value of the "custom_domain_id" field.
+func (u *UsageLogUpsert) ClearCustomDomainID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCustomDomainID)
+	return u
+}
+
+// SetCustomDomain sets the "custom_domain" field.
+func (u *UsageLogUpsert) SetCustomDomain(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldCustomDomain, v)
+	return u
+}
+
+// UpdateCustomDomain sets the "custom_domain" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCustomDomain() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCustomDomain)
+	return u
+}
+
+// ClearCustomDomain clears the value of the "custom_domain" field.
+func (u *UsageLogUpsert) ClearCustomDomain() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCustomDomain)
 	return u
 }
 
@@ -2292,6 +2375,55 @@ func (u *UsageLogUpsertOne) UpdateSubscriptionID() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearSubscriptionID() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearSubscriptionID()
+	})
+}
+
+// SetCustomDomainID sets the "custom_domain_id" field.
+func (u *UsageLogUpsertOne) SetCustomDomainID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCustomDomainID(v)
+	})
+}
+
+// AddCustomDomainID adds v to the "custom_domain_id" field.
+func (u *UsageLogUpsertOne) AddCustomDomainID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCustomDomainID(v)
+	})
+}
+
+// UpdateCustomDomainID sets the "custom_domain_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCustomDomainID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCustomDomainID()
+	})
+}
+
+// ClearCustomDomainID clears the value of the "custom_domain_id" field.
+func (u *UsageLogUpsertOne) ClearCustomDomainID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCustomDomainID()
+	})
+}
+
+// SetCustomDomain sets the "custom_domain" field.
+func (u *UsageLogUpsertOne) SetCustomDomain(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCustomDomain(v)
+	})
+}
+
+// UpdateCustomDomain sets the "custom_domain" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCustomDomain() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCustomDomain()
+	})
+}
+
+// ClearCustomDomain clears the value of the "custom_domain" field.
+func (u *UsageLogUpsertOne) ClearCustomDomain() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCustomDomain()
 	})
 }
 
@@ -3406,6 +3538,55 @@ func (u *UsageLogUpsertBulk) UpdateSubscriptionID() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearSubscriptionID() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearSubscriptionID()
+	})
+}
+
+// SetCustomDomainID sets the "custom_domain_id" field.
+func (u *UsageLogUpsertBulk) SetCustomDomainID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCustomDomainID(v)
+	})
+}
+
+// AddCustomDomainID adds v to the "custom_domain_id" field.
+func (u *UsageLogUpsertBulk) AddCustomDomainID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCustomDomainID(v)
+	})
+}
+
+// UpdateCustomDomainID sets the "custom_domain_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCustomDomainID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCustomDomainID()
+	})
+}
+
+// ClearCustomDomainID clears the value of the "custom_domain_id" field.
+func (u *UsageLogUpsertBulk) ClearCustomDomainID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCustomDomainID()
+	})
+}
+
+// SetCustomDomain sets the "custom_domain" field.
+func (u *UsageLogUpsertBulk) SetCustomDomain(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCustomDomain(v)
+	})
+}
+
+// UpdateCustomDomain sets the "custom_domain" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCustomDomain() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCustomDomain()
+	})
+}
+
+// ClearCustomDomain clears the value of the "custom_domain" field.
+func (u *UsageLogUpsertBulk) ClearCustomDomain() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCustomDomain()
 	})
 }
 

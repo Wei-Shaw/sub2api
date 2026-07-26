@@ -89,8 +89,14 @@ const (
 	EdgePendingAuthSessions = "pending_auth_sessions"
 	// EdgePlatformQuotas holds the string denoting the platform_quotas edge name in mutations.
 	EdgePlatformQuotas = "platform_quotas"
+	// EdgeCustomDomains holds the string denoting the custom_domains edge name in mutations.
+	EdgeCustomDomains = "custom_domains"
+	// EdgeAuthorizedCustomDomains holds the string denoting the authorized_custom_domains edge name in mutations.
+	EdgeAuthorizedCustomDomains = "authorized_custom_domains"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
+	// EdgeCustomDomainUsers holds the string denoting the custom_domain_users edge name in mutations.
+	EdgeCustomDomainUsers = "custom_domain_users"
 	// Table holds the table name of the user in the database.
 	Table = "users"
 	// APIKeysTable is the table that holds the api_keys relation/edge.
@@ -182,6 +188,18 @@ const (
 	PlatformQuotasInverseTable = "user_platform_quotas"
 	// PlatformQuotasColumn is the table column denoting the platform_quotas relation/edge.
 	PlatformQuotasColumn = "user_id"
+	// CustomDomainsTable is the table that holds the custom_domains relation/edge.
+	CustomDomainsTable = "custom_domains"
+	// CustomDomainsInverseTable is the table name for the CustomDomain entity.
+	// It exists in this package in order to avoid circular dependency with the "customdomain" package.
+	CustomDomainsInverseTable = "custom_domains"
+	// CustomDomainsColumn is the table column denoting the custom_domains relation/edge.
+	CustomDomainsColumn = "user_id"
+	// AuthorizedCustomDomainsTable is the table that holds the authorized_custom_domains relation/edge. The primary key declared below.
+	AuthorizedCustomDomainsTable = "custom_domain_users"
+	// AuthorizedCustomDomainsInverseTable is the table name for the CustomDomain entity.
+	// It exists in this package in order to avoid circular dependency with the "customdomain" package.
+	AuthorizedCustomDomainsInverseTable = "custom_domains"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -189,6 +207,13 @@ const (
 	UserAllowedGroupsInverseTable = "user_allowed_groups"
 	// UserAllowedGroupsColumn is the table column denoting the user_allowed_groups relation/edge.
 	UserAllowedGroupsColumn = "user_id"
+	// CustomDomainUsersTable is the table that holds the custom_domain_users relation/edge.
+	CustomDomainUsersTable = "custom_domain_users"
+	// CustomDomainUsersInverseTable is the table name for the CustomDomainUser entity.
+	// It exists in this package in order to avoid circular dependency with the "customdomainuser" package.
+	CustomDomainUsersInverseTable = "custom_domain_users"
+	// CustomDomainUsersColumn is the table column denoting the custom_domain_users relation/edge.
+	CustomDomainUsersColumn = "user_id"
 )
 
 // Columns holds all SQL columns for user fields.
@@ -224,6 +249,9 @@ var (
 	// AllowedGroupsPrimaryKey and AllowedGroupsColumn2 are the table columns denoting the
 	// primary key for the allowed_groups relation (M2M).
 	AllowedGroupsPrimaryKey = []string{"user_id", "group_id"}
+	// AuthorizedCustomDomainsPrimaryKey and AuthorizedCustomDomainsColumn2 are the table columns denoting the
+	// primary key for the authorized_custom_domains relation (M2M).
+	AuthorizedCustomDomainsPrimaryKey = []string{"user_id", "custom_domain_id"}
 )
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -602,6 +630,34 @@ func ByPlatformQuotas(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByCustomDomainsCount orders the results by custom_domains count.
+func ByCustomDomainsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCustomDomainsStep(), opts...)
+	}
+}
+
+// ByCustomDomains orders the results by custom_domains terms.
+func ByCustomDomains(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCustomDomainsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByAuthorizedCustomDomainsCount orders the results by authorized_custom_domains count.
+func ByAuthorizedCustomDomainsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAuthorizedCustomDomainsStep(), opts...)
+	}
+}
+
+// ByAuthorizedCustomDomains orders the results by authorized_custom_domains terms.
+func ByAuthorizedCustomDomains(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAuthorizedCustomDomainsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -613,6 +669,20 @@ func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 func ByUserAllowedGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newUserAllowedGroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByCustomDomainUsersCount orders the results by custom_domain_users count.
+func ByCustomDomainUsersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCustomDomainUsersStep(), opts...)
+	}
+}
+
+// ByCustomDomainUsers orders the results by custom_domain_users terms.
+func ByCustomDomainUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCustomDomainUsersStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 func newAPIKeysStep() *sqlgraph.Step {
@@ -706,10 +776,31 @@ func newPlatformQuotasStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.O2M, false, PlatformQuotasTable, PlatformQuotasColumn),
 	)
 }
+func newCustomDomainsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CustomDomainsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, CustomDomainsTable, CustomDomainsColumn),
+	)
+}
+func newAuthorizedCustomDomainsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AuthorizedCustomDomainsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, false, AuthorizedCustomDomainsTable, AuthorizedCustomDomainsPrimaryKey...),
+	)
+}
 func newUserAllowedGroupsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserAllowedGroupsInverseTable, UserAllowedGroupsColumn),
 		sqlgraph.Edge(sqlgraph.O2M, true, UserAllowedGroupsTable, UserAllowedGroupsColumn),
+	)
+}
+func newCustomDomainUsersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CustomDomainUsersInverseTable, CustomDomainUsersColumn),
+		sqlgraph.Edge(sqlgraph.O2M, true, CustomDomainUsersTable, CustomDomainUsersColumn),
 	)
 }

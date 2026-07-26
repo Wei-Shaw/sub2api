@@ -45,6 +45,7 @@ func ProvideAdminHandlers(
 	affiliateHandler *admin.AffiliateHandler,
 	complianceHandler *admin.ComplianceHandler,
 	auditLogHandler *admin.AuditLogHandler,
+	customDomainHandler *admin.CustomDomainHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 ) *AdminHandlers {
@@ -85,6 +86,7 @@ func ProvideAdminHandlers(
 		Affiliate:              affiliateHandler,
 		Compliance:             complianceHandler,
 		AuditLog:               auditLogHandler,
+		CustomDomain:           customDomainHandler,
 	}
 }
 
@@ -184,8 +186,10 @@ func ProvideHandlers(
 	availableChannelHandler *AvailableChannelHandler,
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
+	customDomainHandler *CustomDomainHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
+	_ *service.CustomDomainService,
 ) *Handlers {
 	return &Handlers{
 		Auth:             authHandler,
@@ -206,6 +210,7 @@ func ProvideHandlers(
 		AvailableChannel: availableChannelHandler,
 		AsyncImage:       asyncImageHandler,
 		BatchImage:       batchImageHandler,
+		CustomDomain:     customDomainHandler,
 	}
 }
 
@@ -229,6 +234,7 @@ var ProviderSet = wire.NewSet(
 	NewAvailableChannelHandler,
 	NewAsyncImageHandler,
 	ProvideBatchImageHandler,
+	NewCustomDomainHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -264,6 +270,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,
+	admin.NewCustomDomainHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

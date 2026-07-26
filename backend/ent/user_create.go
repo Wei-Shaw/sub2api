@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/customdomain"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -549,6 +550,36 @@ func (_c *UserCreate) AddPlatformQuotas(v ...*UserPlatformQuota) *UserCreate {
 	return _c.AddPlatformQuotaIDs(ids...)
 }
 
+// AddCustomDomainIDs adds the "custom_domains" edge to the CustomDomain entity by IDs.
+func (_c *UserCreate) AddCustomDomainIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddCustomDomainIDs(ids...)
+	return _c
+}
+
+// AddCustomDomains adds the "custom_domains" edges to the CustomDomain entity.
+func (_c *UserCreate) AddCustomDomains(v ...*CustomDomain) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddCustomDomainIDs(ids...)
+}
+
+// AddAuthorizedCustomDomainIDs adds the "authorized_custom_domains" edge to the CustomDomain entity by IDs.
+func (_c *UserCreate) AddAuthorizedCustomDomainIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddAuthorizedCustomDomainIDs(ids...)
+	return _c
+}
+
+// AddAuthorizedCustomDomains adds the "authorized_custom_domains" edges to the CustomDomain entity.
+func (_c *UserCreate) AddAuthorizedCustomDomains(v ...*CustomDomain) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddAuthorizedCustomDomainIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_c *UserCreate) Mutation() *UserMutation {
 	return _c.mutation
@@ -1078,6 +1109,42 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.CustomDomainsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CustomDomainsTable,
+			Columns: []string{user.CustomDomainsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(customdomain.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.AuthorizedCustomDomainsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.AuthorizedCustomDomainsTable,
+			Columns: user.AuthorizedCustomDomainsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(customdomain.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &CustomDomainUserCreate{config: _c.config, mutation: newCustomDomainUserMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

@@ -3,6 +3,7 @@
 package repository
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -63,5 +64,24 @@ func TestBuildUsageLogBatchInsertQuery_UsesConflictDoNothing(t *testing.T) {
 	})
 
 	require.Contains(t, query, "ON CONFLICT (request_id, api_key_id) DO NOTHING")
+	require.Contains(t, query, "custom_domain_id")
+	require.Contains(t, query, "custom_domain")
 	require.NotContains(t, strings.ToUpper(query), "DO UPDATE")
+}
+
+func TestPrepareUsageLogInsertPreservesCustomDomainAttribution(t *testing.T) {
+	domainID := int64(73)
+	domain := "api.example.com"
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:         41,
+		APIKeyID:       42,
+		AccountID:      43,
+		Model:          "gpt-5",
+		CustomDomainID: &domainID,
+		CustomDomain:   &domain,
+	})
+
+	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+	require.Equal(t, sql.NullInt64{Int64: domainID, Valid: true}, prepared.args[len(prepared.args)-3])
+	require.Equal(t, sql.NullString{String: domain, Valid: true}, prepared.args[len(prepared.args)-2])
 }

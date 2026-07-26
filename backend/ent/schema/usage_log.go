@@ -63,6 +63,14 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int64("subscription_id").
 			Optional().
 			Nillable(),
+		field.Int64("custom_domain_id").
+			Optional().
+			Nillable(),
+		field.String("custom_domain").
+			MaxLen(253).
+			Optional().
+			Nillable().
+			Validate(validateOptionalCustomDomainName),
 
 		// Token 计数字段
 		field.Int("input_tokens").
@@ -215,6 +223,8 @@ func (UsageLog) Indexes() []ent.Index {
 		index.Fields("account_id"),
 		index.Fields("group_id"),
 		index.Fields("subscription_id"),
+		index.Fields("custom_domain_id", "created_at"),
+		index.Fields("custom_domain", "created_at"),
 		index.Fields("created_at"),
 		index.Fields("model"),
 		index.Fields("requested_model"),
