@@ -349,7 +349,9 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 }
 
 func TestGatewayRoutesCompositeOpenAIOnlyEndpointsRequireOpenAITarget(t *testing.T) {
-	router := newGatewayRoutesTestRouter(service.PlatformComposite)
+	router := newGatewayRoutesTestRouterWithConfig(&config.Config{
+		Gateway: config.GatewayConfig{MaxBodySize: 1024 * 1024},
+	}, service.PlatformComposite)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/embeddings", strings.NewReader(`{"model":"gemini-2.5-pro","input":"hello"}`))
 	req.Header.Set("Content-Type", "application/json")
