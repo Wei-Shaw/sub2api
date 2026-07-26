@@ -23,12 +23,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -51,6 +45,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          builder: default
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
