@@ -137,27 +137,170 @@ func TestOpenAISelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedul
 }
 
 func TestOpenAINewAcquiredSelectionResult_ReleasesSlotWhenHydrationFails(t *testing.T) {
-	cache := &snapshotHydrationCache{
-		accounts: map[int64]*Account{},
-	}
-	schedulerSnapshot := NewSchedulerSnapshotService(cache, nil, stubOpenAIAccountRepo{}, nil, nil)
 	svc := &OpenAIGatewayService{
-		schedulerSnapshot: schedulerSnapshot,
+		schedulerSnapshot: NewSchedulerSnapshotService(&snapshotHydrationCache{}, nil, stubOpenAIAccountRepo{}, nil, nil),
 	}
 	releaseCalls := 0
+	account := &Account{ID: 1001, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 
-	selection, err := svc.newAcquiredSelectionResult(context.Background(), &Account{ID: 1001}, func() {
+	selection, err := svc.newAcquiredSelectionResult(context.Background(), account, func() {
 		releaseCalls++
 	})
 
-	if err == nil {
-		t.Fatalf("expected hydration error")
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
 	}
-	if selection != nil {
-		t.Fatalf("expected nil selection on hydration error")
+	if selection == nil || selection.Account != account {
+		t.Fatalf("expected selection to preserve provided account")
 	}
-	if releaseCalls != 1 {
-		t.Fatalf("expected release to be called once, got %d", releaseCalls)
+	if releaseCalls != 0 {
+		t.Fatalf("expected release to remain untouched on success, got %d", releaseCalls)
+	}
+}
+
+func TestOpenAISelectAccountForModelWithExclusions_PreservesDBRecheckedGrokAccount(t *testing.T) {
+	cache := &snapshotHydrationCache{
+		snapshot: []*Account{
+			{
+				ID:          7,
+				Platform:    PlatformGrok,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"grok*": "grok"},
+				},
+			},
+		},
+		accounts: map[int64]*Account{
+			7: {
+				ID:          7,
+				Platform:    PlatformGrok,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{
+					"api_key":       "stale-key",
+					"model_mapping": map[string]any{"grok*": "grok"},
+				},
+			},
+		},
+	}
+	dbAccount := Account{
+		ID:          7,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+		Credentials: map[string]any{
+			"api_key":       "db-key",
+			"model_mapping": map[string]any{"grok": "grok-4.3"},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		schedulerSnapshot: NewSchedulerSnapshotService(cache, nil, stubOpenAIAccountRepo{accounts: []Account{dbAccount}}, nil, nil),
+		accountRepo:       stubOpenAIAccountRepo{accounts: []Account{dbAccount}},
+		cache:             &stubGatewayCache{},
+	}
+
+	account, err := svc.selectAccountForModelWithExclusions(context.Background(), nil, PlatformGrok, "", "grok", nil, false, 0, "", false)
+	if err != nil {
+		t.Fatalf("selectAccountForModelWithExclusions error: %v", err)
+	}
+	if account == nil {
+		t.Fatalf("expected selected account")
+	}
+	if got := account.GetMappedModel("grok"); got != "grok-4.3" {
+		t.Fatalf("expected DB-rechecked Grok mapping, got %q", got)
+	}
+	if got := account.GetCredential("api_key"); got != "db-key" {
+		t.Fatalf("expected DB-rechecked API key, got %q", got)
+	}
+}
+
+func TestOpenAISelectAccountWithLoadAwareness_PreservesDBRecheckedGrokAccount(t *testing.T) {
+	cache := &snapshotHydrationCache{
+		snapshot: []*Account{
+			{
+				ID:          7,
+				Platform:    PlatformGrok,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"grok*": "grok"},
+				},
+			},
+		},
+		accounts: map[int64]*Account{
+			7: {
+				ID:          7,
+				Platform:    PlatformGrok,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{
+					"api_key":       "stale-key",
+					"model_mapping": map[string]any{"grok*": "grok"},
+				},
+			},
+		},
+	}
+	dbAccount := Account{
+		ID:          7,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+		Credentials: map[string]any{
+			"api_key":       "db-key",
+			"model_mapping": map[string]any{"grok": "grok-4.3"},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		schedulerSnapshot:  NewSchedulerSnapshotService(cache, nil, stubOpenAIAccountRepo{accounts: []Account{dbAccount}}, nil, nil),
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{dbAccount}},
+		cache:              &stubGatewayCache{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{acquireResults: map[int64]bool{7: true}}),
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				Scheduling: config.GatewaySchedulingConfig{
+					LoadBatchEnabled:         true,
+					StickySessionMaxWaiting:  3,
+					StickySessionWaitTimeout: time.Second,
+					FallbackWaitTimeout:      time.Second,
+					FallbackMaxWaiting:       10,
+				},
+			},
+		},
+	}
+
+	selection, err := svc.selectAccountWithLoadAwareness(context.Background(), nil, PlatformGrok, "", "grok", nil, false, "", false)
+	if err != nil {
+		t.Fatalf("selectAccountWithLoadAwareness error: %v", err)
+	}
+	if selection == nil || selection.Account == nil {
+		t.Fatalf("expected selected account")
+	}
+	if got := selection.Account.GetMappedModel("grok"); got != "grok-4.3" {
+		t.Fatalf("expected DB-rechecked Grok mapping, got %q", got)
+	}
+	if got := selection.Account.GetCredential("api_key"); got != "db-key" {
+		t.Fatalf("expected DB-rechecked API key, got %q", got)
 	}
 }
 

@@ -658,18 +658,13 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 		return nil, noAvailableOpenAISelectionError(requestedModel, compactBlocked, "")
 	}
 
-	hydrated, err := s.hydrateSelectedAccount(ctx, selected)
-	if err != nil {
-		return nil, err
-	}
-
 	// 4. 设置粘性会话绑定
 	// Set sticky session binding
 	if sessionHash != "" {
 		_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, selected.ID, openaiStickySessionTTL)
 	}
 
-	return hydrated, nil
+	return selected, nil
 }
 
 // tryStickySessionHit 尝试从粘性会话获取账号。
@@ -1324,27 +1319,9 @@ func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accoun
 	return account, nil
 }
 
-func (s *OpenAIGatewayService) hydrateSelectedAccount(ctx context.Context, account *Account) (*Account, error) {
-	if account == nil || s.schedulerSnapshot == nil {
-		return account, nil
-	}
-	hydrated, err := s.schedulerSnapshot.GetAccount(ctx, account.ID)
-	if err != nil {
-		return nil, err
-	}
-	if hydrated == nil {
-		return nil, fmt.Errorf("selected openai account %d not found during hydration", account.ID)
-	}
-	return hydrated, nil
-}
-
 func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
-	hydrated, err := s.hydrateSelectedAccount(ctx, account)
-	if err != nil {
-		return nil, err
-	}
 	return &AccountSelectionResult{
-		Account:     hydrated,
+		Account:     account,
 		Acquired:    acquired,
 		ReleaseFunc: release,
 		WaitPlan:    waitPlan,
