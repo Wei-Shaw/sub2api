@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -36,11 +36,11 @@ type refreshTokenCache struct {
 }
 
 // NewRefreshTokenCache creates a new RefreshTokenCache implementation.
-func NewRefreshTokenCache(rdb *redis.Client) service.RefreshTokenCache {
+func NewRefreshTokenCache(rdb *redis.Client) cache.RefreshTokenCache {
 	return &refreshTokenCache{rdb: rdb}
 }
 
-func (c *refreshTokenCache) StoreRefreshToken(ctx context.Context, tokenHash string, data *service.RefreshTokenData, ttl time.Duration) error {
+func (c *refreshTokenCache) StoreRefreshToken(ctx context.Context, tokenHash string, data *cache.RefreshTokenData, ttl time.Duration) error {
 	key := refreshTokenKey(tokenHash)
 	val, err := json.Marshal(data)
 	if err != nil {
@@ -49,16 +49,16 @@ func (c *refreshTokenCache) StoreRefreshToken(ctx context.Context, tokenHash str
 	return c.rdb.Set(ctx, key, val, ttl).Err()
 }
 
-func (c *refreshTokenCache) GetRefreshToken(ctx context.Context, tokenHash string) (*service.RefreshTokenData, error) {
+func (c *refreshTokenCache) GetRefreshToken(ctx context.Context, tokenHash string) (*cache.RefreshTokenData, error) {
 	key := refreshTokenKey(tokenHash)
 	val, err := c.rdb.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
-			return nil, service.ErrRefreshTokenNotFound
+			return nil, cache.ErrRefreshTokenNotFound
 		}
 		return nil, err
 	}
-	var data service.RefreshTokenData
+	var data cache.RefreshTokenData
 	if err := json.Unmarshal([]byte(val), &data); err != nil {
 		return nil, fmt.Errorf("unmarshal refresh token data: %w", err)
 	}

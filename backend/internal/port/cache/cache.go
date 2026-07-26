@@ -8,6 +8,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -163,4 +164,187 @@ type GeminiTokenCache interface {
 
 	AcquireRefreshLock(ctx context.Context, cacheKey string, ttl time.Duration) (bool, error)
 	ReleaseRefreshLock(ctx context.Context, cacheKey string) error
+}
+
+// ========== Email cache ==========
+
+// EmailCache defines cache operations for email service
+type EmailCache interface {
+	GetVerificationCode(ctx context.Context, email string) (*VerificationCodeData, error)
+	SetVerificationCode(ctx context.Context, email string, data *VerificationCodeData, ttl time.Duration) error
+	DeleteVerificationCode(ctx context.Context, email string) error
+
+	// Notify email verification code methods
+	GetNotifyVerifyCode(ctx context.Context, email string) (*VerificationCodeData, error)
+	SetNotifyVerifyCode(ctx context.Context, email string, data *VerificationCodeData, ttl time.Duration) error
+	DeleteNotifyVerifyCode(ctx context.Context, email string) error
+
+	// Password reset token methods
+	GetPasswordResetToken(ctx context.Context, email string) (*PasswordResetTokenData, error)
+	SetPasswordResetToken(ctx context.Context, email string, data *PasswordResetTokenData, ttl time.Duration) error
+	DeletePasswordResetToken(ctx context.Context, email string) error
+
+	// Password reset email cooldown methods
+	// Returns true if in cooldown period (email was sent recently)
+	IsPasswordResetEmailInCooldown(ctx context.Context, email string) bool
+	SetPasswordResetEmailCooldown(ctx context.Context, email string, ttl time.Duration) error
+
+	// Notify code rate limiting per user
+	IncrNotifyCodeUserRate(ctx context.Context, userID int64, window time.Duration) (int64, error)
+	GetNotifyCodeUserRate(ctx context.Context, userID int64) (int64, error)
+}
+
+// VerificationCodeData represents verification code data
+type VerificationCodeData struct {
+	Code      string
+	Attempts  int
+	CreatedAt time.Time
+	ExpiresAt time.Time // absolute expiry; used to preserve remaining TTL when updating attempts
+}
+
+// PasswordResetTokenData represents password reset token data
+type PasswordResetTokenData struct {
+	Token     string
+	CreatedAt time.Time
+}
+
+// ========== Refresh token cache ==========
+
+// ErrRefreshTokenNotFound is returned when a refresh token is not found in cache.
+// This is used to abstract away the underlying cache implementation (e.g., redis.Nil).
+var ErrRefreshTokenNotFound = errors.New("refresh token not found")
+
+// RefreshTokenData 存储在Redis中的Refresh Token数据
+type RefreshTokenData struct {
+	UserID       int64     `json:"user_id"`
+	TokenVersion int64     `json:"token_version"`          // 用于检测密码更改后的Token失效
+	FamilyID     string    `json:"family_id"`              // Token家族ID，用于防重放攻击
+	BindingHash  string    `json:"binding_hash,omitempty"` // 会话指纹哈希（IP+UA），会话绑定开启时校验
+	CreatedAt    time.Time `json:"created_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
+// RefreshTokenCache 管理Refresh Token的Redis缓存
+// 用于JWT Token刷新机制，支持Token轮转和防重放攻击
+//
+// Key 格式:
+//   - refresh_token:{token_hash}     -> RefreshTokenData (JSON)
+//   - user_refresh_tokens:{user_id}  -> Set<token_hash>
+//   - token_family:{family_id}       -> Set<token_hash>
+type RefreshTokenCache interface {
+	// StoreRefreshToken 存储Refresh Token
+	// tokenHash: Token的SHA256哈希值（不存储原始Token）
+	// data: Token关联的数据
+	// ttl: Token过期时间
+	StoreRefreshToken(ctx context.Context, tokenHash string, data *RefreshTokenData, ttl time.Duration) error
+
+	// GetRefreshToken 获取Refresh Token数据
+	// 返回 (data, nil) 如果Token存在
+	// 返回 (nil, ErrRefreshTokenNotFound) 如果Token不存在
+	// 返回 (nil, err) 如果发生其他错误
+	GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshTokenData, error)
+
+	// DeleteRefreshToken 删除单个Refresh Token
+	// 用于Token轮转时使旧Token失效
+	DeleteRefreshToken(ctx context.Context, tokenHash string) error
+
+	// DeleteUserRefreshTokens 删除用户的所有Refresh Token
+	// 用于密码更改或用户主动登出所有设备
+	DeleteUserRefreshTokens(ctx context.Context, userID int64) error
+
+	// DeleteTokenFamily 删除整个Token家族
+	// 用于检测到Token重放攻击时，撤销整个会话链
+	DeleteTokenFamily(ctx context.Context, familyID string) error
+
+	// AddToUserTokenSet 将Token添加到用户的Token集合
+	// 用于跟踪用户的所有活跃Refresh Token
+	AddToUserTokenSet(ctx context.Context, userID int64, tokenHash string, ttl time.Duration) error
+
+	// AddToFamilyTokenSet 将Token添加到家族Token集合
+	// 用于跟踪同一登录会话的所有Token
+	AddToFamilyTokenSet(ctx context.Context, familyID string, tokenHash string, ttl time.Duration) error
+
+	// GetUserTokenHashes 获取用户的所有Token哈希
+	// 用于批量删除用户Token
+	GetUserTokenHashes(ctx context.Context, userID int64) ([]string, error)
+
+	// GetFamilyTokenHashes 获取家族的所有Token哈希
+	// 用于批量删除家族Token
+	GetFamilyTokenHashes(ctx context.Context, familyID string) ([]string, error)
+
+	// IsTokenInFamily 检查Token是否属于指定家族
+	// 用于验证Token家族关系
+	IsTokenInFamily(ctx context.Context, familyID string, tokenHash string) (bool, error)
+}
+
+// ========== Identity cache ==========
+
+// Fingerprint represents account fingerprint data
+type Fingerprint struct {
+	ClientID                string
+	UserAgent               string
+	StainlessLang           string
+	StainlessPackageVersion string
+	StainlessOS             string
+	StainlessArch           string
+	StainlessRuntime        string
+	StainlessRuntimeVersion string
+	UpdatedAt               int64 `json:",omitempty"` // Unix timestamp，用于判断是否需要续期TTL
+}
+
+// IdentityCache defines cache operations for identity service
+type IdentityCache interface {
+	GetFingerprint(ctx context.Context, accountID int64) (*Fingerprint, error)
+	SetFingerprint(ctx context.Context, accountID int64, fp *Fingerprint) error
+	// GetMaskedSessionID 获取固定的会话ID（用于会话ID伪装功能）
+	// 返回的 sessionID 是一个 UUID 格式的字符串
+	// 如果不存在或已过期（15分钟无请求），返回空字符串
+	GetMaskedSessionID(ctx context.Context, accountID int64) (string, error)
+	// SetMaskedSessionID 设置固定的会话ID，TTL 为 15 分钟
+	// 每次调用都会刷新 TTL
+	SetMaskedSessionID(ctx context.Context, accountID int64, sessionID string) error
+}
+
+// ========== TOTP cache ==========
+
+// TotpCache defines cache operations for TOTP service
+type TotpCache interface {
+	// Setup session methods
+	GetSetupSession(ctx context.Context, userID int64) (*TotpSetupSession, error)
+	SetSetupSession(ctx context.Context, userID int64, session *TotpSetupSession, ttl time.Duration) error
+	DeleteSetupSession(ctx context.Context, userID int64) error
+
+	// Login session methods (for 2FA login flow)
+	GetLoginSession(ctx context.Context, tempToken string) (*TotpLoginSession, error)
+	SetLoginSession(ctx context.Context, tempToken string, session *TotpLoginSession, ttl time.Duration) error
+	DeleteLoginSession(ctx context.Context, tempToken string) error
+
+	// Rate limiting
+	IncrementVerifyAttempts(ctx context.Context, userID int64) (int, error)
+	GetVerifyAttempts(ctx context.Context, userID int64) (int, error)
+	ClearVerifyAttempts(ctx context.Context, userID int64) error
+
+	// Step-up grant methods (敏感操作 sudo 窗口)
+	SetStepUpGrant(ctx context.Context, userID int64, sessionKey string, ttl time.Duration) error
+	HasStepUpGrant(ctx context.Context, userID int64, sessionKey string) (bool, error)
+}
+
+// TotpSetupSession represents a TOTP setup session
+type TotpSetupSession struct {
+	Secret     string // Plain text TOTP secret (not encrypted yet)
+	SetupToken string // Random token to verify setup request
+	CreatedAt  time.Time
+}
+
+// TotpLoginSession represents a pending 2FA login session
+type TotpLoginSession struct {
+	UserID           int64
+	Email            string
+	TokenExpiry      time.Time
+	PendingOAuthBind *PendingOAuthBindLoginSession `json:"pending_oauth_bind,omitempty"`
+}
+
+type PendingOAuthBindLoginSession struct {
+	PendingSessionToken string `json:"pending_session_token,omitempty"`
+	BrowserSessionKey   string `json:"browser_session_key,omitempty"`
 }

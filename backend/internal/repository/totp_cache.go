@@ -8,7 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 )
 
 const (
@@ -19,18 +19,18 @@ const (
 	totpAttemptsTTL       = 15 * time.Minute
 )
 
-// TotpCache implements service.TotpCache using Redis
+// TotpCache implements cache.TotpCache using Redis
 type TotpCache struct {
 	rdb *redis.Client
 }
 
 // NewTotpCache creates a new TOTP cache
-func NewTotpCache(rdb *redis.Client) service.TotpCache {
+func NewTotpCache(rdb *redis.Client) cache.TotpCache {
 	return &TotpCache{rdb: rdb}
 }
 
 // GetSetupSession retrieves a TOTP setup session
-func (c *TotpCache) GetSetupSession(ctx context.Context, userID int64) (*service.TotpSetupSession, error) {
+func (c *TotpCache) GetSetupSession(ctx context.Context, userID int64) (*cache.TotpSetupSession, error) {
 	key := fmt.Sprintf("%s%d", totpSetupKeyPrefix, userID)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err != nil {
@@ -40,7 +40,7 @@ func (c *TotpCache) GetSetupSession(ctx context.Context, userID int64) (*service
 		return nil, fmt.Errorf("get setup session: %w", err)
 	}
 
-	var session service.TotpSetupSession
+	var session cache.TotpSetupSession
 	if err := json.Unmarshal(data, &session); err != nil {
 		return nil, fmt.Errorf("unmarshal setup session: %w", err)
 	}
@@ -49,7 +49,7 @@ func (c *TotpCache) GetSetupSession(ctx context.Context, userID int64) (*service
 }
 
 // SetSetupSession stores a TOTP setup session
-func (c *TotpCache) SetSetupSession(ctx context.Context, userID int64, session *service.TotpSetupSession, ttl time.Duration) error {
+func (c *TotpCache) SetSetupSession(ctx context.Context, userID int64, session *cache.TotpSetupSession, ttl time.Duration) error {
 	key := fmt.Sprintf("%s%d", totpSetupKeyPrefix, userID)
 	data, err := json.Marshal(session)
 	if err != nil {
@@ -70,7 +70,7 @@ func (c *TotpCache) DeleteSetupSession(ctx context.Context, userID int64) error 
 }
 
 // GetLoginSession retrieves a TOTP login session
-func (c *TotpCache) GetLoginSession(ctx context.Context, tempToken string) (*service.TotpLoginSession, error) {
+func (c *TotpCache) GetLoginSession(ctx context.Context, tempToken string) (*cache.TotpLoginSession, error) {
 	key := totpLoginKeyPrefix + tempToken
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err != nil {
@@ -80,7 +80,7 @@ func (c *TotpCache) GetLoginSession(ctx context.Context, tempToken string) (*ser
 		return nil, fmt.Errorf("get login session: %w", err)
 	}
 
-	var session service.TotpLoginSession
+	var session cache.TotpLoginSession
 	if err := json.Unmarshal(data, &session); err != nil {
 		return nil, fmt.Errorf("unmarshal login session: %w", err)
 	}
@@ -89,7 +89,7 @@ func (c *TotpCache) GetLoginSession(ctx context.Context, tempToken string) (*ser
 }
 
 // SetLoginSession stores a TOTP login session
-func (c *TotpCache) SetLoginSession(ctx context.Context, tempToken string, session *service.TotpLoginSession, ttl time.Duration) error {
+func (c *TotpCache) SetLoginSession(ctx context.Context, tempToken string, session *cache.TotpLoginSession, ttl time.Duration) error {
 	key := totpLoginKeyPrefix + tempToken
 	data, err := json.Marshal(session)
 	if err != nil {

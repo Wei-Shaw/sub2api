@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -31,24 +31,24 @@ type identityCache struct {
 	rdb *redis.Client
 }
 
-func NewIdentityCache(rdb *redis.Client) service.IdentityCache {
+func NewIdentityCache(rdb *redis.Client) cache.IdentityCache {
 	return &identityCache{rdb: rdb}
 }
 
-func (c *identityCache) GetFingerprint(ctx context.Context, accountID int64) (*service.Fingerprint, error) {
+func (c *identityCache) GetFingerprint(ctx context.Context, accountID int64) (*cache.Fingerprint, error) {
 	key := fingerprintKey(accountID)
 	val, err := c.rdb.Get(ctx, key).Result()
 	if err != nil {
 		return nil, err
 	}
-	var fp service.Fingerprint
+	var fp cache.Fingerprint
 	if err := json.Unmarshal([]byte(val), &fp); err != nil {
 		return nil, err
 	}
 	return &fp, nil
 }
 
-func (c *identityCache) SetFingerprint(ctx context.Context, accountID int64, fp *service.Fingerprint) error {
+func (c *identityCache) SetFingerprint(ctx context.Context, accountID int64, fp *cache.Fingerprint) error {
 	key := fingerprintKey(accountID)
 	val, err := json.Marshal(fp)
 	if err != nil {

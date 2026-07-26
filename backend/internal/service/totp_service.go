@@ -12,6 +12,7 @@ import (
 	"github.com/pquerna/otp/totp"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 )
 
 var (
@@ -26,26 +27,7 @@ var (
 )
 
 // TotpCache defines cache operations for TOTP service
-type TotpCache interface {
-	// Setup session methods
-	GetSetupSession(ctx context.Context, userID int64) (*TotpSetupSession, error)
-	SetSetupSession(ctx context.Context, userID int64, session *TotpSetupSession, ttl time.Duration) error
-	DeleteSetupSession(ctx context.Context, userID int64) error
-
-	// Login session methods (for 2FA login flow)
-	GetLoginSession(ctx context.Context, tempToken string) (*TotpLoginSession, error)
-	SetLoginSession(ctx context.Context, tempToken string, session *TotpLoginSession, ttl time.Duration) error
-	DeleteLoginSession(ctx context.Context, tempToken string) error
-
-	// Rate limiting
-	IncrementVerifyAttempts(ctx context.Context, userID int64) (int, error)
-	GetVerifyAttempts(ctx context.Context, userID int64) (int, error)
-	ClearVerifyAttempts(ctx context.Context, userID int64) error
-
-	// Step-up grant methods (敏感操作 sudo 窗口)
-	SetStepUpGrant(ctx context.Context, userID int64, sessionKey string, ttl time.Duration) error
-	HasStepUpGrant(ctx context.Context, userID int64, sessionKey string) (bool, error)
-}
+type TotpCache = cache.TotpCache
 
 // SecretEncryptor defines encryption operations for TOTP secrets
 type SecretEncryptor interface {
@@ -54,24 +36,12 @@ type SecretEncryptor interface {
 }
 
 // TotpSetupSession represents a TOTP setup session
-type TotpSetupSession struct {
-	Secret     string // Plain text TOTP secret (not encrypted yet)
-	SetupToken string // Random token to verify setup request
-	CreatedAt  time.Time
-}
+type TotpSetupSession = cache.TotpSetupSession
 
 // TotpLoginSession represents a pending 2FA login session
-type TotpLoginSession struct {
-	UserID           int64
-	Email            string
-	TokenExpiry      time.Time
-	PendingOAuthBind *PendingOAuthBindLoginSession `json:"pending_oauth_bind,omitempty"`
-}
+type TotpLoginSession = cache.TotpLoginSession
 
-type PendingOAuthBindLoginSession struct {
-	PendingSessionToken string `json:"pending_session_token,omitempty"`
-	BrowserSessionKey   string `json:"browser_session_key,omitempty"`
-}
+type PendingOAuthBindLoginSession = cache.PendingOAuthBindLoginSession
 
 // TotpStatus represents the TOTP status for a user
 type TotpStatus struct {
