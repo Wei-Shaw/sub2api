@@ -82,6 +82,6 @@ func TestPrepareUsageLogInsertPreservesCustomDomainAttribution(t *testing.T) {
 	})
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	require.Equal(t, sql.NullInt64{Int64: domainID, Valid: true}, prepared.args[len(prepared.args)-3])
-	require.Equal(t, sql.NullString{String: domain, Valid: true}, prepared.args[len(prepared.args)-2])
+	require.Equal(t, sql.NullInt64{Int64: domainID, Valid: true}, prepared.args[len(prepared.args)-4])
+	require.Equal(t, sql.NullString{String: domain, Valid: true}, prepared.args[len(prepared.args)-3])
 }
