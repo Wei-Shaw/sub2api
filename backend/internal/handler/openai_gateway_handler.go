@@ -105,6 +105,12 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
 	}
+	if customDomainID, ok := parent.Value(ctxkey.CustomDomainID).(int64); ok && customDomainID > 0 {
+		base = context.WithValue(base, ctxkey.CustomDomainID, customDomainID)
+	}
+	if customDomain, _ := parent.Value(ctxkey.CustomDomain).(string); strings.TrimSpace(customDomain) != "" {
+		base = context.WithValue(base, ctxkey.CustomDomain, strings.TrimSpace(customDomain))
+	}
 	return base
 }
 

@@ -1027,6 +1027,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		usageLog.ActualCost = cost.ActualCost
 		usageLog.LongContextBillingApplied = cost.LongContextBillingApplied
 	}
+	applyCustomDomainUsageAttribution(ctx, usageLog)
 
 	return usageLog
 }

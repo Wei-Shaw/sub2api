@@ -1,9 +1,12 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
 const (
@@ -193,6 +196,19 @@ type UsageLog struct {
 	Account      *Account
 	Group        *Group
 	Subscription *UserSubscription
+}
+
+func applyCustomDomainUsageAttribution(ctx context.Context, log *UsageLog) {
+	if ctx == nil || log == nil {
+		return
+	}
+	if id, ok := ctx.Value(ctxkey.CustomDomainID).(int64); ok && id > 0 {
+		log.CustomDomainID = &id
+	}
+	if domain, _ := ctx.Value(ctxkey.CustomDomain).(string); strings.TrimSpace(domain) != "" {
+		domain = strings.TrimSpace(domain)
+		log.CustomDomain = &domain
+	}
 }
 
 func (u *UsageLog) TotalTokens() int {

@@ -27,7 +27,9 @@ func newCustomDomainRepo(t *testing.T) (*customDomainRepository, *dbent.Client) 
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
 	t.Cleanup(func() { _ = client.Close() })
-	return NewCustomDomainRepository(client).(*customDomainRepository), client
+	repo, ok := NewCustomDomainRepository(client).(*customDomainRepository)
+	require.True(t, ok)
+	return repo, client
 }
 
 func createCustomDomainTestUser(t *testing.T, client *dbent.Client, email string) int64 {

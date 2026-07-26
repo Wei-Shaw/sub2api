@@ -385,6 +385,36 @@ func TestGatewayServiceRecordUsage_UsesFallbackRequestIDForUsageLog(t *testing.T
 	require.Equal(t, "local:gateway-local-fallback", usageRepo.lastLog.RequestID)
 }
 
+func TestGatewayServiceRecordUsage_PreservesCustomDomainAttribution(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+	ctx := context.WithValue(context.Background(), ctxkey.CustomDomainID, int64(73))
+	ctx = context.WithValue(ctx, ctxkey.CustomDomain, " api.example.com ")
+	err := svc.RecordUsage(ctx, &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_custom_domain",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 6,
+			},
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+		},
+		APIKey:  &APIKey{ID: 507},
+		User:    &User{ID: 607},
+		Account: &Account{ID: 707},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.CustomDomainID)
+	require.Equal(t, int64(73), *usageRepo.lastLog.CustomDomainID)
+	require.NotNil(t, usageRepo.lastLog.CustomDomain)
+	require.Equal(t, "api.example.com", *usageRepo.lastLog.CustomDomain)
+}
+
 func TestGatewayServiceRecordUsage_PrefersClientRequestIDOverUpstreamRequestID(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}

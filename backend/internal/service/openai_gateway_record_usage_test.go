@@ -324,6 +324,39 @@ func TestOpenAIGatewayServiceRecordUsage_ZeroUsageStillWritesUsageLog(t *testing
 	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_PreservesCustomDomainAttribution(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+
+	ctx := context.WithValue(context.Background(), ctxkey.CustomDomainID, int64(91))
+	ctx = context.WithValue(ctx, ctxkey.CustomDomain, " openai.example.com ")
+	err := svc.RecordUsage(ctx, &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_custom_domain",
+			Usage:     OpenAIUsage{},
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey:  &APIKey{ID: 1001, Group: &Group{RateMultiplier: 1}},
+		User:    &User{ID: 2001},
+		Account: &Account{ID: 3001, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.CustomDomainID)
+	require.Equal(t, int64(91), *usageRepo.lastLog.CustomDomainID)
+	require.NotNil(t, usageRepo.lastLog.CustomDomain)
+	require.Equal(t, "openai.example.com", *usageRepo.lastLog.CustomDomain)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_MissingPricingRecordsZeroCostUsageLog(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
