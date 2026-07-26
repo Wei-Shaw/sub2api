@@ -9,20 +9,20 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/billing"
 )
 
 type usageBillingRepository struct {
 	db *sql.DB
 }
 
-func NewUsageBillingRepository(_ *dbent.Client, sqlDB *sql.DB) service.UsageBillingRepository {
+func NewUsageBillingRepository(_ *dbent.Client, sqlDB *sql.DB) billing.UsageBillingRepository {
 	return &usageBillingRepository{db: sqlDB}
 }
 
-func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBillingCommand) (_ *service.UsageBillingApplyResult, err error) {
+func (r *usageBillingRepository) Apply(ctx context.Context, cmd *domain.UsageBillingCommand) (_ *domain.UsageBillingApplyResult, err error) {
 	if cmd == nil {
-		return &service.UsageBillingApplyResult{}, nil
+		return &domain.UsageBillingApplyResult{}, nil
 	}
 	if r == nil || r.db == nil {
 		return nil, errors.New("usage billing repository db is nil")
@@ -30,7 +30,7 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 
 	cmd.Normalize()
 	if cmd.RequestID == "" {
-		return nil, service.ErrUsageBillingRequestIDRequired
+		return nil, domain.ErrUsageBillingRequestIDRequired
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -48,10 +48,10 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 		return nil, err
 	}
 	if !applied {
-		return &service.UsageBillingApplyResult{Applied: false}, nil
+		return &domain.UsageBillingApplyResult{Applied: false}, nil
 	}
 
-	result := &service.UsageBillingApplyResult{Applied: true}
+	result := &domain.UsageBillingApplyResult{Applied: true}
 	if err := r.applyUsageBillingEffects(ctx, tx, cmd, result); err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	return result, nil
 }
 
-func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) (bool, error) {
+func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *sql.Tx, cmd *domain.UsageBillingCommand) (bool, error) {
 	return r.claimUsageBillingRequest(ctx, tx, cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint)
 }
 
@@ -85,7 +85,7 @@ func (r *usageBillingRepository) claimUsageBillingRequest(ctx context.Context, t
 			return false, err
 		}
 		if strings.TrimSpace(existingFingerprint) != strings.TrimSpace(requestFingerprint) {
-			return false, service.ErrUsageBillingRequestConflict
+			return false, domain.ErrUsageBillingRequestConflict
 		}
 		return false, nil
 	}
@@ -100,7 +100,7 @@ func (r *usageBillingRepository) claimUsageBillingRequest(ctx context.Context, t
 	`, requestID, apiKeyID).Scan(&archivedFingerprint)
 	if err == nil {
 		if strings.TrimSpace(archivedFingerprint) != strings.TrimSpace(requestFingerprint) {
-			return false, service.ErrUsageBillingRequestConflict
+			return false, domain.ErrUsageBillingRequestConflict
 		}
 		return false, nil
 	}
@@ -110,32 +110,32 @@ func (r *usageBillingRepository) claimUsageBillingRequest(ctx context.Context, t
 	return true, nil
 }
 
-func (r *usageBillingRepository) ReserveBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+func (r *usageBillingRepository) ReserveBatchImageBalance(ctx context.Context, cmd *domain.BatchImageBalanceHoldCommand) (*domain.BatchImageBalanceHoldResult, error) {
 	return r.applyBatchImageBalanceHold(ctx, cmd, reserveUsageBillingBatchImageBalance)
 }
 
-func (r *usageBillingRepository) CaptureBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+func (r *usageBillingRepository) CaptureBatchImageBalance(ctx context.Context, cmd *domain.BatchImageBalanceHoldCommand) (*domain.BatchImageBalanceHoldResult, error) {
 	return r.applyBatchImageBalanceHold(ctx, cmd, captureUsageBillingBatchImageBalance)
 }
 
-func (r *usageBillingRepository) ReleaseBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+func (r *usageBillingRepository) ReleaseBatchImageBalance(ctx context.Context, cmd *domain.BatchImageBalanceHoldCommand) (*domain.BatchImageBalanceHoldResult, error) {
 	return r.applyBatchImageBalanceHold(ctx, cmd, releaseUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	ctx context.Context,
-	cmd *service.BatchImageBalanceHoldCommand,
-	apply func(context.Context, *sql.Tx, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error),
-) (_ *service.BatchImageBalanceHoldResult, err error) {
+	cmd *domain.BatchImageBalanceHoldCommand,
+	apply func(context.Context, *sql.Tx, *domain.BatchImageBalanceHoldCommand) (*domain.BatchImageBalanceHoldResult, error),
+) (_ *domain.BatchImageBalanceHoldResult, err error) {
 	if cmd == nil {
-		return &service.BatchImageBalanceHoldResult{}, nil
+		return &domain.BatchImageBalanceHoldResult{}, nil
 	}
 	if r == nil || r.db == nil {
 		return nil, errors.New("usage billing repository db is nil")
 	}
 	cmd.Normalize()
 	if cmd.RequestID == "" {
-		return nil, service.ErrUsageBillingRequestIDRequired
+		return nil, domain.ErrUsageBillingRequestIDRequired
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -153,7 +153,7 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 		return nil, err
 	}
 	if !applied {
-		return &service.BatchImageBalanceHoldResult{Applied: false}, nil
+		return &domain.BatchImageBalanceHoldResult{Applied: false}, nil
 	}
 
 	result, err := apply(ctx, tx, cmd)
@@ -161,7 +161,7 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 		return nil, err
 	}
 	if result == nil {
-		result = &service.BatchImageBalanceHoldResult{}
+		result = &domain.BatchImageBalanceHoldResult{}
 	}
 	result.Applied = true
 
@@ -172,7 +172,7 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	return result, nil
 }
 
-func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
+func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *domain.UsageBillingCommand, result *domain.UsageBillingApplyResult) error {
 	if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
 		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost); err != nil {
 			return err
@@ -202,7 +202,7 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 		}
 	}
 
-	if cmd.AccountQuotaCost > 0 && (strings.EqualFold(cmd.AccountType, service.AccountTypeAPIKey) || strings.EqualFold(cmd.AccountType, service.AccountTypeBedrock)) {
+	if cmd.AccountQuotaCost > 0 && (strings.EqualFold(cmd.AccountType, domain.AccountTypeAPIKey) || strings.EqualFold(cmd.AccountType, domain.AccountTypeBedrock)) {
 		quotaState, err := incrementUsageBillingAccountQuota(ctx, tx, cmd.AccountID, cmd.AccountQuotaCost)
 		if err != nil {
 			return err
@@ -238,7 +238,7 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 	if affected > 0 {
 		return nil
 	}
-	return service.ErrSubscriptionNotFound
+	return domain.ErrSubscriptionNotFound
 }
 
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, bool, error) {
@@ -265,7 +265,7 @@ func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, am
 		RETURNING balance
 	`, amount, userID).Scan(&newBalance)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, false, service.ErrUserNotFound
+		return 0, false, domain.ErrUserNotFound
 	}
 	if err != nil {
 		return 0, false, err
@@ -273,9 +273,9 @@ func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, am
 	return newBalance, false, nil
 }
 
-func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *domain.BatchImageBalanceHoldCommand) (*domain.BatchImageBalanceHoldResult, error) {
 	if cmd.HoldAmount <= 0 {
-		return &service.BatchImageBalanceHoldResult{}, nil
+		return &domain.BatchImageBalanceHoldResult{}, nil
 	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
@@ -287,7 +287,7 @@ func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 		RETURNING balance, frozen_balance
 	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
-		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
+		return &domain.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -295,17 +295,17 @@ func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	if exists, existsErr := userExistsForBilling(ctx, tx, cmd.UserID); existsErr != nil {
 		return nil, existsErr
 	} else if !exists {
-		return nil, service.ErrUserNotFound
+		return nil, domain.ErrUserNotFound
 	}
-	return nil, service.ErrBatchImageInsufficientBalance
+	return nil, domain.ErrBatchImageInsufficientBalance
 }
 
-func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *domain.BatchImageBalanceHoldCommand) (*domain.BatchImageBalanceHoldResult, error) {
 	if cmd.HoldAmount <= 0 && cmd.ActualAmount <= 0 {
-		return &service.BatchImageBalanceHoldResult{}, nil
+		return &domain.BatchImageBalanceHoldResult{}, nil
 	}
 	if cmd.ActualAmount-cmd.HoldAmount > 0.00000001 {
-		return nil, service.ErrBatchImageSettlementCostExceedsHold
+		return nil, domain.ErrBatchImageSettlementCostExceedsHold
 	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
@@ -319,7 +319,7 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 		RETURNING balance, frozen_balance
 	`, cmd.HoldAmount, cmd.ActualAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
-		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
+		return &domain.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -327,24 +327,24 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	if exists, existsErr := userExistsForBilling(ctx, tx, cmd.UserID); existsErr != nil {
 		return nil, existsErr
 	} else if !exists {
-		return nil, service.ErrUserNotFound
+		return nil, domain.ErrUserNotFound
 	}
 	return nil, errors.New("batch image frozen balance is insufficient")
 }
 
-func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *domain.BatchImageBalanceHoldCommand) (*domain.BatchImageBalanceHoldResult, error) {
 	if cmd.HoldAmount <= 0 {
-		return &service.BatchImageBalanceHoldResult{}, nil
+		return &domain.BatchImageBalanceHoldResult{}, nil
 	}
 	// 释放前校验该 job 确实预留过 hold（hold request id 已被 claim），
 	// 防止从未成功冻结的 job 触发"幻影释放"，从其他用户的冻结资金池中凭空生成余额。
-	held, heldErr := batchImageHoldClaimExists(ctx, tx, service.BatchImageHoldRequestID(cmd.BatchID), cmd.APIKeyID)
+	held, heldErr := batchImageHoldClaimExists(ctx, tx, domain.BatchImageHoldRequestID(cmd.BatchID), cmd.APIKeyID)
 	if heldErr != nil {
 		return nil, heldErr
 	}
 	if !held {
 		logger.LegacyPrintf("repository.usage_billing", "[BatchImage] release skipped, hold was never reserved: batch=%s", cmd.BatchID)
-		return &service.BatchImageBalanceHoldResult{}, nil
+		return &domain.BatchImageBalanceHoldResult{}, nil
 	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
@@ -356,7 +356,7 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 		RETURNING balance, frozen_balance
 	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
-		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
+		return &domain.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -364,7 +364,7 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	if exists, existsErr := userExistsForBilling(ctx, tx, cmd.UserID); existsErr != nil {
 		return nil, existsErr
 	} else if !exists {
-		return nil, service.ErrUserNotFound
+		return nil, domain.ErrUserNotFound
 	}
 	return nil, errors.New("batch image frozen balance is insufficient")
 }
@@ -465,7 +465,7 @@ func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, apiKe
 	return nil
 }
 
-func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountID int64, amount float64) (*service.AccountQuotaState, error) {
+func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountID int64, amount float64) (*domain.AccountQuotaState, error) {
 	rows, err := tx.QueryContext(ctx,
 		`UPDATE accounts SET extra = (
 			COALESCE(extra, '{}'::jsonb)
@@ -514,7 +514,7 @@ func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountI
 		return nil, err
 	}
 
-	var state service.AccountQuotaState
+	var state domain.AccountQuotaState
 	if rows.Next() {
 		if err := rows.Scan(
 			&state.TotalUsed, &state.TotalLimit,
@@ -551,7 +551,7 @@ func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountI
 	crossedDaily := state.DailyLimit > 0 && state.DailyUsed >= state.DailyLimit && (state.DailyUsed-amount) < state.DailyLimit
 	crossedWeekly := state.WeeklyLimit > 0 && state.WeeklyUsed >= state.WeeklyLimit && (state.WeeklyUsed-amount) < state.WeeklyLimit
 	if crossedTotal || crossedDaily || crossedWeekly {
-		if err := enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
+		if err := enqueueSchedulerOutbox(ctx, tx, domain.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
 			logger.LegacyPrintf("repository.usage_billing", "[SchedulerOutbox] enqueue quota exceeded failed: account=%d err=%v", accountID, err)
 			return nil, err
 		}

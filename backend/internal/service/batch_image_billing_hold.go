@@ -5,19 +5,20 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"go.uber.org/zap"
 )
 
 const (
-	batchImageHoldRequestPrefix    = "batch_image_hold:"
 	batchImageCaptureRequestPrefix = "batch_image_capture:"
 	batchImageReleaseRequestPrefix = "batch_image_release:"
 )
 
-func BatchImageHoldRequestID(batchID string) string {
-	return batchImageHoldRequestPrefix + strings.TrimSpace(batchID)
-}
+// BatchImageHoldRequestID is re-exported from the domain package; free
+// functions do not follow type aliases, so we expose a var pointing at the
+// domain implementation to preserve existing call sites.
+var BatchImageHoldRequestID = domain.BatchImageHoldRequestID
 
 func BatchImageCaptureRequestID(batchID string) string {
 	return batchImageCaptureRequestPrefix + strings.TrimSpace(batchID)

@@ -54,3 +54,15 @@ type PricingRemoteClient interface {
 	FetchPricingJSON(ctx context.Context, url string) ([]byte, error)
 	FetchHashText(ctx context.Context, url string) (string, error)
 }
+
+// UsageBillingRepository is the write-path contract for applying idempotent
+// usage billing events and batch image balance hold / capture / release
+// operations. Method signatures reference pure-scalar DTOs in internal/domain
+// so the repository implementation does not need to import internal/service;
+// the service package re-exports this interface as a type alias.
+type UsageBillingRepository interface {
+	Apply(ctx context.Context, cmd *domain.UsageBillingCommand) (*domain.UsageBillingApplyResult, error)
+	ReserveBatchImageBalance(ctx context.Context, cmd *domain.BatchImageBalanceHoldCommand) (*domain.BatchImageBalanceHoldResult, error)
+	CaptureBatchImageBalance(ctx context.Context, cmd *domain.BatchImageBalanceHoldCommand) (*domain.BatchImageBalanceHoldResult, error)
+	ReleaseBatchImageBalance(ctx context.Context, cmd *domain.BatchImageBalanceHoldCommand) (*domain.BatchImageBalanceHoldResult, error)
+}
