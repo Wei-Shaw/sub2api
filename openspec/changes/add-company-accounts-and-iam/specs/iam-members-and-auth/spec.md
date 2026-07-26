@@ -31,11 +31,11 @@ Each organization SHALL have a configurable IAM-member limit that defaults to 20
 - **THEN** the owner SHALL be able to create one replacement while the archived member's history remains retained
 
 ### Requirement: IAM login principal
-An IAM login name SHALL contain 1 to 64 ASCII letters, digits, periods, hyphens, or underscores and SHALL be unique case-insensitively among non-archived users in the organization. The canonical IAM principal SHALL be `<login_name>@<16-digit-root-account-id>`. IAM authentication SHALL accept the canonical principal and password, SHALL resolve exactly one organization member, and SHALL not treat the optional recovery email as a login identifier.
+An IAM login name SHALL contain 1 to 64 ASCII letters, digits, periods, hyphens, or underscores and SHALL be unique case-insensitively among non-archived users in the organization. The canonical IAM principal SHALL be `<login_name>@<16-digit-root-account-id>.opentk.ai`. The IAM login UI SHALL collect this complete principal and password without a separate root-account-ID field. IAM authentication SHALL parse the principal, resolve exactly one organization member, and SHALL not treat the optional recovery email as a login identifier.
 
 #### Scenario: Canonical principal is created
 - **WHEN** the owner creates login name `finance.reader`
-- **THEN** the member's login principal SHALL be `finance.reader@<owner-account-id>`
+- **THEN** the member's login principal SHALL be `finance.reader@<owner-account-id>.opentk.ai`
 
 #### Scenario: Same name in different organizations
 - **WHEN** two organizations each create login name `operator`
@@ -49,17 +49,30 @@ An IAM login name SHALL contain 1 to 64 ASCII letters, digits, periods, hyphens,
 - **WHEN** an IAM user supplies their recovery email and password to IAM login
 - **THEN** authentication SHALL fail without revealing whether that email exists
 
+#### Scenario: Login with a complete IAM principal
+- **WHEN** an IAM user enters `finance.reader@<owner-account-id>.opentk.ai` and their password
+- **THEN** the backend SHALL parse the login name and owner account ID from that one field
+- **AND** the login UI SHALL not request the owner account ID separately
+
 ### Requirement: Initial and reset credentials
-Member creation SHALL generate a cryptographically random initial password, store only its password hash, display the plaintext exactly once to the owner, and require the IAM user to change it at first successful authentication before accessing other protected APIs. An optional recovery email SHALL require verification before self-service password recovery; without a verified recovery email, only the organization owner SHALL reset the member password.
+Member creation SHALL require an owner-supplied initial password of 8 to 72 bytes and SHALL offer a cryptographically secure browser generator beside the password field. The system SHALL store only its password hash and display the plaintext exactly once to the owner. The owner SHALL choose whether the IAM user must change it at first successful authentication, with the option enabled by default. An optional recovery email SHALL require verification before self-service password recovery; without a verified recovery email, only the organization owner SHALL reset the member password.
 
 #### Scenario: Initial password shown once
-- **WHEN** member creation succeeds
-- **THEN** the creation response SHALL contain the initial password once
+- **WHEN** member creation succeeds with an entered or generated password
+- **THEN** the creation response SHALL contain that initial password once
 - **AND** subsequent reads SHALL never return that plaintext
 
-#### Scenario: First login requires password change
-- **WHEN** an IAM user authenticates with an initial or owner-reset password
+#### Scenario: First login change is enabled
+- **WHEN** the owner leaves the first-login password-change option selected
 - **THEN** the session SHALL be restricted to password-change and logout operations until the password is changed
+
+#### Scenario: First login change is disabled
+- **WHEN** the owner clears the first-login password-change option before creating the IAM user
+- **THEN** the created user SHALL be able to access normally after authenticating with the initial password
+
+#### Scenario: Generate an initial password
+- **WHEN** the owner selects the generate-password control
+- **THEN** the frontend SHALL fill the password field using a cryptographically secure random source
 
 #### Scenario: No verified recovery email
 - **WHEN** an IAM user without a verified recovery email requests self-service reset

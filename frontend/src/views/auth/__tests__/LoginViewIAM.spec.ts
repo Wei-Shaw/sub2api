@@ -2,6 +2,7 @@ import { flushPromises, shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import LoginView from '@/views/auth/LoginView.vue'
+import IAMLoginView from '@/views/auth/IAMLoginView.vue'
 
 const mocks = vi.hoisted(() => ({
   getPublicSettings: vi.fn(),
@@ -11,7 +12,8 @@ const mocks = vi.hoisted(() => ({
     showSuccess: vi.fn(),
     showWarning: vi.fn(),
   },
-  authStore: { login: vi.fn() },
+  authStore: { login: vi.fn(), loginIAM: vi.fn() },
+  routerReplace: vi.fn(),
 }))
 
 vi.mock('@/api/auth', () => ({
@@ -28,7 +30,7 @@ vi.mock('@/stores', () => ({
 vi.mock('vue-router', () => ({
   useRouter: () => ({
     currentRoute: { value: { query: {} } },
-    replace: vi.fn(),
+    replace: mocks.routerReplace,
   }),
 }))
 
@@ -81,6 +83,7 @@ async function mountLogin() {
 
 describe('LoginView IAM entry', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     mocks.appStore.cachedPublicSettings = null
     mocks.getPublicSettings.mockReset()
   })
@@ -99,5 +102,29 @@ describe('LoginView IAM entry', () => {
     const wrapper = await mountLogin()
 
     expect(wrapper.find('[data-to="/iam-login"]').exists()).toBe(true)
+  })
+
+  it('submits the complete IAM principal without a separate account ID', async () => {
+    mocks.authStore.loginIAM.mockResolvedValue({ user: { must_change_password: false } })
+    const wrapper = shallowMount(IAMLoginView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' },
+          RouterLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
+        },
+      },
+    })
+
+    expect(wrapper.find('#iam-account-id').exists()).toBe(false)
+    await wrapper.get('#iam-principal').setValue('reader@1719905235756637.opentk.ai')
+    await wrapper.get('#iam-password').setValue('secret-password')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.authStore.loginIAM).toHaveBeenCalledWith({
+      principal: 'reader@1719905235756637.opentk.ai',
+      password: 'secret-password',
+    })
+    expect(mocks.routerReplace).toHaveBeenCalledWith('/dashboard')
   })
 })

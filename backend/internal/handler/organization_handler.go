@@ -2,7 +2,6 @@ package handler
 
 import (
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -171,14 +170,20 @@ func (h *OrganizationHandler) CreateMember(c *gin.Context) {
 		return
 	}
 	var req struct {
-		LoginName     string `json:"login_name" binding:"required"`
-		RecoveryEmail string `json:"recovery_email"`
+		LoginName          string `json:"login_name" binding:"required"`
+		RecoveryEmail      string `json:"recovery_email"`
+		Password           string `json:"password" binding:"required"`
+		MustChangePassword *bool  `json:"must_change_password"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid IAM member")
 		return
 	}
-	member, password, err := h.organization.CreateIAMMember(c.Request.Context(), ownerID, req.LoginName, req.RecoveryEmail)
+	mustChangePassword := true
+	if req.MustChangePassword != nil {
+		mustChangePassword = *req.MustChangePassword
+	}
+	member, password, err := h.organization.CreateIAMMember(c.Request.Context(), ownerID, req.LoginName, req.RecoveryEmail, req.Password, mustChangePassword)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -346,20 +351,14 @@ func (h *OrganizationHandler) VerifyRecoveryEmail(c *gin.Context) {
 
 func (h *OrganizationHandler) IAMLogin(c *gin.Context) {
 	var req struct {
-		Principal string `json:"principal"`
-		LoginName string `json:"login_name"`
-		AccountID string `json:"account_id"`
+		Principal string `json:"principal" binding:"required"`
 		Password  string `json:"password" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorFrom(c, service.ErrInvalidCredentials)
 		return
 	}
-	principal := strings.TrimSpace(req.Principal)
-	if principal == "" {
-		principal = strings.TrimSpace(req.LoginName) + "@" + strings.TrimSpace(req.AccountID)
-	}
-	user, org, err := h.organization.AuthenticateIAM(c.Request.Context(), principal, req.Password)
+	user, org, err := h.organization.AuthenticateIAM(c.Request.Context(), req.Principal, req.Password)
 	if err != nil {
 		response.ErrorFrom(c, service.ErrInvalidCredentials)
 		return

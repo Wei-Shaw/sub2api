@@ -86,7 +86,7 @@ func (u *User) IAMPrincipal() string {
 	if !u.IsIAM() || u.LoginName == "" || u.AccountID == "" {
 		return ""
 	}
-	return u.LoginName + "@" + u.AccountID
+	return CanonicalIAMPrincipal(u.LoginName, u.AccountID)
 }
 
 // CanBindGroup checks whether a user can bind to a given group.

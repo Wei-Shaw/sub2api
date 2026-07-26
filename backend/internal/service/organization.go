@@ -36,6 +36,7 @@ const (
 	PolicyCompanySharedBalance   = "CompanySharedBalanceUse"
 	ActionFinanceBalanceRead     = "organization.finance.balance.read"
 	ActionSharedBalanceUse       = "organization.balance.shared.use"
+	IAMPrincipalDomain           = "opentk.ai"
 )
 
 var (
@@ -49,6 +50,7 @@ var (
 	ErrIAMFeatureDisabled     = infraerrors.Forbidden("IAM_FEATURE_DISABLED", "IAM user creation is disabled")
 	ErrIAMMemberLimit         = infraerrors.Conflict("IAM_MEMBER_LIMIT", "organization IAM member limit reached")
 	ErrIAMLoginName           = infraerrors.BadRequest("IAM_LOGIN_NAME_INVALID", "IAM login name is invalid")
+	ErrIAMPassword            = infraerrors.BadRequest("IAM_PASSWORD_INVALID", "IAM password must be between 8 and 72 bytes")
 	ErrIAMMemberNotFound      = infraerrors.NotFound("IAM_MEMBER_NOT_FOUND", "IAM member not found")
 	ErrOrganizationPermission = infraerrors.Forbidden("ORGANIZATION_PERMISSION_DENIED", "organization permission denied")
 	ErrIAMFinancialOperation  = infraerrors.Forbidden("IAM_FINANCIAL_OPERATION_DENIED", "IAM users cannot perform this financial operation")
@@ -56,6 +58,23 @@ var (
 
 var iamLoginNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 var rootAccountIDPattern = regexp.MustCompile(`^[1-9][0-9]{15}$`)
+
+func CanonicalIAMPrincipal(loginName, accountID string) string {
+	return strings.TrimSpace(loginName) + "@" + strings.TrimSpace(accountID) + "." + IAMPrincipalDomain
+}
+
+func parseIAMPrincipal(principal string) (string, string, bool) {
+	loginName, host, found := strings.Cut(strings.TrimSpace(principal), "@")
+	suffix := "." + IAMPrincipalDomain
+	if !found || strings.Contains(host, "@") || !strings.HasSuffix(strings.ToLower(host), suffix) {
+		return "", "", false
+	}
+	accountID := host[:len(host)-len(suffix)]
+	if !iamLoginNamePattern.MatchString(loginName) || !rootAccountIDPattern.MatchString(accountID) {
+		return "", "", false
+	}
+	return loginName, accountID, true
+}
 
 var organizationRuntimeMetrics struct {
 	payerResolutionFailures atomic.Uint64
@@ -462,7 +481,7 @@ func generateInitialPassword() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-func (s *OrganizationService) CreateIAMMember(ctx context.Context, ownerID int64, loginName, recoveryEmail string) (*IAMMember, string, error) {
+func (s *OrganizationService) CreateIAMMember(ctx context.Context, ownerID int64, loginName, recoveryEmail, password string, mustChangePassword bool) (*IAMMember, string, error) {
 	if s.cfg == nil || !s.cfg.Company.IAMEnabled {
 		return nil, "", ErrIAMFeatureDisabled
 	}
@@ -477,9 +496,8 @@ func (s *OrganizationService) CreateIAMMember(ctx context.Context, ownerID int64
 			return nil, "", infraerrors.BadRequest("RECOVERY_EMAIL_INVALID", "recovery email is invalid")
 		}
 	}
-	password, err := generateInitialPassword()
-	if err != nil {
-		return nil, "", err
+	if len(password) < 8 || len(password) > 72 {
+		return nil, "", ErrIAMPassword
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -488,7 +506,7 @@ func (s *OrganizationService) CreateIAMMember(ctx context.Context, ownerID int64
 	limit := s.cfg.Company.DefaultMemberLimit
 	member, err := s.repo.CreateIAMMember(ctx, ownerID, &User{
 		IdentityType: IdentityTypeIAM, LoginName: loginName, PasswordHash: string(hash), Role: RoleUser,
-		Status: StatusActive, RecoveryEmail: recoveryEmail, MustChangePassword: true, AuthzGeneration: 1,
+		Status: StatusActive, RecoveryEmail: recoveryEmail, MustChangePassword: mustChangePassword, AuthzGeneration: 1,
 	}, limit)
 	if err != nil {
 		return nil, "", err
@@ -550,11 +568,11 @@ func (s *OrganizationService) AuthenticateIAM(ctx context.Context, principal, pa
 	if s.cfg == nil || !s.cfg.Company.IAMEnabled {
 		return nil, nil, ErrIAMFeatureDisabled
 	}
-	parts := strings.Split(strings.TrimSpace(principal), "@")
-	if len(parts) != 2 || !iamLoginNamePattern.MatchString(parts[0]) || !rootAccountIDPattern.MatchString(parts[1]) {
+	loginName, accountID, ok := parseIAMPrincipal(principal)
+	if !ok {
 		return nil, nil, ErrInvalidCredentials
 	}
-	user, org, err := s.repo.FindIAMByPrincipal(ctx, parts[0], parts[1])
+	user, org, err := s.repo.FindIAMByPrincipal(ctx, loginName, accountID)
 	if err != nil || user == nil || org == nil || !user.IsActive() || !org.Active() || !user.CheckPassword(password) {
 		return nil, nil, ErrInvalidCredentials
 	}

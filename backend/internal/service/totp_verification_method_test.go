@@ -96,7 +96,7 @@ func TestGetVerificationMethodIAMRequiresVerifiedRecoveryEmail(t *testing.T) {
 
 func TestTotpIAMAccountNameUsesPrincipalNotRecoveryEmail(t *testing.T) {
 	iam := &User{IdentityType: IdentityTypeIAM, LoginName: "reader", AccountID: "1719905235756637", RecoveryEmail: "recovery@example.com"}
-	require.Equal(t, "reader@1719905235756637", totpAccountName(iam))
+	require.Equal(t, "reader@1719905235756637.opentk.ai", totpAccountName(iam))
 }
 
 func TestTotpDisableAdminUsesPasswordEvenWithEmailVerifyEnabled(t *testing.T) {

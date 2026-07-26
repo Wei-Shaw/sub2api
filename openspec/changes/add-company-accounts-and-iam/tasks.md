@@ -84,13 +84,14 @@
 - [x] 10.1 Add TypeScript organization/auth models and API clients for applications, IAM login, members, policies, allocation, finance, usage, and admin review.
 - [x] 10.2 Add a personal-account menu upgrade action and application modal/status view showing company name, current snapshotted fee, insufficient-balance errors, pending state, and withdrawal.
 - [x] 10.3 Add system-admin review navigation and list/detail decision UI with similar-name warnings, self-review support, mandatory rejection reason, fee snapshot, and terminal state.
-- [x] 10.4 Add IAM login mode with login name/account ID/password inputs, canonical-principal submission, generic authentication errors, and forced first-password-change flow.
+- [x] 10.4 Add IAM login mode with complete canonical-principal/password inputs, backend principal parsing, generic authentication errors, and forced first-password-change flow.
 - [x] 10.5 Extend the account menu and profile to display account ID, main/sub-account identity, IAM user ID/principal, company, role/status, effective policy names, and authorized non-sensitive balance-source information.
 - [x] 10.6 Add owner member management with stable 20-slot status, one-time initial/reset credential display, disable/enable/archive controls, and responsive validation states.
 - [x] 10.7 Add owner authorization and balance-allocation views using policy descriptions, explicit attach/detach state, member allocated balance, and reclaim limits.
 - [x] 10.8 Add company usage and finance-read views by reusing user-safe usage components while excluding all admin-only columns and filters.
 - [x] 10.9 Add organization route metadata/sidebar predicates and direct-navigation guards for personal, owner, IAM-policy, first-login-restricted, and suspended states.
 - [x] 10.10 Add Chinese/English locale strings and focused component/store/router/API tests for menu visibility, IAM restrictions, approval states, redaction, and mobile/desktop text containment.
+- [x] 10.11 Add owner-entered or securely generated IAM initial passwords, a default-on first-login password-change option, and single-field canonical `<login_name>@<account_id>.opentk.ai` principals across creation, display, and authentication.
 
 ## 11. Audit, Reconciliation, And Rollout Verification
 

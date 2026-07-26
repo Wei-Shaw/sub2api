@@ -115,9 +115,9 @@ describe('useAuthStore', () => {
       mockLoginIAM.mockResolvedValue({ ...fakeAuthResponse, user: { ...fakeUser }, organization })
       const store = useAuthStore()
 
-      await store.loginIAM({ login_name: 'reader', account_id: '1719905235756637', password: 'secret' })
+      await store.loginIAM({ principal: 'reader@1719905235756637.opentk.ai', password: 'secret' })
 
-      expect(mockLoginIAM).toHaveBeenCalledWith({ login_name: 'reader', account_id: '1719905235756637', password: 'secret' })
+      expect(mockLoginIAM).toHaveBeenCalledWith({ principal: 'reader@1719905235756637.opentk.ai', password: 'secret' })
       expect(store.user?.organization).toEqual(organization)
     })
 

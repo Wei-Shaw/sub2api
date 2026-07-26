@@ -174,7 +174,7 @@ func totpAccountName(user *User) string {
 		return ""
 	}
 	if user.IsIAM() && user.LoginName != "" && user.AccountID != "" {
-		return user.LoginName + "@" + user.AccountID
+		return user.IAMPrincipal()
 	}
 	return user.Email
 }

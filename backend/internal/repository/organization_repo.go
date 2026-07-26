@@ -701,8 +701,8 @@ func (r *organizationRepository) CreateIAMMember(ctx context.Context, ownerID in
 		}
 		err = tx.QueryRowContext(ctx, `
 			INSERT INTO users(account_id,external_user_id,identity_type,login_name,password_hash,role,balance,frozen_balance,concurrency,status,signup_source,must_change_password,recovery_email,authz_generation,created_at,updated_at)
-			VALUES($1,$2,'iam',$3,$4,'user',0,0,5,'active','email',true,$5,1,NOW(),NOW()) RETURNING id`,
-			accountID, externalID, user.LoginName, user.PasswordHash, nullableString(user.RecoveryEmail)).Scan(&userID)
+			VALUES($1,$2,'iam',$3,$4,'user',0,0,5,'active','email',$5,$6,1,NOW(),NOW()) RETURNING id`,
+			accountID, externalID, user.LoginName, user.PasswordHash, user.MustChangePassword, nullableString(user.RecoveryEmail)).Scan(&userID)
 		if err == nil {
 			_, err = tx.ExecContext(ctx, `RELEASE SAVEPOINT iam_external_id_retry`)
 			break
@@ -735,7 +735,7 @@ func (r *organizationRepository) CreateIAMMember(ctx context.Context, ownerID in
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &service.IAMMember{UserID: userID, ExternalUserID: externalID, LoginName: user.LoginName, Principal: user.LoginName + "@" + accountID, Status: "active", Balance: "0", FrozenBalance: "0", RecoveryEmail: user.RecoveryEmail, MustChangePassword: true, PolicyNames: []string{}, CreatedAt: time.Now().UTC()}, nil
+	return &service.IAMMember{UserID: userID, ExternalUserID: externalID, LoginName: user.LoginName, Principal: service.CanonicalIAMPrincipal(user.LoginName, accountID), Status: "active", Balance: "0", FrozenBalance: "0", RecoveryEmail: user.RecoveryEmail, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}, CreatedAt: time.Now().UTC()}, nil
 }
 
 func (r *organizationRepository) ListIAMMembers(ctx context.Context, actorID int64) ([]service.IAMMember, int, error) {
@@ -766,7 +766,7 @@ func (r *organizationRepository) ListIAMMembers(ctx context.Context, actorID int
 		if err := rows.Scan(&member.UserID, &member.ExternalUserID, &member.LoginName, &member.Status, &member.Balance, &member.FrozenBalance, &member.RecoveryEmail, &member.RecoveryVerifiedAt, &member.MustChangePassword, &member.CreatedAt, pq.Array(&member.PolicyNames)); err != nil {
 			return nil, 0, err
 		}
-		member.Principal = member.LoginName + "@" + org.AccountID
+		member.Principal = service.CanonicalIAMPrincipal(member.LoginName, org.AccountID)
 		members = append(members, member)
 	}
 	return members, memberLimit, rows.Err()
@@ -796,7 +796,7 @@ func (r *organizationRepository) GetIAMMember(ctx context.Context, actorID, memb
 	if err != nil {
 		return nil, err
 	}
-	member.Principal = member.LoginName + "@" + org.AccountID
+	member.Principal = service.CanonicalIAMPrincipal(member.LoginName, org.AccountID)
 	return &member, nil
 }
 

@@ -176,9 +176,57 @@
     </section>
 
     <div v-if="showCreate" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <form class="w-full max-w-md space-y-4 rounded-md bg-white p-5 shadow-xl dark:bg-dark-800" @submit.prevent="createMember">
+      <form class="w-full max-w-lg space-y-4 rounded-md bg-white p-5 shadow-xl dark:bg-dark-800" @submit.prevent="createMember">
         <h3 class="font-semibold">{{ t('organization.members.create') }}</h3>
-        <input v-model.trim="createForm.loginName" class="input" :placeholder="t('organization.login.loginName')" required pattern="[A-Za-z0-9._-]{1,64}">
+        <div>
+          <label class="input-label" for="iam-member-login-name">{{ t('organization.login.loginName') }}</label>
+          <div class="flex min-w-0 flex-col sm:flex-row">
+            <input id="iam-member-login-name" v-model.trim="createForm.loginName" class="input min-w-0 flex-1 sm:rounded-r-none" required pattern="[A-Za-z0-9._-]{1,64}" autocomplete="off">
+            <span data-testid="iam-principal-suffix" class="flex min-h-10 max-w-full items-center break-all rounded-md border border-gray-300 bg-gray-50 px-3 font-mono text-xs text-gray-600 sm:-ml-px sm:rounded-l-none sm:whitespace-nowrap dark:border-dark-600 dark:bg-dark-900 dark:text-dark-300">
+              @{{ organization?.account_id }}.opentk.ai
+            </span>
+          </div>
+        </div>
+        <div>
+          <label class="input-label" for="iam-member-password">{{ t('organization.members.password') }}</label>
+          <div class="flex min-w-0 gap-2">
+            <div class="relative min-w-0 flex-1">
+              <input
+                id="iam-member-password"
+                v-model="createForm.password"
+                class="input w-full pr-10 font-mono"
+                :type="passwordVisible ? 'text' : 'password'"
+                required
+                minlength="8"
+                maxlength="72"
+                autocomplete="new-password"
+              >
+              <button
+                type="button"
+                class="absolute inset-y-0 right-0 grid w-10 place-items-center text-gray-500 hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200"
+                :title="t(passwordVisible ? 'organization.members.hidePassword' : 'organization.members.showPassword')"
+                :aria-label="t(passwordVisible ? 'organization.members.hidePassword' : 'organization.members.showPassword')"
+                @click="passwordVisible = !passwordVisible"
+              >
+                <Icon :name="passwordVisible ? 'eyeOff' : 'eye'" size="sm" />
+              </button>
+            </div>
+            <button
+              type="button"
+              class="icon-btn shrink-0"
+              data-testid="generate-iam-password"
+              :title="t('organization.members.generatePassword')"
+              :aria-label="t('organization.members.generatePassword')"
+              @click="generatePassword"
+            >
+              <Icon name="refresh" size="sm" />
+            </button>
+          </div>
+        </div>
+        <label class="flex cursor-pointer items-start gap-2 text-sm text-gray-700 dark:text-dark-200">
+          <input v-model="createForm.mustChangePassword" data-testid="must-change-password" class="mt-0.5 h-4 w-4" type="checkbox">
+          <span>{{ t('organization.members.mustChangePassword') }}</span>
+        </label>
         <input v-model.trim="createForm.recoveryEmail" class="input" type="email" :placeholder="t('organization.members.recoveryEmail')">
         <p v-if="modalError" class="text-sm text-red-600">{{ modalError }}</p>
         <div class="flex justify-end gap-2"><button type="button" class="btn btn-secondary" :disabled="operationKey !== ''" @click="closeCreate">{{ t('common.cancel') }}</button><button class="btn btn-primary" :disabled="operationKey !== ''">{{ t('common.create') }}</button></div>
@@ -239,7 +287,8 @@ const showRename = ref(false)
 const requestedName = ref('')
 const renameMessage = ref('')
 const credential = ref<{ principal: string; password: string } | null>(null)
-const createForm = reactive({ loginName: '', recoveryEmail: '' })
+const createForm = reactive({ loginName: '', password: '', mustChangePassword: true, recoveryEmail: '' })
+const passwordVisible = ref(false)
 const amounts = reactive<Record<number, string>>({})
 const usageFilters = reactive({ memberId: '', apiKeyId: '', model: '', endpoint: '', status: '', start: '', end: '' })
 const loading = ref(true)
@@ -338,7 +387,12 @@ async function createMember() {
   operationKey.value = 'create'
   modalError.value = ''
   try {
-    const result = await organizationAPI.createMember(createForm.loginName, createForm.recoveryEmail || undefined)
+    const result = await organizationAPI.createMember(
+      createForm.loginName,
+      createForm.password,
+      createForm.mustChangePassword,
+      createForm.recoveryEmail || undefined,
+    )
     credential.value = { principal: result.member.principal, password: result.initial_password }
     closeCreate()
     await load()
@@ -352,8 +406,19 @@ async function createMember() {
 function closeCreate() {
   showCreate.value = false
   createForm.loginName = ''
+  createForm.password = ''
+  createForm.mustChangePassword = true
   createForm.recoveryEmail = ''
+  passwordVisible.value = false
   modalError.value = ''
+}
+
+function generatePassword() {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+  const random = new Uint8Array(24)
+  globalThis.crypto.getRandomValues(random)
+  createForm.password = Array.from(random, value => alphabet[value & 63]).join('')
+  passwordVisible.value = true
 }
 
 async function setStatus(member: IAMMember, status: IAMMember['status']) {

@@ -17,12 +17,16 @@
 
       <form class="space-y-4" @submit.prevent="submit">
         <div>
-          <label class="input-label" for="iam-login-name">{{ t('organization.login.loginName') }}</label>
-          <input id="iam-login-name" v-model.trim="form.login_name" class="input" required autocomplete="username" />
-        </div>
-        <div>
-          <label class="input-label" for="iam-account-id">{{ t('organization.accountId') }}</label>
-          <input id="iam-account-id" v-model.trim="form.account_id" class="input font-mono" required inputmode="numeric" maxlength="16" pattern="[1-9][0-9]{15}" />
+          <label class="input-label" for="iam-principal">{{ t('organization.login.principal') }}</label>
+          <input
+            id="iam-principal"
+            v-model.trim="form.principal"
+            class="input font-mono"
+            required
+            autocomplete="username"
+            maxlength="91"
+            pattern="[A-Za-z0-9._-]{1,64}@[1-9][0-9]{15}\.opentk\.ai"
+          />
         </div>
         <div>
           <label class="input-label" for="iam-password">{{ t('auth.passwordLabel') }}</label>
@@ -49,7 +53,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(false)
 const error = ref(false)
-const form = reactive({ login_name: '', account_id: '', password: '' })
+const form = reactive({ principal: '', password: '' })
 
 async function submit() {
   loading.value = true

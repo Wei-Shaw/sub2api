@@ -80,7 +80,7 @@ describe('organization views', () => {
       finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' }
     })
     api.listMembers.mockResolvedValue({
-      items: [{ user_id: 42, login_name: 'reader', principal: 'reader@1719905235756637', external_user_id: '201705485041478971', status: 'active', balance: '5', frozen_balance: '0', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' }],
+      items: [{ user_id: 42, login_name: 'reader', principal: 'reader@1719905235756637.opentk.ai', external_user_id: '201705485041478971', status: 'active', balance: '5', frozen_balance: '0', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' }],
       member_limit: 20,
       used_slots: 1,
     })
@@ -113,6 +113,41 @@ describe('organization views', () => {
     expect(wrapper.text()).not.toContain('SECRET-ERROR')
     expect(wrapper.get('table').classes()).toContain('min-w-[1050px]')
     expect(wrapper.get('table').element.parentElement?.classList.contains('overflow-x-auto')).toBe(true)
+  })
+
+  it('creates an IAM member with the account-domain suffix and password options', async () => {
+    api.getContext.mockResolvedValue({
+      organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'owner', actions: [] },
+      finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' }
+    })
+    const wrapper = mount(OrganizationConsoleView, mountOptions)
+    await flushPromises()
+    ;(wrapper.vm as unknown as { activeTab: string }).activeTab = 'members'
+    await wrapper.vm.$nextTick()
+
+    await wrapper.get('section button.btn-primary').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('[data-testid="iam-principal-suffix"]').text()).toBe('@1719905235756637.opentk.ai')
+    const mustChange = wrapper.get<HTMLInputElement>('[data-testid="must-change-password"]')
+    expect(mustChange.element.checked).toBe(true)
+
+    await wrapper.get('[data-testid="generate-iam-password"]').trigger('click')
+    const passwordInput = wrapper.get<HTMLInputElement>('#iam-member-password')
+    const generatedPassword = passwordInput.element.value
+    expect(generatedPassword).toHaveLength(24)
+    expect(passwordInput.attributes('type')).toBe('text')
+
+    await wrapper.get('#iam-member-login-name').setValue('finance.reader')
+    await mustChange.setValue(false)
+    api.createMember.mockResolvedValue({
+      member: { principal: 'finance.reader@1719905235756637.opentk.ai' },
+      initial_password: generatedPassword,
+    })
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(api.createMember).toHaveBeenCalledWith('finance.reader', generatedPassword, false, undefined)
   })
 
   it('renders the configured upgrade fee returned by eligibility', async () => {

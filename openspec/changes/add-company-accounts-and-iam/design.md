@@ -4,7 +4,7 @@ Sub2API currently models every login as an independent user. `users` owns email 
 
 This change adds a second authorization boundary without granting system-admin access: an approved company root owns one organization, creates IAM identities, assigns system-managed policies, allocates funds, and views company-scoped usage. It also changes the meaning of billing for IAM users, so authentication, gateway billing, balance RPC, asynchronous media settlement, usage, email delivery, and frontend navigation must move together.
 
-Alibaba Cloud's private account-ID generation algorithm is not public and cannot be reproduced from example IDs. The compatible contract we can implement is its visible identity hierarchy: one 16-digit root account ID shared as the IAM account namespace, an independent 18-digit IAM user ID, and an IAM login principal composed from login name and root account ID.
+Alibaba Cloud's private account-ID generation algorithm is not public and cannot be reproduced from example IDs. The compatible contract we can implement is its visible identity hierarchy: one 16-digit root account ID shared as the IAM account namespace, an independent 18-digit IAM user ID, and an IAM login principal composed as `<login_name>@<root-account-id>.opentk.ai`.
 
 Project constraints:
 
@@ -48,7 +48,7 @@ Public identity fields are strings:
 | --- | --- | --- | --- |
 | Personal root | independent 16 digits | same 16 digits | existing email login |
 | Company root | existing root 16 digits | same 16 digits | existing email login |
-| IAM user | company root's 16 digits | independent 18 digits | `<login_name>@<account_id>` + password |
+| IAM user | company root's 16 digits | independent 18 digits | `<login_name>@<account_id>.opentk.ai` + password |
 
 Both generators use rejection sampling over a cryptographically secure byte stream: select the first decimal digit uniformly from `1..9`, then each remaining digit uniformly from `0..9`. Go uses `crypto/rand`; the operator backfill uses Python `secrets`. A database uniqueness conflict causes bounded regeneration. IDs contain no timestamp, shard, primary key, account type bit, or check digit.
 
@@ -94,9 +94,9 @@ After operators verify zero null/invalid rows, a second migration replaces the p
 
 ### 4. Separate IAM login from personal login
 
-Add `/api/v1/auth/iam/login` and an IAM mode on the existing login view. The UI may collect login name and 16-digit account ID separately, but the backend canonicalizes them to `<login_name>@<account_id>`. This avoids guessing whether a string containing `@` is an email or IAM identity.
+Add `/api/v1/auth/iam/login` and an IAM mode on the existing login view. The UI collects the complete `<login_name>@<account_id>.opentk.ai` principal and password, and the backend parses the principal to recover the normalized login name and 16-digit account ID. This avoids a separate account-ID field and keeps the canonical identity self-contained.
 
-The IAM login query uses `(account_id, lower(login_name))`, then verifies organization and membership status before password verification. It returns the existing token-pair shape with additional identity, organization, authorization-generation, and `must_change_password` claims. An initial or owner-reset password yields a restricted session accepted only by password-change and logout endpoints. Password plaintext is generated using `crypto/rand`, returned only by the create/reset command, and never persisted or logged.
+The IAM login query uses `(account_id, lower(login_name))`, then verifies organization and membership status before password verification. It returns the existing token-pair shape with additional identity, organization, authorization-generation, and `must_change_password` claims. Member creation accepts an owner-entered password and the frontend offers a Web Crypto-based generator; `must_change_password` defaults to true but the owner may clear it. Owner-reset passwords continue to use `crypto/rand` and require a password change. Password plaintext is returned only by the create/reset command and is never persisted or logged.
 
 All IAM API-key authentication resolves current membership and authorization generation, rather than trusting policy claims captured when the key was created. IAM recovery email is optional and must be verified before self-service recovery; otherwise the owner resets the password.
 

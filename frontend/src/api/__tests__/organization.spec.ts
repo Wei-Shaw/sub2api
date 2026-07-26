@@ -13,18 +13,23 @@ describe('organization API', () => {
 
   it('submits canonical IAM login fields without an organization scope', async () => {
     post.mockResolvedValue({ data: { access_token: 'token' } })
-    await organizationAPI.loginIAM({ login_name: 'finance', account_id: '1719905235756637', password: 'secret' })
+    await organizationAPI.loginIAM({ principal: 'finance@1719905235756637.opentk.ai', password: 'secret' })
     expect(post).toHaveBeenCalledWith('/auth/iam/login', {
-      login_name: 'finance', account_id: '1719905235756637', password: 'secret'
+      principal: 'finance@1719905235756637.opentk.ai', password: 'secret'
     })
   })
 
   it('derives member and policy scope from authenticated routes', async () => {
     post.mockResolvedValue({ data: { member: {}, initial_password: 'one-time' } })
     put.mockResolvedValue({ data: {} })
-    await organizationAPI.createMember('reader')
+    await organizationAPI.createMember('reader', 'initial-password', false)
     await organizationAPI.setPolicy(42, 'CompanyFinanceReadOnly', true)
-    expect(post).toHaveBeenCalledWith('/organization/members', { login_name: 'reader', recovery_email: undefined })
+    expect(post).toHaveBeenCalledWith('/organization/members', {
+      login_name: 'reader',
+      password: 'initial-password',
+      must_change_password: false,
+      recovery_email: undefined,
+    })
     expect(put).toHaveBeenCalledWith('/organization/members/42/policies', { policy_key: 'CompanyFinanceReadOnly', attached: true })
   })
 

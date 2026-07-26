@@ -5,7 +5,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
-import { authAPI, isTotp2FARequired, organizationAPI, type LoginResponse } from '@/api'
+import { authAPI, isTotp2FARequired, organizationAPI, type IAMLoginRequest, type LoginResponse } from '@/api'
 import type { User, LoginRequest, RegisterRequest, AuthResponse } from '@/types'
 
 const AUTH_TOKEN_KEY = 'auth_token'
@@ -257,7 +257,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function loginIAM(credentials: { login_name: string; account_id: string; password: string }): Promise<AuthResponse> {
+  async function loginIAM(credentials: IAMLoginRequest): Promise<AuthResponse> {
     try {
       const response = await organizationAPI.loginIAM(credentials)
       response.user.organization = response.organization

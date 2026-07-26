@@ -18,8 +18,7 @@ import type {
 } from '@/types'
 
 export interface IAMLoginRequest {
-  login_name: string
-  account_id: string
+  principal: string
   password: string
 }
 
@@ -63,8 +62,13 @@ export const organizationAPI = {
     const { data } = await apiClient.get<IAMMember>(`/organization/members/${id}`)
     return data
   },
-  async createMember(loginName: string, recoveryEmail?: string): Promise<{ member: IAMMember; initial_password: string }> {
-    const { data } = await apiClient.post('/organization/members', { login_name: loginName, recovery_email: recoveryEmail })
+  async createMember(loginName: string, password: string, mustChangePassword = true, recoveryEmail?: string): Promise<{ member: IAMMember; initial_password: string }> {
+    const { data } = await apiClient.post('/organization/members', {
+      login_name: loginName,
+      password,
+      must_change_password: mustChangePassword,
+      recovery_email: recoveryEmail,
+    })
     return data
   },
   async setMemberStatus(id: number, status: IAMMember['status']): Promise<void> {
