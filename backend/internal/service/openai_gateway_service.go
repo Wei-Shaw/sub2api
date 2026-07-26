@@ -846,12 +846,17 @@ func (s *OpenAIGatewayService) writeOpenAIWSFallbackErrorResponse(c *gin.Context
 			Message:            upstreamMessage,
 		})
 	}
-	c.JSON(statusCode, gin.H{
-		"error": gin.H{
-			"type":    errType,
-			"message": clientMessage,
-		},
-	})
+	errorPayload := gin.H{
+		"type":    errType,
+		"message": clientMessage,
+	}
+	var fallbackErr *openAIWSFallbackError
+	if errors.As(wsErr, &fallbackErr) && fallbackErr != nil &&
+		strings.TrimPrefix(strings.TrimSpace(fallbackErr.Reason), "prewarm_") == "previous_response_not_found" {
+		errorPayload["code"] = "previous_response_not_found"
+		errorPayload["param"] = "previous_response_id"
+	}
+	c.JSON(statusCode, gin.H{"error": errorPayload})
 	return true
 }
 

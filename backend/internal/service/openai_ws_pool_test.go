@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -340,6 +341,245 @@ func TestOpenAIWSConnPool_ForceNewConnSkipsReuse(t *testing.T) {
 	lease2.Release()
 
 	require.Equal(t, 2, dialer.DialCount(), "ForceNewConn=true 时应跳过空闲连接复用并新建连接")
+}
+
+func TestOpenAIWSConnPool_AllowPinnedOverflowRespectsDynamicAndHardCaps(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 3
+	cfg.Gateway.OpenAIWS.DynamicMaxConnsByAccountConcurrencyEnabled = true
+	cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 3
+
+	pool := newOpenAIWSConnPool(cfg)
+	t.Cleanup(pool.Close)
+	dialer := &openAIWSCountingDialer{}
+	pool.setClientDialerForTest(dialer)
+	account := &Account{ID: 124, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
+	baseReq := openAIWSAcquireRequest{
+		Account: account,
+		WSURL:   "wss://example.com/v1/responses",
+	}
+
+	leaseA, err := pool.Acquire(context.Background(), baseReq)
+	require.NoError(t, err)
+	connA := leaseA.ConnID()
+
+	_, err = pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account:             account,
+		WSURL:               baseReq.WSURL,
+		ForceNewConn:        true,
+		AllowPinnedOverflow: true,
+	})
+	require.ErrorIs(t, err, errOpenAIWSConnQueueFull, "busy but unpinned capacity must not enable overflow")
+	leaseA.Release()
+	require.True(t, pool.PinResponseConn(account.ID, "resp_a", connA, time.Hour))
+
+	_, err = pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account:      account,
+		WSURL:        baseReq.WSURL,
+		ForceNewConn: true,
+	})
+	require.ErrorIs(t, err, errOpenAIWSConnQueueFull, "overflow must be explicitly enabled")
+
+	reusedA, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account:             account,
+		WSURL:               baseReq.WSURL,
+		AllowPinnedOverflow: true,
+	})
+	require.NoError(t, err)
+	require.True(t, reusedA.Reused(), "overflow flag without ForceNewConn must retain normal reuse")
+	require.Equal(t, connA, reusedA.ConnID())
+	reusedA.Release()
+
+	newSessionReq := openAIWSAcquireRequest{
+		Account:             account,
+		WSURL:               baseReq.WSURL,
+		ForceNewConn:        true,
+		AllowPinnedOverflow: true,
+	}
+	leaseB, err := pool.Acquire(context.Background(), newSessionReq)
+	require.NoError(t, err)
+	connB := leaseB.ConnID()
+	require.NotEqual(t, connA, connB)
+	leaseB.Release()
+	require.True(t, pool.PinResponseConn(account.ID, "resp_b", connB, time.Hour))
+
+	leaseC, err := pool.Acquire(context.Background(), newSessionReq)
+	require.NoError(t, err)
+	connC := leaseC.ConnID()
+	require.NotEqual(t, connA, connC)
+	require.NotEqual(t, connB, connC)
+	leaseC.Release()
+	require.True(t, pool.PinResponseConn(account.ID, "resp_c", connC, time.Hour))
+
+	_, err = pool.Acquire(context.Background(), newSessionReq)
+	require.ErrorIs(t, err, errOpenAIWSConnQueueFull, "hard cap must reject when every connection is pinned")
+	require.Equal(t, 3, dialer.DialCount())
+
+	ap, ok := pool.getAccountPool(account.ID)
+	require.True(t, ok)
+	ap.mu.Lock()
+	require.Contains(t, ap.conns, connA)
+	require.Contains(t, ap.conns, connB)
+	require.Contains(t, ap.conns, connC)
+	ap.mu.Unlock()
+
+	continuationA, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account:            account,
+		WSURL:              baseReq.WSURL,
+		PreferredConnID:    connA,
+		ForcePreferredConn: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, connA, continuationA.ConnID(), "A must remain available after creating B and C")
+	continuationA.Release()
+}
+
+func TestOpenAIWSConnPool_AllowPinnedOverflowEvictsUnpinnedIdleFirst(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 3
+	cfg.Gateway.OpenAIWS.DynamicMaxConnsByAccountConcurrencyEnabled = true
+	cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 3
+
+	pool := newOpenAIWSConnPool(cfg)
+	t.Cleanup(pool.Close)
+	pool.setClientDialerForTest(&openAIWSCountingDialer{})
+	account := &Account{ID: 125, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
+	request := openAIWSAcquireRequest{
+		Account: account,
+		WSURL:   "wss://example.com/v1/responses",
+	}
+
+	leaseA, err := pool.Acquire(context.Background(), request)
+	require.NoError(t, err)
+	connA := leaseA.ConnID()
+	leaseA.Release()
+	require.True(t, pool.PinResponseConn(account.ID, "resp_a", connA, time.Hour))
+
+	request.ForceNewConn = true
+	request.AllowPinnedOverflow = true
+	leaseB, err := pool.Acquire(context.Background(), request)
+	require.NoError(t, err)
+	connB := leaseB.ConnID()
+	leaseB.Release()
+
+	leaseC, err := pool.Acquire(context.Background(), request)
+	require.NoError(t, err)
+	connC := leaseC.ConnID()
+	leaseC.Release()
+
+	ap, ok := pool.getAccountPool(account.ID)
+	require.True(t, ok)
+	ap.mu.Lock()
+	require.Len(t, ap.conns, 2, "an unpinned idle connection should be replaced before overflowing further")
+	require.Contains(t, ap.conns, connA)
+	require.NotContains(t, ap.conns, connB)
+	require.Contains(t, ap.conns, connC)
+	ap.mu.Unlock()
+}
+
+func TestOpenAIWSConnPool_AllowPinnedOverflowConcurrentAcquireStopsAtHardCap(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.DynamicMaxConnsByAccountConcurrencyEnabled = true
+	cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 2
+
+	pool := newOpenAIWSConnPool(cfg)
+	t.Cleanup(pool.Close)
+	dialer := &openAIWSCountingDialer{}
+	pool.setClientDialerForTest(dialer)
+	account := &Account{ID: 126, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
+	request := openAIWSAcquireRequest{
+		Account: account,
+		WSURL:   "wss://example.com/v1/responses",
+	}
+
+	leaseA, err := pool.Acquire(context.Background(), request)
+	require.NoError(t, err)
+	connA := leaseA.ConnID()
+	leaseA.Release()
+	require.True(t, pool.PinResponseConn(account.ID, "resp_concurrent_a", connA, time.Hour))
+
+	request.ForceNewConn = true
+	request.AllowPinnedOverflow = true
+	const contenders = 8
+	type acquireResult struct {
+		lease *openAIWSConnLease
+		err   error
+	}
+	start := make(chan struct{})
+	release := make(chan struct{})
+	results := make(chan acquireResult, contenders)
+	var wg sync.WaitGroup
+	for i := 0; i < contenders; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			lease, acquireErr := pool.Acquire(context.Background(), request)
+			results <- acquireResult{lease: lease, err: acquireErr}
+			if lease != nil {
+				<-release
+				lease.Release()
+			}
+		}()
+	}
+	close(start)
+
+	successes := 0
+	for i := 0; i < contenders; i++ {
+		result := <-results
+		if result.err == nil {
+			successes++
+			continue
+		}
+		require.ErrorIs(t, result.err, errOpenAIWSConnQueueFull)
+	}
+	require.Equal(t, 1, successes)
+	require.Equal(t, 2, dialer.DialCount(), "creating slots and live conns must share the hard cap")
+	close(release)
+	wg.Wait()
+}
+
+func TestOpenAIWSConnPool_AllowPinnedOverflowUsesHardCapInModeRouter(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.DynamicMaxConnsByAccountConcurrencyEnabled = true
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 2
+
+	pool := newOpenAIWSConnPool(cfg)
+	t.Cleanup(pool.Close)
+	pool.setClientDialerForTest(&openAIWSCountingDialer{})
+	account := &Account{ID: 127, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
+	request := openAIWSAcquireRequest{
+		Account: account,
+		WSURL:   "wss://example.com/v1/responses",
+	}
+
+	lease, err := pool.Acquire(context.Background(), request)
+	require.NoError(t, err)
+	connID := lease.ConnID()
+	lease.Release()
+	require.True(t, pool.PinResponseConn(account.ID, "resp_mode_router", connID, time.Hour))
+
+	request.ForceNewConn = true
+	request.AllowPinnedOverflow = true
+	secondLease, err := pool.Acquire(context.Background(), request)
+	require.NoError(t, err)
+	require.NotEqual(t, connID, secondLease.ConnID())
+	secondConnID := secondLease.ConnID()
+	secondLease.Release()
+	require.True(t, pool.PinResponseConn(account.ID, "resp_mode_router_second", secondConnID, time.Hour))
+
+	_, err = pool.Acquire(context.Background(), request)
+	require.ErrorIs(t, err, errOpenAIWSConnQueueFull, "mode router overflow must still respect the pool hard cap")
 }
 
 func TestOpenAIWSConnPool_AcquireReusesOnlyMatchingBetaFeatures(t *testing.T) {
@@ -698,6 +938,190 @@ func TestOpenAIWSConnPool_PinUnpinConnBranches(t *testing.T) {
 	pool.UnpinConn(accountID, "")
 	pool.UnpinConn(0, conn.id)
 	pool.UnpinConn(999, conn.id)
+}
+
+func TestOpenAIWSConnPool_TimedResponsePinRefreshAndCardinalityBound(t *testing.T) {
+	var nilPool *openAIWSConnPool
+	require.False(t, nilPool.PinResponseConn(1, "resp_nil", "conn", time.Hour))
+
+	pool := newOpenAIWSConnPool(&config.Config{})
+	t.Cleanup(pool.Close)
+	accountID := int64(129)
+	ap := pool.getOrCreateAccountPool(accountID)
+	connA := newOpenAIWSConn("timed_a", accountID, &openAIWSFakeConn{}, nil)
+	connB := newOpenAIWSConn("timed_b", accountID, &openAIWSFakeConn{}, nil)
+	closedConn := newOpenAIWSConn("timed_closed", accountID, &openAIWSFakeConn{}, nil)
+	closedConn.close()
+	ap.mu.Lock()
+	ap.conns[connA.id] = connA
+	ap.conns[connB.id] = connB
+	ap.conns[closedConn.id] = closedConn
+	ap.mu.Unlock()
+
+	require.False(t, pool.PinResponseConn(0, "resp", connA.id, time.Hour))
+	require.False(t, pool.PinResponseConn(accountID, "", connA.id, time.Hour))
+	require.False(t, pool.PinResponseConn(accountID, "resp", "", time.Hour))
+	require.False(t, pool.PinResponseConn(accountID, "resp", "missing", time.Hour))
+	require.False(t, pool.PinResponseConn(accountID, "resp", closedConn.id, time.Hour))
+
+	require.True(t, pool.PinResponseConn(accountID, " resp_shared ", connA.id, time.Minute))
+	ap.mu.Lock()
+	firstExpiry := ap.timedResponsePins[connA.id]
+	require.Len(t, ap.timedResponsePins, 1)
+	require.Empty(t, ap.pinnedConns)
+	ap.mu.Unlock()
+
+	require.True(t, pool.PinResponseConn(accountID, "resp_shared", connA.id, 2*time.Hour))
+	ap.mu.Lock()
+	refreshedExpiry := ap.timedResponsePins[connA.id]
+	require.True(t, refreshedExpiry.After(firstExpiry))
+	ap.mu.Unlock()
+
+	for i := 0; i < 10_000; i++ {
+		require.True(t, pool.PinResponseConn(accountID, fmt.Sprintf("resp_many_%d", i), connA.id, time.Hour))
+	}
+	ap.mu.Lock()
+	require.Len(t, ap.timedResponsePins, 1, "response volume must not grow retention state beyond live connections")
+	ap.mu.Unlock()
+
+	require.True(t, pool.PinConn(accountID, connA.id), "permanent and timed pins must coexist")
+	require.True(t, pool.PinResponseConn(accountID, "resp_shared", connB.id, time.Hour))
+	ap.mu.Lock()
+	require.Equal(t, 1, ap.pinnedConns[connA.id])
+	require.Len(t, ap.timedResponsePins, 2)
+	ap.mu.Unlock()
+
+	pool.cleanupAccountLocked(ap, time.Now().Add(90*time.Minute), pool.maxConnsHardCap())
+	ap.mu.Lock()
+	_, connATimed := ap.timedResponsePins[connA.id]
+	_, connBTimed := ap.timedResponsePins[connB.id]
+	require.True(t, connATimed)
+	require.False(t, connBTimed)
+	require.Equal(t, 1, ap.pinnedConns[connA.id])
+	ap.mu.Unlock()
+
+	pool.cleanupAccountLocked(ap, time.Now().Add(3*time.Hour), pool.maxConnsHardCap())
+	ap.mu.Lock()
+	_, connATimed = ap.timedResponsePins[connA.id]
+	require.False(t, connATimed)
+	require.Equal(t, 1, ap.pinnedConns[connA.id], "timed expiry must not clear a permanent pin")
+	ap.mu.Unlock()
+	pool.UnpinConn(accountID, connA.id)
+}
+
+func TestOpenAIWSConnPool_TimedResponsePinExpiryAllowsCleanup(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 0
+	pool := newOpenAIWSConnPool(cfg)
+	t.Cleanup(pool.Close)
+
+	accountID := int64(130)
+	ap := pool.getOrCreateAccountPool(accountID)
+	conn := newOpenAIWSConn("timed_expiry", accountID, &openAIWSFakeConn{}, nil)
+	ap.mu.Lock()
+	ap.conns[conn.id] = conn
+	ap.mu.Unlock()
+	require.True(t, pool.PinResponseConn(accountID, "resp_expiry", conn.id, time.Hour))
+
+	evicted := pool.cleanupAccountLocked(ap, time.Now(), pool.maxConnsHardCap())
+	require.Empty(t, evicted)
+	ap.mu.Lock()
+	require.Contains(t, ap.conns, conn.id, "a live timed pin must protect maxIdle=0")
+	expiresAt := ap.timedResponsePins[conn.id]
+	ap.mu.Unlock()
+
+	evicted = pool.cleanupAccountLocked(ap, expiresAt, pool.maxConnsHardCap())
+	closeOpenAIWSConns(evicted)
+	ap.mu.Lock()
+	require.NotContains(t, ap.conns, conn.id, "expiresAt == now must release the pin before idle cleanup")
+	require.NotContains(t, ap.timedResponsePins, conn.id)
+	require.NotContains(t, ap.pinnedConns, conn.id)
+	ap.mu.Unlock()
+}
+
+func TestOpenAIWSConnPool_TimedResponsePinsClearedWithConnectionLifecycle(t *testing.T) {
+	t.Run("closed cleanup", func(t *testing.T) {
+		pool := newOpenAIWSConnPool(&config.Config{})
+		t.Cleanup(pool.Close)
+		accountID := int64(131)
+		ap := pool.getOrCreateAccountPool(accountID)
+		conn := newOpenAIWSConn("timed_closed_cleanup", accountID, &openAIWSFakeConn{}, nil)
+		ap.mu.Lock()
+		ap.conns[conn.id] = conn
+		ap.mu.Unlock()
+		require.True(t, pool.PinResponseConn(accountID, "resp_closed", conn.id, time.Hour))
+		conn.close()
+
+		pool.cleanupAccountLocked(ap, time.Now(), pool.maxConnsHardCap())
+		ap.mu.Lock()
+		require.NotContains(t, ap.conns, conn.id)
+		require.Empty(t, ap.timedResponsePins)
+		require.Empty(t, ap.pinnedConns)
+		ap.mu.Unlock()
+	})
+
+	t.Run("evict", func(t *testing.T) {
+		pool := newOpenAIWSConnPool(&config.Config{})
+		t.Cleanup(pool.Close)
+		accountID := int64(132)
+		ap := pool.getOrCreateAccountPool(accountID)
+		conn := newOpenAIWSConn("timed_evict", accountID, &openAIWSFakeConn{}, nil)
+		ap.mu.Lock()
+		ap.conns[conn.id] = conn
+		ap.mu.Unlock()
+		require.True(t, pool.PinResponseConn(accountID, "resp_evict_1", conn.id, time.Hour))
+		require.True(t, pool.PinResponseConn(accountID, "resp_evict_2", conn.id, time.Hour))
+		pool.evictConn(accountID, conn.id)
+
+		ap.mu.Lock()
+		require.NotContains(t, ap.conns, conn.id)
+		require.Empty(t, ap.timedResponsePins)
+		require.Empty(t, ap.pinnedConns)
+		ap.mu.Unlock()
+	})
+
+	t.Run("clear account", func(t *testing.T) {
+		pool := newOpenAIWSConnPool(&config.Config{})
+		t.Cleanup(pool.Close)
+		accountID := int64(133)
+		ap := pool.getOrCreateAccountPool(accountID)
+		conn := newOpenAIWSConn("timed_clear", accountID, &openAIWSFakeConn{}, nil)
+		ap.mu.Lock()
+		ap.conns[conn.id] = conn
+		changedCh := ap.changeChannelLocked()
+		ap.mu.Unlock()
+		require.True(t, pool.PinResponseConn(accountID, "resp_clear", conn.id, time.Hour))
+		pool.ClearAccount(accountID)
+		select {
+		case <-changedCh:
+		default:
+			t.Fatal("ClearAccount must wake acquires waiting for pool state changes")
+		}
+
+		ap.mu.Lock()
+		require.Empty(t, ap.conns)
+		require.Empty(t, ap.timedResponsePins)
+		require.Empty(t, ap.pinnedConns)
+		ap.mu.Unlock()
+	})
+
+	t.Run("pool close", func(t *testing.T) {
+		pool := newOpenAIWSConnPool(&config.Config{})
+		accountID := int64(134)
+		ap := pool.getOrCreateAccountPool(accountID)
+		conn := newOpenAIWSConn("timed_pool_close", accountID, &openAIWSFakeConn{}, nil)
+		ap.mu.Lock()
+		ap.conns[conn.id] = conn
+		ap.mu.Unlock()
+		require.True(t, pool.PinResponseConn(accountID, "resp_pool_close", conn.id, time.Hour))
+		pool.Close()
+
+		ap.mu.Lock()
+		require.Empty(t, ap.timedResponsePins)
+		require.Empty(t, ap.pinnedConns)
+		ap.mu.Unlock()
+	})
 }
 
 func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount(t *testing.T) {

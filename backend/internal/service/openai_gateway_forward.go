@@ -59,8 +59,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
-	// 仅允许 WS 入站请求走 WS 上游，避免出现 HTTP -> WS 协议混用。
-	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, GetOpenAIClientTransport(c))
+	clientTransport := GetOpenAIClientTransport(c)
+	httpResponsesWSBridge := clientTransport == OpenAIClientTransportHTTP && shouldBridgeOpenAIResponsesHTTPToWSV2(wsDecision, account)
+	// Native Responses API-key accounts remain on HTTP. Standard OAuth accounts
+	// with WSv2 enabled use the existing WS forwarder as a REST JSON/SSE facade so
+	// their store=false response IDs remain attached to a reusable connection.
+	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, clientTransport, account)
 	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
 	if shouldFlattenOpenAIResponsesNamespaces(account, wsDecision.Transport, passthroughEnabled) {
 		body, err = flattenOpenAIResponsesNamespaces(c, body)
@@ -87,6 +91,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	requestView := newOpenAIRequestView(body)
 	reqModel, reqStream, promptCacheKey := requestView.Model, requestView.Stream, requestView.PromptCacheKey
 	originalModel := reqModel
+	httpResponseContinuation := clientTransport == OpenAIClientTransportHTTP && requestView.PreviousResponseID != ""
 
 	if account.Platform == PlatformGrok {
 		return s.forwardGrokResponses(ctx, c, account, body, originalModel, reqStream, startTime)
@@ -145,7 +150,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		return nil, errors.New("openai ws v1 is temporarily unsupported; use ws v2")
 	}
-	if passthroughEnabled {
+	if passthroughEnabled && !httpResponsesWSBridge {
 		attemptImageIntentInvalidated := false
 		if isCodexCLI && codexImageGenerationExplicitToolPolicy == codexImageGenerationExplicitToolPolicyStrip {
 			strippedBody, changed, stripErr := stripOpenAIImageGenerationToolsFromRawPayload(body)
@@ -454,7 +459,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 		}
 	}
-	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 && gjson.GetBytes(body, "previous_response_id").Exists() {
+	if previousResponse := gjson.GetBytes(body, "previous_response_id"); previousResponse.Exists() &&
+		(previousResponse.Type != gjson.String || strings.TrimSpace(previousResponse.String()) == "") {
 		markPatchDelete("previous_response_id")
 	}
 	if openAIRequestBodyMayContainEmptyBase64InputImage(body) {
@@ -570,6 +576,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if wsPrevResponseRecoveryTried {
 				return false
 			}
+			if httpResponseContinuation {
+				logOpenAIWSModeInfo(
+					"reconnect_prev_response_recovery_skip account_id=%d attempt=%d reason=http_rest_continuation",
+					account.ID,
+					attempt,
+				)
+				return false
+			}
 			previousResponseID := openAIWSPayloadString(wsReqBody, "previous_response_id")
 			if previousResponseID == "" {
 				logOpenAIWSModeInfo(
@@ -600,6 +614,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		recoverInvalidEncryptedContent := func(attempt int) bool {
 			if wsInvalidEncryptedContentRecoveryTried {
+				return false
+			}
+			if httpResponseContinuation {
+				logOpenAIWSModeInfo(
+					"reconnect_invalid_encrypted_content_recovery_skip account_id=%d attempt=%d reason=http_rest_continuation",
+					account.ID,
+					attempt,
+				)
 				return false
 			}
 			removedReasoningItems := trimOpenAIEncryptedReasoningItems(wsReqBody)

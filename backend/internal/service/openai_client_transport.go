@@ -63,9 +63,22 @@ func normalizeOpenAIClientTransport(transport OpenAIClientTransport) OpenAIClien
 func resolveOpenAIWSDecisionByClientTransport(
 	decision OpenAIWSProtocolDecision,
 	clientTransport OpenAIClientTransport,
+	account *Account,
 ) OpenAIWSProtocolDecision {
 	if clientTransport == OpenAIClientTransportHTTP {
+		if shouldBridgeOpenAIResponsesHTTPToWSV2(decision, account) {
+			decision.Reason = "http_responses_facade_" + decision.Reason
+			return decision
+		}
 		return openAIWSHTTPDecision("client_protocol_http")
 	}
 	return decision
+}
+
+func shouldBridgeOpenAIResponsesHTTPToWSV2(decision OpenAIWSProtocolDecision, account *Account) bool {
+	return decision.Transport == OpenAIUpstreamTransportResponsesWebsocketV2 &&
+		account != nil &&
+		account.IsOpenAIOAuth() &&
+		!account.IsOpenAIPersonalAccessToken() &&
+		!account.IsOpenAIAgentIdentity()
 }

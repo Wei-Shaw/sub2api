@@ -2016,6 +2016,48 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapability(
 	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 }
 
+// SelectAccountForHTTPResponseContinuation hard-pins a REST continuation to
+// the account that emitted the prior response. A missing binding is terminal:
+// probing another account would either mask the real error or send a
+// connection-local OAuth response ID to an unrelated upstream session.
+func (s *OpenAIGatewayService) SelectAccountForHTTPResponseContinuation(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	sessionHash string,
+	requestedModel string,
+	requiredCapability OpenAIEndpointCapability,
+	requireCompact bool,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	decision := OpenAIAccountScheduleDecision{Layer: openAIAccountScheduleLayerPreviousResponse}
+	startedAt := time.Now()
+
+	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
+	selection, err := s.selectAccountByPreviousResponseIDForHTTPContinuation(
+		ctx,
+		groupID,
+		previousResponseID,
+		requestedModel,
+		requiredCapability,
+		requireCompact,
+	)
+	decision.LatencyMs = time.Since(startedAt).Milliseconds()
+	if err != nil {
+		return nil, decision, err
+	}
+	if selection == nil || selection.Account == nil {
+		return nil, decision, ErrOpenAIHTTPPreviousResponseNotFound
+	}
+
+	decision.StickyPreviousHit = true
+	decision.SelectedAccountID = selection.Account.ID
+	decision.SelectedAccountType = selection.Account.Type
+	if strings.TrimSpace(sessionHash) != "" {
+		_ = s.BindStickySession(ctx, groupID, sessionHash, selection.Account.ID)
+	}
+	return selection, decision, nil
+}
+
 func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	ctx context.Context,
 	groupID *int64,
