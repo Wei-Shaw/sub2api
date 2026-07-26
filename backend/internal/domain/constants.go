@@ -35,6 +35,21 @@ const (
 	AccountTypeServiceAccount = "service_account" // Google Service Account 类型账号（用于 Vertex AI）
 )
 
+// QuotaDimension constants for spark shadow accounts. Relocated from service in
+// Phase C Step 1 (Account BC prep); re-exported from service/domain_constants.go.
+const (
+	QuotaDimensionGlobal = "global"
+	QuotaDimensionSpark  = "spark"
+)
+
+// User-message-queue (UMQ) modes for per-account request serialization. Canonical
+// home is domain so Account.GetUserMsgQueueMode (moving to domain in Phase C Step 2)
+// can reference them without importing config. Re-exported from internal/config.
+const (
+	UMQModeSerialize = "serialize" // 账号级串行锁 + RPM 自适应延迟
+	UMQModeThrottle  = "throttle"  // 仅 RPM 自适应前置延迟，不阻塞并发
+)
+
 // Redeem type constants
 const (
 	RedeemTypeBalance      = "balance"

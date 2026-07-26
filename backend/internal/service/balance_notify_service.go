@@ -8,19 +8,21 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 const (
 	emailSendTimeout = 30 * time.Second
 
-	// Threshold type values
-	thresholdTypeFixed      = "fixed"
+	// Threshold type values (leaf strings relocated to domain; re-exported here).
+	thresholdTypeFixed      = domain.ThresholdTypeFixed
 	thresholdTypePercentage = "percentage"
 
-	// Quota dimension labels
-	quotaDimDaily  = "daily"
-	quotaDimWeekly = "weekly"
-	quotaDimTotal  = "total"
+	// Quota dimension labels (relocated to domain; re-exported here).
+	quotaDimDaily  = domain.QuotaDimDaily
+	quotaDimWeekly = domain.QuotaDimWeekly
+	quotaDimTotal  = domain.QuotaDimTotal
 
 	defaultSiteName = "Sub2API"
 )

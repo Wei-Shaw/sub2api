@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/spf13/viper"
 	"golang.org/x/net/http/httpguts"
 )
@@ -34,12 +35,13 @@ const (
 // __CSP_NONCE__ will be replaced with actual nonce at request time by the SecurityHeaders middleware
 const DefaultCSPPolicy = "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
-// UMQ（用户消息队列）模式常量
+// UMQ（用户消息队列）模式常量 — canonical home is domain (Account BC); re-exported
+// here so existing config.UMQMode* callers compile unchanged.
 const (
 	// UMQModeSerialize: 账号级串行锁 + RPM 自适应延迟
-	UMQModeSerialize = "serialize"
+	UMQModeSerialize = domain.UMQModeSerialize
 	// UMQModeThrottle: 仅 RPM 自适应前置延迟，不阻塞并发
-	UMQModeThrottle = "throttle"
+	UMQModeThrottle = domain.UMQModeThrottle
 )
 
 // 连接池隔离策略常量

@@ -6,11 +6,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 )
 
 const (
-	AntigravityPrivacySet    = "privacy_set"
+	AntigravityPrivacySet    = domain.AntigravityPrivacySet
 	AntigravityPrivacyFailed = "privacy_set_failed"
 )
 

@@ -529,10 +529,10 @@ func SettingKeyAuthSourcePlatformQuotas(source string) string {
 	return fmt.Sprintf("auth_source_default_%s_platform_quotas", source)
 }
 
-// QuotaDimension constants for spark shadow accounts.
+// QuotaDimension constants relocated to domain; re-exported for unchanged callers.
 const (
-	QuotaDimensionGlobal = "global"
-	QuotaDimensionSpark  = "spark"
+	QuotaDimensionGlobal = domain.QuotaDimensionGlobal
+	QuotaDimensionSpark  = domain.QuotaDimensionSpark
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

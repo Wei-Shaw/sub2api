@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/imroc/req/v3"
 )
 
@@ -17,7 +18,7 @@ type PrivacyClientFactory func(proxyURL string) (*req.Client, error)
 const (
 	openAISettingsURL = "https://chatgpt.com/backend-api/settings/account_user_setting"
 
-	PrivacyModeTrainingOff = "training_off"
+	PrivacyModeTrainingOff = domain.PrivacyModeTrainingOff
 	PrivacyModeFailed      = "training_set_failed"
 	PrivacyModeCFBlocked   = "training_set_cf_blocked"
 )
