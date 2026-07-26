@@ -516,6 +516,13 @@ gateway:
     db_fallback_timeout_seconds: 0
     # 受控回源限流（实例级 QPS），0 表示不限制
     db_fallback_max_qps: 0
+    # Final account DB recheck timeout in milliseconds.
+    db_recheck_timeout_ms: 750
+    # Coalesce repeated successful account checks for this many milliseconds.
+    db_recheck_fresh_ttl_ms: 1000
+    # During a transient DB outage, reuse only an account successfully validated
+    # by this process within this bounded window.
+    db_recheck_stale_if_error_seconds: 120
     # outbox 轮询周期（秒）
     outbox_poll_interval_seconds: 1
     # outbox 滞后告警阈值（秒）

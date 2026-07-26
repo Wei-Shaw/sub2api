@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
@@ -282,10 +283,18 @@ func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int
 
 // GetGroupByID 获取分组信息（供调度器使用）
 func (s *SchedulerSnapshotService) GetGroupByID(ctx context.Context, groupID int64) (*Group, error) {
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.ID == groupID {
+		return group, nil
+	}
 	if s.groupRepo == nil {
 		return nil, nil
 	}
-	return s.groupRepo.GetByID(ctx, groupID)
+	if err := s.guardFallback(ctx); err != nil {
+		return nil, err
+	}
+	fallbackCtx, cancel := s.withFallbackTimeout(ctx)
+	defer cancel()
+	return s.groupRepo.GetByID(fallbackCtx, groupID)
 }
 
 // UpdateAccountInCache 立即更新 Redis 中单个账号的数据（用于模型限流后立即生效）

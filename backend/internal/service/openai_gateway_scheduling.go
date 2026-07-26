@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -1281,8 +1282,8 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		return account
 	}
 
-	latest, err := s.accountRepo.GetByID(ctx, account.ID)
-	if err != nil || latest == nil {
+	latest := s.loadDBRecheckedOpenAIAccount(ctx, account.ID)
+	if latest == nil {
 		return nil
 	}
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
@@ -1291,7 +1292,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 	if !isOpenAICompatibleAccountEligibleForRequest(ctx, latest, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
 	}
-	if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {
+	if !parentHealthyForShadow(latest, func(parentID int64) *Account {
+		return s.loadDBRecheckedOpenAIAccount(ctx, parentID)
+	}) {
 		return nil
 	}
 	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
@@ -1301,6 +1304,80 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		return nil
 	}
 	return latest
+}
+
+func (s *OpenAIGatewayService) loadDBRecheckedOpenAIAccount(ctx context.Context, accountID int64) *Account {
+	if s == nil || s.accountRepo == nil || accountID <= 0 {
+		return nil
+	}
+
+	now := time.Now()
+	if cached := s.openaiAccountDBRecheck.fresh(accountID, now); cached != nil {
+		return cached
+	}
+
+	key := strconv.FormatInt(accountID, 10)
+	value, _, _ := s.openaiAccountDBRecheck.sf.Do(key, func() (any, error) {
+		now := time.Now()
+		if cached := s.openaiAccountDBRecheck.fresh(accountID, now); cached != nil {
+			return cached, nil
+		}
+
+		timeout, freshTTL, staleTTL := s.openAIAccountDBRecheckDurations()
+		dbCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		latest, err := s.accountRepo.GetByID(dbCtx, accountID)
+		if err == nil && latest != nil {
+			s.openaiAccountDBRecheck.store(latest, now, freshTTL, staleTTL)
+			return latest, nil
+		}
+		if errors.Is(err, ErrAccountNotFound) || (err == nil && latest == nil) {
+			s.openaiAccountDBRecheck.remove(accountID)
+			return (*Account)(nil), nil
+		}
+
+		stale := s.openaiAccountDBRecheck.stale(accountID, now)
+		if stale == nil {
+			slog.Warn("openai_account_db_recheck_failed_closed",
+				"account_id", accountID,
+				"error", err,
+			)
+			return (*Account)(nil), nil
+		}
+		slog.Warn("openai_account_db_recheck_stale_used",
+			"account_id", accountID,
+			"error", err,
+			"stale_window_seconds", int64(staleTTL/time.Second),
+		)
+		return stale, nil
+	})
+
+	account, _ := value.(*Account)
+	if account == nil {
+		return nil
+	}
+	cloned := *account
+	return &cloned
+}
+
+func (s *OpenAIGatewayService) openAIAccountDBRecheckDurations() (time.Duration, time.Duration, time.Duration) {
+	timeout := 750 * time.Millisecond
+	freshTTL := time.Second
+	staleTTL := 2 * time.Minute
+	if s != nil && s.cfg != nil {
+		cfg := s.cfg.Gateway.Scheduling
+		if cfg.DBRecheckTimeoutMS > 0 {
+			timeout = time.Duration(cfg.DBRecheckTimeoutMS) * time.Millisecond
+		}
+		if cfg.DBRecheckFreshTTLMS > 0 {
+			freshTTL = time.Duration(cfg.DBRecheckFreshTTLMS) * time.Millisecond
+		}
+		if cfg.DBRecheckStaleIfErrorSeconds > 0 {
+			staleTTL = time.Duration(cfg.DBRecheckStaleIfErrorSeconds) * time.Second
+		}
+	}
+	return timeout, freshTTL, staleTTL
 }
 
 func (s *OpenAIGatewayService) openAIAccountMatchesSchedulingGroup(account *Account, groupID *int64) bool {

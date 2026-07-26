@@ -1337,6 +1337,12 @@ type GatewaySchedulingConfig struct {
 	DbFallbackTimeoutSeconds int `mapstructure:"db_fallback_timeout_seconds"`
 	// 受控回源限流（实例级 QPS），0 表示不限制
 	DbFallbackMaxQPS int `mapstructure:"db_fallback_max_qps"`
+	// 最终账号 DB 校验的单次超时（毫秒）。该校验不应继承整个模型请求的长超时。
+	DBRecheckTimeoutMS int `mapstructure:"db_recheck_timeout_ms"`
+	// 已成功校验账号的短缓存时间（毫秒），用于合并正常流量下的重复 DB 读取。
+	DBRecheckFreshTTLMS int `mapstructure:"db_recheck_fresh_ttl_ms"`
+	// DB 瞬时不可用时，允许使用最近一次成功校验账号的最长时间（秒）。
+	DBRecheckStaleIfErrorSeconds int `mapstructure:"db_recheck_stale_if_error_seconds"`
 
 	// Outbox 轮询与滞后阈值配置
 	// Outbox 轮询周期（秒）
@@ -2303,6 +2309,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.db_fallback_enabled", true)
 	viper.SetDefault("gateway.scheduling.db_fallback_timeout_seconds", 0)
 	viper.SetDefault("gateway.scheduling.db_fallback_max_qps", 0)
+	viper.SetDefault("gateway.scheduling.db_recheck_timeout_ms", 750)
+	viper.SetDefault("gateway.scheduling.db_recheck_fresh_ttl_ms", 1000)
+	viper.SetDefault("gateway.scheduling.db_recheck_stale_if_error_seconds", 120)
 	viper.SetDefault("gateway.scheduling.outbox_poll_interval_seconds", 1)
 	viper.SetDefault("gateway.scheduling.outbox_lag_warn_seconds", 5)
 	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_seconds", 10)
@@ -3392,6 +3401,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.Scheduling.DbFallbackMaxQPS < 0 {
 		return fmt.Errorf("gateway.scheduling.db_fallback_max_qps must be non-negative")
+	}
+	if c.Gateway.Scheduling.DBRecheckTimeoutMS < 0 {
+		return fmt.Errorf("gateway.scheduling.db_recheck_timeout_ms must be non-negative")
+	}
+	if c.Gateway.Scheduling.DBRecheckFreshTTLMS < 0 {
+		return fmt.Errorf("gateway.scheduling.db_recheck_fresh_ttl_ms must be non-negative")
+	}
+	if c.Gateway.Scheduling.DBRecheckStaleIfErrorSeconds < 0 {
+		return fmt.Errorf("gateway.scheduling.db_recheck_stale_if_error_seconds must be non-negative")
 	}
 	if c.Gateway.Scheduling.OutboxPollIntervalSeconds <= 0 {
 		return fmt.Errorf("gateway.scheduling.outbox_poll_interval_seconds must be positive")

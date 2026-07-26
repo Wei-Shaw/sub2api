@@ -52,6 +52,68 @@ type cachedOpenAIAdvancedSchedulerSetting struct {
 	expiresAt                      int64
 }
 
+type openAIAccountDBRecheckEntry struct {
+	account    *Account
+	freshUntil time.Time
+	staleUntil time.Time
+	nextProbe  time.Time
+}
+
+type openAIAccountDBRecheckCache struct {
+	mu      sync.Mutex
+	entries map[int64]openAIAccountDBRecheckEntry
+	sf      singleflight.Group
+}
+
+func (c *openAIAccountDBRecheckCache) fresh(accountID int64, now time.Time) *Account {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[accountID]
+	fresh := now.Before(entry.freshUntil)
+	retrySuppressed := now.Before(entry.nextProbe) && now.Before(entry.staleUntil)
+	if !ok || entry.account == nil || (!fresh && !retrySuppressed) {
+		return nil
+	}
+	cloned := *entry.account
+	return &cloned
+}
+
+func (c *openAIAccountDBRecheckCache) stale(accountID int64, now time.Time) *Account {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[accountID]
+	if !ok || entry.account == nil || !now.Before(entry.staleUntil) {
+		return nil
+	}
+	entry.nextProbe = now.Add(time.Second)
+	c.entries[accountID] = entry
+	cloned := *entry.account
+	return &cloned
+}
+
+func (c *openAIAccountDBRecheckCache) store(account *Account, now time.Time, freshTTL, staleTTL time.Duration) {
+	if account == nil || account.ID <= 0 {
+		return
+	}
+	cloned := *account
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[int64]openAIAccountDBRecheckEntry)
+	}
+	c.entries[account.ID] = openAIAccountDBRecheckEntry{
+		account:    &cloned,
+		freshUntil: now.Add(freshTTL),
+		staleUntil: now.Add(staleTTL),
+	}
+}
+
+func (c *openAIAccountDBRecheckCache) remove(accountID int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, accountID)
+}
+
 type openAIAdvancedSchedulerRuntimeSettings struct {
 	lowUpstreamRatePriorityEnabled bool
 	oauthSchedulingRateMultiplier  float64
@@ -1333,7 +1395,14 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	// require_privacy_set: 获取分组信息
 	var schedGroup *Group
 	if req.GroupID != nil && s.service.schedulerSnapshot != nil {
-		schedGroup, _ = s.service.schedulerSnapshot.GetGroupByID(ctx, *req.GroupID)
+		var groupErr error
+		schedGroup, groupErr = s.service.schedulerSnapshot.GetGroupByID(ctx, *req.GroupID)
+		if groupErr != nil {
+			return nil, 0, 0, 0, fmt.Errorf("resolve scheduling group: %w", groupErr)
+		}
+		if schedGroup == nil && s.service.schedulerSnapshot.groupRepo != nil {
+			return nil, 0, 0, 0, fmt.Errorf("resolve scheduling group %d: not found", *req.GroupID)
+		}
 	}
 
 	filterStats := openAISelectionFilterStats{pool: len(accounts)}
