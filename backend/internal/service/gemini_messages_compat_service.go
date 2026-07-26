@@ -1648,10 +1648,10 @@ func (s *GeminiMessagesCompatService) checkErrorPolicyInLoop(
 }
 
 func (s *GeminiMessagesCompatService) shouldRetryGeminiUpstreamError(account *Account, statusCode int) bool {
-	switch statusCode {
-	case 429, 500, 502, 503, 504, 529:
+	if isTransientUpstreamStatus(statusCode) {
 		return true
-	case 403:
+	}
+	if statusCode == 403 {
 		// GeminiCli OAuth occasionally returns 403 transiently (activation/quota propagation); allow retry.
 		if account == nil || account.Type != AccountTypeOAuth {
 			return false
@@ -1662,18 +1662,12 @@ func (s *GeminiMessagesCompatService) shouldRetryGeminiUpstreamError(account *Ac
 			oauthType = "code_assist"
 		}
 		return oauthType == "code_assist"
-	default:
-		return false
 	}
+	return false
 }
 
 func (s *GeminiMessagesCompatService) shouldFailoverGeminiUpstreamError(statusCode int) bool {
-	switch statusCode {
-	case 401, 403, 429, 529:
-		return true
-	default:
-		return statusCode >= 500
-	}
+	return isAccountFailoverStatus(statusCode)
 }
 
 func sleepGeminiBackoff(attempt int) {

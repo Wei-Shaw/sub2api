@@ -700,12 +700,7 @@ urlFallbackLoop:
 
 // shouldRetryAntigravityError 判断是否应该重试
 func shouldRetryAntigravityError(statusCode int) bool {
-	switch statusCode {
-	case 429, 500, 502, 503, 504, 529:
-		return true
-	default:
-		return false
-	}
+	return isTransientUpstreamStatus(statusCode)
 }
 
 // isURLLevelRateLimit 判断是否为 URL 级别的限流（应切换 URL 重试）
@@ -761,12 +756,7 @@ func logPrefix(sessionID, accountName string) string {
 }
 
 func (s *AntigravityGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
-	switch statusCode {
-	case 401, 403, 429, 529:
-		return true
-	default:
-		return statusCode >= 500
-	}
+	return isAccountFailoverStatus(statusCode)
 }
 
 // isGoogleProjectConfigError 判断（已提取的小写）错误消息是否属于 Google 服务端配置类问题。
