@@ -9,13 +9,13 @@ package service
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
-	portusage "github.com/Wei-Shaw/sub2api/internal/port/usage"
+	portusagelog "github.com/Wei-Shaw/sub2api/internal/port/usagelog"
 )
 
 // --- Type aliases (entity + port contract) ---
 
 type UsageLog = domain.UsageLog
-type UsageLogRepository = portusage.Repository
+type UsageLogRepository = portusagelog.Repository
 
 // BillingType* constants re-exported from domain.
 const (

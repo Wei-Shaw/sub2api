@@ -9,7 +9,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
-	portusage "github.com/Wei-Shaw/sub2api/internal/port/usage"
+	portusagelog "github.com/Wei-Shaw/sub2api/internal/port/usagelog"
 	gocache "github.com/patrickmn/go-cache"
 )
 
@@ -149,7 +149,7 @@ type usageLogRepository struct {
 	bestEffortRecent    *gocache.Cache
 }
 
-func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) portusage.Repository {
+func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) portusagelog.Repository {
 	return newUsageLogRepositoryWithSQL(client, sqlDB)
 }
 

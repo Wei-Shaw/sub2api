@@ -23,7 +23,7 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// UsageLogRepository lives in internal/port/usage and is re-exported as a type
+// UsageLogRepository lives in internal/port/usagelog and is re-exported as a type
 // alias from usage_log.go (Phase 3 UsageLog BC extraction).
 
 type accountWindowStatsBatchReader interface {

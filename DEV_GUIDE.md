@@ -358,7 +358,7 @@ handler ──► service（应用）──► port/<bc> ──► repository（
 - `internal/repository/`：实现 `port/<bc>` 接口，签名用 `domain.*`。目标是**不再 import `internal/service`**，但若该 repo 还依赖其他未提取 BC 的 service 类型（缓存、探针、事件等），可暂留 import——以实体 + 端口落地为准，反转计数下降是最终态而非每一步硬指标。
 - `internal/service/`：保留应用服务 + type alias（`type Group = domain.Group`、`type GroupRepository = portgroup.Repository`）+ 错误再导出，保证现有调用点与测试桩渐进迁移。
 
-已提取的 BC（`internal/port/` 子包）：announcement、promo、redeem、tlsfingerprint、errorpassthrough、affiliate、proxy、group、user、apikey、setting、channel、channelmonitor、account、**usage**（第 15 个，UsageLog）。`internal/model/` 包已删除（类型迁入 `domain`）。
+已提取的 BC（`internal/port/` 子包）：announcement、promo、redeem、tlsfingerprint、errorpassthrough、affiliate、proxy、group、user、apikey、setting、channel、channelmonitor、account、**usagelog**（第 15 个，UsageLog）。`internal/model/` 包已删除（类型迁入 `domain`）。
 
 **Account BC 备注**（`dd50614`）：
 - `domain.Account` + ~150 个纯方法；`domain.AccountGroup` 随 Account 一起迁入（嵌套 `*Account`/`*Group`，不可单独先搬）。
@@ -368,7 +368,7 @@ handler ──► service（应用）──► port/<bc> ──► repository（
 
 **UsageLog BC 备注**（`5f0bcc9`，Account 解锁后）：
 - `domain.UsageLog` + 3 纯方法（`TotalTokens` / `EffectiveRequestType` / `SyncRequestTypeAndLegacyFields`）；嵌套 `*User/*APIKey/*Account/*Group/*UserSubscription` 均已是 domain 类型。
-- `port/usage.Repository` 38 方法原样；17 个测试桩靠 service alias 继续绿。
+- `port/usagelog.Repository` 38 方法原样；17 个测试桩靠 service alias 继续绿。
 - repo：`usage_log_repo{,_query,_dashboard}.go` **已 drop** service import；`_insert` 保留（`MarkUsageLogCreate*`）、`_stats` 保留（`GeminiUsageTotals`）。
 - 反转 KPI：**72 → 69**（UsageLog 三文件 drop）。
 

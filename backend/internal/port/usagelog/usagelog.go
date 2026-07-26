@@ -1,13 +1,13 @@
-// Package usage contains the port interfaces (repository abstractions) for
+// Package usagelog contains the port interfaces (repository abstractions) for
 // the usage-log bounded context. The UsageLog entity, RequestType/BillingType
 // values, and pure methods live in internal/domain; this package only owns the
 // persistence/read port contracts.
 //
-// TODO(usage-isp): Repository is intentionally a single fat interface
+// TODO(usagelog-isp): Repository is intentionally a single fat interface
 // mirroring the legacy service.UsageLogRepository method set verbatim so the
 // existing test stubs keep compiling. A future PR should split it along
 // dashboard / admin listing / user stats / account window-stats axes.
-package usage
+package usagelog
 
 import (
 	"context"
