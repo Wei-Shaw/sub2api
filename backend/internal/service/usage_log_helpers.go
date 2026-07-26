@@ -11,8 +11,8 @@ REDACTED
 REDACTED
 
 // optionalNonEqualStringPtr returns a pointer to value if it is non-empty and
-// differs from compare; otherwise nil. Used to store upstream_model only when
-// it differs from the requested model.
+// differs from compare; otherwise nil. Usage logging passes the requested
+// model as compare so a channel mapping still records its effective upstream.
 func optionalNonEqualStringPtr(value, compare string) *string {
 	if value == "" || value == compare {
 		return nil
