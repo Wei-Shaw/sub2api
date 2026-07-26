@@ -383,9 +383,11 @@ handler ──► service（应用）──► port/<bc> ──► repository（
 
 **注意**：跨 BC 实体依赖会阻塞提取。`Account` 与 `UsageLog` 均已在 domain。后续可优先拆 billing/dashboard 读模型、或 account_repo 残留的 16 个非 Account service 符号所属 BC。先拆被依赖的实体，再拆下游。
 
-**当前反转 KPI**（`rg -l 'internal/service"' backend/internal/repository --type go -g '!*_test.go' | wc -l`）：**36**。本会话从 69 降至此：account_repo domain 换包、RoleAdmin、port/cache + port/oauthclient 两批基础设施端口，以及 **Ops/dashboard 读模型 BC**（`domain/ops.go` ~47 个读模型类型 + `port/ops`（OpsRepository 38 方法 + OpsIngressRejectRepository）+ `port/dashboard`（DashboardStatsCache + DashboardAggregationRepository）；13 个 ops/dashboard repo 文件 drop service）。
+**当前反转 KPI**（`rg -l 'internal/service"' backend/internal/repository --type go -g '!*_test.go' | wc -l`）：**32**。本会话从 69 降至此：account_repo domain 换包、RoleAdmin、port/cache + port/oauthclient 两批基础设施端口，以及两个成体 BC——
+- **Ops/dashboard 读模型 BC**：`domain/ops.go`（~47 个读模型类型）+ `port/ops`（OpsRepository 38 方法 + OpsIngressRejectRepository）+ `port/dashboard`（DashboardStatsCache + DashboardAggregationRepository）；13 个 ops/dashboard repo 文件 drop service。
+- **billing/pricing BC**：`domain/{billing_cache,usage_billing,upstream_billing_probe,user_platform_quota,subscription,scheduler_events}.go` + `port/billing`（BillingCache + PricingRemoteClient + UsageBillingRepository + UserPlatformQuotaRepository）；4 个 billing repo 文件 drop service，account_repo 残留同步缩减（SchedulerOutbox* / UpstreamBillingProbe* 已迁 domain）。
 
-剩余 repo 文件多为未提取 BC 的实体/读模型（BatchImage、billing/pricing、scheduler-outbox、account_repo 残留的 Scheduler/UpstreamBilling/Grok 符号等）以及若干单接口阻塞（SecretEncryptor/ImageStorage/PricingRemoteClient/DBDumper，分属 auth/image/pricing/backup 等待提取 BC）——这些应随各自 BC 成体拆迁，而非提前单接口提取。
+剩余 repo 文件多为未提取 BC 的实体/读模型（BatchImage、scheduler-outbox、gemini-quota、account_repo 残留的 Grok/Group/Scheduler 符号等）以及若干单接口阻塞（SecretEncryptor/ImageStorage/DBDumper，分属 auth/image/backup 等待提取 BC）——这些应随各自 BC 成体拆迁，而非提前单接口提取。
 
 ## 七、参考资源
 
