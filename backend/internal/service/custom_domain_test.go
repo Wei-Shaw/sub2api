@@ -437,6 +437,24 @@ func TestCustomDomainServiceVerifyPendingReturnsDomainAndDNSFailure(t *testing.T
 	require.Equal(t, "TXT record _sub2api.api.example.com does not contain the expected value", *verified.LastError)
 }
 
+func TestCustomDomainServiceVerifyAsAdminDoesNotRequireOwnerLookup(t *testing.T) {
+	ctx := context.Background()
+	repo := newCustomDomainRepoStub()
+	settings := newMockSettingRepo()
+	require.NoError(t, settings.Set(ctx, SettingKeyCustomDomainsEnabled, "true"))
+	dns := &customDomainDNSStub{records: make(map[string][]string)}
+	svc := NewCustomDomainService(repo, settings, dns)
+	domain, err := svc.CreateForUserWithAccess(ctx, 41, "admin-verify.example.com", false, nil)
+	require.NoError(t, err)
+	dns.records[domain.VerificationTXTName] = []string{domain.VerificationTXTValue}
+
+	verified, err := svc.VerifyAsAdmin(ctx, domain.ID)
+
+	require.NoError(t, err)
+	require.Equal(t, CustomDomainStatusActive, verified.Status)
+	require.NotNil(t, verified.VerifiedAt)
+}
+
 func TestCustomDomainServiceVerifyDNSRetainedErrors(t *testing.T) {
 	ctx := context.Background()
 	domain := &CustomDomain{

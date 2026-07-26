@@ -137,23 +137,7 @@ func (h *CustomDomainHandler) Verify(c *gin.Context) {
 		response.BadRequest(c, "Invalid custom domain id")
 		return
 	}
-	domains, err := h.customDomainService.ListAll(c.Request.Context(), service.CustomDomainListFilters{})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	var ownerID int64
-	for i := range domains {
-		if domains[i].ID == id {
-			ownerID = domains[i].UserID
-			break
-		}
-	}
-	if ownerID == 0 {
-		response.ErrorFrom(c, service.ErrCustomDomainNotFound)
-		return
-	}
-	domain, err := h.customDomainService.VerifyForUser(c.Request.Context(), ownerID, id)
+	domain, err := h.customDomainService.VerifyAsAdmin(c.Request.Context(), id)
 	if err != nil && !errors.Is(err, service.ErrCustomDomainVerificationPending) {
 		response.ErrorFrom(c, err)
 		return

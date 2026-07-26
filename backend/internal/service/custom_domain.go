@@ -263,6 +263,13 @@ func (s *CustomDomainService) VerifyForUser(ctx context.Context, userID, id int6
 	return domain, err
 }
 
+func (s *CustomDomainService) VerifyAsAdmin(ctx context.Context, id int64) (*CustomDomain, error) {
+	if !s.IsEnabled(ctx) {
+		return nil, ErrCustomDomainsDisabled
+	}
+	return s.verify(ctx, 0, id)
+}
+
 func (s *CustomDomainService) DeleteForUser(ctx context.Context, userID, id int64) error {
 	if _, err := s.getOwned(ctx, userID, id); err != nil {
 		return err
