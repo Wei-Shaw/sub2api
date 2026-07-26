@@ -29,7 +29,9 @@ type fakePromptAdminService struct {
 	deleteFilter func(context.Context, DeleteByFilterRequest, int64) (*DeleteResult, error)
 REDACTED
 
-func (s *fakePromptAdminService) GetConfig() PublicConfig { return s.config REDACTED
+func (s *fakePromptAdminService) GetConfig() (PublicConfig, error) {
+	return s.config, nil
+REDACTED
 func (s *fakePromptAdminService) SaveConfig(ctx context.Context, req UpdateConfigRequest, actorID int64) (PublicConfig, error) {
 	if s.save == nil {
 		return PublicConfig{REDACTED, errors.New("unexpected SaveConfig call")
@@ -154,6 +156,21 @@ REDACTED)
 		require.NotContains(t, body, `"token":`)
 		require.Contains(t, body, `"has_token":true`)
 REDACTED)
+REDACTED
+
+func TestPromptAdminGetConfigReturnsSecretFreeUnavailableError(t *testing.T) {
+	const canary = "persisted-config-secret-canary"
+	repository := &switchableSettingRepository{loadErr: errors.New("failed to load token " + canary)REDACTED
+	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{REDACTED)
+	require.Error(t, manager.Reload(context.Background()))
+	service := &PromptService{config: managerREDACTED
+
+	response := promptAdminRequest(t, promptAdminRouter(service), http.MethodGet, "/admin/prompt-audit/config", nil)
+	require.Equal(t, http.StatusServiceUnavailable, response.Code)
+	require.Contains(t, response.Body.String(), ErrorCodeConfigUnavailable)
+	require.NotContains(t, response.Body.String(), canary)
+	require.NotContains(t, response.Body.String(), `"config_version"`)
+	require.NotContains(t, response.Body.String(), `"token"`)
 REDACTED
 
 func TestPromptAdminProbeSupportsTemporaryOrSavedTokenWithoutEcho(t *testing.T) {
