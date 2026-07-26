@@ -1519,7 +1519,7 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
 		// Layered account-scoped policy (see grok account failure decision tree):
 		// 1) admin temp rules  2) model/endpoint scope  3) hard permanent death
 		// 4) soft entitlement/billing temp cooldown  5) ambiguous → no state change
-		if statusCode == http.StatusForbidden && s.applyGrokForbiddenPolicy(ctx, account, responseBody) {
+		if statusCode == http.StatusForbidden && s.applyGrokConfiguredUnschedulablePolicy(ctx, account, statusCode, responseBody) {
 			return false
 		}
 		if s.handleGrokModelOrEndpointError(ctx, account, model, statusCode, responseBody) {
@@ -1535,6 +1535,15 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
 		}
 		// Ambiguous 403/404: leave durable and runtime scheduling state alone.
 		return false
+	case http.StatusMethodNotAllowed:
+		// Account-scoped: a custom base_url that does not implement /v1/responses
+		// fails identically on every retry and sticky reconnect (upstream #4668).
+		// Admin temp rules take precedence; otherwise bench the account so the
+		// scheduler and the sticky-session runtime check stop selecting it.
+		if s.applyGrokConfiguredUnschedulablePolicy(ctx, account, statusCode, responseBody) {
+			return false
+		}
+		applyGrokMethodNotAllowedCooldown(ctx, s, s.accountRepo, account)
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs both runtime and durable rate-limit state.
 		// free-usage-exhausted is parsed from responseBody into the snapshot first.
@@ -1605,6 +1614,9 @@ func (s *OpenAIGatewayService) markGrokAccountError(ctx context.Context, account
 const (
 	grokSoftEntitlementCooldown = 30 * time.Minute
 	grokSoftEntitlementReason   = "grok access or entitlement denied"
+
+	grokMethodNotAllowedCooldown = 30 * time.Minute
+	grokMethodNotAllowedReason   = "grok upstream endpoint method not allowed"
 )
 
 // applyGrokAccountScopedHTTPFailure applies permanent disable for hard account
@@ -1639,22 +1651,45 @@ func applyGrokSoftEntitlementCooldown(
 	accountRepo AccountRepository,
 	account *Account,
 ) {
+	applyGrokAccountTempCooldown(ctx, blocker, accountRepo, account, grokSoftEntitlementCooldown, grokSoftEntitlementReason)
+}
+
+// applyGrokMethodNotAllowedCooldown benches an account whose upstream rejects
+// the Responses endpoint with 405. Shared by the gateway error handler and the
+// manual account-test reconciliation so both paths converge on the same state.
+func applyGrokMethodNotAllowedCooldown(
+	ctx context.Context,
+	blocker AccountRuntimeBlocker,
+	accountRepo AccountRepository,
+	account *Account,
+) {
+	applyGrokAccountTempCooldown(ctx, blocker, accountRepo, account, grokMethodNotAllowedCooldown, grokMethodNotAllowedReason)
+}
+
+func applyGrokAccountTempCooldown(
+	ctx context.Context,
+	blocker AccountRuntimeBlocker,
+	accountRepo AccountRepository,
+	account *Account,
+	cooldown time.Duration,
+	reason string,
+) {
 	if account == nil {
 		return
 	}
-	until := time.Now().Add(grokSoftEntitlementCooldown)
+	until := time.Now().Add(cooldown)
 	if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(until) {
 		until = *account.TempUnschedulableUntil
 	}
 	if blocker != nil {
-		blocker.BlockAccountScheduling(account, until, grokSoftEntitlementReason)
+		blocker.BlockAccountScheduling(account, until, reason)
 	}
 	if accountRepo == nil {
 		return
 	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
-	_ = accountRepo.SetTempUnschedulable(stateCtx, account.ID, until, grokSoftEntitlementReason)
+	_ = accountRepo.SetTempUnschedulable(stateCtx, account.ID, until, reason)
 }
 
 func markGrokAccountErrorState(

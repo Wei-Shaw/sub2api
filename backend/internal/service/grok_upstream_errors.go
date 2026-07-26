@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -185,22 +186,30 @@ func grokContentPolicyClientMessage(responseBody []byte) string {
 // on the current account and be returned to the caller instead of consuming the
 // account pool. A 404 from Grok is treated as account-level (unlike other
 // OpenAI-compatible upstreams that may use 404 for request-specific mismatches).
+// A 405 is likewise account-level: a custom base_url that does not implement
+// /v1/responses fails identically on every retry, so the request must move to
+// another account instead of hammering the same one (upstream #4668).
 func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, responseBody []byte) bool {
 	if isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
 	}
-	return statusCode == http.StatusNotFound || s.shouldFailoverUpstreamError(statusCode)
+	switch statusCode {
+	case http.StatusNotFound, http.StatusMethodNotAllowed:
+		return true
+	}
+	return s.shouldFailoverUpstreamError(statusCode)
 }
 
-// applyGrokForbiddenPolicy applies an administrator's existing temporary
-// unschedulable rules to a non-content 403. It reports true only when a rule
-// matched; unmatched responses retain the legacy entitlement cooldown.
-func (s *OpenAIGatewayService) applyGrokForbiddenPolicy(ctx context.Context, account *Account, responseBody []byte) bool {
+// applyGrokConfiguredUnschedulablePolicy applies an administrator's existing
+// temporary unschedulable rules to an account-scoped Grok upstream status
+// (non-content 403, or 405 from a custom upstream). It reports true only when
+// a rule matched; unmatched responses retain the status-specific fallback.
+func (s *OpenAIGatewayService) applyGrokConfiguredUnschedulablePolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
 	if account == nil || !account.IsTempUnschedulableEnabled() {
 		return false
 	}
 
-	matches := matchTempUnschedulableRules(account, http.StatusForbidden, responseBody)
+	matches := matchTempUnschedulableRules(account, statusCode, responseBody)
 	if len(matches) == 0 {
 		return false
 	}
@@ -213,7 +222,7 @@ func (s *OpenAIGatewayService) applyGrokForbiddenPolicy(ctx context.Context, acc
 		handled := s.rateLimitService.tryTempUnschedulable(
 			stateCtx,
 			account,
-			http.StatusForbidden,
+			statusCode,
 			responseBody,
 		)
 		cancel()
@@ -226,7 +235,7 @@ func (s *OpenAIGatewayService) applyGrokForbiddenPolicy(ctx context.Context, acc
 	// honors the configured duration instead of silently falling back to 30m.
 	cooldown := time.Duration(match.rule.DurationMinutes) * time.Minute
 	if cooldown > 0 {
-		s.tempUnscheduleGrok(ctx, account, cooldown, "grok configured forbidden rule")
+		s.tempUnscheduleGrok(ctx, account, cooldown, fmt.Sprintf("grok configured status %d rule", statusCode))
 	}
 	return true
 }

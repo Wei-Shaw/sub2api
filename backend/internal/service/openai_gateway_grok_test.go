@@ -2853,6 +2853,72 @@ func TestShouldFailoverGrokUpstreamErrorIncludesNotFound(t *testing.T) {
 	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusTooManyRequests, nil))
 }
 
+func TestShouldFailoverGrokUpstreamErrorIncludesMethodNotAllowed(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+
+	// 405 must move the request to another account (upstream #4668): a custom
+	// base_url that does not implement /v1/responses fails on every retry.
+	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusMethodNotAllowed, nil))
+	require.False(t, svc.shouldFailoverUpstreamError(http.StatusMethodNotAllowed))
+}
+
+func TestHandleGrokAccountUpstreamError405BenchesAccount(t *testing.T) {
+	account := &Account{ID: 630, Platform: PlatformGrok, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true}
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	before := time.Now()
+
+	permanentlyDisabled := svc.handleGrokAccountUpstreamError(
+		context.Background(), account, http.StatusMethodNotAllowed, nil,
+		[]byte(`method not allowed`),
+	)
+
+	require.False(t, permanentlyDisabled)
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Zero(t, repo.errorCalls)
+	require.Zero(t, repo.rateLimitedCalls)
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, account.ID, repo.lastTempUnschedID)
+	require.Equal(t, grokMethodNotAllowedReason, repo.lastTempUnschedReason)
+	require.Greater(t, repo.lastTempUnschedUntil, before.Add(29*time.Minute))
+	require.Less(t, repo.lastTempUnschedUntil, before.Add(31*time.Minute))
+}
+
+func TestHandleGrokAccountUpstreamError405HonorsConfiguredRule(t *testing.T) {
+	account := &Account{
+		ID:          631,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{
+				map[string]any{
+					"error_code":       405,
+					"keywords":         []any{"method not allowed"},
+					"duration_minutes": 120,
+				},
+			},
+		},
+	}
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	before := time.Now()
+
+	permanentlyDisabled := svc.handleGrokAccountUpstreamError(
+		context.Background(), account, http.StatusMethodNotAllowed, nil,
+		[]byte(`{"error":"405 Method Not Allowed"}`),
+	)
+
+	require.False(t, permanentlyDisabled)
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, "grok configured status 405 rule", repo.lastTempUnschedReason)
+	require.Greater(t, repo.lastTempUnschedUntil, before.Add(119*time.Minute))
+	require.Less(t, repo.lastTempUnschedUntil, before.Add(121*time.Minute))
+}
+
 func TestHandleGrokAccountUpstreamError5xxRespectsPoolMode(t *testing.T) {
 	t.Run("pool mode keeps scheduling state", func(t *testing.T) {
 		account := &Account{

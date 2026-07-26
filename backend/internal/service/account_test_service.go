@@ -842,6 +842,10 @@ func (s *AccountTestService) reconcileGrokTestResponseState(
 	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound:
 		// Align account-test reconciliation with gateway permanent/soft layers.
 		applyGrokAccountScopedHTTPFailure(ctx, s.runtimeBlocker, s.accountRepo, account, statusCode, responseBody)
+	case http.StatusMethodNotAllowed:
+		// Align with the gateway 405 policy: the upstream does not implement the
+		// Responses endpoint, so bench the account instead of leaving it active.
+		applyGrokMethodNotAllowedCooldown(ctx, s.runtimeBlocker, s.accountRepo, account)
 	}
 }
 
@@ -855,7 +859,7 @@ func (s *AccountTestService) reconcileGrokTestStreamFailure(c *gin.Context, acco
 	message := extractOpenAISSEErrorMessage(payload)
 	statusCode := openAIStreamFailedEventSemanticStatus(payload, message)
 	switch statusCode {
-	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
+	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusTooManyRequests:
 	default:
 		return
 	}
