@@ -74,7 +74,7 @@ func TestGrokMediaGenerationEligibility(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, reason := tt.account.GrokMediaGenerationEligibility()
+			got, reason := AccountGrokMediaGenerationEligibility(tt.account)
 			require.Equal(t, tt.want, got)
 			require.Equal(t, tt.wantReason, reason)
 		})
@@ -83,10 +83,10 @@ func TestGrokMediaGenerationEligibility(t *testing.T) {
 
 func TestGrokMediaCapabilityKeepsOnlyUnobservedOAuthAsProbeCandidate(t *testing.T) {
 	unobserved := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}
-	eligible, reason := unobserved.GrokMediaGenerationEligibility()
+	eligible, reason := AccountGrokMediaGenerationEligibility(unobserved)
 	require.False(t, eligible)
 	require.Equal(t, "billing_unobserved", reason)
-	require.True(t, unobserved.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityGrokMediaGeneration))
+	require.True(t, AccountSupportsOpenAIEndpointCapability(unobserved, OpenAIEndpointCapabilityGrokMediaGeneration))
 
 	inconclusive := &Account{
 		Platform: PlatformGrok,
@@ -96,7 +96,7 @@ func TestGrokMediaCapabilityKeepsOnlyUnobservedOAuthAsProbeCandidate(t *testing.
 			Partial:    true,
 		}},
 	}
-	require.False(t, inconclusive.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityGrokMediaGeneration))
+	require.False(t, AccountSupportsOpenAIEndpointCapability(inconclusive, OpenAIEndpointCapabilityGrokMediaGeneration))
 }
 
 func TestGrokMediaCapabilityFiltersOnlyGeneration(t *testing.T) {
@@ -110,8 +110,8 @@ func TestGrokMediaCapabilityFiltersOnlyGeneration(t *testing.T) {
 		Extra:       map[string]any{GrokMediaEligibleExtraKey: false},
 	}
 
-	require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
-	require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityGrokMediaGeneration))
+	require.True(t, AccountSupportsOpenAIEndpointCapability(account, OpenAIEndpointCapabilityChatCompletions))
+	require.False(t, AccountSupportsOpenAIEndpointCapability(account, OpenAIEndpointCapabilityGrokMediaGeneration))
 	require.False(t, isOpenAICompatibleAccountEligibleForRequest(
 		context.Background(), account, PlatformGrok, "grok-imagine-video", false,
 		OpenAIEndpointCapabilityGrokMediaGeneration,

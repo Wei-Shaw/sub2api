@@ -979,7 +979,7 @@ func TestGrokQuotaServiceBilling403PersistsMediaEligibilitySignal(t *testing.T) 
 	require.True(t, billing.Partial)
 
 	account.Extra = map[string]any{grokBillingExtraKey: billing}
-	eligible, reason := account.GrokMediaGenerationEligibility()
+	eligible, reason := AccountGrokMediaGenerationEligibility(account)
 	require.False(t, eligible)
 	require.Equal(t, "billing_forbidden", reason)
 }
@@ -1010,7 +1010,7 @@ func TestGrokQuotaServicePartialBilling403PersistsMediaEligibilitySignal(t *test
 	require.Equal(t, 1, repo.updateCalls)
 
 	account.Extra = map[string]any{grokBillingExtraKey: result.Billing}
-	eligible, reason := account.GrokMediaGenerationEligibility()
+	eligible, reason := AccountGrokMediaGenerationEligibility(account)
 	require.False(t, eligible)
 	require.Equal(t, "billing_forbidden", reason)
 }

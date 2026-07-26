@@ -5,11 +5,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
 const (
-	modelRateLimitsKey                 = "model_rate_limits"
+	modelRateLimitsKey                 = domain.ModelRateLimitsKey
 	antigravityGeminiModelRateLimitKey = "antigravity:gemini"
 	openAIImageGenerationRateLimitKey  = "openai:image_generation"
 	// anthropicFableRateLimitKey 是 Anthropic 7d_oi（Fable 专属 7d 窗口）限流的
@@ -17,51 +18,52 @@ const (
 	anthropicFableRateLimitKey = "claude-fable-5"
 )
 
-// isRateLimitActiveForKey 检查指定 key 的限流是否生效
-func (a *Account) isRateLimitActiveForKey(key string) bool {
-	resetAt := a.modelRateLimitResetAt(key)
-	return resetAt != nil && time.Now().Before(*resetAt)
+// isRateLimitActiveForKey / getRateLimitRemainingForKey / modelRateLimitResetAt
+// moved to domain as Account methods (IsRateLimitActiveForKey etc.). Thin
+// lowercase wrappers keep the many service-internal call sites compiling.
+func isRateLimitActiveForKey(a *Account, key string) bool {
+	return a.IsRateLimitActiveForKey(key)
 }
 
-// getRateLimitRemainingForKey 获取指定 key 的限流剩余时间，0 表示未限流或已过期
-func (a *Account) getRateLimitRemainingForKey(key string) time.Duration {
-	resetAt := a.modelRateLimitResetAt(key)
-	if resetAt == nil {
-		return 0
-	}
-	remaining := time.Until(*resetAt)
-	if remaining > 0 {
-		return remaining
-	}
-	return 0
+func getRateLimitRemainingForKey(a *Account, key string) time.Duration {
+	return a.GetRateLimitRemainingForKey(key)
 }
 
-func (a *Account) isModelRateLimitedWithContext(ctx context.Context, requestedModel string) bool {
-	for _, key := range a.modelRateLimitKeysForRequest(ctx, requestedModel) {
-		if a.isRateLimitActiveForKey(key) {
+func modelRateLimitResetAt(a *Account, scope string) *time.Time {
+	return a.ModelRateLimitResetAt(scope)
+}
+
+// AccountIsModelRateLimitedWithContext is the free-function form of the former
+// (a *Account) isModelRateLimitedWithContext method. Stays in service because
+// it cascades into request-metadata / ThinkingEnabledFromContext.
+func AccountIsModelRateLimitedWithContext(a *Account, ctx context.Context, requestedModel string) bool {
+	for _, key := range accountModelRateLimitKeysForRequest(a, ctx, requestedModel) {
+		if isRateLimitActiveForKey(a, key) {
 			return true
 		}
 	}
 	return false
 }
 
-// GetModelRateLimitRemainingTime 获取模型限流剩余时间
-// 返回 0 表示未限流或已过期
-func (a *Account) GetModelRateLimitRemainingTime(requestedModel string) time.Duration {
-	return a.GetModelRateLimitRemainingTimeWithContext(context.Background(), requestedModel)
+// AccountGetModelRateLimitRemainingTime is the free-function form of the former
+// (a *Account) GetModelRateLimitRemainingTime method.
+func AccountGetModelRateLimitRemainingTime(a *Account, requestedModel string) time.Duration {
+	return AccountGetModelRateLimitRemainingTimeWithContext(a, context.Background(), requestedModel)
 }
 
-func (a *Account) GetModelRateLimitRemainingTimeWithContext(ctx context.Context, requestedModel string) time.Duration {
+// AccountGetModelRateLimitRemainingTimeWithContext is the free-function form of
+// the former (a *Account) GetModelRateLimitRemainingTimeWithContext method.
+func AccountGetModelRateLimitRemainingTimeWithContext(a *Account, ctx context.Context, requestedModel string) time.Duration {
 	remaining := time.Duration(0)
-	for _, key := range a.modelRateLimitKeysForRequest(ctx, requestedModel) {
-		if keyRemaining := a.getRateLimitRemainingForKey(key); keyRemaining > remaining {
+	for _, key := range accountModelRateLimitKeysForRequest(a, ctx, requestedModel) {
+		if keyRemaining := getRateLimitRemainingForKey(a, key); keyRemaining > remaining {
 			remaining = keyRemaining
 		}
 	}
 	return remaining
 }
 
-func (a *Account) modelRateLimitKeysForRequest(ctx context.Context, requestedModel string) []string {
+func accountModelRateLimitKeysForRequest(a *Account, ctx context.Context, requestedModel string) []string {
 	if a == nil {
 		return nil
 	}
@@ -146,27 +148,4 @@ func antigravityModelRateLimitKeys(model string) []string {
 		keys = append(keys, antigravityGeminiModelRateLimitKey)
 	}
 	return keys
-}
-
-func (a *Account) modelRateLimitResetAt(scope string) *time.Time {
-	if a == nil || a.Extra == nil || scope == "" {
-		return nil
-	}
-	rawLimits, ok := a.Extra[modelRateLimitsKey].(map[string]any)
-	if !ok {
-		return nil
-	}
-	rawLimit, ok := rawLimits[scope].(map[string]any)
-	if !ok {
-		return nil
-	}
-	resetAtRaw, ok := rawLimit["rate_limit_reset_at"].(string)
-	if !ok || strings.TrimSpace(resetAtRaw) == "" {
-		return nil
-	}
-	resetAt, err := time.Parse(time.RFC3339, resetAtRaw)
-	if err != nil {
-		return nil
-	}
-	return &resetAt
 }

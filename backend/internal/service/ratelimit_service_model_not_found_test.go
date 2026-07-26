@@ -295,8 +295,8 @@ func TestRateLimitService_ModelTempUnschedulableIsolatesSchedulerByModel(t *test
 		},
 	}
 
-	require.False(t, account.IsSchedulableForModelWithContext(context.Background(), "public-a"))
-	require.True(t, account.IsSchedulableForModelWithContext(context.Background(), "gpt-5.6-sol"))
+	require.False(t, AccountIsSchedulableForModelWithContext(account, context.Background(), "public-a"))
+	require.True(t, AccountIsSchedulableForModelWithContext(account, context.Background(), "gpt-5.6-sol"))
 }
 
 func openAIModelNotFoundTempAccount() *Account {

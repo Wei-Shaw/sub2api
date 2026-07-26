@@ -113,7 +113,7 @@ func TestUpdateAccountPreservesGrokBillingSnapshotForUnrelatedEdit(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, billing, updated.Extra[grokBillingExtraKey])
 	require.Equal(t, "value", updated.Extra["custom"])
-	eligible, reason := updated.GrokMediaGenerationEligibility()
+	eligible, reason := AccountGrokMediaGenerationEligibility(updated)
 	require.False(t, eligible)
 	require.Equal(t, "billing_forbidden", reason)
 }

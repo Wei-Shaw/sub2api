@@ -1,18 +1,14 @@
 package service
 
-import "strings"
+import (
+	"strings"
 
-func lastOpenAIModelSegment(model string) string {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return ""
-	}
-	if strings.Contains(model, "/") {
-		parts := strings.Split(model, "/")
-		model = parts[len(parts)-1]
-	}
-	return strings.TrimSpace(model)
-}
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+)
+
+// lastOpenAIModelSegment moved to domain (Account BC); re-exported here so this
+// file's existing callers compile unchanged.
+var lastOpenAIModelSegment = domain.LastOpenAIModelSegment
 
 func canonicalizeOpenAIModelAliasSpelling(model string) string {
 	model = strings.ToLower(lastOpenAIModelSegment(model))

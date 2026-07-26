@@ -49,7 +49,7 @@ func TestIsCreditsExhausted_UsesAICreditsKey(t *testing.T) {
 				"allow_overages": true,
 			},
 		}
-		require.False(t, account.isCreditsExhausted())
+		require.False(t, account.IsCreditsExhausted())
 	})
 
 	t.Run("AICredits key 生效则积分耗尽", func(t *testing.T) {
@@ -66,7 +66,7 @@ func TestIsCreditsExhausted_UsesAICreditsKey(t *testing.T) {
 				},
 			},
 		}
-		require.True(t, account.isCreditsExhausted())
+		require.True(t, account.IsCreditsExhausted())
 	})
 
 	t.Run("AICredits key 过期则积分可用", func(t *testing.T) {
@@ -83,7 +83,7 @@ func TestIsCreditsExhausted_UsesAICreditsKey(t *testing.T) {
 				},
 			},
 		}
-		require.False(t, account.isCreditsExhausted())
+		require.False(t, account.IsCreditsExhausted())
 	})
 }
 

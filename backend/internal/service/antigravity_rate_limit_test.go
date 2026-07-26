@@ -309,12 +309,12 @@ func TestAccountIsSchedulableForModel_AntigravityRateLimits(t *testing.T) {
 	}
 
 	account.RateLimitResetAt = &future
-	require.False(t, account.IsSchedulableForModel("claude-sonnet-4-5"))
-	require.False(t, account.IsSchedulableForModel("gemini-3-flash"))
+	require.False(t, AccountIsSchedulableForModel(account, "claude-sonnet-4-5"))
+	require.False(t, AccountIsSchedulableForModel(account, "gemini-3-flash"))
 
 	account.RateLimitResetAt = nil
-	require.True(t, account.IsSchedulableForModel("claude-sonnet-4-5"))
-	require.True(t, account.IsSchedulableForModel("gemini-3-flash"))
+	require.True(t, AccountIsSchedulableForModel(account, "claude-sonnet-4-5"))
+	require.True(t, AccountIsSchedulableForModel(account, "gemini-3-flash"))
 }
 
 func buildGeminiRateLimitBody(delay string) []byte {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
@@ -15,7 +16,7 @@ import (
 const (
 	// creditsExhaustedKey 是 model_rate_limits 中标记积分耗尽的特殊 key。
 	// 与普通模型限流完全同构：通过 SetModelRateLimit / isRateLimitActiveForKey 读写。
-	creditsExhaustedKey      = "AICredits"
+	creditsExhaustedKey      = domain.CreditsExhaustedKey
 	creditsExhaustedDuration = 5 * time.Hour
 )
 
@@ -48,14 +49,6 @@ var (
 		"resource has been exhausted",
 	}
 )
-
-// isCreditsExhausted 检查账号的 AICredits 限流 key 是否生效（积分是否耗尽）。
-func (a *Account) isCreditsExhausted() bool {
-	if a == nil {
-		return false
-	}
-	return a.isRateLimitActiveForKey(creditsExhaustedKey)
-}
 
 // setCreditsExhausted 标记账号积分耗尽：写入 model_rate_limits["AICredits"] + 更新缓存。
 func (s *AntigravityGatewayService) setCreditsExhausted(ctx context.Context, account *Account) {

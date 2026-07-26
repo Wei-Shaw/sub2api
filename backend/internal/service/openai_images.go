@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -42,11 +43,13 @@ const (
 	openAIImagesResponsesMainModel = "gpt-5.4-mini"
 )
 
-type OpenAIImagesCapability string
+// OpenAIImagesCapability moved to domain (Account BC); re-exported here so
+// existing service/handler call sites compile unchanged.
+type OpenAIImagesCapability = domain.OpenAIImagesCapability
 
 const (
-	OpenAIImagesCapabilityBasic  OpenAIImagesCapability = "images-basic"
-	OpenAIImagesCapabilityNative OpenAIImagesCapability = "images-native"
+	OpenAIImagesCapabilityBasic  = domain.OpenAIImagesCapabilityBasic
+	OpenAIImagesCapabilityNative = domain.OpenAIImagesCapabilityNative
 )
 
 type OpenAIImagesUpload struct {

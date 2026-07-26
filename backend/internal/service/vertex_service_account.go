@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
@@ -23,7 +24,7 @@ import (
 )
 
 const (
-	vertexDefaultLocation         = "us-central1"
+	vertexDefaultLocation         = domain.VertexDefaultLocation
 	vertexDefaultTokenURL         = "https://oauth2.googleapis.com/token"
 	vertexCloudPlatformScope      = "https://www.googleapis.com/auth/cloud-platform"
 	vertexServiceAccountCacheSkew = 5 * time.Minute
@@ -37,14 +38,7 @@ var (
 	vertexAnthropicAlreadyDatedIDPattern = regexp.MustCompile(`^.+@[0-9]{8}$`)
 )
 
-type vertexServiceAccountKey struct {
-	Type         string `json:"type"`
-	ProjectID    string `json:"project_id"`
-	PrivateKeyID string `json:"private_key_id"`
-	PrivateKey   string `json:"private_key"`
-	ClientEmail  string `json:"client_email"`
-	TokenURI     string `json:"token_uri"`
-}
+type vertexServiceAccountKey = domain.VertexServiceAccountKey
 
 type vertexTokenResponse struct {
 	AccessToken string `json:"access_token"`
@@ -54,83 +48,8 @@ type vertexTokenResponse struct {
 	ErrorDesc   string `json:"error_description"`
 }
 
-func (a *Account) IsVertexServiceAccount() bool {
-	return a != nil && a.Type == AccountTypeServiceAccount
-}
-
-func (a *Account) VertexProjectID() string {
-	if a == nil {
-		return ""
-	}
-	if v := strings.TrimSpace(a.GetCredential("project_id")); v != "" {
-		return v
-	}
-	key, err := parseVertexServiceAccountKey(a)
-	if err == nil {
-		return strings.TrimSpace(key.ProjectID)
-	}
-	return ""
-}
-
-func (a *Account) VertexLocation(model string) string {
-	if a == nil {
-		return vertexDefaultLocation
-	}
-	if model != "" && a.Credentials != nil {
-		if raw, ok := a.Credentials["vertex_model_locations"].(map[string]any); ok {
-			if loc, ok := raw[model].(string); ok && strings.TrimSpace(loc) != "" {
-				return strings.TrimSpace(loc)
-			}
-		}
-	}
-	if v := strings.TrimSpace(a.GetCredential("location")); v != "" {
-		return v
-	}
-	if v := strings.TrimSpace(a.GetCredential("vertex_location")); v != "" {
-		return v
-	}
-	return vertexDefaultLocation
-}
-
 func parseVertexServiceAccountKey(account *Account) (*vertexServiceAccountKey, error) {
-	if account == nil || account.Credentials == nil {
-		return nil, errors.New("service account credentials not configured")
-	}
-
-	if raw := strings.TrimSpace(account.GetCredential("service_account_json")); raw != "" {
-		return parseVertexServiceAccountJSON([]byte(raw))
-	}
-	if raw := strings.TrimSpace(account.GetCredential("service_account")); raw != "" {
-		return parseVertexServiceAccountJSON([]byte(raw))
-	}
-	if nested, ok := account.Credentials["service_account_json"].(map[string]any); ok {
-		b, _ := json.Marshal(nested)
-		return parseVertexServiceAccountJSON(b)
-	}
-	if nested, ok := account.Credentials["service_account"].(map[string]any); ok {
-		b, _ := json.Marshal(nested)
-		return parseVertexServiceAccountJSON(b)
-	}
-	return nil, errors.New("service_account_json not found in credentials")
-}
-
-func parseVertexServiceAccountJSON(raw []byte) (*vertexServiceAccountKey, error) {
-	var key vertexServiceAccountKey
-	if err := json.Unmarshal(raw, &key); err != nil {
-		return nil, fmt.Errorf("invalid service account json: %w", err)
-	}
-	if strings.TrimSpace(key.ClientEmail) == "" {
-		return nil, errors.New("service account json missing client_email")
-	}
-	if strings.TrimSpace(key.PrivateKey) == "" {
-		return nil, errors.New("service account json missing private_key")
-	}
-	if strings.TrimSpace(key.ProjectID) == "" {
-		return nil, errors.New("service account json missing project_id")
-	}
-	// Always use the well-known Google token endpoint to prevent SSRF via crafted token_uri.
-	key.TokenURI = vertexDefaultTokenURL
-	return &key, nil
+	return domain.ParseVertexServiceAccountKey(account)
 }
 
 func vertexServiceAccountCacheKey(account *Account, key *vertexServiceAccountKey) string {

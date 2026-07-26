@@ -230,7 +230,7 @@ func TestIsModelRateLimited(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.account.isModelRateLimitedWithContext(context.Background(), tt.requestedModel)
+			result := AccountIsModelRateLimitedWithContext(tt.account, context.Background(), tt.requestedModel)
 			if result != tt.expected {
 				t.Errorf("isModelRateLimited(%q) = %v, want %v", tt.requestedModel, result, tt.expected)
 			}
@@ -251,8 +251,8 @@ func TestIsModelRateLimited_OpenAIImageGenerationIntentBlocksTextModelImageTool(
 		},
 	}
 
-	require.False(t, account.isModelRateLimitedWithContext(context.Background(), "gpt-5.4"))
-	require.True(t, account.isModelRateLimitedWithContext(WithOpenAIImageGenerationIntent(context.Background()), "gpt-5.4"))
+	require.False(t, AccountIsModelRateLimitedWithContext(account, context.Background(), "gpt-5.4"))
+	require.True(t, AccountIsModelRateLimitedWithContext(account, WithOpenAIImageGenerationIntent(context.Background()), "gpt-5.4"))
 }
 
 func TestIsModelRateLimited_Antigravity_ThinkingAffectsModelKey(t *testing.T) {
@@ -271,7 +271,7 @@ func TestIsModelRateLimited_Antigravity_ThinkingAffectsModelKey(t *testing.T) {
 	}
 
 	ctx := context.WithValue(context.Background(), ctxkey.ThinkingEnabled, true)
-	if !account.isModelRateLimitedWithContext(ctx, "claude-sonnet-4-5") {
+	if !AccountIsModelRateLimitedWithContext(account, ctx, "claude-sonnet-4-5") {
 		t.Errorf("expected model to be rate limited")
 	}
 }
@@ -420,7 +420,7 @@ func TestGetModelRateLimitRemainingTime(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.account.GetModelRateLimitRemainingTimeWithContext(context.Background(), tt.requestedModel)
+			result := AccountGetModelRateLimitRemainingTimeWithContext(tt.account, context.Background(), tt.requestedModel)
 			if result < tt.minExpected || result > tt.maxExpected {
 				t.Errorf("GetModelRateLimitRemainingTime() = %v, want between %v and %v", result, tt.minExpected, tt.maxExpected)
 			}
@@ -492,7 +492,7 @@ func TestGetRateLimitRemainingTime(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.account.GetRateLimitRemainingTimeWithContext(context.Background(), tt.requestedModel)
+			result := AccountGetRateLimitRemainingTimeWithContext(tt.account, context.Background(), tt.requestedModel)
 			if result < tt.minExpected || result > tt.maxExpected {
 				t.Errorf("GetRateLimitRemainingTime() = %v, want between %v and %v", result, tt.minExpected, tt.maxExpected)
 			}
@@ -528,9 +528,9 @@ func TestIsModelRateLimited_AnthropicFableFamilyKey(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.requestedModel, func(t *testing.T) {
-			got := account.isModelRateLimitedWithContext(context.Background(), tc.requestedModel)
+			got := AccountIsModelRateLimitedWithContext(account, context.Background(), tc.requestedModel)
 			require.Equal(t, tc.expected, got)
-			remaining := account.GetModelRateLimitRemainingTimeWithContext(context.Background(), tc.requestedModel)
+			remaining := AccountGetModelRateLimitRemainingTimeWithContext(account, context.Background(), tc.requestedModel)
 			require.Equal(t, tc.expected, remaining > 0)
 		})
 	}

@@ -65,7 +65,7 @@ func accountNeedsAntigravityForceTokenRefresh(account *Account) bool {
 	return account != nil &&
 		account.Platform == PlatformAntigravity &&
 		account.Type == AccountTypeOAuth &&
-		account.getExtraBool(antigravityForceTokenRefreshExtraKey)
+		account.GetExtraBool(antigravityForceTokenRefreshExtraKey)
 }
 
 func antigravityForceTokenRefreshExtra(reason string) map[string]any {

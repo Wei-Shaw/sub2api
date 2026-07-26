@@ -419,7 +419,7 @@ func (h *OpenAIGatewayHandler) ensureGrokMediaAccountEligibility(ctx context.Con
 	if account == nil {
 		return false, "missing_account", errors.New("grok media account is required")
 	}
-	eligible, reason := account.GrokMediaGenerationEligibility()
+	eligible, reason := service.AccountGrokMediaGenerationEligibility(account)
 	if eligible || reason != "billing_unobserved" {
 		return eligible, reason, nil
 	}

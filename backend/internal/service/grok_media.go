@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -596,10 +597,9 @@ func grokMediaSignedVideoContentURL(body []byte, requestID string) (string, erro
 	return parsed.String(), nil
 }
 
-func isGrokCLIProxyTarget(rawURL string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	return err == nil && strings.EqualFold(parsed.Hostname(), "cli-chat-proxy.grok.com")
-}
+// isGrokCLIProxyTarget moved to domain (Account BC); re-exported here so this
+// file's existing callers compile unchanged.
+var isGrokCLIProxyTarget = domain.IsGrokCLIProxyTarget
 
 func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {
 	if endpoint != GrokMediaEndpointImagesEdits || gjson.ValidBytes(body) {

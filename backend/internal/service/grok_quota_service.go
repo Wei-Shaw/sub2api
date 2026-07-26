@@ -233,7 +233,7 @@ func (s *GrokQuotaService) ProbeMediaEligibility(ctx context.Context, accountID 
 	if err != nil {
 		return false, "billing_probe_failed", err
 	}
-	eligible, reason := account.GrokMediaGenerationEligibility()
+	eligible, reason := AccountGrokMediaGenerationEligibility(account)
 	if reason == "billing_unobserved" && probeErr != nil {
 		return false, reason, probeErr
 	}

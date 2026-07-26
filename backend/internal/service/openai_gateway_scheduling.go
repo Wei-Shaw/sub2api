@@ -258,7 +258,7 @@ func openAICompactSupportTier(account *Account) int {
 // 检查母账号凭据可用性；该检查未内置于本函数，以避免注入 DB 依赖。
 func isOpenAICompatibleAccountEligibleForRequest(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
 	platform = normalizeOpenAICompatiblePlatform(platform)
-	if account == nil || account.Platform != platform || !account.IsOpenAICompatible() || !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+	if account == nil || account.Platform != platform || !account.IsOpenAICompatible() || !AccountIsSchedulableForModelWithContext(account, ctx, requestedModel) {
 		return false
 	}
 	if account.IsOpenAI() {
@@ -288,9 +288,9 @@ func isOpenAICompatibleAccountEligibleForRequest(ctx context.Context, account *A
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
 		return false
 	}
-	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
+	if !AccountSupportsOpenAIEndpointCapability(account, requiredCapability) {
 		if account.IsGrok() && requiredCapability == OpenAIEndpointCapabilityGrokMediaGeneration {
-			_, reason := account.GrokMediaGenerationEligibility()
+			_, reason := AccountGrokMediaGenerationEligibility(account)
 			slog.Debug("grok_media_account_ineligible", "account_id", account.ID, "reason", reason)
 		}
 		return false

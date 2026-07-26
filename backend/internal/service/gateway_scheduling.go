@@ -1044,7 +1044,7 @@ func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Conte
 	if account == nil {
 		return false
 	}
-	return account.IsSchedulableForModelWithContext(ctx, requestedModel)
+	return AccountIsSchedulableForModelWithContext(account, ctx, requestedModel)
 }
 
 // isAccountInGroup checks if the account belongs to the specified group.
@@ -2311,7 +2311,7 @@ func (s *GatewayService) collectSelectionFailureStats(
 			stats.SampleMappingIDs = appendSelectionFailureSampleID(stats.SampleMappingIDs, acc.ID)
 		case "model_rate_limited":
 			stats.ModelRateLimited++
-			remaining := acc.GetRateLimitRemainingTimeWithContext(ctx, requestedModel).Truncate(time.Second)
+			remaining := AccountGetRateLimitRemainingTimeWithContext(acc, ctx, requestedModel).Truncate(time.Second)
 			stats.SampleRateLimitIDs = appendSelectionFailureRateSample(stats.SampleRateLimitIDs, acc.ID, remaining)
 		default:
 			stats.Eligible++
@@ -2351,7 +2351,7 @@ func (s *GatewayService) diagnoseSelectionFailure(
 		}
 	}
 	if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
-		remaining := acc.GetRateLimitRemainingTimeWithContext(ctx, requestedModel).Truncate(time.Second)
+		remaining := AccountGetRateLimitRemainingTimeWithContext(acc, ctx, requestedModel).Truncate(time.Second)
 		return selectionFailureDiagnosis{
 			Category: "model_rate_limited",
 			Detail:   fmt.Sprintf("remaining=%s", remaining),

@@ -339,7 +339,7 @@ func TestBuildSchedulerMetadataAccount_KeepsGrokMediaEligibility(t *testing.T) {
 
 		got := buildSchedulerMetadataAccount(account)
 
-		eligible, reason := got.GrokMediaGenerationEligibility()
+		eligible, reason := service.AccountGrokMediaGenerationEligibility(&got)
 		require.False(t, eligible)
 		require.Equal(t, "override_disabled", reason)
 		require.Equal(t, false, got.Extra[service.GrokMediaEligibleExtraKey])
@@ -362,7 +362,7 @@ func TestBuildSchedulerMetadataAccount_KeepsGrokMediaEligibility(t *testing.T) {
 
 		got := buildSchedulerMetadataAccount(account)
 
-		eligible, reason := got.GrokMediaGenerationEligibility()
+		eligible, reason := service.AccountGrokMediaGenerationEligibility(&got)
 		require.False(t, eligible)
 		require.Equal(t, "billing_forbidden", reason)
 		require.NotNil(t, got.Extra["grok_billing_snapshot"])

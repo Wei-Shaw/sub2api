@@ -2149,7 +2149,7 @@ func accountSupportsOpenAICapabilities(account *Account, requiredCapability Open
 	if account == nil {
 		return false
 	}
-	return account.SupportsOpenAIEndpointCapability(requiredCapability) &&
+	return AccountSupportsOpenAIEndpointCapability(account, requiredCapability) &&
 		account.SupportsOpenAIImageCapability(requiredImageCapability)
 }
 

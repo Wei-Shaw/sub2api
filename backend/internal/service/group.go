@@ -52,27 +52,11 @@ func IsGroupContextValid(group *Group) bool {
 	return domain.IsGroupContextValid(group)
 }
 
-// AccountGroup keeps nested Account/Group pointers for application-layer
-// projections (DTO mapping). Domain membership edge is AccountGroupLink.
-type AccountGroup struct {
-	AccountID int64
-	GroupID   int64
-	Priority  int
-	CreatedAt time.Time
-
-	Account *Account
-	Group   *Group
-}
-
-// ToLink converts to the domain membership edge without nested aggregates.
-func (ag AccountGroup) ToLink() domain.AccountGroupLink {
-	return domain.AccountGroupLink{
-		AccountID: ag.AccountID,
-		GroupID:   ag.GroupID,
-		Priority:  ag.Priority,
-		CreatedAt: ag.CreatedAt,
-	}
-}
+// AccountGroup is the account↔group membership edge with nested aggregate
+// pointers. Canonical home is now domain (it nests *domain.Account + *domain.Group,
+// both lifted in Phase 3); this alias keeps existing service call sites compiling.
+// The ToLink method moved to domain with the type.
+type AccountGroup = domain.AccountGroup
 
 // AccountGroupFromLink rebuilds an application AccountGroup from a domain link.
 func AccountGroupFromLink(link domain.AccountGroupLink) AccountGroup {

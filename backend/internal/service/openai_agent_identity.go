@@ -16,13 +16,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/nacl/box"
 )
 
 const (
-	OpenAIAuthModeAgentIdentity          = "agentIdentity"
+	OpenAIAuthModeAgentIdentity          = domain.OpenAIAuthModeAgentIdentity
 	agentIdentityAuthAPIBaseURL          = "https://auth.openai.com/api/accounts"
 	agentIdentityTaskRegistrationTimeout = 30 * time.Second
 )
@@ -52,13 +53,6 @@ type agentIdentityTaskRecoveredError struct{}
 
 func (e *agentIdentityTaskRecoveredError) Error() string {
 	return "agent identity task recovered"
-}
-
-func (a *Account) IsOpenAIAgentIdentity() bool {
-	if a == nil || !a.IsOpenAIOAuth() {
-		return false
-	}
-	return strings.EqualFold(strings.TrimSpace(a.GetCredential(openAIAuthModeCredentialKey)), OpenAIAuthModeAgentIdentity)
 }
 
 func agentIdentityPrivateKey(account *Account) (ed25519.PrivateKey, error) {

@@ -28,22 +28,24 @@ func resolveAntigravityModelKey(requestedModel string) string {
 	return normalizeAntigravityModelName(requestedModel)
 }
 
-// IsSchedulableForModel 结合模型级限流判断是否可调度。
-// 保持旧签名以兼容既有调用方；默认使用 context.Background()。
-func (a *Account) IsSchedulableForModel(requestedModel string) bool {
-	return a.IsSchedulableForModelWithContext(context.Background(), requestedModel)
+// AccountIsSchedulableForModel is the free-function form of the former
+// (a *Account) IsSchedulableForModel method. Stays in service (ctx cascade).
+func AccountIsSchedulableForModel(a *Account, requestedModel string) bool {
+	return AccountIsSchedulableForModelWithContext(a, context.Background(), requestedModel)
 }
 
-func (a *Account) IsSchedulableForModelWithContext(ctx context.Context, requestedModel string) bool {
+// AccountIsSchedulableForModelWithContext is the free-function form of the
+// former (a *Account) IsSchedulableForModelWithContext method.
+func AccountIsSchedulableForModelWithContext(a *Account, ctx context.Context, requestedModel string) bool {
 	if a == nil {
 		return false
 	}
 	if !a.IsSchedulable() {
 		return false
 	}
-	if a.isModelRateLimitedWithContext(ctx, requestedModel) {
+	if AccountIsModelRateLimitedWithContext(a, ctx, requestedModel) {
 		// Antigravity + overages 启用 + 积分未耗尽 → 放行（有积分可用）
-		if a.Platform == PlatformAntigravity && a.IsOveragesEnabled() && !a.isCreditsExhausted() {
+		if a.Platform == PlatformAntigravity && a.IsOveragesEnabled() && !a.IsCreditsExhausted() {
 			return true
 		}
 		return false
@@ -51,17 +53,17 @@ func (a *Account) IsSchedulableForModelWithContext(ctx context.Context, requeste
 	return true
 }
 
-// GetRateLimitRemainingTime 获取限流剩余时间（模型级限流）
-// 返回 0 表示未限流或已过期
-func (a *Account) GetRateLimitRemainingTime(requestedModel string) time.Duration {
-	return a.GetRateLimitRemainingTimeWithContext(context.Background(), requestedModel)
+// AccountGetRateLimitRemainingTime is the free-function form of the former
+// (a *Account) GetRateLimitRemainingTime method.
+func AccountGetRateLimitRemainingTime(a *Account, requestedModel string) time.Duration {
+	return AccountGetRateLimitRemainingTimeWithContext(a, context.Background(), requestedModel)
 }
 
-// GetRateLimitRemainingTimeWithContext 获取限流剩余时间（模型级限流）
-// 返回 0 表示未限流或已过期
-func (a *Account) GetRateLimitRemainingTimeWithContext(ctx context.Context, requestedModel string) time.Duration {
+// AccountGetRateLimitRemainingTimeWithContext is the free-function form of the
+// former (a *Account) GetRateLimitRemainingTimeWithContext method.
+func AccountGetRateLimitRemainingTimeWithContext(a *Account, ctx context.Context, requestedModel string) time.Duration {
 	if a == nil {
 		return 0
 	}
-	return a.GetModelRateLimitRemainingTimeWithContext(ctx, requestedModel)
+	return AccountGetModelRateLimitRemainingTimeWithContext(a, ctx, requestedModel)
 }

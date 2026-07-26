@@ -201,7 +201,7 @@ func TestIsFixedDailyPeriodExpired_ZeroPeriodStart(t *testing.T) {
 		"quota_daily_reset_hour": float64(9),
 		"quota_reset_timezone":   "UTC",
 	}}
-	assert.True(t, a.isFixedDailyPeriodExpired(time.Time{}))
+	assert.True(t, a.IsFixedDailyPeriodExpired(time.Time{}))
 }
 
 func TestIsFixedDailyPeriodExpired_NotExpired(t *testing.T) {
@@ -215,7 +215,7 @@ func TestIsFixedDailyPeriodExpired_NotExpired(t *testing.T) {
 	// is flaky inside the 09:00-09:01 UTC reset window.
 	now := time.Now().UTC()
 	periodStart := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, time.UTC)
-	assert.False(t, a.isFixedDailyPeriodExpired(periodStart))
+	assert.False(t, a.IsFixedDailyPeriodExpired(periodStart))
 }
 
 func TestIsFixedDailyPeriodExpired_Expired(t *testing.T) {
@@ -226,7 +226,7 @@ func TestIsFixedDailyPeriodExpired_Expired(t *testing.T) {
 	}}
 	// Period started 3 days ago → definitely expired
 	periodStart := time.Now().Add(-72 * time.Hour)
-	assert.True(t, a.isFixedDailyPeriodExpired(periodStart))
+	assert.True(t, a.IsFixedDailyPeriodExpired(periodStart))
 }
 
 func TestIsFixedDailyPeriodExpired_InvalidTimezone(t *testing.T) {
@@ -237,7 +237,7 @@ func TestIsFixedDailyPeriodExpired_InvalidTimezone(t *testing.T) {
 	}}
 	// Invalid timezone falls back to UTC
 	periodStart := time.Now().Add(-72 * time.Hour)
-	assert.True(t, a.isFixedDailyPeriodExpired(periodStart))
+	assert.True(t, a.IsFixedDailyPeriodExpired(periodStart))
 }
 
 // ---------------------------------------------------------------------------
@@ -251,7 +251,7 @@ func TestIsFixedWeeklyPeriodExpired_ZeroPeriodStart(t *testing.T) {
 		"quota_weekly_reset_hour": float64(9),
 		"quota_reset_timezone":    "UTC",
 	}}
-	assert.True(t, a.isFixedWeeklyPeriodExpired(time.Time{}))
+	assert.True(t, a.IsFixedWeeklyPeriodExpired(time.Time{}))
 }
 
 func TestIsFixedWeeklyPeriodExpired_NotExpired(t *testing.T) {
@@ -267,7 +267,7 @@ func TestIsFixedWeeklyPeriodExpired_NotExpired(t *testing.T) {
 	// Monday 09:00-09:01 UTC reset window.
 	now := time.Now().UTC()
 	periodStart := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, time.UTC)
-	assert.False(t, a.isFixedWeeklyPeriodExpired(periodStart))
+	assert.False(t, a.IsFixedWeeklyPeriodExpired(periodStart))
 }
 
 func TestIsFixedWeeklyPeriodExpired_Expired(t *testing.T) {
@@ -279,7 +279,7 @@ func TestIsFixedWeeklyPeriodExpired_Expired(t *testing.T) {
 	}}
 	// Period started 10 days ago → definitely expired
 	periodStart := time.Now().Add(-240 * time.Hour)
-	assert.True(t, a.isFixedWeeklyPeriodExpired(periodStart))
+	assert.True(t, a.IsFixedWeeklyPeriodExpired(periodStart))
 }
 
 // ---------------------------------------------------------------------------
