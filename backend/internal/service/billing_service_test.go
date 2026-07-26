@@ -209,24 +209,34 @@ func TestGetModelPricing_AntigravityMappedModelsAreBillable(t *testing.T) {
 
 // 未知 Gemini 新版本/内部名必须命中族系档位兑底，不得零计费。
 // gemini-3.6-flash-tiered 是真实回归案例：发布后因版本枚举未覆盖而计费为 0。
+// 未知/更新版 flash 按最新 flash 档（$1.50），已知旧版保持原档（$0.30）。
 func TestGetModelPricing_UnknownGeminiVariantsFallBackByTier(t *testing.T) {
 	svc := newTestBillingService()
 
-	flashTier := []string{
+	newestFlashTier := []string{
 		"gemini-3.6-flash-tiered",
 		"gemini-3.6-flash",
 		"gemini-4-flash-lite",
 		"gemini-4.2-flash-thinking-exp",
+	}
+	legacyFlashTier := []string{
+		"gemini-3.5-flash-lite",
+		"gemini-2.5-flash-lite",
 	}
 	proTier := []string{
 		"gemini-3.6-pro",
 		"gemini-4-pro-preview",
 		"gemini-4-pro-high-tiered",
 	}
-	for _, model := range flashTier {
+	for _, model := range newestFlashTier {
 		pricing, err := svc.GetModelPricing(model)
 		require.NoError(t, err, "model %s", model)
-		require.InDelta(t, 0.3e-6, pricing.InputPricePerToken, 1e-12, "model %s should bill at flash tier", model)
+		require.InDelta(t, 1.5e-6, pricing.InputPricePerToken, 1e-12, "model %s should bill at newest flash tier", model)
+	}
+	for _, model := range legacyFlashTier {
+		pricing, err := svc.GetModelPricing(model)
+		require.NoError(t, err, "model %s", model)
+		require.InDelta(t, 0.3e-6, pricing.InputPricePerToken, 1e-12, "model %s should bill at legacy flash tier", model)
 	}
 	for _, model := range proTier {
 		pricing, err := svc.GetModelPricing(model)
@@ -508,7 +518,7 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		// 旧策略对未知 Gemini fail-closed（返回 nil → 零计费），正是
 		// gemini-3.6-flash-tiered 零计费事故的根因；现改为档位兑底。
 		{name: "gemini unknown pro falls back to pro tier", model: "gemini-2.0-pro", expectedInput: 2e-6},
-		{name: "gemini unknown flash variant falls back to flash tier", model: "gemini-3.6-flash-tiered", expectedInput: 0.3e-6},
+		{name: "gemini unknown flash variant falls back to newest flash tier", model: "gemini-3.6-flash-tiered", expectedInput: 1.5e-6},
 		{name: "openai gpt5.4", model: "gpt-5.4", expectedInput: 2.5e-6},
 		{name: "openai gpt5.4 mini", model: "gpt-5.4-mini", expectedInput: 7.5e-7},
 		{name: "openai gpt5.3 codex", model: "gpt-5.3-codex", expectedInput: 1.5e-6},
@@ -868,8 +878,8 @@ func TestComputeTokenBreakdown_GptImage2ImageEditIssue4386(t *testing.T) {
 
 	cost := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
 
-	wantTextInput := float64(19) * 5e-6    // 0.000095
-	wantImageInput := float64(352) * 8e-6  // 0.002816
+	wantTextInput := float64(19) * 5e-6     // 0.000095
+	wantImageInput := float64(352) * 8e-6   // 0.002816
 	wantImageOutput := float64(439) * 30e-6 // 0.013170
 	require.InDelta(t, wantTextInput, cost.InputCost, 1e-15, "InputCost 仅含文本输入")
 	require.InDelta(t, wantImageInput, cost.ImageInputCost, 1e-15, "图片输入按 $8/1M 独立计费")

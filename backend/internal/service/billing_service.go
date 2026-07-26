@@ -281,6 +281,17 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown:     false,
 	}
 
+	// Gemini 3.6 Flash（当前最新 flash 档，官方 $1.50/$7.50）。
+	// 未知/更新版本的 flash 变体按此档兑底：LiteLLM 数据滞后期间
+	// 按旧 2.5-flash 档（$0.30）会少收 5 倍。
+	s.fallbackPrices["gemini-3.6-flash"] = &ModelPricing{
+		InputPricePerToken:         1.5e-6,  // $1.50 per MTok
+		OutputPricePerToken:        7.5e-6,  // $7.50 per MTok
+		CacheCreationPricePerToken: 1.5e-6,  // $1.50 per MTok
+		CacheReadPricePerToken:     0.15e-6, // $0.15 per MTok
+		SupportsCacheBreakdown:     false,
+	}
+
 	// OpenAI GPT-5.4（业务指定价格）
 	s.fallbackPrices["gpt-5.4"] = &ModelPricing{
 		InputPricePerToken:             2.5e-6,  // $2.5 per MTok
@@ -685,9 +696,10 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	// 族系+档位通用分类，不枚举版本号：上游会持续发布新版本与内部名
 	// （如 gemini-3.6-flash-tiered），版本枚举必然滞后并导致静默零计费。
 	// 与 Claude 的 contains("claude") → Sonnet 兑底同构：
-	//   含 "image" → flash 档（token 部分；图片单价另行处理）
+	//   含 "image" → 2.5-flash 档（token 部分；图片单价另行处理）
 	//   含 "pro"   → gemini-3.1-pro 档
-	//   其余（flash / lite / tiered / 未知） → gemini-2.5-flash 档
+	//   已知旧版 flash/lite（2.5 / 3 / 3.1 / 3.5） → gemini-2.5-flash 档
+	//   未知/更新版本 → gemini-3.6-flash 档（按最新 flash 价，宁近似不少收）
 	if strings.Contains(modelLower, "gemini") {
 		if strings.Contains(modelLower, "image") {
 			return s.fallbackPrices["gemini-2.5-flash"]
@@ -695,7 +707,13 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		if strings.Contains(modelLower, "pro") {
 			return s.fallbackPrices["gemini-3.1-pro"]
 		}
-		return s.fallbackPrices["gemini-2.5-flash"]
+		if strings.Contains(modelLower, "2.5") ||
+			strings.Contains(modelLower, "gemini-3-") ||
+			strings.Contains(modelLower, "3.1") ||
+			strings.Contains(modelLower, "3.5") {
+			return s.fallbackPrices["gemini-2.5-flash"]
+		}
+		return s.fallbackPrices["gemini-3.6-flash"]
 	}
 	if strings.Contains(modelLower, "gpt-oss") || strings.Contains(modelLower, "tab_flash") {
 		// Antigravity 附带模型：无独立公开价卡时按 Flash 档兜底，避免计费中断。
