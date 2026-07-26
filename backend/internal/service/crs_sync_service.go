@@ -390,6 +390,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
+			ApplyUpstreamBillingProbeNamePolicy(account)
 			if err := s.accountRepo.Create(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
@@ -431,6 +432,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Priority = priority
 		existing.Status = status
 		existing.Schedulable = src.Schedulable
+		ApplyUpstreamBillingProbeNamePolicy(existing)
 
 		if err := s.accountRepo.Update(ctx, existing); err != nil {
 			item.Action = "failed"
@@ -832,6 +834,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
+			ApplyUpstreamBillingProbeNamePolicy(account)
 			if err := s.accountRepo.Create(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
@@ -867,6 +870,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Priority = priority
 		existing.Status = status
 		existing.Schedulable = src.Schedulable
+		ApplyUpstreamBillingProbeNamePolicy(existing)
 
 		if err := s.accountRepo.Update(ctx, existing); err != nil {
 			item.Action = "failed"

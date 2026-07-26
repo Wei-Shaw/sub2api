@@ -82,6 +82,10 @@ type UpstreamBillingProbeSnapshot struct {
 	FailureCount  int            `json:"failure_count,omitempty"`
 	HTTPStatus    int            `json:"http_status,omitempty"`
 	LastError     string         `json:"last_error,omitempty"`
+	// These values are derived from a successful probe and persisted with the
+	// snapshot, but are deliberately not part of accounts.extra.
+	AccountPriority       *int     `json:"-"`
+	AccountRateMultiplier *float64 `json:"-"`
 }
 
 // UpstreamBillingProbeResult is returned by manual probe endpoints.
@@ -623,6 +627,9 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		NextProbeAt:   now.Add(nextProbeDelay(intervalMinutes, 0)),
 		HTTPStatus:    resp.StatusCode,
 	}
+	if err := applyUpstreamBillingProbeAccountRates(snapshot); err != nil {
+		return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "invalid_derived_rate", 0)
+	}
 	if err := s.updateSnapshot(ctx, account, snapshot); err != nil {
 		return nil, err
 	}
@@ -842,6 +849,43 @@ func decodeUpstreamBillingProbeSnapshot(extra map[string]any) *UpstreamBillingPr
 
 func isUpstreamBillingProbeAccount(account *Account) bool {
 	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey
+}
+
+// ApplyUpstreamBillingProbeNamePolicy makes the account name the sole source
+// of truth for whether the periodic upstream billing probe is enabled.
+func ApplyUpstreamBillingProbeNamePolicy(account *Account) {
+	if !isUpstreamBillingProbeAccount(account) {
+		return
+	}
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+	}
+	account.Extra[UpstreamBillingProbeEnabledExtraKey] = !strings.Contains(account.Name, "free")
+}
+
+func applyUpstreamBillingProbeAccountRates(snapshot *UpstreamBillingProbeSnapshot) error {
+	if snapshot == nil || snapshot.Status != UpstreamBillingProbeStatusOK {
+		return nil
+	}
+	rate, ok := resolveAccountExtraNumber(snapshot.Data, "effective_rate_multiplier")
+	if !ok || rate < 0 || math.IsNaN(rate) || math.IsInf(rate, 0) {
+		return fmt.Errorf("invalid effective billing multiplier")
+	}
+	factor := 10.0
+	billingRate := rate / 10
+	if rate <= 0.8 {
+		factor = 100
+		billingRate = rate
+	}
+	priorityValue := math.Round(rate*factor + 20)
+	maxInt := float64(^uint(0) >> 1)
+	if math.IsNaN(priorityValue) || math.IsInf(priorityValue, 0) || priorityValue < 0 || priorityValue > maxInt {
+		return fmt.Errorf("derived account priority is out of range")
+	}
+	priority := int(priorityValue)
+	snapshot.AccountPriority = &priority
+	snapshot.AccountRateMultiplier = &billingRate
+	return nil
 }
 
 func upstreamBillingProbeEnabled(account *Account) bool {

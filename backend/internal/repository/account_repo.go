@@ -2596,18 +2596,33 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 	if account.ProxyID != nil {
 		proxyID = *account.ProxyID
 	}
+	setClauses := "extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb"
+	args := []any{string(payload)}
+	placeholder := 2
+	if snapshot.AccountPriority != nil {
+		setClauses += ", priority = $" + itoa(placeholder)
+		args = append(args, *snapshot.AccountPriority)
+		placeholder++
+	}
+	if snapshot.AccountRateMultiplier != nil {
+		setClauses += ", rate_multiplier = $" + itoa(placeholder)
+		args = append(args, *snapshot.AccountRateMultiplier)
+		placeholder++
+	}
+	accountIDPlaceholder := placeholder
+	args = append(args, account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON))
 	result, err := client.ExecContext(ctx, `
 		UPDATE accounts
-		SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb, updated_at = NOW()
-		WHERE id = $2
-			AND platform = $3
-			AND type = $4
-			AND credentials = $5::jsonb
-			AND proxy_id IS NOT DISTINCT FROM $6
-			AND COALESCE(extra -> 'upstream_billing_probe', 'null'::jsonb) = $7::jsonb
-			AND COALESCE(extra -> 'upstream_billing_probe_enabled', 'null'::jsonb) = $8::jsonb
+		SET `+setClauses+`, updated_at = NOW()
+		WHERE id = $`+itoa(accountIDPlaceholder)+`
+			AND platform = $`+itoa(accountIDPlaceholder+1)+`
+			AND type = $`+itoa(accountIDPlaceholder+2)+`
+			AND credentials = $`+itoa(accountIDPlaceholder+3)+`::jsonb
+			AND proxy_id IS NOT DISTINCT FROM $`+itoa(accountIDPlaceholder+4)+`
+			AND COALESCE(extra -> 'upstream_billing_probe', 'null'::jsonb) = $`+itoa(accountIDPlaceholder+5)+`::jsonb
+			AND COALESCE(extra -> 'upstream_billing_probe_enabled', 'null'::jsonb) = $`+itoa(accountIDPlaceholder+6)+`::jsonb
 			AND deleted_at IS NULL
-	`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON))
+	`, args...)
 	if err != nil {
 		return err
 	}

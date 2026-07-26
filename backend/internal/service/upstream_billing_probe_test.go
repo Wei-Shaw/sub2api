@@ -121,6 +121,12 @@ func (r *upstreamBillingProbeAccountRepo) UpdateUpstreamBillingProbeSnapshot(_ c
 		account.Extra = make(map[string]any)
 	}
 	account.Extra[UpstreamBillingProbeExtraKey] = snapshot
+	if snapshot.AccountPriority != nil {
+		account.Priority = *snapshot.AccountPriority
+	}
+	if snapshot.AccountRateMultiplier != nil {
+		account.RateMultiplier = snapshot.AccountRateMultiplier
+	}
 	return nil
 }
 

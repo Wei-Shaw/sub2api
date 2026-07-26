@@ -4576,7 +4576,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
     if (
       payload.platform === 'openai' &&
       payload.type === 'apikey' &&
-      payload.upstream_billing_probe_enabled === true
+      !payload.name.includes('free')
     ) {
       try {
         await adminAPI.accounts.probeUpstreamBilling(account.id)
@@ -5123,8 +5123,6 @@ const handleSubmit = async () => {
     ...form,
     group_ids: form.group_ids,
     extra,
-    upstream_billing_probe_enabled:
-      form.platform === 'openai' ? upstreamBillingAutoProbeEnabled.value : undefined,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }
