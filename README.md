@@ -344,6 +344,23 @@ docker compose logs -f sub2api
 - Creates data directories (uses local directories for easy backup/migration)
 - Displays generated credentials for your reference
 
+#### Use an Image Built by Your GitHub Action
+
+Add these Environment Secrets under `Settings -> Environments -> sub2api-deploy`:
+
+- `DOCKERHUB_USERNAME`: your Docker Hub username
+- `DOCKERHUB_TOKEN`: a Docker Hub Access Token, not your account password
+
+The workflow is bound to the `sub2api-deploy` environment. If that environment has protection rules, approve the deployment before its secrets are made available to the build job.
+
+Run **Publish Docker Image** from the Actions page and enter a version tag such as `v0.1.200`. The workflow publishes `<DOCKERHUB_USERNAME>/sub2api` with both that version tag and `latest`. Pin deployments to the published version in `deploy/.env`:
+
+```dotenv
+SUB2API_IMAGE=<your-dockerhub-username>/sub2api:v0.1.200
+```
+
+If the Docker Hub repository is private, run `docker login` on the deployment host before pulling the image.
+
 #### Manual Deployment
 
 If you prefer manual setup:

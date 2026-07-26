@@ -346,6 +346,23 @@ docker compose logs -f sub2api
 - 创建数据目录（使用本地目录，便于备份和迁移）
 - 显示生成的凭证供你记录
 
+#### 使用自己通过 GitHub Actions 构建的镜像
+
+在仓库的 `Settings -> Environments -> sub2api-deploy` 中添加以下 Environment Secrets：
+
+- `DOCKERHUB_USERNAME`：Docker Hub 用户名
+- `DOCKERHUB_TOKEN`：Docker Hub Access Token（不要使用账户密码）
+
+工作流会绑定到 `sub2api-deploy` 环境；如该环境配置了审核规则，需先批准本次部署，Secrets 才会注入构建任务。
+
+在 Actions 页面运行 **Publish Docker Image**，输入版本标签（例如 `v0.1.200`）。工作流会向 `<DOCKERHUB_USERNAME>/sub2api` 推送该版本和 `latest` 标签。部署时在 `deploy/.env` 中固定使用已发布版本：
+
+```dotenv
+SUB2API_IMAGE=<你的DockerHub用户名>/sub2api:v0.1.200
+```
+
+如果 Docker Hub 仓库设为私有，服务器还需要在拉取前执行 `docker login`。
+
 #### 手动部署
 
 如果你希望手动配置：
