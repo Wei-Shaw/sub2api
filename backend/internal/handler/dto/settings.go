@@ -136,10 +136,16 @@ type SystemSettings struct {
 	SiteSubtitle                string           `json:"site_subtitle"`
 	APIBaseURL                  string           `json:"api_base_url"`
 	ContactInfo                 string           `json:"contact_info"`
+	AfterSalesTitle             string           `json:"after_sales_title"`
 	AfterSalesQRCode            string           `json:"after_sales_qrcode"`
 	AfterSalesLink              string           `json:"after_sales_link"`
+	AfterSalesLinkLabel         string           `json:"after_sales_link_label"`
+	OfficialGroupTitle          string           `json:"official_group_title"`
 	OfficialGroupQRCode         string           `json:"official_group_qrcode"`
 	OfficialGroupLink           string           `json:"official_group_link"`
+	OfficialGroupLinkLabel      string           `json:"official_group_link_label"`
+	CustomerServiceTextEnabled  bool             `json:"customer_service_text_enabled"`
+	CustomerServiceText         string           `json:"customer_service_text"`
 	DocURL                      string           `json:"doc_url"`
 	HomeContent                 string           `json:"home_content"`
 	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
@@ -336,10 +342,16 @@ type PublicSettings struct {
 	SiteSubtitle                     string                   `json:"site_subtitle"`
 	APIBaseURL                       string                   `json:"api_base_url"`
 	ContactInfo                      string                   `json:"contact_info"`
+	AfterSalesTitle                  string                   `json:"after_sales_title"`
 	AfterSalesQRCode                 string                   `json:"after_sales_qrcode"`
 	AfterSalesLink                   string                   `json:"after_sales_link"`
+	AfterSalesLinkLabel              string                   `json:"after_sales_link_label"`
+	OfficialGroupTitle               string                   `json:"official_group_title"`
 	OfficialGroupQRCode              string                   `json:"official_group_qrcode"`
 	OfficialGroupLink                string                   `json:"official_group_link"`
+	OfficialGroupLinkLabel           string                   `json:"official_group_link_label"`
+	CustomerServiceTextEnabled       bool                     `json:"customer_service_text_enabled"`
+	CustomerServiceText              string                   `json:"customer_service_text"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`

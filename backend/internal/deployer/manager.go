@@ -971,6 +971,8 @@ func (m *Manager) restoreOldDeployment(ctx context.Context, job *Job, forceTraff
 		if job.CandidateContainer != "" && job.CandidateContainer != job.OldContainer {
 			if err := m.stopContainer(ctx, job.candidateContainerRef()); err != nil {
 				failures = append(failures, "stop candidate: "+err.Error())
+			} else if err := m.removeContainerIfPresent(ctx, job.candidateContainerRef()); err != nil {
+				failures = append(failures, "remove candidate: "+err.Error())
 			}
 		}
 		if len(failures) == 0 {
@@ -2055,6 +2057,9 @@ func (m *Manager) knownContainersForSlot(slotName string, excluded ...string) []
 			return
 		}
 		if _, skip := excludedSet[container]; skip {
+			return
+		}
+		if existing, ok := seen[container]; ok && existing.ID != "" && id == "" {
 			return
 		}
 		seen[container] = containerRef{Name: container, ID: id}

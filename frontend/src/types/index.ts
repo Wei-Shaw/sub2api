@@ -207,10 +207,16 @@ export interface PublicSettings {
   site_subtitle: string
   api_base_url: string
   contact_info: string
+  after_sales_title?: string
   after_sales_qrcode: string
   after_sales_link: string
+  after_sales_link_label?: string
+  official_group_title?: string
   official_group_qrcode: string
   official_group_link: string
+  official_group_link_label?: string
+  customer_service_text_enabled?: boolean
+  customer_service_text?: string
   doc_url: string
   home_content: string
   hide_ccs_import_button: boolean

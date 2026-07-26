@@ -134,8 +134,8 @@
           </transition>
         </div>
 
-        <!-- Promo Code Input (Optional) -->
-        <div v-if="promoCodeEnabled">
+        <!-- Shared Promo / Referral Code Input (Optional) -->
+        <div v-if="promoCodeEnabled || affiliateEnabled">
           <label for="promo_code" class="input-label">
             {{ t('auth.promoCodeLabel') }}
             <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">({{ t('common.optional') }})</span>
@@ -176,7 +176,15 @@
             <div v-if="promoValidation.valid" class="mt-2 flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/20">
               <Icon name="gift" size="sm" class="text-gray-600 dark:text-gray-400" />
               <span class="text-sm text-gray-700 dark:text-gray-400">
-                {{ t('auth.promoCodeValid', { amount: promoValidation.bonusAmount?.toFixed(2) }) }}
+                <template v-if="promoValidation.promoValid && promoValidation.affiliateValid">
+                  {{ t('auth.promoAffiliateCodeValid', { amount: promoValidation.bonusAmount?.toFixed(2) }) }}
+                </template>
+                <template v-else-if="promoValidation.promoValid">
+                  {{ t('auth.promoCodeValid', { amount: promoValidation.bonusAmount?.toFixed(2) }) }}
+                </template>
+                <template v-else>
+                  {{ t('auth.affiliateCodeValid') }}
+                </template>
               </span>
             </div>
           </transition>
@@ -253,8 +261,9 @@
         </div>
 
         <EmailOAuthButtons
-          :disabled="registrationActionDisabled"
-          :aff-code="formData.aff_code"
+          :disabled="oauthRegistrationActionDisabled"
+          :aff-code="effectiveAffiliateCode"
+          :promo-code="effectivePromoCode"
           :github-enabled="githubOAuthEnabled"
           :google-enabled="googleOAuthEnabled"
           :show-divider="false"
@@ -262,21 +271,24 @@
 
         <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
-          :disabled="registrationActionDisabled"
-          :aff-code="formData.aff_code"
+          :disabled="oauthRegistrationActionDisabled"
+          :aff-code="effectiveAffiliateCode"
+          :promo-code="effectivePromoCode"
           :show-divider="false"
         />
         <WechatOAuthSection
           v-if="wechatOAuthEnabled"
-          :disabled="registrationActionDisabled"
-          :aff-code="formData.aff_code"
+          :disabled="oauthRegistrationActionDisabled"
+          :aff-code="effectiveAffiliateCode"
+          :promo-code="effectivePromoCode"
           :show-divider="false"
         />
         <OidcOAuthSection
           v-if="oidcOAuthEnabled"
-          :disabled="registrationActionDisabled"
+          :disabled="oauthRegistrationActionDisabled"
           :provider-name="oidcOAuthProviderName"
-          :aff-code="formData.aff_code"
+          :aff-code="effectiveAffiliateCode"
+          :promo-code="effectivePromoCode"
           :show-divider="false"
         />
       </div>
@@ -324,7 +336,6 @@ import {
 } from '@/utils/registrationEmailPolicy'
 import {
   clearAffiliateReferralCode,
-  loadAffiliateReferralCode,
   resolveAffiliateReferralCode
 } from '@/utils/oauthAffiliate'
 import type { LoginAgreementDocument } from '@/types'
@@ -350,6 +361,7 @@ const showPassword = ref<boolean>(false)
 const registrationEnabled = ref<boolean>(true)
 const emailVerifyEnabled = ref<boolean>(false)
 const promoCodeEnabled = ref<boolean>(true)
+const affiliateEnabled = ref<boolean>(false)
 const invitationCodeEnabled = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
@@ -378,6 +390,8 @@ const promoValidating = ref<boolean>(false)
 const promoValidation = reactive({
   valid: false,
   invalid: false,
+  promoValid: false,
+  affiliateValid: false,
   bonusAmount: null as number | null,
   message: ''
 })
@@ -434,6 +448,21 @@ const registrationActionDisabled = computed(
   () => isLoading.value || !settingsLoaded.value || agreementGateActive.value
 )
 
+const oauthRegistrationActionDisabled = computed(
+  () => registrationActionDisabled.value || (!!formData.promo_code.trim() && !promoValidation.valid)
+)
+
+const effectiveAffiliateCode = computed(() => {
+  if (promoValidation.affiliateValid) {
+    return formData.promo_code.trim()
+  }
+  return ''
+})
+
+const effectivePromoCode = computed(() =>
+  promoValidation.promoValid ? formData.promo_code.trim() : ''
+)
+
 watch(validationToastMessage, (value, previousValue) => {
   if (value && value !== previousValue) {
     appStore.showError(value)
@@ -451,13 +480,14 @@ function syncAffiliateReferralCode(): string {
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
-  syncAffiliateReferralCode()
+  const affiliateCode = syncAffiliateReferralCode()
 
   try {
     const settings = await getPublicSettings()
     registrationEnabled.value = settings.registration_enabled
     emailVerifyEnabled.value = settings.email_verify_enabled
     promoCodeEnabled.value = settings.promo_code_enabled
+    affiliateEnabled.value = settings.affiliate_enabled
     invitationCodeEnabled.value = settings.invitation_code_enabled
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
@@ -473,16 +503,12 @@ onMounted(async () => {
     )
     applyLoginAgreementSettings(settings)
 
-    // Read promo code from URL parameter only if promo code is enabled
-    if (promoCodeEnabled.value) {
-      const promoParam = route.query.promo as string
-      if (promoParam) {
-        formData.promo_code = promoParam
-        // Validate the promo code from URL
-        await validatePromoCodeDebounced(promoParam)
-      }
+    const promoParam = promoCodeEnabled.value ? (route.query.promo as string) : ''
+    const initialCode = promoParam || (affiliateEnabled.value ? affiliateCode : '')
+    if (initialCode) {
+      formData.promo_code = initialCode
+      await validatePromoCodeDebounced(initialCode)
     }
-    syncAffiliateReferralCode()
   } catch (error) {
     console.error('Failed to load public settings:', error)
     loginAgreementEnabled.value = false
@@ -494,8 +520,12 @@ onMounted(async () => {
 
 watch(
   () => [route.query.aff, route.query.aff_code],
-  () => {
-    syncAffiliateReferralCode()
+  async () => {
+    const code = syncAffiliateReferralCode()
+    if (code && affiliateEnabled.value) {
+      formData.promo_code = code
+      await validatePromoCodeDebounced(code)
+    }
   }
 )
 
@@ -578,6 +608,8 @@ function handlePromoCodeInput(): void {
   // Clear previous validation
   promoValidation.valid = false
   promoValidation.invalid = false
+  promoValidation.promoValid = false
+  promoValidation.affiliateValid = false
   promoValidation.bonusAmount = null
   promoValidation.message = ''
 
@@ -605,13 +637,19 @@ async function validatePromoCodeDebounced(code: string): Promise<void> {
     const result = await validatePromoCode(code)
 
     if (result.valid) {
+      const affiliateValid = result.affiliate_valid || false
+      const promoValid = result.promo_valid ?? !affiliateValid
       promoValidation.valid = true
       promoValidation.invalid = false
+      promoValidation.promoValid = promoValid
+      promoValidation.affiliateValid = affiliateValid
       promoValidation.bonusAmount = result.bonus_amount || 0
       promoValidation.message = ''
     } else {
       promoValidation.valid = false
       promoValidation.invalid = true
+      promoValidation.promoValid = false
+      promoValidation.affiliateValid = false
       promoValidation.bonusAmount = null
       // 根据错误码显示对应的翻译
       promoValidation.message = getPromoErrorMessage(result.error_code)
@@ -620,6 +658,8 @@ async function validatePromoCodeDebounced(code: string): Promise<void> {
     console.error('Failed to validate promo code:', error)
     promoValidation.valid = false
     promoValidation.invalid = true
+    promoValidation.promoValid = false
+    promoValidation.affiliateValid = false
     promoValidation.message = t('auth.promoCodeInvalid')
   } finally {
     promoValidating.value = false
@@ -827,6 +867,13 @@ async function handleRegister(): Promise<void> {
       errorMessage.value = t('auth.promoCodeInvalidCannotRegister')
       return
     }
+    if (!promoValidation.valid) {
+      await validatePromoCodeDebounced(formData.promo_code.trim())
+      if (!promoValidation.valid) {
+        errorMessage.value = t('auth.promoCodeInvalidCannotRegister')
+        return
+      }
+    }
   }
 
   // Check invitation code validation status (if enabled and code provided)
@@ -856,7 +903,9 @@ async function handleRegister(): Promise<void> {
   isLoading.value = true
 
   try {
-    const affCode = formData.aff_code.trim() || loadAffiliateReferralCode()
+    const registrationCode = formData.promo_code.trim()
+    const promoCode = promoValidation.promoValid ? registrationCode : ''
+    const affCode = effectiveAffiliateCode.value
     if (affCode) {
       formData.aff_code = affCode
     }
@@ -870,7 +919,7 @@ async function handleRegister(): Promise<void> {
           email: formData.email,
           password: formData.password,
           turnstile_token: turnstileToken.value,
-          promo_code: formData.promo_code || undefined,
+          promo_code: promoCode || undefined,
           invitation_code: formData.invitation_code || undefined,
           ...(affCode ? { aff_code: affCode } : {})
         })
@@ -886,7 +935,7 @@ async function handleRegister(): Promise<void> {
       email: formData.email,
       password: formData.password,
       turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
-      promo_code: formData.promo_code || undefined,
+      promo_code: promoCode || undefined,
       invitation_code: formData.invitation_code || undefined,
       ...(affCode ? { aff_code: affCode } : {})
     })

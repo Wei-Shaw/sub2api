@@ -1601,6 +1601,12 @@ func TestActivationFailureRestoresOldTrafficAndStopsCandidate(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(marker)) != "blue" {
 		t.Fatalf("restored active slot marker=%q err=%v", marker, err)
 	}
+	runner.mu.Lock()
+	commands := strings.Join(runner.commands, "\n")
+	runner.mu.Unlock()
+	if !strings.Contains(commands, "docker rm -f "+fakeContainerID("sub2api-green")) {
+		t.Fatalf("failed candidate was not removed by immutable ID:\n%s", commands)
+	}
 }
 
 func TestFailedTrafficRestoreLeavesServingCandidateRunning(t *testing.T) {
@@ -2329,6 +2335,69 @@ func TestSecondDeploymentPreparationRemovesLegacyContainerFromInactiveSlot(t *te
 	}
 	if strings.Contains(commands, "docker rm -f "+fakeContainerID("sub2api-green")) {
 		t.Fatalf("serving container was removed during inactive slot preparation:\n%s", commands)
+	}
+}
+
+func TestSecondDeploymentPreparationKeepsPersistedCanonicalCandidateID(t *testing.T) {
+	greenListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	greenPort := listenerTCPPort(t, greenListener)
+	greenServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","deployment_runtime":{"state":"active","slot":"sub2api-green"},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`))
+	})}
+	go func() { _ = greenServer.Serve(greenListener) }()
+	t.Cleanup(func() { _ = greenServer.Close() })
+
+	cfg := testConfig(t, greenPort)
+	cfg.Slots[0].Name = "sub2api-blue"
+	if err := atomicWrite(cfg.NginxUpstreamPath, []byte(fmt.Sprintf("upstream sub2api_managed {\n server 127.0.0.1:%d;\n}\n", greenPort)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	job := &Job{
+		ID:                 "second-deployment-pending-id-0001",
+		Status:             JobStatusRunning,
+		OldSlot:            "sub2api-green",
+		OldContainer:       "sub2api-green",
+		OldContainerID:     fakeContainerID("sub2api-green"),
+		OldRuntimeSlot:     "sub2api-green",
+		OldSlotCaptured:    true,
+		CandidateSlot:      "sub2api-blue",
+		CandidateContainer: "sub2api-blue",
+		CandidatePort:      cfg.Slots[0].Port,
+		CreatedAt:          now,
+		StartedAt:          now,
+		UpdatedAt:          now,
+	}
+	runner := &fakeRunner{candidate: true}
+	manager := &Manager{
+		cfg:        cfg,
+		runner:     runner,
+		httpClient: &http.Client{Timeout: time.Second},
+		now:        time.Now,
+		state: State{
+			ActiveSlot:          "sub2api-green",
+			ActiveContainer:     "sub2api-green",
+			ActiveContainerID:   fakeContainerID("sub2api-green"),
+			ActivePort:          greenPort,
+			PreviousSlot:        "sub2api-blue",
+			PreviousContainer:   "sub2api-blue",
+			PreviousContainerID: fakeContainerID("sub2api-blue"),
+			PreviousPort:        cfg.Slots[0].Port,
+			Job:                 job,
+		},
+	}
+	if err := manager.prepareInactiveSlot(context.Background(), job, cfg.Slots[0]); err != nil {
+		t.Fatal(err)
+	}
+	runner.mu.Lock()
+	commands := strings.Join(runner.commands, "\n")
+	runner.mu.Unlock()
+	if !strings.Contains(commands, "docker rm -f "+fakeContainerID("sub2api-blue")) {
+		t.Fatalf("persisted canonical candidate ID was not used for cleanup:\n%s", commands)
 	}
 }
 

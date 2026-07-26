@@ -132,6 +132,14 @@ func (s *AuthService) EntClient() *dbent.Client {
 	return s.entClient
 }
 
+// ValidateAffiliateCode validates a referral code before registration.
+func (s *AuthService) ValidateAffiliateCode(ctx context.Context, code string) error {
+	if s == nil || s.affiliateService == nil {
+		return ErrAffiliateCodeInvalid
+	}
+	return s.affiliateService.ValidateCode(ctx, code)
+}
+
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
 	return s.RegisterWithVerification(ctx, email, password, "", "", "", "")

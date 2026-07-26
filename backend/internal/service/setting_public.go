@@ -176,10 +176,16 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeySiteSubtitle,
 		SettingKeyAPIBaseURL,
 		SettingKeyContactInfo,
+		SettingKeyAfterSalesTitle,
 		SettingKeyAfterSalesQRCode,
 		SettingKeyAfterSalesLink,
+		SettingKeyAfterSalesLinkLabel,
+		SettingKeyOfficialGroupTitle,
 		SettingKeyOfficialGroupQRCode,
 		SettingKeyOfficialGroupLink,
+		SettingKeyOfficialGroupLinkLabel,
+		SettingKeyCustomerServiceTextEnabled,
+		SettingKeyCustomerServiceText,
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
 		SettingKeyHideCcsImportButton,
@@ -305,10 +311,16 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
 		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
 		ContactInfo:                      settings[SettingKeyContactInfo],
+		AfterSalesTitle:                  strings.TrimSpace(settings[SettingKeyAfterSalesTitle]),
 		AfterSalesQRCode:                 strings.TrimSpace(settings[SettingKeyAfterSalesQRCode]),
 		AfterSalesLink:                   strings.TrimSpace(settings[SettingKeyAfterSalesLink]),
+		AfterSalesLinkLabel:              strings.TrimSpace(settings[SettingKeyAfterSalesLinkLabel]),
+		OfficialGroupTitle:               strings.TrimSpace(settings[SettingKeyOfficialGroupTitle]),
 		OfficialGroupQRCode:              strings.TrimSpace(settings[SettingKeyOfficialGroupQRCode]),
 		OfficialGroupLink:                strings.TrimSpace(settings[SettingKeyOfficialGroupLink]),
+		OfficialGroupLinkLabel:           strings.TrimSpace(settings[SettingKeyOfficialGroupLinkLabel]),
+		CustomerServiceTextEnabled:       settings[SettingKeyCustomerServiceTextEnabled] == "true",
+		CustomerServiceText:              strings.TrimSpace(settings[SettingKeyCustomerServiceText]),
 		DocURL:                           settings[SettingKeyDocURL],
 		HomeContent:                      settings[SettingKeyHomeContent],
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
@@ -466,10 +478,16 @@ type PublicSettingsInjectionPayload struct {
 	SiteSubtitle                     string                   `json:"site_subtitle"`
 	APIBaseURL                       string                   `json:"api_base_url"`
 	ContactInfo                      string                   `json:"contact_info"`
+	AfterSalesTitle                  string                   `json:"after_sales_title"`
 	AfterSalesQRCode                 string                   `json:"after_sales_qrcode"`
 	AfterSalesLink                   string                   `json:"after_sales_link"`
+	AfterSalesLinkLabel              string                   `json:"after_sales_link_label"`
+	OfficialGroupTitle               string                   `json:"official_group_title"`
 	OfficialGroupQRCode              string                   `json:"official_group_qrcode"`
 	OfficialGroupLink                string                   `json:"official_group_link"`
+	OfficialGroupLinkLabel           string                   `json:"official_group_link_label"`
+	CustomerServiceTextEnabled       bool                     `json:"customer_service_text_enabled"`
+	CustomerServiceText              string                   `json:"customer_service_text"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
@@ -539,10 +557,16 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		SiteSubtitle:                     settings.SiteSubtitle,
 		APIBaseURL:                       settings.APIBaseURL,
 		ContactInfo:                      settings.ContactInfo,
+		AfterSalesTitle:                  settings.AfterSalesTitle,
 		AfterSalesQRCode:                 settings.AfterSalesQRCode,
 		AfterSalesLink:                   settings.AfterSalesLink,
+		AfterSalesLinkLabel:              settings.AfterSalesLinkLabel,
+		OfficialGroupTitle:               settings.OfficialGroupTitle,
 		OfficialGroupQRCode:              settings.OfficialGroupQRCode,
 		OfficialGroupLink:                settings.OfficialGroupLink,
+		OfficialGroupLinkLabel:           settings.OfficialGroupLinkLabel,
+		CustomerServiceTextEnabled:       settings.CustomerServiceTextEnabled,
+		CustomerServiceText:              settings.CustomerServiceText,
 		DocURL:                           settings.DocURL,
 		HomeContent:                      settings.HomeContent,
 		HideCcsImportButton:              settings.HideCcsImportButton,

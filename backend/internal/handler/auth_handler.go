@@ -444,45 +444,54 @@ type ValidatePromoCodeRequest struct {
 
 // ValidatePromoCodeResponse 验证优惠码响应
 type ValidatePromoCodeResponse struct {
-	Valid       bool    `json:"valid"`
-	BonusAmount float64 `json:"bonus_amount,omitempty"`
-	ErrorCode   string  `json:"error_code,omitempty"`
-	Message     string  `json:"message,omitempty"`
+	Valid          bool    `json:"valid"`
+	PromoValid     bool    `json:"promo_valid"`
+	AffiliateValid bool    `json:"affiliate_valid"`
+	BonusAmount    float64 `json:"bonus_amount,omitempty"`
+	ErrorCode      string  `json:"error_code,omitempty"`
+	Message        string  `json:"message,omitempty"`
 }
 
-// ValidatePromoCode 验证优惠码（公开接口，注册前调用）
+// ValidatePromoCode validates the shared promo/referral code input.
 // POST /api/v1/auth/validate-promo-code
 func (h *AuthHandler) ValidatePromoCode(c *gin.Context) {
-	// 检查优惠码功能是否启用
-	if h.settingSvc != nil && !h.settingSvc.IsPromoCodeEnabled(c.Request.Context()) {
-		response.Success(c, ValidatePromoCodeResponse{
-			Valid:     false,
-			ErrorCode: "PROMO_CODE_DISABLED",
-		})
-		return
-	}
-
 	var req ValidatePromoCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
 
-	promoCode, err := h.promoService.ValidatePromoCode(c.Request.Context(), req.Code)
-	if err != nil {
-		// 根据错误类型返回对应的错误码
+	ctx := c.Request.Context()
+	promoEnabled := h.settingSvc == nil || h.settingSvc.IsPromoCodeEnabled(ctx)
+	var promoCode *service.PromoCode
+	var promoErr error
+	if promoEnabled && h.promoService != nil {
+		promoCode, promoErr = h.promoService.ValidatePromoCode(ctx, req.Code)
+	} else if !promoEnabled {
+		promoErr = service.ErrPromoCodeDisabled
+	}
+
+	affiliateValid := false
+	if h.authService != nil {
+		affiliateValid = h.authService.ValidateAffiliateCode(ctx, req.Code) == nil
+	}
+	promoValid := promoCode != nil && promoErr == nil
+
+	if !promoValid && !affiliateValid {
 		errorCode := "PROMO_CODE_INVALID"
-		switch err {
-		case service.ErrPromoCodeNotFound:
-			errorCode = "PROMO_CODE_NOT_FOUND"
-		case service.ErrPromoCodeExpired:
-			errorCode = "PROMO_CODE_EXPIRED"
-		case service.ErrPromoCodeDisabled:
-			errorCode = "PROMO_CODE_DISABLED"
-		case service.ErrPromoCodeMaxUsed:
-			errorCode = "PROMO_CODE_MAX_USED"
-		case service.ErrPromoCodeAlreadyUsed:
-			errorCode = "PROMO_CODE_ALREADY_USED"
+		if promoEnabled {
+			switch promoErr {
+			case service.ErrPromoCodeNotFound:
+				errorCode = "PROMO_CODE_NOT_FOUND"
+			case service.ErrPromoCodeExpired:
+				errorCode = "PROMO_CODE_EXPIRED"
+			case service.ErrPromoCodeDisabled:
+				errorCode = "PROMO_CODE_DISABLED"
+			case service.ErrPromoCodeMaxUsed:
+				errorCode = "PROMO_CODE_MAX_USED"
+			case service.ErrPromoCodeAlreadyUsed:
+				errorCode = "PROMO_CODE_ALREADY_USED"
+			}
 		}
 
 		response.Success(c, ValidatePromoCodeResponse{
@@ -492,18 +501,15 @@ func (h *AuthHandler) ValidatePromoCode(c *gin.Context) {
 		return
 	}
 
-	if promoCode == nil {
-		response.Success(c, ValidatePromoCodeResponse{
-			Valid:     false,
-			ErrorCode: "PROMO_CODE_INVALID",
-		})
-		return
+	result := ValidatePromoCodeResponse{
+		Valid:          true,
+		PromoValid:     promoValid,
+		AffiliateValid: affiliateValid,
 	}
-
-	response.Success(c, ValidatePromoCodeResponse{
-		Valid:       true,
-		BonusAmount: promoCode.BonusAmount,
-	})
+	if promoValid {
+		result.BonusAmount = promoCode.BonusAmount
+	}
+	response.Success(c, result)
 }
 
 // ValidateInvitationCodeRequest 验证邀请码请求

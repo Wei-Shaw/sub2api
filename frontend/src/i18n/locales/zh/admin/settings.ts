@@ -514,12 +514,21 @@ export default {
         description: '配置 Dashboard 顶栏中的客服入口和二维码弹窗',
         afterSalesTitle: '售后客服',
         officialGroupTitle: '官方群组',
+        cardTitle: '卡片标题',
         link: '跳转链接',
+        linkLabel: '链接按钮文字',
         qrCode: '二维码图片',
         afterSalesLinkPlaceholder: 'https://t.me/your_support',
         officialGroupLinkPlaceholder: 'https://t.me/your_group',
+        afterSalesLinkLabelPlaceholder: '打开客服链接',
+        officialGroupLinkLabelPlaceholder: '加入官方群组',
         qrCodeHint: '可选，PNG、JPG 或 WebP，最大 500KB。留空时会根据链接自动生成。',
-        hint: '至少填写一个链接或上传一张二维码，Dashboard 才会显示在线客服入口。'
+        hint: '至少填写一个链接或上传一张二维码，Dashboard 才会显示在线客服入口。标题和按钮文字留空时使用默认文案。',
+        customTextEnabled: '显示底部自定义文字',
+        customTextEnabledHint: '在客服弹窗的两张卡片下方显示一段补充说明。',
+        customText: '自定义文字',
+        customTextPlaceholder: '例如：客服工作时间为周一至周五 09:00-18:00',
+        customTextHint: '支持换行，最多 500 个字符；仅按纯文本展示。'
       },
       purchase: {
         title: '充值/订阅页面',

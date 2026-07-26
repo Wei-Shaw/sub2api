@@ -4,11 +4,87 @@ package service
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+type affiliateValidationRepoStub struct {
+	AffiliateRepository
+	summary      *AffiliateSummary
+	err          error
+	observedCode string
+}
+
+func (r *affiliateValidationRepoStub) GetAffiliateByCode(_ context.Context, code string) (*AffiliateSummary, error) {
+	r.observedCode = code
+	return r.summary, r.err
+}
+
+type affiliateValidationSettingRepoStub struct {
+	SettingRepository
+	enabled bool
+}
+
+func (r *affiliateValidationSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	if key != SettingKeyAffiliateEnabled {
+		return "", ErrSettingNotFound
+	}
+	if r.enabled {
+		return "true", nil
+	}
+	return "false", nil
+}
+
+func TestAffiliateServiceValidateCode(t *testing.T) {
+	t.Parallel()
+
+	t.Run("normalizes and accepts existing code", func(t *testing.T) {
+		repo := &affiliateValidationRepoStub{summary: &AffiliateSummary{UserID: 7, AffCode: "VALID-CODE"}}
+		svc := &AffiliateService{
+			repo:           repo,
+			settingService: &SettingService{settingRepo: &affiliateValidationSettingRepoStub{enabled: true}},
+		}
+
+		require.NoError(t, svc.ValidateCode(context.Background(), " valid-code "))
+		require.Equal(t, "VALID-CODE", repo.observedCode)
+	})
+
+	t.Run("rejects unknown code", func(t *testing.T) {
+		repo := &affiliateValidationRepoStub{err: ErrAffiliateProfileNotFound}
+		svc := &AffiliateService{
+			repo:           repo,
+			settingService: &SettingService{settingRepo: &affiliateValidationSettingRepoStub{enabled: true}},
+		}
+
+		require.ErrorIs(t, svc.ValidateCode(context.Background(), "UNKNOWN1"), ErrAffiliateCodeInvalid)
+	})
+
+	t.Run("preserves repository failure", func(t *testing.T) {
+		repoErr := errors.New("database unavailable")
+		repo := &affiliateValidationRepoStub{err: repoErr}
+		svc := &AffiliateService{
+			repo:           repo,
+			settingService: &SettingService{settingRepo: &affiliateValidationSettingRepoStub{enabled: true}},
+		}
+
+		require.ErrorIs(t, svc.ValidateCode(context.Background(), "VALID123"), repoErr)
+	})
+
+	t.Run("rejects disabled or malformed code without lookup", func(t *testing.T) {
+		repo := &affiliateValidationRepoStub{summary: &AffiliateSummary{UserID: 7}}
+		svc := &AffiliateService{
+			repo:           repo,
+			settingService: &SettingService{settingRepo: &affiliateValidationSettingRepoStub{enabled: false}},
+		}
+
+		require.ErrorIs(t, svc.ValidateCode(context.Background(), "VALID123"), ErrAffiliateCodeInvalid)
+		require.ErrorIs(t, svc.ValidateCode(context.Background(), "bad code"), ErrAffiliateCodeInvalid)
+		require.Empty(t, repo.observedCode)
+	})
+}
 
 // TestResolveRebateRatePercent_PerUserOverride verifies that per-inviter
 // AffRebateRatePercent overrides the global rate, that NULL falls back to the

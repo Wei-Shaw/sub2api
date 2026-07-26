@@ -392,16 +392,28 @@ func TestSettingService_UpdateSettings_CustomerServiceSettings(t *testing.T) {
 	svc := NewSettingService(repo, &config.Config{})
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		AfterSalesQRCode:    " /support.png ",
-		AfterSalesLink:      " https://t.me/support ",
-		OfficialGroupQRCode: " data:image/png;base64,abc ",
-		OfficialGroupLink:   " https://t.me/group ",
+		AfterSalesTitle:            " VIP Support ",
+		AfterSalesQRCode:           " /support.png ",
+		AfterSalesLink:             " https://t.me/support ",
+		AfterSalesLinkLabel:        " Start a chat ",
+		OfficialGroupTitle:         " Community ",
+		OfficialGroupQRCode:        " data:image/png;base64,abc ",
+		OfficialGroupLink:          " https://t.me/group ",
+		OfficialGroupLinkLabel:     " Join now ",
+		CustomerServiceTextEnabled: true,
+		CustomerServiceText:        " Support hours ",
 	})
 	require.NoError(t, err)
+	require.Equal(t, "VIP Support", repo.updates[SettingKeyAfterSalesTitle])
 	require.Equal(t, "/support.png", repo.updates[SettingKeyAfterSalesQRCode])
 	require.Equal(t, "https://t.me/support", repo.updates[SettingKeyAfterSalesLink])
+	require.Equal(t, "Start a chat", repo.updates[SettingKeyAfterSalesLinkLabel])
+	require.Equal(t, "Community", repo.updates[SettingKeyOfficialGroupTitle])
 	require.Equal(t, "data:image/png;base64,abc", repo.updates[SettingKeyOfficialGroupQRCode])
 	require.Equal(t, "https://t.me/group", repo.updates[SettingKeyOfficialGroupLink])
+	require.Equal(t, "Join now", repo.updates[SettingKeyOfficialGroupLinkLabel])
+	require.Equal(t, "true", repo.updates[SettingKeyCustomerServiceTextEnabled])
+	require.Equal(t, "Support hours", repo.updates[SettingKeyCustomerServiceText])
 }
 
 func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {
