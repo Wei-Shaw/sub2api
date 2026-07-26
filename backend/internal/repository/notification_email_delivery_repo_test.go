@@ -47,6 +47,9 @@ func TestNotificationEmailDeliveryRepositoryEnqueueReusesEntTransaction(t *testi
 	tx, err := client.Tx(context.Background())
 	require.NoError(t, err)
 	txCtx := dbent.NewTxContext(context.Background(), tx)
+	exec := notificationEmailDeliveryExecutor(txCtx, nil)
+	require.NotNil(t, exec)
+	require.Same(t, tx.Client().Driver(), exec)
 	mock.ExpectQuery("INSERT INTO notification_email_deliveries").
 		WithArgs(delivery.DedupKey, delivery.Event, delivery.Channel, delivery.RecipientEmail,
 			delivery.RecipientHash, delivery.RecipientName, delivery.UserID, delivery.SourceType,

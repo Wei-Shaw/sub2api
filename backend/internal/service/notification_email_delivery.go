@@ -587,8 +587,9 @@ func boundedNotificationEmailError(err error) string {
 	}
 	message := strings.Join(strings.Fields(err.Error()), " ")
 	message = notificationEmailAddressInErrorPattern.ReplaceAllString(message, "***@***")
+	message = strings.ToValidUTF8(message, "\uFFFD")
 	if len(message) > 512 {
-		message = message[:512]
+		message = strings.ToValidUTF8(message[:512], "")
 	}
 	return message
 }

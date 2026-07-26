@@ -6,9 +6,11 @@ import (
 	"context"
 	"errors"
 	"net/textproto"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 )
@@ -144,6 +146,12 @@ func TestNotificationEmailLeaseCoversClaimedBatch(t *testing.T) {
 func TestBoundedNotificationEmailErrorRedactsAddresses(t *testing.T) {
 	errorText := boundedNotificationEmailError(assertiveError("delivery to alice@example.com failed\npermanently"))
 	require.Equal(t, "delivery to ***@*** failed permanently", errorText)
+}
+
+func TestBoundedNotificationEmailErrorPreservesValidUTF8WithinByteLimit(t *testing.T) {
+	errorText := boundedNotificationEmailError(assertiveError(strings.Repeat("错", 200)))
+	require.LessOrEqual(t, len(errorText), 512)
+	require.True(t, utf8.ValidString(errorText))
 }
 
 type notificationEmailWorkerTestRepository struct {
