@@ -49,6 +49,8 @@ type passkeyRenameRequest struct {
 	Name string `json:"name" binding:"required"`
 REDACTED
 
+const passkeyFinishBodyMaxBytes = 64 * 1024
+
 // BeginLogin starts a usernameless, discoverable-credential login ceremony.
 func (h *PasskeyHandler) BeginLogin(c *gin.Context) {
 	assertion, token, err := h.passkeys.BeginLogin(c.Request.Context())
@@ -78,6 +80,8 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	middleware2.SetAuditActor(c, user.ID, user.Email)
+	c.Set("auth_method", service.AuditAuthMethodPasskey)
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	respondWithTokenPair(c, h.authService, user)
 REDACTED
@@ -175,6 +179,7 @@ REDACTED
 REDACTED
 
 func bindPasskeyFinishRequest(c *gin.Context) (*passkeyFinishRequest, bool) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, passkeyFinishBodyMaxBytes)
 	var req passkeyFinishRequest
 	if err := c.ShouldBindJSON(&req); err != nil || len(req.Credential) == 0 {
 		response.BadRequest(c, "Invalid passkey response")

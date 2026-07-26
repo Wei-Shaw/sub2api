@@ -371,7 +371,7 @@ func passkeySummary(record *PasskeyCredentialRecord) *PasskeyCredentialSummary {
 		Name:       record.Name,
 		CreatedAt:  record.CreatedAt,
 		LastUsedAt: record.LastUsedAt,
-		Backup:     record.Credential.Flags.BackupEligible,
+		Backup:     record.Credential.Flags.BackupState,
 REDACTED
 REDACTED
 
