@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/urlvalidator"
+	"github.com/Wei-Shaw/sub2api/internal/port/billing"
 	"go.uber.org/zap"
 )
 
@@ -134,10 +135,7 @@ type LiteLLMModelPricing struct {
 }
 
 // PricingRemoteClient 远程价格数据获取接口
-type PricingRemoteClient interface {
-	FetchPricingJSON(ctx context.Context, url string) ([]byte, error)
-	FetchHashText(ctx context.Context, url string) (string, error)
-}
+type PricingRemoteClient = billing.PricingRemoteClient
 
 // LiteLLMRawEntry 用于解析原始JSON数据
 type LiteLLMRawEntry struct {

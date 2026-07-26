@@ -1,15 +1,8 @@
 package service
 
 import (
-	"time"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // SubscriptionCacheData represents cached subscription data
-type SubscriptionCacheData struct {
-	Status       string
-	ExpiresAt    time.Time
-	DailyUsage   float64
-	WeeklyUsage  float64
-	MonthlyUsage float64
-	Version      int64
-}
+type SubscriptionCacheData = domain.SubscriptionCacheData

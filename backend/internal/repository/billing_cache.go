@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/billing"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -23,7 +24,8 @@ const (
 	billingCacheJitter        = 30 * time.Second
 	rateLimitCacheTTL         = 7 * 24 * time.Hour // 7 days matches the longest window
 
-	// Rate limit window durations — must match service.RateLimitWindow* constants.
+	// Rate limit window durations — must match the RateLimitWindow* constants
+	// defined in internal/service.
 	rateLimitWindow5h = 5 * time.Hour
 	rateLimitWindow1d = 24 * time.Hour
 	rateLimitWindow7d = 7 * 24 * time.Hour
@@ -140,7 +142,7 @@ type billingCache struct {
 	rdb *redis.Client
 }
 
-func NewBillingCache(rdb *redis.Client) service.BillingCache {
+func NewBillingCache(rdb *redis.Client) billing.BillingCache {
 	return &billingCache{rdb: rdb}
 }
 
@@ -173,7 +175,7 @@ func (c *billingCache) InvalidateUserBalance(ctx context.Context, userID int64) 
 	return c.rdb.Del(ctx, key).Err()
 }
 
-func (c *billingCache) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*service.SubscriptionCacheData, error) {
+func (c *billingCache) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*domain.SubscriptionCacheData, error) {
 	key := billingSubKey(userID, groupID)
 	result, err := c.rdb.HGetAll(ctx, key).Result()
 	if err != nil {
@@ -185,8 +187,8 @@ func (c *billingCache) GetSubscriptionCache(ctx context.Context, userID, groupID
 	return c.parseSubscriptionCache(result)
 }
 
-func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.SubscriptionCacheData, error) {
-	result := &service.SubscriptionCacheData{}
+func (c *billingCache) parseSubscriptionCache(data map[string]string) (*domain.SubscriptionCacheData, error) {
+	result := &domain.SubscriptionCacheData{}
 
 	result.Status = data[subFieldStatus]
 	if result.Status == "" {
@@ -219,7 +221,7 @@ func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.
 	return result, nil
 }
 
-func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *service.SubscriptionCacheData) error {
+func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *domain.SubscriptionCacheData) error {
 	if data == nil {
 		return nil
 	}
@@ -296,7 +298,7 @@ func (c *billingCache) SubscribeSubscriptionCacheInvalidation(ctx context.Contex
 	return nil
 }
 
-func (c *billingCache) GetAPIKeyRateLimit(ctx context.Context, keyID int64) (*service.APIKeyRateLimitCacheData, error) {
+func (c *billingCache) GetAPIKeyRateLimit(ctx context.Context, keyID int64) (*domain.APIKeyRateLimitCacheData, error) {
 	key := billingRateLimitKey(keyID)
 	result, err := c.rdb.HGetAll(ctx, key).Result()
 	if err != nil {
@@ -305,7 +307,7 @@ func (c *billingCache) GetAPIKeyRateLimit(ctx context.Context, keyID int64) (*se
 	if len(result) == 0 {
 		return nil, redis.Nil
 	}
-	data := &service.APIKeyRateLimitCacheData{}
+	data := &domain.APIKeyRateLimitCacheData{}
 	if v, ok := result[rateLimitFieldUsage5h]; ok {
 		data.Usage5h, _ = strconv.ParseFloat(v, 64)
 	}
@@ -327,7 +329,7 @@ func (c *billingCache) GetAPIKeyRateLimit(ctx context.Context, keyID int64) (*se
 	return data, nil
 }
 
-func (c *billingCache) SetAPIKeyRateLimit(ctx context.Context, keyID int64, data *service.APIKeyRateLimitCacheData) error {
+func (c *billingCache) SetAPIKeyRateLimit(ctx context.Context, keyID int64, data *domain.APIKeyRateLimitCacheData) error {
 	if data == nil {
 		return nil
 	}
@@ -380,9 +382,9 @@ func userPlatformQuotaCacheKey(userID int64, platform string) string {
 }
 
 // parseUserPlatformQuotaHash 将 Redis HGETALL 返回的 map[string]string 反序列化为
-// *service.UserPlatformQuotaCacheEntry。空 map（key 不存在）返回 nil。
+// *domain.UserPlatformQuotaCacheEntry。空 map（key 不存在）返回 nil。
 // GetUserPlatformQuotaCache 和 BatchGetUserPlatformQuotaCache 共用此函数，确保解析逻辑一致。
-func parseUserPlatformQuotaHash(m map[string]string) *service.UserPlatformQuotaCacheEntry {
+func parseUserPlatformQuotaHash(m map[string]string) *domain.UserPlatformQuotaCacheEntry {
 	if len(m) == 0 {
 		return nil
 	}
@@ -422,7 +424,7 @@ func parseUserPlatformQuotaHash(m map[string]string) *service.UserPlatformQuotaC
 		n, _ := strconv.ParseInt(s, 10, 64)
 		return n
 	}
-	return &service.UserPlatformQuotaCacheEntry{
+	return &domain.UserPlatformQuotaCacheEntry{
 		DailyUsageUSD:      parseFloat(m["daily_usage"]),
 		WeeklyUsageUSD:     parseFloat(m["weekly_usage"]),
 		MonthlyUsageUSD:    parseFloat(m["monthly_usage"]),
@@ -437,7 +439,7 @@ func parseUserPlatformQuotaHash(m map[string]string) *service.UserPlatformQuotaC
 	}
 }
 
-func (c *billingCache) GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*service.UserPlatformQuotaCacheEntry, bool, error) {
+func (c *billingCache) GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*domain.UserPlatformQuotaCacheEntry, bool, error) {
 	key := userPlatformQuotaCacheKey(userID, platform)
 	m, err := c.rdb.HGetAll(ctx, key).Result()
 	if err != nil {
@@ -451,7 +453,7 @@ func (c *billingCache) GetUserPlatformQuotaCache(ctx context.Context, userID int
 	return entry, true, nil
 }
 
-func (c *billingCache) SetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string, entry *service.UserPlatformQuotaCacheEntry, ttl time.Duration) error {
+func (c *billingCache) SetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string, entry *domain.UserPlatformQuotaCacheEntry, ttl time.Duration) error {
 	if entry == nil {
 		return nil
 	}
@@ -548,7 +550,7 @@ func (c *billingCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, user
 		[]string{userPlatformQuotaCacheKey(userID, platform), userPlatformQuotaDirtySetKey()},
 		strconv.FormatFloat(cost, 'f', -1, 64),
 		int(ttl.Seconds()),
-		service.UserPlatformQuotaCacheSchemaV1,
+		domain.UserPlatformQuotaCacheSchemaV1,
 		member,
 		userPlatformQuotaDirtyTTLSeconds,
 	).Result()
@@ -559,22 +561,22 @@ func (c *billingCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, user
 }
 
 // parseUserPlatformQuotaDirtyMember 将脏集成员字符串 "userID:platform" 解析为
-// service.UserPlatformQuotaKey。解析失败返回 ok=false。
-func parseUserPlatformQuotaDirtyMember(m string) (service.UserPlatformQuotaKey, bool) {
+// domain.UserPlatformQuotaKey。解析失败返回 ok=false。
+func parseUserPlatformQuotaDirtyMember(m string) (domain.UserPlatformQuotaKey, bool) {
 	parts := strings.SplitN(m, ":", 2)
 	if len(parts) != 2 {
-		return service.UserPlatformQuotaKey{}, false
+		return domain.UserPlatformQuotaKey{}, false
 	}
 	uid, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		return service.UserPlatformQuotaKey{}, false
+		return domain.UserPlatformQuotaKey{}, false
 	}
-	return service.UserPlatformQuotaKey{UserID: uid, Platform: parts[1]}, true
+	return domain.UserPlatformQuotaKey{UserID: uid, Platform: parts[1]}, true
 }
 
 // PopDirtyUserPlatformQuotaKeys 从脏集随机弹出最多 n 个 key。
 // 脏集为空时返回 (nil, nil)。
-func (c *billingCache) PopDirtyUserPlatformQuotaKeys(ctx context.Context, n int) ([]service.UserPlatformQuotaKey, error) {
+func (c *billingCache) PopDirtyUserPlatformQuotaKeys(ctx context.Context, n int) ([]domain.UserPlatformQuotaKey, error) {
 	members, err := c.rdb.SPopN(ctx, userPlatformQuotaDirtySetKey(), int64(n)).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -582,7 +584,7 @@ func (c *billingCache) PopDirtyUserPlatformQuotaKeys(ctx context.Context, n int)
 		}
 		return nil, err
 	}
-	keys := make([]service.UserPlatformQuotaKey, 0, len(members))
+	keys := make([]domain.UserPlatformQuotaKey, 0, len(members))
 	for _, m := range members {
 		k, ok := parseUserPlatformQuotaDirtyMember(m)
 		if !ok {
@@ -597,7 +599,7 @@ func (c *billingCache) PopDirtyUserPlatformQuotaKeys(ctx context.Context, n int)
 // ReaddDirtyUserPlatformQuotaKeys 将 keys 重新加入脏集（flush 失败时回填）。
 // 通过 pipeline 同时执行 SAdd + Expire，确保 Readd 后脏集具有兜底 TTL。
 // 空切片时直接返回 nil。
-func (c *billingCache) ReaddDirtyUserPlatformQuotaKeys(ctx context.Context, keys []service.UserPlatformQuotaKey) error {
+func (c *billingCache) ReaddDirtyUserPlatformQuotaKeys(ctx context.Context, keys []domain.UserPlatformQuotaKey) error {
 	if len(keys) == 0 {
 		return nil
 	}
@@ -615,7 +617,7 @@ func (c *billingCache) ReaddDirtyUserPlatformQuotaKeys(ctx context.Context, keys
 
 // BatchGetUserPlatformQuotaCache 通过 Pipeline 批量 HGETALL 获取多个 user×platform 的
 // quota cache。返回切片与 keys 顺序、长度对齐；MISS 或解析失败位置返回 nil。
-func (c *billingCache) BatchGetUserPlatformQuotaCache(ctx context.Context, keys []service.UserPlatformQuotaKey) ([]*service.UserPlatformQuotaCacheEntry, error) {
+func (c *billingCache) BatchGetUserPlatformQuotaCache(ctx context.Context, keys []domain.UserPlatformQuotaKey) ([]*domain.UserPlatformQuotaCacheEntry, error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
@@ -627,7 +629,7 @@ func (c *billingCache) BatchGetUserPlatformQuotaCache(ctx context.Context, keys 
 	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
 		return nil, err
 	}
-	results := make([]*service.UserPlatformQuotaCacheEntry, len(keys))
+	results := make([]*domain.UserPlatformQuotaCacheEntry, len(keys))
 	for i, cmd := range cmds {
 		m, err := cmd.Result()
 		if err != nil {
