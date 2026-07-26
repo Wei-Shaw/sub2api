@@ -3428,17 +3428,12 @@ REDACTED
 
 func isClaudeWebSearchToolMap(tool map[string]any) bool {
 	toolType, _ := tool["type"].(string)
-	if strings.HasPrefix(toolType, "web_search") || toolType == "google_search" {
-		return true
-REDACTED
-
-	name, _ := tool["name"].(string)
-	switch strings.TrimSpace(name) {
-	case "web_search", "google_search", "web_search_20250305":
-		return true
-	default:
-		return false
-REDACTED
+	// A function named web_search is still a client-side function. This is
+	// especially important for Chat Completions clients such as Hermes, whose
+	// built-in runtime tools are represented as ordinary function tools.
+	// Promote only explicitly typed server-side search tools to Gemini's
+	// built-in googleSearch tool.
+	return strings.HasPrefix(toolType, "web_search") || toolType == "google_search"
 REDACTED
 
 // cleanToolSchema 清理工具的 JSON Schema，移除 Gemini 不支持的字段
