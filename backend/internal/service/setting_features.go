@@ -825,8 +825,20 @@ func (s *SettingService) GetOpenAIFastPolicySettings(ctx context.Context) (*Open
 			"key", SettingKeyOpenAIFastPolicySettings)
 		return DefaultOpenAIFastPolicySettings(), nil
 	}
+	canonicalizeOpenAIFastPolicySettings(&settings)
 
 	return &settings, nil
+}
+
+func canonicalizeOpenAIFastPolicySettings(settings *OpenAIFastPolicySettings) {
+	if settings == nil {
+		return
+	}
+	for i := range settings.Rules {
+		if settings.Rules[i].Action == OpenAIFastPolicyActionForcePriority {
+			settings.Rules[i].ServiceTier = OpenAIFastTierAny
+		}
+	}
 }
 
 // SetOpenAIFastPolicySettings 设置 OpenAI fast 策略配置
@@ -853,6 +865,9 @@ func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settin
 		}
 		if !validTiers[tier] {
 			return fmt.Errorf("rule[%d]: invalid service_tier %q", i, rule.ServiceTier)
+		}
+		if rule.Action == OpenAIFastPolicyActionForcePriority {
+			tier = OpenAIFastTierAny
 		}
 		settings.Rules[i].ServiceTier = tier
 		if !validActions[rule.Action] {

@@ -585,8 +585,9 @@ const (
 	OpenAIFastTierPriority = "priority" // 仅匹配 fast（priority）
 	OpenAIFastTierFlex     = "flex"     // 仅匹配 flex
 
-	// OpenAIFastPolicyActionForcePriority 会保留 service_tier 字段并强制写成
-	// priority，用于把 flex/auto/default/scale 等已识别 tier 收敛为 fast。
+	// OpenAIFastPolicyActionForcePriority 会强制写入 service_tier=priority，
+	// 包括请求未携带 service_tier 的情况。该动作不再按入站 tier 过滤，
+	// 保存时会把 ServiceTier 规范化为 all。
 	OpenAIFastPolicyActionForcePriority = "force_priority"
 )
 

@@ -467,9 +467,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
-	if rawTier := requestView.ServiceTier; rawTier != "" {
-		if normTier := normalizedOpenAIServiceTierValue(rawTier); normTier != "" {
-			action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
+	{
+		rawTier := requestView.ServiceTier
+		normTier := normalizedOpenAIServiceTierValue(rawTier)
+		action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
+		if normTier != "" || action == OpenAIFastPolicyActionForcePriority {
 			switch action {
 			case BetaPolicyActionBlock:
 				msg := errMsg

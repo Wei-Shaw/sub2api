@@ -1158,11 +1158,7 @@
                     <Select
                       :modelValue="rule.action"
                       @update:modelValue="
-                        rule.action = $event as
-                          | 'pass'
-                          | 'filter'
-                          | 'block'
-                          | 'force_priority'
+                        updateOpenAIFastPolicyAction(rule, $event)
                       "
                       :options="openaiFastPolicyActionOptions"
                     />
@@ -10886,6 +10882,16 @@ function addOpenAIFastPolicyRule() {
 
 function removeOpenAIFastPolicyRule(index: number) {
   openaiFastPolicyForm.rules.splice(index, 1);
+}
+
+function updateOpenAIFastPolicyAction(
+  rule: OpenAIFastPolicyRule,
+  action: unknown,
+) {
+  rule.action = action as OpenAIFastPolicyRule["action"];
+  if (rule.action === "force_priority") {
+    rule.service_tier = "all";
+  }
 }
 
 function addOpenAIFastPolicyModelPattern(rule: OpenAIFastPolicyRule) {
