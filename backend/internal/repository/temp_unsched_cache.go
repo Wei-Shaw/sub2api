@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/scheduler"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -37,12 +38,12 @@ type tempUnschedCache struct {
 	rdb *redis.Client
 }
 
-func NewTempUnschedCache(rdb *redis.Client) service.TempUnschedCache {
+func NewTempUnschedCache(rdb *redis.Client) scheduler.TempUnschedCache {
 	return &tempUnschedCache{rdb: rdb}
 }
 
 // SetTempUnsched 设置临时不可调度状态（只延长不缩短）
-func (c *tempUnschedCache) SetTempUnsched(ctx context.Context, accountID int64, state *service.TempUnschedState) error {
+func (c *tempUnschedCache) SetTempUnsched(ctx context.Context, accountID int64, state *domain.TempUnschedState) error {
 	key := fmt.Sprintf("%s%d", tempUnschedPrefix, accountID)
 
 	stateJSON, err := json.Marshal(state)
@@ -65,7 +66,7 @@ func (c *tempUnschedCache) SetTempUnsched(ctx context.Context, accountID int64, 
 }
 
 // GetTempUnsched 获取临时不可调度状态
-func (c *tempUnschedCache) GetTempUnsched(ctx context.Context, accountID int64) (*service.TempUnschedState, error) {
+func (c *tempUnschedCache) GetTempUnsched(ctx context.Context, accountID int64) (*domain.TempUnschedState, error) {
 	key := fmt.Sprintf("%s%d", tempUnschedPrefix, accountID)
 
 	val, err := c.rdb.Get(ctx, key).Result()
@@ -76,7 +77,7 @@ func (c *tempUnschedCache) GetTempUnsched(ctx context.Context, accountID int64) 
 		return nil, err
 	}
 
-	var state service.TempUnschedState
+	var state domain.TempUnschedState
 	if err := json.Unmarshal([]byte(val), &state); err != nil {
 		return nil, fmt.Errorf("unmarshal state: %w", err)
 	}
