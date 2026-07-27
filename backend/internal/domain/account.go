@@ -2736,3 +2736,9 @@ const (
 	OpenAIAuthModeCredentialKey        = openAIAuthModeCredentialKey
 	OpenAIAuthModeLegacyCredentialKey  = openAIAuthModeLegacyCredentialKey
 )
+
+// Account-domain query sentinels used by repository filters and admin/handler
+// queries. Lifted from internal/service so account_repo can depend solely on
+// domain. Service re-exports as aliases (internal/service/account_service.go).
+const AccountListGroupUngrouped int64 = -1
+const AccountPrivacyModeUnsetFilter = "__unset__"

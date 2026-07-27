@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // GroupCapacitySummary holds aggregated capacity for a single group.
@@ -16,17 +18,9 @@ type GroupCapacitySummary struct {
 	RPMMax          int   `json:"rpm_max"`
 }
 
-// GroupAccountCapacityRow is the lightweight account projection needed for
-// capacity summary aggregation.
-type GroupAccountCapacityRow struct {
-	GroupID             int64
-	AccountID           int64
-	Concurrency         int
-	Extra               map[string]any
-	SessionWindowStart  *time.Time
-	SessionWindowEnd    *time.Time
-	SessionWindowStatus string
-}
+// GroupAccountCapacityRow moved to internal/domain/group_capacity.go.
+// Alias preserves identity so all repo/service/handler call sites compile unchanged.
+type GroupAccountCapacityRow = domain.GroupAccountCapacityRow
 
 type groupCapacityActiveGroupIDLister interface {
 	ListActiveIDs(ctx context.Context) ([]int64, error)

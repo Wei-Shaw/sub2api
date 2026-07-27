@@ -30,7 +30,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	portaccount "github.com/Wei-Shaw/sub2api/internal/port/account"
 	"github.com/Wei-Shaw/sub2api/internal/port/scheduler"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -797,7 +796,7 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 	if search != "" {
 		q = q.Where(dbaccount.NameContainsFold(search))
 	}
-	if groupID == service.AccountListGroupUngrouped {
+	if groupID == domain.AccountListGroupUngrouped {
 		q = q.Where(dbaccount.Not(dbaccount.HasAccountGroups()))
 	} else if groupID > 0 {
 		q = q.Where(dbaccount.HasAccountGroupsWith(dbaccountgroup.GroupIDEQ(groupID)))
@@ -806,7 +805,7 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 		q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
 			path := sqljson.Path("privacy_mode")
 			switch privacyMode {
-			case service.AccountPrivacyModeUnsetFilter:
+			case domain.AccountPrivacyModeUnsetFilter:
 				s.Where(entsql.Or(
 					entsql.Not(sqljson.HasKey(dbaccount.FieldExtra, path)),
 					sqljson.ValueEQ(dbaccount.FieldExtra, "", path),
@@ -1190,7 +1189,7 @@ func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg str
 func (r *accountRepository) SetGrokCredentialErrorIfMatch(
 	ctx context.Context,
 	id int64,
-	snapshot service.GrokCredentialMutationSnapshot,
+	snapshot domain.GrokCredentialMutationSnapshot,
 	errorMsg string,
 ) (bool, error) {
 	result, err := r.sql.ExecContext(ctx, `
@@ -1222,7 +1221,7 @@ func (r *accountRepository) SetGrokCredentialErrorIfMatch(
 		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
 		SELECT $10, updated.id, NULL, NULL FROM updated
 	`, domain.StatusError, errorMsg, id, domain.StatusActive, domain.PlatformGrok, domain.AccountTypeOAuth,
-		snapshot.CredentialsJSON, snapshot.ProxyID, string(service.GrokCredentialReasonProxyInvalid),
+		snapshot.CredentialsJSON, snapshot.ProxyID, string(domain.GrokCredentialReasonProxyInvalid),
 		domain.SchedulerOutboxEventAccountChanged)
 	if err != nil {
 		return false, err
@@ -1686,7 +1685,7 @@ func (r *accountRepository) ListSchedulable(ctx context.Context) ([]domain.Accou
 	return r.accountsToService(ctx, accounts)
 }
 
-func (r *accountRepository) ListSchedulableAccountLoads(ctx context.Context) ([]service.AccountWithConcurrency, error) {
+func (r *accountRepository) ListSchedulableAccountLoads(ctx context.Context) ([]domain.AccountWithConcurrency, error) {
 	accounts, err := r.schedulableAccountsQuery(time.Now()).
 		Select(
 			dbaccount.FieldID,
@@ -1698,14 +1697,14 @@ func (r *accountRepository) ListSchedulableAccountLoads(ctx context.Context) ([]
 		return nil, err
 	}
 
-	loads := make([]service.AccountWithConcurrency, 0, len(accounts))
+	loads := make([]domain.AccountWithConcurrency, 0, len(accounts))
 	for _, account := range accounts {
 		projection := domain.Account{
 			ID:          account.ID,
 			Concurrency: account.Concurrency,
 			LoadFactor:  account.LoadFactor,
 		}
-		loads = append(loads, service.AccountWithConcurrency{
+		loads = append(loads, domain.AccountWithConcurrency{
 			ID:             account.ID,
 			MaxConcurrency: projection.EffectiveLoadFactor(),
 		})
@@ -1733,13 +1732,13 @@ func (r *accountRepository) ListSchedulableByGroupID(ctx context.Context, groupI
 	})
 }
 
-func (r *accountRepository) ListSchedulableCapacityByGroupIDs(ctx context.Context, groupIDs []int64) ([]service.GroupAccountCapacityRow, error) {
+func (r *accountRepository) ListSchedulableCapacityByGroupIDs(ctx context.Context, groupIDs []int64) ([]domain.GroupAccountCapacityRow, error) {
 	groupIDs = uniquePositiveInt64s(groupIDs)
 	if len(groupIDs) == 0 {
-		return []service.GroupAccountCapacityRow{}, nil
+		return []domain.GroupAccountCapacityRow{}, nil
 	}
 	if r.sql == nil {
-		rows := make([]service.GroupAccountCapacityRow, 0)
+		rows := make([]domain.GroupAccountCapacityRow, 0)
 		for _, groupID := range groupIDs {
 			accounts, err := r.ListSchedulableByGroupID(ctx, groupID)
 			if err != nil {
@@ -1747,7 +1746,7 @@ func (r *accountRepository) ListSchedulableCapacityByGroupIDs(ctx context.Contex
 			}
 			for i := range accounts {
 				acc := &accounts[i]
-				rows = append(rows, service.GroupAccountCapacityRow{
+				rows = append(rows, domain.GroupAccountCapacityRow{
 					GroupID:             groupID,
 					AccountID:           acc.ID,
 					Concurrency:         acc.Concurrency,
@@ -1787,9 +1786,9 @@ func (r *accountRepository) ListSchedulableCapacityByGroupIDs(ctx context.Contex
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make([]service.GroupAccountCapacityRow, 0)
+	out := make([]domain.GroupAccountCapacityRow, 0)
 	for rows.Next() {
-		var row service.GroupAccountCapacityRow
+		var row domain.GroupAccountCapacityRow
 		var extraRaw string
 		if err := rows.Scan(
 			&row.GroupID,
@@ -2144,7 +2143,7 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 func (r *accountRepository) SetGrokCredentialTempUnschedulableIfMatch(
 	ctx context.Context,
 	id int64,
-	snapshot service.GrokCredentialMutationSnapshot,
+	snapshot domain.GrokCredentialMutationSnapshot,
 	until time.Time,
 	reason string,
 ) (bool, error) {

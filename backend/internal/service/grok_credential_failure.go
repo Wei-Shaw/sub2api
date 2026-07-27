@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
 )
@@ -22,17 +23,21 @@ const (
 	grokCredentialCacheCleanupTimeout = 500 * time.Millisecond
 
 	GrokCredentialUnavailableClientMessage = "No healthy Grok OAuth account is currently available"
+)
 
-	GrokCredentialReasonRevoked          GatewayFailureReason = "grok_oauth_credential_revoked"
-	GrokCredentialReasonMissing          GatewayFailureReason = "grok_oauth_credentials_missing"
-	GrokCredentialReasonEntitlement      GatewayFailureReason = "grok_oauth_entitlement_action_required"
-	GrokCredentialReasonProxyInvalid     GatewayFailureReason = "grok_oauth_proxy_invalid"
-	GrokCredentialReasonRefreshTransient GatewayFailureReason = "grok_oauth_refresh_transient"
-	GrokCredentialReasonProviderConfig   GatewayFailureReason = "grok_oauth_provider_config"
-	GrokCredentialReasonProviderDown     GatewayFailureReason = "grok_oauth_provider_unavailable"
-	GrokCredentialReasonAccountChanged   GatewayFailureReason = "grok_oauth_account_state_changed"
-	GrokCredentialReasonStateUpdate      GatewayFailureReason = "grok_oauth_account_state_update_failed"
-	GrokCredentialReasonFailoverTimeout  GatewayFailureReason = "grok_oauth_failover_timeout"
+// GrokCredentialReason* sentinels moved to internal/domain/grok_credential.go.
+// Aliases preserve identity for all existing call sites and test stubs.
+const (
+	GrokCredentialReasonRevoked          = domain.GrokCredentialReasonRevoked
+	GrokCredentialReasonMissing          = domain.GrokCredentialReasonMissing
+	GrokCredentialReasonEntitlement      = domain.GrokCredentialReasonEntitlement
+	GrokCredentialReasonProxyInvalid     = domain.GrokCredentialReasonProxyInvalid
+	GrokCredentialReasonRefreshTransient = domain.GrokCredentialReasonRefreshTransient
+	GrokCredentialReasonProviderConfig   = domain.GrokCredentialReasonProviderConfig
+	GrokCredentialReasonProviderDown     = domain.GrokCredentialReasonProviderDown
+	GrokCredentialReasonAccountChanged   = domain.GrokCredentialReasonAccountChanged
+	GrokCredentialReasonStateUpdate      = domain.GrokCredentialReasonStateUpdate
+	GrokCredentialReasonFailoverTimeout  = domain.GrokCredentialReasonFailoverTimeout
 )
 
 var errGrokCredentialStateUpdateFailed = errors.New("grok oauth account state update failed")
@@ -47,16 +52,9 @@ type grokCredentialFailureClass struct {
 	snapshot  *GrokCredentialMutationSnapshot
 }
 
-// GrokCredentialMutationSnapshot is the credential identity observed when the
-// request selected an account. Repository mutations compare all fields before
-// quarantining that account so a concurrent refresh cannot be overwritten.
-type GrokCredentialMutationSnapshot struct {
-	CredentialsJSON string
-	AccessToken     string
-	RefreshToken    string
-	TokenVersion    int64
-	ProxyID         *int64
-}
+// GrokCredentialMutationSnapshot moved to internal/domain/grok_credential.go.
+// Alias preserves identity so all repo/service/handler call sites compile unchanged.
+type GrokCredentialMutationSnapshot = domain.GrokCredentialMutationSnapshot
 
 type grokCredentialFailureSnapshotError struct {
 	cause    error

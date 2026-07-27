@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
@@ -312,29 +313,16 @@ type AcquireResult struct {
 	ReleaseFunc func() // Must be called when done (typically via defer)
 }
 
-type AccountWithConcurrency struct {
-	ID             int64
-	MaxConcurrency int
-}
+// AccountWithConcurrency / UserWithConcurrency / AccountLoadInfo / UserLoadInfo
+// moved to internal/domain/concurrency.go. Aliases preserve identity so all
+// repo/service/handler call sites and test stubs compile unchanged.
+type AccountWithConcurrency = domain.AccountWithConcurrency
 
-type UserWithConcurrency struct {
-	ID             int64
-	MaxConcurrency int
-}
+type UserWithConcurrency = domain.UserWithConcurrency
 
-type AccountLoadInfo struct {
-	AccountID          int64
-	CurrentConcurrency int
-	WaitingCount       int
-	LoadRate           int // 0-100+ (percent)
-}
+type AccountLoadInfo = domain.AccountLoadInfo
 
-type UserLoadInfo struct {
-	UserID             int64
-	CurrentConcurrency int
-	WaitingCount       int
-	LoadRate           int // 0-100+ (percent)
-}
+type UserLoadInfo = domain.UserLoadInfo
 
 // AcquireAccountSlot attempts to acquire a concurrency slot for an account.
 // If the account is at max concurrency, it waits until a slot is available or timeout.

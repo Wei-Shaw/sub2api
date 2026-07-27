@@ -19,6 +19,7 @@ import (
 	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/responseheaders"
 	"github.com/cespare/xxhash/v2"
@@ -586,7 +587,10 @@ const (
 	NextAccountStop
 )
 
-type GatewayFailureReason string
+// GatewayFailureReason moved to internal/domain/grok_credential.go.
+// Alias preserves identity so all consumers (openai_gateway_upstream_errors.go,
+// grok_credential_failure.go, UpstreamFailoverError.Reason, etc.) compile unchanged.
+type GatewayFailureReason = domain.GatewayFailureReason
 
 // UpstreamFailoverError indicates an upstream or credential error that may
 // trigger account failover. Additive metadata keeps existing composite literals

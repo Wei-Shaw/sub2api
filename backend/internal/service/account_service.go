@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
-const AccountListGroupUngrouped int64 = -1
-const AccountPrivacyModeUnsetFilter = "__unset__"
+// Account-domain query sentinels moved to internal/domain/account.go.
+// Aliases preserve identity for all existing call sites and test stubs.
+const AccountListGroupUngrouped = domain.AccountListGroupUngrouped
+const AccountPrivacyModeUnsetFilter = domain.AccountPrivacyModeUnsetFilter
 
 // CreateAccountRequest 创建账号请求
 type CreateAccountRequest struct {
