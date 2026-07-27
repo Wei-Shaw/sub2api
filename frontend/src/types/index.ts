@@ -1055,12 +1055,7 @@ export interface Account {
   concurrency: number
   load_factor?: number | null
   current_concurrency?: number // Real-time concurrency count from Redis
-  scheduler_score?: {
-    base_score: number
-    sticky_score?: number
-    sticky_score_infinity?: boolean
-    sticky_weighted_enabled: boolean
-  } | null
+  scheduler_score?: AccountSchedulerScore | null
   scheduler_scores?: AccountSchedulerGroupScore[] | null
   priority: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
@@ -1152,14 +1147,44 @@ export interface Account {
   parent_chatgpt_account_id?: string
 }
 
-export interface AccountSchedulerGroupScore {
-  group_id?: number | null
-  group_name?: string
-  group_priority?: number | null
+export interface AccountSchedulerScoreComponent {
+  value: number
+  value_known: boolean
+  factor: number
+  weight: number
+  contribution: number
+}
+
+export interface AccountSchedulerScoreBreakdown {
+  priority: AccountSchedulerScoreComponent
+  load: AccountSchedulerScoreComponent
+  queue: AccountSchedulerScoreComponent
+  error_rate: AccountSchedulerScoreComponent
+  ttft: AccountSchedulerScoreComponent
+  reset: AccountSchedulerScoreComponent
+  quota_headroom: AccountSchedulerScoreComponent
+  upstream_cost: AccountSchedulerScoreComponent
+  current_concurrency: number
+  waiting_count: number
+  load_rate: number
+  has_ttft: boolean
+  previous_weight: number
+  session_sticky_weight: number
+}
+
+export interface AccountSchedulerScore {
   base_score: number
   sticky_score?: number
   sticky_score_infinity?: boolean
   sticky_weighted_enabled: boolean
+  advanced_scheduler_enabled?: boolean
+  breakdown?: AccountSchedulerScoreBreakdown
+}
+
+export interface AccountSchedulerGroupScore extends AccountSchedulerScore {
+  group_id?: number | null
+  group_name?: string
+  group_priority?: number | null
 }
 
 // Account Usage types

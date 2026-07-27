@@ -794,9 +794,9 @@ func TestBuildOpenAIAccountSchedulerScoreSnapshotUpstreamCostIsExactNoOpWithoutS
 		2: {AccountID: 2, LoadRate: 80},
 	}
 	weights := GatewayOpenAIWSSchedulerScoreWeightsView{Priority: 1, Load: 1, Queue: 0.7, ErrorRate: 0.8, TTFT: 0.5}
-	baseline := buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, weights, false, defaultOpenAIOAuthSchedulingRateMultiplier)
+	baseline := buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, weights, false, defaultOpenAIOAuthSchedulingRateMultiplier, nil, false)
 	weights.UpstreamCost = 1.5
-	withCost := buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, weights, false, defaultOpenAIOAuthSchedulingRateMultiplier)
+	withCost := buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, weights, false, defaultOpenAIOAuthSchedulingRateMultiplier, nil, false)
 
 	require.Equal(t, baseline, withCost)
 }
@@ -808,7 +808,47 @@ func TestBuildOpenAIAccountSchedulerScoreSnapshotUsesUpstreamCostSignal(t *testi
 		upstreamCostTestAccount(2, UpstreamBillingProbeStatusOK, 0.8, now.Add(-time.Minute), 30*time.Minute),
 	}
 	weights := GatewayOpenAIWSSchedulerScoreWeightsView{UpstreamCost: 1.5}
-	scores := buildOpenAIAccountSchedulerScoreSnapshot(accounts, nil, weights, false, defaultOpenAIOAuthSchedulingRateMultiplier)
+	scores := buildOpenAIAccountSchedulerScoreSnapshot(accounts, nil, weights, false, defaultOpenAIOAuthSchedulingRateMultiplier, nil, false)
 
 	require.Greater(t, scores[1].BaseScore, scores[2].BaseScore)
+}
+
+func TestBuildOpenAIAccountSchedulerScoreSnapshotIncludesLiveRuntimeTerms(t *testing.T) {
+	accounts := []*Account{
+		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Priority: 0},
+		{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Priority: 1},
+	}
+	runtimeStats := newOpenAIAccountRuntimeStats()
+	fastTTFT := 100
+	slowTTFT := 300
+	runtimeStats.report(1, false, &fastTTFT)
+	runtimeStats.report(1, false, nil)
+	runtimeStats.report(2, true, &slowTTFT)
+
+	weights := GatewayOpenAIWSSchedulerScoreWeightsView{ErrorRate: 1, TTFT: 1}
+	scores := buildOpenAIAccountSchedulerScoreSnapshot(
+		accounts,
+		nil,
+		weights,
+		false,
+		defaultOpenAIOAuthSchedulingRateMultiplier,
+		runtimeStats,
+		true,
+	)
+
+	first := scores[1]
+	second := scores[2]
+	require.True(t, first.AdvancedSchedulerEnabled)
+	require.True(t, first.Breakdown.ErrorRate.ValueKnown)
+	require.InDelta(t, 0.36, first.Breakdown.ErrorRate.Value, 0.000001)
+	require.InDelta(t, 0.64, first.Breakdown.ErrorRate.Factor, 0.000001)
+	require.True(t, first.Breakdown.TTFT.ValueKnown)
+	require.Equal(t, float64(fastTTFT), first.Breakdown.TTFT.Value)
+	require.Equal(t, 1.0, first.Breakdown.TTFT.Factor)
+	require.Equal(t, 0.0, second.Breakdown.TTFT.Factor)
+	require.InDelta(t,
+		first.Breakdown.ErrorRate.Contribution+first.Breakdown.TTFT.Contribution,
+		first.BaseScore,
+		0.000001,
+	)
 }

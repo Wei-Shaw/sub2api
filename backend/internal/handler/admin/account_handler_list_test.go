@@ -101,7 +101,20 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 			Items []struct {
 				ID             int64 `json:"id"`
 				SchedulerScore struct {
-					BaseScore float64 `json:"base_score"`
+					BaseScore                float64 `json:"base_score"`
+					AdvancedSchedulerEnabled bool    `json:"advanced_scheduler_enabled"`
+					Breakdown                struct {
+						Priority struct {
+							Value        float64 `json:"value"`
+							ValueKnown   bool    `json:"value_known"`
+							Factor       float64 `json:"factor"`
+							Weight       float64 `json:"weight"`
+							Contribution float64 `json:"contribution"`
+						} `json:"priority"`
+						Load struct {
+							ValueKnown bool `json:"value_known"`
+						} `json:"load"`
+					} `json:"breakdown"`
 				} `json:"scheduler_score"`
 				SchedulerScores []struct {
 					GroupID       *int64  `json:"group_id"`
@@ -145,6 +158,14 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 	require.Equal(t, 100, *high.SchedulerScores[0].GroupPriority)
 	require.Equal(t, 1, *low.SchedulerScores[0].GroupPriority)
 	require.Greater(t, high.SchedulerScores[0].BaseScore, low.SchedulerScores[0].BaseScore)
+	require.False(t, high.SchedulerScore.AdvancedSchedulerEnabled)
+	require.True(t, high.SchedulerScore.Breakdown.Priority.ValueKnown)
+	require.Equal(t, 1.0, high.SchedulerScore.Breakdown.Priority.Value)
+	require.Equal(t,
+		high.SchedulerScore.Breakdown.Priority.Factor*high.SchedulerScore.Breakdown.Priority.Weight,
+		high.SchedulerScore.Breakdown.Priority.Contribution,
+	)
+	require.True(t, high.SchedulerScore.Breakdown.Load.ValueKnown)
 }
 
 func TestAccountHandlerListSkipsSchedulerScoresByDefault(t *testing.T) {

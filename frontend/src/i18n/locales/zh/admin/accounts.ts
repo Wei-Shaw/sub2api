@@ -123,7 +123,32 @@ export default {
         baseShort: '普通',
         stickyShort: '粘性',
         ungrouped: '未分组',
-        hint: '显示格式为“分组名 / 基础分 / 粘性加分”。基础分按当前筛选条件限定的候选账号计算，包含优先级、负载、排队、错误率、首包延迟、重置窗口、额度余量、计费倍率等因子；粘性加分只在开启粘性加权时用于 previous_response_id 或 session_hash。分数越大越优先。'
+        hint: '悬停分数可查看当前列表筛选候选池中的各项计算明细。关闭高级调度时显示的是预览分数，不参与实际路由。',
+        scoreDetails: '查看 {group} 的调度分数明细',
+        active: '高级调度已启用，当前基础分参与路由',
+        preview: '高级调度未启用，仅显示配置预览',
+        base: '基础 {score}',
+        stickyPotential: '粘性潜在 {score}',
+        terms: {
+          priority: '优先级',
+          load: '负载',
+          queue: '排队',
+          error_rate: '错误率',
+          ttft: '首包延迟',
+          reset: '重置窗口',
+          quota_headroom: '额度余量',
+          upstream_cost: '上游成本'
+        },
+        priorityValue: '原始值 {value}',
+        loadValue: '负载 {rate}% / 并发 {concurrency}',
+        queueValue: '等待 {count}',
+        errorValue: 'EWMA {rate}%',
+        ttftValue: 'EWMA {value} ms',
+        noRuntimeSample: '当前实例暂无运行样本',
+        noTTFTSample: '暂无 TTFT 样本，使用中性因子',
+        normalizedFactor: '归一化因子',
+        stickyWeighted: '粘性加权已启用：previous_response +{previous}，session +{session}；仅对应命中的请求会获得加分。',
+        stickyHardAffinity: '粘性加权未启用：previous_response_id 和 session_hash 使用硬亲和；该效果不计入基础分。'
       },
       usageWindowsHint: '“5h / 7d”是上游账号（如 OpenAI ChatGPT、Claude）官方的滚动用量窗口限制，由上游对账号设定，并非 sub2api 配置，也与你映射的模型无关。窗口滚动到期后用量会自动重置，无法在 sub2api 端解除该限制。',
       ollamaCloud: {

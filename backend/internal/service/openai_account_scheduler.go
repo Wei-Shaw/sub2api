@@ -275,6 +275,14 @@ func (s *openAIAccountRuntimeStats) snapshot(accountID int64) (errorRate float64
 	return errorRate, ttftValue, true
 }
 
+func (s *openAIAccountRuntimeStats) has(accountID int64) bool {
+	if s == nil || accountID <= 0 {
+		return false
+	}
+	_, ok := s.accounts.Load(accountID)
+	return ok
+}
+
 func (s *openAIAccountRuntimeStats) size() int {
 	if s == nil {
 		return 0
@@ -2379,10 +2387,43 @@ func (w GatewayOpenAIWSSchedulerScoreWeightsView) configWeights() config.Gateway
 }
 
 type OpenAIAccountSchedulerScoreSnapshot struct {
-	BaseScore             float64
-	StickyScore           float64
-	StickyScoreInfinity   bool
-	StickyWeightedEnabled bool
+	BaseScore                float64
+	StickyScore              float64
+	StickyScoreInfinity      bool
+	StickyWeightedEnabled    bool
+	AdvancedSchedulerEnabled bool
+	Breakdown                OpenAIAccountSchedulerScoreBreakdown
+}
+
+// OpenAIAccountSchedulerScoreComponentSnapshot records one auditable term in
+// the account-selection score. Value is the source value when it is numeric;
+// Factor is the normalized value used by the scheduler.
+type OpenAIAccountSchedulerScoreComponentSnapshot struct {
+	Value        float64
+	ValueKnown   bool
+	Factor       float64
+	Weight       float64
+	Contribution float64
+}
+
+// OpenAIAccountSchedulerScoreBreakdown is the request-independent score
+// baseline exposed to administrators. Request-specific gates and sticky IDs
+// are deliberately not represented as a selected-account prediction.
+type OpenAIAccountSchedulerScoreBreakdown struct {
+	Priority            OpenAIAccountSchedulerScoreComponentSnapshot
+	Load                OpenAIAccountSchedulerScoreComponentSnapshot
+	Queue               OpenAIAccountSchedulerScoreComponentSnapshot
+	ErrorRate           OpenAIAccountSchedulerScoreComponentSnapshot
+	TTFT                OpenAIAccountSchedulerScoreComponentSnapshot
+	Reset               OpenAIAccountSchedulerScoreComponentSnapshot
+	QuotaHeadroom       OpenAIAccountSchedulerScoreComponentSnapshot
+	UpstreamCost        OpenAIAccountSchedulerScoreComponentSnapshot
+	CurrentConcurrency  int
+	WaitingCount        int
+	LoadRate            int
+	HasTTFT             bool
+	PreviousWeight      float64
+	SessionStickyWeight float64
 }
 
 func (s *RateLimitService) BuildOpenAIAccountSchedulerScoreSnapshot(
@@ -2400,6 +2441,8 @@ func (s *RateLimitService) BuildOpenAIAccountSchedulerScoreSnapshot(
 		gateway.openAIWSSchedulerWeightsForRequest(ctx),
 		gateway.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx),
 		gateway.openAIOAuthSchedulingRateMultiplier(ctx),
+		nil,
+		gateway.isOpenAIAdvancedSchedulerEnabled(ctx),
 	)
 }
 
@@ -2408,7 +2451,28 @@ func BuildOpenAIAccountSchedulerScoreSnapshot(
 	loadMap map[int64]*AccountLoadInfo,
 ) map[int64]OpenAIAccountSchedulerScoreSnapshot {
 	gateway := &OpenAIGatewayService{}
-	return buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, gateway.openAIWSSchedulerWeights(), false, defaultOpenAIOAuthSchedulingRateMultiplier)
+	return buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, gateway.openAIWSSchedulerWeights(), false, defaultOpenAIOAuthSchedulingRateMultiplier, nil, false)
+}
+
+// BuildOpenAIAccountSchedulerScoreSnapshot returns the same live baseline
+// factors used by this gateway instance's advanced scheduler.
+func (s *OpenAIGatewayService) BuildOpenAIAccountSchedulerScoreSnapshot(
+	ctx context.Context,
+	accounts []*Account,
+	loadMap map[int64]*AccountLoadInfo,
+) map[int64]OpenAIAccountSchedulerScoreSnapshot {
+	if s == nil {
+		return BuildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap)
+	}
+	return buildOpenAIAccountSchedulerScoreSnapshot(
+		accounts,
+		loadMap,
+		s.openAIWSSchedulerWeightsForRequest(ctx),
+		s.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx),
+		s.openAIOAuthSchedulingRateMultiplier(ctx),
+		s.openaiAccountStats,
+		s.isOpenAIAdvancedSchedulerEnabled(ctx),
+	)
 }
 
 func buildOpenAIAccountSchedulerScoreSnapshot(
@@ -2417,6 +2481,8 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 	weights GatewayOpenAIWSSchedulerScoreWeightsView,
 	stickyWeightedEnabled bool,
 	oauthSchedulingRateMultiplier float64,
+	runtimeStats *openAIAccountRuntimeStats,
+	advancedSchedulerEnabled bool,
 ) map[int64]OpenAIAccountSchedulerScoreSnapshot {
 	if len(accounts) == 0 {
 		return nil
@@ -2430,12 +2496,16 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 		if loadInfo == nil {
 			loadInfo = &AccountLoadInfo{AccountID: account.ID}
 		}
+		errorRate, ttft, hasTTFT := 0.0, 0.0, false
+		if runtimeStats != nil {
+			errorRate, ttft, hasTTFT = runtimeStats.snapshot(account.ID)
+		}
 		candidates = append(candidates, openAIAccountCandidateScore{
 			account:   account,
 			loadInfo:  loadInfo,
-			errorRate: 0,
-			ttft:      0,
-			hasTTFT:   false,
+			errorRate: errorRate,
+			ttft:      ttft,
+			hasTTFT:   hasTTFT,
 		})
 	}
 	if len(candidates) == 0 {
@@ -2444,6 +2514,8 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 
 	minPriority, maxPriority := openAIAccountSchedulingPriority(candidates[0].account), openAIAccountSchedulingPriority(candidates[0].account)
 	maxWaiting := 1
+	minTTFT, maxTTFT := 0.0, 0.0
+	hasTTFTSample := false
 	for i := range candidates {
 		candidate := &candidates[i]
 		candidate.priority = openAIAccountSchedulingPriority(candidate.account)
@@ -2455,6 +2527,19 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 		}
 		if candidate.loadInfo.WaitingCount > maxWaiting {
 			maxWaiting = candidate.loadInfo.WaitingCount
+		}
+		if candidate.hasTTFT && candidate.ttft > 0 {
+			if !hasTTFTSample {
+				minTTFT, maxTTFT = candidate.ttft, candidate.ttft
+				hasTTFTSample = true
+			} else {
+				if candidate.ttft < minTTFT {
+					minTTFT = candidate.ttft
+				}
+				if candidate.ttft > maxTTFT {
+					maxTTFT = candidate.ttft
+				}
+			}
 		}
 	}
 
@@ -2498,8 +2583,11 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 		}
 		loadFactor := 1 - clamp01(float64(candidate.loadInfo.LoadRate)/100.0)
 		queueFactor := 1 - clamp01(float64(candidate.loadInfo.WaitingCount)/float64(maxWaiting))
-		errorFactor := 1.0
+		errorFactor := 1 - clamp01(candidate.errorRate)
 		ttftFactor := 0.5
+		if candidate.hasTTFT && hasTTFTSample && maxTTFT > minTTFT {
+			ttftFactor = 1 - clamp01((candidate.ttft-minTTFT)/(maxTTFT-minTTFT))
+		}
 		resetFactor := 0.0
 		if weights.Reset > 0 && hasResetSample {
 			if end := candidate.account.SessionWindowEnd; end != nil && now.Before(*end) {
@@ -2527,9 +2615,26 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 			weights.QuotaHeadroom*quotaHeadroomFactor +
 			weights.UpstreamCost*(upstreamCostFactor-openAIUpstreamCostNeutralFactor)
 		score := OpenAIAccountSchedulerScoreSnapshot{
-			BaseScore:             baseScore,
-			StickyWeightedEnabled: stickyWeightedEnabled,
-			StickyScoreInfinity:   !stickyWeightedEnabled,
+			BaseScore:                baseScore,
+			StickyWeightedEnabled:    stickyWeightedEnabled,
+			StickyScoreInfinity:      !stickyWeightedEnabled,
+			AdvancedSchedulerEnabled: advancedSchedulerEnabled,
+			Breakdown: OpenAIAccountSchedulerScoreBreakdown{
+				Priority:            OpenAIAccountSchedulerScoreComponentSnapshot{Value: float64(candidate.priority), ValueKnown: true, Factor: priorityFactor, Weight: weights.Priority, Contribution: weights.Priority * priorityFactor},
+				Load:                OpenAIAccountSchedulerScoreComponentSnapshot{Value: float64(candidate.loadInfo.LoadRate), ValueKnown: true, Factor: loadFactor, Weight: weights.Load, Contribution: weights.Load * loadFactor},
+				Queue:               OpenAIAccountSchedulerScoreComponentSnapshot{Value: float64(candidate.loadInfo.WaitingCount), ValueKnown: true, Factor: queueFactor, Weight: weights.Queue, Contribution: weights.Queue * queueFactor},
+				ErrorRate:           OpenAIAccountSchedulerScoreComponentSnapshot{Value: candidate.errorRate, ValueKnown: runtimeStats.has(candidate.account.ID), Factor: errorFactor, Weight: weights.ErrorRate, Contribution: weights.ErrorRate * errorFactor},
+				TTFT:                OpenAIAccountSchedulerScoreComponentSnapshot{Value: candidate.ttft, ValueKnown: candidate.hasTTFT, Factor: ttftFactor, Weight: weights.TTFT, Contribution: weights.TTFT * ttftFactor},
+				Reset:               OpenAIAccountSchedulerScoreComponentSnapshot{Factor: resetFactor, Weight: weights.Reset, Contribution: weights.Reset * resetFactor},
+				QuotaHeadroom:       OpenAIAccountSchedulerScoreComponentSnapshot{Factor: quotaHeadroomFactor, Weight: weights.QuotaHeadroom, Contribution: weights.QuotaHeadroom * quotaHeadroomFactor},
+				UpstreamCost:        OpenAIAccountSchedulerScoreComponentSnapshot{Factor: upstreamCostFactor, Weight: weights.UpstreamCost, Contribution: weights.UpstreamCost * (upstreamCostFactor - openAIUpstreamCostNeutralFactor)},
+				CurrentConcurrency:  candidate.loadInfo.CurrentConcurrency,
+				WaitingCount:        candidate.loadInfo.WaitingCount,
+				LoadRate:            candidate.loadInfo.LoadRate,
+				HasTTFT:             candidate.hasTTFT,
+				PreviousWeight:      weights.Previous,
+				SessionStickyWeight: weights.SessionSticky,
+			},
 		}
 		if stickyWeightedEnabled {
 			score.StickyScore = baseScore + weights.Previous + weights.SessionSticky

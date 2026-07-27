@@ -64,6 +64,7 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	openAIGatewayService    *service.OpenAIGatewayService
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -73,6 +74,12 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
+}
+
+// SetOpenAIGatewayService attaches the live scheduler instance used to expose
+// runtime score factors in the administrative account list.
+func (h *AccountHandler) SetOpenAIGatewayService(gateway *service.OpenAIGatewayService) {
+	h.openAIGatewayService = gateway
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -199,10 +206,37 @@ type AccountWithConcurrency struct {
 }
 
 type AccountSchedulerScore struct {
-	BaseScore             float64 `json:"base_score"`
-	StickyScore           float64 `json:"sticky_score"`
-	StickyScoreInfinity   bool    `json:"sticky_score_infinity"`
-	StickyWeightedEnabled bool    `json:"sticky_weighted_enabled"`
+	BaseScore                float64                        `json:"base_score"`
+	StickyScore              float64                        `json:"sticky_score"`
+	StickyScoreInfinity      bool                           `json:"sticky_score_infinity"`
+	StickyWeightedEnabled    bool                           `json:"sticky_weighted_enabled"`
+	AdvancedSchedulerEnabled bool                           `json:"advanced_scheduler_enabled"`
+	Breakdown                AccountSchedulerScoreBreakdown `json:"breakdown"`
+}
+
+type AccountSchedulerScoreComponent struct {
+	Value        float64 `json:"value"`
+	ValueKnown   bool    `json:"value_known"`
+	Factor       float64 `json:"factor"`
+	Weight       float64 `json:"weight"`
+	Contribution float64 `json:"contribution"`
+}
+
+type AccountSchedulerScoreBreakdown struct {
+	Priority            AccountSchedulerScoreComponent `json:"priority"`
+	Load                AccountSchedulerScoreComponent `json:"load"`
+	Queue               AccountSchedulerScoreComponent `json:"queue"`
+	ErrorRate           AccountSchedulerScoreComponent `json:"error_rate"`
+	TTFT                AccountSchedulerScoreComponent `json:"ttft"`
+	Reset               AccountSchedulerScoreComponent `json:"reset"`
+	QuotaHeadroom       AccountSchedulerScoreComponent `json:"quota_headroom"`
+	UpstreamCost        AccountSchedulerScoreComponent `json:"upstream_cost"`
+	CurrentConcurrency  int                            `json:"current_concurrency"`
+	WaitingCount        int                            `json:"waiting_count"`
+	LoadRate            int                            `json:"load_rate"`
+	HasTTFT             bool                           `json:"has_ttft"`
+	PreviousWeight      float64                        `json:"previous_weight"`
+	SessionStickyWeight float64                        `json:"session_sticky_weight"`
 }
 
 type AccountSchedulerGroupScore struct {
@@ -292,7 +326,9 @@ func (h *AccountHandler) scoreOpenAIAccountSchedulerPool(ctx context.Context, ac
 	}
 
 	var scores map[int64]service.OpenAIAccountSchedulerScoreSnapshot
-	if h.rateLimitService != nil {
+	if h.openAIGatewayService != nil {
+		scores = h.openAIGatewayService.BuildOpenAIAccountSchedulerScoreSnapshot(ctx, openAIAccounts, loadMap)
+	} else if h.rateLimitService != nil {
 		scores = h.rateLimitService.BuildOpenAIAccountSchedulerScoreSnapshot(ctx, openAIAccounts, loadMap)
 	} else {
 		scores = service.BuildOpenAIAccountSchedulerScoreSnapshot(openAIAccounts, loadMap)
@@ -300,13 +336,44 @@ func (h *AccountHandler) scoreOpenAIAccountSchedulerPool(ctx context.Context, ac
 	result := make(map[int64]AccountSchedulerScore, len(scores))
 	for accountID, score := range scores {
 		result[accountID] = AccountSchedulerScore{
-			BaseScore:             score.BaseScore,
-			StickyScore:           score.StickyScore,
-			StickyScoreInfinity:   score.StickyScoreInfinity,
-			StickyWeightedEnabled: score.StickyWeightedEnabled,
+			BaseScore:                score.BaseScore,
+			StickyScore:              score.StickyScore,
+			StickyScoreInfinity:      score.StickyScoreInfinity,
+			StickyWeightedEnabled:    score.StickyWeightedEnabled,
+			AdvancedSchedulerEnabled: score.AdvancedSchedulerEnabled,
+			Breakdown:                accountSchedulerScoreBreakdownFromService(score.Breakdown),
 		}
 	}
 	return result
+}
+
+func accountSchedulerScoreComponentFromService(component service.OpenAIAccountSchedulerScoreComponentSnapshot) AccountSchedulerScoreComponent {
+	return AccountSchedulerScoreComponent{
+		Value:        component.Value,
+		ValueKnown:   component.ValueKnown,
+		Factor:       component.Factor,
+		Weight:       component.Weight,
+		Contribution: component.Contribution,
+	}
+}
+
+func accountSchedulerScoreBreakdownFromService(breakdown service.OpenAIAccountSchedulerScoreBreakdown) AccountSchedulerScoreBreakdown {
+	return AccountSchedulerScoreBreakdown{
+		Priority:            accountSchedulerScoreComponentFromService(breakdown.Priority),
+		Load:                accountSchedulerScoreComponentFromService(breakdown.Load),
+		Queue:               accountSchedulerScoreComponentFromService(breakdown.Queue),
+		ErrorRate:           accountSchedulerScoreComponentFromService(breakdown.ErrorRate),
+		TTFT:                accountSchedulerScoreComponentFromService(breakdown.TTFT),
+		Reset:               accountSchedulerScoreComponentFromService(breakdown.Reset),
+		QuotaHeadroom:       accountSchedulerScoreComponentFromService(breakdown.QuotaHeadroom),
+		UpstreamCost:        accountSchedulerScoreComponentFromService(breakdown.UpstreamCost),
+		CurrentConcurrency:  breakdown.CurrentConcurrency,
+		WaitingCount:        breakdown.WaitingCount,
+		LoadRate:            breakdown.LoadRate,
+		HasTTFT:             breakdown.HasTTFT,
+		PreviousWeight:      breakdown.PreviousWeight,
+		SessionStickyWeight: breakdown.SessionStickyWeight,
+	}
 }
 
 // fetchOpenAIAccountLoadMap 一次性批查给定 OpenAI 账号的负载数据；

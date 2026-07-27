@@ -370,18 +370,59 @@
           </template>
           <template #cell-scheduler_score="{ row }">
             <div v-if="getSchedulerScoreRows(row).length" class="flex min-w-[7rem] flex-col gap-0.5 font-mono text-[11px] leading-4">
-              <div
+              <HelpTooltip
                 v-for="score in getSchedulerScoreRows(row)"
                 :key="String(score.group_id)"
-                class="flex items-center gap-1 whitespace-nowrap text-gray-700 dark:text-gray-300"
-                :title="`${formatSchedulerScoreGroup(score)} / ${formatSchedulerScore(score.base_score)} / ${formatStickySchedulerScore(score)}`"
+                width-class="w-[28rem] max-w-[calc(100vw-2rem)]"
               >
-                <span class="max-w-[4.75rem] truncate text-gray-500 dark:text-dark-400">{{ formatSchedulerScoreGroup(score) }}</span>
-                <span class="text-gray-300 dark:text-gray-600">/</span>
-                <span>{{ formatSchedulerScore(score.base_score) }}</span>
-                <span class="text-gray-300 dark:text-gray-600">/</span>
-                <span class="text-primary-700 dark:text-primary-300">{{ formatStickySchedulerScore(score) }}</span>
-              </div>
+                <template #trigger>
+                  <button
+                    type="button"
+                    class="flex items-center gap-1 whitespace-nowrap text-gray-700 decoration-dotted underline-offset-2 hover:text-primary-700 hover:underline focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-300 dark:hover:text-primary-300"
+                    :aria-label="t('admin.accounts.schedulerScore.scoreDetails', { group: formatSchedulerScoreGroup(score) })"
+                  >
+                    <span class="max-w-[4.75rem] truncate text-gray-500 dark:text-dark-400">{{ formatSchedulerScoreGroup(score) }}</span>
+                    <span class="text-gray-300 dark:text-gray-600">/</span>
+                    <span>{{ formatSchedulerScore(score.base_score) }}</span>
+                    <span class="text-gray-300 dark:text-gray-600">/</span>
+                    <span class="text-primary-700 dark:text-primary-300">{{ formatStickySchedulerScore(score) }}</span>
+                  </button>
+                </template>
+
+                <div class="space-y-2 font-sans text-xs leading-5">
+                  <div class="flex items-start justify-between gap-3 border-b border-white/15 pb-2">
+                    <div class="min-w-0">
+                      <div class="truncate font-medium text-white">{{ formatSchedulerScoreGroup(score) }}</div>
+                      <div class="text-gray-300">{{ t(score.advanced_scheduler_enabled ? 'admin.accounts.schedulerScore.active' : 'admin.accounts.schedulerScore.preview') }}</div>
+                    </div>
+                    <div class="shrink-0 text-right font-mono text-white">
+                      <div>{{ t('admin.accounts.schedulerScore.base', { score: formatSchedulerScore(score.base_score) }) }}</div>
+                      <div class="text-primary-200">{{ t('admin.accounts.schedulerScore.stickyPotential', { score: formatStickySchedulerScore(score) }) }}</div>
+                    </div>
+                  </div>
+
+                  <div v-if="score.breakdown" class="space-y-1.5">
+                    <div
+                      v-for="term in getSchedulerScoreTerms(score)"
+                      :key="term.key"
+                      class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-white/10 pb-1 last:border-0"
+                    >
+                      <div class="min-w-0">
+                        <span class="font-medium text-gray-100">{{ t(`admin.accounts.schedulerScore.terms.${term.key}`) }}</span>
+                        <span class="ml-1 text-gray-300">{{ formatSchedulerScoreTermValue(term.key, score) }}</span>
+                      </div>
+                      <span class="font-mono text-right text-gray-100">{{ formatSchedulerScoreTerm(term.component) }}</span>
+                    </div>
+                  </div>
+
+                  <div v-if="score.sticky_weighted_enabled" class="border-t border-white/15 pt-2 text-gray-200">
+                    {{ t('admin.accounts.schedulerScore.stickyWeighted', { previous: formatSchedulerScore(score.breakdown?.previous_weight), session: formatSchedulerScore(score.breakdown?.session_sticky_weight) }) }}
+                  </div>
+                  <div v-else class="border-t border-white/15 pt-2 text-gray-300">
+                    {{ t('admin.accounts.schedulerScore.stickyHardAffinity') }}
+                  </div>
+                </div>
+              </HelpTooltip>
             </div>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
@@ -613,11 +654,11 @@ const accountToolsDropdownStyle = computed(() => ({
   width: `${accountToolsDropdownPosition.width}px`
 }))
 const hiddenColumns = reactive<Set<string>>(new Set())
-const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'scheduler_score', 'rate_multiplier']
+const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'rate_multiplier']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
-// One-time migration: hide scheduler score for existing admins too, because showing it opt-ins to heavy backend scoring.
+// One-time migration: restore the score column for layouts hidden by the prior default.
 const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
-const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-hidden-by-default'
+const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-visible-by-default'
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
@@ -766,6 +807,43 @@ const formatSchedulerScoreGroup = (score: AccountSchedulerGroupScore): string =>
   return t('admin.accounts.schedulerScore.ungrouped')
 }
 
+type SchedulerScoreTermKey = 'priority' | 'load' | 'queue' | 'error_rate' | 'ttft' | 'reset' | 'quota_headroom' | 'upstream_cost'
+
+const getSchedulerScoreTerms = (score: AccountSchedulerGroupScore) => {
+  const breakdown = score.breakdown
+  if (!breakdown) return []
+  const keys: SchedulerScoreTermKey[] = ['priority', 'load', 'queue', 'error_rate', 'ttft', 'reset', 'quota_headroom', 'upstream_cost']
+  return keys.map(key => ({ key, component: breakdown[key] }))
+}
+
+const formatSchedulerScoreTerm = (component: { factor: number; weight: number; contribution: number }): string => {
+  return `${formatSchedulerScore(component.factor)} x ${formatSchedulerScore(component.weight)} = ${formatSchedulerScore(component.contribution)}`
+}
+
+const formatSchedulerScoreTermValue = (key: SchedulerScoreTermKey, score: AccountSchedulerGroupScore): string => {
+  const breakdown = score.breakdown
+  if (!breakdown) return ''
+  const component = breakdown[key]
+  switch (key) {
+    case 'priority':
+      return t('admin.accounts.schedulerScore.priorityValue', { value: formatSchedulerScore(component.value) })
+    case 'load':
+      return t('admin.accounts.schedulerScore.loadValue', { rate: breakdown.load_rate, concurrency: breakdown.current_concurrency })
+    case 'queue':
+      return t('admin.accounts.schedulerScore.queueValue', { count: breakdown.waiting_count })
+    case 'error_rate':
+      return component.value_known
+        ? t('admin.accounts.schedulerScore.errorValue', { rate: formatSchedulerScore(component.value * 100) })
+        : t('admin.accounts.schedulerScore.noRuntimeSample')
+    case 'ttft':
+      return component.value_known
+        ? t('admin.accounts.schedulerScore.ttftValue', { value: formatSchedulerScore(component.value) })
+        : t('admin.accounts.schedulerScore.noTTFTSample')
+    default:
+      return t('admin.accounts.schedulerScore.normalizedFactor')
+  }
+}
+
 const loadSavedColumns = () => {
   try {
     const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY)
@@ -774,9 +852,9 @@ const loadSavedColumns = () => {
       parsed.forEach(key => {
         hiddenColumns.add(key)
       })
-      // Older saved column layouts may have scheduler_score visible; migrate them to the new safe default once.
+      // Layouts from the prior release may have the score force-hidden; restore it once.
       if (localStorage.getItem(HIDDEN_COLUMNS_VERSION_KEY) !== HIDDEN_COLUMNS_CURRENT_VERSION) {
-        hiddenColumns.add('scheduler_score')
+        hiddenColumns.delete('scheduler_score')
         localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
         localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, HIDDEN_COLUMNS_CURRENT_VERSION)
       }

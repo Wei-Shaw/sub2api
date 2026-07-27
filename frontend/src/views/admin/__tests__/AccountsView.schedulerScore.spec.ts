@@ -198,7 +198,7 @@ describe('admin AccountsView scheduler score column', () => {
     await flushPromises()
 
     expect(listAccounts.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
-      include_scheduler_score: '0'
+      include_scheduler_score: '1'
     }))
 
     const ungroupedCell = wrapper.find('[data-test="scheduler-score-1"]')
@@ -218,27 +218,28 @@ describe('admin AccountsView scheduler score column', () => {
     expect(groupedCell.text()).toContain('2')
   })
 
-  it('keeps scheduler score hidden for old saved column settings until the admin opts in again', async () => {
+  it('migrates old saved column settings to show scheduler scores', async () => {
     localStorage.setItem('account-hidden-columns', JSON.stringify(['today_stats']))
-
-    mountView()
-    await flushPromises()
-
-    expect(listAccounts.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
-      include_scheduler_score: '0'
-    }))
-    expect(JSON.parse(localStorage.getItem('account-hidden-columns') || '[]')).toContain('scheduler_score')
-  })
-
-  it('requests scheduler scores when the migrated column settings explicitly show the column', async () => {
-    localStorage.setItem('account-hidden-columns', JSON.stringify(['today_stats']))
-    localStorage.setItem('account-hidden-columns-version', 'scheduler-score-hidden-by-default')
 
     mountView()
     await flushPromises()
 
     expect(listAccounts.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
       include_scheduler_score: '1'
+    }))
+    expect(JSON.parse(localStorage.getItem('account-hidden-columns') || '[]')).not.toContain('scheduler_score')
+    expect(localStorage.getItem('account-hidden-columns-version')).toBe('scheduler-score-visible-by-default')
+  })
+
+  it('does not request scheduler scores after an admin explicitly hides the column', async () => {
+    localStorage.setItem('account-hidden-columns', JSON.stringify(['today_stats', 'scheduler_score']))
+    localStorage.setItem('account-hidden-columns-version', 'scheduler-score-visible-by-default')
+
+    mountView()
+    await flushPromises()
+
+    expect(listAccounts.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
+      include_scheduler_score: '0'
     }))
   })
 
