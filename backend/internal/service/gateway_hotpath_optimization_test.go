@@ -219,7 +219,15 @@ REDACTED
 REDACTED
 
 	close(start)
-	time.Sleep(20 * time.Millisecond)
+	// Wait for every caller to have recorded its cache miss before releasing the
+	// loader. A fixed sleep raced here: a goroutine that reached the cache after
+	// the singleflight load had already finished got a hit instead of a miss, and
+	// the miss assertion below saw 11 of 12. The miss counter is the observable
+	// that says "all callers are now inside the singleflight group".
+	require.Eventually(t, func() bool {
+		_, miss, _, _, _ := GatewayUserGroupRateCacheStats()
+		return miss == int64(concurrent)
+REDACTED, 5*time.Second, time.Millisecond, "all callers must miss the cache before the loader is released")
 	close(unblock)
 	wg.Wait()
 
