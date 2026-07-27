@@ -6,7 +6,8 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/userattribute"
 )
 
 // UserAttributeDefinitionRepository implementation
@@ -15,11 +16,11 @@ type userAttributeDefinitionRepository struct {
 }
 
 // NewUserAttributeDefinitionRepository creates a new repository instance
-func NewUserAttributeDefinitionRepository(client *dbent.Client) service.UserAttributeDefinitionRepository {
+func NewUserAttributeDefinitionRepository(client *dbent.Client) userattribute.UserAttributeDefinitionRepository {
 	return &userAttributeDefinitionRepository{client: client}
 }
 
-func (r *userAttributeDefinitionRepository) Create(ctx context.Context, def *service.UserAttributeDefinition) error {
+func (r *userAttributeDefinitionRepository) Create(ctx context.Context, def *domain.UserAttributeDefinition) error {
 	client := clientFromContext(ctx, r.client)
 
 	created, err := client.UserAttributeDefinition.Create().
@@ -35,7 +36,7 @@ func (r *userAttributeDefinitionRepository) Create(ctx context.Context, def *ser
 		Save(ctx)
 
 	if err != nil {
-		return translatePersistenceError(err, nil, service.ErrAttributeKeyExists)
+		return translatePersistenceError(err, nil, domain.ErrAttributeKeyExists)
 	}
 
 	def.ID = created.ID
@@ -45,31 +46,31 @@ func (r *userAttributeDefinitionRepository) Create(ctx context.Context, def *ser
 	return nil
 }
 
-func (r *userAttributeDefinitionRepository) GetByID(ctx context.Context, id int64) (*service.UserAttributeDefinition, error) {
+func (r *userAttributeDefinitionRepository) GetByID(ctx context.Context, id int64) (*domain.UserAttributeDefinition, error) {
 	client := clientFromContext(ctx, r.client)
 
 	e, err := client.UserAttributeDefinition.Query().
 		Where(userattributedefinition.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
-		return nil, translatePersistenceError(err, service.ErrAttributeDefinitionNotFound, nil)
+		return nil, translatePersistenceError(err, domain.ErrAttributeDefinitionNotFound, nil)
 	}
 	return defEntityToService(e), nil
 }
 
-func (r *userAttributeDefinitionRepository) GetByKey(ctx context.Context, key string) (*service.UserAttributeDefinition, error) {
+func (r *userAttributeDefinitionRepository) GetByKey(ctx context.Context, key string) (*domain.UserAttributeDefinition, error) {
 	client := clientFromContext(ctx, r.client)
 
 	e, err := client.UserAttributeDefinition.Query().
 		Where(userattributedefinition.KeyEQ(key)).
 		Only(ctx)
 	if err != nil {
-		return nil, translatePersistenceError(err, service.ErrAttributeDefinitionNotFound, nil)
+		return nil, translatePersistenceError(err, domain.ErrAttributeDefinitionNotFound, nil)
 	}
 	return defEntityToService(e), nil
 }
 
-func (r *userAttributeDefinitionRepository) Update(ctx context.Context, def *service.UserAttributeDefinition) error {
+func (r *userAttributeDefinitionRepository) Update(ctx context.Context, def *domain.UserAttributeDefinition) error {
 	client := clientFromContext(ctx, r.client)
 
 	updated, err := client.UserAttributeDefinition.UpdateOneID(def.ID).
@@ -85,7 +86,7 @@ func (r *userAttributeDefinitionRepository) Update(ctx context.Context, def *ser
 		Save(ctx)
 
 	if err != nil {
-		return translatePersistenceError(err, service.ErrAttributeDefinitionNotFound, service.ErrAttributeKeyExists)
+		return translatePersistenceError(err, domain.ErrAttributeDefinitionNotFound, domain.ErrAttributeKeyExists)
 	}
 
 	def.UpdatedAt = updated.UpdatedAt
@@ -98,10 +99,10 @@ func (r *userAttributeDefinitionRepository) Delete(ctx context.Context, id int64
 	_, err := client.UserAttributeDefinition.Delete().
 		Where(userattributedefinition.IDEQ(id)).
 		Exec(ctx)
-	return translatePersistenceError(err, service.ErrAttributeDefinitionNotFound, nil)
+	return translatePersistenceError(err, domain.ErrAttributeDefinitionNotFound, nil)
 }
 
-func (r *userAttributeDefinitionRepository) List(ctx context.Context, enabledOnly bool) ([]service.UserAttributeDefinition, error) {
+func (r *userAttributeDefinitionRepository) List(ctx context.Context, enabledOnly bool) ([]domain.UserAttributeDefinition, error) {
 	client := clientFromContext(ctx, r.client)
 
 	q := client.UserAttributeDefinition.Query()
@@ -114,7 +115,7 @@ func (r *userAttributeDefinitionRepository) List(ctx context.Context, enabledOnl
 		return nil, err
 	}
 
-	result := make([]service.UserAttributeDefinition, 0, len(entities))
+	result := make([]domain.UserAttributeDefinition, 0, len(entities))
 	for _, e := range entities {
 		result = append(result, *defEntityToService(e))
 	}
@@ -132,7 +133,7 @@ func (r *userAttributeDefinitionRepository) UpdateDisplayOrders(ctx context.Cont
 		if _, err := tx.UserAttributeDefinition.UpdateOneID(id).
 			SetDisplayOrder(order).
 			Save(ctx); err != nil {
-			return translatePersistenceError(err, service.ErrAttributeDefinitionNotFound, nil)
+			return translatePersistenceError(err, domain.ErrAttributeDefinitionNotFound, nil)
 		}
 	}
 
@@ -152,11 +153,11 @@ type userAttributeValueRepository struct {
 }
 
 // NewUserAttributeValueRepository creates a new repository instance
-func NewUserAttributeValueRepository(client *dbent.Client) service.UserAttributeValueRepository {
+func NewUserAttributeValueRepository(client *dbent.Client) userattribute.UserAttributeValueRepository {
 	return &userAttributeValueRepository{client: client}
 }
 
-func (r *userAttributeValueRepository) GetByUserID(ctx context.Context, userID int64) ([]service.UserAttributeValue, error) {
+func (r *userAttributeValueRepository) GetByUserID(ctx context.Context, userID int64) ([]domain.UserAttributeValue, error) {
 	client := clientFromContext(ctx, r.client)
 
 	entities, err := client.UserAttributeValue.Query().
@@ -166,9 +167,9 @@ func (r *userAttributeValueRepository) GetByUserID(ctx context.Context, userID i
 		return nil, err
 	}
 
-	result := make([]service.UserAttributeValue, 0, len(entities))
+	result := make([]domain.UserAttributeValue, 0, len(entities))
 	for _, e := range entities {
-		result = append(result, service.UserAttributeValue{
+		result = append(result, domain.UserAttributeValue{
 			ID:          e.ID,
 			UserID:      e.UserID,
 			AttributeID: e.AttributeID,
@@ -180,9 +181,9 @@ func (r *userAttributeValueRepository) GetByUserID(ctx context.Context, userID i
 	return result, nil
 }
 
-func (r *userAttributeValueRepository) GetByUserIDs(ctx context.Context, userIDs []int64) ([]service.UserAttributeValue, error) {
+func (r *userAttributeValueRepository) GetByUserIDs(ctx context.Context, userIDs []int64) ([]domain.UserAttributeValue, error) {
 	if len(userIDs) == 0 {
-		return []service.UserAttributeValue{}, nil
+		return []domain.UserAttributeValue{}, nil
 	}
 
 	client := clientFromContext(ctx, r.client)
@@ -194,9 +195,9 @@ func (r *userAttributeValueRepository) GetByUserIDs(ctx context.Context, userIDs
 		return nil, err
 	}
 
-	result := make([]service.UserAttributeValue, 0, len(entities))
+	result := make([]domain.UserAttributeValue, 0, len(entities))
 	for _, e := range entities {
-		result = append(result, service.UserAttributeValue{
+		result = append(result, domain.UserAttributeValue{
 			ID:          e.ID,
 			UserID:      e.UserID,
 			AttributeID: e.AttributeID,
@@ -208,7 +209,7 @@ func (r *userAttributeValueRepository) GetByUserIDs(ctx context.Context, userIDs
 	return result, nil
 }
 
-func (r *userAttributeValueRepository) UpsertBatch(ctx context.Context, userID int64, inputs []service.UpdateUserAttributeInput) error {
+func (r *userAttributeValueRepository) UpsertBatch(ctx context.Context, userID int64, inputs []domain.UpdateUserAttributeInput) error {
 	if len(inputs) == 0 {
 		return nil
 	}
@@ -256,16 +257,16 @@ func (r *userAttributeValueRepository) DeleteByUserID(ctx context.Context, userI
 }
 
 // Helper functions for entity to service conversion
-func defEntityToService(e *dbent.UserAttributeDefinition) *service.UserAttributeDefinition {
+func defEntityToService(e *dbent.UserAttributeDefinition) *domain.UserAttributeDefinition {
 	if e == nil {
 		return nil
 	}
-	return &service.UserAttributeDefinition{
+	return &domain.UserAttributeDefinition{
 		ID:           e.ID,
 		Key:          e.Key,
 		Name:         e.Name,
 		Description:  e.Description,
-		Type:         service.UserAttributeType(e.Type),
+		Type:         domain.UserAttributeType(e.Type),
 		Options:      toServiceOptions(e.Options),
 		Required:     e.Required,
 		Validation:   toServiceValidation(e.Validation),
@@ -278,7 +279,7 @@ func defEntityToService(e *dbent.UserAttributeDefinition) *service.UserAttribute
 }
 
 // Type conversion helpers (map types <-> service types)
-func toEntOptions(opts []service.UserAttributeOption) []map[string]any {
+func toEntOptions(opts []domain.UserAttributeOption) []map[string]any {
 	if opts == nil {
 		return []map[string]any{}
 	}
@@ -289,13 +290,13 @@ func toEntOptions(opts []service.UserAttributeOption) []map[string]any {
 	return result
 }
 
-func toServiceOptions(opts []map[string]any) []service.UserAttributeOption {
+func toServiceOptions(opts []map[string]any) []domain.UserAttributeOption {
 	if opts == nil {
-		return []service.UserAttributeOption{}
+		return []domain.UserAttributeOption{}
 	}
-	result := make([]service.UserAttributeOption, len(opts))
+	result := make([]domain.UserAttributeOption, len(opts))
 	for i, o := range opts {
-		result[i] = service.UserAttributeOption{
+		result[i] = domain.UserAttributeOption{
 			Value: getString(o, "value"),
 			Label: getString(o, "label"),
 		}
@@ -303,7 +304,7 @@ func toServiceOptions(opts []map[string]any) []service.UserAttributeOption {
 	return result
 }
 
-func toEntValidation(v service.UserAttributeValidation) map[string]any {
+func toEntValidation(v domain.UserAttributeValidation) map[string]any {
 	result := map[string]any{}
 	if v.MinLength != nil {
 		result["min_length"] = *v.MinLength
@@ -326,8 +327,8 @@ func toEntValidation(v service.UserAttributeValidation) map[string]any {
 	return result
 }
 
-func toServiceValidation(v map[string]any) service.UserAttributeValidation {
-	result := service.UserAttributeValidation{}
+func toServiceValidation(v map[string]any) domain.UserAttributeValidation {
+	result := domain.UserAttributeValidation{}
 	if val := getInt(v, "min_length"); val != nil {
 		result.MinLength = val
 	}
