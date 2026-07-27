@@ -719,6 +719,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		// Antigravity 附带模型：无独立公开价卡时按 Flash 档兜底，避免计费中断。
 		return s.fallbackPrices["gemini-2.5-flash"]
 	}
+	if strings.Contains(modelLower, "gemini-3.6-flash") || strings.Contains(modelLower, "gemini-3-6-flash") {
+		return s.fallbackPrices["gemini-3.6-flash"]
+	}
 
 	// DeepSeek V4 系列：仅匹配已知 V4 Pro/Flash 与官方兼容别名
 	// （deepseek-chat / deepseek-reasoner → V4 Flash），未知 deepseek-* 型号不回退，避免误计价。
