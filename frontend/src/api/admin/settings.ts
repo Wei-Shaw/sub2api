@@ -400,6 +400,7 @@ export interface SystemSettings {
   totp_encryption_key_configured: boolean; // TOTP 加密密钥是否已配置
   session_binding_enabled: boolean; // 会话 IP/UA 绑定
   step_up_enabled: boolean; // 敏感操作 step-up 2FA
+  company_upgrade_charge_enabled: boolean; // 企业升级是否收费/冻结资金
   audit_log_retention_days: number; // 审计日志保留天数
 
   // 可信代理动态拉取（switch-trusted-proxies-dynamic）
@@ -780,6 +781,7 @@ export interface UpdateSettingsRequest {
   totp_enabled?: boolean; // TOTP 双因素认证
   session_binding_enabled?: boolean; // 会话 IP/UA 绑定
   step_up_enabled?: boolean; // 敏感操作 step-up 2FA
+  company_upgrade_charge_enabled?: boolean; // 企业升级是否收费/冻结资金
   audit_log_retention_days?: number; // 审计日志保留天数
   // 可信代理动态拉取
   trusted_proxies_dynamic_enabled?: boolean;

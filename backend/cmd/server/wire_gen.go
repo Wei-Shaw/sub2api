@@ -105,7 +105,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userAttributeValueRepository := repository.NewUserAttributeValueRepository(client)
 	userAttributeService := service.NewUserAttributeService(userAttributeDefinitionRepository, userAttributeValueRepository)
 	ssoSessionService := service.NewSsoSessionService(client, settingRepository)
-	organizationService := service.ProvideOrganizationService(organizationRepository, userRepository, configConfig, apiKeyAuthCacheInvalidator)
+	organizationService := service.ProvideOrganizationService(organizationRepository, userRepository, configConfig, apiKeyAuthCacheInvalidator, settingService)
 	authHandler := handler.ProvideAuthHandler(configConfig, authService, userService, settingService, promoService, redeemService, totpService, userAttributeService, ssoSessionService, organizationService)
 	userHandler := handler.NewUserHandler(userService, authService, emailService, emailCache, affiliateService, serviceUserPlatformQuotaRepository)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)

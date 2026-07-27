@@ -29,76 +29,6 @@
     </p>
     <div v-if="loading" class="py-10 text-center text-sm text-gray-500">{{ t('common.loading') }}</div>
 
-    <section v-else-if="activeTab === 'members'" class="space-y-4">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <span class="text-sm text-gray-500">{{ t('organization.members.slots', { used: usedSlots, limit: memberLimit }) }}</span>
-        <button class="btn btn-primary" :disabled="usedSlots >= memberLimit || operationKey !== ''" @click="showCreate = true">
-          {{ t('organization.members.create') }}
-        </button>
-      </div>
-      <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
-        <table class="w-full min-w-[860px] text-sm">
-          <thead class="bg-gray-50 text-left dark:bg-dark-800">
-            <tr>
-              <th class="p-3">{{ t('organization.login.loginName') }}</th>
-              <th class="p-3">{{ t('organization.iamUserId') }}</th>
-              <th class="p-3">{{ t('common.status') }}</th>
-              <th class="p-3">{{ t('organization.policies') }}</th>
-              <th class="p-3 text-right">{{ t('common.actions') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="member in members" :key="member.user_id" class="border-t border-gray-100 dark:border-dark-700">
-              <td class="p-3">
-                <div class="font-medium">{{ member.login_name }}</div>
-                <div class="max-w-xs break-all font-mono text-xs text-gray-500">{{ member.principal }}</div>
-              </td>
-              <td class="p-3 font-mono text-xs">{{ member.external_user_id }}</td>
-              <td class="p-3">{{ t(`organization.status.${member.status}`) }}</td>
-              <td class="max-w-xs break-words p-3">{{ member.policy_names.join(', ') || '-' }}</td>
-              <td class="p-3 text-right">
-                <div class="flex flex-wrap justify-end gap-1">
-                  <button class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="resetPassword(member)">{{ t('organization.members.resetPassword') }}</button>
-                  <button v-if="member.status === 'active'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="setStatus(member, 'disabled')">{{ t('organization.members.disable') }}</button>
-                  <button v-else-if="member.status === 'disabled'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="setStatus(member, 'active')">{{ t('organization.members.enable') }}</button>
-                  <button v-if="member.status !== 'archived'" class="btn btn-ghost btn-sm text-red-600" :disabled="isBusy(member)" @click="archiveMember(member)">{{ t('organization.members.archive') }}</button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section v-else-if="activeTab === 'authorization'" class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
-      <table class="w-full min-w-[680px] text-sm">
-        <thead class="bg-gray-50 text-left dark:bg-dark-800">
-          <tr>
-            <th class="p-3">{{ t('organization.login.loginName') }}</th>
-            <th v-for="policy in policies" :key="policy.key" class="p-3">
-              <div>{{ policy.display_name }}</div>
-              <div class="max-w-xs text-xs font-normal text-gray-500">{{ policy.description }}</div>
-              <div class="mt-1 text-xs font-normal text-gray-400">{{ policy.type }} v{{ policy.version }}</div>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="member in activeMembers" :key="member.user_id" class="border-t border-gray-100 dark:border-dark-700">
-            <td class="p-3 font-medium">{{ member.login_name }}</td>
-            <td v-for="policy in policies" :key="policy.key" class="p-3">
-              <input
-                type="checkbox"
-                :aria-label="`${member.login_name}: ${policy.display_name}`"
-                :checked="member.policy_names.includes(policy.key)"
-                :disabled="isBusy(member)"
-                @change="togglePolicy(member, policy.key, ($event.target as HTMLInputElement).checked)"
-              >
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
-
     <section v-else-if="activeTab === 'allocation'" class="space-y-3">
       <p class="text-sm text-gray-500">
         {{ t('organization.allocation.rootAvailable', { amount: finance?.available || '0' }) }}
@@ -126,18 +56,104 @@
       </div>
     </section>
 
-    <section v-else-if="activeTab === 'finance'" class="grid gap-4 sm:grid-cols-3">
-      <div v-for="field in ['available', 'frozen', 'total'] as const" :key="field" class="rounded-md border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
-        <div class="text-xs text-gray-500">{{ t(`organization.finance.${field}`) }}</div>
-        <div class="mt-2 break-all font-mono text-xl font-semibold">{{ finance?.[field] ?? '-' }}</div>
-      </div>
-      <div v-if="!finance?.available" class="text-sm text-gray-500 sm:col-span-3">
-        {{ t(`organization.balanceSource.${finance?.balance_source || 'allocated'}`) }}
-      </div>
-    </section>
+    <div v-else-if="activeTab === 'finance'" class="space-y-6">
+      <section class="grid gap-4 sm:grid-cols-3">
+        <div v-for="field in ['available', 'frozen', 'total'] as const" :key="field" class="rounded-md border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
+          <div class="text-xs text-gray-500">{{ t(`organization.finance.${field}`) }}</div>
+          <div class="mt-2 break-all font-mono text-xl font-semibold">{{ finance?.[field] ?? '-' }}</div>
+        </div>
+        <div v-if="!finance?.available" class="text-sm text-gray-500 sm:col-span-3">
+          {{ t(`organization.balanceSource.${finance?.balance_source || 'allocated'}`) }}
+        </div>
+      </section>
+
+      <section v-if="isOwner" class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.tabs.members') }}</h3>
+          <div class="flex flex-wrap items-center gap-3">
+            <span class="text-sm text-gray-500">{{ t('organization.members.slots', { used: usedSlots, limit: memberLimit }) }}</span>
+            <button class="btn btn-primary" :disabled="usedSlots >= memberLimit || operationKey !== ''" @click="showCreate = true">
+              {{ t('organization.members.create') }}
+            </button>
+          </div>
+        </div>
+        <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
+          <table class="w-full min-w-[860px] text-sm">
+            <thead class="bg-gray-50 text-left dark:bg-dark-800">
+              <tr>
+                <th class="p-3">{{ t('organization.login.loginName') }}</th>
+                <th class="p-3">{{ t('organization.iamUserId') }}</th>
+                <th class="p-3">{{ t('common.status') }}</th>
+                <th class="p-3">{{ t('organization.policies') }}</th>
+                <th class="p-3 text-right">{{ t('common.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="member in members" :key="member.user_id" class="border-t border-gray-100 dark:border-dark-700">
+                <td class="p-3">
+                  <div class="font-medium">{{ member.login_name }}</div>
+                  <div class="flex items-center gap-1">
+                    <span class="max-w-xs break-all font-mono text-xs text-gray-500">{{ member.principal }}</span>
+                    <button class="icon-btn shrink-0" :title="t('keys.copyToClipboard')" :aria-label="t('keys.copyToClipboard')" @click="copyToClipboard(member.principal, t('organization.members.copied'))"><Icon name="copy" size="sm" /></button>
+                  </div>
+                </td>
+                <td class="p-3 font-mono text-xs">{{ member.external_user_id }}</td>
+                <td class="p-3">{{ t(`organization.status.${member.status}`) }}</td>
+                <td class="max-w-xs break-words p-3">{{ member.policy_names.join(', ') || '-' }}</td>
+                <td class="p-3 text-right">
+                  <div class="flex flex-wrap justify-end gap-1">
+                    <button v-if="member.status !== 'archived'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="openAuthorization(member)">{{ t('organization.members.authorize') }}</button>
+                    <button v-if="member.status === 'active'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="openAllocation(member)">{{ t('organization.members.allocateFunds') }}</button>
+                    <button v-if="member.status !== 'archived'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="resetPassword(member)">{{ t('organization.members.resetPassword') }}</button>
+                    <button v-if="member.status === 'active'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="setStatus(member, 'disabled')">{{ t('organization.members.disable') }}</button>
+                    <button v-else-if="member.status === 'disabled'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="setStatus(member, 'active')">{{ t('organization.members.enable') }}</button>
+                    <button v-if="member.status !== 'archived'" class="btn btn-ghost btn-sm text-red-600" :disabled="isBusy(member)" @click="archiveMember(member)">{{ t('organization.members.archive') }}</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
 
     <section v-else class="space-y-4">
-      <form class="grid gap-3 md:grid-cols-3 xl:grid-cols-4" @submit.prevent="loadUsage(1)">
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+          <div class="text-xs text-gray-500">{{ t('organization.usage.statRequests') }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ (usageStats?.requests ?? 0).toLocaleString() }}</div>
+        </div>
+        <div class="rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+          <div class="text-xs text-gray-500">{{ t('organization.usage.statInputTokens') }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ (usageStats?.input_tokens ?? 0).toLocaleString() }}</div>
+        </div>
+        <div class="rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+          <div class="text-xs text-gray-500">{{ t('organization.usage.statOutputTokens') }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ (usageStats?.output_tokens ?? 0).toLocaleString() }}</div>
+        </div>
+        <div class="rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+          <div class="text-xs text-gray-500">{{ t('organization.usage.statCost') }}</div>
+          <div class="mt-1 break-all font-mono text-xl font-semibold">{{ usageStats?.actual_cost ?? '0' }}</div>
+        </div>
+      </div>
+
+      <section class="rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+        <div class="mb-3 text-sm font-medium">{{ t('organization.usage.trendTitle') }}</div>
+        <p v-if="!usageTrend.length" class="py-6 text-center text-sm text-gray-500">{{ t('organization.usage.trendEmpty') }}</p>
+        <div v-else class="flex h-40 items-end gap-1">
+          <div
+            v-for="point in usageTrend"
+            :key="point.bucket"
+            class="flex min-w-0 flex-1 flex-col items-center justify-end"
+            :title="`${new Date(point.bucket).toLocaleDateString()} · ${point.requests} ${t('organization.usage.statRequests')} · ${point.tokens} ${t('organization.usage.tokens')} · ${point.actual_cost}`"
+          >
+            <div class="w-full rounded-t bg-blue-500/70 transition-all dark:bg-blue-400/70" :style="{ height: trendBarHeight(point) }"></div>
+            <div class="mt-1 w-full truncate text-center text-[10px] text-gray-400">{{ new Date(point.bucket).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) }}</div>
+          </div>
+        </div>
+      </section>
+
+      <form class="grid gap-3 md:grid-cols-3 xl:grid-cols-4" @submit.prevent="searchUsage">
         <select v-model="usageFilters.memberId" class="input">
           <option value="">{{ t('organization.usage.allMembers') }}</option>
           <option v-for="member in members" :key="member.user_id" :value="String(member.user_id)">{{ member.login_name }}</option>
@@ -155,13 +171,13 @@
         <button class="btn btn-secondary" type="submit" :disabled="usageLoading">{{ t('common.search') }}</button>
       </form>
       <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
-        <table class="w-full min-w-[1050px] text-sm">
+        <table class="w-full min-w-[1180px] text-sm">
           <thead class="bg-gray-50 text-left dark:bg-dark-800">
-            <tr><th class="p-3">{{ t('organization.usage.member') }}</th><th class="p-3">{{ t('organization.usage.apiKey') }}</th><th class="p-3">{{ t('organization.usage.model') }}</th><th class="p-3">{{ t('organization.usage.endpoint') }}</th><th class="p-3">{{ t('common.status') }}</th><th class="p-3">{{ t('organization.usage.tokens') }}</th><th class="p-3">{{ t('organization.usage.charge') }}</th><th class="p-3">{{ t('organization.usage.duration') }}</th><th class="p-3">{{ t('organization.usage.time') }}</th></tr>
+            <tr><th class="p-3">{{ t('organization.usage.member') }}</th><th class="p-3">{{ t('organization.usage.apiKey') }}</th><th class="p-3">{{ t('organization.usage.model') }}</th><th class="p-3">{{ t('organization.usage.endpoint') }}</th><th class="p-3">{{ t('common.status') }}</th><th class="p-3">{{ t('organization.usage.tokens') }}</th><th class="p-3">{{ t('organization.usage.charge') }}</th><th class="p-3">{{ t('organization.balanceSource.label') }}</th><th class="p-3">{{ t('organization.usage.duration') }}</th><th class="p-3">{{ t('organization.usage.time') }}</th></tr>
           </thead>
           <tbody>
             <tr v-for="row in usagePage.items" :key="row.id" class="border-t border-gray-100 dark:border-dark-700">
-              <td class="p-3">{{ row.member_login }}</td><td class="p-3">{{ row.api_key_name || '-' }}</td><td class="p-3">{{ row.model }}</td><td class="max-w-xs break-all p-3">{{ row.endpoint || '-' }}</td><td class="p-3">{{ row.status }}</td><td class="p-3">{{ row.input_tokens + row.output_tokens }}</td><td class="p-3 font-mono">{{ row.actual_cost }}</td><td class="p-3">{{ row.duration_ms ?? '-' }}</td><td class="p-3 whitespace-nowrap">{{ new Date(row.created_at).toLocaleString() }}</td>
+              <td class="p-3">{{ row.member_login }}</td><td class="p-3">{{ row.api_key_name || '-' }}</td><td class="p-3">{{ row.model }}</td><td class="max-w-xs break-all p-3">{{ row.endpoint || '-' }}</td><td class="p-3">{{ row.status }}</td><td class="p-3">{{ row.input_tokens + row.output_tokens }}</td><td class="p-3 font-mono">{{ row.actual_cost }}</td><td class="p-3 whitespace-nowrap">{{ t(`organization.balanceSource.${row.balance_source || 'self'}`) }}</td><td class="p-3">{{ row.duration_ms ?? '-' }}</td><td class="p-3 whitespace-nowrap">{{ new Date(row.created_at).toLocaleString() }}</td>
             </tr>
           </tbody>
         </table>
@@ -236,13 +252,75 @@
     <div v-if="credential" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
       <div class="w-full max-w-lg rounded-md bg-white p-5 shadow-xl dark:bg-dark-800">
         <h3 class="font-semibold">{{ t('organization.members.oneTimeCredential') }}</h3>
-        <div class="mt-4 flex items-start gap-2 rounded bg-gray-100 p-3 dark:bg-dark-900">
-          <pre class="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-sm">{{ credential.principal }}
-{{ credential.password }}</pre>
-          <button class="icon-btn shrink-0" :title="t('keys.copyToClipboard')" :aria-label="t('keys.copyToClipboard')" @click="copyCredential"><Icon name="copy" size="sm" /></button>
+        <div class="mt-4 space-y-2">
+          <div class="flex items-center gap-2 rounded bg-gray-100 p-3 dark:bg-dark-900">
+            <div class="min-w-0 flex-1">
+              <div class="text-xs text-gray-500">{{ t('organization.login.principal') }}</div>
+              <div class="break-all font-mono text-sm">{{ credential.principal }}</div>
+            </div>
+            <button class="icon-btn shrink-0" :title="t('keys.copyToClipboard')" :aria-label="t('keys.copyToClipboard')" @click="copyToClipboard(credential.principal, t('organization.members.copied'))"><Icon name="copy" size="sm" /></button>
+          </div>
+          <div class="flex items-center gap-2 rounded bg-gray-100 p-3 dark:bg-dark-900">
+            <div class="min-w-0 flex-1">
+              <div class="text-xs text-gray-500">{{ t('organization.members.password') }}</div>
+              <div class="break-all font-mono text-sm">{{ credential.password }}</div>
+            </div>
+            <button class="icon-btn shrink-0" :title="t('keys.copyToClipboard')" :aria-label="t('keys.copyToClipboard')" @click="copyToClipboard(credential.password, t('organization.members.copied'))"><Icon name="copy" size="sm" /></button>
+          </div>
         </div>
         <p class="mt-3 text-xs text-amber-600">{{ t('organization.members.oneTimeWarning') }}</p>
         <button class="btn btn-primary mt-4" @click="credential = null">{{ t('common.confirm') }}</button>
+      </div>
+    </div>
+
+    <div v-if="allocationTarget" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+      <div class="w-full max-w-md space-y-4 rounded-md bg-white p-5 shadow-xl dark:bg-dark-800">
+        <h3 class="font-semibold">{{ t('organization.members.allocateFunds') }}</h3>
+        <p class="text-sm text-gray-500">{{ allocationTarget.login_name }}</p>
+        <p class="text-sm text-gray-500">{{ t('organization.allocation.rootAvailable', { amount: finance?.available || '0' }) }}</p>
+        <p class="text-sm text-gray-500">{{ t('organization.allocation.targetAvailable') }}: <span class="font-mono">{{ allocationTarget.balance }}</span></p>
+        <div>
+          <label class="input-label" for="iam-allocate-amount">{{ t('organization.allocation.amount') }}</label>
+          <input id="iam-allocate-amount" v-model.trim="amounts[allocationTarget.user_id]" class="input w-full" type="number" min="0.00000001" step="0.00000001">
+        </div>
+        <p v-if="modalError" class="text-sm text-red-600">{{ modalError }}</p>
+        <div class="flex flex-wrap justify-end gap-2">
+          <button type="button" class="btn btn-secondary" :disabled="isBusy(allocationTarget)" @click="closeAllocation">{{ t('common.cancel') }}</button>
+          <button class="btn btn-ghost" :disabled="!canReclaim(allocationTarget) || isBusy(allocationTarget)" @click="transferFromModal('reclaim')">{{ t('organization.allocation.reclaim') }}</button>
+          <button class="btn btn-primary" :disabled="!canAllocate(allocationTarget) || isBusy(allocationTarget)" @click="transferFromModal('allocate')">{{ t('organization.allocation.allocate') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="authorizationTarget" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+      <div class="w-full max-w-lg space-y-4 rounded-md bg-white p-5 shadow-xl dark:bg-dark-800">
+        <div>
+          <h3 class="font-semibold">{{ t('organization.authorization.title', { name: authorizationTarget.login_name }) }}</h3>
+          <p class="mt-1 text-sm text-gray-500">{{ t('organization.authorization.subtitle') }}</p>
+        </div>
+        <p v-if="!policies.length" class="py-6 text-center text-sm text-gray-500">{{ t('organization.authorization.empty') }}</p>
+        <ul v-else class="max-h-96 space-y-2 overflow-y-auto">
+          <li v-for="policy in policies" :key="policy.key">
+            <label class="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 p-3 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-900">
+              <input
+                type="checkbox"
+                class="mt-0.5 h-4 w-4 shrink-0"
+                :checked="authorizationTarget.policy_names.includes(policy.key)"
+                :disabled="isBusy(authorizationTarget)"
+                @change="togglePolicy(authorizationTarget, policy.key, ($event.target as HTMLInputElement).checked)"
+              >
+              <span class="min-w-0 flex-1">
+                <span class="block font-medium">{{ policyName(policy) }}</span>
+                <span v-if="policyDescription(policy)" class="block text-xs text-gray-500">{{ policyDescription(policy) }}</span>
+                <span class="mt-1 block text-xs text-gray-400">{{ policy.type }} v{{ policy.version }}</span>
+              </span>
+            </label>
+          </li>
+        </ul>
+        <p v-if="modalError" class="text-sm text-red-600">{{ modalError }}</p>
+        <div class="flex justify-end">
+          <button type="button" class="btn btn-secondary" :disabled="isBusy(authorizationTarget)" @click="closeAuthorization">{{ t('common.close') }}</button>
+        </div>
       </div>
     </div>
 
@@ -266,13 +344,13 @@ import { organizationAPI } from '@/api'
 import { Icon } from '@/components/icons'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { useClipboard } from '@/composables/useClipboard'
-import type { FinanceSummary, IAMMember, ManagedPolicy, OrganizationContext, OrganizationUsageParams, PaginatedOrganizationUsage } from '@/types'
+import type { FinanceSummary, IAMMember, ManagedPolicy, OrganizationContext, OrganizationUsageParams, OrganizationUsageStats, OrganizationUsageTrendPoint, PaginatedOrganizationUsage } from '@/types'
 import { useAuthStore } from '@/stores'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const auth = useAuthStore()
 const { copyToClipboard } = useClipboard()
-type Tab = 'members' | 'authorization' | 'allocation' | 'finance' | 'usage'
+type Tab = 'allocation' | 'finance' | 'usage'
 
 const activeTab = ref<Tab>('finance')
 const organization = ref<OrganizationContext>()
@@ -280,6 +358,8 @@ const members = ref<IAMMember[]>([])
 const policies = ref<ManagedPolicy[]>([])
 const finance = ref<FinanceSummary>()
 const usagePage = ref<PaginatedOrganizationUsage>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+const usageStats = ref<OrganizationUsageStats | null>(null)
+const usageTrend = ref<OrganizationUsageTrendPoint[]>([])
 const memberLimit = ref(20)
 const usedSlots = ref(0)
 const showCreate = ref(false)
@@ -287,6 +367,8 @@ const showRename = ref(false)
 const requestedName = ref('')
 const renameMessage = ref('')
 const credential = ref<{ principal: string; password: string } | null>(null)
+const allocationTarget = ref<IAMMember | null>(null)
+const authorizationTarget = ref<IAMMember | null>(null)
 const createForm = reactive({ loginName: '', password: '', mustChangePassword: true, recoveryEmail: '' })
 const passwordVisible = ref(false)
 const amounts = reactive<Record<number, string>>({})
@@ -300,7 +382,7 @@ const modalError = ref('')
 const isOwner = computed(() => organization.value?.role === 'owner')
 const actions = computed(() => organization.value?.actions || [])
 const visibleTabs = computed<Tab[]>(() => isOwner.value
-  ? ['members', 'authorization', 'allocation', 'finance', 'usage']
+  ? ['finance', 'allocation', 'usage']
   : (actions.value.includes('organization.finance.balance.read') ? ['finance'] : []))
 const activeMembers = computed(() => members.value.filter(item => item.status === 'active'))
 
@@ -345,6 +427,12 @@ function organizationUsageParams(page: number): OrganizationUsageParams {
   }
 }
 
+const maxTrendTokens = computed(() => Math.max(1, ...usageTrend.value.map(point => point.tokens)))
+
+function trendBarHeight(point: OrganizationUsageTrendPoint): string {
+  return `${Math.max(2, Math.round((point.tokens / maxTrendTokens.value) * 100))}%`
+}
+
 async function loadUsage(page = 1) {
   if (!isOwner.value) return
   usageLoading.value = true
@@ -356,6 +444,25 @@ async function loadUsage(page = 1) {
   } finally {
     usageLoading.value = false
   }
+}
+
+async function loadUsageAggregates() {
+  if (!isOwner.value) return
+  try {
+    const params = organizationUsageParams(1)
+    const [stats, trend] = await Promise.all([
+      organizationAPI.getUsageStats(params),
+      organizationAPI.getUsageTrend(params),
+    ])
+    usageStats.value = stats
+    usageTrend.value = trend
+  } catch (cause) {
+    error.value = errorMessage(cause)
+  }
+}
+
+async function searchUsage() {
+  await Promise.all([loadUsage(1), loadUsageAggregates()])
 }
 
 async function load() {
@@ -371,8 +478,8 @@ async function load() {
       memberLimit.value = memberData.member_limit
       usedSlots.value = memberData.used_slots
       policies.value = policyData
-      if (!visibleTabs.value.includes(activeTab.value)) activeTab.value = 'members'
-      await loadUsage(usagePage.value.page || 1)
+      if (!visibleTabs.value.includes(activeTab.value)) activeTab.value = 'finance'
+      await Promise.all([loadUsage(usagePage.value.page || 1), loadUsageAggregates()])
     } else {
       activeTab.value = 'finance'
     }
@@ -454,16 +561,42 @@ async function resetPassword(member: IAMMember) {
 
 async function togglePolicy(member: IAMMember, key: string, attached: boolean) {
   operationKey.value = `${member.user_id}:policy`
+  modalError.value = ''
   error.value = ''
   try {
     await organizationAPI.setPolicy(member.user_id, key, attached)
     await load()
     await auth.refreshUser()
+    if (authorizationTarget.value) {
+      authorizationTarget.value = members.value.find(item => item.user_id === member.user_id) ?? null
+    }
   } catch (cause) {
-    error.value = errorMessage(cause)
+    const message = errorMessage(cause)
+    if (authorizationTarget.value) modalError.value = message
+    else error.value = message
   } finally {
     operationKey.value = ''
   }
+}
+
+function policyName(policy: ManagedPolicy): string {
+  const key = `organization.policyMeta.${policy.key}.name`
+  return te(key) ? t(key) : policy.display_name
+}
+
+function policyDescription(policy: ManagedPolicy): string {
+  const key = `organization.policyMeta.${policy.key}.description`
+  return te(key) ? t(key) : policy.description
+}
+
+function openAuthorization(member: IAMMember) {
+  authorizationTarget.value = member
+  modalError.value = ''
+}
+
+function closeAuthorization() {
+  authorizationTarget.value = null
+  modalError.value = ''
 }
 
 async function transfer(member: IAMMember, operation: 'allocate' | 'reclaim') {
@@ -482,6 +615,36 @@ async function transfer(member: IAMMember, operation: 'allocate' | 'reclaim') {
   }
 }
 
+function openAllocation(member: IAMMember) {
+  allocationTarget.value = member
+  amounts[member.user_id] = ''
+  modalError.value = ''
+}
+
+function closeAllocation() {
+  allocationTarget.value = null
+  modalError.value = ''
+}
+
+async function transferFromModal(operation: 'allocate' | 'reclaim') {
+  const member = allocationTarget.value
+  if (!member) return
+  const amount = amounts[member.user_id]
+  if (!amount || (operation === 'allocate' ? !canAllocate(member) : !canReclaim(member))) return
+  operationKey.value = `${member.user_id}:balance`
+  modalError.value = ''
+  try {
+    await organizationAPI.transferBalance(member.user_id, amount, operation)
+    amounts[member.user_id] = ''
+    closeAllocation()
+    await load()
+  } catch (cause) {
+    modalError.value = errorMessage(cause)
+  } finally {
+    operationKey.value = ''
+  }
+}
+
 async function requestNameChange() {
   if (!requestedName.value) return
   operationKey.value = 'rename'
@@ -495,11 +658,6 @@ async function requestNameChange() {
   } finally {
     operationKey.value = ''
   }
-}
-
-async function copyCredential() {
-  if (!credential.value) return
-  await copyToClipboard(`${credential.value.principal}\n${credential.value.password}`, t('organization.members.copied'))
 }
 
 onMounted(load)

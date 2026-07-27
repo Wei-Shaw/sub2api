@@ -135,6 +135,7 @@ export interface OrganizationUsageRow {
   status: string
   duration_ms?: number
   created_at: string
+  balance_source?: 'self' | 'allocated' | 'shared'
 }
 
 export interface OrganizationUsageParams {

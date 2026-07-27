@@ -255,18 +255,19 @@ type OrganizationUsageFilter struct {
 }
 
 type OrganizationUsageRow struct {
-	ID           int64     `json:"id"`
-	MemberUserID int64     `json:"member_user_id"`
-	MemberLogin  string    `json:"member_login"`
-	APIKeyName   string    `json:"api_key_name"`
-	Model        string    `json:"model"`
-	InputTokens  int       `json:"input_tokens"`
-	OutputTokens int       `json:"output_tokens"`
-	ActualCost   string    `json:"actual_cost"`
-	Endpoint     string    `json:"endpoint"`
-	Status       string    `json:"status"`
-	DurationMS   *int      `json:"duration_ms,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID            int64     `json:"id"`
+	MemberUserID  int64     `json:"member_user_id"`
+	MemberLogin   string    `json:"member_login"`
+	APIKeyName    string    `json:"api_key_name"`
+	Model         string    `json:"model"`
+	InputTokens   int       `json:"input_tokens"`
+	OutputTokens  int       `json:"output_tokens"`
+	ActualCost    string    `json:"actual_cost"`
+	Endpoint      string    `json:"endpoint"`
+	Status        string    `json:"status"`
+	DurationMS    *int      `json:"duration_ms,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	BalanceSource string    `json:"balance_source"`
 }
 
 type OrganizationUsageStats struct {
@@ -317,17 +318,42 @@ type OrganizationRepository interface {
 	ListOrganizationUserIDs(ctx context.Context, organizationID int64) ([]int64, error)
 }
 
+// CompanyUpgradeChargeReader reports whether company upgrade should charge the
+// upgrade fee / freeze funds. Injected from the settings layer.
+type CompanyUpgradeChargeReader interface {
+	IsCompanyUpgradeChargeEnabled(ctx context.Context) bool
+}
+
 type OrganizationService struct {
-	repo      OrganizationRepository
-	userRepo  UserRepository
-	cfg       *config.Config
-	authCache APIKeyAuthCacheInvalidator
+	repo         OrganizationRepository
+	userRepo     UserRepository
+	cfg          *config.Config
+	authCache    APIKeyAuthCacheInvalidator
+	chargeReader CompanyUpgradeChargeReader
 }
 
 func (s *OrganizationService) SetAuthCacheInvalidator(invalidator APIKeyAuthCacheInvalidator) {
 	if s != nil {
 		s.authCache = invalidator
 	}
+}
+
+// SetUpgradeChargeReader injects the settings-backed switch controlling whether
+// the company upgrade fee is charged. When nil or when the switch is enabled,
+// the historical charging behavior is preserved.
+func (s *OrganizationService) SetUpgradeChargeReader(reader CompanyUpgradeChargeReader) {
+	if s != nil {
+		s.chargeReader = reader
+	}
+}
+
+// upgradeChargeEnabled returns true when the upgrade fee should be charged.
+// Defaults to true (historical behavior) when no reader is wired.
+func (s *OrganizationService) upgradeChargeEnabled(ctx context.Context) bool {
+	if s == nil || s.chargeReader == nil {
+		return true
+	}
+	return s.chargeReader.IsCompanyUpgradeChargeEnabled(ctx)
 }
 
 func (s *OrganizationService) invalidateUserAuthorization(ctx context.Context, userID int64) {
@@ -361,6 +387,10 @@ func (s *OrganizationService) UpgradeEligibility(ctx context.Context, userID int
 	if s.cfg != nil {
 		result.FeeAmount = decimal.NewFromFloat(s.cfg.Company.UpgradeFee).StringFixed(8)
 		result.FeeCurrency = s.cfg.Company.UpgradeCurrency
+	}
+	if !s.upgradeChargeEnabled(ctx) {
+		// Charging disabled: surface a zero fee so the client shows "free".
+		result.FeeAmount = decimal.Zero.StringFixed(8)
 	}
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -405,6 +435,11 @@ func (s *OrganizationService) SubmitApplication(ctx context.Context, userID int6
 		return nil, infraerrors.BadRequest("IDEMPOTENCY_KEY_REQUIRED", "a valid idempotency key is required")
 	}
 	fee := decimal.NewFromFloat(s.cfg.Company.UpgradeFee).StringFixed(8)
+	if !s.upgradeChargeEnabled(ctx) {
+		// Charging disabled: snapshot a zero fee so that reserve/capture/release
+		// become no-op amount=0 operations and the balance is never frozen.
+		fee = decimal.Zero.StringFixed(8)
+	}
 	return s.repo.SubmitApplication(ctx, userID, name, normalized, idempotencyKey, fee, s.cfg.Company.UpgradeCurrency)
 }
 

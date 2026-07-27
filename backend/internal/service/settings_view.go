@@ -22,6 +22,7 @@ type SystemSettings struct {
 	TotpEnabled                      bool // TOTP 双因素认证
 	SessionBindingEnabled            bool // 会话 IP/UA 绑定（变更即失效）
 	StepUpEnabled                    bool // 敏感操作 step-up 2FA 门控
+	CompanyUpgradeChargeEnabled      bool // 企业升级是否收费/冻结资金（默认开启）
 	AuditLogRetentionDays            int  // 审计日志保留天数（<=0 永久保留）
 
 	// 可信代理动态拉取（switch-trusted-proxies-dynamic）

@@ -28,10 +28,11 @@ type UpdateSettingsRequest struct {
 	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
 	FrontendURL                      string   `json:"frontend_url"`
 	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
-	TotpEnabled                      bool     `json:"totp_enabled"`             // TOTP 双因素认证
-	SessionBindingEnabled            *bool    `json:"session_binding_enabled"`  // 会话 IP/UA 绑定（省略=保持现值，upstream）
-	StepUpEnabled                    *bool    `json:"step_up_enabled"`          // 敏感操作 step-up 2FA（省略=保持现值，upstream）
-	AuditLogRetentionDays            int      `json:"audit_log_retention_days"` // 审计日志保留天数
+	TotpEnabled                      bool     `json:"totp_enabled"`                   // TOTP 双因素认证
+	SessionBindingEnabled            *bool    `json:"session_binding_enabled"`        // 会话 IP/UA 绑定（省略=保持现值，upstream）
+	StepUpEnabled                    *bool    `json:"step_up_enabled"`                // 敏感操作 step-up 2FA（省略=保持现值，upstream）
+	CompanyUpgradeChargeEnabled      *bool    `json:"company_upgrade_charge_enabled"` // 企业升级是否收费/冻结资金（省略=保持现值，默认开启）
+	AuditLogRetentionDays            int      `json:"audit_log_retention_days"`       // 审计日志保留天数
 
 	// 可信代理动态拉取（switch-trusted-proxies-dynamic）—— 与 Session 同款非指针风格
 	// （nil 表示"未传"由 handler 层用 previousSettings 兜底；见下方赋值段）。
@@ -455,6 +456,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	stepUpEnabled := previousSettings.StepUpEnabled
 	if req.StepUpEnabled != nil {
 		stepUpEnabled = *req.StepUpEnabled
+	}
+	companyUpgradeChargeEnabled := previousSettings.CompanyUpgradeChargeEnabled
+	if req.CompanyUpgradeChargeEnabled != nil {
+		companyUpgradeChargeEnabled = *req.CompanyUpgradeChargeEnabled
 	}
 	forwardedClientIPHeaders := append([]string(nil), previousSettings.ForwardedClientIPHeaders...)
 	if req.ForwardedClientIPHeaders != nil {
@@ -1366,6 +1371,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TotpEnabled:                      req.TotpEnabled,
 		SessionBindingEnabled:            sessionBindingEnabled,
 		StepUpEnabled:                    stepUpEnabled,
+		CompanyUpgradeChargeEnabled:      companyUpgradeChargeEnabled,
 		AuditLogRetentionDays:            req.AuditLogRetentionDays,
 		TrustedProxiesDynamicEnabled:     trustedProxiesDynamicEnabled,
 		TrustedProxiesDynamicSources:     trustedProxiesDynamicSources,
@@ -2108,6 +2114,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
 		SessionBindingEnabled:                                  updatedSettings.SessionBindingEnabled,
 		StepUpEnabled:                                          updatedSettings.StepUpEnabled,
+		CompanyUpgradeChargeEnabled:                            updatedSettings.CompanyUpgradeChargeEnabled,
 		AuditLogRetentionDays:                                  updatedSettings.AuditLogRetentionDays,
 		TrustedProxiesDynamicEnabled:                           updatedSettings.TrustedProxiesDynamicEnabled,
 		TrustedProxiesDynamicSources:                           updatedSettings.TrustedProxiesDynamicSources,

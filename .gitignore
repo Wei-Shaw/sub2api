@@ -1,2 +1,154 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
-*
+docs/claude-relay-service/
+.codex
+
+# ===================
+# Go 后端
+# ===================
+# 二进制文件
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+backend/bin/
+backend/server
+backend/sub2api
+backend/main
+
+# Go 测试二进制
+*.test
+
+# 测试覆盖率
+*.out
+coverage.html
+
+# 依赖（使用 go mod）
+vendor/
+
+# Go 编译缓存
+backend/.gocache/
+
+# ===================
+# Node.js / Vue 前端
+# ===================
+node_modules/
+frontend/node_modules/
+frontend/dist/
+*.local
+*.tsbuildinfo
+vite.config.d.ts
+vite.config.js.timestamp-*
+
+# 日志
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===================
+# 环境配置
+# ===================
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+docker-compose.override.yml
+
+# ===================
+# IDE / 编辑器
+# ===================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+.codebuddy/
+
+# ===================
+# 操作系统
+# ===================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===================
+# 临时文件
+# ===================
+tmp/
+temp/
+*.tmp
+*.temp
+*.log
+*.bak
+.cache/
+.dev/
+.serena/
+
+# ===================
+# 构建产物
+# ===================
+dist/
+build/
+release/
+
+# 后端嵌入的前端构建产物
+# Keep a placeholder file so `//go:embed all:dist` always has a match in CI/lint,
+# while still ignoring generated frontend build outputs.
+backend/internal/web/dist/
+!backend/internal/web/dist/
+backend/internal/web/dist/*
+!backend/internal/web/dist/.keep
+
+# 后端运行时缓存数据
+backend/data/
+
+# ===================
+# 本地配置文件（包含敏感信息）
+# ===================
+backend/config.yaml
+deploy/config.yaml
+backend/.installed
+
+# ===================
+# 其他
+# ===================
+tests
+!deploy/tests/
+!deploy/tests/**
+CLAUDE.md
+.claude
+scripts
+!backend/scripts/
+!backend/scripts/resolve-version.sh
+.code-review-state
+#openspec/
+code-reviews/
+AGENTS.md
+backend/cmd/server/server
+deploy/docker-compose.override.yml
+.gocache/
+vite.config.js
+docs/*
+!docs/PAYMENT.md
+!docs/PAYMENT_CN.md
+!docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/BALANCE_RPC.md
+!docs/BALANCE_RPC_INTEGRATION.md
+!docs/ASYNC_IMAGE_TASKS.md
+!docs/legal/
+!docs/legal/*.md
+.serena/
+.codex/
+frontend/coverage/
+aicodex
+output/
+.github/prompts/
+.github/skills/
+*.pem
+# Python
+__pycache__/
+*.pyc

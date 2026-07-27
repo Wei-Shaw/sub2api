@@ -201,6 +201,18 @@ func (s *SettingService) IsStepUpEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsCompanyUpgradeChargeEnabled 检查企业升级是否收取升级费/冻结资金（默认开启）。
+// 关闭时提交升级申请不冻结、不扣升级费（费用快照记为 0）。
+// 仅当显式设置为 "false" 时才关闭，其余情况（未设置、读取出错）均按开启处理，
+// 以保持与历史行为一致。
+func (s *SettingService) IsCompanyUpgradeChargeEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyCompanyUpgradeChargeEnabled)
+	if err != nil {
+		return true // 默认开启
+	}
+	return value != "false"
+}
+
 // defaultAuditLogRetentionDays 审计日志默认保留天数。
 const defaultAuditLogRetentionDays = 180
 

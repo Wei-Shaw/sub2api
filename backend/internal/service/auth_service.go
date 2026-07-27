@@ -971,6 +971,12 @@ func (s *AuthService) backfillEmailIdentityOnSuccessfulLogin(ctx context.Context
 	if s == nil || user == nil || user.ID <= 0 {
 		return
 	}
+	// Identity types without an email (e.g. IAM users identified by login name)
+	// have no email identity to backfill. Skip to avoid unnecessary work and to
+	// prevent operating on a nil identity downstream.
+	if strings.TrimSpace(user.Email) == "" {
+		return
+	}
 	identity, created := s.ensureEmailAuthIdentity(ctx, user, "auth_service_login_backfill")
 	if s.shouldApplyEmailFirstBindDefaults(ctx, user.ID, identity, created) {
 		if err := s.ApplyProviderDefaultSettingsOnFirstBind(ctx, user.ID, "email"); err != nil {
@@ -985,15 +991,15 @@ func (s *AuthService) shouldApplyEmailFirstBindDefaults(
 	identity *dbent.AuthIdentity,
 	created bool,
 ) bool {
+	if s == nil || s.entClient == nil || userID <= 0 || identity == nil || identity.UserID != userID {
+		return false
+	}
 	source := emailAuthIdentitySource(identity.Metadata)
 	if source == "auth_service_login_backfill" {
 		return false
 	}
 	if created {
 		return true
-	}
-	if s == nil || s.entClient == nil || userID <= 0 || identity == nil || identity.UserID != userID {
-		return false
 	}
 	if source != "auth_service_dual_write" {
 		return false

@@ -1192,7 +1192,8 @@ func (r *organizationRepository) ListUsage(ctx context.Context, userID int64, fi
 	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT l.id,l.user_id,COALESCE(u.login_name,u.username,u.email,''),COALESCE(k.name,''),
 		       COALESCE(l.requested_model,l.model),l.input_tokens,l.output_tokens,l.actual_cost::text,
-		       COALESCE(l.inbound_endpoint,''),COALESCE(l.billing_status,'charged'),l.duration_ms,l.created_at
+		       COALESCE(l.inbound_endpoint,''),COALESCE(l.billing_status,'charged'),l.duration_ms,l.created_at,
+		       COALESCE(l.balance_source,'self')
 		FROM usage_logs l JOIN users u ON u.id=l.user_id LEFT JOIN api_keys k ON k.id=l.api_key_id
 		WHERE %s ORDER BY l.created_at DESC,l.id DESC LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
 	if err != nil {
@@ -1202,7 +1203,7 @@ func (r *organizationRepository) ListUsage(ctx context.Context, userID int64, fi
 	out := make([]service.OrganizationUsageRow, 0)
 	for rows.Next() {
 		var item service.OrganizationUsageRow
-		if err := rows.Scan(&item.ID, &item.MemberUserID, &item.MemberLogin, &item.APIKeyName, &item.Model, &item.InputTokens, &item.OutputTokens, &item.ActualCost, &item.Endpoint, &item.Status, &item.DurationMS, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.MemberUserID, &item.MemberLogin, &item.APIKeyName, &item.Model, &item.InputTokens, &item.OutputTokens, &item.ActualCost, &item.Endpoint, &item.Status, &item.DurationMS, &item.CreatedAt, &item.BalanceSource); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, item)

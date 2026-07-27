@@ -526,9 +526,10 @@ func ProvideNotificationOutboxWorker(repo NotificationOutboxRepository, emailer 
 	return worker
 }
 
-func ProvideOrganizationService(repo OrganizationRepository, userRepo UserRepository, cfg *config.Config, invalidator APIKeyAuthCacheInvalidator) *OrganizationService {
+func ProvideOrganizationService(repo OrganizationRepository, userRepo UserRepository, cfg *config.Config, invalidator APIKeyAuthCacheInvalidator, settingService *SettingService) *OrganizationService {
 	organization := NewOrganizationService(repo, userRepo, cfg)
 	organization.SetAuthCacheInvalidator(invalidator)
+	organization.SetUpgradeChargeReader(settingService)
 	return organization
 }
 

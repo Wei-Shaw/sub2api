@@ -162,6 +162,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
 		SessionBindingEnabled:                                  settings.SessionBindingEnabled,
 		StepUpEnabled:                                          settings.StepUpEnabled,
+		CompanyUpgradeChargeEnabled:                            settings.CompanyUpgradeChargeEnabled,
 		AuditLogRetentionDays:                                  settings.AuditLogRetentionDays,
 		TrustedProxiesDynamicEnabled:                           settings.TrustedProxiesDynamicEnabled,
 		TrustedProxiesDynamicSources:                           settings.TrustedProxiesDynamicSources,

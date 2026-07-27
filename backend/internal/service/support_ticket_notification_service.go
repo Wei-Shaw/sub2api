@@ -466,10 +466,12 @@ func (s *SupportTicketNotificationService) mergeAdminEmailRecipients(admins []Us
 // 若 FrontendURL 未配置，返回相对路径（邮件里点了 UI 会失效但不影响内容展示）。
 func (s *SupportTicketNotificationService) buildAdminPortalURL(ctx context.Context, ticketID int64) string {
 	base := strings.TrimRight(strings.TrimSpace(s.settings.GetFrontendURL(ctx)), "/")
+	// admin 端工单详情走列表页的 query 深链（?open=<id>）打开抽屉，
+	// 前端未注册 /admin/support/tickets/:id 路径式路由，直接拼 /:id 会 404。
 	if base == "" {
-		return fmt.Sprintf("/admin/support/tickets/%d", ticketID)
+		return fmt.Sprintf("/admin/support/tickets?open=%d", ticketID)
 	}
-	return fmt.Sprintf("%s/admin/support/tickets/%d", base, ticketID)
+	return fmt.Sprintf("%s/admin/support/tickets?open=%d", base, ticketID)
 }
 
 func (s *SupportTicketNotificationService) buildUserPortalURL(ctx context.Context, ticketID int64) string {

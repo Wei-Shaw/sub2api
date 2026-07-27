@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"strconv"
 	"time"
 
@@ -360,7 +361,15 @@ func (h *OrganizationHandler) IAMLogin(c *gin.Context) {
 	}
 	user, org, err := h.organization.AuthenticateIAM(c.Request.Context(), req.Principal, req.Password)
 	if err != nil {
-		response.ErrorFrom(c, service.ErrInvalidCredentials)
+		// Authentication failures are intentionally collapsed into a single
+		// generic error to avoid account enumeration. Any other (unexpected or
+		// internal) error is surfaced as-is so it maps to a 5xx response and can
+		// be logged/alerted on, instead of being masked as "invalid credentials".
+		if errors.Is(err, service.ErrInvalidCredentials) || errors.Is(err, service.ErrIAMFeatureDisabled) {
+			response.ErrorFrom(c, service.ErrInvalidCredentials)
+			return
+		}
+		response.ErrorFrom(c, err)
 		return
 	}
 	pair, err := h.auth.GenerateTokenPair(c.Request.Context(), user, "")
