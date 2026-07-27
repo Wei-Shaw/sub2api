@@ -836,6 +836,12 @@ func (_u *GroupUpdate) SetNillableAllowLive(v *bool) *GroupUpdate {
 	return _u
 }
 
+// ClearAllowLive clears the value of the "allow_live" field.
+func (_u *GroupUpdate) ClearAllowLive() *GroupUpdate {
+	_u.mutation.ClearAllowLive()
+	return _u
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_u *GroupUpdate) SetRequireOauthOnly(v bool) *GroupUpdate {
 	_u.mutation.SetRequireOauthOnly(v)
@@ -1511,6 +1517,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AllowLive(); ok {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
+	}
+	if _u.mutation.AllowLiveCleared() {
+		_spec.ClearField(group.FieldAllowLive, field.TypeBool)
 	}
 	if value, ok := _u.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
@@ -2658,6 +2667,12 @@ func (_u *GroupUpdateOne) SetNillableAllowLive(v *bool) *GroupUpdateOne {
 	return _u
 }
 
+// ClearAllowLive clears the value of the "allow_live" field.
+func (_u *GroupUpdateOne) ClearAllowLive() *GroupUpdateOne {
+	_u.mutation.ClearAllowLive()
+	return _u
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_u *GroupUpdateOne) SetRequireOauthOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetRequireOauthOnly(v)
@@ -3363,6 +3378,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AllowLive(); ok {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
+	}
+	if _u.mutation.AllowLiveCleared() {
+		_spec.ClearField(group.FieldAllowLive, field.TypeBool)
 	}
 	if value, ok := _u.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)

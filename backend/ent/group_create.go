@@ -1119,9 +1119,6 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.AllowMessagesDispatch(); !ok {
 		return &ValidationError{Name: "allow_messages_dispatch", err: errors.New(`ent: missing required field "Group.allow_messages_dispatch"`)}
 	}
-	if _, ok := _c.mutation.AllowLive(); !ok {
-		return &ValidationError{Name: "allow_live", err: errors.New(`ent: missing required field "Group.allow_live"`)}
-	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		return &ValidationError{Name: "require_oauth_only", err: errors.New(`ent: missing required field "Group.require_oauth_only"`)}
 	}
@@ -2261,6 +2258,12 @@ func (u *GroupUpsert) UpdateAllowLive() *GroupUpsert {
 	return u
 }
 
+// ClearAllowLive clears the value of the "allow_live" field.
+func (u *GroupUpsert) ClearAllowLive() *GroupUpsert {
+	u.SetNull(group.FieldAllowLive)
+	return u
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (u *GroupUpsert) SetRequireOauthOnly(v bool) *GroupUpsert {
 	u.Set(group.FieldRequireOauthOnly, v)
@@ -3241,6 +3244,13 @@ func (u *GroupUpsertOne) SetAllowLive(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowLive() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowLive()
+	})
+}
+
+// ClearAllowLive clears the value of the "allow_live" field.
+func (u *GroupUpsertOne) ClearAllowLive() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAllowLive()
 	})
 }
 
@@ -4407,6 +4417,13 @@ func (u *GroupUpsertBulk) SetAllowLive(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateAllowLive() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowLive()
+	})
+}
+
+// ClearAllowLive clears the value of the "allow_live" field.
+func (u *GroupUpsertBulk) ClearAllowLive() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAllowLive()
 	})
 }
 

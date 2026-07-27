@@ -2000,6 +2000,16 @@ func AllowLiveNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowLive, v))
 }
 
+// AllowLiveIsNil applies the IsNil predicate on the "allow_live" field.
+func AllowLiveIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldAllowLive))
+}
+
+// AllowLiveNotNil applies the NotNil predicate on the "allow_live" field.
+func AllowLiveNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldAllowLive))
+}
+
 // RequireOauthOnlyEQ applies the EQ predicate on the "require_oauth_only" field.
 func RequireOauthOnlyEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRequireOauthOnly, v))

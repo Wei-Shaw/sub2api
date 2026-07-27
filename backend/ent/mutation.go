@@ -24258,9 +24258,22 @@ func (m *GroupMutation) OldAllowLive(ctx context.Context) (v bool, err error) {
 	return oldValue.AllowLive, nil
 }
 
+// ClearAllowLive clears the value of the "allow_live" field.
+func (m *GroupMutation) ClearAllowLive() {
+	m.allow_live = nil
+	m.clearedFields[group.FieldAllowLive] = struct{}{}
+}
+
+// AllowLiveCleared returns if the "allow_live" field was cleared in this mutation.
+func (m *GroupMutation) AllowLiveCleared() bool {
+	_, ok := m.clearedFields[group.FieldAllowLive]
+	return ok
+}
+
 // ResetAllowLive resets all changes to the "allow_live" field.
 func (m *GroupMutation) ResetAllowLive() {
 	m.allow_live = nil
+	delete(m.clearedFields, group.FieldAllowLive)
 }
 
 // SetRequireOauthOnly sets the "require_oauth_only" field.
@@ -26032,6 +26045,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldModelRouting) {
 		fields = append(fields, group.FieldModelRouting)
 	}
+	if m.FieldCleared(group.FieldAllowLive) {
+		fields = append(fields, group.FieldAllowLive)
+	}
 	return fields
 }
 
@@ -26093,6 +26109,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldModelRouting:
 		m.ClearModelRouting()
+		return nil
+	case group.FieldAllowLive:
+		m.ClearAllowLive()
 		return nil
 	}
 	return fmt.Errorf("unknown Group nullable field %s", name)
