@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/audit"
 	"github.com/lib/pq"
 )
 
@@ -19,7 +20,7 @@ type auditLogRepository struct {
 }
 
 // NewAuditLogRepository 创建审计日志仓储。
-func NewAuditLogRepository(db *sql.DB) service.AuditLogRepository {
+func NewAuditLogRepository(db *sql.DB) audit.AuditLogRepository {
 	return &auditLogRepository{db: db}
 }
 
@@ -27,7 +28,7 @@ const auditLogInsertColumns = `created_at, actor_user_id, actor_email, actor_rol
 credential_masked, action, method, path, request_id, client_ip, user_agent,
 request_body, status_code, latency_ms, extra`
 
-func auditLogInsertValues(log *service.AuditLog) []any {
+func auditLogInsertValues(log *domain.AuditLog) []any {
 	createdAt := log.CreatedAt
 	if createdAt.IsZero() {
 		createdAt = time.Now().UTC()
@@ -58,7 +59,7 @@ func auditLogInsertValues(log *service.AuditLog) []any {
 	}
 }
 
-func (r *auditLogRepository) BatchInsert(ctx context.Context, logs []*service.AuditLog) (int64, error) {
+func (r *auditLogRepository) BatchInsert(ctx context.Context, logs []*domain.AuditLog) (int64, error) {
 	if r == nil || r.db == nil {
 		return 0, fmt.Errorf("nil audit log repository")
 	}
@@ -109,7 +110,7 @@ func (r *auditLogRepository) BatchInsert(ctx context.Context, logs []*service.Au
 	return inserted, nil
 }
 
-func (r *auditLogRepository) Insert(ctx context.Context, log *service.AuditLog) error {
+func (r *auditLogRepository) Insert(ctx context.Context, log *domain.AuditLog) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("nil audit log repository")
 	}
@@ -122,7 +123,7 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`
 	return err
 }
 
-func buildAuditLogsWhere(filter *service.AuditLogFilter) (string, []any) {
+func buildAuditLogsWhere(filter *domain.AuditLogFilter) (string, []any) {
 	clauses := make([]string, 0, 10)
 	args := make([]any, 0, 10)
 	clauses = append(clauses, "1=1")
@@ -194,8 +195,8 @@ const auditLogSelectColumns = `
   l.latency_ms,
   COALESCE(l.extra::text, '{}')`
 
-func scanAuditLogRow(scan func(dest ...any) error) (*service.AuditLog, error) {
-	item := &service.AuditLog{}
+func scanAuditLogRow(scan func(dest ...any) error) (*domain.AuditLog, error) {
+	item := &domain.AuditLog{}
 	var actorUserID sql.NullInt64
 	var extraRaw string
 	if err := scan(
@@ -233,12 +234,12 @@ func scanAuditLogRow(scan func(dest ...any) error) (*service.AuditLog, error) {
 	return item, nil
 }
 
-func (r *auditLogRepository) List(ctx context.Context, filter *service.AuditLogFilter) (*service.AuditLogList, error) {
+func (r *auditLogRepository) List(ctx context.Context, filter *domain.AuditLogFilter) (*domain.AuditLogList, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil audit log repository")
 	}
 	if filter == nil {
-		filter = &service.AuditLogFilter{}
+		filter = &domain.AuditLogFilter{}
 	}
 
 	page := filter.Page
@@ -272,7 +273,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 	}
 	defer func() { _ = rows.Close() }()
 
-	logs := make([]*service.AuditLog, 0, pageSize)
+	logs := make([]*domain.AuditLog, 0, pageSize)
 	for rows.Next() {
 		item, err := scanAuditLogRow(rows.Scan)
 		if err != nil {
@@ -286,7 +287,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 		return nil, err
 	}
 
-	return &service.AuditLogList{
+	return &domain.AuditLogList{
 		Logs:     logs,
 		Total:    total,
 		Page:     page,
@@ -294,7 +295,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 	}, nil
 }
 
-func (r *auditLogRepository) GetByID(ctx context.Context, id int64) (*service.AuditLog, error) {
+func (r *auditLogRepository) GetByID(ctx context.Context, id int64) (*domain.AuditLog, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil audit log repository")
 	}
@@ -303,7 +304,7 @@ func (r *auditLogRepository) GetByID(ctx context.Context, id int64) (*service.Au
 	item, err := scanAuditLogRow(row.Scan)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, service.ErrAuditLogNotFound
+			return nil, domain.ErrAuditLogNotFound
 		}
 		return nil, err
 	}

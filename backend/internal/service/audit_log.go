@@ -1,18 +1,22 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
-	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logredact"
+	"github.com/Wei-Shaw/sub2api/internal/port/audit"
 )
 
-// ErrAuditLogNotFound 审计日志不存在。
-var ErrAuditLogNotFound = infraerrors.NotFound("AUDIT_LOG_NOT_FOUND", "audit log not found")
+// Audit-log BC types/errors live in domain; re-exported here for existing call sites.
+type AuditLog = domain.AuditLog
+type AuditLogFilter = domain.AuditLogFilter
+type AuditLogList = domain.AuditLogList
+type AuditLogRepository = audit.AuditLogRepository
+
+var ErrAuditLogNotFound = domain.ErrAuditLogNotFound
 
 // 审计日志相关常量。
 const (
@@ -37,69 +41,6 @@ const (
 	AuditActionStepUpVerify           = "auth.step_up.verify"
 	AuditActionAuditLogClear          = "admin.audit_log.clear"
 )
-
-// AuditLog 一条管理面操作审计记录。
-type AuditLog struct {
-	ID               int64          `json:"id"`
-	CreatedAt        time.Time      `json:"created_at"`
-	ActorUserID      *int64         `json:"actor_user_id,omitempty"`
-	ActorEmail       string         `json:"actor_email"`
-	ActorRole        string         `json:"actor_role"`
-	AuthMethod       string         `json:"auth_method"`
-	CredentialMasked string         `json:"credential_masked"`
-	Action           string         `json:"action"`
-	Method           string         `json:"method"`
-	Path             string         `json:"path"`
-	RequestID        string         `json:"request_id"`
-	ClientIP         string         `json:"client_ip"`
-	UserAgent        string         `json:"user_agent"`
-	RequestBody      string         `json:"request_body,omitempty"`
-	StatusCode       int            `json:"status_code"`
-	LatencyMs        int64          `json:"latency_ms"`
-	Extra            map[string]any `json:"extra,omitempty"`
-}
-
-// AuditLogFilter 审计日志列表查询条件。
-type AuditLogFilter struct {
-	Page     int
-	PageSize int
-
-	StartTime   *time.Time
-	EndTime     *time.Time
-	ActorUserID *int64
-	ActorEmail  string
-	AuthMethod  string
-	Action      string
-	Method      string
-	ClientIP    string
-	// Success: nil 全部；true 仅 2xx/3xx；false 仅 >=400。
-	Success *bool
-	// Query 对 path / action / actor_email 做模糊匹配。
-	Query string
-}
-
-// AuditLogList 分页结果。
-type AuditLogList struct {
-	Logs     []*AuditLog
-	Total    int
-	Page     int
-	PageSize int
-}
-
-// AuditLogRepository 审计日志持久化端口。
-// 注意：接口刻意不提供单条删除能力——审计日志只允许追加与全量清空。
-type AuditLogRepository interface {
-	BatchInsert(ctx context.Context, logs []*AuditLog) (int64, error)
-	// Insert 同步写入单条（用于清空留痕等必须落库的记录）。
-	Insert(ctx context.Context, log *AuditLog) error
-	List(ctx context.Context, filter *AuditLogFilter) (*AuditLogList, error)
-	GetByID(ctx context.Context, id int64) (*AuditLog, error)
-	Count(ctx context.Context) (int64, error)
-	// TruncateAll 全量清空（TRUNCATE），返回前需调用方自行 Count 记录行数。
-	TruncateAll(ctx context.Context) error
-	// DeleteBefore 按保留期批量删除，返回本批删除行数（幂等，可多实例并发）。
-	DeleteBefore(ctx context.Context, cutoff time.Time, batchSize int) (int64, error)
-}
 
 // auditNormalizeBodyKey 归一化键名：小写并去除分隔符，
 // 使 private_key / privateKey / privatekey / api-v3-key 等写法共享同一判定，
