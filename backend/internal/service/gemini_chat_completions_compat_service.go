@@ -231,7 +231,11 @@ REDACTED
 				Kind:               "failover",
 				Message:            upstreamMsg,
 		REDACTED)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: evBodyREDACTED
+			return nil, &UpstreamFailoverError{
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           evBody,
+				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+		REDACTED
 	REDACTED
 
 		return nil, s.writeGeminiChatCompletionsMappedError(c, account, resp.StatusCode, requestID, evBody)
