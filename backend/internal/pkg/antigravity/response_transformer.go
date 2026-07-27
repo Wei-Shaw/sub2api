@@ -293,7 +293,7 @@ REDACTED
 		respID = geminiResp.ResponseID
 REDACTED
 	if respID == "" {
-		respID = "msg_" + generateRandomID()
+		respID = generateAnthropicMsgID()
 REDACTED
 
 	return &ClaudeResponse{
@@ -371,4 +371,19 @@ REDACTED
 		id[i] = chars[int(b)%len(chars)]
 REDACTED
 	return string(id)
+REDACTED
+
+// generateAnthropicMsgID 生成 Anthropic 官方格式的 message ID：msg_01 + 22 位 Base62
+func generateAnthropicMsgID() string {
+	const charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	const idLen = 22
+	randomBytes := make([]byte, idLen)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return "msg_01" + generateRandomID() + generateRandomID()[:10]
+REDACTED
+	b := make([]byte, idLen)
+	for i := range b {
+		b[i] = charset[int(randomBytes[i])%len(charset)]
+REDACTED
+	return "msg_01" + string(b)
 REDACTED

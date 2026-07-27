@@ -195,7 +195,7 @@ REDACTED
 		responseID = v1Resp.Response.ResponseID
 REDACTED
 	if responseID == "" {
-		responseID = "msg_" + generateRandomID()
+		responseID = generateAnthropicMsgID()
 REDACTED
 
 	var usageValue any = usage
