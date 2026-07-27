@@ -593,10 +593,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			return s.refreshOpenAIAgentIdentityHeaders(factoryCtx, account, headers)
 		},
 		ProxyURL: func() string {
-			if account.ProxyID != nil && account.Proxy != nil {
-				return account.Proxy.URL()
-			}
-			return ""
+			return account.ProxyURL()
 		}(),
 		ForceNewConn: false,
 	}

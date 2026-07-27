@@ -572,17 +572,19 @@ func (s *GrokQuotaService) prepareProbe(ctx context.Context, accountID int64) (*
 }
 
 func (s *GrokQuotaService) resolveProxyURL(ctx context.Context, account *Account) string {
-	if account == nil || account.ProxyID == nil {
+	if account == nil {
 		return ""
 	}
-	switch {
-	case account.Proxy != nil:
-		return account.Proxy.URL()
-	case s != nil && s.proxyRepo != nil:
-		if proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && proxy != nil {
-			account.Proxy = proxy
-			return proxy.URL()
-		}
+	// 优先已 hydrate 的 Proxy（含代理组选择结果）。
+	if account.Proxy != nil {
+		return account.ProxyURL()
+	}
+	if account.ProxyID == nil || s == nil || s.proxyRepo == nil {
+		return ""
+	}
+	if proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && proxy != nil {
+		account.Proxy = proxy
+		return proxy.URL()
 	}
 	return ""
 }

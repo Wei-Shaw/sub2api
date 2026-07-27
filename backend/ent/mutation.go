@@ -39,6 +39,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/proxygroup"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -90,6 +91,7 @@ const (
 	TypePromoCode                     = "PromoCode"
 	TypePromoCodeUsage                = "PromoCodeUsage"
 	TypeProxy                         = "Proxy"
+	TypeProxyGroup                    = "ProxyGroup"
 	TypeRedeemCode                    = "RedeemCode"
 	TypeSecuritySecret                = "SecuritySecret"
 	TypeSetting                       = "Setting"
@@ -2325,6 +2327,8 @@ type AccountMutation struct {
 	clearedgroups               bool
 	proxy                       *int64
 	clearedproxy                bool
+	proxy_group                 *int64
+	clearedproxy_group          bool
 	parent                      *int64
 	clearedparent               bool
 	children                    map[int64]struct{}
@@ -2833,6 +2837,55 @@ func (m *AccountMutation) ProxyIDCleared() bool {
 func (m *AccountMutation) ResetProxyID() {
 	m.proxy = nil
 	delete(m.clearedFields, account.FieldProxyID)
+}
+
+// SetProxyGroupID sets the "proxy_group_id" field.
+func (m *AccountMutation) SetProxyGroupID(i int64) {
+	m.proxy_group = &i
+}
+
+// ProxyGroupID returns the value of the "proxy_group_id" field in the mutation.
+func (m *AccountMutation) ProxyGroupID() (r int64, exists bool) {
+	v := m.proxy_group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProxyGroupID returns the old "proxy_group_id" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldProxyGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProxyGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProxyGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProxyGroupID: %w", err)
+	}
+	return oldValue.ProxyGroupID, nil
+}
+
+// ClearProxyGroupID clears the value of the "proxy_group_id" field.
+func (m *AccountMutation) ClearProxyGroupID() {
+	m.proxy_group = nil
+	m.clearedFields[account.FieldProxyGroupID] = struct{}{}
+}
+
+// ProxyGroupIDCleared returns if the "proxy_group_id" field was cleared in this mutation.
+func (m *AccountMutation) ProxyGroupIDCleared() bool {
+	_, ok := m.clearedFields[account.FieldProxyGroupID]
+	return ok
+}
+
+// ResetProxyGroupID resets all changes to the "proxy_group_id" field.
+func (m *AccountMutation) ResetProxyGroupID() {
+	m.proxy_group = nil
+	delete(m.clearedFields, account.FieldProxyGroupID)
 }
 
 // SetProxyFallbackOriginID sets the "proxy_fallback_origin_id" field.
@@ -3956,6 +4009,33 @@ func (m *AccountMutation) ResetProxy() {
 	m.clearedproxy = false
 }
 
+// ClearProxyGroup clears the "proxy_group" edge to the ProxyGroup entity.
+func (m *AccountMutation) ClearProxyGroup() {
+	m.clearedproxy_group = true
+	m.clearedFields[account.FieldProxyGroupID] = struct{}{}
+}
+
+// ProxyGroupCleared reports if the "proxy_group" edge to the ProxyGroup entity was cleared.
+func (m *AccountMutation) ProxyGroupCleared() bool {
+	return m.ProxyGroupIDCleared() || m.clearedproxy_group
+}
+
+// ProxyGroupIDs returns the "proxy_group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ProxyGroupID instead. It exists only for internal usage by the builders.
+func (m *AccountMutation) ProxyGroupIDs() (ids []int64) {
+	if id := m.proxy_group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetProxyGroup resets all changes to the "proxy_group" edge.
+func (m *AccountMutation) ResetProxyGroup() {
+	m.proxy_group = nil
+	m.clearedproxy_group = false
+}
+
 // SetParentID sets the "parent" edge to the Account entity by id.
 func (m *AccountMutation) SetParentID(id int64) {
 	m.parent = &id
@@ -4138,7 +4218,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 32)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -4168,6 +4248,9 @@ func (m *AccountMutation) Fields() []string {
 	}
 	if m.proxy != nil {
 		fields = append(fields, account.FieldProxyID)
+	}
+	if m.proxy_group != nil {
+		fields = append(fields, account.FieldProxyGroupID)
 	}
 	if m.proxy_fallback_origin_id != nil {
 		fields = append(fields, account.FieldProxyFallbackOriginID)
@@ -4260,6 +4343,8 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.Extra()
 	case account.FieldProxyID:
 		return m.ProxyID()
+	case account.FieldProxyGroupID:
+		return m.ProxyGroupID()
 	case account.FieldProxyFallbackOriginID:
 		return m.ProxyFallbackOriginID()
 	case account.FieldConcurrency:
@@ -4331,6 +4416,8 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldExtra(ctx)
 	case account.FieldProxyID:
 		return m.OldProxyID(ctx)
+	case account.FieldProxyGroupID:
+		return m.OldProxyGroupID(ctx)
 	case account.FieldProxyFallbackOriginID:
 		return m.OldProxyFallbackOriginID(ctx)
 	case account.FieldConcurrency:
@@ -4451,6 +4538,13 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetProxyID(v)
+		return nil
+	case account.FieldProxyGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProxyGroupID(v)
 		return nil
 	case account.FieldProxyFallbackOriginID:
 		v, ok := value.(int64)
@@ -4701,6 +4795,9 @@ func (m *AccountMutation) ClearedFields() []string {
 	if m.FieldCleared(account.FieldProxyID) {
 		fields = append(fields, account.FieldProxyID)
 	}
+	if m.FieldCleared(account.FieldProxyGroupID) {
+		fields = append(fields, account.FieldProxyGroupID)
+	}
 	if m.FieldCleared(account.FieldProxyFallbackOriginID) {
 		fields = append(fields, account.FieldProxyFallbackOriginID)
 	}
@@ -4765,6 +4862,9 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldProxyID:
 		m.ClearProxyID()
+		return nil
+	case account.FieldProxyGroupID:
+		m.ClearProxyGroupID()
 		return nil
 	case account.FieldProxyFallbackOriginID:
 		m.ClearProxyFallbackOriginID()
@@ -4846,6 +4946,9 @@ func (m *AccountMutation) ResetField(name string) error {
 	case account.FieldProxyID:
 		m.ResetProxyID()
 		return nil
+	case account.FieldProxyGroupID:
+		m.ResetProxyGroupID()
+		return nil
 	case account.FieldProxyFallbackOriginID:
 		m.ResetProxyFallbackOriginID()
 		return nil
@@ -4915,12 +5018,15 @@ func (m *AccountMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *AccountMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.groups != nil {
 		edges = append(edges, account.EdgeGroups)
 	}
 	if m.proxy != nil {
 		edges = append(edges, account.EdgeProxy)
+	}
+	if m.proxy_group != nil {
+		edges = append(edges, account.EdgeProxyGroup)
 	}
 	if m.parent != nil {
 		edges = append(edges, account.EdgeParent)
@@ -4948,6 +5054,10 @@ func (m *AccountMutation) AddedIDs(name string) []ent.Value {
 		if id := m.proxy; id != nil {
 			return []ent.Value{*id}
 		}
+	case account.EdgeProxyGroup:
+		if id := m.proxy_group; id != nil {
+			return []ent.Value{*id}
+		}
 	case account.EdgeParent:
 		if id := m.parent; id != nil {
 			return []ent.Value{*id}
@@ -4970,7 +5080,7 @@ func (m *AccountMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *AccountMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.removedgroups != nil {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -5011,12 +5121,15 @@ func (m *AccountMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *AccountMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.clearedgroups {
 		edges = append(edges, account.EdgeGroups)
 	}
 	if m.clearedproxy {
 		edges = append(edges, account.EdgeProxy)
+	}
+	if m.clearedproxy_group {
+		edges = append(edges, account.EdgeProxyGroup)
 	}
 	if m.clearedparent {
 		edges = append(edges, account.EdgeParent)
@@ -5038,6 +5151,8 @@ func (m *AccountMutation) EdgeCleared(name string) bool {
 		return m.clearedgroups
 	case account.EdgeProxy:
 		return m.clearedproxy
+	case account.EdgeProxyGroup:
+		return m.clearedproxy_group
 	case account.EdgeParent:
 		return m.clearedparent
 	case account.EdgeChildren:
@@ -5055,6 +5170,9 @@ func (m *AccountMutation) ClearEdge(name string) error {
 	case account.EdgeProxy:
 		m.ClearProxy()
 		return nil
+	case account.EdgeProxyGroup:
+		m.ClearProxyGroup()
+		return nil
 	case account.EdgeParent:
 		m.ClearParent()
 		return nil
@@ -5071,6 +5189,9 @@ func (m *AccountMutation) ResetEdge(name string) error {
 		return nil
 	case account.EdgeProxy:
 		m.ResetProxy()
+		return nil
+	case account.EdgeProxyGroup:
+		m.ResetProxyGroup()
 		return nil
 	case account.EdgeParent:
 		m.ResetParent()
@@ -36067,6 +36188,8 @@ type ProxyMutation struct {
 	clearedaccounts     bool
 	backup_proxy        *int64
 	clearedbackup_proxy bool
+	group               *int64
+	clearedgroup        bool
 	done                bool
 	oldValue            func(context.Context) (*Proxy, error)
 	predicates          []predicate.Proxy
@@ -36779,6 +36902,55 @@ func (m *ProxyMutation) ResetExpiryWarnDays() {
 	m.addexpiry_warn_days = nil
 }
 
+// SetGroupID sets the "group_id" field.
+func (m *ProxyMutation) SetGroupID(i int64) {
+	m.group = &i
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *ProxyMutation) GroupID() (r int64, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the Proxy entity.
+// If the Proxy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyMutation) OldGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (m *ProxyMutation) ClearGroupID() {
+	m.group = nil
+	m.clearedFields[proxy.FieldGroupID] = struct{}{}
+}
+
+// GroupIDCleared returns if the "group_id" field was cleared in this mutation.
+func (m *ProxyMutation) GroupIDCleared() bool {
+	_, ok := m.clearedFields[proxy.FieldGroupID]
+	return ok
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *ProxyMutation) ResetGroupID() {
+	m.group = nil
+	delete(m.clearedFields, proxy.FieldGroupID)
+}
+
 // AddAccountIDs adds the "accounts" edge to the Account entity by ids.
 func (m *ProxyMutation) AddAccountIDs(ids ...int64) {
 	if m.accounts == nil {
@@ -36860,6 +37032,33 @@ func (m *ProxyMutation) ResetBackupProxy() {
 	m.clearedbackup_proxy = false
 }
 
+// ClearGroup clears the "group" edge to the ProxyGroup entity.
+func (m *ProxyMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[proxy.FieldGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the ProxyGroup entity was cleared.
+func (m *ProxyMutation) GroupCleared() bool {
+	return m.GroupIDCleared() || m.clearedgroup
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *ProxyMutation) GroupIDs() (ids []int64) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *ProxyMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
 // Where appends a list predicates to the ProxyMutation builder.
 func (m *ProxyMutation) Where(ps ...predicate.Proxy) {
 	m.predicates = append(m.predicates, ps...)
@@ -36894,7 +37093,7 @@ func (m *ProxyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ProxyMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.created_at != nil {
 		fields = append(fields, proxy.FieldCreatedAt)
 	}
@@ -36937,6 +37136,9 @@ func (m *ProxyMutation) Fields() []string {
 	if m.expiry_warn_days != nil {
 		fields = append(fields, proxy.FieldExpiryWarnDays)
 	}
+	if m.group != nil {
+		fields = append(fields, proxy.FieldGroupID)
+	}
 	return fields
 }
 
@@ -36973,6 +37175,8 @@ func (m *ProxyMutation) Field(name string) (ent.Value, bool) {
 		return m.BackupProxyID()
 	case proxy.FieldExpiryWarnDays:
 		return m.ExpiryWarnDays()
+	case proxy.FieldGroupID:
+		return m.GroupID()
 	}
 	return nil, false
 }
@@ -37010,6 +37214,8 @@ func (m *ProxyMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldBackupProxyID(ctx)
 	case proxy.FieldExpiryWarnDays:
 		return m.OldExpiryWarnDays(ctx)
+	case proxy.FieldGroupID:
+		return m.OldGroupID(ctx)
 	}
 	return nil, fmt.Errorf("unknown Proxy field %s", name)
 }
@@ -37117,6 +37323,13 @@ func (m *ProxyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetExpiryWarnDays(v)
 		return nil
+	case proxy.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Proxy field %s", name)
 }
@@ -37189,6 +37402,9 @@ func (m *ProxyMutation) ClearedFields() []string {
 	if m.FieldCleared(proxy.FieldBackupProxyID) {
 		fields = append(fields, proxy.FieldBackupProxyID)
 	}
+	if m.FieldCleared(proxy.FieldGroupID) {
+		fields = append(fields, proxy.FieldGroupID)
+	}
 	return fields
 }
 
@@ -37217,6 +37433,9 @@ func (m *ProxyMutation) ClearField(name string) error {
 		return nil
 	case proxy.FieldBackupProxyID:
 		m.ClearBackupProxyID()
+		return nil
+	case proxy.FieldGroupID:
+		m.ClearGroupID()
 		return nil
 	}
 	return fmt.Errorf("unknown Proxy nullable field %s", name)
@@ -37268,18 +37487,24 @@ func (m *ProxyMutation) ResetField(name string) error {
 	case proxy.FieldExpiryWarnDays:
 		m.ResetExpiryWarnDays()
 		return nil
+	case proxy.FieldGroupID:
+		m.ResetGroupID()
+		return nil
 	}
 	return fmt.Errorf("unknown Proxy field %s", name)
 }
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ProxyMutation) AddedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.accounts != nil {
 		edges = append(edges, proxy.EdgeAccounts)
 	}
 	if m.backup_proxy != nil {
 		edges = append(edges, proxy.EdgeBackupProxy)
+	}
+	if m.group != nil {
+		edges = append(edges, proxy.EdgeGroup)
 	}
 	return edges
 }
@@ -37298,13 +37523,17 @@ func (m *ProxyMutation) AddedIDs(name string) []ent.Value {
 		if id := m.backup_proxy; id != nil {
 			return []ent.Value{*id}
 		}
+	case proxy.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ProxyMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.removedaccounts != nil {
 		edges = append(edges, proxy.EdgeAccounts)
 	}
@@ -37327,12 +37556,15 @@ func (m *ProxyMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ProxyMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.clearedaccounts {
 		edges = append(edges, proxy.EdgeAccounts)
 	}
 	if m.clearedbackup_proxy {
 		edges = append(edges, proxy.EdgeBackupProxy)
+	}
+	if m.clearedgroup {
+		edges = append(edges, proxy.EdgeGroup)
 	}
 	return edges
 }
@@ -37345,6 +37577,8 @@ func (m *ProxyMutation) EdgeCleared(name string) bool {
 		return m.clearedaccounts
 	case proxy.EdgeBackupProxy:
 		return m.clearedbackup_proxy
+	case proxy.EdgeGroup:
+		return m.clearedgroup
 	}
 	return false
 }
@@ -37355,6 +37589,9 @@ func (m *ProxyMutation) ClearEdge(name string) error {
 	switch name {
 	case proxy.EdgeBackupProxy:
 		m.ClearBackupProxy()
+		return nil
+	case proxy.EdgeGroup:
+		m.ClearGroup()
 		return nil
 	}
 	return fmt.Errorf("unknown Proxy unique edge %s", name)
@@ -37370,8 +37607,932 @@ func (m *ProxyMutation) ResetEdge(name string) error {
 	case proxy.EdgeBackupProxy:
 		m.ResetBackupProxy()
 		return nil
+	case proxy.EdgeGroup:
+		m.ResetGroup()
+		return nil
 	}
 	return fmt.Errorf("unknown Proxy edge %s", name)
+}
+
+// ProxyGroupMutation represents an operation that mutates the ProxyGroup nodes in the graph.
+type ProxyGroupMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *int64
+	created_at        *time.Time
+	updated_at        *time.Time
+	deleted_at        *time.Time
+	name              *string
+	description       *string
+	strategy          *string
+	sticky_by_account *bool
+	status            *string
+	clearedFields     map[string]struct{}
+	proxies           map[int64]struct{}
+	removedproxies    map[int64]struct{}
+	clearedproxies    bool
+	accounts          map[int64]struct{}
+	removedaccounts   map[int64]struct{}
+	clearedaccounts   bool
+	done              bool
+	oldValue          func(context.Context) (*ProxyGroup, error)
+	predicates        []predicate.ProxyGroup
+}
+
+var _ ent.Mutation = (*ProxyGroupMutation)(nil)
+
+// proxygroupOption allows management of the mutation configuration using functional options.
+type proxygroupOption func(*ProxyGroupMutation)
+
+// newProxyGroupMutation creates new mutation for the ProxyGroup entity.
+func newProxyGroupMutation(c config, op Op, opts ...proxygroupOption) *ProxyGroupMutation {
+	m := &ProxyGroupMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeProxyGroup,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withProxyGroupID sets the ID field of the mutation.
+func withProxyGroupID(id int64) proxygroupOption {
+	return func(m *ProxyGroupMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ProxyGroup
+		)
+		m.oldValue = func(ctx context.Context) (*ProxyGroup, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ProxyGroup.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withProxyGroup sets the old ProxyGroup of the mutation.
+func withProxyGroup(node *ProxyGroup) proxygroupOption {
+	return func(m *ProxyGroupMutation) {
+		m.oldValue = func(context.Context) (*ProxyGroup, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ProxyGroupMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ProxyGroupMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ProxyGroupMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ProxyGroupMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ProxyGroup.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ProxyGroupMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ProxyGroupMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ProxyGroup entity.
+// If the ProxyGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyGroupMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ProxyGroupMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ProxyGroupMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ProxyGroupMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ProxyGroup entity.
+// If the ProxyGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyGroupMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ProxyGroupMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *ProxyGroupMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *ProxyGroupMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the ProxyGroup entity.
+// If the ProxyGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyGroupMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *ProxyGroupMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[proxygroup.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *ProxyGroupMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[proxygroup.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *ProxyGroupMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, proxygroup.FieldDeletedAt)
+}
+
+// SetName sets the "name" field.
+func (m *ProxyGroupMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *ProxyGroupMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the ProxyGroup entity.
+// If the ProxyGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyGroupMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *ProxyGroupMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *ProxyGroupMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *ProxyGroupMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the ProxyGroup entity.
+// If the ProxyGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyGroupMutation) OldDescription(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ClearDescription clears the value of the "description" field.
+func (m *ProxyGroupMutation) ClearDescription() {
+	m.description = nil
+	m.clearedFields[proxygroup.FieldDescription] = struct{}{}
+}
+
+// DescriptionCleared returns if the "description" field was cleared in this mutation.
+func (m *ProxyGroupMutation) DescriptionCleared() bool {
+	_, ok := m.clearedFields[proxygroup.FieldDescription]
+	return ok
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *ProxyGroupMutation) ResetDescription() {
+	m.description = nil
+	delete(m.clearedFields, proxygroup.FieldDescription)
+}
+
+// SetStrategy sets the "strategy" field.
+func (m *ProxyGroupMutation) SetStrategy(s string) {
+	m.strategy = &s
+}
+
+// Strategy returns the value of the "strategy" field in the mutation.
+func (m *ProxyGroupMutation) Strategy() (r string, exists bool) {
+	v := m.strategy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStrategy returns the old "strategy" field's value of the ProxyGroup entity.
+// If the ProxyGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyGroupMutation) OldStrategy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStrategy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStrategy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStrategy: %w", err)
+	}
+	return oldValue.Strategy, nil
+}
+
+// ResetStrategy resets all changes to the "strategy" field.
+func (m *ProxyGroupMutation) ResetStrategy() {
+	m.strategy = nil
+}
+
+// SetStickyByAccount sets the "sticky_by_account" field.
+func (m *ProxyGroupMutation) SetStickyByAccount(b bool) {
+	m.sticky_by_account = &b
+}
+
+// StickyByAccount returns the value of the "sticky_by_account" field in the mutation.
+func (m *ProxyGroupMutation) StickyByAccount() (r bool, exists bool) {
+	v := m.sticky_by_account
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStickyByAccount returns the old "sticky_by_account" field's value of the ProxyGroup entity.
+// If the ProxyGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyGroupMutation) OldStickyByAccount(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStickyByAccount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStickyByAccount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStickyByAccount: %w", err)
+	}
+	return oldValue.StickyByAccount, nil
+}
+
+// ResetStickyByAccount resets all changes to the "sticky_by_account" field.
+func (m *ProxyGroupMutation) ResetStickyByAccount() {
+	m.sticky_by_account = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *ProxyGroupMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ProxyGroupMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ProxyGroup entity.
+// If the ProxyGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyGroupMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ProxyGroupMutation) ResetStatus() {
+	m.status = nil
+}
+
+// AddProxyIDs adds the "proxies" edge to the Proxy entity by ids.
+func (m *ProxyGroupMutation) AddProxyIDs(ids ...int64) {
+	if m.proxies == nil {
+		m.proxies = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.proxies[ids[i]] = struct{}{}
+	}
+}
+
+// ClearProxies clears the "proxies" edge to the Proxy entity.
+func (m *ProxyGroupMutation) ClearProxies() {
+	m.clearedproxies = true
+}
+
+// ProxiesCleared reports if the "proxies" edge to the Proxy entity was cleared.
+func (m *ProxyGroupMutation) ProxiesCleared() bool {
+	return m.clearedproxies
+}
+
+// RemoveProxyIDs removes the "proxies" edge to the Proxy entity by IDs.
+func (m *ProxyGroupMutation) RemoveProxyIDs(ids ...int64) {
+	if m.removedproxies == nil {
+		m.removedproxies = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.proxies, ids[i])
+		m.removedproxies[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedProxies returns the removed IDs of the "proxies" edge to the Proxy entity.
+func (m *ProxyGroupMutation) RemovedProxiesIDs() (ids []int64) {
+	for id := range m.removedproxies {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ProxiesIDs returns the "proxies" edge IDs in the mutation.
+func (m *ProxyGroupMutation) ProxiesIDs() (ids []int64) {
+	for id := range m.proxies {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetProxies resets all changes to the "proxies" edge.
+func (m *ProxyGroupMutation) ResetProxies() {
+	m.proxies = nil
+	m.clearedproxies = false
+	m.removedproxies = nil
+}
+
+// AddAccountIDs adds the "accounts" edge to the Account entity by ids.
+func (m *ProxyGroupMutation) AddAccountIDs(ids ...int64) {
+	if m.accounts == nil {
+		m.accounts = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.accounts[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAccounts clears the "accounts" edge to the Account entity.
+func (m *ProxyGroupMutation) ClearAccounts() {
+	m.clearedaccounts = true
+}
+
+// AccountsCleared reports if the "accounts" edge to the Account entity was cleared.
+func (m *ProxyGroupMutation) AccountsCleared() bool {
+	return m.clearedaccounts
+}
+
+// RemoveAccountIDs removes the "accounts" edge to the Account entity by IDs.
+func (m *ProxyGroupMutation) RemoveAccountIDs(ids ...int64) {
+	if m.removedaccounts == nil {
+		m.removedaccounts = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.accounts, ids[i])
+		m.removedaccounts[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAccounts returns the removed IDs of the "accounts" edge to the Account entity.
+func (m *ProxyGroupMutation) RemovedAccountsIDs() (ids []int64) {
+	for id := range m.removedaccounts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AccountsIDs returns the "accounts" edge IDs in the mutation.
+func (m *ProxyGroupMutation) AccountsIDs() (ids []int64) {
+	for id := range m.accounts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAccounts resets all changes to the "accounts" edge.
+func (m *ProxyGroupMutation) ResetAccounts() {
+	m.accounts = nil
+	m.clearedaccounts = false
+	m.removedaccounts = nil
+}
+
+// Where appends a list predicates to the ProxyGroupMutation builder.
+func (m *ProxyGroupMutation) Where(ps ...predicate.ProxyGroup) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ProxyGroupMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ProxyGroupMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ProxyGroup, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ProxyGroupMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ProxyGroupMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ProxyGroup).
+func (m *ProxyGroupMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ProxyGroupMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.created_at != nil {
+		fields = append(fields, proxygroup.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, proxygroup.FieldUpdatedAt)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, proxygroup.FieldDeletedAt)
+	}
+	if m.name != nil {
+		fields = append(fields, proxygroup.FieldName)
+	}
+	if m.description != nil {
+		fields = append(fields, proxygroup.FieldDescription)
+	}
+	if m.strategy != nil {
+		fields = append(fields, proxygroup.FieldStrategy)
+	}
+	if m.sticky_by_account != nil {
+		fields = append(fields, proxygroup.FieldStickyByAccount)
+	}
+	if m.status != nil {
+		fields = append(fields, proxygroup.FieldStatus)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ProxyGroupMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case proxygroup.FieldCreatedAt:
+		return m.CreatedAt()
+	case proxygroup.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case proxygroup.FieldDeletedAt:
+		return m.DeletedAt()
+	case proxygroup.FieldName:
+		return m.Name()
+	case proxygroup.FieldDescription:
+		return m.Description()
+	case proxygroup.FieldStrategy:
+		return m.Strategy()
+	case proxygroup.FieldStickyByAccount:
+		return m.StickyByAccount()
+	case proxygroup.FieldStatus:
+		return m.Status()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ProxyGroupMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case proxygroup.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case proxygroup.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case proxygroup.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case proxygroup.FieldName:
+		return m.OldName(ctx)
+	case proxygroup.FieldDescription:
+		return m.OldDescription(ctx)
+	case proxygroup.FieldStrategy:
+		return m.OldStrategy(ctx)
+	case proxygroup.FieldStickyByAccount:
+		return m.OldStickyByAccount(ctx)
+	case proxygroup.FieldStatus:
+		return m.OldStatus(ctx)
+	}
+	return nil, fmt.Errorf("unknown ProxyGroup field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ProxyGroupMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case proxygroup.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case proxygroup.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case proxygroup.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case proxygroup.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case proxygroup.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case proxygroup.FieldStrategy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStrategy(v)
+		return nil
+	case proxygroup.FieldStickyByAccount:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStickyByAccount(v)
+		return nil
+	case proxygroup.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ProxyGroup field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ProxyGroupMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ProxyGroupMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ProxyGroupMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ProxyGroup numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ProxyGroupMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(proxygroup.FieldDeletedAt) {
+		fields = append(fields, proxygroup.FieldDeletedAt)
+	}
+	if m.FieldCleared(proxygroup.FieldDescription) {
+		fields = append(fields, proxygroup.FieldDescription)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ProxyGroupMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ProxyGroupMutation) ClearField(name string) error {
+	switch name {
+	case proxygroup.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case proxygroup.FieldDescription:
+		m.ClearDescription()
+		return nil
+	}
+	return fmt.Errorf("unknown ProxyGroup nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ProxyGroupMutation) ResetField(name string) error {
+	switch name {
+	case proxygroup.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case proxygroup.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case proxygroup.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case proxygroup.FieldName:
+		m.ResetName()
+		return nil
+	case proxygroup.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case proxygroup.FieldStrategy:
+		m.ResetStrategy()
+		return nil
+	case proxygroup.FieldStickyByAccount:
+		m.ResetStickyByAccount()
+		return nil
+	case proxygroup.FieldStatus:
+		m.ResetStatus()
+		return nil
+	}
+	return fmt.Errorf("unknown ProxyGroup field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ProxyGroupMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.proxies != nil {
+		edges = append(edges, proxygroup.EdgeProxies)
+	}
+	if m.accounts != nil {
+		edges = append(edges, proxygroup.EdgeAccounts)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ProxyGroupMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case proxygroup.EdgeProxies:
+		ids := make([]ent.Value, 0, len(m.proxies))
+		for id := range m.proxies {
+			ids = append(ids, id)
+		}
+		return ids
+	case proxygroup.EdgeAccounts:
+		ids := make([]ent.Value, 0, len(m.accounts))
+		for id := range m.accounts {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ProxyGroupMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.removedproxies != nil {
+		edges = append(edges, proxygroup.EdgeProxies)
+	}
+	if m.removedaccounts != nil {
+		edges = append(edges, proxygroup.EdgeAccounts)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ProxyGroupMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case proxygroup.EdgeProxies:
+		ids := make([]ent.Value, 0, len(m.removedproxies))
+		for id := range m.removedproxies {
+			ids = append(ids, id)
+		}
+		return ids
+	case proxygroup.EdgeAccounts:
+		ids := make([]ent.Value, 0, len(m.removedaccounts))
+		for id := range m.removedaccounts {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ProxyGroupMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedproxies {
+		edges = append(edges, proxygroup.EdgeProxies)
+	}
+	if m.clearedaccounts {
+		edges = append(edges, proxygroup.EdgeAccounts)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ProxyGroupMutation) EdgeCleared(name string) bool {
+	switch name {
+	case proxygroup.EdgeProxies:
+		return m.clearedproxies
+	case proxygroup.EdgeAccounts:
+		return m.clearedaccounts
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ProxyGroupMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ProxyGroup unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ProxyGroupMutation) ResetEdge(name string) error {
+	switch name {
+	case proxygroup.EdgeProxies:
+		m.ResetProxies()
+		return nil
+	case proxygroup.EdgeAccounts:
+		m.ResetAccounts()
+		return nil
+	}
+	return fmt.Errorf("unknown ProxyGroup edge %s", name)
 }
 
 // RedeemCodeMutation represents an operation that mutates the RedeemCode nodes in the graph.

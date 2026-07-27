@@ -1017,4 +1017,120 @@ describe('EditAccountModal', () => {
       'antigravity_project_id'
     )
   })
+
+
+  it('hydrates proxy_group_id from account props', async () => {
+    const account = buildAccount()
+    account.proxy_group_id = 5
+    account.proxy_id = null
+    const wrapper = mount(EditAccountModal, {
+      props: {
+        show: true,
+        account,
+        proxies: [],
+        proxyGroups: [
+          {
+            id: 5,
+            name: 'grok-pool',
+            strategy: 'sticky',
+            sticky_by_account: true,
+            status: 'active',
+            created_at: '',
+            updated_at: ''
+          }
+        ],
+        groups: []
+      },
+      global: {
+        stubs: {
+          BaseDialog: BaseDialogStub,
+          Select: SelectStub,
+          Icon: true,
+          ProxySelector: true,
+          GroupSelector: GroupSelectorStub,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub
+        }
+      }
+    })
+
+    // form is internal; submit and ensure payload carries hydrated group id
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload.proxy_group_id).toBe(5)
+  })
+
+  it('clears proxy_group_id with sentinel 0 on submit when unset', async () => {
+    const account = buildAccount()
+    account.proxy_group_id = 5
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mount(EditAccountModal, {
+      props: {
+        show: true,
+        account,
+        proxies: [],
+        proxyGroups: [
+          {
+            id: 5,
+            name: 'grok-pool',
+            strategy: 'round_robin',
+            sticky_by_account: false,
+            status: 'active',
+            created_at: '',
+            updated_at: ''
+          }
+        ],
+        groups: []
+      },
+      global: {
+        stubs: {
+          BaseDialog: BaseDialogStub,
+          Select: SelectStub,
+          Icon: true,
+          // Use a real-enough stub that can clear the v-model
+          ProxySelector: defineComponent({
+            name: 'ProxySelector',
+            props: {
+              modelValue: { type: [Number, String, null], default: null },
+              mode: { type: String, default: 'proxy' },
+              proxies: { type: Array, default: () => [] },
+              groups: { type: Array, default: () => [] }
+            },
+            emits: ['update:modelValue'],
+            template: `
+              <div>
+                <button
+                  v-if="mode === 'group'"
+                  type="button"
+                  data-testid="clear-proxy-group"
+                  @click="$emit('update:modelValue', null)"
+                >clear-group</button>
+                <span v-else data-testid="proxy-selector-stub">proxy</span>
+              </div>
+            `
+          }),
+          GroupSelector: GroupSelectorStub,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub
+        }
+      }
+    })
+
+    await wrapper.get('[data-testid="clear-proxy-group"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    // 后端约定：null 在提交前被规范为 0 表示清除
+    expect(payload.proxy_group_id).toBe(0)
+  })
+
 })

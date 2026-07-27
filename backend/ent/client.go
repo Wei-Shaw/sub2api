@@ -41,6 +41,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/proxygroup"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -115,6 +116,8 @@ type Client struct {
 	PromoCodeUsage *PromoCodeUsageClient
 	// Proxy is the client for interacting with the Proxy builders.
 	Proxy *ProxyClient
+	// ProxyGroup is the client for interacting with the ProxyGroup builders.
+	ProxyGroup *ProxyGroupClient
 	// RedeemCode is the client for interacting with the RedeemCode builders.
 	RedeemCode *RedeemCodeClient
 	// SecuritySecret is the client for interacting with the SecuritySecret builders.
@@ -178,6 +181,7 @@ func (c *Client) init() {
 	c.PromoCode = NewPromoCodeClient(c.config)
 	c.PromoCodeUsage = NewPromoCodeUsageClient(c.config)
 	c.Proxy = NewProxyClient(c.config)
+	c.ProxyGroup = NewProxyGroupClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
 	c.SecuritySecret = NewSecuritySecretClient(c.config)
 	c.Setting = NewSettingClient(c.config)
@@ -309,6 +313,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PromoCode:                     NewPromoCodeClient(cfg),
 		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
 		Proxy:                         NewProxyClient(cfg),
+		ProxyGroup:                    NewProxyGroupClient(cfg),
 		RedeemCode:                    NewRedeemCodeClient(cfg),
 		SecuritySecret:                NewSecuritySecretClient(cfg),
 		Setting:                       NewSettingClient(cfg),
@@ -367,6 +372,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PromoCode:                     NewPromoCodeClient(cfg),
 		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
 		Proxy:                         NewProxyClient(cfg),
+		ProxyGroup:                    NewProxyGroupClient(cfg),
 		RedeemCode:                    NewRedeemCodeClient(cfg),
 		SecuritySecret:                NewSecuritySecretClient(cfg),
 		Setting:                       NewSettingClient(cfg),
@@ -416,9 +422,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
 		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.Proxy, c.ProxyGroup, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
@@ -436,9 +442,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
 		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.Proxy, c.ProxyGroup, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
@@ -500,6 +506,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PromoCodeUsage.mutate(ctx, m)
 	case *ProxyMutation:
 		return c.Proxy.mutate(ctx, m)
+	case *ProxyGroupMutation:
+		return c.ProxyGroup.mutate(ctx, m)
 	case *RedeemCodeMutation:
 		return c.RedeemCode.mutate(ctx, m)
 	case *SecuritySecretMutation:
@@ -847,6 +855,22 @@ func (c *AccountClient) QueryProxy(_m *Account) *ProxyQuery {
 			sqlgraph.From(account.Table, account.FieldID, id),
 			sqlgraph.To(proxy.Table, proxy.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, account.ProxyTable, account.ProxyColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryProxyGroup queries the proxy_group edge of a Account.
+func (c *AccountClient) QueryProxyGroup(_m *Account) *ProxyGroupQuery {
+	query := (&ProxyGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(account.Table, account.FieldID, id),
+			sqlgraph.To(proxygroup.Table, proxygroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, account.ProxyGroupTable, account.ProxyGroupColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -4611,6 +4635,22 @@ func (c *ProxyClient) QueryBackupProxy(_m *Proxy) *ProxyQuery {
 	return query
 }
 
+// QueryGroup queries the group edge of a Proxy.
+func (c *ProxyClient) QueryGroup(_m *Proxy) *ProxyGroupQuery {
+	query := (&ProxyGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(proxy.Table, proxy.FieldID, id),
+			sqlgraph.To(proxygroup.Table, proxygroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, proxy.GroupTable, proxy.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *ProxyClient) Hooks() []Hook {
 	hooks := c.hooks.Proxy
@@ -4635,6 +4675,173 @@ func (c *ProxyClient) mutate(ctx context.Context, m *ProxyMutation) (Value, erro
 		return (&ProxyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Proxy mutation op: %q", m.Op())
+	}
+}
+
+// ProxyGroupClient is a client for the ProxyGroup schema.
+type ProxyGroupClient struct {
+	config
+}
+
+// NewProxyGroupClient returns a client for the ProxyGroup from the given config.
+func NewProxyGroupClient(c config) *ProxyGroupClient {
+	return &ProxyGroupClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `proxygroup.Hooks(f(g(h())))`.
+func (c *ProxyGroupClient) Use(hooks ...Hook) {
+	c.hooks.ProxyGroup = append(c.hooks.ProxyGroup, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `proxygroup.Intercept(f(g(h())))`.
+func (c *ProxyGroupClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ProxyGroup = append(c.inters.ProxyGroup, interceptors...)
+}
+
+// Create returns a builder for creating a ProxyGroup entity.
+func (c *ProxyGroupClient) Create() *ProxyGroupCreate {
+	mutation := newProxyGroupMutation(c.config, OpCreate)
+	return &ProxyGroupCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ProxyGroup entities.
+func (c *ProxyGroupClient) CreateBulk(builders ...*ProxyGroupCreate) *ProxyGroupCreateBulk {
+	return &ProxyGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ProxyGroupClient) MapCreateBulk(slice any, setFunc func(*ProxyGroupCreate, int)) *ProxyGroupCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ProxyGroupCreateBulk{err: fmt.Errorf("calling to ProxyGroupClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ProxyGroupCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ProxyGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ProxyGroup.
+func (c *ProxyGroupClient) Update() *ProxyGroupUpdate {
+	mutation := newProxyGroupMutation(c.config, OpUpdate)
+	return &ProxyGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ProxyGroupClient) UpdateOne(_m *ProxyGroup) *ProxyGroupUpdateOne {
+	mutation := newProxyGroupMutation(c.config, OpUpdateOne, withProxyGroup(_m))
+	return &ProxyGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ProxyGroupClient) UpdateOneID(id int64) *ProxyGroupUpdateOne {
+	mutation := newProxyGroupMutation(c.config, OpUpdateOne, withProxyGroupID(id))
+	return &ProxyGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ProxyGroup.
+func (c *ProxyGroupClient) Delete() *ProxyGroupDelete {
+	mutation := newProxyGroupMutation(c.config, OpDelete)
+	return &ProxyGroupDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ProxyGroupClient) DeleteOne(_m *ProxyGroup) *ProxyGroupDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ProxyGroupClient) DeleteOneID(id int64) *ProxyGroupDeleteOne {
+	builder := c.Delete().Where(proxygroup.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ProxyGroupDeleteOne{builder}
+}
+
+// Query returns a query builder for ProxyGroup.
+func (c *ProxyGroupClient) Query() *ProxyGroupQuery {
+	return &ProxyGroupQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeProxyGroup},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ProxyGroup entity by its id.
+func (c *ProxyGroupClient) Get(ctx context.Context, id int64) (*ProxyGroup, error) {
+	return c.Query().Where(proxygroup.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ProxyGroupClient) GetX(ctx context.Context, id int64) *ProxyGroup {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryProxies queries the proxies edge of a ProxyGroup.
+func (c *ProxyGroupClient) QueryProxies(_m *ProxyGroup) *ProxyQuery {
+	query := (&ProxyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(proxygroup.Table, proxygroup.FieldID, id),
+			sqlgraph.To(proxy.Table, proxy.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, proxygroup.ProxiesTable, proxygroup.ProxiesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryAccounts queries the accounts edge of a ProxyGroup.
+func (c *ProxyGroupClient) QueryAccounts(_m *ProxyGroup) *AccountQuery {
+	query := (&AccountClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(proxygroup.Table, proxygroup.FieldID, id),
+			sqlgraph.To(account.Table, account.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, proxygroup.AccountsTable, proxygroup.AccountsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ProxyGroupClient) Hooks() []Hook {
+	hooks := c.hooks.ProxyGroup
+	return append(hooks[:len(hooks):len(hooks)], proxygroup.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *ProxyGroupClient) Interceptors() []Interceptor {
+	inters := c.inters.ProxyGroup
+	return append(inters[:len(inters):len(inters)], proxygroup.Interceptors[:]...)
+}
+
+func (c *ProxyGroupClient) mutate(ctx context.Context, m *ProxyGroupMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ProxyGroupCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ProxyGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ProxyGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ProxyGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ProxyGroup mutation op: %q", m.Op())
 	}
 }
 
@@ -6828,10 +7035,10 @@ type (
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
 		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, CompositeModelRoute,
-		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
-		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
-		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
+		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
+		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
+		PromoCodeUsage, Proxy, ProxyGroup, RedeemCode, SecuritySecret, Setting,
 		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
 		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
 		UserPlatformQuota, UserSubscription []ent.Hook
@@ -6840,10 +7047,10 @@ type (
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
 		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, CompositeModelRoute,
-		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
-		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
-		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
+		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
+		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
+		PromoCodeUsage, Proxy, ProxyGroup, RedeemCode, SecuritySecret, Setting,
 		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
 		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
 		UserPlatformQuota, UserSubscription []ent.Interceptor

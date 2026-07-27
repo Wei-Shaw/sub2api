@@ -383,7 +383,7 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 	if account.ProxyID != nil {
 		switch {
 		case account.Proxy != nil:
-			proxyURL = account.Proxy.URL()
+			proxyURL = account.ProxyURL()
 		case s.proxyRepo != nil:
 			if proxy, perr := s.proxyRepo.GetByID(ctx, *account.ProxyID); perr == nil && proxy != nil {
 				proxyURL = proxy.URL()

@@ -64,6 +64,9 @@ func (Proxy) Fields() []ent.Field {
 		field.Int("expiry_warn_days").
 			Default(7).
 			Comment("Days before expiry to flag as expiring-soon (per proxy)."),
+		field.Int64("group_id").
+			Optional().Nillable().
+			Comment("Optional proxy group this proxy belongs to (one group per proxy)."),
 	}
 }
 
@@ -76,6 +79,11 @@ func (Proxy) Edges() []ent.Edge {
 		edge.To("backup_proxy", Proxy.Type).
 			Field("backup_proxy_id").
 			Unique(),
+		// group: 所属代理组（可选）
+		edge.From("group", ProxyGroup.Type).
+			Ref("proxies").
+			Field("group_id").
+			Unique(),
 	}
 }
 
@@ -85,5 +93,6 @@ func (Proxy) Indexes() []ent.Index {
 		index.Fields("deleted_at"),
 		index.Fields("expires_at"),
 		index.Fields("backup_proxy_id"),
+		index.Fields("group_id"),
 	}
 }

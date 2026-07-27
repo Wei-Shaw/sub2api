@@ -817,6 +817,12 @@ func (m *mockGeminiProxyRepo) CountExpired(ctx context.Context) (int64, error) {
 func (m *mockGeminiProxyRepo) CountExpiringSoon(ctx context.Context, now time.Time) (int64, error) {
 	panic("not impl")
 }
+func (m *mockGeminiProxyRepo) ListByGroupID(ctx context.Context, groupID int64) ([]Proxy, error) {
+	panic("not impl")
+}
+func (m *mockGeminiProxyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
+	panic("not impl")
+}
 
 // mockDriveClient implements geminicli.DriveClient for tests.
 type mockDriveClient struct {

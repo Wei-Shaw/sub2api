@@ -35,6 +35,10 @@ type ProxyRepository interface {
 	ListAllForFallback(ctx context.Context) ([]Proxy, error)
 	CountExpired(ctx context.Context) (int64, error)
 	CountExpiringSoon(ctx context.Context, now time.Time) (int64, error)
+
+	// 代理组成员查询（供 ProxyGroupResolver / 管理端使用）
+	ListByGroupID(ctx context.Context, groupID int64) ([]Proxy, error)
+	CountByGroupID(ctx context.Context, groupID int64) (int64, error)
 }
 
 // CreateProxyRequest 创建代理请求

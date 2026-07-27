@@ -1413,6 +1413,15 @@
           <ProxyAdBanner />
         </div>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <div class="mt-3">
+          <label class="input-label">{{ t('admin.accounts.proxyGroup') }}</label>
+          <ProxySelector
+            v-model="form.proxy_group_id"
+            mode="group"
+            :groups="proxyGroups || []"
+          />
+          <p class="input-hint">{{ t('admin.accounts.proxyGroupHint') }}</p>
+        </div>
       </div>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -2600,6 +2609,7 @@ import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
   Proxy,
+  ProxyGroup,
   AdminGroup,
   CheckMixedChannelResponse,
   OpenAICompactMode,
@@ -2660,6 +2670,7 @@ interface Props {
   show: boolean
   account: Account | null
   proxies: Proxy[]
+  proxyGroups?: ProxyGroup[]
   groups: AdminGroup[]
 }
 
@@ -3149,6 +3160,7 @@ const form = reactive({
   name: '',
   notes: '',
   proxy_id: null as number | null,
+  proxy_group_id: null as number | null,
   concurrency: 1,
   load_factor: null as number | null,
   priority: 1,
@@ -3157,6 +3169,7 @@ const form = reactive({
   group_ids: [] as number[],
   expires_at: null as number | null
 })
+
 
 const statusOptions = computed(() => {
   const options = [
@@ -3238,6 +3251,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.name = newAccount.name
   form.notes = newAccount.notes || ''
   form.proxy_id = newAccount.proxy_id
+  form.proxy_group_id = newAccount.proxy_group_id ?? null
   form.concurrency = newAccount.concurrency
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority
@@ -4040,6 +4054,10 @@ const handleSubmit = async () => {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {
       updatePayload.proxy_id = 0
+    }
+    // proxy_group_id 同样用 0 表示清除
+    if (updatePayload.proxy_group_id === null) {
+      updatePayload.proxy_group_id = 0
     }
     if (form.expires_at === null) {
       updatePayload.expires_at = 0

@@ -269,6 +269,7 @@ type GrokSSOToOAuthRequest struct {
 	Name               string         `json:"name"`
 	Notes              *string        `json:"notes"`
 	ProxyID            *int64         `json:"proxy_id"`
+	ProxyGroupID       *int64         `json:"proxy_group_id"`
 	GroupIDs           []int64        `json:"group_ids"`
 	Credentials        map[string]any `json:"credentials"`
 	Extra              map[string]any `json:"extra"`
@@ -384,6 +385,7 @@ func (h *GrokOAuthHandler) createAccountFromSSOToken(ctx context.Context, req Gr
 		Credentials:        credentials,
 		Extra:              cloneGrokSSOMap(req.Extra),
 		ProxyID:            req.ProxyID,
+		ProxyGroupID:       req.ProxyGroupID,
 		Concurrency:        req.Concurrency,
 		LoadFactor:         req.LoadFactor,
 		Priority:           req.Priority,

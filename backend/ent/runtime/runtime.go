@@ -31,6 +31,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/proxygroup"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
@@ -227,33 +228,33 @@ func init() {
 	// account.DefaultExtra holds the default value on creation for the extra field.
 	account.DefaultExtra = accountDescExtra.Default.(func() map[string]interface{})
 	// accountDescConcurrency is the schema descriptor for concurrency field.
-	accountDescConcurrency := accountFields[8].Descriptor()
+	accountDescConcurrency := accountFields[9].Descriptor()
 	// account.DefaultConcurrency holds the default value on creation for the concurrency field.
 	account.DefaultConcurrency = accountDescConcurrency.Default.(int)
 	// accountDescPriority is the schema descriptor for priority field.
-	accountDescPriority := accountFields[10].Descriptor()
+	accountDescPriority := accountFields[11].Descriptor()
 	// account.DefaultPriority holds the default value on creation for the priority field.
 	account.DefaultPriority = accountDescPriority.Default.(int)
 	// accountDescRateMultiplier is the schema descriptor for rate_multiplier field.
-	accountDescRateMultiplier := accountFields[11].Descriptor()
+	accountDescRateMultiplier := accountFields[12].Descriptor()
 	// account.DefaultRateMultiplier holds the default value on creation for the rate_multiplier field.
 	account.DefaultRateMultiplier = accountDescRateMultiplier.Default.(float64)
 	// accountDescStatus is the schema descriptor for status field.
-	accountDescStatus := accountFields[12].Descriptor()
+	accountDescStatus := accountFields[13].Descriptor()
 	// account.DefaultStatus holds the default value on creation for the status field.
 	account.DefaultStatus = accountDescStatus.Default.(string)
 	// account.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	account.StatusValidator = accountDescStatus.Validators[0].(func(string) error)
 	// accountDescAutoPauseOnExpired is the schema descriptor for auto_pause_on_expired field.
-	accountDescAutoPauseOnExpired := accountFields[16].Descriptor()
+	accountDescAutoPauseOnExpired := accountFields[17].Descriptor()
 	// account.DefaultAutoPauseOnExpired holds the default value on creation for the auto_pause_on_expired field.
 	account.DefaultAutoPauseOnExpired = accountDescAutoPauseOnExpired.Default.(bool)
 	// accountDescSchedulable is the schema descriptor for schedulable field.
-	accountDescSchedulable := accountFields[17].Descriptor()
+	accountDescSchedulable := accountFields[18].Descriptor()
 	// account.DefaultSchedulable holds the default value on creation for the schedulable field.
 	account.DefaultSchedulable = accountDescSchedulable.Default.(bool)
 	// accountDescSessionWindowStatus is the schema descriptor for session_window_status field.
-	accountDescSessionWindowStatus := accountFields[25].Descriptor()
+	accountDescSessionWindowStatus := accountFields[26].Descriptor()
 	// account.SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	account.SessionWindowStatusValidator = accountDescSessionWindowStatus.Validators[0].(func(string) error)
 	accountgroupFields := schema.AccountGroup{}.Fields()
@@ -1675,6 +1676,59 @@ func init() {
 	proxyDescExpiryWarnDays := proxyFields[10].Descriptor()
 	// proxy.DefaultExpiryWarnDays holds the default value on creation for the expiry_warn_days field.
 	proxy.DefaultExpiryWarnDays = proxyDescExpiryWarnDays.Default.(int)
+	proxygroupMixin := schema.ProxyGroup{}.Mixin()
+	proxygroupMixinHooks1 := proxygroupMixin[1].Hooks()
+	proxygroup.Hooks[0] = proxygroupMixinHooks1[0]
+	proxygroupMixinInters1 := proxygroupMixin[1].Interceptors()
+	proxygroup.Interceptors[0] = proxygroupMixinInters1[0]
+	proxygroupMixinFields0 := proxygroupMixin[0].Fields()
+	_ = proxygroupMixinFields0
+	proxygroupFields := schema.ProxyGroup{}.Fields()
+	_ = proxygroupFields
+	// proxygroupDescCreatedAt is the schema descriptor for created_at field.
+	proxygroupDescCreatedAt := proxygroupMixinFields0[0].Descriptor()
+	// proxygroup.DefaultCreatedAt holds the default value on creation for the created_at field.
+	proxygroup.DefaultCreatedAt = proxygroupDescCreatedAt.Default.(func() time.Time)
+	// proxygroupDescUpdatedAt is the schema descriptor for updated_at field.
+	proxygroupDescUpdatedAt := proxygroupMixinFields0[1].Descriptor()
+	// proxygroup.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	proxygroup.DefaultUpdatedAt = proxygroupDescUpdatedAt.Default.(func() time.Time)
+	// proxygroup.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	proxygroup.UpdateDefaultUpdatedAt = proxygroupDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// proxygroupDescName is the schema descriptor for name field.
+	proxygroupDescName := proxygroupFields[0].Descriptor()
+	// proxygroup.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	proxygroup.NameValidator = func() func(string) error {
+		validators := proxygroupDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// proxygroupDescStrategy is the schema descriptor for strategy field.
+	proxygroupDescStrategy := proxygroupFields[2].Descriptor()
+	// proxygroup.DefaultStrategy holds the default value on creation for the strategy field.
+	proxygroup.DefaultStrategy = proxygroupDescStrategy.Default.(string)
+	// proxygroup.StrategyValidator is a validator for the "strategy" field. It is called by the builders before save.
+	proxygroup.StrategyValidator = proxygroupDescStrategy.Validators[0].(func(string) error)
+	// proxygroupDescStickyByAccount is the schema descriptor for sticky_by_account field.
+	proxygroupDescStickyByAccount := proxygroupFields[3].Descriptor()
+	// proxygroup.DefaultStickyByAccount holds the default value on creation for the sticky_by_account field.
+	proxygroup.DefaultStickyByAccount = proxygroupDescStickyByAccount.Default.(bool)
+	// proxygroupDescStatus is the schema descriptor for status field.
+	proxygroupDescStatus := proxygroupFields[4].Descriptor()
+	// proxygroup.DefaultStatus holds the default value on creation for the status field.
+	proxygroup.DefaultStatus = proxygroupDescStatus.Default.(string)
+	// proxygroup.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	proxygroup.StatusValidator = proxygroupDescStatus.Validators[0].(func(string) error)
 	redeemcodeFields := schema.RedeemCode{}.Fields()
 	_ = redeemcodeFields
 	// redeemcodeDescCode is the schema descriptor for code field.

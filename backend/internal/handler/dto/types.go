@@ -191,6 +191,7 @@ type Account struct {
 	Extra                   map[string]any                 `json:"extra"`
 	OllamaCloudUsage        *service.OllamaCloudUsageState `json:"ollama_cloud_usage,omitempty"`
 	ProxyID                 *int64                         `json:"proxy_id"`
+	ProxyGroupID            *int64                         `json:"proxy_group_id,omitempty"`
 	ProxyFallbackOriginID   *int64                         `json:"proxy_fallback_origin_id"`
 	ProxyFallbackOriginName *string                        `json:"proxy_fallback_origin_name,omitempty"`
 	Concurrency             int                            `json:"concurrency"`
@@ -380,6 +381,25 @@ type ProxyAccountSummary struct {
 	Platform string  `json:"platform"`
 	Type     string  `json:"type"`
 	Notes    *string `json:"notes,omitempty"`
+}
+
+// ProxyGroup 代理组（管理端）。
+type ProxyGroup struct {
+	ID              int64     `json:"id"`
+	Name            string    `json:"name"`
+	Description     string    `json:"description,omitempty"`
+	Strategy        string    `json:"strategy"`
+	StickyByAccount bool      `json:"sticky_by_account"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// ProxyGroupWithProxies 代理组 + 成员。
+type ProxyGroupWithProxies struct {
+	ProxyGroup
+	Proxies    []AdminProxy `json:"proxies,omitempty"`
+	ProxyCount int64        `json:"proxy_count"`
 }
 
 type RedeemCode struct {

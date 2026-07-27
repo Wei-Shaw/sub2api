@@ -19,6 +19,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
+// normalizeOptionalProxyGroupID 将 0 哨兵规范为 nil（清除/未设置）。
+func normalizeOptionalProxyGroupID(id *int64) *int64 {
+	if id == nil || *id == 0 {
+		return nil
+	}
+	return id
+}
+
 // Account management implementations
 func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
@@ -460,17 +468,18 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
 	account := &Account{
-		Name:        input.Name,
-		Notes:       normalizeAccountNotes(input.Notes),
-		Platform:    input.Platform,
-		Type:        input.Type,
-		Credentials: input.Credentials,
-		Extra:       accountExtra,
-		ProxyID:     input.ProxyID,
-		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
-		Priority:    input.Priority,
-		Status:      StatusActive,
-		Schedulable: true,
+		Name:         input.Name,
+		Notes:        normalizeAccountNotes(input.Notes),
+		Platform:     input.Platform,
+		Type:         input.Type,
+		Credentials:  input.Credentials,
+		Extra:        accountExtra,
+		ProxyID:      input.ProxyID,
+		ProxyGroupID: normalizeOptionalProxyGroupID(input.ProxyGroupID),
+		Concurrency:  normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
+		Priority:     input.Priority,
+		Status:       StatusActive,
+		Schedulable:  true,
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -736,6 +745,18 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			account.ProxyID = input.ProxyID
 		}
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
+	}
+	if input.ProxyGroupID != nil && !account.IsCredentialShadow() {
+		// 0 表示清除代理组（与 proxy_id 相同哨兵约定）
+		if *input.ProxyGroupID == 0 {
+			account.ProxyGroupID = nil
+		} else {
+			account.ProxyGroupID = input.ProxyGroupID
+		}
+		// 组变更后需重新 hydrate 选择结果
+		if account.ProxyID == nil {
+			account.Proxy = nil
+		}
 	}
 	if !reflect.DeepEqual(previousProbeIdentity, upstreamBillingProbeIdentity(account)) && account.Extra != nil {
 		delete(account.Extra, UpstreamBillingProbeExtraKey)

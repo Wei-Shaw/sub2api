@@ -27,6 +27,7 @@ type Account struct {
 	Credentials             map[string]any
 	Extra                   map[string]any
 	ProxyID                 *int64
+	ProxyGroupID            *int64 // optional proxy group; used when ProxyID is nil
 	ProxyFallbackOriginID   *int64
 	ProxyFallbackOriginName *string // 仅展示用
 	Concurrency             int
@@ -156,6 +157,23 @@ type TempUnschedulableRule struct {
 
 func (a *Account) IsActive() bool {
 	return a.Status == StatusActive
+}
+
+// ProxyURL 返回账号当前生效的出站代理 URL，无代理时返回空串。
+//
+// 该方法是账号代理取值的唯一入口，调用方不应再内联判断 Proxy / ProxyID
+// 后自行调用 Proxy.URL()。账号既可能通过 ProxyID 直接绑定单个代理，也可能
+// 由服务端在 hydration 阶段按策略选出一个代理，两种情况下结果都体现在
+// Proxy 字段上，因此这里只判断 Proxy 是否存在。
+//
+// 当前不变量：Proxy != nil 蕴含 ProxyID != nil（Proxy 的全部非空赋值点均受
+// ProxyID != nil 保护），故本方法与既有的 ProxyID != nil && Proxy != nil
+// 写法等价。
+func (a *Account) ProxyURL() string {
+	if a == nil || a.Proxy == nil {
+		return ""
+	}
+	return a.Proxy.URL()
 }
 
 // BillingRateMultiplier 返回账号计费倍率。

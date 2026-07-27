@@ -457,10 +457,7 @@ func (s *AccountTestService) doUpstreamModelsRequest(req *http.Request, proxyURL
 }
 
 func upstreamModelsProxyURL(account *Account) string {
-	if account != nil && account.ProxyID != nil && account.Proxy != nil {
-		return account.Proxy.URL()
-	}
-	return ""
+	return account.ProxyURL()
 }
 
 func buildV1ModelsURL(base string) string {

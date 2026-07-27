@@ -109,6 +109,12 @@ func (m *mockProxyRepoForOAuth) CountExpired(ctx context.Context) (int64, error)
 func (m *mockProxyRepoForOAuth) CountExpiringSoon(ctx context.Context, now time.Time) (int64, error) {
 	panic("CountExpiringSoon not implemented")
 }
+func (m *mockProxyRepoForOAuth) ListByGroupID(ctx context.Context, groupID int64) ([]Proxy, error) {
+	panic("ListByGroupID not implemented")
+}
+func (m *mockProxyRepoForOAuth) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
+	panic("CountByGroupID not implemented")
+}
 
 // =====================
 // 测试用例

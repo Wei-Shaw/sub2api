@@ -1,0 +1,10 @@
+# Gray-test overlay: pass gateway isolation/max clients explicitly
+services:
+  sub2api:
+    environment:
+      - GATEWAY_CONNECTION_POOL_ISOLATION=${GATEWAY_CONNECTION_POOL_ISOLATION:-account_proxy}
+      - GATEWAY_MAX_UPSTREAM_CLIENTS=${GATEWAY_MAX_UPSTREAM_CLIENTS:-5000}
+      # clear host proxy defaults for gray env when empty
+      - HTTP_PROXY=${SUB2API_DEV_HTTP_PROXY:-}
+      - HTTPS_PROXY=${SUB2API_DEV_HTTPS_PROXY:-}
+      - ALL_PROXY=${SUB2API_DEV_ALL_PROXY:-}

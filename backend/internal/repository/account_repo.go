@@ -49,6 +49,9 @@ type accountRepository struct {
 	// Used to proactively sync account snapshot to cache when status changes,
 	// ensuring sticky sessions can promptly detect unavailable accounts.
 	schedulerCache service.SchedulerCache
+	// proxyGroupResolver 在账号仅绑定代理组时，于 hydration 阶段选出成员代理。
+	// 可选：为 nil 时跳过组选择（测试/未启用代理池）。
+	proxyGroupResolver service.ProxyGroupResolver
 }
 
 var schedulerNeutralExtraKeyPrefixes = []string{
@@ -71,20 +74,30 @@ const postgresParameterBatchSize = 50000
 
 // NewAccountRepository 创建账户仓储实例。
 // 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
-func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AccountRepository {
-	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache, proxyGroupResolver service.ProxyGroupResolver) service.AccountRepository {
+	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache, proxyGroupResolver)
 }
 
 // NewAdminAccountRepository exposes the account repository's atomic duplication capability
 // as an explicit dependency of the admin service.
-func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AdminAccountRepository {
-	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache, proxyGroupResolver service.ProxyGroupResolver) service.AdminAccountRepository {
+	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache, proxyGroupResolver)
 }
 
 // newAccountRepositoryWithSQL 是内部构造函数，支持依赖注入 SQL 执行器。
 // 这种设计便于单元测试时注入 mock 对象。
-func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedulerCache service.SchedulerCache) *accountRepository {
-	return &accountRepository{client: client, sql: sqlq, schedulerCache: schedulerCache}
+// proxyGroupResolver 为可选变参，省略时跳过代理组选择（兼容既有测试调用）。
+func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedulerCache service.SchedulerCache, proxyGroupResolver ...service.ProxyGroupResolver) *accountRepository {
+	var resolver service.ProxyGroupResolver
+	if len(proxyGroupResolver) > 0 {
+		resolver = proxyGroupResolver[0]
+	}
+	return &accountRepository{
+		client:             client,
+		sql:                sqlq,
+		schedulerCache:     schedulerCache,
+		proxyGroupResolver: resolver,
+	}
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
@@ -125,6 +138,9 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 
 	if account.ProxyID != nil {
 		builder.SetProxyID(*account.ProxyID)
+	}
+	if account.ProxyGroupID != nil {
+		builder.SetProxyGroupID(*account.ProxyGroupID)
 	}
 	if account.LastUsedAt != nil {
 		builder.SetLastUsedAt(*account.LastUsedAt)
@@ -292,6 +308,8 @@ func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*servi
 		// Prefer the preloaded proxy edge when available.
 		if entAcc.Edges.Proxy != nil {
 			out.Proxy = proxyEntityToService(entAcc.Edges.Proxy)
+		} else {
+			r.applyProxyGroupSelection(ctx, out)
 		}
 
 		if groups, ok := groupsByAccount[entAcc.ID]; ok {
@@ -491,6 +509,11 @@ func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbe
 		builder.SetProxyID(*account.ProxyID)
 	} else {
 		builder.ClearProxyID()
+	}
+	if account.ProxyGroupID != nil {
+		builder.SetProxyGroupID(*account.ProxyGroupID)
+	} else {
+		builder.ClearProxyGroupID()
 	}
 	if account.LastUsedAt != nil {
 		builder.SetLastUsedAt(*account.LastUsedAt)
@@ -3169,6 +3192,8 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 			if proxy, ok := proxyMap[*acc.ProxyID]; ok {
 				out.Proxy = proxy
 			}
+		} else {
+			r.applyProxyGroupSelection(ctx, out)
 		}
 		out.ProxyFallbackOriginID = acc.ProxyFallbackOriginID
 		if acc.ProxyFallbackOriginID != nil {
@@ -3402,6 +3427,29 @@ func buildSchedulerGroupPayload(groupIDs []int64) any {
 	return map[string]any{"group_ids": groupIDs}
 }
 
+// applyProxyGroupSelection 在账号未绑定单个 proxy_id 但绑定了 proxy_group_id 时，
+// 从组内选出一个健康代理填入 account.Proxy。MUST NOT 写 account.ProxyID。
+func (r *accountRepository) applyProxyGroupSelection(ctx context.Context, account *service.Account) {
+	if r == nil || account == nil || account.Proxy != nil {
+		return
+	}
+	if account.ProxyGroupID == nil || *account.ProxyGroupID <= 0 {
+		return
+	}
+	if r.proxyGroupResolver == nil {
+		return
+	}
+	selected, err := r.proxyGroupResolver.ResolveProxy(ctx, *account.ProxyGroupID, account.ID)
+	if err != nil {
+		logger.LegacyPrintf("repository.account", "[ProxyGroup] resolve failed: account=%d group=%d err=%v", account.ID, *account.ProxyGroupID, err)
+		return
+	}
+	if selected != nil {
+		account.Proxy = selected
+		// 刻意不写 account.ProxyID —— 见 openspec design C1（grok OAuth CAS）。
+	}
+}
+
 func accountEntityToService(m *dbent.Account) *service.Account {
 	if m == nil {
 		return nil
@@ -3418,6 +3466,7 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		Credentials:             copyJSONMap(m.Credentials),
 		Extra:                   copyJSONMap(m.Extra),
 		ProxyID:                 m.ProxyID,
+		ProxyGroupID:            m.ProxyGroupID,
 		ProxyFallbackOriginID:   m.ProxyFallbackOriginID,
 		Concurrency:             m.Concurrency,
 		Priority:                m.Priority,

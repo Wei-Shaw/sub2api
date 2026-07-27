@@ -125,6 +125,11 @@ func ExpiryWarnDays(v int) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldExpiryWarnDays, v))
 }
 
+// GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
+func GroupID(v int64) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldGroupID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldCreatedAt, v))
@@ -890,6 +895,36 @@ func ExpiryWarnDaysLTE(v int) predicate.Proxy {
 	return predicate.Proxy(sql.FieldLTE(FieldExpiryWarnDays, v))
 }
 
+// GroupIDEQ applies the EQ predicate on the "group_id" field.
+func GroupIDEQ(v int64) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldGroupID, v))
+}
+
+// GroupIDNEQ applies the NEQ predicate on the "group_id" field.
+func GroupIDNEQ(v int64) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldGroupID, v))
+}
+
+// GroupIDIn applies the In predicate on the "group_id" field.
+func GroupIDIn(vs ...int64) predicate.Proxy {
+	return predicate.Proxy(sql.FieldIn(FieldGroupID, vs...))
+}
+
+// GroupIDNotIn applies the NotIn predicate on the "group_id" field.
+func GroupIDNotIn(vs ...int64) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotIn(FieldGroupID, vs...))
+}
+
+// GroupIDIsNil applies the IsNil predicate on the "group_id" field.
+func GroupIDIsNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldIsNull(FieldGroupID))
+}
+
+// GroupIDNotNil applies the NotNil predicate on the "group_id" field.
+func GroupIDNotNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotNull(FieldGroupID))
+}
+
 // HasAccounts applies the HasEdge predicate on the "accounts" edge.
 func HasAccounts() predicate.Proxy {
 	return predicate.Proxy(func(s *sql.Selector) {
@@ -928,6 +963,29 @@ func HasBackupProxy() predicate.Proxy {
 func HasBackupProxyWith(preds ...predicate.Proxy) predicate.Proxy {
 	return predicate.Proxy(func(s *sql.Selector) {
 		step := newBackupProxyStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasGroup applies the HasEdge predicate on the "group" edge.
+func HasGroup() predicate.Proxy {
+	return predicate.Proxy(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, GroupTable, GroupColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGroupWith applies the HasEdge predicate on the "group" edge with a given conditions (other predicates).
+func HasGroupWith(preds ...predicate.ProxyGroup) predicate.Proxy {
+	return predicate.Proxy(func(s *sql.Selector) {
+		step := newGroupStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

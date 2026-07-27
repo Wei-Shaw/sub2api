@@ -745,10 +745,7 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	enforceCodexIdentityHeaders(req.Header)
 	setOpenAIChatGPTAccountHeaders(req.Header, account)
 
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := account.ProxyURL()
 	client, err := httppool.GetClient(httppool.Options{
 		ProxyURL:              proxyURL,
 		Timeout:               15 * time.Second,
@@ -1420,10 +1417,7 @@ func (s *AccountUsageService) fetchOAuthUsageRaw(ctx context.Context, account *A
 		return nil, fmt.Errorf("no access token available")
 	}
 
-	var proxyURL string
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := account.ProxyURL()
 
 	// 构建完整的选项
 	opts := &ClaudeUsageFetchOptions{

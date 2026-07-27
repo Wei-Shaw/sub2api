@@ -309,10 +309,7 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 	headers.Set("Version", clientVersion)
 	headers.Set("User-Agent", codexCLIUserAgent)
 
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := account.ProxyURL()
 
 	request := codexModelsManifestRequest{
 		url:                 requestURL.String(),

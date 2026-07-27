@@ -54,6 +54,9 @@ func (r *proxyRepository) Create(ctx context.Context, proxyIn *service.Proxy) er
 	if proxyIn.BackupProxyID != nil {
 		builder.SetBackupProxyID(*proxyIn.BackupProxyID)
 	}
+	if proxyIn.GroupID != nil {
+		builder.SetGroupID(*proxyIn.GroupID)
+	}
 
 	created, err := builder.Save(ctx)
 	if err == nil {
@@ -450,6 +453,37 @@ func (r *proxyRepository) ListActive(ctx context.Context) ([]service.Proxy, erro
 	return outProxies, nil
 }
 
+func (r *proxyRepository) ListByGroupID(ctx context.Context, groupID int64) ([]service.Proxy, error) {
+	if groupID <= 0 {
+		return []service.Proxy{}, nil
+	}
+	proxies, err := r.client.Proxy.Query().
+		Where(proxy.GroupIDEQ(groupID)).
+		Order(dbent.Asc(proxy.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.Proxy, 0, len(proxies))
+	for i := range proxies {
+		if p := proxyEntityToService(proxies[i]); p != nil {
+			out = append(out, *p)
+		}
+	}
+	return out, nil
+}
+
+func (r *proxyRepository) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
+	if groupID <= 0 {
+		return 0, nil
+	}
+	var c int64
+	err := scanSingleRow(ctx, r.sql,
+		`SELECT COUNT(*) FROM proxies WHERE group_id=$1 AND deleted_at IS NULL`,
+		[]any{groupID}, &c)
+	return c, err
+}
+
 // ExistsByHostPortAuth checks if a proxy with the same host, port, username, and password exists
 func (r *proxyRepository) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error) {
 	q := r.client.Proxy.Query().
@@ -597,6 +631,7 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 		FallbackMode:   m.FallbackMode,
 		BackupProxyID:  m.BackupProxyID,
 		ExpiryWarnDays: m.ExpiryWarnDays,
+		GroupID:        m.GroupID,
 	}
 	if m.Username != nil {
 		out.Username = *m.Username

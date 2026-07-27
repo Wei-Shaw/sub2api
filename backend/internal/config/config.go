@@ -3105,6 +3105,12 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("gateway.connection_pool_isolation must be one of: %s/%s/%s",
 				ConnectionPoolIsolationProxy, ConnectionPoolIsolationAccount, ConnectionPoolIsolationAccountProxy)
 		}
+		// 代理池（proxy_group）在 hydration 后可能按请求切换出口。
+		// account 隔离模式下 cacheKey 不含 proxy，出口变化会销毁并重建 Transport（见 http_upstream.shouldReuseEntry）。
+		// 不拒绝启动（存量部署可能依赖 account 模式），但明确告警，灰度前应切到 proxy 或 account_proxy。
+		if c.Gateway.ConnectionPoolIsolation == ConnectionPoolIsolationAccount {
+			slog.Warn("gateway.connection_pool_isolation=account is incompatible with proxy groups: each egress change rebuilds the upstream transport; prefer proxy or account_proxy before enabling proxy pools")
+		}
 	}
 	if c.Gateway.ImageConcurrency.MaxConcurrentRequests < 0 {
 		return fmt.Errorf("gateway.image_concurrency.max_concurrent_requests must be non-negative")

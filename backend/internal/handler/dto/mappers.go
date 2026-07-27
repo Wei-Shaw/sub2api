@@ -236,6 +236,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		Extra:                           extra,
 		OllamaCloudUsage:                ollamaCloudUsage,
 		ProxyID:                         a.ProxyID,
+		ProxyGroupID:                    a.ProxyGroupID,
 		ProxyFallbackOriginID:           a.ProxyFallbackOriginID,
 		ProxyFallbackOriginName:         a.ProxyFallbackOriginName,
 		Concurrency:                     a.Concurrency,
@@ -562,6 +563,43 @@ func ProxyAccountSummaryFromService(a *service.ProxyAccountSummary) *ProxyAccoun
 		Type:     a.Type,
 		Notes:    a.Notes,
 	}
+}
+
+// ProxyGroupFromService 转换代理组领域对象。
+func ProxyGroupFromService(g *service.ProxyGroup) *ProxyGroup {
+	if g == nil {
+		return nil
+	}
+	return &ProxyGroup{
+		ID:              g.ID,
+		Name:            g.Name,
+		Description:     g.Description,
+		Strategy:        g.Strategy,
+		StickyByAccount: g.StickyByAccount,
+		Status:          g.Status,
+		CreatedAt:       g.CreatedAt,
+		UpdatedAt:       g.UpdatedAt,
+	}
+}
+
+// ProxyGroupWithProxiesFromService 转换组 + 成员。
+func ProxyGroupWithProxiesFromService(g *service.ProxyGroupWithProxies) *ProxyGroupWithProxies {
+	if g == nil {
+		return nil
+	}
+	out := &ProxyGroupWithProxies{
+		ProxyGroup: *ProxyGroupFromService(&g.ProxyGroup),
+		ProxyCount: g.ProxyCount,
+	}
+	if len(g.Proxies) > 0 {
+		out.Proxies = make([]AdminProxy, 0, len(g.Proxies))
+		for i := range g.Proxies {
+			if p := ProxyFromServiceAdmin(&g.Proxies[i]); p != nil {
+				out.Proxies = append(out.Proxies, *p)
+			}
+		}
+	}
+	return out
 }
 
 func RedeemCodeFromService(rc *service.RedeemCode) *RedeemCode {

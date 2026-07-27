@@ -43,10 +43,14 @@ const (
 	FieldBackupProxyID = "backup_proxy_id"
 	// FieldExpiryWarnDays holds the string denoting the expiry_warn_days field in the database.
 	FieldExpiryWarnDays = "expiry_warn_days"
+	// FieldGroupID holds the string denoting the group_id field in the database.
+	FieldGroupID = "group_id"
 	// EdgeAccounts holds the string denoting the accounts edge name in mutations.
 	EdgeAccounts = "accounts"
 	// EdgeBackupProxy holds the string denoting the backup_proxy edge name in mutations.
 	EdgeBackupProxy = "backup_proxy"
+	// EdgeGroup holds the string denoting the group edge name in mutations.
+	EdgeGroup = "group"
 	// Table holds the table name of the proxy in the database.
 	Table = "proxies"
 	// AccountsTable is the table that holds the accounts relation/edge.
@@ -60,6 +64,13 @@ const (
 	BackupProxyTable = "proxies"
 	// BackupProxyColumn is the table column denoting the backup_proxy relation/edge.
 	BackupProxyColumn = "backup_proxy_id"
+	// GroupTable is the table that holds the group relation/edge.
+	GroupTable = "proxies"
+	// GroupInverseTable is the table name for the ProxyGroup entity.
+	// It exists in this package in order to avoid circular dependency with the "proxygroup" package.
+	GroupInverseTable = "proxy_groups"
+	// GroupColumn is the table column denoting the group relation/edge.
+	GroupColumn = "group_id"
 )
 
 // Columns holds all SQL columns for proxy fields.
@@ -79,6 +90,7 @@ var Columns = []string{
 	FieldFallbackMode,
 	FieldBackupProxyID,
 	FieldExpiryWarnDays,
+	FieldGroupID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -205,6 +217,11 @@ func ByExpiryWarnDays(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldExpiryWarnDays, opts...).ToFunc()
 }
 
+// ByGroupID orders the results by the group_id field.
+func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
+}
+
 // ByAccountsCount orders the results by accounts count.
 func ByAccountsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -225,6 +242,13 @@ func ByBackupProxyField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newBackupProxyStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByGroupField orders the results by group field.
+func ByGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGroupStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newAccountsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -237,5 +261,12 @@ func newBackupProxyStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(Table, FieldID),
 		sqlgraph.Edge(sqlgraph.O2O, false, BackupProxyTable, BackupProxyColumn),
+	)
+}
+func newGroupStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GroupInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, GroupTable, GroupColumn),
 	)
 }

@@ -98,8 +98,16 @@ func TestVertexServiceAccountProxyURL(t *testing.T) {
 	}
 
 	require.Equal(t, "http://proxy.example.com:8080", vertexServiceAccountProxyURL(account))
-	require.Empty(t, vertexServiceAccountProxyURL(&Account{Proxy: account.Proxy}))
+
+	// 代理取值以已 hydrate 的 Proxy 为准，不再要求 ProxyID 同时非空。
+	// 代理池模式下账号通过 proxy_group_id 绑定，服务端在 hydration 阶段
+	// 选出成员代理填入 Proxy，此时 ProxyID 保持为 nil（见 Account.ProxyURL）。
+	require.Equal(t, "http://proxy.example.com:8080", vertexServiceAccountProxyURL(&Account{Proxy: account.Proxy}))
+
+	// ProxyID 非空但 Proxy 未 hydrate 时无从取值，仍返回空串。
 	require.Empty(t, vertexServiceAccountProxyURL(&Account{ProxyID: &proxyID}))
+	require.Empty(t, vertexServiceAccountProxyURL(&Account{}))
+	require.Empty(t, vertexServiceAccountProxyURL(nil))
 }
 
 func TestVertexServiceAccountHTTPClientRecordsDependency(t *testing.T) {

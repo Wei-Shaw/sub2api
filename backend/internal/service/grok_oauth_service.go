@@ -199,7 +199,9 @@ func (s *GrokOAuthService) RefreshAccountToken(ctx context.Context, account *Acc
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_INVALID_ACCOUNT_TYPE", "account is not an OAuth account")
 	}
 
-	proxyURL, err := s.proxyURL(ctx, account.ProxyID)
+	// 优先复用已 hydrate 的 account.Proxy（含代理组 sticky 选择结果），
+	// 保证 OAuth 刷新与中继同出口；仅在未 hydrate 时回退到 ProxyID 查库。
+	proxyURL, err := s.accountProxyURL(ctx, account)
 	if err != nil {
 		return nil, err
 	}
@@ -330,6 +332,18 @@ func (s *GrokOAuthService) proxyURL(ctx context.Context, proxyID *int64) (string
 		return "", infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_PROXY_NOT_FOUND", "configured proxy was not found")
 	}
 	return proxy.URL(), nil
+}
+
+// accountProxyURL 解析账号出站代理：优先已 hydrate 的 Proxy（代理组选择结果），
+// 否则按 ProxyID 查库。管理端显式传入 proxyID 的路径仍走 proxyURL()。
+func (s *GrokOAuthService) accountProxyURL(ctx context.Context, account *Account) (string, error) {
+	if account == nil {
+		return "", nil
+	}
+	if account.Proxy != nil {
+		return account.ProxyURL(), nil
+	}
+	return s.proxyURL(ctx, account.ProxyID)
 }
 
 func applyGrokTokenClaims(info *GrokTokenInfo, token string) {

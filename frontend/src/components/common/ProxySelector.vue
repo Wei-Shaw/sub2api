@@ -9,6 +9,7 @@
         isOpen && 'select-trigger-open',
         disabled && 'select-trigger-disabled'
       ]"
+      :data-testid="mode === 'group' ? 'proxy-group-selector' : 'proxy-selector'"
     >
       <span class="select-value">
         {{ selectedLabel }}
@@ -32,13 +33,17 @@
               ref="searchInputRef"
               v-model="searchQuery"
               type="text"
-              :placeholder="t('admin.proxies.searchProxies')"
+              :placeholder="
+                mode === 'group'
+                  ? t('admin.proxyGroups.search')
+                  : t('admin.proxies.searchProxies')
+              "
               class="select-search-input"
               @click.stop
             />
           </div>
           <button
-            v-if="proxies.length > 0"
+            v-if="mode === 'proxy' && proxies.length > 0"
             type="button"
             @click.stop="handleBatchTest"
             :disabled="batchTesting"
@@ -66,101 +71,149 @@
 
         <!-- Options list -->
         <div class="select-options">
-          <!-- No Proxy option -->
+          <!-- No selection option -->
           <div
             @click="selectOption(null)"
-            :class="['select-option', modelValue === null && 'select-option-selected']"
+            :class="['select-option', isSelected(null) && 'select-option-selected']"
+            data-testid="proxy-selector-none"
           >
-            <span class="select-option-label">{{ t('admin.accounts.noProxy') }}</span>
-            <Icon v-if="modelValue === null" name="check" size="sm" class="text-primary-500" />
+            <span class="select-option-label">{{
+              mode === 'group' ? t('admin.accounts.noProxyGroup') : t('admin.accounts.noProxy')
+            }}</span>
+            <Icon v-if="isSelected(null)" name="check" size="sm" class="text-primary-500" />
           </div>
 
           <!-- Proxy options -->
-          <div
-            v-for="proxy in filteredProxies"
-            :key="proxy.id"
-            @click="selectOption(proxy.id)"
-            :class="['select-option', modelValue === proxy.id && 'select-option-selected']"
-          >
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2">
-                <span class="truncate font-medium">{{ proxy.name }}</span>
-                <!-- Account count badge -->
-                <span
-                  v-if="proxy.account_count !== undefined"
-                  class="inline-flex flex-shrink-0 items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-600 dark:text-gray-400"
-                >
-                  {{ proxy.account_count }}
-                </span>
-                <!-- Test result badges -->
-                <template v-if="testResults[proxy.id]">
+          <template v-if="mode === 'proxy'">
+            <div
+              v-for="proxy in filteredProxies"
+              :key="`proxy-${proxy.id}`"
+              @click="selectOption(proxy.id)"
+              :class="['select-option', isSelected(proxy.id) && 'select-option-selected']"
+              :data-testid="`proxy-option-${proxy.id}`"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="truncate font-medium">{{ proxy.name }}</span>
                   <span
-                    v-if="testResults[proxy.id].success"
-                    class="inline-flex flex-shrink-0 items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                    v-if="proxy.account_count !== undefined"
+                    class="inline-flex flex-shrink-0 items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-600 dark:text-gray-400"
                   >
-                    <span v-if="testResults[proxy.id].country">{{
-                      testResults[proxy.id].country
-                    }}</span>
-                    <span v-if="testResults[proxy.id].latency_ms"
-                      >{{ testResults[proxy.id].latency_ms }}ms</span
+                    {{ proxy.account_count }}
+                  </span>
+                  <template v-if="testResults[proxy.id]">
+                    <span
+                      v-if="testResults[proxy.id].success"
+                      class="inline-flex flex-shrink-0 items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
                     >
-                  </span>
-                  <span
-                    v-else
-                    class="inline-flex flex-shrink-0 items-center rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                  >
-                    {{ t('admin.proxies.testFailed') }}
-                  </span>
-                </template>
+                      <span v-if="testResults[proxy.id].country">{{
+                        testResults[proxy.id].country
+                      }}</span>
+                      <span v-if="testResults[proxy.id].latency_ms"
+                        >{{ testResults[proxy.id].latency_ms }}ms</span
+                      >
+                    </span>
+                    <span
+                      v-else
+                      class="inline-flex flex-shrink-0 items-center rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    >
+                      {{ t('admin.proxies.testFailed') }}
+                    </span>
+                  </template>
+                </div>
+                <div class="truncate text-xs text-gray-500 dark:text-gray-400">
+                  {{ proxy.protocol }}://{{ proxy.host }}:{{ proxy.port }}
+                </div>
               </div>
-              <div class="truncate text-xs text-gray-500 dark:text-gray-400">
-                {{ proxy.protocol }}://{{ proxy.host }}:{{ proxy.port }}
-              </div>
+
+              <button
+                type="button"
+                @click.stop="handleTestProxy(proxy)"
+                :disabled="testingProxyIds.has(proxy.id)"
+                class="test-btn"
+                :title="t('admin.proxies.testConnection')"
+              >
+                <svg
+                  v-if="testingProxyIds.has(proxy.id)"
+                  class="h-3.5 w-3.5 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  ></circle>
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                <Icon v-else name="play" size="xs" />
+              </button>
+
+              <Icon
+                v-if="isSelected(proxy.id)"
+                name="check"
+                size="sm"
+                class="flex-shrink-0 text-primary-500"
+              />
             </div>
 
-            <!-- Individual test button -->
-            <button
-              type="button"
-              @click.stop="handleTestProxy(proxy)"
-              :disabled="testingProxyIds.has(proxy.id)"
-              class="test-btn"
-              :title="t('admin.proxies.testConnection')"
+            <div v-if="filteredProxies.length === 0 && searchQuery" class="select-empty">
+              {{ t('common.noOptionsFound') }}
+            </div>
+          </template>
+
+          <!-- Proxy group options -->
+          <template v-else>
+            <div
+              v-for="group in filteredGroups"
+              :key="`group-${group.id}`"
+              @click="selectOption(group.id)"
+              :class="['select-option', isSelected(group.id) && 'select-option-selected']"
+              :data-testid="`proxy-group-option-${group.id}`"
             >
-              <svg
-                v-if="testingProxyIds.has(proxy.id)"
-                class="h-3.5 w-3.5 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              <Icon v-else name="play" size="xs" />
-            </button>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="truncate font-medium">{{ group.name }}</span>
+                  <span
+                    v-if="group.proxy_count !== undefined"
+                    class="inline-flex flex-shrink-0 items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-600 dark:text-gray-400"
+                  >
+                    {{ group.proxy_count }}
+                  </span>
+                  <span
+                    v-if="group.sticky_by_account"
+                    class="inline-flex flex-shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                  >
+                    sticky
+                  </span>
+                </div>
+                <div class="truncate text-xs text-gray-500 dark:text-gray-400">
+                  {{ group.strategy }}
+                  <span v-if="group.description"> · {{ group.description }}</span>
+                </div>
+              </div>
+              <Icon
+                v-if="isSelected(group.id)"
+                name="check"
+                size="sm"
+                class="flex-shrink-0 text-primary-500"
+              />
+            </div>
 
-            <Icon
-              v-if="modelValue === proxy.id"
-              name="check"
-              size="sm"
-              class="flex-shrink-0 text-primary-500"
-            />
-          </div>
-
-          <!-- Empty state -->
-          <div v-if="filteredProxies.length === 0 && searchQuery" class="select-empty">
-            {{ t('common.noOptionsFound') }}
-          </div>
+            <div v-if="filteredGroups.length === 0 && searchQuery" class="select-empty">
+              {{ t('common.noOptionsFound') }}
+            </div>
+            <div v-else-if="groups.length === 0" class="select-empty">
+              {{ t('admin.proxyGroups.emptyTitle') }}
+            </div>
+          </template>
         </div>
       </div>
     </Transition>
@@ -172,7 +225,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import Icon from '@/components/icons/Icon.vue'
-import type { Proxy } from '@/types'
+import type { Proxy, ProxyGroup } from '@/types'
 
 const { t } = useI18n()
 
@@ -186,13 +239,22 @@ interface ProxyTestResult {
   country?: string
 }
 
+export type ProxySelectorMode = 'proxy' | 'group'
+
 interface Props {
-  modelValue: number | null
-  proxies: Proxy[]
+  /** 选中的代理/组 ID；支持 number 与数字字符串的宽松相等（避免 v-model 类型漂移导致高亮丢失） */
+  modelValue: number | string | null
+  proxies?: Proxy[]
+  groups?: ProxyGroup[]
+  /** proxy=单代理选择（默认）；group=代理池选择 */
+  mode?: ProxySelectorMode
   disabled?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  proxies: () => [],
+  groups: () => [],
+  mode: 'proxy',
   disabled: false
 })
 
@@ -205,17 +267,53 @@ const searchQuery = ref('')
 const containerRef = ref<HTMLElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
-// Test state
 const testResults = reactive<Record<number, ProxyTestResult>>({})
 const testingProxyIds = reactive(new Set<number>())
 const batchTesting = ref(false)
 
+/** 宽松 ID 比较：null 仅匹配 null/undefined；否则 Number 相等（"12" === 12） */
+function sameId(a: number | string | null | undefined, b: number | string | null | undefined): boolean {
+  if (a === null || a === undefined) {
+    return b === null || b === undefined
+  }
+  if (b === null || b === undefined) {
+    return false
+  }
+  const na = Number(a)
+  const nb = Number(b)
+  if (Number.isNaN(na) || Number.isNaN(nb)) {
+    return String(a) === String(b)
+  }
+  return na === nb
+}
+
+function isSelected(id: number | null): boolean {
+  return sameId(props.modelValue, id)
+}
+
 const selectedProxy = computed(() => {
-  if (props.modelValue === null) return null
-  return props.proxies.find((p) => p.id === props.modelValue) || null
+  if (props.mode !== 'proxy' || props.modelValue === null || props.modelValue === undefined) {
+    return null
+  }
+  return props.proxies.find((p) => sameId(p.id, props.modelValue)) || null
+})
+
+const selectedGroup = computed(() => {
+  if (props.mode !== 'group' || props.modelValue === null || props.modelValue === undefined) {
+    return null
+  }
+  return props.groups.find((g) => sameId(g.id, props.modelValue)) || null
 })
 
 const selectedLabel = computed(() => {
+  if (props.mode === 'group') {
+    if (!selectedGroup.value) {
+      return t('admin.accounts.noProxyGroup')
+    }
+    const g = selectedGroup.value
+    const sticky = g.sticky_by_account ? ' · sticky' : ''
+    return `${g.name}${sticky} (${g.strategy})`
+  }
   if (!selectedProxy.value) {
     return t('admin.accounts.noProxy')
   }
@@ -232,6 +330,19 @@ const filteredProxies = computed(() => {
     const name = proxy.name.toLowerCase()
     const host = proxy.host.toLowerCase()
     return name.includes(query) || host.includes(query)
+  })
+})
+
+const filteredGroups = computed(() => {
+  if (!searchQuery.value) {
+    return props.groups
+  }
+  const query = searchQuery.value.toLowerCase()
+  return props.groups.filter((group) => {
+    const name = group.name.toLowerCase()
+    const desc = (group.description || '').toLowerCase()
+    const strategy = (group.strategy || '').toLowerCase()
+    return name.includes(query) || desc.includes(query) || strategy.includes(query)
   })
 })
 
@@ -273,7 +384,6 @@ const handleBatchTest = async () => {
 
   batchTesting.value = true
 
-  // Test all proxies in parallel
   const testPromises = props.proxies.map(async (proxy) => {
     testingProxyIds.add(proxy.id)
     try {
@@ -326,21 +436,20 @@ onUnmounted(() => {
   @apply border border-gray-200 dark:border-dark-600;
   @apply text-gray-900 dark:text-gray-100;
   @apply transition-all duration-200;
-  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
   @apply hover:border-gray-300 dark:hover:border-dark-500;
-  @apply cursor-pointer;
+  @apply focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500;
 }
 
 .select-trigger-open {
-  @apply border-primary-500 ring-2 ring-primary-500/30;
+  @apply border-primary-500 ring-2 ring-primary-500/20;
 }
 
 .select-trigger-disabled {
-  @apply cursor-not-allowed bg-gray-100 opacity-60 dark:bg-dark-900;
+  @apply cursor-not-allowed opacity-50;
 }
 
 .select-value {
-  @apply flex-1 truncate text-left;
+  @apply truncate text-left;
 }
 
 .select-icon {
@@ -412,7 +521,6 @@ onUnmounted(() => {
   @apply transition-colors disabled:cursor-not-allowed disabled:opacity-50;
 }
 
-/* Dropdown animation */
 .select-dropdown-enter-active,
 .select-dropdown-leave-active {
   transition: all 0.2s ease;

@@ -126,6 +126,7 @@ var (
 		{Name: "session_window_status", Type: field.TypeString, Nullable: true, Size: 20},
 		{Name: "quota_dimension", Type: field.TypeEnum, Enums: []string{"global", "spark"}, Default: "global"},
 		{Name: "proxy_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "proxy_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "parent_account_id", Type: field.TypeInt64, Nullable: true},
 	}
 	// AccountsTable holds the schema information for the "accounts" table.
@@ -141,8 +142,14 @@ var (
 				OnDelete:   schema.SetNull,
 			},
 			{
-				Symbol:     "accounts_accounts_children",
+				Symbol:     "accounts_proxy_groups_proxy_group",
 				Columns:    []*schema.Column{AccountsColumns[31]},
+				RefColumns: []*schema.Column{ProxyGroupsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "accounts_accounts_children",
+				Columns:    []*schema.Column{AccountsColumns[32]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.Restrict,
 			},
@@ -167,6 +174,11 @@ var (
 				Name:    "account_proxy_id",
 				Unique:  false,
 				Columns: []*schema.Column{AccountsColumns[30]},
+			},
+			{
+				Name:    "account_proxy_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{AccountsColumns[31]},
 			},
 			{
 				Name:    "account_priority",
@@ -216,7 +228,7 @@ var (
 			{
 				Name:    "account_parent_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[31]},
+				Columns: []*schema.Column{AccountsColumns[32]},
 			},
 		},
 	}
@@ -1392,6 +1404,7 @@ var (
 		{Name: "fallback_mode", Type: field.TypeString, Size: 20, Default: "none"},
 		{Name: "expiry_warn_days", Type: field.TypeInt, Default: 7},
 		{Name: "backup_proxy_id", Type: field.TypeInt64, Unique: true, Nullable: true},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 	}
 	// ProxiesTable holds the schema information for the "proxies" table.
 	ProxiesTable = &schema.Table{
@@ -1403,6 +1416,12 @@ var (
 				Symbol:     "proxies_proxies_backup_proxy",
 				Columns:    []*schema.Column{ProxiesColumns[14]},
 				RefColumns: []*schema.Column{ProxiesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "proxies_proxy_groups_proxies",
+				Columns:    []*schema.Column{ProxiesColumns[15]},
+				RefColumns: []*schema.Column{ProxyGroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 		},
@@ -1426,6 +1445,41 @@ var (
 				Name:    "proxy_backup_proxy_id",
 				Unique:  false,
 				Columns: []*schema.Column{ProxiesColumns[14]},
+			},
+			{
+				Name:    "proxy_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProxiesColumns[15]},
+			},
+		},
+	}
+	// ProxyGroupsColumns holds the columns for the "proxy_groups" table.
+	ProxyGroupsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "description", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "strategy", Type: field.TypeString, Size: 20, Default: "round_robin"},
+		{Name: "sticky_by_account", Type: field.TypeBool, Default: false},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+	}
+	// ProxyGroupsTable holds the schema information for the "proxy_groups" table.
+	ProxyGroupsTable = &schema.Table{
+		Name:       "proxy_groups",
+		Columns:    ProxyGroupsColumns,
+		PrimaryKey: []*schema.Column{ProxyGroupsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "proxygroup_status",
+				Unique:  false,
+				Columns: []*schema.Column{ProxyGroupsColumns[8]},
+			},
+			{
+				Name:    "proxygroup_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProxyGroupsColumns[3]},
 			},
 		},
 	}
@@ -2089,6 +2143,7 @@ var (
 		PromoCodesTable,
 		PromoCodeUsagesTable,
 		ProxiesTable,
+		ProxyGroupsTable,
 		RedeemCodesTable,
 		SecuritySecretsTable,
 		SettingsTable,
@@ -2112,7 +2167,8 @@ func init() {
 		Table: "api_keys",
 	}
 	AccountsTable.ForeignKeys[0].RefTable = ProxiesTable
-	AccountsTable.ForeignKeys[1].RefTable = AccountsTable
+	AccountsTable.ForeignKeys[1].RefTable = ProxyGroupsTable
+	AccountsTable.ForeignKeys[2].RefTable = AccountsTable
 	AccountsTable.Annotation = &entsql.Annotation{
 		Table: "accounts",
 	}
@@ -2202,8 +2258,12 @@ func init() {
 		Table: "promo_code_usages",
 	}
 	ProxiesTable.ForeignKeys[0].RefTable = ProxiesTable
+	ProxiesTable.ForeignKeys[1].RefTable = ProxyGroupsTable
 	ProxiesTable.Annotation = &entsql.Annotation{
 		Table: "proxies",
+	}
+	ProxyGroupsTable.Annotation = &entsql.Annotation{
+		Table: "proxy_groups",
 	}
 	RedeemCodesTable.ForeignKeys[0].RefTable = GroupsTable
 	RedeemCodesTable.ForeignKeys[1].RefTable = UsersTable
