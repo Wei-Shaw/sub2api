@@ -11,10 +11,10 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/imagestorage"
 )
 
-// S3ImageStorage 用 S3 兼容对象存储实现 service.ImageStorage。
+// S3ImageStorage 用 S3 兼容对象存储实现 imagestorage.ImageStorage。
 type S3ImageStorage struct {
 	client        *s3.Client
 	bucket        string
@@ -22,7 +22,7 @@ type S3ImageStorage struct {
 	presignExpiry time.Duration
 }
 
-var _ service.ImageStorage = (*S3ImageStorage)(nil)
+var _ imagestorage.ImageStorage = (*S3ImageStorage)(nil)
 
 // NewS3ImageStorage 依据配置构造 S3 图片存储（调用方应先确认 cfg.Active()）。
 func NewS3ImageStorage(ctx context.Context, cfg *config.ImageStorageConfig) (*S3ImageStorage, error) {

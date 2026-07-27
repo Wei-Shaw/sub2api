@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/port/imagestorage"
 )
 
 const defaultImageMaxDownloadBytes int64 = 32 << 20 // 32 MiB
@@ -20,11 +22,7 @@ const defaultImageMaxDownloadBytes int64 = 32 << 20 // 32 MiB
 // 这是对象存储的可插拔抽象：适配一个新的对象存储厂商，只需实现本接口
 // （例如包一个厂商 SDK），无需改动任务/网关逻辑。仓库内自带一个 S3 兼容实现
 // （repository.S3ImageStorage），适用于 AWS S3 / Cloudflare R2 / 阿里云 OSS / MinIO 等。
-type ImageStorage interface {
-	// Save 把 data 以 key 存入对象存储，返回可下载的 URL（公开直链或 presigned 临时链接）。
-	// contentType 为图片 MIME 类型，如 "image/png"。
-	Save(ctx context.Context, key, contentType string, data []byte) (url string, err error)
-}
+type ImageStorage = imagestorage.ImageStorage
 
 // ImageResultUploader 是 ImageStorage 的上层编排器（与具体厂商无关）：
 // 把上游生图响应里的每张图片（b64_json 解码 / url 下载）转存到对象存储，
