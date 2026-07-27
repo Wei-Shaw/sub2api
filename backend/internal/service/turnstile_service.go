@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/port/turnstile"
 )
 
 var (
@@ -14,10 +16,9 @@ var (
 	ErrTurnstileInvalidSecretKey   = infraerrors.BadRequest("TURNSTILE_INVALID_SECRET_KEY", "invalid turnstile secret key")
 )
 
-// TurnstileVerifier 验证 Turnstile token 的接口
-type TurnstileVerifier interface {
-	VerifyToken(ctx context.Context, secretKey, token, remoteIP string) (*TurnstileVerifyResponse, error)
-}
+// TurnstileVerifier 验证 Turnstile token 的接口；
+// 定义已下沉到 internal/port/turnstile，此处保留类型别名以兼容既有调用点与测试桩。
+type TurnstileVerifier = turnstile.TurnstileVerifier
 
 // TurnstileService Turnstile 验证服务
 type TurnstileService struct {
@@ -25,15 +26,9 @@ type TurnstileService struct {
 	verifier       TurnstileVerifier
 }
 
-// TurnstileVerifyResponse Cloudflare Turnstile 验证响应
-type TurnstileVerifyResponse struct {
-	Success     bool     `json:"success"`
-	ChallengeTS string   `json:"challenge_ts"`
-	Hostname    string   `json:"hostname"`
-	ErrorCodes  []string `json:"error-codes"`
-	Action      string   `json:"action"`
-	CData       string   `json:"cdata"`
-}
+// TurnstileVerifyResponse Cloudflare Turnstile 验证响应；
+// 定义已下沉到 internal/domain，此处保留类型别名以兼容既有调用点与测试桩。
+type TurnstileVerifyResponse = domain.TurnstileVerifyResponse
 
 // NewTurnstileService 创建 Turnstile 服务实例
 func NewTurnstileService(settingService *SettingService, verifier TurnstileVerifier) *TurnstileService {

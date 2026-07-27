@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/turnstile"
 )
 
 const turnstileVerifyURL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
@@ -20,7 +21,7 @@ type turnstileVerifier struct {
 	verifyURL  string
 }
 
-func NewTurnstileVerifier() service.TurnstileVerifier {
+func NewTurnstileVerifier() turnstile.TurnstileVerifier {
 	sharedClient, err := httpclient.GetClient(httpclient.Options{
 		Timeout:            10 * time.Second,
 		ValidateResolvedIP: true,
@@ -34,7 +35,7 @@ func NewTurnstileVerifier() service.TurnstileVerifier {
 	}
 }
 
-func (v *turnstileVerifier) VerifyToken(ctx context.Context, secretKey, token, remoteIP string) (*service.TurnstileVerifyResponse, error) {
+func (v *turnstileVerifier) VerifyToken(ctx context.Context, secretKey, token, remoteIP string) (*domain.TurnstileVerifyResponse, error) {
 	formData := url.Values{}
 	formData.Set("secret", secretKey)
 	formData.Set("response", token)
@@ -54,7 +55,7 @@ func (v *turnstileVerifier) VerifyToken(ctx context.Context, secretKey, token, r
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	var result service.TurnstileVerifyResponse
+	var result domain.TurnstileVerifyResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
