@@ -8,18 +8,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/authcacheinvalidation"
 )
 
 type authCacheInvalidationOutboxRepository struct {
 	db *sql.DB
 }
 
-func NewAuthCacheInvalidationOutboxRepository(db *sql.DB) service.AuthCacheInvalidationOutboxRepository {
+func NewAuthCacheInvalidationOutboxRepository(db *sql.DB) authcacheinvalidation.AuthCacheInvalidationOutboxRepository {
 	return &authCacheInvalidationOutboxRepository{db: db}
 }
 
-func (r *authCacheInvalidationOutboxRepository) Claim(ctx context.Context, workerID string, limit int, lease time.Duration) ([]service.AuthCacheInvalidationEvent, error) {
+func (r *authCacheInvalidationOutboxRepository) Claim(ctx context.Context, workerID string, limit int, lease time.Duration) ([]domain.AuthCacheInvalidationEvent, error) {
 	if r == nil || r.db == nil {
 		return nil, errors.New("nil auth cache invalidation outbox database")
 	}
@@ -51,9 +52,9 @@ func (r *authCacheInvalidationOutboxRepository) Claim(ctx context.Context, worke
 	}
 	defer func() { _ = rows.Close() }()
 
-	events := make([]service.AuthCacheInvalidationEvent, 0, limit)
+	events := make([]domain.AuthCacheInvalidationEvent, 0, limit)
 	for rows.Next() {
-		var event service.AuthCacheInvalidationEvent
+		var event domain.AuthCacheInvalidationEvent
 		if err := rows.Scan(&event.ID, &event.CacheKey, &event.Attempts, &event.Stage, &event.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -130,9 +131,9 @@ func (r *authCacheInvalidationOutboxRepository) RetryClaimed(ctx context.Context
 	return nil
 }
 
-func (r *authCacheInvalidationOutboxRepository) Stats(ctx context.Context) (service.AuthCacheInvalidationOutboxStats, error) {
+func (r *authCacheInvalidationOutboxRepository) Stats(ctx context.Context) (domain.AuthCacheInvalidationOutboxStats, error) {
 	var (
-		stats     service.AuthCacheInvalidationOutboxStats
+		stats     domain.AuthCacheInvalidationOutboxStats
 		oldest    sql.NullTime
 		lastError sql.NullString
 	)

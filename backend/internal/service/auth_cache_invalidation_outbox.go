@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/authcacheinvalidation"
 	"github.com/google/uuid"
 )
 
@@ -21,28 +23,12 @@ const (
 	authInvalidationConcurrency  = 16
 )
 
-type AuthCacheInvalidationEvent struct {
-	ID        int64
-	CacheKey  string
-	Attempts  int
-	Stage     int
-	CreatedAt time.Time
-}
+// Auth-cache-invalidation BC types live in domain; re-exported here.
+type AuthCacheInvalidationEvent = domain.AuthCacheInvalidationEvent
+type AuthCacheInvalidationOutboxStats = domain.AuthCacheInvalidationOutboxStats
 
-type AuthCacheInvalidationOutboxStats struct {
-	Pending         int64
-	OldestCreatedAt *time.Time
-	MaxAttempts     int
-	LastError       string
-}
-
-type AuthCacheInvalidationOutboxRepository interface {
-	Claim(ctx context.Context, workerID string, limit int, lease time.Duration) ([]AuthCacheInvalidationEvent, error)
-	DeleteClaimed(ctx context.Context, id int64, workerID string) error
-	ScheduleSecondPass(ctx context.Context, id int64, workerID string, availableAt time.Time) error
-	RetryClaimed(ctx context.Context, id int64, workerID string, availableAt time.Time, lastError string) error
-	Stats(ctx context.Context) (AuthCacheInvalidationOutboxStats, error)
-}
+// AuthCacheInvalidationOutboxRepository interface lives in port/authcacheinvalidation.
+type AuthCacheInvalidationOutboxRepository = authcacheinvalidation.AuthCacheInvalidationOutboxRepository
 
 type AuthCacheInvalidationHealth struct {
 	Running    bool          `json:"running"`
