@@ -19,8 +19,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/port/cache"
+	"github.com/Wei-Shaw/sub2api/internal/port/githubrelease"
 )
 
 var (
@@ -49,13 +51,9 @@ const (
 // UpdateCache defines cache operations for update service
 type UpdateCache = cache.UpdateCache
 
-// GitHubReleaseClient 获取 GitHub release 信息的接口
-type GitHubReleaseClient interface {
-	FetchLatestRelease(ctx context.Context, repo string) (*GitHubRelease, error)
-	FetchRecentReleases(ctx context.Context, repo string, perPage int) ([]*GitHubRelease, error)
-	DownloadFile(ctx context.Context, url, dest string, maxSize int64) error
-	FetchChecksumFile(ctx context.Context, url string) ([]byte, error)
-}
+// GitHubReleaseClient 获取 GitHub release 信息的接口；
+// 定义已下沉到 internal/port/githubrelease，此处保留类型别名以兼容既有调用点与测试桩。
+type GitHubReleaseClient = githubrelease.GitHubReleaseClient
 
 // UpdateService handles software updates
 type UpdateService struct {
@@ -102,17 +100,9 @@ type Asset struct {
 	Size        int64  `json:"size"`
 }
 
-// GitHubRelease represents GitHub API response
-type GitHubRelease struct {
-	TagName     string        `json:"tag_name"`
-	Name        string        `json:"name"`
-	Body        string        `json:"body"`
-	PublishedAt string        `json:"published_at"`
-	HTMLURL     string        `json:"html_url"`
-	Draft       bool          `json:"draft"`
-	Prerelease  bool          `json:"prerelease"`
-	Assets      []GitHubAsset `json:"assets"`
-}
+// GitHubRelease represents GitHub API response；
+// 定义已下沉到 internal/domain，此处保留类型别名以兼容既有调用点与测试桩。
+type GitHubRelease = domain.GitHubRelease
 
 // RollbackVersion describes a release version the system can roll back to
 type RollbackVersion struct {
@@ -121,11 +111,9 @@ type RollbackVersion struct {
 	HTMLURL     string `json:"html_url"`
 }
 
-type GitHubAsset struct {
-	Name               string `json:"name"`
-	BrowserDownloadURL string `json:"browser_download_url"`
-	Size               int64  `json:"size"`
-}
+// GitHubAsset 表示 GitHub release 内一个可下载资产；
+// 定义已下沉到 internal/domain，此处保留类型别名以兼容既有调用点与测试桩。
+type GitHubAsset = domain.GitHubAsset
 
 // CheckUpdate checks for available updates
 func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInfo, error) {
