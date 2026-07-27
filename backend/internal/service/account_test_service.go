@@ -794,6 +794,16 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusPaymentRequired && s.accountRepo != nil {
+			stateCtx, cancel := openAIAccountStateContext(ctx)
+			defer cancel()
+			_ = s.accountRepo.SetTempUnschedulable(
+				stateCtx,
+				account.ID,
+				time.Now().Add(30*time.Minute),
+				"grok payment required",
+			)
+		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API returned %d: %s", resp.StatusCode, string(body)))
 	}
 

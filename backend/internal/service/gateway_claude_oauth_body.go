@@ -1208,3 +1208,28 @@ func (s *GatewayService) claudeOAuthSystemPromptInjectionSettings(ctx context.Co
 	}
 	return s.settingService.GetClaudeOAuthSystemPromptInjectionSettings(ctx)
 }
+
+// systemHasBillingAttributionBlock 检查请求体的 system 字段中是否包含真实 Claude Code
+// 客户端注入的 billing attribution block。该 block 格式稳定（见 gateway_billing_block.go），
+// 仅由真实 Claude Code CLI 生成；第三方客户端（opencode 等）不会生成此 block。
+//
+// 用于识别被上游 API 网关代理的真实 Claude Code 流量：此类请求的 User-Agent 被网关替换
+// 为 Go-http-client，但 body 保留了完整的客户端特征。如果不识别这类请求而走 mimicry
+// 重写 system，会破坏 Anthropic prompt cache 的前缀一致性，导致 messages 级缓存永不命中。
+func systemHasBillingAttributionBlock(body []byte) bool {
+	system := gjson.GetBytes(body, "system")
+	if !system.IsArray() {
+		return false
+	}
+	found := false
+	system.ForEach(func(_, item gjson.Result) bool {
+		text := item.Get("text").String()
+		if strings.HasPrefix(text, claudeCodeBillingHeaderPrefix) &&
+			strings.Contains(text, claudeCodeEntrypointMarker) {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}

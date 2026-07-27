@@ -191,7 +191,7 @@
         </div>
 
         <!-- Turnstile Widget -->
-        <div v-if="turnstileEnabled && turnstileSiteKey">
+        <div v-if="turnstileEnabled && turnstileSiteKey" data-testid="registration-turnstile">
           <TurnstileWidget
             ref="turnstileRef"
             :site-key="turnstileSiteKey"

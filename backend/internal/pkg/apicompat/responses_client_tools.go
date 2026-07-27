@@ -586,7 +586,7 @@ func (r *ResponsesClientToolStreamRestorer) restoreNamespaceEvent(event Response
 			event.Item.Name, event.Item.Namespace = name.Name, name.Namespace
 		}
 	}
-	if event.Type == "response.function_call_arguments.done" {
+	if event.Type == "response.function_call_arguments.delta" || event.Type == "response.function_call_arguments.done" {
 		if name, ok := r.adapter.NamespaceTools[event.Name]; ok {
 			event.Name = name.Name
 		}

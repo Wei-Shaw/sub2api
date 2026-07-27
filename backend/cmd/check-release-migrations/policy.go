@@ -62,7 +62,12 @@ func evaluateStatement(statement sqlStatement, newlyCreatedTables map[relationNa
 		return decision
 
 	case "ALTER":
-		return evaluateAlter(tokens)
+		decision := evaluateAlter(tokens)
+		if !decision.allowed && decision.reviewEligible && statement.reviewedCompatible {
+			decision.allowed = true
+			decision.reason = ""
+		}
+		return decision
 
 	case "INSERT":
 		return evaluateInsert(tokens)
@@ -174,7 +179,28 @@ func evaluateAlter(tokens []sqlToken) policyDecision {
 		i++
 	}
 	_, i, ok := parseRelation(tokens, i)
-	if !ok || keywordAt(tokens, i) != "ADD" {
+	if !ok {
+		return rejected("ALTER TABLE", "could not determine the altered table")
+	}
+	if keywordAt(tokens, i) == "DROP" {
+		i++
+		if keywordAt(tokens, i) != "CONSTRAINT" {
+			return rejected("ALTER TABLE", "only plain nullable ADD COLUMN is allowed")
+		}
+		i++
+		if keywordsAt(tokens, i, "IF", "EXISTS") {
+			i += 2
+		}
+		if _, next, ok := parseIdentifier(tokens, i); !ok || next != len(tokens) {
+			return rejected("ALTER TABLE DROP CONSTRAINT", "only a single named constraint can be reviewed")
+		}
+		return policyDecision{
+			reviewEligible: true,
+			description:    "ALTER TABLE DROP CONSTRAINT",
+			reason:         fmt.Sprintf("constraint removal requires a leading %q annotation after explicit compatibility review", reviewedCompatibleAnnotation),
+		}
+	}
+	if keywordAt(tokens, i) != "ADD" {
 		return rejected("ALTER TABLE", "only plain nullable ADD COLUMN is allowed")
 	}
 	i++
@@ -185,7 +211,22 @@ func evaluateAlter(tokens []sqlToken) policyDecision {
 		i += 3
 	}
 	if keywordAt(tokens, i) == "CONSTRAINT" {
-		return rejected("ALTER TABLE ADD CONSTRAINT", "constraints on existing tables are not rollback-compatible")
+		i++
+		if _, next, ok := parseIdentifier(tokens, i); !ok || keywordAt(tokens, next) != "CHECK" {
+			return rejected("ALTER TABLE ADD CONSTRAINT", "only CHECK constraints can be explicitly reviewed")
+		} else {
+			afterCheck, balanced := skipBalancedParentheses(tokens, next+1)
+			validSuffix := afterCheck == len(tokens) ||
+				keywordsAt(tokens, afterCheck, "NOT", "VALID") && afterCheck+2 == len(tokens)
+			if !balanced || !validSuffix {
+				return rejected("ALTER TABLE ADD CONSTRAINT CHECK", "expected one CHECK expression with an optional NOT VALID clause")
+			}
+		}
+		return policyDecision{
+			reviewEligible: true,
+			description:    "ALTER TABLE ADD CONSTRAINT CHECK",
+			reason:         fmt.Sprintf("CHECK constraints on existing tables require a leading %q annotation after explicit compatibility review", reviewedCompatibleAnnotation),
+		}
 	}
 	if _, next, ok := parseIdentifier(tokens, i); !ok {
 		return rejected("ALTER TABLE ADD COLUMN", "could not determine the new column")

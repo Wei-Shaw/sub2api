@@ -957,6 +957,7 @@ func TestAdminService_CreateGroup_ClearsMessagesDispatchFieldsForNonOpenAIPlatfo
 		Platform:              PlatformAnthropic,
 		RateMultiplier:        1.0,
 		AllowMessagesDispatch: true,
+		AllowLive:             true,
 		DefaultMappedModel:    "gpt-5.4",
 		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
 			OpusMappedModel: "gpt-5.4",
@@ -966,6 +967,7 @@ func TestAdminService_CreateGroup_ClearsMessagesDispatchFieldsForNonOpenAIPlatfo
 	require.NotNil(t, group)
 	require.NotNil(t, repo.created)
 	require.False(t, repo.created.AllowMessagesDispatch)
+	require.False(t, repo.created.AllowLive)
 	require.Empty(t, repo.created.DefaultMappedModel)
 	require.Equal(t, OpenAIMessagesDispatchModelConfig{}, repo.created.MessagesDispatchModelConfig)
 }
@@ -977,6 +979,7 @@ func TestAdminService_UpdateGroup_ClearsMessagesDispatchFieldsWhenPlatformChange
 		Platform:              PlatformOpenAI,
 		Status:                StatusActive,
 		AllowMessagesDispatch: true,
+		AllowLive:             true,
 		DefaultMappedModel:    "gpt-5.4",
 		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
 			SonnetMappedModel: "gpt-5.3-codex",
@@ -993,6 +996,7 @@ func TestAdminService_UpdateGroup_ClearsMessagesDispatchFieldsWhenPlatformChange
 	require.NotNil(t, repo.updated)
 	require.Equal(t, PlatformAnthropic, repo.updated.Platform)
 	require.False(t, repo.updated.AllowMessagesDispatch)
+	require.False(t, repo.updated.AllowLive)
 	require.Empty(t, repo.updated.DefaultMappedModel)
 	require.Equal(t, OpenAIMessagesDispatchModelConfig{}, repo.updated.MessagesDispatchModelConfig)
 }
@@ -1584,12 +1588,36 @@ func TestAdminService_CreateCompositeRoute_NormalizesAndPersists(t *testing.T) {
 	require.Equal(t, "router/gpt-", route.PublicModel)
 	require.Equal(t, CompositeRouteMatchPrefix, route.MatchType)
 	require.Equal(t, PlatformOpenAI, route.TargetPlatform)
-	require.Equal(t, "router/gpt-", route.UpstreamModel)
+	// prefix 路由留空 upstream_model 不再回填 public_model：留空表示透传原始请求模型。
+	require.Equal(t, "", route.UpstreamModel)
 	require.Equal(t, CompositeRouteEndpointResponses, route.Endpoint)
 	require.Equal(t, 100, route.Priority)
 	require.True(t, route.Enabled)
 	require.Equal(t, "route note", route.Notes)
 	require.Equal(t, route, routeRepo.created)
+}
+
+// TestAdminService_CreateCompositeRoute_ExactEmptyUpstreamBackfillsPublicModel 锁定
+// 保守行为：exact 路由留空 upstream_model 仍回填 public_model（持久化/展示契约不变）。
+func TestAdminService_CreateCompositeRoute_ExactEmptyUpstreamBackfillsPublicModel(t *testing.T) {
+	groupRepo := &groupRepoStubForAdmin{
+		getByID: &Group{ID: 7, Platform: PlatformComposite},
+	}
+	routeRepo := &compositeRouteRepoStubForAdmin{nextID: 99}
+	svc := &adminServiceImpl{groupRepo: groupRepo, compositeRouteRepo: routeRepo}
+
+	route, err := svc.CreateCompositeRoute(context.Background(), 7, CompositeRouteInput{
+		PublicModel:    "openrouter/gpt-5",
+		MatchType:      CompositeRouteMatchExact,
+		TargetPlatform: PlatformOpenAI,
+		Endpoint:       CompositeRouteEndpointResponses,
+		Enabled:        true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, route)
+	require.Equal(t, CompositeRouteMatchExact, route.MatchType)
+	require.Equal(t, "openrouter/gpt-5", route.UpstreamModel)
 }
 
 func TestAdminService_UpdateAndDeleteCompositeRouteRequireRouteOwnership(t *testing.T) {

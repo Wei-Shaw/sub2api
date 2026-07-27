@@ -209,6 +209,60 @@ func TestPatchGrokResponsesBodyDropsToolChoiceWhenNoSupportedToolsRemain(t *test
 	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
 }
 
+func TestSanitizeGrokResponsesToolsKeepsToolChoiceOnlyWithSupportedTools(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		body           string
+		wantTools      bool
+		wantToolChoice bool
+	}{
+		{
+			name: "missing tools with string tool choice",
+			body: `{"input":"hello","tool_choice":"auto"}`,
+		},
+		{
+			name: "missing tools with object tool choice",
+			body: `{"input":"hello","tool_choice":{"type":"function","name":"lookup"}}`,
+		},
+		{
+			name:      "empty tools",
+			body:      `{"input":"hello","tools":[],"tool_choice":"auto"}`,
+			wantTools: true,
+		},
+		{
+			name: "all tools unsupported",
+			body: `{"input":"hello","tools":[{"type":"namespace","name":"client_tools"}],"tool_choice":"auto"}`,
+		},
+		{
+			name:           "supported tool",
+			body:           `{"input":"hello","tools":[{"type":"function","name":"lookup"}],"tool_choice":"auto"}`,
+			wantTools:      true,
+			wantToolChoice: true,
+		},
+		{
+			name:           "malformed non-array tools remain untouched",
+			body:           `{"input":"hello","tools":{"type":"function","name":"lookup"},"tool_choice":"auto"}`,
+			wantTools:      true,
+			wantToolChoice: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			patched, err := sanitizeGrokResponsesTools([]byte(tt.body))
+			require.NoError(t, err)
+			require.True(t, json.Valid(patched))
+			require.Equal(t, tt.wantTools, gjson.GetBytes(patched, "tools").Exists())
+			require.Equal(t, tt.wantToolChoice, gjson.GetBytes(patched, "tool_choice").Exists())
+			if tt.wantToolChoice {
+				require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
+			}
+		})
+	}
+}
+
 func TestPatchGrokResponsesBodyPromotesCodexAdditionalTools(t *testing.T) {
 	t.Parallel()
 
@@ -1952,6 +2006,37 @@ func TestAccountTestServiceGrokAPIKeyAllowsConfiguredHTTPWhenGlobalPolicyDoes(t 
 	require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
 }
 
+func TestAccountTestServiceGrokOAuthPaymentRequiredTemporarilyUnschedulesAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	account := healthyGrokOAuthGatewayTestAccount(56, "access-token")
+	repo := &grokQuotaAccountRepo{}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusPaymentRequired,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"code":"personal-team-blocked:spending-limit"}`)),
+	}}
+	svc := &AccountTestService{
+		accountRepo:       repo,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		httpUpstream:      upstream,
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/56/test", nil)
+	before := time.Now()
+
+	err := svc.testGrokAccountConnection(c, account, "grok")
+
+	require.Error(t, err)
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, account.ID, repo.lastTempUnschedID)
+	require.Equal(t, "grok payment required", repo.lastTempUnschedReason)
+	require.WithinDuration(t, before.Add(30*time.Minute), repo.lastTempUnschedUntil, time.Second)
+	require.Contains(t, recorder.Body.String(), `"type":"error"`)
+	require.Contains(t, recorder.Body.String(), "Grok Responses API returned 402")
+}
+
 func TestForwardAsChatCompletionsForGrokStreamingUsesRawXAIChatCompletions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -2473,6 +2558,43 @@ func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *test
 			require.True(t, repo.lastTempUnschedUntil.Before(before.Add(tt.wantMaxCooldown)))
 		})
 	}
+}
+
+func TestHandleGrokAccountUpstreamError5xxRespectsPoolMode(t *testing.T) {
+	t.Run("pool mode keeps scheduling state", func(t *testing.T) {
+		account := &Account{
+			ID:       611,
+			Platform: PlatformGrok,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"pool_mode": true,
+			},
+		}
+		repo := &grokQuotaAccountRepo{}
+		svc := &OpenAIGatewayService{accountRepo: repo}
+
+		svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusBadGateway, nil, nil)
+
+		require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+		require.Zero(t, repo.tempUnschedCalls)
+		require.Nil(t, account.TempUnschedulableUntil)
+		require.Empty(t, account.TempUnschedulableReason)
+	})
+
+	t.Run("non-pool mode keeps two minute cooldown", func(t *testing.T) {
+		account := &Account{ID: 612, Platform: PlatformGrok, Type: AccountTypeAPIKey}
+		repo := &grokQuotaAccountRepo{}
+		svc := &OpenAIGatewayService{accountRepo: repo}
+		before := time.Now()
+
+		svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusBadGateway, nil, nil)
+
+		require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+		require.Equal(t, 1, repo.tempUnschedCalls)
+		require.Equal(t, account.ID, repo.lastTempUnschedID)
+		require.Equal(t, "grok upstream temporary error", repo.lastTempUnschedReason)
+		require.WithinDuration(t, before.Add(2*time.Minute), repo.lastTempUnschedUntil, time.Second)
+	})
 }
 
 func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testing.T) {

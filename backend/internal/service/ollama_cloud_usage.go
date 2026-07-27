@@ -32,10 +32,20 @@ const (
 	OllamaCloudUsageAutoRefreshExtraKey = "ollama_cloud_usage_auto_refresh"
 	OllamaCloudUsageSnapshotExtraKey    = "ollama_cloud_usage_snapshot"
 
+	// OllamaCloudUsageMinFetchInterval is the hard floor between two successful
+	// fetches of the same group, mirroring the floor nextOllamaCloudUsageDelay
+	// applies to next_refresh_at. Activity may bring a refresh forward to this
+	// bound but never past it. Exported so the repository can apply the same
+	// floor inside the SQL due filter.
+	OllamaCloudUsageMinFetchInterval = ollamaCloudUsageMinIntervalMinutes * time.Minute
+
 	ollamaCloudUsageSettingsURL            = "https://ollama.com/settings"
 	ollamaCloudUsageDefaultIntervalMinutes = 60
 	ollamaCloudUsageMinIntervalMinutes     = 15
 	ollamaCloudUsageMaxIntervalMinutes     = 24 * 60
+	ollamaCloudUsageDefaultDebounceMinutes = 1
+	ollamaCloudUsageMinDebounceMinutes     = 1
+	ollamaCloudUsageMaxDebounceMinutes     = 60
 	ollamaCloudUsageCycleInterval          = time.Minute
 	ollamaCloudUsageManualRefreshInterval  = 30 * time.Second
 	ollamaCloudUsageRequestTimeout         = 15 * time.Second
@@ -76,10 +86,15 @@ const (
 	OllamaCloudUsageStatusFailed       = "failed"
 )
 
-// OllamaCloudUsageSettings controls the opt-in periodic refresh runner.
+// OllamaCloudUsageSettings controls the opt-in request-driven refresh runner.
+//
+// IntervalMinutes is the max-wait bound: when model requests keep arriving and
+// the trailing debounce keeps sliding, a refresh is forced after this long.
+// DebounceMinutes is the quiet period after the latest request in a group.
 type OllamaCloudUsageSettings struct {
 	Enabled         bool `json:"enabled"`
-	IntervalMinutes int  `json:"interval_minutes"`
+	IntervalMinutes int  `json:"interval_minutes"` // max wait while requests continue
+	DebounceMinutes int  `json:"debounce_minutes"` // trailing quiet period after last request
 }
 
 // OllamaCloudUsageWindow is a narrow, sanitized view of one official usage window.
@@ -114,6 +129,12 @@ type OllamaCloudUsageData struct {
 }
 
 // OllamaCloudUsageSnapshot is the only usage observation persisted in account extra.
+//
+// NextRefreshAt remains a persisted compatibility field. For status=ok it is a
+// max-wait horizon marker only; automatic success refreshes are driven by model
+// request activity (group last_used_at + debounce/max-wait), not by this field
+// alone. For failed/unauthorized snapshots it is the failure not-before time
+// (Retry-After / exponential backoff) and is enforced as max(activityDue, NextRefreshAt).
 type OllamaCloudUsageSnapshot struct {
 	Status        string                `json:"status"`
 	Data          *OllamaCloudUsageData `json:"data,omitempty"`
@@ -142,7 +163,7 @@ type ollamaCloudUsageRepository interface {
 	SetOllamaCloudUsageAutoRefresh(context.Context, *Account, bool) error
 	UpdateOllamaCloudUsageSnapshot(context.Context, *Account, *OllamaCloudUsageSnapshot) error
 	DisableOllamaCloudUsageAutoRefresh(context.Context, *Account) error
-	ListDueOllamaCloudUsageAccounts(context.Context, time.Time, int) ([]Account, error)
+	ListDueOllamaCloudUsageAccounts(context.Context, time.Time, time.Duration, time.Duration, int) ([]Account, error)
 }
 
 // GetOllamaCloudUsageSettings returns fail-safe defaults when the setting is absent.
@@ -168,6 +189,9 @@ func (s *SettingService) GetOllamaCloudUsageSettings(ctx context.Context) (*Olla
 	if settings.IntervalMinutes == 0 {
 		settings.IntervalMinutes = defaults.IntervalMinutes
 	}
+	if settings.DebounceMinutes == 0 {
+		settings.DebounceMinutes = defaults.DebounceMinutes
+	}
 	normalizeOllamaCloudUsageSettings(&settings)
 	return &settings, nil
 }
@@ -179,10 +203,29 @@ func (s *SettingService) SetOllamaCloudUsageSettings(ctx context.Context, settin
 	if settings == nil {
 		return infraerrors.BadRequest("INVALID_OLLAMA_CLOUD_USAGE_SETTINGS", "settings cannot be nil")
 	}
+	if settings.DebounceMinutes == 0 {
+		// Legacy clients that omit debounce_minutes keep the fail-safe default.
+		settings.DebounceMinutes = ollamaCloudUsageDefaultDebounceMinutes
+	}
 	if settings.IntervalMinutes < ollamaCloudUsageMinIntervalMinutes || settings.IntervalMinutes > ollamaCloudUsageMaxIntervalMinutes {
 		return infraerrors.BadRequest(
 			"INVALID_OLLAMA_CLOUD_USAGE_INTERVAL",
 			fmt.Sprintf("interval_minutes must be between %d and %d", ollamaCloudUsageMinIntervalMinutes, ollamaCloudUsageMaxIntervalMinutes),
+		)
+	}
+	if settings.DebounceMinutes < ollamaCloudUsageMinDebounceMinutes || settings.DebounceMinutes > ollamaCloudUsageMaxDebounceMinutes {
+		return infraerrors.BadRequest(
+			"INVALID_OLLAMA_CLOUD_USAGE_DEBOUNCE",
+			fmt.Sprintf("debounce_minutes must be between %d and %d", ollamaCloudUsageMinDebounceMinutes, ollamaCloudUsageMaxDebounceMinutes),
+		)
+	}
+	// The due time is min(lastUsed+debounce, fetchedAt+maxWait). Once the debounce
+	// reaches the max wait the debounce term can never win, so the knob would be
+	// silently inert instead of doing what the operator asked for.
+	if settings.DebounceMinutes >= settings.IntervalMinutes {
+		return infraerrors.BadRequest(
+			"INVALID_OLLAMA_CLOUD_USAGE_DEBOUNCE",
+			fmt.Sprintf("debounce_minutes (%d) must be less than interval_minutes (%d)", settings.DebounceMinutes, settings.IntervalMinutes),
 		)
 	}
 	normalizeOllamaCloudUsageSettings(settings)
@@ -194,7 +237,11 @@ func (s *SettingService) SetOllamaCloudUsageSettings(ctx context.Context, settin
 }
 
 func defaultOllamaCloudUsageSettings() *OllamaCloudUsageSettings {
-	return &OllamaCloudUsageSettings{Enabled: false, IntervalMinutes: ollamaCloudUsageDefaultIntervalMinutes}
+	return &OllamaCloudUsageSettings{
+		Enabled:         false,
+		IntervalMinutes: ollamaCloudUsageDefaultIntervalMinutes,
+		DebounceMinutes: ollamaCloudUsageDefaultDebounceMinutes,
+	}
 }
 
 func normalizeOllamaCloudUsageSettings(settings *OllamaCloudUsageSettings) {
@@ -204,6 +251,125 @@ func normalizeOllamaCloudUsageSettings(settings *OllamaCloudUsageSettings) {
 	if settings.IntervalMinutes > ollamaCloudUsageMaxIntervalMinutes {
 		settings.IntervalMinutes = ollamaCloudUsageMaxIntervalMinutes
 	}
+	if settings.DebounceMinutes <= 0 {
+		settings.DebounceMinutes = ollamaCloudUsageDefaultDebounceMinutes
+	}
+	if settings.DebounceMinutes < ollamaCloudUsageMinDebounceMinutes {
+		settings.DebounceMinutes = ollamaCloudUsageMinDebounceMinutes
+	}
+	if settings.DebounceMinutes > ollamaCloudUsageMaxDebounceMinutes {
+		settings.DebounceMinutes = ollamaCloudUsageMaxDebounceMinutes
+	}
+}
+
+func ollamaCloudUsageDurations(settings *OllamaCloudUsageSettings) (debounce, maxWait time.Duration) {
+	normalized := defaultOllamaCloudUsageSettings()
+	if settings != nil {
+		*normalized = *settings
+	}
+	normalizeOllamaCloudUsageSettings(normalized)
+	return time.Duration(normalized.DebounceMinutes) * time.Minute,
+		time.Duration(normalized.IntervalMinutes) * time.Minute
+}
+
+// ollamaCloudUsageIsAutoRefreshDue decides whether a configured auto-refresh
+// group should fetch now. groupLastUsedAt must be MAX(last_used_at) across the
+// exact api_key group so shared multi-platform accounts do not miss activity.
+//
+// Success: a request must be newer than fetched_at; dueAt = min(lastUsed+debounce, fetchedAt+maxWait).
+// Failure: a request must be newer than last_attempt_at; activity due uses the same min formula,
+// then dueAt = max(activityDue, next_refresh_at) so Retry-After / exponential backoff win.
+// Missing or invalid snapshots fail open to a first fetch.
+func ollamaCloudUsageIsAutoRefreshDue(
+	snapshot *OllamaCloudUsageSnapshot,
+	groupLastUsedAt *time.Time,
+	now time.Time,
+	debounce, maxWait time.Duration,
+) bool {
+	dueAt, ok := ollamaCloudUsageAutoRefreshDueAt(snapshot, groupLastUsedAt, debounce, maxWait)
+	if !ok {
+		return false
+	}
+	return !now.Before(dueAt)
+}
+
+func ollamaCloudUsageAutoRefreshDueAt(
+	snapshot *OllamaCloudUsageSnapshot,
+	groupLastUsedAt *time.Time,
+	debounce, maxWait time.Duration,
+) (time.Time, bool) {
+	if debounce <= 0 {
+		debounce = time.Duration(ollamaCloudUsageDefaultDebounceMinutes) * time.Minute
+	}
+	if maxWait <= 0 {
+		maxWait = time.Duration(ollamaCloudUsageDefaultIntervalMinutes) * time.Minute
+	}
+	if snapshot == nil {
+		return time.Time{}, true
+	}
+	switch snapshot.Status {
+	case OllamaCloudUsageStatusOK:
+		if snapshot.FetchedAt == nil || snapshot.FetchedAt.IsZero() {
+			return time.Time{}, true
+		}
+		fetchedAt := snapshot.FetchedAt.UTC()
+		if groupLastUsedAt == nil || !groupLastUsedAt.After(fetchedAt) {
+			return time.Time{}, false
+		}
+		lastUsed := groupLastUsedAt.UTC()
+		dueAt := minTime(lastUsed.Add(debounce), fetchedAt.Add(maxWait))
+		// Keep the pre-existing hard floor between successful fetches. The success
+		// path no longer consults next_refresh_at, which is where
+		// nextOllamaCloudUsageDelay used to apply ollamaCloudUsageMinIntervalMinutes;
+		// without this, request traffic spaced slightly wider than the debounce
+		// drives the group's outbound rate far above the previous minimum.
+		if floor := fetchedAt.Add(OllamaCloudUsageMinFetchInterval); dueAt.Before(floor) {
+			return floor, true
+		}
+		return dueAt, true
+	case OllamaCloudUsageStatusFailed, OllamaCloudUsageStatusUnauthorized:
+		if snapshot.LastAttemptAt.IsZero() {
+			return time.Time{}, true
+		}
+		lastAttempt := snapshot.LastAttemptAt.UTC()
+		if groupLastUsedAt == nil || !groupLastUsedAt.After(lastAttempt) {
+			return time.Time{}, false
+		}
+		lastUsed := groupLastUsedAt.UTC()
+		activityDue := minTime(lastUsed.Add(debounce), lastAttempt.Add(maxWait))
+		if !snapshot.NextRefreshAt.IsZero() && snapshot.NextRefreshAt.UTC().After(activityDue) {
+			return snapshot.NextRefreshAt.UTC(), true
+		}
+		return activityDue, true
+	default:
+		return time.Time{}, true
+	}
+}
+
+// maxOllamaCloudUsageGroupLastUsed returns the newest last_used_at among group members.
+func maxOllamaCloudUsageGroupLastUsed(accounts []Account) *time.Time {
+	var latest *time.Time
+	for i := range accounts {
+		candidate := accounts[i].LastUsedAt
+		if candidate == nil || candidate.IsZero() {
+			continue
+		}
+		if latest == nil || candidate.After(*latest) {
+			ts := candidate.UTC()
+			latest = &ts
+		}
+	}
+	return latest
+}
+
+// scheduleOllamaCloudUsageActivity records that an Ollama Cloud API-key account
+// actually attempted an upstream model request (including 429/5xx/transport errors).
+// Local auth/validation failures must not call this. DeferredService dedupes writes.
+func scheduleOllamaCloudUsageActivity(deferred *DeferredService, account *Account) {
+	if deferred == nil || account == nil || !IsOllamaCloudUsageAccount(account) {
+		return
+	}
+	deferred.ScheduleLastUsedUpdate(account.ID)
 }
 
 // OllamaCloudUsageService refreshes the official settings HTML without affecting routing state.
@@ -531,7 +697,7 @@ func (s *OllamaCloudUsageService) Refresh(ctx context.Context, accountID int64) 
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.refreshAccount(ctx, accountID, settings.IntervalMinutes, false); err != nil {
+	if _, err := s.refreshAccount(ctx, accountID, settings, false); err != nil {
 		return nil, err
 	}
 	return s.GetState(ctx, accountID)
@@ -561,7 +727,8 @@ func (s *OllamaCloudUsageService) RunDue(ctx context.Context) error {
 		return ErrOllamaCloudUsageUnavailable
 	}
 	now := s.currentTime()
-	accounts, err := writer.ListDueOllamaCloudUsageAccounts(ctx, now, ollamaCloudUsageMaxPerCycle)
+	debounce, maxWait := ollamaCloudUsageDurations(settings)
+	accounts, err := writer.ListDueOllamaCloudUsageAccounts(ctx, now, debounce, maxWait, ollamaCloudUsageMaxPerCycle)
 	if err != nil {
 		return fmt.Errorf("list due Ollama Cloud usage accounts: %w", err)
 	}
@@ -577,13 +744,15 @@ func (s *OllamaCloudUsageService) RunDue(ctx context.Context) error {
 			continue
 		}
 		seenGroups[fingerprint] = struct{}{}
-		if snapshot := decodeOllamaCloudUsageSnapshot(account.Extra); snapshot != nil && now.Before(snapshot.NextRefreshAt) {
+		snapshot := decodeOllamaCloudUsageSnapshot(account.Extra)
+		// ListDue stamps Account.LastUsedAt with the api_key group MAX(last_used_at).
+		if !ollamaCloudUsageIsAutoRefreshDue(snapshot, account.LastUsedAt, now, debounce, maxWait) {
 			continue
 		}
 		accountID := account.ID
 		expected := account
 		group.Go(func() error {
-			if _, refreshErr := s.refreshAccount(ctx, accountID, settings.IntervalMinutes, true); refreshErr != nil {
+			if _, refreshErr := s.refreshAccount(ctx, accountID, settings, true); refreshErr != nil {
 				if errors.Is(refreshErr, ErrOllamaCloudUsageIdentityChanged) {
 					if disableErr := writer.DisableOllamaCloudUsageAutoRefresh(ctx, &expected); disableErr != nil {
 						logger.LegacyPrintf("service.ollama_cloud_usage", "disable_auto_refresh_failed: account_id=%d err=%v", accountID, disableErr)
@@ -598,10 +767,15 @@ func (s *OllamaCloudUsageService) RunDue(ctx context.Context) error {
 	return group.Wait()
 }
 
-func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID int64, intervalMinutes int, requireEnabled bool) (*OllamaCloudUsageSnapshot, error) {
+func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID int64, settings *OllamaCloudUsageSettings, requireEnabled bool) (*OllamaCloudUsageSnapshot, error) {
 	if s == nil || s.accountRepo == nil {
 		return nil, ErrOllamaCloudUsageUnavailable
 	}
+	if settings == nil {
+		settings = defaultOllamaCloudUsageSettings()
+	}
+	intervalMinutes := settings.IntervalMinutes
+	debounce, maxWait := ollamaCloudUsageDurations(settings)
 	anchor, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -650,7 +824,21 @@ func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID 
 			if !account.IsActive() || !ollamaCloudUsageAutoRefreshEnabled(account) {
 				return nil, nil
 			}
-			if snapshot := decodeOllamaCloudUsageSnapshot(account.Extra); snapshot != nil && s.currentTime().Before(snapshot.NextRefreshAt) {
+			groupLastUsed := account.LastUsedAt
+			if writer, ok := s.accountRepo.(ollamaCloudUsageRepository); ok {
+				siblings, listErr := writer.ListOllamaCloudUsageGroupAccounts(ctx, []*Account{account})
+				if listErr != nil {
+					// Fall back to this account's own last_used_at. That is a narrower
+					// activity signal than the group maximum, so the due check may skip a
+					// refresh it would otherwise have run; surface it rather than
+					// silently changing the due semantics.
+					logger.LegacyPrintf("service.ollama_cloud_usage",
+						"group_last_used_lookup_failed: account_id=%d err=%v", account.ID, listErr)
+				} else {
+					groupLastUsed = maxOllamaCloudUsageGroupLastUsed(siblings)
+				}
+			}
+			if !ollamaCloudUsageIsAutoRefreshDue(decodeOllamaCloudUsageSnapshot(account.Extra), groupLastUsed, s.currentTime(), debounce, maxWait) {
 				return nil, nil
 			}
 		}

@@ -328,11 +328,13 @@ export default {
       },
       ollamaCloudUsage: {
         title: 'Ollama Cloud 用量刷新',
-        description: '定期刷新账号在 Ollama 官方设置页展示的用量；默认关闭。',
+        description: '在模型请求驱动下刷新账号在 Ollama 官方设置页展示的用量；默认关闭。无新请求时不会自动抓取。',
         enabled: '启用全局自动刷新',
-        enabledHint: '仅刷新已保存浏览器会话且账号自身也开启自动刷新的账号；手动刷新不受影响。',
-        intervalMinutes: '刷新周期（分钟）',
-        intervalHint: '范围 15–1440 分钟。失败后按有上限的指数退避重试。',
+        enabledHint: '仅刷新已保存浏览器会话且账号自身也开启自动刷新的账号；需有后续模型请求才会触发。手动刷新不受影响。',
+        intervalMinutes: '持续请求最长等待（分钟）',
+        intervalHint: '范围 15–1440 分钟。请求持续不断导致 debounce 一直后移时，最晚在此时间强制刷新。',
+        debounceMinutes: '请求安静等待（分钟）',
+        debounceHint: '范围 1–60 分钟。最后一次模型请求安静满此时长后再抓取用量。',
         saved: 'Ollama Cloud 用量刷新设置已保存',
         saveFailed: '保存 Ollama Cloud 用量刷新设置失败'
       },

@@ -141,6 +141,31 @@ DROP TABLE users;
 DO $$ BEGIN PERFORM 1; END $$;
 `)
 	require.False(t, evaluateStatement(reviewedUnknown, nil, "002_test.sql").allowed)
+
+	reviewedDropConstraint := mustOneStatement(t, `
+-- sub2api-managed-update: reviewed-compatible
+ALTER TABLE ONLY usage_logs DROP CONSTRAINT IF EXISTS usage_logs_request_type_check;
+`)
+	require.True(t, evaluateStatement(reviewedDropConstraint, nil, "002_test.sql").allowed)
+
+	reviewedCheckConstraint := mustOneStatement(t, `
+-- sub2api-managed-update: reviewed-compatible
+ALTER TABLE usage_logs ADD CONSTRAINT usage_logs_request_type_check
+CHECK (request_type >= 0 AND request_type <= 5) NOT VALID;
+`)
+	require.True(t, evaluateStatement(reviewedCheckConstraint, nil, "002_test.sql").allowed)
+
+	unreviewedCheckConstraint := mustOneStatement(t, `
+ALTER TABLE usage_logs ADD CONSTRAINT usage_logs_request_type_check
+CHECK (request_type >= 0 AND request_type <= 5) NOT VALID;
+`)
+	require.False(t, evaluateStatement(unreviewedCheckConstraint, nil, "002_test.sql").allowed)
+
+	reviewedUniqueConstraint := mustOneStatement(t, `
+-- sub2api-managed-update: reviewed-compatible
+ALTER TABLE users ADD CONSTRAINT users_email_key UNIQUE (email);
+`)
+	require.False(t, evaluateStatement(reviewedUniqueConstraint, nil, "002_test.sql").allowed)
 }
 
 func TestRecordNewTableProofRequiresUnconditionalEarlierCreate(t *testing.T) {
