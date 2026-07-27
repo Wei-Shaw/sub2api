@@ -217,6 +217,9 @@ type OpenAIWSIngressHooks struct {
 	BeforeTurn              func(turn int) error
 	BeforeRequest           func(turn int, payload []byte, originalModel string) error
 	AfterTurn               func(turn int, result *OpenAIForwardResult, turnErr error)
+	// TransformResponse is called for each downstream JSON event immediately
+	// before it is written to the client. It must preserve non-text events.
+	TransformResponse func(payload []byte) []byte
 }
 
 func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,4 +25,12 @@ func TestAccount_BillingRateMultiplier_NegativeFallsBackToOne(t *testing.T) {
 	v := -1.0
 	a := Account{RateMultiplier: &v}
 	require.Equal(t, 1.0, a.BillingRateMultiplier())
+}
+
+func TestAccount_BillingRateMultiplier_InvalidFloatFallsBackToOne(t *testing.T) {
+	for _, value := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		value := value
+		a := Account{RateMultiplier: &value}
+		require.Equal(t, 1.0, a.BillingRateMultiplier())
+	}
 }

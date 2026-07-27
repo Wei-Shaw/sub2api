@@ -67,6 +67,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	if cleaned, changed := service.StripGatewayAccountNoticeFromBody(body); changed {
+		body = cleaned
+	}
 
 	// Extract model and stream
 	modelResult := gjson.GetBytes(body, "model")
@@ -157,6 +160,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	if groupPlatform == service.PlatformGemini && selectionSessionHash != "" {
 		selectionSessionHash = "gemini:" + selectionSessionHash
 	}
+	previousSessionAccountID, _ := h.gatewayService.GetCachedSessionAccountID(c.Request.Context(), apiKey.GroupID, selectionSessionHash)
 
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
@@ -200,6 +204,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		service.SetGatewayAccountNotice(c, service.GatewayAccountNoticeOpenAIChat, previousSessionAccountID, account)
 
 		// 4. Acquire account concurrency slot
 		accountReleaseFunc := selection.ReleaseFunc

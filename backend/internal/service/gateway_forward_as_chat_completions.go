@@ -34,6 +34,9 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
 	startTime := time.Now()
+	if cleaned, changed := StripGatewayAccountNoticeFromBody(body); changed {
+		body = cleaned
+	}
 
 	// 1. Parse Chat Completions request
 	var ccReq apicompat.ChatCompletionsRequest

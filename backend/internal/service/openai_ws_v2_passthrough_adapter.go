@@ -27,6 +27,37 @@ type openAIWSClientFrameConn struct {
 	waitingForNextTurn   atomic.Bool
 }
 
+type openAIWSResponseTransformingFrameConn struct {
+	inner     openaiwsv2.FrameConn
+	transform func([]byte) []byte
+}
+
+var _ openaiwsv2.FrameConn = (*openAIWSResponseTransformingFrameConn)(nil)
+
+func (c *openAIWSResponseTransformingFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
+	if c == nil || c.inner == nil {
+		return coderws.MessageText, nil, errOpenAIWSConnClosed
+	}
+	return c.inner.ReadFrame(ctx)
+}
+
+func (c *openAIWSResponseTransformingFrameConn) WriteFrame(ctx context.Context, msgType coderws.MessageType, payload []byte) error {
+	if c == nil || c.inner == nil {
+		return errOpenAIWSConnClosed
+	}
+	if msgType == coderws.MessageText && c.transform != nil {
+		payload = c.transform(payload)
+	}
+	return c.inner.WriteFrame(ctx, msgType, payload)
+}
+
+func (c *openAIWSResponseTransformingFrameConn) Close() error {
+	if c == nil || c.inner == nil {
+		return nil
+	}
+	return c.inner.Close()
+}
+
 // openAIWSPolicyEnforcingFrameConn wraps a client-side FrameConn and runs
 // every client→upstream frame through the OpenAI Fast Policy. It is the
 // passthrough-relay equivalent of the parseClientPayload integration in the
@@ -620,6 +651,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 	}
+	if cleaned, changed := StripGatewayAccountNoticeFromBody(firstClientMessage); changed {
+		firstClientMessage = cleaned
+	}
 	if account.IsOpenAIOAuth() && isOpenAIResponsesLiteWebSocketPayload(firstClientMessage) {
 		liteFirstMessage, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(firstClientMessage)
 		if liteErr != nil {
@@ -840,8 +874,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		interTurnIdleTimeout: s.openAIWSIngressInterTurnIdleTimeout(),
 		interTurnStarted:     make(chan struct{}, 1),
 	}
+	var downstreamClientConn openaiwsv2.FrameConn = clientFrameConn
+	if hooks != nil && hooks.TransformResponse != nil {
+		downstreamClientConn = &openAIWSResponseTransformingFrameConn{
+			inner:     clientFrameConn,
+			transform: hooks.TransformResponse,
+		}
+	}
 	policyClientConn := &openAIWSPolicyEnforcingFrameConn{
-		inner: clientFrameConn,
+		inner: downstreamClientConn,
 		// 注意线程安全：filter 仅在 runClientToUpstream 这一条
 		// goroutine 中被调用（passthrough_relay.go: ReadFrame loop），
 		// capturedSessionModel 的读写都发生在该 goroutine 内，因此无需
@@ -849,6 +890,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		filter: func(msgType coderws.MessageType, payload []byte) (out []byte, blocked *OpenAIFastBlockedError, filterErr error) {
 			if msgType != coderws.MessageText {
 				return payload, nil, nil
+			}
+			if cleaned, changed := StripGatewayAccountNoticeFromBody(payload); changed {
+				payload = cleaned
 			}
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			isResponseCreate := eventType == "response.create"

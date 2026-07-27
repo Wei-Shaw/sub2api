@@ -237,7 +237,7 @@ func (a *Account) BillingRateMultiplier() float64 {
 	if a == nil || a.RateMultiplier == nil {
 		return 1.0
 	}
-	if *a.RateMultiplier < 0 {
+	if *a.RateMultiplier < 0 || math.IsNaN(*a.RateMultiplier) || math.IsInf(*a.RateMultiplier, 0) {
 		return 1.0
 	}
 	return *a.RateMultiplier

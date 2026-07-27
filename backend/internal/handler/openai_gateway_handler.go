@@ -238,6 +238,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, "", false)
+	// This is the identity body used by sticky routing below. Clean it before
+	// compact normalization so an old banner cannot affect the session key.
+	if cleaned, changed := service.StripGatewayAccountNoticeFromBody(body); changed {
+		body = cleaned
+	}
 	sessionHashBody := body
 	body, ok = h.normalizeOpenAIResponsesCompactRequest(c, reqLog, body)
 	if !ok {
@@ -255,7 +260,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
-
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
@@ -374,6 +378,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// Generate session hash (header first; fallback to prompt_cache_key)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
+	previousSessionAccountID, _ := h.gatewayService.GetStickySessionAccountID(c.Request.Context(), apiKey.GroupID, sessionHash)
 	if h.rejectIfCyberSessionBlocked(c, apiKey, sessionHashBody, reqModel, cyberBlockFormatResponses) {
 		return
 	}
@@ -470,6 +475,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		service.SetGatewayAccountNotice(c, service.GatewayAccountNoticeOpenAIResponses, previousSessionAccountID, account)
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
@@ -871,6 +877,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	if cleaned, changed := service.StripGatewayAccountNoticeFromBody(body); changed {
+		body = cleaned
+	}
 
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
@@ -933,6 +942,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
 	sessionHash, promptCacheKey = resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel, body)
+	previousSessionAccountID, _ := h.gatewayService.GetStickySessionAccountID(c.Request.Context(), apiKey.GroupID, sessionHash)
 	if h.rejectIfCyberSessionBlocked(c, apiKey, body, reqModel, cyberBlockFormatAnthropic) {
 		return
 	}
@@ -1008,6 +1018,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		reqLog.Debug("openai_messages.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		_ = scheduleDecision
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		service.SetGatewayAccountNotice(c, service.GatewayAccountNoticeAnthropic, previousSessionAccountID, account)
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
@@ -1495,6 +1506,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid JSON payload")
 		return
 	}
+	if cleaned, changed := service.StripGatewayAccountNoticeFromBody(firstMessage); changed {
+		firstMessage = cleaned
+	}
 	reqModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
 	if reqModel == "" {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
@@ -1616,6 +1630,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		firstMessage,
 		openAIWSIngressFallbackSessionSeed(subject.UserID, apiKey.ID, apiKey.GroupID),
 	)
+	previousSessionAccountID, _ := h.gatewayService.GetStickySessionAccountID(ctx, apiKey.GroupID, sessionHash)
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
@@ -1709,6 +1724,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 
 		account := selection.Account
+		noticeTransformer := service.NewGatewayAccountNoticeTransformer(
+			service.GatewayAccountNoticeOpenAIResponses,
+			previousSessionAccountID,
+			account,
+		)
 		accountMaxConcurrency := account.Concurrency
 		if selection.WaitPlan != nil && selection.WaitPlan.MaxConcurrency > 0 {
 			accountMaxConcurrency = selection.WaitPlan.MaxConcurrency
@@ -1894,6 +1914,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					}
 				})
 			},
+			TransformResponse: noticeTransformer.TransformJSON,
 		}
 
 		// 应用渠道模型映射到 WebSocket 首条消息

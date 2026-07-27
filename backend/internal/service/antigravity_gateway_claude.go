@@ -28,6 +28,9 @@ import (
 //	          ├─ 成功 → 正常返回
 //	          └─ 失败 → 设置模型限流 + 清除粘性绑定 → 切换账号
 func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte, isStickySession bool) (*ForwardResult, error) {
+	if cleaned, changed := StripGatewayAccountNoticeFromBody(body); changed {
+		body = cleaned
+	}
 	// 上游透传账号直接转发，不走 OAuth token 刷新
 	if account.Type == AccountTypeUpstream {
 		return s.ForwardUpstream(ctx, c, account, body)

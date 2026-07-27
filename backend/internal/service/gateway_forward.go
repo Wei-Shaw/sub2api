@@ -92,6 +92,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
 	}
+	if cleaned, changed := StripGatewayAccountNoticeFromBody(parsed.Body.Bytes()); changed {
+		if err := parsed.ReplaceBody(cleaned); err != nil {
+			return nil, fmt.Errorf("sanitize gateway account notice: %w", err)
+		}
+	}
 
 	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
 	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body.Bytes()) {

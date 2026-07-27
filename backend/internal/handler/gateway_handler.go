@@ -166,6 +166,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	// Remove gateway-generated banners before every downstream decision uses the
+	// request body. Parse first so malformed payloads retain the established
+	// validation error path.
+	if cleaned, changed := service.StripGatewayAccountNoticeFromBody(body); changed {
+		bodyRef = service.NewRequestBodyRef(cleaned)
+		parsedReq, err = service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
+		if err != nil {
+			logRequestBodyParseFailure(reqLog, cleaned, err)
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+			return
+		}
+		body = cleaned
+	}
 	body = parsedReq.Body.Bytes()
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
@@ -300,6 +313,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 	// 判断是否真的绑定了粘性会话：有 sessionKey 且已经绑定到某个账号
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
+	noticePreviousAccountID := sessionBoundAccountID
 
 	if platform == service.PlatformGemini {
 		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
@@ -353,6 +367,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			account := selection.Account
 			setOpsSelectedAccount(c, account.ID, account.Platform)
+			service.SetGatewayAccountNotice(c, service.GatewayAccountNoticeAnthropic, noticePreviousAccountID, account)
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
@@ -643,6 +658,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			account := selection.Account
 			setOpsSelectedAccount(c, account.ID, account.Platform)
+			service.SetGatewayAccountNotice(c, service.GatewayAccountNoticeAnthropic, noticePreviousAccountID, account)
 
 			// [DEBUG-STICKY] 打印账号选择结果
 			reqLog.Info("sticky.account_selected",

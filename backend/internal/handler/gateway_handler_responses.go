@@ -67,6 +67,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	if cleaned, changed := service.StripGatewayAccountNoticeFromBody(body); changed {
+		body = cleaned
+	}
 
 	// Extract model and stream using gjson (like OpenAI handler)
 	modelResult := gjson.GetBytes(body, "model")
@@ -157,6 +160,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		APIKeyID:  apiKey.ID,
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
+	previousSessionAccountID, _ := h.gatewayService.GetCachedSessionAccountID(requestCtx, apiKey.GroupID, sessionHash)
 
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
@@ -197,6 +201,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		service.SetGatewayAccountNotice(c, service.GatewayAccountNoticeOpenAIResponses, previousSessionAccountID, account)
 
 		// 4. Acquire account concurrency slot
 		accountReleaseFunc := selection.ReleaseFunc

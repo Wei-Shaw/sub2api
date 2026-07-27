@@ -68,6 +68,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	if cleaned, changed := service.StripGatewayAccountNoticeFromBody(body); changed {
+		body = cleaned
+	}
 
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
@@ -141,6 +144,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
+	previousSessionAccountID, _ := h.gatewayService.GetStickySessionAccountID(c.Request.Context(), apiKey.GroupID, sessionHash)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -206,6 +210,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		reqLog.Debug("openai_chat_completions.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		_ = scheduleDecision
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		service.SetGatewayAccountNotice(c, service.GatewayAccountNoticeOpenAIChat, previousSessionAccountID, account)
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {

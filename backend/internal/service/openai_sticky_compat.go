@@ -151,6 +151,13 @@ func (s *OpenAIGatewayService) getStickySessionAccountID(ctx context.Context, gr
 	return accountID, err
 }
 
+// GetStickySessionAccountID exposes the existing compatible sticky lookup to
+// handlers that need to decide whether a client-visible routing notice is the
+// first message of a session or an actual account switch.
+func (s *OpenAIGatewayService) GetStickySessionAccountID(ctx context.Context, groupID *int64, sessionHash string) (int64, error) {
+	return s.getStickySessionAccountID(ctx, groupID, sessionHash)
+}
+
 func (s *OpenAIGatewayService) setStickySessionAccountID(ctx context.Context, groupID *int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	if s == nil || s.cache == nil || accountID <= 0 {
 		return nil
