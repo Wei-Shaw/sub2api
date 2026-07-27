@@ -1162,39 +1162,6 @@ func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string
 	return variables
 }
 
-func buildOpsAlertEmailBody(rule *OpsAlertRule, event *OpsAlertEvent) string {
-	if rule == nil || event == nil {
-		return ""
-	}
-	metric := strings.TrimSpace(rule.MetricType)
-	value := "-"
-	threshold := fmt.Sprintf("%.2f", rule.Threshold)
-	if event.MetricValue != nil {
-		value = fmt.Sprintf("%.2f", *event.MetricValue)
-	}
-	if event.ThresholdValue != nil {
-		threshold = fmt.Sprintf("%.2f", *event.ThresholdValue)
-	}
-	return fmt.Sprintf(`
-<h2>Ops Alert</h2>
-<p><b>Rule</b>: %s</p>
-<p><b>Severity</b>: %s</p>
-<p><b>Status</b>: %s</p>
-<p><b>Metric</b>: %s %s %s</p>
-<p><b>Fired at</b>: %s</p>
-<p><b>Description</b>: %s</p>
-`,
-		htmlEscape(rule.Name),
-		htmlEscape(rule.Severity),
-		htmlEscape(event.Status),
-		htmlEscape(metric),
-		htmlEscape(rule.Operator),
-		htmlEscape(fmt.Sprintf("%s (threshold %s)", value, threshold)),
-		event.FiredAt.Format(time.RFC3339),
-		htmlEscape(event.Description),
-	)
-}
-
 func shouldSendOpsAlertEmailByMinSeverity(minSeverity string, ruleSeverity string) bool {
 	minSeverity = strings.ToLower(strings.TrimSpace(minSeverity))
 	if minSeverity == "" {
@@ -1378,52 +1345,6 @@ func htmlEscape(s string) string {
 		"'", "&#39;",
 	)
 	return replacer.Replace(s)
-}
-
-type slidingWindowLimiter struct {
-	mu     sync.Mutex
-	limit  int
-	window time.Duration
-	sent   []time.Time
-}
-
-func newSlidingWindowLimiter(limit int, window time.Duration) *slidingWindowLimiter {
-	if window <= 0 {
-		window = time.Hour
-	}
-	return &slidingWindowLimiter{
-		limit:  limit,
-		window: window,
-		sent:   []time.Time{},
-	}
-}
-
-func (l *slidingWindowLimiter) SetLimit(limit int) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.limit = limit
-}
-
-func (l *slidingWindowLimiter) Allow(now time.Time) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if l.limit <= 0 {
-		return true
-	}
-	cutoff := now.Add(-l.window)
-	keep := l.sent[:0]
-	for _, t := range l.sent {
-		if t.After(cutoff) {
-			keep = append(keep, t)
-		}
-	}
-	l.sent = keep
-	if len(l.sent) >= l.limit {
-		return false
-	}
-	l.sent = append(l.sent, now)
-	return true
 }
 
 // computeGroupAvailableRatio returns the available percentage for a group.

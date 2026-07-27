@@ -28,7 +28,7 @@ func TestInvalidatePreaggregatedMetricVersionsMakesRowsUnreadableAsV2(t *testing
 	if err != nil {
 		t.Fatalf("sqlmock.New(): %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectExec(`(?s)UPDATE ops_metrics_hourly SET metric_definition_version = 1.*metric_definition_version = \$3`).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), service.OpsMetricDefinitionVersion).
@@ -56,7 +56,7 @@ func TestUpsertHourlyMetricsWritesMetricDefinitionVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New(): %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectExec(`(?s)INSERT INTO ops_metrics_hourly .*metric_definition_version.*ON CONFLICT .*metric_definition_version = EXCLUDED.metric_definition_version`).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
@@ -77,7 +77,7 @@ func TestUpsertDailyMetricsOnlyReadsAndWritesMetricDefinitionV2(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New(): %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectExec(`(?s)INSERT INTO ops_metrics_daily .*metric_definition_version.*FROM ops_metrics_hourly.*metric_definition_version = 2.*ON CONFLICT .*metric_definition_version = EXCLUDED.metric_definition_version`).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
@@ -98,7 +98,7 @@ func TestLatestPreaggregatedBucketsOnlyReadMetricDefinitionV2(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New(): %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	hour := time.Date(2026, 7, 27, 1, 0, 0, 0, time.UTC)
 	day := time.Date(2026, 7, 27, 0, 0, 0, 0, time.UTC)
