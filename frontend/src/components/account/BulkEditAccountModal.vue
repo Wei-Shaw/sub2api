@@ -581,6 +581,42 @@
         </div>
       </div>
 
+      <!-- Proxy Group / 代理池 -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <div class="flex-1 pr-4">
+            <label
+              id="bulk-edit-proxy-group-label"
+              class="input-label mb-0"
+              for="bulk-edit-proxy-group-enabled"
+            >
+              {{ t('admin.accounts.proxyGroup') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.proxyGroupHint') }}
+            </p>
+          </div>
+          <input
+            v-model="enableProxyGroup"
+            id="bulk-edit-proxy-group-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-proxy-group-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-proxy-group-body"
+          :class="!enableProxyGroup && 'pointer-events-none opacity-50'"
+        >
+          <ProxySelector
+            v-model="proxyGroupId"
+            mode="group"
+            :groups="proxyGroups"
+            aria-labelledby="bulk-edit-proxy-group-label"
+          />
+        </div>
+      </div>
+
       <!-- Concurrency & Priority -->
       <div class="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4 dark:border-dark-600 lg:grid-cols-4">
         <div>
@@ -1244,7 +1280,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType, OpenAICompactMode } from '@/types'
+import type { Proxy as ProxyConfig, ProxyGroup, AdminGroup, AccountPlatform, AccountType, OpenAICompactMode } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -1288,10 +1324,13 @@ interface Props {
     selectedTypes?: AccountType[]
   }
   proxies: ProxyConfig[]
+  proxyGroups?: ProxyGroup[]
   groups: AdminGroup[]
 }
 
 const props = defineProps<Props>()
+
+const proxyGroups = computed(() => props.proxyGroups || [])
 const emit = defineEmits<{
   close: []
   updated: []
@@ -1391,6 +1430,7 @@ const enableCustomErrorCodes = ref(false)
 const enableInterceptWarmup = ref(false)
 const enableHeaderOverride = ref(false)
 const enableProxy = ref(false)
+const enableProxyGroup = ref(false)
 const enableConcurrency = ref(false)
 const enableLoadFactor = ref(false)
 const enablePriority = ref(false)
@@ -1422,6 +1462,7 @@ const interceptWarmupRequests = ref(false)
 const headerOverrideEnabled = ref(false)
 const headerOverrideRows = ref<HeaderOverrideRow[]>([])
 const proxyId = ref<number | null>(null)
+const proxyGroupId = ref<number | null>(null)
 const concurrency = ref(1)
 const loadFactor = ref<number | null>(null)
 const priority = ref(1)
@@ -1594,6 +1635,11 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   if (enableProxy.value) {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     updates.proxy_id = proxyId.value === null ? 0 : proxyId.value
+  }
+
+  if (enableProxyGroup.value) {
+    // 后端期望 proxy_group_id: 0 表示清除代理组，而不是 null
+    updates.proxy_group_id = proxyGroupId.value === null ? 0 : proxyGroupId.value
   }
 
   if (enableConcurrency.value) {
@@ -1811,6 +1857,7 @@ const handleSubmit = async () => {
     enableInterceptWarmup.value ||
     enableHeaderOverride.value ||
     enableProxy.value ||
+    enableProxyGroup.value ||
     enableConcurrency.value ||
     enableLoadFactor.value ||
     enablePriority.value ||
@@ -1939,6 +1986,7 @@ watch(
       enableInterceptWarmup.value = false
       enableHeaderOverride.value = false
       enableProxy.value = false
+      enableProxyGroup.value = false
       enableConcurrency.value = false
       enableLoadFactor.value = false
       enablePriority.value = false
@@ -1967,6 +2015,7 @@ watch(
       headerOverrideEnabled.value = false
       headerOverrideRows.value = []
       proxyId.value = null
+      proxyGroupId.value = null
       concurrency.value = 1
       loadFactor.value = null
       priority.value = 1

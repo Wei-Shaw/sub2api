@@ -387,6 +387,7 @@ type BulkUpdateAccountsInput struct {
 	Filters        *BulkUpdateAccountFilters
 	Name           string
 	ProxyID        *int64
+	ProxyGroupID   *int64 // 0 表示清除代理组
 	Concurrency    *int
 	Priority       *int
 	RateMultiplier *float64 // 账号计费倍率（>=0，允许 0）

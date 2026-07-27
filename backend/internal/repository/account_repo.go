@@ -2897,6 +2897,16 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			idx++
 		}
 	}
+	if updates.ProxyGroupID != nil {
+		// 0 表示清除代理组（与 proxy_id 相同哨兵约定）
+		if *updates.ProxyGroupID == 0 {
+			setClauses = append(setClauses, "proxy_group_id = NULL")
+		} else {
+			setClauses = append(setClauses, "proxy_group_id = $"+itoa(idx))
+			args = append(args, *updates.ProxyGroupID)
+			idx++
+		}
+	}
 	if updates.Concurrency != nil {
 		setClauses = append(setClauses, "concurrency = $"+itoa(idx))
 		args = append(args, *updates.Concurrency)

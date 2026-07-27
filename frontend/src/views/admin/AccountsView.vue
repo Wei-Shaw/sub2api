@@ -448,6 +448,7 @@
       :selected-types="selTypes"
       :target="bulkEditTarget ?? undefined"
       :proxies="proxies"
+      :proxy-groups="proxyGroups"
       :groups="groups"
       @close="showBulkEdit = false"
       @updated="handleBulkUpdated"

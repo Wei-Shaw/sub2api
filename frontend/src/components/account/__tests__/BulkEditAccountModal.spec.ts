@@ -524,4 +524,33 @@ describe('BulkEditAccountModal', () => {
       status: 'active'
     })
   })
+
+  it('批量编辑展示代理池开关，开启后提交 proxy_group_id（null 映射为 0）', async () => {
+    const wrapper = mountModal({
+      proxyGroups: [
+        {
+          id: 9,
+          name: 'pool-a',
+          strategy: 'round_robin',
+          status: 'active',
+          sticky_by_account: true,
+          proxy_count: 3
+        }
+      ]
+    })
+
+    expect(wrapper.text()).toContain('admin.accounts.proxyGroup')
+    expect(wrapper.find('#bulk-edit-proxy-group-enabled').exists()).toBe(true)
+    expect(wrapper.find('#bulk-edit-proxy-group-body').exists()).toBe(true)
+
+    await wrapper.get('#bulk-edit-proxy-group-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      proxy_group_id: 0
+    })
+  })
+
 })

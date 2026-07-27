@@ -931,7 +931,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || input.ProxyGroupID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -978,10 +978,10 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		}
 	}
 
-	// 影子账号 proxy 恒继承母账号(与单账号 UpdateAccount 守卫对齐——外审第4轮 P1):批量携带 proxy
-	// 时目标不得含影子,否则影子会获得独立 proxy、破坏继承不变量(网关按所选影子自身 proxy 出站,
-	// 要等母账号下次改 proxy 才覆盖→漂移)。含影子即整体拒绝,提示从选择中剔除影子。
-	if input.ProxyID != nil {
+	// 影子账号 proxy/proxy_group 恒继承母账号(与单账号 UpdateAccount 守卫对齐——外审第4轮 P1):批量携带
+	// proxy 或 proxy_group 时目标不得含影子,否则影子会获得独立出站配置、破坏继承不变量。
+	// 含影子即整体拒绝,提示从选择中剔除影子。
+	if input.ProxyID != nil || input.ProxyGroupID != nil {
 		for _, acc := range cachedTargets {
 			if acc != nil && acc.IsCredentialShadow() {
 				return nil, infraerrors.Newf(http.StatusBadRequest, "SPARK_SHADOW_PROXY_INHERITED",
@@ -1049,6 +1049,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 	if input.ProxyID != nil {
 		repoUpdates.ProxyID = input.ProxyID
+	}
+	if input.ProxyGroupID != nil {
+		repoUpdates.ProxyGroupID = input.ProxyGroupID
 	}
 	if input.Concurrency != nil {
 		repoUpdates.Concurrency = input.Concurrency
