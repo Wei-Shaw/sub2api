@@ -758,6 +758,38 @@ Antigravity 账户支持可选的**混合调度**功能。开启后，通用端�
 
 ---
 
+## Qoder 使用说明
+
+Sub2API 支持 [Qoder](https://qoder.com) Cloud Agents 账号。只需一个个人访问令牌（PAT），Sub2API 会自动创建 Agent 和 Environment，并将无状态的 OpenAI Chat Completions 请求桥接到有状态的 Qoder 会话。
+
+### 支持范围
+
+- 平台名称：`qoder`
+- 账号类型：API Key（PAT 令牌，如 `pt-...`）
+- 公开端点：`/v1/chat/completions`、`/chat/completions`、`/v1/models`
+- 支持流式和非流式响应
+- 会话复用：相同对话上下文的连续请求会通过 Redis 映射复用到同一个 Qoder 会话（Redis 不可用时回退为新建会话 + 历史扁平化）
+- 模型：`auto`、`ultimate`、`performance`、`efficient`、`lite`、`cmodel`、`qmodel_preview`、`qmodel_latest`、`qmodel`、`kmodel_latest`、`kmodel`、`gm51model`、`dmodel`、`dfmodel`、`mmodel`
+
+### 配置方法
+
+1. 在管理后台创建 **Qoder** 账号（类型：PAT Token），粘贴 `pt-...` 令牌。
+2. 创建 Qoder 分组，绑定账号，然后创建分配到该分组的 Sub2API API Key。
+3. 将任何 OpenAI 兼容客户端指向你的 Sub2API 实例：
+
+```bash
+export OPENAI_BASE_URL="http://localhost:8080/v1"
+export OPENAI_API_KEY="sk-your-sub2api-key"
+```
+
+### 注意事项
+
+- Qoder Cloud Agents API 不返回 token 用量数据；计费使用本地估算（字符数 / 4）。
+- 默认上游地址为 `https://api.qoder.com/api/v1/cloud`，可通过账号 `base_url` 字段覆盖。
+- Agent/Environment 置备每个账号只执行一次，结果缓存在账号 `extra` JSON 中（`qoder_agent_id`、`qoder_env_id`）。
+
+---
+
 ## 项目结构
 
 ```

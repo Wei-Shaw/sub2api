@@ -827,6 +827,38 @@ Antigravity accounts support optional **hybrid scheduling**. When enabled, the g
 
 ---
 
+## Qoder Support
+
+Sub2API supports [Qoder](https://qoder.com) Cloud Agents accounts. A single Personal Access Token (PAT) is all that's needed — Sub2API automatically provisions the Agent and Environment, then bridges stateless OpenAI Chat Completions requests onto stateful Qoder sessions.
+
+### Supported Scope
+
+- Platform name: `qoder`
+- Account type: API Key (PAT token, e.g. `pt-...`)
+- Public endpoints: `/v1/chat/completions`, `/chat/completions`, `/v1/models`
+- Streaming and non-streaming responses
+- Session reuse: consecutive turns with the same conversation context are stitched onto the same Qoder session via Redis-backed mapping (falls back to a new session with flattened history when Redis is unavailable)
+- Models: `auto`, `ultimate`, `performance`, `efficient`, `lite`, `cmodel`, `qmodel_preview`, `qmodel_latest`, `qmodel`, `kmodel_latest`, `kmodel`, `gm51model`, `dmodel`, `dfmodel`, `mmodel`
+
+### Configuration
+
+1. In the admin dashboard, create a **Qoder** account (type: PAT Token) and paste your `pt-...` token.
+2. Create a Qoder group, attach the account, then create a Sub2API API key assigned to that group.
+3. Point any OpenAI-compatible client at your Sub2API instance:
+
+```bash
+export OPENAI_BASE_URL="http://localhost:8080/v1"
+export OPENAI_API_KEY="sk-your-sub2api-key"
+```
+
+### Notes
+
+- Qoder Cloud Agents API does not return token usage data; billing uses a local estimate (runes / 4).
+- The default upstream base URL is `https://api.qoder.com/api/v1/cloud`; it can be overridden per-account via the `base_url` credential field.
+- Agent/Environment provisioning happens once per account and is cached in the account `extra` JSON (`qoder_agent_id`, `qoder_env_id`).
+
+---
+
 ## Project Structure
 
 ```
