@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 	"golang.org/x/sync/errgroup"
 )
@@ -389,9 +389,9 @@ func (r *usageLogRepository) GetAccountWindowStatsBatch(ctx context.Context, acc
 }
 
 // GetGeminiUsageTotalsBatch 批量聚合 Gemini 账号在窗口内的 Pro/Flash 请求与用量。
-// 模型分类规则与 service.geminiModelClassFromName 一致：model 包含 flash/lite 视为 flash，其余视为 pro。
-func (r *usageLogRepository) GetGeminiUsageTotalsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]service.GeminiUsageTotals, error) {
-	result := make(map[int64]service.GeminiUsageTotals, len(accountIDs))
+// 模型分类规则与 geminiModelClassFromName 一致：model 包含 flash/lite 视为 flash，其余视为 pro。
+func (r *usageLogRepository) GetGeminiUsageTotalsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]domain.GeminiUsageTotals, error) {
+	result := make(map[int64]domain.GeminiUsageTotals, len(accountIDs))
 	if len(accountIDs) == 0 {
 		return result, nil
 	}
@@ -417,7 +417,7 @@ func (r *usageLogRepository) GetGeminiUsageTotalsBatch(ctx context.Context, acco
 
 	for rows.Next() {
 		var accountID int64
-		var totals service.GeminiUsageTotals
+		var totals domain.GeminiUsageTotals
 		if err := rows.Scan(
 			&accountID,
 			&totals.FlashRequests,
@@ -437,7 +437,7 @@ func (r *usageLogRepository) GetGeminiUsageTotalsBatch(ctx context.Context, acco
 
 	for _, accountID := range accountIDs {
 		if _, ok := result[accountID]; !ok {
-			result[accountID] = service.GeminiUsageTotals{}
+			result[accountID] = domain.GeminiUsageTotals{}
 		}
 	}
 	return result, nil

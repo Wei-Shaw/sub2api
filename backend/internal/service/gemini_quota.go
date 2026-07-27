@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
@@ -45,14 +46,7 @@ type GeminiQuotaPolicy struct {
 	tiers map[string]GeminiTierPolicy
 }
 
-type GeminiUsageTotals struct {
-	ProRequests   int64
-	FlashRequests int64
-	ProTokens     int64
-	FlashTokens   int64
-	ProCost       float64
-	FlashCost     float64
-}
+type GeminiUsageTotals = domain.GeminiUsageTotals
 
 const geminiQuotaCacheTTL = time.Minute
 
