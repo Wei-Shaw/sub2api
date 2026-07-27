@@ -2184,10 +2184,11 @@ func TestAccountTestServiceGrokOAuthPaymentRequiredTemporarilyUnschedulesAccount
 	err := svc.testGrokAccountConnection(c, account, "grok")
 
 	require.Error(t, err)
+	// 与网关 handleGrokAccountUpstreamError 一致：402 走 soft entitlement 临时停调度。
 	require.Equal(t, 1, repo.tempUnschedCalls)
 	require.Equal(t, account.ID, repo.lastTempUnschedID)
-	require.Equal(t, "grok payment required", repo.lastTempUnschedReason)
-	require.WithinDuration(t, before.Add(30*time.Minute), repo.lastTempUnschedUntil, time.Second)
+	require.Equal(t, grokSoftEntitlementReason, repo.lastTempUnschedReason)
+	require.WithinDuration(t, before.Add(grokSoftEntitlementCooldown), repo.lastTempUnschedUntil, time.Second)
 	require.Contains(t, recorder.Body.String(), `"type":"error"`)
 	require.Contains(t, recorder.Body.String(), "Grok Responses API returned 402")
 }
