@@ -6,7 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/imagetask"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -16,11 +17,11 @@ type imageTaskStore struct {
 	rdb *redis.Client
 }
 
-func NewImageTaskStore(rdb *redis.Client) service.ImageTaskStore {
+func NewImageTaskStore(rdb *redis.Client) imagetask.ImageTaskStore {
 	return &imageTaskStore{rdb: rdb}
 }
 
-func (s *imageTaskStore) Save(ctx context.Context, task *service.ImageTaskRecord, ttl time.Duration) error {
+func (s *imageTaskStore) Save(ctx context.Context, task *domain.ImageTaskRecord, ttl time.Duration) error {
 	data, err := json.Marshal(task)
 	if err != nil {
 		return err
@@ -28,15 +29,15 @@ func (s *imageTaskStore) Save(ctx context.Context, task *service.ImageTaskRecord
 	return s.rdb.Set(ctx, imageTaskKey(task.ID), data, ttl).Err()
 }
 
-func (s *imageTaskStore) Get(ctx context.Context, id string) (*service.ImageTaskRecord, error) {
+func (s *imageTaskStore) Get(ctx context.Context, id string) (*domain.ImageTaskRecord, error) {
 	data, err := s.rdb.Get(ctx, imageTaskKey(id)).Bytes()
 	if err != nil {
 		if err == redis.Nil {
-			return nil, service.ErrImageTaskNotFound
+			return nil, domain.ErrImageTaskNotFound
 		}
 		return nil, err
 	}
-	var task service.ImageTaskRecord
+	var task domain.ImageTaskRecord
 	if err := json.Unmarshal(data, &task); err != nil {
 		return nil, err
 	}
