@@ -10,7 +10,7 @@ import (
 	"io"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/encryptor"
 )
 
 // AESEncryptor implements SecretEncryptor using AES-256-GCM
@@ -19,7 +19,7 @@ type AESEncryptor struct {
 }
 
 // NewAESEncryptor creates a new AES encryptor
-func NewAESEncryptor(cfg *config.Config) (service.SecretEncryptor, error) {
+func NewAESEncryptor(cfg *config.Config) (encryptor.SecretEncryptor, error) {
 	key, err := hex.DecodeString(cfg.Totp.EncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("invalid totp encryption key: %w", err)

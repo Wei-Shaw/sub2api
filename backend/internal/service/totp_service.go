@@ -13,6 +13,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/port/cache"
+	"github.com/Wei-Shaw/sub2api/internal/port/encryptor"
 )
 
 var (
@@ -30,10 +31,7 @@ var (
 type TotpCache = cache.TotpCache
 
 // SecretEncryptor defines encryption operations for TOTP secrets
-type SecretEncryptor interface {
-	Encrypt(plaintext string) (string, error)
-	Decrypt(ciphertext string) (string, error)
-}
+type SecretEncryptor = encryptor.SecretEncryptor
 
 // TotpSetupSession represents a TOTP setup session
 type TotpSetupSession = cache.TotpSetupSession
