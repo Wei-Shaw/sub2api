@@ -7,18 +7,19 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/idempotency"
 )
 
 type idempotencyRepository struct {
 	sql sqlExecutor
 }
 
-func NewIdempotencyRepository(_ *dbent.Client, sqlDB *sql.DB) service.IdempotencyRepository {
+func NewIdempotencyRepository(_ *dbent.Client, sqlDB *sql.DB) idempotency.IdempotencyRepository {
 	return &idempotencyRepository{sql: sqlDB}
 }
 
-func (r *idempotencyRepository) CreateProcessing(ctx context.Context, record *service.IdempotencyRecord) (bool, error) {
+func (r *idempotencyRepository) CreateProcessing(ctx context.Context, record *domain.IdempotencyRecord) (bool, error) {
 	if record == nil {
 		return false, nil
 	}
@@ -50,7 +51,7 @@ func (r *idempotencyRepository) CreateProcessing(ctx context.Context, record *se
 	return true, nil
 }
 
-func (r *idempotencyRepository) GetByScopeAndKeyHash(ctx context.Context, scope, keyHash string) (*service.IdempotencyRecord, error) {
+func (r *idempotencyRepository) GetByScopeAndKeyHash(ctx context.Context, scope, keyHash string) (*domain.IdempotencyRecord, error) {
 	query := `
 		SELECT
 			id, scope, idempotency_key_hash, request_fingerprint, status, response_status,
@@ -58,7 +59,7 @@ func (r *idempotencyRepository) GetByScopeAndKeyHash(ctx context.Context, scope,
 		FROM idempotency_records
 		WHERE scope = $1 AND idempotency_key_hash = $2
 	`
-	record := &service.IdempotencyRecord{}
+	record := &domain.IdempotencyRecord{}
 	var responseStatus sql.NullInt64
 	var responseBody sql.NullString
 	var errorReason sql.NullString
@@ -121,7 +122,7 @@ func (r *idempotencyRepository) TryReclaim(
 	`
 	res, err := r.sql.ExecContext(ctx, query,
 		id,
-		service.IdempotencyStatusProcessing,
+		domain.IdempotencyStatusProcessing,
 		newLockedUntil,
 		newExpiresAt,
 		fromStatus,
@@ -159,7 +160,7 @@ func (r *idempotencyRepository) ExtendProcessingLock(
 		id,
 		newLockedUntil,
 		newExpiresAt,
-		service.IdempotencyStatusProcessing,
+		domain.IdempotencyStatusProcessing,
 		requestFingerprint,
 	)
 	if err != nil {
@@ -186,7 +187,7 @@ func (r *idempotencyRepository) MarkSucceeded(ctx context.Context, id int64, res
 	`
 	_, err := r.sql.ExecContext(ctx, query,
 		id,
-		service.IdempotencyStatusSucceeded,
+		domain.IdempotencyStatusSucceeded,
 		responseStatus,
 		responseBody,
 		expiresAt,
@@ -206,7 +207,7 @@ func (r *idempotencyRepository) MarkFailedRetryable(ctx context.Context, id int6
 	`
 	_, err := r.sql.ExecContext(ctx, query,
 		id,
-		service.IdempotencyStatusFailedRetryable,
+		domain.IdempotencyStatusFailedRetryable,
 		errorReason,
 		lockedUntil,
 		expiresAt,
