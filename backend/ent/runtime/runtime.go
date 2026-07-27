@@ -1182,7 +1182,7 @@ func init() {
 	// group.DefaultReasoningEffortMappings holds the default value on creation for the reasoning_effort_mappings field.
 	group.DefaultReasoningEffortMappings = groupDescReasoningEffortMappings.Default.([]domain.ReasoningEffortMapping)
 	// groupDescModelReasoningEffortRules is the schema descriptor for model_reasoning_effort_rules field.
-	groupDescModelReasoningEffortRules := groupFields[48].Descriptor()
+	groupDescModelReasoningEffortRules := groupFields[49].Descriptor()
 	// group.DefaultModelReasoningEffortRules holds the default value on creation for the model_reasoning_effort_rules field.
 	group.DefaultModelReasoningEffortRules = groupDescModelReasoningEffortRules.Default.([]domain.ModelReasoningEffortRule)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
