@@ -146,7 +146,13 @@ REDACTED
 	require.Equal(t, "open", gjson.GetBytes(added[0], "item.name").String())
 	require.Equal(t, "browser", gjson.GetBytes(added[0], "item.namespace").String())
 
-	done, changed, err := restorer.RestoreEvent([]byte(`{"type":"response.function_call_arguments.done","sequence_number":5,"output_index":0,"item_id":"i1","name":"browser__open","arguments":"{REDACTED"REDACTED`))
+	delta, changed, err := restorer.RestoreEvent([]byte(`{"type":"response.function_call_arguments.delta","sequence_number":5,"output_index":0,"item_id":"i1","name":"browser__open","delta":"{\"url\":"REDACTED`))
+REDACTED
+	require.True(t, changed)
+	require.Len(t, delta, 1)
+	require.Equal(t, "open", gjson.GetBytes(delta[0], "name").String())
+
+	done, changed, err := restorer.RestoreEvent([]byte(`{"type":"response.function_call_arguments.done","sequence_number":6,"output_index":0,"item_id":"i1","name":"browser__open","arguments":"{REDACTED"REDACTED`))
 REDACTED
 	require.True(t, changed)
 	require.Len(t, done, 1)

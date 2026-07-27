@@ -152,11 +152,7 @@ REDACTED
 
 		case item.Type == "function_call_output":
 			// function_call_output → user message with tool_result block
-			outputContent := item.Output
-			if outputContent == "" {
-				outputContent = "(empty)"
-		REDACTED
-			contentJSON, _ := json.Marshal(outputContent)
+			contentJSON := responsesFunctionOutputToAnthropicContent(item)
 			block := AnthropicContentBlock{
 				Type:      "tool_result",
 				ToolUseID: fromResponsesCallIDToAnthropic(item.CallID),
@@ -214,6 +210,45 @@ REDACTED
 REDACTED
 
 	return system, messages, nil
+REDACTED
+
+func responsesFunctionOutputToAnthropicContent(item ResponsesInputItem) json.RawMessage {
+	if len(item.outputRaw) == 0 {
+		output := item.Output
+		if output == "" {
+			output = "(empty)"
+	REDACTED
+		content, _ := json.Marshal(output)
+		return content
+REDACTED
+
+	var parts []ResponsesContentPart
+	if err := json.Unmarshal(item.outputRaw, &parts); err == nil {
+		blocks := make([]AnthropicContentBlock, 0, len(parts))
+		for _, part := range parts {
+			switch part.Type {
+			case "input_text", "output_text", "text":
+				if part.Text != "" {
+					blocks = append(blocks, AnthropicContentBlock{Type: "text", Text: part.TextREDACTED)
+			REDACTED
+			case "input_image":
+				if source := dataURIToAnthropicImageSource(part.ImageURL); source != nil {
+					blocks = append(blocks, AnthropicContentBlock{Type: "image", Source: sourceREDACTED)
+			REDACTED
+		REDACTED
+	REDACTED
+		if len(blocks) > 0 {
+			content, _ := json.Marshal(blocks)
+			return content
+	REDACTED
+		if len(parts) == 0 {
+			content, _ := json.Marshal("(empty)")
+			return content
+	REDACTED
+REDACTED
+
+	content, _ := json.Marshal(item.Output)
+	return content
 REDACTED
 
 // normalizeAnthropicToolPairing rebuilds the message sequence so it satisfies
