@@ -383,15 +383,16 @@ handler ──► service（应用）──► port/<bc> ──► repository（
 
 **注意**：跨 BC 实体依赖会阻塞提取。`Account` 与 `UsageLog` 均已在 domain。后续可优先拆 billing/dashboard 读模型、或 account_repo 残留的 16 个非 Account service 符号所属 BC。先拆被依赖的实体，再拆下游。
 
-**当前反转 KPI**（`rg -l 'internal/service"' backend/internal/repository --type go -g '!*_test.go' | wc -l`）：**24**。本会话从 69 降至此：account_repo domain 换包、RoleAdmin、port/cache + port/oauthclient 两批基础设施端口，以及六个成体 BC——
+**当前反转 KPI**（`rg -l 'internal/service"' backend/internal/repository --type go -g '!*_test.go' | wc -l`）：**15**。本会话从 69 降至此：account_repo domain 换包、RoleAdmin、port/cache + port/oauthclient 两批基础设施端口，六个成体 BC，以及一批 Tier-1 小 BC 扫描——
 - **Ops/dashboard 读模型 BC**：`domain/ops.go`（~47 个读模型类型）+ `port/ops`（OpsRepository 38 方法 + OpsIngressRejectRepository）+ `port/dashboard`（DashboardStatsCache + DashboardAggregationRepository）；13 个 ops/dashboard repo 文件 drop service。
 - **billing/pricing BC**：`domain/{billing_cache,usage_billing,upstream_billing_probe,user_platform_quota,subscription,scheduler_events}.go` + `port/billing`（BillingCache + PricingRemoteClient + UsageBillingRepository + UserPlatformQuotaRepository）；4 个 billing repo 文件 drop service，account_repo 残留同步缩减（SchedulerOutbox* / UpstreamBillingProbe* 已迁 domain）。
 - **BatchImage BC**：`domain/batch_image.go`（~12 实体/DTO + 56 错误 + 16 常量 + 5 纯函数）+ `port/batchimage`（BatchImageRepository 32 方法 + Queue + JobLock/Refresher + DownloadLimiter/Permit）；3 个 batch_image repo 文件 drop service。
 - **image-task BC**：`domain/imagetask.go`（ImageTaskRecord + ErrImageTaskNotFound）+ `port/imagetask`（ImageTaskStore 2 方法）；image_task_store.go drop service。
 - **scheduler BC**：`domain/{scheduler,scheduler_events}.go`（SchedulerBucket 家族 + TempUnschedState + SchedulerOutboxEvent + 6 事件常量 + 错误）+ `port/scheduler`（SchedulerCache 17 方法 + SchedulerOutboxRepository/CleanupLease + TempUnschedCache）；3 个 scheduler repo 文件 drop service，account_repo 残留再 −1（SchedulerCache 已迁 port）。
 - **gemini-quota BC**：`domain/gemini_quota.go`（GeminiUsageTotals）；usage_log_repo_stats.go drop service。
+- **Tier-1 小 BC 扫描**（9 个，各 −1，共 −9）：audit / idempotency / user-attribute / user-group-rate / subscription / usage-cleanup / scheduled-test / content-moderation / auth-cache-invalidation —— 各自 `domain/<bc>.go` + `port/<bc>`，9 个 repo 文件 drop service。（坑：`domain/scheduled_test.go` 会被 Go 当 `_test.go`，已命名 `scheduledtest.go`。）
 
-剩余 repo 文件多为未提取 BC 的实体/读模型（account_repo 残留的 Grok/Group 符号等）以及若干单接口阻塞（SecretEncryptor/ImageStorage/DBDumper，分属 auth/image/backup 等待提取 BC）——这些应随各自 BC 成体拆迁，而非提前单接口提取。
+剩余 repo 文件：account_repo 残留（Grok-credential + Group-capacity，需先拆这两个小 BC 才能彻底 drop service）、若干单接口阻塞（SecretEncryptor/ImageStorage/DBDumper/Turnstile/GitHubRelease，分属各自待提取 BC）、以及共享 infra（HTTPUpstream、ConcurrencyCache、GatewayCache、APIKeyAuthCache、claude_usage 等跨 BC 类型）。
 
 ## 七、参考资源
 
