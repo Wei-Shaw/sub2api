@@ -3135,6 +3135,7 @@ const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
+  if (props.account?.platform === 'qoder') return 'https://api.qoder.com/api/v1/cloud'
   return 'https://api.anthropic.com'
 })
 

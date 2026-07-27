@@ -944,6 +944,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        qoder: 'Qoder',
         composite: 'Composite',
       },
       deleteConfirm:

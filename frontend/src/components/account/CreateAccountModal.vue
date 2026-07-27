@@ -160,6 +160,19 @@
             <PlatformIcon platform="grok" size="sm" />
             Grok
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'qoder'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'qoder'
+                ? 'bg-white text-rose-600 shadow-sm dark:bg-dark-600 dark:text-rose-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="qoder" size="sm" />
+            Qoder
+          </button>
         </div>
       </div>
 
@@ -406,6 +419,38 @@
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.responsesApi') }}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Account Type Selection (Qoder) -->
+      <div v-if="form.platform === 'qoder'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3" data-tour="account-form-type">
+          <button
+            type="button"
+            @click="accountCategory = 'apikey'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'apikey'
+                ? 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
+                : 'border-gray-200 hover:border-rose-300 dark:border-dark-600 dark:hover:border-rose-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'apikey'
+                  ? 'bg-rose-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="key" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">PAT Token</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.qoderPat') }}</span>
             </div>
           </button>
         </div>
@@ -1113,7 +1158,9 @@
                   ? 'https://generativelanguage.googleapis.com'
                   : form.platform === 'grok'
                     ? 'https://api.x.ai/v1'
-                    : 'https://api.anthropic.com'
+                    : form.platform === 'qoder'
+                      ? 'https://api.qoder.com/api/v1/cloud'
+                      : 'https://api.anthropic.com'
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
@@ -1137,7 +1184,9 @@
                   ? 'AIza...'
                   : form.platform === 'grok'
                     ? 'xai-...'
-                    : 'sk-ant-...'
+                    : form.platform === 'qoder'
+                      ? 'pt-...'
+                      : 'sk-ant-...'
             "
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
@@ -4180,7 +4229,9 @@ watch(
           ? 'https://generativelanguage.googleapis.com'
           : newPlatform === 'grok'
             ? 'https://api.x.ai/v1'
-            : 'https://api.anthropic.com'
+            : newPlatform === 'qoder'
+              ? 'https://api.qoder.com/api/v1/cloud'
+              : 'https://api.anthropic.com'
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
@@ -4206,6 +4257,9 @@ watch(
       modelRestrictionMode.value = 'mapping'
       form.concurrency = 1
       form.load_factor = null
+    }
+    if (newPlatform === 'qoder') {
+      accountCategory.value = 'apikey'
     }
     if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
       accountCategory.value = 'oauth-based'
@@ -5057,7 +5111,9 @@ const handleSubmit = async () => {
         ? 'https://generativelanguage.googleapis.com'
         : form.platform === 'grok'
           ? 'https://api.x.ai/v1'
-          : 'https://api.anthropic.com'
+          : form.platform === 'qoder'
+            ? 'https://api.qoder.com/api/v1/cloud'
+            : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
   const credentials: Record<string, unknown> = {

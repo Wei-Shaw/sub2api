@@ -303,6 +303,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        qoder: 'Qoder',
       },
       types: {
         oauth: 'OAuth',
@@ -312,6 +313,7 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
+        qoderPat: '个人访问令牌 (PAT)',
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游'

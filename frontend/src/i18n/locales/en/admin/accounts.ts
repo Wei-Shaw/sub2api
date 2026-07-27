@@ -104,6 +104,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        qoder: 'Qoder',
       },
       types: {
         oauth: 'OAuth',
@@ -113,6 +114,7 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
+        qoderPat: 'Personal Access Token',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
