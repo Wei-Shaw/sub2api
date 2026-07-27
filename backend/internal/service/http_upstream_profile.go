@@ -1,56 +1,39 @@
 package service
 
-import "context"
+import (
+	"context"
+
+	"github.com/Wei-Shaw/sub2api/internal/port/upstream"
+)
 
 // HTTPUpstreamProfile marks HTTP upstream requests that need provider-specific
 // transport policy.
-type HTTPUpstreamProfile string
+//
+// Alias: 契约已迁移至 internal/port/upstream。
+type HTTPUpstreamProfile = upstream.HTTPUpstreamProfile
 
 const (
-	HTTPUpstreamProfileDefault HTTPUpstreamProfile = ""
-	HTTPUpstreamProfileOpenAI  HTTPUpstreamProfile = "openai"
+	HTTPUpstreamProfileDefault = upstream.HTTPUpstreamProfileDefault
+	HTTPUpstreamProfileOpenAI  = upstream.HTTPUpstreamProfileOpenAI
 )
 
-type httpUpstreamProfileContextKey struct{}
-type httpUpstreamDisableRedirectsContextKey struct{}
-
 // WithHTTPUpstreamProfile injects an upstream transport profile into ctx.
+// Go 无函数别名，转发至 upstream 包。
 func WithHTTPUpstreamProfile(ctx context.Context, profile HTTPUpstreamProfile) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if profile == HTTPUpstreamProfileDefault {
-		return ctx
-	}
-	return context.WithValue(ctx, httpUpstreamProfileContextKey{}, profile)
+	return upstream.WithHTTPUpstreamProfile(ctx, profile)
 }
 
 // HTTPUpstreamProfileFromContext resolves the upstream transport profile from ctx.
 func HTTPUpstreamProfileFromContext(ctx context.Context) HTTPUpstreamProfile {
-	if ctx == nil {
-		return HTTPUpstreamProfileDefault
-	}
-	profile, ok := ctx.Value(httpUpstreamProfileContextKey{}).(HTTPUpstreamProfile)
-	if !ok {
-		return HTTPUpstreamProfileDefault
-	}
-	switch profile {
-	case HTTPUpstreamProfileOpenAI:
-		return profile
-	default:
-		return HTTPUpstreamProfileDefault
-	}
+	return upstream.HTTPUpstreamProfileFromContext(ctx)
 }
 
 // WithHTTPUpstreamRedirectsDisabled prevents credential-bearing probes from
 // following redirects through the shared upstream client.
 func WithHTTPUpstreamRedirectsDisabled(ctx context.Context) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return context.WithValue(ctx, httpUpstreamDisableRedirectsContextKey{}, true)
+	return upstream.WithHTTPUpstreamRedirectsDisabled(ctx)
 }
 
 func HTTPUpstreamRedirectsDisabled(ctx context.Context) bool {
-	return ctx != nil && ctx.Value(httpUpstreamDisableRedirectsContextKey{}) == true
+	return upstream.HTTPUpstreamRedirectsDisabled(ctx)
 }

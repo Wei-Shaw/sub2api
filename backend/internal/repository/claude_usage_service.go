@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/claudeusage"
+	"github.com/Wei-Shaw/sub2api/internal/port/upstream"
 )
 
 const defaultClaudeUsageURL = "https://api.anthropic.com/api/oauth/usage"
@@ -21,12 +23,12 @@ const defaultUsageUserAgent = "claude-code/2.1.7"
 type claudeUsageService struct {
 	usageURL          string
 	allowPrivateHosts bool
-	httpUpstream      service.HTTPUpstream
+	httpUpstream      upstream.HTTPUpstream
 }
 
 // NewClaudeUsageFetcher 创建 Claude 用量获取服务
 // httpUpstream: 可选，如果提供则支持 TLS 指纹伪装
-func NewClaudeUsageFetcher(httpUpstream service.HTTPUpstream) service.ClaudeUsageFetcher {
+func NewClaudeUsageFetcher(httpUpstream upstream.HTTPUpstream) claudeusage.ClaudeUsageFetcher {
 	return &claudeUsageService{
 		usageURL:     defaultClaudeUsageURL,
 		httpUpstream: httpUpstream,
@@ -34,15 +36,15 @@ func NewClaudeUsageFetcher(httpUpstream service.HTTPUpstream) service.ClaudeUsag
 }
 
 // FetchUsage 简单版本，不支持 TLS 指纹（向后兼容）
-func (s *claudeUsageService) FetchUsage(ctx context.Context, accessToken, proxyURL string) (*service.ClaudeUsageResponse, error) {
-	return s.FetchUsageWithOptions(ctx, &service.ClaudeUsageFetchOptions{
+func (s *claudeUsageService) FetchUsage(ctx context.Context, accessToken, proxyURL string) (*domain.ClaudeUsageResponse, error) {
+	return s.FetchUsageWithOptions(ctx, &domain.ClaudeUsageFetchOptions{
 		AccessToken: accessToken,
 		ProxyURL:    proxyURL,
 	})
 }
 
 // FetchUsageWithOptions 完整版本，支持 TLS 指纹和自定义 User-Agent
-func (s *claudeUsageService) FetchUsageWithOptions(ctx context.Context, opts *service.ClaudeUsageFetchOptions) (*service.ClaudeUsageResponse, error) {
+func (s *claudeUsageService) FetchUsageWithOptions(ctx context.Context, opts *domain.ClaudeUsageFetchOptions) (*domain.ClaudeUsageResponse, error) {
 	if opts == nil {
 		return nil, fmt.Errorf("options is nil")
 	}
@@ -99,7 +101,7 @@ func (s *claudeUsageService) FetchUsageWithOptions(ctx context.Context, opts *se
 		return nil, infraerrors.New(http.StatusInternalServerError, "UPSTREAM_ERROR", msg)
 	}
 
-	var usageResp service.ClaudeUsageResponse
+	var usageResp domain.ClaudeUsageResponse
 	if err := json.NewDecoder(resp.Body).Decode(&usageResp); err != nil {
 		return nil, fmt.Errorf("decode response failed: %w", err)
 	}
