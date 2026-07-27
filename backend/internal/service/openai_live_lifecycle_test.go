@@ -111,6 +111,10 @@ type liveTestStore struct {
 	GatewayCache
 	mu     sync.Mutex
 	record *LiveCallRecord
+	// 注入 store 故障（模拟 Redis 抖动），区别于 ErrLiveCallNotFound。
+	claimErr         error
+	getCallErr       error
+	getControllerErr error
 REDACTED
 
 func (s *liveTestStore) SaveLiveCall(_ context.Context, record *LiveCallRecord, _ time.Duration) error {
@@ -124,6 +128,9 @@ REDACTED
 func (s *liveTestStore) GetLiveCall(_ context.Context, callHash string) (*LiveCallRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.getCallErr != nil {
+		return nil, s.getCallErr
+REDACTED
 	if s.record == nil || s.record.CallHash != callHash {
 		return nil, ErrLiveCallNotFound
 REDACTED
@@ -134,6 +141,9 @@ REDACTED
 func (s *liveTestStore) ClaimLiveController(_ context.Context, callHash, controller, owner string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.claimErr != nil {
+		return false, s.claimErr
+REDACTED
 	if s.record == nil || s.record.CallHash != callHash || s.record.Controller == LiveControllerClosed {
 		return false, nil
 REDACTED
@@ -162,6 +172,9 @@ REDACTED
 func (s *liveTestStore) GetLiveController(_ context.Context, callHash string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.getControllerErr != nil {
+		return "", s.getControllerErr
+REDACTED
 	if s.record == nil || s.record.CallHash != callHash {
 		return "", ErrLiveCallNotFound
 REDACTED
@@ -466,4 +479,125 @@ REDACTED
 		ExpiresAt:  time.Now().Add(time.Hour),
 REDACTED, time.Hour))
 	require.False(t, svc.waitForLiveObserverRetry(record))
+REDACTED
+
+// TestWaitForLiveObserverRetryTreatsStoreErrorAsRetryable 锁定：store 报错（Redis
+// 抖动）不等于控制权被接管，必须返回 true 交回 observeLiveCall 循环顶部，由它做
+// 有限次重试与 ExpiresAt 兜底 finalize；记录确实不存在时才停止重试。
+func TestWaitForLiveObserverRetryTreatsStoreErrorAsRetryable(t *testing.T) {
+	record := &LiveCallRecord{
+		CallID:     "call_flaky_store",
+		CallHash:   hashLiveCallID("call_flaky_store"),
+		Controller: LiveControllerObserver,
+		ExpiresAt:  time.Now().Add(time.Hour),
+REDACTED
+	store := &liveTestStore{getControllerErr: errors.New("redis: connection refused")REDACTED
+	require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
+	svc := &OpenAIGatewayService{cache: storeREDACTED
+
+	require.True(t, svc.waitForLiveObserverRetry(record),
+		"store 报错必须继续重试，否则 Redis 抖动会让会话静默结束、不留记录")
+
+	// 记录已被清理（ErrLiveCallNotFound）不是故障，应停止重试。
+	require.False(t, (&OpenAIGatewayService{cache: &liveTestStore{REDACTEDREDACTED).waitForLiveObserverRetry(record))
+REDACTED
+
+// TestObserveLiveCallStoreOutageFallsBackToExpiryFinalize 锁定：observer 遇到持续
+// store 报错时不能静默退出，必须按 record.ExpiresAt 兜底 finalize（写 usage log +
+// 释放租约）。
+func TestObserveLiveCallStoreOutageFallsBackToExpiryFinalize(t *testing.T) {
+	restore := liveObserverStoreRetryInterval
+	liveObserverStoreRetryInterval = time.Millisecond
+	t.Cleanup(func() { liveObserverStoreRetryInterval = restore REDACTED)
+
+	cases := []struct {
+		name   string
+		inject func(*liveTestStore)
+REDACTED{
+		{"GetLiveCall 持续报错", func(s *liveTestStore) { s.getCallErr = errors.New("redis: i/o timeout") REDACTEDREDACTED,
+		{"ClaimLiveController 报错", func(s *liveTestStore) { s.claimErr = errors.New("redis: i/o timeout") REDACTEDREDACTED,
+REDACTED
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			record := &LiveCallRecord{
+				CallID:     "call_store_outage",
+				CallHash:   hashLiveCallID("call_store_outage"),
+				AccountID:  11,
+				APIKeyID:   22,
+				UserID:     33,
+				LeaseID:    "lease-1",
+				Model:      "gpt-live-test",
+				CreatedAt:  time.Now().Add(-time.Minute),
+				ExpiresAt:  time.Now().Add(-time.Second), // 已到期：兜底无需等待
+				Controller: LiveControllerPending,
+		REDACTED
+			store := &liveTestStore{REDACTED
+			require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
+			tc.inject(store)
+			concurrencyCache := &liveTestConcurrencyCache{REDACTED
+			usageRepo := &liveTestUsageRepo{REDACTED
+			svc := &OpenAIGatewayService{
+				cache:              store,
+				concurrencyService: NewConcurrencyService(concurrencyCache),
+				usageLogRepo:       usageRepo,
+		REDACTED
+
+			svc.observeLiveCall(record)
+
+			concurrencyCache.mu.Lock()
+			require.Equal(t, 1, concurrencyCache.releases, "store 故障时租约释放不能丢")
+			concurrencyCache.mu.Unlock()
+			usageRepo.mu.Lock()
+			require.Len(t, usageRepo.logs, 1, "store 故障时 usage log 不能丢")
+			require.Equal(t, RequestTypeLive, usageRepo.logs[0].RequestType)
+			usageRepo.mu.Unlock()
+	REDACTED)
+REDACTED
+REDACTED
+
+type liveTestBestEffortUsageRepo struct {
+	liveTestUsageRepo
+	bestEffortErr   error
+	bestEffortCalls int
+REDACTED
+
+func (r *liveTestBestEffortUsageRepo) CreateBestEffort(_ context.Context, _ *UsageLog) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.bestEffortCalls++
+	return r.bestEffortErr
+REDACTED
+
+// TestFinalizeLiveCallUsageLogFallsBackToSyncCreate 锁定：finalize 是该会话唯一一次
+// 落库机会（MarkLiveCallClosed 已标记 first），best-effort 写入失败必须走同步 Create
+// 兜底，而不是丢弃错误。
+func TestFinalizeLiveCallUsageLogFallsBackToSyncCreate(t *testing.T) {
+	record := &LiveCallRecord{
+		CallID:     "call_usage_fallback",
+		CallHash:   hashLiveCallID("call_usage_fallback"),
+		AccountID:  11,
+		APIKeyID:   22,
+		UserID:     33,
+		LeaseID:    "lease-1",
+		Model:      "gpt-live-test",
+		CreatedAt:  time.Now().Add(-time.Second),
+		ExpiresAt:  time.Now().Add(time.Hour),
+		Controller: LiveControllerPending,
+REDACTED
+	store := &liveTestStore{REDACTED
+	require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
+	usageRepo := &liveTestBestEffortUsageRepo{bestEffortErr: errors.New("usage log queue dropped")REDACTED
+	svc := &OpenAIGatewayService{
+		cache:              store,
+		concurrencyService: NewConcurrencyService(&liveTestConcurrencyCache{REDACTED),
+		usageLogRepo:       usageRepo,
+REDACTED
+
+	svc.finalizeLiveCall(record)
+
+	usageRepo.mu.Lock()
+	defer usageRepo.mu.Unlock()
+	require.Equal(t, 1, usageRepo.bestEffortCalls)
+	require.Len(t, usageRepo.logs, 1, "best-effort 失败后必须同步兜底落库")
+	require.Equal(t, record.CallHash, usageRepo.logs[0].RequestID)
 REDACTED
