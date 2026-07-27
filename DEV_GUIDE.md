@@ -383,7 +383,7 @@ handler ──► service（应用）──► port/<bc> ──► repository（
 
 **注意**：跨 BC 实体依赖会阻塞提取。`Account` 与 `UsageLog` 均已在 domain。后续可优先拆 billing/dashboard 读模型、或 account_repo 残留的 16 个非 Account service 符号所属 BC。先拆被依赖的实体，再拆下游。
 
-**当前反转 KPI**（`rg -l 'internal/service"' backend/internal/repository --type go -g '!*_test.go' | wc -l`）：**8**。本会话从 69 降至此：account_repo domain 换包、RoleAdmin、port/cache + port/oauthclient 两批基础设施端口，六个成体 BC，一批 Tier-1 小 BC 扫描，account_repo 最终残留清零，以及单接口端口 sweep——
+**当前反转 KPI**（`rg -l 'internal/service"' backend/internal/repository --type go -g '!*_test.go' | wc -l`）：**6**。本会话从 69 降至此：account_repo domain 换包、RoleAdmin、port/cache + port/oauthclient 两批基础设施端口，六个成体 BC，一批 Tier-1 小 BC 扫描，account_repo 最终残留清零，单接口端口 sweep，以及 shared-infra Phase 1——
 - **Ops/dashboard 读模型 BC**：`domain/ops.go`（~47 个读模型类型）+ `port/ops`（OpsRepository 38 方法 + OpsIngressRejectRepository）+ `port/dashboard`（DashboardStatsCache + DashboardAggregationRepository）；13 个 ops/dashboard repo 文件 drop service。
 - **billing/pricing BC**：`domain/{billing_cache,usage_billing,upstream_billing_probe,user_platform_quota,subscription,scheduler_events}.go` + `port/billing`（BillingCache + PricingRemoteClient + UsageBillingRepository + UserPlatformQuotaRepository）；4 个 billing repo 文件 drop service，account_repo 残留同步缩减（SchedulerOutbox* / UpstreamBillingProbe* 已迁 domain）。
 - **BatchImage BC**：`domain/batch_image.go`（~12 实体/DTO + 56 错误 + 16 常量 + 5 纯函数）+ `port/batchimage`（BatchImageRepository 32 方法 + Queue + JobLock/Refresher + DownloadLimiter/Permit）；3 个 batch_image repo 文件 drop service。
@@ -393,8 +393,9 @@ handler ──► service（应用）──► port/<bc> ──► repository（
 - **Tier-1 小 BC 扫描**（9 个，各 −1，共 −9）：audit / idempotency / user-attribute / user-group-rate / subscription / usage-cleanup / scheduled-test / content-moderation / auth-cache-invalidation —— 各自 `domain/<bc>.go` + `port/<bc>`，9 个 repo 文件 drop service。（坑：`domain/scheduled_test.go` 会被 Go 当 `_test.go`，已命名 `scheduledtest.go`。）
 - **account_repo 残留清零**：Grok-credential（snapshot + 10 reason 常量 + `GatewayFailureReason` 类型）+ Group-capacity（`GroupAccountCapacityRow`）+ concurrency 家族（4 类型）+ account 查询哨兵（2 常量）→ `domain/{grok_credential,group_capacity,concurrency}.go` + 追加 `domain/account.go`；account_repo 终于 drop service（残留从最初的 16 降到 0）。
 - **单接口端口 sweep**（5 个 BC，−6）：encryptor（`SecretEncryptor`→`port/encryptor`）、image-storage（`ImageStorage`→`port/imagestorage`）、backup（`DBDumper`+`BackupObjectStore`+Factory→`port/backup`，`BackupS3Config`→domain，**−2 文件**）、turnstile（`TurnstileVerifier`+`TurnstileVerifyResponse`）、github-release（`GitHubReleaseClient`+`GitHubRelease`/`GitHubAsset`）。6 个 repo 文件 drop service。
+- **shared-infra Phase 1**（−2）：`ConcurrencyCache` 接口（17 方法）→ 新 `port/concurrency`（数据类型已在 domain）；补搬遗漏的 `ImageStorageFactory`→`port/imagestorage`（需 `internal/config` 叶子包，无环）；`concurrency_cache.go` + `wire.go`（8 个 `service.X` 返回注解全换 port）drop service。
 
-剩余 8 个 repo 文件（全部是共享 infra / follower，需设计专门 port 包才能 drop）：`http_upstream.go`（HTTPUpstream 跨 BC 共享）、`concurrency_cache.go`（需 `port/concurrency` 提取 ConcurrencyCache 接口）、`gateway_cache.go`（GatewayCache/CyberSessionBlockStore）、`api_key_cache.go`（APIKeyAuthCacheEntry 等）、`claude_usage_service.go`（ClaudeUsageFetcher + HTTPUpstream）、`usage_log_repo_insert.go`（MarkUsageLogCreate* usagelog 残留）、`user_rpm_cache.go`（UserRPMCache + checkRPM）、`wire.go`（DI follower，随其它清完自动 drop）。
+剩余 6 个 repo 文件（共享 infra，需设计专门 port 包）：`http_upstream.go`（HTTPUpstream + Profile 跨 BC 共享，9 消费者）、`gateway_cache.go`（GatewayCache + CyberSessionBlockStore，可归入 port/cache）、`api_key_cache.go`（APIKeyCache + APIKeyAuthCacheEntry/Snapshot 纠缠）、`claude_usage_service.go`（ClaudeUsageFetcher，依赖 HTTPUpstream）、`usage_log_repo_insert.go`（MarkUsageLogCreate* 自由函数 → domain）、`user_rpm_cache.go`（UserRPMCache → port/cache）。
 
 ## 七、参考资源
 
