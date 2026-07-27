@@ -12,11 +12,12 @@ const (
 	ConfigInvalidationChannel = "sub2api:prompt_guard:config:invalidate"
 	PayloadKeyPrefix          = "sub2api:prompt_audit:payload:"
 
-	ErrorCodeBlocked         = "prompt_guard_blocked"
-	ErrorCodeUnavailable     = "prompt_guard_unavailable"
-	ErrorCodeInvalidResponse = "prompt_guard_invalid_response"
-	ErrorCodeConfigConflict  = "prompt_audit_config_conflict"
-	ErrorCodeRequiresEnabled = "prompt_guard_requires_audit_enabled"
+	ErrorCodeBlocked           = "prompt_guard_blocked"
+	ErrorCodeUnavailable       = "prompt_guard_unavailable"
+	ErrorCodeInvalidResponse   = "prompt_guard_invalid_response"
+	ErrorCodeConfigConflict    = "prompt_audit_config_conflict"
+	ErrorCodeConfigUnavailable = "prompt_audit_config_unavailable"
+	ErrorCodeRequiresEnabled   = "prompt_guard_requires_audit_enabled"
 
 	DefaultGuardModel = "sileader/qwen3guard:0.6b"
 )
