@@ -40,8 +40,8 @@ func TestResolveModelDimensionExpression(t *testing.T) {
 		want      string
 REDACTED{
 		{usagestats.ModelSourceRequested, "COALESCE(NULLIF(TRIM(requested_model), ''), model)"REDACTED,
-		{usagestats.ModelSourceUpstream, "COALESCE(NULLIF(TRIM(upstream_model), ''), COALESCE(NULLIF(TRIM(requested_model), ''), model))"REDACTED,
-		{usagestats.ModelSourceMapping, "(COALESCE(NULLIF(TRIM(requested_model), ''), model) || ' -> ' || COALESCE(NULLIF(TRIM(upstream_model), ''), COALESCE(NULLIF(TRIM(requested_model), ''), model)))"REDACTED,
+		{usagestats.ModelSourceUpstream, "COALESCE(NULLIF(TRIM(upstream_model), ''), model)"REDACTED,
+		{usagestats.ModelSourceMapping, "(COALESCE(NULLIF(TRIM(requested_model), ''), model) || ' -> ' || COALESCE(NULLIF(TRIM(upstream_model), ''), model))"REDACTED,
 		{"", "COALESCE(NULLIF(TRIM(requested_model), ''), model)"REDACTED,
 		{"invalid", "COALESCE(NULLIF(TRIM(requested_model), ''), model)"REDACTED,
 REDACTED
