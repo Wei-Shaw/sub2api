@@ -8,19 +8,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/contentmoderation"
 )
 
 type contentModerationRepository struct {
 	db *sql.DB
 }
 
-func NewContentModerationRepository(db *sql.DB) service.ContentModerationRepository {
+func NewContentModerationRepository(db *sql.DB) contentmoderation.ContentModerationRepository {
 	return &contentModerationRepository{db: db}
 }
 
-func (r *contentModerationRepository) CreateLog(ctx context.Context, log *service.ContentModerationLog) error {
+func (r *contentModerationRepository) CreateLog(ctx context.Context, log *domain.ContentModerationLog) error {
 	if log == nil {
 		return nil
 	}
@@ -71,7 +72,7 @@ INSERT INTO content_moderation_logs (
 	return nil
 }
 
-func (r *contentModerationRepository) ListLogs(ctx context.Context, filter service.ContentModerationLogFilter) ([]service.ContentModerationLog, *pagination.PaginationResult, error) {
+func (r *contentModerationRepository) ListLogs(ctx context.Context, filter domain.ContentModerationLogFilter) ([]domain.ContentModerationLog, *pagination.PaginationResult, error) {
 	where, args := buildContentModerationLogWhere(filter)
 	whereSQL := "WHERE " + strings.Join(where, " AND ")
 
@@ -109,9 +110,9 @@ LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]service.ContentModerationLog, 0)
+	items := make([]domain.ContentModerationLog, 0)
 	for rows.Next() {
-		var item service.ContentModerationLog
+		var item domain.ContentModerationLog
 		var userID, apiKeyID, groupID, latency, queueDelay sql.NullInt64
 		var scoresRaw, thresholdsRaw []byte
 		if err := rows.Scan(
@@ -182,7 +183,7 @@ func (r *contentModerationRepository) CountFlaggedByUserSince(ctx context.Contex
 	if userID <= 0 {
 		return 0, nil
 	}
-	// SQL 中的 'cyber_policy' 字面量须与 service.ContentModerationActionCyberPolicy 保持一致。
+	// SQL 中的 'cyber_policy' 字面量须与 domain.ContentModerationActionCyberPolicy 保持一致。
 	var count int
 	err := r.db.QueryRowContext(ctx, `
 WITH last_auto_ban AS (
@@ -213,8 +214,8 @@ func (r *contentModerationRepository) UpdateLogEmailSent(ctx context.Context, id
 	return nil
 }
 
-func (r *contentModerationRepository) CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*service.ContentModerationCleanupResult, error) {
-	result := &service.ContentModerationCleanupResult{FinishedAt: time.Now()}
+func (r *contentModerationRepository) CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*domain.ContentModerationCleanupResult, error) {
+	result := &domain.ContentModerationCleanupResult{FinishedAt: time.Now()}
 	if r == nil || r.db == nil {
 		return result, nil
 	}
@@ -247,7 +248,7 @@ func nullableIntPtr(value *int) any {
 	return *value
 }
 
-func buildContentModerationLogWhere(filter service.ContentModerationLogFilter) ([]string, []any) {
+func buildContentModerationLogWhere(filter domain.ContentModerationLogFilter) ([]string, []any) {
 	where := []string{"l.id IS NOT NULL"}
 	args := make([]any, 0)
 	add := func(expr string, value any) {

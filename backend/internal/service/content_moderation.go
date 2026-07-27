@@ -20,10 +20,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 	"github.com/Wei-Shaw/sub2api/internal/port/cache"
+	"github.com/Wei-Shaw/sub2api/internal/port/contentmoderation"
 )
 
 const (
@@ -39,7 +41,6 @@ const (
 	ContentModerationActionHashBlock    = "hash_block"
 	ContentModerationActionKeywordBlock = "keyword_block"
 	ContentModerationActionError        = "error"
-	ContentModerationActionCyberPolicy  = "cyber_policy" // cyber_policy 硬阻断的风控日志 action（封号计数排除按此值过滤）
 
 	contentModerationKeywordCategory = "keyword"
 
@@ -378,52 +379,13 @@ type ContentModerationDecision struct {
 	Action          string             `json:"action"`
 }
 
-type ContentModerationLog struct {
-	ID                int64              `json:"id"`
-	RequestID         string             `json:"request_id"`
-	UserID            *int64             `json:"user_id,omitempty"`
-	UserEmail         string             `json:"user_email"`
-	APIKeyID          *int64             `json:"api_key_id,omitempty"`
-	APIKeyName        string             `json:"api_key_name"`
-	GroupID           *int64             `json:"group_id,omitempty"`
-	GroupName         string             `json:"group_name"`
-	Endpoint          string             `json:"endpoint"`
-	Provider          string             `json:"provider"`
-	Model             string             `json:"model"`
-	Mode              string             `json:"mode"`
-	Action            string             `json:"action"`
-	Flagged           bool               `json:"flagged"`
-	HighestCategory   string             `json:"highest_category"`
-	HighestScore      float64            `json:"highest_score"`
-	MatchedKeyword    string             `json:"matched_keyword"`
-	CategoryScores    map[string]float64 `json:"category_scores"`
-	ThresholdSnapshot map[string]float64 `json:"threshold_snapshot"`
-	InputExcerpt      string             `json:"input_excerpt"`
-	UpstreamLatencyMS *int               `json:"upstream_latency_ms,omitempty"`
-	Error             string             `json:"error"`
-	ViolationCount    int                `json:"violation_count"`
-	AutoBanned        bool               `json:"auto_banned"`
-	EmailSent         bool               `json:"email_sent"`
-	UserStatus        string             `json:"user_status"`
-	QueueDelayMS      *int               `json:"queue_delay_ms,omitempty"`
-	CreatedAt         time.Time          `json:"created_at"`
-}
+// ContentModerationLog/LogFilter/CleanupResult types and the
+// ContentModerationActionCyberPolicy const live in domain; re-exported here.
+type ContentModerationLog = domain.ContentModerationLog
+type ContentModerationLogFilter = domain.ContentModerationLogFilter
+type ContentModerationCleanupResult = domain.ContentModerationCleanupResult
 
-type ContentModerationLogFilter struct {
-	Pagination pagination.PaginationParams
-	Result     string
-	GroupID    *int64
-	Endpoint   string
-	Search     string
-	From       *time.Time
-	To         *time.Time
-}
-
-type ContentModerationCleanupResult struct {
-	DeletedHit    int64     `json:"deleted_hit"`
-	DeletedNonHit int64     `json:"deleted_non_hit"`
-	FinishedAt    time.Time `json:"finished_at"`
-}
+const ContentModerationActionCyberPolicy = domain.ContentModerationActionCyberPolicy
 
 type ContentModerationRuntimeStatus struct {
 	Enabled                      bool                            `json:"enabled"`
@@ -471,16 +433,8 @@ type ContentModerationClearHashesResult struct {
 	Deleted int64 `json:"deleted"`
 }
 
-type ContentModerationRepository interface {
-	CreateLog(ctx context.Context, log *ContentModerationLog) error
-	ListLogs(ctx context.Context, filter ContentModerationLogFilter) ([]ContentModerationLog, *pagination.PaginationResult, error)
-	// CountFlaggedByUserSince 统计窗口内计入封号的违规次数（排除 hash_block；
-	// excludeCyberPolicy 为 true 时额外排除 cyber_policy 行）。
-	CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error)
-	CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*ContentModerationCleanupResult, error)
-	// UpdateLogEmailSent 回写邮件发送结果（F7：CreateLog 先行后补 EmailSent）。
-	UpdateLogEmailSent(ctx context.Context, id int64, sent bool) error
-}
+// ContentModerationRepository interface lives in port/contentmoderation.
+type ContentModerationRepository = contentmoderation.ContentModerationRepository
 
 type ContentModerationHashCache = cache.ContentModerationHashCache
 
