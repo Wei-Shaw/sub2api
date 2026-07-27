@@ -48,7 +48,7 @@ REDACTED
 	return s.cfg.EffectiveMode()
 REDACTED
 func (s *fakeConfigStore) BlockingActivationDegraded() bool { return false REDACTED
-func (s *fakeConfigStore) Public() PublicConfig             { return PublicConfig{REDACTED REDACTED
+func (s *fakeConfigStore) Public() (PublicConfig, error)    { return PublicConfig{REDACTED, nil REDACTED
 func (s *fakeConfigStore) Save(context.Context, UpdateConfigRequest, int64) (PublicConfig, error) {
 	return PublicConfig{REDACTED, nil
 REDACTED
