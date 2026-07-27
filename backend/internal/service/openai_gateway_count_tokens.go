@@ -315,6 +315,7 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 		writeAnthropicCountTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
 		return fmt.Errorf("read input_tokens response: %w", err)
 	}
+	respBody, _ = normalizeOpenAICloudflareForbiddenResponse(account, resp, respBody)
 
 	if resp.StatusCode >= 400 {
 		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))

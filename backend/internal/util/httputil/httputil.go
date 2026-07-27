@@ -50,6 +50,26 @@ func IsCloudflareChallengeResponse(statusCode int, headers http.Header, body []b
 	return false
 }
 
+// IsCloudflareGeneratedErrorResponse reports whether the response was generated
+// by Cloudflare itself rather than merely proxied through Cloudflare.
+//
+// cf-ray and Server: cloudflare are intentionally not sufficient: both can be
+// present on an origin-generated response. Cloudflare's diagnostic error
+// headers and unmistakable challenge responses are safe signals.
+func IsCloudflareGeneratedErrorResponse(statusCode int, headers http.Header, body []byte) bool {
+	if statusCode != http.StatusForbidden && statusCode != http.StatusTooManyRequests {
+		return false
+	}
+
+	if headers != nil &&
+		(strings.TrimSpace(headers.Get("cf-error-type")) != "" ||
+			strings.TrimSpace(headers.Get("cf-error-origin")) != "") {
+		return true
+	}
+
+	return IsCloudflareChallengeResponse(statusCode, headers, body)
+}
+
 // ExtractCloudflareRayID extracts cf-ray from headers or response body.
 func ExtractCloudflareRayID(headers http.Header, body []byte) string {
 	if headers != nil {
