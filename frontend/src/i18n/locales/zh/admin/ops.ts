@@ -241,6 +241,27 @@ export default {
           connectionRefused: '连接被拒绝',
           rateLimit: '触发限流'
         },
+		categories: {
+			recovered: '已恢复',
+			client_auth: '客户端认证',
+			client_policy: '客户端或功能策略',
+			invalid_request: '无效请求',
+			unsupported_model: '模型不支持',
+			user_quota: '用户额度',
+			user_subscription: '用户订阅',
+			user_concurrency: '用户并发',
+			client_cancelled: '客户端取消',
+			security_policy: '安全策略',
+			platform_capacity: '平台容量',
+			platform_credential: '托管凭据',
+			platform_internal: '平台内部',
+			provider_rate_limit: '供应商限流',
+			provider_overloaded: '供应商过载',
+			provider_server: '供应商服务错误',
+			network_transport: '网络传输',
+			product_compatibility: '产品兼容性',
+			unknown: '未知错误'
+		},
         time: '时间',
         type: '类型',
         context: '上下文',
@@ -457,6 +478,7 @@ export default {
           dimensions: '维度',
           email: '邮件已发送',
           emailSent: '已发送',
+          emailQueued: '已入队',
           emailIgnored: '已忽略'
         }
       },
@@ -475,7 +497,24 @@ export default {
         editTitle: '编辑告警规则',
         deleteConfirmTitle: '确认删除该规则？',
         deleteConfirmMessage: '将删除该规则及其关联的告警事件，是否继续？',
-        manage: '预警规则',
+		manage: '预警规则',
+		health: {
+		  evaluatorCoverage: '评估覆盖',
+		  emailWorker: '邮件投递进程',
+		  pendingEmails: '待投递邮件',
+		  deliveryFailures: '投递失败'
+		},
+		evaluation: {
+		  ok: '正常',
+		  breached: '已越界',
+		  no_data: '无数据',
+		  stale: '数据陈旧',
+		  error: '评估错误',
+		  unsupported: '不支持',
+		  disabled: '已停用',
+		  shadow: '影子运行',
+		  pending: '等待评估'
+		},
         metricGroups: {
           system: '系统指标',
           group: '分组级别指标（需 group_id）',
@@ -485,6 +524,17 @@ export default {
           successRate: '成功率 (%)',
           errorRate: '错误率 (%)',
           upstreamErrorRate: '上游错误率 (%)',
+		  availabilityFailureRate: '基础设施可用性失败率 (%)',
+		  platformFailureRate: '平台责任失败率 (%)',
+		  providerFailureRate: '供应商责任失败率 (%)',
+		  unknownFailureRate: '未知责任失败率 (%)',
+		  platformCapacityFailureCount: '平台容量失败数',
+		  compatibilityErrorCount: '产品兼容性错误数',
+		  clientRejectedCount: '客户端请求拒绝数',
+		  businessLimitedCount: '业务限制数',
+		  cancelledCount: '客户端取消数',
+		  securityBlockedCount: '安全策略拒绝数',
+		  recoveredProviderErrorCount: '已恢复上游异常数',
           p95: 'P95 请求时长 (ms)',
           p99: 'P99 请求时长 (ms)',
           cpu: 'CPU 使用率 (%)',
@@ -503,6 +553,17 @@ export default {
           successRate: '统计窗口内成功请求占比（0~100）。',
           errorRate: '统计窗口内失败请求占比（0~100）。',
           upstreamErrorRate: '统计窗口内上游错误占比（0~100）。',
+		  availabilityFailureRate: '仅统计平台、供应商及未知责任的最终失败；客户端错误、业务限制和取消不进入分母。',
+		  platformFailureRate: '平台责任最终失败占 SLA 合格请求的比例。',
+		  providerFailureRate: '供应商责任最终失败占 SLA 合格请求的比例。',
+		  unknownFailureRate: '尚未可靠归责但保守计入 SLA 的最终失败比例。',
+		  platformCapacityFailureCount: '账号路由容量、账号并发池或排队容量导致的最终失败数。',
+		  compatibilityErrorCount: '协议映射、错误状态改写或特定客户端兼容问题数量；建议仅 P2/P3。',
+		  clientRejectedCount: '非法参数、认证、未支持模型等客户端请求拒绝数量，不进入基础设施 SLA。',
+		  businessLimitedCount: '用户余额、套餐、个人并发或配额限制数量，不进入基础设施 SLA。',
+		  cancelledCount: '客户端主动取消或断开连接数量，默认不触发基础设施告警。',
+		  securityBlockedCount: '安全、风控或内容策略主动拒绝数量，进入独立安全通道。',
+		  recoveredProviderErrorCount: '请求最终成功但过程中发生过上游限流、5xx 或切换的数量。',
           p95: '统计窗口内 P95 请求耗时（毫秒）。',
           p99: '统计窗口内 P99 请求耗时（毫秒）。',
           cpu: '当前实例 CPU 使用率（0~100）。',
@@ -525,9 +586,10 @@ export default {
         table: {
           name: '名称',
           metric: '指标',
-          severity: '级别',
-          enabled: '启用',
-          actions: '操作'
+		  severity: '级别',
+		  enabled: '启用',
+		  evaluation: '评估状态 / 坏样本',
+		  actions: '操作'
         },
         form: {
           name: '名称',
@@ -541,9 +603,16 @@ export default {
           severity: '级别',
           window: '统计窗口（分钟）',
           sustained: '连续样本数（每分钟）',
-          cooldown: '冷却期（分钟）',
-          enabled: '启用',
-          notifyEmail: '发送邮件通知'
+		  cooldown: '冷却期（分钟）',
+		  minimumSamples: '最小样本数',
+		  minimumBadCount: '最小坏样本数',
+		  recoveryOperator: '恢复运算符',
+		  recoveryThreshold: '恢复阈值',
+		  recoverySustained: '恢复持续时间（分钟）',
+		  incidentFamily: '事故类型',
+		  enabled: '启用',
+		  notifyEmail: '发送邮件通知',
+		  shadowMode: '影子运行（记录但不创建告警）'
         },
         validation: {
           title: '请先修正以下问题',
@@ -553,9 +622,14 @@ export default {
           groupIdRequired: '分组级别指标必须指定 group_id',
           operatorRequired: '运算符不能为空',
           thresholdRequired: '阈值必须为数字',
-          windowRange: '统计窗口必须为 1 / 5 / 60 分钟之一',
+		  windowRange: '统计窗口必须为 1 / 5 / 15 / 30 / 60 分钟之一',
           sustainedRange: '连续样本数必须在 1 到 1440 之间',
-          cooldownRange: '冷却期必须在 0 到 1440 分钟之间'
+		  cooldownRange: '冷却期必须在 0 到 1440 分钟之间',
+		  minimumSamplesRange: '最小样本数必须是非负整数',
+		  minimumBadCountRange: '最小坏样本数必须是非负整数',
+		  incidentFamily: '事故类型只能包含小写字母、数字、下划线或连字符',
+		  recoveryPair: '恢复运算符和恢复阈值必须同时设置',
+		  recoverySustainedRange: '恢复持续时间必须在 1 到 1440 分钟之间'
         }
       },
       runtime: {

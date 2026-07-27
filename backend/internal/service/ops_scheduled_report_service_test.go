@@ -1,17 +1,23 @@
 package service
 
 import (
-	"bufio"
 	"context"
-	"io"
-	"mime/quotedprintable"
-	"net/mail"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+type opsScheduledReportDeliveryRepo struct {
+	NotificationEmailDeliveryRepository
+	items []NotificationEmailDelivery
+}
+
+func (r *opsScheduledReportDeliveryRepo) Enqueue(_ context.Context, delivery NotificationEmailDelivery) (int64, bool, error) {
+	delivery.ID = int64(len(r.items) + 1)
+	r.items = append(r.items, delivery)
+	return delivery.ID, true, nil
+}
 
 func TestOpsSummaryReportEmailVariables(t *testing.T) {
 	latencyP50 := 8231
@@ -104,15 +110,23 @@ func TestOpsScheduledReportVariablesDoNotUsePreviewMetrics(t *testing.T) {
 	}
 }
 
-func TestOpsScheduledReportLegacyTemplateReceivesSummaryHTML(t *testing.T) {
+func TestOpsScheduledReportQueuesRenderedSummaryHTML(t *testing.T) {
 	ctx := context.Background()
-	repo := newNotificationEmailMemorySettingRepo()
-	smtpServer := startNotificationEmailTestSMTPServer(t)
-	require.NoError(t, repo.SetMultiple(ctx, smtpServer.settings()))
+	settings := newNotificationEmailMemorySettingRepo()
 
-	emailService := NewEmailService(repo, nil)
-	notificationService := NewNotificationEmailService(repo, emailService)
-	_, err := notificationService.UpdateTemplate(
+	notificationService := NewNotificationEmailService(settings, nil)
+	_, err := notificationService.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{
+		Channels: []NotificationEmailChannelPolicy{{
+			ID: NotificationEmailChannelOpsReport, Enabled: true,
+			RecipientGroup: NotificationEmailRecipientGroupOpsReport,
+		}},
+		RecipientGroups: []NotificationEmailRecipientGroup{{
+			ID:      NotificationEmailRecipientGroupOpsReport,
+			Members: []NotificationEmailRecipientMember{{Email: "ops@example.com", Enabled: true}},
+		}},
+	})
+	require.NoError(t, err)
+	_, err = notificationService.UpdateTemplate(
 		ctx,
 		NotificationEmailEventOpsScheduledReport,
 		"en",
@@ -120,10 +134,11 @@ func TestOpsScheduledReportLegacyTemplateReceivesSummaryHTML(t *testing.T) {
 		`<section data-template="legacy">{{report_html}}</section>`,
 	)
 	require.NoError(t, err)
+	deliveryRepo := &opsScheduledReportDeliveryRepo{}
 
 	svc := &OpsScheduledReportService{
-		opsService:   &OpsService{opsRepo: &opsRepoMock{}},
-		emailService: emailService,
+		opsService:             &OpsService{opsRepo: &opsRepoMock{}},
+		notificationDispatcher: NewNotificationEmailDispatcher(deliveryRepo, notificationService),
 	}
 	report := &opsScheduledReport{
 		Name:       "日报",
@@ -132,16 +147,14 @@ func TestOpsScheduledReportLegacyTemplateReceivesSummaryHTML(t *testing.T) {
 		Recipients: []string{"ops@example.com"},
 	}
 
-	attempts, err := svc.runReport(ctx, report, time.Date(2026, time.July, 19, 1, 0, 26, 0, time.UTC))
+	enqueued, err := svc.runReport(ctx, report, time.Date(2026, time.July, 19, 1, 0, 26, 0, time.UTC))
 	require.NoError(t, err)
-	require.Equal(t, 1, attempts)
-	require.Equal(t, int64(1), smtpServer.messageCount())
-	message, err := mail.ReadMessage(bufio.NewReader(strings.NewReader(smtpServer.lastMessage())))
-	require.NoError(t, err)
-	body, err := io.ReadAll(quotedprintable.NewReader(message.Body))
-	require.NoError(t, err)
-	require.Contains(t, string(body), `<section data-template="legacy">`)
-	require.Contains(t, string(body), `<h2>日报</h2>`)
+	require.Equal(t, 1, enqueued)
+	require.Len(t, deliveryRepo.items, 1)
+	require.Equal(t, NotificationEmailEventOpsScheduledReport, deliveryRepo.items[0].Event)
+	require.Equal(t, "ops_scheduled_report", deliveryRepo.items[0].SourceType)
+	require.Equal(t, "2026-07-19T01:00", deliveryRepo.items[0].ReminderKey)
+	require.Contains(t, deliveryRepo.items[0].RawHTMLVariables["report_html"], `<h2>日报</h2>`)
 }
 
 func TestFormatOpsReportIntegerGroupsDigits(t *testing.T) {

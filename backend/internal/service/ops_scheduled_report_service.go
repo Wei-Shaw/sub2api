@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -36,11 +37,11 @@ return 0
 `)
 
 type OpsScheduledReportService struct {
-	opsService   *OpsService
-	userService  *UserService
-	emailService *EmailService
-	redisClient  *redis.Client
-	cfg          *config.Config
+	opsService             *OpsService
+	userService            *UserService
+	notificationDispatcher *NotificationEmailDispatcher
+	redisClient            *redis.Client
+	cfg                    *config.Config
 
 	instanceID string
 	loc        *time.Location
@@ -58,7 +59,7 @@ type OpsScheduledReportService struct {
 func NewOpsScheduledReportService(
 	opsService *OpsService,
 	userService *UserService,
-	emailService *EmailService,
+	notificationDispatcher *NotificationEmailDispatcher,
 	redisClient *redis.Client,
 	cfg *config.Config,
 ) *OpsScheduledReportService {
@@ -71,11 +72,11 @@ func NewOpsScheduledReportService(
 		}
 	}
 	return &OpsScheduledReportService{
-		opsService:   opsService,
-		userService:  userService,
-		emailService: emailService,
-		redisClient:  redisClient,
-		cfg:          cfg,
+		opsService:             opsService,
+		userService:            userService,
+		notificationDispatcher: notificationDispatcher,
+		redisClient:            redisClient,
+		cfg:                    cfg,
 
 		instanceID:        uuid.NewString(),
 		loc:               loc,
@@ -103,7 +104,7 @@ func (s *OpsScheduledReportService) StartWithContext(ctx context.Context) {
 	if s.cfg != nil && !s.cfg.Ops.Enabled {
 		return
 	}
-	if s.opsService == nil || s.emailService == nil {
+	if s.opsService == nil || s.notificationDispatcher == nil {
 		return
 	}
 
@@ -144,7 +145,7 @@ func (s *OpsScheduledReportService) run() {
 }
 
 func (s *OpsScheduledReportService) runOnce() {
-	if s == nil || s.opsService == nil || s.emailService == nil {
+	if s == nil || s.opsService == nil || s.notificationDispatcher == nil {
 		return
 	}
 
@@ -237,8 +238,8 @@ func (s *OpsScheduledReportService) listScheduledReports(ctx context.Context, no
 		return nil
 	}
 	reportEnabled := emailCfg.Report.Enabled
-	if s.emailService != nil && s.emailService.notificationEmailService != nil {
-		channel, configured, channelErr := s.emailService.notificationEmailService.GetChannelPolicyState(ctx, NotificationEmailChannelOpsReport)
+	if notificationService := s.notificationEmailService(); notificationService != nil {
+		channel, configured, channelErr := notificationService.GetChannelPolicyState(ctx, NotificationEmailChannelOpsReport)
 		if channelErr != nil {
 			return nil
 		}
@@ -321,15 +322,12 @@ func (s *OpsScheduledReportService) listScheduledReports(ctx context.Context, no
 }
 
 func (s *OpsScheduledReportService) runReport(ctx context.Context, report *opsScheduledReport, now time.Time) (int, error) {
-	if s == nil || s.opsService == nil || s.emailService == nil || report == nil {
+	if s == nil || s.opsService == nil || s.notificationDispatcher == nil || report == nil {
 		return 0, nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-
-	// Mark as "run" up-front so a broken SMTP config doesn't spam retries every minute.
-	s.setLastRunAt(ctx, report.ReportType, now)
 
 	content, err := s.generateReportContent(ctx, report, now)
 	if err != nil {
@@ -337,12 +335,14 @@ func (s *OpsScheduledReportService) runReport(ctx context.Context, report *opsSc
 	}
 	if strings.TrimSpace(content.html) == "" {
 		// Skip sending when the report decides not to emit content (e.g., digest below min count).
+		s.setLastRunAt(ctx, report.ReportType, now)
 		return 0, nil
 	}
 
 	recipients := report.Recipients
-	if s.emailService != nil && s.emailService.notificationEmailService != nil {
-		resolved, resolveErr := s.emailService.notificationEmailService.ResolveGroupRecipients(ctx, NotificationEmailChannelOpsReport)
+	notificationService := s.notificationEmailService()
+	if notificationService != nil {
+		resolved, resolveErr := notificationService.ResolveGroupRecipients(ctx, NotificationEmailChannelOpsReport)
 		if resolveErr != nil {
 			return 0, resolveErr
 		}
@@ -357,55 +357,52 @@ func (s *OpsScheduledReportService) runReport(ctx context.Context, report *opsSc
 		}
 	}
 	if len(recipients) == 0 {
-		return 0, nil
+		s.setLastRunAt(ctx, report.ReportType, now)
+		return 0, errors.New("ops scheduled report has no configured recipients")
 	}
 
-	attempts := 0
+	enqueued := 0
 	for _, to := range recipients {
 		addr := strings.TrimSpace(to)
 		if addr == "" {
 			continue
 		}
-		attempts++
 		locale := ""
-		if s.emailService.notificationEmailService != nil {
-			locale = s.emailService.notificationEmailService.ResolveRecipientLocale(ctx, 0, addr)
-			templateVariables := opsScheduledReportLocalizedEmailVariables(report, now, locale)
-			rawHTMLVariables := map[string]string{"report_html": content.html}
-			if isOpsSummaryReport(report) {
-				templateVariables = opsSummaryReportEmailVariables(report, now, content.overview, locale)
-			}
-			if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
-				Event:            NotificationEmailEventOpsScheduledReport,
-				Locale:           locale,
-				RecipientEmail:   addr,
-				RecipientName:    emailRecipientName(addr),
-				SourceType:       "ops_scheduled_report",
-				SourceID:         opsScheduledReportDeliverySourceID(report),
-				ReminderKey:      now.UTC().Format("2006-01-02T15:04"),
-				Variables:        templateVariables,
-				RawHTMLVariables: rawHTMLVariables,
-			}); err == nil {
-				continue
-			} else if !shouldFallbackNotificationEmail(err) {
-				continue
-			}
+		if notificationService != nil {
+			locale = notificationService.ResolveRecipientLocale(ctx, 0, addr)
 		}
-		subjectName := strings.TrimSpace(report.Name)
-		if locale != "" {
-			subjectName = opsScheduledReportLocalizedName(report, locale)
+		templateVariables := opsScheduledReportLocalizedEmailVariables(report, now, locale)
+		rawHTMLVariables := map[string]string{"report_html": content.html}
+		if isOpsSummaryReport(report) {
+			templateVariables = opsSummaryReportEmailVariables(report, now, content.overview, locale)
 		}
-		subjectPrefix := "[Ops Report]"
-		if strings.HasPrefix(strings.ToLower(locale), "zh") {
-			subjectPrefix = "[运维报表]"
+		result, enqueueErr := s.notificationDispatcher.Enqueue(ctx, NotificationEmailSendInput{
+			Event:            NotificationEmailEventOpsScheduledReport,
+			Locale:           locale,
+			RecipientEmail:   addr,
+			RecipientName:    emailRecipientName(addr),
+			SourceType:       "ops_scheduled_report",
+			SourceID:         opsScheduledReportDeliverySourceID(report),
+			ReminderKey:      now.UTC().Format("2006-01-02T15:04"),
+			Variables:        templateVariables,
+			RawHTMLVariables: rawHTMLVariables,
+		})
+		if enqueueErr != nil {
+			return enqueued, enqueueErr
 		}
-		subject := fmt.Sprintf("%s %s", subjectPrefix, subjectName)
-		if err := s.emailService.SendEmail(ctx, addr, subject, content.html); err != nil {
-			// Ignore per-recipient failures; continue best-effort.
-			continue
+		if result.Created {
+			enqueued++
 		}
 	}
-	return attempts, nil
+	s.setLastRunAt(ctx, report.ReportType, now)
+	return enqueued, nil
+}
+
+func (s *OpsScheduledReportService) notificationEmailService() *NotificationEmailService {
+	if s == nil || s.notificationDispatcher == nil {
+		return nil
+	}
+	return s.notificationDispatcher.emailService
 }
 
 func opsScheduledReportDeliverySourceID(report *opsScheduledReport) string {

@@ -20,6 +20,17 @@ var validOpsAlertMetricTypes = []string{
 	"success_rate",
 	"error_rate",
 	"upstream_error_rate",
+	"availability_failure_rate",
+	"platform_failure_rate",
+	"provider_failure_rate",
+	"unknown_failure_rate",
+	"platform_capacity_failure_count",
+	"compatibility_error_count",
+	"client_rejected_count",
+	"business_limited_count",
+	"cancelled_count",
+	"security_blocked_count",
+	"recovered_provider_error_count",
 	"cpu_usage_percent",
 	"memory_usage_percent",
 	"concurrency_queue_depth",
@@ -74,6 +85,14 @@ type opsAlertRuleValidatedInput struct {
 	WindowMinutes    int
 	SustainedMinutes int
 	CooldownMinutes  int
+	MinimumSamples   int
+	MinimumBadCount  int
+
+	IncidentFamily           string
+	RecoveryOperator         string
+	RecoveryThreshold        *float64
+	RecoverySustainedMinutes int
+	ShadowMode               bool
 
 	Enabled     bool
 	NotifyEmail bool
@@ -86,11 +105,28 @@ type opsAlertRuleValidatedInput struct {
 	NotifyProvided    bool
 }
 
+func isValidOpsIncidentFamily(value string) bool {
+	if value == "" || len(value) > 64 {
+		return false
+	}
+	for _, ch := range value {
+		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func isPercentOrRateMetric(metricType string) bool {
 	switch metricType {
 	case "success_rate",
 		"error_rate",
 		"upstream_error_rate",
+		"availability_failure_rate",
+		"platform_failure_rate",
+		"provider_failure_rate",
+		"unknown_failure_rate",
 		"cpu_usage_percent",
 		"memory_usage_percent",
 		"group_available_ratio",
@@ -202,9 +238,9 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 			return nil, fmt.Errorf("window_minutes must be an integer")
 		}
 		switch validated.WindowMinutes {
-		case 1, 5, 60:
+		case 1, 5, 15, 30, 60:
 		default:
-			return nil, fmt.Errorf("window_minutes must be one of: 1, 5, 60")
+			return nil, fmt.Errorf("window_minutes must be one of: 1, 5, 15, 30, 60")
 		}
 	} else {
 		validated.WindowMinutes = 1
@@ -234,6 +270,74 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 		validated.CooldownMinutes = 0
 	}
 
+	validated.IncidentFamily = "custom"
+	if v, ok := raw["incident_family"]; ok {
+		if err := json.Unmarshal(v, &validated.IncidentFamily); err != nil {
+			return nil, fmt.Errorf("incident_family must be a string")
+		}
+		validated.IncidentFamily = strings.ToLower(strings.TrimSpace(validated.IncidentFamily))
+		if !isValidOpsIncidentFamily(validated.IncidentFamily) {
+			return nil, fmt.Errorf("incident_family must contain only lowercase letters, numbers, '_' or '-'")
+		}
+	}
+
+	for field, target := range map[string]*int{
+		"minimum_samples":   &validated.MinimumSamples,
+		"minimum_bad_count": &validated.MinimumBadCount,
+	} {
+		if v, ok := raw[field]; ok {
+			if err := json.Unmarshal(v, target); err != nil {
+				return nil, fmt.Errorf("%s must be an integer", field)
+			}
+			if *target < 0 || *target > 1000000000 {
+				return nil, fmt.Errorf("%s must be between 0 and 1000000000", field)
+			}
+		}
+	}
+
+	if v, ok := raw["recovery_operator"]; ok {
+		if err := json.Unmarshal(v, &validated.RecoveryOperator); err != nil {
+			return nil, fmt.Errorf("recovery_operator must be a string")
+		}
+		validated.RecoveryOperator = strings.TrimSpace(validated.RecoveryOperator)
+		if validated.RecoveryOperator != "" {
+			if _, ok := validOpsAlertOperatorSet[validated.RecoveryOperator]; !ok {
+				return nil, fmt.Errorf("recovery_operator must be one of: %s", strings.Join(validOpsAlertOperators, ", "))
+			}
+		}
+	}
+	if v, ok := raw["recovery_threshold"]; ok && string(v) != "null" {
+		var threshold float64
+		if err := json.Unmarshal(v, &threshold); err != nil || math.IsNaN(threshold) || math.IsInf(threshold, 0) {
+			return nil, fmt.Errorf("recovery_threshold must be a finite number")
+		}
+		if isPercentOrRateMetric(metricType) && (threshold < 0 || threshold > 100) {
+			return nil, fmt.Errorf("recovery_threshold must be between 0 and 100 for metric_type %s", metricType)
+		}
+		if !isPercentOrRateMetric(metricType) && threshold < 0 {
+			return nil, fmt.Errorf("recovery_threshold must be >= 0")
+		}
+		validated.RecoveryThreshold = &threshold
+	}
+	if (validated.RecoveryOperator == "") != (validated.RecoveryThreshold == nil) {
+		return nil, fmt.Errorf("recovery_operator and recovery_threshold must be configured together")
+	}
+
+	validated.RecoverySustainedMinutes = 1
+	if v, ok := raw["recovery_sustained_minutes"]; ok {
+		if err := json.Unmarshal(v, &validated.RecoverySustainedMinutes); err != nil {
+			return nil, fmt.Errorf("recovery_sustained_minutes must be an integer")
+		}
+		if validated.RecoverySustainedMinutes < 1 || validated.RecoverySustainedMinutes > 1440 {
+			return nil, fmt.Errorf("recovery_sustained_minutes must be between 1 and 1440")
+		}
+	}
+	if v, ok := raw["shadow_mode"]; ok {
+		if err := json.Unmarshal(v, &validated.ShadowMode); err != nil {
+			return nil, fmt.Errorf("shadow_mode must be a boolean")
+		}
+	}
+
 	return validated, nil
 }
 
@@ -255,6 +359,21 @@ func (h *OpsHandler) ListAlertRules(c *gin.Context) {
 		return
 	}
 	response.Success(c, rules)
+}
+
+// ListLatestAlertRuleEvaluations returns one explicit evaluator result per rule.
+// GET /api/v1/admin/ops/alert-evaluations/latest
+func (h *OpsHandler) ListLatestAlertRuleEvaluations(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	evaluations, err := h.opsService.ListLatestAlertRuleEvaluations(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, evaluations)
 }
 
 // CreateAlertRule creates an ops alert rule.
@@ -293,6 +412,13 @@ func (h *OpsHandler) CreateAlertRule(c *gin.Context) {
 	rule.WindowMinutes = validated.WindowMinutes
 	rule.SustainedMinutes = validated.SustainedMinutes
 	rule.CooldownMinutes = validated.CooldownMinutes
+	rule.MinimumSamples = validated.MinimumSamples
+	rule.MinimumBadCount = validated.MinimumBadCount
+	rule.IncidentFamily = validated.IncidentFamily
+	rule.RecoveryOperator = validated.RecoveryOperator
+	rule.RecoveryThreshold = validated.RecoveryThreshold
+	rule.RecoverySustainedMinutes = validated.RecoverySustainedMinutes
+	rule.ShadowMode = validated.ShadowMode
 	rule.Severity = validated.Severity
 	rule.Enabled = validated.Enabled
 	rule.NotifyEmail = validated.NotifyEmail
@@ -348,6 +474,13 @@ func (h *OpsHandler) UpdateAlertRule(c *gin.Context) {
 	rule.WindowMinutes = validated.WindowMinutes
 	rule.SustainedMinutes = validated.SustainedMinutes
 	rule.CooldownMinutes = validated.CooldownMinutes
+	rule.MinimumSamples = validated.MinimumSamples
+	rule.MinimumBadCount = validated.MinimumBadCount
+	rule.IncidentFamily = validated.IncidentFamily
+	rule.RecoveryOperator = validated.RecoveryOperator
+	rule.RecoveryThreshold = validated.RecoveryThreshold
+	rule.RecoverySustainedMinutes = validated.RecoverySustainedMinutes
+	rule.ShadowMode = validated.ShadowMode
 	rule.Severity = validated.Severity
 	rule.Enabled = validated.Enabled
 	rule.NotifyEmail = validated.NotifyEmail

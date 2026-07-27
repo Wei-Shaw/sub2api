@@ -56,8 +56,14 @@ func ProvideUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, b
 }
 
 // ProvideEmailQueueService creates EmailQueueService with default worker count
-func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
-	return NewEmailQueueService(emailService, 3)
+func ProvideEmailQueueService(emailService *EmailService, dispatcher *NotificationEmailDispatcher) *EmailQueueService {
+	return NewDurableEmailQueueService(emailService, dispatcher)
+}
+
+func ProvideUserService(userRepo UserRepository, settingRepo SettingRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCache BillingCache, dispatcher *NotificationEmailDispatcher) *UserService {
+	svc := NewUserService(userRepo, settingRepo, authCacheInvalidator, billingCache)
+	svc.SetNotificationEmailDispatcher(dispatcher)
+	return svc
 }
 
 // ProvideOAuthRefreshAPI creates OAuthRefreshAPI with the default lock TTL.
@@ -301,10 +307,10 @@ func ProvideProxyExpiryService(proxyRepo ProxyRepository) *ProxyExpiryService {
 }
 
 // ProvideSubscriptionExpiryService creates and starts SubscriptionExpiryService.
-func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, settingRepo SettingRepository, notificationEmailService *NotificationEmailService, lockCache LeaderLockCache, db *sql.DB) *SubscriptionExpiryService {
+func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, settingRepo SettingRepository, dispatcher *NotificationEmailDispatcher, lockCache LeaderLockCache, db *sql.DB) *SubscriptionExpiryService {
 	svc := NewSubscriptionExpiryService(userSubRepo, time.Minute)
 	svc.SetSettingRepository(settingRepo)
-	svc.SetNotificationEmailService(notificationEmailService)
+	svc.SetNotificationEmailDispatcher(dispatcher)
 	svc.SetLeaderLock(lockCache, db)
 	startProcessBackground("subscription_expiry", svc.Start)
 	return svc
@@ -420,12 +426,12 @@ func ProvideOpsAggregationService(
 func ProvideOpsAlertEvaluatorService(
 	opsService *OpsService,
 	opsRepo OpsRepository,
-	emailService *EmailService,
+	notificationDispatcher *NotificationEmailDispatcher,
 	redisClient *redis.Client,
 	cfg *config.Config,
 	proxyRepo ProxyRepository,
 ) *OpsAlertEvaluatorService {
-	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg, proxyRepo)
+	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, notificationDispatcher, redisClient, cfg, proxyRepo)
 	startProcessBackground("ops_alert_evaluator", svc.Start)
 	return svc
 }
@@ -531,11 +537,11 @@ func ProvideScheduledTestRunnerService(
 func ProvideOpsScheduledReportService(
 	opsService *OpsService,
 	userService *UserService,
-	emailService *EmailService,
+	notificationDispatcher *NotificationEmailDispatcher,
 	redisClient *redis.Client,
 	cfg *config.Config,
 ) *OpsScheduledReportService {
-	svc := NewOpsScheduledReportService(opsService, userService, emailService, redisClient, cfg)
+	svc := NewOpsScheduledReportService(opsService, userService, notificationDispatcher, redisClient, cfg)
 	startProcessBackground("ops_scheduled_report", svc.Start)
 	return svc
 }
@@ -703,7 +709,7 @@ func ProvideAPIKeyService(
 var ProviderSet = wire.NewSet(
 	// Core services
 	NewAuthService,
-	NewUserService,
+	ProvideUserService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
 	ProvideAuthCacheInvalidationWorker,
@@ -768,7 +774,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpsScheduledReportService,
 	NewEmailService,
 	NewNotificationEmailService,
-	NewNotificationEmailDispatcher,
+	ProvideNotificationEmailDispatcher,
 	ProvideNotificationEmailDeliveryWorker,
 	ProvideEmailQueueService,
 	NewTurnstileService,
@@ -806,7 +812,7 @@ var ProviderSet = wire.NewSet(
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,
-	NewContentModerationService,
+	ProvideContentModerationService,
 	NewAffiliateService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
@@ -832,9 +838,25 @@ func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRep
 }
 
 // ProvideBalanceNotifyService creates BalanceNotifyService
-func ProvideBalanceNotifyService(emailService *EmailService, settingRepo SettingRepository, accountRepo AccountRepository, notificationEmailService *NotificationEmailService) *BalanceNotifyService {
+func ProvideBalanceNotifyService(emailService *EmailService, settingRepo SettingRepository, accountRepo AccountRepository, notificationEmailService *NotificationEmailService, dispatcher *NotificationEmailDispatcher) *BalanceNotifyService {
 	svc := NewBalanceNotifyService(emailService, settingRepo, accountRepo)
 	svc.SetNotificationEmailService(notificationEmailService)
+	svc.SetNotificationEmailDispatcher(dispatcher)
+	return svc
+}
+
+func ProvideContentModerationService(
+	settingRepo SettingRepository,
+	repo ContentModerationRepository,
+	hashCache ContentModerationHashCache,
+	groupRepo GroupRepository,
+	userRepo UserRepository,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	emailService *EmailService,
+	dispatcher *NotificationEmailDispatcher,
+) *ContentModerationService {
+	svc := NewContentModerationService(settingRepo, repo, hashCache, groupRepo, userRepo, authCacheInvalidator, emailService)
+	svc.SetNotificationEmailDispatcher(dispatcher)
 	return svc
 }
 

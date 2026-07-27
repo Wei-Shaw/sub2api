@@ -97,7 +97,20 @@ SELECT
     l.id, l.request_id, l.user_id, l.user_email, l.api_key_id, l.api_key_name, l.group_id, l.group_name,
     l.endpoint, l.provider, l.model, l.mode, l.action, l.flagged, l.highest_category, l.highest_score,
     l.category_scores, l.threshold_snapshot, l.input_excerpt, l.upstream_latency_ms, l.error,
-    l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.matched_keyword, l.created_at
+    l.violation_count, l.auto_banned, l.email_sent,
+    COALESCE((
+        SELECT CASE
+            WHEN COUNT(*) = 0 THEN ''
+            WHEN BOOL_OR(d.status = 'failed') THEN 'failed'
+            WHEN BOOL_OR(d.status IN ('pending', 'processing', 'retry_wait')) THEN 'pending'
+            WHEN BOOL_OR(d.status = 'sent') THEN 'sent'
+            WHEN BOOL_OR(d.status = 'suppressed') THEN 'suppressed'
+            ELSE ''
+        END
+        FROM notification_email_deliveries d
+        WHERE d.source_type = 'content_moderation' AND d.source_id = l.id::text
+    ), '') AS email_delivery_status,
+    COALESCE(u.status, ''), l.queue_delay_ms, l.matched_keyword, l.created_at
 FROM content_moderation_logs l
 LEFT JOIN users u ON u.id = l.user_id `+whereSQL+`
 ORDER BY l.created_at DESC, l.id DESC
@@ -139,6 +152,7 @@ LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
 			&item.ViolationCount,
 			&item.AutoBanned,
 			&item.EmailSent,
+			&item.EmailDeliveryStatus,
 			&item.UserStatus,
 			&queueDelay,
 			&item.MatchedKeyword,

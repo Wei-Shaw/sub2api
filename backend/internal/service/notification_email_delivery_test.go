@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"net/textproto"
 	"strings"
@@ -14,6 +15,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+type notificationEmailTestEncryptor struct{}
+
+func (notificationEmailTestEncryptor) Encrypt(value string) (string, error) {
+	return base64.StdEncoding.EncodeToString([]byte(value)), nil
+}
+
+func (notificationEmailTestEncryptor) Decrypt(value string) (string, error) {
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	return string(decoded), err
+}
 
 type fakeNotificationEmailDeliveryRepository struct {
 	mu         sync.Mutex
@@ -116,6 +128,54 @@ func TestNotificationEmailDispatcherRejectsUndeclaredPayload(t *testing.T) {
 		SourceType: "ops_incident", SourceID: "42", Variables: map[string]string{"smtp_password": "must-not-persist"},
 	})
 	require.ErrorContains(t, err, "unsupported notification email variable")
+}
+
+func TestNotificationEmailDispatcherEncryptsSensitiveVariables(t *testing.T) {
+	settings := newNotificationEmailMemorySettingRepo()
+	repo := newFakeNotificationEmailDeliveryRepository()
+	dispatcher := NewNotificationEmailDispatcher(repo, NewNotificationEmailService(settings, nil))
+	dispatcher.encryptor = notificationEmailTestEncryptor{}
+
+	_, err := dispatcher.Enqueue(context.Background(), NotificationEmailSendInput{
+		Event: NotificationEmailEventAuthVerifyCode, RecipientEmail: "user@example.com",
+		SourceType: "auth_verification", SourceID: "recipient-hash", ReminderKey: "request-1",
+		Variables:          map[string]string{"expires_in_minutes": "10"},
+		SensitiveVariables: map[string]string{"verification_code": "123456"},
+	})
+	require.NoError(t, err)
+	require.Len(t, repo.items, 1)
+	require.NotContains(t, repo.items[0].Variables, "verification_code")
+	require.NotEmpty(t, repo.items[0].SensitiveVariablesCiphertext)
+	require.NotContains(t, repo.items[0].SensitiveVariablesCiphertext, "123456")
+}
+
+func TestNotificationEmailDispatcherRejectsSensitiveVariablesWithoutEncryption(t *testing.T) {
+	settings := newNotificationEmailMemorySettingRepo()
+	dispatcher := NewNotificationEmailDispatcher(newFakeNotificationEmailDeliveryRepository(), NewNotificationEmailService(settings, nil))
+	_, err := dispatcher.Enqueue(context.Background(), NotificationEmailSendInput{
+		Event: NotificationEmailEventAuthVerifyCode, RecipientEmail: "user@example.com",
+		SourceType: "auth_verification", SourceID: "recipient-hash", ReminderKey: "request-1",
+		SensitiveVariables: map[string]string{"verification_code": "123456"},
+	})
+	require.ErrorContains(t, err, "encryption is not configured")
+}
+
+func TestDurableAuthQueueStoresVerificationCodeOnlyInCiphertext(t *testing.T) {
+	settings := newNotificationEmailMemorySettingRepo()
+	cache := &emailCacheStub{}
+	email := NewEmailService(settings, cache)
+	notification := NewNotificationEmailService(settings, email)
+	repo := newFakeNotificationEmailDeliveryRepository()
+	dispatcher := NewNotificationEmailDispatcher(repo, notification)
+	dispatcher.encryptor = notificationEmailTestEncryptor{}
+	queue := NewDurableEmailQueueService(email, dispatcher)
+
+	require.NoError(t, queue.EnqueueVerifyCode("user@example.com", "Sub2API", "en"))
+	require.Len(t, repo.items, 1)
+	delivery := repo.items[0]
+	require.Equal(t, NotificationEmailEventAuthVerifyCode, delivery.Event)
+	require.NotContains(t, delivery.Variables, "verification_code")
+	require.NotEmpty(t, delivery.SensitiveVariablesCiphertext)
 }
 
 func TestNotificationEmailDeliveryViewMasksRecipientAndPayload(t *testing.T) {
@@ -264,6 +324,26 @@ func TestNotificationEmailWorkerSuppressesDisabledChannel(t *testing.T) {
 	worker.processDelivery(testWorkerDelivery(1, 5))
 	require.Equal(t, 1, repo.markedSuppressed)
 	require.Equal(t, "policy", repo.lastCategory)
+	require.Zero(t, repo.markedFailed)
+}
+
+func TestNotificationEmailWorkerDecryptsSensitiveVariables(t *testing.T) {
+	repo := &notificationEmailWorkerTestRepository{}
+	var deliveredCode string
+	worker := testNotificationEmailWorker(repo, func(_ context.Context, input NotificationEmailSendInput, _ bool) (bool, error) {
+		deliveredCode = input.Variables["verification_code"]
+		return false, nil
+	})
+	worker.SetEncryptor(notificationEmailTestEncryptor{})
+	ciphertext, err := worker.encryptor.Encrypt(`{"verification_code":"654321"}`)
+	require.NoError(t, err)
+	delivery := testWorkerDelivery(1, 5)
+	delivery.Event = NotificationEmailEventAuthVerifyCode
+	delivery.SensitiveVariablesCiphertext = ciphertext
+
+	worker.processDelivery(delivery)
+	require.Equal(t, "654321", deliveredCode)
+	require.Equal(t, 1, repo.markedSent)
 	require.Zero(t, repo.markedFailed)
 }
 

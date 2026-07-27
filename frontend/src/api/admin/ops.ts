@@ -677,6 +677,17 @@ export type MetricType =
   | 'success_rate'
   | 'error_rate'
   | 'upstream_error_rate'
+	| 'availability_failure_rate'
+	| 'platform_failure_rate'
+	| 'provider_failure_rate'
+	| 'unknown_failure_rate'
+	| 'platform_capacity_failure_count'
+	| 'compatibility_error_count'
+	| 'client_rejected_count'
+	| 'business_limited_count'
+	| 'cancelled_count'
+	| 'security_blocked_count'
+	| 'recovered_provider_error_count'
   | 'cpu_usage_percent'
   | 'memory_usage_percent'
   | 'concurrency_queue_depth'
@@ -688,6 +699,8 @@ export type MetricType =
   | 'account_error_ratio'
   | 'account_temp_unscheduled_count'
   | 'overload_account_count'
+	| 'proxy_expired_count'
+	| 'proxy_expiring_soon_count'
 export type Operator = '>' | '>=' | '<' | '<=' | '==' | '!='
 
 export interface AlertRule {
@@ -702,11 +715,50 @@ export interface AlertRule {
   sustained_minutes: number
   severity: OpsSeverity
   cooldown_minutes: number
+	minimum_samples: number
+	minimum_bad_count: number
+	recovery_operator?: Operator | ''
+	recovery_threshold?: number | null
+	recovery_sustained_minutes: number
+	incident_family: string
+	shadow_mode: boolean
   notify_email: boolean
   filters?: Record<string, any>
   created_at?: string
   updated_at?: string
   last_triggered_at?: string | null
+}
+
+export type AlertEvaluationStatus = 'ok' | 'breached' | 'no_data' | 'stale' | 'error' | 'unsupported' | 'disabled' | 'shadow'
+
+export interface AlertRuleEvaluation {
+	id: number
+	rule_id: number
+	evaluated_at: string
+	window_start: string
+	window_end: string
+	status: AlertEvaluationStatus
+	breached: boolean
+	metric_value?: number | null
+	threshold_value?: number | null
+	sample_count: number
+	bad_count: number
+	data_as_of?: string | null
+	error_code?: string
+	error_message?: string
+	evaluator_version: string
+	created_at: string
+}
+
+export interface NotificationEmailDeliveryHealth {
+	running: boolean
+	processed: number
+	failures: number
+	pending: number
+	oldest_lag: number
+	last_error?: string
+	stats_error?: string
+	max_attempts: number
 }
 
 export interface AlertEvent {
@@ -722,6 +774,7 @@ export interface AlertEvent {
   fired_at: string
   resolved_at?: string | null
   email_sent: boolean
+  email_queued: boolean
   created_at: string
 }
 
@@ -898,6 +951,13 @@ export interface OpsErrorLog {
   type: string
   error_owner: 'client' | 'provider' | 'platform' | string
   error_source: 'client_request' | 'upstream_http' | 'gateway' | string
+	final_outcome: 'recovered' | 'client_rejected' | 'business_limited' | 'security_blocked' | 'cancelled' | 'platform_failed' | 'provider_failed' | 'unknown_failed' | string
+	responsibility: 'client' | 'platform' | 'provider' | 'unknown' | string
+	error_category: string
+	counts_toward_sla: boolean
+	alert_family: string
+	classification_reason: string
+	classification_version: number
 
   severity: OpsSeverity
   status_code: number
@@ -1178,6 +1238,16 @@ export async function listAlertRules(): Promise<AlertRule[]> {
   return data
 }
 
+export async function listLatestAlertRuleEvaluations(): Promise<AlertRuleEvaluation[]> {
+	const { data } = await apiClient.get<AlertRuleEvaluation[]>('/admin/ops/alert-evaluations/latest')
+	return data
+}
+
+export async function getNotificationEmailDeliveryHealth(): Promise<NotificationEmailDeliveryHealth> {
+	const { data } = await apiClient.get<NotificationEmailDeliveryHealth>('/admin/ops/notification-email/health')
+	return data
+}
+
 export async function createAlertRule(rule: AlertRule): Promise<AlertRule> {
   const { data } = await apiClient.post<AlertRule>('/admin/ops/alert-rules', rule)
   return data
@@ -1335,6 +1405,8 @@ export const opsAPI = {
 
   listRequestDetails,
   listAlertRules,
+	listLatestAlertRuleEvaluations,
+	getNotificationEmailDeliveryHealth,
   createAlertRule,
   updateAlertRule,
   deleteAlertRule,

@@ -188,6 +188,7 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.POST("/alert-rules", h.Admin.Ops.CreateAlertRule)
 		ops.PUT("/alert-rules/:id", h.Admin.Ops.UpdateAlertRule)
 		ops.DELETE("/alert-rules/:id", h.Admin.Ops.DeleteAlertRule)
+		ops.GET("/alert-evaluations/latest", h.Admin.Ops.ListLatestAlertRuleEvaluations)
 		ops.GET("/alert-events", h.Admin.Ops.ListAlertEvents)
 		ops.GET("/alert-events/:id", h.Admin.Ops.GetAlertEvent)
 		ops.PUT("/alert-events/:id/status", h.Admin.Ops.UpdateAlertEventStatus)

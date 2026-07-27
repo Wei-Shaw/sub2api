@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+const OpsMetricDefinitionVersion = 2
+
 type OpsSystemLog struct {
 	ID              int64          `json:"id"`
 	CreatedAt       time.Time      `json:"created_at"`
@@ -35,6 +37,14 @@ type OpsErrorLog struct {
 
 	Owner  string `json:"error_owner"`
 	Source string `json:"error_source"`
+
+	FinalOutcome          string `json:"final_outcome"`
+	Responsibility        string `json:"responsibility"`
+	ErrorCategory         string `json:"error_category"`
+	CountsTowardSLA       bool   `json:"counts_toward_sla"`
+	AlertFamily           string `json:"alert_family"`
+	ClassificationReason  string `json:"classification_reason"`
+	ClassificationVersion int    `json:"classification_version"`
 
 	Severity string `json:"severity"`
 

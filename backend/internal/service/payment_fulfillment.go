@@ -430,7 +430,7 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 }
 
 func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.PaymentOrder, auditAction string) {
-	if s == nil || s.notificationEmailService == nil || o == nil {
+	if s == nil || s.notificationEmailDispatcher == nil || o == nil {
 		return
 	}
 	go func() {
@@ -458,7 +458,7 @@ func (s *PaymentService) sendBalanceRechargeSuccessNotification(ctx context.Cont
 			currentBalance = fmt.Sprintf("%.2f", user.Balance)
 		}
 	}
-	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+	_, err := s.notificationEmailDispatcher.Enqueue(ctx, NotificationEmailSendInput{
 		Event:          NotificationEmailEventBalanceRechargeSuccess,
 		RecipientEmail: o.UserEmail,
 		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
@@ -471,6 +471,7 @@ func (s *PaymentService) sendBalanceRechargeSuccessNotification(ctx context.Cont
 			"order_id":        strconv.FormatInt(o.ID, 10),
 		},
 	})
+	return err
 }
 
 func (s *PaymentService) sendSubscriptionPurchaseSuccessNotification(ctx context.Context, o *dbent.PaymentOrder) error {
@@ -495,7 +496,7 @@ func (s *PaymentService) sendSubscriptionPurchaseSuccessNotification(ctx context
 			}
 		}
 	}
-	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+	_, err := s.notificationEmailDispatcher.Enqueue(ctx, NotificationEmailSendInput{
 		Event:          NotificationEmailEventSubscriptionPurchaseSuccess,
 		RecipientEmail: o.UserEmail,
 		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
@@ -504,6 +505,7 @@ func (s *PaymentService) sendSubscriptionPurchaseSuccessNotification(ctx context
 		SourceID:       strconv.FormatInt(o.ID, 10),
 		Variables:      variables,
 	})
+	return err
 }
 
 func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid int64) error {

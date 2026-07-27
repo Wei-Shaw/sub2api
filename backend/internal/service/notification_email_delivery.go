@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/google/uuid"
 )
 
@@ -47,29 +49,30 @@ var notificationEmailAddressInErrorPattern = regexp.MustCompile(`(?i)[a-z0-9.!#$
 // NotificationEmailDelivery is the durable event envelope shared by business
 // notifications today and Ops incidents in the next iteration.
 type NotificationEmailDelivery struct {
-	ID                int64
-	DedupKey          string
-	Event             string
-	Channel           string
-	RecipientEmail    string
-	RecipientHash     string
-	RecipientName     string
-	UserID            int64
-	SourceType        string
-	SourceID          string
-	ReminderKey       string
-	Locale            string
-	Variables         map[string]string
-	RawHTMLVariables  map[string]string
-	Status            string
-	AttemptCount      int
-	MaxAttempts       int
-	NextAttemptAt     time.Time
-	LastErrorCategory string
-	LastError         string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	SentAt            *time.Time
+	ID                           int64
+	DedupKey                     string
+	Event                        string
+	Channel                      string
+	RecipientEmail               string
+	RecipientHash                string
+	RecipientName                string
+	UserID                       int64
+	SourceType                   string
+	SourceID                     string
+	ReminderKey                  string
+	Locale                       string
+	Variables                    map[string]string
+	RawHTMLVariables             map[string]string
+	SensitiveVariablesCiphertext string
+	Status                       string
+	AttemptCount                 int
+	MaxAttempts                  int
+	NextAttemptAt                time.Time
+	LastErrorCategory            string
+	LastError                    string
+	CreatedAt                    time.Time
+	UpdatedAt                    time.Time
+	SentAt                       *time.Time
 }
 
 type NotificationEmailDeliveryListFilter struct {
@@ -151,10 +154,19 @@ type NotificationEmailDeliveryHealth struct {
 type NotificationEmailDispatcher struct {
 	repo         NotificationEmailDeliveryRepository
 	emailService *NotificationEmailService
+	encryptor    SecretEncryptor
 }
 
 func NewNotificationEmailDispatcher(repo NotificationEmailDeliveryRepository, emailService *NotificationEmailService) *NotificationEmailDispatcher {
 	return &NotificationEmailDispatcher{repo: repo, emailService: emailService}
+}
+
+func ProvideNotificationEmailDispatcher(repo NotificationEmailDeliveryRepository, emailService *NotificationEmailService, encryptor SecretEncryptor, cfg *config.Config) *NotificationEmailDispatcher {
+	dispatcher := NewNotificationEmailDispatcher(repo, emailService)
+	if cfg != nil && cfg.Totp.EncryptionKeyConfigured {
+		dispatcher.encryptor = encryptor
+	}
+	return dispatcher
 }
 
 func (d *NotificationEmailDispatcher) Enqueue(ctx context.Context, input NotificationEmailSendInput) (NotificationEmailEnqueueResult, error) {
@@ -189,32 +201,62 @@ func (d *NotificationEmailDispatcher) Enqueue(ctx context.Context, input Notific
 	if len(recipient) > 320 {
 		return NotificationEmailEnqueueResult{}, errors.New("notification email recipient is too long")
 	}
-	if err := validateNotificationEmailQueuePayload(event, input.Variables, input.RawHTMLVariables); err != nil {
+	if err := validateNotificationEmailQueuePayload(event, input.Variables, input.SensitiveVariables, input.RawHTMLVariables); err != nil {
 		return NotificationEmailEnqueueResult{}, err
 	}
 	if err := d.emailService.requireEventChannelEnabled(ctx, event); err != nil {
 		return NotificationEmailEnqueueResult{}, err
 	}
 
+	var sensitiveCiphertext string
+	if len(input.SensitiveVariables) > 0 {
+		if !notificationEmailAllowsSensitiveVariables(event) {
+			return NotificationEmailEnqueueResult{}, fmt.Errorf("notification email event does not allow sensitive variables: %s", event)
+		}
+		if d.encryptor == nil {
+			return NotificationEmailEnqueueResult{}, errors.New("notification email sensitive payload encryption is not configured")
+		}
+		encoded, encodeErr := json.Marshal(input.SensitiveVariables)
+		if encodeErr != nil {
+			return NotificationEmailEnqueueResult{}, fmt.Errorf("encode notification email sensitive variables: %w", encodeErr)
+		}
+		sensitiveCiphertext, err = d.encryptor.Encrypt(string(encoded))
+		if err != nil {
+			return NotificationEmailEnqueueResult{}, fmt.Errorf("encrypt notification email sensitive variables: %w", err)
+		}
+	}
+
 	delivery := NotificationEmailDelivery{
-		DedupKey:         notificationEmailQueueDedupKey(event, input.SourceType, input.SourceID, recipient, input.ReminderKey),
-		Event:            event,
-		Channel:          channel,
-		RecipientEmail:   recipient,
-		RecipientHash:    notificationEmailHash(recipient),
-		RecipientName:    strings.TrimSpace(input.RecipientName),
-		UserID:           input.UserID,
-		SourceType:       strings.TrimSpace(input.SourceType),
-		SourceID:         strings.TrimSpace(input.SourceID),
-		ReminderKey:      strings.TrimSpace(input.ReminderKey),
-		Locale:           strings.TrimSpace(input.Locale),
-		Variables:        cloneNotificationEmailVariables(input.Variables),
-		RawHTMLVariables: cloneNotificationEmailVariables(input.RawHTMLVariables),
-		Status:           NotificationEmailDeliveryStatusPending,
-		MaxAttempts:      notificationEmailDeliveryMaxAttempts,
+		DedupKey:                     notificationEmailQueueDedupKey(event, input.SourceType, input.SourceID, recipient, input.ReminderKey),
+		Event:                        event,
+		Channel:                      channel,
+		RecipientEmail:               recipient,
+		RecipientHash:                notificationEmailHash(recipient),
+		RecipientName:                strings.TrimSpace(input.RecipientName),
+		UserID:                       input.UserID,
+		SourceType:                   strings.TrimSpace(input.SourceType),
+		SourceID:                     strings.TrimSpace(input.SourceID),
+		ReminderKey:                  strings.TrimSpace(input.ReminderKey),
+		Locale:                       strings.TrimSpace(input.Locale),
+		Variables:                    cloneNotificationEmailVariables(input.Variables),
+		SensitiveVariablesCiphertext: sensitiveCiphertext,
+		RawHTMLVariables:             cloneNotificationEmailVariables(input.RawHTMLVariables),
+		Status:                       NotificationEmailDeliveryStatusPending,
+		MaxAttempts:                  notificationEmailDeliveryMaxAttempts,
 	}
 	id, created, err := d.repo.Enqueue(ctx, delivery)
 	return NotificationEmailEnqueueResult{ID: id, Created: created}, err
+}
+
+func notificationEmailAllowsSensitiveVariables(event string) bool {
+	switch strings.TrimSpace(event) {
+	case NotificationEmailEventAuthVerifyCode,
+		NotificationEmailEventAuthPasswordReset,
+		NotificationEmailEventNotificationEmailVerifyCode:
+		return true
+	default:
+		return false
+	}
 }
 
 // EnqueueGroup resolves the configured group before creating one durable row
@@ -303,6 +345,7 @@ type NotificationEmailDeliveryWorker struct {
 	processed atomic.Uint64
 	failures  atomic.Uint64
 	lastError atomic.Value
+	encryptor SecretEncryptor
 }
 
 func NewNotificationEmailDeliveryWorker(repo NotificationEmailDeliveryRepository, email *NotificationEmailService) *NotificationEmailDeliveryWorker {
@@ -314,6 +357,12 @@ func NewNotificationEmailDeliveryWorker(repo NotificationEmailDeliveryRepository
 	w := &NotificationEmailDeliveryWorker{repo: repo, deliver: deliver, workerID: uuid.NewString(), ctx: ctx, cancel: cancel}
 	w.lastError.Store("")
 	return w
+}
+
+func (w *NotificationEmailDeliveryWorker) SetEncryptor(encryptor SecretEncryptor) {
+	if w != nil {
+		w.encryptor = encryptor
+	}
 }
 
 func (w *NotificationEmailDeliveryWorker) Start() {
@@ -395,12 +444,39 @@ func (w *NotificationEmailDeliveryWorker) processDelivery(delivery NotificationE
 		}
 	}()
 
+	variables := cloneNotificationEmailVariables(delivery.Variables)
+	if delivery.SensitiveVariablesCiphertext != "" {
+		if w.encryptor == nil {
+			err := errors.New("notification email sensitive payload decryption is not configured")
+			w.recordFailure(err)
+			w.releaseFailedDelivery(delivery, "configuration", err, true)
+			return
+		}
+		plaintext, err := w.encryptor.Decrypt(delivery.SensitiveVariablesCiphertext)
+		if err != nil {
+			err = fmt.Errorf("decrypt notification email sensitive variables: %w", err)
+			w.recordFailure(err)
+			w.releaseFailedDelivery(delivery, "configuration", err, false)
+			return
+		}
+		var sensitive map[string]string
+		if err := json.Unmarshal([]byte(plaintext), &sensitive); err != nil {
+			err = fmt.Errorf("decode notification email sensitive variables: %w", err)
+			w.recordFailure(err)
+			w.releaseFailedDelivery(delivery, "internal", err, false)
+			return
+		}
+		for key, value := range sensitive {
+			variables[key] = value
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(w.ctx, notificationEmailDeliverySendTimeout)
 	suppressed, err := w.deliver(ctx, NotificationEmailSendInput{
 		Event: delivery.Event, Locale: delivery.Locale, RecipientEmail: delivery.RecipientEmail,
 		RecipientName: delivery.RecipientName, UserID: delivery.UserID, SourceType: delivery.SourceType,
 		SourceID: delivery.SourceID, ReminderKey: delivery.ReminderKey,
-		Variables: delivery.Variables, RawHTMLVariables: delivery.RawHTMLVariables,
+		Variables: variables, RawHTMLVariables: delivery.RawHTMLVariables,
 	}, false)
 	cancel()
 
@@ -527,8 +603,11 @@ func (w *NotificationEmailDeliveryWorker) recordFailure(err error) {
 	slog.Warn("notification email delivery failed", "error", err)
 }
 
-func ProvideNotificationEmailDeliveryWorker(repo NotificationEmailDeliveryRepository, email *NotificationEmailService) *NotificationEmailDeliveryWorker {
+func ProvideNotificationEmailDeliveryWorker(repo NotificationEmailDeliveryRepository, email *NotificationEmailService, encryptor SecretEncryptor, cfg *config.Config) *NotificationEmailDeliveryWorker {
 	worker := NewNotificationEmailDeliveryWorker(repo, email)
+	if cfg != nil && cfg.Totp.EncryptionKeyConfigured {
+		worker.SetEncryptor(encryptor)
+	}
 	startProcessBackground("notification_email_delivery", worker.Start)
 	return worker
 }
@@ -594,12 +673,24 @@ func boundedNotificationEmailError(err error) string {
 	return message
 }
 
-func validateNotificationEmailQueuePayload(event string, variables, rawHTMLVariables map[string]string) error {
+func validateNotificationEmailQueuePayload(event string, variables, sensitiveVariables, rawHTMLVariables map[string]string) error {
 	allowed := notificationEmailAllowedPlaceholderSet(event)
 	variableBytes := 0
 	for key, value := range variables {
 		if _, ok := allowed[key]; !ok {
 			return fmt.Errorf("unsupported notification email variable for %s: %s", event, key)
+		}
+		variableBytes += len(key) + len(value)
+		if variableBytes > notificationEmailVariablesMaxBytes {
+			return errors.New("notification email variables exceed size limit")
+		}
+	}
+	for key, value := range sensitiveVariables {
+		if _, exists := variables[key]; exists {
+			return fmt.Errorf("notification email variable %s cannot be both public and sensitive", key)
+		}
+		if _, ok := allowed[key]; !ok {
+			return fmt.Errorf("unsupported sensitive notification email variable for %s: %s", event, key)
 		}
 		variableBytes += len(key) + len(value)
 		if variableBytes > notificationEmailVariablesMaxBytes {

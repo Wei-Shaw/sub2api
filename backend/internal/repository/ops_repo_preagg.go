@@ -7,6 +7,36 @@ import (
 	"time"
 )
 
+func (r *opsRepository) InvalidateHourlyMetricsVersion(ctx context.Context, startTime, endTime time.Time, version int) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("nil ops repository")
+	}
+	if startTime.IsZero() || endTime.IsZero() || !endTime.After(startTime) || version <= 1 {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx, `
+UPDATE ops_metrics_hourly
+SET metric_definition_version = 1
+WHERE bucket_start >= $1 AND bucket_start < $2
+  AND metric_definition_version = $3`, startTime.UTC(), endTime.UTC(), version)
+	return err
+}
+
+func (r *opsRepository) InvalidateDailyMetricsVersion(ctx context.Context, startTime, endTime time.Time, version int) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("nil ops repository")
+	}
+	if startTime.IsZero() || endTime.IsZero() || !endTime.After(startTime) || version <= 1 {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx, `
+UPDATE ops_metrics_daily
+SET metric_definition_version = 1
+WHERE bucket_date >= $1 AND bucket_date < $2
+  AND metric_definition_version = $3`, startTime.UTC(), endTime.UTC(), version)
+	return err
+}
+
 func (r *opsRepository) UpsertHourlyMetrics(ctx context.Context, startTime, endTime time.Time) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("nil ops repository")
@@ -76,8 +106,9 @@ error_base AS (
     -- value so platform-level GROUPING SETS don't collide with the overall (platform=NULL) row.
     COALESCE(platform, 'unknown') AS platform,
     group_id AS group_id,
-    is_business_limited AS is_business_limited,
-    error_owner AS error_owner,
+	final_outcome AS final_outcome,
+	counts_toward_sla AS counts_toward_sla,
+	responsibility AS responsibility,
     status_code AS client_status_code,
     COALESCE(upstream_status_code, status_code, 0) AS effective_status_code
   FROM ops_error_logs
@@ -91,11 +122,11 @@ error_agg AS (
     CASE WHEN GROUPING(platform) = 1 THEN NULL ELSE platform END AS platform,
     CASE WHEN GROUPING(group_id) = 1 THEN NULL ELSE group_id END AS group_id,
     COUNT(*) FILTER (WHERE COALESCE(client_status_code, 0) >= 400) AS error_count_total,
-    COUNT(*) FILTER (WHERE COALESCE(client_status_code, 0) >= 400 AND is_business_limited) AS business_limited_count,
-    COUNT(*) FILTER (WHERE COALESCE(client_status_code, 0) >= 400 AND NOT is_business_limited) AS error_count_sla,
-    COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(effective_status_code, 0) NOT IN (429, 529)) AS upstream_error_count_excl_429_529,
-    COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(effective_status_code, 0) = 429) AS upstream_429_count,
-    COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(effective_status_code, 0) = 529) AS upstream_529_count
+    COUNT(*) FILTER (WHERE COALESCE(client_status_code, 0) >= 400 AND final_outcome = 'business_limited') AS business_limited_count,
+    COUNT(*) FILTER (WHERE COALESCE(client_status_code, 0) >= 400 AND counts_toward_sla) AS error_count_sla,
+    COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(effective_status_code, 0) NOT IN (429, 529)) AS upstream_error_count_excl_429_529,
+    COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(effective_status_code, 0) = 429) AS upstream_429_count,
+    COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(effective_status_code, 0) = 529) AS upstream_529_count
   FROM error_base
   GROUP BY GROUPING SETS (
     (bucket_start),
@@ -165,6 +196,7 @@ INSERT INTO ops_metrics_hourly (
   ttft_p99_ms,
   ttft_avg_ms,
   ttft_max_ms,
+	metric_definition_version,
   computed_at
 )
 SELECT
@@ -192,6 +224,7 @@ SELECT
   ttft_p99_ms::int,
   ttft_avg_ms,
   ttft_max_ms::int,
+	2,
   NOW()
 FROM combined
 WHERE bucket_start IS NOT NULL
@@ -220,6 +253,7 @@ ON CONFLICT (bucket_start, COALESCE(platform, ''), COALESCE(group_id, 0)) DO UPD
   ttft_p99_ms = EXCLUDED.ttft_p99_ms,
   ttft_avg_ms = EXCLUDED.ttft_avg_ms,
   ttft_max_ms = EXCLUDED.ttft_max_ms,
+	metric_definition_version = EXCLUDED.metric_definition_version,
 
   computed_at = NOW()
 `
@@ -265,6 +299,7 @@ INSERT INTO ops_metrics_daily (
   ttft_p99_ms,
   ttft_avg_ms,
   ttft_max_ms,
+	metric_definition_version,
   computed_at
 )
 SELECT
@@ -305,9 +340,11 @@ SELECT
     / NULLIF(SUM(ttft_sample_count) FILTER (WHERE ttft_avg_ms IS NOT NULL), 0) AS ttft_avg_ms,
   MAX(ttft_max_ms) AS ttft_max_ms,
 
+	2,
   NOW()
 FROM ops_metrics_hourly
 WHERE bucket_start >= $1 AND bucket_start < $2
+	AND metric_definition_version = 2
 GROUP BY 1, 2, 3
 ON CONFLICT (bucket_date, COALESCE(platform, ''), COALESCE(group_id, 0)) DO UPDATE SET
   success_count = EXCLUDED.success_count,
@@ -333,6 +370,7 @@ ON CONFLICT (bucket_date, COALESCE(platform, ''), COALESCE(group_id, 0)) DO UPDA
   ttft_p99_ms = EXCLUDED.ttft_p99_ms,
   ttft_avg_ms = EXCLUDED.ttft_avg_ms,
   ttft_max_ms = EXCLUDED.ttft_max_ms,
+	metric_definition_version = EXCLUDED.metric_definition_version,
 
   computed_at = NOW()
 `
@@ -347,7 +385,7 @@ func (r *opsRepository) GetLatestHourlyBucketStart(ctx context.Context) (time.Ti
 	}
 
 	var value sql.NullTime
-	if err := r.db.QueryRowContext(ctx, `SELECT MAX(bucket_start) FROM ops_metrics_hourly`).Scan(&value); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT MAX(bucket_start) FROM ops_metrics_hourly WHERE metric_definition_version = 2`).Scan(&value); err != nil {
 		return time.Time{}, false, err
 	}
 	if !value.Valid {
@@ -362,7 +400,7 @@ func (r *opsRepository) GetLatestDailyBucketDate(ctx context.Context) (time.Time
 	}
 
 	var value sql.NullTime
-	if err := r.db.QueryRowContext(ctx, `SELECT MAX(bucket_date) FROM ops_metrics_daily`).Scan(&value); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT MAX(bucket_date) FROM ops_metrics_daily WHERE metric_definition_version = 2`).Scan(&value); err != nil {
 		return time.Time{}, false, err
 	}
 	if !value.Valid {

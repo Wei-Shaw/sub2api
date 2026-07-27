@@ -45,6 +45,13 @@ INSERT INTO ops_error_logs (
   error_body,
   error_source,
   error_owner,
+	final_outcome,
+	responsibility,
+	error_category,
+	counts_toward_sla,
+	alert_family,
+	classification_reason,
+	classification_version,
   upstream_status_code,
   upstream_error_message,
   upstream_error_detail,
@@ -57,7 +64,7 @@ INSERT INTO ops_error_logs (
   created_at,
   api_key_prefix
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45
 )`
 
 func NewOpsRepository(db *sql.DB) service.OpsRepository {
@@ -156,6 +163,13 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		opsNullString(input.ErrorBody),
 		opsNullString(input.ErrorSource),
 		opsNullString(input.ErrorOwner),
+		input.FinalOutcome,
+		input.Responsibility,
+		input.ErrorCategory,
+		input.CountsTowardSLA,
+		input.AlertFamily,
+		input.ClassificationReason,
+		input.ClassificationVersion,
 		opsNullableIntPointer(input.UpstreamStatusCode),
 		opsNullString(input.UpstreamErrorMessage),
 		opsNullString(input.UpstreamErrorDetail),
@@ -239,6 +253,13 @@ SELECT
   e.error_type,
   COALESCE(e.error_owner, ''),
   COALESCE(e.error_source, ''),
+	COALESCE(e.final_outcome, 'unknown_failed'),
+	COALESCE(e.responsibility, 'unknown'),
+	COALESCE(e.error_category, 'unknown'),
+	COALESCE(e.counts_toward_sla, true),
+	COALESCE(e.alert_family, 'unknown_failure'),
+	COALESCE(e.classification_reason, 'legacy_unclassified'),
+	COALESCE(e.classification_version, 1),
   e.severity,
   COALESCE(e.upstream_status_code, e.status_code, 0),
   COALESCE(e.platform, ''),
@@ -309,6 +330,13 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 			&item.Type,
 			&item.Owner,
 			&item.Source,
+			&item.FinalOutcome,
+			&item.Responsibility,
+			&item.ErrorCategory,
+			&item.CountsTowardSLA,
+			&item.AlertFamily,
+			&item.ClassificationReason,
+			&item.ClassificationVersion,
 			&item.Severity,
 			&statusCode,
 			&item.Platform,
@@ -410,6 +438,13 @@ SELECT
   e.error_type,
   COALESCE(e.error_owner, ''),
   COALESCE(e.error_source, ''),
+	COALESCE(e.final_outcome, 'unknown_failed'),
+	COALESCE(e.responsibility, 'unknown'),
+	COALESCE(e.error_category, 'unknown'),
+	COALESCE(e.counts_toward_sla, true),
+	COALESCE(e.alert_family, 'unknown_failure'),
+	COALESCE(e.classification_reason, 'legacy_unclassified'),
+	COALESCE(e.classification_version, 1),
   e.severity,
   COALESCE(e.upstream_status_code, e.status_code, 0),
   COALESCE(e.platform, ''),
@@ -484,6 +519,13 @@ LIMIT 1`
 		&out.Type,
 		&out.Owner,
 		&out.Source,
+		&out.FinalOutcome,
+		&out.Responsibility,
+		&out.ErrorCategory,
+		&out.CountsTowardSLA,
+		&out.AlertFamily,
+		&out.ClassificationReason,
+		&out.ClassificationVersion,
 		&out.Severity,
 		&statusCode,
 		&out.Platform,
@@ -959,22 +1001,22 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	}
 
 	// View filter: errors vs excluded vs all.
-	// Excluded = business-limited errors (quota/concurrency/billing).
-	// Upstream 429/529 are included in errors view to match SLA calculation.
+	// Actionable errors include SLA failures and compatibility regressions.
+	// User/business/cancel/security outcomes remain available in excluded/all.
 	view := ""
 	if filter != nil {
 		view = strings.ToLower(strings.TrimSpace(filter.View))
 	}
 	switch view {
 	case "", "errors":
-		clauses = append(clauses, "COALESCE(e.is_business_limited,false) = false")
+		clauses = append(clauses, "(COALESCE(e.counts_toward_sla,true) = true OR COALESCE(e.alert_family,'') = 'compatibility')")
 	case "excluded":
-		clauses = append(clauses, "COALESCE(e.is_business_limited,false) = true")
+		clauses = append(clauses, "COALESCE(e.counts_toward_sla,true) = false AND COALESCE(e.alert_family,'') <> 'compatibility'")
 	case "all":
 		// no-op
 	default:
 		// treat unknown as default 'errors'
-		clauses = append(clauses, "COALESCE(e.is_business_limited,false) = false")
+		clauses = append(clauses, "(COALESCE(e.counts_toward_sla,true) = true OR COALESCE(e.alert_family,'') = 'compatibility')")
 	}
 	if len(filter.StatusCodes) > 0 {
 		args = append(args, pq.Array(filter.StatusCodes))
@@ -1197,12 +1239,12 @@ func opsNullInt(v any) any {
 	case nil:
 		return sql.NullInt64{}
 	case *int:
-		if n == nil || *n == 0 {
+		if n == nil {
 			return sql.NullInt64{}
 		}
 		return sql.NullInt64{Int64: int64(*n), Valid: true}
 	case *int64:
-		if n == nil || *n == 0 {
+		if n == nil {
 			return sql.NullInt64{}
 		}
 		return sql.NullInt64{Int64: *n, Valid: true}

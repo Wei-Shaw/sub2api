@@ -24,6 +24,7 @@ type OpsRepository interface {
 	GetRealtimeTrafficSummary(ctx context.Context, filter *OpsDashboardFilter) (*OpsRealtimeTrafficSummary, error)
 
 	GetDashboardOverview(ctx context.Context, filter *OpsDashboardFilter) (*OpsDashboardOverview, error)
+	GetErrorClassificationStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsErrorClassificationStats, error)
 	GetThroughputTrend(ctx context.Context, filter *OpsDashboardFilter, bucketSeconds int) (*OpsThroughputTrendResponse, error)
 	GetLatencyHistogram(ctx context.Context, filter *OpsDashboardFilter) (*OpsLatencyHistogramResponse, error)
 	GetErrorTrend(ctx context.Context, filter *OpsDashboardFilter, bucketSeconds int) (*OpsErrorTrendResponse, error)
@@ -49,12 +50,19 @@ type OpsRepository interface {
 	CreateAlertEvent(ctx context.Context, event *OpsAlertEvent) (*OpsAlertEvent, error)
 	UpdateAlertEventStatus(ctx context.Context, eventID int64, status string, resolvedAt *time.Time) error
 	UpdateAlertEventEmailSent(ctx context.Context, eventID int64, emailSent bool) error
+	UpdateAlertEventEmailQueued(ctx context.Context, eventID int64, emailQueued bool) error
+	InsertAlertRuleEvaluation(ctx context.Context, evaluation *OpsAlertRuleEvaluation) error
+	ListLatestAlertRuleEvaluations(ctx context.Context) ([]*OpsAlertRuleEvaluation, error)
+	GetAlertRuleState(ctx context.Context, ruleID int64) (*OpsAlertRuleState, error)
+	UpsertAlertRuleState(ctx context.Context, state *OpsAlertRuleState) error
 
 	// Alert silences
 	CreateAlertSilence(ctx context.Context, input *OpsAlertSilence) (*OpsAlertSilence, error)
 	IsAlertSilenced(ctx context.Context, ruleID int64, platform string, groupID *int64, region *string, now time.Time) (bool, error)
 
 	// Pre-aggregation (hourly/daily) used for long-window dashboard performance.
+	InvalidateHourlyMetricsVersion(ctx context.Context, startTime, endTime time.Time, version int) error
+	InvalidateDailyMetricsVersion(ctx context.Context, startTime, endTime time.Time, version int) error
 	UpsertHourlyMetrics(ctx context.Context, startTime, endTime time.Time) error
 	UpsertDailyMetrics(ctx context.Context, startTime, endTime time.Time) error
 	GetLatestHourlyBucketStart(ctx context.Context) (time.Time, bool, error)
@@ -100,6 +108,16 @@ type OpsInsertErrorLogInput struct {
 
 	ErrorSource string
 	ErrorOwner  string
+
+	// Versioned, orthogonal classification used by availability and alerting.
+	// Legacy phase/owner/business fields remain populated for rollback compatibility.
+	FinalOutcome          string
+	Responsibility        string
+	ErrorCategory         string
+	CountsTowardSLA       bool
+	AlertFamily           string
+	ClassificationReason  string
+	ClassificationVersion int
 
 	UpstreamStatusCode   *int
 	UpstreamErrorMessage *string

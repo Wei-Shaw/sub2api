@@ -378,34 +378,35 @@ type ContentModerationDecision struct {
 }
 
 type ContentModerationLog struct {
-	ID                int64              `json:"id"`
-	RequestID         string             `json:"request_id"`
-	UserID            *int64             `json:"user_id,omitempty"`
-	UserEmail         string             `json:"user_email"`
-	APIKeyID          *int64             `json:"api_key_id,omitempty"`
-	APIKeyName        string             `json:"api_key_name"`
-	GroupID           *int64             `json:"group_id,omitempty"`
-	GroupName         string             `json:"group_name"`
-	Endpoint          string             `json:"endpoint"`
-	Provider          string             `json:"provider"`
-	Model             string             `json:"model"`
-	Mode              string             `json:"mode"`
-	Action            string             `json:"action"`
-	Flagged           bool               `json:"flagged"`
-	HighestCategory   string             `json:"highest_category"`
-	HighestScore      float64            `json:"highest_score"`
-	MatchedKeyword    string             `json:"matched_keyword"`
-	CategoryScores    map[string]float64 `json:"category_scores"`
-	ThresholdSnapshot map[string]float64 `json:"threshold_snapshot"`
-	InputExcerpt      string             `json:"input_excerpt"`
-	UpstreamLatencyMS *int               `json:"upstream_latency_ms,omitempty"`
-	Error             string             `json:"error"`
-	ViolationCount    int                `json:"violation_count"`
-	AutoBanned        bool               `json:"auto_banned"`
-	EmailSent         bool               `json:"email_sent"`
-	UserStatus        string             `json:"user_status"`
-	QueueDelayMS      *int               `json:"queue_delay_ms,omitempty"`
-	CreatedAt         time.Time          `json:"created_at"`
+	ID                  int64              `json:"id"`
+	RequestID           string             `json:"request_id"`
+	UserID              *int64             `json:"user_id,omitempty"`
+	UserEmail           string             `json:"user_email"`
+	APIKeyID            *int64             `json:"api_key_id,omitempty"`
+	APIKeyName          string             `json:"api_key_name"`
+	GroupID             *int64             `json:"group_id,omitempty"`
+	GroupName           string             `json:"group_name"`
+	Endpoint            string             `json:"endpoint"`
+	Provider            string             `json:"provider"`
+	Model               string             `json:"model"`
+	Mode                string             `json:"mode"`
+	Action              string             `json:"action"`
+	Flagged             bool               `json:"flagged"`
+	HighestCategory     string             `json:"highest_category"`
+	HighestScore        float64            `json:"highest_score"`
+	MatchedKeyword      string             `json:"matched_keyword"`
+	CategoryScores      map[string]float64 `json:"category_scores"`
+	ThresholdSnapshot   map[string]float64 `json:"threshold_snapshot"`
+	InputExcerpt        string             `json:"input_excerpt"`
+	UpstreamLatencyMS   *int               `json:"upstream_latency_ms,omitempty"`
+	Error               string             `json:"error"`
+	ViolationCount      int                `json:"violation_count"`
+	AutoBanned          bool               `json:"auto_banned"`
+	EmailSent           bool               `json:"email_sent"`
+	EmailDeliveryStatus string             `json:"email_delivery_status,omitempty"`
+	UserStatus          string             `json:"user_status"`
+	QueueDelayMS        *int               `json:"queue_delay_ms,omitempty"`
+	CreatedAt           time.Time          `json:"created_at"`
 }
 
 type ContentModerationLogFilter struct {
@@ -490,37 +491,44 @@ type ContentModerationHashCache interface {
 }
 
 type ContentModerationService struct {
-	settingRepo              SettingRepository
-	repo                     ContentModerationRepository
-	hashCache                ContentModerationHashCache
-	groupRepo                GroupRepository
-	userRepo                 UserRepository
-	authCacheInvalidator     APIKeyAuthCacheInvalidator
-	emailService             *EmailService
-	httpClient               *http.Client
-	asyncQueue               chan contentModerationTask
-	workerCount              int
-	apiKeyCursor             atomic.Uint64
-	asyncActive              atomic.Int64
-	asyncEnqueued            atomic.Int64
-	asyncDropped             atomic.Int64
-	asyncProcessed           atomic.Int64
-	asyncErrors              atomic.Int64
-	preBlockActive           atomic.Int64
-	preBlockChecked          atomic.Int64
-	preBlockAllowed          atomic.Int64
-	preBlockBlocked          atomic.Int64
-	preBlockErrors           atomic.Int64
-	preBlockLatencyTotalMS   atomic.Int64
-	lastCleanupUnix          atomic.Int64
-	lastCleanupDeletedHit    atomic.Int64
-	lastCleanupDeletedNonHit atomic.Int64
-	runtimeSnapshot          atomic.Pointer[contentModerationRuntimeSnapshot]
-	runtimeRefreshMu         sync.Mutex
-	runtimeCacheTTL          time.Duration
-	runtimeRefreshRetryAt    atomic.Int64
-	keyHealthMu              sync.Mutex
-	keyHealth                map[string]*contentModerationKeyHealth
+	settingRepo                 SettingRepository
+	repo                        ContentModerationRepository
+	hashCache                   ContentModerationHashCache
+	groupRepo                   GroupRepository
+	userRepo                    UserRepository
+	authCacheInvalidator        APIKeyAuthCacheInvalidator
+	emailService                *EmailService
+	notificationEmailDispatcher *NotificationEmailDispatcher
+	httpClient                  *http.Client
+	asyncQueue                  chan contentModerationTask
+	workerCount                 int
+	apiKeyCursor                atomic.Uint64
+	asyncActive                 atomic.Int64
+	asyncEnqueued               atomic.Int64
+	asyncDropped                atomic.Int64
+	asyncProcessed              atomic.Int64
+	asyncErrors                 atomic.Int64
+	preBlockActive              atomic.Int64
+	preBlockChecked             atomic.Int64
+	preBlockAllowed             atomic.Int64
+	preBlockBlocked             atomic.Int64
+	preBlockErrors              atomic.Int64
+	preBlockLatencyTotalMS      atomic.Int64
+	lastCleanupUnix             atomic.Int64
+	lastCleanupDeletedHit       atomic.Int64
+	lastCleanupDeletedNonHit    atomic.Int64
+	runtimeSnapshot             atomic.Pointer[contentModerationRuntimeSnapshot]
+	runtimeRefreshMu            sync.Mutex
+	runtimeCacheTTL             time.Duration
+	runtimeRefreshRetryAt       atomic.Int64
+	keyHealthMu                 sync.Mutex
+	keyHealth                   map[string]*contentModerationKeyHealth
+}
+
+func (s *ContentModerationService) SetNotificationEmailDispatcher(dispatcher *NotificationEmailDispatcher) {
+	if s != nil {
+		s.notificationEmailDispatcher = dispatcher
+	}
 }
 
 type contentModerationRuntimeSnapshot struct {
@@ -1796,12 +1804,14 @@ func (s *ContentModerationService) persistContentModerationLog(ctx context.Conte
 	autoBanJustApplied := false
 	if applySideEffects {
 		autoBanJustApplied = s.applyFlaggedAccountSideEffects(ctx, cfg, log)
-		s.sendFlaggedNotificationSideEffects(ctx, cfg, log, autoBanJustApplied)
 	}
 	if s.repo != nil {
 		if err := s.repo.CreateLog(ctx, log); err != nil {
 			slog.Warn("content_moderation.create_log_failed", "user_id", contentModerationEmailUserID(log), "endpoint", log.Endpoint, "action", log.Action, "error", err)
 			return
+		}
+		if applySideEffects {
+			s.sendFlaggedNotificationSideEffects(ctx, cfg, log, autoBanJustApplied)
 		}
 	}
 }
@@ -1850,75 +1860,59 @@ func (s *ContentModerationService) sendFlaggedNotificationSideEffects(ctx contex
 	if s == nil || cfg == nil || log == nil || !log.Flagged {
 		return
 	}
-	if s.emailService == nil || strings.TrimSpace(log.UserEmail) == "" {
+	if s.notificationEmailDispatcher == nil || strings.TrimSpace(log.UserEmail) == "" {
 		return
 	}
-	emailSent := false
+	emailQueued := false
 	if cfg.EmailOnHit {
 		if err := s.sendViolationEmail(ctx, cfg, log); err != nil {
 			slog.Warn("content_moderation.email_failed", "user_id", *log.UserID, "email", log.UserEmail, "error", err)
 		} else {
-			emailSent = true
+			emailQueued = true
 		}
 	}
 	if autoBanJustApplied {
 		if err := s.sendAccountDisabledEmail(ctx, cfg, log); err != nil {
 			slog.Warn("content_moderation.ban_email_failed", "user_id", *log.UserID, "email", log.UserEmail, "error", err)
 		} else {
-			emailSent = true
+			emailQueued = true
 		}
 	}
-	log.EmailSent = emailSent
+	if emailQueued {
+		log.EmailDeliveryStatus = NotificationEmailDeliveryStatusPending
+	}
 }
 
 func (s *ContentModerationService) sendViolationEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
-	siteName := s.siteName(ctx)
-	if s.emailService.notificationEmailService != nil {
-		if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
-			Event:          NotificationEmailEventContentModerationViolation,
-			RecipientEmail: log.UserEmail,
-			RecipientName:  emailRecipientName(log.UserEmail),
-			UserID:         contentModerationEmailUserID(log),
-			SourceType:     "content_moderation",
-			SourceID:       contentModerationEmailSourceID(log),
-			Variables:      contentModerationEmailVariables(log, cfg),
-		}); err == nil {
-			return nil
-		} else {
-			if !shouldFallbackNotificationEmail(err) {
-				return err
-			}
-			slog.Warn("template content moderation violation email failed; falling back to built-in body", "log_id", log.ID, "recipient_hash", notificationEmailHash(log.UserEmail), "err", err.Error())
-		}
+	if s.notificationEmailDispatcher == nil {
+		return errors.New("notification email dispatcher not configured")
 	}
-	subject := fmt.Sprintf("[%s] 账户风控提醒 / Risk Control Notice", sanitizeEmailHeader(siteName))
-	body := buildContentModerationViolationEmailBody(siteName, log, cfg)
-	return s.emailService.SendEmail(ctx, log.UserEmail, subject, body)
+	_, err := s.notificationEmailDispatcher.Enqueue(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventContentModerationViolation,
+		RecipientEmail: log.UserEmail,
+		RecipientName:  emailRecipientName(log.UserEmail),
+		UserID:         contentModerationEmailUserID(log),
+		SourceType:     "content_moderation",
+		SourceID:       contentModerationEmailSourceID(log),
+		Variables:      contentModerationEmailVariables(log, cfg),
+	})
+	return err
 }
 
 func (s *ContentModerationService) sendAccountDisabledEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
-	siteName := s.siteName(ctx)
-	if s.emailService.notificationEmailService != nil {
-		if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
-			Event:          NotificationEmailEventContentModerationDisabled,
-			RecipientEmail: log.UserEmail,
-			RecipientName:  emailRecipientName(log.UserEmail),
-			UserID:         contentModerationEmailUserID(log),
-			SourceType:     "content_moderation",
-			SourceID:       contentModerationEmailSourceID(log),
-			Variables:      contentModerationEmailVariables(log, cfg),
-		}); err == nil {
-			return nil
-		} else {
-			if !shouldFallbackNotificationEmail(err) {
-				return err
-			}
-			slog.Warn("template content moderation disabled email failed; falling back to built-in body", "log_id", log.ID, "recipient_hash", notificationEmailHash(log.UserEmail), "err", err.Error())
-		}
+	if s.notificationEmailDispatcher == nil {
+		return errors.New("notification email dispatcher not configured")
 	}
-	subject := fmt.Sprintf("[%s] 账户已被禁用 / Account Disabled", sanitizeEmailHeader(siteName))
-	body := buildContentModerationAccountDisabledEmailBody(siteName, log, cfg)
-	return s.emailService.SendEmail(ctx, log.UserEmail, subject, body)
+	_, err := s.notificationEmailDispatcher.Enqueue(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventContentModerationDisabled,
+		RecipientEmail: log.UserEmail,
+		RecipientName:  emailRecipientName(log.UserEmail),
+		UserID:         contentModerationEmailUserID(log),
+		SourceType:     "content_moderation",
+		SourceID:       contentModerationEmailSourceID(log),
+		Variables:      contentModerationEmailVariables(log, cfg),
+	})
+	return err
 }
 
 func contentModerationEmailUserID(log *ContentModerationLog) int64 {
@@ -2940,38 +2934,35 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 		logPersisted = false
 		slog.Warn("content_moderation.cyber_create_log_failed", "user_id", in.UserID, "error", err)
 	}
-	emailSent := false
-	if s.emailService != nil && strings.TrimSpace(log.UserEmail) != "" {
+	emailQueued := false
+	if s.notificationEmailDispatcher != nil && strings.TrimSpace(log.UserEmail) != "" {
 		if err := s.sendCyberPolicyEmail(ctx, log); err != nil {
 			slog.Warn("content_moderation.cyber_email_failed", "user_id", in.UserID, "error", err)
 		} else {
-			emailSent = true
+			emailQueued = true
 		}
 		if autoBanned {
 			if err := s.sendAccountDisabledEmail(ctx, cfg, log); err != nil {
 				slog.Warn("content_moderation.cyber_ban_email_failed", "user_id", in.UserID, "error", err)
 			} else {
-				emailSent = true
+				emailQueued = true
 			}
 		}
 	}
-	if logPersisted && emailSent {
-		if err := s.repo.UpdateLogEmailSent(ctx, log.ID, true); err != nil {
-			slog.Warn("content_moderation.cyber_update_email_sent_failed", "log_id", log.ID, "error", err)
-		}
+	if logPersisted && emailQueued {
+		log.EmailDeliveryStatus = NotificationEmailDeliveryStatusPending
 	}
 }
 
 func (s *ContentModerationService) sendCyberPolicyEmail(ctx context.Context, log *ContentModerationLog) error {
-	siteName := s.siteName(ctx)
-	if s.emailService.notificationEmailService != nil {
+	if s.notificationEmailDispatcher != nil {
 		variables := map[string]string{
 			"triggered_at":     log.CreatedAt.UTC().Format(time.RFC3339),
 			"model":            defaultContentModerationString(log.Model, "-"),
 			"group_name":       defaultContentModerationString(log.GroupName, "-"),
 			"upstream_message": defaultContentModerationString(log.Error, "-"),
 		}
-		err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+		_, err := s.notificationEmailDispatcher.Enqueue(ctx, NotificationEmailSendInput{
 			Event:          NotificationEmailEventCyberPolicyNotice,
 			RecipientEmail: log.UserEmail,
 			RecipientName:  emailRecipientName(log.UserEmail),
@@ -2980,14 +2971,7 @@ func (s *ContentModerationService) sendCyberPolicyEmail(ctx context.Context, log
 			SourceID:       contentModerationEmailSourceID(log),
 			Variables:      variables,
 		})
-		if err == nil {
-			return nil
-		}
-		if !shouldFallbackNotificationEmail(err) {
-			return err
-		}
-		slog.Warn("template cyber policy email failed; falling back", "err", err.Error())
+		return err
 	}
-	subject := fmt.Sprintf("[%s] 网络安全策略拦截 / Cyber Policy Notice", sanitizeEmailHeader(siteName))
-	return s.emailService.SendEmail(ctx, log.UserEmail, subject, buildCyberPolicyNoticeEmailBody(siteName, log))
+	return errors.New("notification email dispatcher not configured")
 }

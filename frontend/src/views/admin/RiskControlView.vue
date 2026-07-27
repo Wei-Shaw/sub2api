@@ -324,7 +324,7 @@
                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
                       <div>{{ violationCountText(row) }}</div>
                       <div class="text-xs text-gray-400">
-                        {{ row.email_sent ? t('admin.riskControl.emailSent') : t('admin.riskControl.emailNotSent') }}
+                        {{ emailDeliveryLabel(row) }}
                         <span v-if="row.auto_banned"> / {{ t('admin.riskControl.autoBanned') }}</span>
                       </div>
                       <button
@@ -2121,6 +2121,23 @@ function resultLabel(row: ContentModerationLog): string {
   if (row.action === 'error' || row.error) return t('admin.riskControl.action.error')
   if (row.flagged) return t('admin.riskControl.result.hit')
   return t('admin.riskControl.result.pass')
+}
+
+function emailDeliveryLabel(row: ContentModerationLog): string {
+  switch (row.email_delivery_status) {
+    case 'pending':
+    case 'processing':
+    case 'retry_wait':
+      return t('admin.riskControl.emailQueued')
+    case 'sent':
+      return t('admin.riskControl.emailSent')
+    case 'failed':
+      return t('admin.riskControl.emailFailed')
+    case 'suppressed':
+      return t('admin.riskControl.emailSuppressed')
+    default:
+      return row.email_sent ? t('admin.riskControl.emailSent') : t('admin.riskControl.emailNotSent')
+  }
 }
 
 function resultBadgeClass(row: ContentModerationLog): string {

@@ -315,8 +315,8 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 	}
 
 	// 发送验证码
-	if s.emailService == nil {
-		return errors.New("email service not configured")
+	if s.emailQueueService == nil {
+		return errors.New("email queue service not configured")
 	}
 
 	// 获取网站名称
@@ -325,7 +325,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 		siteName = s.settingService.GetSiteName(ctx)
 	}
 
-	return s.emailService.SendVerifyCode(ctx, email, siteName, firstEmailLocale(locale))
+	return s.emailQueueService.EnqueueVerifyCode(email, siteName, firstEmailLocale(locale))
 }
 
 // SendVerifyCodeAsync 异步发送邮箱验证码并返回倒计时
@@ -1359,7 +1359,7 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, email, frontendB
 	if !s.IsPasswordResetEnabled(ctx) {
 		return infraerrors.Forbidden("PASSWORD_RESET_DISABLED", "password reset is not enabled")
 	}
-	if s.emailService == nil {
+	if s.emailQueueService == nil {
 		return ErrServiceUnavailable
 	}
 
@@ -1368,7 +1368,7 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, email, frontendB
 		return nil // Silent success to prevent enumeration
 	}
 
-	if err := s.emailService.SendPasswordResetEmail(ctx, email, siteName, resetURL, firstEmailLocale(locale)); err != nil {
+	if err := s.emailQueueService.EnqueuePasswordReset(email, siteName, resetURL, firstEmailLocale(locale)); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to send password reset email to %s: %v", email, err)
 		return nil // Silent success to prevent enumeration
 	}

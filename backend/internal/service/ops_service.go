@@ -546,6 +546,37 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 		return nil, false, err
 	}
 
+	classification := ClassifyOpsError(OpsErrorClassificationInput{
+		StatusCode:         entry.StatusCode,
+		UpstreamStatusCode: entry.UpstreamStatusCode,
+		ErrorPhase:         entry.ErrorPhase,
+		ErrorType:          entry.ErrorType,
+		ErrorSource:        entry.ErrorSource,
+		ErrorOwner:         entry.ErrorOwner,
+		ErrorMessage:       entry.ErrorMessage,
+		IsBusinessLimited:  entry.IsBusinessLimited,
+	})
+	if entry.UpstreamErrorMessage != nil {
+		classification = ClassifyOpsError(OpsErrorClassificationInput{
+			StatusCode:         entry.StatusCode,
+			UpstreamStatusCode: entry.UpstreamStatusCode,
+			ErrorPhase:         entry.ErrorPhase,
+			ErrorType:          entry.ErrorType,
+			ErrorSource:        entry.ErrorSource,
+			ErrorOwner:         entry.ErrorOwner,
+			ErrorMessage:       entry.ErrorMessage,
+			UpstreamMessage:    *entry.UpstreamErrorMessage,
+			IsBusinessLimited:  entry.IsBusinessLimited,
+		})
+	}
+	entry.FinalOutcome = classification.FinalOutcome
+	entry.Responsibility = classification.Responsibility
+	entry.ErrorCategory = classification.ErrorCategory
+	entry.CountsTowardSLA = classification.CountsTowardSLA
+	entry.AlertFamily = classification.AlertFamily
+	entry.ClassificationReason = classification.ClassificationReason
+	entry.ClassificationVersion = classification.ClassificationVersion
+
 	return entry, true, nil
 }
 

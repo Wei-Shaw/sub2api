@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -232,12 +233,19 @@ type ChangePasswordRequest struct {
 
 // UserService 用户服务
 type UserService struct {
-	userRepo             UserRepository
-	settingRepo          SettingRepository
-	authCacheInvalidator APIKeyAuthCacheInvalidator
-	billingCache         BillingCache
-	lastActiveTouchL1    sync.Map
-	lastActiveTouchSF    singleflight.Group
+	userRepo                    UserRepository
+	settingRepo                 SettingRepository
+	authCacheInvalidator        APIKeyAuthCacheInvalidator
+	billingCache                BillingCache
+	notificationEmailDispatcher *NotificationEmailDispatcher
+	lastActiveTouchL1           sync.Map
+	lastActiveTouchSF           singleflight.Group
+}
+
+func (s *UserService) SetNotificationEmailDispatcher(dispatcher *NotificationEmailDispatcher) {
+	if s != nil {
+		s.notificationEmailDispatcher = dispatcher
+	}
 }
 
 // NewUserService 创建用户服务实例
@@ -1157,13 +1165,25 @@ func (s *UserService) SendNotifyEmailCode(ctx context.Context, userID int64, ema
 		return fmt.Errorf("generate code: %w", err)
 	}
 
-	// Send email first — if SMTP fails, don't write cache or increment counters,
-	// so the user is not locked out by cooldown/rate-limit for a code they never received.
-	if err := s.sendNotifyVerifyEmail(ctx, emailService, userID, email, code, firstEmailLocale(locale)); err != nil {
+	if err := saveNotifyVerifyCode(ctx, cache, email, code); err != nil {
 		return err
 	}
-
-	if err := saveNotifyVerifyCode(ctx, cache, email, code); err != nil {
+	if s.notificationEmailDispatcher == nil {
+		_ = cache.DeleteNotifyVerifyCode(context.WithoutCancel(ctx), email)
+		return errors.New("notification email dispatcher not configured")
+	}
+	queuedAt := time.Now().UTC()
+	_, err = s.notificationEmailDispatcher.Enqueue(ctx, NotificationEmailSendInput{
+		Event:  NotificationEmailEventNotificationEmailVerifyCode,
+		Locale: firstEmailLocale(locale), RecipientEmail: email, RecipientName: emailRecipientName(email),
+		UserID: userID, SourceType: "notification_email_verification",
+		SourceID:           fmt.Sprintf("%d:%s", userID, notificationEmailHash(email)),
+		ReminderKey:        queuedAt.Format(time.RFC3339Nano),
+		Variables:          map[string]string{"expires_in_minutes": strconv.Itoa(int(verifyCodeTTL / time.Minute))},
+		SensitiveVariables: map[string]string{"verification_code": code},
+	})
+	if err != nil {
+		_ = cache.DeleteNotifyVerifyCode(context.WithoutCancel(ctx), email)
 		return err
 	}
 
@@ -1202,39 +1222,6 @@ func saveNotifyVerifyCode(ctx context.Context, cache EmailCache, email, code str
 		return fmt.Errorf("save verify code: %w", err)
 	}
 	return nil
-}
-
-// sendNotifyVerifyEmail builds and sends the verification email.
-func (s *UserService) sendNotifyVerifyEmail(ctx context.Context, emailService *EmailService, userID int64, email, code, locale string) error {
-	siteName := "Sub2API"
-	if s.settingRepo != nil {
-		if name, err := s.settingRepo.GetValue(ctx, SettingKeySiteName); err == nil && name != "" {
-			siteName = name
-		}
-	}
-	if emailService.notificationEmailService != nil {
-		if err := emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
-			Event:          NotificationEmailEventNotificationEmailVerifyCode,
-			Locale:         locale,
-			RecipientEmail: email,
-			RecipientName:  emailRecipientName(email),
-			UserID:         userID,
-			Variables: map[string]string{
-				"verification_code":  code,
-				"expires_in_minutes": strconv.Itoa(int(verifyCodeTTL / time.Minute)),
-			},
-		}); err == nil {
-			return nil
-		} else {
-			if !shouldFallbackNotificationEmail(err) {
-				return err
-			}
-			slog.Warn("template notification email verification failed; falling back to built-in body", "recipient_hash", notificationEmailHash(email), "err", err.Error())
-		}
-	}
-	subject := fmt.Sprintf("[%s] 通知邮箱验证码 / Notification Email Verification", siteName)
-	body := buildNotifyVerifyEmailBody(code, siteName)
-	return emailService.SendEmail(ctx, email, subject, body)
 }
 
 // VerifyAndAddNotifyEmail verifies the code and adds the email to user's extra emails.
