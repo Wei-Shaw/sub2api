@@ -95,6 +95,11 @@ func Status(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
 }
 
+// IsEvaluation applies equality check predicate on the "is_evaluation" field. It's identical to IsEvaluationEQ.
+func IsEvaluation(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldIsEvaluation, v))
+}
+
 // LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
 func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
@@ -533,6 +538,16 @@ func StatusEqualFold(v string) predicate.APIKey {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// IsEvaluationEQ applies the EQ predicate on the "is_evaluation" field.
+func IsEvaluationEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldIsEvaluation, v))
+}
+
+// IsEvaluationNEQ applies the NEQ predicate on the "is_evaluation" field.
+func IsEvaluationNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldIsEvaluation, v))
 }
 
 // LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.
@@ -1186,6 +1201,29 @@ func HasUsageLogs() predicate.APIKey {
 func HasUsageLogsWith(preds ...predicate.UsageLog) predicate.APIKey {
 	return predicate.APIKey(func(s *sql.Selector) {
 		step := newUsageLogsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasEvaluationRouteEvidence applies the HasEdge predicate on the "evaluation_route_evidence" edge.
+func HasEvaluationRouteEvidence() predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, EvaluationRouteEvidenceTable, EvaluationRouteEvidenceColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasEvaluationRouteEvidenceWith applies the HasEdge predicate on the "evaluation_route_evidence" edge with a given conditions (other predicates).
+func HasEvaluationRouteEvidenceWith(preds ...predicate.EvaluationRouteEvidence) predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
+		step := newEvaluationRouteEvidenceStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

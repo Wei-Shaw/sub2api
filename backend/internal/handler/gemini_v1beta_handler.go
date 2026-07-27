@@ -383,6 +383,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		}
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		recordEvaluationRouteAttempt(c.Request.Context(), h.cfg, account, channelMapping.ChannelID, modelName)
 
 		// 检测账号切换：如果粘性会话绑定的账号与当前选择的账号不同，清除 thoughtSignature
 		// 注意：Gemini 原生 API 的 thoughtSignature 与具体上游账号强相关；跨账号透传会导致 400。
@@ -489,6 +490,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
+				recordEvaluationRouteFailover(c.Request.Context(), failoverErr)
 				failoverAction := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
 				switch failoverAction {
 				case FailoverContinue:

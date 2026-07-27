@@ -56,6 +56,14 @@ func TestAccountsParentAccountForeignKey(t *testing.T) {
 	require.Equal(t, entschema.Restrict, fk.OnDelete)
 }
 
+func TestEvaluationRouteEvidenceAPIKeyForeignKey(t *testing.T) {
+	fk := findForeignKeyByColumn(t, EvaluationRouteEvidenceTable, "api_key_id")
+	require.Len(t, fk.RefColumns, 1)
+	require.Equal(t, "id", fk.RefColumns[0].Name)
+	require.Equal(t, "api_keys", fk.RefTable.Name)
+	require.Equal(t, entschema.NoAction, fk.OnDelete)
+}
+
 func findForeignKeyBySymbol(t *testing.T, table *entschema.Table, symbol string) *entschema.ForeignKey {
 	t.Helper()
 

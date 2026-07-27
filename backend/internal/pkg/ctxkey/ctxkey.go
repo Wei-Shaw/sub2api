@@ -75,4 +75,7 @@ const (
 
 	// ClaudeCodeVersion stores the extracted Claude Code version from User-Agent (e.g. "2.1.22")
 	ClaudeCodeVersion Key = "ctx_claude_code_version"
+
+	// EvaluationContext contains server-verified radar evaluation identity.
+	EvaluationContext Key = "ctx_evaluation_context"
 )

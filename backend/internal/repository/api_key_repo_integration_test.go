@@ -125,6 +125,22 @@ func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesMessagesDispatchModelConf
 	s.Require().Equal("gpt-5.4-nano", got.Group.MessagesDispatchModelConfig.ExactModelMappings["claude-sonnet-4.5"])
 }
 
+func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesEvaluationFlag() {
+	user := s.mustCreateUser("getbykey-auth-evaluation@test.com")
+	key := &service.APIKey{
+		UserID:       user.ID,
+		Key:          "sk-getbykey-auth-evaluation",
+		Name:         "Evaluation Key",
+		Status:       service.StatusActive,
+		IsEvaluation: true,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, key))
+
+	got, err := s.repo.GetByKeyForAuth(s.ctx, key.Key)
+	s.Require().NoError(err)
+	s.Require().True(got.IsEvaluation)
+}
+
 // --- Update ---
 
 func (s *APIKeyRepoSuite) TestUpdate() {
@@ -148,6 +164,24 @@ func (s *APIKeyRepoSuite) TestUpdate() {
 	s.Require().Equal(user.ID, got.UserID, "Update should not change user_id")
 	s.Require().Equal("Renamed", got.Name)
 	s.Require().Equal(service.StatusDisabled, got.Status)
+}
+
+func (s *APIKeyRepoSuite) TestUpdate_PersistsEvaluationFlag() {
+	user := s.mustCreateUser("update-evaluation@test.com")
+	key := &service.APIKey{
+		UserID: user.ID,
+		Key:    "sk-update-evaluation",
+		Name:   "Evaluation Toggle",
+		Status: service.StatusActive,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, key))
+
+	key.IsEvaluation = true
+	s.Require().NoError(s.repo.Update(s.ctx, key))
+
+	got, err := s.repo.GetByID(s.ctx, key.ID)
+	s.Require().NoError(err)
+	s.Require().True(got.IsEvaluation)
 }
 
 func (s *APIKeyRepoSuite) TestUpdate_ClearGroupID() {

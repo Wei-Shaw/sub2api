@@ -31,6 +31,8 @@ const (
 	FieldGroupID = "group_id"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldIsEvaluation holds the string denoting the is_evaluation field in the database.
+	FieldIsEvaluation = "is_evaluation"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
 	FieldLastUsedAt = "last_used_at"
 	// FieldIPWhitelist holds the string denoting the ip_whitelist field in the database.
@@ -67,6 +69,10 @@ const (
 	EdgeGroup = "group"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
+	// EdgeEvaluationRouteEvidence holds the string denoting the evaluation_route_evidence edge name in mutations.
+	EdgeEvaluationRouteEvidence = "evaluation_route_evidence"
+	// EvaluationRouteEvidenceFieldID holds the string denoting the ID field of the EvaluationRouteEvidence.
+	EvaluationRouteEvidenceFieldID = "route_trace_id"
 	// Table holds the table name of the apikey in the database.
 	Table = "api_keys"
 	// UserTable is the table that holds the user relation/edge.
@@ -90,6 +96,13 @@ const (
 	UsageLogsInverseTable = "usage_logs"
 	// UsageLogsColumn is the table column denoting the usage_logs relation/edge.
 	UsageLogsColumn = "api_key_id"
+	// EvaluationRouteEvidenceTable is the table that holds the evaluation_route_evidence relation/edge.
+	EvaluationRouteEvidenceTable = "evaluation_route_evidence"
+	// EvaluationRouteEvidenceInverseTable is the table name for the EvaluationRouteEvidence entity.
+	// It exists in this package in order to avoid circular dependency with the "evaluationrouteevidence" package.
+	EvaluationRouteEvidenceInverseTable = "evaluation_route_evidence"
+	// EvaluationRouteEvidenceColumn is the table column denoting the evaluation_route_evidence relation/edge.
+	EvaluationRouteEvidenceColumn = "api_key_id"
 )
 
 // Columns holds all SQL columns for apikey fields.
@@ -103,6 +116,7 @@ var Columns = []string{
 	FieldName,
 	FieldGroupID,
 	FieldStatus,
+	FieldIsEvaluation,
 	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
@@ -152,6 +166,8 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultIsEvaluation holds the default value on creation for the "is_evaluation" field.
+	DefaultIsEvaluation bool
 	// DefaultQuota holds the default value on creation for the "quota" field.
 	DefaultQuota float64
 	// DefaultQuotaUsed holds the default value on creation for the "quota_used" field.
@@ -216,6 +232,11 @@ func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByIsEvaluation orders the results by the is_evaluation field.
+func ByIsEvaluation(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsEvaluation, opts...).ToFunc()
 }
 
 // ByLastUsedAt orders the results by the last_used_at field.
@@ -310,6 +331,20 @@ func ByUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newUsageLogsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByEvaluationRouteEvidenceCount orders the results by evaluation_route_evidence count.
+func ByEvaluationRouteEvidenceCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newEvaluationRouteEvidenceStep(), opts...)
+	}
+}
+
+// ByEvaluationRouteEvidence orders the results by evaluation_route_evidence terms.
+func ByEvaluationRouteEvidence(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newEvaluationRouteEvidenceStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -329,5 +364,12 @@ func newUsageLogsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UsageLogsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
+	)
+}
+func newEvaluationRouteEvidenceStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(EvaluationRouteEvidenceInverseTable, EvaluationRouteEvidenceFieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, EvaluationRouteEvidenceTable, EvaluationRouteEvidenceColumn),
 	)
 }

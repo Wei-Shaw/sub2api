@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -264,6 +265,40 @@ func TestHandleFailoverError_BasicSwitch(t *testing.T) {
 		require.Equal(t, 0, fs.SwitchCount)
 		require.Contains(t, fs.FailedAccountIDs, int64(100))
 	})
+}
+
+func TestRecordEvaluationRouteFailoverPreservesCredentialReason(t *testing.T) {
+	trace := service.NewRouteTrace(service.EvaluationContext{}, service.RouteTraceConfig{HashKey: []byte("route-evidence-test-key")})
+	trace.RecordAttempt(service.RouteAttempt{Provider: service.PlatformGrok, AccountID: 12, ResolvedModel: "grok-4", Region: "cn-east"})
+	ctx := service.WithRouteTrace(context.Background(), trace)
+
+	recordEvaluationRouteFailover(ctx, &service.UpstreamFailoverError{
+		Stage:         service.GatewayFailureStageAccountAuth,
+		Scope:         service.GatewayFailureScopeAccount,
+		Reason:        service.GrokCredentialReasonRevoked,
+		ClientMessage: "refresh_token=must-not-leak",
+	})
+
+	got := trace.Snapshot()
+	require.Equal(t, string(service.GrokCredentialReasonRevoked), got.FallbackChain[0].ErrorCode)
+}
+
+func TestRecordEvaluationRouteAttemptPreservesResolvedChannelIdentity(t *testing.T) {
+	const (
+		accountID = int64(12)
+		channelID = int64(4)
+	)
+	hashKey := []byte("route-evidence-test-key")
+	trace := service.NewRouteTrace(service.EvaluationContext{}, service.RouteTraceConfig{HashKey: hashKey})
+	ctx := service.WithRouteTrace(context.Background(), trace)
+	account := &service.Account{ID: accountID, Platform: service.PlatformAnthropic}
+
+	recordEvaluationRouteAttempt(ctx, &config.Config{}, account, channelID, "claude-sonnet-4")
+
+	snapshot := trace.Snapshot()
+	require.Len(t, snapshot.FallbackChain, 1)
+	require.Equal(t, service.RedactedResourceRef("account", accountID, hashKey), snapshot.FallbackChain[0].AccountPoolRef)
+	require.Equal(t, service.RedactedResourceRef("channel", channelID, hashKey), snapshot.FallbackChain[0].ChannelRef)
 }
 
 // ---------------------------------------------------------------------------

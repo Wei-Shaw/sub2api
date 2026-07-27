@@ -164,6 +164,44 @@ func TestAPIKeyRepository_CreateWithLastUsedAt(t *testing.T) {
 	require.WithinDuration(t, lastUsed, *got.LastUsedAt, time.Second)
 }
 
+func TestAPIKeyRepository_UpdatePersistsEvaluationFlag(t *testing.T) {
+	repo, client := newAPIKeyRepoSQLite(t)
+	ctx := context.Background()
+	user := mustCreateAPIKeyRepoUser(t, ctx, client, "update-evaluation-unit@test.com")
+	key := &service.APIKey{
+		UserID: user.ID,
+		Key:    "sk-update-evaluation-unit",
+		Name:   "Evaluation Toggle",
+		Status: service.StatusActive,
+	}
+	require.NoError(t, repo.Create(ctx, key))
+
+	key.IsEvaluation = true
+	require.NoError(t, repo.Update(ctx, key))
+
+	got, err := repo.GetByID(ctx, key.ID)
+	require.NoError(t, err)
+	require.True(t, got.IsEvaluation)
+}
+
+func TestAPIKeyRepository_GetByKeyForAuthPreservesEvaluationFlag(t *testing.T) {
+	repo, client := newAPIKeyRepoSQLite(t)
+	ctx := context.Background()
+	user := mustCreateAPIKeyRepoUser(t, ctx, client, "auth-evaluation-unit@test.com")
+	key := &service.APIKey{
+		UserID:       user.ID,
+		Key:          "sk-auth-evaluation-unit",
+		Name:         "Evaluation Auth",
+		Status:       service.StatusActive,
+		IsEvaluation: true,
+	}
+	require.NoError(t, repo.Create(ctx, key))
+
+	got, err := repo.GetByKeyForAuth(ctx, key.Key)
+	require.NoError(t, err)
+	require.True(t, got.IsEvaluation)
+}
+
 func TestAPIKeyRepository_UpdateLastUsed(t *testing.T) {
 	repo, client := newAPIKeyRepoSQLite(t)
 	ctx := context.Background()

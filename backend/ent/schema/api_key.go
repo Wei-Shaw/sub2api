@@ -47,6 +47,9 @@ func (APIKey) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.Bool("is_evaluation").
+			Default(false).
+			Comment("Whether this key is dedicated to signed radar evaluation traffic"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().
@@ -130,6 +133,7 @@ func (APIKey) Edges() []ent.Edge {
 			Field("group_id").
 			Unique(),
 		edge.To("usage_logs", UsageLog.Type),
+		edge.To("evaluation_route_evidence", EvaluationRouteEvidence.Type),
 	}
 }
 

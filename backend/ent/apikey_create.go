@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/evaluationrouteevidence"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -109,6 +110,20 @@ func (_c *APIKeyCreate) SetStatus(v string) *APIKeyCreate {
 func (_c *APIKeyCreate) SetNillableStatus(v *string) *APIKeyCreate {
 	if v != nil {
 		_c.SetStatus(*v)
+	}
+	return _c
+}
+
+// SetIsEvaluation sets the "is_evaluation" field.
+func (_c *APIKeyCreate) SetIsEvaluation(v bool) *APIKeyCreate {
+	_c.mutation.SetIsEvaluation(v)
+	return _c
+}
+
+// SetNillableIsEvaluation sets the "is_evaluation" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableIsEvaluation(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetIsEvaluation(*v)
 	}
 	return _c
 }
@@ -332,6 +347,21 @@ func (_c *APIKeyCreate) AddUsageLogs(v ...*UsageLog) *APIKeyCreate {
 	return _c.AddUsageLogIDs(ids...)
 }
 
+// AddEvaluationRouteEvidenceIDs adds the "evaluation_route_evidence" edge to the EvaluationRouteEvidence entity by IDs.
+func (_c *APIKeyCreate) AddEvaluationRouteEvidenceIDs(ids ...string) *APIKeyCreate {
+	_c.mutation.AddEvaluationRouteEvidenceIDs(ids...)
+	return _c
+}
+
+// AddEvaluationRouteEvidence adds the "evaluation_route_evidence" edges to the EvaluationRouteEvidence entity.
+func (_c *APIKeyCreate) AddEvaluationRouteEvidence(v ...*EvaluationRouteEvidence) *APIKeyCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddEvaluationRouteEvidenceIDs(ids...)
+}
+
 // Mutation returns the APIKeyMutation object of the builder.
 func (_c *APIKeyCreate) Mutation() *APIKeyMutation {
 	return _c.mutation
@@ -386,6 +416,10 @@ func (_c *APIKeyCreate) defaults() error {
 	if _, ok := _c.mutation.Status(); !ok {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
+	}
+	if _, ok := _c.mutation.IsEvaluation(); !ok {
+		v := apikey.DefaultIsEvaluation
+		_c.mutation.SetIsEvaluation(v)
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
@@ -456,6 +490,9 @@ func (_c *APIKeyCreate) check() error {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.IsEvaluation(); !ok {
+		return &ValidationError{Name: "is_evaluation", err: errors.New(`ent: missing required field "APIKey.is_evaluation"`)}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		return &ValidationError{Name: "quota", err: errors.New(`ent: missing required field "APIKey.quota"`)}
@@ -534,6 +571,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.IsEvaluation(); ok {
+		_spec.SetField(apikey.FieldIsEvaluation, field.TypeBool, value)
+		_node.IsEvaluation = value
 	}
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -638,6 +679,22 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.EvaluationRouteEvidenceIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.EvaluationRouteEvidenceTable,
+			Columns: []string{apikey.EvaluationRouteEvidenceColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(evaluationrouteevidence.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {
@@ -790,6 +847,18 @@ func (u *APIKeyUpsert) SetStatus(v string) *APIKeyUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateStatus() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldStatus)
+	return u
+}
+
+// SetIsEvaluation sets the "is_evaluation" field.
+func (u *APIKeyUpsert) SetIsEvaluation(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldIsEvaluation, v)
+	return u
+}
+
+// UpdateIsEvaluation sets the "is_evaluation" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateIsEvaluation() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldIsEvaluation)
 	return u
 }
 
@@ -1217,6 +1286,20 @@ func (u *APIKeyUpsertOne) SetStatus(v string) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateStatus() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetIsEvaluation sets the "is_evaluation" field.
+func (u *APIKeyUpsertOne) SetIsEvaluation(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetIsEvaluation(v)
+	})
+}
+
+// UpdateIsEvaluation sets the "is_evaluation" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateIsEvaluation() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateIsEvaluation()
 	})
 }
 
@@ -1855,6 +1938,20 @@ func (u *APIKeyUpsertBulk) SetStatus(v string) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateStatus() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetIsEvaluation sets the "is_evaluation" field.
+func (u *APIKeyUpsertBulk) SetIsEvaluation(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetIsEvaluation(v)
+	})
+}
+
+// UpdateIsEvaluation sets the "is_evaluation" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateIsEvaluation() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateIsEvaluation()
 	})
 }
 

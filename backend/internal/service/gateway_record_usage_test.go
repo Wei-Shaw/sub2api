@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -64,6 +65,37 @@ type openAIRecordUsageBestEffortLogRepoStub struct {
 	createCalls     int
 	lastLog         *UsageLog
 	lastCtxErr      error
+}
+
+func TestGatewayServiceRecordUsage_AttachesFinalizedBillingEvidenceBestEffort(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	evidenceRepo := &recordUsageEvidenceRepoStub{err: errors.New("evidence unavailable")}
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	ttft := 123
+	beforeFailures := EvaluationEvidencePersistenceFailureCount()
+
+	err := svc.RecordUsage(evaluationRecordUsageContext(evidenceRepo, "trace-gateway-usage"), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_evidence", Usage: ClaudeUsage{InputTokens: 10, OutputTokens: 6},
+			Model: "claude-sonnet-4", Duration: 1250 * time.Millisecond, FirstTokenMs: &ttft,
+		},
+		APIKey: &APIKey{ID: 501, Quota: 100}, User: &User{ID: 601}, Account: &Account{ID: 701},
+	})
+
+	require.NoError(t, err, "evidence persistence must not change billing behavior")
+	require.Equal(t, 1, billingRepo.calls)
+	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 1, evidenceRepo.attachCalls)
+	require.Equal(t, "trace-gateway-usage", evidenceRepo.traceID)
+	require.Equal(t, 10, evidenceRepo.usage.InputTokens)
+	require.Equal(t, 6, evidenceRepo.usage.OutputTokens)
+	require.Equal(t, &ttft, evidenceRepo.usage.TTFT)
+	require.Equal(t, 1250, *evidenceRepo.usage.Latency)
+	require.Equal(t, decimal.NewFromFloat(usageRepo.lastLog.ActualCost), evidenceRepo.usage.BilledAmount)
+	require.Empty(t, evidenceRepo.usage.FinishReason)
+	require.NoError(t, evidenceRepo.lastCtxErr)
+	require.Equal(t, beforeFailures+1, EvaluationEvidencePersistenceFailureCount())
 }
 
 func (s *openAIRecordUsageBestEffortLogRepoStub) CreateBestEffort(ctx context.Context, log *UsageLog) error {

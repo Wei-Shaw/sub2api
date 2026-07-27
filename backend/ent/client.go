@@ -31,6 +31,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
+	"github.com/Wei-Shaw/sub2api/ent/evaluationrouteevidence"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
@@ -95,6 +96,8 @@ type Client struct {
 	CompositeModelRoute *CompositeModelRouteClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
+	// EvaluationRouteEvidence is the client for interacting with the EvaluationRouteEvidence builders.
+	EvaluationRouteEvidence *EvaluationRouteEvidenceClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
 	// IdempotencyRecord is the client for interacting with the IdempotencyRecord builders.
@@ -168,6 +171,7 @@ func (c *Client) init() {
 	c.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(c.config)
 	c.CompositeModelRoute = NewCompositeModelRouteClient(c.config)
 	c.ErrorPassthroughRule = NewErrorPassthroughRuleClient(c.config)
+	c.EvaluationRouteEvidence = NewEvaluationRouteEvidenceClient(c.config)
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
 	c.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(c.config)
@@ -299,6 +303,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
 		CompositeModelRoute:           NewCompositeModelRouteClient(cfg),
 		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
+		EvaluationRouteEvidence:       NewEvaluationRouteEvidenceClient(cfg),
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
@@ -357,6 +362,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
 		CompositeModelRoute:           NewCompositeModelRouteClient(cfg),
 		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
+		EvaluationRouteEvidence:       NewEvaluationRouteEvidenceClient(cfg),
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
@@ -413,12 +419,12 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
 		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
 		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
-		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.CompositeModelRoute, c.ErrorPassthroughRule, c.EvaluationRouteEvidence,
+		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
@@ -433,12 +439,12 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
 		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
 		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
-		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.CompositeModelRoute, c.ErrorPassthroughRule, c.EvaluationRouteEvidence,
+		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
@@ -480,6 +486,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.CompositeModelRoute.mutate(ctx, m)
 	case *ErrorPassthroughRuleMutation:
 		return c.ErrorPassthroughRule.mutate(ctx, m)
+	case *EvaluationRouteEvidenceMutation:
+		return c.EvaluationRouteEvidence.mutate(ctx, m)
 	case *GroupMutation:
 		return c.Group.mutate(ctx, m)
 	case *IdempotencyRecordMutation:
@@ -680,6 +688,22 @@ func (c *APIKeyClient) QueryUsageLogs(_m *APIKey) *UsageLogQuery {
 			sqlgraph.From(apikey.Table, apikey.FieldID, id),
 			sqlgraph.To(usagelog.Table, usagelog.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, apikey.UsageLogsTable, apikey.UsageLogsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryEvaluationRouteEvidence queries the evaluation_route_evidence edge of a APIKey.
+func (c *APIKeyClient) QueryEvaluationRouteEvidence(_m *APIKey) *EvaluationRouteEvidenceQuery {
+	query := (&EvaluationRouteEvidenceClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(apikey.Table, apikey.FieldID, id),
+			sqlgraph.To(evaluationrouteevidence.Table, evaluationrouteevidence.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, apikey.EvaluationRouteEvidenceTable, apikey.EvaluationRouteEvidenceColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -3013,6 +3037,155 @@ func (c *ErrorPassthroughRuleClient) mutate(ctx context.Context, m *ErrorPassthr
 		return (&ErrorPassthroughRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ErrorPassthroughRule mutation op: %q", m.Op())
+	}
+}
+
+// EvaluationRouteEvidenceClient is a client for the EvaluationRouteEvidence schema.
+type EvaluationRouteEvidenceClient struct {
+	config
+}
+
+// NewEvaluationRouteEvidenceClient returns a client for the EvaluationRouteEvidence from the given config.
+func NewEvaluationRouteEvidenceClient(c config) *EvaluationRouteEvidenceClient {
+	return &EvaluationRouteEvidenceClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `evaluationrouteevidence.Hooks(f(g(h())))`.
+func (c *EvaluationRouteEvidenceClient) Use(hooks ...Hook) {
+	c.hooks.EvaluationRouteEvidence = append(c.hooks.EvaluationRouteEvidence, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `evaluationrouteevidence.Intercept(f(g(h())))`.
+func (c *EvaluationRouteEvidenceClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EvaluationRouteEvidence = append(c.inters.EvaluationRouteEvidence, interceptors...)
+}
+
+// Create returns a builder for creating a EvaluationRouteEvidence entity.
+func (c *EvaluationRouteEvidenceClient) Create() *EvaluationRouteEvidenceCreate {
+	mutation := newEvaluationRouteEvidenceMutation(c.config, OpCreate)
+	return &EvaluationRouteEvidenceCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EvaluationRouteEvidence entities.
+func (c *EvaluationRouteEvidenceClient) CreateBulk(builders ...*EvaluationRouteEvidenceCreate) *EvaluationRouteEvidenceCreateBulk {
+	return &EvaluationRouteEvidenceCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EvaluationRouteEvidenceClient) MapCreateBulk(slice any, setFunc func(*EvaluationRouteEvidenceCreate, int)) *EvaluationRouteEvidenceCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EvaluationRouteEvidenceCreateBulk{err: fmt.Errorf("calling to EvaluationRouteEvidenceClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EvaluationRouteEvidenceCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EvaluationRouteEvidenceCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EvaluationRouteEvidence.
+func (c *EvaluationRouteEvidenceClient) Update() *EvaluationRouteEvidenceUpdate {
+	mutation := newEvaluationRouteEvidenceMutation(c.config, OpUpdate)
+	return &EvaluationRouteEvidenceUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EvaluationRouteEvidenceClient) UpdateOne(_m *EvaluationRouteEvidence) *EvaluationRouteEvidenceUpdateOne {
+	mutation := newEvaluationRouteEvidenceMutation(c.config, OpUpdateOne, withEvaluationRouteEvidence(_m))
+	return &EvaluationRouteEvidenceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EvaluationRouteEvidenceClient) UpdateOneID(id string) *EvaluationRouteEvidenceUpdateOne {
+	mutation := newEvaluationRouteEvidenceMutation(c.config, OpUpdateOne, withEvaluationRouteEvidenceID(id))
+	return &EvaluationRouteEvidenceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EvaluationRouteEvidence.
+func (c *EvaluationRouteEvidenceClient) Delete() *EvaluationRouteEvidenceDelete {
+	mutation := newEvaluationRouteEvidenceMutation(c.config, OpDelete)
+	return &EvaluationRouteEvidenceDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EvaluationRouteEvidenceClient) DeleteOne(_m *EvaluationRouteEvidence) *EvaluationRouteEvidenceDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EvaluationRouteEvidenceClient) DeleteOneID(id string) *EvaluationRouteEvidenceDeleteOne {
+	builder := c.Delete().Where(evaluationrouteevidence.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EvaluationRouteEvidenceDeleteOne{builder}
+}
+
+// Query returns a query builder for EvaluationRouteEvidence.
+func (c *EvaluationRouteEvidenceClient) Query() *EvaluationRouteEvidenceQuery {
+	return &EvaluationRouteEvidenceQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEvaluationRouteEvidence},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EvaluationRouteEvidence entity by its id.
+func (c *EvaluationRouteEvidenceClient) Get(ctx context.Context, id string) (*EvaluationRouteEvidence, error) {
+	return c.Query().Where(evaluationrouteevidence.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EvaluationRouteEvidenceClient) GetX(ctx context.Context, id string) *EvaluationRouteEvidence {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryAPIKey queries the api_key edge of a EvaluationRouteEvidence.
+func (c *EvaluationRouteEvidenceClient) QueryAPIKey(_m *EvaluationRouteEvidence) *APIKeyQuery {
+	query := (&APIKeyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(evaluationrouteevidence.Table, evaluationrouteevidence.FieldID, id),
+			sqlgraph.To(apikey.Table, apikey.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, evaluationrouteevidence.APIKeyTable, evaluationrouteevidence.APIKeyColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *EvaluationRouteEvidenceClient) Hooks() []Hook {
+	return c.hooks.EvaluationRouteEvidence
+}
+
+// Interceptors returns the client interceptors.
+func (c *EvaluationRouteEvidenceClient) Interceptors() []Interceptor {
+	return c.inters.EvaluationRouteEvidence
+}
+
+func (c *EvaluationRouteEvidenceClient) mutate(ctx context.Context, m *EvaluationRouteEvidenceMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EvaluationRouteEvidenceCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EvaluationRouteEvidenceUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EvaluationRouteEvidenceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EvaluationRouteEvidenceDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EvaluationRouteEvidence mutation op: %q", m.Op())
 	}
 }
 
@@ -6828,8 +7001,8 @@ type (
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
 		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, CompositeModelRoute,
-		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
+		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
+		EvaluationRouteEvidence, Group, IdempotencyRecord, IdentityAdoptionDecision,
 		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
 		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
 		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
@@ -6840,8 +7013,8 @@ type (
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
 		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, CompositeModelRoute,
-		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
+		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
+		EvaluationRouteEvidence, Group, IdempotencyRecord, IdentityAdoptionDecision,
 		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
 		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
 		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,

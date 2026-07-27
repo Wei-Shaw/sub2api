@@ -46,6 +46,8 @@ type Tx struct {
 	CompositeModelRoute *CompositeModelRouteClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
+	// EvaluationRouteEvidence is the client for interacting with the EvaluationRouteEvidence builders.
+	EvaluationRouteEvidence *EvaluationRouteEvidenceClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
 	// IdempotencyRecord is the client for interacting with the IdempotencyRecord builders.
@@ -239,6 +241,7 @@ func (tx *Tx) init() {
 	tx.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(tx.config)
 	tx.CompositeModelRoute = NewCompositeModelRouteClient(tx.config)
 	tx.ErrorPassthroughRule = NewErrorPassthroughRuleClient(tx.config)
+	tx.EvaluationRouteEvidence = NewEvaluationRouteEvidenceClient(tx.config)
 	tx.Group = NewGroupClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)
 	tx.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(tx.config)

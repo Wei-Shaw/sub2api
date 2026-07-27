@@ -1,11 +1,13 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -47,6 +49,9 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 			})
 			c.Next()
 		}),
+		servermiddleware.EvaluationEvidenceMiddleware(func(c *gin.Context) {
+			c.Next()
+		}),
 		nil,
 		nil,
 		nil,
@@ -56,6 +61,139 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 	)
 
 	return router
+}
+
+type gatewayRouteOrderAPIKeyRepo struct {
+	service.APIKeyRepository
+	apiKey *service.APIKey
+}
+
+func (r *gatewayRouteOrderAPIKeyRepo) GetByKeyForAuth(_ context.Context, key string) (*service.APIKey, error) {
+	if r.apiKey == nil || key != r.apiKey.Key {
+		return nil, service.ErrAPIKeyNotFound
+	}
+	clone := *r.apiKey
+	return &clone, nil
+}
+
+func (r *gatewayRouteOrderAPIKeyRepo) UpdateLastUsed(context.Context, int64, time.Time) error {
+	return nil
+}
+
+func TestGatewayRoutesRunEvaluationEvidenceAfterAuthenticationForEveryGatewayFamily(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const apiKeyValue = "sk-route-order-evaluation"
+	const apiKeyID int64 = 601
+	groupID := int64(41)
+	secret := strings.Repeat("s", 32)
+	cfg := &config.Config{
+		RunMode: config.RunModeSimple,
+		Gateway: config.GatewayConfig{
+			MaxBodySize:     1024 * 1024,
+			TextMaxBodySize: 1024 * 1024,
+		},
+		Radar: config.RadarConfig{
+			Enabled:              true,
+			SigningSecret:        secret,
+			HashingSecret:        strings.Repeat("h", 32),
+			MaxContextTTLSeconds: 300,
+			Region:               "cn-east",
+			RouteProfileVersion:  "route-v42",
+		},
+	}
+	apiKey := &service.APIKey{
+		ID: apiKeyID, UserID: 71, Key: apiKeyValue, GroupID: &groupID,
+		Status: service.StatusActive, IsEvaluation: true,
+		User: &service.User{
+			ID: 71, Role: service.RoleUser, Status: service.StatusActive,
+			Balance: 10, Concurrency: 1,
+		},
+		Group: &service.Group{
+			ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive,
+		},
+	}
+	apiKeyService := service.NewAPIKeyService(
+		&gatewayRouteOrderAPIKeyRepo{apiKey: apiKey}, nil, nil, nil, nil, nil, cfg,
+	)
+	auth := servermiddleware.NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)
+
+	signer, err := service.NewEvaluationContextSigner([]byte(secret), 5*time.Minute)
+	require.NoError(t, err)
+	now := time.Now().UTC()
+	token, err := signer.Sign(service.EvaluationContext{
+		RunID:                "018f4f20-3d12-7e50-9000-000000000601",
+		SampleID:             "018f4f20-3d12-7e50-9000-000000000602",
+		DatasetVersion:       "dataset-v1",
+		ExpectedModelAlias:   "public-coder",
+		ExpectedRouteProfile: "route-v42",
+		APIKeyID:             apiKeyID,
+		IssuedAt:             now.Add(-time.Second),
+		ExpiresAt:            now.Add(2 * time.Minute),
+	})
+	require.NoError(t, err)
+
+	var evidenceCalls int
+	evidence := servermiddleware.EvaluationEvidenceMiddleware(func(c *gin.Context) {
+		evaluation, hasEvaluation := service.EvaluationContextFromContext(c.Request.Context())
+		trace, hasTrace := service.RouteTraceFromContext(c.Request.Context())
+		require.True(t, hasEvaluation, "evidence middleware must run after signed evaluation auth")
+		require.Equal(t, apiKeyID, evaluation.APIKeyID)
+		require.True(t, hasTrace)
+		require.NotNil(t, trace)
+		evidenceCalls++
+		c.AbortWithStatus(http.StatusNoContent)
+	})
+
+	router := gin.New()
+	RegisterGatewayRoutes(
+		router,
+		&handler.Handlers{
+			Gateway:       &handler.GatewayHandler{},
+			OpenAIGateway: &handler.OpenAIGatewayHandler{},
+			AsyncImage:    handler.NewAsyncImageHandler(nil, nil),
+		},
+		auth,
+		evidence,
+		apiKeyService,
+		nil,
+		nil,
+		nil,
+		nil,
+		cfg,
+	)
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		google bool
+	}{
+		{name: "versioned gateway", method: http.MethodPost, path: "/v1/messages"},
+		{name: "google compatible", method: http.MethodPost, path: "/v1beta/models/gemini-public:generateContent", google: true},
+		{name: "root alias", method: http.MethodPost, path: "/responses"},
+		{name: "codex direct", method: http.MethodPost, path: "/backend-api/codex/responses"},
+		{name: "chat alias", method: http.MethodPost, path: "/chat/completions"},
+		{name: "antigravity versioned", method: http.MethodPost, path: "/antigravity/v1/messages"},
+		{name: "antigravity google", method: http.MethodPost, path: "/antigravity/v1beta/models/gemini-public:generateContent", google: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(test.method, test.path, strings.NewReader(`{"model":"public-coder"}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Sub2API-Evaluation-Token", token)
+			if test.google {
+				req.Header.Set("x-goog-api-key", apiKeyValue)
+			} else {
+				req.Header.Set("Authorization", "Bearer "+apiKeyValue)
+			}
+			response := httptest.NewRecorder()
+
+			router.ServeHTTP(response, req)
+
+			require.Equal(t, http.StatusNoContent, response.Code)
+		})
+	}
+	require.Equal(t, len(tests), evidenceCalls)
 }
 
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
