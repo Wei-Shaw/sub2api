@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -15,7 +15,7 @@ type gatewayCache struct {
 	rdb *redis.Client
 }
 
-func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
+func NewGatewayCache(rdb *redis.Client) cache.GatewayCache {
 	return &gatewayCache{rdb: rdb}
 }
 
@@ -53,7 +53,7 @@ func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64
 }
 
 // Compile-time assertion: gatewayCache must implement CyberSessionBlockStore.
-var _ service.CyberSessionBlockStore = (*gatewayCache)(nil)
+var _ cache.CyberSessionBlockStore = (*gatewayCache)(nil)
 
 const cyberSessionBlockPrefix = "cyber_session_block:"
 

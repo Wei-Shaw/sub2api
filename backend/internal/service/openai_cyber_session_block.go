@@ -7,16 +7,14 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	portcache "github.com/Wei-Shaw/sub2api/internal/port/cache"
 	"github.com/gin-gonic/gin"
 )
 
 // CyberSessionBlockStore 是 cyber 会话屏蔽表的存取接口。
 // repository 层 gatewayCache 附带实现（类型断言探测接入，不改 GatewayCache
 // 共享接口）；测试 stub 不实现时屏蔽能力自动降级关闭。
-type CyberSessionBlockStore interface {
-	SetCyberSessionBlocked(ctx context.Context, key string, ttl time.Duration) error
-	IsCyberSessionBlocked(ctx context.Context, key string) (bool, error)
-}
+type CyberSessionBlockStore = portcache.CyberSessionBlockStore
 
 // CyberSessionBlockKey 派生会话屏蔽 key：仅用显式会话标识（header
 // session_id/conversation_id 或 body prompt_cache_key），混入 apiKeyID 隔离后

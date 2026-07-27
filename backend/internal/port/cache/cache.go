@@ -348,3 +348,34 @@ type PendingOAuthBindLoginSession struct {
 	PendingSessionToken string `json:"pending_session_token,omitempty"`
 	BrowserSessionKey   string `json:"browser_session_key,omitempty"`
 }
+
+// UserRPMCache 用户/分组级 RPM 计数器接口。
+// 按用户或 (用户, 分组) 聚合，杜绝"同一用户创建多个 API Key 绕过 RPM"的路径。
+type UserRPMCache interface {
+	// IncrementUserGroupRPM 原子递增 (user, group) 级分钟计数并返回最新值。
+	IncrementUserGroupRPM(ctx context.Context, userID, groupID int64) (count int, err error)
+	// IncrementUserRPM 原子递增用户级分钟计数并返回最新值。
+	IncrementUserRPM(ctx context.Context, userID int64) (count int, err error)
+	// GetUserGroupRPM 获取 (user, group) 当前分钟已用 RPM（只读，不递增）。
+	GetUserGroupRPM(ctx context.Context, userID, groupID int64) (count int, err error)
+	// GetUserRPM 获取用户当前分钟已用 RPM（只读，不递增）。
+	GetUserRPM(ctx context.Context, userID int64) (count int, err error)
+}
+
+// GatewayCache 管理粘性会话与账号的绑定关系。
+type GatewayCache interface {
+	// GetSessionAccountID 获取粘性会话绑定的账号 ID。
+	GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error)
+	// SetSessionAccountID 设置粘性会话与账号的绑定关系。
+	SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error
+	// RefreshSessionTTL 刷新粘性会话的过期时间。
+	RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error
+	// DeleteSessionAccountID 删除粘性会话绑定（账号不可用时主动清理）。
+	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
+}
+
+// CyberSessionBlockStore 记录被 cyber_policy 命中的会话屏蔽（TTL 自动过期）。
+type CyberSessionBlockStore interface {
+	SetCyberSessionBlocked(ctx context.Context, key string, ttl time.Duration) error
+	IsCyberSessionBlocked(ctx context.Context, key string) (bool, error)
+}

@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/responseheaders"
+	portcache "github.com/Wei-Shaw/sub2api/internal/port/cache"
 	"github.com/cespare/xxhash/v2"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/tidwall/gjson"
@@ -433,20 +434,7 @@ var allowedHeaders = map[string]bool{
 //
 // GatewayCache defines cache operations for gateway service.
 // Provides sticky session storage, retrieval, refresh and deletion capabilities.
-type GatewayCache interface {
-	// GetSessionAccountID 获取粘性会话绑定的账号 ID
-	// Get the account ID bound to a sticky session
-	GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error)
-	// SetSessionAccountID 设置粘性会话与账号的绑定关系
-	// Set the binding between sticky session and account
-	SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error
-	// RefreshSessionTTL 刷新粘性会话的过期时间
-	// Refresh the expiration time of a sticky session
-	RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error
-	// DeleteSessionAccountID 删除粘性会话绑定，用于账号不可用时主动清理
-	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
-	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
-}
+type GatewayCache = portcache.GatewayCache
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
 func derefGroupID(groupID *int64) int64 {

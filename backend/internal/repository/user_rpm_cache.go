@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -29,7 +29,7 @@ type userRPMCacheImpl struct {
 }
 
 // NewUserRPMCache 创建用户/分组级 RPM 计数器。
-func NewUserRPMCache(rdb *redis.Client) service.UserRPMCache {
+func NewUserRPMCache(rdb *redis.Client) cache.UserRPMCache {
 	return &userRPMCacheImpl{rdb: rdb}
 }
 
