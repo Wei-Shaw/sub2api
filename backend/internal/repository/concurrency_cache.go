@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/concurrency"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -303,7 +304,7 @@ type concurrencyCache struct {
 // NewConcurrencyCache 创建并发控制缓存
 // slotTTLMinutes: 槽位过期时间（分钟），0 或负数使用默认值 15 分钟
 // waitQueueTTLSeconds: 等待队列过期时间（秒），0 或负数使用 slot TTL
-func NewConcurrencyCache(rdb *redis.Client, slotTTLMinutes int, waitQueueTTLSeconds int) service.ConcurrencyCache {
+func NewConcurrencyCache(rdb *redis.Client, slotTTLMinutes int, waitQueueTTLSeconds int) concurrency.ConcurrencyCache {
 	if slotTTLMinutes <= 0 {
 		slotTTLMinutes = defaultSlotTTLMinutes
 	}
@@ -815,9 +816,9 @@ func (c *concurrencyCache) GetAccountWaitingCount(ctx context.Context, accountID
 	return val, nil
 }
 
-func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []service.AccountWithConcurrency) (map[int64]*service.AccountLoadInfo, error) {
+func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []domain.AccountWithConcurrency) (map[int64]*domain.AccountLoadInfo, error) {
 	if len(accounts) == 0 {
-		return map[int64]*service.AccountLoadInfo{}, nil
+		return map[int64]*domain.AccountLoadInfo{}, nil
 	}
 
 	// 使用 Pipeline 替代 Lua 脚本，兼容 Redis Cluster（Lua 内动态拼 key 会 CROSSSLOT）。
@@ -854,7 +855,7 @@ func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []
 		return nil, fmt.Errorf("pipeline exec: %w", err)
 	}
 
-	loadMap := make(map[int64]*service.AccountLoadInfo, len(accounts))
+	loadMap := make(map[int64]*domain.AccountLoadInfo, len(accounts))
 	for _, ac := range cmds {
 		currentConcurrency := int(ac.zcardCmd.Val())
 		waitingCount := 0
@@ -865,7 +866,7 @@ func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []
 		if ac.maxConcurrency > 0 {
 			loadRate = (currentConcurrency + waitingCount) * 100 / ac.maxConcurrency
 		}
-		loadMap[ac.id] = &service.AccountLoadInfo{
+		loadMap[ac.id] = &domain.AccountLoadInfo{
 			AccountID:          ac.id,
 			CurrentConcurrency: currentConcurrency,
 			WaitingCount:       waitingCount,
@@ -876,9 +877,9 @@ func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []
 	return loadMap, nil
 }
 
-func (c *concurrencyCache) GetUsersLoadBatch(ctx context.Context, users []service.UserWithConcurrency) (map[int64]*service.UserLoadInfo, error) {
+func (c *concurrencyCache) GetUsersLoadBatch(ctx context.Context, users []domain.UserWithConcurrency) (map[int64]*domain.UserLoadInfo, error) {
 	if len(users) == 0 {
-		return map[int64]*service.UserLoadInfo{}, nil
+		return map[int64]*domain.UserLoadInfo{}, nil
 	}
 
 	// 使用 Pipeline 替代 Lua 脚本，兼容 Redis Cluster。
@@ -914,7 +915,7 @@ func (c *concurrencyCache) GetUsersLoadBatch(ctx context.Context, users []servic
 		return nil, fmt.Errorf("pipeline exec: %w", err)
 	}
 
-	loadMap := make(map[int64]*service.UserLoadInfo, len(users))
+	loadMap := make(map[int64]*domain.UserLoadInfo, len(users))
 	for _, uc := range cmds {
 		currentConcurrency := int(uc.zcardCmd.Val())
 		waitingCount := 0
@@ -925,7 +926,7 @@ func (c *concurrencyCache) GetUsersLoadBatch(ctx context.Context, users []servic
 		if uc.maxConcurrency > 0 {
 			loadRate = (currentConcurrency + waitingCount) * 100 / uc.maxConcurrency
 		}
-		loadMap[uc.id] = &service.UserLoadInfo{
+		loadMap[uc.id] = &domain.UserLoadInfo{
 			UserID:             uc.id,
 			CurrentConcurrency: currentConcurrency,
 			WaitingCount:       waitingCount,

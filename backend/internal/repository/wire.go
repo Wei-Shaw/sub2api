@@ -8,14 +8,19 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/billing"
+	"github.com/Wei-Shaw/sub2api/internal/port/cache"
+	"github.com/Wei-Shaw/sub2api/internal/port/concurrency"
+	"github.com/Wei-Shaw/sub2api/internal/port/githubrelease"
+	"github.com/Wei-Shaw/sub2api/internal/port/imagestorage"
+	"github.com/Wei-Shaw/sub2api/internal/port/scheduler"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 )
 
 // ProvideConcurrencyCache 创建并发控制缓存，从配置读取 TTL 参数
 // 性能优化：TTL 可配置，支持长时间运行的 LLM 请求场景
-func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config) service.ConcurrencyCache {
+func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config) concurrency.ConcurrencyCache {
 	waitTTLSeconds := int(cfg.Gateway.Scheduling.StickySessionWaitTimeout.Seconds())
 	if cfg.Gateway.Scheduling.FallbackWaitTimeout > cfg.Gateway.Scheduling.StickySessionWaitTimeout {
 		waitTTLSeconds = int(cfg.Gateway.Scheduling.FallbackWaitTimeout.Seconds())
@@ -28,19 +33,19 @@ func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config) service.Conc
 
 // ProvideGitHubReleaseClient 创建 GitHub Release 客户端
 // 从配置中读取代理设置，支持国内服务器通过代理访问 GitHub
-func ProvideGitHubReleaseClient(cfg *config.Config) service.GitHubReleaseClient {
+func ProvideGitHubReleaseClient(cfg *config.Config) githubrelease.GitHubReleaseClient {
 	return NewGitHubReleaseClient(cfg.Update.ProxyURL, cfg.Security.ProxyFallback.AllowDirectOnError)
 }
 
 // ProvidePricingRemoteClient 创建定价数据远程客户端
 // 从配置中读取代理设置，支持国内服务器通过代理访问 GitHub 上的定价数据
-func ProvidePricingRemoteClient(cfg *config.Config) service.PricingRemoteClient {
+func ProvidePricingRemoteClient(cfg *config.Config) billing.PricingRemoteClient {
 	return NewPricingRemoteClient(cfg.Update.ProxyURL, cfg.Security.ProxyFallback.AllowDirectOnError)
 }
 
 // ProvideSessionLimitCache 创建会话限制缓存
 // 用于 Anthropic OAuth/SetupToken 账号的并发会话数量控制
-func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) service.SessionLimitCache {
+func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) cache.SessionLimitCache {
 	defaultIdleTimeoutMinutes := 5 // 默认 5 分钟空闲超时
 	if cfg != nil && cfg.Gateway.SessionIdleTimeoutMinutes > 0 {
 		defaultIdleTimeoutMinutes = cfg.Gateway.SessionIdleTimeoutMinutes
@@ -49,7 +54,7 @@ func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) service.Ses
 }
 
 // ProvideSchedulerCache 创建调度快照缓存，并注入快照分块参数。
-func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.SchedulerCache {
+func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) scheduler.SchedulerCache {
 	mgetChunkSize := defaultSchedulerSnapshotMGetChunkSize
 	writeChunkSize := defaultSchedulerSnapshotWriteChunkSize
 	if cfg != nil {
@@ -99,7 +104,7 @@ var ProviderSet = wire.NewSet(
 	NewContentModerationRepository,
 	NewAffiliateRepository,
 	NewUserPlatformQuotaRepository,     // T14: user × platform quota
-	NewUserPlatformQuotaServiceAdapter, // T14: adapter → service.UserPlatformQuotaRepository
+	NewUserPlatformQuotaServiceAdapter, // T14: adapter → billing.UserPlatformQuotaRepository
 
 	// Cache implementations
 	NewGatewayCache,
@@ -179,8 +184,8 @@ func ProvideEnt(cfg *config.Config) (*ent.Client, error) {
 //
 // 这里返回工厂而不是实例：异步生图的开关与凭证可以在后台随时改动，客户端必须能在
 // 设置保存后重建，而不是在启动时定死一份。
-func ProvideImageStorageFactory() service.ImageStorageFactory {
-	return func(ctx context.Context, cfg *config.ImageStorageConfig) (service.ImageStorage, error) {
+func ProvideImageStorageFactory() imagestorage.ImageStorageFactory {
+	return func(ctx context.Context, cfg *config.ImageStorageConfig) (imagestorage.ImageStorage, error) {
 		return NewS3ImageStorage(ctx, cfg)
 	}
 }

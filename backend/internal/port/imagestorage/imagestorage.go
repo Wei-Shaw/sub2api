@@ -6,7 +6,11 @@
 // so existing call sites and test stubs continue to satisfy the contract.
 package imagestorage
 
-import "context"
+import (
+	"context"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+)
 
 // ImageStorage 把图片字节写入对象存储并返回可访问 URL。
 //
@@ -18,3 +22,7 @@ type ImageStorage interface {
 	// contentType 为图片 MIME 类型，如 "image/png"。
 	Save(ctx context.Context, key, contentType string, data []byte) (url string, err error)
 }
+
+// ImageStorageFactory 由 repository 层提供，把配置变成一个可用的对象存储实现。
+// 与 BackupObjectStoreFactory 同样的注入方式，避免 service 反向依赖 repository。
+type ImageStorageFactory func(ctx context.Context, cfg *config.ImageStorageConfig) (ImageStorage, error)

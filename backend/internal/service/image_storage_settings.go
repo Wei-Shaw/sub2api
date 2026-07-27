@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/port/imagestorage"
 	"go.uber.org/zap"
 )
 
@@ -20,7 +21,7 @@ var ErrImageStorageIncomplete = errors.New("image storage is enabled but bucket/
 
 // ImageStorageFactory 由 repository 层提供，把配置变成一个可用的对象存储实现。
 // 与 BackupObjectStoreFactory 同样的注入方式，避免 service 反向依赖 repository。
-type ImageStorageFactory func(ctx context.Context, cfg *config.ImageStorageConfig) (ImageStorage, error)
+type ImageStorageFactory = imagestorage.ImageStorageFactory
 
 // ImageStorageSettings 是后台可编辑的异步生图对象存储配置。
 //
