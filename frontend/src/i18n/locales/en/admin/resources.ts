@@ -272,6 +272,13 @@ export default {
 		stickyHint:
 			"Recommended for Grok accounts so OAuth refresh and relay share the same exit IP.",
 		members: "Member Proxies",
+		membersSearch: "Search by name or address...",
+		membersSelected: "{count} selected",
+		membersFiltered: "{count} filtered",
+		selectPage: "Select page",
+		selectAllFiltered: "Select all filtered",
+		clearSelection: "Clear selection",
+		noMatchingProxies: "No matching proxies",
 		noProxies: "No proxies available. Add some in Proxy List first.",
 		emptyTitle: "No proxy pools yet",
 		emptyDesc:

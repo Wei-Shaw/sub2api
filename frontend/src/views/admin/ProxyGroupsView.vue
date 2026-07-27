@@ -78,7 +78,7 @@
     <BaseDialog
       :show="showForm"
       :title="editing ? t('admin.proxyGroups.edit') : t('admin.proxyGroups.create')"
-      width="normal"
+      width="wide"
       @close="closeForm"
     >
       <div class="space-y-4">
@@ -107,20 +107,126 @@
           </label>
         </div>
         <p class="text-xs text-gray-500">{{ t('admin.proxyGroups.stickyHint') }}</p>
+
+        <!-- Member proxies: search + batch select + pagination -->
         <div>
-          <label class="input-label">{{ t('admin.proxyGroups.members') }}</label>
-          <div class="max-h-48 space-y-1 overflow-auto rounded border border-gray-200 p-2 dark:border-dark-600">
-            <label
-              v-for="proxy in allProxies"
-              :key="proxy.id"
-              class="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-gray-50 dark:hover:bg-dark-800"
-            >
-              <input v-model="form.proxy_ids" type="checkbox" :value="proxy.id" class="h-4 w-4 rounded" />
-              <span class="text-sm">{{ proxy.name }}</span>
-              <span class="text-xs text-gray-400">{{ proxy.protocol }}://{{ proxy.host }}:{{ proxy.port }}</span>
+          <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <label class="input-label mb-0">{{ t('admin.proxyGroups.members') }}</label>
+            <span class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.proxyGroups.membersSelected', { count: form.proxy_ids.length }) }}
+              ·
+              {{ t('admin.proxyGroups.membersFiltered', { count: filteredMemberProxies.length }) }}
+            </span>
+          </div>
+
+          <div class="relative mb-2">
+            <Icon
+              name="search"
+              size="sm"
+              class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              v-model="memberSearch"
+              type="text"
+              class="input pl-9 text-sm"
+              :placeholder="t('admin.proxyGroups.membersSearch')"
+            />
+          </div>
+
+          <div class="mb-2 flex flex-wrap items-center gap-2">
+            <label class="inline-flex cursor-pointer items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                type="checkbox"
+                class="h-4 w-4 rounded"
+                :checked="allPageMembersSelected"
+                :indeterminate.prop="somePageMembersSelected && !allPageMembersSelected"
+                :disabled="pagedMemberProxies.length === 0"
+                @change="togglePageMembers(($event.target as HTMLInputElement).checked)"
+              />
+              {{ t('admin.proxyGroups.selectPage') }}
             </label>
-            <div v-if="allProxies.length === 0" class="py-4 text-center text-sm text-gray-500">
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="filteredMemberProxies.length === 0"
+              @click="selectAllFilteredMembers"
+            >
+              {{ t('admin.proxyGroups.selectAllFiltered') }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="form.proxy_ids.length === 0"
+              @click="clearMemberSelection"
+            >
+              {{ t('admin.proxyGroups.clearSelection') }}
+            </button>
+          </div>
+
+          <div class="max-h-64 space-y-1 overflow-auto rounded border border-gray-200 p-2 dark:border-dark-600">
+            <label
+              v-for="proxy in pagedMemberProxies"
+              :key="proxy.id"
+              class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-dark-800"
+            >
+              <input v-model="form.proxy_ids" type="checkbox" :value="proxy.id" class="h-4 w-4 shrink-0 rounded" />
+              <span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                {{ proxy.name }}
+              </span>
+              <span class="shrink-0 text-xs text-gray-400">
+                {{ proxy.protocol }}://{{ proxy.host }}:{{ proxy.port }}
+              </span>
+            </label>
+            <div
+              v-if="allProxies.length === 0"
+              class="py-4 text-center text-sm text-gray-500"
+            >
               {{ t('admin.proxyGroups.noProxies') }}
+            </div>
+            <div
+              v-else-if="filteredMemberProxies.length === 0"
+              class="py-4 text-center text-sm text-gray-500"
+            >
+              {{ t('admin.proxyGroups.noMatchingProxies') }}
+            </div>
+          </div>
+
+          <div
+            v-if="filteredMemberProxies.length > 0"
+            class="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2 dark:border-dark-700"
+          >
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+              <span>{{ t('pagination.perPage') }}:</span>
+              <select
+                v-model.number="memberPageSize"
+                class="input w-auto py-1 text-xs"
+                @change="memberPage = 1"
+              >
+                <option v-for="size in memberPageSizeOptions" :key="size" :value="size">
+                  {{ size }}
+                </option>
+              </select>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                :disabled="memberPage <= 1"
+                @click="memberPage--"
+              >
+                {{ t('pagination.previous') }}
+              </button>
+              <span class="text-xs text-gray-600 dark:text-gray-300">
+                {{ t('pagination.pageOf', { page: memberPage, total: memberTotalPages }) }}
+              </span>
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                :disabled="memberPage >= memberTotalPages"
+                @click="memberPage++"
+              >
+                {{ t('pagination.next') }}
+              </button>
             </div>
           </div>
         </div>
@@ -146,7 +252,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
@@ -176,6 +282,12 @@ const searchQuery = ref('')
 const showForm = ref(false)
 const editing = ref<ProxyGroup | null>(null)
 const deleting = ref<ProxyGroup | null>(null)
+
+// Member proxies picker state (dialog)
+const memberSearch = ref('')
+const memberPage = ref(1)
+const memberPageSize = ref(20)
+const memberPageSizeOptions = [10, 20, 50, 100]
 
 const form = reactive({
   name: '',
@@ -213,10 +325,81 @@ const filteredGroups = computed(() => {
   )
 })
 
+const filteredMemberProxies = computed(() => {
+  const q = memberSearch.value.trim().toLowerCase()
+  if (!q) return allProxies.value
+  return allProxies.value.filter((p) => {
+    const hay = `${p.name} ${p.protocol} ${p.host} ${p.port}`.toLowerCase()
+    return hay.includes(q)
+  })
+})
+
+const memberTotalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredMemberProxies.value.length / memberPageSize.value))
+)
+
+const pagedMemberProxies = computed(() => {
+  const start = (memberPage.value - 1) * memberPageSize.value
+  return filteredMemberProxies.value.slice(start, start + memberPageSize.value)
+})
+
+const pageMemberIds = computed(() => pagedMemberProxies.value.map((p) => p.id))
+
+const allPageMembersSelected = computed(() => {
+  const ids = pageMemberIds.value
+  if (ids.length === 0) return false
+  const selected = new Set(form.proxy_ids)
+  return ids.every((id) => selected.has(id))
+})
+
+const somePageMembersSelected = computed(() => {
+  const ids = pageMemberIds.value
+  if (ids.length === 0) return false
+  const selected = new Set(form.proxy_ids)
+  return ids.some((id) => selected.has(id))
+})
+
+watch(memberSearch, () => {
+  memberPage.value = 1
+})
+
+watch([filteredMemberProxies, memberPageSize], () => {
+  if (memberPage.value > memberTotalPages.value) {
+    memberPage.value = memberTotalPages.value
+  }
+})
+
 function strategyLabel(row: ProxyGroup) {
   if (row.sticky_by_account) return t('admin.proxyGroups.strategies.sticky')
   const key = row.strategy as ProxyGroupStrategy
   return t(`admin.proxyGroups.strategies.${key}`)
+}
+
+function resetMemberPicker() {
+  memberSearch.value = ''
+  memberPage.value = 1
+}
+
+function togglePageMembers(checked: boolean) {
+  const pageIds = pageMemberIds.value
+  if (pageIds.length === 0) return
+  const set = new Set(form.proxy_ids)
+  if (checked) {
+    pageIds.forEach((id) => set.add(id))
+  } else {
+    pageIds.forEach((id) => set.delete(id))
+  }
+  form.proxy_ids = Array.from(set)
+}
+
+function selectAllFilteredMembers() {
+  const set = new Set(form.proxy_ids)
+  filteredMemberProxies.value.forEach((p) => set.add(p.id))
+  form.proxy_ids = Array.from(set)
+}
+
+function clearMemberSelection() {
+  form.proxy_ids = []
 }
 
 async function loadGroups() {
@@ -249,6 +432,7 @@ function openCreate() {
   form.sticky_by_account = false
   form.status = 'active'
   form.proxy_ids = []
+  resetMemberPicker()
   showForm.value = true
 }
 
@@ -259,6 +443,7 @@ async function openEdit(row: ProxyGroup) {
   form.strategy = row.strategy || 'round_robin'
   form.sticky_by_account = !!row.sticky_by_account
   form.status = row.status === 'inactive' ? 'inactive' : 'active'
+  resetMemberPicker()
   try {
     const detail = await adminAPI.proxyGroups.getById(row.id)
     form.proxy_ids = (detail.proxies || []).map((p) => p.id)
