@@ -10,6 +10,8 @@ import (
 	"net/textproto"
 	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1630,6 +1632,30 @@ func Load() (*Config, error) {
 	return load(false)
 }
 
+// getDataDir returns the data directory used by setup, mirroring setup.GetDataDir().
+// This keeps config search paths consistent with where setup writes files,
+// preventing path drift on Windows where /app/data maps to the drive root.
+func getDataDir() string {
+	if dir := os.Getenv("DATA_DIR"); dir != "" {
+		return dir
+	}
+	if runtime.GOOS == "linux" {
+		dockerDataDir := "/app/data"
+		if info, err := os.Stat(dockerDataDir); err == nil && info.IsDir() {
+			testFile := dockerDataDir + "/.write_test"
+			if f, err := os.Create(testFile); err == nil {
+				_ = f.Close()
+				_ = os.Remove(testFile)
+				return dockerDataDir
+			}
+		}
+	}
+	if exePath, err := os.Executable(); err == nil {
+		return filepath.Dir(exePath)
+	}
+	return "."
+}
+
 // LoadForBootstrap 读取启动阶段配置。
 //
 // 启动阶段允许 jwt.secret 先留空，后续由数据库初始化流程补齐并再次完整校验。
@@ -1641,18 +1667,12 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 
-	// Add config paths in priority order
-	// 1. DATA_DIR environment variable (highest priority)
-	if dataDir := os.Getenv("DATA_DIR"); dataDir != "" {
-		viper.AddConfigPath(dataDir)
-	}
-	// 2. Docker data directory
-	viper.AddConfigPath("/app/data")
-	// 3. Current directory
-	viper.AddConfigPath(".")
-	// 4. Config subdirectory
+	// Add config paths in the same priority order used by setup.GetDataDir(),
+	// so runtime and setup always agree on where the config file lives.
+	viper.AddConfigPath(getDataDir())
+	// Fallback: Config subdirectory (legacy layout)
 	viper.AddConfigPath("./config")
-	// 5. System config directory
+	// Fallback: System config directory (Linux package installations)
 	viper.AddConfigPath("/etc/sub2api")
 
 	// 环境变量支持

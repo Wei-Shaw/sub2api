@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -39,26 +41,37 @@ func setupDefaultAdminConcurrency() int {
 }
 
 // GetDataDir returns the data directory for storing config and lock files.
-// Priority: DATA_DIR env > /app/data (if exists and writable) > current directory
+// Priority: DATA_DIR env > /app/data (Linux/Docker only, if exists and writable) > executable directory > current directory
 func GetDataDir() string {
 	// Check DATA_DIR environment variable first
 	if dir := os.Getenv("DATA_DIR"); dir != "" {
 		return dir
 	}
 
-	// Check if /app/data exists and is writable (Docker environment)
-	dockerDataDir := "/app/data"
-	if info, err := os.Stat(dockerDataDir); err == nil && info.IsDir() {
-		// Try to check if writable by creating a temp file
-		testFile := dockerDataDir + "/.write_test"
-		if f, err := os.Create(testFile); err == nil {
-			_ = f.Close()
-			_ = os.Remove(testFile)
-			return dockerDataDir
+	// Check if /app/data exists and is writable — Docker/Linux environments only.
+	// Skipped on Windows because the path /app/data resolves to the current drive root
+	// (e.g., C:\app\data), causing a mismatch between setup write path and runtime read path.
+	if runtime.GOOS == "linux" {
+		dockerDataDir := "/app/data"
+		if info, err := os.Stat(dockerDataDir); err == nil && info.IsDir() {
+			// Try to check if writable by creating a temp file
+			testFile := dockerDataDir + "/.write_test"
+			if f, err := os.Create(testFile); err == nil {
+				_ = f.Close()
+				_ = os.Remove(testFile)
+				return dockerDataDir
+			}
 		}
 	}
 
-	// Default to current directory
+	// Use the executable's directory so setup and runtime always agree on the path,
+	// even when the current working directory differs (common on Windows when launching
+	// via double-click or as a service).
+	if exePath, err := os.Executable(); err == nil {
+		return filepath.Dir(exePath)
+	}
+
+	// Final fallback: current directory
 	return "."
 }
 
@@ -448,7 +461,7 @@ func writeConfigFile(cfg *SetupConfig) error {
 	// Ensure timezone has a default value
 	tz := cfg.Timezone
 	if tz == "" {
-		tz = "Asia/Shanghai"
+		tz = "UTC"
 	}
 
 	// Prepare config for YAML (exclude sensitive data and admin config)

@@ -22,7 +22,7 @@ import (
 //   - Service configured with Restart=always in systemd unit file
 func RestartService() error {
 	if runtime.GOOS != "linux" {
-		log.Println("Service restart via exit only works on Linux with systemd")
+		log.Println("Automatic restart is not supported on this platform. Please restart the application manually.")
 		return nil
 	}
 

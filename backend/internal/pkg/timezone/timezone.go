@@ -21,7 +21,7 @@ var (
 // Example timezone values: "Asia/Shanghai", "America/New_York", "UTC"
 func Init(tz string) error {
 	if tz == "" {
-		tz = "Asia/Shanghai" // Default timezone
+		tz = "UTC" // Default to UTC for cross-platform compatibility
 	}
 
 	loc, err := time.LoadLocation(tz)
