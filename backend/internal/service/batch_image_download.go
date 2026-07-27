@@ -19,6 +19,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/port/batchimage"
 )
 
 const (
@@ -31,13 +32,8 @@ const (
 
 var errBatchImageDownloadSizeExceeded = errors.New("batch image download size limit exceeded")
 
-type BatchImageDownloadLimiter interface {
-	Acquire(ctx context.Context, userID string, kind string) (BatchImageDownloadPermit, error)
-}
-
-type BatchImageDownloadPermit interface {
-	Release(ctx context.Context) error
-}
+type BatchImageDownloadLimiter = batchimage.BatchImageDownloadLimiter
+type BatchImageDownloadPermit = batchimage.BatchImageDownloadPermit
 
 type BatchImageContentStream struct {
 	Reader        io.ReadCloser

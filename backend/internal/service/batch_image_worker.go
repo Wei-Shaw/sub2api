@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/port/batchimage"
 	"go.uber.org/zap"
 )
 
@@ -185,9 +186,7 @@ func (w *BatchImageWorker) RunOnce(ctx context.Context) error {
 }
 
 // BatchImageJobLockRefresher 是可选的锁续期能力；由具体锁实现按需提供。
-type BatchImageJobLockRefresher interface {
-	Refresh(ctx context.Context, ttl time.Duration) error
-}
+type BatchImageJobLockRefresher = batchimage.BatchImageJobLockRefresher
 
 func (w *BatchImageWorker) heartbeatInterval() time.Duration {
 	interval := w.opts.JobLockTTL

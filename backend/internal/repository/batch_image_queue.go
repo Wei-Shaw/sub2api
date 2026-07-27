@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/batchimage"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -92,7 +93,7 @@ type batchImageQueue struct {
 	lockTTL        time.Duration
 }
 
-func NewBatchImageQueue(rdb *redis.Client, cfg *config.Config) service.BatchImageQueue {
+func NewBatchImageQueue(rdb *redis.Client, cfg *config.Config) batchimage.BatchImageQueue {
 	return newBatchImageQueueWithOptions(rdb, batchImageQueueOptionsFromConfig(cfg))
 }
 
@@ -161,8 +162,8 @@ func normalizeBatchImageQueueOptions(opts batchImageQueueOptions) batchImageQueu
 }
 
 func (q *batchImageQueue) Enqueue(ctx context.Context, batchID string) error {
-	if !service.IsValidBatchImageID(batchID) {
-		return service.ErrInvalidBatchImageQueuePayload
+	if !domain.IsValidBatchImageID(batchID) {
+		return domain.ErrInvalidBatchImageQueuePayload
 	}
 
 	applied, err := batchImageEnqueueScript.Run(ctx, q.rdb,
@@ -173,24 +174,24 @@ func (q *batchImageQueue) Enqueue(ctx context.Context, batchID string) error {
 		return err
 	}
 	if applied == 0 {
-		return service.ErrBatchImageAlreadyQueued
+		return domain.ErrBatchImageAlreadyQueued
 	}
 	return nil
 }
 
-func (q *batchImageQueue) Reserve(ctx context.Context, blockTimeout time.Duration) (service.ReservedBatchImageJob, error) {
+func (q *batchImageQueue) Reserve(ctx context.Context, blockTimeout time.Duration) (domain.ReservedBatchImageJob, error) {
 	deadline := time.Now().Add(blockTimeout)
 	for {
 		batchID, err := q.reserveOnce(ctx)
 		if err == nil {
-			return service.ReservedBatchImageJob{BatchID: batchID}, nil
+			return domain.ReservedBatchImageJob{BatchID: batchID}, nil
 		}
-		if !errors.Is(err, service.ErrBatchImageQueueEmpty) {
-			return service.ReservedBatchImageJob{}, err
+		if !errors.Is(err, domain.ErrBatchImageQueueEmpty) {
+			return domain.ReservedBatchImageJob{}, err
 		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			return service.ReservedBatchImageJob{}, service.ErrBatchImageQueueEmpty
+			return domain.ReservedBatchImageJob{}, domain.ErrBatchImageQueueEmpty
 		}
 		wait := batchImageReservePollInterval
 		if remaining < wait {
@@ -200,7 +201,7 @@ func (q *batchImageQueue) Reserve(ctx context.Context, blockTimeout time.Duratio
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return service.ReservedBatchImageJob{}, ctx.Err()
+			return domain.ReservedBatchImageJob{}, ctx.Err()
 		case <-timer.C:
 		}
 	}
@@ -209,26 +210,26 @@ func (q *batchImageQueue) Reserve(ctx context.Context, blockTimeout time.Duratio
 func (q *batchImageQueue) reserveOnce(ctx context.Context) (string, error) {
 	raw, err := batchImageReserveScript.Run(ctx, q.rdb, []string{q.readyKey, q.activeKey}, time.Now().UnixMilli()).Result()
 	if errors.Is(err, redis.Nil) {
-		return "", service.ErrBatchImageQueueEmpty
+		return "", domain.ErrBatchImageQueueEmpty
 	}
 	if err != nil {
 		return "", err
 	}
 	batchID, ok := raw.(string)
-	if !ok || !service.IsValidBatchImageID(batchID) {
+	if !ok || !domain.IsValidBatchImageID(batchID) {
 		// 非法 payload 已被脚本写入 active，必须移除，否则 stale 恢复会把它
 		// 无限重投回 ready。
 		if ok && batchID != "" {
 			_ = q.rdb.ZRem(ctx, q.activeKey, batchID).Err()
 		}
-		return "", service.ErrInvalidBatchImageQueuePayload
+		return "", domain.ErrInvalidBatchImageQueuePayload
 	}
 	return batchID, nil
 }
 
 func (q *batchImageQueue) RequeueAfter(ctx context.Context, batchID string, delay time.Duration) error {
-	if !service.IsValidBatchImageID(batchID) {
-		return service.ErrInvalidBatchImageQueuePayload
+	if !domain.IsValidBatchImageID(batchID) {
+		return domain.ErrInvalidBatchImageQueuePayload
 	}
 	pipe := q.rdb.TxPipeline()
 	pipe.ZRem(ctx, q.activeKey, batchID)
@@ -246,8 +247,8 @@ func (q *batchImageQueue) RequeueAfter(ctx context.Context, batchID string, dela
 }
 
 func (q *batchImageQueue) Ack(ctx context.Context, batchID string) error {
-	if !service.IsValidBatchImageID(batchID) {
-		return service.ErrInvalidBatchImageQueuePayload
+	if !domain.IsValidBatchImageID(batchID) {
+		return domain.ErrInvalidBatchImageQueuePayload
 	}
 	pipe := q.rdb.TxPipeline()
 	pipe.ZRem(ctx, q.activeKey, batchID)
@@ -258,8 +259,8 @@ func (q *batchImageQueue) Ack(ctx context.Context, batchID string) error {
 }
 
 func (q *batchImageQueue) Heartbeat(ctx context.Context, batchID string) error {
-	if !service.IsValidBatchImageID(batchID) {
-		return service.ErrInvalidBatchImageQueuePayload
+	if !domain.IsValidBatchImageID(batchID) {
+		return domain.ErrInvalidBatchImageQueuePayload
 	}
 	// XX：只刷新已存在的 active 成员。无条件 ZAdd 会在 Ack/Requeue 之后的
 	// 竞态心跳里把幽灵成员塞回 active zset。
@@ -278,7 +279,7 @@ func (q *batchImageQueue) MoveDueDelayedToReady(ctx context.Context, limit int) 
 
 func (q *batchImageQueue) RecoverStaleActive(ctx context.Context, staleAfter time.Duration, limit int) (int, error) {
 	if staleAfter <= 0 {
-		return 0, service.ErrInvalidBatchImageQueuePayload
+		return 0, domain.ErrInvalidBatchImageQueuePayload
 	}
 	if limit <= 0 {
 		limit = 100
@@ -287,9 +288,9 @@ func (q *batchImageQueue) RecoverStaleActive(ctx context.Context, staleAfter tim
 	return batchImageRecoverStaleActiveScript.Run(ctx, q.rdb, []string{q.activeKey, q.readyKey}, cutoff, limit).Int()
 }
 
-func (q *batchImageQueue) TryAcquireJobLock(ctx context.Context, batchID string, ttl time.Duration) (service.BatchImageJobLock, bool, error) {
-	if !service.IsValidBatchImageID(batchID) {
-		return nil, false, service.ErrInvalidBatchImageQueuePayload
+func (q *batchImageQueue) TryAcquireJobLock(ctx context.Context, batchID string, ttl time.Duration) (batchimage.BatchImageJobLock, bool, error) {
+	if !domain.IsValidBatchImageID(batchID) {
+		return nil, false, domain.ErrInvalidBatchImageQueuePayload
 	}
 	if ttl <= 0 {
 		ttl = q.lockTTL
@@ -341,7 +342,7 @@ func (l *batchImageRedisJobLock) Refresh(ctx context.Context, ttl time.Duration)
 	return batchImageRefreshLockScript.Run(ctx, l.rdb, []string{l.key}, l.token, ttl.Milliseconds()).Err()
 }
 
-var _ service.BatchImageJobLockRefresher = (*batchImageRedisJobLock)(nil)
+var _ batchimage.BatchImageJobLockRefresher = (*batchImageRedisJobLock)(nil)
 
 func newBatchImageLockToken() (string, error) {
 	var b [16]byte
@@ -351,4 +352,4 @@ func newBatchImageLockToken() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-var _ service.BatchImageQueue = (*batchImageQueue)(nil)
+var _ batchimage.BatchImageQueue = (*batchImageQueue)(nil)
