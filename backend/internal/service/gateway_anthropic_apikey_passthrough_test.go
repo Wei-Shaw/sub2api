@@ -798,11 +798,12 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name               string
-		body               string
-		wantModel          string
-		wantOriginalSystem string
-		wantMetadataUserID string
+		name                       string
+		body                       string
+		wantModel                  string
+		wantOriginalSystem         string
+		wantOriginalSystemCacheTTL string
+		wantMetadataUserID         string
 REDACTED{
 		{
 			name:               "sonnet system array",
@@ -817,11 +818,12 @@ REDACTED{
 			wantOriginalSystem: "x-anthropic-billing-header keep",
 	REDACTED,
 		{
-			name:               "haiku full mimicry",
-			body:               `{"model":"claude-haiku-4-5","metadata":{"user_id":"pi-session-metadata"REDACTED,"system":[{"type":"text","text":"Pi project instructions","cache_control":{"type":"ephemeral"REDACTEDREDACTED],"thinking":{"type":"enabled","budget_tokens":1024REDACTED,"messages":[{"role":"user","content":[{"type":"text","text":"hello"REDACTED]REDACTED]REDACTED`,
-			wantModel:          "REDACTED",
-			wantOriginalSystem: "Pi project instructions",
-			wantMetadataUserID: "pi-session-metadata",
+			name:                       "haiku full mimicry",
+			body:                       `{"model":"claude-haiku-4-5","metadata":{"user_id":"pi-session-metadata"REDACTED,"system":[{"type":"text","text":"Pi project instructions","cache_control":{"type":"ephemeral","ttl":"1h"REDACTEDREDACTED],"thinking":{"type":"enabled","budget_tokens":1024REDACTED,"messages":[{"role":"user","content":[{"type":"text","text":"hello"REDACTED]REDACTED]REDACTED`,
+			wantModel:                  "REDACTED",
+			wantOriginalSystem:         "Pi project instructions",
+			wantOriginalSystemCacheTTL: "1h",
+			wantMetadataUserID:         "pi-session-metadata",
 	REDACTED,
 REDACTED
 
@@ -912,6 +914,12 @@ REDACTED
 			firstMsg := messages.Array()[0]
 			require.Equal(t, "user", firstMsg.Get("role").String())
 			require.Contains(t, firstMsg.Get("content.0.text").String(), tt.wantOriginalSystem)
+			if tt.wantOriginalSystemCacheTTL != "" {
+				require.Equal(t, "ephemeral", firstMsg.Get("content.0.cache_control.type").String())
+				require.Equal(t, tt.wantOriginalSystemCacheTTL, firstMsg.Get("content.0.cache_control.ttl").String())
+		REDACTED else {
+				require.False(t, firstMsg.Get("content.0.cache_control").Exists())
+		REDACTED
 
 			if tt.wantMetadataUserID != "" {
 				require.Equal(t, tt.wantMetadataUserID, gjson.GetBytes(upstream.lastBody, "metadata.user_id").String())
