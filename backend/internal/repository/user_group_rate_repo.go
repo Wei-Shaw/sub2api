@@ -5,7 +5,8 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/usergrouprate"
 	"github.com/lib/pq"
 )
 
@@ -14,7 +15,7 @@ type userGroupRateRepository struct {
 }
 
 // NewUserGroupRateRepository 创建用户专属分组倍率/RPM 仓储
-func NewUserGroupRateRepository(sqlDB *sql.DB) service.UserGroupRateRepository {
+func NewUserGroupRateRepository(sqlDB *sql.DB) usergrouprate.UserGroupRateRepository {
 	return &userGroupRateRepository{sql: sqlDB}
 }
 
@@ -95,7 +96,7 @@ func (r *userGroupRateRepository) GetByUserIDs(ctx context.Context, userIDs []in
 }
 
 // GetByGroupID 获取指定分组下所有用户的专属配置（rate 与 rpm_override 任一非 NULL 即返回）
-func (r *userGroupRateRepository) GetByGroupID(ctx context.Context, groupID int64) ([]service.UserGroupRateEntry, error) {
+func (r *userGroupRateRepository) GetByGroupID(ctx context.Context, groupID int64) ([]domain.UserGroupRateEntry, error) {
 	query := `
 		SELECT ugr.user_id, u.username, u.email, COALESCE(u.notes, ''), u.status, ugr.rate_multiplier, ugr.rpm_override
 		FROM user_group_rate_multipliers ugr
@@ -109,9 +110,9 @@ func (r *userGroupRateRepository) GetByGroupID(ctx context.Context, groupID int6
 	}
 	defer func() { _ = rows.Close() }()
 
-	var result []service.UserGroupRateEntry
+	var result []domain.UserGroupRateEntry
 	for rows.Next() {
-		var entry service.UserGroupRateEntry
+		var entry domain.UserGroupRateEntry
 		var rate sql.NullFloat64
 		var rpm sql.NullInt32
 		if err := rows.Scan(&entry.UserID, &entry.UserName, &entry.UserEmail, &entry.UserNotes, &entry.UserStatus, &rate, &rpm); err != nil {
@@ -243,7 +244,7 @@ func (r *userGroupRateRepository) SyncUserGroupRates(ctx context.Context, userID
 // 语义：
 //   - 未出现在 entries 中的用户行：rate_multiplier 归 NULL；若 rpm_override 也为 NULL 则整行删除。
 //   - 出现的用户行：upsert rate_multiplier。
-func (r *userGroupRateRepository) SyncGroupRateMultipliers(ctx context.Context, groupID int64, entries []service.GroupRateMultiplierInput) error {
+func (r *userGroupRateRepository) SyncGroupRateMultipliers(ctx context.Context, groupID int64, entries []domain.GroupRateMultiplierInput) error {
 	keepUserIDs := make([]int64, 0, len(entries))
 	for _, e := range entries {
 		keepUserIDs = append(keepUserIDs, e.UserID)
@@ -301,7 +302,7 @@ func (r *userGroupRateRepository) SyncGroupRateMultipliers(ctx context.Context, 
 // 语义：
 //   - 未出现的用户行：rpm_override 归 NULL；若 rate_multiplier 也为 NULL 则整行删除。
 //   - 出现的用户行：若 RPMOverride 为 nil 则清空；非 nil 则 upsert。
-func (r *userGroupRateRepository) SyncGroupRPMOverrides(ctx context.Context, groupID int64, entries []service.GroupRPMOverrideInput) error {
+func (r *userGroupRateRepository) SyncGroupRPMOverrides(ctx context.Context, groupID int64, entries []domain.GroupRPMOverrideInput) error {
 	keepUserIDs := make([]int64, 0, len(entries))
 	var clearUserIDs []int64
 	upsertUserIDs := make([]int64, 0, len(entries))
