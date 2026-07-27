@@ -10,19 +10,20 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/backup"
 )
 
-// S3BackupStore implements service.BackupObjectStore using AWS S3 compatible storage
+// S3BackupStore implements backup.BackupObjectStore using AWS S3 compatible storage
 type S3BackupStore struct {
 	client *s3.Client
 	bucket string
 }
 
 // NewS3BackupStoreFactory returns a BackupObjectStoreFactory that creates S3-backed stores
-func NewS3BackupStoreFactory() service.BackupObjectStoreFactory {
-	return func(ctx context.Context, cfg *service.BackupS3Config) (service.BackupObjectStore, error) {
+func NewS3BackupStoreFactory() backup.BackupObjectStoreFactory {
+	return func(ctx context.Context, cfg *domain.BackupS3Config) (backup.BackupObjectStore, error) {
 		client, err := newS3Client(ctx, s3ClientParams{
 			Endpoint:        cfg.Endpoint,
 			Region:          cfg.Region,

@@ -7,16 +7,16 @@ import (
 	"os/exec"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/port/backup"
 )
 
-// PgDumper implements service.DBDumper using pg_dump/psql
+// PgDumper implements backup.DBDumper using pg_dump/psql
 type PgDumper struct {
 	cfg *config.DatabaseConfig
 }
 
 // NewPgDumper creates a new PgDumper
-func NewPgDumper(cfg *config.Config) service.DBDumper {
+func NewPgDumper(cfg *config.Config) backup.DBDumper {
 	return &PgDumper{cfg: &cfg.Database}
 }
 
