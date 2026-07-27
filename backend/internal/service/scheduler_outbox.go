@@ -1,31 +1,15 @@
 package service
 
 import (
-	"context"
-	"time"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/scheduler"
 )
 
-type SchedulerOutboxEvent struct {
-	ID        int64
-	EventType string
-	AccountID *int64
-	GroupID   *int64
-	Payload   map[string]any
-	CreatedAt time.Time
-}
+type SchedulerOutboxEvent = domain.SchedulerOutboxEvent
 
 // SchedulerOutboxRepository 提供调度 outbox 的读取接口。
-type SchedulerOutboxRepository interface {
-	ListAfterAndReleaseDedup(ctx context.Context, afterID int64, limit int) ([]SchedulerOutboxEvent, error)
-	// FirstCreatedAtAfter 返回指定水位之后第一条待消费事件的创建时间，不领取事件或修改去重键。
-	FirstCreatedAtAfter(ctx context.Context, afterID int64) (time.Time, bool, error)
-	MaxID(ctx context.Context) (int64, error)
-	DeleteConsumedUpTo(ctx context.Context, watermark int64, limit int) (int64, error)
-	TryAcquireCleanupLock(ctx context.Context) (SchedulerOutboxCleanupLease, bool, error)
-}
+type SchedulerOutboxRepository = scheduler.SchedulerOutboxRepository
 
 // SchedulerOutboxCleanupLease holds the PostgreSQL advisory lock used by
 // scheduler outbox cleanup.
-type SchedulerOutboxCleanupLease interface {
-	Release()
-}
+type SchedulerOutboxCleanupLease = scheduler.SchedulerOutboxCleanupLease

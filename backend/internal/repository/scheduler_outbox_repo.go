@@ -10,7 +10,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/scheduler"
 )
 
 type schedulerOutboxRepository struct {
@@ -23,11 +24,11 @@ type schedulerOutboxCleanupLease struct {
 
 const schedulerOutboxDefaultCleanSize = 5000
 
-func NewSchedulerOutboxRepository(db *sql.DB) service.SchedulerOutboxRepository {
+func NewSchedulerOutboxRepository(db *sql.DB) scheduler.SchedulerOutboxRepository {
 	return &schedulerOutboxRepository{db: db}
 }
 
-func (r *schedulerOutboxRepository) ListAfterAndReleaseDedup(ctx context.Context, afterID int64, limit int) ([]service.SchedulerOutboxEvent, error) {
+func (r *schedulerOutboxRepository) ListAfterAndReleaseDedup(ctx context.Context, afterID int64, limit int) ([]domain.SchedulerOutboxEvent, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -59,13 +60,13 @@ func (r *schedulerOutboxRepository) ListAfterAndReleaseDedup(ctx context.Context
 		_ = rows.Close()
 	}()
 
-	events := make([]service.SchedulerOutboxEvent, 0, limit)
+	events := make([]domain.SchedulerOutboxEvent, 0, limit)
 	for rows.Next() {
 		var (
 			payloadRaw []byte
 			accountID  sql.NullInt64
 			groupID    sql.NullInt64
-			event      service.SchedulerOutboxEvent
+			event      domain.SchedulerOutboxEvent
 		)
 		if err := rows.Scan(&event.ID, &event.EventType, &accountID, &groupID, &payloadRaw, &event.CreatedAt); err != nil {
 			return nil, err
@@ -149,7 +150,7 @@ func (r *schedulerOutboxRepository) DeleteConsumedUpTo(ctx context.Context, wate
 	return result.RowsAffected()
 }
 
-func (r *schedulerOutboxRepository) TryAcquireCleanupLock(ctx context.Context) (service.SchedulerOutboxCleanupLease, bool, error) {
+func (r *schedulerOutboxRepository) TryAcquireCleanupLock(ctx context.Context) (scheduler.SchedulerOutboxCleanupLease, bool, error) {
 	conn, err := r.db.Conn(ctx)
 	if err != nil {
 		return nil, false, err
@@ -228,9 +229,9 @@ func schedulerOutboxDedupKey(eventType string, accountID *int64, groupID *int64,
 
 func schedulerOutboxEventSupportsDedup(eventType string) bool {
 	switch eventType {
-	case service.SchedulerOutboxEventAccountChanged,
-		service.SchedulerOutboxEventGroupChanged,
-		service.SchedulerOutboxEventFullRebuild:
+	case domain.SchedulerOutboxEventAccountChanged,
+		domain.SchedulerOutboxEventGroupChanged,
+		domain.SchedulerOutboxEventFullRebuild:
 		return true
 	default:
 		return false
