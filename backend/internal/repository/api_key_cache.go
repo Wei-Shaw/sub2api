@@ -8,7 +8,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/port/apikeycache"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -32,7 +33,7 @@ type apiKeyCache struct {
 	rdb *redis.Client
 }
 
-func NewAPIKeyCache(rdb *redis.Client) service.APIKeyCache {
+func NewAPIKeyCache(rdb *redis.Client) apikeycache.APIKeyCache {
 	return &apiKeyCache{rdb: rdb}
 }
 
@@ -67,19 +68,19 @@ func (c *apiKeyCache) SetDailyUsageExpiry(ctx context.Context, apiKey string, tt
 	return c.rdb.Expire(ctx, apiKey, ttl).Err()
 }
 
-func (c *apiKeyCache) GetAuthCache(ctx context.Context, key string) (*service.APIKeyAuthCacheEntry, error) {
+func (c *apiKeyCache) GetAuthCache(ctx context.Context, key string) (*domain.APIKeyAuthCacheEntry, error) {
 	val, err := c.rdb.Get(ctx, apiKeyAuthCacheKey(key)).Bytes()
 	if err != nil {
 		return nil, err
 	}
-	var entry service.APIKeyAuthCacheEntry
+	var entry domain.APIKeyAuthCacheEntry
 	if err := json.Unmarshal(val, &entry); err != nil {
 		return nil, err
 	}
 	return &entry, nil
 }
 
-func (c *apiKeyCache) SetAuthCache(ctx context.Context, key string, entry *service.APIKeyAuthCacheEntry, ttl time.Duration) error {
+func (c *apiKeyCache) SetAuthCache(ctx context.Context, key string, entry *domain.APIKeyAuthCacheEntry, ttl time.Duration) error {
 	if entry == nil {
 		return nil
 	}
@@ -115,7 +116,7 @@ func (c *apiKeyCache) SubscribeAuthCacheInvalidation(ctx context.Context, handle
 			log.Printf("Warning: failed to close auth cache invalidation pubsub: %v", err)
 		}
 	}()
-	service.NotifyAuthCacheSubscriptionReady(ctx)
+	apikeycache.NotifyAuthCacheSubscriptionReady(ctx)
 
 	ch := pubsub.Channel()
 	for {
