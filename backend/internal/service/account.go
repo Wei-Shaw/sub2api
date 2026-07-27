@@ -253,12 +253,16 @@ func (a *Account) IsGrok() bool {
 	return a.Platform == PlatformGrok
 }
 
+func (a *Account) IsQoder() bool {
+	return a.Platform == PlatformQoder
+}
+
 func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok)
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.Platform == PlatformQoder)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1351,6 +1355,28 @@ func (a *Account) GetOpenAIApiKey() string {
 		return ""
 	}
 	return a.GetCredential("api_key")
+}
+
+// GetQoderApiKey returns the Qoder PAT stored in credentials.api_key.
+func (a *Account) GetQoderApiKey() string {
+	if !a.IsQoder() {
+		return ""
+	}
+	return a.GetCredential("api_key")
+}
+
+// GetQoderBaseURL returns the Qoder Cloud Agents API base URL, allowing a
+// per-account credentials.base_url override. The returned URL has no trailing
+// slash and points at the cloud API root (e.g. https://api.qoder.com/api/v1/cloud).
+func (a *Account) GetQoderBaseURL() string {
+	if !a.IsQoder() {
+		return ""
+	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	if baseURL == "" {
+		return qoderDefaultBaseURL
+	}
+	return strings.TrimRight(baseURL, "/")
 }
 
 func (a *Account) GetOpenAIUserAgent() string {
