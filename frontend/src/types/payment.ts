@@ -38,6 +38,7 @@ export interface PaymentConfig {
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
+  refund_request_user_email_enabled: boolean
   stripe_publishable_key: string
 }
 

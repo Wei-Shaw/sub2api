@@ -2,6 +2,7 @@ package admin
 
 import (
 	"html"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -282,6 +283,82 @@ func (h *SettingHandler) PreviewEmailTemplate(c *gin.Context) {
 		return
 	}
 	response.Success(c, dto.EmailTemplatePreviewResponse{Subject: preview.Subject, HTML: preview.HTML})
+}
+
+// GetNotificationEmailPolicy returns global mail-channel switches and recipient routing.
+func (h *SettingHandler) GetNotificationEmailPolicy(c *gin.Context) {
+	if h.notificationEmailService == nil {
+		response.BadRequest(c, "Notification email service is not configured")
+		return
+	}
+	policy, err := h.notificationEmailService.GetPolicy(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, policy)
+}
+
+// UpdateNotificationEmailPolicy updates global mail-channel switches and recipient routing.
+func (h *SettingHandler) UpdateNotificationEmailPolicy(c *gin.Context) {
+	if h.notificationEmailService == nil {
+		response.BadRequest(c, "Notification email service is not configured")
+		return
+	}
+	var req service.NotificationEmailPolicyUpdate
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	policy, err := h.notificationEmailService.UpdatePolicy(c.Request.Context(), req)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, policy)
+}
+
+// ListNotificationEmailDeliveries returns redacted delivery metadata only.
+func (h *SettingHandler) ListNotificationEmailDeliveries(c *gin.Context) {
+	if h.notificationEmailDispatcher == nil {
+		response.BadRequest(c, "Notification email dispatcher is not configured")
+		return
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	result, err := h.notificationEmailDispatcher.List(c.Request.Context(), service.NotificationEmailDeliveryListFilter{
+		Page: page, PageSize: pageSize, Event: c.Query("event"), Status: c.Query("status"),
+		SourceType: c.Query("source_type"), SourceID: c.Query("source_id"),
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// RetryNotificationEmailDelivery retries failures that are safe after transport,
+// configuration, or template remediation.
+func (h *SettingHandler) RetryNotificationEmailDelivery(c *gin.Context) {
+	if h.notificationEmailDispatcher == nil {
+		response.BadRequest(c, "Notification email dispatcher is not configured")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid delivery id")
+		return
+	}
+	retried, err := h.notificationEmailDispatcher.Retry(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !retried {
+		response.BadRequest(c, "Delivery is not retryable")
+		return
+	}
+	response.Success(c, gin.H{"retried": true})
 }
 
 func emailTemplateEventOptionsToDTO(events []service.NotificationEmailEventInfo) []dto.EmailTemplateEventOption {

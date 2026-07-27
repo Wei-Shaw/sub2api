@@ -687,11 +687,34 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 	}
 
 	emailCfg, err := s.opsService.GetEmailNotificationConfig(ctx)
-	if err != nil || emailCfg == nil || !emailCfg.Alert.Enabled {
+	if err != nil || emailCfg == nil {
+		return false
+	}
+	alertEnabled := emailCfg.Alert.Enabled
+	if s.emailService.notificationEmailService != nil {
+		channel, configured, channelErr := s.emailService.notificationEmailService.GetChannelPolicyState(ctx, NotificationEmailChannelOpsAlert)
+		if channelErr != nil {
+			return false
+		}
+		if configured {
+			alertEnabled = channel.Enabled
+		}
+	}
+	if !alertEnabled {
 		return false
 	}
 
-	if len(emailCfg.Alert.Recipients) == 0 {
+	recipients := emailCfg.Alert.Recipients
+	if s.emailService != nil && s.emailService.notificationEmailService != nil {
+		resolved, resolveErr := s.emailService.notificationEmailService.ResolveGroupRecipients(ctx, NotificationEmailChannelOpsAlert)
+		if resolveErr != nil {
+			return false
+		}
+		if resolved != nil {
+			recipients = resolved
+		}
+	}
+	if len(recipients) == 0 {
 		return false
 	}
 	if !shouldSendOpsAlertEmailByMinSeverity(strings.TrimSpace(emailCfg.Alert.MinSeverity), strings.TrimSpace(rule.Severity)) {
@@ -711,7 +734,7 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 	body := buildOpsAlertEmailBody(rule, event)
 
 	anySent := false
-	for _, to := range emailCfg.Alert.Recipients {
+	for _, to := range recipients {
 		addr := strings.TrimSpace(to)
 		if addr == "" {
 			continue

@@ -236,7 +236,17 @@ func (s *OpsScheduledReportService) listScheduledReports(ctx context.Context, no
 	if err != nil || emailCfg == nil {
 		return nil
 	}
-	if !emailCfg.Report.Enabled {
+	reportEnabled := emailCfg.Report.Enabled
+	if s.emailService != nil && s.emailService.notificationEmailService != nil {
+		channel, configured, channelErr := s.emailService.notificationEmailService.GetChannelPolicyState(ctx, NotificationEmailChannelOpsReport)
+		if channelErr != nil {
+			return nil
+		}
+		if configured {
+			reportEnabled = channel.Enabled
+		}
+	}
+	if !reportEnabled {
 		return nil
 	}
 
@@ -331,6 +341,15 @@ func (s *OpsScheduledReportService) runReport(ctx context.Context, report *opsSc
 	}
 
 	recipients := report.Recipients
+	if s.emailService != nil && s.emailService.notificationEmailService != nil {
+		resolved, resolveErr := s.emailService.notificationEmailService.ResolveGroupRecipients(ctx, NotificationEmailChannelOpsReport)
+		if resolveErr != nil {
+			return 0, resolveErr
+		}
+		if resolved != nil {
+			recipients = resolved
+		}
+	}
 	if len(recipients) == 0 && s.userService != nil {
 		admin, err := s.userService.GetFirstAdmin(ctx)
 		if err == nil && admin != nil && strings.TrimSpace(admin.Email) != "" {

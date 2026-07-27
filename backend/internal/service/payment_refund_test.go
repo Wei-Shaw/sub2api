@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -14,6 +15,200 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRequestRefundQueuesDurablyWithoutRollingBackOrDuplicatingRequest(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("refund-email-failure@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-email-failure-user").
+		Save(ctx)
+	require.NoError(t, err)
+	providerInstance, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("refund-email-provider").
+		SetConfig("{}").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetAllowUserRefund(true).
+		SetRefundEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(88).
+		SetPayAmount(100).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-EMAIL-FAILURE").
+		SetOutTradeNo("sub2_refund_email_failure").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-email-failure").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderInstanceID(strconv.FormatInt(providerInstance.ID, 10)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	settingRepo := newNotificationEmailMemorySettingRepo()
+	require.NoError(t, settingRepo.Set(ctx, SettingRefundRequestUserEmailEnabled, "true"))
+	require.NoError(t, settingRepo.Set(ctx, SettingRefundRequestAdminEmailEnabled, "true"))
+	notificationSvc := NewNotificationEmailService(settingRepo, nil)
+	_, err = notificationSvc.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{
+		Channels: []NotificationEmailChannelPolicy{
+			{ID: NotificationEmailChannelRefundUser, Enabled: true, IncludeUserPrimary: true},
+			{ID: NotificationEmailChannelRefundAdmin, Enabled: true, RecipientGroup: NotificationEmailRecipientGroupFinance},
+		},
+		RecipientGroups: []NotificationEmailRecipientGroup{{
+			ID:      NotificationEmailRecipientGroupFinance,
+			Members: []NotificationEmailRecipientMember{{Email: "finance@example.com", Enabled: true}},
+		}},
+	})
+	require.NoError(t, err)
+	deliveryRepo := newFakeNotificationEmailDeliveryRepository()
+
+	svc := &PaymentService{
+		entClient:                   client,
+		configService:               NewPaymentConfigService(client, settingRepo, nil),
+		userRepo:                    &mockUserRepo{getByIDUser: &User{ID: user.ID, Balance: 200}},
+		notificationEmailService:    notificationSvc,
+		notificationEmailDispatcher: NewNotificationEmailDispatcher(deliveryRepo, notificationSvc),
+	}
+	require.NoError(t, svc.RequestRefund(ctx, order.ID, user.ID, "duplicate charge"))
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusRefundRequested, reloaded.Status)
+	require.Error(t, svc.RequestRefund(ctx, order.ID, user.ID, "duplicate charge"))
+
+	deliveryRepo.mu.Lock()
+	require.Len(t, deliveryRepo.items, 2)
+	require.Equal(t, NotificationEmailEventRefundRequestedUser, deliveryRepo.items[0].Event)
+	require.Equal(t, NotificationEmailDeliveryStatusPending, deliveryRepo.items[0].Status)
+	require.Equal(t, "100.00", deliveryRepo.items[0].Variables["refund_amount"])
+	require.Equal(t, NotificationEmailEventRefundRequestedAdmin, deliveryRepo.items[1].Event)
+	require.Equal(t, "finance@example.com", deliveryRepo.items[1].RecipientEmail)
+	require.Equal(t, strconv.FormatInt(user.ID, 10), deliveryRepo.items[1].Variables["refund_user_id"])
+	require.Equal(t, user.Email, deliveryRepo.items[1].Variables["refund_user_email"])
+	deliveryRepo.mu.Unlock()
+
+	reloaded, err = client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusRefundRequested, reloaded.Status)
+}
+
+func TestRequestRefundRollsBackOrderWhenOutboxInsertFails(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	user, err := client.User.Create().
+		SetEmail("refund-outbox-rollback@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-outbox-rollback-user").
+		Save(ctx)
+	require.NoError(t, err)
+	providerInstance, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("refund-outbox-rollback-provider").
+		SetConfig("{}").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetAllowUserRefund(true).
+		SetRefundEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(88).
+		SetPayAmount(88).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-OUTBOX-ROLLBACK").
+		SetOutTradeNo("sub2_refund_outbox_rollback").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-outbox-rollback").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderInstanceID(strconv.FormatInt(providerInstance.ID, 10)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	settingRepo := newNotificationEmailMemorySettingRepo()
+	require.NoError(t, settingRepo.Set(ctx, SettingRefundRequestUserEmailEnabled, "true"))
+	notificationSvc := NewNotificationEmailService(settingRepo, nil)
+	_, err = notificationSvc.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{Channels: []NotificationEmailChannelPolicy{{
+		ID: NotificationEmailChannelRefundUser, Enabled: true, IncludeUserPrimary: true,
+	}}})
+	require.NoError(t, err)
+	deliveryRepo := newFakeNotificationEmailDeliveryRepository()
+	deliveryRepo.enqueueErr = errors.New("outbox unavailable")
+	svc := &PaymentService{
+		entClient: client, configService: NewPaymentConfigService(client, settingRepo, nil),
+		userRepo:                    &mockUserRepo{getByIDUser: &User{ID: user.ID, Balance: 200}},
+		notificationEmailDispatcher: NewNotificationEmailDispatcher(deliveryRepo, notificationSvc),
+	}
+
+	err = svc.RequestRefund(ctx, order.ID, user.ID, "duplicate charge")
+	require.ErrorContains(t, err, "outbox unavailable")
+	reloaded, reloadErr := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, reloadErr)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+}
+
+func TestRefundResultCommitsWhenOutboxInsertFails(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	user, err := client.User.Create().
+		SetEmail("refund-result-outbox@example.com").SetPasswordHash("hash").SetUsername("refund-result-user").Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).SetUserEmail(user.Email).SetUserName(user.Username).
+		SetAmount(88).SetPayAmount(100).SetFeeRate(0).SetRechargeCode("REFUND-RESULT-OUTBOX").
+		SetOutTradeNo("sub2_refund_result_outbox").SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-result-outbox").SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusRefunding).SetExpiresAt(time.Now().Add(time.Hour)).SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").SetSrcHost("api.example.com").Save(ctx)
+	require.NoError(t, err)
+
+	settingRepo := newNotificationEmailMemorySettingRepo()
+	require.NoError(t, settingRepo.Set(ctx, SettingRefundResultUserEmailEnabled, "true"))
+	notificationSvc := NewNotificationEmailService(settingRepo, nil)
+	_, err = notificationSvc.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{Channels: []NotificationEmailChannelPolicy{{
+		ID: NotificationEmailChannelRefundUser, Enabled: true, IncludeUserPrimary: true,
+	}}})
+	require.NoError(t, err)
+	deliveryRepo := newFakeNotificationEmailDeliveryRepository()
+	deliveryRepo.enqueueErr = errors.New("outbox unavailable")
+	svc := &PaymentService{
+		entClient: client, configService: NewPaymentConfigService(client, settingRepo, nil),
+		notificationEmailDispatcher: NewNotificationEmailDispatcher(deliveryRepo, notificationSvc),
+	}
+
+	result, err := svc.markRefundOk(ctx, &RefundPlan{
+		OrderID: order.ID, Order: order, RefundAmount: order.Amount, GatewayAmount: order.PayAmount, Reason: "duplicate charge",
+	})
+	require.NoError(t, err)
+	require.True(t, result.Success)
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusRefunded, reloaded.Status)
+	auditCount, err := client.PaymentAuditLog.Query().
+		Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)), paymentauditlog.ActionEQ("REFUND_EMAIL_ENQUEUE_FAILED")).
+		Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, auditCount)
+}
 
 func TestValidateRefundRequestRejectsLegacyGuessedProviderInstance(t *testing.T) {
 	ctx := context.Background()

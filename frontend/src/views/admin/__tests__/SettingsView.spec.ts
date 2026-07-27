@@ -455,6 +455,7 @@ const baseSettingsResponse = {
   payment_product_name_suffix: "",
   payment_help_image_url: "",
   payment_help_text: "",
+  payment_refund_request_user_email_enabled: false,
   payment_cancel_rate_limit_enabled: false,
   payment_cancel_rate_limit_max: 10,
   payment_cancel_rate_limit_window: 1,
@@ -522,6 +523,7 @@ function mountView() {
         ProxySelector: true,
         ImageUpload: ImageUploadStub,
         BackupSettings: true,
+        EmailNotificationPolicyCard: true,
       },
     },
   });
@@ -881,6 +883,24 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         antigravity_user_agent_version: "1.23.2",
+      }),
+    );
+  });
+
+  it("preserves the refund request confirmation email switch when saving payment settings", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      payment_refund_request_user_email_enabled: true,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_refund_request_user_email_enabled: true,
       }),
     );
   });

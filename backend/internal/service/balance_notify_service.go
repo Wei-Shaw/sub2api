@@ -121,7 +121,7 @@ func crossedDownward(oldV, newV, threshold float64) bool {
 // dispatchBalanceLowEmail collects recipients and sends the alert in a goroutine.
 func (s *BalanceNotifyService) dispatchBalanceLowEmail(ctx context.Context, user *User, newBalance, threshold float64, rechargeURL string) {
 	siteName := s.getSiteName(ctx)
-	recipients := s.collectBalanceNotifyRecipients(user)
+	recipients := s.collectBalanceNotifyRecipients(ctx, user)
 	slog.Info("CheckBalanceAfterDeduction: sending notification",
 		"user_id", user.ID, "recipients", recipients, "new_balance", newBalance, "threshold", threshold)
 	go func() {
@@ -184,7 +184,7 @@ func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Conte
 	if account == nil || s.emailService == nil || s.settingRepo == nil || cost <= 0 {
 		return
 	}
-	if !s.isAccountQuotaNotifyEnabled(ctx) {
+	if !s.shouldSendAccountQuotaNotifications(ctx) {
 		return
 	}
 	adminEmails := s.getAccountQuotaNotifyEmails(ctx)
@@ -202,6 +202,16 @@ func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Conte
 		account = freshAccount // use fresh data for alert metadata
 	}
 	s.checkQuotaDimCrossings(account, dims, cost, adminEmails, siteName)
+}
+
+func (s *BalanceNotifyService) shouldSendAccountQuotaNotifications(ctx context.Context) bool {
+	if s.notificationEmailService != nil {
+		channel, configured, err := s.notificationEmailService.GetChannelPolicyState(ctx, NotificationEmailChannelAccountQuota)
+		if err == nil && configured {
+			return channel.Enabled
+		}
+	}
+	return s.isAccountQuotaNotifyEnabled(ctx)
 }
 
 // fetchFreshAccount loads the latest account from DB; falls back to the snapshot on error.
@@ -278,6 +288,11 @@ func (s *BalanceNotifyService) isAccountQuotaNotifyEnabled(ctx context.Context) 
 // getAccountQuotaNotifyEmails reads admin notification emails from settings,
 // filtering out disabled and unverified entries.
 func (s *BalanceNotifyService) getAccountQuotaNotifyEmails(ctx context.Context) []string {
+	if s.notificationEmailService != nil {
+		if recipients, err := s.notificationEmailService.ResolveGroupRecipients(ctx, NotificationEmailChannelAccountQuota); err == nil && recipients != nil {
+			return recipients
+		}
+	}
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAccountQuotaNotifyEmails)
 	if err != nil || strings.TrimSpace(raw) == "" || raw == "[]" {
 		return nil
@@ -324,7 +339,12 @@ func filterVerifiedEmails(entries []NotifyEmailEntry) []string {
 
 // collectBalanceNotifyRecipients returns verified, non-disabled email recipients.
 // Only emails with verified=true and disabled=false are included.
-func (s *BalanceNotifyService) collectBalanceNotifyRecipients(user *User) []string {
+func (s *BalanceNotifyService) collectBalanceNotifyRecipients(ctx context.Context, user *User) []string {
+	if s.notificationEmailService != nil {
+		if recipients, err := s.notificationEmailService.ResolveUserRecipients(ctx, NotificationEmailChannelBalance, user.Email, user.BalanceNotifyExtraEmails); err == nil {
+			return recipients
+		}
+	}
 	return filterVerifiedEmails(user.BalanceNotifyExtraEmails)
 }
 

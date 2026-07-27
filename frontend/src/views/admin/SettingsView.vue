@@ -7223,6 +7223,37 @@
                       >
                     </div>
                   </div>
+                  <div class="min-w-64 flex-1">
+                    <div class="flex items-center justify-between gap-3">
+                      <div>
+                        <label class="input-label">{{
+                          t("admin.settings.payment.refundRequestUserEmail")
+                        }}</label>
+                        <p class="mt-0.5 text-xs text-gray-400">
+                          {{ t("admin.settings.payment.refundRequestUserEmailHint") }}
+                        </p>
+                      </div>
+                      <Toggle v-model="form.payment_refund_request_user_email_enabled" />
+                    </div>
+                  </div>
+                  <div class="min-w-64 flex-1">
+                    <div class="flex items-center justify-between gap-3">
+                      <div>
+                        <label class="input-label">{{ t("admin.settings.payment.refundRequestAdminEmail") }}</label>
+                        <p class="mt-0.5 text-xs text-gray-400">{{ t("admin.settings.payment.refundRequestAdminEmailHint") }}</p>
+                      </div>
+                      <Toggle v-model="form.payment_refund_request_admin_email_enabled" />
+                    </div>
+                  </div>
+                  <div class="min-w-64 flex-1">
+                    <div class="flex items-center justify-between gap-3">
+                      <div>
+                        <label class="input-label">{{ t("admin.settings.payment.refundResultUserEmail") }}</label>
+                        <p class="mt-0.5 text-xs text-gray-400">{{ t("admin.settings.payment.refundResultUserEmailHint") }}</p>
+                      </div>
+                      <Toggle v-model="form.payment_refund_result_user_email_enabled" />
+                    </div>
+                  </div>
                   <div>
                     <label class="input-label">{{
                       t("admin.settings.payment.alipayForceQRCode")
@@ -7387,29 +7418,7 @@
         </div>
 
         <div v-show="activeTab === 'email'" class="space-y-6">
-          <!-- Email disabled hint - show when email_verify_enabled is off -->
-          <div v-if="!form.email_verify_enabled" class="card">
-            <div class="p-6">
-              <div class="flex items-start gap-3">
-                <Icon
-                  name="mail"
-                  size="md"
-                  class="mt-0.5 flex-shrink-0 text-gray-400 dark:text-gray-500"
-                />
-                <div>
-                  <h3 class="font-medium text-gray-900 dark:text-white">
-                    {{ t("admin.settings.emailTabDisabledTitle") }}
-                  </h3>
-                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.emailTabDisabledHint") }}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- SMTP Settings - Only show when email verification is enabled -->
-          <div v-if="form.email_verify_enabled" class="card">
+          <div class="card">
             <div
               class="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -7571,8 +7580,8 @@
             </div>
           </div>
 
-          <!-- Send Test Email - Only show when email verification is enabled -->
-          <div v-if="form.email_verify_enabled" class="card">
+          <!-- Send Test Email -->
+          <div class="card">
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -7637,6 +7646,8 @@
               </div>
             </div>
           </div>
+
+          <EmailNotificationPolicyCard />
 
           <!-- 订阅到期提醒 -->
           <div class="card">
@@ -7932,6 +7943,7 @@ import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
+import EmailNotificationPolicyCard from "@/views/admin/settings/EmailNotificationPolicyCard.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import {
@@ -8685,6 +8697,9 @@ const form = reactive<SettingsForm>({
   payment_enabled_types: [],
   payment_help_image_url: "",
   payment_help_text: "",
+  payment_refund_request_user_email_enabled: false,
+  payment_refund_request_admin_email_enabled: false,
+  payment_refund_result_user_email_enabled: false,
   payment_product_name_prefix: "",
   payment_product_name_suffix: "",
   payment_load_balance_strategy: "round-robin",
@@ -10367,6 +10382,12 @@ async function saveSettings() {
       payment_product_name_suffix: form.payment_product_name_suffix,
       payment_help_image_url: form.payment_help_image_url,
       payment_help_text: form.payment_help_text,
+      payment_refund_request_user_email_enabled:
+        form.payment_refund_request_user_email_enabled,
+      payment_refund_request_admin_email_enabled:
+        form.payment_refund_request_admin_email_enabled,
+      payment_refund_result_user_email_enabled:
+        form.payment_refund_result_user_email_enabled,
       payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
       payment_cancel_rate_limit_max:
         Number(form.payment_cancel_rate_limit_max) || 10,
