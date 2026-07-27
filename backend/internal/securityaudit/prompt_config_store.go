@@ -194,15 +194,15 @@ func (m *ConfigManager) markUntrustedIfNoActiveSnapshot() {
 	}
 }
 
-func (m *ConfigManager) Public() PublicConfig {
+func (m *ConfigManager) Public() (PublicConfig, error) {
 	if m == nil {
-		return PublicFromStorage(DefaultStorageConfig(), false)
+		return PublicConfig{}, infraerrors.ServiceUnavailable(ErrorCodeConfigUnavailable, "提示词审计配置暂不可用")
 	}
 	snapshot := m.snapshot.Load()
 	if snapshot == nil {
-		return PublicFromStorage(DefaultStorageConfig(), false)
+		return PublicConfig{}, infraerrors.ServiceUnavailable(ErrorCodeConfigUnavailable, "提示词审计配置暂不可用")
 	}
-	return PublicFromStorage(cloneStorageConfig(snapshot.storage), snapshot.active.RiskControlEnabled)
+	return PublicFromStorage(cloneStorageConfig(snapshot.storage), snapshot.active.RiskControlEnabled), nil
 }
 
 func (m *ConfigManager) Save(ctx context.Context, req UpdateConfigRequest, actorID int64) (PublicConfig, error) {
