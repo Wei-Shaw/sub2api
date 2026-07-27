@@ -14,7 +14,6 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 // usageLogInsertArgTypes must stay in the same order as:
@@ -198,14 +197,14 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *domain.U
 	select {
 	case r.bestEffortBatchCh <- req:
 	case <-ctx.Done():
-		return service.MarkUsageLogCreateDropped(ctx.Err())
+		return domain.MarkUsageLogCreateDropped(ctx.Err())
 	}
 
 	select {
 	case err := <-req.resultCh:
 		return err
 	case <-ctx.Done():
-		return service.MarkUsageLogCreateDropped(ctx.Err())
+		return domain.MarkUsageLogCreateDropped(ctx.Err())
 	}
 }
 
@@ -215,7 +214,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 		sqlq = r.sql
 	}
 	if ctx != nil && ctx.Err() != nil {
-		return false, service.MarkUsageLogCreateNotPersisted(ctx.Err())
+		return false, domain.MarkUsageLogCreateNotPersisted(ctx.Err())
 	}
 
 	query := `
@@ -325,7 +324,7 @@ func (r *usageLogRepository) createBatched(ctx context.Context, log *domain.Usag
 	select {
 	case r.createBatchCh <- req:
 	case <-ctx.Done():
-		return false, service.MarkUsageLogCreateNotPersisted(ctx.Err())
+		return false, domain.MarkUsageLogCreateNotPersisted(ctx.Err())
 	}
 
 	select {
@@ -333,7 +332,7 @@ func (r *usageLogRepository) createBatched(ctx context.Context, log *domain.Usag
 		return res.inserted, res.err
 	case <-ctx.Done():
 		if req.shared != nil && req.shared.state.CompareAndSwap(usageLogCreateStateQueued, usageLogCreateStateCanceled) {
-			return false, service.MarkUsageLogCreateNotPersisted(ctx.Err())
+			return false, domain.MarkUsageLogCreateNotPersisted(ctx.Err())
 		}
 		timer := time.NewTimer(usageLogCreateCancelWait)
 		defer timer.Stop()
@@ -459,7 +458,7 @@ func (r *usageLogRepository) flushCreateBatch(db *sql.DB, batch []usageLogCreate
 			if req.shared.state.Load() == usageLogCreateStateCanceled {
 				completeUsageLogCreateRequest(req, usageLogCreateResult{
 					inserted: false,
-					err:      service.MarkUsageLogCreateNotPersisted(context.Canceled),
+					err:      domain.MarkUsageLogCreateNotPersisted(context.Canceled),
 				})
 				continue
 			}
