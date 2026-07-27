@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 var (
@@ -29,11 +31,22 @@ type promptSegment struct {
 }
 
 func ExtractPromptSnapshot(req Request) (PromptSnapshot, error) {
+	return ExtractPromptSnapshotWithLastUserOnly(req, false)
+}
+
+func ExtractPromptSnapshotWithLastUserOnly(req Request, lastUserOnly bool) (PromptSnapshot, error) {
 	var document any
 	if err := json.Unmarshal(req.Body, &document); err != nil {
 		return PromptSnapshot{}, errors.New("prompt audit request JSON is invalid")
 	}
 	extracted := extractProtocolSegments(req.Protocol, document)
+	if lastUserOnly {
+		extracted = userPromptSegments([]string{service.ExtractContentModerationText(req.Protocol, req.Body)})
+	}
+	return extractPromptSnapshot(req, extracted)
+}
+
+func extractPromptSnapshot(req Request, extracted []promptSegment) (PromptSnapshot, error) {
 	segments := normalizeSegmentsLatestUserFirst(extracted)
 	if len(segments) == 0 {
 		return PromptSnapshot{}, ErrNoPromptText

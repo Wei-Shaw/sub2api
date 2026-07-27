@@ -14,6 +14,7 @@ const config = (): PromptAuditConfig => ({
   enabled: true,
   blocking_enabled: false,
   store_pass_events: false,
+  last_user_only: false,
   effective_mode: 'async_audit',
   strategy: 'priority',
   worker_count: 4,
@@ -62,6 +63,8 @@ describe('Prompt Audit view model', () => {
     expect(draftFingerprint(changed)).toBe(draftFingerprint(original))
     changed.queue_capacity += 1
     expect(draftFingerprint(changed)).not.toBe(draftFingerprint(original))
+    changed.last_user_only = true
+    expect(buildUpdateRequest(changed)).toMatchObject({ last_user_only: true })
   })
 
   it('requires a valid explicit range and sends canonical ISO timestamps for filter deletion', () => {

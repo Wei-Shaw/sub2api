@@ -19,6 +19,7 @@ func TestDefaultConfigIsOff(t *testing.T) {
 	storage, err := ParseStorageConfig("")
 	require.NoError(t, err)
 	require.False(t, storage.Enabled)
+	require.False(t, storage.LastUserOnly)
 	active, err := ActiveFromStorage(storage, true, prefixEncryptor{})
 	require.NoError(t, err)
 	require.Equal(t, ModeOff, active.EffectiveMode())
@@ -27,6 +28,7 @@ func TestDefaultConfigIsOff(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(publicJSON), `"group_ids":[]`)
 	require.Contains(t, string(publicJSON), `"endpoints":[]`)
+	require.Contains(t, string(publicJSON), `"last_user_only":false`)
 }
 
 func TestConfigRejectsBlockingWithoutAudit(t *testing.T) {
@@ -111,11 +113,12 @@ func TestBuildNextStoragePreserveReplaceAndClearToken(t *testing.T) {
 	manager := &ConfigManager{encryptor: prefixEncryptor{}}
 	current := DefaultStorageConfig()
 	current.Endpoints = []StorageEndpoint{{ID: "one", Name: "One", Protocol: "openai_compatible", BaseURL: "http://127.0.0.1:8080", Model: DefaultGuardModel, TokenCiphertext: "enc:old", TimeoutMS: 1000, InputLimit: 1000}}
-	base := UpdateConfigRequest{ExpectedConfigVersion: 1, Strategy: "priority", WorkerCount: 1, QueueCapacity: 10, Scanners: []string{"PII"}, AllGroups: true,
+	base := UpdateConfigRequest{ExpectedConfigVersion: 1, LastUserOnly: true, Strategy: "priority", WorkerCount: 1, QueueCapacity: 10, Scanners: []string{"PII"}, AllGroups: true,
 		Endpoints: []UpdateEndpoint{{ID: "one", Name: "One", Protocol: "openai_compatible", BaseURL: "http://127.0.0.1:8080", TimeoutMS: 1000, InputLimit: 1000}}}
 	preserved, err := manager.buildNextStorage(current, base, 9)
 	require.NoError(t, err)
 	require.Equal(t, "enc:old", preserved.Endpoints[0].TokenCiphertext)
+	require.True(t, preserved.LastUserOnly)
 	replacedReq := base
 	replacedReq.Endpoints = append([]UpdateEndpoint(nil), base.Endpoints...)
 	replacedReq.Endpoints[0].Token = "new"

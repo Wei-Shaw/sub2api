@@ -37,6 +37,20 @@ func TestExtractPromptSnapshotProtocols(t *testing.T) {
 	}
 }
 
+func TestExtractPromptSnapshotWithLastUserOnly(t *testing.T) {
+	body := []byte(`{"messages":[{"role":"user","content":"historical user input"},{"role":"assistant","content":"historical assistant output"},{"role":"user","content":"final user input"}]}`)
+	snapshot, err := ExtractPromptSnapshotWithLastUserOnly(Request{Protocol: "openai_chat_completions", Body: body}, true)
+	require.NoError(t, err)
+	require.Equal(t, "final user input", snapshot.ScanText)
+	require.Equal(t, 1, snapshot.MessageCount)
+
+	_, err = ExtractPromptSnapshotWithLastUserOnly(Request{
+		Protocol: "openai_chat_completions",
+		Body:     []byte(`{"messages":[{"role":"user","content":"historical user input"},{"role":"assistant","content":"tool loop"}]}`),
+	}, true)
+	require.ErrorIs(t, err, ErrNoPromptText)
+}
+
 func TestSnapshotRedactsCanariesAndPreservesHashOfScanText(t *testing.T) {
 	body := `{"messages":[{"role":"user","content":"PROMPT_CANARY_ABC123 email@example.com +86 138 0013 8000 Bearer AUTH_CANARY_XYZ sk-secretvalue123 password=supersecret123"}]}`
 	snapshot, err := ExtractPromptSnapshot(Request{Protocol: "openai_chat_completions", Body: []byte(body)})
