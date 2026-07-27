@@ -701,8 +701,8 @@ func TestGetRequestCredentialMapsTransientAndProviderFailuresSeparately(t *testi
 		account := expiredGrokOAuthAccountForCredentialTest(709)
 		proxyID := int64(41)
 		account.ProxyID = &proxyID
-		// 故意不 hydrate Proxy：刷新应回退 ProxyID 查库；查库失败归类为 provider 故障。
-		// accountHasConfiguredProxy 仍会因 ProxyID 非空判定为已配置代理。
+		// 非空但无 host 的占位 Proxy：通过 eligibility，刷新时 accountProxyURL 回退查库。
+		account.Proxy = &Proxy{}
 		repo := &tokenRefreshAccountRepo{}
 		repo.accountsByID = map[int64]*Account{account.ID: account}
 		cache := &grokTokenCacheForProviderTest{lockResult: true}

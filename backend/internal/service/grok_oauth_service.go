@@ -346,7 +346,9 @@ func (s *GrokOAuthService) accountProxyURL(ctx context.Context, account *Account
 	if account == nil {
 		return "", nil
 	}
-	if account.Proxy != nil {
+	// 已 hydrate 且含有效 host 时直接用（含代理组 sticky 选择结果）。
+	// 空占位 Proxy（无 host）不能当作已解析：Proxy.URL() 仍可能产出 "://:0" 非空串。
+	if account.Proxy != nil && strings.TrimSpace(account.Proxy.Host) != "" {
 		return account.ProxyURL(), nil
 	}
 	return s.proxyURL(ctx, account.ProxyID)

@@ -4,8 +4,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,7 +18,6 @@ func TestGrokOAuthService_AccountProxyURL_PrefersHydratedProxy(t *testing.T) {
 	groupID := int64(5)
 	svc := NewGrokOAuthService(nil, nil)
 
-	// 池账号：Proxy 已 hydrate，ProxyID 仍为 nil —— 必须走 hydrate 结果，不能查库。
 	account := &Account{
 		ID:           42,
 		ProxyGroupID: &groupID,
@@ -31,7 +32,6 @@ func TestGrokOAuthService_AccountProxyURL_PrefersHydratedProxy(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "http://pool-member.example.com:8080", url)
 
-	// 显式单代理 hydrate：同样优先 Proxy 字段。
 	account2 := &Account{
 		ID:      1,
 		ProxyID: &proxyID,
@@ -46,10 +46,21 @@ func TestGrokOAuthService_AccountProxyURL_PrefersHydratedProxy(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "socks5://single.example.com:1080", url)
 
-	// nil account
 	url, err = svc.accountProxyURL(context.Background(), nil)
 	require.NoError(t, err)
 	require.Equal(t, "", url)
+}
+
+func TestGrokOAuthService_AccountProxyURL_EmptyPlaceholderFallsBackToRepo(t *testing.T) {
+	t.Parallel()
+	proxyID := int64(41)
+	stub := &grokCredentialProxyRepoStub{err: errors.New("database temporarily unavailable")}
+	svc := NewGrokOAuthService(stub, &grokOAuthClientStub{})
+	defer svc.Stop()
+	account := &Account{ID: 1, ProxyID: &proxyID, Proxy: &Proxy{}}
+	_, err := svc.accountProxyURL(context.Background(), account)
+	require.Error(t, err)
+	require.Equal(t, "GROK_OAUTH_PROXY_LOOKUP_FAILED", infraerrors.Reason(err))
 }
 
 func TestAccountHasConfiguredProxy_CoversGroup(t *testing.T) {

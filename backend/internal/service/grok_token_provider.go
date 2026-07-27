@@ -213,9 +213,9 @@ func (p *GrokTokenProvider) GetAccessTokenForManualTest(ctx context.Context, acc
 	if account.Platform != PlatformGrok || account.Type != AccountTypeOAuth {
 		return "", errors.New("not a grok oauth account")
 	}
-	// 注意：不再将「ProxyID != nil 且 Proxy == nil」视为结构性缺失。
-	// 代理池 hydration 与 OAuth 刷新都会在后续按 ProxyID/ProxyGroup 解析出口；
-	// 真正的「代理不存在」由 proxyURL/GetByID 返回 GROK_OAUTH_PROXY_NOT_FOUND。
+	if account.ProxyID != nil && account.Proxy == nil {
+		return "", errGrokOAuthConfiguredProxyMiss
+	}
 	if strings.TrimSpace(account.GetGrokRefreshToken()) == "" {
 		return "", errGrokOAuthRefreshTokenMissing
 	}
@@ -359,8 +359,10 @@ func grokOAuthRequestAccountEligibilityErrorForMode(account *Account, allowRecov
 	} else if !account.IsSchedulable() {
 		return errOAuthRefreshAccountStateChanged
 	}
-	// ProxyID 有值但未 hydrate Proxy 时允许继续：刷新路径会自行查库。
-	// 代理组账号更是 ProxyID==nil 且 Proxy 由 resolver 填入。
+	if account.ProxyID != nil && account.Proxy == nil {
+		// 单代理绑定必须已 hydrate；代理组账号 ProxyID 为 nil，不走此分支。
+		return errGrokOAuthConfiguredProxyMiss
+	}
 	return nil
 }
 
