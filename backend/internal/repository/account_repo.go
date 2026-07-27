@@ -29,6 +29,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	portaccount "github.com/Wei-Shaw/sub2api/internal/port/account"
+	"github.com/Wei-Shaw/sub2api/internal/port/scheduler"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 
@@ -50,7 +51,7 @@ type accountRepository struct {
 	// 确保粘性会话能及时感知账号不可用状态。
 	// Used to proactively sync account snapshot to cache when status changes,
 	// ensuring sticky sessions can promptly detect unavailable accounts.
-	schedulerCache service.SchedulerCache
+	schedulerCache scheduler.SchedulerCache
 }
 
 var schedulerNeutralExtraKeyPrefixes = []string{
@@ -72,19 +73,19 @@ const postgresParameterBatchSize = 50000
 
 // NewAccountRepository 创建账户仓储实例。
 // 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
-func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) portaccount.Repository {
+func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache scheduler.SchedulerCache) portaccount.Repository {
 	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
 }
 
 // NewAdminAccountRepository exposes the account repository's atomic duplication capability
 // as an explicit dependency of the admin service.
-func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) portaccount.AdminRepository {
+func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache scheduler.SchedulerCache) portaccount.AdminRepository {
 	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
 }
 
 // newAccountRepositoryWithSQL 是内部构造函数，支持依赖注入 SQL 执行器。
 // 这种设计便于单元测试时注入 mock 对象。
-func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedulerCache service.SchedulerCache) *accountRepository {
+func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedulerCache scheduler.SchedulerCache) *accountRepository {
 	return &accountRepository{client: client, sql: sqlq, schedulerCache: schedulerCache}
 }
 
