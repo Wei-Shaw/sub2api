@@ -246,10 +246,21 @@ func accountHasConfiguredProxy(account *Account) bool {
 }
 
 func classifyGrokCredentialFailure(account *Account, err error) grokCredentialFailureClass {
+	// 汇总整条 error chain 的 reason/message：RefreshIfNeeded 会用
+	// grokCredentialFailureSnapshotError 包装上游错误，仅看最外层会丢 reason。
 	stableReason := strings.ToLower(strings.TrimSpace(infraerrors.Reason(err)))
 	message := ""
-	if err != nil {
-		message = strings.ToLower(err.Error())
+	for cur := err; cur != nil; cur = errors.Unwrap(cur) {
+		if message != "" {
+			message += " | "
+		}
+		message += strings.ToLower(cur.Error())
+		if r := strings.ToLower(strings.TrimSpace(infraerrors.Reason(cur))); r != "" && !strings.Contains(stableReason, r) {
+			if stableReason != "" {
+				stableReason += " "
+			}
+			stableReason += r
+		}
 	}
 	contains := func(values ...string) bool {
 		for _, value := range values {
@@ -283,8 +294,10 @@ func classifyGrokCredentialFailure(account *Account, err error) grokCredentialFa
 		return grokCredentialFailureClass{scope: GatewayFailureScopeProvider, reason: GrokCredentialReasonProviderConfig, action: NextAccountStop, message: "Grok OAuth provider configuration is unavailable"}
 	case errors.Is(err, errGrokOAuthRefreshNotConfigured), contains("invalid_client", "unauthorized_client", "invalid_scope", "unknown scope", "grok oauth service is not configured", "grok_oauth_proxy_not_available"):
 		return grokCredentialFailureClass{scope: GatewayFailureScopeProvider, reason: GrokCredentialReasonProviderConfig, action: NextAccountStop, message: "Grok OAuth provider configuration is unavailable"}
-	case contains("grok_oauth_proxy_lookup_failed"),
-		contains("grok_oauth_token_refresh_failed") && contains("status 403") && !accountHasConfiguredProxy(account):
+	case contains("grok_oauth_proxy_lookup_failed"):
+		// 代理仓储短暂读失败：不归因到账号，避免误伤换号/停调度。
+		return grokCredentialFailureClass{scope: GatewayFailureScopeProvider, reason: GrokCredentialReasonProviderDown, action: NextAccountStop, message: "Grok OAuth provider is temporarily unavailable"}
+	case contains("grok_oauth_token_refresh_failed") && contains("status 403") && !accountHasConfiguredProxy(account):
 		return grokCredentialFailureClass{scope: GatewayFailureScopeProvider, reason: GrokCredentialReasonProviderDown, action: NextAccountStop, message: "Grok OAuth provider is temporarily unavailable"}
 	case contains("grok_oauth_client_init_failed") && !accountHasConfiguredProxy(account):
 		return grokCredentialFailureClass{scope: GatewayFailureScopeProvider, reason: GrokCredentialReasonProviderConfig, action: NextAccountStop, message: "Grok OAuth provider configuration is unavailable"}

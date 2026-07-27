@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -700,7 +701,8 @@ func TestGetRequestCredentialMapsTransientAndProviderFailuresSeparately(t *testi
 		account := expiredGrokOAuthAccountForCredentialTest(709)
 		proxyID := int64(41)
 		account.ProxyID = &proxyID
-		account.Proxy = &Proxy{}
+		// 故意不 hydrate Proxy：刷新应回退 ProxyID 查库；查库失败归类为 provider 故障。
+		// accountHasConfiguredProxy 仍会因 ProxyID 非空判定为已配置代理。
 		repo := &tokenRefreshAccountRepo{}
 		repo.accountsByID = map[int64]*Account{account.ID: account}
 		cache := &grokTokenCacheForProviderTest{lockResult: true}
@@ -1620,4 +1622,17 @@ func expiredGrokOAuthAccountForCredentialTest(id int64) *Account {
 			"base_url":      xai.DefaultCLIBaseURL,
 		},
 	}
+}
+
+func TestClassifyGrokCredentialFailure_ProxyLookupFailedIsProvider(t *testing.T) {
+	t.Parallel()
+	err := infraerrors.New(http.StatusServiceUnavailable, "GROK_OAUTH_PROXY_LOOKUP_FAILED", "proxy lookup is temporarily unavailable")
+	id := int64(41)
+	account := &Account{ProxyID: &id}
+	class := classifyGrokCredentialFailure(account, err)
+	require.Equal(t, GatewayFailureScopeProvider, class.scope)
+	require.Equal(t, GrokCredentialReasonProviderDown, class.reason)
+	require.Equal(t, NextAccountStop, class.action)
+	require.Contains(t, strings.ToLower(err.Error()), "grok_oauth_proxy_lookup_failed")
+	require.Equal(t, "GROK_OAUTH_PROXY_LOOKUP_FAILED", infraerrors.Reason(err))
 }

@@ -2030,6 +2030,14 @@ func (stubProxyRepo) CountExpiringSoon(ctx context.Context, now time.Time) (int6
 	return 0, nil
 }
 
+func (stubProxyRepo) ListByGroupID(ctx context.Context, groupID int64) ([]service.Proxy, error) {
+	return nil, nil
+}
+
+func (stubProxyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
+	return 0, nil
+}
+
 type stubRedeemCodeRepo struct {
 	byUser map[int64][]service.RedeemCode
 }

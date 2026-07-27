@@ -9,10 +9,10 @@ import (
 )
 
 type stubProxyGroupResolver struct {
-	selected *service.Proxy
-	err      error
-	calls    int
-	lastGroupID int64
+	selected      *service.Proxy
+	err           error
+	calls         int
+	lastGroupID   int64
 	lastAccountID int64
 }
 

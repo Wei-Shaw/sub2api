@@ -88,9 +88,15 @@ func (r *DefaultProxyGroupResolver) seedFor(groupID, accountID int64, strategy s
 	case ProxyGroupStrategyRandom:
 		return rand.Uint64()
 	default: // round_robin
-		v, _ := r.rrCounters.LoadOrStore(groupID, &atomic.Uint64{})
-		return v.(*atomic.Uint64).Add(1) - 1
+		counter := &atomic.Uint64{}
+		if existing, loaded := r.rrCounters.LoadOrStore(groupID, counter); loaded {
+			if c, ok := existing.(*atomic.Uint64); ok && c != nil {
+				counter = c
+			}
+		}
+		return counter.Add(1) - 1
 	}
+
 }
 
 func (r *DefaultProxyGroupResolver) load(ctx context.Context, groupID int64) (*cachedGroupMembers, error) {

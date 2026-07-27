@@ -164,6 +164,9 @@ func (s *GrokOAuthService) RefreshToken(ctx context.Context, refreshToken, proxy
 	if err != nil {
 		return nil, err
 	}
+	if tokenResp == nil {
+		return nil, infraerrors.New(http.StatusBadGateway, "GROK_OAUTH_TOKEN_REFRESH_FAILED", "token refresh returned empty response")
+	}
 	tokenInfo := s.tokenInfoFromResponse(tokenResp, clientID, nil)
 	if tokenInfo.RefreshToken == "" {
 		tokenInfo.RefreshToken = refreshToken
@@ -271,6 +274,9 @@ func (s *GrokOAuthService) Stop() {
 }
 
 func (s *GrokOAuthService) tokenInfoFromResponse(tokenResp *xai.TokenResponse, clientID string, existing map[string]any) *GrokTokenInfo {
+	if tokenResp == nil {
+		return &GrokTokenInfo{ClientID: strings.TrimSpace(clientID), TokenType: "Bearer"}
+	}
 	now := time.Now()
 	expiresIn := tokenResp.ExpiresIn
 	if expiresIn <= 0 {
