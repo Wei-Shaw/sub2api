@@ -81,20 +81,32 @@ func TestSettingService_GetPublicSettings_ExposesTablePreferences(t *testing.T) 
 func TestSettingService_GetPublicSettings_ExposesCustomerServiceSettings(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{
-			SettingKeyAfterSalesQRCode:    " /support.png ",
-			SettingKeyAfterSalesLink:      " https://t.me/support ",
-			SettingKeyOfficialGroupQRCode: " /group.png ",
-			SettingKeyOfficialGroupLink:   " https://t.me/group ",
+			SettingKeyAfterSalesTitle:            " VIP Support ",
+			SettingKeyAfterSalesQRCode:           " /support.png ",
+			SettingKeyAfterSalesLink:             " https://t.me/support ",
+			SettingKeyAfterSalesLinkLabel:        " Start a chat ",
+			SettingKeyOfficialGroupTitle:         " Community ",
+			SettingKeyOfficialGroupQRCode:        " /group.png ",
+			SettingKeyOfficialGroupLink:          " https://t.me/group ",
+			SettingKeyOfficialGroupLinkLabel:     " Join now ",
+			SettingKeyCustomerServiceTextEnabled: "true",
+			SettingKeyCustomerServiceText:        " Support hours ",
 		},
 	}
 	svc := NewSettingService(repo, &config.Config{})
 
 	settings, err := svc.GetPublicSettings(context.Background())
 	require.NoError(t, err)
+	require.Equal(t, "VIP Support", settings.AfterSalesTitle)
 	require.Equal(t, "/support.png", settings.AfterSalesQRCode)
 	require.Equal(t, "https://t.me/support", settings.AfterSalesLink)
+	require.Equal(t, "Start a chat", settings.AfterSalesLinkLabel)
+	require.Equal(t, "Community", settings.OfficialGroupTitle)
 	require.Equal(t, "/group.png", settings.OfficialGroupQRCode)
 	require.Equal(t, "https://t.me/group", settings.OfficialGroupLink)
+	require.Equal(t, "Join now", settings.OfficialGroupLinkLabel)
+	require.True(t, settings.CustomerServiceTextEnabled)
+	require.Equal(t, "Support hours", settings.CustomerServiceText)
 }
 
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {

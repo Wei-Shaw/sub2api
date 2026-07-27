@@ -150,8 +150,8 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	if err != nil {
 		return fmt.Errorf("acquire migrations lock connection: %w", err)
 	}
-	defer func() { _ = lockConn.Close() }()
 	if err := pgAdvisoryLock(ctx, lockConn); err != nil {
+		discardSQLConnection(lockConn)
 		return err
 	}
 	defer func() {
@@ -160,7 +160,11 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		// 无限阻塞进程退出。
 		unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = pgAdvisoryUnlock(unlockCtx, lockConn)
+		if err := pgAdvisoryUnlock(unlockCtx, lockConn); err != nil {
+			discardSQLConnection(lockConn)
+			return
+		}
+		_ = lockConn.Close()
 	}()
 
 	// 创建迁移记录表（如果不存在）。

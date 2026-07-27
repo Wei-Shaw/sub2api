@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     currentVersion: '0.1.164-ts.1',
     latestVersion: '0.1.165-ts.1',
     hasUpdate: true,
+    versionWarning: '',
     releaseInfo: null,
     buildType: 'release',
     deploymentMode: 'docker-managed',
@@ -75,6 +76,7 @@ describe('VersionBadge managed deployment recovery', () => {
   beforeEach(() => {
     mocks.appStore.deploymentMode = 'docker-managed'
     mocks.appStore.fetchVersion.mockReset().mockResolvedValue(null)
+    mocks.appStore.versionWarning = ''
     mocks.appStore.clearVersionCache.mockReset()
     mocks.getCurrentDeploymentJob.mockReset()
     mocks.getDeploymentJob.mockReset()
@@ -165,6 +167,52 @@ describe('VersionBadge managed deployment recovery', () => {
       'version.deploymentRollbackFailed'
     )
 
+    wrapper.unmount()
+  })
+
+  it('shows an update feed warning instead of claiming the version is current', async () => {
+    mocks.appStore.hasUpdate = false
+    mocks.appStore.versionWarning = 'GitHub release feed is unavailable'
+    mocks.getCurrentDeploymentJob.mockRejectedValue({ response: { status: 404 } })
+
+    const wrapper = mount(VersionBadge, {
+      props: { version: '0.1.164-ts.1' },
+      global: { stubs: { Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+
+    const badge = wrapper.get('[data-testid="version-badge"]')
+    expect(badge.classes()).toContain('bg-amber-100')
+    expect(badge.attributes('title')).toBe('version.updateCheckWarning')
+    await badge.trigger('click')
+    expect(wrapper.get('[data-testid="version-warning"]').text()).toContain(
+      'GitHub release feed is unavailable'
+    )
+    expect(wrapper.text()).not.toContain('version.upToDate')
+
+    wrapper.unmount()
+  })
+
+  it('restores the rollback target when recovering a failed rollback job', async () => {
+    const failedRollback = {
+      ...terminalJob('failed'),
+      action: 'rollback' as const,
+      target_version: '0.1.163-ts.4'
+    }
+    mocks.getCurrentDeploymentJob.mockResolvedValue(failedRollback)
+    const systemAPI = await import('@/api/admin/system')
+    vi.mocked(systemAPI.rollback).mockResolvedValue({ message: 'started', need_restart: false })
+
+    const wrapper = mount(VersionBadge, {
+      props: { version: '0.1.164-ts.1' },
+      global: { stubs: { Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="version-badge"]').trigger('click')
+    await wrapper.get('[data-testid="deployment-error"] button').trigger('click')
+    await flushPromises()
+
+    expect(systemAPI.rollback).toHaveBeenCalledWith('0.1.163-ts.4')
     wrapper.unmount()
   })
 })

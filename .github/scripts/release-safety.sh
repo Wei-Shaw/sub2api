@@ -200,7 +200,7 @@ verify_completion_json() {
     --arg image "$expected_image" \
     --arg dockerhub_image "$expected_dockerhub_image" \
     --arg dockerhub_mode "$dockerhub_mode" '
-      .schema == 2
+      (.schema == 2 or .schema == 3)
       and .tag == $tag
       and .commit == $commit
       and .tag_object == $tag_object
@@ -209,6 +209,20 @@ verify_completion_json() {
       and .immutable_image == ($image + "@" + .image_digest)
       and ((.architectures | sort) == ["amd64", "arm64"])
       and (.deployer_checksums_sha256 | type == "string" and test("^sha256:[0-9a-f]{64}$"))
+      and (
+        if .schema == 3 then
+          (.deployer_assets | type == "object")
+          and ((.deployer_assets | keys | sort) == [
+            "sub2api-deployer-linux-amd64",
+            "sub2api-deployer-linux-amd64.tar.gz",
+            "sub2api-deployer-linux-arm64",
+            "sub2api-deployer-linux-arm64.tar.gz"
+          ])
+          and ([.deployer_assets[] | type == "string" and test("^sha256:[0-9a-f]{64}$")] | all)
+        else
+          (.deployer_assets == null)
+        end
+      )
       and (
         if $dockerhub_mode == "optional" then
           (
@@ -245,6 +259,23 @@ verify_completion_deployer_checksums() {
   actual_digest="sha256:$(sha256sum "$checksums_path" | awk '{print $1}')"
   [[ "$actual_digest" == "$expected_digest" ]] || \
     fail "Deployer checksum manifest changed after release completion (expected $expected_digest, got $actual_digest)"
+
+  if [[ $(jq -er '.schema' "$completion_path") == 3 ]]; then
+    local asset filename manifest_digest ledger_digest
+    for asset in \
+      sub2api-deployer-linux-amd64 \
+      sub2api-deployer-linux-arm64 \
+      sub2api-deployer-linux-amd64.tar.gz \
+      sub2api-deployer-linux-arm64.tar.gz; do
+      filename=$asset
+      manifest_digest=$(awk -v name="$filename" '$2 == name || $2 == "*" name {print "sha256:" $1; exit}' "$checksums_path")
+      [[ "$manifest_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || fail "Deployer checksum manifest has no digest for $filename"
+      ledger_digest=$(jq -er --arg asset "$asset" '.deployer_assets[$asset] | select(type == "string")' "$completion_path") || \
+        fail "Release completion marker has no deployer asset digest for $asset"
+      [[ "$ledger_digest" == "$manifest_digest" ]] || \
+        fail "Deployer asset digest for $asset does not match the checksum manifest"
+    done
+  fi
 }
 
 verify_completion_manifest() {

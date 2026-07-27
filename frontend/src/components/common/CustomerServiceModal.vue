@@ -51,33 +51,41 @@
             </button>
           </header>
 
-          <div class="grid grid-cols-1 gap-6 px-5 py-6 md:grid-cols-2 md:px-6 md:py-8">
-            <article
-              v-for="card in cards"
-              :key="card.kind"
-              class="flex min-w-0 flex-col items-center rounded-lg border border-gray-200 bg-gray-50 p-5 text-center dark:border-dark-700 dark:bg-dark-800/60"
-            >
-              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ card.title }}</h3>
-              <div class="mt-4 flex h-[min(360px,65vw)] w-full max-w-[320px] items-center justify-center overflow-hidden rounded-lg bg-white p-3 dark:bg-white">
-                <img
-                  v-if="card.qrCode && !failedImages.has(card.kind)"
-                  :src="card.qrCode"
-                  :alt="card.title"
-                  class="h-full w-full object-contain"
-                  @error="markImageFailed(card.kind)"
-                />
-                <Icon v-else name="chat" size="xl" class="text-gray-300" />
-              </div>
-              <a
-                v-if="card.link"
-                :href="card.link"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="mt-4 max-w-full break-all text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+          <div class="px-5 py-6 md:px-6 md:py-8">
+            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <article
+                v-for="card in cards"
+                :key="card.kind"
+                class="flex min-w-0 flex-col items-center rounded-lg border border-gray-200 bg-gray-50 p-5 text-center dark:border-dark-700 dark:bg-dark-800/60"
               >
-                {{ card.linkLabel }}
-              </a>
-            </article>
+                <h3 class="max-w-full break-words text-sm font-semibold text-gray-900 dark:text-white">{{ card.title }}</h3>
+                <div class="mt-4 flex h-[min(360px,65vw)] w-full max-w-[320px] items-center justify-center overflow-hidden rounded-lg bg-white p-3 dark:bg-white">
+                  <img
+                    v-if="card.qrCode && !failedImages.has(card.kind)"
+                    :src="card.qrCode"
+                    :alt="card.title"
+                    class="h-full w-full object-contain"
+                    @error="markImageFailed(card.kind)"
+                  />
+                  <Icon v-else name="chat" size="xl" class="text-gray-300" />
+                </div>
+                <a
+                  v-if="card.link"
+                  :href="card.link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="mt-4 max-w-full break-words text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+                >
+                  {{ card.linkLabel }}
+                </a>
+              </article>
+            </div>
+            <p
+              v-if="visibleCustomText"
+              class="mt-6 whitespace-pre-line break-words border-t border-gray-200 pt-5 text-center text-sm leading-6 text-gray-600 dark:border-dark-700 dark:text-dark-300"
+            >
+              {{ visibleCustomText }}
+            </p>
           </div>
         </section>
       </div>
@@ -93,10 +101,16 @@ import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 
 const props = defineProps<{
+  afterSalesTitle?: string
   afterSalesQrCode?: string
   afterSalesLink?: string
+  afterSalesLinkLabel?: string
+  officialGroupTitle?: string
   officialGroupQrCode?: string
   officialGroupLink?: string
+  officialGroupLinkLabel?: string
+  customTextEnabled?: boolean
+  customText?: string
 }>()
 
 type CardKind = 'after-sales' | 'official-group'
@@ -128,6 +142,9 @@ const afterSalesQrCode = computed(() =>
 const officialGroupQrCode = computed(() =>
   sanitizeUrl(props.officialGroupQrCode || '', { allowRelative: true, allowDataUrl: true }),
 )
+const visibleCustomText = computed(() =>
+  props.customTextEnabled ? props.customText?.trim() || '' : '',
+)
 
 const cards = computed<CustomerServiceCard[]>(() => {
   const result: CustomerServiceCard[] = []
@@ -137,19 +154,19 @@ const cards = computed<CustomerServiceCard[]>(() => {
   if (afterSalesQr || afterSalesLink.value) {
     result.push({
       kind: 'after-sales',
-      title: t('common.afterSalesSupport'),
+      title: props.afterSalesTitle?.trim() || t('common.afterSalesSupport'),
       qrCode: afterSalesQr,
       link: afterSalesLink.value,
-      linkLabel: t('common.openSupportLink'),
+      linkLabel: props.afterSalesLinkLabel?.trim() || t('common.openSupportLink'),
     })
   }
   if (groupQr || officialGroupLink.value) {
     result.push({
       kind: 'official-group',
-      title: t('common.officialGroup'),
+      title: props.officialGroupTitle?.trim() || t('common.officialGroup'),
       qrCode: groupQr,
       link: officialGroupLink.value,
-      linkLabel: t('common.openGroupLink'),
+      linkLabel: props.officialGroupLinkLabel?.trim() || t('common.openGroupLink'),
     })
   }
   return result

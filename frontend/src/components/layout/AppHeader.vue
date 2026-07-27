@@ -25,10 +25,16 @@
       <div class="flex min-w-0 items-center gap-1 sm:gap-3">
         <CustomerServiceModal
           v-if="user"
+          :after-sales-title="publicSettings?.after_sales_title"
           :after-sales-qr-code="publicSettings?.after_sales_qrcode"
           :after-sales-link="publicSettings?.after_sales_link"
+          :after-sales-link-label="publicSettings?.after_sales_link_label"
+          :official-group-title="publicSettings?.official_group_title"
           :official-group-qr-code="publicSettings?.official_group_qrcode"
           :official-group-link="publicSettings?.official_group_link"
+          :official-group-link-label="publicSettings?.official_group_link_label"
+          :custom-text-enabled="publicSettings?.customer_service_text_enabled"
+          :custom-text="publicSettings?.customer_service_text"
         />
 
         <!-- Announcement Bell -->

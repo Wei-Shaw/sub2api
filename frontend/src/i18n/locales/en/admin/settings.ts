@@ -519,12 +519,21 @@ export default {
         description: 'Configure the support entry and QR code dialog in the Dashboard header',
         afterSalesTitle: 'Customer Service',
         officialGroupTitle: 'Official Group',
+        cardTitle: 'Card Title',
         link: 'Destination URL',
+        linkLabel: 'Link Button Text',
         qrCode: 'QR Code Image',
         afterSalesLinkPlaceholder: 'https://t.me/your_support',
         officialGroupLinkPlaceholder: 'https://t.me/your_group',
+        afterSalesLinkLabelPlaceholder: 'Open support link',
+        officialGroupLinkLabelPlaceholder: 'Join official group',
         qrCodeHint: 'Optional. PNG, JPG, or WebP up to 500KB. A QR code is generated from the URL when empty.',
-        hint: 'The Online Support entry appears after at least one URL or QR code image is configured.'
+        hint: 'The Online Support entry appears after at least one URL or QR code image is configured. Empty titles and button text use the defaults.',
+        customTextEnabled: 'Show Custom Footer Text',
+        customTextEnabledHint: 'Display an additional note below the support cards.',
+        customText: 'Custom Text',
+        customTextPlaceholder: 'For example: Support hours are Monday-Friday, 09:00-18:00',
+        customTextHint: 'Line breaks are preserved. Maximum 500 characters and displayed as plain text.'
       },
       purchase: {
         title: 'Recharge / Subscription Page',

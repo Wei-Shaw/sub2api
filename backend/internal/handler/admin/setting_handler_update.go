@@ -137,10 +137,16 @@ type UpdateSettingsRequest struct {
 	SiteSubtitle                string                `json:"site_subtitle"`
 	APIBaseURL                  string                `json:"api_base_url"`
 	ContactInfo                 string                `json:"contact_info"`
+	AfterSalesTitle             string                `json:"after_sales_title"`
 	AfterSalesQRCode            string                `json:"after_sales_qrcode"`
 	AfterSalesLink              string                `json:"after_sales_link"`
+	AfterSalesLinkLabel         string                `json:"after_sales_link_label"`
+	OfficialGroupTitle          string                `json:"official_group_title"`
 	OfficialGroupQRCode         string                `json:"official_group_qrcode"`
 	OfficialGroupLink           string                `json:"official_group_link"`
+	OfficialGroupLinkLabel      string                `json:"official_group_link_label"`
+	CustomerServiceTextEnabled  bool                  `json:"customer_service_text_enabled"`
+	CustomerServiceText         string                `json:"customer_service_text"`
 	DocURL                      string                `json:"doc_url"`
 	HomeContent                 string                `json:"home_content"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
@@ -1357,10 +1363,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SiteSubtitle:                           req.SiteSubtitle,
 		APIBaseURL:                             req.APIBaseURL,
 		ContactInfo:                            req.ContactInfo,
+		AfterSalesTitle:                        req.AfterSalesTitle,
 		AfterSalesQRCode:                       req.AfterSalesQRCode,
 		AfterSalesLink:                         req.AfterSalesLink,
+		AfterSalesLinkLabel:                    req.AfterSalesLinkLabel,
+		OfficialGroupTitle:                     req.OfficialGroupTitle,
 		OfficialGroupQRCode:                    req.OfficialGroupQRCode,
 		OfficialGroupLink:                      req.OfficialGroupLink,
+		OfficialGroupLinkLabel:                 req.OfficialGroupLinkLabel,
+		CustomerServiceTextEnabled:             req.CustomerServiceTextEnabled,
+		CustomerServiceText:                    req.CustomerServiceText,
 		DocURL:                                 req.DocURL,
 		HomeContent:                            req.HomeContent,
 		HideCcsImportButton:                    req.HideCcsImportButton,
@@ -1893,10 +1905,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SiteSubtitle:                                           updatedSettings.SiteSubtitle,
 		APIBaseURL:                                             updatedSettings.APIBaseURL,
 		ContactInfo:                                            updatedSettings.ContactInfo,
+		AfterSalesTitle:                                        updatedSettings.AfterSalesTitle,
 		AfterSalesQRCode:                                       updatedSettings.AfterSalesQRCode,
 		AfterSalesLink:                                         updatedSettings.AfterSalesLink,
+		AfterSalesLinkLabel:                                    updatedSettings.AfterSalesLinkLabel,
+		OfficialGroupTitle:                                     updatedSettings.OfficialGroupTitle,
 		OfficialGroupQRCode:                                    updatedSettings.OfficialGroupQRCode,
 		OfficialGroupLink:                                      updatedSettings.OfficialGroupLink,
+		OfficialGroupLinkLabel:                                 updatedSettings.OfficialGroupLinkLabel,
+		CustomerServiceTextEnabled:                             updatedSettings.CustomerServiceTextEnabled,
+		CustomerServiceText:                                    updatedSettings.CustomerServiceText,
 		DocURL:                                                 updatedSettings.DocURL,
 		HomeContent:                                            updatedSettings.HomeContent,
 		HideCcsImportButton:                                    updatedSettings.HideCcsImportButton,

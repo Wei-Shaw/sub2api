@@ -739,7 +739,9 @@ func (s *BackupService) executeBackup(record *BackupRecord, objectStore BackupOb
 
 	// 阶段2: gzip + upload
 	record.Progress = "uploading"
-	_ = s.saveRecord(ctx, record)
+	// Dump holds a migration advisory-lock connection until its reader closes.
+	// Writing progress here deadlocks when the configured SQL pool has one slot;
+	// completion/failure below persists the final state after the stream is drained.
 
 	pr, pw := io.Pipe()
 	gzipDone := make(chan error, 1)

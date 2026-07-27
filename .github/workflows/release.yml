@@ -210,14 +210,13 @@ jobs:
           check-latest: false
           cache-dependency-path: backend/go.sum
 
-      - name: Build deployer binaries and checksums
+      - name: Build deployer binaries and self-contained bundles
         working-directory: backend
         run: |
           mkdir -p ../deployer-dist
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o ../deployer-dist/sub2api-deployer-linux-amd64 ./cmd/deployer
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o ../deployer-dist/sub2api-deployer-linux-arm64 ./cmd/deployer
-          cd ../deployer-dist
-          sha256sum sub2api-deployer-linux-amd64 sub2api-deployer-linux-arm64 > sub2api-deployer-checksums.txt
+          ../deploy/package-sub2api-deployer-bundles.sh ../deployer-dist
 
       - name: Upload deployer artifact
         uses: actions/upload-artifact@v7
@@ -483,6 +482,19 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/deployer-dist"
           sha256sum --check sub2api-deployer-checksums.txt
+          for arch in amd64 arm64; do
+            bundle_dir="$RUNNER_TEMP/bundle-$arch"
+            mkdir -p "$bundle_dir"
+            tar -xzf "sub2api-deployer-linux-$arch.tar.gz" -C "$bundle_dir"
+            bundle_root="$bundle_dir/sub2api-deployer-linux-$arch"
+            (cd "$bundle_root" && sha256sum --check MANIFEST.sha256)
+            jq -e \
+              --arg version "${RELEASE_TAG#v}" \
+              --arg commit "$RELEASE_COMMIT" \
+              --arg arch "$arch" \
+              '.schema == 1 and .version == $version and .commit == $commit and .os == "linux" and .architecture == $arch' \
+              "$bundle_root/BUNDLE-MANIFEST.json" >/dev/null
+          done
           cd "$GITHUB_WORKSPACE"
 
           VERSION=${RELEASE_TAG#v}
@@ -522,6 +534,15 @@ jobs:
             fi
           fi
           DEPLOYER_CHECKSUMS_DIGEST="sha256:$(sha256sum "$RUNNER_TEMP/deployer-dist/sub2api-deployer-checksums.txt" | awk '{print $1}')"
+          deployer_asset_digest() {
+            local name="$1"
+            awk -v name="$name" '$2 == name || $2 == "*" name {print "sha256:" $1; exit}' \
+              "$RUNNER_TEMP/deployer-dist/sub2api-deployer-checksums.txt"
+          }
+          DEPLOYER_AMD64_DIGEST=$(deployer_asset_digest sub2api-deployer-linux-amd64)
+          DEPLOYER_ARM64_DIGEST=$(deployer_asset_digest sub2api-deployer-linux-arm64)
+          DEPLOYER_BUNDLE_AMD64_DIGEST=$(deployer_asset_digest sub2api-deployer-linux-amd64.tar.gz)
+          DEPLOYER_BUNDLE_ARM64_DIGEST=$(deployer_asset_digest sub2api-deployer-linux-arm64.tar.gz)
           COMPLETION_PATH="$RUNNER_TEMP/$RELEASE_COMPLETION_ASSET"
           jq -n \
             --arg tag "$RELEASE_TAG" \
@@ -532,8 +553,12 @@ jobs:
             --arg dockerhub_image "${DOCKERHUB_IMAGE:-}" \
             --arg dockerhub_image_digest "${DOCKERHUB_DIGEST:-}" \
             --arg deployer_checksums_sha256 "$DEPLOYER_CHECKSUMS_DIGEST" \
+            --arg deployer_amd64_sha256 "$DEPLOYER_AMD64_DIGEST" \
+            --arg deployer_arm64_sha256 "$DEPLOYER_ARM64_DIGEST" \
+            --arg deployer_bundle_amd64_sha256 "$DEPLOYER_BUNDLE_AMD64_DIGEST" \
+            --arg deployer_bundle_arm64_sha256 "$DEPLOYER_BUNDLE_ARM64_DIGEST" \
             '{
-              schema: 2,
+              schema: 3,
               tag: $tag,
               commit: $commit,
               tag_object: $tag_object,
@@ -548,7 +573,13 @@ jobs:
                 end
               ),
               architectures: ["amd64", "arm64"],
-              deployer_checksums_sha256: $deployer_checksums_sha256
+              deployer_checksums_sha256: $deployer_checksums_sha256,
+              deployer_assets: {
+                "sub2api-deployer-linux-amd64": $deployer_amd64_sha256,
+                "sub2api-deployer-linux-arm64": $deployer_arm64_sha256,
+                "sub2api-deployer-linux-amd64.tar.gz": $deployer_bundle_amd64_sha256,
+                "sub2api-deployer-linux-arm64.tar.gz": $deployer_bundle_arm64_sha256
+              }
             }' > "$COMPLETION_PATH"
 
           bash .github/scripts/release-safety.sh verify-completion-json \

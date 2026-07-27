@@ -469,19 +469,19 @@ export async function sendPendingOAuthVerifyCode(
 }
 
 /**
- * Validate promo code response
+ * Validate the shared promo/referral code input.
  */
 export interface ValidatePromoCodeResponse {
   valid: boolean
+  promo_valid: boolean
+  affiliate_valid: boolean
   bonus_amount?: number
   error_code?: string
   message?: string
 }
 
 /**
- * Validate promo code (public endpoint, no auth required)
- * @param code - Promo code to validate
- * @returns Validation result with bonus amount if valid
+ * Validate a promo or referral code (public endpoint, no auth required).
  */
 export async function validatePromoCode(code: string): Promise<ValidatePromoCodeResponse> {
   const { data } = await apiClient.post<ValidatePromoCodeResponse>('/auth/validate-promo-code', { code })

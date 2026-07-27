@@ -5742,6 +5742,18 @@
                 <div class="mt-4 space-y-5">
                   <div>
                     <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.customerService.cardTitle") }}
+                    </label>
+                    <input
+                      v-model="form.after_sales_title"
+                      type="text"
+                      maxlength="80"
+                      class="input"
+                      :placeholder="t('admin.settings.customerService.afterSalesTitle')"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                       {{ t("admin.settings.customerService.link") }}
                     </label>
                     <input
@@ -5749,6 +5761,18 @@
                       type="url"
                       class="input font-mono text-sm"
                       :placeholder="t('admin.settings.customerService.afterSalesLinkPlaceholder')"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.customerService.linkLabel") }}
+                    </label>
+                    <input
+                      v-model="form.after_sales_link_label"
+                      type="text"
+                      maxlength="80"
+                      class="input"
+                      :placeholder="t('admin.settings.customerService.afterSalesLinkLabelPlaceholder')"
                     />
                   </div>
                   <div>
@@ -5774,6 +5798,18 @@
                 <div class="mt-4 space-y-5">
                   <div>
                     <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.customerService.cardTitle") }}
+                    </label>
+                    <input
+                      v-model="form.official_group_title"
+                      type="text"
+                      maxlength="80"
+                      class="input"
+                      :placeholder="t('admin.settings.customerService.officialGroupTitle')"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                       {{ t("admin.settings.customerService.link") }}
                     </label>
                     <input
@@ -5781,6 +5817,18 @@
                       type="url"
                       class="input font-mono text-sm"
                       :placeholder="t('admin.settings.customerService.officialGroupLinkPlaceholder')"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.customerService.linkLabel") }}
+                    </label>
+                    <input
+                      v-model="form.official_group_link_label"
+                      type="text"
+                      maxlength="80"
+                      class="input"
+                      :placeholder="t('admin.settings.customerService.officialGroupLinkLabelPlaceholder')"
                     />
                   </div>
                   <div>
@@ -5801,6 +5849,34 @@
               <p class="text-xs text-gray-500 dark:text-gray-400 lg:col-span-2">
                 {{ t("admin.settings.customerService.hint") }}
               </p>
+              <div class="border-t border-gray-200 pt-5 dark:border-dark-700 lg:col-span-2">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.customerService.customTextEnabled") }}
+                    </label>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.customerService.customTextEnabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.customer_service_text_enabled" />
+                </div>
+                <div v-if="form.customer_service_text_enabled" class="mt-4">
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.customerService.customText") }}
+                  </label>
+                  <textarea
+                    v-model="form.customer_service_text"
+                    rows="4"
+                    maxlength="500"
+                    class="input min-h-[104px] resize-y"
+                    :placeholder="t('admin.settings.customerService.customTextPlaceholder')"
+                  ></textarea>
+                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.customerService.customTextHint") }}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -8591,10 +8667,16 @@ const form = reactive<SettingsForm>({
   site_subtitle: "Subscription to API Conversion Platform",
   api_base_url: "",
   contact_info: "",
+  after_sales_title: "",
   after_sales_qrcode: "",
   after_sales_link: "",
+  after_sales_link_label: "",
+  official_group_title: "",
   official_group_qrcode: "",
   official_group_link: "",
+  official_group_link_label: "",
+  customer_service_text_enabled: false,
+  customer_service_text: "",
   doc_url: "",
   home_content: "",
   backend_mode_enabled: false,
@@ -10117,10 +10199,16 @@ async function saveSettings() {
       site_subtitle: form.site_subtitle,
       api_base_url: form.api_base_url,
       contact_info: form.contact_info,
+      after_sales_title: form.after_sales_title,
       after_sales_qrcode: form.after_sales_qrcode,
       after_sales_link: form.after_sales_link,
+      after_sales_link_label: form.after_sales_link_label,
+      official_group_title: form.official_group_title,
       official_group_qrcode: form.official_group_qrcode,
       official_group_link: form.official_group_link,
+      official_group_link_label: form.official_group_link_label,
+      customer_service_text_enabled: form.customer_service_text_enabled,
+      customer_service_text: form.customer_service_text,
       doc_url: form.doc_url,
       home_content: form.home_content,
       backend_mode_enabled: form.backend_mode_enabled,

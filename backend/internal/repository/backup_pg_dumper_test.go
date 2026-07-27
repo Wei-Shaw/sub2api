@@ -6,6 +6,7 @@ import (
 	"io"
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -153,5 +154,72 @@ func TestPgDumperRejectsNilDatabase(t *testing.T) {
 	dumper := &PgDumper{cfg: &config.DatabaseConfig{}}
 	reader, err := dumper.Dump(context.Background())
 	require.Nil(t, reader)
+	require.ErrorContains(t, err, "nil sql db")
+}
+
+func TestPgDumperRestoreHoldsMigrationLockThroughPsqlExit(t *testing.T) {
+	var mock sqlmock.Sqlmock
+	commandCreated := false
+	dumper, createdMock := newTestPgDumper(t, func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		commandCreated = true
+		require.Equal(t, "psql", name)
+		require.Contains(t, args, "--single-transaction")
+		require.NoError(t, mock.ExpectationsWereMet(), "migration lock must be acquired before psql is created")
+		expectBackupMigrationUnlock(mock)
+		return exec.CommandContext(ctx, "sh", "-c", "cat >/dev/null")
+	})
+	mock = createdMock
+	expectBackupMigrationLock(mock)
+
+	require.NoError(t, dumper.Restore(context.Background(), strings.NewReader("restore-data")))
+	require.True(t, commandCreated)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestPgDumperRestoreReleasesMigrationLockWhenPsqlFails(t *testing.T) {
+	dumper, mock := newTestPgDumper(t, func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c", "printf restore-failed >&2; exit 7")
+	})
+	expectBackupMigrationLock(mock)
+	expectBackupMigrationUnlock(mock)
+
+	err := dumper.Restore(context.Background(), strings.NewReader("restore-data"))
+	require.ErrorContains(t, err, "restore-failed")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestPgDumperRestoreReportsUnlockFailure(t *testing.T) {
+	dumper, mock := newTestPgDumper(t, func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c", "cat >/dev/null")
+	})
+	expectBackupMigrationLock(mock)
+	mock.ExpectExec(regexp.QuoteMeta("SELECT pg_advisory_unlock($1)")).
+		WithArgs(migrationsAdvisoryLockID).
+		WillReturnError(errors.New("unlock unavailable"))
+
+	err := dumper.Restore(context.Background(), strings.NewReader("restore-data"))
+	require.ErrorContains(t, err, "release backup migration lock")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestPgDumperRestoreDoesNotStartPsqlWhenMigrationLockFails(t *testing.T) {
+	commandCreated := false
+	dumper, mock := newTestPgDumper(t, func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		commandCreated = true
+		return exec.CommandContext(ctx, "sh", "-c", "true")
+	})
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT pg_try_advisory_lock($1)")).
+		WithArgs(migrationsAdvisoryLockID).
+		WillReturnError(errors.New("database unavailable"))
+
+	err := dumper.Restore(context.Background(), strings.NewReader("restore-data"))
+	require.ErrorContains(t, err, "acquire restore migration lock")
+	require.False(t, commandCreated)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestPgDumperRestoreRejectsNilDatabase(t *testing.T) {
+	dumper := &PgDumper{cfg: &config.DatabaseConfig{}}
+	err := dumper.Restore(context.Background(), strings.NewReader("restore-data"))
 	require.ErrorContains(t, err, "nil sql db")
 }

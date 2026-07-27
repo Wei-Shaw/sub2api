@@ -23,7 +23,7 @@ vi.mock('qrcode', () => ({
   },
 }))
 
-function mountModal(props: Record<string, string>) {
+function mountModal(props: Record<string, unknown>) {
   return mount(CustomerServiceModal, {
     attachTo: document.body,
     props,
@@ -60,8 +60,9 @@ describe('CustomerServiceModal', () => {
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await nextTick()
-    await new Promise((resolve) => window.setTimeout(resolve, 200))
-    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    })
     expect(document.body.style.overflow).toBe('')
 
     wrapper.unmount()
@@ -75,6 +76,45 @@ describe('CustomerServiceModal', () => {
 
     await nextTick()
     expect(wrapper.find('button[aria-haspopup="dialog"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('renders custom card labels and enabled footer text', async () => {
+    const wrapper = mountModal({
+      afterSalesLink: 'https://example.com/support',
+      afterSalesTitle: 'VIP Support',
+      afterSalesLinkLabel: 'Start a chat',
+      officialGroupLink: 'https://example.com/community',
+      officialGroupTitle: 'Community',
+      officialGroupLinkLabel: 'Join now',
+      customTextEnabled: true,
+      customText: 'Support hours:\nMonday-Friday',
+    })
+
+    await wrapper.get('button[aria-haspopup="dialog"]').trigger('click')
+    await nextTick()
+
+    const dialog = document.body.querySelector('[role="dialog"]')
+    expect(dialog?.textContent).toContain('VIP Support')
+    expect(dialog?.textContent).toContain('Start a chat')
+    expect(dialog?.textContent).toContain('Community')
+    expect(dialog?.textContent).toContain('Join now')
+    expect(dialog?.textContent).toContain('Support hours:\nMonday-Friday')
+
+    wrapper.unmount()
+  })
+
+  it('does not render custom text while the footer switch is disabled', async () => {
+    const wrapper = mountModal({
+      afterSalesLink: 'https://example.com/support',
+      customTextEnabled: false,
+      customText: 'Hidden footer',
+    })
+
+    await wrapper.get('button[aria-haspopup="dialog"]').trigger('click')
+    await nextTick()
+
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).not.toContain('Hidden footer')
     wrapper.unmount()
   })
 })

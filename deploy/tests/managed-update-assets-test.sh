@@ -7,7 +7,9 @@ SERVICE="$REPO_ROOT/deploy/sub2api-deployer.service"
 COMPOSE="$REPO_ROOT/deploy/compose.deployer.yml"
 LOADER="$REPO_ROOT/deploy/sub2api-managed-upstream.conf"
 EXAMPLE="$REPO_ROOT/deploy/sub2api-deployer.example.json"
+TMPFILES="$REPO_ROOT/deploy/sub2api-deployer-tmpfiles.conf"
 INSTALLER="$REPO_ROOT/deploy/install-sub2api-deployer.sh"
+PACKAGER="$REPO_ROOT/deploy/package-sub2api-deployer-bundles.sh"
 RELEASE_WORKFLOW="$REPO_ROOT/.github/workflows/release.yml"
 RELEASE_SAFETY="$REPO_ROOT/.github/scripts/release-safety.sh"
 RELEASE_SAFETY_TEST="$REPO_ROOT/.github/scripts/test-release-safety.sh"
@@ -16,8 +18,11 @@ GORELEASER_CONFIG="$REPO_ROOT/.goreleaser.yaml"
 GORELEASER_DOCKERFILE="$REPO_ROOT/Dockerfile.goreleaser"
 
 bash -n "$INSTALLER"
+bash -n "$PACKAGER"
 
 grep -Fq 'ReadWritePaths=/run/sub2api-deployer /var/lib/sub2api-deployer' "$SERVICE"
+grep -Fq 'RuntimeDirectoryPreserve=yes' "$SERVICE"
+grep -Fq 'd /run/sub2api-deployer 0755 root root -' "$TMPFILES"
 if grep -Eq 'ReadWritePaths=.*(/opt/sub2api/\.deployer\.env|/etc/nginx/conf\.d/sub2api-managed-upstream\.conf)' "$SERVICE"; then
   echo "systemd must grant writable parent directories, not atomic-write target files" >&2
   exit 1
@@ -53,6 +58,10 @@ grep -Fq 'INSTALL_LOCK_FILE="/run/sub2api-deployer-install.lock"' "$INSTALLER"
 grep -Fq 'acquire_root_lock "$(dirname -- "$OLD_STATE_FILE")/deployer.lock" STATE_LOCK_FD' "$INSTALLER"
 grep -Fq 'compose_preflight "$TEMP_DIR/config.json"' "$INSTALLER"
 grep -Fq 'load_single_loopback_port "$INSPECTED_CONTAINER_ID"' "$INSTALLER"
+grep -Fq 'CONTAINER_SOCKET_DIRECTORY_INODE=$(docker exec "$INSPECTED_CONTAINER_ID" stat -c' "$INSTALLER"
+grep -Fq 'APPLICATION_UID=$(docker exec "$INSPECTED_CONTAINER_ID" sh -ceu' "$INSTALLER"
+grep -Fq 'docker exec --user "$APPLICATION_UID" "$INSPECTED_CONTAINER_ID" sh -ceu' "$INSTALLER"
+grep -Fq 'package-sub2api-deployer-bundles.sh ../deployer-dist' "$RELEASE_WORKFLOW"
 grep -Fq 'release-safety.sh previous-release-json \' "$RELEASE_WORKFLOW"
 grep -Fq 'release-safety.sh validate "$RELEASE_TAG" "$PREVIOUS_RELEASE_TAG" refs/remotes/origin/main' "$RELEASE_WORKFLOW"
 grep -Fq 'release_commit: ${{ steps.release_ref.outputs.commit }}' "$RELEASE_WORKFLOW"
@@ -153,5 +162,28 @@ if [[ -z "$quiesce_line" || -z "$install_line" || "$quiesce_line" -ge "$install_
 fi
 
 "$REPO_ROOT/deploy/tests/install-sub2api-deployer-test.sh"
+
+bundle_test_dir=$(mktemp -d "${TMPDIR:-/tmp}/sub2api-bundle-test.XXXXXX")
+trap 'rm -rf -- "$bundle_test_dir"' EXIT
+for arch in amd64 arm64; do
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$bundle_test_dir/sub2api-deployer-linux-$arch"
+  chmod +x "$bundle_test_dir/sub2api-deployer-linux-$arch"
+done
+"$PACKAGER" "$bundle_test_dir"
+(
+  cd -- "$bundle_test_dir"
+  sha256sum --check sub2api-deployer-checksums.txt
+)
+for arch in amd64 arm64; do
+  extracted="$bundle_test_dir/extracted-$arch"
+  mkdir -p "$extracted"
+  tar -xzf "$bundle_test_dir/sub2api-deployer-linux-$arch.tar.gz" -C "$extracted"
+  root="$extracted/sub2api-deployer-linux-$arch"
+  (cd -- "$root" && sha256sum --check MANIFEST.sha256)
+  jq -e --arg arch "$arch" '.schema == 1 and .os == "linux" and .architecture == $arch' \
+    "$root/BUNDLE-MANIFEST.json" >/dev/null
+  [[ -x "$root/install-sub2api-deployer.sh" ]]
+  [[ -f "$root/deploy/sub2api-deployer-tmpfiles.conf" ]]
+done
 
 echo "managed update deployment asset tests passed"

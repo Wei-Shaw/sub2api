@@ -41,6 +41,7 @@ export const useAppStore = defineStore('app', () => {
   const currentVersion = ref<string>('')
   const latestVersion = ref<string>('')
   const hasUpdate = ref<boolean>(false)
+  const versionWarning = ref<string>('')
   const buildType = ref<string>('source')
   const deploymentMode = ref<string>('source')
   const deploymentReady = ref<boolean>(false)
@@ -250,6 +251,7 @@ export const useAppStore = defineStore('app', () => {
         current_version: currentVersion.value,
         latest_version: latestVersion.value,
         has_update: hasUpdate.value,
+        warning: versionWarning.value || undefined,
         build_type: buildType.value,
         deployment_mode: deploymentMode.value as VersionInfo['deployment_mode'],
         deployment_ready: deploymentReady.value,
@@ -270,6 +272,7 @@ export const useAppStore = defineStore('app', () => {
       currentVersion.value = data.current_version
       latestVersion.value = data.latest_version
       hasUpdate.value = data.has_update
+      versionWarning.value = data.warning || ''
       buildType.value = data.build_type || 'source'
       deploymentMode.value = data.deployment_mode || (data.build_type === 'source' ? 'source' : 'standalone-binary')
       deploymentReady.value = data.deployment_ready ?? deploymentMode.value === 'standalone-binary'
@@ -291,6 +294,7 @@ export const useAppStore = defineStore('app', () => {
   function clearVersionCache(): void {
     versionLoaded.value = false
     hasUpdate.value = false
+    versionWarning.value = ''
   }
 
   // ==================== Public Settings Management ====================
@@ -349,10 +353,16 @@ export const useAppStore = defineStore('app', () => {
         site_subtitle: '',
         api_base_url: apiBaseUrl.value,
         contact_info: contactInfo.value,
+        after_sales_title: '',
         after_sales_qrcode: '',
         after_sales_link: '',
+        after_sales_link_label: '',
+        official_group_title: '',
         official_group_qrcode: '',
         official_group_link: '',
+        official_group_link_label: '',
+        customer_service_text_enabled: false,
+        customer_service_text: '',
         doc_url: docUrl.value,
         home_content: '',
         hide_ccs_import_button: false,
@@ -462,6 +472,7 @@ export const useAppStore = defineStore('app', () => {
     currentVersion,
     latestVersion,
     hasUpdate,
+    versionWarning,
     buildType,
     deploymentMode,
     deploymentReady,

@@ -9,13 +9,15 @@
         :class="[
           hasDangerousDeploymentState
             ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50'
-            : hasUpdate
+            : versionWarning || hasUpdate
             ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'
             : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-800 dark:text-dark-400 dark:hover:bg-dark-700'
         ]"
         :title="
           hasDangerousDeploymentState
             ? displayedUpdateError
+            : versionWarning
+              ? t('version.updateCheckWarning')
             : hasUpdate
               ? t('version.updateAvailable')
               : t('version.upToDate')
@@ -30,7 +32,7 @@
         <span v-if="hasDangerousDeploymentState" class="relative flex h-2 w-2">
           <span class="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
         </span>
-        <span v-else-if="hasUpdate" class="relative flex h-2 w-2">
+        <span v-else-if="versionWarning || hasUpdate" class="relative flex h-2 w-2">
           <span
             class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"
           ></span>
@@ -102,7 +104,7 @@
                   <span v-else class="text-2xl font-bold text-gray-400 dark:text-dark-500">--</span>
                   <!-- Show check mark when up to date -->
                   <span
-                    v-if="!hasUpdate"
+                    v-if="!hasUpdate && !versionWarning"
                     class="flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-900/30"
                   >
                     <svg
@@ -120,7 +122,9 @@
                 </div>
                 <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
                   {{
-                    hasUpdate
+                    versionWarning
+                      ? t('version.updateCheckWarning')
+                      : hasUpdate
                       ? t('version.latestVersion') + ': v' + latestVersion
                       : t('version.upToDate')
                   }}
@@ -209,6 +213,29 @@
                 >
                   {{ t('version.retry') }}
                 </button>
+              </div>
+
+              <div
+                v-else-if="versionWarning"
+                data-testid="version-warning"
+                class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
+              >
+                <div class="flex items-start gap-3">
+                  <Icon
+                    name="exclamationTriangle"
+                    size="sm"
+                    :stroke-width="2"
+                    class="mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-amber-700 dark:text-amber-300">
+                      {{ t('version.updateCheckWarning') }}
+                    </p>
+                    <p class="break-words text-xs text-amber-600/80 dark:text-amber-400/80">
+                      {{ versionWarning }}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div v-else-if="updateSuccess && !needRestart" class="space-y-2">
@@ -781,6 +808,7 @@ const loading = computed(() => appStore.versionLoading)
 const currentVersion = computed(() => appStore.currentVersion || props.version || '')
 const latestVersion = computed(() => appStore.latestVersion)
 const hasUpdate = computed(() => appStore.hasUpdate)
+const versionWarning = computed(() => appStore.versionWarning)
 const releaseInfo = computed(() => appStore.releaseInfo)
 const buildType = computed(() => appStore.buildType)
 const deploymentMode = computed(() => appStore.deploymentMode)
@@ -947,6 +975,9 @@ function applyUpdateResult(result: Awaited<ReturnType<typeof performUpdate>>) {
 
 function retryFailedOperation() {
   if (successKind.value === 'rollback') {
+    if (!selectedRollbackVersion.value) {
+      selectedRollbackVersion.value = deploymentJob.value?.target_version || ''
+    }
     void handleRollback()
     return
   }
@@ -1123,6 +1154,14 @@ async function pollDeployment(jobID: string, token: number) {
         updating.value = false
         rollingBack.value = false
         updateError.value = t('version.deploymentUnavailable')
+        if (deploymentJob.value?.status === 'running') {
+          deploymentJob.value = {
+            ...deploymentJob.value,
+            status: 'failed',
+            stage: 'failed',
+            error: updateError.value
+          }
+        }
         return
       }
       await new Promise((resolve) => setTimeout(resolve, 1500))
@@ -1240,8 +1279,36 @@ async function recoverCurrentDeployment() {
       rollingBack.value = false
       updateSuccess.value = false
       needRestart.value = false
+    } else {
+      deploymentJob.value = job
+      successKind.value = job.action
+      updating.value = false
+      rollingBack.value = false
+      if (job.action === 'rollback') {
+        selectedRollbackVersion.value = job.target_version
+      }
+      if (job.status === 'succeeded') {
+        updateSuccess.value = true
+        needRestart.value = false
+        updateError.value = ''
+      } else {
+        updateSuccess.value = false
+        updateError.value = deploymentFailureMessage(job)
+      }
     }
-  } catch {
+  } catch (error) {
+    const status = (error as { response?: { status?: number } }).response?.status
+    if (status === 404 && deploymentJob.value?.status === 'running') {
+      updateError.value = t('version.deploymentUnavailable')
+      deploymentJob.value = {
+        ...deploymentJob.value,
+        status: 'failed',
+        stage: 'failed',
+        error: updateError.value
+      }
+      updating.value = false
+      rollingBack.value = false
+    }
     // Source/manual deployments and a first request during a switch normally
     // have no recoverable managed job. A later manual refresh retries this.
   }
