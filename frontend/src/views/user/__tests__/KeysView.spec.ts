@@ -46,6 +46,7 @@ const messages: Record<string, string> = {
   'keys.currentConcurrency': 'Current Concurrency',
   'keys.lastUsedAt': 'Last Used',
   'keys.lastUsedIP': 'Last Used IP',
+  'keys.models': 'Models',
   'keys.rateLimitColumn': 'Rate Limit',
   'keys.searchPlaceholder': 'Search name or key...',
   'keys.status.active': 'Active',
@@ -179,6 +180,9 @@ const DataTableStub = {
         >
           <slot name="cell-last_used_ip" :value="row.last_used_ip" :row="row" />
         </div>
+        <div data-test="key-actions">
+          <slot name="cell-actions" :value="row" :row="row" />
+        </div>
       </div>
       <slot name="empty" />
     </div>
@@ -215,6 +219,13 @@ const IconStub = {
   template: '<span data-test="icon">{{ name }}</span>',
 }
 
+const KeyModelsModalStub = {
+  name: 'KeyModelsModal',
+  props: ['show', 'apiKey', 'keyName'],
+  emits: ['close'],
+  template: '<div data-test="key-models-modal">{{ show }}|{{ apiKey }}|{{ keyName }}</div>',
+}
+
 const mountView = async () => {
   const wrapper = mount(KeysView, {
     global: {
@@ -230,6 +241,7 @@ const mountView = async () => {
         SearchInput: SearchInputStub,
         Icon: IconStub,
         UseKeyModal: true,
+        KeyModelsModal: KeyModelsModalStub,
         EndpointPopover: true,
         GroupBadge: true,
         GroupOptionItem: true,
@@ -392,6 +404,23 @@ describe('user KeysView column settings', () => {
     const wrapper = await mountView()
 
     expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('3')
+  })
+
+  it('opens the effective model list for the selected API key', async () => {
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'Models').trigger('click')
+    await nextTick()
+
+    const modal = wrapper.findComponent({ name: 'KeyModelsModal' })
+    expect(modal.props('show')).toBe(true)
+    expect(modal.props('apiKey')).toBe('sk-test-key')
+    expect(modal.props('keyName')).toBe('test-key')
+
+    modal.vm.$emit('close')
+    await nextTick()
+
+    expect(modal.props('show')).toBe(false)
   })
 
   it('marks current concurrency as sortable', async () => {

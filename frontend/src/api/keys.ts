@@ -3,8 +3,17 @@
  * Handles CRUD operations for user API keys
  */
 
-import { apiClient } from './client'
+import { apiClient, buildGatewayUrl } from './client'
 import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
+
+export interface ApiKeyModel {
+  id: string
+  display_name?: string
+}
+
+interface ModelsResponse {
+  data?: unknown
+}
 
 /**
  * List all API keys for current user
@@ -131,13 +140,63 @@ export async function toggleStatus(id: number, status: 'active' | 'inactive'): P
   return update(id, { status })
 }
 
+/**
+ * Fetch the effective /v1/models response for an API key.
+ * This deliberately uses the key itself instead of the signed-in user's token,
+ * so the result matches what API clients receive for the key's current group.
+ */
+export async function listModels(
+  apiKey: string,
+  options?: { signal?: AbortSignal }
+): Promise<ApiKeyModel[]> {
+  const response = await fetch(buildGatewayUrl('/v1/models'), {
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    credentials: 'omit',
+    signal: options?.signal
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to load models (${response.status})`)
+  }
+
+  const payload = await response.json() as ModelsResponse
+  if (!Array.isArray(payload.data)) {
+    throw new Error('Invalid models response')
+  }
+
+  const seen = new Set<string>()
+  const models: ApiKeyModel[] = []
+  for (const item of payload.data) {
+    if (!item || typeof item !== 'object') continue
+
+    const record = item as Record<string, unknown>
+    const id = typeof record.id === 'string' ? record.id.trim() : ''
+    if (!id || seen.has(id)) continue
+
+    seen.add(id)
+    models.push({
+      id,
+      display_name:
+        typeof record.display_name === 'string' && record.display_name.trim()
+          ? record.display_name.trim()
+          : undefined
+    })
+  }
+
+  return models
+}
+
 export const keysAPI = {
   list,
   getById,
   create,
   update,
   delete: deleteKey,
-  toggleStatus
+  toggleStatus,
+  listModels
 }
 
 export default keysAPI
