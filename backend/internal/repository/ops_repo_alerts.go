@@ -202,6 +202,10 @@ ORDER BY id DESC`
 				rule.Filters = decoded
 			}
 		}
+		// Legacy defaults predate the v2 rule schema. Apply the compatibility
+		// mapping in memory so older rows gain the same semantics as v2 rows
+		// without rewriting operator-customized database values.
+		applyLegacyOpsAlertRuleCompatibility(&rule)
 		out = append(out, &rule)
 	}
 	if err := rows.Err(); err != nil {

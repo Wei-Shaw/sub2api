@@ -1,8 +1,12 @@
 package repository
 
 import (
+	"context"
+	"database/sql"
 	"testing"
+	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -139,4 +143,28 @@ func TestApplyLegacyOpsAlertRuleCompatibilityPreservesOperatorChanges(t *testing
 			require.Equal(t, want, *rule)
 		})
 	}
+}
+
+func TestListAlertRulesAppliesLegacyCompatibility(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &opsRepository{db: db}
+
+	rows := sqlmock.NewRows([]string{
+		"id", "name", "description", "enabled", "severity", "metric_type", "operator", "threshold",
+		"window_minutes", "sustained_minutes", "cooldown_minutes", "incident_family", "minimum_samples",
+		"minimum_bad_count", "recovery_operator", "recovery_threshold", "recovery_sustained_minutes",
+		"shadow_mode", "notify_email", "filters", "last_triggered_at", "created_at", "updated_at",
+	}).AddRow(
+		int64(42), "错误率过高", "当错误率超过 5% 且持续 5 分钟时触发告警", true, "P1", "error_rate", ">", 5.0,
+		5, 5, 20, "custom", 0, 0, "", nil, 1, false, true, []byte("null"),
+		sql.NullTime{}, time.Now(), time.Now(),
+	)
+	mock.ExpectQuery(`SELECT\s+id,`).WillReturnRows(rows)
+
+	rules, err := repo.ListAlertRules(context.Background())
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	require.False(t, rules[0].Enabled)
+	require.Contains(t, rules[0].Description, "[disabled: replaced by availability failure rules]")
+	require.NoError(t, mock.ExpectationsWereMet())
 }
