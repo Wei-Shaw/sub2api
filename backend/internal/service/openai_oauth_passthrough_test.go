@@ -433,7 +433,77 @@ REDACTED
 	require.NotContains(t, body, "\"name\":\"edit\"")
 REDACTED
 
-func TestOpenAIGatewayService_OAuthPassthrough_NamespaceRequestAndStreamResponse(t *testing.T) {
+// 「自动透传（仅替换认证）」的默认行为必须真的只替换认证：namespace 声明、
+// namespace 形态的 tool_choice、历史调用项上的 namespace 都原样转发，只清掉
+// 非调用项上的残留 namespace（Codex 协议里只有调用项会带该字段）。
+func TestOpenAIGatewayService_OAuthPassthrough_PreservesNamespaceRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.144.1")
+
+	originalBody := []byte(`{
+		"model":"gpt-5.5",
+		"stream":true,
+		"instructions":"local-test-instructions",
+		"tools":[
+			{"type":"function","name":"plain","description":"keep","parameters":{"type":"object"REDACTEDREDACTED,
+			{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent","description":"spawn","parameters":{"type":"object"REDACTEDREDACTED]REDACTED
+		],
+		"tool_choice":{"type":"function","name":"spawn_agent","namespace":"collaboration"REDACTED,
+		"input":[
+			{"type":"function_call","call_id":"call_old","name":"spawn_agent","namespace":"collaboration","arguments":"{REDACTED"REDACTED,
+			{"type":"message","role":"user","namespace":"residual","content":[{"type":"input_text","text":"keep","namespace":"nested"REDACTED]REDACTED
+		]
+REDACTED`)
+
+	upstreamSSE := strings.Join([]string{
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"spawn_agent","namespace":"collaboration","arguments":"{REDACTED"REDACTEDREDACTED`,
+		"",
+		`data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3REDACTEDREDACTEDREDACTED`,
+		"",
+		"data: [DONE]",
+		"",
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_preserve"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{cfg: &config.Config{REDACTED, httpUpstream: upstreamREDACTED
+	account := &Account{
+		ID: 125, Name: "acc", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
+REDACTED"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+		Extra:       map[string]any{"openai_passthrough": trueREDACTED, Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
+REDACTED
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+REDACTED
+	require.NotNil(t, result)
+
+	require.Len(t, gjson.GetBytes(upstream.lastBody, "tools").Array(), 2)
+	require.Equal(t, "namespace", gjson.GetBytes(upstream.lastBody, "tools.1.type").String())
+	require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, "tools.1.name").String())
+	require.Equal(t, "spawn_agent", gjson.GetBytes(upstream.lastBody, "tools.1.tools.0.name").String())
+	require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, "tool_choice.namespace").String())
+	require.Equal(t, "spawn_agent", gjson.GetBytes(upstream.lastBody, "tool_choice.name").String())
+	require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, "input.0.namespace").String())
+	require.Equal(t, "spawn_agent", gjson.GetBytes(upstream.lastBody, "input.0.name").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input.1.namespace").Exists())
+	require.Equal(t, "nested", gjson.GetBytes(upstream.lastBody, "input.1.content.0.namespace").String())
+	require.NotContains(t, string(upstream.lastBody), "collaboration__spawn_agent")
+
+	// 未摊平即无需回程还原，上游事件原样下发。
+	downstream := rec.Body.String()
+	require.Contains(t, downstream, `"name":"spawn_agent"`)
+	require.Contains(t, downstream, `"namespace":"collaboration"`)
+REDACTED
+
+// 兼容开关打开时的旧行为：摊平请求、回程还原。默认路径见
+// TestOpenAIGatewayService_OAuthPassthrough_PreservesNamespaceRequest。
+func TestOpenAIGatewayService_OAuthPassthrough_FlattenEnabledNamespaceRequestAndStreamResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -475,7 +545,11 @@ REDACTEDREDACTED
 	account := &Account{
 		ID: 123, Name: "acc", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
 REDACTED"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
-		Extra:       map[string]any{"openai_passthrough": trueREDACTED, Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
+		Extra: map[string]any{
+			"openai_passthrough":                  true,
+			"openai_responses_flatten_namespaces": true,
+	REDACTED,
+		Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
 REDACTED
 
 	result, err := svc.Forward(context.Background(), c, account, originalBody)
@@ -501,7 +575,9 @@ REDACTED
 	require.Contains(t, downstream, `"namespace":"collaboration"`)
 REDACTED
 
-func TestOpenAIGatewayService_NativeOAuth_NamespaceRequestAndStreamResponse(t *testing.T) {
+// 兼容开关打开时的旧行为；默认保留路径见
+// TestOpenAIGatewayService_OAuthPreservesCodexNamespaceTools。
+func TestOpenAIGatewayService_NativeOAuth_FlattenEnabledNamespaceRequestAndStreamResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -529,6 +605,7 @@ REDACTEDREDACTED
 	account := &Account{
 		ID: 124, Name: "native", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
 REDACTED"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+		Extra:       map[string]any{"openai_responses_flatten_namespaces": trueREDACTED,
 		Status:      StatusActive, Schedulable: true, RateMultiplier: f64p(1),
 REDACTED
 
@@ -596,7 +673,8 @@ REDACTED
 	require.Contains(t, rec.Body.String(), `"namespace":"collaboration"`)
 REDACTED
 
-func TestOpenAIGatewayService_OAuthPassthrough_NamespaceCollisionReturnsBadRequest(t *testing.T) {
+// 摊平名冲突只在兼容开关打开时才可能发生：默认保留 namespace，不存在平名冲突。
+func TestOpenAIGatewayService_OAuthPassthrough_FlattenEnabledNamespaceCollisionReturnsBadRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -614,7 +692,11 @@ REDACTED`)
 	account := &Account{
 		ID: 123, Name: "acc", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
 REDACTED"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
-		Extra:       map[string]any{"openai_passthrough": trueREDACTED, Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
+		Extra: map[string]any{
+			"openai_passthrough":                  true,
+			"openai_responses_flatten_namespaces": true,
+	REDACTED,
+		Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
 REDACTED
 
 	result, err := svc.Forward(context.Background(), c, account, body)

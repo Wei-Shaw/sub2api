@@ -237,6 +237,34 @@ describe('BulkEditAccountModal', () => {
     REDACTED)
   REDACTED)
 
+  it('OpenAI OAuth 批量编辑可开启 namespace 摊平兼容开关', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    REDACTED)
+
+    await wrapper.get('#bulk-edit-openai-flatten-namespaces-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-flatten-namespaces-toggle').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        openai_responses_flatten_namespaces: true
+      REDACTED
+    REDACTED)
+  REDACTED)
+
+  it('namespace 摊平开关不对 setup-token 等非 OAuth 选择展示', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth', 'setup-token']
+    REDACTED)
+
+    expect(wrapper.find('#bulk-edit-openai-flatten-namespaces-enabled').exists()).toBe(false)
+  REDACTED)
+
   it('OpenAI OAuth 批量编辑应提交 OAuth 专属 WS mode 字段（含 http_bridge）', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
