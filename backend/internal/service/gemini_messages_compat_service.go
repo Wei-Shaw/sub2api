@@ -2936,6 +2936,21 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 
 	resetAt := ParseGeminiRateLimitResetTime(body)
 	if resetAt == nil {
+		// Vertex service accounts can return transient RESOURCE_EXHAUSTED errors
+		// without an upstream reset hint. Do not treat those as daily quota
+		// exhaustion: use the configurable short 429 fallback instead.
+		if account.Type == AccountTypeServiceAccount {
+			if s.rateLimitService != nil {
+				s.rateLimitService.apply429FallbackRateLimit(ctx, account, "vertex_service_account_no_reset_time")
+				return
+			}
+
+			ra := time.Now().Add(time.Duration(defaultRateLimit429CooldownSeconds) * time.Second)
+			logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Vertex service account %d rate limited without reset hint, fallback cooldown=%v", account.ID, time.Until(ra).Truncate(time.Second))
+			_ = s.accountRepo.SetRateLimited(ctx, account.ID, ra)
+			return
+		}
+
 		// 根据账号类型使用不同的默认重置时间
 		var ra time.Time
 		if isCodeAssist || oauthType == "google_one" {
