@@ -161,7 +161,7 @@ REDACTED
 func TestPromptAdminGetConfigReturnsSecretFreeUnavailableError(t *testing.T) {
 	const canary = "persisted-config-secret-canary"
 	repository := &switchableSettingRepository{loadErr: errors.New("failed to load token " + canary)REDACTED
-	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{REDACTED)
+	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{REDACTED, testTotpKeyConfig())
 	require.Error(t, manager.Reload(context.Background()))
 	service := &PromptService{config: managerREDACTED
 
