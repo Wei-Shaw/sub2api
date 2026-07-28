@@ -209,6 +209,22 @@ func isOpenAIContextWindowError(upstreamMsg string, upstreamBody []byte) bool {
 	return match(string(upstreamBody))
 }
 
+// isOpenAIInvalidJSONSchemaErrorPayload only trusts the exact structured code.
+// Generic upstream 4xx responses must keep using the sanitized error envelope.
+func isOpenAIInvalidJSONSchemaErrorPayload(upstreamBody []byte) bool {
+	if len(upstreamBody) == 0 || !gjson.ValidBytes(upstreamBody) {
+		return false
+	}
+
+	for _, path := range []string{"error.code", "response.error.code"} {
+		code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(upstreamBody, path).String()))
+		if code == "invalid_json_schema" {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
 	case 401, 402, 403, 429, 529:
@@ -492,27 +508,36 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	var errType, errMsg string
 	var statusCode int
 
-	switch resp.StatusCode {
-	case 401:
-		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream authentication failed, please contact administrator"
-	case 402:
-		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream payment required: insufficient balance or billing issue"
-	case 403:
-		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream access forbidden, please contact administrator"
-	case 429:
-		statusCode = http.StatusTooManyRequests
-		errType = "rate_limit_error"
-		errMsg = "Upstream rate limit exceeded, please retry later"
-	default:
-		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream request failed"
+	if resp.StatusCode == http.StatusBadRequest && isOpenAIInvalidJSONSchemaErrorPayload(body) {
+		statusCode = http.StatusBadRequest
+		errType = "invalid_request_error"
+		errMsg = upstreamMsg
+		if errMsg == "" {
+			errMsg = "Invalid request"
+		}
+	} else {
+		switch resp.StatusCode {
+		case 401:
+			statusCode = http.StatusBadGateway
+			errType = "upstream_error"
+			errMsg = "Upstream authentication failed, please contact administrator"
+		case 402:
+			statusCode = http.StatusBadGateway
+			errType = "upstream_error"
+			errMsg = "Upstream payment required: insufficient balance or billing issue"
+		case 403:
+			statusCode = http.StatusBadGateway
+			errType = "upstream_error"
+			errMsg = "Upstream access forbidden, please contact administrator"
+		case 429:
+			statusCode = http.StatusTooManyRequests
+			errType = "rate_limit_error"
+			errMsg = "Upstream rate limit exceeded, please retry later"
+		default:
+			statusCode = http.StatusBadGateway
+			errType = "upstream_error"
+			errMsg = "Upstream request failed"
+		}
 	}
 	if isOpenAIContextWindowError(upstreamMsg, body) && upstreamMsg != "" {
 		errMsg = upstreamMsg

@@ -540,12 +540,19 @@ func writeSanitizedOpenAIPassthroughError(c *gin.Context, upstreamStatus int, up
 // writeOpenAIPassthroughErrorEnvelope 以本地 JSON 信封 + 净化后的头策略写出
 // 错误响应；message 由调用方决定（净化通用文案或脱敏后的上游消息）。
 func writeOpenAIPassthroughErrorEnvelope(c *gin.Context, downstreamStatus int, upstreamHeaders http.Header, message string) {
+	writeOpenAIPassthroughErrorEnvelopeWithType(c, downstreamStatus, upstreamHeaders, "upstream_error", message)
+}
+
+func writeOpenAIPassthroughErrorEnvelopeWithType(c *gin.Context, downstreamStatus int, upstreamHeaders http.Header, errType, message string) {
 	if c == nil {
 		return
 	}
+	if strings.TrimSpace(errType) == "" {
+		errType = "upstream_error"
+	}
 	body, _ := json.Marshal(gin.H{
 		"error": gin.H{
-			"type":    "upstream_error",
+			"type":    errType,
 			"message": message,
 		},
 	})
@@ -660,7 +667,12 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	// context-window 超限是确定性请求失败（shouldFailoverOpenAIPassthroughResponse
 	// 已保证不切号），其文案对客户端可操作（如触发自动压缩）；在净化信封内保留
 	// 脱敏后的上游消息，而不是抹成通用文案。
-	if isOpenAIContextWindowError(upstreamMsg, body) && upstreamMsg != "" {
+	if isOpenAIInvalidJSONSchemaErrorPayload(body) {
+		if upstreamMsg == "" {
+			upstreamMsg = "Invalid request"
+		}
+		writeOpenAIPassthroughErrorEnvelopeWithType(c, resp.StatusCode, resp.Header, "invalid_request_error", upstreamMsg)
+	} else if isOpenAIContextWindowError(upstreamMsg, body) && upstreamMsg != "" {
 		writeOpenAIPassthroughErrorEnvelope(c, resp.StatusCode, resp.Header, upstreamMsg)
 	} else {
 		writeSanitizedOpenAIPassthroughError(c, resp.StatusCode, resp.Header)
@@ -1322,7 +1334,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			if msg == "" {
 				msg = "Upstream compact response failed"
 			}
-			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg, terminalPayload)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
 		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
