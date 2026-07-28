@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi REDACTED from 'vitest'
 
-const { get, post, patch, remove, credentialGet REDACTED = vi.hoisted(() => ({
+const { get, post, patch, remove, credentialGet, credentialCreate REDACTED = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
   patch: vi.fn(),
   remove: vi.fn(),
-  credentialGet: vi.fn()
+  credentialGet: vi.fn(),
+  credentialCreate: vi.fn()
 REDACTED))
 
 vi.mock('@/api/client', () => ({
@@ -24,7 +25,7 @@ class FakePublicKeyCredential {
   rawId = Uint8Array.from([1, 2, 3]).buffer
   type = 'public-key'
   authenticatorAttachment = 'platform'
-  response = {
+  response: Record<string, unknown> = {
     authenticatorData: Uint8Array.from([4, 5]).buffer,
     clientDataJSON: Uint8Array.from([6, 7]).buffer,
     signature: Uint8Array.from([8, 9]).buffer,
@@ -36,6 +37,17 @@ class FakePublicKeyCredential {
   REDACTED
 REDACTED
 
+class FakeRegistrationCredential extends FakePublicKeyCredential {
+  constructor() {
+    super()
+    this.response = {
+      attestationObject: Uint8Array.from([12, 13]).buffer,
+      clientDataJSON: Uint8Array.from([6, 7]).buffer,
+      getTransports: () => ['internal']
+    REDACTED
+  REDACTED
+REDACTED
+
 describe('passkey api', () => {
   beforeEach(() => {
     get.mockReset()
@@ -43,6 +55,7 @@ describe('passkey api', () => {
     patch.mockReset()
     remove.mockReset()
     credentialGet.mockReset()
+    credentialCreate.mockReset()
 
     vi.stubGlobal('PublicKeyCredential', FakePublicKeyCredential)
     Object.defineProperty(window, 'PublicKeyCredential', {
@@ -51,7 +64,7 @@ describe('passkey api', () => {
     REDACTED)
     Object.defineProperty(navigator, 'credentials', {
       configurable: true,
-      value: { get: credentialGet REDACTED
+      value: { get: credentialGet, create: credentialCreate REDACTED
     REDACTED)
   REDACTED)
 
@@ -103,6 +116,52 @@ describe('passkey api', () => {
           userHandle: 'Cgs'
         REDACTED
       REDACTED
+    REDACTED)
+  REDACTED)
+
+  it('sends the account password when beginning registration', async () => {
+    post
+      .mockResolvedValueOnce({
+        data: {
+          session_token: 'register-session',
+          options: {
+            publicKey: {
+              challenge: 'AQID',
+              user: { id: 'BAU', name: 'user@example.com', displayName: 'user' REDACTED
+            REDACTED
+          REDACTED
+        REDACTED
+      REDACTED)
+      .mockResolvedValueOnce({
+        data: { id: 3, name: 'Laptop', created_at: '2026-07-28T00:00:00Z', backup: false REDACTED
+      REDACTED)
+    credentialCreate.mockResolvedValue(new FakeRegistrationCredential())
+
+    await passkeyAPI.register('Laptop', 'hunter2')
+
+    expect(post).toHaveBeenNthCalledWith(1, '/user/passkeys/register/begin', {
+      password: 'hunter2'
+    REDACTED)
+    expect(post).toHaveBeenNthCalledWith(2, '/user/passkeys/register/finish', {
+      session_token: 'register-session',
+      name: 'Laptop',
+      credential: expect.objectContaining({
+        response: {
+          attestationObject: 'DA0',
+          clientDataJSON: 'Bgc',
+          transports: ['internal']
+        REDACTED
+      REDACTED)
+    REDACTED)
+  REDACTED)
+
+  it('sends the account password when revoking a credential', async () => {
+    remove.mockResolvedValue({ data: null REDACTED)
+
+    await passkeyAPI.remove(12, 'hunter2')
+
+    expect(remove).toHaveBeenCalledWith('/user/passkeys/12', {
+      data: { password: 'hunter2' REDACTED
     REDACTED)
   REDACTED)
 REDACTED)

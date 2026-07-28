@@ -122,10 +122,11 @@ async function login(): Promise<AuthResponse> {
   return data
 REDACTED
 
-async function register(name: string): Promise<PasskeyCredentialSummary> {
+async function register(name: string, password: string): Promise<PasskeyCredentialSummary> {
   requirePasskeySupport()
   const { data: begin REDACTED = await apiClient.post<CeremonyOptionsResponse>(
-    '/user/passkeys/register/begin'
+    '/user/passkeys/register/begin',
+    { password REDACTED
   )
   const credential = await navigator.credentials.create({
     publicKey: creationOptionsFromJSON(begin.options.publicKey)
@@ -153,8 +154,8 @@ async function rename(id: number, name: string): Promise<void> {
   await apiClient.patch(`/user/passkeys/${idREDACTED`, { name REDACTED)
 REDACTED
 
-async function remove(id: number): Promise<void> {
-  await apiClient.delete(`/user/passkeys/${idREDACTED`)
+async function remove(id: number, password: string): Promise<void> {
+  await apiClient.delete(`/user/passkeys/${idREDACTED`, { data: { password REDACTED REDACTED)
 REDACTED
 
 export const passkeyAPI = {

@@ -49,6 +49,20 @@ type passkeyRenameRequest struct {
 	Name string `json:"name" binding:"required"`
 REDACTED
 
+// passkeyPasswordRequest carries the account password that gates passkey
+// enrollment and revocation. Binding errors are tolerated: a missing or
+// malformed body yields an empty password, which the service rejects with a
+// precise PASSWORD_REQUIRED error.
+type passkeyPasswordRequest struct {
+	Password string `json:"password"`
+REDACTED
+
+func bindPasskeyPassword(c *gin.Context) string {
+	var req passkeyPasswordRequest
+	_ = c.ShouldBindJSON(&req)
+	return req.Password
+REDACTED
+
 const passkeyFinishBodyMaxBytes = 64 * 1024
 
 // BeginLogin starts a usernameless, discoverable-credential login ceremony.
@@ -101,7 +115,7 @@ REDACTED
 		response.Unauthorized(c, "User not authenticated")
 		return
 REDACTED
-	creation, token, err := h.passkeys.BeginRegistration(c.Request.Context(), subject.UserID)
+	creation, token, err := h.passkeys.BeginRegistration(c.Request.Context(), subject.UserID, bindPasskeyPassword(c))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -173,7 +187,7 @@ func (h *PasskeyHandler) Delete(c *gin.Context) {
 	if !ok {
 		return
 REDACTED
-	if err := h.passkeys.Delete(c.Request.Context(), subject.UserID, credentialID); err != nil {
+	if err := h.passkeys.Delete(c.Request.Context(), subject.UserID, credentialID, bindPasskeyPassword(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED

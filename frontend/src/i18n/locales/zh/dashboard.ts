@@ -702,6 +702,7 @@ export default {
       continue: '创建 Passkey',
       name: 'Passkey 名称',
       namePlaceholder: '例如：MacBook 触控 ID',
+      passwordPlaceholder: '输入当前登录密码以确认',
       empty: '尚未添加任何 Passkey。',
       synced: '已同步',
       createdAt: '创建于 {dateREDACTED',
@@ -714,6 +715,7 @@ export default {
       renamePrompt: '请输入新的 Passkey 名称',
       renamed: 'Passkey 已重命名。',
       renameFailed: '重命名 Passkey 失败。',
+      deleteTitle: '删除 Passkey',
       deleteConfirm: '删除“{nameREDACTED”？删除后将无法再使用它登录。',
       deleted: 'Passkey 已删除。',
       deleteFailed: '删除 Passkey 失败。'

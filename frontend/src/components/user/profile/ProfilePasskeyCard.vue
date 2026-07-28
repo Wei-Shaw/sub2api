@@ -30,25 +30,40 @@
       <div>
         <form
           v-if="enabled && supported && showAddForm"
-          class="mb-5 flex flex-col gap-3 rounded-lg border border-gray-200 p-4 dark:border-dark-700 sm:flex-row sm:items-end"
+          class="mb-5 flex flex-col gap-3 rounded-lg border border-gray-200 p-4 dark:border-dark-700"
           @submit.prevent="addPasskey"
         >
-          <div class="flex-1">
-            <label for="passkey-name" class="input-label">{{ t('profile.passkey.name') REDACTEDREDACTED</label>
-            <input
-              id="passkey-name"
-              v-model="newName"
-              class="input"
-              maxlength="100"
-              :placeholder="t('profile.passkey.namePlaceholder')"
-              autofocus
-            />
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label for="passkey-name" class="input-label">{{ t('profile.passkey.name') REDACTEDREDACTED</label>
+              <input
+                id="passkey-name"
+                v-model="newName"
+                class="input"
+                maxlength="100"
+                :placeholder="t('profile.passkey.namePlaceholder')"
+                autofocus
+              />
+            </div>
+            <div>
+              <label for="passkey-add-password" class="input-label">{{
+                t('profile.currentPassword')
+              REDACTEDREDACTED</label>
+              <input
+                id="passkey-add-password"
+                v-model="newPassword"
+                type="password"
+                autocomplete="current-password"
+                class="input"
+                :placeholder="t('profile.passkey.passwordPlaceholder')"
+              />
+            </div>
           </div>
-          <div class="flex gap-2">
+          <div class="flex justify-end gap-2">
             <button type="button" class="btn btn-secondary" :disabled="busy" @click="cancelAdd">
               {{ t('common.cancel') REDACTEDREDACTED
             </button>
-            <button type="submit" class="btn btn-primary" :disabled="busy">
+            <button type="submit" class="btn btn-primary" :disabled="busy || newPassword.length === 0">
               {{ busy ? t('common.processing') : t('profile.passkey.continue') REDACTEDREDACTED
             </button>
           </div>
@@ -113,6 +128,51 @@
         </div>
       </div>
     </div>
+
+    <!-- 删除确认：吊销凭据需验证当前密码，防止被窃会话静默移除 Passkey -->
+    <div v-if="deleteTarget" class="fixed inset-0 z-50 overflow-y-auto">
+      <div class="flex min-h-full items-center justify-center p-4">
+        <div class="fixed inset-0 bg-black/50 transition-opacity" @click="closeDeleteDialog"></div>
+        <div
+          class="relative w-full max-w-md transform rounded-xl bg-white p-6 shadow-xl transition-all dark:bg-dark-800"
+        >
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+            {{ t('profile.passkey.deleteTitle') REDACTEDREDACTED
+          </h3>
+          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            {{ t('profile.passkey.deleteConfirm', { name: deleteTarget.name REDACTED) REDACTEDREDACTED
+          </p>
+          <form class="mt-4 space-y-4" @submit.prevent="confirmDelete">
+            <div>
+              <label for="passkey-delete-password" class="input-label">{{
+                t('profile.currentPassword')
+              REDACTEDREDACTED</label>
+              <input
+                id="passkey-delete-password"
+                v-model="deletePassword"
+                type="password"
+                autocomplete="current-password"
+                class="input"
+                :placeholder="t('profile.passkey.passwordPlaceholder')"
+                autofocus
+              />
+            </div>
+            <div class="flex justify-end gap-3">
+              <button type="button" class="btn btn-secondary" :disabled="busy" @click="closeDeleteDialog">
+                {{ t('common.cancel') REDACTEDREDACTED
+              </button>
+              <button
+                type="submit"
+                class="btn btn-danger"
+                :disabled="busy || deletePassword.length === 0"
+              >
+                {{ busy ? t('common.processing') : t('common.delete') REDACTEDREDACTED
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -132,7 +192,17 @@ const loading = ref(false)
 const busy = ref(false)
 const showAddForm = ref(false)
 const newName = ref('')
+const newPassword = ref('')
+const deleteTarget = ref<PasskeyCredentialSummary | null>(null)
+const deletePassword = ref('')
 const credentials = ref<PasskeyCredentialSummary[]>([])
+
+// apiClient 拦截器把错误规范化为 { code, reason, message REDACTED；
+// 透出后端消息（如密码错误），否则回退到通用文案。
+function extractErrorMessage(error: unknown, fallback: string): string {
+  const message = (error as { message?: string REDACTED).message
+  return typeof message === 'string' && message.length > 0 ? message : fallback
+REDACTED
 
 async function loadCredentials(): Promise<void> {
   loading.value = true
@@ -149,15 +219,16 @@ async function loadCredentials(): Promise<void> {
 REDACTED
 
 async function addPasskey(): Promise<void> {
+  if (newPassword.value.length === 0) return
   busy.value = true
   try {
-    await passkeyAPI.register(newName.value.trim())
+    await passkeyAPI.register(newName.value.trim(), newPassword.value)
     appStore.showSuccess(t('profile.passkey.added'))
     cancelAdd()
     await loadCredentials()
   REDACTED catch (error) {
     if (!(error instanceof DOMException && error.name === 'NotAllowedError')) {
-      appStore.showError(t('profile.passkey.addFailed'))
+      appStore.showError(extractErrorMessage(error, t('profile.passkey.addFailed')))
     REDACTED
   REDACTED finally {
     busy.value = false
@@ -167,6 +238,7 @@ REDACTED
 function cancelAdd(): void {
   showAddForm.value = false
   newName.value = ''
+  newPassword.value = ''
 REDACTED
 
 async function renamePasskey(credential: PasskeyCredentialSummary): Promise<void> {
@@ -184,15 +256,28 @@ async function renamePasskey(credential: PasskeyCredentialSummary): Promise<void
   REDACTED
 REDACTED
 
-async function deletePasskey(credential: PasskeyCredentialSummary): Promise<void> {
-  if (!window.confirm(t('profile.passkey.deleteConfirm', { name: credential.name REDACTED))) return
+function deletePasskey(credential: PasskeyCredentialSummary): void {
+  deleteTarget.value = credential
+  deletePassword.value = ''
+REDACTED
+
+function closeDeleteDialog(): void {
+  deleteTarget.value = null
+  deletePassword.value = ''
+REDACTED
+
+async function confirmDelete(): Promise<void> {
+  const credential = deleteTarget.value
+  if (!credential || deletePassword.value.length === 0) return
   busy.value = true
   try {
-    await passkeyAPI.remove(credential.id)
+    await passkeyAPI.remove(credential.id, deletePassword.value)
     credentials.value = credentials.value.filter((item) => item.id !== credential.id)
     appStore.showSuccess(t('profile.passkey.deleted'))
-  REDACTED catch {
-    appStore.showError(t('profile.passkey.deleteFailed'))
+    closeDeleteDialog()
+  REDACTED catch (error) {
+    // 密码错误等失败保持对话框打开，允许重试
+    appStore.showError(extractErrorMessage(error, t('profile.passkey.deleteFailed')))
   REDACTED finally {
     busy.value = false
   REDACTED

@@ -697,6 +697,7 @@ export default {
       continue: 'Create passkey',
       name: 'Passkey name',
       namePlaceholder: 'For example, MacBook Touch ID',
+      passwordPlaceholder: 'Enter your current password to confirm',
       empty: 'No passkeys are registered yet.',
       synced: 'Synced',
       createdAt: 'Created {dateREDACTED',
@@ -709,6 +710,7 @@ export default {
       renamePrompt: 'Enter a new name for this passkey',
       renamed: 'Passkey renamed.',
       renameFailed: 'Failed to rename passkey.',
+      deleteTitle: 'Delete passkey',
       deleteConfirm: 'Delete “{nameREDACTED”? You will no longer be able to sign in with it.',
       deleted: 'Passkey deleted.',
       deleteFailed: 'Failed to delete passkey.'
