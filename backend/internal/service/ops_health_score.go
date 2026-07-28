@@ -52,7 +52,7 @@ func computeDashboardHealthScoreResult(now time.Time, overview *OpsDashboardOver
 
 	businessQuality, businessLatency := computeBusinessHealthComponents(overview, thresholds)
 	storage, compute, jobs := computeInfraHealthComponents(now, overview)
-	businessIncluded := overview.RequestCountSLA > 0 || overview.RequestCountTotal > 0 || overview.ErrorCountTotal > 0
+	businessIncluded := overview.RequestCountSLA > 0
 
 	type weightedComponent struct {
 		calculation opsHealthComponentCalculation

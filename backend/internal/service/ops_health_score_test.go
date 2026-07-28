@@ -43,6 +43,28 @@ func TestComputeDashboardHealthScore_IdleStillExposesInfrastructureFailure(t *te
 	require.Less(t, score, 90)
 }
 
+func TestComputeDashboardHealthScoreExcludedOnlyTrafficUsesInfrastructureMode(t *testing.T) {
+	t.Parallel()
+
+	result := computeDashboardHealthScoreResult(time.Now().UTC(), &OpsDashboardOverview{
+		RequestCountTotal: 11,
+		ErrorCountTotal:   11,
+		SystemMetrics:     &OpsSystemMetricsSnapshot{DBOK: boolPtr(false)},
+	}, nil)
+
+	require.Equal(t, 60, result.Score)
+	require.NotNil(t, result.Breakdown)
+	require.Equal(t, opsHealthScoreModeInfraOnly, result.Breakdown.Mode)
+	require.False(t, result.Breakdown.BusinessIncluded)
+	require.Len(t, result.Breakdown.Components, 3)
+
+	storage := result.Breakdown.Components[0]
+	require.Equal(t, opsHealthComponentStorage, storage.Key)
+	require.InDelta(t, 40, storage.DeductionPoints, 0.01)
+	require.Len(t, storage.Reasons, 1)
+	require.Equal(t, "database_unavailable", storage.Reasons[0].Code)
+}
+
 func TestComputeDashboardHealthScoreResultExplainsIdleJobDeduction(t *testing.T) {
 	t.Parallel()
 
