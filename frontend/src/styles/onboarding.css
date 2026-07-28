@@ -22,7 +22,7 @@
 .driver-active-element {
   position: relative !important;
   z-index: 99999999 !important;
-  outline: 4px solid rgba(20, 184, 166, 0.2) !important;
+  outline: 4px solid rgba(255, 107, 53, 0.2) !important;
   border-radius: 4px !important;
 }
 
