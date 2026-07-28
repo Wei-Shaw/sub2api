@@ -447,21 +447,21 @@ func TestOpenAIGatewayService_OAuthPassthrough_NamespaceRequestAndStreamResponse
 		"instructions":"local-test-instructions",
 		"tools":[
 			{"type":"function","name":"plain","description":"keep","parameters":{"type":"object"}},
-			{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent","description":"spawn","parameters":{"type":"object"}}]}
+			{"type":"namespace","name":"other","tools":[{"type":"function","name":"spawn_agent","description":"spawn","parameters":{"type":"object"}}]}
 		],
-		"tool_choice":{"type":"function","name":"spawn_agent","namespace":"collaboration"},
+		"tool_choice":{"type":"function","name":"spawn_agent","namespace":"other"},
 		"input":[
-			{"type":"function_call","call_id":"call_old","name":"spawn_agent","namespace":"collaboration","arguments":"{}"},
+			{"type":"function_call","call_id":"call_old","name":"spawn_agent","namespace":"other","arguments":"{}"},
 			{"type":"message","role":"user","namespace":"residual","content":[{"type":"input_text","text":"keep","namespace":"nested"}]}
 		]
 	}`)
 
 	upstreamSSE := strings.Join([]string{
-		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"collaboration__spawn_agent","arguments":""}}`,
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"other__spawn_agent","arguments":""}}`,
 		"",
-		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"collaboration__spawn_agent","arguments":"{}"}}`,
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"other__spawn_agent","arguments":"{}"}}`,
 		"",
-		`data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"collaboration__spawn_agent","arguments":"{}"}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"other__spawn_agent","arguments":"{}"}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}}`,
 		"",
 		"data: [DONE]",
 		"",
@@ -485,20 +485,20 @@ func TestOpenAIGatewayService_OAuthPassthrough_NamespaceRequestAndStreamResponse
 	require.Len(t, gjson.GetBytes(upstream.lastBody, "tools").Array(), 2)
 	require.Equal(t, "plain", gjson.GetBytes(upstream.lastBody, "tools.0.name").String())
 	require.Equal(t, "function", gjson.GetBytes(upstream.lastBody, "tools.1.type").String())
-	require.Equal(t, "collaboration__spawn_agent", gjson.GetBytes(upstream.lastBody, "tools.1.name").String())
+	require.Equal(t, "other__spawn_agent", gjson.GetBytes(upstream.lastBody, "tools.1.name").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "tools.1.tools").Exists())
-	require.Equal(t, "collaboration__spawn_agent", gjson.GetBytes(upstream.lastBody, "tool_choice.name").String())
+	require.Equal(t, "other__spawn_agent", gjson.GetBytes(upstream.lastBody, "tool_choice.name").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "tool_choice.namespace").Exists())
-	require.Equal(t, "collaboration__spawn_agent", gjson.GetBytes(upstream.lastBody, "input.0.name").String())
+	require.Equal(t, "other__spawn_agent", gjson.GetBytes(upstream.lastBody, "input.0.name").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.namespace").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "input.1.namespace").Exists())
 	require.Equal(t, "nested", gjson.GetBytes(upstream.lastBody, "input.1.content.0.namespace").String())
 	require.Len(t, upstream.bodies, 1)
 
 	downstream := rec.Body.String()
-	require.NotContains(t, downstream, "collaboration__spawn_agent")
+	require.NotContains(t, downstream, "other__spawn_agent")
 	require.Contains(t, downstream, `"name":"spawn_agent"`)
-	require.Contains(t, downstream, `"namespace":"collaboration"`)
+	require.Contains(t, downstream, `"namespace":"other"`)
 }
 
 func TestOpenAIGatewayService_NativeOAuth_NamespaceRequestAndStreamResponse(t *testing.T) {
@@ -509,13 +509,13 @@ func TestOpenAIGatewayService_NativeOAuth_NamespaceRequestAndStreamResponse(t *t
 	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.144.1")
 	body := []byte(`{
 		"model":"gpt-5.5","stream":true,"instructions":"test",
-		"tools":[{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object"}}]}],
-		"input":[{"type":"function_call","call_id":"call_old","name":"spawn_agent","namespace":"collaboration","arguments":"{}"}]
+		"tools":[{"type":"namespace","name":"other","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object"}}]}],
+		"input":[{"type":"function_call","call_id":"call_old","name":"spawn_agent","namespace":"other","arguments":"{}"}]
 	}`)
 	upstreamSSE := strings.Join([]string{
-		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"collaboration__spawn_agent","arguments":""}}`,
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"other__spawn_agent","arguments":""}}`,
 		"",
-		`data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"collaboration__spawn_agent","arguments":"{}"}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"other__spawn_agent","arguments":"{}"}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}}`,
 		"",
 		"data: [DONE]",
 		"",
@@ -536,12 +536,12 @@ func TestOpenAIGatewayService_NativeOAuth_NamespaceRequestAndStreamResponse(t *t
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "function", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
-	require.Equal(t, "collaboration__spawn_agent", gjson.GetBytes(upstream.lastBody, "tools.0.name").String())
-	require.Equal(t, "collaboration__spawn_agent", gjson.GetBytes(upstream.lastBody, "input.0.name").String())
+	require.Equal(t, "other__spawn_agent", gjson.GetBytes(upstream.lastBody, "tools.0.name").String())
+	require.Equal(t, "other__spawn_agent", gjson.GetBytes(upstream.lastBody, "input.0.name").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.namespace").Exists())
-	require.NotContains(t, rec.Body.String(), "collaboration__spawn_agent")
+	require.NotContains(t, rec.Body.String(), "other__spawn_agent")
 	require.Contains(t, rec.Body.String(), `"name":"spawn_agent"`)
-	require.Contains(t, rec.Body.String(), `"namespace":"collaboration"`)
+	require.Contains(t, rec.Body.String(), `"namespace":"other"`)
 }
 
 func TestOpenAIGatewayService_NativeOAuth_NamespaceNonStreamingResponse(t *testing.T) {
@@ -605,8 +605,8 @@ func TestOpenAIGatewayService_OAuthPassthrough_NamespaceCollisionReturnsBadReque
 	body := []byte(`{
 		"model":"gpt-5.5","stream":true,"instructions":"test",
 		"tools":[
-			{"type":"function","name":"collaboration__spawn_agent","parameters":{"type":"object"}},
-			{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object"}}]}
+			{"type":"function","name":"other__spawn_agent","parameters":{"type":"object"}},
+			{"type":"namespace","name":"other","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object"}}]}
 		],"input":"hi"
 	}`)
 	upstream := &httpUpstreamRecorder{}
