@@ -2,7 +2,12 @@
   <div class="card">
     <div class="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-dark-700">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('dashboard.recentUsage') }}</h2>
-      <span class="badge badge-gray">{{ t('dashboard.last7Days') }}</span>
+      <div class="flex items-center gap-3">
+        <span class="badge badge-gray">{{ t('dashboard.last7Days') }}</span>
+        <router-link to="/usage" class="text-xs font-medium text-primary-600 hover:underline dark:text-primary-400">
+          {{ t('dashboard.viewFullBill') }} →
+        </router-link>
+      </div>
     </div>
     <div class="p-6">
       <div v-if="loading" class="flex items-center justify-center py-12">
