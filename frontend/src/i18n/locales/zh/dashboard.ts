@@ -56,7 +56,21 @@ export default {
     viewUsage: '查看使用记录',
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
-    addBalanceWithCode: '使用兑换码充值'
+    addBalanceWithCode: '使用兑换码充值',
+    overview: '概览',
+    greeting: '{name}，这里是你的账户与 API 使用概况',
+    quickAccess: {
+      title: '快速接入',
+      subtitle: 'OpenAI 兼容 API 地址',
+      baseUrl: 'BASE URL',
+      authorization: 'AUTHORIZATION',
+      copyUrl: '复制地址',
+      tutorial: '配置教程',
+      serviceOk: '服务正常',
+      noKey: '暂无可用密钥',
+      createKey: '去创建',
+    },
+    viewFullBill: '查看完整账单',
   },
 
   // Groups (shared)

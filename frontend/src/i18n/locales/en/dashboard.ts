@@ -56,7 +56,21 @@ export default {
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
-    addBalanceWithCode: 'Add balance with a code'
+    addBalanceWithCode: 'Add balance with a code',
+    overview: 'Overview',
+    greeting: '{name}, here is your account and API usage overview.',
+    quickAccess: {
+      title: 'Quick Access',
+      subtitle: 'OpenAI-compatible API endpoint',
+      baseUrl: 'BASE URL',
+      authorization: 'AUTHORIZATION',
+      copyUrl: 'Copy URL',
+      tutorial: 'Tutorial',
+      serviceOk: 'Service OK',
+      noKey: 'No active key',
+      createKey: 'Create one',
+    },
+    viewFullBill: 'View full bill',
   },
 
   // Groups (shared)
