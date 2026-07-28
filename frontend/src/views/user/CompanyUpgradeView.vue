@@ -92,6 +92,9 @@ const displayedUpgradeFee = computed(() => formatUpgradeFee(
 
 function formatUpgradeFee(amount: string | number | undefined, currency: string): string {
   const parsed = Number(amount)
+  if (Number.isFinite(parsed) && parsed === 0) {
+    return t('organization.upgrade.free')
+  }
   const formattedAmount = Number.isFinite(parsed) ? parsed.toFixed(2) : '0.00'
   const normalizedCurrency = currency.trim().toUpperCase()
   return normalizedCurrency === 'USD' ? `$${formattedAmount}` : `${formattedAmount} ${normalizedCurrency}`
