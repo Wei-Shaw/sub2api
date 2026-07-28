@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -93,6 +94,11 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	)
 
 	// Build and send upstream request via the shared CC pipeline
+	//    Qoder accounts use a custom session-based API, not a standard CC endpoint.
+	if account.Platform == PlatformQoder {
+		return s.forwardResponsesViaQoder(ctx, c, account, chatBody, clientStream, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	}
+
 	apiKey, targetURL, err := s.resolveCCFallbackTarget(account)
 	if err != nil {
 		return nil, err
@@ -109,6 +115,50 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 			return nil, foErr
 		}
 		return s.handleErrorResponse(ctx, resp, c, account, chatBody, billingModel)
+	}
+
+	if clientStream {
+		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	}
+	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+}
+
+// forwardResponsesViaQoder bridges /v1/responses requests through the Qoder
+// session-based gateway. The qoder service writes OpenAI Chat Completions
+// output into a pipe; the existing CC→Responses converters translate it back.
+func (s *OpenAIGatewayService) forwardResponsesViaQoder(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	chatBody []byte,
+	clientStream bool,
+	originalModel string,
+	customTools map[string]bool,
+	toolSearch bool,
+	namespaceTools map[string]apicompat.NamespacedToolName,
+	billingModel, upstreamModel string,
+	reasoningEffort, serviceTier *string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		w := &pipeResponseWriter{w: pw, header: http.Header{}}
+		if clientStream {
+			w.header.Set("Content-Type", "text/event-stream")
+		} else {
+			w.header.Set("Content-Type", "application/json")
+		}
+		ginCtx, _ := gin.CreateTestContext(w)
+		ginCtx.Request = c.Request
+		_, _ = s.qoderService.ForwardChatCompletions(ctx, ginCtx, account, chatBody, "", billingModel)
+	}()
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
 	}
 
 	if clientStream {
