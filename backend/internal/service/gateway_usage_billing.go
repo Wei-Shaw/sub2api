@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -354,7 +355,7 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 			deps.billingCacheService.IncrementUserPlatformQuotaUsage(p.User.ID, p.Platform, p.Cost.ActualCost)
 			if deps.cfg == nil || !deps.cfg.Database.UserPlatformQuotaFlusherEnabled {
 				// 降级路径:flusher 未启用时保留原有异步直写 DB
-				dbCtx, dbCancel := detachUpstreamContext(ctx)
+				dbCtx, dbCancel := detachedBillingContext(ctx)
 				userID, platform, cost := p.User.ID, p.Platform, p.Cost.ActualCost
 				go func() {
 					defer func() {
@@ -480,6 +481,82 @@ func detachedBillingContext(ctx context.Context) (context.Context, context.Cance
 	return context.WithTimeout(base, postUsageBillingTimeout)
 }
 
+const detachedUpstreamDrainGrace = 2 * time.Minute
+
+type detachedUpstreamContextKey struct{}
+
+type detachedUpstreamContextState struct {
+	mu         sync.Mutex
+	cancel     context.CancelFunc
+	stopParent func() bool
+	timer      *time.Timer
+	finished   bool
+}
+
+func (s *detachedUpstreamContextState) cancelAfter(grace time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.finished {
+		return
+	}
+	if grace <= 0 {
+		s.cancel()
+		return
+	}
+	s.timer = time.AfterFunc(grace, s.cancel)
+}
+
+func (s *detachedUpstreamContextState) finish() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.finished {
+		s.mu.Unlock()
+		return
+	}
+	s.finished = true
+	timer := s.timer
+	stopParent := s.stopParent
+	s.mu.Unlock()
+
+	if stopParent != nil {
+		stopParent()
+	}
+	if timer != nil {
+		timer.Stop()
+	}
+	s.cancel()
+}
+
+func detachUpstreamContextWithDrainGrace(ctx context.Context, grace time.Duration) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		return context.Background(), func() {}
+	}
+
+	detached, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	state := &detachedUpstreamContextState{cancel: cancel}
+	detached = context.WithValue(detached, detachedUpstreamContextKey{}, state)
+	if ctx.Done() != nil {
+		state.stopParent = context.AfterFunc(ctx, func() {
+			state.cancelAfter(grace)
+		})
+	}
+
+	// HTTPUpstream owns the detached context until the response body closes.
+	return detached, func() {}
+}
+
+// FinishDetachedUpstreamContext releases a detached request context after the
+// transport fails or its response body closes.
+func FinishDetachedUpstreamContext(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
+	state, _ := ctx.Value(detachedUpstreamContextKey{}).(*detachedUpstreamContextState)
+	state.finish()
+}
+
 func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		return context.Background(), func() {}
@@ -487,14 +564,11 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 	if !stream {
 		return ctx, func() {}
 	}
-	return context.WithoutCancel(ctx), func() {}
+	return detachUpstreamContextWithDrainGrace(ctx, detachedUpstreamDrainGrace)
 }
 
 func detachUpstreamContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	if ctx == nil {
-		return context.Background(), func() {}
-	}
-	return context.WithoutCancel(ctx), func() {}
+	return detachUpstreamContextWithDrainGrace(ctx, detachedUpstreamDrainGrace)
 }
 
 // billingDeps 扣费逻辑依赖的服务（由各 gateway service 提供）
