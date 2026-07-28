@@ -111,11 +111,6 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://dis.chatdesks.cn/chatdesk/hsyqsub2api.html"><img src="assets/partners/logos/byteplus.png" alt="BytePlus" width="150"></a></td>
-<td>Dola seed のご支援に感謝します！Dola Seed 2.0 は、ByteDance がグローバル市場向けに独自開発した全モーダル汎用大規模モデルです。統一されたマルチモーダルアーキテクチャに基づき、テキスト・画像・音声・動画の共同理解と生成をサポートします。エージェント協調をネイティブに有効化し、強力な推論・長期タスク実行・ツール統合・コーディング能力を備えています。スマートコックピット、パーソナルアシスタント、教育、カスタマーサポート、マーケティング、リテールなど多様なシナリオに広く適用可能です。マルチモーダル知覚、エンドツーエンドの複雑タスク配信、安定したインタラクション、データセキュリティに優れ、ModelArk プラットフォームを通じて容易にアクセス・デプロイできます。<a href="https://dis.chatdesks.cn/chatdesk/hsyqsub2api.html">こちらのリンク</a>から登録すると、各モデルにつき 50 万トークンの無料推論クォータを獲得できます。<a href="https://dis.chatdesks.cn/chatdesk/hsyqsub2api.html"> >>中国大陸地域の開発者はこちらをクリック</a></td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://sui-xiang.com/"><img src="assets/partners/logos/sui-xiang.jpg" alt="sui-xiang" width="150"></a></td>
 <td>随想AI ゲートウェイのご支援に感謝します！<a href="https://sui-xiang.com/">随想AI ゲートウェイ</a> は信頼性と効率に優れた API 中継サービスプロバイダーで、Claude、Codex、Gemini などの中継サービスを提供しています。プライバシー重視の中継ステーション・データ転売なし・モデル水増しなし、プライバシー・透明性・超高速アフターサービス。新規アカウント登録後、毎日サインインで 0.5 元のテストクレジットがもらえ、チャージは 1:1、サブスクリプション不要、従量課金。マルチライン冗長、クロスリージョン災害復旧、自動フェイルオーバー、長時間 SSE 接続が途切れません。99.9% の可用性、重要な呼び出しは決して遅れません。
 </td>
