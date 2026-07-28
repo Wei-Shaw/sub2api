@@ -106,9 +106,9 @@ error_base AS (
     -- value so platform-level GROUPING SETS don't collide with the overall (platform=NULL) row.
     COALESCE(platform, 'unknown') AS platform,
     group_id AS group_id,
-	final_outcome AS final_outcome,
-	counts_toward_sla AS counts_toward_sla,
-	responsibility AS responsibility,
+	COALESCE(final_outcome, CASE WHEN COALESCE(is_business_limited, false) THEN 'business_limited' ELSE 'unknown_failed' END) AS final_outcome,
+	COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false)) AS counts_toward_sla,
+	COALESCE(responsibility, CASE WHEN COALESCE(is_business_limited, false) THEN 'client' ELSE 'unknown' END) AS responsibility,
     status_code AS client_status_code,
     COALESCE(upstream_status_code, status_code, 0) AS effective_status_code
   FROM ops_error_logs

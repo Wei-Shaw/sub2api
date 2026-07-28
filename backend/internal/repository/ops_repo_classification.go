@@ -25,14 +25,14 @@ func (r *opsRepository) GetErrorClassificationStats(ctx context.Context, filter 
 	q := `
 SELECT
   COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400),
-  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND counts_toward_sla),
-  COUNT(*) FILTER (WHERE final_outcome = 'platform_failed' AND counts_toward_sla),
-  COUNT(*) FILTER (WHERE final_outcome = 'provider_failed' AND counts_toward_sla),
-  COUNT(*) FILTER (WHERE final_outcome = 'unknown_failed' AND counts_toward_sla),
-  COUNT(*) FILTER (WHERE error_category = 'platform_capacity' AND counts_toward_sla),
+  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false))),
+  COUNT(*) FILTER (WHERE COALESCE(final_outcome, CASE WHEN COALESCE(is_business_limited, false) THEN 'business_limited' ELSE 'unknown_failed' END) = 'platform_failed' AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false))),
+  COUNT(*) FILTER (WHERE COALESCE(final_outcome, CASE WHEN COALESCE(is_business_limited, false) THEN 'business_limited' ELSE 'unknown_failed' END) = 'provider_failed' AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false))),
+  COUNT(*) FILTER (WHERE COALESCE(final_outcome, CASE WHEN COALESCE(is_business_limited, false) THEN 'business_limited' ELSE 'unknown_failed' END) = 'unknown_failed' AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false))),
+  COUNT(*) FILTER (WHERE error_category = 'platform_capacity' AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false))),
   COUNT(*) FILTER (WHERE alert_family = 'compatibility' AND COALESCE(status_code, 0) >= 400),
   COUNT(*) FILTER (WHERE final_outcome = 'client_rejected'),
-  COUNT(*) FILTER (WHERE final_outcome = 'business_limited'),
+  COUNT(*) FILTER (WHERE COALESCE(final_outcome, CASE WHEN COALESCE(is_business_limited, false) THEN 'business_limited' ELSE 'unknown_failed' END) = 'business_limited'),
   COUNT(*) FILTER (WHERE final_outcome = 'cancelled'),
   COUNT(*) FILTER (WHERE final_outcome = 'security_blocked'),
   COUNT(*) FILTER (WHERE final_outcome = 'recovered' AND alert_family = 'provider_health')

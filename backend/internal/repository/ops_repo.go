@@ -253,11 +253,11 @@ SELECT
   e.error_type,
   COALESCE(e.error_owner, ''),
   COALESCE(e.error_source, ''),
-	COALESCE(e.final_outcome, 'unknown_failed'),
-	COALESCE(e.responsibility, 'unknown'),
-	COALESCE(e.error_category, 'unknown'),
-	COALESCE(e.counts_toward_sla, true),
-	COALESCE(e.alert_family, 'unknown_failure'),
+	COALESCE(e.final_outcome, CASE WHEN COALESCE(e.is_business_limited, false) THEN 'business_limited' ELSE 'unknown_failed' END),
+	COALESCE(e.responsibility, CASE WHEN COALESCE(e.is_business_limited, false) THEN 'client' ELSE 'unknown' END),
+	COALESCE(e.error_category, CASE WHEN COALESCE(e.is_business_limited, false) THEN 'user_quota' ELSE 'unknown' END),
+	COALESCE(e.counts_toward_sla, NOT COALESCE(e.is_business_limited, false)),
+	COALESCE(e.alert_family, CASE WHEN COALESCE(e.is_business_limited, false) THEN 'client_quality' ELSE 'unknown_failure' END),
 	COALESCE(e.classification_reason, 'legacy_unclassified'),
 	COALESCE(e.classification_version, 1),
   e.severity,
@@ -438,11 +438,11 @@ SELECT
   e.error_type,
   COALESCE(e.error_owner, ''),
   COALESCE(e.error_source, ''),
-	COALESCE(e.final_outcome, 'unknown_failed'),
-	COALESCE(e.responsibility, 'unknown'),
-	COALESCE(e.error_category, 'unknown'),
-	COALESCE(e.counts_toward_sla, true),
-	COALESCE(e.alert_family, 'unknown_failure'),
+	COALESCE(e.final_outcome, CASE WHEN COALESCE(e.is_business_limited, false) THEN 'business_limited' ELSE 'unknown_failed' END),
+	COALESCE(e.responsibility, CASE WHEN COALESCE(e.is_business_limited, false) THEN 'client' ELSE 'unknown' END),
+	COALESCE(e.error_category, CASE WHEN COALESCE(e.is_business_limited, false) THEN 'user_quota' ELSE 'unknown' END),
+	COALESCE(e.counts_toward_sla, NOT COALESCE(e.is_business_limited, false)),
+	COALESCE(e.alert_family, CASE WHEN COALESCE(e.is_business_limited, false) THEN 'client_quality' ELSE 'unknown_failure' END),
 	COALESCE(e.classification_reason, 'legacy_unclassified'),
 	COALESCE(e.classification_version, 1),
   e.severity,
@@ -1009,14 +1009,14 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	}
 	switch view {
 	case "", "errors":
-		clauses = append(clauses, "(COALESCE(e.counts_toward_sla,true) = true OR COALESCE(e.alert_family,'') = 'compatibility')")
+		clauses = append(clauses, "(COALESCE(e.counts_toward_sla, NOT COALESCE(e.is_business_limited, false)) = true OR COALESCE(e.alert_family,'') = 'compatibility')")
 	case "excluded":
-		clauses = append(clauses, "COALESCE(e.counts_toward_sla,true) = false AND COALESCE(e.alert_family,'') <> 'compatibility'")
+		clauses = append(clauses, "COALESCE(e.counts_toward_sla, NOT COALESCE(e.is_business_limited, false)) = false AND COALESCE(e.alert_family,'') <> 'compatibility'")
 	case "all":
 		// no-op
 	default:
 		// treat unknown as default 'errors'
-		clauses = append(clauses, "(COALESCE(e.counts_toward_sla,true) = true OR COALESCE(e.alert_family,'') = 'compatibility')")
+		clauses = append(clauses, "(COALESCE(e.counts_toward_sla, NOT COALESCE(e.is_business_limited, false)) = true OR COALESCE(e.alert_family,'') = 'compatibility')")
 	}
 	if len(filter.StatusCodes) > 0 {
 		args = append(args, pq.Array(filter.StatusCodes))

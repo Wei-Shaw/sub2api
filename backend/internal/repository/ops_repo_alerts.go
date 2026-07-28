@@ -26,6 +26,116 @@ func normalizeOpsAlertRecoverySustainedMinutes(value int) int {
 	return value
 }
 
+func matchesLegacyOpsAlertRuleDefault(
+	rule *service.OpsAlertRule,
+	name, description, metricType, operator, severity string,
+	threshold float64,
+	windowMinutes, sustainedMinutes, cooldownMinutes int,
+) bool {
+	return rule != nil &&
+		rule.Name == name &&
+		rule.Description == description &&
+		rule.Enabled &&
+		rule.NotifyEmail &&
+		rule.MetricType == metricType &&
+		rule.Operator == operator &&
+		rule.Severity == severity &&
+		rule.Threshold == threshold &&
+		rule.WindowMinutes == windowMinutes &&
+		rule.SustainedMinutes == sustainedMinutes &&
+		rule.CooldownMinutes == cooldownMinutes &&
+		rule.IncidentFamily == "custom" &&
+		rule.MinimumSamples == 0 &&
+		rule.MinimumBadCount == 0 &&
+		rule.RecoveryOperator == "" &&
+		rule.RecoveryThreshold == nil &&
+		rule.RecoverySustainedMinutes == 1 &&
+		!rule.ShadowMode &&
+		len(rule.Filters) == 0
+}
+
+func applyLegacyOpsAlertRuleCompatibility(rule *service.OpsAlertRule) {
+	if rule == nil {
+		return
+	}
+
+	switch {
+	case matchesLegacyOpsAlertRuleDefault(
+		rule, "成功率过低", "当成功率低于 95% 且持续 5 分钟时触发告警（服务可用性下降）",
+		"success_rate", "<", "P0", 95, 5, 5, 15,
+	):
+		rule.Enabled = false
+		rule.Description += " [disabled: duplicate of error_rate]"
+	case matchesLegacyOpsAlertRuleDefault(
+		rule, "P95延迟过高", "当 P95 延迟超过 2000ms 且持续 10 分钟时触发告警",
+		"p95_latency_ms", ">", "P2", 2000, 5, 10, 30,
+	), matchesLegacyOpsAlertRuleDefault(
+		rule, "P99延迟过高", "当 P99 延迟超过 3000ms 且持续 10 分钟时触发告警",
+		"p99_latency_ms", ">", "P2", 3000, 5, 10, 30,
+	):
+		rule.Enabled = false
+		rule.Description += " [disabled: unsupported legacy latency metric]"
+	case matchesLegacyOpsAlertRuleDefault(
+		rule, "错误率过高", "当错误率超过 5% 且持续 5 分钟时触发告警",
+		"error_rate", ">", "P1", 5, 5, 5, 20,
+	):
+		rule.Name = "基础设施可用性缓慢下降"
+		rule.Description = "30 分钟 SLA 合格请求失败率达到 5%，失败至少 10 次且样本至少 100；持续 10 分钟后触发"
+		rule.MetricType = "availability_failure_rate"
+		rule.Operator = ">="
+		rule.WindowMinutes = 30
+		rule.SustainedMinutes = 10
+		rule.IncidentFamily = "availability"
+		rule.MinimumSamples = 100
+		rule.MinimumBadCount = 10
+		rule.RecoveryOperator = "<"
+		rule.RecoveryThreshold = float64PtrRepository(2.5)
+		rule.RecoverySustainedMinutes = 10
+	case matchesLegacyOpsAlertRuleDefault(
+		rule, "错误率极高", "当错误率超过 20% 且持续 1 分钟时触发告警（服务严重异常）",
+		"error_rate", ">", "P0", 20, 1, 1, 15,
+	):
+		rule.Name = "基础设施可用性快速下降"
+		rule.Description = "5 分钟 SLA 合格请求失败率达到 20%，失败至少 10 次且样本至少 30；持续 3 分钟后触发"
+		rule.MetricType = "availability_failure_rate"
+		rule.Operator = ">="
+		rule.WindowMinutes = 5
+		rule.SustainedMinutes = 3
+		rule.IncidentFamily = "availability"
+		rule.MinimumSamples = 30
+		rule.MinimumBadCount = 10
+		rule.RecoveryOperator = "<"
+		rule.RecoveryThreshold = float64PtrRepository(10)
+		rule.RecoverySustainedMinutes = 5
+	case matchesLegacyOpsAlertRuleDefault(
+		rule, "CPU使用率过高", "当 CPU 使用率超过 85% 且持续 10 分钟时触发告警",
+		"cpu_usage_percent", ">", "P2", 85, 5, 10, 30,
+	):
+		applyLegacyOpsAlertRecovery(rule, "resource_capacity", 75)
+	case matchesLegacyOpsAlertRuleDefault(
+		rule, "内存使用率过高", "当内存使用率超过 90% 且持续 10 分钟时触发告警（可能导致 OOM）",
+		"memory_usage_percent", ">", "P1", 90, 5, 10, 20,
+	):
+		applyLegacyOpsAlertRecovery(rule, "resource_capacity", 85)
+	case matchesLegacyOpsAlertRuleDefault(
+		rule, "并发队列积压", "当并发队列深度超过 100 且持续 5 分钟时触发告警（系统处理能力不足）",
+		"concurrency_queue_depth", ">", "P1", 100, 5, 5, 20,
+	):
+		applyLegacyOpsAlertRecovery(rule, "request_queue", 50)
+	}
+}
+
+func applyLegacyOpsAlertRecovery(rule *service.OpsAlertRule, family string, threshold float64) {
+	rule.IncidentFamily = family
+	rule.RecoveryOperator = "<"
+	rule.RecoveryThreshold = float64PtrRepository(threshold)
+	rule.RecoverySustainedMinutes = 5
+}
+
+func float64PtrRepository(value float64) *float64 {
+	return &value
+}
+
 func (r *opsRepository) ListAlertRules(ctx context.Context) ([]*service.OpsAlertRule, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
@@ -112,6 +222,7 @@ ORDER BY id DESC`
 				rule.Filters = decoded
 			}
 		}
+		applyLegacyOpsAlertRuleCompatibility(&rule)
 		out = append(out, &rule)
 	}
 	if err := rows.Err(); err != nil {
@@ -451,7 +562,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
-  email_queued,
+  COALESCE(email_queued, false),
   created_at
 FROM ops_alert_events
 ` + where + `
@@ -537,7 +648,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
-  email_queued,
+  COALESCE(email_queued, false),
   created_at
 FROM ops_alert_events
 WHERE id = $1`
@@ -575,7 +686,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
-  email_queued,
+  COALESCE(email_queued, false),
   created_at
 FROM ops_alert_events
 WHERE rule_id = $1 AND status = $2
@@ -615,7 +726,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
-  email_queued,
+  COALESCE(email_queued, false),
   created_at
 FROM ops_alert_events
 WHERE rule_id = $1
@@ -677,7 +788,7 @@ RETURNING
   fired_at,
   resolved_at,
   email_sent,
-  email_queued,
+  COALESCE(email_queued, false),
   created_at`
 
 	row := r.db.QueryRowContext(

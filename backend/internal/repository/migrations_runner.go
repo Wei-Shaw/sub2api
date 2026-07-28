@@ -254,6 +254,10 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		if err != nil {
 			return fmt.Errorf("begin migration %s: %w", name, err)
 		}
+		if err := configureMigrationTransaction(ctx, tx); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("configure migration %s transaction: %w", name, err)
+		}
 
 		// 执行迁移 SQL
 		if _, err := tx.ExecContext(ctx, content); err != nil {
@@ -275,6 +279,16 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	}
 
 	return nil
+}
+
+const migrationTransactionTimeoutsSQL = "SET LOCAL lock_timeout = '1s'; SET LOCAL statement_timeout = '10min'"
+
+func configureMigrationTransaction(ctx context.Context, tx *sql.Tx) error {
+	if tx == nil {
+		return errors.New("nil migration transaction")
+	}
+	_, err := tx.ExecContext(ctx, migrationTransactionTimeoutsSQL)
+	return err
 }
 
 type migrationConnection interface {

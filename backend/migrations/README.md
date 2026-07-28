@@ -43,6 +43,10 @@ This project uses a custom migration runner (`internal/repository/migrations_run
   without transaction (for `CONCURRENTLY`). Concurrent creates use a durable
   pending/completed journal containing the created index OID and PostgreSQL
   index definition; only an exact healthy proof can be reused after restart.
+- Every regular migration transaction starts with `lock_timeout = '1s'` and
+  `statement_timeout = '10min'`. A busy production table therefore fails the
+  new instance quickly and leaves the serving instance untouched instead of
+  allowing queued DDL to stall later requests.
 
 ```sql
 -- Forward-only migration (recommended)

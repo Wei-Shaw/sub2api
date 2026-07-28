@@ -705,6 +705,8 @@ func TestApplyMigrationsFS_TransactionalMigration(t *testing.T) {
 		WithArgs("001_add_col.sql").
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectBegin()
+	mock.ExpectExec("SET LOCAL lock_timeout = '1s'; SET LOCAL statement_timeout = '10min'").
+		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("ALTER TABLE t ADD COLUMN name TEXT").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("INSERT INTO schema_migrations \\(filename, checksum\\) VALUES \\(\\$1, \\$2\\)").
@@ -723,6 +725,30 @@ func TestApplyMigrationsFS_TransactionalMigration(t *testing.T) {
 
 	err = applyMigrationsFS(context.Background(), db, fsys)
 	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyMigrationsFS_TransactionalMigrationPolicyFailureRollsBack(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	prepareMigrationsBootstrapExpectations(mock)
+	mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\$1").
+		WithArgs("001_add_col.sql").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectBegin()
+	mock.ExpectExec("SET LOCAL lock_timeout = '1s'; SET LOCAL statement_timeout = '10min'").
+		WillReturnError(errors.New("policy rejected"))
+	mock.ExpectRollback()
+	mock.ExpectExec("SELECT pg_advisory_unlock\\(\\$1\\)").
+		WithArgs(migrationsAdvisoryLockID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err = applyMigrationsFS(context.Background(), db, fstest.MapFS{
+		"001_add_col.sql": &fstest.MapFile{Data: []byte("ALTER TABLE t ADD COLUMN name TEXT;")},
+	})
+	require.ErrorContains(t, err, "configure migration 001_add_col.sql transaction")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

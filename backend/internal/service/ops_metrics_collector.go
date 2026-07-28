@@ -547,11 +547,11 @@ func (c *OpsMetricsCollector) queryErrorCounts(ctx context.Context, start, end t
 	q := `
 SELECT
   COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400), 0) AS error_total,
-  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND final_outcome = 'business_limited'), 0) AS business_limited,
-  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND counts_toward_sla), 0) AS error_sla,
-  COALESCE(COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)), 0) AS upstream_excl,
-  COALESCE(COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) = 429), 0) AS upstream_429,
-  COALESCE(COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) = 529), 0) AS upstream_529
+  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND COALESCE(final_outcome, CASE WHEN COALESCE(is_business_limited, false) THEN 'business_limited' ELSE 'unknown_failed' END) = 'business_limited'), 0) AS business_limited,
+  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false))), 0) AS error_sla,
+  COALESCE(COUNT(*) FILTER (WHERE responsibility = 'provider' AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false)) AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)), 0) AS upstream_excl,
+  COALESCE(COUNT(*) FILTER (WHERE responsibility = 'provider' AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false)) AND COALESCE(upstream_status_code, status_code, 0) = 429), 0) AS upstream_429,
+  COALESCE(COUNT(*) FILTER (WHERE responsibility = 'provider' AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false)) AND COALESCE(upstream_status_code, status_code, 0) = 529), 0) AS upstream_529
 FROM ops_error_logs
 WHERE created_at >= $1 AND created_at < $2
   AND is_count_tokens = FALSE`

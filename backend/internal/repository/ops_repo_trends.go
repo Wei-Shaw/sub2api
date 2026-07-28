@@ -452,11 +452,11 @@ func (r *opsRepository) GetErrorTrend(ctx context.Context, filter *service.OpsDa
 SELECT
   ` + bucketExpr + ` AS bucket,
   COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400) AS error_total,
-  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND final_outcome = 'business_limited') AS business_limited,
-  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND counts_toward_sla) AS error_sla,
-  COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)) AS upstream_excl,
-  COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) = 429) AS upstream_429,
-  COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) = 529) AS upstream_529
+  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND COALESCE(final_outcome, CASE WHEN COALESCE(is_business_limited, false) THEN 'business_limited' ELSE 'unknown_failed' END) = 'business_limited') AS business_limited,
+  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false))) AS error_sla,
+  COUNT(*) FILTER (WHERE responsibility = 'provider' AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false)) AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)) AS upstream_excl,
+  COUNT(*) FILTER (WHERE responsibility = 'provider' AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false)) AND COALESCE(upstream_status_code, status_code, 0) = 429) AS upstream_429,
+  COUNT(*) FILTER (WHERE responsibility = 'provider' AND COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false)) AND COALESCE(upstream_status_code, status_code, 0) = 529) AS upstream_529
 FROM ops_error_logs
 ` + where + `
 GROUP BY 1
@@ -564,8 +564,8 @@ func (r *opsRepository) GetErrorDistribution(ctx context.Context, filter *servic
 SELECT
   COALESCE(upstream_status_code, status_code, 0) AS status_code,
   COUNT(*) AS total,
-  COUNT(*) FILTER (WHERE counts_toward_sla) AS sla,
-  COUNT(*) FILTER (WHERE final_outcome = 'business_limited') AS business_limited
+  COUNT(*) FILTER (WHERE COALESCE(counts_toward_sla, NOT COALESCE(is_business_limited, false))) AS sla,
+  COUNT(*) FILTER (WHERE COALESCE(final_outcome, CASE WHEN COALESCE(is_business_limited, false) THEN 'business_limited' ELSE 'unknown_failed' END) = 'business_limited') AS business_limited
 FROM ops_error_logs
 ` + where + `
   AND COALESCE(status_code, 0) >= 400
