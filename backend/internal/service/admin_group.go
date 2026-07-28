@@ -1078,7 +1078,7 @@ REDACTED else {
 			if addErr := s.userRepo.AddGroupToAllowedGroups(opCtx, apiKey.UserID, gid); addErr != nil {
 				return nil, fmt.Errorf("add group to user allowed groups: %w", addErr)
 		REDACTED
-			if err := s.apiKeyRepo.Update(opCtx, apiKey); err != nil {
+			if err := s.apiKeyRepo.Update(opCtx, apiKey, APIKeyUpdateFields{GroupID: trueREDACTED); err != nil {
 				return nil, fmt.Errorf("update api key: %w", err)
 		REDACTED
 			if tx != nil {
@@ -1102,7 +1102,7 @@ REDACTED else {
 REDACTED
 
 	// 非专属分组 / 解绑：无需事务，单步更新即可
-	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
+	if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{GroupID: trueREDACTED); err != nil {
 		return nil, fmt.Errorf("update api key: %w", err)
 REDACTED
 
@@ -1127,7 +1127,7 @@ REDACTED
 	apiKey.Window5hStart = nil
 	apiKey.Window1dStart = nil
 	apiKey.Window7dStart = nil
-	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
+	if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{RateLimitUsage: trueREDACTED); err != nil {
 		return nil, fmt.Errorf("reset api key rate limit usage: %w", err)
 REDACTED
 	if s.authCacheInvalidator != nil {

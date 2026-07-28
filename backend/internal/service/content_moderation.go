@@ -1297,7 +1297,7 @@ REDACTED
 REDACTED
 	if user.Status != StatusActive {
 		user.Status = StatusActive
-		if err := s.userRepo.Update(ctx, user); err != nil {
+		if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: trueREDACTED); err != nil {
 			return nil, fmt.Errorf("update content moderation unban user: %w", err)
 	REDACTED
 REDACTED
@@ -1832,7 +1832,7 @@ REDACTED
 	REDACTED
 		if user.Status != StatusDisabled {
 			user.Status = StatusDisabled
-			if err := s.userRepo.Update(ctx, user); err != nil {
+			if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: trueREDACTED); err != nil {
 				slog.Warn("content_moderation.ban_update_user_failed", "user_id", *log.UserID, "error", err)
 				return false
 		REDACTED
