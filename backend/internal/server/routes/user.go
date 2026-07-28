@@ -132,5 +132,12 @@ func RegisterUserRoutes(
 			monitors.GET("", h.ChannelMonitor.List)
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
+
+		// 模型操练场（文本 MVP）
+		playground := authenticated.Group("/playground")
+		{
+			playground.GET("/models", h.Playground.Models)
+			playground.POST("/chat", h.Playground.Chat)
+		}
 	}
 }
