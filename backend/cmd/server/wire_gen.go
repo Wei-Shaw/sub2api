@@ -46,8 +46,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		return nil, err
 	}
 	userRepository := repository.NewUserRepository(client, db)
+	passkeyRepository := repository.NewPasskeyRepository(db)
 	redeemCodeRepository := repository.NewRedeemCodeRepository(client)
 	redisClient := repository.ProvideRedis(configConfig)
+	passkeySessionStore := repository.NewPasskeySessionStore(redisClient)
 	refreshTokenCache := repository.NewRefreshTokenCache(redisClient)
 	settingRepository := repository.NewSettingRepository(client)
 	groupRepository := repository.NewGroupRepository(client, db)
@@ -79,6 +81,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	affiliateRepository := repository.NewAffiliateRepository(client, db)
 	affiliateService := service.NewAffiliateService(affiliateRepository, settingService, apiKeyAuthCacheInvalidator, billingCacheService)
 	authService := service.NewAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, emailQueueService, promoService, subscriptionService, affiliateService, serviceUserPlatformQuotaRepository)
+	passkeyService, err := service.NewPasskeyService(configConfig, passkeyRepository, passkeySessionStore, userRepository)
+	if err != nil {
+		return nil, err
+	}
 	userService := service.NewUserService(userRepository, settingRepository, apiKeyAuthCacheInvalidator, billingCache)
 	redeemCache := repository.NewRedeemCache(redisClient)
 	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator, affiliateService)
@@ -92,6 +98,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userAttributeValueRepository := repository.NewUserAttributeValueRepository(client)
 	userAttributeService := service.NewUserAttributeService(userAttributeDefinitionRepository, userAttributeValueRepository)
 	authHandler := handler.NewAuthHandler(configConfig, authService, userService, settingService, promoService, redeemService, totpService, userAttributeService)
+	passkeyHandler := handler.NewPasskeyHandler(passkeyService, authService, settingService)
 	userHandler := handler.NewUserHandler(userService, authService, emailService, emailCache, affiliateService, serviceUserPlatformQuotaRepository)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageLogRepository := repository.NewUsageLogRepository(client, db)
@@ -255,7 +262,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	contentModerationHashCache := repository.NewContentModerationHashCache(redisClient)
 	contentModerationService := service.NewContentModerationService(settingRepository, contentModerationRepository, contentModerationHashCache, groupRepository, userRepository, apiKeyAuthCacheInvalidator, emailService)
 	contentModerationHandler := admin.NewContentModerationHandler(contentModerationService)
-	configManager := securityaudit.NewConfigManager(db, settingRepository, redisClient, secretEncryptor)
+	configManager := securityaudit.NewConfigManager(db, settingRepository, redisClient, secretEncryptor, configConfig)
 	postgreSQLRepository := securityaudit.NewPostgreSQLRepository(db)
 	redisPayloadStore := securityaudit.NewRedisPayloadStore(redisClient)
 	openAICompatibleScanner := securityaudit.NewOpenAICompatibleScanner()
@@ -296,7 +303,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	batchImageHandler := handler.ProvideBatchImageHandler(batchImagePublicService, batchImageDownloadService, batchImageCleanupService, openAIGatewayHandler)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, channelMonitorUserHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, asyncImageHandler, batchImageHandler, idempotencyCoordinator, idempotencyCleanupService)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, channelMonitorUserHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, passkeyHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, asyncImageHandler, batchImageHandler, idempotencyCoordinator, idempotencyCleanupService)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService, settingService, auditLogService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService, auditLogService)
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)

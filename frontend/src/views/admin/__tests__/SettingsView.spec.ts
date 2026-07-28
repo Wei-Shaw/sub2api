@@ -13,6 +13,8 @@ const {
   getOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
+  getPanelRateLimitSettings,
+  updatePanelRateLimitSettings,
   getStreamTimeoutSettings,
   getRectifierSettings,
   getBetaPolicySettings,
@@ -39,6 +41,14 @@ const {
   getOverloadCooldownSettings: vi.fn(),
   getRateLimit429CooldownSettings: vi.fn(),
   updateRateLimit429CooldownSettings: vi.fn(),
+  getPanelRateLimitSettings: vi.fn().mockResolvedValue({
+    enabled: true,
+    user_rpm: 240,
+    heavy_rpm: 60,
+    exempt_admin: true,
+    public_ip_rpm: 300,
+  }),
+  updatePanelRateLimitSettings: vi.fn().mockImplementation(async (payload) => payload),
   getStreamTimeoutSettings: vi.fn(),
   getRectifierSettings: vi.fn(),
   getBetaPolicySettings: vi.fn(),
@@ -78,6 +88,8 @@ vi.mock("@/api", () => ({
       getOverloadCooldownSettings,
       getRateLimit429CooldownSettings,
       updateRateLimit429CooldownSettings,
+      getPanelRateLimitSettings,
+      updatePanelRateLimitSettings,
       getStreamTimeoutSettings,
       getRectifierSettings,
       getBetaPolicySettings,
@@ -350,6 +362,10 @@ const baseSettingsResponse = {
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
+  passkey_enabled: true,
+  passkey_configured: true,
+  passkey_rp_id: "sub3.nebula-spaces.com",
+  passkey_rp_origins: ["https://sub3.nebula-spaces.com"],
   default_balance: 0,
   default_concurrency: 1,
   default_subscriptions: [],
@@ -662,6 +678,44 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
+  it("renders panel rate limit card and saves settings", async () => {
+    getPanelRateLimitSettings.mockClear();
+    updatePanelRateLimitSettings.mockClear();
+    getPanelRateLimitSettings.mockResolvedValue({
+      enabled: true,
+      user_rpm: 240,
+      heavy_rpm: 60,
+      exempt_admin: true,
+      public_ip_rpm: 300,
+    });
+    updatePanelRateLimitSettings.mockImplementation(async (payload) => payload);
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(getPanelRateLimitSettings).toHaveBeenCalled();
+    expect(wrapper.text()).toContain("admin.settings.panelRateLimit.title");
+    expect(wrapper.text()).toContain("admin.settings.panelRateLimit.proxySafeNote");
+
+    const userRpmInput = wrapper.find('[data-testid="panel-rate-limit-user-rpm"]');
+    expect(userRpmInput.exists()).toBe(true);
+    await userRpmInput.setValue("120");
+
+    const saveButton = wrapper.find('[data-testid="panel-rate-limit-save"]');
+    expect(saveButton.exists()).toBe(true);
+    await saveButton.trigger("click");
+    await flushPromises();
+
+    expect(updatePanelRateLimitSettings).toHaveBeenCalledWith({
+      enabled: true,
+      user_rpm: 120,
+      heavy_rpm: 60,
+      exempt_admin: true,
+      public_ip_rpm: 300,
+    });
+    expect(showSuccess).toHaveBeenCalled();
+  });
+
   it("does not render legacy visible payment method controls", async () => {
     const wrapper = mountView();
 
@@ -670,6 +724,47 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(wrapper.text()).not.toContain("可见方式");
     expect(wrapper.text()).not.toContain("支付来源");
+  });
+
+  it("shows valid passkey RP configuration and persists the sign-in toggle", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const settings = wrapper.get('[data-testid="passkey-settings"]');
+    const toggle = settings.get('[data-testid="passkey-toggle"]');
+    expect(toggle.attributes("disabled")).toBeUndefined();
+    expect(settings.text()).toContain("sub3.nebula-spaces.com");
+    expect(settings.text()).toContain("https://sub3.nebula-spaces.com");
+
+    await toggle.setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ passkey_enabled: false }),
+    );
+  });
+
+  it("disables passkey sign-in when the RP configuration is unavailable", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      passkey_enabled: false,
+      passkey_configured: false,
+      passkey_rp_id: "",
+      passkey_rp_origins: [],
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const settings = wrapper.get('[data-testid="passkey-settings"]');
+    expect(settings.get('[data-testid="passkey-toggle"]').attributes("disabled")).toBeDefined();
+    expect(settings.get('[data-testid="passkey-config-status"]').text()).toContain(
+      "admin.settings.security.passkeyNotConfigured",
+    );
   });
 
   it("loads, edits, validates, and saves forwarded client-IP headers", async () => {

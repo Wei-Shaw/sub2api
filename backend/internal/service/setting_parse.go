@@ -299,6 +299,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		FrontendURL:                      settings[SettingKeyFrontendURL],
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
+		PasskeyEnabled:                   s.passkeySettingEnabled(settings),
 		SessionBindingEnabled:            settings[SettingKeySessionBindingEnabled] == "true", // 默认关闭
 		StepUpEnabled:                    settings[SettingKeyStepUpEnabled] == "true",         // 默认关闭
 		AuditLogRetentionDays:            parseAuditLogRetentionDays(settings[SettingKeyAuditLogRetentionDays]),
