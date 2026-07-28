@@ -131,6 +131,10 @@ func (s *stubUserRepo) Create(ctx context.Context, user *service.User) error {
 	panic("unexpected Create call")
 }
 
+func (s *stubUserRepo) CreateWithEmailAliasGuard(ctx context.Context, user *service.User) error {
+	panic("unexpected CreateWithEmailAliasGuard call")
+}
+
 func (s *stubUserRepo) GetByID(ctx context.Context, id int64) (*service.User, error) {
 	if s.getByID == nil {
 		panic("GetByID not stubbed")
@@ -206,6 +210,10 @@ func (s *stubUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (
 
 func (s *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	panic("unexpected ExistsByEmail call")
+}
+
+func (s *stubUserRepo) ExistsByEmailAlias(ctx context.Context, email string) (bool, error) {
+	panic("unexpected ExistsByEmailAlias call")
 }
 
 func (s *stubUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {

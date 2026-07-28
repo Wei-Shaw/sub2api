@@ -16,7 +16,7 @@ func ProvideConfigManager(
 	encryptor service.SecretEncryptor,
 	cfg *config.Config,
 ) *ConfigManager {
-	manager := NewConfigManager(db, settings, redisClient, encryptor)
+	manager := NewConfigManager(db, settings, redisClient, encryptor, cfg)
 	if cfg != nil && cfg.MinimalStorageEnabled() {
 		manager.SetForceDisabled(true)
 	}

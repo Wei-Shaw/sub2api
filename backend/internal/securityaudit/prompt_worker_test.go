@@ -48,7 +48,7 @@ func (s *fakeConfigStore) EffectiveMode() Mode {
 	return s.cfg.EffectiveMode()
 }
 func (s *fakeConfigStore) BlockingActivationDegraded() bool { return false }
-func (s *fakeConfigStore) Public() PublicConfig             { return PublicConfig{} }
+func (s *fakeConfigStore) Public() (PublicConfig, error)    { return PublicConfig{}, nil }
 func (s *fakeConfigStore) Save(context.Context, UpdateConfigRequest, int64) (PublicConfig, error) {
 	return PublicConfig{}, nil
 }

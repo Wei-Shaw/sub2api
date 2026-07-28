@@ -73,6 +73,22 @@ server:
     max_upload_buffer_per_stream: 524288
 
 # =============================================================================
+# WebAuthn / Passkey Configuration
+# WebAuthn / Passkey 配置
+# =============================================================================
+# Passkeys require HTTPS in production. The RP ID is the domain only (no scheme
+# or port), while RP origins are exact browser origins.
+# Passkey 在生产环境要求 HTTPS。RP ID 只填写域名（不含协议和端口），RP origins
+# 填写浏览器访问使用的完整 Origin。
+webauthn:
+  enabled: false
+  rp_display_name: "Sub2API"
+  # Example / 示例: "sub2api.example.com"
+  rp_id: ""
+  # Example / 示例: ["https://sub2api.example.com"]
+  rp_origins: []
+
+# =============================================================================
 # Run Mode Configuration
 # 运行模式配置
 # =============================================================================
@@ -152,6 +168,8 @@ security:
       - "api.openai.com"
       - "api.anthropic.com"
       - "api.kimi.com"
+      - "api.moonshot.ai"
+      - "api.moonshot.cn"
       - "open.bigmodel.cn"
       - "api.minimaxi.com"
       - "generativelanguage.googleapis.com"
@@ -318,6 +336,9 @@ gateway:
   # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
   openai_compact_model: "gpt-5.4"
+  # ChatGPT Frameless Live 单会话硬上限（秒）。
+  live:
+    max_session_duration_seconds: 3600
   # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
   openai_ws:
     # 新版 WS mode 路由（默认关闭）。关闭时忽略账号级 WS mode（包括 http_bridge），保持 legacy ctx_pool 行为。
@@ -426,6 +447,11 @@ gateway:
     fallback_error_threshold: 2
     fallback_window_seconds: 60
     fallback_ttl_seconds: 600
+  # OpenAI Responses SSE 代理断流熔断；按 proxy_id 跨账号隔离，仅影响下一次调度。
+  openai_proxy_stream_circuit:
+    failure_threshold: 2
+    window_seconds: 60
+    ttl_seconds: 600
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
