@@ -482,6 +482,34 @@ func TestRewriteSystemForNonClaudeCodeWithPrompt_UsesCustomExpansionPrompt(t *te
 	require.Equal(t, "ephemeral", system.Array()[2].Get("cache_control.type").String())
 REDACTED
 
+func TestRewriteSystemForNonClaudeCode_PreservesSystemCacheControlOnMigratedMessage(t *testing.T) {
+	body := []byte(`{"model":"claude-3","system":[{"type":"text","text":"Stable project instructions","cache_control":{"type":"ephemeral","ttl":"1h"REDACTEDREDACTED],"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
+	system := []any{
+		map[string]any{
+			"type":          "text",
+			"text":          "Stable project instructions",
+			"cache_control": map[string]any{"type": "ephemeral", "ttl": "1h"REDACTED,
+	REDACTED,
+REDACTED
+
+	result := rewriteSystemForNonClaudeCode(body, system)
+
+	require.Equal(t, "[System Instructions]\nStable project instructions", gjson.GetBytes(result, "messages.0.content.0.text").String())
+	require.Equal(t, "ephemeral", gjson.GetBytes(result, "messages.0.content.0.cache_control.type").String())
+	require.Equal(t, "1h", gjson.GetBytes(result, "messages.0.content.0.cache_control.ttl").String())
+REDACTED
+
+func TestRewriteSystemForNonClaudeCode_LeavesMigratedMessageUncachedWithoutSystemBreakpoint(t *testing.T) {
+	body := []byte(`{"model":"claude-3","system":[{"type":"text","text":"Project instructions"REDACTED],"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
+	system := []any{
+		map[string]any{"type": "text", "text": "Project instructions"REDACTED,
+REDACTED
+
+	result := rewriteSystemForNonClaudeCode(body, system)
+
+	require.False(t, gjson.GetBytes(result, "messages.0.content.0.cache_control").Exists())
+REDACTED
+
 func TestRewriteSystemForNonClaudeCodeWithPromptBlocks_UsesConfiguredBlocks(t *testing.T) {
 	body := []byte(`{"model":"claude-3","system":"Project instructions","messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
 	blocks := `{
