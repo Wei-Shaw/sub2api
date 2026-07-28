@@ -456,13 +456,17 @@ export default {
           metric: 'Metric / Threshold',
           dimensions: 'Dimensions',
           email: 'Email Sent',
+          wecom: 'WeCom',
+          delivery: 'Delivery',
+          sent: 'Sent',
+          ignored: 'Not sent',
           emailSent: 'Sent',
           emailIgnored: 'Ignored'
         }
       },
       alertRules: {
         title: 'Alert Rules',
-        description: 'Create and manage threshold-based system alerts (email-only)',
+        description: 'Create and manage threshold alerts with email and WeCom bot notifications',
         loading: 'Loading...',
         empty: 'No alert rules',
         loadFailed: 'Failed to load alert rules',
@@ -543,7 +547,8 @@ export default {
           sustained: 'Sustained (samples)',
           cooldown: 'Cooldown (minutes)',
           enabled: 'Enabled',
-          notifyEmail: 'Send email notifications'
+          notifyEmail: 'Send email notifications',
+          notifyWeCom: 'Send WeCom bot notifications'
         },
         validation: {
           title: 'Please fix the following issues',
@@ -672,6 +677,24 @@ export default {
         emailPlaceholder: 'Enter email address',
         recipientsHint: 'If empty, the system will use the first admin email as default recipient',
         minSeverity: 'Minimum Severity',
+        wecom: {
+          title: 'WeCom Group Bot',
+          enabled: 'Enable WeCom bot alerts',
+          enabledHint: 'Only rules with WeCom notifications enabled will send messages',
+          webhook: 'Bot Webhook',
+          webhookPlaceholder: 'Paste the WeCom group bot webhook',
+          webhookHint: 'The URL is returned masked; only the official WeCom bot endpoint is allowed',
+          minSeverity: 'Minimum Alert Severity',
+          allSeverities: 'All severities',
+          rateLimit: 'Hourly Send Limit (0 = unlimited)',
+          includeResolved: 'Notify when resolved',
+          test: 'Send Test Message',
+          testing: 'Testing...',
+          testSuccess: 'WeCom bot test message sent',
+          testFailed: 'Failed to send WeCom bot test message',
+          webhookRequired: 'A webhook is required when WeCom bot alerts are enabled',
+          rateLimitInvalid: 'The WeCom hourly send limit must be at least 0'
+        },
         reportConfig: 'Report Configuration',
         enableReport: 'Enable Reports',
         reportRecipients: 'Report Recipient Emails',

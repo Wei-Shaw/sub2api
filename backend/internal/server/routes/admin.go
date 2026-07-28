@@ -199,6 +199,9 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Email notification config (DB-backed)
 		ops.GET("/email-notification/config", h.Admin.Ops.GetEmailNotificationConfig)
 		ops.PUT("/email-notification/config", h.Admin.Ops.UpdateEmailNotificationConfig)
+		ops.GET("/wecom-notification/config", h.Admin.Ops.GetWeComNotificationConfig)
+		ops.PUT("/wecom-notification/config", h.Admin.Ops.UpdateWeComNotificationConfig)
+		ops.POST("/wecom-notification/test", h.Admin.Ops.TestWeComNotification)
 
 		// Runtime settings (DB-backed)
 		runtime := ops.Group("/runtime")

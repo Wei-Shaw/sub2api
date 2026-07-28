@@ -456,13 +456,17 @@ export default {
           metric: '指标 / 阈值',
           dimensions: '维度',
           email: '邮件已发送',
+          wecom: '企微',
+          delivery: '通知状态',
+          sent: '已发送',
+          ignored: '未发送',
           emailSent: '已发送',
           emailIgnored: '已忽略'
         }
       },
       alertRules: {
         title: '告警规则',
-        description: '创建与管理系统阈值告警（仅邮件通知）',
+        description: '创建与管理系统阈值告警，支持邮件和企业微信群机器人通知',
         loading: '加载中...',
         empty: '暂无告警规则',
         loadFailed: '加载告警规则失败',
@@ -543,7 +547,8 @@ export default {
           sustained: '连续样本数（每分钟）',
           cooldown: '冷却期（分钟）',
           enabled: '启用',
-          notifyEmail: '发送邮件通知'
+          notifyEmail: '发送邮件通知',
+          notifyWeCom: '发送企业微信群机器人通知'
         },
         validation: {
           title: '请先修正以下问题',
@@ -672,6 +677,24 @@ export default {
         emailPlaceholder: '输入邮箱地址',
         recipientsHint: '若为空，系统将使用第一个管理员邮箱作为默认收件人',
         minSeverity: '最低级别',
+        wecom: {
+          title: '企业微信群机器人',
+          enabled: '启用企微机器人预警',
+          enabledHint: '启用后，仅对规则中勾选企微通知的告警发送消息',
+          webhook: '机器人 Webhook',
+          webhookPlaceholder: '粘贴企业微信群机器人 Webhook',
+          webhookHint: '地址只会脱敏展示；仅允许企业微信官方机器人地址',
+          minSeverity: '最低告警级别',
+          allSeverities: '全部级别',
+          rateLimit: '每小时发送上限（0 表示不限）',
+          includeResolved: '恢复时发送通知',
+          test: '发送测试消息',
+          testing: '正在测试...',
+          testSuccess: '企微机器人测试消息发送成功',
+          testFailed: '企微机器人测试消息发送失败',
+          webhookRequired: '启用企微机器人预警时必须配置 Webhook',
+          rateLimitInvalid: '企微机器人每小时发送上限必须大于等于 0'
+        },
         reportConfig: '评估报告配置',
         enableReport: '开启评估报告',
         reportRecipients: '评估报告接收邮箱',

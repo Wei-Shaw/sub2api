@@ -437,6 +437,10 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                 />
                 {{ row.email_sent ? t('admin.ops.alertEvents.table.emailSent') : t('admin.ops.alertEvents.table.emailIgnored') }}
               </span>
+              <span class="inline-flex items-center gap-1">
+                <Icon :name="row.wecom_sent ? 'checkCircle' : 'ban'" size="xs" :class="row.wecom_sent ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'" />
+                {{ t('admin.ops.alertEvents.table.wecom') }} {{ row.wecom_sent ? t('admin.ops.alertEvents.table.sent') : t('admin.ops.alertEvents.table.ignored') }}
+              </span>
             </div>
             <div class="text-[11px] text-gray-400 dark:text-gray-500">{{ formatDimensionsSummary(row) }}</div>
           </div>
@@ -466,7 +470,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                 {{ t('admin.ops.alertEvents.table.dimensions') }}
               </th>
               <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                {{ t('admin.ops.alertEvents.table.email') }}
+                {{ t('admin.ops.alertEvents.table.delivery') }}
               </th>
             </tr>
           </thead>
@@ -510,26 +514,14 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                 {{ formatDimensionsSummary(row) }}
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-right text-xs">
-                <span
-                  class="inline-flex items-center justify-end gap-1.5"
-                  :title="row.email_sent ? t('admin.ops.alertEvents.table.emailSent') : t('admin.ops.alertEvents.table.emailIgnored')"
-                >
-                  <Icon
-                    v-if="row.email_sent"
-                    name="checkCircle"
-                    size="sm"
-                    class="text-green-600 dark:text-green-400"
-                  />
-                  <Icon
-                    v-else
-                    name="ban"
-                    size="sm"
-                    class="text-gray-400 dark:text-gray-500"
-                  />
+                <div class="flex flex-col items-end gap-1">
                   <span class="text-[11px] font-bold text-gray-600 dark:text-gray-300">
-                    {{ row.email_sent ? t('admin.ops.alertEvents.table.emailSent') : t('admin.ops.alertEvents.table.emailIgnored') }}
+                    {{ t('admin.ops.alertEvents.table.email') }}：{{ row.email_sent ? t('admin.ops.alertEvents.table.sent') : t('admin.ops.alertEvents.table.ignored') }}
                   </span>
-                </span>
+                  <span class="text-[11px] font-bold text-gray-600 dark:text-gray-300">
+                    {{ t('admin.ops.alertEvents.table.wecom') }}：{{ row.wecom_sent ? t('admin.ops.alertEvents.table.sent') : t('admin.ops.alertEvents.table.ignored') }}
+                  </span>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -692,4 +684,3 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
     </BaseDialog>
   </div>
 </template>
-

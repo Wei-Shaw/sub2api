@@ -12,6 +12,8 @@ export type {
   MetricType,
   Operator,
   EmailNotificationConfig,
+  WeComNotificationConfig,
+  WeComNotificationConfigUpdate,
   OpsDistributedLockSettings,
   OpsAlertRuntimeSettings,
   OpsMetricThresholds,
