@@ -127,7 +127,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			break
 		}
 
-		retryBody, changed, trimErr := trimGrokInvalidEncryptedContentRetryBody(patchedBody)
+		retryBody, changed, trimErr := trimOpenAIInvalidEncryptedContentRetryBody(patchedBody)
 		if trimErr != nil {
 			return nil, fmt.Errorf("prepare Grok invalid encrypted_content retry: %w", trimErr)
 		}
@@ -264,9 +264,9 @@ func isGrokInvalidEncryptedContentResponse(statusCode int, body []byte) bool {
 			strings.Contains(normalizedMessage, "unmodified"))
 }
 
-// requestHasGrokEncryptedReasoning reports whether the outbound Responses body
+// requestHasOpenAIEncryptedReasoning reports whether the outbound Responses body
 // still carries reasoning.encrypted_content that can be stripped for retry.
-func requestHasGrokEncryptedReasoning(body []byte) bool {
+func requestHasOpenAIEncryptedReasoning(body []byte) bool {
 	input := gjson.GetBytes(body, "input")
 	if !input.Exists() {
 		return false
@@ -347,7 +347,7 @@ func stripAnthropicThinkingSignatures(body []byte) ([]byte, bool) {
 	return out, true
 }
 
-func trimGrokInvalidEncryptedContentRetryBody(body []byte) ([]byte, bool, error) {
+func trimOpenAIInvalidEncryptedContentRetryBody(body []byte) ([]byte, bool, error) {
 	input := gjson.GetBytes(body, "input")
 	items := input.Array()
 	if input.IsObject() {

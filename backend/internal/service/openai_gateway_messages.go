@@ -288,44 +288,54 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		// 既有 body/session/conversation 行为。身份头在 post-build 阶段统一恢复。
 		setOpenAICompatMessagesBridgeContext(c, true)
 	}
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	var upstreamReq *http.Request
-	if account.Platform == PlatformGrok {
-		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, grokCacheIdentity, s.cfg)
-	} else {
-		upstreamReq, err = s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, isStream, promptCacheKey, false)
-	}
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, fmt.Errorf("build upstream request: %w", err)
+	buildMessagesUpstreamRequest := func(requestBody []byte) (*http.Request, error) {
+		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		defer releaseUpstreamCtx()
+
+		var upstreamReq *http.Request
+		var buildErr error
+		if account.Platform == PlatformGrok {
+			upstreamReq, buildErr = buildGrokResponsesRequest(upstreamCtx, c, account, requestBody, token, grokCacheIdentity, s.cfg)
+		} else {
+			upstreamReq, buildErr = s.buildUpstreamRequest(upstreamCtx, c, account, requestBody, token, isStream, promptCacheKey, false)
+		}
+		if buildErr != nil {
+			return nil, buildErr
+		}
+
+		// Override session_id with a deterministic UUID derived from the isolated
+		// session key, ensuring different API keys produce different upstream sessions.
+		if account.Platform != PlatformGrok && promptCacheKey != "" {
+			isolatedSessionID := generateSessionUUID(isolateOpenAISessionID(apiKeyID, promptCacheKey))
+			upstreamReq.Header.Set("session_id", isolatedSessionID)
+			if upstreamReq.Header.Get("conversation_id") != "" {
+				upstreamReq.Header.Set("conversation_id", isolatedSessionID)
+			}
+		}
+		if account.Type == AccountTypeOAuth && account.Platform != PlatformGrok {
+			// buildUpstreamRequest 保留 Messages bridge 的 body/session 兼容行为，并会先
+			// 清除身份头。真正发送前恢复完整 Codex 身份，避免 ChatGPT Codex 上游因缺失
+			// originator/OpenAI-Beta 返回 404（issue #3901）。
+			ensureCodexIdentityHeaders(upstreamReq.Header)
+			enforceCodexIdentityHeaders(upstreamReq.Header)
+			logger.L().Debug("openai messages: upstream identity restored",
+				zap.Int64("account_id", account.ID),
+				zap.String("upstream_model", upstreamModel),
+				zap.Bool("compat_identity_restored", true),
+			)
+		}
+		if account.Type == AccountTypeOAuth && promptCacheKey != "" && strings.TrimSpace(c.GetHeader("conversation_id")) == "" {
+			upstreamReq.Header.Del("conversation_id")
+		}
+		if compatTurnState != "" && upstreamReq.Header.Get("x-codex-turn-state") == "" {
+			upstreamReq.Header.Set("x-codex-turn-state", compatTurnState)
+		}
+		return upstreamReq, nil
 	}
 
-	// Override session_id with a deterministic UUID derived from the isolated
-	// session key, ensuring different API keys produce different upstream sessions.
-	if account.Platform != PlatformGrok && promptCacheKey != "" {
-		isolatedSessionID := generateSessionUUID(isolateOpenAISessionID(apiKeyID, promptCacheKey))
-		upstreamReq.Header.Set("session_id", isolatedSessionID)
-		if upstreamReq.Header.Get("conversation_id") != "" {
-			upstreamReq.Header.Set("conversation_id", isolatedSessionID)
-		}
-	}
-	if account.Type == AccountTypeOAuth && account.Platform != PlatformGrok {
-		// buildUpstreamRequest 保留 Messages bridge 的 body/session 兼容行为，并会先
-		// 清除身份头。真正发送前恢复完整 Codex 身份，避免 ChatGPT Codex 上游因缺失
-		// originator/OpenAI-Beta 返回 404（issue #3901）。
-		ensureCodexIdentityHeaders(upstreamReq.Header)
-		enforceCodexIdentityHeaders(upstreamReq.Header)
-		logger.L().Debug("openai messages: upstream identity restored",
-			zap.Int64("account_id", account.ID),
-			zap.String("upstream_model", upstreamModel),
-			zap.Bool("compat_identity_restored", true),
-		)
-	}
-	if account.Type == AccountTypeOAuth && promptCacheKey != "" && strings.TrimSpace(c.GetHeader("conversation_id")) == "" {
-		upstreamReq.Header.Del("conversation_id")
-	}
-	if compatTurnState != "" && upstreamReq.Header.Get("x-codex-turn-state") == "" {
-		upstreamReq.Header.Set("x-codex-turn-state", compatTurnState)
+	upstreamReq, err := buildMessagesUpstreamRequest(responsesBody)
+	if err != nil {
+		return nil, fmt.Errorf("build upstream request: %w", err)
 	}
 
 	// 7. Send request
@@ -333,52 +343,53 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	// Grok may reject encrypted reasoning replayed under a different OAuth
-	// account/cache identity. Match forwardGrokResponses: one strip+retry before
-	// treating the 400 as a hard failure / failover trigger.
+	// Encrypted reasoning is provider-bound. When history crosses providers or
+	// account identities, retry once without that opaque payload while preserving
+	// the readable summary and the rest of the conversation.
 	var resp *http.Response
-	for attempt := 0; ; attempt++ {
-		if attempt > 0 {
-			if account.Platform != PlatformGrok {
-				break
-			}
-			upstreamCtxRetry, releaseRetry := detachUpstreamContext(ctx)
-			upstreamReq, err = buildGrokResponsesRequest(upstreamCtxRetry, c, account, responsesBody, token, grokCacheIdentity, s.cfg)
-			releaseRetry()
-			if err != nil {
-				return nil, fmt.Errorf("build grok retry request: %w", err)
-			}
-		}
+	invalidEncryptedContentRetryTried := false
+	for {
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 		}
-		if account.Platform != PlatformGrok || attempt > 0 || resp.StatusCode != http.StatusBadRequest {
+		if invalidEncryptedContentRetryTried ||
+			resp.StatusCode != http.StatusBadRequest ||
+			(account.Platform != PlatformGrok && account.Platform != PlatformOpenAI) {
 			break
 		}
 		respBody := s.readUpstreamErrorBody(resp)
 		if resp.Body != nil {
 			_ = resp.Body.Close()
 		}
-		// Prefer explicit decrypt errors; also strip once on any 400 when the
-		// outbound body still carries reasoning.encrypted_content (account
-		// switch often returns opaque "Upstream error: 400").
-		shouldStrip := isGrokInvalidEncryptedContentResponse(resp.StatusCode, respBody) ||
-			requestHasGrokEncryptedReasoning(responsesBody)
+		hasEncryptedReasoning := requestHasOpenAIEncryptedReasoning(responsesBody)
+		shouldStrip := false
+		switch account.Platform {
+		case PlatformGrok:
+			// Grok account switches often return only an opaque 400.
+			shouldStrip = isGrokInvalidEncryptedContentResponse(resp.StatusCode, respBody) || hasEncryptedReasoning
+		case PlatformOpenAI:
+			shouldStrip = isOpenAIInvalidEncryptedContentResponse(resp.StatusCode, respBody)
+		}
 		if !shouldStrip {
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 			break
 		}
-		retryBody, changed, trimErr := trimGrokInvalidEncryptedContentRetryBody(responsesBody)
+		retryBody, changed, trimErr := trimOpenAIInvalidEncryptedContentRetryBody(responsesBody)
 		if trimErr != nil {
-			return nil, fmt.Errorf("prepare Grok invalid encrypted_content retry: %w", trimErr)
+			return nil, fmt.Errorf("prepare invalid encrypted_content retry: %w", trimErr)
 		}
 		if !changed {
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 			break
 		}
 		responsesBody = retryBody
-		logger.L().Info("openai messages: retrying after stripping invalid Grok encrypted_content",
+		invalidEncryptedContentRetryTried = true
+		upstreamReq, err = buildMessagesUpstreamRequest(responsesBody)
+		if err != nil {
+			return nil, fmt.Errorf("build invalid encrypted_content retry request: %w", err)
+		}
+		logger.L().Info("openai messages: retrying after stripping invalid encrypted_content",
 			zap.Int64("account_id", account.ID),
 			zap.Bool("cache_identity_present", strings.TrimSpace(grokCacheIdentity) != ""),
 			zap.String("upstream_error_preview", truncateOpenAIWSLogValue(string(respBody), 240)),
@@ -485,6 +496,21 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	return result, handleErr
+}
+
+func isOpenAIInvalidEncryptedContentResponse(statusCode int, body []byte) bool {
+	if statusCode != http.StatusBadRequest {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(extractUpstreamErrorCode(body)), "invalid_encrypted_content") {
+		return true
+	}
+
+	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	compactMessage := strings.Join(strings.Fields(message), "")
+	return strings.Contains(message, "encrypted content") &&
+		strings.Contains(message, "could not be verified") &&
+		strings.Contains(compactMessage, "couldnotbedecryptedorparsed")
 }
 
 func ensureCodexOAuthInstructionsField(reqBody map[string]any) {
