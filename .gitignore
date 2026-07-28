@@ -125,6 +125,8 @@ scripts
 .github/scripts/*
 !.github/scripts/release-safety.sh
 !.github/scripts/test-release-safety.sh
+!.github/scripts/validate-release-candidate.sh
+!.github/scripts/test-release-candidate.sh
 !backend/scripts/
 !backend/scripts/resolve-version.sh
 .code-review-state
@@ -136,6 +138,10 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
+!docs/FORK_OPERATIONS_SOP.md
+!docs/FORK_RELEASE_WORKFLOW.md
+!docs/releases/
+!docs/releases/*.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md

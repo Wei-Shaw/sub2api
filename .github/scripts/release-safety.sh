@@ -523,36 +523,43 @@ verify_ruleset_json() {
     fail "Release tag ruleset must actively forbid updates and deletion for refs/tags/v*-ts.* with no bypass actors"
 }
 
-write_tag_message_output() {
+write_release_notes_output() {
   local release_tag="$1"
   local expected_tag_object="$2"
-  local output_path="$3"
-  local tag_object tag_message delimiter
+  local notes_directory="$3"
+  local output_path="$4"
+  local tag_object notes_path release_notes delimiter
 
   require_fork_tag "$release_tag"
   require_annotated_tag "$release_tag"
   require_object_id "Validated release tag object" "$expected_tag_object"
+  [[ "$notes_directory" =~ ^[A-Za-z0-9._/-]+$ ]] || fail "Release notes directory is invalid"
+  [[ "$notes_directory" != /* && "$notes_directory" != *'..'* ]] || fail "Release notes directory must be a safe repository-relative path"
   [[ -n "$output_path" ]] || fail "GitHub output path is empty"
   tag_object=$(git rev-parse --verify --end-of-options "refs/tags/${release_tag}^{tag}") || \
     fail "Release tag object could not be resolved: $release_tag"
   [[ "$tag_object" == "$expected_tag_object" ]] || fail "Release tag object $release_tag moved before reading release notes"
 
-  tag_message=$(git tag -l --format='%(contents:body)' "$release_tag")
+  notes_path="${notes_directory%/}/${release_tag}.md"
+  git cat-file -e "${release_tag}^{commit}:${notes_path}" 2>/dev/null || \
+    fail "Release notes are missing from $release_tag: $notes_path"
+  release_notes=$(git show "${release_tag}^{commit}:${notes_path}") || \
+    fail "Could not read release notes from $release_tag: $notes_path"
   delimiter=${RELEASE_OUTPUT_DELIMITER:-}
   if [[ -z "$delimiter" ]]; then
-    delimiter="TAG_MESSAGE_$(openssl rand -hex 24)"
+    delimiter="RELEASE_NOTES_$(openssl rand -hex 24)"
   fi
   [[ "$delimiter" =~ ^[A-Za-z0-9_]+$ ]] || fail "GitHub output delimiter is invalid"
-  if grep -Fqx -- "$delimiter" <<<"$tag_message"; then
-    fail "GitHub output delimiter conflicts with the tag message"
+  if grep -Fqx -- "$delimiter" <<<"$release_notes"; then
+    fail "GitHub output delimiter conflicts with the release notes"
   fi
 
   {
     printf 'message<<%s\n' "$delimiter"
-    printf '%s\n' "$tag_message"
+    printf '%s\n' "$release_notes"
     printf '%s\n' "$delimiter"
   } >> "$output_path"
-  echo "Tag message length: ${#tag_message}"
+  echo "Release notes length: ${#release_notes}"
 }
 
 usage() {
@@ -573,7 +580,7 @@ Usage:
   release-safety.sh validate <release-tag> <previous-release-tag> <main-ref>
   release-safety.sh verify-tag <release-tag> <validated-commit> <validated-tag-object> <previous-tag> <previous-commit> <previous-tag-object> <main-ref>
   release-safety.sh verify-ruleset-json <ruleset-json-path>
-  release-safety.sh write-output <release-tag> <validated-tag-object> <github-output-path>
+  release-safety.sh write-notes-output <release-tag> <validated-tag-object> <notes-directory> <github-output-path>
 EOF
   exit 2
 }
@@ -639,9 +646,9 @@ case "${1:-}" in
     [[ $# -eq 2 ]] || usage
     verify_ruleset_json "$2"
     ;;
-  write-output)
-    [[ $# -eq 4 ]] || usage
-    write_tag_message_output "$2" "$3" "$4"
+  write-notes-output)
+    [[ $# -eq 5 ]] || usage
+    write_release_notes_output "$2" "$3" "$4" "$5"
     ;;
   *)
     usage

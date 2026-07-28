@@ -96,6 +96,7 @@ jobs:
           printf 'previous_commit=%s\n' "$PREVIOUS_RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
           printf 'previous_tag_object=%s\n' "$PREVIOUS_RELEASE_TAG_OBJECT" >> "$GITHUB_OUTPUT"
           bash .github/scripts/release-safety.sh verify-version-file "$RELEASE_TAG" backend/cmd/server/VERSION
+          bash .github/scripts/validate-release-candidate.sh
           if [[ "$PREVIOUS_RELEASE_TAG" != "$MIGRATION_BOOTSTRAP_RELEASE_TAG" ]]; then
             mkdir -p "$RUNNER_TEMP/previous-release"
             gh release download "$PREVIOUS_RELEASE_TAG" \
@@ -142,6 +143,7 @@ jobs:
 
       - name: Test release safety gates and deployment assets
         run: |
+          bash .github/scripts/test-release-candidate.sh
           bash .github/scripts/test-release-safety.sh
           backend/scripts/check-release-migrations-test.sh
           deploy/tests/managed-update-assets-test.sh
@@ -291,13 +293,17 @@ jobs:
         run: |
           bash .github/scripts/release-safety.sh fetch origin main
 
-      - name: Get tag message
-        id: tag_message
+      - name: Load versioned release notes
+        id: release_notes
         env:
           RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
           VALIDATED_RELEASE_TAG_OBJECT: ${{ needs.release-gate.outputs.release_tag_object }}
         run: |
-          bash .github/scripts/release-safety.sh write-output "$RELEASE_TAG" "$VALIDATED_RELEASE_TAG_OBJECT" "$GITHUB_OUTPUT"
+          bash .github/scripts/release-safety.sh write-notes-output \
+            "$RELEASE_TAG" \
+            "$VALIDATED_RELEASE_TAG_OBJECT" \
+            docs/releases \
+            "$GITHUB_OUTPUT"
 
       - name: Set lowercase owner for GHCR
         id: lowercase
@@ -460,7 +466,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_CURRENT_TAG: ${{ github.event.inputs.tag || github.ref_name }}
           GORELEASER_PREVIOUS_TAG: ${{ needs.release-gate.outputs.previous_release_tag }}
-          TAG_MESSAGE: ${{ steps.tag_message.outputs.message }}
+          TAG_MESSAGE: ${{ steps.release_notes.outputs.message }}
           GITHUB_REPO_OWNER: ${{ github.repository_owner }}
           GITHUB_REPO_OWNER_LOWER: ${{ steps.lowercase.outputs.owner }}
           GITHUB_REPO_NAME: ${{ github.event.repository.name }}
@@ -648,7 +654,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
-          RELEASE_NOTES: ${{ steps.tag_message.outputs.message }}
+          RELEASE_NOTES: ${{ steps.release_notes.outputs.message }}
           REPOSITORY: ${{ github.repository }}
         continue-on-error: true
         run: |
@@ -663,7 +669,7 @@ jobs:
           REPO="$REPOSITORY"
           GHCR_IMAGE="ghcr.io/${REPO,,}"  # ${,,} converts to lowercase
 
-          # 获取 tag message 内容并转义 Markdown 特殊字符
+          # Escape release notes for Telegram Markdown.
           TAG_MESSAGE="$RELEASE_NOTES"
           TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed 's/\([_*`\[]\)/\\\1/g')
 

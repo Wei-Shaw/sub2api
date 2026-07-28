@@ -43,13 +43,24 @@ git -C "$TEST_REPO" tag -a v1.0.0-ts.1 -m 'release 1'
 git -C "$TEST_REPO" tag v0.9.0-ts.1
 
 printf 'main\n' >> "$TEST_REPO/state.txt"
-git -C "$TEST_REPO" commit -q -am main
+mkdir -p "$TEST_REPO/docs/releases"
+PROBE_FILE="$TEST_ROOT/release-notes-were-executed"
+ATTACK_LINE="'; touch \"$PROBE_FILE\"; #"
+RELEASE_NOTES=$(printf '%s\n' \
+  '# TokenSupply v1.0.0-ts.10' \
+  '' \
+  "apostrophe: it's data" \
+  'EOF' \
+  'message<<EOF' \
+  "$ATTACK_LINE" \
+  'RELEASE_NOTES_FIXED')
+printf '%s\n' "$RELEASE_NOTES" > "$TEST_REPO/docs/releases/v1.0.0-ts.10.md"
+git -C "$TEST_REPO" add state.txt docs/releases/v1.0.0-ts.10.md
+git -C "$TEST_REPO" commit -q -m main
 MAIN_COMMIT=$(git -C "$TEST_REPO" rev-parse HEAD)
 git -C "$TEST_REPO" tag -a v1.0.0-ts.2 -m 'release 2'
 
-PROBE_FILE="$TEST_ROOT/tag-body-was-executed"
-ATTACK_LINE="'; touch \"$PROBE_FILE\"; #"
-TAG_BODY=$(printf '%s\n' "apostrophe: it's data" 'EOF' 'message<<EOF' "$ATTACK_LINE" 'TAG_MESSAGE_FIXED')
+TAG_BODY='This annotated tag body is intentionally not used as release notes.'
 git -C "$TEST_REPO" tag -a v1.0.0-ts.10 -m 'release 10' -m "$TAG_BODY"
 git -C "$TEST_REPO" tag -a v1.0.0-ts.9 -m 'failed release tag without a published GitHub Release'
 
@@ -160,25 +171,29 @@ expect_failure 'must be annotated' \
 OUTPUT_FILE="$TEST_ROOT/github-output"
 EXPECTED_FILE="$TEST_ROOT/expected-message"
 RECOVERED_FILE="$TEST_ROOT/recovered-message"
-RELEASE_OUTPUT_DELIMITER=TAG_MESSAGE_SAFE \
-  bash -c 'cd "$1" && bash "$2" write-output v1.0.0-ts.10 "$3" "$4"' _ \
+RELEASE_OUTPUT_DELIMITER=RELEASE_NOTES_SAFE \
+  bash -c 'cd "$1" && bash "$2" write-notes-output v1.0.0-ts.10 "$3" docs/releases "$4"' _ \
   "$TEST_REPO" "$SAFETY_SCRIPT" "$VALIDATED_TAG_OBJECT" "$OUTPUT_FILE"
-EXPECTED_MESSAGE=$(git -C "$TEST_REPO" tag -l --format='%(contents:body)' v1.0.0-ts.10)
-printf '%s\n' "$EXPECTED_MESSAGE" > "$EXPECTED_FILE"
+git -C "$TEST_REPO" show v1.0.0-ts.10:docs/releases/v1.0.0-ts.10.md > "$EXPECTED_FILE"
 sed '1d;$d' "$OUTPUT_FILE" > "$RECOVERED_FILE"
 cmp "$EXPECTED_FILE" "$RECOVERED_FILE"
-[[ $(sed -n '1p' "$OUTPUT_FILE") == 'message<<TAG_MESSAGE_SAFE' ]] || \
+[[ $(sed -n '1p' "$OUTPUT_FILE") == 'message<<RELEASE_NOTES_SAFE' ]] || \
   fail "Unexpected GitHub output header"
-[[ $(tail -n 1 "$OUTPUT_FILE") == 'TAG_MESSAGE_SAFE' ]] || \
+[[ $(tail -n 1 "$OUTPUT_FILE") == 'RELEASE_NOTES_SAFE' ]] || \
   fail "Unexpected GitHub output terminator"
-[[ ! -e "$PROBE_FILE" ]] || fail "Tag body was executed as shell code"
+[[ ! -e "$PROBE_FILE" ]] || fail "Release notes were executed as shell code"
 
 COLLISION_OUTPUT="$TEST_ROOT/collision-output"
 expect_failure 'delimiter conflicts' \
-  env RELEASE_OUTPUT_DELIMITER=TAG_MESSAGE_FIXED \
-  bash -c 'cd "$1" && bash "$2" write-output v1.0.0-ts.10 "$3" "$4"' _ \
+  env RELEASE_OUTPUT_DELIMITER=RELEASE_NOTES_FIXED \
+  bash -c 'cd "$1" && bash "$2" write-notes-output v1.0.0-ts.10 "$3" docs/releases "$4"' _ \
   "$TEST_REPO" "$SAFETY_SCRIPT" "$VALIDATED_TAG_OBJECT" "$COLLISION_OUTPUT"
 [[ ! -e "$COLLISION_OUTPUT" ]] || fail "Collision path wrote a partial GitHub output"
+
+MISSING_NOTES_TAG_OBJECT=$(git -C "$TEST_REPO" rev-parse v1.0.0-ts.9^{tag})
+expect_failure 'Release notes are missing' \
+  bash -c 'cd "$1" && bash "$2" write-notes-output v1.0.0-ts.9 "$3" docs/releases "$4"' _ \
+  "$TEST_REPO" "$SAFETY_SCRIPT" "$MISSING_NOTES_TAG_OBJECT" "$TEST_ROOT/missing-notes-output"
 
 MANIFEST_FILE="$TEST_ROOT/manifest.json"
 MANIFEST_DIGEST="sha256:$(printf 'a%.0s' {1..64})"
