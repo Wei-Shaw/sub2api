@@ -2,6 +2,13 @@
   <div class="space-y-6">
     <!-- Date Range Filter -->
     <div class="card p-4">
+      <div v-if="stats" class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+        <span>{{ t('dashboard.todayTokens') }}: <b class="text-gray-700 dark:text-gray-200">{{ fmt(stats.today_tokens ?? 0) }}</b></span>
+        <span>{{ t('dashboard.totalTokens') }}: <b class="text-gray-700 dark:text-gray-200">{{ fmt(stats.total_tokens ?? 0) }}</b></span>
+        <span>RPM: <b class="text-gray-700 dark:text-gray-200">{{ fmt(stats.rpm ?? 0) }}</b></span>
+        <span>TPM: <b class="text-gray-700 dark:text-gray-200">{{ fmt(stats.tpm ?? 0) }}</b></span>
+        <span>{{ t('dashboard.avgResponse') }}: <b class="text-gray-700 dark:text-gray-200">{{ dur(stats.average_duration_ms ?? 0) }}</b></span>
+      </div>
       <div class="flex flex-wrap items-center gap-4">
         <div class="flex items-center gap-2">
           <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('dashboard.timeRange') }}:</span>
@@ -64,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, type PropType } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
@@ -72,11 +79,20 @@ import Select from '@/components/common/Select.vue'
 import { Doughnut } from 'vue-chartjs'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import type { TrendDataPoint, ModelStat } from '@/types'
+import type { UserDashboardStats as UserStatsType } from '@/api/usage'
 import { formatCostFixed as formatCost, formatNumberLocaleString as formatNumber, formatTokensK as formatTokens } from '@/utils/format'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler)
 
-const props = defineProps<{ loading: boolean, startDate: string, endDate: string, granularity: string, trend: TrendDataPoint[], models: ModelStat[] }>()
+const props = defineProps({
+  loading: { type: Boolean, required: true },
+  startDate: { type: String, required: true },
+  endDate: { type: String, required: true },
+  granularity: { type: String, required: true },
+  trend: { type: Array as PropType<TrendDataPoint[]>, required: true },
+  models: { type: Array as PropType<ModelStat[]>, required: true },
+  stats: { type: Object as PropType<UserStatsType | null>, required: false, default: null },
+})
 defineEmits(['update:startDate', 'update:endDate', 'update:granularity', 'dateRangeChange', 'granularityChange', 'refresh'])
 const { t } = useI18n()
 
@@ -100,4 +116,11 @@ const doughnutOptions = {
     }
   }
 }
+
+function fmt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
+  return String(n)
+}
+function dur(ms: number): string { return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms` }
 </script>
