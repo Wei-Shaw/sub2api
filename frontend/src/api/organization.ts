@@ -43,8 +43,8 @@ export const organizationAPI = {
     const { data } = await apiClient.get<CompanyUpgradeEligibility>('/organization/applications/eligibility')
     return data
   },
-  async submitApplication(companyName: string, idempotencyKey: string): Promise<CompanyApplication> {
-    const { data } = await apiClient.post('/organization/applications', { company_name: companyName, idempotency_key: idempotencyKey })
+  async submitApplication(companyName: string, englishName: string, companySize: string, idempotencyKey: string): Promise<CompanyApplication> {
+    const { data } = await apiClient.post('/organization/applications', { company_name: companyName, english_name: englishName, company_size: companySize, idempotency_key: idempotencyKey })
     return data
   },
   async withdrawApplication(id: number): Promise<CompanyApplication> {

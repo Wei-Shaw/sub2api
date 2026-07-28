@@ -115,13 +115,15 @@ func (h *OrganizationHandler) SubmitApplication(c *gin.Context) {
 	}
 	var req struct {
 		CompanyName    string `json:"company_name" binding:"required"`
+		EnglishName    string `json:"english_name" binding:"required"`
+		CompanySize    string `json:"company_size" binding:"required"`
 		IdempotencyKey string `json:"idempotency_key" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid company application")
 		return
 	}
-	application, err := h.organization.SubmitApplication(c.Request.Context(), userID, req.CompanyName, req.IdempotencyKey)
+	application, err := h.organization.SubmitApplication(c.Request.Context(), userID, req.CompanyName, req.EnglishName, req.CompanySize, req.IdempotencyKey)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

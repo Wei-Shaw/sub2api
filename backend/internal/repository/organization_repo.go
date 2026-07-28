@@ -70,7 +70,7 @@ func (r *organizationRepository) GetContextForUser(ctx context.Context, userID i
 func scanCompanyApplication(row interface{ Scan(...any) error }) (*service.CompanyApplication, error) {
 	var app service.CompanyApplication
 	var fee string
-	err := row.Scan(&app.ID, &app.ApplicantUserID, &app.ApplicantEmail, &app.RequestedName, &app.Status,
+	err := row.Scan(&app.ID, &app.ApplicantUserID, &app.ApplicantEmail, &app.RequestedName, &app.RequestedEnglishName, &app.CompanySize, &app.Status,
 		&fee, &app.FeeCurrency, &app.ReviewerUserID, &app.ReviewReason, &app.OrganizationID, &app.CreatedAt, &app.DecidedAt)
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func scanCompanyApplication(row interface{ Scan(...any) error }) (*service.Compa
 }
 
 const applicationSelect = `
-	SELECT a.id, a.applicant_user_id, COALESCE(u.email, ''), a.requested_name, a.status,
+	SELECT a.id, a.applicant_user_id, COALESCE(u.email, ''), a.requested_name, COALESCE(a.requested_english_name, ''), COALESCE(a.company_size, ''), a.status,
 	       a.fee_amount::text, a.fee_currency, a.reviewer_user_id, COALESCE(a.review_reason, ''),
 	       a.organization_id, a.created_at, a.decided_at
 	FROM company_upgrade_applications a JOIN users u ON u.id = a.applicant_user_id`
@@ -196,7 +196,7 @@ func enqueueAdminNotifications(ctx context.Context, tx *sql.Tx, event string, ap
 	return nil
 }
 
-func (r *organizationRepository) SubmitApplication(ctx context.Context, userID int64, name, normalizedName, idempotencyKey, fee, currency string) (_ *service.CompanyApplication, err error) {
+func (r *organizationRepository) SubmitApplication(ctx context.Context, userID int64, name, normalizedName, englishName, normalizedEnglishName, companySize, idempotencyKey, fee, currency string) (_ *service.CompanyApplication, err error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -222,10 +222,13 @@ func (r *organizationRepository) SubmitApplication(ctx context.Context, userID i
 	}
 	var applicationID int64
 	if err := tx.QueryRowContext(ctx, `
-		INSERT INTO company_upgrade_applications(applicant_user_id,requested_name,normalized_name,fee_amount,fee_currency,idempotency_key)
-		VALUES($1,$2,$3,$4::numeric,$5,$6) RETURNING id`, userID, name, normalizedName, fee, currency, idempotencyKey).Scan(&applicationID); err != nil {
+		INSERT INTO company_upgrade_applications(applicant_user_id,requested_name,normalized_name,requested_english_name,normalized_english_name,company_size,fee_amount,fee_currency,idempotency_key)
+		VALUES($1,$2,$3,$4,$5,$6,$7::numeric,$8,$9) RETURNING id`, userID, name, normalizedName, englishName, normalizedEnglishName, companySize, fee, currency, idempotencyKey).Scan(&applicationID); err != nil {
 		if isConstraintNamed(err, "company_upgrade_one_pending_per_user") {
 			return nil, service.ErrCompanyPending
+		}
+		if isConstraintNamed(err, "company_upgrade_pending_english_unique") {
+			return nil, service.ErrCompanyEnglishNameTaken
 		}
 		return nil, err
 	}
@@ -507,11 +510,11 @@ func (r *organizationRepository) DecideApplication(ctx context.Context, reviewer
 		return nil, err
 	}
 	var applicantID int64
-	var status, fee, currency, requestedName, normalizedName, accountID, email string
+	var status, fee, currency, requestedName, normalizedName, englishName, normalizedEnglishName, companySize, accountID, email string
 	if err := tx.QueryRowContext(ctx, `
-		SELECT a.applicant_user_id,a.status,a.fee_amount::text,a.fee_currency,a.requested_name,a.normalized_name,u.account_id,COALESCE(u.email,'')
+		SELECT a.applicant_user_id,a.status,a.fee_amount::text,a.fee_currency,a.requested_name,a.normalized_name,COALESCE(a.requested_english_name,''),COALESCE(a.normalized_english_name,''),COALESCE(a.company_size,''),u.account_id,COALESCE(u.email,'')
 		FROM company_upgrade_applications a JOIN users u ON u.id=a.applicant_user_id
-		WHERE a.id=$1 FOR UPDATE`, applicationID).Scan(&applicantID, &status, &fee, &currency, &requestedName, &normalizedName, &accountID, &email); err != nil {
+		WHERE a.id=$1 FOR UPDATE`, applicationID).Scan(&applicantID, &status, &fee, &currency, &requestedName, &normalizedName, &englishName, &normalizedEnglishName, &companySize, &accountID, &email); err != nil {
 		return nil, service.ErrApplicationNotFound
 	}
 	if status != "pending" {
@@ -522,7 +525,10 @@ func (r *organizationRepository) DecideApplication(ctx context.Context, reviewer
 	event := service.NotificationEmailEventCompanyUpgradeRejected
 	if approve {
 		var orgID int64
-		if err := tx.QueryRowContext(ctx, `INSERT INTO organizations(account_id,owner_user_id,name,normalized_name,status,member_limit,effective_at) VALUES($1,$2,$3,$4,'active',$5,$6) RETURNING id`, accountID, applicantID, requestedName, normalizedName, memberLimit, now).Scan(&orgID); err != nil {
+		if err := tx.QueryRowContext(ctx, `INSERT INTO organizations(account_id,owner_user_id,name,normalized_name,english_name,normalized_english_name,company_size,status,member_limit,effective_at) VALUES($1,$2,$3,$4,$5,$6,$7,'active',$8,$9) RETURNING id`, accountID, applicantID, requestedName, normalizedName, nullableString(englishName), nullableString(normalizedEnglishName), nullableString(companySize), memberLimit, now).Scan(&orgID); err != nil {
+			if isConstraintNamed(err, "organizations_normalized_english_name_unique") {
+				return nil, service.ErrCompanyEnglishNameTaken
+			}
 			return nil, err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO organization_memberships(organization_id,user_id,role,status) VALUES($1,$2,'owner','active')`, orgID, applicantID); err != nil {

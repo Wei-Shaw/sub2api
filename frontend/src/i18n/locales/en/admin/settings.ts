@@ -40,6 +40,12 @@ export default {
           cyberSessionBlockHint: 'When enabled, sessions hit by upstream cyber_policy are blocked locally for the TTL and no longer forwarded. Only the offending session is blocked; other sessions on the same key are unaffected.',
           cyberSessionBlockTTL: 'Block TTL (seconds)',
         },
+        companyUpgrade: {
+          title: 'Company Upgrade',
+          description: 'Control the charging policy when users apply to upgrade to a company account. Charging is enabled by default.',
+          chargeEnabled: 'Charge for company upgrade',
+          chargeEnabledHint: 'When enabled, submitting a company upgrade application freezes funds / charges the upgrade fee per the rules. When disabled, applications neither freeze nor charge (the fee snapshot is recorded as 0).',
+        },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',
           description: 'Existing users invite new ones; the inviter earns a percentage rebate on the invitee’s recharges. Disabled by default.',

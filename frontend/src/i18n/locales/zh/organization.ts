@@ -1,6 +1,6 @@
 export default {
   organization: {
-    console: '企业控制台', accountId: '账号 ID', accountType: { label: '账号类型', personal: '个人账号', company: '企业账号' }, accountIdentity: { label: '账号身份', root: '主账号', iam: '子账号' }, iamUserId: 'IAM 用户 ID', principal: '登录主体', companyName: '企业名称', role: '管理权限', policies: '权限策略', reviewReason: '审批意见',
+    console: '企业控制台', accountId: '账号 ID', accountType: { label: '账号类型', personal: '个人账号', company: '企业账号' }, accountIdentity: { label: '账号身份', root: '主账号', iam: '子账号' }, iamUserId: 'IAM 用户 ID', principal: '登录主体', companyName: '企业名称', companyEnglishName: '公司英文名', companySize: '公司规模', role: '管理权限', policies: '权限策略', reviewReason: '审批意见',
     roleValue: { owner: '组织管理员', member: 'IAM 用户' },
     status: { pending: '待审批', approved: '已通过', rejected: '已拒绝', withdrawn: '已撤回', active: '正常', disabled: '已禁用', archived: '已归档', suspended: '已暂停' },
     tabs: { members: '成员', allocation: '资金划拨', finance: '财务', usage: '使用记录' },
@@ -10,7 +10,7 @@ export default {
       CompanySharedBalanceUse: { name: '共享余额使用', description: '使用主账号余额进行 API 消费，但不可查看其金额。' }
     },
     login: { personal: '个人账号', iam: 'IAM 登录', title: 'IAM 用户登录', subtitle: '使用完整登录账号和密码登录', loginName: '登录名称', principal: '登录账号', genericError: '登录账号或密码错误' },
-    upgrade: { title: '升级企业账户', backToProfile: '返回个人资料', feeLabel: '升级费用', feeNotice: '提交申请后，升级费用将从可用余额中冻结。审批通过后才会正式扣除；审批拒绝或中止申请时，冻结费用将退还至余额。', chargedFee: '费用快照', submit: '提交审批', withdraw: '中止', insufficientBalance: '余额不足，无法冻结升级费用', ineligible: { not_personal_root: '当前身份不能申请企业升级。', already_company_account: '当前账号已经是企业账户。', application_pending: '已有一项企业升级申请等待审批。', unknown: '当前账号不符合企业升级条件。' } },
+    upgrade: { title: '升级企业账户', backToProfile: '返回个人资料', feeLabel: '升级费用', feeNotice: '提交申请后，升级费用将从可用余额中冻结。审批通过后才会正式扣除；审批拒绝或中止申请时，冻结费用将退还至余额。', chargedFee: '费用快照', submit: '提交审批', withdraw: '中止', insufficientBalance: '余额不足，无法冻结升级费用', englishNameHint: '全局唯一，仅允许英文字母、数字、空格及 & . , - \' ( ) 等符号', englishNameTaken: '该公司英文名已被占用，请更换', englishNameInvalid: '公司英文名格式不正确，仅允许英文字母、数字、空格及基本符号', companySizePlaceholder: '请选择公司规模', companySizeInvalid: '请选择有效的公司规模', ineligible: { not_personal_root: '当前身份不能申请企业升级。', already_company_account: '当前账号已经是企业账户。', application_pending: '已有一项企业升级申请等待审批。', unknown: '当前账号不符合企业升级条件。' } },
 	nameChange: { action: '申请更名', title: '申请企业更名', submit: '提交审批', pending: '更名申请已提交，审批通过前当前企业名称保持不变。' },
     password: { title: '修改初始密码', new: '新密码', confirm: '确认新密码', mismatch: '两次输入的密码不一致' },
 	recovery: { title: 'IAM 恢复邮箱', code: '验证码', send: '发送验证码', verify: '验证邮箱', change: '更换邮箱', sent: '验证码已发送。', verified: '恢复邮箱已验证。' },

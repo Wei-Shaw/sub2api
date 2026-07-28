@@ -47,6 +47,9 @@ var (
 	ErrApplicationNotFound    = infraerrors.NotFound("COMPANY_APPLICATION_NOT_FOUND", "company application not found")
 	ErrApplicationTerminal    = infraerrors.Conflict("COMPANY_APPLICATION_TERMINAL", "company application is already decided")
 	ErrReasonRequired         = infraerrors.BadRequest("REJECTION_REASON_REQUIRED", "rejection reason is required")
+	ErrCompanyEnglishNameInvalid = infraerrors.BadRequest("COMPANY_ENGLISH_NAME_INVALID", "company english name is required and must contain only English letters, digits, spaces and basic punctuation")
+	ErrCompanyEnglishNameTaken   = infraerrors.Conflict("COMPANY_ENGLISH_NAME_TAKEN", "company english name is already taken")
+	ErrCompanySizeInvalid        = infraerrors.BadRequest("COMPANY_SIZE_INVALID", "company size is required and must be one of the allowed ranges")
 	ErrIAMFeatureDisabled     = infraerrors.Forbidden("IAM_FEATURE_DISABLED", "IAM user creation is disabled")
 	ErrIAMMemberLimit         = infraerrors.Conflict("IAM_MEMBER_LIMIT", "organization IAM member limit reached")
 	ErrIAMLoginName           = infraerrors.BadRequest("IAM_LOGIN_NAME_INVALID", "IAM login name is invalid")
@@ -58,6 +61,12 @@ var (
 
 var iamLoginNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 var rootAccountIDPattern = regexp.MustCompile(`^[1-9][0-9]{15}$`)
+
+// englishCompanyNamePattern restricts the company english name to English
+// letters, digits, spaces and a small set of common punctuation; a separate
+// pattern requires at least one letter so pure-number names are rejected.
+var englishCompanyNamePattern = regexp.MustCompile(`^[A-Za-z0-9 &.,'()\-]+$`)
+var englishCompanyNameLetter = regexp.MustCompile(`[A-Za-z]`)
 
 func CanonicalIAMPrincipal(loginName, accountID string) string {
 	return strings.TrimSpace(loginName) + "@" + strings.TrimSpace(accountID) + "." + IAMPrincipalDomain
@@ -134,6 +143,8 @@ type CompanyApplication struct {
 	ApplicantUserID int64      `json:"applicant_user_id"`
 	ApplicantEmail  string     `json:"applicant_email,omitempty"`
 	RequestedName   string     `json:"requested_name"`
+	RequestedEnglishName string `json:"requested_english_name"`
+	CompanySize     string     `json:"company_size"`
 	Status          string     `json:"status"`
 	FeeAmount       string     `json:"fee_amount"`
 	FeeCurrency     string     `json:"fee_currency"`
@@ -288,7 +299,7 @@ type OrganizationRepository interface {
 	GetContextForUser(ctx context.Context, userID int64) (*OrganizationContext, error)
 	GetApplicationForUser(ctx context.Context, userID int64) (*CompanyApplication, error)
 	GetApplication(ctx context.Context, applicationID int64) (*CompanyApplicationDetail, error)
-	SubmitApplication(ctx context.Context, userID int64, name, normalizedName, idempotencyKey, fee, currency string) (*CompanyApplication, error)
+	SubmitApplication(ctx context.Context, userID int64, name, normalizedName, englishName, normalizedEnglishName, companySize, idempotencyKey, fee, currency string) (*CompanyApplication, error)
 	WithdrawApplication(ctx context.Context, userID, applicationID int64) (*CompanyApplication, error)
 	ListApplications(ctx context.Context, status string, page, pageSize int) ([]CompanyApplication, int64, error)
 	ListNameChangeRequests(ctx context.Context, status string, page, pageSize int) ([]OrganizationNameChangeRequest, int64, error)
@@ -374,6 +385,39 @@ func normalizeCompanyName(value string) (string, string, error) {
 	return name, strings.ToLower(name), nil
 }
 
+// normalizeEnglishName validates and normalizes the globally-unique company
+// english name. It returns the display form (whitespace-collapsed, original
+// case preserved) and the normalized lowercase form used for uniqueness.
+func normalizeEnglishName(value string) (string, string, error) {
+	name := strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	if name == "" || len(name) > 255 ||
+		!englishCompanyNamePattern.MatchString(name) ||
+		!englishCompanyNameLetter.MatchString(name) {
+		return "", "", ErrCompanyEnglishNameInvalid
+	}
+	return name, strings.ToLower(name), nil
+}
+
+// allowedCompanySizes enumerates the accepted company size ranges. The set is
+// kept in sync with the frontend dropdown options.
+var allowedCompanySizes = map[string]struct{}{
+	"1-20":     {},
+	"20-100":   {},
+	"100-300":  {},
+	"300-1000": {},
+	"1000+":    {},
+}
+
+// normalizeCompanySize validates the submitted company size against the
+// allowed enumeration and returns the canonical value.
+func normalizeCompanySize(value string) (string, error) {
+	size := strings.TrimSpace(value)
+	if _, ok := allowedCompanySizes[size]; !ok {
+		return "", ErrCompanySizeInvalid
+	}
+	return size, nil
+}
+
 func (s *OrganizationService) Context(ctx context.Context, userID int64) (*OrganizationContext, error) {
 	return s.repo.GetContextForUser(ctx, userID)
 }
@@ -423,11 +467,19 @@ func (s *OrganizationService) GetApplication(ctx context.Context, applicationID 
 	return s.repo.GetApplication(ctx, applicationID)
 }
 
-func (s *OrganizationService) SubmitApplication(ctx context.Context, userID int64, name, idempotencyKey string) (*CompanyApplication, error) {
+func (s *OrganizationService) SubmitApplication(ctx context.Context, userID int64, name, englishName, companySize, idempotencyKey string) (*CompanyApplication, error) {
 	if s.cfg == nil || !s.cfg.Company.ApplicationsEnabled {
 		return nil, ErrCompanyFeatureDisabled
 	}
 	name, normalized, err := normalizeCompanyName(name)
+	if err != nil {
+		return nil, err
+	}
+	englishName, normalizedEnglish, err := normalizeEnglishName(englishName)
+	if err != nil {
+		return nil, err
+	}
+	companySize, err = normalizeCompanySize(companySize)
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +492,7 @@ func (s *OrganizationService) SubmitApplication(ctx context.Context, userID int6
 		// become no-op amount=0 operations and the balance is never frozen.
 		fee = decimal.Zero.StringFixed(8)
 	}
-	return s.repo.SubmitApplication(ctx, userID, name, normalized, idempotencyKey, fee, s.cfg.Company.UpgradeCurrency)
+	return s.repo.SubmitApplication(ctx, userID, name, normalized, englishName, normalizedEnglish, companySize, idempotencyKey, fee, s.cfg.Company.UpgradeCurrency)
 }
 
 func (s *OrganizationService) WithdrawApplication(ctx context.Context, userID, applicationID int64) (*CompanyApplication, error) {

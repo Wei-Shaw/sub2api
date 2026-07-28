@@ -1,27 +1,36 @@
 <template>
   <AppLayout>
     <div class="space-y-5">
-    <div class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <div class="flex flex-wrap items-center gap-2">
-          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ organization?.company_name }}</h2>
-          <button v-if="isOwner" class="btn btn-ghost btn-sm" @click="showRename = true">
-            {{ t('organization.nameChange.action') }}
-          </button>
-        </div>
-        <p class="mt-1 font-mono text-xs text-gray-500">{{ organization?.account_id }}</p>
-      </div>
-      <div class="flex max-w-full overflow-x-auto rounded-md bg-gray-100 p-1 dark:bg-dark-800">
-        <button
-          v-for="tab in visibleTabs"
-          :key="tab"
-          class="whitespace-nowrap rounded px-3 py-2 text-sm"
-          :class="activeTab === tab ? 'bg-white font-medium shadow-sm dark:bg-dark-700' : 'text-gray-600 dark:text-dark-300'"
-          @click="activeTab = tab"
-        >
-          {{ t(`organization.tabs.${tab}`) }}
+    <div>
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ organization?.company_name }}</h2>
+        <button v-if="isOwner" class="btn btn-ghost btn-sm" @click="showRename = true">
+          {{ t('organization.nameChange.action') }}
         </button>
       </div>
+      <p class="mt-1 font-mono text-xs text-gray-500">{{ organization?.account_id }}</p>
+    </div>
+
+    <div v-if="visibleTabs.length" class="settings-tabs-shell">
+      <nav class="settings-tabs-scroll" role="tablist" :aria-label="t('organization.console')">
+        <div class="settings-tabs">
+          <button
+            v-for="tab in visibleTabs"
+            :id="`organization-tab-${tab}`"
+            :key="tab"
+            type="button"
+            role="tab"
+            :aria-selected="activeTab === tab"
+            :tabindex="activeTab === tab ? 0 : -1"
+            :class="['settings-tab', activeTab === tab && 'settings-tab-active']"
+            @click="selectTab(tab)"
+            @keydown="handleTabKeydown($event, tab)"
+          >
+            <span class="settings-tab-icon"><Icon :name="tabIcons[tab]" size="sm" /></span>
+            <span class="settings-tab-label">{{ t(`organization.tabs.${tab}`) }}</span>
+          </button>
+        </div>
+      </nav>
     </div>
 
     <p v-if="error" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">
@@ -386,6 +395,36 @@ const visibleTabs = computed<Tab[]>(() => isOwner.value
   : (actions.value.includes('organization.finance.balance.read') ? ['finance'] : []))
 const activeMembers = computed(() => members.value.filter(item => item.status === 'active'))
 
+const tabIcons: Record<Tab, 'creditCard' | 'users' | 'chart'> = { finance: 'creditCard', allocation: 'users', usage: 'chart' }
+const tabKeyboardActions: Record<string, number | 'first' | 'last'> = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1, Home: 'first', End: 'last' }
+
+function selectTab(tab: Tab) {
+  activeTab.value = tab
+}
+
+function focusTab(tab: Tab) {
+  window.requestAnimationFrame(() => {
+    document.getElementById(`organization-tab-${tab}`)?.focus()
+  })
+}
+
+function handleTabKeydown(event: KeyboardEvent, tab: Tab) {
+  const action = tabKeyboardActions[event.key]
+  if (action === undefined) return
+  event.preventDefault()
+  const tabs = visibleTabs.value
+  if (!tabs.length) return
+  const currentIndex = Math.max(0, tabs.indexOf(tab))
+  let nextIndex = currentIndex
+  if (action === 'first') nextIndex = 0
+  else if (action === 'last') nextIndex = tabs.length - 1
+  else nextIndex = (currentIndex + action + tabs.length) % tabs.length
+  const nextTab = tabs[nextIndex]
+  if (!nextTab) return
+  activeTab.value = nextTab
+  focusTab(nextTab)
+}
+
 function errorMessage(cause: unknown): string {
   return (cause as { message?: string })?.message || t('common.error')
 }
@@ -662,3 +701,123 @@ async function requestNameChange() {
 
 onMounted(load)
 </script>
+
+<style scoped>
+/* ============ 企业控制台 Tab 导航（复用系统设置样式） ============ */
+.settings-tabs-shell {
+  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl;
+  top: 4.75rem;
+  box-shadow:
+    0 12px 28px rgb(15 23 42 / 0.07),
+    0 1px 0 rgb(255 255 255 / 0.9) inset;
+}
+
+.settings-tabs-scroll {
+  @apply overflow-x-auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.settings-tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.settings-tabs {
+  @apply flex min-w-max items-center gap-1;
+}
+
+.settings-tab {
+  @apply relative isolate flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 text-sm font-medium text-gray-600 outline-none transition-colors duration-200 ease-out dark:text-gray-300;
+}
+
+@media (min-width: 768px) {
+  .settings-tabs {
+    @apply min-w-full;
+  }
+
+  .settings-tab {
+    @apply min-w-0 flex-1 basis-0 overflow-hidden px-2 text-[13px];
+  }
+
+  .settings-tab-icon {
+    @apply h-6 w-6;
+  }
+}
+
+.settings-tab::before {
+  @apply absolute inset-0 -z-10 rounded-xl opacity-0 transition-opacity duration-200;
+  content: "";
+  background: linear-gradient(135deg, rgb(248 250 252 / 0.95), rgb(241 245 249 / 0.8));
+}
+
+.settings-tab:hover::before,
+.settings-tab:focus-visible::before {
+  opacity: 1;
+}
+
+.settings-tab:focus-visible {
+  @apply ring-2 ring-primary-500/40 ring-offset-2 ring-offset-white dark:ring-offset-dark-900;
+}
+
+.settings-tab-active {
+  @apply border-primary-200/80 bg-white text-primary-700 shadow-sm dark:border-primary-400/30 dark:bg-dark-700/95 dark:text-primary-200;
+  box-shadow:
+    0 8px 18px rgb(15 23 42 / 0.08),
+    0 1px 0 rgb(255 255 255 / 0.92) inset;
+}
+
+.settings-tab-active::before {
+  opacity: 0;
+}
+
+.settings-tab-active::after {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.25rem;
+  left: 0.75rem;
+  height: 2px;
+  border-radius: 9999px;
+  content: "";
+  background: linear-gradient(90deg, #14b8a6, #0ea5e9);
+}
+
+.settings-tab-icon {
+  @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors duration-200 dark:text-gray-400;
+}
+
+.settings-tab:hover .settings-tab-icon,
+.settings-tab:focus-visible .settings-tab-icon {
+  @apply text-gray-700 dark:text-gray-200;
+}
+
+.settings-tab-active .settings-tab-icon {
+  @apply bg-primary-50 text-primary-600 dark:bg-primary-400/10 dark:text-primary-300;
+}
+
+.settings-tab-label {
+  @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-none;
+}
+</style>
+
+<style>
+/* Dark-mode overrides for the console tabs shell. Kept in an UNSCOPED block
+   because Vue's scoped-CSS compiler was dropping the `:global(.dark) ...`
+   rules in the production build, leaving inactive tabs unreadable on dark. */
+.dark .settings-tabs-shell {
+  border-color: rgb(51 65 85 / 0.65);
+  background: rgb(15 23 42 / 0.86);
+  box-shadow:
+    0 16px 36px rgb(0 0 0 / 0.28),
+    0 1px 0 rgb(255 255 255 / 0.06) inset;
+}
+
+.dark .settings-tab::before {
+  background: linear-gradient(135deg, rgb(30 41 59 / 0.9), rgb(51 65 85 / 0.62));
+}
+
+.dark .settings-tab-active {
+  box-shadow:
+    0 12px 26px rgb(0 0 0 / 0.22),
+    0 1px 0 rgb(255 255 255 / 0.08) inset;
+}
+</style>

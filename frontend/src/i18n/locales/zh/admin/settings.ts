@@ -40,6 +40,12 @@ export default {
           cyberSessionBlockHint: '开启后,被上游网络安全策略(cyber_policy)拦截的会话将在 TTL 内被本地屏蔽,不再发往上游。仅屏蔽该会话,不影响同 Key 其他会话。',
           cyberSessionBlockTTL: '屏蔽时长(秒)',
         },
+        companyUpgrade: {
+          title: '企业升级',
+          description: '控制用户申请升级为企业账户时的收费策略。默认开启收费。',
+          chargeEnabled: '企业升级收费',
+          chargeEnabledHint: '开启后，提交企业升级申请将按规则冻结资金/收取升级费；关闭后申请不冻结、不扣费（费用快照记为 0）。',
+        },
         affiliate: {
           title: '邀请返利',
           description: '老用户邀请新用户注册，新用户充值后老用户按比例获得返利额度。默认关闭。',

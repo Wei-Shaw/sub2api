@@ -22,6 +22,8 @@ export interface CompanyApplication {
   applicant_user_id: number
   applicant_email?: string
   requested_name: string
+  requested_english_name?: string
+  company_size?: string
   status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
   fee_amount: string
   fee_currency: string

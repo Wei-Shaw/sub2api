@@ -6924,6 +6924,31 @@
           </div>
         </div>
 
+        <!-- Company upgrade (企业升级) feature card -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.companyUpgrade.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.companyUpgrade.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.companyUpgrade.chargeEnabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.companyUpgrade.chargeEnabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.company_upgrade_charge_enabled" />
+            </div>
+          </div>
+        </div>
+
         <!-- Affiliate (邀请返利) feature card -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -10156,6 +10181,7 @@ const form = reactive<SettingsForm>({
   totp_encryption_key_configured: false,
   session_binding_enabled: false,
   step_up_enabled: false,
+  company_upgrade_charge_enabled: false,
   audit_log_retention_days: 180,
   // 可信代理动态拉取（switch-trusted-proxies-dynamic）：admin 面板管理，热更新。
   trusted_proxies_dynamic_enabled: false,
@@ -11924,6 +11950,7 @@ async function saveSettings() {
       totp_enabled: form.totp_enabled,
       session_binding_enabled: form.session_binding_enabled,
       step_up_enabled: form.step_up_enabled,
+      company_upgrade_charge_enabled: form.company_upgrade_charge_enabled,
       // 清空数字框时 v-model.number 会得到空串，后端 int 字段解析空串会 400 拒绝整次保存；
       // 空/非法值回退默认 180（与后端 parseAuditLogRetentionDays("") 语义一致，0 仍表示永久保留）。
       audit_log_retention_days: Number.isFinite(form.audit_log_retention_days)
