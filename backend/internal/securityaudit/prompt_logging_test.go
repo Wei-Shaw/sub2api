@@ -33,7 +33,7 @@ REDACTED)
 	beforeUnknown := output.Len()
 	LogWarn("prompt_audit.typo_event", map[string]any{"status": "failed"REDACTED)
 	require.Equal(t, beforeUnknown, output.Len(), "events outside the stable dictionary must not be emitted")
-	require.Len(t, knownLogEvents, 27)
+	require.Len(t, knownLogEvents, 28)
 
 	_, err := NormalizeBaseURL("https://guard.example.test/path?token=" + canary)
 REDACTED

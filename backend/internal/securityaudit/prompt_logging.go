@@ -10,6 +10,7 @@ const (
 	EventConfigUpdated        = "prompt_audit.config_updated"
 	EventConfigLoaded         = "prompt_guard.config_loaded"
 	EventConfigReloadDegraded = "prompt_guard.config_reload_degraded"
+	EventConfigTokenInvalid   = "prompt_guard.config_token_invalid"
 	EventProbeStarted         = "prompt_audit.endpoint_probe_started"
 	EventProbeFinished        = "prompt_audit.endpoint_probe_finished"
 	EventProbeFailed          = "prompt_audit.endpoint_probe_failed"
@@ -37,7 +38,7 @@ const (
 )
 
 var knownLogEvents = map[string]struct{REDACTED{
-	EventConfigUpdated: {REDACTED, EventConfigLoaded: {REDACTED, EventConfigReloadDegraded: {REDACTED,
+	EventConfigUpdated: {REDACTED, EventConfigLoaded: {REDACTED, EventConfigReloadDegraded: {REDACTED, EventConfigTokenInvalid: {REDACTED,
 	EventProbeStarted: {REDACTED, EventProbeFinished: {REDACTED, EventProbeFailed: {REDACTED,
 	EventJobEnqueued: {REDACTED, EventEnqueueSkipped: {REDACTED, EventEnqueueDropped: {REDACTED,
 	EventAuditStarted: {REDACTED, EventProcessingReclaimed: {REDACTED, EventProcessed: {REDACTED, EventProcessFailed: {REDACTED, EventFindingRecorded: {REDACTED,

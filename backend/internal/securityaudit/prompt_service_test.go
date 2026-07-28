@@ -39,7 +39,7 @@ func TestPromptServiceHasExplicitIdempotentLifecycle(t *testing.T) {
 	config := NewConfigManager(nil, staticSettingRepository{values: map[string]string{
 		SettingKeyPromptAuditConfig: "",
 		SettingKeyRiskControl:       "false",
-REDACTEDREDACTED, nil, prefixEncryptor{REDACTED)
+REDACTEDREDACTED, nil, prefixEncryptor{REDACTED, testTotpKeyConfig())
 	service := NewPromptService(
 		config,
 		NewPostgreSQLRepository(nil),
