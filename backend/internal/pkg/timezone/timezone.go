@@ -116,6 +116,24 @@ func StartOfWeek(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day()-weekday+1, 0, 0, 0, 0, loc)
 }
 
+// EffectiveWeeklyWindowStart returns the active weekly window boundary and
+// whether usage must reset. A valid stored boundary may come from an explicit
+// admin reset, so it advances in seven-day periods instead of snapping back to
+// the next calendar Monday.
+func EffectiveWeeklyWindowStart(start *time.Time, now time.Time) (time.Time, bool) {
+	if start == nil || start.After(now) {
+		return StartOfWeek(now), true
+	}
+
+	const window = 7 * 24 * time.Hour
+	elapsed := now.Sub(*start)
+	if elapsed < window {
+		return *start, false
+	}
+
+	return start.Add((elapsed / window) * window), true
+}
+
 // StartOfMonth returns the start of the month (1st day 00:00:00) for the given time.
 func StartOfMonth(t time.Time) time.Time {
 	loc := Location()

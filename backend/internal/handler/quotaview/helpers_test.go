@@ -127,7 +127,35 @@ func TestNextWeeklyResetTime_FollowsServerTimezone(t *testing.T) {
 	// 北京 2026-05-26（周二）→ 下周一是 2026-06-01
 	now := time.Date(2026, 5, 25, 23, 0, 0, 0, time.UTC) // 北京 5/26 07:00 周二
 	want := time.Date(2026, 6, 1, 0, 0, 0, 0, timezone.Location())
-	if got := nextWeeklyResetTime(now); !got.Equal(want) {
+	if got := nextWeeklyResetTime(nil, now); !got.Equal(want) {
 		t.Errorf("nextWeeklyResetTime = %v, want %v", got, want)
+	}
+}
+
+func TestLazyZeroQuotaForResponse_WeeklyAdminResetSurvivesCalendarBoundary(t *testing.T) {
+	if err := timezone.Init("UTC"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	adminReset := time.Date(2026, 7, 26, 18, 30, 0, 0, time.UTC) // Sunday
+	nextMonday := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)
+	r := service.UserPlatformQuotaRecord{
+		Platform:          "openai",
+		WeeklyUsageUSD:    2.5,
+		WeeklyWindowStart: &adminReset,
+	}
+
+	out := LazyZeroQuotaForResponse(r, nextMonday, false)
+	if got := out["weekly_usage_usd"]; got != 2.5 {
+		t.Fatalf("weekly_usage_usd=%v, want preserved usage 2.5", got)
+	}
+
+	resetsAt, ok := out["weekly_window_resets_at"].(*string)
+	if !ok || resetsAt == nil {
+		t.Fatal("weekly_window_resets_at should be set for an active admin-reset window")
+	}
+	want := adminReset.Add(7 * 24 * time.Hour).Format(time.RFC3339)
+	if *resetsAt != want {
+		t.Fatalf("weekly_window_resets_at=%s, want %s", *resetsAt, want)
 	}
 }

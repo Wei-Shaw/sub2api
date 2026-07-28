@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
@@ -760,6 +761,98 @@ func TestCheckUserPlatformQuotaEligibility_SentinelCrossDay_NoRefresh(t *testing
 	}
 	if cache.getSetCalls() != 0 {
 		t.Errorf("sentinel cross-window must NOT trigger refresh SetCache, got %d calls", cache.getSetCalls())
+	}
+}
+
+func TestNextWeeklyResetFromPreservesAdminBoundary(t *testing.T) {
+	adminReset := time.Date(2026, 7, 26, 18, 30, 0, 0, time.UTC) // Sunday
+	nextMonday := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)
+
+	got := nextWeeklyResetFrom(&adminReset, nextMonday)
+	want := adminReset.Add(7 * 24 * time.Hour)
+	if !got.Equal(want) {
+		t.Fatalf("next reset=%v, want admin boundary + 7d=%v", got, want)
+	}
+}
+
+func TestCheckUserPlatformQuotaEligibility_PreservesAdminWeeklyBoundary(t *testing.T) {
+	previousTZ := timezone.Name()
+	if err := timezone.Init("UTC"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	t.Cleanup(func() { _ = timezone.Init(previousTZ) })
+
+	limit := 5.0
+	adminReset := timezone.StartOfWeek(time.Now()).Add(-time.Nanosecond)
+	wantReset := adminReset.Add(7 * 24 * time.Hour).Format(time.RFC3339)
+
+	for _, tc := range []struct {
+		name  string
+		repo  *fakeQuotaRepo
+		cache *fakeFullCache
+	}{
+		{
+			name: "cache hit",
+			repo: &fakeQuotaRepo{},
+			cache: &fakeFullCache{entry: &UserPlatformQuotaCacheEntry{
+				SchemaVersion:     UserPlatformQuotaCacheSchemaV1,
+				WeeklyUsageUSD:    limit,
+				WeeklyLimitUSD:    &limit,
+				WeeklyWindowStart: &adminReset,
+			}},
+		},
+		{
+			name: "cache miss",
+			repo: &fakeQuotaRepo{rec: &UserPlatformQuotaRecord{
+				WeeklyUsageUSD:    limit,
+				WeeklyLimitUSD:    &limit,
+				WeeklyWindowStart: &adminReset,
+			}},
+			cache: &fakeFullCache{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newServiceForPreflight(t, tc.repo, tc.cache)
+			err := svc.checkUserPlatformQuotaEligibility(context.Background(), 1, "openai")
+			if !errors.Is(err, ErrUserPlatformWeeklyQuotaExhausted) {
+				t.Fatalf("expected weekly quota rejection, got %v", err)
+			}
+			if got := infraerrors.FromError(err).Metadata["window_resets_at"]; got != wantReset {
+				t.Fatalf("window_resets_at=%q, want %q", got, wantReset)
+			}
+			entry := tc.cache.getEntry()
+			if entry == nil || entry.WeeklyWindowStart == nil || !entry.WeeklyWindowStart.Equal(adminReset) {
+				t.Fatalf("cache must preserve admin weekly start %v, got %+v", adminReset, entry)
+			}
+		})
+	}
+}
+
+func TestCheckUserPlatformQuotaEligibility_AdvancesExpiredAdminWeeklyBoundary(t *testing.T) {
+	limit := 5.0
+	now := time.Now()
+	adminReset := now.Add(-8 * 24 * time.Hour)
+	wantStart := adminReset.Add(7 * 24 * time.Hour)
+	dayStart := timezone.StartOfDay(now)
+	cache := &fakeFullCache{entry: &UserPlatformQuotaCacheEntry{
+		SchemaVersion:      UserPlatformQuotaCacheSchemaV1,
+		WeeklyUsageUSD:     limit,
+		WeeklyLimitUSD:     &limit,
+		DailyWindowStart:   &dayStart,
+		WeeklyWindowStart:  &adminReset,
+		MonthlyWindowStart: &now,
+	}}
+	svc := newServiceForPreflight(t, &fakeQuotaRepo{}, cache)
+
+	if err := svc.checkUserPlatformQuotaEligibility(context.Background(), 1, "openai"); err != nil {
+		t.Fatalf("expired weekly usage should reset before eligibility check, got %v", err)
+	}
+	entry := cache.getEntry()
+	if entry == nil || entry.WeeklyWindowStart == nil || !entry.WeeklyWindowStart.Equal(wantStart) {
+		t.Fatalf("weekly start=%v, want advanced start %v", entry.WeeklyWindowStart, wantStart)
+	}
+	if entry.WeeklyUsageUSD != 0 {
+		t.Fatalf("weekly usage=%v, want 0 after reset", entry.WeeklyUsageUSD)
 	}
 }
 

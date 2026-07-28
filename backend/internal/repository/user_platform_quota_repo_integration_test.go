@@ -200,6 +200,28 @@ func TestUserPlatformQuotaRepository_IncrementUsageWithReset_WeeklyReset(t *test
 	require.InDelta(t, 7.0, rec.MonthlyUsageUSD, 1e-9, "monthly accumulates (same month)")
 }
 
+func TestUserPlatformQuotaRepository_IncrementUsageWithReset_PreservesAdminWeeklyReset(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	userID := mustCreateUserForQuota(t, client)
+	repo := NewUserPlatformQuotaRepository(client)
+
+	adminReset := time.Date(2026, 7, 26, 18, 30, 0, 0, time.UTC) // Sunday
+	nextMonday := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)
+
+	require.NoError(t, repo.IncrementUsageWithReset(ctx, userID, "openai", 5.0, adminReset.Add(-time.Hour)))
+	require.NoError(t, repo.ResetExpiredWindow(ctx, userID, "openai", "weekly", adminReset))
+	require.NoError(t, repo.IncrementUsageWithReset(ctx, userID, "openai", 2.0, nextMonday))
+
+	rec, err := repo.GetByUserPlatform(ctx, userID, "openai")
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+	require.InDelta(t, 2.0, rec.WeeklyUsageUSD, 1e-9, "usage after admin reset")
+	require.NotNil(t, rec.WeeklyWindowStart)
+	require.True(t, rec.WeeklyWindowStart.Equal(adminReset),
+		"billing must preserve admin reset start %v, got %v", adminReset, rec.WeeklyWindowStart)
+}
+
 func TestUserPlatformQuotaRepository_ResetExpiredWindow(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)

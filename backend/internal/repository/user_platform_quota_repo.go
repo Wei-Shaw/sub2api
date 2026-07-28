@@ -169,8 +169,8 @@ func (r *userPlatformQuotaRepository) ListByUser(ctx context.Context, userID int
 
 // IncrementUsageWithReset 原子累加 cost 到 (user, platform) 三个窗口的 *_usage_usd。
 // 行为：
-//   - 若记录存在：在事务内 SELECT FOR UPDATE，按 (prev_window_start vs current_window_start)
-//     判断是否需要重置（不同 = 重置为 cost；相同 = 累加 cost）
+//   - 若记录存在：在事务内 SELECT FOR UPDATE；日窗口按自然日、周窗口从已保存起点按 7 天、
+//     月窗口从已保存起点按 30 天判断是否需要重置
 //   - 若记录不存在（fail-open create 分支）：插入新记录，**limit 字段保留 nil（无限制）**
 //     —— 这是预期行为：billing 链路不能因 quota 表缺失而阻断请求，未注册路径
 //     的用户 quota 默认放行，由调度层指标观测 + 后台对账补建 limit
@@ -212,7 +212,11 @@ func (r *userPlatformQuotaRepository) IncrementUsageWithReset(ctx context.Contex
 		}
 
 		newDaily := maybeReset(existing.DailyUsageUsd, existing.DailyWindowStart, timezone.StartOfDay(now), cost)
-		newWeekly := maybeReset(existing.WeeklyUsageUsd, existing.WeeklyWindowStart, timezone.StartOfWeek(now), cost)
+		weeklyStart, weeklyNeedsReset := timezone.EffectiveWeeklyWindowStart(existing.WeeklyWindowStart, now)
+		newWeekly := existing.WeeklyUsageUsd + cost
+		if weeklyNeedsReset {
+			newWeekly = cost
+		}
 		// 30 天滚动月度窗口：过期时重置为 cost 并以 now 为新起始，否则累加保留原起始
 		newMonthly, newMonthlyStart := monthlyMaybeReset(existing.MonthlyUsageUsd, existing.MonthlyWindowStart, cost, now)
 
@@ -221,7 +225,7 @@ func (r *userPlatformQuotaRepository) IncrementUsageWithReset(ctx context.Contex
 			SetWeeklyUsageUsd(newWeekly).
 			SetMonthlyUsageUsd(newMonthly).
 			SetDailyWindowStart(timezone.StartOfDay(now)).
-			SetWeeklyWindowStart(timezone.StartOfWeek(now)).
+			SetWeeklyWindowStart(weeklyStart).
 			SetMonthlyWindowStart(newMonthlyStart). // 30 天滚动：仅过期时更新起始
 			Save(txCtx)
 		return e
