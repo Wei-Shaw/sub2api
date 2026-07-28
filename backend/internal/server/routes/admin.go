@@ -33,6 +33,9 @@ func RegisterAdminRoutes(
 		// 仪表盘
 		registerDashboardRoutes(admin, h)
 
+		// 内置 AI Agent
+		registerAIAgentRoutes(admin, h, stepUpAuth)
+
 		// 用户管理
 		registerUserManagementRoutes(admin, h)
 
@@ -119,6 +122,33 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerAIAgentRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
+	agent := admin.Group("/ai-agent")
+	{
+		agent.GET("/config", h.Admin.AIAgent.GetConfig)
+		agent.PUT("/config", h.Admin.AIAgent.UpdateConfig)
+		agent.GET("/rollback-capabilities", h.Admin.AIAgent.RollbackCapabilities)
+		agent.GET("/conversations", h.Admin.AIAgent.ListConversations)
+		agent.DELETE("/conversations/:conversationID", h.Admin.AIAgent.DeleteConversation)
+		agent.GET("/session", h.Admin.AIAgent.GetSession)
+		agent.DELETE("/session", h.Admin.AIAgent.ClearSession)
+		agent.POST("/stop", h.Admin.AIAgent.Stop)
+		agent.DELETE("/actions/:id", h.Admin.AIAgent.Cancel)
+
+		enabled := agent.Group("")
+		enabled.Use(h.Admin.AIAgent.RequireEnabled)
+		enabled.GET("/models", h.Admin.AIAgent.ListModels)
+		enabled.POST("/conversations", h.Admin.AIAgent.CreateConversation)
+		enabled.POST("/chat", h.Admin.AIAgent.Chat)
+		enabled.POST("/actions/:id/confirm", h.Admin.AIAgent.Confirm)
+		enabled.POST("/actions/:id/confirm-sensitive", gin.HandlerFunc(stepUpAuth), h.Admin.AIAgent.ConfirmSensitive)
+		enabled.GET("/rollbacks/:id/preview", h.Admin.AIAgent.PreviewRollback)
+		enabled.POST("/rollbacks/:id", h.Admin.AIAgent.Rollback)
+		enabled.POST("/rollbacks/:id/confirm-sensitive", gin.HandlerFunc(stepUpAuth), h.Admin.AIAgent.RollbackSensitive)
+		enabled.POST("/rollbacks/:id/assist", h.Admin.AIAgent.AssistRollback)
 	}
 }
 

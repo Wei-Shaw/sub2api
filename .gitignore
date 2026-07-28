@@ -136,6 +136,7 @@ docs/*
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/ASYNC_IMAGE_TASKS.md
+!docs/AI_AGENT_OPERATIONAL_LIMITS.md
 !docs/legal/
 !docs/legal/*.md
 .serena/
@@ -143,3 +144,4 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+sub2api_tgbot/

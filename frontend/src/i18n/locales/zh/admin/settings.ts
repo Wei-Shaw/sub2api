@@ -14,6 +14,16 @@ export default {
         payment: '支付设置',
       },
       features: {
+        aiAgent: {
+          title: 'AI Agent',
+          description: '使用已审计的管理接口，通过自然语言查询和管理站点。',
+          configureLink: '前往 AI Agent 配置模型与执行模式',
+          enabled: '启用 AI Agent',
+          enabledHint: '默认关闭。开启并完成模型配置后才显示管理侧边栏入口；再次关闭会停止运行中的任务并拒绝新的 Agent 操作，历史记录保留。',
+          loadFailed: '加载 AI Agent 开关失败',
+          saveFailed: '保存 AI Agent 开关失败',
+          saved: 'AI Agent 开关已保存',
+        },
         channelMonitor: {
           title: '渠道监控',
           description: '定期对配置的渠道发起健康检查，向用户展示可用性与延迟。关闭后调度器停止扫描，用户端列表为空。',

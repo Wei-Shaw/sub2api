@@ -197,6 +197,8 @@ import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import aiAgentAPI from '@/api/admin/aiAgent'
+import { AI_AGENT_AVAILABILITY_EVENT, cacheAIAgentEnabled, readCachedAIAgentEnabled } from '@/utils/agentAvailability'
 
 interface NavItem {
   path: string
@@ -249,6 +251,7 @@ const mobileOpen = computed(() => appStore.mobileOpen)
 const isAdmin = computed(() => authStore.isAdmin)
 const sidebarNavRef = ref<HTMLElement | null>(null)
 const isDark = ref(document.documentElement.classList.contains('dark'))
+const aiAgentEnabled = ref(readCachedAIAgentEnabled())
 
 const homePath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
 
@@ -272,6 +275,21 @@ const DashboardIcon = {
           'stroke-linecap': 'round',
           'stroke-linejoin': 'round',
           d: 'M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z'
+        })
+      ]
+    )
+}
+
+const AIAgentIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z'
         })
       ]
     )
@@ -753,6 +771,7 @@ const customMenuItemsForAdmin = computed(() => {
 const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
+    { path: '/admin/ai-agent', label: t('nav.aiAgent'), icon: AIAgentIcon, featureFlag: () => aiAgentEnabled.value },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
@@ -922,18 +941,35 @@ if (
   document.documentElement.classList.add('dark')
 }
 
+async function refreshAIAgentAvailability() {
+  if (!isAdmin.value) return
+  try {
+    aiAgentEnabled.value = (await aiAgentAPI.getConfig()).enabled
+    cacheAIAgentEnabled(aiAgentEnabled.value)
+  } catch {
+    // Keep the synchronous cached value while the backend is temporarily unavailable.
+  }
+}
+
+function handleAIAgentAvailability(event: Event) {
+  aiAgentEnabled.value = (event as CustomEvent<{ enabled: boolean }>).detail.enabled
+  cacheAIAgentEnabled(aiAgentEnabled.value)
+}
+
 // Fetch admin settings (for feature-gated nav items like Ops).
 watch(
   isAdmin,
   (v) => {
     if (v) {
       adminSettingsStore.fetch()
+      void refreshAIAgentAvailability()
     }
   },
   { immediate: true }
 )
 
 onMounted(() => {
+  window.addEventListener(AI_AGENT_AVAILABILITY_EVENT, handleAIAgentAvailability)
   void refreshBatchImageAccess()
   if (isAdmin.value) {
     adminSettingsStore.fetch()
@@ -949,6 +985,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener(AI_AGENT_AVAILABILITY_EVENT, handleAIAgentAvailability)
   if (sidebarNavRef.value) {
     appStore.sidebarScrollTop = sidebarNavRef.value.scrollTop
   }

@@ -151,6 +151,7 @@ export default {
   // Navigation
   nav: {
     dashboard: '仪表盘',
+    aiAgent: 'AI Agent',
     announcements: '公告',
     apiKeys: 'API 密钥',
     batchImage: '批量生图',

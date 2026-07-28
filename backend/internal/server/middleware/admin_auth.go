@@ -17,8 +17,26 @@ func NewAdminAuthMiddleware(
 	userService *service.UserService,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
+	agentInternalAuth *service.AgentInternalAuth,
 ) AdminAuthMiddleware {
-	return AdminAuthMiddleware(adminAuth(authService, userService, settingService, auditService))
+	base := adminAuth(authService, userService, settingService, auditService)
+	return AdminAuthMiddleware(func(c *gin.Context) {
+		if c.GetHeader(service.AgentInternalAuthHeader) != "" {
+			identity, err := agentInternalAuth.Validate(c.Request)
+			if err != nil {
+				AbortWithError(c, 401, "INVALID_AGENT_INTERNAL_AUTH", "Invalid internal Agent authorization")
+				return
+			}
+			c.Set(string(ContextKeyUser), AuthSubject{UserID: identity.UserID, Concurrency: identity.Concurrency})
+			c.Set(string(ContextKeyUserRole), service.RoleAdmin)
+			c.Set(ContextKeyAuthEmail, identity.Email)
+			c.Set(ContextKeySessionID, identity.SessionID)
+			c.Set("auth_method", "ai_agent")
+			c.Next()
+			return
+		}
+		base(c)
+	})
 }
 
 // adminAuth 管理员认证中间件实现

@@ -14,6 +14,16 @@ export default {
         payment: 'Payment',
       },
       features: {
+        aiAgent: {
+          title: 'AI Agent',
+          description: 'Query and manage the site in natural language through audited admin operations.',
+          configureLink: 'Configure the AI Agent model and execution mode',
+          enabled: 'Enable AI Agent',
+          enabledHint: 'Disabled by default. Enable it after configuring a model to show the admin sidebar entry. Disabling it again stops running work, rejects new Agent operations, and retains history.',
+          loadFailed: 'Failed to load the AI Agent switch',
+          saveFailed: 'Failed to save the AI Agent switch',
+          saved: 'AI Agent switch saved',
+        },
         channelMonitor: {
           title: 'Channel Monitor',
           description: 'Periodically probe configured channels and surface availability / latency to users. Turning it off stops the scheduler and returns an empty list on the user page.',

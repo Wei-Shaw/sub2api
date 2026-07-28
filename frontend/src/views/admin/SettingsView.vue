@@ -6336,6 +6336,36 @@
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.aiAgent.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.aiAgent.description') }}
+            </p>
+            <p v-if="aiAgentEnabled" class="mt-1.5 text-xs">
+              <router-link to="/admin/ai-agent" class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400">
+                {{ t('admin.settings.features.aiAgent.configureLink') }}
+                <span aria-hidden="true">→</span>
+              </router-link>
+            </p>
+          </div>
+          <div class="p-6">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.aiAgent.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.aiAgent.enabledHint') }}
+                </p>
+              </div>
+              <Toggle :model-value="aiAgentEnabled" :disabled="aiAgentAvailabilityLoading || aiAgentAvailabilitySaving" @update:model-value="updateAIAgentAvailability" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.channelMonitor.title') }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -7944,6 +7974,7 @@
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
+import aiAgentAPI from "@/api/admin/aiAgent";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
   buildAuthSourceDefaultsState,
@@ -8000,6 +8031,7 @@ import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSi
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
 import { useAppStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
+import { announceAIAgentEnabled, cacheAIAgentEnabled } from "@/utils/agentAvailability";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
 import {
   isRegistrationEmailSuffixDomainValid,
@@ -8020,6 +8052,9 @@ const appStore = useAppStore();
 const settingsStepUp = useStepUp();
 const adminSettingsStore = useAdminSettingsStore();
 const isZhLocale = computed(() => locale.value.startsWith("zh"));
+const aiAgentEnabled = ref(true);
+const aiAgentAvailabilityLoading = ref(true);
+const aiAgentAvailabilitySaving = ref(false);
 
 function localText(zh: string, en: string): string {
   return isZhLocale.value ? zh : en;
@@ -11535,8 +11570,34 @@ async function handleDeleteProvider() {
   }
 }
 
+async function loadAIAgentAvailability(): Promise<void> {
+  aiAgentAvailabilityLoading.value = true;
+  try {
+    aiAgentEnabled.value = (await aiAgentAPI.getConfig()).enabled;
+    cacheAIAgentEnabled(aiAgentEnabled.value);
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("admin.settings.features.aiAgent.loadFailed")));
+  } finally {
+    aiAgentAvailabilityLoading.value = false;
+  }
+}
+
+async function updateAIAgentAvailability(enabled: boolean): Promise<void> {
+  aiAgentAvailabilitySaving.value = true;
+  try {
+    aiAgentEnabled.value = (await aiAgentAPI.updateConfig({ enabled })).enabled;
+    announceAIAgentEnabled(aiAgentEnabled.value);
+    appStore.showSuccess(t("admin.settings.features.aiAgent.saved"));
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("admin.settings.features.aiAgent.saveFailed")));
+  } finally {
+    aiAgentAvailabilitySaving.value = false;
+  }
+}
+
 onMounted(() => {
   loadSettings();
+  loadAIAgentAvailability();
   loadSubscriptionGroups();
   loadAdminApiKey();
   loadUpstreamBillingProbeSettings();

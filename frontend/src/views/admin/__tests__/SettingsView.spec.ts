@@ -30,6 +30,8 @@ const {
   deleteProvider,
   fetchPublicSettings,
   adminSettingsFetch,
+  getAIAgentConfig,
+  updateAIAgentConfig,
   showError,
   showSuccess,
 } = vi.hoisted(() => ({
@@ -71,11 +73,20 @@ const {
   deleteProvider: vi.fn(),
   fetchPublicSettings: vi.fn(),
   adminSettingsFetch: vi.fn(),
+  getAIAgentConfig: vi.fn().mockResolvedValue({ enabled: true }),
+  updateAIAgentConfig: vi.fn().mockImplementation(async (input) => ({ enabled: input.enabled })),
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }));
 
 const localeRef = vi.hoisted(() => ({ value: "zh-CN" }));
+
+vi.mock("@/api/admin/aiAgent", () => ({
+  default: {
+    getConfig: getAIAgentConfig,
+    updateConfig: updateAIAgentConfig,
+  },
+}));
 
 vi.mock("@/api", () => ({
   adminAPI: {

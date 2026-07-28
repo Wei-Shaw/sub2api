@@ -1235,7 +1235,7 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 	// 如果是订阅类型，验证必须有 GroupID
 	if input.Type == RedeemTypeSubscription {
 		if input.GroupID == nil {
-			return nil, errors.New("group_id is required for subscription type")
+			return nil, infraerrors.BadRequest("REDEEM_CODE_GROUP_REQUIRED", "group_id is required for subscription type")
 		}
 		// 验证分组存在且为订阅类型
 		group, err := s.groupRepo.GetByID(ctx, *input.GroupID)
@@ -1243,7 +1243,7 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 			return nil, fmt.Errorf("group not found: %w", err)
 		}
 		if !group.IsSubscriptionType() {
-			return nil, errors.New("group must be subscription type")
+			return nil, infraerrors.BadRequest("REDEEM_CODE_GROUP_NOT_SUBSCRIPTION", "group must have subscription_type=subscription")
 		}
 	}
 

@@ -1,4 +1,4 @@
-.PHONY: build generate test test-unit test-integration test-e2e
+.PHONY: build generate test test-unit test-integration test-agent-destructive test-e2e
 
 VERSION ?= $(shell ./scripts/resolve-version.sh)
 LDFLAGS ?= -s -w -X main.Version=$(VERSION)
@@ -19,6 +19,9 @@ test-unit:
 
 test-integration:
 	go test -tags=integration ./...
+
+test-agent-destructive:
+	go test -tags=integration ./internal/repository -run '^TestAIAgentEncryptedPersistenceUsesIsolatedPostgresAndRedis$$' -count=1
 
 test-e2e:
 	./scripts/e2e-test.sh
