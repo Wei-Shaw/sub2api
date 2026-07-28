@@ -12,23 +12,34 @@ import (
 
 type balanceUserRepoStub struct {
 	*userRepoStub
-	updateErr error
-	updated   []*User
+	adjustErr error
+	// changes 记录每次原子余额变更，顺序与调用顺序一致。
+	changes []BalanceChange
 REDACTED
 
-func (s *balanceUserRepoStub) Update(ctx context.Context, user *User) error {
-	if s.updateErr != nil {
-		return s.updateErr
+func (s *balanceUserRepoStub) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	return s.apply(func(current float64) float64 { return current + delta REDACTED)
 REDACTED
-	if user == nil {
-		return nil
+
+func (s *balanceUserRepoStub) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	return s.apply(func(float64) float64 { return value REDACTED)
 REDACTED
-	clone := *user
-	s.updated = append(s.updated, &clone)
-	if s.userRepoStub != nil {
-		s.userRepoStub.user = &clone
+
+func (s *balanceUserRepoStub) apply(next func(current float64) float64) (BalanceChange, error) {
+	if s.adjustErr != nil {
+		return BalanceChange{REDACTED, s.adjustErr
 REDACTED
-	return nil
+	if s.userRepoStub == nil || s.userRepoStub.user == nil {
+		return BalanceChange{REDACTED, ErrUserNotFound
+REDACTED
+	change := BalanceChange{Old: s.userRepoStub.user.BalanceREDACTED
+	change.New = next(change.Old)
+	if change.New < 0 {
+		return change, ErrBalanceNegative
+REDACTED
+	s.userRepoStub.user.Balance = change.New
+	s.changes = append(s.changes, change)
+	return change, nil
 REDACTED
 
 type balanceRedeemRepoStub struct {
@@ -85,6 +96,63 @@ REDACTED
 
 func (s *authCacheInvalidatorStub) InvalidateAuthCacheByGroupID(ctx context.Context, groupID int64) {
 	s.groupIDs = append(s.groupIDs, groupID)
+REDACTED
+
+// 管理员调账必须走原子的 AdjustBalance/SetBalance，而不是"读余额→算新值→整行写回"，
+// 后者会把并发的计费扣款覆盖掉。userRepoStub.Update 对未预期的调用会 panic，
+// 因此这里同时证明它没被走到。
+func TestAdminService_UpdateUserBalance_UsesAtomicPrimitives(t *testing.T) {
+	tests := []struct {
+		name      string
+		operation string
+		amount    float64
+		want      BalanceChange
+REDACTED{
+		{name: "add", operation: "add", amount: 5, want: BalanceChange{Old: 10, New: 15REDACTEDREDACTED,
+		{name: "subtract", operation: "subtract", amount: 4, want: BalanceChange{Old: 10, New: 6REDACTEDREDACTED,
+		{name: "set", operation: "set", amount: 2, want: BalanceChange{Old: 10, New: 2REDACTEDREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &balanceUserRepoStub{userRepoStub: &userRepoStub{user: &User{ID: 7, Balance: 10REDACTEDREDACTEDREDACTED
+			svc := &adminServiceImpl{
+				userRepo:       repo,
+				redeemCodeRepo: &balanceRedeemRepoStub{redeemRepoStub: &redeemRepoStub{REDACTEDREDACTED,
+		REDACTED
+
+			user, err := svc.UpdateUserBalance(context.Background(), 7, tt.amount, tt.operation, "")
+		REDACTED
+			require.Equal(t, []BalanceChange{tt.wantREDACTED, repo.changes)
+			require.Equal(t, tt.want.New, user.Balance)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestAdminService_UpdateUserBalance_RejectsNegativeResult(t *testing.T) {
+	repo := &balanceUserRepoStub{userRepoStub: &userRepoStub{user: &User{ID: 7, Balance: 3REDACTEDREDACTEDREDACTED
+	svc := &adminServiceImpl{
+		userRepo:       repo,
+		redeemCodeRepo: &balanceRedeemRepoStub{redeemRepoStub: &redeemRepoStub{REDACTEDREDACTED,
+REDACTED
+
+	_, err := svc.UpdateUserBalance(context.Background(), 7, 4, "subtract", "")
+REDACTED
+	require.Contains(t, err.Error(), "balance cannot be negative")
+	require.Empty(t, repo.changes, "refused adjustment must not be applied")
+	require.Equal(t, 3.0, repo.userRepoStub.user.Balance)
+REDACTED
+
+func TestAdminService_UpdateUserBalance_RejectsUnknownOperation(t *testing.T) {
+	repo := &balanceUserRepoStub{userRepoStub: &userRepoStub{user: &User{ID: 7, Balance: 10REDACTEDREDACTEDREDACTED
+	svc := &adminServiceImpl{
+		userRepo:       repo,
+		redeemCodeRepo: &balanceRedeemRepoStub{redeemRepoStub: &redeemRepoStub{REDACTEDREDACTED,
+REDACTED
+
+	_, err := svc.UpdateUserBalance(context.Background(), 7, 1, "multiply", "")
+REDACTED
+	require.Empty(t, repo.changes)
 REDACTED
 
 func TestAdminService_UpdateUserBalance_InvalidatesAuthCache(t *testing.T) {

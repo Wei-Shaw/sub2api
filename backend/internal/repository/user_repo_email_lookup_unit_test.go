@@ -118,7 +118,7 @@ REDACTED
 	require.NoError(t, repo.Create(ctx, second))
 
 	second.Email = " existing@example.com "
-	err := repo.Update(ctx, second)
+	err := repo.Update(ctx, second, service.UserUpdateFields{Email: trueREDACTED)
 	require.ErrorIs(t, err, service.ErrEmailExists)
 REDACTED
 

@@ -16,7 +16,7 @@ type rpmUserRepoStub struct {
 	lastUpdated *User
 REDACTED
 
-func (s *rpmUserRepoStub) Update(_ context.Context, user *User) error {
+func (s *rpmUserRepoStub) Update(_ context.Context, user *User, _ UserUpdateFields) error {
 	if user == nil {
 		return nil
 REDACTED

@@ -46,7 +46,7 @@ REDACTED
 	return s.getByKeyForAuth(ctx, key)
 REDACTED
 
-func (s *authRepoStub) Update(ctx context.Context, key *APIKey) error {
+func (s *authRepoStub) Update(ctx context.Context, key *APIKey, _ APIKeyUpdateFields) error {
 	panic("unexpected Update call")
 REDACTED
 

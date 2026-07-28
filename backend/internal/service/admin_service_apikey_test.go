@@ -45,7 +45,9 @@ REDACTED
 func (s *userRepoStubForGroupUpdate) GetFirstAdmin(context.Context) (*User, error) {
 	panic("unexpected")
 REDACTED
-func (s *userRepoStubForGroupUpdate) Update(context.Context, *User) error { panic("unexpected") REDACTED
+func (s *userRepoStubForGroupUpdate) Update(context.Context, *User, UserUpdateFields) error {
+	panic("unexpected")
+REDACTED
 func (s *userRepoStubForGroupUpdate) Delete(context.Context, int64) error { panic("unexpected") REDACTED
 func (s *userRepoStubForGroupUpdate) GetUserAvatar(context.Context, int64) (*UserAvatar, error) {
 	panic("unexpected")
@@ -67,6 +69,14 @@ func (s *userRepoStubForGroupUpdate) UpdateBalance(context.Context, int64, float
 REDACTED
 func (s *userRepoStubForGroupUpdate) DeductBalance(context.Context, int64, float64) error {
 	panic("unexpected")
+REDACTED
+
+func (s *userRepoStubForGroupUpdate) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+REDACTED
+
+func (s *userRepoStubForGroupUpdate) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
 REDACTED
 func (s *userRepoStubForGroupUpdate) UpdateConcurrency(context.Context, int64, int) error {
 	panic("unexpected")
@@ -134,7 +144,7 @@ REDACTED
 	clone := *s.key
 	return &clone, nil
 REDACTED
-func (s *apiKeyRepoStubForGroupUpdate) Update(_ context.Context, key *APIKey) error {
+func (s *apiKeyRepoStubForGroupUpdate) Update(_ context.Context, key *APIKey, _ APIKeyUpdateFields) error {
 	if s.updateErr != nil {
 		return s.updateErr
 REDACTED

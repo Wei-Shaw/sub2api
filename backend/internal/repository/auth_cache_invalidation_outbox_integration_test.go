@@ -77,8 +77,8 @@ REDACTED
 	userRepo := NewUserRepository(integrationEntClient, integrationDB)
 	loadedUser, err := userRepo.GetByID(ctx, user.ID)
 REDACTED
-	loadedUser.Balance += 10
-	require.NoError(t, userRepo.Update(ctx, loadedUser))
+	_, err = userRepo.AdjustBalance(ctx, loadedUser.ID, 10)
+REDACTED
 	require.Zero(t, count(), "balance update with unchanged allowed groups must not enqueue")
 
 	_, err = integrationDB.ExecContext(ctx, "UPDATE users SET status = 'disabled' WHERE id = $1", user.ID)

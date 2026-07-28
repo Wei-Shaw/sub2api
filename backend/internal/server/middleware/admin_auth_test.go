@@ -150,7 +150,7 @@ func (s *stubUserRepo) GetFirstAdmin(ctx context.Context) (*service.User, error)
 	panic("unexpected GetFirstAdmin call")
 REDACTED
 
-func (s *stubUserRepo) Update(ctx context.Context, user *service.User) error {
+func (s *stubUserRepo) Update(ctx context.Context, user *service.User, fields service.UserUpdateFields) error {
 	panic("unexpected Update call")
 REDACTED
 
@@ -196,6 +196,14 @@ REDACTED
 
 func (s *stubUserRepo) DeductBalance(ctx context.Context, id int64, amount float64) error {
 	panic("unexpected DeductBalance call")
+REDACTED
+
+func (s *stubUserRepo) AdjustBalance(ctx context.Context, id int64, delta float64) (service.BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+REDACTED
+
+func (s *stubUserRepo) SetBalance(ctx context.Context, id int64, value float64) (service.BalanceChange, error) {
+	panic("unexpected SetBalance call")
 REDACTED
 
 func (s *stubUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
