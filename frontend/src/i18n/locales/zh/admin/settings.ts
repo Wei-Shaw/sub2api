@@ -135,6 +135,24 @@ export default {
         auditRetention: '操作日志保留天数',
         auditRetentionHint: '超过该天数的操作日志将被自动清理；填 0 表示永久保留（仅支持手动清空）。'
       },
+      panelRateLimit: {
+        title: '面板接口限流',
+        description: '限制面板 API 的请求频率，防止高频刷接口（如用量统计、仪表盘查询）打爆数据库',
+        proxySafeNote: '登录后的接口按「用户账号」维度计数，与来源 IP 无关——反向代理、NAT 共享出口等场景不会被误拦截；公开接口按真实客户端 IP 计数，回环与内网地址（反代内部转发地址）会自动跳过。',
+        enabled: '启用面板接口限流',
+        enabledHint: '对登录后的面板接口按账号限流；超出阈值返回 429，窗口重置后自动恢复。',
+        userRpm: '每账号请求上限',
+        userRpmHint: '单个账号每分钟允许的面板 API 请求总数，正常页面操作远达不到该阈值；0 表示不限制。',
+        heavyRpm: '重查询请求上限',
+        heavyRpmHint: '单个账号每分钟允许的用量/仪表盘等聚合统计查询次数（这类请求对数据库压力最大）；0 表示不限制。',
+        publicIpRpm: '公开接口每 IP 上限',
+        publicIpRpmHint: '无需登录的公开接口（如站点公开设置）每个真实客户端 IP 每分钟的请求上限；0 表示不限制。',
+        perMinute: '次/分钟',
+        exemptAdmin: '管理员豁免',
+        exemptAdminHint: '开启后管理员账号不受面板限流约束，避免批量运维操作被误拦。',
+        saved: '面板接口限流配置已保存',
+        saveFailed: '保存面板接口限流配置失败'
+      },
       turnstile: {
         title: 'Cloudflare Turnstile',
         description: '登录和注册的机器人防护',

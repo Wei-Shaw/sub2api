@@ -147,6 +147,40 @@ func NewRateLimiter(redisClient *redis.Client) *RateLimiter {
 	}
 }
 
+// AllowResult 单次固定窗口限流判定结果。
+type AllowResult struct {
+	// Allowed 是否放行
+	Allowed bool
+	// Count 当前窗口内累计请求数（含本次）
+	Count int64
+	// RetryAfter 超限时距窗口重置的剩余时间（尽力而为；PTTL 不可用时回退为完整窗口）
+	RetryAfter time.Duration
+}
+
+// Allow 对给定 key（不含 "rate_limit:" 前缀）执行一次固定窗口计数判定。
+// 供需要自定义限流维度（如按用户 ID）的调用方使用；Redis 错误由调用方决定 fail-open/close。
+func (r *RateLimiter) Allow(ctx context.Context, key string, limit int, window time.Duration) (AllowResult, error) {
+	redisKey := r.prefix + key
+	windowMillis := windowTTLMillis(window)
+
+	count, repaired, err := rateLimitRun(ctx, r.redis, redisKey, windowMillis)
+	if err != nil {
+		return AllowResult{}, err
+	}
+	if repaired {
+		log.Printf("[RateLimit] ttl repaired: key=%s window_ms=%d", redisKey, windowMillis)
+	}
+
+	result := AllowResult{Allowed: count <= int64(limit), Count: count}
+	if !result.Allowed {
+		result.RetryAfter = window
+		if ttl, ttlErr := r.redis.PTTL(ctx, redisKey).Result(); ttlErr == nil && ttl > 0 {
+			result.RetryAfter = ttl
+		}
+	}
+	return result, nil
+}
+
 // Limit 返回速率限制中间件
 // key: 限制类型标识
 // limit: 时间窗口内最大请求数
@@ -167,37 +201,28 @@ func (r *RateLimiter) LimitWithOptions(key string, limit int, window time.Durati
 		if prefix == "" {
 			log.Printf("[RateLimit] client IP unavailable: key=%s mode=%s", key, failureModeLabel(failureMode))
 			if failureMode == RateLimitFailClose {
-				abortRateLimit(c)
+				abortRateLimit(c, window)
 				return
 			}
 			c.Next()
 			return
 		}
 		redisKey := r.prefix + key + ":" + prefix
-
-		ctx := c.Request.Context()
-
-		windowMillis := windowTTLMillis(window)
-
-		// 使用 Lua 脚本原子操作增加计数并设置过期
-		count, repaired, err := rateLimitRun(ctx, r.redis, redisKey, windowMillis)
+		result, err := r.Allow(c.Request.Context(), key+":"+prefix, limit, window)
 		if err != nil {
 			log.Printf("[RateLimit] redis error: key=%s mode=%s err=%v", redisKey, failureModeLabel(failureMode), err)
 			if failureMode == RateLimitFailClose {
-				abortRateLimit(c)
+				abortRateLimit(c, window)
 				return
 			}
 			// Redis 错误时放行，避免影响正常服务
 			c.Next()
 			return
 		}
-		if repaired {
-			log.Printf("[RateLimit] ttl repaired: key=%s window_ms=%d", redisKey, windowMillis)
-		}
 
 		// 超过限制
-		if count > int64(limit) {
-			abortRateLimit(c)
+		if !result.Allowed {
+			abortRateLimit(c, result.RetryAfter)
 			return
 		}
 
@@ -241,7 +266,7 @@ func (r *RateLimiter) limitSliding(c *gin.Context, redisKeySuffix string, limit 
 		return
 	}
 	if !allowed {
-		abortRateLimit(c)
+		abortRateLimit(c, window)
 		return
 	}
 	c.Next()
@@ -310,7 +335,7 @@ func (r *RateLimiter) LimitSuccessfulWithOptions(key string, limit int, window t
 			return
 		}
 		if !allowed {
-			abortRateLimit(c)
+			abortRateLimit(c, window)
 			return
 		}
 
@@ -342,7 +367,7 @@ func normalizeFailureMode(mode RateLimitFailureMode) RateLimitFailureMode {
 func handleLimiterFailure(c *gin.Context, key string, mode RateLimitFailureMode, err error) {
 	log.Printf("[RateLimit] redis error: key=%s mode=%s err=%v", key, failureModeLabel(mode), err)
 	if mode == RateLimitFailClose {
-		abortRateLimit(c)
+		abortRateLimit(c, 0)
 		return
 	}
 	c.Next()
@@ -371,7 +396,14 @@ func windowTTLMillis(window time.Duration) int64 {
 	return ttl
 }
 
-func abortRateLimit(c *gin.Context) {
+func abortRateLimit(c *gin.Context, retryAfter time.Duration) {
+	if retryAfter > 0 {
+		seconds := int64(retryAfter / time.Second)
+		if retryAfter%time.Second > 0 {
+			seconds++
+		}
+		c.Header("Retry-After", strconv.FormatInt(seconds, 10))
+	}
 	c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 		"error":   "rate limit exceeded",
 		"message": "Too many requests, please try again later",

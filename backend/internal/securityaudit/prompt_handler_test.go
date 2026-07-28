@@ -161,7 +161,7 @@ func TestPromptAdminConfigRequiresVersionMapsConflictAndNeverEchoesToken(t *test
 func TestPromptAdminGetConfigReturnsSecretFreeUnavailableError(t *testing.T) {
 	const canary = "persisted-config-secret-canary"
 	repository := &switchableSettingRepository{loadErr: errors.New("failed to load token " + canary)}
-	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{})
+	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{}, testTotpKeyConfig())
 	require.Error(t, manager.Reload(context.Background()))
 	service := &PromptService{config: manager}
 
