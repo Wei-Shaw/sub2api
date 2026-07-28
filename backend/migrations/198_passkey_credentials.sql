@@ -14,9 +14,3 @@ CREATE TABLE IF NOT EXISTS passkey_credentials (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS passkey_credentials_user_id_idx
-    ON passkey_credentials (user_id);
-
-CREATE INDEX IF NOT EXISTS passkey_credentials_last_used_at_idx
-    ON passkey_credentials (last_used_at);
