@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
@@ -286,25 +285,33 @@ func ExtractUpstreamErrorMessage(body []byte) string {
 }
 
 func extractUpstreamErrorMessage(body []byte) string {
-	// Claude 风格：{"type":"error","error":{"type":"...","message":"..."}}
-	if m := gjson.GetBytes(body, "error.message").String(); strings.TrimSpace(m) != "" {
-		inner := strings.TrimSpace(m)
-		// 有些上游会把完整 JSON 作为字符串塞进 message
-		if strings.HasPrefix(inner, "{") {
-			if innerMsg := gjson.Get(inner, "error.message").String(); strings.TrimSpace(innerMsg) != "" {
-				return innerMsg
-			}
+	candidate := strings.TrimSpace(string(body))
+	message := ""
+	for depth := 0; depth < 6 && candidate != ""; depth++ {
+		current := ""
+		// Claude/OpenAI 风格：{"type":"error","error":{"message":"..."}}
+		if m := gjson.Get(candidate, "error.message").String(); strings.TrimSpace(m) != "" {
+			current = m
+		} else if d := gjson.Get(candidate, "detail").String(); strings.TrimSpace(d) != "" {
+			// ChatGPT 内部 API 风格：{"detail":"..."}
+			current = d
+		} else if m := gjson.Get(candidate, "message").String(); strings.TrimSpace(m) != "" {
+			current = m
 		}
-		return m
-	}
 
-	// ChatGPT 内部 API 风格：{"detail":"..."}
-	if d := gjson.GetBytes(body, "detail").String(); strings.TrimSpace(d) != "" {
-		return d
+		current = strings.TrimSpace(current)
+		if current == "" {
+			break
+		}
+		message = current
+		// 部分聚合上游会把下一层 JSON（甚至 JSON + SSE）塞进 message。
+		// gjson 会读取开头的 JSON 对象，因此可以逐层取出最具体的诊断文本。
+		if !strings.HasPrefix(current, "{") || current == candidate {
+			break
+		}
+		candidate = current
 	}
-
-	// 兜底：尝试顶层 message
-	return gjson.GetBytes(body, "message").String()
+	return message
 }
 
 func extractUpstreamErrorCode(body []byte) string {
@@ -468,7 +475,17 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		c.Data(http.StatusBadRequest, "application/json", body)
+		clientMsg := ExtractClientSafeUpstreamErrorMessage(body)
+		if clientMsg == "" {
+			clientMsg = "Upstream request failed"
+		}
+		c.JSON(http.StatusBadRequest, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    "upstream_error",
+				"message": clientMsg,
+			},
+		})
 		summary := upstreamMsg
 		if summary == "" {
 			summary = truncateForLog(body, 512)
@@ -651,20 +668,13 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
-	if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	}
+	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	// 设置SSE响应头
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
-
-	// 透传其他响应头
-	if v := resp.Header.Get("x-request-id"); v != "" {
-		c.Header("x-request-id", v)
-	}
 
 	w := c.Writer
 	flusher, ok := w.(http.Flusher)
@@ -1388,7 +1398,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 	}
 
-	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {

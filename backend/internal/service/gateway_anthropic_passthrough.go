@@ -392,10 +392,6 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 		c.Header("Connection", "keep-alive")
 	}
 	c.Header("X-Accel-Buffering", "no")
-	if v := resp.Header.Get("x-request-id"); v != "" {
-		c.Header("x-request-id", v)
-	}
-
 	w := c.Writer
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -819,14 +815,13 @@ func writeAnthropicPassthroughResponseHeaders(dst http.Header, src http.Header, 
 	if dst == nil || src == nil {
 		return
 	}
+	clientHeaders := src.Clone()
+	clientHeaders.Del("x-request-id")
 	if filter != nil {
-		responseheaders.WriteFilteredHeaders(dst, src, filter)
+		responseheaders.WriteFilteredHeaders(dst, clientHeaders, filter)
 		return
 	}
-	if v := strings.TrimSpace(src.Get("Content-Type")); v != "" {
+	if v := strings.TrimSpace(clientHeaders.Get("Content-Type")); v != "" {
 		dst.Set("Content-Type", v)
-	}
-	if v := strings.TrimSpace(src.Get("x-request-id")); v != "" {
-		dst.Set("x-request-id", v)
 	}
 }
