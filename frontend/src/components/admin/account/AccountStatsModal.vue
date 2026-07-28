@@ -292,8 +292,8 @@
           <!-- Accumulated Tokens -->
           <div class="card p-4">
             <div class="mb-3 flex items-center gap-2">
-              <div class="rounded-lg bg-teal-100 p-1.5 dark:bg-teal-900/30">
-                <Icon name="cube" size="sm" class="text-teal-600 dark:text-teal-400" />
+              <div class="rounded-lg bg-primary-100 p-1.5 dark:bg-primary-900/30">
+                <Icon name="cube" size="sm" class="text-primary-600 dark:text-primary-400" />
               </div>
               <span class="text-sm font-semibold text-gray-900 dark:text-white">{{
                 t('admin.accounts.stats.accumulatedTokens')
