@@ -65,6 +65,12 @@ const BORDER_STRONG: Record<Platform, string> = {
   gemini: 'border-blue-500/35 dark:border-blue-500/30',
   grok: 'border-zinc-800/35 dark:border-zinc-500/35',
   composite: 'border-cyan-500/35 dark:border-cyan-500/30',
+  kiro: 'border-orange-500/35 dark:border-orange-500/30',
+  deepseek: 'border-cyan-500/35 dark:border-cyan-500/30',
+  glm: 'border-fuchsia-500/35 dark:border-fuchsia-500/30',
+  zai: 'border-violet-500/35 dark:border-violet-500/30',
+  minimax: 'border-rose-500/35 dark:border-rose-500/30',
+  opencode: 'border-indigo-500/35 dark:border-indigo-500/30',
 }
 const BORDER_STRONG_DEFAULT = 'border-gray-300 dark:border-dark-600'
 
@@ -77,6 +83,12 @@ const ACCENT: Record<Platform, string> = {
   gemini: '#3b82f6', // blue-500
   grok: '#71717a', // zinc-500
   composite: '#06b6d4', // cyan-500
+  kiro: '#f97316', // orange-500
+  deepseek: '#06b6d4', // cyan-500
+  glm: '#d946ef', // fuchsia-500
+  zai: '#8b5cf6', // violet-500
+  minimax: '#f43f5e', // rose-500
+  opencode: '#6366f1', // indigo-500
 }
 const ACCENT_DEFAULT = '#14b8a6' // primary-500 (teal)
 

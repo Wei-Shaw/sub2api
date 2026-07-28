@@ -104,15 +104,17 @@ func TestAdminService_UpdateUser_InvalidRole(t *testing.T) {
 
 type userStatusUpdateUserRepoStub struct {
 	*userRepoStubForListUsers
-	lastUpdated *User
+	lastUpdated    *User
+	lastUpdateMask UserUpdateFields
 }
 
-func (s *userStatusUpdateUserRepoStub) Update(_ context.Context, user *User) error {
+func (s *userStatusUpdateUserRepoStub) Update(_ context.Context, user *User, fields UserUpdateFields) error {
 	if user == nil {
 		return nil
 	}
 	clone := *user
 	s.lastUpdated = &clone
+	s.lastUpdateMask = fields
 	if s.userRepoStubForListUsers != nil {
 		s.userRepoStubForListUsers.user = &clone
 		for i := range s.userRepoStubForListUsers.users {
@@ -140,6 +142,7 @@ func TestAdminService_UpdateUserStatusStoresUserStatus(t *testing.T) {
 	require.Equal(t, StatusPendingActivation, updated.Status)
 	require.NotNil(t, repo.lastUpdated)
 	require.Equal(t, StatusPendingActivation, repo.lastUpdated.Status)
+	require.Equal(t, UserUpdateFields{Status: true}, repo.lastUpdateMask)
 }
 
 func TestAdminService_UpdateUserRejectsAdminPromotionWithDisabledUserStatus(t *testing.T) {
