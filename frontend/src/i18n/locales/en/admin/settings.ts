@@ -968,14 +968,16 @@ export default {
         }
       },
       overloadCooldown: {
-        title: '529 Overload Cooldown',
-        description: 'Configure account scheduling pause strategy when upstream returns 529 (overloaded)',
+        title: '529 Overload Handling',
+        description: 'Configure bounded retries and account scheduling pause when upstream returns 529 (overloaded)',
         enabled: 'Enable Overload Cooldown',
         enabledHint: 'Pause account scheduling on 529 errors, auto-recover after cooldown',
         cooldownMinutes: 'Cooldown Duration (minutes)',
         cooldownMinutesHint: 'Duration to pause account scheduling (1-120 minutes)',
-        saved: 'Overload cooldown settings saved',
-        saveFailed: 'Failed to save overload cooldown settings'
+        oauthRetryCount: 'Anthropic OAuth 529 Retries',
+        oauthRetryCountHint: 'Same-account pre-stream retries for Anthropic OAuth/setup-token requests before cooldown and failover (0-2; 0 keeps existing behavior)',
+        saved: '529 overload settings saved',
+        saveFailed: 'Failed to save 529 overload settings'
       },
       rateLimit429Cooldown: {
         title: '429 Default Cooldown',

@@ -265,6 +265,29 @@
                 </div>
 
                 <div
+                  class="border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.overloadCooldown.oauthRetryCount") }}
+                  </label>
+                  <input
+                    v-model.number="overloadCooldownForm.oauth_retry_count"
+                    data-testid="oauth-529-retry-count"
+                    type="number"
+                    min="0"
+                    max="2"
+                    class="input w-32"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t("admin.settings.overloadCooldown.oauthRetryCountHint")
+                    }}
+                  </p>
+                </div>
+
+                <div
                   class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
                 >
                   <button
@@ -8154,6 +8177,7 @@ const overloadCooldownSaving = ref(false);
 const overloadCooldownForm = reactive({
   enabled: true,
   cooldown_minutes: 10,
+  oauth_retry_count: 0,
 });
 
 // Rate Limit Cooldown (429) 状态
@@ -10825,6 +10849,7 @@ async function saveOverloadCooldownSettings() {
     const updated = await adminAPI.settings.updateOverloadCooldownSettings({
       enabled: overloadCooldownForm.enabled,
       cooldown_minutes: overloadCooldownForm.cooldown_minutes,
+      oauth_retry_count: overloadCooldownForm.oauth_retry_count,
     });
     Object.assign(overloadCooldownForm, updated);
     appStore.showSuccess(t("admin.settings.overloadCooldown.saved"));
