@@ -74,12 +74,123 @@ function terminalJob(status: DeploymentJobStatus): DeploymentJob {
 
 describe('VersionBadge managed deployment recovery', () => {
   beforeEach(() => {
+    mocks.appStore.currentVersion = '0.1.164-ts.1'
+    mocks.appStore.latestVersion = '0.1.165-ts.1'
+    mocks.appStore.hasUpdate = true
     mocks.appStore.deploymentMode = 'docker-managed'
+    mocks.appStore.deploymentReady = true
     mocks.appStore.fetchVersion.mockReset().mockResolvedValue(null)
     mocks.appStore.versionWarning = ''
     mocks.appStore.clearVersionCache.mockReset()
     mocks.getCurrentDeploymentJob.mockReset()
     mocks.getDeploymentJob.mockReset()
+  })
+
+  it('ignores a historical successful job when a newer release is available', async () => {
+    mocks.appStore.currentVersion = '0.1.164-ts.6'
+    mocks.appStore.latestVersion = '0.1.166-ts.1'
+    mocks.appStore.hasUpdate = true
+    mocks.getCurrentDeploymentJob.mockResolvedValue({
+      ...terminalJob('succeeded'),
+      target_version: '0.1.164-ts.6',
+      stage: 'completed',
+      error: ''
+    })
+
+    const wrapper = mount(VersionBadge, {
+      props: { version: '0.1.164-ts.6' },
+      global: { stubs: { Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="version-badge"]').trigger('click')
+
+    expect(wrapper.text()).toContain('version.updateAvailable')
+    expect(wrapper.text()).toContain('version.updateNow')
+    expect(wrapper.text()).not.toContain('version.updateComplete')
+
+    wrapper.unmount()
+  })
+
+  it('does not restore a historical success when no update remains', async () => {
+    mocks.appStore.currentVersion = '0.1.165-ts.1'
+    mocks.appStore.latestVersion = '0.1.165-ts.1'
+    mocks.appStore.hasUpdate = false
+    mocks.getCurrentDeploymentJob.mockResolvedValue({
+      ...terminalJob('succeeded'),
+      stage: 'completed',
+      error: ''
+    })
+
+    const wrapper = mount(VersionBadge, {
+      props: { version: '0.1.165-ts.1' },
+      global: { stubs: { Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="version-badge"]').trigger('click')
+
+    expect(wrapper.text()).toContain('version.upToDate')
+    expect(wrapper.text()).not.toContain('version.updateComplete')
+
+    wrapper.unmount()
+  })
+
+  it('does not let a historical rollback success hide an available update', async () => {
+    mocks.appStore.currentVersion = '0.1.164-ts.6'
+    mocks.appStore.latestVersion = '0.1.166-ts.1'
+    mocks.appStore.hasUpdate = true
+    mocks.getCurrentDeploymentJob.mockResolvedValue({
+      ...terminalJob('succeeded'),
+      action: 'rollback',
+      target_version: '0.1.164-ts.6',
+      stage: 'completed',
+      error: ''
+    })
+
+    const wrapper = mount(VersionBadge, {
+      props: { version: '0.1.164-ts.6' },
+      global: { stubs: { Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="version-badge"]').trigger('click')
+
+    expect(wrapper.text()).toContain('version.updateAvailable')
+    expect(wrapper.text()).toContain('version.updateNow')
+    expect(wrapper.text()).not.toContain('version.rollbackComplete')
+
+    wrapper.unmount()
+  })
+
+  it('still shows success when the deployment started by this page completes', async () => {
+    mocks.getCurrentDeploymentJob.mockRejectedValue({ response: { status: 404 } })
+    mocks.getDeploymentJob.mockResolvedValue({
+      ...terminalJob('succeeded'),
+      stage: 'completed',
+      error: ''
+    })
+    const systemAPI = await import('@/api/admin/system')
+    vi.mocked(systemAPI.performUpdate).mockResolvedValue({
+      message: 'started',
+      need_restart: false,
+      job: {
+        ...terminalJob('running'),
+        stage: 'pulling',
+        error: ''
+      }
+    })
+
+    const wrapper = mount(VersionBadge, {
+      props: { version: '0.1.164-ts.1' },
+      global: { stubs: { Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="version-badge"]').trigger('click')
+    await wrapper.get('button.bg-primary-500').trigger('click')
+    await flushPromises()
+
+    expect(mocks.getDeploymentJob).toHaveBeenCalledWith('job-running')
+    expect(wrapper.text()).toContain('version.updateComplete')
+
+    wrapper.unmount()
   })
 
   it.each([

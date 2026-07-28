@@ -1279,6 +1279,16 @@ async function recoverCurrentDeployment() {
       rollingBack.value = false
       updateSuccess.value = false
       needRestart.value = false
+    } else if (job.status === 'succeeded') {
+      // The deployer retains its last terminal job indefinitely. A success is
+      // only current UI state while this page is polling the operation it
+      // started; after a reload, version availability is authoritative.
+      deploymentJob.value = null
+      updating.value = false
+      rollingBack.value = false
+      updateSuccess.value = false
+      needRestart.value = false
+      updateError.value = ''
     } else {
       deploymentJob.value = job
       successKind.value = job.action
@@ -1287,14 +1297,9 @@ async function recoverCurrentDeployment() {
       if (job.action === 'rollback') {
         selectedRollbackVersion.value = job.target_version
       }
-      if (job.status === 'succeeded') {
-        updateSuccess.value = true
-        needRestart.value = false
-        updateError.value = ''
-      } else {
-        updateSuccess.value = false
-        updateError.value = deploymentFailureMessage(job)
-      }
+      updateSuccess.value = false
+      needRestart.value = false
+      updateError.value = deploymentFailureMessage(job)
     }
   } catch (error) {
     const status = (error as { response?: { status?: number } }).response?.status
