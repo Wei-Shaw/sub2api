@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -643,4 +644,46 @@ func TestQueryUsageShadowResolve_EndToEnd(t *testing.T) {
 	require.NotNil(t, usage)
 	require.Equal(t, "org-e2e-parent", capturedAccountID,
 		"upstream should receive parent's chatgpt-account-id; got: %s", capturedAccountID)
+}
+
+func TestQueryUsageForReconciliationSkipsResetCreditRequest(t *testing.T) {
+	ctx := context.Background()
+	account := &Account{
+		ID:       100,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "org-reconcile",
+		},
+	}
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{100: account}}
+	tokenCache := &stubQuotaTokenCache{tokens: map[string]string{
+		OpenAITokenCacheKey(account): "fake-token",
+	}}
+	tokenProvider := NewOpenAITokenProvider(repo, tokenCache, nil)
+
+	var requestCount atomic.Int32
+	var resetCreditCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		w.Header().Set("content-type", "application/json")
+		switch r.URL.Path {
+		case "/backend-api/wham/usage":
+			_ = json.NewEncoder(w).Encode(availableOpenAIQuotaUsage())
+		case "/backend-api/wham/rate-limit-reset-credits":
+			resetCreditCount.Add(1)
+			_, _ = w.Write([]byte(`{"credits":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	svc := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv))
+	usage, err := svc.QueryUsageForReconciliation(ctx, 100)
+	require.NoError(t, err)
+	require.True(t, openAIQuotaUsageConfirmsAvailable(usage))
+	require.Equal(t, int32(1), requestCount.Load())
+	require.Zero(t, resetCreditCount.Load())
 }

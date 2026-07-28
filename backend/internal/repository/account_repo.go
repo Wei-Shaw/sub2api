@@ -2128,6 +2128,81 @@ func (r *accountRepository) ClearRateLimitIfObserved(ctx context.Context, id int
 	return true, nil
 }
 
+// ListOpenAIRateLimitRecoveryCandidates returns a bounded set of active parent
+// OAuth accounts that are still hidden by a future account-level rate limit.
+// The service layer applies the remaining JSON model-limit guard before probing.
+func (r *accountRepository) ListOpenAIRateLimitRecoveryCandidates(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
+	if limit <= 0 {
+		return []service.Account{}, nil
+	}
+	accounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.PlatformEQ(service.PlatformOpenAI),
+			dbaccount.TypeEQ(service.AccountTypeOAuth),
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.SchedulableEQ(true),
+			dbaccount.ParentAccountIDIsNil(),
+			dbaccount.RateLimitedAtNotNil(),
+			dbaccount.RateLimitResetAtNotNil(),
+			dbaccount.RateLimitResetAtGT(now),
+			tempUnschedulablePredicate(),
+			notExpiredPredicate(now),
+			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+		).
+		Order(
+			dbent.Asc(dbaccount.FieldRateLimitedAt),
+			dbent.Asc(dbaccount.FieldID),
+		).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return r.accountsToService(ctx, accounts)
+}
+
+// ClearOpenAIRateLimitIfObserved atomically clears only the OpenAI account-level
+// rate-limit generation observed before a quota probe. A concurrent 429 changes
+// at least rate_limited_at and makes this a no-op.
+func (r *accountRepository) ClearOpenAIRateLimitIfObserved(
+	ctx context.Context,
+	id int64,
+	observedLimitedAt time.Time,
+	observedResetAt time.Time,
+) (bool, error) {
+	now := time.Now()
+	updated, err := r.client.Account.Update().
+		Where(
+			dbaccount.IDEQ(id),
+			dbaccount.PlatformEQ(service.PlatformOpenAI),
+			dbaccount.TypeEQ(service.AccountTypeOAuth),
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.SchedulableEQ(true),
+			dbaccount.ParentAccountIDIsNil(),
+			dbaccount.RateLimitedAtEQ(observedLimitedAt),
+			dbaccount.RateLimitResetAtEQ(observedResetAt),
+			dbaccount.RateLimitResetAtGT(now),
+			tempUnschedulablePredicate(),
+			notExpiredPredicate(now),
+			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+		).
+		ClearRateLimitedAt().
+		ClearRateLimitResetAt().
+		Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	if updated == 0 {
+		r.syncSchedulerAccountSnapshot(ctx, id)
+		return false, nil
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue conditional OpenAI rate-limit clear failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return true, nil
+}
+
 func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
 	if scope == "" {
 		return nil

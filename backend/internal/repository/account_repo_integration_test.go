@@ -932,6 +932,60 @@ func (s *AccountRepoSuite) TestClearRateLimitIfObservedProtectsRearmed429Generat
 	s.Require().WithinDuration(rearmedReset, *retyped.RateLimitResetAt, time.Second)
 }
 
+func (s *AccountRepoSuite) TestOpenAIRateLimitRecoveryCandidateAndConditionalClear() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "openai-rl-reconcile",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+	})
+	firstReset := time.Now().Add(4 * 24 * time.Hour).UTC()
+	s.Require().NoError(s.repo.SetRateLimited(s.ctx, account.ID, firstReset))
+
+	candidates, err := s.repo.ListOpenAIRateLimitRecoveryCandidates(s.ctx, time.Now(), 10)
+	s.Require().NoError(err)
+	s.Require().Len(candidates, 1)
+	s.Require().Equal(account.ID, candidates[0].ID)
+	staleGeneration := candidates[0]
+
+	time.Sleep(time.Millisecond)
+	rearmedReset := time.Now().Add(7 * 24 * time.Hour).UTC()
+	s.Require().NoError(s.repo.SetRateLimited(s.ctx, account.ID, rearmedReset))
+	cleared, err := s.repo.ClearOpenAIRateLimitIfObserved(
+		s.ctx,
+		account.ID,
+		*staleGeneration.RateLimitedAt,
+		*staleGeneration.RateLimitResetAt,
+	)
+	s.Require().NoError(err)
+	s.Require().False(cleared)
+
+	current, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(current.RateLimitedAt)
+	s.Require().NotNil(current.RateLimitResetAt)
+	s.Require().WithinDuration(rearmedReset, *current.RateLimitResetAt, time.Second)
+
+	_, err = s.client.Account.UpdateOneID(account.ID).
+		SetType(service.AccountTypeAPIKey).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	cleared, err = s.repo.ClearOpenAIRateLimitIfObserved(
+		s.ctx,
+		account.ID,
+		*current.RateLimitedAt,
+		*current.RateLimitResetAt,
+	)
+	s.Require().NoError(err)
+	s.Require().False(cleared)
+
+	retyped, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.AccountTypeAPIKey, retyped.Type)
+	s.Require().NotNil(retyped.RateLimitResetAt)
+}
+
 func (s *AccountRepoSuite) TestClearRateLimit() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-clear"})
 	until := time.Now().Add(1 * time.Hour)

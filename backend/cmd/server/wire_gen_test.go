@@ -63,6 +63,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // apiKeyService
 		nil, // authCacheInvalidationWorker
 		schedulerSnapshotSvc,
+		nil, // openAIRateLimitReconciler
 		tokenRefreshSvc,
 		accountExpirySvc,
 		proxyExpirySvc,

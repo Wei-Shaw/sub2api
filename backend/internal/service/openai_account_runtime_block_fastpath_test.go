@@ -71,6 +71,23 @@ func TestOpenAIRuntimeBlock_DoesNotApplyToOtherPlatforms(t *testing.T) {
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }
 
+func TestOpenAIRuntimeBlock_ConditionalClearPreservesNewer429(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 46, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	svc.BlockAccountScheduling(account, time.Now().Add(time.Hour), "429")
+	observedGeneration := svc.AccountSchedulingBlockGeneration(account.ID)
+	require.NotZero(t, observedGeneration)
+
+	svc.BlockAccountScheduling(account, time.Now().Add(2*time.Hour), "429")
+	require.False(t, svc.ClearAccountSchedulingBlockIfGeneration(account.ID, observedGeneration))
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+
+	latestGeneration := svc.AccountSchedulingBlockGeneration(account.ID)
+	require.True(t, svc.ClearAccountSchedulingBlockIfGeneration(account.ID, latestGeneration))
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
 func TestOpenAIRuntimeBlocker_IgnoresNonOpenAIFromRateLimitService(t *testing.T) {
 	gateway := &OpenAIGatewayService{}
 	repo := &rateLimitAccountRepoStub{}

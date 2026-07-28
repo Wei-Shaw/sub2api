@@ -922,6 +922,8 @@ type GatewayConfig struct {
 	// OpenAICompactModel: /responses/compact 上游使用的模型。
 	// compact 端点支持模型滞后于普通 /responses 时，可用该配置降级规避上游错误。
 	OpenAICompactModel string `mapstructure:"openai_compact_model"`
+	// OpenAIRateLimitReconcile: OpenAI OAuth 账号陈旧限流状态的后台纠偏配置。
+	OpenAIRateLimitReconcile GatewayOpenAIRateLimitReconcileConfig `mapstructure:"openai_rate_limit_reconcile"`
 	// OpenAIWS: OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
 	OpenAIWS GatewayOpenAIWSConfig `mapstructure:"openai_ws"`
 	// Live: ChatGPT Frameless Live 会话配置。
@@ -1010,6 +1012,15 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+}
+
+// GatewayOpenAIRateLimitReconcileConfig controls the opt-in background worker
+// that verifies rate-limited OpenAI OAuth accounts against /backend-api/wham/usage.
+type GatewayOpenAIRateLimitReconcileConfig struct {
+	Enabled             bool `mapstructure:"enabled"`
+	IntervalSeconds     int  `mapstructure:"interval_seconds"`
+	MaxAccountsPerCycle int  `mapstructure:"max_accounts_per_cycle"`
+	Concurrency         int  `mapstructure:"concurrency"`
 }
 
 type GatewayLiveConfig struct {
@@ -2218,6 +2229,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.4")
+	viper.SetDefault("gateway.openai_rate_limit_reconcile.enabled", false)
+	viper.SetDefault("gateway.openai_rate_limit_reconcile.interval_seconds", 300)
+	viper.SetDefault("gateway.openai_rate_limit_reconcile.max_accounts_per_cycle", 20)
+	viper.SetDefault("gateway.openai_rate_limit_reconcile.concurrency", 2)
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
@@ -3106,6 +3121,15 @@ func (c *Config) Validate() error {
 	if c.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds < 0 || c.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds > 1800 ||
 		(c.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds > 0 && c.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds < 30) {
 		return fmt.Errorf("gateway.openai_high_effort_first_output_timeout_seconds must be 0 or between 30-1800 seconds")
+	}
+	if c.Gateway.OpenAIRateLimitReconcile.IntervalSeconds < 60 || c.Gateway.OpenAIRateLimitReconcile.IntervalSeconds > 86400 {
+		return fmt.Errorf("gateway.openai_rate_limit_reconcile.interval_seconds must be between 60-86400")
+	}
+	if c.Gateway.OpenAIRateLimitReconcile.MaxAccountsPerCycle <= 0 || c.Gateway.OpenAIRateLimitReconcile.MaxAccountsPerCycle > 500 {
+		return fmt.Errorf("gateway.openai_rate_limit_reconcile.max_accounts_per_cycle must be between 1-500")
+	}
+	if c.Gateway.OpenAIRateLimitReconcile.Concurrency <= 0 || c.Gateway.OpenAIRateLimitReconcile.Concurrency > 20 {
+		return fmt.Errorf("gateway.openai_rate_limit_reconcile.concurrency must be between 1-20")
 	}
 	if c.Gateway.Live.MaxSessionDurationSeconds <= 0 {
 		c.Gateway.Live.MaxSessionDurationSeconds = 3600

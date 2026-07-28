@@ -311,6 +311,22 @@ gateway:
   # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
   openai_compact_model: "gpt-5.4"
+  # Opt-in reconciliation for OpenAI OAuth accounts whose persisted 429 window
+  # is still in the future even though /backend-api/wham/usage reports capacity.
+  # OpenAI OAuth 账号陈旧 429 状态自动纠偏（默认关闭，避免额外上游请求）。
+  # Environment override example:
+  # GATEWAY_OPENAI_RATE_LIMIT_RECONCILE_ENABLED=true
+  openai_rate_limit_reconcile:
+    enabled: false
+    # Minimum 60 seconds. One leader instance runs each cycle.
+    # 最小 60 秒；多实例部署中每轮仅一个 Leader 执行。
+    interval_seconds: 300
+    # Maximum authoritative quota probes per cycle (1-500).
+    # 每轮最多探测的候选账号数（1-500）。
+    max_accounts_per_cycle: 20
+    # Concurrent read-only quota probes (1-20).
+    # 只读额度探测并发数（1-20）。
+    concurrency: 2
   # ChatGPT Frameless Live 单会话硬上限（秒）。
   live:
     max_session_duration_seconds: 3600

@@ -142,6 +142,17 @@ func NewOpenAIQuotaService(
 // OAuth account. Returns infraerrors so the handler layer can map them to
 // stable error codes / HTTP statuses.
 func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
+	return s.queryUsage(ctx, accountID, true)
+}
+
+// QueryUsageForReconciliation fetches only the authoritative quota snapshot
+// needed by the background rate-limit reconciler. It deliberately skips reset
+// credit metadata so one candidate produces exactly one read-only upstream call.
+func (s *OpenAIQuotaService) QueryUsageForReconciliation(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
+	return s.queryUsage(ctx, accountID, false)
+}
+
+func (s *OpenAIQuotaService) queryUsage(ctx context.Context, accountID int64, includeResetCreditDetails bool) (*OpenAIQuotaUsage, error) {
 	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -187,20 +198,22 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 	}
 
 	payload.FetchedAt = time.Now().Unix()
-	details := s.queryResetCreditDetails(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID)
-	if details != nil {
-		hasDetailCount := details.AvailableCount != nil
-		if payload.RateLimitResetCredits == nil {
-			payload.RateLimitResetCredits = &OpenAIRateLimitResetCredits{}
-		}
-		if details.CreditListPresent {
-			payload.RateLimitResetCredits.Credits = details.Credits
-		}
-		switch {
-		case hasDetailCount:
-			payload.RateLimitResetCredits.AvailableCount = *details.AvailableCount
-		case details.CreditListPresent:
-			payload.RateLimitResetCredits.AvailableCount = details.AvailableCreditCount
+	if includeResetCreditDetails {
+		details := s.queryResetCreditDetails(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID)
+		if details != nil {
+			hasDetailCount := details.AvailableCount != nil
+			if payload.RateLimitResetCredits == nil {
+				payload.RateLimitResetCredits = &OpenAIRateLimitResetCredits{}
+			}
+			if details.CreditListPresent {
+				payload.RateLimitResetCredits.Credits = details.Credits
+			}
+			switch {
+			case hasDetailCount:
+				payload.RateLimitResetCredits.AvailableCount = *details.AvailableCount
+			case details.CreditListPresent:
+				payload.RateLimitResetCredits.AvailableCount = details.AvailableCreditCount
+			}
 		}
 	}
 	return &payload, nil
