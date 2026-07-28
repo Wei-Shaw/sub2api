@@ -288,9 +288,11 @@ EOF
   sed \
     -e "s#^CONFIG_DIR=.*#CONFIG_DIR=\"$root/etc/sub2api-deployer\"#" \
     -e "s#^SERVICE_FILE=.*#SERVICE_FILE=\"$root/etc/systemd/system/sub2api-deployer.service\"#" \
+    -e "s#^UPGRADE_SERVICE_FILE=.*#UPGRADE_SERVICE_FILE=\"$root/etc/systemd/system/sub2api-deployer-upgrade.service\"#" \
     -e "s#^TMPFILES_FILE=.*#TMPFILES_FILE=\"$root/etc/tmpfiles.d/sub2api-deployer.conf\"#" \
     -e "s#^RUNTIME_PRESERVE_DROPIN=.*#RUNTIME_PRESERVE_DROPIN=\"$root/run/systemd/system/sub2api-deployer.service.d/10-preserve-runtime.conf\"#" \
     -e "s#^INSTALLED_BINARY=.*#INSTALLED_BINARY=\"$root/usr/local/sbin/sub2api-deployer\"#" \
+    -e "s#^INSTALLED_UPGRADER=.*#INSTALLED_UPGRADER=\"$root/usr/local/sbin/sub2api-deployer-upgrade\"#" \
     -e "s#^STATE_DIR=.*#STATE_DIR=\"$root/var/lib/sub2api-deployer\"#" \
     -e "s#^NGINX_LOADER_FILE=.*#NGINX_LOADER_FILE=\"$root/etc/nginx/conf.d/sub2api-managed-upstream.conf\"#" \
     -e "s#^INSTALL_LOCK_FILE=.*#INSTALL_LOCK_FILE=\"$root/run/sub2api-deployer-install.lock\"#" \
@@ -340,7 +342,7 @@ run_installer() {
   FAKE_CURRENT_IMAGE="$CURRENT_IMAGE" \
   FAKE_CURRENT_VERSION="$CURRENT_VERSION" \
   FAKE_DOCKER_PORT_OUTPUT="127.0.0.1:$CURRENT_PORT" \
-  FAKE_DEPLOYER_HEALTH="{\"status\":\"ok\",\"degraded\":false,\"job_running\":false,\"active_container\":\"sub2api\",\"active_port\":$CURRENT_PORT,\"active_version\":\"$CURRENT_VERSION\"}" \
+  FAKE_DEPLOYER_HEALTH="{\"status\":\"ok\",\"degraded\":false,\"job_running\":false,\"active_container\":\"sub2api\",\"active_container_id\":\"$CONTAINER_ID\",\"active_port\":$CURRENT_PORT,\"active_version\":\"$CURRENT_VERSION\",\"control_plane_upgrade_ready\":true}" \
   FAKE_CONTROL_DIR="$root/control" \
   FAKE_DOCKER_LOG="$root/docker.log" \
   FAKE_SYSTEMCTL_LOG="$root/systemctl.log" \
@@ -379,6 +381,7 @@ fi
 cmp -s "$FIRST_ROOT/original-site.conf" "$FIRST_ROOT/nginx/site.conf"
 [[ ! -e "$FIRST_ROOT/etc/sub2api-deployer/config.json" ]]
 [[ ! -e "$FIRST_ROOT/usr/local/sbin/sub2api-deployer" ]]
+[[ ! -e "$FIRST_ROOT/usr/local/sbin/sub2api-deployer-upgrade" ]]
 [[ ! -e "$FIRST_ROOT/app/compose.deployer.yml" ]]
 if ! grep -Fq 'Installation failed; restoring' "$FIRST_ROOT/output.log"; then
   cat "$FIRST_ROOT/output.log" >&2
@@ -402,12 +405,16 @@ if ! jq -e \
     and .compose_service == "sub2api"
     and .image_repository == "ghcr.io/ssharkkky/sub2api"
     and .socket_gid == 987
+    and .control_plane_upgrade_path == ($state | sub("/image.env$"; "/control-plane-upgrade.json"))
+    and (.control_plane_upgrade_command | length == 4)
   ' "$UPGRADE_ROOT/etc/sub2api-deployer/config.json" >/dev/null; then
   jq . "$UPGRADE_ROOT/etc/sub2api-deployer/config.json" >&2
   echo "first install did not persist the normalized Compose contract" >&2
   exit 1
 fi
 [[ -f "$UPGRADE_ROOT/control/socket-group" ]]
+[[ -x "$UPGRADE_ROOT/usr/local/sbin/sub2api-deployer-upgrade" ]]
+[[ -f "$UPGRADE_ROOT/etc/systemd/system/sub2api-deployer-upgrade.service" ]]
 mkdir -p "$UPGRADE_ROOT/var/lib/sub2api-deployer"
 jq -n \
   --arg id "$CONTAINER_ID" \

@@ -304,6 +304,30 @@ describe('VersionBadge managed deployment recovery', () => {
     wrapper.unmount()
   })
 
+  it('keeps a host deployer upgrade failure visible after reload', async () => {
+    mocks.getCurrentDeploymentJob.mockResolvedValue({
+      ...terminalJob('succeeded'),
+      stage: 'completed',
+      error: '',
+      cleanup_warning: 'deployer control-plane upgrade failed: health verification failed',
+      control_plane_upgrade_status: 'failed',
+      control_plane_upgrade_error: 'health verification failed'
+    })
+
+    const wrapper = mount(VersionBadge, {
+      props: { version: '0.1.164-ts.1' },
+      global: { stubs: { Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="version-badge"]').trigger('click')
+
+    const alert = wrapper.get('[data-testid="deployment-error"]')
+    expect(alert.text()).toContain('version.controlPlaneUpgradeFailed')
+    expect(alert.text()).toContain('health verification failed')
+    expect(wrapper.text()).not.toContain('version.retry')
+    wrapper.unmount()
+  })
+
   it('restores the rollback target when recovering a failed rollback job', async () => {
     const failedRollback = {
       ...terminalJob('failed'),

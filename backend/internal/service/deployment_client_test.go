@@ -36,7 +36,7 @@ func (s *deploymentClientStub) CurrentJob(context.Context) (*DeploymentJob, erro
 func TestManagedUpdateStartsDigestDeploymentJob(t *testing.T) {
 	github := &updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.1.165-ts.1"}}
 	deployer := &deploymentClientStub{
-		health: &DeploymentHealth{Status: "ok"},
+		health: &DeploymentHealth{Status: "ok", ControlPlaneUpgradeReady: true},
 		job:    &DeploymentJob{ID: "job-1", Status: "running"},
 	}
 	svc := NewUpdateService(&updateServiceCacheStub{}, github, "0.1.164-ts.1", "release")
@@ -54,7 +54,7 @@ func TestManagedUpdateStartsDigestDeploymentJob(t *testing.T) {
 
 func TestManagedRollbackRejectsVersionOutsideReleaseAllowlist(t *testing.T) {
 	github := &updateServiceGitHubClientStub{recentReleases: []*GitHubRelease{{TagName: "v0.1.163-ts.1"}}}
-	deployer := &deploymentClientStub{health: &DeploymentHealth{Status: "ok"}}
+	deployer := &deploymentClientStub{health: &DeploymentHealth{Status: "ok", ControlPlaneUpgradeReady: true}}
 	svc := NewUpdateService(&updateServiceCacheStub{}, github, "0.1.164-ts.1", "release")
 	svc.ConfigureDeployment(DeploymentModeDockerManaged, deployer)
 
@@ -66,7 +66,7 @@ func TestManagedRollbackRejectsVersionOutsideReleaseAllowlist(t *testing.T) {
 
 func TestCheckUpdateReportsManagedDeployerReadiness(t *testing.T) {
 	github := &updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.1.165-ts.1"}}
-	deployer := &deploymentClientStub{health: &DeploymentHealth{Status: "ok"}}
+	deployer := &deploymentClientStub{health: &DeploymentHealth{Status: "ok", ControlPlaneUpgradeReady: true}}
 	svc := NewUpdateService(&updateServiceCacheStub{}, github, "0.1.164-ts.1", "release")
 	svc.ConfigureDeployment(DeploymentModeDockerManaged, deployer)
 
@@ -75,6 +75,22 @@ func TestCheckUpdateReportsManagedDeployerReadiness(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, DeploymentModeDockerManaged, info.DeploymentMode)
 	require.True(t, info.DeploymentReady)
+}
+
+func TestManagedUpdateRequiresHostBootstrapCapability(t *testing.T) {
+	github := &updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.1.165-ts.1"}}
+	deployer := &deploymentClientStub{health: &DeploymentHealth{Status: "ok"}}
+	svc := NewUpdateService(&updateServiceCacheStub{}, github, "0.1.164-ts.1", "release")
+	svc.ConfigureDeployment(DeploymentModeDockerManaged, deployer)
+
+	info, err := svc.CheckUpdate(context.Background(), true)
+	require.NoError(t, err)
+	require.False(t, info.DeploymentReady)
+	require.Contains(t, info.DeploymentMessage, "one-time host deployer bootstrap")
+
+	_, err = svc.StartManagedUpdate(context.Background(), "sysop-request-bootstrap")
+	require.ErrorIs(t, err, ErrManagedDeployerBootstrapRequired)
+	require.Empty(t, deployer.started.Action)
 }
 
 func TestDockerManualModeNeverFallsBackToBinaryReplacement(t *testing.T) {

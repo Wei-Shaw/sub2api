@@ -1101,14 +1101,36 @@ func (s *OpsAlertEvaluatorService) maybeEnqueueAlertEmail(ctx context.Context, r
 	}
 
 	queued := 0
+	incidentKey := opsAlertIncidentKeyFromEvent(rule, event)
+	reminderKey := transition
+	if incidentKey != "" {
+		reminderKey += ":" + incidentKey
+	}
+	reminderKey = truncateString(reminderKey, 200)
 	for _, recipient := range recipients {
-		_, enqueueErr := s.notificationDispatcher.Enqueue(ctx, NotificationEmailSendInput{
+		suppressed, suppressReason, suppressErr := s.shouldSuppressOpsAlertEmail(
+			ctx,
+			recipient,
+			reminderKey,
+			emailCfg.Alert.RateLimitPerHour,
+			time.Duration(emailCfg.Alert.BatchingWindowSeconds)*time.Second,
+			time.Now().UTC(),
+		)
+		if suppressErr != nil {
+			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] inspect email limits failed (event=%d transition=%s): %v", event.ID, transition, suppressErr)
+			continue
+		}
+		if suppressed {
+			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] email suppressed (event=%d transition=%s recipient=%s reason=%s)", event.ID, transition, maskNotificationEmail(recipient), suppressReason)
+			continue
+		}
+		result, enqueueErr := s.notificationDispatcher.Enqueue(ctx, NotificationEmailSendInput{
 			Event:          NotificationEmailEventOpsAlert,
 			RecipientEmail: recipient,
 			RecipientName:  emailRecipientName(recipient),
 			SourceType:     "ops_alert_event",
 			SourceID:       fmt.Sprintf("%d", event.ID),
-			ReminderKey:    transition,
+			ReminderKey:    reminderKey,
 			Variables:      opsAlertEmailVariables(rule, event),
 		})
 		if enqueueErr != nil {
@@ -1117,9 +1139,64 @@ func (s *OpsAlertEvaluatorService) maybeEnqueueAlertEmail(ctx context.Context, r
 			}
 			continue
 		}
-		queued++
+		if result.Created {
+			queued++
+		}
 	}
 	return queued
+}
+
+func (s *OpsAlertEvaluatorService) shouldSuppressOpsAlertEmail(
+	ctx context.Context,
+	recipient string,
+	reminderKey string,
+	rateLimitPerHour int,
+	batchingWindow time.Duration,
+	now time.Time,
+) (bool, string, error) {
+	if s == nil || s.notificationDispatcher == nil || s.notificationDispatcher.repo == nil {
+		return false, "", nil
+	}
+	if rateLimitPerHour <= 0 && batchingWindow <= 0 {
+		return false, "", nil
+	}
+	recipientHash := notificationEmailHash(strings.ToLower(strings.TrimSpace(recipient)))
+	hourStart := now.Add(-time.Hour)
+	if batchingWindow > 0 {
+		batchStart := now.Add(-batchingWindow)
+		result, err := s.notificationDispatcher.repo.List(ctx, NotificationEmailDeliveryListFilter{
+			Page:          1,
+			PageSize:      1,
+			Event:         NotificationEmailEventOpsAlert,
+			SourceType:    "ops_alert_event",
+			RecipientHash: recipientHash,
+			ReminderKey:   strings.TrimSpace(reminderKey),
+			CreatedAfter:  &batchStart,
+		})
+		if err != nil {
+			return false, "", err
+		}
+		if result.Total > 0 {
+			return true, "incident_merge_window", nil
+		}
+	}
+	if rateLimitPerHour > 0 {
+		result, err := s.notificationDispatcher.repo.List(ctx, NotificationEmailDeliveryListFilter{
+			Page:          1,
+			PageSize:      1,
+			Event:         NotificationEmailEventOpsAlert,
+			SourceType:    "ops_alert_event",
+			RecipientHash: recipientHash,
+			CreatedAfter:  &hourStart,
+		})
+		if err != nil {
+			return false, "", err
+		}
+		if result.Total >= int64(rateLimitPerHour) {
+			return true, "recipient_hourly_limit", nil
+		}
+	}
+	return false, "", nil
 }
 
 func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string]string {

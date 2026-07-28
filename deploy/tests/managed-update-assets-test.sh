@@ -10,6 +10,8 @@ EXAMPLE="$REPO_ROOT/deploy/sub2api-deployer.example.json"
 TMPFILES="$REPO_ROOT/deploy/sub2api-deployer-tmpfiles.conf"
 INSTALLER="$REPO_ROOT/deploy/install-sub2api-deployer.sh"
 PACKAGER="$REPO_ROOT/deploy/package-sub2api-deployer-bundles.sh"
+BUNDLE_README="$REPO_ROOT/deploy/DEPLOYER_BUNDLE_README.md"
+UPGRADE_HELPER="$REPO_ROOT/deploy/sub2api-deployer-upgrade.sh"
 RELEASE_WORKFLOW="$REPO_ROOT/.github/workflows/release.yml"
 RELEASE_SAFETY="$REPO_ROOT/.github/scripts/release-safety.sh"
 RELEASE_SAFETY_TEST="$REPO_ROOT/.github/scripts/test-release-safety.sh"
@@ -19,6 +21,8 @@ GORELEASER_DOCKERFILE="$REPO_ROOT/Dockerfile.goreleaser"
 
 bash -n "$INSTALLER"
 bash -n "$PACKAGER"
+bash -n "$UPGRADE_HELPER"
+bash -n "$REPO_ROOT/deploy/tests/sub2api-deployer-upgrade-test.sh"
 
 grep -Fq 'ReadWritePaths=/run/sub2api-deployer /var/lib/sub2api-deployer' "$SERVICE"
 grep -Fq 'RuntimeDirectoryPreserve=yes' "$SERVICE"
@@ -62,6 +66,9 @@ grep -Fq 'CONTAINER_SOCKET_DIRECTORY_INODE=$(docker exec "$INSPECTED_CONTAINER_I
 grep -Fq 'APPLICATION_UID=$(docker exec "$INSPECTED_CONTAINER_ID" sh -ceu' "$INSTALLER"
 grep -Fq 'docker exec --user "$APPLICATION_UID" "$INSPECTED_CONTAINER_ID" sh -ceu' "$INSTALLER"
 grep -Fq 'package-sub2api-deployer-bundles.sh ../deployer-dist' "$RELEASE_WORKFLOW"
+grep -Fq 'control_plane_upgrade_ready == true' "$BUNDLE_README"
+grep -Fq '.active_container_id == $id' "$UPGRADE_HELPER"
+grep -Fq 'write_status failed' "$UPGRADE_HELPER"
 grep -Fq 'release-safety.sh previous-release-json \' "$RELEASE_WORKFLOW"
 grep -Fq 'release-safety.sh validate "$RELEASE_TAG" "$PREVIOUS_RELEASE_TAG" refs/remotes/origin/main' "$RELEASE_WORKFLOW"
 grep -Fq 'release_commit: ${{ steps.release_ref.outputs.commit }}' "$RELEASE_WORKFLOW"
@@ -146,8 +153,10 @@ final_health_block=$(sed -n '/^DEPLOYER_READY=0$/,/Deployer health check failed 
 for predicate in \
   '.job_running == false' \
   '.active_container == $container' \
+  '.active_container_id == $container_id' \
   '.active_port == $port' \
-  '.active_version == $version'; do
+  '.active_version == $version' \
+  '.control_plane_upgrade_ready == true'; do
   if ! grep -Fq "$predicate" <<<"$final_health_block"; then
     echo "final deployer health verification must enforce $predicate" >&2
     exit 1
@@ -162,6 +171,7 @@ if [[ -z "$quiesce_line" || -z "$install_line" || "$quiesce_line" -ge "$install_
 fi
 
 "$REPO_ROOT/deploy/tests/install-sub2api-deployer-test.sh"
+"$REPO_ROOT/deploy/tests/sub2api-deployer-upgrade-test.sh"
 
 bundle_test_dir=$(mktemp -d "${TMPDIR:-/tmp}/sub2api-bundle-test.XXXXXX")
 trap 'rm -rf -- "$bundle_test_dir"' EXIT

@@ -197,6 +197,11 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.PUT("/alert-events/:id/status", h.Admin.Ops.UpdateAlertEventStatus)
 		ops.POST("/alert-silences", h.Admin.Ops.CreateAlertSilence)
 
+		// Atomic settings dialog contract. Email channel switches and recipients
+		// are managed by /admin/settings/email-notification-policy.
+		ops.GET("/monitoring-settings", h.Admin.Ops.GetMonitoringSettings)
+		ops.PUT("/monitoring-settings", h.Admin.Ops.UpdateMonitoringSettings)
+
 		// Email notification config (DB-backed)
 		ops.GET("/email-notification/config", h.Admin.Ops.GetEmailNotificationConfig)
 		ops.PUT("/email-notification/config", h.Admin.Ops.UpdateEmailNotificationConfig)

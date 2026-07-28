@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/mail"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -72,11 +75,24 @@ type NotificationEmailPolicyView struct {
 	Configured      bool                              `json:"configured"`
 	Channels        []NotificationEmailChannelPolicy  `json:"channels"`
 	RecipientGroups []NotificationEmailRecipientGroup `json:"recipient_groups"`
+	FeatureSettings NotificationEmailFeatureSettings  `json:"feature_settings"`
 }
 
 type NotificationEmailPolicyUpdate struct {
 	Channels        []NotificationEmailChannelPolicy  `json:"channels"`
 	RecipientGroups []NotificationEmailRecipientGroup `json:"recipient_groups"`
+	FeatureSettings *NotificationEmailFeatureSettings `json:"feature_settings,omitempty"`
+}
+
+// NotificationEmailFeatureSettings contains the fine-grained business settings
+// that live below a channel-level switch in the Email settings UI. Keeping them
+// in the same contract prevents the policy and legacy business keys from being
+// saved independently.
+type NotificationEmailFeatureSettings struct {
+	SubscriptionExpiryEnabled bool    `json:"subscription_expiry_enabled"`
+	BalanceLowEnabled         bool    `json:"balance_low_enabled"`
+	BalanceLowThreshold       float64 `json:"balance_low_threshold"`
+	BalanceLowRechargeURL     string  `json:"balance_low_recharge_url"`
 }
 
 type notificationEmailStoredPolicy struct {
@@ -90,6 +106,8 @@ type notificationEmailChannelDefinition struct {
 	RecipientKind            string
 	DefaultRecipientGroup    string
 	DefaultEnabled           bool
+	SystemRequired           bool
+	FixedUserPrimary         bool
 	AllowUserPrimary         bool
 	AllowVerifiedAdditional  bool
 	DefaultIncludePrimary    bool
@@ -98,14 +116,14 @@ type notificationEmailChannelDefinition struct {
 }
 
 var notificationEmailChannelDefinitions = []notificationEmailChannelDefinition{
-	{ID: NotificationEmailChannelAuthVerification, RecipientKind: NotificationEmailRecipientKindExplicit, DefaultEnabled: true, Events: []string{NotificationEmailEventAuthVerifyCode, NotificationEmailEventNotificationEmailVerifyCode}},
-	{ID: NotificationEmailChannelPasswordReset, RecipientKind: NotificationEmailRecipientKindExplicit, DefaultEnabled: true, Events: []string{NotificationEmailEventAuthPasswordReset}},
-	{ID: NotificationEmailChannelSubscription, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: true, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventSubscriptionPurchaseSuccess, NotificationEmailEventSubscriptionExpiryReminder}},
+	{ID: NotificationEmailChannelAuthVerification, RecipientKind: NotificationEmailRecipientKindExplicit, DefaultEnabled: true, SystemRequired: true, Events: []string{NotificationEmailEventAuthVerifyCode, NotificationEmailEventNotificationEmailVerifyCode}},
+	{ID: NotificationEmailChannelPasswordReset, RecipientKind: NotificationEmailRecipientKindExplicit, DefaultEnabled: true, SystemRequired: true, Events: []string{NotificationEmailEventAuthPasswordReset}},
+	{ID: NotificationEmailChannelSubscription, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: true, FixedUserPrimary: true, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventSubscriptionPurchaseSuccess, NotificationEmailEventSubscriptionExpiryReminder}},
 	{ID: NotificationEmailChannelBalance, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: true, AllowUserPrimary: true, AllowVerifiedAdditional: true, DefaultIncludeAdditional: true, Events: []string{NotificationEmailEventBalanceLow, NotificationEmailEventBalanceRechargeSuccess}},
 	{ID: NotificationEmailChannelAccountQuota, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupAccountQuota, DefaultEnabled: true, Events: []string{NotificationEmailEventAccountQuotaAlert}},
-	{ID: NotificationEmailChannelRiskControl, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: true, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventContentModerationViolation, NotificationEmailEventContentModerationDisabled, NotificationEmailEventCyberPolicyNotice}},
+	{ID: NotificationEmailChannelRiskControl, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: true, FixedUserPrimary: true, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventContentModerationViolation, NotificationEmailEventContentModerationDisabled, NotificationEmailEventCyberPolicyNotice}},
 	{ID: NotificationEmailChannelRefundAdmin, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupFinance, DefaultEnabled: false, Events: []string{NotificationEmailEventRefundRequestedAdmin}},
-	{ID: NotificationEmailChannelRefundUser, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: false, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventRefundRequestedUser, NotificationEmailEventRefundSucceededUser, NotificationEmailEventRefundFailedUser}},
+	{ID: NotificationEmailChannelRefundUser, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: false, FixedUserPrimary: true, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventRefundRequestedUser, NotificationEmailEventRefundSucceededUser, NotificationEmailEventRefundFailedUser}},
 	{ID: NotificationEmailChannelOpsAlert, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupOpsAlert, DefaultEnabled: false, Events: []string{NotificationEmailEventOpsAlert}},
 	{ID: NotificationEmailChannelOpsReport, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupOpsReport, DefaultEnabled: false, Events: []string{NotificationEmailEventOpsScheduledReport}},
 }
@@ -143,7 +161,11 @@ func (s *NotificationEmailService) GetPolicy(ctx context.Context) (NotificationE
 	if err != nil {
 		return NotificationEmailPolicyView{}, err
 	}
-	return notificationEmailPolicyView(policy, configured), nil
+	featureSettings, err := s.loadNotificationEmailFeatureSettings(ctx)
+	if err != nil {
+		return NotificationEmailPolicyView{}, err
+	}
+	return notificationEmailPolicyView(policy, configured, featureSettings), nil
 }
 
 func (s *NotificationEmailService) GetChannelPolicy(ctx context.Context, channelID string) (NotificationEmailChannelPolicy, error) {
@@ -269,6 +291,9 @@ func (s *NotificationEmailService) UpdatePolicy(ctx context.Context, update Noti
 		channel.Events = append([]string(nil), definition.Events...)
 		channel.AllowUserPrimary = definition.AllowUserPrimary
 		channel.AllowVerifiedAdditional = definition.AllowVerifiedAdditional
+		if definition.SystemRequired {
+			channel.Enabled = true
+		}
 		switch definition.RecipientKind {
 		case NotificationEmailRecipientKindExplicit:
 			channel.RecipientGroup = ""
@@ -276,8 +301,13 @@ func (s *NotificationEmailService) UpdatePolicy(ctx context.Context, update Noti
 			channel.IncludeVerifiedAdditional = false
 		case NotificationEmailRecipientKindUser:
 			channel.RecipientGroup = ""
-			channel.IncludeUserPrimary = channel.IncludeUserPrimary && definition.AllowUserPrimary
-			channel.IncludeVerifiedAdditional = channel.IncludeVerifiedAdditional && definition.AllowVerifiedAdditional
+			if definition.FixedUserPrimary {
+				channel.IncludeUserPrimary = true
+				channel.IncludeVerifiedAdditional = false
+			} else {
+				channel.IncludeUserPrimary = channel.IncludeUserPrimary && definition.AllowUserPrimary
+				channel.IncludeVerifiedAdditional = channel.IncludeVerifiedAdditional && definition.AllowVerifiedAdditional
+			}
 			if channel.Enabled && !channel.IncludeUserPrimary && !channel.IncludeVerifiedAdditional {
 				return NotificationEmailPolicyView{}, fmt.Errorf("notification email channel %s must select at least one user recipient", channel.ID)
 			}
@@ -307,14 +337,37 @@ func (s *NotificationEmailService) UpdatePolicy(ctx context.Context, update Noti
 		current.RecipientGroups[group.ID] = normalized
 	}
 
+	featureSettings, err := s.loadNotificationEmailFeatureSettings(ctx)
+	if err != nil {
+		return NotificationEmailPolicyView{}, err
+	}
+	if update.FeatureSettings != nil {
+		featureSettings, err = normalizeNotificationEmailFeatureSettings(*update.FeatureSettings)
+		if err != nil {
+			return NotificationEmailPolicyView{}, err
+		}
+	}
+
 	payload, err := json.Marshal(current)
 	if err != nil {
 		return NotificationEmailPolicyView{}, fmt.Errorf("marshal notification email policy: %w", err)
 	}
-	if err := s.settingRepo.Set(ctx, SettingKeyNotificationEmailPolicy, string(payload)); err != nil {
+	updates := map[string]string{
+		SettingKeyNotificationEmailPolicy: string(payload),
+	}
+	if update.FeatureSettings != nil {
+		updates[SettingKeySubscriptionExpiryNotifyEnabled] = strconv.FormatBool(featureSettings.SubscriptionExpiryEnabled)
+		updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(featureSettings.BalanceLowEnabled)
+		updates[SettingKeyBalanceLowNotifyThreshold] = strconv.FormatFloat(featureSettings.BalanceLowThreshold, 'f', 8, 64)
+		updates[SettingKeyBalanceLowNotifyRechargeURL] = featureSettings.BalanceLowRechargeURL
+	}
+	if err := s.addNotificationEmailLegacyCompatibilityUpdates(ctx, current, updates); err != nil {
 		return NotificationEmailPolicyView{}, err
 	}
-	return notificationEmailPolicyView(current, true), nil
+	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
+		return NotificationEmailPolicyView{}, err
+	}
+	return notificationEmailPolicyView(current, true, featureSettings), nil
 }
 
 func (s *NotificationEmailService) loadPolicy(ctx context.Context) (notificationEmailStoredPolicy, bool, error) {
@@ -340,10 +393,17 @@ func (s *NotificationEmailService) loadPolicy(ctx context.Context) (notification
 
 func (s *NotificationEmailService) legacyNotificationEmailPolicy(ctx context.Context) notificationEmailStoredPolicy {
 	policy := defaultNotificationEmailPolicy()
-	values, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyAccountQuotaNotifyEmails, SettingKeyOpsEmailNotificationConfig})
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyAccountQuotaNotifyEnabled,
+		SettingKeyAccountQuotaNotifyEmails,
+		SettingKeyOpsEmailNotificationConfig,
+	})
 	if err != nil {
 		return policy
 	}
+	quotaChannel := policy.Channels[NotificationEmailChannelAccountQuota]
+	quotaChannel.Enabled = values[SettingKeyAccountQuotaNotifyEnabled] == "true"
+	policy.Channels[quotaChannel.ID] = quotaChannel
 	if raw := strings.TrimSpace(values[SettingKeyAccountQuotaNotifyEmails]); raw != "" {
 		members := make([]NotificationEmailRecipientMember, 0)
 		for _, entry := range ParseNotifyEmails(raw) {
@@ -409,6 +469,13 @@ func mergeNotificationEmailPolicyDefaults(stored notificationEmailStoredPolicy) 
 			channel.Events = append([]string(nil), definition.Events...)
 			channel.AllowUserPrimary = definition.AllowUserPrimary
 			channel.AllowVerifiedAdditional = definition.AllowVerifiedAdditional
+			if definition.SystemRequired {
+				channel.Enabled = true
+			}
+			if definition.FixedUserPrimary {
+				channel.IncludeUserPrimary = true
+				channel.IncludeVerifiedAdditional = false
+			}
 			if definition.RecipientKind == NotificationEmailRecipientKindGroup && strings.TrimSpace(channel.RecipientGroup) == "" {
 				channel.RecipientGroup = definition.DefaultRecipientGroup
 			}
@@ -424,19 +491,117 @@ func mergeNotificationEmailPolicyDefaults(stored notificationEmailStoredPolicy) 
 	return merged
 }
 
-func notificationEmailPolicyView(policy notificationEmailStoredPolicy, configured bool) NotificationEmailPolicyView {
-	view := NotificationEmailPolicyView{Version: NotificationEmailPolicyVersion, Configured: configured}
+func notificationEmailPolicyView(policy notificationEmailStoredPolicy, configured bool, featureSettings NotificationEmailFeatureSettings) NotificationEmailPolicyView {
+	view := NotificationEmailPolicyView{
+		Version:         NotificationEmailPolicyVersion,
+		Configured:      configured,
+		Channels:        make([]NotificationEmailChannelPolicy, 0, len(notificationEmailChannelDefinitions)),
+		RecipientGroups: make([]NotificationEmailRecipientGroup, 0, len(notificationEmailRecipientGroupOrder)),
+		FeatureSettings: featureSettings,
+	}
 	for _, definition := range notificationEmailChannelDefinitions {
 		channel := policy.Channels[definition.ID]
-		channel.Events = append([]string(nil), channel.Events...)
+		channel.Events = append(make([]string, 0, len(channel.Events)), channel.Events...)
 		view.Channels = append(view.Channels, channel)
 	}
 	for _, id := range notificationEmailRecipientGroupOrder {
 		group := policy.RecipientGroups[id]
-		group.Members = append([]NotificationEmailRecipientMember(nil), group.Members...)
+		group.Members = append(make([]NotificationEmailRecipientMember, 0, len(group.Members)), group.Members...)
 		view.RecipientGroups = append(view.RecipientGroups, group)
 	}
 	return view
+}
+
+func (s *NotificationEmailService) loadNotificationEmailFeatureSettings(ctx context.Context) (NotificationEmailFeatureSettings, error) {
+	settings := NotificationEmailFeatureSettings{
+		SubscriptionExpiryEnabled: true,
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeySubscriptionExpiryNotifyEnabled,
+		SettingKeyBalanceLowNotifyEnabled,
+		SettingKeyBalanceLowNotifyThreshold,
+		SettingKeyBalanceLowNotifyRechargeURL,
+	})
+	if err != nil {
+		return NotificationEmailFeatureSettings{}, err
+	}
+	settings.SubscriptionExpiryEnabled = !isFalseSettingValue(values[SettingKeySubscriptionExpiryNotifyEnabled])
+	settings.BalanceLowEnabled = values[SettingKeyBalanceLowNotifyEnabled] == "true"
+	if threshold, parseErr := strconv.ParseFloat(strings.TrimSpace(values[SettingKeyBalanceLowNotifyThreshold]), 64); parseErr == nil && threshold >= 0 && !math.IsNaN(threshold) && !math.IsInf(threshold, 0) {
+		settings.BalanceLowThreshold = threshold
+	}
+	settings.BalanceLowRechargeURL = strings.TrimSpace(values[SettingKeyBalanceLowNotifyRechargeURL])
+	return settings, nil
+}
+
+func normalizeNotificationEmailFeatureSettings(settings NotificationEmailFeatureSettings) (NotificationEmailFeatureSettings, error) {
+	settings.BalanceLowRechargeURL = strings.TrimSpace(settings.BalanceLowRechargeURL)
+	if math.IsNaN(settings.BalanceLowThreshold) || math.IsInf(settings.BalanceLowThreshold, 0) || settings.BalanceLowThreshold < 0 {
+		return NotificationEmailFeatureSettings{}, errors.New("balance_low_threshold must be a finite number greater than or equal to 0")
+	}
+	if settings.BalanceLowEnabled && settings.BalanceLowThreshold <= 0 {
+		return NotificationEmailFeatureSettings{}, errors.New("balance_low_threshold must be greater than 0 when low balance reminders are enabled")
+	}
+	if settings.BalanceLowRechargeURL != "" {
+		parsed, err := url.ParseRequestURI(settings.BalanceLowRechargeURL)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return NotificationEmailFeatureSettings{}, errors.New("balance_low_recharge_url must be an absolute HTTP or HTTPS URL")
+		}
+	}
+	return settings, nil
+}
+
+func (s *NotificationEmailService) addNotificationEmailLegacyCompatibilityUpdates(
+	ctx context.Context,
+	policy notificationEmailStoredPolicy,
+	updates map[string]string,
+) error {
+	quotaChannel := policy.Channels[NotificationEmailChannelAccountQuota]
+	quotaGroup := policy.RecipientGroups[quotaChannel.RecipientGroup]
+	quotaEntries := make([]NotifyEmailEntry, 0, len(quotaGroup.Members))
+	for _, member := range quotaGroup.Members {
+		quotaEntries = append(quotaEntries, NotifyEmailEntry{
+			Email:    member.Email,
+			Disabled: !member.Enabled,
+			Verified: member.Status != NotificationEmailRecipientStatusLegacyUnverified,
+		})
+	}
+	updates[SettingKeyAccountQuotaNotifyEnabled] = strconv.FormatBool(quotaChannel.Enabled)
+	updates[SettingKeyAccountQuotaNotifyEmails] = MarshalNotifyEmails(quotaEntries)
+
+	values, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyOpsEmailNotificationConfig})
+	if err != nil {
+		return err
+	}
+	opsConfig := defaultOpsEmailNotificationConfig()
+	if raw := strings.TrimSpace(values[SettingKeyOpsEmailNotificationConfig]); raw != "" {
+		if unmarshalErr := json.Unmarshal([]byte(raw), opsConfig); unmarshalErr != nil {
+			return fmt.Errorf("decode legacy Ops email config: %w", unmarshalErr)
+		}
+	}
+	normalizeOpsEmailNotificationConfig(opsConfig)
+	alertChannel := policy.Channels[NotificationEmailChannelOpsAlert]
+	reportChannel := policy.Channels[NotificationEmailChannelOpsReport]
+	opsConfig.Alert.Enabled = alertChannel.Enabled
+	opsConfig.Alert.Recipients = enabledNotificationEmailGroupMembers(policy.RecipientGroups[alertChannel.RecipientGroup])
+	opsConfig.Report.Enabled = reportChannel.Enabled
+	opsConfig.Report.Recipients = enabledNotificationEmailGroupMembers(policy.RecipientGroups[reportChannel.RecipientGroup])
+	opsPayload, err := json.Marshal(opsConfig)
+	if err != nil {
+		return fmt.Errorf("marshal legacy Ops email config: %w", err)
+	}
+	updates[SettingKeyOpsEmailNotificationConfig] = string(opsPayload)
+	return nil
+}
+
+func enabledNotificationEmailGroupMembers(group NotificationEmailRecipientGroup) []string {
+	recipients := make([]string, 0, len(group.Members))
+	for _, member := range group.Members {
+		if member.Enabled && member.Status != NotificationEmailRecipientStatusLegacyUnverified {
+			recipients = append(recipients, member.Email)
+		}
+	}
+	return recipients
 }
 
 func normalizeNotificationEmailRecipientGroup(group, previous NotificationEmailRecipientGroup) (NotificationEmailRecipientGroup, error) {

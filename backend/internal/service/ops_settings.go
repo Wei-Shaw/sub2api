@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 const (
@@ -166,16 +168,62 @@ func normalizeOpsEmailNotificationConfig(cfg *OpsEmailNotificationConfig) {
 	}
 }
 
+func opsEmailBehaviorSettings(cfg *OpsEmailNotificationConfig) OpsEmailBehaviorSettings {
+	if cfg == nil {
+		cfg = defaultOpsEmailNotificationConfig()
+	}
+	return OpsEmailBehaviorSettings{
+		Alert: OpsEmailAlertBehaviorSettings{
+			MinSeverity:           cfg.Alert.MinSeverity,
+			RateLimitPerHour:      cfg.Alert.RateLimitPerHour,
+			BatchingWindowSeconds: cfg.Alert.BatchingWindowSeconds,
+			IncludeResolvedAlerts: cfg.Alert.IncludeResolvedAlerts,
+		},
+		Report: OpsEmailReportBehaviorSettings{
+			DailySummaryEnabled:             cfg.Report.DailySummaryEnabled,
+			DailySummarySchedule:            cfg.Report.DailySummarySchedule,
+			WeeklySummaryEnabled:            cfg.Report.WeeklySummaryEnabled,
+			WeeklySummarySchedule:           cfg.Report.WeeklySummarySchedule,
+			ErrorDigestEnabled:              cfg.Report.ErrorDigestEnabled,
+			ErrorDigestSchedule:             cfg.Report.ErrorDigestSchedule,
+			ErrorDigestMinCount:             cfg.Report.ErrorDigestMinCount,
+			AccountHealthEnabled:            cfg.Report.AccountHealthEnabled,
+			AccountHealthSchedule:           cfg.Report.AccountHealthSchedule,
+			AccountHealthErrorRateThreshold: cfg.Report.AccountHealthErrorRateThreshold,
+		},
+	}
+}
+
+func applyOpsEmailBehaviorSettings(cfg *OpsEmailNotificationConfig, behavior OpsEmailBehaviorSettings) {
+	if cfg == nil {
+		return
+	}
+	cfg.Alert.MinSeverity = behavior.Alert.MinSeverity
+	cfg.Alert.RateLimitPerHour = behavior.Alert.RateLimitPerHour
+	cfg.Alert.BatchingWindowSeconds = behavior.Alert.BatchingWindowSeconds
+	cfg.Alert.IncludeResolvedAlerts = behavior.Alert.IncludeResolvedAlerts
+	cfg.Report.DailySummaryEnabled = behavior.Report.DailySummaryEnabled
+	cfg.Report.DailySummarySchedule = behavior.Report.DailySummarySchedule
+	cfg.Report.WeeklySummaryEnabled = behavior.Report.WeeklySummaryEnabled
+	cfg.Report.WeeklySummarySchedule = behavior.Report.WeeklySummarySchedule
+	cfg.Report.ErrorDigestEnabled = behavior.Report.ErrorDigestEnabled
+	cfg.Report.ErrorDigestSchedule = behavior.Report.ErrorDigestSchedule
+	cfg.Report.ErrorDigestMinCount = behavior.Report.ErrorDigestMinCount
+	cfg.Report.AccountHealthEnabled = behavior.Report.AccountHealthEnabled
+	cfg.Report.AccountHealthSchedule = behavior.Report.AccountHealthSchedule
+	cfg.Report.AccountHealthErrorRateThreshold = behavior.Report.AccountHealthErrorRateThreshold
+}
+
 func validateOpsEmailNotificationConfig(cfg *OpsEmailNotificationConfig) error {
 	if cfg == nil {
 		return errors.New("invalid config")
 	}
 
-	if cfg.Alert.RateLimitPerHour < 0 {
-		return errors.New("alert.rate_limit_per_hour must be >= 0")
+	if cfg.Alert.RateLimitPerHour < 0 || cfg.Alert.RateLimitPerHour > 10000 {
+		return errors.New("alert.rate_limit_per_hour must be between 0 and 10000")
 	}
-	if cfg.Alert.BatchingWindowSeconds < 0 {
-		return errors.New("alert.batching_window_seconds must be >= 0")
+	if cfg.Alert.BatchingWindowSeconds < 0 || cfg.Alert.BatchingWindowSeconds > 86400 {
+		return errors.New("alert.batching_window_seconds must be between 0 and 86400")
 	}
 	switch strings.TrimSpace(cfg.Alert.MinSeverity) {
 	case "", "critical", "warning", "info":
@@ -188,6 +236,24 @@ func validateOpsEmailNotificationConfig(cfg *OpsEmailNotificationConfig) error {
 	}
 	if cfg.Report.AccountHealthErrorRateThreshold < 0 || cfg.Report.AccountHealthErrorRateThreshold > 100 {
 		return errors.New("report.account_health_error_rate_threshold must be between 0 and 100")
+	}
+	schedules := []struct {
+		enabled bool
+		name    string
+		spec    string
+	}{
+		{cfg.Report.DailySummaryEnabled, "report.daily_summary_schedule", cfg.Report.DailySummarySchedule},
+		{cfg.Report.WeeklySummaryEnabled, "report.weekly_summary_schedule", cfg.Report.WeeklySummarySchedule},
+		{cfg.Report.ErrorDigestEnabled, "report.error_digest_schedule", cfg.Report.ErrorDigestSchedule},
+		{cfg.Report.AccountHealthEnabled, "report.account_health_schedule", cfg.Report.AccountHealthSchedule},
+	}
+	for _, schedule := range schedules {
+		if !schedule.enabled {
+			continue
+		}
+		if _, err := opsScheduledReportCronParser.Parse(strings.TrimSpace(schedule.spec)); err != nil {
+			return fmt.Errorf("%s is invalid: %w", schedule.name, err)
+		}
 	}
 	return nil
 }
@@ -321,18 +387,8 @@ func (s *OpsService) UpdateOpsAlertRuntimeSettings(ctx context.Context, cfg *Ops
 		return nil, errors.New("invalid config")
 	}
 
-	if cfg.EvaluationIntervalSeconds < 1 || cfg.EvaluationIntervalSeconds > int((24*time.Hour).Seconds()) {
-		return nil, errors.New("evaluation_interval_seconds must be between 1 and 86400")
-	}
-	if cfg.DistributedLock.Enabled {
-		if err := validateOpsDistributedLockSettings(cfg.DistributedLock); err != nil {
-			return nil, err
-		}
-	}
-	if cfg.Silencing.Enabled {
-		if err := validateOpsAlertSilencingSettings(cfg.Silencing); err != nil {
-			return nil, err
-		}
+	if err := validateOpsAlertRuntimeSettings(cfg); err != nil {
+		return nil, err
 	}
 
 	defaultCfg := defaultOpsAlertRuntimeSettings()
@@ -351,6 +407,26 @@ func (s *OpsService) UpdateOpsAlertRuntimeSettings(ctx context.Context, cfg *Ops
 	updated := &OpsAlertRuntimeSettings{}
 	_ = json.Unmarshal(raw, updated)
 	return updated, nil
+}
+
+func validateOpsAlertRuntimeSettings(cfg *OpsAlertRuntimeSettings) error {
+	if cfg == nil {
+		return errors.New("invalid config")
+	}
+	if cfg.EvaluationIntervalSeconds < 1 || cfg.EvaluationIntervalSeconds > int((24*time.Hour).Seconds()) {
+		return errors.New("evaluation_interval_seconds must be between 1 and 86400")
+	}
+	if cfg.DistributedLock.Enabled {
+		if err := validateOpsDistributedLockSettings(cfg.DistributedLock); err != nil {
+			return err
+		}
+	}
+	if cfg.Silencing.Enabled {
+		if err := validateOpsAlertSilencingSettings(cfg.Silencing); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // =========================
@@ -547,6 +623,9 @@ func (s *OpsService) GetMetricThresholds(ctx context.Context) (*OpsMetricThresho
 	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
 		return defaultCfg, nil
 	}
+	if err := validateOpsMetricThresholds(cfg); err != nil {
+		return defaultCfg, nil
+	}
 
 	return cfg, nil
 }
@@ -562,18 +641,8 @@ func (s *OpsService) UpdateMetricThresholds(ctx context.Context, cfg *OpsMetricT
 		return nil, errors.New("invalid config")
 	}
 
-	// Validate thresholds
-	if cfg.SLAPercentMin != nil && (*cfg.SLAPercentMin < 0 || *cfg.SLAPercentMin > 100) {
-		return nil, errors.New("sla_percent_min must be between 0 and 100")
-	}
-	if cfg.TTFTp99MsMax != nil && *cfg.TTFTp99MsMax < 0 {
-		return nil, errors.New("ttft_p99_ms_max must be >= 0")
-	}
-	if cfg.RequestErrorRatePercentMax != nil && (*cfg.RequestErrorRatePercentMax < 0 || *cfg.RequestErrorRatePercentMax > 100) {
-		return nil, errors.New("request_error_rate_percent_max must be between 0 and 100")
-	}
-	if cfg.UpstreamErrorRatePercentMax != nil && (*cfg.UpstreamErrorRatePercentMax < 0 || *cfg.UpstreamErrorRatePercentMax > 100) {
-		return nil, errors.New("upstream_error_rate_percent_max must be between 0 and 100")
+	if err := validateOpsMetricThresholds(cfg); err != nil {
+		return nil, err
 	}
 
 	raw, err := json.Marshal(cfg)
@@ -587,4 +656,179 @@ func (s *OpsService) UpdateMetricThresholds(ctx context.Context, cfg *OpsMetricT
 	updated := &OpsMetricThresholds{}
 	_ = json.Unmarshal(raw, updated)
 	return updated, nil
+}
+
+func validateOpsMetricThresholds(cfg *OpsMetricThresholds) error {
+	if cfg == nil {
+		return errors.New("invalid config")
+	}
+	if cfg.SLAPercentMin != nil && (*cfg.SLAPercentMin <= 0 || *cfg.SLAPercentMin > 100) {
+		return errors.New("sla_percent_min must be greater than 0 and at most 100")
+	}
+	if cfg.TTFTp99MsMax != nil && *cfg.TTFTp99MsMax <= 0 {
+		return errors.New("ttft_p99_ms_max must be greater than 0")
+	}
+	if cfg.RequestErrorRatePercentMax != nil && (*cfg.RequestErrorRatePercentMax <= 0 || *cfg.RequestErrorRatePercentMax > 100) {
+		return errors.New("request_error_rate_percent_max must be greater than 0 and at most 100")
+	}
+	if cfg.UpstreamErrorRatePercentMax != nil && (*cfg.UpstreamErrorRatePercentMax <= 0 || *cfg.UpstreamErrorRatePercentMax > 100) {
+		return errors.New("upstream_error_rate_percent_max must be greater than 0 and at most 100")
+	}
+	return nil
+}
+
+func (s *OpsService) GetOpsMonitoringSettings(ctx context.Context) (*OpsMonitoringSettings, error) {
+	if s == nil || s.settingRepo == nil {
+		return nil, errors.New("setting repository not initialized")
+	}
+	runtimeCfg, err := s.GetOpsAlertRuntimeSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	emailCfg, err := s.GetEmailNotificationConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	advancedCfg, err := s.GetOpsAdvancedSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	thresholds, err := s.GetMetricThresholds(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &OpsMonitoringSettings{
+		Runtime:          *runtimeCfg,
+		EmailBehavior:    opsEmailBehaviorSettings(emailCfg),
+		Advanced:         *advancedCfg,
+		MetricThresholds: *thresholds,
+		ScheduleInfo:     s.opsScheduleInfo(emailCfg, time.Now()),
+	}, nil
+}
+
+func (s *OpsService) UpdateOpsMonitoringSettings(ctx context.Context, req *OpsMonitoringSettings) (*OpsMonitoringSettings, error) {
+	if s == nil || s.settingRepo == nil {
+		return nil, errors.New("setting repository not initialized")
+	}
+	if req == nil {
+		return nil, errors.New("invalid config")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	runtimeCfg := req.Runtime
+	advancedCfg := req.Advanced
+	thresholds := req.MetricThresholds
+	emailCfg, err := s.GetEmailNotificationConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	applyOpsEmailBehaviorSettings(emailCfg, req.EmailBehavior)
+
+	if err := validateOpsAlertRuntimeSettings(&runtimeCfg); err != nil {
+		return nil, err
+	}
+	if err := validateOpsEmailNotificationConfig(emailCfg); err != nil {
+		return nil, err
+	}
+	if err := validateOpsAdvancedSettings(&advancedCfg); err != nil {
+		return nil, err
+	}
+	if err := validateOpsMetricThresholds(&thresholds); err != nil {
+		return nil, err
+	}
+
+	defaultRuntime := defaultOpsAlertRuntimeSettings()
+	normalizeOpsDistributedLockSettings(&runtimeCfg.DistributedLock, opsAlertEvaluatorLeaderLockKeyDefault, defaultRuntime.DistributedLock.TTLSeconds)
+	normalizeOpsAlertSilencingSettings(&runtimeCfg.Silencing)
+	normalizeOpsEmailNotificationConfig(emailCfg)
+	normalizeOpsAdvancedSettings(&advancedCfg)
+
+	runtimeRaw, err := json.Marshal(&runtimeCfg)
+	if err != nil {
+		return nil, err
+	}
+	emailRaw, err := json.Marshal(emailCfg)
+	if err != nil {
+		return nil, err
+	}
+	advancedRaw, err := json.Marshal(&advancedCfg)
+	if err != nil {
+		return nil, err
+	}
+	thresholdsRaw, err := json.Marshal(&thresholds)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.settingRepo.SetMultiple(ctx, map[string]string{
+		SettingKeyOpsAlertRuntimeSettings:    string(runtimeRaw),
+		SettingKeyOpsEmailNotificationConfig: string(emailRaw),
+		SettingKeyOpsAdvancedSettings:        string(advancedRaw),
+		SettingKeyOpsMetricThresholds:        string(thresholdsRaw),
+	}); err != nil {
+		return nil, err
+	}
+
+	s.storeAdvancedSettingsSnapshot(&advancedCfg)
+	if s.quotaAutoPauseSink != nil {
+		s.quotaAutoPauseSink(advancedCfg.OpenAIAccountQuotaAutoPause)
+	}
+	if s.cleanupReloader != nil {
+		if reloadErr := s.cleanupReloader.Reload(ctx); reloadErr != nil {
+			logger.LegacyPrintf("service.ops_settings",
+				"[OpsSettings] cleanup reload after atomic settings update failed: %v", reloadErr)
+		}
+	}
+
+	return &OpsMonitoringSettings{
+		Runtime:          runtimeCfg,
+		EmailBehavior:    opsEmailBehaviorSettings(emailCfg),
+		Advanced:         advancedCfg,
+		MetricThresholds: thresholds,
+		ScheduleInfo:     s.opsScheduleInfo(emailCfg, time.Now()),
+	}, nil
+}
+
+func (s *OpsService) opsScheduleInfo(cfg *OpsEmailNotificationConfig, now time.Time) OpsScheduleInfo {
+	loc := time.Local
+	timezone := loc.String()
+	if s != nil && s.cfg != nil && strings.TrimSpace(s.cfg.Timezone) != "" {
+		candidate := strings.TrimSpace(s.cfg.Timezone)
+		if parsed, err := time.LoadLocation(candidate); err == nil {
+			timezone = candidate
+			loc = parsed
+		}
+	}
+	if timezone == "" || timezone == "Local" {
+		timezone = loc.String()
+	}
+	info := OpsScheduleInfo{Timezone: timezone, NextRuns: map[string]time.Time{}}
+	if cfg == nil {
+		return info
+	}
+	defs := []struct {
+		enabled bool
+		name    string
+		spec    string
+	}{
+		{cfg.Report.DailySummaryEnabled, "daily_summary", cfg.Report.DailySummarySchedule},
+		{cfg.Report.WeeklySummaryEnabled, "weekly_summary", cfg.Report.WeeklySummarySchedule},
+		{cfg.Report.ErrorDigestEnabled, "error_digest", cfg.Report.ErrorDigestSchedule},
+		{cfg.Report.AccountHealthEnabled, "account_health", cfg.Report.AccountHealthSchedule},
+	}
+	base := now.In(loc)
+	for _, def := range defs {
+		if !def.enabled {
+			continue
+		}
+		schedule, err := opsScheduledReportCronParser.Parse(strings.TrimSpace(def.spec))
+		if err != nil {
+			continue
+		}
+		if next := schedule.Next(base); !next.IsZero() {
+			info.NextRuns[def.name] = next
+		}
+	}
+	return info
 }

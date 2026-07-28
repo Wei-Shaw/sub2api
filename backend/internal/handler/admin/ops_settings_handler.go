@@ -9,6 +9,50 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// GetMonitoringSettings returns the complete Ops settings dialog contract.
+// Channel-level mail switches and recipients intentionally remain in the
+// global notification email policy and are not exposed here.
+func (h *OpsHandler) GetMonitoringSettings(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	cfg, err := h.opsService.GetOpsMonitoringSettings(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "Failed to get Ops monitoring settings")
+		return
+	}
+	response.Success(c, cfg)
+}
+
+// UpdateMonitoringSettings validates and persists every Ops settings dialog
+// section through one atomic repository write.
+func (h *OpsHandler) UpdateMonitoringSettings(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var req service.OpsMonitoringSettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	updated, err := h.opsService.UpdateOpsMonitoringSettings(c.Request.Context(), &req)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	response.Success(c, updated)
+}
+
 // GetEmailNotificationConfig returns Ops email notification config (DB-backed).
 // GET /api/v1/admin/ops/email-notification/config
 func (h *OpsHandler) GetEmailNotificationConfig(c *gin.Context) {

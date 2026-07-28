@@ -46,6 +46,8 @@ export interface DeploymentJob {
   background_activated: boolean
   rollback_error?: string
   cleanup_warning?: string
+  control_plane_upgrade_status?: 'pending' | 'succeeded' | 'failed'
+  control_plane_upgrade_error?: string
   created_at: string
   started_at: string
   updated_at: string

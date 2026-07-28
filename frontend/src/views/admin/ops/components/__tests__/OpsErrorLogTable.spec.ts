@@ -75,6 +75,19 @@ describe('OpsErrorLogTable user/api-key/account columns', () => {
   })
 })
 
+describe('OpsErrorLogTable service-quality classification', () => {
+  it('labels platform and provider failures as service failures', () => {
+    expect(mountTable({ classification_version: 2, final_outcome: 'platform_failed' }).text()).toContain('admin.ops.errorLog.outcomes.platformFailure')
+    expect(mountTable({ classification_version: 2, final_outcome: 'provider_failed' }).text()).toContain('admin.ops.errorLog.outcomes.providerFailure')
+  })
+
+  it('labels rejected, limited and recovered outcomes as ignored by SLA', () => {
+    expect(mountTable({ classification_version: 2, final_outcome: 'client_rejected' }).text()).toContain('admin.ops.errorLog.outcomes.clientIgnored')
+    expect(mountTable({ classification_version: 2, final_outcome: 'business_limited' }).text()).toContain('admin.ops.errorLog.outcomes.businessIgnored')
+    expect(mountTable({ classification_version: 2, final_outcome: 'recovered' }).text()).toContain('admin.ops.errorLog.outcomes.recovered')
+  })
+})
+
 // 防回归:组件用 admin.ops.errorLog.* 命名空间。若 i18n 键写错命名空间(如误放到
 // errorDetail),真实 vue-i18n 会回退返回 key 本身 → 界面显示原始路径字符串。
 // 这里用真实 locale 校验键确实可解析(返回译文而非 key)。

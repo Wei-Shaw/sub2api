@@ -76,12 +76,15 @@ type NotificationEmailDelivery struct {
 }
 
 type NotificationEmailDeliveryListFilter struct {
-	Page       int
-	PageSize   int
-	Event      string
-	Status     string
-	SourceType string
-	SourceID   string
+	Page          int
+	PageSize      int
+	Event         string
+	Status        string
+	SourceType    string
+	SourceID      string
+	RecipientHash string
+	ReminderKey   string
+	CreatedAfter  *time.Time
 }
 
 type NotificationEmailDeliveryListResult struct {

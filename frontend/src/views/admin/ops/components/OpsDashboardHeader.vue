@@ -391,21 +391,34 @@ const tpsAvgLabel = computed(() => {
 })
 
 const slaPercent = computed(() => {
-  const v = overview.value?.sla
+  const ov = overview.value
+  if (!ov || ov.availability_available === false || (ov.request_count_sla ?? 0) <= 0) return null
+  const v = ov.sla
   if (typeof v !== 'number') return null
   return v * 100
 })
 
-const errorRatePercent = computed(() => {
-  const v = overview.value?.error_rate
-  if (typeof v !== 'number') return null
-  return v * 100
+const platformFailureRatePercent = computed(() => {
+  const ov = overview.value
+  const denominator = ov?.request_count_sla ?? 0
+  if (!ov || denominator <= 0) return null
+  return ((ov.platform_failure_count ?? 0) / denominator) * 100
 })
 
-const upstreamErrorRatePercent = computed(() => {
-  const v = overview.value?.upstream_error_rate
-  if (typeof v !== 'number') return null
-  return v * 100
+const providerFailureRatePercent = computed(() => {
+  const ov = overview.value
+  const denominator = ov?.request_count_sla ?? 0
+  if (!ov || denominator <= 0) return null
+  return ((ov.provider_failure_count ?? 0) / denominator) * 100
+})
+
+const ignoredRequestCount = computed(() => {
+  const ov = overview.value
+  if (!ov) return 0
+  return (ov.client_rejected_count ?? 0) +
+    (ov.business_limited_count ?? 0) +
+    (ov.cancelled_count ?? 0) +
+    (ov.security_blocked_count ?? 0)
 })
 
 const durationP99Ms = computed(() => overview.value?.duration?.p99_ms ?? null)
@@ -427,10 +440,18 @@ const ttftMaxMs = computed(() => overview.value?.ttft?.max_ms ?? null)
 const isSystemIdle = computed(() => {
   const ov = overview.value
   if (!ov) return true
-  const qps = ov.qps?.current
-  const errorRate = ov.error_rate ?? 0
-  return (qps ?? 0) === 0 && errorRate === 0
+  return (ov.request_count_total ?? 0) <= 0
 })
+
+const hasInfrastructureIssue = computed(() => {
+  const ov = overview.value
+  const sm = ov?.system_metrics
+  if (sm?.db_ok === false || sm?.redis_ok === false) return true
+  if ((sm?.cpu_usage_percent ?? 0) > 80 || (sm?.memory_usage_percent ?? 0) > 85) return true
+  return (ov?.job_heartbeats ?? []).some((heartbeat) => jobHeartbeatWarns(heartbeat))
+})
+
+const showIdleHealthState = computed(() => isSystemIdle.value && !hasInfrastructureIssue.value)
 
 const healthScoreValue = computed<number | null>(() => {
   const v = overview.value?.health_score
@@ -438,7 +459,7 @@ const healthScoreValue = computed<number | null>(() => {
 })
 
 const healthScoreColor = computed(() => {
-  if (isSystemIdle.value) return '#9ca3af' // gray-400
+  if (showIdleHealthState.value) return '#9ca3af' // gray-400
   const score = healthScoreValue.value
   if (score == null) return '#9ca3af'
   if (score >= 90) return '#737373' // green
@@ -447,7 +468,7 @@ const healthScoreColor = computed(() => {
 })
 
 const healthScoreClass = computed(() => {
-  if (isSystemIdle.value) return 'text-gray-400'
+  if (showIdleHealthState.value) return 'text-gray-400'
   const score = healthScoreValue.value
   if (score == null) return 'text-gray-400'
   if (score >= 90) return 'text-gray-500'
@@ -460,181 +481,78 @@ const strokeWidth = computed(() => props.fullscreen ? 10 : 8)
 const radius = computed(() => (circleSize.value - strokeWidth.value) / 2)
 const circumference = computed(() => 2 * Math.PI * radius.value)
 const dashOffset = computed(() => {
-  if (isSystemIdle.value) return 0
+  if (showIdleHealthState.value) return 0
   if (healthScoreValue.value == null) return 0
   const score = Math.max(0, Math.min(100, healthScoreValue.value))
   return circumference.value - (score / 100) * circumference.value
 })
 
-interface DiagnosisItem {
-  type: 'critical' | 'warning' | 'info'
-  message: string
-  impact: string
-  action?: string
+const healthScoreBreakdown = computed(() => overview.value?.health_score_breakdown ?? null)
+
+const healthScoreDeductions = computed(() => {
+  return (healthScoreBreakdown.value?.components ?? []).filter((component) => component.deduction_points > 0.05)
+})
+
+const healthScoreDeductionTotal = computed(() => {
+  const score = healthScoreBreakdown.value?.score
+  return typeof score === 'number' && Number.isFinite(score) ? Math.max(0, 100 - score) : null
+})
+
+function formatHealthScoreNumber(value?: number | null): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }
 
-const diagnosisReport = computed<DiagnosisItem[]>(() => {
-  const ov = overview.value
-  if (!ov) return []
+function formatHealthDuration(seconds?: number): string {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return '-'
+  if (seconds < 60) return t('admin.ops.healthBreakdown.durationSeconds', { value: Math.max(0, Math.round(seconds)) })
+  if (seconds < 3600) return t('admin.ops.healthBreakdown.durationMinutes', { value: formatHealthScoreNumber(seconds / 60) })
+  return t('admin.ops.healthBreakdown.durationHours', { value: formatHealthScoreNumber(seconds / 3600) })
+}
 
-  const report: DiagnosisItem[] = []
+function healthComponentLabel(key: string): string {
+  const knownKeys = new Set([
+    'business_quality',
+    'business_latency',
+    'infrastructure_storage',
+    'infrastructure_compute',
+    'infrastructure_jobs'
+  ])
+  return knownKeys.has(key)
+    ? t(`admin.ops.healthBreakdown.components.${key}`)
+    : t('admin.ops.healthBreakdown.components.unknown')
+}
 
-  if (isSystemIdle.value) {
-    report.push({
-      type: 'info',
-      message: t('admin.ops.diagnosis.idle'),
-      impact: t('admin.ops.diagnosis.idleImpact')
-    })
-    return report
-  }
-
-  // Resource diagnostics (highest priority)
-  const sm = ov.system_metrics
-  if (sm) {
-    if (sm.db_ok === false) {
-      report.push({
-        type: 'critical',
-        message: t('admin.ops.diagnosis.dbDown'),
-        impact: t('admin.ops.diagnosis.dbDownImpact'),
-        action: t('admin.ops.diagnosis.dbDownAction')
+function healthDeductionReason(reason: NonNullable<OpsDashboardOverview['health_score_breakdown']>['components'][number]['reasons'][number]): string {
+  const value = formatHealthScoreNumber(reason.value)
+  const threshold = formatHealthScoreNumber(reason.threshold)
+  switch (reason.code) {
+    case 'database_unavailable':
+      return t('admin.ops.healthBreakdown.reasons.databaseUnavailable')
+    case 'redis_unavailable':
+      return t('admin.ops.healthBreakdown.reasons.redisUnavailable')
+    case 'cpu_usage_high':
+      return t('admin.ops.healthBreakdown.reasons.cpuHigh', { value, threshold })
+    case 'memory_usage_high':
+      return t('admin.ops.healthBreakdown.reasons.memoryHigh', { value, threshold })
+    case 'request_error_rate_high':
+      return t('admin.ops.healthBreakdown.reasons.requestErrorRateHigh', { value, threshold })
+    case 'upstream_error_rate_high':
+      return t('admin.ops.healthBreakdown.reasons.upstreamErrorRateHigh', { value, threshold })
+    case 'ttft_p99_high':
+      return t('admin.ops.healthBreakdown.reasons.ttftHigh', { value, threshold })
+    case 'job_last_run_failed':
+      return t('admin.ops.healthBreakdown.reasons.jobFailed', { job: reason.job_name || '-' })
+    case 'job_heartbeat_stale':
+      return t('admin.ops.healthBreakdown.reasons.jobStale', {
+        job: reason.job_name || '-',
+        age: formatHealthDuration(reason.age_seconds),
+        limit: formatHealthDuration(reason.max_age_seconds)
       })
-    }
-    if (sm.redis_ok === false) {
-      report.push({
-        type: 'warning',
-        message: t('admin.ops.diagnosis.redisDown'),
-        impact: t('admin.ops.diagnosis.redisDownImpact'),
-        action: t('admin.ops.diagnosis.redisDownAction')
-      })
-    }
-
-    const cpuPct = sm.cpu_usage_percent ?? 0
-    if (cpuPct > 90) {
-      report.push({
-        type: 'critical',
-        message: t('admin.ops.diagnosis.cpuCritical', { usage: cpuPct.toFixed(1) }),
-        impact: t('admin.ops.diagnosis.cpuCriticalImpact'),
-        action: t('admin.ops.diagnosis.cpuCriticalAction')
-      })
-    } else if (cpuPct > 80) {
-      report.push({
-        type: 'warning',
-        message: t('admin.ops.diagnosis.cpuHigh', { usage: cpuPct.toFixed(1) }),
-        impact: t('admin.ops.diagnosis.cpuHighImpact'),
-        action: t('admin.ops.diagnosis.cpuHighAction')
-      })
-    }
-
-    const memPct = sm.memory_usage_percent ?? 0
-    if (memPct > 90) {
-      report.push({
-        type: 'critical',
-        message: t('admin.ops.diagnosis.memoryCritical', { usage: memPct.toFixed(1) }),
-        impact: t('admin.ops.diagnosis.memoryCriticalImpact'),
-        action: t('admin.ops.diagnosis.memoryCriticalAction')
-      })
-    } else if (memPct > 85) {
-      report.push({
-        type: 'warning',
-        message: t('admin.ops.diagnosis.memoryHigh', { usage: memPct.toFixed(1) }),
-        impact: t('admin.ops.diagnosis.memoryHighImpact'),
-        action: t('admin.ops.diagnosis.memoryHighAction')
-      })
-    }
+    default:
+      return t('admin.ops.healthBreakdown.reasons.unknown')
   }
-
-  const ttftP99 = ov.ttft?.p99_ms ?? 0
-  if (ttftP99 > 500) {
-    report.push({
-      type: 'warning',
-      message: t('admin.ops.diagnosis.ttftHigh', { ttft: ttftP99.toFixed(0) }),
-      impact: t('admin.ops.diagnosis.ttftHighImpact'),
-      action: t('admin.ops.diagnosis.ttftHighAction')
-    })
-  }
-
-  // Error rate diagnostics (adjusted thresholds)
-  const upstreamRatePct = (ov.upstream_error_rate ?? 0) * 100
-  if (upstreamRatePct > 5) {
-    report.push({
-      type: 'critical',
-      message: t('admin.ops.diagnosis.upstreamCritical', { rate: upstreamRatePct.toFixed(2) }),
-      impact: t('admin.ops.diagnosis.upstreamCriticalImpact'),
-      action: t('admin.ops.diagnosis.upstreamCriticalAction')
-    })
-  } else if (upstreamRatePct > 2) {
-    report.push({
-      type: 'warning',
-      message: t('admin.ops.diagnosis.upstreamHigh', { rate: upstreamRatePct.toFixed(2) }),
-      impact: t('admin.ops.diagnosis.upstreamHighImpact'),
-      action: t('admin.ops.diagnosis.upstreamHighAction')
-    })
-  }
-
-  const errorPct = (ov.error_rate ?? 0) * 100
-  if (errorPct > 3) {
-    report.push({
-      type: 'critical',
-      message: t('admin.ops.diagnosis.errorHigh', { rate: errorPct.toFixed(2) }),
-      impact: t('admin.ops.diagnosis.errorHighImpact'),
-      action: t('admin.ops.diagnosis.errorHighAction')
-    })
-  } else if (errorPct > 0.5) {
-    report.push({
-      type: 'warning',
-      message: t('admin.ops.diagnosis.errorElevated', { rate: errorPct.toFixed(2) }),
-      impact: t('admin.ops.diagnosis.errorElevatedImpact'),
-      action: t('admin.ops.diagnosis.errorElevatedAction')
-    })
-  }
-
-  // SLA diagnostics
-  const slaPct = (ov.sla ?? 0) * 100
-  if (slaPct < 90) {
-    report.push({
-      type: 'critical',
-      message: t('admin.ops.diagnosis.slaCritical', { sla: slaPct.toFixed(2) }),
-      impact: t('admin.ops.diagnosis.slaCriticalImpact'),
-      action: t('admin.ops.diagnosis.slaCriticalAction')
-    })
-  } else if (slaPct < 98) {
-    report.push({
-      type: 'warning',
-      message: t('admin.ops.diagnosis.slaLow', { sla: slaPct.toFixed(2) }),
-      impact: t('admin.ops.diagnosis.slaLowImpact'),
-      action: t('admin.ops.diagnosis.slaLowAction')
-    })
-  }
-
-  // Health score diagnostics (lowest priority)
-  if (healthScoreValue.value != null) {
-    if (healthScoreValue.value < 60) {
-      report.push({
-        type: 'critical',
-        message: t('admin.ops.diagnosis.healthCritical', { score: healthScoreValue.value }),
-        impact: t('admin.ops.diagnosis.healthCriticalImpact'),
-        action: t('admin.ops.diagnosis.healthCriticalAction')
-      })
-    } else if (healthScoreValue.value < 90) {
-      report.push({
-        type: 'warning',
-        message: t('admin.ops.diagnosis.healthLow', { score: healthScoreValue.value }),
-        impact: t('admin.ops.diagnosis.healthLowImpact'),
-        action: t('admin.ops.diagnosis.healthLowAction')
-      })
-    }
-  }
-
-  if (report.length === 0) {
-    report.push({
-      type: 'info',
-      message: t('admin.ops.diagnosis.healthy'),
-      impact: t('admin.ops.diagnosis.healthyImpact')
-    })
-  }
-
-  return report
-})
+}
 
 // --- System health (secondary) ---
 
@@ -806,12 +724,32 @@ const goroutineStatusClass = computed(() => {
 
 const jobHeartbeats = computed(() => overview.value?.job_heartbeats ?? [])
 
+function jobHeartbeatMaxAgeMs(jobName: string): number {
+  switch (jobName) {
+    case 'ops_alert_evaluator': return 3 * 60 * 1000
+    case 'ops_metrics_collector': return 2 * 60 * 60 * 1000
+    case 'ops_preaggregation_hourly': return 30 * 60 * 1000
+    case 'ops_preaggregation_daily': return 2 * 60 * 60 * 1000
+    case 'ops_scheduled_reports':
+    case 'ops_cleanup':
+      return 36 * 60 * 60 * 1000
+    default:
+      return 30 * 60 * 1000
+  }
+}
+
+function jobHeartbeatWarns(hb: NonNullable<OpsDashboardOverview['job_heartbeats']>[number]): boolean {
+  if (hb.last_error_at && (!hb.last_success_at || hb.last_error_at > hb.last_success_at)) return true
+  if (!hb.last_success_at) return false
+  return Date.now() - new Date(hb.last_success_at).getTime() > jobHeartbeatMaxAgeMs(hb.job_name)
+}
+
 const jobsStatus = computed<'ok' | 'warn' | 'unknown'>(() => {
   const list = jobHeartbeats.value
   if (!list.length) return 'unknown'
   for (const hb of list) {
     if (!hb) continue
-    if (hb.last_error_at && (!hb.last_success_at || hb.last_error_at > hb.last_success_at)) return 'warn'
+    if (jobHeartbeatWarns(hb)) return 'warn'
   }
   return 'ok'
 })
@@ -820,7 +758,7 @@ const jobsWarnCount = computed(() => {
   let warn = 0
   for (const hb of jobHeartbeats.value) {
     if (!hb) continue
-    if (hb.last_error_at && (!hb.last_success_at || hb.last_error_at > hb.last_success_at)) warn++
+    if (jobHeartbeatWarns(hb)) warn++
   }
   return warn
 })
@@ -1000,54 +938,92 @@ function handleToolbarRefresh() {
           <div
             class="group relative flex cursor-pointer flex-col items-center justify-center rounded-xl py-2 transition-all hover:bg-white/60 dark:hover:bg-dark-800/60 md:border-r md:border-gray-200 md:pr-6 dark:md:border-dark-700"
           >
-            <!-- Diagnosis Popover (hover) -->
+            <!-- Backend-owned health score breakdown (hover) -->
             <div
-              class="pointer-events-none absolute left-1/2 top-full z-50 mt-2 w-72 -translate-x-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 md:left-full md:top-0 md:ml-2 md:mt-0 md:translate-x-0"
+              class="pointer-events-none absolute left-1/2 top-full z-50 mt-2 w-80 -translate-x-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 md:left-full md:top-0 md:ml-2 md:mt-0 md:translate-x-0"
+              data-testid="health-score-breakdown"
             >
               <div class="rounded-xl bg-white p-4 shadow-xl ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10">
                 <h4 class="mb-3 border-b border-gray-100 pb-2 text-sm font-bold text-gray-900 dark:border-dark-700 dark:text-white flex items-center gap-2">
-                  <Icon name="brain" size="sm" class="text-blue-500" />
-                  {{ t('admin.ops.diagnosis.title') }}
+                  <Icon name="chartBar" size="sm" class="text-blue-500" />
+                  {{ t('admin.ops.healthBreakdown.title') }}
                 </h4>
 
-                <div class="space-y-3">
-                  <div v-for="(item, idx) in diagnosisReport" :key="idx" class="flex gap-3">
-                    <div class="mt-0.5 shrink-0">
-                      <svg v-if="item.type === 'critical'" class="h-4 w-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          fill-rule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                          clip-rule="evenodd"
-                        />
-                      </svg>
-                      <svg v-else-if="item.type === 'warning'" class="h-4 w-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          fill-rule="evenodd"
-                          d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                          clip-rule="evenodd"
-                        />
-                      </svg>
-                      <svg v-else class="h-4 w-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          fill-rule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 100 2 1 1 0 000-2zm-1 3a1 1 0 012 0v4a1 1 0 11-2 0v-4z"
-                          clip-rule="evenodd"
-                        />
-                      </svg>
-                    </div>
-                    <div class="flex-1">
-                      <div class="text-xs font-semibold text-gray-900 dark:text-white">{{ item.message }}</div>
-                      <div class="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">{{ item.impact }}</div>
-                      <div v-if="item.action" class="mt-1 text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                        <Icon name="lightbulb" size="xs" />
-                        {{ item.action }}
+                <template v-if="healthScoreBreakdown">
+                  <div class="flex items-center justify-between text-xs">
+                    <span class="text-gray-500 dark:text-gray-400">
+                      {{ t('admin.ops.healthBreakdown.score', { score: healthScoreBreakdown.score }) }}
+                    </span>
+                    <span
+                      class="font-bold"
+                      :class="(healthScoreDeductionTotal ?? 0) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300'"
+                    >
+                      {{
+                        (healthScoreDeductionTotal ?? 0) > 0
+                          ? t('admin.ops.healthBreakdown.totalDeduction', { points: formatHealthScoreNumber(healthScoreDeductionTotal) })
+                          : t('admin.ops.healthBreakdown.noDeduction')
+                      }}
+                    </span>
+                  </div>
+
+                  <div
+                    v-if="!healthScoreBreakdown.business_included"
+                    class="mt-2 rounded-lg bg-blue-50 px-2.5 py-2 text-[11px] text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                    data-testid="health-score-idle-mode"
+                  >
+                    {{ t('admin.ops.healthBreakdown.infrastructureOnly') }}
+                  </div>
+
+                  <div v-if="healthScoreDeductions.length" class="mt-3 space-y-3">
+                    <div
+                      v-for="component in healthScoreDeductions"
+                      :key="component.key"
+                      class="rounded-lg bg-amber-50/70 p-2.5 dark:bg-amber-950/20"
+                      data-testid="health-score-deduction"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="text-xs font-semibold text-gray-900 dark:text-white">
+                          {{ healthComponentLabel(component.key) }}
+                        </span>
+                        <span class="shrink-0 text-xs font-bold text-amber-600 dark:text-amber-400">
+                          -{{ formatHealthScoreNumber(component.deduction_points) }}
+                        </span>
                       </div>
+                      <div class="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
+                        {{
+                          t('admin.ops.healthBreakdown.componentScore', {
+                            score: formatHealthScoreNumber(component.score),
+                            weight: formatHealthScoreNumber(component.weight * 100)
+                          })
+                        }}
+                      </div>
+                      <ul v-if="component.reasons?.length" class="mt-1.5 space-y-1">
+                        <li
+                          v-for="(reason, reasonIndex) in component.reasons"
+                          :key="`${component.key}-${reasonIndex}`"
+                          class="flex gap-1.5 text-[11px] leading-4 text-gray-600 dark:text-gray-300"
+                        >
+                          <span class="mt-[6px] h-1 w-1 shrink-0 rounded-full bg-amber-500"></span>
+                          <span>{{ healthDeductionReason(reason) }}</span>
+                        </li>
+                      </ul>
                     </div>
                   </div>
-                </div>
 
-                <div class="mt-3 border-t border-gray-100 pt-2 text-[10px] text-gray-400 dark:border-dark-700">
-                  {{ t('admin.ops.diagnosis.footer') }}
+                  <div
+                    v-else
+                    class="mt-3 rounded-lg bg-gray-50 px-2.5 py-2 text-[11px] text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+                  >
+                    {{ t('admin.ops.healthBreakdown.allHealthy') }}
+                  </div>
+
+                  <div class="mt-3 border-t border-gray-100 pt-2 text-[10px] text-gray-400 dark:border-dark-700">
+                    {{ t('admin.ops.healthBreakdown.footer') }}
+                  </div>
+                </template>
+
+                <div v-else class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.ops.healthBreakdown.unavailable') }}
                 </div>
               </div>
             </div>
@@ -1079,7 +1055,7 @@ function handleToolbarRefresh() {
 
               <div class="absolute flex flex-col items-center">
                 <span :class="[props.fullscreen ? 'text-5xl' : 'text-3xl', 'font-black', healthScoreClass]">
-                  {{ isSystemIdle ? t('admin.ops.idleStatus') : (overview.health_score ?? '--') }}
+                  {{ showIdleHealthState ? t('admin.ops.idleStatus') : (overview.health_score ?? '--') }}
                 </span>
                 <span :class="[props.fullscreen ? 'text-xs' : 'text-[10px]', 'font-bold uppercase tracking-wider text-gray-400']">{{ t('admin.ops.health') }}</span>
               </div>
@@ -1092,7 +1068,7 @@ function handleToolbarRefresh() {
               </div>
               <div class="mt-1 text-xs font-bold" :class="healthScoreClass">
                 {{
-                  isSystemIdle
+                  showIdleHealthState
                     ? t('admin.ops.idleStatus')
                     : typeof overview.health_score === 'number' && overview.health_score >= 90
                       ? t('admin.ops.healthyStatus')
@@ -1245,11 +1221,11 @@ function handleToolbarRefresh() {
           </div>
         </div>
 
-        <!-- Card 2: SLA -->
+        <!-- Card 2: Platform availability -->
         <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 2;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.sla') }}</span>
+              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.platformAvailability') }}</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.sla')" />
               <span class="h-1.5 w-1.5 rounded-full" :class="getSLAThresholdLevel(slaPercent) === 'critical' ? 'bg-red-500' : getSLAThresholdLevel(slaPercent) === 'warning' ? 'bg-yellow-500' : 'bg-gray-500'"></span>
             </div>
@@ -1263,15 +1239,15 @@ function handleToolbarRefresh() {
             </button>
           </div>
           <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getSLAThresholdLevel(slaPercent))">
-            {{ slaPercent == null ? '-' : `${slaPercent.toFixed(3)}%` }}
+            {{ slaPercent == null ? t('admin.ops.notApplicable') : `${slaPercent.toFixed(3)}%` }}
           </div>
           <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
             <div class="h-full transition-all" :class="getSLAThresholdLevel(slaPercent) === 'critical' ? 'bg-red-500' : getSLAThresholdLevel(slaPercent) === 'warning' ? 'bg-yellow-500' : 'bg-gray-500'" :style="{ width: `${Math.max((slaPercent ?? 0) - 90, 0) * 10}%` }"></div>
           </div>
           <div class="mt-3 text-xs">
             <div class="flex justify-between">
-              <span class="text-gray-500">{{ t('admin.ops.exceptions') }}:</span>
-              <span class="font-bold text-red-600 dark:text-red-400">{{ formatNumber((overview.request_count_sla ?? 0) - (overview.success_count ?? 0)) }}</span>
+              <span class="text-gray-500">{{ t('admin.ops.availabilitySamples') }}:</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.request_count_sla ?? 0) }}</span>
             </div>
           </div>
         </div>
@@ -1378,54 +1354,58 @@ function handleToolbarRefresh() {
           </div>
         </div>
 
-        <!-- Card 3: Request Errors -->
+        <!-- Card 3: Platform failures -->
         <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 3;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
-              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requestErrors') }}</span>
+              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.platformFailures') }}</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.errors')" />
             </div>
             <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('request')">
               {{ t('admin.ops.requestDetails.details') }}
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getRequestErrorRateThresholdLevel(errorRatePercent))">
-            {{ errorRatePercent == null ? '-' : `${errorRatePercent.toFixed(2)}%` }}
+          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getRequestErrorRateThresholdLevel(platformFailureRatePercent))">
+            {{ platformFailureRatePercent == null ? t('admin.ops.notApplicable') : `${platformFailureRatePercent.toFixed(2)}%` }}
           </div>
           <div class="mt-3 space-y-1 text-xs">
             <div class="flex justify-between">
-              <span class="text-gray-500">{{ t('admin.ops.errorCount') }}:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.error_count_sla ?? 0) }}</span>
+              <span class="text-gray-500">{{ t('admin.ops.failureCount') }}:</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.platform_failure_count ?? 0) }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">{{ t('admin.ops.businessLimited') }}:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.business_limited_count ?? 0) }}</span>
+              <span class="text-gray-500">{{ t('admin.ops.unknownFailures') }}:</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.unknown_failure_count ?? 0) }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">{{ t('admin.ops.ignoredUserEvents') }}:</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(ignoredRequestCount) }}</span>
             </div>
           </div>
         </div>
 
-        <!-- Card 6: Upstream Errors -->
+        <!-- Card 6: Provider failures -->
         <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 6;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
-              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.upstreamErrors') }}</span>
+              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.providerFailures') }}</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.upstreamErrors')" />
             </div>
             <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('upstream')">
               {{ t('admin.ops.requestDetails.details') }}
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getUpstreamErrorRateThresholdLevel(upstreamErrorRatePercent))">
-            {{ upstreamErrorRatePercent == null ? '-' : `${upstreamErrorRatePercent.toFixed(2)}%` }}
+          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getUpstreamErrorRateThresholdLevel(providerFailureRatePercent))">
+            {{ providerFailureRatePercent == null ? t('admin.ops.notApplicable') : `${providerFailureRatePercent.toFixed(2)}%` }}
           </div>
           <div class="mt-3 space-y-1 text-xs">
             <div class="flex justify-between">
-              <span class="text-gray-500">{{ t('admin.ops.errorCountExcl429529') }}:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.upstream_error_count_excl_429_529 ?? 0) }}</span>
+              <span class="text-gray-500">{{ t('admin.ops.failureCount') }}:</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.provider_failure_count ?? 0) }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">429/529:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber((overview.upstream_429_count ?? 0) + (overview.upstream_529_count ?? 0)) }}</span>
+              <span class="text-gray-500">{{ t('admin.ops.recoveredRequests') }}:</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.recovered_count ?? 0) }}</span>
             </div>
           </div>
         </div>

@@ -52,18 +52,16 @@ func TestApplyLegacyOpsAlertRuleCompatibility(t *testing.T) {
 			wantEnabled: false, wantName: "P99延迟过高", wantMetric: "p99_latency_ms", wantFamily: "custom", wantRecoveryFor: 1,
 		},
 		{
-			name: "slow availability rule gains v2 gates",
+			name: "legacy slow error rule is disabled",
 			rule: legacyOpsAlertRule("错误率过高", "当错误率超过 5% 且持续 5 分钟时触发告警",
 				"error_rate", ">", "P1", 5, 5, 5, 20),
-			wantEnabled: true, wantName: "基础设施可用性缓慢下降", wantMetric: "availability_failure_rate",
-			wantFamily: "availability", wantSamples: 100, wantBadCount: 10, wantRecovery: float64PtrRepository(2.5), wantRecoveryFor: 10,
+			wantEnabled: false, wantName: "错误率过高", wantMetric: "error_rate", wantFamily: "custom", wantRecoveryFor: 1,
 		},
 		{
-			name: "fast availability rule gains v2 gates",
+			name: "legacy fast error rule is disabled",
 			rule: legacyOpsAlertRule("错误率极高", "当错误率超过 20% 且持续 1 分钟时触发告警（服务严重异常）",
 				"error_rate", ">", "P0", 20, 1, 1, 15),
-			wantEnabled: true, wantName: "基础设施可用性快速下降", wantMetric: "availability_failure_rate",
-			wantFamily: "availability", wantSamples: 30, wantBadCount: 10, wantRecovery: float64PtrRepository(10), wantRecoveryFor: 5,
+			wantEnabled: false, wantName: "错误率极高", wantMetric: "error_rate", wantFamily: "custom", wantRecoveryFor: 1,
 		},
 		{
 			name: "cpu rule gains recovery semantics",

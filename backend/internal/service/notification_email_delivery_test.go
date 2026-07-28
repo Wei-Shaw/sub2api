@@ -74,7 +74,31 @@ func (r *fakeNotificationEmailDeliveryRepository) MarkFailed(context.Context, in
 func (r *fakeNotificationEmailDeliveryRepository) List(_ context.Context, filter NotificationEmailDeliveryListFilter) (NotificationEmailDeliveryListResult, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	items := append([]NotificationEmailDelivery(nil), r.items...)
+	items := make([]NotificationEmailDelivery, 0, len(r.items))
+	for _, item := range r.items {
+		if filter.Event != "" && item.Event != filter.Event {
+			continue
+		}
+		if filter.Status != "" && item.Status != filter.Status {
+			continue
+		}
+		if filter.SourceType != "" && item.SourceType != filter.SourceType {
+			continue
+		}
+		if filter.SourceID != "" && item.SourceID != filter.SourceID {
+			continue
+		}
+		if filter.RecipientHash != "" && item.RecipientHash != filter.RecipientHash {
+			continue
+		}
+		if filter.ReminderKey != "" && item.ReminderKey != filter.ReminderKey {
+			continue
+		}
+		if filter.CreatedAfter != nil && item.CreatedAt.Before(*filter.CreatedAfter) {
+			continue
+		}
+		items = append(items, item)
+	}
 	return NotificationEmailDeliveryListResult{Items: items, Total: int64(len(items))}, nil
 }
 func (r *fakeNotificationEmailDeliveryRepository) Retry(context.Context, int64) (bool, error) {

@@ -27,6 +27,12 @@ docs/
 .DS_Store
 Thumbs.db
 
+# Finder conflict copies are not source files. In particular, duplicate Go
+# files cause symbol redeclarations and duplicate migrations can replay the
+# same schema version inside an otherwise valid image.
+**/* 2.go
+backend/migrations/* 2.sql
+
 # Build artifacts
 dist/
 build/

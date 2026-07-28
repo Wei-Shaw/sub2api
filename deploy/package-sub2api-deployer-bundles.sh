@@ -33,7 +33,7 @@ for arch in amd64 arm64; do
   install -m 0755 "$DIST_DIR/$binary" "$root/$binary"
   install -m 0755 "$REPO_ROOT/deploy/install-sub2api-deployer.sh" "$root/install-sub2api-deployer.sh"
   install -m 0644 "$REPO_ROOT/deploy/DEPLOYER_BUNDLE_README.md" "$root/README.md"
-  for asset in compose.deployer.yml sub2api-deployer.service sub2api-deployer-tmpfiles.conf sub2api-managed-upstream.conf; do
+  for asset in compose.deployer.yml sub2api-deployer.service sub2api-deployer-upgrade.service sub2api-deployer-upgrade.sh sub2api-deployer-tmpfiles.conf sub2api-managed-upstream.conf; do
     install -m 0644 "$REPO_ROOT/deploy/$asset" "$root/deploy/$asset"
   done
   printf '{"schema":1,"version":"%s","commit":"%s","os":"linux","architecture":"%s"}\n' \
@@ -47,6 +47,8 @@ for arch in amd64 arm64; do
       "$binary" \
       deploy/compose.deployer.yml \
       deploy/sub2api-deployer.service \
+      deploy/sub2api-deployer-upgrade.service \
+      deploy/sub2api-deployer-upgrade.sh \
       deploy/sub2api-deployer-tmpfiles.conf \
       deploy/sub2api-managed-upstream.conf > MANIFEST.sha256
   )

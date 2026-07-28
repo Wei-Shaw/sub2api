@@ -2,6 +2,11 @@ export default {
     ops: {
       title: '运维监控',
       description: '运维监控与排障',
+      sections: {
+        overview: '总览与事件',
+        analysis: '趋势分析',
+        logs: '系统日志'
+      },
       // Dashboard
       systemHealth: '系统健康',
       overview: '概览',
@@ -88,12 +93,21 @@ export default {
       avgLatency: '平均请求时长',
       avgTtft: '平均首 Token 延迟',
       exceptions: '异常数',
-      requestErrors: '请求错误',
+      requestErrors: '服务失败',
       errorCount: '错误数',
       upstreamErrors: '上游错误',
       errorCountExcl429529: '错误数（排除429/529）',
-      sla: 'SLA（排除业务限制）',
-      businessLimited: '业务限制：',
+      sla: '平台可用性',
+      platformAvailability: '平台可用性',
+      availabilitySamples: '有效样本',
+      notApplicable: '暂无样本',
+      platformFailures: '平台故障',
+      providerFailures: '供应商故障',
+      failureCount: '故障数',
+      unknownFailures: '待归类故障',
+      ignoredUserEvents: '已忽略用户侧事件',
+      recoveredRequests: '已恢复请求',
+      businessLimited: '业务限制',
       errors: '错误',
       errorRate: '错误率：',
       upstreamRate: '上游错误率：',
@@ -175,6 +189,40 @@ export default {
       },
       fullscreen: {
         enter: '进入全屏'
+      },
+      healthBreakdown: {
+        title: '健康分扣分明细',
+        score: '健康分：{score}/100',
+        totalDeduction: '共扣 {points} 分',
+        noDeduction: '未扣分',
+        infrastructureOnly: '当前时间窗口没有业务流量，健康分只计算基础设施状态，业务质量不参与评分。',
+        componentScore: '该项得分 {score}/100 · 占最终分数 {weight}%',
+        allHealthy: '当前没有任何评分项产生扣分。',
+        footer: '扣分明细与页面分数来自后端同一次计算，不由前端另行推断。',
+        unavailable: '当前样本没有评分明细；后端升级完成后刷新页面即可查看。',
+        durationSeconds: '{value} 秒',
+        durationMinutes: '{value} 分钟',
+        durationHours: '{value} 小时',
+        components: {
+          business_quality: '请求质量',
+          business_latency: '首 Token 延迟',
+          infrastructure_storage: '数据库与 Redis',
+          infrastructure_compute: 'CPU 与内存',
+          infrastructure_jobs: '后台任务',
+          unknown: '其他评分项'
+        },
+        reasons: {
+          databaseUnavailable: '数据库健康检查失败。',
+          redisUnavailable: 'Redis 健康检查失败。',
+          cpuHigh: 'CPU 使用率为 {value}%，超过不扣分阈值 {threshold}%。',
+          memoryHigh: '内存使用率为 {value}%，超过不扣分阈值 {threshold}%。',
+          requestErrorRateHigh: '请求错误率为 {value}%，超过不扣分阈值 {threshold}%。',
+          upstreamErrorRateHigh: '上游错误率为 {value}%，超过不扣分阈值 {threshold}%。',
+          ttftHigh: '首 Token 时间 P99 为 {value}ms，超过不扣分阈值 {threshold}ms。',
+          jobFailed: '后台任务 {job} 最近一次运行失败。',
+          jobStale: '后台任务 {job} 已有 {age} 未成功，允许间隔为 {limit}。',
+          unknown: '后端返回了前端暂不识别的扣分原因。'
+        }
       },
       diagnosis: {
         title: '智能诊断',
@@ -262,6 +310,16 @@ export default {
 			product_compatibility: '产品兼容性',
 			unknown: '未知错误'
 		},
+        outcomes: {
+          platformFailure: '平台故障',
+          providerFailure: '供应商故障',
+          unknownFailure: '待归类故障',
+          clientIgnored: '客户端问题 · 忽略',
+          businessIgnored: '业务限制 · 忽略',
+          securityIgnored: '安全拦截 · 忽略',
+          cancelledIgnored: '客户端取消 · 忽略',
+          recovered: '已自动恢复'
+        },
         time: '时间',
         type: '类型',
         context: '上下文',
@@ -435,7 +493,7 @@ export default {
       },
       alertEvents: {
         title: '告警事件',
-        description: '最近的告警触发/恢复记录（仅邮件通知）',
+        description: '最近的告警触发/恢复记录，以及持久化邮件队列的真实投递状态。',
         loading: '加载中...',
         empty: '暂无告警事件',
         loadFailed: '加载告警事件失败',
@@ -443,6 +501,15 @@ export default {
           firing: '告警中',
           resolved: '已恢复',
           manualResolved: '手动已解决'
+        },
+        delivery: {
+          pending: '等待投递',
+          processing: '正在投递',
+          retry_wait: '等待重试',
+          sent: '已送达 SMTP',
+          failed: '投递失败',
+          suppressed: '已抑制',
+          notQueued: '未入队'
         },
         detail: {
           title: '告警详情',
@@ -479,6 +546,7 @@ export default {
           email: '邮件已发送',
           emailSent: '已发送',
           emailQueued: '已入队',
+          emailNotQueued: '未入队',
           emailIgnored: '已忽略'
         }
       },
@@ -603,6 +671,8 @@ export default {
           severity: '级别',
           window: '统计窗口（分钟）',
           sustained: '连续样本数（每分钟）',
+          advanced: '高级判定与恢复设置',
+          advancedHint: '一般保持默认即可。样本门槛、恢复滞回和事故族用于抑制低流量误报与重复告警。',
 		  cooldown: '冷却期（分钟）',
 		  minimumSamples: '最小样本数',
 		  minimumBadCount: '最小坏样本数',
@@ -687,10 +757,10 @@ export default {
           lockKeyPrefix: '分布式锁 Key 必须以「{prefix}」开头',
           lockKeyHint: '建议以「{prefix}」开头以避免冲突',
           lockTtlRange: '分布式锁 TTL 必须在 1 到 86400 秒之间',
-          slaMinPercentRange: 'SLA 最低值必须在 0-100 之间',
-          ttftP99MaxRange: 'TTFT P99 最大值必须大于或等于 0',
-          requestErrorRateMaxRange: '请求错误率最大值必须在 0-100 之间',
-          upstreamErrorRateMaxRange: '上游错误率最大值必须在 0-100 之间'
+          slaMinPercentRange: 'SLA 最低值必须大于 0 且不超过 100',
+          ttftP99MaxRange: 'TTFT P99 最大值必须大于 0',
+          requestErrorRateMaxRange: '请求错误率最大值必须大于 0 且不超过 100',
+          upstreamErrorRateMaxRange: '上游错误率最大值必须大于 0 且不超过 100'
         }
       },
       email: {
@@ -704,7 +774,7 @@ export default {
         alertTitle: '告警邮件',
         reportTitle: '报告邮件',
         recipients: '收件人',
-        recipientsHint: '若为空，系统可能会回退使用第一个管理员邮箱。',
+        recipientsHint: '收件人为空时不会发送；系统不会自动改投其他管理员邮箱。',
         minSeverity: '最低级别',
         minSeverityAll: '全部级别',
         rateLimitPerHour: '每小时限额',
@@ -724,7 +794,7 @@ export default {
           alertRecipientsRequired: '已启用告警邮件，但未配置任何收件人',
           reportRecipientsRequired: '已启用报告邮件，但未配置任何收件人',
           invalidRecipients: '存在不合法的收件人邮箱',
-          rateLimitRange: '每小时限额必须为 ≥ 0 的数字',
+          rateLimitRange: '每小时限额必须是 0 到 10000 之间的数字',
           batchWindowRange: '合并窗口必须在 0 到 86400 秒之间',
           cronRequired: '启用定时任务时必须填写 Cron 表达式',
           cronFormat: 'Cron 表达式格式可能不正确（至少应包含 5 段）',
@@ -740,13 +810,34 @@ export default {
         dataCollection: '数据采集',
         evaluationInterval: '评估间隔（秒）',
         evaluationIntervalHint: '检测任务的执行频率，建议保持默认',
-        alertConfig: '预警配置',
+        alertConfig: '告警通知行为',
+        emailPolicyOwnershipHint: '邮件通道总开关和收件人在“系统设置 → 邮件设置”统一管理；这里仅配置运维告警的发送行为。',
         enableAlert: '开启预警',
         alertRecipients: '预警接收邮箱',
         emailPlaceholder: '输入邮箱地址',
         recipientsHint: '若为空，系统将使用第一个管理员邮箱作为默认收件人',
         minSeverity: '最低级别',
-        reportConfig: '评估报告配置',
+        minSeverityHint: '只发送达到该级别的事件；P0 对应严重，P1 对应警告，其他对应信息。',
+        rateLimitHint: '限制每个收件人每小时最多收到的运维告警数；0 表示不限额。超过部分保留在运维面板，不发邮件。',
+        batchWindowHint: '同一故障族在窗口内反复触发时只发送第一封，避免告警风暴；0 表示不合并。',
+        includeResolvedHint: '故障恢复后再发送一封恢复通知，便于值班人员闭环。',
+        reportConfig: '运维报告计划',
+        reportBehaviorHint: '只有邮件设置中的“运维报告”总开关开启且收件组有效时，以下计划才会发送；收件组为空会明确报错，不会回退到其他管理员。',
+        serverTimezone: '执行时区：{timezone}。所有发送时间均按服务器时区解释。',
+        sendTime: '发送时间',
+        legacyScheduleHint: '当前保留旧版自定义计划；选择新时间后将转换为此处展示的标准计划。',
+        weekday: '发送星期',
+        nextRun: '预计下次执行：{time}',
+        nextRunAfterSave: '保存后计算',
+        weekdays: {
+          monday: '星期一',
+          tuesday: '星期二',
+          wednesday: '星期三',
+          thursday: '星期四',
+          friday: '星期五',
+          saturday: '星期六',
+          sunday: '星期日'
+        },
         enableReport: '开启评估报告',
         reportRecipients: '评估报告接收邮箱',
         dailySummary: '每日摘要',
@@ -757,8 +848,8 @@ export default {
         slaMinPercentHint: 'SLA低于此值时显示为红色（默认：99.5%）',
         ttftP99MaxMs: 'TTFT P99最大值（毫秒）',
         ttftP99MaxMsHint: 'TTFT P99高于此值时显示为红色（默认：500ms）',
-        requestErrorRateMaxPercent: '请求错误率最大值（%）',
-        requestErrorRateMaxPercentHint: '请求错误率高于此值时显示为红色（默认：5%）',
+        requestErrorRateMaxPercent: '服务失败率最大值（%）',
+        requestErrorRateMaxPercentHint: '仅平台、供应商及待归类故障计入；客户端问题、业务限制、安全拦截和取消请求会忽略。',
         upstreamErrorRateMaxPercent: '上游错误率最大值（%）',
         upstreamErrorRateMaxPercentHint: '上游错误率高于此值时显示为红色（默认：5%）',
         advancedSettings: '高级设置',
@@ -804,10 +895,10 @@ export default {
         validation: {
           title: '请先修正以下问题',
           retentionDaysRange: '保留天数必须在 0-365 天之间（0 = 每次清理时清空所有）',
-          slaMinPercentRange: 'SLA最低百分比必须在0-100之间',
-          ttftP99MaxRange: 'TTFT P99最大值必须大于等于0',
-          requestErrorRateMaxRange: '请求错误率最大值必须在0-100之间',
-          upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间',
+          slaMinPercentRange: 'SLA最低百分比必须大于0且不超过100',
+          ttftP99MaxRange: 'TTFT P99最大值必须大于0',
+          requestErrorRateMaxRange: '请求错误率最大值必须大于0且不超过100',
+          upstreamErrorRateMaxRange: '上游错误率最大值必须大于0且不超过100',
           openaiQuotaAutoPauseRange: 'OpenAI 配额自动暂停阈值必须在 0-100 之间'
         }
       },
@@ -854,7 +945,7 @@ export default {
         latencyHistogram: '成功请求的请求时长分布（毫秒）。',
         errorTrend: '错误趋势（SLA 口径排除业务限制；上游错误率排除 429/529）。',
         errorDistribution: '按状态码统计的错误分布（SLA 口径，排除业务限制）。',
-        upstreamErrors: '上游服务返回的错误，包括API提供商的错误响应（排除429/529限流错误）。',
+        upstreamErrors: '供应商故障仅统计最终由上游供应商负责且未恢复的请求；已成功切换账号或重试恢复的请求单独显示为“已恢复”。',
         goroutines:
           'Go 运行时的协程数量（轻量级线程）。没有绝对"安全值"，建议以历史基线为准。经验参考：<2000 常见；2000-8000 需关注；>8000 且伴随队列上升时，优先排查阻塞/泄漏。',
         cpu: 'CPU 使用率，显示系统处理器的负载情况。',
@@ -864,8 +955,8 @@ export default {
         jobs: '后台任务执行状态，包括最近运行时间、成功时间和错误信息。',
         qps: '每秒查询数（QPS）和每秒Token数（TPS），实时显示系统吞吐量。',
         tokens: '当前时间窗口内处理的总Token数量。',
-        sla: '服务等级协议达成率，排除业务限制（如余额不足、配额超限）的成功请求占比。',
-        errors: '错误统计，包括总错误数、错误率和上游错误率。',
+        sla: '平台可用性 = 成功请求 /（成功请求 + 平台故障 + 供应商故障 + 待归类故障）。客户端输入、业务限制、安全拦截和取消请求不进入分母；无样本显示“暂无样本”。',
+        errors: '平台故障仅统计平台自身责任；客户端问题、业务限制、安全拦截和取消请求单独归类并忽略。',
         latency: '请求时长统计，包括 p50、p90、p95、p99 等百分位数。',
         ttft: '首 Token 延迟（Time To First Token），衡量流式响应的首 Token 返回速度。',
         health: '系统健康评分（0-100），综合考虑 SLA、错误率和资源使用情况。'

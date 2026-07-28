@@ -79,34 +79,14 @@ func applyLegacyOpsAlertRuleCompatibility(rule *service.OpsAlertRule) {
 		rule, "错误率过高", "当错误率超过 5% 且持续 5 分钟时触发告警",
 		"error_rate", ">", "P1", 5, 5, 5, 20,
 	):
-		rule.Name = "基础设施可用性缓慢下降"
-		rule.Description = "30 分钟 SLA 合格请求失败率达到 5%，失败至少 10 次且样本至少 100；持续 10 分钟后触发"
-		rule.MetricType = "availability_failure_rate"
-		rule.Operator = ">="
-		rule.WindowMinutes = 30
-		rule.SustainedMinutes = 10
-		rule.IncidentFamily = "availability"
-		rule.MinimumSamples = 100
-		rule.MinimumBadCount = 10
-		rule.RecoveryOperator = "<"
-		rule.RecoveryThreshold = float64PtrRepository(2.5)
-		rule.RecoverySustainedMinutes = 10
+		rule.Enabled = false
+		rule.Description += " [disabled: replaced by availability failure rules]"
 	case matchesLegacyOpsAlertRuleDefault(
 		rule, "错误率极高", "当错误率超过 20% 且持续 1 分钟时触发告警（服务严重异常）",
 		"error_rate", ">", "P0", 20, 1, 1, 15,
 	):
-		rule.Name = "基础设施可用性快速下降"
-		rule.Description = "5 分钟 SLA 合格请求失败率达到 20%，失败至少 10 次且样本至少 30；持续 3 分钟后触发"
-		rule.MetricType = "availability_failure_rate"
-		rule.Operator = ">="
-		rule.WindowMinutes = 5
-		rule.SustainedMinutes = 3
-		rule.IncidentFamily = "availability"
-		rule.MinimumSamples = 30
-		rule.MinimumBadCount = 10
-		rule.RecoveryOperator = "<"
-		rule.RecoveryThreshold = float64PtrRepository(10)
-		rule.RecoverySustainedMinutes = 5
+		rule.Enabled = false
+		rule.Description += " [disabled: replaced by availability failure rules]"
 	case matchesLegacyOpsAlertRuleDefault(
 		rule, "CPU使用率过高", "当 CPU 使用率超过 85% 且持续 10 分钟时触发告警",
 		"cpu_usage_percent", ">", "P2", 85, 5, 10, 30,
@@ -222,7 +202,6 @@ ORDER BY id DESC`
 				rule.Filters = decoded
 			}
 		}
-		applyLegacyOpsAlertRuleCompatibility(&rule)
 		out = append(out, &rule)
 	}
 	if err := rows.Err(); err != nil {
@@ -550,23 +529,42 @@ func (r *opsRepository) ListAlertEvents(ctx context.Context, filter *service.Ops
 
 	q := `
 SELECT
-  id,
-  COALESCE(rule_id, 0),
-  COALESCE(severity, ''),
-  COALESCE(status, ''),
-  COALESCE(title, ''),
-  COALESCE(description, ''),
-  metric_value,
-  threshold_value,
-  dimensions,
-  fired_at,
-  resolved_at,
-  email_sent,
-  COALESCE(email_queued, false),
-  created_at
-FROM ops_alert_events
+  e.id,
+  COALESCE(e.rule_id, 0),
+  COALESCE(e.severity, ''),
+  COALESCE(e.status, ''),
+  COALESCE(e.title, ''),
+  COALESCE(e.description, ''),
+  e.metric_value,
+  e.threshold_value,
+  e.dimensions,
+  e.fired_at,
+  e.resolved_at,
+  e.email_sent,
+  COALESCE(e.email_queued, false),
+  COALESCE(delivery.summary_status, ''),
+  COALESCE(delivery.last_error, ''),
+  e.created_at
+FROM ops_alert_events e
+LEFT JOIN LATERAL (
+  SELECT
+    CASE
+      WHEN COUNT(*) FILTER (WHERE d.status = 'failed') > 0 THEN 'failed'
+      WHEN COUNT(*) FILTER (WHERE d.status = 'retry_wait') > 0 THEN 'retry_wait'
+      WHEN COUNT(*) FILTER (WHERE d.status = 'processing') > 0 THEN 'processing'
+      WHEN COUNT(*) FILTER (WHERE d.status = 'pending') > 0 THEN 'pending'
+      WHEN COUNT(*) FILTER (WHERE d.status = 'sent') > 0 THEN 'sent'
+      WHEN COUNT(*) FILTER (WHERE d.status = 'suppressed') > 0 THEN 'suppressed'
+      ELSE ''
+    END AS summary_status,
+    (ARRAY_AGG(d.last_error ORDER BY d.updated_at DESC)
+      FILTER (WHERE COALESCE(d.last_error, '') <> ''))[1] AS last_error
+  FROM notification_email_deliveries d
+  WHERE d.source_type = 'ops_alert_event'
+    AND d.source_id = e.id::text
+) delivery ON TRUE
 ` + where + `
-ORDER BY fired_at DESC, id DESC
+ORDER BY e.fired_at DESC, e.id DESC
 LIMIT ` + limitArg
 
 	rows, err := r.db.QueryContext(ctx, q, args...)
@@ -596,6 +594,8 @@ LIMIT ` + limitArg
 			&resolvedAt,
 			&ev.EmailSent,
 			&ev.EmailQueued,
+			&ev.EmailDeliveryStatus,
+			&ev.EmailDeliveryDetail,
 			&ev.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -636,25 +636,44 @@ func (r *opsRepository) GetAlertEventByID(ctx context.Context, eventID int64) (*
 
 	q := `
 SELECT
-  id,
-  COALESCE(rule_id, 0),
-  COALESCE(severity, ''),
-  COALESCE(status, ''),
-  COALESCE(title, ''),
-  COALESCE(description, ''),
-  metric_value,
-  threshold_value,
-  dimensions,
-  fired_at,
-  resolved_at,
-  email_sent,
-  COALESCE(email_queued, false),
-  created_at
-FROM ops_alert_events
-WHERE id = $1`
+  e.id,
+  COALESCE(e.rule_id, 0),
+  COALESCE(e.severity, ''),
+  COALESCE(e.status, ''),
+  COALESCE(e.title, ''),
+  COALESCE(e.description, ''),
+  e.metric_value,
+  e.threshold_value,
+  e.dimensions,
+  e.fired_at,
+  e.resolved_at,
+  e.email_sent,
+  COALESCE(e.email_queued, false),
+  COALESCE(delivery.summary_status, ''),
+  COALESCE(delivery.last_error, ''),
+  e.created_at
+FROM ops_alert_events e
+LEFT JOIN LATERAL (
+  SELECT
+    CASE
+      WHEN COUNT(*) FILTER (WHERE d.status = 'failed') > 0 THEN 'failed'
+      WHEN COUNT(*) FILTER (WHERE d.status = 'retry_wait') > 0 THEN 'retry_wait'
+      WHEN COUNT(*) FILTER (WHERE d.status = 'processing') > 0 THEN 'processing'
+      WHEN COUNT(*) FILTER (WHERE d.status = 'pending') > 0 THEN 'pending'
+      WHEN COUNT(*) FILTER (WHERE d.status = 'sent') > 0 THEN 'sent'
+      WHEN COUNT(*) FILTER (WHERE d.status = 'suppressed') > 0 THEN 'suppressed'
+      ELSE ''
+    END AS summary_status,
+    (ARRAY_AGG(d.last_error ORDER BY d.updated_at DESC)
+      FILTER (WHERE COALESCE(d.last_error, '') <> ''))[1] AS last_error
+  FROM notification_email_deliveries d
+  WHERE d.source_type = 'ops_alert_event'
+    AND d.source_id = e.id::text
+) delivery ON TRUE
+WHERE e.id = $1`
 
 	row := r.db.QueryRowContext(ctx, q, eventID)
-	ev, err := scanOpsAlertEvent(row)
+	ev, err := scanOpsAlertEventWithDelivery(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -1170,6 +1189,53 @@ func scanOpsAlertEvent(row opsAlertEventRow) (*service.OpsAlertEvent, error) {
 	return &ev, nil
 }
 
+func scanOpsAlertEventWithDelivery(row opsAlertEventRow) (*service.OpsAlertEvent, error) {
+	var ev service.OpsAlertEvent
+	var metricValue sql.NullFloat64
+	var thresholdValue sql.NullFloat64
+	var dimensionsRaw []byte
+	var resolvedAt sql.NullTime
+	if err := row.Scan(
+		&ev.ID,
+		&ev.RuleID,
+		&ev.Severity,
+		&ev.Status,
+		&ev.Title,
+		&ev.Description,
+		&metricValue,
+		&thresholdValue,
+		&dimensionsRaw,
+		&ev.FiredAt,
+		&resolvedAt,
+		&ev.EmailSent,
+		&ev.EmailQueued,
+		&ev.EmailDeliveryStatus,
+		&ev.EmailDeliveryDetail,
+		&ev.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+	if metricValue.Valid {
+		value := metricValue.Float64
+		ev.MetricValue = &value
+	}
+	if thresholdValue.Valid {
+		value := thresholdValue.Float64
+		ev.ThresholdValue = &value
+	}
+	if resolvedAt.Valid {
+		value := resolvedAt.Time
+		ev.ResolvedAt = &value
+	}
+	if len(dimensionsRaw) > 0 && string(dimensionsRaw) != "null" {
+		var decoded map[string]any
+		if err := json.Unmarshal(dimensionsRaw, &decoded); err == nil {
+			ev.Dimensions = decoded
+		}
+	}
+	return &ev, nil
+}
+
 func buildOpsAlertEventsWhere(filter *service.OpsAlertEventFilter) (string, []any) {
 	clauses := []string{"1=1"}
 	args := []any{}
@@ -1180,23 +1246,23 @@ func buildOpsAlertEventsWhere(filter *service.OpsAlertEventFilter) (string, []an
 
 	if status := strings.TrimSpace(filter.Status); status != "" {
 		args = append(args, status)
-		clauses = append(clauses, "status = $"+itoa(len(args)))
+		clauses = append(clauses, "e.status = $"+itoa(len(args)))
 	}
 	if severity := strings.TrimSpace(filter.Severity); severity != "" {
 		args = append(args, severity)
-		clauses = append(clauses, "severity = $"+itoa(len(args)))
+		clauses = append(clauses, "e.severity = $"+itoa(len(args)))
 	}
 	if filter.EmailSent != nil {
 		args = append(args, *filter.EmailSent)
-		clauses = append(clauses, "email_sent = $"+itoa(len(args)))
+		clauses = append(clauses, "e.email_sent = $"+itoa(len(args)))
 	}
 	if filter.StartTime != nil && !filter.StartTime.IsZero() {
 		args = append(args, *filter.StartTime)
-		clauses = append(clauses, "fired_at >= $"+itoa(len(args)))
+		clauses = append(clauses, "e.fired_at >= $"+itoa(len(args)))
 	}
 	if filter.EndTime != nil && !filter.EndTime.IsZero() {
 		args = append(args, *filter.EndTime)
-		clauses = append(clauses, "fired_at < $"+itoa(len(args)))
+		clauses = append(clauses, "e.fired_at < $"+itoa(len(args)))
 	}
 
 	// Cursor pagination (descending by fired_at, then id)
@@ -1205,16 +1271,16 @@ func buildOpsAlertEventsWhere(filter *service.OpsAlertEventFilter) (string, []an
 		tsArg := "$" + itoa(len(args))
 		args = append(args, *filter.BeforeID)
 		idArg := "$" + itoa(len(args))
-		clauses = append(clauses, fmt.Sprintf("(fired_at < %s OR (fired_at = %s AND id < %s))", tsArg, tsArg, idArg))
+		clauses = append(clauses, fmt.Sprintf("(e.fired_at < %s OR (e.fired_at = %s AND e.id < %s))", tsArg, tsArg, idArg))
 	}
 	// Dimensions are stored in JSONB. We filter best-effort without requiring GIN indexes.
 	if platform := strings.TrimSpace(filter.Platform); platform != "" {
 		args = append(args, platform)
-		clauses = append(clauses, "(dimensions->>'platform') = $"+itoa(len(args)))
+		clauses = append(clauses, "(e.dimensions->>'platform') = $"+itoa(len(args)))
 	}
 	if filter.GroupID != nil && *filter.GroupID > 0 {
 		args = append(args, fmt.Sprintf("%d", *filter.GroupID))
-		clauses = append(clauses, "(dimensions->>'group_id') = $"+itoa(len(args)))
+		clauses = append(clauses, "(e.dimensions->>'group_id') = $"+itoa(len(args)))
 	}
 
 	return "WHERE " + strings.Join(clauses, " AND "), args

@@ -116,9 +116,14 @@ type OpsAlertEvent struct {
 	FiredAt    time.Time  `json:"fired_at"`
 	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
 
-	EmailSent   bool      `json:"email_sent"`
-	EmailQueued bool      `json:"email_queued"`
-	CreatedAt   time.Time `json:"created_at"`
+	EmailSent   bool `json:"email_sent"`
+	EmailQueued bool `json:"email_queued"`
+	// EmailDeliveryStatus is derived from the durable notification delivery
+	// rows. It is the observable truth; EmailSent/EmailQueued remain for
+	// backwards-compatible clients.
+	EmailDeliveryStatus string    `json:"email_delivery_status,omitempty"`
+	EmailDeliveryDetail string    `json:"email_delivery_detail,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
 }
 
 type OpsAlertSilence struct {

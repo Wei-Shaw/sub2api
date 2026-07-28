@@ -37,13 +37,14 @@ const (
 )
 
 var (
-	ErrJobRunning        = errors.New("a deployment job is already running")
-	ErrRequestConflict   = errors.New("request id was already used for a different deployment")
-	ErrVersionConflict   = errors.New("active version does not match expected current version")
-	ErrJobNotFound       = errors.New("deployment job not found")
-	ErrDeployerDegraded  = errors.New("deployer is degraded and requires operator reconciliation")
-	ErrDrainUnobservable = errors.New("previous application does not expose drain blockers")
-	ErrDrainTimeout      = errors.New("previous application drain timed out")
+	ErrJobRunning                     = errors.New("a deployment job is already running")
+	ErrRequestConflict                = errors.New("request id was already used for a different deployment")
+	ErrVersionConflict                = errors.New("active version does not match expected current version")
+	ErrJobNotFound                    = errors.New("deployment job not found")
+	ErrDeployerDegraded               = errors.New("deployer is degraded and requires operator reconciliation")
+	ErrControlPlaneUpgradeUnavailable = errors.New("deployer control-plane upgrade is not configured; run the one-time host bootstrap before application updates")
+	ErrDrainUnobservable              = errors.New("previous application does not expose drain blockers")
+	ErrDrainTimeout                   = errors.New("previous application drain timed out")
 )
 
 type Manager struct {
@@ -111,37 +112,45 @@ func (m *Manager) Health() Health {
 		status = "unhealthy"
 	}
 	return Health{
-		Status:          status,
-		Version:         "2.0.0",
-		ActiveSlot:      m.state.ActiveSlot,
-		ActiveContainer: m.state.ActiveContainer,
-		ActivePort:      m.state.ActivePort,
-		ActiveVersion:   m.state.ActiveVersion,
-		JobRunning:      running,
-		Degraded:        degraded,
-		DegradedReason:  m.state.DegradedReason,
+		Status:                   status,
+		Version:                  "2.0.0",
+		ActiveSlot:               m.state.ActiveSlot,
+		ActiveContainer:          m.state.ActiveContainer,
+		ActiveContainerID:        m.state.ActiveContainerID,
+		ActivePort:               m.state.ActivePort,
+		ActiveVersion:            m.state.ActiveVersion,
+		JobRunning:               running,
+		Degraded:                 degraded,
+		DegradedReason:           m.state.DegradedReason,
+		ControlPlaneUpgradeReady: m.controlPlaneUpgradeReady(),
 	}
 }
 
 func (m *Manager) Job(id string) (*Job, error) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	var job *Job
 	if m.state.Job != nil && (id == "" || m.state.Job.ID == id) {
-		job := *m.state.Job
-		return &job, nil
-	}
-	if id != "" {
+		copy := *m.state.Job
+		job = &copy
+	} else if id != "" {
 		for i := range m.state.JobHistory {
 			if m.state.JobHistory[i].ID == id {
-				job := m.state.JobHistory[i]
-				return &job, nil
+				copy := m.state.JobHistory[i]
+				job = &copy
+				break
 			}
 		}
 	}
-	if m.state.Job == nil || id != "" {
+	m.mu.RUnlock()
+	if job == nil {
 		return nil, ErrJobNotFound
 	}
-	return nil, ErrJobNotFound
+	m.decorateControlPlaneUpgradeStatus(job)
+	return job, nil
+}
+
+func (m *Manager) controlPlaneUpgradeReady() bool {
+	return strings.TrimSpace(m.cfg.ControlPlaneUpgradePath) != "" && len(m.cfg.ControlPlaneUpgradeCommand) > 0
 }
 
 func (m *Manager) Reconcile(ctx context.Context, slotName string) error {
@@ -313,6 +322,9 @@ func (m *Manager) Start(req DeployRequest) (*Job, error) {
 	req.RequestID = strings.TrimSpace(req.RequestID)
 	if req.Action != "update" && req.Action != "rollback" {
 		return nil, errors.New("action must be update or rollback")
+	}
+	if req.Action == "update" && !m.controlPlaneUpgradeReady() {
+		return nil, ErrControlPlaneUpgradeUnavailable
 	}
 	if !versionPattern.MatchString(req.TargetVersion) {
 		return nil, errors.New("invalid target version")
@@ -856,8 +868,143 @@ func (m *Manager) finishCandidateDeployment(ctx context.Context, jobID string, c
 		_ = m.fail(jobID, fmt.Errorf("persist deployed image: %w", err))
 		return
 	}
-	if err := m.complete(jobID, "Deployment completed", ""); err != nil {
+	controlPlanePrepared, controlPlaneErr := m.prepareControlPlaneUpgrade(job)
+	cleanupWarning := ""
+	if controlPlaneErr != nil {
+		cleanupWarning = "application update succeeded, but the deployer control-plane upgrade could not be prepared: " + controlPlaneErr.Error()
+	}
+	if err := m.complete(jobID, "Deployment completed", cleanupWarning); err != nil {
 		return
+	}
+	if controlPlanePrepared {
+		if err := m.startControlPlaneUpgrade(job); err != nil {
+			_ = m.writeControlPlaneUpgradeStatus(job, "failed", err.Error())
+			_ = m.appendCleanupWarning(jobID, "application update succeeded, but the deployer control-plane upgrade was not scheduled: "+err.Error())
+		}
+	}
+}
+
+type controlPlaneUpgradeRequest struct {
+	Schema            int    `json:"schema"`
+	JobID             string `json:"job_id"`
+	ContainerID       string `json:"container_id"`
+	ContainerName     string `json:"container_name"`
+	TargetVersion     string `json:"target_version"`
+	ExpectedImage     string `json:"expected_image"`
+	ExpectedImageHash string `json:"expected_image_digest"`
+}
+
+type controlPlaneUpgradeStatus struct {
+	Schema        int    `json:"schema"`
+	JobID         string `json:"job_id"`
+	ContainerID   string `json:"container_id"`
+	TargetVersion string `json:"target_version"`
+	Status        string `json:"status"`
+	Error         string `json:"error,omitempty"`
+}
+
+func (m *Manager) prepareControlPlaneUpgrade(job *Job) (bool, error) {
+	// Application rollback must not downgrade the host control plane to an
+	// older binary that may contain already-fixed deployment bugs.
+	if job != nil && job.Action != "update" {
+		return false, nil
+	}
+	if !m.controlPlaneUpgradeReady() {
+		return false, ErrControlPlaneUpgradeUnavailable
+	}
+	if job == nil || job.CandidateContainerID == "" || job.TargetVersion == "" || job.TargetDigest == "" {
+		return false, errors.New("successful deployment is missing immutable control-plane upgrade identity")
+	}
+	request := controlPlaneUpgradeRequest{
+		Schema:            1,
+		JobID:             job.ID,
+		ContainerID:       job.CandidateContainerID,
+		ContainerName:     job.CandidateContainer,
+		TargetVersion:     job.TargetVersion,
+		ExpectedImage:     job.TargetImage,
+		ExpectedImageHash: job.TargetDigest,
+	}
+	data, err := json.Marshal(request)
+	if err != nil {
+		return false, fmt.Errorf("encode control-plane upgrade request: %w", err)
+	}
+	data = append(data, '\n')
+	if err := atomicWrite(m.cfg.ControlPlaneUpgradePath, data, 0600); err != nil {
+		return false, fmt.Errorf("persist control-plane upgrade request: %w", err)
+	}
+	if err := m.writeControlPlaneUpgradeStatus(job, "pending", ""); err != nil {
+		_ = os.Remove(m.cfg.ControlPlaneUpgradePath)
+		return false, fmt.Errorf("persist control-plane upgrade status: %w", err)
+	}
+	if err := m.updateJob(job.ID, StageActivating, "Application active; upgrading deployer control plane", func(current *Job) {
+		current.ControlPlaneUpgradeStatus = "pending"
+		current.ControlPlaneUpgradeError = ""
+	}); err != nil {
+		_ = os.Remove(m.cfg.ControlPlaneUpgradePath)
+		_ = os.Remove(m.controlPlaneUpgradeStatusPath())
+		return false, fmt.Errorf("persist pending control-plane upgrade: %w", err)
+	}
+	return true, nil
+}
+
+func (m *Manager) startControlPlaneUpgrade(job *Job) error {
+	command := m.cfg.ControlPlaneUpgradeCommand
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := m.runner.Run(ctx, nil, command[0], command[1:]...); err != nil {
+		return fmt.Errorf("start control-plane upgrade helper: %w", err)
+	}
+	log.Printf("sub2api-deployer job_id=%q control_plane_upgrade_scheduled=true target_version=%q candidate_container_id=%q", job.ID, job.TargetVersion, job.CandidateContainerID)
+	return nil
+}
+
+func (m *Manager) controlPlaneUpgradeStatusPath() string {
+	if m.cfg.ControlPlaneUpgradePath == "" {
+		return ""
+	}
+	return m.cfg.ControlPlaneUpgradePath + ".status"
+}
+
+func (m *Manager) writeControlPlaneUpgradeStatus(job *Job, status, statusError string) error {
+	if job == nil || m.controlPlaneUpgradeStatusPath() == "" {
+		return errors.New("control-plane upgrade status is not configured")
+	}
+	record := controlPlaneUpgradeStatus{
+		Schema:        1,
+		JobID:         job.ID,
+		ContainerID:   job.CandidateContainerID,
+		TargetVersion: job.TargetVersion,
+		Status:        status,
+		Error:         strings.TrimSpace(statusError),
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	return atomicWrite(m.controlPlaneUpgradeStatusPath(), append(data, '\n'), 0600)
+}
+
+func (m *Manager) decorateControlPlaneUpgradeStatus(job *Job) {
+	if job == nil || m.controlPlaneUpgradeStatusPath() == "" {
+		return
+	}
+	data, err := os.ReadFile(m.controlPlaneUpgradeStatusPath())
+	if err != nil {
+		return
+	}
+	var record controlPlaneUpgradeStatus
+	if json.Unmarshal(data, &record) != nil || record.Schema != 1 || record.JobID != job.ID || record.ContainerID != job.CandidateContainerID || record.TargetVersion != job.TargetVersion {
+		return
+	}
+	job.ControlPlaneUpgradeStatus = record.Status
+	job.ControlPlaneUpgradeError = record.Error
+	if record.Status == "failed" && record.Error != "" {
+		warning := "deployer control-plane upgrade failed: " + record.Error
+		if job.CleanupWarning == "" {
+			job.CleanupWarning = warning
+		} else if !strings.Contains(job.CleanupWarning, warning) {
+			job.CleanupWarning += "; " + warning
+		}
 	}
 }
 
@@ -2139,8 +2286,14 @@ func (m *Manager) knownContainersForSlot(slotName string, excluded ...string) []
 		if _, skip := excludedSet[container]; skip {
 			return
 		}
-		if existing, ok := seen[container]; ok && existing.ID != "" && id == "" {
-			return
+		if existing, ok := seen[container]; ok {
+			// References are added from the authoritative current state toward
+			// progressively older job history. Once an immutable ID is known,
+			// an older history entry must never replace it. A later ID may only
+			// fill a legacy name-only reference.
+			if existing.ID != "" || id == "" {
+				return
+			}
 		}
 		seen[container] = containerRef{Name: container, ID: id}
 	}

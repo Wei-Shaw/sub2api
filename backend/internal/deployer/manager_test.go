@@ -3,6 +3,7 @@ package deployer
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -385,13 +386,15 @@ func testConfig(t *testing.T, candidatePort int) Config {
 		NginxReloadCommand: []string{
 			"/usr/bin/systemctl", "reload", "nginx",
 		},
-		RouteConfirmationTimeout: Duration{Duration: time.Second},
-		HealthPath:               "/health",
-		HealthTimeout:            Duration{Duration: time.Second},
-		StabilizeDuration:        Duration{Duration: 10 * time.Millisecond},
-		DrainDuration:            Duration{Duration: time.Millisecond},
-		DrainTimeout:             Duration{Duration: time.Second},
-		StopTimeout:              Duration{Duration: time.Second},
+		RouteConfirmationTimeout:   Duration{Duration: time.Second},
+		HealthPath:                 "/health",
+		HealthTimeout:              Duration{Duration: time.Second},
+		StabilizeDuration:          Duration{Duration: 10 * time.Millisecond},
+		DrainDuration:              Duration{Duration: time.Millisecond},
+		DrainTimeout:               Duration{Duration: time.Second},
+		StopTimeout:                Duration{Duration: time.Second},
+		ControlPlaneUpgradePath:    filepath.Join(dir, "control-plane-upgrade.json"),
+		ControlPlaneUpgradeCommand: []string{"/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service"},
 	}
 }
 
@@ -2622,6 +2625,155 @@ func TestSecondDeploymentPreparationKeepsPersistedCanonicalCandidateID(t *testin
 	runner.mu.Unlock()
 	if !strings.Contains(commands, "docker rm -f "+fakeContainerID("sub2api-blue")) {
 		t.Fatalf("persisted canonical candidate ID was not used for cleanup:\n%s", commands)
+	}
+}
+
+func TestInactiveSlotCleanupIgnoresSupersededHistoryContainerIDs(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	currentID := fakeContainerID("sub2api-green-current")
+	olderID := fakeContainerID("sub2api-green-older")
+	oldestID := fakeContainerID("sub2api-green-oldest")
+	manager := &Manager{
+		cfg: cfg,
+		state: State{
+			ActiveSlot:          "sub2api-blue",
+			ActiveContainer:     "sub2api-blue",
+			ActiveContainerID:   fakeContainerID("sub2api-blue"),
+			PreviousSlot:        "sub2api-green",
+			PreviousContainer:   "sub2api-green",
+			PreviousContainerID: currentID,
+			JobHistory: []Job{
+				{
+					CandidateSlot:        "sub2api-green",
+					CandidateContainer:   "sub2api-green",
+					CandidateContainerID: olderID,
+				},
+				{
+					OldSlot:        "sub2api-green",
+					OldContainer:   "sub2api-green",
+					OldContainerID: oldestID,
+				},
+			},
+		},
+	}
+
+	containers := manager.knownContainersForSlot("sub2api-green")
+	if len(containers) != 1 {
+		t.Fatalf("expected one canonical container reference, got %+v", containers)
+	}
+	if containers[0].Name != "sub2api-green" || containers[0].ID != currentID {
+		t.Fatalf("old job history replaced the current immutable ID: %+v", containers[0])
+	}
+}
+
+func TestPrepareControlPlaneUpgradePersistsImmutableCandidateIdentity(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	cfg.ControlPlaneUpgradePath = filepath.Join(t.TempDir(), "control-plane-upgrade.json")
+	cfg.ControlPlaneUpgradeCommand = []string{"/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service"}
+	runner := &fakeRunner{}
+	manager := &Manager{cfg: cfg, runner: runner, now: time.Now}
+	job := &Job{
+		ID:                   "control-plane-upgrade-0001",
+		Action:               "update",
+		TargetVersion:        "0.1.166-ts.3",
+		TargetImage:          cfg.ImageRepository + "@sha256:" + strings.Repeat("a", 64),
+		TargetDigest:         "sha256:" + strings.Repeat("a", 64),
+		CandidateContainer:   "sub2api-green",
+		CandidateContainerID: fakeContainerID("sub2api-green-current"),
+		Status:               JobStatusRunning,
+		Stage:                StageActivating,
+	}
+	manager.state = State{Job: job}
+
+	prepared, err := manager.prepareControlPlaneUpgrade(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prepared {
+		t.Fatal("control-plane upgrade was not prepared")
+	}
+	if err := manager.startControlPlaneUpgrade(job); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(cfg.ControlPlaneUpgradePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request controlPlaneUpgradeRequest
+	if err := json.Unmarshal(data, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.JobID != job.ID || request.ContainerID != job.CandidateContainerID ||
+		request.TargetVersion != job.TargetVersion ||
+		request.ExpectedImage != job.TargetImage ||
+		request.ExpectedImageHash != job.TargetDigest {
+		t.Fatalf("unexpected upgrade request: %+v", request)
+	}
+	runner.mu.Lock()
+	commands := strings.Join(runner.commands, "\n")
+	runner.mu.Unlock()
+	if !strings.Contains(commands, strings.Join(cfg.ControlPlaneUpgradeCommand, " ")) {
+		t.Fatalf("control-plane helper was not scheduled:\n%s", commands)
+	}
+}
+
+func TestPrepareControlPlaneUpgradeDoesNotDowngradeOnRollback(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	cfg.ControlPlaneUpgradePath = filepath.Join(t.TempDir(), "control-plane-upgrade.json")
+	cfg.ControlPlaneUpgradeCommand = []string{"/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service"}
+	runner := &fakeRunner{}
+	manager := &Manager{cfg: cfg, runner: runner}
+
+	prepared, err := manager.prepareControlPlaneUpgrade(&Job{Action: "rollback"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared {
+		t.Fatal("rollback unexpectedly prepared a control-plane downgrade")
+	}
+	if _, err := os.Stat(cfg.ControlPlaneUpgradePath); !os.IsNotExist(err) {
+		t.Fatalf("rollback unexpectedly created a control-plane downgrade request: %v", err)
+	}
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
+	if len(runner.commands) != 0 {
+		t.Fatalf("rollback unexpectedly scheduled a control-plane downgrade: %v", runner.commands)
+	}
+}
+
+func TestJobReportsControlPlaneUpgradeFailureFromSidecar(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	job := &Job{
+		ID: "control-plane-status-0001", Action: "update", Status: JobStatusSucceeded,
+		TargetVersion: "0.1.166-ts.3", CandidateContainerID: fakeContainerID("sub2api-green"),
+	}
+	manager := &Manager{cfg: cfg, state: State{Job: job}}
+	if err := manager.writeControlPlaneUpgradeStatus(job, "failed", "health verification failed"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := manager.Job(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ControlPlaneUpgradeStatus != "failed" || got.ControlPlaneUpgradeError != "health verification failed" {
+		t.Fatalf("unexpected control-plane status: %+v", got)
+	}
+	if !strings.Contains(got.CleanupWarning, "health verification failed") {
+		t.Fatalf("cleanup warning did not expose control-plane failure: %q", got.CleanupWarning)
+	}
+}
+
+func TestUpdateRequiresControlPlaneUpgradeBootstrap(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	cfg.ControlPlaneUpgradePath = ""
+	cfg.ControlPlaneUpgradeCommand = nil
+	manager := &Manager{cfg: cfg}
+	_, err := manager.Start(DeployRequest{
+		Action: "update", TargetVersion: "0.1.2-ts.1", RequestID: "bootstrap-required-0001",
+	})
+	if !errors.Is(err, ErrControlPlaneUpgradeUnavailable) {
+		t.Fatalf("Start error=%v, want ErrControlPlaneUpgradeUnavailable", err)
 	}
 }
 

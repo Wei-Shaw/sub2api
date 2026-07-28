@@ -7860,172 +7860,8 @@
 
           <EmailNotificationPolicyCard />
 
-          <!-- 订阅到期提醒 -->
-          <div class="card">
-            <div
-              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-            >
-              <h3 class="text-base font-medium text-gray-900 dark:text-white">
-                {{ t("admin.settings.subscriptionExpiryNotify.title") }}
-              </h3>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.subscriptionExpiryNotify.description") }}
-              </p>
-            </div>
-            <div class="px-6 py-6">
-              <div class="flex items-center justify-between gap-4">
-                <div>
-                  <label
-                    class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {{ t("admin.settings.subscriptionExpiryNotify.enabled") }}
-                  </label>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.subscriptionExpiryNotify.enabledHint") }}
-                  </p>
-                </div>
-                <Toggle v-model="form.subscription_expiry_notify_enabled" />
-              </div>
-            </div>
-          </div>
-
           <EmailTemplateEditor />
 
-          <!-- Balance Low Notification -->
-          <div class="card">
-            <div
-              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-            >
-              <h3 class="text-base font-medium text-gray-900 dark:text-white">
-                {{ t("admin.settings.balanceNotify.title") }}
-              </h3>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.balanceNotify.description") }}
-              </p>
-            </div>
-            <div class="px-6 py-6 space-y-4">
-              <div class="flex items-center justify-between">
-                <label
-                  class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >{{ t("admin.settings.balanceNotify.enabled") }}</label
-                >
-                <Toggle v-model="form.balance_low_notify_enabled" />
-              </div>
-              <div v-if="form.balance_low_notify_enabled">
-                <label
-                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >{{ t("admin.settings.balanceNotify.threshold") }}</label
-                >
-                <div class="relative">
-                  <span
-                    class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                    >$</span
-                  >
-                  <input
-                    v-model.number="form.balance_low_notify_threshold"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    class="input pl-7"
-                  />
-                </div>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t("admin.settings.balanceNotify.thresholdHint") }}
-                </p>
-              </div>
-              <div>
-                <label
-                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >{{ t("admin.settings.balanceNotify.rechargeUrl") }}</label
-                >
-                <input
-                  v-model="form.balance_low_notify_recharge_url"
-                  type="url"
-                  class="input"
-                  :placeholder="currentOrigin"
-                />
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t("admin.settings.balanceNotify.rechargeUrlHint") }}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Account Quota Notification -->
-          <div class="card">
-            <div
-              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-            >
-              <h3 class="text-base font-medium text-gray-900 dark:text-white">
-                {{ t("admin.settings.quotaNotify.title") }}
-              </h3>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.quotaNotify.description") }}
-              </p>
-            </div>
-            <div class="px-6 py-6 space-y-4">
-              <div class="flex items-center justify-between">
-                <label
-                  class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >{{ t("admin.settings.quotaNotify.enabled") }}</label
-                >
-                <Toggle v-model="form.account_quota_notify_enabled" />
-              </div>
-              <div v-if="form.account_quota_notify_enabled">
-                <label
-                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >{{ t("admin.settings.quotaNotify.emails") }}</label
-                >
-                <div class="space-y-2">
-                  <div
-                    v-for="(entry, index) in form.account_quota_notify_emails ||
-                    []"
-                    :key="index"
-                    class="flex items-center gap-2"
-                  >
-                    <label
-                      class="relative inline-flex items-center cursor-pointer shrink-0"
-                    >
-                      <input
-                        type="checkbox"
-                        :checked="!entry.disabled"
-                        @change="entry.disabled = !entry.disabled"
-                        class="sr-only peer"
-                      />
-                      <div
-                        class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-gray-500 peer-checked:bg-primary-600"
-                      ></div>
-                    </label>
-                    <input
-                      v-model="entry.email"
-                      type="email"
-                      class="input flex-1"
-                      :placeholder="
-                        t('admin.settings.quotaNotify.emailPlaceholder')
-                      "
-                    />
-                    <button
-                      @click="form.account_quota_notify_emails.splice(index, 1)"
-                      class="btn btn-secondary px-2"
-                      type="button"
-                    >
-                      <Icon name="x" size="xs" class="h-4 w-4" />
-                    </button>
-                  </div>
-                  <button
-                    @click="addQuotaNotifyEmail"
-                    class="btn btn-secondary btn-sm"
-                    type="button"
-                  >
-                    + {{ t("admin.settings.quotaNotify.addEmail") }}
-                  </button>
-                </div>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t("admin.settings.quotaNotify.emailsHint") }}
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
         <!-- /Tab: Email -->
 
@@ -9679,18 +9515,6 @@ function handleForwardedClientIpHeaderPaste(event: ClipboardEvent) {
   }
 }
 
-// Quota notify email helpers
-const addQuotaNotifyEmail = () => {
-  if (!form.account_quota_notify_emails) {
-    form.account_quota_notify_emails = [];
-  }
-  form.account_quota_notify_emails.push({
-    email: "",
-    disabled: false,
-    verified: true,
-  });
-};
-
 const currentOrigin =
   typeof window !== "undefined" ? window.location.origin : "";
 
@@ -10653,18 +10477,6 @@ async function saveSettings() {
         form.openai_advanced_scheduler_weight_previous_response.trim(),
       openai_advanced_scheduler_weight_session_sticky:
         form.openai_advanced_scheduler_weight_session_sticky.trim(),
-      // 余额、订阅到期与账号限额通知
-      balance_low_notify_enabled: form.balance_low_notify_enabled,
-      balance_low_notify_threshold:
-        Number(form.balance_low_notify_threshold) || 0,
-      balance_low_notify_recharge_url: (form.balance_low_notify_recharge_url =
-        form.balance_low_notify_recharge_url || currentOrigin),
-      subscription_expiry_notify_enabled:
-        form.subscription_expiry_notify_enabled,
-      account_quota_notify_enabled: form.account_quota_notify_enabled,
-      account_quota_notify_emails: (
-        form.account_quota_notify_emails || []
-      ).filter((e) => e.email.trim() !== ""),
       // Channel Monitor feature switch
       channel_monitor_enabled: form.channel_monitor_enabled,
       channel_monitor_default_interval_seconds:

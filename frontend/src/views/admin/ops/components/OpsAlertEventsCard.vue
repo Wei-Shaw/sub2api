@@ -75,8 +75,8 @@ const statusOptions = computed(() => [
 const emailSent = ref<string>('')
 const emailSentOptions = computed(() => [
   { value: '', label: t('common.all') },
-  { value: 'true', label: t('admin.ops.alertEvents.table.emailSent') },
-  { value: 'false', label: t('admin.ops.alertEvents.table.emailIgnored') }
+  { value: 'true', label: t('admin.ops.alertEvents.table.emailQueued') },
+  { value: 'false', label: t('admin.ops.alertEvents.table.emailNotQueued') }
 ])
 
 function buildQuery(overrides: Partial<AlertEventsQuery> = {}): AlertEventsQuery {
@@ -356,9 +356,27 @@ function formatStatusLabel(status: string | undefined): string {
 }
 
 function emailDeliveryLabel(event: AlertEvent): string {
-  if (event.email_queued) return t('admin.ops.alertEvents.table.emailQueued')
-  if (event.email_sent) return t('admin.ops.alertEvents.table.emailSent')
-  return t('admin.ops.alertEvents.table.emailIgnored')
+  const status = String(event.email_delivery_status || '').trim().toLowerCase()
+  if (status) return t(`admin.ops.alertEvents.delivery.${status}`)
+  if (event.email_sent) return t('admin.ops.alertEvents.delivery.sent')
+  if (event.email_queued) return t('admin.ops.alertEvents.delivery.pending')
+  return t('admin.ops.alertEvents.delivery.notQueued')
+}
+
+function emailDeliveryIcon(event: AlertEvent): 'checkCircle' | 'exclamationCircle' | 'ban' | 'clock' {
+  const status = String(event.email_delivery_status || '').trim().toLowerCase()
+  if (status === 'sent') return 'checkCircle'
+  if (status === 'failed') return 'exclamationCircle'
+  if (status === 'suppressed' || !event.email_queued) return 'ban'
+  return 'clock'
+}
+
+function emailDeliveryClass(event: AlertEvent): string {
+  const status = String(event.email_delivery_status || '').trim().toLowerCase()
+  if (status === 'sent') return 'text-green-600 dark:text-green-400'
+  if (status === 'failed') return 'text-red-600 dark:text-red-400'
+  if (status === 'suppressed' || !event.email_queued) return 'text-gray-400 dark:text-gray-500'
+  return 'text-blue-600 dark:text-blue-400'
 }
 
 const empty = computed(() => events.value.length === 0 && !loading.value)
@@ -429,24 +447,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
             <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400">
               <span><span class="font-mono">#{{ row.rule_id }}</span> · {{ formatDurationLabel(row) }}</span>
               <span class="inline-flex items-center gap-1">
-                <Icon
-                  v-if="row.email_queued"
-                  name="clock"
-                  size="xs"
-                  class="text-blue-600 dark:text-blue-400"
-                />
-                <Icon
-                  v-else-if="row.email_sent"
-                  name="checkCircle"
-                  size="xs"
-                  class="text-green-600 dark:text-green-400"
-                />
-                <Icon
-                  v-else
-                  name="ban"
-                  size="xs"
-                  class="text-gray-400 dark:text-gray-500"
-                />
+                <Icon :name="emailDeliveryIcon(row)" size="xs" :class="emailDeliveryClass(row)" />
                 {{ emailDeliveryLabel(row) }}
               </span>
             </div>
@@ -526,24 +527,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                   class="inline-flex items-center justify-end gap-1.5"
                   :title="emailDeliveryLabel(row)"
                 >
-                  <Icon
-                    v-if="row.email_queued"
-                    name="clock"
-                    size="sm"
-                    class="text-blue-600 dark:text-blue-400"
-                  />
-                  <Icon
-                    v-else-if="row.email_sent"
-                    name="checkCircle"
-                    size="sm"
-                    class="text-gray-600 dark:text-gray-400"
-                  />
-                  <Icon
-                    v-else
-                    name="ban"
-                    size="sm"
-                    class="text-gray-400 dark:text-gray-500"
-                  />
+                  <Icon :name="emailDeliveryIcon(row)" size="sm" :class="emailDeliveryClass(row)" />
                   <span class="text-[11px] font-bold text-gray-600 dark:text-gray-300">
                     {{ emailDeliveryLabel(row) }}
                   </span>
@@ -659,6 +643,16 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                 <div v-if="selected.dimensions?.group_id">group_id={{ selected.dimensions.group_id }}</div>
                 <div v-if="getDimensionString(selected, 'region')">region={{ getDimensionString(selected, 'region') }}</div>
               </div>
+            </div>
+            <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900 sm:col-span-2">
+              <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.alertEvents.table.email') }}</div>
+              <div class="mt-1 flex items-center gap-2 text-sm font-medium" :class="emailDeliveryClass(selected)">
+                <Icon :name="emailDeliveryIcon(selected)" size="sm" />
+                {{ emailDeliveryLabel(selected) }}
+              </div>
+              <p v-if="selected.email_delivery_detail" class="mt-2 break-words text-xs text-red-600 dark:text-red-400">
+                {{ selected.email_delivery_detail }}
+              </p>
             </div>
           </div>
 

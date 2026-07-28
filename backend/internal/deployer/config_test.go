@@ -1,6 +1,7 @@
 package deployer
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -61,5 +62,20 @@ func TestConfigRejectsHealthTimeoutBelowMigrationBudget(t *testing.T) {
 	cfg.HealthTimeout = Duration{Duration: 9*time.Minute + 59*time.Second}
 	if err := cfg.validate(); err == nil {
 		t.Fatal("health timeout below the migration budget unexpectedly passed validation")
+	}
+}
+
+func TestConfigRequiresCompleteControlPlaneUpgradeConfiguration(t *testing.T) {
+	cfg := testConfig(t, 19081)
+	cfg.HealthTimeout = Duration{Duration: 12 * time.Minute}
+	cfg.ControlPlaneUpgradePath = filepath.Join(t.TempDir(), "upgrade.json")
+	cfg.ControlPlaneUpgradeCommand = nil
+	if err := cfg.validate(); err == nil {
+		t.Fatal("upgrade request path without command unexpectedly passed validation")
+	}
+
+	cfg.ControlPlaneUpgradeCommand = []string{"/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service"}
+	if err := cfg.validate(); err != nil {
+		t.Fatalf("complete control-plane upgrade configuration was rejected: %v", err)
 	}
 }

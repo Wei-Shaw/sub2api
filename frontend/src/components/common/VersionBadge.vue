@@ -9,14 +9,16 @@
         :class="[
           hasDangerousDeploymentState
             ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50'
-            : versionWarning || hasUpdate
+            : hasDeploymentWarning || versionWarning || hasUpdate
             ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'
             : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-800 dark:text-dark-400 dark:hover:bg-dark-700'
         ]"
         :title="
           hasDangerousDeploymentState
             ? displayedUpdateError
-            : versionWarning
+            : hasDeploymentWarning
+              ? deploymentJob?.cleanup_warning
+              : versionWarning
               ? t('version.updateCheckWarning')
             : hasUpdate
               ? t('version.updateAvailable')
@@ -32,7 +34,7 @@
         <span v-if="hasDangerousDeploymentState" class="relative flex h-2 w-2">
           <span class="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
         </span>
-        <span v-else-if="versionWarning || hasUpdate" class="relative flex h-2 w-2">
+        <span v-else-if="hasDeploymentWarning || versionWarning || hasUpdate" class="relative flex h-2 w-2">
           <span
             class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"
           ></span>
@@ -233,6 +235,29 @@
                     </p>
                     <p class="break-words text-xs text-amber-600/80 dark:text-amber-400/80">
                       {{ versionWarning }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                v-else-if="deploymentJob?.status === 'succeeded' && deploymentJob.cleanup_warning"
+                data-testid="deployment-warning"
+                class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
+              >
+                <div class="flex items-start gap-3">
+                  <Icon
+                    name="exclamationTriangle"
+                    size="sm"
+                    :stroke-width="2"
+                    class="mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-amber-700 dark:text-amber-300">
+                      {{ t('version.updateCompletedWithWarning') }}
+                    </p>
+                    <p class="break-words text-xs text-amber-600/80 dark:text-amber-400/80">
+                      {{ deploymentJob.cleanup_warning }}
                     </p>
                   </div>
                 </div>
@@ -788,6 +813,7 @@ import Icon from '@/components/icons/Icon.vue'
 const GITHUB_REPO = 'ssharkkky/sub2api'
 // Fork releases are published to GHCR without the leading "v" in image tags.
 const DOCKER_IMAGE = 'ghcr.io/ssharkkky/sub2api'
+const CONTROL_PLANE_UPGRADE_TIMEOUT_MS = 5 * 60 * 1000
 
 const { t } = useI18n()
 
@@ -830,6 +856,9 @@ const restartCountdown = ref(0)
 const successKind = ref<'update' | 'rollback'>('update')
 const deploymentJob = ref<DeploymentJob | null>(null)
 const hasDangerousDeploymentState = computed(() => isDangerousDeploymentJob(deploymentJob.value))
+const hasDeploymentWarning = computed(
+  () => deploymentJob.value?.status === 'succeeded' && Boolean(deploymentJob.value.cleanup_warning)
+)
 const displayedUpdateError = computed(() => {
   if (hasDangerousDeploymentState.value && deploymentJob.value) {
     return deploymentFailureMessage(deploymentJob.value)
@@ -1090,7 +1119,12 @@ function isAmbiguousSystemRequestError(error: unknown): boolean {
 }
 
 function isDangerousDeploymentJob(job: DeploymentJob | null): boolean {
-  return job?.status === 'degraded' || job?.status === 'rollback_failed' || Boolean(job?.rollback_error)
+  return (
+    job?.status === 'degraded' ||
+    job?.status === 'rollback_failed' ||
+    job?.control_plane_upgrade_status === 'failed' ||
+    Boolean(job?.rollback_error)
+  )
 }
 
 function deploymentFailureMessage(job: DeploymentJob): string {
@@ -1102,7 +1136,9 @@ function deploymentFailureMessage(job: DeploymentJob): string {
         : job.rollback_performed
           ? t('version.deploymentRolledBack')
           : t('version.updateFailed')
-  const details = [job.error, job.rollback_error].filter(
+  const controlPlaneFallback =
+    job.control_plane_upgrade_status === 'failed' ? t('version.controlPlaneUpgradeFailed') : ''
+  const details = [controlPlaneFallback, job.error, job.rollback_error, job.control_plane_upgrade_error].filter(
     (value, index, values): value is string => Boolean(value) && values.indexOf(value) === index
   )
   return details.length > 0 ? `${fallback}: ${details.join('; ')}` : fallback
@@ -1120,13 +1156,30 @@ function trackDeployment(job: DeploymentJob, kind: 'update' | 'rollback') {
 
 async function pollDeployment(jobID: string, token: number) {
   let transientFailures = 0
+  let controlPlanePendingSince: number | null = null
   while (token === deploymentPollToken) {
     try {
       const job = await getDeploymentJob(jobID)
       if (token !== deploymentPollToken) return
       deploymentJob.value = job
       transientFailures = 0
-      if (job.status === 'running') {
+      const controlPlanePending =
+        job.status === 'succeeded' && job.control_plane_upgrade_status === 'pending'
+      if (controlPlanePending) {
+        controlPlanePendingSince ??= Date.now()
+        if (Date.now() - controlPlanePendingSince >= CONTROL_PLANE_UPGRADE_TIMEOUT_MS) {
+          updating.value = false
+          rollingBack.value = false
+          updateError.value = t('version.controlPlaneUpgradeTimeout')
+          return
+        }
+      } else {
+        controlPlanePendingSince = null
+      }
+      if (
+        job.status === 'running' ||
+        controlPlanePending
+      ) {
         await new Promise((resolve) => setTimeout(resolve, 1500))
         continue
       }
@@ -1270,9 +1323,19 @@ async function recoverCurrentDeployment() {
     // an Nginx slot switch, /check-updates can fail while the durable host job
     // remains available from the container that receives the next request.
     const job = await getCurrentDeploymentJob()
-    if (job.status === 'running') {
+    if (
+      job.status === 'running' ||
+      (job.status === 'succeeded' && job.control_plane_upgrade_status === 'pending')
+    ) {
       trackDeployment(job, job.action)
     } else if (isDangerousDeploymentJob(job)) {
+      deploymentJob.value = job
+      successKind.value = job.action
+      updating.value = false
+      rollingBack.value = false
+      updateSuccess.value = false
+      needRestart.value = false
+    } else if (job.status === 'succeeded' && job.cleanup_warning) {
       deploymentJob.value = job
       successKind.value = job.action
       updating.value = false

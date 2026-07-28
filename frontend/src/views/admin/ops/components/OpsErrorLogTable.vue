@@ -231,12 +231,6 @@ const columns = computed<Column[]>(() =>
     : allColumns.value
 )
 
-function isUpstreamRow(log: OpsErrorLog): boolean {
-  const phase = String(log.phase || '').toLowerCase()
-  const owner = String(log.error_owner || '').toLowerCase()
-  return phase === 'upstream' && owner === 'provider'
-}
-
 function hasModelMapping(log: OpsErrorLog): boolean {
   const requested = String(log.requested_model || '').trim()
   const upstream = String(log.upstream_model || '').trim()
@@ -262,10 +256,52 @@ function formatRequestType(type: number | null | undefined): string {
 
 // 徽章配色对齐用量明细(UsageTable)的 bg-X-100/text-X-800 体系
 function getTypeBadge(log: OpsErrorLog): { label: string; className: string } {
-  const phase = String(log.phase || '').toLowerCase()
-  const owner = String(log.error_owner || '').toLowerCase()
+  if (log.classification_version >= 2) {
+    const outcome = String(log.final_outcome || '').toLowerCase()
+    const classified: Record<string, { key: string; className: string }> = {
+      platform_failed: {
+        key: 'platformFailure',
+        className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+      },
+      provider_failed: {
+        key: 'providerFailure',
+        className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+      },
+      unknown_failed: {
+        key: 'unknownFailure',
+        className: 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200'
+      },
+      client_rejected: {
+        key: 'clientIgnored',
+        className: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+      },
+      business_limited: {
+        key: 'businessIgnored',
+        className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+      },
+      security_blocked: {
+        key: 'securityIgnored',
+        className: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+      },
+      cancelled: {
+        key: 'cancelledIgnored',
+        className: 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300'
+      },
+      recovered: {
+        key: 'recovered',
+        className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+      }
+    }
+    const badge = classified[outcome]
+    if (badge) {
+      return { label: t(`admin.ops.errorLog.outcomes.${badge.key}`), className: badge.className }
+    }
+  }
 
-  if (isUpstreamRow(log)) {
+  const phase = String(log.phase || '').toLowerCase()
+  const owner = String(log.responsibility || log.error_owner || '').toLowerCase()
+
+  if (phase === 'upstream' && owner === 'provider') {
     return { label: t('admin.ops.errorLog.typeUpstream'), className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' }
   }
   if (phase === 'request' && owner === 'client') {

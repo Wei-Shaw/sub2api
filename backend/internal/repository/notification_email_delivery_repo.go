@@ -265,8 +265,8 @@ func (r *notificationEmailDeliveryRepository) List(ctx context.Context, filter s
 }
 
 func notificationEmailDeliveryListWhere(filter service.NotificationEmailDeliveryListFilter) (string, []any) {
-	clauses := make([]string, 0, 4)
-	args := make([]any, 0, 4)
+	clauses := make([]string, 0, 7)
+	args := make([]any, 0, 7)
 	add := func(column, value string) {
 		value = strings.TrimSpace(value)
 		if value == "" {
@@ -279,6 +279,12 @@ func notificationEmailDeliveryListWhere(filter service.NotificationEmailDelivery
 	add("status", filter.Status)
 	add("source_type", filter.SourceType)
 	add("source_id", filter.SourceID)
+	add("recipient_hash", filter.RecipientHash)
+	add("reminder_key", filter.ReminderKey)
+	if filter.CreatedAfter != nil && !filter.CreatedAfter.IsZero() {
+		args = append(args, filter.CreatedAfter.UTC())
+		clauses = append(clauses, "created_at >= $"+fmt.Sprint(len(args)))
+	}
 	if len(clauses) == 0 {
 		return "", args
 	}

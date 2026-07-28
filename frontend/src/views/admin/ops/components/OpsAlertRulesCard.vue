@@ -769,41 +769,6 @@ function cancelDelete() {
             <input v-model.number="draft!.sustained_minutes" class="input" type="number" min="1" max="1440" />
           </div>
 
-			<div>
-				<label class="input-label">{{ t('admin.ops.alertRules.form.cooldown') }}</label>
-				<input v-model.number="draft!.cooldown_minutes" class="input" type="number" min="0" max="1440" />
-			</div>
-
-			<div>
-				<label class="input-label">{{ t('admin.ops.alertRules.form.minimumSamples') }}</label>
-				<input v-model.number="draft!.minimum_samples" class="input" type="number" min="0" />
-			</div>
-
-			<div>
-				<label class="input-label">{{ t('admin.ops.alertRules.form.minimumBadCount') }}</label>
-				<input v-model.number="draft!.minimum_bad_count" class="input" type="number" min="0" />
-			</div>
-
-			<div>
-				<label class="input-label">{{ t('admin.ops.alertRules.form.recoveryOperator') }}</label>
-				<Select v-model="draft!.recovery_operator" :options="operatorOptions" />
-			</div>
-
-			<div>
-				<label class="input-label">{{ t('admin.ops.alertRules.form.recoveryThreshold') }}</label>
-				<input v-model.number="draft!.recovery_threshold" class="input" type="number" />
-			</div>
-
-			<div>
-				<label class="input-label">{{ t('admin.ops.alertRules.form.recoverySustained') }}</label>
-				<input v-model.number="draft!.recovery_sustained_minutes" class="input" type="number" min="1" max="1440" />
-			</div>
-
-			<div>
-				<label class="input-label">{{ t('admin.ops.alertRules.form.incidentFamily') }}</label>
-				<input v-model.trim="draft!.incident_family" class="input" type="text" maxlength="64" />
-			</div>
-
           <div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-800/50 md:col-span-2">
             <span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ t('admin.ops.alertRules.form.enabled') }}</span>
             <input v-model="draft!.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
@@ -814,10 +779,48 @@ function cancelDelete() {
 				<input v-model="draft!.notify_email" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
 			</div>
 
-			<div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-800/50 md:col-span-2">
-				<span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ t('admin.ops.alertRules.form.shadowMode') }}</span>
-				<input v-model="draft!.shadow_mode" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-			</div>
+          <details class="rounded-xl border border-gray-200 p-4 dark:border-dark-700 md:col-span-2">
+            <summary class="cursor-pointer text-sm font-semibold text-gray-800 dark:text-gray-200">
+              {{ t('admin.ops.alertRules.form.advanced') }}
+            </summary>
+            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.ops.alertRules.form.advancedHint') }}
+            </p>
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t('admin.ops.alertRules.form.cooldown') }}</label>
+                <input v-model.number="draft!.cooldown_minutes" class="input" type="number" min="0" max="1440" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.alertRules.form.minimumSamples') }}</label>
+                <input v-model.number="draft!.minimum_samples" class="input" type="number" min="0" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.alertRules.form.minimumBadCount') }}</label>
+                <input v-model.number="draft!.minimum_bad_count" class="input" type="number" min="0" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.alertRules.form.recoveryOperator') }}</label>
+                <Select v-model="draft!.recovery_operator" :options="operatorOptions" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.alertRules.form.recoveryThreshold') }}</label>
+                <input v-model.number="draft!.recovery_threshold" class="input" type="number" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.alertRules.form.recoverySustained') }}</label>
+                <input v-model.number="draft!.recovery_sustained_minutes" class="input" type="number" min="1" max="1440" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.alertRules.form.incidentFamily') }}</label>
+                <input v-model.trim="draft!.incident_family" class="input" type="text" maxlength="64" />
+              </div>
+              <div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-800/50">
+                <span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ t('admin.ops.alertRules.form.shadowMode') }}</span>
+                <input v-model="draft!.shadow_mode" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+              </div>
+            </div>
+          </details>
         </div>
       </div>
 

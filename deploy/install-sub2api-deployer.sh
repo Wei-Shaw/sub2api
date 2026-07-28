@@ -34,10 +34,13 @@ CONFIG_FILE="$CONFIG_DIR/config.json"
 DOCKER_CONFIG_DIR="$CONFIG_DIR/docker"
 DOCKER_CONFIG_FILE="$DOCKER_CONFIG_DIR/config.json"
 SERVICE_FILE="/etc/systemd/system/sub2api-deployer.service"
+UPGRADE_SERVICE_FILE="/etc/systemd/system/sub2api-deployer-upgrade.service"
 TMPFILES_FILE="/etc/tmpfiles.d/sub2api-deployer.conf"
 RUNTIME_PRESERVE_DROPIN="/run/systemd/system/sub2api-deployer.service.d/10-preserve-runtime.conf"
 INSTALLED_BINARY="/usr/local/sbin/sub2api-deployer"
+INSTALLED_UPGRADER="/usr/local/sbin/sub2api-deployer-upgrade"
 STATE_DIR="/var/lib/sub2api-deployer"
+CONTROL_PLANE_UPGRADE_REQUEST="$STATE_DIR/control-plane-upgrade.json"
 IMAGE_STATE_FILE="$STATE_DIR/image.env"
 RUNTIME_DIR="$STATE_DIR/runtime"
 RUNTIME_MARKER="$RUNTIME_DIR/active-slot"
@@ -586,7 +589,7 @@ fi
 if [[ -z "$ASSET_DIR" || ! -d "$ASSET_DIR" ]]; then
   fail "--assets-dir must point to the packaged deploy assets (or use an installer beside deploy/)"
 fi
-for source_asset in compose.deployer.yml sub2api-deployer.service sub2api-deployer-tmpfiles.conf sub2api-managed-upstream.conf; do
+for source_asset in compose.deployer.yml sub2api-deployer.service sub2api-deployer-upgrade.service sub2api-deployer-upgrade.sh sub2api-deployer-tmpfiles.conf sub2api-managed-upstream.conf; do
   [[ -f "$ASSET_DIR/$source_asset" ]] || fail "Deploy assets are missing $source_asset"
 done
 if [[ -z "$NGINX_SITE" || ! -f "$NGINX_SITE" ]]; then
@@ -808,6 +811,7 @@ EOF
   if (( SERVICE_WAS_ACTIVE == 1 )); then
     jq -e \
       --arg container "$ACTIVE_CONTAINER" \
+      --arg container_id "$INSPECTED_CONTAINER_ID" \
       --arg version "$CURRENT_VERSION" \
       --argjson port "$ACTIVE_PORT" \
       '.active_container == $container and .active_port == $port and .active_version == $version' \
@@ -838,7 +842,9 @@ EOF
     --arg update_protocol "$UPDATE_PROTOCOL_LABEL" \
     --arg docker_binary "$(command -v docker)" \
     --argjson socket_gid "$SOCKET_GID" \
-    --arg nginx_binary "$(command -v nginx)" '
+    --arg nginx_binary "$(command -v nginx)" \
+    --arg control_plane_upgrade_path "$CONTROL_PLANE_UPGRADE_REQUEST" \
+    --arg systemctl_binary "$(command -v systemctl)" '
       .socket_path = $socket_path
       | .state_path = $state_path
       | .image_state_path = $image_state
@@ -859,6 +865,8 @@ EOF
       | .nginx_upstream_path = $upstream
       | .nginx_probe_url = $probe_url
       | .nginx_dump_command = [$nginx_binary, "-T"]
+      | .control_plane_upgrade_path = $control_plane_upgrade_path
+      | .control_plane_upgrade_command = [$systemctl_binary, "start", "--no-block", "sub2api-deployer-upgrade.service"]
       | .route_confirmation_timeout = (.route_confirmation_timeout // "10s")
       | if .health_timeout == "2m" then .health_timeout = "12m" else . end
       | .socket_gid = $socket_gid
@@ -920,6 +928,7 @@ EOF
     --arg nginx_site_path "$NGINX_SITE" \
     --arg nginx_binary "$(command -v nginx)" \
     --arg systemctl_binary "$(command -v systemctl)" \
+    --arg control_plane_upgrade_path "$CONTROL_PLANE_UPGRADE_REQUEST" \
     --arg nginx_probe_url "$NGINX_PROBE_URL" \
     --arg nginx_probe_host "$NGINX_PROBE_HOST" '
       {
@@ -955,6 +964,8 @@ EOF
         nginx_test_command: [$nginx_binary, "-t"],
         nginx_dump_command: [$nginx_binary, "-T"],
         nginx_reload_command: [$systemctl_binary, "reload", "nginx"],
+        control_plane_upgrade_path: $control_plane_upgrade_path,
+        control_plane_upgrade_command: [$systemctl_binary, "start", "--no-block", "sub2api-deployer-upgrade.service"],
         nginx_probe_url: $nginx_probe_url,
         nginx_probe_host: $nginx_probe_host,
         health_path: "/health",
@@ -1027,6 +1038,7 @@ chmod 0644 "$TEMP_DIR/sub2api-deployer.service"
 
 for target in \
   "$INSTALLED_BINARY" \
+  "$INSTALLED_UPGRADER" \
   "$INSTALL_DIR/compose.deployer.yml" \
   "$IMAGE_STATE_FILE" \
   "$MANAGED_UPSTREAM_FILE" \
@@ -1035,6 +1047,7 @@ for target in \
   "$DOCKER_CONFIG_FILE" \
   "$NGINX_SITE" \
   "$SERVICE_FILE" \
+  "$UPGRADE_SERVICE_FILE" \
   "$TMPFILES_FILE" \
   "$STATE_FILE" \
   "$RUNTIME_MARKER"; do
@@ -1052,6 +1065,7 @@ fi
 install -d -m 0700 "$STATE_DIR"
 install -d -m 0755 "$RUNTIME_DIR" "$NGINX_STATE_DIR"
 install -m 0755 "$TEMP_DIR/sub2api-deployer" "$INSTALLED_BINARY"
+install -m 0755 "$ASSET_DIR/sub2api-deployer-upgrade.sh" "$INSTALLED_UPGRADER"
 install -m 0644 "$ASSET_DIR/compose.deployer.yml" "$INSTALL_DIR/compose.deployer.yml"
 if [[ -f "$TEMP_DIR/docker-config.json" ]]; then
   install -m 0600 "$TEMP_DIR/docker-config.json" "$DOCKER_CONFIG_FILE"
@@ -1083,6 +1097,7 @@ systemctl reload nginx
 probe_nginx || fail "Nginx reload succeeded but the managed route health probe failed"
 
 install -m 0644 "$TEMP_DIR/sub2api-deployer.service" "$SERVICE_FILE"
+install -m 0644 "$ASSET_DIR/sub2api-deployer-upgrade.service" "$UPGRADE_SERVICE_FILE"
 install -m 0644 "$ASSET_DIR/sub2api-deployer-tmpfiles.conf" "$TMPFILES_FILE"
 rm -f -- "$RUNTIME_PRESERVE_DROPIN"
 rmdir -- "$(dirname -- "$RUNTIME_PRESERVE_DROPIN")" 2>/dev/null || true
@@ -1097,14 +1112,17 @@ for ((attempt=0; attempt<40; attempt++)); do
   if DEPLOYER_HEALTH=$(curl --fail --silent --max-time 2 --unix-socket /run/sub2api-deployer/deployer.sock http://localhost/v1/health 2>/dev/null) && \
     jq -e \
       --arg container "$ACTIVE_CONTAINER" \
+      --arg container_id "$INSPECTED_CONTAINER_ID" \
       --arg version "$CURRENT_VERSION" \
       --argjson port "$ACTIVE_PORT" \
       '.status == "ok"
        and .degraded == false
        and .job_running == false
        and .active_container == $container
+       and .active_container_id == $container_id
        and .active_port == $port
-       and .active_version == $version' \
+       and .active_version == $version
+       and .control_plane_upgrade_ready == true' \
       <<<"$DEPLOYER_HEALTH" >/dev/null 2>&1; then
     DEPLOYER_READY=1
     break

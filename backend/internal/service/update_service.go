@@ -23,10 +23,11 @@ import (
 )
 
 var (
-	ErrNoUpdateAvailable          = infraerrors.Conflict("ALREADY_UP_TO_DATE", "no update available; current version is latest")
-	ErrRollbackVersionNotAllowed  = infraerrors.BadRequest("ROLLBACK_VERSION_NOT_ALLOWED", "version is not in the allowed rollback list")
-	ErrManagedDeployerUnavailable = infraerrors.ServiceUnavailable("DEPLOYER_UNAVAILABLE", "Docker deployment agent is unavailable")
-	ErrDockerManualUpdate         = infraerrors.Conflict("DOCKER_MANUAL_UPDATE_REQUIRED", "this Docker deployment is not connected to the deployment agent")
+	ErrNoUpdateAvailable                = infraerrors.Conflict("ALREADY_UP_TO_DATE", "no update available; current version is latest")
+	ErrRollbackVersionNotAllowed        = infraerrors.BadRequest("ROLLBACK_VERSION_NOT_ALLOWED", "version is not in the allowed rollback list")
+	ErrManagedDeployerUnavailable       = infraerrors.ServiceUnavailable("DEPLOYER_UNAVAILABLE", "Docker deployment agent is unavailable")
+	ErrManagedDeployerBootstrapRequired = infraerrors.Conflict("DEPLOYER_BOOTSTRAP_REQUIRED", "run the one-time host deployer bootstrap before using one-click updates")
+	ErrDockerManualUpdate               = infraerrors.Conflict("DOCKER_MANUAL_UPDATE_REQUIRED", "this Docker deployment is not connected to the deployment agent")
 )
 
 const (

@@ -19,7 +19,7 @@ func TestNotificationEmailPolicyDefaultsPreserveExistingBehavior(t *testing.T) {
 	channels := notificationEmailPolicyChannelsByID(view.Channels)
 	require.True(t, channels[NotificationEmailChannelAuthVerification].Enabled)
 	require.True(t, channels[NotificationEmailChannelBalance].Enabled)
-	require.True(t, channels[NotificationEmailChannelAccountQuota].Enabled)
+	require.False(t, channels[NotificationEmailChannelAccountQuota].Enabled)
 	require.False(t, channels[NotificationEmailChannelRefundAdmin].Enabled)
 	require.False(t, channels[NotificationEmailChannelRefundUser].Enabled)
 	require.Contains(t, channels[NotificationEmailChannelRefundUser].Events, NotificationEmailEventRefundRequestedUser)
@@ -30,6 +30,11 @@ func TestNotificationEmailPolicyDefaultsPreserveExistingBehavior(t *testing.T) {
 	require.False(t, channels[NotificationEmailChannelBalance].IncludeUserPrimary)
 	require.True(t, channels[NotificationEmailChannelBalance].IncludeVerifiedAdditional)
 	require.Equal(t, NotificationEmailRecipientGroupAccountQuota, channels[NotificationEmailChannelAccountQuota].RecipientGroup)
+
+	payload, err := json.Marshal(view)
+	require.NoError(t, err)
+	require.NotContains(t, string(payload), `"members":null`)
+	require.Contains(t, string(payload), `"members":[]`)
 }
 
 func TestNotificationEmailPolicyKeepsNewRefundEventOffUntilPolicyIsSaved(t *testing.T) {
@@ -122,17 +127,118 @@ func TestNotificationEmailPolicyRejectsUnsafeOrInvalidRouting(t *testing.T) {
 	require.ErrorContains(t, err, "invalid recipient email")
 }
 
-func TestNotificationEmailPolicyDisabledChannelSuppressesSendBeforeDelivery(t *testing.T) {
+func TestNotificationEmailPolicySystemRequiredChannelsCannotBeDisabled(t *testing.T) {
 	ctx := context.Background()
 	repo := newNotificationEmailMemorySettingRepo()
 	svc := NewNotificationEmailService(repo, nil)
-	_, err := svc.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{Channels: []NotificationEmailChannelPolicy{
+	updated, err := svc.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{Channels: []NotificationEmailChannelPolicy{
 		{ID: NotificationEmailChannelAuthVerification, Enabled: false},
+		{ID: NotificationEmailChannelPasswordReset, Enabled: false},
 	}})
 	require.NoError(t, err)
+	channels := notificationEmailPolicyChannelsByID(updated.Channels)
+	require.True(t, channels[NotificationEmailChannelAuthVerification].Enabled)
+	require.True(t, channels[NotificationEmailChannelPasswordReset].Enabled)
+	require.NoError(t, svc.requireEventChannelEnabled(ctx, NotificationEmailEventAuthVerifyCode))
+	require.NoError(t, svc.requireEventChannelEnabled(ctx, NotificationEmailEventAuthPasswordReset))
 
-	err = svc.Send(ctx, NotificationEmailSendInput{Event: NotificationEmailEventAuthVerifyCode, RecipientEmail: "user@example.com"})
-	require.ErrorIs(t, err, ErrNotificationEmailChannelDisabled)
+	var stored notificationEmailStoredPolicy
+	raw, err := repo.GetValue(ctx, SettingKeyNotificationEmailPolicy)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal([]byte(raw), &stored))
+	require.True(t, stored.Channels[NotificationEmailChannelAuthVerification].Enabled)
+	require.True(t, stored.Channels[NotificationEmailChannelPasswordReset].Enabled)
+}
+
+func TestNotificationEmailPolicyRepairsStoredDisabledSystemRequiredChannels(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	stored := defaultNotificationEmailPolicy()
+	auth := stored.Channels[NotificationEmailChannelAuthVerification]
+	auth.Enabled = false
+	stored.Channels[auth.ID] = auth
+	password := stored.Channels[NotificationEmailChannelPasswordReset]
+	password.Enabled = false
+	stored.Channels[password.ID] = password
+	raw, err := json.Marshal(stored)
+	require.NoError(t, err)
+	require.NoError(t, repo.Set(ctx, SettingKeyNotificationEmailPolicy, string(raw)))
+
+	view, err := NewNotificationEmailService(repo, nil).GetPolicy(ctx)
+	require.NoError(t, err)
+	channels := notificationEmailPolicyChannelsByID(view.Channels)
+	require.True(t, channels[NotificationEmailChannelAuthVerification].Enabled)
+	require.True(t, channels[NotificationEmailChannelPasswordReset].Enabled)
+}
+
+func TestNotificationEmailPolicySavesFeatureSettingsAndLegacyRoutingTogether(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	svc := NewNotificationEmailService(repo, nil)
+
+	updated, err := svc.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{
+		Channels: []NotificationEmailChannelPolicy{
+			{
+				ID:             NotificationEmailChannelAccountQuota,
+				Enabled:        true,
+				RecipientGroup: NotificationEmailRecipientGroupAccountQuota,
+			},
+		},
+		RecipientGroups: []NotificationEmailRecipientGroup{
+			{
+				ID: NotificationEmailRecipientGroupAccountQuota,
+				Members: []NotificationEmailRecipientMember{
+					{Email: "quota@example.com", Enabled: true},
+				},
+			},
+		},
+		FeatureSettings: &NotificationEmailFeatureSettings{
+			SubscriptionExpiryEnabled: false,
+			BalanceLowEnabled:         true,
+			BalanceLowThreshold:       12.5,
+			BalanceLowRechargeURL:     "https://example.com/recharge",
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, updated.FeatureSettings.SubscriptionExpiryEnabled)
+	require.True(t, updated.FeatureSettings.BalanceLowEnabled)
+	require.Equal(t, 12.5, updated.FeatureSettings.BalanceLowThreshold)
+
+	values, err := repo.GetMultiple(ctx, []string{
+		SettingKeyNotificationEmailPolicy,
+		SettingKeySubscriptionExpiryNotifyEnabled,
+		SettingKeyBalanceLowNotifyEnabled,
+		SettingKeyBalanceLowNotifyThreshold,
+		SettingKeyBalanceLowNotifyRechargeURL,
+		SettingKeyAccountQuotaNotifyEnabled,
+		SettingKeyAccountQuotaNotifyEmails,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, values[SettingKeyNotificationEmailPolicy])
+	require.Equal(t, "false", values[SettingKeySubscriptionExpiryNotifyEnabled])
+	require.Equal(t, "true", values[SettingKeyBalanceLowNotifyEnabled])
+	require.Equal(t, "12.50000000", values[SettingKeyBalanceLowNotifyThreshold])
+	require.Equal(t, "https://example.com/recharge", values[SettingKeyBalanceLowNotifyRechargeURL])
+	require.Equal(t, "true", values[SettingKeyAccountQuotaNotifyEnabled])
+	require.Contains(t, values[SettingKeyAccountQuotaNotifyEmails], "quota@example.com")
+}
+
+func TestNotificationEmailPolicyRejectsInvalidFineGrainedSettings(t *testing.T) {
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+	ctx := context.Background()
+
+	_, err := svc.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{
+		FeatureSettings: &NotificationEmailFeatureSettings{BalanceLowEnabled: true},
+	})
+	require.ErrorContains(t, err, "balance_low_threshold")
+
+	_, err = svc.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{
+		FeatureSettings: &NotificationEmailFeatureSettings{
+			BalanceLowThreshold:   10,
+			BalanceLowRechargeURL: "javascript:alert(1)",
+		},
+	})
+	require.ErrorContains(t, err, "balance_low_recharge_url")
 }
 
 func notificationEmailPolicyChannelsByID(channels []NotificationEmailChannelPolicy) map[string]NotificationEmailChannelPolicy {

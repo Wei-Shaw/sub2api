@@ -9,11 +9,155 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview) int {
+	return computeDashboardHealthScoreResult(now, overview, nil).Score
+}
+
+func computeDashboardHealthScoreWithThresholds(now time.Time, overview *OpsDashboardOverview, thresholds *OpsMetricThresholds) int {
+	return computeDashboardHealthScoreResult(now, overview, thresholds).Score
+}
+
+func computeBusinessHealth(overview *OpsDashboardOverview) float64 {
+	quality, latency := computeBusinessHealthComponents(overview, nil)
+	return quality.score*0.5 + latency.score*0.5
+}
+
+func computeInfraHealth(now time.Time, overview *OpsDashboardOverview) float64 {
+	storage, compute, jobs := computeInfraHealthComponents(now, overview)
+	return storage.score*0.4 + compute.score*0.3 + jobs.score*0.3
+}
+
 func TestComputeDashboardHealthScore_IdleReturns100(t *testing.T) {
 	t.Parallel()
 
 	score := computeDashboardHealthScore(time.Now().UTC(), &OpsDashboardOverview{})
 	require.Equal(t, 100, score)
+}
+
+func TestComputeDashboardHealthScore_IdleStillExposesInfrastructureFailure(t *testing.T) {
+	t.Parallel()
+
+	score := computeDashboardHealthScore(time.Now().UTC(), &OpsDashboardOverview{
+		SystemMetrics: &OpsSystemMetricsSnapshot{DBOK: boolPtr(false)},
+	})
+	require.Less(t, score, 90)
+}
+
+func TestComputeDashboardHealthScoreResultExplainsIdleJobDeduction(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
+	recent := now.Add(-time.Minute)
+	stale := now.Add(-40 * time.Minute)
+	result := computeDashboardHealthScoreResult(now, &OpsDashboardOverview{
+		SystemMetrics: &OpsSystemMetricsSnapshot{
+			DBOK:               boolPtr(true),
+			RedisOK:            boolPtr(true),
+			CPUUsagePercent:    float64Ptr(10),
+			MemoryUsagePercent: float64Ptr(20),
+		},
+		JobHeartbeats: []*OpsJobHeartbeat{
+			{JobName: "job-a", LastSuccessAt: &recent},
+			{JobName: "job-b", LastSuccessAt: &recent},
+			{JobName: "job-c", LastSuccessAt: &recent},
+			{JobName: "job-d", LastSuccessAt: &recent},
+			{JobName: "job-stale", LastSuccessAt: &stale},
+		},
+	}, nil)
+
+	require.Equal(t, 94, result.Score)
+	require.NotNil(t, result.Breakdown)
+	require.Equal(t, opsHealthScoreModeInfraOnly, result.Breakdown.Mode)
+	require.False(t, result.Breakdown.BusinessIncluded)
+	require.Equal(t, result.Score, result.Breakdown.Score)
+	require.Len(t, result.Breakdown.Components, 3)
+
+	jobs := result.Breakdown.Components[2]
+	require.Equal(t, opsHealthComponentJobs, jobs.Key)
+	require.InDelta(t, 80, jobs.Score, 0.01)
+	require.InDelta(t, 30, jobs.MaxPoints, 0.01)
+	require.InDelta(t, 24, jobs.EarnedPoints, 0.01)
+	require.InDelta(t, 6, jobs.DeductionPoints, 0.01)
+	require.Len(t, jobs.Reasons, 1)
+	require.Equal(t, "job_heartbeat_stale", jobs.Reasons[0].Code)
+	require.Equal(t, "job-stale", jobs.Reasons[0].JobName)
+	require.InDelta(t, 40*60, *jobs.Reasons[0].AgeSeconds, 0.01)
+	require.InDelta(t, 30*60, *jobs.Reasons[0].MaxAgeSeconds, 0.01)
+}
+
+func TestComputeDashboardHealthScoreResultExplainsBusinessDeduction(t *testing.T) {
+	t.Parallel()
+
+	result := computeDashboardHealthScoreResult(time.Now().UTC(), &OpsDashboardOverview{
+		RequestCountTotal: 100,
+		RequestCountSLA:   100,
+		ErrorRate:         0.05,
+		TTFT:              OpsPercentiles{P99: intPtr(100)},
+	}, &OpsMetricThresholds{
+		RequestErrorRatePercentMax:  float64Ptr(5),
+		UpstreamErrorRatePercentMax: float64Ptr(5),
+		TTFTp99MsMax:                float64Ptr(500),
+	})
+
+	require.True(t, result.Breakdown.BusinessIncluded)
+	require.Equal(t, opsHealthScoreModeFull, result.Breakdown.Mode)
+	require.Len(t, result.Breakdown.Components, 5)
+	quality := result.Breakdown.Components[0]
+	require.Equal(t, opsHealthComponentBusinessQuality, quality.Key)
+	require.Greater(t, quality.DeductionPoints, 0.0)
+	require.Len(t, quality.Reasons, 1)
+	require.Equal(t, "request_error_rate_high", quality.Reasons[0].Code)
+	require.InDelta(t, 5, *quality.Reasons[0].Value, 0.01)
+	require.InDelta(t, 4, *quality.Reasons[0].Threshold, 0.01)
+	require.Equal(t, result.Score, computeDashboardHealthScoreWithThresholds(
+		time.Now().UTC(),
+		&OpsDashboardOverview{
+			RequestCountTotal: 100,
+			RequestCountSLA:   100,
+			ErrorRate:         0.05,
+			TTFT:              OpsPercentiles{P99: intPtr(100)},
+		},
+		&OpsMetricThresholds{
+			RequestErrorRatePercentMax:  float64Ptr(5),
+			UpstreamErrorRatePercentMax: float64Ptr(5),
+			TTFTp99MsMax:                float64Ptr(500),
+		},
+	))
+}
+
+func TestComputeDashboardHealthScoreUsesConfiguredThresholds(t *testing.T) {
+	t.Parallel()
+
+	strict := &OpsMetricThresholds{
+		RequestErrorRatePercentMax:  float64Ptr(1),
+		UpstreamErrorRatePercentMax: float64Ptr(1),
+		TTFTp99MsMax:                float64Ptr(200),
+	}
+	lenient := &OpsMetricThresholds{
+		RequestErrorRatePercentMax:  float64Ptr(10),
+		UpstreamErrorRatePercentMax: float64Ptr(10),
+		TTFTp99MsMax:                float64Ptr(2000),
+	}
+	overview := &OpsDashboardOverview{
+		RequestCountTotal: 100,
+		RequestCountSLA:   100,
+		ErrorRate:         0.02,
+		UpstreamErrorRate: 0.01,
+		TTFT:              OpsPercentiles{P99: intPtr(500)},
+	}
+
+	strictScore := computeDashboardHealthScoreWithThresholds(time.Now().UTC(), overview, strict)
+	lenientScore := computeDashboardHealthScoreWithThresholds(time.Now().UTC(), overview, lenient)
+	require.Less(t, strictScore, lenientScore)
+}
+
+func TestOpsJobHeartbeatMaxAgeMatchesJobCadence(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 3*time.Minute, opsJobHeartbeatMaxAge(opsAlertEvaluatorJobName))
+	require.Equal(t, 30*time.Minute, opsJobHeartbeatMaxAge(opsAggHourlyJobName))
+	require.Equal(t, 2*time.Hour, opsJobHeartbeatMaxAge(opsAggDailyJobName))
+	require.Equal(t, 36*time.Hour, opsJobHeartbeatMaxAge(opsCleanupJobName))
 }
 
 func TestComputeDashboardHealthScore_DegradesOnBadSignals(t *testing.T) {

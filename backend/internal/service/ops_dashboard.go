@@ -41,6 +41,19 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 		}
 		return nil, err
 	}
+	overview.AvailabilityAvailable = overview.RequestCountSLA > 0
+	if stats, statsErr := s.opsRepo.GetErrorClassificationStats(ctx, filter); statsErr == nil && stats != nil {
+		overview.PlatformFailureCount = stats.PlatformFailureCount
+		overview.ProviderFailureCount = stats.ProviderFailureCount
+		overview.UnknownFailureCount = stats.UnknownFailureCount
+		overview.ClientRejectedCount = stats.ClientRejectedCount
+		overview.BusinessLimitedCount = stats.BusinessLimitedCount
+		overview.CancelledCount = stats.CancelledCount
+		overview.SecurityBlockedCount = stats.SecurityBlockedCount
+		overview.RecoveredCount = stats.RecoveredProviderCount
+	} else if statsErr != nil {
+		log.Printf("[Ops] GetErrorClassificationStats failed: %v", statsErr)
+	}
 
 	// Best-effort system health + jobs; dashboard metrics should still render if these are missing.
 	if metrics, err := s.opsRepo.GetLatestSystemMetrics(ctx, 1); err == nil {
@@ -65,7 +78,15 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 		log.Printf("[Ops] ListJobHeartbeats failed: %v", err)
 	}
 
-	overview.HealthScore = computeDashboardHealthScore(time.Now().UTC(), overview)
+	var thresholds *OpsMetricThresholds
+	if loaded, thresholdErr := s.GetMetricThresholds(ctx); thresholdErr == nil {
+		thresholds = loaded
+	} else {
+		log.Printf("[Ops] GetMetricThresholds failed: %v", thresholdErr)
+	}
+	healthResult := computeDashboardHealthScoreResult(time.Now().UTC(), overview, thresholds)
+	overview.HealthScore = healthResult.Score
+	overview.HealthScoreBreakdown = healthResult.Breakdown
 
 	return overview, nil
 }

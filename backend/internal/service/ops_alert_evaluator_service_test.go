@@ -283,16 +283,68 @@ func TestOpsAlertEmailUsesDurableDispatcherAndTransitionDedup(t *testing.T) {
 	event := &OpsAlertEvent{ID: 42, RuleID: rule.ID, Status: OpsAlertStatusFiring, FiredAt: time.Now().UTC()}
 
 	require.Equal(t, 1, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionFiring, rule, event))
-	require.Equal(t, 1, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionFiring, rule, event), "existing deduplicated delivery still proves the transition is queued")
+	require.Zero(t, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionFiring, rule, event), "an existing deduplicated delivery is not newly queued")
 
 	event.Status = OpsAlertStatusResolved
 	resolvedAt := time.Now().UTC()
 	event.ResolvedAt = &resolvedAt
 	require.Equal(t, 1, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionResolved, rule, event))
 	require.Len(t, deliveryRepo.items, 2)
-	require.Equal(t, opsAlertEmailTransitionFiring, deliveryRepo.items[0].ReminderKey)
-	require.Equal(t, opsAlertEmailTransitionResolved, deliveryRepo.items[1].ReminderKey)
+	require.Contains(t, deliveryRepo.items[0].ReminderKey, opsAlertEmailTransitionFiring)
+	require.Contains(t, deliveryRepo.items[1].ReminderKey, opsAlertEmailTransitionResolved)
 	require.Equal(t, "ops_alert_event", deliveryRepo.items[0].SourceType)
+}
+
+func TestOpsAlertEmailEnforcesPerRecipientHourlyLimit(t *testing.T) {
+	ctx := context.Background()
+	settings := newNotificationEmailMemorySettingRepo()
+	opsService := &OpsService{settingRepo: settings}
+	_, err := opsService.UpdateEmailNotificationConfig(ctx, &OpsEmailNotificationConfigUpdateRequest{
+		Alert: &OpsEmailAlertConfig{
+			Enabled: true, Recipients: []string{"ops@example.com"},
+			RateLimitPerHour: 1,
+		},
+	})
+	require.NoError(t, err)
+
+	deliveryRepo := newFakeNotificationEmailDeliveryRepository()
+	svc := &OpsAlertEvaluatorService{
+		opsService:             opsService,
+		notificationDispatcher: NewNotificationEmailDispatcher(deliveryRepo, NewNotificationEmailService(settings, nil)),
+	}
+	rule := &OpsAlertRule{ID: 9, Name: "availability", Severity: "P0", NotifyEmail: true}
+	first := &OpsAlertEvent{ID: 41, RuleID: rule.ID, Status: OpsAlertStatusFiring, FiredAt: time.Now().UTC()}
+	second := &OpsAlertEvent{ID: 42, RuleID: rule.ID, Status: OpsAlertStatusFiring, FiredAt: time.Now().UTC()}
+
+	require.Equal(t, 1, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionFiring, rule, first))
+	require.Zero(t, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionFiring, rule, second))
+	require.Len(t, deliveryRepo.items, 1)
+}
+
+func TestOpsAlertEmailMergesSameIncidentWithinConfiguredWindow(t *testing.T) {
+	ctx := context.Background()
+	settings := newNotificationEmailMemorySettingRepo()
+	opsService := &OpsService{settingRepo: settings}
+	_, err := opsService.UpdateEmailNotificationConfig(ctx, &OpsEmailNotificationConfigUpdateRequest{
+		Alert: &OpsEmailAlertConfig{
+			Enabled: true, Recipients: []string{"ops@example.com"},
+			BatchingWindowSeconds: 300,
+		},
+	})
+	require.NoError(t, err)
+
+	deliveryRepo := newFakeNotificationEmailDeliveryRepository()
+	svc := &OpsAlertEvaluatorService{
+		opsService:             opsService,
+		notificationDispatcher: NewNotificationEmailDispatcher(deliveryRepo, NewNotificationEmailService(settings, nil)),
+	}
+	rule := &OpsAlertRule{ID: 9, IncidentFamily: "availability", Severity: "P0", NotifyEmail: true}
+	first := &OpsAlertEvent{ID: 41, RuleID: rule.ID, Status: OpsAlertStatusFiring, FiredAt: time.Now().UTC()}
+	second := &OpsAlertEvent{ID: 42, RuleID: rule.ID, Status: OpsAlertStatusFiring, FiredAt: time.Now().UTC()}
+
+	require.Equal(t, 1, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionFiring, rule, first))
+	require.Zero(t, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionFiring, rule, second))
+	require.Len(t, deliveryRepo.items, 1)
 }
 
 func TestOpsAlertResolvedEmailRequiresFineGrainedSwitch(t *testing.T) {

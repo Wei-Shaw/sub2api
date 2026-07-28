@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, useTemplateRef, nextTick } from 'vue'
+import { onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue'
 
 const props = withDefaults(defineProps<{
   content?: string
@@ -14,13 +14,24 @@ const show = ref(false)
 const triggerRef = useTemplateRef<HTMLElement>('trigger')
 const tooltipRef = useTemplateRef<HTMLElement>('tooltip')
 const tooltipStyle = ref({ top: '0px', left: '0px' })
+let closeTimer: number | null = null
+
+function cancelScheduledClose() {
+  if (closeTimer == null) return
+  window.clearTimeout(closeTimer)
+  closeTimer = null
+}
 
 function openTooltip() {
+  cancelScheduledClose()
+  // Position the hidden element before making it visible. Showing it first
+  // produces a one-frame flash at the default 0,0 coordinates.
+  updatePosition()
   show.value = true
-  nextTick(updatePosition)
 }
 
 function closeTooltip() {
+  cancelScheduledClose()
   show.value = false
 }
 
@@ -31,7 +42,24 @@ function onEnter() {
 
 function onLeave() {
   if (props.trigger !== 'hover') return
-  closeTooltip()
+  cancelScheduledClose()
+  // The tooltip is teleported to <body>, so it is not a DOM child of the
+  // trigger. A short grace period bridges the visual gap and lets the pointer
+  // enter the tooltip without closing and reopening it.
+  closeTimer = window.setTimeout(() => {
+    closeTimer = null
+    show.value = false
+  }, 120)
+}
+
+function onTooltipEnter() {
+  if (props.trigger !== 'hover') return
+  cancelScheduledClose()
+}
+
+function onTooltipLeave() {
+  if (props.trigger !== 'hover') return
+  onLeave()
 }
 
 function onClick(event: MouseEvent) {
@@ -69,8 +97,10 @@ function updatePosition() {
   if (!el) return
   const rect = el.getBoundingClientRect()
   tooltipStyle.value = {
-    top: `${rect.top + window.scrollY}px`,
-    left: `${rect.left + rect.width / 2 + window.scrollX}px`,
+    // The tooltip uses position: fixed, so coordinates must remain relative
+    // to the viewport. Adding scroll offsets makes it drift on scrolled pages.
+    top: `${rect.top}px`,
+    left: `${rect.left + rect.width / 2}px`,
   }
 }
 
@@ -82,6 +112,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  cancelScheduledClose()
   document.removeEventListener('click', onDocumentClick, true)
   document.removeEventListener('keydown', onDocumentKeydown)
   window.removeEventListener('resize', onViewportChange)
@@ -125,6 +156,8 @@ onBeforeUnmount(() => {
           props.widthClass,
         ]"
         :style="{ top: `calc(${tooltipStyle.top} - 8px)`, left: tooltipStyle.left }"
+        @mouseenter="onTooltipEnter"
+        @mouseleave="onTooltipLeave"
       >
         <button
           v-if="props.trigger === 'click'"

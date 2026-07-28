@@ -1116,16 +1116,25 @@ export interface NotificationEmailRecipientGroup {
   members: NotificationEmailRecipientMember[];
 }
 
+export interface NotificationEmailFeatureSettings {
+  subscription_expiry_enabled: boolean;
+  balance_low_enabled: boolean;
+  balance_low_threshold: number;
+  balance_low_recharge_url: string;
+}
+
 export interface NotificationEmailPolicy {
   version: number;
   configured: boolean;
   channels: NotificationEmailChannelPolicy[];
   recipient_groups: NotificationEmailRecipientGroup[];
+  feature_settings: NotificationEmailFeatureSettings;
 }
 
 export interface UpdateNotificationEmailPolicyRequest {
   channels: NotificationEmailChannelPolicy[];
   recipient_groups: NotificationEmailRecipientGroup[];
+  feature_settings: NotificationEmailFeatureSettings;
 }
 
 export async function getNotificationEmailPolicy(): Promise<NotificationEmailPolicy> {

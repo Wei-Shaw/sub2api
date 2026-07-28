@@ -29,6 +29,37 @@ type OpsPercentiles struct {
 	Max *int `json:"max_ms"`
 }
 
+// OpsHealthScoreBreakdown makes the backend-owned health score explainable.
+// Component weights are expressed as a fraction of the final 100-point score.
+type OpsHealthScoreBreakdown struct {
+	Mode             string                     `json:"mode"`
+	BusinessIncluded bool                       `json:"business_included"`
+	Score            int                        `json:"score"`
+	Components       []*OpsHealthScoreComponent `json:"components"`
+}
+
+type OpsHealthScoreComponent struct {
+	Key             string                  `json:"key"`
+	Score           float64                 `json:"score"`
+	Weight          float64                 `json:"weight"`
+	MaxPoints       float64                 `json:"max_points"`
+	EarnedPoints    float64                 `json:"earned_points"`
+	DeductionPoints float64                 `json:"deduction_points"`
+	Reasons         []*OpsHealthScoreReason `json:"reasons"`
+}
+
+// OpsHealthScoreReason contains locale-neutral facts. The administrator UI
+// owns presentation and translation while the backend remains the sole source
+// of truth for why points were deducted.
+type OpsHealthScoreReason struct {
+	Code          string   `json:"code"`
+	Value         *float64 `json:"value,omitempty"`
+	Threshold     *float64 `json:"threshold,omitempty"`
+	JobName       string   `json:"job_name,omitempty"`
+	AgeSeconds    *float64 `json:"age_seconds,omitempty"`
+	MaxAgeSeconds *float64 `json:"max_age_seconds,omitempty"`
+}
+
 type OpsDashboardOverview struct {
 	StartTime time.Time `json:"start_time"`
 	EndTime   time.Time `json:"end_time"`
@@ -37,7 +68,8 @@ type OpsDashboardOverview struct {
 
 	// HealthScore is a backend-computed overall health score (0-100).
 	// It is derived from the monitored metrics in this overview, plus best-effort system metrics/job heartbeats.
-	HealthScore int `json:"health_score"`
+	HealthScore          int                      `json:"health_score"`
+	HealthScoreBreakdown *OpsHealthScoreBreakdown `json:"health_score_breakdown"`
 
 	// Latest system-level snapshot (window=1m, global).
 	SystemMetrics *OpsSystemMetricsSnapshot `json:"system_metrics"`
@@ -52,6 +84,17 @@ type OpsDashboardOverview struct {
 	ErrorCountSLA     int64 `json:"error_count_sla"`
 	RequestCountTotal int64 `json:"request_count_total"`
 	RequestCountSLA   int64 `json:"request_count_sla"`
+	// AvailabilityAvailable distinguishes a real 0% availability result from
+	// an empty window where no availability sample exists.
+	AvailabilityAvailable bool `json:"availability_available"`
+
+	PlatformFailureCount int64 `json:"platform_failure_count"`
+	ProviderFailureCount int64 `json:"provider_failure_count"`
+	UnknownFailureCount  int64 `json:"unknown_failure_count"`
+	ClientRejectedCount  int64 `json:"client_rejected_count"`
+	CancelledCount       int64 `json:"cancelled_count"`
+	SecurityBlockedCount int64 `json:"security_blocked_count"`
+	RecoveredCount       int64 `json:"recovered_count"`
 
 	TokenConsumed int64 `json:"token_consumed"`
 

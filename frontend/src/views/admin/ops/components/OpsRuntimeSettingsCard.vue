@@ -49,22 +49,22 @@ function validateRuntimeSettings(settings: OpsAlertRuntimeSettings): ValidationR
   const thresholds = settings.thresholds
   if (thresholds) {
     if (thresholds.sla_percent_min != null) {
-      if (!Number.isFinite(thresholds.sla_percent_min) || thresholds.sla_percent_min < 0 || thresholds.sla_percent_min > 100) {
+      if (!Number.isFinite(thresholds.sla_percent_min) || thresholds.sla_percent_min <= 0 || thresholds.sla_percent_min > 100) {
         errors.push(t('admin.ops.runtime.validation.slaMinPercentRange'))
       }
     }
     if (thresholds.ttft_p99_ms_max != null) {
-      if (!Number.isFinite(thresholds.ttft_p99_ms_max) || thresholds.ttft_p99_ms_max < 0) {
+      if (!Number.isFinite(thresholds.ttft_p99_ms_max) || thresholds.ttft_p99_ms_max <= 0) {
         errors.push(t('admin.ops.runtime.validation.ttftP99MaxRange'))
       }
     }
     if (thresholds.request_error_rate_percent_max != null) {
-      if (!Number.isFinite(thresholds.request_error_rate_percent_max) || thresholds.request_error_rate_percent_max < 0 || thresholds.request_error_rate_percent_max > 100) {
+      if (!Number.isFinite(thresholds.request_error_rate_percent_max) || thresholds.request_error_rate_percent_max <= 0 || thresholds.request_error_rate_percent_max > 100) {
         errors.push(t('admin.ops.runtime.validation.requestErrorRateMaxRange'))
       }
     }
     if (thresholds.upstream_error_rate_percent_max != null) {
-      if (!Number.isFinite(thresholds.upstream_error_rate_percent_max) || thresholds.upstream_error_rate_percent_max < 0 || thresholds.upstream_error_rate_percent_max > 100) {
+      if (!Number.isFinite(thresholds.upstream_error_rate_percent_max) || thresholds.upstream_error_rate_percent_max <= 0 || thresholds.upstream_error_rate_percent_max > 100) {
         errors.push(t('admin.ops.runtime.validation.upstreamErrorRateMaxRange'))
       }
     }
@@ -338,7 +338,7 @@ onMounted(() => {
             <input
               v-model.number="draftAlert.thresholds.sla_percent_min"
               type="number"
-              min="0"
+              min="0.1"
               max="100"
               step="0.1"
               class="input"
@@ -354,7 +354,7 @@ onMounted(() => {
             <input
               v-model.number="draftAlert.thresholds.ttft_p99_ms_max"
               type="number"
-              min="0"
+              min="1"
               step="100"
               class="input"
               placeholder="500"
@@ -367,7 +367,7 @@ onMounted(() => {
             <input
               v-model.number="draftAlert.thresholds.request_error_rate_percent_max"
               type="number"
-              min="0"
+              min="0.1"
               max="100"
               step="0.1"
               class="input"
@@ -381,7 +381,7 @@ onMounted(() => {
             <input
               v-model.number="draftAlert.thresholds.upstream_error_rate_percent_max"
               type="number"
-              min="0"
+              min="0.1"
               max="100"
               step="0.1"
               class="input"
@@ -533,4 +533,3 @@ onMounted(() => {
     </template>
   </BaseDialog>
 </template>
-

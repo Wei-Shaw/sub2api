@@ -17,34 +17,38 @@ import (
 )
 
 type DeploymentHealth struct {
-	Status          string `json:"status"`
-	Version         string `json:"version"`
-	ActiveSlot      string `json:"active_slot"`
-	ActiveContainer string `json:"active_container"`
-	ActivePort      int    `json:"active_port"`
-	ActiveVersion   string `json:"active_version"`
-	JobRunning      bool   `json:"job_running"`
+	Status                   string `json:"status"`
+	Version                  string `json:"version"`
+	ActiveSlot               string `json:"active_slot"`
+	ActiveContainer          string `json:"active_container"`
+	ActiveContainerID        string `json:"active_container_id"`
+	ActivePort               int    `json:"active_port"`
+	ActiveVersion            string `json:"active_version"`
+	JobRunning               bool   `json:"job_running"`
+	ControlPlaneUpgradeReady bool   `json:"control_plane_upgrade_ready"`
 }
 
 type DeploymentJob struct {
-	ID                  string     `json:"id"`
-	Action              string     `json:"action"`
-	TargetVersion       string     `json:"target_version"`
-	Status              string     `json:"status"`
-	Stage               string     `json:"stage"`
-	Message             string     `json:"message,omitempty"`
-	Error               string     `json:"error,omitempty"`
-	FromVersion         string     `json:"from_version,omitempty"`
-	TargetImage         string     `json:"target_image,omitempty"`
-	TargetDigest        string     `json:"target_digest,omitempty"`
-	RollbackPerformed   bool       `json:"rollback_performed"`
-	BackgroundActivated bool       `json:"background_activated"`
-	RollbackError       string     `json:"rollback_error,omitempty"`
-	CleanupWarning      string     `json:"cleanup_warning,omitempty"`
-	CreatedAt           time.Time  `json:"created_at"`
-	StartedAt           time.Time  `json:"started_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
-	FinishedAt          *time.Time `json:"finished_at,omitempty"`
+	ID                        string     `json:"id"`
+	Action                    string     `json:"action"`
+	TargetVersion             string     `json:"target_version"`
+	Status                    string     `json:"status"`
+	Stage                     string     `json:"stage"`
+	Message                   string     `json:"message,omitempty"`
+	Error                     string     `json:"error,omitempty"`
+	FromVersion               string     `json:"from_version,omitempty"`
+	TargetImage               string     `json:"target_image,omitempty"`
+	TargetDigest              string     `json:"target_digest,omitempty"`
+	RollbackPerformed         bool       `json:"rollback_performed"`
+	BackgroundActivated       bool       `json:"background_activated"`
+	RollbackError             string     `json:"rollback_error,omitempty"`
+	CleanupWarning            string     `json:"cleanup_warning,omitempty"`
+	ControlPlaneUpgradeStatus string     `json:"control_plane_upgrade_status,omitempty"`
+	ControlPlaneUpgradeError  string     `json:"control_plane_upgrade_error,omitempty"`
+	CreatedAt                 time.Time  `json:"created_at"`
+	StartedAt                 time.Time  `json:"started_at"`
+	UpdatedAt                 time.Time  `json:"updated_at"`
+	FinishedAt                *time.Time `json:"finished_at,omitempty"`
 }
 
 type DeploymentRequest struct {
@@ -204,6 +208,10 @@ func (s *UpdateService) decorateDeployment(ctx context.Context, info *UpdateInfo
 			info.DeploymentMessage = "Docker deployment agent is unavailable"
 			return
 		}
+		if !health.ControlPlaneUpgradeReady {
+			info.DeploymentMessage = "Run the one-time host deployer bootstrap before using one-click updates"
+			return
+		}
 		info.DeploymentReady = true
 	case DeploymentModeDockerManual:
 		info.DeploymentMessage = "Install and connect sub2api-deployer to enable one-click updates"
@@ -219,6 +227,9 @@ func (s *UpdateService) StartManagedUpdate(ctx context.Context, requestID string
 		}
 		return nil, ErrManagedDeployerUnavailable
 	}
+	if err := s.requireManagedDeployerUpgradeReady(ctx); err != nil {
+		return nil, err
+	}
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return nil, err
@@ -232,6 +243,19 @@ func (s *UpdateService) StartManagedUpdate(ctx context.Context, requestID string
 		ExpectedCurrentVersion: s.currentVersion,
 		RequestID:              requestID,
 	})
+}
+
+func (s *UpdateService) requireManagedDeployerUpgradeReady(ctx context.Context) error {
+	healthCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	health, err := s.deployer.Health(healthCtx)
+	if err != nil || health == nil || health.Status != "ok" {
+		return ErrManagedDeployerUnavailable
+	}
+	if !health.ControlPlaneUpgradeReady {
+		return ErrManagedDeployerBootstrapRequired
+	}
+	return nil
 }
 
 func (s *UpdateService) StartManagedRollback(ctx context.Context, version, requestID string) (*DeploymentJob, error) {

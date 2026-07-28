@@ -130,6 +130,29 @@ func TestNotificationEmailDeliveryRepositoryRetryOnlyAllowsTransientFailures(t *
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestNotificationEmailDeliveryListWhereScopesOpsRateAndMergeWindows(t *testing.T) {
+	createdAfter := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
+	where, args := notificationEmailDeliveryListWhere(service.NotificationEmailDeliveryListFilter{
+		Event:         service.NotificationEmailEventOpsAlert,
+		SourceType:    "ops_alert_event",
+		RecipientHash: strings.Repeat("b", 64),
+		ReminderKey:   "firing:availability",
+		CreatedAfter:  &createdAfter,
+	})
+
+	require.Equal(t,
+		" WHERE event = $1 AND source_type = $2 AND recipient_hash = $3 AND reminder_key = $4 AND created_at >= $5",
+		where,
+	)
+	require.Equal(t, []any{
+		service.NotificationEmailEventOpsAlert,
+		"ops_alert_event",
+		strings.Repeat("b", 64),
+		"firing:availability",
+		createdAfter,
+	}, args)
+}
+
 func TestNotificationEmailDeliveryMigrationHasLeasePrivacyAndIndexGuards(t *testing.T) {
 	content, err := migrations.FS.ReadFile("188_notification_email_deliveries.sql")
 	require.NoError(t, err)
@@ -163,6 +186,26 @@ func TestOpsAlertEvaluationMigrationIsForwardOnlyAndAdditive(t *testing.T) {
 	require.Contains(t, sqlText, "CREATE TABLE ops_alert_rule_evaluations")
 	require.NotContains(t, sqlText, "CREATE TABLE IF NOT EXISTS ops_alert_rule_evaluations")
 	require.Contains(t, sqlText, "ADD COLUMN IF NOT EXISTS email_queued")
+	require.NotContains(t, sqlText, "DROP TABLE")
+	require.NotContains(t, sqlText, "DROP COLUMN")
+	require.NotContains(t, sqlText, "-- +goose Down")
+}
+
+func TestOpsAlertRuleDefaultsMigrationOnlyAddsV2AvailabilityRules(t *testing.T) {
+	content, err := migrations.FS.ReadFile("197_add_ops_alert_rule_v2_defaults.sql")
+	require.NoError(t, err)
+	sqlText := string(content)
+	for _, required := range []string{
+		"'基础设施可用性缓慢下降'",
+		"'基础设施可用性快速下降'",
+		"'availability_failure_rate'",
+		"ON CONFLICT (name) DO NOTHING",
+	} {
+		require.Contains(t, sqlText, required)
+	}
+	require.Equal(t, 2, strings.Count(sqlText, "INSERT INTO ops_alert_rules"))
+	require.NotContains(t, sqlText, "UPDATE ")
+	require.NotContains(t, sqlText, "DELETE ")
 	require.NotContains(t, sqlText, "DROP TABLE")
 	require.NotContains(t, sqlText, "DROP COLUMN")
 	require.NotContains(t, sqlText, "-- +goose Down")

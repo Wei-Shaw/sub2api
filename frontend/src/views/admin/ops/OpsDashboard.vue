@@ -39,8 +39,26 @@
         @exit-fullscreen="exitFullscreen"
       />
 
+      <div
+        v-if="opsEnabled && !(loading && !hasLoadedOnce) && !isFullscreen"
+        class="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-800"
+      >
+        <button
+          v-for="section in dashboardSections"
+          :key="section.value"
+          type="button"
+          class="rounded-lg px-4 py-2 text-sm font-semibold transition"
+          :class="activeSection === section.value
+            ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+            : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+          @click="activeSection = section.value"
+        >
+          {{ section.label }}
+        </button>
+      </div>
+
       <!-- Row: Concurrency + Throughput -->
-      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 lg:grid-cols-4">
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce) && (isFullscreen || activeSection === 'analysis')" class="grid grid-cols-1 gap-6 lg:grid-cols-4">
         <div class="lg:col-span-1 min-h-[360px]">
           <OpsConcurrencyCard :platform-filter="platform" :group-id-filter="groupId" :refresh-token="dashboardRefreshToken" />
         </div>
@@ -68,7 +86,7 @@
       </div>
 
       <!-- Row: Visual Analysis (baseline 3-up grid) -->
-      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce) && (isFullscreen || activeSection === 'analysis')" class="grid grid-cols-1 gap-6 md:grid-cols-3">
         <OpsLatencyChart :latency-data="latencyHistogram" :loading="loadingLatency" />
         <OpsErrorDistributionChart
           :data="errorDistribution"
@@ -85,7 +103,7 @@
       </div>
 
       <!-- Row: OpenAI Token Stats -->
-      <div v-if="opsEnabled && showOpenAITokenStats && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
+      <div v-if="opsEnabled && showOpenAITokenStats && !(loading && !hasLoadedOnce) && (isFullscreen || activeSection === 'analysis')" class="grid grid-cols-1 gap-6">
         <OpsOpenAITokenStatsCard
           :platform-filter="platform"
           :group-id-filter="groupId"
@@ -94,11 +112,11 @@
       </div>
 
       <!-- Alert Events -->
-      <OpsAlertEventsCard v-if="opsEnabled && showAlertEvents && !(loading && !hasLoadedOnce)" />
+      <OpsAlertEventsCard v-if="opsEnabled && showAlertEvents && !(loading && !hasLoadedOnce) && (isFullscreen || activeSection === 'overview')" />
 
       <!-- System Logs -->
       <OpsSystemLogTable
-        v-if="opsEnabled && !(loading && !hasLoadedOnce)"
+        v-if="opsEnabled && !(loading && !hasLoadedOnce) && (isFullscreen || activeSection === 'logs')"
         :platform-filter="platform"
         :refresh-token="dashboardRefreshToken"
       />
@@ -177,6 +195,13 @@ const adminSettingsStore = useAdminSettingsStore()
 const { t } = useI18n()
 
 const opsEnabled = computed(() => adminSettingsStore.opsMonitoringEnabled)
+type DashboardSection = 'overview' | 'analysis' | 'logs'
+const activeSection = ref<DashboardSection>('overview')
+const dashboardSections = computed<Array<{ value: DashboardSection; label: string }>>(() => [
+  { value: 'overview', label: t('admin.ops.sections.overview') },
+  { value: 'analysis', label: t('admin.ops.sections.analysis') },
+  { value: 'logs', label: t('admin.ops.sections.logs') }
+])
 
 type TimeRange = '5m' | '30m' | '1h' | '6h' | '24h' | 'custom'
 const allowedTimeRanges = new Set<TimeRange>(['5m', '30m', '1h', '6h', '24h', 'custom'])
@@ -721,8 +746,11 @@ async function fetchData() {
       autoRefreshCountdown.value = Math.floor(autoRefreshIntervalMs.value / 1000)
     }
 
-    // Defer non-core visual panels to reduce initial blocking.
-    void refreshDeferredPanels(fetchSeq, dashboardFetchController.signal)
+    // Heavy chart queries are loaded only when the administrator opens the
+    // analysis section. The overview remains fast and operationally focused.
+    if (isFullscreen.value || activeSection.value === 'analysis') {
+      void refreshDeferredPanels(fetchSeq, dashboardFetchController.signal)
+    }
   } catch (err) {
     if (!isOpsDisabledError(err)) {
       console.error('[ops] failed to fetch dashboard data', err)
@@ -746,6 +774,11 @@ watch(
     syncQueryToRoute()
   }
 )
+
+watch(activeSection, (section) => {
+  if (section !== 'analysis' || !opsEnabled.value || !dashboardFetchController) return
+  void refreshDeferredPanels(dashboardFetchSeq, dashboardFetchController.signal)
+})
 
 watch(
   () => route.query,

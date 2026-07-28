@@ -6,7 +6,13 @@ import { opsAPI } from '@/api/admin/ops'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
-import type { OpsAlertRuntimeSettings, EmailNotificationConfig, AlertSeverity, OpsAdvancedSettings, OpsMetricThresholds } from '../types'
+import type {
+  OpsAlertRuntimeSettings,
+  OpsEmailBehaviorSettings,
+  AlertSeverity,
+  OpsAdvancedSettings,
+  OpsMetricThresholds
+} from '../types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -22,11 +28,15 @@ const emit = defineEmits<{
 
 const loading = ref(false)
 const saving = ref(false)
+const scheduleInfo = ref({
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local',
+  next_runs: {} as Record<string, string>
+})
 
 // 运行时设置
 const runtimeSettings = ref<OpsAlertRuntimeSettings | null>(null)
-// 邮件通知配置
-const emailConfig = ref<EmailNotificationConfig | null>(null)
+// 运维内部邮件行为；总开关和收件人在全局邮件设置中管理
+const emailBehavior = ref<OpsEmailBehaviorSettings | null>(null)
 // 高级设置
 const advancedSettings = ref<OpsAdvancedSettings | null>(null)
 // 指标阈值配置
@@ -41,20 +51,17 @@ const metricThresholds = ref<OpsMetricThresholds>({
 async function loadAllSettings() {
   loading.value = true
   try {
-    const [runtime, email, advanced, thresholds] = await Promise.all([
-      opsAPI.getAlertRuntimeSettings(),
-      opsAPI.getEmailNotificationConfig(),
-      opsAPI.getAdvancedSettings(),
-      opsAPI.getMetricThresholds()
-    ])
-    runtimeSettings.value = runtime
-    emailConfig.value = email
-    advancedSettings.value = advanced
+    const settings = await opsAPI.getMonitoringSettings()
+    runtimeSettings.value = settings.runtime
+    emailBehavior.value = settings.email_behavior
+    advancedSettings.value = settings.advanced
+    scheduleInfo.value = settings.schedule_info || scheduleInfo.value
     // 兼容旧 payload：后端未返回该字段时补默认值，保证表单可绑定
     if (advancedSettings.value && !advancedSettings.value.openai_account_quota_auto_pause) {
       advancedSettings.value.openai_account_quota_auto_pause = { default_threshold_5h: 0, default_threshold_7d: 0 }
     }
     // 如果后端返回了阈值，使用后端的值；否则保持默认值
+    const thresholds = settings.metric_thresholds
     if (thresholds && Object.keys(thresholds).length > 0) {
         metricThresholds.value = {
           sla_percent_min: thresholds.sla_percent_min ?? 99.5,
@@ -78,10 +85,6 @@ watch(() => props.show, (show) => {
   }
 })
 
-// 邮件输入
-const alertRecipientInput = ref('')
-const reportRecipientInput = ref('')
-
 // 严重级别选项
 const severityOptions: Array<{ value: AlertSeverity | ''; label: string }> = [
   { value: '', label: t('admin.ops.email.minSeverityAll') },
@@ -90,37 +93,124 @@ const severityOptions: Array<{ value: AlertSeverity | ''; label: string }> = [
   { value: 'info', label: t('common.info') }
 ]
 
-// 验证邮箱
-function isValidEmailAddress(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+const weekdayOptions = computed(() => [
+  { value: 1, label: t('admin.ops.settings.weekdays.monday') },
+  { value: 2, label: t('admin.ops.settings.weekdays.tuesday') },
+  { value: 3, label: t('admin.ops.settings.weekdays.wednesday') },
+  { value: 4, label: t('admin.ops.settings.weekdays.thursday') },
+  { value: 5, label: t('admin.ops.settings.weekdays.friday') },
+  { value: 6, label: t('admin.ops.settings.weekdays.saturday') },
+  { value: 0, label: t('admin.ops.settings.weekdays.sunday') }
+])
+
+function cronTime(spec: string, fallback = '09:00'): string {
+  const parts = spec.trim().split(/\s+/)
+  if (parts.length !== 5 || !/^\d+$/.test(parts[0]) || !/^\d+$/.test(parts[1])) return fallback
+  const minute = Number(parts[0])
+  const hour = Number(parts[1])
+  if (minute < 0 || minute > 59 || hour < 0 || hour > 23) return fallback
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 }
 
-// 添加收件人
-function addRecipient(target: 'alert' | 'report') {
-  if (!emailConfig.value) return
-  const raw = (target === 'alert' ? alertRecipientInput.value : reportRecipientInput.value).trim()
-  if (!raw) return
-
-  if (!isValidEmailAddress(raw)) {
-    appStore.showError(t('common.invalidEmail'))
-    return
-  }
-
-  const normalized = raw.toLowerCase()
-  const list = target === 'alert' ? emailConfig.value.alert.recipients : emailConfig.value.report.recipients
-  if (!list.includes(normalized)) {
-    list.push(normalized)
-  }
-  if (target === 'alert') alertRecipientInput.value = ''
-  else reportRecipientInput.value = ''
+function dailyCron(time: string): string {
+  const match = /^(\d{2}):(\d{2})$/.exec(time)
+  if (!match) return '0 9 * * *'
+  return `${Number(match[2])} ${Number(match[1])} * * *`
 }
 
-// 移除收件人
-function removeRecipient(target: 'alert' | 'report', email: string) {
-  if (!emailConfig.value) return
-  const list = target === 'alert' ? emailConfig.value.alert.recipients : emailConfig.value.report.recipients
-  const idx = list.indexOf(email)
-  if (idx >= 0) list.splice(idx, 1)
+function weeklyCron(time: string, weekday: number): string {
+  return `${dailyCron(time).replace(/ \*$/, '')} ${weekday}`
+}
+
+function cronWeekday(spec: string): number {
+  const parts = spec.trim().split(/\s+/)
+  const day = Number(parts[4])
+  return Number.isInteger(day) && day >= 0 && day <= 6 ? day : 1
+}
+
+function isProductDailySchedule(spec: string): boolean {
+  const parts = spec.trim().split(/\s+/)
+  return parts.length === 5 &&
+    /^\d+$/.test(parts[0]) &&
+    /^\d+$/.test(parts[1]) &&
+    parts[2] === '*' &&
+    parts[3] === '*' &&
+    parts[4] === '*'
+}
+
+function isProductWeeklySchedule(spec: string): boolean {
+  const parts = spec.trim().split(/\s+/)
+  return parts.length === 5 &&
+    /^\d+$/.test(parts[0]) &&
+    /^\d+$/.test(parts[1]) &&
+    parts[2] === '*' &&
+    parts[3] === '*' &&
+    /^[0-6]$/.test(parts[4])
+}
+
+type ReportScheduleField =
+  | 'daily_summary_schedule'
+  | 'error_digest_schedule'
+  | 'account_health_schedule'
+
+function reportTime(field: ReportScheduleField) {
+  return computed<string>({
+    get: () => emailBehavior.value ? cronTime(String(emailBehavior.value.report[field] || '')) : '09:00',
+    set: (value) => {
+      if (!emailBehavior.value) return
+      emailBehavior.value.report[field] = dailyCron(value)
+    }
+  })
+}
+
+const dailySummaryTime = reportTime('daily_summary_schedule')
+const errorDigestTime = reportTime('error_digest_schedule')
+const accountHealthTime = reportTime('account_health_schedule')
+const weeklySummaryTime = computed<string>({
+  get: () => emailBehavior.value ? cronTime(emailBehavior.value.report.weekly_summary_schedule) : '09:00',
+  set: (value) => {
+    if (!emailBehavior.value) return
+    emailBehavior.value.report.weekly_summary_schedule = weeklyCron(
+      value,
+      cronWeekday(emailBehavior.value.report.weekly_summary_schedule)
+    )
+  }
+})
+const weeklySummaryWeekday = computed<number>({
+  get: () => emailBehavior.value ? cronWeekday(emailBehavior.value.report.weekly_summary_schedule) : 1,
+  set: (value) => {
+    if (!emailBehavior.value) return
+    emailBehavior.value.report.weekly_summary_schedule = weeklyCron(
+      cronTime(emailBehavior.value.report.weekly_summary_schedule),
+      Number(value)
+    )
+  }
+})
+const dailySummaryHasLegacySchedule = computed(() =>
+  !!emailBehavior.value && !isProductDailySchedule(emailBehavior.value.report.daily_summary_schedule)
+)
+const weeklySummaryHasLegacySchedule = computed(() =>
+  !!emailBehavior.value && !isProductWeeklySchedule(emailBehavior.value.report.weekly_summary_schedule)
+)
+const errorDigestHasLegacySchedule = computed(() =>
+  !!emailBehavior.value && !isProductDailySchedule(emailBehavior.value.report.error_digest_schedule)
+)
+const accountHealthHasLegacySchedule = computed(() =>
+  !!emailBehavior.value && !isProductDailySchedule(emailBehavior.value.report.account_health_schedule)
+)
+
+function nextRunLabel(kind: string): string {
+  const raw = scheduleInfo.value.next_runs?.[kind]
+  if (!raw) return t('admin.ops.settings.nextRunAfterSave')
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      timeZone: scheduleInfo.value.timezone,
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    }).format(new Date(raw))
+  } catch {
+    return raw
+  }
 }
 
 // OpenAI 账号配额自动暂停：后端按 0~1 分数存储，UI 按百分比(0~100)展示
@@ -157,7 +247,36 @@ const validation = computed(() => {
     }
   }
 
-  // 邮件配置: 启用但无收件人时不阻断保存, 保存时会自动禁用
+  // 运维页只校验告警/报告的细粒度行为；总开关和收件人由邮件设置负责。
+  if (emailBehavior.value) {
+    const alert = emailBehavior.value.alert
+    if (
+      !Number.isFinite(alert.rate_limit_per_hour) ||
+      alert.rate_limit_per_hour < 0 ||
+      alert.rate_limit_per_hour > 10000
+    ) {
+      errors.push(t('admin.ops.email.validation.rateLimitRange'))
+    }
+    if (
+      !Number.isFinite(alert.batching_window_seconds) ||
+      alert.batching_window_seconds < 0 ||
+      alert.batching_window_seconds > 86400
+    ) {
+      errors.push(t('admin.ops.email.validation.batchWindowRange'))
+    }
+
+    const report = emailBehavior.value.report
+    if (!Number.isFinite(report.error_digest_min_count) || report.error_digest_min_count < 0) {
+      errors.push(t('admin.ops.email.validation.digestMinCountRange'))
+    }
+    if (
+      !Number.isFinite(report.account_health_error_rate_threshold) ||
+      report.account_health_error_rate_threshold < 0 ||
+      report.account_health_error_rate_threshold > 100
+    ) {
+      errors.push(t('admin.ops.email.validation.accountHealthThresholdRange'))
+    }
+  }
 
   // 验证高级设置
   if (advancedSettings.value) {
@@ -179,16 +298,16 @@ const validation = computed(() => {
   }
 
   // 验证指标阈值
-  if (metricThresholds.value.sla_percent_min != null && (metricThresholds.value.sla_percent_min < 0 || metricThresholds.value.sla_percent_min > 100)) {
+  if (metricThresholds.value.sla_percent_min != null && (metricThresholds.value.sla_percent_min <= 0 || metricThresholds.value.sla_percent_min > 100)) {
     errors.push(t('admin.ops.settings.validation.slaMinPercentRange'))
   }
-  if (metricThresholds.value.ttft_p99_ms_max != null && metricThresholds.value.ttft_p99_ms_max < 0) {
+  if (metricThresholds.value.ttft_p99_ms_max != null && metricThresholds.value.ttft_p99_ms_max <= 0) {
     errors.push(t('admin.ops.settings.validation.ttftP99MaxRange'))
   }
-  if (metricThresholds.value.request_error_rate_percent_max != null && (metricThresholds.value.request_error_rate_percent_max < 0 || metricThresholds.value.request_error_rate_percent_max > 100)) {
+  if (metricThresholds.value.request_error_rate_percent_max != null && (metricThresholds.value.request_error_rate_percent_max <= 0 || metricThresholds.value.request_error_rate_percent_max > 100)) {
     errors.push(t('admin.ops.settings.validation.requestErrorRateMaxRange'))
   }
-  if (metricThresholds.value.upstream_error_rate_percent_max != null && (metricThresholds.value.upstream_error_rate_percent_max < 0 || metricThresholds.value.upstream_error_rate_percent_max > 100)) {
+  if (metricThresholds.value.upstream_error_rate_percent_max != null && (metricThresholds.value.upstream_error_rate_percent_max <= 0 || metricThresholds.value.upstream_error_rate_percent_max > 100)) {
     errors.push(t('admin.ops.settings.validation.upstreamErrorRateMaxRange'))
   }
 
@@ -204,21 +323,18 @@ async function saveAllSettings() {
 
   saving.value = true
   try {
-    // 无收件人时自动禁用邮件通知
-    if (emailConfig.value) {
-      if (emailConfig.value.alert.enabled && emailConfig.value.alert.recipients.length === 0) {
-        emailConfig.value.alert.enabled = false
-      }
-      if (emailConfig.value.report.enabled && emailConfig.value.report.recipients.length === 0) {
-        emailConfig.value.report.enabled = false
-      }
-    }
-    await Promise.all([
-      runtimeSettings.value ? opsAPI.updateAlertRuntimeSettings(runtimeSettings.value) : Promise.resolve(),
-      emailConfig.value ? opsAPI.updateEmailNotificationConfig(emailConfig.value) : Promise.resolve(),
-      advancedSettings.value ? opsAPI.updateAdvancedSettings(advancedSettings.value) : Promise.resolve(),
-      opsAPI.updateMetricThresholds(metricThresholds.value)
-    ])
+    if (!runtimeSettings.value || !emailBehavior.value || !advancedSettings.value) return
+    const updated = await opsAPI.updateMonitoringSettings({
+      runtime: runtimeSettings.value,
+      email_behavior: emailBehavior.value,
+      advanced: advancedSettings.value,
+      metric_thresholds: metricThresholds.value
+    })
+    runtimeSettings.value = updated.runtime
+    emailBehavior.value = updated.email_behavior
+    advancedSettings.value = updated.advanced
+    metricThresholds.value = updated.metric_thresholds
+    scheduleInfo.value = updated.schedule_info || scheduleInfo.value
     appStore.showSuccess(t('admin.ops.settings.saveSuccess'))
     emit('saved')
     emit('close')
@@ -237,7 +353,7 @@ async function saveAllSettings() {
       {{ t('common.loading') }}
     </div>
 
-    <div v-else-if="runtimeSettings && emailConfig && advancedSettings" class="space-y-6">
+    <div v-else-if="runtimeSettings && emailBehavior && advancedSettings" class="space-y-6">
       <!-- 验证错误 -->
       <div v-if="!validation.valid" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
         <div class="font-bold">{{ t('admin.ops.settings.validation.title') }}</div>
@@ -262,109 +378,129 @@ async function saveAllSettings() {
         </div>
       </div>
 
-      <!-- 预警配置 -->
+      <!-- 告警细粒度行为；通道总开关和收件人在邮件设置中管理 -->
       <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-700/50">
         <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.ops.settings.alertConfig') }}</h4>
-
-        <div class="space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.ops.settings.enableAlert') }}</label>
-            </div>
-            <Toggle v-model="emailConfig.alert.enabled" />
-          </div>
-
-          <div v-if="emailConfig.alert.enabled">
-            <label class="input-label">{{ t('admin.ops.settings.alertRecipients') }}</label>
-            <div class="flex gap-2">
-              <input
-                v-model="alertRecipientInput"
-                type="email"
-                class="input"
-                :placeholder="t('admin.ops.settings.emailPlaceholder')"
-                @keydown.enter.prevent="addRecipient('alert')"
-              />
-              <button class="btn btn-secondary whitespace-nowrap" type="button" @click="addRecipient('alert')">
-                {{ t('common.add') }}
-              </button>
-            </div>
-            <div class="mt-2 flex flex-wrap gap-2">
-              <span
-                v-for="email in emailConfig.alert.recipients"
-                :key="email"
-                class="inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-              >
-                {{ email }}
-                <button type="button" class="text-blue-700/80 hover:text-blue-900" @click="removeRecipient('alert', email)">×</button>
-              </span>
-            </div>
-            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.ops.settings.recipientsHint') }}
-            </p>
-          </div>
-
-          <div v-if="emailConfig.alert.enabled">
+        <p class="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+          {{ t('admin.ops.settings.emailPolicyOwnershipHint') }}
+        </p>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
             <label class="input-label">{{ t('admin.ops.settings.minSeverity') }}</label>
-            <Select v-model="emailConfig.alert.min_severity" :options="severityOptions" />
+            <Select v-model="emailBehavior.alert.min_severity" :options="severityOptions" />
+            <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.minSeverityHint') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.ops.email.rateLimitPerHour') }}</label>
+            <input v-model.number="emailBehavior.alert.rate_limit_per_hour" type="number" min="0" max="10000" class="input" />
+            <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.rateLimitHint') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.ops.email.batchWindowSeconds') }}</label>
+            <input v-model.number="emailBehavior.alert.batching_window_seconds" type="number" min="0" max="86400" class="input" />
+            <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.batchWindowHint') }}</p>
+          </div>
+          <div class="flex items-start justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-600">
+            <div>
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.email.includeResolved') }}</label>
+              <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.includeResolvedHint') }}</p>
+            </div>
+            <Toggle v-model="emailBehavior.alert.include_resolved_alerts" />
           </div>
         </div>
       </div>
 
-      <!-- 评估报告配置 -->
+      <!-- 运维报告细粒度计划 -->
       <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-700/50">
         <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.ops.settings.reportConfig') }}</h4>
-
-        <div class="space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.ops.settings.enableReport') }}</label>
-            </div>
-            <Toggle v-model="emailConfig.report.enabled" />
-          </div>
-
-          <div v-if="emailConfig.report.enabled">
-            <label class="input-label">{{ t('admin.ops.settings.reportRecipients') }}</label>
-            <div class="flex gap-2">
-              <input
-                v-model="reportRecipientInput"
-                type="email"
-                class="input"
-                :placeholder="t('admin.ops.settings.emailPlaceholder')"
-                @keydown.enter.prevent="addRecipient('report')"
-              />
-              <button class="btn btn-secondary whitespace-nowrap" type="button" @click="addRecipient('report')">
-                {{ t('common.add') }}
-              </button>
-            </div>
-            <div class="mt-2 flex flex-wrap gap-2">
-              <span
-                v-for="email in emailConfig.report.recipients"
-                :key="email"
-                class="inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-              >
-                {{ email }}
-                <button type="button" class="text-blue-700/80 hover:text-blue-900" @click="removeRecipient('report', email)">×</button>
-              </span>
-            </div>
-            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.ops.settings.recipientsHint') }}
-            </p>
-          </div>
-
-          <div v-if="emailConfig.report.enabled" class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.settings.reportBehaviorHint') }}</p>
+        <div
+          class="mb-4 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-dark-600 dark:text-slate-300"
+          data-testid="ops-report-timezone"
+          :data-timezone="scheduleInfo.timezone"
+        >
+          {{ t('admin.ops.settings.serverTimezone', { timezone: scheduleInfo.timezone }) }}
+        </div>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
             <div class="flex items-center justify-between">
-              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.dailySummary') }}</label>
-              <Toggle v-model="emailConfig.report.daily_summary_enabled" />
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.email.dailySummary') }}</label>
+              <Toggle v-model="emailBehavior.report.daily_summary_enabled" />
             </div>
-            <div v-if="emailConfig.report.daily_summary_enabled">
-              <input v-model="emailConfig.report.daily_summary_schedule" type="text" class="input" placeholder="0 9 * * *" />
+            <div v-if="emailBehavior.report.daily_summary_enabled" class="mt-3">
+              <label class="input-label">{{ t('admin.ops.settings.sendTime') }}</label>
+              <input v-model="dailySummaryTime" type="time" class="input" />
+              <p v-if="dailySummaryHasLegacySchedule" class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                {{ t('admin.ops.settings.legacyScheduleHint') }}
+              </p>
+              <p class="mt-2 text-xs text-gray-500">{{ t('admin.ops.settings.nextRun', { time: nextRunLabel('daily_summary') }) }}</p>
             </div>
+          </div>
+          <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
             <div class="flex items-center justify-between">
-              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.weeklySummary') }}</label>
-              <Toggle v-model="emailConfig.report.weekly_summary_enabled" />
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.email.weeklySummary') }}</label>
+              <Toggle v-model="emailBehavior.report.weekly_summary_enabled" />
             </div>
-            <div v-if="emailConfig.report.weekly_summary_enabled">
-              <input v-model="emailConfig.report.weekly_summary_schedule" type="text" class="input" placeholder="0 9 * * 1" />
+            <div v-if="emailBehavior.report.weekly_summary_enabled" class="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t('admin.ops.settings.weekday') }}</label>
+                <Select v-model="weeklySummaryWeekday" :options="weekdayOptions" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.settings.sendTime') }}</label>
+                <input v-model="weeklySummaryTime" type="time" class="input" />
+              </div>
+              <p v-if="weeklySummaryHasLegacySchedule" class="text-xs text-amber-600 dark:text-amber-400 sm:col-span-2">
+                {{ t('admin.ops.settings.legacyScheduleHint') }}
+              </p>
+              <p class="text-xs text-gray-500 sm:col-span-2">{{ t('admin.ops.settings.nextRun', { time: nextRunLabel('weekly_summary') }) }}</p>
+            </div>
+          </div>
+          <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+            <div class="flex items-center justify-between">
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.email.errorDigest') }}</label>
+              <Toggle v-model="emailBehavior.report.error_digest_enabled" />
+            </div>
+            <div v-if="emailBehavior.report.error_digest_enabled" class="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t('admin.ops.settings.sendTime') }}</label>
+                <input v-model="errorDigestTime" type="time" class="input" />
+                <p v-if="errorDigestHasLegacySchedule" class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                  {{ t('admin.ops.settings.legacyScheduleHint') }}
+                </p>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.email.errorDigestMinCount') }}</label>
+                <input v-model.number="emailBehavior.report.error_digest_min_count" type="number" min="0" class="input" />
+              </div>
+              <p class="text-xs text-gray-500 sm:col-span-2">{{ t('admin.ops.settings.nextRun', { time: nextRunLabel('error_digest') }) }}</p>
+            </div>
+          </div>
+          <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+            <div class="flex items-center justify-between">
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.email.accountHealth') }}</label>
+              <Toggle v-model="emailBehavior.report.account_health_enabled" />
+            </div>
+            <div v-if="emailBehavior.report.account_health_enabled" class="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t('admin.ops.settings.sendTime') }}</label>
+                <input v-model="accountHealthTime" type="time" class="input" />
+                <p v-if="accountHealthHasLegacySchedule" class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                  {{ t('admin.ops.settings.legacyScheduleHint') }}
+                </p>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.email.accountHealthThreshold') }}</label>
+                <input
+                  v-model.number="emailBehavior.report.account_health_error_rate_threshold"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  class="input"
+                />
+              </div>
+              <p class="text-xs text-gray-500 sm:col-span-2">{{ t('admin.ops.settings.nextRun', { time: nextRunLabel('account_health') }) }}</p>
             </div>
           </div>
         </div>
@@ -381,7 +517,7 @@ async function saveAllSettings() {
             <input
               v-model.number="metricThresholds.sla_percent_min"
               type="number"
-              min="0"
+              min="0.1"
               max="100"
               step="0.1"
               class="input"
@@ -395,7 +531,7 @@ async function saveAllSettings() {
             <input
               v-model.number="metricThresholds.ttft_p99_ms_max"
               type="number"
-              min="0"
+              min="1"
               step="50"
               class="input"
             />
@@ -407,7 +543,7 @@ async function saveAllSettings() {
             <input
               v-model.number="metricThresholds.request_error_rate_percent_max"
               type="number"
-              min="0"
+              min="0.1"
               max="100"
               step="0.1"
               class="input"
@@ -420,7 +556,7 @@ async function saveAllSettings() {
             <input
               v-model.number="metricThresholds.upstream_error_rate_percent_max"
               type="number"
-              min="0"
+              min="0.1"
               max="100"
               step="0.1"
               class="input"
