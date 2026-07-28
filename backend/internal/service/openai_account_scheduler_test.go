@@ -82,6 +82,11 @@ func (r schedulerGroupAwareOpenAIAccountRepo) ListSchedulableUngroupedByPlatform
 	return result, nil
 }
 
+type schedulerAcquireCall struct {
+	accountID	int64
+	maxConcurrency	int
+}
+
 type schedulerTestConcurrencyCache struct {
 	ConcurrencyCache
 	loadBatchErr    error
@@ -91,11 +96,16 @@ type schedulerTestConcurrencyCache struct {
 	skipDefaultLoad bool
 	acquiredIDs     *[]int64
 	releasedIDs     *[]int64
+	acquireCalls    *[]schedulerAcquireCall
+	loadBatchCalls  *[][]AccountWithConcurrency
 }
 
 func (c schedulerTestConcurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
 	if c.acquiredIDs != nil {
 		*c.acquiredIDs = append(*c.acquiredIDs, accountID)
+	}
+	if c.acquireCalls != nil {
+		*c.acquireCalls = append(*c.acquireCalls, schedulerAcquireCall{accountID: accountID, maxConcurrency: maxConcurrency})
 	}
 	if c.acquireResults != nil {
 		if result, ok := c.acquireResults[accountID]; ok {
@@ -113,6 +123,10 @@ func (c schedulerTestConcurrencyCache) ReleaseAccountSlot(ctx context.Context, a
 }
 
 func (c schedulerTestConcurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
+	if c.loadBatchCalls != nil {
+		copied := append([]AccountWithConcurrency(nil), accounts...)
+		*c.loadBatchCalls = append(*c.loadBatchCalls, copied)
+	}
 	if c.loadBatchErr != nil {
 		return nil, c.loadBatchErr
 	}
@@ -2190,6 +2204,255 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsS
 	require.True(t, decision.StickySessionHit)
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_GrokOAuthUsesSingleRuntimeSlot(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10200)
+	account := Account{
+		ID:          22001,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 5,
+		GroupIDs:    []int64{groupID},
+	}
+	var acquireCalls []schedulerAcquireCall
+	var loadBatchCalls [][]AccountWithConcurrency
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cfg:                newSchedulerTestOpenAIWSV2Config(),
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{acquireCalls: &acquireCalls, loadBatchCalls: &loadBatchCalls}),
+	}
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"",
+		nil,
+		OpenAIUpstreamTransportAny,
+		"",
+		false,
+		false,
+		false,
+		PlatformGrok,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.True(t, selection.Acquired)
+	require.Equal(t, 5, selection.Account.Concurrency, "persisted account concurrency must stay unchanged")
+	require.NotEmpty(t, acquireCalls)
+	require.Equal(t, schedulerAcquireCall{accountID: account.ID, maxConcurrency: 1}, acquireCalls[0])
+	require.NotEmpty(t, loadBatchCalls)
+	require.Len(t, loadBatchCalls[0], 1)
+	require.Equal(t, AccountWithConcurrency{ID: account.ID, MaxConcurrency: 1}, loadBatchCalls[0][0])
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_GrokAPIKeyKeepsConfiguredRuntimeSlots(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10201)
+	account := Account{
+		ID:          22002,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 5,
+		GroupIDs:    []int64{groupID},
+	}
+	var acquireCalls []schedulerAcquireCall
+	var loadBatchCalls [][]AccountWithConcurrency
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cfg:                newSchedulerTestOpenAIWSV2Config(),
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{acquireCalls: &acquireCalls, loadBatchCalls: &loadBatchCalls}),
+	}
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"",
+		nil,
+		OpenAIUpstreamTransportAny,
+		"",
+		false,
+		false,
+		false,
+		PlatformGrok,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.True(t, selection.Acquired)
+	require.NotEmpty(t, acquireCalls)
+	require.Equal(t, schedulerAcquireCall{accountID: account.ID, maxConcurrency: 5}, acquireCalls[0])
+	require.NotEmpty(t, loadBatchCalls)
+	require.Len(t, loadBatchCalls[0], 1)
+	require.Equal(t, AccountWithConcurrency{ID: account.ID, MaxConcurrency: 5}, loadBatchCalls[0][0])
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_OpenAIOAuthKeepsConfiguredRuntimeSlots(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10202)
+	account := Account{
+		ID:          22003,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 5,
+		GroupIDs:    []int64{groupID},
+	}
+	var acquireCalls []schedulerAcquireCall
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cfg:                newSchedulerTestOpenAIWSV2Config(),
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{acquireCalls: &acquireCalls}),
+	}
+
+	selection, _, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.True(t, selection.Acquired)
+	require.NotEmpty(t, acquireCalls)
+	require.Equal(t, schedulerAcquireCall{accountID: account.ID, maxConcurrency: 5}, acquireCalls[0])
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_GrokOAuthStickyBusyEscapesToOtherAccount(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10203)
+	accounts := []Account{
+		{
+			ID:          22011,
+			Platform:    PlatformGrok,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 5,
+			Priority:    0,
+			GroupIDs:    []int64{groupID},
+		},
+		{
+			ID:          22012,
+			Platform:    PlatformGrok,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 5,
+			Priority:    1,
+			GroupIDs:    []int64{groupID},
+		},
+	}
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_grok_busy": 22011}}
+	cfg := newSchedulerTestOpenAIWSV2Config()
+	cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = false
+	cfg.Gateway.OpenAIWS.LBTopK = 2
+	var acquireCalls []schedulerAcquireCall
+	concurrencyCache := schedulerTestConcurrencyCache{
+		acquireResults: map[int64]bool{
+			22011: false,
+			22012: true,
+		},
+		loadMap: map[int64]*AccountLoadInfo{
+			22011: {AccountID: 22011, LoadRate: 100, CurrentConcurrency: 1, WaitingCount: 0},
+			22012: {AccountID: 22012, LoadRate: 0, CurrentConcurrency: 0, WaitingCount: 0},
+		},
+		acquireCalls: &acquireCalls,
+	}
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              cache,
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+		openaiAccountStats: newOpenAIAccountRuntimeStats(),
+	}
+
+	selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx,
+		&groupID,
+		"",
+		"session_hash_grok_busy",
+		"",
+		nil,
+		OpenAIUpstreamTransportAny,
+		"",
+		false,
+		false,
+		false,
+		PlatformGrok,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(22012), selection.Account.ID)
+	require.True(t, selection.Acquired)
+	require.Nil(t, selection.WaitPlan)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.False(t, decision.StickySessionHit)
+	require.GreaterOrEqual(t, len(acquireCalls), 2)
+	require.Equal(t, schedulerAcquireCall{accountID: 22011, maxConcurrency: 1}, acquireCalls[0])
+	require.Equal(t, schedulerAcquireCall{accountID: 22012, maxConcurrency: 1}, acquireCalls[1])
+	require.Equal(t, int64(22011), cache.sessionBindings["openai:session_hash_grok_busy"], "temporary spillover must not rewrite the sticky binding")
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_GrokOAuthFallbackWaitPlanUsesSingleSlot(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10204)
+	account := Account{
+		ID:          22021,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 5,
+		GroupIDs:    []int64{groupID},
+	}
+	svc := &OpenAIGatewayService{
+		accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cfg:         newSchedulerTestOpenAIWSV2Config(),
+		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			acquireResults: map[int64]bool{account.ID: false},
+			loadMap: map[int64]*AccountLoadInfo{
+				account.ID: {AccountID: account.ID, LoadRate: 100, CurrentConcurrency: 1},
+			},
+		}),
+	}
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapability(ctx, &groupID, "", "", "", nil, OpenAIUpstreamTransportAny, "", false, false, false, PlatformGrok)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, account.ID, selection.WaitPlan.AccountID)
+	require.Equal(t, 1, selection.WaitPlan.MaxConcurrency)
+	require.Equal(t, 5, selection.Account.Concurrency)
+}
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyEscapeByTTFT(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(10101)

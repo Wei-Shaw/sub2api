@@ -1,0 +1,14 @@
+[Unit]
+Description=Sub2API production disk budgets and threshold readback
+After=docker.service postgresql.service redis.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sub2api/deploy/production-disk-readback.sh
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/run /run/lock
+ReadOnlyPaths=/opt/sub2api

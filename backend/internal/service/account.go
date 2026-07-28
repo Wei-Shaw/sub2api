@@ -175,6 +175,37 @@ func (a *Account) EffectiveLoadFactor() int {
 	return 1
 }
 
+// SchedulingSlotConcurrency returns the Redis account-slot limit used by
+// request scheduling.
+//
+// Grok OAuth accounts represent a single upstream user session. Even when the
+// persisted Concurrency field is configured above 1 for UI/API compatibility,
+// dispatching multiple simultaneous requests to the same OAuth identity can
+// trigger upstream 429s. Keep the stored setting unchanged, but serialize the
+// scheduler hot path for Grok OAuth accounts.
+func (a *Account) SchedulingSlotConcurrency() int {
+	if a == nil {
+		return 0
+	}
+	if a.IsGrokOAuth() {
+		return 1
+	}
+	return a.Concurrency
+}
+
+// SchedulingLoadConcurrency returns the concurrency denominator used by
+// load-aware account selection. It mirrors SchedulingSlotConcurrency for Grok
+// OAuth so load pre-filtering and Redis slot acquisition use the same capacity.
+func (a *Account) SchedulingLoadConcurrency() int {
+	if a == nil {
+		return 1
+	}
+	if a.IsGrokOAuth() {
+		return 1
+	}
+	return a.EffectiveLoadFactor()
+}
+
 func (a *Account) IsSchedulable() bool {
 	if !a.IsActive() || !a.Schedulable {
 		return false

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -37,6 +38,171 @@ type grokCredentialHandlerRepo struct {
 	setErrorErr    error
 	setTempErr     error
 	missingOnGet   map[int64]bool
+}
+
+type grokCredentialVideoOwnerRepo struct {
+	mu      sync.Mutex
+	owners  map[string]service.GrokMediaVideoRequestOwner
+	creates map[string]service.GrokMediaVideoCreateRecord
+	bindErr error
+	getErr  error
+}
+
+func grokCredentialVideoOwnerKey(requestID string, userID, apiKeyID, groupID int64) string {
+	return fmt.Sprintf("%d:%d:%d:%s", groupID, userID, apiKeyID, requestID)
+}
+
+func (r *grokCredentialVideoOwnerRepo) Bind(_ context.Context, owner service.GrokMediaVideoRequestOwner) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.bindErr != nil {
+		return r.bindErr
+	}
+	if r.owners == nil {
+		r.owners = make(map[string]service.GrokMediaVideoRequestOwner)
+	}
+	r.owners[grokCredentialVideoOwnerKey(owner.RequestID, owner.UserID, owner.APIKeyID, owner.GroupID)] = owner
+	return nil
+}
+
+func (r *grokCredentialVideoOwnerRepo) Resolve(_ context.Context, requestID string, userID, apiKeyID, groupID int64, refreshUntil time.Time) (*service.GrokMediaVideoRequestOwner, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	owner, ok := r.owners[grokCredentialVideoOwnerKey(requestID, userID, apiKeyID, groupID)]
+	if !ok || !time.Now().Before(owner.ExpiresAt) {
+		return nil, service.ErrGrokMediaVideoRequestOwnerNotFound
+	}
+	if refreshUntil.After(owner.ExpiresAt) {
+		owner.ExpiresAt = refreshUntil
+		r.owners[grokCredentialVideoOwnerKey(requestID, userID, apiKeyID, groupID)] = owner
+	}
+	return &owner, nil
+}
+
+func (r *grokCredentialVideoOwnerRepo) MarkTerminal(_ context.Context, requestID string, userID, apiKeyID, groupID int64, terminalAt, retainUntil time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := grokCredentialVideoOwnerKey(requestID, userID, apiKeyID, groupID)
+	owner, ok := r.owners[key]
+	if !ok || !time.Now().Before(owner.ExpiresAt) {
+		return service.ErrGrokMediaVideoRequestOwnerNotFound
+	}
+	if owner.TerminalAt == nil {
+		value := terminalAt
+		owner.TerminalAt = &value
+	}
+	if retainUntil.After(owner.ExpiresAt) {
+		owner.ExpiresAt = retainUntil
+	}
+	r.owners[key] = owner
+	return nil
+}
+
+func (r *grokCredentialVideoOwnerRepo) DeleteExpired(_ context.Context, before time.Time, limit int) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var deleted int64
+	for key, owner := range r.owners {
+		if deleted >= int64(limit) {
+			break
+		}
+		if !owner.ExpiresAt.After(before) {
+			delete(r.owners, key)
+			deleted++
+		}
+	}
+	return deleted, nil
+}
+
+func (r *grokCredentialVideoOwnerRepo) DeleteExpiredVideoCreates(_ context.Context, before time.Time, limit int) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var deleted int64
+	for key, record := range r.creates {
+		if deleted >= int64(limit) {
+			break
+		}
+		if !record.ExpiresAt.After(before) {
+			delete(r.creates, key)
+			deleted++
+		}
+	}
+	return deleted, nil
+}
+
+func grokCredentialVideoCreateKey(record service.GrokMediaVideoCreateRecord) string {
+	return fmt.Sprintf("%d:%d:%d:%s:%s", record.GroupID, record.UserID, record.APIKeyID, record.Endpoint, record.IdempotencyKeyHash)
+}
+
+func (r *grokCredentialVideoOwnerRepo) ClaimVideoCreate(_ context.Context, record service.GrokMediaVideoCreateRecord) (*service.GrokMediaVideoCreateRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	if r.creates == nil {
+		r.creates = make(map[string]service.GrokMediaVideoCreateRecord)
+	}
+	key := grokCredentialVideoCreateKey(record)
+	if existing, ok := r.creates[key]; ok {
+		if existing.RequestHash != record.RequestHash {
+			return nil, service.ErrGrokMediaVideoIdempotencyConflict
+		}
+		copy := existing
+		copy.ResponseBody = append([]byte(nil), existing.ResponseBody...)
+		return &copy, nil
+	}
+	r.creates[key] = record
+	copy := record
+	return &copy, nil
+}
+
+func (r *grokCredentialVideoOwnerRepo) BindVideoCreateAccount(_ context.Context, record service.GrokMediaVideoCreateRecord, accountID int64) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := grokCredentialVideoCreateKey(record)
+	existing, ok := r.creates[key]
+	if !ok {
+		return 0, service.ErrGrokMediaVideoIdempotencyUnavailable
+	}
+	if existing.AccountID == 0 {
+		existing.AccountID = accountID
+		r.creates[key] = existing
+	}
+	return existing.AccountID, nil
+}
+
+func (r *grokCredentialVideoOwnerRepo) ReleaseVideoCreateAccount(_ context.Context, record service.GrokMediaVideoCreateRecord, accountID int64) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := grokCredentialVideoCreateKey(record)
+	existing, ok := r.creates[key]
+	if !ok || existing.AccountID != accountID {
+		return false, nil
+	}
+	existing.AccountID = 0
+	r.creates[key] = existing
+	return true, nil
+}
+
+func (r *grokCredentialVideoOwnerRepo) CompleteVideoCreate(_ context.Context, record service.GrokMediaVideoCreateRecord, owner service.GrokMediaVideoRequestOwner) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.bindErr != nil {
+		return r.bindErr
+	}
+	if r.owners == nil {
+		r.owners = make(map[string]service.GrokMediaVideoRequestOwner)
+	}
+	r.owners[grokCredentialVideoOwnerKey(owner.RequestID, owner.UserID, owner.APIKeyID, owner.GroupID)] = owner
+	if r.creates == nil {
+		r.creates = make(map[string]service.GrokMediaVideoCreateRecord)
+	}
+	r.creates[grokCredentialVideoCreateKey(record)] = record
+	return nil
 }
 
 func (r *grokCredentialHandlerRepo) ListSchedulableByPlatform(_ context.Context, platform string) ([]service.Account, error) {
@@ -381,6 +547,13 @@ func (u *grokCredentialHandlerUpstream) Do(req *http.Request, _ string, accountI
 			)),
 		}, nil
 	}
+	if strings.Contains(req.URL.Path, "/images/") {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewBufferString(`{"data":[{"b64_json":"aGVsbG8="}]}`)),
+		}, nil
+	}
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
@@ -673,6 +846,7 @@ func TestGrokMedia429FailoverIsBounded(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/openai/v1/videos/generations", bytes.NewBufferString(`{"model":"grok-imagine-video","prompt":"waves"}`))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", "media-first-429")
 
 		router.ServeHTTP(recorder, req)
 
@@ -686,12 +860,61 @@ func TestGrokMedia429FailoverIsBounded(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/openai/v1/videos/generations", bytes.NewBufferString(`{"model":"grok-imagine-video","prompt":"waves"}`))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", "media-all-429")
 
 		router.ServeHTTP(recorder, req)
 
 		require.Equal(t, http.StatusTooManyRequests, recorder.Code, recorder.Body.String())
 		require.Equal(t, []int64{801, 802}, upstream.accountHits())
 		require.NotContains(t, recorder.Body.String(), "rate limited")
+	})
+}
+
+func TestGrokMediaVideoOwnerPersistenceAndLookupFailuresAreExplicit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("create persistence failure does not expose upstream response", func(t *testing.T) {
+		_, _, _, router, cleanup := newGrokCredentialFailoverHandler(t, "owner_bind_unavailable")
+		defer cleanup()
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/openai/v1/videos/generations", bytes.NewBufferString(`{"model":"grok-imagine-video","prompt":"waves"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", "media-owner-bind-failure")
+		router.ServeHTTP(recorder, req)
+
+		require.Equal(t, http.StatusServiceUnavailable, recorder.Code, recorder.Body.String())
+		require.NotContains(t, recorder.Body.String(), "resp_healthy")
+	})
+
+	t.Run("missing lookup is 404", func(t *testing.T) {
+		_, _, upstream, router, cleanup := newGrokCredentialFailoverHandler(t, "owner_missing")
+		defer cleanup()
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/openai/v1/videos/missing", nil))
+
+		require.Equal(t, http.StatusNotFound, recorder.Code, recorder.Body.String())
+		require.Empty(t, upstream.accountHits())
+	})
+
+	t.Run("database unavailable lookup is 503", func(t *testing.T) {
+		_, _, upstream, router, cleanup := newGrokCredentialFailoverHandler(t, "owner_lookup_unavailable")
+		defer cleanup()
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/openai/v1/videos/present", nil))
+
+		require.Equal(t, http.StatusServiceUnavailable, recorder.Code, recorder.Body.String())
+		require.Empty(t, upstream.accountHits())
+	})
+
+	t.Run("image flow never writes video owner", func(t *testing.T) {
+		_, _, _, router, cleanup := newGrokCredentialFailoverHandler(t, "owner_bind_unavailable")
+		defer cleanup()
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/openai/v1/images/generations", bytes.NewBufferString(`{"model":"grok-imagine","prompt":"waves"}`))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(recorder, req)
+
+		require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 	})
 }
 
@@ -716,6 +939,9 @@ func TestGrokOAuthCredentialFailoverAcrossHTTPHandlers(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			req := httptest.NewRequest(endpoint.method, endpoint.path, bytes.NewBufferString(endpoint.body))
 			req.Header.Set("Content-Type", "application/json")
+			if strings.Contains(endpoint.path, "/videos/generations") {
+				req.Header.Set("Idempotency-Key", "media-revoked-selects-healthy")
+			}
 
 			router.ServeHTTP(recorder, req)
 
@@ -730,6 +956,9 @@ func TestGrokOAuthCredentialFailoverAcrossHTTPHandlers(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			req := httptest.NewRequest(endpoint.method, endpoint.path, bytes.NewBufferString(endpoint.body))
 			req.Header.Set("Content-Type", "application/json")
+			if strings.Contains(endpoint.path, "/videos/generations") {
+				req.Header.Set("Idempotency-Key", "media-all-accounts-exhausted")
+			}
 
 			router.ServeHTTP(recorder, req)
 
@@ -862,7 +1091,7 @@ func newGrokCredentialFailoverHandler(t *testing.T, mode string) (*OpenAIGateway
 			Extra: map[string]any{service.GrokMediaEligibleExtraKey: true},
 		},
 	}
-	if mode == "postmap_cancel" || mode == "first_402" || mode == "first_429" || mode == "all_429" || mode == "mixed_429_500" || mode == "mixed_500_429" || mode == "oauth_429_apikey_500" {
+	if mode == "postmap_cancel" || mode == "first_402" || mode == "first_429" || mode == "all_429" || mode == "mixed_429_500" || mode == "mixed_500_429" || mode == "oauth_429_apikey_500" || mode == "owner_bind_unavailable" {
 		accounts[0].Credentials["expires_at"] = time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
 	}
 	if mode == "all_429" || mode == "mixed_429_500" || mode == "mixed_500_429" || mode == "oauth_429_apikey_500" {
@@ -929,6 +1158,14 @@ func newGrokCredentialFailoverHandler(t *testing.T, mode string) (*OpenAIGateway
 		service.NewBillingService(cfg, nil), nil, billingCache, upstream,
 		&service.DeferredService{}, nil, provider, nil, nil, nil, nil, nil,
 	)
+	ownerRepo := &grokCredentialVideoOwnerRepo{}
+	if mode == "owner_bind_unavailable" {
+		ownerRepo.bindErr = errors.New("owner database unavailable")
+	}
+	if mode == "owner_lookup_unavailable" {
+		ownerRepo.getErr = errors.New("owner database unavailable")
+	}
+	gateway.SetGrokMediaVideoRequestOwnerRepository(ownerRepo)
 	cache := &concurrencyCacheMock{
 		acquireUserSlotFn:    func(context.Context, int64, int, string) (bool, error) { return true, nil },
 		acquireAccountSlotFn: func(context.Context, int64, int, string) (bool, error) { return true, nil },
@@ -950,6 +1187,7 @@ func newGrokCredentialFailoverHandler(t *testing.T, mode string) (*OpenAIGateway
 	router.POST("/openai/v1/messages", h.Messages)
 	router.POST("/openai/v1/chat/completions", h.ChatCompletions)
 	router.POST("/openai/v1/videos/generations", h.GrokVideoGeneration)
+	router.POST("/openai/v1/images/generations", h.GrokImages)
 	router.GET("/openai/v1/videos/:request_id", h.GrokVideoStatus)
 	handlerRefresherStarted.Store(router, refresher.started)
 	cleanup := func() {

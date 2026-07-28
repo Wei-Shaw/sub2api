@@ -1,0 +1,22 @@
+# Copy to /etc/sub2api/production-deploy.conf through the approved host-change
+# process. This file is non-secret and is parsed as data, never shell-sourced.
+EXPECTED_MOUNT_TARGET=/opt/sub2api
+EXPECTED_MOUNT_SOURCE=/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000
+EXPECTED_MOUNT_UUID=00000000-0000-0000-0000-000000000000
+COMPOSE_FILE=/opt/sub2api/deploy/docker-compose.local.yml
+COMPOSE_PROJECT=sub2api-prod
+SYSTEMD_UNIT=sub2api.service
+SYSTEMD_RELEASE_ROOT=/opt/sub2api/releases
+SYSTEMD_CURRENT_LINK=/opt/sub2api/current
+SYSTEMD_BINARY_NAME=sub2api
+POSTGRES_SYSTEMD_UNIT=postgresql.service
+REDIS_SYSTEMD_UNIT=redis.service
+POSTGRES_DATABASE=sub2api
+POSTGRES_USER=sub2api
+POSTGRES_OS_USER=postgres
+REDIS_RDB_PATH=/var/lib/redis/dump.rdb
+REDIS_DATA_USER=redis
+REDIS_DATA_GROUP=redis
+HEALTH_URL=http://127.0.0.1:8080/health
+BACKUP_ROOT=/opt/sub2api/backups
+REPO_ROOT=/opt/sub2api/source

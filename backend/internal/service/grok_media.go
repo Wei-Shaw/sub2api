@@ -3,22 +3,145 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
+
+const (
+	// The authoritative owner outlives the longest supported generation and a
+	// multi-day quiesce/restart recovery. Every authorized status/content read
+	// renews this full window on the same immutable account.
+	grokMediaVideoRequestOwnerRecoveryWindow = 7 * 24 * time.Hour
+	grokMediaVideoTerminalRetention          = 7 * 24 * time.Hour
+	grokMediaExpiredCleanupBatchSize         = 100
+	grokMediaVideoCreateIdempotencyTTL       = 24 * time.Hour
+	grokMediaVideoIdempotencyKeyMaxLen       = 255
+	grokMediaImageCreateIdempotencyTTL       = 24 * time.Hour
+	grokMediaImageIdempotencyKeyMaxLen       = 255
+)
+
+var (
+	ErrGrokMediaVideoRequestOwnerNotFound    = errors.New("grok video request owner binding not found")
+	ErrGrokMediaVideoRequestOwnerUnavailable = errors.New("grok video request owner account unavailable")
+	ErrGrokMediaVideoRequestOwnerConflict    = errors.New("grok video request owner binding conflict")
+	ErrGrokMediaVideoIdempotencyKeyRequired  = errors.New("grok video Idempotency-Key is required")
+	ErrGrokMediaVideoIdempotencyKeyInvalid   = errors.New("grok video Idempotency-Key is invalid")
+	ErrGrokMediaVideoIdempotencyConflict     = errors.New("grok video Idempotency-Key reused with different payload")
+	ErrGrokMediaVideoIdempotencyUnavailable  = errors.New("grok video idempotency store unavailable")
+	ErrGrokMediaImageIdempotencyKeyInvalid   = errors.New("grok image Idempotency-Key is invalid")
+	ErrGrokMediaImageIdempotencyConflict     = errors.New("grok image Idempotency-Key reused with different payload")
+	ErrGrokMediaImageIdempotencyUnavailable  = errors.New("grok image idempotency store unavailable")
+)
+
+type GrokMediaVideoRequestOwner struct {
+	RequestID  string
+	UserID     int64
+	APIKeyID   int64
+	GroupID    int64
+	AccountID  int64
+	ExpiresAt  time.Time
+	TerminalAt *time.Time
+}
+
+type GrokMediaVideoCreateRecord struct {
+	UserID                 int64
+	APIKeyID               int64
+	GroupID                int64
+	Endpoint               GrokMediaEndpoint
+	IdempotencyKeyHash     string
+	RequestHash            string
+	UpstreamIdempotencyKey string
+	AccountID              int64
+	RequestID              string
+	ResponseStatus         int
+	ResponseContentType    string
+	ResponseBody           []byte
+	ExpiresAt              time.Time
+}
+
+type GrokMediaImageCreateRecord struct {
+	UserID                 int64
+	APIKeyID               int64
+	GroupID                int64
+	Endpoint               GrokMediaEndpoint
+	IdempotencyKeyHash     string
+	RequestHash            string
+	UpstreamIdempotencyKey string
+	AccountID              int64
+	ResponseStatus         int
+	ResponseContentType    string
+	ResponseBody           []byte
+	ExpiresAt              time.Time
+}
+
+func (r *GrokMediaImageCreateRecord) Completed() bool {
+	return r != nil && r.AccountID > 0 && r.ResponseStatus >= 200 && r.ResponseStatus < 300 && r.ResponseBody != nil
+}
+
+func (r *GrokMediaVideoCreateRecord) Completed() bool {
+	return r != nil && strings.TrimSpace(r.RequestID) != "" && r.ResponseStatus >= 200 && r.ResponseStatus < 300 && r.ResponseBody != nil
+}
+
+// GrokMediaVideoRequestOwnerRepository is the durable source of truth for the
+// account that created an asynchronous Grok video request. Redis remains only
+// a derived acceleration cache and must never override this record.
+type GrokMediaVideoRequestOwnerRepository interface {
+	Bind(ctx context.Context, owner GrokMediaVideoRequestOwner) error
+	Resolve(ctx context.Context, requestID string, userID, apiKeyID, groupID int64, refreshUntil time.Time) (*GrokMediaVideoRequestOwner, error)
+	MarkTerminal(ctx context.Context, requestID string, userID, apiKeyID, groupID int64, terminalAt, retainUntil time.Time) error
+	DeleteExpired(ctx context.Context, before time.Time, limit int) (int64, error)
+	DeleteExpiredVideoCreates(ctx context.Context, before time.Time, limit int) (int64, error)
+	ClaimVideoCreate(ctx context.Context, record GrokMediaVideoCreateRecord) (*GrokMediaVideoCreateRecord, error)
+	BindVideoCreateAccount(ctx context.Context, record GrokMediaVideoCreateRecord, accountID int64) (int64, error)
+	ReleaseVideoCreateAccount(ctx context.Context, record GrokMediaVideoCreateRecord, accountID int64) (bool, error)
+	CompleteVideoCreate(ctx context.Context, record GrokMediaVideoCreateRecord, owner GrokMediaVideoRequestOwner) error
+}
+
+// GrokMediaImageCreateRepository persists only synchronous image-create
+// intents and replay responses. It must never write video request owners.
+type GrokMediaImageCreateRepository interface {
+	ClaimImageCreate(ctx context.Context, record GrokMediaImageCreateRecord) (*GrokMediaImageCreateRecord, error)
+	BindImageCreateAccount(ctx context.Context, record GrokMediaImageCreateRecord, accountID int64) (int64, error)
+	ReleaseImageCreateAccount(ctx context.Context, record GrokMediaImageCreateRecord, accountID int64) (bool, error)
+	CompleteImageCreate(ctx context.Context, record GrokMediaImageCreateRecord) error
+	DeleteExpired(ctx context.Context, before time.Time, limit int) (int64, error)
+}
+
+type GrokMediaExpiredCleanupStats struct {
+	OwnerDeleted       int64
+	VideoCreateDeleted int64
+	ImageCreateDeleted int64
+	Duration           time.Duration
+}
+
+const (
+	grokMediaBufferedResponseContextKey    = "grok_media_buffered_response"
+	grokMediaUpstreamIdempotencyContextKey = "grok_media_upstream_idempotency_key"
+)
+
+type grokMediaBufferedResponse struct {
+	statusCode int
+	header     http.Header
+	body       []byte
+}
 
 type GrokMediaEndpoint string
 
@@ -38,6 +161,19 @@ func (e GrokMediaEndpoint) RequiresRequestBody() bool {
 
 func (e GrokMediaEndpoint) IsVideoLookupRequest() bool {
 	return e == GrokMediaEndpointVideoStatus || e == GrokMediaEndpointVideoContent
+}
+
+func (e GrokMediaEndpoint) IsVideoGenerationRequest() bool {
+	switch e {
+	case GrokMediaEndpointVideosGenerations, GrokMediaEndpointVideosEdits, GrokMediaEndpointVideosExtensions:
+		return true
+	default:
+		return false
+	}
+}
+
+func (e GrokMediaEndpoint) IsImageGenerationRequest() bool {
+	return e == GrokMediaEndpointImagesGenerations || e == GrokMediaEndpointImagesEdits
 }
 
 func (e GrokMediaEndpoint) IsGenerationRequest() bool {
@@ -269,6 +405,15 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 	}
 }
 
+func grokMediaVideoRequestOwnerCacheKey(requestID string, userID, apiKeyID, groupID int64) string {
+	sessionHash := GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID)
+	if sessionHash == "" {
+		return ""
+	}
+	// This is deliberately not an OpenAI sticky-session key.
+	return fmt.Sprintf("grok-video-owner:v2:%d:%s", groupID, sessionHash)
+}
+
 func GrokMediaVideoRequestSessionHash(requestID string, userID, apiKeyID int64) string {
 	requestID = strings.TrimSpace(requestID)
 	if requestID == "" || userID <= 0 || apiKeyID <= 0 {
@@ -278,25 +423,450 @@ func GrokMediaVideoRequestSessionHash(requestID string, userID, apiKeyID int64) 
 	return "grok-video:" + DeriveSessionHashFromSeed(ownerSeed)
 }
 
+func CanonicalGrokMediaVideoRequestHash(endpoint GrokMediaEndpoint, contentType string, body []byte) (string, error) {
+	if !endpoint.IsVideoGenerationRequest() {
+		return "", fmt.Errorf("grok video create endpoint is invalid")
+	}
+	mediaType := strings.ToLower(strings.TrimSpace(contentType))
+	if parsed, _, err := mime.ParseMediaType(mediaType); err == nil {
+		mediaType = strings.ToLower(parsed)
+	}
+	if mediaType == "" {
+		mediaType = "application/json"
+	}
+
+	canonicalBody := bytes.TrimSpace(body)
+	if strings.HasSuffix(mediaType, "/json") || strings.HasSuffix(mediaType, "+json") {
+		decoder := json.NewDecoder(bytes.NewReader(body))
+		decoder.UseNumber()
+		var value any
+		if err := decoder.Decode(&value); err != nil {
+			return "", fmt.Errorf("decode grok video request for canonical hash: %w", err)
+		}
+		var trailing any
+		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+			if err == nil {
+				return "", fmt.Errorf("decode grok video request for canonical hash: trailing JSON value")
+			}
+			return "", fmt.Errorf("decode grok video request for canonical hash: %w", err)
+		}
+		var err error
+		canonicalBody, err = json.Marshal(value)
+		if err != nil {
+			return "", fmt.Errorf("encode canonical grok video request: %w", err)
+		}
+	}
+
+	sum := sha256.Sum256(bytes.Join([][]byte{
+		[]byte(endpoint),
+		[]byte(mediaType),
+		canonicalBody,
+	}, []byte{'\n'}))
+	return fmt.Sprintf("%x", sum[:]), nil
+}
+
+type grokMediaMultipartHashValue struct {
+	ContentType string `json:"content_type,omitempty"`
+	BodySHA256  string `json:"body_sha256"`
+}
+
+type grokMediaMultipartHashField struct {
+	Name   string                        `json:"name"`
+	Values []grokMediaMultipartHashValue `json:"values"`
+}
+
+// CanonicalGrokMediaImageRequestHash normalizes JSON object ordering and
+// multipart boundaries and cross-field part ordering while hashing uploaded
+// bytes rather than storing them. Client-side temporary filenames are not
+// semantic input and are deliberately excluded. Repeated values for the same
+// field remain in arrival order, preserving multi-image ordering.
+func CanonicalGrokMediaImageRequestHash(endpoint GrokMediaEndpoint, contentType string, body []byte) (string, error) {
+	if !endpoint.IsImageGenerationRequest() {
+		return "", fmt.Errorf("grok image create endpoint is invalid")
+	}
+	mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(contentType))
+	if err != nil {
+		if strings.TrimSpace(contentType) != "" {
+			return "", fmt.Errorf("parse grok image content type: %w", err)
+		}
+		mediaType = "application/json"
+		params = map[string]string{}
+	}
+	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
+	var canonicalBody []byte
+	switch {
+	case strings.HasSuffix(mediaType, "/json") || strings.HasSuffix(mediaType, "+json"):
+		decoder := json.NewDecoder(bytes.NewReader(body))
+		decoder.UseNumber()
+		var value any
+		if err := decoder.Decode(&value); err != nil {
+			return "", fmt.Errorf("decode grok image request for canonical hash: %w", err)
+		}
+		var trailing any
+		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+			return "", fmt.Errorf("decode grok image request for canonical hash: trailing JSON value")
+		}
+		canonicalBody, err = json.Marshal(value)
+		if err != nil {
+			return "", fmt.Errorf("encode canonical grok image request: %w", err)
+		}
+	case mediaType == "multipart/form-data":
+		boundary := strings.TrimSpace(params["boundary"])
+		if boundary == "" {
+			return "", fmt.Errorf("grok image multipart boundary is required")
+		}
+		reader := multipart.NewReader(bytes.NewReader(body), boundary)
+		valuesByField := make(map[string][]grokMediaMultipartHashValue)
+		for {
+			part, partErr := reader.NextPart()
+			if errors.Is(partErr, io.EOF) {
+				break
+			}
+			if partErr != nil {
+				return "", fmt.Errorf("read grok image multipart request: %w", partErr)
+			}
+			partBody, readErr := io.ReadAll(part)
+			_ = part.Close()
+			if readErr != nil {
+				return "", fmt.Errorf("read grok image multipart part: %w", readErr)
+			}
+			partSum := sha256.Sum256(partBody)
+			fieldName := part.FormName()
+			if fieldName == "" {
+				return "", fmt.Errorf("grok image multipart part name is required")
+			}
+			valuesByField[fieldName] = append(valuesByField[fieldName], grokMediaMultipartHashValue{
+				ContentType: strings.ToLower(strings.TrimSpace(part.Header.Get("Content-Type"))),
+				BodySHA256:  fmt.Sprintf("%x", partSum[:]),
+			})
+		}
+		fieldNames := make([]string, 0, len(valuesByField))
+		for fieldName := range valuesByField {
+			fieldNames = append(fieldNames, fieldName)
+		}
+		sort.Strings(fieldNames)
+		fields := make([]grokMediaMultipartHashField, 0, len(fieldNames))
+		for _, fieldName := range fieldNames {
+			fields = append(fields, grokMediaMultipartHashField{Name: fieldName, Values: valuesByField[fieldName]})
+		}
+		canonicalBody, err = json.Marshal(fields)
+		if err != nil {
+			return "", fmt.Errorf("encode canonical grok image multipart request: %w", err)
+		}
+	default:
+		canonicalBody = bytes.TrimSpace(body)
+	}
+	sum := sha256.Sum256(bytes.Join([][]byte{[]byte(endpoint), []byte(mediaType), canonicalBody}, []byte{'\n'}))
+	return fmt.Sprintf("%x", sum[:]), nil
+}
+
+func validGrokMediaIdempotencyKey(key string, maxLen int) bool {
+	if key == "" || len(key) > maxLen {
+		return false
+	}
+	for _, char := range key {
+		if char < 0x21 || char > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
+// ClaimGrokMediaImageCreate is intentionally optional for legacy callers that
+// omit Idempotency-Key. Once a key is present, store unavailability fails
+// closed because forwarding without the durable account binding is unsafe.
+func (s *OpenAIGatewayService) ClaimGrokMediaImageCreate(
+	ctx context.Context,
+	groupID *int64,
+	endpoint GrokMediaEndpoint,
+	idempotencyKey, contentType string,
+	body []byte,
+	userID, apiKeyID int64,
+) (*GrokMediaImageCreateRecord, error) {
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if idempotencyKey == "" {
+		return nil, nil
+	}
+	if !validGrokMediaIdempotencyKey(idempotencyKey, grokMediaImageIdempotencyKeyMaxLen) {
+		return nil, ErrGrokMediaImageIdempotencyKeyInvalid
+	}
+	if s == nil || s.grokMediaImageCreateRepo == nil {
+		return nil, ErrGrokMediaImageIdempotencyUnavailable
+	}
+	requestHash, err := CanonicalGrokMediaImageRequestHash(endpoint, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	keySum := sha256.Sum256([]byte(idempotencyKey))
+	keyHash := fmt.Sprintf("%x", keySum[:])
+	group := derefGroupID(groupID)
+	upstreamSum := sha256.Sum256([]byte(fmt.Sprintf("%d:%d:%d:%s:%s", userID, apiKeyID, group, endpoint, keyHash)))
+	record := GrokMediaImageCreateRecord{
+		UserID:                 userID,
+		APIKeyID:               apiKeyID,
+		GroupID:                group,
+		Endpoint:               endpoint,
+		IdempotencyKeyHash:     keyHash,
+		RequestHash:            requestHash,
+		UpstreamIdempotencyKey: "sub2api-grok-image-" + fmt.Sprintf("%x", upstreamSum[:]),
+		ExpiresAt:              time.Now().Add(grokMediaImageCreateIdempotencyTTL),
+	}
+	claimed, err := s.grokMediaImageCreateRepo.ClaimImageCreate(ctx, record)
+	if err != nil {
+		if errors.Is(err, ErrGrokMediaImageIdempotencyConflict) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %v", ErrGrokMediaImageIdempotencyUnavailable, err)
+	}
+	if claimed == nil || claimed.RequestHash != requestHash || claimed.UpstreamIdempotencyKey != record.UpstreamIdempotencyKey {
+		return nil, ErrGrokMediaImageIdempotencyConflict
+	}
+	return claimed, nil
+}
+
+func (s *OpenAIGatewayService) BindGrokMediaImageCreateAccount(ctx context.Context, record *GrokMediaImageCreateRecord, accountID int64) (int64, error) {
+	if s == nil || s.grokMediaImageCreateRepo == nil || record == nil || accountID <= 0 {
+		return 0, ErrGrokMediaImageIdempotencyUnavailable
+	}
+	boundID, err := s.grokMediaImageCreateRepo.BindImageCreateAccount(ctx, *record, accountID)
+	if err != nil || boundID <= 0 {
+		if err == nil {
+			err = ErrGrokMediaImageIdempotencyUnavailable
+		}
+		return 0, fmt.Errorf("bind grok image create account: %w", err)
+	}
+	record.AccountID = boundID
+	return boundID, nil
+}
+
+func (s *OpenAIGatewayService) ReleaseGrokMediaImageCreateAccount(ctx context.Context, record *GrokMediaImageCreateRecord, accountID int64) error {
+	if s == nil || s.grokMediaImageCreateRepo == nil || record == nil || accountID <= 0 {
+		return ErrGrokMediaImageIdempotencyUnavailable
+	}
+	released, err := s.grokMediaImageCreateRepo.ReleaseImageCreateAccount(ctx, *record, accountID)
+	if err != nil {
+		return fmt.Errorf("release rejected grok image create account: %w", err)
+	}
+	if !released {
+		return ErrGrokMediaImageIdempotencyConflict
+	}
+	record.AccountID = 0
+	return nil
+}
+
+func (s *OpenAIGatewayService) CompleteGrokMediaImageCreate(ctx context.Context, record *GrokMediaImageCreateRecord, accountID int64, statusCode int, contentType string, body []byte) error {
+	if s == nil || s.grokMediaImageCreateRepo == nil || record == nil || accountID <= 0 || statusCode < 200 || statusCode >= 300 || body == nil {
+		return ErrGrokMediaImageIdempotencyUnavailable
+	}
+	completion := *record
+	completion.AccountID = accountID
+	completion.ResponseStatus = statusCode
+	completion.ResponseContentType = strings.TrimSpace(contentType)
+	completion.ResponseBody = append([]byte(nil), body...)
+	if err := s.grokMediaImageCreateRepo.CompleteImageCreate(ctx, completion); err != nil {
+		return fmt.Errorf("complete grok image create idempotency: %w", err)
+	}
+	*record = completion
+	return nil
+}
+
+func WriteGrokMediaImageCreateReplay(c *gin.Context, record *GrokMediaImageCreateRecord) error {
+	if c == nil || c.Writer == nil || c.Writer.Written() || record == nil || !record.Completed() {
+		return fmt.Errorf("grok image idempotent replay is incomplete")
+	}
+	contentType := strings.TrimSpace(record.ResponseContentType)
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	c.Header("Idempotent-Replayed", "true")
+	c.Data(record.ResponseStatus, contentType, append([]byte(nil), record.ResponseBody...))
+	return nil
+}
+
+func (s *OpenAIGatewayService) ClaimGrokMediaVideoCreate(
+	ctx context.Context,
+	groupID *int64,
+	endpoint GrokMediaEndpoint,
+	idempotencyKey, contentType string,
+	body []byte,
+	userID, apiKeyID int64,
+) (*GrokMediaVideoCreateRecord, error) {
+	if s == nil || s.grokMediaVideoOwnerRepo == nil {
+		return nil, ErrGrokMediaVideoIdempotencyUnavailable
+	}
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if idempotencyKey == "" {
+		return nil, ErrGrokMediaVideoIdempotencyKeyRequired
+	}
+	if len(idempotencyKey) > grokMediaVideoIdempotencyKeyMaxLen {
+		return nil, ErrGrokMediaVideoIdempotencyKeyInvalid
+	}
+	for _, char := range idempotencyKey {
+		if char < 0x21 || char > 0x7e {
+			return nil, ErrGrokMediaVideoIdempotencyKeyInvalid
+		}
+	}
+	requestHash, err := CanonicalGrokMediaVideoRequestHash(endpoint, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	keySum := sha256.Sum256([]byte(idempotencyKey))
+	keyHash := fmt.Sprintf("%x", keySum[:])
+	group := derefGroupID(groupID)
+	upstreamSum := sha256.Sum256([]byte(fmt.Sprintf(
+		"%d:%d:%d:%s:%s", userID, apiKeyID, group, endpoint, keyHash,
+	)))
+	record := GrokMediaVideoCreateRecord{
+		UserID:                 userID,
+		APIKeyID:               apiKeyID,
+		GroupID:                group,
+		Endpoint:               endpoint,
+		IdempotencyKeyHash:     keyHash,
+		RequestHash:            requestHash,
+		UpstreamIdempotencyKey: "sub2api-grok-video-" + fmt.Sprintf("%x", upstreamSum[:]),
+		ExpiresAt:              time.Now().Add(grokMediaVideoCreateIdempotencyTTL),
+	}
+	claimed, err := s.grokMediaVideoOwnerRepo.ClaimVideoCreate(ctx, record)
+	if err != nil {
+		if errors.Is(err, ErrGrokMediaVideoIdempotencyConflict) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %v", ErrGrokMediaVideoIdempotencyUnavailable, err)
+	}
+	if claimed == nil || claimed.RequestHash != requestHash || claimed.UpstreamIdempotencyKey != record.UpstreamIdempotencyKey {
+		return nil, ErrGrokMediaVideoIdempotencyConflict
+	}
+	return claimed, nil
+}
+
+func (s *OpenAIGatewayService) BindGrokMediaVideoCreateAccount(
+	ctx context.Context,
+	record *GrokMediaVideoCreateRecord,
+	accountID int64,
+) (int64, error) {
+	if s == nil || s.grokMediaVideoOwnerRepo == nil || record == nil || accountID <= 0 {
+		return 0, ErrGrokMediaVideoIdempotencyUnavailable
+	}
+	boundID, err := s.grokMediaVideoOwnerRepo.BindVideoCreateAccount(ctx, *record, accountID)
+	if err != nil || boundID <= 0 {
+		if err == nil {
+			err = ErrGrokMediaVideoIdempotencyUnavailable
+		}
+		return 0, fmt.Errorf("bind grok video create account: %w", err)
+	}
+	record.AccountID = boundID
+	return boundID, nil
+}
+
+func (s *OpenAIGatewayService) ReleaseGrokMediaVideoCreateAccount(
+	ctx context.Context,
+	record *GrokMediaVideoCreateRecord,
+	accountID int64,
+) error {
+	if s == nil || s.grokMediaVideoOwnerRepo == nil || record == nil || accountID <= 0 {
+		return ErrGrokMediaVideoIdempotencyUnavailable
+	}
+	released, err := s.grokMediaVideoOwnerRepo.ReleaseVideoCreateAccount(ctx, *record, accountID)
+	if err != nil {
+		return fmt.Errorf("release rejected grok video create account: %w", err)
+	}
+	if !released {
+		return ErrGrokMediaVideoIdempotencyConflict
+	}
+	record.AccountID = 0
+	return nil
+}
+
+func (s *OpenAIGatewayService) CompleteGrokMediaVideoCreate(
+	ctx context.Context,
+	record *GrokMediaVideoCreateRecord,
+	requestID string,
+	accountID int64,
+	statusCode int,
+	contentType string,
+	body []byte,
+) error {
+	if s == nil || s.grokMediaVideoOwnerRepo == nil || record == nil || accountID <= 0 || strings.TrimSpace(requestID) == "" || statusCode < 200 || statusCode >= 300 || body == nil {
+		return ErrGrokMediaVideoIdempotencyUnavailable
+	}
+	completion := *record
+	completion.AccountID = accountID
+	completion.RequestID = strings.TrimSpace(requestID)
+	completion.ResponseStatus = statusCode
+	completion.ResponseContentType = strings.TrimSpace(contentType)
+	completion.ResponseBody = append([]byte(nil), body...)
+	owner := GrokMediaVideoRequestOwner{
+		RequestID: completion.RequestID,
+		UserID:    completion.UserID,
+		APIKeyID:  completion.APIKeyID,
+		GroupID:   completion.GroupID,
+		AccountID: accountID,
+		ExpiresAt: time.Now().Add(grokMediaVideoRequestOwnerRecoveryWindow),
+	}
+	if err := s.grokMediaVideoOwnerRepo.CompleteVideoCreate(ctx, completion, owner); err != nil {
+		return fmt.Errorf("complete grok video create idempotency: %w", err)
+	}
+	*record = completion
+	if s.cache != nil {
+		cacheKey := grokMediaVideoRequestOwnerCacheKey(owner.RequestID, owner.UserID, owner.APIKeyID, owner.GroupID)
+		if cacheKey != "" {
+			_ = s.cache.SetSessionAccountID(ctx, owner.GroupID, cacheKey, accountID, grokMediaVideoRequestOwnerRecoveryWindow)
+		}
+	}
+	return nil
+}
+
+func SetGrokMediaUpstreamIdempotencyKey(c *gin.Context, key string) {
+	if c != nil {
+		c.Set(grokMediaUpstreamIdempotencyContextKey, strings.TrimSpace(key))
+	}
+}
+
+func WriteGrokMediaVideoCreateReplay(c *gin.Context, record *GrokMediaVideoCreateRecord) error {
+	if c == nil || c.Writer == nil || c.Writer.Written() || record == nil || !record.Completed() {
+		return fmt.Errorf("grok media idempotent replay is incomplete")
+	}
+	contentType := strings.TrimSpace(record.ResponseContentType)
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	c.Header("Idempotent-Replayed", "true")
+	c.Data(record.ResponseStatus, contentType, append([]byte(nil), record.ResponseBody...))
+	return nil
+}
+
 func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(
 	ctx context.Context,
 	groupID *int64,
 	requestID string,
 	userID, apiKeyID, accountID int64,
 ) error {
-	if s == nil || s.cache == nil {
-		return fmt.Errorf("grok video request binding cache is unavailable")
+	if s == nil || s.grokMediaVideoOwnerRepo == nil {
+		return fmt.Errorf("grok video request owner repository is unavailable")
 	}
-	sessionHash := GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID)
-	cacheKey := s.openAISessionCacheKey(sessionHash)
+	requestID = strings.TrimSpace(requestID)
+	group := derefGroupID(groupID)
+	cacheKey := grokMediaVideoRequestOwnerCacheKey(requestID, userID, apiKeyID, group)
 	if cacheKey == "" || accountID <= 0 {
 		return fmt.Errorf("grok video request binding is invalid")
 	}
-	ttl := openaiStickySessionTTL
-	if s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
-		ttl = time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second
+	owner := GrokMediaVideoRequestOwner{
+		RequestID: requestID,
+		UserID:    userID,
+		APIKeyID:  apiKeyID,
+		GroupID:   group,
+		AccountID: accountID,
+		ExpiresAt: time.Now().Add(grokMediaVideoRequestOwnerRecoveryWindow),
 	}
-	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, accountID, ttl)
+	if err := s.grokMediaVideoOwnerRepo.Bind(ctx, owner); err != nil {
+		return fmt.Errorf("persist grok video request owner binding: %w", err)
+	}
+	if s.cache != nil {
+		// The database commit above is authoritative. Cache failure is therefore
+		// best-effort and cannot turn a persisted paid task into a failed create.
+		_ = s.cache.SetSessionAccountID(ctx, group, cacheKey, accountID, grokMediaVideoRequestOwnerRecoveryWindow)
+	}
+	return nil
 }
 
 func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(
@@ -305,14 +875,153 @@ func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(
 	requestID string,
 	userID, apiKeyID int64,
 ) (int64, error) {
-	if s == nil || s.cache == nil {
-		return 0, fmt.Errorf("grok video request binding cache is unavailable")
+	if s == nil || s.grokMediaVideoOwnerRepo == nil {
+		return 0, fmt.Errorf("grok video request owner repository is unavailable")
 	}
-	cacheKey := s.openAISessionCacheKey(GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID))
+	requestID = strings.TrimSpace(requestID)
+	group := derefGroupID(groupID)
+	cacheKey := grokMediaVideoRequestOwnerCacheKey(requestID, userID, apiKeyID, group)
 	if cacheKey == "" {
 		return 0, fmt.Errorf("grok video request binding is invalid")
 	}
-	return s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+	owner, err := s.grokMediaVideoOwnerRepo.Resolve(
+		ctx, requestID, userID, apiKeyID, group,
+		time.Now().Add(grokMediaVideoRequestOwnerRecoveryWindow),
+	)
+	if err != nil {
+		if errors.Is(err, ErrGrokMediaVideoRequestOwnerNotFound) {
+			return 0, ErrGrokMediaVideoRequestOwnerNotFound
+		}
+		return 0, fmt.Errorf("resolve grok video request owner binding: %w", err)
+	}
+	if owner == nil || owner.AccountID <= 0 {
+		return 0, ErrGrokMediaVideoRequestOwnerNotFound
+	}
+	if s.cache != nil {
+		remaining := time.Until(owner.ExpiresAt)
+		if remaining > 0 {
+			_ = s.cache.SetSessionAccountID(ctx, group, cacheKey, owner.AccountID, remaining)
+		}
+	}
+	return owner.AccountID, nil
+}
+
+// MarkGrokMediaVideoRequestTerminal starts the bounded terminal-retention
+// lifecycle without changing the immutable owner. Cleanup is opportunistic and
+// deletes only rows whose recovery window has already elapsed.
+func (s *OpenAIGatewayService) MarkGrokMediaVideoRequestTerminal(
+	ctx context.Context,
+	groupID *int64,
+	requestID string,
+	userID, apiKeyID int64,
+) error {
+	if s == nil || s.grokMediaVideoOwnerRepo == nil {
+		return fmt.Errorf("grok video request owner repository is unavailable")
+	}
+	requestID = strings.TrimSpace(requestID)
+	group := derefGroupID(groupID)
+	if grokMediaVideoRequestOwnerCacheKey(requestID, userID, apiKeyID, group) == "" {
+		return fmt.Errorf("grok video terminal owner binding is invalid")
+	}
+	now := time.Now().UTC()
+	if err := s.grokMediaVideoOwnerRepo.MarkTerminal(
+		ctx, requestID, userID, apiKeyID, group, now,
+		now.Add(grokMediaVideoTerminalRetention),
+	); err != nil {
+		return fmt.Errorf("mark grok video request owner terminal: %w", err)
+	}
+	s.CleanupGrokMediaExpiredRecords(ctx)
+	return nil
+}
+
+// CleanupGrokMediaExpiredRecords performs one bounded, opportunistic batch for
+// each durable Grok media record type. Repository failures are intentionally
+// reduced to fixed classification fields so response payloads and SQL values
+// can never be reflected into logs or client responses.
+func (s *OpenAIGatewayService) CleanupGrokMediaExpiredRecords(ctx context.Context) GrokMediaExpiredCleanupStats {
+	startedAt := time.Now()
+	now := startedAt.UTC()
+	stats := GrokMediaExpiredCleanupStats{}
+	log := logger.FromContext(ctx)
+	cleanup := func(recordType string, deleteBatch func() (int64, error)) int64 {
+		deleted, err := deleteBatch()
+		if err != nil {
+			log.Warn("grok_media.expired_cleanup_failed",
+				zap.String("record_type", recordType),
+				zap.String("failure", "repository_error"),
+			)
+			return 0
+		}
+		return deleted
+	}
+	if s != nil && s.grokMediaVideoOwnerRepo != nil {
+		stats.OwnerDeleted = cleanup("video_owner", func() (int64, error) {
+			return s.grokMediaVideoOwnerRepo.DeleteExpired(ctx, now, grokMediaExpiredCleanupBatchSize)
+		})
+		stats.VideoCreateDeleted = cleanup("video_create", func() (int64, error) {
+			return s.grokMediaVideoOwnerRepo.DeleteExpiredVideoCreates(ctx, now, grokMediaExpiredCleanupBatchSize)
+		})
+	}
+	if s != nil && s.grokMediaImageCreateRepo != nil {
+		stats.ImageCreateDeleted = cleanup("image_create", func() (int64, error) {
+			return s.grokMediaImageCreateRepo.DeleteExpired(ctx, now, grokMediaExpiredCleanupBatchSize)
+		})
+	}
+	stats.Duration = time.Since(startedAt)
+	log.Info("grok_media.expired_cleanup_completed",
+		zap.Int64("owner_deleted", stats.OwnerDeleted),
+		zap.Int64("video_create_deleted", stats.VideoCreateDeleted),
+		zap.Int64("image_create_deleted", stats.ImageCreateDeleted),
+		zap.Duration("duration", stats.Duration),
+	)
+	return stats
+}
+
+// SelectGrokMediaVideoRequestOwner strictly acquires the account that created
+// an asynchronous video request. It bypasses the general scheduler so health
+// scores, TTFT, error rate, and spare capacity cannot move a lookup.
+func (s *OpenAIGatewayService) SelectGrokMediaVideoRequestOwner(
+	ctx context.Context,
+	groupID *int64,
+	accountID int64,
+) (*AccountSelectionResult, error) {
+	if s == nil || s.accountRepo == nil || accountID <= 0 {
+		return nil, ErrGrokMediaVideoRequestOwnerUnavailable
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return nil, fmt.Errorf("%w: account %d", ErrGrokMediaVideoRequestOwnerUnavailable, accountID)
+	}
+	if !s.openAIAccountMatchesSchedulingGroup(account, groupID) ||
+		normalizeOpenAICompatiblePlatform(account.Platform) != PlatformGrok ||
+		!account.IsSchedulable() {
+		return nil, fmt.Errorf("%w: account %d", ErrGrokMediaVideoRequestOwnerUnavailable, accountID)
+	}
+
+	maxConcurrency := account.SchedulingSlotConcurrency()
+	result, err := s.tryAcquireAccountSlot(ctx, account.ID, maxConcurrency)
+	if err != nil {
+		return nil, fmt.Errorf("%w: acquire account %d: %v", ErrGrokMediaVideoRequestOwnerUnavailable, accountID, err)
+	}
+	if result != nil && result.Acquired {
+		return &AccountSelectionResult{
+			Account:     account,
+			Acquired:    true,
+			ReleaseFunc: result.ReleaseFunc,
+		}, nil
+	}
+
+	cfg := s.schedulingConfig()
+	return &AccountSelectionResult{
+		Account:  account,
+		Acquired: false,
+		WaitPlan: &AccountWaitPlan{
+			AccountID:      account.ID,
+			MaxConcurrency: maxConcurrency,
+			Timeout:        cfg.StickySessionWaitTimeout,
+			MaxWaiting:     cfg.StickySessionMaxWaiting,
+		},
+	}, nil
 }
 
 func (s *OpenAIGatewayService) ForwardGrokMedia(
@@ -394,6 +1103,16 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	}
 	// 账号级请求头覆写最后应用，配置值优先于内置默认头。
 	account.ApplyHeaderOverrides(upstreamReq.Header)
+	if endpoint.IsGenerationRequest() && c != nil {
+		if value, ok := c.Get(grokMediaUpstreamIdempotencyContextKey); ok {
+			if idempotencyKey, ok := value.(string); ok && strings.TrimSpace(idempotencyKey) != "" {
+				// The durable, scope-derived key must win over account header
+				// overrides. Replaying it against the persisted account closes
+				// the upstream-accepted/local-response-lost crash gap.
+				upstreamReq.Header.Set("Idempotency-Key", strings.TrimSpace(idempotencyKey))
+			}
+		}
+	}
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -428,6 +1147,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 			}
 		}
 	}
+	grokMediaVideoTerminal := endpoint == GrokMediaEndpointVideoStatus && grokMediaVideoStatusTerminal(respBody)
 	if endpoint == GrokMediaEndpointVideoStatus {
 		respBody = rewriteGrokMediaVideoContentURLs(
 			respBody,
@@ -435,25 +1155,61 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 			grokMediaContentProxyURL(c, requestID),
 		)
 	}
-	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
 	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
+	if endpoint.IsVideoGenerationRequest() {
+		if strings.TrimSpace(usage.ResponseID) == "" {
+			setOpsUpstreamError(c, http.StatusBadGateway, "xAI upstream returned no video request id", truncateString(string(respBody), 512))
+			return nil, &UpstreamFailoverError{
+				StatusCode:      http.StatusBadGateway,
+				ResponseBody:    respBody,
+				ResponseHeaders: resp.Header.Clone(),
+			}
+		}
+	}
+	if endpoint.IsVideoGenerationRequest() || (endpoint.IsImageGenerationRequest() && hasGrokMediaUpstreamIdempotencyKey(c)) {
+		bufferGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
+	} else {
+		writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
+	}
 	return &OpenAIForwardResult{
-		RequestID:            requestIDHeader,
-		ResponseID:           usage.ResponseID,
-		Usage:                usage.Usage,
-		Model:                requestModel,
-		BillingModel:         requestModel,
-		UpstreamModel:        upstreamModel,
-		ResponseHeaders:      resp.Header.Clone(),
-		Duration:             time.Since(startTime),
-		ImageCount:           usage.ImageCount,
-		ImageSize:            usage.ImageSize,
-		ImageInputSize:       usage.ImageInputSize,
-		ImageOutputSizes:     usage.ImageOutputSizes,
-		VideoCount:           usage.VideoCount,
-		VideoResolution:      usage.VideoResolution,
-		VideoDurationSeconds: usage.VideoDurationSeconds,
+		RequestID:              requestIDHeader,
+		ResponseID:             usage.ResponseID,
+		Usage:                  usage.Usage,
+		Model:                  requestModel,
+		BillingModel:           requestModel,
+		UpstreamModel:          upstreamModel,
+		ResponseHeaders:        resp.Header.Clone(),
+		Duration:               time.Since(startTime),
+		ImageCount:             usage.ImageCount,
+		ImageSize:              usage.ImageSize,
+		ImageInputSize:         usage.ImageInputSize,
+		ImageOutputSizes:       usage.ImageOutputSizes,
+		VideoCount:             usage.VideoCount,
+		VideoResolution:        usage.VideoResolution,
+		GrokMediaVideoTerminal: grokMediaVideoTerminal,
+		VideoDurationSeconds:   usage.VideoDurationSeconds,
 	}, nil
+}
+
+func hasGrokMediaUpstreamIdempotencyKey(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	value, ok := c.Get(grokMediaUpstreamIdempotencyContextKey)
+	if !ok {
+		return false
+	}
+	key, ok := value.(string)
+	return ok && strings.TrimSpace(key) != ""
+}
+
+func grokMediaVideoStatusTerminal(body []byte) bool {
+	switch strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "status").String())) {
+	case "completed", "succeeded", "success", "done", "failed", "error", "cancelled", "canceled":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
@@ -569,9 +1325,10 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		return nil, err
 	}
 	return &OpenAIForwardResult{
-		RequestID:       contentRequestID,
-		ResponseHeaders: contentResp.Header.Clone(),
-		Duration:        time.Since(startTime),
+		RequestID:              contentRequestID,
+		ResponseHeaders:        contentResp.Header.Clone(),
+		Duration:               time.Since(startTime),
+		GrokMediaVideoTerminal: true,
 	}, nil
 }
 
@@ -960,6 +1717,60 @@ func writeGrokMediaResponse(c *gin.Context, resp *http.Response, body []byte, fi
 		contentType = "application/json"
 	}
 	c.Data(resp.StatusCode, contentType, body)
+}
+
+func bufferGrokMediaResponse(c *gin.Context, resp *http.Response, body []byte, filter *responseheaders.CompiledHeaderFilter) {
+	if c == nil || resp == nil {
+		return
+	}
+	header := make(http.Header)
+	writeOpenAIPassthroughResponseHeaders(header, resp.Header, filter)
+	c.Set(grokMediaBufferedResponseContextKey, &grokMediaBufferedResponse{
+		statusCode: resp.StatusCode,
+		header:     header,
+		body:       append([]byte(nil), body...),
+	})
+}
+
+// CommitBufferedGrokMediaResponse writes a successful asynchronous-video
+// create response only after its durable owner binding has committed.
+func CommitBufferedGrokMediaResponse(c *gin.Context) error {
+	if c == nil || c.Writer == nil || c.Writer.Written() {
+		return fmt.Errorf("grok media response cannot be committed")
+	}
+	value, ok := c.Get(grokMediaBufferedResponseContextKey)
+	buffered, ok := value.(*grokMediaBufferedResponse)
+	if !ok || buffered == nil {
+		return fmt.Errorf("grok media buffered response is missing")
+	}
+	for name, values := range buffered.header {
+		for _, value := range values {
+			c.Writer.Header().Add(name, value)
+		}
+	}
+	contentType := strings.TrimSpace(buffered.header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	c.Set(grokMediaBufferedResponseContextKey, nil)
+	c.Data(buffered.statusCode, contentType, buffered.body)
+	return nil
+}
+
+func BufferedGrokMediaResponse(c *gin.Context) (int, string, []byte, error) {
+	if c == nil {
+		return 0, "", nil, fmt.Errorf("grok media buffered response is missing")
+	}
+	value, ok := c.Get(grokMediaBufferedResponseContextKey)
+	buffered, ok := value.(*grokMediaBufferedResponse)
+	if !ok || buffered == nil {
+		return 0, "", nil, fmt.Errorf("grok media buffered response is missing")
+	}
+	contentType := strings.TrimSpace(buffered.header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	return buffered.statusCode, contentType, append([]byte(nil), buffered.body...), nil
 }
 
 func writeGrokMediaContentResponse(c *gin.Context, resp *http.Response) error {

@@ -1398,7 +1398,7 @@ func TestGrokMediaVideoRequestBindingIsScopedToUserAndAPIKey(t *testing.T) {
 	c.Request.Header.Set("session_id", "shared-client-session")
 	groupID := int64(7)
 	cache := &stubGatewayCache{}
-	svc := &OpenAIGatewayService{cache: cache}
+	svc := &OpenAIGatewayService{cache: cache, grokMediaVideoOwnerRepo: &grokVideoOwnerRepoStub{}}
 	const userID int64 = 41
 	const apiKeyID int64 = 51
 	require.NotEmpty(t, svc.GenerateExplicitSessionHash(c, nil))

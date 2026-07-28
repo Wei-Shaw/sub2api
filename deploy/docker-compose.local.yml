@@ -19,14 +19,26 @@
 #   4. docker-compose -f docker-compose.local.yml up -d
 # =============================================================================
 
+name: sub2api-prod
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "10"
+    compress: "true"
+
 services:
   # ===========================================================================
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api:latest
+    image: ${SUB2API_IMAGE:?SUB2API_IMAGE must be an immutable digest reference}
     container_name: sub2api
     restart: unless-stopped
+    logging: *default-logging
+    labels:
+      org.opencontainers.image.revision: ${SUB2API_RELEASE_COMMIT:?SUB2API_RELEASE_COMMIT is required}
     ulimits:
       nofile:
         soft: 100000
@@ -194,9 +206,10 @@ services:
   # PostgreSQL Database
   # ===========================================================================
   postgres:
-    image: postgres:18-alpine
+    image: ${POSTGRES_IMAGE:?POSTGRES_IMAGE must be an immutable digest reference}
     container_name: sub2api-postgres
     restart: unless-stopped
+    logging: *default-logging
     ulimits:
       nofile:
         soft: 100000
@@ -225,9 +238,10 @@ services:
   # Redis Cache
   # ===========================================================================
   redis:
-    image: redis:8-alpine
+    image: ${REDIS_IMAGE:?REDIS_IMAGE must be an immutable digest reference}
     container_name: sub2api-redis
     restart: unless-stopped
+    logging: *default-logging
     ulimits:
       nofile:
         soft: 100000

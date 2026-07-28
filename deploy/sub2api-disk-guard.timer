@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Sub2API production disk guard every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=sub2api-disk-guard.service
+
+[Install]
+WantedBy=timers.target
+

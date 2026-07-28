@@ -380,19 +380,23 @@ type OllamaCloudUsageService struct {
 	encryptor               SecretEncryptor
 	encryptionKeyConfigured bool
 
-	parentCtx    context.Context
-	parentCancel context.CancelFunc
-	wg           sync.WaitGroup
-	mu           sync.Mutex
-	started      bool
-	stopped      bool
-	cycleMu      sync.Mutex
-	refreshGroup singleflight.Group
-	refreshSlots chan struct{}
-	now          func() time.Time
-	lockCache    LeaderLockCache
-	db           *sql.DB
-	instanceID   string
+	parentCtx        context.Context
+	parentCancel     context.CancelFunc
+	wg               sync.WaitGroup
+	mu               sync.Mutex
+	started          bool
+	stopped          bool
+	cycleMu          sync.Mutex
+	refreshGroup     singleflight.Group
+	refreshSlots     chan struct{}
+	refreshStateMu   sync.Mutex
+	refreshSequence  uint64
+	refreshExecuting map[string]int
+	refreshCompleted map[string]uint64
+	now              func() time.Time
+	lockCache        LeaderLockCache
+	db               *sql.DB
+	instanceID       string
 }
 
 func NewOllamaCloudUsageService(
@@ -776,6 +780,7 @@ func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID 
 	}
 	intervalMinutes := settings.IntervalMinutes
 	debounce, maxWait := ollamaCloudUsageDurations(settings)
+	refreshStarted := s.beginRefreshRequest()
 	anchor, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -784,7 +789,21 @@ func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID 
 	if !valid {
 		return nil, ErrOllamaCloudUsageAccountInvalid
 	}
+	initialSnapshot := decodeOllamaCloudUsageSnapshot(anchor.Extra)
+	if !requireEnabled && initialSnapshot != nil && !initialSnapshot.LastAttemptAt.IsZero() && !s.refreshOverlapped(key, refreshStarted) {
+		retryAt := initialSnapshot.LastAttemptAt.Add(ollamaCloudUsageManualRefreshInterval)
+		if now := s.currentTime(); now.Before(retryAt) {
+			remaining := retryAt.Sub(now)
+			seconds := int((remaining + time.Second - 1) / time.Second)
+			return nil, ErrOllamaCloudUsageRefreshRateLimited.WithMetadata(map[string]string{
+				"retry_after_seconds": strconv.Itoa(seconds),
+			})
+		}
+	}
 	value, err, _ := s.refreshGroup.Do(key, func() (any, error) {
+		s.beginRefreshExecution(key)
+		completed := false
+		defer func() { s.endRefreshExecution(key, completed) }()
 		select {
 		case s.refreshSlots <- struct{}{}:
 			defer func() { <-s.refreshSlots }()
@@ -809,15 +828,9 @@ func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID 
 			return nil, ErrOllamaCloudUsageSessionRequired
 		}
 		if !requireEnabled {
-			if snapshot := decodeOllamaCloudUsageSnapshot(account.Extra); snapshot != nil && !snapshot.LastAttemptAt.IsZero() {
-				retryAt := snapshot.LastAttemptAt.Add(ollamaCloudUsageManualRefreshInterval)
-				if now := s.currentTime(); now.Before(retryAt) {
-					remaining := retryAt.Sub(now)
-					seconds := int((remaining + time.Second - 1) / time.Second)
-					return nil, ErrOllamaCloudUsageRefreshRateLimited.WithMetadata(map[string]string{
-						"retry_after_seconds": strconv.Itoa(seconds),
-					})
-				}
+			latestSnapshot := decodeOllamaCloudUsageSnapshot(account.Extra)
+			if latestSnapshot != nil && (initialSnapshot == nil || latestSnapshot.LastAttemptAt.After(initialSnapshot.LastAttemptAt) || s.refreshCompletedAfter(key, refreshStarted)) {
+				return latestSnapshot, nil
 			}
 		}
 		if requireEnabled {
@@ -842,7 +855,9 @@ func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID 
 				return nil, nil
 			}
 		}
-		return s.refreshLoadedAccount(ctx, account, intervalMinutes)
+		snapshot, refreshErr := s.refreshLoadedAccount(ctx, account, intervalMinutes)
+		completed = snapshot != nil
+		return snapshot, refreshErr
 	})
 	if err != nil || value == nil {
 		return nil, err
@@ -852,6 +867,52 @@ func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID 
 		return nil, fmt.Errorf("invalid Ollama Cloud usage refresh result")
 	}
 	return snapshot, nil
+}
+
+func (s *OllamaCloudUsageService) beginRefreshRequest() uint64 {
+	s.refreshStateMu.Lock()
+	defer s.refreshStateMu.Unlock()
+	s.refreshSequence++
+	return s.refreshSequence
+}
+
+func (s *OllamaCloudUsageService) beginRefreshExecution(key string) {
+	s.refreshStateMu.Lock()
+	defer s.refreshStateMu.Unlock()
+	if s.refreshExecuting == nil {
+		s.refreshExecuting = make(map[string]int)
+	}
+	s.refreshExecuting[key]++
+}
+
+func (s *OllamaCloudUsageService) endRefreshExecution(key string, completed bool) {
+	s.refreshStateMu.Lock()
+	defer s.refreshStateMu.Unlock()
+	if s.refreshExecuting[key] <= 1 {
+		delete(s.refreshExecuting, key)
+	} else {
+		s.refreshExecuting[key]--
+	}
+	if !completed {
+		return
+	}
+	if s.refreshCompleted == nil {
+		s.refreshCompleted = make(map[string]uint64)
+	}
+	s.refreshSequence++
+	s.refreshCompleted[key] = s.refreshSequence
+}
+
+func (s *OllamaCloudUsageService) refreshOverlapped(key string, started uint64) bool {
+	s.refreshStateMu.Lock()
+	defer s.refreshStateMu.Unlock()
+	return s.refreshExecuting[key] > 0 || s.refreshCompleted[key] > started
+}
+
+func (s *OllamaCloudUsageService) refreshCompletedAfter(key string, started uint64) bool {
+	s.refreshStateMu.Lock()
+	defer s.refreshStateMu.Unlock()
+	return s.refreshCompleted[key] > started
 }
 
 func (s *OllamaCloudUsageService) refreshLoadedAccount(ctx context.Context, account *Account, intervalMinutes int) (*OllamaCloudUsageSnapshot, error) {

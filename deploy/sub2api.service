@@ -9,7 +9,9 @@ Type=simple
 User=sub2api
 Group=sub2api
 WorkingDirectory=/opt/sub2api
-ExecStart=/opt/sub2api/sub2api
+# /opt/sub2api/current is an atomic symlink to a digest-verified immutable
+# binary below /opt/sub2api/releases/<commit>/.
+ExecStart=/opt/sub2api/current
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -21,7 +23,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/opt/sub2api
+ReadWritePaths=/opt/sub2api/data
 
 # Environment - Server configuration
 # Modify these values to change listen address and port

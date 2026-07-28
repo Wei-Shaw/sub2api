@@ -114,6 +114,8 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	setOpsRequestContext(c, requestModel, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
 
+	var videoCreateRecord *service.GrokMediaVideoCreateRecord
+	var imageCreateRecord *service.GrokMediaImageCreateRecord
 	if endpoint.IsGenerationRequest() {
 		if !service.GroupAllowsImageGeneration(apiKey.Group) {
 			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
@@ -125,6 +127,81 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				h.openAISecurityAuditError(c, decision)
 				return
 			}
+		}
+		if endpoint.IsImageGenerationRequest() {
+			imageCreateRecord, err = h.gatewayService.ClaimGrokMediaImageCreate(
+				c.Request.Context(), apiKey.GroupID, endpoint, c.GetHeader("Idempotency-Key"), contentType,
+				body, subject.UserID, apiKey.ID,
+			)
+			switch {
+			case errors.Is(err, service.ErrGrokMediaImageIdempotencyKeyInvalid):
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Idempotency-Key is invalid")
+				return
+			case errors.Is(err, service.ErrGrokMediaImageIdempotencyConflict):
+				h.errorResponse(c, http.StatusConflict, "idempotency_conflict", "Idempotency-Key was already used with a different image request")
+				return
+			case err != nil:
+				reqLog.Warn("grok_media.image_create_idempotency_claim_failed", zap.Error(err))
+				if !errors.Is(err, service.ErrGrokMediaImageIdempotencyUnavailable) {
+					h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Image request cannot be canonicalized")
+				} else {
+					h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Image idempotency store temporarily unavailable")
+				}
+				return
+			}
+			if imageCreateRecord != nil && imageCreateRecord.Completed() {
+				if replayErr := service.WriteGrokMediaImageCreateReplay(c, imageCreateRecord); replayErr != nil {
+					reqLog.Warn("grok_media.image_create_idempotency_replay_failed", zap.Error(replayErr))
+					h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Image idempotency replay temporarily unavailable")
+				}
+				return
+			}
+			if imageCreateRecord != nil {
+				service.SetGrokMediaUpstreamIdempotencyKey(c, imageCreateRecord.UpstreamIdempotencyKey)
+			}
+		} else if endpoint.IsVideoGenerationRequest() {
+			videoCreateRecord, err = h.gatewayService.ClaimGrokMediaVideoCreate(
+				c.Request.Context(), apiKey.GroupID, endpoint, c.GetHeader("Idempotency-Key"), contentType,
+				body, subject.UserID, apiKey.ID,
+			)
+			switch {
+			case errors.Is(err, service.ErrGrokMediaVideoIdempotencyKeyRequired):
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Idempotency-Key is required for video creation")
+				return
+			case errors.Is(err, service.ErrGrokMediaVideoIdempotencyKeyInvalid):
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Idempotency-Key is invalid")
+				return
+			case errors.Is(err, service.ErrGrokMediaVideoIdempotencyConflict):
+				h.errorResponse(c, http.StatusConflict, "idempotency_conflict", "Idempotency-Key was already used with a different video request")
+				return
+			case err != nil:
+				reqLog.Warn("grok_media.video_create_idempotency_claim_failed", zap.Error(err))
+				if !errors.Is(err, service.ErrGrokMediaVideoIdempotencyUnavailable) {
+					h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Video request cannot be canonicalized")
+				} else {
+					h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Video idempotency store temporarily unavailable")
+				}
+				return
+			}
+			if videoCreateRecord.Completed() {
+				replayBindingCtx, replayBindingCancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 5*time.Second)
+				replayBindingErr := h.gatewayService.BindGrokMediaVideoRequestAccount(
+					replayBindingCtx, apiKey.GroupID, videoCreateRecord.RequestID,
+					subject.UserID, apiKey.ID, videoCreateRecord.AccountID,
+				)
+				replayBindingCancel()
+				if replayBindingErr != nil {
+					reqLog.Warn("grok_media.video_create_idempotency_replay_owner_refresh_failed", zap.Error(replayBindingErr))
+					h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Video idempotency owner refresh temporarily unavailable")
+					return
+				}
+				if replayErr := service.WriteGrokMediaVideoCreateReplay(c, videoCreateRecord); replayErr != nil {
+					reqLog.Warn("grok_media.video_create_idempotency_replay_failed", zap.Error(replayErr))
+					h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Video idempotency replay temporarily unavailable")
+				}
+				return
+			}
+			service.SetGrokMediaUpstreamIdempotencyKey(c, videoCreateRecord.UpstreamIdempotencyKey)
 		}
 		imageReleaseFunc, acquired := h.acquireImageGenerationSlot(c, streamStarted)
 		if !acquired {
@@ -166,14 +243,25 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	}
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, sessionSeed)
 	boundLookupAccountID := int64(0)
+	boundCreateAccountID := int64(0)
+	if videoCreateRecord != nil {
+		boundCreateAccountID = videoCreateRecord.AccountID
+	} else if imageCreateRecord != nil {
+		boundCreateAccountID = imageCreateRecord.AccountID
+	}
 	if endpoint.IsVideoLookupRequest() {
-		sessionHash = service.GrokMediaVideoRequestSessionHash(requestID, subject.UserID, apiKey.ID)
+		sessionHash = ""
 		boundLookupAccountID, err = h.gatewayService.ResolveGrokMediaVideoRequestAccount(
 			c.Request.Context(), apiKey.GroupID, requestID, subject.UserID, apiKey.ID,
 		)
-		if err != nil || boundLookupAccountID <= 0 {
+		if errors.Is(err, service.ErrGrokMediaVideoRequestOwnerNotFound) || (err == nil && boundLookupAccountID <= 0) {
 			reqLog.Info("grok_media.video_lookup_owner_binding_missing", zap.Error(err))
 			h.errorResponse(c, http.StatusNotFound, "not_found_error", "Video request not found")
+			return
+		}
+		if err != nil {
+			reqLog.Warn("grok_media.video_lookup_owner_binding_unavailable", zap.Error(err))
+			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Video request owner lookup temporarily unavailable")
 			return
 		}
 	}
@@ -195,20 +283,40 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		if failoverClientGone(c) {
 			return
 		}
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-			requestCtx,
-			apiKey.GroupID,
-			"",
-			sessionHash,
-			routingModel,
-			failedAccountIDs,
-			service.OpenAIUpstreamTransportHTTPSSE,
-			requiredCapability,
-			false,
-			false,
-			false,
-			service.PlatformGrok,
-		)
+		var selection *service.AccountSelectionResult
+		var scheduleDecision service.OpenAIAccountScheduleDecision
+		requiresBoundAccount := endpoint.IsVideoLookupRequest() || boundCreateAccountID > 0
+		if requiresBoundAccount {
+			boundAccountID := boundLookupAccountID
+			if boundCreateAccountID > 0 {
+				boundAccountID = boundCreateAccountID
+			}
+			selection, err = h.gatewayService.SelectGrokMediaVideoRequestOwner(
+				requestCtx,
+				apiKey.GroupID,
+				boundAccountID,
+			)
+		} else {
+			selection, scheduleDecision, err = h.gatewayService.SelectAccountWithSchedulerForCapability(
+				requestCtx,
+				apiKey.GroupID,
+				"",
+				sessionHash,
+				routingModel,
+				failedAccountIDs,
+				service.OpenAIUpstreamTransportHTTPSSE,
+				requiredCapability,
+				false,
+				false,
+				false,
+				service.PlatformGrok,
+			)
+		}
+		if err != nil && requiresBoundAccount {
+			reqLog.Warn("grok_media.bound_account_unavailable", zap.Error(err))
+			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Persisted media account temporarily unavailable")
+			return
+		}
 		if err != nil {
 			if failoverClientGone(c) {
 				reqLog.Info("grok_media.account_select_aborted_client_disconnected", zap.Error(err))
@@ -252,12 +360,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
 			return
 		}
-		if boundLookupAccountID > 0 && selection.Account.ID != boundLookupAccountID {
+		expectedBoundAccountID := boundLookupAccountID
+		if boundCreateAccountID > 0 {
+			expectedBoundAccountID = boundCreateAccountID
+		}
+		if releaseMismatchedGrokMediaVideoOwner(selection, expectedBoundAccountID) {
 			reqLog.Warn("grok_media.video_lookup_bound_account_unavailable",
-				zap.Int64("bound_account_id", boundLookupAccountID),
+				zap.Int64("bound_account_id", expectedBoundAccountID),
 				zap.Int64("selected_account_id", selection.Account.ID),
 			)
-			h.errorResponse(c, http.StatusNotFound, "not_found_error", "Video request not found")
+			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Video request owner account mismatch")
 			return
 		}
 
@@ -271,7 +383,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		)
 
 		account := selection.Account
-		if endpoint.IsGenerationRequest() {
+		if endpoint.IsGenerationRequest() && boundCreateAccountID == 0 {
 			eligible, eligibilityReason, eligibilityErr := h.ensureGrokMediaAccountEligibility(requestCtx, account)
 			if !eligible {
 				mediaEligibilityRejected = true
@@ -296,6 +408,49 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		accountReleaseFunc, accountAcquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
 		if !accountAcquired {
 			return
+		}
+		if videoCreateRecord != nil {
+			persistedAccountID, bindErr := h.gatewayService.BindGrokMediaVideoCreateAccount(requestCtx, videoCreateRecord, account.ID)
+			if bindErr != nil {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				reqLog.Warn("grok_media.bind_video_create_account_failed", zap.Error(bindErr))
+				h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Video idempotency account persistence temporarily unavailable")
+				return
+			}
+			boundCreateAccountID = persistedAccountID
+			if persistedAccountID != account.ID {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				reqLog.Info("grok_media.video_create_account_claim_already_bound",
+					zap.Int64("selected_account_id", account.ID),
+					zap.Int64("bound_account_id", persistedAccountID),
+				)
+				continue
+			}
+		} else if imageCreateRecord != nil {
+			persistedAccountID, bindErr := h.gatewayService.BindGrokMediaImageCreateAccount(requestCtx, imageCreateRecord, account.ID)
+			if bindErr != nil {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				reqLog.Warn("grok_media.bind_image_create_account_failed", zap.Error(bindErr))
+				h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Image idempotency account persistence temporarily unavailable")
+				return
+			}
+			boundCreateAccountID = persistedAccountID
+			if persistedAccountID != account.ID {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				reqLog.Info("grok_media.image_create_account_claim_already_bound",
+					zap.Int64("selected_account_id", account.ID),
+					zap.Int64("bound_account_id", persistedAccountID),
+				)
+				continue
+			}
 		}
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
@@ -361,6 +516,24 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 						continue
 					}
 				}
+				if boundCreateAccountID > 0 {
+					if !grokVideoCreateAccountRebindSafe(failoverErr) {
+						h.handleFailoverExhausted(c, failoverErr, false)
+						return
+					}
+					var releaseErr error
+					if videoCreateRecord != nil {
+						releaseErr = h.gatewayService.ReleaseGrokMediaVideoCreateAccount(requestCtx, videoCreateRecord, account.ID)
+					} else if imageCreateRecord != nil {
+						releaseErr = h.gatewayService.ReleaseGrokMediaImageCreateAccount(requestCtx, imageCreateRecord, account.ID)
+					}
+					if releaseErr != nil {
+						reqLog.Warn("grok_media.release_rejected_create_account_failed", zap.Error(releaseErr))
+						h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Media idempotency account recovery temporarily unavailable")
+						return
+					}
+					boundCreateAccountID = 0
+				}
 				h.gatewayService.RecordOpenAIAccountSwitch()
 				failedAccountIDs[account.ID] = struct{}{}
 				lastFailoverErr = failoverErr
@@ -393,15 +566,63 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 
 		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, grokMediaScheduleModel(account, routingModel, result), true, nil)
-		if endpoint.IsGenerationRequest() && strings.TrimSpace(result.ResponseID) != "" {
-			if err := h.gatewayService.BindGrokMediaVideoRequestAccount(
-				requestCtx, apiKey.GroupID, result.ResponseID, subject.UserID, apiKey.ID, account.ID,
-			); err != nil {
+		if endpoint.IsVideoGenerationRequest() {
+			statusCode, responseContentType, responseBody, bufferedErr := service.BufferedGrokMediaResponse(c)
+			if bufferedErr != nil {
+				reqLog.Warn("grok_media.read_buffered_video_create_response_failed", zap.Error(bufferedErr))
+				h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Video create response persistence temporarily unavailable")
+				return
+			}
+			bindingCtx, bindingCancel := context.WithTimeout(context.WithoutCancel(requestCtx), 5*time.Second)
+			bindErr := h.gatewayService.CompleteGrokMediaVideoCreate(
+				bindingCtx, videoCreateRecord, result.ResponseID, account.ID,
+				statusCode, responseContentType, responseBody,
+			)
+			bindingCancel()
+			if bindErr != nil {
 				reqLog.Warn("grok_media.bind_video_request_account_failed",
 					zap.Int64("account_id", account.ID),
 					zap.String("request_id", result.ResponseID),
-					zap.Error(err),
+					zap.Error(bindErr),
 				)
+				h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Video request owner persistence temporarily unavailable")
+				return
+			}
+			if commitErr := service.CommitBufferedGrokMediaResponse(c); commitErr != nil {
+				reqLog.Warn("grok_media.commit_buffered_response_failed", zap.Error(commitErr))
+				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to write video create response")
+				return
+			}
+		} else if imageCreateRecord != nil {
+			statusCode, responseContentType, responseBody, bufferedErr := service.BufferedGrokMediaResponse(c)
+			if bufferedErr != nil {
+				reqLog.Warn("grok_media.read_buffered_image_create_response_failed", zap.Error(bufferedErr))
+				h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Image create response persistence temporarily unavailable")
+				return
+			}
+			completionCtx, completionCancel := context.WithTimeout(context.WithoutCancel(requestCtx), 5*time.Second)
+			completionErr := h.gatewayService.CompleteGrokMediaImageCreate(
+				completionCtx, imageCreateRecord, account.ID, statusCode, responseContentType, responseBody,
+			)
+			completionCancel()
+			if completionErr != nil {
+				reqLog.Warn("grok_media.complete_image_create_idempotency_failed", zap.Int64("account_id", account.ID), zap.Error(completionErr))
+				h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Image idempotency response persistence temporarily unavailable")
+				return
+			}
+			if commitErr := service.CommitBufferedGrokMediaResponse(c); commitErr != nil {
+				reqLog.Warn("grok_media.commit_buffered_image_response_failed", zap.Error(commitErr))
+				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to write image create response")
+				return
+			}
+		}
+		if endpoint.IsVideoLookupRequest() && result.GrokMediaVideoTerminal {
+			if terminalErr := h.retainGrokMediaVideoTerminalOwner(
+				requestCtx, endpoint, result, apiKey.GroupID, requestID, subject.UserID, apiKey.ID,
+			); terminalErr != nil {
+				// The upstream response has already been served. Retention metadata is
+				// best-effort here and must never trigger account fallback or replace it.
+				reqLog.Warn("grok_media.video_terminal_owner_retention_failed", zap.Error(terminalErr))
 			}
 		}
 		if shouldRecordGrokMediaUsage(endpoint, requestModel) {
@@ -412,6 +633,53 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			zap.Int("switch_count", switchCount),
 		)
 		return
+	}
+}
+
+func (h *OpenAIGatewayHandler) retainGrokMediaVideoTerminalOwner(
+	ctx context.Context,
+	endpoint service.GrokMediaEndpoint,
+	result *service.OpenAIForwardResult,
+	groupID *int64,
+	requestID string,
+	userID, apiKeyID int64,
+) error {
+	if !endpoint.IsVideoLookupRequest() || result == nil || !result.GrokMediaVideoTerminal {
+		return nil
+	}
+	if h == nil || h.gatewayService == nil {
+		return errors.New("grok media video terminal owner service is unavailable")
+	}
+	terminalCtx, terminalCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer terminalCancel()
+	return h.gatewayService.MarkGrokMediaVideoRequestTerminal(
+		terminalCtx, groupID, requestID, userID, apiKeyID,
+	)
+}
+
+func releaseMismatchedGrokMediaVideoOwner(selection *service.AccountSelectionResult, boundAccountID int64) bool {
+	if boundAccountID <= 0 || selection == nil || selection.Account == nil || selection.Account.ID == boundAccountID {
+		return false
+	}
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+		selection.ReleaseFunc = nil
+	}
+	return true
+}
+
+func grokVideoCreateAccountRebindSafe(err *service.UpstreamFailoverError) bool {
+	if err == nil {
+		return false
+	}
+	if err.IsCredentialFailure() {
+		return true
+	}
+	switch err.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests:
+		return true
+	default:
+		return false
 	}
 }
 

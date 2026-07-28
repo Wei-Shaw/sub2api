@@ -98,6 +98,7 @@ func TestForwardGrokMediaContentUsesUpstreamCredentialAndStreamsRange(t *testing
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	require.True(t, result.GrokMediaVideoTerminal)
 	require.Equal(t, http.StatusPartialContent, recorder.Code)
 	require.Equal(t, "video-payload", recorder.Body.String())
 	require.Len(t, upstream.requests, 2)
@@ -127,12 +128,13 @@ func TestForwardGrokMediaContentStreamsFullResponseWithSafeDefaults(t *testing.T
 	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
 	c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1/content", nil)
 
-	_, err := svc.ForwardGrokMedia(
+	result, err := svc.ForwardGrokMedia(
 		context.Background(), c, grokMediaContentTestAccount(),
 		GrokMediaEndpointVideoContent, "task-1", nil, "",
 	)
 
 	require.NoError(t, err)
+	require.True(t, result.GrokMediaVideoTerminal)
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "full-video", recorder.Body.String())
 	require.Len(t, upstream.requests, 2)
@@ -142,6 +144,15 @@ func TestForwardGrokMediaContentStreamsFullResponseWithSafeDefaults(t *testing.T
 	require.Empty(t, recorder.Header().Get("Set-Cookie"))
 	require.Empty(t, recorder.Header().Get("X-Upstream-Secret"))
 	require.True(t, IsResponseCommitted(c))
+}
+
+func TestGrokMediaVideoStatusTerminalClassification(t *testing.T) {
+	for _, status := range []string{"completed", "succeeded", "success", "done", "failed", "error", "cancelled", "canceled", "DONE"} {
+		require.True(t, grokMediaVideoStatusTerminal([]byte(`{"status":"`+status+`"}`)), status)
+	}
+	for _, status := range []string{"", "queued", "processing", "running"} {
+		require.False(t, grokMediaVideoStatusTerminal([]byte(`{"status":"`+status+`"}`)), status)
+	}
 }
 
 func TestForwardGrokMediaContentPreservesRangeNotSatisfiable(t *testing.T) {
@@ -310,12 +321,13 @@ func TestForwardGrokVideoStatusRewritesOnlyProtectedContentURL(t *testing.T) {
 		"X-Forwarded-Proto": "https",
 	})
 
-	_, err := svc.ForwardGrokMedia(
+	result, err := svc.ForwardGrokMedia(
 		context.Background(), c, grokMediaContentTestAccount(),
 		GrokMediaEndpointVideoStatus, "task-1", nil, "",
 	)
 
 	require.NoError(t, err)
+	require.True(t, result.GrokMediaVideoTerminal)
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "/v1/videos/task-1/content", gjson.Get(recorder.Body.String(), "url").String())
 	require.Equal(t, "/v1/videos/task-1/content", gjson.Get(recorder.Body.String(), "download_url").String())
