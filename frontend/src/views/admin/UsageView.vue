@@ -626,6 +626,20 @@ const ALWAYS_VISIBLE = ['user', 'created_at']
 const DEFAULT_HIDDEN_COLUMNS = ['reasoning_effort', 'user_agent']
 const HIDDEN_COLUMNS_KEY = 'usage-hidden-columns'
 
+const formatTokenSpeed = (_value: unknown, row: AdminUsageLog): string => {
+  if (
+    row.image_count > 0
+    || row.image_output_tokens > 0
+    || !Number.isFinite(row.output_tokens)
+    || row.output_tokens <= 0
+    || !Number.isFinite(row.duration_ms)
+    || row.duration_ms == null
+    || row.duration_ms <= 0
+  ) return '-'
+
+  return (row.output_tokens * 1000 / row.duration_ms).toFixed(2)
+}
+
 const allColumns = computed(() => [
   { key: 'user', label: t('admin.usage.user'), sortable: false },
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
@@ -637,6 +651,7 @@ const allColumns = computed(() => [
   { key: 'stream', label: t('usage.type'), sortable: false },
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
+  { key: 'token_speed', label: 'Token/s', sortable: false, formatter: formatTokenSpeed },
   { key: 'cost', label: t('usage.cost'), sortable: false },
   { key: 'latency', label: t('usage.latency'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },

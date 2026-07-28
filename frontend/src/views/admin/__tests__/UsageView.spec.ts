@@ -244,6 +244,27 @@ describe('admin UsageView route filters', () => {
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ user_id: 42 }), expect.anything())
     expect(wrapper.find('[data-test="user-filter-label"]').text()).toBe('42')
   })
+
+  it('includes a dedicated Token/s column with safe output throughput formatting', async () => {
+    const wrapper = mountRouteFilteredUsageView()
+    await flushPromises()
+
+    const column = (wrapper.vm as any).allColumns.find((item: { key: string }) => item.key === 'token_speed')
+    expect(column.label).toBe('Token/s')
+    expect(column.formatter(undefined, { output_tokens: 101, duration_ms: 345, image_count: 0 })).toBe('292.75')
+    for (const row of [
+      { output_tokens: 101, duration_ms: -345, image_count: 0 },
+      { output_tokens: 101, duration_ms: 0, image_count: 0 },
+      { output_tokens: 101, duration_ms: null, image_count: 0 },
+      { output_tokens: 101, duration_ms: Number.POSITIVE_INFINITY, image_count: 0 },
+      { output_tokens: 0, duration_ms: 345, image_count: 0 },
+      { output_tokens: Number.POSITIVE_INFINITY, duration_ms: 345, image_count: 0 },
+      { output_tokens: 101, duration_ms: 345, image_count: 1, billing_mode: 'token' },
+      { output_tokens: 101, duration_ms: 345, image_count: 0, image_output_tokens: 1 },
+    ]) {
+      expect(column.formatter(undefined, row)).toBe('-')
+    }
+  })
 })
 
 describe('admin UsageView distribution metric toggles', () => {
