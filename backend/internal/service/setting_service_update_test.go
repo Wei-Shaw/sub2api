@@ -850,3 +850,46 @@ REDACTED
 	require.Equal(t, "INVALID_PAYMENT_VISIBLE_METHOD_SOURCE", infraerrors.Reason(err))
 	require.Nil(t, repo.updates)
 REDACTED
+
+func TestSettingService_PasskeySwitchPersistsAndDefaultsToConfigured(t *testing.T) {
+	cfg := &config.Config{WebAuthn: config.WebAuthnConfig{
+		Enabled:   true,
+		RPID:      "sub3.nebula-spaces.com",
+		RPOrigins: []string{"https://sub3.nebula-spaces.com"REDACTED,
+REDACTEDREDACTED
+	runtimeRepo := &forwardedIPMigrationRepoStub{values: map[string]string{REDACTEDREDACTED
+	runtimeService := NewSettingService(runtimeRepo, cfg)
+
+	enabled, err := runtimeService.PasskeyEnabled(context.Background())
+REDACTED
+	require.True(t, enabled)
+
+	updateRepo := &settingUpdateRepoStub{REDACTED
+	updateService := NewSettingService(updateRepo, cfg)
+	require.NoError(t, updateService.UpdateSettings(context.Background(), &SystemSettings{
+		PasskeyEnabled: false,
+REDACTED))
+	require.Equal(t, "false", updateRepo.updates[SettingKeyPasskeyEnabled])
+
+	runtimeRepo.values[SettingKeyPasskeyEnabled] = "false"
+	enabled, err = runtimeService.PasskeyEnabled(context.Background())
+REDACTED
+	require.False(t, enabled)
+	publicSettings, err := runtimeService.GetPublicSettings(context.Background())
+REDACTED
+	require.False(t, publicSettings.PasskeyEnabled)
+REDACTED
+
+// 移除 WebAuthn 配置后，残留的 passkey_enabled="true" 不得再让 GetAllSettings
+// 报告开关开启：admin 更新门控以此为准，一旦误报为 true 会拒绝所有设置保存，
+// 而此时前端开关处于禁用态，管理员无法在 UI 里自救。
+func TestSettingService_StalePasskeyTrueWithoutConfigReportsDisabled(t *testing.T) {
+	repo := &settingGetAllRepoStub{values: map[string]string{
+		SettingKeyPasskeyEnabled: "true",
+REDACTEDREDACTED
+	service := NewSettingService(repo, &config.Config{REDACTED)
+
+	settings, err := service.GetAllSettings(context.Background())
+REDACTED
+	require.False(t, settings.PasskeyEnabled)
+REDACTED

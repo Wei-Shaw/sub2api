@@ -173,6 +173,53 @@ REDACTED
 	return value == "true"
 REDACTED
 
+// PasskeyEnabled reports the effective runtime switch. WebAuthn deployment
+// configuration remains the security boundary; the database setting can only
+// disable a valid configured relying party, never replace or weaken it.
+func (s *SettingService) PasskeyEnabled(ctx context.Context) (bool, error) {
+	if !s.passkeyConfigured() {
+		return false, nil
+REDACTED
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyPasskeyEnabled)
+	if errors.Is(err, ErrSettingNotFound) {
+		return true, nil // configured deployments default to enabled until the admin persists the switch
+REDACTED
+	if err != nil {
+		return false, fmt.Errorf("read passkey setting: %w", err)
+REDACTED
+	return value == "true", nil
+REDACTED
+
+// PasskeyConfiguration returns non-secret relying-party configuration for the
+// admin status UI. Enabled configurations have already passed Config.Validate.
+func (s *SettingService) PasskeyConfiguration() (configured bool, rpID string, origins []string) {
+	if s == nil || s.cfg == nil {
+		return false, "", []string{REDACTED
+REDACTED
+	origins = append([]string{REDACTED, s.cfg.WebAuthn.RPOrigins...)
+	return s.cfg.WebAuthn.Enabled,
+		strings.TrimSpace(s.cfg.WebAuthn.RPID),
+		origins
+REDACTED
+
+func (s *SettingService) passkeyConfigured() bool {
+	return s != nil && s.cfg != nil && s.cfg.WebAuthn.Enabled
+REDACTED
+
+// passkeySettingEnabled must stay ANDed with passkeyConfigured: a stale
+// "true" row after the WebAuthn config is removed would otherwise make the
+// admin update gate reject every settings save while the UI toggle is locked.
+func (s *SettingService) passkeySettingEnabled(settings map[string]string) bool {
+	if !s.passkeyConfigured() {
+		return false
+REDACTED
+	value, ok := settings[SettingKeyPasskeyEnabled]
+	if !ok {
+		return true
+REDACTED
+	return value == "true"
+REDACTED
+
 // IsTotpEncryptionKeyConfigured 检查 TOTP 加密密钥是否已手动配置
 // 只有手动配置了密钥才允许在管理后台启用 TOTP 功能
 func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {

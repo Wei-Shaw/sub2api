@@ -127,6 +127,13 @@ export default {
           '请先在环境变量中配置 TOTP_ENCRYPTION_KEY。使用命令 openssl rand -hex 32 生成密钥。'
       REDACTED,
       security: {
+        passkey: 'Passkey 登录',
+        passkeyHint: '当依赖方配置有效时，允许无密码登录及用户自行管理 Passkey。',
+        passkeyConfigured: 'WebAuthn 依赖方配置有效。',
+        passkeyNotConfigured: '请先配置有效的 RP ID 与允许的 HTTPS 来源，再启用 Passkey 登录。',
+        passkeyRPID: 'RP ID',
+        passkeyOrigins: '允许的 HTTPS 来源',
+        passkeyValueNotConfigured: '未配置',
         stepUp: '敏感操作二次验证 (step-up 2FA)',
         stepUpHint: '开启后，账号/代理导出、备份创建与下载、S3 配置修改、提升管理员等敏感操作需要先完成 TOTP 二次验证（15 分钟内有效）。开启前需本人已启用 2FA；关闭该开关本身也需要二次验证。',
         stepUpEnableRequiresTotp: '开启敏感操作二次验证前，请先在个人资料中为当前账号启用 2FA (TOTP)。',

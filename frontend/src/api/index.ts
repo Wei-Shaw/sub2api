@@ -19,6 +19,7 @@ export { userGroupsAPI REDACTED from './groups'
 export { userChannelsAPI REDACTED from './channels'
 export * as batchImageAPI from './batchImage'
 export { totpAPI REDACTED from './totp'
+export { passkeyAPI, type PasskeyCredentialSummary REDACTED from './passkey'
 export { default as announcementsAPI REDACTED from './announcements'
 export { channelMonitorUserAPI REDACTED from './channelMonitor'
 
