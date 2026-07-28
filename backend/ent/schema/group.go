@@ -66,6 +66,12 @@ func (Group) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.String("duplicate_operation_id").
+			MaxLen(64).
+			Optional().
+			Nillable().
+			Immutable().
+			Comment("内部幂等恢复标识，不对 API 暴露"),
 
 		// Subscription-related fields (added by migration 003)
 		field.String("platform").
@@ -192,6 +198,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_messages_dispatch").
 			Default(false).
 			Comment("是否允许 /v1/messages 调度到此 OpenAI 分组"),
+		field.Bool("allow_live").
+			Default(false).
+			Comment("是否允许此 OpenAI 分组访问 Live 接口"),
 		field.Bool("require_oauth_only").
 			Default(false).
 			Comment("仅允许非 apikey 类型账号关联到此分组"),
@@ -215,6 +224,16 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+
+		// OpenAI/Codex 请求的推理强度上限（空字符串表示不限制）。
+		field.String("max_reasoning_effort").
+			MaxLen(20).
+			Default("").
+			Comment("OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max"),
+		field.JSON("reasoning_effort_mappings", []domain.ReasoningEffortMapping{}).
+			Default([]domain.ReasoningEffortMapping{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("OpenAI reasoning effort 自定义精确映射；先映射再应用上限"),
 	}
 }
 
@@ -244,5 +263,9 @@ func (Group) Indexes() []ent.Index {
 		index.Fields("is_exclusive"),
 		index.Fields("deleted_at"),
 		index.Fields("sort_order"),
+		index.Fields("duplicate_operation_id").
+			Unique().
+			StorageKey("idx_groups_duplicate_operation_id_active").
+			Annotations(entsql.IndexWhere("duplicate_operation_id IS NOT NULL AND deleted_at IS NULL")),
 	}
 }

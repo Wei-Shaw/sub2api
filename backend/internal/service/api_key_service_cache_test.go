@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -277,6 +278,45 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
 }
 
+func TestAPIKeyService_SnapshotRoundTrip_PreservesReasoningEffortPolicy(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
+	groupID := int64(9)
+	apiKey := &APIKey{
+		ID:      1,
+		UserID:  2,
+		GroupID: &groupID,
+		Key:     "k-reasoning-policy",
+		Status:  StatusActive,
+		User: &User{
+			ID:          2,
+			Status:      StatusActive,
+			Role:        RoleUser,
+			Balance:     10,
+			Concurrency: 3,
+		},
+		Group: &Group{
+			ID:                 groupID,
+			Name:               "openai",
+			Platform:           PlatformOpenAI,
+			Status:             StatusActive,
+			SubscriptionType:   SubscriptionTypeStandard,
+			RateMultiplier:     1,
+			MaxReasoningEffort: "medium",
+			ReasoningEffortMappings: []ReasoningEffortMapping{
+				{From: "max", To: "xhigh"},
+			},
+		},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	roundTrip := svc.snapshotToAPIKey(apiKey.Key, snapshot)
+
+	require.NotNil(t, roundTrip)
+	require.NotNil(t, roundTrip.Group)
+	require.Equal(t, "medium", roundTrip.Group.MaxReasoningEffort)
+	require.Equal(t, apiKey.Group.ReasoningEffortMappings, roundTrip.Group.ReasoningEffortMappings)
+}
+
 func TestAPIKeyService_GetByKey_IgnoresLegacyAuthCacheSnapshotWithoutMessagesDispatchConfig(t *testing.T) {
 	cache := &authCacheStub{}
 	var repoCalls int32
@@ -509,14 +549,18 @@ func TestAPIKeyService_InvalidateAuthCacheByKey(t *testing.T) {
 }
 
 func TestAPIKeyService_GetByKey_CachesNegativeOnRepoMiss(t *testing.T) {
+	var repoCalls atomic.Int32
 	cache := &authCacheStub{}
 	repo := &authRepoStub{
 		getByKeyForAuth: func(ctx context.Context, key string) (*APIKey, error) {
+			repoCalls.Add(1)
 			return nil, ErrAPIKeyNotFound
 		},
 	}
 	cfg := &config.Config{
 		APIKeyAuth: config.APIKeyAuthCacheConfig{
+			L1Size:             100,
+			L1TTLSeconds:       60,
 			L2TTLSeconds:       60,
 			NegativeTTLSeconds: 30,
 		},
@@ -528,7 +572,73 @@ func TestAPIKeyService_GetByKey_CachesNegativeOnRepoMiss(t *testing.T) {
 
 	_, err := svc.GetByKey(context.Background(), "missing")
 	require.ErrorIs(t, err, ErrAPIKeyNotFound)
-	require.Len(t, cache.setAuthKeys, 1)
+	require.Empty(t, cache.setAuthKeys, "attacker-controlled misses must not be written to Redis")
+	svc.authNegativeCacheL1.Wait()
+	_, err = svc.GetByKey(context.Background(), "missing")
+	require.ErrorIs(t, err, ErrAPIKeyNotFound)
+	require.Equal(t, int32(1), repoCalls.Load())
+}
+
+func TestAPIKeyService_GetByKeyRejectsInvalidLengthBeforeCaches(t *testing.T) {
+	var cacheCalls atomic.Int32
+	cache := &authCacheStub{getAuthCache: func(context.Context, string) (*APIKeyAuthCacheEntry, error) {
+		cacheCalls.Add(1)
+		return nil, redis.Nil
+	}}
+	repo := &authRepoStub{getByKeyForAuth: func(context.Context, string) (*APIKey, error) {
+		t.Fatal("invalid credential reached repository")
+		return nil, nil
+	}}
+	svc := NewAPIKeyService(repo, nil, nil, nil, nil, cache, &config.Config{APIKeyAuth: config.APIKeyAuthCacheConfig{L2TTLSeconds: 60}})
+
+	for _, key := range []string{"", strings.Repeat("x", MaxAPIKeyCredentialBytes+1)} {
+		_, err := svc.GetByKey(context.Background(), key)
+		require.ErrorIs(t, err, ErrAPIKeyNotFound)
+	}
+	require.Zero(t, cacheCalls.Load())
+}
+
+func TestAPIKeyService_GetByKeyAllowsMaximumLength(t *testing.T) {
+	key := strings.Repeat("x", MaxAPIKeyCredentialBytes)
+	var repoCalls atomic.Int32
+	repo := &authRepoStub{getByKeyForAuth: func(_ context.Context, got string) (*APIKey, error) {
+		repoCalls.Add(1)
+		require.Equal(t, key, got)
+		return nil, ErrAPIKeyNotFound
+	}}
+	svc := NewAPIKeyService(repo, nil, nil, nil, nil, nil, &config.Config{})
+	_, err := svc.GetByKey(context.Background(), key)
+	require.ErrorIs(t, err, ErrAPIKeyNotFound)
+	require.Equal(t, int32(1), repoCalls.Load())
+}
+
+func TestAPIKeyService_AuthLookupBulkheadRejectsExcessMisses(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	repo := &authRepoStub{getByKeyForAuth: func(context.Context, string) (*APIKey, error) {
+		close(entered)
+		<-release
+		return nil, ErrAPIKeyNotFound
+	}}
+	svc := NewAPIKeyService(repo, nil, nil, nil, nil, nil, &config.Config{APIKeyAuth: config.APIKeyAuthCacheConfig{LookupConcurrency: 1}})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.GetByKey(context.Background(), "first")
+		done <- err
+	}()
+	<-entered
+
+	_, err := svc.GetByKey(context.Background(), "second")
+	require.ErrorIs(t, err, ErrAPIKeyAuthOverloaded)
+	metrics := svc.AuthLookupMetrics()
+	require.Equal(t, uint64(2), metrics.Total)
+	require.Equal(t, uint64(1), metrics.Rejected)
+	require.Equal(t, int64(1), metrics.InFlight)
+	require.Equal(t, 1, metrics.Capacity)
+
+	close(release)
+	require.ErrorIs(t, <-done, ErrAPIKeyNotFound)
 }
 
 func TestAPIKeyService_GetByKey_SingleflightCollapses(t *testing.T) {

@@ -7,10 +7,19 @@ import { apiClient } from '../client'
 import type {
   AdminGroup,
   GroupPlatform,
+  CompositeModelRoute,
+  CompositeModelRouteInput,
+  CompositeRoutePreviewRequest,
+  CompositeRouteDecision,
   CreateGroupRequest,
   UpdateGroupRequest,
   PaginatedResponse
 } from '@/types'
+
+export interface LiveCapability {
+  supported: boolean
+  reason?: string
+}
 
 /**
  * List all groups with pagination
@@ -77,6 +86,12 @@ export async function getByPlatform(platform: GroupPlatform): Promise<AdminGroup
   return getAll(platform)
 }
 
+/** 获取当前 Sub2API 服务端的 Live 运行环境能力。 */
+export async function getLiveCapability(): Promise<LiveCapability> {
+  const { data } = await apiClient.get<LiveCapability>('/admin/groups/live-capability')
+  return data
+}
+
 /**
  * Get group by ID
  * @param id - Group ID
@@ -111,6 +126,86 @@ export async function getModelsListCandidates(
  */
 export async function create(groupData: CreateGroupRequest): Promise<AdminGroup> {
   const { data } = await apiClient.post<AdminGroup>('/admin/groups', groupData)
+  return data
+}
+
+/**
+ * Duplicate a group on the server so configuration that is not present in the
+ * list response is preserved. Keep the operation key after ambiguous failures
+ * so a retry replays the original operation instead of creating another group.
+ */
+const duplicateOperationKeys = new Map<string, string>()
+
+interface DuplicateOperationScope {
+  adminID: string
+  key: string
+}
+
+function getCurrentAdminID(): string | null {
+  try {
+    const rawUser = globalThis.localStorage?.getItem('auth_user')
+    if (!rawUser) return null
+
+    const user: unknown = JSON.parse(rawUser)
+    if (typeof user !== 'object' || user === null) return null
+
+    const id = (user as { id?: unknown }).id
+    if (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0) return null
+    return String(id)
+  } catch {
+    return null
+  }
+}
+
+function duplicateOperationScope(id: number): DuplicateOperationScope | null {
+  const adminID = getCurrentAdminID()
+  if (!adminID) return null
+
+  return {
+    adminID,
+    key: `sub2api:admin:group-duplicate:${adminID}:${id}`
+  }
+}
+
+function getStoredDuplicateOperationKey(storageKey: string): string | null {
+  try {
+    return globalThis.sessionStorage?.getItem(storageKey) ?? null
+  } catch {
+    return null
+  }
+}
+
+function storeDuplicateOperationKey(storageKey: string, key: string | null): void {
+  try {
+    if (key) globalThis.sessionStorage?.setItem(storageKey, key)
+    else globalThis.sessionStorage?.removeItem(storageKey)
+  } catch {
+    // In-memory retry protection still works when browser storage is unavailable.
+  }
+}
+
+export async function duplicate(id: number): Promise<AdminGroup> {
+  const scope = duplicateOperationScope(id)
+  let idempotencyKey = scope
+    ? duplicateOperationKeys.get(scope.key) ?? getStoredDuplicateOperationKey(scope.key)
+    : null
+  if (!idempotencyKey) {
+    const requestID = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    idempotencyKey = `group-duplicate-${scope?.adminID ?? 'unknown-admin'}-${id}-${requestID}`
+  }
+  if (scope) {
+    duplicateOperationKeys.set(scope.key, idempotencyKey)
+    storeDuplicateOperationKey(scope.key, idempotencyKey)
+  }
+
+  const { data } = await apiClient.post<AdminGroup>(`/admin/groups/${id}/duplicate`, undefined, {
+    headers: { 'Idempotency-Key': idempotencyKey }
+  })
+
+  if (scope) {
+    duplicateOperationKeys.delete(scope.key)
+    storeDuplicateOperationKey(scope.key, null)
+  }
   return data
 }
 
@@ -180,6 +275,55 @@ export async function getGroupApiKeys(
   const { data } = await apiClient.get<PaginatedResponse<any>>(`/admin/groups/${id}/api-keys`, {
     params: { page, page_size: pageSize }
   })
+  return data
+}
+
+export async function listCompositeRoutes(id: number): Promise<CompositeModelRoute[]> {
+  const { data } = await apiClient.get<CompositeModelRoute[]>(`/admin/groups/${id}/composite-routes`)
+  return data
+}
+
+export async function createCompositeRoute(
+  id: number,
+  route: CompositeModelRouteInput
+): Promise<CompositeModelRoute> {
+  const { data } = await apiClient.post<CompositeModelRoute>(
+    `/admin/groups/${id}/composite-routes`,
+    route
+  )
+  return data
+}
+
+export async function updateCompositeRoute(
+  id: number,
+  routeId: number,
+  route: CompositeModelRouteInput
+): Promise<CompositeModelRoute> {
+  const { data } = await apiClient.put<CompositeModelRoute>(
+    `/admin/groups/${id}/composite-routes/${routeId}`,
+    route
+  )
+  return data
+}
+
+export async function deleteCompositeRoute(
+  id: number,
+  routeId: number
+): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(
+    `/admin/groups/${id}/composite-routes/${routeId}`
+  )
+  return data
+}
+
+export async function previewCompositeRoute(
+  id: number,
+  request: CompositeRoutePreviewRequest
+): Promise<CompositeRouteDecision> {
+  const { data } = await apiClient.post<CompositeRouteDecision>(
+    `/admin/groups/${id}/composite-routes/preview`,
+    request
+  )
   return data
 }
 
@@ -334,14 +478,21 @@ export const groupsAPI = {
   getAll,
   getByPlatform,
   getAllIncludingInactive,
+  getLiveCapability,
   getById,
   getModelsListCandidates,
   create,
+  duplicate,
   update,
   delete: deleteGroup,
   toggleStatus,
   getStats,
   getGroupApiKeys,
+  listCompositeRoutes,
+  createCompositeRoute,
+  updateCompositeRoute,
+  deleteCompositeRoute,
+  previewCompositeRoute,
   getGroupRateMultipliers,
   clearGroupRateMultipliers,
   batchSetGroupRateMultipliers,

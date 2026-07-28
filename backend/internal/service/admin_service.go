@@ -20,6 +20,7 @@ type AdminService interface {
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
 	BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error)
+	BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 	GetUserRPMStatus(ctx context.Context, userID int64) (*UserRPMStatus, error)
@@ -39,8 +40,19 @@ type AdminService interface {
 	GetGroup(ctx context.Context, id int64) (*Group, error)
 	GetGroupModelsListCandidates(ctx context.Context, id int64, platform string) ([]string, error)
 	CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error)
+	// DuplicateGroup creates an inactive independent copy of a group's configuration
+	// and account bindings while preserving each binding's priority.
+	DuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*Group, error)
+	// RecoverDuplicateGroup returns a previously committed copy for an ambiguous retry.
+	// It never creates a group.
+	RecoverDuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*Group, error)
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
 	DeleteGroup(ctx context.Context, id int64) error
+	ListCompositeRoutes(ctx context.Context, groupID int64) ([]CompositeModelRoute, error)
+	CreateCompositeRoute(ctx context.Context, groupID int64, input CompositeRouteInput) (*CompositeModelRoute, error)
+	UpdateCompositeRoute(ctx context.Context, groupID, routeID int64, input CompositeRouteInput) (*CompositeModelRoute, error)
+	DeleteCompositeRoute(ctx context.Context, groupID, routeID int64) error
+	PreviewCompositeRoute(ctx context.Context, groupID int64, input CompositeRoutePreviewRequest) (*CompositeRouteDecision, error)
 	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
 	GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error)
 	ClearGroupRateMultipliers(ctx context.Context, groupID int64) error
@@ -240,6 +252,7 @@ type CreateGroupInput struct {
 	SupportedModelScopes []string
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool
+	AllowLive                   bool
 	DefaultMappedModel          string
 	RequireOAuthOnly            bool
 	RequirePrivacySet           bool
@@ -247,6 +260,10 @@ type CreateGroupInput struct {
 	ModelsListConfig            GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
+	// MaxReasoningEffort OpenAI/Codex 请求的推理强度上限，空字符串表示不限制。
+	MaxReasoningEffort string
+	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
+	ReasoningEffortMappings []ReasoningEffortMapping
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -296,6 +313,7 @@ type UpdateGroupInput struct {
 	SupportedModelScopes *[]string
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       *bool
+	AllowLive                   *bool
 	DefaultMappedModel          *string
 	RequireOAuthOnly            *bool
 	RequirePrivacySet           *bool
@@ -303,6 +321,10 @@ type UpdateGroupInput struct {
 	ModelsListConfig            *GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
+	// MaxReasoningEffort 空字符串表示清除上限；nil 表示未提供不改动。
+	MaxReasoningEffort *string
+	// ReasoningEffortMappings nil 表示不修改，空数组表示清空，非空数组表示替换。
+	ReasoningEffortMappings *[]ReasoningEffortMapping
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -322,6 +344,7 @@ type CreateAccountInput struct {
 	GroupIDs           []int64
 	ExpiresAt          *int64
 	AutoPauseOnExpired *bool
+	ProbeEnabled       *bool
 	// SkipDefaultGroupBind prevents auto-binding to platform default group when GroupIDs is empty.
 	SkipDefaultGroupBind bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
@@ -371,6 +394,7 @@ type BulkUpdateAccountsInput struct {
 	GroupIDs       *[]int64
 	Credentials    map[string]any
 	Extra          map[string]any
+	ProbeEnabled   *bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool
@@ -567,6 +591,14 @@ var proxyQualityTargets = []proxyQualityTarget{
 			http.StatusOK: {},
 		},
 	},
+	{
+		Target: "grok",
+		URL:    "https://api.x.ai/v1/models",
+		Method: http.MethodGet,
+		AllowedStatuses: map[int]struct{}{
+			http.StatusUnauthorized: {},
+		},
+	},
 }
 
 const (
@@ -582,6 +614,7 @@ var ErrRPMStatusUnavailable = infraerrors.New(http.StatusNotImplemented, "RPM_ST
 type adminServiceImpl struct {
 	userRepo             UserRepository
 	groupRepo            GroupRepository
+	groupDuplicateRepo   GroupDuplicateRepository
 	accountRepo          AccountRepository
 	accountDuplicateRepo AccountDuplicateRepository
 	proxyRepo            ProxyRepository
@@ -600,6 +633,8 @@ type adminServiceImpl struct {
 	privacyClientFactory PrivacyClientFactory
 	runtimeBlocker       AccountRuntimeBlocker
 	affiliateService     adminRechargeAffiliateAccruer
+	compositeRouteRepo   CompositeModelRouteRepository
+	compositeResolver    *CompositeRouteResolver
 }
 
 type adminRechargeAffiliateAccruer interface {
@@ -613,7 +648,7 @@ type userGroupRateBatchReader interface {
 // NewAdminService creates a new AdminService
 func NewAdminService(
 	userRepo UserRepository,
-	groupRepo GroupRepository,
+	groupRepo AdminGroupRepository,
 	accountRepo AdminAccountRepository,
 	proxyRepo ProxyRepository,
 	apiKeyRepo APIKeyRepository,
@@ -631,10 +666,13 @@ func NewAdminService(
 	privacyClientFactory PrivacyClientFactory,
 	runtimeBlocker AccountRuntimeBlocker,
 	affiliateService *AffiliateService,
+	compositeRouteRepo CompositeModelRouteRepository,
+	compositeResolver *CompositeRouteResolver,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
 		groupRepo:            groupRepo,
+		groupDuplicateRepo:   groupRepo,
 		accountRepo:          accountRepo,
 		accountDuplicateRepo: accountRepo,
 		proxyRepo:            proxyRepo,
@@ -653,5 +691,7 @@ func NewAdminService(
 		privacyClientFactory: privacyClientFactory,
 		runtimeBlocker:       runtimeBlocker,
 		affiliateService:     affiliateService,
+		compositeRouteRepo:   compositeRouteRepo,
+		compositeResolver:    compositeResolver,
 	}
 }

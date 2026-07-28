@@ -57,6 +57,8 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_5h_",
 	"codex_7d_",
 	"passive_usage_",
+	"upstream_billing_probe",
+	"ollama_cloud_usage",
 }
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
@@ -395,21 +397,80 @@ func (r *accountRepository) ListCRSAccountIDs(ctx context.Context) (map[string]i
 }
 
 func (r *accountRepository) Update(ctx context.Context, account *service.Account) error {
+	return r.updateAccount(ctx, account, nil)
+}
+
+// UpdateWithUpstreamBillingProbeEnabled applies an explicit probe switch in the
+// same row-lock transaction as the rest of an admin account edit.
+func (r *accountRepository) UpdateWithUpstreamBillingProbeEnabled(ctx context.Context, account *service.Account, enabled bool) error {
+	return r.updateAccount(ctx, account, &enabled)
+}
+
+func (r *accountRepository) updateAccount(ctx context.Context, account *service.Account, explicitProbeEnabled *bool) error {
 	if account == nil {
 		return nil
 	}
+
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
+	client := r.client
+	var tx *dbent.Tx
+	if contextTx != nil {
+		client = contextTx.Client()
+	} else {
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return err
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			client = tx.Client()
+		}
+	}
+
+	updated, err := r.updateLockedAccount(ctx, client, account, explicitProbeEnabled)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
+	}
+	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+
+	account.UpdatedAt = updated.UpdatedAt
+	// 普通账号编辑（如 model_mapping / credentials）也需要立即刷新单账号快照，
+	// 否则网关在 outbox worker 延迟或异常时仍可能读到旧配置。
+	if contextTx == nil {
+		r.syncSchedulerAccountSnapshot(baseCtx, account.ID)
+	}
+	return nil
+}
+
+func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (*dbent.Account, error) {
+	extra, err := lockAndMergeAccountProbeExtra(ctx, client, account, explicitProbeEnabled)
+	if err != nil {
+		return nil, err
+	}
+	account.Extra = extra
+
 	schedulable := account.Schedulable
 	if account.Status == service.StatusError {
 		schedulable = false
 	}
 
-	builder := r.client.Account.UpdateOneID(account.ID).
+	builder := client.Account.UpdateOneID(account.ID).
 		SetName(account.Name).
 		SetNillableNotes(account.Notes).
 		SetPlatform(account.Platform).
 		SetType(account.Type).
 		SetCredentials(normalizeJSONMap(account.Credentials)).
-		SetExtra(normalizeJSONMap(account.Extra)).
+		SetExtra(extra).
 		SetConcurrency(account.Concurrency).
 		SetPriority(account.Priority).
 		SetStatus(account.Status).
@@ -478,31 +539,224 @@ func (r *accountRepository) Update(ctx context.Context, account *service.Account
 	builder.SetQuotaDimension(dbaccount.QuotaDimension(account.QuotaDimensionOrDefault()))
 	builder.SetNillableParentAccountID(account.ParentAccountID)
 
-	updated, err := builder.Save(ctx)
+	return builder.Save(ctx)
+}
+
+func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (map[string]any, error) {
+	credentials, err := json.Marshal(normalizeJSONMap(account.Credentials))
 	if err != nil {
-		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
+		return nil, err
 	}
-	account.UpdatedAt = updated.UpdatedAt
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account update failed: account=%d err=%v", account.ID, err)
+	var proxyID any
+	if account.ProxyID != nil {
+		proxyID = *account.ProxyID
 	}
-	// 普通账号编辑（如 model_mapping / credentials）也需要立即刷新单账号快照，
-	// 否则网关在 outbox worker 延迟或异常时仍可能读到旧配置。
-	r.syncSchedulerAccountSnapshot(ctx, account.ID)
-	return nil
+	rows, err := client.QueryContext(ctx, `
+		SELECT
+			platform = $2
+			AND type = $3
+			AND credentials = $4::jsonb
+			AND proxy_id IS NOT DISTINCT FROM $5,
+			COALESCE(
+				platform IN ('openai', 'anthropic')
+				AND $2 IN ('openai', 'anthropic')
+				AND type = 'apikey'
+				AND $3 = 'apikey'
+				AND credentials -> 'api_key' IS NOT DISTINCT FROM $4::jsonb -> 'api_key'
+				AND `+ollamaCloudBaseURLMatchesSQL("credentials ->> 'base_url'")+`
+				AND `+ollamaCloudBaseURLMatchesSQL("$4::jsonb ->> 'base_url'")+`,
+				false
+			),
+			proxy_id IS NOT DISTINCT FROM $5,
+			extra -> 'upstream_billing_probe_enabled',
+			extra -> 'upstream_billing_probe',
+			extra -> 'ollama_cloud_usage_session',
+			extra -> 'ollama_cloud_usage_auto_refresh',
+			extra -> 'ollama_cloud_usage_snapshot'
+		FROM accounts
+		WHERE id = $1 AND deleted_at IS NULL
+		FOR NO KEY UPDATE
+	`, account.ID, account.Platform, account.Type, string(credentials), proxyID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, service.ErrAccountNotFound
+	}
+
+	var (
+		identityUnchanged            bool
+		ollamaGroupIdentityUnchanged bool
+		ollamaProxyIdentityUnchanged bool
+		currentEnabled               []byte
+		currentSnapshot              []byte
+		currentOllamaSession         []byte
+		currentOllamaAutoRefresh     []byte
+		currentOllamaSnapshot        []byte
+	)
+	if err := rows.Scan(
+		&identityUnchanged,
+		&ollamaGroupIdentityUnchanged,
+		&ollamaProxyIdentityUnchanged,
+		&currentEnabled,
+		&currentSnapshot,
+		&currentOllamaSession,
+		&currentOllamaAutoRefresh,
+		&currentOllamaSnapshot,
+	); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	extra := copyJSONMap(normalizeJSONMap(account.Extra))
+	for _, key := range []string{
+		service.UpstreamBillingProbeEnabledExtraKey,
+		service.UpstreamBillingProbeExtraKey,
+		service.OllamaCloudUsageSessionExtraKey,
+		service.OllamaCloudUsageAutoRefreshExtraKey,
+		service.OllamaCloudUsageSnapshotExtraKey,
+	} {
+		delete(extra, key)
+	}
+	probeExplicitlyDisabled := false
+	probeAccount := account.Platform == service.PlatformOpenAI && account.Type == service.AccountTypeAPIKey
+	if probeAccount && explicitProbeEnabled != nil {
+		extra[service.UpstreamBillingProbeEnabledExtraKey] = *explicitProbeEnabled
+		probeExplicitlyDisabled = !*explicitProbeEnabled
+	} else if probeAccount {
+		if enabled, ok, err := decodeAccountExtraJSON(currentEnabled); err != nil {
+			return nil, err
+		} else if ok {
+			extra[service.UpstreamBillingProbeEnabledExtraKey] = enabled
+			if value, isBool := enabled.(bool); isBool && !value {
+				probeExplicitlyDisabled = true
+			}
+		}
+	}
+	if identityUnchanged && !probeExplicitlyDisabled {
+		if snapshot, ok, err := decodeAccountExtraJSON(currentSnapshot); err != nil {
+			return nil, err
+		} else if ok {
+			extra[service.UpstreamBillingProbeExtraKey] = snapshot
+		}
+	}
+
+	if service.IsOllamaCloudUsageAccount(account) && ollamaGroupIdentityUnchanged {
+		for key, raw := range map[string][]byte{
+			service.OllamaCloudUsageSessionExtraKey:     currentOllamaSession,
+			service.OllamaCloudUsageAutoRefreshExtraKey: currentOllamaAutoRefresh,
+		} {
+			if value, ok, err := decodeAccountExtraJSON(raw); err != nil {
+				return nil, err
+			} else if ok {
+				extra[key] = value
+			}
+		}
+		if ollamaProxyIdentityUnchanged {
+			if snapshot, ok, err := decodeAccountExtraJSON(currentOllamaSnapshot); err != nil {
+				return nil, err
+			} else if ok {
+				extra[service.OllamaCloudUsageSnapshotExtraKey] = snapshot
+			}
+		}
+	}
+	return extra, nil
+}
+
+func decodeAccountExtraJSON(raw []byte) (any, bool, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, false, nil
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, false, err
+	}
+	return value, true, nil
 }
 
 func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
-	_, err := r.client.Account.UpdateOneID(id).
-		SetCredentials(normalizeJSONMap(credentials)).
-		Save(ctx)
+	payload, err := json.Marshal(normalizeJSONMap(credentials))
 	if err != nil {
-		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
+		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue credentials update failed: account=%d err=%v", id, err)
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
+	client := r.client
+	var tx *dbent.Tx
+	if contextTx != nil {
+		client = contextTx.Client()
+	} else if r.client != nil {
+		var txErr error
+		tx, txErr = r.client.Tx(ctx)
+		if txErr != nil && !errors.Is(txErr, dbent.ErrTxStarted) {
+			return txErr
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			client = tx.Client()
+		}
 	}
-	r.syncSchedulerAccountSnapshot(ctx, id)
+	result, err := client.ExecContext(ctx, `
+		UPDATE accounts
+		SET
+			credentials = $1::jsonb,
+			extra = CASE
+				-- 凭证整体未变化 ⇒ Ollama 组身份必然未变化；顶层 DISTINCT 守卫防止
+				-- 非 Ollama 账号的无变化持久化误清 openai 探测快照或重写 NULL extra。
+				WHEN platform IN ('openai', 'anthropic')
+					AND type = 'apikey'
+					AND credentials IS DISTINCT FROM $1::jsonb
+					AND (
+						credentials -> 'api_key' IS DISTINCT FROM $1::jsonb -> 'api_key'
+						OR NOT (
+							`+ollamaCloudBaseURLMatchesSQL("credentials ->> 'base_url'")+`
+							AND `+ollamaCloudBaseURLMatchesSQL("$1::jsonb ->> 'base_url'")+`
+						)
+					)
+				THEN (CASE
+						WHEN platform = 'openai' THEN COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe'
+						ELSE COALESCE(extra, '{}'::jsonb)
+					END)
+					- 'ollama_cloud_usage_session'
+					- 'ollama_cloud_usage_auto_refresh'
+					- 'ollama_cloud_usage_snapshot'
+				WHEN platform = 'openai'
+					AND type = 'apikey'
+					AND credentials IS DISTINCT FROM $1::jsonb
+				THEN COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe'
+				ELSE extra
+			END,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`, string(payload), id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAccountNotFound
+	}
+	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	if contextTx == nil {
+		r.syncSchedulerAccountSnapshot(baseCtx, id)
+	}
 	return nil
 }
 
@@ -724,6 +978,20 @@ func (r *accountRepository) ListOpsAccountsForStats(ctx context.Context, platfor
 func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderAsc)
+	if sortBy == "upstream_billing_rate" {
+		direction := "ASC"
+		tieOrder := entsql.Asc
+		if sortOrder == pagination.SortOrderDesc {
+			direction = "DESC"
+			tieOrder = entsql.Desc
+		}
+		return []func(*entsql.Selector){func(s *entsql.Selector) {
+			extra := s.C(dbaccount.FieldExtra)
+			expression := upstreamBillingRateSortExpression(extra)
+			s.OrderExpr(entsql.Expr(expression + " " + direction + " NULLS LAST"))
+			s.OrderBy(tieOrder(s.C(dbaccount.FieldID)))
+		}}
+	}
 
 	field := dbaccount.FieldName
 	defaultOrder := true
@@ -763,6 +1031,40 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 		return []func(*entsql.Selector){dbent.Asc(dbaccount.FieldName), dbent.Asc(dbaccount.FieldID)}
 	}
 	return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(dbaccount.FieldID)}
+}
+
+func upstreamBillingRateSortExpression(extra string) string {
+	status := extra + " #>> '{upstream_billing_probe,status}'"
+	effectiveJSON := extra + " #> '{upstream_billing_probe,data,effective_rate_multiplier}'"
+	effective := extra + " #>> '{upstream_billing_probe,data,effective_rate_multiplier}'"
+	resolvedJSON := extra + " #> '{upstream_billing_probe,data,resolved_rate_multiplier}'"
+	resolved := extra + " #>> '{upstream_billing_probe,data,resolved_rate_multiplier}'"
+	peakEnabledJSON := extra + " #> '{upstream_billing_probe,data,peak_rate_enabled}'"
+	peakEnabled := extra + " #>> '{upstream_billing_probe,data,peak_rate_enabled}'"
+	peakStart := extra + " #>> '{upstream_billing_probe,data,peak_start}'"
+	peakEnd := extra + " #>> '{upstream_billing_probe,data,peak_end}'"
+	peakMultiplierJSON := extra + " #> '{upstream_billing_probe,data,peak_rate_multiplier}'"
+	peakMultiplier := extra + " #>> '{upstream_billing_probe,data,peak_rate_multiplier}'"
+	peakMultiplierValue := "(CASE WHEN jsonb_typeof(" + peakMultiplierJSON + ") = 'number' THEN (" + peakMultiplier + ")::numeric END)"
+	billingScope := extra + " #>> '{upstream_billing_probe,data,billing_scope}'"
+	timezone := extra + " #>> '{upstream_billing_probe,data,timezone}'"
+	validClock := "'^([01][0-9]|2[0-3]):[0-5][0-9]$'"
+	startMinute := "(CASE WHEN " + peakStart + " ~ " + validClock + " THEN split_part(" + peakStart + ", ':', 1)::numeric * 60 + split_part(" + peakStart + ", ':', 2)::numeric END)"
+	endMinute := "(CASE WHEN " + peakEnd + " ~ " + validClock + " THEN split_part(" + peakEnd + ", ':', 1)::numeric * 60 + split_part(" + peakEnd + ", ':', 2)::numeric END)"
+	localMinute := "(EXTRACT(HOUR FROM (CURRENT_TIMESTAMP AT TIME ZONE (" + timezone + "))) * 60 + EXTRACT(MINUTE FROM (CURRENT_TIMESTAMP AT TIME ZONE (" + timezone + "))))"
+	validPeakWindow := peakStart + " ~ " + validClock + " AND " +
+		peakEnd + " ~ " + validClock + " AND " +
+		startMinute + " < " + endMinute
+	validPeakConfig := validPeakWindow + " AND " + peakMultiplierValue + " >= 0 AND " +
+		"EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = " + timezone + ")"
+	dynamicRate := "CASE WHEN " + peakEnabled + " = 'false' THEN (" + resolved + ")::numeric WHEN " + peakEnabled + " = 'true' AND " + validPeakConfig +
+		" THEN (" + resolved + ")::numeric * CASE WHEN " + localMinute + " >= " + startMinute + " AND " + localMinute + " < " + endMinute +
+		" THEN " + peakMultiplierValue + " ELSE 1 END ELSE NULL END"
+	legacySnapshot := "jsonb_typeof(" + resolvedJSON + ") IS NULL AND jsonb_typeof(" + peakEnabledJSON + ") IS NULL"
+
+	return "CASE WHEN " + status + " IN ('ok', 'failed') AND (jsonb_typeof(" + resolvedJSON + ") = 'number' OR jsonb_typeof(" + effectiveJSON + ") = 'number') THEN CASE WHEN jsonb_typeof(" +
+		resolvedJSON + ") = 'number' AND jsonb_typeof(" + peakEnabledJSON + ") = 'boolean' THEN CASE WHEN " + billingScope + " = 'token' THEN " + dynamicRate + " ELSE NULL END WHEN " + legacySnapshot +
+		" AND jsonb_typeof(" + effectiveJSON + ") = 'number' THEN (" + effective + ")::numeric END END"
 }
 
 func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -1708,6 +2010,46 @@ func (r *accountRepository) ListSchedulableByGroupIDAndPlatforms(ctx context.Con
 	})
 }
 
+// ListModelAvailabilityCandidates returns the persistently configured account
+// pool used to decide whether a model is supported. Unlike scheduling queries,
+// it intentionally ignores transient runtime state (rate limits, overload,
+// temporary unschedulability, and expiry windows).
+func (r *accountRepository) ListModelAvailabilityCandidates(
+	ctx context.Context,
+	groupID *int64,
+	platforms []string,
+	includeGrouped bool,
+) ([]service.Account, error) {
+	if len(platforms) == 0 {
+		return []service.Account{}, nil
+	}
+	if groupID != nil {
+		return r.queryAccountsByGroup(ctx, *groupID, accountGroupQueryOptions{
+			status:               service.StatusActive,
+			schedulable:          true,
+			ignoreTransientState: true,
+			platforms:            platforms,
+		})
+	}
+
+	preds := []dbpredicate.Account{
+		dbaccount.StatusEQ(service.StatusActive),
+		dbaccount.SchedulableEQ(true),
+		dbaccount.PlatformIn(platforms...),
+	}
+	if !includeGrouped {
+		preds = append(preds, dbaccount.Not(dbaccount.HasAccountGroups()))
+	}
+	accounts, err := r.client.Account.Query().
+		Where(preds...).
+		Order(dbent.Asc(dbaccount.FieldPriority)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return r.accountsToService(ctx, accounts)
+}
+
 func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	now := time.Now()
 	_, err := r.client.Account.Update().
@@ -2117,10 +2459,31 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		return err
 	}
 
+	clearProbeSnapshot := upstreamBillingProbeExplicitlyDisabled(updates) || upstreamBillingProbeSnapshotClearRequested(updates)
+	durableSchedulerChange := shouldEnqueueSchedulerOutboxForExtraUpdates(updates) || clearProbeSnapshot
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
 	client := clientFromContext(ctx, r.client)
+	var tx *dbent.Tx
+	if durableSchedulerChange && contextTx == nil {
+		var txErr error
+		tx, txErr = r.client.Tx(ctx)
+		if txErr != nil && !errors.Is(txErr, dbent.ErrTxStarted) {
+			return txErr
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			client = tx.Client()
+		}
+	}
+	extraExpression := "COALESCE(extra, '{}'::jsonb) || $1::jsonb"
+	if clearProbeSnapshot {
+		extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
+	}
 	result, err := client.ExecContext(
 		ctx,
-		"UPDATE accounts SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL",
+		"UPDATE accounts SET extra = "+extraExpression+", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL",
 		string(payload), id,
 	)
 
@@ -2135,17 +2498,157 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	if affected == 0 {
 		return service.ErrAccountNotFound
 	}
-	if shouldEnqueueSchedulerOutboxForExtraUpdates(updates) {
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
+	if durableSchedulerChange {
+		if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+			return err
+		}
+		if tx != nil {
+			if err := tx.Commit(); err != nil {
+				return err
+			}
+		}
+		if contextTx == nil {
+			r.syncSchedulerAccountSnapshot(baseCtx, id)
 		}
 	} else {
 		// 观测型 extra 字段不需要触发 bucket 重建，但仍同步单账号快照，
 		// 让 sticky session / GetAccount 命中缓存时也能读到最新数据，
 		// 同时避免缓存局部 patch 覆盖掉并发写入的其它账号字段。
-		r.syncSchedulerAccountSnapshot(ctx, id)
+		if dbent.TxFromContext(ctx) == nil {
+			r.syncSchedulerAccountSnapshot(ctx, id)
+		}
 	}
 	return nil
+}
+
+// UpdateUpstreamBillingProbeSnapshot stores a probe result only while the
+// network identity used by that probe is still current.
+func (r *accountRepository) UpdateUpstreamBillingProbeSnapshot(
+	ctx context.Context,
+	account *service.Account,
+	snapshot *service.UpstreamBillingProbeSnapshot,
+) error {
+	if account == nil || snapshot == nil {
+		return service.ErrAccountNilInput
+	}
+	if dbent.TxFromContext(ctx) == nil {
+		tx, err := r.client.Tx(ctx)
+		if errors.Is(err, dbent.ErrTxStarted) {
+			return r.updateUpstreamBillingProbeSnapshotInTx(ctx, account, snapshot)
+		}
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+
+		if err := r.updateUpstreamBillingProbeSnapshotInTx(dbent.NewTxContext(ctx, tx), account, snapshot); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		// The durable outbox event is committed with the snapshot. This direct
+		// cache write only reduces visibility latency on the current instance.
+		r.syncSchedulerAccountSnapshot(ctx, account.ID)
+		return nil
+	}
+	return r.updateUpstreamBillingProbeSnapshotInTx(ctx, account, snapshot)
+}
+
+func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
+	ctx context.Context,
+	account *service.Account,
+	snapshot *service.UpstreamBillingProbeSnapshot,
+) error {
+	payload, err := json.Marshal(map[string]any{service.UpstreamBillingProbeExtraKey: snapshot})
+	if err != nil {
+		return err
+	}
+	credentials, err := json.Marshal(account.Credentials)
+	if err != nil {
+		return err
+	}
+	var expectedSnapshot any
+	if account.Extra != nil {
+		expectedSnapshot = account.Extra[service.UpstreamBillingProbeExtraKey]
+	}
+	expectedSnapshotJSON, err := json.Marshal(expectedSnapshot)
+	if err != nil {
+		return err
+	}
+	var expectedEnabled any
+	if account.Extra != nil {
+		expectedEnabled = account.Extra[service.UpstreamBillingProbeEnabledExtraKey]
+	}
+	expectedEnabledJSON, err := json.Marshal(expectedEnabled)
+	if err != nil {
+		return err
+	}
+	client := clientFromContext(ctx, r.client)
+	proxyMatches, err := lockAndMatchProbeProxyIdentity(ctx, client, account)
+	if err != nil {
+		return err
+	}
+	if !proxyMatches {
+		return service.ErrUpstreamBillingProbeIdentityChanged
+	}
+	var proxyID any
+	if account.ProxyID != nil {
+		proxyID = *account.ProxyID
+	}
+	result, err := client.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb, updated_at = NOW()
+		WHERE id = $2
+			AND platform = $3
+			AND type = $4
+			AND credentials = $5::jsonb
+			AND proxy_id IS NOT DISTINCT FROM $6
+			AND COALESCE(extra -> 'upstream_billing_probe', 'null'::jsonb) = $7::jsonb
+			AND COALESCE(extra -> 'upstream_billing_probe_enabled', 'null'::jsonb) = $8::jsonb
+			AND deleted_at IS NULL
+	`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON))
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUpstreamBillingProbeIdentityChanged
+	}
+	return enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, nil)
+}
+
+func lockAndMatchProbeProxyIdentity(ctx context.Context, client *dbent.Client, account *service.Account) (bool, error) {
+	if account.ProxyID == nil {
+		return true, nil
+	}
+	rows, err := client.QueryContext(ctx, `
+		SELECT protocol, host, port, COALESCE(username, ''), COALESCE(password, ''), status
+		FROM proxies
+		WHERE id = $1 AND deleted_at IS NULL
+		FOR SHARE
+	`, *account.ProxyID)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return false, err
+		}
+		return account.Proxy == nil, nil
+	}
+	if account.Proxy == nil || account.Proxy.ID != *account.ProxyID {
+		return false, nil
+	}
+	var current proxyProbeIdentity
+	if err := rows.Scan(&current.protocol, &current.host, &current.port, &current.username, &current.password, &current.status); err != nil {
+		return false, err
+	}
+	return current == proxyProbeIdentityFromService(account.Proxy), rows.Err()
 }
 
 func shouldEnqueueSchedulerOutboxForExtraUpdates(updates map[string]any) bool {
@@ -2177,6 +2680,21 @@ func isSchedulerNeutralExtraKey(key string) bool {
 	return false
 }
 
+func upstreamBillingProbeExplicitlyDisabled(extra map[string]any) bool {
+	enabled, ok := extra[service.UpstreamBillingProbeEnabledExtraKey].(bool)
+	return ok && !enabled
+}
+
+func upstreamBillingProbeSnapshotClearRequested(extra map[string]any) bool {
+	value, ok := extra[service.UpstreamBillingProbeExtraKey]
+	return ok && value == nil
+}
+
+func ollamaCloudUsageSnapshotClearRequested(extra map[string]any) bool {
+	value, ok := extra[service.OllamaCloudUsageSnapshotExtraKey]
+	return ok && value == nil
+}
+
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
@@ -2186,6 +2704,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	args := make([]any, 0, 8)
 
 	idx := 1
+	ollamaProxyIdentityChanged := ""
 	if updates.Name != nil {
 		setClauses = append(setClauses, "name = $"+itoa(idx))
 		args = append(args, *updates.Name)
@@ -2195,8 +2714,11 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		// 0 表示清除代理（前端发送 0 而不是 null 来表达清除意图）
 		if *updates.ProxyID == 0 {
 			setClauses = append(setClauses, "proxy_id = NULL")
+			ollamaProxyIdentityChanged = "proxy_id IS NOT NULL"
 		} else {
-			setClauses = append(setClauses, "proxy_id = $"+itoa(idx))
+			proxyPlaceholder := "$" + itoa(idx)
+			setClauses = append(setClauses, "proxy_id = "+proxyPlaceholder)
+			ollamaProxyIdentityChanged = "proxy_id IS DISTINCT FROM " + proxyPlaceholder
 			args = append(args, *updates.ProxyID)
 			idx++
 		}
@@ -2235,24 +2757,75 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		args = append(args, *updates.Schedulable)
 		idx++
 	}
+	if updates.ProbeEnabled != nil {
+		if updates.Extra == nil {
+			updates.Extra = make(map[string]any)
+		}
+		updates.Extra[service.UpstreamBillingProbeEnabledExtraKey] = *updates.ProbeEnabled
+	}
 	// JSONB 需要合并而非覆盖，使用 raw SQL 保持旧行为。
+	credentialPlaceholder := ""
 	if len(updates.Credentials) > 0 {
 		payload, err := json.Marshal(updates.Credentials)
 		if err != nil {
 			return 0, err
 		}
-		setClauses = append(setClauses, "credentials = COALESCE(credentials, '{}'::jsonb) || $"+itoa(idx)+"::jsonb")
+		credentialPlaceholder = "$" + itoa(idx)
+		setClauses = append(setClauses, "credentials = COALESCE(credentials, '{}'::jsonb) || "+credentialPlaceholder+"::jsonb")
 		args = append(args, payload)
 		idx++
 	}
-	if len(updates.Extra) > 0 {
-		payload, err := json.Marshal(updates.Extra)
-		if err != nil {
-			return 0, err
+
+	ollamaGroupIdentityChanges := make([]string, 0, 2)
+	if _, ok := updates.Credentials["api_key"]; ok {
+		ollamaGroupIdentityChanges = append(ollamaGroupIdentityChanges, "credentials -> 'api_key' IS DISTINCT FROM "+credentialPlaceholder+"::jsonb -> 'api_key'")
+	}
+	if _, ok := updates.Credentials["base_url"]; ok {
+		ollamaGroupIdentityChanges = append(ollamaGroupIdentityChanges,
+			"NOT ("+ollamaCloudBaseURLMatchesSQL("credentials ->> 'base_url'")+
+				" AND "+ollamaCloudBaseURLMatchesSQL(credentialPlaceholder+"::jsonb ->> 'base_url'")+")")
+	}
+
+	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" {
+		extraExpression := "COALESCE(extra, '{}'::jsonb)"
+		if len(updates.Extra) > 0 {
+			payload, err := json.Marshal(updates.Extra)
+			if err != nil {
+				return 0, err
+			}
+			extraExpression += " || $" + itoa(idx) + "::jsonb"
+			args = append(args, payload)
+			idx++
+			if upstreamBillingProbeExplicitlyDisabled(updates.Extra) || upstreamBillingProbeSnapshotClearRequested(updates.Extra) {
+				extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
+			}
+			if ollamaCloudUsageSnapshotClearRequested(updates.Extra) {
+				extraExpression = "(" + extraExpression + ") - 'ollama_cloud_usage_snapshot'"
+			}
 		}
-		setClauses = append(setClauses, "extra = COALESCE(extra, '{}'::jsonb) || $"+itoa(idx)+"::jsonb")
-		args = append(args, payload)
-		idx++
+		eligibleAccount := "platform IN ('openai', 'anthropic') AND type = 'apikey'"
+		groupIdentityChanged := ""
+		if len(ollamaGroupIdentityChanges) > 0 {
+			groupIdentityChanged = "(" + eligibleAccount + " AND (" + joinClauses(ollamaGroupIdentityChanges, " OR ") + "))"
+		}
+		snapshotIdentityChanged := groupIdentityChanged
+		if ollamaProxyIdentityChanged != "" {
+			proxyChanged := "(" + eligibleAccount + " AND " + ollamaProxyIdentityChanged + ")"
+			if snapshotIdentityChanged == "" {
+				snapshotIdentityChanged = proxyChanged
+			} else {
+				snapshotIdentityChanged = "(" + snapshotIdentityChanged + " OR " + proxyChanged + ")"
+			}
+		}
+		if groupIdentityChanged != "" {
+			extraExpression = "CASE" +
+				" WHEN " + groupIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_session' - 'ollama_cloud_usage_auto_refresh' - 'ollama_cloud_usage_snapshot'" +
+				" WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot'" +
+				" ELSE " + extraExpression + " END"
+		} else if snapshotIdentityChanged != "" {
+			extraExpression = "CASE WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot' ELSE " + extraExpression + " END"
+		}
+		setClauses = append(setClauses, "extra = "+extraExpression)
 	}
 
 	if len(setClauses) == 0 {
@@ -2261,10 +2834,35 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 
 	setClauses = append(setClauses, "updated_at = NOW()")
 
-	query := "UPDATE accounts SET " + joinClauses(setClauses, ", ") + " WHERE id = ANY($" + itoa(idx) + ") AND deleted_at IS NULL"
+	whereClause := " WHERE id = ANY($" + itoa(idx) + ") AND deleted_at IS NULL"
 	args = append(args, pq.Array(ids))
+	idx++
+	if updates.ProbeEnabled != nil {
+		whereClause += " AND platform = $" + itoa(idx) + " AND type = $" + itoa(idx+1)
+		args = append(args, service.PlatformOpenAI, service.AccountTypeAPIKey)
+	}
+	query := "UPDATE accounts SET " + joinClauses(setClauses, ", ") + whereClause
 
-	result, err := r.sql.ExecContext(ctx, query, args...)
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
+	exec := r.sql
+	var tx *dbent.Tx
+	if contextTx != nil {
+		exec = contextTx.Client()
+	} else if r.client != nil {
+		var txErr error
+		tx, txErr = r.client.Tx(ctx)
+		if txErr != nil && !errors.Is(txErr, dbent.ErrTxStarted) {
+			return 0, txErr
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			exec = tx.Client()
+		}
+	}
+
+	result, err := exec.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -2272,11 +2870,32 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	if err != nil {
 		return 0, err
 	}
+	if updates.ProbeEnabled != nil {
+		expectedRows := int64(0)
+		seenIDs := make(map[int64]struct{}, len(ids))
+		for _, id := range ids {
+			if _, seen := seenIDs[id]; seen {
+				continue
+			}
+			seenIDs[id] = struct{}{}
+			expectedRows++
+		}
+		if rows != expectedRows {
+			return 0, service.ErrUpstreamBillingProbeAccountInvalid
+		}
+	}
 	if rows > 0 {
 		payload := map[string]any{"account_ids": ids}
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
-			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue bulk update failed: err=%v", err)
+		if err := enqueueSchedulerOutbox(ctx, exec, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+			return 0, err
 		}
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return 0, err
+		}
+	}
+	if rows > 0 && contextTx == nil {
 		shouldSync := false
 		if updates.Status != nil && (*updates.Status == service.StatusError || *updates.Status == service.StatusDisabled) {
 			shouldSync = true
@@ -2285,16 +2904,17 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			shouldSync = true
 		}
 		if shouldSync {
-			r.syncSchedulerAccountSnapshots(ctx, ids)
+			r.syncSchedulerAccountSnapshots(baseCtx, ids)
 		}
 	}
 	return rows, nil
 }
 
 type accountGroupQueryOptions struct {
-	status      string
-	schedulable bool
-	platforms   []string // 允许的多个平台，空切片表示不进行平台过滤
+	status               string
+	schedulable          bool
+	ignoreTransientState bool
+	platforms            []string // 允许的多个平台，空切片表示不进行平台过滤
 }
 
 func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID int64, opts accountGroupQueryOptions) ([]service.Account, error) {
@@ -2311,14 +2931,16 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 		preds = append(preds, dbaccount.PlatformIn(opts.platforms...))
 	}
 	if opts.schedulable {
-		now := time.Now()
-		preds = append(preds,
-			dbaccount.SchedulableEQ(true),
-			tempUnschedulablePredicate(),
-			notExpiredPredicate(now),
-			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
-			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
-		)
+		preds = append(preds, dbaccount.SchedulableEQ(true))
+		if !opts.ignoreTransientState {
+			now := time.Now()
+			preds = append(preds,
+				tempUnschedulablePredicate(),
+				notExpiredPredicate(now),
+				dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+				dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+			)
+		}
 	}
 
 	if len(preds) > 0 {
@@ -2731,6 +3353,117 @@ func (r *accountRepository) FindByExtraField(ctx context.Context, key string, va
 	}
 
 	return r.accountsToService(ctx, accounts)
+}
+
+// ListDueUpstreamBillingProbeAccounts bounds result hydration and network work
+// to limit. PostgreSQL must still filter and order all enabled candidates;
+// MATERIALIZED avoids repeating the defensive timestamp parse expression.
+// Go writes next_probe_at via RFC3339Nano (up to 9 fractional digits) while
+// jsonpath datetime() parses at most microseconds, so fractions beyond 6
+// digits are trimmed first — mirroring ListDueOllamaCloudUsageAccounts.
+// Without this, every nanosecond timestamp is treated as malformed and the
+// fail-open ordering pins the cycle to the lowest account IDs, starving the
+// rest of the pool.
+func (r *accountRepository) ListDueUpstreamBillingProbeAccounts(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
+	if limit <= 0 {
+		return []service.Account{}, nil
+	}
+	if r.sql == nil {
+		return nil, errors.New("account repository SQL executor not configured")
+	}
+
+	rows, err := r.sql.QueryContext(ctx, `
+		WITH candidates AS (
+			SELECT
+				id,
+				extra #>> '{upstream_billing_probe,status}' AS probe_status,
+				extra #>> '{upstream_billing_probe,next_probe_at}' AS next_probe_at
+			FROM accounts
+			WHERE deleted_at IS NULL
+				AND status = 'active'
+				AND platform = 'openai'
+				AND type = 'apikey'
+				AND extra @> '{"upstream_billing_probe_enabled": true}'::jsonb
+		), parsed AS MATERIALIZED (
+			SELECT
+				id,
+				probe_status,
+				next_probe_at,
+				next_probe_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$' AS rfc3339_shape,
+				jsonb_path_query_first_tz(
+					jsonb_build_object(
+						'value',
+						replace(regexp_replace(regexp_replace(
+							next_probe_at,
+							'(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$',
+							'\1\2'
+						), 'Z$', '+00:00'), 'T', ' ')
+					),
+					'$.value.datetime()',
+					'{}'::jsonb,
+					true
+				) #>> '{}' AS parsed_next_probe_at
+			FROM candidates
+		), normalized AS (
+			SELECT
+				id,
+				probe_status,
+				next_probe_at,
+				parsed_next_probe_at,
+				rfc3339_shape AND parsed_next_probe_at IS NOT NULL AS valid_next_probe_at
+			FROM parsed
+		)
+		SELECT id
+		FROM normalized
+		WHERE probe_status NOT IN ('ok', 'unsupported', 'failed')
+			OR probe_status IS NULL
+			OR next_probe_at IS NULL
+			OR NOT valid_next_probe_at
+			OR CASE WHEN valid_next_probe_at THEN parsed_next_probe_at::timestamptz <= $1 ELSE FALSE END
+		ORDER BY
+			CASE
+				WHEN probe_status NOT IN ('ok', 'unsupported', 'failed')
+					OR probe_status IS NULL
+					OR next_probe_at IS NULL
+					OR NOT valid_next_probe_at
+				THEN 0
+				ELSE 1
+			END ASC,
+			CASE WHEN valid_next_probe_at THEN parsed_next_probe_at::timestamptz END ASC NULLS FIRST,
+			id ASC
+		LIMIT $2
+	`, now.UTC(), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	ids := make([]int64, 0, limit)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []service.Account{}, nil
+	}
+
+	accounts, err := r.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account != nil {
+			out = append(out, *account)
+		}
+	}
+	return out, nil
 }
 
 // nowUTC is a SQL expression to generate a UTC RFC3339 timestamp string.

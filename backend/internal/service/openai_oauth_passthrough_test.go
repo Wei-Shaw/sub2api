@@ -450,7 +450,10 @@ func TestOpenAIGatewayService_OAuthPassthrough_NamespaceRequestAndStreamResponse
 			{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent","description":"spawn","parameters":{"type":"object"}}]}
 		],
 		"tool_choice":{"type":"function","name":"spawn_agent","namespace":"collaboration"},
-		"input":[{"type":"function_call","call_id":"call_old","name":"spawn_agent","namespace":"collaboration","arguments":"{}"}]
+		"input":[
+			{"type":"function_call","call_id":"call_old","name":"spawn_agent","namespace":"collaboration","arguments":"{}"},
+			{"type":"message","role":"user","namespace":"residual","content":[{"type":"input_text","text":"keep","namespace":"nested"}]}
+		]
 	}`)
 
 	upstreamSSE := strings.Join([]string{
@@ -488,6 +491,9 @@ func TestOpenAIGatewayService_OAuthPassthrough_NamespaceRequestAndStreamResponse
 	require.False(t, gjson.GetBytes(upstream.lastBody, "tool_choice.namespace").Exists())
 	require.Equal(t, "collaboration__spawn_agent", gjson.GetBytes(upstream.lastBody, "input.0.name").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.namespace").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input.1.namespace").Exists())
+	require.Equal(t, "nested", gjson.GetBytes(upstream.lastBody, "input.1.content.0.namespace").String())
+	require.Len(t, upstream.bodies, 1)
 
 	downstream := rec.Body.String()
 	require.NotContains(t, downstream, "collaboration__spawn_agent")
@@ -1960,6 +1966,8 @@ func TestOpenAIGatewayService_APIKeyPassthrough_PreservesBodyAndUsesResponsesEnd
 	c.Request.Header.Set("User-Agent", "curl/8.0")
 	c.Request.Header.Set("X-Test", "keep")
 	c.Request.Header.Set("x-codex-beta-features", "remote_compaction_v2")
+	c.Request.Header.Set("X-Codex-Window-ID", "window-passthrough")
+	c.Request.Header.Set("X-Codex-Installation-ID", "installation-passthrough")
 
 	originalBody := []byte(`{"model":"gpt-5.2","stream":false,"service_tier":"flex","max_output_tokens":128,"input":[{"type":"text","text":"hi"}]}`)
 	resp := &http.Response{
@@ -1998,6 +2006,8 @@ func TestOpenAIGatewayService_APIKeyPassthrough_PreservesBodyAndUsesResponsesEnd
 	require.Equal(t, "Bearer sk-api-key", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "curl/8.0", upstream.lastReq.Header.Get("User-Agent"))
 	require.Equal(t, "remote_compaction_v2", upstream.lastReq.Header.Get("x-codex-beta-features"))
+	require.Equal(t, "window-passthrough", upstream.lastReq.Header.Get("X-Codex-Window-ID"))
+	require.Equal(t, "installation-passthrough", upstream.lastReq.Header.Get("X-Codex-Installation-ID"))
 	require.Empty(t, upstream.lastReq.Header.Get("X-Test"))
 }
 

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/tidwall/gjson"
@@ -57,6 +58,16 @@ type channelModelKey struct {
 	groupID  int64
 	platform string // 平台标识
 	model    string // lowercase
+}
+
+// normalizeChannelPricingModelName makes Anthropic's dot and hyphen spelling
+// differences equivalent in channel pricing cache keys.
+func normalizeChannelPricingModelName(model string) string {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if strings.HasPrefix(model, "claude-") {
+		model = strings.ReplaceAll(model, ".", "-")
+	}
+	return model
 }
 
 // channelGroupPlatformKey 通配符定价缓存键
@@ -216,13 +227,13 @@ func expandPricingToCache(cache *channelCache, ch *Channel, gid int64, platform 
 		gpKey := channelGroupPlatformKey{groupID: gid, platform: pricingPlatform}
 		for _, model := range pricing.Models {
 			if strings.HasSuffix(model, "*") {
-				prefix := strings.ToLower(strings.TrimSuffix(model, "*"))
+				prefix := normalizeChannelPricingModelName(strings.TrimSuffix(model, "*"))
 				cache.wildcardByGroupPlatform[gpKey] = append(cache.wildcardByGroupPlatform[gpKey], &wildcardPricingEntry{
 					prefix:  prefix,
 					pricing: pricing,
 				})
 			} else {
-				key := channelModelKey{groupID: gid, platform: pricingPlatform, model: strings.ToLower(model)}
+				key := channelModelKey{groupID: gid, platform: pricingPlatform, model: normalizeChannelPricingModelName(model)}
 				cache.pricingByGroupModel[key] = pricing
 			}
 		}
@@ -332,15 +343,37 @@ func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *
 // invalidateCache 使缓存失效，让下次读取时自然重建
 
 // isPlatformPricingMatch 判断定价条目的平台是否匹配分组平台。
-// 各平台（antigravity / anthropic / gemini / openai）严格独立，不跨平台匹配。
+// Concrete platforms stay isolated; composite groups may carry concrete-provider
+// pricing rows that are selected by the request's resolved target platform.
 func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
+	if groupPlatform == PlatformComposite {
+		return isConcreteRequestPlatform(pricingPlatform)
+	}
 	return groupPlatform == pricingPlatform
 }
 
 // matchingPlatforms 返回分组平台对应的可匹配平台列表。
-// 各平台严格独立，只返回自身。
+// Concrete platforms return themselves; composite is a configuration-time
+// fallback used before a request target has been resolved.
 func matchingPlatforms(groupPlatform string) []string {
+	if groupPlatform == PlatformComposite {
+		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok}
+	}
 	return []string{groupPlatform}
+}
+
+func channelLookupPlatform(ctx context.Context, groupPlatform string) string {
+	if ctx != nil {
+		if forcePlatform, ok := ctx.Value(ctxkey.ForcePlatform).(string); ok && strings.TrimSpace(forcePlatform) != "" {
+			return strings.TrimSpace(forcePlatform)
+		}
+		if groupPlatform == PlatformComposite {
+			if platform, ok := ResolvedTargetPlatformFromContext(ctx); ok {
+				return platform
+			}
+		}
+	}
+	return groupPlatform
 }
 func (s *ChannelService) invalidateCache() {
 	s.cache.Store((*channelCache)(nil))
@@ -379,6 +412,7 @@ func (c *channelCache) matchWildcardMapping(groupID int64, platform, modelLower 
 // lookupPricingAcrossPlatforms 在分组平台内查找模型定价。
 // 各平台严格独立，只在本平台内查找（先精确匹配，再通配符）。
 func lookupPricingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatform, modelLower string) *ChannelModelPricing {
+	modelLower = normalizeChannelPricingModelName(modelLower)
 	for _, p := range matchingPlatforms(groupPlatform) {
 		key := channelModelKey{groupID: groupID, platform: p, model: modelLower}
 		if pricing, ok := cache.pricingByGroupModel[key]; ok {
@@ -456,7 +490,7 @@ func (s *ChannelService) lookupGroupChannel(ctx context.Context, groupID int64) 
 	return &channelLookup{
 		cache:    cache,
 		channel:  ch,
-		platform: cache.groupPlatform[groupID],
+		platform: channelLookupPlatform(ctx, cache.groupPlatform[groupID]),
 	}, nil
 }
 

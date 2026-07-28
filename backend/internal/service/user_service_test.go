@@ -90,7 +90,8 @@ func (m *mockUserSettingRepo) Delete(context.Context, string) error {
 	panic("unexpected Delete call")
 }
 
-func (m *mockUserRepo) Create(context.Context, *User) error { return nil }
+func (m *mockUserRepo) Create(context.Context, *User) error                    { return nil }
+func (m *mockUserRepo) CreateWithEmailAliasGuard(context.Context, *User) error { return nil }
 func (m *mockUserRepo) GetByID(ctx context.Context, _ int64) (*User, error) {
 	if m.getByIDErr != nil {
 		return nil, m.getByIDErr
@@ -202,13 +203,19 @@ func (m *mockUserRepo) DeductBalance(ctx context.Context, id int64, amount float
 }
 func (m *mockUserRepo) UpdateConcurrency(context.Context, int64, int) error { return nil }
 func (m *mockUserRepo) ExistsByEmail(context.Context, string) (bool, error) { return false, nil }
+func (m *mockUserRepo) ExistsByEmailAlias(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (m *mockUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 }
 
 func (m *mockUserRepo) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 func (m *mockUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
-func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error    { return nil }
+func (m *mockUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	return 0, nil
+}
+func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error { return nil }
 func (m *mockUserRepo) ListUserAuthIdentities(context.Context, int64) ([]UserAuthIdentityRecord, error) {
 	out := make([]UserAuthIdentityRecord, len(m.identities))
 	copy(out, m.identities)

@@ -42,6 +42,28 @@ func TestGatewayChatCredentialStopDoesNotSelectAnotherAccountAndReturnsSafe503(t
 	require.NotContains(t, recorder.Body.String(), "client_secret")
 }
 
+func TestGatewayChatAntigravityCredentialFailureReturnsActionableMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+
+	(&GatewayHandler{}).handleCCFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:        http.StatusUnauthorized,
+		Stage:             service.GatewayFailureStageAccountAuth,
+		Scope:             service.GatewayFailureScopeAccount,
+		Reason:            service.AntigravityCredentialRejectedReason,
+		NextAccountAction: service.NextAccountRetry,
+		ClientStatusCode:  http.StatusBadGateway,
+		ClientMessage:     service.AntigravityCredentialRejectedClientMessage,
+		ResponseBody:      []byte(`{"error":{"message":"Invalid bearer token","refresh_token":"must-not-leak"}}`),
+	}, false)
+
+	require.Equal(t, http.StatusBadGateway, recorder.Code)
+	require.Contains(t, recorder.Body.String(), service.AntigravityCredentialRejectedClientMessage)
+	require.NotContains(t, strings.ToLower(recorder.Body.String()), "bearer")
+	require.NotContains(t, strings.ToLower(recorder.Body.String()), "refresh_token")
+}
+
 func TestGatewayChatInferenceExhaustionRestoresRetryAfter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
@@ -206,6 +228,10 @@ func TestOpsRecoveredCredentialFailoverUsesAccountAuthAttribution(t *testing.T) 
 	require.NotContains(t, job.entry.ErrorMessage, "earlier inference failure")
 	require.NotNil(t, job.entry.UpstreamStatusCode)
 	require.Zero(t, *job.entry.UpstreamStatusCode)
-	require.Len(t, job.entry.UpstreamErrors, 2)
-	require.Equal(t, http.StatusForbidden, job.entry.UpstreamErrors[0].UpstreamStatusCode)
+	require.Nil(t, job.entry.UpstreamErrors)
+	require.NotNil(t, job.entry.UpstreamErrorsJSON)
+	events, err := service.ParseOpsUpstreamErrors(*job.entry.UpstreamErrorsJSON)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	require.Equal(t, http.StatusForbidden, events[0].UpstreamStatusCode)
 }

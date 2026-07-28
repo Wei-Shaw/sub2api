@@ -20,7 +20,11 @@ import type {
   CodexSessionImportResult,
   OpenAICodexPATCreateRequest,
   CheckMixedChannelRequest,
-  CheckMixedChannelResponse
+  CheckMixedChannelResponse,
+  UpstreamBillingProbeResult,
+  UpstreamBillingProbeSettings,
+  OllamaCloudUsageSettings,
+  OllamaCloudUsageState
 } from '@/types'
 
 /**
@@ -848,6 +852,82 @@ export async function createSparkShadow(parentId: number, payload: SparkShadowCr
   return data
 }
 
+export async function getUpstreamBillingProbeSettings(): Promise<UpstreamBillingProbeSettings> {
+  const { data } = await apiClient.get<UpstreamBillingProbeSettings>('/admin/accounts/upstream-billing-probe/settings')
+  return data
+}
+
+export async function updateUpstreamBillingProbeSettings(
+  settings: UpstreamBillingProbeSettings
+): Promise<UpstreamBillingProbeSettings> {
+  const { data } = await apiClient.put<UpstreamBillingProbeSettings>(
+    '/admin/accounts/upstream-billing-probe/settings',
+    settings
+  )
+  return data
+}
+
+export async function setUpstreamBillingProbeEnabled(id: number, enabled: boolean): Promise<void> {
+  await apiClient.put(`/admin/accounts/${id}/upstream-billing-probe`, { enabled })
+}
+
+export async function probeUpstreamBilling(id: number): Promise<UpstreamBillingProbeResult> {
+  const { data } = await apiClient.post<UpstreamBillingProbeResult>(`/admin/accounts/${id}/upstream-billing-probe`)
+  return data
+}
+
+export async function probeUpstreamBillingBatch(accountIds: number[]): Promise<UpstreamBillingProbeResult[]> {
+  const { data } = await apiClient.post<{ results: UpstreamBillingProbeResult[] }>(
+    '/admin/accounts/upstream-billing-probe/batch',
+    { account_ids: accountIds }
+  )
+  return data.results
+}
+
+export async function getOllamaCloudUsageSettings(): Promise<OllamaCloudUsageSettings> {
+  const { data } = await apiClient.get<OllamaCloudUsageSettings>('/admin/accounts/ollama-cloud-usage/settings')
+  return data
+}
+
+export async function updateOllamaCloudUsageSettings(
+  settings: OllamaCloudUsageSettings
+): Promise<OllamaCloudUsageSettings> {
+  const { data } = await apiClient.put<OllamaCloudUsageSettings>(
+    '/admin/accounts/ollama-cloud-usage/settings',
+    settings
+  )
+  return data
+}
+
+export async function getOllamaCloudUsage(id: number): Promise<OllamaCloudUsageState> {
+  const { data } = await apiClient.get<OllamaCloudUsageState>(`/admin/accounts/${id}/ollama-cloud-usage`)
+  return data
+}
+
+export async function saveOllamaCloudUsageSession(id: number, session: string): Promise<OllamaCloudUsageState> {
+  const { data } = await apiClient.put<OllamaCloudUsageState>(`/admin/accounts/${id}/ollama-cloud-usage/session`, {
+    session
+  })
+  return data
+}
+
+export async function deleteOllamaCloudUsageSession(id: number): Promise<OllamaCloudUsageState> {
+  const { data } = await apiClient.delete<OllamaCloudUsageState>(`/admin/accounts/${id}/ollama-cloud-usage/session`)
+  return data
+}
+
+export async function setOllamaCloudUsageAutoRefresh(id: number, enabled: boolean): Promise<OllamaCloudUsageState> {
+  const { data } = await apiClient.put<OllamaCloudUsageState>(`/admin/accounts/${id}/ollama-cloud-usage/auto-refresh`, {
+    enabled
+  })
+  return data
+}
+
+export async function refreshOllamaCloudUsage(id: number): Promise<OllamaCloudUsageState> {
+  const { data } = await apiClient.post<OllamaCloudUsageState>(`/admin/accounts/${id}/ollama-cloud-usage/refresh`)
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -894,7 +974,19 @@ export const accountsAPI = {
   revertProxyFallback,
   queryOpenAIQuota,
   resetOpenAIQuota,
-  createSparkShadow
+  createSparkShadow,
+  getUpstreamBillingProbeSettings,
+  updateUpstreamBillingProbeSettings,
+  setUpstreamBillingProbeEnabled,
+  probeUpstreamBilling,
+  probeUpstreamBillingBatch,
+  getOllamaCloudUsageSettings,
+  updateOllamaCloudUsageSettings,
+  getOllamaCloudUsage,
+  saveOllamaCloudUsageSession,
+  deleteOllamaCloudUsageSession,
+  setOllamaCloudUsageAutoRefresh,
+  refreshOllamaCloudUsage
 }
 
 export default accountsAPI

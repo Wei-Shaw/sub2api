@@ -47,6 +47,11 @@
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
+          <GrokBaseUrlPresets
+            v-if="account.platform === 'grok'"
+            class="mt-2"
+            @select="editBaseUrl = $event"
+          />
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
@@ -423,6 +428,26 @@
 
       </div>
 
+      <!-- Grok OAuth client-tool prompt cache opt-in -->
+      <div
+        v-if="account.platform === 'grok' && account.type === 'oauth'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label class="input-label mb-0">{{ t('admin.accounts.grokClientToolCache.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.grokClientToolCache.hint') }}
+            </p>
+          </div>
+          <Toggle
+            v-model="grokClientToolCacheEnabled"
+            data-testid="grok-client-tool-cache-toggle"
+            :aria-label="t('admin.accounts.grokClientToolCache.title')"
+          />
+        </div>
+      </div>
+
       <!-- Grok OAuth Custom Upstream URL (仅改写转发端点，OAuth 授权/刷新不受影响) -->
       <div
         v-if="account.platform === 'grok' && account.type === 'oauth'"
@@ -452,7 +477,7 @@
             />
           </button>
         </div>
-        <div v-if="grokOAuthCustomBaseUrlEnabled">
+        <div v-if="grokOAuthCustomBaseUrlEnabled" class="space-y-2">
           <input
             v-model="grokOAuthBaseUrl"
             type="text"
@@ -460,6 +485,7 @@
             data-testid="grok-custom-base-url-input"
             :placeholder="t('admin.accounts.grokCustomBaseUrl.placeholder')"
           />
+          <GrokBaseUrlPresets @select="grokOAuthBaseUrl = $event" />
         </div>
       </div>
 
@@ -1455,7 +1481,7 @@
         </div>
       </div>
 
-      <!-- OpenAI Codex 图片工具统一策略（自动注入 + 客户端显式携带） -->
+      <!-- OpenAI Codex hosted image_generation bridge policy -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -1591,6 +1617,29 @@
           <p class="input-hint">{{ t('admin.accounts.openai.endpointCapabilitiesDesc') }}</p>
         </div>
       </div>
+
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'apikey'"
+        class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div>
+          <label class="input-label mb-0">{{ t('admin.accounts.upstreamBilling.autoProbe') }}</label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.upstreamBilling.autoProbeHint') }}
+          </p>
+        </div>
+        <Toggle
+          v-model="upstreamBillingAutoProbeEnabled"
+          data-testid="upstream-billing-auto-probe"
+          :aria-label="t('admin.accounts.upstreamBilling.autoProbe')"
+        />
+      </div>
+
+      <OllamaCloudUsageSettings
+        v-if="account?.ollama_cloud_usage?.eligible"
+        :account="account"
+        @updated="handleOllamaCloudUsageUpdated"
+      />
 
       <!-- Anthropic API Key 自动透传开关 -->
       <div
@@ -2555,18 +2604,22 @@ import type {
   CheckMixedChannelResponse,
   OpenAICompactMode,
   OpenAIResponsesMode,
-  OpenAIEndpointCapability
+  OpenAIEndpointCapability,
+  OllamaCloudUsageState
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -2624,6 +2677,10 @@ const authStore = useAuthStore()
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
 
+const handleOllamaCloudUsageUpdated = (state: OllamaCloudUsageState) => {
+  if (props.account) emit('updated', { ...props.account, ollama_cloud_usage: state })
+}
+
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
@@ -2674,6 +2731,7 @@ const allowedModels = ref<string[]>([])
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
+const GROK_CLIENT_TOOL_CACHE_EXTRA_KEY = 'grok_client_tool_cache_enabled'
 const poolModeEnabled = ref(false)
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
 const poolModeRetryStatusCodesInput = ref('')
@@ -2722,6 +2780,9 @@ const headerOverrideCapable = computed(
 // Grok OAuth 自定义上游地址（仅转发端点；OAuth 授权/令牌刷新不受影响）
 const grokOAuthCustomBaseUrlEnabled = ref(false)
 const grokOAuthBaseUrl = ref('')
+// Grok Free OAuth accounts use client-tool prompt caching by default. Keep an
+// explicit false in the account extra as the opt-out signal.
+const grokClientToolCacheEnabled = ref(true)
 
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(false)
@@ -2729,6 +2790,7 @@ const autoPause5hThreshold = ref<number | null>(null)
 const autoPause7dThreshold = ref<number | null>(null)
 const autoPause5hDisabled = ref(false)
 const autoPause7dDisabled = ref(false)
+const upstreamBillingAutoProbeEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const antigravityProjectId = ref('')
@@ -3210,6 +3272,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
 	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
 	autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
+	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
@@ -3375,6 +3438,14 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load Grok OAuth custom upstream URL state（存储的官方地址视同未定制）
   grokOAuthCustomBaseUrlEnabled.value = false
   grokOAuthBaseUrl.value = ''
+  const grokClientToolCacheSetting =
+    newAccount.platform === 'grok' && newAccount.type === 'oauth'
+      ? newAccount.extra?.[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY]
+      : undefined
+  grokClientToolCacheEnabled.value =
+    newAccount.platform === 'grok' &&
+    newAccount.type === 'oauth' &&
+    (grokClientToolCacheSetting === undefined || grokClientToolCacheSetting === true)
   if (newAccount.platform === 'grok' && newAccount.type === 'oauth' && newAccount.credentials) {
     const grokCreds = newAccount.credentials as Record<string, unknown>
     if (isCustomGrokBaseUrl(grokCreds.base_url)) {
@@ -4261,6 +4332,14 @@ const handleSubmit = async () => {
       applyHeaderOverride(newCredentials, headerOverrideEnabled.value, headerOverrideRows.value, 'edit')
 
       updatePayload.credentials = newCredentials
+
+      const newExtra: Record<string, unknown> = {
+        ...((props.account.extra as Record<string, unknown>) || {})
+      }
+      // Persist both states so a disabled account remains opted out when the
+      // backend applies the default-enabled policy to missing values.
+      newExtra[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY] = grokClientToolCacheEnabled.value
+      updatePayload.extra = newExtra
     }
 
     // OpenAI: 手动覆盖订阅档位 plan_type（Plus/Pro/Free）。仅 OAuth 非影子账号：
@@ -4463,6 +4542,7 @@ const handleSubmit = async () => {
         } else {
           newExtra.openai_responses_mode = openAIResponsesMode.value
         }
+			newExtra.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value
 		}
 		if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
 			newExtra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100

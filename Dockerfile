@@ -18,9 +18,10 @@ ARG NPM_CONFIG_REGISTRY=
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
 # -----------------------------------------------------------------------------
-# Pin to the build host platform (BUILDPLATFORM): frontend output is static
-# JS/CSS, architecture-independent, so building natively avoids slow QEMU
-# emulation when cross-building the image for a different target arch.
+# --platform=$BUILDPLATFORM: pin to the build host platform. The frontend output
+# is static JS/CSS (arch-neutral), so building natively avoids slow QEMU
+# emulation when cross-building the image for a different target arch, and
+# falls back to the build host arch for a plain `docker build`.
 FROM --platform=${BUILDPLATFORM} ${NODE_IMAGE} AS frontend-builder
 ARG NPM_CONFIG_REGISTRY
 
@@ -47,10 +48,12 @@ RUN pnpm run build
 # -----------------------------------------------------------------------------
 # Stage 2: Backend Builder
 # -----------------------------------------------------------------------------
-# Pin to the build host platform (BUILDPLATFORM) and cross-compile the Go binary
-# for the target arch via GOARCH=${TARGETARCH}. CGO is disabled, so this is a
-# pure native cross-compile (fast) instead of running the Go toolchain under
-# QEMU emulation. Falls back to the build host arch for a plain `docker build`.
+# --platform=$BUILDPLATFORM: run the Go toolchain on the native host arch and
+# cross-compile the binary to the target arch via GOARCH=${TARGETARCH} below.
+# CGO_ENABLED=0 makes this a pure-Go cross-compile (fast), avoiding QEMU
+# emulation of `go mod download` / `go build` - that emulated networking was
+# intermittently dropping module fetches with EOF. Falls back to the build host
+# arch for a plain `docker build`.
 FROM --platform=${BUILDPLATFORM} ${GOLANG_IMAGE} AS backend-builder
 
 # Build arguments for version info (set by CI)
@@ -59,7 +62,8 @@ ARG COMMIT=docker
 ARG DATE
 ARG GOPROXY
 ARG GOSUMDB
-# Target platform injected by buildx (TARGETOS=linux, TARGETARCH=amd64/arm64).
+# Target platform injected by buildx from the --platform target
+# (e.g. TARGETOS=linux, TARGETARCH=amd64/arm64).
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -73,7 +77,10 @@ WORKDIR /app/backend
 
 # Copy go mod files first (better caching)
 COPY backend/go.mod backend/go.sum ./
-RUN go mod download
+# Cache mount keeps the module cache across builds so a transient CDN blip on
+# retry resumes instead of re-fetching every zip from scratch.
+RUN --mount=type=cache,id=sub2api-gomod,target=/go/pkg/mod \
+    go mod download
 
 # Copy backend source first
 COPY backend/ ./
@@ -83,7 +90,9 @@ COPY --from=frontend-builder /app/backend/internal/web/dist ./internal/web/dist
 
 # Build the binary (BuildType=release for CI builds, embed frontend)
 # Version precedence: build arg VERSION > exact git tag > cmd/server/VERSION
-RUN VERSION_VALUE="${VERSION}" && \
+RUN --mount=type=cache,id=sub2api-gomod,target=/go/pkg/mod \
+    --mount=type=cache,id=sub2api-gobuild,target=/root/.cache/go-build \
+    VERSION_VALUE="${VERSION}" && \
     if [ -z "${VERSION_VALUE}" ]; then VERSION_VALUE="$(./scripts/resolve-version.sh)"; fi && \
     DATE_VALUE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" && \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \

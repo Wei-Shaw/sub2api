@@ -36,7 +36,7 @@ func newGrokImportProbeStub(buffer int) *grokImportProbeStub {
 	}
 }
 
-func (s *grokImportProbeStub) ProbeUsage(ctx context.Context, accountID int64) (*service.GrokQuotaProbeResult, error) {
+func (s *grokImportProbeStub) QueryQuota(ctx context.Context, accountID int64) (*service.GrokQuotaProbeResult, error) {
 	_, deadlineSeen := ctx.Deadline()
 	s.mu.Lock()
 	s.calls[accountID]++
@@ -69,7 +69,7 @@ func (s *grokImportProbeStub) ProbeUsage(ctx context.Context, accountID int64) (
 		return nil, failure
 	}
 	return &service.GrokQuotaProbeResult{
-		Source:         "active_probe",
+		Source:         "hybrid_probe",
 		Model:          "grok-4.5",
 		StatusCode:     200,
 		ResetSupported: false,

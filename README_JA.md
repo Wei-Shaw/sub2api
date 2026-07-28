@@ -1,6 +1,8 @@
-# Sub2API
-
 <div align="center">
+
+<img src="assets/logo.svg" alt="Sub2API Logo" width="128" />
+
+# Sub2API
 
 [![Go](https://img.shields.io/badge/Go-1.25.7-00ADD8.svg)](https://golang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
@@ -79,8 +81,8 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://api.pptoken.org/register?promo=SUB2API"><img src="assets/partners/logos/pptoken.png" alt="pptoken" width="150"></a></td>
-<td>PPToken.org のご支援に感謝します！<a href="https://api.pptoken.org/register?promo=SUB2API">PPToken.org</a> は GPT シリーズモデルの API 中継サービスを専門としており、Codex、Claude Code、OpenAI 互換クライアント、Gemini CLI などのツール接続をサポートしています。チャージは 1:1（1元＝1ドル分のクレジット）、GPT モデルは最低 0.16 倍のレート倍率で、総合コストは公式価格の約 2.2% 、最速ファーストトークンは約1秒 — 開発者が低コスト・高速レスポンスで GPT モデル機能にアクセスするのに最適です。テクニカルサポート：24時間365日リアルな人間が対応（ボットではありません）、グループ内で @技術 すれば 10 分以内に返信。スポンサー特典：先着 200 名のユーザーが<a href="https://api.pptoken.org/register?promo=SUB2API">専用登録リンク</a>から登録し、プロモコード `SUB2API` を入力すると、Codex / Claude Code の無料トライアルクレジットを獲得できます — 最低利用額なし、カード登録不要。
+<td width="180"><a href="https://api.pptoken.cc/register?promo=SUB2API"><img src="assets/partners/logos/pptoken.png" alt="pptoken" width="150"></a></td>
+<td>PPToken.cc のご支援に感謝します！<a href="https://api.pptoken.cc/register?promo=SUB2API">PPToken.cc</a> は GPT シリーズモデルの API 中継サービスを専門としており、Codex、Claude Code、OpenAI 互換クライアント、Gemini CLI などのツール接続をサポートしています。チャージは 1:1（1元＝1ドル分のクレジット）、GPT モデルは最低 0.16 倍のレート倍率で、総合コストは公式価格の約 2.2% 、最速ファーストトークンは約1秒 — 開発者が低コスト・高速レスポンスで GPT モデル機能にアクセスするのに最適です。テクニカルサポート：24時間365日リアルな人間が対応（ボットではありません）、グループ内で @技術 すれば 10 分以内に返信。スポンサー特典：先着 200 名のユーザーが<a href="https://api.pptoken.cc/register?promo=SUB2API">専用登録リンク</a>から登録し、プロモコード `SUB2API` を入力すると、Codex / Claude Code の無料トライアルクレジットを獲得できます — 最低利用額なし、カード登録不要。
 </td>
 </tr>
 
@@ -103,37 +105,14 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://apikl.ai"><img src="assets/partners/logos/apikl.png" alt="apikl" width="150"></a></td>
-<td>Apikl のご支援に感謝します！Sub2API をベースに構築された本プラットフォームは、開発者向けに Codex / Claude シリーズモデルの中継サービスを提供しています。長期安定性、高速直結、高いコストパフォーマンスを重視し、従量課金の残高ベース課金、エンタープライズグレードの正規請求書、1対1の専属サポートを提供します。<a href="https://apikl.ai">今すぐ登録</a>でチャージ 1:1 ボーナス — 残高が倍に！
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://tokeneum.ai"><img src="assets/partners/logos/tokeneum.png" alt="tokeneum" width="150"></a></td>
-<td>TokenEum のご支援に感謝します！<a href="https://tokeneum.ai">TokenEum</a> は総合的な AI モデル集約プラットフォームおよびインテリジェントエージェント開発企業です。Claude、Gemini、OpenAI などの世界トップクラスのモデルに加え、GLM、Qwen、Kimi などの主要なオープンソースモデルも集約しており、品質と価格の異なる豊富な選択肢を提供してあらゆるニーズに対応します。また、Seedance2.0 や Happy Horse などの最先端の動画生成モデルも利用可能です。TokenEum は透明性と誠実なビジネスを重視し、すべてのモデル情報の正確性と信頼性を保証します。<a href="https://tokeneum.ai">tokeneum.ai</a> でぜひお試しください。
-</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://666api.work/sub2api"><img src="assets/partners/logos/666api.jpg" alt="666api" width="150"></a></td>
 <td>666api のご支援に感謝します！<a href="https://666api.work/sub2api">666api</a> はオールインワンプラットフォームで、以下を提供しています：⚡ API 中継 — グローバルモデルへの従量課金アクセス、100% 公式ソースから直接供給、公式価格の最大 75% オフ。独占特典：Zhipu GLM 50% オフ・DeepSeek V4-pro 50% オフ・Seedance2.0 8% オフ（ホワイトリスト）・HappyHorse Overseas 30% オフ（ホワイトリスト）🔑 GPT サブスクリプションアカウント — 同源 IP 込み・グローバル住宅 IP 💰 請求書発行対応
 </td>
 </tr>
 
 <tr>
-<td width="180"><a href="https://dis.chatdesks.cn/chatdesk/hsyqsub2api.html"><img src="assets/partners/logos/byteplus.png" alt="BytePlus" width="150"></a></td>
-<td>Dola seed のご支援に感謝します！Dola Seed 2.0 は、ByteDance がグローバル市場向けに独自開発した全モーダル汎用大規模モデルです。統一されたマルチモーダルアーキテクチャに基づき、テキスト・画像・音声・動画の共同理解と生成をサポートします。エージェント協調をネイティブに有効化し、強力な推論・長期タスク実行・ツール統合・コーディング能力を備えています。スマートコックピット、パーソナルアシスタント、教育、カスタマーサポート、マーケティング、リテールなど多様なシナリオに広く適用可能です。マルチモーダル知覚、エンドツーエンドの複雑タスク配信、安定したインタラクション、データセキュリティに優れ、ModelArk プラットフォームを通じて容易にアクセス・デプロイできます。<a href="https://dis.chatdesks.cn/chatdesk/hsyqsub2api.html">こちらのリンク</a>から登録すると、各モデルにつき 50 万トークンの無料推論クォータを獲得できます。<a href="https://dis.chatdesks.cn/chatdesk/hsyqsub2api.html"> >>中国大陸地域の開発者はこちらをクリック</a></td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://sui-xiang.com/"><img src="assets/partners/logos/sui-xiang.jpg" alt="sui-xiang" width="150"></a></td>
 <td>随想AI ゲートウェイのご支援に感謝します！<a href="https://sui-xiang.com/">随想AI ゲートウェイ</a> は信頼性と効率に優れた API 中継サービスプロバイダーで、Claude、Codex、Gemini などの中継サービスを提供しています。プライバシー重視の中継ステーション・データ転売なし・モデル水増しなし、プライバシー・透明性・超高速アフターサービス。新規アカウント登録後、毎日サインインで 0.5 元のテストクレジットがもらえ、チャージは 1:1、サブスクリプション不要、従量課金。マルチライン冗長、クロスリージョン災害復旧、自動フェイルオーバー、長時間 SSE 接続が途切れません。99.9% の可用性、重要な呼び出しは決して遅れません。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.miyaip.com/?invitecode=sub2api"><img src="assets/partners/logos/miyaip.png" alt="miyaip" width="150"></a></td>
-<td>MiyaIP のご支援に感謝します！<a href="https://www.miyaip.com/?invitecode=sub2api">MiyaIP</a> はグローバル住宅プロキシネットワークサービスに特化したプラットフォームで、企業開発者、越境ビジネスチーム、AI アプリケーションユーザーに高品質で純粋な海外住宅 IP リソースを提供することに注力しています。AI プラットフォーム、海外 SaaS、その他のオンラインサービスに安定した独立した海外ネットワーク環境を提供し、複数地域でのアクセステストやプロジェクト環境の分離をサポートします。海外 AI サービスへのアクセスが必要な開発・テストシナリオに最適です。例：AI モデルプラットフォームアクセス、AI 開発テスト、AI SaaS サービス利用、AI API デバッグ、複数地域のネットワーク環境検証など。
 </td>
 </tr>
 
@@ -165,6 +144,23 @@
 <td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
 <td>Aimzoon のご支援に感謝します！<a href="http://aimzoon.com">Aimzoon</a> は安定してコストパフォーマンスに優れた AI API 接続サービスを提供し、開発者が主要な AI サービスを Codex、Claude Code、Gemini CLI などのコーディングツールへ素早く接続できるようにします。複雑な設定は不要で、より速い接続、より安定した呼び出し、より低いコストを実現。Codex レート割引や特価レートなどのキャンペーンも随時開催中、登録するだけで無料お試しクレジットをプレゼント。AI コーディングを日常のワークフローへ。<a href="http://aimzoon.com">こちら</a>から登録してお試しください！
 </td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default"><img src="assets/partners/logos/claudeapi.jpg" alt="claudeapi" width="150"></a></td>
+<td>Claude API のご支援に感謝します！<a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">Claude API</a> は Claude モデルに特化した公式チャネルの API サービスプロバイダーで、Anthropic 公式キーと AWS Bedrock 公式チャネルをベースに、Claude Code や Agent アプリケーションへの安定した接続体験を提供します。Claude 全シリーズのモデルに対応し、Tool Use や長文コンテキストなどの公式機能もそのまま利用可能。リバースエンジニアリングやモデル劣化のないサービスで、Claude Code のヘビーユーザー、Agent エンジニア、企業の技術チームに最適です。<a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">専用リンク</a>から登録後カスタマーサポートへご連絡いただくと、無料お試しクレジットを受け取れます。請求書発行やチーム導入にも対応しています。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default"><img src="assets/partners/logos/code0.jpg" alt="code0" width="150"></a></td>
+<td>code0.ai のご支援に感謝します！<a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">code0.ai</a> は開発者と技術チーム向けの AI プログラミングワークベンチで、Claude Code や Codex などの主要な Agent コーディング能力を集約し、コード生成、プロジェクト理解、デバッグと修正、コードレビュー、ドキュメント生成といった一般的な開発シーンをサポートします。個人開発者、Agent エンジニア、OSS メンテナー、企業の開発チームに最適で、請求書発行やチーム導入にも対応。<a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">専用リンク</a>から登録後カスタマーサポートへご連絡いただくと、無料お試しクレジットを受け取り、より効率的な AI プログラミングワークフローを体験できます。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://nagora.ai/"><img src="assets/partners/logos/nagora.png" alt="Nagora" width="150"></a></td>
+<td><a href="https://nagora.ai/">Nagora</a>は、開発者やチーム向けに設計されたマルチモデルAI APIゲートウェイです。1つのアカウントと1つのAPIキーだけで、26種類以上の主要なテキストモデルおよび画像モデルを一元的に利用できます。OpenAI、Anthropic、Geminiの各プロトコルに対応し、Claude Code、Codex、Gemini CLIなどの開発ツールにもシームレスに接続できます。 プラットフォームには、インテリジェントルーティング、自動フェイルオーバー、透明性の高い料金体系、請求の一元管理に加え、予算管理、レート制限、同時実行数の制御機能が備わっています。これにより、個人開発、チームでの共同作業、本番環境におけるAI APIの利用を、より安定的かつ柔軟に管理できます。 既存のアプリケーションを改修する必要はありません。Base URLとAPIキーを置き換えるだけで、最短1分で導入を完了できます。</td>
 </tr>
 
 </table>
@@ -557,8 +553,17 @@ default:
 - `security.response_headers.enabled` - 設定可能なレスポンスヘッダーフィルタリングを有効化（無効時はデフォルトの許可リストを使用）
 - `security.csp` - Content-Security-Policy ヘッダーの制御
 - `billing.circuit_breaker` - 課金エラー時にフェイルクローズ
-- `server.trusted_proxies` - X-Forwarded-For パースの有効化
+- `security.trust_forwarded_ip_for_api_key_acl` - 従来の生転送ヘッダーによる上書きを制御（アップグレード互換性のため既定で有効）。無効にすると `server.trusted_proxies` を厳格に使用し、Sub2API に直接接続するプロキシの正確な CIDR のみを指定
+- `security.forwarded_client_ip_headers` - サードパーティ CDN のクライアント IP ヘッダーを最大 16 個指定。従来モードが有効な場合のみ、設定順で組み込みヘッダーより先に評価
 - `turnstile.required` - リリースモードでの Turnstile 必須化
+
+カスタムクライアント IP ヘッダーは YAML またはカンマ区切りの環境変数で設定できます:
+
+```bash
+SECURITY_FORWARDED_CLIENT_IP_HEADERS=True-Client-IP,X-CDN-Client-IP
+```
+
+ヘッダー名は検証、正規化、大小文字を区別しない重複排除が行われます。管理画面のセキュリティ設定から再起動せずに更新でき、新規インストールでは YAML/環境変数の既定値を保存し、既存環境ではデータベース値がない場合に補完します。従来モードを無効にするとカスタムおよび組み込みの生転送ヘッダーはすべて無視され、`server.trusted_proxies` のみを使用します。有効にする場合はオリジンへの接続元を CDN/プロキシに制限し、エッジで信頼する全クライアント IP ヘッダーを上書きしてください。移行規則と信頼境界の詳細は [`deploy/EDGE_SECURITY.md`](deploy/EDGE_SECURITY.md) を参照してください。
 
 **⚠️ セキュリティ警告: HTTP URL 設定**
 

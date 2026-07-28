@@ -208,11 +208,12 @@ describe('UseKeyModal', () => {
     expect(configToml).toContain('base_url = "https://example.com/v1"')
     expect(configToml).toContain('env_key = "SUB2API_API_KEY"')
     expect(configToml).toContain('wire_api = "responses"')
+    expect(configToml).toContain('supports_websockets = true')
     expect(configToml).not.toContain('requires_openai_auth')
     expect(configToml).not.toContain('disable_response_storage')
     expect(configToml).not.toContain('network_access')
     expect(configToml).not.toContain('windows_wsl_setup_acknowledged')
-    expect(configToml).not.toContain('[features]')
+    expect(configToml).toContain('[features]\nresponses_websockets_v2 = true')
     expect(configToml).not.toContain('goals = true')
     expect(codeBlocks).toContain('export SUB2API_API_KEY="sk-grok-codex-test"')
     expect(wrapper.text()).not.toContain('auth.json')
@@ -267,6 +268,7 @@ describe('UseKeyModal', () => {
     expect(configToml).toContain('[features]\ngoals = true')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
     expect(wrapper.text()).toContain('auth.json')
+    expect(wrapper.find('[data-testid="codex-api-key-restart-notice"]').exists()).toBe(false)
   })
 
   it('renders API Key Mode authorization in OpenAI Codex config', async () => {
@@ -304,6 +306,19 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('image_generation')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
     expect(wrapper.text()).toContain('auth.json')
+
+    const restartNotice = wrapper.get('[data-testid="codex-api-key-restart-notice"]')
+    expect(restartNotice.text()).toContain(
+      'keys.useKeyModal.openai.authModeApiKeyRestartNotice'
+    )
+
+    await wrapper.get('[data-testid="codex-auth-mode-legacy"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('[data-testid="codex-api-key-restart-notice"]').exists()).toBe(false)
+    expect(wrapper.findAll('pre code').map((code) => code.text()).join('\n')).not.toContain(
+      'x-openai-actor-authorization'
+    )
   })
 
   it('keeps legacy OpenAI Codex WebSocket config as the default', async () => {

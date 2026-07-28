@@ -305,12 +305,11 @@ func (s *OpenAIGatewayService) readUpstreamErrorBody(resp *http.Response) []byte
 	return body
 }
 
-func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account, responseBody []byte, canonicalModel ...string) {
+func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account, responseBody []byte, canonicalModel ...string) bool {
 	if len(canonicalModel) > 0 {
-		s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, responseBody, canonicalModel[0])
-		return
+		return s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, responseBody, canonicalModel[0])
 	}
-	s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, responseBody)
+	return s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, responseBody)
 }
 
 func (s *OpenAIGatewayService) handleErrorResponse(
@@ -345,6 +344,19 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			return nil, fmt.Errorf("openai cyber_policy: %d", resp.StatusCode)
 		}
 		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
+	}
+	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(resp.StatusCode, body) {
+		clientMsg := grokContentPolicyClientMessage(body)
+		setOpsUpstreamError(c, resp.StatusCode, clientMsg, truncateString(string(body), 2048))
+		writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		MarkResponseCommitted(c)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": clientMsg,
+			},
+		})
+		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 	}
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
@@ -470,7 +482,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           body,
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			RetryableOnSameAccount: false,
 		}
 	}
 
@@ -560,6 +572,13 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		}
 		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
 	}
+	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(resp.StatusCode, body) {
+		clientMsg := grokContentPolicyClientMessage(body)
+		setOpsUpstreamError(c, resp.StatusCode, clientMsg, truncateString(string(body), 2048))
+		MarkResponseCommitted(c)
+		writeError(c, http.StatusForbidden, "invalid_request_error", clientMsg)
+		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
+	}
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	if upstreamMsg == "" {
@@ -640,7 +659,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           body,
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			RetryableOnSameAccount: false,
 		}
 	}
 

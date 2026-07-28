@@ -2978,6 +2978,17 @@ func (r *oauthPendingFlowUserRepo) Create(ctx context.Context, user *service.Use
 	return nil
 }
 
+func (r *oauthPendingFlowUserRepo) CreateWithEmailAliasGuard(ctx context.Context, user *service.User) error {
+	aliasExists, err := r.ExistsByEmailAlias(ctx, user.Email)
+	if err != nil {
+		return err
+	}
+	if aliasExists {
+		return service.ErrEmailExists
+	}
+	return r.Create(ctx, user)
+}
+
 func (r *oauthPendingFlowUserRepo) GetByID(ctx context.Context, id int64) (*service.User, error) {
 	entity, err := r.client.User.Get(ctx, id)
 	if err != nil {
@@ -3168,6 +3179,9 @@ func (r *oauthPendingFlowUserRepo) BatchSetConcurrency(context.Context, []int64,
 func (r *oauthPendingFlowUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
 	panic("unexpected BatchAddConcurrency call")
 }
+func (r *oauthPendingFlowUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	panic("unexpected BatchUpdateLimits call")
+}
 
 func (r *oauthPendingFlowUserRepo) GetLatestUsedAtByUserIDs(context.Context, []int64) (map[int64]*time.Time, error) {
 	return map[int64]*time.Time{}, nil
@@ -3180,6 +3194,20 @@ func (r *oauthPendingFlowUserRepo) GetLatestUsedAtByUserID(context.Context, int6
 func (r *oauthPendingFlowUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	count, err := r.client.User.Query().Where(dbuser.EmailEQ(email)).Count(ctx)
 	return count > 0, err
+}
+
+func (r *oauthPendingFlowUserRepo) ExistsByEmailAlias(ctx context.Context, email string) (bool, error) {
+	identity := service.NormalizeEmailForAliasDedup(email)
+	emails, err := r.client.User.Query().Select(dbuser.FieldEmail).Strings(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, stored := range emails {
+		if service.NormalizeEmailForAliasDedup(stored) == identity {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *oauthPendingFlowUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
@@ -3358,6 +3386,14 @@ func (s *oauthPendingFlowTotpCacheStub) GetVerifyAttempts(_ context.Context, use
 func (s *oauthPendingFlowTotpCacheStub) ClearVerifyAttempts(_ context.Context, userID int64) error {
 	delete(s.verifyAttempts, userID)
 	return nil
+}
+
+func (s *oauthPendingFlowTotpCacheStub) SetStepUpGrant(_ context.Context, _ int64, _ string, _ time.Duration) error {
+	return nil
+}
+
+func (s *oauthPendingFlowTotpCacheStub) HasStepUpGrant(_ context.Context, _ int64, _ string) (bool, error) {
+	return false, nil
 }
 
 type oauthPendingFlowTotpEncryptorStub struct{}

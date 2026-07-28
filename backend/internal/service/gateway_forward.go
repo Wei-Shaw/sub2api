@@ -170,6 +170,17 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		clientUserAgent = c.GetHeader("User-Agent")
 	}
 	isClaudeCode := IsClaudeCodeClient(ctx) || isClaudeCodeClient(clientUserAgent, parsed.MetadataUserID)
+
+	// 补充判定：上游 API 网关（如 new-api）转发真实 Claude Code 流量时，
+	// UA 会变成 Go-http-client 但 body 保留了完整的 Claude Code 特征
+	// （billing attribution block + metadata.user_id）。此时如果仍走 mimicry
+	// 重写 system prompt，会破坏 Anthropic prompt cache 的前缀匹配——
+	// 导致 messages 级缓存永远 miss、cache_creation 每轮全量重写。
+	// 通过检查 body 中的 billing attribution block 来识别被代理的真实 CC 流量。
+	if !isClaudeCode && parsed.MetadataUserID != "" {
+		isClaudeCode = systemHasBillingAttributionBlock(body)
+	}
+
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 
 	if shouldMimicClaudeCode {
@@ -179,19 +190,17 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		// 检测到"有 CC prompt 但无 billing block"的不一致而判为 third-party。
 		// Parrot 的 transform_request 从不检查客户端 system 内容，直接覆盖。
 		systemRewritten := false
-		if !strings.Contains(strings.ToLower(reqModel), "haiku") {
-			systemRaw, _ := parsed.SystemValue()
-			systemPromptInjectionEnabled, systemPrompt, systemPromptBlocks := s.claudeOAuthSystemPromptInjectionSettings(ctx)
-			if systemPromptInjectionEnabled {
-				if err := replaceBody(rewriteSystemForNonClaudeCodeWithPromptBlocks(body, systemRaw, systemPrompt, systemPromptBlocks)); err != nil {
-					return nil, err
-				}
-				systemRewritten = true
+		systemRaw, _ := parsed.SystemValue()
+		systemPromptInjectionEnabled, systemPrompt, systemPromptBlocks := s.claudeOAuthSystemPromptInjectionSettings(ctx)
+		if systemPromptInjectionEnabled {
+			if err := replaceBody(rewriteSystemForNonClaudeCodeWithPromptBlocks(body, systemRaw, systemPrompt, systemPromptBlocks)); err != nil {
+				return nil, err
 			}
+			systemRewritten = true
 		}
 
 		// system 被重写时保留 CC prompt 的 cache_control: ephemeral（匹配真实 Claude Code 行为）；
-		// 未重写时（haiku / 注入开关关闭）剥离客户端 cache_control，与原有行为一致。
+		// 未重写时（注入开关关闭）剥离客户端 cache_control，与原有行为一致。
 		// 两种情况下 enforceCacheControlLimit 都会兜底处理上限。
 		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
 		if s.identityService != nil && c != nil {
@@ -370,6 +379,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
+			}
+			// Transport attempt left local validation; count Ollama Cloud activity.
+			if !errors.Is(err, context.Canceled) {
+				scheduleOllamaCloudUsageActivity(s.deferredService, account)
 			}
 			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())

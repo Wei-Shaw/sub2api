@@ -13,6 +13,48 @@ import (
 	"go.uber.org/zap"
 )
 
+// GrokCountTokens handles Anthropic-compatible count_tokens requests locally.
+// The route middleware already authenticates the API key and resolves the
+// group; this handler intentionally does not select an account or check billing.
+func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
+	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	if err != nil {
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+			return
+		}
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		return
+	}
+	if len(body) == 0 {
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
+		return
+	}
+
+	bodyRef := service.NewRequestBodyRef(body)
+	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
+	if err != nil {
+		logRequestBodyParseFailure(requestLogger(c, "handler.openai_gateway.grok_count_tokens"), body, err)
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+	}
+	if parsedReq.Model == "" {
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		return
+	}
+
+	estimated, err := service.EstimateGrokCountTokens(parsedReq.Body.Bytes())
+	if err != nil {
+		requestLogger(c, "handler.openai_gateway.grok_count_tokens").Warn("grok_count_tokens.local_estimate_failed", zap.Error(err))
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+	}
+
+	setOpsRequestContext(c, parsedReq.Model, false)
+	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(false, false)))
+	c.JSON(http.StatusOK, gin.H{"input_tokens": estimated})
+}
+
 // CountTokens handles Anthropic-compatible POST /v1/messages/count_tokens for OpenAI groups.
 // It validates billing and routes to an OpenAI token-count bridge without taking concurrency slots
 // or recording usage.
@@ -67,12 +109,18 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	body = parsedReq.Body.Bytes()
 	if parsedReq.Model == "" {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 	}
 
 	reqModel := parsedReq.Model
+	ensureCompositeTargetPlatform(c, apiKey, reqModel)
+	if !compositeTargetPlatformAllowed(c, apiKey, reqModel, service.PlatformOpenAI) {
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
+		return
+	}
 	routingModel := service.NormalizeOpenAICompatRequestedModel(reqModel)
 	preferredMappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", parsedReq.Stream))
@@ -111,11 +159,12 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 		service.OpenAIEndpointCapabilityChatCompletions,
 		false,
 		false,
-		openAICompatibleRequestPlatform(apiKey),
+		false,
+		openAICompatibleRequestPlatform(c.Request.Context(), apiKey),
 	)
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	if err != nil {
-		requestPlatform := openAICompatibleRequestPlatform(apiKey)
+		requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
 		reqLog.Warn("openai_count_tokens.account_select_failed", zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)))
 		cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel)
 		if !cls.ModelNotFound {

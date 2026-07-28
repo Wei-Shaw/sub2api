@@ -56,6 +56,10 @@ func (r *batchAccountQueryRepo) ListSchedulableUngroupedByPlatforms(_ context.Co
 	return r.run(batchAccountQueryKey{platform: platforms[0], mixed: true})
 }
 
+func (r *batchAccountQueryRepo) ListModelAvailabilityCandidates(context.Context, *int64, []string, bool) ([]Account, error) {
+	panic("unexpected ListModelAvailabilityCandidates call")
+}
+
 func (r *batchAccountQueryRepo) ListSchedulableByPlatform(_ context.Context, platform string) ([]Account, error) {
 	return r.run(batchAccountQueryKey{platform: platform})
 }

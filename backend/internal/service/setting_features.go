@@ -179,6 +179,56 @@ func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
 	return s.cfg.Totp.EncryptionKeyConfigured
 }
 
+// IsSessionBindingEnabled 检查会话 IP/UA 绑定是否启用（默认关闭）。
+// 开启时会话与登录时的 IP/User-Agent 绑定，任一变化立即失效并撤销该会话。
+// 默认关闭：移动网络/多出口 IP 场景下 IP 频繁变化会导致登录后立即掉线。
+func (s *SettingService) IsSessionBindingEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySessionBindingEnabled)
+	if err != nil {
+		return false // 默认关闭
+	}
+	return value == "true"
+}
+
+// IsStepUpEnabled 检查敏感操作 step-up 2FA 门控是否启用（默认关闭）。
+// 开启时账号/代理导出、备份创建/下载、S3 配置修改、提升管理员等操作
+// 要求当前会话在有效期内完成过 TOTP step-up 验证。
+func (s *SettingService) IsStepUpEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyStepUpEnabled)
+	if err != nil {
+		return false // 默认关闭
+	}
+	return value == "true"
+}
+
+// defaultAuditLogRetentionDays 审计日志默认保留天数。
+const defaultAuditLogRetentionDays = 180
+
+// GetAuditLogRetentionDays 审计日志保留天数（<=0 表示永久保留，仅支持手动清空）。
+func (s *SettingService) GetAuditLogRetentionDays(ctx context.Context) int {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAuditLogRetentionDays)
+	if err != nil {
+		return defaultAuditLogRetentionDays
+	}
+	return parseAuditLogRetentionDays(value)
+}
+
+// parseAuditLogRetentionDays 解析保留天数配置，空/非法值回退默认值。
+func parseAuditLogRetentionDays(value string) int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaultAuditLogRetentionDays
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultAuditLogRetentionDays
+	}
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
 // GetSiteName 获取网站名称
 func (s *SettingService) GetSiteName(ctx context.Context) string {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeySiteName)

@@ -19,6 +19,7 @@ import (
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	clearGrokResponsesClientToolMapping(c)
 	startTime := time.Now()
 	// 固定渠道映射后的请求级 canonical body；账号 normalize/strip 不得改写跨 failover hint。
 	canonicalImageIntentBody := body
@@ -71,6 +72,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			return nil, err
 		}
 	}
+	if shouldStripOpenAIResponsesInputNamespaces(account, wsDecision.Transport, passthroughEnabled) {
+		body, err = stripOpenAIResponsesInputNamespaces(body)
+		if err != nil {
+			setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+				"type": "invalid_request_error", "message": err.Error(), "param": "input",
+			}})
+			return nil, err
+		}
+	}
 
 	originalBody := body
 	requestView := newOpenAIRequestView(body)
@@ -83,6 +94,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+	}
+	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+		sanitizedBody, changed, sanitizeErr := sanitizeOpenAIResponsesInputItemIDs(body)
+		if sanitizeErr != nil {
+			return nil, fmt.Errorf("sanitize OpenAI Responses input item IDs: %w", sanitizeErr)
+		}
+		if changed {
+			body = sanitizedBody
+			originalBody = sanitizedBody
+			requestView = newOpenAIRequestView(sanitizedBody)
+			reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
+			originalModel = reqModel
+		}
 	}
 
 	compatMessagesBridge := isOpenAICompatMessagesBridgeBody(body)
@@ -409,10 +433,22 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				markPatchDelete("max_output_tokens")
 			}
 		}
+		// /v1/responses 的规范输出上限字段是 max_output_tokens；部分客户端仍按
+		// Chat Completions 习惯发送 max_tokens，兼容 Responses 上游会拒绝该字段（#4417）。
+		// 仅对 OpenAI 平台归一化：Anthropic 合法使用 max_tokens，其 max_output_tokens
+		// 反向转换已在上方 switch 中处理。
+		if account.Platform == PlatformOpenAI {
+			if maxTokens := gjson.GetBytes(body, "max_tokens"); maxTokens.Exists() {
+				if !gjson.GetBytes(body, "max_output_tokens").Exists() {
+					markPatchSet("max_output_tokens", maxTokens.Value())
+				}
+				markPatchDelete("max_tokens")
+			}
+		}
 		if gjson.GetBytes(body, "max_completion_tokens").Exists() && (account.Type == AccountTypeAPIKey || account.Platform != PlatformOpenAI) {
 			markPatchDelete("max_completion_tokens")
 		}
-		for _, unsupportedField := range []string{"prompt_cache_retention", "safety_identifier"} {
+		for _, unsupportedField := range []string{"prompt_cache_retention", "safety_identifier", "prompt_cache_options"} {
 			if gjson.GetBytes(body, unsupportedField).Exists() {
 				markPatchDelete(unsupportedField)
 			}
@@ -865,13 +901,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					Detail:             upstreamDetail,
 				})
 
-				s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
+				shouldDisable := s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
 				return nil, newOpenAIUpstreamFailoverError(
 					resp.StatusCode,
 					resp.Header,
 					respBody,
 					upstreamMsg,
-					account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+					!shouldDisable && account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 				)
 			}
 			return s.handleErrorResponse(ctx, resp, c, account, body, billingModel)
