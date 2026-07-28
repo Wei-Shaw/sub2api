@@ -17,7 +17,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/qoder"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
-	"go.uber.org/zap"
 )
 
 // qoderDefaultBaseURL is the Qoder Cloud Agents API root used when an account
@@ -103,9 +102,9 @@ func (s *QoderGatewayService) ForwardChatCompletions(ctx context.Context, c *gin
 
 	client := s.newQoderClient(account)
 
-	// Resolve the session: reuse a stitched one when available, otherwise open a
-	// fresh session seeded with the flattened history.
-	qoderSessionID, lastEventID, err := s.resolveQoderSession(ctx, client, account, &provision, chatCtx)
+	// Resolve the session: reuse a stitched one (which already carries the
+	// conversation context) when available, otherwise open a fresh session.
+	qoderSessionID, lastEventID, hasContext, err := s.resolveQoderSession(ctx, client, &provision, chatCtx)
 	if err != nil {
 		logger.LegacyPrintf("service.qoder_gateway", "%s session resolve failed: %v", prefix, err)
 		return nil, &UpstreamFailoverError{
@@ -115,7 +114,7 @@ func (s *QoderGatewayService) ForwardChatCompletions(ctx context.Context, c *gin
 		}
 	}
 
-	if err := client.SendUserMessage(ctx, qoderSessionID, chatCtx.UserText); err != nil {
+	if err := s.sendQoderTurn(ctx, client, &provision, chatCtx, &qoderSessionID, &lastEventID, &hasContext); err != nil {
 		logger.LegacyPrintf("service.qoder_gateway", "%s send message failed: %v", prefix, err)
 		return nil, s.qoderUpstreamError(err)
 	}
@@ -198,30 +197,62 @@ func (s *QoderGatewayService) buildQoderChatContext(accountID int64, req *apicom
 	}, nil
 }
 
-// resolveQoderSession returns the session id to use for this turn plus the
-// Last-Event-ID for incremental streaming. It prefers a stitched session; on a
-// miss (or a busy/conflict error) it opens a fresh session seeded with the
-// flattened history.
-func (s *QoderGatewayService) resolveQoderSession(ctx context.Context, client *qoder.Client, account *Account, provision *qoderProvisionResult, chatCtx *qoderChatContext) (string, string, error) {
+// resolveQoderSession returns the session id to use for this turn, the
+// Last-Event-ID for incremental streaming, and whether the session already
+// carries the conversation context. A reused stitched session has context; a
+// freshly created session does not and must receive the flattened history inline
+// in the user message (see qoderUserMessageText) rather than via a separate
+// seeding turn, which would leave a second turn in flight and conflict.
+func (s *QoderGatewayService) resolveQoderSession(ctx context.Context, client *qoder.Client, provision *qoderProvisionResult, chatCtx *qoderChatContext) (string, string, bool, error) {
 	if state, err := s.lookupQoderSession(ctx, chatCtx.LookupKey); err == nil && state != nil {
-		return state.SessionID, state.LastEventID, nil
+		return state.SessionID, state.LastEventID, true, nil
 	}
 
 	sessionID, err := client.CreateSession(ctx, provision.AgentID, provision.EnvID)
 	if err != nil {
-		return "", "", fmt.Errorf("create session: %w", err)
+		return "", "", false, fmt.Errorf("create session: %w", err)
 	}
+	return sessionID, "", false, nil
+}
 
-	// Seed the new session with the prior conversation so the agent has context.
-	if seed := qoderFlattenHistory(chatCtx); seed != "" {
-		if err := client.SendUserMessage(ctx, sessionID, seed); err != nil {
-			// A seeding failure is not fatal for the current turn; the agent simply
-			// starts without prior context.
-			logger.L().With(zap.String("component", "service.qoder_gateway")).
-				Warn("qoder.seed_history_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-		}
+// sendQoderTurn posts the current user turn to the resolved session. When the
+// upstream reports the session is busy (409 conflict) — typically a concurrent
+// request sharing the same stitched session is mid-turn — the reused session is
+// abandoned in favor of a fresh one and the send retried once. The session id,
+// last-event-id and hasContext values are updated to reflect the session that
+// was actually used.
+func (s *QoderGatewayService) sendQoderTurn(ctx context.Context, client *qoder.Client, provision *qoderProvisionResult, chatCtx *qoderChatContext, sessionID *string, lastEventID *string, hasContext *bool) error {
+	err := client.SendUserMessage(ctx, *sessionID, qoderUserMessageText(chatCtx, *hasContext))
+	if !isQoderConflictError(err) {
+		return err
 	}
-	return sessionID, "", nil
+	freshID, createErr := client.CreateSession(ctx, provision.AgentID, provision.EnvID)
+	if createErr != nil {
+		return fmt.Errorf("create fallback session: %w", createErr)
+	}
+	*sessionID, *lastEventID, *hasContext = freshID, "", false
+	return client.SendUserMessage(ctx, *sessionID, qoderUserMessageText(chatCtx, *hasContext))
+}
+
+// qoderUserMessageText renders the text posted to the session for this turn. A
+// session that already carries the conversation context receives only the new
+// user message; a fresh session receives the flattened prior history plus the
+// current request in a single message so the agent has context in one turn.
+func qoderUserMessageText(chatCtx *qoderChatContext, hasContext bool) string {
+	if hasContext {
+		return chatCtx.UserText
+	}
+	history := qoderFlattenHistory(chatCtx)
+	if history == "" {
+		return chatCtx.UserText
+	}
+	return history + "\n\nCurrent request:\n" + chatCtx.UserText
+}
+
+// isQoderConflictError reports whether err is a 409 session-busy conflict.
+func isQoderConflictError(err error) bool {
+	var apiErr *qoder.APIError
+	return errors.As(err, &apiErr) && apiErr.IsConflict()
 }
 
 // qoderFlattenHistory renders the prior turns (excluding the final user message)
