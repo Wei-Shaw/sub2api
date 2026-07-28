@@ -1385,6 +1385,40 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 		forcePreferredConn := isStrictAffinityTurn(currentPayload)
+		if sessionLease != nil && !sessionLease.HasTurnLifetimeBudget(time.Now()) {
+			now := time.Now()
+			remainingLifetime := sessionLease.RemainingLifetime(now)
+			retiringConnID := strings.TrimSpace(sessionLease.ConnID())
+			if forcePreferredConn {
+				logOpenAIWSModeInfo(
+					"ingress_ws_conn_lifetime_exhausted account_id=%d turn=%d conn_id=%s action=fail_close remaining_ms=%d reserve_ms=%d previous_response_id=%s store_disabled=%v",
+					account.ID,
+					turn,
+					truncateOpenAIWSLogValue(retiringConnID, openAIWSIDValueMaxLen),
+					remainingLifetime.Milliseconds(),
+					pool.turnLifetimeReserve().Milliseconds(),
+					truncateOpenAIWSLogValue(currentPreviousResponseID, openAIWSIDValueMaxLen),
+					storeDisabled,
+				)
+				resetSessionLease(true)
+				return NewOpenAIWSClientCloseError(
+					coderws.StatusTryAgainLater,
+					"upstream websocket connection is nearing its lifetime limit; please reconnect",
+					errOpenAIWSConnLifetimeExhausted,
+				)
+			}
+			logOpenAIWSModeInfo(
+				"ingress_ws_conn_lifetime_exhausted account_id=%d turn=%d conn_id=%s action=rotate remaining_ms=%d reserve_ms=%d has_previous_response_id=%v store_disabled=%v",
+				account.ID,
+				turn,
+				truncateOpenAIWSLogValue(retiringConnID, openAIWSIDValueMaxLen),
+				remainingLifetime.Milliseconds(),
+				pool.turnLifetimeReserve().Milliseconds(),
+				currentPreviousResponseID != "",
+				storeDisabled,
+			)
+			resetSessionLease(true)
+		}
 		if sessionLease == nil {
 			acquiredLease, acquireErr := acquireTurnLease(turn, preferredConnID, forcePreferredConn)
 			if acquireErr != nil {

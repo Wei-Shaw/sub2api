@@ -18,7 +18,13 @@ import (
 )
 
 const (
-	openAIWSConnMaxAge             = 60 * time.Minute
+	openAIWSConnMaxAge = 60 * time.Minute
+	// OpenAI hard-closes Responses WebSocket connections after 60 minutes.
+	// Reserve the configured upstream read timeout plus a small scheduling
+	// buffer so a newly-started turn is not expected to cross that boundary.
+	openAIWSConnDefaultTurnTimeout = 15 * time.Minute
+	openAIWSConnExpirySafetyBuffer = 30 * time.Second
+
 	openAIWSConnHealthCheckIdle    = 90 * time.Second
 	openAIWSConnHealthCheckTO      = 2 * time.Second
 	openAIWSConnPrewarmExtraDelay  = 2 * time.Second
@@ -34,6 +40,7 @@ var (
 	errOpenAIWSConnClosed               = errors.New("openai ws connection closed")
 	errOpenAIWSConnQueueFull            = errors.New("openai ws connection queue full")
 	errOpenAIWSPreferredConnUnavailable = errors.New("openai ws preferred connection unavailable")
+	errOpenAIWSConnLifetimeExhausted    = errors.New("openai ws connection lifetime budget exhausted")
 )
 
 type openAIWSDialError struct {
@@ -122,6 +129,25 @@ func (l *openAIWSConnLease) Reused() bool {
 		return false
 	}
 	return l.reused
+}
+
+func (l *openAIWSConnLease) RemainingLifetime(now time.Time) time.Duration {
+	conn, err := l.activeConn()
+	if err != nil || l.pool == nil {
+		return 0
+	}
+	return l.pool.connRemainingLifetime(conn, now)
+}
+
+func (l *openAIWSConnLease) HasTurnLifetimeBudget(now time.Time) bool {
+	conn, err := l.activeConn()
+	if err != nil {
+		return false
+	}
+	if l.pool == nil {
+		return true
+	}
+	return l.pool.connHasTurnLifetimeBudget(conn, now)
 }
 
 func (l *openAIWSConnLease) HandshakeHeader(name string) string {
@@ -1248,7 +1274,6 @@ func (p *openAIWSConnPool) cleanupAccountLocked(ap *openAIWSAccountPool, now tim
 	if ap == nil {
 		return nil
 	}
-	maxAge := p.maxConnAge()
 
 	evicted := make([]*openAIWSConn, 0)
 	for id, conn := range ap.conns {
@@ -1269,15 +1294,19 @@ func (p *openAIWSConnPool) cleanupAccountLocked(ap *openAIWSAccountPool, now tim
 			continue
 		default:
 		}
-		if p.isConnPinnedLocked(ap, id) {
-			continue
-		}
-		if maxAge > 0 && !conn.isLeased() && conn.age(now) > maxAge {
+		// Retire idle connections before the upstream 60-minute hard limit.
+		// Pinned-but-idle connections are also retired: keeping one here would
+		// only defer the inevitable continuation failure to the next turn.
+		if !conn.isLeased() && !p.connHasTurnLifetimeBudget(conn, now) {
 			delete(ap.conns, id)
 			if len(ap.pinnedConns) > 0 {
 				delete(ap.pinnedConns, id)
 			}
 			evicted = append(evicted, conn)
+			continue
+		}
+		if p.isConnPinnedLocked(ap, id) {
+			continue
 		}
 	}
 
@@ -1786,6 +1815,45 @@ func (p *openAIWSConnPool) maxIdlePerAccount() int {
 
 func (p *openAIWSConnPool) maxConnAge() time.Duration {
 	return openAIWSConnMaxAge
+}
+
+func (p *openAIWSConnPool) turnLifetimeReserve() time.Duration {
+	maxAge := p.maxConnAge()
+	if maxAge <= 0 {
+		return 0
+	}
+	turnTimeout := openAIWSConnDefaultTurnTimeout
+	if p != nil && p.cfg != nil && p.cfg.Gateway.OpenAIWS.ReadTimeoutSeconds > 0 {
+		turnTimeout = time.Duration(p.cfg.Gateway.OpenAIWS.ReadTimeoutSeconds) * time.Second
+	}
+	reserve := turnTimeout + openAIWSConnExpirySafetyBuffer
+	if reserve > maxAge {
+		return maxAge
+	}
+	return reserve
+}
+
+func (p *openAIWSConnPool) connRemainingLifetime(conn *openAIWSConn, now time.Time) time.Duration {
+	maxAge := p.maxConnAge()
+	if conn == nil || maxAge <= 0 {
+		return 0
+	}
+	remaining := maxAge - conn.age(now)
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+func (p *openAIWSConnPool) connHasTurnLifetimeBudget(conn *openAIWSConn, now time.Time) bool {
+	if conn == nil {
+		return false
+	}
+	maxAge := p.maxConnAge()
+	if maxAge <= 0 || conn.createdAt().IsZero() {
+		return true
+	}
+	return p.connRemainingLifetime(conn, now) > p.turnLifetimeReserve()
 }
 
 func (p *openAIWSConnPool) queueLimitPerConn() int {
