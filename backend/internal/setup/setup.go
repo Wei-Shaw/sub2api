@@ -28,7 +28,7 @@ const (
 	InstallLockFile            = ".installed"
 	defaultUserConcurrency     = 5
 	simpleModeAdminConcurrency = 30
-	defaultMigrationTimeout    = 60 * time.Second
+	defaultMigrationTimeout    = 5 * time.Minute
 )
 
 func setupDefaultAdminConcurrency() int {
