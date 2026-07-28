@@ -67,7 +67,14 @@ api.sub2api.com {
 		gzip 6
 		minimum_length 256
 		match {
-			header Content-Type text/*
+			# 不使用 text/*，否则 text/event-stream 会被压缩并缓冲到流结束
+			header Content-Type text/css*
+			header Content-Type text/csv*
+			header Content-Type text/html*
+			header Content-Type text/javascript*
+			header Content-Type text/markdown*
+			header Content-Type text/plain*
+			header Content-Type text/xml*
 			header Content-Type application/json*
 			header Content-Type application/javascript*
 			header Content-Type application/xml*

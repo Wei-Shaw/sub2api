@@ -35,6 +35,7 @@ func TestRegisterPaymentRoutesUsageViewerCannotAccessAdminPayment(t *testing.T) 
 		middleware.AdminAuthMiddleware(adminAuth),
 		middleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() }),
 		nil,
+		nil,
 	)
 
 	w := httptest.NewRecorder()

@@ -30,6 +30,16 @@ export default {
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
         },
+        modelPlaza: {
+          title: 'Model Plaza',
+          description: 'A public page showcasing available models and pricing by group. Disabled by default.',
+          enabled: 'Enable Model Plaza',
+          enabledHint: 'When enabled, an entry appears in the header and the page is reachable at /model-plaza.',
+          requireAuth: 'Require sign-in to access',
+          requireAuthHint: 'When on, anonymous visitors are redirected to the login page; when off, the page is public and anonymous visitors only see non-exclusive groups.',
+          priceDescription: 'Pricing notes (Markdown)',
+          priceDescriptionHint: 'Rendered at the top of the plaza page. Use it for billing rules, exchange rates, promotions, etc.',
+        },
         riskControl: {
           title: 'Risk Control',
           description: 'Enable the content moderation menu and gateway audit entry point. Disabled by default.',
@@ -127,6 +137,13 @@ export default {
           'Please configure TOTP_ENCRYPTION_KEY in environment variables first. Generate a key with: openssl rand -hex 32'
       },
       security: {
+        passkey: 'Passkey Sign-in',
+        passkeyHint: 'Allow passwordless sign-in and user-managed passkeys when the relying party configuration is valid.',
+        passkeyConfigured: 'WebAuthn relying party configuration is valid.',
+        passkeyNotConfigured: 'Configure a valid RP ID and allowed HTTPS origins before enabling passkey sign-in.',
+        passkeyRPID: 'RP ID',
+        passkeyOrigins: 'Allowed HTTPS origins',
+        passkeyValueNotConfigured: 'Not configured',
         stepUp: 'Step-up 2FA for Sensitive Operations',
         stepUpHint: 'When enabled, sensitive operations (account/proxy export, backup creation and download, S3 config changes, promoting admins) require a recent TOTP verification (valid for 15 minutes). Your own account must have 2FA enabled before turning this on; turning it off also requires step-up verification.',
         stepUpEnableRequiresTotp: 'Enable 2FA (TOTP) for your own account in Profile before turning on step-up verification.',
@@ -134,6 +151,24 @@ export default {
         sessionBindingHint: 'Bind login sessions to the client IP and User-Agent. Any change immediately invalidates the session and forces re-login, raising the bar for stolen-credential reuse.',
         auditRetention: 'Audit Log Retention (days)',
         auditRetentionHint: 'Audit logs older than this are cleaned up automatically. Set to 0 to keep them forever (manual clear only).'
+      },
+      panelRateLimit: {
+        title: 'Panel API Rate Limiting',
+        description: 'Throttle panel API requests to keep high-frequency polling (usage stats, dashboard queries) from overwhelming the database',
+        proxySafeNote: 'Authenticated endpoints are counted per user account, independent of the source IP — reverse proxies and shared NAT egress are never falsely blocked. Public endpoints are counted per real client IP, and loopback/private addresses (internal proxy hops) are skipped automatically.',
+        enabled: 'Enable panel rate limiting',
+        enabledHint: 'Limits authenticated panel endpoints per account. Requests over the threshold get HTTP 429 and recover automatically when the window resets.',
+        userRpm: 'Requests per account',
+        userRpmHint: 'Total panel API requests allowed per account per minute. Normal UI usage stays far below this. 0 = unlimited.',
+        heavyRpm: 'Heavy queries per account',
+        heavyRpmHint: 'Usage/dashboard aggregation queries allowed per account per minute (these are the most expensive for the database). 0 = unlimited.',
+        publicIpRpm: 'Public endpoints per IP',
+        publicIpRpmHint: 'Requests per minute allowed per real client IP for unauthenticated endpoints (e.g. public site settings). 0 = unlimited.',
+        perMinute: 'req/min',
+        exemptAdmin: 'Exempt administrators',
+        exemptAdminHint: 'When enabled, admin accounts bypass panel rate limits so bulk operations are never throttled.',
+        saved: 'Panel rate limit settings saved',
+        saveFailed: 'Failed to save panel rate limit settings'
       },
       turnstile: {
         title: 'Cloudflare Turnstile',

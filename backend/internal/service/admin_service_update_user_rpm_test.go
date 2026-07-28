@@ -13,19 +13,35 @@ import (
 // 只在 Update 时把入参克隆一份，便于断言修改后的 RPMLimit。
 type rpmUserRepoStub struct {
 	*userRepoStub
-	lastUpdated *User
+	lastUpdated      *User
+	lastUpdateFields UserUpdateFields
 }
 
-func (s *rpmUserRepoStub) Update(_ context.Context, user *User) error {
+func (s *rpmUserRepoStub) Update(_ context.Context, user *User, fields UserUpdateFields) error {
 	if user == nil {
 		return nil
 	}
 	clone := *user
 	s.lastUpdated = &clone
+	s.lastUpdateFields = fields
 	if s.userRepoStub != nil {
 		s.userRepoStub.user = &clone
 	}
 	return nil
+}
+
+func TestAdminService_UpdateUser_DeclaresAllowedAccounts(t *testing.T) {
+	base := &userRepoStub{user: &User{ID: 42, Email: "u@example.com"}}
+	repo := &rpmUserRepoStub{userRepoStub: base}
+	svc := &adminServiceImpl{userRepo: repo, redeemCodeRepo: &redeemRepoStub{}}
+
+	allowedAccounts := []int64{3, 5}
+	updated, err := svc.UpdateUser(context.Background(), 42, &UpdateUserInput{
+		AllowedAccounts: &allowedAccounts,
+	})
+	require.NoError(t, err)
+	require.Equal(t, allowedAccounts, updated.AllowedAccounts)
+	require.Equal(t, UserUpdateFields{AllowedAccounts: true}, repo.lastUpdateFields)
 }
 
 func TestAdminService_UpdateUser_InvalidatesAuthCacheOnRPMLimitChange(t *testing.T) {
