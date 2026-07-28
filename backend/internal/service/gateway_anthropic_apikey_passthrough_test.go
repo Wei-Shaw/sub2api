@@ -769,6 +769,30 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestGatewayService_AnthropicAPIKeyPassthrough_StripsDeferredToolCacheControl(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	svc := &GatewayService{cfg: &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: falseREDACTEDREDACTEDREDACTEDREDACTED
+	account := &Account{Platform: PlatformAnthropic, Type: AccountTypeAPIKeyREDACTED
+	body := []byte(`{"tools":[{"name":"deferred","custom":{"defer_loading":trueREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"ordinary","custom":{"defer_loading":falseREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"malformed","custom":{"defer_loading":"true"REDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED]REDACTED`)
+
+	_, wireBody, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, body, "k")
+REDACTED
+	require.False(t, gjson.GetBytes(wireBody, "tools.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(wireBody, "tools.1.cache_control").Exists())
+	require.True(t, gjson.GetBytes(wireBody, "tools.2.cache_control").Exists())
+
+	countReq, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, body, "k")
+REDACTED
+	countBody, err := io.ReadAll(countReq.Body)
+REDACTED
+	require.False(t, gjson.GetBytes(countBody, "tools.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(countBody, "tools.1.cache_control").Exists())
+	require.True(t, gjson.GetBytes(countBody, "tools.2.cache_control").Exists())
+REDACTED
+
 func TestGatewayService_AnthropicOAuth_NotAffectedByAPIKeyPassthroughToggle(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

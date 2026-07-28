@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -147,6 +148,33 @@ func TestApplyToolsLastCacheBreakpoint_PassesThroughClientTTL(t *testing.T) {
 	out := applyToolsLastCacheBreakpoint(body)
 	// User-provided ttl must be preserved.
 	require.Equal(t, "1h", gjson.GetBytes(out, "tools.0.cache_control.ttl").String())
+REDACTED
+
+func TestApplyToolsLastCacheBreakpoint_StripsDeferredToolCacheControl(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"a","custom":{"defer_loading":trueREDACTED,"cache_control":{"type":"ephemeral","ttl":"1h"REDACTEDREDACTED,{"name":"b","custom":{"defer_loading":trueREDACTEDREDACTED]REDACTED`)
+	out := applyToolsLastCacheBreakpoint(body)
+
+	require.False(t, gjson.GetBytes(out, "tools.0.cache_control").Exists())
+	require.False(t, gjson.GetBytes(out, "tools.1.cache_control").Exists())
+REDACTED
+
+func TestApplyToolsLastCacheBreakpoint_SkipsDeferredFinalTool(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"a","input_schema":{REDACTEDREDACTED,{"name":"b","custom":{"defer_loading":trueREDACTEDREDACTED]REDACTED`)
+	out := applyToolsLastCacheBreakpoint(body)
+
+	require.Equal(t, "ephemeral", gjson.GetBytes(out, "tools.0.cache_control.type").String())
+	require.Equal(t, "5m", gjson.GetBytes(out, "tools.0.cache_control.ttl").String())
+	require.False(t, gjson.GetBytes(out, "tools.1.cache_control").Exists())
+REDACTED
+
+func TestApplyToolsLastCacheBreakpoint_OnlyLiteralTrueIsDeferred(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"true","custom":{"defer_loading":trueREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"false","custom":{"defer_loading":falseREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"string","custom":{"defer_loading":"true"REDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"number","custom":{"defer_loading":1REDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"object","custom":{"defer_loading":{REDACTEDREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED]REDACTED`)
+	out := stripDeferredToolCacheControl(body)
+
+	require.False(t, gjson.GetBytes(out, "tools.0.cache_control").Exists())
+	for idx := 1; idx < 5; idx++ {
+		require.Equal(t, "ephemeral", gjson.GetBytes(out, fmt.Sprintf("tools.%d.cache_control.type", idx)).String())
+REDACTED
 REDACTED
 
 func TestStripMessageCacheControl(t *testing.T) {
