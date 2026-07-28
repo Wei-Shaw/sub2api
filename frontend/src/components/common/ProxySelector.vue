@@ -327,7 +327,7 @@ onUnmounted(() => {
   @apply text-gray-900 dark:text-gray-100;
   @apply transition-all duration-200;
   @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
-  @apply hover:border-gray-300 dark:hover:border-dark-500;
+  @apply hover:border-gray-300 dark:hover:border-slate-500;
   @apply cursor-pointer;
 }
 
@@ -368,7 +368,7 @@ onUnmounted(() => {
 .select-search-input {
   @apply flex-1 bg-transparent text-sm;
   @apply text-gray-900 dark:text-gray-100;
-  @apply placeholder:text-gray-400 dark:placeholder:text-dark-400;
+  @apply placeholder:text-gray-400 dark:placeholder:text-slate-400;
   @apply focus:outline-none;
 }
 
@@ -388,7 +388,7 @@ onUnmounted(() => {
   @apply px-4 py-2.5 text-sm;
   @apply text-gray-700 dark:text-gray-300;
   @apply cursor-pointer transition-colors duration-150;
-  @apply hover:bg-gray-50 dark:hover:bg-dark-700;
+  @apply hover:bg-gray-50 dark:hover:bg-slate-700;
 }
 
 .select-option-selected {

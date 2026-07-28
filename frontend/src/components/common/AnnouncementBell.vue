@@ -573,7 +573,7 @@ watch(
 }
 
 .markdown-body tbody tr {
-  @apply transition-colors hover:bg-gray-50 dark:hover:bg-dark-700/30;
+  @apply transition-colors hover:bg-gray-50 dark:hover:bg-slate-700/30;
 }
 
 .markdown-body img {

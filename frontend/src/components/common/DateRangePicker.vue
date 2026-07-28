@@ -329,7 +329,7 @@ onUnmounted(() => {
   @apply text-gray-700 dark:text-gray-300;
   @apply transition-all duration-200;
   @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
-  @apply hover:border-gray-300 dark:hover:border-dark-500;
+  @apply hover:border-gray-300 dark:hover:border-slate-500;
   @apply cursor-pointer;
 }
 
@@ -366,7 +366,7 @@ onUnmounted(() => {
 .date-picker-preset {
   @apply rounded-md px-3 py-1.5 text-xs font-medium;
   @apply text-gray-600 dark:text-gray-400;
-  @apply hover:bg-gray-100 dark:hover:bg-dark-700;
+  @apply hover:bg-gray-100 dark:hover:bg-slate-700;
   @apply transition-colors duration-150;
 }
 

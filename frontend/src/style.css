@@ -85,13 +85,13 @@
     @apply bg-white dark:bg-slate-800;
     @apply text-gray-700 dark:text-gray-200;
     @apply border border-gray-200 dark:border-slate-600;
-    @apply shadow-sm hover:bg-gray-50 dark:hover:bg-dark-700;
-    @apply hover:border-gray-300 dark:hover:border-dark-500;
+    @apply shadow-sm hover:bg-gray-50 dark:hover:bg-slate-700;
+    @apply hover:border-gray-300 dark:hover:border-slate-500;
   }
 
   .btn-ghost {
     @apply bg-transparent text-gray-600 dark:text-gray-300;
-    @apply hover:bg-gray-100 dark:hover:bg-dark-800;
+    @apply hover:bg-gray-100 dark:hover:bg-slate-800;
   }
 
   .btn-danger {
@@ -164,10 +164,10 @@
     @apply bg-white dark:bg-slate-800;
     @apply border border-gray-200 dark:border-slate-600;
     @apply text-gray-900 dark:text-gray-100;
-    @apply placeholder:text-gray-400 dark:placeholder:text-dark-400;
+    @apply placeholder:text-gray-400 dark:placeholder:text-slate-400;
     @apply transition-all duration-200;
     @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
-    @apply disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-dark-900;
+    @apply disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-slate-900;
   }
 
   .dark .input[type='date'],
@@ -230,7 +230,7 @@
 
   .card-hover {
     @apply hover:-translate-y-0.5 hover:shadow-card-hover;
-    @apply hover:border-gray-200 dark:hover:border-dark-600;
+    @apply hover:border-gray-200 dark:hover:border-slate-600;
   }
 
   .card-glass {
@@ -330,7 +330,7 @@
 
   .table tbody tr {
     @apply transition-colors duration-150;
-    @apply hover:bg-gray-50 dark:hover:bg-dark-800/30;
+    @apply hover:bg-gray-50 dark:hover:bg-slate-800/30;
   }
 
   /* ============ 徽章样式 ============ */
@@ -377,7 +377,7 @@
   .dropdown-item {
     @apply px-4 py-2 text-sm;
     @apply text-gray-700 dark:text-gray-300;
-    @apply hover:bg-gray-100 dark:hover:bg-dark-700;
+    @apply hover:bg-gray-100 dark:hover:bg-slate-700;
     @apply cursor-pointer transition-colors;
     @apply flex items-center gap-2;
   }
@@ -560,7 +560,7 @@
     @apply text-sm font-medium;
     @apply text-gray-600 dark:text-slate-300;
     @apply transition-all duration-200;
-    @apply hover:bg-gray-100 dark:hover:bg-dark-800;
+    @apply hover:bg-gray-100 dark:hover:bg-slate-800;
     @apply hover:text-gray-900 dark:hover:text-white;
     padding-left: 1.0625rem;
     padding-right: 0.875rem;
