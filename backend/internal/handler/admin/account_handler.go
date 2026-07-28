@@ -24,6 +24,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/qoder"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -2500,6 +2501,41 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				Object:      "model",
 				OwnedBy:     "xai",
 				DisplayName: requestedModel,
+			})
+		}
+		response.Success(c, models)
+		return
+	}
+
+	// Handle Qoder accounts
+	if account.Platform == service.PlatformQoder {
+		mapping := account.GetModelMapping()
+		if len(mapping) == 0 {
+			response.Success(c, qoder.DefaultModels)
+			return
+		}
+
+		defaultByID := make(map[string]qoder.ModelInfo, len(qoder.DefaultModels))
+		for _, model := range qoder.DefaultModels {
+			defaultByID[model.ID] = model
+		}
+
+		requestedModels := make([]string, 0, len(mapping))
+		for requestedModel := range mapping {
+			requestedModels = append(requestedModels, requestedModel)
+		}
+		sort.Strings(requestedModels)
+
+		var models []qoder.ModelInfo
+		for _, requestedModel := range requestedModels {
+			if defaultModel, found := defaultByID[requestedModel]; found {
+				models = append(models, defaultModel)
+				continue
+			}
+			models = append(models, qoder.ModelInfo{
+				ID:      requestedModel,
+				Object:  "model",
+				OwnedBy: "qoder",
 			})
 		}
 		response.Success(c, models)
