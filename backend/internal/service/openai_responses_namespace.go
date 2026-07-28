@@ -49,7 +49,11 @@ func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, erro
 	if err := json.Unmarshal(body, &requestBody); err != nil {
 		return body, fmt.Errorf("decode OpenAI namespace body: %w", err)
 	}
-	names, changed, err := apicompat.FlattenResponsesNamespacesExcept(requestBody, map[string]bool{"image_gen": true})
+	names, changed, err := apicompat.FlattenResponsesNamespacesExcept(requestBody, map[string]bool{
+		"image_gen":     true,
+		"collaboration": true,
+		"codex_app":     true,
+	})
 	if err != nil {
 		return body, err
 	}

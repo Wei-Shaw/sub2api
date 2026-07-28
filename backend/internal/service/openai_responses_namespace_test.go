@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -35,6 +36,37 @@ func TestShouldFlattenOpenAIResponsesNamespaces(t *testing.T) {
 			require.Equal(t, tt.want, shouldFlattenOpenAIResponsesNamespaces(tt.account, tt.transport, tt.passthroughEnabled))
 		})
 	}
+}
+
+func TestFlattenOpenAIResponsesNamespacesPreservesNativeCodexNamespaces(t *testing.T) {
+	c := &gin.Context{}
+	body := []byte(`{
+		"tools":[
+			{"type":"namespace","name":"image_gen","tools":[{"type":"function","name":"imagegen"}]},
+			{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent"}]},
+			{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"read_thread"}]},
+			{"type":"namespace","name":"other","tools":[{"type":"function","name":"lookup"}]}
+		],
+		"input":[{"type":"function_call","namespace":"other","name":"lookup","arguments":"{}"}]
+	}`)
+
+	flattened, err := flattenOpenAIResponsesNamespaces(c, body)
+	require.NoError(t, err)
+	require.Equal(t, "namespace", gjson.GetBytes(flattened, `tools.#(name=="image_gen").type`).String())
+	require.Equal(t, "imagegen", gjson.GetBytes(flattened, `tools.#(name=="image_gen").tools.0.name`).String())
+	require.Equal(t, "namespace", gjson.GetBytes(flattened, `tools.#(name=="collaboration").type`).String())
+	require.Equal(t, "spawn_agent", gjson.GetBytes(flattened, `tools.#(name=="collaboration").tools.0.name`).String())
+	require.Equal(t, "namespace", gjson.GetBytes(flattened, `tools.#(name=="codex_app").type`).String())
+	require.Equal(t, "read_thread", gjson.GetBytes(flattened, `tools.#(name=="codex_app").tools.0.name`).String())
+	require.Equal(t, "function", gjson.GetBytes(flattened, `tools.#(name=="other__lookup").type`).String())
+	require.False(t, gjson.GetBytes(flattened, `tools.#(name=="other")`).Exists())
+	require.Equal(t, "other__lookup", gjson.GetBytes(flattened, "input.0.name").String())
+	require.False(t, gjson.GetBytes(flattened, "input.0.namespace").Exists())
+
+	restored, err := restoreOpenAIResponsesNamespacePayload(c, []byte(`{"type":"response.completed","response":{"output":[{"type":"function_call","name":"other__lookup","arguments":"{}"}]}}`))
+	require.NoError(t, err)
+	require.Equal(t, "lookup", gjson.GetBytes(restored, "response.output.0.name").String())
+	require.Equal(t, "other", gjson.GetBytes(restored, "response.output.0.namespace").String())
 }
 
 func TestShouldStripOpenAIResponsesInputNamespaces(t *testing.T) {
