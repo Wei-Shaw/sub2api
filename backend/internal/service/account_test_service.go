@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/qoder"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
@@ -197,6 +198,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	if account.Platform == PlatformGrok {
 		return s.testGrokAccountConnection(c, account, modelID)
+	}
+
+	if account.Platform == PlatformQoder {
+		return s.testQoderAccountConnection(c, account)
 	}
 
 	if account.Platform == PlatformAntigravity {
@@ -692,6 +697,39 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 }
 
 // testGrokAccountConnection tests a Grok OAuth or API-key account through xAI's Responses API.
+func (s *AccountTestService) testQoderAccountConnection(c *gin.Context, account *Account) error {
+	ctx := c.Request.Context()
+
+	apiKey := account.GetQoderApiKey()
+	if apiKey == "" {
+		return s.sendErrorAndEnd(c, "Qoder PAT token is missing")
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: "ping"})
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	client := qoder.NewClient(account.GetQoderBaseURL(), apiKey, func(req *http.Request) (*http.Response, error) {
+		return s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	})
+
+	if err := client.Ping(ctx); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Qoder API connection failed: %s", err.Error()))
+	}
+
+	s.sendEvent(c, TestEvent{Type: "content", Text: "Connected to Qoder Cloud Agents API successfully."})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
 func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *Account, modelID string) error {
 	ctx := c.Request.Context()
 

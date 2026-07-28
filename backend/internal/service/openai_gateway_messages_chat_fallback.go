@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -90,6 +91,11 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	)
 
 	// 3. Build and send upstream request via the shared CC pipeline
+	//    Qoder accounts use a custom session-based API, not a standard CC endpoint.
+	if account.Platform == PlatformQoder {
+		return s.forwardAnthropicViaQoder(ctx, c, account, chatBody, clientStream, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	}
+
 	apiKey, targetURL, err := s.resolveCCFallbackTarget(account)
 	if err != nil {
 		return nil, err
@@ -249,3 +255,53 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		ClientDisconnect: clientDisconnected,
 	}, nil
 }
+
+// forwardAnthropicViaQoder bridges /v1/messages requests through the Qoder
+// session-based gateway. The qoder service writes OpenAI Chat Completions
+// output into a pipe; the existing CC→Anthropic converters translate it back.
+func (s *OpenAIGatewayService) forwardAnthropicViaQoder(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	chatBody []byte,
+	clientStream bool,
+	originalModel, billingModel, upstreamModel string,
+	reasoningEffort, serviceTier *string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		w := &pipeResponseWriter{w: pw, header: http.Header{}}
+		if clientStream {
+			w.header.Set("Content-Type", "text/event-stream")
+		} else {
+			w.header.Set("Content-Type", "application/json")
+		}
+		ginCtx, _ := gin.CreateTestContext(w)
+		ginCtx.Request = c.Request
+		_, _ = s.qoderService.ForwardChatCompletions(ctx, ginCtx, account, chatBody, "", billingModel)
+	}()
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+
+	if clientStream {
+		return s.streamChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	}
+	return s.bufferChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+}
+
+type pipeResponseWriter struct {
+	w      *io.PipeWriter
+	header http.Header
+}
+
+func (p *pipeResponseWriter) Header() http.Header        { return p.header }
+func (p *pipeResponseWriter) WriteHeader(statusCode int)  {}
+func (p *pipeResponseWriter) Write(b []byte) (int, error) { return p.w.Write(b) }
+func (p *pipeResponseWriter) Flush()                      {}
