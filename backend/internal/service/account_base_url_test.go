@@ -162,6 +162,65 @@ func TestGetGeminiBaseURL(t *testing.T) {
 	}
 }
 
+func TestGeminiAPIMode(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  *Account
+		expected string
+		vertex   bool
+	}{
+		{
+			name: "legacy gemini api key defaults to ai studio",
+			account: &Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{},
+			},
+			expected: GeminiAPIModeAIStudio,
+		},
+		{
+			name: "vertex mode is case insensitive and trimmed",
+			account: &Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"api_mode": " Vertex "},
+			},
+			expected: GeminiAPIModeVertex,
+			vertex:   true,
+		},
+		{
+			name: "unknown mode remains backward compatible",
+			account: &Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"api_mode": "unknown"},
+			},
+			expected: GeminiAPIModeAIStudio,
+		},
+		{
+			name: "service account is not an api key mode",
+			account: &Account{
+				Type:        AccountTypeServiceAccount,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"api_mode": "vertex"},
+			},
+			expected: "",
+		},
+		{
+			name:     "nil account is safe",
+			account:  nil,
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.account.GeminiAPIMode())
+			require.Equal(t, tt.vertex, tt.account.IsGeminiVertexAPIKey())
+		})
+	}
+}
+
 func TestGetGrokBaseURLUsesSubscriptionProxyForOAuth(t *testing.T) {
 	tests := []struct {
 		name     string

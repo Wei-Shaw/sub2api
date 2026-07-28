@@ -28,17 +28,26 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
+        <div v-if="account.platform === 'gemini'">
+          <label class="input-label">{{ t('admin.accounts.gemini.apiModeLabel') }}</label>
+          <select v-model="editGeminiApiMode" class="input" data-testid="edit-gemini-api-mode">
+            <option value="ai_studio">{{ t('admin.accounts.gemini.apiMode.aiStudio') }}</option>
+            <option value="vertex">{{ t('admin.accounts.gemini.apiMode.vertex') }}</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.gemini.apiModeHint') }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
             v-model="editBaseUrl"
             type="text"
             class="input"
+            data-testid="edit-api-key-base-url"
             :placeholder="
               account.platform === 'openai'
                 ? 'https://api.openai.com'
                 : account.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
+                  ? geminiAPIKeyBaseURL(editGeminiApiMode)
                   : account.platform === 'antigravity'
                     ? 'https://cloudcode-pa.googleapis.com'
                     : account.platform === 'grok'
@@ -76,6 +85,24 @@
             "
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
+        </div>
+        <div v-if="account.platform === 'gemini'">
+          <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
+          <select v-if="editGeminiApiMode === 'vertex'" v-model="editGeminiTierVertex" class="input">
+            <option value="gcp_standard">{{ t('admin.accounts.gemini.tier.vertex.standard') }}</option>
+            <option value="gcp_enterprise">{{ t('admin.accounts.gemini.tier.vertex.enterprise') }}</option>
+          </select>
+          <select v-else v-model="editGeminiTierAIStudio" class="input">
+            <option value="aistudio_free">{{ t('admin.accounts.gemini.tier.aiStudio.free') }}</option>
+            <option value="aistudio_paid">{{ t('admin.accounts.gemini.tier.aiStudio.paid') }}</option>
+          </select>
+          <p class="input-hint">
+            {{
+              editGeminiApiMode === 'vertex'
+                ? t('admin.accounts.gemini.tier.vertexHint')
+                : t('admin.accounts.gemini.tier.aiStudioHint')
+            }}
+          </p>
         </div>
 
         <!-- Model Restriction Section (不适用于 Antigravity) -->
@@ -2637,6 +2664,11 @@ import {
 } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import {
+  geminiAPIKeyBaseURL,
+  normalizeGeminiAPIMode,
+  type GeminiAPIMode
+} from '@/utils/geminiApiMode'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -2685,7 +2717,11 @@ const handleOllamaCloudUsageUpdated = (state: OllamaCloudUsageState) => {
 const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
-  if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
+  if (props.account.platform === 'gemini') {
+    return editGeminiApiMode.value === 'vertex'
+      ? t('admin.accounts.gemini.baseUrlHintVertex')
+      : t('admin.accounts.gemini.baseUrlHint')
+  }
   if (props.account.platform === 'grok') return ''
   return t('admin.accounts.baseUrlHint')
 })
@@ -2710,6 +2746,20 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editGeminiApiMode = ref<GeminiAPIMode>('ai_studio')
+const editGeminiTierAIStudio = ref<'aistudio_free' | 'aistudio_paid'>('aistudio_free')
+const editGeminiTierVertex = ref<'gcp_standard' | 'gcp_enterprise'>('gcp_standard')
+
+watch(editGeminiApiMode, (newMode, oldMode) => {
+  const current = editBaseUrl.value.trim()
+  if (
+    props.account?.platform === 'gemini' &&
+    (!current || current === geminiAPIKeyBaseURL(oldMode))
+  ) {
+    editBaseUrl.value = geminiAPIKeyBaseURL(newMode)
+  }
+})
+
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -3133,7 +3183,7 @@ const tempUnschedPresets = computed(() => [
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
-  if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
+  if (props.account?.platform === 'gemini') return geminiAPIKeyBaseURL(editGeminiApiMode.value)
   if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
   return 'https://api.anthropic.com'
 })
@@ -3457,11 +3507,22 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Initialize API Key fields for apikey type
   if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
+    if (newAccount.platform === 'gemini') {
+      editGeminiApiMode.value = normalizeGeminiAPIMode(credentials.api_mode)
+      editGeminiTierAIStudio.value =
+        credentials.tier_id === 'aistudio_paid' ? 'aistudio_paid' : 'aistudio_free'
+      editGeminiTierVertex.value =
+        credentials.tier_id === 'gcp_enterprise' ? 'gcp_enterprise' : 'gcp_standard'
+    } else {
+      editGeminiApiMode.value = 'ai_studio'
+      editGeminiTierAIStudio.value = 'aistudio_free'
+      editGeminiTierVertex.value = 'gcp_standard'
+    }
     const platformDefaultUrl =
       newAccount.platform === 'openai'
         ? 'https://api.openai.com'
         : newAccount.platform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
+          ? geminiAPIKeyBaseURL(editGeminiApiMode.value)
           : newAccount.platform === 'grok'
             ? 'https://api.x.ai/v1'
             : 'https://api.anthropic.com'
@@ -4061,6 +4122,13 @@ const handleSubmit = async () => {
       const newCredentials: Record<string, unknown> = {
         ...currentCredentials,
         base_url: newBaseUrl
+      }
+      if (props.account.platform === 'gemini') {
+        newCredentials.api_mode = editGeminiApiMode.value
+        newCredentials.tier_id =
+          editGeminiApiMode.value === 'vertex'
+            ? editGeminiTierVertex.value
+            : editGeminiTierAIStudio.value
       }
 
       // Handle API key
