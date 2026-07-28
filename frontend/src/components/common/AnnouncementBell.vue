@@ -480,11 +480,11 @@ watch(
 }
 
 .markdown-body h1 {
-  @apply mb-6 mt-8 border-b border-gray-200 pb-3 text-3xl font-bold text-gray-900 dark:border-dark-600 dark:text-white;
+  @apply mb-6 mt-8 border-b border-gray-200 pb-3 text-3xl font-bold text-gray-900 dark:border-slate-600 dark:text-white;
 }
 
 .markdown-body h2 {
-  @apply mb-4 mt-7 border-b border-gray-100 pb-2 text-2xl font-bold text-gray-900 dark:border-dark-700 dark:text-white;
+  @apply mb-4 mt-7 border-b border-gray-100 pb-2 text-2xl font-bold text-gray-900 dark:border-slate-700 dark:text-white;
 }
 
 .markdown-body h3 {
@@ -535,11 +535,11 @@ watch(
 }
 
 .markdown-body code {
-  @apply rounded-lg bg-gray-100 px-2 py-1 text-[13px] font-mono text-pink-600 dark:bg-dark-700 dark:text-pink-400;
+  @apply rounded-lg bg-gray-100 px-2 py-1 text-[13px] font-mono text-pink-600 dark:bg-slate-700 dark:text-pink-400;
 }
 
 .markdown-body pre {
-  @apply my-5 overflow-x-auto rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-dark-600 dark:bg-dark-900/50;
+  @apply my-5 overflow-x-auto rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-slate-600 dark:bg-slate-900/50;
 }
 
 .markdown-body pre code {
@@ -547,16 +547,16 @@ watch(
 }
 
 .markdown-body hr {
-  @apply my-8 border-0 border-t-2 border-gray-200 dark:border-dark-700;
+  @apply my-8 border-0 border-t-2 border-gray-200 dark:border-slate-700;
 }
 
 .markdown-body table {
-  @apply mb-5 w-full overflow-hidden rounded-lg border border-gray-200 dark:border-dark-600;
+  @apply mb-5 w-full overflow-hidden rounded-lg border border-gray-200 dark:border-slate-600;
 }
 
 .markdown-body th,
 .markdown-body td {
-  @apply border-r border-b border-gray-200 px-4 py-3 text-left dark:border-dark-600;
+  @apply border-r border-b border-gray-200 px-4 py-3 text-left dark:border-slate-600;
 }
 
 .markdown-body th:last-child,
@@ -577,7 +577,7 @@ watch(
 }
 
 .markdown-body img {
-  @apply my-5 max-w-full rounded-xl border border-gray-200 shadow-md dark:border-dark-600;
+  @apply my-5 max-w-full rounded-xl border border-gray-200 shadow-md dark:border-slate-600;
 }
 
 .markdown-body strong {

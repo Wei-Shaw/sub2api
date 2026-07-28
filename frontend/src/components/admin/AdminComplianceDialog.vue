@@ -199,12 +199,12 @@ async function logout(): Promise<void> {
 }
 
 .legal-document-content :deep(p) {
-  @apply mb-4 text-sm text-gray-700 dark:text-dark-200;
+  @apply mb-4 text-sm text-gray-700 dark:text-slate-200;
 }
 
 .legal-document-content :deep(ul),
 .legal-document-content :deep(ol) {
-  @apply mb-4 pl-6 text-sm text-gray-700 dark:text-dark-200;
+  @apply mb-4 pl-6 text-sm text-gray-700 dark:text-slate-200;
 }
 
 .legal-document-content :deep(ul) {

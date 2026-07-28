@@ -322,8 +322,8 @@ onUnmounted(() => {
 .select-trigger {
   @apply flex w-full items-center justify-between gap-2;
   @apply rounded-xl px-4 py-2.5 text-sm;
-  @apply bg-white dark:bg-dark-800;
-  @apply border border-gray-200 dark:border-dark-600;
+  @apply bg-white dark:bg-slate-800;
+  @apply border border-gray-200 dark:border-slate-600;
   @apply text-gray-900 dark:text-gray-100;
   @apply transition-all duration-200;
   @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
@@ -336,7 +336,7 @@ onUnmounted(() => {
 }
 
 .select-trigger-disabled {
-  @apply cursor-not-allowed bg-gray-100 opacity-60 dark:bg-dark-900;
+  @apply cursor-not-allowed bg-gray-100 opacity-60 dark:bg-slate-900;
 }
 
 .select-value {
@@ -344,21 +344,21 @@ onUnmounted(() => {
 }
 
 .select-icon {
-  @apply flex-shrink-0 text-gray-400 dark:text-dark-400;
+  @apply flex-shrink-0 text-gray-400 dark:text-slate-400;
 }
 
 .select-dropdown {
   @apply absolute z-[100] mt-2 w-full;
-  @apply bg-white dark:bg-dark-800;
+  @apply bg-white dark:bg-slate-800;
   @apply rounded-xl;
-  @apply border border-gray-200 dark:border-dark-700;
+  @apply border border-gray-200 dark:border-slate-700;
   @apply shadow-lg shadow-black/10 dark:shadow-black/30;
   @apply overflow-hidden;
 }
 
 .select-header {
   @apply flex items-center gap-2 px-3 py-2;
-  @apply border-b border-gray-100 dark:border-dark-700;
+  @apply border-b border-gray-100 dark:border-slate-700;
 }
 
 .select-search {
@@ -402,7 +402,7 @@ onUnmounted(() => {
 
 .select-empty {
   @apply px-4 py-8 text-center text-sm;
-  @apply text-gray-500 dark:text-dark-400;
+  @apply text-gray-500 dark:text-slate-400;
 }
 
 .test-btn {

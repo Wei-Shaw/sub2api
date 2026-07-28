@@ -324,8 +324,8 @@ onUnmounted(() => {
 .date-picker-trigger {
   @apply flex items-center gap-2;
   @apply rounded-lg px-3 py-2 text-sm;
-  @apply bg-white dark:bg-dark-800;
-  @apply border border-gray-200 dark:border-dark-600;
+  @apply bg-white dark:bg-slate-800;
+  @apply border border-gray-200 dark:border-slate-600;
   @apply text-gray-700 dark:text-gray-300;
   @apply transition-all duration-200;
   @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
@@ -338,7 +338,7 @@ onUnmounted(() => {
 }
 
 .date-picker-icon {
-  @apply text-gray-400 dark:text-dark-400;
+  @apply text-gray-400 dark:text-slate-400;
 }
 
 .date-picker-value {
@@ -346,14 +346,14 @@ onUnmounted(() => {
 }
 
 .date-picker-chevron {
-  @apply text-gray-400 dark:text-dark-400;
+  @apply text-gray-400 dark:text-slate-400;
 }
 
 .date-picker-dropdown {
   @apply absolute left-0 z-[100] mt-2;
-  @apply bg-white dark:bg-dark-800;
+  @apply bg-white dark:bg-slate-800;
   @apply rounded-xl;
-  @apply border border-gray-200 dark:border-dark-700;
+  @apply border border-gray-200 dark:border-slate-700;
   @apply shadow-lg shadow-black/10 dark:shadow-black/30;
   @apply overflow-hidden;
   @apply min-w-[320px];
@@ -376,7 +376,7 @@ onUnmounted(() => {
 }
 
 .date-picker-divider {
-  @apply border-t border-gray-100 dark:border-dark-700;
+  @apply border-t border-gray-100 dark:border-slate-700;
 }
 
 .date-picker-custom {
@@ -393,8 +393,8 @@ onUnmounted(() => {
 
 .date-picker-input {
   @apply w-full rounded-md px-2 py-1.5 text-sm;
-  @apply bg-gray-50 dark:bg-dark-700;
-  @apply border border-gray-200 dark:border-dark-600;
+  @apply bg-gray-50 dark:bg-slate-700;
+  @apply border border-gray-200 dark:border-slate-600;
   @apply text-gray-900 dark:text-gray-100;
   @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
 }

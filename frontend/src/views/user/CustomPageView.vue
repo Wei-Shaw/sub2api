@@ -380,7 +380,7 @@ onUnmounted(() => {
 }
 
 .toc-sidebar {
-  @apply flex flex-col h-full border-r border-gray-200 dark:border-dark-600 bg-gray-50 dark:bg-dark-800;
+  @apply flex flex-col h-full border-r border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800;
   width: min(240px, 30%);
   min-width: 160px;
   max-width: 280px;
@@ -401,11 +401,11 @@ onUnmounted(() => {
 }
 
 .toc-header {
-  @apply flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-dark-600;
+  @apply flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-600;
 }
 
 .toc-title {
-  @apply text-sm font-semibold text-gray-700 dark:text-dark-200;
+  @apply text-sm font-semibold text-gray-700 dark:text-slate-200;
 }
 
 .toc-close-btn {
@@ -418,7 +418,7 @@ onUnmounted(() => {
 
 .toc-item {
   @apply block px-2 py-1.5 text-sm rounded transition-colors truncate;
-  @apply text-gray-600 dark:text-dark-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-dark-600;
+  @apply text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-dark-600;
 }
 
 .toc-item.toc-active {
@@ -432,15 +432,15 @@ onUnmounted(() => {
 
 .toc-toggle-btn {
   @apply absolute left-2 top-2 z-10 flex items-center px-2 py-1.5 rounded-md text-sm;
-  @apply bg-white dark:bg-dark-700 border border-gray-200 dark:border-dark-500;
-  @apply text-gray-600 dark:text-dark-300 hover:bg-gray-100 dark:hover:bg-dark-600;
+  @apply bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-500;
+  @apply text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-dark-600;
   @apply shadow-sm transition-colors cursor-pointer;
 }
 
 .custom-embed-shell {
   @apply relative;
   @apply h-full w-full overflow-hidden rounded-2xl;
-  @apply bg-gradient-to-b from-gray-50 to-white dark:from-dark-900 dark:to-dark-950;
+  @apply bg-gradient-to-b from-gray-50 to-white dark:from-slate-900 dark:to-slate-950;
   @apply p-0;
 }
 
@@ -466,7 +466,7 @@ onUnmounted(() => {
   line-height: 1.7;
   color: inherit;
 }
-.markdown-page-content h1 { @apply text-3xl font-bold mt-8 mb-4 pb-2 border-b border-gray-200 dark:border-dark-600; }
+.markdown-page-content h1 { @apply text-3xl font-bold mt-8 mb-4 pb-2 border-b border-gray-200 dark:border-slate-600; }
 .markdown-page-content h2 { @apply text-2xl font-bold mt-6 mb-3; }
 .markdown-page-content h3 { @apply text-xl font-semibold mt-5 mb-2; }
 .markdown-page-content h4 { @apply text-lg font-semibold mt-4 mb-2; }
@@ -475,15 +475,15 @@ onUnmounted(() => {
 .markdown-page-content ol { @apply list-decimal pl-6 mb-4; }
 .markdown-page-content li { @apply mb-1; }
 .markdown-page-content a { @apply text-primary-500 hover:text-primary-600 underline; }
-.markdown-page-content blockquote { @apply border-l-4 border-gray-300 dark:border-dark-500 pl-4 italic text-gray-600 dark:text-dark-300 my-4; }
+.markdown-page-content blockquote { @apply border-l-4 border-gray-300 dark:border-slate-500 pl-4 italic text-gray-600 dark:text-slate-300 my-4; }
 .markdown-page-content img { @apply max-w-full h-auto rounded-lg my-4; }
 .markdown-page-content table { @apply w-full border-collapse my-4; }
-.markdown-page-content th { @apply border border-gray-300 dark:border-dark-500 px-3 py-2 bg-gray-50 dark:bg-dark-700 font-semibold text-left; }
-.markdown-page-content td { @apply border border-gray-300 dark:border-dark-500 px-3 py-2; }
-.markdown-page-content code { @apply bg-gray-100 dark:bg-dark-700 px-1.5 py-0.5 rounded text-sm font-mono; }
-.markdown-page-content pre { @apply bg-gray-900 dark:bg-dark-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4 relative; }
+.markdown-page-content th { @apply border border-gray-300 dark:border-slate-500 px-3 py-2 bg-gray-50 dark:bg-slate-700 font-semibold text-left; }
+.markdown-page-content td { @apply border border-gray-300 dark:border-slate-500 px-3 py-2; }
+.markdown-page-content code { @apply bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-sm font-mono; }
+.markdown-page-content pre { @apply bg-gray-900 dark:bg-slate-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4 relative; }
 .markdown-page-content pre code { @apply bg-transparent p-0 text-inherit; }
-.markdown-page-content hr { @apply my-6 border-gray-200 dark:border-dark-600; }
+.markdown-page-content hr { @apply my-6 border-gray-200 dark:border-slate-600; }
 
 .copy-btn {
   position: absolute;

@@ -190,7 +190,7 @@ onMounted(async () => {
 }
 
 .legal-document-content :deep(h1) {
-  @apply mb-4 mt-8 border-b border-gray-200 pb-3 text-3xl font-bold dark:border-dark-700;
+  @apply mb-4 mt-8 border-b border-gray-200 pb-3 text-3xl font-bold dark:border-slate-700;
 }
 
 .legal-document-content :deep(h2) {
@@ -206,7 +206,7 @@ onMounted(async () => {
 }
 
 .legal-document-content :deep(p) {
-  @apply mb-4 text-gray-700 dark:text-dark-200;
+  @apply mb-4 text-gray-700 dark:text-slate-200;
 }
 
 .legal-document-content :deep(a) {
@@ -222,15 +222,15 @@ onMounted(async () => {
 }
 
 .legal-document-content :deep(li) {
-  @apply mb-1 text-gray-700 dark:text-dark-200;
+  @apply mb-1 text-gray-700 dark:text-slate-200;
 }
 
 .legal-document-content :deep(blockquote) {
-  @apply my-5 border-l-4 border-gray-300 pl-4 text-gray-600 dark:border-dark-600 dark:text-dark-300;
+  @apply my-5 border-l-4 border-gray-300 pl-4 text-gray-600 dark:border-slate-600 dark:text-slate-300;
 }
 
 .legal-document-content :deep(code) {
-  @apply rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm dark:bg-dark-800;
+  @apply rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm dark:bg-slate-800;
 }
 
 .legal-document-content :deep(pre) {
@@ -246,11 +246,11 @@ onMounted(async () => {
 }
 
 .legal-document-content :deep(th) {
-  @apply border border-gray-300 bg-gray-50 px-3 py-2 text-left font-semibold dark:border-dark-600 dark:bg-dark-800;
+  @apply border border-gray-300 bg-gray-50 px-3 py-2 text-left font-semibold dark:border-slate-600 dark:bg-slate-800;
 }
 
 .legal-document-content :deep(td) {
-  @apply border border-gray-300 px-3 py-2 dark:border-dark-600;
+  @apply border border-gray-300 px-3 py-2 dark:border-slate-600;
 }
 
 .legal-document-content :deep(img) {
@@ -258,6 +258,6 @@ onMounted(async () => {
 }
 
 .legal-document-content :deep(hr) {
-  @apply my-7 border-gray-200 dark:border-dark-700;
+  @apply my-7 border-gray-200 dark:border-slate-700;
 }
 </style>
