@@ -406,6 +406,55 @@ describe('PaymentView payment recovery', () => {
 
     expect(wrapper.find('[data-test="method-selector"]').text()).toBe('ldc')
   })
+
+  it('does not redirect when an inline payment reports success', async () => {
+    getCheckoutInfo.mockResolvedValue(checkoutInfoFixture())
+    window.localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify({
+      orderId: 889,
+      amount: 66,
+      qrCode: 'weixin://wxpay/bizpayurl?pr=inline-success',
+      expiresAt: '2099-01-01T00:10:00.000Z',
+      paymentType: 'wxpay',
+      payUrl: '',
+      outTradeNo: 'sub2_inline_889',
+      clientSecret: '',
+      intentId: '',
+      currency: '',
+      countryCode: '',
+      paymentEnv: '',
+      payAmount: 66,
+      orderType: 'balance',
+      paymentMode: 'popup',
+      resumeToken: '',
+      createdAt: Date.now(),
+    }))
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+          PaymentStatusPanel: {
+            emits: ['success'],
+            template: '<button data-test="payment-success" @click="$emit(\'success\')" />',
+          },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    await wrapper.find('[data-test="payment-success"]').trigger('click')
+    await flushPromises()
+
+    expect(routerPush).not.toHaveBeenCalled()
+    expect(refreshUser).toHaveBeenCalledTimes(1)
+    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
+    expect(wrapper.find('[data-test="payment-success"]').exists()).toBe(true)
+  })
 })
 
 describe('PaymentView WeChat JSAPI flow', () => {
