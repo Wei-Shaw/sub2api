@@ -37,6 +37,48 @@ func TestExtractPromptSnapshotProtocols(t *testing.T) {
 	}
 }
 
+func TestExtractLatestUserInput(t *testing.T) {
+	tests := []struct {
+		name, protocol, body, want string
+	}{
+		{
+			name:     "chat skips system and tool continuation",
+			protocol: "openai_chat_completions",
+			body:     `{"messages":[{"role":"system","content":"fixed system prompt"},{"role":"user","content":"actual user request"},{"role":"tool","content":"tool result"}]}`,
+			want:     "actual user request",
+		},
+		{
+			name:     "responses skips instructions and assistant",
+			protocol: "openai_responses",
+			body:     `{"instructions":"fixed system prompt","input":[{"role":"user","content":"earlier user request"},{"role":"user","content":"actual latest user request"},{"role":"assistant","content":"assistant continuation"}]}`,
+			want:     "actual latest user request",
+		},
+		{
+			name:     "messages skips system",
+			protocol: "anthropic_messages",
+			body:     `{"system":"fixed system prompt","messages":[{"role":"user","content":[{"type":"text","text":"actual message request"}]}]}`,
+			want:     "actual message request",
+		},
+		{
+			name:     "no user input",
+			protocol: "openai_chat_completions",
+			body:     `{"messages":[{"role":"system","content":"fixed system prompt"},{"role":"tool","content":"tool result"}]}`,
+			want:     "",
+		},
+		{
+			name:     "invalid JSON",
+			protocol: "openai_chat_completions",
+			body:     `{`,
+			want:     "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, ExtractLatestUserInput(tt.protocol, []byte(tt.body)))
+		})
+	}
+}
+
 func TestSnapshotRedactsCanariesAndPreservesHashOfScanText(t *testing.T) {
 	body := `{"messages":[{"role":"user","content":"PROMPT_CANARY_ABC123 email@example.com +86 138 0013 8000 Bearer AUTH_CANARY_XYZ sk-secretvalue123 password=supersecret123"}]}`
 	snapshot, err := ExtractPromptSnapshot(Request{Protocol: "openai_chat_completions", Body: []byte(body)})

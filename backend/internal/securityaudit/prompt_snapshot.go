@@ -56,6 +56,21 @@ func ExtractPromptSnapshot(req Request) (PromptSnapshot, error) {
 	}, nil
 }
 
+// ExtractLatestUserInput returns the latest user-controlled text segment using
+// the same protocol parsing and priority rules as prompt audit. It intentionally
+// excludes system, developer, assistant, and tool content.
+func ExtractLatestUserInput(protocol string, body []byte) string {
+	var document any
+	if err := json.Unmarshal(body, &document); err != nil {
+		return ""
+	}
+	segments := extractProtocolSegments(protocol, document)
+	if index := latestUserSegmentIndex(segments); index >= 0 {
+		return strings.TrimSpace(segments[index].text)
+	}
+	return ""
+}
+
 // DefaultPromptPreviewMaxRunes caps how much sanitized prompt text may be
 // considered before BuildPromptPreview withholds the majority for storage/UI.
 const DefaultPromptPreviewMaxRunes = 96
@@ -430,12 +445,9 @@ func normalizeSegmentsLatestUserFirst(values []promptSegment) []string {
 	if len(normalized) == 0 {
 		return nil
 	}
-	priorityIndex := len(normalized) - 1
-	for index := len(normalized) - 1; index >= 0; index-- {
-		if normalized[index].user {
-			priorityIndex = index
-			break
-		}
+	priorityIndex := latestUserSegmentIndex(normalized)
+	if priorityIndex < 0 {
+		priorityIndex = len(normalized) - 1
 	}
 	result := make([]string, 0, len(normalized))
 	result = append(result, normalized[priorityIndex].text)
@@ -445,6 +457,15 @@ func normalizeSegmentsLatestUserFirst(values []promptSegment) []string {
 		}
 	}
 	return result
+}
+
+func latestUserSegmentIndex(segments []promptSegment) int {
+	for index := len(segments) - 1; index >= 0; index-- {
+		if segments[index].user && strings.TrimSpace(segments[index].text) != "" {
+			return index
+		}
+	}
+	return -1
 }
 
 func buildPrioritizedScanText(segments []string) (scanText string, metadataText string) {

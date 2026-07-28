@@ -110,6 +110,7 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 		UserEmail:       "u@x.com",
 		Model:           "gpt-5",
 		Endpoint:        "/v1/responses",
+		InputExcerpt:    "latest user input",
 		UpstreamMessage: "flagged",
 		UpstreamBody:    `{"error":{"code":"cyber_policy"}}`,
 		UpstreamStatus:  400,
@@ -145,6 +146,7 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 
 	// endpoint
 	require.Equal(t, "/v1/responses", log.Endpoint)
+	require.Equal(t, "latest user input", log.InputExcerpt)
 
 	// violation count >= 1 (side-effects ran)
 	require.GreaterOrEqual(t, log.ViolationCount, 1)
@@ -152,6 +154,35 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 	// Error field should also contain the upstream body JSON
 	require.True(t, strings.Contains(log.Error, "cyber_policy") || strings.Contains(log.Error, "flagged"),
 		"Error should mention flagged or cyber_policy")
+}
+
+func TestRecordCyberPolicyEvent_RedactsAndLimitsInputExcerpt(t *testing.T) {
+	repo := &contentModerationTestRepo{}
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled: "true",
+		}},
+		repo,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	secret := "sk-proj-1234567890abcdef"
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		UserID:       1,
+		Model:        "gpt-5",
+		Endpoint:     "/v1/responses",
+		InputExcerpt: secret + " " + strings.Repeat("普通用户请求内容 ", maxModerationExcerptRunes),
+	})
+
+	logs := repo.snapshotLogs()
+	require.Len(t, logs, 1)
+	require.NotContains(t, logs[0].InputExcerpt, secret)
+	require.Contains(t, logs[0].InputExcerpt, "[已脱敏]")
+	require.Len(t, []rune(logs[0].InputExcerpt), maxModerationExcerptRunes)
 }
 
 // TestRecordCyberPolicyEvent_CreateLogBeforeEmail verifies F7: the moderation

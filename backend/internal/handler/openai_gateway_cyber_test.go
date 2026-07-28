@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -24,7 +25,7 @@ func TestRecordCyberPolicyIfMarked_NoMark(t *testing.T) {
 	c := newTestGinContext()
 	h := &OpenAIGatewayHandler{}
 
-	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "", service.ChannelUsageFields{}, "")
+	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "", service.ChannelUsageFields{}, "", nil, "", "")
 
 	// Flag must NOT be set when there was no mark.
 	require.False(t, c.GetBool(cyberPolicyRecordedKey),
@@ -47,14 +48,14 @@ func TestRecordCyberPolicyIfMarked_WithMark(t *testing.T) {
 
 	// First call: should set the flag.
 	require.NotPanics(t, func() {
-		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "", service.ChannelUsageFields{}, "")
+		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "", service.ChannelUsageFields{}, "", nil, "", "")
 	})
 	require.True(t, c.GetBool(cyberPolicyRecordedKey),
 		"cyberPolicyRecordedKey must be true after first call with a mark")
 
 	// Second call: flag already set — must be a no-op (idempotent).
 	require.NotPanics(t, func() {
-		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "")
+		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "", nil, "", "")
 	})
 	// Flag should still be true (not toggled or cleared).
 	require.True(t, c.GetBool(cyberPolicyRecordedKey),
@@ -75,7 +76,7 @@ func TestRecordCyberPolicyIfMarked_ForwardSuccessSkipsUsageLog(t *testing.T) {
 	h := &OpenAIGatewayHandler{}
 
 	require.NotPanics(t, func() {
-		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false /* forwardErrored=false */, "", service.ChannelUsageFields{}, "")
+		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false /* forwardErrored=false */, "", service.ChannelUsageFields{}, "", nil, "", "")
 	})
 	require.True(t, c.GetBool(cyberPolicyRecordedKey))
 }
@@ -88,7 +89,7 @@ func TestClearCyberPolicyTurnState(t *testing.T) {
 	h := &OpenAIGatewayHandler{}
 
 	service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "turn1", UpstreamStatus: 200})
-	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "")
+	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "", nil, "", "")
 	require.True(t, c.GetBool(cyberPolicyRecordedKey))
 
 	clearCyberPolicyTurnState(c)
@@ -97,7 +98,7 @@ func TestClearCyberPolicyTurnState(t *testing.T) {
 
 	// turn2: a fresh cyber hit must be recordable again.
 	service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "turn2", UpstreamStatus: 200})
-	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "")
+	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "", nil, "", "")
 	require.True(t, c.GetBool(cyberPolicyRecordedKey))
 	require.Equal(t, "turn2", service.GetOpsCyberPolicy(c).Message)
 }
@@ -147,8 +148,94 @@ func TestRecordCyberPolicyIfMarked_BlockKeyPlumbed(t *testing.T) {
 	service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "x", UpstreamStatus: 400})
 	h := &OpenAIGatewayHandler{}
 	require.NotPanics(t, func() {
-		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "deadbeef", service.ChannelUsageFields{}, "")
+		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "deadbeef", service.ChannelUsageFields{}, "", nil, "", "")
 	})
+}
+
+func TestRecordCyberPolicyIfMarked_PersistsExtractedInputExcerpt(t *testing.T) {
+	tests := []struct {
+		name, protocol, body, wantExcerpt string
+	}{
+		{
+			name:     "responses latest user skips instructions",
+			protocol: service.ContentModerationProtocolOpenAIResponses,
+			body: `{"instructions":"FIXED SYSTEM PROMPT","input":[
+				{"type":"message","role":"developer","content":[{"type":"input_text","text":"FIXED DEVELOPER PROMPT"}]},
+				{"type":"message","role":"user","content":[{"type":"input_text","text":"earlier user input"}]},
+				{"type":"message","role":"user","content":[{"type":"input_text","text":"actual latest user input"}]}
+			]}`,
+			wantExcerpt: "actual latest user input",
+		},
+		{
+			name:     "chat latest user skips system",
+			protocol: service.ContentModerationProtocolOpenAIChat,
+			body: `{"messages":[
+				{"role":"system","content":"FIXED SYSTEM PROMPT"},
+				{"role":"user","content":"actual latest chat input"}
+			]}`,
+			wantExcerpt: "actual latest chat input",
+		},
+		{
+			name:     "messages latest user skips system",
+			protocol: service.ContentModerationProtocolAnthropicMessages,
+			body: `{"system":"FIXED SYSTEM PROMPT","messages":[
+				{"role":"user","content":[{"type":"text","text":"actual latest message input"}]}
+			]}`,
+			wantExcerpt: "actual latest message input",
+		},
+		{
+			name:     "tool continuation records latest user input",
+			protocol: service.ContentModerationProtocolOpenAIChat,
+			body: `{"messages":[
+				{"role":"system","content":"FIXED SYSTEM PROMPT"},
+				{"role":"user","content":"previous user input"},
+				{"role":"tool","content":"tool result"}
+			]}`,
+			wantExcerpt: "previous user input",
+		},
+		{
+			name:     "no user input keeps excerpt empty",
+			protocol: service.ContentModerationProtocolOpenAIChat,
+			body: `{"messages":[
+				{"role":"system","content":"FIXED SYSTEM PROMPT"},
+				{"role":"tool","content":"tool result"}
+			]}`,
+			wantExcerpt: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &contentModerationHandlerTestRepo{}
+			moderationSvc := service.NewContentModerationService(
+				&contentModerationHandlerSettingRepo{values: map[string]string{
+					service.SettingKeyRiskControlEnabled: "true",
+				}},
+				repo,
+				nil,
+				nil,
+				nil,
+				nil,
+				nil,
+			)
+			h := &OpenAIGatewayHandler{contentModerationService: moderationSvc}
+			c := newTestGinContext()
+			c.Request = httptest.NewRequest("POST", "/openai/v1/responses", nil)
+			service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "FIXED SYSTEM PROMPT", UpstreamStatus: 400})
+
+			h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "", service.ChannelUsageFields{}, "", []byte(tt.body), tt.protocol, "")
+
+			var logs []service.ContentModerationLog
+			require.Eventually(t, func() bool {
+				logs = repo.logSnapshot()
+				return len(logs) == 1
+			}, time.Second, 10*time.Millisecond)
+			require.Equal(t, tt.wantExcerpt, logs[0].InputExcerpt)
+			if tt.wantExcerpt == "" {
+				require.Contains(t, logs[0].Error, "FIXED SYSTEM PROMPT")
+			}
+		})
+	}
 }
 
 // TestBuildCyberPolicyOpsErrorEntry_StatusCode verifies F6: the ops error log
