@@ -1886,10 +1886,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
-				if model != reqModel {
-					writeOpenAIWSModelPinError(ctx, wsConn, reqModel, model)
-					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "websocket session model is pinned; reconnect for a different model", nil)
-				}
 				if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload, "subsequent_turn"); decision != nil && !decision.AllowNextStage {
 					writeSecurityAuditWSError(ctx, wsConn, decision)
 					return service.NewOpenAIWSClientCloseError(securityAuditWSCloseStatus(decision), securityAuditWSCloseReason(decision), nil)
@@ -1902,6 +1898,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					model = reqModel
 				}
 				mapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, model)
+				if err := openAIWSCatalogAdmissionError(&mapping, account, model); err != nil {
+					writeOpenAIWSCatalogAdmissionError(ctx, wsConn, err)
+					return "", service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "model catalog admission failed", err)
+				}
 				mappedModelUnchanged := false
 				if previous := turnChannelMapping.Load(); previous != nil && previous.turn < turn {
 					mappedModelUnchanged = strings.TrimSpace(previous.mapping.MappedModel) == strings.TrimSpace(mapping.MappedModel)
@@ -2750,32 +2750,6 @@ func writeOpenAIWSCatalogAdmissionError(ctx context.Context, conn *coderws.Conn,
 	})
 	if marshalErr != nil {
 		payload = []byte(`{"event_id":"evt_model_catalog_admission_failed","type":"error","error":{"type":"invalid_request_error","code":"model_catalog_unavailable","message":"model catalog admission failed"}}`)
-	}
-	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	_ = conn.Write(writeCtx, coderws.MessageText, payload)
-}
-
-func writeOpenAIWSModelPinError(ctx context.Context, conn *coderws.Conn, pinnedModel, requestedModel string) {
-	if conn == nil {
-		return
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	payload, err := json.Marshal(gin.H{
-		"event_id": "evt_model_catalog_session_pin_failed",
-		"type":     "error",
-		"error": gin.H{
-			"type":            "invalid_request_error",
-			"code":            "model_session_pinned",
-			"message":         "websocket session model is pinned; reconnect for a different model",
-			"pinned_model":    pinnedModel,
-			"requested_model": requestedModel,
-		},
-	})
-	if err != nil {
-		payload = []byte(`{"event_id":"evt_model_catalog_session_pin_failed","type":"error","error":{"type":"invalid_request_error","code":"model_session_pinned","message":"websocket session model is pinned; reconnect for a different model"}}`)
 	}
 	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()

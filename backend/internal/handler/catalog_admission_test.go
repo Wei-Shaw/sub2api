@@ -40,3 +40,19 @@ func TestFinalizeCatalogEffectiveModelLeavesSelectionOwnershipOnSuccess(t *testi
 	require.True(t, ok)
 	require.False(t, released)
 }
+
+func TestOpenAIWSCatalogAdmissionErrorFailsClosedForTurnMapping(t *testing.T) {
+	mapping := &service.ChannelMappingResult{CatalogError: service.ErrCatalogModelDisabled}
+
+	err := openAIWSCatalogAdmissionError(mapping, &service.Account{ID: 42}, "next-turn-model")
+
+	require.ErrorIs(t, err, service.ErrCatalogModelDisabled)
+}
+
+func TestOpenAIWSCatalogAdmissionErrorAllowsTurnWhenCatalogIsOff(t *testing.T) {
+	mapping := &service.ChannelMappingResult{MappedModel: "next-turn-model"}
+
+	err := openAIWSCatalogAdmissionError(mapping, &service.Account{ID: 42}, "next-turn-model")
+
+	require.NoError(t, err)
+}

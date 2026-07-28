@@ -60,6 +60,13 @@ func catalogEffectiveModelAdmissionError(mapping *service.ChannelMappingResult, 
 	return catalogEffectiveModelAdmissionErrorForBase(mapping, account, requestedModel, "")
 }
 
+// openAIWSCatalogAdmissionError validates each response.create turn against a
+// fresh catalog decision while preserving the selected account for the
+// lifetime of the WebSocket connection.
+func openAIWSCatalogAdmissionError(mapping *service.ChannelMappingResult, account *service.Account, requestedModel string) error {
+	return catalogEffectiveModelAdmissionError(mapping, account, requestedModel)
+}
+
 func catalogEffectiveModelAdmissionErrorForBase(mapping *service.ChannelMappingResult, account *service.Account, requestedModel, baseModel string) error {
 	if mapping == nil || account == nil {
 		return service.ErrCatalogDecisionInvalid

@@ -697,14 +697,6 @@ func formatPositiveFloat(v *float64) string {
 	return strconv.FormatFloat(*v, 'f', 2, 64)
 }
 
-// formatPositiveFloatExact 保留完整精度，用于汇率等对小数位敏感的配置。
-func formatPositiveFloatExact(v *float64) string {
-	if v == nil || *v <= 0 {
-		return "" // empty → parsePaymentConfig 视为未配置（换算关闭）
-	}
-	return strconv.FormatFloat(*v, 'f', -1, 64)
-}
-
 func formatNonNegativeFloat(v *float64) string {
 	if v == nil || *v < 0 {
 		return ""
