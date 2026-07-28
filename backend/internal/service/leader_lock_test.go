@@ -95,7 +95,7 @@ func TestSubscriptionExpiryService_ReminderSkipsScanWhenNotLeader(t *testing.T) 
 	settingRepo := &subscriptionExpirySettingRepoStub{values: map[string]string{}}
 	svc := NewSubscriptionExpiryService(repo, time.Minute)
 	svc.SetSettingRepository(settingRepo)
-	svc.SetNotificationEmailService(NewNotificationEmailService(settingRepo, nil))
+	svc.SetNotificationEmailDispatcher(NewNotificationEmailDispatcher(nil, NewNotificationEmailService(settingRepo, nil)))
 	svc.SetLeaderLock(cache, nil)
 
 	svc.sendExpiryReminders(context.Background())
@@ -108,7 +108,7 @@ func TestSubscriptionExpiryService_ReminderScansWhenLeader(t *testing.T) {
 	settingRepo := &subscriptionExpirySettingRepoStub{values: map[string]string{}}
 	svc := NewSubscriptionExpiryService(repo, time.Minute)
 	svc.SetSettingRepository(settingRepo)
-	svc.SetNotificationEmailService(NewNotificationEmailService(settingRepo, nil))
+	svc.SetNotificationEmailDispatcher(NewNotificationEmailDispatcher(nil, NewNotificationEmailService(settingRepo, nil)))
 	svc.SetLeaderLock(&fakeLeaderLockCache{}, nil)
 
 	svc.sendExpiryReminders(context.Background())
@@ -130,7 +130,7 @@ func TestSubscriptionExpiryService_ReminderRunsEveryCycleSingleInstance(t *testi
 			settingRepo := &subscriptionExpirySettingRepoStub{values: map[string]string{}}
 			svc := NewSubscriptionExpiryService(repo, time.Minute)
 			svc.SetSettingRepository(settingRepo)
-			svc.SetNotificationEmailService(NewNotificationEmailService(settingRepo, nil))
+			svc.SetNotificationEmailDispatcher(NewNotificationEmailDispatcher(nil, NewNotificationEmailService(settingRepo, nil)))
 			svc.SetLeaderLock(cache, nil)
 
 			// Three consecutive cycles, mimicking the ticker loop.

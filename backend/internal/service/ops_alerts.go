@@ -20,6 +20,16 @@ func (s *OpsService) ListAlertRules(ctx context.Context) ([]*OpsAlertRule, error
 	return s.opsRepo.ListAlertRules(ctx)
 }
 
+func (s *OpsService) ListLatestAlertRuleEvaluations(ctx context.Context) ([]*OpsAlertRuleEvaluation, error) {
+	if err := s.RequireMonitoringEnabled(ctx); err != nil {
+		return nil, err
+	}
+	if s.opsRepo == nil {
+		return []*OpsAlertRuleEvaluation{}, nil
+	}
+	return s.opsRepo.ListLatestAlertRuleEvaluations(ctx)
+}
+
 func (s *OpsService) CreateAlertRule(ctx context.Context, rule *OpsAlertRule) (*OpsAlertRule, error) {
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return nil, err

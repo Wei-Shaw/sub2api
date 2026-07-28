@@ -26,13 +26,13 @@ const (
 
 // SubscriptionExpiryService periodically updates expired subscription status.
 type SubscriptionExpiryService struct {
-	userSubRepo              UserSubscriptionRepository
-	settingRepo              SettingRepository
-	notificationEmailService *NotificationEmailService
-	interval                 time.Duration
-	stopCh                   chan struct{}
-	stopOnce                 sync.Once
-	wg                       sync.WaitGroup
+	userSubRepo                 UserSubscriptionRepository
+	settingRepo                 SettingRepository
+	notificationEmailDispatcher *NotificationEmailDispatcher
+	interval                    time.Duration
+	stopCh                      chan struct{}
+	stopOnce                    sync.Once
+	wg                          sync.WaitGroup
 
 	lockCache  LeaderLockCache
 	db         *sql.DB
@@ -63,8 +63,8 @@ func (s *SubscriptionExpiryService) SetSettingRepository(settingRepo SettingRepo
 	s.settingRepo = settingRepo
 }
 
-func (s *SubscriptionExpiryService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
-	s.notificationEmailService = notificationEmailService
+func (s *SubscriptionExpiryService) SetNotificationEmailDispatcher(dispatcher *NotificationEmailDispatcher) {
+	s.notificationEmailDispatcher = dispatcher
 }
 
 func (s *SubscriptionExpiryService) Start() {
@@ -115,7 +115,7 @@ func (s *SubscriptionExpiryService) runOnce() {
 }
 
 func (s *SubscriptionExpiryService) sendExpiryReminders(ctx context.Context) {
-	if s == nil || s.userSubRepo == nil || s.notificationEmailService == nil {
+	if s == nil || s.userSubRepo == nil || s.notificationEmailDispatcher == nil {
 		return
 	}
 	if !s.expiryReminderEnabled(ctx) {
@@ -167,7 +167,7 @@ func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context,
 	if daysRemaining != 7 && daysRemaining != 3 && daysRemaining != 1 {
 		return
 	}
-	if err := s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+	input := NotificationEmailSendInput{
 		Event:          NotificationEmailEventSubscriptionExpiryReminder,
 		RecipientEmail: sub.User.Email,
 		RecipientName:  firstNonEmpty(sub.User.Username, sub.User.Email),
@@ -180,7 +180,9 @@ func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context,
 			"expiry_time":        sub.ExpiresAt.Format("2006-01-02 15:04"),
 			"days_remaining":     strconv.Itoa(daysRemaining),
 		},
-	}); err != nil {
+	}
+	_, err := s.notificationEmailDispatcher.Enqueue(ctx, input)
+	if err != nil {
 		log.Printf("[SubscriptionExpiry] Send expiry reminder failed: subscription=%d user=%d err=%v", sub.ID, sub.UserID, err)
 	}
 }

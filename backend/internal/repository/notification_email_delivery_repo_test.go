@@ -25,7 +25,7 @@ func TestNotificationEmailDeliveryRepositoryEnqueueDeduplicates(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO notification_email_deliveries").
 		WithArgs(delivery.DedupKey, delivery.Event, delivery.Channel, delivery.RecipientEmail,
 			delivery.RecipientHash, delivery.RecipientName, delivery.UserID, delivery.SourceType,
-			delivery.SourceID, delivery.ReminderKey, delivery.Locale, sqlmock.AnyArg(), sqlmock.AnyArg(), 5).
+			delivery.SourceID, delivery.ReminderKey, delivery.Locale, sqlmock.AnyArg(), sqlmock.AnyArg(), 5, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(9)))
 	id, created, err := repo.Enqueue(context.Background(), delivery)
 	require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestNotificationEmailDeliveryRepositoryEnqueueReusesEntTransaction(t *testi
 	mock.ExpectQuery("INSERT INTO notification_email_deliveries").
 		WithArgs(delivery.DedupKey, delivery.Event, delivery.Channel, delivery.RecipientEmail,
 			delivery.RecipientHash, delivery.RecipientName, delivery.UserID, delivery.SourceType,
-			delivery.SourceID, delivery.ReminderKey, delivery.Locale, sqlmock.AnyArg(), sqlmock.AnyArg(), 5).
+			delivery.SourceID, delivery.ReminderKey, delivery.Locale, sqlmock.AnyArg(), sqlmock.AnyArg(), 5, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(11)))
 	id, created, err := repo.Enqueue(txCtx, delivery)
 	require.NoError(t, err)
@@ -69,14 +69,14 @@ func TestNotificationEmailDeliveryRepositoryClaimUsesCrossInstanceLease(t *testi
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 	now := time.Now().UTC()
-	columns := []string{"id", "dedup_key", "event", "channel", "recipient_email", "recipient_hash", "recipient_name", "user_id", "source_type", "source_id", "reminder_key", "locale", "variables", "raw_html_variables", "status", "attempt_count", "max_attempts", "next_attempt_at", "last_error_category", "last_error", "created_at", "updated_at", "sent_at"}
+	columns := []string{"id", "dedup_key", "event", "channel", "recipient_email", "recipient_hash", "recipient_name", "user_id", "source_type", "source_id", "reminder_key", "locale", "variables", "raw_html_variables", "status", "attempt_count", "max_attempts", "next_attempt_at", "last_error_category", "last_error", "created_at", "updated_at", "sent_at", "sensitive_variables_ciphertext"}
 	mock.ExpectQuery("(?s)attempt_count >= max_attempts.*lease_expires_at < NOW\\(\\).*attempt_count < max_attempts.*FOR UPDATE SKIP LOCKED.*RETURNING").
 		WithArgs("worker-a", 4, int64(120)).
 		WillReturnRows(sqlmock.NewRows(columns).AddRow(
 			int64(1), strings.Repeat("a", 64), service.NotificationEmailEventOpsAlert,
 			service.NotificationEmailChannelOpsAlert, "ops@example.com", strings.Repeat("b", 64),
 			"ops", int64(0), "ops_incident", "incident-1", "firing", "en", []byte(`{"rule_name":"errors"}`),
-			[]byte(`{}`), "processing", 1, 5, now, nil, nil, now, now, nil,
+			[]byte(`{}`), "processing", 1, 5, now, nil, nil, now, now, nil, "encrypted-payload",
 		))
 	repo := NewNotificationEmailDeliveryRepository(db)
 	items, err := repo.Claim(context.Background(), "worker-a", 4, 2*time.Minute)
@@ -84,6 +84,7 @@ func TestNotificationEmailDeliveryRepositoryClaimUsesCrossInstanceLease(t *testi
 	require.Len(t, items, 1)
 	require.Equal(t, 1, items[0].AttemptCount)
 	require.Equal(t, "errors", items[0].Variables["rule_name"])
+	require.Equal(t, "encrypted-payload", items[0].SensitiveVariablesCiphertext)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -143,6 +144,27 @@ func TestNotificationEmailDeliveryMigrationHasLeasePrivacyAndIndexGuards(t *test
 	}
 	require.NotContains(t, sqlText, "DROP TABLE")
 	require.NotContains(t, sqlText, "ALTER TABLE")
+}
+
+func TestNotificationEmailSensitivePayloadMigrationIsAdditive(t *testing.T) {
+	content, err := migrations.FS.ReadFile("194_notification_email_sensitive_payload.sql")
+	require.NoError(t, err)
+	sqlText := string(content)
+	require.Contains(t, sqlText, "ADD COLUMN IF NOT EXISTS sensitive_variables_ciphertext TEXT")
+	require.NotContains(t, sqlText, "DROP TABLE")
+	require.NotContains(t, sqlText, "DROP COLUMN")
+	require.NotContains(t, sqlText, "-- +goose Down")
+}
+
+func TestOpsAlertEvaluationMigrationIsForwardOnlyAndAdditive(t *testing.T) {
+	content, err := migrations.FS.ReadFile("193_ops_alert_evaluation_v2.sql")
+	require.NoError(t, err)
+	sqlText := string(content)
+	require.Contains(t, sqlText, "CREATE TABLE IF NOT EXISTS ops_alert_rule_evaluations")
+	require.Contains(t, sqlText, "ADD COLUMN IF NOT EXISTS email_queued")
+	require.NotContains(t, sqlText, "DROP TABLE")
+	require.NotContains(t, sqlText, "DROP COLUMN")
+	require.NotContains(t, sqlText, "-- +goose Down")
 }
 
 func testNotificationEmailDelivery() service.NotificationEmailDelivery {

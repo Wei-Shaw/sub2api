@@ -8,8 +8,8 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import { adminAPI } from '@/api'
 import { opsAPI } from '@/api/admin/ops'
-import type { AlertRule, MetricType, Operator } from '../types'
-import type { OpsSeverity } from '@/api/admin/ops'
+import type { AlertRule, AlertRuleEvaluation, MetricType, Operator } from '../types'
+import type { NotificationEmailDeliveryHealth, OpsSeverity } from '@/api/admin/ops'
 import { formatDateTime } from '../utils/opsFormatters'
 
 const { t } = useI18n()
@@ -20,15 +20,26 @@ const isDesktopViewport = useMediaQuery('(min-width: 768px)')
 
 const loading = ref(false)
 const rules = ref<AlertRule[]>([])
+const evaluations = ref<AlertRuleEvaluation[]>([])
+const emailHealth = ref<NotificationEmailDeliveryHealth | null>(null)
 
 async function load() {
-  loading.value = true
-  try {
-    rules.value = await opsAPI.listAlertRules()
+	loading.value = true
+	try {
+		const [loadedRules, loadedEvaluations, loadedEmailHealth] = await Promise.all([
+			opsAPI.listAlertRules(),
+			opsAPI.listLatestAlertRuleEvaluations(),
+			opsAPI.getNotificationEmailDeliveryHealth()
+		])
+		rules.value = loadedRules
+		evaluations.value = loadedEvaluations
+		emailHealth.value = loadedEmailHealth
   } catch (err: any) {
     console.error('[OpsAlertRulesCard] Failed to load rules', err)
     appStore.showError(err?.response?.data?.detail || t('admin.ops.alertRules.loadFailed'))
-    rules.value = []
+		rules.value = []
+		evaluations.value = []
+		emailHealth.value = null
   } finally {
     loading.value = false
   }
@@ -42,6 +53,33 @@ onMounted(() => {
 const sortedRules = computed(() => {
   return [...rules.value].sort((a, b) => (b.id || 0) - (a.id || 0))
 })
+
+const evaluationByRule = computed(() => {
+	return new Map(evaluations.value.map((evaluation) => [evaluation.rule_id, evaluation]))
+})
+
+function evaluationFor(rule: AlertRule): AlertRuleEvaluation | null {
+	if (!rule.id) return null
+	return evaluationByRule.value.get(rule.id) ?? null
+}
+
+function evaluationStatusFor(rule: AlertRule): string {
+	if (!rule.enabled) return 'disabled'
+	return evaluationFor(rule)?.status ?? 'pending'
+}
+
+function evaluationStatusClass(status?: string): string {
+	switch (status) {
+		case 'breached': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+		case 'error':
+		case 'unsupported': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+		case 'stale':
+		case 'no_data': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+		case 'shadow': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+		case 'ok': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+		default: return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
+	}
+}
 
 const showEditor = ref(false)
 const saving = ref(false)
@@ -144,6 +182,83 @@ const metricDefinitions = computed(() => {
       recommendedThreshold: 1,
       unit: '%'
     },
+	{
+		type: 'availability_failure_rate',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.availabilityFailureRate'),
+		description: t('admin.ops.alertRules.metricDescriptions.availabilityFailureRate'),
+		recommendedOperator: '>=', recommendedThreshold: 5, unit: '%'
+	},
+	{
+		type: 'platform_failure_rate',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.platformFailureRate'),
+		description: t('admin.ops.alertRules.metricDescriptions.platformFailureRate'),
+		recommendedOperator: '>=', recommendedThreshold: 5, unit: '%'
+	},
+	{
+		type: 'provider_failure_rate',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.providerFailureRate'),
+		description: t('admin.ops.alertRules.metricDescriptions.providerFailureRate'),
+		recommendedOperator: '>=', recommendedThreshold: 5, unit: '%'
+	},
+	{
+		type: 'unknown_failure_rate',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.unknownFailureRate'),
+		description: t('admin.ops.alertRules.metricDescriptions.unknownFailureRate'),
+		recommendedOperator: '>=', recommendedThreshold: 1, unit: '%'
+	},
+	{
+		type: 'platform_capacity_failure_count',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.platformCapacityFailureCount'),
+		description: t('admin.ops.alertRules.metricDescriptions.platformCapacityFailureCount'),
+		recommendedOperator: '>=', recommendedThreshold: 10
+	},
+	{
+		type: 'compatibility_error_count',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.compatibilityErrorCount'),
+		description: t('admin.ops.alertRules.metricDescriptions.compatibilityErrorCount'),
+		recommendedOperator: '>=', recommendedThreshold: 20
+	},
+	{
+		type: 'client_rejected_count',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.clientRejectedCount'),
+		description: t('admin.ops.alertRules.metricDescriptions.clientRejectedCount'),
+		recommendedOperator: '>=', recommendedThreshold: 50
+	},
+	{
+		type: 'business_limited_count',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.businessLimitedCount'),
+		description: t('admin.ops.alertRules.metricDescriptions.businessLimitedCount'),
+		recommendedOperator: '>=', recommendedThreshold: 100
+	},
+	{
+		type: 'cancelled_count',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.cancelledCount'),
+		description: t('admin.ops.alertRules.metricDescriptions.cancelledCount'),
+		recommendedOperator: '>=', recommendedThreshold: 20
+	},
+	{
+		type: 'security_blocked_count',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.securityBlockedCount'),
+		description: t('admin.ops.alertRules.metricDescriptions.securityBlockedCount'),
+		recommendedOperator: '>=', recommendedThreshold: 100
+	},
+	{
+		type: 'recovered_provider_error_count',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.recoveredProviderErrorCount'),
+		description: t('admin.ops.alertRules.metricDescriptions.recoveredProviderErrorCount'),
+		recommendedOperator: '>=', recommendedThreshold: 20
+	},
     {
       type: 'cpu_usage_percent',
       group: 'system',
@@ -280,7 +395,7 @@ const severityOptions = computed(() => {
 })
 
 const windowOptions = computed(() => {
-  const windows = [1, 5, 60]
+  const windows = [1, 5, 15, 30, 60]
   return windows.map((m) => ({ value: m, label: `${m}m` }))
 })
 
@@ -289,14 +404,21 @@ function newRuleDraft(): AlertRule {
     name: '',
     description: '',
     enabled: true,
-    metric_type: 'error_rate',
+		metric_type: 'availability_failure_rate',
     operator: '>',
-    threshold: 1,
-    window_minutes: 1,
-    sustained_minutes: 2,
-    severity: 'P1',
-    cooldown_minutes: 10,
-    notify_email: true
+		threshold: 1,
+		window_minutes: 5,
+		sustained_minutes: 5,
+		severity: 'P1',
+		cooldown_minutes: 10,
+		minimum_samples: 100,
+		minimum_bad_count: 10,
+		recovery_operator: '<',
+		recovery_threshold: 0.5,
+		recovery_sustained_minutes: 5,
+		incident_family: 'availability',
+		shadow_mode: true,
+		notify_email: true
   }
 }
 
@@ -324,15 +446,24 @@ const editorValidation = computed(() => {
   if (!r.operator) errors.push(t('admin.ops.alertRules.validation.operatorRequired'))
   if (!(typeof r.threshold === 'number' && Number.isFinite(r.threshold)))
     errors.push(t('admin.ops.alertRules.validation.thresholdRequired'))
-  if (!(typeof r.window_minutes === 'number' && Number.isFinite(r.window_minutes) && [1, 5, 60].includes(r.window_minutes))) {
+  if (!(typeof r.window_minutes === 'number' && Number.isFinite(r.window_minutes) && [1, 5, 15, 30, 60].includes(r.window_minutes))) {
     errors.push(t('admin.ops.alertRules.validation.windowRange'))
   }
   if (!(typeof r.sustained_minutes === 'number' && Number.isFinite(r.sustained_minutes) && r.sustained_minutes >= 1 && r.sustained_minutes <= 1440)) {
     errors.push(t('admin.ops.alertRules.validation.sustainedRange'))
   }
-  if (!(typeof r.cooldown_minutes === 'number' && Number.isFinite(r.cooldown_minutes) && r.cooldown_minutes >= 0 && r.cooldown_minutes <= 1440)) {
-    errors.push(t('admin.ops.alertRules.validation.cooldownRange'))
-  }
+	if (!(typeof r.cooldown_minutes === 'number' && Number.isFinite(r.cooldown_minutes) && r.cooldown_minutes >= 0 && r.cooldown_minutes <= 1440)) {
+		errors.push(t('admin.ops.alertRules.validation.cooldownRange'))
+	}
+	if (!(Number.isInteger(r.minimum_samples) && r.minimum_samples >= 0)) errors.push(t('admin.ops.alertRules.validation.minimumSamplesRange'))
+	if (!(Number.isInteger(r.minimum_bad_count) && r.minimum_bad_count >= 0)) errors.push(t('admin.ops.alertRules.validation.minimumBadCountRange'))
+	if (!r.incident_family || !/^[a-z0-9_-]{1,64}$/.test(r.incident_family)) errors.push(t('admin.ops.alertRules.validation.incidentFamily'))
+	if ((r.recovery_operator && r.recovery_threshold == null) || (!r.recovery_operator && r.recovery_threshold != null)) {
+		errors.push(t('admin.ops.alertRules.validation.recoveryPair'))
+	}
+	if (!(Number.isInteger(r.recovery_sustained_minutes) && r.recovery_sustained_minutes >= 1 && r.recovery_sustained_minutes <= 1440)) {
+		errors.push(t('admin.ops.alertRules.validation.recoverySustainedRange'))
+	}
   return { valid: errors.length === 0, errors }
 })
 
@@ -412,8 +543,31 @@ function cancelDelete() {
           </svg>
           {{ t('common.refresh') }}
         </button>
-      </div>
-    </div>
+		</div>
+	</div>
+
+	<div class="mb-4 grid grid-cols-2 gap-3 border-y border-gray-100 py-3 text-xs dark:border-dark-700 sm:grid-cols-4">
+		<div>
+			<div class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.alertRules.health.evaluatorCoverage') }}</div>
+			<div class="mt-1 font-bold text-gray-900 dark:text-white">{{ evaluations.length }} / {{ rules.filter((rule) => rule.enabled).length }}</div>
+		</div>
+		<div>
+			<div class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.alertRules.health.emailWorker') }}</div>
+			<div class="mt-1 font-bold" :class="emailHealth?.running ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+				{{ emailHealth?.running ? t('common.enabled') : t('common.disabled') }}
+			</div>
+		</div>
+		<div>
+			<div class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.alertRules.health.pendingEmails') }}</div>
+			<div class="mt-1 font-bold text-gray-900 dark:text-white">{{ emailHealth?.pending ?? 0 }}</div>
+		</div>
+		<div>
+			<div class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.alertRules.health.deliveryFailures') }}</div>
+			<div class="mt-1 font-bold" :class="(emailHealth?.failures ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'">
+				{{ emailHealth?.failures ?? 0 }}
+			</div>
+		</div>
+	</div>
 
     <div v-if="loading" class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
       {{ t('admin.ops.alertRules.loading') }}
@@ -436,11 +590,19 @@ function cancelDelete() {
               </div>
               <span class="shrink-0 text-xs font-bold text-gray-700 dark:text-gray-200">{{ row.severity }}</span>
             </div>
-            <div class="text-xs text-gray-700 dark:text-gray-200">
+				<div class="text-xs text-gray-700 dark:text-gray-200">
               <span class="font-mono">{{ row.metric_type }}</span>
               <span class="mx-1 text-gray-400">{{ row.operator }}</span>
               <span class="font-mono">{{ row.threshold }}</span>
-            </div>
+				</div>
+				<div class="flex flex-wrap items-center gap-2">
+					<span class="rounded px-2 py-0.5 text-[10px] font-bold" :class="evaluationStatusClass(evaluationStatusFor(row))">
+						{{ t(`admin.ops.alertRules.evaluation.${evaluationStatusFor(row)}`) }}
+					</span>
+					<span v-if="evaluationFor(row)" class="text-[10px] text-gray-500 dark:text-gray-400">
+						{{ evaluationFor(row)?.bad_count }} / {{ evaluationFor(row)?.sample_count }}
+					</span>
+				</div>
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs text-gray-700 dark:text-gray-200">
                 {{ row.enabled ? t('common.enabled') : t('common.disabled') }}
@@ -467,9 +629,12 @@ function cancelDelete() {
               <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 {{ t('admin.ops.alertRules.table.severity') }}
               </th>
-              <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                {{ t('admin.ops.alertRules.table.enabled') }}
-              </th>
+				<th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+					{{ t('admin.ops.alertRules.table.enabled') }}
+				</th>
+				<th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+					{{ t('admin.ops.alertRules.table.evaluation') }}
+				</th>
               <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 {{ t('admin.ops.alertRules.table.actions') }}
               </th>
@@ -494,9 +659,22 @@ function cancelDelete() {
               <td class="whitespace-nowrap px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-200">
                 {{ row.severity }}
               </td>
-              <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-700 dark:text-gray-200">
-                {{ row.enabled ? t('common.enabled') : t('common.disabled') }}
-              </td>
+				<td class="whitespace-nowrap px-4 py-3 text-xs text-gray-700 dark:text-gray-200">
+					{{ row.enabled ? t('common.enabled') : t('common.disabled') }}
+				</td>
+				<td class="whitespace-nowrap px-4 py-3 text-xs">
+					<div class="flex items-center gap-2">
+						<span class="rounded px-2 py-0.5 text-[10px] font-bold" :class="evaluationStatusClass(evaluationStatusFor(row))">
+							{{ t(`admin.ops.alertRules.evaluation.${evaluationStatusFor(row)}`) }}
+						</span>
+						<span v-if="evaluationFor(row)" class="text-[10px] text-gray-500 dark:text-gray-400">
+							{{ evaluationFor(row)?.bad_count }} / {{ evaluationFor(row)?.sample_count }}
+						</span>
+					</div>
+					<div v-if="evaluationFor(row)?.error_code" class="mt-1 max-w-[180px] truncate text-[10px] text-gray-500 dark:text-gray-400">
+						{{ evaluationFor(row)?.error_code }}
+					</div>
+				</td>
               <td class="whitespace-nowrap px-4 py-3 text-right text-xs">
                 <button class="btn btn-sm btn-secondary" @click="openEdit(row)">{{ t('common.edit') }}</button>
                 <button class="ml-2 btn btn-sm btn-danger" @click="requestDelete(row)">{{ t('common.delete') }}</button>
@@ -591,20 +769,55 @@ function cancelDelete() {
             <input v-model.number="draft!.sustained_minutes" class="input" type="number" min="1" max="1440" />
           </div>
 
-          <div>
-            <label class="input-label">{{ t('admin.ops.alertRules.form.cooldown') }}</label>
-            <input v-model.number="draft!.cooldown_minutes" class="input" type="number" min="0" max="1440" />
-          </div>
+			<div>
+				<label class="input-label">{{ t('admin.ops.alertRules.form.cooldown') }}</label>
+				<input v-model.number="draft!.cooldown_minutes" class="input" type="number" min="0" max="1440" />
+			</div>
+
+			<div>
+				<label class="input-label">{{ t('admin.ops.alertRules.form.minimumSamples') }}</label>
+				<input v-model.number="draft!.minimum_samples" class="input" type="number" min="0" />
+			</div>
+
+			<div>
+				<label class="input-label">{{ t('admin.ops.alertRules.form.minimumBadCount') }}</label>
+				<input v-model.number="draft!.minimum_bad_count" class="input" type="number" min="0" />
+			</div>
+
+			<div>
+				<label class="input-label">{{ t('admin.ops.alertRules.form.recoveryOperator') }}</label>
+				<Select v-model="draft!.recovery_operator" :options="operatorOptions" />
+			</div>
+
+			<div>
+				<label class="input-label">{{ t('admin.ops.alertRules.form.recoveryThreshold') }}</label>
+				<input v-model.number="draft!.recovery_threshold" class="input" type="number" />
+			</div>
+
+			<div>
+				<label class="input-label">{{ t('admin.ops.alertRules.form.recoverySustained') }}</label>
+				<input v-model.number="draft!.recovery_sustained_minutes" class="input" type="number" min="1" max="1440" />
+			</div>
+
+			<div>
+				<label class="input-label">{{ t('admin.ops.alertRules.form.incidentFamily') }}</label>
+				<input v-model.trim="draft!.incident_family" class="input" type="text" maxlength="64" />
+			</div>
 
           <div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-800/50 md:col-span-2">
             <span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ t('admin.ops.alertRules.form.enabled') }}</span>
             <input v-model="draft!.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </div>
 
-          <div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-800/50 md:col-span-2">
-            <span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ t('admin.ops.alertRules.form.notifyEmail') }}</span>
-            <input v-model="draft!.notify_email" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-          </div>
+			<div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-800/50 md:col-span-2">
+				<span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ t('admin.ops.alertRules.form.notifyEmail') }}</span>
+				<input v-model="draft!.notify_email" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+			</div>
+
+			<div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-800/50 md:col-span-2">
+				<span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ t('admin.ops.alertRules.form.shadowMode') }}</span>
+				<input v-model="draft!.shadow_mode" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+			</div>
         </div>
       </div>
 

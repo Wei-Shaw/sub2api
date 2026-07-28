@@ -201,6 +201,13 @@ func (r *opsRepository) getDashboardOverviewPreaggregated(ctx context.Context, f
 	if err != nil {
 		return nil, err
 	}
+	expectedBuckets, err := r.countRawHourlyMetricBuckets(ctx, filter, aggFullStart, aggFullEnd)
+	if err != nil {
+		return nil, err
+	}
+	if countDistinctHourlyMetricBuckets(preaggRows) != expectedBuckets {
+		return nil, service.ErrOpsPreaggregatedNotPopulated
+	}
 	if len(preaggRows) == 0 {
 		// Distinguish "no data" vs "preagg not populated yet".
 		if exists, err := r.rawOpsDataExists(ctx, filter, aggFullStart, aggFullEnd); err == nil && exists {
@@ -382,7 +389,7 @@ func (r *opsRepository) listHourlyMetricsRows(ctx context.Context, filter *servi
 		return []opsHourlyMetricsRow{}, nil
 	}
 
-	where := "bucket_start >= $1 AND bucket_start < $2"
+	where := "bucket_start >= $1 AND bucket_start < $2 AND metric_definition_version = 2"
 	args := []any{start.UTC(), end.UTC()}
 	idx := 3
 
@@ -480,6 +487,39 @@ ORDER BY bucket_start ASC`
 		return nil, err
 	}
 	return out, nil
+}
+
+func (r *opsRepository) countRawHourlyMetricBuckets(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (int, error) {
+	usageJoin, usageWhere, usageArgs, next := buildUsageWhere(filter, start, end, 1)
+	errorWhere, errorArgs, _ := buildErrorWhere(filter, start, end, next)
+	q := `
+SELECT COUNT(*) FROM (
+  SELECT date_trunc('hour', ul.created_at AT TIME ZONE 'UTC') AS bucket
+  FROM usage_logs ul
+  ` + usageJoin + `
+  ` + usageWhere + `
+  GROUP BY 1
+  UNION
+  SELECT date_trunc('hour', created_at AT TIME ZONE 'UTC') AS bucket
+  FROM ops_error_logs
+  ` + errorWhere + `
+    AND is_count_tokens = FALSE
+  GROUP BY 1
+) buckets`
+	args := append(usageArgs, errorArgs...)
+	var count int
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func countDistinctHourlyMetricBuckets(rows []opsHourlyMetricsRow) int {
+	buckets := make(map[int64]struct{}, len(rows))
+	for _, row := range rows {
+		buckets[row.bucketStart.UTC().UnixNano()] = struct{}{}
+	}
+	return len(buckets)
 }
 
 func aggregateHourlyRows(rows []opsHourlyMetricsRow) opsDashboardPartial {
@@ -881,11 +921,11 @@ func (r *opsRepository) queryErrorCounts(ctx context.Context, filter *service.Op
 	q := `
 SELECT
   COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400), 0) AS error_total,
-  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND is_business_limited), 0) AS business_limited,
-  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND NOT is_business_limited), 0) AS error_sla,
-  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)), 0) AS upstream_excl,
-  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429), 0) AS upstream_429,
-  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529), 0) AS upstream_529
+  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND final_outcome = 'business_limited'), 0) AS business_limited,
+  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND counts_toward_sla), 0) AS error_sla,
+  COALESCE(COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)), 0) AS upstream_excl,
+  COALESCE(COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) = 429), 0) AS upstream_429,
+  COALESCE(COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) = 529), 0) AS upstream_529
 FROM ops_error_logs
 ` + where
 

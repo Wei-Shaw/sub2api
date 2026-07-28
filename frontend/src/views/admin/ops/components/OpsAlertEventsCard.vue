@@ -355,6 +355,12 @@ function formatStatusLabel(status: string | undefined): string {
   return s.toUpperCase()
 }
 
+function emailDeliveryLabel(event: AlertEvent): string {
+  if (event.email_queued) return t('admin.ops.alertEvents.table.emailQueued')
+  if (event.email_sent) return t('admin.ops.alertEvents.table.emailSent')
+  return t('admin.ops.alertEvents.table.emailIgnored')
+}
+
 const empty = computed(() => events.value.length === 0 && !loading.value)
 </script>
 
@@ -424,7 +430,13 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
               <span><span class="font-mono">#{{ row.rule_id }}</span> · {{ formatDurationLabel(row) }}</span>
               <span class="inline-flex items-center gap-1">
                 <Icon
-                  v-if="row.email_sent"
+                  v-if="row.email_queued"
+                  name="clock"
+                  size="xs"
+                  class="text-blue-600 dark:text-blue-400"
+                />
+                <Icon
+                  v-else-if="row.email_sent"
                   name="checkCircle"
                   size="xs"
                   class="text-green-600 dark:text-green-400"
@@ -435,7 +447,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                   size="xs"
                   class="text-gray-400 dark:text-gray-500"
                 />
-                {{ row.email_sent ? t('admin.ops.alertEvents.table.emailSent') : t('admin.ops.alertEvents.table.emailIgnored') }}
+                {{ emailDeliveryLabel(row) }}
               </span>
             </div>
             <div class="text-[11px] text-gray-400 dark:text-gray-500">{{ formatDimensionsSummary(row) }}</div>
@@ -512,10 +524,16 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
               <td class="whitespace-nowrap px-4 py-3 text-right text-xs">
                 <span
                   class="inline-flex items-center justify-end gap-1.5"
-                  :title="row.email_sent ? t('admin.ops.alertEvents.table.emailSent') : t('admin.ops.alertEvents.table.emailIgnored')"
+                  :title="emailDeliveryLabel(row)"
                 >
                   <Icon
-                    v-if="row.email_sent"
+                    v-if="row.email_queued"
+                    name="clock"
+                    size="sm"
+                    class="text-blue-600 dark:text-blue-400"
+                  />
+                  <Icon
+                    v-else-if="row.email_sent"
                     name="checkCircle"
                     size="sm"
                     class="text-gray-600 dark:text-gray-400"
@@ -527,7 +545,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                     class="text-gray-400 dark:text-gray-500"
                   />
                   <span class="text-[11px] font-bold text-gray-600 dark:text-gray-300">
-                    {{ row.email_sent ? t('admin.ops.alertEvents.table.emailSent') : t('admin.ops.alertEvents.table.emailIgnored') }}
+                    {{ emailDeliveryLabel(row) }}
                   </span>
                 </span>
               </td>
@@ -692,4 +710,3 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
     </BaseDialog>
   </div>
 </template>
-

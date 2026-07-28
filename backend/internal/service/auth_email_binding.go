@@ -112,7 +112,7 @@ func (s *AuthService) SendEmailIdentityBindCode(ctx context.Context, userID int6
 	if err := s.validateRegistrationEmailPolicy(ctx, normalizedEmail); err != nil {
 		return err
 	}
-	if s.emailService == nil {
+	if s.emailQueueService == nil {
 		return ErrServiceUnavailable
 	}
 	if _, err := s.userRepo.GetByID(ctx, userID); err != nil {
@@ -134,7 +134,7 @@ func (s *AuthService) SendEmailIdentityBindCode(ctx context.Context, userID int6
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}
-	return s.emailService.SendVerifyCode(ctx, normalizedEmail, siteName, firstEmailLocale(locale))
+	return s.emailQueueService.EnqueueVerifyCode(normalizedEmail, siteName, firstEmailLocale(locale))
 }
 
 func normalizeEmailForIdentityBinding(email string) (string, error) {

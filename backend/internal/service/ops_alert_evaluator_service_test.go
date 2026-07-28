@@ -14,8 +14,19 @@ var _ OpsRepository = (*stubOpsRepo)(nil)
 
 type stubOpsRepo struct {
 	OpsRepository
-	overview *OpsDashboardOverview
-	err      error
+	overview            *OpsDashboardOverview
+	classificationStats *OpsErrorClassificationStats
+	err                 error
+}
+
+func (s *stubOpsRepo) GetErrorClassificationStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsErrorClassificationStats, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.classificationStats != nil {
+		return s.classificationStats, nil
+	}
+	return &OpsErrorClassificationStats{}, nil
 }
 
 func (s *stubOpsRepo) GetDashboardOverview(ctx context.Context, filter *OpsDashboardFilter) (*OpsDashboardOverview, error) {
@@ -251,4 +262,112 @@ func TestComputeRuleMetricNewIndicators(t *testing.T) {
 			require.InDelta(t, tt.wantValue, gotValue, 0.0001)
 		})
 	}
+}
+
+func TestOpsAlertEmailUsesDurableDispatcherAndTransitionDedup(t *testing.T) {
+	ctx := context.Background()
+	settings := newNotificationEmailMemorySettingRepo()
+	opsService := &OpsService{settingRepo: settings}
+	_, err := opsService.UpdateEmailNotificationConfig(ctx, &OpsEmailNotificationConfigUpdateRequest{
+		Alert: &OpsEmailAlertConfig{
+			Enabled: true, Recipients: []string{"ops@example.com"}, MinSeverity: "warning",
+			IncludeResolvedAlerts: true,
+		},
+	})
+	require.NoError(t, err)
+
+	deliveryRepo := newFakeNotificationEmailDeliveryRepository()
+	dispatcher := NewNotificationEmailDispatcher(deliveryRepo, NewNotificationEmailService(settings, nil))
+	svc := &OpsAlertEvaluatorService{opsService: opsService, notificationDispatcher: dispatcher}
+	rule := &OpsAlertRule{ID: 9, Name: "availability", Severity: "P1", NotifyEmail: true, MetricType: "error_rate", Operator: ">", Threshold: 5}
+	event := &OpsAlertEvent{ID: 42, RuleID: rule.ID, Status: OpsAlertStatusFiring, FiredAt: time.Now().UTC()}
+
+	require.Equal(t, 1, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionFiring, rule, event))
+	require.Equal(t, 1, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionFiring, rule, event), "existing deduplicated delivery still proves the transition is queued")
+
+	event.Status = OpsAlertStatusResolved
+	resolvedAt := time.Now().UTC()
+	event.ResolvedAt = &resolvedAt
+	require.Equal(t, 1, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionResolved, rule, event))
+	require.Len(t, deliveryRepo.items, 2)
+	require.Equal(t, opsAlertEmailTransitionFiring, deliveryRepo.items[0].ReminderKey)
+	require.Equal(t, opsAlertEmailTransitionResolved, deliveryRepo.items[1].ReminderKey)
+	require.Equal(t, "ops_alert_event", deliveryRepo.items[0].SourceType)
+}
+
+func TestOpsAlertResolvedEmailRequiresFineGrainedSwitch(t *testing.T) {
+	ctx := context.Background()
+	settings := newNotificationEmailMemorySettingRepo()
+	opsService := &OpsService{settingRepo: settings}
+	_, err := opsService.UpdateEmailNotificationConfig(ctx, &OpsEmailNotificationConfigUpdateRequest{
+		Alert: &OpsEmailAlertConfig{Enabled: true, Recipients: []string{"ops@example.com"}},
+	})
+	require.NoError(t, err)
+
+	deliveryRepo := newFakeNotificationEmailDeliveryRepository()
+	svc := &OpsAlertEvaluatorService{
+		opsService: opsService,
+		notificationDispatcher: NewNotificationEmailDispatcher(
+			deliveryRepo,
+			NewNotificationEmailService(settings, nil),
+		),
+	}
+	rule := &OpsAlertRule{ID: 9, Severity: "P0", NotifyEmail: true}
+	event := &OpsAlertEvent{ID: 42, RuleID: rule.ID, Status: OpsAlertStatusResolved}
+
+	require.Zero(t, svc.maybeEnqueueAlertEmail(ctx, nil, opsAlertEmailTransitionResolved, rule, event))
+	require.Empty(t, deliveryRepo.items)
+}
+
+func TestOpsAlertMetricRequiresMinimumSamplesAndBadCount(t *testing.T) {
+	now := time.Now().UTC()
+	rule := &OpsAlertRule{
+		MetricType: "error_rate", Operator: ">=", Threshold: 20,
+		MinimumSamples: 30, MinimumBadCount: 10,
+	}
+	svc := &OpsAlertEvaluatorService{opsRepo: &stubOpsRepo{overview: &OpsDashboardOverview{
+		RequestCountSLA: 4, ErrorCountSLA: 1, ErrorRate: 0.25,
+	}}}
+
+	result := svc.evaluateRuleMetric(context.Background(), rule, nil, now.Add(-5*time.Minute), now, "", nil, now)
+	require.Equal(t, OpsAlertEvaluationStatusOK, result.Status)
+	require.False(t, result.Breached)
+	require.EqualValues(t, 4, result.SampleCount)
+	require.EqualValues(t, 1, result.BadCount)
+
+	svc.opsRepo = &stubOpsRepo{overview: &OpsDashboardOverview{
+		RequestCountSLA: 50, ErrorCountSLA: 12, ErrorRate: 0.24,
+	}}
+	result = svc.evaluateRuleMetric(context.Background(), rule, nil, now.Add(-5*time.Minute), now, "", nil, now)
+	require.Equal(t, OpsAlertEvaluationStatusBreached, result.Status)
+	require.True(t, result.Breached)
+}
+
+func TestOpsAlertMetricDistinguishesStaleAndUnsupported(t *testing.T) {
+	now := time.Now().UTC()
+	cpu := 90.0
+	svc := &OpsAlertEvaluatorService{opsRepo: &stubOpsRepo{}}
+
+	stale := svc.evaluateRuleMetric(context.Background(), &OpsAlertRule{
+		MetricType: "cpu_usage_percent", Operator: ">", Threshold: 85,
+	}, &OpsSystemMetricsSnapshot{CreatedAt: now.Add(-10 * time.Minute), CPUUsagePercent: &cpu}, now.Add(-5*time.Minute), now, "", nil, now)
+	require.Equal(t, OpsAlertEvaluationStatusStale, stale.Status)
+	require.False(t, stale.Breached)
+
+	unsupported := svc.evaluateRuleMetric(context.Background(), &OpsAlertRule{
+		MetricType: "p99_latency_ms", Operator: ">", Threshold: 3000,
+	}, nil, now.Add(-5*time.Minute), now, "", nil, now)
+	require.Equal(t, OpsAlertEvaluationStatusUnsupported, unsupported.Status)
+	require.Equal(t, "unsupported_metric", unsupported.ErrorCode)
+}
+
+func TestResetAlertRuleStateAfterEvaluationGap(t *testing.T) {
+	now := time.Now().UTC()
+	last := now.Add(-3 * time.Minute)
+	state := &OpsAlertRuleState{
+		RuleID: 1, LastEvaluatedAt: &last, ConsecutiveBreaches: 3, ConsecutiveRecoveries: 2,
+	}
+	resetAlertRuleStateAfterGap(state, now, time.Minute)
+	require.Zero(t, state.ConsecutiveBreaches)
+	require.Zero(t, state.ConsecutiveRecoveries)
 }

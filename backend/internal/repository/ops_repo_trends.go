@@ -452,11 +452,11 @@ func (r *opsRepository) GetErrorTrend(ctx context.Context, filter *service.OpsDa
 SELECT
   ` + bucketExpr + ` AS bucket,
   COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400) AS error_total,
-  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND is_business_limited) AS business_limited,
-  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND NOT is_business_limited) AS error_sla,
-  COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)) AS upstream_excl,
-  COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429) AS upstream_429,
-  COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529) AS upstream_529
+  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND final_outcome = 'business_limited') AS business_limited,
+  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND counts_toward_sla) AS error_sla,
+  COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)) AS upstream_excl,
+  COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) = 429) AS upstream_429,
+  COUNT(*) FILTER (WHERE responsibility = 'provider' AND counts_toward_sla AND COALESCE(upstream_status_code, status_code, 0) = 529) AS upstream_529
 FROM ops_error_logs
 ` + where + `
 GROUP BY 1
@@ -564,8 +564,8 @@ func (r *opsRepository) GetErrorDistribution(ctx context.Context, filter *servic
 SELECT
   COALESCE(upstream_status_code, status_code, 0) AS status_code,
   COUNT(*) AS total,
-  COUNT(*) FILTER (WHERE NOT is_business_limited) AS sla,
-  COUNT(*) FILTER (WHERE is_business_limited) AS business_limited
+  COUNT(*) FILTER (WHERE counts_toward_sla) AS sla,
+  COUNT(*) FILTER (WHERE final_outcome = 'business_limited') AS business_limited
 FROM ops_error_logs
 ` + where + `
   AND COALESCE(status_code, 0) >= 400

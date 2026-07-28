@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -232,12 +233,19 @@ type ChangePasswordRequest struct {
 
 // UserService 用户服务
 type UserService struct {
-	userRepo             UserRepository
-	settingRepo          SettingRepository
-	authCacheInvalidator APIKeyAuthCacheInvalidator
-	billingCache         BillingCache
-	lastActiveTouchL1    sync.Map
-	lastActiveTouchSF    singleflight.Group
+	userRepo                    UserRepository
+	settingRepo                 SettingRepository
+	authCacheInvalidator        APIKeyAuthCacheInvalidator
+	billingCache                BillingCache
+	notificationEmailDispatcher *NotificationEmailDispatcher
+	lastActiveTouchL1           sync.Map
+	lastActiveTouchSF           singleflight.Group
+}
+
+func (s *UserService) SetNotificationEmailDispatcher(dispatcher *NotificationEmailDispatcher) {
+	if s != nil {
+		s.notificationEmailDispatcher = dispatcher
+	}
 }
 
 // NewUserService 创建用户服务实例
@@ -1157,13 +1165,25 @@ func (s *UserService) SendNotifyEmailCode(ctx context.Context, userID int64, ema
 		return fmt.Errorf("generate code: %w", err)
 	}
 
-	// Send email first — if SMTP fails, don't write cache or increment counters,
-	// so the user is not locked out by cooldown/rate-limit for a code they never received.
-	if err := s.sendNotifyVerifyEmail(ctx, emailService, userID, email, code, firstEmailLocale(locale)); err != nil {
+	if err := saveNotifyVerifyCode(ctx, cache, email, code); err != nil {
 		return err
 	}
-
-	if err := saveNotifyVerifyCode(ctx, cache, email, code); err != nil {
+	if s.notificationEmailDispatcher == nil {
+		_ = cache.DeleteNotifyVerifyCode(context.WithoutCancel(ctx), email)
+		return errors.New("notification email dispatcher not configured")
+	}
+	queuedAt := time.Now().UTC()
+	_, err = s.notificationEmailDispatcher.Enqueue(ctx, NotificationEmailSendInput{
+		Event:  NotificationEmailEventNotificationEmailVerifyCode,
+		Locale: firstEmailLocale(locale), RecipientEmail: email, RecipientName: emailRecipientName(email),
+		UserID: userID, SourceType: "notification_email_verification",
+		SourceID:           fmt.Sprintf("%d:%s", userID, notificationEmailHash(email)),
+		ReminderKey:        queuedAt.Format(time.RFC3339Nano),
+		Variables:          map[string]string{"expires_in_minutes": strconv.Itoa(int(verifyCodeTTL / time.Minute))},
+		SensitiveVariables: map[string]string{"verification_code": code},
+	})
+	if err != nil {
+		_ = cache.DeleteNotifyVerifyCode(context.WithoutCancel(ctx), email)
 		return err
 	}
 
@@ -1202,39 +1222,6 @@ func saveNotifyVerifyCode(ctx context.Context, cache EmailCache, email, code str
 		return fmt.Errorf("save verify code: %w", err)
 	}
 	return nil
-}
-
-// sendNotifyVerifyEmail builds and sends the verification email.
-func (s *UserService) sendNotifyVerifyEmail(ctx context.Context, emailService *EmailService, userID int64, email, code, locale string) error {
-	siteName := "Sub2API"
-	if s.settingRepo != nil {
-		if name, err := s.settingRepo.GetValue(ctx, SettingKeySiteName); err == nil && name != "" {
-			siteName = name
-		}
-	}
-	if emailService.notificationEmailService != nil {
-		if err := emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
-			Event:          NotificationEmailEventNotificationEmailVerifyCode,
-			Locale:         locale,
-			RecipientEmail: email,
-			RecipientName:  emailRecipientName(email),
-			UserID:         userID,
-			Variables: map[string]string{
-				"verification_code":  code,
-				"expires_in_minutes": strconv.Itoa(int(verifyCodeTTL / time.Minute)),
-			},
-		}); err == nil {
-			return nil
-		} else {
-			if !shouldFallbackNotificationEmail(err) {
-				return err
-			}
-			slog.Warn("template notification email verification failed; falling back to built-in body", "recipient_hash", notificationEmailHash(email), "err", err.Error())
-		}
-	}
-	subject := fmt.Sprintf("[%s] 通知邮箱验证码 / Notification Email Verification", siteName)
-	body := buildNotifyVerifyEmailBody(code, siteName)
-	return emailService.SendEmail(ctx, email, subject, body)
 }
 
 // VerifyAndAddNotifyEmail verifies the code and adds the email to user's extra emails.
@@ -1344,50 +1331,4 @@ func (s *UserService) ToggleNotifyEmail(ctx context.Context, userID int64, email
 	}
 
 	return s.userRepo.Update(ctx, user)
-}
-
-// notifyVerifyEmailTemplate is the HTML template for notify email verification.
-// Format args: siteName, code.
-const notifyVerifyEmailTemplate = `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); color: white; padding: 30px; text-align: center; }
-        .header h1 { margin: 0; font-size: 24px; }
-        .content { padding: 40px 30px; text-align: center; }
-        .code { font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #333; background-color: #f8f9fa; padding: 20px 30px; border-radius: 8px; display: inline-block; margin: 20px 0; font-family: monospace; }
-        .info { color: #666; font-size: 14px; line-height: 1.6; margin-top: 20px; }
-        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; color: #999; font-size: 12px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>%s</h1>
-        </div>
-        <div class="content">
-            <p style="font-size: 18px; color: #333;">通知邮箱验证码 / Notification Email Verification</p>
-            <div class="code">%s</div>
-            <div class="info">
-                <p>您正在添加额外的通知邮箱，请输入此验证码完成验证。</p>
-                <p>You are adding an extra notification email. Please enter this code to verify.</p>
-                <p>此验证码将在 <strong>15 分钟</strong>后失效。</p>
-                <p>This code will expire in <strong>15 minutes</strong>.</p>
-                <p>如果您没有请求此验证码，请忽略此邮件。</p>
-                <p>If you did not request this code, please ignore this email.</p>
-            </div>
-        </div>
-        <div class="footer">
-            <p>此邮件由系统自动发送，请勿回复。/ This is an automated message, please do not reply.</p>
-        </div>
-    </div>
-</body>
-</html>`
-
-// buildNotifyVerifyEmailBody builds the HTML email body for notify email verification.
-func buildNotifyVerifyEmailBody(code, siteName string) string {
-	return fmt.Sprintf(notifyVerifyEmailTemplate, siteName, code)
 }

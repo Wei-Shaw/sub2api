@@ -13,6 +13,7 @@ type opsRepoMock struct {
 	ListSystemLogsFn              func(ctx context.Context, filter *OpsSystemLogFilter) (*OpsSystemLogList, error)
 	DeleteSystemLogsFn            func(ctx context.Context, filter *OpsSystemLogCleanupFilter) (int64, error)
 	InsertSystemLogCleanupAuditFn func(ctx context.Context, input *OpsSystemLogCleanupAudit) error
+	GetErrorClassificationStatsFn func(ctx context.Context, filter *OpsDashboardFilter) (*OpsErrorClassificationStats, error)
 }
 
 func (m *opsRepoMock) InsertErrorLog(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error) {
@@ -83,6 +84,13 @@ func (m *opsRepoMock) GetRealtimeTrafficSummary(ctx context.Context, filter *Ops
 
 func (m *opsRepoMock) GetDashboardOverview(ctx context.Context, filter *OpsDashboardFilter) (*OpsDashboardOverview, error) {
 	return &OpsDashboardOverview{}, nil
+}
+
+func (m *opsRepoMock) GetErrorClassificationStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsErrorClassificationStats, error) {
+	if m.GetErrorClassificationStatsFn != nil {
+		return m.GetErrorClassificationStatsFn(ctx, filter)
+	}
+	return &OpsErrorClassificationStats{}, nil
 }
 
 func (m *opsRepoMock) GetThroughputTrend(ctx context.Context, filter *OpsDashboardFilter, bucketSeconds int) (*OpsThroughputTrendResponse, error) {
@@ -165,12 +173,40 @@ func (m *opsRepoMock) UpdateAlertEventEmailSent(ctx context.Context, eventID int
 	return nil
 }
 
+func (m *opsRepoMock) UpdateAlertEventEmailQueued(ctx context.Context, eventID int64, emailQueued bool) error {
+	return nil
+}
+
+func (m *opsRepoMock) InsertAlertRuleEvaluation(ctx context.Context, evaluation *OpsAlertRuleEvaluation) error {
+	return nil
+}
+
+func (m *opsRepoMock) ListLatestAlertRuleEvaluations(ctx context.Context) ([]*OpsAlertRuleEvaluation, error) {
+	return []*OpsAlertRuleEvaluation{}, nil
+}
+
+func (m *opsRepoMock) GetAlertRuleState(ctx context.Context, ruleID int64) (*OpsAlertRuleState, error) {
+	return nil, nil
+}
+
+func (m *opsRepoMock) UpsertAlertRuleState(ctx context.Context, state *OpsAlertRuleState) error {
+	return nil
+}
+
 func (m *opsRepoMock) CreateAlertSilence(ctx context.Context, input *OpsAlertSilence) (*OpsAlertSilence, error) {
 	return input, nil
 }
 
 func (m *opsRepoMock) IsAlertSilenced(ctx context.Context, ruleID int64, platform string, groupID *int64, region *string, now time.Time) (bool, error) {
 	return false, nil
+}
+
+func (m *opsRepoMock) InvalidateHourlyMetricsVersion(ctx context.Context, startTime, endTime time.Time, version int) error {
+	return nil
+}
+
+func (m *opsRepoMock) InvalidateDailyMetricsVersion(ctx context.Context, startTime, endTime time.Time, version int) error {
+	return nil
 }
 
 func (m *opsRepoMock) UpsertHourlyMetrics(ctx context.Context, startTime, endTime time.Time) error {

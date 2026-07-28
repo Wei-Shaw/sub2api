@@ -39,7 +39,7 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 	if isReservedEmail(email) {
 		return nil, ErrEmailReserved
 	}
-	if s == nil || s.emailService == nil {
+	if s == nil || s.emailQueueService == nil {
 		return nil, ErrServiceUnavailable
 	}
 
@@ -47,7 +47,7 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}
-	if err := s.emailService.SendVerifyCode(ctx, email, siteName, firstEmailLocale(locale)); err != nil {
+	if err := s.emailQueueService.EnqueueVerifyCode(email, siteName, firstEmailLocale(locale)); err != nil {
 		return nil, err
 	}
 	return &SendVerifyCodeResult{

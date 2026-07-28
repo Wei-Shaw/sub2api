@@ -165,7 +165,7 @@ func TestSubscriptionExpiryService_ExpiryReminderDisabledSkipsSubscriptionScan(t
 	}
 	svc := NewSubscriptionExpiryService(repo, time.Minute)
 	svc.SetSettingRepository(settingRepo)
-	svc.SetNotificationEmailService(NewNotificationEmailService(settingRepo, nil))
+	svc.SetNotificationEmailDispatcher(NewNotificationEmailDispatcher(nil, NewNotificationEmailService(settingRepo, nil)))
 
 	svc.sendExpiryReminders(context.Background())
 

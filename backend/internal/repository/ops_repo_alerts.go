@@ -11,6 +11,21 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
+func normalizeOpsAlertIncidentFamily(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "custom"
+	}
+	return value
+}
+
+func normalizeOpsAlertRecoverySustainedMinutes(value int) int {
+	if value < 1 {
+		return 1
+	}
+	return value
+}
+
 func (r *opsRepository) ListAlertRules(ctx context.Context) ([]*service.OpsAlertRule, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
@@ -26,10 +41,17 @@ SELECT
   metric_type,
   operator,
   threshold,
-  window_minutes,
-  sustained_minutes,
-  cooldown_minutes,
-  COALESCE(notify_email, true),
+	  window_minutes,
+	  sustained_minutes,
+	  cooldown_minutes,
+	  COALESCE(incident_family, 'custom'),
+	  COALESCE(minimum_samples, 0),
+	  COALESCE(minimum_bad_count, 0),
+	  COALESCE(recovery_operator, ''),
+	  recovery_threshold,
+	  COALESCE(recovery_sustained_minutes, 1),
+	  COALESCE(shadow_mode, false),
+	  COALESCE(notify_email, true),
   filters,
   last_triggered_at,
   created_at,
@@ -48,6 +70,7 @@ ORDER BY id DESC`
 		var rule service.OpsAlertRule
 		var filtersRaw []byte
 		var lastTriggeredAt sql.NullTime
+		var recoveryThreshold sql.NullFloat64
 		if err := rows.Scan(
 			&rule.ID,
 			&rule.Name,
@@ -60,6 +83,13 @@ ORDER BY id DESC`
 			&rule.WindowMinutes,
 			&rule.SustainedMinutes,
 			&rule.CooldownMinutes,
+			&rule.IncidentFamily,
+			&rule.MinimumSamples,
+			&rule.MinimumBadCount,
+			&rule.RecoveryOperator,
+			&recoveryThreshold,
+			&rule.RecoverySustainedMinutes,
+			&rule.ShadowMode,
 			&rule.NotifyEmail,
 			&filtersRaw,
 			&lastTriggeredAt,
@@ -71,6 +101,10 @@ ORDER BY id DESC`
 		if lastTriggeredAt.Valid {
 			v := lastTriggeredAt.Time
 			rule.LastTriggeredAt = &v
+		}
+		if recoveryThreshold.Valid {
+			value := recoveryThreshold.Float64
+			rule.RecoveryThreshold = &value
 		}
 		if len(filtersRaw) > 0 && string(filtersRaw) != "null" {
 			var decoded map[string]any
@@ -108,15 +142,22 @@ INSERT INTO ops_alert_rules (
   metric_type,
   operator,
   threshold,
-  window_minutes,
-  sustained_minutes,
-  cooldown_minutes,
-  notify_email,
+	  window_minutes,
+	  sustained_minutes,
+	  cooldown_minutes,
+	  incident_family,
+	  minimum_samples,
+	  minimum_bad_count,
+	  recovery_operator,
+	  recovery_threshold,
+	  recovery_sustained_minutes,
+	  shadow_mode,
+	  notify_email,
   filters,
   created_at,
   updated_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW()
+	  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW(),NOW()
 )
 RETURNING
   id,
@@ -127,10 +168,17 @@ RETURNING
   metric_type,
   operator,
   threshold,
-  window_minutes,
-  sustained_minutes,
-  cooldown_minutes,
-  COALESCE(notify_email, true),
+	  window_minutes,
+	  sustained_minutes,
+	  cooldown_minutes,
+	  COALESCE(incident_family, 'custom'),
+	  COALESCE(minimum_samples, 0),
+	  COALESCE(minimum_bad_count, 0),
+	  COALESCE(recovery_operator, ''),
+	  recovery_threshold,
+	  COALESCE(recovery_sustained_minutes, 1),
+	  COALESCE(shadow_mode, false),
+	  COALESCE(notify_email, true),
   filters,
   last_triggered_at,
   created_at,
@@ -139,6 +187,7 @@ RETURNING
 	var out service.OpsAlertRule
 	var filtersRaw []byte
 	var lastTriggeredAt sql.NullTime
+	var recoveryThreshold sql.NullFloat64
 
 	if err := r.db.QueryRowContext(
 		ctx,
@@ -153,6 +202,13 @@ RETURNING
 		input.WindowMinutes,
 		input.SustainedMinutes,
 		input.CooldownMinutes,
+		normalizeOpsAlertIncidentFamily(input.IncidentFamily),
+		input.MinimumSamples,
+		input.MinimumBadCount,
+		opsNullString(input.RecoveryOperator),
+		opsNullFloat64(input.RecoveryThreshold),
+		normalizeOpsAlertRecoverySustainedMinutes(input.RecoverySustainedMinutes),
+		input.ShadowMode,
 		input.NotifyEmail,
 		filtersArg,
 	).Scan(
@@ -167,6 +223,13 @@ RETURNING
 		&out.WindowMinutes,
 		&out.SustainedMinutes,
 		&out.CooldownMinutes,
+		&out.IncidentFamily,
+		&out.MinimumSamples,
+		&out.MinimumBadCount,
+		&out.RecoveryOperator,
+		&recoveryThreshold,
+		&out.RecoverySustainedMinutes,
+		&out.ShadowMode,
 		&out.NotifyEmail,
 		&filtersRaw,
 		&lastTriggeredAt,
@@ -178,6 +241,10 @@ RETURNING
 	if lastTriggeredAt.Valid {
 		v := lastTriggeredAt.Time
 		out.LastTriggeredAt = &v
+	}
+	if recoveryThreshold.Valid {
+		value := recoveryThreshold.Float64
+		out.RecoveryThreshold = &value
 	}
 	if len(filtersRaw) > 0 && string(filtersRaw) != "null" {
 		var decoded map[string]any
@@ -215,11 +282,18 @@ SET
   metric_type = $6,
   operator = $7,
   threshold = $8,
-  window_minutes = $9,
-  sustained_minutes = $10,
-  cooldown_minutes = $11,
-  notify_email = $12,
-  filters = $13,
+	  window_minutes = $9,
+	  sustained_minutes = $10,
+	  cooldown_minutes = $11,
+	  incident_family = $12,
+	  minimum_samples = $13,
+	  minimum_bad_count = $14,
+	  recovery_operator = $15,
+	  recovery_threshold = $16,
+	  recovery_sustained_minutes = $17,
+	  shadow_mode = $18,
+	  notify_email = $19,
+	  filters = $20,
   updated_at = NOW()
 WHERE id = $1
 RETURNING
@@ -231,10 +305,17 @@ RETURNING
   metric_type,
   operator,
   threshold,
-  window_minutes,
-  sustained_minutes,
-  cooldown_minutes,
-  COALESCE(notify_email, true),
+	  window_minutes,
+	  sustained_minutes,
+	  cooldown_minutes,
+	  COALESCE(incident_family, 'custom'),
+	  COALESCE(minimum_samples, 0),
+	  COALESCE(minimum_bad_count, 0),
+	  COALESCE(recovery_operator, ''),
+	  recovery_threshold,
+	  COALESCE(recovery_sustained_minutes, 1),
+	  COALESCE(shadow_mode, false),
+	  COALESCE(notify_email, true),
   filters,
   last_triggered_at,
   created_at,
@@ -243,6 +324,7 @@ RETURNING
 	var out service.OpsAlertRule
 	var filtersRaw []byte
 	var lastTriggeredAt sql.NullTime
+	var recoveryThreshold sql.NullFloat64
 
 	if err := r.db.QueryRowContext(
 		ctx,
@@ -258,6 +340,13 @@ RETURNING
 		input.WindowMinutes,
 		input.SustainedMinutes,
 		input.CooldownMinutes,
+		normalizeOpsAlertIncidentFamily(input.IncidentFamily),
+		input.MinimumSamples,
+		input.MinimumBadCount,
+		opsNullString(input.RecoveryOperator),
+		opsNullFloat64(input.RecoveryThreshold),
+		normalizeOpsAlertRecoverySustainedMinutes(input.RecoverySustainedMinutes),
+		input.ShadowMode,
 		input.NotifyEmail,
 		filtersArg,
 	).Scan(
@@ -272,6 +361,13 @@ RETURNING
 		&out.WindowMinutes,
 		&out.SustainedMinutes,
 		&out.CooldownMinutes,
+		&out.IncidentFamily,
+		&out.MinimumSamples,
+		&out.MinimumBadCount,
+		&out.RecoveryOperator,
+		&recoveryThreshold,
+		&out.RecoverySustainedMinutes,
+		&out.ShadowMode,
 		&out.NotifyEmail,
 		&filtersRaw,
 		&lastTriggeredAt,
@@ -284,6 +380,10 @@ RETURNING
 	if lastTriggeredAt.Valid {
 		v := lastTriggeredAt.Time
 		out.LastTriggeredAt = &v
+	}
+	if recoveryThreshold.Valid {
+		value := recoveryThreshold.Float64
+		out.RecoveryThreshold = &value
 	}
 	if len(filtersRaw) > 0 && string(filtersRaw) != "null" {
 		var decoded map[string]any
@@ -351,6 +451,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
+  email_queued,
   created_at
 FROM ops_alert_events
 ` + where + `
@@ -383,6 +484,7 @@ LIMIT ` + limitArg
 			&ev.FiredAt,
 			&resolvedAt,
 			&ev.EmailSent,
+			&ev.EmailQueued,
 			&ev.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -435,6 +537,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
+  email_queued,
   created_at
 FROM ops_alert_events
 WHERE id = $1`
@@ -472,6 +575,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
+  email_queued,
   created_at
 FROM ops_alert_events
 WHERE rule_id = $1 AND status = $2
@@ -511,6 +615,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
+  email_queued,
   created_at
 FROM ops_alert_events
 WHERE rule_id = $1
@@ -554,9 +659,10 @@ INSERT INTO ops_alert_events (
   fired_at,
   resolved_at,
   email_sent,
+  email_queued,
   created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()
 )
 RETURNING
   id,
@@ -571,6 +677,7 @@ RETURNING
   fired_at,
   resolved_at,
   email_sent,
+  email_queued,
   created_at`
 
 	row := r.db.QueryRowContext(
@@ -587,8 +694,18 @@ RETURNING
 		event.FiredAt,
 		opsNullTime(event.ResolvedAt),
 		event.EmailSent,
+		event.EmailQueued,
 	)
-	return scanOpsAlertEvent(row)
+	created, err := scanOpsAlertEvent(row)
+	if err != nil {
+		return nil, err
+	}
+	if created != nil && created.RuleID > 0 {
+		if _, updateErr := r.db.ExecContext(ctx, `UPDATE ops_alert_rules SET last_triggered_at = $2, updated_at = NOW() WHERE id = $1`, created.RuleID, created.FiredAt); updateErr != nil {
+			return nil, updateErr
+		}
+	}
+	return created, nil
 }
 
 func (r *opsRepository) UpdateAlertEventStatus(ctx context.Context, eventID int64, status string, resolvedAt *time.Time) error {
@@ -622,6 +739,159 @@ func (r *opsRepository) UpdateAlertEventEmailSent(ctx context.Context, eventID i
 
 	_, err := r.db.ExecContext(ctx, "UPDATE ops_alert_events SET email_sent = $2 WHERE id = $1", eventID, emailSent)
 	return err
+}
+
+func (r *opsRepository) UpdateAlertEventEmailQueued(ctx context.Context, eventID int64, emailQueued bool) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("nil ops repository")
+	}
+	if eventID <= 0 {
+		return fmt.Errorf("invalid event id")
+	}
+	_, err := r.db.ExecContext(ctx, "UPDATE ops_alert_events SET email_queued = $2 WHERE id = $1", eventID, emailQueued)
+	return err
+}
+
+func (r *opsRepository) InsertAlertRuleEvaluation(ctx context.Context, evaluation *service.OpsAlertRuleEvaluation) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("nil ops repository")
+	}
+	if evaluation == nil || evaluation.RuleID <= 0 {
+		return fmt.Errorf("invalid alert rule evaluation")
+	}
+	evaluatedAt := evaluation.EvaluatedAt.UTC()
+	if evaluatedAt.IsZero() {
+		evaluatedAt = time.Now().UTC()
+	}
+	version := strings.TrimSpace(evaluation.EvaluatorVersion)
+	if version == "" {
+		version = "v2"
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO ops_alert_rule_evaluations (
+			rule_id, evaluated_at, window_start, window_end, status, breached,
+			metric_value, threshold_value, sample_count, bad_count, data_as_of,
+			error_code, error_message, evaluator_version
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+	`, evaluation.RuleID, evaluatedAt, evaluation.WindowStart.UTC(), evaluation.WindowEnd.UTC(),
+		strings.TrimSpace(evaluation.Status), evaluation.Breached,
+		opsNullFloat64(evaluation.MetricValue), opsNullFloat64(evaluation.ThresholdValue),
+		evaluation.SampleCount, evaluation.BadCount, opsNullTime(evaluation.DataAsOf),
+		opsNullString(evaluation.ErrorCode), opsNullString(evaluation.ErrorMessage), version)
+	return err
+}
+
+func (r *opsRepository) ListLatestAlertRuleEvaluations(ctx context.Context) ([]*service.OpsAlertRuleEvaluation, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("nil ops repository")
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, rule_id, evaluated_at, window_start, window_end, status, breached,
+			metric_value, threshold_value, sample_count, bad_count, data_as_of,
+			COALESCE(error_code, ''), COALESCE(error_message, ''), evaluator_version, created_at
+		FROM (
+			SELECT DISTINCT ON (rule_id) *
+			FROM ops_alert_rule_evaluations
+			ORDER BY rule_id, evaluated_at DESC, id DESC
+		) latest
+		ORDER BY rule_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]*service.OpsAlertRuleEvaluation, 0)
+	for rows.Next() {
+		evaluation, scanErr := scanOpsAlertRuleEvaluation(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		out = append(out, evaluation)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *opsRepository) GetAlertRuleState(ctx context.Context, ruleID int64) (*service.OpsAlertRuleState, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("nil ops repository")
+	}
+	if ruleID <= 0 {
+		return nil, fmt.Errorf("invalid rule id")
+	}
+	var state service.OpsAlertRuleState
+	var lastEvaluatedAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, `
+		SELECT rule_id, last_evaluated_at, consecutive_breaches, consecutive_recoveries, updated_at
+		FROM ops_alert_rule_states WHERE rule_id = $1
+	`, ruleID).Scan(&state.RuleID, &lastEvaluatedAt, &state.ConsecutiveBreaches, &state.ConsecutiveRecoveries, &state.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if lastEvaluatedAt.Valid {
+		value := lastEvaluatedAt.Time
+		state.LastEvaluatedAt = &value
+	}
+	return &state, nil
+}
+
+func (r *opsRepository) UpsertAlertRuleState(ctx context.Context, state *service.OpsAlertRuleState) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("nil ops repository")
+	}
+	if state == nil || state.RuleID <= 0 {
+		return fmt.Errorf("invalid alert rule state")
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO ops_alert_rule_states (
+			rule_id, last_evaluated_at, consecutive_breaches, consecutive_recoveries, updated_at
+		) VALUES ($1,$2,$3,$4,NOW())
+		ON CONFLICT (rule_id) DO UPDATE SET
+			last_evaluated_at = EXCLUDED.last_evaluated_at,
+			consecutive_breaches = EXCLUDED.consecutive_breaches,
+			consecutive_recoveries = EXCLUDED.consecutive_recoveries,
+			updated_at = NOW()
+	`, state.RuleID, opsNullTime(state.LastEvaluatedAt), state.ConsecutiveBreaches, state.ConsecutiveRecoveries)
+	return err
+}
+
+type opsAlertRuleEvaluationRow interface {
+	Scan(dest ...any) error
+}
+
+func scanOpsAlertRuleEvaluation(row opsAlertRuleEvaluationRow) (*service.OpsAlertRuleEvaluation, error) {
+	var evaluation service.OpsAlertRuleEvaluation
+	var metricValue sql.NullFloat64
+	var thresholdValue sql.NullFloat64
+	var dataAsOf sql.NullTime
+	err := row.Scan(
+		&evaluation.ID, &evaluation.RuleID, &evaluation.EvaluatedAt,
+		&evaluation.WindowStart, &evaluation.WindowEnd, &evaluation.Status, &evaluation.Breached,
+		&metricValue, &thresholdValue, &evaluation.SampleCount, &evaluation.BadCount,
+		&dataAsOf, &evaluation.ErrorCode, &evaluation.ErrorMessage,
+		&evaluation.EvaluatorVersion, &evaluation.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if metricValue.Valid {
+		value := metricValue.Float64
+		evaluation.MetricValue = &value
+	}
+	if thresholdValue.Valid {
+		value := thresholdValue.Float64
+		evaluation.ThresholdValue = &value
+	}
+	if dataAsOf.Valid {
+		value := dataAsOf.Time
+		evaluation.DataAsOf = &value
+	}
+	return &evaluation, nil
 }
 
 type opsAlertEventRow interface {
@@ -763,6 +1033,7 @@ func scanOpsAlertEvent(row opsAlertEventRow) (*service.OpsAlertEvent, error) {
 		&ev.FiredAt,
 		&resolvedAt,
 		&ev.EmailSent,
+		&ev.EmailQueued,
 		&ev.CreatedAt,
 	); err != nil {
 		return nil, err

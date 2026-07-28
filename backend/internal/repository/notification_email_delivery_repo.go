@@ -42,16 +42,16 @@ func (r *notificationEmailDeliveryRepository) Enqueue(ctx context.Context, deliv
 			INSERT INTO notification_email_deliveries (
 			dedup_key, event, channel, recipient_email, recipient_hash, recipient_name,
 			user_id, source_type, source_id, reminder_key, locale, variables,
-			raw_html_variables, status, max_attempts
+			raw_html_variables, status, max_attempts, sensitive_variables_ciphertext
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pending', $14
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pending', $14, $15
 		)
 		ON CONFLICT (dedup_key) DO NOTHING
 		RETURNING id
 		`, delivery.DedupKey, delivery.Event, delivery.Channel, delivery.RecipientEmail,
 		delivery.RecipientHash, delivery.RecipientName, delivery.UserID, delivery.SourceType,
 		delivery.SourceID, delivery.ReminderKey, delivery.Locale, variables, rawHTMLVariables,
-		maxAttempts)
+		maxAttempts, opsNullString(delivery.SensitiveVariablesCiphertext))
 	if err != nil {
 		return 0, false, err
 	}
@@ -120,7 +120,8 @@ func (r *notificationEmailDeliveryRepository) Claim(ctx context.Context, workerI
 				UPDATE notification_email_deliveries
 				SET status = 'failed', updated_at = NOW(), lease_owner = NULL,
 					lease_expires_at = NULL, last_error_category = 'internal',
-					last_error = 'delivery lease expired after maximum attempts'
+					last_error = 'delivery lease expired after maximum attempts',
+					sensitive_variables_ciphertext = NULL
 				WHERE status = 'processing' AND lease_expires_at < NOW()
 					AND attempt_count >= max_attempts
 			), candidates AS (
@@ -150,7 +151,8 @@ func (r *notificationEmailDeliveryRepository) Claim(ctx context.Context, workerI
 			d.recipient_hash, d.recipient_name, d.user_id, d.source_type, d.source_id,
 			d.reminder_key, d.locale, d.variables, d.raw_html_variables, d.status,
 			d.attempt_count, d.max_attempts, d.next_attempt_at, d.last_error_category,
-			d.last_error, d.created_at, d.updated_at, d.sent_at
+			d.last_error, d.created_at, d.updated_at, d.sent_at,
+			d.sensitive_variables_ciphertext
 	`, workerID, limit, leaseSeconds)
 	if err != nil {
 		return nil, err
@@ -175,7 +177,8 @@ func (r *notificationEmailDeliveryRepository) MarkSent(ctx context.Context, id i
 		UPDATE notification_email_deliveries
 		SET status = 'sent', sent_at = NOW(), updated_at = NOW(),
 			lease_owner = NULL, lease_expires_at = NULL,
-			last_error_category = NULL, last_error = NULL
+			last_error_category = NULL, last_error = NULL,
+			sensitive_variables_ciphertext = NULL
 		WHERE id = $1 AND status = 'processing' AND lease_owner = $2
 	`)
 }
@@ -185,7 +188,8 @@ func (r *notificationEmailDeliveryRepository) MarkSuppressed(ctx context.Context
 		UPDATE notification_email_deliveries
 		SET status = 'suppressed', updated_at = NOW(),
 			lease_owner = NULL, lease_expires_at = NULL,
-			last_error_category = $3, last_error = $4
+			last_error_category = $3, last_error = $4,
+			sensitive_variables_ciphertext = NULL
 		WHERE id = $1 AND status = 'processing' AND lease_owner = $2
 	`, category, detail)
 }
@@ -197,13 +201,15 @@ func (r *notificationEmailDeliveryRepository) MarkFailed(ctx context.Context, id
 		status = service.NotificationEmailDeliveryStatusRetryWait
 		nextAttempt = retryAt.UTC()
 	}
+	clearSensitive := retryAt == nil
 	return r.finishClaim(ctx, id, workerID, `
 		UPDATE notification_email_deliveries
 		SET status = $3, next_attempt_at = $4, updated_at = NOW(),
 			lease_owner = NULL, lease_expires_at = NULL,
-			last_error_category = $5, last_error = $6
+			last_error_category = $5, last_error = $6,
+			sensitive_variables_ciphertext = CASE WHEN $7 THEN NULL ELSE sensitive_variables_ciphertext END
 		WHERE id = $1 AND status = 'processing' AND lease_owner = $2
-	`, status, nextAttempt, category, detail)
+	`, status, nextAttempt, category, detail, clearSensitive)
 }
 
 func (r *notificationEmailDeliveryRepository) finishClaim(ctx context.Context, id int64, workerID, query string, args ...any) error {
@@ -235,7 +241,8 @@ func (r *notificationEmailDeliveryRepository) List(ctx context.Context, filter s
 		SELECT id, dedup_key, event, channel, recipient_email, recipient_hash,
 			recipient_name, user_id, source_type, source_id, reminder_key, locale,
 			variables, raw_html_variables, status, attempt_count, max_attempts,
-			next_attempt_at, last_error_category, last_error, created_at, updated_at, sent_at
+			next_attempt_at, last_error_category, last_error, created_at, updated_at, sent_at,
+			sensitive_variables_ciphertext
 		FROM notification_email_deliveries`+where+`
 		ORDER BY created_at DESC, id DESC
 		LIMIT $`+fmt.Sprint(len(args)+1)+` OFFSET $`+fmt.Sprint(len(args)+2), queryArgs...)
@@ -286,6 +293,8 @@ func (r *notificationEmailDeliveryRepository) Retry(ctx context.Context, id int6
 			last_error_category = NULL, last_error = NULL
 		WHERE id = $1
 		  AND status IN ('failed', 'retry_wait')
+		  AND NOT (event IN ('auth.verify_code', 'auth.password_reset', 'notification_email.verify_code')
+		           AND sensitive_variables_ciphertext IS NULL)
 			  AND COALESCE(last_error_category, '') IN ('transport', 'internal', 'configuration', 'template')
 	`, id)
 	if err != nil {
@@ -359,6 +368,7 @@ func scanNotificationEmailDelivery(scanner notificationEmailDeliveryScanner) (se
 		lastCategory     sql.NullString
 		lastError        sql.NullString
 		sentAt           sql.NullTime
+		sensitivePayload sql.NullString
 	)
 	err := scanner.Scan(
 		&delivery.ID, &delivery.DedupKey, &delivery.Event, &delivery.Channel,
@@ -367,6 +377,7 @@ func scanNotificationEmailDelivery(scanner notificationEmailDeliveryScanner) (se
 		&delivery.Locale, &variables, &rawHTMLVariables, &delivery.Status,
 		&delivery.AttemptCount, &delivery.MaxAttempts, &delivery.NextAttemptAt,
 		&lastCategory, &lastError, &delivery.CreatedAt, &delivery.UpdatedAt, &sentAt,
+		&sensitivePayload,
 	)
 	if err != nil {
 		return delivery, err
@@ -386,6 +397,9 @@ func scanNotificationEmailDelivery(scanner notificationEmailDeliveryScanner) (se
 	if sentAt.Valid {
 		value := sentAt.Time
 		delivery.SentAt = &value
+	}
+	if sensitivePayload.Valid {
+		delivery.SensitiveVariablesCiphertext = sensitivePayload.String
 	}
 	return delivery, nil
 }

@@ -120,16 +120,19 @@ type NotificationEmailPreviewInput struct {
 }
 
 type NotificationEmailSendInput struct {
-	Event            string
-	Locale           string
-	RecipientEmail   string
-	RecipientName    string
-	UserID           int64
-	SourceType       string
-	SourceID         string
-	ReminderKey      string
-	Variables        map[string]string
-	RawHTMLVariables map[string]string
+	Event          string
+	Locale         string
+	RecipientEmail string
+	RecipientName  string
+	UserID         int64
+	SourceType     string
+	SourceID       string
+	ReminderKey    string
+	Variables      map[string]string
+	// SensitiveVariables are merged into Variables only by the delivery worker.
+	// Durable dispatchers encrypt them before persistence.
+	SensitiveVariables map[string]string
+	RawHTMLVariables   map[string]string
 }
 
 type NotificationEmailUnsubscribeResult struct {
