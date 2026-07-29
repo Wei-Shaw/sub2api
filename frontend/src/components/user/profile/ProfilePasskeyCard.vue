@@ -177,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { passkeyAPI, type PasskeyCredentialSummary } from '@/api'
 import { Icon } from '@/components/icons'
@@ -196,6 +196,7 @@ const newPassword = ref('')
 const deleteTarget = ref<PasskeyCredentialSummary | null>(null)
 const deletePassword = ref('')
 const credentials = ref<PasskeyCredentialSummary[]>([])
+let loadRequestId = 0
 
 // apiClient 拦截器把错误规范化为 { code, reason, message }；
 // 透出后端消息（如密码错误），否则回退到通用文案。
@@ -205,16 +206,26 @@ function extractErrorMessage(error: unknown, fallback: string): string {
 }
 
 async function loadCredentials(): Promise<void> {
+  const requestId = ++loadRequestId
+  // The setting controls sign-in and enrollment, not management of existing credentials.
   loading.value = true
   try {
-    credentials.value = await passkeyAPI.list()
+    const result = await passkeyAPI.list()
+    if (requestId === loadRequestId) {
+      credentials.value = result
+    }
   } catch (error) {
-    const code = (error as { code?: string }).code
-    if (code !== 'PASSKEY_DISABLED') {
+    if (requestId !== loadRequestId) return
+    // 字符串错误码在 reason 字段（code 是数字状态码）；
+    // 设置变更竞态下后端仍可能返回 PASSKEY_DISABLED，静默处理
+    const reason = (error as { reason?: string }).reason
+    if (reason !== 'PASSKEY_DISABLED') {
       appStore.showError(t('profile.passkey.loadFailed'))
     }
   } finally {
-    loading.value = false
+    if (requestId === loadRequestId) {
+      loading.value = false
+    }
   }
 }
 
@@ -298,4 +309,8 @@ watch(
   },
   { immediate: true }
 )
+
+onBeforeUnmount(() => {
+  loadRequestId++
+})
 </script>
