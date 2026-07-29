@@ -189,6 +189,18 @@ func (f CompositeModelRouteFunc) Mutate(ctx context.Context, m ent.Mutation) (en
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CompositeModelRouteMutation", m)
 }
 
+// The CustomDomainFunc type is an adapter to allow the use of ordinary
+// function as CustomDomain mutator.
+type CustomDomainFunc func(context.Context, *ent.CustomDomainMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CustomDomainFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CustomDomainMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CustomDomainMutation", m)
+}
+
 // The CustomDomainUserFunc type is an adapter to allow the use of ordinary
 // function as CustomDomainUser mutator.
 type CustomDomainUserFunc func(context.Context, *ent.CustomDomainUserMutation) (ent.Value, error)
