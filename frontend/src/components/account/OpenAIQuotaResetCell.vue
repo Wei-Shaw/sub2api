@@ -19,7 +19,7 @@
         class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
         :disabled="loading || resetting"
         :title="countButtonTitle"
-        @click="handleQuery"
+        @click="handleQuery({ persistResetCredits: true REDACTED)"
       >
         <svg
           class="h-2.5 w-2.5"
@@ -112,6 +112,12 @@
       {{ truncatedError REDACTEDREDACTED
     </div>
     <div
+      v-else-if="resetWarning"
+      class="text-[10px] text-amber-600 dark:text-amber-400"
+    >
+      {{ resetWarning REDACTEDREDACTED
+    </div>
+    <div
       v-else-if="resetMessage"
       class="text-[10px] text-emerald-600 dark:text-emerald-400"
     >
@@ -147,6 +153,10 @@ const props = defineProps<{
   account: Account
 REDACTED>()
 
+const emit = defineEmits<{
+  'account-updated': [account: Account]
+REDACTED>()
+
 const { t REDACTED = useI18n()
 
 // Visible only for OpenAI OAuth accounts.
@@ -156,9 +166,43 @@ const loading = ref(false)
 const resetting = ref(false)
 const error = ref<string | null>(null)
 const data = ref<OpenAIQuotaUsage | null>(null)
+const cachedData = ref<OpenAIQuotaUsage | null>(null)
 const resetMessage = ref<string | null>(null)
+const resetWarning = ref<string | null>(null)
 const showResetConfirm = ref(false)
 const showResetCreditDetails = ref(false)
+
+const readCachedResetCredits = (account: Account): OpenAIQuotaUsage | null => {
+  const cached = account.extra?.codex_reset_credit_snapshot
+  if (!cached || typeof cached !== 'object' || Array.isArray(cached)) return null
+
+  const { available_count: count, credits: rawCredits REDACTED = cached as {
+    available_count?: unknown
+    credits?: unknown
+  REDACTED
+  if (typeof count !== 'number' || !Number.isFinite(count)) return null
+
+  const credits: { expires_at?: string REDACTED[] = []
+  if (Array.isArray(rawCredits)) {
+    for (const credit of rawCredits) {
+      if (!credit || typeof credit !== 'object') continue
+      const expiresAt = (credit as { expires_at?: unknown REDACTED).expires_at
+      if (typeof expiresAt === 'string' && expiresAt.trim() !== '') {
+        credits.push({ expires_at: expiresAt REDACTED)
+      REDACTED
+    REDACTED
+  REDACTED
+  return {
+    fetched_at: 0,
+    rate_limit_reset_credits: {
+      available_count: count,
+      credits
+    REDACTED
+  REDACTED
+REDACTED
+
+cachedData.value = readCachedResetCredits(props.account)
+data.value = cachedData.value
 
 // 影子账号的额度查询会 resolve 到母账号,但影子本身不支持重置(后端返回 409);
 // 重置必须在母账号上进行。前端据此禁用影子的重置入口(外审 F6)。
@@ -166,7 +210,7 @@ const isShadow = computed(() => props.account.parent_account_id != null)
 
 const availableResetCount = computed(() => data.value?.rate_limit_reset_credits?.available_count ?? 0)
 const resetCreditExpirations = computed(() =>
-  (data.value?.rate_limit_reset_credits?.credits ?? [])
+  (cachedData.value?.rate_limit_reset_credits?.credits ?? [])
     .map((credit) => credit.expires_at?.trim() ?? '')
     .filter((expiresAt) => expiresAt.length > 0)
     .sort(compareResetCreditExpiry)
@@ -260,14 +304,19 @@ const toggleResetCreditDetails = () => {
   showResetCreditDetails.value = !showResetCreditDetails.value
 REDACTED
 
-const handleQuery = async () => {
+const handleQuery = async (options?: { persistResetCredits?: boolean REDACTED) => {
   if (loading.value) return
   loading.value = true
   error.value = null
   resetMessage.value = null
+  resetWarning.value = null
   showResetCreditDetails.value = false
   try {
-    data.value = await queryOpenAIQuota(props.account.id)
+    const result = options
+      ? await queryOpenAIQuota(props.account.id, options)
+      : await queryOpenAIQuota(props.account.id)
+    data.value = result
+    if (options?.persistResetCredits) cachedData.value = result
   REDACTED catch (e) {
     error.value = extractErrorMessage(e)
   REDACTED finally {
@@ -294,15 +343,30 @@ const confirmReset = async () => {
   resetting.value = true
   error.value = null
   resetMessage.value = null
+  resetWarning.value = null
   try {
     const result: OpenAIQuotaResetResult = await resetOpenAIQuota(props.account.id)
-    // Refresh the reset-credit count so the badge reflects the consumed credit.
-    // handleQuery clears resetMessage on entry, so the success toast is set
-    // AFTER it resolves.
-    await handleQuery()
-    resetMessage.value = t('admin.accounts.openaiQuotaReset.resetSuccess', {
-      windows: result.windows_reset
-    REDACTED)
+    if (result.cache_refreshed && result.quota) {
+      data.value = result.quota
+      cachedData.value = result.quota
+      showResetCreditDetails.value = false
+    REDACTED
+    if (result.account) emit('account-updated', result.account)
+
+    if (result.warning_code === 'reset_credit_cache_refresh_failed') {
+      // The persisted snapshot is intentionally preserved, but it is no longer
+      // authoritative enough to allow another credit consumption.
+      data.value = null
+      resetWarning.value = t('admin.accounts.openaiQuotaReset.resetCacheRefreshFailed')
+    REDACTED else if (result.warning_code === 'account_state_recovery_failed') {
+      resetWarning.value = t('admin.accounts.openaiQuotaReset.resetAccountRecoveryFailed')
+    REDACTED else if (result.warning_code === 'account_state_refresh_failed') {
+      resetWarning.value = t('admin.accounts.openaiQuotaReset.resetAccountRefreshFailed')
+    REDACTED else {
+      resetMessage.value = t('admin.accounts.openaiQuotaReset.resetSuccess', {
+        windows: result.windows_reset
+      REDACTED)
+    REDACTED
   REDACTED catch (e) {
     error.value = extractErrorMessage(e)
   REDACTED finally {
@@ -314,9 +378,11 @@ watch(
   () => props.account.id,
   () => {
     // Account row may be reused across paginated lists; reset local state.
-    data.value = null
+    cachedData.value = readCachedResetCredits(props.account)
+    data.value = cachedData.value
     error.value = null
     resetMessage.value = null
+    resetWarning.value = null
     loading.value = false
     resetting.value = false
     showResetConfirm.value = false
