@@ -3,6 +3,8 @@ package service
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCodexSnapshotBaseTime(t *testing.T) {
@@ -50,9 +52,7 @@ REDACTED)
 	t.Run("positive seconds", func(t *testing.T) {
 		sec := 90
 		got := codexResetAtRFC3339(base, &sec)
-		if got == nil {
-			t.Fatal("expected non-nil")
-	REDACTED
+		require.NotNil(t, got)
 		if *got != "2026-02-16T10:01:30Z" {
 			t.Fatalf("got %s, want %s", *got, "2026-02-16T10:01:30Z")
 	REDACTED
@@ -61,9 +61,7 @@ REDACTED)
 	t.Run("negative seconds clamp to base", func(t *testing.T) {
 		sec := -3
 		got := codexResetAtRFC3339(base, &sec)
-		if got == nil {
-			t.Fatal("expected non-nil")
-	REDACTED
+		require.NotNil(t, got)
 		if *got != "2026-02-16T10:00:00Z" {
 			t.Fatalf("got %s, want %s", *got, "2026-02-16T10:00:00Z")
 	REDACTED
