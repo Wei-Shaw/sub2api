@@ -24,11 +24,44 @@ func TestRecordCyberPolicyIfMarked_NoMark(t *testing.T) {
 	c := newTestGinContext()
 	h := &OpenAIGatewayHandler{}
 
-	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "", service.ChannelUsageFields{}, "")
+	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "", service.ChannelUsageFields{}, "", "")
 
 	// Flag must NOT be set when there was no mark.
 	require.False(t, c.GetBool(cyberPolicyRecordedKey),
 		"cyberPolicyRecordedKey must remain false when no cyber mark is present")
+}
+
+func TestCyberPolicyInputExcerptIfMarkedFallsBackOnlyOnHit(t *testing.T) {
+	c := newTestGinContext()
+	body := []byte(`{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"actual user prompt"}]},{"type":"function_call_output","call_id":"call_1","output":"done"}]}`)
+
+	require.Empty(t, cyberPolicyInputExcerptIfMarked(c, securityAuditInputCapture{}, service.ContentModerationProtocolOpenAIResponses, body))
+
+	service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "blocked"})
+	require.Equal(t, "actual user prompt", cyberPolicyInputExcerptIfMarked(c, securityAuditInputCapture{}, service.ContentModerationProtocolOpenAIResponses, body))
+	require.Equal(t, "already extracted", cyberPolicyInputExcerptIfMarked(c, securityAuditInputCapture{excerpt: "already extracted"}, service.ContentModerationProtocolOpenAIResponses, []byte(`invalid`)))
+
+	c.Set(cyberPolicyRecordedKey, true)
+	require.Empty(t, cyberPolicyInputExcerptIfMarked(c, securityAuditInputCapture{}, service.ContentModerationProtocolOpenAIResponses, body))
+}
+
+func TestOpenAIWSTurnInputSnapshotMatchesTurnAndCyberMark(t *testing.T) {
+	c := newTestGinContext()
+	body := []byte(`{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"ws prompt"}]}]}`)
+	snapshot := newOpenAIWSTurnInputSnapshot(2, securityAuditInputCapture{}, body)
+
+	require.Empty(t, snapshot.inputExcerptIfMarked(c, 2), "unmatched requests must not trigger fallback extraction")
+	service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "blocked"})
+	require.Empty(t, snapshot.inputExcerptIfMarked(c, 1), "a cyber mark from another turn must not use this payload")
+	require.Equal(t, "ws prompt", snapshot.inputExcerptIfMarked(c, 2))
+
+	resolved := newOpenAIWSTurnInputSnapshot(3, securityAuditInputCapture{excerpt: "memo prompt"}, body)
+	require.Nil(t, resolved.payload)
+	require.Equal(t, "memo prompt", resolved.inputExcerptIfMarked(c, 3))
+
+	resolvedEmpty := newOpenAIWSTurnInputSnapshot(4, securityAuditInputCapture{}, body)
+	require.NotNil(t, resolvedEmpty.payload)
+	require.Equal(t, "ws prompt", resolvedEmpty.inputExcerptIfMarked(c, 4))
 }
 
 // TestRecordCyberPolicyIfMarked_WithMark verifies that:
@@ -47,14 +80,14 @@ func TestRecordCyberPolicyIfMarked_WithMark(t *testing.T) {
 
 	// First call: should set the flag.
 	require.NotPanics(t, func() {
-		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "", service.ChannelUsageFields{}, "")
+		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "", service.ChannelUsageFields{}, "", "")
 	})
 	require.True(t, c.GetBool(cyberPolicyRecordedKey),
 		"cyberPolicyRecordedKey must be true after first call with a mark")
 
 	// Second call: flag already set — must be a no-op (idempotent).
 	require.NotPanics(t, func() {
-		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "")
+		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "", "")
 	})
 	// Flag should still be true (not toggled or cleared).
 	require.True(t, c.GetBool(cyberPolicyRecordedKey),
@@ -75,7 +108,7 @@ func TestRecordCyberPolicyIfMarked_ForwardSuccessSkipsUsageLog(t *testing.T) {
 	h := &OpenAIGatewayHandler{}
 
 	require.NotPanics(t, func() {
-		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false /* forwardErrored=false */, "", service.ChannelUsageFields{}, "")
+		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false /* forwardErrored=false */, "", service.ChannelUsageFields{}, "", "")
 	})
 	require.True(t, c.GetBool(cyberPolicyRecordedKey))
 }
@@ -88,7 +121,7 @@ func TestClearCyberPolicyTurnState(t *testing.T) {
 	h := &OpenAIGatewayHandler{}
 
 	service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "turn1", UpstreamStatus: 200})
-	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "")
+	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "", "")
 	require.True(t, c.GetBool(cyberPolicyRecordedKey))
 
 	clearCyberPolicyTurnState(c)
@@ -97,7 +130,7 @@ func TestClearCyberPolicyTurnState(t *testing.T) {
 
 	// turn2: a fresh cyber hit must be recordable again.
 	service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "turn2", UpstreamStatus: 200})
-	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "")
+	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, "", service.ChannelUsageFields{}, "", "")
 	require.True(t, c.GetBool(cyberPolicyRecordedKey))
 	require.Equal(t, "turn2", service.GetOpsCyberPolicy(c).Message)
 }
@@ -147,7 +180,7 @@ func TestRecordCyberPolicyIfMarked_BlockKeyPlumbed(t *testing.T) {
 	service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "x", UpstreamStatus: 400})
 	h := &OpenAIGatewayHandler{}
 	require.NotPanics(t, func() {
-		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "deadbeef", service.ChannelUsageFields{}, "")
+		h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, "deadbeef", service.ChannelUsageFields{}, "", "")
 	})
 }
 

@@ -419,6 +419,29 @@ func TestBuildContentModerationLog_RedactsInputExcerpt(t *testing.T) {
 	require.Contains(t, log.InputExcerpt, "[已脱敏]")
 }
 
+func TestContentModerationCheckWithInputMemoLeavesDisabledAuditUnresolved(t *testing.T) {
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: `{"enabled":false}`,
+		}},
+		&contentModerationTestRepo{}, nil, nil, nil, nil, nil,
+	)
+	body := []byte(`{"messages":[{"role":"user","content":"cyber still needs this"}]}`)
+	memo := NewContentModerationInputMemo(ContentModerationProtocolOpenAIChat, body)
+
+	decision, err := svc.CheckWithInputMemo(context.Background(), ContentModerationCheckInput{
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     body,
+	}, memo)
+
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+	resolved, excerpt := memo.Capture()
+	require.False(t, resolved)
+	require.Empty(t, excerpt)
+}
+
 func TestRedactContentModerationSecrets_LongHexAndTokens(t *testing.T) {
 	input := "你哈市多大事cf5bbdc4cd508f3aaf0d2070d529d4a4ac29099f8ecc357f696df28e1df91554 token=abc123456789xyz Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturepart https://example.com/private/path?token=abc123"
 

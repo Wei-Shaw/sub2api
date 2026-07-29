@@ -782,6 +782,17 @@ func (s *ContentModerationService) TestAPIKeys(ctx context.Context, input TestCo
 }
 
 func (s *ContentModerationService) Check(ctx context.Context, input ContentModerationCheckInput) (*ContentModerationDecision, error) {
+	return s.check(ctx, input, nil)
+}
+
+// CheckWithInputMemo lets a request-scoped caller share the existing input
+// extraction without attaching the memo to ContentModerationCheckInput, which
+// may be copied into asynchronous moderation tasks.
+func (s *ContentModerationService) CheckWithInputMemo(ctx context.Context, input ContentModerationCheckInput, memo *ContentModerationInputMemo) (*ContentModerationDecision, error) {
+	return s.check(ctx, input, memo)
+}
+
+func (s *ContentModerationService) check(ctx context.Context, input ContentModerationCheckInput, memo *ContentModerationInputMemo) (*ContentModerationDecision, error) {
 	allow := &ContentModerationDecision{Allowed: true, Action: ContentModerationActionAllow}
 	if s == nil || s.settingRepo == nil || s.repo == nil {
 		slog.Info("content_moderation.skip_unavailable",
@@ -879,7 +890,12 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 			"configured_models", cfg.ModelFilter.Models)
 		return allow, nil
 	}
-	content := ExtractContentModerationInput(input.Protocol, input.Body)
+	var content ContentModerationInput
+	if memo != nil {
+		content = memo.Resolve()
+	} else {
+		content = ExtractContentModerationInput(input.Protocol, input.Body)
+	}
 	if content.IsEmpty() {
 		slog.Info("content_moderation.skip_empty_input",
 			"user_id", input.UserID,
@@ -2871,6 +2887,7 @@ type CyberPolicyRecordInput struct {
 	GroupName       string
 	Endpoint        string
 	Model           string
+	InputExcerpt    string
 	UpstreamMessage string
 	UpstreamBody    string
 	UpstreamStatus  int
@@ -2925,6 +2942,7 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 		Flagged:         true,
 		HighestCategory: "cyber_policy",
 		HighestScore:    1.0,
+		InputExcerpt:    trimRunes(redactContentModerationSecrets(in.InputExcerpt), maxModerationExcerptRunes),
 		Error:           trimRunes(redactContentModerationSecrets(errBody), maxModerationExcerptRunes*4),
 		CreatedAt:       time.Now(),
 	}

@@ -13,6 +13,19 @@ import (
 
 const securityAuditCompletedContextKey = "sub2api.security_audit.completed"
 
+type securityAuditInputCapture struct {
+	// Empty means cyber recording may fall back to the current request body,
+	// regardless of whether ordinary moderation ran and produced no excerpt.
+	excerpt string
+}
+
+func (capture securityAuditInputCapture) resolve(protocol string, body []byte) string {
+	if strings.TrimSpace(capture.excerpt) != "" {
+		return capture.excerpt
+	}
+	return service.ExtractLatestUserContentModerationInput(protocol, body).ExcerptText()
+}
+
 // cachesSecurityAuditCompletion reports whether a successful audit may be
 // reused for the rest of the gin request. WebSocket turns share one Context
 // across many response.create frames and must be audited independently.
@@ -39,14 +52,21 @@ func (h *OpenAIGatewayHandler) checkSecurityAudit(c *gin.Context, reqLog *zap.Lo
 	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, apiKey, subject, protocol, model, body, "http")
 }
 
-func (h *OpenAIGatewayHandler) checkSecurityAuditStage(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string) *securityaudit.Decision {
+func (h *OpenAIGatewayHandler) checkSecurityAuditStageWithInputCapture(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string) (*securityaudit.Decision, securityAuditInputCapture) {
 	if h == nil {
-		return nil
+		return nil, securityAuditInputCapture{}
 	}
-	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, apiKey, subject, protocol, model, body, stage)
+	memo := service.NewContentModerationInputMemo(protocol, body)
+	decision := runSecurityAuditWithInputMemo(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, apiKey, subject, protocol, model, body, stage, memo)
+	_, excerpt := memo.Capture()
+	return decision, securityAuditInputCapture{excerpt: excerpt}
 }
 
 func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securityaudit.Coordinator, legacy *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string) *securityaudit.Decision {
+	return runSecurityAuditWithInputMemo(c, reqLog, coordinator, legacy, apiKey, subject, protocol, model, body, stage, nil)
+}
+
+func runSecurityAuditWithInputMemo(c *gin.Context, reqLog *zap.Logger, coordinator *securityaudit.Coordinator, legacy *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string, memo *service.ContentModerationInputMemo) *securityaudit.Decision {
 	if c == nil || c.Request == nil {
 		return nil
 	}
@@ -57,7 +77,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 		}
 	}
 	if coordinator == nil {
-		legacyDecision := runContentModeration(c, reqLog, legacy, apiKey, subject, protocol, model, body)
+		legacyDecision := runContentModeration(c, reqLog, legacy, apiKey, subject, protocol, model, body, memo)
 		if legacyDecision == nil {
 			return nil
 		}
@@ -84,7 +104,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 			zap.String("protocol", request.Protocol), zap.String("model", request.Model), zap.String("stage", request.Stage),
 			zap.Int("body_bytes", len(body)))
 	}
-	decision := coordinator.Check(c.Request.Context(), request)
+	decision := coordinator.CheckWithLegacyInputMemo(c.Request.Context(), request, memo)
 	if decision.AllowNextStage && cacheCompletion {
 		c.Set(securityAuditCompletedContextKey, true)
 	}

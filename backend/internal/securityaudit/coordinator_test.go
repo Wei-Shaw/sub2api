@@ -8,17 +8,22 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
 type fakeLegacyEngine struct {
-	decision *LegacyDecision
-	err      error
-	calls    atomic.Int64
+	decision    *LegacyDecision
+	err         error
+	resolveMemo bool
+	calls       atomic.Int64
 }
 
-func (f *fakeLegacyEngine) Check(context.Context, Request) (*LegacyDecision, error) {
+func (f *fakeLegacyEngine) Check(_ context.Context, _ Request, memo *service.ContentModerationInputMemo) (*LegacyDecision, error) {
 	f.calls.Add(1)
+	if f.resolveMemo {
+		memo.Resolve()
+	}
 	return f.decision, f.err
 }
 
@@ -81,6 +86,24 @@ func TestCoordinatorDoesNotMutateRequestBody(t *testing.T) {
 	decision := NewCoordinator(&fakeLegacyEngine{}, prompt).Check(context.Background(), Request{Body: body})
 	require.True(t, decision.AllowNextStage)
 	require.Equal(t, original, body)
+}
+
+func TestCoordinatorSharesLegacyInputMemoInEveryPromptMode(t *testing.T) {
+	body := []byte(`{"messages":[{"role":"user","content":"shared prompt"}]}`)
+	for _, mode := range []Mode{ModeOff, ModeAsync, ModeBlocking} {
+		t.Run(string(mode), func(t *testing.T) {
+			memo := service.NewContentModerationInputMemo(service.ContentModerationProtocolOpenAIChat, body)
+			legacy := &fakeLegacyEngine{resolveMemo: true}
+			prompt := &fakePromptEngine{mode: mode, decision: &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}}
+
+			NewCoordinator(legacy, prompt).CheckWithLegacyInputMemo(context.Background(), Request{Body: body}, memo)
+
+			resolved, excerpt := memo.Capture()
+			require.True(t, resolved)
+			require.Equal(t, "shared prompt", excerpt)
+			require.Equal(t, int64(1), legacy.calls.Load())
+		})
+	}
 }
 
 func TestCoordinatorBlockingPriorityCoversBothEngineDecisionMatrix(t *testing.T) {

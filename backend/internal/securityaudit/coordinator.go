@@ -5,10 +5,12 @@ import (
 	"errors"
 	"net/http"
 	"sync"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 type LegacyEngine interface {
-	Check(ctx context.Context, req Request) (*LegacyDecision, error)
+	Check(ctx context.Context, req Request, memo *service.ContentModerationInputMemo) (*LegacyDecision, error)
 }
 
 type PromptEngine interface {
@@ -27,6 +29,12 @@ func NewCoordinator(legacy LegacyEngine, prompt PromptEngine) *Coordinator {
 }
 
 func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
+	return c.CheckWithLegacyInputMemo(ctx, req, nil)
+}
+
+// CheckWithLegacyInputMemo shares request input extraction with the legacy
+// moderation engine. Prompt audit never receives or retains the memo.
+func (c *Coordinator) CheckWithLegacyInputMemo(ctx context.Context, req Request, memo *service.ContentModerationInputMemo) Decision {
 	if c == nil {
 		return allowDecision(nil, nil)
 	}
@@ -39,24 +47,24 @@ func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
 		// Enqueue is deliberately best-effort. The implementation owns a bounded
 		// context and copies request memory before it can outlive the Handler.
 		_ = c.prompt.Enqueue(ctx, req.Clone())
-		legacy, _ := c.checkLegacy(ctx, req)
+		legacy, _ := c.checkLegacy(ctx, req, memo)
 		return prioritize(legacy, nil)
 	case ModeBlocking:
-		return c.checkBlocking(ctx, req)
+		return c.checkBlocking(ctx, req, memo)
 	default:
-		legacy, _ := c.checkLegacy(ctx, req)
+		legacy, _ := c.checkLegacy(ctx, req, memo)
 		return prioritize(legacy, nil)
 	}
 }
 
-func (c *Coordinator) checkBlocking(ctx context.Context, req Request) Decision {
+func (c *Coordinator) checkBlocking(ctx context.Context, req Request, memo *service.ContentModerationInputMemo) Decision {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	var legacy *LegacyDecision
 	var prompt *PromptDecision
 	go func() {
 		defer wg.Done()
-		legacy, _ = c.checkLegacy(ctx, req)
+		legacy, _ = c.checkLegacy(ctx, req, memo)
 	}()
 	go func() {
 		defer wg.Done()
@@ -84,11 +92,11 @@ func (c *Coordinator) checkBlocking(ctx context.Context, req Request) Decision {
 	return prioritize(legacy, prompt)
 }
 
-func (c *Coordinator) checkLegacy(ctx context.Context, req Request) (*LegacyDecision, error) {
+func (c *Coordinator) checkLegacy(ctx context.Context, req Request, memo *service.ContentModerationInputMemo) (*LegacyDecision, error) {
 	if c.legacy == nil {
 		return nil, nil
 	}
-	return c.legacy.Check(ctx, req)
+	return c.legacy.Check(ctx, req, memo)
 }
 
 func prioritize(legacy *LegacyDecision, prompt *PromptDecision) Decision {

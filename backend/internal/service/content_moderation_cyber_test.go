@@ -154,6 +154,50 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 		"Error should mention flagged or cyber_policy")
 }
 
+func TestRecordCyberPolicyEventSanitizesInputExcerptSeparatelyFromUpstreamError(t *testing.T) {
+	repo := &contentModerationTestRepo{}
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{SettingKeyRiskControlEnabled: "true"}},
+		repo, nil, nil, nil, nil, nil,
+	)
+	longPrompt := "sk-proj-1234567890abcdef " + strings.Repeat("用", maxModerationExcerptRunes+20)
+
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		InputExcerpt:    longPrompt,
+		UpstreamMessage: "upstream cyber response",
+	})
+
+	logs := repo.snapshotLogs()
+	require.Len(t, logs, 1)
+	require.Contains(t, logs[0].InputExcerpt, "[已脱敏]")
+	require.NotContains(t, logs[0].InputExcerpt, "sk-proj-1234567890abcdef")
+	require.LessOrEqual(t, len([]rune(logs[0].InputExcerpt)), maxModerationExcerptRunes)
+	require.Equal(t, "upstream cyber response", logs[0].Error, "existing upstream error remains a separate field")
+}
+
+func TestRecordCyberPolicyEventPersistsLatestUserFromToolLoop(t *testing.T) {
+	repo := &contentModerationTestRepo{}
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{SettingKeyRiskControlEnabled: "true"}},
+		repo, nil, nil, nil, nil, nil,
+	)
+	body := []byte(`{"input":[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"sk-proj-1234567890abcdef actual prompt"}]},
+		{"type":"function_call_output","call_id":"call_1","output":"done"}
+	]}`)
+	excerpt := ExtractLatestUserContentModerationInput(ContentModerationProtocolOpenAIResponses, body).ExcerptText()
+
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		InputExcerpt:    excerpt,
+		UpstreamMessage: "upstream cyber response",
+	})
+
+	logs := repo.snapshotLogs()
+	require.Len(t, logs, 1)
+	require.Equal(t, "[已脱敏] actual prompt", logs[0].InputExcerpt)
+	require.Equal(t, "upstream cyber response", logs[0].Error)
+}
+
 // TestRecordCyberPolicyEvent_CreateLogBeforeEmail verifies F7: the moderation
 // log is persisted BEFORE email delivery, and EmailSent is patched afterwards —
 // SMTP hangs can no longer swallow the audit record.

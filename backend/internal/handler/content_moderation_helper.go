@@ -38,7 +38,7 @@ func clientRequestedUsageFields(c *gin.Context, mapping service.ChannelMappingRe
 	return mapping.ToUsageFields(clientRequestedModel(c, fallbackModel), upstreamModel)
 }
 
-func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
+func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte, memo *service.ContentModerationInputMemo) *service.ContentModerationDecision {
 	if svc == nil || c == nil || c.Request == nil {
 		return nil
 	}
@@ -58,7 +58,7 @@ func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.Conte
 			zap.Int("body_bytes", len(body)),
 		)
 	}
-	decision, err := svc.Check(c.Request.Context(), input)
+	decision, err := svc.CheckWithInputMemo(c.Request.Context(), input, memo)
 	if err != nil {
 		if reqLog != nil {
 			reqLog.Warn("content_moderation.check_failed", zap.Error(err))

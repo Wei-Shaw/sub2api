@@ -49,6 +49,32 @@ type openAIWSTurnChannelMappingSnapshot struct {
 	mapping service.ChannelMappingResult
 }
 
+type openAIWSTurnInputSnapshot struct {
+	turn    int
+	excerpt string
+	payload []byte
+}
+
+func newOpenAIWSTurnInputSnapshot(turn int, capture securityAuditInputCapture, payload []byte) *openAIWSTurnInputSnapshot {
+	snapshot := &openAIWSTurnInputSnapshot{turn: turn, excerpt: capture.excerpt}
+	if strings.TrimSpace(capture.excerpt) == "" {
+		// The forwarder keeps the client frame alive through AfterTurn. Retain only
+		// the slice header so cyber fallback does not allocate a payload copy.
+		snapshot.payload = payload
+	}
+	return snapshot
+}
+
+func (snapshot *openAIWSTurnInputSnapshot) inputExcerptIfMarked(c *gin.Context, turn int) string {
+	if snapshot == nil || snapshot.turn != turn || c == nil || c.GetBool(cyberPolicyRecordedKey) || service.GetOpsCyberPolicy(c) == nil {
+		return ""
+	}
+	if strings.TrimSpace(snapshot.excerpt) != "" {
+		return snapshot.excerpt
+	}
+	return service.ExtractLatestUserContentModerationInput(service.ContentModerationProtocolOpenAIResponses, snapshot.payload).ExcerptText()
+}
+
 var errOpenAIWSUnsupportedModelSwitch = errors.New("selected account does not support websocket model switch")
 
 func newOpenAIWSUnsupportedModelSwitchError(model string) error {
@@ -349,7 +375,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
-	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && !decision.AllowNextStage {
+	decision, cyberPolicyInput := h.checkSecurityAuditStageWithInputCapture(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body, "http")
+	if decision != nil && !decision.AllowNextStage {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
@@ -543,7 +570,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyHTTP = service.CyberSessionBlockKey(apiKey.ID, c, sessionHashBody)
 		}
-		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyHTTP, clientRequestedUsageFields(c, channelMapping, reqModel, ""), service.HashUsageRequestPayload(body))
+		inputExcerpt := cyberPolicyInputExcerptIfMarked(c, cyberPolicyInput, service.ContentModerationProtocolOpenAIResponses, body)
+		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyHTTP, clientRequestedUsageFields(c, channelMapping, reqModel, ""), service.HashUsageRequestPayload(body), inputExcerpt)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs
@@ -941,7 +969,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
-	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && !decision.AllowNextStage {
+	decision, cyberPolicyInput := h.checkSecurityAuditStageWithInputCapture(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body, "http")
+	if decision != nil && !decision.AllowNextStage {
 		h.anthropicSecurityAuditError(c, decision)
 		return
 	}
@@ -1082,7 +1111,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyMsg = service.CyberSessionBlockKey(apiKey.ID, c, body)
 		}
-		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyMsg, clientRequestedUsageFields(c, channelMappingMsg, reqModel, ""), service.HashUsageRequestPayload(body))
+		inputExcerpt := cyberPolicyInputExcerptIfMarked(c, cyberPolicyInput, service.ContentModerationProtocolAnthropicMessages, body)
+		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyMsg, clientRequestedUsageFields(c, channelMappingMsg, reqModel, ""), service.HashUsageRequestPayload(body), inputExcerpt)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs
@@ -1575,7 +1605,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, true)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeWSV2))
 
-	if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, firstMessage, "first_turn"); decision != nil && !decision.AllowNextStage {
+	decision, firstTurnInput := h.checkSecurityAuditStageWithInputCapture(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, firstMessage, "first_turn")
+	if decision != nil && !decision.AllowNextStage {
 		writeSecurityAuditWSError(ctx, wsConn, decision)
 		closeOpenAIClientWS(wsConn, securityAuditWSCloseStatus(decision), securityAuditWSCloseReason(decision))
 		return
@@ -1824,6 +1855,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		// turn-tagged slot preserves the exact mapping used for the in-flight request.
 		var turnChannelMapping atomic.Pointer[openAIWSTurnChannelMappingSnapshot]
 		turnChannelMapping.Store(&openAIWSTurnChannelMappingSnapshot{turn: 1, mapping: channelMappingWS})
+		var turnInput atomic.Pointer[openAIWSTurnInputSnapshot]
+		turnInput.Store(newOpenAIWSTurnInputSnapshot(1, firstTurnInput, firstMessage))
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel:     reqModel,
 			MaxReasoningEffort:      maxReasoningEffort,
@@ -1842,7 +1875,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
-				if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload, "subsequent_turn"); decision != nil && !decision.AllowNextStage {
+				decision, inputCapture := h.checkSecurityAuditStageWithInputCapture(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload, "subsequent_turn")
+				turnInput.Store(newOpenAIWSTurnInputSnapshot(turn, inputCapture, payload))
+				if decision != nil && !decision.AllowNextStage {
 					writeSecurityAuditWSError(ctx, wsConn, decision)
 					return service.NewOpenAIWSClientCloseError(securityAuditWSCloseStatus(decision), securityAuditWSCloseReason(decision), nil)
 				}
@@ -1904,6 +1939,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// CyberBlocked 必须在 submit 前同步预捕获（task 闭包由 worker 池异步执行，
 				// 届时 defer 已清除标记）。
 				defer clearCyberPolicyTurnState(c)
+				inputExcerpt := ""
+				if snapshot := turnInput.Load(); snapshot != nil && snapshot.turn == turn {
+					defer func() { turnInput.CompareAndSwap(snapshot, nil) }()
+					inputExcerpt = snapshot.inputExcerptIfMarked(c, turn)
+				}
 				releaseTurnSlots()
 				turnRequestedModel := reqModel
 				turnUpstreamModel := ""
@@ -1925,7 +1965,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					turnUpstreamModel = turnRequestedModel
 				}
 				turnUsageFields := turnMapping.ToUsageFields(turnRequestedModel, turnUpstreamModel)
-				h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, turnRequestedModel, turnErr != nil, cyberBlockKey, turnUsageFields, requestPayloadHash)
+				h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, turnRequestedModel, turnErr != nil, cyberBlockKey, turnUsageFields, requestPayloadHash, inputExcerpt)
 				if service.GetOpsCyberPolicy(c) != nil {
 					cyberBlockedThisConn = true
 				}
@@ -2931,7 +2971,14 @@ func (h *OpenAIGatewayHandler) enqueueCyberSessionBlockedOpsEntry(c *gin.Context
 // 并在 forward 返回错误时写一条 tokens=0 用量行。标记由 gateway 服务层在透传 cyber 后设置；
 // 当前请求已发给用户，本方法只做事后记录，不影响响应。forwardErrored 为 true 时才写用量行，
 // 避免与正常 RecordUsage(forward 成功路径)重复。每请求至多记录一次。
-func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey *service.APIKey, account *service.Account, subscription *service.UserSubscription, model string, forwardErrored bool, cyberBlockKey string, channelFields service.ChannelUsageFields, requestPayloadHash string) {
+func cyberPolicyInputExcerptIfMarked(c *gin.Context, capture securityAuditInputCapture, protocol string, body []byte) string {
+	if c == nil || c.GetBool(cyberPolicyRecordedKey) || service.GetOpsCyberPolicy(c) == nil {
+		return ""
+	}
+	return capture.resolve(protocol, body)
+}
+
+func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey *service.APIKey, account *service.Account, subscription *service.UserSubscription, model string, forwardErrored bool, cyberBlockKey string, channelFields service.ChannelUsageFields, requestPayloadHash string, inputExcerpt string) {
 	mark := service.GetOpsCyberPolicy(c)
 	if mark == nil {
 		return
@@ -3027,6 +3074,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 				GroupName:       groupName,
 				Endpoint:        inboundEndpoint,
 				Model:           model,
+				InputExcerpt:    inputExcerpt,
 				UpstreamMessage: mark.Message,
 				UpstreamBody:    mark.Body,
 				UpstreamStatus:  mark.UpstreamStatus,
