@@ -3,6 +3,7 @@ package ip
 
 import (
 	"net"
+	"net/netip"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -174,6 +175,26 @@ func normalizeIP(ip string) string {
 		return host
 	}
 	return ip
+}
+
+// NormalizeClientIPForSecurity normalizes a client IP for security signals
+// (invalid-auth abuse, connection-risk). IPv6 is collapsed to the /64 network
+// address WITHOUT a "/64" suffix (e.g. 2001:db8:1:2:abcd::1 → "2001:db8:1:2::").
+// Invalid input returns "" so callers can skip set membership (prefer over
+// writing "0.0.0.0" into connection-risk sets).
+//
+// This is the shared form of middleware.normalizeIngressRejectIP; keep both
+// semantically identical for IPv6 /64 grouping.
+func NormalizeClientIPForSecurity(raw string) string {
+	addr, err := netip.ParseAddr(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	addr = addr.Unmap()
+	if addr.Is6() {
+		return netip.PrefixFrom(addr, 64).Masked().Addr().String()
+	}
+	return addr.String()
 }
 
 // privateNets contains the private/loopback ranges skipped while selecting a

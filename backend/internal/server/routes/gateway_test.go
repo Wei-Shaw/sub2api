@@ -53,6 +53,7 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 		nil,
 		nil,
 		cfg,
+		nil, // connectionSignalEmitter
 	)
 
 	return router

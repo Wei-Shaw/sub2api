@@ -781,6 +781,20 @@ api_key_auth_cache:
     capacity: 16384
 
 # =============================================================================
+# Connection Risk Detection (方案 B)
+# 异常用户连接检测：热路径 Redis 信号 + 异步评分
+# Master kill switch — detailed thresholds live in settings key
+# connection_risk_settings (admin API). Defaults keep everything OFF.
+# =============================================================================
+connection_risk:
+  # Process-level master kill. false = emit and worker both no-op.
+  # 进程级总开关；false 时热路径与 Worker 均不工作。
+  enabled: false
+  # Hot-path Redis pipeline timeout (ms); timeouts fail-open.
+  # 热路径 Redis 超时（毫秒）；超时 fail-open，不阻断网关。
+  emit_timeout_ms: 8
+
+# =============================================================================
 # Dashboard Cache Configuration
 # 仪表盘缓存配置
 # =============================================================================

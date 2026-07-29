@@ -122,6 +122,31 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+
+		// 异常连接检测
+		registerConnectionRiskRoutes(admin, h)
+	}
+}
+
+func registerConnectionRiskRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h == nil || h.Admin == nil || h.Admin.ConnectionRisk == nil {
+		return
+	}
+	cr := admin.Group("/connection-risk")
+	{
+		cr.GET("/config", h.Admin.ConnectionRisk.GetConfig)
+		cr.PUT("/config", h.Admin.ConnectionRisk.UpdateConfig)
+		cr.GET("/runtime", h.Admin.ConnectionRisk.GetRuntime)
+		cr.GET("/events", h.Admin.ConnectionRisk.ListEvents)
+		cr.GET("/events/:id", h.Admin.ConnectionRisk.GetEvent)
+		cr.POST("/events/:id/ack", h.Admin.ConnectionRisk.AckEvent)
+		cr.POST("/events/:id/resolve", h.Admin.ConnectionRisk.ResolveEvent)
+		cr.POST("/events/:id/suppress", h.Admin.ConnectionRisk.SuppressEvent)
+		cr.DELETE("/events/:id", h.Admin.ConnectionRisk.DeleteEvent)
+		cr.POST("/actions/exempt", h.Admin.ConnectionRisk.Exempt)
+		cr.DELETE("/actions/exempt/:scope/:id", h.Admin.ConnectionRisk.ClearExempt)
+		cr.POST("/actions/whitelist-ip", h.Admin.ConnectionRisk.WhitelistIP)
+		cr.POST("/actions/run-retention", h.Admin.ConnectionRisk.RunRetention)
 	}
 }
 

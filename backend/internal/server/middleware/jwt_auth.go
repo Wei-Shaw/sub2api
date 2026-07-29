@@ -16,8 +16,9 @@ func NewJWTAuthMiddleware(
 	userService *service.UserService,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
+	mismatchSignal *service.ConnectionSignalEmitter,
 ) JWTAuthMiddleware {
-	return JWTAuthMiddleware(jwtAuth(authService, userService, userService, settingService, auditService))
+	return JWTAuthMiddleware(jwtAuth(authService, userService, userService, settingService, auditService, mismatchSignal))
 }
 
 type jwtUserReader interface {
@@ -35,6 +36,7 @@ func jwtAuth(
 	activityToucher userActivityToucher,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
+	mismatchSignal SessionMismatchSignal,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从Authorization header中提取token
@@ -89,7 +91,7 @@ func jwtAuth(
 		}
 
 		// 会话绑定校验：IP/UA 任一变化即撤销会话（功能可在系统设置中关闭）
-		if !enforceSessionBinding(c, authService, settingService, auditService, claims) {
+		if !enforceSessionBinding(c, authService, settingService, auditService, claims, mismatchSignal) {
 			return
 		}
 

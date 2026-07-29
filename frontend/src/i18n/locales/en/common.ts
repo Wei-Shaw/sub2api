@@ -211,6 +211,7 @@ export default {
 		securityAudit: "Security Audit",
 		contentModeration: "Content Moderation",
 		promptAudit: "Prompt Audit",
+		connectionRisk: "Connection Risk",
 		auditLogs: "Audit Logs",
 	},
 

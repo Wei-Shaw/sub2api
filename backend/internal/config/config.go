@@ -99,6 +99,10 @@ type Config struct {
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+	// ConnectionRisk is the process-level master kill switch for abnormal
+	// connection detection (方案 B). When Enabled is false, emit and worker
+	// are both no-ops regardless of admin settings JSON.
+	ConnectionRisk ConnectionRiskConfig `mapstructure:"connection_risk"`
 }
 
 type LogConfig struct {
@@ -1561,6 +1565,19 @@ type InvalidAuthAbuseConfig struct {
 	Capacity      int  `mapstructure:"capacity"`
 }
 
+// ConnectionRiskConfig is the YAML/process master switch for connection-risk
+// detection. Detailed thresholds and runtime toggles live in settings JSON
+// (connection_risk_settings); this struct only provides emergency kill +
+// hard resource caps that must not depend on DB availability.
+type ConnectionRiskConfig struct {
+	// Enabled is the master kill switch (default false). When false, neither
+	// the hot-path emitter nor the scoring worker perform work.
+	Enabled bool `mapstructure:"enabled"`
+	// EmitTimeoutMS bounds the Redis pipeline on the request hot path
+	// (default 8). Timeouts fail-open and never block the gateway handler.
+	EmitTimeoutMS int `mapstructure:"emit_timeout_ms"`
+}
+
 // SubscriptionCacheConfig 订阅认证 L1 缓存配置
 type SubscriptionCacheConfig struct {
 	L1Size        int `mapstructure:"l1_size"`
@@ -2162,6 +2179,10 @@ func setDefaults() {
 	viper.SetDefault("api_key_auth_cache.invalid_abuse.block_seconds", 60)
 	viper.SetDefault("api_key_auth_cache.invalid_abuse.capacity", 16384)
 
+	// Connection risk detection (方案 B) — master kill default off
+	viper.SetDefault("connection_risk.enabled", false)
+	viper.SetDefault("connection_risk.emit_timeout_ms", 8)
+
 	// Subscription auth L1 cache
 	viper.SetDefault("subscription_cache.l1_size", 16384)
 	viper.SetDefault("subscription_cache.l1_ttl_seconds", 10)
@@ -2549,6 +2570,15 @@ func (c *Config) Validate() error {
 		if c.APIKeyAuth.InvalidAbuse.Capacity < 256 || c.APIKeyAuth.InvalidAbuse.Capacity > 1_000_000 {
 			return fmt.Errorf("api_key_auth_cache.invalid_abuse.capacity must be between 256 and 1000000")
 		}
+	}
+	if c.ConnectionRisk.EmitTimeoutMS < 0 {
+		return fmt.Errorf("connection_risk.emit_timeout_ms must be non-negative")
+	}
+	if c.ConnectionRisk.EmitTimeoutMS == 0 {
+		c.ConnectionRisk.EmitTimeoutMS = 8
+	}
+	if c.ConnectionRisk.EmitTimeoutMS > 1000 {
+		return fmt.Errorf("connection_risk.emit_timeout_ms must be at most 1000")
 	}
 	jwtSecret := strings.TrimSpace(c.JWT.Secret)
 	if jwtSecret == "" {

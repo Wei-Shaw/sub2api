@@ -692,6 +692,53 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 	return apiKey, nil
 }
 
+// AdminUpdateAPIKeyRequest is the system/admin mutation path (no owner check).
+// Used by connection-risk whitelist / auto-disable actions.
+type AdminUpdateAPIKeyRequest struct {
+	Status      *string
+	IPWhitelist *[]string // nil=unchanged; empty slice clears
+	IPBlacklist *[]string
+}
+
+// AdminUpdate patches an API key without ownership checks. Callers must be
+// trusted admin/system paths and write their own audit trails.
+func (s *APIKeyService) AdminUpdate(ctx context.Context, keyID int64, req AdminUpdateAPIKeyRequest) (*APIKey, error) {
+	apiKey, err := s.apiKeyRepo.GetByID(ctx, keyID)
+	if err != nil {
+		return nil, fmt.Errorf("get api key: %w", err)
+	}
+	if req.IPWhitelist != nil && len(*req.IPWhitelist) > 0 {
+		if invalid := ip.ValidateIPPatterns(*req.IPWhitelist); len(invalid) > 0 {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidIPPattern, invalid)
+		}
+	}
+	if req.IPBlacklist != nil && len(*req.IPBlacklist) > 0 {
+		if invalid := ip.ValidateIPPatterns(*req.IPBlacklist); len(invalid) > 0 {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidIPPattern, invalid)
+		}
+	}
+	if req.Status != nil {
+		switch *req.Status {
+		case StatusAPIKeyActive, StatusAPIKeyDisabled, StatusAPIKeyQuotaExhausted, StatusAPIKeyExpired:
+			apiKey.Status = *req.Status
+		default:
+			return nil, fmt.Errorf("invalid api key status %q", *req.Status)
+		}
+	}
+	if req.IPWhitelist != nil {
+		apiKey.IPWhitelist = *req.IPWhitelist
+	}
+	if req.IPBlacklist != nil {
+		apiKey.IPBlacklist = *req.IPBlacklist
+	}
+	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
+		return nil, fmt.Errorf("admin update api key: %w", err)
+	}
+	s.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+	s.compileAPIKeyIPRules(apiKey)
+	return apiKey, nil
+}
+
 // Update 更新API Key
 func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req UpdateAPIKeyRequest) (*APIKey, error) {
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -58,12 +59,19 @@ func SecurityClientIP(c *gin.Context) string {
 //
 // 兼容性：claims.BindingHash 为空（功能上线前签发的旧 token）时放行，
 // 该会话在下一次 refresh 轮转时会自动获得绑定。
+// SessionMismatchSignal records R7 connection-risk counters on binding failures.
+// Implemented by *service.ConnectionSignalEmitter; nil is a no-op.
+type SessionMismatchSignal interface {
+	IncrSessionMismatch(ctx context.Context, userID int64)
+}
+
 func enforceSessionBinding(
 	c *gin.Context,
 	authService *service.AuthService,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
 	claims *service.JWTClaims,
+	signal SessionMismatchSignal,
 ) bool {
 	if settingService == nil || !settingService.IsSessionBindingEnabled(c.Request.Context()) {
 		return true
@@ -98,6 +106,17 @@ func enforceSessionBinding(
 			UserAgent:   normalizePersistentText(c.Request.UserAgent(), maxPersistentUserAgentBytes),
 			StatusCode:  401,
 		})
+	}
+	// R7 signal: fail-open (emitter ignores Redis errors).
+	if signal != nil && claims.UserID > 0 {
+		includeAdmin := true
+		if settingService != nil {
+			s := settingService.GetConnectionRiskSettingsCached(c.Request.Context())
+			includeAdmin = s.R7IncludeAdminActors
+		}
+		if includeAdmin || claims.Role != service.RoleAdmin {
+			signal.IncrSessionMismatch(c.Request.Context(), claims.UserID)
+		}
 	}
 	AbortWithError(c, 401, "SESSION_BINDING_MISMATCH", "Session network fingerprint changed, please login again")
 	return false

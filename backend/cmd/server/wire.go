@@ -115,6 +115,7 @@ func provideCleanup(
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
 	promptAudit *securityaudit.PromptService,
+	connectionRiskWorker *service.ConnectionRiskWorker,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -184,6 +185,12 @@ func provideCleanup(
 			{"OpsAlertEvaluatorService", func() error {
 				if opsAlertEvaluator != nil {
 					opsAlertEvaluator.Stop()
+				}
+				return nil
+			}},
+			{"ConnectionRiskWorker", func() error {
+				if connectionRiskWorker != nil {
+					connectionRiskWorker.Stop()
 				}
 				return nil
 			}},

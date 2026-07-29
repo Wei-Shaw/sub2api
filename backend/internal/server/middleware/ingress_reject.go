@@ -2,11 +2,12 @@ package middleware
 
 import (
 	"math"
-	"net/netip"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 
 	"github.com/gin-gonic/gin"
 )
@@ -124,15 +125,12 @@ func recordIngressReject(c *gin.Context, reason IngressRejectReason) {
 }
 
 func normalizeIngressRejectIP(raw string) string {
-	addr, err := netip.ParseAddr(strings.TrimSpace(raw))
-	if err != nil {
-		return "0.0.0.0"
+	// Shared /64 collapse with connection-risk signals (pkg/ip).
+	// Invalid still maps to 0.0.0.0 for abuse counters (historical behaviour).
+	if normalized := ip.NormalizeClientIPForSecurity(raw); normalized != "" {
+		return normalized
 	}
-	addr = addr.Unmap()
-	if addr.Is6() {
-		return netip.PrefixFrom(addr, 64).Masked().Addr().String()
-	}
-	return addr.String()
+	return "0.0.0.0"
 }
 
 func ingressRejectRoute(path string) (string, string) {

@@ -17,8 +17,9 @@ func NewAdminAuthMiddleware(
 	userService *service.UserService,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
+	mismatchSignal *service.ConnectionSignalEmitter,
 ) AdminAuthMiddleware {
-	return AdminAuthMiddleware(adminAuth(authService, userService, settingService, auditService))
+	return AdminAuthMiddleware(adminAuth(authService, userService, settingService, auditService, mismatchSignal))
 }
 
 // adminAuth 管理员认证中间件实现
@@ -30,6 +31,7 @@ func adminAuth(
 	userService *service.UserService,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
+	mismatchSignal SessionMismatchSignal,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// WebSocket upgrade requests cannot set Authorization headers in browsers.
@@ -38,7 +40,7 @@ func adminAuth(
 		//   Sec-WebSocket-Protocol: sub2api-admin, jwt.<token>
 		if isWebSocketUpgradeRequest(c) {
 			if token := extractJWTFromWebSocketSubprotocol(c); token != "" {
-				if !validateJWTForAdmin(c, token, authService, userService, settingService, auditService) {
+				if !validateJWTForAdmin(c, token, authService, userService, settingService, auditService, mismatchSignal) {
 					return
 				}
 				c.Next()
@@ -66,7 +68,7 @@ func adminAuth(
 					AbortWithError(c, 401, "UNAUTHORIZED", "Authorization required")
 					return
 				}
-				if !validateJWTForAdmin(c, token, authService, userService, settingService, auditService) {
+				if !validateJWTForAdmin(c, token, authService, userService, settingService, auditService, mismatchSignal) {
 					return
 				}
 				c.Next()
@@ -161,6 +163,7 @@ func validateJWTForAdmin(
 	userService *service.UserService,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
+	mismatchSignal SessionMismatchSignal,
 ) bool {
 	// 验证 JWT token
 	claims, err := authService.ValidateToken(token)
@@ -193,7 +196,7 @@ func validateJWTForAdmin(
 	}
 
 	// 会话绑定校验：IP/UA 任一变化即撤销会话（功能可在系统设置中关闭）
-	if !enforceSessionBinding(c, authService, settingService, auditService, claims) {
+	if !enforceSessionBinding(c, authService, settingService, auditService, claims, mismatchSignal) {
 		return false
 	}
 

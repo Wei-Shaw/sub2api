@@ -776,6 +776,12 @@ var ProviderSet = wire.NewSet(
 	ProvideOpsAlertEvaluatorService,
 	ProvideOpsCleanupService,
 	ProvideOpsScheduledReportService,
+	// Connection risk detection (方案 B)
+	ProvideConnectionRiskMetrics,
+	ProvideRiskActionPolicy,
+	NewConnectionSignalEmitter,
+	ProvideConnectionRiskWorker,
+	NewConnectionRiskService,
 	NewEmailService,
 	NewNotificationEmailService,
 	ProvideEmailQueueService,
