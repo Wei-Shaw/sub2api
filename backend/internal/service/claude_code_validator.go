@@ -233,7 +233,7 @@ REDACTED
 		"## SOFT BLOCK",
 		"## Classification Process",
 		"## Output Format",
-		"<block>yes</block><reason>",
+		"<block>yes</block>",
 		"<block>no</block>",
 REDACTED
 	for _, marker := range markers {

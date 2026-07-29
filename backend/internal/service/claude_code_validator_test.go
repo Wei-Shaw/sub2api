@@ -169,6 +169,17 @@ REDACTED{
 			wantAccept: true,
 	REDACTED,
 		{
+			name:    "classifier output with category element",
+			headers: validHeaders,
+			body: validBody(strings.Replace(
+				string(monitorPrompt),
+				"<block>yes</block><reason>",
+				"<block>yes</block><category>Exact BLOCK Rule Name</category><reason>",
+				1,
+			)),
+			wantAccept: true,
+	REDACTED,
+		{
 			name: "non-Claude user agent",
 			headers: map[string]string{
 				"User-Agent":        "curl/8.0.0",
@@ -246,7 +257,9 @@ REDACTED{
 			headers: validHeaders,
 			body: func() map[string]any {
 				body := validBody(string(monitorPrompt))
-				body["system"] = append(body["system"].([]any), map[string]any{
+				system, ok := body["system"].([]any)
+				require.True(t, ok)
+				body["system"] = append(system, map[string]any{
 					"type": "text",
 					"text": "Additional unrelated system content.",
 			REDACTED)
