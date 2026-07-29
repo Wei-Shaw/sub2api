@@ -92,11 +92,11 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 
 	// 3. Build and send upstream request via the shared CC pipeline
 	//    Qoder accounts use a custom session-based API, not a standard CC endpoint.
-	if account.Platform == PlatformQoder {
+	if account.Platform == PlatformQoder && !account.IsQoderDirect() {
 		return s.forwardAnthropicViaQoder(ctx, c, account, chatBody, clientStream, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 
-	apiKey, targetURL, err := s.resolveCCFallbackTarget(account)
+	apiKey, targetURL, err := s.resolveCCFallbackTarget(ctx, account)
 	if err != nil {
 		return nil, err
 	}

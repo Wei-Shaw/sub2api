@@ -413,6 +413,7 @@ type OpenAIGatewayService struct {
 	settingService        *SettingService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	qoderService          *QoderGatewayService
+	qoderTokenProvider    *QoderTokenProvider
 	liveAttestation       liveattestation.Provider
 	liveAttestationCipher SecretEncryptor
 
@@ -506,6 +507,7 @@ func NewOpenAIGatewayService(
 		settingService:        settingService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 		qoderService:          NewQoderGatewayService(accountRepo, httpUpstream, redisClient, cfg, settingService),
+		qoderTokenProvider:    NewQoderTokenProvider(redisClient, httpUpstream),
 		liveAttestation:       liveattestation.NewProvider(),
 		liveAttestationCipher: newLiveAttestationCipher(cfg),
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
@@ -1169,6 +1171,13 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 		}
 		return accessToken, "oauth", nil
 	case AccountTypeAPIKey:
+		if account.IsQoderDirect() {
+			token, err := s.qoderTokenProvider.GetAccessToken(ctx, account)
+			if err != nil {
+				return "", "", err
+			}
+			return token, "oauth", nil
+		}
 		if account.Platform == PlatformGrok || account.Platform == PlatformQoder {
 			apiKey := strings.TrimSpace(account.GetCredential("api_key"))
 			if apiKey == "" {

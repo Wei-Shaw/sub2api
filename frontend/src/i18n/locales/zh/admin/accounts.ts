@@ -519,6 +519,13 @@ export default {
       accountName: '账号名称',
       enterAccountName: '请输入账号名称',
       accountType: '账号类型',
+      qoder: {
+        modeLabel: '连接模式',
+        modeCloud: 'Cloud Agent',
+        modeCloudDesc: '有状态沙箱会话',
+        modeDirect: '直连',
+        modeDirectDesc: '无状态模型服务器'
+      },
       claudeCode: 'Claude Code',
       claudeConsole: 'Claude Console',
       bedrockLabel: 'AWS Bedrock',

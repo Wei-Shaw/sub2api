@@ -59,6 +59,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	if account.Platform == PlatformQoder {
+		if account.IsQoderDirect() {
+			return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
+		}
 		return s.qoderService.ForwardChatCompletions(ctx, c, account, body, promptCacheKey, defaultMappedModel)
 	}
 

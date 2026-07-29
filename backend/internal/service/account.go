@@ -1379,6 +1379,22 @@ func (a *Account) GetQoderBaseURL() string {
 	return strings.TrimRight(baseURL, "/")
 }
 
+func (a *Account) IsQoderDirect() bool {
+	return a.IsQoder() && a.GetCredential("mode") == "direct"
+}
+
+const qoderDefaultModelServerURL = "https://api2-v2.qoder.sh/model/v1"
+
+func (a *Account) GetQoderModelServerURL() string {
+	if !a.IsQoderDirect() {
+		return ""
+	}
+	if u := strings.TrimSpace(a.GetCredential("model_server_url")); u != "" {
+		return strings.TrimRight(u, "/")
+	}
+	return qoderDefaultModelServerURL
+}
+
 func (a *Account) GetOpenAIUserAgent() string {
 	if !a.IsOpenAI() {
 		return ""

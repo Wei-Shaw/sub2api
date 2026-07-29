@@ -53,6 +53,37 @@
             @select="editBaseUrl = $event"
           />
         </div>
+        <div v-if="account.platform === 'qoder'">
+          <label class="input-label">{{ t('admin.accounts.qoder.modeLabel') }}</label>
+          <div class="mt-2 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              @click="qoderMode = 'cloud'"
+              :class="[
+                'flex flex-col items-center gap-1 rounded-lg border-2 p-3 text-center transition-all',
+                qoderMode === 'cloud'
+                  ? 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
+                  : 'border-gray-200 hover:border-rose-300 dark:border-dark-600 dark:hover:border-rose-700'
+              ]"
+            >
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.qoder.modeCloud') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.qoder.modeCloudDesc') }}</span>
+            </button>
+            <button
+              type="button"
+              @click="qoderMode = 'direct'"
+              :class="[
+                'flex flex-col items-center gap-1 rounded-lg border-2 p-3 text-center transition-all',
+                qoderMode === 'direct'
+                  ? 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
+                  : 'border-gray-200 hover:border-rose-300 dark:border-dark-600 dark:hover:border-rose-700'
+              ]"
+            >
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.qoder.modeDirect') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.qoder.modeDirectDesc') }}</span>
+            </button>
+          </div>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
           <input
@@ -2785,6 +2816,7 @@ const grokOAuthBaseUrl = ref('')
 const grokClientToolCacheEnabled = ref(true)
 
 const interceptWarmupRequests = ref(false)
+const qoderMode = ref<'cloud' | 'direct'>('cloud')
 const autoPauseOnExpired = ref(false)
 const autoPause5hThreshold = ref<number | null>(null)
 const autoPause7dThreshold = ref<number | null>(null)
@@ -3252,6 +3284,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
+  qoderMode.value = credentials?.mode === 'direct' ? 'direct' : 'cloud'
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
   editVertexProjectId.value = ''
   editVertexClientEmail.value = ''
@@ -4138,6 +4171,13 @@ const handleSubmit = async () => {
 
       // Add intercept warmup requests setting
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
+      if (props.account.platform === 'qoder') {
+        if (qoderMode.value === 'direct') {
+          newCredentials.mode = 'direct'
+        } else {
+          delete newCredentials.mode
+        }
+      }
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       }

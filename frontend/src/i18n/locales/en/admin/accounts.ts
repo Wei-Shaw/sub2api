@@ -452,6 +452,13 @@ export default {
       accountName: 'Account Name',
       enterAccountName: 'Enter account name',
       accountType: 'Account Type',
+      qoder: {
+        modeLabel: 'Connection Mode',
+        modeCloud: 'Cloud Agent',
+        modeCloudDesc: 'Stateful sandbox session',
+        modeDirect: 'Direct',
+        modeDirectDesc: 'Stateless model server'
+      },
       claudeCode: 'Claude Code',
       claudeConsole: 'Claude Console',
       bedrockLabel: 'AWS Bedrock',

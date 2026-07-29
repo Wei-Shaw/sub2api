@@ -231,6 +231,9 @@ func (s *OpenAIGatewayService) rawChatCompletionsURL(account *Account) (string, 
 		}
 		return targetURL, nil
 	}
+	if account.IsQoderDirect() {
+		return buildOpenAIChatCompletionsURL(account.GetQoderModelServerURL()), nil
+	}
 
 	return s.openAIChatCompletionsTargetURL(account)
 }

@@ -144,7 +144,15 @@ func (s *OpenAIGatewayService) openAIChatCompletionsTargetURL(account *Account) 
 
 // resolveCCFallbackTarget 解析两条 CC 回退路径共用的账号凭证与上游端点
 // （回退路径仅面向 APIKey 账号，凭证恒为 openai api_key）。
-func (s *OpenAIGatewayService) resolveCCFallbackTarget(account *Account) (apiKey string, targetURL string, err error) {
+func (s *OpenAIGatewayService) resolveCCFallbackTarget(ctx context.Context, account *Account) (apiKey string, targetURL string, err error) {
+	if account.IsQoderDirect() {
+		token, _, tokenErr := s.GetAccessToken(ctx, account)
+		if tokenErr != nil {
+			return "", "", tokenErr
+		}
+		targetURL = buildOpenAIChatCompletionsURL(account.GetQoderModelServerURL())
+		return token, targetURL, nil
+	}
 	apiKey = account.GetOpenAIApiKey()
 	if apiKey == "" {
 		return "", "", fmt.Errorf("account %d missing api_key", account.ID)

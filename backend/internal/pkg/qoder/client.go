@@ -259,3 +259,42 @@ func (c *Client) Ping(ctx context.Context) error {
 	}
 	return nil
 }
+
+const defaultExchangeURL = "https://openapi.qoder.sh/api/v1/jobToken/exchange"
+
+type JobTokenResponse struct {
+	Token        string `json:"token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresAt    string `json:"expires_at"`
+	ExpiresIn    int64  `json:"expires_in"` // milliseconds
+}
+
+func ExchangeJobToken(ctx context.Context, do Doer, personalToken string) (*JobTokenResponse, error) {
+	payload, err := json.Marshal(map[string]string{"personal_token": personalToken})
+	if err != nil {
+		return nil, fmt.Errorf("marshal exchange request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, defaultExchangeURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := do(req)
+	if err != nil {
+		return nil, fmt.Errorf("qoder token exchange failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(respBody)}
+	}
+	var out JobTokenResponse
+	if err := json.Unmarshal(respBody, &out); err != nil {
+		return nil, fmt.Errorf("decode exchange response: %w", err)
+	}
+	if out.Token == "" {
+		return nil, fmt.Errorf("qoder token exchange: empty token in response")
+	}
+	return &out, nil
+}
