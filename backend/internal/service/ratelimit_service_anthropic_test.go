@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCalculateAnthropic429ResetTime_Only5hExceeded(t *testing.T) {
@@ -193,9 +195,7 @@ func TestSelectAnthropicFableWindowLimit_RejectedStatus(t *testing.T) {
 	headers.Set("anthropic-ratelimit-unified-7d_oi-reset", strconv.FormatInt(reset.Unix(), 10))
 
 	limit := selectAnthropicFableWindowLimit(headers, now)
-	if limit == nil {
-		t.Fatal("expected non-nil limit")
-REDACTED
+	require.NotNil(t, limit)
 	if !limit.resetAt.Equal(reset) {
 		t.Errorf("expected resetAt=%v, got %v", reset, limit.resetAt)
 REDACTED
@@ -214,9 +214,7 @@ func TestSelectAnthropicFableWindowLimit_UtilizationOnly(t *testing.T) {
 	headers.Set("anthropic-ratelimit-unified-7d_oi-reset", strconv.FormatInt(reset.Unix(), 10))
 
 	limit := selectAnthropicFableWindowLimit(headers, now)
-	if limit == nil {
-		t.Fatal("expected non-nil limit")
-REDACTED
+	require.NotNil(t, limit)
 	if !limit.resetAt.Equal(reset) {
 		t.Errorf("expected resetAt=%v, got %v", reset, limit.resetAt)
 REDACTED
