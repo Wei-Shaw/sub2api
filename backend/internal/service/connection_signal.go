@@ -10,12 +10,12 @@ import (
 
 // ConnectionSignal is one authenticated gateway request fingerprint.
 type ConnectionSignal struct {
-	UserID   int64
-	APIKeyID int64
-	IP       string // already NormalizeClientIPForSecurity
-	UAHash   string
+	UserID    int64
+	APIKeyID  int64
+	IP        string // already NormalizeClientIPForSecurity
+	UAHash    string
 	KeyPrefix string // optional short display prefix (non-secret)
-	NowUnix  int64 // optional; cache fills from Redis TIME when 0
+	NowUnix   int64  // optional; cache fills from Redis TIME when 0
 }
 
 // ConnectionSignalCache writes/reads cr:* Redis structures for connection risk.

@@ -68,9 +68,9 @@ func (f *clearThrottleStub) ListActiveKeys(context.Context, int) ([]int64, error
 func (f *clearThrottleStub) ListActiveUsers(context.Context, int) ([]int64, error) {
 	return nil, nil
 }
-func (f *clearThrottleStub) GetKeyOwner(context.Context, int64) (int64, error)  { return 0, nil }
-func (f *clearThrottleStub) GetKeyPrefix(context.Context, int64) (string, error) { return "", nil }
-func (f *clearThrottleStub) TrimUAWindow(context.Context, int64, int64) error   { return nil }
+func (f *clearThrottleStub) GetKeyOwner(context.Context, int64) (int64, error)    { return 0, nil }
+func (f *clearThrottleStub) GetKeyPrefix(context.Context, int64) (string, error)  { return "", nil }
+func (f *clearThrottleStub) TrimUAWindow(context.Context, int64, int64) error     { return nil }
 func (f *clearThrottleStub) SetThrottle(context.Context, int64, int, int64) error { return nil }
 func (f *clearThrottleStub) ClearThrottle(_ context.Context, keyID int64) error {
 	f.cleared = append(f.cleared, keyID)

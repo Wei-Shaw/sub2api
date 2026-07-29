@@ -55,14 +55,14 @@ type ConnectionRiskSettings struct {
 
 // ConnectionRiskRuleSettings per-rule knobs. Zero/empty fields fall back to defaults at score time.
 type ConnectionRiskRuleSettings struct {
-	R1    ConnectionRiskRuleR1    `json:"R1"`
-	R2    ConnectionRiskRuleR2    `json:"R2"`
-	R3Abs ConnectionRiskRuleR3Abs `json:"R3_abs"`
+	R1    ConnectionRiskRuleR1     `json:"R1"`
+	R2    ConnectionRiskRuleR2     `json:"R2"`
+	R3Abs ConnectionRiskRuleR3Abs  `json:"R3_abs"`
 	R3    ConnectionRiskRuleToggle `json:"R3"` // Phase B only; Phase A always disabled
-	R4    ConnectionRiskRuleR4    `json:"R4"`
-	R5    ConnectionRiskRuleR5    `json:"R5"`
-	R6    ConnectionRiskRuleR6    `json:"R6"`
-	R7    ConnectionRiskRuleR7    `json:"R7"`
+	R4    ConnectionRiskRuleR4     `json:"R4"`
+	R5    ConnectionRiskRuleR5     `json:"R5"`
+	R6    ConnectionRiskRuleR6     `json:"R6"`
+	R7    ConnectionRiskRuleR7     `json:"R7"`
 }
 
 // ConnectionRiskRuleToggle is a minimal enabled flag.
@@ -77,8 +77,8 @@ type ConnectionRiskRuleR1 struct {
 }
 
 type ConnectionRiskRuleR2 struct {
-	Enabled    *bool `json:"enabled,omitempty"`
-	UACount1h  int   `json:"ua_count_1h,omitempty"` // default 6
+	Enabled   *bool `json:"enabled,omitempty"`
+	UACount1h int   `json:"ua_count_1h,omitempty"` // default 6
 }
 
 type ConnectionRiskRuleR3Abs struct {
@@ -88,27 +88,27 @@ type ConnectionRiskRuleR3Abs struct {
 }
 
 type ConnectionRiskRuleR4 struct {
-	Enabled    *bool `json:"enabled,omitempty"`
-	Keys1h     int   `json:"keys_1h,omitempty"`      // default 3
-	UserIP1h   int   `json:"user_ip_1h,omitempty"`   // default 15
+	Enabled  *bool `json:"enabled,omitempty"`
+	Keys1h   int   `json:"keys_1h,omitempty"`    // default 3
+	UserIP1h int   `json:"user_ip_1h,omitempty"` // default 15
 }
 
 type ConnectionRiskRuleR5 struct {
-	Enabled           *bool   `json:"enabled,omitempty"`
-	ConcurrencyRatio  float64 `json:"concurrency_ratio,omitempty"` // default 0.9
-	DistinctIP5m      int     `json:"distinct_ip_5m,omitempty"`    // default 5
+	Enabled          *bool   `json:"enabled,omitempty"`
+	ConcurrencyRatio float64 `json:"concurrency_ratio,omitempty"` // default 0.9
+	DistinctIP5m     int     `json:"distinct_ip_5m,omitempty"`    // default 5
 }
 
 type ConnectionRiskRuleR6 struct {
 	Enabled    *bool `json:"enabled,omitempty"`
-	RPMAbs     int   `json:"rpm_abs,omitempty"`      // default 120
-	DistinctIP int   `json:"distinct_ip,omitempty"`  // default 3 (current minute)
+	RPMAbs     int   `json:"rpm_abs,omitempty"`     // default 120
+	DistinctIP int   `json:"distinct_ip,omitempty"` // default 3 (current minute)
 }
 
 type ConnectionRiskRuleR7 struct {
-	Enabled        *bool `json:"enabled,omitempty"`
-	Mismatch15m    int   `json:"mismatch_15m,omitempty"` // default 1
-	DistinctIP5m   int   `json:"distinct_ip_5m,omitempty"` // default 3
+	Enabled      *bool `json:"enabled,omitempty"`
+	Mismatch15m  int   `json:"mismatch_15m,omitempty"`   // default 1
+	DistinctIP5m int   `json:"distinct_ip_5m,omitempty"` // default 3
 }
 
 // ConnectionRiskActionSettings Phase B/C action flags.
