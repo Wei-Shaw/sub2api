@@ -303,9 +303,12 @@ func TestOpenAIGatewayServiceForward_NormalizesResponsesLiteToolsForOAuth(t *tes
 			require.Equal(t, "shell", gjson.GetBytes(upstream.lastBody, `tools.#(type=="function").name`).String())
 			require.Equal(t, "exec", gjson.GetBytes(upstream.lastBody, `tools.#(type=="custom").name`).String())
 			require.True(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="tool_search")`).Exists())
-			require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, `input.#(type=="additional_tools").tools.0.name`).String())
-			require.Equal(t, "namespace", gjson.GetBytes(upstream.lastBody, "tool_choice.type").String())
-			require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, "tool_choice.name").String())
+			require.Equal(t, "function", gjson.GetBytes(upstream.lastBody, `input.#(type=="additional_tools").tools.0.type`).String())
+			require.Equal(t, "collaboration__spawn_agent", gjson.GetBytes(upstream.lastBody, `input.#(type=="additional_tools").tools.0.name`).String())
+			require.Equal(t, "auto", gjson.GetBytes(upstream.lastBody, "tool_choice").String())
+			names := openAIResponsesNamespaceNames(c)
+			require.Equal(t, "collaboration", names["collaboration__spawn_agent"].Namespace)
+			require.Equal(t, "spawn_agent", names["collaboration__spawn_agent"].Name)
 		})
 	}
 }

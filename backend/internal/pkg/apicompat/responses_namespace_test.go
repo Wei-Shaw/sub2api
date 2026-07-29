@@ -90,6 +90,70 @@ func TestFlattenResponsesNamespaces_NamespaceGroupChoiceFallsBackToAuto(t *testi
 	require.Equal(t, "auto", req["tool_choice"])
 }
 
+func TestFlattenResponsesNamespaces_FlattensDynamicAdditionalTools(t *testing.T) {
+	arguments := `{"code":"nodeRepl.write(6 * 7)","title":"Node REPL routing test","timeout_ms":10000}`
+	req := map[string]any{
+		"tools": []any{
+			map[string]any{"type": "function", "name": "get_goal"},
+			map[string]any{"type": "tool_search"},
+		},
+		"input": []any{
+			map[string]any{"type": "tool_search_output", "call_id": "search_1", "output": map[string]any{"groups": []any{"mcp__node_repl"}}},
+			map[string]any{
+				"type": "additional_tools",
+				"tools": []any{map[string]any{
+					"type": "namespace",
+					"name": "mcp__node_repl",
+					"tools": []any{map[string]any{
+						"type": "function",
+						"name": "js",
+					}},
+				}},
+			},
+			map[string]any{
+				"type":      "function_call",
+				"call_id":   "call_js",
+				"namespace": "mcp__node_repl",
+				"name":      "js",
+				"arguments": arguments,
+			},
+		},
+	}
+
+	names, changed, err := FlattenResponsesNamespaces(req)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, ResponsesNamespaceName{Namespace: "mcp__node_repl", Name: "js"}, names["mcp__node_repl__js"])
+	input := req["input"].([]any)
+	additional := input[1].(map[string]any)["tools"].([]any)
+	require.Len(t, additional, 1)
+	require.Equal(t, "function", additional[0].(map[string]any)["type"])
+	require.Equal(t, "mcp__node_repl__js", additional[0].(map[string]any)["name"])
+	call := input[2].(map[string]any)
+	require.Equal(t, "mcp__node_repl__js", call["name"])
+	require.NotContains(t, call, "namespace")
+	require.Equal(t, arguments, call["arguments"])
+}
+
+func TestFlattenResponsesNamespaces_RejectsDynamicNamespaceCollision(t *testing.T) {
+	req := map[string]any{
+		"tools": []any{map[string]any{"type": "function", "name": "mcp__node_repl__js"}},
+		"input": []any{map[string]any{
+			"type": "additional_tools",
+			"tools": []any{map[string]any{
+				"type":  "namespace",
+				"name":  "mcp__node_repl",
+				"tools": []any{map[string]any{"type": "function", "name": "js"}},
+			}},
+		}},
+	}
+
+	_, _, err := FlattenResponsesNamespaces(req)
+
+	require.ErrorContains(t, err, "conflicts with a top-level tool")
+}
+
 func TestFlattenResponsesNamespacesExcept_PreservesBuiltInNamespaceAndChoice(t *testing.T) {
 	req := map[string]any{
 		"tools": []any{
