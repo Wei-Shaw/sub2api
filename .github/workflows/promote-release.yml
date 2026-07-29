@@ -1,0 +1,142 @@
+name: Promote Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Unpublished fork version to promote (e.g., 0.1.166-ts.4)'
+        required: true
+        type: string
+      main_sha:
+        description: 'Exact audited main commit (40 hexadecimal characters)'
+        required: true
+        type: string
+
+concurrency:
+  group: promote-release-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact audited main commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.main_sha }}
+
+      - name: Verify candidate and successful pre-tag workflows
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ inputs.main_sha }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+          RELEASE_TAG_RULESET_ID: ${{ vars.RELEASE_TAG_RULESET_ID }}
+          RELEASE_TAG_CREATION_RULESET_ID: ${{ vars.RELEASE_TAG_CREATION_RULESET_ID }}
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "main_sha must be an exact 40-character lowercase commit SHA" >&2
+            exit 1
+          }
+          [[ "$EXPECTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ts\.[1-9][0-9]*$ ]] || {
+            echo "version must use X.Y.Z-ts.N with N >= 1" >&2
+            exit 1
+          }
+          [[ "$RELEASE_TAG_RULESET_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo "RELEASE_TAG_RULESET_ID must identify the immutable release tag ruleset" >&2
+            exit 1
+          }
+          [[ "$RELEASE_TAG_CREATION_RULESET_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo "RELEASE_TAG_CREATION_RULESET_ID must identify the controlled tag creation ruleset" >&2
+            exit 1
+          }
+
+          git fetch origin main --tags
+          VERSION=$(tr -d '\r\n' < backend/cmd/server/VERSION)
+          RELEASE_TAG="v${EXPECTED_VERSION}"
+
+          [[ "$VERSION" == "$EXPECTED_VERSION" ]] || {
+            echo "VERSION contains $VERSION, expected $EXPECTED_VERSION" >&2
+            exit 1
+          }
+          TAG_EXISTS=$(bash .github/scripts/release-promotion-state.sh \
+            inspect "$EXPECTED_SHA" "$EXPECTED_VERSION" refs/remotes/origin/main origin)
+          echo "tag_exists=$TAG_EXISTS" >> "$GITHUB_OUTPUT"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && {
+            echo "GitHub Release already exists: $RELEASE_TAG" >&2
+            exit 1
+          }
+
+          verify_workflow() {
+            local workflow="$1"
+            local label="$2"
+            local run
+            run=$(gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs" \
+              -f branch=main \
+              -f event=push \
+              -f head_sha="$EXPECTED_SHA" \
+              -f status=success \
+              -f per_page=1 \
+              --jq '.workflow_runs[0] | [.id, .head_sha, .conclusion] | @tsv')
+            [[ -n "$run" ]] || {
+              echo "$label has no successful push run for $EXPECTED_SHA" >&2
+              exit 1
+            }
+            IFS=$'\t' read -r run_id run_sha conclusion <<<"$run"
+            [[ "$run_sha" == "$EXPECTED_SHA" && "$conclusion" == "success" ]] || {
+              echo "$label evidence is invalid: $run" >&2
+              exit 1
+            }
+            echo "$label passed in run $run_id for $run_sha"
+          }
+
+          verify_workflow backend-ci.yml "Backend CI"
+          verify_workflow release-preflight.yml "Release Preflight"
+          bash .github/scripts/validate-release-candidate.sh
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" \
+            > "$RUNNER_TEMP/release-tag-immutable-ruleset.json"
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_CREATION_RULESET_ID}" \
+            > "$RUNNER_TEMP/release-tag-creation-ruleset.json"
+          bash .github/scripts/release-safety.sh \
+            verify-rulesets-json \
+            "$RUNNER_TEMP/release-tag-immutable-ruleset.json" \
+            "$RUNNER_TEMP/release-tag-creation-ruleset.json"
+
+      - name: Create immutable annotated tag
+        if: steps.verify.outputs.tag_exists != 'true'
+        env:
+          EXPECTED_SHA: ${{ inputs.main_sha }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+          RELEASE_TAG_DEPLOY_KEY: ${{ secrets.RELEASE_TAG_DEPLOY_KEY }}
+        run: |
+          RELEASE_TAG="v${EXPECTED_VERSION}"
+          git fetch origin main
+          bash .github/scripts/release-promotion-state.sh \
+            require-current-main "$EXPECTED_SHA" refs/remotes/origin/main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$RELEASE_TAG" -m "TokenSupply $RELEASE_TAG"
+          KEY_PATH="$RUNNER_TEMP/release-tag-deploy-key"
+          KNOWN_HOSTS_PATH="$RUNNER_TEMP/release-tag-known-hosts"
+          install -m 600 /dev/null "$KEY_PATH"
+          printf '%s\n' "$RELEASE_TAG_DEPLOY_KEY" > "$KEY_PATH"
+          ssh-keyscan -t ed25519 github.com > "$KNOWN_HOSTS_PATH"
+          GIT_SSH_COMMAND="ssh -i $KEY_PATH -o IdentitiesOnly=yes -o UserKnownHostsFile=$KNOWN_HOSTS_PATH -o StrictHostKeyChecking=yes" \
+            git push "git@github.com:${GITHUB_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}"
+
+  release:
+    needs: promote
+    permissions:
+      actions: read
+      contents: write
+      packages: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: v${{ inputs.version }}
+    secrets: inherit

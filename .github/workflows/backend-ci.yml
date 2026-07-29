@@ -24,8 +24,13 @@ jobs:
           /bin/bash -n .github/scripts/test-release-safety.sh
           /bin/bash -n .github/scripts/validate-release-candidate.sh
           /bin/bash -n .github/scripts/test-release-candidate.sh
+          /bin/bash -n .github/scripts/test-pretag-release-gate.sh
+          /bin/bash -n .github/scripts/release-promotion-state.sh
+          /bin/bash -n .github/scripts/test-release-promotion-state.sh
           /bin/bash .github/scripts/validate-release-candidate.sh
           /bin/bash .github/scripts/test-release-candidate.sh
+          /bin/bash .github/scripts/test-pretag-release-gate.sh
+          /bin/bash .github/scripts/test-release-promotion-state.sh
           /bin/bash -n deploy/apple-container.sh
           /bin/bash deploy/tests/apple-container-test.sh
           /bin/sh deploy/test-caddyfile-cache.sh
@@ -40,8 +45,13 @@ jobs:
           bash -n .github/scripts/test-release-safety.sh
           bash -n .github/scripts/validate-release-candidate.sh
           bash -n .github/scripts/test-release-candidate.sh
+          bash -n .github/scripts/test-pretag-release-gate.sh
+          bash -n .github/scripts/release-promotion-state.sh
+          bash -n .github/scripts/test-release-promotion-state.sh
           bash .github/scripts/validate-release-candidate.sh
           bash .github/scripts/test-release-candidate.sh
+          bash .github/scripts/test-pretag-release-gate.sh
+          bash .github/scripts/test-release-promotion-state.sh
           bash .github/scripts/test-release-safety.sh
 
   test:

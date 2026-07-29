@@ -537,21 +537,33 @@ expect_failure 'has no verified previous completed digest' env \
     docker.io/example/sub2api "$NEW_DOCKERHUB_DIGEST" "$OLD_DOCKERHUB_DIGEST"
 [[ ! -s "$TRANSACTION_LOG" ]] || fail "Missing latest detection mutated a registry or GitHub Release"
 
-GOOD_RULESET="$TEST_ROOT/good-ruleset.json"
+GOOD_IMMUTABLE_RULESET="$TEST_ROOT/good-immutable-ruleset.json"
 jq -n '{
   target: "tag",
   enforcement: "active",
   conditions: {ref_name: {include: ["refs/tags/v*-ts.*"], exclude: []}},
   bypass_actors: [],
   rules: [{type: "update"}, {type: "deletion"}]
-}' > "$GOOD_RULESET"
-bash "$SAFETY_SCRIPT" verify-ruleset-json "$GOOD_RULESET"
+}' > "$GOOD_IMMUTABLE_RULESET"
+GOOD_CREATION_RULESET="$TEST_ROOT/good-creation-ruleset.json"
+jq -n '{
+  target: "tag",
+  enforcement: "active",
+  conditions: {ref_name: {include: ["refs/tags/v*-ts.*"], exclude: []}},
+  bypass_actors: [{actor_type: "DeployKey", actor_id: null, bypass_mode: "always"}],
+  rules: [{type: "creation"}]
+}' > "$GOOD_CREATION_RULESET"
+bash "$SAFETY_SCRIPT" verify-rulesets-json "$GOOD_IMMUTABLE_RULESET" "$GOOD_CREATION_RULESET"
 
 BAD_RULESET="$TEST_ROOT/bad-ruleset.json"
-jq '.bypass_actors = [{actor_type: "RepositoryRole", actor_id: 5}]' "$GOOD_RULESET" > "$BAD_RULESET"
-expect_failure 'with no bypass actors' bash "$SAFETY_SCRIPT" verify-ruleset-json "$BAD_RULESET"
-jq '.bypass_actors = [] | .rules = [{type: "update"}]' "$GOOD_RULESET" > "$BAD_RULESET"
-expect_failure 'forbid updates and deletion' bash "$SAFETY_SCRIPT" verify-ruleset-json "$BAD_RULESET"
+jq '.bypass_actors = [{actor_type: "DeployKey", actor_id: null, bypass_mode: "always"}]' "$GOOD_IMMUTABLE_RULESET" > "$BAD_RULESET"
+expect_failure 'no bypass actors' bash "$SAFETY_SCRIPT" verify-rulesets-json "$BAD_RULESET" "$GOOD_CREATION_RULESET"
+jq '.rules += [{type: "creation"}]' "$GOOD_IMMUTABLE_RULESET" > "$BAD_RULESET"
+expect_failure 'forbid updates and deletion' bash "$SAFETY_SCRIPT" verify-rulesets-json "$BAD_RULESET" "$GOOD_CREATION_RULESET"
+jq '.bypass_actors = [{actor_type: "RepositoryRole", actor_id: 5, bypass_mode: "always"}]' "$GOOD_CREATION_RULESET" > "$BAD_RULESET"
+expect_failure 'dedicated release deploy key' bash "$SAFETY_SCRIPT" verify-rulesets-json "$GOOD_IMMUTABLE_RULESET" "$BAD_RULESET"
+jq '.rules += [{type: "update"}]' "$GOOD_CREATION_RULESET" > "$BAD_RULESET"
+expect_failure 'must only forbid creation' bash "$SAFETY_SCRIPT" verify-rulesets-json "$GOOD_IMMUTABLE_RULESET" "$BAD_RULESET"
 
 REMOTE_REPO="$TEST_ROOT/origin.git"
 FETCH_REPO="$TEST_ROOT/fetch-repo"

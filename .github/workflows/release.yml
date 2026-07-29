@@ -1,10 +1,7 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*-ts.*'
-  workflow_dispatch:
+  workflow_call:
     inputs:
       tag:
         description: 'Fork tag to release (e.g., v0.1.165-ts.1)'
@@ -41,22 +38,30 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ inputs.tag }}
 
       - name: Validate fork release tag
         id: release_ref
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_TAG_RULESET_ID: ${{ vars.RELEASE_TAG_RULESET_ID }}
+          RELEASE_TAG_CREATION_RULESET_ID: ${{ vars.RELEASE_TAG_CREATION_RULESET_ID }}
         run: |
           bash .github/scripts/release-safety.sh fetch origin main
           if [[ ! "$RELEASE_TAG_RULESET_ID" =~ ^[1-9][0-9]*$ ]]; then
             echo "RELEASE_TAG_RULESET_ID must identify the immutable fork-release tag ruleset" >&2
             exit 1
           fi
-          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" > "$RUNNER_TEMP/release-tag-ruleset.json"
-          bash .github/scripts/release-safety.sh verify-ruleset-json "$RUNNER_TEMP/release-tag-ruleset.json"
+          if [[ ! "$RELEASE_TAG_CREATION_RULESET_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "RELEASE_TAG_CREATION_RULESET_ID must identify the controlled tag creation ruleset" >&2
+            exit 1
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" > "$RUNNER_TEMP/release-tag-immutable-ruleset.json"
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_CREATION_RULESET_ID}" > "$RUNNER_TEMP/release-tag-creation-ruleset.json"
+          bash .github/scripts/release-safety.sh verify-rulesets-json \
+            "$RUNNER_TEMP/release-tag-immutable-ruleset.json" \
+            "$RUNNER_TEMP/release-tag-creation-ruleset.json"
           gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
           bash .github/scripts/release-safety.sh assert-unpublished-json "$RELEASE_TAG" "$RUNNER_TEMP/releases.json"
           PREVIOUS_RELEASE_TAG=$(bash .github/scripts/release-safety.sh previous-release-json \
@@ -128,7 +133,7 @@ jobs:
       - name: Verify rollback-compatible migrations
         env:
           RELEASE_COMMIT: ${{ steps.release_ref.outputs.commit }}
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           backend/scripts/check-release-migrations-history.sh \
             "$MIGRATION_BASELINE_COMMIT" \
@@ -144,6 +149,7 @@ jobs:
       - name: Test release safety gates and deployment assets
         run: |
           bash .github/scripts/test-release-candidate.sh
+          bash .github/scripts/test-pretag-release-gate.sh
           bash .github/scripts/test-release-safety.sh
           backend/scripts/check-release-migrations-test.sh
           deploy/tests/managed-update-assets-test.sh
@@ -296,7 +302,7 @@ jobs:
       - name: Load versioned release notes
         id: release_notes
         env:
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
           VALIDATED_RELEASE_TAG_OBJECT: ${{ needs.release-gate.outputs.release_tag_object }}
         run: |
           bash .github/scripts/release-safety.sh write-notes-output \
@@ -314,8 +320,9 @@ jobs:
       - name: Final immutable release preflight
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_TAG_RULESET_ID: ${{ vars.RELEASE_TAG_RULESET_ID }}
+          RELEASE_TAG_CREATION_RULESET_ID: ${{ vars.RELEASE_TAG_CREATION_RULESET_ID }}
           VALIDATED_RELEASE_COMMIT: ${{ needs.release-gate.outputs.release_commit }}
           VALIDATED_RELEASE_TAG_OBJECT: ${{ needs.release-gate.outputs.release_tag_object }}
           VALIDATED_PREVIOUS_RELEASE_TAG: ${{ needs.release-gate.outputs.previous_release_tag }}
@@ -324,8 +331,11 @@ jobs:
           GHCR_OWNER: ${{ steps.lowercase.outputs.owner }}
         run: |
           bash .github/scripts/release-safety.sh fetch origin main
-          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" > "$RUNNER_TEMP/release-tag-ruleset-final.json"
-          bash .github/scripts/release-safety.sh verify-ruleset-json "$RUNNER_TEMP/release-tag-ruleset-final.json"
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" > "$RUNNER_TEMP/release-tag-immutable-ruleset-final.json"
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_CREATION_RULESET_ID}" > "$RUNNER_TEMP/release-tag-creation-ruleset-final.json"
+          bash .github/scripts/release-safety.sh verify-rulesets-json \
+            "$RUNNER_TEMP/release-tag-immutable-ruleset-final.json" \
+            "$RUNNER_TEMP/release-tag-creation-ruleset-final.json"
           gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$RUNNER_TEMP/releases-final.json"
           bash .github/scripts/release-safety.sh assert-unpublished-json "$RELEASE_TAG" "$RUNNER_TEMP/releases-final.json"
           CURRENT_PREVIOUS_RELEASE_TAG=$(bash .github/scripts/release-safety.sh previous-release-json \
@@ -464,7 +474,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          GORELEASER_CURRENT_TAG: ${{ inputs.tag }}
           GORELEASER_PREVIOUS_TAG: ${{ needs.release-gate.outputs.previous_release_tag }}
           TAG_MESSAGE: ${{ steps.release_notes.outputs.message }}
           GITHUB_REPO_OWNER: ${{ github.repository_owner }}
@@ -475,13 +485,13 @@ jobs:
       - name: Attach deployer binaries to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/deployer-dist/"*
 
       - name: Verify and publish completed release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_COMMIT: ${{ needs.release-gate.outputs.release_commit }}
           RELEASE_TAG_OBJECT: ${{ needs.release-gate.outputs.release_tag_object }}
           GHCR_OWNER: ${{ steps.lowercase.outputs.owner }}
@@ -653,7 +663,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_NOTES: ${{ steps.release_notes.outputs.message }}
           REPOSITORY: ${{ github.repository }}
         continue-on-error: true

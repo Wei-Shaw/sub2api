@@ -1,0 +1,154 @@
+name: Release Preflight
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: release-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  MIGRATION_BASELINE_COMMIT: 0572569c6e0187fd02655bec2d9439e30d9edc04
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  candidate:
+    name: Detect Release Candidate
+    runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.candidate.outputs.required }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Detect unpublished fork version
+        id: candidate
+        run: |
+          VERSION=$(tr -d '\r\n' < backend/cmd/server/VERSION)
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ts\.[1-9][0-9]*$ ]]; then
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            echo "Upstream baseline $VERSION does not require fork release preflight"
+          elif git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            echo "v${VERSION} is already tagged; no unpublished candidate is active"
+          else
+            echo "required=true" >> "$GITHUB_OUTPUT"
+            echo "v${VERSION} is unpublished; full release preflight is required"
+          fi
+
+  release-contracts:
+    name: Release Contracts
+    needs: candidate
+    if: needs.candidate.outputs.required == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TARGET_SHA }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache-dependency-path: backend/go.sum
+
+      - name: Validate candidate, migrations, and repository contracts
+        run: |
+          VERSION=$(cat backend/cmd/server/VERSION)
+          RELEASE_TAG="v${VERSION}"
+          bash .github/scripts/validate-release-candidate.sh
+          backend/scripts/check-release-migrations-history.sh \
+            "$MIGRATION_BASELINE_COMMIT" \
+            "$TARGET_SHA" \
+            "$RELEASE_TAG"
+          bash .github/scripts/test-release-candidate.sh
+          bash .github/scripts/test-pretag-release-gate.sh
+          bash .github/scripts/test-release-safety.sh
+          backend/scripts/check-release-migrations-test.sh
+          deploy/tests/managed-update-assets-test.sh
+
+      - name: Verify Go module graph is already tidy
+        working-directory: backend
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Build deployer binaries and self-contained bundles
+        working-directory: backend
+        run: |
+          mkdir -p "$RUNNER_TEMP/deployer-dist"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o "$RUNNER_TEMP/deployer-dist/sub2api-deployer-linux-amd64" ./cmd/deployer
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o "$RUNNER_TEMP/deployer-dist/sub2api-deployer-linux-arm64" ./cmd/deployer
+          ../deploy/package-sub2api-deployer-bundles.sh "$RUNNER_TEMP/deployer-dist"
+
+  frontend-release:
+    name: Frontend Release Suite
+    needs: candidate
+    if: needs.candidate.outputs.required == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Full frontend release preflight
+        run: make test-frontend-release
+
+  preflight:
+    name: Release Preflight
+    if: always()
+    needs:
+      - candidate
+      - release-contracts
+      - frontend-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce candidate preflight result
+        env:
+          CANDIDATE_RESULT: ${{ needs.candidate.result }}
+          PREFLIGHT_REQUIRED: ${{ needs.candidate.outputs.required }}
+          CONTRACTS_RESULT: ${{ needs.release-contracts.result }}
+          FRONTEND_RESULT: ${{ needs.frontend-release.result }}
+        run: |
+          [[ "$CANDIDATE_RESULT" == "success" ]] || {
+            echo "Release candidate detection failed: $CANDIDATE_RESULT" >&2
+            exit 1
+          }
+          if [[ "$PREFLIGHT_REQUIRED" == "true" ]]; then
+            [[ "$CONTRACTS_RESULT" == "success" ]] || {
+              echo "Release contracts did not pass: $CONTRACTS_RESULT" >&2
+              exit 1
+            }
+            [[ "$FRONTEND_RESULT" == "success" ]] || {
+              echo "Frontend release suite did not pass: $FRONTEND_RESULT" >&2
+              exit 1
+            }
+          fi
+          echo "Release preflight passed for $TARGET_SHA"

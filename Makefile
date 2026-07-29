@@ -1,4 +1,4 @@
-.PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
+.PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical test-frontend-release
 
 FRONTEND_CRITICAL_VITEST := \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
@@ -32,3 +32,9 @@ test-frontend:
 
 test-frontend-critical:
 	@pnpm --dir frontend exec vitest run $(FRONTEND_CRITICAL_VITEST)
+
+# Tag 前发布预检：必须覆盖全量测试和实际生产构建。
+test-frontend-release:
+	@pnpm --dir frontend run lint:check
+	@pnpm --dir frontend run test:run
+	@pnpm --dir frontend run build

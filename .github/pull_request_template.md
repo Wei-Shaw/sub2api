@@ -50,6 +50,7 @@ Describe rollout, health signals, rollback target, and any condition that makes 
 - [ ] No secrets, production data, local reports, or duplicate ` 2` files are included
 - [ ] Tests cover success, failure, and boundary behavior
 - [ ] Required CI is green for the final commit SHA
+- [ ] Full frontend release preflight (lint, all Vitest, production build) is green before any release tag
 - [ ] P0/P1 audit findings are resolved
 - [ ] Documentation and release notes impact is addressed
 - [ ] Upstream synchronization is isolated from feature development

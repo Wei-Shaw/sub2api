@@ -506,9 +506,14 @@ verify_tag_commit() {
     fail "Previous release tag object $expected_previous_tag moved after validation"
 }
 
-verify_ruleset_json() {
-  local ruleset_path="$1"
-  [[ -f "$ruleset_path" ]] || fail "Release tag ruleset JSON is missing: $ruleset_path"
+verify_rulesets_json() {
+  local immutable_ruleset_path="$1"
+  local creation_ruleset_path="$2"
+  [[ -f "$immutable_ruleset_path" ]] || \
+    fail "Immutable release tag ruleset JSON is missing: $immutable_ruleset_path"
+  [[ -f "$creation_ruleset_path" ]] || \
+    fail "Release tag creation ruleset JSON is missing: $creation_ruleset_path"
+
   jq -e --arg pattern 'refs/tags/v*-ts.*' '
     (.conditions.ref_name.include // []) as $includes
     | ([.rules[]?.type]) as $rules
@@ -519,8 +524,27 @@ verify_ruleset_json() {
       and ((.bypass_actors // []) | length == 0)
       and (($rules | index("update")) != null)
       and (($rules | index("deletion")) != null)
-  ' "$ruleset_path" >/dev/null || \
-    fail "Release tag ruleset must actively forbid updates and deletion for refs/tags/v*-ts.* with no bypass actors"
+      and (($rules | index("creation")) == null)
+  ' "$immutable_ruleset_path" >/dev/null || \
+    fail "Immutable release tag ruleset must forbid updates and deletion for refs/tags/v*-ts.* with no bypass actors"
+
+  jq -e --arg pattern 'refs/tags/v*-ts.*' '
+    (.conditions.ref_name.include // []) as $includes
+    | ([.rules[]?.type]) as $rules
+    | (.bypass_actors // []) as $bypass
+    | .target == "tag"
+      and .enforcement == "active"
+      and (($includes | index($pattern)) != null or ($includes | index("~ALL")) != null)
+      and ((.conditions.ref_name.exclude // []) | length == 0)
+      and ($bypass | length == 1)
+      and ($bypass[0].actor_type == "DeployKey")
+      and ($bypass[0].actor_id == null)
+      and ($bypass[0].bypass_mode == "always")
+      and (($rules | index("creation")) != null)
+      and (($rules | index("update")) == null)
+      and (($rules | index("deletion")) == null)
+  ' "$creation_ruleset_path" >/dev/null || \
+    fail "Release tag creation ruleset must only forbid creation for refs/tags/v*-ts.* with the dedicated release deploy key as its sole bypass"
 }
 
 write_release_notes_output() {
@@ -579,7 +603,7 @@ Usage:
   release-safety.sh publish-release-with-latest <release-tag> <ghcr-repository> <ghcr-digest> <previous-ghcr-digest> [<dockerhub-repository> <dockerhub-digest> <previous-dockerhub-digest>]
   release-safety.sh validate <release-tag> <previous-release-tag> <main-ref>
   release-safety.sh verify-tag <release-tag> <validated-commit> <validated-tag-object> <previous-tag> <previous-commit> <previous-tag-object> <main-ref>
-  release-safety.sh verify-ruleset-json <ruleset-json-path>
+  release-safety.sh verify-rulesets-json <immutable-ruleset-json> <creation-ruleset-json>
   release-safety.sh write-notes-output <release-tag> <validated-tag-object> <notes-directory> <github-output-path>
 EOF
   exit 2
@@ -642,9 +666,9 @@ case "${1:-}" in
     [[ $# -eq 8 ]] || usage
     verify_tag_commit "$2" "$3" "$4" "$5" "$6" "$7" "$8"
     ;;
-  verify-ruleset-json)
-    [[ $# -eq 2 ]] || usage
-    verify_ruleset_json "$2"
+  verify-rulesets-json)
+    [[ $# -eq 3 ]] || usage
+    verify_rulesets_json "$2" "$3"
     ;;
   write-notes-output)
     [[ $# -eq 5 ]] || usage
