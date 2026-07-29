@@ -51,6 +51,45 @@
           </nav>
         </div>
 
+        <label v-if="activeClientTab === 'opencode' || isRawApiTab" class="block">
+          <span class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('keys.useKeyModal.apiExamples.modelLabel') }}
+          </span>
+          <div class="flex gap-2">
+            <input
+              v-model.trim="exampleModel"
+              class="input min-w-0 flex-1 font-mono"
+              autocomplete="off"
+              :list="isRawApiTab ? 'use-key-available-models' : undefined"
+              data-testid="use-key-test-model"
+            />
+            <button
+              v-if="isRawApiTab"
+              type="button"
+              class="btn btn-secondary flex-shrink-0"
+              :disabled="loadingModels || testingConnection"
+              data-testid="use-key-load-models"
+              @click="loadAvailableModels"
+            >
+              {{ loadingModels
+                ? t('keys.useKeyModal.connection.loadingModels')
+                : t('keys.useKeyModal.connection.loadModels') }}
+            </button>
+          </div>
+          <datalist id="use-key-available-models">
+            <option v-for="model in availableModels" :key="model" :value="model" />
+          </datalist>
+          <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+            {{ t('keys.useKeyModal.apiExamples.modelHint') }}
+          </span>
+          <span
+            v-if="modelLoadError && isRawApiTab"
+            class="mt-1 block text-xs text-amber-600 dark:text-amber-400"
+          >
+            {{ modelLoadError }}
+          </span>
+        </label>
+
         <!-- Codex Authentication Mode -->
         <div
           v-if="showCodexAuthMode"
@@ -172,6 +211,72 @@
           </div>
         </div>
 
+        <!-- Real API-key connection test -->
+        <section
+          v-if="isRawApiTab"
+          class="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/50"
+          data-testid="use-key-test-panel"
+        >
+          <div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+              {{ t('keys.useKeyModal.connection.title') }}
+            </h3>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('keys.useKeyModal.connection.description') }}
+            </p>
+          </div>
+
+          <label class="block">
+            <span class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('keys.useKeyModal.connection.inputLabel') }}
+            </span>
+            <textarea
+              v-model="testPrompt"
+              class="input min-h-24 resize-y"
+              maxlength="4000"
+              data-testid="use-key-test-input"
+            />
+          </label>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              class="btn btn-primary"
+              :disabled="testingConnection || !exampleModel.trim() || !testPrompt.trim()"
+              data-testid="use-key-test-submit"
+              @click="testApiKeyConnection"
+            >
+              {{ testingConnection
+                ? t('keys.useKeyModal.connection.testing')
+                : t('keys.useKeyModal.connection.test') }}
+            </button>
+            <span v-if="testResult" class="text-xs text-gray-600 dark:text-gray-300">
+              HTTP {{ testResult.status }} · {{ testResult.latencyMs }} ms
+            </span>
+            <span
+              v-if="testResult"
+              class="rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="testResult.ok
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'"
+            >
+              {{ testResult.ok
+                ? t('keys.useKeyModal.connection.success')
+                : t('keys.useKeyModal.connection.failed') }}
+            </span>
+          </div>
+
+          <div v-if="testResult" class="overflow-hidden rounded-xl bg-gray-900 dark:bg-dark-900">
+            <div class="border-b border-gray-700 bg-gray-800 px-4 py-2 text-xs text-gray-400">
+              {{ t('keys.useKeyModal.connection.outputLabel') }}
+            </div>
+            <pre
+              class="max-h-72 overflow-auto whitespace-pre-wrap break-words p-4 text-sm font-mono text-gray-100"
+              data-testid="use-key-test-output"
+            ><code v-text="testResult.body"></code></pre>
+          </div>
+        </section>
+
         <!-- Usage Note -->
         <div v-if="showPlatformNote" class="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">
           <Icon name="infoCircle" size="md" class="text-blue-500 flex-shrink-0 mt-0.5" />
@@ -209,6 +314,7 @@ interface Props {
   baseUrl: string
   platform: GroupPlatform | null
   allowMessagesDispatch?: boolean
+  defaultModel?: string
 }
 
 interface Emits {
@@ -239,6 +345,29 @@ const activeTab = ref<string>('unix')
 const activeClientTab = ref<string>('claude')
 type CodexAuthMode = 'legacy' | 'api-key'
 const codexAuthMode = ref<CodexAuthMode>('legacy')
+const exampleModel = ref('')
+const testPrompt = ref('Reply with the single word: pong')
+const availableModels = ref<string[]>([])
+const loadingModels = ref(false)
+const modelLoadError = ref('')
+const testingConnection = ref(false)
+const testResult = ref<{
+  ok: boolean
+  status: number
+  latencyMs: number
+  body: string
+} | null>(null)
+
+function defaultExampleModel(): string {
+  if (props.defaultModel?.trim()) return props.defaultModel.trim()
+  switch (props.platform) {
+    case 'anthropic': return 'claude-sonnet-5'
+    case 'gemini': return 'gemini-3.5-flash'
+    case 'antigravity': return 'claude-sonnet-4-6'
+    case 'grok': return 'grok-4.5'
+    default: return 'gpt-5.6'
+  }
+}
 
 // Reset tabs when platform changes
 const defaultClientTab = computed(() => {
@@ -260,17 +389,34 @@ watch(() => props.platform, () => {
   activeTab.value = 'unix'
   activeClientTab.value = defaultClientTab.value
   codexAuthMode.value = 'legacy'
+  exampleModel.value = defaultExampleModel()
+  availableModels.value = []
+  modelLoadError.value = ''
+  testResult.value = null
 }, { immediate: true })
+
+watch(() => props.defaultModel, () => {
+  if (props.show) exampleModel.value = defaultExampleModel()
+})
 
 watch(() => props.show, (show) => {
   if (show) {
     codexAuthMode.value = 'legacy'
+    exampleModel.value = defaultExampleModel()
+    testPrompt.value = 'Reply with the single word: pong'
+    availableModels.value = []
+    modelLoadError.value = ''
+    testResult.value = null
   }
 })
 
 // Reset shell tab when client changes
 watch(activeClientTab, () => {
   activeTab.value = 'unix'
+  testResult.value = null
+  if (isRawApiTab.value && availableModels.value.length === 0) {
+    void loadAvailableModels()
+  }
 })
 
 // Icon components
@@ -294,6 +440,24 @@ const WindowsIcon = {
       class: 'w-4 h-4'
     }, [
       h('path', { d: 'M3 12V6.75l6-1.32v6.48L3 12zm17-9v8.75l-10 .15V5.21L20 3zM3 13l6 .09v6.81l-6-1.15V13zm7 .25l10 .15V21l-10-1.91v-5.84z' })
+    ])
+  }
+}
+
+const CodeIcon = {
+  render() {
+    return h('svg', {
+      fill: 'none',
+      stroke: 'currentColor',
+      viewBox: '0 0 24 24',
+      'stroke-width': '1.5',
+      class: 'w-4 h-4'
+    }, [
+      h('path', {
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        d: 'm8.25 9.75-3 2.25 3 2.25m7.5-4.5 3 2.25-3 2.25m-3-7.5-1.5 10.5'
+      })
     ])
   }
 }
@@ -336,6 +500,11 @@ const SparkleIcon = {
   }
 }
 
+const rawApiTabs = (): TabConfig[] => [
+  { id: 'curl', label: t('keys.useKeyModal.cliTabs.curl'), icon: TerminalIcon },
+  { id: 'python', label: t('keys.useKeyModal.cliTabs.python'), icon: CodeIcon }
+]
+
 const clientTabs = computed((): TabConfig[] => {
   if (!props.platform) return []
   switch (props.platform) {
@@ -348,30 +517,35 @@ const clientTabs = computed((): TabConfig[] => {
         tabs.push({ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon })
       }
       tabs.push({ id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon })
+      tabs.push(...rawApiTabs())
       return tabs
     }
     case 'gemini':
       return [
         { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon },
+        ...rawApiTabs()
       ]
     case 'antigravity':
       return [
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
         { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon },
+        ...rawApiTabs()
       ]
     case 'grok':
       return [
         { id: 'grok', label: t('keys.useKeyModal.cliTabs.grokCli'), icon: TerminalIcon },
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon },
+        ...rawApiTabs()
       ]
     default:
       return [
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon },
+        ...rawApiTabs()
       ]
   }
 })
@@ -389,7 +563,13 @@ const openaiTabs: TabConfig[] = [
   { id: 'windows', label: 'Windows', icon: WindowsIcon }
 ]
 
-const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
+const isRawApiTab = computed(() =>
+  activeClientTab.value === 'curl' || activeClientTab.value === 'python'
+)
+
+const showShellTabs = computed(() =>
+  activeClientTab.value !== 'opencode' && !isRawApiTab.value
+)
 
 const showCodexAuthMode = computed(() =>
   props.platform === 'openai' &&
@@ -460,7 +640,9 @@ const platformNote = computed(() => {
   }
 })
 
-const showPlatformNote = computed(() => activeClientTab.value !== 'opencode')
+const showPlatformNote = computed(() =>
+  activeClientTab.value !== 'opencode' && !isRawApiTab.value
+)
 
 const escapeHtml = (value: string) => value
   .replace(/&/g, '&amp;')
@@ -498,6 +680,25 @@ const currentFiles = computed((): FileConfig[] => {
     const trimmed = baseRoot.replace(/\/+$/, '')
     return trimmed.endsWith('/v1beta') ? trimmed : `${trimmed}/v1beta`
   })()
+
+  if (isRawApiTab.value) {
+    let examples: FileConfig[]
+    switch (props.platform) {
+      case 'anthropic':
+        examples = generateAnthropicApiExamples(apiBase, apiKey, exampleModel.value)
+        break
+      case 'gemini':
+        examples = generateGeminiApiExamples(geminiBase, apiKey, exampleModel.value)
+        break
+      case 'antigravity':
+        examples = generateAnthropicApiExamples(antigravityBase, apiKey, exampleModel.value)
+        break
+      default:
+        examples = generateOpenAICompatApiExamples(apiBase, apiKey, exampleModel.value)
+        break
+    }
+    return examples.filter((file) => file.path === activeClientTab.value)
+  }
 
   if (activeClientTab.value === 'opencode') {
     switch (props.platform) {
@@ -1388,6 +1589,333 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     path: pathLabel ?? 'opencode.json',
     content,
     hint: t('keys.useKeyModal.opencode.hint')
+  }
+}
+
+
+// ---- Raw API examples -------------------------------------------------
+//
+// Shown in dedicated cURL and Python tabs so a key can be smoke-tested with
+// no extra client configuration. Each block ends with a commented sample response, so the
+// expected output is visible without running anything, and the block stays
+// paste-able because the comment syntax is valid in both shells and Python.
+
+/** Prefixes every line of a sample payload with a comment marker. */
+function commentBlock(marker: string, title: string, body: string): string {
+  const lines = body.trim().split('\n').map((line) => `${marker} ${line}`.trimEnd())
+  return [`${marker} ${title}`, ...lines].join('\n')
+}
+
+function anthropicSampleResponse(model: string): string {
+  return `{
+  "id": "msg_01XyZ...",
+  "type": "message",
+  "role": "assistant",
+  "model": "${model}",
+  "content": [{ "type": "text", "text": "pong" }],
+  "stop_reason": "end_turn",
+  "usage": { "input_tokens": 14, "output_tokens": 3 }
+}`
+}
+
+function openAISampleResponse(model: string): string {
+  return `{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "model": "${model}",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "pong" },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": { "prompt_tokens": 14, "completion_tokens": 3, "total_tokens": 17 }
+}`
+}
+
+function geminiSampleResponse(model: string): string {
+  return `{
+  "candidates": [
+    {
+      "content": { "role": "model", "parts": [{ "text": "pong" }] },
+      "finishReason": "STOP"
+    }
+  ],
+  "modelVersion": "${model}",
+  "usageMetadata": { "promptTokenCount": 8, "candidatesTokenCount": 3, "totalTokenCount": 11 }
+}`
+}
+
+/** apiBase already ends in /v1, so the Anthropic SDK needs the root instead. */
+function stripVersionSuffix(baseUrl: string): string {
+  return baseUrl.replace(/\/v1(beta)?\/?$/, '')
+}
+
+function generateAnthropicApiExamples(apiBase: string, apiKey: string, model = 'claude-sonnet-5'): FileConfig[] {
+  const curl = `curl -sS ${apiBase}/messages \\
+  -H "x-api-key: ${apiKey}" \\
+  -H "anthropic-version: 2023-06-01" \\
+  -H "content-type: application/json" \\
+  -d '{
+    "model": "${model}",
+    "max_tokens": 64,
+    "messages": [
+      { "role": "user", "content": "Reply with the single word: pong" }
+    ]
+  }'
+
+${commentBlock('#', t('keys.useKeyModal.apiExamples.sampleResponse'), anthropicSampleResponse(model))}`
+
+  const python = `# pip install anthropic
+from anthropic import Anthropic
+
+client = Anthropic(
+    base_url="${stripVersionSuffix(apiBase)}",
+    api_key="${apiKey}",
+)
+
+message = client.messages.create(
+    model="${model}",
+    max_tokens=64,
+    messages=[{"role": "user", "content": "Reply with the single word: pong"}],
+)
+print(message.content[0].text)
+
+${commentBlock('#', t('keys.useKeyModal.apiExamples.sampleOutput'), 'pong')}`
+
+  return [
+    { path: 'curl', content: curl, hint: t('keys.useKeyModal.apiExamples.hint') },
+    { path: 'python', content: python }
+  ]
+}
+
+function generateOpenAICompatApiExamples(apiBase: string, apiKey: string, model: string): FileConfig[] {
+  const curl = `curl -sS ${apiBase}/chat/completions \\
+  -H "Authorization: Bearer ${apiKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "${model}",
+    "messages": [
+      { "role": "user", "content": "Reply with the single word: pong" }
+    ]
+  }'
+
+${commentBlock('#', t('keys.useKeyModal.apiExamples.sampleResponse'), openAISampleResponse(model))}`
+
+  const python = `# pip install openai
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="${apiBase}",
+    api_key="${apiKey}",
+)
+
+completion = client.chat.completions.create(
+    model="${model}",
+    messages=[{"role": "user", "content": "Reply with the single word: pong"}],
+)
+print(completion.choices[0].message.content)
+
+${commentBlock('#', t('keys.useKeyModal.apiExamples.sampleOutput'), 'pong')}`
+
+  return [
+    { path: 'curl', content: curl, hint: t('keys.useKeyModal.apiExamples.hint') },
+    { path: 'python', content: python }
+  ]
+}
+
+function generateGeminiApiExamples(geminiBase: string, apiKey: string, model = 'gemini-3.5-flash'): FileConfig[] {
+  const curl = `curl -sS "${geminiBase}/models/${model}:generateContent" \\
+  -H "x-goog-api-key: ${apiKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Reply with the single word: pong" }] }
+    ]
+  }'
+
+${commentBlock('#', t('keys.useKeyModal.apiExamples.sampleResponse'), geminiSampleResponse(model))}`
+
+  const python = `# pip install requests
+import requests
+
+resp = requests.post(
+    "${geminiBase}/models/${model}:generateContent",
+    headers={"x-goog-api-key": "${apiKey}", "Content-Type": "application/json"},
+    json={
+        "contents": [
+            {"role": "user", "parts": [{"text": "Reply with the single word: pong"}]}
+        ]
+    },
+    timeout=60,
+)
+resp.raise_for_status()
+print(resp.json()["candidates"][0]["content"]["parts"][0]["text"])
+
+${commentBlock('#', t('keys.useKeyModal.apiExamples.sampleOutput'), 'pong')}`
+
+  return [
+    { path: 'curl', content: curl, hint: t('keys.useKeyModal.apiExamples.hint') },
+    { path: 'python', content: python }
+  ]
+}
+
+function gatewayURLs() {
+  const configuredBase = props.baseUrl || window.location.origin
+  const baseRoot = configuredBase.replace(/\/v1(beta)?\/?$/, '').replace(/\/+$/, '')
+  return {
+    apiBase: `${baseRoot}/v1`,
+    geminiBase: `${baseRoot}/v1beta`,
+    antigravityBase: `${baseRoot}/antigravity/v1`
+  }
+}
+
+function extractModelIDs(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return []
+  const root = payload as Record<string, unknown>
+  const candidates = Array.isArray(root.data)
+    ? root.data
+    : Array.isArray(root.models)
+      ? root.models
+      : []
+  return [...new Set(candidates.flatMap((item) => {
+    if (typeof item === 'string') return [item.replace(/^models\//, '')]
+    if (!item || typeof item !== 'object') return []
+    const model = item as Record<string, unknown>
+    const id = model.id ?? model.name ?? model.slug
+    return typeof id === 'string' ? [id.replace(/^models\//, '')] : []
+  }))]
+}
+
+async function loadAvailableModels() {
+  if (loadingModels.value || !props.apiKey) return
+  loadingModels.value = true
+  modelLoadError.value = ''
+  try {
+    const { apiBase, geminiBase, antigravityBase } = gatewayURLs()
+    let url = `${apiBase}/models`
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${props.apiKey}`
+    }
+    if (props.platform === 'gemini') {
+      url = `${geminiBase}/models`
+      headers['x-goog-api-key'] = props.apiKey
+    } else if (props.platform === 'antigravity') {
+      url = `${antigravityBase}/models`
+    }
+    const response = await fetch(url, { headers })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      throw new Error(formatGatewayPayload(payload) || `HTTP ${response.status}`)
+    }
+    const models = extractModelIDs(payload)
+    if (models.length === 0) {
+      throw new Error(t('keys.useKeyModal.connection.noModels'))
+    }
+    availableModels.value = models
+    if (!exampleModel.value || !models.includes(exampleModel.value)) {
+      exampleModel.value = models[0]
+    }
+  } catch (error) {
+    modelLoadError.value = error instanceof Error
+      ? error.message
+      : t('keys.useKeyModal.connection.loadModelsFailed')
+  } finally {
+    loadingModels.value = false
+  }
+}
+
+function formatGatewayPayload(payload: unknown): string {
+  if (payload === null || payload === undefined) return ''
+  if (typeof payload === 'string') return payload
+  try {
+    return JSON.stringify(payload, null, 2)
+  } catch {
+    return String(payload)
+  }
+}
+
+async function testApiKeyConnection() {
+  const model = exampleModel.value.trim()
+  const prompt = testPrompt.value.trim()
+  if (!model || !prompt || testingConnection.value) return
+
+  testingConnection.value = true
+  testResult.value = null
+  const startedAt = performance.now()
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 90000)
+
+  try {
+    const { apiBase, geminiBase, antigravityBase } = gatewayURLs()
+    let url = `${apiBase}/chat/completions`
+    let headers: Record<string, string> = {
+      Authorization: `Bearer ${props.apiKey}`,
+      'Content-Type': 'application/json'
+    }
+    let body: Record<string, unknown> = {
+      model,
+      messages: [{ role: 'user', content: prompt }]
+    }
+
+    if (props.platform === 'anthropic' || props.platform === 'antigravity') {
+      url = `${props.platform === 'antigravity' ? antigravityBase : apiBase}/messages`
+      headers = {
+        'x-api-key': props.apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      }
+      body = {
+        model,
+        max_tokens: 256,
+        messages: [{ role: 'user', content: prompt }]
+      }
+    } else if (props.platform === 'gemini') {
+      url = `${geminiBase}/models/${encodeURIComponent(model)}:generateContent`
+      headers = {
+        'x-goog-api-key': props.apiKey,
+        'Content-Type': 'application/json'
+      }
+      body = {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }]
+      }
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal
+    })
+    const raw = await response.text()
+    let formatted = raw
+    try {
+      formatted = JSON.stringify(JSON.parse(raw), null, 2)
+    } catch {
+      // Preserve non-JSON upstream errors verbatim.
+    }
+    testResult.value = {
+      ok: response.ok,
+      status: response.status,
+      latencyMs: Math.round(performance.now() - startedAt),
+      body: formatted || '(empty response)'
+    }
+  } catch (error) {
+    const timedOut = error instanceof DOMException && error.name === 'AbortError'
+    testResult.value = {
+      ok: false,
+      status: 0,
+      latencyMs: Math.round(performance.now() - startedAt),
+      body: timedOut
+        ? t('keys.useKeyModal.connection.timeout')
+        : error instanceof Error
+          ? error.message
+          : String(error)
+    }
+  } finally {
+    window.clearTimeout(timeout)
+    testingConnection.value = false
   }
 }
 

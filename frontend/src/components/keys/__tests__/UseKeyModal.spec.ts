@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
@@ -21,6 +21,10 @@ vi.mock('@/composables/useClipboard', () => ({
 import UseKeyModal from '../UseKeyModal.vue'
 
 describe('UseKeyModal', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('renders Grok Build and OpenCode setup for Grok groups', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
@@ -560,5 +564,132 @@ describe('UseKeyModal', () => {
     expect(fable.limit).toEqual({ context: 1048576, output: 128000 })
     expect(fable.options.thinking).toEqual({ type: 'adaptive' })
     expect(fable.options.thinking).not.toHaveProperty('budgetTokens')
+  })
+
+  it('shows a dedicated cURL page and sends a real API-key connection test', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: [{ id: 'glm-5.2' }, { id: 'glm-5-turbo' }]
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'chatcmpl-test',
+        choices: [{ message: { role: 'assistant', content: 'pong' } }]
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-user-test',
+        baseUrl: 'https://api.example.com/v1',
+        platform: 'openai'
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const curlTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.curl')
+    )
+    expect(curlTab).toBeDefined()
+    await curlTab!.trigger('click')
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.example.com/v1/models',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer sk-user-test'
+          })
+        })
+      )
+      expect(
+        (wrapper.get('[data-testid="use-key-test-model"]').element as HTMLInputElement).value
+      ).toBe('glm-5.2')
+    })
+
+    const curlCode = wrapper.find('pre code').text()
+    expect(curlCode).toContain('curl -sS https://api.example.com/v1/chat/completions')
+    expect(curlCode).toContain('Authorization: Bearer sk-user-test')
+    expect(wrapper.get('[data-testid="use-key-test-panel"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="use-key-test-input"]').setValue('say pong')
+    await wrapper.get('[data-testid="use-key-test-submit"]').trigger('click')
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(wrapper.get('[data-testid="use-key-test-output"]').text()).toContain('chatcmpl-test')
+      expect(wrapper.text()).toContain('HTTP 200')
+      expect(wrapper.text()).toContain('keys.useKeyModal.connection.success')
+    })
+
+    const [, request] = fetchMock.mock.calls[1]
+    expect(request).toEqual(expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({
+        Authorization: 'Bearer sk-user-test'
+      })
+    }))
+    expect(JSON.parse(request.body as string)).toEqual({
+      model: 'glm-5.2',
+      messages: [{ role: 'user', content: 'say pong' }]
+    })
+  })
+
+  it('shows a dedicated Python page with input, output, and executable example', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      models: [{ name: 'models/gemini-3.5-flash' }]
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })))
+
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-gemini-test',
+        baseUrl: 'https://api.example.com',
+        platform: 'gemini'
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const pythonTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.python')
+    )
+    expect(pythonTab).toBeDefined()
+    await pythonTab!.trigger('click')
+
+    await vi.waitFor(() => {
+      const pythonCode = wrapper.find('pre code').text()
+      expect(pythonCode).toContain('import requests')
+      expect(pythonCode).toContain('x-goog-api-key')
+      expect(pythonCode).toContain('sk-gemini-test')
+    })
+    expect(wrapper.get('[data-testid="use-key-test-input"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="use-key-test-submit"]').exists()).toBe(true)
   })
 })

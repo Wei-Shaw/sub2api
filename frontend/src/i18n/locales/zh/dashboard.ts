@@ -155,7 +155,9 @@ export default {
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         grokCli: 'Grok CLI',
-        opencode: 'OpenCode'
+        opencode: 'OpenCode',
+        curl: 'cURL',
+        python: 'Python'
       },
       antigravity: {
         description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
@@ -183,6 +185,28 @@ export default {
         claudeNote: '二选一即可：终端命令仅在当前会话生效；保存 settings.json 可作为用户级持久配置。',
         codexNote: '将 config.toml 保存到 ~/.codex，并在启动 Codex 前设置 SUB2API_API_KEY。',
         codexNoteWindows: '将 config.toml 保存到 %USERPROFILE%\\.codex，并在 PowerShell 中设置 SUB2API_API_KEY 后启动 Codex。'
+      },
+      apiExamples: {
+        hint: '复制下面的完整示例即可调用；代码末尾以注释给出了预期返回。',
+        modelLabel: '测试模型',
+        modelHint: '默认使用当前分组的映射模型；如该模型未开放，请改成管理员为该分组启用的模型。',
+        sampleResponse: '预期返回：',
+        sampleOutput: '预期输出：',
+      },
+      connection: {
+        title: '测试连接',
+        description: '使用当前 API Key 发起一次真实请求，同时验证密钥、分组路由、额度和模型是否可用。本次请求会正常记录用量。',
+        inputLabel: '测试输入',
+        loadModels: '加载模型',
+        loadingModels: '加载中…',
+        loadModelsFailed: '加载模型失败，请手动填写模型名称。',
+        noModels: '当前分组没有返回可用模型，请手动填写模型名称。',
+        test: '发送测试',
+        testing: '请求中…',
+        success: '连接成功',
+        failed: '连接失败',
+        outputLabel: '实际响应输出',
+        timeout: '请求超过 90 秒，已取消。'
       },
       opencode: {
         title: 'OpenCode 配置示例',
