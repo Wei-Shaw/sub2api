@@ -1,13 +1,14 @@
 <template>
-  <AuthLayout>
-    <div class="space-y-6">
+  <AuthLayout variant="register">
+    <div class="register-content space-y-6">
       <!-- Title -->
-      <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+      <div class="register-heading">
+        <p class="register-eyebrow">Create Account</p>
+        <h2>
           {{ t('auth.createAccount') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
-          {{ t('auth.signUpToStart', { siteName }) }}
+        <p class="register-lede">
+          注册以开始使用 EasyHub
         </p>
       </div>
 
@@ -27,7 +28,7 @@
       </div>
 
       <!-- Registration Form -->
-      <form v-else @submit.prevent="handleRegister" class="space-y-5">
+      <form v-else @submit.prevent="handleRegister" class="register-form space-y-5">
         <!-- Email Input -->
         <div>
           <label for="email" class="input-label">
@@ -230,7 +231,7 @@
         <button
           type="submit"
           :disabled="registrationActionDisabled || (turnstileEnabled && !turnstileToken)"
-          class="btn btn-primary w-full"
+          class="btn register-submit w-full"
         >
           <svg
             v-if="isLoading"
@@ -305,11 +306,11 @@
 
     <!-- Footer -->
     <template #footer>
-      <p class="text-gray-500 dark:text-dark-400">
+      <p class="auth-switch">
         {{ t('auth.alreadyHaveAccount') }}
         <router-link
           to="/login"
-          class="font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+          class="auth-switch-link"
         >
           {{ t('auth.signIn') }}
         </router-link>
@@ -941,6 +942,121 @@ async function handleRegister(): Promise<void> {
 </script>
 
 <style scoped>
+.register-heading {
+  text-align: left;
+}
+
+.register-eyebrow {
+  margin-bottom: 14px;
+  color: #c8a96a;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.register-heading h2 {
+  color: #f2f0ec;
+  font-size: clamp(1.7rem, 3vw, 2.1rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.register-lede {
+  margin-top: 14px;
+  color: #a5a29c;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.register-content :deep(.input-label) {
+  margin-bottom: 8px;
+  color: #a5a29c;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.register-content :deep(.input) {
+  min-height: 50px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0;
+  background: #17171a;
+  color: #f2f0ec;
+  box-shadow: none;
+}
+
+.register-content :deep(.input:hover) {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.register-content :deep(.input:focus) {
+  border-color: #c8a96a;
+  box-shadow: 0 0 0 2px rgba(200, 169, 106, 0.16);
+}
+
+.register-content :deep(.input-error) {
+  border-color: #d4726a;
+}
+
+.register-content :deep(.input-hint) {
+  color: #6e6b66;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.register-content :deep(.relative > .pointer-events-none svg),
+.register-content :deep(button[type='button'] svg) {
+  color: #6e6b66;
+}
+
+.register-content :deep(.btn) {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.register-submit {
+  min-height: 50px;
+  background: #f2f0ec;
+  color: #0b0b0c;
+  font-weight: 600;
+}
+
+.register-submit:hover:not(:disabled) {
+  background: #c8a96a;
+  box-shadow: none;
+  transform: translateY(-2px);
+}
+
+.register-content :deep(.bg-gray-200),
+.register-content :deep(.dark\:bg-dark-700) {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.register-content :deep(.text-gray-500),
+.register-content :deep(.dark\:text-dark-400) {
+  color: #6e6b66 !important;
+}
+
+.auth-switch {
+  color: #6e6b66;
+  font-size: 13px;
+}
+
+.auth-switch-link {
+  margin-left: 4px;
+  color: #c8a96a;
+  font-weight: 500;
+  transition: color 0.25s;
+}
+
+.auth-switch-link:hover {
+  color: #f2f0ec;
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: all 0.3s ease;

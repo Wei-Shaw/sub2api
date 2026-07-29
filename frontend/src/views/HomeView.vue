@@ -1,645 +1,305 @@
 <template>
-  <!-- Custom Home Content: Full Page Mode -->
   <div v-if="homeContent" class="min-h-screen">
-    <!-- iframe mode -->
     <iframe
       v-if="isHomeContentUrl"
       :src="homeContent.trim()"
       class="h-screen w-full border-0"
       allowfullscreen
     ></iframe>
-    <!-- HTML mode - SECURITY: homeContent is admin-only setting, XSS risk is acceptable -->
     <div v-else v-html="homeContent"></div>
   </div>
 
-  <!-- Default Home Page -->
-  <div
-    v-else
-    class="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
-  >
-    <!-- Background Decorations -->
-    <div class="pointer-events-none absolute inset-0 overflow-hidden">
-      <div
-        class="absolute -right-40 -top-40 h-96 w-96 rounded-full bg-primary-400/20 blur-3xl"
-      ></div>
-      <div
-        class="absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-primary-500/15 blur-3xl"
-      ></div>
-      <div
-        class="absolute left-1/3 top-1/4 h-72 w-72 rounded-full bg-primary-300/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute bottom-1/4 right-1/4 h-64 w-64 rounded-full bg-primary-400/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
-      ></div>
-    </div>
+  <div v-else ref="landingRoot" class="landing-shell">
+    <aside class="identity-panel">
+      <div class="identity-glow" aria-hidden="true"></div>
+      <div class="identity-rule" aria-hidden="true"></div>
 
-    <!-- Header -->
-    <header class="relative z-20 px-6 py-4">
-      <nav class="mx-auto flex max-w-6xl items-center justify-between">
-        <!-- Logo -->
-        <div class="flex items-center">
-          <div class="h-10 w-10 overflow-hidden rounded-xl shadow-md">
-            <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
-          </div>
-        </div>
-
-        <!-- Nav Actions -->
-        <div class="flex items-center gap-3">
-          <!-- Language Switcher -->
-          <LocaleSwitcher />
-
-          <!-- Doc Link -->
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="t('home.viewDocs')"
-          >
-            <Icon name="book" size="md" />
-          </a>
-
-          <!-- Theme Toggle -->
-          <button
-            @click="toggleTheme"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
-          >
-            <Icon v-if="isDark" name="sun" size="md" />
-            <Icon v-else name="moon" size="md" />
-          </button>
-
-          <!-- Login / Dashboard Button -->
-          <router-link
-            v-if="isAuthenticated"
-            :to="dashboardPath"
-            class="inline-flex items-center gap-1.5 rounded-full bg-gray-900 py-1 pl-1 pr-2.5 transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
-          >
-            <span
-              class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-[10px] font-semibold text-white"
-            >
-              {{ userInitial }}
-            </span>
-            <span class="text-xs font-medium text-white">{{ t('home.dashboard') }}</span>
-            <svg
-              class="h-3 w-3 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"
-              />
-            </svg>
-          </router-link>
-          <router-link
-            v-else
-            to="/login"
-            class="inline-flex items-center rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
-          >
-            {{ t('home.login') }}
-          </router-link>
-        </div>
-      </nav>
-    </header>
-
-    <!-- Main Content -->
-    <main class="relative z-10 flex-1 px-6 py-16">
-      <div class="mx-auto max-w-6xl">
-        <!-- Hero Section - Left/Right Layout -->
-        <div class="mb-12 flex flex-col items-center justify-between gap-12 lg:flex-row lg:gap-16">
-          <!-- Left: Text Content -->
-          <div class="flex-1 text-center lg:text-left">
-            <h1
-              class="mb-4 text-4xl font-bold text-gray-900 dark:text-white md:text-5xl lg:text-6xl"
-            >
-              {{ siteName }}
-            </h1>
-            <p class="mb-8 text-lg text-gray-600 dark:text-dark-300 md:text-xl">
-              {{ siteSubtitle }}
-            </p>
-
-            <!-- CTA Button -->
-            <div>
-              <router-link
-                :to="isAuthenticated ? dashboardPath : '/login'"
-                class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
-              >
-                {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
-                <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
-              </router-link>
-            </div>
-          </div>
-
-          <!-- Right: Terminal Animation -->
-          <div class="flex flex-1 justify-center lg:justify-end">
-            <div class="terminal-container">
-              <div class="terminal-window">
-                <!-- Window header -->
-                <div class="terminal-header">
-                  <div class="terminal-buttons">
-                    <span class="btn-close"></span>
-                    <span class="btn-minimize"></span>
-                    <span class="btn-maximize"></span>
-                  </div>
-                  <span class="terminal-title">terminal</span>
-                </div>
-                <!-- Terminal content -->
-                <div class="terminal-body">
-                  <div class="code-line line-1">
-                    <span class="code-prompt">$</span>
-                    <span class="code-cmd">curl</span>
-                    <span class="code-flag">-X POST</span>
-                    <span class="code-url">/v1/messages</span>
-                  </div>
-                  <div class="code-line line-2">
-                    <span class="code-comment"># Routing to upstream...</span>
-                  </div>
-                  <div class="code-line line-3">
-                    <span class="code-success">200 OK</span>
-                    <span class="code-response">{ "content": "Hello!" }</span>
-                  </div>
-                  <div class="code-line line-4">
-                    <span class="code-prompt">$</span>
-                    <span class="cursor"></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Feature Tags - Centered -->
-        <div class="mb-12 flex flex-wrap items-center justify-center gap-4 md:gap-6">
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
-          >
-            <Icon name="swap" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.subscriptionToApi')
-            }}</span>
-          </div>
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
-          >
-            <Icon name="shield" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.stickySession')
-            }}</span>
-          </div>
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
-          >
-            <Icon name="chart" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.realtimeBilling')
-            }}</span>
-          </div>
-        </div>
-
-        <!-- Features Grid -->
-        <div class="mb-12 grid gap-6 md:grid-cols-3">
-          <!-- Feature 1: Unified Gateway -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30 transition-transform group-hover:scale-110"
-            >
-              <Icon name="server" size="lg" class="text-white" />
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.unifiedGateway') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.unifiedGatewayDesc') }}
-            </p>
-          </div>
-
-          <!-- Feature 2: Account Pool -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/30 transition-transform group-hover:scale-110"
-            >
-              <svg
-                class="h-6 w-6 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"
-                />
-              </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.multiAccount') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.multiAccountDesc') }}
-            </p>
-          </div>
-
-          <!-- Feature 3: Billing & Quota -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg shadow-purple-500/30 transition-transform group-hover:scale-110"
-            >
-              <svg
-                class="h-6 w-6 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
-                />
-              </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.balanceQuota') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.balanceQuotaDesc') }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Supported Providers -->
-        <div class="mb-8 text-center">
-          <h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">
-            {{ t('home.providers.title') }}
-          </h2>
-          <p class="text-sm text-gray-600 dark:text-dark-400">
-            {{ t('home.providers.description') }}
-          </p>
-        </div>
-
-        <div class="mb-16 flex flex-wrap items-center justify-center gap-4">
-          <!-- Claude - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-400 to-orange-500"
-            >
-              <span class="text-xs font-bold text-white">C</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.claude') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- GPT - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600"
-            >
-              <span class="text-xs font-bold text-white">G</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">GPT</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Gemini - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600"
-            >
-              <span class="text-xs font-bold text-white">G</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.gemini') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Antigravity - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-pink-600"
-            >
-              <span class="text-xs font-bold text-white">A</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.antigravity') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- More - Coming Soon -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-gray-200/50 bg-white/40 px-5 py-3 opacity-60 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/40"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-gray-500 to-gray-600"
-            >
-              <span class="text-xs font-bold text-white">+</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.more') }}</span>
-            <span
-              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400"
-              >{{ t('home.providers.soon') }}</span
-            >
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- Footer -->
-    <footer class="relative z-10 border-t border-gray-200/50 px-6 py-8 dark:border-dark-800/50">
-      <div
-        class="mx-auto flex max-w-6xl flex-col items-center justify-center gap-4 text-center sm:flex-row sm:text-left"
+      <router-link
+        to="/home"
+        class="brand-mark"
+        aria-label="EasyHub 首页"
+        :data-custom-logo="siteLogo ? 'configured' : undefined"
       >
-        <p class="text-sm text-gray-500 dark:text-dark-400">
-          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
-        </p>
-        <div class="flex items-center gap-4">
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-          >
-            {{ t('home.docs') }}
-          </a>
-          <a
-            :href="githubUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-          >
-            GitHub
-          </a>
+        <span class="brand-glyph" aria-hidden="true">EH</span>
+        <span>
+          <strong>EasyHub</strong>
+          <small>AI API RELAY</small>
+        </span>
+      </router-link>
+
+      <div class="identity-copy">
+        <p class="service-status"><i></i> GPT / CODEX · 运行正常</p>
+        <h1>调度顶尖模型的<br /><b>单一入口</b></h1>
+        <p>当前支持 GPT / Codex。智能路由、Token 级计量、<br />企业级可用性 — 更多模型即将接入。</p>
+        <div class="hero-actions">
+          <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="action-fill">
+            进入控制台
+            <Icon name="arrowRight" size="sm" />
+          </router-link>
+          <a href="#capability" class="action-outline" @click.prevent="scrollToSection('capability')">查看能力</a>
+          <a :href="docHref" target="_blank" rel="noopener noreferrer" class="action-outline">使用手册</a>
         </div>
       </div>
-    </footer>
+
+      <nav class="section-index" aria-label="首页章节">
+        <a href="#capability" :class="{ active: activeSection === 'capability' }" @click.prevent="scrollToSection('capability')"><span>01</span>核心能力</a>
+        <a href="#models" :class="{ active: activeSection === 'models' }" @click.prevent="scrollToSection('models')"><span>02</span>模型矩阵</a>
+        <a href="#protocol" :class="{ active: activeSection === 'protocol' }" @click.prevent="scrollToSection('protocol')"><span>03</span>接口协议</a>
+        <a href="#access" :class="{ active: activeSection === 'access' }" @click.prevent="scrollToSection('access')"><span>04</span>接入流程</a>
+      </nav>
+    </aside>
+
+    <main class="content-panel">
+      <div class="ticker" aria-hidden="true">
+        <div class="ticker-track">
+          <span class="ticker-item"><b>GPT</b> Codex · Responses</span>
+          <span class="ticker-item is-soon"><b>Claude</b> 即将接入</span>
+          <span class="ticker-item is-soon"><b>Gemini</b> 即将接入</span>
+          <span class="ticker-item is-soon"><b>Grok</b> 即将接入</span>
+          <span class="ticker-item"><b>Sticky</b> Session</span>
+          <span class="ticker-item"><b>Token</b> Level Billing</span>
+          <span class="ticker-item"><b>GPT</b> Codex · Responses</span>
+          <span class="ticker-item is-soon"><b>Claude</b> 即将接入</span>
+          <span class="ticker-item is-soon"><b>Gemini</b> 即将接入</span>
+          <span class="ticker-item is-soon"><b>Grok</b> 即将接入</span>
+          <span class="ticker-item"><b>Sticky</b> Session</span>
+          <span class="ticker-item"><b>Token</b> Level Billing</span>
+        </div>
+      </div>
+
+      <section id="overview" class="content-block overview-block reveal-section">
+        <p class="eyebrow">00 / Overview</p>
+        <h2>不是演示环境，<br />是可靠的模型基础设施</h2>
+        <p class="lede">从账号池调度到 Token 级计量，EasyHub 承担鉴权、路由与计费，让上游凭证与业务代码彼此解耦。</p>
+        <div class="ledger">
+          <div><strong>OpenAI</strong><span>协议兼容</span></div>
+          <div><strong>SSE</strong><span>流式响应</span></div>
+          <div><strong>Token</strong><span>精确计量</span></div>
+          <div><strong>24 / 7</strong><span>运行监控</span></div>
+        </div>
+      </section>
+
+      <section id="capability" class="content-block reveal-section">
+        <p class="eyebrow">01 / Capability</p>
+        <h2>四层能力，覆盖完整链路</h2>
+        <p class="lede">协议、调度、计量与安全各自保持清晰边界，按团队规模逐步开放。</p>
+        <div class="capability-rows">
+          <article><span>01</span><h3>{{ t('home.features.unifiedGateway') }}</h3><p>{{ t('home.features.unifiedGatewayDesc') }}</p></article>
+          <article><span>02</span><h3>{{ t('home.features.multiAccount') }}</h3><p>{{ t('home.features.multiAccountDesc') }}</p></article>
+          <article><span>03</span><h3>{{ t('home.features.balanceQuota') }}</h3><p>{{ t('home.features.balanceQuotaDesc') }}</p></article>
+          <article><span>04</span><h3>密钥隔离与审计</h3><p>向调用方分发平台 API Key，上游凭证不外泄；请求记录与权限边界便于团队协作。</p></article>
+        </div>
+      </section>
+
+      <section id="models" class="content-block reveal-section">
+        <p class="eyebrow">02 / Matrix</p>
+        <h2>{{ t('home.providers.title') }}</h2>
+        <p class="lede">{{ t('home.providers.description') }}</p>
+        <div class="model-table" role="table" aria-label="支持的模型">
+          <div class="model-head" role="row"><span>Provider</span><span>Protocol</span><span>Status</span></div>
+          <div role="row"><strong>OpenAI / Codex</strong><code>/v1/responses</code><em><i></i>{{ t('home.providers.supported') }}</em></div>
+          <div role="row"><strong>Anthropic Claude</strong><code>/v1/messages</code><em><i></i>{{ t('home.providers.supported') }}</em></div>
+          <div role="row"><strong>Google Gemini</strong><code>/v1/chat/completions</code><em><i></i>{{ t('home.providers.supported') }}</em></div>
+          <div role="row"><strong>xAI Grok</strong><code>/v1/responses</code><em><i></i>{{ t('home.providers.supported') }}</em></div>
+        </div>
+      </section>
+
+      <section id="protocol" class="content-block reveal-section">
+        <p class="eyebrow">03 / Protocol</p>
+        <h2>替换地址，其余照旧</h2>
+        <p class="lede">保留熟悉的 OpenAI 请求结构，原生 CLI、自建服务与 IDE 插件都能直接指向网关。</p>
+        <div class="console">
+          <div class="console-bar"><span>curl</span><span>POST /v1/chat/completions</span></div>
+          <pre><span class="dim">curl</span> https://api.easyhub.example<span class="gold">/v1/chat/completions</span> \
+  -H <span class="string">"Authorization: Bearer sk-••••"</span> \
+  -H <span class="string">"Content-Type: application/json"</span> \
+  -d <span class="string">'{ "model": "gpt-5", "messages": [...] }'</span>
+
+<span class="ok">200 OK</span>  <span class="dim">routed → billed → streamed</span> <span class="console-caret" aria-hidden="true"></span></pre>
+        </div>
+      </section>
+
+      <section id="access" class="content-block reveal-section">
+        <p class="eyebrow">04 / Access</p>
+        <h2>三步进入生产</h2>
+        <p class="lede">从注册到第一个成功响应，接入流程刻意保持简短。</p>
+        <div class="access-flow">
+          <article><span>Step 01</span><h3>创建 API Key</h3><p>注册后在控制台生成密钥，可按项目或成员拆分。</p></article>
+          <article><span>Step 02</span><h3>指向网关地址</h3><p>替换 Base URL 与 Authorization，协议保持不变。</p></article>
+          <article><span>Step 03</span><h3>选择模型调用</h3><p>通过 model 指定上游，网关自动完成调度与计量。</p></article>
+        </div>
+      </section>
+
+      <section class="closing-block reveal-section">
+        <h2>以更稳的方式，使用最强的模型</h2>
+        <p>登录控制台获取密钥，把 AI 能力接入你的产品与工作流。</p>
+        <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="action-fill">
+          立即开始
+          <Icon name="arrowRight" size="sm" />
+        </router-link>
+      </section>
+
+      <footer class="footer">
+        <span>© {{ currentYear }} EasyHub</span>
+        <span>
+          <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ t('home.docs') }}</a>
+          <a :href="githubUrl" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </span>
+      </footer>
+    </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
-import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 
 const { t } = useI18n()
-
 const authStore = useAuthStore()
 const appStore = useAppStore()
 
-// Site settings - directly from appStore (already initialized from injected config)
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
+// 保留站点 Logo 的安全归一化，供自定义首页配置与既有安全约束复用。
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
 const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
-
-// Check if homeContent is a URL (for iframe display)
 const isHomeContentUrl = computed(() => {
   const content = homeContent.value.trim()
   return content.startsWith('http://') || content.startsWith('https://')
 })
-
-// Theme
-const isDark = ref(document.documentElement.classList.contains('dark'))
-
-// GitHub URL
 const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
-
-// Auth state
+const docHref = computed(() => docUrl.value || `${githubUrl}#readme`)
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dashboard')
-const userInitial = computed(() => {
-  const user = authStore.user
-  if (!user || !user.email) return ''
-  return user.email.charAt(0).toUpperCase()
+const currentYear = computed(() => new Date().getFullYear())
+const landingRoot = ref<HTMLElement | null>(null)
+const activeSection = ref('capability')
+let revealObserver: IntersectionObserver | null = null
+let sectionObserver: IntersectionObserver | null = null
+
+function scrollToSection(id: string): void {
+  const section = landingRoot.value?.querySelector<HTMLElement>(`#${id}`)
+  if (!section) return
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  section.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
+  window.history.replaceState(null, '', `#${id}`)
+  activeSection.value = id
+}
+
+onMounted(async () => {
+  authStore.checkAuth()
+  if (!appStore.publicSettingsLoaded) appStore.fetchPublicSettings()
+
+  await nextTick()
+  const root = landingRoot.value
+  if (!root) return
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const revealSections = root.querySelectorAll<HTMLElement>('.reveal-section')
+  if (reducedMotion || !('IntersectionObserver' in window)) {
+    revealSections.forEach((section) => section.classList.add('is-visible'))
+  } else {
+    revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return
+        entry.target.classList.add('is-visible')
+        revealObserver?.unobserve(entry.target)
+      })
+    }, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' })
+    revealSections.forEach((section) => revealObserver?.observe(section))
+  }
+
+  sectionObserver = new IntersectionObserver((entries) => {
+    const visibleSection = entries.find((entry) => entry.isIntersecting)
+    if (visibleSection?.target.id) activeSection.value = visibleSection.target.id
+  }, { rootMargin: '-45% 0px -50% 0px' })
+  root.querySelectorAll<HTMLElement>('#capability, #models, #protocol, #access').forEach((section) => sectionObserver?.observe(section))
 })
 
-// Current year for footer
-const currentYear = computed(() => new Date().getFullYear())
-
-// Toggle theme
-function toggleTheme() {
-  isDark.value = !isDark.value
-  document.documentElement.classList.toggle('dark', isDark.value)
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-}
-
-// Initialize theme
-function initTheme() {
-  const savedTheme = localStorage.getItem('theme')
-  if (
-    savedTheme === 'dark' ||
-    (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
-  ) {
-    isDark.value = true
-    document.documentElement.classList.add('dark')
-  }
-}
-
-onMounted(() => {
-  initTheme()
-
-  // Check auth state
-  authStore.checkAuth()
-
-  // Ensure public settings are loaded (will use cache if already loaded from injected config)
-  if (!appStore.publicSettingsLoaded) {
-    appStore.fetchPublicSettings()
-  }
+onUnmounted(() => {
+  revealObserver?.disconnect()
+  sectionObserver?.disconnect()
 })
 </script>
 
 <style scoped>
-/* Terminal Container */
-.terminal-container {
-  position: relative;
-  display: inline-block;
+.landing-shell{--bg:#0b0b0c;--panel:#121214;--panel-2:#17171a;--line:rgba(255,255,255,.09);--line-strong:rgba(255,255,255,.2);--text:#f2f0ec;--muted:#a5a29c;--faint:#6e6b66;--gold:#c8a96a;--live:#7fbf9a;min-height:100vh;background:var(--bg);color:var(--text);font-family:"Space Grotesk","PingFang SC",system-ui,sans-serif;display:grid;grid-template-columns:minmax(360px,42%) 1fr}
+.identity-panel{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;justify-content:space-between;padding:clamp(28px,4vw,56px);border-right:1px solid var(--line);overflow:hidden}.identity-glow{position:absolute;inset:auto -30% -35% -20%;height:70%;background:radial-gradient(ellipse at 30% 100%,rgba(200,169,106,.14),transparent 62%);pointer-events:none}.identity-rule{position:absolute;inset:0 auto 0 24px;width:1px;background:linear-gradient(180deg,transparent,var(--line) 20%,var(--line) 80%,transparent)}.identity-panel>*:not(.identity-glow):not(.identity-rule){position:relative}
+.brand-mark{display:flex;align-items:center;gap:14px;width:max-content}.brand-logo{width:40px;height:40px;object-fit:contain;border:1px solid var(--line-strong)}.brand-mark strong{display:block;font-size:15px;letter-spacing:.02em}.brand-mark small{display:block;margin-top:2px;color:var(--faint);font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.2em}
+.identity-copy{max-width:520px}.service-status,.eyebrow{color:var(--muted);font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase}.service-status{display:flex;align-items:center;gap:10px}.service-status i,.model-table em i{width:6px;height:6px;border-radius:999px;background:var(--live);box-shadow:0 0 0 4px rgba(127,191,154,.12)}.identity-copy h1{margin:34px 0;font-size:clamp(42px,5vw,70px);font-weight:500;letter-spacing:-.055em;line-height:.98}.identity-copy h1 b{color:var(--gold);font-weight:500}.identity-copy>p:not(.service-status){max-width:420px;color:var(--muted);font-size:16px;line-height:1.8}.hero-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:32px}.action-fill,.action-outline{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:46px;padding:0 22px;border:1px solid transparent;font-size:14px;font-weight:600;transition:.25s ease}.action-fill{background:var(--text);color:var(--bg)}.action-fill:hover{background:var(--gold);transform:translateY(-2px)}.action-outline{border-color:var(--line-strong);color:var(--text)}.action-outline:hover{border-color:var(--gold);color:var(--gold)}.action-fill:focus-visible,.action-outline:focus-visible,.top-link:focus-visible,.top-cta:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+.section-index{display:flex;flex-direction:column}.section-index a{display:flex;gap:14px;padding:9px 0;border-top:1px solid var(--line);color:var(--faint);font-size:13px;transition:.25s}.section-index a span{color:var(--gold);font-family:ui-monospace,monospace;font-size:11px}.section-index a:hover{padding-left:8px;color:var(--text)}
+.content-panel{min-width:0;background:var(--panel)}.ticker{padding:20px 0;overflow:hidden;border-bottom:1px solid var(--line);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}.ticker-track{display:flex;width:max-content;gap:48px;animation:ticker-slide 26s linear infinite}.ticker:hover .ticker-track{animation-play-state:paused}.ticker-item{display:flex;align-items:center;gap:12px;color:var(--faint);font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}.ticker-item b{color:var(--text);font-weight:500}.ticker-item::after{content:'';width:4px;height:4px;background:var(--gold)}.ticker-item.is-soon{opacity:.55}.ticker-item.is-soon b{color:var(--faint);font-weight:400}.ticker-item.is-soon::after{background:var(--faint);opacity:.4}
+.content-block{padding:clamp(72px,8vw,112px) clamp(24px,5vw,72px);border-bottom:1px solid var(--line);scroll-margin-top:20px}.content-block h2,.closing-block h2{margin:16px 0 22px;font-size:clamp(34px,4vw,58px);font-weight:500;letter-spacing:-.045em;line-height:1.08}.lede{max-width:660px;color:var(--muted);font-size:15px;line-height:1.8}.ledger{display:grid;grid-template-columns:repeat(4,1fr);margin-top:54px;border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong)}.ledger div{padding:26px 18px;border-right:1px solid var(--line)}.ledger div:last-child{border-right:0}.ledger strong{display:block;font-size:clamp(22px,2.5vw,36px);font-weight:500}.ledger span{display:block;margin-top:8px;color:var(--faint);font-size:11px}
+.capability-rows{margin-top:46px;border-top:1px solid var(--line-strong)}.capability-rows article{display:grid;grid-template-columns:48px minmax(150px,.7fr) 1.3fr;gap:22px;padding:24px 0;border-bottom:1px solid var(--line);align-items:start}.capability-rows span{color:var(--gold);font-family:ui-monospace,monospace;font-size:11px}.capability-rows h3{font-size:18px;font-weight:500}.capability-rows p,.access-flow p{color:var(--muted);font-size:13px;line-height:1.75}
+.model-table{margin-top:42px;border-top:1px solid var(--line-strong)}.model-table>div{display:grid;grid-template-columns:1fr 1.15fr 120px;align-items:center;gap:20px;padding:18px 0;border-bottom:1px solid var(--line)}.model-table .model-head{padding:10px 0;color:var(--faint);font-family:ui-monospace,monospace;font-size:10px;text-transform:uppercase}.model-table strong{font-size:14px;font-weight:500}.model-table code{color:var(--muted);font-size:12px}.model-table em{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:12px;font-style:normal}.model-table em i{width:5px;height:5px;box-shadow:none}
+.console{margin-top:42px;border:1px solid var(--line-strong);background:var(--bg);font-family:ui-monospace,monospace}.console-bar{display:flex;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);color:var(--faint);font-size:10px;text-transform:uppercase}.console pre{overflow:auto;padding:26px;color:#d8d5cf;font-size:12px;line-height:1.9}.console .dim{color:var(--faint)}.console .gold{color:var(--gold)}.console .string{color:#b8c99f}.console .ok{color:var(--live)}
+.access-flow{display:grid;grid-template-columns:repeat(3,1fr);margin-top:44px;border-top:1px solid var(--line-strong)}.access-flow article{padding:26px 24px 26px 0;border-right:1px solid var(--line)}.access-flow article:not(:first-child){padding-left:24px}.access-flow article:last-child{border-right:0}.access-flow span{color:var(--gold);font-family:ui-monospace,monospace;font-size:10px}.access-flow h3{margin:16px 0 12px;font-size:18px;font-weight:500}
+.closing-block{padding:clamp(64px,9vw,120px) clamp(24px,5vw,72px);text-align:left;border-bottom:1px solid var(--line)}.closing-block p{max-width:44ch;margin:0 0 32px;color:var(--muted);font-size:16px;line-height:1.8}.footer{display:flex;justify-content:space-between;padding:24px clamp(24px,5vw,72px);color:var(--faint);font-size:11px}.footer span:last-child{display:flex;gap:24px}.footer a:hover{color:var(--gold)}
+@media(max-width:999px){.landing-shell{display:block}.identity-panel{position:relative;height:auto;min-height:720px;border-right:0;border-bottom:1px solid var(--line)}.section-index{display:none}.content-panel{width:100%}.ledger{grid-template-columns:repeat(2,1fr)}.ledger div:nth-child(2){border-right:0}.capability-rows article{grid-template-columns:38px 1fr}.capability-rows article p{grid-column:2}.model-table>div{grid-template-columns:1fr 1fr}.model-table>div>*:last-child{display:none}}
+@media(max-width:640px){.identity-panel{min-height:650px;padding:24px}.identity-copy h1{font-size:44px}.hero-actions{align-items:stretch}.action-fill,.action-outline{flex:1 1 auto}.content-block{padding:64px 24px}.ledger{grid-template-columns:1fr 1fr}.access-flow{display:block}.access-flow article,.access-flow article:not(:first-child){padding:24px 0;border-right:0;border-bottom:1px solid var(--line)}.model-table>div{grid-template-columns:1fr}.model-table code{display:none}.closing-block{padding:72px 24px}.footer{padding:22px 24px}}
+@media(min-width:1000px) and (min-height:1000px){.identity-panel{justify-content:flex-start}.identity-panel>.brand-mark.brand-mark{position:absolute;top:42%;left:clamp(28px,4vw,56px)}.identity-panel>.identity-copy.identity-copy{position:absolute;top:49%;left:clamp(28px,4vw,56px);right:clamp(28px,4vw,56px)}.identity-panel>.section-index.section-index{position:absolute;right:clamp(28px,4vw,56px);bottom:5%;left:clamp(28px,4vw,56px)}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition-duration:.01ms!important}}
+
+/* 与参考稿一致的动态反馈 */
+.service-status i,
+.model-table em i { animation: status-beat 2.6s ease-in-out infinite; }
+.section-index a.active { padding-left: 8px; color: var(--text); }
+.eyebrow { display: flex; align-items: center; gap: 12px; color: var(--gold); }
+.eyebrow::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.ledger div { transition: background .3s cubic-bezier(.16, 1, .3, 1); }
+.ledger div:hover { background: var(--panel-2); }
+.capability-rows article { transition: padding .35s cubic-bezier(.16, 1, .3, 1), border-color .3s; }
+.capability-rows article:hover { padding-left: 10px; border-color: var(--line-strong); }
+.model-table > div { padding-left: 12px; padding-right: 12px; transition: background .25s; }
+.model-table > div:not(.model-head):hover { background: var(--panel-2); }
+.console-caret { display: inline-block; width: 7px; height: 13px; background: var(--gold); vertical-align: middle; animation: caret-flick 1.1s step-end infinite; }
+.closing-block { background: radial-gradient(ellipse 70% 90% at 90% 10%, rgba(200,169,106,.12), transparent 60%), var(--bg); }
+.reveal-section { opacity: 0; transform: translateY(22px); transition: opacity .8s cubic-bezier(.16, 1, .3, 1), transform .8s cubic-bezier(.16, 1, .3, 1); }
+.reveal-section.is-visible { opacity: 1; transform: none; }
+
+@keyframes status-beat { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes ticker-slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes caret-flick { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+
+@media(prefers-reduced-motion:reduce) {
+  .reveal-section { opacity: 1; transform: none; }
+  .ticker-track,
+  .service-status i,
+  .model-table em i,
+  .console-caret { animation: none !important; }
 }
 
-/* Terminal Window */
-.terminal-window {
-  width: 420px;
-  background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
-  border-radius: 14px;
-  box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  overflow: hidden;
-  transform: perspective(1000px) rotateX(2deg) rotateY(-2deg);
-  transition: transform 0.3s ease;
-}
-
-.terminal-window:hover {
-  transform: perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(-4px);
-}
-
-/* Terminal Header */
-.terminal-header {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  background: rgba(30, 41, 59, 0.8);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.terminal-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.terminal-buttons span {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-.btn-close {
-  background: #ef4444;
-}
-.btn-minimize {
-  background: #eab308;
-}
-.btn-maximize {
-  background: #22c55e;
-}
-
-.terminal-title {
-  flex: 1;
-  text-align: center;
+/* 字号严格沿用参考稿的比例 */
+.brand-glyph {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  color: var(--gold);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 12px;
-  font-family: ui-monospace, monospace;
-  color: #64748b;
-  margin-right: 52px;
+  font-weight: 500;
 }
+.brand-mark small,
+.service-status,
+.eyebrow,
+.section-index a span { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.service-status,
+.eyebrow { font-size: .68rem; }
+.identity-copy h1 { margin: 36px 0; font-size: clamp(2.6rem, 5.2vw, 4.1rem); letter-spacing: -.045em; }
+.identity-copy > p:not(.service-status) { font-size: 1rem; }
+.content-block { padding-top: clamp(56px, 8vw, 104px); padding-bottom: clamp(56px, 8vw, 104px); }
+.content-block h2 { margin-bottom: 14px; max-width: 20ch; font-size: clamp(1.6rem, 3vw, 2.25rem); font-weight: 600; letter-spacing: -.032em; line-height: 1.14; }
+.closing-block h2 { max-width: 22ch; margin: 0 0 16px; font-size: clamp(1.7rem, 3.4vw, 2.6rem); font-weight: 500; letter-spacing: -.038em; line-height: 1.1; }
+.lede { max-width: 52ch; font-size: .98rem; }
 
-/* Terminal Body */
-.terminal-body {
-  padding: 20px 24px;
-  font-family: ui-monospace, 'Fira Code', monospace;
-  font-size: 14px;
-  line-height: 2;
-}
-
-.code-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  opacity: 0;
-  animation: line-appear 0.5s ease forwards;
-}
-
-.line-1 {
-  animation-delay: 0.3s;
-}
-.line-2 {
-  animation-delay: 1s;
-}
-.line-3 {
-  animation-delay: 1.8s;
-}
-.line-4 {
-  animation-delay: 2.5s;
-}
-
-@keyframes line-appear {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.code-prompt {
-  color: #22c55e;
-  font-weight: bold;
-}
-.code-cmd {
-  color: #38bdf8;
-}
-.code-flag {
-  color: #a78bfa;
-}
-.code-url {
-  color: #14b8a6;
-}
-.code-comment {
-  color: #64748b;
-  font-style: italic;
-}
-.code-success {
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.15);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 600;
-}
-.code-response {
-  color: #fbbf24;
-}
-
-/* Blinking Cursor */
-.cursor {
-  display: inline-block;
-  width: 8px;
-  height: 16px;
-  background: #22c55e;
-  animation: blink 1s step-end infinite;
-}
-
-@keyframes blink {
-  0%,
-  50% {
-    opacity: 1;
-  }
-  51%,
-  100% {
-    opacity: 0;
-  }
-}
-
-/* Dark mode adjustments */
-:deep(.dark) .terminal-window {
-  box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(20, 184, 166, 0.2),
-    0 0 40px rgba(20, 184, 166, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+@media(max-width:640px) {
+  .identity-copy h1 { font-size: 2.6rem; }
+  .content-block { padding-top: 56px; padding-bottom: 56px; }
+  .closing-block { padding-top: 64px; padding-bottom: 64px; }
 }
 </style>
