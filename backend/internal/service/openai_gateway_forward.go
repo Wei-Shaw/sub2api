@@ -73,7 +73,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 	if shouldStripOpenAIResponsesInputNamespaces(account, wsDecision.Transport, passthroughEnabled) {
-		body, err = stripOpenAIResponsesInputNamespaces(body)
+		preserveLiteToolCallNamespaces := shouldPreserveOpenAIResponsesLiteToolCallNamespaces(c, account, wsDecision.Transport, passthroughEnabled)
+		body, err = stripOpenAIResponsesInputNamespaces(body, preserveLiteToolCallNamespaces)
 		if err != nil {
 			setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
 			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{

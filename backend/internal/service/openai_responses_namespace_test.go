@@ -1,12 +1,51 @@
 package service
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestShouldPreserveOpenAIResponsesLiteToolCallNamespaces(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	tests := []struct {
+		name               string
+		account            *Account
+		path               string
+		liteHeader         string
+		transport          OpenAIUpstreamTransport
+		passthroughEnabled bool
+		want               bool
+	}{
+		{name: "oauth_http_lite", account: oauth, path: "/v1/responses", liteHeader: "true", transport: OpenAIUpstreamTransportHTTPSSE, want: true},
+		{name: "oauth_http_passthrough_lite", account: oauth, path: "/v1/responses", liteHeader: "true", transport: OpenAIUpstreamTransportHTTPSSE, passthroughEnabled: true, want: true},
+		{name: "oauth_wsv2_passthrough_lite_uses_http", account: oauth, path: "/v1/responses", liteHeader: "true", transport: OpenAIUpstreamTransportResponsesWebsocketV2, passthroughEnabled: true, want: true},
+		{name: "oauth_native_wsv2_lite", account: oauth, path: "/v1/responses", liteHeader: "true", transport: OpenAIUpstreamTransportResponsesWebsocketV2, want: false},
+		{name: "oauth_compact_lite", account: oauth, path: "/v1/responses/compact", liteHeader: "true", transport: OpenAIUpstreamTransportHTTPSSE, want: false},
+		{name: "apikey_http_lite", account: apiKey, path: "/v1/responses", liteHeader: "true", transport: OpenAIUpstreamTransportHTTPSSE, want: false},
+		{name: "oauth_http_non_lite", account: oauth, path: "/v1/responses", transport: OpenAIUpstreamTransportHTTPSSE, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, tt.path, nil)
+			if tt.liteHeader != "" {
+				c.Request.Header.Set(responsesLiteHeader, tt.liteHeader)
+			}
+
+			require.Equal(t, tt.want, shouldPreserveOpenAIResponsesLiteToolCallNamespaces(c, tt.account, tt.transport, tt.passthroughEnabled))
+		})
+	}
+}
 
 func TestShouldFlattenOpenAIResponsesNamespaces(t *testing.T) {
 	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
@@ -67,7 +106,7 @@ func TestShouldStripOpenAIResponsesInputNamespaces(t *testing.T) {
 	}
 }
 
-func TestStripOpenAIResponsesInputNamespaces(t *testing.T) {
+func TestStripOpenAIResponsesInputNamespaces_PreservesOnlyToolCallsWhenEnabled(t *testing.T) {
 	body := []byte(`{
 		"meta":9007199254740993,
 		"scientific":1.25e+42,
@@ -85,11 +124,13 @@ func TestStripOpenAIResponsesInputNamespaces(t *testing.T) {
 		]
 	}`)
 
-	stripped, err := stripOpenAIResponsesInputNamespaces(body)
+	stripped, err := stripOpenAIResponsesInputNamespaces(body, true)
 	require.NoError(t, err)
-	for index := 0; index < 8; index++ {
+	for _, index := range []int{1, 3, 4, 5, 6, 7} {
 		require.False(t, gjson.GetBytes(stripped, "input."+strconv.Itoa(index)+".namespace").Exists())
 	}
+	require.Equal(t, "n0", gjson.GetBytes(stripped, "input.0.namespace").String())
+	require.Equal(t, "n2", gjson.GetBytes(stripped, "input.2.namespace").String())
 	require.Equal(t, "nested", gjson.GetBytes(stripped, "input.0.content.namespace").String())
 	require.Equal(t, "nested-content", gjson.GetBytes(stripped, "input.1.content.0.namespace").String())
 	require.Equal(t, "tool-namespace", gjson.GetBytes(stripped, "tools.0.namespace").String())
@@ -99,6 +140,19 @@ func TestStripOpenAIResponsesInputNamespaces(t *testing.T) {
 	require.Equal(t, gjson.GetBytes(body, "input.0.large").Raw, gjson.GetBytes(stripped, "input.0.large").Raw)
 }
 
+func TestStripOpenAIResponsesInputNamespaces_StripsToolCallsWhenDisabled(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"function_call","namespace":"n0","name":"one"},
+		{"type":"custom_tool_call","namespace":"n1","name":"two"}
+	]}`)
+
+	stripped, err := stripOpenAIResponsesInputNamespaces(body, false)
+
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(stripped, "input.0.namespace").Exists())
+	require.False(t, gjson.GetBytes(stripped, "input.1.namespace").Exists())
+}
+
 func TestStripOpenAIResponsesInputNamespacesLeavesOtherShapesByteExact(t *testing.T) {
 	tests := [][]byte{
 		[]byte(`{"input":"text","namespace":"top-level"}`),
@@ -106,7 +160,7 @@ func TestStripOpenAIResponsesInputNamespacesLeavesOtherShapesByteExact(t *testin
 		[]byte(`{"input":[{"content":{"namespace":"nested-only"}}],"tools":[{"namespace":"keep"}]}`),
 	}
 	for _, body := range tests {
-		stripped, err := stripOpenAIResponsesInputNamespaces(body)
+		stripped, err := stripOpenAIResponsesInputNamespaces(body, true)
 		require.NoError(t, err)
 		require.Equal(t, body, stripped)
 	}

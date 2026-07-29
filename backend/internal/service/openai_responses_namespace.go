@@ -41,6 +41,18 @@ func shouldStripOpenAIResponsesInputNamespaces(account *Account, transport OpenA
 	return true
 }
 
+// shouldPreserveOpenAIResponsesLiteToolCallNamespaces identifies the HTTP
+// Responses Lite path whose namespace declarations and continuation history are
+// both native. Compact and API-key requests keep the existing strip behavior,
+// while native WSv2 bypasses the strip path entirely.
+func shouldPreserveOpenAIResponsesLiteToolCallNamespaces(c *gin.Context, account *Account, transport OpenAIUpstreamTransport, passthroughEnabled bool) bool {
+	return account != nil &&
+		account.IsOpenAIOAuth() &&
+		isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) &&
+		!isOpenAIResponsesCompactPath(c) &&
+		shouldStripOpenAIResponsesInputNamespaces(account, transport, passthroughEnabled)
+}
+
 func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, error) {
 	if !bytes.Contains(body, []byte(`"namespace"`)) {
 		return body, nil
@@ -66,9 +78,11 @@ func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, erro
 
 // stripOpenAIResponsesInputNamespaces removes namespace only from direct input
 // array items. Namespace declarations and nested namespace fields are left
-// untouched. Rebuilding the input array once keeps this linear for long
+// untouched. Responses Lite can preserve namespace identity on historical tool
+// calls while residual message, reasoning, output, and unknown item namespaces
+// are still removed. Rebuilding the input array once keeps this linear for long
 // histories and avoids decoding JSON numbers through float64.
-func stripOpenAIResponsesInputNamespaces(body []byte) ([]byte, error) {
+func stripOpenAIResponsesInputNamespaces(body []byte, preserveToolCallNamespaces bool) ([]byte, error) {
 	if !bytes.Contains(body, []byte(`"namespace"`)) {
 		return body, nil
 	}
@@ -89,7 +103,9 @@ func stripOpenAIResponsesInputNamespaces(body []byte) ([]byte, error) {
 		}
 		first = false
 		itemBody := []byte(item.Raw)
-		if item.IsObject() && item.Get("namespace").Exists() {
+		itemType := item.Get("type").String()
+		preserveNamespace := preserveToolCallNamespaces && (itemType == "function_call" || itemType == "custom_tool_call")
+		if item.IsObject() && item.Get("namespace").Exists() && !preserveNamespace {
 			itemBody, stripErr = sjson.DeleteBytes(itemBody, "namespace")
 			if stripErr != nil {
 				return false
