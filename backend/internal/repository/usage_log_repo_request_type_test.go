@@ -964,6 +964,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{}, // upstream_request_id
 			sql.NullString{},
 			false, // native_compaction_v2
+			sql.NullInt64{}, // custom_domain_id
+			sql.NullString{}, // custom_domain
 			now,
 		}})
 		require.NoError(t, err)
