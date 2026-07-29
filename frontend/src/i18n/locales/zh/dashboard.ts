@@ -671,6 +671,8 @@ export default {
     nav: {
       login: '登录',
       backToDashboard: '回到后台'
+    }
+  },
   customDomains: {
     title: '自定义域名',
     endpointIsolation: '端点隔离',

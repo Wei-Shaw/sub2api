@@ -667,6 +667,8 @@ export default {
     nav: {
       login: 'Sign In',
       backToDashboard: 'Back to Console'
+    }
+  },
   customDomains: {
     title: 'Custom Domains',
     endpointIsolation: 'Endpoint isolation',
