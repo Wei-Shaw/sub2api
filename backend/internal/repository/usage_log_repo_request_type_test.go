@@ -970,6 +970,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			false, // native_compaction_v2
 			0,     // cache_creation_30m_tokens
 			0,     // cache_creation_12h_tokens
+			sql.NullInt64{}, // custom_domain_id
+			sql.NullString{}, // custom_domain
 			now,
 		}})
 		require.NoError(t, err)
