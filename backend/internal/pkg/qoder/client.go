@@ -223,7 +223,9 @@ func (c *Client) StreamEvents(ctx context.Context, sessionID, lastEventID string
 
 // Model describes an entry returned by GET /models.
 type Model struct {
-	ID string `json:"id"`
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	IsEnabled   bool   `json:"is_enabled"`
 }
 
 // ListModels returns the available model identifiers for the account.

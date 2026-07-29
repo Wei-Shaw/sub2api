@@ -730,6 +730,47 @@ func (s *AccountTestService) testQoderAccountConnection(c *gin.Context, account 
 	return nil
 }
 
+// ListQoderModels queries the Qoder Cloud Agents GET /models endpoint for the
+// account and returns the enabled models with display names. Callers should
+// fall back to qoder.DefaultModels on error.
+func (s *AccountTestService) ListQoderModels(ctx context.Context, account *Account) ([]qoder.ModelInfo, error) {
+	apiKey := account.GetQoderApiKey()
+	if apiKey == "" {
+		return nil, fmt.Errorf("qoder PAT token is missing")
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	client := qoder.NewClient(account.GetQoderBaseURL(), apiKey, func(req *http.Request) (*http.Response, error) {
+		return s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	})
+
+	upstreamModels, err := client.ListModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	models := make([]qoder.ModelInfo, 0, len(upstreamModels))
+	for _, m := range upstreamModels {
+		if !m.IsEnabled {
+			continue
+		}
+		models = append(models, qoder.ModelInfo{
+			ID:          m.ID,
+			Object:      "model",
+			Created:     1735689600,
+			OwnedBy:     "qoder",
+			DisplayName: m.DisplayName,
+		})
+	}
+	if len(models) == 0 {
+		return nil, fmt.Errorf("qoder /models returned no enabled models")
+	}
+	return models, nil
+}
+
 func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *Account, modelID string) error {
 	ctx := c.Request.Context()
 

@@ -2509,15 +2509,34 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 
 	// Handle Qoder accounts
 	if account.Platform == service.PlatformQoder {
+		catalog := qoder.DefaultModels
+		if h.accountTestService != nil {
+			if fetched, err := h.accountTestService.ListQoderModels(c.Request.Context(), account); err == nil {
+				catalog = fetched
+			}
+		}
+
+		// Direct-mode accounts talk to the stateless model server, which only
+		// accepts a subset of the aliases the Cloud Agents API advertises.
+		if account.IsQoderDirect() {
+			filtered := make([]qoder.ModelInfo, 0, len(catalog))
+			for _, model := range catalog {
+				if qoder.DirectSupportedModelIDs[model.ID] {
+					filtered = append(filtered, model)
+				}
+			}
+			catalog = filtered
+		}
+
 		mapping := account.GetModelMapping()
 		if len(mapping) == 0 {
-			response.Success(c, qoder.DefaultModels)
+			response.Success(c, catalog)
 			return
 		}
 
-		defaultByID := make(map[string]qoder.ModelInfo, len(qoder.DefaultModels))
-		for _, model := range qoder.DefaultModels {
-			defaultByID[model.ID] = model
+		catalogByID := make(map[string]qoder.ModelInfo, len(catalog))
+		for _, model := range catalog {
+			catalogByID[model.ID] = model
 		}
 
 		requestedModels := make([]string, 0, len(mapping))
@@ -2528,14 +2547,15 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 
 		var models []qoder.ModelInfo
 		for _, requestedModel := range requestedModels {
-			if defaultModel, found := defaultByID[requestedModel]; found {
-				models = append(models, defaultModel)
+			if catalogModel, found := catalogByID[requestedModel]; found {
+				models = append(models, catalogModel)
 				continue
 			}
 			models = append(models, qoder.ModelInfo{
-				ID:      requestedModel,
-				Object:  "model",
-				OwnedBy: "qoder",
+				ID:          requestedModel,
+				Object:      "model",
+				OwnedBy:     "qoder",
+				DisplayName: requestedModel,
 			})
 		}
 		response.Success(c, models)
