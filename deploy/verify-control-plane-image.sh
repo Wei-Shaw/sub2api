@@ -14,6 +14,7 @@ CONFIG_JSON=$3
   echo "candidate metadata or deployer test config is missing" >&2
   exit 1
 }
+IMAGE_REPOSITORY=${IMMUTABLE_IMAGE%@*}
 CONFIG_JSON="$(cd -- "$(dirname -- "$CONFIG_JSON")" && pwd -P)/$(basename -- "$CONFIG_JSON")"
 
 VERSION=$(jq -er '.version' "$CANDIDATE_DIR/candidate.json")
@@ -37,8 +38,15 @@ jq -e '
 ' "$work_root/index.json" >/dev/null || { echo "image does not contain exactly linux/amd64 and linux/arm64" >&2; exit 1; }
 
 for arch in amd64 arm64; do
-  docker pull --platform "linux/$arch" "$IMMUTABLE_IMAGE" >/dev/null
-  container=$(docker create --platform "linux/$arch" --network none "$IMMUTABLE_IMAGE" /bin/true)
+  platform_digest=$(jq -er --arg arch "$arch" '
+    .manifest.manifests[]
+    | select(.platform.os == "linux" and .platform.architecture == $arch)
+    | .digest
+    | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))
+  ' "$work_root/index.json")
+  platform_image="$IMAGE_REPOSITORY@$platform_digest"
+  docker pull --platform "linux/$arch" "$platform_image" >/dev/null
+  container=$(docker create --platform "linux/$arch" --network none "$platform_image" /bin/true)
   containers+=("$container")
   docker inspect "$container" --format '{{json .Config.Labels}}' > "$work_root/$arch-labels.json"
   jq -e \
@@ -58,7 +66,7 @@ for arch in amd64 arm64; do
   mkdir -p "$extracted"
   docker cp "$container:/opt/sub2api-control-plane/." "$extracted/"
   docker run --rm --platform "linux/$arch" --network none \
-    --entrypoint /bin/sh "$IMMUTABLE_IMAGE" -eu -c '
+    --entrypoint /bin/sh "$platform_image" -eu -c '
       test "$(stat -c %u /opt/sub2api-control-plane/sub2api-deployer)" = 0
       test "$(stat -c %u /opt/sub2api-control-plane/CONTROL-PLANE-MANIFEST.json)" = 0
       test "$(stat -c %a /opt/sub2api-control-plane/sub2api-deployer)" = 755
@@ -95,7 +103,7 @@ for arch in amd64 arm64; do
   }
 
   version_output=$(docker run --rm --platform "linux/$arch" --network none \
-    --entrypoint /opt/sub2api-control-plane/sub2api-deployer "$IMMUTABLE_IMAGE" -version)
+    --entrypoint /opt/sub2api-control-plane/sub2api-deployer "$platform_image" -version)
   [[ "$version_output" == *"Sub2API Deployer $VERSION "* \
     && "$version_output" == *"commit: $COMMIT"* \
     && "$version_output" == *"type: release"* \
@@ -106,9 +114,9 @@ for arch in amd64 arm64; do
   docker run --rm --platform "linux/$arch" --network none \
     -v "$CONFIG_JSON:/candidate-config.json:ro" \
     --entrypoint /opt/sub2api-control-plane/sub2api-deployer \
-    "$IMMUTABLE_IMAGE" -check -config /candidate-config.json
+    "$platform_image" -check -config /candidate-config.json
   docker run --rm --platform "linux/$arch" --network none --user 1000:1000 \
-    --entrypoint /bin/sh "$IMMUTABLE_IMAGE" -eu -c \
+    --entrypoint /bin/sh "$platform_image" -eu -c \
     'test ! -w /opt/sub2api-control-plane && ! touch /opt/sub2api-control-plane/write-probe'
 
   docker rm "$container" >/dev/null

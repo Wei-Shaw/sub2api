@@ -37,6 +37,12 @@ bash -n "$UPGRADE_HELPER"
 bash -n "$REPO_ROOT/deploy/tests/sub2api-deployer-upgrade-test.sh"
 grep -Fq 'CONFIG_JSON="$(cd -- "$(dirname -- "$CONFIG_JSON")" && pwd -P)/$(basename -- "$CONFIG_JSON")"' "$IMAGE_VERIFIER"
 grep -Fq -- '-v "$CONFIG_JSON:/candidate-config.json:ro"' "$IMAGE_VERIFIER"
+grep -Fq 'platform_image="$IMAGE_REPOSITORY@$platform_digest"' "$IMAGE_VERIFIER"
+image_verification_loop=$(sed -n '/^for arch in amd64 arm64; do$/,/^done$/p' "$IMAGE_VERIFIER")
+if grep -Fq '$IMMUTABLE_IMAGE' <<<"$image_verification_loop"; then
+  echo "per-platform verification must use child manifest digests, not the OCI index digest" >&2
+  exit 1
+fi
 
 grep -Fq 'ReadWritePaths=/run/sub2api-deployer /var/lib/sub2api-deployer' "$SERVICE"
 grep -Fq 'RuntimeDirectoryPreserve=yes' "$SERVICE"
