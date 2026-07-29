@@ -1595,6 +1595,69 @@ REDACTED
 	require.False(t, c.Writer.Written())
 REDACTED
 
+func TestOpenAIGatewayService_APIKeyPassthrough_PoolModeAuthErrorsTriggerFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name        string
+		statusCode  int
+		credentials map[string]any
+REDACTED{
+		{
+			name:       "configured_401",
+			statusCode: http.StatusUnauthorized,
+			credentials: map[string]any{
+				"pool_mode_retry_status_codes": []any{float64(http.StatusUnauthorized)REDACTED,
+		REDACTED,
+	REDACTED,
+		{
+			name:        "default_403",
+			statusCode:  http.StatusForbidden,
+			credentials: map[string]any{REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+
+			upstreamBody := `{"error":{"message":"upstream credential rejected"REDACTEDREDACTED`
+			svc := &OpenAIGatewayService{
+				cfg:              &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: falseREDACTEDREDACTED,
+				rateLimitService: NewRateLimitService(transientCooldownAccountRepo{REDACTED, nil, &config.Config{REDACTED, nil, nil),
+				httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
+					StatusCode: tt.statusCode,
+					Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+					Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+		REDACTED
+		REDACTED
+			credentials := map[string]any{
+				"api_key":   "sk-test",
+				"base_url":  "https://api.example.test",
+				"pool_mode": true,
+		REDACTED
+			for key, value := range tt.credentials {
+				credentials[key] = value
+		REDACTED
+			account := &Account{
+				ID: 129, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1,
+				Credentials: credentials,
+				Extra:       map[string]any{"openai_passthrough": trueREDACTED, Status: StatusActive, Schedulable: true,
+		REDACTED
+
+			_, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.2","input":"hello"REDACTED`))
+
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, tt.statusCode, failoverErr.StatusCode)
+			require.True(t, failoverErr.RetryableOnSameAccount)
+			require.False(t, c.Writer.Written(), "pool-mode auth failure must fail over before committing a response")
+			require.False(t, IsResponseCommitted(c))
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestOpenAIGatewayService_OpenAIPassthrough_CompactNetworkErrorsTriggerFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
