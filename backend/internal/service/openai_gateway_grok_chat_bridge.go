@@ -22,17 +22,23 @@ const (
 var grokChatResponsesBridgeTopLevelFields = map[string]struct{}{
 	"model":                 {},
 	"messages":              {},
+	"instructions":          {},
 	"stream":                {},
 	"stream_options":        {},
 	"max_tokens":            {},
 	"max_completion_tokens": {},
 	"temperature":           {},
 	"top_p":                 {},
+	"stop":                  {},
+	"reasoning_effort":      {},
 	"prompt_cache_key":      {},
 	"tools":                 {},
 	"tool_choice":           {},
 	"functions":             {},
 	"function_call":         {},
+	"parallel_tool_calls":   {},
+	"response_format":       {},
+	"service_tier":          {},
 }
 
 // grokChatResponsesBridgeEligibility deliberately accepts only request shapes
@@ -45,18 +51,49 @@ func grokChatResponsesBridgeEligibility(body []byte) (bool, string) {
 		return false, "invalid_json"
 	}
 
+	// These fields have no effect when explicitly set to JSON null. Accepting
+	// that common SDK representation keeps the request on the bridge path,
+	// while non-null values remain unsupported because the Responses converter
+	// cannot preserve their Chat Completions semantics.
 	for _, field := range []string{"stop", "reasoning_effort"} {
-		if _, exists := root[field]; exists {
+		if raw, exists := root[field]; exists && !grokChatJSONNull(raw) {
 			return false, "unsupported_" + field
 		}
 	}
-	for _, field := range []string{"tools", "functions"} {
-		if raw, exists := root[field]; exists && !grokChatNullOrEmptyArray(raw) {
-			return false, "unsupported_" + field
+	if raw, exists := root["instructions"]; exists {
+		var instructions string
+		if !grokChatJSONNull(raw) && json.Unmarshal(raw, &instructions) != nil {
+			return false, "invalid_instructions"
 		}
 	}
-	if raw, exists := root["tool_choice"]; exists && !grokChatNullOrNone(raw) {
-		return false, "unsupported_tool_choice"
+	if raw, exists := root["response_format"]; exists {
+		var responseFormat map[string]json.RawMessage
+		if !grokChatJSONNull(raw) && (json.Unmarshal(raw, &responseFormat) != nil || responseFormat == nil) {
+			return false, "invalid_response_format"
+		}
+	}
+	if raw, exists := root["service_tier"]; exists {
+		var serviceTier string
+		if !grokChatJSONNull(raw) && json.Unmarshal(raw, &serviceTier) != nil {
+			return false, "invalid_service_tier"
+		}
+	}
+	if raw, exists := root["tools"]; exists {
+		if ok, reason := grokChatFunctionDeclarationsBridgeable(raw); !ok {
+			return false, reason
+		}
+	}
+	if raw, exists := root["functions"]; exists && !grokChatNullOrEmptyArray(raw) {
+		return false, "unsupported_functions"
+	}
+	if raw, exists := root["tool_choice"]; exists {
+		if ok, reason := grokChatToolChoiceBridgeable(raw); !ok {
+			return false, reason
+		}
+		var choice string
+		if json.Unmarshal(raw, &choice) == nil && choice == "required" && !grokChatHasFunctionDeclarations(root) {
+			return false, "required_tool_choice_without_tools"
+		}
 	}
 	if raw, exists := root["function_call"]; exists && !grokChatNullOrNone(raw) {
 		return false, "unsupported_function_call"
@@ -76,6 +113,12 @@ func grokChatResponsesBridgeEligibility(body []byte) (bool, string) {
 		var stream *bool
 		if json.Unmarshal(raw, &stream) != nil || stream == nil {
 			return false, "invalid_stream"
+		}
+	}
+	if raw, ok := root["parallel_tool_calls"]; ok {
+		var parallelToolCalls *bool
+		if json.Unmarshal(raw, &parallelToolCalls) != nil || parallelToolCalls == nil {
+			return false, "invalid_parallel_tool_calls"
 		}
 	}
 	if raw, ok := root["stream_options"]; ok {
@@ -128,40 +171,254 @@ func grokChatResponsesBridgeEligibility(body []byte) (bool, string) {
 		return false, "invalid_messages"
 	}
 	for _, message := range messages {
-		for field := range message {
-			if field != "role" && field != "content" {
-				return false, "unsafe_message_field_" + field
-			}
-		}
 		var role string
 		if raw, exists := message["role"]; !exists || json.Unmarshal(raw, &role) != nil {
 			return false, "invalid_message_role"
 		}
 		switch role {
-		case "system", "user", "assistant":
+		case "system", "user":
+			if ok, reason := grokChatMessageFieldsBridgeable(message, "role", "content"); !ok {
+				return false, reason
+			}
+			raw, exists := message["content"]
+			if !exists {
+				return false, "non_text_message_content"
+			}
+			if ok, reason := grokChatRequiredMessageContentBridgeable(raw); !ok {
+				return false, reason
+			}
+		case "assistant":
+			if ok, reason := grokChatMessageFieldsBridgeable(message, "role", "content", "reasoning_content", "tool_calls"); !ok {
+				return false, reason
+			}
+			reasoningContent := ""
+			if raw, exists := message["reasoning_content"]; exists {
+				if !grokChatJSONNull(raw) && json.Unmarshal(raw, &reasoningContent) != nil {
+					return false, "invalid_reasoning_content"
+				}
+			}
+			hasReasoningContent := strings.TrimSpace(reasoningContent) != ""
+			toolCallCount := 0
+			if raw, exists := message["tool_calls"]; exists {
+				var reason string
+				toolCallCount, reason = grokChatAssistantToolCallsBridgeable(raw)
+				if reason != "" {
+					return false, reason
+				}
+			}
+			raw, hasContent := message["content"]
+			if !hasContent || strings.TrimSpace(string(raw)) == "null" {
+				if toolCallCount == 0 && !hasReasoningContent {
+					return false, "non_text_message_content"
+				}
+				continue
+			}
+			var content string
+			if json.Unmarshal(raw, &content) == nil {
+				if strings.TrimSpace(content) == "" && toolCallCount == 0 && !hasReasoningContent {
+					return false, "empty_message_content"
+				}
+				continue
+			}
+			if ok, reason := grokChatStructuredContentBridgeable(raw); !ok {
+				// The converter can still emit a standalone reasoning part when
+				// an otherwise empty content array accompanies reasoning_content.
+				// Do not broaden this exception to unsupported/malformed parts.
+				if !hasReasoningContent || reason != "empty_message_content" {
+					return false, reason
+				}
+			}
+		case "tool":
+			if ok, reason := grokChatMessageFieldsBridgeable(message, "role", "content", "tool_call_id"); !ok {
+				return false, reason
+			}
+			var callID string
+			if raw, exists := message["tool_call_id"]; !exists || json.Unmarshal(raw, &callID) != nil || strings.TrimSpace(callID) == "" {
+				return false, "invalid_tool_call_id"
+			}
+			var output string
+			if raw, exists := message["content"]; !exists || json.Unmarshal(raw, &output) != nil || output == "" {
+				return false, "invalid_tool_message_content"
+			}
 		default:
 			return false, "unsupported_message_role_" + role
-		}
-		raw, exists := message["content"]
-		if !exists {
-			return false, "non_text_message_content"
-		}
-		var content string
-		if json.Unmarshal(raw, &content) == nil {
-			if strings.TrimSpace(content) == "" {
-				return false, "empty_message_content"
-			}
-			continue
-		}
-		// Structured content: only allow arrays whose parts are text or
-		// image_url. These are losslessly convertible to Responses input_text/
-		// input_image parts, so the bridge preserves Chat Completions semantics.
-		if ok, reason := grokChatStructuredContentBridgeable(raw); !ok {
-			return false, reason
 		}
 	}
 
 	return true, ""
+}
+
+func grokChatFunctionDeclarationsBridgeable(raw json.RawMessage) (bool, string) {
+	if strings.TrimSpace(string(raw)) == "null" {
+		return true, ""
+	}
+	var declarations []json.RawMessage
+	if json.Unmarshal(raw, &declarations) != nil {
+		return false, "invalid_tools"
+	}
+	for _, declaration := range declarations {
+		var tool map[string]json.RawMessage
+		if json.Unmarshal(declaration, &tool) != nil || tool == nil {
+			return false, "invalid_tool"
+		}
+		for field := range tool {
+			if field != "type" && field != "function" {
+				return false, "unsafe_tool_field_" + field
+			}
+		}
+		var toolType string
+		if rawType, exists := tool["type"]; !exists || json.Unmarshal(rawType, &toolType) != nil || toolType != "function" {
+			return false, "unsupported_tool_type"
+		}
+		functionRaw, exists := tool["function"]
+		if !exists {
+			return false, "invalid_tool_function"
+		}
+
+		var function map[string]json.RawMessage
+		if json.Unmarshal(functionRaw, &function) != nil || function == nil {
+			return false, "invalid_tool_function"
+		}
+		for field := range function {
+			switch field {
+			case "name", "description", "parameters", "strict":
+			default:
+				return false, "unsafe_tool_function_field_" + field
+			}
+		}
+		var name string
+		if rawName, exists := function["name"]; !exists || json.Unmarshal(rawName, &name) != nil || strings.TrimSpace(name) == "" {
+			return false, "invalid_tool_function_name"
+		}
+		if rawDescription, exists := function["description"]; exists {
+			var description string
+			if json.Unmarshal(rawDescription, &description) != nil {
+				return false, "invalid_tool_function_description"
+			}
+		}
+		var parameters map[string]json.RawMessage
+		if rawParameters, exists := function["parameters"]; !exists || json.Unmarshal(rawParameters, &parameters) != nil || parameters == nil {
+			return false, "invalid_tool_function_parameters"
+		}
+		if rawStrict, exists := function["strict"]; exists {
+			var strict bool
+			if json.Unmarshal(rawStrict, &strict) != nil {
+				return false, "invalid_tool_function_strict"
+			}
+		}
+	}
+	return true, ""
+}
+
+func grokChatToolChoiceBridgeable(raw json.RawMessage) (bool, string) {
+	if strings.TrimSpace(string(raw)) == "null" {
+		return true, ""
+	}
+	var choice string
+	if json.Unmarshal(raw, &choice) != nil {
+		return false, "unsupported_tool_choice"
+	}
+	switch choice {
+	case "auto", "none", "required":
+		return true, ""
+	default:
+		return false, "unsupported_tool_choice"
+	}
+}
+
+func grokChatHasFunctionDeclarations(root map[string]json.RawMessage) bool {
+	for _, field := range []string{"tools", "functions"} {
+		raw, exists := root[field]
+		if !exists {
+			continue
+		}
+		var declarations []json.RawMessage
+		if json.Unmarshal(raw, &declarations) == nil && len(declarations) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func grokChatMessageFieldsBridgeable(message map[string]json.RawMessage, allowedFields ...string) (bool, string) {
+	allowed := make(map[string]struct{}, len(allowedFields))
+	for _, field := range allowedFields {
+		allowed[field] = struct{}{}
+	}
+	for field := range message {
+		if _, ok := allowed[field]; !ok {
+			return false, "unsafe_message_field_" + field
+		}
+	}
+	return true, ""
+}
+
+func grokChatRequiredMessageContentBridgeable(raw json.RawMessage) (bool, string) {
+	var content string
+	if json.Unmarshal(raw, &content) == nil {
+		if strings.TrimSpace(content) == "" {
+			return false, "empty_message_content"
+		}
+		return true, ""
+	}
+	// Structured content: only allow arrays whose parts are text or
+	// image_url. These are losslessly convertible to Responses input_text/
+	// input_image parts, so the bridge preserves Chat Completions semantics.
+	return grokChatStructuredContentBridgeable(raw)
+}
+
+func grokChatAssistantToolCallsBridgeable(raw json.RawMessage) (int, string) {
+	if strings.TrimSpace(string(raw)) == "null" {
+		return 0, ""
+	}
+	var calls []map[string]json.RawMessage
+	if json.Unmarshal(raw, &calls) != nil {
+		return 0, "invalid_tool_calls"
+	}
+	for _, call := range calls {
+		if call == nil {
+			return 0, "invalid_tool_call"
+		}
+		for field := range call {
+			switch field {
+			case "id", "type", "function", "index":
+			default:
+				return 0, "unsafe_tool_call_field_" + field
+			}
+		}
+		if rawIndex, exists := call["index"]; exists {
+			var index *int
+			if json.Unmarshal(rawIndex, &index) != nil || (index != nil && *index < 0) {
+				return 0, "invalid_tool_call_index"
+			}
+		}
+		var callID string
+		if rawID, exists := call["id"]; !exists || json.Unmarshal(rawID, &callID) != nil || strings.TrimSpace(callID) == "" {
+			return 0, "invalid_tool_call_id"
+		}
+		var callType string
+		if rawType, exists := call["type"]; !exists || json.Unmarshal(rawType, &callType) != nil || callType != "function" {
+			return 0, "unsupported_tool_call_type"
+		}
+		var function map[string]json.RawMessage
+		if rawFunction, exists := call["function"]; !exists || json.Unmarshal(rawFunction, &function) != nil || function == nil {
+			return 0, "invalid_tool_call_function"
+		}
+		for field := range function {
+			if field != "name" && field != "arguments" {
+				return 0, "unsafe_tool_call_function_field_" + field
+			}
+		}
+		var name string
+		if rawName, exists := function["name"]; !exists || json.Unmarshal(rawName, &name) != nil || strings.TrimSpace(name) == "" {
+			return 0, "invalid_tool_call_function_name"
+		}
+		var arguments string
+		if rawArguments, exists := function["arguments"]; !exists || json.Unmarshal(rawArguments, &arguments) != nil || !json.Valid([]byte(arguments)) {
+			return 0, "invalid_tool_call_arguments"
+		}
+	}
+	return len(calls), ""
 }
 
 func grokChatStructuredContentBridgeable(raw json.RawMessage) (bool, string) {
@@ -199,14 +456,6 @@ func grokChatStructuredContentBridgeable(raw json.RawMessage) (bool, string) {
 	return true, ""
 }
 
-func grokChatNullOrEmptyArray(raw json.RawMessage) bool {
-	if strings.TrimSpace(string(raw)) == "null" {
-		return true
-	}
-	var values []json.RawMessage
-	return json.Unmarshal(raw, &values) == nil && len(values) == 0
-}
-
 func grokChatNullOrNone(raw json.RawMessage) bool {
 	if strings.TrimSpace(string(raw)) == "null" {
 		return true
@@ -215,14 +464,34 @@ func grokChatNullOrNone(raw json.RawMessage) bool {
 	return json.Unmarshal(raw, &value) == nil && strings.EqualFold(strings.TrimSpace(value), "none")
 }
 
-func grokChatCacheIntentBody(body []byte) ([]byte, error) {
+func grokChatJSONNull(raw json.RawMessage) bool {
+	return strings.TrimSpace(string(raw)) == "null"
+}
+
+func grokChatNullOrEmptyArray(raw json.RawMessage) bool {
+	if strings.TrimSpace(string(raw)) == "null" {
+		return true
+	}
+	var values []json.RawMessage
+	return json.Unmarshal(raw, &values) == nil && len(values) == 0
+}
+
+func grokChatResponsesCacheIntentBody(body []byte) ([]byte, error) {
+	// An empty Chat tools array is omitted by the Responses converter. In that
+	// case auto/none is also a semantic no-op and must not suppress the normal
+	// tool-free cache route. Non-empty converted tools are always kept intact.
+	if gjson.GetBytes(body, "tools").Exists() {
+		return append([]byte(nil), body...), nil
+	}
+	choice := gjson.GetBytes(body, "tool_choice")
+	if !choice.Exists() || choice.Type != gjson.String || (choice.String() != "auto" && choice.String() != "none") {
+		return append([]byte(nil), body...), nil
+	}
 	var root map[string]json.RawMessage
 	if err := json.Unmarshal(body, &root); err != nil {
 		return nil, err
 	}
-	for _, field := range []string{"tools", "tool_choice", "functions", "function_call"} {
-		delete(root, field)
-	}
+	delete(root, "tool_choice")
 	return json.Marshal(root)
 }
 
@@ -268,6 +537,10 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	}
 	responsesReq.Model = upstreamModel
 	responsesReq.Stream = true
+	// Keep Chat and native Responses paths aligned for OpenAI-compatible
+	// service_tier aliases (for example, "fast" -> "priority"). Unknown
+	// values are omitted by the shared normalizer instead of reaching xAI.
+	normalizeResponsesRequestServiceTier(responsesReq)
 	// These fields are useful to Codex but are not needed by the Grok CLI
 	// protocol. Keep the bridge request as close as possible to native Grok.
 	responsesReq.Include = nil
@@ -277,17 +550,24 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	if err != nil {
 		return nil, fmt.Errorf("marshal grok responses bridge request: %w", err)
 	}
+	// Preserve the converted Responses intent before Grok capability
+	// sanitization. Cache routing must see the actual client function tools,
+	// not the nested Chat Completions declarations and not a tool-free copy.
+	intentBody, err := grokChatResponsesCacheIntentBody(responsesBody)
+	if err != nil {
+		return nil, fmt.Errorf("normalize grok responses bridge cache intent: %w", err)
+	}
 	responsesBody, err = patchGrokResponsesBody(responsesBody, upstreamModel)
 	if err != nil {
 		return nil, fmt.Errorf("patch grok responses bridge request: %w", err)
 	}
-	intentBody, err := grokChatCacheIntentBody(body)
-	if err != nil {
-		return nil, fmt.Errorf("normalize grok responses bridge tool intent: %w", err)
-	}
 	responsesBody, err = applyGrokResponsesCacheIdentity(responsesBody, intentBody, cacheIdentity, true)
 	if err != nil {
 		return nil, fmt.Errorf("apply grok responses bridge cache identity: %w", err)
+	}
+	responsesBody, err = applyGrokFreeRequestToolCacheRoute(c, responsesBody, intentBody, account, cacheIdentity)
+	if err != nil {
+		return nil, fmt.Errorf("apply grok responses bridge function-tool cache route: %w", err)
 	}
 
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, responsesBody)
@@ -328,17 +608,21 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 		if upstreamMsg == "" {
 			upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
 		}
+		kind := "http_error"
+		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
+			kind = "failover"
+		}
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform:           account.Platform,
 			AccountID:          account.ID,
 			AccountName:        account.Name,
 			UpstreamStatusCode: resp.StatusCode,
 			UpstreamRequestID:  firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
-			Kind:               "failover",
+			Kind:               kind,
 			Message:            upstreamMsg,
 		})
 		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,

@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -154,4 +155,56 @@ func TestUpdateSettingsOmittedSecuritySwitchesKeepDisabled(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "false", repo.values[service.SettingKeyStepUpEnabled])
 	require.Equal(t, "false", repo.values[service.SettingKeySessionBindingEnabled])
+}
+
+func TestUpdateSettingsForwardedClientIPHeadersOmittedPreservesAndEmptyClears(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyForwardedClientIPHeaders: `["X-Cdn-Ip","True-Client-Ip"]`,
+	})
+
+	preserved := doUpdateSettings(t, h, map[string]any{"registration_enabled": true}, nil)
+	require.Equal(t, http.StatusOK, preserved.Code)
+	require.JSONEq(t, `["X-Cdn-Ip","True-Client-Ip"]`, repo.values[service.SettingKeyForwardedClientIPHeaders])
+	require.Contains(t, preserved.Body.String(), `"forwarded_client_ip_headers":["X-Cdn-Ip","True-Client-Ip"]`)
+
+	cleared := doUpdateSettings(t, h, map[string]any{"forwarded_client_ip_headers": []string{}}, nil)
+	require.Equal(t, http.StatusOK, cleared.Code)
+	require.JSONEq(t, `[]`, repo.values[service.SettingKeyForwardedClientIPHeaders])
+	require.Contains(t, cleared.Body.String(), `"forwarded_client_ip_headers":[]`)
+}
+
+func TestUpdateSettingsMalformedForwardedClientIPHeadersRemainFailClosedWhenOmitted(t *testing.T) {
+	cfg := &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}}
+	repo := &settingHandlerRepoStub{values: map[string]string{
+		service.SettingKeyAPIKeyACLTrustForwardedIP: "true",
+		service.SettingKeyForwardedClientIPHeaders:  `{"not":"an array"}`,
+	}}
+	svc := service.NewSettingService(repo, cfg)
+	require.ErrorContains(t, svc.LoadForwardedClientIPSettings(context.Background()), "load forwarded client ip headers")
+	require.False(t, cfg.ForwardedClientIPSettings().TrustForwardedIP)
+	h := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+
+	rec := doUpdateSettings(t, h, map[string]any{"registration_enabled": true}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyAPIKeyACLTrustForwardedIP])
+	require.JSONEq(t, `[]`, repo.values[service.SettingKeyForwardedClientIPHeaders])
+	runtimeSettings := cfg.ForwardedClientIPSettings()
+	require.False(t, runtimeSettings.TrustForwardedIP)
+	require.Empty(t, runtimeSettings.Headers)
+	require.Contains(t, rec.Body.String(), `"api_key_acl_trust_forwarded_ip":false`)
+	require.Contains(t, rec.Body.String(), `"forwarded_client_ip_headers":[]`)
+}
+
+func TestUpdateSettingsRejectsInvalidForwardedClientIPHeader(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyForwardedClientIPHeaders: `["X-Existing-IP"]`,
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"forwarded_client_ip_headers": []string{"X Invalid"},
+	}, nil)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.JSONEq(t, `["X-Existing-IP"]`, repo.values[service.SettingKeyForwardedClientIPHeaders])
 }
