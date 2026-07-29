@@ -30,6 +30,16 @@ export default {
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
         },
+        modelPlaza: {
+          title: '模型广场',
+          description: '以分组为单位向访客展示可用模型与价格的公开页面。默认关闭。',
+          enabled: '启用模型广场',
+          enabledHint: '开启后顶栏显示入口，页面可通过 /model-plaza 独立访问。',
+          requireAuth: '需要登录才可访问',
+          requireAuthHint: '开启后未登录访问将跳转登录页；关闭则公开可见，匿名访客仅展示非专属分组。',
+          priceDescription: '价格说明（Markdown）',
+          priceDescriptionHint: '展示在模型广场页面顶部，可用于说明计费规则、汇率、优惠活动等。',
+        },
         riskControl: {
           title: '风控中心',
           description: '启用内容审计菜单和全端点请求审核入口。默认关闭。',
