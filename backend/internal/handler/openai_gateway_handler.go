@@ -166,10 +166,18 @@ func openAICompatibleRequestPlatform(ctx context.Context, apiKey *service.APIKey
 		if platform == service.PlatformGrok {
 			return service.PlatformGrok
 		}
+		if platform == service.PlatformCodeBuddy {
+			return service.PlatformCodeBuddy
+		}
 		return service.PlatformOpenAI
 	}
-	if apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform == service.PlatformGrok {
-		return service.PlatformGrok
+	if apiKey != nil && apiKey.Group != nil {
+		switch apiKey.Group.Platform {
+		case service.PlatformGrok:
+			return service.PlatformGrok
+		case service.PlatformCodeBuddy:
+			return service.PlatformCodeBuddy
+		}
 	}
 	return service.PlatformOpenAI
 }
@@ -186,6 +194,9 @@ func allowOpenAICompatibleMessagesDispatch(apiKey *service.APIKey) bool {
 		return true
 	}
 	if apiKey.Group.Platform == service.PlatformGrok {
+		return true
+	}
+	if apiKey.Group.Platform == service.PlatformCodeBuddy {
 		return true
 	}
 	return apiKey.Group.AllowMessagesDispatch

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
@@ -270,7 +271,7 @@ func (a *Account) IsGrokOAuth() bool {
 }
 
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok)
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.Platform == PlatformCodeBuddy)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1356,6 +1357,68 @@ func (a *Account) GetGrokRefreshToken() string {
 		return ""
 	}
 	return a.GetCredential("refresh_token")
+}
+
+func (a *Account) IsCodeBuddy() bool {
+	return a.Platform == PlatformCodeBuddy
+}
+
+func (a *Account) IsCodeBuddyOAuth() bool {
+	return a.Platform == PlatformCodeBuddy && a.Type == AccountTypeOAuth
+}
+
+func (a *Account) GetCodeBuddyBaseURL() string {
+	if !a.IsCodeBuddy() {
+		return ""
+	}
+	baseURL := a.GetCredential("base_url")
+	if baseURL != "" {
+		return baseURL
+	}
+	return codebuddy.DefaultBaseURL
+}
+
+func (a *Account) GetCodeBuddyAccessToken() string {
+	if !a.IsCodeBuddyOAuth() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+func (a *Account) GetCodeBuddyRefreshToken() string {
+	if !a.IsCodeBuddyOAuth() {
+		return ""
+	}
+	return a.GetCredential("refresh_token")
+}
+
+// GetCodeBuddyModels 返回账号在 OAuth 登录时从 /v3/config 同步的可用模型列表。
+// 数据保存在 credentials["models"]（[]string），缺失时回落到 codebuddy 默认模型集。
+func (a *Account) GetCodeBuddyModels() []string {
+	if !a.IsCodeBuddy() || a.Credentials == nil {
+		return nil
+	}
+	raw, ok := a.Credentials["models"]
+	if !ok || raw == nil {
+		return codebuddy.DefaultModels()
+	}
+	switch v := raw.(type) {
+	case []string:
+		return v
+	case []any:
+		models := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+				models = append(models, strings.TrimSpace(s))
+			}
+		}
+		if len(models) == 0 {
+			return codebuddy.DefaultModels()
+		}
+		return models
+	default:
+		return codebuddy.DefaultModels()
+	}
 }
 
 func (a *Account) GetOpenAIIDToken() string {

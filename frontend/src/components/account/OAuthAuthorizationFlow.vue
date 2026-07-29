@@ -737,7 +737,7 @@
             </div>
           </div>
 
-          <!-- Step 3: Enter authorization code -->
+          <!-- Step 3: Enter authorization code / verify auth state -->
           <div
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
           >
@@ -751,41 +751,87 @@
                 <p class="mb-2 font-medium text-blue-900 dark:text-blue-200">
                   {{ oauthStep3EnterCode }}
                 </p>
-                <p
-                  class="mb-3 text-sm text-blue-700 dark:text-blue-300"
-                  v-text="oauthAuthCodeDesc"
-                ></p>
-                <div>
-                  <label class="input-label">
-                    <Icon name="key" size="sm" class="mr-1 inline text-blue-500" />
-                    {{ oauthAuthCode }}
-                  </label>
-                  <textarea
-                    v-model="authCodeInput"
-                    rows="3"
-                    class="input w-full resize-none font-mono text-sm"
-                    :placeholder="oauthAuthCodePlaceholder"
-                  ></textarea>
-                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    <Icon name="infoCircle" size="xs" class="mr-1 inline" />
-                    {{ oauthAuthCodeHint }}
-                  </p>
 
-                  <!-- Gemini-specific state parameter warning -->
-                  <div
-                    v-if="platform === 'gemini'"
-                    class="mt-3 rounded-lg border-2 border-amber-400 bg-amber-50 p-3 dark:border-amber-600 dark:bg-amber-900/30"
+                <!-- CodeBuddy: verify auth state with the state from the generated URL -->
+                <div v-if="platform === 'codebuddy'" class="space-y-3">
+                  <p class="text-sm text-blue-700 dark:text-blue-300" v-text="oauthAuthCodeDesc"></p>
+                  <button
+                    type="button"
+                    class="btn btn-primary w-full"
+                    :disabled="loading || !effectiveState"
+                    @click="handleVerifyAuthState"
                   >
-                    <div class="flex items-start gap-2">
-                      <Icon
-                        name="exclamationTriangle"
-                        size="md"
-                        class="flex-shrink-0 text-amber-600 dark:text-amber-400"
-                        :stroke-width="2"
-                      />
-                      <div class="text-sm text-amber-800 dark:text-amber-300">
-                        <p class="font-semibold">{{ $t('admin.accounts.oauth.gemini.stateWarningTitle') }}</p>
-                        <p class="mt-1">{{ $t('admin.accounts.oauth.gemini.stateWarningDesc') }}</p>
+                    <svg
+                      v-if="loading"
+                      class="-ml-1 mr-2 h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    <Icon v-else name="checkCircle" size="sm" class="mr-2" />
+                    {{
+                      loading
+                        ? t(getOAuthKey('verifyingAuthState'))
+                        : t(getOAuthKey('verifyAuthState'))
+                    }}
+                  </button>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    <Icon name="infoCircle" size="xs" class="mr-1 inline" />
+                    {{ t(getOAuthKey('verifyAuthStateHint')) }}
+                  </p>
+                </div>
+
+                <!-- Other platforms: paste authorization code -->
+                <div v-else>
+                  <p
+                    class="mb-3 text-sm text-blue-700 dark:text-blue-300"
+                    v-text="oauthAuthCodeDesc"
+                  ></p>
+                  <div>
+                    <label class="input-label">
+                      <Icon name="key" size="sm" class="mr-1 inline text-blue-500" />
+                      {{ oauthAuthCode }}
+                    </label>
+                    <textarea
+                      v-model="authCodeInput"
+                      rows="3"
+                      class="input w-full resize-none font-mono text-sm"
+                      :placeholder="oauthAuthCodePlaceholder"
+                    ></textarea>
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      <Icon name="infoCircle" size="xs" class="mr-1 inline" />
+                      {{ oauthAuthCodeHint }}
+                    </p>
+
+                    <!-- Gemini-specific state parameter warning -->
+                    <div
+                      v-if="platform === 'gemini'"
+                      class="mt-3 rounded-lg border-2 border-amber-400 bg-amber-50 p-3 dark:border-amber-600 dark:bg-amber-900/30"
+                    >
+                      <div class="flex items-start gap-2">
+                        <Icon
+                          name="exclamationTriangle"
+                          size="md"
+                          class="flex-shrink-0 text-amber-600 dark:text-amber-400"
+                          :stroke-width="2"
+                        />
+                        <div class="text-sm text-amber-800 dark:text-amber-300">
+                          <p class="font-semibold">{{ $t('admin.accounts.oauth.gemini.stateWarningTitle') }}</p>
+                          <p class="mt-1">{{ $t('admin.accounts.oauth.gemini.stateWarningDesc') }}</p>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -840,6 +886,10 @@ interface Props {
   initialInputMethod?: AuthInputMethod
   platform?: AccountPlatform // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
+  // oauthState: the state returned when generating the auth URL. For platforms that
+  // exchange via state (e.g. CodeBuddy), the "verify auth state" button uses this
+  // instead of requiring the user to paste a callback link/state manually.
+  oauthState?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -878,6 +928,7 @@ const emit = defineEmits<{
   'import-codex-pat': [accessToken: string]
   'import-sso': [content: string]
   'update:inputMethod': [method: AuthInputMethod]
+  'verify-auth-state': [state: string]
 }>()
 
 const { t } = useI18n()
@@ -890,6 +941,7 @@ const getOAuthKey = (key: string) => {
   if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${key}`
   if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${key}`
   if (props.platform === 'grok') return `admin.accounts.oauth.grok.${key}`
+  if (props.platform === 'codebuddy') return `admin.accounts.oauth.codebuddy.${key}`
   return `admin.accounts.oauth.${key}`
 }
 
@@ -925,6 +977,14 @@ const ssoCookieInput = ref('')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
 const projectId = ref('')
+
+// effectiveState: prefer the state passed in from the generated auth URL (prop),
+// fall back to a state the user pasted into the input (for non-CodeBuddy flows).
+const effectiveState = computed(() => {
+  const fromProp = (props.oauthState || '').trim()
+  if (fromProp) return fromProp
+  return oauthState.value.trim()
+})
 
 // Computed: show method selection only when there is something to choose.
 const methodOptionCount = computed(() => [
@@ -986,20 +1046,21 @@ watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
 })
 
-// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity/Grok)
-// e.g., http://localhost:8085/callback?code=xxx...&state=...
+// Auto-extract code/state from callback URL (OpenAI/Gemini/Antigravity/Grok/CodeBuddy)
+// e.g., http://localhost:8085/callback?code=xxx...&state=...  (CodeBuddy uses ?state=... only)
 watch(authCodeInput, (newVal) => {
-  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'grok') return
+  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'grok' && props.platform !== 'codebuddy') return
 
   const trimmed = newVal.trim()
-  // Check if it looks like a URL with code parameter
-  if (trimmed.includes('code=')) {
+  // Check if it looks like a URL with code/state parameter
+  if (trimmed.includes('code=') || (props.platform === 'codebuddy' && trimmed.includes('state='))) {
     try {
       // Try to parse as URL
       const url = trimmed.includes('?') ? new URL(trimmed) : new URL(`http://localhost/callback?${trimmed.replace(/^\?/, '')}`)
       const code = url.searchParams.get('code')
       const stateParam = url.searchParams.get('state')
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateParam) {
+      const isSupported = props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok' || props.platform === 'codebuddy'
+      if (isSupported && stateParam) {
         oauthState.value = stateParam
       }
       if (code && code !== trimmed) {
@@ -1010,13 +1071,19 @@ watch(authCodeInput, (newVal) => {
       // If URL parsing fails, try regex extraction
       const match = trimmed.match(/[?&]code=([^&]+)/)
       const stateMatch = trimmed.match(/[?&]state=([^&]+)/)
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateMatch && stateMatch[1]) {
+      const isSupported = props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok' || props.platform === 'codebuddy'
+      if (isSupported && stateMatch && stateMatch[1]) {
         oauthState.value = stateMatch[1]
       }
       if (match && match[1] && match[1] !== trimmed) {
         authCodeInput.value = match[1]
       }
     }
+  }
+  // CodeBuddy: state-only pasted directly (no code=, no URL)
+  if (props.platform === 'codebuddy' && !trimmed.includes('=') && trimmed.length > 8) {
+    oauthState.value = trimmed.trim()
+    authCodeInput.value = ''
   }
 })
 
@@ -1039,6 +1106,14 @@ const handleRegenerate = () => {
 const handleCookieAuth = () => {
   if (sessionKeyInput.value.trim()) {
     emit('cookie-auth', sessionKeyInput.value)
+  }
+}
+
+// CodeBuddy: verify auth state using the state from the generated auth URL.
+const handleVerifyAuthState = () => {
+  const state = effectiveState.value
+  if (state) {
+    emit('verify-auth-state', state)
   }
 }
 

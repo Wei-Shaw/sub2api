@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -667,6 +668,65 @@ func rawChatCompletionsTestAccount() *Account {
 			"base_url": "http://upstream.example",
 		},
 	}
+}
+
+// codeBuddyRawChatCompletionsTestAccount 构造一个 CodeBuddy OAuth 账号，
+// 用于验证 raw 直转路径把请求送到 /v2/chat/completions，并记录正确的上游端点。
+func codeBuddyRawChatCompletionsTestAccount() *Account {
+	return &Account{
+		ID:          102,
+		Name:        "codebuddy-oauth",
+		Platform:    PlatformCodeBuddy,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "cb-at-test",
+			"base_url":     codebuddy.DefaultBaseURL,
+		},
+	}
+}
+
+// TestForwardAsRawChatCompletions_CodeBuddyUsesV2ChatCompletions 锁定 CodeBuddy
+// 走 OpenAI 兼容协议：上游为 /v2/chat/completions，且记录的上游端点标签正确
+// （不得误写为 Grok 的 /v1/chat/completions）。
+func TestForwardAsRawChatCompletions_CodeBuddyUsesV2ChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"hy3","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_cb_chat"}},
+		Body:       io.NopCloser(strings.NewReader(codeBuddyChatCompletionsSSE("hy3", "chatcmpl_cb", "ok"))),
+	}}
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+	account := codeBuddyRawChatCompletionsTestAccount()
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 3, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+	resultJSON := rec.Body.String()
+	require.Equal(t, "chat.completion", gjson.Get(resultJSON, "object").String())
+	require.Equal(t, "ok", gjson.Get(resultJSON, "choices.0.message.content").String())
+
+	require.NotNil(t, upstream.lastReq)
+	require.Contains(t, upstream.lastReq.URL.String(), "copilot.tencent.com/v2/chat/completions")
+	require.Equal(t, "Bearer cb-at-test", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
+	require.Equal(t, codebuddy.ChatCompletionsPath, GetActualOpenAIUpstreamEndpoint(c))
+	require.Equal(t, codebuddy.ChatCompletionsPath, result.UpstreamEndpoint)
 }
 
 func largeRawChatCompletionsBody() []byte {

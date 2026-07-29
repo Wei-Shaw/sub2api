@@ -878,6 +878,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         composite: 'Composite',
+        codebuddy: 'CodeBuddy',
       },
       saving: '保存中...',
       noGroups: '暂无分组',

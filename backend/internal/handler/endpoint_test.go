@@ -131,6 +131,9 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 		{"grok responses", EndpointResponses, "/v1/responses", service.PlatformGrok, EndpointResponses},
 		{"grok video generations", EndpointVideosGenerations, "/v1/videos/generations", service.PlatformGrok, EndpointVideosGenerations},
 		{"grok video status", EndpointVideos, "/videos/req_123", service.PlatformGrok, EndpointVideos},
+		{"codebuddy messages", EndpointMessages, "/v1/messages", service.PlatformCodeBuddy, EndpointCodeBuddyChatCompletions},
+		{"codebuddy chat", EndpointChatCompletions, "/v1/chat/completions", service.PlatformCodeBuddy, EndpointCodeBuddyChatCompletions},
+		{"codebuddy responses", EndpointResponses, "/v1/responses", service.PlatformCodeBuddy, EndpointCodeBuddyChatCompletions},
 
 		// Antigravity — uses inbound to pick Claude vs Gemini upstream.
 		{"antigravity claude", EndpointMessages, "/antigravity/v1/messages", service.PlatformAntigravity, EndpointMessages},
@@ -212,6 +215,12 @@ func TestResolveOpenAIUpstreamEndpointPrefersForwardResult(t *testing.T) {
 			account:         &service.Account{Platform: service.PlatformGrok, Type: service.AccountTypeOAuth},
 			runtimeEndpoint: EndpointChatCompletions,
 			want:            EndpointChatCompletions,
+		},
+		{
+			name:            "codebuddy raw error uses runtime v2 chat endpoint",
+			account:         &service.Account{Platform: service.PlatformCodeBuddy, Type: service.AccountTypeOAuth},
+			runtimeEndpoint: EndpointCodeBuddyChatCompletions,
+			want:            EndpointCodeBuddyChatCompletions,
 		},
 		{
 			name:    "openai behavior remains responses",

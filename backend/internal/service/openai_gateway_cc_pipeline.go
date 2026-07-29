@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -142,18 +143,32 @@ func (s *OpenAIGatewayService) openAIChatCompletionsTargetURL(account *Account) 
 	return buildOpenAIChatCompletionsURL(validatedURL), nil
 }
 
-// resolveCCFallbackTarget 解析两条 CC 回退路径共用的账号凭证与上游端点
-// （回退路径仅面向 APIKey 账号，凭证恒为 openai api_key）。
+// resolveCCFallbackTarget 解析两条 CC 回退路径共用的账号凭证与上游端点。
+// CodeBuddy 走 OpenAI 兼容协议：access_token 作 Bearer，基址为 copilot.tencent.com；
+// 其余平台保持原 OpenAI api_key 行为。
 func (s *OpenAIGatewayService) resolveCCFallbackTarget(account *Account) (apiKey string, targetURL string, err error) {
-	apiKey = account.GetOpenAIApiKey()
-	if apiKey == "" {
-		return "", "", fmt.Errorf("account %d missing api_key", account.ID)
+	switch account.Platform {
+	case PlatformCodeBuddy:
+		apiKey = account.GetCodeBuddyAccessToken()
+		if apiKey == "" {
+			return "", "", fmt.Errorf("account %d missing codebuddy access_token", account.ID)
+		}
+		targetURL, err = codebuddy.BuildChatCompletionsURL(account.GetCodeBuddyBaseURL())
+		if err != nil {
+			return "", "", fmt.Errorf("invalid codebuddy base_url: %w", err)
+		}
+		return apiKey, targetURL, nil
+	default:
+		apiKey = account.GetOpenAIApiKey()
+		if apiKey == "" {
+			return "", "", fmt.Errorf("account %d missing api_key", account.ID)
+		}
+		targetURL, err = s.openAIChatCompletionsTargetURL(account)
+		if err != nil {
+			return "", "", err
+		}
+		return apiKey, targetURL, nil
 	}
-	targetURL, err = s.openAIChatCompletionsTargetURL(account)
-	if err != nil {
-		return "", "", err
-	}
-	return apiKey, targetURL, nil
 }
 
 // sendCCUpstreamRequest 构建并发送 CC 上游请求：分离的上游 context、OpenAI HTTP
@@ -207,6 +222,48 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 		}
 		applyGrokCacheHeaders(upstreamReq.Header, grokCacheIdentity)
 	}
+	// codebuddy 上游要求携带官方 WorkBuddy 客户端的会话/身份头，
+	// 否则网关无法识别为合法会话，会走最严格的内容安全路径把无害输入也判为敏感。
+	// 实测：本地 curl 带全套头时 1+1 正常返回，sub2api 缺头时被上游拦截。
+	if account.Platform == PlatformCodeBuddy {
+		cid := codebuddy.GenerateRequestUUID()
+		upstreamReq.Header.Set("X-Conversation-ID", cid)
+		upstreamReq.Header.Set("X-Conversation-Request-ID", codebuddy.GenerateRequestUUID())
+		upstreamReq.Header.Set("X-Conversation-Message-ID", codebuddy.GenerateRequestUUID())
+		upstreamReq.Header.Set("X-Request-ID", codebuddy.GenerateRequestUUID())
+		upstreamReq.Header.Set("X-Agent-Intent", "craft")
+		upstreamReq.Header.Set("X-Agent-Purpose", "conversation_topic")
+		upstreamReq.Header.Set("X-IDE-Type", "WorkBuddy")
+		upstreamReq.Header.Set("X-IDE-Name", "WorkBuddy")
+		upstreamReq.Header.Set("X-IDE-Version", "5.2.5")
+		upstreamReq.Header.Set("X-Private-Data", "false")
+		upstreamReq.Header.Set("X-Domain", "www.codebuddy.cn")
+		upstreamReq.Header.Set("X-Product", "SaaS")
+		upstreamReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+		upstreamReq.Header.Set("User-Agent", "WorkBuddy/5.2.5 WorkBuddy/5.2.5 CLI/2.106.4")
+		if uid := account.GetCredential("uid"); uid != "" {
+			upstreamReq.Header.Set("X-User-Id", uid)
+		}
+		// 官方 WorkBuddy 客户端随请求携带的 stainless / trace 头。
+		// 这些头在客户端侧随机/动态生成，上游据此识别 SDK 来源与链路追踪，
+		// 缺省会被上游走最严格的内容安全路径（实测缺头时正常输入被拦截）。
+		// 随机部分（trace id / span id）每次请求新生成，不要写死。
+		upstreamReq.Header.Set("x-stainless-arch", "arm64")
+		upstreamReq.Header.Set("x-stainless-lang", "js")
+		upstreamReq.Header.Set("x-stainless-os", "MacOS")
+		upstreamReq.Header.Set("x-stainless-package-version", "6.25.0")
+		upstreamReq.Header.Set("x-stainless-retry-count", "0")
+		upstreamReq.Header.Set("x-stainless-runtime", "node")
+		upstreamReq.Header.Set("x-stainless-runtime-version", "v22.21.1")
+		traceID := codebuddy.GenerateHexID(16)
+		spanID := codebuddy.GenerateHexID(8)
+		upstreamReq.Header.Set("traceparent", "00-"+traceID+"-"+spanID+"-01")
+		upstreamReq.Header.Set("b3", traceID+"-"+spanID+"-1")
+		upstreamReq.Header.Set("X-B3-TraceId", traceID)
+		upstreamReq.Header.Set("X-B3-SpanId", spanID)
+		upstreamReq.Header.Set("X-B3-Sampled", "1")
+		upstreamReq.Header.Set("X-Trace-ID", traceID)
+	}
 	// 账号级请求头覆写：放在所有内置默认头（含 Grok CLI 身份头）之后应用，
 	// 使配置值获得除共享传输层强制头之外的最高优先级。
 	account.ApplyHeaderOverrides(upstreamReq.Header)
@@ -241,6 +298,113 @@ type ccStreamScanState struct {
 // 哨兵处停止、保留最新 usage、记录首 token 时延，并把每个解析成功的 chunk 交给
 // emit 回调做各自的协议转换与写出。读错误按既有约定过滤 context 取消类噪声后
 // 记入 Warn 日志。
+func (s *OpenAIGatewayService) aggregateCCStream(
+	resp *http.Response,
+	logPrefix string,
+	requestID string,
+	startTime time.Time,
+	fallbackModel string,
+) (*apicompat.ChatCompletionsResponse, ccStreamScanState) {
+	aggregated := &apicompat.ChatCompletionsResponse{
+		Object: "chat.completion",
+		Model:  fallbackModel,
+	}
+	var (
+		textBuilder      strings.Builder
+		reasoningBuilder strings.Builder
+		toolCalls        []apicompat.ChatToolCall
+		toolArgs         []strings.Builder
+		finishReason     string
+	)
+	indexToSlot := make(map[int]int)
+
+	scan := s.scanCCStream(resp, logPrefix, requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
+		if chunk.ID != "" {
+			aggregated.ID = chunk.ID
+		}
+		if chunk.Model != "" {
+			aggregated.Model = chunk.Model
+		}
+		if chunk.Created != 0 {
+			aggregated.Created = chunk.Created
+		}
+		if chunk.Usage != nil {
+			aggregated.Usage = chunk.Usage
+		}
+		for _, choice := range chunk.Choices {
+			if choice.Delta.Content != nil {
+				textBuilder.WriteString(*choice.Delta.Content)
+			}
+			if choice.Delta.ReasoningContent != nil {
+				reasoningBuilder.WriteString(*choice.Delta.ReasoningContent)
+			}
+			for _, tc := range choice.Delta.ToolCalls {
+				idx := -1
+				if tc.Index != nil {
+					idx = *tc.Index
+				}
+				slot, ok := indexToSlot[idx]
+				if !ok {
+					slot = len(toolCalls)
+					toolCalls = append(toolCalls, apicompat.ChatToolCall{Index: tc.Index, ID: tc.ID, Type: tc.Type})
+					toolArgs = append(toolArgs, strings.Builder{})
+					indexToSlot[idx] = slot
+				}
+				if tc.ID != "" {
+					toolCalls[slot].ID = tc.ID
+				}
+				if tc.Type != "" {
+					toolCalls[slot].Type = tc.Type
+				}
+				if tc.Function.Name != "" {
+					toolCalls[slot].Function.Name = tc.Function.Name
+				}
+				if tc.Function.Arguments != "" {
+					toolArgs[slot].WriteString(tc.Function.Arguments)
+				}
+			}
+			if choice.FinishReason != nil && *choice.FinishReason != "" {
+				finishReason = *choice.FinishReason
+			}
+		}
+	})
+
+	message := apicompat.ChatMessage{Role: "assistant"}
+	if reasoningBuilder.Len() > 0 {
+		message.ReasoningContent = reasoningBuilder.String()
+	}
+	if textBuilder.Len() > 0 {
+		contentJSON, _ := json.Marshal(textBuilder.String())
+		message.Content = json.RawMessage(contentJSON)
+	}
+	if len(toolCalls) > 0 {
+		for i := range toolCalls {
+			toolCalls[i].Function.Arguments = toolArgs[i].String()
+		}
+		message.ToolCalls = toolCalls
+	}
+	aggregated.Choices = []apicompat.ChatChoice{{
+		Index:        0,
+		Message:      message,
+		FinishReason: finishReason,
+	}}
+	return aggregated, scan
+}
+
+func openAIUsageFromChatCompletions(usage *apicompat.ChatUsage) OpenAIUsage {
+	var result OpenAIUsage
+	if usage == nil {
+		return result
+	}
+	result.InputTokens = usage.PromptTokens
+	result.OutputTokens = usage.CompletionTokens
+	if usage.PromptTokensDetails != nil {
+		result.CacheReadInputTokens = usage.PromptTokensDetails.CachedTokens
+		result.CacheCreationInputTokens = usage.PromptTokensDetails.CacheCreationTokens
+	}
+	return result
+}
+
 func (s *OpenAIGatewayService) scanCCStream(
 	resp *http.Response,
 	logPrefix string,

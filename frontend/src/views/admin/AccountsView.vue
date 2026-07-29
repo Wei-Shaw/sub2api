@@ -245,6 +245,13 @@
               >
                 {{ accountDisplayEmail(row) }}
               </span>
+              <span
+                v-else-if="row.platform === 'codebuddy' && accountDisplayNickname(row)"
+                class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
+                :title="accountDisplayNickname(row)"
+              >
+                {{ accountDisplayNickname(row) }}
+              </span>
             </div>
           </template>
           <template #cell-notes="{ value }">
@@ -1333,6 +1340,13 @@ function accountHomepageUrl(row: Account): string {
   if (row.type !== 'apikey' || typeof row.credentials?.base_url !== 'string') return ''
   const baseUrl = sanitizeUrl(row.credentials.base_url)
   return baseUrl ? new URL(baseUrl).origin : ''
+}
+
+// CodeBuddy 通过手机号/微信认证,无邮箱;名称列副标题展示 extra.nickname(来自 workbuddy 账号信息)。
+function accountDisplayNickname(row: any): string {
+  const extra = row.extra as Record<string, unknown> | undefined
+  const nickname = typeof extra?.nickname === 'string' ? extra.nickname : ''
+  return nickname.trim()
 }
 
 type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'

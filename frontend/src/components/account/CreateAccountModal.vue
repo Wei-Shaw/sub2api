@@ -160,6 +160,19 @@
             <PlatformIcon platform="grok" size="sm" />
             Grok
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'codebuddy'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'codebuddy'
+                ? 'bg-white text-violet-600 shadow-sm dark:bg-dark-600 dark:text-violet-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="codebuddy" size="sm" />
+            CodeBuddy/WorkBuddy
+          </button>
         </div>
       </div>
 
@@ -409,6 +422,41 @@
             </div>
           </button>
         </div>
+      </div>
+
+      <!-- Account Type Selection (CodeBuddy) -->
+      <div v-if="form.platform === 'codebuddy'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-type">
+          <button
+            type="button"
+            @click="accountCategory = 'oauth-based'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'oauth-based'
+                ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20'
+                : 'border-gray-200 hover:border-violet-300 dark:border-dark-600 dark:hover:border-violet-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'oauth-based'
+                  ? 'bg-violet-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <PlatformIcon platform="codebuddy" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.oauth.codebuddy.oauthOnlyHint') }}</span>
+            </div>
+          </button>
+        </div>
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.oauth.codebuddy.oauthOnlyHint') }}
+        </p>
       </div>
 
       <!-- Account Type Selection (Gemini) -->
@@ -2013,7 +2061,7 @@
 
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
+        v-if="(form.platform === 'openai' || form.platform === 'grok' || form.platform === 'codebuddy') && accountCategory === 'oauth-based'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -3155,11 +3203,12 @@
         :session-id="currentSessionId"
         :loading="currentOAuthLoading"
         :error="currentOAuthError"
+        :oauth-state="currentOAuthState"
         :show-help="form.platform === 'anthropic'"
         :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'grok' && !!form.proxy_id"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
-        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok'"
+        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok' || form.platform === 'codebuddy'"
         :show-mobile-refresh-token-option="form.platform === 'openai'"
         :show-session-token-option="false"
         :show-access-token-option="false"
@@ -3174,6 +3223,7 @@
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
         @validate-refresh-token="handleValidateRefreshToken"
+        @verify-auth-state="handleVerifyAuthState"
         @validate-mobile-refresh-token="handleOpenAIValidateMobileRT"
         @validate-session-token="handleValidateSessionToken"
         @import-codex-session="handleOpenAIImportCodexSession"
@@ -3520,6 +3570,7 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
+import { useCodeBuddyOAuth } from '@/composables/useCodeBuddyOAuth'
 import type {
   Proxy,
   AdminGroup,
@@ -3591,6 +3642,7 @@ const oauthStepTitle = computed(() => {
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   if (form.platform === 'grok') return t('admin.accounts.oauth.grok.title')
+  if (form.platform === 'codebuddy') return t('admin.accounts.oauth.codebuddy.title')
   return t('admin.accounts.oauth.title')
 })
 
@@ -3629,6 +3681,7 @@ const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
 const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
 const grokOAuth = useGrokOAuth() // For Grok OAuth
+const codeBuddyOAuth = useCodeBuddyOAuth() // For CodeBuddy/WorkBuddy OAuth
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
@@ -3636,6 +3689,7 @@ const currentAuthUrl = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.authUrl.value
   if (form.platform === 'antigravity') return antigravityOAuth.authUrl.value
   if (form.platform === 'grok') return grokOAuth.authUrl.value
+  if (form.platform === 'codebuddy') return codeBuddyOAuth.authUrl.value
   return oauth.authUrl.value
 })
 
@@ -3644,6 +3698,7 @@ const currentSessionId = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.sessionId.value
   if (form.platform === 'antigravity') return antigravityOAuth.sessionId.value
   if (form.platform === 'grok') return grokOAuth.sessionId.value
+  if (form.platform === 'codebuddy') return codeBuddyOAuth.sessionId.value
   return oauth.sessionId.value
 })
 
@@ -3652,6 +3707,7 @@ const currentOAuthLoading = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.loading.value
   if (form.platform === 'antigravity') return antigravityOAuth.loading.value
   if (form.platform === 'grok') return grokOAuth.loading.value
+  if (form.platform === 'codebuddy') return codeBuddyOAuth.loading.value
   return oauth.loading.value
 })
 
@@ -3660,7 +3716,14 @@ const currentOAuthError = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.error.value
   if (form.platform === 'antigravity') return antigravityOAuth.error.value
   if (form.platform === 'grok') return grokOAuth.error.value
+  if (form.platform === 'codebuddy') return codeBuddyOAuth.error.value
   return oauth.error.value
+})
+
+// OAuth state returned by the backend (used by platforms that exchange via state, e.g. CodeBuddy)
+const currentOAuthState = computed(() => {
+  if (form.platform === 'codebuddy') return codeBuddyOAuth.state.value
+  return ''
 })
 
 // Refs
@@ -5136,6 +5199,7 @@ const goBackToBasicInfo = () => {
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   grokOAuth.resetState()
+  codeBuddyOAuth.resetState()
   oauthFlowRef.value?.reset()
 }
 
@@ -5153,6 +5217,8 @@ const handleGenerateUrl = async () => {
     await antigravityOAuth.generateAuthUrl(form.proxy_id)
   } else if (form.platform === 'grok') {
     await grokOAuth.generateAuthUrl(form.proxy_id)
+  } else if (form.platform === 'codebuddy') {
+    await codeBuddyOAuth.generateAuthUrl(form.proxy_id)
   } else {
     await oauth.generateAuthUrl(addMethod.value, form.proxy_id)
   }
@@ -5165,6 +5231,8 @@ const handleValidateRefreshToken = (rt: string) => {
     handleAntigravityValidateRT(rt)
   } else if (form.platform === 'grok') {
     handleGrokValidateRT(rt)
+  } else if (form.platform === 'codebuddy') {
+    handleCodeBuddyValidateRT(rt)
   }
 }
 
@@ -5232,6 +5300,14 @@ const createAccountAndFinish = async (
     if (!credentials.base_url) {
       credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.x.ai/v1'
     }
+    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    } else {
+      delete credentials.model_mapping
+    }
+  }
+  if (platform === 'codebuddy') {
     const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     if (modelMapping) {
       credentials.model_mapping = modelMapping
@@ -6015,6 +6091,126 @@ const handleGrokExchange = async (authCode: string) => {
     appStore.showError(grokOAuth.error.value)
   } finally {
     grokOAuth.loading.value = false
+  }
+}
+
+// CodeBuddy OAuth 状态校验（用 state 换 token）
+const handleVerifyAuthState = async (state: string) => {
+  const stateToUse = (state || '').trim() || codeBuddyOAuth.state.value.trim()
+  if (!stateToUse || !codeBuddyOAuth.sessionId.value) return
+
+  codeBuddyOAuth.loading.value = true
+  codeBuddyOAuth.error.value = ''
+
+  try {
+    const tokenInfo = await codeBuddyOAuth.exchangeState({
+      state: stateToUse,
+      sessionId: codeBuddyOAuth.sessionId.value,
+      proxyId: form.proxy_id
+    })
+    if (!tokenInfo) return
+
+    const credentials = codeBuddyOAuth.buildCredentials(tokenInfo)
+    const extra = codeBuddyOAuth.buildExtraInfo(tokenInfo)
+    await createAccountAndFinish('codebuddy', 'oauth', credentials, extra)
+  } catch (error: any) {
+    codeBuddyOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.codebuddy.authFailed')
+    appStore.showError(codeBuddyOAuth.error.value)
+  } finally {
+    codeBuddyOAuth.loading.value = false
+  }
+}
+
+// CodeBuddy 手动 RT 批量验证和创建
+const handleCodeBuddyValidateRT = async (refreshTokenInput: string) => {
+  if (!refreshTokenInput.trim()) return
+
+  const refreshTokens = refreshTokenInput
+    .split('\n')
+    .map((rt) => rt.trim())
+    .filter((rt) => rt)
+
+  if (refreshTokens.length === 0) {
+    codeBuddyOAuth.error.value = t('admin.accounts.oauth.codebuddy.pleaseEnterRefreshToken')
+    return
+  }
+
+  codeBuddyOAuth.loading.value = true
+  codeBuddyOAuth.error.value = ''
+
+  let successCount = 0
+  let failedCount = 0
+  const errors: string[] = []
+
+  try {
+    for (let i = 0; i < refreshTokens.length; i++) {
+      try {
+        const tokenInfo = await codeBuddyOAuth.validateRefreshToken(refreshTokens[i], form.proxy_id)
+        if (!tokenInfo) {
+          failedCount++
+          errors.push(`#${i + 1}: ${codeBuddyOAuth.error.value || 'Validation failed'}`)
+          codeBuddyOAuth.error.value = ''
+          continue
+        }
+
+        const credentials = codeBuddyOAuth.buildCredentials(tokenInfo)
+        const extra = codeBuddyOAuth.buildExtraInfo(tokenInfo)
+        const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+        if (modelMapping) {
+          credentials.model_mapping = modelMapping
+        }
+
+        if (!applyTempUnschedConfig(credentials)) {
+          return
+        }
+
+        const accountName =
+          refreshTokens.length > 1
+            ? `${form.name || 'CodeBuddy/WorkBuddy Account'} #${i + 1}`
+            : (form.name || 'CodeBuddy/WorkBuddy Account')
+
+        await adminAPI.accounts.create({
+          name: accountName,
+          notes: form.notes,
+          platform: 'codebuddy',
+          type: 'oauth',
+          credentials,
+          extra,
+          proxy_id: form.proxy_id,
+          concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
+          priority: form.priority,
+          rate_multiplier: form.rate_multiplier,
+          group_ids: form.group_ids,
+          expires_at: form.expires_at,
+          auto_pause_on_expired: autoPauseOnExpired.value
+        })
+        successCount++
+      } catch (error: any) {
+        failedCount++
+        const errMsg = error.response?.data?.detail || error.message || 'Unknown error'
+        errors.push(`#${i + 1}: ${errMsg}`)
+      }
+    }
+
+    if (successCount > 0 && failedCount === 0) {
+      appStore.showSuccess(
+        refreshTokens.length > 1
+          ? t('admin.accounts.oauth.batchSuccess', { count: successCount })
+          : t('admin.accounts.accountCreated')
+      )
+      emit('created')
+      handleClose()
+    } else if (successCount > 0) {
+      appStore.showWarning(t('admin.accounts.oauth.batchPartialSuccess', { success: successCount, failed: failedCount }))
+      codeBuddyOAuth.error.value = errors.join('\n')
+      emit('created')
+    } else {
+      codeBuddyOAuth.error.value = errors.join('\n')
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    }
+  } finally {
+    codeBuddyOAuth.loading.value = false
   }
 }
 

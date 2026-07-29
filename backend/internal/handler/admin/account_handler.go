@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -61,6 +62,7 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	codeBuddyOAuthService   *service.CodeBuddyOAuthService
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
@@ -91,6 +93,7 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	codeBuddyOAuthService *service.CodeBuddyOAuthService,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -107,6 +110,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		codeBuddyOAuthService:   codeBuddyOAuthService,
 	}
 }
 
@@ -1279,6 +1283,18 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 		newCredentials = service.MergeCredentials(account.Credentials, h.grokOAuthService.BuildAccountCredentials(tokenInfo))
 		if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
 			newCredentials["base_url"] = baseURL
+		}
+	} else if account.Platform == service.PlatformCodeBuddy {
+		tokenInfo, err := h.codeBuddyOAuthService.RefreshAccountToken(ctx, account)
+		if err != nil {
+			return nil, "", err
+		}
+
+		newCredentials = h.codeBuddyOAuthService.BuildAccountCredentials(tokenInfo)
+		for k, v := range account.Credentials {
+			if _, exists := newCredentials[k]; !exists {
+				newCredentials[k] = v
+			}
 		}
 	} else {
 		// Use Anthropic/Claude OAuth service to refresh token
@@ -2501,6 +2517,25 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				OwnedBy:     "xai",
 				DisplayName: requestedModel,
 			})
+		}
+		response.Success(c, models)
+		return
+	}
+
+	// Handle CodeBuddy accounts: 实时从 /v3/config 拉取真实模型列表（含计费与上下文配置），失败则回落到 OAuth 同步的列表。
+	if account.IsCodeBuddy() {
+		models := make([]codebuddy.ModelInfo, 0)
+		for _, id := range account.GetCodeBuddyModels() {
+			models = append(models, codebuddy.ModelInfo{ID: id, Name: id, DisplayName: id})
+		}
+		if at := account.GetCodeBuddyAccessToken(); at != "" {
+			proxyURL := ""
+			if account.Proxy != nil {
+				proxyURL = account.Proxy.URL()
+			}
+			if live, err := codebuddy.FetchEnabledModels(c.Request.Context(), at, account.GetCredential("uid"), proxyURL); err == nil && len(live) > 0 {
+				models = live
+			}
 		}
 		response.Success(c, models)
 		return

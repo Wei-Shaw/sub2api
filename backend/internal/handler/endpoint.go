@@ -15,20 +15,21 @@ import (
 // ──────────────────────────────────────────────────────────
 
 const (
-	EndpointMessages          = "/v1/messages"
-	EndpointChatCompletions   = "/v1/chat/completions"
-	EndpointEmbeddings        = "/v1/embeddings"
-	EndpointAlphaSearch       = "/v1/alpha/search"
-	EndpointResponses         = "/v1/responses"
-	EndpointResponsesCompact  = "/v1/responses/compact"
-	EndpointImagesGenerations = "/v1/images/generations"
-	EndpointImagesEdits       = "/v1/images/edits"
-	EndpointImageTasks        = "/v1/images/tasks"
-	EndpointVideosGenerations = "/v1/videos/generations"
-	EndpointVideosEdits       = "/v1/videos/edits"
-	EndpointVideosExtensions  = "/v1/videos/extensions"
-	EndpointVideos            = "/v1/videos"
-	EndpointGeminiModels      = "/v1beta/models"
+	EndpointMessages                 = "/v1/messages"
+	EndpointChatCompletions          = "/v1/chat/completions"
+	EndpointCodeBuddyChatCompletions = "/v2/chat/completions"
+	EndpointEmbeddings               = "/v1/embeddings"
+	EndpointAlphaSearch              = "/v1/alpha/search"
+	EndpointResponses                = "/v1/responses"
+	EndpointResponsesCompact         = "/v1/responses/compact"
+	EndpointImagesGenerations        = "/v1/images/generations"
+	EndpointImagesEdits              = "/v1/images/edits"
+	EndpointImageTasks               = "/v1/images/tasks"
+	EndpointVideosGenerations        = "/v1/videos/generations"
+	EndpointVideosEdits              = "/v1/videos/edits"
+	EndpointVideosExtensions         = "/v1/videos/extensions"
+	EndpointVideos                   = "/v1/videos"
+	EndpointGeminiModels             = "/v1beta/models"
 )
 
 const EndpointAntigravityGenerateContent = "/v1internal:streamGenerateContent"
@@ -210,6 +211,9 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 
 	case service.PlatformGemini:
 		return EndpointGeminiModels
+
+	case service.PlatformCodeBuddy:
+		return EndpointCodeBuddyChatCompletions
 
 	case service.PlatformAntigravity:
 		// Antigravity accounts serve both Claude and Gemini.
