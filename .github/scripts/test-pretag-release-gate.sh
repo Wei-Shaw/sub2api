@@ -45,7 +45,7 @@ require_literal "$PROMOTE_WORKFLOW" 'verify_workflow release-preflight.yml "Rele
 require_literal "$PROMOTE_WORKFLOW" 'RELEASE_TAG_DEPLOY_KEY: ${{ secrets.RELEASE_TAG_DEPLOY_KEY }}'
 require_literal "$PROMOTE_WORKFLOW" 'RELEASE_TAG_CREATION_RULESET_ID: ${{ vars.RELEASE_TAG_CREATION_RULESET_ID }}'
 require_literal "$PROMOTE_WORKFLOW" 'release-promotion-state.sh \'
-require_literal "$PROMOTE_WORKFLOW" 'verify-rulesets-json \'
+require_literal "$PROMOTE_WORKFLOW" 'verify-rulesets-runtime-json \'
 require_literal "$PROMOTE_WORKFLOW" 'git push "git@github.com:${GITHUB_REPOSITORY}.git"'
 require_literal "$PROMOTE_WORKFLOW" "if: steps.verify.outputs.tag_exists != 'true'"
 require_literal "$PROMOTE_WORKFLOW" 'require-current-main "$EXPECTED_SHA" refs/remotes/origin/main'
@@ -58,7 +58,7 @@ require_literal "$RELEASE_WORKFLOW" 'run: pnpm run build'
 require_literal "$RELEASE_WORKFLOW" 'workflow_call:'
 require_literal "$RELEASE_WORKFLOW" 'ref: ${{ inputs.tag }}'
 require_literal "$RELEASE_WORKFLOW" 'RELEASE_TAG_CREATION_RULESET_ID: ${{ vars.RELEASE_TAG_CREATION_RULESET_ID }}'
-require_literal "$RELEASE_WORKFLOW" 'verify-rulesets-json \'
+require_literal "$RELEASE_WORKFLOW" 'verify-rulesets-runtime-json \'
 if grep -Eq -- '^[[:space:]]+(workflow_dispatch|push):' "$RELEASE_WORKFLOW"; then
   fail "$RELEASE_WORKFLOW must only be callable through the controlled promotion workflow"
 fi

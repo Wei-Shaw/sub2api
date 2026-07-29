@@ -92,8 +92,8 @@ if [[ $(grep -Fc 'GH_TOKEN: ${{ github.token }}' "$RELEASE_WORKFLOW") -lt 2 ]]; 
   echo "every release ruleset API check must authenticate GitHub CLI" >&2
   exit 1
 fi
-if [[ $(grep -Fc 'release-safety.sh verify-rulesets-json \' "$RELEASE_WORKFLOW") -ne 2 ]]; then
-  echo "release gate and final preflight must both validate immutable and creation rulesets" >&2
+if [[ $(grep -Fc 'release-safety.sh verify-rulesets-runtime-json \' "$RELEASE_WORKFLOW") -ne 2 ]]; then
+  echo "release gate and final preflight must both validate runtime-visible immutable and creation rulesets" >&2
   exit 1
 fi
 grep -Fq 'VALIDATED_RELEASE_TAG_OBJECT: ${{ needs.release-gate.outputs.release_tag_object }}' "$RELEASE_WORKFLOW"

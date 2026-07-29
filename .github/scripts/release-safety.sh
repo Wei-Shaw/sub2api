@@ -506,7 +506,7 @@ verify_tag_commit() {
     fail "Previous release tag object $expected_previous_tag moved after validation"
 }
 
-verify_rulesets_json() {
+verify_ruleset_structure_json() {
   local immutable_ruleset_path="$1"
   local creation_ruleset_path="$2"
   [[ -f "$immutable_ruleset_path" ]] || \
@@ -521,30 +521,70 @@ verify_rulesets_json() {
       and .enforcement == "active"
       and (($includes | index($pattern)) != null or ($includes | index("~ALL")) != null)
       and ((.conditions.ref_name.exclude // []) | length == 0)
-      and ((.bypass_actors // []) | length == 0)
       and (($rules | index("update")) != null)
       and (($rules | index("deletion")) != null)
       and (($rules | index("creation")) == null)
   ' "$immutable_ruleset_path" >/dev/null || \
-    fail "Immutable release tag ruleset must forbid updates and deletion for refs/tags/v*-ts.* with no bypass actors"
+    fail "Immutable release tag ruleset must only forbid updates and deletion for refs/tags/v*-ts.*"
 
   jq -e --arg pattern 'refs/tags/v*-ts.*' '
     (.conditions.ref_name.include // []) as $includes
     | ([.rules[]?.type]) as $rules
-    | (.bypass_actors // []) as $bypass
     | .target == "tag"
       and .enforcement == "active"
       and (($includes | index($pattern)) != null or ($includes | index("~ALL")) != null)
       and ((.conditions.ref_name.exclude // []) | length == 0)
-      and ($bypass | length == 1)
-      and ($bypass[0].actor_type == "DeployKey")
-      and ($bypass[0].actor_id == null)
-      and ($bypass[0].bypass_mode == "always")
       and (($rules | index("creation")) != null)
       and (($rules | index("update")) == null)
       and (($rules | index("deletion")) == null)
   ' "$creation_ruleset_path" >/dev/null || \
-    fail "Release tag creation ruleset must only forbid creation for refs/tags/v*-ts.* with the dedicated release deploy key as its sole bypass"
+    fail "Release tag creation ruleset must only forbid creation for refs/tags/v*-ts.*"
+}
+
+verify_rulesets_json() {
+  local immutable_ruleset_path="$1"
+  local creation_ruleset_path="$2"
+  verify_ruleset_structure_json "$immutable_ruleset_path" "$creation_ruleset_path"
+
+  jq -e '(.bypass_actors | type) == "array" and (.bypass_actors | length) == 0' "$immutable_ruleset_path" >/dev/null || \
+    fail "Immutable release tag ruleset must have no bypass actors"
+  jq -e '
+    (.bypass_actors // []) as $bypass
+    | ($bypass | length == 1)
+      and ($bypass[0].actor_type == "DeployKey")
+      and ($bypass[0].actor_id == null)
+      and ($bypass[0].bypass_mode == "always")
+  ' "$creation_ruleset_path" >/dev/null || \
+    fail "Release tag creation ruleset must use the dedicated release deploy key as its sole bypass"
+}
+
+verify_rulesets_runtime_json() {
+  local immutable_ruleset_path="$1"
+  local creation_ruleset_path="$2"
+  verify_ruleset_structure_json "$immutable_ruleset_path" "$creation_ruleset_path"
+
+  # GITHUB_TOKEN ruleset responses can redact bypass actors. Reject any
+  # visible actor unless it matches the operator-audited release contract.
+  jq -e '
+    (.bypass_actors? // null) as $bypass
+    | ($bypass == null)
+      or ((($bypass | type) == "array") and (($bypass | length) == 0))
+  ' "$immutable_ruleset_path" >/dev/null || \
+    fail "Immutable release tag ruleset exposed unexpected bypass actors at runtime"
+  jq -e '
+    (.bypass_actors? // null) as $bypass
+    | ($bypass == null)
+      or ((($bypass | type) == "array") and (
+        (($bypass | length) == 0)
+        or (
+          ($bypass | length) == 1
+          and $bypass[0].actor_type == "DeployKey"
+          and $bypass[0].actor_id == null
+          and $bypass[0].bypass_mode == "always"
+        )
+      ))
+  ' "$creation_ruleset_path" >/dev/null || \
+    fail "Release tag creation ruleset exposed an unexpected bypass actor at runtime"
 }
 
 write_release_notes_output() {
@@ -604,6 +644,7 @@ Usage:
   release-safety.sh validate <release-tag> <previous-release-tag> <main-ref>
   release-safety.sh verify-tag <release-tag> <validated-commit> <validated-tag-object> <previous-tag> <previous-commit> <previous-tag-object> <main-ref>
   release-safety.sh verify-rulesets-json <immutable-ruleset-json> <creation-ruleset-json>
+  release-safety.sh verify-rulesets-runtime-json <immutable-ruleset-json> <creation-ruleset-json>
   release-safety.sh write-notes-output <release-tag> <validated-tag-object> <notes-directory> <github-output-path>
 EOF
   exit 2
@@ -669,6 +710,10 @@ case "${1:-}" in
   verify-rulesets-json)
     [[ $# -eq 3 ]] || usage
     verify_rulesets_json "$2" "$3"
+    ;;
+  verify-rulesets-runtime-json)
+    [[ $# -eq 3 ]] || usage
+    verify_rulesets_runtime_json "$2" "$3"
     ;;
   write-notes-output)
     [[ $# -eq 5 ]] || usage

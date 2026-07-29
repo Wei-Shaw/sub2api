@@ -104,7 +104,7 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_CREATION_RULESET_ID}" \
             > "$RUNNER_TEMP/release-tag-creation-ruleset.json"
           bash .github/scripts/release-safety.sh \
-            verify-rulesets-json \
+            verify-rulesets-runtime-json \
             "$RUNNER_TEMP/release-tag-immutable-ruleset.json" \
             "$RUNNER_TEMP/release-tag-creation-ruleset.json"
 

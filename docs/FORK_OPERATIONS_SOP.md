@@ -253,7 +253,7 @@ Release PR 合并后、创建 tag 前：
 
 ## 11. Tag 与 Release SOP
 
-Release PR 合并且上述 tag 前门禁全部通过后，禁止从本地人工创建或推送发布 tag。仓库使用两层 tag ruleset：不可变层禁止 `v*-ts.*` 更新和删除且无任何 bypass；创建层只禁止 creation，唯一 bypass actor 类型是 Deploy Key。仓库只允许保留一把可写 Deploy Key，名称为 `Sub2API release tag promoter`；私钥只保存在 `RELEASE_TAG_DEPLOY_KEY` Actions secret，普通 `GITHUB_TOKEN` 不具备创建发布 tag 的权限。GitHub ruleset API 会隐藏 Deploy Key actor ID，因此最终审计必须同时核对两层 ruleset 和 repository deploy key 列表。
+Release PR 合并且上述 tag 前门禁全部通过后，禁止从本地人工创建或推送发布 tag。仓库使用两层 tag ruleset：不可变层禁止 `v*-ts.*` 更新和删除且无任何 bypass；创建层只禁止 creation，唯一 bypass actor 类型是 Deploy Key。仓库只允许保留一把可写 Deploy Key，名称为 `Sub2API release tag promoter`；私钥只保存在 `RELEASE_TAG_DEPLOY_KEY` Actions secret，普通 `GITHUB_TOKEN` 不具备创建发布 tag 的权限。GitHub ruleset API 会向 Actions 的低权限 `GITHUB_TOKEN` 隐藏 bypass actor；因此 workflow 运行时验证 active、tag 范围及 creation/update/deletion 结构，并拒绝任何可见的异常 actor，最终独立审计则必须使用管理员只读视图严格核对两层 ruleset 和 repository deploy key 列表。
 
 从 Actions 页面运行 `Promote Release`，输入已审计的版本号和完整 `origin/main` SHA。该工作流必须再次确认远端 `main` 没有移动、`VERSION` 一致、tag/Release 未占用，并核验同一 SHA 的 `Backend CI` 与 `Release Preflight` push run 均成功；之后才由工作流创建 annotated tag，并在同一执行链中调用 reusable `Release` workflow。`Release` 不提供独立的 tag push 或手动 dispatch 入口。
 

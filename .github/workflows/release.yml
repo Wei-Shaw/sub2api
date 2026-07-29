@@ -59,7 +59,7 @@ jobs:
           fi
           gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" > "$RUNNER_TEMP/release-tag-immutable-ruleset.json"
           gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_CREATION_RULESET_ID}" > "$RUNNER_TEMP/release-tag-creation-ruleset.json"
-          bash .github/scripts/release-safety.sh verify-rulesets-json \
+          bash .github/scripts/release-safety.sh verify-rulesets-runtime-json \
             "$RUNNER_TEMP/release-tag-immutable-ruleset.json" \
             "$RUNNER_TEMP/release-tag-creation-ruleset.json"
           gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
@@ -333,7 +333,7 @@ jobs:
           bash .github/scripts/release-safety.sh fetch origin main
           gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" > "$RUNNER_TEMP/release-tag-immutable-ruleset-final.json"
           gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_CREATION_RULESET_ID}" > "$RUNNER_TEMP/release-tag-creation-ruleset-final.json"
-          bash .github/scripts/release-safety.sh verify-rulesets-json \
+          bash .github/scripts/release-safety.sh verify-rulesets-runtime-json \
             "$RUNNER_TEMP/release-tag-immutable-ruleset-final.json" \
             "$RUNNER_TEMP/release-tag-creation-ruleset-final.json"
           gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$RUNNER_TEMP/releases-final.json"
