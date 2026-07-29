@@ -77,19 +77,44 @@ const createAdminUser = (overrides: Partial<AdminUser> = {}): AdminUser => ({
 })
 
 const DataTableStub = {
-  props: ['columns', 'data'],
-  emits: ['sort'],
+  props: ['columns', 'data', 'selectedKeys'],
+  emits: ['sort', 'update:selectedKeys'],
   template: `
     <div>
       <div data-test="columns">{{ columns.map(col => col.key).join(',') }}</div>
       <div data-test="row-order">{{ data.map(row => row.email).join(',') }}</div>
+      <div data-test="selected-keys">{{ (selectedKeys || []).join(',') }}</div>
       <button data-test="sort-last-used" @click="$emit('sort', 'last_used_at', 'desc')">sort</button>
+      <button
+        v-for="row in data"
+        :key="'select-' + row.id"
+        :data-test="'select-' + row.id"
+        @click="$emit('update:selectedKeys', Array.from(new Set([...(selectedKeys || []), row.id])))"
+      >
+        select
+      </button>
       <template v-for="col in columns" :key="col.key">
         <slot :name="'header-' + col.key" :column="col" />
       </template>
       <div v-for="row in data" :key="row.id">
         <slot name="cell-last_used_at" :value="row.last_used_at" :row="row" />
       </div>
+    </div>
+  `
+}
+
+const PaginationStub = {
+  emits: ['update:page'],
+  template: '<button data-test="next-page" @click="$emit(\'update:page\', 2)">next</button>'
+}
+
+const BulkEditUserModalStub = {
+  props: ['show', 'selectedIds'],
+  emits: ['close', 'success'],
+  template: `
+    <div v-if="show" data-test="bulk-modal">
+      <span data-test="bulk-modal-ids">{{ selectedIds.join(',') }}</span>
+      <button data-test="bulk-success" @click="$emit('success', selectedIds.length)">success</button>
     </div>
   `
 }
@@ -140,6 +165,8 @@ describe('admin UsersView', () => {
           UserConcurrencyCell: true,
           UserCreateModal: true,
           UserEditModal: true,
+          BulkEditUserModal: BulkEditUserModalStub,
+          UserPlatformQuotaModal: true,
           UserApiKeysModal: true,
           UserAllowedGroupsModal: true,
           UserBalanceModal: true,
@@ -224,6 +251,8 @@ describe('admin UsersView', () => {
           UserConcurrencyCell: true,
           UserCreateModal: true,
           UserEditModal: true,
+          BulkEditUserModal: BulkEditUserModalStub,
+          UserPlatformQuotaModal: true,
           UserApiKeysModal: true,
           UserAllowedGroupsModal: true,
           UserBalanceModal: true,
@@ -263,5 +292,81 @@ describe('admin UsersView', () => {
       }),
       expect.any(Object)
     )
+  })
+
+  it('keeps selected user IDs across pages and clears them after a successful bulk update', async () => {
+    let refreshed = false
+    listUsers.mockImplementation(async (page: number) => {
+      const user = page === 2
+        ? createAdminUser({
+            id: 43,
+            email: refreshed ? 'refreshed-page-two@example.com' : 'page-two@example.com'
+          })
+        : createAdminUser({ id: 42, email: 'page-one@example.com' })
+      return {
+        items: [user],
+        total: 2,
+        page,
+        page_size: 20,
+        pages: 2
+      }
+    })
+
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: PaginationStub,
+          ConfirmDialog: true,
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          BulkEditUserModal: BulkEditUserModalStub,
+          UserPlatformQuotaModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="bulk-edit-limits"]').exists()).toBe(false)
+    await wrapper.get('[data-test="select-42"]').trigger('click')
+    expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('42')
+    expect(wrapper.find('[data-test="bulk-edit-limits"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="next-page"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('42')
+
+    await wrapper.get('[data-test="select-43"]').trigger('click')
+    expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('42,43')
+
+    await wrapper.get('[data-test="bulk-edit-limits"]').trigger('click')
+    expect(wrapper.get('[data-test="bulk-modal-ids"]').text()).toBe('42,43')
+
+    const callsBeforeSuccess = listUsers.mock.calls.length
+    refreshed = true
+    await wrapper.get('[data-test="bulk-success"]').trigger('click')
+    await flushPromises()
+
+    expect(listUsers.mock.calls.length).toBeGreaterThan(callsBeforeSuccess)
+    expect(wrapper.get('[data-test="row-order"]').text()).toBe('refreshed-page-two@example.com')
+    expect(wrapper.find('[data-test="bulk-edit-limits"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('')
   })
 })

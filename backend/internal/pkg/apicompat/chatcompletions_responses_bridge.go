@@ -91,16 +91,22 @@ func EffectiveResponsesTools(req *ResponsesRequest) ([]ResponsesTool, error) {
 		if len(raw) == 0 || raw[0] != '{' {
 			continue
 		}
+		var discriminator struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(raw, &discriminator); err != nil {
+			return nil, fmt.Errorf("parse responses additional tools item: %w", err)
+		}
+		if discriminator.Type != "additional_tools" {
+			continue
+		}
 		var item struct {
-			Type  string          `json:"type"`
 			Tools []ResponsesTool `json:"tools"`
 		}
 		if err := json.Unmarshal(raw, &item); err != nil {
 			return nil, fmt.Errorf("parse responses additional tools item: %w", err)
 		}
-		if item.Type == "additional_tools" {
-			tools = append(tools, item.Tools...)
-		}
+		tools = append(tools, item.Tools...)
 	}
 	return tools, nil
 }

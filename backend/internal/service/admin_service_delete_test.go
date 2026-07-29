@@ -13,18 +13,21 @@ import (
 )
 
 type userRepoStub struct {
-	user          *User
-	getErr        error
-	createErr     error
-	deleteErr     error
-	exists        bool
-	existsErr     error
-	nextID        int64
-	created       []*User
-	updated       []*User
-	deletedIDs    []int64
-	usersByEmail  map[string]*User
-	getByEmailErr error
+	user           *User
+	getErr         error
+	createErr      error
+	deleteErr      error
+	exists         bool
+	existsErr      error
+	aliasExists    bool
+	aliasErr       error
+	guardedCreates int
+	nextID         int64
+	created        []*User
+	updated        []*User
+	deletedIDs     []int64
+	usersByEmail   map[string]*User
+	getByEmailErr  error
 }
 
 func (s *userRepoStub) Create(ctx context.Context, user *User) error {
@@ -41,6 +44,17 @@ func (s *userRepoStub) Create(ctx context.Context, user *User) error {
 	s.usersByEmail[user.Email] = user
 	s.user = user
 	return nil
+}
+
+func (s *userRepoStub) CreateWithEmailAliasGuard(ctx context.Context, user *User) error {
+	s.guardedCreates++
+	if s.aliasErr != nil {
+		return s.aliasErr
+	}
+	if s.aliasExists {
+		return ErrEmailExists
+	}
+	return s.Create(ctx, user)
 }
 
 func (s *userRepoStub) GetByID(ctx context.Context, id int64) (*User, error) {
@@ -72,7 +86,7 @@ func (s *userRepoStub) GetFirstAdmin(ctx context.Context) (*User, error) {
 	panic("unexpected GetFirstAdmin call")
 }
 
-func (s *userRepoStub) Update(ctx context.Context, user *User) error {
+func (s *userRepoStub) Update(ctx context.Context, user *User, fields UserUpdateFields) error {
 	s.updated = append(s.updated, user)
 	if s.usersByEmail == nil {
 		s.usersByEmail = make(map[string]*User)
@@ -127,18 +141,36 @@ func (s *userRepoStub) DeductBalance(ctx context.Context, id int64, amount float
 	panic("unexpected DeductBalance call")
 }
 
+func (s *userRepoStub) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (s *userRepoStub) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
+}
+
 func (s *userRepoStub) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
 	panic("unexpected UpdateConcurrency call")
 }
 
 func (s *userRepoStub) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 func (s *userRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (s *userRepoStub) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	return 0, nil
+}
 
 func (s *userRepoStub) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	if s.existsErr != nil {
 		return false, s.existsErr
 	}
 	return s.exists, nil
+}
+
+func (s *userRepoStub) ExistsByEmailAlias(ctx context.Context, email string) (bool, error) {
+	if s.aliasErr != nil {
+		return false, s.aliasErr
+	}
+	return s.aliasExists, nil
 }
 
 func (s *userRepoStub) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {

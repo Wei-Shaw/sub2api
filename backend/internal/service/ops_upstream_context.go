@@ -102,28 +102,54 @@ func HasOpsClientBusinessLimited(c *gin.Context) bool {
 type OpsStreamError struct {
 	// ErrType 是写入 SSE 帧的对客错误类型（如 rate_limit_error / upstream_error / api_error）。
 	ErrType string
+	// Code 是可选的稳定错误分类；用于既保留通用 OpenAI error.type，又向客户端和 Ops
+	// 暴露可编程判断的细分类（如 upstream_http2_stream_error）。
+	Code string
 	// Message 是写入 SSE 帧的对客错误消息。
 	Message string
 	// IntendedStatus 是流若未固化本应返回的 HTTP 状态码（如并发限流的 429）。
-	// 仅用于错误分级(severity/classification)；实际 wire 状态码仍为 200。
+	// 默认仅用于错误分级；CountTowardsSLA=true 时也作为 Ops 的逻辑状态码。
 	IntendedStatus int
+	// CountTowardsSLA 表示虽然 wire 状态已固化为 200，请求在应用语义上仍然失败，
+	// Ops 应使用 IntendedStatus 计入错误率/SLA。
+	CountTowardsSLA bool
 }
 
 // MarkOpsStreamError 记录一次就地 SSE 错误，供 ops 日志采集。
 // 采用「首个标记生效」策略：同一请求若先后补发多帧（如上游透传错误后又追加通用兜底帧），
 // 保留最先记录的根因错误，而不是被后续的 "Upstream request failed" 覆盖。
 func MarkOpsStreamError(c *gin.Context, errType, message string, intendedStatus int) {
+	markOpsStreamError(c, OpsStreamError{
+		ErrType:        errType,
+		Message:        message,
+		IntendedStatus: intendedStatus,
+	})
+}
+
+// MarkOpsStreamFailure records an in-band stream error that represents a failed
+// request and therefore must count towards Ops error rate/SLA despite HTTP 200
+// already being committed on the wire.
+func MarkOpsStreamFailure(c *gin.Context, errType, code, message string, intendedStatus int) {
+	markOpsStreamError(c, OpsStreamError{
+		ErrType:         errType,
+		Code:            code,
+		Message:         message,
+		IntendedStatus:  intendedStatus,
+		CountTowardsSLA: true,
+	})
+}
+
+func markOpsStreamError(c *gin.Context, streamErr OpsStreamError) {
 	if c == nil {
 		return
 	}
 	if _, exists := c.Get(OpsStreamErrorKey); exists {
 		return
 	}
-	c.Set(OpsStreamErrorKey, OpsStreamError{
-		ErrType:        strings.TrimSpace(errType),
-		Message:        strings.TrimSpace(message),
-		IntendedStatus: intendedStatus,
-	})
+	streamErr.ErrType = strings.TrimSpace(streamErr.ErrType)
+	streamErr.Code = strings.TrimSpace(streamErr.Code)
+	streamErr.Message = strings.TrimSpace(streamErr.Message)
+	c.Set(OpsStreamErrorKey, streamErr)
 }
 
 // GetOpsStreamError 返回本请求记录的就地 SSE 错误（若有）。
@@ -188,6 +214,11 @@ type OpsUpstreamErrorEvent struct {
 
 	// Kind: http_error | request_error | retry_exhausted | failover
 	Kind string `json:"kind,omitempty"`
+	// Stage/Scope/Reason distinguish credential acquisition from inference
+	// without overloading upstream_status_code with a synthetic HTTP status.
+	Stage  string `json:"stage,omitempty"`
+	Scope  string `json:"scope,omitempty"`
+	Reason string `json:"reason,omitempty"`
 
 	Message string `json:"message,omitempty"`
 	Detail  string `json:"detail,omitempty"`
@@ -204,6 +235,9 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	ev.UpstreamRequestID = strings.TrimSpace(ev.UpstreamRequestID)
 	ev.UpstreamResponseBody = strings.TrimSpace(ev.UpstreamResponseBody)
 	ev.Kind = strings.TrimSpace(ev.Kind)
+	ev.Stage = strings.TrimSpace(ev.Stage)
+	ev.Scope = strings.TrimSpace(ev.Scope)
+	ev.Reason = strings.TrimSpace(ev.Reason)
 	ev.UpstreamURL = strings.TrimSpace(ev.UpstreamURL)
 	ev.Message = strings.TrimSpace(ev.Message)
 	ev.Detail = strings.TrimSpace(ev.Detail)

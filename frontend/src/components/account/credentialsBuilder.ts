@@ -25,7 +25,7 @@ export function applyAntigravityProjectID(
   }
 }
 
-// ========== 请求头覆写（仅 anthropic/openai 平台的 api_key 账号） ==========
+// ========== 请求头覆写（anthropic/openai 的 api_key 账号 + grok 的 api_key/oauth 账号） ==========
 
 export const HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY = 'header_override_enabled'
 export const HEADER_OVERRIDES_CREDENTIAL_KEY = 'header_overrides'
@@ -35,9 +35,15 @@ export interface HeaderOverrideRow {
   value: string
 }
 
-/** 请求头覆写支持的平台（与后端 IsHeaderOverrideEligible 保持一致） */
-export function isHeaderOverridePlatform(platform: string): boolean {
-  return platform === 'anthropic' || platform === 'openai'
+/** 请求头覆写资格（与后端 IsHeaderOverrideEligible 保持一致） */
+export function isHeaderOverrideCapable(platform: string, type: string): boolean {
+  if (platform === 'anthropic' || platform === 'openai') {
+    return type === 'apikey'
+  }
+  if (platform === 'grok') {
+    return type === 'apikey' || type === 'oauth'
+  }
+  return false
 }
 
 /** 禁止覆写的请求头（与后端 headerOverrideBlockedNames 保持一致） */
@@ -70,7 +76,8 @@ const HEADER_OVERRIDE_BLOCKED_NAMES = new Set([
   'x-codex-turn-metadata',
   'chatgpt-account-id',
   'x-claude-code-session-id',
-  'x-client-request-id'
+  'x-client-request-id',
+  'x-grok-conv-id'
 ])
 
 /** RFC 7230 token：合法的 HTTP header 名称字符集 */
@@ -78,39 +85,6 @@ const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
 
 function isValidHeaderOverrideName(name: string): boolean {
   return HEADER_NAME_PATTERN.test(name)
-}
-
-/** 模板：Claude Code CLI 标准客户端请求头（值留空由管理员填写） */
-const ANTHROPIC_HEADER_OVERRIDE_TEMPLATE = [
-  'user-agent',
-  'x-app',
-  'anthropic-beta',
-  'anthropic-version',
-  'anthropic-dangerous-direct-browser-access',
-  'x-stainless-lang',
-  'x-stainless-package-version',
-  'x-stainless-os',
-  'x-stainless-arch',
-  'x-stainless-runtime',
-  'x-stainless-runtime-version',
-  'x-stainless-retry-count',
-  'x-stainless-timeout'
-]
-
-/** 模板：Codex CLI 标准客户端请求头（值留空由管理员填写） */
-const OPENAI_HEADER_OVERRIDE_TEMPLATE = [
-  'user-agent',
-  'originator',
-  'openai-beta',
-  'version',
-  'accept',
-  'accept-language'
-]
-
-export function getHeaderOverrideTemplate(platform: string): HeaderOverrideRow[] {
-  const names =
-    platform === 'openai' ? OPENAI_HEADER_OVERRIDE_TEMPLATE : ANTHROPIC_HEADER_OVERRIDE_TEMPLATE
-  return names.map((name) => ({ name, value: '' }))
 }
 
 /** 与后端 maxHeaderOverride* 常量保持一致 */
@@ -182,6 +156,91 @@ export function splitHeaderOverridesObject(record: unknown): HeaderOverrideRow[]
     .map(([name, value]) => ({ name, value: value as string }))
     .sort((a, b) => a.name.localeCompare(b.name))
 }
+
+/**
+ * 解析粘贴的 JSON 文本为请求头覆写行。
+ * 仅接受扁平 JSON 对象；值允许 string/number/boolean（统一转字符串），
+ * 其余类型或非对象输入返回 null 表示格式非法。键为空白的条目直接丢弃。
+ */
+export function parseHeaderOverridesJson(text: string): HeaderOverrideRow[] | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  const rows: HeaderOverrideRow[] = []
+  for (const [rawName, rawValue] of Object.entries(parsed as Record<string, unknown>)) {
+    const name = rawName.trim()
+    if (!name) continue
+    if (
+      typeof rawValue !== 'string' &&
+      typeof rawValue !== 'number' &&
+      typeof rawValue !== 'boolean'
+    ) {
+      return null
+    }
+    rows.push({ name, value: String(rawValue).trim() })
+  }
+  return rows.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** 请求头覆写行 → 便于迁移/备份的 JSON 文本（跳过名称为空的占位行） */
+export function serializeHeaderOverrideRows(rows: HeaderOverrideRow[]): string {
+  const record: Record<string, string> = {}
+  for (const row of rows) {
+    const name = row.name.trim()
+    if (!name) continue
+    record[name] = row.value.trim()
+  }
+  return JSON.stringify(record, null, 2)
+}
+
+// ========== Grok 自定义转发地址（base_url 仅改写转发端点，凭证生命周期不受影响） ==========
+
+/** OAuth 账号建号/刷新默认写入的 CLI 网关 host——只有它视同"未定制"。 */
+const GROK_DEFAULT_GATEWAY_HOST = 'cli-chat-proxy.grok.com'
+
+/**
+ * 判断 Grok 账号存储的 base_url 是否为主动指定的上游端点。
+ * 运营方可在官方 API / 区域 API / 第三方转发地址之间手动切换（应对单端点
+ * 不可用），这些值都必须回显（开关开启 + 显示地址）。仅默认 CLI 网关
+ * （建号/刷新自动写入）、空值与无法解析的值视为"未定制"（与后端
+ * GetGrokBaseURL 的回落语义对齐），用于 OAuth 账号编辑时决定开关初始状态。
+ */
+export function isCustomGrokBaseUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return false
+  }
+  return parsed.hostname.toLowerCase() !== GROK_DEFAULT_GATEWAY_HOST
+}
+
+export interface GrokBaseUrlPreset {
+  /** i18n 子键：admin.accounts.grokCustomBaseUrl.presets.<labelKey> */
+  labelKey?: 'cli' | 'official'
+  /** 字面标签（如区域标识 us-east-1），专有名词不参与 i18n */
+  label?: string
+  url: string
+}
+
+/**
+ * Grok 快捷端点（仅供快速填充，输入框仍可自由填写任意转发地址）。
+ * 官方端点偶发不可用时，运营方靠这组预设在端点间手动切换。
+ */
+export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
+  { labelKey: 'cli', url: 'https://cli-chat-proxy.grok.com/v1' },
+  { labelKey: 'official', url: 'https://api.x.ai/v1' },
+  { label: 'us-east-1', url: 'https://us-east-1.api.x.ai/v1' },
+  { label: 'us-west-2', url: 'https://us-west-2.api.x.ai/v1' },
+  { label: 'eu-west-1', url: 'https://eu-west-1.api.x.ai/v1' }
+]
 
 /**
  * 将请求头覆写写入 credentials。

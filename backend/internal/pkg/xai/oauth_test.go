@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/stretchr/testify/require"
 )
 
@@ -163,6 +164,124 @@ func TestValidateBaseURLAllowsPublicThirdPartyGrokAPI(t *testing.T) {
 
 	_, err = ValidateTrustedBaseURL("https://grok.example.test/v1")
 	require.Error(t, err)
+}
+
+func TestValidateBaseURLPathPrefixPolicy(t *testing.T) {
+	// 非官方主机保留管理员配置的任意 path 前缀。
+	prefixed, err := ValidateBaseURL("https://relay.example.test/xai/v1/")
+	require.NoError(t, err)
+	require.Equal(t, "https://relay.example.test/xai/v1", prefixed)
+
+	deepPrefixed, err := ValidateBaseURL("https://relay.example.test/tenant-a/proxy")
+	require.NoError(t, err)
+	require.Equal(t, "https://relay.example.test/tenant-a/proxy", deepPrefixed)
+
+	// 空 path 仍按惯例补 /v1，保持既有配置兼容。
+	rootOnly, err := ValidateBaseURL("https://relay.example.test")
+	require.NoError(t, err)
+	require.Equal(t, "https://relay.example.test/v1", rootOnly)
+
+	// 官方主机固定 /v1 前缀。
+	_, err = ValidateBaseURL("https://api.x.ai/xai/v1")
+	require.Error(t, err)
+	_, err = ValidateBaseURL("https://cli-chat-proxy.grok.com/other")
+	require.Error(t, err)
+}
+
+func TestIsOfficialBaseURL(t *testing.T) {
+	official := []string{
+		"",
+		"   ",
+		DefaultBaseURL,
+		DefaultCLIBaseURL,
+		"https://api.x.ai",
+		"HTTPS://API.X.AI:443/",
+		"https://api.x.ai:0443/v1",
+		"https://api.x.ai/%76%31",
+		"https://api.x.ai:8443/v1",
+		"HTTPS://CLI-CHAT-PROXY.GROK.COM:443/%76%31/",
+		"::invalid::url", // 无法解析的值按官方处理，回落默认端点
+	}
+	for _, raw := range official {
+		require.True(t, IsOfficialBaseURL(raw), "expected official: %q", raw)
+	}
+
+	custom := []string{
+		"https://relay.example.test/v1",
+		"https://relay.example.test/xai/v1",
+		"http://relay.example.test/v1",
+		"https://grok.com.evil.example.test/v1",
+		"https://api.x.ai.evil.example.test/v1", // 后缀伪装不属于 *.api.x.ai
+	}
+	for _, raw := range custom {
+		require.False(t, IsOfficialBaseURL(raw), "expected custom: %q", raw)
+	}
+}
+
+func TestRegionalAPIEndpointsAreOfficialAndTrusted(t *testing.T) {
+	regional := []string{
+		"https://us-east-1.api.x.ai/v1",
+		"https://us-west-2.api.x.ai/v1",
+		"https://eu-west-1.api.x.ai/v1",
+	}
+	for _, raw := range regional {
+		require.True(t, IsOfficialBaseURL(raw), "expected official: %q", raw)
+
+		validated, err := ValidateTrustedBaseURL(raw)
+		require.NoError(t, err, "trusted validation should accept regional endpoint %q", raw)
+		require.Equal(t, raw, validated)
+	}
+
+	// 区域端点作为官方主机同样强制 /v1 path
+	_, err := ValidateTrustedBaseURL("https://us-east-1.api.x.ai/other")
+	require.Error(t, err)
+}
+
+func TestValidateBaseURLsRejectEmptyQueryDelimiter(t *testing.T) {
+	_, err := ValidateBaseURL("https://grok.example.test/v1?")
+	require.Error(t, err)
+
+	_, err = ValidateTrustedBaseURL("https://api.x.ai/v1?")
+	require.Error(t, err)
+}
+
+func TestBuildResponsesURLWithValidatorUsesCallerPolicy(t *testing.T) {
+	validator := func(raw string) (string, error) {
+		return urlvalidator.ValidateURLFormat(raw, true)
+	}
+
+	target, err := BuildResponsesURLWithValidator("http://grok.example.test/v1/", validator)
+	require.NoError(t, err)
+	require.Equal(t, "http://grok.example.test/v1/responses", target)
+}
+
+func TestBuildResponsesURLPreservesUnsafeOverrideCustomPath(t *testing.T) {
+	t.Setenv(EnvAllowUnsafeURLOverrides, "true")
+
+	target, err := BuildResponsesURL("http://localhost:8080/custom")
+	require.NoError(t, err)
+	require.Equal(t, "http://localhost:8080/custom/responses", target)
+}
+
+func TestBuildResponsesURLWithValidatorRejectsBaseURLComponents(t *testing.T) {
+	permissive := func(raw string) (string, error) { return raw, nil }
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "userinfo", raw: "https://user:secret@grok.example.test/v1"},
+		{name: "query", raw: "https://grok.example.test/v1?token=secret"},
+		{name: "empty query delimiter", raw: "https://grok.example.test/v1?"},
+		{name: "fragment", raw: "https://grok.example.test/v1#secret"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := BuildResponsesURLWithValidator(tt.raw, permissive)
+			require.Error(t, err)
+			require.NotContains(t, err.Error(), "secret")
+		})
+	}
 }
 
 func TestValidateXAIURLsAllowUnsafeDevOverride(t *testing.T) {

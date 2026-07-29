@@ -565,12 +565,14 @@ func collectOpenAIImagesFromResponsesBody(body []byte) ([]openAIResponsesImageRe
 		return nil, 0, nil, openAIResponsesImageResult{}, false, collectErr
 	}
 	if len(finalResults) > 0 {
+		reconcileOpenAIResponsesImageResultSizes(finalResults, &finalMeta)
 		return finalResults, createdAt, usageRaw, finalMeta, true, nil
 	}
 
 	if len(fallbackResults) > 0 {
 		firstMeta := fallbackResults[0]
 		mergeOpenAIResponsesImageMeta(&firstMeta, responseMeta)
+		reconcileOpenAIResponsesImageResultSizes(fallbackResults, &firstMeta)
 		return fallbackResults, createdAt, usageRaw, firstMeta, foundFinal, nil
 	}
 	return nil, createdAt, usageRaw, openAIResponsesImageResult{}, foundFinal, nil
@@ -918,7 +920,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           body,
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			RetryableOnSameAccount: false,
 		}
 	}
 
@@ -1010,9 +1012,13 @@ func buildOpenAIImagesStreamErrorBodyFromUpstream(err *OpenAIImagesUpstreamError
 }
 
 func writeOpenAIImagesUpstreamErrorResponse(c *gin.Context, err *OpenAIImagesUpstreamError) bool {
-	if c == nil || c.Writer == nil || c.Writer.Written() || err == nil {
+	if c == nil || c.Writer == nil || err == nil {
 		return false
 	}
+	if c.Writer.Written() && OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) >= 0 {
+		return false
+	}
+	StopOpenAIImagesJSONKeepaliveCommitted(c)
 	errorObj := gin.H{
 		"type":    err.clientErrorType(),
 		"message": err.clientMessage(),
@@ -1066,6 +1072,165 @@ func (s *OpenAIGatewayService) tryWriteOpenAIImagesStreamEvent(
 	return true
 }
 
+func (s *OpenAIGatewayService) parseOpenAIImagesSSEUsageBytes(data []byte, usage *OpenAIUsage) {
+	s.parseSSEUsageBytes(data, usage)
+	if usage == nil || !gjson.ValidBytes(data) || gjson.GetBytes(data, "type").String() != "response.completed" {
+		return
+	}
+	if toolUsage, ok := openAIImagesToolUsageFromGJSON(gjson.GetBytes(data, "response.tool_usage.image_gen")); ok {
+		*usage = toolUsage
+	}
+}
+
+func openAIImagesToolUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
+	if !value.Exists() || !value.IsObject() {
+		return OpenAIUsage{}, false
+	}
+	inputTokens, inputOK := boundedJSONNonNegativeInt(value.Get("input_tokens"))
+	outputTokens, outputOK := boundedJSONNonNegativeInt(value.Get("output_tokens"))
+	imageOutputTokens, imageOutputOK := boundedJSONNonNegativeInt(value.Get("output_tokens_details.image_tokens"))
+	if !inputOK || !outputOK || !imageOutputOK {
+		return OpenAIUsage{}, false
+	}
+	return OpenAIUsage{
+		InputTokens:       inputTokens,
+		OutputTokens:      outputTokens,
+		ImageOutputTokens: imageOutputTokens,
+	}, true
+}
+
+// boundedJSONNonNegativeInt parses integral JSON exponent notation without
+// invoking an arbitrary-precision parser on an upstream-controlled exponent.
+func boundedJSONNonNegativeInt(value gjson.Result) (int, bool) {
+	if !value.Exists() || value.Type != gjson.Number {
+		return 0, false
+	}
+	raw := value.Raw
+	if len(raw) == 0 || len(raw) > 64 || raw[0] == '-' {
+		return 0, false
+	}
+
+	mantissaEnd := len(raw)
+	for i, c := range raw {
+		if c != 'e' && c != 'E' {
+			continue
+		}
+		mantissaEnd = i
+		break
+	}
+
+	digits := raw[:mantissaEnd]
+	fractionDigits := 0
+	digitCount := 0
+	dotSeen := false
+	mantissaIsZero := true
+	for _, c := range digits {
+		switch {
+		case c == '.' && !dotSeen:
+			dotSeen = true
+		case c >= '0' && c <= '9':
+			digitCount++
+			mantissaIsZero = mantissaIsZero && c == '0'
+			if dotSeen {
+				fractionDigits++
+			}
+		default:
+			return 0, false
+		}
+	}
+
+	exponent := 0
+	if mantissaEnd < len(raw) {
+		exponentRaw := raw[mantissaEnd+1:]
+		negative := false
+		if len(exponentRaw) > 0 && (exponentRaw[0] == '+' || exponentRaw[0] == '-') {
+			negative = exponentRaw[0] == '-'
+			exponentRaw = exponentRaw[1:]
+		}
+		if len(exponentRaw) == 0 {
+			return 0, false
+		}
+		for len(exponentRaw) > 1 && exponentRaw[0] == '0' {
+			exponentRaw = exponentRaw[1:]
+		}
+		for _, digit := range exponentRaw {
+			if digit < '0' || digit > '9' {
+				return 0, false
+			}
+		}
+		if mantissaIsZero {
+			return 0, true
+		}
+		if len(exponentRaw) > 3 {
+			return 0, false
+		}
+		for _, digit := range exponentRaw {
+			exponent = exponent*10 + int(digit-'0')
+		}
+		if exponent > 100 {
+			return 0, false
+		}
+		if negative {
+			exponent = -exponent
+		}
+	}
+
+	trailingZeros := exponent - fractionDigits
+	scaleReduction := 0
+	if trailingZeros < 0 {
+		scaleReduction = -trailingZeros
+		remaining := scaleReduction
+		allZeros := true
+		for i := len(digits) - 1; i >= 0; i-- {
+			if digits[i] == '.' {
+				continue
+			}
+			if digits[i] != '0' {
+				allZeros = false
+				if remaining > 0 {
+					return 0, false
+				}
+			}
+			if remaining > 0 {
+				remaining--
+			}
+		}
+		if remaining > 0 {
+			if allZeros {
+				return 0, true
+			}
+			return 0, false
+		}
+	}
+
+	maxInt := int(^uint(0) >> 1)
+	parsed := 0
+	digitsToAccumulate := digitCount - scaleReduction
+	for _, c := range digits {
+		if c == '.' {
+			continue
+		}
+		if digitsToAccumulate <= 0 {
+			break
+		}
+		if parsed > (maxInt-int(c-'0'))/10 {
+			return 0, false
+		}
+		parsed = parsed*10 + int(c-'0')
+		digitsToAccumulate--
+	}
+	if trailingZeros < 0 {
+		return parsed, true
+	}
+	for ; trailingZeros > 0; trailingZeros-- {
+		if parsed > maxInt/10 {
+			return 0, false
+		}
+		parsed *= 10
+	}
+	return parsed, true
+}
+
 func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
@@ -1079,7 +1244,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 
 	var usage OpenAIUsage
 	forEachOpenAISSEDataPayload(string(body), func(data []byte) {
-		s.parseSSEUsageBytes(data, &usage)
+		s.parseOpenAIImagesSSEUsageBytes(data, &usage)
 	})
 	results, createdAt, usageRaw, firstMeta, _, err := collectOpenAIImagesFromResponsesBody(body)
 	if err != nil {
@@ -1176,7 +1341,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	var sseData openAISSEDataAccumulator
 	var processDataErr error
 	processDataDone := false
-	writerSizeBeforeResponse := c.Writer.Size()
+	writerSizeBeforeResponse := OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
 
 	processData := func(dataBytes []byte) {
 		if processDataDone || processDataErr != nil {
@@ -1186,7 +1351,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
-		s.parseSSEUsageBytes(dataBytes, &usage)
+		s.parseOpenAIImagesSSEUsageBytes(dataBytes, &usage)
 		if !gjson.ValidBytes(dataBytes) {
 			return
 		}
@@ -1258,6 +1423,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				mergeOpenAIResponsesImageMeta(&img, streamMeta)
 				appendOpenAIResponsesImageResultDedup(&finalResults, finalSeen, "", img)
 			}
+			reconcileOpenAIResponsesImageResultSizes(finalResults, nil)
 			if len(finalResults) == 0 {
 				outputErr := fmt.Errorf("upstream did not return image output")
 				// 软失败：response.completed 事件里没有图片。记录上游诊断摘要到 ops，
@@ -1320,8 +1486,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 		}
 		if len(pendingResults) > 0 {
 			eventName := streamPrefix + ".completed"
-			for _, img := range pendingResults {
-				mergeOpenAIResponsesImageMeta(&img, streamMeta)
+			finalResults := append([]openAIResponsesImageResult(nil), pendingResults...)
+			for i := range finalResults {
+				mergeOpenAIResponsesImageMeta(&finalResults[i], streamMeta)
+			}
+			reconcileOpenAIResponsesImageResultSizes(finalResults, nil)
+			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
 				if _, exists := emitted[key]; exists {
 					continue
@@ -1331,7 +1501,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
 			}
 			imageCount = len(emitted)
-			imageOutputSizes = openAIResponsesImageResultSizes(pendingResults)
+			imageOutputSizes = openAIResponsesImageResultSizes(finalResults)
 			return nil
 		}
 
@@ -1560,6 +1730,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
+		respBody = s.redactAgentIdentitySensitiveBody(upstreamCtx, account, respBody)
+		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
+			expectedTaskID := account.GetCredential("task_id")
+			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {
+				return nil, fmt.Errorf("agent identity task recovery failed: %w", err)
+			}
+			return s.forwardOpenAIImagesOAuth(markAgentIdentityTaskRecoveryTried(ctx), c, account, parsed, channelMappedModel)
+		}
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -1574,11 +1752,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 				Kind:               "failover",
 				Message:            upstreamMsg,
 			})
-			s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, requestModel)
+			shouldDisable := s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, requestModel)
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
 		return s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, requestModel)
@@ -1591,7 +1769,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		imageOutputSizes []string
 		firstTokenMs     *int
 	)
-	writerSizeBeforeResponse := c.Writer.Size()
+	// 与 handleOpenAIImagesOAuthResponseError 的比较端同口径：排除非流式 JSON
+	// keepalive 心跳字节，避免 failover 第 2 轮起把上一轮心跳残留误判为已写响应。
+	writerSizeBeforeResponse := OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
 	if parsed.Stream {
 		usage, imageCount, imageOutputSizes, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel)
 		if err != nil {
@@ -1672,7 +1852,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 	}
 
 	retryable := IsOpenAIImagesRetryableUpstreamError(upstreamErr)
-	responseWritten := c != nil && c.Writer != nil && c.Writer.Size() != writerSizeBeforeResponse
+	responseWritten := c != nil && c.Writer != nil && OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) != writerSizeBeforeResponse
 	kind := "http_error"
 	if retryable {
 		kind = "failover"
@@ -1705,11 +1885,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 	}
 
 	responseBody := openAIImagesUpstreamErrorResponseBody(upstreamErr)
-	s.handleOpenAIAccountUpstreamError(ctx, account, upstreamErr.StatusCode, headers, responseBody, requestedModel)
+	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, upstreamErr.StatusCode, headers, responseBody, requestedModel)
 	return &UpstreamFailoverError{
 		StatusCode:             upstreamErr.StatusCode,
 		ResponseBody:           responseBody,
 		ResponseHeaders:        headers,
-		RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(upstreamErr.StatusCode),
+		RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(upstreamErr.StatusCode),
 	}
 }

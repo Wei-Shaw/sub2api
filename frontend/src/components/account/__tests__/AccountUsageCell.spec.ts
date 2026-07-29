@@ -72,6 +72,47 @@ describe('AccountUsageCell', () => {
     })
   })
 
+  it('renders eligible Ollama Cloud state inside the unified usage cell', () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9001,
+          platform: 'openai',
+          type: 'apikey',
+          ollama_cloud_usage: {
+            account_id: 9001,
+            eligible: true,
+            configured: true,
+            auto_refresh_enabled: true,
+            encryption_key_configured: true,
+            snapshot: {
+              status: 'ok',
+              last_attempt_at: '2026-07-23T00:00:00Z',
+              next_refresh_at: '2026-07-23T01:00:00Z',
+              data: {
+                five_hour: { used_percent: 12 },
+                seven_day: { used_percent: 34 }
+              }
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          OllamaCloudUsageCell: {
+            props: ['account'],
+            template: '<div data-test="embedded-ollama">{{ account.ollama_cloud_usage.snapshot.data.five_hour.used_percent }}</div>'
+          },
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    expect(wrapper.get('[data-test="embedded-ollama"]').text()).toBe('12')
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {
@@ -705,17 +746,18 @@ describe('AccountUsageCell', () => {
 
   it.each([
     { tokens: 0, expected: 0, compact: '0' },
-    { tokens: 1_000_000, expected: 50, compact: '1.0M' },
-    { tokens: 2_000_000, expected: 100, compact: '2.0M' },
-    { tokens: 2_200_000, expected: 100, compact: '2.2M' }
-  ])('Grok Free derives its 2M quota from local tokens: $tokens -> $expected%', async ({ tokens, expected, compact }) => {
+    { tokens: 500_000, expected: 50, compact: '500.0K' },
+    { tokens: 1_000_000, expected: 100, compact: '1.0M' },
+    { tokens: 1_100_000, expected: 100, compact: '1.1M' }
+  ])('Grok Free derives its 1M quota from local tokens: $tokens -> $expected%', async ({ tokens, expected, compact }) => {
     getUsage.mockResolvedValue({
+      grok_free_token_limit: 1_000_000,
       grok_billing: {
         period_type: 'weekly',
         usage_percent: null,
         plan: ''
       },
-      grok_local_usage: {
+      grok_local_usage_24h: {
         requests: 5,
         tokens,
         cost: 0,
@@ -723,7 +765,7 @@ describe('AccountUsageCell', () => {
         user_cost: 0
       },
       grok_request_quota: { limit: 100, remaining: 100 },
-      grok_token_quota: { limit: 2_000_000, remaining: 2_000_000 }
+      grok_token_quota: { limit: 1_000_000, remaining: 1_000_000 }
     })
 
     const wrapper = mount(AccountUsageCell, {
@@ -744,25 +786,26 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain(`2M|${expected}`)
+    expect(wrapper.text()).toContain(`24h|${expected}`)
     expect(wrapper.findAll('span').filter((node) => node.text() === compact)).toHaveLength(1)
     expect(wrapper.findAll('.usage-bar')).toHaveLength(1)
     expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokRequests|')
     expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokTokens|')
   })
 
-  it('Grok Free uses the weekly billing window instead of today-only usage', async () => {
+  it('Grok Free uses rolling 24h usage instead of today-only usage', async () => {
     getUsage.mockResolvedValue({
+      grok_free_token_limit: 1_000_000,
       grok_billing: { period_type: 'weekly', usage_percent: null, plan: '' },
       grok_local_usage: {
         requests: 2,
-        tokens: 200_000,
+        tokens: 250_000,
         cost: 0,
         standard_cost: 0
       },
-      grok_local_usage_7d: {
+      grok_local_usage_24h: {
         requests: 12,
-        tokens: 1_500_000,
+        tokens: 750_000,
         cost: 0,
         standard_cost: 0
       }
@@ -770,13 +813,19 @@ describe('AccountUsageCell', () => {
 
     const wrapper = mount(AccountUsageCell, {
       props: {
-        account: makeAccount({ id: 4398, platform: 'grok', type: 'oauth', extra: {} })
+        account: makeAccount({ id: 4398, platform: 'grok', type: 'oauth', extra: {} }),
+        todayStats: {
+          requests: 2,
+          tokens: 200_000,
+          cost: 0,
+          standard_cost: 0
+        }
       },
       global: {
         stubs: {
           UsageProgressBar: {
-            props: ['label', 'utilization'],
-            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+            props: ['label', 'utilization', 'title'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ title }}</div>'
           },
           AccountQuotaInfo: true,
           GrokQuotaProbeCell: true
@@ -786,12 +835,16 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('2M|75')
-    expect(wrapper.text()).toContain('200.0K')
+    expect(wrapper.text()).toContain('24h|75|admin.accounts.usageWindow.grokFreeQuota24hHint')
+    expect(wrapper.text()).toContain('750.0K')
+    expect(wrapper.text()).not.toContain('7d|')
+    expect(wrapper.text()).not.toContain('200.0K')
+    expect(wrapper.text()).not.toContain('250.0K')
   })
 
-  it('Grok Free falls back to refreshed today stats when weekly usage is unavailable', async () => {
+  it('Grok Free does not substitute today stats when rolling 24h usage is unavailable', async () => {
     getUsage.mockResolvedValue({
+      grok_free_token_limit: 1_000_000,
       grok_billing: { period_type: 'weekly', usage_percent: null, plan: '' },
       grok_local_usage: {
         requests: 1,
@@ -827,9 +880,10 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('2M|50')
-    expect(wrapper.text()).toContain('1.0M')
-    expect(wrapper.text()).not.toContain('250K')
+    expect(wrapper.findAll('.usage-bar')).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('24h|')
+    expect(wrapper.text()).not.toContain('1.0M')
+    expect(wrapper.text()).not.toContain('250.0K')
   })
 
   it('Grok paid plans are not mistaken for Free when weekly usage is temporarily missing', async () => {
@@ -911,10 +965,11 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('2M|')
   })
 
-  it('Grok credential Free tier keeps the 2M fallback when billing is unavailable', async () => {
+  it('Grok credential Free tier keeps the 1M fallback when billing is unavailable', async () => {
     getUsage.mockResolvedValue({
+      grok_free_token_limit: 1_000_000,
       subscription_tier: 'FREE',
-      grok_local_usage: {
+      grok_local_usage_24h: {
         requests: 3,
         tokens: 1_000_000,
         cost: 0,
@@ -940,10 +995,10 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('2M|50')
+    expect(wrapper.text()).toContain('24h|100')
   })
 
-  it('Grok manual probes merge billing, quota headers, and local usage', async () => {
+  it('Grok paid manual probes keep the weekly/local summary when 24h usage is returned', async () => {
     getUsage.mockResolvedValue({
       grok_quota_snapshot_state: 'no_headers',
       error: 'stale error',
@@ -972,6 +1027,7 @@ describe('AccountUsageCell', () => {
                 entitlement_status: 'ACTIVE',
                 requests: { limit: 100, remaining: 20 }
               },
+              local_usage_24h: { requests: 3, tokens: 750000, cost: 0.75, standard_cost: 0.75, user_cost: 0.25 },
               local_usage_7d: { requests: 4, tokens: 1000000, cost: 1, standard_cost: 1, user_cost: 0.5 },
               local_usage_monthly: { requests: 7, tokens: 1500000, cost: 2, standard_cost: 2, user_cost: 1 },
               status_code: 200,
@@ -989,8 +1045,208 @@ describe('AccountUsageCell', () => {
 
     expect(wrapper.text()).toContain('7d|42|2026-07-17T00:00:00Z')
     expect(wrapper.text()).toContain('1.0M')
+    expect(wrapper.text()).not.toContain('750.0K')
     expect(wrapper.text()).toContain('ACTIVE')
     expect(wrapper.text()).not.toContain('stale error')
+  })
+
+  it('Grok successful probes immediately clear stale forbidden state', async () => {
+    getUsage.mockResolvedValue({
+      is_forbidden: true,
+      forbidden_reason: 'stale forbidden response',
+      forbidden_type: 'validation',
+      validation_url: 'https://example.com/verify',
+      needs_verify: true,
+      is_banned: true,
+      grok_entitlement_status: 'forbidden',
+      grok_quota_snapshot_state: 'no_headers',
+      error: 'stale forbidden response',
+      error_code: 'forbidden'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4503, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('forbidden')
+
+    const setupState = wrapper.vm.$.setupState as {
+      handleGrokProbed: (result: Record<string, unknown>) => void
+      usageInfo: Record<string, unknown> | null
+    }
+    setupState.handleGrokProbed({
+      source: 'active_probe',
+      snapshot: {
+        headers_observed: false,
+        updated_at: '2026-07-18T00:00:00Z',
+        status_code: 200
+      },
+      status_code: 200,
+      headers_observed: false,
+      reset_supported: false,
+      fetched_at: 1
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(setupState.usageInfo).toMatchObject({
+      is_forbidden: false,
+      needs_verify: false,
+      is_banned: false,
+      grok_last_status_code: 200
+    })
+    expect(setupState.usageInfo?.forbidden_reason).toBeUndefined()
+    expect(setupState.usageInfo?.forbidden_type).toBeUndefined()
+    expect(setupState.usageInfo?.validation_url).toBeUndefined()
+    expect(setupState.usageInfo?.grok_entitlement_status).toBeUndefined()
+    expect(wrapper.text()).not.toContain('admin.accounts.forbidden')
+  })
+
+  it('Grok successful probes preserve the entitlement reported by the latest snapshot', async () => {
+    getUsage.mockResolvedValue({
+      is_forbidden: true,
+      grok_entitlement_status: 'forbidden'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4504, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const setupState = wrapper.vm.$.setupState as {
+      handleGrokProbed: (result: Record<string, unknown>) => void
+      usageInfo: Record<string, unknown> | null
+    }
+    setupState.handleGrokProbed({
+      source: 'active_probe',
+      snapshot: {
+        headers_observed: true,
+        updated_at: '2026-07-18T00:00:00Z',
+        entitlement_status: 'ACTIVE',
+        status_code: 200
+      },
+      status_code: 200,
+      headers_observed: true,
+      reset_supported: false,
+      fetched_at: 1
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(setupState.usageInfo?.grok_entitlement_status).toBe('ACTIVE')
+    expect(wrapper.text()).toContain('ACTIVE')
+    expect(wrapper.text()).not.toContain('admin.accounts.forbidden')
+  })
+
+  it('Grok billing-only success does not clear an active-probe forbidden state', async () => {
+    getUsage.mockResolvedValue({
+      is_forbidden: true,
+      forbidden_type: 'forbidden',
+      needs_verify: true,
+      is_banned: true,
+      grok_entitlement_status: 'forbidden'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4505, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const setupState = wrapper.vm.$.setupState as {
+      handleGrokProbed: (result: Record<string, unknown>) => void
+      usageInfo: Record<string, unknown> | null
+    }
+    setupState.handleGrokProbed({
+      source: 'billing_probe',
+      billing: {
+        period_type: 'weekly',
+        usage_percent: 10,
+        plan: 'SuperGrok'
+      },
+      status_code: 200,
+      headers_observed: false,
+      reset_supported: false,
+      fetched_at: 1
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(setupState.usageInfo).toMatchObject({
+      is_forbidden: true,
+      forbidden_type: 'forbidden',
+      needs_verify: true,
+      is_banned: true,
+      grok_entitlement_status: 'forbidden'
+    })
+    expect(wrapper.text()).toContain('forbidden')
+  })
+
+  it('Grok Free manual probes merge rolling 24h usage', async () => {
+    getUsage.mockResolvedValue({
+      grok_free_token_limit: 1_000_000,
+      subscription_tier: 'FREE',
+      grok_quota_snapshot_state: 'no_headers'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4502, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: {
+            emits: ['probed'],
+            template: `<button class="probe" @click="$emit('probed', {
+              source: 'hybrid_probe',
+              billing: { period_type: 'weekly', usage_percent: null, plan: '' },
+              local_usage_24h: { requests: 12, tokens: 750000, cost: 0, standard_cost: 0 },
+              headers_observed: false,
+              reset_supported: false,
+              fetched_at: 1
+            })">probe</button>`
+          }
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('.probe').trigger('click')
+
+    expect(wrapper.text()).toContain('24h|75')
+    expect(wrapper.text()).toContain('750.0K')
+    expect(wrapper.text()).not.toContain('7d|')
   })
 
   it('Key 账号在 today stats loading 时显示骨架屏', async () => {

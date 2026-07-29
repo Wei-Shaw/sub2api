@@ -89,7 +89,7 @@ func TestAllowMessagesDispatchWithoutRouteKeepsSourceGate(t *testing.T) {
 func TestRequestPlatformFollowsEffectiveGroup(t *testing.T) {
 	c := ctxWithEffectivePlatform(t, service.PlatformGrok)
 
-	if got := openAICompatibleRequestPlatform(c, anthropicKey()); got != service.PlatformGrok {
+	if got := openAICompatibleRequestPlatform(c.Request.Context(), anthropicKey()); got != service.PlatformGrok {
 		t.Fatalf("want %q for a request routed to a grok group, got %q", service.PlatformGrok, got)
 	}
 }
@@ -99,7 +99,7 @@ func TestRequestPlatformWithoutRoute(t *testing.T) {
 	c := ctxWithEffectivePlatform(t, "")
 	openAIKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformOpenAI}}
 
-	if got := openAICompatibleRequestPlatform(c, openAIKey); got != service.PlatformOpenAI {
+	if got := openAICompatibleRequestPlatform(c.Request.Context(), openAIKey); got != service.PlatformOpenAI {
 		t.Fatalf("want %q without a route, got %q", service.PlatformOpenAI, got)
 	}
 }

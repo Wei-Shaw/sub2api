@@ -27,7 +27,7 @@ type OpsErrorLog struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	// Standardized classification
-	// - phase: request|auth|routing|upstream|network|internal
+	// - phase: request|auth|account_auth|routing|upstream|network|internal
 	// - owner: client|provider|platform
 	// - source: client_request|upstream_http|gateway
 	Phase string `json:"phase"`
@@ -74,11 +74,6 @@ type OpsErrorLog struct {
 	// 关联 api_key 名称（LEFT JOIN api_keys 取得；软删只覆盖 key 列，name 保留，故已删 key 仍有原名）。
 	APIKeyName    string `json:"api_key_name,omitempty"`
 	APIKeyDeleted bool   `json:"api_key_deleted,omitempty"`
-
-	// 已删除 KEY 所有者（INVALID_API_KEY 且该 key 曾存在时的归因快照）。
-	// 认证失败行 user_id 为空，列表用户列以此回退显示所有者。
-	DeletedKeyOwnerUserID *int64 `json:"deleted_key_owner_user_id,omitempty"`
-	DeletedKeyOwnerEmail  string `json:"deleted_key_owner_email,omitempty"`
 }
 
 type OpsErrorLogDetail struct {
@@ -102,12 +97,7 @@ type OpsErrorLogDetail struct {
 	// vNext metric semantics
 	IsBusinessLimited bool `json:"is_business_limited"`
 
-	// Deleted key owner info (populated when INVALID_API_KEY and key was previously deleted).
-	// OwnerUserID/OwnerEmail 已上移到 OpsErrorLog（列表用户列回退需要）。
-	AttemptedKeyPrefix string `json:"attempted_key_prefix,omitempty"`
-	DeletedKeyName     string `json:"deleted_key_name,omitempty"`
-
-	// Bound (non-deleted) key prefix, snapshotted at error time; mutually exclusive with AttemptedKeyPrefix.
+	// Bound (non-deleted) key prefix, snapshotted at error time.
 	APIKeyPrefix string `json:"api_key_prefix,omitempty"`
 }
 
@@ -121,7 +111,7 @@ type OpsErrorLogFilter struct {
 
 	StatusCodes      []int
 	StatusCodesOther bool
-	Phase            string // Special: Phase=="upstream" bypasses status>=400 clause; do not set together with ErrorPhasesAny.
+	Phase            string // Recovered provider rows bypass status>=400 only with the explicit opt-in below.
 	Owner            string
 	Source           string
 	Resolved         *bool
@@ -137,11 +127,6 @@ type OpsErrorLogFilter struct {
 	UserID   *int64
 	APIKeyID *int64
 
-	// MatchDeletedKeyOwner: 用户侧专用。UserID 设置且为 true 时,归属从 user_id=UserID
-	// 放宽为 (user_id=UserID OR deleted_key_owner_user_id=UserID),使原所有者能看到
-	// 自己「已删除 key 认证失败」的记录。admin 路径不设此开关 → 行为不变。
-	MatchDeletedKeyOwner bool
-
 	// Model matches against requested_model first, then model.
 	Model string
 	// ModelFuzzy 为 true 时 Model 走 ILIKE 模糊匹配（仅用户端启用）；false（默认）保持精确 =，管理端语义不变。
@@ -150,14 +135,15 @@ type OpsErrorLogFilter struct {
 	// ExcludeCountTokens drops count_tokens probe errors (is_count_tokens=true).
 	ExcludeCountTokens bool
 
-	// IncludeRecoveredUpstream 显式豁免 status>=400 守卫（仅在 Phase=="upstream" 时生效）：
-	// ops 专用上游错误列表需要看到 status<400 的 recovered upstream 行。
-	// 请求错误语义的端点不设此开关，phase=upstream 过滤照常生效且守卫保留。
+	// IncludeRecoveredUpstream explicitly exempts provider-health phases
+	// (upstream and account_auth) from the status>=400 guard. Ops provider
+	// health lists need status<400 recovered rows; request-error endpoints do
+	// not set this flag and retain client-error semantics.
 	IncludeRecoveredUpstream bool
 
 	// ErrorPhasesAny / ErrorTypesAny add plain ANY() filters WITHOUT touching the
-	// special-cased single `Phase` field (only Phase=="upstream" with
-	// IncludeRecoveredUpstream bypasses the status>=400 clause).
+	// special-cased single `Phase` field. With IncludeRecoveredUpstream, an ANY
+	// list containing only upstream/account_auth also bypasses status>=400.
 	// NOTE: these ANY filters do NOT bypass status>=400; records with error_phase='upstream'
 	// but status_code<400 (recovered upstream errors) remain excluded.
 	// Used to map user-facing coarse categories to backend conditions.
