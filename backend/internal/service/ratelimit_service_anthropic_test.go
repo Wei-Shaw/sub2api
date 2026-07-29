@@ -248,9 +248,7 @@ func TestSelectAnthropicFableWindowLimit_FallsBackToAggregateReset(t *testing.T)
 	headers.Set("anthropic-ratelimit-unified-reset", strconv.FormatInt(reset.Unix(), 10))
 
 	limit := selectAnthropicFableWindowLimit(headers, now)
-	if limit == nil {
-		t.Fatal("expected non-nil limit via aggregate reset fallback")
-REDACTED
+	require.NotNil(t, limit)
 	if !limit.resetAt.Equal(reset) {
 		t.Errorf("expected resetAt=%v, got %v", reset, limit.resetAt)
 REDACTED
