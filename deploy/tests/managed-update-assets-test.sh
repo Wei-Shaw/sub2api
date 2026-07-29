@@ -84,11 +84,18 @@ fi
 test -x "$MIGRATION_HISTORY_CHECK"
 grep -Fq "git tag --merged \"\$release_commit\" --list 'v*-ts.*'" "$MIGRATION_HISTORY_CHECK"
 grep -Fq 'RELEASE_TAG_RULESET_ID: ${{ vars.RELEASE_TAG_RULESET_ID }}' "$RELEASE_WORKFLOW"
+if [[ $(grep -Fc 'RELEASE_TAG_CREATION_RULESET_ID: ${{ vars.RELEASE_TAG_CREATION_RULESET_ID }}' "$RELEASE_WORKFLOW") -lt 2 ]]; then
+  echo "every release ruleset check must validate the controlled tag creation ruleset" >&2
+  exit 1
+fi
 if [[ $(grep -Fc 'GH_TOKEN: ${{ github.token }}' "$RELEASE_WORKFLOW") -lt 2 ]]; then
   echo "every release ruleset API check must authenticate GitHub CLI" >&2
   exit 1
 fi
-grep -Fq 'release-safety.sh verify-ruleset-json' "$RELEASE_WORKFLOW"
+if [[ $(grep -Fc 'release-safety.sh verify-rulesets-json \' "$RELEASE_WORKFLOW") -ne 2 ]]; then
+  echo "release gate and final preflight must both validate immutable and creation rulesets" >&2
+  exit 1
+fi
 grep -Fq 'VALIDATED_RELEASE_TAG_OBJECT: ${{ needs.release-gate.outputs.release_tag_object }}' "$RELEASE_WORKFLOW"
 grep -Fq 'VALIDATED_PREVIOUS_RELEASE_TAG_OBJECT: ${{ needs.release-gate.outputs.previous_release_tag_object }}' "$RELEASE_WORKFLOW"
 grep -Fq '"$CURRENT_PREVIOUS_RELEASE_TAG" != "$VALIDATED_PREVIOUS_RELEASE_TAG"' "$RELEASE_WORKFLOW"
@@ -98,7 +105,7 @@ grep -Fq -- '--prune-tags' "$RELEASE_SAFETY"
 grep -Fq '"$tag_object" == "$expected_tag_object"' "$RELEASE_SAFETY"
 grep -Fq 'git merge-base --is-ancestor "$tag_commit" "$main_commit"' "$RELEASE_SAFETY"
 grep -Fq 'latest reachable fork tag' "$RELEASE_SAFETY_TEST"
-grep -Fq 'GORELEASER_CURRENT_TAG: ${{ github.event.inputs.tag || github.ref_name }}' "$RELEASE_WORKFLOW"
+grep -Fq 'GORELEASER_CURRENT_TAG: ${{ inputs.tag }}' "$RELEASE_WORKFLOW"
 grep -Fq 'goreleaser-image-digest dist/artifacts.json "$GHCR_IMAGE"' "$RELEASE_WORKFLOW"
 grep -Fq 'release-safety.sh publish-release-with-latest \' "$RELEASE_WORKFLOW"
 if [[ $(grep -Fc 'gh release view "$RELEASE_TAG" --json tagName,isDraft,assets' "$RELEASE_WORKFLOW") -ne 2 ]]; then
