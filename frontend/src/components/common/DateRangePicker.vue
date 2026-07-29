@@ -328,13 +328,15 @@ onUnmounted(() => {
   @apply border border-gray-200 dark:border-slate-600;
   @apply text-gray-700 dark:text-gray-300;
   @apply transition-all duration-200;
-  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
+  @apply focus:border-primary-500 focus:outline-none focus:ring-2;
   @apply hover:border-gray-300 dark:hover:border-slate-500;
   @apply cursor-pointer;
+  --tw-ring-color: rgb(255 107 53 / 0.3);
 }
 
 .date-picker-trigger-open {
-  @apply border-primary-500 ring-2 ring-primary-500/30;
+  @apply border-primary-500 ring-2;
+  --tw-ring-color: rgb(255 107 53 / 0.3);
 }
 
 .date-picker-icon {
@@ -371,8 +373,12 @@ onUnmounted(() => {
 }
 
 .date-picker-preset-active {
-  @apply bg-primary-100 dark:bg-primary-900/30;
+  @apply bg-primary-100;
   @apply text-primary-700 dark:text-primary-300;
+}
+
+.dark .date-picker-preset-active {
+  background-color: rgb(127 43 22 / 0.3);
 }
 
 .date-picker-divider {
@@ -396,7 +402,8 @@ onUnmounted(() => {
   @apply bg-gray-50 dark:bg-slate-700;
   @apply border border-gray-200 dark:border-slate-600;
   @apply text-gray-900 dark:text-gray-100;
-  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
+  @apply focus:border-primary-500 focus:outline-none focus:ring-2;
+  --tw-ring-color: rgb(255 107 53 / 0.3);
 }
 
 .date-picker-input::-webkit-calendar-picker-indicator {

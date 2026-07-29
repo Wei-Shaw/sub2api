@@ -11582,11 +11582,13 @@ watch(
 }
 
 .settings-tab:focus-visible {
-  @apply ring-2 ring-primary-500/40 ring-offset-2 ring-offset-white dark:ring-offset-slate-900;
+  @apply ring-2 ring-offset-2 ring-offset-white dark:ring-offset-slate-900;
+  --tw-ring-color: rgb(255 107 53 / 0.4);
 }
 
 .settings-tab-active {
-  @apply border-primary-200/80 bg-white text-primary-700 shadow-sm dark:border-primary-400/30 dark:bg-slate-700/95 dark:text-primary-200;
+  @apply bg-white text-primary-700 shadow-sm dark:bg-slate-700/95 dark:text-primary-200;
+  border-color: rgb(255 201 168 / 0.8);
   box-shadow:
     0 8px 18px rgb(15 23 42 / 0.08),
     0 1px 0 rgb(255 255 255 / 0.92) inset;
@@ -11617,7 +11619,7 @@ watch(
 }
 
 .settings-tab-active .settings-tab-icon {
-  @apply bg-primary-50 text-primary-600 dark:bg-primary-400/10 dark:text-primary-300;
+  @apply bg-primary-50 text-primary-600 dark:text-primary-300;
 }
 
 .settings-tab-label {
@@ -11642,8 +11644,13 @@ watch(
 }
 
 .dark .settings-tab-active {
+  border-color: rgb(255 126 61 / 0.3);
   box-shadow:
     0 12px 26px rgb(0 0 0 / 0.22),
     0 1px 0 rgb(255 255 255 / 0.08) inset;
+}
+
+.dark .settings-tab-active .settings-tab-icon {
+  background-color: rgb(255 126 61 / 0.1);
 }
 </style>

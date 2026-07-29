@@ -57,7 +57,8 @@
 
   /* 选中文本样式 */
   ::selection {
-    @apply bg-primary-500/20 text-primary-900 dark:text-primary-100;
+    @apply text-primary-900 dark:text-primary-100;
+    background-color: rgb(255 107 53 / 0.2);
   }
 
 
@@ -69,16 +70,25 @@
     @apply inline-flex items-center justify-center gap-2;
     @apply rounded-xl px-4 py-2.5 text-sm font-medium;
     @apply transition-all duration-200 ease-out;
-    @apply focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:ring-offset-2;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2;
     @apply disabled:transform-none disabled:cursor-not-allowed disabled:opacity-50;
     @apply active:scale-[0.98];
+    --tw-ring-color: rgb(255 107 53 / 0.5);
   }
 
   .btn-primary {
     @apply bg-gradient-to-r from-primary-500 to-primary-600;
-    @apply text-white shadow-md shadow-primary-500/25;
-    @apply hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30;
-    @apply dark:shadow-primary-500/20;
+    @apply text-white shadow-md;
+    @apply hover:from-primary-600 hover:to-primary-700 hover:shadow-lg;
+    --tw-shadow-color: rgb(255 107 53 / 0.25);
+  }
+
+  .btn-primary:hover {
+    --tw-shadow-color: rgb(255 107 53 / 0.3);
+  }
+
+  .dark .btn-primary {
+    --tw-shadow-color: rgb(255 107 53 / 0.2);
   }
 
   .btn-secondary {
@@ -166,8 +176,9 @@
     @apply text-gray-900 dark:text-gray-100;
     @apply placeholder:text-gray-400 dark:placeholder:text-slate-400;
     @apply transition-all duration-200;
-    @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
+    @apply focus:border-primary-500 focus:outline-none focus:ring-2;
     @apply disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-slate-900;
+    --tw-ring-color: rgb(255 107 53 / 0.3);
   }
 
   .dark .input[type='date'],
@@ -267,7 +278,11 @@
   }
 
   .stat-icon-primary {
-    @apply bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400;
+    @apply bg-primary-100 text-primary-600 dark:text-primary-400;
+  }
+
+  .dark .stat-icon-primary {
+    background-color: rgb(127 43 22 / 0.3);
   }
 
   .stat-icon-success {
@@ -340,7 +355,11 @@
   }
 
   .badge-primary {
-    @apply bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400;
+    @apply bg-primary-100 text-primary-700 dark:text-primary-400;
+  }
+
+  .dark .badge-primary {
+    background-color: rgb(127 43 22 / 0.3);
   }
 
   .badge-success {
@@ -567,9 +586,17 @@
   }
 
   .sidebar-link-active {
-    @apply bg-primary-50 dark:bg-primary-900/20;
+    @apply bg-primary-50;
     @apply text-primary-600 dark:text-primary-400;
-    @apply hover:bg-primary-100 dark:hover:bg-primary-900/30;
+    @apply hover:bg-primary-100;
+  }
+
+  .dark .sidebar-link-active {
+    background-color: rgb(127 43 22 / 0.2);
+  }
+
+  .dark .sidebar-link-active:hover {
+    background-color: rgb(127 43 22 / 0.3);
   }
 
   .sidebar-section {

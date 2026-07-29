@@ -422,7 +422,11 @@ onUnmounted(() => {
 }
 
 .toc-item.toc-active {
-  @apply text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20 font-medium;
+  @apply text-primary-600 dark:text-primary-400 bg-primary-50 font-medium;
+}
+
+.dark .toc-item.toc-active {
+  background-color: rgb(127 43 22 / 0.2);
 }
 
 .toc-level-1 { padding-left: 8px; }
