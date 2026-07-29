@@ -155,13 +155,8 @@ func (e *ConnectionSignalEmitter) CheckThrottle(ctx context.Context, apiKeyID in
 	if !e.masterEnabled() {
 		return false, ""
 	}
-	s := e.cachedSettings(ctx)
-	if !s.Enabled || !s.Actions.SoftThrottleEnabled {
-		// Still honor an existing mark if soft throttle was previously applied
-		// and the key still has an active Redis throttle entry — operators can
-		// clear via resolve/exempt. When soft_throttle_enabled is false we
-		// still check the mark so active throttles continue until TTL/clear.
-	}
+	// Soft-throttle marks are honored even when soft_throttle_enabled is later
+	// turned off, so active caps continue until TTL expiry or resolve/exempt.
 	timeout := e.emitTimeout()
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

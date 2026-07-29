@@ -380,7 +380,7 @@ func percentileApprox(samples []int64, p int) float64 {
 		return float64(cp[len(cp)-1])
 	}
 	// nearest-rank
-	idx := (p * len(cp) + 99) / 100
+	idx := (p*len(cp) + 99) / 100
 	if idx < 1 {
 		idx = 1
 	}
@@ -440,5 +440,3 @@ func primaryRule(res ConnectionRiskScoreResult) string {
 	}
 	return best.RuleID
 }
-
-

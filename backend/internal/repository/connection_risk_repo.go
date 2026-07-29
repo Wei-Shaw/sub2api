@@ -286,10 +286,10 @@ func buildConnectionRiskWhere(filter *service.ConnectionRiskEventFilter) (string
 
 func scanConnectionRiskEvent(scan func(dest ...any) error) (*service.ConnectionRiskEvent, error) {
 	var (
-		ev                                                     service.ConnectionRiskEvent
-		userID, apiKeyID, resolverID                           sql.NullInt64
-		rulesRaw, evidenceRaw, metricsRaw                      []byte
-		resolvedAt, windowStart, windowEnd                     sql.NullTime
+		ev                                 service.ConnectionRiskEvent
+		userID, apiKeyID, resolverID       sql.NullInt64
+		rulesRaw, evidenceRaw, metricsRaw  []byte
+		resolvedAt, windowStart, windowEnd sql.NullTime
 	)
 	err := scan(
 		&ev.ID,

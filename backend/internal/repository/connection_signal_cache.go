@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	crActiveKeysKey = "cr:active:keys"
+	crActiveKeysKey  = "cr:active:keys"
 	crActiveUsersKey = "cr:active:users"
 
 	crMinuteTTL   = 15 * time.Minute
@@ -323,10 +323,8 @@ func (c *connectionSignalCache) ReadKeyWindowMetrics(ctx context.Context, keyID,
 	sampleIPs := pipe.ZRevRange(ctx, crKeyIPSet(keyID), 0, 19)
 	sampleUAs := pipe.ZRevRange(ctx, crKeyUASet(keyID), 0, 19)
 
-	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
-		// Pipeline may return redis.Nil for missing GET keys; ignore those.
-		// go-redis Pipeline.Exec returns first non-Nil error; GET miss is redis.Nil per cmd.
-	}
+	// Pipeline may surface redis.Nil for missing GET keys; per-cmd Result() handles misses.
+	_, _ = pipe.Exec(ctx)
 
 	if ips, err := sunion.Result(); err == nil {
 		m.DistinctIP5m = len(ips)
