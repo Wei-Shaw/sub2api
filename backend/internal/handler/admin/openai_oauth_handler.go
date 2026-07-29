@@ -420,7 +420,19 @@ func (h *OpenAIOAuthHandler) QueryQuota(c *gin.Context) {
 		response.BadRequest(c, "openai quota service is not enabled")
 		return
 	}
+	persistResetCredits := false
+	if raw, ok := c.GetQuery("persist_reset_credits"); ok {
+		persistResetCredits, err = strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid persist_reset_credits value")
+			return
+		}
+	}
+
 	usage, err := h.quotaService.QueryUsage(c.Request.Context(), accountID)
+	if err == nil && persistResetCredits {
+		err = h.quotaService.CacheResetCreditsSnapshot(c.Request.Context(), accountID, usage.RateLimitResetCredits)
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

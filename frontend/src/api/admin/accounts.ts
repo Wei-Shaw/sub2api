@@ -839,8 +839,13 @@ export interface OpenAIQuotaResetResult {
 /**
  * Query OpenAI/Codex rate-limit usage for an OAuth account.
  */
-export async function queryOpenAIQuota(id: number): Promise<OpenAIQuotaUsage> {
-  const { data } = await apiClient.get<OpenAIQuotaUsage>(`/admin/openai/accounts/${id}/quota`)
+export async function queryOpenAIQuota(
+  id: number,
+  options?: { persistResetCredits?: boolean }
+): Promise<OpenAIQuotaUsage> {
+  const { data } = await apiClient.get<OpenAIQuotaUsage>(`/admin/openai/accounts/${id}/quota`, {
+    params: options?.persistResetCredits === true ? { persist_reset_credits: true } : undefined
+  })
   return data
 }
 
