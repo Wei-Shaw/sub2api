@@ -14,25 +14,31 @@ import (
 
 type accountRepoStubForBulkUpdate struct {
 	accountRepoStub
-	bulkUpdateErr    error
-	bulkUpdateIDs    []int64
-	bindGroupErrByID map[int64]error
-	bindGroupsCalls  []int64
-	getByIDsAccounts []*Account
-	getByIDsErr      error
-	getByIDsCalled   bool
-	getByIDsIDs      []int64
-	getByIDAccounts  map[int64]*Account
-	getByIDErrByID   map[int64]error
-	getByIDCalled    []int64
-	listByGroupData  map[int64][]Account
-	listByGroupErr   map[int64]error
-	listData         []Account
-	listResult       *pagination.PaginationResult
-	listErr          error
-	listCalled       bool
-	lastListParams   pagination.PaginationParams
-	lastListFilters  struct {
+	bulkUpdateErr       error
+	bulkUpdateIDs       []int64
+	bindGroupErrByID    map[int64]error
+	bindGroupsCalls     []int64
+	bindGroupsByAccount map[int64][]int64
+	createAccount       *Account
+	createID            int64
+	createErr           error
+	updatedAccounts     []*Account
+	updateErr           error
+	getByIDsAccounts    []*Account
+	getByIDsErr         error
+	getByIDsCalled      bool
+	getByIDsIDs         []int64
+	getByIDAccounts     map[int64]*Account
+	getByIDErrByID      map[int64]error
+	getByIDCalled       []int64
+	listByGroupData     map[int64][]Account
+	listByGroupErr      map[int64]error
+	listData            []Account
+	listResult          *pagination.PaginationResult
+	listErr             error
+	listCalled          bool
+	lastListParams      pagination.PaginationParams
+	lastListFilters     struct {
 		platform    string
 		accountType string
 		status      string
@@ -50,8 +56,25 @@ func (s *accountRepoStubForBulkUpdate) BulkUpdate(_ context.Context, ids []int64
 	return int64(len(ids)), nil
 }
 
-func (s *accountRepoStubForBulkUpdate) BindGroups(_ context.Context, accountID int64, _ []int64) error {
+func (s *accountRepoStubForBulkUpdate) Create(_ context.Context, account *Account) error {
+	s.createAccount = account
+	if s.createID > 0 {
+		account.ID = s.createID
+	}
+	return s.createErr
+}
+
+func (s *accountRepoStubForBulkUpdate) Update(_ context.Context, account *Account) error {
+	s.updatedAccounts = append(s.updatedAccounts, account)
+	return s.updateErr
+}
+
+func (s *accountRepoStubForBulkUpdate) BindGroups(_ context.Context, accountID int64, groupIDs []int64) error {
 	s.bindGroupsCalls = append(s.bindGroupsCalls, accountID)
+	if s.bindGroupsByAccount == nil {
+		s.bindGroupsByAccount = make(map[int64][]int64)
+	}
+	s.bindGroupsByAccount[accountID] = append([]int64{}, groupIDs...)
 	if err, ok := s.bindGroupErrByID[accountID]; ok {
 		return err
 	}

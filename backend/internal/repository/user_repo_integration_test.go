@@ -154,7 +154,7 @@ func (s *UserRepoSuite) TestUpdate() {
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
 	got.Username = "updated"
-	s.Require().NoError(s.repo.Update(s.ctx, got), "Update")
+	s.Require().NoError(s.repo.Update(s.ctx, got, service.UserUpdateFields{Username: true}), "Update")
 
 	updated, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err, "GetByID after update")
@@ -232,7 +232,7 @@ func (s *UserRepoSuite) TestUpdateIgnoresNoRowsFromConflictingEmailIdentityUpser
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
 	got.Username = "updated"
-	s.Require().NoError(s.repo.Update(s.ctx, got), "Update should tolerate ON CONFLICT DO NOTHING returning no rows")
+	s.Require().NoError(s.repo.Update(s.ctx, got, service.UserUpdateFields{Username: true}), "Update should tolerate ON CONFLICT DO NOTHING returning no rows")
 
 	updated, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
@@ -658,7 +658,7 @@ func (s *UserRepoSuite) TestCRUD_And_Filters_And_AtomicUpdates() {
 	s.Require().Equal(user2.ID, gotByEmail.ID, "GetByEmail ID mismatch")
 
 	got.Username = "Alice2"
-	s.Require().NoError(s.repo.Update(s.ctx, got), "Update")
+	s.Require().NoError(s.repo.Update(s.ctx, got, service.UserUpdateFields{Username: true}), "Update")
 	got2, err := s.repo.GetByID(s.ctx, user1.ID)
 	s.Require().NoError(err, "GetByID after update")
 	s.Require().Equal("Alice2", got2.Username, "Update did not persist")

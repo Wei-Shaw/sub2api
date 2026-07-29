@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -865,6 +866,75 @@ func init() {
 	channelmonitorrequesttemplate.DefaultBodyOverrideMode = channelmonitorrequesttemplateDescBodyOverrideMode.Default.(string)
 	// channelmonitorrequesttemplate.BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
 	channelmonitorrequesttemplate.BodyOverrideModeValidator = channelmonitorrequesttemplateDescBodyOverrideMode.Validators[0].(func(string) error)
+	compositemodelrouteMixin := schema.CompositeModelRoute{}.Mixin()
+	compositemodelrouteMixinHooks1 := compositemodelrouteMixin[1].Hooks()
+	compositemodelroute.Hooks[0] = compositemodelrouteMixinHooks1[0]
+	compositemodelrouteMixinInters1 := compositemodelrouteMixin[1].Interceptors()
+	compositemodelroute.Interceptors[0] = compositemodelrouteMixinInters1[0]
+	compositemodelrouteMixinFields0 := compositemodelrouteMixin[0].Fields()
+	_ = compositemodelrouteMixinFields0
+	compositemodelrouteFields := schema.CompositeModelRoute{}.Fields()
+	_ = compositemodelrouteFields
+	// compositemodelrouteDescCreatedAt is the schema descriptor for created_at field.
+	compositemodelrouteDescCreatedAt := compositemodelrouteMixinFields0[0].Descriptor()
+	// compositemodelroute.DefaultCreatedAt holds the default value on creation for the created_at field.
+	compositemodelroute.DefaultCreatedAt = compositemodelrouteDescCreatedAt.Default.(func() time.Time)
+	// compositemodelrouteDescUpdatedAt is the schema descriptor for updated_at field.
+	compositemodelrouteDescUpdatedAt := compositemodelrouteMixinFields0[1].Descriptor()
+	// compositemodelroute.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	compositemodelroute.DefaultUpdatedAt = compositemodelrouteDescUpdatedAt.Default.(func() time.Time)
+	// compositemodelroute.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	compositemodelroute.UpdateDefaultUpdatedAt = compositemodelrouteDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// compositemodelrouteDescPublicModel is the schema descriptor for public_model field.
+	compositemodelrouteDescPublicModel := compositemodelrouteFields[1].Descriptor()
+	// compositemodelroute.PublicModelValidator is a validator for the "public_model" field. It is called by the builders before save.
+	compositemodelroute.PublicModelValidator = func() func(string) error {
+		validators := compositemodelrouteDescPublicModel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(public_model string) error {
+			for _, fn := range fns {
+				if err := fn(public_model); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// compositemodelrouteDescMatchType is the schema descriptor for match_type field.
+	compositemodelrouteDescMatchType := compositemodelrouteFields[2].Descriptor()
+	// compositemodelroute.DefaultMatchType holds the default value on creation for the match_type field.
+	compositemodelroute.DefaultMatchType = compositemodelrouteDescMatchType.Default.(string)
+	// compositemodelroute.MatchTypeValidator is a validator for the "match_type" field. It is called by the builders before save.
+	compositemodelroute.MatchTypeValidator = compositemodelrouteDescMatchType.Validators[0].(func(string) error)
+	// compositemodelrouteDescTargetPlatform is the schema descriptor for target_platform field.
+	compositemodelrouteDescTargetPlatform := compositemodelrouteFields[3].Descriptor()
+	// compositemodelroute.DefaultTargetPlatform holds the default value on creation for the target_platform field.
+	compositemodelroute.DefaultTargetPlatform = compositemodelrouteDescTargetPlatform.Default.(string)
+	// compositemodelroute.TargetPlatformValidator is a validator for the "target_platform" field. It is called by the builders before save.
+	compositemodelroute.TargetPlatformValidator = compositemodelrouteDescTargetPlatform.Validators[0].(func(string) error)
+	// compositemodelrouteDescUpstreamModel is the schema descriptor for upstream_model field.
+	compositemodelrouteDescUpstreamModel := compositemodelrouteFields[4].Descriptor()
+	// compositemodelroute.DefaultUpstreamModel holds the default value on creation for the upstream_model field.
+	compositemodelroute.DefaultUpstreamModel = compositemodelrouteDescUpstreamModel.Default.(string)
+	// compositemodelroute.UpstreamModelValidator is a validator for the "upstream_model" field. It is called by the builders before save.
+	compositemodelroute.UpstreamModelValidator = compositemodelrouteDescUpstreamModel.Validators[0].(func(string) error)
+	// compositemodelrouteDescEndpoint is the schema descriptor for endpoint field.
+	compositemodelrouteDescEndpoint := compositemodelrouteFields[5].Descriptor()
+	// compositemodelroute.DefaultEndpoint holds the default value on creation for the endpoint field.
+	compositemodelroute.DefaultEndpoint = compositemodelrouteDescEndpoint.Default.(string)
+	// compositemodelroute.EndpointValidator is a validator for the "endpoint" field. It is called by the builders before save.
+	compositemodelroute.EndpointValidator = compositemodelrouteDescEndpoint.Validators[0].(func(string) error)
+	// compositemodelrouteDescPriority is the schema descriptor for priority field.
+	compositemodelrouteDescPriority := compositemodelrouteFields[6].Descriptor()
+	// compositemodelroute.DefaultPriority holds the default value on creation for the priority field.
+	compositemodelroute.DefaultPriority = compositemodelrouteDescPriority.Default.(int)
+	// compositemodelrouteDescEnabled is the schema descriptor for enabled field.
+	compositemodelrouteDescEnabled := compositemodelrouteFields[7].Descriptor()
+	// compositemodelroute.DefaultEnabled holds the default value on creation for the enabled field.
+	compositemodelroute.DefaultEnabled = compositemodelrouteDescEnabled.Default.(bool)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0
@@ -1071,40 +1141,44 @@ func init() {
 	groupDescAllowMessagesDispatch := groupFields[39].Descriptor()
 	// group.DefaultAllowMessagesDispatch holds the default value on creation for the allow_messages_dispatch field.
 	group.DefaultAllowMessagesDispatch = groupDescAllowMessagesDispatch.Default.(bool)
+	// groupDescAllowLive is the schema descriptor for allow_live field.
+	groupDescAllowLive := groupFields[40].Descriptor()
+	// group.DefaultAllowLive holds the default value on creation for the allow_live field.
+	group.DefaultAllowLive = groupDescAllowLive.Default.(bool)
 	// groupDescRequireOauthOnly is the schema descriptor for require_oauth_only field.
-	groupDescRequireOauthOnly := groupFields[40].Descriptor()
+	groupDescRequireOauthOnly := groupFields[41].Descriptor()
 	// group.DefaultRequireOauthOnly holds the default value on creation for the require_oauth_only field.
 	group.DefaultRequireOauthOnly = groupDescRequireOauthOnly.Default.(bool)
 	// groupDescRequirePrivacySet is the schema descriptor for require_privacy_set field.
-	groupDescRequirePrivacySet := groupFields[41].Descriptor()
+	groupDescRequirePrivacySet := groupFields[42].Descriptor()
 	// group.DefaultRequirePrivacySet holds the default value on creation for the require_privacy_set field.
 	group.DefaultRequirePrivacySet = groupDescRequirePrivacySet.Default.(bool)
 	// groupDescDefaultMappedModel is the schema descriptor for default_mapped_model field.
-	groupDescDefaultMappedModel := groupFields[42].Descriptor()
+	groupDescDefaultMappedModel := groupFields[43].Descriptor()
 	// group.DefaultDefaultMappedModel holds the default value on creation for the default_mapped_model field.
 	group.DefaultDefaultMappedModel = groupDescDefaultMappedModel.Default.(string)
 	// group.DefaultMappedModelValidator is a validator for the "default_mapped_model" field. It is called by the builders before save.
 	group.DefaultMappedModelValidator = groupDescDefaultMappedModel.Validators[0].(func(string) error)
 	// groupDescMessagesDispatchModelConfig is the schema descriptor for messages_dispatch_model_config field.
-	groupDescMessagesDispatchModelConfig := groupFields[43].Descriptor()
+	groupDescMessagesDispatchModelConfig := groupFields[44].Descriptor()
 	// group.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	group.DefaultMessagesDispatchModelConfig = groupDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
 	// groupDescModelsListConfig is the schema descriptor for models_list_config field.
-	groupDescModelsListConfig := groupFields[44].Descriptor()
+	groupDescModelsListConfig := groupFields[45].Descriptor()
 	// group.DefaultModelsListConfig holds the default value on creation for the models_list_config field.
 	group.DefaultModelsListConfig = groupDescModelsListConfig.Default.(domain.GroupModelsListConfig)
 	// groupDescRpmLimit is the schema descriptor for rpm_limit field.
-	groupDescRpmLimit := groupFields[45].Descriptor()
+	groupDescRpmLimit := groupFields[46].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
 	// groupDescMaxReasoningEffort is the schema descriptor for max_reasoning_effort field.
-	groupDescMaxReasoningEffort := groupFields[46].Descriptor()
+	groupDescMaxReasoningEffort := groupFields[47].Descriptor()
 	// group.DefaultMaxReasoningEffort holds the default value on creation for the max_reasoning_effort field.
 	group.DefaultMaxReasoningEffort = groupDescMaxReasoningEffort.Default.(string)
 	// group.MaxReasoningEffortValidator is a validator for the "max_reasoning_effort" field. It is called by the builders before save.
 	group.MaxReasoningEffortValidator = groupDescMaxReasoningEffort.Validators[0].(func(string) error)
 	// groupDescReasoningEffortMappings is the schema descriptor for reasoning_effort_mappings field.
-	groupDescReasoningEffortMappings := groupFields[47].Descriptor()
+	groupDescReasoningEffortMappings := groupFields[48].Descriptor()
 	// group.DefaultReasoningEffortMappings holds the default value on creation for the reasoning_effort_mappings field.
 	group.DefaultReasoningEffortMappings = groupDescReasoningEffortMappings.Default.([]domain.ReasoningEffortMapping)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()

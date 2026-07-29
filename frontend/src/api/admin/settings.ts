@@ -366,6 +366,10 @@ export interface SystemSettings {
   invitation_code_enabled: boolean;
   totp_enabled: boolean; // TOTP 双因素认证
   totp_encryption_key_configured: boolean; // TOTP 加密密钥是否已配置
+  passkey_enabled: boolean;
+  passkey_configured: boolean;
+  passkey_rp_id: string;
+  passkey_rp_origins: string[];
   session_binding_enabled: boolean; // 会话 IP/UA 绑定
   step_up_enabled: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days: number; // 审计日志保留天数
@@ -607,6 +611,7 @@ export interface SystemSettings {
   payment_cancel_rate_limit_unit: string;
   payment_cancel_rate_limit_window_mode: string;
   payment_alipay_force_qrcode?: boolean;
+  payment_alipay_mobile_precreate_deep_link?: boolean;
   payment_visible_method_alipay_source?: string;
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
@@ -654,6 +659,11 @@ export interface SystemSettings {
   // Available Channels feature switch
   available_channels_enabled: boolean;
 
+  // Model Plaza feature switches + description
+  model_plaza_enabled: boolean;
+  model_plaza_require_auth: boolean;
+  model_plaza_description: string;
+
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
 
@@ -673,6 +683,7 @@ export interface UpdateSettingsRequest {
   frontend_url?: string;
   invitation_code_enabled?: boolean;
   totp_enabled?: boolean; // TOTP 双因素认证
+  passkey_enabled?: boolean;
   session_binding_enabled?: boolean; // 会话 IP/UA 绑定
   step_up_enabled?: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days?: number; // 审计日志保留天数
@@ -888,6 +899,7 @@ export interface UpdateSettingsRequest {
   payment_cancel_rate_limit_unit?: string;
   payment_cancel_rate_limit_window_mode?: string;
   payment_alipay_force_qrcode?: boolean;
+  payment_alipay_mobile_precreate_deep_link?: boolean;
   payment_visible_method_alipay_source?: string;
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
@@ -922,6 +934,11 @@ export interface UpdateSettingsRequest {
 
   // Available Channels feature switch
   available_channels_enabled?: boolean;
+
+  // Model Plaza feature switches + description
+  model_plaza_enabled?: boolean;
+  model_plaza_require_auth?: boolean;
+  model_plaza_description?: string;
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;
@@ -1204,6 +1221,38 @@ export async function updateRateLimit429CooldownSettings(
   return data;
 }
 
+// ==================== Panel Rate Limit Settings ====================
+
+/**
+ * Panel API rate limit settings.
+ * Authenticated panel endpoints are limited per user account (reverse-proxy
+ * safe); public endpoints are limited per publicly routable client IP.
+ */
+export interface PanelRateLimitSettings {
+  enabled: boolean;
+  user_rpm: number;
+  heavy_rpm: number;
+  exempt_admin: boolean;
+  public_ip_rpm: number;
+}
+
+export async function getPanelRateLimitSettings(): Promise<PanelRateLimitSettings> {
+  const { data } = await apiClient.get<PanelRateLimitSettings>(
+    "/admin/settings/panel-rate-limit",
+  );
+  return data;
+}
+
+export async function updatePanelRateLimitSettings(
+  settings: PanelRateLimitSettings,
+): Promise<PanelRateLimitSettings> {
+  const { data } = await apiClient.put<PanelRateLimitSettings>(
+    "/admin/settings/panel-rate-limit",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Stream Timeout Settings ====================
 
 /**
@@ -1431,6 +1480,8 @@ export const settingsAPI = {
   updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
+  getPanelRateLimitSettings,
+  updatePanelRateLimitSettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
   getRectifierSettings,

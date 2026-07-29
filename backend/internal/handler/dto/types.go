@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 type User struct {
@@ -131,6 +132,8 @@ type Group struct {
 
 	// OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch"`
+	// OpenAI Live 接口开关
+	AllowLive bool `json:"allow_live"`
 
 	// 账号过滤控制（仅 OpenAI/Antigravity 平台有效）
 	RequireOAuthOnly  bool `json:"require_oauth_only"`
@@ -183,23 +186,24 @@ type Account struct {
 	Type     string  `json:"type"`
 	// Credentials 经 RedactCredentials 处理后只含非敏感子键；敏感 token / api_key / 私钥
 	// 的存在性通过 CredentialsStatus（has_<key>）暴露，原始值不返回前端。
-	Credentials             map[string]any  `json:"credentials"`
-	CredentialsStatus       map[string]bool `json:"credentials_status,omitempty"`
-	Extra                   map[string]any  `json:"extra"`
-	ProxyID                 *int64          `json:"proxy_id"`
-	ProxyFallbackOriginID   *int64          `json:"proxy_fallback_origin_id"`
-	ProxyFallbackOriginName *string         `json:"proxy_fallback_origin_name,omitempty"`
-	Concurrency             int             `json:"concurrency"`
-	LoadFactor              *int            `json:"load_factor,omitempty"`
-	Priority                int             `json:"priority"`
-	RateMultiplier          float64         `json:"rate_multiplier"`
-	Status                  string          `json:"status"`
-	ErrorMessage            string          `json:"error_message"`
-	LastUsedAt              *time.Time      `json:"last_used_at"`
-	ExpiresAt               *int64          `json:"expires_at"`
-	AutoPauseOnExpired      bool            `json:"auto_pause_on_expired"`
-	CreatedAt               time.Time       `json:"created_at"`
-	UpdatedAt               time.Time       `json:"updated_at"`
+	Credentials             map[string]any                 `json:"credentials"`
+	CredentialsStatus       map[string]bool                `json:"credentials_status,omitempty"`
+	Extra                   map[string]any                 `json:"extra"`
+	OllamaCloudUsage        *service.OllamaCloudUsageState `json:"ollama_cloud_usage,omitempty"`
+	ProxyID                 *int64                         `json:"proxy_id"`
+	ProxyFallbackOriginID   *int64                         `json:"proxy_fallback_origin_id"`
+	ProxyFallbackOriginName *string                        `json:"proxy_fallback_origin_name,omitempty"`
+	Concurrency             int                            `json:"concurrency"`
+	LoadFactor              *int                           `json:"load_factor,omitempty"`
+	Priority                int                            `json:"priority"`
+	RateMultiplier          float64                        `json:"rate_multiplier"`
+	Status                  string                         `json:"status"`
+	ErrorMessage            string                         `json:"error_message"`
+	LastUsedAt              *time.Time                     `json:"last_used_at"`
+	ExpiresAt               *int64                         `json:"expires_at"`
+	AutoPauseOnExpired      bool                           `json:"auto_pause_on_expired"`
+	CreatedAt               time.Time                      `json:"created_at"`
+	UpdatedAt               time.Time                      `json:"updated_at"`
 
 	Schedulable bool `json:"schedulable"`
 
@@ -519,6 +523,9 @@ type UsageLog struct {
 	UserAgent *string `json:"user_agent"`
 	// IPAddress is visible to the owner of the usage record.
 	IPAddress *string `json:"ip_address,omitempty"`
+	// SessionID is the explicit client-provided request correlation identifier
+	// (e.g. the session_id / X-Session-Id headers). Omitted when absent.
+	SessionID *string `json:"session_id,omitempty"`
 
 	// Cache TTL Override 标记
 	CacheTTLOverridden bool `json:"cache_ttl_overridden"`

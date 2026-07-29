@@ -48,6 +48,11 @@ type AdminService interface {
 	RecoverDuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*Group, error)
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
 	DeleteGroup(ctx context.Context, id int64) error
+	ListCompositeRoutes(ctx context.Context, groupID int64) ([]CompositeModelRoute, error)
+	CreateCompositeRoute(ctx context.Context, groupID int64, input CompositeRouteInput) (*CompositeModelRoute, error)
+	UpdateCompositeRoute(ctx context.Context, groupID, routeID int64, input CompositeRouteInput) (*CompositeModelRoute, error)
+	DeleteCompositeRoute(ctx context.Context, groupID, routeID int64) error
+	PreviewCompositeRoute(ctx context.Context, groupID int64, input CompositeRoutePreviewRequest) (*CompositeRouteDecision, error)
 	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
 	GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error)
 	ClearGroupRateMultipliers(ctx context.Context, groupID int64) error
@@ -247,6 +252,7 @@ type CreateGroupInput struct {
 	SupportedModelScopes []string
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool
+	AllowLive                   bool
 	DefaultMappedModel          string
 	RequireOAuthOnly            bool
 	RequirePrivacySet           bool
@@ -307,6 +313,7 @@ type UpdateGroupInput struct {
 	SupportedModelScopes *[]string
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       *bool
+	AllowLive                   *bool
 	DefaultMappedModel          *string
 	RequireOAuthOnly            *bool
 	RequirePrivacySet           *bool
@@ -626,6 +633,8 @@ type adminServiceImpl struct {
 	privacyClientFactory PrivacyClientFactory
 	runtimeBlocker       AccountRuntimeBlocker
 	affiliateService     adminRechargeAffiliateAccruer
+	compositeRouteRepo   CompositeModelRouteRepository
+	compositeResolver    *CompositeRouteResolver
 }
 
 type adminRechargeAffiliateAccruer interface {
@@ -657,6 +666,8 @@ func NewAdminService(
 	privacyClientFactory PrivacyClientFactory,
 	runtimeBlocker AccountRuntimeBlocker,
 	affiliateService *AffiliateService,
+	compositeRouteRepo CompositeModelRouteRepository,
+	compositeResolver *CompositeRouteResolver,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -680,5 +691,7 @@ func NewAdminService(
 		privacyClientFactory: privacyClientFactory,
 		runtimeBlocker:       runtimeBlocker,
 		affiliateService:     affiliateService,
+		compositeRouteRepo:   compositeRouteRepo,
+		compositeResolver:    compositeResolver,
 	}
 }
