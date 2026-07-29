@@ -146,6 +146,19 @@ if grep -Fq '"${CANDIDATE_IMAGE}@${CANDIDATE_DIGEST}"' "$RELEASE_WORKFLOW"; then
   echo "release verification must not append a digest to an already-tagged candidate reference" >&2
   exit 1
 fi
+promotion_block=$(sed -n '/- name: Promote candidate digest to immutable version tags/,/- name: Create or verify draft and upload exact candidate assets/p' "$RELEASE_WORKFLOW")
+if [[ $(grep -Fc 'CANDIDATE_REPOSITORY=${CANDIDATE_IMAGE%:*}' <<<"$promotion_block") -ne 1 ]]; then
+  echo "release promotion must derive the untagged candidate repository exactly once" >&2
+  exit 1
+fi
+if [[ $(grep -Fc '"${CANDIDATE_REPOSITORY}@${IMAGE_DIGEST}"' <<<"$promotion_block") -ne 2 ]]; then
+  echo "GHCR and DockerHub promotion must both use a canonical repository@digest source" >&2
+  exit 1
+fi
+if grep -Fq '"${CANDIDATE_IMAGE}@${IMAGE_DIGEST}"' <<<"$promotion_block"; then
+  echo "release promotion must not append a digest to an already-tagged candidate reference" >&2
+  exit 1
+fi
 grep -Fq 'assert-image-digest-matches' "$PROMOTE_WORKFLOW"
 grep -Fq 'verify-completion-candidate' "$RELEASE_WORKFLOW"
 grep -Fq "go test -tags integration ./internal/deployer -run '^TestRealDockerControlPlaneStaging$'" "$PREFLIGHT_WORKFLOW"

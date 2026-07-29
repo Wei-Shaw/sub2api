@@ -251,13 +251,14 @@ jobs:
         run: |
           VERSION=${RELEASE_TAG#v}
           CANDIDATE_IMAGE=$(jq -er '.candidate_image' "$RUNNER_TEMP/candidate/candidate.json")
+          CANDIDATE_REPOSITORY=${CANDIDATE_IMAGE%:*}
           IMAGE_DIGEST=$(jq -er '.image_digest' "$RUNNER_TEMP/candidate/candidate.json")
           GHCR_REPOSITORY="ghcr.io/${GITHUB_REPOSITORY,,}"
           GHCR_IMAGE="$GHCR_REPOSITORY:$VERSION"
           EXISTING=$(bash .github/scripts/release-safety.sh image-tag-digest-or-missing "$GHCR_IMAGE")
           if [[ "$EXISTING" == missing ]]; then
             bash .github/scripts/release-safety.sh promote-image-tags \
-              "${CANDIDATE_IMAGE}@${IMAGE_DIGEST}" "$IMAGE_DIGEST" "$GHCR_IMAGE"
+              "${CANDIDATE_REPOSITORY}@${IMAGE_DIGEST}" "$IMAGE_DIGEST" "$GHCR_IMAGE"
           else
             bash .github/scripts/release-safety.sh assert-image-digest-matches "$GHCR_IMAGE" "$IMAGE_DIGEST"
           fi
@@ -271,7 +272,7 @@ jobs:
             EXISTING=$(bash .github/scripts/release-safety.sh image-tag-digest-or-missing "$DOCKERHUB_IMAGE")
             if [[ "$EXISTING" == missing ]]; then
               bash .github/scripts/release-safety.sh promote-image-tags \
-                "${CANDIDATE_IMAGE}@${IMAGE_DIGEST}" "$IMAGE_DIGEST" "$DOCKERHUB_IMAGE"
+                "${CANDIDATE_REPOSITORY}@${IMAGE_DIGEST}" "$IMAGE_DIGEST" "$DOCKERHUB_IMAGE"
             else
               bash .github/scripts/release-safety.sh assert-image-digest-matches "$DOCKERHUB_IMAGE" "$IMAGE_DIGEST"
             fi
