@@ -120,6 +120,7 @@ type liveTestStore struct {
 	claimErr         error
 	getCallErr       error
 	getControllerErr error
+	markErr          error
 }
 
 func (s *liveTestStore) SaveLiveCall(_ context.Context, record *LiveCallRecord, _ time.Duration) error {
@@ -189,6 +190,9 @@ func (s *liveTestStore) GetLiveController(_ context.Context, callHash string) (s
 func (s *liveTestStore) MarkLiveCallClosed(_ context.Context, callHash string, _ time.Duration) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.markErr != nil {
+		return false, s.markErr
+	}
 	if s.record == nil || s.record.CallHash != callHash || s.record.Controller == LiveControllerClosed {
 		return false, nil
 	}
@@ -199,8 +203,9 @@ func (s *liveTestStore) MarkLiveCallClosed(_ context.Context, callHash string, _
 
 type liveTestConcurrencyCache struct {
 	ConcurrencyCache
-	mu       sync.Mutex
-	releases int
+	mu        sync.Mutex
+	refreshes int
+	releases  int
 }
 
 func (c *liveTestConcurrencyCache) AcquireLiveLease(
@@ -223,6 +228,9 @@ func (c *liveTestConcurrencyCache) RefreshLiveLease(
 	int64,
 	string,
 ) (bool, error) {
+	c.mu.Lock()
+	c.refreshes++
+	c.mu.Unlock()
 	return true, nil
 }
 
@@ -492,8 +500,8 @@ func TestWaitForLiveObserverRetryLeavesExpiryToLoopFinalize(t *testing.T) {
 }
 
 // TestWaitForLiveObserverRetryTreatsStoreErrorAsRetryable 锁定：store 报错（Redis
-// 抖动）不等于控制权被接管，必须返回 true 交回 observeLiveCall 循环顶部，由它做
-// 有限次重试与 ExpiresAt 兜底 finalize；记录确实不存在时才停止重试。
+// 抖动）不等于控制权被接管，必须返回 true 交回 observeLiveCall 循环顶部，由它在
+// ExpiresAt 前持续恢复；记录确实不存在时才停止重试。
 func TestWaitForLiveObserverRetryTreatsStoreErrorAsRetryable(t *testing.T) {
 	record := &LiveCallRecord{
 		CallID:     "call_flaky_store",
@@ -563,6 +571,149 @@ func TestObserveLiveCallStoreOutageFallsBackToExpiryFinalize(t *testing.T) {
 			usageRepo.mu.Unlock()
 		})
 	}
+}
+
+func TestObserveLiveCallKeepsRecoveringBeyondPreviousRetryLimit(t *testing.T) {
+	restore := liveObserverStoreRetryInterval
+	liveObserverStoreRetryInterval = time.Millisecond
+	t.Cleanup(func() { liveObserverStoreRetryInterval = restore })
+
+	record := &LiveCallRecord{
+		CallID:     "call_store_recovers",
+		CallHash:   hashLiveCallID("call_store_recovers"),
+		AccountID:  11,
+		APIKeyID:   22,
+		UserID:     33,
+		LeaseID:    "lease-recovery",
+		CreatedAt:  time.Now(),
+		ExpiresAt:  time.Now().Add(time.Hour),
+		Controller: LiveControllerPending,
+	}
+	store := &liveTestStore{getCallErr: errors.New("redis: temporary outage")}
+	require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
+	concurrencyCache := &liveTestConcurrencyCache{}
+	svc := &OpenAIGatewayService{
+		cache:              store,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+	done := make(chan struct{})
+	go func() {
+		svc.observeLiveCall(record)
+		close(done)
+	}()
+
+	const retriesBeyondPreviousLimit = 8
+	require.Eventually(t, func() bool {
+		concurrencyCache.mu.Lock()
+		defer concurrencyCache.mu.Unlock()
+		return concurrencyCache.refreshes >= retriesBeyondPreviousLimit
+	}, time.Second, time.Millisecond)
+
+	// 模拟 Redis 恢复时控制权已被 sideband proxy 接管；observer 应读到新状态后退出，
+	// 而不是在旧的固定重试次数后休眠到 ExpiresAt。
+	store.mu.Lock()
+	store.getCallErr = nil
+	store.record.Controller = LiveControllerProxy
+	store.record.ControllerOwner = "proxy-owner"
+	store.mu.Unlock()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("observer did not resume after store recovery")
+	}
+	concurrencyCache.mu.Lock()
+	require.GreaterOrEqual(t, concurrencyCache.refreshes, retriesBeyondPreviousLimit)
+	require.Zero(t, concurrencyCache.releases)
+	concurrencyCache.mu.Unlock()
+}
+
+func TestClaimLiveObserverRecoversAfterAmbiguousStoreError(t *testing.T) {
+	restore := liveObserverStoreRetryInterval
+	liveObserverStoreRetryInterval = time.Millisecond
+	t.Cleanup(func() { liveObserverStoreRetryInterval = restore })
+
+	record := &LiveCallRecord{
+		CallID:     "call_claim_recovers",
+		CallHash:   hashLiveCallID("call_claim_recovers"),
+		AccountID:  11,
+		APIKeyID:   22,
+		UserID:     33,
+		LeaseID:    "lease-claim-recovery",
+		ExpiresAt:  time.Now().Add(time.Hour),
+		Controller: LiveControllerPending,
+	}
+	store := &liveTestStore{claimErr: errors.New("redis: ambiguous claim result")}
+	require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
+	concurrencyCache := &liveTestConcurrencyCache{}
+	svc := &OpenAIGatewayService{
+		cache:              store,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+	type claimResult struct {
+		record  *LiveCallRecord
+		claimed bool
+	}
+	resultCh := make(chan claimResult, 1)
+	go func() {
+		claimedRecord, claimed := svc.claimLiveObserver(record, store, "observer-owner")
+		resultCh <- claimResult{record: claimedRecord, claimed: claimed}
+	}()
+
+	require.Eventually(t, func() bool {
+		concurrencyCache.mu.Lock()
+		defer concurrencyCache.mu.Unlock()
+		return concurrencyCache.refreshes >= 2
+	}, time.Second, time.Millisecond)
+	store.mu.Lock()
+	store.claimErr = nil
+	store.mu.Unlock()
+
+	select {
+	case result := <-resultCh:
+		require.True(t, result.claimed)
+		require.Equal(t, record.CallHash, result.record.CallHash)
+		stored, err := store.GetLiveCall(context.Background(), record.CallHash)
+		require.NoError(t, err)
+		require.Equal(t, LiveControllerObserver, stored.Controller)
+		require.Equal(t, "observer-owner", stored.ControllerOwner)
+	case <-time.After(time.Second):
+		t.Fatal("claim did not recover after store became available")
+	}
+}
+
+func TestFinalizeLiveCallStoreFailureStillWritesUsageAndReleasesLease(t *testing.T) {
+	record := &LiveCallRecord{
+		CallID:     "call_mark_failure",
+		CallHash:   hashLiveCallID("call_mark_failure"),
+		AccountID:  11,
+		APIKeyID:   22,
+		UserID:     33,
+		LeaseID:    "lease-mark-failure",
+		Model:      "gpt-live-test",
+		CreatedAt:  time.Now().Add(-time.Minute),
+		ExpiresAt:  time.Now(),
+		Controller: LiveControllerObserver,
+	}
+	store := &liveTestStore{markErr: errors.New("redis: unavailable")}
+	require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
+	concurrencyCache := &liveTestConcurrencyCache{}
+	usageRepo := &liveTestUsageRepo{}
+	svc := &OpenAIGatewayService{
+		cache:              store,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+		usageLogRepo:       usageRepo,
+	}
+
+	svc.finalizeLiveCall(record)
+
+	concurrencyCache.mu.Lock()
+	require.Equal(t, 1, concurrencyCache.releases)
+	concurrencyCache.mu.Unlock()
+	usageRepo.mu.Lock()
+	require.Len(t, usageRepo.logs, 1)
+	require.Equal(t, record.CallHash, usageRepo.logs[0].RequestID)
+	usageRepo.mu.Unlock()
 }
 
 type liveTestBestEffortUsageRepo struct {
