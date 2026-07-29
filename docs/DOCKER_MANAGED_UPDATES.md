@@ -125,7 +125,7 @@ ancestry, release ordering, committed `VERSION`, and absence of same-version
 GitHub Releases and registry images again. GoReleaser creates a draft release.
 The workflow binds each registry version tag to the digest recorded by that
 exact GoReleaser build, then verifies the amd64 and arm64 manifests, deployer
-checksums, and schema-2 completion marker. Before mutating a registry, its
+checksums, and schema-3 completion ledger. Before mutating a registry, its
 current `latest` must equal the digest bound to the preceding completed release,
 or the pinned one-time bootstrap digest; missing or drifted tags fail closed.
 It promotes only those verified `latest` tags and restores the same authenticated
@@ -142,17 +142,31 @@ immutable fork tag. Build base images are pinned by digest, and the release job
 does not mutate `go.mod`, `go.sum`, or the tagged source tree.
 
 Fork release tags are a required immutable boundary, not an advisory control.
-Configure an active repository tag ruleset for `refs/tags/v*-ts.*` that forbids
-updates and deletion and has no bypass actors, then set the repository Actions
-variable `RELEASE_TAG_RULESET_ID` to that ruleset's numeric ID. The workflow
-fails closed if the variable or protection is missing. Changing the fixed
-baseline requires a reviewed code change after a maintenance migration has
-completed and old images are no longer rollback candidates.
+Configure two active repository tag rulesets for `refs/tags/v*-ts.*`: an
+immutable layer that forbids updates and deletion with no bypass actors, and a
+creation layer that forbids creation with a single Deploy Key bypass. The
+repository must retain exactly one writable deploy key named
+`Sub2API release tag promoter`; its private key is stored only in the
+`RELEASE_TAG_DEPLOY_KEY` Actions secret. Set `RELEASE_TAG_RULESET_ID` and
+`RELEASE_TAG_CREATION_RULESET_ID` to the corresponding numeric ruleset IDs. The
+workflows fail closed if either variable, ruleset, or the dedicated credential
+is missing or inconsistent.
 
 The version file is part of that immutable source boundary. Update and commit
-`backend/cmd/server/VERSION` before creating the annotated tag. The release gate
-requires the file to equal the tag without its leading `v`; it never edits the
-default branch after a release.
+`backend/cmd/server/VERSION`, merge the release PR, then require the exact merged
+`main` SHA to pass CI, Release Preflight, and final independent audit before any
+tag exists. Trigger `Promote Release` with that version and full SHA; only this
+workflow may create the annotated tag and invoke the reusable Release workflow.
+The release gate requires the file to equal the tag without its leading `v` and
+never edits the default branch after a release. Do not create or push release
+tags manually.
+
+GitHub may redact ruleset bypass actors from the workflow token's API response.
+The workflow therefore validates all runtime-visible rule structure and rejects
+visible unexpected actors, while the pre-promotion operator audit must use the
+administrator view to verify the two rulesets and the sole writable deploy key.
+Changing the fixed baseline requires a reviewed code change after a maintenance
+migration has completed and old images are no longer rollback candidates.
 
 Behavior-defining statements supported by the checker (`CREATE FUNCTION`,
 `CREATE PROCEDURE`, and `CREATE TRIGGER`, including supported `OR REPLACE`
