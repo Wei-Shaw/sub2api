@@ -272,15 +272,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		zap.String("metadata_user_id_raw", parsedReq.MetadataUserID),
 	)
 
-	// 获取平台：优先使用强制平台（/antigravity 路由），其次使用 composite 解析出的目标平台，否则使用分组平台
-	platform := ""
-	if forcePlatform, ok := middleware2.GetForcePlatformFromContext(c); ok {
-		platform = forcePlatform
-	} else if resolvedPlatform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context()); ok {
-		platform = resolvedPlatform
-	} else if apiKey.Group != nil {
-		platform = apiKey.Group.Platform
-	}
+	platform := resolveMessagesRequestPlatform(c, apiKey)
 	sessionKey := sessionHash
 	if platform == service.PlatformGemini && sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
