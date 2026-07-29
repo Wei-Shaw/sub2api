@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,13 @@ func TestRealDockerControlPlaneStaging(t *testing.T) {
 		t.Fatal("integration image must be pinned by digest")
 	}
 
+	runner := ExecRunner{}
+	pullCtx, cancelPull := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancelPull()
+	if _, err := runner.Run(pullCtx, nil, "docker", "pull", "--platform", "linux/"+runtime.GOARCH, image); err != nil {
+		t.Fatalf("pull immutable integration image: %v", err)
+	}
+
 	cfg := testConfig(t, 18081)
 	cfg.DockerBinary = "docker"
 	cfg.LoadedFrom = ""
@@ -34,7 +42,7 @@ func TestRealDockerControlPlaneStaging(t *testing.T) {
 		Status:        JobStatusRunning,
 		Stage:         StageActivating,
 	}
-	manager := &Manager{cfg: cfg, runner: ExecRunner{}}
+	manager := &Manager{cfg: cfg, runner: runner}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 

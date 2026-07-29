@@ -25,6 +25,7 @@ RELEASE_SAFETY_TEST="$REPO_ROOT/.github/scripts/test-release-safety.sh"
 MIGRATION_HISTORY_CHECK="$REPO_ROOT/backend/scripts/check-release-migrations-history.sh"
 GORELEASER_CONFIG="$REPO_ROOT/.goreleaser.yaml"
 GORELEASER_DOCKERFILE="$REPO_ROOT/Dockerfile.goreleaser"
+CONTROL_PLANE_INTEGRATION_TEST="$REPO_ROOT/backend/internal/deployer/control_plane_upgrade_integration_test.go"
 
 bash -n "$INSTALLER"
 bash -n "$PACKAGER"
@@ -43,6 +44,7 @@ if grep -Fq '$IMMUTABLE_IMAGE' <<<"$image_verification_loop"; then
   echo "per-platform verification must use child manifest digests, not the OCI index digest" >&2
   exit 1
 fi
+grep -Fq '"docker", "pull", "--platform", "linux/"+runtime.GOARCH, image' "$CONTROL_PLANE_INTEGRATION_TEST"
 
 grep -Fq 'ReadWritePaths=/run/sub2api-deployer /var/lib/sub2api-deployer' "$SERVICE"
 grep -Fq 'RuntimeDirectoryPreserve=yes' "$SERVICE"
