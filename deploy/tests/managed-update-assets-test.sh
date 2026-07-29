@@ -140,6 +140,12 @@ if grep -Fq 'goreleaser-action' "$RELEASE_WORKFLOW" || grep -Fq 'setup-go' "$REL
   exit 1
 fi
 grep -Fq 'run-id: ${{ inputs.candidate_run_id }}' "$RELEASE_WORKFLOW"
+grep -Fq 'CANDIDATE_REPOSITORY=${CANDIDATE_IMAGE%:*}' "$RELEASE_WORKFLOW"
+grep -Fq '"${CANDIDATE_REPOSITORY}@${CANDIDATE_DIGEST}"' "$RELEASE_WORKFLOW"
+if grep -Fq '"${CANDIDATE_IMAGE}@${CANDIDATE_DIGEST}"' "$RELEASE_WORKFLOW"; then
+  echo "release verification must not append a digest to an already-tagged candidate reference" >&2
+  exit 1
+fi
 grep -Fq 'assert-image-digest-matches' "$PROMOTE_WORKFLOW"
 grep -Fq 'verify-completion-candidate' "$RELEASE_WORKFLOW"
 grep -Fq "go test -tags integration ./internal/deployer -run '^TestRealDockerControlPlaneStaging$'" "$PREFLIGHT_WORKFLOW"

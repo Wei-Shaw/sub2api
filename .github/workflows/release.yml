@@ -185,8 +185,9 @@ jobs:
           CANDIDATE_DIGEST=$(jq -er '.image_digest' "$RUNNER_TEMP/candidate/candidate.json")
           bash .github/scripts/release-safety.sh assert-image-digest-matches \
             "$CANDIDATE_IMAGE" "$CANDIDATE_DIGEST"
+          CANDIDATE_REPOSITORY=${CANDIDATE_IMAGE%:*}
           deploy/verify-control-plane-image.sh \
-            "${CANDIDATE_IMAGE}@${CANDIDATE_DIGEST}" \
+            "${CANDIDATE_REPOSITORY}@${CANDIDATE_DIGEST}" \
             "$RUNNER_TEMP/candidate" \
             deploy/sub2api-deployer.example.json
 
