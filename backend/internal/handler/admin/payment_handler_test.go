@@ -34,6 +34,7 @@ func TestSanitizeAdminPaymentOrderForResponseAddsCurrency(t *testing.T) {
 	got := sanitizeAdminPaymentOrderForResponse(order)
 	if got == nil {
 		t.Fatal("expected sanitized order")
+		return
 	}
 	if got.Currency != "USD" {
 		t.Fatalf("expected currency USD, got %q", got.Currency)

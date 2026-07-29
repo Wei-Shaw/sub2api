@@ -70,11 +70,15 @@ func SetupRouter(
 	}))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
 
-	// Serve embedded frontend with settings injection if available
+	// Serve embedded frontend with settings injection if available.
+	// NewFrontendServer's error surface is build-tag dependent (embed vs !embed);
+	// prefer nil-server fallback so staticcheck SA4023 does not treat err as always-true.
 	if web.HasEmbeddedFrontend() {
-		frontendServer, err := web.NewFrontendServer(settingService)
-		if err != nil {
-			log.Printf("Warning: Failed to create frontend server with settings injection: %v, using legacy mode", err)
+		frontendServer, fsErr := web.NewFrontendServer(settingService)
+		if frontendServer == nil {
+			if fsErr != nil {
+				log.Printf("Warning: Failed to create frontend server with settings injection: %v, using legacy mode", fsErr)
+			}
 			r.Use(web.ServeEmbeddedFrontend())
 			settingService.SetOnUpdateCallback(refreshFrameOrigins)
 		} else {

@@ -77,3 +77,6 @@ jobs:
           version: v2.9
           args: --timeout=30m
           working-directory: backend
+          # Avoid replaying a poisoned incremental cache that previously reported
+          # stale SA5011/SA4023 on self/main while cold analysis reported 0 issues.
+          skip-cache: true
