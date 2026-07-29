@@ -27,9 +27,24 @@ server:
   # 用于生成邮件中的外部链接（例如：重置密码链接）的前端基础地址
   # Example: "https://example.com"
   frontend_url: ""
-  # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
-  # 信任的代理地址（CIDR/IP 格式），用于解析 X-Forwarded-For 头。留空则禁用代理信任。
-  trusted_proxies: []
+  # Maximum time to receive complete request headers. Does not limit response streams.
+  # 完整读取请求头的最大时间；不限制响应流持续时间。
+  read_header_timeout: 10
+  # Request header limit in bytes (64 KiB); also bounds the HTTP/2 header list.
+  # 请求头上限（字节，默认 64 KiB）；同时约束 HTTP/2 header list。
+  max_header_bytes: 65536
+  # Keep-alive idle timeout in seconds.
+  # Keep-Alive 空闲连接超时（秒）。
+  idle_timeout: 120
+  # Trusted proxies used when security.trust_forwarded_ip_for_api_key_acl is false.
+  # List only the exact proxy addresses that connect directly to Sub2API.
+  # Set [] explicitly to disable forwarded-IP trust in high-security mode.
+  # security.trust_forwarded_ip_for_api_key_acl=false 时使用的可信代理。
+  # 只填写直接连接 Sub2API 的精确代理地址；显式设置 [] 可在高安全模式下
+  # 禁用转发 IP 信任。
+  trusted_proxies:
+    - 127.0.0.1/32
+    - ::1/128
   # Global max request body size in bytes (default: 256MB)
   # 全局最大请求体大小（字节，默认 256MB）
   # Applies to all requests, especially important for h2c first request memory protection
@@ -56,6 +71,22 @@ server:
     # Max upload buffer per stream in bytes (default: 512KB)
     # 每个流的最大上传缓冲区（字节，默认 512KB）
     max_upload_buffer_per_stream: 524288
+
+# =============================================================================
+# WebAuthn / Passkey Configuration
+# WebAuthn / Passkey 配置
+# =============================================================================
+# Passkeys require HTTPS in production. The RP ID is the domain only (no scheme
+# or port), while RP origins are exact browser origins.
+# Passkey 在生产环境要求 HTTPS。RP ID 只填写域名（不含协议和端口），RP origins
+# 填写浏览器访问使用的完整 Origin。
+webauthn:
+  enabled: false
+  rp_display_name: "Sub2API"
+  # Example / 示例: "sub2api.example.com"
+  rp_id: ""
+  # Example / 示例: ["https://sub2api.example.com"]
+  rp_origins: []
 
 # =============================================================================
 # Run Mode Configuration
@@ -86,6 +117,22 @@ cors:
 # 安全配置
 # =============================================================================
 security:
+  # Legacy compatibility switch. When true, raw forwarded headers take over
+  # server.trusted_proxies. Set false to enforce the trusted proxy chain above.
+  # 旧版兼容开关。开启时原始转发头会接管 server.trusted_proxies；关闭后严格
+  # 使用上方配置的可信代理链。示例配置采用高安全模式。
+  trust_forwarded_ip_for_api_key_acl: false
+  # Optional client-IP headers for third-party CDNs, checked in list order before
+  # CF-Connecting-IP, X-Real-IP, and X-Forwarded-For. Valid only while the legacy
+  # compatibility switch above is true; maximum 16 unique HTTP header names.
+  # 第三方 CDN 的可选客户端 IP 请求头，按列表顺序优先于内置请求头解析。
+  # 仅在上方旧版兼容开关为 true 时生效；最多配置 16 个不重复的合法 HTTP 头名。
+  # Environment / 环境变量: SECURITY_FORWARDED_CLIENT_IP_HEADERS=True-Client-IP,X-CDN-Client-IP
+  forwarded_client_ip_headers: []
+  # Example / 示例:
+  # forwarded_client_ip_headers:
+  #   - "True-Client-IP"
+  #   - "X-CDN-Client-IP"
   url_allowlist:
     # Enable URL allowlist validation (disable to skip all URL checks)
     # 启用 URL 白名单验证（禁用则跳过所有 URL 检查）
@@ -96,6 +143,8 @@ security:
       - "api.openai.com"
       - "api.anthropic.com"
       - "api.kimi.com"
+      - "api.moonshot.ai"
+      - "api.moonshot.cn"
       - "open.bigmodel.cn"
       - "api.minimaxi.com"
       - "generativelanguage.googleapis.com"
@@ -155,9 +204,21 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # Native OpenAI HTTP Responses first semantic output timeout (seconds, 0=disabled)
+  # Includes response-header wait; does not apply to passthrough or WebSocket transports.
+  # A timed-out request may already have incurred upstream usage; account failover can therefore duplicate upstream billing.
+  # 超时请求可能已产生上游用量；切换账号重试可能导致上游重复计费。
+  # Pre-output attempt staging is capped at 8 MiB; overflow fails over without exposing partial SSE data.
+  # 首次输出前的单次尝试暂存上限为 8 MiB；溢出时切号且不暴露不完整 SSE 数据。
+  openai_first_output_timeout_seconds: 0
+  # Optional high/xhigh/max override (seconds, 0=use the standard timeout)
+  openai_high_effort_first_output_timeout_seconds: 0
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
+  # Pure-text endpoint body limit (embeddings and alpha/search), default 32 MiB.
+  # 纯文本端点请求体上限（embeddings、alpha/search），默认 32 MiB。
+  text_max_body_size: 33554432
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608
@@ -250,13 +311,19 @@ gateway:
   # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
   openai_compact_model: "gpt-5.4"
+  # ChatGPT Frameless Live 单会话硬上限（秒）。
+  live:
+    max_session_duration_seconds: 3600
   # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
   openai_ws:
-    # 新版 WS mode 路由（默认关闭）。关闭时保持当前 legacy 实现行为。
+    # 新版 WS mode 路由（默认关闭）。关闭时忽略账号级 WS mode（包括 http_bridge），保持 legacy ctx_pool 行为。
+    # 环境变量：GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true
     mode_router_v2_enabled: false
-    # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效）
+    # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效；关闭时账号级 WS mode 被忽略）
     # 兼容旧值：shared/dedicated 会按 ctx_pool 处理。
     ingress_mode_default: ctx_pool
+    # 完整读取并解压首条客户端消息的总超时（秒）；大请求或慢链路可调高到 120-300。
+    client_first_message_timeout_seconds: 30
     # Close a client WebSocket that stays idle between completed turns (seconds). Set 0 to disable.
     ingress_inter_turn_idle_timeout_seconds: 300
     # Limit live client WebSocket ingress sessions per API key across all instances. Set 0 to disable.
@@ -337,6 +404,8 @@ gateway:
       reset: 0.0
       # 倾向 7d 剩余额度更健康的账号；0 表示关闭（默认，不改变原有行为），小流量灰度可设为 0.3。
       quota_headroom: 0.0
+      # 倾向上游声明倍率更低的账号；0 表示关闭（默认），建议启用时从 1.5 开始。
+      upstream_cost: 0.0
   # OpenAI 高级调度器补充配置
   openai_scheduler:
     # 是否允许 session_hash sticky 在账号健康度恶化时临时逃逸；false 可一键回退旧行为
@@ -353,6 +422,11 @@ gateway:
     fallback_error_threshold: 2
     fallback_window_seconds: 60
     fallback_ttl_seconds: 600
+  # OpenAI Responses SSE 代理断流熔断；按 proxy_id 跨账号隔离，仅影响下一次调度。
+  openai_proxy_stream_circuit:
+    failure_threshold: 2
+    window_seconds: 60
+    ttl_seconds: 600
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
@@ -390,6 +464,9 @@ gateway:
   # Image stream keepalive interval (seconds), 0=disable; independent from ordinary text streams
   # 图片流式 keepalive 间隔（秒），0=禁用；独立于普通文本流式
   image_stream_keepalive_interval: 10
+  # Non-streaming Images JSON keepalive interval (seconds), 0=disable; commits HTTP 200 after the first heartbeat
+  # 图片非流式 JSON keepalive 间隔（秒），0=禁用；首个心跳后 HTTP 状态会固化为 200
+  image_nonstream_keepalive_interval: 0
   # Image generation independent concurrency limiter (process-local, default disabled)
   # 图片生成独立并发限制（进程级，默认关闭；多实例总上限约为实例数×该值）
   image_concurrency:
@@ -650,6 +727,24 @@ token_refresh:
   # Whether OpenAI refresh flow is allowed to sync linked Sora accounts
   # 是否允许 OpenAI 刷新流程同步覆盖 linked_openai_account_id 关联的 Sora 账号 token
   sync_linked_sora_accounts: false
+  # Candidate accounts loaded per cursor page (maximum 1000)
+  # 每个游标分页加载的候选账号数量（最大 1000）
+  candidate_page_size: 200
+  # Maximum concurrent refresh attempts per provider (maximum 32)
+  # 每个平台的最大并发刷新数（最大 32）
+  provider_concurrency: 4
+  # Per-provider refresh requests per second in each server process (maximum 100)
+  # 每个服务进程中每个平台每秒允许的刷新请求数（最大 100）
+  provider_qps: 2
+  # Consecutive transient failures that contain a provider for the current cycle (maximum 100)
+  # 当前周期内触发平台级熔断的连续临时失败次数（最大 100）
+  provider_failure_threshold: 3
+  # Timeout for one upstream refresh attempt, in seconds (maximum 300)
+  # 单次上游刷新尝试的超时时间（秒，最大 300）
+  attempt_timeout_seconds: 15
+  # Total timeout for one background refresh cycle, in seconds (maximum 3600)
+  # 单个后台刷新周期的总超时时间（秒，最大 3600）
+  cycle_timeout_seconds: 240
 
 # =============================================================================
 # API Key Auth Cache Configuration
@@ -674,6 +769,23 @@ api_key_auth_cache:
   # Enable singleflight for cache misses
   # 缓存未命中时启用 singleflight 合并回源
   singleflight: true
+  # Maximum concurrent database lookups for authentication cache misses
+  # 认证缓存未命中时允许并发回源数据库的最大数量
+  lookup_concurrency: 64
+  # Process-local invalid-auth abuse protection. Counts only missing, malformed,
+  # deprecated-query, and confirmed invalid credentials; valid requests and
+  # Redis/DB failures do not consume the budget.
+  # 本机无效鉴权防护：仅统计缺失、格式错误、废弃 query 及确认无效的凭据。
+  invalid_abuse:
+    enabled: true
+    # Invalid attempts per trusted client IP (IPv6 grouped by /64) per window.
+    # 每个可信客户端 IP（IPv6 按 /64 聚合）在窗口内允许的无效次数。
+    threshold: 120
+    window_seconds: 60
+    block_seconds: 60
+    # Maximum tracked client identities per process; memory remains bounded.
+    # 每进程最多跟踪的客户端身份数量，确保内存有界。
+    capacity: 16384
 
 # =============================================================================
 # Dashboard Cache Configuration
@@ -834,6 +946,9 @@ redis:
   # Redis port
   # Redis 端口
   port: 6379
+  # Redis ACL username (leave empty for default user)
+  # Redis ACL 用户名（使用默认用户时留空）
+  username: ""
   # Redis password (leave empty if no password is set)
   # Redis 密码（如果未设置密码则留空）
   password: ""
@@ -1146,3 +1261,39 @@ update:
   # Leave empty for direct connection (recommended for overseas servers)
   # 留空表示直连（适用于海外服务器）
   proxy_url: ""
+
+# =============================================================================
+# Image Storage (异步图片任务结果对象存储)
+# =============================================================================
+# 长耗时生图套 Cloudflare 会 524 超时，异步图片任务接口（/v1/images/generations/async
+# 等）先返回 task_id，再由客户端轮询 /v1/images/tasks/{task_id} 获取结果。
+#
+# 这里配置一个 S3 兼容对象存储（AWS S3 / Cloudflare R2 / 阿里云 OSS / MinIO 等），
+# 任务完成后把生成的图片上传到对象存储，只在 Redis 存一个短链接，避免 gpt-image-1 等
+# 返回的大 base64 结果把 Redis 撑爆。
+#
+# enabled 同时是异步图片任务功能的总开关：为 false 或凭证未配全时，异步生图接口
+# 整体返回 404、不创建任务、不写 Redis。
+#
+# 换其它厂商对象存储：只要它兼容 S3 API 即可直接用；如需完全自定义，实现
+# service.ImageStorage 接口（Save(ctx, key, contentType, data) -> url）即可。
+image_storage:
+  enabled: false
+  # S3 兼容端点。AWS 官方可留空；R2 形如 https://<account_id>.r2.cloudflarestorage.com
+  endpoint: ""
+  # 区域。Cloudflare R2 用 "auto"
+  region: "auto"
+  bucket: ""
+  access_key_id: ""
+  secret_access_key: ""
+  # 对象 key 前缀
+  prefix: "images/"
+  # MinIO / 需要路径风格（path-style）访问的桶设为 true
+  force_path_style: false
+  # 若填写公开桶 / CDN 域名，则返回 public_base_url/key 永久直链；
+  # 留空则返回带过期时间的 presigned 临时链接
+  public_base_url: ""
+  # public_base_url 为空时，presigned 链接的有效时长（小时）
+  presign_expiry_hours: 24
+  # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
+  max_download_bytes: 33554432

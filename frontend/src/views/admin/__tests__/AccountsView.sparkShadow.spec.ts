@@ -5,6 +5,7 @@ import AccountsView from '../AccountsView.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 
 // 外审 F2:AccountActionMenu emit 'create-spark-shadow',但 AccountsView 此前未监听,
 // 导致按钮点击无效。本测试通过真实组件引用 emit 该事件,断言父页面接线调用 API。
@@ -14,6 +15,7 @@ const {
   getBatchTodayStats,
   getAllProxies,
   getAllGroups,
+  duplicateAccount,
   createSparkShadow,
   showSuccess,
   showError
@@ -23,6 +25,7 @@ const {
   getBatchTodayStats: vi.fn(),
   getAllProxies: vi.fn(),
   getAllGroups: vi.fn(),
+  duplicateAccount: vi.fn(),
   createSparkShadow: vi.fn(),
   showSuccess: vi.fn(),
   showError: vi.fn()
@@ -34,6 +37,8 @@ vi.mock('@/api/admin', () => ({
       list: listAccounts,
       listWithEtag,
       getBatchTodayStats,
+      duplicate: duplicateAccount,
+      getUpstreamBillingProbeSettings: vi.fn().mockResolvedValue({ enabled: true, interval_minutes: 30 }),
       createSparkShadow,
       delete: vi.fn(),
       batchClearError: vi.fn(),
@@ -102,7 +107,7 @@ const mountView = () =>
 describe('admin AccountsView — 外审 F2:spark 影子创建接线', () => {
   beforeEach(() => {
     localStorage.clear()
-    for (const fn of [listAccounts, listWithEtag, getBatchTodayStats, getAllProxies, getAllGroups, createSparkShadow, showSuccess, showError]) {
+    for (const fn of [listAccounts, listWithEtag, getBatchTodayStats, getAllProxies, getAllGroups, duplicateAccount, createSparkShadow, showSuccess, showError]) {
       fn.mockReset()
     }
     listAccounts.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
@@ -110,11 +115,57 @@ describe('admin AccountsView — 外审 F2:spark 影子创建接线', () => {
     getBatchTodayStats.mockResolvedValue({ stats: {} })
     getAllProxies.mockResolvedValue([])
     getAllGroups.mockResolvedValue([])
+    duplicateAccount.mockResolvedValue({ id: 998, name: 'parent-acc (Copy)' })
     createSparkShadow.mockResolvedValue({ id: 999, name: 'parent-acc (Spark)' })
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it('AccountActionMenu 的 duplicate 事件一键复制账号并刷新列表', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.findComponent(AccountActionMenu).vm.$emit('duplicate', { id: 42, name: 'parent-acc' })
+    await flushPromises()
+
+    expect(duplicateAccount).toHaveBeenCalledTimes(1)
+    expect(duplicateAccount).toHaveBeenCalledWith(42)
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.duplicateSuccess')
+    expect(listAccounts.mock.calls.length).toBeGreaterThan(1)
+    wrapper.unmount()
+  })
+
+  it('同一账号复制请求未完成时忽略重复点击', async () => {
+    let resolveDuplicate!: (account: { id: number; name: string }) => void
+    duplicateAccount.mockImplementationOnce(() => new Promise(resolve => { resolveDuplicate = resolve }))
+    const wrapper = mountView()
+    await flushPromises()
+
+    const menu = wrapper.findComponent(AccountActionMenu)
+    menu.vm.$emit('duplicate', { id: 42, name: 'parent-acc' })
+    menu.vm.$emit('duplicate', { id: 42, name: 'parent-acc' })
+    await flushPromises()
+
+    expect(duplicateAccount).toHaveBeenCalledTimes(1)
+    resolveDuplicate({ id: 998, name: 'parent-acc (Copy)' })
+    await flushPromises()
+    wrapper.unmount()
+  })
+
+  it('复制失败时显示后端错误', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    duplicateAccount.mockRejectedValueOnce(new Error('duplicate failed'))
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.findComponent(AccountActionMenu).vm.$emit('duplicate', { id: 42, name: 'parent-acc' })
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('duplicate failed')
+    consoleError.mockRestore()
+    wrapper.unmount()
   })
 
   it('AccountActionMenu 的 create-spark-shadow 事件触发 createSparkShadow API + 成功提示', async () => {
@@ -157,7 +208,7 @@ describe('admin AccountsView — 外审 F2:spark 影子创建接线', () => {
   })
 })
 
-// Task 6: 影子行 parent_* OR 兜底展示
+// 账号行展示
 const mountViewWithRow = () =>
   mount(AccountsView, {
     global: {
@@ -205,10 +256,10 @@ const mountViewWithRow = () =>
     }
   })
 
-describe('admin AccountsView — 影子行 parent_* OR 兜底展示', () => {
+describe('admin AccountsView — 账号行展示', () => {
   beforeEach(() => {
     localStorage.clear()
-    for (const fn of [listAccounts, listWithEtag, getBatchTodayStats, getAllProxies, getAllGroups, createSparkShadow, showSuccess, showError]) {
+    for (const fn of [listAccounts, listWithEtag, getBatchTodayStats, getAllProxies, getAllGroups, duplicateAccount, createSparkShadow, showSuccess, showError]) {
       fn.mockReset()
     }
     listWithEtag.mockResolvedValue({ notModified: true, etag: null, data: null })
@@ -250,6 +301,122 @@ describe('admin AccountsView — 影子行 parent_* OR 兜底展示', () => {
     expect(badge.props('planType')).toBe('plus')
     expect(badge.props('privacyMode')).toBe('false')
     expect(badge.props('subscriptionExpiresAt')).toBe('2027-01-01T00:00:00Z')
+
+    wrapper.unmount()
+  })
+
+  it('仅将具有安全 base_url 的 API Key 账号名称链接到站点主页', async () => {
+    listAccounts.mockResolvedValue({
+      items: [
+        { id: 101, name: 'relay-account', platform: 'openai', type: 'apikey', credentials: { base_url: 'https://relay.example.com/api/v1/' } },
+        { id: 102, name: 'oauth-account', platform: 'openai', type: 'oauth', credentials: { base_url: 'https://oauth.example.com/v1' } },
+        { id: 103, name: 'invalid-url', platform: 'openai', type: 'apikey', credentials: { base_url: 'javascript:alert(1)' } },
+      ],
+      total: 3,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+
+    const links = wrapper.findAll('a')
+    expect(links).toHaveLength(1)
+    const [link] = links
+    expect(link.text()).toBe('relay-account')
+    expect(link.attributes()).toMatchObject({
+      href: 'https://relay.example.com',
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    })
+    expect(link.classes()).toEqual(expect.arrayContaining([
+      'border-dotted',
+      'text-gray-900',
+      'dark:text-white',
+    ]))
+    expect(link.classes()).not.toContain('text-primary-600')
+    const tooltip = wrapper.findComponent(HelpTooltip)
+    expect(tooltip.props('content')).toBe('https://relay.example.com')
+    expect(tooltip.props('widthClass')).toBe('w-max max-w-sm break-all')
+    expect(tooltip.classes()).toEqual(expect.arrayContaining(['self-start']))
+    expect(wrapper.text()).toContain('oauth-account')
+    expect(wrapper.text()).toContain('invalid-url')
+
+    wrapper.unmount()
+  })
+
+  it('passes fresh Grok billing and quota snapshots before stale credential fallbacks', async () => {
+    const grokAccounts = [
+      {
+        id: 201,
+        name: 'oauth-tier',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 'FREE', plan_type: 'legacy' },
+        extra: {
+          grok_billing_snapshot: { plan: 'SuperGrok' },
+          subscription_tier: 'BASIC',
+        },
+      },
+      {
+        id: 202,
+        name: 'billing-tier',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: {},
+        extra: {
+          grok_billing_snapshot: { plan: 'SuperGrok Heavy' },
+          subscription_tier: 'BASIC',
+        },
+      },
+      {
+        id: 203,
+        name: 'quota-tier',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 'FREE' },
+        extra: {
+          grok_quota_snapshot: { subscription_tier: 'SuperGrok' },
+          subscription_tier: 'BASIC',
+        },
+      },
+      {
+        id: 204,
+        name: 'extra-tier',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { plan_type: 'SuperGrok' },
+        extra: { subscription_tier: 'BASIC' },
+      },
+      {
+        id: 205,
+        name: 'legacy-tier',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { plan_type: 'SuperGrok' },
+      },
+    ]
+
+    listAccounts.mockResolvedValue({
+      items: grokAccounts,
+      total: grokAccounts.length,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+
+    const badges = wrapper.findAllComponents(PlatformTypeBadge)
+    expect(badges.map((badge) => badge.props('planType'))).toEqual([
+      'SuperGrok',
+      'SuperGrok Heavy',
+      'SuperGrok',
+      'BASIC',
+      'SuperGrok',
+    ])
 
     wrapper.unmount()
   })

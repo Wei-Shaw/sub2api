@@ -407,7 +407,8 @@
         />
         <UsageProgressBar
           v-if="grokFreeTokenBar"
-          label="2M"
+          label="24h"
+          :title="t('admin.accounts.usageWindow.grokFreeQuota24hHint', { limit: formatCompactNumber(grokFreeTokenBar.limit) })"
           :utilization="grokFreeTokenBar.utilization"
           :show-now-when-idle="true"
           color="emerald"
@@ -551,6 +552,10 @@
     <AccountQuotaInfo v-if="account.platform === 'gemini'" :account="account" />
     <!-- Key/Bedrock accounts: show today stats + optional quota bars -->
     <div v-else class="space-y-1">
+      <OllamaCloudUsageCell
+        v-if="account.ollama_cloud_usage?.eligible"
+        :account="account"
+      />
       <!-- Today stats row (requests, tokens, cost, user_cost) -->
       <div
         v-if="todayStats"
@@ -608,7 +613,10 @@
       />
 
       <!-- No data at all -->
-      <div v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota" class="text-xs text-gray-400">-</div>
+      <div
+        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible"
+        class="text-xs text-gray-400"
+      >-</div>
     </div>
   </div>
 </template>
@@ -626,12 +634,11 @@ import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
+import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
 
 // Module-level cache shared across all AccountUsageCell instances
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
 const USAGE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
-// xAI Free billing exposes a window without usage_percent, so estimate it from local tokens.
-const GROK_FREE_TOKEN_LIMIT = 2_000_000
 
 const props = withDefaults(
   defineProps<{
@@ -1065,19 +1072,6 @@ const makeGrokQuotaBar = (quota?: { limit?: number | null; remaining?: number | 
 
 const grokRequestQuotaBar = computed(() => makeGrokQuotaBar(usageInfo.value?.grok_request_quota))
 const grokTokenQuotaBar = computed(() => makeGrokQuotaBar(usageInfo.value?.grok_token_quota))
-const grokLocalUsage = computed(() =>
-  props.todayStats ||
-  usageInfo.value?.grok_local_usage ||
-  usageInfo.value?.grok_local_usage_7d ||
-  usageInfo.value?.grok_local_usage_monthly ||
-  null
-)
-const grokFreeQuotaUsage = computed(() =>
-  usageInfo.value?.grok_local_usage_7d ||
-  props.todayStats ||
-  usageInfo.value?.grok_local_usage ||
-  null
-)
 const grokBilling = computed(() => usageInfo.value?.grok_billing || null)
 const grokWeeklyBillingBar = computed((): GrokQuotaBarInfo | null => {
   const billing = grokBilling.value
@@ -1113,10 +1107,21 @@ const grokIsFree = computed(() => {
   ) return true
   return billing != null
 })
+const grokFreeQuotaUsage = computed(() => usageInfo.value?.grok_local_usage_24h || null)
+const grokLocalUsage = computed(() => {
+  if (grokIsFree.value) return grokFreeQuotaUsage.value
+  return props.todayStats ||
+    usageInfo.value?.grok_local_usage ||
+    usageInfo.value?.grok_local_usage_7d ||
+    usageInfo.value?.grok_local_usage_monthly ||
+    null
+})
 const grokFreeTokenBar = computed(() => {
   if (!grokIsFree.value || !grokFreeQuotaUsage.value) return null
+  const limit = usageInfo.value?.grok_free_token_limit
+  if (typeof limit !== 'number' || limit <= 0) return null
   const used = Math.max(0, grokFreeQuotaUsage.value.tokens || 0)
-  return { utilization: Math.min(100, (used / GROK_FREE_TOKEN_LIMIT) * 100) }
+  return { utilization: Math.min(100, (used / limit) * 100), limit }
 })
 const grokQuotaUnknown = computed(() => {
   if (props.account.platform !== 'grok') return false
@@ -1357,15 +1362,31 @@ const handleGrokProbed = (result: GrokQuotaProbeResult) => {
   const current = usageInfo.value
   if (!current) return
   const snapshot = result.snapshot
+  const statusCode = snapshot?.status_code ?? result.status_code
+  const hasActiveProbeSnapshot = snapshot != null && (
+    result.source === 'active_probe' ||
+    result.source === 'hybrid_probe' ||
+    snapshot.observation_source === 'active_probe'
+  )
+  const probeSucceeded = hasActiveProbeSnapshot &&
+    statusCode != null && statusCode >= 200 && statusCode < 300
+  const snapshotEntitlement = snapshot?.entitlement_status?.trim()
+  const currentEntitlement = current.grok_entitlement_status?.trim()
+  const entitlementStatus = snapshotEntitlement || (
+    probeSucceeded && currentEntitlement?.toLowerCase() === 'forbidden'
+      ? undefined
+      : current.grok_entitlement_status
+  )
   const merged: AccountUsageInfo = {
     ...current,
     grok_billing: result.billing ?? current.grok_billing,
+    grok_local_usage_24h: result.local_usage_24h ?? current.grok_local_usage_24h,
     grok_local_usage_7d: result.local_usage_7d ?? current.grok_local_usage_7d,
     grok_local_usage_monthly: result.local_usage_monthly ?? current.grok_local_usage_monthly,
     grok_request_quota: snapshot?.requests ?? current.grok_request_quota,
     grok_token_quota: snapshot?.tokens ?? current.grok_token_quota,
     grok_retry_after_seconds: snapshot?.retry_after_seconds ?? current.grok_retry_after_seconds,
-    grok_entitlement_status: snapshot?.entitlement_status || current.grok_entitlement_status,
+    grok_entitlement_status: entitlementStatus,
     grok_quota_snapshot_state: result.billing
       ? 'billing_observed'
       : snapshot?.headers_observed
@@ -1374,6 +1395,12 @@ const handleGrokProbed = (result: GrokQuotaProbeResult) => {
     grok_last_quota_probe_at: result.billing?.fetched_at ?? snapshot?.last_probe_at ?? current.grok_last_quota_probe_at,
     grok_last_headers_seen_at: snapshot?.last_headers_seen_at ?? current.grok_last_headers_seen_at,
     grok_last_status_code: result.status_code ?? snapshot?.status_code ?? current.grok_last_status_code,
+    is_forbidden: probeSucceeded ? false : current.is_forbidden,
+    forbidden_reason: probeSucceeded ? undefined : current.forbidden_reason,
+    forbidden_type: probeSucceeded ? undefined : current.forbidden_type,
+    validation_url: probeSucceeded ? undefined : current.validation_url,
+    needs_verify: probeSucceeded ? false : current.needs_verify,
+    is_banned: probeSucceeded ? false : current.is_banned,
     error: result.billing || snapshot ? undefined : current.error,
     error_code: result.billing || snapshot ? undefined : current.error_code
   }

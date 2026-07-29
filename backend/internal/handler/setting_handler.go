@@ -54,6 +54,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		RegistrationRequireAffiliateCode: h.settingService.IsRegistrationRequireAffiliateCode(c.Request.Context()),
 		DisableEmailLogin:                h.settingService.IsEmailLoginDisabled(c.Request.Context()),
 		TotpEnabled:                      settings.TotpEnabled,
+		PasskeyEnabled:                   settings.PasskeyEnabled,
 		LoginAgreementEnabled:            settings.LoginAgreementEnabled,
 		LoginAgreementMode:               settings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:          settings.LoginAgreementUpdatedAt,
@@ -100,7 +101,9 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
-		SubscriptionsEnabled: settings.SubscriptionsEnabled,
+		SubscriptionsEnabled:  settings.SubscriptionsEnabled,
+		ModelPlazaEnabled:     settings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth: settings.ModelPlazaRequireAuth,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 

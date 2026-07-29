@@ -36,6 +36,7 @@ type mockUserRepo struct {
 	updateLastActiveAt      []time.Time
 	updateFn                func(ctx context.Context, user *User) error
 	updateCalls             int
+	updateFields            []UserUpdateFields
 	upsertAvatarFn          func(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error)
 	upsertAvatarArgs        []UpsertUserAvatarInput
 	deleteAvatarFn          func(ctx context.Context, userID int64) error
@@ -90,7 +91,8 @@ func (m *mockUserSettingRepo) Delete(context.Context, string) error {
 	panic("unexpected Delete call")
 }
 
-func (m *mockUserRepo) Create(context.Context, *User) error { return nil }
+func (m *mockUserRepo) Create(context.Context, *User) error                    { return nil }
+func (m *mockUserRepo) CreateWithEmailAliasGuard(context.Context, *User) error { return nil }
 func (m *mockUserRepo) GetByID(ctx context.Context, _ int64) (*User, error) {
 	if m.getByIDErr != nil {
 		return nil, m.getByIDErr
@@ -107,8 +109,9 @@ func (m *mockUserRepo) GetByID(ctx context.Context, _ int64) (*User, error) {
 }
 func (m *mockUserRepo) GetByEmail(context.Context, string) (*User, error) { return &User{}, nil }
 func (m *mockUserRepo) GetFirstAdmin(context.Context) (*User, error)      { return &User{}, nil }
-func (m *mockUserRepo) Update(ctx context.Context, user *User) error {
+func (m *mockUserRepo) Update(ctx context.Context, user *User, fields UserUpdateFields) error {
 	m.updateCalls++
+	m.updateFields = append(m.updateFields, fields)
 	if m.updateFn != nil {
 		return m.updateFn(ctx, user)
 	}
@@ -200,15 +203,29 @@ func (m *mockUserRepo) DeductBalance(ctx context.Context, id int64, amount float
 	}
 	return nil
 }
+
+func (m *mockUserRepo) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (m *mockUserRepo) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
+}
 func (m *mockUserRepo) UpdateConcurrency(context.Context, int64, int) error { return nil }
 func (m *mockUserRepo) ExistsByEmail(context.Context, string) (bool, error) { return false, nil }
+func (m *mockUserRepo) ExistsByEmailAlias(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (m *mockUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 }
 
 func (m *mockUserRepo) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 func (m *mockUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
-func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error    { return nil }
+func (m *mockUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	return 0, nil
+}
+func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error { return nil }
 func (m *mockUserRepo) ListUserAuthIdentities(context.Context, int64) ([]UserAuthIdentityRecord, error) {
 	out := make([]UserAuthIdentityRecord, len(m.identities))
 	copy(out, m.identities)

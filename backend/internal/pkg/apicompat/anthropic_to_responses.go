@@ -257,7 +257,9 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 // anthropicAssistantToResponses handles an Anthropic assistant message.
 // Text content → assistant message with output_text parts.
 // tool_use blocks → function_call items.
-// thinking blocks → ignored (OpenAI doesn't accept them as input).
+// thinking blocks with signature → reasoning items (encrypted_content) so
+// multi-turn Grok/Codex prompt cache can reuse prior reasoning prefixes.
+// thinking without signature remains ignored (not accepted as plain text input).
 func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, error) {
 	// Try plain string.
 	var s string
@@ -276,6 +278,25 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 	}
 
 	var items []ResponsesInputItem
+
+	// Preserve turn order: reasoning → assistant text → tool calls. xAI/Codex
+	// multi-turn cache and tool continuations expect reasoning before the
+	// assistant message that followed it.
+	for _, b := range blocks {
+		if b.Type != "thinking" {
+			continue
+		}
+		sig := strings.TrimSpace(b.Signature)
+		// Only replay provider ciphertext. Skip GPT/Codex-style gAAAA blobs and
+		// empty placeholders — xAI returns 400 on decrypt for foreign signatures.
+		if sig == "" || strings.HasPrefix(sig, "gAAAA") {
+			continue
+		}
+		items = append(items, ResponsesInputItem{
+			Type:             "reasoning",
+			EncryptedContent: sig,
+		})
+	}
 
 	// Text content → assistant message with output_text content parts.
 	text := extractAnthropicTextFromBlocks(blocks)

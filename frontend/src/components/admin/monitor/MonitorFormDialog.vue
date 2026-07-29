@@ -13,15 +13,16 @@
 
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.provider') }} <span class="text-red-500">*</span></label>
-        <div class="grid grid-cols-3 gap-3">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <button
             v-for="opt in providerOptions"
             :key="opt.value"
             type="button"
+            :data-testid="`monitor-provider-${opt.value}`"
             :aria-pressed="form.provider === opt.value"
             class="flex items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-colors"
             :class="providerPickerClass(opt.value, form.provider === opt.value)"
-            @click="form.provider = opt.value"
+            @click="selectProvider(opt.value)"
           >
             <ProviderIcon :provider="opt.value" :size="18" />
             <span>{{ opt.label }}</span>
@@ -50,7 +51,7 @@
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.endpoint') }} <span class="text-red-500">*</span></label>
         <div class="flex gap-2">
-          <input v-model="form.endpoint" type="text" required class="input flex-1" :placeholder="t('admin.channelMonitor.form.endpointPlaceholder')" />
+          <input v-model="form.endpoint" data-testid="monitor-endpoint" type="text" required class="input flex-1" :placeholder="t('admin.channelMonitor.form.endpointPlaceholder')" />
           <button type="button" @click="useCurrentDomain" class="btn btn-secondary whitespace-nowrap">
             {{ t('admin.channelMonitor.form.useCurrentDomain') }}
           </button>
@@ -80,6 +81,7 @@
         <label class="input-label">{{ t('admin.channelMonitor.form.primaryModel') }} <span class="text-red-500">*</span></label>
         <input
           v-model="form.primary_model"
+          data-testid="monitor-primary-model"
           type="text"
           required
           class="input font-medium"
@@ -213,8 +215,11 @@ import {
   PROVIDER_OPENAI,
   PROVIDER_ANTHROPIC,
   PROVIDER_GEMINI,
+  PROVIDER_GROK,
   API_MODE_CHAT_COMPLETIONS,
   API_MODE_RESPONSES,
+  DEFAULT_GROK_ENDPOINT,
+  DEFAULT_GROK_MODEL,
   DEFAULT_INTERVAL_SECONDS,
 } from '@/constants/channelMonitor'
 
@@ -396,7 +401,25 @@ const providerOptions = computed<ProviderOption[]>(() => [
   { value: PROVIDER_ANTHROPIC, label: t('monitorCommon.providers.anthropic') },
   { value: PROVIDER_OPENAI, label: t('monitorCommon.providers.openai') },
   { value: PROVIDER_GEMINI, label: t('monitorCommon.providers.gemini') },
+  { value: PROVIDER_GROK, label: t('monitorCommon.providers.grok') },
 ])
+
+function selectProvider(provider: Provider) {
+  if (form.provider === provider) return
+  const previousProvider = form.provider
+  const clearGrokEndpoint =
+    previousProvider === PROVIDER_GROK && form.endpoint === DEFAULT_GROK_ENDPOINT
+  const clearGrokModel =
+    previousProvider === PROVIDER_GROK && form.primary_model === DEFAULT_GROK_MODEL
+  form.provider = provider
+  if (provider === PROVIDER_GROK) {
+    if (!form.endpoint.trim()) form.endpoint = DEFAULT_GROK_ENDPOINT
+    if (!form.primary_model.trim()) form.primary_model = DEFAULT_GROK_MODEL
+    return
+  }
+  if (clearGrokEndpoint) form.endpoint = ''
+  if (clearGrokModel) form.primary_model = ''
+}
 
 // Clear api_key whenever provider changes to avoid cross-provider key mismatch.
 // Editing mode loads api_key='' via loadFromMonitor and only sets it on user

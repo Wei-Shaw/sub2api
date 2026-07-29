@@ -27,8 +27,10 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 
 	t.Run("accepts valid request stores refs and enqueues once", func(t *testing.T) {
 		svc, repo, queue, gemini, _ := newTestBatchImagePublicService(true)
+		req := validBatchImageSubmitRequest()
+		req.SessionID = batchImageStringPtr("batch-session-123")
 
-		got, err := svc.Submit(ctx, testBatchImageOwner(), validBatchImageSubmitRequest(), "")
+		got, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
 		require.NoError(t, err)
 		require.Equal(t, "image.batch", got.Object)
 		require.Equal(t, "queued", got.Status)
@@ -61,6 +63,7 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		require.InDelta(t, 0.6, job.HoldMultiplier, 1e-12)
 		require.InDelta(t, 0.125, job.BillableUnitPrice, 1e-12)
 		require.InDelta(t, 0.15, job.HoldUnitPrice, 1e-12)
+		require.Equal(t, "batch-session-123", batchImageDerefString(job.SessionID))
 	})
 
 	t.Run("combines user group image rate account rate discount and hold margin", func(t *testing.T) {
@@ -389,15 +392,18 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 	})
 
 	t.Run("idempotency returns same batch without provider resubmit", func(t *testing.T) {
-		svc, _, queue, gemini, _ := newTestBatchImagePublicService(true)
+		svc, repo, queue, gemini, _ := newTestBatchImagePublicService(true)
 		req := validBatchImageSubmitRequest()
+		req.SessionID = batchImageStringPtr("original-session")
 
 		first, err := svc.Submit(ctx, testBatchImageOwner(), req, "client-key")
 		require.NoError(t, err)
+		req.SessionID = batchImageStringPtr("retry-session")
 		second, err := svc.Submit(ctx, testBatchImageOwner(), req, "client-key")
 		require.NoError(t, err)
 
 		require.Equal(t, first.ID, second.ID)
+		require.Equal(t, "original-session", batchImageDerefString(repo.jobs[first.ID].SessionID))
 		require.Len(t, gemini.submits, 1)
 		require.Equal(t, []string{first.ID}, queue.enqueued)
 	})
