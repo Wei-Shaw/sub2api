@@ -159,7 +159,7 @@ func TestApplyToolsLastCacheBreakpoint_StripsDeferredToolCacheControl(t *testing
 REDACTED
 
 func TestApplyToolsLastCacheBreakpoint_SkipsDeferredFinalTool(t *testing.T) {
-	body := []byte(`{"tools":[{"name":"a","input_schema":{REDACTEDREDACTED,{"name":"b","custom":{"defer_loading":trueREDACTEDREDACTED]REDACTED`)
+	body := []byte(`{"tools":[{"name":"a","input_schema":{REDACTEDREDACTED,{"name":"b","defer_loading":trueREDACTED]REDACTED`)
 	out := applyToolsLastCacheBreakpoint(body)
 
 	require.Equal(t, "ephemeral", gjson.GetBytes(out, "tools.0.cache_control.type").String())
@@ -168,11 +168,12 @@ func TestApplyToolsLastCacheBreakpoint_SkipsDeferredFinalTool(t *testing.T) {
 REDACTED
 
 func TestApplyToolsLastCacheBreakpoint_OnlyLiteralTrueIsDeferred(t *testing.T) {
-	body := []byte(`{"tools":[{"name":"true","custom":{"defer_loading":trueREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"false","custom":{"defer_loading":falseREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"string","custom":{"defer_loading":"true"REDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"number","custom":{"defer_loading":1REDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"object","custom":{"defer_loading":{REDACTEDREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED]REDACTED`)
+	body := []byte(`{"tools":[{"name":"custom-true","custom":{"defer_loading":trueREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"top-level-true","defer_loading":true,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"false","defer_loading":false,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"string","defer_loading":"true","cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"number","defer_loading":1,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"object","defer_loading":{REDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED]REDACTED`)
 	out := stripDeferredToolCacheControl(body)
 
 	require.False(t, gjson.GetBytes(out, "tools.0.cache_control").Exists())
-	for idx := 1; idx < 5; idx++ {
+	require.False(t, gjson.GetBytes(out, "tools.1.cache_control").Exists())
+	for idx := 2; idx < 6; idx++ {
 		require.Equal(t, "ephemeral", gjson.GetBytes(out, fmt.Sprintf("tools.%d.cache_control.type", idx)).String())
 REDACTED
 REDACTED

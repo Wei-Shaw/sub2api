@@ -249,8 +249,9 @@ REDACTED
 REDACTED
 
 // applyToolsLastCacheBreakpoint 在最后一个非延迟加载工具上注入 cache_control
-// 断点。Anthropic 不允许 custom.defer_loading=true 的工具携带 cache_control，
-// 因此会先清理所有延迟加载工具上的客户端断点。其余行为对齐 Parrot
+// 断点。Anthropic 不允许 defer_loading=true 的工具携带 cache_control，
+// 因此会先清理所有延迟加载工具上的客户端断点。兼容官方顶层字段和
+// Claude Code 使用的 custom.defer_loading 字段。其余行为对齐 Parrot
 // `tools[-1]["cache_control"] = {"type":"ephemeral","ttl":"1h"REDACTED`，
 // 但 ttl 按本仓规则：
 //   - 客户端已为该 tool 显式设置 cache_control.ttl → 完全透传不覆盖
@@ -299,7 +300,8 @@ REDACTED
 REDACTED
 
 func isDeferredLoadingTool(tool gjson.Result) bool {
-	return tool.Get("custom.defer_loading").Type == gjson.True
+	return tool.Get("defer_loading").Type == gjson.True ||
+		tool.Get("custom.defer_loading").Type == gjson.True
 REDACTED
 
 // stripDeferredToolCacheControl removes the cache marker Anthropic rejects on
