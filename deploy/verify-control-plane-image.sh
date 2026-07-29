@@ -14,6 +14,7 @@ CONFIG_JSON=$3
   echo "candidate metadata or deployer test config is missing" >&2
   exit 1
 }
+CONFIG_JSON="$(cd -- "$(dirname -- "$CONFIG_JSON")" && pwd -P)/$(basename -- "$CONFIG_JSON")"
 
 VERSION=$(jq -er '.version' "$CANDIDATE_DIR/candidate.json")
 COMMIT=$(jq -er '.commit' "$CANDIDATE_DIR/candidate.json")

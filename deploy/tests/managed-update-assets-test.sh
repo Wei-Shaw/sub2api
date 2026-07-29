@@ -35,6 +35,8 @@ bash -n "$CANDIDATE_VERIFIER"
 bash -n "$IMAGE_VERIFIER"
 bash -n "$UPGRADE_HELPER"
 bash -n "$REPO_ROOT/deploy/tests/sub2api-deployer-upgrade-test.sh"
+grep -Fq 'CONFIG_JSON="$(cd -- "$(dirname -- "$CONFIG_JSON")" && pwd -P)/$(basename -- "$CONFIG_JSON")"' "$IMAGE_VERIFIER"
+grep -Fq -- '-v "$CONFIG_JSON:/candidate-config.json:ro"' "$IMAGE_VERIFIER"
 
 grep -Fq 'ReadWritePaths=/run/sub2api-deployer /var/lib/sub2api-deployer' "$SERVICE"
 grep -Fq 'RuntimeDirectoryPreserve=yes' "$SERVICE"
