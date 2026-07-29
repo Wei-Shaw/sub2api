@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/stretchr/testify/require"
 )
 
 type stubOpsRepoForUserErr struct {
@@ -119,9 +120,7 @@ REDACTED
 	if err2 != nil {
 		t.Fatalf("expected no error for legitimate access, got %v", err2)
 REDACTED
-	if got2 == nil {
-		t.Fatal("expected non-nil detail for legitimate access")
-REDACTED
+	require.NotNil(t, got2)
 	if got2.ID != 42 {
 		t.Errorf("want ID=42, got %d", got2.ID)
 REDACTED
