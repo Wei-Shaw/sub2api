@@ -39,6 +39,7 @@ export default {
           requireAuthHint: 'When on, anonymous visitors are redirected to the login page; when off, the page is public and anonymous visitors only see non-exclusive groups.',
           priceDescription: 'Pricing notes (Markdown)',
           priceDescriptionHint: 'Rendered at the top of the plaza page. Use it for billing rules, exchange rates, promotions, etc.',
+        },
         customDomains: {
           title: 'Custom Domains',
           description: 'Allow verified hostnames to serve as API base URLs. Disabled by default.',
