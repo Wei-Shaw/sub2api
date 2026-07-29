@@ -20,6 +20,7 @@ var (
 )
 
 type Config struct {
+	LoadedFrom                 string            `json:"-"`
 	SocketPath                 string            `json:"socket_path"`
 	SocketMode                 uint32            `json:"socket_mode"`
 	SocketGID                  int               `json:"socket_gid"`
@@ -87,6 +88,7 @@ func LoadConfig(path string) (Config, error) {
 	if err := decoder.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
+	cfg.LoadedFrom = path
 	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
 		return Config{}, err

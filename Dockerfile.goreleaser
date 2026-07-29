@@ -51,6 +51,13 @@ COPY ${TARGETPLATFORM}/sub2api /app/sub2api
 # Create data directory
 RUN mkdir -p /app/data && chown -R sub2api:sub2api /app
 
+# The host control-plane payload is outside /app, which is writable by the
+# application user. Both files remain root-owned in the immutable image.
+COPY ${TARGETPLATFORM}/sub2api-deployer /opt/sub2api-control-plane/sub2api-deployer
+COPY CONTROL-PLANE-MANIFEST.json /opt/sub2api-control-plane/CONTROL-PLANE-MANIFEST.json
+RUN chmod 0755 /opt/sub2api-control-plane/sub2api-deployer && \
+    chmod 0644 /opt/sub2api-control-plane/CONTROL-PLANE-MANIFEST.json
+
 # Copy entrypoint script (fixes volume permissions then drops to sub2api)
 COPY deploy/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh

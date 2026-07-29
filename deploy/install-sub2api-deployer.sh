@@ -18,6 +18,7 @@ DEPLOYER_BINARY=""
 DEPLOYER_CHECKSUMS=""
 DOCKER_CONFIG_SOURCE=""
 ACTIVATION_VERSION=""
+ALLOW_SOURCE_BUILD=0
 IMAGE_REPOSITORY="ghcr.io/ssharkkky/sub2api"
 IMAGE_SOURCE_LABEL="https://github.com/ssharkkky/sub2api"
 UPDATE_PROTOCOL_LABEL="2"
@@ -28,6 +29,9 @@ ROLLBACK_RUNNING=0
 ROLLBACK_INCOMPLETE=0
 SERVICE_WAS_ENABLED=0
 SERVICE_WAS_ACTIVE=0
+UPGRADE_TIMER_WAS_ENABLED=0
+UPGRADE_TIMER_WAS_ACTIVE=0
+UPGRADE_TIMER_EXISTED=0
 
 CONFIG_DIR="/etc/sub2api-deployer"
 CONFIG_FILE="$CONFIG_DIR/config.json"
@@ -35,6 +39,7 @@ DOCKER_CONFIG_DIR="$CONFIG_DIR/docker"
 DOCKER_CONFIG_FILE="$DOCKER_CONFIG_DIR/config.json"
 SERVICE_FILE="/etc/systemd/system/sub2api-deployer.service"
 UPGRADE_SERVICE_FILE="/etc/systemd/system/sub2api-deployer-upgrade.service"
+UPGRADE_TIMER_FILE="/etc/systemd/system/sub2api-deployer-upgrade.timer"
 TMPFILES_FILE="/etc/tmpfiles.d/sub2api-deployer.conf"
 RUNTIME_PRESERVE_DROPIN="/run/systemd/system/sub2api-deployer.service.d/10-preserve-runtime.conf"
 INSTALLED_BINARY="/usr/local/sbin/sub2api-deployer"
@@ -78,6 +83,7 @@ Options:
   --deployer-checksums <path>   Release checksum file for the prebuilt binary
   --docker-config <path>        Optional Docker config.json for private registries
   --activation-version <ver>    Version to use in the printed first-deployment command
+  --allow-source-build          Explicitly permit a dev-identity source build fallback
 
 With a prebuilt binary, assets default to the deploy directory beside this
 installer. When no prebuilt binary is supplied, --source is required and the
@@ -104,6 +110,7 @@ while [[ $# -gt 0 ]]; do
     --deployer-checksums) DEPLOYER_CHECKSUMS="${2:-}"; shift 2 ;;
     --docker-config) DOCKER_CONFIG_SOURCE="${2:-}"; shift 2 ;;
     --activation-version) ACTIVATION_VERSION="${2:-}"; shift 2 ;;
+    --allow-source-build) ALLOW_SOURCE_BUILD=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 2 ;;
   esac
@@ -336,8 +343,19 @@ rollback_install() {
   (( ROLLBACK_RUNNING == 1 )) && return
   ROLLBACK_RUNNING=1
   set +e
-  local failed=0 files_restored=1 metadata_restored=1 daemon_reloaded=1 nginx_restored=1
+  local failed=0 files_restored=1 metadata_restored=1 daemon_reloaded=1 nginx_restored=1 timer_must_stop=0
   echo "Installation failed; restoring the previous deployer and Nginx state..." >&2
+  if (( UPGRADE_TIMER_EXISTED == 1 || UPGRADE_TIMER_WAS_ENABLED == 1 || UPGRADE_TIMER_WAS_ACTIVE == 1 )) || \
+    systemctl is-active --quiet sub2api-deployer-upgrade.timer >/dev/null 2>&1; then
+    timer_must_stop=1
+  fi
+  if ! systemctl stop sub2api-deployer-upgrade.timer >/dev/null 2>&1; then
+    if (( timer_must_stop == 1 )); then
+      echo "CRITICAL: failed to stop the control-plane upgrade timer before restoration" >&2
+      ROLLBACK_INCOMPLETE=1
+      return 0
+    fi
+  fi
   if ! prove_deployer_stopped_for_restore; then
     ROLLBACK_INCOMPLETE=1
     return 0
@@ -374,6 +392,13 @@ rollback_install() {
     else
       systemctl disable sub2api-deployer.service >/dev/null 2>&1 || failed=1
     fi
+    if (( UPGRADE_TIMER_EXISTED == 1 )); then
+      if (( UPGRADE_TIMER_WAS_ENABLED == 1 )); then
+        systemctl enable sub2api-deployer-upgrade.timer >/dev/null 2>&1 || failed=1
+      else
+        systemctl disable sub2api-deployer-upgrade.timer >/dev/null 2>&1 || failed=1
+      fi
+    fi
     release_state_lock
     if (( SERVICE_WAS_ACTIVE == 1 )); then
       if ! systemctl start sub2api-deployer.service >/dev/null 2>&1; then
@@ -382,6 +407,13 @@ rollback_install() {
       fi
     else
       systemctl stop sub2api-deployer.service >/dev/null 2>&1 || failed=1
+    fi
+    if (( UPGRADE_TIMER_EXISTED == 1 )); then
+      if (( UPGRADE_TIMER_WAS_ACTIVE == 1 )); then
+        systemctl start sub2api-deployer-upgrade.timer >/dev/null 2>&1 || failed=1
+      else
+        systemctl stop sub2api-deployer-upgrade.timer >/dev/null 2>&1 || failed=1
+      fi
     fi
   else
     echo "CRITICAL: deployer remains stopped because its prior installation was not fully restored" >&2
@@ -589,7 +621,7 @@ fi
 if [[ -z "$ASSET_DIR" || ! -d "$ASSET_DIR" ]]; then
   fail "--assets-dir must point to the packaged deploy assets (or use an installer beside deploy/)"
 fi
-for source_asset in compose.deployer.yml sub2api-deployer.service sub2api-deployer-upgrade.service sub2api-deployer-upgrade.sh sub2api-deployer-tmpfiles.conf sub2api-managed-upstream.conf; do
+for source_asset in compose.deployer.yml sub2api-deployer.service sub2api-deployer-upgrade.service sub2api-deployer-upgrade.timer sub2api-deployer-upgrade.sh sub2api-deployer-tmpfiles.conf sub2api-managed-upstream.conf; do
   [[ -f "$ASSET_DIR/$source_asset" ]] || fail "Deploy assets are missing $source_asset"
 done
 if [[ -z "$NGINX_SITE" || ! -f "$NGINX_SITE" ]]; then
@@ -644,6 +676,7 @@ for command in docker nginx systemctl ss sed grep readlink install mktemp sha256
   command -v "$command" >/dev/null || fail "Missing command: $command"
 done
 if [[ -z "$DEPLOYER_BINARY" ]]; then
+  (( ALLOW_SOURCE_BUILD == 1 )) || fail "Source builds are disabled by default; use a verified release binary or pass --allow-source-build for a dev-identity fallback"
   [[ -n "$SOURCE_DIR" && -f "$SOURCE_DIR/backend/go.mod" ]] || fail "--source must point to a Sub2API repository checkout when building the deployer"
   command -v go >/dev/null || fail "Missing command: go (or provide a release deployer binary)"
 else
@@ -661,6 +694,15 @@ fi
 if systemctl is-active --quiet sub2api-deployer.service >/dev/null 2>&1; then
   SERVICE_WAS_ACTIVE=1
 fi
+if systemctl is-enabled --quiet sub2api-deployer-upgrade.timer >/dev/null 2>&1; then
+  UPGRADE_TIMER_WAS_ENABLED=1
+fi
+if systemctl is-active --quiet sub2api-deployer-upgrade.timer >/dev/null 2>&1; then
+  UPGRADE_TIMER_WAS_ACTIVE=1
+fi
+if [[ -e "$UPGRADE_TIMER_FILE" ]]; then
+  UPGRADE_TIMER_EXISTED=1
+fi
 
 TEMP_DIR=$(mktemp -d /tmp/sub2api-deployer-install.XXXXXX)
 
@@ -677,7 +719,7 @@ if [[ -n "$DEPLOYER_BINARY" ]]; then
   install -m 0755 "$DEPLOYER_BINARY" "$TEMP_DIR/sub2api-deployer"
 else
   echo "Building deployer from source..."
-  (cd "$SOURCE_DIR/backend" && go build -trimpath -o "$TEMP_DIR/sub2api-deployer" ./cmd/deployer)
+  (cd "$SOURCE_DIR/backend" && go build -trimpath -ldflags='-X main.BuildType=dev' -o "$TEMP_DIR/sub2api-deployer" ./cmd/deployer)
 fi
 
 EXISTING_INSTALL=0
@@ -1048,6 +1090,7 @@ for target in \
   "$NGINX_SITE" \
   "$SERVICE_FILE" \
   "$UPGRADE_SERVICE_FILE" \
+  "$UPGRADE_TIMER_FILE" \
   "$TMPFILES_FILE" \
   "$STATE_FILE" \
   "$RUNTIME_MARKER"; do
@@ -1098,11 +1141,13 @@ probe_nginx || fail "Nginx reload succeeded but the managed route health probe f
 
 install -m 0644 "$TEMP_DIR/sub2api-deployer.service" "$SERVICE_FILE"
 install -m 0644 "$ASSET_DIR/sub2api-deployer-upgrade.service" "$UPGRADE_SERVICE_FILE"
+install -m 0644 "$ASSET_DIR/sub2api-deployer-upgrade.timer" "$UPGRADE_TIMER_FILE"
 install -m 0644 "$ASSET_DIR/sub2api-deployer-tmpfiles.conf" "$TMPFILES_FILE"
 rm -f -- "$RUNTIME_PRESERVE_DROPIN"
 rmdir -- "$(dirname -- "$RUNTIME_PRESERVE_DROPIN")" 2>/dev/null || true
 systemctl daemon-reload
 systemctl enable sub2api-deployer.service
+systemctl enable --now sub2api-deployer-upgrade.timer
 release_state_lock
 systemctl restart sub2api-deployer.service
 systemctl is-active --quiet sub2api-deployer.service

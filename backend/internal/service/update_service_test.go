@@ -32,6 +32,8 @@ type updateServiceGitHubClientStub struct {
 	recentReleases []*GitHubRelease
 	recentErr      error
 	latestRepo     string
+	checksumData   []byte
+	checksumErr    error
 }
 
 func (s *updateServiceGitHubClientStub) FetchLatestRelease(_ context.Context, repo string) (*GitHubRelease, error) {
@@ -48,7 +50,7 @@ func (s *updateServiceGitHubClientStub) DownloadFile(context.Context, string, st
 }
 
 func (s *updateServiceGitHubClientStub) FetchChecksumFile(context.Context, string) ([]byte, error) {
-	panic("FetchChecksumFile should not be called when no update is available")
+	return s.checksumData, s.checksumErr
 }
 
 func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {

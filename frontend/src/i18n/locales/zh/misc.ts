@@ -41,6 +41,7 @@ export default {
     deploymentRollbackFailed: '自动回滚失败，请立即进行人工检查',
     deploymentDegraded: '部署状态已降级，需要管理员人工核对并恢复',
     controlPlaneUpgradeFailed: '应用已更新，但宿主机 deployer 升级失败',
+    controlPlaneUpgradeUnknown: '应用已更新，但无法确认宿主机 deployer 的升级状态',
     controlPlaneUpgradeTimeout: '应用已更新，但宿主机 deployer 升级超时，请检查 deployer 后再重试',
     updateCompletedWithWarning: '更新已完成，但有运维告警需处理',
     deploymentStages: {

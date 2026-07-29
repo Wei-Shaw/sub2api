@@ -163,6 +163,25 @@ assert_release_unpublished_json() {
   [[ -z "$matching_tag" ]] || fail "Release $release_tag already exists; use a new immutable fork tag instead of overwriting artifacts"
 }
 
+assert_release_not_published_json() {
+  local release_tag="$1"
+  local releases_path="$2"
+  local published_count
+
+  require_fork_tag "$release_tag"
+  [[ -f "$releases_path" ]] || fail "GitHub Releases JSON is missing: $releases_path"
+  published_count=$(jq -er --arg release_tag "$release_tag" '
+    if type != "array" then error("release response must be an array")
+    elif length == 0 then []
+    elif (.[0] | type) == "array" then [ .[][] ]
+    else .
+    end
+    | [ .[] | select(.tag_name == $release_tag and (.draft // false) == false) ]
+    | length
+  ' "$releases_path") || fail "Could not parse GitHub Releases while checking $release_tag"
+  [[ "$published_count" == 0 ]] || fail "Release $release_tag is already published"
+}
+
 verify_version_file() {
   local release_tag="$1"
   local version_path="$2"
@@ -208,6 +227,12 @@ verify_completion_json() {
       and (.image_digest | type == "string" and test("^sha256:[0-9a-f]{64}$"))
       and .immutable_image == ($image + "@" + .image_digest)
       and ((.architectures | sort) == ["amd64", "arm64"])
+      and (
+        ((.control_plane_manifest_sha256 // null) == null and (.candidate_manifest_sha256 // null) == null)
+        or
+        ((.control_plane_manifest_sha256 | type == "string" and test("^sha256:[0-9a-f]{64}$"))
+          and (.candidate_manifest_sha256 | type == "string" and test("^sha256:[0-9a-f]{64}$")))
+      )
       and (.deployer_checksums_sha256 | type == "string" and test("^sha256:[0-9a-f]{64}$"))
       and (
         if .schema == 3 then
@@ -293,6 +318,33 @@ verify_completion_manifest() {
     fail "Published image digest changed after release completion (expected $expected_digest, got $actual_digest)"
 }
 
+verify_completion_candidate() {
+  local completion_path="$1"
+  local candidate_dir="$2"
+  local candidate_path="$candidate_dir/candidate.json"
+  local candidate_manifest="$candidate_dir/MANIFEST.sha256"
+  local candidate_manifest_digest
+
+  [[ -f "$completion_path" ]] || fail "Release completion marker is missing: $completion_path"
+  [[ -f "$candidate_path" && -f "$candidate_manifest" ]] || fail "Release candidate metadata is incomplete: $candidate_dir"
+  candidate_manifest_digest="sha256:$(sha256sum "$candidate_manifest" | awk '{print $1}')"
+  jq -e \
+    --slurpfile candidate "$candidate_path" \
+    --arg candidate_manifest_digest "$candidate_manifest_digest" '
+      ($candidate[0]) as $c
+      | .schema == 3
+        and .commit == $c.commit
+        and .image == $c.image
+        and .image_digest == $c.image_digest
+        and .immutable_image == ($c.image + "@" + $c.image_digest)
+        and ((.architectures | sort) == ($c.architectures | sort))
+        and .control_plane_manifest_sha256 == $c.control_plane_manifest_sha256
+        and .candidate_manifest_sha256 == $candidate_manifest_digest
+        and .deployer_checksums_sha256 == $c.deployer_checksums_sha256
+        and .deployer_assets == $c.deployer_assets
+    ' "$completion_path" >/dev/null || fail "Release completion marker does not match the audited Build Once candidate"
+}
+
 goreleaser_image_digest() {
   local artifacts_path="$1"
   local expected_image="$2"
@@ -326,6 +378,21 @@ assert_image_absent() {
     *"not found"*|*"manifest unknown"*) ;;
     *) fail "Could not prove container image $image_ref is absent: $output" ;;
   esac
+}
+
+assert_image_digest_matches() {
+  local image_ref="$1"
+  local expected_digest="$2"
+  local actual_digest
+
+  [[ "$expected_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || fail "Invalid expected image digest: $expected_digest"
+  if ! actual_digest=$(image_tag_digest_or_missing "$image_ref"); then
+    exit 1
+  fi
+  [[ "$actual_digest" != missing ]] || \
+    fail "Container image $image_ref is missing; it cannot be reused as the recorded candidate"
+  [[ "$actual_digest" == "$expected_digest" ]] || \
+    fail "Container image $image_ref does not match the recorded candidate digest (expected $expected_digest, got $actual_digest)"
 }
 
 promote_image_tags() {
@@ -632,12 +699,15 @@ Usage:
   release-safety.sh fetch <remote> <main-branch>
   release-safety.sh previous-release-json <release-tag> <github-releases-json> <bootstrap-tag>
   release-safety.sh assert-unpublished-json <release-tag> <github-releases-json>
+  release-safety.sh assert-not-published-json <release-tag> <github-releases-json>
   release-safety.sh verify-version-file <release-tag> <version-file>
   release-safety.sh verify-completion-json <completion-json> <release-tag> <commit> <tag-object> <ghcr-image-ref> [<dockerhub-image-ref>]
   release-safety.sh verify-completion-manifest <completion-json> <oci-manifest-json>
+  release-safety.sh verify-completion-candidate <completion-json> <candidate-directory>
   release-safety.sh verify-completion-deployer-checksums <completion-json> <deployer-checksums>
   release-safety.sh goreleaser-image-digest <artifacts-json> <image-ref>
   release-safety.sh assert-image-absent <image-ref>
+  release-safety.sh assert-image-digest-matches <image-ref> <sha256-digest>
   release-safety.sh promote-image-tags <immutable-image@digest> <digest> <target-tag> [<target-tag>...]
   release-safety.sh image-tag-digest-or-missing <image-tag>
   release-safety.sh publish-release-with-latest <release-tag> <ghcr-repository> <ghcr-digest> <previous-ghcr-digest> [<dockerhub-repository> <dockerhub-digest> <previous-dockerhub-digest>]
@@ -667,6 +737,10 @@ case "${1:-}" in
     [[ $# -eq 3 ]] || usage
     assert_release_unpublished_json "$2" "$3"
     ;;
+  assert-not-published-json)
+    [[ $# -eq 3 ]] || usage
+    assert_release_not_published_json "$2" "$3"
+    ;;
   verify-version-file)
     [[ $# -eq 3 ]] || usage
     verify_version_file "$2" "$3"
@@ -679,6 +753,10 @@ case "${1:-}" in
     [[ $# -eq 3 ]] || usage
     verify_completion_manifest "$2" "$3"
     ;;
+  verify-completion-candidate)
+    [[ $# -eq 3 ]] || usage
+    verify_completion_candidate "$2" "$3"
+    ;;
   verify-completion-deployer-checksums)
     [[ $# -eq 3 ]] || usage
     verify_completion_deployer_checksums "$2" "$3"
@@ -690,6 +768,10 @@ case "${1:-}" in
   assert-image-absent)
     [[ $# -eq 2 ]] || usage
     assert_image_absent "$2"
+    ;;
+  assert-image-digest-matches)
+    [[ $# -eq 3 ]] || usage
+    assert_image_digest_matches "$2" "$3"
     ;;
   promote-image-tags)
     [[ $# -ge 4 ]] || usage

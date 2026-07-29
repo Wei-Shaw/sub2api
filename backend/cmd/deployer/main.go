@@ -3,21 +3,35 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/deployer"
 )
 
+var (
+	Version   = "dev"
+	Commit    = "none"
+	Date      = "unknown"
+	BuildType = "dev"
+)
+
 func main() {
 	configPath := flag.String("config", "/etc/sub2api-deployer/config.json", "path to deployer JSON configuration")
 	check := flag.Bool("check", false, "validate configuration and exit")
+	showVersion := flag.Bool("version", false, "show build identity and exit")
 	reconcileSlot := flag.String("reconcile-slot", "", "verify and clear a degraded latch by selecting the serving deployment slot")
 	forceUnobservableDrain := flag.Bool("force-unobservable-drain", false, "during reconciliation, explicitly allow stopping a legacy container that cannot report drain blockers")
 	flag.Parse()
+	if *showVersion {
+		fmt.Printf("Sub2API Deployer %s (commit: %s, built: %s, type: %s, arch: %s)\n", Version, Commit, Date, BuildType, runtime.GOARCH)
+		return
+	}
 
 	cfg, err := deployer.LoadConfig(*configPath)
 	if err != nil {
@@ -42,7 +56,13 @@ func main() {
 	if err := deployer.RequireDaemonStopped(cfg.SocketPath); err != nil {
 		log.Fatalf("deployer startup preflight: %v", err)
 	}
-	manager, err := deployer.NewManager(cfg, deployer.ExecRunner{})
+	manager, err := deployer.NewManagerWithBuildInfo(cfg, deployer.ExecRunner{}, deployer.BuildInfo{
+		Version: Version,
+		Commit:  Commit,
+		Date:    Date,
+		Type:    BuildType,
+		Arch:    runtime.GOARCH,
+	})
 	if err != nil {
 		log.Fatalf("initialize deployer: %v", err)
 	}

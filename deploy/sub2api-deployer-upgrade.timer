@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for pending Sub2API control-plane upgrades
+
+[Timer]
+OnBootSec=90s
+OnUnitInactiveSec=60s
+Unit=sub2api-deployer-upgrade.service
+
+[Install]
+WantedBy=timers.target

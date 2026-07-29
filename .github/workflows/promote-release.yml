@@ -19,10 +19,13 @@ concurrency:
 permissions:
   actions: read
   contents: read
+  packages: read
 
 jobs:
   promote:
     runs-on: ubuntu-latest
+    outputs:
+      candidate_run_id: ${{ steps.verify.outputs.candidate_run_id }}
     steps:
       - name: Checkout exact audited main commit
         uses: actions/checkout@v6
@@ -67,10 +70,18 @@ jobs:
           TAG_EXISTS=$(bash .github/scripts/release-promotion-state.sh \
             inspect "$EXPECTED_SHA" "$EXPECTED_VERSION" refs/remotes/origin/main origin)
           echo "tag_exists=$TAG_EXISTS" >> "$GITHUB_OUTPUT"
-          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && {
-            echo "GitHub Release already exists: $RELEASE_TAG" >&2
-            exit 1
-          }
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft > "$RUNNER_TEMP/existing-release.json" 2>/dev/null; then
+            jq -e '.isDraft == true' "$RUNNER_TEMP/existing-release.json" >/dev/null || {
+              echo "GitHub Release is already published: $RELEASE_TAG" >&2
+              exit 1
+            }
+            [[ "$TAG_EXISTS" == true ]] || {
+              echo "Draft release exists without the expected immutable tag" >&2
+              exit 1
+            }
+            echo "Reusing an unpublished draft from an earlier operational attempt"
+          fi
 
           verify_workflow() {
             local workflow="$1"
@@ -93,11 +104,14 @@ jobs:
               echo "$label evidence is invalid: $run" >&2
               exit 1
             }
-            echo "$label passed in run $run_id for $run_sha"
+            printf '%s\n' "$run_id"
           }
 
-          verify_workflow backend-ci.yml "Backend CI"
-          verify_workflow release-preflight.yml "Release Preflight"
+          BACKEND_RUN_ID=$(verify_workflow backend-ci.yml "Backend CI")
+          CANDIDATE_RUN_ID=$(verify_workflow release-preflight.yml "Release Preflight")
+          echo "Backend CI passed in run $BACKEND_RUN_ID for $EXPECTED_SHA"
+          echo "Release candidate passed in run $CANDIDATE_RUN_ID for $EXPECTED_SHA"
+          echo "candidate_run_id=$CANDIDATE_RUN_ID" >> "$GITHUB_OUTPUT"
           bash .github/scripts/validate-release-candidate.sh
           gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" \
             > "$RUNNER_TEMP/release-tag-immutable-ruleset.json"
@@ -107,6 +121,36 @@ jobs:
             verify-rulesets-runtime-json \
             "$RUNNER_TEMP/release-tag-immutable-ruleset.json" \
             "$RUNNER_TEMP/release-tag-creation-ruleset.json"
+
+      - name: Download exact audited candidate
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.verify.outputs.candidate_run_id }}
+          name: release-candidate-${{ inputs.main_sha }}
+          path: ${{ runner.temp }}/candidate/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Revalidate audited bytes before creating tag
+        env:
+          EXPECTED_SHA: ${{ inputs.main_sha }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          deploy/verify-release-candidate.sh \
+            "$RUNNER_TEMP/candidate" "$EXPECTED_VERSION" "$EXPECTED_SHA"
+          CANDIDATE_IMAGE=$(jq -er '.candidate_image' "$RUNNER_TEMP/candidate/candidate.json")
+          CANDIDATE_DIGEST=$(jq -er '.image_digest' "$RUNNER_TEMP/candidate/candidate.json")
+          bash .github/scripts/release-safety.sh assert-image-digest-matches \
+            "$CANDIDATE_IMAGE" "$CANDIDATE_DIGEST"
 
       - name: Create immutable annotated tag
         if: steps.verify.outputs.tag_exists != 'true'
@@ -139,4 +183,6 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       tag: v${{ inputs.version }}
+      candidate_run_id: ${{ needs.promote.outputs.candidate_run_id }}
+      candidate_commit: ${{ inputs.main_sha }}
     secrets: inherit

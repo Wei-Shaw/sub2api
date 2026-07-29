@@ -134,7 +134,7 @@ func (s *HTTPServer) handleDeployment(w http.ResponseWriter, r *http.Request) {
 			writeProblem(w, http.StatusServiceUnavailable, err.Error())
 		case errors.Is(err, ErrControlPlaneUpgradeUnavailable):
 			writeProblem(w, http.StatusServiceUnavailable, err.Error())
-		case errors.Is(err, ErrJobRunning), errors.Is(err, ErrRequestConflict), errors.Is(err, ErrVersionConflict):
+		case errors.Is(err, ErrJobRunning), errors.Is(err, ErrRequestConflict), errors.Is(err, ErrVersionConflict), errors.Is(err, ErrControlPlaneUpgradePending):
 			writeProblem(w, http.StatusConflict, err.Error())
 		default:
 			writeProblem(w, http.StatusBadRequest, err.Error())

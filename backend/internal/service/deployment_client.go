@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -29,31 +32,35 @@ type DeploymentHealth struct {
 }
 
 type DeploymentJob struct {
-	ID                        string     `json:"id"`
-	Action                    string     `json:"action"`
-	TargetVersion             string     `json:"target_version"`
-	Status                    string     `json:"status"`
-	Stage                     string     `json:"stage"`
-	Message                   string     `json:"message,omitempty"`
-	Error                     string     `json:"error,omitempty"`
-	FromVersion               string     `json:"from_version,omitempty"`
-	TargetImage               string     `json:"target_image,omitempty"`
-	TargetDigest              string     `json:"target_digest,omitempty"`
-	RollbackPerformed         bool       `json:"rollback_performed"`
-	BackgroundActivated       bool       `json:"background_activated"`
-	RollbackError             string     `json:"rollback_error,omitempty"`
-	CleanupWarning            string     `json:"cleanup_warning,omitempty"`
-	ControlPlaneUpgradeStatus string     `json:"control_plane_upgrade_status,omitempty"`
-	ControlPlaneUpgradeError  string     `json:"control_plane_upgrade_error,omitempty"`
-	CreatedAt                 time.Time  `json:"created_at"`
-	StartedAt                 time.Time  `json:"started_at"`
-	UpdatedAt                 time.Time  `json:"updated_at"`
-	FinishedAt                *time.Time `json:"finished_at,omitempty"`
+	ID                             string     `json:"id"`
+	Action                         string     `json:"action"`
+	TargetVersion                  string     `json:"target_version"`
+	Status                         string     `json:"status"`
+	Stage                          string     `json:"stage"`
+	Message                        string     `json:"message,omitempty"`
+	Error                          string     `json:"error,omitempty"`
+	FromVersion                    string     `json:"from_version,omitempty"`
+	TargetImage                    string     `json:"target_image,omitempty"`
+	TargetDigest                   string     `json:"target_digest,omitempty"`
+	RollbackPerformed              bool       `json:"rollback_performed"`
+	BackgroundActivated            bool       `json:"background_activated"`
+	RollbackError                  string     `json:"rollback_error,omitempty"`
+	CleanupWarning                 string     `json:"cleanup_warning,omitempty"`
+	ControlPlaneUpgradeStatus      string     `json:"control_plane_upgrade_status,omitempty"`
+	ControlPlaneUpgradeError       string     `json:"control_plane_upgrade_error,omitempty"`
+	ControlPlaneUpgradeAttempt     int        `json:"control_plane_upgrade_attempt,omitempty"`
+	ControlPlaneUpgradeMaxAttempts int        `json:"control_plane_upgrade_max_attempts,omitempty"`
+	ControlPlaneUpgradeNextAttempt *time.Time `json:"control_plane_upgrade_next_attempt_at,omitempty"`
+	CreatedAt                      time.Time  `json:"created_at"`
+	StartedAt                      time.Time  `json:"started_at"`
+	UpdatedAt                      time.Time  `json:"updated_at"`
+	FinishedAt                     *time.Time `json:"finished_at,omitempty"`
 }
 
 type DeploymentRequest struct {
 	Action                 string `json:"action"`
 	TargetVersion          string `json:"target_version"`
+	ExpectedTargetDigest   string `json:"expected_target_digest,omitempty"`
 	ExpectedCurrentVersion string `json:"expected_current_version,omitempty"`
 	RequestID              string `json:"request_id"`
 }
@@ -237,12 +244,111 @@ func (s *UpdateService) StartManagedUpdate(ctx context.Context, requestID string
 	if !info.HasUpdate {
 		return nil, ErrNoUpdateAvailable
 	}
+	expectedDigest, err := s.verifiedReleaseDigest(ctx, info)
+	if err != nil {
+		return nil, fmt.Errorf("verify release completion ledger: %w", err)
+	}
 	return s.deployer.Start(ctx, DeploymentRequest{
 		Action:                 "update",
 		TargetVersion:          info.LatestVersion,
+		ExpectedTargetDigest:   expectedDigest,
 		ExpectedCurrentVersion: s.currentVersion,
 		RequestID:              requestID,
 	})
+}
+
+const releaseCompletionAsset = "sub2api-release-complete.json"
+
+var (
+	releaseDigestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	releaseObjectPattern = regexp.MustCompile(`^[0-9a-f]{40,64}$`)
+)
+
+type releaseCompletionLedger struct {
+	Schema                  int               `json:"schema"`
+	Tag                     string            `json:"tag"`
+	Commit                  string            `json:"commit"`
+	TagObject               string            `json:"tag_object"`
+	Image                   string            `json:"image"`
+	ImageDigest             string            `json:"image_digest"`
+	ImmutableImage          string            `json:"immutable_image"`
+	DockerHubImage          *string           `json:"dockerhub_image"`
+	DockerHubImageDigest    *string           `json:"dockerhub_image_digest"`
+	DockerHubImmutableImage *string           `json:"dockerhub_immutable_image"`
+	Architectures           []string          `json:"architectures"`
+	ControlPlaneManifestSHA string            `json:"control_plane_manifest_sha256"`
+	CandidateManifestSHA    string            `json:"candidate_manifest_sha256"`
+	DeployerChecksumsSHA256 string            `json:"deployer_checksums_sha256"`
+	DeployerAssets          map[string]string `json:"deployer_assets"`
+}
+
+func (s *UpdateService) verifiedReleaseDigest(ctx context.Context, info *UpdateInfo) (string, error) {
+	if info == nil || info.ReleaseInfo == nil {
+		return "", errors.New("latest release metadata is missing")
+	}
+	var assetURL string
+	for _, asset := range info.ReleaseInfo.Assets {
+		if asset.Name != releaseCompletionAsset {
+			continue
+		}
+		if assetURL != "" {
+			return "", errors.New("latest release contains duplicate completion ledgers")
+		}
+		assetURL = asset.DownloadURL
+	}
+	if assetURL == "" {
+		return "", errors.New("latest release has no completion ledger")
+	}
+	if err := validateDownloadURL(assetURL); err != nil {
+		return "", fmt.Errorf("completion ledger URL is invalid: %w", err)
+	}
+	data, err := s.githubClient.FetchChecksumFile(ctx, assetURL)
+	if err != nil {
+		return "", fmt.Errorf("download completion ledger: %w", err)
+	}
+	if len(data) > 1024*1024 {
+		return "", errors.New("completion ledger exceeds 1 MiB")
+	}
+	var ledger releaseCompletionLedger
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&ledger); err != nil {
+		return "", fmt.Errorf("decode completion ledger: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return "", errors.New("completion ledger contains trailing JSON data")
+	}
+	expectedTag := "v" + info.LatestVersion
+	expectedImage := "ghcr.io/" + strings.ToLower(githubRepo) + ":" + info.LatestVersion
+	if ledger.Schema != 3 || ledger.Tag != expectedTag || ledger.Image != expectedImage ||
+		!releaseDigestPattern.MatchString(ledger.ImageDigest) ||
+		ledger.ImmutableImage != ledger.Image+"@"+ledger.ImageDigest ||
+		!releaseObjectPattern.MatchString(ledger.Commit) ||
+		!releaseObjectPattern.MatchString(ledger.TagObject) ||
+		!releaseDigestPattern.MatchString(ledger.ControlPlaneManifestSHA) ||
+		!releaseDigestPattern.MatchString(ledger.CandidateManifestSHA) ||
+		!releaseDigestPattern.MatchString(ledger.DeployerChecksumsSHA256) {
+		return "", errors.New("completion ledger identity is invalid")
+	}
+	architectures := append([]string(nil), ledger.Architectures...)
+	sort.Strings(architectures)
+	if len(architectures) != 2 || architectures[0] != "amd64" || architectures[1] != "arm64" {
+		return "", errors.New("completion ledger architecture set is invalid")
+	}
+	for _, name := range []string{
+		"sub2api-deployer-linux-amd64",
+		"sub2api-deployer-linux-arm64",
+		"sub2api-deployer-linux-amd64.tar.gz",
+		"sub2api-deployer-linux-arm64.tar.gz",
+	} {
+		if !releaseDigestPattern.MatchString(ledger.DeployerAssets[name]) {
+			return "", fmt.Errorf("completion ledger deployer asset %s is invalid", name)
+		}
+	}
+	if len(ledger.DeployerAssets) != 4 {
+		return "", errors.New("completion ledger contains an unexpected deployer asset set")
+	}
+	return ledger.ImageDigest, nil
 }
 
 func (s *UpdateService) requireManagedDeployerUpgradeReady(ctx context.Context) error {

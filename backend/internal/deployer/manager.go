@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,6 +44,7 @@ var (
 	ErrJobNotFound                    = errors.New("deployment job not found")
 	ErrDeployerDegraded               = errors.New("deployer is degraded and requires operator reconciliation")
 	ErrControlPlaneUpgradeUnavailable = errors.New("deployer control-plane upgrade is not configured; run the one-time host bootstrap before application updates")
+	ErrControlPlaneUpgradePending     = errors.New("a deployer control-plane upgrade is still pending; wait for activation or resolve it before starting another deployment")
 	ErrDrainUnobservable              = errors.New("previous application does not expose drain blockers")
 	ErrDrainTimeout                   = errors.New("previous application drain timed out")
 )
@@ -52,6 +54,7 @@ type Manager struct {
 	runner     CommandRunner
 	httpClient *http.Client
 	now        func() time.Time
+	buildInfo  BuildInfo
 
 	mu    sync.RWMutex
 	state State
@@ -71,6 +74,16 @@ func (j *Job) candidateContainerRef() containerRef {
 }
 
 func NewManager(cfg Config, runner CommandRunner) (*Manager, error) {
+	return NewManagerWithBuildInfo(cfg, runner, BuildInfo{
+		Version: "dev",
+		Commit:  "none",
+		Date:    "unknown",
+		Type:    "dev",
+		Arch:    runtime.GOARCH,
+	})
+}
+
+func NewManagerWithBuildInfo(cfg Config, runner CommandRunner, buildInfo BuildInfo) (*Manager, error) {
 	if runner == nil {
 		runner = ExecRunner{}
 	}
@@ -84,6 +97,7 @@ func NewManager(cfg Config, runner CommandRunner) (*Manager, error) {
 		httpClient: &http.Client{Timeout: 4 * time.Second},
 		now:        time.Now,
 		state:      state,
+		buildInfo:  normalizeBuildInfo(buildInfo),
 	}
 	if err := validateStateContainerIdentities(state); err != nil {
 		return nil, err
@@ -102,6 +116,25 @@ func NewManager(cfg Config, runner CommandRunner) (*Manager, error) {
 	return m, nil
 }
 
+func normalizeBuildInfo(info BuildInfo) BuildInfo {
+	if strings.TrimSpace(info.Version) == "" {
+		info.Version = "dev"
+	}
+	if strings.TrimSpace(info.Commit) == "" {
+		info.Commit = "none"
+	}
+	if strings.TrimSpace(info.Date) == "" {
+		info.Date = "unknown"
+	}
+	if strings.TrimSpace(info.Type) == "" {
+		info.Type = "dev"
+	}
+	if strings.TrimSpace(info.Arch) == "" {
+		info.Arch = runtime.GOARCH
+	}
+	return info
+}
+
 func (m *Manager) Health() Health {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -113,7 +146,7 @@ func (m *Manager) Health() Health {
 	}
 	return Health{
 		Status:                   status,
-		Version:                  "2.0.0",
+		Version:                  ControlProtocolVersion,
 		ActiveSlot:               m.state.ActiveSlot,
 		ActiveContainer:          m.state.ActiveContainer,
 		ActiveContainerID:        m.state.ActiveContainerID,
@@ -123,6 +156,7 @@ func (m *Manager) Health() Health {
 		Degraded:                 degraded,
 		DegradedReason:           m.state.DegradedReason,
 		ControlPlaneUpgradeReady: m.controlPlaneUpgradeReady(),
+		Build:                    m.buildInfo,
 	}
 }
 
@@ -318,6 +352,7 @@ func (m *Manager) ReconcileWithOptions(ctx context.Context, slotName string, all
 func (m *Manager) Start(req DeployRequest) (*Job, error) {
 	req.Action = strings.TrimSpace(req.Action)
 	req.TargetVersion = strings.TrimPrefix(strings.TrimSpace(req.TargetVersion), "v")
+	req.ExpectedTargetDigest = strings.TrimSpace(req.ExpectedTargetDigest)
 	req.ExpectedCurrentVersion = strings.TrimPrefix(strings.TrimSpace(req.ExpectedCurrentVersion), "v")
 	req.RequestID = strings.TrimSpace(req.RequestID)
 	if req.Action != "update" && req.Action != "rollback" {
@@ -329,8 +364,53 @@ func (m *Manager) Start(req DeployRequest) (*Job, error) {
 	if !versionPattern.MatchString(req.TargetVersion) {
 		return nil, errors.New("invalid target version")
 	}
+	if req.Action == "rollback" && req.ExpectedTargetDigest != "" {
+		return nil, errors.New("rollback must not supply an expected target digest")
+	}
+	if req.Action == "update" && req.ExpectedTargetDigest != "" && !digestPattern.MatchString(req.ExpectedTargetDigest) {
+		return nil, errors.New("invalid expected target digest")
+	}
 	if !requestIDPattern.MatchString(req.RequestID) {
 		return nil, errors.New("invalid request id")
+	}
+	m.mu.RLock()
+	if previous := findJobByRequestID(m.state, req.RequestID); previous != nil {
+		if !jobMatchesRequest(previous, req) {
+			m.mu.RUnlock()
+			return nil, ErrRequestConflict
+		}
+		job := *previous
+		m.mu.RUnlock()
+		return &job, nil
+	}
+	if m.state.Degraded {
+		m.mu.RUnlock()
+		return nil, ErrDeployerDegraded
+	}
+	if m.state.Job != nil && m.state.Job.Status == JobStatusRunning {
+		m.mu.RUnlock()
+		return nil, ErrJobRunning
+	}
+	activeImage := m.state.ActiveImage
+	m.mu.RUnlock()
+	if m.cfg.ControlPlaneUpgradePath != "" {
+		if _, err := os.Lstat(m.cfg.ControlPlaneUpgradePath); err == nil {
+			return nil, ErrControlPlaneUpgradePending
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("inspect pending control-plane upgrade request: %w", err)
+		}
+	}
+	if req.Action == "update" && req.ExpectedTargetDigest == "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		labels, err := m.imageLabels(ctx, activeImage)
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("verify legacy digest migration eligibility: %w", err)
+		}
+		if strings.TrimSpace(labels[controlPlaneProtocolLabel]) != "" {
+			return nil, errors.New("expected target digest is required after control-plane protocol migration")
+		}
+		log.Printf("sub2api-deployer action=update audit=legacy_empty_expected_target_digest active_image=%q", activeImage)
 	}
 
 	m.mu.Lock()
@@ -357,22 +437,23 @@ func (m *Manager) Start(req DeployRequest) (*Job, error) {
 	}
 	now := m.now().UTC()
 	job := &Job{
-		ID:              req.RequestID,
-		Action:          req.Action,
-		TargetVersion:   req.TargetVersion,
-		ExpectedCurrent: req.ExpectedCurrentVersion,
-		Status:          JobStatusRunning,
-		Stage:           StagePulling,
-		Message:         "Pulling target image",
-		FromVersion:     m.state.ActiveVersion,
-		FromImage:       m.state.ActiveImage,
-		OldContainer:    m.state.ActiveContainer,
-		OldContainerID:  m.state.ActiveContainerID,
-		OldSlot:         m.state.ActiveSlot,
-		TrafficState:    TrafficStateOld,
-		CreatedAt:       now,
-		StartedAt:       now,
-		UpdatedAt:       now,
+		ID:                   req.RequestID,
+		Action:               req.Action,
+		TargetVersion:        req.TargetVersion,
+		ExpectedTargetDigest: req.ExpectedTargetDigest,
+		ExpectedCurrent:      req.ExpectedCurrentVersion,
+		Status:               JobStatusRunning,
+		Stage:                StagePulling,
+		Message:              "Pulling target image",
+		FromVersion:          m.state.ActiveVersion,
+		FromImage:            m.state.ActiveImage,
+		OldContainer:         m.state.ActiveContainer,
+		OldContainerID:       m.state.ActiveContainerID,
+		OldSlot:              m.state.ActiveSlot,
+		TrafficState:         TrafficStateOld,
+		CreatedAt:            now,
+		StartedAt:            now,
+		UpdatedAt:            now,
 	}
 	next := cloneState(m.state)
 	archiveTerminalJob(&next, now)
@@ -584,14 +665,7 @@ func (m *Manager) recoverInterruptedJob() error {
 			}
 		}
 		if recoveryErr == nil {
-			current, err := m.Job(job.ID)
-			if err != nil {
-				return err
-			}
-			recoveryErr = m.persistSuccessfulDeployment(current)
-		}
-		if recoveryErr == nil {
-			return m.finishRecoveredJob(job, JobStatusSucceeded, "Recovered deployment after deployer restart", "")
+			return m.completeRecoveredDeployment(job.ID)
 		}
 	}
 
@@ -608,6 +682,38 @@ func (m *Manager) recoverInterruptedJob() error {
 		jobError += "; candidate recovery failed: " + recoveryErr.Error()
 	}
 	return m.finishRecoveredJob(job, JobStatusFailed, "Interrupted deployment was rolled back", jobError)
+}
+
+func (m *Manager) completeRecoveredDeployment(jobID string) error {
+	job, err := m.Job(jobID)
+	if err != nil {
+		return err
+	}
+	if err := m.persistSuccessfulDeployment(job); err != nil {
+		return err
+	}
+
+	controlPlanePrepared, controlPlaneErr := m.prepareControlPlaneUpgrade(job)
+	cleanupWarning := ""
+	if controlPlaneErr != nil {
+		_ = m.writeControlPlaneUpgradeStatus(job, "failed", controlPlaneErr.Error())
+		cleanupWarning = "application update recovered successfully, but the deployer control-plane upgrade could not be prepared: " + controlPlaneErr.Error()
+	}
+	job, err = m.Job(jobID)
+	if err != nil {
+		return err
+	}
+	job.CleanupWarning = cleanupWarning
+	if err := m.finishRecoveredJob(*job, JobStatusSucceeded, "Recovered deployment after deployer restart", ""); err != nil {
+		return err
+	}
+	if controlPlanePrepared {
+		if err := m.startControlPlaneUpgrade(job); err != nil {
+			_ = m.writeControlPlaneUpgradeStatus(job, "failed", err.Error())
+			_ = m.appendCleanupWarning(jobID, "application update recovered successfully, but the deployer control-plane upgrade was not scheduled: "+err.Error())
+		}
+	}
+	return nil
 }
 
 func (m *Manager) execute(jobID string) {
@@ -665,6 +771,10 @@ func (m *Manager) execute(jobID string) {
 	digest, err := m.resolveDigest(ctx, taggedImage)
 	if err != nil {
 		_ = m.fail(jobID, err)
+		return
+	}
+	if job.ExpectedTargetDigest != "" && digest != job.ExpectedTargetDigest {
+		_ = m.fail(jobID, fmt.Errorf("target image digest does not match the verified release ledger: expected %s, got %s", job.ExpectedTargetDigest, digest))
 		return
 	}
 	targetImage := m.cfg.ImageRepository + "@" + digest
@@ -871,6 +981,7 @@ func (m *Manager) finishCandidateDeployment(ctx context.Context, jobID string, c
 	controlPlanePrepared, controlPlaneErr := m.prepareControlPlaneUpgrade(job)
 	cleanupWarning := ""
 	if controlPlaneErr != nil {
+		_ = m.writeControlPlaneUpgradeStatus(job, "failed", controlPlaneErr.Error())
 		cleanupWarning = "application update succeeded, but the deployer control-plane upgrade could not be prepared: " + controlPlaneErr.Error()
 	}
 	if err := m.complete(jobID, "Deployment completed", cleanupWarning); err != nil {
@@ -892,15 +1003,27 @@ type controlPlaneUpgradeRequest struct {
 	TargetVersion     string `json:"target_version"`
 	ExpectedImage     string `json:"expected_image"`
 	ExpectedImageHash string `json:"expected_image_digest"`
+	StagedBinary      string `json:"staged_binary"`
+	StagedBinarySHA   string `json:"staged_binary_sha256"`
+	StagedManifest    string `json:"staged_manifest"`
+	StagedManifestSHA string `json:"staged_manifest_sha256"`
+	ExpectedCommit    string `json:"expected_commit"`
+	ExpectedArch      string `json:"expected_arch"`
 }
 
 type controlPlaneUpgradeStatus struct {
-	Schema        int    `json:"schema"`
-	JobID         string `json:"job_id"`
-	ContainerID   string `json:"container_id"`
-	TargetVersion string `json:"target_version"`
-	Status        string `json:"status"`
-	Error         string `json:"error,omitempty"`
+	Schema        int        `json:"schema"`
+	JobID         string     `json:"job_id"`
+	ContainerID   string     `json:"container_id"`
+	TargetVersion string     `json:"target_version"`
+	Status        string     `json:"status"`
+	Attempt       int        `json:"attempt,omitempty"`
+	MaxAttempts   int        `json:"max_attempts,omitempty"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+	NextAttemptAt *time.Time `json:"next_attempt_at,omitempty"`
+	Error         string     `json:"error,omitempty"`
+	LastError     string     `json:"last_error,omitempty"`
+	ErrorClass    string     `json:"error_class,omitempty"`
 }
 
 func (m *Manager) prepareControlPlaneUpgrade(job *Job) (bool, error) {
@@ -915,14 +1038,32 @@ func (m *Manager) prepareControlPlaneUpgrade(job *Job) (bool, error) {
 	if job == nil || job.CandidateContainerID == "" || job.TargetVersion == "" || job.TargetDigest == "" {
 		return false, errors.New("successful deployment is missing immutable control-plane upgrade identity")
 	}
+	stageContext, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	stage, legacy, err := m.stageControlPlaneUpgrade(stageContext, job)
+	if err != nil {
+		return false, err
+	}
+	if legacy {
+		if err := m.writeControlPlaneUpgradeStatus(job, "skipped", "target image predates control-plane self-upgrade"); err != nil {
+			return false, fmt.Errorf("persist skipped control-plane upgrade status: %w", err)
+		}
+		return false, nil
+	}
 	request := controlPlaneUpgradeRequest{
-		Schema:            1,
+		Schema:            2,
 		JobID:             job.ID,
 		ContainerID:       job.CandidateContainerID,
 		ContainerName:     job.CandidateContainer,
 		TargetVersion:     job.TargetVersion,
 		ExpectedImage:     job.TargetImage,
 		ExpectedImageHash: job.TargetDigest,
+		StagedBinary:      stage.BinaryPath,
+		StagedBinarySHA:   stage.BinarySHA256,
+		StagedManifest:    stage.ManifestPath,
+		StagedManifestSHA: stage.ManifestSHA,
+		ExpectedCommit:    stage.Commit,
+		ExpectedArch:      stage.Arch,
 	}
 	data, err := json.Marshal(request)
 	if err != nil {
@@ -930,10 +1071,12 @@ func (m *Manager) prepareControlPlaneUpgrade(job *Job) (bool, error) {
 	}
 	data = append(data, '\n')
 	if err := atomicWrite(m.cfg.ControlPlaneUpgradePath, data, 0600); err != nil {
+		_ = os.RemoveAll(stage.Directory)
 		return false, fmt.Errorf("persist control-plane upgrade request: %w", err)
 	}
 	if err := m.writeControlPlaneUpgradeStatus(job, "pending", ""); err != nil {
 		_ = os.Remove(m.cfg.ControlPlaneUpgradePath)
+		_ = os.RemoveAll(stage.Directory)
 		return false, fmt.Errorf("persist control-plane upgrade status: %w", err)
 	}
 	if err := m.updateJob(job.ID, StageActivating, "Application active; upgrading deployer control plane", func(current *Job) {
@@ -942,6 +1085,7 @@ func (m *Manager) prepareControlPlaneUpgrade(job *Job) (bool, error) {
 	}); err != nil {
 		_ = os.Remove(m.cfg.ControlPlaneUpgradePath)
 		_ = os.Remove(m.controlPlaneUpgradeStatusPath())
+		_ = os.RemoveAll(stage.Directory)
 		return false, fmt.Errorf("persist pending control-plane upgrade: %w", err)
 	}
 	return true, nil
@@ -969,13 +1113,20 @@ func (m *Manager) writeControlPlaneUpgradeStatus(job *Job, status, statusError s
 	if job == nil || m.controlPlaneUpgradeStatusPath() == "" {
 		return errors.New("control-plane upgrade status is not configured")
 	}
+	now := m.nowTime().UTC()
 	record := controlPlaneUpgradeStatus{
 		Schema:        1,
 		JobID:         job.ID,
 		ContainerID:   job.CandidateContainerID,
 		TargetVersion: job.TargetVersion,
 		Status:        status,
+		MaxAttempts:   5,
+		UpdatedAt:     &now,
 		Error:         strings.TrimSpace(statusError),
+		LastError:     strings.TrimSpace(statusError),
+	}
+	if record.Error != "" {
+		record.ErrorClass = "permanent"
 	}
 	data, err := json.Marshal(record)
 	if err != nil {
@@ -993,11 +1144,29 @@ func (m *Manager) decorateControlPlaneUpgradeStatus(job *Job) {
 		return
 	}
 	var record controlPlaneUpgradeStatus
-	if json.Unmarshal(data, &record) != nil || record.Schema != 1 || record.JobID != job.ID || record.ContainerID != job.CandidateContainerID || record.TargetVersion != job.TargetVersion {
+	if err := json.Unmarshal(data, &record); err != nil || record.Schema != 1 {
+		m.decorateUnknownControlPlaneStatus(job, "control-plane upgrade status is unreadable or uses an unsupported schema")
+		return
+	}
+	if record.JobID != job.ID || record.ContainerID != job.CandidateContainerID || record.TargetVersion != job.TargetVersion {
+		m.decorateUnknownControlPlaneStatus(job, "control-plane upgrade status identity does not match the current deployment")
 		return
 	}
 	job.ControlPlaneUpgradeStatus = record.Status
 	job.ControlPlaneUpgradeError = record.Error
+	job.ControlPlaneUpgradeAttempt = record.Attempt
+	job.ControlPlaneUpgradeMaxAttempts = record.MaxAttempts
+	job.ControlPlaneUpgradeNextAttempt = record.NextAttemptAt
+	if record.Status == "pending" {
+		updatedAt := job.UpdatedAt
+		if record.UpdatedAt != nil && !record.UpdatedAt.IsZero() {
+			updatedAt = *record.UpdatedAt
+		}
+		if !updatedAt.IsZero() && m.nowTime().Sub(updatedAt) > 10*time.Minute {
+			job.ControlPlaneUpgradeStatus = "unknown"
+			job.ControlPlaneUpgradeError = "control-plane upgrade remained pending for more than 10 minutes; inspect the activator service and timer"
+		}
+	}
 	if record.Status == "failed" && record.Error != "" {
 		warning := "deployer control-plane upgrade failed: " + record.Error
 		if job.CleanupWarning == "" {
@@ -1006,6 +1175,24 @@ func (m *Manager) decorateControlPlaneUpgradeStatus(job *Job) {
 			job.CleanupWarning += "; " + warning
 		}
 	}
+}
+
+func (m *Manager) decorateUnknownControlPlaneStatus(job *Job, message string) {
+	m.mu.RLock()
+	isCurrent := m.state.Job != nil && m.state.Job.ID == job.ID
+	m.mu.RUnlock()
+	if !isCurrent {
+		return
+	}
+	job.ControlPlaneUpgradeStatus = "unknown"
+	job.ControlPlaneUpgradeError = message
+}
+
+func (m *Manager) nowTime() time.Time {
+	if m.now != nil {
+		return m.now()
+	}
+	return time.Now()
 }
 
 func (m *Manager) fail(jobID string, cause error) error {
@@ -1320,6 +1507,7 @@ func (m *Manager) finishRecoveredJob(job Job, status, message, jobError string) 
 	next.Job.Stage = map[bool]string{true: StageCompleted, false: StageFailed}[status == JobStatusSucceeded]
 	next.Job.Message = message
 	next.Job.Error = jobError
+	next.Job.CleanupWarning = job.CleanupWarning
 	next.Job.BackgroundActivated = job.BackgroundActivated
 	next.Job.RollbackPerformed = job.RollbackPerformed
 	next.Job.UpdatedAt = now
@@ -1390,6 +1578,7 @@ func findJobByRequestID(state State, requestID string) *Job {
 func jobMatchesRequest(job *Job, req DeployRequest) bool {
 	return job.Action == req.Action &&
 		job.TargetVersion == req.TargetVersion &&
+		job.ExpectedTargetDigest == req.ExpectedTargetDigest &&
 		job.ExpectedCurrent == req.ExpectedCurrentVersion
 }
 
@@ -1490,13 +1679,9 @@ func (m *Manager) resolveDigest(ctx context.Context, taggedImage string) (string
 }
 
 func (m *Manager) verifyImageLabels(ctx context.Context, image string) error {
-	output, err := m.runner.Run(ctx, nil, m.cfg.DockerBinary, "image", "inspect", "--format", "{{json .Config.Labels}}", image)
+	labels, err := m.imageLabels(ctx, image)
 	if err != nil {
-		return fmt.Errorf("inspect image labels: %w", err)
-	}
-	labels := make(map[string]string)
-	if err := json.Unmarshal([]byte(output), &labels); err != nil {
-		return fmt.Errorf("decode image labels: %w", err)
+		return err
 	}
 	for key, expected := range m.cfg.RequiredImageLabels {
 		if labels[key] != expected {

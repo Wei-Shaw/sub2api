@@ -2,6 +2,12 @@ version: 2
 
 project_name: sub2api
 
+# Pre-tag Build Once uses snapshot mode because GoReleaser otherwise requires
+# the selected current tag to exist at HEAD. The validated release version is
+# injected explicitly, so snapshot artifacts carry their final identity.
+snapshot:
+  version_template: '{{ .Env.RELEASE_VERSION }}'
+
 builds:
   - id: sub2api
     dir: backend
@@ -23,12 +29,35 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
+      - -X main.Version={{.Version}}
       - -X main.Commit={{.Commit}}
-      - -X main.Date={{.Date}}
+      - -X main.Date={{.CommitDate}}
       - -X main.BuildType=release
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+  - id: sub2api-deployer
+    dir: backend
+    main: ./cmd/deployer
+    binary: sub2api-deployer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Commit={{.Commit}}
+      - -X main.Date={{.CommitDate}}
+      - -X main.BuildType=release
+    mod_timestamp: '{{ .CommitTimestamp }}'
 
 archives:
   - id: default
+    ids:
+      - sub2api
     formats:
       - tar.gz
     name_template: >-
@@ -56,6 +85,7 @@ dockers_v2:
   - id: sub2api
     ids:
       - sub2api
+      - sub2api-deployer
     images:
       - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api"
       - '{{ if ne .Env.DOCKERHUB_USERNAME "skip" }}{{ .Env.DOCKERHUB_USERNAME }}/sub2api{{ end }}'
@@ -64,6 +94,7 @@ dockers_v2:
     dockerfile: Dockerfile.goreleaser
     extra_files:
       - deploy/docker-entrypoint.sh
+      - CONTROL-PLANE-MANIFEST.json
     platforms:
       - linux/amd64
       - linux/arm64
@@ -72,6 +103,8 @@ dockers_v2:
       org.opencontainers.image.revision: "{{ .Commit }}"
       org.opencontainers.image.source: "https://github.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}"
       io.tokensupply.sub2api.update-protocol: "2"
+      io.tokensupply.sub2api.control-plane-protocol: "1"
+      io.tokensupply.sub2api.control-plane-manifest-sha256: "{{ .Env.CONTROL_PLANE_MANIFEST_SHA256 }}"
 
 release:
   github:

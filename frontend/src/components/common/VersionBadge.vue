@@ -1123,6 +1123,7 @@ function isDangerousDeploymentJob(job: DeploymentJob | null): boolean {
     job?.status === 'degraded' ||
     job?.status === 'rollback_failed' ||
     job?.control_plane_upgrade_status === 'failed' ||
+    job?.control_plane_upgrade_status === 'unknown' ||
     Boolean(job?.rollback_error)
   )
 }
@@ -1137,7 +1138,11 @@ function deploymentFailureMessage(job: DeploymentJob): string {
           ? t('version.deploymentRolledBack')
           : t('version.updateFailed')
   const controlPlaneFallback =
-    job.control_plane_upgrade_status === 'failed' ? t('version.controlPlaneUpgradeFailed') : ''
+    job.control_plane_upgrade_status === 'failed'
+      ? t('version.controlPlaneUpgradeFailed')
+      : job.control_plane_upgrade_status === 'unknown'
+        ? t('version.controlPlaneUpgradeUnknown')
+        : ''
   const details = [controlPlaneFallback, job.error, job.rollback_error, job.control_plane_upgrade_error].filter(
     (value, index, values): value is string => Boolean(value) && values.indexOf(value) === index
   )
@@ -1164,7 +1169,9 @@ async function pollDeployment(jobID: string, token: number) {
       deploymentJob.value = job
       transientFailures = 0
       const controlPlanePending =
-        job.status === 'succeeded' && job.control_plane_upgrade_status === 'pending'
+        job.status === 'succeeded' &&
+        (job.control_plane_upgrade_status === 'pending' ||
+          job.control_plane_upgrade_status === 'retrying')
       if (controlPlanePending) {
         controlPlanePendingSince ??= Date.now()
         if (Date.now() - controlPlanePendingSince >= CONTROL_PLANE_UPGRADE_TIMEOUT_MS) {
@@ -1325,7 +1332,9 @@ async function recoverCurrentDeployment() {
     const job = await getCurrentDeploymentJob()
     if (
       job.status === 'running' ||
-      (job.status === 'succeeded' && job.control_plane_upgrade_status === 'pending')
+      (job.status === 'succeeded' &&
+        (job.control_plane_upgrade_status === 'pending' ||
+          job.control_plane_upgrade_status === 'retrying'))
     ) {
       trackDeployment(job, job.action)
     } else if (isDangerousDeploymentJob(job)) {

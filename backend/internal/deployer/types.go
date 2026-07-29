@@ -2,6 +2,8 @@ package deployer
 
 import "time"
 
+const ControlProtocolVersion = "2.0.0"
+
 const (
 	JobStatusRunning        = "running"
 	JobStatusSucceeded      = "succeeded"
@@ -41,47 +43,52 @@ type Slot struct {
 type DeployRequest struct {
 	Action                 string `json:"action"`
 	TargetVersion          string `json:"target_version"`
+	ExpectedTargetDigest   string `json:"expected_target_digest,omitempty"`
 	ExpectedCurrentVersion string `json:"expected_current_version,omitempty"`
 	RequestID              string `json:"request_id"`
 }
 
 type Job struct {
-	ID                        string     `json:"id"`
-	Action                    string     `json:"action"`
-	TargetVersion             string     `json:"target_version"`
-	ExpectedCurrent           string     `json:"expected_current_version,omitempty"`
-	Status                    string     `json:"status"`
-	Stage                     string     `json:"stage"`
-	Message                   string     `json:"message,omitempty"`
-	Error                     string     `json:"error,omitempty"`
-	FromVersion               string     `json:"from_version,omitempty"`
-	FromImage                 string     `json:"from_image,omitempty"`
-	TargetImage               string     `json:"target_image,omitempty"`
-	TargetDigest              string     `json:"target_digest,omitempty"`
-	OldContainer              string     `json:"old_container,omitempty"`
-	OldContainerID            string     `json:"old_container_id,omitempty"`
-	HandoffPrepared           bool       `json:"handoff_prepared"`
-	HandoffContainer          string     `json:"handoff_container,omitempty"`
-	HandoffContainerID        string     `json:"handoff_container_id,omitempty"`
-	OldSlot                   string     `json:"old_slot,omitempty"`
-	OldRuntimeSlot            string     `json:"old_runtime_slot,omitempty"`
-	OldSlotCaptured           bool       `json:"old_runtime_slot_captured"`
-	CandidateContainer        string     `json:"candidate_container,omitempty"`
-	CandidateContainerID      string     `json:"candidate_container_id,omitempty"`
-	CandidateSlot             string     `json:"candidate_slot,omitempty"`
-	CandidatePort             int        `json:"candidate_port,omitempty"`
-	TrafficState              string     `json:"traffic_state,omitempty"`
-	TrafficSwitched           bool       `json:"traffic_switched"`
-	BackgroundActivated       bool       `json:"background_activated"`
-	RollbackPerformed         bool       `json:"rollback_performed"`
-	RollbackError             string     `json:"rollback_error,omitempty"`
-	CleanupWarning            string     `json:"cleanup_warning,omitempty"`
-	ControlPlaneUpgradeStatus string     `json:"control_plane_upgrade_status,omitempty"`
-	ControlPlaneUpgradeError  string     `json:"control_plane_upgrade_error,omitempty"`
-	CreatedAt                 time.Time  `json:"created_at"`
-	StartedAt                 time.Time  `json:"started_at"`
-	UpdatedAt                 time.Time  `json:"updated_at"`
-	FinishedAt                *time.Time `json:"finished_at,omitempty"`
+	ID                             string     `json:"id"`
+	Action                         string     `json:"action"`
+	TargetVersion                  string     `json:"target_version"`
+	ExpectedCurrent                string     `json:"expected_current_version,omitempty"`
+	Status                         string     `json:"status"`
+	Stage                          string     `json:"stage"`
+	Message                        string     `json:"message,omitempty"`
+	Error                          string     `json:"error,omitempty"`
+	FromVersion                    string     `json:"from_version,omitempty"`
+	FromImage                      string     `json:"from_image,omitempty"`
+	TargetImage                    string     `json:"target_image,omitempty"`
+	TargetDigest                   string     `json:"target_digest,omitempty"`
+	ExpectedTargetDigest           string     `json:"expected_target_digest,omitempty"`
+	OldContainer                   string     `json:"old_container,omitempty"`
+	OldContainerID                 string     `json:"old_container_id,omitempty"`
+	HandoffPrepared                bool       `json:"handoff_prepared"`
+	HandoffContainer               string     `json:"handoff_container,omitempty"`
+	HandoffContainerID             string     `json:"handoff_container_id,omitempty"`
+	OldSlot                        string     `json:"old_slot,omitempty"`
+	OldRuntimeSlot                 string     `json:"old_runtime_slot,omitempty"`
+	OldSlotCaptured                bool       `json:"old_runtime_slot_captured"`
+	CandidateContainer             string     `json:"candidate_container,omitempty"`
+	CandidateContainerID           string     `json:"candidate_container_id,omitempty"`
+	CandidateSlot                  string     `json:"candidate_slot,omitempty"`
+	CandidatePort                  int        `json:"candidate_port,omitempty"`
+	TrafficState                   string     `json:"traffic_state,omitempty"`
+	TrafficSwitched                bool       `json:"traffic_switched"`
+	BackgroundActivated            bool       `json:"background_activated"`
+	RollbackPerformed              bool       `json:"rollback_performed"`
+	RollbackError                  string     `json:"rollback_error,omitempty"`
+	CleanupWarning                 string     `json:"cleanup_warning,omitempty"`
+	ControlPlaneUpgradeStatus      string     `json:"control_plane_upgrade_status,omitempty"`
+	ControlPlaneUpgradeError       string     `json:"control_plane_upgrade_error,omitempty"`
+	ControlPlaneUpgradeAttempt     int        `json:"control_plane_upgrade_attempt,omitempty"`
+	ControlPlaneUpgradeMaxAttempts int        `json:"control_plane_upgrade_max_attempts,omitempty"`
+	ControlPlaneUpgradeNextAttempt *time.Time `json:"control_plane_upgrade_next_attempt_at,omitempty"`
+	CreatedAt                      time.Time  `json:"created_at"`
+	StartedAt                      time.Time  `json:"started_at"`
+	UpdatedAt                      time.Time  `json:"updated_at"`
+	FinishedAt                     *time.Time `json:"finished_at,omitempty"`
 }
 
 type State struct {
@@ -105,15 +112,24 @@ type State struct {
 }
 
 type Health struct {
-	Status                   string `json:"status"`
-	Version                  string `json:"version"`
-	ActiveSlot               string `json:"active_slot,omitempty"`
-	ActiveContainer          string `json:"active_container,omitempty"`
-	ActiveContainerID        string `json:"active_container_id,omitempty"`
-	ActivePort               int    `json:"active_port,omitempty"`
-	ActiveVersion            string `json:"active_version,omitempty"`
-	JobRunning               bool   `json:"job_running"`
-	Degraded                 bool   `json:"degraded"`
-	DegradedReason           string `json:"degraded_reason,omitempty"`
-	ControlPlaneUpgradeReady bool   `json:"control_plane_upgrade_ready"`
+	Status                   string    `json:"status"`
+	Version                  string    `json:"version"`
+	ActiveSlot               string    `json:"active_slot,omitempty"`
+	ActiveContainer          string    `json:"active_container,omitempty"`
+	ActiveContainerID        string    `json:"active_container_id,omitempty"`
+	ActivePort               int       `json:"active_port,omitempty"`
+	ActiveVersion            string    `json:"active_version,omitempty"`
+	JobRunning               bool      `json:"job_running"`
+	Degraded                 bool      `json:"degraded"`
+	DegradedReason           string    `json:"degraded_reason,omitempty"`
+	ControlPlaneUpgradeReady bool      `json:"control_plane_upgrade_ready"`
+	Build                    BuildInfo `json:"build"`
+}
+
+type BuildInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+	Type    string `json:"type"`
+	Arch    string `json:"arch"`
 }

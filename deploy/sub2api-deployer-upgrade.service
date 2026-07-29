@@ -1,6 +1,6 @@
 [Unit]
 Description=Upgrade the Sub2API managed Docker deployer control plane
-After=docker.service
+After=docker.service sub2api-deployer.service
 Requires=docker.service
 
 [Service]

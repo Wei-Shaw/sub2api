@@ -328,6 +328,59 @@ describe('VersionBadge managed deployment recovery', () => {
     wrapper.unmount()
   })
 
+  it('keeps an unknown control-plane outcome visible as a dangerous state', async () => {
+    mocks.getCurrentDeploymentJob.mockResolvedValue({
+      ...terminalJob('succeeded'),
+      stage: 'completed',
+      error: '',
+      control_plane_upgrade_status: 'unknown',
+      control_plane_upgrade_error: 'activation status exceeded its durable deadline'
+    })
+
+    const wrapper = mount(VersionBadge, {
+      props: { version: '0.1.164-ts.1' },
+      global: { stubs: { Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="version-badge"]').classes()).toContain('bg-red-100')
+    await wrapper.get('[data-testid="version-badge"]').trigger('click')
+    const alert = wrapper.get('[data-testid="deployment-error"]')
+    expect(alert.text()).toContain('version.controlPlaneUpgradeUnknown')
+    expect(alert.text()).toContain('activation status exceeded its durable deadline')
+    wrapper.unmount()
+  })
+
+  it('continues a recovered retry and accepts skipped as a terminal success', async () => {
+    mocks.getCurrentDeploymentJob.mockResolvedValue({
+      ...terminalJob('succeeded'),
+      stage: 'completed',
+      error: '',
+      control_plane_upgrade_status: 'retrying',
+      control_plane_upgrade_attempt: 2,
+      control_plane_upgrade_max_attempts: 5
+    })
+    mocks.getDeploymentJob.mockResolvedValue({
+      ...terminalJob('succeeded'),
+      stage: 'completed',
+      error: '',
+      control_plane_upgrade_status: 'skipped'
+    })
+
+    const wrapper = mount(VersionBadge, {
+      props: { version: '0.1.164-ts.1' },
+      global: { stubs: { Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+
+    expect(mocks.getDeploymentJob).toHaveBeenCalledWith('job-succeeded')
+    expect(mocks.appStore.clearVersionCache).toHaveBeenCalledTimes(1)
+    await wrapper.get('[data-testid="version-badge"]').trigger('click')
+    expect(wrapper.text()).toContain('version.updateComplete')
+    expect(wrapper.find('[data-testid="deployment-error"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('restores the rollback target when recovering a failed rollback job', async () => {
     const failedRollback = {
       ...terminalJob('failed'),

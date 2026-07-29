@@ -93,6 +93,8 @@ expect_failure 'Could not parse GitHub Releases' bash "$SAFETY_SCRIPT" \
 
 bash "$SAFETY_SCRIPT" assert-unpublished-json v1.0.0-ts.11 "$RELEASES_JSON"
 expect_failure 'already exists' bash "$SAFETY_SCRIPT" assert-unpublished-json v1.0.0-ts.10 "$RELEASES_JSON"
+bash "$SAFETY_SCRIPT" assert-not-published-json v1.0.0-ts.10 "$RELEASES_JSON"
+expect_failure 'already published' bash "$SAFETY_SCRIPT" assert-not-published-json v1.0.0-ts.2 "$RELEASES_JSON"
 
 VERSION_FILE="$TEST_ROOT/VERSION"
 printf '%s\n' '1.0.0-ts.10' > "$VERSION_FILE"
@@ -220,6 +222,8 @@ jq -n \
   --arg dockerhub_image docker.io/example/sub2api:1.0.0-ts.10 \
   --arg dockerhub_image_digest "$DOCKERHUB_MANIFEST_DIGEST" \
   --arg deployer_checksums_sha256 "$DEPLOYER_CHECKSUMS_DIGEST" \
+  --arg control_plane_manifest_sha256 "sha256:$(printf 'f%.0s' {1..64})" \
+  --arg candidate_manifest_sha256 "sha256:$(printf '1%.0s' {1..64})" \
   --arg deployer_amd64_sha256 "sha256:$DEPLOYER_AMD64_SHA" \
   --arg deployer_arm64_sha256 "sha256:$DEPLOYER_ARM64_SHA" \
   --arg deployer_bundle_amd64_sha256 "sha256:$DEPLOYER_BUNDLE_AMD64_SHA" \
@@ -236,6 +240,8 @@ jq -n \
     dockerhub_image_digest: $dockerhub_image_digest,
     dockerhub_immutable_image: ($dockerhub_image + "@" + $dockerhub_image_digest),
     architectures: ["amd64", "arm64"],
+    control_plane_manifest_sha256: $control_plane_manifest_sha256,
+    candidate_manifest_sha256: $candidate_manifest_sha256,
     deployer_checksums_sha256: $deployer_checksums_sha256,
     deployer_assets: {
       "sub2api-deployer-linux-amd64": $deployer_amd64_sha256,
@@ -260,6 +266,31 @@ bash "$SAFETY_SCRIPT" verify-completion-json \
 bash "$SAFETY_SCRIPT" verify-completion-manifest "$COMPLETION_FILE" "$MANIFEST_FILE"
 bash "$SAFETY_SCRIPT" verify-completion-deployer-checksums \
   "$COMPLETION_FILE" "$DEPLOYER_CHECKSUMS_FILE"
+CANDIDATE_DIR="$TEST_ROOT/candidate"
+mkdir -p "$CANDIDATE_DIR"
+jq '{
+  schema: 1,
+  version: (.tag | ltrimstr("v")),
+  commit,
+  image,
+  candidate_image: ((.image | split(":")[0:-1] | join(":")) + ":candidate-" + .commit),
+  image_digest,
+  immutable_candidate_image: (((.image | split(":")[0:-1] | join(":")) + ":candidate-" + .commit) + "@" + .image_digest),
+  architectures,
+  control_plane_manifest_sha256,
+  deployer_checksums_sha256,
+  deployer_assets
+}' "$COMPLETION_FILE" > "$CANDIDATE_DIR/candidate.json"
+printf 'candidate manifest\n' > "$CANDIDATE_DIR/MANIFEST.sha256"
+CANDIDATE_MANIFEST_DIGEST="sha256:$(sha256sum "$CANDIDATE_DIR/MANIFEST.sha256" | awk '{print $1}')"
+jq --arg digest "$CANDIDATE_MANIFEST_DIGEST" '.candidate_manifest_sha256 = $digest' \
+  "$COMPLETION_FILE" > "$TEST_ROOT/completion-with-candidate.json"
+bash "$SAFETY_SCRIPT" verify-completion-candidate \
+  "$TEST_ROOT/completion-with-candidate.json" "$CANDIDATE_DIR"
+jq '.image_digest = "sha256:'"$(printf '9%.0s' {1..64})"'"' \
+  "$TEST_ROOT/completion-with-candidate.json" > "$TEST_ROOT/bad-candidate-completion.json"
+expect_failure 'does not match the audited Build Once candidate' bash "$SAFETY_SCRIPT" \
+  verify-completion-candidate "$TEST_ROOT/bad-candidate-completion.json" "$CANDIDATE_DIR"
 LEGACY_COMPLETION_FILE="$TEST_ROOT/sub2api-release-complete-schema2.json"
 jq '.schema = 2 | del(.deployer_assets)' "$COMPLETION_FILE" > "$LEGACY_COMPLETION_FILE"
 bash "$SAFETY_SCRIPT" verify-completion-json \
@@ -314,7 +345,11 @@ FAKE_BIN="$TEST_ROOT/fake-bin"
 mkdir -p "$FAKE_BIN"
 printf '%s\n' \
   '#!/usr/bin/env bash' \
-  'case "${*: -1}" in' \
+  'ref=""' \
+  'for ((i=1; i<=$#; i++)); do' \
+  '  if [[ "${!i}" == inspect ]]; then next=$((i+1)); ref=${!next}; break; fi' \
+  'done' \
+  'case "$ref" in' \
   '  *:missing) echo "manifest unknown" >&2; exit 1 ;;' \
   '  *:network-error) echo "registry timeout" >&2; exit 1 ;;' \
   '  *) echo "image exists"; exit 0 ;;' \
@@ -325,6 +360,37 @@ expect_failure 'already exists' env PATH="$FAKE_BIN:$PATH" bash "$SAFETY_SCRIPT"
   assert-image-absent ghcr.io/example/sub2api:existing
 expect_failure 'Could not prove' env PATH="$FAKE_BIN:$PATH" bash "$SAFETY_SCRIPT" \
   assert-image-absent ghcr.io/example/sub2api:network-error
+
+MATCHING_IMAGE_DIGEST="sha256:$(printf 'd%.0s' {1..64})"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'ref=""' \
+  'for ((i=1; i<=$#; i++)); do' \
+  '  if [[ "${!i}" == inspect ]]; then next=$((i+1)); ref=${!next}; break; fi' \
+  'done' \
+  'case "$ref" in' \
+  '  *:matching) printf '\''{"manifest":{"digest":"%s"}}\n'\'' "$MATCHING_IMAGE_DIGEST"; exit 0 ;;' \
+  '  *:mismatch) printf '\''{"manifest":{"digest":"sha256:%064d"}}\n'\'' 0; exit 0 ;;' \
+  '  *:missing) echo "manifest unknown" >&2; exit 1 ;;' \
+  '  *:network-error) echo "registry timeout" >&2; exit 1 ;;' \
+  'esac' \
+  'exit 1' > "$FAKE_BIN/docker"
+chmod +x "$FAKE_BIN/docker"
+env PATH="$FAKE_BIN:$PATH" MATCHING_IMAGE_DIGEST="$MATCHING_IMAGE_DIGEST" \
+  bash "$SAFETY_SCRIPT" assert-image-digest-matches \
+  ghcr.io/example/sub2api:matching "$MATCHING_IMAGE_DIGEST"
+expect_failure 'does not match the recorded candidate digest' env PATH="$FAKE_BIN:$PATH" \
+  MATCHING_IMAGE_DIGEST="$MATCHING_IMAGE_DIGEST" bash "$SAFETY_SCRIPT" \
+  assert-image-digest-matches ghcr.io/example/sub2api:mismatch "$MATCHING_IMAGE_DIGEST"
+expect_failure 'is missing' env PATH="$FAKE_BIN:$PATH" \
+  MATCHING_IMAGE_DIGEST="$MATCHING_IMAGE_DIGEST" bash "$SAFETY_SCRIPT" \
+  assert-image-digest-matches ghcr.io/example/sub2api:missing "$MATCHING_IMAGE_DIGEST"
+expect_failure 'Could not inspect image tag' env PATH="$FAKE_BIN:$PATH" \
+  MATCHING_IMAGE_DIGEST="$MATCHING_IMAGE_DIGEST" bash "$SAFETY_SCRIPT" \
+  assert-image-digest-matches ghcr.io/example/sub2api:network-error "$MATCHING_IMAGE_DIGEST"
+expect_failure 'Invalid expected image digest' env PATH="$FAKE_BIN:$PATH" \
+  MATCHING_IMAGE_DIGEST="$MATCHING_IMAGE_DIGEST" bash "$SAFETY_SCRIPT" \
+  assert-image-digest-matches ghcr.io/example/sub2api:matching invalid
 
 PROMOTION_MANIFEST="$TEST_ROOT/promotion-manifest.json"
 PROMOTION_LOG="$TEST_ROOT/promotion.log"
