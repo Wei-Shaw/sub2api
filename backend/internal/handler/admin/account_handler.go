@@ -1010,6 +1010,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	if len(req.Credentials) > 0 {
 		h.scheduleOpenAIResponsesProbe(account)
 	}
+	invalidateLiveAccountModels(accountID)
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
@@ -2370,6 +2371,15 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
 		response.NotFound(c, "Account not found")
+		return
+	}
+
+	// Prefer the account's real upstream model list so the connection-test
+	// dialog offers models that this account can actually serve. Preserve the
+	// existing static list as a fallback when live discovery is unsupported or
+	// temporarily unavailable.
+	if models, ok := h.tryLiveAccountModels(c.Request.Context(), account, c.Query("refresh") == "1"); ok {
+		response.Success(c, models)
 		return
 	}
 

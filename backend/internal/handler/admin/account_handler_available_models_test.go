@@ -30,9 +30,26 @@ func (s *availableModelsAdminService) GetAccount(_ context.Context, id int64) (*
 }
 
 func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
+	return setupAvailableModelsRouterWithUpstream(adminSvc, nil)
+}
+
+func setupAvailableModelsRouterWithUpstream(adminSvc service.AdminService, upstream service.HTTPUpstream) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	var accountTestSvc *service.AccountTestService
+	if upstream != nil {
+		accountTestSvc = service.NewAccountTestService(
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			upstream,
+			&config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+			nil,
+		)
+	}
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, accountTestSvc, nil, nil, nil, nil, nil)
 	router.GET("/api/v1/admin/accounts/:id/models", handler.GetAvailableModels)
 	return router
 }
@@ -103,6 +120,97 @@ func TestAccountHandlerGetAvailableModels_GrokUsesXAIModels(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Len(t, resp.Data, 1)
 	require.Equal(t, "grok-4.3", resp.Data[0].ID)
+}
+
+func TestAccountHandlerGetAvailableModels_PrefersLiveUpstreamModels(t *testing.T) {
+	const accountID int64 = 46
+	invalidateLiveAccountModels(accountID)
+	t.Cleanup(func() { invalidateLiveAccountModels(accountID) })
+
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       accountID,
+			Name:     "compatible-upstream",
+			Platform: service.PlatformOpenAI,
+			Type:     service.AccountTypeAPIKey,
+			Status:   service.StatusActive,
+			Credentials: map[string]any{
+				"api_key":  "test-key",
+				"base_url": "https://example.com/v1",
+			},
+		},
+	}
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(
+			`{"data":[{"id":"provider-model-b"},{"id":"provider-model-a"}]}`,
+		)),
+	}}
+	router := setupAvailableModelsRouterWithUpstream(svc, upstream)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/46/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Data []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, []struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+	}{
+		{ID: "provider-model-a", DisplayName: "provider-model-a"},
+		{ID: "provider-model-b", DisplayName: "provider-model-b"},
+	}, resp.Data)
+}
+
+func TestAccountHandlerGetAvailableModels_FallsBackWhenLiveDiscoveryFails(t *testing.T) {
+	const accountID int64 = 47
+	invalidateLiveAccountModels(accountID)
+	t.Cleanup(func() { invalidateLiveAccountModels(accountID) })
+
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       accountID,
+			Name:     "compatible-upstream",
+			Platform: service.PlatformOpenAI,
+			Type:     service.AccountTypeAPIKey,
+			Status:   service.StatusActive,
+			Credentials: map[string]any{
+				"api_key":  "test-key",
+				"base_url": "https://example.com/v1",
+				"model_mapping": map[string]any{
+					"fallback-model": "fallback-model",
+				},
+			},
+		},
+	}
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Body:       io.NopCloser(strings.NewReader(`{"error":"temporarily unavailable"}`)),
+	}}
+	router := setupAvailableModelsRouterWithUpstream(svc, upstream)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/47/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 1)
+	require.Equal(t, "fallback-model", resp.Data[0].ID)
 }
 
 func TestAccountHandlerGetAvailableModels_GrokDefaultsToXAIModelsWithoutMapping(t *testing.T) {
