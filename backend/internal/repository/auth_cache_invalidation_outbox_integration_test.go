@@ -77,8 +77,8 @@ func TestAuthCacheInvalidationTriggers_CoverSecurityMutationsOnly(t *testing.T) 
 	userRepo := NewUserRepository(integrationEntClient, integrationDB)
 	loadedUser, err := userRepo.GetByID(ctx, user.ID)
 	require.NoError(t, err)
-	loadedUser.Balance += 10
-	require.NoError(t, userRepo.Update(ctx, loadedUser))
+	_, err = userRepo.AdjustBalance(ctx, loadedUser.ID, 10)
+	require.NoError(t, err)
 	require.Zero(t, count(), "balance update with unchanged allowed groups must not enqueue")
 
 	_, err = integrationDB.ExecContext(ctx, "UPDATE users SET status = 'disabled' WHERE id = $1", user.ID)
