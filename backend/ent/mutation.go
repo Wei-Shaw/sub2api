@@ -27,6 +27,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
+	"github.com/Wei-Shaw/sub2api/ent/customdomain"
+	"github.com/Wei-Shaw/sub2api/ent/customdomainuser"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -79,6 +81,8 @@ const (
 	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
 	TypeChannelMonitorRequestTemplate = "ChannelMonitorRequestTemplate"
 	TypeCompositeModelRoute           = "CompositeModelRoute"
+	TypeCustomDomain                  = "CustomDomain"
+	TypeCustomDomainUser              = "CustomDomainUser"
 	TypeErrorPassthroughRule          = "ErrorPassthroughRule"
 	TypeGroup                         = "Group"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
@@ -20519,6 +20523,1837 @@ func (m *CompositeModelRouteMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown CompositeModelRoute edge %s", name)
+}
+
+// CustomDomainMutation represents an operation that mutates the CustomDomain nodes in the graph.
+type CustomDomainMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *int64
+	created_at              *time.Time
+	updated_at              *time.Time
+	deleted_at              *time.Time
+	all_users               *bool
+	domain                  *string
+	status                  *string
+	verification_token      *string
+	verification_txt_name   *string
+	verification_txt_value  *string
+	cname_target            *string
+	last_error              *string
+	verified_at             *time.Time
+	last_checked_at         *time.Time
+	disabled_at             *time.Time
+	disabled_reason         *string
+	clearedFields           map[string]struct{}
+	user                    *int64
+	cleareduser             bool
+	authorized_users        map[int64]struct{}
+	removedauthorized_users map[int64]struct{}
+	clearedauthorized_users bool
+	done                    bool
+	oldValue                func(context.Context) (*CustomDomain, error)
+	predicates              []predicate.CustomDomain
+}
+
+var _ ent.Mutation = (*CustomDomainMutation)(nil)
+
+// customdomainOption allows management of the mutation configuration using functional options.
+type customdomainOption func(*CustomDomainMutation)
+
+// newCustomDomainMutation creates new mutation for the CustomDomain entity.
+func newCustomDomainMutation(c config, op Op, opts ...customdomainOption) *CustomDomainMutation {
+	m := &CustomDomainMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCustomDomain,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCustomDomainID sets the ID field of the mutation.
+func withCustomDomainID(id int64) customdomainOption {
+	return func(m *CustomDomainMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CustomDomain
+		)
+		m.oldValue = func(ctx context.Context) (*CustomDomain, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CustomDomain.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCustomDomain sets the old CustomDomain of the mutation.
+func withCustomDomain(node *CustomDomain) customdomainOption {
+	return func(m *CustomDomainMutation) {
+		m.oldValue = func(context.Context) (*CustomDomain, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CustomDomainMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CustomDomainMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CustomDomainMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CustomDomainMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CustomDomain.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CustomDomainMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CustomDomainMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CustomDomainMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CustomDomainMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CustomDomainMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CustomDomainMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *CustomDomainMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *CustomDomainMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *CustomDomainMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[customdomain.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *CustomDomainMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[customdomain.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *CustomDomainMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, customdomain.FieldDeletedAt)
+}
+
+// SetUserID sets the "user_id" field.
+func (m *CustomDomainMutation) SetUserID(i int64) {
+	m.user = &i
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *CustomDomainMutation) UserID() (r int64, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *CustomDomainMutation) ResetUserID() {
+	m.user = nil
+}
+
+// SetAllUsers sets the "all_users" field.
+func (m *CustomDomainMutation) SetAllUsers(b bool) {
+	m.all_users = &b
+}
+
+// AllUsers returns the value of the "all_users" field in the mutation.
+func (m *CustomDomainMutation) AllUsers() (r bool, exists bool) {
+	v := m.all_users
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllUsers returns the old "all_users" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldAllUsers(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllUsers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllUsers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllUsers: %w", err)
+	}
+	return oldValue.AllUsers, nil
+}
+
+// ResetAllUsers resets all changes to the "all_users" field.
+func (m *CustomDomainMutation) ResetAllUsers() {
+	m.all_users = nil
+}
+
+// SetDomain sets the "domain" field.
+func (m *CustomDomainMutation) SetDomain(s string) {
+	m.domain = &s
+}
+
+// Domain returns the value of the "domain" field in the mutation.
+func (m *CustomDomainMutation) Domain() (r string, exists bool) {
+	v := m.domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDomain returns the old "domain" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldDomain(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDomain is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDomain requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDomain: %w", err)
+	}
+	return oldValue.Domain, nil
+}
+
+// ResetDomain resets all changes to the "domain" field.
+func (m *CustomDomainMutation) ResetDomain() {
+	m.domain = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *CustomDomainMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *CustomDomainMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *CustomDomainMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetVerificationToken sets the "verification_token" field.
+func (m *CustomDomainMutation) SetVerificationToken(s string) {
+	m.verification_token = &s
+}
+
+// VerificationToken returns the value of the "verification_token" field in the mutation.
+func (m *CustomDomainMutation) VerificationToken() (r string, exists bool) {
+	v := m.verification_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVerificationToken returns the old "verification_token" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldVerificationToken(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVerificationToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVerificationToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVerificationToken: %w", err)
+	}
+	return oldValue.VerificationToken, nil
+}
+
+// ResetVerificationToken resets all changes to the "verification_token" field.
+func (m *CustomDomainMutation) ResetVerificationToken() {
+	m.verification_token = nil
+}
+
+// SetVerificationTxtName sets the "verification_txt_name" field.
+func (m *CustomDomainMutation) SetVerificationTxtName(s string) {
+	m.verification_txt_name = &s
+}
+
+// VerificationTxtName returns the value of the "verification_txt_name" field in the mutation.
+func (m *CustomDomainMutation) VerificationTxtName() (r string, exists bool) {
+	v := m.verification_txt_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVerificationTxtName returns the old "verification_txt_name" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldVerificationTxtName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVerificationTxtName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVerificationTxtName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVerificationTxtName: %w", err)
+	}
+	return oldValue.VerificationTxtName, nil
+}
+
+// ResetVerificationTxtName resets all changes to the "verification_txt_name" field.
+func (m *CustomDomainMutation) ResetVerificationTxtName() {
+	m.verification_txt_name = nil
+}
+
+// SetVerificationTxtValue sets the "verification_txt_value" field.
+func (m *CustomDomainMutation) SetVerificationTxtValue(s string) {
+	m.verification_txt_value = &s
+}
+
+// VerificationTxtValue returns the value of the "verification_txt_value" field in the mutation.
+func (m *CustomDomainMutation) VerificationTxtValue() (r string, exists bool) {
+	v := m.verification_txt_value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVerificationTxtValue returns the old "verification_txt_value" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldVerificationTxtValue(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVerificationTxtValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVerificationTxtValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVerificationTxtValue: %w", err)
+	}
+	return oldValue.VerificationTxtValue, nil
+}
+
+// ResetVerificationTxtValue resets all changes to the "verification_txt_value" field.
+func (m *CustomDomainMutation) ResetVerificationTxtValue() {
+	m.verification_txt_value = nil
+}
+
+// SetCnameTarget sets the "cname_target" field.
+func (m *CustomDomainMutation) SetCnameTarget(s string) {
+	m.cname_target = &s
+}
+
+// CnameTarget returns the value of the "cname_target" field in the mutation.
+func (m *CustomDomainMutation) CnameTarget() (r string, exists bool) {
+	v := m.cname_target
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCnameTarget returns the old "cname_target" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldCnameTarget(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCnameTarget is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCnameTarget requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCnameTarget: %w", err)
+	}
+	return oldValue.CnameTarget, nil
+}
+
+// ClearCnameTarget clears the value of the "cname_target" field.
+func (m *CustomDomainMutation) ClearCnameTarget() {
+	m.cname_target = nil
+	m.clearedFields[customdomain.FieldCnameTarget] = struct{}{}
+}
+
+// CnameTargetCleared returns if the "cname_target" field was cleared in this mutation.
+func (m *CustomDomainMutation) CnameTargetCleared() bool {
+	_, ok := m.clearedFields[customdomain.FieldCnameTarget]
+	return ok
+}
+
+// ResetCnameTarget resets all changes to the "cname_target" field.
+func (m *CustomDomainMutation) ResetCnameTarget() {
+	m.cname_target = nil
+	delete(m.clearedFields, customdomain.FieldCnameTarget)
+}
+
+// SetLastError sets the "last_error" field.
+func (m *CustomDomainMutation) SetLastError(s string) {
+	m.last_error = &s
+}
+
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *CustomDomainMutation) LastError() (r string, exists bool) {
+	v := m.last_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastError returns the old "last_error" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldLastError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+	}
+	return oldValue.LastError, nil
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (m *CustomDomainMutation) ClearLastError() {
+	m.last_error = nil
+	m.clearedFields[customdomain.FieldLastError] = struct{}{}
+}
+
+// LastErrorCleared returns if the "last_error" field was cleared in this mutation.
+func (m *CustomDomainMutation) LastErrorCleared() bool {
+	_, ok := m.clearedFields[customdomain.FieldLastError]
+	return ok
+}
+
+// ResetLastError resets all changes to the "last_error" field.
+func (m *CustomDomainMutation) ResetLastError() {
+	m.last_error = nil
+	delete(m.clearedFields, customdomain.FieldLastError)
+}
+
+// SetVerifiedAt sets the "verified_at" field.
+func (m *CustomDomainMutation) SetVerifiedAt(t time.Time) {
+	m.verified_at = &t
+}
+
+// VerifiedAt returns the value of the "verified_at" field in the mutation.
+func (m *CustomDomainMutation) VerifiedAt() (r time.Time, exists bool) {
+	v := m.verified_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVerifiedAt returns the old "verified_at" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldVerifiedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVerifiedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVerifiedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVerifiedAt: %w", err)
+	}
+	return oldValue.VerifiedAt, nil
+}
+
+// ClearVerifiedAt clears the value of the "verified_at" field.
+func (m *CustomDomainMutation) ClearVerifiedAt() {
+	m.verified_at = nil
+	m.clearedFields[customdomain.FieldVerifiedAt] = struct{}{}
+}
+
+// VerifiedAtCleared returns if the "verified_at" field was cleared in this mutation.
+func (m *CustomDomainMutation) VerifiedAtCleared() bool {
+	_, ok := m.clearedFields[customdomain.FieldVerifiedAt]
+	return ok
+}
+
+// ResetVerifiedAt resets all changes to the "verified_at" field.
+func (m *CustomDomainMutation) ResetVerifiedAt() {
+	m.verified_at = nil
+	delete(m.clearedFields, customdomain.FieldVerifiedAt)
+}
+
+// SetLastCheckedAt sets the "last_checked_at" field.
+func (m *CustomDomainMutation) SetLastCheckedAt(t time.Time) {
+	m.last_checked_at = &t
+}
+
+// LastCheckedAt returns the value of the "last_checked_at" field in the mutation.
+func (m *CustomDomainMutation) LastCheckedAt() (r time.Time, exists bool) {
+	v := m.last_checked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastCheckedAt returns the old "last_checked_at" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldLastCheckedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastCheckedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastCheckedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastCheckedAt: %w", err)
+	}
+	return oldValue.LastCheckedAt, nil
+}
+
+// ClearLastCheckedAt clears the value of the "last_checked_at" field.
+func (m *CustomDomainMutation) ClearLastCheckedAt() {
+	m.last_checked_at = nil
+	m.clearedFields[customdomain.FieldLastCheckedAt] = struct{}{}
+}
+
+// LastCheckedAtCleared returns if the "last_checked_at" field was cleared in this mutation.
+func (m *CustomDomainMutation) LastCheckedAtCleared() bool {
+	_, ok := m.clearedFields[customdomain.FieldLastCheckedAt]
+	return ok
+}
+
+// ResetLastCheckedAt resets all changes to the "last_checked_at" field.
+func (m *CustomDomainMutation) ResetLastCheckedAt() {
+	m.last_checked_at = nil
+	delete(m.clearedFields, customdomain.FieldLastCheckedAt)
+}
+
+// SetDisabledAt sets the "disabled_at" field.
+func (m *CustomDomainMutation) SetDisabledAt(t time.Time) {
+	m.disabled_at = &t
+}
+
+// DisabledAt returns the value of the "disabled_at" field in the mutation.
+func (m *CustomDomainMutation) DisabledAt() (r time.Time, exists bool) {
+	v := m.disabled_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisabledAt returns the old "disabled_at" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldDisabledAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisabledAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisabledAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisabledAt: %w", err)
+	}
+	return oldValue.DisabledAt, nil
+}
+
+// ClearDisabledAt clears the value of the "disabled_at" field.
+func (m *CustomDomainMutation) ClearDisabledAt() {
+	m.disabled_at = nil
+	m.clearedFields[customdomain.FieldDisabledAt] = struct{}{}
+}
+
+// DisabledAtCleared returns if the "disabled_at" field was cleared in this mutation.
+func (m *CustomDomainMutation) DisabledAtCleared() bool {
+	_, ok := m.clearedFields[customdomain.FieldDisabledAt]
+	return ok
+}
+
+// ResetDisabledAt resets all changes to the "disabled_at" field.
+func (m *CustomDomainMutation) ResetDisabledAt() {
+	m.disabled_at = nil
+	delete(m.clearedFields, customdomain.FieldDisabledAt)
+}
+
+// SetDisabledReason sets the "disabled_reason" field.
+func (m *CustomDomainMutation) SetDisabledReason(s string) {
+	m.disabled_reason = &s
+}
+
+// DisabledReason returns the value of the "disabled_reason" field in the mutation.
+func (m *CustomDomainMutation) DisabledReason() (r string, exists bool) {
+	v := m.disabled_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisabledReason returns the old "disabled_reason" field's value of the CustomDomain entity.
+// If the CustomDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomDomainMutation) OldDisabledReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisabledReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisabledReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisabledReason: %w", err)
+	}
+	return oldValue.DisabledReason, nil
+}
+
+// ClearDisabledReason clears the value of the "disabled_reason" field.
+func (m *CustomDomainMutation) ClearDisabledReason() {
+	m.disabled_reason = nil
+	m.clearedFields[customdomain.FieldDisabledReason] = struct{}{}
+}
+
+// DisabledReasonCleared returns if the "disabled_reason" field was cleared in this mutation.
+func (m *CustomDomainMutation) DisabledReasonCleared() bool {
+	_, ok := m.clearedFields[customdomain.FieldDisabledReason]
+	return ok
+}
+
+// ResetDisabledReason resets all changes to the "disabled_reason" field.
+func (m *CustomDomainMutation) ResetDisabledReason() {
+	m.disabled_reason = nil
+	delete(m.clearedFields, customdomain.FieldDisabledReason)
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *CustomDomainMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[customdomain.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *CustomDomainMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *CustomDomainMutation) UserIDs() (ids []int64) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *CustomDomainMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// AddAuthorizedUserIDs adds the "authorized_users" edge to the User entity by ids.
+func (m *CustomDomainMutation) AddAuthorizedUserIDs(ids ...int64) {
+	if m.authorized_users == nil {
+		m.authorized_users = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.authorized_users[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAuthorizedUsers clears the "authorized_users" edge to the User entity.
+func (m *CustomDomainMutation) ClearAuthorizedUsers() {
+	m.clearedauthorized_users = true
+}
+
+// AuthorizedUsersCleared reports if the "authorized_users" edge to the User entity was cleared.
+func (m *CustomDomainMutation) AuthorizedUsersCleared() bool {
+	return m.clearedauthorized_users
+}
+
+// RemoveAuthorizedUserIDs removes the "authorized_users" edge to the User entity by IDs.
+func (m *CustomDomainMutation) RemoveAuthorizedUserIDs(ids ...int64) {
+	if m.removedauthorized_users == nil {
+		m.removedauthorized_users = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.authorized_users, ids[i])
+		m.removedauthorized_users[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAuthorizedUsers returns the removed IDs of the "authorized_users" edge to the User entity.
+func (m *CustomDomainMutation) RemovedAuthorizedUsersIDs() (ids []int64) {
+	for id := range m.removedauthorized_users {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AuthorizedUsersIDs returns the "authorized_users" edge IDs in the mutation.
+func (m *CustomDomainMutation) AuthorizedUsersIDs() (ids []int64) {
+	for id := range m.authorized_users {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAuthorizedUsers resets all changes to the "authorized_users" edge.
+func (m *CustomDomainMutation) ResetAuthorizedUsers() {
+	m.authorized_users = nil
+	m.clearedauthorized_users = false
+	m.removedauthorized_users = nil
+}
+
+// Where appends a list predicates to the CustomDomainMutation builder.
+func (m *CustomDomainMutation) Where(ps ...predicate.CustomDomain) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CustomDomainMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CustomDomainMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CustomDomain, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CustomDomainMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CustomDomainMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CustomDomain).
+func (m *CustomDomainMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CustomDomainMutation) Fields() []string {
+	fields := make([]string, 0, 16)
+	if m.created_at != nil {
+		fields = append(fields, customdomain.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, customdomain.FieldUpdatedAt)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, customdomain.FieldDeletedAt)
+	}
+	if m.user != nil {
+		fields = append(fields, customdomain.FieldUserID)
+	}
+	if m.all_users != nil {
+		fields = append(fields, customdomain.FieldAllUsers)
+	}
+	if m.domain != nil {
+		fields = append(fields, customdomain.FieldDomain)
+	}
+	if m.status != nil {
+		fields = append(fields, customdomain.FieldStatus)
+	}
+	if m.verification_token != nil {
+		fields = append(fields, customdomain.FieldVerificationToken)
+	}
+	if m.verification_txt_name != nil {
+		fields = append(fields, customdomain.FieldVerificationTxtName)
+	}
+	if m.verification_txt_value != nil {
+		fields = append(fields, customdomain.FieldVerificationTxtValue)
+	}
+	if m.cname_target != nil {
+		fields = append(fields, customdomain.FieldCnameTarget)
+	}
+	if m.last_error != nil {
+		fields = append(fields, customdomain.FieldLastError)
+	}
+	if m.verified_at != nil {
+		fields = append(fields, customdomain.FieldVerifiedAt)
+	}
+	if m.last_checked_at != nil {
+		fields = append(fields, customdomain.FieldLastCheckedAt)
+	}
+	if m.disabled_at != nil {
+		fields = append(fields, customdomain.FieldDisabledAt)
+	}
+	if m.disabled_reason != nil {
+		fields = append(fields, customdomain.FieldDisabledReason)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CustomDomainMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case customdomain.FieldCreatedAt:
+		return m.CreatedAt()
+	case customdomain.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case customdomain.FieldDeletedAt:
+		return m.DeletedAt()
+	case customdomain.FieldUserID:
+		return m.UserID()
+	case customdomain.FieldAllUsers:
+		return m.AllUsers()
+	case customdomain.FieldDomain:
+		return m.Domain()
+	case customdomain.FieldStatus:
+		return m.Status()
+	case customdomain.FieldVerificationToken:
+		return m.VerificationToken()
+	case customdomain.FieldVerificationTxtName:
+		return m.VerificationTxtName()
+	case customdomain.FieldVerificationTxtValue:
+		return m.VerificationTxtValue()
+	case customdomain.FieldCnameTarget:
+		return m.CnameTarget()
+	case customdomain.FieldLastError:
+		return m.LastError()
+	case customdomain.FieldVerifiedAt:
+		return m.VerifiedAt()
+	case customdomain.FieldLastCheckedAt:
+		return m.LastCheckedAt()
+	case customdomain.FieldDisabledAt:
+		return m.DisabledAt()
+	case customdomain.FieldDisabledReason:
+		return m.DisabledReason()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CustomDomainMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case customdomain.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case customdomain.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case customdomain.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case customdomain.FieldUserID:
+		return m.OldUserID(ctx)
+	case customdomain.FieldAllUsers:
+		return m.OldAllUsers(ctx)
+	case customdomain.FieldDomain:
+		return m.OldDomain(ctx)
+	case customdomain.FieldStatus:
+		return m.OldStatus(ctx)
+	case customdomain.FieldVerificationToken:
+		return m.OldVerificationToken(ctx)
+	case customdomain.FieldVerificationTxtName:
+		return m.OldVerificationTxtName(ctx)
+	case customdomain.FieldVerificationTxtValue:
+		return m.OldVerificationTxtValue(ctx)
+	case customdomain.FieldCnameTarget:
+		return m.OldCnameTarget(ctx)
+	case customdomain.FieldLastError:
+		return m.OldLastError(ctx)
+	case customdomain.FieldVerifiedAt:
+		return m.OldVerifiedAt(ctx)
+	case customdomain.FieldLastCheckedAt:
+		return m.OldLastCheckedAt(ctx)
+	case customdomain.FieldDisabledAt:
+		return m.OldDisabledAt(ctx)
+	case customdomain.FieldDisabledReason:
+		return m.OldDisabledReason(ctx)
+	}
+	return nil, fmt.Errorf("unknown CustomDomain field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CustomDomainMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case customdomain.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case customdomain.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case customdomain.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case customdomain.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case customdomain.FieldAllUsers:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllUsers(v)
+		return nil
+	case customdomain.FieldDomain:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDomain(v)
+		return nil
+	case customdomain.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case customdomain.FieldVerificationToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVerificationToken(v)
+		return nil
+	case customdomain.FieldVerificationTxtName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVerificationTxtName(v)
+		return nil
+	case customdomain.FieldVerificationTxtValue:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVerificationTxtValue(v)
+		return nil
+	case customdomain.FieldCnameTarget:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCnameTarget(v)
+		return nil
+	case customdomain.FieldLastError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastError(v)
+		return nil
+	case customdomain.FieldVerifiedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVerifiedAt(v)
+		return nil
+	case customdomain.FieldLastCheckedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastCheckedAt(v)
+		return nil
+	case customdomain.FieldDisabledAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisabledAt(v)
+		return nil
+	case customdomain.FieldDisabledReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisabledReason(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CustomDomain field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CustomDomainMutation) AddedFields() []string {
+	var fields []string
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CustomDomainMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CustomDomainMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown CustomDomain numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CustomDomainMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(customdomain.FieldDeletedAt) {
+		fields = append(fields, customdomain.FieldDeletedAt)
+	}
+	if m.FieldCleared(customdomain.FieldCnameTarget) {
+		fields = append(fields, customdomain.FieldCnameTarget)
+	}
+	if m.FieldCleared(customdomain.FieldLastError) {
+		fields = append(fields, customdomain.FieldLastError)
+	}
+	if m.FieldCleared(customdomain.FieldVerifiedAt) {
+		fields = append(fields, customdomain.FieldVerifiedAt)
+	}
+	if m.FieldCleared(customdomain.FieldLastCheckedAt) {
+		fields = append(fields, customdomain.FieldLastCheckedAt)
+	}
+	if m.FieldCleared(customdomain.FieldDisabledAt) {
+		fields = append(fields, customdomain.FieldDisabledAt)
+	}
+	if m.FieldCleared(customdomain.FieldDisabledReason) {
+		fields = append(fields, customdomain.FieldDisabledReason)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CustomDomainMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CustomDomainMutation) ClearField(name string) error {
+	switch name {
+	case customdomain.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case customdomain.FieldCnameTarget:
+		m.ClearCnameTarget()
+		return nil
+	case customdomain.FieldLastError:
+		m.ClearLastError()
+		return nil
+	case customdomain.FieldVerifiedAt:
+		m.ClearVerifiedAt()
+		return nil
+	case customdomain.FieldLastCheckedAt:
+		m.ClearLastCheckedAt()
+		return nil
+	case customdomain.FieldDisabledAt:
+		m.ClearDisabledAt()
+		return nil
+	case customdomain.FieldDisabledReason:
+		m.ClearDisabledReason()
+		return nil
+	}
+	return fmt.Errorf("unknown CustomDomain nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CustomDomainMutation) ResetField(name string) error {
+	switch name {
+	case customdomain.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case customdomain.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case customdomain.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case customdomain.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case customdomain.FieldAllUsers:
+		m.ResetAllUsers()
+		return nil
+	case customdomain.FieldDomain:
+		m.ResetDomain()
+		return nil
+	case customdomain.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case customdomain.FieldVerificationToken:
+		m.ResetVerificationToken()
+		return nil
+	case customdomain.FieldVerificationTxtName:
+		m.ResetVerificationTxtName()
+		return nil
+	case customdomain.FieldVerificationTxtValue:
+		m.ResetVerificationTxtValue()
+		return nil
+	case customdomain.FieldCnameTarget:
+		m.ResetCnameTarget()
+		return nil
+	case customdomain.FieldLastError:
+		m.ResetLastError()
+		return nil
+	case customdomain.FieldVerifiedAt:
+		m.ResetVerifiedAt()
+		return nil
+	case customdomain.FieldLastCheckedAt:
+		m.ResetLastCheckedAt()
+		return nil
+	case customdomain.FieldDisabledAt:
+		m.ResetDisabledAt()
+		return nil
+	case customdomain.FieldDisabledReason:
+		m.ResetDisabledReason()
+		return nil
+	}
+	return fmt.Errorf("unknown CustomDomain field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CustomDomainMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.user != nil {
+		edges = append(edges, customdomain.EdgeUser)
+	}
+	if m.authorized_users != nil {
+		edges = append(edges, customdomain.EdgeAuthorizedUsers)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CustomDomainMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case customdomain.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	case customdomain.EdgeAuthorizedUsers:
+		ids := make([]ent.Value, 0, len(m.authorized_users))
+		for id := range m.authorized_users {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CustomDomainMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.removedauthorized_users != nil {
+		edges = append(edges, customdomain.EdgeAuthorizedUsers)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CustomDomainMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case customdomain.EdgeAuthorizedUsers:
+		ids := make([]ent.Value, 0, len(m.removedauthorized_users))
+		for id := range m.removedauthorized_users {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CustomDomainMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.cleareduser {
+		edges = append(edges, customdomain.EdgeUser)
+	}
+	if m.clearedauthorized_users {
+		edges = append(edges, customdomain.EdgeAuthorizedUsers)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CustomDomainMutation) EdgeCleared(name string) bool {
+	switch name {
+	case customdomain.EdgeUser:
+		return m.cleareduser
+	case customdomain.EdgeAuthorizedUsers:
+		return m.clearedauthorized_users
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CustomDomainMutation) ClearEdge(name string) error {
+	switch name {
+	case customdomain.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown CustomDomain unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CustomDomainMutation) ResetEdge(name string) error {
+	switch name {
+	case customdomain.EdgeUser:
+		m.ResetUser()
+		return nil
+	case customdomain.EdgeAuthorizedUsers:
+		m.ResetAuthorizedUsers()
+		return nil
+	}
+	return fmt.Errorf("unknown CustomDomain edge %s", name)
+}
+
+// CustomDomainUserMutation represents an operation that mutates the CustomDomainUser nodes in the graph.
+type CustomDomainUserMutation struct {
+	config
+	op                   Op
+	typ                  string
+	created_at           *time.Time
+	clearedFields        map[string]struct{}
+	custom_domain        *int64
+	clearedcustom_domain bool
+	user                 *int64
+	cleareduser          bool
+	done                 bool
+	oldValue             func(context.Context) (*CustomDomainUser, error)
+	predicates           []predicate.CustomDomainUser
+}
+
+var _ ent.Mutation = (*CustomDomainUserMutation)(nil)
+
+// customdomainuserOption allows management of the mutation configuration using functional options.
+type customdomainuserOption func(*CustomDomainUserMutation)
+
+// newCustomDomainUserMutation creates new mutation for the CustomDomainUser entity.
+func newCustomDomainUserMutation(c config, op Op, opts ...customdomainuserOption) *CustomDomainUserMutation {
+	m := &CustomDomainUserMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCustomDomainUser,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CustomDomainUserMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CustomDomainUserMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetCustomDomainID sets the "custom_domain_id" field.
+func (m *CustomDomainUserMutation) SetCustomDomainID(i int64) {
+	m.custom_domain = &i
+}
+
+// CustomDomainID returns the value of the "custom_domain_id" field in the mutation.
+func (m *CustomDomainUserMutation) CustomDomainID() (r int64, exists bool) {
+	v := m.custom_domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCustomDomainID resets all changes to the "custom_domain_id" field.
+func (m *CustomDomainUserMutation) ResetCustomDomainID() {
+	m.custom_domain = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *CustomDomainUserMutation) SetUserID(i int64) {
+	m.user = &i
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *CustomDomainUserMutation) UserID() (r int64, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *CustomDomainUserMutation) ResetUserID() {
+	m.user = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CustomDomainUserMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CustomDomainUserMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CustomDomainUserMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearCustomDomain clears the "custom_domain" edge to the CustomDomain entity.
+func (m *CustomDomainUserMutation) ClearCustomDomain() {
+	m.clearedcustom_domain = true
+	m.clearedFields[customdomainuser.FieldCustomDomainID] = struct{}{}
+}
+
+// CustomDomainCleared reports if the "custom_domain" edge to the CustomDomain entity was cleared.
+func (m *CustomDomainUserMutation) CustomDomainCleared() bool {
+	return m.clearedcustom_domain
+}
+
+// CustomDomainIDs returns the "custom_domain" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// CustomDomainID instead. It exists only for internal usage by the builders.
+func (m *CustomDomainUserMutation) CustomDomainIDs() (ids []int64) {
+	if id := m.custom_domain; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCustomDomain resets all changes to the "custom_domain" edge.
+func (m *CustomDomainUserMutation) ResetCustomDomain() {
+	m.custom_domain = nil
+	m.clearedcustom_domain = false
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *CustomDomainUserMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[customdomainuser.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *CustomDomainUserMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *CustomDomainUserMutation) UserIDs() (ids []int64) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *CustomDomainUserMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// Where appends a list predicates to the CustomDomainUserMutation builder.
+func (m *CustomDomainUserMutation) Where(ps ...predicate.CustomDomainUser) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CustomDomainUserMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CustomDomainUserMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CustomDomainUser, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CustomDomainUserMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CustomDomainUserMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CustomDomainUser).
+func (m *CustomDomainUserMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CustomDomainUserMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.custom_domain != nil {
+		fields = append(fields, customdomainuser.FieldCustomDomainID)
+	}
+	if m.user != nil {
+		fields = append(fields, customdomainuser.FieldUserID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, customdomainuser.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CustomDomainUserMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case customdomainuser.FieldCustomDomainID:
+		return m.CustomDomainID()
+	case customdomainuser.FieldUserID:
+		return m.UserID()
+	case customdomainuser.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CustomDomainUserMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	return nil, errors.New("edge schema CustomDomainUser does not support getting old values")
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CustomDomainUserMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case customdomainuser.FieldCustomDomainID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCustomDomainID(v)
+		return nil
+	case customdomainuser.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case customdomainuser.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CustomDomainUser field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CustomDomainUserMutation) AddedFields() []string {
+	var fields []string
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CustomDomainUserMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CustomDomainUserMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown CustomDomainUser numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CustomDomainUserMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CustomDomainUserMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CustomDomainUserMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown CustomDomainUser nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CustomDomainUserMutation) ResetField(name string) error {
+	switch name {
+	case customdomainuser.FieldCustomDomainID:
+		m.ResetCustomDomainID()
+		return nil
+	case customdomainuser.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case customdomainuser.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CustomDomainUser field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CustomDomainUserMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.custom_domain != nil {
+		edges = append(edges, customdomainuser.EdgeCustomDomain)
+	}
+	if m.user != nil {
+		edges = append(edges, customdomainuser.EdgeUser)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CustomDomainUserMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case customdomainuser.EdgeCustomDomain:
+		if id := m.custom_domain; id != nil {
+			return []ent.Value{*id}
+		}
+	case customdomainuser.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CustomDomainUserMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CustomDomainUserMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CustomDomainUserMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedcustom_domain {
+		edges = append(edges, customdomainuser.EdgeCustomDomain)
+	}
+	if m.cleareduser {
+		edges = append(edges, customdomainuser.EdgeUser)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CustomDomainUserMutation) EdgeCleared(name string) bool {
+	switch name {
+	case customdomainuser.EdgeCustomDomain:
+		return m.clearedcustom_domain
+	case customdomainuser.EdgeUser:
+		return m.cleareduser
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CustomDomainUserMutation) ClearEdge(name string) error {
+	switch name {
+	case customdomainuser.EdgeCustomDomain:
+		m.ClearCustomDomain()
+		return nil
+	case customdomainuser.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown CustomDomainUser unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CustomDomainUserMutation) ResetEdge(name string) error {
+	switch name {
+	case customdomainuser.EdgeCustomDomain:
+		m.ResetCustomDomain()
+		return nil
+	case customdomainuser.EdgeUser:
+		m.ResetUser()
+		return nil
+	}
+	return fmt.Errorf("unknown CustomDomainUser edge %s", name)
 }
 
 // ErrorPassthroughRuleMutation represents an operation that mutates the ErrorPassthroughRule nodes in the graph.
@@ -43171,6 +45006,9 @@ type UsageLogMutation struct {
 	addfirst_token_ms            *int
 	user_agent                   *string
 	ip_address                   *string
+	custom_domain_id             *int64
+	addcustom_domain_id          *int64
+	custom_domain                *string
 	image_count                  *int
 	addimage_count               *int
 	image_size                   *string
@@ -45056,6 +46894,125 @@ func (m *UsageLogMutation) ResetIPAddress() {
 	delete(m.clearedFields, usagelog.FieldIPAddress)
 }
 
+// SetCustomDomainID sets the "custom_domain_id" field.
+func (m *UsageLogMutation) SetCustomDomainID(i int64) {
+	m.custom_domain_id = &i
+	m.addcustom_domain_id = nil
+}
+
+// CustomDomainID returns the value of the "custom_domain_id" field in the mutation.
+func (m *UsageLogMutation) CustomDomainID() (r int64, exists bool) {
+	v := m.custom_domain_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCustomDomainID returns the old "custom_domain_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCustomDomainID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCustomDomainID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCustomDomainID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCustomDomainID: %w", err)
+	}
+	return oldValue.CustomDomainID, nil
+}
+
+// AddCustomDomainID adds i to the "custom_domain_id" field.
+func (m *UsageLogMutation) AddCustomDomainID(i int64) {
+	if m.addcustom_domain_id != nil {
+		*m.addcustom_domain_id += i
+	} else {
+		m.addcustom_domain_id = &i
+	}
+}
+
+// AddedCustomDomainID returns the value that was added to the "custom_domain_id" field in this mutation.
+func (m *UsageLogMutation) AddedCustomDomainID() (r int64, exists bool) {
+	v := m.addcustom_domain_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCustomDomainID clears the value of the "custom_domain_id" field.
+func (m *UsageLogMutation) ClearCustomDomainID() {
+	m.custom_domain_id = nil
+	m.addcustom_domain_id = nil
+	m.clearedFields[usagelog.FieldCustomDomainID] = struct{}{}
+}
+
+// CustomDomainIDCleared returns if the "custom_domain_id" field was cleared in this mutation.
+func (m *UsageLogMutation) CustomDomainIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCustomDomainID]
+	return ok
+}
+
+// ResetCustomDomainID resets all changes to the "custom_domain_id" field.
+func (m *UsageLogMutation) ResetCustomDomainID() {
+	m.custom_domain_id = nil
+	m.addcustom_domain_id = nil
+	delete(m.clearedFields, usagelog.FieldCustomDomainID)
+}
+
+// SetCustomDomain sets the "custom_domain" field.
+func (m *UsageLogMutation) SetCustomDomain(s string) {
+	m.custom_domain = &s
+}
+
+// CustomDomain returns the value of the "custom_domain" field in the mutation.
+func (m *UsageLogMutation) CustomDomain() (r string, exists bool) {
+	v := m.custom_domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCustomDomain returns the old "custom_domain" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCustomDomain(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCustomDomain is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCustomDomain requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCustomDomain: %w", err)
+	}
+	return oldValue.CustomDomain, nil
+}
+
+// ClearCustomDomain clears the value of the "custom_domain" field.
+func (m *UsageLogMutation) ClearCustomDomain() {
+	m.custom_domain = nil
+	m.clearedFields[usagelog.FieldCustomDomain] = struct{}{}
+}
+
+// CustomDomainCleared returns if the "custom_domain" field was cleared in this mutation.
+func (m *UsageLogMutation) CustomDomainCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCustomDomain]
+	return ok
+}
+
+// ResetCustomDomain resets all changes to the "custom_domain" field.
+func (m *UsageLogMutation) ResetCustomDomain() {
+	m.custom_domain = nil
+	delete(m.clearedFields, usagelog.FieldCustomDomain)
+}
+
 // SetImageCount sets the "image_count" field.
 func (m *UsageLogMutation) SetImageCount(i int) {
 	m.image_count = &i
@@ -45773,7 +47730,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 45)
+	fields := make([]string, 0, 47)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -45875,6 +47832,12 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.ip_address != nil {
 		fields = append(fields, usagelog.FieldIPAddress)
+	}
+	if m.custom_domain_id != nil {
+		fields = append(fields, usagelog.FieldCustomDomainID)
+	}
+	if m.custom_domain != nil {
+		fields = append(fields, usagelog.FieldCustomDomain)
 	}
 	if m.image_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
@@ -45985,6 +47948,10 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.UserAgent()
 	case usagelog.FieldIPAddress:
 		return m.IPAddress()
+	case usagelog.FieldCustomDomainID:
+		return m.CustomDomainID()
+	case usagelog.FieldCustomDomain:
+		return m.CustomDomain()
 	case usagelog.FieldImageCount:
 		return m.ImageCount()
 	case usagelog.FieldImageSize:
@@ -46084,6 +48051,10 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldUserAgent(ctx)
 	case usagelog.FieldIPAddress:
 		return m.OldIPAddress(ctx)
+	case usagelog.FieldCustomDomainID:
+		return m.OldCustomDomainID(ctx)
+	case usagelog.FieldCustomDomain:
+		return m.OldCustomDomain(ctx)
 	case usagelog.FieldImageCount:
 		return m.OldImageCount(ctx)
 	case usagelog.FieldImageSize:
@@ -46353,6 +48324,20 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetIPAddress(v)
 		return nil
+	case usagelog.FieldCustomDomainID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCustomDomainID(v)
+		return nil
+	case usagelog.FieldCustomDomain:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCustomDomain(v)
+		return nil
 	case usagelog.FieldImageCount:
 		v, ok := value.(int)
 		if !ok {
@@ -46492,6 +48477,9 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addfirst_token_ms != nil {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
 	}
+	if m.addcustom_domain_id != nil {
+		fields = append(fields, usagelog.FieldCustomDomainID)
+	}
 	if m.addimage_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
 	}
@@ -46545,6 +48533,8 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedDurationMs()
 	case usagelog.FieldFirstTokenMs:
 		return m.AddedFirstTokenMs()
+	case usagelog.FieldCustomDomainID:
+		return m.AddedCustomDomainID()
 	case usagelog.FieldImageCount:
 		return m.AddedImageCount()
 	case usagelog.FieldVideoCount:
@@ -46686,6 +48676,13 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddFirstTokenMs(v)
 		return nil
+	case usagelog.FieldCustomDomainID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCustomDomainID(v)
+		return nil
 	case usagelog.FieldImageCount:
 		v, ok := value.(int)
 		if !ok {
@@ -46753,6 +48750,12 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(usagelog.FieldIPAddress) {
 		fields = append(fields, usagelog.FieldIPAddress)
+	}
+	if m.FieldCleared(usagelog.FieldCustomDomainID) {
+		fields = append(fields, usagelog.FieldCustomDomainID)
+	}
+	if m.FieldCleared(usagelog.FieldCustomDomain) {
+		fields = append(fields, usagelog.FieldCustomDomain)
 	}
 	if m.FieldCleared(usagelog.FieldImageSize) {
 		fields = append(fields, usagelog.FieldImageSize)
@@ -46827,6 +48830,12 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldIPAddress:
 		m.ClearIPAddress()
+		return nil
+	case usagelog.FieldCustomDomainID:
+		m.ClearCustomDomainID()
+		return nil
+	case usagelog.FieldCustomDomain:
+		m.ClearCustomDomain()
 		return nil
 	case usagelog.FieldImageSize:
 		m.ClearImageSize()
@@ -46958,6 +48967,12 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldIPAddress:
 		m.ResetIPAddress()
+		return nil
+	case usagelog.FieldCustomDomainID:
+		m.ResetCustomDomainID()
+		return nil
+	case usagelog.FieldCustomDomain:
+		m.ResetCustomDomain()
 		return nil
 	case usagelog.FieldImageCount:
 		m.ResetImageCount()
@@ -47145,82 +49160,88 @@ func (m *UsageLogMutation) ResetEdge(name string) error {
 // UserMutation represents an operation that mutates the User nodes in the graph.
 type UserMutation struct {
 	config
-	op                            Op
-	typ                           string
-	id                            *int64
-	created_at                    *time.Time
-	updated_at                    *time.Time
-	deleted_at                    *time.Time
-	email                         *string
-	password_hash                 *string
-	role                          *string
-	balance                       *float64
-	addbalance                    *float64
-	frozen_balance                *float64
-	addfrozen_balance             *float64
-	concurrency                   *int
-	addconcurrency                *int
-	status                        *string
-	username                      *string
-	notes                         *string
-	totp_secret_encrypted         *string
-	totp_enabled                  *bool
-	totp_enabled_at               *time.Time
-	signup_source                 *string
-	last_login_at                 *time.Time
-	last_active_at                *time.Time
-	balance_notify_enabled        *bool
-	balance_notify_threshold_type *string
-	balance_notify_threshold      *float64
-	addbalance_notify_threshold   *float64
-	balance_notify_extra_emails   *string
-	total_recharged               *float64
-	addtotal_recharged            *float64
-	rpm_limit                     *int
-	addrpm_limit                  *int
-	clearedFields                 map[string]struct{}
-	api_keys                      map[int64]struct{}
-	removedapi_keys               map[int64]struct{}
-	clearedapi_keys               bool
-	redeem_codes                  map[int64]struct{}
-	removedredeem_codes           map[int64]struct{}
-	clearedredeem_codes           bool
-	subscriptions                 map[int64]struct{}
-	removedsubscriptions          map[int64]struct{}
-	clearedsubscriptions          bool
-	assigned_subscriptions        map[int64]struct{}
-	removedassigned_subscriptions map[int64]struct{}
-	clearedassigned_subscriptions bool
-	announcement_reads            map[int64]struct{}
-	removedannouncement_reads     map[int64]struct{}
-	clearedannouncement_reads     bool
-	allowed_groups                map[int64]struct{}
-	removedallowed_groups         map[int64]struct{}
-	clearedallowed_groups         bool
-	usage_logs                    map[int64]struct{}
-	removedusage_logs             map[int64]struct{}
-	clearedusage_logs             bool
-	attribute_values              map[int64]struct{}
-	removedattribute_values       map[int64]struct{}
-	clearedattribute_values       bool
-	promo_code_usages             map[int64]struct{}
-	removedpromo_code_usages      map[int64]struct{}
-	clearedpromo_code_usages      bool
-	payment_orders                map[int64]struct{}
-	removedpayment_orders         map[int64]struct{}
-	clearedpayment_orders         bool
-	auth_identities               map[int64]struct{}
-	removedauth_identities        map[int64]struct{}
-	clearedauth_identities        bool
-	pending_auth_sessions         map[int64]struct{}
-	removedpending_auth_sessions  map[int64]struct{}
-	clearedpending_auth_sessions  bool
-	platform_quotas               map[int64]struct{}
-	removedplatform_quotas        map[int64]struct{}
-	clearedplatform_quotas        bool
-	done                          bool
-	oldValue                      func(context.Context) (*User, error)
-	predicates                    []predicate.User
+	op                               Op
+	typ                              string
+	id                               *int64
+	created_at                       *time.Time
+	updated_at                       *time.Time
+	deleted_at                       *time.Time
+	email                            *string
+	password_hash                    *string
+	role                             *string
+	balance                          *float64
+	addbalance                       *float64
+	frozen_balance                   *float64
+	addfrozen_balance                *float64
+	concurrency                      *int
+	addconcurrency                   *int
+	status                           *string
+	username                         *string
+	notes                            *string
+	totp_secret_encrypted            *string
+	totp_enabled                     *bool
+	totp_enabled_at                  *time.Time
+	signup_source                    *string
+	last_login_at                    *time.Time
+	last_active_at                   *time.Time
+	balance_notify_enabled           *bool
+	balance_notify_threshold_type    *string
+	balance_notify_threshold         *float64
+	addbalance_notify_threshold      *float64
+	balance_notify_extra_emails      *string
+	total_recharged                  *float64
+	addtotal_recharged               *float64
+	rpm_limit                        *int
+	addrpm_limit                     *int
+	clearedFields                    map[string]struct{}
+	api_keys                         map[int64]struct{}
+	removedapi_keys                  map[int64]struct{}
+	clearedapi_keys                  bool
+	redeem_codes                     map[int64]struct{}
+	removedredeem_codes              map[int64]struct{}
+	clearedredeem_codes              bool
+	subscriptions                    map[int64]struct{}
+	removedsubscriptions             map[int64]struct{}
+	clearedsubscriptions             bool
+	assigned_subscriptions           map[int64]struct{}
+	removedassigned_subscriptions    map[int64]struct{}
+	clearedassigned_subscriptions    bool
+	announcement_reads               map[int64]struct{}
+	removedannouncement_reads        map[int64]struct{}
+	clearedannouncement_reads        bool
+	allowed_groups                   map[int64]struct{}
+	removedallowed_groups            map[int64]struct{}
+	clearedallowed_groups            bool
+	usage_logs                       map[int64]struct{}
+	removedusage_logs                map[int64]struct{}
+	clearedusage_logs                bool
+	attribute_values                 map[int64]struct{}
+	removedattribute_values          map[int64]struct{}
+	clearedattribute_values          bool
+	promo_code_usages                map[int64]struct{}
+	removedpromo_code_usages         map[int64]struct{}
+	clearedpromo_code_usages         bool
+	payment_orders                   map[int64]struct{}
+	removedpayment_orders            map[int64]struct{}
+	clearedpayment_orders            bool
+	auth_identities                  map[int64]struct{}
+	removedauth_identities           map[int64]struct{}
+	clearedauth_identities           bool
+	pending_auth_sessions            map[int64]struct{}
+	removedpending_auth_sessions     map[int64]struct{}
+	clearedpending_auth_sessions     bool
+	platform_quotas                  map[int64]struct{}
+	removedplatform_quotas           map[int64]struct{}
+	clearedplatform_quotas           bool
+	custom_domains                   map[int64]struct{}
+	removedcustom_domains            map[int64]struct{}
+	clearedcustom_domains            bool
+	authorized_custom_domains        map[int64]struct{}
+	removedauthorized_custom_domains map[int64]struct{}
+	clearedauthorized_custom_domains bool
+	done                             bool
+	oldValue                         func(context.Context) (*User, error)
+	predicates                       []predicate.User
 }
 
 var _ ent.Mutation = (*UserMutation)(nil)
@@ -49086,6 +51107,114 @@ func (m *UserMutation) ResetPlatformQuotas() {
 	m.removedplatform_quotas = nil
 }
 
+// AddCustomDomainIDs adds the "custom_domains" edge to the CustomDomain entity by ids.
+func (m *UserMutation) AddCustomDomainIDs(ids ...int64) {
+	if m.custom_domains == nil {
+		m.custom_domains = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.custom_domains[ids[i]] = struct{}{}
+	}
+}
+
+// ClearCustomDomains clears the "custom_domains" edge to the CustomDomain entity.
+func (m *UserMutation) ClearCustomDomains() {
+	m.clearedcustom_domains = true
+}
+
+// CustomDomainsCleared reports if the "custom_domains" edge to the CustomDomain entity was cleared.
+func (m *UserMutation) CustomDomainsCleared() bool {
+	return m.clearedcustom_domains
+}
+
+// RemoveCustomDomainIDs removes the "custom_domains" edge to the CustomDomain entity by IDs.
+func (m *UserMutation) RemoveCustomDomainIDs(ids ...int64) {
+	if m.removedcustom_domains == nil {
+		m.removedcustom_domains = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.custom_domains, ids[i])
+		m.removedcustom_domains[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedCustomDomains returns the removed IDs of the "custom_domains" edge to the CustomDomain entity.
+func (m *UserMutation) RemovedCustomDomainsIDs() (ids []int64) {
+	for id := range m.removedcustom_domains {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// CustomDomainsIDs returns the "custom_domains" edge IDs in the mutation.
+func (m *UserMutation) CustomDomainsIDs() (ids []int64) {
+	for id := range m.custom_domains {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetCustomDomains resets all changes to the "custom_domains" edge.
+func (m *UserMutation) ResetCustomDomains() {
+	m.custom_domains = nil
+	m.clearedcustom_domains = false
+	m.removedcustom_domains = nil
+}
+
+// AddAuthorizedCustomDomainIDs adds the "authorized_custom_domains" edge to the CustomDomain entity by ids.
+func (m *UserMutation) AddAuthorizedCustomDomainIDs(ids ...int64) {
+	if m.authorized_custom_domains == nil {
+		m.authorized_custom_domains = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.authorized_custom_domains[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAuthorizedCustomDomains clears the "authorized_custom_domains" edge to the CustomDomain entity.
+func (m *UserMutation) ClearAuthorizedCustomDomains() {
+	m.clearedauthorized_custom_domains = true
+}
+
+// AuthorizedCustomDomainsCleared reports if the "authorized_custom_domains" edge to the CustomDomain entity was cleared.
+func (m *UserMutation) AuthorizedCustomDomainsCleared() bool {
+	return m.clearedauthorized_custom_domains
+}
+
+// RemoveAuthorizedCustomDomainIDs removes the "authorized_custom_domains" edge to the CustomDomain entity by IDs.
+func (m *UserMutation) RemoveAuthorizedCustomDomainIDs(ids ...int64) {
+	if m.removedauthorized_custom_domains == nil {
+		m.removedauthorized_custom_domains = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.authorized_custom_domains, ids[i])
+		m.removedauthorized_custom_domains[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAuthorizedCustomDomains returns the removed IDs of the "authorized_custom_domains" edge to the CustomDomain entity.
+func (m *UserMutation) RemovedAuthorizedCustomDomainsIDs() (ids []int64) {
+	for id := range m.removedauthorized_custom_domains {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AuthorizedCustomDomainsIDs returns the "authorized_custom_domains" edge IDs in the mutation.
+func (m *UserMutation) AuthorizedCustomDomainsIDs() (ids []int64) {
+	for id := range m.authorized_custom_domains {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAuthorizedCustomDomains resets all changes to the "authorized_custom_domains" edge.
+func (m *UserMutation) ResetAuthorizedCustomDomains() {
+	m.authorized_custom_domains = nil
+	m.clearedauthorized_custom_domains = false
+	m.removedauthorized_custom_domains = nil
+}
+
 // Where appends a list predicates to the UserMutation builder.
 func (m *UserMutation) Where(ps ...predicate.User) {
 	m.predicates = append(m.predicates, ps...)
@@ -49724,7 +51853,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 15)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -49763,6 +51892,12 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.platform_quotas != nil {
 		edges = append(edges, user.EdgePlatformQuotas)
+	}
+	if m.custom_domains != nil {
+		edges = append(edges, user.EdgeCustomDomains)
+	}
+	if m.authorized_custom_domains != nil {
+		edges = append(edges, user.EdgeAuthorizedCustomDomains)
 	}
 	return edges
 }
@@ -49849,13 +51984,25 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeCustomDomains:
+		ids := make([]ent.Value, 0, len(m.custom_domains))
+		for id := range m.custom_domains {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeAuthorizedCustomDomains:
+		ids := make([]ent.Value, 0, len(m.authorized_custom_domains))
+		for id := range m.authorized_custom_domains {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 15)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -49894,6 +52041,12 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedplatform_quotas != nil {
 		edges = append(edges, user.EdgePlatformQuotas)
+	}
+	if m.removedcustom_domains != nil {
+		edges = append(edges, user.EdgeCustomDomains)
+	}
+	if m.removedauthorized_custom_domains != nil {
+		edges = append(edges, user.EdgeAuthorizedCustomDomains)
 	}
 	return edges
 }
@@ -49980,13 +52133,25 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeCustomDomains:
+		ids := make([]ent.Value, 0, len(m.removedcustom_domains))
+		for id := range m.removedcustom_domains {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeAuthorizedCustomDomains:
+		ids := make([]ent.Value, 0, len(m.removedauthorized_custom_domains))
+		for id := range m.removedauthorized_custom_domains {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 15)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -50026,6 +52191,12 @@ func (m *UserMutation) ClearedEdges() []string {
 	if m.clearedplatform_quotas {
 		edges = append(edges, user.EdgePlatformQuotas)
 	}
+	if m.clearedcustom_domains {
+		edges = append(edges, user.EdgeCustomDomains)
+	}
+	if m.clearedauthorized_custom_domains {
+		edges = append(edges, user.EdgeAuthorizedCustomDomains)
+	}
 	return edges
 }
 
@@ -50059,6 +52230,10 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedpending_auth_sessions
 	case user.EdgePlatformQuotas:
 		return m.clearedplatform_quotas
+	case user.EdgeCustomDomains:
+		return m.clearedcustom_domains
+	case user.EdgeAuthorizedCustomDomains:
+		return m.clearedauthorized_custom_domains
 	}
 	return false
 }
@@ -50113,6 +52288,12 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgePlatformQuotas:
 		m.ResetPlatformQuotas()
+		return nil
+	case user.EdgeCustomDomains:
+		m.ResetCustomDomains()
+		return nil
+	case user.EdgeAuthorizedCustomDomains:
+		m.ResetAuthorizedCustomDomains()
 		return nil
 	}
 	return fmt.Errorf("unknown User edge %s", name)

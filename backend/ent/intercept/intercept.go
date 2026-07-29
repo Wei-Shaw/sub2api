@@ -23,6 +23,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
+	"github.com/Wei-Shaw/sub2api/ent/customdomain"
+	"github.com/Wei-Shaw/sub2api/ent/customdomainuser"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -509,6 +511,60 @@ func (f TraverseCompositeModelRoute) Traverse(ctx context.Context, q ent.Query) 
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.CompositeModelRouteQuery", q)
+}
+
+// The CustomDomainFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CustomDomainFunc func(context.Context, *ent.CustomDomainQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CustomDomainFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CustomDomainQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CustomDomainQuery", q)
+}
+
+// The TraverseCustomDomain type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCustomDomain func(context.Context, *ent.CustomDomainQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCustomDomain) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCustomDomain) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CustomDomainQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CustomDomainQuery", q)
+}
+
+// The CustomDomainUserFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CustomDomainUserFunc func(context.Context, *ent.CustomDomainUserQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CustomDomainUserFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CustomDomainUserQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CustomDomainUserQuery", q)
+}
+
+// The TraverseCustomDomainUser type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCustomDomainUser func(context.Context, *ent.CustomDomainUserQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCustomDomainUser) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCustomDomainUser) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CustomDomainUserQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CustomDomainUserQuery", q)
 }
 
 // The ErrorPassthroughRuleFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1192,6 +1248,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ChannelMonitorRequestTemplateQuery, predicate.ChannelMonitorRequestTemplate, channelmonitorrequesttemplate.OrderOption]{typ: ent.TypeChannelMonitorRequestTemplate, tq: q}, nil
 	case *ent.CompositeModelRouteQuery:
 		return &query[*ent.CompositeModelRouteQuery, predicate.CompositeModelRoute, compositemodelroute.OrderOption]{typ: ent.TypeCompositeModelRoute, tq: q}, nil
+	case *ent.CustomDomainQuery:
+		return &query[*ent.CustomDomainQuery, predicate.CustomDomain, customdomain.OrderOption]{typ: ent.TypeCustomDomain, tq: q}, nil
+	case *ent.CustomDomainUserQuery:
+		return &query[*ent.CustomDomainUserQuery, predicate.CustomDomainUser, customdomainuser.OrderOption]{typ: ent.TypeCustomDomainUser, tq: q}, nil
 	case *ent.ErrorPassthroughRuleQuery:
 		return &query[*ent.ErrorPassthroughRuleQuery, predicate.ErrorPassthroughRule, errorpassthroughrule.OrderOption]{typ: ent.TypeErrorPassthroughRule, tq: q}, nil
 	case *ent.GroupQuery:

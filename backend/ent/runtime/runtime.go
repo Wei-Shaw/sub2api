@@ -20,6 +20,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
+	"github.com/Wei-Shaw/sub2api/ent/customdomain"
+	"github.com/Wei-Shaw/sub2api/ent/customdomainuser"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -935,6 +937,117 @@ func init() {
 	compositemodelrouteDescEnabled := compositemodelrouteFields[7].Descriptor()
 	// compositemodelroute.DefaultEnabled holds the default value on creation for the enabled field.
 	compositemodelroute.DefaultEnabled = compositemodelrouteDescEnabled.Default.(bool)
+	customdomainMixin := schema.CustomDomain{}.Mixin()
+	customdomainMixinHooks1 := customdomainMixin[1].Hooks()
+	customdomain.Hooks[0] = customdomainMixinHooks1[0]
+	customdomainMixinInters1 := customdomainMixin[1].Interceptors()
+	customdomain.Interceptors[0] = customdomainMixinInters1[0]
+	customdomainMixinFields0 := customdomainMixin[0].Fields()
+	_ = customdomainMixinFields0
+	customdomainFields := schema.CustomDomain{}.Fields()
+	_ = customdomainFields
+	// customdomainDescCreatedAt is the schema descriptor for created_at field.
+	customdomainDescCreatedAt := customdomainMixinFields0[0].Descriptor()
+	// customdomain.DefaultCreatedAt holds the default value on creation for the created_at field.
+	customdomain.DefaultCreatedAt = customdomainDescCreatedAt.Default.(func() time.Time)
+	// customdomainDescUpdatedAt is the schema descriptor for updated_at field.
+	customdomainDescUpdatedAt := customdomainMixinFields0[1].Descriptor()
+	// customdomain.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	customdomain.DefaultUpdatedAt = customdomainDescUpdatedAt.Default.(func() time.Time)
+	// customdomain.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	customdomain.UpdateDefaultUpdatedAt = customdomainDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// customdomainDescAllUsers is the schema descriptor for all_users field.
+	customdomainDescAllUsers := customdomainFields[1].Descriptor()
+	// customdomain.DefaultAllUsers holds the default value on creation for the all_users field.
+	customdomain.DefaultAllUsers = customdomainDescAllUsers.Default.(bool)
+	// customdomainDescDomain is the schema descriptor for domain field.
+	customdomainDescDomain := customdomainFields[2].Descriptor()
+	// customdomain.DomainValidator is a validator for the "domain" field. It is called by the builders before save.
+	customdomain.DomainValidator = func() func(string) error {
+		validators := customdomainDescDomain.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(domain string) error {
+			for _, fn := range fns {
+				if err := fn(domain); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// customdomainDescStatus is the schema descriptor for status field.
+	customdomainDescStatus := customdomainFields[3].Descriptor()
+	// customdomain.DefaultStatus holds the default value on creation for the status field.
+	customdomain.DefaultStatus = customdomainDescStatus.Default.(string)
+	// customdomain.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	customdomain.StatusValidator = customdomainDescStatus.Validators[0].(func(string) error)
+	// customdomainDescVerificationToken is the schema descriptor for verification_token field.
+	customdomainDescVerificationToken := customdomainFields[4].Descriptor()
+	// customdomain.VerificationTokenValidator is a validator for the "verification_token" field. It is called by the builders before save.
+	customdomain.VerificationTokenValidator = func() func(string) error {
+		validators := customdomainDescVerificationToken.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(verification_token string) error {
+			for _, fn := range fns {
+				if err := fn(verification_token); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// customdomainDescVerificationTxtName is the schema descriptor for verification_txt_name field.
+	customdomainDescVerificationTxtName := customdomainFields[5].Descriptor()
+	// customdomain.VerificationTxtNameValidator is a validator for the "verification_txt_name" field. It is called by the builders before save.
+	customdomain.VerificationTxtNameValidator = func() func(string) error {
+		validators := customdomainDescVerificationTxtName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(verification_txt_name string) error {
+			for _, fn := range fns {
+				if err := fn(verification_txt_name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// customdomainDescVerificationTxtValue is the schema descriptor for verification_txt_value field.
+	customdomainDescVerificationTxtValue := customdomainFields[6].Descriptor()
+	// customdomain.VerificationTxtValueValidator is a validator for the "verification_txt_value" field. It is called by the builders before save.
+	customdomain.VerificationTxtValueValidator = func() func(string) error {
+		validators := customdomainDescVerificationTxtValue.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(verification_txt_value string) error {
+			for _, fn := range fns {
+				if err := fn(verification_txt_value); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// customdomainDescCnameTarget is the schema descriptor for cname_target field.
+	customdomainDescCnameTarget := customdomainFields[7].Descriptor()
+	// customdomain.CnameTargetValidator is a validator for the "cname_target" field. It is called by the builders before save.
+	customdomain.CnameTargetValidator = customdomainDescCnameTarget.Validators[0].(func(string) error)
+	customdomainuserFields := schema.CustomDomainUser{}.Fields()
+	_ = customdomainuserFields
+	// customdomainuserDescCreatedAt is the schema descriptor for created_at field.
+	customdomainuserDescCreatedAt := customdomainuserFields[2].Descriptor()
+	// customdomainuser.DefaultCreatedAt holds the default value on creation for the created_at field.
+	customdomainuser.DefaultCreatedAt = customdomainuserDescCreatedAt.Default.(func() time.Time)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0
@@ -2054,40 +2167,44 @@ func init() {
 	usagelogDescIPAddress := usagelogFields[33].Descriptor()
 	// usagelog.IPAddressValidator is a validator for the "ip_address" field. It is called by the builders before save.
 	usagelog.IPAddressValidator = usagelogDescIPAddress.Validators[0].(func(string) error)
+	// usagelogDescCustomDomain is the schema descriptor for custom_domain field.
+	usagelogDescCustomDomain := usagelogFields[35].Descriptor()
+	// usagelog.CustomDomainValidator is a validator for the "custom_domain" field. It is called by the builders before save.
+	usagelog.CustomDomainValidator = usagelogDescCustomDomain.Validators[0].(func(string) error)
 	// usagelogDescImageCount is the schema descriptor for image_count field.
-	usagelogDescImageCount := usagelogFields[34].Descriptor()
+	usagelogDescImageCount := usagelogFields[36].Descriptor()
 	// usagelog.DefaultImageCount holds the default value on creation for the image_count field.
 	usagelog.DefaultImageCount = usagelogDescImageCount.Default.(int)
 	// usagelogDescImageSize is the schema descriptor for image_size field.
-	usagelogDescImageSize := usagelogFields[35].Descriptor()
+	usagelogDescImageSize := usagelogFields[37].Descriptor()
 	// usagelog.ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
 	usagelog.ImageSizeValidator = usagelogDescImageSize.Validators[0].(func(string) error)
 	// usagelogDescImageInputSize is the schema descriptor for image_input_size field.
-	usagelogDescImageInputSize := usagelogFields[36].Descriptor()
+	usagelogDescImageInputSize := usagelogFields[38].Descriptor()
 	// usagelog.ImageInputSizeValidator is a validator for the "image_input_size" field. It is called by the builders before save.
 	usagelog.ImageInputSizeValidator = usagelogDescImageInputSize.Validators[0].(func(string) error)
 	// usagelogDescImageOutputSize is the schema descriptor for image_output_size field.
-	usagelogDescImageOutputSize := usagelogFields[37].Descriptor()
+	usagelogDescImageOutputSize := usagelogFields[39].Descriptor()
 	// usagelog.ImageOutputSizeValidator is a validator for the "image_output_size" field. It is called by the builders before save.
 	usagelog.ImageOutputSizeValidator = usagelogDescImageOutputSize.Validators[0].(func(string) error)
 	// usagelogDescImageSizeSource is the schema descriptor for image_size_source field.
-	usagelogDescImageSizeSource := usagelogFields[38].Descriptor()
+	usagelogDescImageSizeSource := usagelogFields[40].Descriptor()
 	// usagelog.ImageSizeSourceValidator is a validator for the "image_size_source" field. It is called by the builders before save.
 	usagelog.ImageSizeSourceValidator = usagelogDescImageSizeSource.Validators[0].(func(string) error)
 	// usagelogDescVideoCount is the schema descriptor for video_count field.
-	usagelogDescVideoCount := usagelogFields[40].Descriptor()
+	usagelogDescVideoCount := usagelogFields[42].Descriptor()
 	// usagelog.DefaultVideoCount holds the default value on creation for the video_count field.
 	usagelog.DefaultVideoCount = usagelogDescVideoCount.Default.(int)
 	// usagelogDescVideoResolution is the schema descriptor for video_resolution field.
-	usagelogDescVideoResolution := usagelogFields[41].Descriptor()
+	usagelogDescVideoResolution := usagelogFields[43].Descriptor()
 	// usagelog.VideoResolutionValidator is a validator for the "video_resolution" field. It is called by the builders before save.
 	usagelog.VideoResolutionValidator = usagelogDescVideoResolution.Validators[0].(func(string) error)
 	// usagelogDescCacheTTLOverridden is the schema descriptor for cache_ttl_overridden field.
-	usagelogDescCacheTTLOverridden := usagelogFields[43].Descriptor()
+	usagelogDescCacheTTLOverridden := usagelogFields[45].Descriptor()
 	// usagelog.DefaultCacheTTLOverridden holds the default value on creation for the cache_ttl_overridden field.
 	usagelog.DefaultCacheTTLOverridden = usagelogDescCacheTTLOverridden.Default.(bool)
 	// usagelogDescCreatedAt is the schema descriptor for created_at field.
-	usagelogDescCreatedAt := usagelogFields[44].Descriptor()
+	usagelogDescCreatedAt := usagelogFields[46].Descriptor()
 	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{}.Mixin()
