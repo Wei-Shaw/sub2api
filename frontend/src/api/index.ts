@@ -22,6 +22,7 @@ export { totpAPI } from './totp'
 export { passkeyAPI, type PasskeyCredentialSummary } from './passkey'
 export { default as announcementsAPI } from './announcements'
 export { channelMonitorUserAPI } from './channelMonitor'
+export * as systemTokenAPI from './systemToken'
 
 // Admin APIs
 export { adminAPI } from './admin'

@@ -768,6 +768,21 @@ export default {
       deleted: 'Passkey 已删除。',
       deleteFailed: '删除 Passkey 失败。'
     },
+    systemToken: {
+      title: '系统访问令牌',
+      description: '生成长期有效的访问令牌，可通过脚本或程序调用管理 API（查询模型、价格、创建 Key 等），无需登录。',
+      generate: '生成令牌',
+      regenerate: '重新生成',
+      revoke: '撤销令牌',
+      noToken: '尚未生成系统访问令牌。',
+      hasToken: '已生成系统访问令牌（令牌内容仅在生成时显示一次）。',
+      tokenGenerated: '令牌已生成，请妥善保存。令牌仅显示一次，关闭后无法再次查看。',
+      tokenRevoked: '令牌已撤销。',
+      confirmRegenerate: '重新生成将使当前令牌失效，确认继续？',
+      confirmRevoke: '撤销后使用该令牌的所有集成将立即失效，确认撤销？',
+      copySuccess: '已复制到剪贴板',
+      usage: '使用方式：在请求 Header 中添加 Authorization: Bearer sat_xxx',
+    },
     balanceNotify: {
       title: '余额不足提醒',
       description: '当账户余额低于阈值时发送邮件提醒',

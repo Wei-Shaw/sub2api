@@ -16,8 +16,9 @@ func NewJWTAuthMiddleware(
 	userService *service.UserService,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
+	systemTokenService *service.SystemTokenService,
 ) JWTAuthMiddleware {
-	return JWTAuthMiddleware(jwtAuth(authService, userService, userService, settingService, auditService))
+	return JWTAuthMiddleware(jwtAuth(authService, userService, userService, settingService, auditService, systemTokenService))
 }
 
 type jwtUserReader interface {
@@ -35,6 +36,7 @@ func jwtAuth(
 	activityToucher userActivityToucher,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
+	systemTokenService *service.SystemTokenService,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从Authorization header中提取token
@@ -54,6 +56,12 @@ func jwtAuth(
 		tokenString := strings.TrimSpace(parts[1])
 		if tokenString == "" {
 			AbortWithError(c, 401, "EMPTY_TOKEN", "Token cannot be empty")
+			return
+		}
+
+		// 系统访问令牌 (System Access Token) 快捷路径
+		if service.IsSystemToken(tokenString) {
+			authenticateWithSystemToken(c, systemTokenService, userService, activityToucher, tokenString)
 			return
 		}
 
@@ -106,6 +114,42 @@ func jwtAuth(
 
 		c.Next()
 	}
+}
+
+// authenticateWithSystemToken validates a system access token and sets auth context.
+func authenticateWithSystemToken(
+	c *gin.Context,
+	systemTokenService *service.SystemTokenService,
+	userService jwtUserReader,
+	activityToucher userActivityToucher,
+	token string,
+) {
+	userID, err := systemTokenService.GetUserIDByToken(c.Request.Context(), token)
+	if err != nil {
+		AbortWithError(c, 401, "INVALID_SYSTEM_TOKEN", "Invalid system access token")
+		return
+	}
+
+	user, err := userService.GetByID(c.Request.Context(), userID)
+	if err != nil {
+		AbortWithError(c, 401, "USER_NOT_FOUND", "User not found")
+		return
+	}
+	if !user.IsActive() {
+		AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
+		return
+	}
+
+	c.Set(string(ContextKeyUser), AuthSubject{
+		UserID:      user.ID,
+		Concurrency: user.Concurrency,
+	})
+	c.Set(string(ContextKeyUserRole), user.Role)
+	c.Set(ContextKeyAuthEmail, user.Email)
+	if activityToucher != nil {
+		activityToucher.TouchLastActiveForUser(c.Request.Context(), user)
+	}
+	c.Next()
 }
 
 // Deprecated: prefer GetAuthSubjectFromContext in auth_subject.go.

@@ -763,6 +763,21 @@ export default {
       deleted: 'Passkey deleted.',
       deleteFailed: 'Failed to delete passkey.'
     },
+    systemToken: {
+      title: 'System Access Token',
+      description: 'Generate a long-lived token for programmatic access to management APIs (query models, pricing, create keys, etc.) without logging in.',
+      generate: 'Generate Token',
+      regenerate: 'Regenerate',
+      revoke: 'Revoke Token',
+      noToken: 'No system access token generated.',
+      hasToken: 'System access token is active (the token value is shown only once at generation).',
+      tokenGenerated: 'Token generated. Please save it securely — it will only be shown once.',
+      tokenRevoked: 'Token revoked.',
+      confirmRegenerate: 'Regenerating will invalidate the current token. Continue?',
+      confirmRevoke: 'Revoking will immediately break all integrations using this token. Confirm?',
+      copySuccess: 'Copied to clipboard',
+      usage: 'Usage: add Authorization: Bearer sat_xxx to your request headers',
+    },
     balanceNotify: {
       title: 'Balance Low Notification',
       description: 'Send email alert when account balance falls below threshold',

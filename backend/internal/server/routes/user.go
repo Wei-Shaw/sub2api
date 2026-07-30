@@ -70,6 +70,14 @@ func RegisterUserRoutes(
 				passkeys.PATCH("/:id", h.Passkey.Rename)
 				passkeys.DELETE("/:id", h.Passkey.Delete)
 			}
+
+			// 系统访问令牌 (System Access Token)
+			systemToken := user.Group("/system-token")
+			{
+				systemToken.GET("", h.SystemToken.GetStatus)
+				systemToken.POST("", h.SystemToken.Generate)
+				systemToken.DELETE("", h.SystemToken.Revoke)
+			}
 		}
 
 		// API Key管理
