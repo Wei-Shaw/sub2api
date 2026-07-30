@@ -291,6 +291,98 @@ jq '.image_digest = "sha256:'"$(printf '9%.0s' {1..64})"'"' \
   "$TEST_ROOT/completion-with-candidate.json" > "$TEST_ROOT/bad-candidate-completion.json"
 expect_failure 'does not match the audited Build Once candidate' bash "$SAFETY_SCRIPT" \
   verify-completion-candidate "$TEST_ROOT/bad-candidate-completion.json" "$CANDIDATE_DIR"
+
+WORKFLOW_PREFLIGHT_BLOB=$(printf '2%.0s' {1..40})
+WORKFLOW_PROMOTE_BLOB=$(printf '3%.0s' {1..40})
+WORKFLOW_RELEASE_BLOB=$(printf '4%.0s' {1..40})
+jq \
+  --arg commit "$MAIN_COMMIT" \
+  --arg preflight "$WORKFLOW_PREFLIGHT_BLOB" \
+  --arg promote "$WORKFLOW_PROMOTE_BLOB" \
+  --arg release "$WORKFLOW_RELEASE_BLOB" '
+    .schema = 4
+    | .workflow_commit = $commit
+    | .workflow_blobs = {
+        "release-preflight.yml": $preflight,
+        "promote-release.yml": $promote,
+        "release.yml": $release
+      }
+  ' "$TEST_ROOT/completion-with-candidate.json" > "$TEST_ROOT/completion-schema4.json"
+jq \
+  --arg commit "$MAIN_COMMIT" \
+  --arg preflight "$WORKFLOW_PREFLIGHT_BLOB" \
+  --arg promote "$WORKFLOW_PROMOTE_BLOB" \
+  --arg release "$WORKFLOW_RELEASE_BLOB" '
+    .schema = 2
+    | .workflow_commit = $commit
+    | .workflow_blobs = {
+        "release-preflight.yml": $preflight,
+        "promote-release.yml": $promote,
+        "release.yml": $release
+      }
+  ' "$CANDIDATE_DIR/candidate.json" > "$CANDIDATE_DIR/candidate.json.next"
+mv "$CANDIDATE_DIR/candidate.json.next" "$CANDIDATE_DIR/candidate.json"
+bash "$SAFETY_SCRIPT" verify-completion-json \
+  "$TEST_ROOT/completion-schema4.json" \
+  v1.0.0-ts.10 "$MAIN_COMMIT" "$VALIDATED_TAG_OBJECT" \
+  ghcr.io/example/sub2api:1.0.0-ts.10 docker.io/example/sub2api:1.0.0-ts.10
+bash "$SAFETY_SCRIPT" verify-completion-deployer-checksums \
+  "$TEST_ROOT/completion-schema4.json" "$DEPLOYER_CHECKSUMS_FILE"
+jq '.deployer_assets["sub2api-deployer-linux-amd64"] = "sha256:'"$(printf '8%.0s' {1..64})"'"' \
+  "$TEST_ROOT/completion-schema4.json" > "$TEST_ROOT/bad-schema4-deployer-asset.json"
+expect_failure 'does not match the checksum manifest' bash "$SAFETY_SCRIPT" \
+  verify-completion-deployer-checksums \
+  "$TEST_ROOT/bad-schema4-deployer-asset.json" "$DEPLOYER_CHECKSUMS_FILE"
+bash "$SAFETY_SCRIPT" verify-completion-candidate \
+  "$TEST_ROOT/completion-schema4.json" "$CANDIDATE_DIR"
+
+AUDIT_CANDIDATE="$TEST_ROOT/sub2api-build-once-candidate.json"
+AUDIT_MANIFEST="$TEST_ROOT/sub2api-build-once-MANIFEST.sha256"
+AUDIT_CONTROL_MANIFEST="$TEST_ROOT/sub2api-control-plane-MANIFEST.json"
+AUDIT_COMPLETION="$TEST_ROOT/sub2api-release-complete-audit.json"
+cp "$CANDIDATE_DIR/candidate.json" "$AUDIT_CANDIDATE"
+jq -n \
+  --arg version "$(jq -er '.version' "$AUDIT_CANDIDATE")" \
+  --arg commit "$MAIN_COMMIT" '
+    {
+      schema: 2,
+      version: $version,
+      commit: $commit,
+      runtime_payload: {
+        "linux/amd64": {assets: [{type: "sub2api-deployer"}]},
+        "linux/arm64": {assets: [{type: "sub2api-deployer"}]}
+      }
+    }
+  ' > "$AUDIT_CONTROL_MANIFEST"
+AUDIT_CONTROL_SHA="sha256:$(sha256sum "$AUDIT_CONTROL_MANIFEST" | awk '{print $1}')"
+jq --arg digest "$AUDIT_CONTROL_SHA" '.control_plane_manifest_sha256 = $digest' \
+  "$AUDIT_CANDIDATE" > "$AUDIT_CANDIDATE.next"
+mv "$AUDIT_CANDIDATE.next" "$AUDIT_CANDIDATE"
+AUDIT_CANDIDATE_SHA=$(sha256sum "$AUDIT_CANDIDATE" | awk '{print $1}')
+printf '%s  candidate.json\n' "$AUDIT_CANDIDATE_SHA" > "$AUDIT_MANIFEST"
+AUDIT_MANIFEST_SHA="sha256:$(sha256sum "$AUDIT_MANIFEST" | awk '{print $1}')"
+jq \
+  --arg control_digest "$AUDIT_CONTROL_SHA" \
+  --arg candidate_manifest_digest "$AUDIT_MANIFEST_SHA" '
+    .schema = 3
+    | .control_plane_manifest_sha256 = $control_digest
+    | .candidate_manifest_sha256 = $candidate_manifest_digest
+    | del(.workflow_commit, .workflow_blobs)
+  ' "$COMPLETION_FILE" > "$AUDIT_COMPLETION"
+bash "$SAFETY_SCRIPT" verify-release-audit-assets \
+  "$AUDIT_COMPLETION" "$AUDIT_CANDIDATE" "$AUDIT_MANIFEST" "$AUDIT_CONTROL_MANIFEST"
+cp "$AUDIT_CANDIDATE" "$TEST_ROOT/tampered-audit-candidate.json"
+printf '\n' >> "$TEST_ROOT/tampered-audit-candidate.json"
+expect_failure 'does not match its manifest' bash "$SAFETY_SCRIPT" \
+  verify-release-audit-assets \
+  "$AUDIT_COMPLETION" "$TEST_ROOT/tampered-audit-candidate.json" "$AUDIT_MANIFEST" "$AUDIT_CONTROL_MANIFEST"
+
+jq '.workflow_blobs["release.yml"] = "bad"' \
+  "$TEST_ROOT/completion-schema4.json" > "$TEST_ROOT/bad-workflow-completion.json"
+expect_failure 'does not match' bash "$SAFETY_SCRIPT" verify-completion-json \
+  "$TEST_ROOT/bad-workflow-completion.json" \
+  v1.0.0-ts.10 "$MAIN_COMMIT" "$VALIDATED_TAG_OBJECT" \
+  ghcr.io/example/sub2api:1.0.0-ts.10 docker.io/example/sub2api:1.0.0-ts.10
 LEGACY_COMPLETION_FILE="$TEST_ROOT/sub2api-release-complete-schema2.json"
 jq '.schema = 2 | del(.deployer_assets)' "$COMPLETION_FILE" > "$LEGACY_COMPLETION_FILE"
 bash "$SAFETY_SCRIPT" verify-completion-json \

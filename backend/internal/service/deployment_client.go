@@ -29,6 +29,11 @@ type DeploymentHealth struct {
 	ActiveVersion            string `json:"active_version"`
 	JobRunning               bool   `json:"job_running"`
 	ControlPlaneUpgradeReady bool   `json:"control_plane_upgrade_ready"`
+	ControlPlane             struct {
+		Activator        string `json:"activator"`
+		PayloadSchemaMin int    `json:"payload_schema_min"`
+		PayloadSchemaMax int    `json:"payload_schema_max"`
+	} `json:"control_plane"`
 }
 
 type DeploymentJob struct {
@@ -74,6 +79,16 @@ type DeploymentClient interface {
 
 type UnixDeploymentClient struct {
 	client *http.Client
+}
+
+const managedControlPlanePayloadSchema = 1
+
+func managedControlPlaneCompatible(health *DeploymentHealth) bool {
+	return health != nil &&
+		health.ControlPlaneUpgradeReady &&
+		health.ControlPlane.Activator == "go-v1" &&
+		health.ControlPlane.PayloadSchemaMin <= managedControlPlanePayloadSchema &&
+		health.ControlPlane.PayloadSchemaMax >= managedControlPlanePayloadSchema
 }
 
 func NewUnixDeploymentClient(socketPath string, timeout time.Duration) *UnixDeploymentClient {
@@ -215,7 +230,7 @@ func (s *UpdateService) decorateDeployment(ctx context.Context, info *UpdateInfo
 			info.DeploymentMessage = "Docker deployment agent is unavailable"
 			return
 		}
-		if !health.ControlPlaneUpgradeReady {
+		if !managedControlPlaneCompatible(health) {
 			info.DeploymentMessage = "Run the one-time host deployer bootstrap before using one-click updates"
 			return
 		}
@@ -280,6 +295,8 @@ type releaseCompletionLedger struct {
 	CandidateManifestSHA    string            `json:"candidate_manifest_sha256"`
 	DeployerChecksumsSHA256 string            `json:"deployer_checksums_sha256"`
 	DeployerAssets          map[string]string `json:"deployer_assets"`
+	WorkflowCommit          string            `json:"workflow_commit,omitempty"`
+	WorkflowBlobs           map[string]string `json:"workflow_blobs,omitempty"`
 }
 
 func (s *UpdateService) verifiedReleaseDigest(ctx context.Context, info *UpdateInfo) (string, error) {
@@ -320,7 +337,7 @@ func (s *UpdateService) verifiedReleaseDigest(ctx context.Context, info *UpdateI
 	}
 	expectedTag := "v" + info.LatestVersion
 	expectedImage := "ghcr.io/" + strings.ToLower(githubRepo) + ":" + info.LatestVersion
-	if ledger.Schema != 3 || ledger.Tag != expectedTag || ledger.Image != expectedImage ||
+	if (ledger.Schema != 3 && ledger.Schema != 4) || ledger.Tag != expectedTag || ledger.Image != expectedImage ||
 		!releaseDigestPattern.MatchString(ledger.ImageDigest) ||
 		ledger.ImmutableImage != ledger.Image+"@"+ledger.ImageDigest ||
 		!releaseObjectPattern.MatchString(ledger.Commit) ||
@@ -329,6 +346,15 @@ func (s *UpdateService) verifiedReleaseDigest(ctx context.Context, info *UpdateI
 		!releaseDigestPattern.MatchString(ledger.CandidateManifestSHA) ||
 		!releaseDigestPattern.MatchString(ledger.DeployerChecksumsSHA256) {
 		return "", errors.New("completion ledger identity is invalid")
+	}
+	if ledger.Schema == 4 && !validReleaseWorkflowIdentity(ledger) {
+		return "", errors.New("completion ledger workflow identity is invalid")
+	}
+	if ledger.Schema == 3 && (ledger.WorkflowCommit != "" || ledger.WorkflowBlobs != nil) {
+		return "", errors.New("completion ledger schema 3 must not contain workflow identity")
+	}
+	if !validOptionalDockerHubIdentity(ledger) {
+		return "", errors.New("completion ledger DockerHub identity is invalid")
 	}
 	architectures := append([]string(nil), ledger.Architectures...)
 	sort.Strings(architectures)
@@ -351,6 +377,28 @@ func (s *UpdateService) verifiedReleaseDigest(ctx context.Context, info *UpdateI
 	return ledger.ImageDigest, nil
 }
 
+func validReleaseWorkflowIdentity(ledger releaseCompletionLedger) bool {
+	if ledger.WorkflowCommit != ledger.Commit || !releaseObjectPattern.MatchString(ledger.WorkflowCommit) || len(ledger.WorkflowBlobs) != 3 {
+		return false
+	}
+	for _, name := range []string{"release-preflight.yml", "promote-release.yml", "release.yml"} {
+		if !releaseObjectPattern.MatchString(ledger.WorkflowBlobs[name]) {
+			return false
+		}
+	}
+	return true
+}
+
+func validOptionalDockerHubIdentity(ledger releaseCompletionLedger) bool {
+	if ledger.DockerHubImage == nil || ledger.DockerHubImageDigest == nil || ledger.DockerHubImmutableImage == nil {
+		return ledger.DockerHubImage == nil && ledger.DockerHubImageDigest == nil && ledger.DockerHubImmutableImage == nil
+	}
+	image := strings.TrimSpace(*ledger.DockerHubImage)
+	digest := strings.TrimSpace(*ledger.DockerHubImageDigest)
+	immutable := strings.TrimSpace(*ledger.DockerHubImmutableImage)
+	return image != "" && !strings.ContainsAny(image, " \t\r\n@") && releaseDigestPattern.MatchString(digest) && immutable == image+"@"+digest
+}
+
 func (s *UpdateService) requireManagedDeployerUpgradeReady(ctx context.Context) error {
 	healthCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -358,7 +406,7 @@ func (s *UpdateService) requireManagedDeployerUpgradeReady(ctx context.Context) 
 	if err != nil || health == nil || health.Status != "ok" {
 		return ErrManagedDeployerUnavailable
 	}
-	if !health.ControlPlaneUpgradeReady {
+	if !managedControlPlaneCompatible(health) {
 		return ErrManagedDeployerBootstrapRequired
 	}
 	return nil

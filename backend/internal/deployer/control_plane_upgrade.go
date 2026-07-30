@@ -18,7 +18,7 @@ import (
 const (
 	controlPlaneProtocolLabel       = "io.tokensupply.sub2api.control-plane-protocol"
 	controlPlaneManifestDigestLabel = "io.tokensupply.sub2api.control-plane-manifest-sha256"
-	controlPlaneProtocolV1          = "1"
+	controlPlaneImageProtocolV1     = "1"
 	controlPlaneManifestPath        = "/opt/sub2api-control-plane/CONTROL-PLANE-MANIFEST.json"
 	controlPlaneBinaryPath          = "/opt/sub2api-control-plane/sub2api-deployer"
 )
@@ -33,8 +33,16 @@ type controlPlaneManifest struct {
 }
 
 type controlPlaneRuntimePayload struct {
+	Assets []controlPlaneManifestAsset `json:"assets"`
+}
+
+type controlPlaneManifestAsset struct {
+	Type   string `json:"type"`
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`
+	Owner  int    `json:"owner"`
+	Group  int    `json:"group"`
+	Mode   uint32 `json:"mode"`
 }
 
 type verifiedControlPlaneStage struct {
@@ -63,7 +71,7 @@ func (m *Manager) stageControlPlaneUpgrade(ctx context.Context, job *Job) (*veri
 	if protocol == "" {
 		return nil, true, nil
 	}
-	if protocol != controlPlaneProtocolV1 {
+	if protocol != controlPlaneImageProtocolV1 {
 		return nil, false, fmt.Errorf("unsupported control-plane protocol %q", protocol)
 	}
 	expectedManifestSHA := strings.TrimSpace(labels[controlPlaneManifestDigestLabel])
@@ -75,9 +83,19 @@ func (m *Manager) stageControlPlaneUpgrade(ctx context.Context, job *Job) (*veri
 		return nil, false, errors.New("control-plane protocol 1 image has no OCI revision label")
 	}
 
-	stageRoot := filepath.Join(filepath.Dir(m.cfg.ControlPlaneUpgradePath), "control-plane-staging")
+	stageRoot := filepath.Join(controlPlaneStateDirectory(m.cfg), "control-plane-staging")
 	if err := os.MkdirAll(stageRoot, 0700); err != nil {
 		return nil, false, fmt.Errorf("create control-plane staging root: %w", err)
+	}
+	if err := validateOwnedDirectory(stageRoot, os.Geteuid(), os.Getegid(), 0700); err != nil {
+		return nil, false, fmt.Errorf("control-plane staging root is unsafe: %w", err)
+	}
+	finalStage := filepath.Join(stageRoot, job.ID)
+	if _, err := os.Lstat(finalStage); err == nil {
+		stage, verifyErr := m.verifyPublishedControlPlaneStage(ctx, job, finalStage, expectedManifestSHA, expectedCommit)
+		return stage, false, verifyErr
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, false, fmt.Errorf("inspect existing control-plane stage: %w", err)
 	}
 	temporaryStage, err := os.MkdirTemp(stageRoot, ".stage-")
 	if err != nil {
@@ -110,9 +128,6 @@ func (m *Manager) stageControlPlaneUpgrade(ctx context.Context, job *Job) (*veri
 	if _, err := m.runner.Run(ctx, nil, m.cfg.DockerBinary, "cp", containerID+":"+controlPlaneBinaryPath, binaryPath); err != nil {
 		return nil, false, fmt.Errorf("extract control-plane deployer: %w", err)
 	}
-	if err := os.Chmod(binaryPath, 0755); err != nil {
-		return nil, false, fmt.Errorf("make staged deployer executable: %w", err)
-	}
 	for _, path := range []string{manifestPath, binaryPath} {
 		info, err := os.Lstat(path)
 		if err != nil {
@@ -121,9 +136,16 @@ func (m *Manager) stageControlPlaneUpgrade(ctx context.Context, job *Job) (*veri
 		if !info.Mode().IsRegular() {
 			return nil, false, fmt.Errorf("staged control-plane payload %s is not a regular file", filepath.Base(path))
 		}
+		expectedMode := os.FileMode(0644)
+		if path == binaryPath {
+			expectedMode = 0755
+		}
+		if _, err := readRegularFileMode(path, os.Geteuid(), os.Getegid(), expectedMode); err != nil {
+			return nil, false, fmt.Errorf("staged control-plane payload %s has unsafe ownership: %w", filepath.Base(path), err)
+		}
 	}
 
-	manifestBytes, err := os.ReadFile(manifestPath)
+	manifestBytes, err := readRegularFileMode(manifestPath, os.Geteuid(), os.Getegid(), 0644)
 	if err != nil {
 		return nil, false, fmt.Errorf("read staged control-plane manifest: %w", err)
 	}
@@ -141,7 +163,7 @@ func (m *Manager) stageControlPlaneUpgrade(ctx context.Context, job *Job) (*veri
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return nil, false, errors.New("control-plane manifest contains trailing JSON data")
 	}
-	if manifest.Schema != 1 {
+	if manifest.Schema != 2 {
 		return nil, false, fmt.Errorf("unsupported control-plane manifest schema %d", manifest.Schema)
 	}
 	if manifest.Version != job.TargetVersion {
@@ -155,16 +177,19 @@ func (m *Manager) stageControlPlaneUpgrade(ctx context.Context, job *Job) (*veri
 	if !ok {
 		return nil, false, fmt.Errorf("control-plane manifest has no payload for %s", runtimeKey)
 	}
-	if payload.Path != controlPlaneBinaryPath || !digestPattern.MatchString(payload.SHA256) {
+	if len(payload.Assets) != 1 {
+		return nil, false, fmt.Errorf("control-plane manifest payload for %s must contain exactly one asset", runtimeKey)
+	}
+	asset := payload.Assets[0]
+	if asset.Type != controlPlaneAssetDeployer || asset.Path != controlPlaneBinaryPath || !digestPattern.MatchString(asset.SHA256) || asset.Owner != 0 || asset.Group != 0 || asset.Mode != 0755 {
 		return nil, false, fmt.Errorf("control-plane manifest payload for %s is invalid", runtimeKey)
 	}
-	binaryBytes, err := os.ReadFile(binaryPath)
+	binarySHA, err := digestRegularFile(binaryPath, os.Geteuid(), os.Getegid(), 0755)
 	if err != nil {
 		return nil, false, fmt.Errorf("read staged deployer: %w", err)
 	}
-	binarySHA := sha256Digest(binaryBytes)
-	if binarySHA != payload.SHA256 {
-		return nil, false, fmt.Errorf("staged deployer digest mismatch: expected %s, got %s", payload.SHA256, binarySHA)
+	if binarySHA != asset.SHA256 {
+		return nil, false, fmt.Errorf("staged deployer digest mismatch: expected %s, got %s", asset.SHA256, binarySHA)
 	}
 	versionOutput, err := m.runner.Run(ctx, nil, binaryPath, "--version")
 	if err != nil {
@@ -183,14 +208,13 @@ func (m *Manager) stageControlPlaneUpgrade(ctx context.Context, job *Job) (*veri
 		}
 	}
 
-	finalStage := filepath.Join(stageRoot, job.ID)
 	if info, err := os.Lstat(finalStage); err == nil {
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return nil, false, errors.New("existing control-plane stage is unsafe")
 		}
-		existingManifest, manifestErr := os.ReadFile(filepath.Join(finalStage, "CONTROL-PLANE-MANIFEST.json"))
-		existingBinary, binaryErr := os.ReadFile(filepath.Join(finalStage, "sub2api-deployer"))
-		if manifestErr != nil || binaryErr != nil || sha256Digest(existingManifest) != manifestSHA || sha256Digest(existingBinary) != binarySHA {
+		existingManifest, manifestErr := readRegularFileMode(filepath.Join(finalStage, "CONTROL-PLANE-MANIFEST.json"), os.Geteuid(), os.Getegid(), 0644)
+		existingBinarySHA, binaryErr := digestRegularFile(filepath.Join(finalStage, "sub2api-deployer"), os.Geteuid(), os.Getegid(), 0755)
+		if manifestErr != nil || binaryErr != nil || sha256Digest(existingManifest) != manifestSHA || existingBinarySHA != binarySHA {
 			return nil, false, errors.New("existing control-plane stage does not match the verified target payload")
 		}
 		if err := os.RemoveAll(temporaryStage); err != nil {
@@ -213,6 +237,71 @@ func (m *Manager) stageControlPlaneUpgrade(ctx context.Context, job *Job) (*veri
 		Commit:       expectedCommit,
 		Arch:         runtime.GOARCH,
 	}, false, nil
+}
+
+func (m *Manager) verifyPublishedControlPlaneStage(ctx context.Context, job *Job, directory, expectedManifestSHA, expectedCommit string) (*verifiedControlPlaneStage, error) {
+	if err := validateOwnedDirectory(directory, os.Geteuid(), os.Getegid(), 0700); err != nil {
+		return nil, errors.New("existing control-plane stage is unsafe")
+	}
+	manifestPath := filepath.Join(directory, "CONTROL-PLANE-MANIFEST.json")
+	binaryPath := filepath.Join(directory, controlPlaneAssetDeployer)
+	manifestBytes, err := readRegularFileMode(manifestPath, os.Geteuid(), os.Getegid(), 0644)
+	if err != nil || sha256Digest(manifestBytes) != expectedManifestSHA {
+		return nil, errors.New("existing control-plane manifest does not match the immutable image label")
+	}
+	var manifest controlPlaneManifest
+	decoder := json.NewDecoder(strings.NewReader(string(manifestBytes)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&manifest); err != nil {
+		return nil, fmt.Errorf("decode existing control-plane manifest: %w", err)
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return nil, errors.New("existing control-plane manifest contains trailing JSON data")
+	}
+	runtimeKey := "linux/" + runtime.GOARCH
+	payload, ok := manifest.RuntimePayload[runtimeKey]
+	if manifest.Schema != 2 || manifest.Version != job.TargetVersion || manifest.Commit != expectedCommit || !ok || len(payload.Assets) != 1 {
+		return nil, errors.New("existing control-plane manifest identity is invalid")
+	}
+	asset := payload.Assets[0]
+	if asset.Type != controlPlaneAssetDeployer || asset.Path != controlPlaneBinaryPath || !digestPattern.MatchString(asset.SHA256) || asset.Owner != 0 || asset.Group != 0 || asset.Mode != 0755 {
+		return nil, errors.New("existing control-plane manifest asset is invalid")
+	}
+	binaryDigest, err := digestRegularFile(binaryPath, os.Geteuid(), os.Getegid(), 0755)
+	if err != nil || binaryDigest != asset.SHA256 {
+		return nil, errors.New("existing staged deployer digest is invalid")
+	}
+	versionOutput, err := m.runner.Run(ctx, nil, binaryPath, "--version")
+	if err != nil {
+		return nil, fmt.Errorf("read existing staged deployer build identity: %w", err)
+	}
+	identity, err := parseControlPlaneBuildIdentity(versionOutput)
+	if err != nil || identity.Version != job.TargetVersion || identity.Commit != expectedCommit || identity.Type != "release" || identity.Arch != runtime.GOARCH {
+		return nil, errors.New("existing staged deployer build identity is invalid")
+	}
+	if m.cfg.LoadedFrom != "" {
+		if _, err := m.runner.Run(ctx, nil, binaryPath, "-config", m.cfg.LoadedFrom, "-check"); err != nil {
+			return nil, fmt.Errorf("validate existing staged deployer against host configuration: %w", err)
+		}
+	}
+	return &verifiedControlPlaneStage{
+		Directory:    directory,
+		BinaryPath:   binaryPath,
+		BinarySHA256: binaryDigest,
+		ManifestPath: manifestPath,
+		ManifestSHA:  expectedManifestSHA,
+		Commit:       expectedCommit,
+		Arch:         runtime.GOARCH,
+	}, nil
+}
+
+func (m *Manager) cleanupControlPlaneStage(jobID string) {
+	if strings.TrimSpace(m.cfg.ControlPlaneUpgradePath) == "" || !requestIDPattern.MatchString(jobID) {
+		return
+	}
+	stageRoot := filepath.Join(controlPlaneStateDirectory(m.cfg), "control-plane-staging")
+	_ = os.RemoveAll(filepath.Join(stageRoot, jobID))
 }
 
 func (m *Manager) imageLabels(ctx context.Context, image string) (map[string]string, error) {

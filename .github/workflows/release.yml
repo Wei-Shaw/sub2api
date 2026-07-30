@@ -22,6 +22,9 @@ env:
   RELEASE_BOOTSTRAP_GHCR_DIGEST: sha256:0bcc87a178132539f24570c1af1adbcafd479c7f16a4f3f188fcf09d699c960e
   RELEASE_BOOTSTRAP_DOCKERHUB_DIGEST: ${{ vars.RELEASE_BOOTSTRAP_DOCKERHUB_DIGEST }}
   RELEASE_COMPLETION_ASSET: sub2api-release-complete.json
+  RELEASE_CANDIDATE_ASSET: sub2api-build-once-candidate.json
+  RELEASE_CANDIDATE_MANIFEST_ASSET: sub2api-build-once-MANIFEST.sha256
+  RELEASE_CONTROL_PLANE_MANIFEST_ASSET: sub2api-control-plane-MANIFEST.json
 
 concurrency:
   group: release-${{ github.repository }}
@@ -66,7 +69,12 @@ jobs:
           RELEASE_TAG_RULESET_ID: ${{ vars.RELEASE_TAG_RULESET_ID }}
           RELEASE_TAG_CREATION_RULESET_ID: ${{ vars.RELEASE_TAG_CREATION_RULESET_ID }}
           INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
+          [[ "$WORKFLOW_SHA" == "$INPUT_CANDIDATE_COMMIT" ]] || {
+            echo "Release workflow was loaded from $WORKFLOW_SHA, expected audited commit $INPUT_CANDIDATE_COMMIT" >&2
+            exit 1
+          }
           bash .github/scripts/release-safety.sh fetch origin main
           [[ "$RELEASE_TAG_RULESET_ID" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid immutable tag ruleset ID" >&2; exit 1; }
           [[ "$RELEASE_TAG_CREATION_RULESET_ID" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid tag creation ruleset ID" >&2; exit 1; }
@@ -299,7 +307,15 @@ jobs:
             gh release create "$RELEASE_TAG" --draft --latest=false \
               --title "Sub2API ${RELEASE_TAG#v}" --notes-file "$NOTES_PATH"
           fi
+          install -m 0644 "$RUNNER_TEMP/candidate/candidate.json" "$RUNNER_TEMP/$RELEASE_CANDIDATE_ASSET"
+          install -m 0644 "$RUNNER_TEMP/candidate/MANIFEST.sha256" "$RUNNER_TEMP/$RELEASE_CANDIDATE_MANIFEST_ASSET"
+          install -m 0644 "$RUNNER_TEMP/candidate/CONTROL-PLANE-MANIFEST.json" "$RUNNER_TEMP/$RELEASE_CONTROL_PLANE_MANIFEST_ASSET"
           gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/candidate/release-assets/"* --clobber
+          gh release upload "$RELEASE_TAG" \
+            "$RUNNER_TEMP/$RELEASE_CANDIDATE_ASSET" \
+            "$RUNNER_TEMP/$RELEASE_CANDIDATE_MANIFEST_ASSET" \
+            "$RUNNER_TEMP/$RELEASE_CONTROL_PLANE_MANIFEST_ASSET" \
+            --clobber
 
       - name: Bind tag identity and publish completion ledger
         env:
@@ -352,9 +368,32 @@ jobs:
           bash .github/scripts/release-safety.sh verify-completion-deployer-checksums \
             "$COMPLETION_PATH" "$RUNNER_TEMP/candidate/release-assets/sub2api-deployer-checksums.txt"
           gh release upload "$RELEASE_TAG" "$COMPLETION_PATH" --clobber
+          AUDIT_DIR="$RUNNER_TEMP/published-audit-assets"
+          rm -rf -- "$AUDIT_DIR"
+          mkdir -p "$AUDIT_DIR"
+          for asset in \
+            "$RELEASE_COMPLETION_ASSET" \
+            "$RELEASE_CANDIDATE_ASSET" \
+            "$RELEASE_CANDIDATE_MANIFEST_ASSET" \
+            "$RELEASE_CONTROL_PLANE_MANIFEST_ASSET"; do
+            gh release download "$RELEASE_TAG" --pattern "$asset" --dir "$AUDIT_DIR"
+          done
+          bash .github/scripts/release-safety.sh verify-release-audit-assets \
+            "$AUDIT_DIR/$RELEASE_COMPLETION_ASSET" \
+            "$AUDIT_DIR/$RELEASE_CANDIDATE_ASSET" \
+            "$AUDIT_DIR/$RELEASE_CANDIDATE_MANIFEST_ASSET" \
+            "$AUDIT_DIR/$RELEASE_CONTROL_PLANE_MANIFEST_ASSET"
           gh release view "$RELEASE_TAG" --json isDraft,assets > "$RUNNER_TEMP/draft.json"
-          jq -e --arg asset "$RELEASE_COMPLETION_ASSET" '
-            .isDraft == true and ([.assets[] | select(.name == $asset)] | length == 1)
+          jq -e \
+            --arg completion "$RELEASE_COMPLETION_ASSET" \
+            --arg candidate "$RELEASE_CANDIDATE_ASSET" \
+            --arg candidate_manifest "$RELEASE_CANDIDATE_MANIFEST_ASSET" \
+            --arg control_manifest "$RELEASE_CONTROL_PLANE_MANIFEST_ASSET" '
+            .isDraft == true
+            and ([.assets[] | select(.name == $completion)] | length == 1)
+            and ([.assets[] | select(.name == $candidate)] | length == 1)
+            and ([.assets[] | select(.name == $candidate_manifest)] | length == 1)
+            and ([.assets[] | select(.name == $control_manifest)] | length == 1)
           ' "$RUNNER_TEMP/draft.json" >/dev/null
 
       - name: Publish release and promote latest transactionally
@@ -371,8 +410,16 @@ jobs:
               "$RELEASE_TAG" "$GHCR_REPOSITORY" "$IMAGE_DIGEST" "$PREVIOUS_GHCR_DIGEST"
           fi
           gh release view "$RELEASE_TAG" --json isDraft,assets > "$RUNNER_TEMP/published.json"
-          jq -e --arg asset "$RELEASE_COMPLETION_ASSET" '
-            .isDraft == false and ([.assets[] | select(.name == $asset)] | length == 1)
+          jq -e \
+            --arg completion "$RELEASE_COMPLETION_ASSET" \
+            --arg candidate "$RELEASE_CANDIDATE_ASSET" \
+            --arg candidate_manifest "$RELEASE_CANDIDATE_MANIFEST_ASSET" \
+            --arg control_manifest "$RELEASE_CONTROL_PLANE_MANIFEST_ASSET" '
+            .isDraft == false
+            and ([.assets[] | select(.name == $completion)] | length == 1)
+            and ([.assets[] | select(.name == $candidate)] | length == 1)
+            and ([.assets[] | select(.name == $candidate_manifest)] | length == 1)
+            and ([.assets[] | select(.name == $control_manifest)] | length == 1)
           ' "$RUNNER_TEMP/published.json" >/dev/null
 
       - name: Update DockerHub description

@@ -22,9 +22,16 @@ var (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "control-plane" {
+		runControlPlaneCommand(os.Args[2:])
+		return
+	}
 	configPath := flag.String("config", "/etc/sub2api-deployer/config.json", "path to deployer JSON configuration")
 	check := flag.Bool("check", false, "validate configuration and exit")
 	showVersion := flag.Bool("version", false, "show build identity and exit")
+	// This flag is a long-lived systemd ExecStart contract. Do not rename it or
+	// change its existing semantics; deployed hosts invoke it once per minute.
+	activateStagedControlPlane := flag.Bool("activate-staged-control-plane", false, "activate a verified staged control-plane payload and exit")
 	reconcileSlot := flag.String("reconcile-slot", "", "verify and clear a degraded latch by selecting the serving deployment slot")
 	forceUnobservableDrain := flag.Bool("force-unobservable-drain", false, "during reconciliation, explicitly allow stopping a legacy container that cannot report drain blockers")
 	flag.Parse()
@@ -37,11 +44,27 @@ func main() {
 	if err != nil {
 		log.Fatalf("load configuration: %v", err)
 	}
+	executableSHA, err := deployer.CurrentExecutableSHA256()
+	if err != nil {
+		log.Fatalf("hash deployer executable: %v", err)
+	}
 	if *check {
-		if *reconcileSlot != "" || *forceUnobservableDrain {
+		if *activateStagedControlPlane || *reconcileSlot != "" || *forceUnobservableDrain {
 			log.Fatal("--check cannot be combined with reconciliation options")
 		}
 		log.Printf("configuration is valid")
+		return
+	}
+	// Unlike reconciliation, activation intentionally runs beside the live
+	// daemon. It must never take the daemon process lock or require a stale
+	// socket; a separate activation lock protects host asset replacement.
+	if *activateStagedControlPlane {
+		if *reconcileSlot != "" || *forceUnobservableDrain {
+			log.Fatal("--activate-staged-control-plane cannot be combined with reconciliation options")
+		}
+		if err := deployer.ActivateStagedControlPlane(context.Background(), cfg, deployer.ExecRunner{}); err != nil {
+			log.Fatalf("activate staged control plane: %v", err)
+		}
 		return
 	}
 	processLock, err := deployer.AcquireProcessLock(cfg.StatePath)
@@ -62,6 +85,7 @@ func main() {
 		Date:    Date,
 		Type:    BuildType,
 		Arch:    runtime.GOARCH,
+		SHA256:  executableSHA,
 	})
 	if err != nil {
 		log.Fatalf("initialize deployer: %v", err)
@@ -102,5 +126,41 @@ func main() {
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("shutdown failed: %v", err)
+	}
+}
+
+func runControlPlaneCommand(args []string) {
+	if len(args) == 0 {
+		log.Fatal("control-plane requires status, retry, or quarantine")
+	}
+	action := args[0]
+	flags := flag.NewFlagSet("control-plane "+action, flag.ExitOnError)
+	configPath := flags.String("config", "/etc/sub2api-deployer/config.json", "path to deployer JSON configuration")
+	jobID := flags.String("job-id", "", "deployment job id")
+	reason := flags.String("reason", "", "operator audit reason")
+	if err := flags.Parse(args[1:]); err != nil {
+		log.Fatal(err)
+	}
+	cfg, err := deployer.LoadConfig(*configPath)
+	if err != nil {
+		log.Fatalf("load configuration: %v", err)
+	}
+	switch action {
+	case "status":
+		data, err := deployer.ControlPlaneStatus(cfg)
+		if err != nil {
+			log.Fatalf("read control-plane status: %v", err)
+		}
+		fmt.Println(string(data))
+	case "retry":
+		if err := deployer.RetryControlPlaneUpgrade(context.Background(), cfg, deployer.ExecRunner{}, *jobID); err != nil {
+			log.Fatalf("retry control-plane upgrade: %v", err)
+		}
+	case "quarantine":
+		if err := deployer.QuarantineControlPlaneUpgrade(cfg, *jobID, *reason); err != nil {
+			log.Fatalf("quarantine control-plane upgrade: %v", err)
+		}
+	default:
+		log.Fatalf("unknown control-plane action %q", action)
 	}
 }

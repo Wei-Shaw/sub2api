@@ -250,6 +250,9 @@ func (c Config) validate() error {
 		if !filepath.IsAbs(c.ControlPlaneUpgradePath) {
 			return errors.New("control_plane_upgrade_path must be an absolute path")
 		}
+		if filepath.Clean(filepath.Dir(c.StatePath)) != controlPlaneStateDirectory(c) {
+			return errors.New("control_plane_upgrade_path must use the same directory as state_path")
+		}
 		if !filepath.IsAbs(c.ControlPlaneUpgradeCommand[0]) {
 			return errors.New("control_plane_upgrade_command executable must be an absolute path")
 		}

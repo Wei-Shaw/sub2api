@@ -18,6 +18,14 @@ type deploymentClientStub struct {
 	job       *DeploymentJob
 }
 
+func compatibleDeploymentHealth() *DeploymentHealth {
+	health := &DeploymentHealth{Status: "ok", ControlPlaneUpgradeReady: true}
+	health.ControlPlane.Activator = "go-v1"
+	health.ControlPlane.PayloadSchemaMin = managedControlPlanePayloadSchema
+	health.ControlPlane.PayloadSchemaMax = managedControlPlanePayloadSchema
+	return health
+}
+
 func (s *deploymentClientStub) Health(context.Context) (*DeploymentHealth, error) {
 	return s.health, s.healthErr
 }
@@ -47,7 +55,7 @@ func TestManagedUpdateStartsDigestDeploymentJob(t *testing.T) {
 		checksumData: testCompletionLedger(t, "0.1.165-ts.1", digest),
 	}
 	deployer := &deploymentClientStub{
-		health: &DeploymentHealth{Status: "ok", ControlPlaneUpgradeReady: true},
+		health: compatibleDeploymentHealth(),
 		job:    &DeploymentJob{ID: "job-1", Status: "running"},
 	}
 	svc := NewUpdateService(&updateServiceCacheStub{}, github, "0.1.164-ts.1", "release")
@@ -67,7 +75,7 @@ func TestManagedUpdateStartsDigestDeploymentJob(t *testing.T) {
 func TestManagedUpdateRejectsMissingCompletionLedger(t *testing.T) {
 	github := &updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.1.165-ts.1"}}
 	deployer := &deploymentClientStub{
-		health: &DeploymentHealth{Status: "ok", ControlPlaneUpgradeReady: true},
+		health: compatibleDeploymentHealth(),
 	}
 	svc := NewUpdateService(&updateServiceCacheStub{}, github, "0.1.164-ts.1", "release")
 	svc.ConfigureDeployment(DeploymentModeDockerManaged, deployer)
@@ -107,9 +115,86 @@ func testCompletionLedger(t *testing.T, version, digest string) []byte {
 	return data
 }
 
+func TestCompletionLedgerValidatesOptionalDockerHubIdentityAsOneUnit(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	image := "example/sub2api:0.1.168-ts.3"
+	immutable := image + "@" + digest
+	tests := []struct {
+		name      string
+		image     *string
+		digest    *string
+		immutable *string
+		valid     bool
+	}{
+		{name: "absent", valid: true},
+		{name: "complete", image: &image, digest: &digest, immutable: &immutable, valid: true},
+		{name: "partial", image: &image, digest: &digest},
+		{name: "bad digest", image: &image, digest: deploymentStringPtr("latest"), immutable: &immutable},
+		{name: "mismatched immutable", image: &image, digest: &digest, immutable: deploymentStringPtr(image + "@sha256:" + strings.Repeat("b", 64))},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ledger := releaseCompletionLedger{DockerHubImage: test.image, DockerHubImageDigest: test.digest, DockerHubImmutableImage: test.immutable}
+			require.Equal(t, test.valid, validOptionalDockerHubIdentity(ledger))
+		})
+	}
+}
+
+func TestCompletionLedgerRequiresExactWorkflowIdentitySet(t *testing.T) {
+	commit := strings.Repeat("c", 40)
+	ledger := releaseCompletionLedger{
+		Commit:         commit,
+		WorkflowCommit: commit,
+		WorkflowBlobs: map[string]string{
+			"release-preflight.yml": strings.Repeat("1", 40),
+			"promote-release.yml":   strings.Repeat("2", 40),
+			"release.yml":           strings.Repeat("3", 40),
+		},
+	}
+	require.True(t, validReleaseWorkflowIdentity(ledger))
+	ledger.WorkflowBlobs["unexpected.yml"] = strings.Repeat("4", 40)
+	require.False(t, validReleaseWorkflowIdentity(ledger))
+	delete(ledger.WorkflowBlobs, "unexpected.yml")
+	ledger.WorkflowCommit = strings.Repeat("d", 40)
+	require.False(t, validReleaseWorkflowIdentity(ledger))
+}
+
+func TestManagedUpdateRejectsWorkflowIdentityInSchemaThreeLedger(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	var ledger map[string]any
+	require.NoError(t, json.Unmarshal(testCompletionLedger(t, "0.1.165-ts.1", digest), &ledger))
+	ledger["workflow_commit"] = ledger["commit"]
+	ledger["workflow_blobs"] = map[string]string{
+		"release-preflight.yml": strings.Repeat("1", 40),
+		"promote-release.yml":   strings.Repeat("2", 40),
+		"release.yml":           strings.Repeat("3", 40),
+	}
+	data, err := json.Marshal(ledger)
+	require.NoError(t, err)
+
+	github := &updateServiceGitHubClientStub{
+		release: &GitHubRelease{
+			TagName: "v0.1.165-ts.1",
+			Assets: []GitHubAsset{{
+				Name: releaseCompletionAsset, BrowserDownloadURL: "https://github.com/ssharkkky/sub2api/releases/download/v0.1.165-ts.1/" + releaseCompletionAsset,
+			}},
+		},
+		checksumData: data,
+	}
+	deployer := &deploymentClientStub{health: compatibleDeploymentHealth()}
+	svc := NewUpdateService(&updateServiceCacheStub{}, github, "0.1.164-ts.1", "release")
+	svc.ConfigureDeployment(DeploymentModeDockerManaged, deployer)
+
+	_, err = svc.StartManagedUpdate(context.Background(), "sysop-request-schema-three")
+	require.ErrorContains(t, err, "schema 3 must not contain workflow identity")
+	require.Empty(t, deployer.started.Action)
+}
+
+func deploymentStringPtr(value string) *string { return &value }
+
 func TestManagedRollbackRejectsVersionOutsideReleaseAllowlist(t *testing.T) {
 	github := &updateServiceGitHubClientStub{recentReleases: []*GitHubRelease{{TagName: "v0.1.163-ts.1"}}}
-	deployer := &deploymentClientStub{health: &DeploymentHealth{Status: "ok", ControlPlaneUpgradeReady: true}}
+	deployer := &deploymentClientStub{health: compatibleDeploymentHealth()}
 	svc := NewUpdateService(&updateServiceCacheStub{}, github, "0.1.164-ts.1", "release")
 	svc.ConfigureDeployment(DeploymentModeDockerManaged, deployer)
 
@@ -121,7 +206,7 @@ func TestManagedRollbackRejectsVersionOutsideReleaseAllowlist(t *testing.T) {
 
 func TestCheckUpdateReportsManagedDeployerReadiness(t *testing.T) {
 	github := &updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.1.165-ts.1"}}
-	deployer := &deploymentClientStub{health: &DeploymentHealth{Status: "ok", ControlPlaneUpgradeReady: true}}
+	deployer := &deploymentClientStub{health: compatibleDeploymentHealth()}
 	svc := NewUpdateService(&updateServiceCacheStub{}, github, "0.1.164-ts.1", "release")
 	svc.ConfigureDeployment(DeploymentModeDockerManaged, deployer)
 
@@ -144,6 +229,22 @@ func TestManagedUpdateRequiresHostBootstrapCapability(t *testing.T) {
 	require.Contains(t, info.DeploymentMessage, "one-time host deployer bootstrap")
 
 	_, err = svc.StartManagedUpdate(context.Background(), "sysop-request-bootstrap")
+	require.ErrorIs(t, err, ErrManagedDeployerBootstrapRequired)
+	require.Empty(t, deployer.started.Action)
+}
+
+func TestManagedUpdateRejectsLegacyActivatorDespiteReadyBoolean(t *testing.T) {
+	github := &updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.1.169-ts.1"}}
+	deployer := &deploymentClientStub{health: &DeploymentHealth{Status: "ok", ControlPlaneUpgradeReady: true}}
+	svc := NewUpdateService(&updateServiceCacheStub{}, github, "0.1.168-ts.3", "release")
+	svc.ConfigureDeployment(DeploymentModeDockerManaged, deployer)
+
+	info, err := svc.CheckUpdate(context.Background(), true)
+	require.NoError(t, err)
+	require.False(t, info.DeploymentReady)
+	require.Contains(t, info.DeploymentMessage, "one-time host deployer bootstrap")
+
+	_, err = svc.StartManagedUpdate(context.Background(), "sysop-request-legacy-activator")
 	require.ErrorIs(t, err, ErrManagedDeployerBootstrapRequired)
 	require.Empty(t, deployer.started.Action)
 }

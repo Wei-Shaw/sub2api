@@ -16,7 +16,6 @@ CANDIDATE_FINALIZER="$REPO_ROOT/deploy/finalize-release-candidate.sh"
 CANDIDATE_VERIFIER="$REPO_ROOT/deploy/verify-release-candidate.sh"
 IMAGE_VERIFIER="$REPO_ROOT/deploy/verify-control-plane-image.sh"
 BUNDLE_README="$REPO_ROOT/deploy/DEPLOYER_BUNDLE_README.md"
-UPGRADE_HELPER="$REPO_ROOT/deploy/sub2api-deployer-upgrade.sh"
 RELEASE_WORKFLOW="$REPO_ROOT/.github/workflows/release.yml"
 PREFLIGHT_WORKFLOW="$REPO_ROOT/.github/workflows/release-preflight.yml"
 PROMOTE_WORKFLOW="$REPO_ROOT/.github/workflows/promote-release.yml"
@@ -34,8 +33,6 @@ bash -n "$CANDIDATE_PREPARER"
 bash -n "$CANDIDATE_FINALIZER"
 bash -n "$CANDIDATE_VERIFIER"
 bash -n "$IMAGE_VERIFIER"
-bash -n "$UPGRADE_HELPER"
-bash -n "$REPO_ROOT/deploy/tests/sub2api-deployer-upgrade-test.sh"
 grep -Fq 'CONFIG_JSON="$(cd -- "$(dirname -- "$CONFIG_JSON")" && pwd -P)/$(basename -- "$CONFIG_JSON")"' "$IMAGE_VERIFIER"
 grep -Fq -- '-v "$CONFIG_JSON:/candidate-config.json:ro"' "$IMAGE_VERIFIER"
 grep -Fq 'platform_image="$IMAGE_REPOSITORY@$platform_digest"' "$IMAGE_VERIFIER"
@@ -89,12 +86,19 @@ grep -Fq 'APPLICATION_UID=$(docker exec "$INSPECTED_CONTAINER_ID" sh -ceu' "$INS
 grep -Fq 'docker exec --user "$APPLICATION_UID" "$INSPECTED_CONTAINER_ID" sh -ceu' "$INSTALLER"
 grep -Fq 'package-sub2api-deployer-bundles.sh" "$CANDIDATE_DIR/release-assets"' "$CANDIDATE_PREPARER"
 grep -Fq 'control_plane_upgrade_ready == true' "$BUNDLE_README"
-grep -Fq '.active_container_id == $id' "$UPGRADE_HELPER"
-grep -Fq 'write_status failed' "$UPGRADE_HELPER"
 grep -Fq 'sub2api-deployer-upgrade.timer' "$INSTALLER"
-grep -Fq 'systemctl enable --now sub2api-deployer-upgrade.timer' "$INSTALLER"
-if grep -Eq '(^|[[:space:]])docker([[:space:]]|$)' "$UPGRADE_HELPER"; then
-  echo "stable activator must not call Docker" >&2
+grep -Fq 'validate_docker_server_version' "$INSTALLER"
+grep -Fq 'systemctl stop sub2api-deployer-upgrade.timer' "$INSTALLER"
+grep -Fq 'systemctl stop sub2api-deployer-upgrade.service' "$INSTALLER"
+grep -Fq 'EXISTING_CONTROL_PLANE_UPGRADE_REQUEST=$(jq -er' "$INSTALLER"
+grep -Fq 'EXISTING_ACTIVATION_LOCK_FILE="$(dirname -- "$EXISTING_CONTROL_PLANE_UPGRADE_REQUEST")/control-plane-activation.lock"' "$INSTALLER"
+grep -Fq 'acquire_root_lock "$EXISTING_ACTIVATION_LOCK_FILE" ACTIVATION_LOCK_FD' "$INSTALLER"
+grep -Fq 'ExecStart=/usr/local/sbin/sub2api-deployer --activate-staged-control-plane' "$REPO_ROOT/deploy/sub2api-deployer-upgrade.service"
+grep -Fq 'EFFECTIVE_UPGRADE_EXEC=$(systemctl show --property=ExecStart --value sub2api-deployer-upgrade.service)' "$INSTALLER"
+grep -Fq 'EFFECTIVE_UPGRADE_DROPINS=$(systemctl show --property=DropInPaths --value sub2api-deployer-upgrade.service)' "$INSTALLER"
+grep -Fq 'rm -f -- "$INSTALLED_UPGRADER"' "$INSTALLER"
+if grep -Fq 'install -m 0755 "$ASSET_DIR/sub2api-deployer-upgrade.sh"' "$INSTALLER"; then
+  echo "installer must not reinstall the retired shell activator" >&2
   exit 1
 fi
 grep -Fq 'release-safety.sh previous-release-json \' "$RELEASE_WORKFLOW"
@@ -161,8 +165,23 @@ if grep -Fq '"${CANDIDATE_IMAGE}@${IMAGE_DIGEST}"' <<<"$promotion_block"; then
 fi
 grep -Fq 'assert-image-digest-matches' "$PROMOTE_WORKFLOW"
 grep -Fq 'verify-completion-candidate' "$RELEASE_WORKFLOW"
+grep -Fq 'verify-release-audit-assets' "$RELEASE_WORKFLOW"
+grep -Fq 'sub2api-build-once-candidate.json' "$RELEASE_WORKFLOW"
+grep -Fq 'sub2api-build-once-MANIFEST.sha256' "$RELEASE_WORKFLOW"
+grep -Fq 'sub2api-control-plane-MANIFEST.json' "$RELEASE_WORKFLOW"
+grep -Fq 'WORKFLOW_SHA: ${{ github.workflow_sha }}' "$RELEASE_WORKFLOW"
+grep -Fq 'schema: 3' "$RELEASE_WORKFLOW"
+if grep -Fq 'workflow_commit: $c.workflow_commit' "$RELEASE_WORKFLOW"; then
+  fail "ts.3 completion ledger must remain schema-3 compatible with the ts.2 application"
+fi
+grep -Fq '.workflow_commit == $expected_sha' "$PROMOTE_WORKFLOW"
+grep -Fq '.workflow_blobs["release.yml"] == $release_blob' "$PROMOTE_WORKFLOW"
+grep -Fq 'WORKFLOW_SHA: ${{ github.workflow_sha }}' "$PROMOTE_WORKFLOW"
 grep -Fq "go test -tags integration ./internal/deployer -run '^TestRealDockerControlPlaneStaging$'" "$PREFLIGHT_WORKFLOW"
 test -f "$REPO_ROOT/backend/internal/deployer/control_plane_upgrade_integration_test.go"
+test -x "$REPO_ROOT/deploy/tests/systemd-control-plane-activation-test.sh"
+grep -Fq 'SUB2API_SYSTEMD_TEST_EPHEMERAL=1' "$PREFLIGHT_WORKFLOW"
+grep -Fq 'systemd-control-plane-activation-test.sh' "$PREFLIGHT_WORKFLOW"
 grep -Fq 'release-safety.sh publish-release-with-latest \' "$RELEASE_WORKFLOW"
 if [[ $(grep -Fc 'gh release view "$RELEASE_TAG"' "$RELEASE_WORKFLOW") -lt 3 ]]; then
   echo "draft and published release states must be verified through GitHub CLI" >&2
@@ -227,22 +246,24 @@ for predicate in \
   '.active_container_id == $container_id' \
   '.active_port == $port' \
   '.active_version == $version' \
-  '.control_plane_upgrade_ready == true'; do
+  '.control_plane_upgrade_ready == true' \
+  '.control_plane.activator == "go-v1"' \
+  '.control_plane.payload_schema_min <= 1' \
+  '.control_plane.payload_schema_max >= 1'; do
   if ! grep -Fq "$predicate" <<<"$final_health_block"; then
     echo "final deployer health verification must enforce $predicate" >&2
     exit 1
   fi
 done
 
-quiesce_line=$(grep -n 'systemctl stop sub2api-deployer.service' "$INSTALLER" | tail -1 | cut -d: -f1)
 install_line=$(grep -n 'install -m 0755 "$TEMP_DIR/sub2api-deployer" "$INSTALLED_BINARY"' "$INSTALLER" | cut -d: -f1)
+quiesce_line=$(grep -n 'systemctl stop sub2api-deployer.service' "$INSTALLER" | cut -d: -f1 | awk -v install="$install_line" '$1 < install { line=$1 } END { print line }')
 if [[ -z "$quiesce_line" || -z "$install_line" || "$quiesce_line" -ge "$install_line" ]]; then
   echo "an existing deployer must be stopped before managed files are replaced" >&2
   exit 1
 fi
 
 "$REPO_ROOT/deploy/tests/install-sub2api-deployer-test.sh"
-"$REPO_ROOT/deploy/tests/sub2api-deployer-upgrade-test.sh"
 
 artifact_test_dir=$(mktemp -d "${TMPDIR:-/tmp}/sub2api-control-plane-artifacts.XXXXXX")
 for arch in amd64 arm64; do
@@ -270,10 +291,15 @@ for arch in amd64 arm64; do
   jq -e \
     --arg arch "linux/$arch" \
     --arg sha "sha256:$(sha256sum "$artifact_test_dir/deployer-$arch" | awk '{print $1}')" '
-      .schema == 1
+      .schema == 2
       and .version == "0.1.168-ts.1"
-      and .runtime_payload[$arch].path == "/opt/sub2api-control-plane/sub2api-deployer"
-      and .runtime_payload[$arch].sha256 == $sha
+      and (.runtime_payload[$arch].assets | length) == 1
+      and .runtime_payload[$arch].assets[0].type == "sub2api-deployer"
+      and .runtime_payload[$arch].assets[0].path == "/opt/sub2api-control-plane/sub2api-deployer"
+      and .runtime_payload[$arch].assets[0].sha256 == $sha
+      and .runtime_payload[$arch].assets[0].owner == 0
+      and .runtime_payload[$arch].assets[0].group == 0
+      and .runtime_payload[$arch].assets[0].mode == 493
     ' "$artifact_test_dir/CONTROL-PLANE-MANIFEST.json" >/dev/null
 done
 
@@ -298,6 +324,7 @@ for arch in amd64 arm64; do
     "$root/BUNDLE-MANIFEST.json" >/dev/null
   [[ -x "$root/install-sub2api-deployer.sh" ]]
   [[ -f "$root/deploy/sub2api-deployer-tmpfiles.conf" ]]
+  [[ ! -e "$root/deploy/sub2api-deployer-upgrade.sh" ]]
 done
 
 echo "managed update deployment asset tests passed"

@@ -23,10 +23,19 @@ find "$CANDIDATE_DIR" -type l -print -quit | grep -q . && { echo "candidate cont
 
 jq -e \
   --arg version "$EXPECTED_VERSION" \
-  --arg commit "$EXPECTED_COMMIT" '
-    .schema == 1
+  --arg commit "$EXPECTED_COMMIT" \
+  --arg preflight_blob "$(git rev-parse "$EXPECTED_COMMIT:.github/workflows/release-preflight.yml")" \
+  --arg promote_blob "$(git rev-parse "$EXPECTED_COMMIT:.github/workflows/promote-release.yml")" \
+  --arg release_blob "$(git rev-parse "$EXPECTED_COMMIT:.github/workflows/release.yml")" '
+    .schema == 2
     and .version == $version
     and .commit == $commit
+    and .workflow_commit == $commit
+    and .workflow_blobs == {
+      "release-preflight.yml": $preflight_blob,
+      "promote-release.yml": $promote_blob,
+      "release.yml": $release_blob
+    }
     and (.image | type == "string" and endswith(":" + $version))
     and .candidate_image == ((.image | split(":")[0:-1] | join(":")) + ":candidate-" + $commit)
     and (.image_digest | type == "string" and test("^sha256:[0-9a-f]{64}$"))
@@ -50,8 +59,9 @@ CONTROL_SHA="sha256:$(sha256sum "$CONTROL_MANIFEST" | awk '{print $1}')"
   exit 1
 }
 jq -e --arg version "$EXPECTED_VERSION" --arg commit "$EXPECTED_COMMIT" '
-  .schema == 1 and .version == $version and .commit == $commit
+  .schema == 2 and .version == $version and .commit == $commit
   and ((.runtime_payload | keys | sort) == ["linux/amd64", "linux/arm64"])
+  and ([.runtime_payload[] | (.assets | length) == 1] | all)
 ' "$CONTROL_MANIFEST" >/dev/null || { echo "control-plane manifest identity is invalid" >&2; exit 1; }
 
 DEPLOYER_CHECKSUMS="$CANDIDATE_DIR/release-assets/sub2api-deployer-checksums.txt"
@@ -69,7 +79,7 @@ for arch in amd64 arm64; do
     echo "candidate deployer digest mismatch for $arch" >&2
     exit 1
   }
-  [[ "$binary_sha" == "$(jq -er --arg platform "linux/$arch" '.runtime_payload[$platform].sha256' "$CONTROL_MANIFEST")" ]] || {
+  [[ "$binary_sha" == "$(jq -er --arg platform "linux/$arch" '.runtime_payload[$platform].assets[0].sha256' "$CONTROL_MANIFEST")" ]] || {
     echo "control-plane manifest deployer digest mismatch for $arch" >&2
     exit 1
   }

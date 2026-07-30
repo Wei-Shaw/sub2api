@@ -68,7 +68,7 @@ func TestConfigRejectsHealthTimeoutBelowMigrationBudget(t *testing.T) {
 func TestConfigRequiresCompleteControlPlaneUpgradeConfiguration(t *testing.T) {
 	cfg := testConfig(t, 19081)
 	cfg.HealthTimeout = Duration{Duration: 12 * time.Minute}
-	cfg.ControlPlaneUpgradePath = filepath.Join(t.TempDir(), "upgrade.json")
+	cfg.ControlPlaneUpgradePath = filepath.Join(filepath.Dir(cfg.StatePath), "upgrade.json")
 	cfg.ControlPlaneUpgradeCommand = nil
 	if err := cfg.validate(); err == nil {
 		t.Fatal("upgrade request path without command unexpectedly passed validation")
@@ -77,5 +77,14 @@ func TestConfigRequiresCompleteControlPlaneUpgradeConfiguration(t *testing.T) {
 	cfg.ControlPlaneUpgradeCommand = []string{"/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service"}
 	if err := cfg.validate(); err != nil {
 		t.Fatalf("complete control-plane upgrade configuration was rejected: %v", err)
+	}
+}
+
+func TestConfigRequiresControlPlaneStateInOneDirectory(t *testing.T) {
+	cfg := testConfig(t, 19081)
+	cfg.HealthTimeout = Duration{Duration: 12 * time.Minute}
+	cfg.ControlPlaneUpgradePath = filepath.Join(t.TempDir(), "upgrade.json")
+	if err := cfg.validate(); err == nil || err.Error() != "control_plane_upgrade_path must use the same directory as state_path" {
+		t.Fatalf("split control-plane state directories were not rejected: %v", err)
 	}
 }

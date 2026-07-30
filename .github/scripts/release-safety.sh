@@ -219,7 +219,7 @@ verify_completion_json() {
     --arg image "$expected_image" \
     --arg dockerhub_image "$expected_dockerhub_image" \
     --arg dockerhub_mode "$dockerhub_mode" '
-      (.schema == 2 or .schema == 3)
+      (.schema == 2 or .schema == 3 or .schema == 4)
       and .tag == $tag
       and .commit == $commit
       and .tag_object == $tag_object
@@ -235,7 +235,7 @@ verify_completion_json() {
       )
       and (.deployer_checksums_sha256 | type == "string" and test("^sha256:[0-9a-f]{64}$"))
       and (
-        if .schema == 3 then
+        if .schema >= 3 then
           (.deployer_assets | type == "object")
           and ((.deployer_assets | keys | sort) == [
             "sub2api-deployer-linux-amd64",
@@ -246,6 +246,17 @@ verify_completion_json() {
           and ([.deployer_assets[] | type == "string" and test("^sha256:[0-9a-f]{64}$")] | all)
         else
           (.deployer_assets == null)
+        end
+      )
+      and (
+        if .schema == 4 then
+          (.workflow_commit | type == "string" and test("^[0-9a-f]{40,64}$"))
+          and .workflow_commit == .commit
+          and (.workflow_blobs | type == "object")
+          and ((.workflow_blobs | keys | sort) == ["promote-release.yml", "release-preflight.yml", "release.yml"])
+          and ([.workflow_blobs[] | type == "string" and test("^[0-9a-f]{40,64}$")] | all)
+        else
+          (.workflow_commit == null and .workflow_blobs == null)
         end
       )
       and (
@@ -285,7 +296,7 @@ verify_completion_deployer_checksums() {
   [[ "$actual_digest" == "$expected_digest" ]] || \
     fail "Deployer checksum manifest changed after release completion (expected $expected_digest, got $actual_digest)"
 
-  if [[ $(jq -er '.schema' "$completion_path") == 3 ]]; then
+  if (( $(jq -er '.schema' "$completion_path") >= 3 )); then
     local asset filename manifest_digest ledger_digest
     for asset in \
       sub2api-deployer-linux-amd64 \
@@ -332,7 +343,7 @@ verify_completion_candidate() {
     --slurpfile candidate "$candidate_path" \
     --arg candidate_manifest_digest "$candidate_manifest_digest" '
       ($candidate[0]) as $c
-      | .schema == 3
+      | (.schema == 3 or .schema == 4)
         and .commit == $c.commit
         and .image == $c.image
         and .image_digest == $c.image_digest
@@ -340,9 +351,72 @@ verify_completion_candidate() {
         and ((.architectures | sort) == ($c.architectures | sort))
         and .control_plane_manifest_sha256 == $c.control_plane_manifest_sha256
         and .candidate_manifest_sha256 == $candidate_manifest_digest
+        and (if .schema == 4 then
+          .workflow_commit == $c.workflow_commit and .workflow_blobs == $c.workflow_blobs
+        else true end)
         and .deployer_checksums_sha256 == $c.deployer_checksums_sha256
         and .deployer_assets == $c.deployer_assets
     ' "$completion_path" >/dev/null || fail "Release completion marker does not match the audited Build Once candidate"
+}
+
+verify_release_audit_assets() {
+  local completion_path="$1"
+  local candidate_path="$2"
+  local candidate_manifest="$3"
+  local control_plane_manifest="$4"
+  local expected_candidate_manifest_digest actual_candidate_manifest_digest
+  local expected_candidate_digest actual_candidate_digest expected_control_digest actual_control_digest
+
+  for path in "$completion_path" "$candidate_path" "$candidate_manifest" "$control_plane_manifest"; do
+    [[ -f "$path" && ! -L "$path" ]] || fail "Release audit asset is missing or unsafe: $path"
+  done
+
+  expected_candidate_manifest_digest=$(jq -er '.candidate_manifest_sha256 | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' "$completion_path") || \
+    fail "Release completion marker has no candidate manifest digest"
+  actual_candidate_manifest_digest="sha256:$(sha256sum "$candidate_manifest" | awk '{print $1}')"
+  [[ "$actual_candidate_manifest_digest" == "$expected_candidate_manifest_digest" ]] || \
+    fail "Published candidate manifest does not match the release completion marker"
+
+  expected_candidate_digest=$(awk '$2 == "candidate.json" || $2 == "*candidate.json" {print $1}' "$candidate_manifest")
+  [[ "$expected_candidate_digest" =~ ^[0-9a-f]{64}$ ]] || \
+    fail "Published candidate manifest must contain exactly one candidate.json digest"
+  [[ $(awk '$2 == "candidate.json" || $2 == "*candidate.json" {count++} END {print count + 0}' "$candidate_manifest") == 1 ]] || \
+    fail "Published candidate manifest must contain exactly one candidate.json digest"
+  actual_candidate_digest=$(sha256sum "$candidate_path" | awk '{print $1}')
+  [[ "$actual_candidate_digest" == "$expected_candidate_digest" ]] || \
+    fail "Published Build Once candidate does not match its manifest"
+
+  expected_control_digest=$(jq -er '.control_plane_manifest_sha256 | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' "$completion_path") || \
+    fail "Release completion marker has no control-plane manifest digest"
+  actual_control_digest="sha256:$(sha256sum "$control_plane_manifest" | awk '{print $1}')"
+  [[ "$actual_control_digest" == "$expected_control_digest" ]] || \
+    fail "Published control-plane manifest does not match the release completion marker"
+
+  jq -e --slurpfile completion "$completion_path" '
+    ($completion[0]) as $release
+    | .schema == 2
+      and .commit == $release.commit
+      and .image == $release.image
+      and .image_digest == $release.image_digest
+      and .control_plane_manifest_sha256 == $release.control_plane_manifest_sha256
+      and .deployer_checksums_sha256 == $release.deployer_checksums_sha256
+      and .deployer_assets == $release.deployer_assets
+      and (.workflow_commit | type == "string" and test("^[0-9a-f]{40,64}$"))
+      and .workflow_commit == .commit
+      and ((.workflow_blobs | keys | sort) == ["promote-release.yml", "release-preflight.yml", "release.yml"])
+      and ([.workflow_blobs[] | type == "string" and test("^[0-9a-f]{40,64}$")] | all)
+  ' "$candidate_path" >/dev/null || \
+    fail "Published Build Once candidate does not preserve the release and workflow identity"
+
+  jq -e --slurpfile candidate "$candidate_path" '
+    ($candidate[0]) as $candidate
+    | .schema == 2
+      and .version == $candidate.version
+      and .commit == $candidate.commit
+      and ((.runtime_payload | keys | sort) == ["linux/amd64", "linux/arm64"])
+      and ([.runtime_payload[] | (.assets | length) == 1] | all)
+  ' "$control_plane_manifest" >/dev/null || \
+    fail "Published control-plane manifest does not match the Build Once candidate identity"
 }
 
 goreleaser_image_digest() {
@@ -704,6 +778,7 @@ Usage:
   release-safety.sh verify-completion-json <completion-json> <release-tag> <commit> <tag-object> <ghcr-image-ref> [<dockerhub-image-ref>]
   release-safety.sh verify-completion-manifest <completion-json> <oci-manifest-json>
   release-safety.sh verify-completion-candidate <completion-json> <candidate-directory>
+  release-safety.sh verify-release-audit-assets <completion-json> <candidate-json> <candidate-manifest> <control-plane-manifest>
   release-safety.sh verify-completion-deployer-checksums <completion-json> <deployer-checksums>
   release-safety.sh goreleaser-image-digest <artifacts-json> <image-ref>
   release-safety.sh assert-image-absent <image-ref>
@@ -756,6 +831,10 @@ case "${1:-}" in
   verify-completion-candidate)
     [[ $# -eq 3 ]] || usage
     verify_completion_candidate "$2" "$3"
+    ;;
+  verify-release-audit-assets)
+    [[ $# -eq 5 ]] || usage
+    verify_release_audit_assets "$2" "$3" "$4" "$5"
     ;;
   verify-completion-deployer-checksums)
     [[ $# -eq 3 ]] || usage

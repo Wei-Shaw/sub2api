@@ -49,17 +49,29 @@ jq -n \
   --arg amd64_sha "${DIGESTS[amd64]}" \
   --arg arm64_sha "${DIGESTS[arm64]}" \
   '{
-    schema: 1,
+    schema: 2,
     version: $version,
     commit: $commit,
     runtime_payload: {
       "linux/amd64": {
-        path: "/opt/sub2api-control-plane/sub2api-deployer",
-        sha256: $amd64_sha
+        assets: [{
+          type: "sub2api-deployer",
+          path: "/opt/sub2api-control-plane/sub2api-deployer",
+          sha256: $amd64_sha,
+          owner: 0,
+          group: 0,
+          mode: 493
+        }]
       },
       "linux/arm64": {
-        path: "/opt/sub2api-control-plane/sub2api-deployer",
-        sha256: $arm64_sha
+        assets: [{
+          type: "sub2api-deployer",
+          path: "/opt/sub2api-control-plane/sub2api-deployer",
+          sha256: $arm64_sha,
+          owner: 0,
+          group: 0,
+          mode: 493
+        }]
       }
     }
   }' > "$temporary_manifest"

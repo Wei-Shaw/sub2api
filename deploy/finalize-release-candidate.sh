@@ -17,6 +17,10 @@ VERSION=$(jq -er '.version' "$CANDIDATE_DIR/candidate-build.json")
 COMMIT=$(jq -er '.commit' "$CANDIDATE_DIR/candidate-build.json")
 IMAGE=$(jq -er '.image' "$CANDIDATE_DIR/candidate-build.json")
 CANDIDATE_IMAGE=$(jq -er '.candidate_image' "$CANDIDATE_DIR/candidate-build.json")
+WORKFLOW_COMMIT=$(jq -er '.workflow_commit' "$CANDIDATE_DIR/candidate-build.json")
+PREFLIGHT_WORKFLOW_BLOB=$(jq -er '.workflow_blobs["release-preflight.yml"]' "$CANDIDATE_DIR/candidate-build.json")
+PROMOTE_WORKFLOW_BLOB=$(jq -er '.workflow_blobs["promote-release.yml"]' "$CANDIDATE_DIR/candidate-build.json")
+RELEASE_WORKFLOW_BLOB=$(jq -er '.workflow_blobs["release.yml"]' "$CANDIDATE_DIR/candidate-build.json")
 CONTROL_SHA="sha256:$(sha256sum "$CANDIDATE_DIR/CONTROL-PLANE-MANIFEST.json" | awk '{print $1}')"
 DEPLOYER_CHECKSUMS="$CANDIDATE_DIR/release-assets/sub2api-deployer-checksums.txt"
 DEPLOYER_CHECKSUMS_SHA="sha256:$(sha256sum "$DEPLOYER_CHECKSUMS" | awk '{print $1}')"
@@ -41,8 +45,12 @@ jq -n \
   --arg deployer_arm64_sha "$(asset_digest sub2api-deployer-linux-arm64)" \
   --arg bundle_amd64_sha "$(asset_digest sub2api-deployer-linux-amd64.tar.gz)" \
   --arg bundle_arm64_sha "$(asset_digest sub2api-deployer-linux-arm64.tar.gz)" \
+  --arg workflow_commit "$WORKFLOW_COMMIT" \
+  --arg preflight_workflow_blob "$PREFLIGHT_WORKFLOW_BLOB" \
+  --arg promote_workflow_blob "$PROMOTE_WORKFLOW_BLOB" \
+  --arg release_workflow_blob "$RELEASE_WORKFLOW_BLOB" \
   '{
-    schema: 1,
+    schema: 2,
     version: $version,
     commit: $commit,
     image: $image,
@@ -51,6 +59,12 @@ jq -n \
     immutable_candidate_image: ($candidate_image + "@" + $image_digest),
     architectures: ["amd64", "arm64"],
     control_plane_manifest_sha256: $control_sha,
+    workflow_commit: $workflow_commit,
+    workflow_blobs: {
+      "release-preflight.yml": $preflight_workflow_blob,
+      "promote-release.yml": $promote_workflow_blob,
+      "release.yml": $release_workflow_blob
+    },
     deployer_checksums_sha256: $deployer_checksums_sha,
     deployer_assets: {
       "sub2api-deployer-linux-amd64": $deployer_amd64_sha,

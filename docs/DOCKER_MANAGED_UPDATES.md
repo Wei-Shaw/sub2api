@@ -125,7 +125,17 @@ ancestry, release ordering, committed `VERSION`, and absence of same-version
 GitHub Releases and registry images again. GoReleaser creates a draft release.
 The workflow binds each registry version tag to the digest recorded by that
 exact GoReleaser build, then verifies the amd64 and arm64 manifests, deployer
-checksums, and schema-3 completion ledger. Before mutating a registry, its
+checksums, and the release completion ledger. The `v0.1.168-ts.3` bridge release
+keeps that public ledger at schema `3` so the `ts.2` application can verify and
+start the update. Its schema-2 Build Once candidate still binds the exact commit
+and Git blob IDs of the preflight, promotion, and release workflows, and every
+workflow verifies that identity before tag creation or publication. Releases
+after all managed hosts can parse schema `4` may carry the same workflow identity
+in the completion ledger itself. To keep the bridge release independently
+auditable after the temporary Actions artifact expires, the Release permanently
+stores the exact Build Once `candidate.json`, its checksum manifest, and the
+control-plane manifest; the release job downloads those assets again and verifies
+their digest chain before publication. Before mutating a registry, its
 current `latest` must equal the digest bound to the preceding completed release,
 or the pinned one-time bootstrap digest; missing or drifted tags fail closed.
 It promotes only those verified `latest` tags and restores the same authenticated
@@ -245,17 +255,18 @@ group through the Compose override. Fresh installations create a dedicated
 GID so a deployer-only upgrade cannot revoke access from the running container.
 `--socket-gid` remains available for an explicit operator-selected GID.
 
-The first protocol-v2 release is deployed through the same blue-green state
-machine over the host Unix socket. Do not bootstrap it with `docker compose up`,
-which would recreate the only active container:
+After the one-time host bootstrap, start the first managed deployment from the
+administrator update page. The application verifies the release completion
+ledger and supplies the immutable target digest. Do not hand-write a deployment
+request that omits that digest, and do not bootstrap with `docker compose up`,
+which would recreate the only active container.
 
-```bash
-curl --fail --show-error --max-time 10 \
-  --unix-socket /run/sub2api-deployer/deployer.sock \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"update","target_version":"VERSION_WITH_PROTOCOL_V2","expected_current_version":"CURRENT_VERSION","request_id":"bootstrap-VERSION_WITH_PROTOCOL_V2"}' \
-  http://localhost/v1/deployments
-```
+Applications using the Go activator protocol require `/v1/health` to report
+`control_plane.activator` as `go-v1` and a payload schema range that includes
+schema `1`. The older readiness boolean alone is insufficient. If this
+capability is absent, the administrator page disables one-click update and asks
+for the one-time Bundle Installer migration instead of starting a deployment
+that cannot finish its control-plane handoff.
 
 The socket directory is mounted instead of the socket inode. The systemd unit
 preserves that directory across service restarts, and tmpfiles.d recreates it
@@ -311,7 +322,57 @@ journalctl -u sub2api-deployer -f
 docker ps --filter name=sub2api
 cat /etc/nginx/conf.d/sub2api-managed-upstream.conf
 cat /var/lib/sub2api-deployer/nginx/managed-upstream.conf
+/usr/local/sbin/sub2api-deployer control-plane status
 ```
+
+The control-plane activation request uses stable outer schema `2` and payload
+schema `1`. It is staged under
+`/var/lib/sub2api-deployer/control-plane-staging`, and the timer invokes the
+stable Go entry point
+`/usr/local/sbin/sub2api-deployer --activate-staged-control-plane`. With no
+request, that command exits successfully without changing status, restarting a
+service, or writing normal logs. Runtime activation may replace only fixed
+executable asset types mapped by code into `/usr/local/sbin`; systemd units,
+timers, tmpfiles, and sandbox policy are Bundle Installer assets only.
+
+If a request remains pending, inspect it before taking action:
+
+```bash
+sudo /usr/local/sbin/sub2api-deployer control-plane status
+sudo /usr/local/sbin/sub2api-deployer control-plane retry \
+  --job-id DEPLOYMENT_JOB_ID
+sudo /usr/local/sbin/sub2api-deployer control-plane quarantine \
+  --job-id DEPLOYMENT_JOB_ID \
+  --reason 'operator-reviewed reason'
+```
+
+These commands are root-only. Retry restores only one quarantined request whose
+identity matches the requested job and revalidates the successful active
+deployment. Quarantine requires a non-running deployment identity and writes an
+audit sidecar; there is no unauthenticated delete endpoint.
+
+Activation fails closed when the request status is malformed or its identity
+cannot be proven. The timer never deletes such state automatically. After
+checking the persisted deployment state, job record, active container identity,
+and live health, an operator may use the explicit `quarantine` command above to
+move the request and damaged status aside with an audit record. A later retry is
+allowed only for a matching quarantined request and repeats every validation.
+
+The request, staging root, quarantine directory, activation lock, staged
+manifest, staged executable, rollback copy, and installation directory are
+validated as real non-symlink files or directories with the expected root
+UID/GID and restrictive modes. Asset destinations come from a fixed code map;
+the manifest cannot choose a host path. Any ownership, type, mode, digest, or
+symlink mismatch is a terminal safety failure and does not replace or restart
+the running deployer.
+
+Migrating from the shell activator used by `v0.1.168-ts.1/ts.2` requires one
+manual run of the new Bundle Installer. The installer transactionally switches
+the effective systemd `ExecStart`, proves the no-request path is clean, and then
+removes `/usr/local/sbin/sub2api-deployer-upgrade`. Later executable upgrades
+can use the web path. Changes to the systemd unit, timer, tmpfiles, sandbox
+policy, or a damaged running deployer's extraction path still require the
+Bundle Installer as the explicit break-glass procedure.
 
 If the UI reports `rollback_failed` or `degraded`, stop further deployment
 attempts. Keep the healthy container running, point the mutable managed upstream

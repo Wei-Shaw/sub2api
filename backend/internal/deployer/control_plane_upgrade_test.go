@@ -20,6 +20,7 @@ type controlPlaneRunner struct {
 	versionOutput string
 	createErr     error
 	copyErr       error
+	manifestMode  os.FileMode
 	created       int
 	removed       int
 }
@@ -28,14 +29,13 @@ func newControlPlaneRunner(t *testing.T, base *fakeRunner, version, commit strin
 	t.Helper()
 	binary := []byte("verified-deployer-binary")
 	manifest := controlPlaneManifest{
-		Schema:  1,
+		Schema:  2,
 		Version: version,
 		Commit:  commit,
 		RuntimePayload: map[string]controlPlaneRuntimePayload{
-			"linux/" + runtime.GOARCH: {
-				Path:   controlPlaneBinaryPath,
-				SHA256: sha256Digest(binary),
-			},
+			"linux/" + runtime.GOARCH: {Assets: []controlPlaneManifestAsset{{
+				Type: controlPlaneAssetDeployer, Path: controlPlaneBinaryPath, SHA256: sha256Digest(binary), Owner: 0, Group: 0, Mode: 0755,
+			}}},
 		},
 	}
 	manifestBytes, err := json.Marshal(manifest)
@@ -50,10 +50,11 @@ func newControlPlaneRunner(t *testing.T, base *fakeRunner, version, commit strin
 			"org.opencontainers.image.source":        "https://github.com/ssharkkky/sub2api",
 			"org.opencontainers.image.revision":      commit,
 			"io.tokensupply.sub2api.update-protocol": "2",
-			controlPlaneProtocolLabel:                controlPlaneProtocolV1,
+			controlPlaneProtocolLabel:                controlPlaneImageProtocolV1,
 			controlPlaneManifestDigestLabel:          sha256Digest(manifestBytes),
 		},
 		versionOutput: fmt.Sprintf("Sub2API Deployer %s (commit: %s, built: 2026-07-29T00:00:00Z, type: release, arch: %s)", version, commit, runtime.GOARCH),
+		manifestMode:  0644,
 	}
 }
 
@@ -74,15 +75,20 @@ func (r *controlPlaneRunner) Run(ctx context.Context, env map[string]string, nam
 			return "", r.copyErr
 		}
 		var content []byte
+		mode := os.FileMode(0755)
 		switch {
 		case strings.HasSuffix(args[1], controlPlaneManifestPath):
 			content = r.manifest
+			mode = r.manifestMode
 		case strings.HasSuffix(args[1], controlPlaneBinaryPath):
 			content = r.binary
 		default:
 			return "", fmt.Errorf("unexpected docker cp source %q", args[1])
 		}
-		return "", os.WriteFile(args[2], content, 0600)
+		if err := os.WriteFile(args[2], content, mode); err != nil {
+			return "", err
+		}
+		return "", os.Chmod(args[2], mode)
 	}
 	if name == "docker" && len(args) == 3 && args[0] == "rm" && args[1] == "--force" {
 		r.removed++
@@ -116,6 +122,20 @@ func TestStageControlPlaneUpgradeVerifiesAndPublishesPayload(t *testing.T) {
 	}
 	if runner.created != 1 || runner.removed != 1 {
 		t.Fatalf("temporary container lifecycle created=%d removed=%d", runner.created, runner.removed)
+	}
+}
+
+func TestStageControlPlaneUpgradeRejectsOverexposedManifestMode(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	cfg.ControlPlaneUpgradePath = filepath.Join(t.TempDir(), "control-plane-upgrade.json")
+	job := testControlPlaneJob(cfg)
+	runner := newControlPlaneRunner(t, &fakeRunner{}, job.TargetVersion, "0123456789abcdef")
+	runner.manifestMode = 0666
+	manager := &Manager{cfg: cfg, runner: runner}
+
+	_, _, err := manager.stageControlPlaneUpgrade(context.Background(), job)
+	if err == nil || !strings.Contains(err.Error(), "unexpected mode 0666") {
+		t.Fatalf("overexposed manifest mode error=%v", err)
 	}
 }
 
@@ -174,6 +194,29 @@ func TestStageControlPlaneUpgradeCleansUpAfterCopyFailure(t *testing.T) {
 	}
 }
 
+func TestStageControlPlaneUpgradeRejectsSymlinkedStagingRoot(t *testing.T) {
+	stateDir := t.TempDir()
+	cfg := testConfig(t, 18081)
+	cfg.ControlPlaneUpgradePath = filepath.Join(stateDir, "control-plane-upgrade.json")
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.Mkdir(outside, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(stateDir, "control-plane-staging")); err != nil {
+		t.Fatal(err)
+	}
+	job := testControlPlaneJob(cfg)
+	runner := newControlPlaneRunner(t, &fakeRunner{}, job.TargetVersion, "0123456789abcdef")
+	manager := &Manager{cfg: cfg, runner: runner}
+
+	if _, _, err := manager.stageControlPlaneUpgrade(context.Background(), job); err == nil || !strings.Contains(err.Error(), "staging root is unsafe") {
+		t.Fatalf("symlinked staging root error=%v", err)
+	}
+	if runner.created != 0 {
+		t.Fatalf("unsafe staging root created %d extraction containers", runner.created)
+	}
+}
+
 func TestStageControlPlaneUpgradeReusesIdenticalPublishedStage(t *testing.T) {
 	cfg := testConfig(t, 18081)
 	cfg.ControlPlaneUpgradePath = filepath.Join(t.TempDir(), "control-plane-upgrade.json")
@@ -192,7 +235,7 @@ func TestStageControlPlaneUpgradeReusesIdenticalPublishedStage(t *testing.T) {
 	if first.Directory != second.Directory || first.BinarySHA256 != second.BinarySHA256 {
 		t.Fatalf("recovered stage differs: first=%+v second=%+v", first, second)
 	}
-	if runner.created != 2 || runner.removed != 2 {
+	if runner.created != 1 || runner.removed != 1 {
 		t.Fatalf("temporary container lifecycle created=%d removed=%d", runner.created, runner.removed)
 	}
 }

@@ -86,6 +86,10 @@ SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git -C "$REPO_ROOT" show -s --format=%c
 export SOURCE_DATE_EPOCH
 "$REPO_ROOT/deploy/package-sub2api-deployer-bundles.sh" "$CANDIDATE_DIR/release-assets"
 
+PREFLIGHT_WORKFLOW_BLOB=$(git -C "$REPO_ROOT" rev-parse "$COMMIT:.github/workflows/release-preflight.yml")
+PROMOTE_WORKFLOW_BLOB=$(git -C "$REPO_ROOT" rev-parse "$COMMIT:.github/workflows/promote-release.yml")
+RELEASE_WORKFLOW_BLOB=$(git -C "$REPO_ROOT" rev-parse "$COMMIT:.github/workflows/release.yml")
+
 (
   cd -- "$CANDIDATE_DIR/release-assets"
   mapfile -t server_archives < <(find . -maxdepth 1 -type f \( -name 'sub2api_*.tar.gz' -o -name 'sub2api_*.zip' \) -print | sed 's#^./##' | LC_ALL=C sort)
@@ -98,10 +102,19 @@ jq -n \
   --arg commit "$COMMIT" \
   --arg image "$IMAGE_REPOSITORY:$VERSION" \
   --arg candidate_image "$IMAGE_REPOSITORY:candidate-$COMMIT" \
+  --arg preflight_workflow_blob "$PREFLIGHT_WORKFLOW_BLOB" \
+  --arg promote_workflow_blob "$PROMOTE_WORKFLOW_BLOB" \
+  --arg release_workflow_blob "$RELEASE_WORKFLOW_BLOB" \
   '{
-    schema: 1,
+    schema: 2,
     version: $version,
     commit: $commit,
     image: $image,
-    candidate_image: $candidate_image
+    candidate_image: $candidate_image,
+    workflow_commit: $commit,
+    workflow_blobs: {
+      "release-preflight.yml": $preflight_workflow_blob,
+      "promote-release.yml": $promote_workflow_blob,
+      "release.yml": $release_workflow_blob
+    }
   }' > "$CANDIDATE_DIR/candidate-build.json"

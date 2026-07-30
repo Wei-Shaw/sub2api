@@ -1,0 +1,6 @@
+[Unit]
+Description=Dummy Docker dependency for the Sub2API systemd harness
+
+[Service]
+Type=simple
+ExecStart=/bin/sleep infinity

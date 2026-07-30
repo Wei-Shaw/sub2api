@@ -39,11 +39,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ inputs.main_sha }}
           EXPECTED_VERSION: ${{ inputs.version }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
           RELEASE_TAG_RULESET_ID: ${{ vars.RELEASE_TAG_RULESET_ID }}
           RELEASE_TAG_CREATION_RULESET_ID: ${{ vars.RELEASE_TAG_CREATION_RULESET_ID }}
         run: |
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
             echo "main_sha must be an exact 40-character lowercase commit SHA" >&2
+            exit 1
+          }
+          [[ "$WORKFLOW_SHA" == "$EXPECTED_SHA" ]] || {
+            echo "Promote workflow was loaded from $WORKFLOW_SHA, expected audited commit $EXPECTED_SHA" >&2
             exit 1
           }
           [[ "$EXPECTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ts\.[1-9][0-9]*$ ]] || {
@@ -147,6 +152,14 @@ jobs:
         run: |
           deploy/verify-release-candidate.sh \
             "$RUNNER_TEMP/candidate" "$EXPECTED_VERSION" "$EXPECTED_SHA"
+          jq -e \
+            --arg expected_sha "$EXPECTED_SHA" \
+            --arg promote_blob "$(git rev-parse "$EXPECTED_SHA:.github/workflows/promote-release.yml")" \
+            --arg release_blob "$(git rev-parse "$EXPECTED_SHA:.github/workflows/release.yml")" '
+              .workflow_commit == $expected_sha
+              and .workflow_blobs["promote-release.yml"] == $promote_blob
+              and .workflow_blobs["release.yml"] == $release_blob
+            ' "$RUNNER_TEMP/candidate/candidate.json" >/dev/null
           CANDIDATE_IMAGE=$(jq -er '.candidate_image' "$RUNNER_TEMP/candidate/candidate.json")
           CANDIDATE_DIGEST=$(jq -er '.image_digest' "$RUNNER_TEMP/candidate/candidate.json")
           bash .github/scripts/release-safety.sh assert-image-digest-matches \

@@ -112,18 +112,26 @@ type State struct {
 }
 
 type Health struct {
-	Status                   string    `json:"status"`
-	Version                  string    `json:"version"`
-	ActiveSlot               string    `json:"active_slot,omitempty"`
-	ActiveContainer          string    `json:"active_container,omitempty"`
-	ActiveContainerID        string    `json:"active_container_id,omitempty"`
-	ActivePort               int       `json:"active_port,omitempty"`
-	ActiveVersion            string    `json:"active_version,omitempty"`
-	JobRunning               bool      `json:"job_running"`
-	Degraded                 bool      `json:"degraded"`
-	DegradedReason           string    `json:"degraded_reason,omitempty"`
-	ControlPlaneUpgradeReady bool      `json:"control_plane_upgrade_ready"`
-	Build                    BuildInfo `json:"build"`
+	Status                   string                   `json:"status"`
+	Version                  string                   `json:"version"`
+	ActiveSlot               string                   `json:"active_slot,omitempty"`
+	ActiveContainer          string                   `json:"active_container,omitempty"`
+	ActiveContainerID        string                   `json:"active_container_id,omitempty"`
+	ActivePort               int                      `json:"active_port,omitempty"`
+	ActiveVersion            string                   `json:"active_version,omitempty"`
+	JobRunning               bool                     `json:"job_running"`
+	Degraded                 bool                     `json:"degraded"`
+	DegradedReason           string                   `json:"degraded_reason,omitempty"`
+	ControlPlaneUpgradeReady bool                     `json:"control_plane_upgrade_ready"`
+	ControlPlane             ControlPlaneCapabilities `json:"control_plane"`
+	Build                    BuildInfo                `json:"build"`
+}
+
+type ControlPlaneCapabilities struct {
+	Activator        string `json:"activator"`
+	PayloadSchemaMin int    `json:"payload_schema_min"`
+	PayloadSchemaMax int    `json:"payload_schema_max"`
+	InstalledSHA256  string `json:"installed_sha256,omitempty"`
 }
 
 type BuildInfo struct {
@@ -132,4 +140,5 @@ type BuildInfo struct {
 	Date    string `json:"date"`
 	Type    string `json:"type"`
 	Arch    string `json:"arch"`
+	SHA256  string `json:"sha256,omitempty"`
 }

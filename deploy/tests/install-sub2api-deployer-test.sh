@@ -95,6 +95,9 @@ unit="${!#}"
 if [[ "$unit" == "sub2api-deployer-upgrade.timer" ]]; then
   enabled_state="$FAKE_CONTROL_DIR/timer-enabled"
   active_state="$FAKE_CONTROL_DIR/timer-active"
+elif [[ "$unit" == "sub2api-deployer-upgrade.service" ]]; then
+  enabled_state="$FAKE_CONTROL_DIR/upgrade-service-enabled"
+  active_state="$FAKE_CONTROL_DIR/upgrade-service-active"
 else
   enabled_state="$FAKE_CONTROL_DIR/enabled"
   active_state="$FAKE_CONTROL_DIR/active"
@@ -107,7 +110,22 @@ case "$command_name" in
     [[ -f "$active_state" ]]
     ;;
   show)
-    if [[ " $* " == *" --property=ActiveState "* ]]; then
+    if [[ " $* " == *" --property=ExecStart "* ]]; then
+      if [[ "${FAKE_BAD_UPGRADE_EXEC:-0}" == 1 ]]; then
+        printf '%s\n' '{ path=/usr/local/sbin/sub2api-deployer-upgrade ; argv[]=/usr/local/sbin/sub2api-deployer-upgrade ; }'
+      elif [[ "${FAKE_EXTRA_UPGRADE_EXEC_ARG:-0}" == 1 ]]; then
+        printf '%s\n' '{ path=/usr/local/sbin/sub2api-deployer ; argv[]=/usr/local/sbin/sub2api-deployer --activate-staged-control-plane --force ; ignore_errors=no ; }'
+      elif [[ "${FAKE_MULTIPLE_UPGRADE_EXEC:-0}" == 1 ]]; then
+        printf '%s\n' '{ path=/usr/local/sbin/sub2api-deployer ; argv[]=/usr/local/sbin/sub2api-deployer --activate-staged-control-plane ; ignore_errors=no ; }'
+        printf '%s\n' '{ path=/bin/true ; argv[]=/bin/true ; ignore_errors=no ; }'
+      else
+        printf '%s\n' '{ path=/usr/local/sbin/sub2api-deployer ; argv[]=/usr/local/sbin/sub2api-deployer --activate-staged-control-plane ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }'
+      fi
+    elif [[ " $* " == *" --property=DropInPaths "* ]]; then
+      if [[ "${FAKE_UPGRADE_DROPIN:-0}" == 1 ]]; then
+        printf '%s\n' '/etc/systemd/system/sub2api-deployer-upgrade.service.d/override.conf'
+      fi
+    elif [[ " $* " == *" --property=ActiveState "* ]]; then
       if [[ -f "$FAKE_CONTROL_DIR/active" ]]; then echo active; else echo inactive; fi
     elif [[ " $* " == *" --property=MainPID "* ]]; then
       if [[ "${FAKE_NONZERO_MAINPID_AFTER_RESTART:-0}" == 1 && -f "$FAKE_CONTROL_DIR/restart-failed" ]]; then
@@ -121,6 +139,9 @@ case "$command_name" in
       echo "unsupported fake systemctl show invocation: $*" >&2
       exit 1
     fi
+    ;;
+  is-failed)
+    exit 1
     ;;
   enable)
     if [[ "${FAKE_FAIL_MISSING_TIMER_UNIT:-0}" == 1 && "$unit" == "sub2api-deployer-upgrade.timer" && ! -f "$enabled_state" && ! -f "$active_state" ]]; then
@@ -209,6 +230,10 @@ cat > "$FAKE_BIN/docker" <<'EOF'
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_DOCKER_LOG"
 case "${1:-}" in
+  version)
+    [[ "${2:-}" == "--format" && "${3:-}" == '{{.Server.Version}}' ]] || exit 1
+    printf '%s\n' "${FAKE_DOCKER_VERSION:-20.10.0}"
+    ;;
   inspect)
     format="${4:-}"
     case "$format" in
@@ -364,7 +389,7 @@ run_installer() {
   FAKE_CURRENT_IMAGE="$CURRENT_IMAGE" \
   FAKE_CURRENT_VERSION="$CURRENT_VERSION" \
   FAKE_DOCKER_PORT_OUTPUT="127.0.0.1:$CURRENT_PORT" \
-  FAKE_DEPLOYER_HEALTH="{\"status\":\"ok\",\"degraded\":false,\"job_running\":false,\"active_container\":\"sub2api\",\"active_container_id\":\"$CONTAINER_ID\",\"active_port\":$CURRENT_PORT,\"active_version\":\"$CURRENT_VERSION\",\"control_plane_upgrade_ready\":true}" \
+  FAKE_DEPLOYER_HEALTH="{\"status\":\"ok\",\"degraded\":false,\"job_running\":false,\"active_container\":\"sub2api\",\"active_container_id\":\"$CONTAINER_ID\",\"active_port\":$CURRENT_PORT,\"active_version\":\"$CURRENT_VERSION\",\"control_plane_upgrade_ready\":true,\"control_plane\":{\"activator\":\"go-v1\",\"payload_schema_min\":1,\"payload_schema_max\":1}}" \
   FAKE_CONTROL_DIR="$root/control" \
   FAKE_DOCKER_LOG="$root/docker.log" \
   FAKE_SYSTEMCTL_LOG="$root/systemctl.log" \
@@ -417,6 +442,62 @@ if grep -Fq 'automatic rollback was incomplete' "$FIRST_ROOT/output.log"; then
 fi
 assert_no_application_mutation "$FIRST_ROOT/docker.log"
 
+# Unsupported Docker daemons must be rejected before any host or application
+# mutation. Docker 20.10 is the documented minimum for managed updates.
+OLD_DOCKER_ROOT="$TEST_DIR/old-docker"
+make_root "$OLD_DOCKER_ROOT"
+make_deployer_binary "$OLD_DOCKER_ROOT/deployer-v1" v1
+export FAKE_DOCKER_VERSION=19.03.15
+if run_installer "$OLD_DOCKER_ROOT" "$OLD_DOCKER_ROOT/deployer-v1" >"$OLD_DOCKER_ROOT/output.log" 2>&1; then
+  echo "unsupported Docker version unexpectedly passed installer validation" >&2
+  exit 1
+fi
+unset FAKE_DOCKER_VERSION
+grep -Fq 'Docker server 20.10 or newer is required' "$OLD_DOCKER_ROOT/output.log"
+[[ ! -e "$OLD_DOCKER_ROOT/etc/sub2api-deployer/config.json" ]]
+assert_no_application_mutation "$OLD_DOCKER_ROOT/docker.log"
+
+# The installer must inspect systemd's effective command, not merely trust the
+# unit file it wrote. A drop-in or stale unit that still selects the shell
+# activator rolls the whole first install back.
+EXEC_ROOT="$TEST_DIR/effective-exec-failure"
+make_root "$EXEC_ROOT"
+make_deployer_binary "$EXEC_ROOT/deployer-v1" v1
+cp -- "$EXEC_ROOT/nginx/site.conf" "$EXEC_ROOT/original-site.conf"
+if FAKE_BAD_UPGRADE_EXEC=1 run_installer "$EXEC_ROOT" "$EXEC_ROOT/deployer-v1" >"$EXEC_ROOT/output.log" 2>&1; then
+  echo "incorrect effective activator command unexpectedly succeeded" >&2
+  exit 1
+fi
+cmp -s "$EXEC_ROOT/original-site.conf" "$EXEC_ROOT/nginx/site.conf"
+[[ ! -e "$EXEC_ROOT/usr/local/sbin/sub2api-deployer" ]]
+[[ ! -e "$EXEC_ROOT/usr/local/sbin/sub2api-deployer-upgrade" ]]
+grep -Fq 'Effective control-plane activator ExecStart' "$EXEC_ROOT/output.log"
+assert_no_application_mutation "$EXEC_ROOT/docker.log"
+
+DROPIN_ROOT="$TEST_DIR/effective-dropin-failure"
+make_root "$DROPIN_ROOT"
+make_deployer_binary "$DROPIN_ROOT/deployer-v1" v1
+if FAKE_UPGRADE_DROPIN=1 run_installer "$DROPIN_ROOT" "$DROPIN_ROOT/deployer-v1" >"$DROPIN_ROOT/output.log" 2>&1; then
+  echo "activator systemd drop-in unexpectedly passed installer validation" >&2
+  exit 1
+fi
+grep -Fq 'must not use systemd drop-ins' "$DROPIN_ROOT/output.log"
+assert_no_application_mutation "$DROPIN_ROOT/docker.log"
+
+for invalid_exec in FAKE_EXTRA_UPGRADE_EXEC_ARG FAKE_MULTIPLE_UPGRADE_EXEC; do
+  INVALID_EXEC_ROOT="$TEST_DIR/invalid-exec-$invalid_exec"
+  make_root "$INVALID_EXEC_ROOT"
+  make_deployer_binary "$INVALID_EXEC_ROOT/deployer-v1" v1
+  export "$invalid_exec=1"
+  if run_installer "$INVALID_EXEC_ROOT" "$INVALID_EXEC_ROOT/deployer-v1" >"$INVALID_EXEC_ROOT/output.log" 2>&1; then
+    echo "$invalid_exec unexpectedly passed exact ExecStart validation" >&2
+    exit 1
+  fi
+  unset "$invalid_exec"
+  grep -Fq 'Effective control-plane activator ExecStart' "$INVALID_EXEC_ROOT/output.log"
+  assert_no_application_mutation "$INVALID_EXEC_ROOT/docker.log"
+done
+
 # Complete a real first install in the hermetic host, then prepare the state a
 # running deployer would have persisted.
 UPGRADE_ROOT="$TEST_DIR/upgrade-failure"
@@ -440,7 +521,7 @@ if ! jq -e \
   exit 1
 fi
 [[ -f "$UPGRADE_ROOT/control/socket-group" ]]
-[[ -x "$UPGRADE_ROOT/usr/local/sbin/sub2api-deployer-upgrade" ]]
+[[ ! -e "$UPGRADE_ROOT/usr/local/sbin/sub2api-deployer-upgrade" ]]
 [[ -f "$UPGRADE_ROOT/etc/systemd/system/sub2api-deployer-upgrade.service" ]]
 [[ -f "$UPGRADE_ROOT/control/timer-enabled" ]]
 [[ -f "$UPGRADE_ROOT/control/timer-active" ]]
@@ -492,6 +573,34 @@ grep -Fq "port $CONTAINER_ID 8080/tcp" "$UPGRADE_ROOT/docker.log"
 grep -Fq "exec $CONTAINER_ID /app/sub2api --version" "$UPGRADE_ROOT/docker.log"
 assert_no_application_mutation "$UPGRADE_ROOT/docker.log"
 
+# The freeze lock and pending-request check must follow the paths persisted by
+# the existing deployer, not the installer's default state directory.
+CUSTOM_STATE_ROOT="$TEST_DIR/custom-state"
+make_root "$CUSTOM_STATE_ROOT"
+make_deployer_binary "$CUSTOM_STATE_ROOT/deployer-v1" v1
+run_installer "$CUSTOM_STATE_ROOT" "$CUSTOM_STATE_ROOT/deployer-v1" >"$CUSTOM_STATE_ROOT/install.log" 2>&1
+write_active_state "$CUSTOM_STATE_ROOT"
+mkdir -p "$CUSTOM_STATE_ROOT/custom-state"
+mv "$CUSTOM_STATE_ROOT/var/lib/sub2api-deployer/state.json" "$CUSTOM_STATE_ROOT/custom-state/state.json"
+CUSTOM_REQUEST="$CUSTOM_STATE_ROOT/custom-state/control-plane-upgrade.json"
+jq \
+  --arg state "$CUSTOM_STATE_ROOT/custom-state/state.json" \
+  --arg request "$CUSTOM_REQUEST" \
+  '.state_path = $state | .control_plane_upgrade_path = $request' \
+  "$CUSTOM_STATE_ROOT/etc/sub2api-deployer/config.json" > "$CUSTOM_STATE_ROOT/config.next"
+mv "$CUSTOM_STATE_ROOT/config.next" "$CUSTOM_STATE_ROOT/etc/sub2api-deployer/config.json"
+printf '%s\n' '{"schema":2}' > "$CUSTOM_REQUEST"
+make_deployer_binary "$CUSTOM_STATE_ROOT/deployer-v2" v2
+if run_installer "$CUSTOM_STATE_ROOT" "$CUSTOM_STATE_ROOT/deployer-v2" >"$CUSTOM_STATE_ROOT/upgrade.log" 2>&1; then
+  echo "custom-path pending activation unexpectedly allowed installer migration" >&2
+  exit 1
+fi
+grep -Fq 'control-plane activation request is pending' "$CUSTOM_STATE_ROOT/upgrade.log"
+grep -Fq "$CUSTOM_STATE_ROOT/custom-state/control-plane-activation.lock" "$CUSTOM_STATE_ROOT/upgrade.log" || \
+  [[ -f "$CUSTOM_STATE_ROOT/custom-state/control-plane-activation.lock" ]]
+grep -Fq '# v1' "$CUSTOM_STATE_ROOT/usr/local/sbin/sub2api-deployer"
+assert_no_application_mutation "$CUSTOM_STATE_ROOT/docker.log"
+
 # A supplied private-registry credential is copied into the hardened service's
 # dedicated root-only Docker config directory and survives an ordinary upgrade.
 AUTH_ROOT="$TEST_DIR/docker-auth"
@@ -500,11 +609,14 @@ make_deployer_binary "$AUTH_ROOT/deployer-v1" v1
 printf '%s\n' '{"auths":{"ghcr.io":{"auth":"test-token"}}}' > "$AUTH_ROOT/source-docker-config.json"
 run_installer "$AUTH_ROOT" "$AUTH_ROOT/deployer-v1" --docker-config "$AUTH_ROOT/source-docker-config.json" >"$AUTH_ROOT/install.log" 2>&1
 write_active_state "$AUTH_ROOT"
+printf '#!/usr/bin/env bash\n# legacy activator\nexit 0\n' > "$AUTH_ROOT/usr/local/sbin/sub2api-deployer-upgrade"
+chmod 0755 "$AUTH_ROOT/usr/local/sbin/sub2api-deployer-upgrade"
 jq -e '.auths["ghcr.io"].auth == "test-token"' "$AUTH_ROOT/etc/sub2api-deployer/docker/config.json" >/dev/null
 grep -Fq 'Environment=DOCKER_CONFIG=/etc/sub2api-deployer/docker' "$AUTH_ROOT/etc/systemd/system/sub2api-deployer.service"
 make_deployer_binary "$AUTH_ROOT/deployer-v2" v2
 run_installer "$AUTH_ROOT" "$AUTH_ROOT/deployer-v2" >"$AUTH_ROOT/upgrade.log" 2>&1
 jq -e '.auths["ghcr.io"].auth == "test-token"' "$AUTH_ROOT/etc/sub2api-deployer/docker/config.json" >/dev/null
+[[ ! -e "$AUTH_ROOT/usr/local/sbin/sub2api-deployer-upgrade" ]]
 
 # An upgrade is not committed unless the existing application user can still
 # access the socket through its original bind mount after the deployer restart.
@@ -514,11 +626,15 @@ make_deployer_binary "$SOCKET_ROOT/deployer-v1" v1
 run_installer "$SOCKET_ROOT" "$SOCKET_ROOT/deployer-v1" >"$SOCKET_ROOT/install.log" 2>&1
 write_active_state "$SOCKET_ROOT"
 cp -a -- "$SOCKET_ROOT/usr/local/sbin/sub2api-deployer" "$SOCKET_ROOT/original-deployer"
+printf '#!/usr/bin/env bash\n# legacy activator\nexit 0\n' > "$SOCKET_ROOT/usr/local/sbin/sub2api-deployer-upgrade"
+chmod 0755 "$SOCKET_ROOT/usr/local/sbin/sub2api-deployer-upgrade"
+cp -a -- "$SOCKET_ROOT/usr/local/sbin/sub2api-deployer-upgrade" "$SOCKET_ROOT/original-upgrader"
 make_deployer_binary "$SOCKET_ROOT/deployer-v2" v2
 if FAKE_CONTAINER_SOCKET_UNAVAILABLE=1 run_installer "$SOCKET_ROOT" "$SOCKET_ROOT/deployer-v2" >"$SOCKET_ROOT/upgrade.log" 2>&1; then
   echo "container-side socket verification failure unexpectedly succeeded" >&2
   exit 1
 fi
+cmp -s "$SOCKET_ROOT/original-upgrader" "$SOCKET_ROOT/usr/local/sbin/sub2api-deployer-upgrade"
 grep -Fq 'running application user cannot access' "$SOCKET_ROOT/upgrade.log"
 cmp -s "$SOCKET_ROOT/original-deployer" "$SOCKET_ROOT/usr/local/sbin/sub2api-deployer"
 [[ -f "$SOCKET_ROOT/control/active" ]]

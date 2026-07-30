@@ -21,6 +21,105 @@ import (
 	"time"
 )
 
+func TestValidControlPlaneActivatorExecStart(t *testing.T) {
+	valid := "{ path=/usr/local/sbin/sub2api-deployer ; argv[]=/usr/local/sbin/sub2api-deployer --activate-staged-control-plane ; ignore_errors=no ; pid=0 ; }"
+	tests := []struct {
+		name      string
+		effective string
+		want      bool
+	}{
+		{name: "exact", effective: valid, want: true},
+		{name: "extra argument", effective: strings.Replace(valid, "--activate-staged-control-plane", "--activate-staged-control-plane --force", 1)},
+		{name: "retired shell", effective: "{ path=/usr/local/sbin/sub2api-deployer-upgrade ; argv[]=/usr/local/sbin/sub2api-deployer-upgrade ; }"},
+		{name: "drop in second command", effective: valid + "\n{ path=/bin/true ; argv[]=/bin/true ; }"},
+		{name: "duplicate argv field", effective: strings.Replace(valid, "ignore_errors=no", "argv[]=/bin/true ; ignore_errors=no", 1)},
+		{name: "empty", effective: ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := validControlPlaneActivatorExecStart(test.effective); got != test.want {
+				t.Fatalf("validControlPlaneActivatorExecStart()=%v want=%v input=%q", got, test.want, test.effective)
+			}
+		})
+	}
+}
+
+func TestValidControlPlaneUpgradeCommand(t *testing.T) {
+	valid := []string{"/usr/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service"}
+	if !validControlPlaneUpgradeCommand(valid) {
+		t.Fatal("exact systemctl activation command was rejected")
+	}
+	invalid := [][]string{
+		{"/bin/false", "start", "--no-block", "sub2api-deployer-upgrade.service"},
+		{"/usr/bin/systemctl", "restart", "--no-block", "sub2api-deployer-upgrade.service"},
+		{"/usr/bin/systemctl", "start", "sub2api-deployer-upgrade.service"},
+		{"/usr/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service", "extra"},
+	}
+	for _, command := range invalid {
+		if validControlPlaneUpgradeCommand(command) {
+			t.Fatalf("invalid activation command was accepted: %q", command)
+		}
+	}
+}
+
+func TestControlPlaneUpgradeReadyProvesLiveSystemdCapability(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	cfg.LoadedFrom = "/etc/sub2api-deployer/config.json"
+	cfg.ControlPlaneUpgradeCommand = []string{"/usr/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service"}
+	exact := "{ path=/usr/local/sbin/sub2api-deployer ; argv[]=/usr/local/sbin/sub2api-deployer --activate-staged-control-plane ; ignore_errors=no ; }"
+	runner := &controlPlaneCapabilityRunner{effective: exact, enabled: true, active: true}
+	manager := &Manager{cfg: cfg, runner: runner}
+	if !manager.controlPlaneUpgradeReady() {
+		t.Fatal("live exact activator capability was not reported ready")
+	}
+
+	runner.effective = strings.Replace(exact, " ; ignore_errors", " --extra ; ignore_errors", 1)
+	if manager.controlPlaneUpgradeReady() {
+		t.Fatal("activator with an extra argument was reported ready")
+	}
+	runner.effective = exact
+	runner.dropIns = "/etc/systemd/system/sub2api-deployer-upgrade.service.d/override.conf"
+	if manager.controlPlaneUpgradeReady() {
+		t.Fatal("activator with a systemd drop-in was reported ready")
+	}
+	runner.dropIns = ""
+	runner.active = false
+	if manager.controlPlaneUpgradeReady() {
+		t.Fatal("inactive timer was reported ready")
+	}
+	runner.active = true
+	manager.cfg.ControlPlaneUpgradeCommand = []string{"/bin/false", "start", "--no-block", "sub2api-deployer-upgrade.service"}
+	if manager.controlPlaneUpgradeReady() {
+		t.Fatal("invalid configured activation command was reported ready")
+	}
+}
+
+type controlPlaneCapabilityRunner struct {
+	effective string
+	dropIns   string
+	enabled   bool
+	active    bool
+}
+
+func (r *controlPlaneCapabilityRunner) Run(_ context.Context, _ map[string]string, _ string, args ...string) (string, error) {
+	command := strings.Join(args, " ")
+	switch command {
+	case "show --property=ExecStart --value sub2api-deployer-upgrade.service":
+		return r.effective, nil
+	case "show --property=DropInPaths --value sub2api-deployer-upgrade.service":
+		return r.dropIns, nil
+	case "is-enabled --quiet sub2api-deployer-upgrade.timer":
+		if r.enabled {
+			return "", nil
+		}
+	case "is-active --quiet sub2api-deployer-upgrade.timer":
+		if r.active {
+			return "", nil
+		}
+	}
+	return "", errors.New("capability unavailable")
+}
+
 type fakeRunner struct {
 	mu             sync.Mutex
 	candidate      bool
@@ -313,6 +412,9 @@ func atomicString(value *atomic.Value) string {
 func testConfig(t *testing.T, candidatePort int) Config {
 	t.Helper()
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
 	initialListener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -2686,7 +2788,11 @@ func TestInactiveSlotCleanupIgnoresSupersededHistoryContainerIDs(t *testing.T) {
 
 func TestPrepareControlPlaneUpgradePersistsImmutableCandidateIdentity(t *testing.T) {
 	cfg := testConfig(t, 18081)
-	cfg.ControlPlaneUpgradePath = filepath.Join(t.TempDir(), "control-plane-upgrade.json")
+	stateDir := t.TempDir()
+	if err := os.Chmod(stateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cfg.ControlPlaneUpgradePath = filepath.Join(stateDir, "control-plane-upgrade.json")
 	cfg.ControlPlaneUpgradeCommand = []string{"/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service"}
 	job := &Job{
 		ID:                   "control-plane-upgrade-0001",
@@ -2702,14 +2808,30 @@ func TestPrepareControlPlaneUpgradePersistsImmutableCandidateIdentity(t *testing
 	baseRunner := &fakeRunner{}
 	runner := newControlPlaneRunner(t, baseRunner, job.TargetVersion, "0123456789abcdef")
 	manager := &Manager{cfg: cfg, runner: runner, now: time.Now}
-	manager.state = State{Job: job}
+	manager.state = State{
+		ActiveContainer:   job.CandidateContainer,
+		ActiveContainerID: job.CandidateContainerID,
+		ActiveVersion:     job.TargetVersion,
+		ActiveImage:       job.TargetImage,
+		Job:               job,
+	}
 
-	prepared, err := manager.prepareControlPlaneUpgrade(job)
+	prepared, activationLock, err := manager.prepareControlPlaneUpgrade(job)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !prepared {
+	if !prepared || activationLock == nil {
 		t.Fatal("control-plane upgrade was not prepared")
+	}
+	secondLock, acquired, lockErr := acquireActivationLock(filepath.Join(stateDir, "control-plane-activation.lock"), os.Geteuid(), os.Getegid())
+	if lockErr != nil || acquired || secondLock != nil {
+		t.Fatalf("prepared request did not retain activation lock: acquired=%v err=%v", acquired, lockErr)
+	}
+	if err := manager.complete(job.ID, "Deployment completed", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := activationLock.Close(); err != nil {
+		t.Fatal(err)
 	}
 	if err := manager.startControlPlaneUpgrade(job); err != nil {
 		t.Fatal(err)
@@ -2718,16 +2840,17 @@ func TestPrepareControlPlaneUpgradePersistsImmutableCandidateIdentity(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	var request controlPlaneUpgradeRequest
+	var request controlPlaneActivationRequest
 	if err := json.Unmarshal(data, &request); err != nil {
 		t.Fatal(err)
 	}
 	if request.JobID != job.ID || request.ContainerID != job.CandidateContainerID ||
 		request.TargetVersion != job.TargetVersion ||
 		request.ExpectedImage != job.TargetImage ||
-		request.ExpectedImageHash != job.TargetDigest || request.Schema != 2 ||
-		request.StagedBinarySHA != sha256Digest(runner.binary) ||
-		request.StagedManifestSHA != sha256Digest(runner.manifest) ||
+		request.ExpectedImageDigest != job.TargetDigest || request.Schema != controlPlaneRequestSchema ||
+		request.PayloadSchema != controlPlanePayloadSchema || request.MaxAttempts != defaultActivationAttempts ||
+		len(request.Assets) != 1 || request.Assets[0].SHA256 != sha256Digest(runner.binary) ||
+		request.StagedManifestSHA256 != sha256Digest(runner.manifest) ||
 		request.ExpectedCommit != "0123456789abcdef" || request.ExpectedArch != runtime.GOARCH {
 		t.Fatalf("unexpected upgrade request: %+v", request)
 	}
@@ -2739,6 +2862,68 @@ func TestPrepareControlPlaneUpgradePersistsImmutableCandidateIdentity(t *testing
 	}
 }
 
+func TestPrepareControlPlaneUpgradeRejectsAlreadyTerminalDeployment(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	stateDir := t.TempDir()
+	if err := os.Chmod(stateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cfg.ControlPlaneUpgradePath = filepath.Join(stateDir, "control-plane-upgrade.json")
+	job := testControlPlaneJob(cfg)
+	job.Status = JobStatusSucceeded
+	job.Stage = StageCompleted
+	runner := newControlPlaneRunner(t, &fakeRunner{}, job.TargetVersion, "0123456789abcdef")
+	manager := &Manager{cfg: cfg, runner: runner, now: time.Now}
+	manager.state = State{
+		ActiveContainer:   job.CandidateContainer,
+		ActiveContainerID: job.CandidateContainerID,
+		ActiveVersion:     job.TargetVersion,
+		ActiveImage:       job.TargetImage,
+		Job:               job,
+	}
+
+	prepared, activationLock, err := manager.prepareControlPlaneUpgrade(job)
+	if err == nil || !strings.Contains(err.Error(), "awaiting completion") || prepared || activationLock != nil {
+		t.Fatalf("terminal deployment prepare: prepared=%v lock=%v err=%v", prepared, activationLock, err)
+	}
+	if _, err := os.Lstat(cfg.ControlPlaneUpgradePath); !os.IsNotExist(err) {
+		t.Fatalf("terminal deployment published activation request: %v", err)
+	}
+}
+
+func TestPrepareControlPlaneUpgradeSharesActivatorLock(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	stateDir := t.TempDir()
+	if err := os.Chmod(stateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cfg.ControlPlaneUpgradePath = filepath.Join(stateDir, "control-plane-upgrade.json")
+	job := testControlPlaneJob(cfg)
+	runner := newControlPlaneRunner(t, &fakeRunner{}, job.TargetVersion, "0123456789abcdef")
+	manager := &Manager{cfg: cfg, runner: runner, now: time.Now}
+	manager.state = State{
+		ActiveContainer:   job.CandidateContainer,
+		ActiveContainerID: job.CandidateContainerID,
+		ActiveVersion:     job.TargetVersion,
+		ActiveImage:       job.TargetImage,
+		Job:               job,
+	}
+	lockPath := filepath.Join(filepath.Dir(cfg.ControlPlaneUpgradePath), "control-plane-activation.lock")
+	lock, acquired, err := acquireActivationLock(lockPath, os.Geteuid(), os.Getegid())
+	if err != nil || !acquired {
+		t.Fatalf("hold activation lock: acquired=%v err=%v", acquired, err)
+	}
+	defer func() { _ = lock.Close() }()
+
+	prepared, activationLock, err := manager.prepareControlPlaneUpgrade(job)
+	if err == nil || !strings.Contains(err.Error(), "already in progress") || prepared || activationLock != nil {
+		t.Fatalf("contended prepare: prepared=%v lock=%v err=%v", prepared, activationLock, err)
+	}
+	if _, err := os.Lstat(cfg.ControlPlaneUpgradePath); !os.IsNotExist(err) {
+		t.Fatalf("contended prepare published activation request: %v", err)
+	}
+}
+
 func TestPrepareControlPlaneUpgradeDoesNotDowngradeOnRollback(t *testing.T) {
 	cfg := testConfig(t, 18081)
 	cfg.ControlPlaneUpgradePath = filepath.Join(t.TempDir(), "control-plane-upgrade.json")
@@ -2746,11 +2931,11 @@ func TestPrepareControlPlaneUpgradeDoesNotDowngradeOnRollback(t *testing.T) {
 	runner := &fakeRunner{}
 	manager := &Manager{cfg: cfg, runner: runner}
 
-	prepared, err := manager.prepareControlPlaneUpgrade(&Job{Action: "rollback"})
+	prepared, activationLock, err := manager.prepareControlPlaneUpgrade(&Job{Action: "rollback"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prepared {
+	if prepared || activationLock != nil {
 		t.Fatal("rollback unexpectedly prepared a control-plane downgrade")
 	}
 	if _, err := os.Stat(cfg.ControlPlaneUpgradePath); !os.IsNotExist(err) {
@@ -2760,6 +2945,41 @@ func TestPrepareControlPlaneUpgradeDoesNotDowngradeOnRollback(t *testing.T) {
 	defer runner.mu.Unlock()
 	if len(runner.commands) != 0 {
 		t.Fatalf("rollback unexpectedly scheduled a control-plane downgrade: %v", runner.commands)
+	}
+}
+
+func TestPrepareControlPlaneUpgradeSkipsControlPlaneVersionThatIsNotNewer(t *testing.T) {
+	for _, targetVersion := range []string{"0.1.168-ts.3", "0.1.168-ts.4"} {
+		t.Run(targetVersion, func(t *testing.T) {
+			cfg := testConfig(t, 18081)
+			stateDir := t.TempDir()
+			if err := os.Chmod(stateDir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			cfg.StatePath = filepath.Join(stateDir, "state.json")
+			cfg.ControlPlaneUpgradePath = filepath.Join(stateDir, "control-plane-upgrade.json")
+			job := testControlPlaneJob(cfg)
+			job.TargetVersion = targetVersion
+			runner := newControlPlaneRunner(t, &fakeRunner{}, targetVersion, "0123456789abcdef")
+			manager := &Manager{
+				cfg:       cfg,
+				runner:    runner,
+				now:       time.Now,
+				buildInfo: BuildInfo{Version: "0.1.168-ts.4", Type: "release", Arch: runtime.GOARCH},
+			}
+
+			prepared, activationLock, err := manager.prepareControlPlaneUpgrade(job)
+			if err != nil || prepared || activationLock != nil {
+				t.Fatalf("not-newer control plane prepared=%v lock=%v err=%v", prepared, activationLock, err)
+			}
+			if runner.created != 0 {
+				t.Fatalf("not-newer control plane created %d extraction containers", runner.created)
+			}
+			status, err := readControlPlaneStatus(cfg.ControlPlaneUpgradePath + ".status")
+			if err != nil || status.Status != "skipped" || !strings.Contains(status.Error, "not newer") {
+				t.Fatalf("skip status=%+v err=%v", status, err)
+			}
+		})
 	}
 }
 
@@ -2866,6 +3086,39 @@ func TestPendingControlPlaneUpgradeBecomesUnknownAfterTimeout(t *testing.T) {
 	}
 	if got.ControlPlaneUpgradeStatus != "unknown" || !strings.Contains(got.ControlPlaneUpgradeError, "more than 10 minutes") {
 		t.Fatalf("unexpected timed-out control-plane status: %+v", got)
+	}
+}
+
+func TestFailedControlPlaneUpgradeBlocksUntilOperatorResolution(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	cfg.ControlPlaneUpgradePath = filepath.Join(t.TempDir(), "control-plane-upgrade.json")
+	cfg.ControlPlaneUpgradeCommand = []string{"/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service"}
+	job := &Job{ID: "control-plane-failed-0001", CandidateContainerID: fakeContainerID("failed-control-plane"), TargetVersion: "0.1.168-ts.3", Status: JobStatusSucceeded}
+	manager := &Manager{cfg: cfg, state: State{Job: job}, now: time.Now}
+	if err := manager.writeControlPlaneUpgradeStatus(job, "failed", "activation failed"); err != nil {
+		t.Fatal(err)
+	}
+	if !manager.controlPlaneUpgradeFailureUnresolvedLocked() {
+		t.Fatal("failed control-plane status did not block later deployments")
+	}
+	if err := manager.writeControlPlaneUpgradeStatus(job, "quarantined", "operator accepted break-glass state"); err != nil {
+		t.Fatal(err)
+	}
+	if manager.controlPlaneUpgradeFailureUnresolvedLocked() {
+		t.Fatal("operator-resolved quarantine status still blocked deployments")
+	}
+}
+
+func TestCorruptControlPlaneUpgradeStatusFailsClosed(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	cfg.ControlPlaneUpgradePath = filepath.Join(t.TempDir(), "control-plane-upgrade.json")
+	job := &Job{ID: "control-plane-corrupt-0001", CandidateContainerID: fakeContainerID("corrupt-control-plane"), TargetVersion: "0.1.168-ts.3", Status: JobStatusSucceeded}
+	manager := &Manager{cfg: cfg, state: State{Job: job}, now: time.Now}
+	if err := os.WriteFile(manager.controlPlaneUpgradeStatusPath(), []byte("{corrupt\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if !manager.controlPlaneUpgradeFailureUnresolvedLocked() {
+		t.Fatal("corrupt control-plane status did not fail closed")
 	}
 }
 
