@@ -9,6 +9,15 @@
     <PlatformIcon v-if="platform" :platform="platform" size="sm" />
     <!-- Group name -->
     <span class="truncate">{{ name }}</span>
+    <!-- Upstream subscription plan tier -->
+    <span
+      v-if="upstreamPlanLabel"
+      class="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+      data-testid="group-upstream-plan-badge"
+      :title="upstreamPlanLabel"
+    >
+      {{ upstreamPlanLabel }}
+    </span>
     <!-- Right side label -->
     <span v-if="showLabel" :class="labelClass">
       <template v-if="hasCustomRate">
@@ -32,6 +41,7 @@ import { useI18n } from 'vue-i18n'
 import type { SubscriptionType, GroupPlatform } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
+import { resolveUpstreamPlanLabel } from '@/utils/groupUpstreamPlan'
 import PlatformIcon from './PlatformIcon.vue'
 
 interface Props {
@@ -47,6 +57,10 @@ interface Props {
   showRate?: boolean
   daysRemaining?: number | null // 剩余天数（订阅类型时使用）
   /**
+   * 上游订阅档位显示文案（label 或 code）；空则不展示。
+   */
+  upstreamPlan?: string | null
+  /**
    * 订阅分组默认在右侧 label 展示"订阅"或剩余天数；
    * 开启后订阅分组也改为显示倍率（保留订阅主题色 label，配合可用渠道这类
    * 只关心费率、不关心有效期的场景）。
@@ -60,12 +74,17 @@ const props = withDefaults(defineProps<Props>(), {
   daysRemaining: null,
   userRateMultiplier: null,
   peakRateEnabled: false,
-  alwaysShowRate: false
+  alwaysShowRate: false,
+  upstreamPlan: null
 })
 
 const { t } = useI18n()
 
 const isSubscription = computed(() => props.subscriptionType === 'subscription')
+
+const upstreamPlanLabel = computed(() => {
+  return resolveUpstreamPlanLabel(props.platform, props.upstreamPlan)
+})
 
 // 是否有专属倍率（且与默认倍率不同）
 const hasCustomRate = computed(() => {

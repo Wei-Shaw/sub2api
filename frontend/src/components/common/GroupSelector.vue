@@ -42,6 +42,7 @@
           :platform="group.platform"
           :subscription-type="group.subscription_type"
           :rate-multiplier="group.rate_multiplier"
+          :upstream-plan="group.upstream_plan"
           class="min-w-0 flex-1"
         />
         <span class="shrink-0 text-xs text-gray-400">{{ group.account_count || 0 }}</span>
@@ -104,7 +105,10 @@ const filteredGroups = computed(() => {
   if (isSearchable.value && searchText.value) {
     const q = searchText.value.toLowerCase()
     result = result.filter(
-      (g) => g.name.toLowerCase().includes(q) || g.description?.toLowerCase().includes(q)
+      (g) =>
+        g.name.toLowerCase().includes(q) ||
+        g.description?.toLowerCase().includes(q) ||
+        g.upstream_plan?.toLowerCase().includes(q)
     )
   }
   return result
