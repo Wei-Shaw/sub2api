@@ -48,9 +48,9 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 	if err := createGroupRecord(ctx, client, groupIn); err != nil {
 		return err
 	}
-	// outbox：仅在「无外层 tx」时立即 enqueue；
-	// 有外层 tx 时由调用方 commit 后调用 EnqueueGroupChanged，避免回滚后残留 outbox。
-	if dbent.TxFromContext(ctx) == nil {
+	// Outbox 策略（与 CreateFromSource / DeleteCascade 对齐说明见 EnqueueGroupChanged）：
+	// Create 在外层 tx 时跳过 enqueue，须由调用方在真实 commit 后 EnqueueGroupChanged。
+	if groupOutboxImmediate(ctx) {
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 			logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group create failed: group=%d err=%v", groupIn.ID, err)
 		}
@@ -59,11 +59,35 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 }
 
 // EnqueueGroupChanged 在外层事务成功提交后补发分组变更调度事件。
+//
+// Outbox 策略（调用方心智）：
+//   - Create / DeleteCascade：外层 tx 内不写 outbox；commit 后必须对本组调用本方法（provision 可批量）。
+//   - CreateFromSource：outbox 写入同一 ent tx client，随外层 commit/rollback，无需再调本方法。
+//   - 无外层 tx：Create/DeleteCascade 在自有路径上立即 enqueue。
 func (r *groupRepository) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
 	if groupID <= 0 {
 		return nil
 	}
 	return enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupID, nil)
+}
+
+// groupOutboxImmediate 为 true 时 Create/DeleteCascade 可立即向 r.sql 写 outbox
+// （context 中无外层 ent 事务）。有 TxFromContext 时返回 false，须 post-commit 补发。
+func groupOutboxImmediate(ctx context.Context) bool {
+	return dbent.TxFromContext(ctx) == nil
+}
+
+// errGroupOuterTxMissing 表示 ent 报告已在事务中，但 context 未附着 TxFromContext。
+// 此时继续用 r.client 会旁路外层事务，必须 fail-closed。
+var errGroupOuterTxMissing = errors.New("group repo: ent reports tx already started but TxFromContext is nil; caller must use ent.NewTxContext")
+
+// outerTxClientOrError 在 begin 返回 ErrTxStarted 时取外层事务 client；缺失则 fail-closed。
+func outerTxClientOrError(ctx context.Context) (*dbent.Client, error) {
+	existingTx := dbent.TxFromContext(ctx)
+	if existingTx == nil {
+		return nil, errGroupOuterTxMissing
+	}
+	return existingTx.Client(), nil
 }
 
 func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *service.Group) error {
@@ -159,6 +183,9 @@ func (r *groupRepository) FindByDuplicateOperationID(ctx context.Context, operat
 
 // CreateFromSource atomically persists a copied group, clones the source
 // account bindings with their exact priorities, and writes its scheduler event.
+//
+// Outbox：写入同一 ent tx client（自有或外层），随 commit/rollback 可见；
+// 与 Create/DeleteCascade「外层 tx 跳过 + post-commit EnqueueGroupChanged」不同。
 func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service.Group, sourceGroupID int64) error {
 	if groupIn == nil {
 		return errors.New("group is nil")
@@ -175,8 +202,11 @@ func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service
 		defer func() { _ = tx.Rollback() }()
 		txClient = tx.Client()
 	} else {
-		// Reuse a caller-owned transaction when this repository is already transactional.
-		txClient = clientFromContext(ctx, r.client)
+		// ErrTxStarted：必须附着外层 tx；缺失则 fail-closed，禁止旁路 r.client。
+		txClient, err = outerTxClientOrError(ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := createGroupRecord(ctx, txClient, groupIn); err != nil {
@@ -203,8 +233,7 @@ func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service
 	if count, countErr := result.RowsAffected(); countErr == nil {
 		groupIn.AccountCount = count
 	}
-	// 自有事务：outbox 写入同一 tx，commit 后可见。
-	// 外层事务：同样写入外层 tx，随外层 commit/rollback；不使用 r.sql 以免旁路。
+	// outbox 与组写入同一 tx client（见方法注释）。
 	if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		return err
 	}
@@ -843,8 +872,8 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
 		return nil, err
 	}
-	exec := r.client
-	txClient := r.client
+	var exec *dbent.Client
+	var txClient *dbent.Client
 	ownTx := false
 	if err == nil {
 		ownTx = true
@@ -852,11 +881,14 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 		exec = tx.Client()
 		txClient = exec
 	} else {
-		// ErrTxStarted：复用外层事务 client，不自行 Commit。
-		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
-			exec = existingTx.Client()
-			txClient = exec
+		// ErrTxStarted：复用外层事务 client，不自行 Commit、不 enqueue。
+		// 若调用方未 NewTxContext，fail-closed，禁止静默旁路 r.client。
+		outer, outerErr := outerTxClientOrError(ctx)
+		if outerErr != nil {
+			return nil, outerErr
 		}
+		exec = outer
+		txClient = outer
 	}
 
 	// Lock the group row to avoid concurrent writes while we cascade.
@@ -932,13 +964,15 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 	}
 
 	// 仅自有事务真正 commit 后发送 outbox；外层 tx 场景延迟到外层 commit 后
-	// 由调用方 EnqueueGroupChanged。
+	// 由调用方 EnqueueGroupChanged（与 Create 一致；与 CreateFromSource 不同）。
 	if ownTx {
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &id, nil); err != nil {
-			logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group cascade delete failed: group=%d err=%v", id, err)
+		if groupOutboxImmediate(ctx) {
+			if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &id, nil); err != nil {
+				logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group cascade delete failed: group=%d err=%v", id, err)
+			}
 		}
 	}
 

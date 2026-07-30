@@ -67,6 +67,10 @@ func TestNormalizePrivateGroupExpiresDate(t *testing.T) {
 
 	_, err = normalizePrivateGroupExpiresDate("not-a-date")
 	require.Error(t, err)
+
+	// time.Parse 会把 02-30 归一化成 03-02；必须拒绝
+	_, err = normalizePrivateGroupExpiresDate("2026-02-30")
+	require.Error(t, err)
 }
 
 func TestPrivateGroupExpiresDate_WriteEmptyClears(t *testing.T) {

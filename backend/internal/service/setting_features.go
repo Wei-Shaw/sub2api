@@ -301,7 +301,8 @@ func (s *SettingService) ResolvePrivateGroupExpiresAt(ctx context.Context) (expi
 }
 
 // normalizePrivateGroupExpiresDate 校验并规范化私有组到期日。
-// 空串合法（表示清空/未配置）；非空必须为 YYYY-MM-DD。
+// 空串合法（表示清空/未配置）；非空必须为严格合法的 YYYY-MM-DD
+// （拒绝 time.Parse 会归一化的非法日历日，如 2026-02-30）。
 func normalizePrivateGroupExpiresDate(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -311,7 +312,11 @@ func normalizePrivateGroupExpiresDate(raw string) (string, error) {
 	if err != nil {
 		return "", infraerrors.BadRequest("INVALID_PRIVATE_GROUP_EXPIRES_DATE", "private_group_expires_date must be YYYY-MM-DD or empty")
 	}
-	return t.Format("2006-01-02"), nil
+	formatted := t.Format("2006-01-02")
+	if formatted != raw {
+		return "", infraerrors.BadRequest("INVALID_PRIVATE_GROUP_EXPIRES_DATE", "private_group_expires_date must be a valid calendar date (YYYY-MM-DD)")
+	}
+	return formatted, nil
 }
 
 // GetDefaultUserRPMLimit 获取新用户默认 RPM 限制（0 = 不限制）。未配置则返回 0。

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -13,30 +14,37 @@ import (
 func TestClientFromContext_UsesTxClient(t *testing.T) {
 	defaultClient := &dbent.Client{}
 	tx := &dbent.Tx{}
-	// ent.Tx.Client() 在零值 tx 上可能 panic；此处仅验证 TxFromContext 分支选择逻辑
-	// 通过比较指针：有 tx 时不应返回 defaultClient。
 	ctx := context.Background()
 	got := clientFromContext(ctx, defaultClient)
 	require.Same(t, defaultClient, got, "no outer tx → default client")
 
-	// 将伪 tx 放入 context：TxFromContext 非 nil 时走事务路径
-	// 注意：真实 Client() 需有效 driver；本测只校验选择函数是否检测外层 tx。
-	_ = dbent.NewTxContext(ctx, tx)
-	// 若 Tx 非 nil，clientFromContext 会调用 tx.Client()。
-	// 零值 *dbent.Tx 的 Client() 返回嵌入的 client 字段（nil 或默认），
-	// 关键是：返回值不应是 defaultClient 指针（除非 tx.Client 恰为它）。
-	// 更稳妥的契约测试：TxFromContext 能读回同一 tx。
 	txCtx := dbent.NewTxContext(ctx, tx)
 	require.Same(t, tx, dbent.TxFromContext(txCtx))
 }
 
-// TestGroupCreate_SkipsOutboxWhenOuterTx 用 nil client 验证 Create 在外层 tx 时
-// 于 createGroupRecord 失败前仍会选择 clientFromContext（nil 参数 panic 前的路径覆盖有限）。
-// 完整 rollback 集成测见 integration 标签；此处文档化 outbox 延迟契约。
-func TestGroupCreate_OutboxDeferredContract(t *testing.T) {
-	// 契约：外层 tx 存在时 Create 不得向 r.sql 写 outbox。
-	// 实现位于 groupRepository.Create：if dbent.TxFromContext(ctx) == nil { enqueue... }
-	// 无真实 DB 时通过静态断言本文件与实现共存即可；行为由代码审查 + 集成测覆盖。
-	require.NotNil(t, clientFromContext)
-	require.True(t, true, "outbox deferred when outer tx present — see groupRepository.Create")
+// TestGroupOutboxImmediate_BranchSelection 断言 Create/DeleteCascade 的 outbox 分支选择：
+// 无外层 tx → 立即 enqueue；有 TxFromContext → 延迟到 post-commit EnqueueGroupChanged。
+// 完整 rollback 集成回归仍需 //go:build integration + 真实 DB。
+func TestGroupOutboxImmediate_BranchSelection(t *testing.T) {
+	require.True(t, groupOutboxImmediate(context.Background()), "no outer tx → enqueue immediately")
+
+	txCtx := dbent.NewTxContext(context.Background(), &dbent.Tx{})
+	require.False(t, groupOutboxImmediate(txCtx), "outer tx present → defer outbox until commit")
+}
+
+// TestOuterTxClientOrError_FailClosedWithoutContext 断言 ErrTxStarted 且未附着
+// TxFromContext 时 fail-closed，避免 DeleteCascade/CreateFromSource 静默旁路 r.client。
+func TestOuterTxClientOrError_FailClosedWithoutContext(t *testing.T) {
+	client, err := outerTxClientOrError(context.Background())
+	require.Error(t, err)
+	require.Nil(t, client)
+	require.ErrorIs(t, err, errGroupOuterTxMissing)
+
+	tx := &dbent.Tx{}
+	txCtx := dbent.NewTxContext(context.Background(), tx)
+	client, err = outerTxClientOrError(txCtx)
+	require.NoError(t, err)
+	// 零值 Tx.Client() 可能为 nil；关键是 err==nil 且不返回 errGroupOuterTxMissing
+	_ = client
+	require.False(t, errors.Is(err, errGroupOuterTxMissing))
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand/v2"
@@ -221,11 +222,14 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 //   - 不存在：按绝对 expiresAt 创建；expiresAt.After(now) → active，否则 expired
 //
 // expiresAt 会被 clamp 到 MaxExpiresAt（UTC 2099-12-31）。
+// deferCacheInvalidation=true 时跳过同步缓存失效（外层事务 commit 后再由调用方失效，
+// 与 payment fulfillment / AssignOrExtend 的 deferred 模式一致）。
 func (s *SubscriptionService) EnsureSubscriptionWithExpiresAt(
 	ctx context.Context,
 	userID, groupID int64,
 	expiresAt time.Time,
 	notes string,
+	deferCacheInvalidation bool,
 ) (*UserSubscription, error) {
 	group, err := s.groupRepo.GetByID(ctx, groupID)
 	if err != nil {
@@ -239,6 +243,10 @@ func (s *SubscriptionService) EnsureSubscriptionWithExpiresAt(
 	if err == nil && existingSub != nil {
 		// 幂等：已存在不改期
 		return existingSub, nil
+	}
+	// 仅 not-found 继续 Create；DB 瞬时故障等不得伪装成「无记录」
+	if err != nil && !errors.Is(err, ErrSubscriptionNotFound) {
+		return nil, err
 	}
 
 	now := time.Now()
@@ -271,8 +279,8 @@ func (s *SubscriptionService) EnsureSubscriptionWithExpiresAt(
 		return nil, err
 	}
 
-	// 与 AssignOrExtend 一致：同步失效 assignment 缓存
-	s.maybeInvalidateAssignmentCaches(userID, groupID, false)
+	// 与 AssignOrExtend 一致；外层 tx 传 deferCacheInvalidation=true
+	s.maybeInvalidateAssignmentCaches(userID, groupID, deferCacheInvalidation)
 
 	// 重新获取完整订阅信息（包含关联）
 	return s.userSubRepo.GetByID(ctx, sub.ID)

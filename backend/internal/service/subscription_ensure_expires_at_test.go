@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -18,9 +19,13 @@ type ensureSubRepoStub struct {
 	created   *UserSubscription
 	getByID   *UserSubscription
 	createErr error
+	getErr    error
 }
 
 func (s *ensureSubRepoStub) GetByUserIDAndGroupID(_ context.Context, userID, groupID int64) (*UserSubscription, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
 	if s.existing != nil && s.existing.UserID == userID && s.existing.GroupID == groupID {
 		return s.existing, nil
 	}
@@ -56,7 +61,7 @@ func TestEnsureSubscriptionWithExpiresAt_CreateActive(t *testing.T) {
 	}
 
 	expires := time.Now().Add(48 * time.Hour)
-	sub, err := svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, expires, "private provision")
+	sub, err := svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, expires, "private provision", false)
 	require.NoError(t, err)
 	require.NotNil(t, sub)
 	require.NotNil(t, repo.created)
@@ -75,7 +80,7 @@ func TestEnsureSubscriptionWithExpiresAt_CreateExpiredWhenNotAfterNow(t *testing
 
 	// 过去时刻 → expired
 	expires := time.Now().Add(-time.Minute)
-	sub, err := svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, expires, "")
+	sub, err := svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, expires, "", false)
 	require.NoError(t, err)
 	require.NotNil(t, sub)
 	require.Equal(t, SubscriptionStatusExpired, repo.created.Status)
@@ -83,7 +88,7 @@ func TestEnsureSubscriptionWithExpiresAt_CreateExpiredWhenNotAfterNow(t *testing
 	// 恰好 now（!After）→ expired
 	repo.created = nil
 	now := time.Now()
-	sub, err = svc.EnsureSubscriptionWithExpiresAt(context.Background(), 2, 10, now, "")
+	sub, err = svc.EnsureSubscriptionWithExpiresAt(context.Background(), 2, 10, now, "", false)
 	require.NoError(t, err)
 	require.Equal(t, SubscriptionStatusExpired, repo.created.Status)
 }
@@ -105,7 +110,7 @@ func TestEnsureSubscriptionWithExpiresAt_IdempotentNoChange(t *testing.T) {
 		userSubRepo: repo,
 	}
 
-	sub, err := svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, time.Now().Add(365*24*time.Hour), "should-not-apply")
+	sub, err := svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, time.Now().Add(365*24*time.Hour), "should-not-apply", false)
 	require.NoError(t, err)
 	require.Equal(t, existing.ID, sub.ID)
 	require.Equal(t, originalExpires, sub.ExpiresAt)
@@ -120,9 +125,23 @@ func TestEnsureSubscriptionWithExpiresAt_RejectsNonSubscriptionGroup(t *testing.
 		userSubRepo: &ensureSubRepoStub{},
 	}
 
-	_, err := svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, time.Now().Add(time.Hour), "")
+	_, err := svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, time.Now().Add(time.Hour), "", false)
 	require.Error(t, err)
 	require.Equal(t, infraerrors.Code(ErrGroupNotSubscriptionType), infraerrors.Code(err))
+}
+
+func TestEnsureSubscriptionWithExpiresAt_PropagatesGetErrors(t *testing.T) {
+	group := &Group{ID: 10, SubscriptionType: SubscriptionTypeSubscription}
+	repo := &ensureSubRepoStub{getErr: errors.New("db unavailable")}
+	svc := &SubscriptionService{
+		groupRepo:   &subscriptionGroupRepoStub{group: group},
+		userSubRepo: repo,
+	}
+
+	_, err := svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, time.Now().Add(time.Hour), "", false)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "db unavailable")
+	require.Nil(t, repo.created, "must not create when Get fails with non-not-found")
 }
 
 func TestEnsureSubscriptionWithExpiresAt_ClampsMaxExpiresAt(t *testing.T) {
@@ -134,9 +153,9 @@ func TestEnsureSubscriptionWithExpiresAt_ClampsMaxExpiresAt(t *testing.T) {
 	}
 
 	farFuture := time.Date(2100, 6, 1, 0, 0, 0, 0, time.UTC)
-	_, err := svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, farFuture, "")
+	_, err := svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, farFuture, "", false)
 	require.NoError(t, err)
-	require.True(t, repo.created.ExpiresAt.Equal(MaxExpiresAt) || repo.created.ExpiresAt.Equal(MaxExpiresAt))
+	require.True(t, repo.created.ExpiresAt.Equal(MaxExpiresAt))
 	require.False(t, repo.created.ExpiresAt.After(MaxExpiresAt))
 }
 
@@ -157,9 +176,33 @@ func TestEnsureSubscriptionWithExpiresAt_InvalidatesCache(t *testing.T) {
 	require.True(t, cache.Set(key, &UserSubscription{ID: 1}, 1))
 	cache.Wait()
 
-	_, err = svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, time.Now().Add(time.Hour), "")
+	_, err = svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, time.Now().Add(time.Hour), "", false)
 	require.NoError(t, err)
 	cache.Wait()
 	_, stillCached := cache.Get(key)
 	require.False(t, stillCached, "assignment cache must be invalidated on create")
+}
+
+func TestEnsureSubscriptionWithExpiresAt_DeferCacheInvalidation(t *testing.T) {
+	cache, err := ristretto.NewCache(&ristretto.Config{NumCounters: 1_000, MaxCost: 100, BufferItems: 64})
+	require.NoError(t, err)
+	t.Cleanup(cache.Close)
+
+	group := &Group{ID: 10, SubscriptionType: SubscriptionTypeSubscription}
+	repo := &ensureSubRepoStub{}
+	svc := &SubscriptionService{
+		groupRepo:   &subscriptionGroupRepoStub{group: group},
+		userSubRepo: repo,
+		subCacheL1:  cache,
+	}
+
+	key := subCacheKey(1, 10)
+	require.True(t, cache.Set(key, &UserSubscription{ID: 1}, 1))
+	cache.Wait()
+
+	_, err = svc.EnsureSubscriptionWithExpiresAt(context.Background(), 1, 10, time.Now().Add(time.Hour), "", true)
+	require.NoError(t, err)
+	cache.Wait()
+	_, stillCached := cache.Get(key)
+	require.True(t, stillCached, "deferred invalidation must retain cache until outer owner commits")
 }

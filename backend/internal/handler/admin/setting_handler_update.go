@@ -497,11 +497,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	// 校验 private_group_expires_date（仅当请求显式携带该字段时）
 	if _, sent := sentFields["private_group_expires_date"]; sent {
-		if _, err := time.Parse("2006-01-02", strings.TrimSpace(req.PrivateGroupExpiresDate)); err != nil && strings.TrimSpace(req.PrivateGroupExpiresDate) != "" {
-			response.BadRequest(c, "private_group_expires_date must be YYYY-MM-DD or empty")
-			return
-		}
 		req.PrivateGroupExpiresDate = strings.TrimSpace(req.PrivateGroupExpiresDate)
+		if req.PrivateGroupExpiresDate != "" {
+			t, err := time.Parse("2006-01-02", req.PrivateGroupExpiresDate)
+			// Format 往返必须一致，拒绝 time.Parse 会归一化的非法日（如 2026-02-30）
+			if err != nil || t.Format("2006-01-02") != req.PrivateGroupExpiresDate {
+				response.BadRequest(c, "private_group_expires_date must be a valid calendar date (YYYY-MM-DD) or empty")
+				return
+			}
+		}
 	}
 	affiliateRebateRate := previousSettings.AffiliateRebateRate
 	if req.AffiliateRebateRate != nil {
