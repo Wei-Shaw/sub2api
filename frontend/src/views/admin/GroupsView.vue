@@ -147,24 +147,33 @@
             >
           </template>
 
-          <template #cell-platform="{ value }">
-            <span
-              :class="[
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                value === 'anthropic'
-                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                  : value === 'openai'
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                    : value === 'antigravity'
-                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                      : value === 'grok'
-                        ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
-                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-              ]"
-            >
-              <PlatformIcon :platform="value" size="xs" />
-              {{ t("admin.groups.platforms." + value) }}
-            </span>
+          <template #cell-platform="{ value, row }">
+            <div class="flex flex-col items-start gap-1">
+              <span
+                :class="[
+                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  value === 'anthropic'
+                    ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                    : value === 'openai'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                      : value === 'antigravity'
+                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                        : value === 'grok'
+                          ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
+                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                ]"
+              >
+                <PlatformIcon :platform="value" size="xs" />
+                {{ t("admin.groups.platforms." + value) }}
+              </span>
+              <span
+                v-if="row.upstream_plan"
+                class="inline-flex rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                data-testid="group-upstream-plan-badge"
+              >
+                {{ resolveUpstreamPlanLabel(value, row.upstream_plan) }}
+              </span>
+            </div>
           </template>
 
           <template #cell-billing_type="{ row }">
@@ -502,9 +511,29 @@
             v-model="createForm.platform"
             :options="platformOptions"
             data-tour="group-form-platform"
-            @change="createForm.copy_accounts_from_group_ids = []"
+            @change="
+              createForm.copy_accounts_from_group_ids = [];
+              createForm.upstream_plan = '';
+            "
           />
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
+        </div>
+        <!-- 上游订阅档位（composite 不展示；仅元数据） -->
+        <div
+          v-if="
+            createForm.platform !== 'composite' &&
+            upstreamPlanOptionsFor(createForm.platform).length > 0
+          "
+        >
+          <label class="input-label">{{
+            t("admin.groups.form.upstreamPlan")
+          }}</label>
+          <Select
+            v-model="createForm.upstream_plan"
+            :options="upstreamPlanSelectOptions(createForm.platform)"
+            data-tour="group-form-upstream-plan"
+          />
+          <p class="input-hint">{{ t("admin.groups.form.upstreamPlanHint") }}</p>
         </div>
         <!-- 从分组复制账号 -->
         <div v-if="copyAccountsGroupOptions.length > 0">
@@ -2061,6 +2090,22 @@
             data-tour="group-form-platform"
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
+        </div>
+        <div
+          v-if="
+            editForm.platform !== 'composite' &&
+            upstreamPlanOptionsFor(editForm.platform).length > 0
+          "
+        >
+          <label class="input-label">{{
+            t("admin.groups.form.upstreamPlan")
+          }}</label>
+          <Select
+            v-model="editForm.upstream_plan"
+            :options="upstreamPlanSelectOptions(editForm.platform)"
+            data-tour="edit-group-form-upstream-plan"
+          />
+          <p class="input-hint">{{ t("admin.groups.form.upstreamPlanHint") }}</p>
         </div>
         <!-- 从分组复制账号（编辑时） -->
         <div v-if="copyAccountsGroupOptionsForEdit.length > 0">
@@ -4073,6 +4118,7 @@ import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
+import type { GroupUpstreamPlanOption } from "@/api/admin/settings";
 import type {
   AdminGroup,
   CompositeModelRoute,
@@ -4552,6 +4598,41 @@ const showSortModal = ref(false);
 const submitting = ref(false);
 const sortSubmitting = ref(false);
 const editingGroup = ref<AdminGroup | null>(null);
+
+/** 系统设置中的分组上游档位配置（按平台） */
+const groupUpstreamPlans = ref<Record<string, GroupUpstreamPlanOption[]>>({});
+
+const upstreamPlanOptionsFor = (platform: string): GroupUpstreamPlanOption[] => {
+  if (!platform || platform === "composite") return [];
+  return groupUpstreamPlans.value[platform] || [];
+};
+
+const upstreamPlanSelectOptions = (platform: string) => {
+  const opts = upstreamPlanOptionsFor(platform).map((o) => ({
+    value: o.code,
+    label: o.label || o.code,
+  }));
+  return [
+    { value: "", label: t("admin.groups.form.upstreamPlanUnspecified") },
+    ...opts,
+  ];
+};
+
+const resolveUpstreamPlanLabel = (platform: string, code: string) => {
+  if (!code) return "";
+  const found = upstreamPlanOptionsFor(platform).find((o) => o.code === code);
+  return found?.label || code;
+};
+
+const loadGroupUpstreamPlans = async () => {
+  try {
+    const settings = await adminAPI.settings.getSettings();
+    groupUpstreamPlans.value = settings.group_upstream_plans || {};
+  } catch (e) {
+    console.error("Failed to load group_upstream_plans", e);
+    groupUpstreamPlans.value = {};
+  }
+};
 const deletingGroup = ref<AdminGroup | null>(null);
 const duplicatingGroupIds = reactive(new Set<number>());
 const showRateMultipliersModal = ref(false);
@@ -4615,6 +4696,7 @@ const createForm = reactive({
   name: "",
   description: "",
   platform: "anthropic" as GroupPlatform,
+  upstream_plan: "" as string,
   rate_multiplier: 1.0,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
@@ -4964,6 +5046,7 @@ const editForm = reactive({
   name: "",
   description: "",
   platform: "anthropic" as GroupPlatform,
+  upstream_plan: "" as string,
   rate_multiplier: 1.0,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
@@ -5610,6 +5693,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.name = group.name;
   editForm.description = group.description || "";
   editForm.platform = group.platform;
+  editForm.upstream_plan = group.upstream_plan || "";
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
@@ -6265,6 +6349,7 @@ const saveSortOrder = async () => {
 onMounted(() => {
   loadGroups();
   void loadLiveCapability();
+  void loadGroupUpstreamPlans();
   loadModelsListCandidates("create", 0, createForm.platform);
   document.addEventListener("click", handleClickOutside);
 });

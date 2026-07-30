@@ -318,6 +318,17 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if platform == "" {
 		platform = PlatformAnthropic
 	}
+	upstreamPlan := ""
+	if s.settingService != nil {
+		var planErr error
+		upstreamPlan, planErr = s.settingService.ValidateGroupUpstreamPlan(ctx, platform, input.UpstreamPlan)
+		if planErr != nil {
+			return nil, planErr
+		}
+	} else if strings.TrimSpace(input.UpstreamPlan) != "" {
+		// 无设置服务时拒绝非空档位，避免绕过校验
+		return nil, infraerrors.New(http.StatusBadRequest, "INVALID_GROUP_UPSTREAM_PLAN", "upstream_plan validation unavailable")
+	}
 	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
@@ -451,6 +462,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Name:                            input.Name,
 		Description:                     input.Description,
 		Platform:                        platform,
+		UpstreamPlan:                    upstreamPlan,
 		RateMultiplier:                  input.RateMultiplier,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
@@ -631,6 +643,8 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		return nil, err
 	}
 
+	oldPlatform := group.Platform
+
 	if input.Name != "" {
 		group.Name = input.Name
 	}
@@ -639,6 +653,23 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.Platform != "" {
 		group.Platform = input.Platform
+	}
+	platformChanged := input.Platform != "" && input.Platform != oldPlatform
+	// 上游档位：换平台且未显式传 plan → 清空；否则校验后写入
+	if platformChanged && input.UpstreamPlan == nil {
+		group.UpstreamPlan = ""
+	} else if input.UpstreamPlan != nil {
+		plan := ""
+		if s.settingService != nil {
+			var planErr error
+			plan, planErr = s.settingService.ValidateGroupUpstreamPlan(ctx, group.Platform, *input.UpstreamPlan)
+			if planErr != nil {
+				return nil, planErr
+			}
+		} else if strings.TrimSpace(*input.UpstreamPlan) != "" {
+			return nil, infraerrors.New(http.StatusBadRequest, "INVALID_GROUP_UPSTREAM_PLAN", "upstream_plan validation unavailable")
+		}
+		group.UpstreamPlan = plan
 	}
 	if input.RateMultiplier != nil {
 		if *input.RateMultiplier <= 0 {

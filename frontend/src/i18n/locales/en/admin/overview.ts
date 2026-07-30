@@ -868,6 +868,10 @@ export default {
         rateMultiplier: 'Rate Multiplier',
         status: 'Status',
         exclusive: 'Exclusive Group',
+        upstreamPlan: 'Upstream plan tier',
+        upstreamPlanHint:
+          'Metadata/display only — not used for binding or scheduling. Options come from system setting "Group upstream plans".',
+        upstreamPlanUnspecified: 'Unspecified',
         nameLabel: 'Group Name',
         namePlaceholder: 'Enter group name',
         descriptionLabel: 'Description',

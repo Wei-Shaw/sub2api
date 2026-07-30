@@ -222,6 +222,26 @@ func (_u *GroupUpdate) SetNillablePlatform(v *string) *GroupUpdate {
 	return _u
 }
 
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (_u *GroupUpdate) SetUpstreamPlan(v string) *GroupUpdate {
+	_u.mutation.SetUpstreamPlan(v)
+	return _u
+}
+
+// SetNillableUpstreamPlan sets the "upstream_plan" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableUpstreamPlan(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetUpstreamPlan(*v)
+	}
+	return _u
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (_u *GroupUpdate) ClearUpstreamPlan() *GroupUpdate {
+	_u.mutation.ClearUpstreamPlan()
+	return _u
+}
+
 // SetSubscriptionType sets the "subscription_type" field.
 func (_u *GroupUpdate) SetSubscriptionType(v string) *GroupUpdate {
 	_u.mutation.SetSubscriptionType(v)
@@ -1243,6 +1263,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UpstreamPlan(); ok {
+		if err := group.UpstreamPlanValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_plan", err: fmt.Errorf(`ent: validator failed for field "Group.upstream_plan": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SubscriptionType(); ok {
 		if err := group.SubscriptionTypeValidator(v); err != nil {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
@@ -1323,6 +1348,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UpstreamPlan(); ok {
+		_spec.SetField(group.FieldUpstreamPlan, field.TypeString, value)
+	}
+	if _u.mutation.UpstreamPlanCleared() {
+		_spec.ClearField(group.FieldUpstreamPlan, field.TypeString)
 	}
 	if value, ok := _u.mutation.SubscriptionType(); ok {
 		_spec.SetField(group.FieldSubscriptionType, field.TypeString, value)
@@ -2041,6 +2072,26 @@ func (_u *GroupUpdateOne) SetNillablePlatform(v *string) *GroupUpdateOne {
 	if v != nil {
 		_u.SetPlatform(*v)
 	}
+	return _u
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (_u *GroupUpdateOne) SetUpstreamPlan(v string) *GroupUpdateOne {
+	_u.mutation.SetUpstreamPlan(v)
+	return _u
+}
+
+// SetNillableUpstreamPlan sets the "upstream_plan" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableUpstreamPlan(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetUpstreamPlan(*v)
+	}
+	return _u
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (_u *GroupUpdateOne) ClearUpstreamPlan() *GroupUpdateOne {
+	_u.mutation.ClearUpstreamPlan()
 	return _u
 }
 
@@ -3078,6 +3129,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UpstreamPlan(); ok {
+		if err := group.UpstreamPlanValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_plan", err: fmt.Errorf(`ent: validator failed for field "Group.upstream_plan": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SubscriptionType(); ok {
 		if err := group.SubscriptionTypeValidator(v); err != nil {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
@@ -3175,6 +3231,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UpstreamPlan(); ok {
+		_spec.SetField(group.FieldUpstreamPlan, field.TypeString, value)
+	}
+	if _u.mutation.UpstreamPlanCleared() {
+		_spec.ClearField(group.FieldUpstreamPlan, field.TypeString)
 	}
 	if value, ok := _u.mutation.SubscriptionType(); ok {
 		_spec.SetField(group.FieldSubscriptionType, field.TypeString, value)

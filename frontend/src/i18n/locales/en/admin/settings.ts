@@ -315,6 +315,13 @@ export default {
         defaultPlatformQuotas: 'Default Platform Quotas (on signup)',
         defaultPlatformQuotasHint: 'Automatically assigned to new users on signup; existing users are not affected. Leave blank = unlimited.',
         platformQuotaNotice: 'Monthly quota uses a 30-day rolling window, not a calendar month.',
+        groupUpstreamPlans: 'Group upstream plan tiers',
+        groupUpstreamPlansHint:
+          'Upstream subscription tiers available when creating/editing groups (metadata/display only). Empty config is seeded with defaults on first load.',
+        groupUpstreamPlansAdd: 'Add tier',
+        groupUpstreamPlansEmpty: 'No tiers (group form hides plan select for this platform)',
+        groupUpstreamPlansCode: 'code (e.g. pro)',
+        groupUpstreamPlansLabel: 'label (e.g. Pro)',
         privateGroupExpiresDate: 'Private Group Unified Expiry Date',
         privateGroupExpiresDateHint:
           'Absolute expiry for new users\' private-{userId}-{platform} subscriptions (Asia/Shanghai end of day 23:59:59). Clear to make new private subscriptions expire immediately. Affects future users only; saving does not change existing subscriptions.',

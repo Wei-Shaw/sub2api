@@ -141,6 +141,9 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetPeakStart(groupIn.PeakStart).
 		SetPeakEnd(groupIn.PeakEnd).
 		SetPeakRateMultiplier(groupIn.PeakRateMultiplier)
+	if groupIn.UpstreamPlan != "" {
+		builder = builder.SetUpstreamPlan(groupIn.UpstreamPlan)
+	}
 	if groupIn.DuplicateOperationID != "" {
 		builder = builder.SetDuplicateOperationID(groupIn.DuplicateOperationID)
 	}
@@ -333,6 +336,12 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetPeakStart(groupIn.PeakStart).
 		SetPeakEnd(groupIn.PeakEnd).
 		SetPeakRateMultiplier(groupIn.PeakRateMultiplier)
+
+	if groupIn.UpstreamPlan != "" {
+		builder = builder.SetUpstreamPlan(groupIn.UpstreamPlan)
+	} else {
+		builder = builder.ClearUpstreamPlan()
+	}
 
 	// 显式处理可空字段：nil 需要 clear，非 nil 需要 set。
 	if groupIn.DailyLimitUSD != nil {

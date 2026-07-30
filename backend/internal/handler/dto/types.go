@@ -92,6 +92,8 @@ type Group struct {
 	Name           string  `json:"name"`
 	Description    string  `json:"description"`
 	Platform       string  `json:"platform"`
+	// UpstreamPlan 上游订阅档位 code；空串表示未指定
+	UpstreamPlan   string  `json:"upstream_plan"`
 	RateMultiplier float64 `json:"rate_multiplier"`
 	IsExclusive    bool    `json:"is_exclusive"`
 	Status         string  `json:"status"`

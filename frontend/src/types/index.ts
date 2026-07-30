@@ -513,6 +513,8 @@ export interface Group {
   name: string
   description: string | null
   platform: GroupPlatform
+  /** 上游订阅档位 code；空串表示未指定 */
+  upstream_plan?: string
   rate_multiplier: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   max_reasoning_effort?: string // OpenAI/Codex reasoning ceiling; empty means unlimited

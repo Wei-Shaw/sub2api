@@ -77,6 +77,12 @@ func (Group) Fields() []ent.Field {
 		field.String("platform").
 			MaxLen(50).
 			Default(domain.PlatformAnthropic),
+		// 上游订阅档位 code（仅展示元数据；空=未指定）
+		field.String("upstream_plan").
+			MaxLen(64).
+			Optional().
+			Nillable().
+			Comment("上游订阅档位 code，来自系统设置 group_upstream_plans"),
 		field.String("subscription_type").
 			MaxLen(20).
 			Default(domain.SubscriptionTypeStandard),

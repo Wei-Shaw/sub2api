@@ -285,6 +285,8 @@ const (
 	SettingKeyDefaultUserRPMLimit  = "default_user_rpm_limit" // 新用户默认 RPM 限制（0 = 不限制）
 	// SettingKeyPrivateGroupExpiresDate 私有专属平台分组订阅统一绝对到期日（YYYY-MM-DD，空=未配置）
 	SettingKeyPrivateGroupExpiresDate = "private_group_expires_date"
+	// SettingKeyGroupUpstreamPlans 分组上游订阅档位配置 JSON（按平台 [{code,label}]）
+	SettingKeyGroupUpstreamPlans = "group_upstream_plans"
 
 	// 第三方认证来源默认授予配置
 	SettingKeyAuthSourceDefaultEmailBalance             = "auth_source_default_email_balance"

@@ -217,6 +217,20 @@ func (_c *GroupCreate) SetNillablePlatform(v *string) *GroupCreate {
 	return _c
 }
 
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (_c *GroupCreate) SetUpstreamPlan(v string) *GroupCreate {
+	_c.mutation.SetUpstreamPlan(v)
+	return _c
+}
+
+// SetNillableUpstreamPlan sets the "upstream_plan" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableUpstreamPlan(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetUpstreamPlan(*v)
+	}
+	return _c
+}
+
 // SetSubscriptionType sets the "subscription_type" field.
 func (_c *GroupCreate) SetSubscriptionType(v string) *GroupCreate {
 	_c.mutation.SetSubscriptionType(v)
@@ -1066,6 +1080,11 @@ func (_c *GroupCreate) check() error {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.UpstreamPlan(); ok {
+		if err := group.UpstreamPlanValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_plan", err: fmt.Errorf(`ent: validator failed for field "Group.upstream_plan": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.SubscriptionType(); !ok {
 		return &ValidationError{Name: "subscription_type", err: errors.New(`ent: missing required field "Group.subscription_type"`)}
 	}
@@ -1238,6 +1257,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
 		_node.Platform = value
+	}
+	if value, ok := _c.mutation.UpstreamPlan(); ok {
+		_spec.SetField(group.FieldUpstreamPlan, field.TypeString, value)
+		_node.UpstreamPlan = &value
 	}
 	if value, ok := _c.mutation.SubscriptionType(); ok {
 		_spec.SetField(group.FieldSubscriptionType, field.TypeString, value)
@@ -1712,6 +1735,24 @@ func (u *GroupUpsert) SetPlatform(v string) *GroupUpsert {
 // UpdatePlatform sets the "platform" field to the value that was provided on create.
 func (u *GroupUpsert) UpdatePlatform() *GroupUpsert {
 	u.SetExcluded(group.FieldPlatform)
+	return u
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (u *GroupUpsert) SetUpstreamPlan(v string) *GroupUpsert {
+	u.Set(group.FieldUpstreamPlan, v)
+	return u
+}
+
+// UpdateUpstreamPlan sets the "upstream_plan" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateUpstreamPlan() *GroupUpsert {
+	u.SetExcluded(group.FieldUpstreamPlan)
+	return u
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (u *GroupUpsert) ClearUpstreamPlan() *GroupUpsert {
+	u.SetNull(group.FieldUpstreamPlan)
 	return u
 }
 
@@ -2604,6 +2645,27 @@ func (u *GroupUpsertOne) SetPlatform(v string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdatePlatform() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdatePlatform()
+	})
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (u *GroupUpsertOne) SetUpstreamPlan(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUpstreamPlan(v)
+	})
+}
+
+// UpdateUpstreamPlan sets the "upstream_plan" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateUpstreamPlan() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUpstreamPlan()
+	})
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (u *GroupUpsertOne) ClearUpstreamPlan() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearUpstreamPlan()
 	})
 }
 
@@ -3770,6 +3832,27 @@ func (u *GroupUpsertBulk) SetPlatform(v string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdatePlatform() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdatePlatform()
+	})
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (u *GroupUpsertBulk) SetUpstreamPlan(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUpstreamPlan(v)
+	})
+}
+
+// UpdateUpstreamPlan sets the "upstream_plan" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateUpstreamPlan() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUpstreamPlan()
+	})
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (u *GroupUpsertBulk) ClearUpstreamPlan() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearUpstreamPlan()
 	})
 }
 

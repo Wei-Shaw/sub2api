@@ -155,6 +155,8 @@ type UpdateSettingsRequest struct {
 	DefaultBalance     float64 `json:"default_balance"`
 	// PrivateGroupExpiresDate 私有专属分组绝对到期日（YYYY-MM-DD）；空串清空；字段省略由 OmittedSettingKeys 保留库值
 	PrivateGroupExpiresDate                   string                            `json:"private_group_expires_date"`
+	// GroupUpstreamPlans 按平台上游档位；省略则保留库值；显式传 map 则全量替换
+	GroupUpstreamPlans                        map[string][]service.GroupUpstreamPlanOption `json:"group_upstream_plans"`
 	AffiliateRebateRate                       *float64                          `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
@@ -1437,6 +1439,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
 		PrivateGroupExpiresDate:                req.PrivateGroupExpiresDate,
+		GroupUpstreamPlans:                     req.GroupUpstreamPlans,
 		AffiliateRebateRate:                    affiliateRebateRate,
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
@@ -1967,6 +1970,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultConcurrency:                                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                                         updatedSettings.DefaultBalance,
 		PrivateGroupExpiresDate:                                updatedSettings.PrivateGroupExpiresDate,
+		GroupUpstreamPlans:                                     updatedSettings.GroupUpstreamPlans,
 		AffiliateRebateRate:                                    updatedSettings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:                             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:                            updatedSettings.AffiliateRebateDurationDays,

@@ -842,6 +842,10 @@ export default {
         name: '名称',
         description: '描述',
         platform: '平台',
+        upstreamPlan: '上游订阅档位',
+        upstreamPlanHint:
+          '仅用于展示/元数据，不参与绑号与调度。选项来自系统设置「分组上游订阅档位」。',
+        upstreamPlanUnspecified: '未指定',
         rateMultiplier: '费率倍数',
         status: '状态',
         exclusive: '专属分组',

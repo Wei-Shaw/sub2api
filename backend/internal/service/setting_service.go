@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -291,7 +292,14 @@ func (s *SettingService) GetAllSettings(ctx context.Context) (*SystemSettings, e
 		return nil, fmt.Errorf("get all settings: %w", err)
 	}
 
-	return s.parseSettings(settings), nil
+	result := s.parseSettings(settings)
+	// 分组上游档位：库中未配置时种子回填，保证管理端开箱有默认枚举
+	if raw := strings.TrimSpace(settings[SettingKeyGroupUpstreamPlans]); raw == "" {
+		if plans, seedErr := s.GetGroupUpstreamPlans(ctx); seedErr == nil {
+			result.GroupUpstreamPlans = plans
+		}
+	}
+	return result, nil
 }
 
 // SetOnUpdateCallback sets a callback function to be called when settings are updated

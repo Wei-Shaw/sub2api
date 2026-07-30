@@ -124,6 +124,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyPrivateGroupExpiresDate:                   "",
+		SettingKeyGroupUpstreamPlans:                        "",
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
@@ -365,6 +366,13 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.PrivateGroupExpiresDate = date
 	} else {
 		result.PrivateGroupExpiresDate = ""
+	}
+	// group_upstream_plans：raw 空时不在 parse 路径 seed（避免 GetAll 写库副作用）；
+	// 业务读用 GetGroupUpstreamPlans；此处解析成功则填入，失败用空 map。
+	if plans, err := ParseGroupUpstreamPlansJSON(settings[SettingKeyGroupUpstreamPlans]); err == nil {
+		result.GroupUpstreamPlans = plans
+	} else {
+		result.GroupUpstreamPlans = map[string][]GroupUpstreamPlanOption{}
 	}
 	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebateRate], 64); err == nil {
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)

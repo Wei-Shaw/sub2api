@@ -345,6 +345,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	settings.PrivateGroupExpiresDate = privateExpiresDate
 	updates[SettingKeyPrivateGroupExpiresDate] = privateExpiresDate
+	// 分组上游档位：规范化后整表写入；省略字段由 OmittedSettingKeys 剔除
+	plansJSON, err := MarshalGroupUpstreamPlansJSON(settings.GroupUpstreamPlans)
+	if err != nil {
+		return nil, err
+	}
+	// 回写规范化结果到 settings，便于响应
+	if normalized, nerr := ParseGroupUpstreamPlansJSON(plansJSON); nerr == nil {
+		settings.GroupUpstreamPlans = normalized
+	}
+	updates[SettingKeyGroupUpstreamPlans] = plansJSON
 	settings.AffiliateRebateRate = clampAffiliateRebateRate(settings.AffiliateRebateRate)
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {

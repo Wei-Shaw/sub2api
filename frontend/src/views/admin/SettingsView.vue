@@ -3555,6 +3555,75 @@
                 </div>
               </div>
 
+              <!-- 分组上游订阅档位配置 -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="mb-3">
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.defaults.groupUpstreamPlans") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.defaults.groupUpstreamPlansHint") }}
+                  </p>
+                </div>
+                <div class="space-y-4">
+                  <div
+                    v-for="p in groupUpstreamPlanPlatforms"
+                    :key="p"
+                    class="rounded-lg border border-gray-200 p-3 dark:border-dark-600"
+                  >
+                    <div class="mb-2 flex items-center justify-between">
+                      <span class="text-sm font-medium text-gray-800 dark:text-gray-200">
+                        {{ p }}
+                      </span>
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm"
+                        @click="addGroupUpstreamPlanRow(p)"
+                      >
+                        {{ t("admin.settings.defaults.groupUpstreamPlansAdd") }}
+                      </button>
+                    </div>
+                    <div
+                      v-if="!(form.group_upstream_plans[p] || []).length"
+                      class="text-xs text-gray-500 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.defaults.groupUpstreamPlansEmpty") }}
+                    </div>
+                    <div v-else class="space-y-2">
+                      <div
+                        v-for="(row, idx) in form.group_upstream_plans[p]"
+                        :key="`${p}-${idx}`"
+                        class="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_auto]"
+                      >
+                        <input
+                          v-model="row.code"
+                          type="text"
+                          class="input"
+                          :placeholder="
+                            t('admin.settings.defaults.groupUpstreamPlansCode')
+                          "
+                        />
+                        <input
+                          v-model="row.label"
+                          type="text"
+                          class="input"
+                          :placeholder="
+                            t('admin.settings.defaults.groupUpstreamPlansLabel')
+                          "
+                        />
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm"
+                          @click="removeGroupUpstreamPlanRow(p, idx)"
+                        >
+                          {{ t("common.delete") }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
                 <div class="mb-3 flex items-center justify-between">
                   <div>
@@ -8163,6 +8232,43 @@ function localText(zh: string, en: string): string {
   return isZhLocale.value ? zh : en;
 }
 
+const groupUpstreamPlanPlatforms = [
+  "anthropic",
+  "openai",
+  "gemini",
+  "antigravity",
+  "grok",
+] as const;
+
+function normalizeGroupUpstreamPlansMap(
+  input?: Record<string, { code: string; label: string }[]> | null,
+): Record<string, { code: string; label: string }[]> {
+  const out: Record<string, { code: string; label: string }[]> = {};
+  for (const p of groupUpstreamPlanPlatforms) {
+    const rows = input?.[p];
+    out[p] = Array.isArray(rows)
+      ? rows.map((r) => ({
+          code: typeof r?.code === "string" ? r.code : "",
+          label: typeof r?.label === "string" ? r.label : "",
+        }))
+      : [];
+  }
+  return out;
+}
+
+function addGroupUpstreamPlanRow(platform: string) {
+  if (!form.group_upstream_plans[platform]) {
+    form.group_upstream_plans[platform] = [];
+  }
+  form.group_upstream_plans[platform].push({ code: "", label: "" });
+}
+
+function removeGroupUpstreamPlanRow(platform: string, index: number) {
+  const rows = form.group_upstream_plans[platform];
+  if (!rows) return;
+  rows.splice(index, 1);
+}
+
 const paymentGuideHref = computed(() =>
   locale.value.startsWith("zh")
     ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md"
@@ -8862,6 +8968,13 @@ const form = reactive<SettingsForm>({
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
   private_group_expires_date: "",
+  group_upstream_plans: {
+    anthropic: [],
+    openai: [],
+    gemini: [],
+    antigravity: [],
+    grok: [],
+  } as Record<string, { code: string; label: string }[]>,
   site_name: "Sub2API",
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
@@ -10047,6 +10160,9 @@ async function loadSettings() {
         ? settings.private_group_expires_date
         : "";
     savedPrivateGroupExpiresDate.value = form.private_group_expires_date;
+    form.group_upstream_plans = normalizeGroupUpstreamPlansMap(
+      settings.group_upstream_plans,
+    );
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
@@ -10412,6 +10528,7 @@ async function saveSettings() {
       default_user_rpm_limit: form.default_user_rpm_limit,
       // 显式发送（含 ""）以支持清空；省略会走 OmittedSettingKeys 保留库中值
       private_group_expires_date: form.private_group_expires_date || "",
+      group_upstream_plans: form.group_upstream_plans,
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,

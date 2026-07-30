@@ -310,6 +310,13 @@ export default {
         defaultPlatformQuotas: '默认平台限额（注册时分配）',
         defaultPlatformQuotasHint: '新用户注册时自动写入平台限额记录；已有用户不受影响。留空 = 该平台该窗口不限制。',
         platformQuotaNotice: '月限额为 30 天滚动窗口，非自然月',
+        groupUpstreamPlans: '分组上游订阅档位',
+        groupUpstreamPlansHint:
+          '创建/编辑分组时可选的上游套餐档位（仅元数据展示）。首次空配置会自动写入默认枚举。',
+        groupUpstreamPlansAdd: '添加档位',
+        groupUpstreamPlansEmpty: '暂无档位（该平台创建分组时不显示档位选择）',
+        groupUpstreamPlansCode: 'code（如 pro）',
+        groupUpstreamPlansLabel: '显示名（如 Pro）',
         privateGroupExpiresDate: '私有专属组统一到期日',
         privateGroupExpiresDateHint:
           '新用户 private-{userId}-{platform} 订阅的绝对到期日（Asia/Shanghai 当日 23:59:59）。清空则新用户私有订阅立即 expired。仅影响未来新用户，保存不会改存量。',

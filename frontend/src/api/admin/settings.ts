@@ -20,6 +20,12 @@ export interface DefaultSubscriptionSetting {
 export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "grok"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
 
+/** 分组上游订阅档位选项（系统设置可配置） */
+export interface GroupUpstreamPlanOption {
+  code: string
+  label: string
+}
+
 /** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
 export interface PlatformQuotaLimits {
   daily:   number | null
@@ -387,6 +393,11 @@ export interface SystemSettings {
    * 空串表示未配置（新用户私有订阅立即 expired）。
    */
   private_group_expires_date: string;
+  /**
+   * 分组上游订阅档位：按平台 [{code,label}]。
+   * 首次空配置时后端种子回填。
+   */
+  group_upstream_plans?: Record<string, GroupUpstreamPlanOption[]>;
   default_subscriptions: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;
   auth_source_default_email_concurrency?: number;
@@ -699,6 +710,8 @@ export interface UpdateSettingsRequest {
    * 保存不会自动同步存量订阅——需调用 syncPrivateGroupExpires。
    */
   private_group_expires_date?: string;
+  /** 分组上游订阅档位配置；省略则保留库中值 */
+  group_upstream_plans?: Record<string, GroupUpstreamPlanOption[]>;
   default_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;
   auth_source_default_email_concurrency?: number;

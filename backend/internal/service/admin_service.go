@@ -213,6 +213,8 @@ type CreateGroupInput struct {
 	Name             string
 	Description      string
 	Platform         string
+	// UpstreamPlan 上游订阅档位 code（空=未指定）
+	UpstreamPlan     string
 	RateMultiplier   float64
 	IsExclusive      bool
 	SubscriptionType string   // standard/subscription
@@ -273,6 +275,8 @@ type UpdateGroupInput struct {
 	Name             string
 	Description      *string
 	Platform         string
+	// UpstreamPlan nil=不修改；非 nil 空串=清空；非空=校验后写入
+	UpstreamPlan     *string
 	RateMultiplier   *float64 // 使用指针以支持设置为0
 	IsExclusive      *bool
 	Status           string

@@ -19,6 +19,8 @@ type Group struct {
 	Name           string
 	Description    string
 	Platform       string
+	// UpstreamPlan 上游订阅档位 code（空=未指定；仅元数据/展示）
+	UpstreamPlan   string
 	RateMultiplier float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。

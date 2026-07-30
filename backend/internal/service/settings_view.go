@@ -151,6 +151,8 @@ type SystemSettings struct {
 	// PrivateGroupExpiresDate 私有专属平台分组订阅统一绝对到期日（YYYY-MM-DD）。
 	// 空串表示未配置：新用户 provision 时 expires_at=now 且 status=expired。
 	PrivateGroupExpiresDate      string
+	// GroupUpstreamPlans 按平台的上游订阅档位选项（code+label）；空 map 读侧会 seed。
+	GroupUpstreamPlans           map[string][]GroupUpstreamPlanOption
 	RiskControlEnabled           bool
 	CyberSessionBlockEnabled     bool
 	CyberSessionBlockTTLSeconds  int
