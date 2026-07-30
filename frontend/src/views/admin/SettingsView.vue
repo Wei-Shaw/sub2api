@@ -3584,14 +3584,14 @@
                       </button>
                     </div>
                     <div
-                      v-if="!(form.group_upstream_plans[p] || []).length"
+                      v-if="groupUpstreamPlanRows(p).length === 0"
                       class="text-xs text-gray-500 dark:text-gray-400"
                     >
                       {{ t("admin.settings.defaults.groupUpstreamPlansEmpty") }}
                     </div>
                     <div v-else class="space-y-2">
                       <div
-                        v-for="(row, idx) in form.group_upstream_plans[p]"
+                        v-for="(row, idx) in groupUpstreamPlanRows(p)"
                         :key="`${p}-${idx}`"
                         class="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_auto]"
                       >
@@ -8242,8 +8242,8 @@ const groupUpstreamPlanPlatforms = [
 
 function normalizeGroupUpstreamPlansMap(
   input?: Record<string, { code: string; label: string }[]> | null,
-): Record<string, { code: string; label: string }[]> {
-  const out: Record<string, { code: string; label: string }[]> = {};
+): GroupUpstreamPlansFormMap {
+  const out: GroupUpstreamPlansFormMap = {};
   for (const p of groupUpstreamPlanPlatforms) {
     const rows = input?.[p];
     out[p] = Array.isArray(rows)
@@ -8254,19 +8254,6 @@ function normalizeGroupUpstreamPlansMap(
       : [];
   }
   return out;
-}
-
-function addGroupUpstreamPlanRow(platform: string) {
-  if (!form.group_upstream_plans[platform]) {
-    form.group_upstream_plans[platform] = [];
-  }
-  form.group_upstream_plans[platform].push({ code: "", label: "" });
-}
-
-function removeGroupUpstreamPlanRow(platform: string, index: number) {
-  const rows = form.group_upstream_plans[platform];
-  if (!rows) return;
-  rows.splice(index, 1);
 }
 
 const paymentGuideHref = computed(() =>
@@ -8899,11 +8886,17 @@ interface DefaultSubscriptionGroupOption {
   [key: string]: unknown;
 }
 
+type GroupUpstreamPlansFormMap = Record<
+  string,
+  { code: string; label: string }[]
+>;
+
 type SettingsForm = Omit<
   SystemSettings,
   | "wechat_connect_open_enabled"
   | "wechat_connect_mp_enabled"
   | "wechat_connect_mobile_enabled"
+  | "group_upstream_plans"
 > & {
   smtp_password: string;
   turnstile_secret_key: string;
@@ -8938,6 +8931,8 @@ type SettingsForm = Omit<
   openai_advanced_scheduler_weight_session_sticky: string;
   // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
+  // 分组上游档位：form 内始终为完整 map，禁止 optional
+  group_upstream_plans: GroupUpstreamPlansFormMap;
 };
 
 const form = reactive<SettingsForm>({
@@ -9193,6 +9188,31 @@ const form = reactive<SettingsForm>({
   // Allow user view error requests
   allow_user_view_error_requests: false,
 });
+
+function ensureGroupUpstreamPlanRows(
+  platform: string,
+): { code: string; label: string }[] {
+  const plans = form.group_upstream_plans;
+  if (!plans[platform]) {
+    plans[platform] = [];
+  }
+  return plans[platform];
+}
+
+function addGroupUpstreamPlanRow(platform: string) {
+  ensureGroupUpstreamPlanRows(platform).push({ code: "", label: "" });
+}
+
+function removeGroupUpstreamPlanRow(platform: string, index: number) {
+  const rows = ensureGroupUpstreamPlanRows(platform);
+  rows.splice(index, 1);
+}
+
+function groupUpstreamPlanRows(
+  platform: string,
+): { code: string; label: string }[] {
+  return form.group_upstream_plans[platform] ?? [];
+}
 
 const privateGroupExpiresDateDirty = computed(
   () =>
