@@ -236,7 +236,7 @@ func (s *groupRepoStubForGroupUpdate) DeleteCascade(context.Context, int64) ([]i
 func (s *groupRepoStubForGroupUpdate) List(context.Context, pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected")
 }
-func (s *groupRepoStubForGroupUpdate) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *groupRepoStubForGroupUpdate) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool, bool) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected")
 }
 func (s *groupRepoStubForGroupUpdate) ListActive(context.Context) ([]Group, error) {

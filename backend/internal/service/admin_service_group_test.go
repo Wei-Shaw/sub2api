@@ -35,6 +35,7 @@ type groupRepoStubForAdmin struct {
 	listWithFiltersStatus      string
 	listWithFiltersSearch      string
 	listWithFiltersIsExclusive *bool
+	listWithFiltersShowPrivate bool
 	listWithFiltersGroups      []Group
 	listWithFiltersResult      *pagination.PaginationResult
 	listWithFiltersErr         error
@@ -91,13 +92,14 @@ func (s *groupRepoStubForAdmin) List(_ context.Context, _ pagination.PaginationP
 	panic("unexpected List call")
 }
 
-func (s *groupRepoStubForAdmin) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *groupRepoStubForAdmin) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool, showPrivate bool) ([]Group, *pagination.PaginationResult, error) {
 	s.listWithFiltersCalls++
 	s.listWithFiltersParams = params
 	s.listWithFiltersPlatform = platform
 	s.listWithFiltersStatus = status
 	s.listWithFiltersSearch = search
 	s.listWithFiltersIsExclusive = isExclusive
+	s.listWithFiltersShowPrivate = showPrivate
 
 	if s.listWithFiltersErr != nil {
 		return nil, nil, s.listWithFiltersErr
@@ -255,7 +257,7 @@ func TestAdminService_ListGroups_PassesSortParams(t *testing.T) {
 	}
 	svc := &adminServiceImpl{groupRepo: repo}
 
-	_, _, err := svc.ListGroups(context.Background(), 3, 25, PlatformOpenAI, StatusActive, "needle", nil, "account_count", "ASC")
+	_, _, err := svc.ListGroups(context.Background(), 3, 25, PlatformOpenAI, StatusActive, "needle", nil, "account_count", "ASC", false)
 	require.NoError(t, err)
 	require.Equal(t, pagination.PaginationParams{
 		Page:      3,
@@ -1030,7 +1032,7 @@ func TestAdminService_ListGroups_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{groupRepo: repo}
 
-		groups, total, err := svc.ListGroups(context.Background(), 1, 20, "", "", "alpha", nil, "", "")
+		groups, total, err := svc.ListGroups(context.Background(), 1, 20, "", "", "alpha", nil, "", "", false)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
 		require.Equal(t, []Group{{ID: 1, Name: "alpha"}}, groups)
@@ -1048,7 +1050,7 @@ func TestAdminService_ListGroups_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{groupRepo: repo}
 
-		groups, total, err := svc.ListGroups(context.Background(), 2, 10, "", "", "", nil, "", "")
+		groups, total, err := svc.ListGroups(context.Background(), 2, 10, "", "", "", nil, "", "", false)
 		require.NoError(t, err)
 		require.Empty(t, groups)
 		require.Equal(t, int64(0), total)
@@ -1067,7 +1069,7 @@ func TestAdminService_ListGroups_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{groupRepo: repo}
 
-		groups, total, err := svc.ListGroups(context.Background(), 3, 50, PlatformAntigravity, StatusActive, "beta", &isExclusive, "", "")
+		groups, total, err := svc.ListGroups(context.Background(), 3, 50, PlatformAntigravity, StatusActive, "beta", &isExclusive, "", "", false)
 		require.NoError(t, err)
 		require.Equal(t, int64(42), total)
 		require.Equal(t, []Group{{ID: 2, Name: "beta"}}, groups)
@@ -1079,7 +1081,116 @@ func TestAdminService_ListGroups_WithSearch(t *testing.T) {
 		require.Equal(t, "beta", repo.listWithFiltersSearch)
 		require.NotNil(t, repo.listWithFiltersIsExclusive)
 		require.True(t, *repo.listWithFiltersIsExclusive)
+		require.False(t, repo.listWithFiltersShowPrivate)
 	})
+}
+
+
+func TestAdminService_ListGroups_ShowPrivate(t *testing.T) {
+	t.Run("default excludes private (showPrivate false)", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{
+			listWithFiltersGroups: []Group{{ID: 1, Name: "ops"}},
+		}
+		svc := &adminServiceImpl{groupRepo: repo}
+
+		_, _, err := svc.ListGroups(context.Background(), 1, 20, "", "", "", nil, "", "", false)
+		require.NoError(t, err)
+		require.Equal(t, 1, repo.listWithFiltersCalls)
+		require.False(t, repo.listWithFiltersShowPrivate)
+	})
+
+	t.Run("showPrivate true passes through to repository", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{
+			listWithFiltersGroups: []Group{
+				{ID: 1, Name: "ops"},
+				{ID: 2, Name: PrivateGroupName(9, PlatformAnthropic)},
+			},
+			listWithFiltersResult: &pagination.PaginationResult{Total: 2},
+		}
+		svc := &adminServiceImpl{groupRepo: repo}
+
+		groups, total, err := svc.ListGroups(context.Background(), 1, 20, "", "", "", nil, "", "", true)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), total)
+		require.Len(t, groups, 2)
+		require.True(t, repo.listWithFiltersShowPrivate)
+	})
+}
+
+func TestAdminService_UpdateGroup_PrivateIdentityLocked(t *testing.T) {
+	privateName := PrivateGroupName(42, PlatformAnthropic)
+	existing := &Group{
+		ID:               100,
+		Name:             privateName,
+		Platform:         PlatformAnthropic,
+		SubscriptionType: SubscriptionTypeSubscription,
+		IsExclusive:      true,
+		Status:           StatusActive,
+		RateMultiplier:   1.0,
+	}
+
+	t.Run("rejects rename", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{getByID: cloneGroupForPrivateLock(existing)}
+		svc := &adminServiceImpl{groupRepo: repo}
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{Name: "renamed"})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "name")
+		require.Nil(t, repo.updated)
+	})
+
+	t.Run("rejects platform change", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{getByID: cloneGroupForPrivateLock(existing)}
+		svc := &adminServiceImpl{groupRepo: repo}
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{Platform: PlatformOpenAI})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "platform")
+		require.Nil(t, repo.updated)
+	})
+
+	t.Run("rejects subscription_type change", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{getByID: cloneGroupForPrivateLock(existing)}
+		svc := &adminServiceImpl{groupRepo: repo}
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{SubscriptionType: SubscriptionTypeStandard})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "subscription_type")
+		require.Nil(t, repo.updated)
+	})
+
+	t.Run("rejects is_exclusive demotion", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{getByID: cloneGroupForPrivateLock(existing)}
+		svc := &adminServiceImpl{groupRepo: repo}
+		falseVal := false
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{IsExclusive: &falseVal})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "is_exclusive")
+		require.Nil(t, repo.updated)
+	})
+
+	t.Run("allows operational fields", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{getByID: cloneGroupForPrivateLock(existing)}
+		svc := &adminServiceImpl{groupRepo: repo}
+		rate := 1.5
+		group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+			RateMultiplier: &rate,
+			Status:         StatusDisabled,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, group)
+		require.NotNil(t, repo.updated)
+		require.Equal(t, 1.5, repo.updated.RateMultiplier)
+		require.Equal(t, StatusDisabled, repo.updated.Status)
+		require.Equal(t, privateName, repo.updated.Name)
+		require.Equal(t, PlatformAnthropic, repo.updated.Platform)
+		require.True(t, repo.updated.IsExclusive)
+	})
+}
+
+func cloneGroupForPrivateLock(g *Group) *Group {
+	if g == nil {
+		return nil
+	}
+	cp := *g
+	return &cp
 }
 
 func TestAdminService_ValidateFallbackGroup_DetectsCycle(t *testing.T) {
@@ -1139,7 +1250,7 @@ func (s *groupRepoStubForFallbackCycle) List(_ context.Context, _ pagination.Pag
 	panic("unexpected List call")
 }
 
-func (s *groupRepoStubForFallbackCycle) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _, _ string, _ *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *groupRepoStubForFallbackCycle) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _, _ string, _ *bool, _ bool) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
 }
 
@@ -1230,7 +1341,7 @@ func (s *groupRepoStubForInvalidRequestFallback) List(_ context.Context, _ pagin
 	panic("unexpected List call")
 }
 
-func (s *groupRepoStubForInvalidRequestFallback) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _, _ string, _ *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *groupRepoStubForInvalidRequestFallback) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _, _ string, _ *bool, _ bool) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
 }
 

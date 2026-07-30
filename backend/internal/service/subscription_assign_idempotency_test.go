@@ -66,7 +66,7 @@ func (groupRepoNoop) DeleteCascade(context.Context, int64) ([]int64, error) {
 func (groupRepoNoop) List(context.Context, pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected List call")
 }
-func (groupRepoNoop) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]Group, *pagination.PaginationResult, error) {
+func (groupRepoNoop) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool, bool) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
 }
 func (groupRepoNoop) ListActive(context.Context) ([]Group, error) {

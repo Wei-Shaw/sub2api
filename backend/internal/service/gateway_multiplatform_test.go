@@ -308,7 +308,7 @@ func (m *mockGroupRepoForGateway) DeleteCascade(ctx context.Context, id int64) (
 func (m *mockGroupRepoForGateway) List(ctx context.Context, params pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (m *mockGroupRepoForGateway) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error) {
+func (m *mockGroupRepoForGateway) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool, showPrivate bool) ([]Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
 func (m *mockGroupRepoForGateway) ListActive(ctx context.Context) ([]Group, error) {

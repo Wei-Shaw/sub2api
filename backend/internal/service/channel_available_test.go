@@ -46,7 +46,7 @@ func (s *stubGroupRepoForAvailable) DeleteCascade(ctx context.Context, id int64)
 func (s *stubGroupRepoForAvailable) List(ctx context.Context, params pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (s *stubGroupRepoForAvailable) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *stubGroupRepoForAvailable) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool, showPrivate bool) ([]Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
 func (s *stubGroupRepoForAvailable) ListActiveByPlatform(ctx context.Context, platform string) ([]Group, error) {

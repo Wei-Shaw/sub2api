@@ -83,6 +83,53 @@ func TestFilterOutPrivateGroups(t *testing.T) {
 	require.Equal(t, int64(1), out[0].ID)
 }
 
+
+func TestValidatePrivateGroupIdentityUpdate(t *testing.T) {
+	private := &Group{
+		ID:               10,
+		Name:             PrivateGroupName(3, PlatformAnthropic),
+		Platform:         PlatformAnthropic,
+		SubscriptionType: SubscriptionTypeSubscription,
+		IsExclusive:      true,
+	}
+	ops := &Group{
+		ID:               11,
+		Name:             "ops-group",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		IsExclusive:      false,
+	}
+
+	// non-private: no lock
+	require.NoError(t, validatePrivateGroupIdentityUpdate(ops, &UpdateGroupInput{Name: "renamed"}))
+
+	// same-value submit allowed
+	trueVal := true
+	require.NoError(t, validatePrivateGroupIdentityUpdate(private, &UpdateGroupInput{
+		Name:             private.Name,
+		Platform:         private.Platform,
+		SubscriptionType: private.SubscriptionType,
+		IsExclusive:      &trueVal,
+	}))
+
+	err := validatePrivateGroupIdentityUpdate(private, &UpdateGroupInput{Name: "hacked"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "name")
+
+	err = validatePrivateGroupIdentityUpdate(private, &UpdateGroupInput{Platform: PlatformOpenAI})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "platform")
+
+	err = validatePrivateGroupIdentityUpdate(private, &UpdateGroupInput{SubscriptionType: SubscriptionTypeStandard})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "subscription_type")
+
+	falseVal := false
+	err = validatePrivateGroupIdentityUpdate(private, &UpdateGroupInput{IsExclusive: &falseVal})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "is_exclusive")
+}
+
 type stubGroupRepoForProvision struct {
 	byName          map[string]*Group
 	created         []*Group
@@ -148,7 +195,7 @@ func (s *stubGroupRepoForProvision) DeleteCascade(_ context.Context, id int64) (
 func (s *stubGroupRepoForProvision) List(context.Context, pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (s *stubGroupRepoForProvision) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *stubGroupRepoForProvision) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool, bool) ([]Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
 func (s *stubGroupRepoForProvision) ListActive(context.Context) ([]Group, error) {

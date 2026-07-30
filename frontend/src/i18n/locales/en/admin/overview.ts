@@ -772,6 +772,11 @@ export default {
       title: 'Group Management',
       description: 'Manage API key groups and rate multipliers',
       searchGroups: 'Search groups...',
+      showPrivateGroups: 'Show private user groups',
+      showPrivateGroupsHint:
+        'When enabled, the list includes private-{userId}-{platform} exclusive groups',
+      privateIdentityLocked:
+        'Private group name, platform, subscription type, and exclusive flag cannot be changed',
       createGroup: 'Create Group',
       editGroup: 'Edit Group',
       deleteGroup: 'Delete Group',

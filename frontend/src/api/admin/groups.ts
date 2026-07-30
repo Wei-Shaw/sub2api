@@ -38,6 +38,8 @@ export async function list(
     search?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
+    /** 为 true 时包含 private-* 用户私有专属组；默认隐藏 */
+    show_private?: boolean
   },
   options?: {
     signal?: AbortSignal
@@ -47,7 +49,9 @@ export async function list(
     params: {
       page,
       page_size: pageSize,
-      ...filters
+      ...filters,
+      // 仅在显式开启时传 true，避免污染默认列表
+      show_private: filters?.show_private ? true : undefined
     },
     signal: options?.signal
   })

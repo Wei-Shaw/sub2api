@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
@@ -351,6 +352,28 @@ func filterOutPrivateGroups(groups []Group) []Group {
 		out = append(out, groups[i])
 	}
 	return out
+}
+
+// validatePrivateGroupIdentityUpdate 私有组禁止改名 / platform / subscription_type / is_exclusive 降级。
+// 允许同值提交（no-op）；允许倍率、限额、status、绑账号等运营字段（由调用方继续处理）。
+func validatePrivateGroupIdentityUpdate(group *Group, input *UpdateGroupInput) error {
+	if group == nil || input == nil || !IsPrivateGroupName(group.Name) {
+		return nil
+	}
+	if input.Name != "" && input.Name != group.Name {
+		return infraerrors.BadRequest("PRIVATE_GROUP_IDENTITY_LOCKED", "private group name cannot be changed")
+	}
+	if input.Platform != "" && input.Platform != group.Platform {
+		return infraerrors.BadRequest("PRIVATE_GROUP_IDENTITY_LOCKED", "private group platform cannot be changed")
+	}
+	if input.SubscriptionType != "" && input.SubscriptionType != group.SubscriptionType {
+		return infraerrors.BadRequest("PRIVATE_GROUP_IDENTITY_LOCKED", "private group subscription_type cannot be changed")
+	}
+	// 仅禁止 true→false 降级；保持 true 或从 false 升 true 允许
+	if input.IsExclusive != nil && !*input.IsExclusive && group.IsExclusive {
+		return infraerrors.BadRequest("PRIVATE_GROUP_IDENTITY_LOCKED", "private group cannot demote is_exclusive")
+	}
+	return nil
 }
 
 // noopPrivateGroupProvisioner 测试用 no-op。

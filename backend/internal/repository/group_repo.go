@@ -432,15 +432,17 @@ func (r *groupRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *groupRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Group, *pagination.PaginationResult, error) {
-	return r.ListWithFilters(ctx, params, "", "", "", nil)
+	return r.ListWithFilters(ctx, params, "", "", "", nil, false)
 }
 
-func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]service.Group, *pagination.PaginationResult, error) {
+func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool, showPrivate bool) ([]service.Group, *pagination.PaginationResult, error) {
 	q := r.client.Group.Query()
 
 	// 默认排除 private-* 私有专属组，防止 N×5 规模污染管理端列表与下拉。
-	// show_private 切换见后续 PR；GetByName / ListByIDs 仍可按需加载 private。
-	q = q.Where(group.Not(group.NameHasPrefix("private-")))
+	// showPrivate=true（管理端 show_private 开关）时包含；GetByName / ListByIDs 仍可按需加载 private。
+	if !showPrivate {
+		q = q.Where(group.Not(group.NameHasPrefix("private-")))
+	}
 
 	if platform != "" {
 		q = q.Where(group.PlatformEQ(platform))

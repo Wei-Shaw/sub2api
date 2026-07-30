@@ -242,6 +242,8 @@ func (h *GroupHandler) List(c *gin.Context) {
 	isExclusiveStr := c.Query("is_exclusive")
 	sortBy := c.DefaultQuery("sort_by", "sort_order")
 	sortOrder := c.DefaultQuery("sort_order", "asc")
+	// show_private=true 时包含 private-* 私有专属组；默认隐藏
+	showPrivate := strings.EqualFold(c.Query("show_private"), "true") || c.Query("show_private") == "1"
 
 	var isExclusive *bool
 	if isExclusiveStr != "" {
@@ -249,7 +251,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 		isExclusive = &val
 	}
 
-	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive, sortBy, sortOrder)
+	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive, sortBy, sortOrder, showPrivate)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

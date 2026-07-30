@@ -42,6 +42,19 @@
               class="w-44"
               @change="loadGroups"
             />
+            <label
+              class="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300"
+              :title="t('admin.groups.showPrivateGroupsHint')"
+            >
+              <input
+                v-model="showPrivateGroups"
+                type="checkbox"
+                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700"
+                data-testid="show-private-groups-toggle"
+                @change="handleShowPrivateChange"
+              />
+              <span>{{ t("admin.groups.showPrivateGroups") }}</span>
+            </label>
           </div>
 
           <!-- Right: actions -->
@@ -2021,7 +2034,11 @@
             required
             class="input"
             data-tour="edit-group-form-name"
+            :disabled="isEditingPrivateGroup"
           />
+          <p v-if="isEditingPrivateGroup" class="input-hint">
+            {{ t("admin.groups.privateIdentityLocked") }}
+          </p>
         </div>
         <div>
           <label class="input-label">{{
@@ -2217,9 +2234,14 @@
           <div class="flex items-center gap-3">
             <button
               type="button"
-              @click="editForm.is_exclusive = !editForm.is_exclusive"
+              :disabled="isEditingPrivateGroup"
+              @click="
+                !isEditingPrivateGroup &&
+                  (editForm.is_exclusive = !editForm.is_exclusive)
+              "
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                isEditingPrivateGroup ? 'cursor-not-allowed opacity-60' : '',
                 editForm.is_exclusive
                   ? 'bg-primary-500'
                   : 'bg-gray-300 dark:bg-dark-600',
@@ -2240,6 +2262,9 @@
               }}
             </span>
           </div>
+          <p v-if="isEditingPrivateGroup" class="input-hint mt-1">
+            {{ t("admin.groups.privateIdentityLocked") }}
+          </p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.status") }}</label>
@@ -4492,6 +4517,7 @@ const capacityMap = ref<
   >
 >(new Map());
 const searchQuery = ref("");
+const showPrivateGroups = ref(false);
 const filters = reactive({
   platform: "",
   status: "",
@@ -5231,6 +5257,7 @@ const loadGroups = async () => {
         search: searchQuery.value.trim() || undefined,
         sort_by: sortState.sort_by,
         sort_order: sortState.sort_order,
+        show_private: showPrivateGroups.value || undefined,
       },
       { signal },
     );
@@ -5354,6 +5381,23 @@ const handleSearch = () => {
     loadGroups();
   }, 300);
 };
+
+const handleShowPrivateChange = () => {
+  pagination.page = 1;
+  loadGroups();
+};
+
+/** 严格匹配 private-{userId}-{platform}，与后端 IsPrivateGroupName 白名单一致 */
+const isPrivateGroupName = (name?: string | null): boolean => {
+  if (!name) return false;
+  return /^private-\d+-(anthropic|openai|gemini|antigravity|grok)$/.test(
+    name.trim(),
+  );
+};
+
+const isEditingPrivateGroup = computed(() =>
+  isPrivateGroupName(editingGroup.value?.name),
+);
 
 const handlePageChange = (page: number) => {
   pagination.page = page;

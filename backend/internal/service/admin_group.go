@@ -20,10 +20,10 @@ import (
 )
 
 // Group management implementations
-func (s *adminServiceImpl) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool, sortBy, sortOrder string) ([]Group, int64, error) {
+func (s *adminServiceImpl) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool, sortBy, sortOrder string, showPrivate bool) ([]Group, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
-	// ListWithFilters 默认排除 private-*（repo 层）
-	groups, result, err := s.groupRepo.ListWithFilters(ctx, params, platform, status, search, isExclusive)
+	// 默认排除 private-*；showPrivate=true 时管理端列表可查看私有组
+	groups, result, err := s.groupRepo.ListWithFilters(ctx, params, platform, status, search, isExclusive, showPrivate)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -50,8 +50,8 @@ func (s *adminServiceImpl) GetAllGroupsByPlatform(ctx context.Context, platform 
 
 func (s *adminServiceImpl) GetAllGroupsIncludingInactive(ctx context.Context) ([]Group, error) {
 	// ListWithFilters with empty status = no status filter, so active + disabled groups are returned.
-	// 默认排除 private-*；PageSize 10000 在过滤 private 后仍需关注运营组规模。
-	groups, _, err := s.groupRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10000}, "", "", "", nil)
+	// 下拉永不加载 private（showPrivate=false）；PageSize 10000 在过滤 private 后仍需关注运营组规模。
+	groups, _, err := s.groupRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10000}, "", "", "", nil, false)
 	if err != nil {
 		return nil, err
 	}
@@ -623,6 +623,11 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
 	group, err := s.groupRepo.GetByID(ctx, id)
 	if err != nil {
+		return nil, err
+	}
+
+	// 私有专属组：禁止改身份字段（name / platform / subscription_type / is_exclusive 降级）
+	if err := validatePrivateGroupIdentityUpdate(group, input); err != nil {
 		return nil, err
 	}
 

@@ -91,7 +91,7 @@ func (f *fakeGroupRepo) DeleteCascade(context.Context, int64) ([]int64, error) {
 func (f *fakeGroupRepo) List(context.Context, pagination.PaginationParams) ([]service.Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (f *fakeGroupRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]service.Group, *pagination.PaginationResult, error) {
+func (f *fakeGroupRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool, bool) ([]service.Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
 func (f *fakeGroupRepo) ListActive(context.Context) ([]service.Group, error) { return nil, nil }

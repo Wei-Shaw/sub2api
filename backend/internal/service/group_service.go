@@ -24,7 +24,8 @@ type GroupRepository interface {
 	DeleteCascade(ctx context.Context, id int64) ([]int64, error)
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error)
+	// ListWithFilters 分页过滤列表；showPrivate=false 时排除 private-* 私有专属组（管理端列表默认隐藏）。
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool, showPrivate bool) ([]Group, *pagination.PaginationResult, error)
 	ListActive(ctx context.Context) ([]Group, error)
 	// ListActiveExcludingPrivate 返回活跃且名称不以 private- 前缀的分组（管理端下拉/用户可选运营组）。
 	ListActiveExcludingPrivate(ctx context.Context) ([]Group, error)

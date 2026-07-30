@@ -265,7 +265,7 @@ func (s *stubAdminService) BindUserAuthIdentity(ctx context.Context, userID int6
 	return result, nil
 }
 
-func (s *stubAdminService) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool, sortBy, sortOrder string) ([]service.Group, int64, error) {
+func (s *stubAdminService) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool, sortBy, sortOrder string, showPrivate bool) ([]service.Group, int64, error) {
 	return s.groups, int64(len(s.groups)), nil
 }
 
