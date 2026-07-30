@@ -61,6 +61,11 @@ type APIKeyConcurrencyCache interface {
 	GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error)
 }
 
+type APIKeyConcurrencyLimiterCache interface {
+	AcquireUserAPIKeySlot(ctx context.Context, userID int64, userMaxConcurrency int, apiKeyID int64, apiKeyMaxConcurrency int, requestID string) (bool, string, error)
+	ReleaseUserAPIKeySlot(ctx context.Context, userID int64, apiKeyID int64, requestID string) error
+}
+
 // OpenAIWSIngressLeaseCache owns the short-lived distributed lease used to
 // bound live client WebSocket sessions. It is deliberately independent of the
 // request-slot namespace: idle ingress connections do not occupy turn slots.
@@ -308,8 +313,9 @@ func (s *ConcurrencyService) SetAccountLoadBatchCacheTTL(ttl time.Duration) {
 
 // AcquireResult represents the result of acquiring a concurrency slot
 type AcquireResult struct {
-	Acquired    bool
-	ReleaseFunc func() // Must be called when done (typically via defer)
+	Acquired        bool
+	BlockedSlotType string
+	ReleaseFunc     func() // Must be called when done (typically via defer)
 }
 
 type AccountWithConcurrency struct {
@@ -411,6 +417,46 @@ func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, 
 	return &AcquireResult{
 		Acquired:    false,
 		ReleaseFunc: nil,
+	}, nil
+}
+
+// AcquireUserAPIKeySlot atomically checks and occupies both the user and API-key
+// limits. The API-key limit must be positive; callers should use AcquireUserSlot
+// plus TrackAPIKeySlot when no key-specific limit is configured.
+func (s *ConcurrencyService) AcquireUserAPIKeySlot(ctx context.Context, userID int64, userMaxConcurrency int, apiKeyID int64, apiKeyMaxConcurrency int) (*AcquireResult, error) {
+	if s == nil || s.cache == nil {
+		return nil, errors.New("concurrency cache is unavailable")
+	}
+	cache, ok := s.cache.(APIKeyConcurrencyLimiterCache)
+	if !ok {
+		return nil, errors.New("api key concurrency limiting is unavailable")
+	}
+
+	requestID := generateRequestID()
+	acquired, blockedSlotType, err := cache.AcquireUserAPIKeySlot(
+		ctx,
+		userID,
+		userMaxConcurrency,
+		apiKeyID,
+		apiKeyMaxConcurrency,
+		requestID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if !acquired {
+		return &AcquireResult{BlockedSlotType: blockedSlotType}, nil
+	}
+
+	return &AcquireResult{
+		Acquired: true,
+		ReleaseFunc: func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := cache.ReleaseUserAPIKeySlot(bgCtx, userID, apiKeyID, requestID); err != nil {
+				logger.LegacyPrintf("service.concurrency", "Warning: failed to release user/api key slot for user=%d api_key=%d (req=%s): %v", userID, apiKeyID, requestID, err)
+			}
+		},
 	}, nil
 }
 

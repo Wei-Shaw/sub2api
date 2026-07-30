@@ -45,6 +45,7 @@ type APIKey struct {
 	UpdatedAt           time.Time
 	User                *User
 	Group               *Group
+	Concurrency         int
 	CurrentConcurrency  int
 
 	// Quota fields

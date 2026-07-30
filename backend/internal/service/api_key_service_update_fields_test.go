@@ -44,6 +44,7 @@ func TestAPIKeyUpdate_OnlyDeclaresRequestedColumns(t *testing.T) {
 	name := "renamed"
 	quota := 500.0
 	rateLimit := 42.0
+	concurrency := 4
 	whitelist := []string{"10.0.0.1"}
 
 	tests := []struct {
@@ -55,6 +56,11 @@ func TestAPIKeyUpdate_OnlyDeclaresRequestedColumns(t *testing.T) {
 			name: "name only",
 			req:  UpdateAPIKeyRequest{Name: &name},
 			want: APIKeyUpdateFields{Name: true},
+		},
+		{
+			name: "concurrency only",
+			req:  UpdateAPIKeyRequest{Concurrency: &concurrency},
+			want: APIKeyUpdateFields{Concurrency: true},
 		},
 		{
 			name: "quota only",
@@ -91,6 +97,17 @@ func TestAPIKeyUpdate_OnlyDeclaresRequestedColumns(t *testing.T) {
 			require.Equal(t, []APIKeyUpdateFields{tt.want}, repo.updateFields)
 		})
 	}
+}
+
+func TestAPIKeyUpdate_RejectsNegativeConcurrency(t *testing.T) {
+	concurrency := -1
+	svc, repo := newUpdateFieldsAPIKeyService(&APIKey{
+		ID: 1, UserID: 7, Key: "sk-test", Status: StatusActive,
+	})
+
+	_, err := svc.Update(context.Background(), 1, 7, UpdateAPIKeyRequest{Concurrency: &concurrency})
+	require.ErrorIs(t, err, ErrInvalidAPIKeyConcurrency)
+	require.Empty(t, repo.updateFields)
 }
 
 // 显式重置仍需声明对应的列，避免收窄写入列时把功能改坏。

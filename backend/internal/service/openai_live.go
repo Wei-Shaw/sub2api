@@ -181,6 +181,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			identity.UserID,
 			userMaxConcurrency,
 			identity.APIKeyID,
+			identity.APIKeyConcurrency,
 			leaseID,
 			true,
 		)

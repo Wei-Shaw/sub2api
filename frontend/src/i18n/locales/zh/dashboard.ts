@@ -88,7 +88,7 @@ export default {
     id: 'ID',
     apiKey: 'API 密钥',
     group: '分组',
-    currentConcurrency: '当前并发',
+    currentConcurrency: '并发（当前 / 上限）',
     noGroup: '无分组',
     searchGroup: '搜索分组...',
     noGroupFound: '未找到匹配的分组',
@@ -216,6 +216,8 @@ export default {
     },
     // 配额和有效期
     quotaLimit: '额度限制',
+    concurrencyLimit: '请求并发上限',
+    concurrencyLimitHint: '此密钥可同时执行的最大请求数。0 表示不设置密钥专属上限，仍受用户总并发上限约束。',
     quotaAmount: '额度金额 (USD)',
     quotaAmountPlaceholder: '输入 USD 额度限制',
     quotaAmountHint: '设置此密钥可消费的最大金额。0 = 无限制。',

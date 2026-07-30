@@ -207,12 +207,27 @@ func (h *ConcurrencyHelper) TryAcquireUserSlot(ctx context.Context, userID int64
 	return result.ReleaseFunc, true, nil
 }
 
-func (h *ConcurrencyHelper) TryAcquireUserSlotForAPIKey(ctx context.Context, userID int64, maxConcurrency int, apiKeyID int64) (func(), bool, error) {
-	releaseFunc, acquired, err := h.TryAcquireUserSlot(ctx, userID, maxConcurrency)
-	if err != nil || !acquired {
-		return releaseFunc, acquired, err
+func (h *ConcurrencyHelper) acquireUserSlotForAPIKey(ctx context.Context, userID int64, maxConcurrency int, apiKeyID int64, apiKeyMaxConcurrency int) (*service.AcquireResult, error) {
+	if apiKeyID > 0 && apiKeyMaxConcurrency > 0 {
+		return h.concurrencyService.AcquireUserAPIKeySlot(ctx, userID, maxConcurrency, apiKeyID, apiKeyMaxConcurrency)
 	}
-	return h.withAPIKeySlot(ctx, apiKeyID, releaseFunc), true, nil
+	result, err := h.concurrencyService.AcquireUserSlot(ctx, userID, maxConcurrency)
+	if err != nil || !result.Acquired || apiKeyID <= 0 {
+		return result, err
+	}
+	result.ReleaseFunc = h.withAPIKeySlot(ctx, apiKeyID, result.ReleaseFunc)
+	return result, nil
+}
+
+func (h *ConcurrencyHelper) TryAcquireUserSlotForAPIKey(ctx context.Context, userID int64, maxConcurrency int, apiKeyID int64, apiKeyMaxConcurrency int) (func(), bool, error) {
+	result, err := h.acquireUserSlotForAPIKey(ctx, userID, maxConcurrency, apiKeyID, apiKeyMaxConcurrency)
+	if err != nil {
+		return nil, false, err
+	}
+	if !result.Acquired {
+		return nil, false, nil
+	}
+	return result.ReleaseFunc, true, nil
 }
 
 // AcquireOpenAIWSIngressLease bounds the whole client WebSocket lifecycle,
@@ -246,15 +261,22 @@ func (h *ConcurrencyHelper) AcquireUserSlotWithWait(c *gin.Context, userID int64
 
 func (h *ConcurrencyHelper) acquireUserSlotWithWaitTimeout(c *gin.Context, userID int64, maxConcurrency int, timeout time.Duration, isStream bool, streamStarted *bool) (func(), error) {
 	ctx := c.Request.Context()
+	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 
 	// Try to acquire immediately
-	releaseFunc, acquired, err := h.TryAcquireUserSlot(ctx, userID, maxConcurrency)
+	var result *service.AcquireResult
+	var err error
+	if apiKey != nil {
+		result, err = h.acquireUserSlotForAPIKey(ctx, userID, maxConcurrency, apiKey.ID, apiKey.Concurrency)
+	} else {
+		result, err = h.concurrencyService.AcquireUserSlot(ctx, userID, maxConcurrency)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	if acquired {
-		return h.withAPIKeySlotFromGin(c, releaseFunc), nil
+	if result.Acquired {
+		return result.ReleaseFunc, nil
 	}
 
 	queueLimit := service.CalculateMaxWait(maxConcurrency) - maxConcurrency
@@ -271,22 +293,22 @@ func (h *ConcurrencyHelper) acquireUserSlotWithWaitTimeout(c *gin.Context, userI
 	defer h.DecrementWaitCount(ctx, userID)
 
 	// Need to wait - handle streaming ping if needed
-	releaseFunc, err = h.waitForSlotWithPingTimeout(c, "user", userID, maxConcurrency, timeout, isStream, streamStarted, false)
+	// A combined user/API-key rejection carries the blocked dimension. Retry
+	// immediately inside the waiter so short timeouts still report it accurately.
+	releaseFunc, err := h.waitForSlotWithPingTimeout(
+		c,
+		"user",
+		userID,
+		maxConcurrency,
+		timeout,
+		isStream,
+		streamStarted,
+		result.BlockedSlotType != "",
+	)
 	if err != nil {
 		return nil, err
 	}
-	return h.withAPIKeySlotFromGin(c, releaseFunc), nil
-}
-
-func (h *ConcurrencyHelper) withAPIKeySlotFromGin(c *gin.Context, releaseFunc func()) func() {
-	if c == nil {
-		return releaseFunc
-	}
-	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
-	if !ok || apiKey == nil {
-		return releaseFunc
-	}
-	return h.withAPIKeySlot(c.Request.Context(), apiKey.ID, releaseFunc)
+	return releaseFunc, nil
 }
 
 func (h *ConcurrencyHelper) withAPIKeySlot(ctx context.Context, apiKeyID int64, releaseFunc func()) func() {
@@ -335,9 +357,21 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
 
+	blockedSlotType := slotType
+	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 	acquireSlot := func() (*service.AcquireResult, error) {
 		if slotType == "user" {
-			return h.concurrencyService.AcquireUserSlot(ctx, id, maxConcurrency)
+			var result *service.AcquireResult
+			var err error
+			if apiKey != nil {
+				result, err = h.acquireUserSlotForAPIKey(ctx, id, maxConcurrency, apiKey.ID, apiKey.Concurrency)
+			} else {
+				result, err = h.concurrencyService.AcquireUserSlot(ctx, id, maxConcurrency)
+			}
+			if result != nil && result.BlockedSlotType != "" {
+				blockedSlotType = result.BlockedSlotType
+			}
+			return result, err
 		}
 		return h.concurrencyService.AcquireAccountSlot(ctx, id, maxConcurrency)
 	}
@@ -383,7 +417,7 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 				return nil, parentErr
 			}
 			return nil, &ConcurrencyError{
-				SlotType:  slotType,
+				SlotType:  blockedSlotType,
 				IsTimeout: true,
 			}
 

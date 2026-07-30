@@ -40,13 +40,14 @@ type LiveCallRequest struct {
 }
 
 type LiveCallIdentity struct {
-	APIKeyID        int64
-	UserID          int64
-	GroupID         *int64
-	SubscriptionID  *int64
-	UserAgent       string
-	IPAddress       string
-	InboundEndpoint string
+	APIKeyID          int64
+	APIKeyConcurrency int
+	UserID            int64
+	GroupID           *int64
+	SubscriptionID    *int64
+	UserAgent         string
+	IPAddress         string
+	InboundEndpoint   string
 }
 
 type LiveCallRecord struct {
@@ -95,6 +96,7 @@ type LiveConcurrencyCache interface {
 		userID int64,
 		userMax int,
 		apiKeyID int64,
+		apiKeyMax int,
 		leaseID string,
 		replacingRegularSlots bool,
 	) (bool, error)

@@ -154,13 +154,14 @@ func liveCallIdentity(
 		subscriptionID = &value
 	}
 	return service.LiveCallIdentity{
-		APIKeyID:        apiKey.ID,
-		UserID:          userID,
-		GroupID:         apiKey.GroupID,
-		SubscriptionID:  subscriptionID,
-		UserAgent:       c.GetHeader("User-Agent"),
-		IPAddress:       ip.GetClientIP(c),
-		InboundEndpoint: GetInboundEndpoint(c),
+		APIKeyID:          apiKey.ID,
+		APIKeyConcurrency: apiKey.Concurrency,
+		UserID:            userID,
+		GroupID:           apiKey.GroupID,
+		SubscriptionID:    subscriptionID,
+		UserAgent:         c.GetHeader("User-Agent"),
+		IPAddress:         ip.GetClientIP(c),
+		InboundEndpoint:   GetInboundEndpoint(c),
 	}
 }
 

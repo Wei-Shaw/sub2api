@@ -17,6 +17,8 @@ func TestLiveLeaseReplacesRegularSlotsAndCountsTowardLimits(t *testing.T) {
 	regular := NewConcurrencyCache(client, 15, 900)
 	live, ok := regular.(service.LiveConcurrencyCache)
 	require.True(t, ok)
+	apiKeys, ok := regular.(service.APIKeyConcurrencyCache)
+	require.True(t, ok)
 	ctx := context.Background()
 
 	accountAcquired, err := regular.AcquireAccountSlot(ctx, 10, 1, "regular-account")
@@ -25,12 +27,14 @@ func TestLiveLeaseReplacesRegularSlotsAndCountsTowardLimits(t *testing.T) {
 	userAcquired, err := regular.AcquireUserSlot(ctx, 20, 1, "regular-user")
 	require.NoError(t, err)
 	require.True(t, userAcquired)
+	require.NoError(t, apiKeys.TrackAPIKeySlot(ctx, 30, "regular-api-key"))
 
-	acquired, err := live.AcquireLiveLease(ctx, 10, 1, 20, 1, 30, "live-lease", true)
+	acquired, err := live.AcquireLiveLease(ctx, 10, 1, 20, 1, 30, 1, "live-lease", true)
 	require.NoError(t, err)
 	require.True(t, acquired)
 	require.NoError(t, regular.ReleaseAccountSlot(ctx, 10, "regular-account"))
 	require.NoError(t, regular.ReleaseUserSlot(ctx, 20, "regular-user"))
+	require.NoError(t, apiKeys.ReleaseAPIKeySlot(ctx, 30, "regular-api-key"))
 
 	accountCount, err := regular.GetAccountConcurrency(ctx, 10)
 	require.NoError(t, err)
@@ -41,6 +45,9 @@ func TestLiveLeaseReplacesRegularSlotsAndCountsTowardLimits(t *testing.T) {
 	accountAcquired, err = regular.AcquireAccountSlot(ctx, 10, 1, "ordinary-blocked")
 	require.NoError(t, err)
 	require.False(t, accountAcquired)
+	secondLive, err := live.AcquireLiveLease(ctx, 11, 1, 21, 1, 30, 1, "api-key-blocked", false)
+	require.NoError(t, err)
+	require.False(t, secondLive)
 
 	refreshed, err := live.RefreshLiveLease(ctx, 10, 20, 30, "live-lease")
 	require.NoError(t, err)
@@ -59,7 +66,7 @@ func TestLiveLeaseExpiresWithoutRefresh(t *testing.T) {
 	require.True(t, ok)
 	ctx := context.Background()
 
-	acquired, err := live.AcquireLiveLease(ctx, 10, 1, 20, 1, 30, "expired-live", false)
+	acquired, err := live.AcquireLiveLease(ctx, 10, 1, 20, 1, 30, 0, "expired-live", false)
 	require.NoError(t, err)
 	require.True(t, acquired)
 
