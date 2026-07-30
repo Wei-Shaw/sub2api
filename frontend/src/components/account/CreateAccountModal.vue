@@ -4708,6 +4708,228 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
   }
 }
 
+// Methods
+const resetForm = () => {
+  step.value = 1
+  form.name = ''
+  form.notes = ''
+  form.platform = 'anthropic'
+  form.type = 'oauth'
+  form.credentials = {}
+  form.proxy_id = null
+  form.concurrency = 10
+  form.load_factor = null
+  form.priority = 1
+  form.rate_multiplier = 1
+  form.group_ids = []
+  form.expires_at = null
+  form.visibility = 'private'
+  accountCategory.value = 'oauth-based'
+  addMethod.value = 'oauth'
+  apiKeyBaseUrl.value = 'https://api.anthropic.com'
+  apiKeyValue.value = ''
+  upstreamBillingAutoProbeEnabled.value = true
+  editQuotaLimit.value = null
+  editQuotaDailyLimit.value = null
+  editQuotaWeeklyLimit.value = null
+  editDailyResetMode.value = null
+  editDailyResetHour.value = null
+  editWeeklyResetMode.value = null
+  editWeeklyResetDay.value = null
+  editWeeklyResetHour.value = null
+  editResetTimezone.value = null
+  modelMappings.value = []
+  openAICompactModelMappings.value = []
+  modelRestrictionMode.value = 'whitelist'
+  allowedModels.value = [...claudeModels] // Default fill related models
+
+  antigravityModelRestrictionMode.value = 'mapping'
+  antigravityWhitelistModels.value = []
+  fetchAntigravityDefaultMappings().then(mappings => {
+    antigravityModelMappings.value = [...mappings]
+  })
+  poolModeEnabled.value = false
+  poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
+  poolModeRetryStatusCodesInput.value = ''
+  customErrorCodesEnabled.value = false
+  selectedErrorCodes.value = []
+  customErrorCodeInput.value = null
+  headerOverrideEnabled.value = false
+  headerOverrideRows.value = []
+  grokOAuthCustomBaseUrlEnabled.value = false
+  grokOAuthBaseUrl.value = ''
+  interceptWarmupRequests.value = false
+  autoPauseOnExpired.value = true
+  openaiPassthroughEnabled.value = false
+  openAILongContextBillingEnabled.value = false
+  openAILongContextBillingTouched.value = false
+  openAICompactMode.value = 'auto'
+  openAIResponsesMode.value = 'auto'
+  openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+  openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+  openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+  codexCLIOnlyEnabled.value = false
+  codexCLIOnlyAppServerEnabled.value = false
+  anthropicPassthroughEnabled.value = false
+  anthropicAPIKeyAuthScheme.value = 'x_api_key'
+  webSearchEmulationMode.value = 'default'
+  // Reset quota control state
+  windowCostEnabled.value = false
+  windowCostLimit.value = null
+  windowCostStickyReserve.value = null
+  sessionLimitEnabled.value = false
+  maxSessions.value = null
+  sessionIdleTimeout.value = null
+  rpmLimitEnabled.value = false
+  baseRpm.value = null
+  rpmStrategy.value = 'tiered'
+  rpmStickyBuffer.value = null
+  userMsgQueueMode.value = ''
+  tlsFingerprintEnabled.value = false
+  tlsFingerprintProfileId.value = null
+  sessionIdMaskingEnabled.value = false
+  cacheTTLOverrideEnabled.value = false
+  cacheTTLOverrideTarget.value = '5m'
+  customBaseUrlEnabled.value = false
+  customBaseUrl.value = ''
+  allowOverages.value = false
+  antigravityAccountType.value = 'oauth'
+  antigravityProjectId.value = ''
+  upstreamBaseUrl.value = ''
+  upstreamApiKey.value = ''
+  vertexServiceAccountJson.value = ''
+  vertexProjectId.value = ''
+  vertexClientEmail.value = ''
+  vertexLocation.value = 'global'
+  tempUnschedEnabled.value = false
+  tempUnschedRules.value = []
+  geminiOAuthType.value = 'code_assist'
+  geminiTierGoogleOne.value = 'google_one_free'
+  geminiTierGcp.value = 'gcp_standard'
+  geminiTierAIStudio.value = 'aistudio_free'
+  oauth.resetState()
+  openaiOAuth.resetState()
+  geminiOAuth.resetState()
+  antigravityOAuth.resetState()
+  grokOAuth.resetState()
+  oauthFlowRef.value?.reset()
+  antigravityMixedChannelConfirmed.value = false
+  clearMixedChannelDialog()
+}
+
+const handleClose = () => {
+  antigravityMixedChannelConfirmed.value = false
+  clearMixedChannelDialog()
+  emit('close')
+}
+
+const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (form.platform !== 'openai') {
+    return base
+  }
+
+  const extra: Record<string, unknown> = { ...(base || {}) }
+  if (accountCategory.value === 'oauth-based') {
+    extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
+    extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
+  } else if (accountCategory.value === 'apikey') {
+    extra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value
+    extra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
+  }
+  // 清理兼容旧键，统一改用分类型开关。
+  delete extra.responses_websockets_v2_enabled
+  delete extra.openai_ws_enabled
+  if (openaiPassthroughEnabled.value) {
+    extra.openai_passthrough = true
+  } else {
+    delete extra.openai_passthrough
+    delete extra.openai_oauth_passthrough
+  }
+  extra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
+
+  if (accountCategory.value === 'oauth-based' && codexCLIOnlyEnabled.value) {
+    extra.codex_cli_only = true
+  } else {
+    delete extra.codex_cli_only
+  }
+  delete extra.codex_cli_only_allowed_clients
+  if (
+    accountCategory.value === 'oauth-based' &&
+    codexCLIOnlyEnabled.value &&
+    codexCLIOnlyAppServerEnabled.value
+  ) {
+    extra.codex_cli_only_allow_app_server = true
+  } else {
+    delete extra.codex_cli_only_allow_app_server
+  }
+  if (openAICompactMode.value !== 'auto') {
+    extra.openai_compact_mode = openAICompactMode.value
+  } else {
+    delete extra.openai_compact_mode
+  }
+
+  if (
+    accountCategory.value === 'apikey' &&
+    openAITextGenerationCapabilityEnabled.value &&
+    openAIResponsesMode.value !== 'auto'
+  ) {
+    extra.openai_responses_mode = openAIResponsesMode.value
+  } else {
+    delete extra.openai_responses_mode
+  }
+
+  return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+const buildOpenAICodexImportExtra = (): Record<string, unknown> | undefined => {
+  const extra = buildOpenAIExtra()
+  if (!extra) {
+    return undefined
+  }
+  if (!openAILongContextBillingTouched.value) {
+    delete extra.openai_long_context_billing_enabled
+  }
+  return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (form.platform !== 'anthropic' || accountCategory.value !== 'apikey') {
+    return base
+  }
+
+  const extra: Record<string, unknown> = { ...(base || {}) }
+  if (anthropicPassthroughEnabled.value) {
+    extra.anthropic_passthrough = true
+  } else {
+    delete extra.anthropic_passthrough
+  }
+  if (anthropicAPIKeyAuthScheme.value === 'authorization_bearer') {
+    extra.anthropic_apikey_auth_scheme = 'authorization_bearer'
+  } else {
+    delete extra.anthropic_apikey_auth_scheme
+  }
+  if (webSearchEmulationMode.value === 'default') {
+    delete extra.web_search_emulation
+  } else {
+    extra.web_search_emulation = webSearchEmulationMode.value
+  }
+
+  return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+// Helper function to create account with mixed channel warning handling
+const doCreateAccount = async (payload: CreateAccountRequest) => {
+  const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
+    await submitCreateAccount(payload)
+  })
+  if (!canContinue) {
+    return
+  }
+  await submitCreateAccount(payload)
+}
+
+// Handle mixed channel warning confirmation
+
 const handleMixedChannelConfirm = async () => {
   const action = mixedChannelWarningAction.value
   if (!action) {
