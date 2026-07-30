@@ -211,7 +211,7 @@ func TestCodexModelsDoesNotFailOverFromUpstreamConfigurationError(t *testing.T) 
 	}
 }
 
-func TestCodexModelsReturnsLastUpstreamErrorWhenAccountsAreExhausted(t *testing.T) {
+func TestCodexModelsReturnsNeutralErrorWhenAccountsAreExhausted(t *testing.T) {
 	handler, upstream, groupID := newCodexModelsFailoverTestHandler(http.StatusServiceUnavailable)
 	upstream.statuses = map[int64]int{
 		1: http.StatusServiceUnavailable,
@@ -225,8 +225,8 @@ func TestCodexModelsReturnsLastUpstreamErrorWhenAccountsAreExhausted(t *testing.
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status: got %d, want %d; body=%s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
 	}
-	if body := recorder.Body.String(); !strings.Contains(body, "upstream error 504") {
-		t.Fatalf("body does not preserve the last upstream error: %s", body)
+	if body := recorder.Body.String(); !strings.Contains(body, publicServiceUnavailableMessage) || strings.Contains(strings.ToLower(body), "account") || strings.Contains(body, "upstream error") {
+		t.Fatalf("body exposes internal routing details: %s", body)
 	}
 }
 

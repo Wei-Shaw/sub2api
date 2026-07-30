@@ -34,15 +34,17 @@ func TestGatewayChatCredentialStopDoesNotSelectAnotherAccountAndReturnsSafe503(t
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	(&GatewayHandler{}).handleCCFailoverExhausted(c, state.LastFailoverErr, false)
+	(&GatewayHandler{}).handleCCFailoverExhausted(c, state.LastFailoverErr, service.PlatformGrok, false)
 
 	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
-	require.Contains(t, recorder.Body.String(), service.GrokCredentialUnavailableClientMessage)
+	require.Contains(t, recorder.Body.String(), publicServiceUnavailableMessage)
+	require.NotContains(t, recorder.Body.String(), "Grok")
+	require.NotContains(t, recorder.Body.String(), "OAuth")
 	require.NotContains(t, recorder.Body.String(), "invalid_client")
 	require.NotContains(t, recorder.Body.String(), "client_secret")
 }
 
-func TestGatewayChatAntigravityCredentialFailureReturnsActionableMessage(t *testing.T) {
+func TestGatewayChatAntigravityCredentialFailureReturnsNeutralMessage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -56,10 +58,12 @@ func TestGatewayChatAntigravityCredentialFailureReturnsActionableMessage(t *test
 		ClientStatusCode:  http.StatusBadGateway,
 		ClientMessage:     service.AntigravityCredentialRejectedClientMessage,
 		ResponseBody:      []byte(`{"error":{"message":"Invalid bearer token","refresh_token":"must-not-leak"}}`),
-	}, false)
+	}, service.PlatformAntigravity, false)
 
 	require.Equal(t, http.StatusBadGateway, recorder.Code)
-	require.Contains(t, recorder.Body.String(), service.AntigravityCredentialRejectedClientMessage)
+	require.Contains(t, recorder.Body.String(), publicServiceUnavailableMessage)
+	require.NotContains(t, recorder.Body.String(), "Antigravity")
+	require.NotContains(t, recorder.Body.String(), "OAuth")
 	require.NotContains(t, strings.ToLower(recorder.Body.String()), "bearer")
 	require.NotContains(t, strings.ToLower(recorder.Body.String()), "refresh_token")
 }
@@ -72,7 +76,7 @@ func TestGatewayChatInferenceExhaustionRestoresRetryAfter(t *testing.T) {
 	(&GatewayHandler{}).handleCCFailoverExhausted(c, &service.UpstreamFailoverError{
 		StatusCode:      http.StatusTooManyRequests,
 		ResponseHeaders: http.Header{"Retry-After": []string{"45"}},
-	}, false)
+	}, service.PlatformAnthropic, false)
 
 	require.Equal(t, http.StatusTooManyRequests, recorder.Code)
 	require.Equal(t, "45", recorder.Header().Get("Retry-After"))
@@ -94,7 +98,9 @@ func TestCredentialFailoverExhaustionReturnsFixedSafe503(t *testing.T) {
 	}, false)
 
 	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
-	require.Contains(t, recorder.Body.String(), service.GrokCredentialUnavailableClientMessage)
+	require.Contains(t, recorder.Body.String(), publicServiceUnavailableMessage)
+	require.NotContains(t, recorder.Body.String(), "Grok")
+	require.NotContains(t, recorder.Body.String(), "OAuth")
 	require.NotContains(t, strings.ToLower(recorder.Body.String()), "invalid_grant")
 	require.NotContains(t, strings.ToLower(recorder.Body.String()), "refresh_token")
 	require.NotContains(t, recorder.Body.String(), "must-not-leak")

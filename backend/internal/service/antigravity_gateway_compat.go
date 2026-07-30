@@ -141,11 +141,12 @@ func (s *AntigravityGatewayService) validateAntigravityCompatAccount(c *gin.Cont
 	if account != nil && account.Platform == PlatformAntigravity && account.Type == AccountTypeOAuth {
 		return nil
 	}
+	setOpsUpstreamError(c, http.StatusBadRequest, "native OAuth account required for antigravity compatibility mode", "")
 	return s.writeAntigravityCompatError(
 		c,
 		http.StatusBadRequest,
 		"invalid_request_error",
-		"native OAuth account required for antigravity compatibility mode",
+		"Service temporarily unavailable, please retry later",
 	)
 }
 

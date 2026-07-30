@@ -62,20 +62,21 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 			return
 		}
 		markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-		googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
+		googleError(c, http.StatusServiceUnavailable, publicServiceUnavailableMessage)
 		return
 	}
 
 	res, err := h.geminiCompatService.ForwardAIStudioGET(c.Request.Context(), account, "/v1beta/models")
 	if err != nil {
-		googleError(c, http.StatusBadGateway, err.Error())
+		service.SetOpsUpstreamError(c, http.StatusBadGateway, err.Error(), "")
+		googleError(c, http.StatusBadGateway, publicServiceUnavailableMessage)
 		return
 	}
 	if shouldFallbackGeminiModels(res) {
 		c.JSON(http.StatusOK, gemini.FallbackModelsList())
 		return
 	}
-	writeUpstreamResponse(c, res)
+	h.writeGeminiAIStudioResponse(c, res)
 }
 
 // GeminiV1BetaGetModel proxies:
@@ -118,18 +119,32 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 			return
 		}
 		markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-		googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
+		googleError(c, http.StatusServiceUnavailable, publicServiceUnavailableMessage)
 		return
 	}
 
 	res, err := h.geminiCompatService.ForwardAIStudioGET(c.Request.Context(), account, "/v1beta/models/"+modelName)
 	if err != nil {
-		googleError(c, http.StatusBadGateway, err.Error())
+		service.SetOpsUpstreamError(c, http.StatusBadGateway, err.Error(), "")
+		googleError(c, http.StatusBadGateway, publicServiceUnavailableMessage)
 		return
 	}
 	if shouldFallbackGeminiModel(modelName, res) {
 		c.JSON(http.StatusOK, gemini.FallbackModel(modelName))
 		return
+	}
+	h.writeGeminiAIStudioResponse(c, res)
+}
+
+func (h *GatewayHandler) writeGeminiAIStudioResponse(c *gin.Context, res *service.UpstreamHTTPResult) {
+	if res != nil && res.StatusCode >= http.StatusBadRequest {
+		if responseCode, message, matched := matchGatewayErrorPassthrough(
+			c, h.errorPassthroughService, service.PlatformGemini, res.StatusCode, res.Body,
+		); matched {
+			service.SetOpsUpstreamError(c, res.StatusCode, service.ExtractUpstreamErrorMessage(res.Body), "")
+			googleError(c, responseCode, message)
+			return
+		}
 	}
 	writeUpstreamResponse(c, res)
 }
@@ -360,11 +375,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
-				message := cls.Message
-				if !cls.ModelNotFound {
-					message = "No available Gemini accounts: " + err.Error()
-				}
-				googleError(c, cls.Status, message)
+				googleError(c, cls.Status, cls.Message)
 				return
 			}
 			action := fs.HandleSelectionExhausted(c.Request.Context())
@@ -413,7 +424,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
 				markOpsRoutingCapacityLimited(c)
-				googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts")
+				googleError(c, http.StatusServiceUnavailable, publicServiceUnavailableMessage)
 				return
 			}
 			accountWaitCounted := false
@@ -447,7 +458,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			)
 			if err != nil {
 				reqLog.Warn("gemini.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-				googleError(c, http.StatusTooManyRequests, err.Error())
+				status, _, message := concurrencyErrorResponse(err, "account")
+				googleError(c, status, message)
 				return
 			}
 			if accountWaitCounted {
@@ -599,28 +611,11 @@ func (h *GatewayHandler) handleGeminiFailoverExhausted(c *gin.Context, failoverE
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
 
-	// 先检查透传规则
-	if h.errorPassthroughService != nil && len(responseBody) > 0 {
-		if rule := h.errorPassthroughService.MatchRule(service.PlatformGemini, statusCode, responseBody); rule != nil {
-			// 确定响应状态码
-			respCode := statusCode
-			if !rule.PassthroughCode && rule.ResponseCode != nil {
-				respCode = *rule.ResponseCode
-			}
-
-			// 确定响应消息
-			msg := service.ExtractUpstreamErrorMessage(responseBody)
-			if !rule.PassthroughBody && rule.CustomMessage != nil {
-				msg = *rule.CustomMessage
-			}
-
-			if rule.SkipMonitoring {
-				c.Set(service.OpsSkipPassthroughKey, true)
-			}
-
-			googleError(c, respCode, msg)
-			return
-		}
+	if responseCode, message, matched := matchGatewayErrorPassthrough(
+		c, h.errorPassthroughService, service.PlatformGemini, statusCode, responseBody,
+	); matched {
+		googleError(c, responseCode, message)
+		return
 	}
 
 	// 记录原始上游状态码，以便 ops 错误日志捕获真实的上游错误

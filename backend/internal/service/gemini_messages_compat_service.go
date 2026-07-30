@@ -1291,7 +1291,8 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		requestIDHeader = "x-request-id"
 
 	default:
-		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Unsupported account type: "+account.Type)
+		setOpsUpstreamError(c, http.StatusBadGateway, "Unsupported account type: "+account.Type, "")
+		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Service temporarily unavailable, please retry later")
 	}
 
 	var resp *http.Response

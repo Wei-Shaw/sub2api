@@ -21,6 +21,9 @@ func concurrencyErrorResponse(err error, slotType string) (int, string, string) 
 		if concurrencyErr.SlotType != "" {
 			slotType = concurrencyErr.SlotType
 		}
+		if slotType == "account" {
+			return http.StatusTooManyRequests, "rate_limit_error", publicServiceUnavailableMessage
+		}
 		return http.StatusTooManyRequests, "rate_limit_error",
 			fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType)
 	}
@@ -29,5 +32,5 @@ func concurrencyErrorResponse(err error, slotType string) (int, string, string) 
 		return statusClientClosedRequest, "api_error", "context canceled"
 	}
 
-	return http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable, please retry later"
+	return http.StatusServiceUnavailable, "api_error", publicServiceUnavailableMessage
 }

@@ -474,7 +474,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if len(failedAccountIDs) == 0 {
 				if errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available accounts support /responses/compact", streamStarted)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "Responses compact is temporarily unavailable for this model", streamStarted)
 					return
 				}
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
@@ -1359,7 +1359,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 ) (func(), bool) {
 	if selection == nil || selection.Account == nil {
 		markOpsRoutingCapacityLimited(c)
-		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", *streamStarted)
+		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", publicServiceUnavailableMessage, *streamStarted)
 		return nil, false
 	}
 
@@ -1370,7 +1370,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 	}
 	if selection.WaitPlan == nil {
 		markOpsRoutingCapacityLimited(c)
-		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", *streamStarted)
+		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", publicServiceUnavailableMessage, *streamStarted)
 		return nil, false
 	}
 
@@ -1679,7 +1679,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 		releaseAccountSlot()
 		if !failoverErr.ShouldRetryNextAccount() {
-			closeOpenAIWSFailoverExhausted(wsConn, failoverErr)
+			h.closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr, requestPlatform)
 			return false
 		}
 		if ctx.Err() != nil {
@@ -1689,12 +1689,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		failedAccountIDs[account.ID] = struct{}{}
 		lastFailoverErr = failoverErr
 		if switchCount >= maxAccountSwitches {
-			closeOpenAIWSFailoverExhausted(wsConn, failoverErr)
+			h.closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr, requestPlatform)
 			return false
 		}
 		switchCount++
 		if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
-			closeOpenAIWSFailoverExhausted(wsConn, failoverErr)
+			h.closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr, requestPlatform)
 			return false
 		}
 		reqLog.Warn("openai.websocket_upstream_failover_switching",
@@ -1742,17 +1742,17 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if lastFailoverErr != nil {
-				closeOpenAIWSFailoverExhausted(wsConn, lastFailoverErr)
+				h.closeOpenAIWSFailoverExhausted(c, wsConn, lastFailoverErr, requestPlatform)
 			} else {
-				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "no available account")
+				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, publicServiceUnavailableMessage)
 			}
 			return
 		}
 		if selection == nil || selection.Account == nil {
 			if lastFailoverErr != nil {
-				closeOpenAIWSFailoverExhausted(wsConn, lastFailoverErr)
+				h.closeOpenAIWSFailoverExhausted(c, wsConn, lastFailoverErr, requestPlatform)
 			} else {
-				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "no available account")
+				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, publicServiceUnavailableMessage)
 			}
 			return
 		}
@@ -1765,7 +1765,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		accountReleaseFunc := selection.ReleaseFunc
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
-				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "account is busy, please retry later")
+				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, publicServiceUnavailableMessage)
 				return
 			}
 			fastReleaseFunc, fastAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(
@@ -1775,11 +1775,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			)
 			if err != nil {
 				reqLog.Warn("openai.websocket_account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-				closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to acquire account concurrency slot")
+				closeOpenAIClientWS(wsConn, coderws.StatusInternalError, publicServiceUnavailableMessage)
 				return
 			}
 			if !fastAcquired {
-				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "account is busy, please retry later")
+				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, publicServiceUnavailableMessage)
 				return
 			}
 			accountReleaseFunc = fastReleaseFunc
@@ -1887,13 +1887,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					if userReleaseFunc != nil {
 						userReleaseFunc()
 					}
-					return service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, "failed to acquire account concurrency slot", err)
+					return service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, publicServiceUnavailableMessage, err)
 				}
 				if !accountAcquired {
 					if userReleaseFunc != nil {
 						userReleaseFunc()
 					}
-					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account is busy, please retry later", nil)
+					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, publicServiceUnavailableMessage, nil)
 				}
 				currentUserRelease = wrapReleaseOnDone(ctx, userReleaseFunc)
 				currentAccountRelease = wrapReleaseOnDone(ctx, accountReleaseFunc)
@@ -2287,32 +2287,15 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 	responseBody := failoverErr.ResponseBody
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
 		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
-		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage(), streamStarted)
+		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", publicServiceUnavailableMessage, streamStarted)
 		return
 	}
 
-	// 先检查透传规则
-	if h.errorPassthroughService != nil && len(responseBody) > 0 {
-		if rule := h.errorPassthroughService.MatchRule("openai", statusCode, responseBody); rule != nil {
-			// 确定响应状态码
-			respCode := statusCode
-			if !rule.PassthroughCode && rule.ResponseCode != nil {
-				respCode = *rule.ResponseCode
-			}
-
-			// 确定响应消息
-			msg := service.ExtractUpstreamErrorMessage(responseBody)
-			if !rule.PassthroughBody && rule.CustomMessage != nil {
-				msg = *rule.CustomMessage
-			}
-
-			if rule.SkipMonitoring {
-				c.Set(service.OpsSkipPassthroughKey, true)
-			}
-
-			h.handleStreamingAwareError(c, respCode, "upstream_error", msg, streamStarted)
-			return
-		}
+	if responseCode, message, matched := matchGatewayErrorPassthrough(
+		c, h.errorPassthroughService, service.PlatformOpenAI, statusCode, responseBody,
+	); matched {
+		h.handleStreamingAwareError(c, responseCode, "upstream_error", message, streamStarted)
+		return
 	}
 
 	// 记录原始上游状态码，以便 ops 错误日志捕获真实的上游错误
@@ -2326,9 +2309,9 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 
 func credentialFailoverClientResponse(failoverErr *service.UpstreamFailoverError) (int, string) {
 	if failoverErr != nil && failoverErr.Reason == service.AntigravityCredentialRejectedReason {
-		return http.StatusBadGateway, service.AntigravityCredentialRejectedClientMessage
+		return http.StatusBadGateway, publicServiceUnavailableMessage
 	}
-	return http.StatusServiceUnavailable, service.GrokCredentialUnavailableClientMessage
+	return http.StatusServiceUnavailable, publicServiceUnavailableMessage
 }
 
 func copyFailoverRetryAfter(c *gin.Context, headers http.Header) {
@@ -2645,24 +2628,46 @@ func closeOpenAIClientWS(conn *coderws.Conn, status coderws.StatusCode, reason s
 	_ = conn.CloseNow()
 }
 
-func closeOpenAIWSFailoverExhausted(conn *coderws.Conn, failoverErr *service.UpstreamFailoverError) {
+func (h *OpenAIGatewayHandler) closeOpenAIWSFailoverExhausted(
+	c *gin.Context,
+	conn *coderws.Conn,
+	failoverErr *service.UpstreamFailoverError,
+	platform string,
+) {
 	if failoverErr == nil {
-		closeOpenAIClientWS(conn, coderws.StatusInternalError, "upstream websocket proxy failed")
+		closeOpenAIClientWS(conn, coderws.StatusInternalError, publicServiceUnavailableMessage)
 		return
 	}
 	if failoverErr.Stage == service.GatewayFailureStageAccountAuth {
-		closeOpenAIClientWS(conn, coderws.StatusTryAgainLater, service.GrokCredentialUnavailableClientMessage)
+		closeOpenAIClientWS(conn, coderws.StatusTryAgainLater, publicServiceUnavailableMessage)
+		return
+	}
+	if responseCode, message, matched := matchGatewayErrorPassthrough(
+		c, h.errorPassthroughService, platform, failoverErr.StatusCode, failoverErr.ResponseBody,
+	); matched {
+		closeOpenAIClientWS(conn, openAIWSCloseStatusForHTTP(responseCode), message)
 		return
 	}
 	switch failoverErr.StatusCode {
 	case http.StatusTooManyRequests:
-		closeOpenAIClientWS(conn, coderws.StatusTryAgainLater, "upstream rate limit exceeded, please retry later")
+		closeOpenAIClientWS(conn, coderws.StatusTryAgainLater, publicServiceUnavailableMessage)
 	case 529, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
-		closeOpenAIClientWS(conn, coderws.StatusTryAgainLater, "upstream service temporarily unavailable")
+		closeOpenAIClientWS(conn, coderws.StatusTryAgainLater, publicServiceUnavailableMessage)
 	case http.StatusUnauthorized, http.StatusForbidden:
-		closeOpenAIClientWS(conn, coderws.StatusPolicyViolation, "upstream websocket authentication failed")
+		closeOpenAIClientWS(conn, coderws.StatusPolicyViolation, publicServiceUnavailableMessage)
 	default:
-		closeOpenAIClientWS(conn, coderws.StatusInternalError, "upstream websocket proxy failed")
+		closeOpenAIClientWS(conn, coderws.StatusInternalError, publicServiceUnavailableMessage)
+	}
+}
+
+func openAIWSCloseStatusForHTTP(status int) coderws.StatusCode {
+	switch {
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		return coderws.StatusPolicyViolation
+	case status == http.StatusTooManyRequests || status >= http.StatusInternalServerError:
+		return coderws.StatusTryAgainLater
+	default:
+		return coderws.StatusInternalError
 	}
 }
 

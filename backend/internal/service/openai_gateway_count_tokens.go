@@ -82,7 +82,8 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	defaultMappedModel string,
 ) error {
 	if account == nil {
-		writeAnthropicCountTokensError(c, http.StatusServiceUnavailable, "api_error", "No available OpenAI accounts")
+		setOpsUpstreamError(c, http.StatusServiceUnavailable, "No available OpenAI accounts", "")
+		writeAnthropicCountTokensError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable, please retry later")
 		return fmt.Errorf("count_tokens: missing account")
 	}
 

@@ -68,7 +68,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if ingressMode == OpenAIWSIngressModeOff {
 			return NewOpenAIWSClientCloseError(
 				coderws.StatusPolicyViolation,
-				"websocket mode is disabled for this account",
+				"websocket mode is unavailable for this request",
 				nil,
 			)
 		}

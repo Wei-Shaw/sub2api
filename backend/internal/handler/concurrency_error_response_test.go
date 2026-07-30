@@ -24,7 +24,7 @@ func TestConcurrencyErrorResponse(t *testing.T) {
 			slotType:    "user",
 			wantStatus:  http.StatusTooManyRequests,
 			wantType:    "rate_limit_error",
-			wantMessage: "Concurrency limit exceeded for account, please retry later",
+			wantMessage: publicServiceUnavailableMessage,
 		},
 		{
 			name:        "client cancellation is not classified as concurrency limit",

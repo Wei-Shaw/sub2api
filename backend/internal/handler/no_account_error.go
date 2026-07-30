@@ -67,7 +67,7 @@ func classifyNoAccountError(
 	fallback := noAccountErrorClassification{
 		Status:  http.StatusServiceUnavailable,
 		ErrType: "api_error",
-		Message: "Service temporarily unavailable",
+		Message: publicServiceUnavailableMessage,
 	}
 
 	routingModel = strings.TrimSpace(routingModel)
@@ -84,7 +84,7 @@ func classifyNoAccountError(
 		return noAccountErrorClassification{
 			Status:        http.StatusNotFound,
 			ErrType:       "model_not_found",
-			Message:       fmt.Sprintf("Model %q is not supported by any configured account in this group", displayModel),
+			Message:       fmt.Sprintf("Model %q is not supported in this group", displayModel),
 			ModelNotFound: true,
 		}
 	}
