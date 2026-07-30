@@ -317,6 +317,10 @@ type UpdateSettingsRequest struct {
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 
+	// User-owned accounts feature switch + soft cap
+	UserOwnedAccountsEnabled *bool `json:"user_owned_accounts_enabled"`
+	MaxUserOwnedAccounts     *int  `json:"max_user_owned_accounts"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
 
@@ -1684,6 +1688,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AvailableChannelsEnabled
 		}(),
+		UserOwnedAccountsEnabled: func() bool {
+			if req.UserOwnedAccountsEnabled != nil {
+				return *req.UserOwnedAccountsEnabled
+			}
+			return previousSettings.UserOwnedAccountsEnabled
+		}(),
+		MaxUserOwnedAccounts: func() int {
+			if req.MaxUserOwnedAccounts != nil {
+				return *req.MaxUserOwnedAccounts
+			}
+			return previousSettings.MaxUserOwnedAccounts
+		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
 				return *req.AffiliateEnabled
@@ -2075,6 +2091,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+
+		UserOwnedAccountsEnabled: updatedSettings.UserOwnedAccountsEnabled,
+		MaxUserOwnedAccounts:     updatedSettings.MaxUserOwnedAccounts,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 

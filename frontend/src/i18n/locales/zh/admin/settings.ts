@@ -30,6 +30,14 @@ export default {
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
         },
+        userOwnedAccounts: {
+          title: '用户自建账号',
+          description: '允许普通用户在「我的账号」中创建与管理自有上游账号，并可选共享到共享池分组。默认关闭。',
+          enabled: '启用用户自建账号',
+          enabledHint: '关闭后用户端菜单隐藏，相关接口拒绝写入。',
+          maxAccounts: '每用户账号上限',
+          maxAccountsHint: '单个用户可持有的未删除自建账号数量软上限。范围 1 – 1000，默认 10。',
+        },
         riskControl: {
           title: '风控中心',
           description: '启用内容审计菜单和全端点请求审核入口。默认关闭。',

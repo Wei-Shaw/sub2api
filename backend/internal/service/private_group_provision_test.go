@@ -43,6 +43,7 @@ func TestBuildPrivateGroup_ExplicitMultipliers(t *testing.T) {
 	require.Equal(t, "private-7-grok", g.Name)
 	require.Equal(t, SubscriptionTypeSubscription, g.SubscriptionType)
 	require.True(t, g.IsExclusive)
+	require.False(t, g.IsSharePool, "private groups must never be share pools")
 	require.Equal(t, 1.0, g.RateMultiplier)
 	require.Equal(t, 1.0, g.ImageRateMultiplier)
 	require.Equal(t, 1.0, g.VideoRateMultiplier)
@@ -128,6 +129,15 @@ func TestValidatePrivateGroupIdentityUpdate(t *testing.T) {
 	err = validatePrivateGroupIdentityUpdate(private, &UpdateGroupInput{IsExclusive: &falseVal})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "is_exclusive")
+
+	sharePoolTrue := true
+	err = validatePrivateGroupIdentityUpdate(private, &UpdateGroupInput{IsSharePool: &sharePoolTrue})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "share pool")
+
+	// clearing / keeping false is allowed
+	sharePoolFalse := false
+	require.NoError(t, validatePrivateGroupIdentityUpdate(private, &UpdateGroupInput{IsSharePool: &sharePoolFalse}))
 }
 
 type stubGroupRepoForProvision struct {

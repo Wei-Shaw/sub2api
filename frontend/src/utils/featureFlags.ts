@@ -104,6 +104,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Available Channels',
   }),
+  userOwnedAccounts: defineFlag({
+    key: 'user_owned_accounts_enabled',
+    mode: 'opt-in',
+    label: 'User-owned Accounts',
+  }),
   payment: defineFlag({
     key: 'payment_enabled',
     mode: 'opt-out',

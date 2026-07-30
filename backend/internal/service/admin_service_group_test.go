@@ -1393,6 +1393,20 @@ func (s *groupRepoStubForInvalidRequestFallback) UpdateSortOrders(_ context.Cont
 	return nil
 }
 
+func TestAdminService_CreateGroup_RejectsPrivateGroupName(t *testing.T) {
+	repo := &groupRepoStubForInvalidRequestFallback{groups: map[int64]*Group{}}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:           PrivateGroupName(42, PlatformAnthropic),
+		Platform:       PlatformAnthropic,
+		RateMultiplier: 1.0,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "reserved")
+	require.Nil(t, repo.created)
+}
+
 func TestAdminService_CreateGroup_InvalidRequestFallbackRejectsUnsupportedPlatform(t *testing.T) {
 	fallbackID := int64(10)
 	repo := &groupRepoStubForInvalidRequestFallback{

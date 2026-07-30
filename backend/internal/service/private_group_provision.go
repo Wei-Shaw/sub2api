@@ -292,6 +292,7 @@ func buildPrivateGroup(userID int64, platform string) *Group {
 		Platform:                     platform,
 		SubscriptionType:             SubscriptionTypeSubscription,
 		IsExclusive:                  true,
+		IsSharePool:                  false, // 私有组永不可作共享池
 		RateMultiplier:               1.0,
 		ImageRateMultiplier:          1.0,
 		VideoRateMultiplier:          1.0,
@@ -544,7 +545,7 @@ func filterOutPrivateGroups(groups []Group) []Group {
 	return out
 }
 
-// validatePrivateGroupIdentityUpdate 私有组禁止改名 / platform / subscription_type / is_exclusive 降级。
+// validatePrivateGroupIdentityUpdate 私有组禁止改名 / platform / subscription_type / is_exclusive 降级 / is_share_pool=true。
 // 允许同值提交（no-op）；允许倍率、限额、status、绑账号等运营字段（由调用方继续处理）。
 func validatePrivateGroupIdentityUpdate(group *Group, input *UpdateGroupInput) error {
 	if group == nil || input == nil || !IsPrivateGroupName(group.Name) {
@@ -562,6 +563,10 @@ func validatePrivateGroupIdentityUpdate(group *Group, input *UpdateGroupInput) e
 	// 仅禁止 true→false 降级；保持 true 或从 false 升 true 允许
 	if input.IsExclusive != nil && !*input.IsExclusive && group.IsExclusive {
 		return infraerrors.BadRequest("PRIVATE_GROUP_IDENTITY_LOCKED", "private group cannot demote is_exclusive")
+	}
+	// 私有组禁止开启共享池
+	if input.IsSharePool != nil && *input.IsSharePool {
+		return infraerrors.BadRequest("PRIVATE_GROUP_IDENTITY_LOCKED", "private group cannot be a share pool")
 	}
 	return nil
 }

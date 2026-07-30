@@ -356,6 +356,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
+		UserOwnedAccountsEnabled: settings.UserOwnedAccountsEnabled,
+		MaxUserOwnedAccounts:     settings.MaxUserOwnedAccounts,
+
 		AffiliateEnabled: settings.AffiliateEnabled,
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,

@@ -195,6 +195,21 @@ func ParentAccountID(v int64) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldParentAccountID, v))
 }
 
+// OwnerUserID applies equality check predicate on the "owner_user_id" field. It's identical to OwnerUserIDEQ.
+func OwnerUserID(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldOwnerUserID, v))
+}
+
+// Visibility applies equality check predicate on the "visibility" field. It's identical to VisibilityEQ.
+func Visibility(v string) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldVisibility, v))
+}
+
+// UpstreamPlan applies equality check predicate on the "upstream_plan" field. It's identical to UpstreamPlanEQ.
+func UpstreamPlan(v string) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldUpstreamPlan, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldCreatedAt, v))
@@ -1603,6 +1618,206 @@ func QuotaDimensionIn(vs ...QuotaDimension) predicate.Account {
 // QuotaDimensionNotIn applies the NotIn predicate on the "quota_dimension" field.
 func QuotaDimensionNotIn(vs ...QuotaDimension) predicate.Account {
 	return predicate.Account(sql.FieldNotIn(FieldQuotaDimension, vs...))
+}
+
+// OwnerUserIDEQ applies the EQ predicate on the "owner_user_id" field.
+func OwnerUserIDEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDNEQ applies the NEQ predicate on the "owner_user_id" field.
+func OwnerUserIDNEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDIn applies the In predicate on the "owner_user_id" field.
+func OwnerUserIDIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldOwnerUserID, vs...))
+}
+
+// OwnerUserIDNotIn applies the NotIn predicate on the "owner_user_id" field.
+func OwnerUserIDNotIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldOwnerUserID, vs...))
+}
+
+// OwnerUserIDGT applies the GT predicate on the "owner_user_id" field.
+func OwnerUserIDGT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDGTE applies the GTE predicate on the "owner_user_id" field.
+func OwnerUserIDGTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDLT applies the LT predicate on the "owner_user_id" field.
+func OwnerUserIDLT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDLTE applies the LTE predicate on the "owner_user_id" field.
+func OwnerUserIDLTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDIsNil applies the IsNil predicate on the "owner_user_id" field.
+func OwnerUserIDIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldOwnerUserID))
+}
+
+// OwnerUserIDNotNil applies the NotNil predicate on the "owner_user_id" field.
+func OwnerUserIDNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldOwnerUserID))
+}
+
+// VisibilityEQ applies the EQ predicate on the "visibility" field.
+func VisibilityEQ(v string) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldVisibility, v))
+}
+
+// VisibilityNEQ applies the NEQ predicate on the "visibility" field.
+func VisibilityNEQ(v string) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldVisibility, v))
+}
+
+// VisibilityIn applies the In predicate on the "visibility" field.
+func VisibilityIn(vs ...string) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldVisibility, vs...))
+}
+
+// VisibilityNotIn applies the NotIn predicate on the "visibility" field.
+func VisibilityNotIn(vs ...string) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldVisibility, vs...))
+}
+
+// VisibilityGT applies the GT predicate on the "visibility" field.
+func VisibilityGT(v string) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldVisibility, v))
+}
+
+// VisibilityGTE applies the GTE predicate on the "visibility" field.
+func VisibilityGTE(v string) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldVisibility, v))
+}
+
+// VisibilityLT applies the LT predicate on the "visibility" field.
+func VisibilityLT(v string) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldVisibility, v))
+}
+
+// VisibilityLTE applies the LTE predicate on the "visibility" field.
+func VisibilityLTE(v string) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldVisibility, v))
+}
+
+// VisibilityContains applies the Contains predicate on the "visibility" field.
+func VisibilityContains(v string) predicate.Account {
+	return predicate.Account(sql.FieldContains(FieldVisibility, v))
+}
+
+// VisibilityHasPrefix applies the HasPrefix predicate on the "visibility" field.
+func VisibilityHasPrefix(v string) predicate.Account {
+	return predicate.Account(sql.FieldHasPrefix(FieldVisibility, v))
+}
+
+// VisibilityHasSuffix applies the HasSuffix predicate on the "visibility" field.
+func VisibilityHasSuffix(v string) predicate.Account {
+	return predicate.Account(sql.FieldHasSuffix(FieldVisibility, v))
+}
+
+// VisibilityIsNil applies the IsNil predicate on the "visibility" field.
+func VisibilityIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldVisibility))
+}
+
+// VisibilityNotNil applies the NotNil predicate on the "visibility" field.
+func VisibilityNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldVisibility))
+}
+
+// VisibilityEqualFold applies the EqualFold predicate on the "visibility" field.
+func VisibilityEqualFold(v string) predicate.Account {
+	return predicate.Account(sql.FieldEqualFold(FieldVisibility, v))
+}
+
+// VisibilityContainsFold applies the ContainsFold predicate on the "visibility" field.
+func VisibilityContainsFold(v string) predicate.Account {
+	return predicate.Account(sql.FieldContainsFold(FieldVisibility, v))
+}
+
+// UpstreamPlanEQ applies the EQ predicate on the "upstream_plan" field.
+func UpstreamPlanEQ(v string) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanNEQ applies the NEQ predicate on the "upstream_plan" field.
+func UpstreamPlanNEQ(v string) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanIn applies the In predicate on the "upstream_plan" field.
+func UpstreamPlanIn(vs ...string) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldUpstreamPlan, vs...))
+}
+
+// UpstreamPlanNotIn applies the NotIn predicate on the "upstream_plan" field.
+func UpstreamPlanNotIn(vs ...string) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldUpstreamPlan, vs...))
+}
+
+// UpstreamPlanGT applies the GT predicate on the "upstream_plan" field.
+func UpstreamPlanGT(v string) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanGTE applies the GTE predicate on the "upstream_plan" field.
+func UpstreamPlanGTE(v string) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanLT applies the LT predicate on the "upstream_plan" field.
+func UpstreamPlanLT(v string) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanLTE applies the LTE predicate on the "upstream_plan" field.
+func UpstreamPlanLTE(v string) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanContains applies the Contains predicate on the "upstream_plan" field.
+func UpstreamPlanContains(v string) predicate.Account {
+	return predicate.Account(sql.FieldContains(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanHasPrefix applies the HasPrefix predicate on the "upstream_plan" field.
+func UpstreamPlanHasPrefix(v string) predicate.Account {
+	return predicate.Account(sql.FieldHasPrefix(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanHasSuffix applies the HasSuffix predicate on the "upstream_plan" field.
+func UpstreamPlanHasSuffix(v string) predicate.Account {
+	return predicate.Account(sql.FieldHasSuffix(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanIsNil applies the IsNil predicate on the "upstream_plan" field.
+func UpstreamPlanIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldUpstreamPlan))
+}
+
+// UpstreamPlanNotNil applies the NotNil predicate on the "upstream_plan" field.
+func UpstreamPlanNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldUpstreamPlan))
+}
+
+// UpstreamPlanEqualFold applies the EqualFold predicate on the "upstream_plan" field.
+func UpstreamPlanEqualFold(v string) predicate.Account {
+	return predicate.Account(sql.FieldEqualFold(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanContainsFold applies the ContainsFold predicate on the "upstream_plan" field.
+func UpstreamPlanContainsFold(v string) predicate.Account {
+	return predicate.Account(sql.FieldContainsFold(FieldUpstreamPlan, v))
 }
 
 // HasGroups applies the HasEdge predicate on the "groups" edge.

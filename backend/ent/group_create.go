@@ -175,6 +175,20 @@ func (_c *GroupCreate) SetNillableIsExclusive(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetIsSharePool sets the "is_share_pool" field.
+func (_c *GroupCreate) SetIsSharePool(v bool) *GroupCreate {
+	_c.mutation.SetIsSharePool(v)
+	return _c
+}
+
+// SetNillableIsSharePool sets the "is_share_pool" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableIsSharePool(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetIsSharePool(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *GroupCreate) SetStatus(v string) *GroupCreate {
 	_c.mutation.SetStatus(v)
@@ -904,6 +918,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultIsExclusive
 		_c.mutation.SetIsExclusive(v)
 	}
+	if _, ok := _c.mutation.IsSharePool(); !ok {
+		v := group.DefaultIsSharePool
+		_c.mutation.SetIsSharePool(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := group.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -1058,6 +1076,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		return &ValidationError{Name: "is_exclusive", err: errors.New(`ent: missing required field "Group.is_exclusive"`)}
+	}
+	if _, ok := _c.mutation.IsSharePool(); !ok {
+		return &ValidationError{Name: "is_share_pool", err: errors.New(`ent: missing required field "Group.is_share_pool"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Group.status"`)}
@@ -1245,6 +1266,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
 		_node.IsExclusive = value
+	}
+	if value, ok := _c.mutation.IsSharePool(); ok {
+		_spec.SetField(group.FieldIsSharePool, field.TypeBool, value)
+		_node.IsSharePool = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(group.FieldStatus, field.TypeString, value)
@@ -1711,6 +1736,18 @@ func (u *GroupUpsert) SetIsExclusive(v bool) *GroupUpsert {
 // UpdateIsExclusive sets the "is_exclusive" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateIsExclusive() *GroupUpsert {
 	u.SetExcluded(group.FieldIsExclusive)
+	return u
+}
+
+// SetIsSharePool sets the "is_share_pool" field.
+func (u *GroupUpsert) SetIsSharePool(v bool) *GroupUpsert {
+	u.Set(group.FieldIsSharePool, v)
+	return u
+}
+
+// UpdateIsSharePool sets the "is_share_pool" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateIsSharePool() *GroupUpsert {
+	u.SetExcluded(group.FieldIsSharePool)
 	return u
 }
 
@@ -2617,6 +2654,20 @@ func (u *GroupUpsertOne) SetIsExclusive(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateIsExclusive() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateIsExclusive()
+	})
+}
+
+// SetIsSharePool sets the "is_share_pool" field.
+func (u *GroupUpsertOne) SetIsSharePool(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetIsSharePool(v)
+	})
+}
+
+// UpdateIsSharePool sets the "is_share_pool" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateIsSharePool() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateIsSharePool()
 	})
 }
 
@@ -3804,6 +3855,20 @@ func (u *GroupUpsertBulk) SetIsExclusive(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateIsExclusive() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateIsExclusive()
+	})
+}
+
+// SetIsSharePool sets the "is_share_pool" field.
+func (u *GroupUpsertBulk) SetIsSharePool(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetIsSharePool(v)
+	})
+}
+
+// UpdateIsSharePool sets the "is_share_pool" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateIsSharePool() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateIsSharePool()
 	})
 }
 

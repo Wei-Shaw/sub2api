@@ -671,6 +671,10 @@ export interface SystemSettings {
   // Available Channels feature switch
   available_channels_enabled: boolean;
 
+  // User-owned accounts feature switch + soft cap
+  user_owned_accounts_enabled: boolean;
+  max_user_owned_accounts: number;
+
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
 
@@ -947,6 +951,10 @@ export interface UpdateSettingsRequest {
 
   // Available Channels feature switch
   available_channels_enabled?: boolean;
+
+  // User-owned accounts feature switch + soft cap
+  user_owned_accounts_enabled?: boolean;
+  max_user_owned_accounts?: number;
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;

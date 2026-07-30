@@ -289,6 +289,10 @@ type SystemSettings struct {
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// User-owned accounts feature switch + soft cap
+	UserOwnedAccountsEnabled bool `json:"user_owned_accounts_enabled"`
+	MaxUserOwnedAccounts     int  `json:"max_user_owned_accounts"`
+
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
@@ -371,6 +375,8 @@ type PublicSettings struct {
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	UserOwnedAccountsEnabled bool `json:"user_owned_accounts_enabled"`
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 

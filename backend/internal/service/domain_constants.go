@@ -77,6 +77,15 @@ const (
 	AccountTypeServiceAccount = domain.AccountTypeServiceAccount // Google Service Account 类型账号（用于 Vertex AI）
 )
 
+// User-owned account visibility (accounts.visibility).
+const (
+	VisibilityPrivate = "private" // 仅绑定用户私有组
+	VisibilityPublic  = "public"  // 私有组 + 匹配的共享池公有组
+)
+
+// DefaultMaxUserOwnedAccounts is the default soft cap per user when the setting is unset.
+const DefaultMaxUserOwnedAccounts = 10
+
 // Redeem type constants
 const (
 	RedeemTypeBalance          = domain.RedeemTypeBalance
@@ -387,6 +396,15 @@ const (
 	// user-facing aggregate view. When false: user endpoint returns an empty list and the
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
+
+	// SettingKeyUserOwnedAccountsEnabled is a DB-backed soft switch for user-owned accounts.
+	// When false: user account APIs reject writes and the "My Accounts" menu is hidden.
+	// Defaults to false (opt-in feature).
+	SettingKeyUserOwnedAccountsEnabled = "user_owned_accounts_enabled"
+
+	// SettingKeyMaxUserOwnedAccounts is the soft cap on active (non-deleted) user-owned
+	// accounts per user. Admin-only; not injected into public settings. Default 10.
+	SettingKeyMaxUserOwnedAccounts = "max_user_owned_accounts"
 
 	// SettingKeyUpstreamBillingProbeSettings stores the global enable switch and interval
 	// for probing remote Sub2API API-key billing metadata.

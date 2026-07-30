@@ -528,6 +528,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
 	}
+	if before.UserOwnedAccountsEnabled != after.UserOwnedAccountsEnabled {
+		changed = append(changed, "user_owned_accounts_enabled")
+	}
+	if before.MaxUserOwnedAccounts != after.MaxUserOwnedAccounts {
+		changed = append(changed, "max_user_owned_accounts")
+	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
 	}

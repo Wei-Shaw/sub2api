@@ -411,6 +411,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
 
+	// User-owned accounts feature switch + soft cap
+	updates[SettingKeyUserOwnedAccountsEnabled] = strconv.FormatBool(settings.UserOwnedAccountsEnabled)
+	if v := clampMaxUserOwnedAccounts(settings.MaxUserOwnedAccounts); v > 0 {
+		updates[SettingKeyMaxUserOwnedAccounts] = strconv.Itoa(v)
+	}
+
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
 

@@ -220,6 +220,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
+		SettingKeyUserOwnedAccountsEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
@@ -332,6 +333,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 
+		UserOwnedAccountsEnabled: settings[SettingKeyUserOwnedAccountsEnabled] == "true",
+
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
@@ -368,6 +371,38 @@ func clampChannelMonitorInterval(v int) int {
 	}
 	if v > channelMonitorIntervalMax {
 		return channelMonitorIntervalMax
+	}
+	return v
+}
+
+const (
+	maxUserOwnedAccountsMin      = 1
+	maxUserOwnedAccountsMax      = 1000
+	maxUserOwnedAccountsFallback = DefaultMaxUserOwnedAccounts
+)
+
+// parseMaxUserOwnedAccounts parses the soft cap; invalid → default 10.
+func parseMaxUserOwnedAccounts(raw string) int {
+	v, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return maxUserOwnedAccountsFallback
+	}
+	if clamped := clampMaxUserOwnedAccounts(v); clamped > 0 {
+		return clamped
+	}
+	return maxUserOwnedAccountsFallback
+}
+
+// clampMaxUserOwnedAccounts clamps v to [1, 1000]. 0 means "not provided".
+func clampMaxUserOwnedAccounts(v int) int {
+	if v <= 0 {
+		return 0
+	}
+	if v < maxUserOwnedAccountsMin {
+		return maxUserOwnedAccountsMin
+	}
+	if v > maxUserOwnedAccountsMax {
+		return maxUserOwnedAccountsMax
 	}
 	return v
 }
@@ -494,6 +529,7 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
+	UserOwnedAccountsEnabled             bool `json:"user_owned_accounts_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests           bool `json:"allow_user_view_error_requests"`
@@ -559,6 +595,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
+		UserOwnedAccountsEnabled:             settings.UserOwnedAccountsEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,

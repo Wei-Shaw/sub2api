@@ -314,6 +314,15 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, errors.New("rate_multiplier must be > 0")
 	}
 
+	// 禁止管理端手工创建 private-{userId}-{platform} 命名的组（仅供给器可建）
+	if IsPrivateGroupName(input.Name) {
+		return nil, infraerrors.BadRequest("PRIVATE_GROUP_NAME_RESERVED", "private group names are reserved; use provision path")
+	}
+	// 冗余守卫：私有组名 + 共享池 双禁（私有名已在上面拦截）
+	if input.IsSharePool && IsPrivateGroupName(input.Name) {
+		return nil, infraerrors.BadRequest("PRIVATE_GROUP_IDENTITY_LOCKED", "private group cannot be a share pool")
+	}
+
 	platform := input.Platform
 	if platform == "" {
 		platform = PlatformAnthropic
@@ -465,6 +474,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		UpstreamPlan:                    upstreamPlan,
 		RateMultiplier:                  input.RateMultiplier,
 		IsExclusive:                     input.IsExclusive,
+		IsSharePool:                     input.IsSharePool,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
 		DailyLimitUSD:                   dailyLimit,
@@ -679,6 +689,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive
+	}
+	if input.IsSharePool != nil {
+		group.IsSharePool = *input.IsSharePool
 	}
 	if input.Status != "" {
 		group.Status = input.Status

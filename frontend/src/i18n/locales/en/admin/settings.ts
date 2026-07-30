@@ -30,6 +30,14 @@ export default {
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
         },
+        userOwnedAccounts: {
+          title: 'User-owned Accounts',
+          description: 'Allow end users to create and manage their own upstream accounts under My Accounts, optionally contributing them to share-pool groups. Disabled by default.',
+          enabled: 'Enable user-owned accounts',
+          enabledHint: 'When off, the user menu entry is hidden and write APIs reject requests.',
+          maxAccounts: 'Max accounts per user',
+          maxAccountsHint: 'Soft cap on non-deleted user-owned accounts per user. Range 1 – 1000, default 10.',
+        },
         riskControl: {
           title: 'Risk Control',
           description: 'Enable the content moderation menu and gateway audit entry point. Disabled by default.',

@@ -918,6 +918,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		UpstreamPlan:                    derefString(g.UpstreamPlan),
 		RateMultiplier:                  g.RateMultiplier,
 		IsExclusive:                     g.IsExclusive,
+		IsSharePool:                     g.IsSharePool,
 		Status:                          g.Status,
 		Hydrated:                        true,
 		DuplicateOperationID:            derefString(g.DuplicateOperationID),

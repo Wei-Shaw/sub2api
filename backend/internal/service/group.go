@@ -29,8 +29,10 @@ type Group struct {
 	PeakEnd            string
 	PeakRateMultiplier float64
 	IsExclusive        bool
-	Status             string
-	Hydrated           bool // indicates the group was loaded from a trusted repository source
+	// IsSharePool 共享池标记：为 true 时 public 用户自建号可按 platform+upstream_plan 匹配吸入。
+	IsSharePool bool
+	Status      string
+	Hydrated    bool // indicates the group was loaded from a trusted repository source
 	// DuplicateOperationID is internal persistence metadata used only to recover
 	// an already committed one-click copy. It must never be mapped to API DTOs.
 	DuplicateOperationID string

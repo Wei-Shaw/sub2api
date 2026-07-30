@@ -192,6 +192,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
 
+		// User-owned accounts feature (default disabled; opt-in; soft cap 10)
+		SettingKeyUserOwnedAccountsEnabled: "false",
+		SettingKeyMaxUserOwnedAccounts:     strconv.Itoa(DefaultMaxUserOwnedAccounts),
+
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled:              "false",
 		SettingKeyAffiliateAdminRechargeEnabled: strconv.FormatBool(AdminRechargeRebateEnabledDefault),
@@ -776,6 +780,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
+
+	// User-owned accounts feature (default: disabled; strict true; max default 10)
+	result.UserOwnedAccountsEnabled = settings[SettingKeyUserOwnedAccountsEnabled] == "true"
+	result.MaxUserOwnedAccounts = parseMaxUserOwnedAccounts(settings[SettingKeyMaxUserOwnedAccounts])
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"

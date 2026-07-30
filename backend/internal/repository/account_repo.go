@@ -155,6 +155,15 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	if account.ParentAccountID != nil {
 		builder.SetParentAccountID(*account.ParentAccountID)
 	}
+	if account.OwnerUserID != nil {
+		builder.SetOwnerUserID(*account.OwnerUserID)
+	}
+	if account.Visibility != "" {
+		builder.SetVisibility(account.Visibility)
+	}
+	if account.UpstreamPlan != "" {
+		builder.SetUpstreamPlan(account.UpstreamPlan)
+	}
 
 	created, err := builder.Save(ctx)
 	if err != nil {
@@ -538,6 +547,22 @@ func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbe
 
 	builder.SetQuotaDimension(dbaccount.QuotaDimension(account.QuotaDimensionOrDefault()))
 	builder.SetNillableParentAccountID(account.ParentAccountID)
+
+	if account.OwnerUserID != nil {
+		builder.SetOwnerUserID(*account.OwnerUserID)
+	} else {
+		builder.ClearOwnerUserID()
+	}
+	if account.Visibility != "" {
+		builder.SetVisibility(account.Visibility)
+	} else {
+		builder.ClearVisibility()
+	}
+	if account.UpstreamPlan != "" {
+		builder.SetUpstreamPlan(account.UpstreamPlan)
+	} else {
+		builder.ClearUpstreamPlan()
+	}
 
 	return builder.Save(ctx)
 }
@@ -3265,6 +3290,9 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		SessionWindowStatus:     derefString(m.SessionWindowStatus),
 		ParentAccountID:         m.ParentAccountID,
 		QuotaDimension:          string(m.QuotaDimension),
+		OwnerUserID:             m.OwnerUserID,
+		Visibility:              derefString(m.Visibility),
+		UpstreamPlan:            derefString(m.UpstreamPlan),
 	}
 }
 

@@ -217,6 +217,8 @@ type CreateGroupInput struct {
 	UpstreamPlan     string
 	RateMultiplier   float64
 	IsExclusive      bool
+	// IsSharePool 共享池标记；私有组名禁止创建，且私有组不可设为 true
+	IsSharePool      bool
 	SubscriptionType string   // standard/subscription
 	DailyLimitUSD    *float64 // 日限额 (USD)
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
@@ -279,6 +281,8 @@ type UpdateGroupInput struct {
 	UpstreamPlan     *string
 	RateMultiplier   *float64 // 使用指针以支持设置为0
 	IsExclusive      *bool
+	// IsSharePool nil=不修改；私有组禁止设为 true
+	IsSharePool      *bool
 	Status           string
 	SubscriptionType string   // standard/subscription
 	DailyLimitUSD    *float64 // 日限额 (USD)

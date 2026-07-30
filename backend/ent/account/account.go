@@ -78,6 +78,12 @@ const (
 	FieldParentAccountID = "parent_account_id"
 	// FieldQuotaDimension holds the string denoting the quota_dimension field in the database.
 	FieldQuotaDimension = "quota_dimension"
+	// FieldOwnerUserID holds the string denoting the owner_user_id field in the database.
+	FieldOwnerUserID = "owner_user_id"
+	// FieldVisibility holds the string denoting the visibility field in the database.
+	FieldVisibility = "visibility"
+	// FieldUpstreamPlan holds the string denoting the upstream_plan field in the database.
+	FieldUpstreamPlan = "upstream_plan"
 	// EdgeGroups holds the string denoting the groups edge name in mutations.
 	EdgeGroups = "groups"
 	// EdgeProxy holds the string denoting the proxy edge name in mutations.
@@ -162,6 +168,9 @@ var Columns = []string{
 	FieldSessionWindowStatus,
 	FieldParentAccountID,
 	FieldQuotaDimension,
+	FieldOwnerUserID,
+	FieldVisibility,
+	FieldUpstreamPlan,
 }
 
 var (
@@ -220,6 +229,10 @@ var (
 	DefaultSchedulable bool
 	// SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	SessionWindowStatusValidator func(string) error
+	// VisibilityValidator is a validator for the "visibility" field. It is called by the builders before save.
+	VisibilityValidator func(string) error
+	// UpstreamPlanValidator is a validator for the "upstream_plan" field. It is called by the builders before save.
+	UpstreamPlanValidator func(string) error
 )
 
 // QuotaDimension defines the type for the "quota_dimension" enum field.
@@ -399,6 +412,21 @@ func ByParentAccountID(opts ...sql.OrderTermOption) OrderOption {
 // ByQuotaDimension orders the results by the quota_dimension field.
 func ByQuotaDimension(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldQuotaDimension, opts...).ToFunc()
+}
+
+// ByOwnerUserID orders the results by the owner_user_id field.
+func ByOwnerUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOwnerUserID, opts...).ToFunc()
+}
+
+// ByVisibility orders the results by the visibility field.
+func ByVisibility(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldVisibility, opts...).ToFunc()
+}
+
+// ByUpstreamPlan orders the results by the upstream_plan field.
+func ByUpstreamPlan(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpstreamPlan, opts...).ToFunc()
 }
 
 // ByGroupsCount orders the results by groups count.

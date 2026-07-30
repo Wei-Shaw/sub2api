@@ -194,6 +194,20 @@ func (_u *GroupUpdate) SetNillableIsExclusive(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetIsSharePool sets the "is_share_pool" field.
+func (_u *GroupUpdate) SetIsSharePool(v bool) *GroupUpdate {
+	_u.mutation.SetIsSharePool(v)
+	return _u
+}
+
+// SetNillableIsSharePool sets the "is_share_pool" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableIsSharePool(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetIsSharePool(*v)
+	}
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *GroupUpdate) SetStatus(v string) *GroupUpdate {
 	_u.mutation.SetStatus(v)
@@ -1340,6 +1354,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.IsSharePool(); ok {
+		_spec.SetField(group.FieldIsSharePool, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(group.FieldStatus, field.TypeString, value)
 	}
@@ -2043,6 +2060,20 @@ func (_u *GroupUpdateOne) SetIsExclusive(v bool) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillableIsExclusive(v *bool) *GroupUpdateOne {
 	if v != nil {
 		_u.SetIsExclusive(*v)
+	}
+	return _u
+}
+
+// SetIsSharePool sets the "is_share_pool" field.
+func (_u *GroupUpdateOne) SetIsSharePool(v bool) *GroupUpdateOne {
+	_u.mutation.SetIsSharePool(v)
+	return _u
+}
+
+// SetNillableIsSharePool sets the "is_share_pool" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableIsSharePool(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetIsSharePool(*v)
 	}
 	return _u
 }
@@ -3222,6 +3253,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.IsSharePool(); ok {
+		_spec.SetField(group.FieldIsSharePool, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(group.FieldStatus, field.TypeString, value)

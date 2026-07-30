@@ -2319,6 +2319,10 @@ type AccountMutation struct {
 	session_window_end          *time.Time
 	session_window_status       *string
 	quota_dimension             *account.QuotaDimension
+	owner_user_id               *int64
+	addowner_user_id            *int64
+	visibility                  *string
+	upstream_plan               *string
 	clearedFields               map[string]struct{}
 	groups                      map[int64]struct{}
 	removedgroups               map[int64]struct{}
@@ -3875,6 +3879,174 @@ func (m *AccountMutation) ResetQuotaDimension() {
 	m.quota_dimension = nil
 }
 
+// SetOwnerUserID sets the "owner_user_id" field.
+func (m *AccountMutation) SetOwnerUserID(i int64) {
+	m.owner_user_id = &i
+	m.addowner_user_id = nil
+}
+
+// OwnerUserID returns the value of the "owner_user_id" field in the mutation.
+func (m *AccountMutation) OwnerUserID() (r int64, exists bool) {
+	v := m.owner_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOwnerUserID returns the old "owner_user_id" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldOwnerUserID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOwnerUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOwnerUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOwnerUserID: %w", err)
+	}
+	return oldValue.OwnerUserID, nil
+}
+
+// AddOwnerUserID adds i to the "owner_user_id" field.
+func (m *AccountMutation) AddOwnerUserID(i int64) {
+	if m.addowner_user_id != nil {
+		*m.addowner_user_id += i
+	} else {
+		m.addowner_user_id = &i
+	}
+}
+
+// AddedOwnerUserID returns the value that was added to the "owner_user_id" field in this mutation.
+func (m *AccountMutation) AddedOwnerUserID() (r int64, exists bool) {
+	v := m.addowner_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearOwnerUserID clears the value of the "owner_user_id" field.
+func (m *AccountMutation) ClearOwnerUserID() {
+	m.owner_user_id = nil
+	m.addowner_user_id = nil
+	m.clearedFields[account.FieldOwnerUserID] = struct{}{}
+}
+
+// OwnerUserIDCleared returns if the "owner_user_id" field was cleared in this mutation.
+func (m *AccountMutation) OwnerUserIDCleared() bool {
+	_, ok := m.clearedFields[account.FieldOwnerUserID]
+	return ok
+}
+
+// ResetOwnerUserID resets all changes to the "owner_user_id" field.
+func (m *AccountMutation) ResetOwnerUserID() {
+	m.owner_user_id = nil
+	m.addowner_user_id = nil
+	delete(m.clearedFields, account.FieldOwnerUserID)
+}
+
+// SetVisibility sets the "visibility" field.
+func (m *AccountMutation) SetVisibility(s string) {
+	m.visibility = &s
+}
+
+// Visibility returns the value of the "visibility" field in the mutation.
+func (m *AccountMutation) Visibility() (r string, exists bool) {
+	v := m.visibility
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVisibility returns the old "visibility" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldVisibility(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVisibility is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVisibility requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVisibility: %w", err)
+	}
+	return oldValue.Visibility, nil
+}
+
+// ClearVisibility clears the value of the "visibility" field.
+func (m *AccountMutation) ClearVisibility() {
+	m.visibility = nil
+	m.clearedFields[account.FieldVisibility] = struct{}{}
+}
+
+// VisibilityCleared returns if the "visibility" field was cleared in this mutation.
+func (m *AccountMutation) VisibilityCleared() bool {
+	_, ok := m.clearedFields[account.FieldVisibility]
+	return ok
+}
+
+// ResetVisibility resets all changes to the "visibility" field.
+func (m *AccountMutation) ResetVisibility() {
+	m.visibility = nil
+	delete(m.clearedFields, account.FieldVisibility)
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (m *AccountMutation) SetUpstreamPlan(s string) {
+	m.upstream_plan = &s
+}
+
+// UpstreamPlan returns the value of the "upstream_plan" field in the mutation.
+func (m *AccountMutation) UpstreamPlan() (r string, exists bool) {
+	v := m.upstream_plan
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamPlan returns the old "upstream_plan" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldUpstreamPlan(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamPlan is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamPlan requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamPlan: %w", err)
+	}
+	return oldValue.UpstreamPlan, nil
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (m *AccountMutation) ClearUpstreamPlan() {
+	m.upstream_plan = nil
+	m.clearedFields[account.FieldUpstreamPlan] = struct{}{}
+}
+
+// UpstreamPlanCleared returns if the "upstream_plan" field was cleared in this mutation.
+func (m *AccountMutation) UpstreamPlanCleared() bool {
+	_, ok := m.clearedFields[account.FieldUpstreamPlan]
+	return ok
+}
+
+// ResetUpstreamPlan resets all changes to the "upstream_plan" field.
+func (m *AccountMutation) ResetUpstreamPlan() {
+	m.upstream_plan = nil
+	delete(m.clearedFields, account.FieldUpstreamPlan)
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by ids.
 func (m *AccountMutation) AddGroupIDs(ids ...int64) {
 	if m.groups == nil {
@@ -4138,7 +4310,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 34)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -4232,6 +4404,15 @@ func (m *AccountMutation) Fields() []string {
 	if m.quota_dimension != nil {
 		fields = append(fields, account.FieldQuotaDimension)
 	}
+	if m.owner_user_id != nil {
+		fields = append(fields, account.FieldOwnerUserID)
+	}
+	if m.visibility != nil {
+		fields = append(fields, account.FieldVisibility)
+	}
+	if m.upstream_plan != nil {
+		fields = append(fields, account.FieldUpstreamPlan)
+	}
 	return fields
 }
 
@@ -4302,6 +4483,12 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.ParentAccountID()
 	case account.FieldQuotaDimension:
 		return m.QuotaDimension()
+	case account.FieldOwnerUserID:
+		return m.OwnerUserID()
+	case account.FieldVisibility:
+		return m.Visibility()
+	case account.FieldUpstreamPlan:
+		return m.UpstreamPlan()
 	}
 	return nil, false
 }
@@ -4373,6 +4560,12 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldParentAccountID(ctx)
 	case account.FieldQuotaDimension:
 		return m.OldQuotaDimension(ctx)
+	case account.FieldOwnerUserID:
+		return m.OldOwnerUserID(ctx)
+	case account.FieldVisibility:
+		return m.OldVisibility(ctx)
+	case account.FieldUpstreamPlan:
+		return m.OldUpstreamPlan(ctx)
 	}
 	return nil, fmt.Errorf("unknown Account field %s", name)
 }
@@ -4599,6 +4792,27 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetQuotaDimension(v)
 		return nil
+	case account.FieldOwnerUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOwnerUserID(v)
+		return nil
+	case account.FieldVisibility:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVisibility(v)
+		return nil
+	case account.FieldUpstreamPlan:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamPlan(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)
 }
@@ -4622,6 +4836,9 @@ func (m *AccountMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, account.FieldRateMultiplier)
 	}
+	if m.addowner_user_id != nil {
+		fields = append(fields, account.FieldOwnerUserID)
+	}
 	return fields
 }
 
@@ -4640,6 +4857,8 @@ func (m *AccountMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedPriority()
 	case account.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case account.FieldOwnerUserID:
+		return m.AddedOwnerUserID()
 	}
 	return nil, false
 }
@@ -4683,6 +4902,13 @@ func (m *AccountMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRateMultiplier(v)
+		return nil
+	case account.FieldOwnerUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOwnerUserID(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Account numeric field %s", name)
@@ -4742,6 +4968,15 @@ func (m *AccountMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(account.FieldParentAccountID) {
 		fields = append(fields, account.FieldParentAccountID)
+	}
+	if m.FieldCleared(account.FieldOwnerUserID) {
+		fields = append(fields, account.FieldOwnerUserID)
+	}
+	if m.FieldCleared(account.FieldVisibility) {
+		fields = append(fields, account.FieldVisibility)
+	}
+	if m.FieldCleared(account.FieldUpstreamPlan) {
+		fields = append(fields, account.FieldUpstreamPlan)
 	}
 	return fields
 }
@@ -4807,6 +5042,15 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldParentAccountID:
 		m.ClearParentAccountID()
+		return nil
+	case account.FieldOwnerUserID:
+		m.ClearOwnerUserID()
+		return nil
+	case account.FieldVisibility:
+		m.ClearVisibility()
+		return nil
+	case account.FieldUpstreamPlan:
+		m.ClearUpstreamPlan()
 		return nil
 	}
 	return fmt.Errorf("unknown Account nullable field %s", name)
@@ -4908,6 +5152,15 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldQuotaDimension:
 		m.ResetQuotaDimension()
+		return nil
+	case account.FieldOwnerUserID:
+		m.ResetOwnerUserID()
+		return nil
+	case account.FieldVisibility:
+		m.ResetVisibility()
+		return nil
+	case account.FieldUpstreamPlan:
+		m.ResetUpstreamPlan()
 		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)
@@ -21860,6 +22113,7 @@ type GroupMutation struct {
 	peak_rate_multiplier                    *float64
 	addpeak_rate_multiplier                 *float64
 	is_exclusive                            *bool
+	is_share_pool                           *bool
 	status                                  *string
 	duplicate_operation_id                  *string
 	platform                                *string
@@ -22505,6 +22759,42 @@ func (m *GroupMutation) OldIsExclusive(ctx context.Context) (v bool, err error) 
 // ResetIsExclusive resets all changes to the "is_exclusive" field.
 func (m *GroupMutation) ResetIsExclusive() {
 	m.is_exclusive = nil
+}
+
+// SetIsSharePool sets the "is_share_pool" field.
+func (m *GroupMutation) SetIsSharePool(b bool) {
+	m.is_share_pool = &b
+}
+
+// IsSharePool returns the value of the "is_share_pool" field in the mutation.
+func (m *GroupMutation) IsSharePool() (r bool, exists bool) {
+	v := m.is_share_pool
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsSharePool returns the old "is_share_pool" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldIsSharePool(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsSharePool is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsSharePool requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsSharePool: %w", err)
+	}
+	return oldValue.IsSharePool, nil
+}
+
+// ResetIsSharePool resets all changes to the "is_share_pool" field.
+func (m *GroupMutation) ResetIsSharePool() {
+	m.is_share_pool = nil
 }
 
 // SetStatus sets the "status" field.
@@ -24994,7 +25284,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 53)
+	fields := make([]string, 0, 54)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -25027,6 +25317,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.is_exclusive != nil {
 		fields = append(fields, group.FieldIsExclusive)
+	}
+	if m.is_share_pool != nil {
+		fields = append(fields, group.FieldIsSharePool)
 	}
 	if m.status != nil {
 		fields = append(fields, group.FieldStatus)
@@ -25184,6 +25477,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.PeakRateMultiplier()
 	case group.FieldIsExclusive:
 		return m.IsExclusive()
+	case group.FieldIsSharePool:
+		return m.IsSharePool()
 	case group.FieldStatus:
 		return m.Status()
 	case group.FieldDuplicateOperationID:
@@ -25299,6 +25594,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldPeakRateMultiplier(ctx)
 	case group.FieldIsExclusive:
 		return m.OldIsExclusive(ctx)
+	case group.FieldIsSharePool:
+		return m.OldIsSharePool(ctx)
 	case group.FieldStatus:
 		return m.OldStatus(ctx)
 	case group.FieldDuplicateOperationID:
@@ -25468,6 +25765,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetIsExclusive(v)
+		return nil
+	case group.FieldIsSharePool:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsSharePool(v)
 		return nil
 	case group.FieldStatus:
 		v, ok := value.(string)
@@ -26204,6 +26508,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldIsExclusive:
 		m.ResetIsExclusive()
+		return nil
+	case group.FieldIsSharePool:
+		m.ResetIsSharePool()
 		return nil
 	case group.FieldStatus:
 		m.ResetStatus()

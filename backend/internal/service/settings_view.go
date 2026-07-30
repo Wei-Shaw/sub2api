@@ -189,6 +189,11 @@ type SystemSettings struct {
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// User-owned accounts feature (user-facing "My Accounts")
+	UserOwnedAccountsEnabled bool `json:"user_owned_accounts_enabled"`
+	// MaxUserOwnedAccounts soft cap per user (admin-only; not public-injected)
+	MaxUserOwnedAccounts int `json:"max_user_owned_accounts"`
+
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string
@@ -337,6 +342,9 @@ type PublicSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// User-owned accounts feature switch (user-facing "My Accounts")
+	UserOwnedAccountsEnabled bool `json:"user_owned_accounts_enabled"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`

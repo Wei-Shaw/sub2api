@@ -177,6 +177,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		UpstreamPlan:                    g.UpstreamPlan,
 		RateMultiplier:                  g.RateMultiplier,
 		IsExclusive:                     g.IsExclusive,
+		IsSharePool:                     g.IsSharePool,
 		Status:                          g.Status,
 		SubscriptionType:                g.SubscriptionType,
 		DailyLimitUSD:                   g.DailyLimitUSD,
@@ -262,6 +263,9 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		GroupIDs:                a.GroupIDs,
 		ParentAccountID:         a.ParentAccountID,
 		QuotaDimension:          a.QuotaDimension,
+		OwnerUserID:             a.OwnerUserID,
+		Visibility:              a.Visibility,
+		UpstreamPlan:            a.UpstreamPlan,
 	}
 
 	// 提取 5h 窗口费用控制和会话数量控制配置（仅 Anthropic OAuth/SetupToken 账号有效）

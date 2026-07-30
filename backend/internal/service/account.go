@@ -59,6 +59,11 @@ type Account struct {
 	ParentAccountID *int64 // non-nil → 影子账号（不持凭据，透传母账号凭据）
 	QuotaDimension  string // 用量维度："" / "global" / "spark"
 
+	// 用户自建账号字段（系统号 OwnerUserID=nil；Visibility/UpstreamPlan 通常为空）
+	OwnerUserID  *int64 // 归属用户；nil = 管理端系统号
+	Visibility   string // private | public；空 = 未设置（系统号）
+	UpstreamPlan string // 探测写入的上游档位 code；空 = 未知
+
 	Proxy         *Proxy
 	AccountGroups []AccountGroup
 	GroupIDs      []int64
