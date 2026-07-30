@@ -710,6 +710,54 @@ describe('WechatCallbackView', () => {
     expect(replaceMock).toHaveBeenCalledWith('/welcome')
   })
 
+  it('does not request an invitation code for pending WeCom account creation', async () => {
+    routeState.path = '/auth/wecom/callback'
+    getPublicSettingsMock.mockResolvedValue({
+      invitation_code_enabled: true,
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+    })
+    exchangePendingOAuthCompletionMock.mockResolvedValue({
+      error: 'email_required',
+      redirect: '/welcome',
+    })
+    apiClientPostMock.mockResolvedValue({
+      data: {
+        access_token: 'wecom-access-token',
+      },
+    })
+    setTokenMock.mockResolvedValue({})
+
+    const wrapper = mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' },
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' },
+          transition: false,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="wechat-create-account-invitation-code"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="wechat-create-account-email"]').setValue('wecom@example.com')
+    await wrapper.get('[data-testid="wechat-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="wechat-create-account-verify-code"]').setValue('246810')
+    await wrapper.get('[data-testid="wechat-create-account-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(apiClientPostMock).toHaveBeenCalledWith('/auth/oauth/pending/create-account', {
+      email: 'wecom@example.com',
+      password: 'secret-123',
+      verify_code: '246810',
+      invitation_code: undefined,
+      adopt_display_name: false,
+      adopt_avatar: false,
+    })
+  })
+
   it('persists a pending auth session when the oauth flow still needs account creation', async () => {
     exchangePendingOAuthCompletionMock.mockResolvedValue({
       error: 'email_required',

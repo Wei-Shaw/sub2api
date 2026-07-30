@@ -75,6 +75,31 @@ func TestAuthServiceLoginOrRegisterWeComCreatesUserWhenRegistrationDisabled(t *t
 	require.Equal(t, "user1"+service.WeComConnectSyntheticEmailDomain, storedUser.Email)
 }
 
+func TestAuthServiceLoginOrRegisterWeComCreatesUserWithoutInvitationCode(t *testing.T) {
+	settings := map[string]string{
+		service.SettingKeyRegistrationEnabled:   "false",
+		service.SettingKeyInvitationCodeEnabled: "true",
+	}
+	svc, repo, _ := newAuthServiceWithEnt(t, settings, nil)
+	svcWithTokenCache := newAuthServiceWithRefreshTokenCache(svc, repo, settings)
+
+	tokenPair, user, err := svcWithTokenCache.LoginOrRegisterVerifiedEmailOAuth(
+		context.Background(),
+		service.EmailOAuthIdentityInput{
+			ProviderType:    "wecom",
+			ProviderKey:     "wecom-main",
+			ProviderSubject: "corp/no-invitation",
+			Email:           "no-invitation" + service.WeComConnectSyntheticEmailDomain,
+			EmailVerified:   true,
+			Username:        "no-invitation",
+		},
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+}
+
 func TestAuthServiceLoginOrRegisterWeComCreatesUserWithRealEmailWhenRegistrationDisabled(t *testing.T) {
 	svc, repo, client := newAuthServiceWithEnt(t, map[string]string{
 		service.SettingKeyRegistrationEnabled: "false",

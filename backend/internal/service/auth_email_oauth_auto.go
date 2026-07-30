@@ -161,7 +161,7 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 	if err := s.ensureEmailOAuthAutoSignupAllowed(ctx, providerType); err != nil {
 		return nil, err
 	}
-	invitationRedeemCode, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode)
+	invitationRedeemCode, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode, providerType)
 	if err != nil {
 		if errors.Is(err, ErrInvitationCodeRequired) {
 			return nil, ErrOAuthInvitationRequired

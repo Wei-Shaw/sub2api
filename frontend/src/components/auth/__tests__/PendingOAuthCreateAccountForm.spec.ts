@@ -152,6 +152,40 @@ describe('PendingOAuthCreateAccountForm', () => {
     ])
   })
 
+  it('does not require an invitation code when the provider is exempt', async () => {
+    getPublicSettings.mockResolvedValue({
+      invitation_code_enabled: true,
+      email_verify_enabled: true,
+      turnstile_enabled: false,
+      turnstile_site_key: ''
+    })
+
+    const wrapper = mount(PendingOAuthCreateAccountForm, {
+      props: {
+        testIdPrefix: 'wecom',
+        initialEmail: 'wecom@example.com',
+        isSubmitting: false,
+        invitationCodeExempt: true
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-testid="wecom-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="wecom-create-account-verify-code"]').setValue('246810')
+    await wrapper.get('form').trigger('submit.prevent')
+
+    expect(wrapper.find('[data-testid="wecom-create-account-invitation-code"]').exists()).toBe(false)
+    expect(wrapper.emitted('submit')).toEqual([
+      [
+        {
+          email: 'wecom@example.com',
+          password: 'secret-123',
+          verifyCode: '246810'
+        }
+      ]
+    ])
+  })
+
   it('sends a verify code for the trimmed email value', async () => {
     sendPendingOAuthVerifyCode.mockResolvedValue({
       message: 'sent',

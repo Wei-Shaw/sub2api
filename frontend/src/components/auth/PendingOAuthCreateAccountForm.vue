@@ -88,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { getPublicSettings, sendPendingOAuthVerifyCode } from '@/api/auth'
@@ -106,6 +106,7 @@ const props = defineProps<{
   testIdPrefix: string
   isSubmitting: boolean
   errorMessage?: string
+  invitationCodeExempt?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -124,7 +125,10 @@ const isSendingCode = ref(false)
 const sendCodeError = ref('')
 const sendCodeSuccess = ref(false)
 const countdown = ref(0)
-const invitationCodeEnabled = ref(false)
+const invitationCodeConfigured = ref(false)
+const invitationCodeEnabled = computed(
+  () => invitationCodeConfigured.value && !props.invitationCodeExempt
+)
 const emailVerifyEnabled = ref(true)
 const turnstileEnabled = ref(false)
 const turnstileSiteKey = ref('')
@@ -241,7 +245,12 @@ async function handleSendCode() {
 
 function handleSubmit() {
   const trimmedEmail = email.value.trim()
-  if (!trimmedEmail || password.value.length < 6) {
+  const trimmedInvitationCode = invitationCode.value.trim()
+  if (
+    !trimmedEmail ||
+    password.value.length < 6 ||
+    (invitationCodeEnabled.value && !trimmedInvitationCode)
+  ) {
     return
   }
 
@@ -249,7 +258,7 @@ function handleSubmit() {
     email: trimmedEmail,
     password: password.value,
     verifyCode: emailVerifyEnabled.value ? verifyCode.value.trim() : '',
-    invitationCode: invitationCode.value.trim() || undefined
+    invitationCode: invitationCodeEnabled.value ? trimmedInvitationCode : undefined
   })
 }
 
@@ -260,12 +269,12 @@ function emitSwitchToBind() {
 onMounted(async () => {
   try {
     const settings = await getPublicSettings()
-    invitationCodeEnabled.value = settings.invitation_code_enabled === true
+    invitationCodeConfigured.value = settings.invitation_code_enabled === true
     emailVerifyEnabled.value = settings.email_verify_enabled !== false
     turnstileEnabled.value = settings.turnstile_enabled === true
     turnstileSiteKey.value = settings.turnstile_site_key || ''
   } catch {
-    invitationCodeEnabled.value = false
+    invitationCodeConfigured.value = false
     emailVerifyEnabled.value = true
     turnstileEnabled.value = false
     turnstileSiteKey.value = ''

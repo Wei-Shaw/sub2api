@@ -55,7 +55,15 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 	}, nil
 }
 
-func (s *AuthService) validateOAuthRegistrationInvitation(ctx context.Context, invitationCode string) (*RedeemCode, error) {
+func (s *AuthService) validateOAuthRegistrationInvitation(
+	ctx context.Context,
+	invitationCode string,
+	signupSource string,
+) (*RedeemCode, error) {
+	// WeCom signup is explicitly exempt from the global invitation-code gate.
+	if normalizeOAuthSignupSource(signupSource) == "wecom" {
+		return nil, nil
+	}
 	if s == nil || s.settingService == nil || !s.settingService.IsInvitationCodeEnabled(ctx) {
 		return nil, nil
 	}
@@ -127,7 +135,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		return nil, nil, err
 	}
 
-	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {
+	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode, signupSource); err != nil {
 		slog.Error("oauth email register: invitation failed", "email", email, "error", err.Error())
 		return nil, nil, err
 	}
@@ -208,7 +216,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if strings.TrimSpace(password) == "" {
 		return nil, nil, infraerrors.BadRequest("PASSWORD_REQUIRED", "password is required")
 	}
-	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {
+	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode, signupSource); err != nil {
 		return nil, nil, err
 	}
 
@@ -272,7 +280,7 @@ func (s *AuthService) FinalizeOAuthEmailAccount(
 	}
 
 	signupSource = normalizeOAuthSignupSource(signupSource)
-	invitationRedeemCode, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode)
+	invitationRedeemCode, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode, signupSource)
 	if err != nil {
 		return err
 	}

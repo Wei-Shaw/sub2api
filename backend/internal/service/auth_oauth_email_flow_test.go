@@ -237,6 +237,68 @@ func TestRegisterOAuthEmailAccountSetsNormalizedSignupSourceOnCreatedUser(t *tes
 	require.Equal(t, "oidc", userRepo.created[0].SignupSource)
 }
 
+func TestRegisterOAuthEmailAccountWeComSkipsInvitationCode(t *testing.T) {
+	userRepo := &userRepoStub{nextID: 42}
+	emailCache := &emailCacheStub{
+		data: &VerificationCodeData{
+			Code:      "246810",
+			Attempts:  0,
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		},
+	}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		nil,
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:   "true",
+			SettingKeyInvitationCodeEnabled: "true",
+			SettingKeyEmailVerifyEnabled:    "true",
+		},
+		emailCache,
+		nil,
+	)
+
+	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"wecom@example.com",
+		"secret-123",
+		"246810",
+		"",
+		"wecom",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.NoError(t, authService.FinalizeOAuthEmailAccount(
+		context.Background(),
+		user,
+		"",
+		"wecom",
+		"",
+	))
+}
+
+func TestOAuthRegistrationInvitationStillRequiredForOtherProviders(t *testing.T) {
+	authService := newOAuthEmailFlowAuthService(
+		&userRepoStub{},
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:   "true",
+			SettingKeyInvitationCodeEnabled: "true",
+		},
+		&emailCacheStub{},
+		nil,
+	)
+
+	_, err := authService.validateOAuthRegistrationInvitation(context.Background(), "", "oidc")
+
+	require.ErrorIs(t, err, ErrInvitationCodeRequired)
+}
+
 func TestRegisterOAuthEmailAccountKeepsGitHubAndGoogleSignupSource(t *testing.T) {
 	tests := []struct {
 		name         string
