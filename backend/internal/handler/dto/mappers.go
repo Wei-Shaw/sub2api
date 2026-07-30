@@ -265,6 +265,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		QuotaDimension:          a.QuotaDimension,
 		OwnerUserID:             a.OwnerUserID,
 		Visibility:              a.Visibility,
+		VisibilityReason:        a.VisibilityReason,
 		UpstreamPlan:            a.UpstreamPlan,
 	}
 

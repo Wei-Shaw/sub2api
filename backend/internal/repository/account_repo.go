@@ -88,10 +88,20 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
-	if err := createAccountRecord(ctx, r.client, account); err != nil {
+	// 支持外层事务：TxFromContext 时写入走事务 client，保证 UserAccount Create Tx1 原子性。
+	client := clientFromContext(ctx, r.client)
+	if err := createAccountRecord(ctx, client, account); err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+	// 外层 tx：outbox 写入同一 ent client（随 commit/rollback）；无外层 tx：写 r.sql。
+	outboxExec := sqlExecutor(r.sql)
+	if dbent.TxFromContext(ctx) != nil {
+		outboxExec = client
+	}
+	if err := enqueueSchedulerOutbox(ctx, outboxExec, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+		if dbent.TxFromContext(ctx) != nil {
+			return err
+		}
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account create failed: account=%d err=%v", account.ID, err)
 	}
 	return nil
@@ -1817,16 +1827,23 @@ func (r *accountRepository) AddGroups(ctx context.Context, accountID int64, grou
 		return nil
 	}
 
-	tx, err := r.client.Tx(ctx)
-	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
-		return err
-	}
+	// 优先复用外层 TxFromContext（UserAccount Create Tx1）；否则自开事务。
+	var tx *dbent.Tx
 	var txClient *dbent.Client
-	if err == nil {
-		defer func() { _ = tx.Rollback() }()
-		txClient = tx.Client()
+	if contextTx := dbent.TxFromContext(ctx); contextTx != nil {
+		txClient = contextTx.Client()
 	} else {
-		txClient = r.client
+		tx, err = r.client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return err
+		}
+		if err == nil {
+			defer func() { _ = tx.Rollback() }()
+			txClient = tx.Client()
+		} else {
+			// ErrTxStarted 但无 TxFromContext：fail-closed，禁止旁路 r.client。
+			return errGroupOuterTxMissing
+		}
 	}
 
 	nextPriority, err := nextAccountGroupPriority(ctx, txClient, accountID)
@@ -1850,7 +1867,14 @@ func (r *accountRepository) AddGroups(ctx context.Context, accountID int64, grou
 		}
 	}
 	payload := buildSchedulerGroupPayload(mergeGroupIDs(existingGroupIDs, toAdd))
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+	outboxExec := sqlExecutor(r.sql)
+	if dbent.TxFromContext(ctx) != nil {
+		outboxExec = txClient
+	}
+	if err := enqueueSchedulerOutbox(ctx, outboxExec, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+		if dbent.TxFromContext(ctx) != nil {
+			return err
+		}
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue add groups failed: account=%d err=%v", accountID, err)
 	}
 	return nil
@@ -1987,13 +2011,40 @@ func (r *accountRepository) CountActiveOwned(ctx context.Context, ownerUserID in
 	if ownerUserID <= 0 {
 		return 0, nil
 	}
-	n, err := r.client.Account.Query().
+	client := clientFromContext(ctx, r.client)
+	n, err := client.Account.Query().
 		Where(dbaccount.OwnerUserIDEQ(ownerUserID)).
 		Count(ctx)
 	if err != nil {
 		return 0, err
 	}
 	return n, nil
+}
+
+// ListByOwnerUserID 分页列出 owner 名下未软删账号。
+func (r *accountRepository) ListByOwnerUserID(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]service.Account, *pagination.PaginationResult, error) {
+	if ownerUserID <= 0 {
+		return []service.Account{}, paginationResultFromTotal(0, params), nil
+	}
+	client := clientFromContext(ctx, r.client)
+	q := client.Account.Query().Where(dbaccount.OwnerUserIDEQ(ownerUserID))
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	accountsQuery := q.Offset(params.Offset()).Limit(params.Limit())
+	for _, order := range accountListOrder(params) {
+		accountsQuery = accountsQuery.Order(order)
+	}
+	accounts, err := accountsQuery.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	outAccounts, err := r.accountsToService(ctx, accounts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return outAccounts, paginationResultFromTotal(int64(total), params), nil
 }
 
 // nextAccountGroupPriority 返回该账号下一可用 priority（max existing + 1，无绑定则 1）。

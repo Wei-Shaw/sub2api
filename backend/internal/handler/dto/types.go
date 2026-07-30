@@ -289,9 +289,10 @@ type Account struct {
 	QuotaDimension  string `json:"quota_dimension,omitempty"`
 
 	// 用户自建账号：归属 / 可见性 / 上游档位
-	OwnerUserID  *int64 `json:"owner_user_id,omitempty"`
-	Visibility   string `json:"visibility,omitempty"`
-	UpstreamPlan string `json:"upstream_plan,omitempty"`
+	OwnerUserID      *int64 `json:"owner_user_id,omitempty"`
+	Visibility       string `json:"visibility,omitempty"`
+	VisibilityReason string `json:"visibility_reason,omitempty"` // Create/SetVisibility 瞬时原因（非 DB 列）
+	UpstreamPlan     string `json:"upstream_plan,omitempty"`
 
 	// 影子账号回填的母账号信息（仅影子非空，源自母账号 Credentials/Extra）
 	ParentEmail                 string `json:"parent_email,omitempty"`

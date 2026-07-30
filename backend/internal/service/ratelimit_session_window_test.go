@@ -131,6 +131,9 @@ func (m *sessionWindowMockRepo) ListOwnerAccountsBoundToGroup(ctx context.Contex
 func (m *sessionWindowMockRepo) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
 	return nil, nil
 }
+func (m *sessionWindowMockRepo) ListByOwnerUserID(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
+	return nil, &pagination.PaginationResult{Total: 0}, nil
+}
 func (m *sessionWindowMockRepo) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
 	return 0, nil
 }

@@ -64,6 +64,10 @@ type Account struct {
 	Visibility   string // private | public；空 = 未设置（系统号）
 	UpstreamPlan string // 探测写入的上游档位 code；空 = 未知
 
+	// VisibilityReason 为 Create/SetVisibility 的瞬时原因码（非持久化列）。
+	// 如 plan_probe_failed / plan_probe_unsupported / plan_empty。
+	VisibilityReason string
+
 	Proxy         *Proxy
 	AccountGroups []AccountGroup
 	GroupIDs      []int64

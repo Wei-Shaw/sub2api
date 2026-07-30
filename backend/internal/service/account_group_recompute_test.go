@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
@@ -135,6 +136,9 @@ func (r *recomputeAccountRepo) ListPublicOwnerAccountsByPlatformPlan(_ context.C
 	return out, nil
 }
 
+func (r *recomputeAccountRepo) ListByOwnerUserID(_ context.Context, ownerUserID int64, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
+	return nil, &pagination.PaginationResult{Total: 0}, nil
+}
 func (r *recomputeAccountRepo) CountActiveOwned(_ context.Context, ownerUserID int64) (int, error) {
 	n := 0
 	for _, a := range r.accounts {

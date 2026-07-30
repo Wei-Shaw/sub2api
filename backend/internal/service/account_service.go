@@ -93,6 +93,8 @@ type AccountRepository interface {
 	ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error)
 	// CountActiveOwned 统计 owner_user_id=ownerUserID 且未软删的账号数。
 	CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error)
+	// ListByOwnerUserID 分页列出 owner 名下未软删账号（用户「我的账号」列表 / DeleteUser 级联）。
+	ListByOwnerUserID(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
 
 	ListSchedulable(ctx context.Context) ([]Account, error)
 	ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error)

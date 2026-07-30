@@ -408,7 +408,11 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 		defer func() { _ = tx.Rollback() }()
 
 		opCtx := dbent.NewTxContext(ctx, tx)
-		// 先撤销私有组（同事务），再删 Key + 软删用户
+		// K14 MUST：先级联删除用户自建账号（硬删 account_groups + 软删账号），再 Revoke 私有组，再软删用户。
+		// 软删用户不触发 FK ON DELETE；不可依赖 SET NULL。
+		if err := s.deleteOwnedAccountsForUser(opCtx, id); err != nil {
+			return err
+		}
 		if s.privateGroups != nil {
 			revokeResult, err = s.privateGroups.RevokePrivatePlatformGroups(opCtx, id)
 			if err != nil {
@@ -425,6 +429,9 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 			s.privateGroups.AfterRevokeCommit(ctx, revokeResult)
 		}
 	} else {
+		if err := s.deleteOwnedAccountsForUser(ctx, id); err != nil {
+			return err
+		}
 		if s.privateGroups != nil {
 			var err error
 			revokeResult, err = s.privateGroups.RevokePrivatePlatformGroups(ctx, id)
@@ -445,6 +452,58 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 			}
 		}
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, id)
+	}
+	return nil
+}
+
+// deleteOwnedAccountsForUser 删除 owner_user_id=userID 的全部自建账号（K14）。
+// 使用与 Admin DeleteAccount 相同的 account_repo.Delete 路径。
+func (s *adminServiceImpl) deleteOwnedAccountsForUser(ctx context.Context, userID int64) error {
+	if s.accountRepo == nil || userID <= 0 {
+		return nil
+	}
+	const pageSize = 200
+	deleted := 0
+	for {
+		batch, result, err := s.accountRepo.ListByOwnerUserID(ctx, userID, pagination.PaginationParams{
+			Page:      1, // 每轮取第一页：删除后列表缩短
+			PageSize:  pageSize,
+			SortBy:    "id",
+			SortOrder: pagination.SortOrderAsc,
+		})
+		if err != nil {
+			return fmt.Errorf("list owned accounts for cascade delete: user_id=%d: %w", userID, err)
+		}
+		if len(batch) == 0 {
+			break
+		}
+		for i := range batch {
+			acc := &batch[i]
+			// 级联 spark 影子（与 DeleteAccount 对齐）
+			shadows, serr := s.accountRepo.ListShadowsByParent(ctx, acc.ID)
+			if serr != nil {
+				return fmt.Errorf("list spark shadows for cascade delete account=%d: %w", acc.ID, serr)
+			}
+			for _, shadow := range shadows {
+				if err := s.accountRepo.Delete(ctx, shadow.ID); err != nil {
+					return fmt.Errorf("cascade delete spark shadow %d: %w", shadow.ID, err)
+				}
+			}
+			if err := s.accountRepo.Delete(ctx, acc.ID); err != nil {
+				return fmt.Errorf("cascade delete owned account %d: %w", acc.ID, err)
+			}
+			deleted++
+		}
+		// 若本页不足 pageSize 且 total 已清完则退出
+		if result != nil && int64(deleted) >= result.Total {
+			break
+		}
+		if len(batch) < pageSize {
+			break
+		}
+	}
+	if deleted > 0 {
+		logger.LegacyPrintf("service.admin", "user_account_delete_cascade_on_user_delete: user_id=%d deleted=%d", userID, deleted)
 	}
 	return nil
 }

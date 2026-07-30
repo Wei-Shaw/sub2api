@@ -1890,6 +1890,9 @@ func (s *stubAccountRepo) ListOwnerAccountsBoundToGroup(ctx context.Context, gro
 func (s *stubAccountRepo) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*service.Account, error) {
 	return nil, nil
 }
+func (s *stubAccountRepo) ListByOwnerUserID(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]service.Account, *pagination.PaginationResult, error) {
+	return nil, &pagination.PaginationResult{Total: 0}, nil
+}
 func (s *stubAccountRepo) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
 	return 0, nil
 }

@@ -414,6 +414,43 @@ type ChannelMonitorRuntime struct {
 	DefaultIntervalSeconds int
 }
 
+// IsUserOwnedAccountsEnabled reports whether user-owned accounts API is enabled (opt-in).
+// Fail-closed: error or unset → false.
+func (s *SettingService) IsUserOwnedAccountsEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyUserOwnedAccountsEnabled)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(raw) == "true"
+}
+
+// GetMaxUserOwnedAccounts returns the soft cap (clamped 1–1000, default 10).
+// Raw value <=0 is treated as 0 (deny create) by the caller; parse layer maps invalid to default.
+func (s *SettingService) GetMaxUserOwnedAccounts(ctx context.Context) int {
+	if s == nil || s.settingRepo == nil {
+		return DefaultMaxUserOwnedAccounts
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyMaxUserOwnedAccounts)
+	if err != nil {
+		return DefaultMaxUserOwnedAccounts
+	}
+	// 显式 0 或负数：禁止创建（与设计 <=0 treat as deny 对齐）
+	v, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return DefaultMaxUserOwnedAccounts
+	}
+	if v <= 0 {
+		return 0
+	}
+	if clamped := clampMaxUserOwnedAccounts(v); clamped > 0 {
+		return clamped
+	}
+	return DefaultMaxUserOwnedAccounts
+}
+
 // GetChannelMonitorRuntime reads the channel monitor feature flags directly from
 // the settings store. Fail-open: on error returns Enabled=true with the default interval.
 func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMonitorRuntime {

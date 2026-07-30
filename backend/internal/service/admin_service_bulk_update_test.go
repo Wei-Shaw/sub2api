@@ -92,6 +92,9 @@ func (s *accountRepoStubForBulkUpdate) ListOwnerAccountsBoundToGroup(ctx context
 func (s *accountRepoStubForBulkUpdate) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
 	return nil, nil
 }
+func (s *accountRepoStubForBulkUpdate) ListByOwnerUserID(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
+	return nil, &pagination.PaginationResult{Total: 0}, nil
+}
 func (s *accountRepoStubForBulkUpdate) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
 	return 0, nil
 }

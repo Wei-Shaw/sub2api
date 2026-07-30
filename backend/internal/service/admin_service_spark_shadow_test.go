@@ -80,6 +80,9 @@ func (s *sparkShadowRepoStub) ListOwnerAccountsBoundToGroup(ctx context.Context,
 func (s *sparkShadowRepoStub) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
 	return nil, nil
 }
+func (s *sparkShadowRepoStub) ListByOwnerUserID(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
+	return nil, &pagination.PaginationResult{Total: 0}, nil
+}
 func (s *sparkShadowRepoStub) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
 	return 0, nil
 }
@@ -782,6 +785,9 @@ func (s *bindFailRepoStub) ListOwnerAccountsBoundToGroup(ctx context.Context, gr
 }
 func (s *bindFailRepoStub) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
 	return nil, nil
+}
+func (s *bindFailRepoStub) ListByOwnerUserID(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
+	return nil, &pagination.PaginationResult{Total: 0}, nil
 }
 func (s *bindFailRepoStub) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
 	return 0, nil

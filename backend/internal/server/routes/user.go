@@ -40,6 +40,19 @@ func RegisterUserRoutes(
 			user.GET("/api-keys/:id/usage/daily", panelRateLimiter.Heavy(), h.Usage.GetMyAPIKeyDailyUsage)
 			user.GET("/platform-quotas", h.User.GetMyPlatformQuotas)
 
+			// 用户自建上游账号（feature flag: user_owned_accounts_enabled）
+			if h.UserAccount != nil {
+				accounts := user.Group("/accounts")
+				{
+					accounts.GET("", h.UserAccount.List)
+					accounts.POST("", h.UserAccount.Create)
+					accounts.GET("/:id", h.UserAccount.Get)
+					accounts.PATCH("/:id", h.UserAccount.Update)
+					accounts.PUT("/:id/visibility", h.UserAccount.SetVisibility)
+					accounts.DELETE("/:id", h.UserAccount.Delete)
+				}
+			}
+
 			// 通知邮箱管理
 			notifyEmail := user.Group("/notify-email")
 			{
