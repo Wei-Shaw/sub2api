@@ -79,6 +79,7 @@ type AuthService struct {
 	affiliateService      *AffiliateService
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	privateGroups         PrivateGroupProvisioner
 }
 
 type DefaultSubscriptionAssigner interface {
@@ -107,6 +108,7 @@ func NewAuthService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	affiliateService *AffiliateService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	privateGroups PrivateGroupProvisioner,
 ) *AuthService {
 	return &AuthService{
 		entClient:             entClient,
@@ -122,7 +124,72 @@ func NewAuthService(
 		affiliateService:      affiliateService,
 		defaultSubAssigner:    defaultSubAssigner,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		privateGroups:         privateGroups,
 	}
+}
+
+// createUserWithPrivateGroups 在同一事务内 Create + Provision（优先路径）。
+// createFn 必须使用传入的 txCtx 调用 userRepo.Create*。
+// 若 ctx 已带外层 tx：不 Commit，返回的 ProvisionResult.NeedsAfterCommit=true，由调用方 commit 后 AfterCommit。
+// 若本方法自建 tx：commit 后自动 AfterCommit。
+func (s *AuthService) createUserWithPrivateGroups(
+	ctx context.Context,
+	createFn func(txCtx context.Context) error,
+	userIDFn func() int64,
+) (*ProvisionResult, error) {
+	if s == nil {
+		return nil, ErrServiceUnavailable
+	}
+
+	// 已在外层事务：复用，不 commit
+	if dbent.TxFromContext(ctx) != nil {
+		if err := createFn(ctx); err != nil {
+			return nil, err
+		}
+		if s.privateGroups == nil {
+			return &ProvisionResult{}, nil
+		}
+		return s.privateGroups.ProvisionPrivatePlatformGroups(ctx, userIDFn())
+	}
+
+	if s.entClient != nil {
+		tx, err := s.entClient.Tx(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = tx.Rollback() }()
+		opCtx := dbent.NewTxContext(ctx, tx)
+		if err := createFn(opCtx); err != nil {
+			return nil, err
+		}
+		var provisionResult *ProvisionResult
+		if s.privateGroups != nil {
+			provisionResult, err = s.privateGroups.ProvisionPrivatePlatformGroups(opCtx, userIDFn())
+			if err != nil {
+				return nil, err
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		if s.privateGroups != nil {
+			s.privateGroups.AfterCommit(ctx, provisionResult)
+		}
+		return provisionResult, nil
+	}
+
+	if err := createFn(ctx); err != nil {
+		return nil, err
+	}
+	if s.privateGroups == nil {
+		return &ProvisionResult{}, nil
+	}
+	result, err := s.privateGroups.ProvisionPrivatePlatformGroups(ctx, userIDFn())
+	if err != nil {
+		return nil, err
+	}
+	s.privateGroups.AfterCommit(ctx, result)
+	return result, nil
 }
 
 func (s *AuthService) EntClient() *dbent.Client {
@@ -213,7 +280,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
 	}
 
-	// 创建用户
+	// 创建用户（与私有组供给同事务）
 	user := &User{
 		Email:        email,
 		PasswordHash: hashedPassword,
@@ -224,7 +291,12 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		Status:       StatusActive,
 	}
 
-	if err := s.userRepo.CreateWithEmailAliasGuard(ctx, user); err != nil {
+	if _, err := s.createUserWithPrivateGroups(ctx, func(txCtx context.Context) error {
+		if err := s.userRepo.CreateWithEmailAliasGuard(txCtx, user); err != nil {
+			return err
+		}
+		return nil
+	}, func() int64 { return user.ID }); err != nil {
 		// 优先检查邮箱冲突错误（竞态条件下可能发生）
 		if errors.Is(err, ErrEmailExists) {
 			return "", nil, ErrEmailExists
@@ -529,7 +601,9 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 				SignupSource: signupSource,
 			}
 
-			if err := s.userRepo.Create(ctx, newUser); err != nil {
+			if _, err := s.createUserWithPrivateGroups(ctx, func(txCtx context.Context) error {
+				return s.userRepo.Create(txCtx, newUser)
+			}, func() int64 { return newUser.ID }); err != nil {
 				if errors.Is(err, ErrEmailExists) {
 					// 并发场景：GetByEmail 与 Create 之间用户被创建。
 					user, err = s.userRepo.GetByEmail(ctx, email)
@@ -687,7 +761,11 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				defer func() { _ = tx.Rollback() }()
 				txCtx := dbent.NewTxContext(ctx, tx)
 
-				if err := s.userRepo.Create(txCtx, newUser); err != nil {
+				// Create + Provision + 邀请码 Use 同一外层事务
+				provisionResult, err := s.createUserWithPrivateGroups(txCtx, func(createCtx context.Context) error {
+					return s.userRepo.Create(createCtx, newUser)
+				}, func() int64 { return newUser.ID })
+				if err != nil {
 					if errors.Is(err, ErrEmailExists) {
 						user, err = s.userRepo.GetByEmail(ctx, email)
 						if err != nil {
@@ -706,6 +784,9 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 						logger.LegacyPrintf("service.auth", "[Auth] Failed to commit oauth registration transaction: %v", err)
 						return nil, nil, ErrServiceUnavailable
 					}
+					if s.privateGroups != nil {
+						s.privateGroups.AfterCommit(ctx, provisionResult)
+					}
 					user = newUser
 					created = true
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
@@ -715,7 +796,9 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
 				}
 			} else {
-				if err := s.userRepo.Create(ctx, newUser); err != nil {
+				if _, err := s.createUserWithPrivateGroups(ctx, func(txCtx context.Context) error {
+					return s.userRepo.Create(txCtx, newUser)
+				}, func() int64 { return newUser.ID }); err != nil {
 					if errors.Is(err, ErrEmailExists) {
 						user, err = s.userRepo.GetByEmail(ctx, email)
 						if err != nil {

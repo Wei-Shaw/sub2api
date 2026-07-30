@@ -190,7 +190,9 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 		Status:       StatusActive,
 		SignupSource: providerType,
 	}
-	if err := s.userRepo.Create(ctx, user); err != nil {
+	if _, err := s.createUserWithPrivateGroups(ctx, func(txCtx context.Context) error {
+		return s.userRepo.Create(txCtx, user)
+	}, func() int64 { return user.ID }); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			existing, loadErr := s.userRepo.GetByEmail(ctx, email)
 			if loadErr != nil {

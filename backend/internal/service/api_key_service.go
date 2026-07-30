@@ -925,7 +925,10 @@ func (s *APIKeyService) IncrementUsage(ctx context.Context, keyID int64) error {
 // GetAvailableGroups 获取用户有权限绑定的分组列表
 // 返回用户可以选择的分组：
 // - 标准类型分组：公开的（非专属）或用户被明确允许的
-// - 订阅类型分组：用户有有效订阅的
+// - 订阅类型分组：用户有有效订阅的（含 private 专属组，经 ListByIDs 加载）
+//
+// 规模安全：不调用含 private 的全表 ListActive；运营组走 ListActiveExcludingPrivate，
+// 用户有效订阅组走 ListByIDs。
 func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([]Group, error) {
 	// 获取用户信息
 	user, err := s.userRepo.GetByID(ctx, userID)
@@ -933,10 +936,10 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 		return nil, fmt.Errorf("get user: %w", err)
 	}
 
-	// 获取所有活跃分组
-	allGroups, err := s.groupRepo.ListActive(ctx)
+	// 运营活跃组（排除 private-*）
+	opsGroups, err := s.groupRepo.ListActiveExcludingPrivate(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list active groups: %w", err)
+		return nil, fmt.Errorf("list active groups excluding private: %w", err)
 	}
 
 	// 获取用户的所有有效订阅
@@ -945,15 +948,39 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 		return nil, fmt.Errorf("list active subscriptions: %w", err)
 	}
 
-	// 构建订阅分组 ID 集合
-	subscribedGroupIDs := make(map[int64]bool)
+	// 构建订阅分组 ID 集合，并收集需按 ID 加载的组（含 private）
+	subscribedGroupIDs := make(map[int64]bool, len(activeSubscriptions))
+	subGroupIDList := make([]int64, 0, len(activeSubscriptions))
 	for _, sub := range activeSubscriptions {
+		if sub.GroupID <= 0 {
+			continue
+		}
+		if !subscribedGroupIDs[sub.GroupID] {
+			subGroupIDList = append(subGroupIDList, sub.GroupID)
+		}
 		subscribedGroupIDs[sub.GroupID] = true
 	}
 
+	byID := make(map[int64]Group, len(opsGroups)+len(subGroupIDList))
+	for i := range opsGroups {
+		g := opsGroups[i]
+		byID[g.ID] = g
+	}
+	if len(subGroupIDList) > 0 {
+		subGroups, err := s.groupRepo.ListByIDs(ctx, subGroupIDList)
+		if err != nil {
+			return nil, fmt.Errorf("list subscription groups by ids: %w", err)
+		}
+		for i := range subGroups {
+			g := subGroups[i]
+			byID[g.ID] = g
+		}
+	}
+
 	// 过滤出用户有权限的分组
-	availableGroups := make([]Group, 0)
-	for _, group := range allGroups {
+	availableGroups := make([]Group, 0, len(byID))
+	for id := range byID {
+		group := byID[id]
 		if s.canUserBindGroupInternal(user, &group, subscribedGroupIDs) {
 			availableGroups = append(availableGroups, group)
 		}

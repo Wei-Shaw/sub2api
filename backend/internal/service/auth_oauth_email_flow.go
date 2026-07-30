@@ -12,6 +12,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 func normalizeOAuthSignupSource(signupSource string) string {
@@ -160,7 +161,9 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		SignupSource: signupSource,
 	}
 
-	if err := s.userRepo.CreateWithEmailAliasGuard(ctx, user); err != nil {
+	if _, err := s.createUserWithPrivateGroups(ctx, func(txCtx context.Context) error {
+		return s.userRepo.CreateWithEmailAliasGuard(txCtx, user)
+	}, func() int64 { return user.ID }); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
 		}
@@ -243,7 +246,9 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		SignupSource: signupSource,
 	}
 
-	if err := s.userRepo.CreateWithEmailAliasGuard(ctx, user); err != nil {
+	if _, err := s.createUserWithPrivateGroups(ctx, func(txCtx context.Context) error {
+		return s.userRepo.CreateWithEmailAliasGuard(txCtx, user)
+	}, func() int64 { return user.ID }); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
 		}
@@ -293,12 +298,55 @@ func (s *AuthService) FinalizeOAuthEmailAccount(
 
 // RollbackOAuthEmailAccountCreation removes a partially-created local account
 // and restores any invitation code already consumed by that account.
+// 先 Revoke 私有组，再删用户，尽量同事务。
 func (s *AuthService) RollbackOAuthEmailAccountCreation(ctx context.Context, userID int64, invitationCode string) error {
 	if s == nil || s.userRepo == nil || userID <= 0 {
 		return ErrServiceUnavailable
 	}
 	if err := s.restoreOAuthRegistrationInvitation(ctx, invitationCode, userID); err != nil {
 		return err
+	}
+
+	if s.entClient != nil {
+		tx, err := s.entClient.Tx(ctx)
+		if err != nil {
+			// 降级：尽量 revoke + delete
+			if s.privateGroups != nil {
+				if _, rerr := s.privateGroups.RevokePrivatePlatformGroups(ctx, userID); rerr != nil {
+					logger.LegacyPrintf("service.auth", "[Auth] revoke private groups on rollback failed: user_id=%d err=%v", userID, rerr)
+				}
+			}
+			if err := s.userRepo.Delete(ctx, userID); err != nil {
+				return fmt.Errorf("delete created oauth user: %w", err)
+			}
+			return nil
+		}
+		defer func() { _ = tx.Rollback() }()
+		opCtx := dbent.NewTxContext(ctx, tx)
+		var revokeResult *RevokeResult
+		if s.privateGroups != nil {
+			revokeResult, err = s.privateGroups.RevokePrivatePlatformGroups(opCtx, userID)
+			if err != nil {
+				logger.LegacyPrintf("service.auth", "[Auth] revoke private groups on rollback failed: user_id=%d err=%v", userID, err)
+				// 仍继续删用户，避免残留半登录账号
+			}
+		}
+		if err := s.userRepo.Delete(opCtx, userID); err != nil {
+			return fmt.Errorf("delete created oauth user: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		if s.privateGroups != nil {
+			s.privateGroups.AfterRevokeCommit(ctx, revokeResult)
+		}
+		return nil
+	}
+
+	if s.privateGroups != nil {
+		if _, err := s.privateGroups.RevokePrivatePlatformGroups(ctx, userID); err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] revoke private groups on rollback failed: user_id=%d err=%v", userID, err)
+		}
 	}
 	if err := s.userRepo.Delete(ctx, userID); err != nil {
 		return fmt.Errorf("delete created oauth user: %w", err)

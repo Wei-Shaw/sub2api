@@ -438,6 +438,10 @@ func (r *groupRepository) List(ctx context.Context, params pagination.Pagination
 func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]service.Group, *pagination.PaginationResult, error) {
 	q := r.client.Group.Query()
 
+	// 默认排除 private-* 私有专属组，防止 N×5 规模污染管理端列表与下拉。
+	// show_private 切换见后续 PR；GetByName / ListByIDs 仍可按需加载 private。
+	q = q.Where(group.Not(group.NameHasPrefix("private-")))
+
 	if platform != "" {
 		q = q.Where(group.PlatformEQ(platform))
 	}
@@ -769,8 +773,14 @@ func (r *groupRepository) ListActiveIDs(ctx context.Context) ([]int64, error) {
 
 func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform string) ([]service.Group, error) {
 	client := clientFromContext(ctx, r.client)
+	// 管理端按平台下拉 / 绑组列表排除 private-*，避免 N×5 膨胀。
+	// 调度热路径使用 ListActive / ListActiveIDs（保留 private）。
 	groups, err := client.Group.Query().
-		Where(group.StatusEQ(service.StatusActive), group.PlatformEQ(platform)).
+		Where(
+			group.StatusEQ(service.StatusActive),
+			group.PlatformEQ(platform),
+			group.Not(group.NameHasPrefix("private-")),
+		).
 		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
 		All(ctx)
 	if err != nil {

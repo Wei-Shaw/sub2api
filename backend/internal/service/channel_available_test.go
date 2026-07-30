@@ -11,12 +11,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// stubGroupRepoForAvailable 是 ListAvailable 测试用的 GroupRepository stub，
-// 仅实现 ListActive；其他方法对本测试无关，返回零值即可。
-// listActiveErr 非 nil 时，ListActive 返回该错误用于错误传播测试。
-// listActiveCalls 记录调用次数，用于断言「失败短路时不再访问 groupRepo」等行为。
+// stubGroupRepoForAvailable 是 ListAvailable 测试用的 GroupRepository stub。
+// 实现 ListByIDs（ListAvailable 规模安全路径）；listByIDsErr 用于错误传播。
+// listByIDsCalls 记录调用次数，用于断言「失败短路时不再访问 groupRepo」等行为。
 type stubGroupRepoForAvailable struct {
-	activeGroups    []Group
+	activeGroups     []Group
+	listByIDsErr     error
+	listByIDsCalls   int
+	// 兼容旧字段名（部分测试可能仍引用）
 	listActiveErr   error
 	listActiveCalls int
 }
@@ -60,7 +62,32 @@ func (s *stubGroupRepoForAvailable) ListActiveExcludingPrivate(ctx context.Conte
 	return s.ListActive(ctx)
 }
 func (s *stubGroupRepoForAvailable) ListByIDs(ctx context.Context, ids []int64) ([]Group, error) {
-	return nil, nil
+	s.listByIDsCalls++
+	if s.listByIDsErr != nil {
+		return nil, s.listByIDsErr
+	}
+	if s.listActiveErr != nil {
+		// 兼容旧测试字段
+		return nil, s.listActiveErr
+	}
+	if len(ids) == 0 {
+		return []Group{}, nil
+	}
+	want := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		want[id] = struct{}{}
+	}
+	out := make([]Group, 0, len(ids))
+	for i := range s.activeGroups {
+		if _, ok := want[s.activeGroups[i].ID]; ok {
+			g := s.activeGroups[i]
+			if g.Status == "" {
+				g.Status = StatusActive
+			}
+			out = append(out, g)
+		}
+	}
+	return out, nil
 }
 func (s *stubGroupRepoForAvailable) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
 	return nil
@@ -151,20 +178,41 @@ func TestListAvailable_ListAllErrorPropagates(t *testing.T) {
 	require.Nil(t, out)
 	require.ErrorIs(t, err, sentinel)
 	require.Contains(t, err.Error(), "list channels", "wrap 前缀缺失，可能 %w 被改为 %v")
-	require.Equal(t, 0, groupRepo.listActiveCalls, "ListAll 失败后不应再调用 groupRepo.ListActive")
+	require.Equal(t, 0, groupRepo.listByIDsCalls, "ListAll 失败后不应再调用 groupRepo.ListByIDs")
+	require.Equal(t, 0, groupRepo.listActiveCalls, "ListAll 失败后不应调用 ListActive")
 }
 
-func TestListAvailable_ListActiveErrorPropagates(t *testing.T) {
-	// groupRepo.ListActive 返回错误时 ListAvailable 应直接返回包装后的错误。
-	sentinel := errors.New("list-active-boom")
+func TestListAvailable_ListByIDsErrorPropagates(t *testing.T) {
+	// groupRepo.ListByIDs 返回错误时 ListAvailable 应直接返回包装后的错误。
+	sentinel := errors.New("list-by-ids-boom")
 	svc := newAvailableChannelService(
-		[]Channel{{ID: 1, Name: "chA"}},
-		&stubGroupRepoForAvailable{listActiveErr: sentinel},
+		[]Channel{{ID: 1, Name: "chA", GroupIDs: []int64{1}}},
+		&stubGroupRepoForAvailable{listByIDsErr: sentinel},
 	)
 	out, err := svc.ListAvailable(context.Background())
 	require.Nil(t, out)
 	require.ErrorIs(t, err, sentinel)
-	require.Contains(t, err.Error(), "list active groups", "wrap 前缀缺失，可能 %w 被改为 %v")
+	require.Contains(t, err.Error(), "list groups by ids", "wrap 前缀缺失，可能 %w 被改为 %v")
+}
+
+func TestListAvailable_UsesListByIDsNotFullListActive(t *testing.T) {
+	channels := []Channel{{
+		ID: 1, Name: "chA", Status: StatusActive, GroupIDs: []int64{1, 2},
+	}}
+	groupRepo := &stubGroupRepoForAvailable{
+		activeGroups: []Group{
+			{ID: 1, Name: "g1", Status: StatusActive},
+			{ID: 2, Name: "g2", Status: StatusActive},
+			{ID: 999, Name: "private-1-anthropic", Status: StatusActive}, // 不应被全表加载
+		},
+	}
+	svc := newAvailableChannelService(channels, groupRepo)
+	out, err := svc.ListAvailable(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Groups, 2)
+	require.Equal(t, 1, groupRepo.listByIDsCalls)
+	require.Equal(t, 0, groupRepo.listActiveCalls, "must not call full ListActive")
 }
 
 func TestListAvailable_DefaultsEmptyBillingModelSource(t *testing.T) {

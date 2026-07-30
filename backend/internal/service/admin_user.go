@@ -145,9 +145,40 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 	if err := user.SetPassword(input.Password); err != nil {
 		return nil, err
 	}
-	if err := s.userRepo.Create(ctx, user); err != nil {
-		return nil, err
+
+	// 用户插入 + 私有组供给同事务（fail-closed）；默认订阅仍在事务外 best-effort。
+	var provisionResult *ProvisionResult
+	if s.entClient != nil && s.privateGroups != nil {
+		tx, err := s.entClient.Tx(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = tx.Rollback() }()
+		opCtx := dbent.NewTxContext(ctx, tx)
+		if err := s.userRepo.Create(opCtx, user); err != nil {
+			return nil, err
+		}
+		provisionResult, err = s.privateGroups.ProvisionPrivatePlatformGroups(opCtx, user.ID)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		s.privateGroups.AfterCommit(ctx, provisionResult)
+	} else {
+		if err := s.userRepo.Create(ctx, user); err != nil {
+			return nil, err
+		}
+		if s.privateGroups != nil {
+			provisionResult, err = s.privateGroups.ProvisionPrivatePlatformGroups(ctx, user.ID)
+			if err != nil {
+				return nil, err
+			}
+			s.privateGroups.AfterCommit(ctx, provisionResult)
+		}
 	}
+
 	// 创建管理员属权限敏感操作，落审计日志（含操作者），便于事后追溯。
 	if user.Role == RoleAdmin {
 		logger.LegacyPrintf("service.admin", "audit: admin user created actor_admin_id=%d target_user_id=%d",
@@ -263,7 +294,19 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	if input.AllowedGroups != nil {
-		user.AllowedGroups = *input.AllowedGroups
+		// 强制保留该用户 private-{userId}-* 组 ID，防止前端 Modal 只回写 standard 勾选导致抹除。
+		merged := *input.AllowedGroups
+		if s.groupRepo != nil {
+			privateIDs := make([]Group, 0, len(AllowedQuotaPlatforms))
+			for _, platform := range AllowedQuotaPlatforms {
+				name := PrivateGroupName(user.ID, platform)
+				if g, err := s.groupRepo.GetByName(ctx, name); err == nil && g != nil {
+					privateIDs = append(privateIDs, *g)
+				}
+			}
+			merged = mergePrivateAllowedGroupIDs(merged, privateIDs, user.ID)
+		}
+		user.AllowedGroups = merged
 	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
@@ -350,6 +393,7 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 		return err
 	}
 
+	var revokeResult *RevokeResult
 	if s.entClient != nil {
 		tx, err := s.entClient.Tx(ctx)
 		if err != nil {
@@ -358,13 +402,31 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 		defer func() { _ = tx.Rollback() }()
 
 		opCtx := dbent.NewTxContext(ctx, tx)
+		// 先撤销私有组（同事务），再删 Key + 软删用户
+		if s.privateGroups != nil {
+			revokeResult, err = s.privateGroups.RevokePrivatePlatformGroups(opCtx, id)
+			if err != nil {
+				return err
+			}
+		}
 		if err := s.deleteUserWithAPIKeys(opCtx, id, apiKeys); err != nil {
 			return err
 		}
 		if err := tx.Commit(); err != nil {
 			return err
 		}
+		if s.privateGroups != nil {
+			s.privateGroups.AfterRevokeCommit(ctx, revokeResult)
+		}
 	} else {
+		if s.privateGroups != nil {
+			var err error
+			revokeResult, err = s.privateGroups.RevokePrivatePlatformGroups(ctx, id)
+			if err != nil {
+				return err
+			}
+			s.privateGroups.AfterRevokeCommit(ctx, revokeResult)
+		}
 		if err := s.deleteUserWithAPIKeys(ctx, id, apiKeys); err != nil {
 			return err
 		}
