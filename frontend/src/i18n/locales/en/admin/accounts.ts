@@ -148,6 +148,9 @@ export default {
         platformType: 'Platform/Type',
         platform: 'Platform',
         type: 'Type',
+        owner: 'Owner',
+        visibility: 'Visibility',
+        upstreamPlan: 'Upstream Plan',
         capacity: 'Capacity',
         notes: 'Notes',
         priority: 'Priority',
@@ -166,6 +169,8 @@ export default {
         expiresAt: 'Expires At',
         actions: 'Actions'
       },
+      visibilityPrivate: 'Private',
+      visibilityPublic: 'Public',
       schedulerScore: {
         baseShort: 'Base',
         stickyShort: 'Sticky',

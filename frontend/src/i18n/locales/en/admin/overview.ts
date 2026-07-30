@@ -820,6 +820,9 @@ export default {
       exclusive: 'Exclusive',
       nonExclusive: 'Non-Exclusive',
       public: 'Public',
+      sharePool: 'Share pool',
+      sharePoolOn: 'Share pool',
+      sharePoolOff: 'Not a share pool',
       columns: {
         name: 'Name',
         id: 'ID',
@@ -868,9 +871,14 @@ export default {
         rateMultiplier: 'Rate Multiplier',
         status: 'Status',
         exclusive: 'Exclusive Group',
+        sharePool: 'Share pool group',
+        sharePoolHint:
+          'When enabled, public user-owned accounts whose upstream_plan matches this group are auto-bound. Requires non-exclusive + upstream plan. Private groups cannot be share pools.',
+        sharePoolNeedsPlan:
+          'Share pool needs an upstream plan tier to match user accounts. Without it, no public accounts will join.',
         upstreamPlan: 'Upstream plan tier',
         upstreamPlanHint:
-          'Metadata/display only — not used for binding or scheduling. Options come from system setting "Group upstream plans".',
+          'For share-pool groups this is used for strict plan matching (public user accounts). Otherwise metadata/display only. Options come from system setting "Group upstream plans".',
         upstreamPlanUnspecified: 'Unspecified',
         nameLabel: 'Group Name',
         namePlaceholder: 'Enter group name',

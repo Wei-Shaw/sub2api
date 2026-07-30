@@ -521,6 +521,8 @@ export interface Group {
   max_reasoning_effort?: string // OpenAI/Codex reasoning ceiling; empty means unlimited
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   is_exclusive: boolean
+  /** 共享池：匹配 public 用户自建号（需 is_exclusive=false 且填写 upstream_plan） */
+  is_share_pool?: boolean
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
   daily_limit_usd: number | null
@@ -715,8 +717,12 @@ export interface CreateGroupRequest {
   name: string
   description?: string | null
   platform?: GroupPlatform
+  /** 上游订阅档位 code；空串表示未指定 */
+  upstream_plan?: string
   rate_multiplier?: number
   is_exclusive?: boolean
+  /** 共享池标记；与 is_exclusive 互斥，私有组名后端拒绝 */
+  is_share_pool?: boolean
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
@@ -765,8 +771,12 @@ export interface UpdateGroupRequest {
   name?: string
   description?: string | null
   platform?: GroupPlatform
+  /** 上游订阅档位 code；空串表示清空 */
+  upstream_plan?: string
   rate_multiplier?: number
   is_exclusive?: boolean
+  /** 共享池标记；nil/省略=不修改（前端始终显式提交） */
+  is_share_pool?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
@@ -1153,6 +1163,15 @@ export interface Account {
   parent_privacy_mode?: string
   parent_subscription_expires_at?: string
   parent_chatgpt_account_id?: string
+
+  // 用户自建账号字段（系统号 owner_user_id 为空）
+  owner_user_id?: number | null
+  /** private | public；系统号通常为空 */
+  visibility?: string
+  /** Create/SetVisibility 瞬时原因码（非 DB 列） */
+  visibility_reason?: string
+  /** 探测写入的上游档位 code */
+  upstream_plan?: string
 }
 
 export interface AccountSchedulerGroupScore {

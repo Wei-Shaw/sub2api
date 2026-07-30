@@ -844,11 +844,16 @@ export default {
         platform: '平台',
         upstreamPlan: '上游订阅档位',
         upstreamPlanHint:
-          '仅用于展示/元数据，不参与绑号与调度。选项来自系统设置「分组上游订阅档位」。',
+          '共享池分组会用此档位与 public 用户号严格匹配；否则仅展示/元数据。选项来自系统设置「分组上游订阅档位」。',
         upstreamPlanUnspecified: '未指定',
         rateMultiplier: '费率倍数',
         status: '状态',
         exclusive: '专属分组',
+        sharePool: '共享池分组',
+        sharePoolHint:
+          '开启后，upstream_plan 匹配的 public 用户自建号会自动绑定到此组。需非专属且填写上游档位。私有组不可设为共享池。',
+        sharePoolNeedsPlan:
+          '共享池需要填写上游订阅档位才能匹配用户账号；未填写时不会有 public 号入池。',
         nameLabel: '分组名称',
         namePlaceholder: '请输入分组名称',
         descriptionLabel: '描述',
@@ -889,6 +894,9 @@ export default {
       },
       exclusive: '专属',
       exclusiveHint: '专属分组，可以手动指定给特定用户',
+      sharePool: '共享池',
+      sharePoolOn: '共享池',
+      sharePoolOff: '非共享池',
       exclusiveTooltip: {
         title: '什么是专属分组？',
         description:

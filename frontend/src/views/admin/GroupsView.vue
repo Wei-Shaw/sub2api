@@ -277,12 +277,21 @@
             >
           </template>
 
-          <template #cell-is_exclusive="{ value }">
-            <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
-              {{
-                value ? t("admin.groups.exclusive") : t("admin.groups.public")
-              }}
-            </span>
+          <template #cell-is_exclusive="{ value, row }">
+            <div class="flex flex-col items-start gap-1">
+              <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
+                {{
+                  value ? t("admin.groups.exclusive") : t("admin.groups.public")
+                }}
+              </span>
+              <span
+                v-if="row.is_share_pool"
+                class="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+                data-testid="group-share-pool-badge"
+              >
+                {{ t("admin.groups.sharePool") }}
+              </span>
+            </div>
           </template>
 
           <template #cell-account_count="{ row }">
@@ -709,7 +718,7 @@
           <div class="flex items-center gap-3">
             <button
               type="button"
-              @click="createForm.is_exclusive = !createForm.is_exclusive"
+              @click="toggleCreateExclusive"
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 createForm.is_exclusive
@@ -732,6 +741,55 @@
               }}
             </span>
           </div>
+        </div>
+
+        <!-- Share pool (mutually exclusive with exclusive / private groups) -->
+        <div
+          v-if="createForm.platform !== 'composite'"
+          data-tour="group-form-share-pool"
+        >
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.form.sharePool") }}
+            </label>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              :disabled="createForm.is_exclusive"
+              @click="toggleCreateSharePool"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                createForm.is_exclusive ? 'cursor-not-allowed opacity-60' : '',
+                createForm.is_share_pool
+                  ? 'bg-sky-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  createForm.is_share_pool ? 'translate-x-6' : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                createForm.is_share_pool
+                  ? t("admin.groups.sharePoolOn")
+                  : t("admin.groups.sharePoolOff")
+              }}
+            </span>
+          </div>
+          <p class="input-hint mt-1">
+            {{ t("admin.groups.form.sharePoolHint") }}
+          </p>
+          <p
+            v-if="createForm.is_share_pool && !createForm.upstream_plan"
+            class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+          >
+            {{ t("admin.groups.form.sharePoolNeedsPlan") }}
+          </p>
         </div>
 
         <!-- Subscription Configuration -->
@@ -2280,10 +2338,7 @@
             <button
               type="button"
               :disabled="isEditingPrivateGroup"
-              @click="
-                !isEditingPrivateGroup &&
-                  (editForm.is_exclusive = !editForm.is_exclusive)
-              "
+              @click="toggleEditExclusive"
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 isEditingPrivateGroup ? 'cursor-not-allowed opacity-60' : '',
@@ -2311,6 +2366,61 @@
             {{ t("admin.groups.privateIdentityLocked") }}
           </p>
         </div>
+
+        <!-- Share pool (edit) -->
+        <div
+          v-if="editForm.platform !== 'composite'"
+          data-tour="edit-group-form-share-pool"
+        >
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.form.sharePool") }}
+            </label>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              :disabled="isEditingPrivateGroup || editForm.is_exclusive"
+              @click="toggleEditSharePool"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                isEditingPrivateGroup || editForm.is_exclusive
+                  ? 'cursor-not-allowed opacity-60'
+                  : '',
+                editForm.is_share_pool
+                  ? 'bg-sky-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  editForm.is_share_pool ? 'translate-x-6' : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                editForm.is_share_pool
+                  ? t("admin.groups.sharePoolOn")
+                  : t("admin.groups.sharePoolOff")
+              }}
+            </span>
+          </div>
+          <p class="input-hint mt-1">
+            {{ t("admin.groups.form.sharePoolHint") }}
+          </p>
+          <p
+            v-if="editForm.is_share_pool && !editForm.upstream_plan"
+            class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+          >
+            {{ t("admin.groups.form.sharePoolNeedsPlan") }}
+          </p>
+          <p v-if="isEditingPrivateGroup" class="input-hint mt-1">
+            {{ t("admin.groups.privateIdentityLocked") }}
+          </p>
+        </div>
+
         <div>
           <label class="input-label">{{ t("admin.groups.form.status") }}</label>
           <Select v-model="editForm.status" :options="editStatusOptions" />
@@ -4699,6 +4809,7 @@ const createForm = reactive({
   upstream_plan: "" as string,
   rate_multiplier: 1.0,
   is_exclusive: false,
+  is_share_pool: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
@@ -5049,6 +5160,7 @@ const editForm = reactive({
   upstream_plan: "" as string,
   rate_multiplier: 1.0,
   is_exclusive: false,
+  is_share_pool: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5482,6 +5594,32 @@ const isEditingPrivateGroup = computed(() =>
   isPrivateGroupName(editingGroup.value?.name),
 );
 
+/** 专属与共享池互斥：开启专属时清共享池 */
+const toggleCreateExclusive = () => {
+  createForm.is_exclusive = !createForm.is_exclusive;
+  if (createForm.is_exclusive) {
+    createForm.is_share_pool = false;
+  }
+};
+
+const toggleCreateSharePool = () => {
+  if (createForm.is_exclusive) return;
+  createForm.is_share_pool = !createForm.is_share_pool;
+};
+
+const toggleEditExclusive = () => {
+  if (isEditingPrivateGroup.value) return;
+  editForm.is_exclusive = !editForm.is_exclusive;
+  if (editForm.is_exclusive) {
+    editForm.is_share_pool = false;
+  }
+};
+
+const toggleEditSharePool = () => {
+  if (isEditingPrivateGroup.value || editForm.is_exclusive) return;
+  editForm.is_share_pool = !editForm.is_share_pool;
+};
+
 const handlePageChange = (page: number) => {
   pagination.page = page;
   loadGroups();
@@ -5514,8 +5652,10 @@ const closeCreateModal = () => {
   createForm.name = "";
   createForm.description = "";
   createForm.platform = "anthropic";
+  createForm.upstream_plan = "";
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
+  createForm.is_share_pool = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
@@ -5696,6 +5836,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.upstream_plan = group.upstream_plan || "";
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
+  editForm.is_share_pool = group.is_share_pool ?? false;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
   editForm.daily_limit_usd = group.daily_limit_usd;
@@ -6163,6 +6304,7 @@ watch(
   (newVal) => {
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
+      createForm.is_share_pool = false;
       createForm.fallback_group_id_on_invalid_request = null;
     } else {
       createForm.peak_rate_enabled = false;

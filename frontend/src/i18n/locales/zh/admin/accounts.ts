@@ -101,6 +101,9 @@ export default {
         platformType: '平台/类型',
         platform: '平台',
         type: '类型',
+        owner: '归属用户',
+        visibility: '可见性',
+        upstreamPlan: '上游档位',
         capacity: '容量',
         notes: '备注',
         priority: '优先级',
@@ -119,6 +122,8 @@ export default {
         expiresAt: '过期时间',
         actions: '操作'
       },
+      visibilityPrivate: '私有',
+      visibilityPublic: '公用',
       schedulerScore: {
         baseShort: '普通',
         stickyShort: '粘性',

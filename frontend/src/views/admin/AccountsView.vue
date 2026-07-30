@@ -251,6 +251,32 @@
             <span v-if="value" :title="value" class="block max-w-xs truncate text-sm text-gray-600 dark:text-gray-300">{{ value }}</span>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
+          <template #cell-owner_user_id="{ value }">
+            <span
+              v-if="value != null && value !== 0"
+              class="font-mono text-xs text-gray-600 dark:text-gray-300"
+              :title="String(value)"
+            >#{{ value }}</span>
+            <span v-else class="text-xs text-gray-400 dark:text-gray-500">—</span>
+          </template>
+          <template #cell-visibility="{ value }">
+            <span
+              v-if="value === 'public'"
+              class="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+            >{{ t('admin.accounts.visibilityPublic') }}</span>
+            <span
+              v-else-if="value === 'private'"
+              class="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+            >{{ t('admin.accounts.visibilityPrivate') }}</span>
+            <span v-else class="text-xs text-gray-400 dark:text-gray-500">—</span>
+          </template>
+          <template #cell-upstream_plan="{ value }">
+            <span
+              v-if="value"
+              class="inline-flex rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            >{{ value }}</span>
+            <span v-else class="text-xs text-gray-400 dark:text-gray-500">—</span>
+          </template>
           <template #cell-platform_type="{ row }">
             <div class="flex min-w-0 flex-col gap-1">
               <div class="flex flex-wrap items-center gap-1">
@@ -613,11 +639,12 @@ const accountToolsDropdownStyle = computed(() => ({
   width: `${accountToolsDropdownPosition.width}px`
 }))
 const hiddenColumns = reactive<Set<string>>(new Set())
-const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'scheduler_score', 'rate_multiplier']
+const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'scheduler_score', 'rate_multiplier', 'owner_user_id', 'visibility', 'upstream_plan']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 // One-time migration: hide scheduler score for existing admins too, because showing it opt-ins to heavy backend scoring.
+// Bumped to also default-hide user-owned account columns for existing admins (toggleable via column settings).
 const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
-const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-hidden-by-default'
+const HIDDEN_COLUMNS_CURRENT_VERSION = 'user-owned-account-cols-hidden-by-default'
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
@@ -774,9 +801,12 @@ const loadSavedColumns = () => {
       parsed.forEach(key => {
         hiddenColumns.add(key)
       })
-      // Older saved column layouts may have scheduler_score visible; migrate them to the new safe default once.
+      // Older saved layouts: force-hide columns that should be opt-in (scheduler score / user-owned meta).
       if (localStorage.getItem(HIDDEN_COLUMNS_VERSION_KEY) !== HIDDEN_COLUMNS_CURRENT_VERSION) {
         hiddenColumns.add('scheduler_score')
+        hiddenColumns.add('owner_user_id')
+        hiddenColumns.add('visibility')
+        hiddenColumns.add('upstream_plan')
         localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
         localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, HIDDEN_COLUMNS_CURRENT_VERSION)
       }
@@ -1399,6 +1429,9 @@ const allColumns = computed(() => {
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true },
     { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
+    { key: 'owner_user_id', label: t('admin.accounts.columns.owner'), sortable: false },
+    { key: 'visibility', label: t('admin.accounts.columns.visibility'), sortable: false },
+    { key: 'upstream_plan', label: t('admin.accounts.columns.upstreamPlan'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
