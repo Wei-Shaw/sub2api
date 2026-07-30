@@ -3505,12 +3505,41 @@
                         )
                       }}
                     </p>
+                    <p
+                      class="mt-1 text-sm text-gray-700 dark:text-gray-300"
+                      data-testid="saved-private-group-expires-date"
+                    >
+                      {{
+                        savedPrivateGroupExpiresDate
+                          ? t(
+                              "admin.settings.defaults.syncPrivateSubscriptionsSavedDate",
+                              { date: savedPrivateGroupExpiresDate },
+                            )
+                          : t(
+                              "admin.settings.defaults.syncPrivateSubscriptionsNoSavedDate",
+                            )
+                      }}
+                    </p>
+                    <p
+                      v-if="privateGroupExpiresDateDirty"
+                      class="mt-1 text-sm font-medium text-amber-800 dark:text-amber-300"
+                      data-testid="private-group-expires-unsaved-hint"
+                    >
+                      {{
+                        t(
+                          "admin.settings.defaults.syncPrivateSubscriptionsUnsavedHint",
+                        )
+                      }}
+                    </p>
                   </div>
                   <button
                     type="button"
-                    class="btn btn-secondary btn-sm shrink-0 border-amber-300 text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                    class="btn btn-secondary btn-sm shrink-0 border-amber-300 text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-900/40"
                     data-testid="sync-private-subscriptions-btn"
-                    :disabled="syncingPrivateSubscriptions"
+                    :disabled="
+                      syncingPrivateSubscriptions || !canSyncPrivateSubscriptions
+                    "
+                    :title="syncPrivateSubscriptionsBlockedReason || undefined"
                     @click="openSyncPrivateSubscriptionsConfirm"
                   >
                     {{
@@ -8019,15 +8048,20 @@
           t('admin.settings.defaults.syncPrivateSubscriptionsConfirmTitle')
         "
         :message="
-          t('admin.settings.defaults.syncPrivateSubscriptionsConfirmMessage')
+          t(
+            'admin.settings.defaults.syncPrivateSubscriptionsConfirmMessage',
+            { date: savedPrivateGroupExpiresDate || '—' },
+          )
         "
         :confirm-text="
-          t('admin.settings.defaults.syncPrivateSubscriptionsConfirm')
+          syncingPrivateSubscriptions
+            ? t('admin.settings.defaults.syncingPrivateSubscriptions')
+            : t('admin.settings.defaults.syncPrivateSubscriptionsConfirm')
         "
         danger
         data-testid="sync-private-subscriptions-confirm"
         @confirm="confirmSyncPrivateSubscriptions"
-        @cancel="showSyncPrivateSubscriptionsDialog = false"
+        @cancel="cancelSyncPrivateSubscriptionsDialog"
       >
         <p
           class="text-sm font-medium text-amber-800 dark:text-amber-300"
@@ -8237,8 +8271,10 @@ const newAdminApiKey = ref("");
 const subscriptionGroups = ref<AdminGroup[]>([]);
 
 // 私有订阅到期日批量同步（与 settings save 分离）
+// 同步读「已落库」日期，不用表单草稿，避免未保存就点同步导致 400
 const showSyncPrivateSubscriptionsDialog = ref(false);
 const syncingPrivateSubscriptions = ref(false);
+const savedPrivateGroupExpiresDate = ref("");
 
 // Upstream billing probe state
 const upstreamBillingProbeLoading = ref(true);
@@ -9043,6 +9079,29 @@ const form = reactive<SettingsForm>({
   affiliate_enabled: false,
   // Allow user view error requests
   allow_user_view_error_requests: false,
+});
+
+const privateGroupExpiresDateDirty = computed(
+  () =>
+    (form.private_group_expires_date || "") !==
+    (savedPrivateGroupExpiresDate.value || ""),
+);
+
+/** 仅当服务端已保存非空日期且表单无未保存改动时允许同步 */
+const canSyncPrivateSubscriptions = computed(
+  () =>
+    Boolean(savedPrivateGroupExpiresDate.value) &&
+    !privateGroupExpiresDateDirty.value,
+);
+
+const syncPrivateSubscriptionsBlockedReason = computed(() => {
+  if (privateGroupExpiresDateDirty.value) {
+    return t("admin.settings.defaults.syncPrivateSubscriptionsNeedSave");
+  }
+  if (!savedPrivateGroupExpiresDate.value) {
+    return t("admin.settings.defaults.syncPrivateSubscriptionsNeedDate");
+  }
+  return "";
 });
 
 type OpenAIAdvancedSchedulerOverrideKey =
@@ -9987,6 +10046,7 @@ async function loadSettings() {
       typeof settings.private_group_expires_date === "string"
         ? settings.private_group_expires_date
         : "";
+    savedPrivateGroupExpiresDate.value = form.private_group_expires_date;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
@@ -10645,6 +10705,8 @@ async function saveSettings() {
       typeof updated.private_group_expires_date === "string"
         ? updated.private_group_expires_date
         : "";
+    // 保存成功后同步「已落库」快照，允许随后批量同步
+    savedPrivateGroupExpiresDate.value = form.private_group_expires_date;
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         updated.registration_email_suffix_whitelist,
@@ -10862,8 +10924,14 @@ function copyNewKey() {
 }
 
 function openSyncPrivateSubscriptionsConfirm() {
-  // 同步读后端已保存的日期；表单未填时先提示保存，避免无意义 400
-  if (!form.private_group_expires_date) {
+  // 必须以已保存值为准：表单草稿 ≠ 服务端配置
+  if (privateGroupExpiresDateDirty.value) {
+    appStore.showError(
+      t("admin.settings.defaults.syncPrivateSubscriptionsNeedSave"),
+    );
+    return;
+  }
+  if (!savedPrivateGroupExpiresDate.value) {
     appStore.showError(
       t("admin.settings.defaults.syncPrivateSubscriptionsNeedDate"),
     );
@@ -10872,8 +10940,29 @@ function openSyncPrivateSubscriptionsConfirm() {
   showSyncPrivateSubscriptionsDialog.value = true;
 }
 
+function cancelSyncPrivateSubscriptionsDialog() {
+  // 同步进行中不允许关掉对话框，避免误以为请求已取消
+  if (syncingPrivateSubscriptions.value) return;
+  showSyncPrivateSubscriptionsDialog.value = false;
+}
+
 async function confirmSyncPrivateSubscriptions() {
   if (syncingPrivateSubscriptions.value) return;
+  // 二次校验：防止对话框打开后用户又改了表单
+  if (privateGroupExpiresDateDirty.value) {
+    showSyncPrivateSubscriptionsDialog.value = false;
+    appStore.showError(
+      t("admin.settings.defaults.syncPrivateSubscriptionsNeedSave"),
+    );
+    return;
+  }
+  if (!savedPrivateGroupExpiresDate.value) {
+    showSyncPrivateSubscriptionsDialog.value = false;
+    appStore.showError(
+      t("admin.settings.defaults.syncPrivateSubscriptionsNeedDate"),
+    );
+    return;
+  }
   syncingPrivateSubscriptions.value = true;
   try {
     const result = await adminAPI.settings.syncPrivateGroupExpires();

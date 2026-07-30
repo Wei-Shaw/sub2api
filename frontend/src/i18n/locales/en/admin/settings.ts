@@ -322,10 +322,16 @@ export default {
         privateGroupExpiresDatePlaceholder: 'YYYY-MM-DD',
         syncPrivateSubscriptions: 'Sync to All Private Subscriptions',
         syncPrivateSubscriptionsHint:
-          'Separate action — not run on settings save. Bulk-updates all private exclusive subscriptions using the saved expiry date.',
+          'Separate action — not run on settings save. Bulk-updates all private exclusive subscriptions using the saved expiry date below (not the draft in the date input).',
+        syncPrivateSubscriptionsSavedDate:
+          'Saved expiry date: {date} (sync will use this date)',
+        syncPrivateSubscriptionsNoSavedDate:
+          'No saved expiry date yet — pick a date and click Save Settings first',
+        syncPrivateSubscriptionsUnsavedHint:
+          'You have unsaved changes to the expiry date. Save Settings before syncing.',
         syncPrivateSubscriptionsConfirmTitle: 'Sync to all private subscriptions?',
         syncPrivateSubscriptionsConfirmMessage:
-          'This will set expires_at on ALL private exclusive subscriptions (including expired and suspended) to the configured absolute date (Asia/Shanghai 23:59:59).',
+          'This will set expires_at on ALL private exclusive subscriptions (including expired and suspended) to the saved date {date} (Asia/Shanghai end of day 23:59:59).',
         syncPrivateSubscriptionsConfirmDetail:
           'S1 status rules: if the new expiry is in the future → status=active (revives expired and suspended private subscriptions); if past → status=expired. Non-private subscriptions are not touched. This cannot be undone.',
         syncPrivateSubscriptionsConfirm: 'Confirm sync',
@@ -334,6 +340,8 @@ export default {
         syncPrivateSubscriptionsFailed: 'Failed to sync private subscription expiry',
         syncPrivateSubscriptionsNeedDate:
           'Configure and save the private group expiry date before syncing',
+        syncPrivateSubscriptionsNeedSave:
+          'The private group expiry date is unsaved (or differs from the saved value). Click Save Settings first, then sync.',
         syncingPrivateSubscriptions: 'Syncing...',
       },
       platformQuota: {

@@ -317,16 +317,22 @@ export default {
         privateGroupExpiresDatePlaceholder: 'YYYY-MM-DD',
         syncPrivateSubscriptions: '同步到全部私有订阅',
         syncPrivateSubscriptionsHint:
-          '独立操作，不会随设置保存自动执行。使用已保存的到期日批量改写全部私有专属订阅。',
+          '独立操作，不会随设置保存自动执行。使用下方「已保存」的到期日批量改写全部私有专属订阅（不是输入框草稿）。',
+        syncPrivateSubscriptionsSavedDate: '已保存到期日：{date}（同步将使用此日期）',
+        syncPrivateSubscriptionsNoSavedDate: '尚未保存到期日：请先选择日期并点击「保存设置」',
+        syncPrivateSubscriptionsUnsavedHint:
+          '到期日有未保存的修改，请先点击「保存设置」，再同步。',
         syncPrivateSubscriptionsConfirmTitle: '确认同步到全部私有订阅？',
         syncPrivateSubscriptionsConfirmMessage:
-          '将把全部私有专属订阅（含已过期、已暂停）的到期日统一改为已配置的绝对日期（Asia/Shanghai 23:59:59）。',
+          '将把全部私有专属订阅（含已过期、已暂停）的到期日统一改为已保存日期 {date}（Asia/Shanghai 当日 23:59:59）。',
         syncPrivateSubscriptionsConfirmDetail:
           'S1 状态规则：新到期日在未来 → status=active（会救活已过期与已暂停的私有订阅）；新到期日已过去 → status=expired。非私有订阅不受影响。此操作不可撤销。',
         syncPrivateSubscriptionsConfirm: '确认同步',
         syncPrivateSubscriptionsSuccess: '已同步 {updated} 条私有订阅，到期日 {expiresAt}，状态 {status}',
         syncPrivateSubscriptionsFailed: '同步私有订阅到期日失败',
         syncPrivateSubscriptionsNeedDate: '请先配置并保存私有专属组统一到期日后再同步',
+        syncPrivateSubscriptionsNeedSave:
+          '私有专属组到期日尚未保存（或与已保存值不一致），请先点击「保存设置」再同步',
         syncingPrivateSubscriptions: '同步中...',
       },
       platformQuota: {
