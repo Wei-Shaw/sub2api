@@ -61,6 +61,8 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 	totpService              *service.TotpService
 	userService              *service.UserService
+	privateGroups            service.PrivateGroupProvisioner
+	auditLog                 *service.AuditLogService
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -89,6 +91,12 @@ func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *s
 func (h *SettingHandler) SetStepUpDeps(totpService *service.TotpService, userService *service.UserService) {
 	h.totpService = totpService
 	h.userService = userService
+}
+
+// SetPrivateGroupSyncDeps attaches private group sync + force audit writers.
+func (h *SettingHandler) SetPrivateGroupSyncDeps(privateGroups service.PrivateGroupProvisioner, auditLog *service.AuditLogService) {
+	h.privateGroups = privateGroups
+	h.auditLog = auditLog
 }
 
 // GetSettings 获取所有系统设置

@@ -22,6 +22,10 @@ type PrivateGroupProvisioner interface {
 	ProvisionPrivatePlatformGroups(ctx context.Context, userID int64) (*ProvisionResult, error)
 	// RevokePrivatePlatformGroups 软删该用户全部 private-{userId}-* 组（DeleteCascade）。
 	RevokePrivatePlatformGroups(ctx context.Context, userID int64) (*RevokeResult, error)
+	// SyncPrivateSubscriptionExpiresAt 将全部私有专属订阅 expires_at 同步为设置日末。
+	// 未配置日期返回 ErrPrivateGroupExpiresDateNotConfigured。
+	// S1：含 expired/suspended；target 未来→active，过去→expired。
+	SyncPrivateSubscriptionExpiresAt(ctx context.Context) (*SyncResult, error)
 	// AfterCommit 在外层事务成功提交后补发 outbox 与缓存失效。
 	AfterCommit(ctx context.Context, result *ProvisionResult)
 	// AfterRevokeCommit 在外层事务成功提交后补发删除 outbox。
@@ -43,6 +47,25 @@ type RevokeResult struct {
 	NeedsAfterCommit bool
 }
 
+// SyncResult 描述批量同步私有订阅到期日的结果。
+type SyncResult struct {
+	Updated   int64     `json:"updated"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Status    string    `json:"status"`
+}
+
+// ErrPrivateGroupExpiresDateNotConfigured 批量同步时设置未配置绝对到期日。
+var ErrPrivateGroupExpiresDateNotConfigured = infraerrors.BadRequest(
+	"PRIVATE_GROUP_EXPIRES_DATE_NOT_CONFIGURED",
+	"private_group_expires_date is not configured; set a date before syncing",
+)
+
+// ErrPrivateGroupProvisionRole 管理端补建时目标用户非 role=user。
+var ErrPrivateGroupProvisionRole = infraerrors.BadRequest(
+	"PRIVATE_GROUP_PROVISION_ROLE",
+	"private groups can only be provisioned for role=user",
+)
+
 // subscriptionEnsure 抽象 EnsureSubscriptionWithExpiresAt，便于单测 stub。
 type subscriptionEnsure interface {
 	EnsureSubscriptionWithExpiresAt(
@@ -53,6 +76,11 @@ type subscriptionEnsure interface {
 		deferCacheInvalidation bool,
 	) (*UserSubscription, error)
 	InvalidateSubCache(userID, groupID int64)
+	BulkSyncPrivateSubscriptionExpires(
+		ctx context.Context,
+		expiresAt time.Time,
+		status string,
+	) (updated int64, pairs []privateSubUserGroup, err error)
 }
 
 type privateGroupProvisioner struct {
@@ -272,6 +300,70 @@ func (p *privateGroupProvisioner) RevokePrivatePlatformGroups(ctx context.Contex
 	return result, nil
 }
 
+func (p *privateGroupProvisioner) SyncPrivateSubscriptionExpiresAt(ctx context.Context) (*SyncResult, error) {
+	if p == nil || p.subEnsure == nil || p.settingService == nil {
+		return nil, errors.New("private group provisioner not fully configured for sync")
+	}
+
+	expiresAt, ok := p.settingService.ResolvePrivateGroupExpiresAt(ctx)
+	if !ok {
+		return nil, ErrPrivateGroupExpiresDateNotConfigured
+	}
+
+	now := time.Now()
+	status := SubscriptionStatusExpired
+	if expiresAt.After(now) {
+		status = SubscriptionStatusActive
+	}
+
+	updated, pairs, err := p.subEnsure.BulkSyncPrivateSubscriptionExpires(ctx, expiresAt, status)
+	if err != nil {
+		logger.LegacyPrintf("service.private_group", "private_group_sync failed: err=%v", err)
+		return nil, err
+	}
+
+	// 缓存失效：分批；单批超时记日志，不失败整个同步（DB 已更新）。
+	p.invalidatePrivateSubCachesBatched(pairs)
+
+	logger.LegacyPrintf("service.private_group", "private_group_sync ok: updated=%d expires_at=%s status=%s",
+		updated, expiresAt.Format(time.RFC3339), status)
+	return &SyncResult{Updated: updated, ExpiresAt: expiresAt, Status: status}, nil
+}
+
+// invalidatePrivateSubCachesBatched 对同步命中的 (user,group) 分批失效订阅缓存。
+func (p *privateGroupProvisioner) invalidatePrivateSubCachesBatched(pairs []privateSubUserGroup) {
+	if len(pairs) == 0 {
+		return
+	}
+	const batchSize = 200
+	for i := 0; i < len(pairs); i += batchSize {
+		end := i + batchSize
+		if end > len(pairs) {
+			end = len(pairs)
+		}
+		batch := pairs[i:end]
+		for _, pair := range batch {
+			if p.subEnsure != nil {
+				p.subEnsure.InvalidateSubCache(pair.UserID, pair.GroupID)
+			}
+		}
+		if p.billingCache == nil {
+			continue
+		}
+		// 单批超时：记日志不失败（DB 已提交）
+		func(batch []privateSubUserGroup) {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			for _, pair := range batch {
+				if err := p.billingCache.InvalidateSubscription(cacheCtx, pair.UserID, pair.GroupID); err != nil {
+					logger.LegacyPrintf("service.private_group", "private_group_sync cache invalidate failed: user_id=%d group_id=%d err=%v",
+						pair.UserID, pair.GroupID, err)
+				}
+			}
+		}(batch)
+	}
+}
+
 func (p *privateGroupProvisioner) AfterCommit(ctx context.Context, result *ProvisionResult) {
 	if p == nil || result == nil || !result.NeedsAfterCommit {
 		return
@@ -385,5 +477,8 @@ func (noopPrivateGroupProvisioner) ProvisionPrivatePlatformGroups(context.Contex
 func (noopPrivateGroupProvisioner) RevokePrivatePlatformGroups(context.Context, int64) (*RevokeResult, error) {
 	return &RevokeResult{}, nil
 }
-func (noopPrivateGroupProvisioner) AfterCommit(context.Context, *ProvisionResult)   {}
+func (noopPrivateGroupProvisioner) SyncPrivateSubscriptionExpiresAt(context.Context) (*SyncResult, error) {
+	return &SyncResult{}, nil
+}
+func (noopPrivateGroupProvisioner) AfterCommit(context.Context, *ProvisionResult)     {}
 func (noopPrivateGroupProvisioner) AfterRevokeCommit(context.Context, *RevokeResult) {}

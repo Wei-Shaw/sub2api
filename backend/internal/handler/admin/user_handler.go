@@ -34,6 +34,8 @@ type UserHandler struct {
 	totpService           *service.TotpService                // 角色提升为管理员的 step-up 门控
 	userService           *service.UserService
 	settingService        *service.SettingService // step-up 功能开关
+	privateGroups         service.PrivateGroupProvisioner
+	auditLog              *service.AuditLogService
 }
 
 // NewUserHandler creates a new admin user handler
@@ -55,6 +57,12 @@ func NewUserHandler(
 		userService:           userService,
 		settingService:        settingService,
 	}
+}
+
+// SetPrivateGroupDeps attaches private group provisioner + audit for manual backfill API.
+func (h *UserHandler) SetPrivateGroupDeps(privateGroups service.PrivateGroupProvisioner, auditLog *service.AuditLogService) {
+	h.privateGroups = privateGroups
+	h.auditLog = auditLog
 }
 
 // CreateUserRequest represents admin create user request
@@ -301,6 +309,92 @@ func (h *UserHandler) Create(c *gin.Context) {
 	}
 
 	response.Success(c, dto.UserFromServiceAdmin(user))
+}
+
+// ProvisionPrivateGroups 幂等补建私有专属平台分组（历史用户 / 半失败回填）。
+// POST /api/v1/admin/users/:id/provision-private-groups
+func (h *UserHandler) ProvisionPrivateGroups(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	if h.privateGroups == nil {
+		response.ErrorFrom(c, fmt.Errorf("private group provisioner not configured"))
+		return
+	}
+
+	user, err := h.adminService.GetUser(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if user.Role != service.RoleUser {
+		response.ErrorFrom(c, service.ErrPrivateGroupProvisionRole)
+		return
+	}
+
+	result, err := h.privateGroups.ProvisionPrivatePlatformGroups(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	// 非外层 tx 时 AfterCommit 为 no-op（NeedsAfterCommit=false）；安全调用。
+	h.privateGroups.AfterCommit(c.Request.Context(), result)
+
+	created := 0
+	ensured := 0
+	if result != nil {
+		created = len(result.CreatedGroupIDs)
+		ensured = len(result.EnsuredGroupIDs)
+	}
+	actorID := getAdminIDFromContext(c)
+	middleware.SetAuditAction(c, service.AuditActionProvisionPrivateGroups)
+	middleware.SetAuditExtra(c, map[string]any{
+		"target_user_id": userID,
+		"created_count":  created,
+		"ensured_count":  ensured,
+		"actor_admin_id": actorID,
+		"result":         "ok",
+	})
+
+	// 强制同步审计（补建低频但属供给类写操作）；成功后跳过中间件异步写，避免双记。
+	if h.auditLog != nil {
+		entry := &service.AuditLog{
+			Action:     service.AuditActionProvisionPrivateGroups,
+			Method:     c.Request.Method,
+			Path:       c.FullPath(),
+			StatusCode: 200,
+			ActorRole:  service.RoleAdmin,
+			Extra: map[string]any{
+				"target_user_id": userID,
+				"created_count":  created,
+				"ensured_count":  ensured,
+				"actor_admin_id": actorID,
+			},
+		}
+		if actorID > 0 {
+			entry.ActorUserID = &actorID
+		}
+		if ferr := h.auditLog.ForceRecord(c.Request.Context(), entry); ferr != nil {
+			slog.Warn("provision private groups audit force write failed", "user_id", userID, "err", ferr)
+		} else {
+			middleware.SkipAudit(c)
+		}
+	}
+
+	var createdIDs, ensuredIDs []int64
+	if result != nil {
+		createdIDs = result.CreatedGroupIDs
+		ensuredIDs = result.EnsuredGroupIDs
+	}
+	response.Success(c, gin.H{
+		"user_id":       userID,
+		"created_count": created,
+		"ensured_count": ensured,
+		"created_ids":   createdIDs,
+		"ensured_ids":   ensuredIDs,
+	})
 }
 
 // Update handles updating a user

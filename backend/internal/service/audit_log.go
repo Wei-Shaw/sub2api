@@ -36,6 +36,9 @@ const (
 	AuditActionSessionBindingMismatch = "auth.session_binding.mismatch"
 	AuditActionStepUpVerify           = "auth.step_up.verify"
 	AuditActionAuditLogClear          = "admin.audit_log.clear"
+	// 私有组批量同步 / 幂等补建（高风险操作，handler 侧强制同步落库）。
+	AuditActionPrivateGroupExpiresSync = "admin.settings.private_group_expires.sync"
+	AuditActionProvisionPrivateGroups  = "admin.users.provision_private_groups"
 )
 
 // AuditLog 一条管理面操作审计记录。

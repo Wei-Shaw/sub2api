@@ -240,9 +240,15 @@ func (s *stubGroupRepoForProvision) EnqueueGroupChanged(_ context.Context, group
 }
 
 type stubSubEnsure struct {
-	calls      int
-	deferFlags []bool
-	err        error
+	calls         int
+	deferFlags    []bool
+	err           error
+	syncCalls     int
+	syncUpdated   int64
+	syncPairs     []privateSubUserGroup
+	syncErr       error
+	syncExpiresAt time.Time
+	syncStatus    string
 }
 
 func (s *stubSubEnsure) EnsureSubscriptionWithExpiresAt(
@@ -256,6 +262,17 @@ func (s *stubSubEnsure) EnsureSubscriptionWithExpiresAt(
 	return &UserSubscription{GroupID: groupID, Status: SubscriptionStatusActive}, nil
 }
 func (s *stubSubEnsure) InvalidateSubCache(_, _ int64) {}
+func (s *stubSubEnsure) BulkSyncPrivateSubscriptionExpires(
+	_ context.Context, expiresAt time.Time, status string,
+) (int64, []privateSubUserGroup, error) {
+	s.syncCalls++
+	s.syncExpiresAt = expiresAt
+	s.syncStatus = status
+	if s.syncErr != nil {
+		return 0, nil, s.syncErr
+	}
+	return s.syncUpdated, s.syncPairs, nil
+}
 
 // userRepoStubForProvision 在 userRepoStub 上允许 AddGroupToAllowedGroups。
 type userRepoStubForProvision struct {
@@ -352,11 +369,14 @@ type recordingProvisioner struct {
 
 func (r *recordingProvisioner) ProvisionPrivatePlatformGroups(_ context.Context, userID int64) (*ProvisionResult, error) {
 	r.provisioned = append(r.provisioned, userID)
-	return &ProvisionResult{UserID: userID}, nil
+	return &ProvisionResult{UserID: userID, CreatedGroupIDs: []int64{1}, EnsuredGroupIDs: []int64{1, 2}}, nil
 }
 func (r *recordingProvisioner) RevokePrivatePlatformGroups(_ context.Context, userID int64) (*RevokeResult, error) {
 	r.revoked = append(r.revoked, userID)
 	return &RevokeResult{UserID: userID}, nil
+}
+func (r *recordingProvisioner) SyncPrivateSubscriptionExpiresAt(context.Context) (*SyncResult, error) {
+	return &SyncResult{Updated: 0}, nil
 }
 func (r *recordingProvisioner) AfterCommit(context.Context, *ProvisionResult)     {}
 func (r *recordingProvisioner) AfterRevokeCommit(context.Context, *RevokeResult) {}
@@ -590,4 +610,61 @@ func TestGetAvailableGroups_ExcludesFullListActive(t *testing.T) {
 	}
 	require.Contains(t, ids, int64(10))
 	require.Contains(t, ids, int64(20))
+}
+
+func TestSyncPrivateSubscriptionExpiresAt_RequiresConfiguredDate(t *testing.T) {
+	p := newTestProvisioner(&User{ID: 1, Role: RoleUser}, nil, nil)
+	_, err := p.SyncPrivateSubscriptionExpiresAt(context.Background())
+	require.ErrorIs(t, err, ErrPrivateGroupExpiresDateNotConfigured)
+}
+
+func TestSyncPrivateSubscriptionExpiresAt_FutureTargetActivates(t *testing.T) {
+	sub := &stubSubEnsure{
+		syncUpdated: 3,
+		syncPairs: []privateSubUserGroup{
+			{UserID: 1, GroupID: 10},
+			{UserID: 2, GroupID: 11},
+			{UserID: 3, GroupID: 12},
+		},
+	}
+	groupRepo := &stubGroupRepoForProvision{byName: map[string]*Group{}}
+	userRepo := &userRepoStubForProvision{userRepoStub: userRepoStub{user: &User{ID: 1, Role: RoleUser}}}
+	cfg := &config.Config{}
+	settings := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyPrivateGroupExpiresDate: "2099-06-15",
+	}}, cfg)
+	p := &privateGroupProvisioner{
+		groupRepo:      groupRepo,
+		userRepo:       userRepo,
+		subEnsure:      sub,
+		settingService: settings,
+	}
+
+	result, err := p.SyncPrivateSubscriptionExpiresAt(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, int64(3), result.Updated)
+	require.Equal(t, SubscriptionStatusActive, result.Status)
+	require.Equal(t, 1, sub.syncCalls)
+	require.Equal(t, SubscriptionStatusActive, sub.syncStatus)
+	// 上海日末 23:59:59
+	require.Equal(t, 23, result.ExpiresAt.Hour())
+	require.Equal(t, 59, result.ExpiresAt.Minute())
+	require.Equal(t, 59, result.ExpiresAt.Second())
+}
+
+func TestSyncPrivateSubscriptionExpiresAt_PastTargetExpires(t *testing.T) {
+	sub := &stubSubEnsure{syncUpdated: 1}
+	settings := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyPrivateGroupExpiresDate: "2020-01-01",
+	}}, &config.Config{})
+	p := &privateGroupProvisioner{
+		groupRepo:      &stubGroupRepoForProvision{},
+		userRepo:       &userRepoStubForProvision{userRepoStub: userRepoStub{user: &User{ID: 1, Role: RoleUser}}},
+		subEnsure:      sub,
+		settingService: settings,
+	}
+	result, err := p.SyncPrivateSubscriptionExpiresAt(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, SubscriptionStatusExpired, result.Status)
+	require.Equal(t, SubscriptionStatusExpired, sub.syncStatus)
 }
