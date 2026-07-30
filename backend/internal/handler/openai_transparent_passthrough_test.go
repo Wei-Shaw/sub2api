@@ -123,9 +123,10 @@ func (u *openAITransparentMixedAccountUpstream) Do(req *http.Request, _ string, 
 	}
 	u.bodies = append(u.bodies, requestBody)
 	responseID := "resp_api_key_first"
-	if accountID == 70 {
+	switch accountID {
+	case 70:
 		responseID = "resp_oauth_issuer"
-	} else if accountID == 71 {
+	case 71:
 		responseID = "resp_oauth_other"
 	}
 	body := fmt.Sprintf(`{"id":%q,"object":"response","model":"gpt-5.6-sol","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`, responseID)
