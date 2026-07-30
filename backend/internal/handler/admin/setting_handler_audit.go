@@ -299,6 +299,9 @@ REDACTED
 	if before.HomeContent != after.HomeContent {
 		changed = append(changed, "home_content")
 REDACTED
+	if before.CompactHomeEnabled != after.CompactHomeEnabled {
+		changed = append(changed, "compact_home_enabled")
+REDACTED
 	if before.HideCcsImportButton != after.HideCcsImportButton {
 		changed = append(changed, "hide_ccs_import_button")
 REDACTED

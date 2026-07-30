@@ -376,6 +376,7 @@ const baseSettingsResponse = {
   contact_info: "",
   doc_url: "",
   home_content: "",
+  compact_home_enabled: false,
   hide_ccs_import_button: false,
   table_default_page_size: 20,
   table_page_size_options: [10, 20, 50, 100],
@@ -676,6 +677,22 @@ describe("admin SettingsView payment visible method controls", () => {
     REDACTED);
     fetchPublicSettings.mockResolvedValue(undefined);
     adminSettingsFetch.mockResolvedValue(undefined);
+  REDACTED);
+
+  it("submits the compact home page toggle", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+
+    const toggle = wrapper.get('[data-testid="compact-home-toggle"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+
+    await toggle.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ compact_home_enabled: true REDACTED),
+    );
   REDACTED);
 
   it("renders panel rate limit card and saves settings", async () => {

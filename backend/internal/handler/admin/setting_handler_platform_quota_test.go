@@ -64,6 +64,18 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestDiffSettings_DetectsCompactHomeChange(t *testing.T) {
+	changed := diffSettings(
+		&service.SystemSettings{REDACTED,
+		&service.SystemSettings{CompactHomeEnabled: trueREDACTED,
+		nil,
+		nil,
+		UpdateSettingsRequest{REDACTED,
+	)
+
+	require.Contains(t, changed, service.SettingKeyCompactHomeEnabled)
+REDACTED
+
 func TestEqualNullableFloat(t *testing.T) {
 	five := 5.0
 	five2 := 5.0

@@ -78,6 +78,25 @@ REDACTED
 	require.Equal(t, []int{20, 50, 100REDACTED, settings.TablePageSizeOptions)
 REDACTED
 
+func TestSettingService_GetPublicSettings_ExposesCompactHomeEnabled(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyCompactHomeEnabled: "true",
+	REDACTED,
+REDACTED
+	svc := NewSettingService(repo, &config.Config{REDACTED)
+
+	settings, err := svc.GetPublicSettings(context.Background())
+
+REDACTED
+	require.True(t, settings.CompactHomeEnabled)
+
+	missingSettings, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{REDACTED).
+		GetPublicSettings(context.Background())
+REDACTED
+	require.False(t, missingSettings.CompactHomeEnabled)
+REDACTED
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{
