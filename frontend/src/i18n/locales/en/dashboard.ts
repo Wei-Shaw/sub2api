@@ -520,6 +520,80 @@ export default {
     }
   },
 
+  // User-owned upstream accounts (feature flag: user_owned_accounts_enabled)
+  myAccounts: {
+    title: 'My Accounts',
+    description: 'Create and manage your own upstream accounts',
+    subtitle:
+      'Accounts you contribute are used by the gateway for your private group, or shared into matching share-pool groups when public.',
+    create: 'Add Account',
+    createTitle: 'Add upstream account',
+    deleteTitle: 'Delete account',
+    deleteConfirm: 'Delete account "{name}"? This cannot be undone.',
+    createSuccess: 'Account created',
+    createSuccessForcedPrivate: 'Account created as private ({reason})',
+    deleteSuccess: 'Account deleted',
+    madePublic: 'Visibility set to public',
+    madePrivate: 'Visibility set to private',
+    visibilityForcedPrivate: 'Could not set public ({reason}); kept private',
+    failedToLoad: 'Failed to load accounts',
+    failedToCreate: 'Failed to create account',
+    failedToDelete: 'Failed to delete account',
+    failedToUpdateVisibility: 'Failed to update visibility',
+    columns: {
+      name: 'Name',
+      platform: 'Platform',
+      type: 'Type',
+      visibility: 'Visibility',
+      upstreamPlan: 'Upstream Plan',
+      status: 'Status',
+      actions: 'Actions'
+    },
+    visibility: {
+      private: 'Private',
+      public: 'Public'
+    },
+    types: {
+      apikey: 'API Key',
+      oauth: 'OAuth (token paste)',
+      setupToken: 'Setup Token'
+    },
+    status: {
+      active: 'Active',
+      disabled: 'Disabled',
+      error: 'Error'
+    },
+    actions: {
+      makePublic: 'Make public',
+      makePrivate: 'Make private'
+    },
+    reasons: {
+      planProbeFailed: 'plan probe failed',
+      planProbeUnsupported: 'type does not support public plan probe',
+      planEmpty: 'upstream plan unknown'
+    },
+    form: {
+      name: 'Name',
+      namePlaceholder: 'e.g. my-openai-plus',
+      nameRequired: 'Name is required',
+      platform: 'Platform',
+      type: 'Auth type',
+      typeHint: 'v1 supports API key paste or OAuth access_token paste (no full OAuth wizard).',
+      apiKey: 'API Key',
+      apiKeyPlaceholder: 'Paste API key',
+      apiKeyRequired: 'API key is required',
+      accessToken: 'Access token',
+      accessTokenPlaceholder: 'Paste OAuth access_token',
+      accessTokenRequired: 'Access token is required',
+      oauthPasteHint: 'Paste a valid access_token. Refresh-token based OAuth wizard is not available yet.',
+      visibility: 'Visibility',
+      visibilityHint:
+        'Private binds only your private platform group. Public also joins matching share-pool groups when an upstream plan can be detected.',
+      publicUnsupportedHint:
+        'This platform/type cannot probe plan for public sharing; create as public will be forced private by the server.'
+    }
+  },
+
   affiliate: {
     title: 'Affiliate Rebates',
     description: 'Invite new users and convert your rebate quota into account balance',

@@ -525,6 +525,80 @@ export default {
     }
   },
 
+  // 用户自建上游账号（feature flag: user_owned_accounts_enabled）
+  myAccounts: {
+    title: '我的账号',
+    description: '创建与管理您自己的上游账号',
+    subtitle:
+      '自建账号会进入您的私有平台组；设为公用时，在探测到上游档位后可进入匹配的共享池分组。',
+    create: '添加账号',
+    createTitle: '添加上游账号',
+    deleteTitle: '删除账号',
+    deleteConfirm: '确定删除账号「{name}」？此操作不可撤销。',
+    createSuccess: '账号已创建',
+    createSuccessForcedPrivate: '账号已创建，因（{reason}）保持为私有',
+    deleteSuccess: '账号已删除',
+    madePublic: '已切换为公用',
+    madePrivate: '已切换为私有',
+    visibilityForcedPrivate: '无法设为公用（{reason}），已保持私有',
+    failedToLoad: '加载账号失败',
+    failedToCreate: '创建账号失败',
+    failedToDelete: '删除账号失败',
+    failedToUpdateVisibility: '更新可见性失败',
+    columns: {
+      name: '名称',
+      platform: '平台',
+      type: '类型',
+      visibility: '可见性',
+      upstreamPlan: '上游档位',
+      status: '状态',
+      actions: '操作'
+    },
+    visibility: {
+      private: '私有',
+      public: '公用'
+    },
+    types: {
+      apikey: 'API Key',
+      oauth: 'OAuth（粘贴 Token）',
+      setupToken: 'Setup Token'
+    },
+    status: {
+      active: '启用',
+      disabled: '停用',
+      error: '错误'
+    },
+    actions: {
+      makePublic: '设为公用',
+      makePrivate: '设为私有'
+    },
+    reasons: {
+      planProbeFailed: '套餐探测失败',
+      planProbeUnsupported: '该类型不支持公用探测',
+      planEmpty: '上游档位未知'
+    },
+    form: {
+      name: '名称',
+      namePlaceholder: '例如 my-openai-plus',
+      nameRequired: '请填写名称',
+      platform: '平台',
+      type: '鉴权类型',
+      typeHint: 'v1 支持粘贴 API Key 或 OAuth access_token（完整 OAuth 向导尚未开放）。',
+      apiKey: 'API Key',
+      apiKeyPlaceholder: '粘贴 API Key',
+      apiKeyRequired: '请填写 API Key',
+      accessToken: 'Access Token',
+      accessTokenPlaceholder: '粘贴 OAuth access_token',
+      accessTokenRequired: '请填写 access_token',
+      oauthPasteHint: '粘贴有效的 access_token。基于 refresh_token 的完整 OAuth 流程尚未提供。',
+      visibility: '可见性',
+      visibilityHint:
+        '私有仅绑定您的私有平台组；公用在探测到上游档位后还会加入匹配的共享池分组。',
+      publicUnsupportedHint:
+        '该平台/类型无法探测套餐，请求公用时服务端会强制为私有。'
+    }
+  },
+
   affiliate: {
     title: '邀请返利',
     description: '邀请新用户注册，并将返利额度转入账户余额',
