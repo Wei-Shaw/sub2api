@@ -99,6 +99,47 @@ REDACTED
 	assert.False(t, changed)
 REDACTED
 
+func TestTrimOpenAIEncryptedReasoningItems_Compaction(t *testing.T) {
+	tests := []struct {
+		name      string
+		itemType  string
+		encrypted bool
+		changed   bool
+REDACTED{
+		{name: "compaction", itemType: "compaction", encrypted: true, changed: trueREDACTED,
+		{name: "compaction summary", itemType: "compaction_summary", encrypted: true, changed: trueREDACTED,
+		{name: "unencrypted compaction", itemType: "compaction", encrypted: false, changed: falseREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			item := map[string]any{"type": tt.itemType, "id": "cmp_stale"REDACTED
+			if tt.encrypted {
+				item["encrypted_content"] = "gAAA"
+		REDACTED
+			reqBody := map[string]any{"input": []any{
+				item,
+				map[string]any{"type": "message", "content": "hi"REDACTED,
+		REDACTEDREDACTED
+
+			changed := trimOpenAIEncryptedReasoningItems(reqBody)
+			assert.Equal(t, tt.changed, changed)
+			input, ok := reqBody["input"].([]any)
+			require.True(t, ok)
+			require.NotEmpty(t, input)
+			first, ok := input[0].(map[string]any)
+			require.True(t, ok)
+			if tt.changed {
+				require.Len(t, input, 1)
+				assert.Equal(t, "message", first["type"])
+				return
+		REDACTED
+			require.Len(t, input, 2)
+			assert.Equal(t, tt.itemType, first["type"])
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestSanitizeOpenAICrossModeFailoverReasoning_DropsWholeEncryptedItem(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.1","input":[` +
 		`{"type":"message","role":"user","content":"hi"REDACTED,` +
