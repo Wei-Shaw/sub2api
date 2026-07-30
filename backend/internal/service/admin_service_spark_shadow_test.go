@@ -68,6 +68,22 @@ func (s *sparkShadowRepoStub) BindGroups(_ context.Context, accountID int64, gro
 	s.groupsOf[accountID] = append(s.groupsOf[accountID], groupIDs...)
 	return nil
 }
+func (s *sparkShadowRepoStub) AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (s *sparkShadowRepoStub) RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (s *sparkShadowRepoStub) ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*Account, error) {
+	return nil, nil
+}
+func (s *sparkShadowRepoStub) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
+	return nil, nil
+}
+func (s *sparkShadowRepoStub) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
+	return 0, nil
+}
+
 
 func (s *sparkShadowRepoStub) ListSchedulableByGroupID(_ context.Context, groupID int64) ([]Account, error) {
 	var result []Account
@@ -754,6 +770,22 @@ type bindFailRepoStub struct {
 func (s *bindFailRepoStub) BindGroups(_ context.Context, _ int64, _ []int64) error {
 	return errors.New("simulated bind failure")
 }
+func (s *bindFailRepoStub) AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (s *bindFailRepoStub) RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (s *bindFailRepoStub) ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*Account, error) {
+	return nil, nil
+}
+func (s *bindFailRepoStub) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
+	return nil, nil
+}
+func (s *bindFailRepoStub) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
+	return 0, nil
+}
+
 
 // sparkShadowValidatingGroupRepoStub 实现 groupExistenceBatchReader(ExistsByIDs),
 // 使 validateGroupIDsExist 走批量存在性校验路径。

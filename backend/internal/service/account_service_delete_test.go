@@ -126,6 +126,22 @@ func (s *accountRepoStub) AutoPauseExpiredAccounts(ctx context.Context, now time
 func (s *accountRepoStub) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
 	panic("unexpected BindGroups call")
 }
+func (s *accountRepoStub) AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (s *accountRepoStub) RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (s *accountRepoStub) ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*Account, error) {
+	return nil, nil
+}
+func (s *accountRepoStub) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
+	return nil, nil
+}
+func (s *accountRepoStub) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
+	return 0, nil
+}
+
 
 func (s *accountRepoStub) ListSchedulable(ctx context.Context) ([]Account, error) {
 	panic("unexpected ListSchedulable call")

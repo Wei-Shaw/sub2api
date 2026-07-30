@@ -82,6 +82,17 @@ type AccountRepository interface {
 	SetSchedulable(ctx context.Context, id int64, schedulable bool) error
 	AutoPauseExpiredAccounts(ctx context.Context, now time.Time) (int64, error)
 	BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error
+	// AddGroups 幂等追加账号→组绑定（已存在则 no-op）；新建行 priority = max(existing)+1。
+	// 不删除其它绑定（与 BindGroups 全量替换相对）。outbox 含变更前+后相关 group IDs。
+	AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error
+	// RemoveGroups 幂等移除账号→组绑定（不存在则 no-op）。不碰未列出的绑定。
+	RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error
+	// ListOwnerAccountsBoundToGroup 返回绑定到 groupID 且 owner_user_id 非空的用户自建号（软删不计）。
+	ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*Account, error)
+	// ListPublicOwnerAccountsByPlatformPlan 扫描 visibility=public 且 platform+upstream_plan 严格匹配的用户自建号。
+	ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error)
+	// CountActiveOwned 统计 owner_user_id=ownerUserID 且未软删的账号数。
+	CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error)
 
 	ListSchedulable(ctx context.Context) ([]Account, error)
 	ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error)

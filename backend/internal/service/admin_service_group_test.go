@@ -132,6 +132,10 @@ func (s *groupRepoStubForAdmin) ExistsByName(_ context.Context, _ string) (bool,
 func (s *groupRepoStubForAdmin) GetByName(_ context.Context, _ string) (*Group, error) {
 	panic("unexpected GetByName call")
 }
+func (s *groupRepoStubForAdmin) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
 
 func (s *groupRepoStubForAdmin) ListActiveExcludingPrivate(_ context.Context) ([]Group, error) {
 	panic("unexpected ListActiveExcludingPrivate call")
@@ -1269,6 +1273,10 @@ func (s *groupRepoStubForFallbackCycle) ExistsByName(_ context.Context, _ string
 func (s *groupRepoStubForFallbackCycle) GetByName(_ context.Context, _ string) (*Group, error) {
 	panic("unexpected GetByName call")
 }
+func (s *groupRepoStubForFallbackCycle) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
 
 func (s *groupRepoStubForFallbackCycle) ListActiveExcludingPrivate(_ context.Context) ([]Group, error) {
 	panic("unexpected ListActiveExcludingPrivate call")
@@ -1360,6 +1368,10 @@ func (s *groupRepoStubForInvalidRequestFallback) ExistsByName(_ context.Context,
 func (s *groupRepoStubForInvalidRequestFallback) GetByName(_ context.Context, _ string) (*Group, error) {
 	panic("unexpected GetByName call")
 }
+func (s *groupRepoStubForInvalidRequestFallback) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
 
 func (s *groupRepoStubForInvalidRequestFallback) ListActiveExcludingPrivate(_ context.Context) ([]Group, error) {
 	panic("unexpected ListActiveExcludingPrivate call")

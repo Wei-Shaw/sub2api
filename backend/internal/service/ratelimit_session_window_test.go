@@ -119,6 +119,22 @@ func (m *sessionWindowMockRepo) AutoPauseExpiredAccounts(context.Context, time.T
 func (m *sessionWindowMockRepo) BindGroups(context.Context, int64, []int64) error {
 	panic("unexpected")
 }
+func (m *sessionWindowMockRepo) AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (m *sessionWindowMockRepo) RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (m *sessionWindowMockRepo) ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*Account, error) {
+	return nil, nil
+}
+func (m *sessionWindowMockRepo) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
+	return nil, nil
+}
+func (m *sessionWindowMockRepo) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
+	return 0, nil
+}
+
 func (m *sessionWindowMockRepo) ListSchedulable(context.Context) ([]Account, error) {
 	panic("unexpected")
 }

@@ -80,6 +80,22 @@ func (s *accountRepoStubForBulkUpdate) BindGroups(_ context.Context, accountID i
 	}
 	return nil
 }
+func (s *accountRepoStubForBulkUpdate) AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (s *accountRepoStubForBulkUpdate) RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (s *accountRepoStubForBulkUpdate) ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*Account, error) {
+	return nil, nil
+}
+func (s *accountRepoStubForBulkUpdate) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
+	return nil, nil
+}
+func (s *accountRepoStubForBulkUpdate) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
+	return 0, nil
+}
+
 
 func (s *accountRepoStubForBulkUpdate) GetByIDs(_ context.Context, ids []int64) ([]*Account, error) {
 	s.getByIDsCalled = true

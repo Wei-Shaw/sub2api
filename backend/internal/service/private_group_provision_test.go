@@ -188,6 +188,10 @@ func (s *stubGroupRepoForProvision) GetByName(_ context.Context, name string) (*
 	}
 	return nil, ErrGroupNotFound
 }
+func (s *stubGroupRepoForProvision) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
 func (s *stubGroupRepoForProvision) Update(context.Context, *Group) error { return nil }
 func (s *stubGroupRepoForProvision) Delete(context.Context, int64) error  { return nil }
 func (s *stubGroupRepoForProvision) DeleteCascade(_ context.Context, id int64) ([]int64, error) {
@@ -400,6 +404,10 @@ func (r *recordingProvisioner) SyncPrivateSubscriptionExpiresAt(context.Context)
 }
 func (r *recordingProvisioner) AfterCommit(context.Context, *ProvisionResult)     {}
 func (r *recordingProvisioner) AfterRevokeCommit(context.Context, *RevokeResult) {}
+func (r *recordingProvisioner) EnsurePrivateGroupForPlatform(ctx context.Context, userID int64, platform string) (*Group, *ProvisionResult, error) {
+	return nil, &ProvisionResult{}, nil
+}
+
 
 func TestAdminCreateUser_RejectsPrivateGroupsWithoutEntClient(t *testing.T) {
 	// privateGroups 已注入但无 entClient → 拒绝创建，避免非原子半成品。

@@ -34,6 +34,10 @@ func (s *syncProvisionerStub) SyncPrivateSubscriptionExpiresAt(context.Context) 
 }
 func (s *syncProvisionerStub) AfterCommit(context.Context, *service.ProvisionResult)     {}
 func (s *syncProvisionerStub) AfterRevokeCommit(context.Context, *service.RevokeResult) {}
+func (s *syncProvisionerStub) EnsurePrivateGroupForPlatform(ctx context.Context, userID int64, platform string) (*service.Group, *service.ProvisionResult, error) {
+	return nil, &service.ProvisionResult{}, nil
+}
+
 
 type forceAuditRepo struct {
 	inserted []*service.AuditLog

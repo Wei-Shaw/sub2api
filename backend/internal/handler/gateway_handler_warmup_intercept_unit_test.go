@@ -102,6 +102,10 @@ func (f *fakeGroupRepo) ExistsByName(context.Context, string) (bool, error) { re
 func (f *fakeGroupRepo) GetByName(context.Context, string) (*service.Group, error) {
 	return nil, nil
 }
+func (f *fakeGroupRepo) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]service.Group, error) {
+	return nil, nil
+}
+
 func (f *fakeGroupRepo) ListActiveExcludingPrivate(context.Context) ([]service.Group, error) {
 	return nil, nil
 }

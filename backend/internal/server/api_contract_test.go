@@ -1747,6 +1747,10 @@ func (stubGroupRepo) ListByIDs(ctx context.Context, ids []int64) ([]service.Grou
 	return nil, errors.New("not implemented")
 }
 
+func (stubGroupRepo) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]service.Group, error) {
+	return nil, nil
+}
+
 func (stubGroupRepo) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
 	return errors.New("not implemented")
 }
@@ -1874,6 +1878,22 @@ func (s *stubAccountRepo) AutoPauseExpiredAccounts(ctx context.Context, now time
 func (s *stubAccountRepo) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
 	return errors.New("not implemented")
 }
+func (s *stubAccountRepo) AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (s *stubAccountRepo) RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (s *stubAccountRepo) ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*service.Account, error) {
+	return nil, nil
+}
+func (s *stubAccountRepo) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*service.Account, error) {
+	return nil, nil
+}
+func (s *stubAccountRepo) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
+	return 0, nil
+}
+
 
 func (s *stubAccountRepo) ListShadowsByParent(ctx context.Context, parentID int64) ([]*service.Account, error) {
 	return nil, errors.New("not implemented")

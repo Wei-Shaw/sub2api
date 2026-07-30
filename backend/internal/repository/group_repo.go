@@ -719,6 +719,40 @@ func (r *groupRepository) ListByIDs(ctx context.Context, ids []int64) ([]service
 	return r.attachAccountCounts(ctx, groups)
 }
 
+// ListSharePoolMatches 返回 platform+plan 匹配的活跃共享池组（排除 private-* / exclusive / plan 空）。
+func (r *groupRepository) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]service.Group, error) {
+	platform = strings.TrimSpace(platform)
+	plan = strings.TrimSpace(plan)
+	if platform == "" || plan == "" {
+		return []service.Group{}, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	groups, err := client.Group.Query().
+		Where(
+			group.PlatformEQ(platform),
+			group.UpstreamPlanEQ(plan),
+			group.IsSharePoolEQ(true),
+			group.IsExclusiveEQ(false),
+			group.StatusEQ(service.StatusActive),
+			group.Not(group.NameHasPrefix("private-")),
+		).
+		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// 应用层再滤一次严格 private 名（与 IsPrivateGroupName 对齐）
+	out := make([]service.Group, 0, len(groups))
+	for i := range groups {
+		g := groupEntityToService(groups[i])
+		if g == nil || service.IsPrivateGroupName(g.Name) {
+			continue
+		}
+		out = append(out, *g)
+	}
+	return out, nil
+}
+
 func (r *groupRepository) attachAccountCounts(ctx context.Context, groups []*dbent.Group) ([]service.Group, error) {
 	groupIDs := make([]int64, 0, len(groups))
 	outGroups := make([]service.Group, 0, len(groups))

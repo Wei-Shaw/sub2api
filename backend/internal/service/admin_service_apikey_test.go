@@ -251,6 +251,10 @@ func (s *groupRepoStubForGroupUpdate) ExistsByName(context.Context, string) (boo
 func (s *groupRepoStubForGroupUpdate) GetByName(context.Context, string) (*Group, error) {
 	panic("unexpected")
 }
+func (s *groupRepoStubForGroupUpdate) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
 func (s *groupRepoStubForGroupUpdate) ListActiveExcludingPrivate(context.Context) ([]Group, error) {
 	panic("unexpected")
 }

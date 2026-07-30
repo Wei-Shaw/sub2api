@@ -32,6 +32,10 @@ type GroupRepository interface {
 	ListActiveByPlatform(ctx context.Context, platform string) ([]Group, error)
 	// ListByIDs 按 ID 批量加载分组（默认软删过滤）。
 	ListByIDs(ctx context.Context, ids []int64) ([]Group, error)
+	// ListSharePoolMatches 返回可吸入 public 用户号的共享池组：
+	// is_share_pool && !is_exclusive && status=active && upstream_plan 严格相等 && 非 private-* 名。
+	// plan 为空时返回空切片（任一侧空 = 不匹配）。
+	ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error)
 
 	ExistsByName(ctx context.Context, name string) (bool, error)
 	GetAccountCount(ctx context.Context, groupID int64) (total int64, active int64, err error)

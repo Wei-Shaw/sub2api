@@ -653,6 +653,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		return nil, err
 	}
 
+	// 共享池 Unlink+Absorb 需要变更前快照（K13）
+	beforeSharePool := cloneGroupShallow(group)
+
 	oldPlatform := group.Platform
 
 	if input.Name != "" {
@@ -893,6 +896,14 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 	}
 
+	// 共享池相关字段变更 → Unlink+Absorb（K13 MUST）
+	if s.accountGroupRecomputer != nil && sharePoolRelevantFieldsChanged(beforeSharePool, group) {
+		if err := s.accountGroupRecomputer.OnSharePoolGroupChange(ctx, beforeSharePool, group); err != nil {
+			logger.LegacyPrintf("service.admin", "share pool recompute after UpdateGroup failed: group_id=%d err=%v", id, err)
+			return nil, err
+		}
+	}
+
 	// 如果指定了复制账号的源分组，同步绑定（替换当前分组的账号）
 	if len(input.CopyAccountsFromGroupIDs) > 0 {
 		// 去重源分组 IDs
@@ -965,11 +976,30 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 }
 
 func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {
+	// 删除前快照：用于共享池卸链（DeleteCascade 可能已清 account_groups）
+	var beforeSharePool *Group
+	if s.accountGroupRecomputer != nil {
+		if g, err := s.groupRepo.GetByIDLite(ctx, id); err == nil && g != nil {
+			beforeSharePool = cloneGroupShallow(g)
+		}
+	}
+
 	var groupKeys []string
 	if s.authCacheInvalidator != nil {
 		keys, err := s.apiKeyRepo.ListKeysByGroupID(ctx, id)
 		if err == nil {
 			groupKeys = keys
+		}
+	}
+
+	// 若仍有绑定的用户自建号，须在 cascade 清 account_groups 之前强制 RemoveGroups（K13 Step A）。
+	// 即使 cascade 随后清空，显式 Remove 保证 outbox/重算集合正确；删除后 after=nil 再 recompute。
+	if s.accountGroupRecomputer != nil && beforeSharePool != nil {
+		// 先对 bound 号 RemoveGroups，避免 cascade 后 ListOwnerAccountsBoundToGroup 为空导致仅 recompute 漏卸。
+		// OnSharePoolGroupChange(after=nil) 内部也会再 List+Remove（幂等）。
+		if err := s.accountGroupRecomputer.OnSharePoolGroupChange(ctx, beforeSharePool, nil); err != nil {
+			logger.LegacyPrintf("service.admin", "share pool recompute before DeleteGroup failed: group_id=%d err=%v", id, err)
+			return err
 		}
 	}
 

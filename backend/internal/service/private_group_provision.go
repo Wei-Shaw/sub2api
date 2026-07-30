@@ -22,6 +22,10 @@ type PrivateGroupProvisioner interface {
 	// ProvisionPrivatePlatformGroups 为 role=user|admin 幂等补齐私有组 + allowed + 订阅。
 	// 错误向上返回（fail-closed）。其它角色 no-op（返回空结果）。
 	ProvisionPrivatePlatformGroups(ctx context.Context, userID int64) (*ProvisionResult, error)
+	// EnsurePrivateGroupForPlatform 单平台幂等 Ensure（组 + allowed + 订阅）。
+	// 角色与全量 Provision 相同（CanProvisionPrivateGroups）；platform 须 ∈ AllowedQuotaPlatforms。
+	// 有外层 tx 时 result.NeedsAfterCommit=true，调用方必须 AfterCommit。
+	EnsurePrivateGroupForPlatform(ctx context.Context, userID int64, platform string) (*Group, *ProvisionResult, error)
 	// RevokePrivatePlatformGroups 软删该用户全部 private-{userId}-* 组（DeleteCascade）。
 	RevokePrivatePlatformGroups(ctx context.Context, userID int64) (*RevokeResult, error)
 	// SyncPrivateSubscriptionExpiresAt 将全部私有专属订阅 expires_at 同步为设置日末。
@@ -164,8 +168,8 @@ func (p *privateGroupProvisioner) ProvisionPrivatePlatformGroups(ctx context.Con
 	if p == nil || userID <= 0 {
 		return result, nil
 	}
-	if p.groupRepo == nil || p.userRepo == nil || p.subEnsure == nil {
-		return nil, errors.New("private group provisioner not fully configured")
+	if err := p.requireConfigured(); err != nil {
+		return nil, err
 	}
 
 	user, err := p.userRepo.GetByID(ctx, userID)
@@ -192,61 +196,10 @@ func (p *privateGroupProvisioner) ProvisionPrivatePlatformGroups(ctx context.Con
 
 	inOuterTx := dbent.TxFromContext(ctx) != nil
 	result.NeedsAfterCommit = inOuterTx
-
-	expiresAt := time.Now()
-	if p.settingService != nil {
-		if at, ok := p.settingService.ResolvePrivateGroupExpiresAt(ctx); ok {
-			expiresAt = at
-		}
-	}
+	expiresAt := p.resolveExpiresAt(ctx)
 
 	for _, platform := range privateGroupPlatforms() {
-		group, created, err := p.ensurePrivateGroup(ctx, userID, platform)
-		if err != nil {
-			logger.L().Error("private_group_provision",
-				zap.String("component", "service.private_group"),
-				zap.String("event", "private_group_provision"),
-				zap.String("result", "error"),
-				zap.Int64("user_id", userID),
-				zap.String("platform", platform),
-				zap.Time("expires_at", expiresAt),
-				zap.Error(err),
-			)
-			return nil, err
-		}
-		if created {
-			result.CreatedGroupIDs = append(result.CreatedGroupIDs, group.ID)
-		}
-		result.EnsuredGroupIDs = append(result.EnsuredGroupIDs, group.ID)
-
-		if err := p.userRepo.AddGroupToAllowedGroups(ctx, userID, group.ID); err != nil {
-			err = fmt.Errorf("add private group to allowed: user_id=%d group_id=%d: %w", userID, group.ID, err)
-			logger.L().Error("private_group_provision",
-				zap.String("component", "service.private_group"),
-				zap.String("event", "private_group_provision"),
-				zap.String("result", "error"),
-				zap.Int64("user_id", userID),
-				zap.String("platform", platform),
-				zap.Int64("group_id", group.ID),
-				zap.Time("expires_at", expiresAt),
-				zap.Error(err),
-			)
-			return nil, err
-		}
-
-		notes := fmt.Sprintf("private platform group provision user_id=%d platform=%s", userID, platform)
-		if _, err := p.subEnsure.EnsureSubscriptionWithExpiresAt(ctx, userID, group.ID, expiresAt, notes, inOuterTx); err != nil {
-			err = fmt.Errorf("ensure private subscription: user_id=%d group_id=%d: %w", userID, group.ID, err)
-			logger.L().Error("private_group_provision",
-				zap.String("component", "service.private_group"),
-				zap.String("event", "private_group_provision"),
-				zap.String("result", "error"),
-				zap.Int64("user_id", userID),
-				zap.String("platform", platform),
-				zap.Int64("group_id", group.ID),
-				zap.Time("expires_at", expiresAt),
-				zap.Error(err),
-			)
+		if _, err := p.ensurePrivatePlatformBundle(ctx, userID, platform, expiresAt, inOuterTx, result); err != nil {
 			return nil, err
 		}
 	}
@@ -261,6 +214,125 @@ func (p *privateGroupProvisioner) ProvisionPrivatePlatformGroups(ctx context.Con
 		zap.Time("expires_at", expiresAt),
 	)
 	return result, nil
+}
+
+// EnsurePrivateGroupForPlatform 单平台幂等 Ensure（组 + allowed + 订阅）。
+func (p *privateGroupProvisioner) EnsurePrivateGroupForPlatform(ctx context.Context, userID int64, platform string) (*Group, *ProvisionResult, error) {
+	result := &ProvisionResult{UserID: userID}
+	if p == nil || userID <= 0 {
+		return nil, result, nil
+	}
+	if err := p.requireConfigured(); err != nil {
+		return nil, nil, err
+	}
+	platform = strings.TrimSpace(platform)
+	if !isAllowedQuotaPlatform(platform) {
+		return nil, nil, infraerrors.BadRequest("INVALID_PLATFORM", "platform is not allowed for private groups")
+	}
+
+	user, err := p.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get user for private ensure: %w", err)
+	}
+	if !CanProvisionPrivateGroups(user.Role) {
+		return nil, nil, ErrPrivateGroupProvisionRole
+	}
+
+	inOuterTx := dbent.TxFromContext(ctx) != nil
+	result.NeedsAfterCommit = inOuterTx
+	expiresAt := p.resolveExpiresAt(ctx)
+
+	group, err := p.ensurePrivatePlatformBundle(ctx, userID, platform, expiresAt, inOuterTx, result)
+	if err != nil {
+		return nil, nil, err
+	}
+	return group, result, nil
+}
+
+func (p *privateGroupProvisioner) requireConfigured() error {
+	if p.groupRepo == nil || p.userRepo == nil || p.subEnsure == nil {
+		return errors.New("private group provisioner not fully configured")
+	}
+	return nil
+}
+
+func (p *privateGroupProvisioner) resolveExpiresAt(ctx context.Context) time.Time {
+	expiresAt := time.Now()
+	if p.settingService != nil {
+		if at, ok := p.settingService.ResolvePrivateGroupExpiresAt(ctx); ok {
+			expiresAt = at
+		}
+	}
+	return expiresAt
+}
+
+// ensurePrivatePlatformBundle 单平台：组 + allowed + 订阅，结果写入 result。
+func (p *privateGroupProvisioner) ensurePrivatePlatformBundle(
+	ctx context.Context,
+	userID int64,
+	platform string,
+	expiresAt time.Time,
+	inOuterTx bool,
+	result *ProvisionResult,
+) (*Group, error) {
+	group, created, err := p.ensurePrivateGroup(ctx, userID, platform)
+	if err != nil {
+		logger.L().Error("private_group_provision",
+			zap.String("component", "service.private_group"),
+			zap.String("event", "private_group_provision"),
+			zap.String("result", "error"),
+			zap.Int64("user_id", userID),
+			zap.String("platform", platform),
+			zap.Time("expires_at", expiresAt),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+	if created {
+		result.CreatedGroupIDs = append(result.CreatedGroupIDs, group.ID)
+	}
+	result.EnsuredGroupIDs = append(result.EnsuredGroupIDs, group.ID)
+
+	if err := p.userRepo.AddGroupToAllowedGroups(ctx, userID, group.ID); err != nil {
+		err = fmt.Errorf("add private group to allowed: user_id=%d group_id=%d: %w", userID, group.ID, err)
+		logger.L().Error("private_group_provision",
+			zap.String("component", "service.private_group"),
+			zap.String("event", "private_group_provision"),
+			zap.String("result", "error"),
+			zap.Int64("user_id", userID),
+			zap.String("platform", platform),
+			zap.Int64("group_id", group.ID),
+			zap.Time("expires_at", expiresAt),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	notes := fmt.Sprintf("private platform group provision user_id=%d platform=%s", userID, platform)
+	if _, err := p.subEnsure.EnsureSubscriptionWithExpiresAt(ctx, userID, group.ID, expiresAt, notes, inOuterTx); err != nil {
+		err = fmt.Errorf("ensure private subscription: user_id=%d group_id=%d: %w", userID, group.ID, err)
+		logger.L().Error("private_group_provision",
+			zap.String("component", "service.private_group"),
+			zap.String("event", "private_group_provision"),
+			zap.String("result", "error"),
+			zap.Int64("user_id", userID),
+			zap.String("platform", platform),
+			zap.Int64("group_id", group.ID),
+			zap.Time("expires_at", expiresAt),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+	return group, nil
+}
+
+func isAllowedQuotaPlatform(platform string) bool {
+	for _, p := range AllowedQuotaPlatforms {
+		if p == platform {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *privateGroupProvisioner) ensurePrivateGroup(ctx context.Context, userID int64, platform string) (*Group, bool, error) {
@@ -576,6 +648,9 @@ type noopPrivateGroupProvisioner struct{}
 
 func (noopPrivateGroupProvisioner) ProvisionPrivatePlatformGroups(context.Context, int64) (*ProvisionResult, error) {
 	return &ProvisionResult{}, nil
+}
+func (noopPrivateGroupProvisioner) EnsurePrivateGroupForPlatform(context.Context, int64, string) (*Group, *ProvisionResult, error) {
+	return nil, &ProvisionResult{}, nil
 }
 func (noopPrivateGroupProvisioner) RevokePrivatePlatformGroups(context.Context, int64) (*RevokeResult, error) {
 	return &RevokeResult{}, nil

@@ -642,9 +642,10 @@ type adminServiceImpl struct {
 	privacyClientFactory PrivacyClientFactory
 	runtimeBlocker       AccountRuntimeBlocker
 	affiliateService     adminRechargeAffiliateAccruer
-	compositeRouteRepo   CompositeModelRouteRepository
-	compositeResolver    *CompositeRouteResolver
-	privateGroups        PrivateGroupProvisioner
+	compositeRouteRepo     CompositeModelRouteRepository
+	compositeResolver      *CompositeRouteResolver
+	privateGroups          PrivateGroupProvisioner
+	accountGroupRecomputer *AccountGroupRecomputer
 }
 
 type adminRechargeAffiliateAccruer interface {
@@ -681,29 +682,30 @@ func NewAdminService(
 	privateGroups PrivateGroupProvisioner,
 ) AdminService {
 	return &adminServiceImpl{
-		userRepo:             userRepo,
-		groupRepo:            groupRepo,
-		groupDuplicateRepo:   groupRepo,
-		accountRepo:          accountRepo,
-		accountDuplicateRepo: accountRepo,
-		proxyRepo:            proxyRepo,
-		apiKeyRepo:           apiKeyRepo,
-		redeemCodeRepo:       redeemCodeRepo,
-		userGroupRateRepo:    userGroupRateRepo,
-		userRPMCache:         userRPMCache,
-		billingCacheService:  billingCacheService,
-		proxyProber:          proxyProber,
-		proxyLatencyCache:    proxyLatencyCache,
-		authCacheInvalidator: authCacheInvalidator,
-		entClient:            entClient,
-		settingService:       settingService,
-		defaultSubAssigner:   defaultSubAssigner,
-		userSubRepo:          userSubRepo,
-		privacyClientFactory: privacyClientFactory,
-		runtimeBlocker:       runtimeBlocker,
-		affiliateService:     affiliateService,
-		compositeRouteRepo:   compositeRouteRepo,
-		compositeResolver:    compositeResolver,
-		privateGroups:        privateGroups,
+		userRepo:               userRepo,
+		groupRepo:              groupRepo,
+		groupDuplicateRepo:     groupRepo,
+		accountRepo:            accountRepo,
+		accountDuplicateRepo:   accountRepo,
+		proxyRepo:              proxyRepo,
+		apiKeyRepo:             apiKeyRepo,
+		redeemCodeRepo:         redeemCodeRepo,
+		userGroupRateRepo:      userGroupRateRepo,
+		userRPMCache:           userRPMCache,
+		billingCacheService:    billingCacheService,
+		proxyProber:            proxyProber,
+		proxyLatencyCache:      proxyLatencyCache,
+		authCacheInvalidator:   authCacheInvalidator,
+		entClient:              entClient,
+		settingService:         settingService,
+		defaultSubAssigner:     defaultSubAssigner,
+		userSubRepo:            userSubRepo,
+		privacyClientFactory:   privacyClientFactory,
+		runtimeBlocker:         runtimeBlocker,
+		affiliateService:       affiliateService,
+		compositeRouteRepo:     compositeRouteRepo,
+		compositeResolver:      compositeResolver,
+		privateGroups:          privateGroups,
+		accountGroupRecomputer: NewAccountGroupRecomputer(accountRepo, groupRepo),
 	}
 }

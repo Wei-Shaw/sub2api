@@ -57,6 +57,10 @@ func (p *provisionerStub) SyncPrivateSubscriptionExpiresAt(context.Context) (*se
 }
 func (p *provisionerStub) AfterCommit(context.Context, *service.ProvisionResult)     {}
 func (p *provisionerStub) AfterRevokeCommit(context.Context, *service.RevokeResult) {}
+func (p *provisionerStub) EnsurePrivateGroupForPlatform(ctx context.Context, userID int64, platform string) (*service.Group, *service.ProvisionResult, error) {
+	return nil, &service.ProvisionResult{}, nil
+}
+
 
 func TestProvisionPrivateGroups_RejectsUnsupportedRole(t *testing.T) {
 	gin.SetMode(gin.TestMode)

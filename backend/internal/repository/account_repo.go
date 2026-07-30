@@ -1785,6 +1785,233 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 	return nil
 }
 
+// AddGroups 幂等追加账号→组绑定；不删除其它绑定。新建行 priority = max(existing)+1 递增。
+func (r *accountRepository) AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	if accountID <= 0 || len(groupIDs) == 0 {
+		return nil
+	}
+	existingGroupIDs, err := r.loadAccountGroupIDs(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	existingSet := make(map[int64]struct{}, len(existingGroupIDs))
+	for _, id := range existingGroupIDs {
+		existingSet[id] = struct{}{}
+	}
+	toAdd := make([]int64, 0, len(groupIDs))
+	seen := make(map[int64]struct{}, len(groupIDs))
+	for _, gid := range groupIDs {
+		if gid <= 0 {
+			continue
+		}
+		if _, ok := seen[gid]; ok {
+			continue
+		}
+		seen[gid] = struct{}{}
+		if _, ok := existingSet[gid]; ok {
+			continue
+		}
+		toAdd = append(toAdd, gid)
+	}
+	if len(toAdd) == 0 {
+		return nil
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+	var txClient *dbent.Client
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		txClient = tx.Client()
+	} else {
+		txClient = r.client
+	}
+
+	nextPriority, err := nextAccountGroupPriority(ctx, txClient, accountID)
+	if err != nil {
+		return err
+	}
+	builders := make([]*dbent.AccountGroupCreate, 0, len(toAdd))
+	for i, groupID := range toAdd {
+		builders = append(builders, txClient.AccountGroup.Create().
+			SetAccountID(accountID).
+			SetGroupID(groupID).
+			SetPriority(nextPriority+i),
+		)
+	}
+	if _, err := txClient.AccountGroup.CreateBulk(builders...).Save(ctx); err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	payload := buildSchedulerGroupPayload(mergeGroupIDs(existingGroupIDs, toAdd))
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue add groups failed: account=%d err=%v", accountID, err)
+	}
+	return nil
+}
+
+// RemoveGroups 幂等移除账号→组绑定；不碰未列出的绑定。
+func (r *accountRepository) RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	if accountID <= 0 || len(groupIDs) == 0 {
+		return nil
+	}
+	cleanIDs := make([]int64, 0, len(groupIDs))
+	seen := make(map[int64]struct{}, len(groupIDs))
+	for _, gid := range groupIDs {
+		if gid <= 0 {
+			continue
+		}
+		if _, ok := seen[gid]; ok {
+			continue
+		}
+		seen[gid] = struct{}{}
+		cleanIDs = append(cleanIDs, gid)
+	}
+	if len(cleanIDs) == 0 {
+		return nil
+	}
+
+	existingGroupIDs, err := r.loadAccountGroupIDs(ctx, accountID)
+	if err != nil {
+		return err
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+	var txClient *dbent.Client
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		txClient = tx.Client()
+	} else {
+		txClient = r.client
+	}
+
+	deleted, err := txClient.AccountGroup.Delete().
+		Where(
+			dbaccountgroup.AccountIDEQ(accountID),
+			dbaccountgroup.GroupIDIn(cleanIDs...),
+		).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	if deleted == 0 {
+		return nil
+	}
+	payload := buildSchedulerGroupPayload(mergeGroupIDs(existingGroupIDs, cleanIDs))
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue remove groups failed: account=%d err=%v", accountID, err)
+	}
+	return nil
+}
+
+// ListOwnerAccountsBoundToGroup 返回绑定到 groupID 且 owner_user_id 非空的用户自建号。
+func (r *accountRepository) ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*service.Account, error) {
+	if groupID <= 0 {
+		return []*service.Account{}, nil
+	}
+	ags, err := r.client.AccountGroup.Query().
+		Where(
+			dbaccountgroup.GroupIDEQ(groupID),
+			dbaccountgroup.HasAccountWith(dbaccount.OwnerUserIDNotNil()),
+		).
+		WithAccount().
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*service.Account, 0, len(ags))
+	seen := make(map[int64]struct{}, len(ags))
+	for _, ag := range ags {
+		if ag.Edges.Account == nil {
+			continue
+		}
+		if _, ok := seen[ag.AccountID]; ok {
+			continue
+		}
+		seen[ag.AccountID] = struct{}{}
+		acc := accountEntityToService(ag.Edges.Account)
+		if acc == nil {
+			continue
+		}
+		// 轻量附带 group_ids（至少含当前组，便于 recompute 差分）
+		acc.GroupIDs = []int64{groupID}
+		out = append(out, acc)
+	}
+	return out, nil
+}
+
+// ListPublicOwnerAccountsByPlatformPlan 扫描 public + platform + plan 严格匹配的用户自建号。
+func (r *accountRepository) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*service.Account, error) {
+	platform = strings.TrimSpace(platform)
+	plan = strings.TrimSpace(plan)
+	if platform == "" || plan == "" {
+		return []*service.Account{}, nil
+	}
+	entAccounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.OwnerUserIDNotNil(),
+			dbaccount.VisibilityEQ(service.VisibilityPublic),
+			dbaccount.PlatformEQ(platform),
+			dbaccount.UpstreamPlanEQ(plan),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*service.Account, 0, len(entAccounts))
+	for _, m := range entAccounts {
+		acc := accountEntityToService(m)
+		if acc != nil {
+			out = append(out, acc)
+		}
+	}
+	return out, nil
+}
+
+// CountActiveOwned 统计 owner 名下未软删账号数。
+func (r *accountRepository) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
+	if ownerUserID <= 0 {
+		return 0, nil
+	}
+	n, err := r.client.Account.Query().
+		Where(dbaccount.OwnerUserIDEQ(ownerUserID)).
+		Count(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// nextAccountGroupPriority 返回该账号下一可用 priority（max existing + 1，无绑定则 1）。
+func nextAccountGroupPriority(ctx context.Context, client *dbent.Client, accountID int64) (int, error) {
+	ags, err := client.AccountGroup.Query().
+		Where(dbaccountgroup.AccountIDEQ(accountID)).
+		Order(dbent.Desc(dbaccountgroup.FieldPriority)).
+		Limit(1).
+		All(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(ags) == 0 {
+		return 1, nil
+	}
+	return ags[0].Priority + 1, nil
+}
+
 func (r *accountRepository) ListSchedulable(ctx context.Context) ([]service.Account, error) {
 	accounts, err := r.schedulableAccountsQuery(time.Now()).All(ctx)
 	if err != nil {

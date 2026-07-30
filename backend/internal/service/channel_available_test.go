@@ -89,6 +89,10 @@ func (s *stubGroupRepoForAvailable) ListByIDs(ctx context.Context, ids []int64) 
 	}
 	return out, nil
 }
+func (s *stubGroupRepoForAvailable) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
 func (s *stubGroupRepoForAvailable) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
 	return nil
 }

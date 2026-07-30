@@ -128,6 +128,22 @@ func (m *mockAccountRepoForPlatform) AutoPauseExpiredAccounts(ctx context.Contex
 func (m *mockAccountRepoForPlatform) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
 	return nil
 }
+func (m *mockAccountRepoForPlatform) AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (m *mockAccountRepoForPlatform) RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (m *mockAccountRepoForPlatform) ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*Account, error) {
+	return nil, nil
+}
+func (m *mockAccountRepoForPlatform) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
+	return nil, nil
+}
+func (m *mockAccountRepoForPlatform) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
+	return 0, nil
+}
+
 func (m *mockAccountRepoForPlatform) ListSchedulable(ctx context.Context) ([]Account, error) {
 	return nil, nil
 }
@@ -329,6 +345,10 @@ func (m *mockGroupRepoForGateway) ListActiveExcludingPrivate(ctx context.Context
 func (m *mockGroupRepoForGateway) ListByIDs(ctx context.Context, ids []int64) ([]Group, error) {
 	return nil, nil
 }
+func (m *mockGroupRepoForGateway) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
 func (m *mockGroupRepoForGateway) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
 	return nil
 }

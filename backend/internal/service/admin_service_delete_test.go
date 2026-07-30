@@ -263,6 +263,10 @@ func (s *groupRepoStub) ListActiveExcludingPrivate(ctx context.Context) ([]Group
 func (s *groupRepoStub) ListByIDs(ctx context.Context, ids []int64) ([]Group, error) {
 	panic("unexpected ListByIDs call")
 }
+func (s *groupRepoStub) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
 
 func (s *groupRepoStub) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
 	panic("unexpected EnqueueGroupChanged call")

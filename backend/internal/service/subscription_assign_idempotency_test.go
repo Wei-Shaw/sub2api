@@ -87,6 +87,9 @@ func (groupRepoNoop) ListActiveExcludingPrivate(context.Context) ([]Group, error
 func (groupRepoNoop) ListByIDs(context.Context, []int64) ([]Group, error) {
 	panic("unexpected ListByIDs call")
 }
+func (groupRepoNoop) ListSharePoolMatches(context.Context, string, string) ([]Group, error) {
+	return nil, nil
+}
 func (groupRepoNoop) EnqueueGroupChanged(context.Context, int64) error {
 	panic("unexpected EnqueueGroupChanged call")
 }

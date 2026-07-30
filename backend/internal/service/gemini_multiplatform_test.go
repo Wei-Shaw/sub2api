@@ -113,6 +113,22 @@ func (m *mockAccountRepoForGemini) AutoPauseExpiredAccounts(ctx context.Context,
 func (m *mockAccountRepoForGemini) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
 	return nil
 }
+func (m *mockAccountRepoForGemini) AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (m *mockAccountRepoForGemini) RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (m *mockAccountRepoForGemini) ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*Account, error) {
+	return nil, nil
+}
+func (m *mockAccountRepoForGemini) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
+	return nil, nil
+}
+func (m *mockAccountRepoForGemini) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
+	return 0, nil
+}
+
 func (m *mockAccountRepoForGemini) ListSchedulable(ctx context.Context) ([]Account, error) {
 	return nil, nil
 }
@@ -256,6 +272,10 @@ func (m *mockGroupRepoForGemini) ListActiveExcludingPrivate(ctx context.Context)
 func (m *mockGroupRepoForGemini) ListByIDs(ctx context.Context, ids []int64) ([]Group, error) {
 	return nil, nil
 }
+func (m *mockGroupRepoForGemini) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
 func (m *mockGroupRepoForGemini) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
 	return nil
 }
