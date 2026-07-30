@@ -1,7 +1,7 @@
 <template>
   <BaseDialog
     :show="show"
-    :title="t('admin.accounts.createAccount')"
+    :title="isUserMode ? t('myAccounts.createTitle') : t('admin.accounts.createAccount')"
     width="wide"
     @close="handleClose"
   >
@@ -2707,7 +2707,47 @@
         </div>
       </div>
 
-      <div>
+      <!-- 用户自建模式：私有/公用（管理员与普通用户在「我的账号」共用同一套创建表单） -->
+      <div v-if="isUserMode" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+        <label class="input-label">{{ t('myAccounts.form.visibility') }}</label>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            @click="form.visibility = 'private'"
+            :class="[
+              'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all min-w-[8rem]',
+              form.visibility === 'private'
+                ? 'bg-primary-500 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600'
+            ]"
+            data-testid="account-form-visibility-private"
+          >
+            {{ t('myAccounts.visibility.private') }}
+          </button>
+          <button
+            type="button"
+            @click="form.visibility = 'public'"
+            :class="[
+              'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all min-w-[8rem]',
+              form.visibility === 'public'
+                ? 'bg-sky-500 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600'
+            ]"
+            data-testid="account-form-visibility-public"
+          >
+            {{ t('myAccounts.visibility.public') }}
+          </button>
+        </div>
+        <p class="input-hint mt-2">{{ t('myAccounts.form.visibilityHint') }}</p>
+        <p
+          v-if="form.visibility === 'public' && !userModeSupportsPublic"
+          class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+        >
+          {{ t('myAccounts.form.publicUnsupportedHint') }}
+        </p>
+      </div>
+
+      <div v-if="!isUserMode">
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
@@ -2715,7 +2755,7 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div v-if="!isUserMode" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input"
@@ -2735,7 +2775,7 @@
             type="number"
             min="1"
             class="input"
-            data-tour="account-form-priority"
+            data-testid="account-form-priority"
           />
           <p class="input-hint">{{ t('admin.accounts.priorityHint') }}</p>
         </div>
@@ -2745,13 +2785,13 @@
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
         </div>
       </div>
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="!isUserMode" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') }}</p>
       </div>
 
-      <!-- OpenAI 自动透传开关（OAuth/API Key） -->
+<!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
         v-if="form.platform === 'openai'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3133,9 +3173,9 @@
           </div>
         </div>
 
-        <!-- Group Selection - 仅标准模式显示 -->
+        <!-- 分组：仅管理端账号页；「我的账号」共用用户自建模式，不可选分组 -->
         <GroupSelector
-          v-if="!authStore.isSimpleMode"
+          v-if="!isUserMode && !authStore.isSimpleMode"
           v-model="form.group_ids"
           :groups="groups"
           :platform="form.platform"
@@ -3510,6 +3550,7 @@ import {
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import userAccountsAPI from '@/api/userAccounts'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -3611,15 +3652,28 @@ const apiKeyHint = computed(() => {
 
 interface Props {
   show: boolean
-  proxies: Proxy[]
-  groups: AdminGroup[]
+  proxies?: Proxy[]
+  groups?: AdminGroup[]
+  /**
+   * admin：管理端完整创建（分组/代理/调度参数）
+   * user：用户「我的账号」——隐藏分组与代理等，改为私有/公用，提交走用户 API
+   */
+  mode?: 'admin' | 'user'
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  proxies: () => [],
+  groups: () => [],
+  mode: 'admin'
+})
 const emit = defineEmits<{
   close: []
   created: []
 }>()
+
+const isUserMode = computed(() => props.mode === 'user')
+const groups = computed(() => props.groups ?? [])
+const proxies = computed(() => props.proxies ?? [])
 
 const appStore = useAppStore()
 
@@ -4068,7 +4122,17 @@ const form = reactive({
   priority: 1,
   rate_multiplier: 1,
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  /** 用户模式：private | public */
+  visibility: 'private' as 'private' | 'public'
+})
+
+/** 用户模式：openai apikey 不可选公用（后端会强制 private） */
+const userModeSupportsPublic = computed(() => {
+  if (form.platform === 'openai' && (form.type === 'apikey' || accountCategory.value === 'apikey')) {
+    return false
+  }
+  return true
 })
 
 // Helper to check if current type needs OAuth flow
@@ -4540,6 +4604,10 @@ const withAntigravityConfirmFlag = (payload: CreateAccountRequest): CreateAccoun
 }
 
 const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<void>): Promise<boolean> => {
+  // 「我的账号」不选分组，跳过 mixed channel
+  if (isUserMode.value) {
+    return true
+  }
   if (!needsMixedChannelCheck(form.platform)) {
     return true
   }
@@ -4572,6 +4640,33 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
+    // 「我的账号」管理员/普通用户共用：走用户自建 API（无分组、带私有/公用）
+    if (isUserMode.value) {
+      const created = await userAccountsAPI.create({
+        name: payload.name,
+        platform: payload.platform,
+        type: payload.type,
+        credentials: payload.credentials,
+        visibility: form.visibility
+      })
+      if (created.visibility_reason) {
+        const reasonText =
+          created.visibility_reason === 'plan_probe_failed'
+            ? t('myAccounts.reasons.planProbeFailed')
+            : created.visibility_reason === 'plan_probe_unsupported'
+              ? t('myAccounts.reasons.planProbeUnsupported')
+              : created.visibility_reason === 'plan_empty'
+                ? t('myAccounts.reasons.planEmpty')
+                : created.visibility_reason
+        appStore.showSuccess(t('myAccounts.createSuccessForcedPrivate', { reason: reasonText }))
+      } else {
+        appStore.showSuccess(t('myAccounts.createSuccess'))
+      }
+      emit('created')
+      handleClose()
+      return
+    }
+
     const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
     if (
       payload.platform === 'openai' &&
@@ -4588,7 +4683,12 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
     emit('created')
     handleClose()
   } catch (error: any) {
-    if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning' && needsMixedChannelCheck(form.platform)) {
+    if (
+      !isUserMode.value &&
+      error.response?.status === 409 &&
+      error.response?.data?.error === 'mixed_channel_warning' &&
+      needsMixedChannelCheck(form.platform)
+    ) {
       openMixedChannelDialog({
         message: error.response?.data?.message,
         onConfirm: async () => {
@@ -4598,232 +4698,16 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       })
       return
     }
-    appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToCreate'))
+    appStore.showError(
+      error.response?.data?.message ||
+        error.response?.data?.detail ||
+        (isUserMode.value ? t('myAccounts.failedToCreate') : t('admin.accounts.failedToCreate'))
+    )
   } finally {
     submitting.value = false
   }
 }
 
-// Methods
-const resetForm = () => {
-  step.value = 1
-  form.name = ''
-  form.notes = ''
-  form.platform = 'anthropic'
-  form.type = 'oauth'
-  form.credentials = {}
-  form.proxy_id = null
-  form.concurrency = 10
-  form.load_factor = null
-  form.priority = 1
-  form.rate_multiplier = 1
-  form.group_ids = []
-  form.expires_at = null
-  accountCategory.value = 'oauth-based'
-  addMethod.value = 'oauth'
-  apiKeyBaseUrl.value = 'https://api.anthropic.com'
-  apiKeyValue.value = ''
-  upstreamBillingAutoProbeEnabled.value = true
-  editQuotaLimit.value = null
-  editQuotaDailyLimit.value = null
-  editQuotaWeeklyLimit.value = null
-  editDailyResetMode.value = null
-  editDailyResetHour.value = null
-  editWeeklyResetMode.value = null
-  editWeeklyResetDay.value = null
-  editWeeklyResetHour.value = null
-  editResetTimezone.value = null
-  modelMappings.value = []
-  openAICompactModelMappings.value = []
-  modelRestrictionMode.value = 'whitelist'
-  allowedModels.value = [...claudeModels] // Default fill related models
-
-  antigravityModelRestrictionMode.value = 'mapping'
-  antigravityWhitelistModels.value = []
-  fetchAntigravityDefaultMappings().then(mappings => {
-    antigravityModelMappings.value = [...mappings]
-  })
-  poolModeEnabled.value = false
-  poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
-  poolModeRetryStatusCodesInput.value = ''
-  customErrorCodesEnabled.value = false
-  selectedErrorCodes.value = []
-  customErrorCodeInput.value = null
-  headerOverrideEnabled.value = false
-  headerOverrideRows.value = []
-  grokOAuthCustomBaseUrlEnabled.value = false
-  grokOAuthBaseUrl.value = ''
-  interceptWarmupRequests.value = false
-  autoPauseOnExpired.value = true
-  openaiPassthroughEnabled.value = false
-  openAILongContextBillingEnabled.value = false
-  openAILongContextBillingTouched.value = false
-  openAICompactMode.value = 'auto'
-  openAIResponsesMode.value = 'auto'
-  openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
-  openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
-  openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
-  codexCLIOnlyEnabled.value = false
-  codexCLIOnlyAppServerEnabled.value = false
-  anthropicPassthroughEnabled.value = false
-  anthropicAPIKeyAuthScheme.value = 'x_api_key'
-  webSearchEmulationMode.value = 'default'
-  // Reset quota control state
-  windowCostEnabled.value = false
-  windowCostLimit.value = null
-  windowCostStickyReserve.value = null
-  sessionLimitEnabled.value = false
-  maxSessions.value = null
-  sessionIdleTimeout.value = null
-  rpmLimitEnabled.value = false
-  baseRpm.value = null
-  rpmStrategy.value = 'tiered'
-  rpmStickyBuffer.value = null
-  userMsgQueueMode.value = ''
-  tlsFingerprintEnabled.value = false
-  tlsFingerprintProfileId.value = null
-  sessionIdMaskingEnabled.value = false
-  cacheTTLOverrideEnabled.value = false
-  cacheTTLOverrideTarget.value = '5m'
-  customBaseUrlEnabled.value = false
-  customBaseUrl.value = ''
-  allowOverages.value = false
-  antigravityAccountType.value = 'oauth'
-  antigravityProjectId.value = ''
-  upstreamBaseUrl.value = ''
-  upstreamApiKey.value = ''
-  vertexServiceAccountJson.value = ''
-  vertexProjectId.value = ''
-  vertexClientEmail.value = ''
-  vertexLocation.value = 'global'
-  tempUnschedEnabled.value = false
-  tempUnschedRules.value = []
-  geminiOAuthType.value = 'code_assist'
-  geminiTierGoogleOne.value = 'google_one_free'
-  geminiTierGcp.value = 'gcp_standard'
-  geminiTierAIStudio.value = 'aistudio_free'
-  oauth.resetState()
-  openaiOAuth.resetState()
-  geminiOAuth.resetState()
-  antigravityOAuth.resetState()
-  grokOAuth.resetState()
-  oauthFlowRef.value?.reset()
-  antigravityMixedChannelConfirmed.value = false
-  clearMixedChannelDialog()
-}
-
-const handleClose = () => {
-  antigravityMixedChannelConfirmed.value = false
-  clearMixedChannelDialog()
-  emit('close')
-}
-
-const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
-  if (form.platform !== 'openai') {
-    return base
-  }
-
-  const extra: Record<string, unknown> = { ...(base || {}) }
-  if (accountCategory.value === 'oauth-based') {
-    extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
-    extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
-  } else if (accountCategory.value === 'apikey') {
-    extra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value
-    extra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
-  }
-  // 清理兼容旧键，统一改用分类型开关。
-  delete extra.responses_websockets_v2_enabled
-  delete extra.openai_ws_enabled
-  if (openaiPassthroughEnabled.value) {
-    extra.openai_passthrough = true
-  } else {
-    delete extra.openai_passthrough
-    delete extra.openai_oauth_passthrough
-  }
-  extra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
-
-  if (accountCategory.value === 'oauth-based' && codexCLIOnlyEnabled.value) {
-    extra.codex_cli_only = true
-  } else {
-    delete extra.codex_cli_only
-  }
-  delete extra.codex_cli_only_allowed_clients
-  if (
-    accountCategory.value === 'oauth-based' &&
-    codexCLIOnlyEnabled.value &&
-    codexCLIOnlyAppServerEnabled.value
-  ) {
-    extra.codex_cli_only_allow_app_server = true
-  } else {
-    delete extra.codex_cli_only_allow_app_server
-  }
-  if (openAICompactMode.value !== 'auto') {
-    extra.openai_compact_mode = openAICompactMode.value
-  } else {
-    delete extra.openai_compact_mode
-  }
-
-  if (
-    accountCategory.value === 'apikey' &&
-    openAITextGenerationCapabilityEnabled.value &&
-    openAIResponsesMode.value !== 'auto'
-  ) {
-    extra.openai_responses_mode = openAIResponsesMode.value
-  } else {
-    delete extra.openai_responses_mode
-  }
-
-  return Object.keys(extra).length > 0 ? extra : undefined
-}
-
-const buildOpenAICodexImportExtra = (): Record<string, unknown> | undefined => {
-  const extra = buildOpenAIExtra()
-  if (!extra) {
-    return undefined
-  }
-  if (!openAILongContextBillingTouched.value) {
-    delete extra.openai_long_context_billing_enabled
-  }
-  return Object.keys(extra).length > 0 ? extra : undefined
-}
-
-const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
-  if (form.platform !== 'anthropic' || accountCategory.value !== 'apikey') {
-    return base
-  }
-
-  const extra: Record<string, unknown> = { ...(base || {}) }
-  if (anthropicPassthroughEnabled.value) {
-    extra.anthropic_passthrough = true
-  } else {
-    delete extra.anthropic_passthrough
-  }
-  if (anthropicAPIKeyAuthScheme.value === 'authorization_bearer') {
-    extra.anthropic_apikey_auth_scheme = 'authorization_bearer'
-  } else {
-    delete extra.anthropic_apikey_auth_scheme
-  }
-  if (webSearchEmulationMode.value === 'default') {
-    delete extra.web_search_emulation
-  } else {
-    extra.web_search_emulation = webSearchEmulationMode.value
-  }
-
-  return Object.keys(extra).length > 0 ? extra : undefined
-}
-
-// Helper function to create account with mixed channel warning handling
-const doCreateAccount = async (payload: CreateAccountRequest) => {
-  const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
-    await submitCreateAccount(payload)
-  })
-  if (!canContinue) {
-    return
-  }
-  await submitCreateAccount(payload)
-}
-
-// Handle mixed channel warning confirmation
 const handleMixedChannelConfirm = async () => {
   const action = mixedChannelWarningAction.value
   if (!action) {

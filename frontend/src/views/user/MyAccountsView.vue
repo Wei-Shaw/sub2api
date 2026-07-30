@@ -17,7 +17,7 @@
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
-            <button @click="openCreateModal" class="btn btn-primary">
+            <button @click="showCreateModal = true" class="btn btn-primary">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('myAccounts.create') }}
             </button>
@@ -137,86 +137,17 @@
       </template>
     </TablePageLayout>
 
-    <!-- Create modal -->
-    <BaseDialog
+    <!--
+      管理员与普通用户共用同一套 CreateAccountModal（mode=user）：
+      与管理端创建表单同源代码；不选分组，增加私有/公用。
+      后续添加方式变更只改 CreateAccountModal，两边一致。
+    -->
+    <CreateAccountModal
       :show="showCreateModal"
-      :title="t('myAccounts.createTitle')"
-      width="normal"
-      @close="closeCreateModal"
-    >
-      <form class="space-y-4" @submit.prevent="handleCreate">
-        <div>
-          <label class="input-label">{{ t('myAccounts.form.name') }}</label>
-          <input
-            v-model="createForm.name"
-            type="text"
-            required
-            class="input"
-            :placeholder="t('myAccounts.form.namePlaceholder')"
-          />
-        </div>
-
-        <div>
-          <label class="input-label">{{ t('myAccounts.form.platform') }}</label>
-          <Select v-model="createForm.platform" :options="platformOptions" />
-        </div>
-
-        <div>
-          <label class="input-label">{{ t('myAccounts.form.type') }}</label>
-          <Select v-model="createForm.type" :options="typeOptions" />
-          <p class="input-hint">{{ t('myAccounts.form.typeHint') }}</p>
-        </div>
-
-        <div v-if="createForm.type === 'apikey'">
-          <label class="input-label">{{ t('myAccounts.form.apiKey') }}</label>
-          <input
-            v-model="createForm.credentialValue"
-            type="password"
-            autocomplete="off"
-            class="input font-mono text-sm"
-            :placeholder="t('myAccounts.form.apiKeyPlaceholder')"
-          />
-        </div>
-        <div v-else>
-          <label class="input-label">{{ t('myAccounts.form.accessToken') }}</label>
-          <textarea
-            v-model="createForm.credentialValue"
-            rows="3"
-            class="input font-mono text-sm"
-            :placeholder="t('myAccounts.form.accessTokenPlaceholder')"
-          />
-          <p class="input-hint">{{ t('myAccounts.form.oauthPasteHint') }}</p>
-        </div>
-
-        <div>
-          <label class="input-label">{{ t('myAccounts.form.visibility') }}</label>
-          <Select v-model="createForm.visibility" :options="visibilityOptions" />
-          <p class="input-hint">{{ t('myAccounts.form.visibilityHint') }}</p>
-          <p
-            v-if="createForm.visibility === 'public' && !typeSupportsPublic"
-            class="mt-1 text-xs text-amber-600 dark:text-amber-400"
-          >
-            {{ t('myAccounts.form.publicUnsupportedHint') }}
-          </p>
-        </div>
-      </form>
-
-      <template #footer>
-        <div class="flex justify-end gap-3">
-          <button type="button" class="btn btn-secondary" @click="closeCreateModal">
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            :disabled="submitting"
-            @click="handleCreate"
-          >
-            {{ submitting ? t('common.saving') : t('common.create') }}
-          </button>
-        </div>
-      </template>
-    </BaseDialog>
+      mode="user"
+      @close="showCreateModal = false"
+      @created="onCreated"
+    />
 
     <ConfirmDialog
       :show="showDeleteDialog"
@@ -234,37 +165,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
-import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import { CreateAccountModal } from '@/components/account'
 import userAccountsAPI from '@/api/userAccounts'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import type { Account, AccountPlatform, AccountType } from '@/types'
+import type { Account } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
-/** AllowedQuotaPlatforms: anthropic / openai / gemini / antigravity / grok */
-const QUOTA_PLATFORMS: AccountPlatform[] = [
-  'anthropic',
-  'openai',
-  'gemini',
-  'antigravity',
-  'grok'
-]
-
 const accounts = ref<Account[]>([])
 const loading = ref(false)
-const submitting = ref(false)
 const actionLoadingId = ref<number | null>(null)
 const showCreateModal = ref(false)
 const showDeleteDialog = ref(false)
@@ -277,14 +197,6 @@ const pagination = reactive({
   pages: 0
 })
 
-const createForm = reactive({
-  name: '',
-  platform: 'openai' as AccountPlatform,
-  type: 'apikey' as AccountType,
-  credentialValue: '',
-  visibility: 'private' as 'private' | 'public'
-})
-
 const columns = computed(() => [
   { key: 'name', label: t('myAccounts.columns.name'), sortable: false },
   { key: 'platform', label: t('myAccounts.columns.platform'), sortable: false },
@@ -294,56 +206,6 @@ const columns = computed(() => [
   { key: 'status', label: t('myAccounts.columns.status'), sortable: false },
   { key: 'actions', label: t('myAccounts.columns.actions'), sortable: false }
 ])
-
-const platformOptions = computed(() =>
-  QUOTA_PLATFORMS.map((p) => ({
-    value: p,
-    label: platformLabel(p)
-  }))
-)
-
-/** Platform → allowed account types (mirrors backend isUserAllowedAccountType) */
-function allowedTypesForPlatform(platform: AccountPlatform): AccountType[] {
-  switch (platform) {
-    case 'openai':
-    case 'gemini':
-    case 'anthropic':
-      return ['oauth', 'apikey']
-    case 'grok':
-    case 'antigravity':
-      return ['oauth']
-    default:
-      return ['oauth']
-  }
-}
-
-const typeOptions = computed(() =>
-  allowedTypesForPlatform(createForm.platform).map((ty) => ({
-    value: ty,
-    label: typeLabel(ty)
-  }))
-)
-
-const visibilityOptions = computed(() => [
-  { value: 'private', label: t('myAccounts.visibility.private') },
-  { value: 'public', label: t('myAccounts.visibility.public') }
-])
-
-/** openai apikey cannot go public (backend force-private) */
-const typeSupportsPublic = computed(() => {
-  if (createForm.platform === 'openai' && createForm.type === 'apikey') return false
-  return true
-})
-
-watch(
-  () => createForm.platform,
-  (platform) => {
-    const allowed = allowedTypesForPlatform(platform)
-    if (!allowed.includes(createForm.type)) {
-      createForm.type = allowed[0]
-    }
-  }
-)
 
 function platformLabel(platform: string): string {
   const key = `admin.groups.platforms.${platform}`
@@ -397,69 +259,10 @@ function onPageSizeChange(pageSize: number) {
   loadAccounts()
 }
 
-function openCreateModal() {
-  createForm.name = ''
-  createForm.platform = 'openai'
-  createForm.type = 'apikey'
-  createForm.credentialValue = ''
-  createForm.visibility = 'private'
-  showCreateModal.value = true
-}
-
-function closeCreateModal() {
+async function onCreated() {
   showCreateModal.value = false
-}
-
-function buildCredentials(): Record<string, unknown> {
-  const raw = createForm.credentialValue.trim()
-  if (!raw) return {}
-  if (createForm.type === 'apikey') {
-    return { api_key: raw }
-  }
-  // oauth / setup-token: paste access_token only (no full OAuth wizard in v1)
-  return { access_token: raw }
-}
-
-async function handleCreate() {
-  if (!createForm.name.trim()) {
-    appStore.showError(t('myAccounts.form.nameRequired'))
-    return
-  }
-  if (!createForm.credentialValue.trim()) {
-    appStore.showError(
-      createForm.type === 'apikey'
-        ? t('myAccounts.form.apiKeyRequired')
-        : t('myAccounts.form.accessTokenRequired')
-    )
-    return
-  }
-
-  submitting.value = true
-  try {
-    const created = await userAccountsAPI.create({
-      name: createForm.name.trim(),
-      platform: createForm.platform,
-      type: createForm.type,
-      credentials: buildCredentials(),
-      visibility: createForm.visibility
-    })
-    if (created.visibility_reason) {
-      appStore.showSuccess(
-        t('myAccounts.createSuccessForcedPrivate', {
-          reason: visibilityReasonLabel(created.visibility_reason)
-        })
-      )
-    } else {
-      appStore.showSuccess(t('myAccounts.createSuccess'))
-    }
-    closeCreateModal()
-    pagination.page = 1
-    await loadAccounts()
-  } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('myAccounts.failedToCreate')))
-  } finally {
-    submitting.value = false
-  }
+  pagination.page = 1
+  await loadAccounts()
 }
 
 async function toggleVisibility(row: Account) {
@@ -479,9 +282,7 @@ async function toggleVisibility(row: Account) {
       )
     } else {
       appStore.showSuccess(
-        next === 'public'
-          ? t('myAccounts.madePublic')
-          : t('myAccounts.madePrivate')
+        next === 'public' ? t('myAccounts.madePublic') : t('myAccounts.madePrivate')
       )
     }
   } catch (err: unknown) {
