@@ -17,13 +17,15 @@ func TestEasyPayQueryOrderStatusMapping(t *testing.T) {
 	tests := []struct {
 		name        string
 		body        string
+		httpStatus  int
 		wantStatus  string
 		wantTradeNo string
 		wantAmount  float64
+		wantErr     bool
 	}{
 		{
 			name:        "top level trade success is paid",
-			body:        `{"code":1,"trade_status":"TRADE_SUCCESS","status":0,"money":"12.34","trade_no":"gateway-123"}`,
+			body:        `{"code":1,"trade_status":"TRADE_SUCCESS","status":0,"money":"12.34","trade_no":"gateway-123","out_trade_no":"order-123","pid":"pid-1"}`,
 			wantStatus:  payment.ProviderStatusPaid,
 			wantTradeNo: "gateway-123",
 			wantAmount:  12.34,
@@ -36,24 +38,29 @@ func TestEasyPayQueryOrderStatusMapping(t *testing.T) {
 			wantAmount:  12.34,
 		},
 		{
-			name:        "empty trade status with paid numeric status stays pending",
-			body:        `{"code":1,"trade_status":"","status":1,"money":"12.34"}`,
-			wantStatus:  payment.ProviderStatusPending,
-			wantTradeNo: orderID,
+			name:    "unknown textual status is unknown even with paid numeric fallback",
+			body:    `{"code":1,"trade_status":"NEW_PROVIDER_STATE","status":1,"money":"12.34"}`,
+			wantErr: true,
+		},
+		{
+			name:        "empty trade status falls back to paid numeric status",
+			body:        `{"code":1,"trade_status":"","status":1,"money":"12.34","trade_no":"gateway-numeric-123","out_trade_no":"order-123","pid":"pid-1"}`,
+			wantStatus:  payment.ProviderStatusPaid,
+			wantTradeNo: "gateway-numeric-123",
 			wantAmount:  12.34,
 		},
 		{
 			name:        "nested data trade success is paid",
-			body:        `{"code":1,"data":{"trade_status":"TRADE_SUCCESS","status":0,"money":"9.99","trade_no":"data-456"}}`,
+			body:        `{"code":1,"data":{"trade_status":"TRADE_SUCCESS","status":0,"money":"9.99","trade_no":"data-456","out_trade_no":"order-123","pid":"pid-1"}}`,
 			wantStatus:  payment.ProviderStatusPaid,
 			wantTradeNo: "data-456",
 			wantAmount:  9.99,
 		},
 		{
 			name:        "legacy numeric paid status remains compatible",
-			body:        `{"code":1,"status":1,"money":"3.21"}`,
+			body:        `{"code":1,"status":1,"money":"3.21","trade_no":"gateway-legacy-123","out_trade_no":"order-123","pid":"pid-1"}`,
 			wantStatus:  payment.ProviderStatusPaid,
-			wantTradeNo: orderID,
+			wantTradeNo: "gateway-legacy-123",
 			wantAmount:  3.21,
 		},
 		{
@@ -64,16 +71,50 @@ func TestEasyPayQueryOrderStatusMapping(t *testing.T) {
 			wantAmount:  3.21,
 		},
 		{
-			name:        "query failure with missing status is pending",
-			body:        `{"code":0,"msg":"订单不存在"}`,
-			wantStatus:  payment.ProviderStatusPending,
-			wantTradeNo: orderID,
+			name:    "application failure is unknown",
+			body:    `{"code":0,"msg":"订单不存在"}`,
+			wantErr: true,
 		},
 		{
-			name:        "missing fields are pending",
-			body:        `{}`,
-			wantStatus:  payment.ProviderStatusPending,
-			wantTradeNo: orderID,
+			name:    "missing fields are unknown",
+			body:    `{}`,
+			wantErr: true,
+		},
+		{
+			name:       "http failure is unknown",
+			body:       `{"code":1,"status":0}`,
+			httpStatus: http.StatusBadGateway,
+			wantErr:    true,
+		},
+		{
+			name:    "unknown numeric status is unknown",
+			body:    `{"code":1,"status":9}`,
+			wantErr: true,
+		},
+		{
+			name:    "paid response with malformed amount is unknown",
+			body:    `{"code":1,"status":1,"money":"not-a-number","out_trade_no":"order-123","pid":"pid-1"}`,
+			wantErr: true,
+		},
+		{
+			name:    "paid response for another order is rejected",
+			body:    `{"code":1,"status":1,"money":"12.34","out_trade_no":"other-order","pid":"pid-1"}`,
+			wantErr: true,
+		},
+		{
+			name:    "paid response for another merchant is rejected",
+			body:    `{"code":1,"status":1,"money":"12.34","out_trade_no":"order-123","pid":"pid-other"}`,
+			wantErr: true,
+		},
+		{
+			name:    "paid response without upstream identity is rejected",
+			body:    `{"code":1,"status":1,"money":"12.34"}`,
+			wantErr: true,
+		},
+		{
+			name:    "paid response without provider trade number is rejected",
+			body:    `{"code":1,"status":1,"money":"12.34","out_trade_no":"order-123","pid":"pid-1"}`,
+			wantErr: true,
 		},
 	}
 
@@ -98,12 +139,21 @@ func TestEasyPayQueryOrderStatusMapping(t *testing.T) {
 					gotForm[key] = append([]string(nil), values...)
 				}
 				w.Header().Set("Content-Type", "application/json")
+				if tt.httpStatus != 0 {
+					w.WriteHeader(tt.httpStatus)
+				}
 				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer server.Close()
 
 			provider := newTestEasyPay(t, server.URL)
 			resp, err := provider.QueryOrder(context.Background(), orderID)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("QueryOrder returned no error, response=%+v", resp)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("QueryOrder returned error: %v", err)
 			}

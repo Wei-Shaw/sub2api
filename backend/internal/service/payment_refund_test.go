@@ -4,8 +4,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +18,207 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRejectRefundRequestRestoresCompletedAndNotifiesUser(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("refund-rejected@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-rejected-user").
+		Save(ctx)
+	require.NoError(t, err)
+	requestedAt := time.Now().Add(-5 * time.Minute)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(88).
+		SetPayAmount(100).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-REJECTED").
+		SetOutTradeNo("sub2_refund_rejected").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-rejected").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusRefundRequested).
+		SetRefundAmount(88).
+		SetRefundRequestedAt(requestedAt).
+		SetRefundRequestReason("changed my mind").
+		SetRefundRequestedBy(strconv.FormatInt(user.ID, 10)).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now().Add(-time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	settingRepo := newNotificationEmailMemorySettingRepo()
+	require.NoError(t, settingRepo.Set(ctx, SettingRefundResultUserEmailEnabled, "true"))
+	notificationSvc := NewNotificationEmailService(settingRepo, nil)
+	_, err = notificationSvc.UpdatePolicy(ctx, NotificationEmailPolicyUpdate{
+		Channels: []NotificationEmailChannelPolicy{{
+			ID:                 NotificationEmailChannelRefundUser,
+			Enabled:            true,
+			IncludeUserPrimary: true,
+		}},
+	})
+	require.NoError(t, err)
+	deliveryRepo := newFakeNotificationEmailDeliveryRepository()
+	userRepo := &mockUserRepo{getByIDUser: &User{ID: user.ID, Balance: 123}}
+	svc := &PaymentService{
+		entClient:                   client,
+		configService:               NewPaymentConfigService(client, settingRepo, nil),
+		userRepo:                    userRepo,
+		notificationEmailService:    notificationSvc,
+		notificationEmailDispatcher: NewNotificationEmailDispatcher(deliveryRepo, notificationSvc),
+	}
+	require.NoError(t, svc.RejectRefundRequest(ctx, order.ID, 42, "不符合退款条件"))
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+	require.Zero(t, reloaded.RefundAmount)
+	require.Nil(t, reloaded.RefundRequestedAt)
+	require.Nil(t, reloaded.RefundRequestReason)
+	require.Nil(t, reloaded.RefundRequestedBy)
+	require.Equal(t, 123.0, userRepo.getByIDUser.Balance)
+
+	deliveryRepo.mu.Lock()
+	require.Len(t, deliveryRepo.items, 1)
+	require.Equal(t, NotificationEmailEventRefundRejectedUser, deliveryRepo.items[0].Event)
+	require.Equal(t, user.Email, deliveryRepo.items[0].RecipientEmail)
+	require.Equal(t, "100.00", deliveryRepo.items[0].Variables["refund_amount"])
+	require.Equal(t, "不符合退款条件", deliveryRepo.items[0].Variables["refund_reason"])
+	deliveryRepo.mu.Unlock()
+
+	logs, err := client.PaymentAuditLog.Query().
+		Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)), paymentauditlog.ActionEQ("REFUND_REQUEST_REJECTED")).
+		All(ctx)
+	require.NoError(t, err)
+	require.Len(t, logs, 1)
+	require.Equal(t, "admin:42", logs[0].Operator)
+	var detail map[string]any
+	require.NoError(t, json.Unmarshal([]byte(logs[0].Detail), &detail))
+	require.Equal(t, "changed my mind", detail["request_reason"])
+	require.Equal(t, "不符合退款条件", detail["rejection_reason"])
+
+	require.Error(t, svc.RejectRefundRequest(ctx, order.ID, 42, "duplicate"))
+	deliveryRepo.mu.Lock()
+	require.Len(t, deliveryRepo.items, 1)
+	deliveryRepo.mu.Unlock()
+}
+
+func TestRejectRefundRequestRequiresReasonAndPendingRequest(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	user, err := client.User.Create().
+		SetEmail("refund-reject-validation@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-reject-validation-user").
+		Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(10).
+		SetPayAmount(10).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-REJECT-VALIDATION").
+		SetOutTradeNo("sub2_refund_reject_validation").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+	svc := &PaymentService{entClient: client}
+
+	require.Error(t, svc.RejectRefundRequest(ctx, order.ID, 1, " "))
+	require.Error(t, svc.RejectRefundRequest(ctx, order.ID, 1, "not pending"))
+}
+
+func TestRejectRefundRequestMakesPreparedApprovalStale(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	user, err := client.User.Create().
+		SetEmail("refund-reject-race@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-reject-race-user").
+		Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(10).
+		SetPayAmount(10).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-REJECT-RACE").
+		SetOutTradeNo("sub2_refund_reject_race").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusRefundRequested).
+		SetRefundAmount(10).
+		SetRefundRequestedAt(time.Now().Add(-time.Minute)).
+		SetRefundRequestReason("duplicate payment").
+		SetRefundRequestedBy(strconv.FormatInt(user.ID, 10)).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{entClient: client}
+	firstRequest := order
+	staleApproval := &RefundPlan{OrderID: order.ID, Order: firstRequest}
+	require.NoError(t, svc.RejectRefundRequest(ctx, order.ID, 42, "not eligible"))
+
+	secondRequestedAt := time.Now().Add(time.Second)
+	secondRequestIdentity, identityErr := newRefundRequestIdentity()
+	require.NoError(t, identityErr)
+	updated, err := client.PaymentOrder.UpdateOneID(order.ID).
+		SetStatus(OrderStatusRefundRequested).
+		SetRefundAmount(7).
+		SetRefundRequestedAt(secondRequestedAt).
+		SetRefundRequestReason("second request").
+		SetRefundRequestedBy(secondRequestIdentity).
+		Save(ctx)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusRefundRequested, updated.Status)
+
+	_, err = svc.ExecuteRefund(ctx, staleApproval)
+	require.Error(t, err)
+	require.Error(t, svc.rejectRefundRequestDecision(ctx, firstRequest, 42, "stale rejection"))
+	reloaded, reloadErr := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, reloadErr)
+	require.Equal(t, OrderStatusRefundRequested, reloaded.Status)
+	require.Equal(t, 7.0, reloaded.RefundAmount)
+	require.Equal(t, "second request", psStringValue(reloaded.RefundRequestReason))
+
+	exec, ok := client.Driver().(refundNotificationSQLExecutor)
+	require.True(t, ok)
+	_, err = exec.ExecContext(ctx, `
+		CREATE TRIGGER fail_reject_audit
+		BEFORE INSERT ON payment_audit_logs
+		WHEN NEW.action = 'REFUND_REQUEST_REJECTED'
+		BEGIN
+			SELECT RAISE(FAIL, 'refund rejection audit unavailable');
+		END;
+	`)
+	require.NoError(t, err)
+	require.Error(t, svc.RejectRefundRequest(ctx, order.ID, 42, "current rejection"))
+	reloaded, reloadErr = client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, reloadErr)
+	require.Equal(t, OrderStatusRefundRequested, reloaded.Status)
+	require.Equal(t, "second request", psStringValue(reloaded.RefundRequestReason))
+}
 
 func TestRequestRefundQueuesDurablyWithoutRollingBackOrDuplicatingRequest(t *testing.T) {
 	ctx := context.Background()
@@ -86,6 +290,15 @@ func TestRequestRefundQueuesDurablyWithoutRollingBackOrDuplicatingRequest(t *tes
 	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusRefundRequested, reloaded.Status)
+	require.NotNil(t, reloaded.RefundRequestedBy)
+	require.True(t, strings.HasPrefix(*reloaded.RefundRequestedBy, "r:"))
+	require.Len(t, *reloaded.RefundRequestedBy, 18)
+	requestAudits, err := client.PaymentAuditLog.Query().
+		Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)), paymentauditlog.ActionEQ("REFUND_REQUESTED")).
+		All(ctx)
+	require.NoError(t, err)
+	require.Len(t, requestAudits, 1)
+	require.Equal(t, fmt.Sprintf("user:%d", user.ID), requestAudits[0].Operator)
 	require.Error(t, svc.RequestRefund(ctx, order.ID, user.ID, "duplicate charge"))
 
 	deliveryRepo.mu.Lock()

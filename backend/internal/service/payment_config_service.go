@@ -41,6 +41,7 @@ const (
 	SettingRefundRequestUserEmailEnabled  = "REFUND_REQUEST_USER_EMAIL_ENABLED"
 	SettingRefundRequestAdminEmailEnabled = "REFUND_REQUEST_ADMIN_EMAIL_ENABLED"
 	SettingRefundResultUserEmailEnabled   = "REFUND_RESULT_USER_EMAIL_ENABLED"
+	SettingEasyPayAutoReconcileEnabled    = "EASYPAY_AUTO_RECONCILE_ENABLED"
 	SettingAlipayForceQRCode              = "ALIPAY_FORCE_QRCODE"
 	SettingAlipayMobilePrecreateDeepLink  = "ALIPAY_MOBILE_PRECREATE_DEEP_LINK"
 )
@@ -81,6 +82,7 @@ type PaymentConfig struct {
 	RefundRequestUserEmailEnabled  bool   `json:"refund_request_user_email_enabled"`
 	RefundRequestAdminEmailEnabled bool   `json:"refund_request_admin_email_enabled"`
 	RefundResultUserEmailEnabled   bool   `json:"refund_result_user_email_enabled"`
+	EasyPayAutoReconcileEnabled    bool   `json:"easypay_auto_reconcile_enabled"`
 
 	// Force Alipay mobile users to use QR code instead of mobile redirect
 	AlipayForceQRCode bool `json:"alipay_force_qrcode"`
@@ -116,6 +118,7 @@ type UpdatePaymentConfigRequest struct {
 	RefundRequestUserEmailEnabled  *bool   `json:"refund_request_user_email_enabled"`
 	RefundRequestAdminEmailEnabled *bool   `json:"refund_request_admin_email_enabled"`
 	RefundResultUserEmailEnabled   *bool   `json:"refund_result_user_email_enabled"`
+	EasyPayAutoReconcileEnabled    *bool   `json:"easypay_auto_reconcile_enabled"`
 
 	// Force Alipay mobile users to use QR code instead of mobile redirect
 	AlipayForceQRCode *bool `json:"alipay_force_qrcode"`
@@ -234,6 +237,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
 		SettingRefundRequestUserEmailEnabled, SettingRefundRequestAdminEmailEnabled, SettingRefundResultUserEmailEnabled,
+		SettingEasyPayAutoReconcileEnabled,
 		SettingAlipayForceQRCode, SettingAlipayMobilePrecreateDeepLink,
 		SettingPaymentVisibleMethodAlipayEnabled, SettingPaymentVisibleMethodAlipaySource,
 		SettingPaymentVisibleMethodWxpayEnabled, SettingPaymentVisibleMethodWxpaySource,
@@ -274,6 +278,9 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		RefundRequestUserEmailEnabled:  vals[SettingRefundRequestUserEmailEnabled] == "true",
 		RefundRequestAdminEmailEnabled: vals[SettingRefundRequestAdminEmailEnabled] == "true",
 		RefundResultUserEmailEnabled:   vals[SettingRefundResultUserEmailEnabled] == "true",
+		// Missing means enabled so existing installations gain the callback
+		// recovery path without requiring a settings migration.
+		EasyPayAutoReconcileEnabled: pcParseBoolDefault(vals[SettingEasyPayAutoReconcileEnabled], true),
 
 		AlipayForceQRCode:             vals[SettingAlipayForceQRCode] == "true",
 		AlipayMobilePrecreateDeepLink: vals[SettingAlipayMobilePrecreateDeepLink] == "true",
@@ -380,6 +387,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingRefundRequestUserEmailEnabled:     formatBoolOrEmpty(req.RefundRequestUserEmailEnabled),
 		SettingRefundRequestAdminEmailEnabled:    formatBoolOrEmpty(req.RefundRequestAdminEmailEnabled),
 		SettingRefundResultUserEmailEnabled:      formatBoolOrEmpty(req.RefundResultUserEmailEnabled),
+		SettingEasyPayAutoReconcileEnabled:       formatBoolOrEmpty(req.EasyPayAutoReconcileEnabled),
 		SettingAlipayForceQRCode:                 formatBoolOrEmpty(req.AlipayForceQRCode),
 		SettingAlipayMobilePrecreateDeepLink:     formatBoolOrEmpty(req.AlipayMobilePrecreateDeepLink),
 		SettingPaymentVisibleMethodAlipaySource:  derefStr(req.VisibleMethodAlipaySource),
@@ -477,6 +485,18 @@ func pcParseInt(s string, defaultVal int) int {
 		return defaultVal
 	}
 	return v
+}
+
+func pcParseBoolDefault(raw string, defaultVal bool) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultVal
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return defaultVal
+	}
+	return value
 }
 
 func buildVisibleMethodSourceAvailability(instances []*dbent.PaymentProviderInstance) map[string]bool {

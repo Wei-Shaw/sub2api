@@ -123,7 +123,7 @@ var notificationEmailChannelDefinitions = []notificationEmailChannelDefinition{
 	{ID: NotificationEmailChannelAccountQuota, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupAccountQuota, DefaultEnabled: true, Events: []string{NotificationEmailEventAccountQuotaAlert}},
 	{ID: NotificationEmailChannelRiskControl, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: true, FixedUserPrimary: true, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventContentModerationViolation, NotificationEmailEventContentModerationDisabled, NotificationEmailEventCyberPolicyNotice}},
 	{ID: NotificationEmailChannelRefundAdmin, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupFinance, DefaultEnabled: false, Events: []string{NotificationEmailEventRefundRequestedAdmin}},
-	{ID: NotificationEmailChannelRefundUser, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: false, FixedUserPrimary: true, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventRefundRequestedUser, NotificationEmailEventRefundSucceededUser, NotificationEmailEventRefundFailedUser}},
+	{ID: NotificationEmailChannelRefundUser, RecipientKind: NotificationEmailRecipientKindUser, DefaultEnabled: false, FixedUserPrimary: true, AllowUserPrimary: true, DefaultIncludePrimary: true, Events: []string{NotificationEmailEventRefundRequestedUser, NotificationEmailEventRefundSucceededUser, NotificationEmailEventRefundFailedUser, NotificationEmailEventRefundRejectedUser}},
 	{ID: NotificationEmailChannelOpsAlert, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupOpsAlert, DefaultEnabled: false, Events: []string{NotificationEmailEventOpsAlert}},
 	{ID: NotificationEmailChannelOpsReport, RecipientKind: NotificationEmailRecipientKindGroup, DefaultRecipientGroup: NotificationEmailRecipientGroupOpsReport, DefaultEnabled: false, Events: []string{NotificationEmailEventOpsScheduledReport}},
 }
@@ -148,6 +148,7 @@ var notificationEmailEventChannels = map[string]string{
 	NotificationEmailEventRefundRequestedUser:         NotificationEmailChannelRefundUser,
 	NotificationEmailEventRefundSucceededUser:         NotificationEmailChannelRefundUser,
 	NotificationEmailEventRefundFailedUser:            NotificationEmailChannelRefundUser,
+	NotificationEmailEventRefundRejectedUser:          NotificationEmailChannelRefundUser,
 	NotificationEmailEventAccountQuotaAlert:           NotificationEmailChannelAccountQuota,
 	NotificationEmailEventContentModerationViolation:  NotificationEmailChannelRiskControl,
 	NotificationEmailEventContentModerationDisabled:   NotificationEmailChannelRiskControl,

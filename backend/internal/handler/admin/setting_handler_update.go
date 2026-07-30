@@ -306,6 +306,7 @@ type UpdateSettingsRequest struct {
 	PaymentRefundRequestUserEmailEnabled  *bool    `json:"payment_refund_request_user_email_enabled"`
 	PaymentRefundRequestAdminEmailEnabled *bool    `json:"payment_refund_request_admin_email_enabled"`
 	PaymentRefundResultUserEmailEnabled   *bool    `json:"payment_refund_result_user_email_enabled"`
+	PaymentEasyPayAutoReconcileEnabled    *bool    `json:"payment_easypay_auto_reconcile_enabled"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -1850,6 +1851,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			RefundRequestUserEmailEnabled:  req.PaymentRefundRequestUserEmailEnabled,
 			RefundRequestAdminEmailEnabled: req.PaymentRefundRequestAdminEmailEnabled,
 			RefundResultUserEmailEnabled:   req.PaymentRefundResultUserEmailEnabled,
+			EasyPayAutoReconcileEnabled:    req.PaymentEasyPayAutoReconcileEnabled,
 			CancelRateLimitEnabled:         req.PaymentCancelRateLimitEnabled,
 			CancelRateLimitMax:             req.PaymentCancelRateLimitMax,
 			CancelRateLimitWindow:          req.PaymentCancelRateLimitWindow,
@@ -2122,6 +2124,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentRefundRequestUserEmailEnabled:                   updatedPaymentCfg.RefundRequestUserEmailEnabled,
 		PaymentRefundRequestAdminEmailEnabled:                  updatedPaymentCfg.RefundRequestAdminEmailEnabled,
 		PaymentRefundResultUserEmailEnabled:                    updatedPaymentCfg.RefundResultUserEmailEnabled,
+		PaymentEasyPayAutoReconcileEnabled:                     updatedPaymentCfg.EasyPayAutoReconcileEnabled,
 		PaymentCancelRateLimitEnabled:                          updatedPaymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              updatedPaymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           updatedPaymentCfg.CancelRateLimitWindow,
@@ -2185,6 +2188,7 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
 		req.PaymentHelpText != nil || req.PaymentRefundRequestUserEmailEnabled != nil ||
 		req.PaymentRefundRequestAdminEmailEnabled != nil || req.PaymentRefundResultUserEmailEnabled != nil ||
+		req.PaymentEasyPayAutoReconcileEnabled != nil ||
 		req.PaymentCancelRateLimitEnabled != nil ||
 		req.PaymentCancelRateLimitMax != nil || req.PaymentCancelRateLimitWindow != nil ||
 		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil ||

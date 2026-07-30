@@ -30,6 +30,11 @@ var ErrOrderNotFound = errors.New("payment order not found")
 
 const paymentFulfillmentLeaseDuration = 5 * time.Minute
 
+const (
+	paymentDetectedByReconcileAction = "PAYMENT_DETECTED_BY_RECONCILE"
+	orderRecoveredByReconcileAction  = "ORDER_RECOVERED_BY_RECONCILE"
+)
+
 type paymentFulfillmentLease struct {
 	version time.Time
 }
@@ -150,18 +155,11 @@ func expectedNotificationProviderKey(registry *payment.Registry, orderPaymentTyp
 func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, tradeNo string, paid float64, pk string) error {
 	previousStatus := o.Status
 	now := time.Now()
-	grace := now.Add(-paymentGraceMinutes * time.Minute)
-	c, err := s.entClient.PaymentOrder.Update().Where(
-		paymentorder.IDEQ(o.ID),
-		paymentorder.Or(
-			paymentorder.StatusEQ(OrderStatusPending),
-			paymentorder.StatusEQ(OrderStatusCancelled),
-			paymentorder.And(
-				paymentorder.StatusEQ(OrderStatusExpired),
-				paymentorder.UpdatedAtGTE(grace),
-			),
-		),
-	).SetStatus(OrderStatusPaid).SetPayAmount(paid).SetPaymentTradeNo(tradeNo).SetPaidAt(now).ClearFailedAt().ClearFailedReason().Save(ctx)
+	var recovery *paymentRecoveryContextValue
+	if value, ok := paymentRecoveryContextFrom(ctx); ok {
+		recovery = &value
+	}
+	c, err := s.transitionOrderToPaid(ctx, o, tradeNo, paid, pk, now, recovery)
 	if err != nil {
 		return fmt.Errorf("update to PAID: %w", err)
 	}
@@ -183,7 +181,72 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 		})
 	}
 	s.writeAuditLog(ctx, o.ID, "ORDER_PAID", pk, map[string]any{"tradeNo": tradeNo, "paidAmount": paid})
-	return s.executeFulfillment(ctx, o.ID)
+	if err := s.executeFulfillment(ctx, o.ID); err != nil {
+		return err
+	}
+	if recovery != nil && recovery.trace != nil {
+		recovery.trace.recovered = true
+	}
+	return nil
+}
+
+func (s *PaymentService) transitionOrderToPaid(ctx context.Context, o *dbent.PaymentOrder, tradeNo string, paid float64, pk string, now time.Time, recovery *paymentRecoveryContextValue) (int, error) {
+	grace := now.Add(-paymentGraceMinutes * time.Minute)
+	update := func(callCtx context.Context, client *dbent.Client) (int, error) {
+		return client.PaymentOrder.Update().Where(
+			paymentorder.IDEQ(o.ID),
+			paymentorder.Or(
+				paymentorder.StatusEQ(OrderStatusPending),
+				paymentorder.StatusEQ(OrderStatusCancelled),
+				paymentorder.And(
+					paymentorder.StatusEQ(OrderStatusExpired),
+					paymentorder.UpdatedAtGTE(grace),
+				),
+			),
+		).SetStatus(OrderStatusPaid).SetPayAmount(paid).SetPaymentTradeNo(tradeNo).SetPaidAt(now).ClearFailedAt().ClearFailedReason().Save(callCtx)
+	}
+	if recovery == nil {
+		return update(ctx, s.entClient)
+	}
+
+	writeRecovery := func(callCtx context.Context, client *dbent.Client) (int, error) {
+		updated, err := update(callCtx, client)
+		if err != nil || updated == 0 {
+			return updated, err
+		}
+		delay := now.Sub(o.CreatedAt)
+		if delay < 0 {
+			delay = 0
+		}
+		if err := createPaymentAuditLog(callCtx, client, o.ID, paymentDetectedByReconcileAction, pk, map[string]any{
+			"order_id":               o.ID,
+			"queried_at":             recovery.queriedAt.UTC().Format(time.RFC3339Nano),
+			"provider_trade_no":      tradeNo,
+			"paid_amount":            paid,
+			"recovery_delay_seconds": int64(delay.Seconds()),
+			"source":                 recovery.source,
+		}); err != nil {
+			return 0, fmt.Errorf("record reconciled payment detection: %w", err)
+		}
+		return updated, nil
+	}
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return writeRecovery(ctx, tx.Client())
+	}
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin reconciled payment transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+	updated, err := writeRecovery(txCtx, tx.Client())
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit reconciled payment transaction: %w", err)
+	}
+	return updated, nil
 }
 
 func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentOrder) error {
@@ -402,29 +465,95 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 	if lease == nil {
 		return errors.New("missing payment fulfillment lease")
 	}
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin payment completion transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+	shouldNotify, err := markPaymentOrderCompleted(txCtx, tx.Client(), o, lease, auditAction)
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit payment completion transaction: %w", err)
+	}
+	if shouldNotify {
+		s.dispatchPaymentFulfillmentNotification(o, auditAction)
+	}
+	return nil
+}
+
+func markPaymentOrderCompleted(ctx context.Context, client *dbent.Client, o *dbent.PaymentOrder, lease *paymentFulfillmentLease, auditAction string) (bool, error) {
 	now := time.Now()
-	updated, err := s.entClient.PaymentOrder.Update().Where(
+	updated, err := client.PaymentOrder.Update().Where(
 		paymentorder.IDEQ(o.ID),
 		paymentorder.StatusEQ(OrderStatusRecharging),
 		paymentorder.UpdatedAtEQ(lease.version),
 	).SetStatus(OrderStatusCompleted).SetCompletedAt(now).Save(ctx)
 	if err != nil {
-		return fmt.Errorf("mark completed: %w", err)
+		return false, fmt.Errorf("mark completed: %w", err)
 	}
 	if updated == 0 {
-		current, getErr := s.entClient.PaymentOrder.Get(ctx, o.ID)
+		current, getErr := client.PaymentOrder.Get(ctx, o.ID)
 		if getErr == nil && current.Status == OrderStatusCompleted {
-			return nil
+			return false, nil
 		}
-		return infraerrors.Conflict("CONFLICT", "fulfillment lease was lost before completion")
+		return false, infraerrors.Conflict("CONFLICT", "fulfillment lease was lost before completion")
 	}
-	if !s.hasAuditLog(ctx, o.ID, auditAction) {
-		s.writeAuditLog(ctx, o.ID, auditAction, "system", map[string]any{
+	hasSuccessAudit, err := paymentAuditLogExists(ctx, client, o.ID, auditAction)
+	if err != nil {
+		return false, fmt.Errorf("check payment completion audit: %w", err)
+	}
+	if !hasSuccessAudit {
+		if err := createPaymentAuditLog(ctx, client, o.ID, auditAction, "system", map[string]any{
 			"rechargeCode":   o.RechargeCode,
 			"creditedAmount": o.Amount,
 			"payAmount":      o.PayAmount,
-		})
-		s.dispatchPaymentFulfillmentNotification(o, auditAction)
+		}); err != nil {
+			return false, fmt.Errorf("record payment completion: %w", err)
+		}
+	}
+	if err := createReconcileRecoveryCompletionAudit(ctx, client, o, now); err != nil {
+		return false, err
+	}
+	return !hasSuccessAudit, nil
+}
+
+func createReconcileRecoveryCompletionAudit(ctx context.Context, client *dbent.Client, o *dbent.PaymentOrder, completedAt time.Time) error {
+	detection, err := client.PaymentAuditLog.Query().
+		Where(
+			paymentauditlog.OrderIDEQ(strconv.FormatInt(o.ID, 10)),
+			paymentauditlog.ActionEQ(paymentDetectedByReconcileAction),
+		).
+		Order(paymentauditlog.ByCreatedAt()).
+		First(ctx)
+	if dbent.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load reconciled payment detection: %w", err)
+	}
+	alreadyRecorded, err := paymentAuditLogExists(ctx, client, o.ID, orderRecoveredByReconcileAction)
+	if err != nil {
+		return fmt.Errorf("check reconciled payment completion audit: %w", err)
+	}
+	if alreadyRecorded {
+		return nil
+	}
+
+	detail := make(map[string]any)
+	if err := json.Unmarshal([]byte(detection.Detail), &detail); err != nil {
+		return fmt.Errorf("parse reconciled payment detection audit: %w", err)
+	}
+	delay := completedAt.Sub(o.CreatedAt)
+	if delay < 0 {
+		delay = 0
+	}
+	detail["completed_at"] = completedAt.UTC().Format(time.RFC3339Nano)
+	detail["recovery_delay_seconds"] = int64(delay.Seconds())
+	if err := createPaymentAuditLog(ctx, client, o.ID, orderRecoveredByReconcileAction, detection.Operator, detail); err != nil {
+		return fmt.Errorf("record reconciled payment completion: %w", err)
 	}
 	return nil
 }
@@ -654,11 +783,19 @@ func hasPaymentSubscriptionOrderNote(notes string, orderNote string) bool {
 }
 
 func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action string) bool {
-	oid := strconv.FormatInt(orderID, 10)
-	c, _ := s.entClient.PaymentAuditLog.Query().
-		Where(paymentauditlog.OrderIDEQ(oid), paymentauditlog.ActionEQ(action)).
-		Limit(1).Count(ctx)
-	return c > 0
+	exists, _ := paymentAuditLogExists(ctx, s.entClient, orderID, action)
+	return exists
+}
+
+func paymentAuditLogExists(ctx context.Context, client *dbent.Client, orderID int64, action string) (bool, error) {
+	count, err := client.PaymentAuditLog.Query().
+		Where(
+			paymentauditlog.OrderIDEQ(strconv.FormatInt(orderID, 10)),
+			paymentauditlog.ActionEQ(action),
+		).
+		Limit(1).
+		Count(ctx)
+	return count > 0, err
 }
 
 func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *dbent.PaymentOrder) error {

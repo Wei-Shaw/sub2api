@@ -47,7 +47,7 @@ func (s *PaymentService) GetPublicOrderByResumeToken(ctx context.Context, token 
 	}
 	if order.Status == OrderStatusPending || order.Status == OrderStatusExpired {
 		result := s.reconcilePaid(ctx, order)
-		if result == checkPaidResultAlreadyPaid {
+		if result.outcome == checkPaidResultAlreadyPaid {
 			order, err = s.entClient.PaymentOrder.Get(ctx, order.ID)
 			if err != nil {
 				return nil, fmt.Errorf("reload order by resume token: %w", err)

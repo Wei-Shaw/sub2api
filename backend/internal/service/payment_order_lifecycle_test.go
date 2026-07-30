@@ -5,11 +5,15 @@ package service
 import (
 	"context"
 	"database/sql"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
+	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -667,6 +671,272 @@ func TestReconcilePendingWxpayOrdersBackfillsPaidOrder(t *testing.T) {
 	require.Equal(t, "wxpay-upstream-trade-123", reloaded.PaymentTradeNo)
 	require.Equal(t, 50.0, userRepo.getByIDUser.Balance)
 	require.Len(t, redeemRepo.useCalls, 1)
+}
+
+func TestReconcilePendingEasyPayOrdersBackfillsPaidAlipayOrder(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	queryCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		queryCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":1,"trade_status":"TRADE_SUCCESS","money":"50.00","trade_no":"easypay-upstream-123","out_trade_no":"sub2_easypay_reconcile","pid":"pid-1"}`))
+	}))
+	defer server.Close()
+
+	user, err := client.User.Create().
+		SetEmail("easypay-reconcile@example.com").
+		SetPasswordHash("hash").
+		SetUsername("easypay-reconcile-user").
+		Save(ctx)
+	require.NoError(t, err)
+	instance, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeEasyPay).
+		SetName("EasyPay reconcile").
+		SetConfig(encryptWebhookProviderConfig(t, map[string]string{
+			"pid": "pid-1", "pkey": "pkey-1", "apiBase": server.URL,
+			"notifyUrl": "https://example.com/notify", "returnUrl": "https://example.com/return",
+		})).
+		SetSupportedTypes("alipay,wxpay").
+		SetEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(50).
+		SetPayAmount(50).
+		SetFeeRate(0).
+		SetRechargeCode("EASYPAY-RECONCILE").
+		SetOutTradeNo("sub2_easypay_reconcile").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderKey(payment.TypeEasyPay).
+		SetProviderInstanceID(strconv.FormatInt(instance.ID, 10)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	userRepo := &mockUserRepo{getByIDUser: &User{
+		ID: user.ID, Email: user.Email, Username: user.Username,
+	}}
+	userRepo.updateBalanceFn = func(_ context.Context, id int64, amount float64) error {
+		require.Equal(t, user.ID, id)
+		userRepo.getByIDUser.Balance += amount
+		return nil
+	}
+	redeemRepo := &paymentOrderLifecycleRedeemRepo{codesByCode: map[string]*RedeemCode{
+		order.RechargeCode: {
+			ID: 1, Code: order.RechargeCode, Type: RedeemTypeBalance,
+			Value: order.Amount, Status: StatusUnused,
+		},
+	}}
+	redeemService := NewRedeemService(redeemRepo, userRepo, nil, nil, nil, client, nil, nil)
+	svc := &PaymentService{
+		entClient:       client,
+		loadBalancer:    newWebhookProviderTestLoadBalancer(client),
+		redeemService:   redeemService,
+		userRepo:        userRepo,
+		providersLoaded: true,
+	}
+
+	recovered, err := svc.ReconcilePendingEasyPayOrders(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, recovered)
+	require.Equal(t, 1, queryCalls)
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+	require.Equal(t, "easypay-upstream-123", reloaded.PaymentTradeNo)
+	require.Equal(t, 50.0, userRepo.getByIDUser.Balance)
+	require.Len(t, redeemRepo.useCalls, 1)
+
+	// A delayed webhook after active reconciliation must acknowledge the
+	// already-completed order without crediting the user a second time.
+	require.NoError(t, svc.HandlePaymentNotification(ctx, &payment.PaymentNotification{
+		TradeNo: "easypay-upstream-123",
+		OrderID: order.OutTradeNo,
+		Amount:  50,
+		Status:  payment.ProviderStatusSuccess,
+		Metadata: map[string]string{
+			"pid": "pid-1",
+		},
+	}, payment.TypeEasyPay))
+	require.Equal(t, 50.0, userRepo.getByIDUser.Balance)
+	require.Len(t, redeemRepo.useCalls, 1)
+
+	detectedLogs, err := client.PaymentAuditLog.Query().
+		Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)), paymentauditlog.ActionEQ(paymentDetectedByReconcileAction)).
+		All(ctx)
+	require.NoError(t, err)
+	require.Len(t, detectedLogs, 1)
+
+	logs, err := client.PaymentAuditLog.Query().
+		Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)), paymentauditlog.ActionEQ("ORDER_RECOVERED_BY_RECONCILE")).
+		All(ctx)
+	require.NoError(t, err)
+	require.Len(t, logs, 1)
+	require.Contains(t, logs[0].Detail, `"source":"scheduled_reconcile"`)
+}
+
+func TestExpireTimedOutEasyPayOrderDefersOnUnknownQuery(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "temporary gateway failure", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	user, err := client.User.Create().
+		SetEmail("easypay-expiry-unknown@example.com").
+		SetPasswordHash("hash").
+		SetUsername("easypay-expiry-unknown-user").
+		Save(ctx)
+	require.NoError(t, err)
+	instance, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeEasyPay).
+		SetName("EasyPay expiry").
+		SetConfig(encryptWebhookProviderConfig(t, map[string]string{
+			"pid": "pid-1", "pkey": "pkey-1", "apiBase": server.URL,
+			"notifyUrl": "https://example.com/notify", "returnUrl": "https://example.com/return",
+		})).
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(20).
+		SetPayAmount(20).
+		SetFeeRate(0).
+		SetRechargeCode("EASYPAY-EXPIRY-UNKNOWN").
+		SetOutTradeNo("sub2_easypay_expiry_unknown").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(-time.Minute)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderKey(payment.TypeEasyPay).
+		SetProviderInstanceID(strconv.FormatInt(instance.ID, 10)).
+		Save(ctx)
+	require.NoError(t, err)
+	svc := &PaymentService{
+		entClient:       client,
+		loadBalancer:    newWebhookProviderTestLoadBalancer(client),
+		providersLoaded: true,
+	}
+
+	expired, err := svc.ExpireTimedOutOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, expired)
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusPending, reloaded.Status)
+}
+
+func TestReconcilePendingEasyPayOrdersRotatesBatches(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	user, err := client.User.Create().
+		SetEmail("easypay-batches@example.com").
+		SetPasswordHash("hash").
+		SetUsername("easypay-batches-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	var fiftiethID, lastID int64
+	for i := 1; i <= pendingEasyPayReconcileLimit+1; i++ {
+		order, createErr := client.PaymentOrder.Create().
+			SetUserID(user.ID).
+			SetUserEmail(user.Email).
+			SetUserName(user.Username).
+			SetAmount(1).
+			SetPayAmount(1).
+			SetFeeRate(0).
+			SetRechargeCode("EASYPAY-BATCH-" + strconv.Itoa(i)).
+			SetOutTradeNo("sub2_easypay_batch_" + strconv.Itoa(i)).
+			SetPaymentType(payment.TypeAlipay).
+			SetPaymentTradeNo("").
+			SetOrderType(payment.OrderTypeBalance).
+			SetStatus(OrderStatusPending).
+			SetExpiresAt(time.Now().Add(time.Hour)).
+			SetClientIP("127.0.0.1").
+			SetSrcHost("api.example.com").
+			SetProviderKey(payment.TypeEasyPay).
+			Save(ctx)
+		require.NoError(t, createErr)
+		if i == pendingEasyPayReconcileLimit {
+			fiftiethID = order.ID
+		}
+		lastID = order.ID
+	}
+	svc := &PaymentService{entClient: client, providersLoaded: true}
+
+	recovered, err := svc.ReconcilePendingEasyPayOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, recovered)
+	require.Equal(t, fiftiethID, svc.easyPayReconcileCursor)
+
+	recovered, err = svc.ReconcilePendingEasyPayOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, recovered)
+	require.Equal(t, lastID, svc.easyPayReconcileCursor)
+}
+
+func TestReconcilePendingPaymentOrdersHonorsEasyPayEmergencySwitch(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	user, err := client.User.Create().
+		SetEmail("easypay-disabled@example.com").
+		SetPasswordHash("hash").
+		SetUsername("easypay-disabled-user").
+		Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(1).
+		SetPayAmount(1).
+		SetFeeRate(0).
+		SetRechargeCode("EASYPAY-DISABLED").
+		SetOutTradeNo("sub2_easypay_disabled").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderKey(payment.TypeEasyPay).
+		Save(ctx)
+	require.NoError(t, err)
+
+	settingRepo := newNotificationEmailMemorySettingRepo()
+	require.NoError(t, settingRepo.Set(ctx, SettingEasyPayAutoReconcileEnabled, "false"))
+	svc := &PaymentService{
+		entClient:       client,
+		configService:   NewPaymentConfigService(client, settingRepo, nil),
+		providersLoaded: true,
+	}
+
+	recovered, err := svc.ReconcilePendingPaymentOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, recovered)
+	require.Zero(t, svc.easyPayReconcileCursor)
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusPending, reloaded.Status)
 }
 
 func TestVerifyOrderByOutTradeNoUsesOutTradeNoWhenPaymentTradeNoAlreadyExistsForAlipay(t *testing.T) {

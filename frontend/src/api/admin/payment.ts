@@ -32,6 +32,9 @@ export interface AdminPaymentConfig {
   help_image_url: string
   help_text: string
   refund_request_user_email_enabled: boolean
+  refund_request_admin_email_enabled: boolean
+  refund_result_user_email_enabled: boolean
+  easypay_auto_reconcile_enabled: boolean
 }
 
 /** Fields accepted by PUT /admin/payment/config (all optional via pointer semantics) */
@@ -53,6 +56,9 @@ export interface UpdatePaymentConfigRequest {
   help_image_url?: string
   help_text?: string
   refund_request_user_email_enabled?: boolean
+  refund_request_admin_email_enabled?: boolean
+  refund_result_user_email_enabled?: boolean
+  easypay_auto_reconcile_enabled?: boolean
 }
 
 export interface RefundResult {
@@ -125,6 +131,11 @@ export const adminPaymentAPI = {
   /** Query and finalize a pending refund */
   queryRefund(id: number) {
     return apiClient.post<RefundResult>(`/admin/payment/orders/${id}/refund/query`)
+  },
+
+  /** Reject a user-submitted refund request without refunding or deducting balance */
+  rejectRefundRequest(id: number, reason: string) {
+    return apiClient.post(`/admin/payment/orders/${id}/refund/reject`, { reason })
   },
 
   // ==================== Channels ====================

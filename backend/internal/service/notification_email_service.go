@@ -31,6 +31,7 @@ const (
 	NotificationEmailEventRefundRequestedUser         = "billing.refund_requested_user"
 	NotificationEmailEventRefundSucceededUser         = "billing.refund_succeeded_user"
 	NotificationEmailEventRefundFailedUser            = "billing.refund_failed_user"
+	NotificationEmailEventRefundRejectedUser          = "billing.refund_rejected_user"
 	NotificationEmailEventAccountQuotaAlert           = "account.quota_alert"
 	NotificationEmailEventContentModerationViolation  = "content_moderation.violation_notice"
 	NotificationEmailEventContentModerationDisabled   = "content_moderation.account_disabled"
@@ -1075,6 +1076,7 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventRefundRequestedUser,
 	NotificationEmailEventRefundSucceededUser,
 	NotificationEmailEventRefundFailedUser,
+	NotificationEmailEventRefundRejectedUser,
 	NotificationEmailEventAccountQuotaAlert,
 	NotificationEmailEventContentModerationViolation,
 	NotificationEmailEventContentModerationDisabled,
@@ -1172,6 +1174,15 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Event:       NotificationEmailEventRefundFailedUser,
 		Label:       "Refund failed",
 		Description: "Sent to a user after a refund reaches a terminal failed state.",
+		Category:    "billing",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"order_id", "refund_amount", "refund_currency", "refund_reason", "refund_status", "completed_at"),
+	},
+	NotificationEmailEventRefundRejectedUser: {
+		Event:       NotificationEmailEventRefundRejectedUser,
+		Label:       "Refund request rejected",
+		Description: "Sent to a user after an administrator rejects a refund request.",
 		Category:    "billing",
 		Optional:    false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
@@ -1466,6 +1477,30 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 	<p>退款金额：<strong>{{refund_amount}} {{refund_currency}}</strong></p>
 	<p>当前状态：<strong>{{refund_status}}</strong></p>
 	<p>更新时间：{{completed_at}}</p>`),
+		},
+	},
+	NotificationEmailEventRefundRejectedUser: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Refund request rejected - #{{order_id}}",
+			HTML: notificationEmailCard("#dc2626", "Refund request rejected", `
+	<p>Hello {{recipient_name}},</p>
+	<p>Your refund request was reviewed and rejected.</p>
+	<p>Order ID: <strong>{{order_id}}</strong></p>
+	<p>Requested refund: <strong>{{refund_amount}} {{refund_currency}}</strong></p>
+	<p>Reason: {{refund_reason}}</p>
+	<p>Status: <strong>{{refund_status}}</strong></p>
+	<p>Reviewed at: {{completed_at}}</p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 退款申请未通过 - #{{order_id}}",
+			HTML: notificationEmailCard("#dc2626", "退款申请未通过", `
+	<p>{{recipient_name}}，您好：</p>
+	<p>您的退款申请经审核后未获批准。</p>
+	<p>订单号：<strong>{{order_id}}</strong></p>
+	<p>申请退款金额：<strong>{{refund_amount}} {{refund_currency}}</strong></p>
+	<p>拒绝原因：{{refund_reason}}</p>
+	<p>当前状态：<strong>{{refund_status}}</strong></p>
+	<p>审核时间：{{completed_at}}</p>`),
 		},
 	},
 	NotificationEmailEventAccountQuotaAlert: {

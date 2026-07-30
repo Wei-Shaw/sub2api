@@ -7544,6 +7544,19 @@
                     <div class="flex items-center justify-between gap-3">
                       <div>
                         <label class="input-label">{{
+                          t("admin.settings.payment.easypayAutoReconcile")
+                        }}</label>
+                        <p class="mt-0.5 text-xs text-gray-400">
+                          {{ t("admin.settings.payment.easypayAutoReconcileHint") }}
+                        </p>
+                      </div>
+                      <Toggle v-model="form.payment_easypay_auto_reconcile_enabled" />
+                    </div>
+                  </div>
+                  <div class="min-w-64 flex-1">
+                    <div class="flex items-center justify-between gap-3">
+                      <div>
+                        <label class="input-label">{{
                           t("admin.settings.payment.refundRequestUserEmail")
                         }}</label>
                         <p class="mt-0.5 text-xs text-gray-400">
@@ -8869,6 +8882,7 @@ const form = reactive<SettingsForm>({
   payment_refund_request_user_email_enabled: false,
   payment_refund_request_admin_email_enabled: false,
   payment_refund_result_user_email_enabled: false,
+  payment_easypay_auto_reconcile_enabled: true,
   payment_product_name_prefix: "",
   payment_product_name_suffix: "",
   payment_load_balance_strategy: "round-robin",
@@ -10550,6 +10564,8 @@ async function saveSettings() {
         form.payment_refund_request_admin_email_enabled,
       payment_refund_result_user_email_enabled:
         form.payment_refund_result_user_email_enabled,
+      payment_easypay_auto_reconcile_enabled:
+        form.payment_easypay_auto_reconcile_enabled,
       payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
       payment_cancel_rate_limit_max:
         Number(form.payment_cancel_rate_limit_max) || 10,

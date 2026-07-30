@@ -1002,6 +1002,24 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
+  it("preserves the EasyPay active reconciliation emergency switch", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      payment_easypay_auto_reconcile_enabled: false,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_easypay_auto_reconcile_enabled: false,
+      }),
+    );
+  });
+
   it("updates provider enablement immediately and reloads providers", async () => {
     const provider = {
       id: 7,

@@ -275,6 +275,7 @@ type SystemSettings struct {
 	PaymentRefundRequestUserEmailEnabled  bool     `json:"payment_refund_request_user_email_enabled"`
 	PaymentRefundRequestAdminEmailEnabled bool     `json:"payment_refund_request_admin_email_enabled"`
 	PaymentRefundResultUserEmailEnabled   bool     `json:"payment_refund_result_user_email_enabled"`
+	PaymentEasyPayAutoReconcileEnabled    bool     `json:"payment_easypay_auto_reconcile_enabled"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`

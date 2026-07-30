@@ -48,6 +48,19 @@ func TestSanitizeAdminPaymentOrderForResponseAddsCurrency(t *testing.T) {
 	}
 }
 
+func TestSanitizeAdminPaymentOrderForResponseHidesRefundGenerationToken(t *testing.T) {
+	token := "r:abcdefghijklmnop"
+	order := &dbent.PaymentOrder{UserID: 42, RefundRequestedBy: &token}
+
+	got := sanitizeAdminPaymentOrderForResponse(order)
+	if got == nil || got.RefundRequestedBy == nil {
+		t.Fatal("expected refund requester in response")
+	}
+	if *got.RefundRequestedBy != "42" {
+		t.Fatalf("expected user ID 42 instead of internal generation token, got %q", *got.RefundRequestedBy)
+	}
+}
+
 func TestAdminSubscriptionPlansForResponseIncludesCompositeGroupInfo(t *testing.T) {
 	weekly := 25.0
 	now := time.Now()

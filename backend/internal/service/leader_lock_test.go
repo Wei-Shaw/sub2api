@@ -86,6 +86,21 @@ func TestTryAcquireSingletonLeaderLock_CacheErrorFallsThrough(t *testing.T) {
 	require.NotPanics(t, release)
 }
 
+func TestPaymentOrderExpiryService_SkipsCycleWhenPeerHoldsLeaderLock(t *testing.T) {
+	cache := &fakeLeaderLockCache{}
+	acquired, err := cache.TryAcquireLeaderLock(
+		context.Background(), paymentOrderExpiryLeaderLockKey, "peer", paymentOrderExpiryLeaderLockTTL,
+	)
+	require.NoError(t, err)
+	require.True(t, acquired)
+
+	// An empty PaymentService would panic if the cycle reached reconciliation.
+	// Returning safely proves a blue-green peer cannot execute the same scan.
+	svc := NewPaymentOrderExpiryService(&PaymentService{}, time.Minute)
+	svc.SetLeaderLock(cache, nil)
+	require.NotPanics(t, svc.runOnce)
+}
+
 func TestSubscriptionExpiryService_ReminderSkipsScanWhenNotLeader(t *testing.T) {
 	cache := &fakeLeaderLockCache{}
 	// A peer already holds the reminder leader lock.

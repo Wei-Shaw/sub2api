@@ -187,6 +187,8 @@ type TopUsersByCurrency map[string][]TopUserStat
 type PaymentService struct {
 	providerMu                  sync.Mutex
 	providersLoaded             bool
+	easyPayReconcileMu          sync.Mutex
+	easyPayReconcileCursor      int64
 	entClient                   *dbent.Client
 	registry                    *payment.Registry
 	loadBalancer                payment.LoadBalancer

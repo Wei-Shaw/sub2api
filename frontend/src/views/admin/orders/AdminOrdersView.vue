@@ -40,6 +40,10 @@
                 <Icon name="check" size="sm" />
                 {{ t('payment.admin.approveRefund') }}
               </button>
+              <button @click="openRejectRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20">
+                <Icon name="x" size="sm" />
+                {{ t('payment.admin.rejectRefund') }}
+              </button>
             </template>
             <button v-else-if="row.status === 'REFUND_FAILED'" @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20">
               <Icon name="refresh" size="sm" />
@@ -85,7 +89,7 @@
               </div>
               <div>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.refundRequestedBy') }}</p>
-                <p class="text-sm text-gray-700 dark:text-gray-300">#{{ selectedOrder.refund_requested_by }}</p>
+                <p class="text-sm text-gray-700 dark:text-gray-300">#{{ selectedOrder.user_id }}</p>
               </div>
               <div class="col-span-2">
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.refundRequestReason') }}</p>
@@ -112,6 +116,46 @@
     </BaseDialog>
 
     <AdminRefundDialog :show="showRefundDialog" :order="selectedOrder" :submitting="refundSubmitting" @confirm="handleRefund" @cancel="showRefundDialog = false" />
+
+    <BaseDialog
+      :show="showRejectRefundDialog"
+      :title="t('payment.admin.rejectRefundTitle')"
+      width="narrow"
+      :close-on-escape="!refundRejecting"
+      :show-close-button="!refundRejecting"
+      @close="closeRejectRefundDialog"
+    >
+      <div class="space-y-4">
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+          {{ t('payment.admin.rejectRefundMessage') }}
+        </p>
+        <div>
+          <label for="refund-rejection-reason" class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('payment.admin.rejectRefundReason') }}
+          </label>
+          <textarea
+            id="refund-rejection-reason"
+            v-model="refundRejectionReason"
+            class="input min-h-28 resize-y"
+            maxlength="1000"
+            :disabled="refundRejecting"
+            :placeholder="t('payment.admin.rejectRefundReasonPlaceholder')"
+          />
+          <p v-if="refundRejectionError" class="mt-1.5 text-xs text-red-600 dark:text-red-400">
+            {{ refundRejectionError }}
+          </p>
+        </div>
+      </div>
+      <template #footer>
+        <button type="button" class="btn btn-secondary" :disabled="refundRejecting" @click="closeRejectRefundDialog">
+          {{ t('common.cancel') }}
+        </button>
+        <button type="button" class="btn btn-danger" :disabled="refundRejecting" @click="handleRejectRefund">
+          <Icon v-if="refundRejecting" name="refresh" size="sm" class="animate-spin" />
+          {{ t('payment.admin.confirmRejectRefund') }}
+        </button>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -153,6 +197,10 @@ const selectedOrder = ref<PaymentOrder | null>(null)
 const showDetailDialog = ref(false)
 const showRefundDialog = ref(false)
 const refundSubmitting = ref(false)
+const showRejectRefundDialog = ref(false)
+const refundRejecting = ref(false)
+const refundRejectionReason = ref('')
+const refundRejectionError = ref('')
 const refundQueryingIds = ref(new Set<number>())
 const orderAuditLogs = ref<AuditLog[]>([])
 const creditedAmountSymbol = currencySymbol('USD')
@@ -236,6 +284,41 @@ async function handleRetryOrder(order: PaymentOrder) {
 }
 
 function openRefundDialog(order: PaymentOrder) { selectedOrder.value = order; showRefundDialog.value = true }
+
+function openRejectRefundDialog(order: PaymentOrder) {
+  selectedOrder.value = order
+  refundRejectionReason.value = ''
+  refundRejectionError.value = ''
+  showRejectRefundDialog.value = true
+}
+
+function closeRejectRefundDialog() {
+  if (refundRejecting.value) return
+  showRejectRefundDialog.value = false
+  refundRejectionError.value = ''
+}
+
+async function handleRejectRefund() {
+  if (!selectedOrder.value) return
+  const reason = refundRejectionReason.value.trim()
+  if (!reason) {
+    refundRejectionError.value = t('payment.admin.rejectRefundReasonRequired')
+    return
+  }
+  refundRejectionError.value = ''
+  refundRejecting.value = true
+  try {
+    await adminPaymentAPI.rejectRefundRequest(selectedOrder.value.id, reason)
+    appStore.showSuccess(t('payment.admin.rejectRefundSuccess'))
+    showRejectRefundDialog.value = false
+    showDetailDialog.value = false
+    await loadOrders()
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  } finally {
+    refundRejecting.value = false
+  }
+}
 
 function isRefundPendingWarning(warning: string | undefined): boolean {
   return /pending|处理中|待/.test(String(warning || '').toLowerCase())

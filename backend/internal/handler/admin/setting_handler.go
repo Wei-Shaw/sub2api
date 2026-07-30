@@ -356,6 +356,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentRefundRequestUserEmailEnabled:                   paymentCfg.RefundRequestUserEmailEnabled,
 		PaymentRefundRequestAdminEmailEnabled:                  paymentCfg.RefundRequestAdminEmailEnabled,
 		PaymentRefundResultUserEmailEnabled:                    paymentCfg.RefundResultUserEmailEnabled,
+		PaymentEasyPayAutoReconcileEnabled:                     paymentCfg.EasyPayAutoReconcileEnabled,
 		PaymentCancelRateLimitEnabled:                          paymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              paymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           paymentCfg.CancelRateLimitWindow,

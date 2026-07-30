@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"sort"
@@ -178,11 +180,29 @@ func roundAmount(amount float64) float64 {
 // --- Audit Logs ---
 
 func (s *PaymentService) writeAuditLog(ctx context.Context, oid int64, action, op string, detail map[string]any) {
-	dj, _ := json.Marshal(detail)
-	_, err := s.entClient.PaymentAuditLog.Create().SetOrderID(strconv.FormatInt(oid, 10)).SetAction(action).SetDetail(string(dj)).SetOperator(op).Save(ctx)
+	err := createPaymentAuditLog(ctx, s.entClient, oid, action, op, detail)
 	if err != nil {
 		slog.Error("audit log failed", "orderID", oid, "action", action, "error", err)
 	}
+}
+
+func createPaymentAuditLog(ctx context.Context, client *dbent.Client, oid int64, action, op string, detail map[string]any) error {
+	if client == nil {
+		return errors.New("payment audit client is unavailable")
+	}
+	dj, err := json.Marshal(detail)
+	if err != nil {
+		return fmt.Errorf("marshal payment audit detail: %w", err)
+	}
+	if _, err := client.PaymentAuditLog.Create().
+		SetOrderID(strconv.FormatInt(oid, 10)).
+		SetAction(action).
+		SetDetail(string(dj)).
+		SetOperator(op).
+		Save(ctx); err != nil {
+		return fmt.Errorf("create payment audit log: %w", err)
+	}
+	return nil
 }
 
 func (s *PaymentService) GetOrderAuditLogs(ctx context.Context, oid int64) ([]*dbent.PaymentAuditLog, error) {

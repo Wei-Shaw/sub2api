@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	stdsql "database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -169,14 +172,20 @@ func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reas
 	}
 	nr := strings.TrimSpace(reason)
 	now := time.Now()
-	by := fmt.Sprintf("%d", uid)
+	requestIdentity, err := newRefundRequestIdentity()
+	if err != nil {
+		return infraerrors.InternalServer("REFUND_REQUEST_IDENTITY_FAILED", "failed to create refund request identity")
+	}
 	err = s.withRefundNotificationTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
-		c, updateErr := txClient.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.UserIDEQ(uid), paymentorder.StatusEQ(OrderStatusCompleted), paymentorder.OrderTypeEQ(payment.OrderTypeBalance)).SetStatus(OrderStatusRefundRequested).SetRefundRequestedAt(now).SetRefundRequestReason(nr).SetRefundRequestedBy(by).SetRefundAmount(o.Amount).Save(txCtx)
+		c, updateErr := txClient.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.UserIDEQ(uid), paymentorder.StatusEQ(OrderStatusCompleted), paymentorder.OrderTypeEQ(payment.OrderTypeBalance)).SetStatus(OrderStatusRefundRequested).SetRefundRequestedAt(now).SetRefundRequestReason(nr).SetRefundRequestedBy(requestIdentity).SetRefundAmount(o.Amount).Save(txCtx)
 		if updateErr != nil {
 			return fmt.Errorf("update: %w", updateErr)
 		}
 		if c == 0 {
 			return infraerrors.Conflict("CONFLICT", "order status changed")
+		}
+		if auditErr := createPaymentAuditLog(txCtx, txClient, oid, "REFUND_REQUESTED", fmt.Sprintf("user:%d", uid), map[string]any{"amount": o.Amount, "reason": nr}); auditErr != nil {
+			return fmt.Errorf("record refund request: %w", auditErr)
 		}
 		if dispatchErr := s.dispatchRefundRequestNotifications(txCtx, o, now, nr); dispatchErr != nil {
 			return fmt.Errorf("enqueue refund request notification: %w", dispatchErr)
@@ -187,8 +196,124 @@ func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reas
 		s.recordRefundNotificationError(oid, err)
 		return err
 	}
-	s.writeAuditLog(ctx, oid, "REFUND_REQUESTED", fmt.Sprintf("user:%d", uid), map[string]any{"amount": o.Amount, "reason": nr})
 	return nil
+}
+
+func newRefundRequestIdentity() (string, error) {
+	// This legacy field is not consumed as an actor ID anywhere else. A unique
+	// per-request value turns it into an ABA-safe generation token without a
+	// schema migration; the actual user remains recorded in the audit operator.
+	random := make([]byte, 12)
+	if _, err := rand.Read(random); err != nil {
+		return "", fmt.Errorf("generate refund request identity: %w", err)
+	}
+	return "r:" + base64.RawURLEncoding.EncodeToString(random), nil
+}
+
+const refundRequestRejectedStatus = "REFUND_REJECTED"
+
+// RejectRefundRequest rejects a user-submitted refund request without calling
+// the payment gateway or changing the user's balance. The conditional update
+// races safely with approval: exactly one decision can move REFUND_REQUESTED.
+func (s *PaymentService) RejectRefundRequest(ctx context.Context, oid, adminID int64, reason string) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return infraerrors.BadRequest("REFUND_REJECTION_REASON_REQUIRED", "refund rejection reason is required")
+	}
+	if len([]rune(reason)) > 1000 {
+		return infraerrors.BadRequest("REFUND_REJECTION_REASON_TOO_LONG", "refund rejection reason must not exceed 1000 characters")
+	}
+
+	order, err := s.entClient.PaymentOrder.Get(ctx, oid)
+	if err != nil {
+		return infraerrors.NotFound("NOT_FOUND", "order not found")
+	}
+	if order.Status != OrderStatusRefundRequested {
+		return infraerrors.Conflict("CONFLICT", "only a pending refund request can be rejected")
+	}
+	return s.rejectRefundRequestDecision(ctx, order, adminID, reason)
+}
+
+func (s *PaymentService) rejectRefundRequestDecision(ctx context.Context, order *dbent.PaymentOrder, adminID int64, reason string) error {
+	if order == nil || order.Status != OrderStatusRefundRequested {
+		return infraerrors.Conflict("CONFLICT", "only a pending refund request can be rejected")
+	}
+
+	requestedAmount := order.RefundAmount
+	requestedReason := strings.TrimSpace(psStringValue(order.RefundRequestReason))
+	reviewedAt := time.Now()
+	operator := "admin"
+	if adminID > 0 {
+		operator = fmt.Sprintf("admin:%d", adminID)
+	}
+	auditDetail := map[string]any{
+		"requested_amount": requestedAmount,
+		"request_reason":   requestedReason,
+		"rejection_reason": reason,
+		"reviewed_at":      reviewedAt.UTC().Format(time.RFC3339Nano),
+	}
+	var notificationErr error
+	err := s.withRefundNotificationTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		predicates := append([]predicate.PaymentOrder{paymentorder.IDEQ(order.ID)}, refundRequestIdentityPredicates(order)...)
+		updated, updateErr := txClient.PaymentOrder.Update().
+			Where(predicates...).
+			SetStatus(OrderStatusCompleted).
+			SetRefundAmount(0).
+			ClearRefundRequestedAt().
+			ClearRefundRequestReason().
+			ClearRefundRequestedBy().
+			ClearFailedAt().
+			ClearFailedReason().
+			Save(txCtx)
+		if updateErr != nil {
+			return fmt.Errorf("reject refund request: %w", updateErr)
+		}
+		if updated == 0 {
+			return infraerrors.Conflict("CONFLICT", "refund request was already processed")
+		}
+		if auditErr := createPaymentAuditLog(txCtx, txClient, order.ID, "REFUND_REQUEST_REJECTED", operator, auditDetail); auditErr != nil {
+			return fmt.Errorf("record rejected refund request: %w", auditErr)
+		}
+
+		gatewayAmount := calculateGatewayRefundAmount(order.Amount, order.PayAmount, requestedAmount, PaymentOrderCurrency(order))
+		var fatalErr error
+		notificationErr, fatalErr = tryRefundResultNotification(txCtx, txClient, func() error {
+			return s.dispatchRefundResultNotification(
+				txCtx,
+				order,
+				NotificationEmailEventRefundRejectedUser,
+				refundRequestRejectedStatus,
+				gatewayAmount,
+				reason,
+				reviewedAt,
+			)
+		})
+		return fatalErr
+	})
+	if err != nil {
+		return err
+	}
+
+	s.recordRefundNotificationError(order.ID, notificationErr)
+	return nil
+}
+
+func refundRequestIdentityPredicates(order *dbent.PaymentOrder) []predicate.PaymentOrder {
+	predicates := []predicate.PaymentOrder{
+		paymentorder.StatusEQ(OrderStatusRefundRequested),
+		paymentorder.RefundAmountEQ(order.RefundAmount),
+	}
+	if order.RefundRequestReason == nil {
+		predicates = append(predicates, paymentorder.RefundRequestReasonIsNil())
+	} else {
+		predicates = append(predicates, paymentorder.RefundRequestReasonEQ(*order.RefundRequestReason))
+	}
+	if order.RefundRequestedBy == nil {
+		predicates = append(predicates, paymentorder.RefundRequestedByIsNil())
+	} else {
+		predicates = append(predicates, paymentorder.RefundRequestedByEQ(*order.RefundRequestedBy))
+	}
+	return predicates
 }
 
 func (s *PaymentService) dispatchRefundRequestNotifications(ctx context.Context, o *dbent.PaymentOrder, requestedAt time.Time, reason string) error {
@@ -241,9 +366,16 @@ func (s *PaymentService) dispatchRefundResultNotification(ctx context.Context, o
 		}
 		return nil
 	}
+	reminderKey := status
+	if event == NotificationEmailEventRefundRejectedUser {
+		// A rejected order returns to COMPLETED and the user may submit a later
+		// request. Keep retries of this decision idempotent while allowing a
+		// future, separately reviewed rejection to notify the user again.
+		reminderKey = status + ":" + completedAt.UTC().Format(time.RFC3339Nano)
+	}
 	_, err = s.notificationEmailDispatcher.Enqueue(ctx, NotificationEmailSendInput{
 		Event: event, RecipientEmail: o.UserEmail, RecipientName: firstNonEmpty(o.UserName, o.UserEmail), UserID: o.UserID,
-		SourceType: "payment_refund_result", SourceID: strconv.FormatInt(o.ID, 10), ReminderKey: status,
+		SourceType: "payment_refund_result", SourceID: strconv.FormatInt(o.ID, 10), ReminderKey: reminderKey,
 		Variables: refundNotificationVariables(o, gatewayAmount, reason, status, completedAt),
 	})
 	if err != nil && !errors.Is(err, ErrNotificationEmailChannelDisabled) {
@@ -441,7 +573,17 @@ func (s *PaymentService) prepDeduct(ctx context.Context, o *dbent.PaymentOrder, 
 }
 
 func (s *PaymentService) ExecuteRefund(ctx context.Context, p *RefundPlan) (*RefundResult, error) {
-	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(p.OrderID), paymentorder.StatusIn(OrderStatusCompleted, OrderStatusRefundRequested, OrderStatusRefundPending, OrderStatusRefundFailed)).SetStatus(OrderStatusRefunding).Save(ctx)
+	// PrepareRefund records the exact state the administrator reviewed. Requiring
+	// that same state here prevents a stale approval from winning after another
+	// administrator has rejected or otherwise changed the refund request.
+	predicates := []predicate.PaymentOrder{paymentorder.IDEQ(p.OrderID), paymentorder.StatusEQ(p.Order.Status)}
+	if p.Order.Status == OrderStatusRefundRequested {
+		predicates = append([]predicate.PaymentOrder{paymentorder.IDEQ(p.OrderID)}, refundRequestIdentityPredicates(p.Order)...)
+	}
+	c, err := s.entClient.PaymentOrder.Update().
+		Where(predicates...).
+		SetStatus(OrderStatusRefunding).
+		Save(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("lock: %w", err)
 	}

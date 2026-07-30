@@ -122,6 +122,9 @@ func TestParsePaymentConfig(t *testing.T) {
 		if cfg.RefundRequestUserEmailEnabled {
 			t.Fatal("expected RefundRequestUserEmailEnabled=false by default")
 		}
+		if !cfg.EasyPayAutoReconcileEnabled {
+			t.Fatal("expected EasyPayAutoReconcileEnabled=true by default")
+		}
 	})
 
 	t.Run("all values populated", func(t *testing.T) {
@@ -139,6 +142,7 @@ func TestParsePaymentConfig(t *testing.T) {
 			SettingProductNamePrefix:             "PRE",
 			SettingProductNameSuffix:             "SUF",
 			SettingRefundRequestUserEmailEnabled: "true",
+			SettingEasyPayAutoReconcileEnabled:   "false",
 			SettingAlipayMobilePrecreateDeepLink: "true",
 		}
 		cfg := svc.parsePaymentConfig(vals)
@@ -184,6 +188,9 @@ func TestParsePaymentConfig(t *testing.T) {
 		}
 		if !cfg.RefundRequestUserEmailEnabled {
 			t.Fatal("expected RefundRequestUserEmailEnabled=true")
+		}
+		if cfg.EasyPayAutoReconcileEnabled {
+			t.Fatal("expected EasyPayAutoReconcileEnabled=false")
 		}
 	})
 
@@ -262,6 +269,27 @@ func TestUpdatePaymentConfigPersistsRefundRequestUserEmailSwitch(t *testing.T) {
 	}
 	if !cfg.RefundRequestUserEmailEnabled {
 		t.Fatal("expected persisted refund request email switch to be enabled")
+	}
+}
+
+func TestUpdatePaymentConfigPersistsEasyPayAutoReconcileSwitch(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	svc := NewPaymentConfigService(nil, repo, nil)
+	disabled := false
+
+	if err := svc.UpdatePaymentConfig(ctx, UpdatePaymentConfigRequest{
+		EasyPayAutoReconcileEnabled: &disabled,
+	}); err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+
+	cfg, err := svc.GetPaymentConfig(ctx)
+	if err != nil {
+		t.Fatalf("GetPaymentConfig returned error: %v", err)
+	}
+	if cfg.EasyPayAutoReconcileEnabled {
+		t.Fatal("expected persisted EasyPay reconcile switch to be disabled")
 	}
 }
 

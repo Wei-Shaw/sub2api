@@ -618,6 +618,7 @@ export interface SystemSettings {
   payment_refund_request_user_email_enabled: boolean;
   payment_refund_request_admin_email_enabled: boolean;
   payment_refund_result_user_email_enabled: boolean;
+  payment_easypay_auto_reconcile_enabled: boolean;
   payment_cancel_rate_limit_enabled: boolean;
   payment_cancel_rate_limit_max: number;
   payment_cancel_rate_limit_window: number;
@@ -919,6 +920,7 @@ export interface UpdateSettingsRequest {
   payment_refund_request_user_email_enabled?: boolean;
   payment_refund_request_admin_email_enabled?: boolean;
   payment_refund_result_user_email_enabled?: boolean;
+  payment_easypay_auto_reconcile_enabled?: boolean;
   payment_cancel_rate_limit_enabled?: boolean;
   payment_cancel_rate_limit_max?: number;
   payment_cancel_rate_limit_window?: number;

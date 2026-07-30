@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	paymentprovider "github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 )
@@ -26,12 +28,51 @@ const (
 	rateLimitModeFixed         = "fixed"
 	checkPaidResultAlreadyPaid = "already_paid"
 	checkPaidResultCancelled   = "cancelled"
+	checkPaidResultUnpaid      = "unpaid"
+	checkPaidResultUnknown     = "unknown"
+	checkPaidResultRejected    = "rejected"
 
-	pendingWxpayReconcileLimit = 20
+	pendingWxpayReconcileLimit   = 20
+	pendingEasyPayReconcileLimit = 50
 )
 
 type checkPaidOptions struct {
 	cancelIfUnpaid bool
+	recoverySource string
+}
+
+type checkPaidResult struct {
+	outcome   string
+	recovered bool
+}
+
+type paymentRecoveryTrace struct {
+	recovered bool
+}
+
+type paymentRecoveryContextValue struct {
+	source    string
+	queriedAt time.Time
+	trace     *paymentRecoveryTrace
+}
+
+type paymentRecoveryContextKey struct{}
+
+func withPaymentRecoveryContext(ctx context.Context, source string, trace *paymentRecoveryTrace) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, paymentRecoveryContextKey{}, paymentRecoveryContextValue{
+		source: strings.TrimSpace(source), queriedAt: time.Now(), trace: trace,
+	})
+}
+
+func paymentRecoveryContextFrom(ctx context.Context) (paymentRecoveryContextValue, bool) {
+	if ctx == nil {
+		return paymentRecoveryContextValue{}, false
+	}
+	value, ok := ctx.Value(paymentRecoveryContextKey{}).(paymentRecoveryContextValue)
+	return value, ok && value.source != ""
 }
 
 func (s *PaymentService) checkCancelRateLimit(ctx context.Context, userID int64, cfg *PaymentConfig) error {
@@ -123,8 +164,19 @@ func (s *PaymentService) AdminCancelOrder(ctx context.Context, orderID int64) (s
 
 func (s *PaymentService) cancelCore(ctx context.Context, o *dbent.PaymentOrder, fs, op, ad string) (string, error) {
 	if o.PaymentTradeNo != "" || o.PaymentType != "" {
-		if s.checkPaid(ctx, o) == checkPaidResultAlreadyPaid {
+		result := s.checkPaid(ctx, o)
+		switch result.outcome {
+		case checkPaidResultAlreadyPaid:
 			return checkPaidResultAlreadyPaid, nil
+		case checkPaidResultUnknown:
+			// EasyPay is the provider whose callback-loss fallback requires
+			// strict UNKNOWN handling. Preserve the legacy cancellation/expiry
+			// behavior for other providers instead of broadening this change.
+			if paymentOrderUsesEasyPay(o) {
+				return "", infraerrors.ServiceUnavailable("PAYMENT_STATUS_UNKNOWN", "payment status could not be confirmed; please retry later")
+			}
+		case checkPaidResultRejected:
+			return "", infraerrors.Conflict("PAYMENT_REVIEW_REQUIRED", "payment provider returned an unsafe or inconsistent result; manual review is required")
 		}
 	}
 	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(o.ID), paymentorder.StatusEQ(OrderStatusPending)).SetStatus(fs).Save(ctx)
@@ -141,29 +193,59 @@ func (s *PaymentService) cancelCore(ctx context.Context, o *dbent.PaymentOrder, 
 	return checkPaidResultCancelled, nil
 }
 
-func (s *PaymentService) checkPaid(ctx context.Context, o *dbent.PaymentOrder) string {
+func paymentOrderUsesEasyPay(order *dbent.PaymentOrder) bool {
+	if order == nil {
+		return false
+	}
+	keys := []string{psStringValue(order.ProviderKey)}
+	if snapshot := psOrderProviderSnapshot(order); snapshot != nil {
+		keys = append(keys, snapshot.ProviderKey)
+	}
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == payment.TypeEasyPay || strings.HasPrefix(key, payment.TypeEasyPay+"_") {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *PaymentService) checkPaid(ctx context.Context, o *dbent.PaymentOrder) checkPaidResult {
 	return s.checkPaidWithOptions(ctx, o, checkPaidOptions{cancelIfUnpaid: true})
 }
 
-func (s *PaymentService) reconcilePaid(ctx context.Context, o *dbent.PaymentOrder) string {
+func (s *PaymentService) reconcilePaid(ctx context.Context, o *dbent.PaymentOrder) checkPaidResult {
 	return s.checkPaidWithOptions(ctx, o, checkPaidOptions{})
 }
 
-func (s *PaymentService) checkPaidWithOptions(ctx context.Context, o *dbent.PaymentOrder, opts checkPaidOptions) string {
+func (s *PaymentService) checkPaidWithOptions(ctx context.Context, o *dbent.PaymentOrder, opts checkPaidOptions) checkPaidResult {
 	prov, err := s.getOrderProvider(ctx, o)
 	if err != nil {
-		return ""
+		slog.Warn("resolve payment provider for query failed", "orderID", o.ID, "error", err)
+		return checkPaidResult{outcome: checkPaidResultUnknown}
 	}
 	queryRef := paymentOrderQueryReference(o, prov)
 	if queryRef == "" {
-		return ""
+		slog.Warn("payment order query reference is missing", "orderID", o.ID, "provider", prov.ProviderKey())
+		return checkPaidResult{outcome: checkPaidResultUnknown}
 	}
 	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
 	resp, err := prov.QueryOrder(ctx, queryRef)
 	finishProviderCall()
 	if err != nil {
+		if errors.Is(err, paymentprovider.ErrEasyPayQueryIdentityMismatch) {
+			s.writeAuditLog(ctx, o.ID, "PAYMENT_QUERY_IDENTITY_MISMATCH", prov.ProviderKey(), map[string]any{
+				"query_ref": queryRef,
+				"detail":    err.Error(),
+			})
+			return checkPaidResult{outcome: checkPaidResultRejected}
+		}
 		slog.Warn("query upstream failed", "orderID", o.ID, "error", err)
-		return ""
+		return checkPaidResult{outcome: checkPaidResultUnknown}
+	}
+	if resp == nil {
+		slog.Warn("query upstream returned an empty response", "orderID", o.ID, "provider", prov.ProviderKey())
+		return checkPaidResult{outcome: checkPaidResultUnknown}
 	}
 	if resp.Status == payment.ProviderStatusPaid {
 		if !isValidProviderAmount(resp.Amount) {
@@ -176,7 +258,7 @@ func (s *PaymentService) checkPaidWithOptions(ctx context.Context, o *dbent.Paym
 			slog.Warn("query upstream returned invalid paid amount", "orderID", o.ID, "queryRef", queryRef, "paid", resp.Amount)
 			retriedResp, retryOK := requeryPaidOrderOnce(ctx, prov, queryRef)
 			if !retryOK {
-				return ""
+				return checkPaidResult{outcome: checkPaidResultRejected}
 			}
 			resp = retriedResp
 		}
@@ -192,21 +274,33 @@ func (s *PaymentService) checkPaidWithOptions(ctx context.Context, o *dbent.Paym
 			}
 			notificationTradeNo = upstreamTradeNo
 		}
-		if err := s.HandlePaymentNotification(ctx, &payment.PaymentNotification{TradeNo: notificationTradeNo, OrderID: o.OutTradeNo, Amount: resp.Amount, Status: payment.ProviderStatusSuccess, Metadata: resp.Metadata}, prov.ProviderKey()); err != nil {
-			slog.Error("fulfillment failed during checkPaid", "orderID", o.ID, "error", err)
-			// Still return already_paid — order was paid, fulfillment can be retried
+		trace := &paymentRecoveryTrace{}
+		notificationCtx := ctx
+		if opts.recoverySource != "" {
+			notificationCtx = withPaymentRecoveryContext(ctx, opts.recoverySource, trace)
 		}
-		return checkPaidResultAlreadyPaid
+		if err := s.HandlePaymentNotification(notificationCtx, &payment.PaymentNotification{TradeNo: notificationTradeNo, OrderID: o.OutTradeNo, Amount: resp.Amount, Status: payment.ProviderStatusSuccess, Metadata: resp.Metadata}, prov.ProviderKey()); err != nil {
+			slog.Error("fulfillment failed during checkPaid", "orderID", o.ID, "error", err)
+			return checkPaidResult{outcome: checkPaidResultRejected}
+		}
+		return checkPaidResult{outcome: checkPaidResultAlreadyPaid, recovered: trace.recovered}
 	}
-	if !opts.cancelIfUnpaid {
-		return ""
+	switch resp.Status {
+	case payment.ProviderStatusPending, payment.ProviderStatusFailed:
+		// These are explicit, successfully parsed provider states. Only these
+		// states are safe to cancel or expire; query failures stay UNKNOWN.
+	default:
+		slog.Warn("query upstream returned unknown status", "orderID", o.ID, "provider", prov.ProviderKey(), "status", resp.Status)
+		return checkPaidResult{outcome: checkPaidResultUnknown}
 	}
-	if cp, ok := prov.(payment.CancelableProvider); ok {
-		finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
-		_ = cp.CancelPayment(ctx, queryRef)
-		finishProviderCall()
+	if opts.cancelIfUnpaid {
+		if cp, ok := prov.(payment.CancelableProvider); ok {
+			finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
+			_ = cp.CancelPayment(ctx, queryRef)
+			finishProviderCall()
+		}
 	}
-	return ""
+	return checkPaidResult{outcome: checkPaidResultUnpaid}
 }
 
 func requeryPaidOrderOnce(ctx context.Context, prov payment.Provider, queryRef string) (*payment.QueryOrderResponse, bool) {
@@ -292,7 +386,7 @@ func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo
 	// Only verify orders that are still pending or recently expired
 	if o.Status == OrderStatusPending || o.Status == OrderStatusExpired {
 		result := s.reconcilePaid(ctx, o)
-		if result == checkPaidResultAlreadyPaid {
+		if result.outcome == checkPaidResultAlreadyPaid {
 			// Reload order to get updated status
 			o, err = s.entClient.PaymentOrder.Get(ctx, o.ID)
 			if err != nil {
@@ -303,8 +397,54 @@ func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo
 	return o, nil
 }
 
-// ReconcilePendingWxpayOrders actively checks recent pending WeChat orders so
-// missed provider notifications do not wait until order expiry to fulfill.
+// ReconcilePendingPaymentOrders actively checks providers that require a
+// server-side callback fallback. Each provider has an independent batch so one
+// provider's backlog cannot starve another.
+func (s *PaymentService) ReconcilePendingPaymentOrders(ctx context.Context) (int, error) {
+	type providerReconcileResult struct {
+		recovered int
+		err       error
+	}
+	results := make(chan providerReconcileResult, 2)
+
+	// A slow or unavailable provider must not consume the whole cycle and starve
+	// the other provider's callback-recovery path.
+	go func() {
+		recovered, err := s.ReconcilePendingWxpayOrders(ctx)
+		results <- providerReconcileResult{recovered: recovered, err: err}
+	}()
+	go func() {
+		easyPayEnabled := true
+		if s.configService != nil {
+			cfg, err := s.configService.GetPaymentConfig(ctx)
+			if err != nil {
+				results <- providerReconcileResult{err: fmt.Errorf("load payment reconcile settings: %w", err)}
+				return
+			}
+			easyPayEnabled = cfg.EasyPayAutoReconcileEnabled
+		}
+		if !easyPayEnabled {
+			results <- providerReconcileResult{}
+			return
+		}
+		recovered, err := s.ReconcilePendingEasyPayOrders(ctx)
+		results <- providerReconcileResult{recovered: recovered, err: err}
+	}()
+
+	recovered := 0
+	var reconcileErrors []error
+	for range 2 {
+		result := <-results
+		recovered += result.recovered
+		if result.err != nil {
+			reconcileErrors = append(reconcileErrors, result.err)
+		}
+	}
+	return recovered, errors.Join(reconcileErrors...)
+}
+
+// ReconcilePendingWxpayOrders keeps the existing missed-notification fallback
+// for native WeChat providers.
 func (s *PaymentService) ReconcilePendingWxpayOrders(ctx context.Context) (int, error) {
 	now := time.Now()
 	orders, err := s.entClient.PaymentOrder.Query().
@@ -327,7 +467,75 @@ func (s *PaymentService) ReconcilePendingWxpayOrders(ctx context.Context) (int, 
 
 	recovered := 0
 	for _, order := range orders {
-		if s.reconcilePaid(ctx, order) == checkPaidResultAlreadyPaid {
+		if ctx.Err() != nil {
+			break
+		}
+		result := s.checkPaidWithOptions(ctx, order, checkPaidOptions{recoverySource: "scheduled_reconcile"})
+		if result.recovered {
+			recovered++
+		}
+	}
+	return recovered, nil
+}
+
+// ReconcilePendingEasyPayOrders checks EasyPay by provider_key. The visible
+// payment_type is normally alipay or wxpay, so filtering payment_type=easypay
+// would silently miss production orders.
+func (s *PaymentService) ReconcilePendingEasyPayOrders(ctx context.Context) (int, error) {
+	s.easyPayReconcileMu.Lock()
+	defer s.easyPayReconcileMu.Unlock()
+
+	now := time.Now()
+	cursor := s.easyPayReconcileCursor
+	orders, err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.StatusEQ(OrderStatusPending),
+			paymentorder.ExpiresAtGT(now),
+			paymentorder.IDGT(cursor),
+			paymentorder.Or(
+				paymentorder.ProviderKeyEQ(payment.TypeEasyPay),
+				paymentorder.ProviderKeyHasPrefix(payment.TypeEasyPay+"_"),
+			),
+		).
+		Order(dbent.Asc(paymentorder.FieldID)).
+		Limit(pendingEasyPayReconcileLimit).
+		All(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("query pending easypay orders: %w", err)
+	}
+	// Wrap only after the cursor reaches the end. Do not fill a short tail with
+	// old rows in the same cycle: that keeps the batch boundary observable and
+	// guarantees newer orders get their turn before older unpaid rows repeat.
+	if len(orders) == 0 && cursor > 0 {
+		wrapped, wrapErr := s.entClient.PaymentOrder.Query().
+			Where(
+				paymentorder.StatusEQ(OrderStatusPending),
+				paymentorder.ExpiresAtGT(now),
+				paymentorder.IDLTE(cursor),
+				paymentorder.Or(
+					paymentorder.ProviderKeyEQ(payment.TypeEasyPay),
+					paymentorder.ProviderKeyHasPrefix(payment.TypeEasyPay+"_"),
+				),
+			).
+			Order(dbent.Asc(paymentorder.FieldID)).
+			Limit(pendingEasyPayReconcileLimit).
+			All(ctx)
+		if wrapErr != nil {
+			return 0, fmt.Errorf("query wrapped pending easypay orders: %w", wrapErr)
+		}
+		orders = append(orders, wrapped...)
+	}
+
+	recovered := 0
+	for _, order := range orders {
+		if ctx.Err() != nil {
+			break
+		}
+		// Move the cursor even when the provider is temporarily unavailable so
+		// a long-lived unpaid order cannot starve newer orders forever.
+		s.easyPayReconcileCursor = order.ID
+		result := s.checkPaidWithOptions(ctx, order, checkPaidOptions{recoverySource: "scheduled_reconcile"})
+		if result.recovered {
 			recovered++
 		}
 	}
@@ -382,7 +590,11 @@ func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) 
 	for _, o := range orders {
 		// Check upstream payment status before expiring — the user may have
 		// paid just before timeout and the webhook hasn't arrived yet.
-		outcome, _ := s.cancelCore(ctx, o, OrderStatusExpired, "system", "order expired")
+		outcome, cancelErr := s.cancelCore(ctx, o, OrderStatusExpired, "system", "order expired")
+		if cancelErr != nil {
+			slog.Warn("order expiry deferred because payment status is uncertain", "orderID", o.ID, "error", cancelErr)
+			continue
+		}
 		if outcome == checkPaidResultAlreadyPaid {
 			slog.Info("order was paid during expiry", "orderID", o.ID)
 			continue

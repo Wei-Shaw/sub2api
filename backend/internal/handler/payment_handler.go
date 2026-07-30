@@ -529,7 +529,7 @@ func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
 		RefundAmount:        order.RefundAmount,
 		RefundReason:        order.RefundReason,
 		RefundRequestedAt:   order.RefundRequestedAt,
-		RefundRequestedBy:   order.RefundRequestedBy,
+		RefundRequestedBy:   refundRequestedByForResponse(order),
 		RefundRequestReason: order.RefundRequestReason,
 		PlanID:              order.PlanID,
 	}
@@ -676,11 +676,23 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *PaymentOrderRes
 		RefundAmount:        order.RefundAmount,
 		RefundReason:        order.RefundReason,
 		RefundRequestedAt:   order.RefundRequestedAt,
-		RefundRequestedBy:   order.RefundRequestedBy,
+		RefundRequestedBy:   refundRequestedByForResponse(order),
 		RefundRequestReason: order.RefundRequestReason,
 		PlanID:              order.PlanID,
 		ProviderInstanceID:  order.ProviderInstanceID,
 	}
+}
+
+func refundRequestedByForResponse(order *dbent.PaymentOrder) *string {
+	if order == nil || order.RefundRequestedBy == nil {
+		return nil
+	}
+	value := strings.TrimSpace(*order.RefundRequestedBy)
+	if strings.HasPrefix(value, "r:") {
+		requester := strconv.FormatInt(order.UserID, 10)
+		return &requester
+	}
+	return order.RefundRequestedBy
 }
 
 func isWeChatBrowser(c *gin.Context) bool {
