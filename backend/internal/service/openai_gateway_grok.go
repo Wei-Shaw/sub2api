@@ -1129,12 +1129,11 @@ REDACTED
 			grokQuotaSnapshotExtraKey: snapshot,
 	REDACTED)
 REDACTED
-	// Error responses are reconciled by handleGrokAccountUpstreamError, which
-	// also installs the immediate in-memory scheduling block. Successful
-	// responses can still consume the last available request/token, so persist
-	// that exhausted window here as a real rate limit rather than relying only
-	// on the passive snapshot scheduler check.
-	if hasActiveLimit {
+	// Error responses are reconciled by handleGrokAccountUpstreamError. Pool-mode
+	// API keys retain the snapshot for observability but leave account health to
+	// the upstream pool. Other accounts install the immediate runtime and durable
+	// rate-limit state when the observed window is exhausted.
+	if hasActiveLimit && !account.IsPoolMode() {
 		s.rateLimitGrok(stateCtx, account, resetAt)
 REDACTED else if recovery {
 		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
@@ -1356,23 +1355,24 @@ REDACTED
 REDACTED
 	now := time.Now()
 	s.updateGrokUsageSnapshot(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
+	if statusCode == http.StatusForbidden && s.applyGrokForbiddenPolicy(ctx, account, responseBody) {
+		return
+REDACTED
+	if account.IsPoolMode() {
+		slog.Info("grok_pool_mode_error_state_skipped", "account_id", account.ID, "status_code", statusCode)
+		return
+REDACTED
 	switch statusCode {
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
 	case http.StatusPaymentRequired:
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok payment required")
 	case http.StatusForbidden:
-		if s.applyGrokForbiddenPolicy(ctx, account, responseBody) {
-			return
-	REDACTED
-		if account.IsPoolMode() {
-			return
-	REDACTED
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
 	case http.StatusTooManyRequests:
-		// updateGrokUsageSnapshot installs both runtime and durable rate-limit state.
+		// updateGrokUsageSnapshot installs rate-limit state for non-pool accounts.
 	default:
-		if statusCode >= 500 && !account.IsPoolMode() {
+		if statusCode >= 500 {
 			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")
 	REDACTED
 REDACTED
