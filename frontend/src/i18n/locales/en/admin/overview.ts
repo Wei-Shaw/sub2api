@@ -596,12 +596,27 @@ export default {
       provisionPrivateGroups: 'Provision private groups',
       provisionPrivateGroupsConfirmTitle: 'Provision private platform groups?',
       provisionPrivateGroupsConfirm:
-        "Idempotently provision private-{userId}-{platform} exclusive groups, allowed groups, and subscriptions for '{email}'. Existing groups/subscriptions keep their expiry. Only available for role=user.",
+        "Idempotently provision private-{userId}-{platform} exclusive groups, allowed groups, and subscriptions for '{email}'. Existing groups/subscriptions keep their expiry. Available for role=user and role=admin.",
       provisionPrivateGroupsConfirmButton: 'Confirm provision',
       provisionPrivateGroupsSuccess:
         'Provisioned: {created} created, {ensured} already present',
       provisionPrivateGroupsFailed: 'Failed to provision private groups',
       provisioningPrivateGroups: 'Provisioning...',
+      bulkProvisionPrivateGroups: 'Bulk provision private groups ({count})',
+      bulkProvisionPrivateGroupsConfirmTitle: 'Bulk provision private groups?',
+      bulkProvisionPrivateGroupsConfirm:
+        'Serially and idempotently provision private exclusive groups for {count} selected users (user/admin). Failures on one user do not stop the rest; existing groups keep their expiry.',
+      bulkProvisionPrivateGroupsConfirmButton: 'Confirm bulk provision',
+      bulkProvisionPrivateGroupsProgress: 'Provisioning {current}/{total}…',
+      bulkProvisionPrivateGroupsSuccess:
+        'Bulk provision finished: {success} succeeded, {failed} failed',
+      bulkProvisionPrivateGroupsPartial:
+        'Bulk provision partial: {success} succeeded, {failed} failed ({detail})',
+      bulkProvisionPrivateGroupsAllFailed:
+        'Bulk provision failed for all {failed} users ({detail})',
+      bulkProvisionPrivateGroupsNeedSelection: 'Select users first',
+      bulkProvisionPrivateGroupsLimit:
+        'Select at most {max} users per batch (matches page size limit)',
       setAllowedGroups: 'Set Allowed Groups',
       allowedGroupsHint:
         'Select which standard groups this user can use. Subscription groups are managed separately.',

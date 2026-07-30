@@ -555,12 +555,24 @@ export default {
       provisionPrivateGroups: '补建私有专属组',
       provisionPrivateGroupsConfirmTitle: '补建私有专属平台组？',
       provisionPrivateGroupsConfirm:
-        "为用户 '{email}' 幂等补建 private-{userId}-{platform} 专属组、授权与订阅。已存在的组/订阅不会改期。仅 role=user 可用。",
+        "为用户 '{email}' 幂等补建 private-{userId}-{platform} 专属组、授权与订阅。已存在的组/订阅不会改期。适用于 role=user 与 role=admin。",
       provisionPrivateGroupsConfirmButton: '确认补建',
       provisionPrivateGroupsSuccess:
         '补建完成：新建 {created} 个组，已存在 {ensured} 个',
       provisionPrivateGroupsFailed: '补建私有专属组失败',
       provisioningPrivateGroups: '补建中...',
+      bulkProvisionPrivateGroups: '批量补建私有组 ({count})',
+      bulkProvisionPrivateGroupsConfirmTitle: '批量补建私有专属组？',
+      bulkProvisionPrivateGroupsConfirm:
+        '将对已选的 {count} 个用户串行幂等补建私有专属组（user/admin）。单用户失败不中断其余；已存在的组不会改期。',
+      bulkProvisionPrivateGroupsConfirmButton: '确认批量补建',
+      bulkProvisionPrivateGroupsProgress: '补建中 {current}/{total}…',
+      bulkProvisionPrivateGroupsSuccess: '批量补建完成：成功 {success}，失败 {failed}',
+      bulkProvisionPrivateGroupsPartial:
+        '批量补建部分成功：成功 {success}，失败 {failed}（{detail}）',
+      bulkProvisionPrivateGroupsAllFailed: '批量补建全部失败：{failed} 个（{detail}）',
+      bulkProvisionPrivateGroupsNeedSelection: '请先勾选要补建的用户',
+      bulkProvisionPrivateGroupsLimit: '单次最多选择 {max} 个用户（与分页上限一致）',
       roles: {
         admin: '管理员',
         user: '用户'

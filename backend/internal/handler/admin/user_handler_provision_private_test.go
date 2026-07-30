@@ -58,9 +58,9 @@ func (p *provisionerStub) SyncPrivateSubscriptionExpiresAt(context.Context) (*se
 func (p *provisionerStub) AfterCommit(context.Context, *service.ProvisionResult)     {}
 func (p *provisionerStub) AfterRevokeCommit(context.Context, *service.RevokeResult) {}
 
-func TestProvisionPrivateGroups_RejectsNonUser(t *testing.T) {
+func TestProvisionPrivateGroups_RejectsUnsupportedRole(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	adminSvc := &provisionAdminStub{user: &service.User{ID: 9, Role: service.RoleAdmin}}
+	adminSvc := &provisionAdminStub{user: &service.User{ID: 9, Role: "guest"}}
 	prov := &provisionerStub{}
 	h := NewUserHandler(adminSvc, nil, nil, nil, nil, nil, nil)
 	h.SetPrivateGroupDeps(prov, nil)
@@ -90,4 +90,21 @@ func TestProvisionPrivateGroups_Success(t *testing.T) {
 	h.ProvisionPrivateGroups(c)
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, []int64{3}, prov.calls)
+}
+
+func TestProvisionPrivateGroups_SuccessForAdmin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	adminSvc := &provisionAdminStub{user: &service.User{ID: 7, Role: service.RoleAdmin}}
+	prov := &provisionerStub{}
+	h := NewUserHandler(adminSvc, nil, nil, nil, nil, nil, nil)
+	h.SetPrivateGroupDeps(prov, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Params = gin.Params{{Key: "id", Value: "7"}}
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/7/provision-private-groups", nil)
+
+	h.ProvisionPrivateGroups(c)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, []int64{7}, prov.calls)
 }

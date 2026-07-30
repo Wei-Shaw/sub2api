@@ -303,12 +303,22 @@ func newTestProvisioner(user *User, groupRepo *stubGroupRepoForProvision, sub *s
 	}
 }
 
-func TestProvision_SkipsAdminRole(t *testing.T) {
-	p := newTestProvisioner(&User{ID: 1, Role: RoleAdmin}, nil, nil)
+func TestCanProvisionPrivateGroups(t *testing.T) {
+	require.True(t, CanProvisionPrivateGroups(RoleUser))
+	require.True(t, CanProvisionPrivateGroups(RoleAdmin))
+	require.False(t, CanProvisionPrivateGroups("guest"))
+	require.False(t, CanProvisionPrivateGroups(""))
+}
+
+func TestProvision_CreatesGroupsForAdminRole(t *testing.T) {
+	groupRepo := &stubGroupRepoForProvision{byName: map[string]*Group{}, nextID: 300}
+	sub := &stubSubEnsure{}
+	p := newTestProvisioner(&User{ID: 1, Role: RoleAdmin}, groupRepo, sub)
 	result, err := p.ProvisionPrivatePlatformGroups(context.Background(), 1)
 	require.NoError(t, err)
-	require.Empty(t, result.CreatedGroupIDs)
-	require.Empty(t, result.EnsuredGroupIDs)
+	require.Len(t, result.CreatedGroupIDs, len(AllowedQuotaPlatforms))
+	require.Len(t, result.EnsuredGroupIDs, len(AllowedQuotaPlatforms))
+	require.Len(t, groupRepo.created, len(AllowedQuotaPlatforms))
 }
 
 func TestProvision_CreatesFiveGroupsForUser(t *testing.T) {
@@ -398,15 +408,14 @@ func TestAdminCreateUser_RejectsPrivateGroupsWithoutEntClient(t *testing.T) {
 	require.Empty(t, rec.provisioned)
 }
 
-func TestAdminCreateUser_AdminRoleSkipsGroupCreation(t *testing.T) {
-	// role 过滤在真实 provisioner 内；此处用 stub repos 断言 CreatedGroupIDs 为空。
-	// 无 entClient 时无法走 CreateUser 同事务路径，直接测 ProvisionPrivatePlatformGroups。
-	groupRepo := &stubGroupRepoForProvision{byName: map[string]*Group{}}
+func TestAdminCreateUser_AdminRoleProvisionsPrivateGroups(t *testing.T) {
+	// admin 与 user 同等供给；无 entClient 时直接测 ProvisionPrivatePlatformGroups。
+	groupRepo := &stubGroupRepoForProvision{byName: map[string]*Group{}, nextID: 510}
 	p := newTestProvisioner(&User{ID: 51, Role: RoleAdmin}, groupRepo, &stubSubEnsure{})
 	result, err := p.ProvisionPrivatePlatformGroups(context.Background(), 51)
 	require.NoError(t, err)
-	require.Empty(t, result.CreatedGroupIDs)
-	require.Empty(t, groupRepo.created)
+	require.Len(t, result.CreatedGroupIDs, len(AllowedQuotaPlatforms))
+	require.Len(t, groupRepo.created, len(AllowedQuotaPlatforms))
 }
 
 func TestAdminDeleteUser_RevokesPrivateGroups(t *testing.T) {

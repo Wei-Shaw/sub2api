@@ -329,7 +329,7 @@ func (h *UserHandler) ProvisionPrivateGroups(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if user.Role != service.RoleUser {
+	if !service.CanProvisionPrivateGroups(user.Role) {
 		response.ErrorFrom(c, service.ErrPrivateGroupProvisionRole)
 		return
 	}

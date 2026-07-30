@@ -19,8 +19,8 @@ import (
 // PrivateGroupProvisioner 在用户创建/删除路径上供给与撤销私有专属平台分组。
 // 不依赖 AdminService / AuthService，避免循环依赖。
 type PrivateGroupProvisioner interface {
-	// ProvisionPrivatePlatformGroups 为 role=user 幂等补齐私有组 + allowed + 订阅。
-	// 错误向上返回（fail-closed）。admin 角色 no-op。
+	// ProvisionPrivatePlatformGroups 为 role=user|admin 幂等补齐私有组 + allowed + 订阅。
+	// 错误向上返回（fail-closed）。其它角色 no-op（返回空结果）。
 	ProvisionPrivatePlatformGroups(ctx context.Context, userID int64) (*ProvisionResult, error)
 	// RevokePrivatePlatformGroups 软删该用户全部 private-{userId}-* 组（DeleteCascade）。
 	RevokePrivatePlatformGroups(ctx context.Context, userID int64) (*RevokeResult, error)
@@ -62,11 +62,16 @@ var ErrPrivateGroupExpiresDateNotConfigured = infraerrors.BadRequest(
 	"private_group_expires_date is not configured; set a date before syncing",
 )
 
-// ErrPrivateGroupProvisionRole 管理端补建时目标用户非 role=user。
+// ErrPrivateGroupProvisionRole 管理端补建时目标角色不在 user|admin 白名单。
 var ErrPrivateGroupProvisionRole = infraerrors.BadRequest(
 	"PRIVATE_GROUP_PROVISION_ROLE",
-	"private groups can only be provisioned for role=user",
+	"private groups can only be provisioned for role=user or role=admin",
 )
+
+// CanProvisionPrivateGroups 判断角色是否允许私有专属组供给（创建钩子与补建 API 共用）。
+func CanProvisionPrivateGroups(role string) bool {
+	return role == RoleUser || role == RoleAdmin
+}
 
 // subscriptionEnsure 抽象 EnsureSubscriptionWithExpiresAt，便于单测 stub。
 type subscriptionEnsure interface {
@@ -174,7 +179,7 @@ func (p *privateGroupProvisioner) ProvisionPrivatePlatformGroups(ctx context.Con
 		)
 		return nil, fmt.Errorf("get user for private provision: %w", err)
 	}
-	if user.Role != RoleUser {
+	if !CanProvisionPrivateGroups(user.Role) {
 		logger.L().Info("private_group_provision",
 			zap.String("component", "service.private_group"),
 			zap.String("event", "private_group_provision"),
