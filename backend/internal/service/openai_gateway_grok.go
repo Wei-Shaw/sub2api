@@ -1365,6 +1365,9 @@ REDACTED
 		if s.applyGrokForbiddenPolicy(ctx, account, responseBody) {
 			return
 	REDACTED
+		if account.IsPoolMode() {
+			return
+	REDACTED
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs both runtime and durable rate-limit state.
