@@ -31,6 +31,7 @@ import (
 var (
 	ErrUserNotFound             = infraerrors.NotFound("USER_NOT_FOUND", "user not found")
 	ErrPasswordIncorrect        = infraerrors.BadRequest("PASSWORD_INCORRECT", "current password is incorrect")
+	ErrBalanceNegative          = infraerrors.BadRequest("BALANCE_NEGATIVE", "balance cannot be negative")
 	ErrInsufficientPerms        = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
 	ErrNotifyCodeUserRateLimit  = infraerrors.TooManyRequests("NOTIFY_CODE_USER_RATE_LIMIT", "too many verification codes requested, please try again later")
 	ErrAvatarInvalid            = infraerrors.BadRequest("AVATAR_INVALID", "avatar must be a valid image data URL or http(s) URL")
@@ -83,14 +84,62 @@ type UserListFilters struct {
 	IncludeDeleted bool
 }
 
+// UserUpdateFields 声明 UserRepository.Update 允许写回的列。
+//
+// 未声明的列保持数据库当前值，不会被调用方手里的快照覆盖。用户行上有多条
+// 不经过 Update 的原子写入路径（DeductBalance/UpdateBalance 扣加余额、
+// UpdateConcurrency、BatchUpdateLimits、UpdateUserLastActiveAt 等），
+// status/role 也可能被其他流程并发改写。若 Update 无条件整行回写，
+// 一次"读-改-写"就会静默回滚这些并发结果（lost update），
+// 因此每个调用方必须显式声明它真正要改的列。
+//
+// 注意这里没有 balance / total_recharged：余额只能经由 AdjustBalance、
+// SetBalance、UpdateBalance、DeductBalance 等原子接口修改，Update 永远不碰它们。
+type UserUpdateFields struct {
+	Email        bool
+	Username     bool
+	Notes        bool
+	PasswordHash bool
+	Role         bool
+	Status       bool
+	Concurrency  bool
+	RPMLimit     bool
+	SignupSource bool
+	LastLoginAt  bool
+	LastActiveAt bool
+	// BalanceNotifySettings 覆盖 balance_notify_enabled / _threshold_type / _threshold。
+	BalanceNotifySettings bool
+	// BalanceNotifyExtraEmails 与上一项分开，避免"改通知阈值"覆盖并发的"加通知邮箱"。
+	BalanceNotifyExtraEmails bool
+	// AllowedGroups 为 true 时才同步 user_allowed_groups 关联表。
+	AllowedGroups bool
+}
+
+// BalanceChange 记录一次余额变更前后的值。
+type BalanceChange struct {
+	Old float64
+	New float64
+}
+
+// IsEmpty 报告该次 Update 是否不写任何列（此时仓储直接返回，不产生写操作）。
+func (f UserUpdateFields) IsEmpty() bool {
+	return f == UserUpdateFields{}
+}
+
 type UserRepository interface {
 	Create(ctx context.Context, user *User) error
+	// CreateWithEmailAliasGuard 创建用户，并在邮箱唯一性锁内复查"收件箱身份"是否已被占用
+	// （+别名 / Gmail 点号 / FQDN 根点变体，见 NormalizeEmailForAliasDedup），
+	// 冲突时返回 ErrEmailExists。仅注册路径使用：同一收件箱的多个别名变体并发注册时，
+	// 服务层的前置查重会同时通过，必须由这里串行化兜底。管理员建号仍走 Create，不受限制。
+	CreateWithEmailAliasGuard(ctx context.Context, user *User) error
 	GetByID(ctx context.Context, id int64) (*User, error)
 	// GetByIDIncludeDeleted 绕过软删除过滤按 ID 取用户（含已删）。仅供管理员审计/usage 点击使用。
 	GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	GetFirstAdmin(ctx context.Context) (*User, error)
-	Update(ctx context.Context, user *User) error
+	// Update 只写 fields 中显式声明的列，其余列保持库中当前值。
+	Update(ctx context.Context, user *User, fields UserUpdateFields) error
 	Delete(ctx context.Context, id int64) error
 	GetUserAvatar(ctx context.Context, userID int64) (*UserAvatar, error)
 	UpsertUserAvatar(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error)
@@ -104,11 +153,20 @@ type UserRepository interface {
 
 	UpdateBalance(ctx context.Context, id int64, amount float64) error
 	DeductBalance(ctx context.Context, id int64, amount float64) error
+	// AdjustBalance 原子地把 delta 累加到余额上，并返回变更前后的值。结果为负时
+	// 拒绝写入并返回 ErrBalanceNegative。管理员的加/扣款必须走这里而不是
+	// "读余额→算新值→整行写回"，否则并发的计费扣款会被旧快照抹掉。
+	AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error)
+	// SetBalance 原子地把余额置为 value（value 必须 >= 0），返回变更前后的值。
+	SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error)
 	UpdateConcurrency(ctx context.Context, id int64, amount int) error
 	BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error)
 	BatchAddConcurrency(ctx context.Context, userIDs []int64, delta int) (int, error)
 	BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error)
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
+	// ExistsByEmailAlias 判断是否已有账号与该邮箱指向同一收件箱（+别名 / Gmail 点号 /
+	// FQDN 根点变体，见 NormalizeEmailForAliasDedup）。用于注册与发送验证码前的查重。
+	ExistsByEmailAlias(ctx context.Context, email string) (bool, error)
 	RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error)
 	// AddGroupToAllowedGroups 将指定分组增量添加到用户的 allowed_groups（幂等，冲突忽略）
 	AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error
@@ -435,6 +493,10 @@ func (s *UserService) updateProfile(ctx context.Context, userID int64, req Updat
 	}
 	oldConcurrency := user.Concurrency
 
+	// fields 只登记本次请求真正带上的字段。余额、状态等列不由这里回写，
+	// 否则并发的扣费与状态变更会被这份快照回滚。
+	var fields UserUpdateFields
+
 	// 更新字段
 	if req.Email != nil {
 		// 检查新邮箱是否已被使用
@@ -446,10 +508,12 @@ func (s *UserService) updateProfile(ctx context.Context, userID int64, req Updat
 			return nil, oldConcurrency, ErrEmailExists
 		}
 		user.Email = *req.Email
+		fields.Email = true
 	}
 
 	if req.Username != nil {
 		user.Username = *req.Username
+		fields.Username = true
 	}
 
 	if req.AvatarURL != nil {
@@ -462,10 +526,12 @@ func (s *UserService) updateProfile(ctx context.Context, userID int64, req Updat
 
 	if req.Concurrency != nil {
 		user.Concurrency = *req.Concurrency
+		fields.Concurrency = true
 	}
 
 	if req.BalanceNotifyEnabled != nil {
 		user.BalanceNotifyEnabled = *req.BalanceNotifyEnabled
+		fields.BalanceNotifySettings = true
 	}
 	if req.BalanceNotifyThreshold != nil {
 		if *req.BalanceNotifyThreshold <= 0 {
@@ -473,9 +539,10 @@ func (s *UserService) updateProfile(ctx context.Context, userID int64, req Updat
 		} else {
 			user.BalanceNotifyThreshold = req.BalanceNotifyThreshold
 		}
+		fields.BalanceNotifySettings = true
 	}
 
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if err := s.userRepo.Update(ctx, user, fields); err != nil {
 		return nil, oldConcurrency, fmt.Errorf("update user: %w", err)
 	}
 
@@ -962,7 +1029,9 @@ func (s *UserService) ChangePassword(ctx context.Context, userID int64, req Chan
 	// This ensures that any tokens issued before the password change become invalid
 	user.TokenVersion++
 
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	// TokenVersion 没有对应的数据库列（见 resolvedTokenVersion：它由 email+password_hash
+	// 指纹推导），改密写回 password_hash 即可让旧 token 失效。
+	if err := s.userRepo.Update(ctx, user, UserUpdateFields{PasswordHash: true}); err != nil {
 		return fmt.Errorf("update user: %w", err)
 	}
 
@@ -1117,7 +1186,7 @@ func (s *UserService) UpdateStatus(ctx context.Context, userID int64, status str
 
 	user.Status = status
 
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true}); err != nil {
 		return fmt.Errorf("update user: %w", err)
 	}
 	if s.authCacheInvalidator != nil {
@@ -1277,7 +1346,7 @@ func (s *UserService) addOrVerifyNotifyEmail(ctx context.Context, userID int64, 
 		if strings.EqualFold(e.Email, email) {
 			if !e.Verified {
 				user.BalanceNotifyExtraEmails[i].Verified = true
-				return s.userRepo.Update(ctx, user)
+				return s.userRepo.Update(ctx, user, UserUpdateFields{BalanceNotifyExtraEmails: true})
 			}
 			return nil // Already verified
 		}
@@ -1290,7 +1359,7 @@ func (s *UserService) addOrVerifyNotifyEmail(ctx context.Context, userID int64, 
 		Disabled: false,
 		Verified: true,
 	})
-	return s.userRepo.Update(ctx, user)
+	return s.userRepo.Update(ctx, user, UserUpdateFields{BalanceNotifyExtraEmails: true})
 }
 
 // RemoveNotifyEmail removes an email from user's extra notification emails.
@@ -1313,7 +1382,7 @@ func (s *UserService) RemoveNotifyEmail(ctx context.Context, userID int64, email
 		return infraerrors.BadRequest("EMAIL_NOT_FOUND", "notification email not found")
 	}
 	user.BalanceNotifyExtraEmails = filtered
-	return s.userRepo.Update(ctx, user)
+	return s.userRepo.Update(ctx, user, UserUpdateFields{BalanceNotifyExtraEmails: true})
 }
 
 // ToggleNotifyEmail toggles the disabled state of a notification email entry.
@@ -1335,7 +1404,7 @@ func (s *UserService) ToggleNotifyEmail(ctx context.Context, userID int64, email
 		return infraerrors.BadRequest("EMAIL_NOT_FOUND", "notification email not found")
 	}
 
-	return s.userRepo.Update(ctx, user)
+	return s.userRepo.Update(ctx, user, UserUpdateFields{BalanceNotifyExtraEmails: true})
 }
 
 // notifyVerifyEmailTemplate is the HTML template for notify email verification.

@@ -131,6 +131,10 @@ func (s *stubUserRepo) Create(ctx context.Context, user *service.User) error {
 	panic("unexpected Create call")
 }
 
+func (s *stubUserRepo) CreateWithEmailAliasGuard(ctx context.Context, user *service.User) error {
+	panic("unexpected CreateWithEmailAliasGuard call")
+}
+
 func (s *stubUserRepo) GetByID(ctx context.Context, id int64) (*service.User, error) {
 	if s.getByID == nil {
 		panic("GetByID not stubbed")
@@ -146,7 +150,7 @@ func (s *stubUserRepo) GetFirstAdmin(ctx context.Context) (*service.User, error)
 	panic("unexpected GetFirstAdmin call")
 }
 
-func (s *stubUserRepo) Update(ctx context.Context, user *service.User) error {
+func (s *stubUserRepo) Update(ctx context.Context, user *service.User, fields service.UserUpdateFields) error {
 	panic("unexpected Update call")
 }
 
@@ -194,6 +198,14 @@ func (s *stubUserRepo) DeductBalance(ctx context.Context, id int64, amount float
 	panic("unexpected DeductBalance call")
 }
 
+func (s *stubUserRepo) AdjustBalance(ctx context.Context, id int64, delta float64) (service.BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (s *stubUserRepo) SetBalance(ctx context.Context, id int64, value float64) (service.BalanceChange, error) {
+	panic("unexpected SetBalance call")
+}
+
 func (s *stubUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
 	panic("unexpected UpdateConcurrency call")
 }
@@ -206,6 +218,10 @@ func (s *stubUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (
 
 func (s *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	panic("unexpected ExistsByEmail call")
+}
+
+func (s *stubUserRepo) ExistsByEmailAlias(ctx context.Context, email string) (bool, error) {
+	panic("unexpected ExistsByEmailAlias call")
 }
 
 func (s *stubUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {

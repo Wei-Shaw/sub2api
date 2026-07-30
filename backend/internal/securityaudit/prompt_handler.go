@@ -13,7 +13,7 @@ import (
 )
 
 type PromptAdminService interface {
-	GetConfig() PublicConfig
+	GetConfig() (PublicConfig, error)
 	SaveConfig(context.Context, UpdateConfigRequest, int64) (PublicConfig, error)
 	Probe(context.Context, ProbeRequest) ProbeResult
 	Runtime(context.Context) RuntimeSnapshot
@@ -31,7 +31,14 @@ func NewPromptAdminHandler(service PromptAdminService) *PromptAdminHandler {
 	return &PromptAdminHandler{service: service}
 }
 
-func (h *PromptAdminHandler) GetConfig(c *gin.Context) { response.Success(c, h.service.GetConfig()) }
+func (h *PromptAdminHandler) GetConfig(c *gin.Context) {
+	config, err := h.service.GetConfig()
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, config)
+}
 
 func (h *PromptAdminHandler) UpdateConfig(c *gin.Context) {
 	var request UpdateConfigRequest

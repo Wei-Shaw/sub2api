@@ -91,6 +91,11 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 				headers.Add("x-codex-beta-features", value)
 			}
 		}
+		for _, name := range [...]string{"x-codex-window-id", "x-codex-installation-id"} {
+			if value := c.Request.Header.Get(name); strings.TrimSpace(value) != "" {
+				headers.Set(name, value)
+			}
+		}
 	}
 	// OAuth 账号：将 apiKeyID 混入 session 标识符，防止跨用户会话碰撞。
 	if account != nil && account.Type == AccountTypeOAuth {

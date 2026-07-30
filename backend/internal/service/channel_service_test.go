@@ -675,6 +675,25 @@ func TestGetChannelModelPricing_CaseInsensitive(t *testing.T) {
 	require.Equal(t, int64(100), result.ID)
 }
 
+func TestGetChannelModelPricing_NormalizesDotsAndHyphens(t *testing.T) {
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelPricing: []ChannelModelPricing{
+			{ID: 100, Platform: "anthropic", Models: []string{"claude-opus-4.8"}, BillingMode: BillingModePerRequest, PerRequestPrice: testPtrFloat64(0.007)},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
+	svc := newTestChannelService(repo)
+
+	result := svc.GetChannelModelPricing(context.Background(), 10, "claude-opus-4-8")
+	require.NotNil(t, result)
+	require.Equal(t, int64(100), result.ID)
+	require.Equal(t, BillingModePerRequest, result.BillingMode)
+	require.InDelta(t, 0.007, *result.PerRequestPrice, 1e-12)
+}
+
 func TestGetChannelModelPricing_WildcardMatch(t *testing.T) {
 	ch := Channel{
 		ID:       1,
@@ -1970,6 +1989,8 @@ func TestIsPlatformPricingMatch(t *testing.T) {
 		{"gemini matches gemini", PlatformGemini, PlatformGemini, true},
 		{"gemini does NOT match antigravity", PlatformGemini, PlatformAntigravity, false},
 		{"gemini does NOT match anthropic", PlatformGemini, PlatformAnthropic, false},
+		{"composite matches openai pricing", PlatformComposite, PlatformOpenAI, true},
+		{"composite matches gemini pricing", PlatformComposite, PlatformGemini, true},
 		{"empty string matches nothing", "", PlatformAnthropic, false},
 		{"empty string matches empty", "", "", true},
 	}
@@ -1995,6 +2016,7 @@ func TestMatchingPlatforms(t *testing.T) {
 		{"anthropic returns itself", PlatformAnthropic, []string{PlatformAnthropic}},
 		{"gemini returns itself", PlatformGemini, []string{PlatformGemini}},
 		{"openai returns itself", PlatformOpenAI, []string{PlatformOpenAI}},
+		{"composite returns concrete platforms", PlatformComposite, []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok}},
 	}
 
 	for _, tt := range tests {
@@ -2003,6 +2025,43 @@ func TestMatchingPlatforms(t *testing.T) {
 			require.Equal(t, tt.want, result)
 		})
 	}
+}
+
+func TestCompositeChannelLookupUsesResolvedTargetPlatform(t *testing.T) {
+	channel := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{99},
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformOpenAI, Models: []string{"gpt-*"}},
+			{Platform: PlatformAnthropic, Models: []string{"claude-*"}},
+		},
+		ModelMapping: map[string]map[string]string{
+			PlatformOpenAI: {
+				"gpt-5": "gpt-5-mini",
+			},
+			PlatformAnthropic: {
+				"claude-*": "claude-sonnet-4-5",
+			},
+		},
+	}
+	cache := populateChannelCache([]Channel{channel}, map[int64]string{99: PlatformComposite})
+	svc := &ChannelService{}
+	svc.cache.Store(cache)
+
+	openAICtx := WithResolvedTargetPlatform(context.Background(), PlatformOpenAI)
+	require.NotNil(t, svc.GetChannelModelPricing(openAICtx, 99, "gpt-5"))
+	require.Nil(t, svc.GetChannelModelPricing(openAICtx, 99, "claude-sonnet-4-5"))
+	openAIResult := svc.ResolveChannelMapping(openAICtx, 99, "gpt-5")
+	require.True(t, openAIResult.Mapped)
+	require.Equal(t, "gpt-5-mini", openAIResult.MappedModel)
+
+	anthropicCtx := WithResolvedTargetPlatform(context.Background(), PlatformAnthropic)
+	require.NotNil(t, svc.GetChannelModelPricing(anthropicCtx, 99, "claude-sonnet-4-5"))
+	require.Nil(t, svc.GetChannelModelPricing(anthropicCtx, 99, "gpt-5"))
+	anthropicResult := svc.ResolveChannelMapping(anthropicCtx, 99, "claude-3-5-sonnet")
+	require.True(t, anthropicResult.Mapped)
+	require.Equal(t, "claude-sonnet-4-5", anthropicResult.MappedModel)
 }
 
 // ===========================================================================

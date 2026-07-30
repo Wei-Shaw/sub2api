@@ -1409,7 +1409,15 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		// 若 item_reference 指向 legacy call_* 标识，则仅修正该引用本身。
 		fixCallIDPrefix := func(id string) string {
 			if opts.PreserveCallIDs {
-				return id
+				// preserve 模式尽量原样透传客户端 id 以维持 tool_use/tool_result
+				// 配对，但上游对 call_id 有 64 字符硬上限，超长原样透传必然被
+				// 400 拒绝（"Invalid 'input[N].call_id': string too long"）。
+				// 超长时退回确定性压缩：同一逻辑 id 在 function_call 与
+				// function_call_output 两侧结果一致，配对不受影响。
+				if len(id) <= codexCallIDMaxLength {
+					return id
+				}
+				return compactCodexCallID(id)
 			}
 			return normalizeCodexCallID(id)
 		}
@@ -1486,25 +1494,9 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		if !opts.PreserveReferences {
 			ensureCopy()
 			delete(newItem, "id")
-		} else if isCodexToolCallInputType(typ) {
-			// 续链模式下保留 id 以维持上下文引用，但 function_call 等
-			// call-input 类 item 的 id 必须以 "fc" 开头（上游校验
-			// "Expected an ID that begins with 'fc'"）。item_* 形式的 id
-			// 来自客户端回放，需要删除。
-			// 注意：function_call_output 等 output 类的 id 无此约束，不动。
-			if id, ok := m["id"].(string); ok && id != "" && !strings.HasPrefix(id, "fc") {
-				ensureCopy()
-				delete(newItem, "id")
-			}
-		} else if typ == "message" {
-			// 同理，message 类 item 的 id 必须以 "msg" 开头（上游校验
-			// "Expected an ID that begins with 'msg'"）。item_* 形式的 id
-			// 来自客户端回放，需要删除。
-			// 注意：不改写成 msg_*，改写出的 id 未必对应真实的上游对象。
-			if id, ok := m["id"].(string); ok && id != "" && !strings.HasPrefix(id, "msg") {
-				ensureCopy()
-				delete(newItem, "id")
-			}
+		} else if id, ok := m["id"].(string); ok && shouldStripOpenAIResponsesInputItemID(typ, id) {
+			ensureCopy()
+			delete(newItem, "id")
 		}
 
 		filtered = append(filtered, newItem)

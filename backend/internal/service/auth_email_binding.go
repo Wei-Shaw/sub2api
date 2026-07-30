@@ -79,7 +79,7 @@ func (s *AuthService) BindEmailIdentity(
 
 	currentUser.Email = normalizedEmail
 	currentUser.PasswordHash = hashedPassword
-	if err := s.userRepo.Update(ctx, currentUser); err != nil {
+	if err := s.userRepo.Update(ctx, currentUser, UserUpdateFields{Email: true, PasswordHash: true}); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			return nil, ErrEmailExists
 		}
