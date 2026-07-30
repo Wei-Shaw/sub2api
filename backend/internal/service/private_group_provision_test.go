@@ -89,6 +89,7 @@ type stubGroupRepoForProvision struct {
 	createErr       error
 	nextID          int64
 	deleted         []int64
+	deleteFailID    int64 // 非 0 时 DeleteCascade 对该 ID 返回错误
 	enqueueIDs      []int64
 	listActive      []Group
 	listExcl        []Group
@@ -133,6 +134,9 @@ func (s *stubGroupRepoForProvision) GetByName(_ context.Context, name string) (*
 func (s *stubGroupRepoForProvision) Update(context.Context, *Group) error { return nil }
 func (s *stubGroupRepoForProvision) Delete(context.Context, int64) error  { return nil }
 func (s *stubGroupRepoForProvision) DeleteCascade(_ context.Context, id int64) ([]int64, error) {
+	if s.deleteFailID != 0 && id == s.deleteFailID {
+		return nil, errors.New("cascade failed")
+	}
 	s.deleted = append(s.deleted, id)
 	for k, g := range s.byName {
 		if g.ID == id {
@@ -310,28 +314,32 @@ func (r *recordingProvisioner) RevokePrivatePlatformGroups(_ context.Context, us
 func (r *recordingProvisioner) AfterCommit(context.Context, *ProvisionResult)     {}
 func (r *recordingProvisioner) AfterRevokeCommit(context.Context, *RevokeResult) {}
 
-func TestAdminCreateUser_ProvisionsWhenProvisionerInjected(t *testing.T) {
+func TestAdminCreateUser_RejectsPrivateGroupsWithoutEntClient(t *testing.T) {
+	// privateGroups 已注入但无 entClient → 拒绝创建，避免非原子半成品。
 	rec := &recordingProvisioner{}
 	svc := &adminServiceImpl{
 		userRepo:      &userRepoStub{nextID: 50},
 		privateGroups: rec,
 	}
-	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+	_, err := svc.CreateUser(context.Background(), &CreateUserInput{
 		Email:    "u@test.com",
 		Password: "password123",
 		Role:     RoleUser,
 	})
-	require.NoError(t, err)
-	require.Equal(t, int64(50), user.ID)
-	require.Equal(t, []int64{50}, rec.provisioned)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "requires entClient")
+	require.Empty(t, rec.provisioned)
+}
 
-	rec2 := &recordingProvisioner{}
-	svc2 := &adminServiceImpl{userRepo: &userRepoStub{nextID: 51}, privateGroups: rec2}
-	_, err = svc2.CreateUser(context.Background(), &CreateUserInput{
-		Email: "a@test.com", Password: "password123", Role: RoleAdmin,
-	})
+func TestAdminCreateUser_AdminRoleSkipsGroupCreation(t *testing.T) {
+	// role 过滤在真实 provisioner 内；此处用 stub repos 断言 CreatedGroupIDs 为空。
+	// 无 entClient 时无法走 CreateUser 同事务路径，直接测 ProvisionPrivatePlatformGroups。
+	groupRepo := &stubGroupRepoForProvision{byName: map[string]*Group{}}
+	p := newTestProvisioner(&User{ID: 51, Role: RoleAdmin}, groupRepo, &stubSubEnsure{})
+	result, err := p.ProvisionPrivatePlatformGroups(context.Background(), 51)
 	require.NoError(t, err)
-	require.Equal(t, []int64{51}, rec2.provisioned)
+	require.Empty(t, result.CreatedGroupIDs)
+	require.Empty(t, groupRepo.created)
 }
 
 func TestAdminDeleteUser_RevokesPrivateGroups(t *testing.T) {
@@ -359,6 +367,63 @@ func TestUpdateUser_PreservesPrivateAllowedGroups(t *testing.T) {
 	require.Contains(t, updated.AllowedGroups, int64(1))
 	require.Contains(t, updated.AllowedGroups, int64(101))
 	require.Contains(t, updated.AllowedGroups, int64(102))
+}
+
+func TestUpdateUser_AllowedMergeFailsOnGetByNameError(t *testing.T) {
+	userRepo := &userRepoStub{
+		user: &User{ID: 10, Email: "u@t.com", Role: RoleUser, Status: StatusActive, AllowedGroups: []int64{1, 101}},
+	}
+	groupRepo := &stubGroupRepoForProvision{
+		byName: map[string]*Group{},
+		// GetByName 默认 not-found；用 getByNameErr 注入
+	}
+	// 覆盖 GetByName 行为：对 anthropic 返回瞬时错误
+	failing := &stubGroupRepoGetByNameFail{
+		stubGroupRepoForProvision: *groupRepo,
+		failName:                  PrivateGroupName(10, PlatformAnthropic),
+		failErr:                   errors.New("db timeout"),
+	}
+	svc := &adminServiceImpl{userRepo: userRepo, groupRepo: failing}
+	allowed := []int64{1}
+	_, err := svc.UpdateUser(context.Background(), 10, &UpdateUserInput{AllowedGroups: &allowed})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "load private group for allowed merge")
+	// 未写入 Update，避免抹掉 private allowed
+	require.Empty(t, userRepo.updated)
+}
+
+type stubGroupRepoGetByNameFail struct {
+	stubGroupRepoForProvision
+	failName string
+	failErr  error
+}
+
+func (s *stubGroupRepoGetByNameFail) GetByName(ctx context.Context, name string) (*Group, error) {
+	if name == s.failName {
+		return nil, s.failErr
+	}
+	return s.stubGroupRepoForProvision.GetByName(ctx, name)
+}
+
+func TestRevoke_ContinuesAfterSinglePlatformFailure(t *testing.T) {
+	groupRepo := &stubGroupRepoForProvision{byName: map[string]*Group{}}
+	gOK := buildPrivateGroup(4, PlatformOpenAI)
+	gOK.ID = 12
+	groupRepo.byName[gOK.Name] = gOK
+
+	// anthropic GetByName 将在 cascade 路径外：用 delete fail 模拟中途失败
+	// 先放 anthropic 组，DeleteCascade 对 id=11 失败
+	gFail := buildPrivateGroup(4, PlatformAnthropic)
+	gFail.ID = 11
+	groupRepo.byName[gFail.Name] = gFail
+	groupRepo.deleteFailID = 11
+
+	p := newTestProvisioner(&User{ID: 4, Role: RoleUser}, groupRepo, &stubSubEnsure{})
+	result, err := p.RevokePrivatePlatformGroups(context.Background(), 4)
+	require.Error(t, err)
+	// openai 仍应被删除
+	require.Contains(t, result.DeletedGroupIDs, int64(12))
+	require.NotContains(t, result.DeletedGroupIDs, int64(11))
 }
 
 func TestAdminGetAllGroups_UsesExcludingPrivate(t *testing.T) {

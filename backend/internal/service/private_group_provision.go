@@ -230,6 +230,9 @@ func (p *privateGroupProvisioner) RevokePrivatePlatformGroups(ctx context.Contex
 	inOuterTx := dbent.TxFromContext(ctx) != nil
 	result.NeedsAfterCommit = inOuterTx
 
+	// 尽量撤销全部平台，避免中途失败留下 private 孤儿组污染调度 ListActive。
+	// 单平台失败 log 后 continue，循环结束后返回 firstErr。
+	var firstErr error
 	for _, platform := range privateGroupPlatforms() {
 		name := PrivateGroupName(userID, platform)
 		g, err := p.groupRepo.GetByName(ctx, name)
@@ -237,10 +240,18 @@ func (p *privateGroupProvisioner) RevokePrivatePlatformGroups(ctx context.Contex
 			if errors.Is(err, ErrGroupNotFound) {
 				continue
 			}
-			return nil, fmt.Errorf("get private group for revoke: %s: %w", name, err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("get private group for revoke: %s: %w", name, err)
+			}
+			logger.LegacyPrintf("service.private_group", "private_group_revoke get failed: user_id=%d name=%s err=%v", userID, name, err)
+			continue
 		}
 		if _, err := p.groupRepo.DeleteCascade(ctx, g.ID); err != nil {
-			return nil, fmt.Errorf("delete cascade private group %d: %w", g.ID, err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("delete cascade private group %d: %w", g.ID, err)
+			}
+			logger.LegacyPrintf("service.private_group", "private_group_revoke delete failed: user_id=%d group_id=%d err=%v", userID, g.ID, err)
+			continue
 		}
 		result.DeletedGroupIDs = append(result.DeletedGroupIDs, g.ID)
 
@@ -250,6 +261,11 @@ func (p *privateGroupProvisioner) RevokePrivatePlatformGroups(ctx context.Contex
 		}
 	}
 
+	if firstErr != nil {
+		logger.LegacyPrintf("service.private_group", "private_group_revoke partial: user_id=%d deleted=%d err=%v",
+			userID, len(result.DeletedGroupIDs), firstErr)
+		return result, firstErr
+	}
 	logger.LegacyPrintf("service.private_group", "private_group_revoke ok: user_id=%d deleted=%d",
 		userID, len(result.DeletedGroupIDs))
 	return result, nil

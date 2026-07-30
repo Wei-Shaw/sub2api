@@ -152,6 +152,11 @@ func (s *AuthService) createUserWithPrivateGroups(
 		return s.privateGroups.ProvisionPrivatePlatformGroups(ctx, userIDFn())
 	}
 
+	// privateGroups 已注入时必须能开 ent 事务，禁止 Create 与 Provision 拆开导致半成品用户。
+	if s.privateGroups != nil && s.entClient == nil {
+		return nil, fmt.Errorf("misconfigured AuthService: privateGroups requires entClient for atomic user create")
+	}
+
 	if s.entClient != nil {
 		tx, err := s.entClient.Tx(ctx)
 		if err != nil {
@@ -178,18 +183,11 @@ func (s *AuthService) createUserWithPrivateGroups(
 		return provisionResult, nil
 	}
 
+	// 无 privateGroups 且无 entClient：仅 Create（unit test / 降级路径）
 	if err := createFn(ctx); err != nil {
 		return nil, err
 	}
-	if s.privateGroups == nil {
-		return &ProvisionResult{}, nil
-	}
-	result, err := s.privateGroups.ProvisionPrivatePlatformGroups(ctx, userIDFn())
-	if err != nil {
-		return nil, err
-	}
-	s.privateGroups.AfterCommit(ctx, result)
-	return result, nil
+	return &ProvisionResult{}, nil
 }
 
 func (s *AuthService) EntClient() *dbent.Client {

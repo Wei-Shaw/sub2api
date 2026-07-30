@@ -31,20 +31,31 @@ func (s *adminServiceImpl) ListGroups(ctx context.Context, page, pageSize int, p
 }
 
 func (s *adminServiceImpl) GetAllGroups(ctx context.Context) ([]Group, error) {
-	// 下拉永不返回 private 组
-	return s.groupRepo.ListActiveExcludingPrivate(ctx)
+	// 下拉永不返回 private 组（repo 排除 + service 兜底）
+	groups, err := s.groupRepo.ListActiveExcludingPrivate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return filterOutPrivateGroups(groups), nil
 }
 
 func (s *adminServiceImpl) GetAllGroupsByPlatform(ctx context.Context, platform string) ([]Group, error) {
-	// ListActiveByPlatform 已在 repo 排除 private-*
-	return s.groupRepo.ListActiveByPlatform(ctx, platform)
+	// ListActiveByPlatform 已在 repo 排除 private-*；service 再兜底
+	groups, err := s.groupRepo.ListActiveByPlatform(ctx, platform)
+	if err != nil {
+		return nil, err
+	}
+	return filterOutPrivateGroups(groups), nil
 }
 
 func (s *adminServiceImpl) GetAllGroupsIncludingInactive(ctx context.Context) ([]Group, error) {
 	// ListWithFilters with empty status = no status filter, so active + disabled groups are returned.
 	// 默认排除 private-*；PageSize 10000 在过滤 private 后仍需关注运营组规模。
 	groups, _, err := s.groupRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10000}, "", "", "", nil)
-	return groups, err
+	if err != nil {
+		return nil, err
+	}
+	return filterOutPrivateGroups(groups), nil
 }
 
 func (s *adminServiceImpl) GetGroup(ctx context.Context, id int64) (*Group, error) {

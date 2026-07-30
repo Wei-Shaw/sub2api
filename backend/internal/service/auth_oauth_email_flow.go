@@ -298,7 +298,11 @@ func (s *AuthService) FinalizeOAuthEmailAccount(
 
 // RollbackOAuthEmailAccountCreation removes a partially-created local account
 // and restores any invitation code already consumed by that account.
-// 先 Revoke 私有组，再删用户，尽量同事务。
+//
+// 顺序：先 Revoke 私有组，再删用户，尽量同事务。
+// Revoke 内部对多平台 best-effort（中途失败仍继续其它平台，见 RevokePrivatePlatformGroups），
+// 以降低 partial cascade 后 Commit 留下 private 孤儿组的概率。
+// Revoke 仍失败时优先删用户（避免半登录账号），并记日志供运维补扫 orphan groups。
 func (s *AuthService) RollbackOAuthEmailAccountCreation(ctx context.Context, userID int64, invitationCode string) error {
 	if s == nil || s.userRepo == nil || userID <= 0 {
 		return ErrServiceUnavailable
@@ -313,7 +317,7 @@ func (s *AuthService) RollbackOAuthEmailAccountCreation(ctx context.Context, use
 			// 降级：尽量 revoke + delete
 			if s.privateGroups != nil {
 				if _, rerr := s.privateGroups.RevokePrivatePlatformGroups(ctx, userID); rerr != nil {
-					logger.LegacyPrintf("service.auth", "[Auth] revoke private groups on rollback failed: user_id=%d err=%v", userID, rerr)
+					logger.LegacyPrintf("service.auth", "[Auth] revoke private groups on rollback failed (possible orphan private groups): user_id=%d err=%v", userID, rerr)
 				}
 			}
 			if err := s.userRepo.Delete(ctx, userID); err != nil {
@@ -327,8 +331,10 @@ func (s *AuthService) RollbackOAuthEmailAccountCreation(ctx context.Context, use
 		if s.privateGroups != nil {
 			revokeResult, err = s.privateGroups.RevokePrivatePlatformGroups(opCtx, userID)
 			if err != nil {
-				logger.LegacyPrintf("service.auth", "[Auth] revoke private groups on rollback failed: user_id=%d err=%v", userID, err)
-				// 仍继续删用户，避免残留半登录账号
+				// Revoke 已尽量删完全部平台；仍失败时继续删用户，避免残留半登录账号。
+				// 风险：外层 tx 内 partial cascade 会随 Commit 提交；运维可按 private-{userID}-* 补扫。
+				logger.LegacyPrintf("service.auth", "[Auth] revoke private groups on rollback failed (possible orphan private groups): user_id=%d deleted=%d err=%v",
+					userID, len(revokeResult.DeletedGroupIDs), err)
 			}
 		}
 		if err := s.userRepo.Delete(opCtx, userID); err != nil {
@@ -345,7 +351,7 @@ func (s *AuthService) RollbackOAuthEmailAccountCreation(ctx context.Context, use
 
 	if s.privateGroups != nil {
 		if _, err := s.privateGroups.RevokePrivatePlatformGroups(ctx, userID); err != nil {
-			logger.LegacyPrintf("service.auth", "[Auth] revoke private groups on rollback failed: user_id=%d err=%v", userID, err)
+			logger.LegacyPrintf("service.auth", "[Auth] revoke private groups on rollback failed (possible orphan private groups): user_id=%d err=%v", userID, err)
 		}
 	}
 	if err := s.userRepo.Delete(ctx, userID); err != nil {

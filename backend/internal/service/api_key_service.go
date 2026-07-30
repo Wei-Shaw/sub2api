@@ -986,6 +986,14 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 		}
 	}
 
+	// map 迭代顺序不稳定；按 SortOrder、ID 稳定排序，避免 UI 抖动
+	sort.SliceStable(availableGroups, func(i, j int) bool {
+		if availableGroups[i].SortOrder != availableGroups[j].SortOrder {
+			return availableGroups[i].SortOrder < availableGroups[j].SortOrder
+		}
+		return availableGroups[i].ID < availableGroups[j].ID
+	})
+
 	return availableGroups, nil
 }
 

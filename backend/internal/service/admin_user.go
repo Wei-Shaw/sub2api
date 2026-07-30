@@ -147,8 +147,13 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 	}
 
 	// 用户插入 + 私有组供给同事务（fail-closed）；默认订阅仍在事务外 best-effort。
+	// privateGroups 已注入时必须具备 entClient，禁止「先 Create 再 best-effort Provision」的半成品路径。
+	if s.privateGroups != nil && s.entClient == nil {
+		return nil, errors.New("misconfigured AdminService: privateGroups requires entClient for atomic user create")
+	}
+
 	var provisionResult *ProvisionResult
-	if s.entClient != nil && s.privateGroups != nil {
+	if s.privateGroups != nil {
 		tx, err := s.entClient.Tx(ctx)
 		if err != nil {
 			return nil, err
@@ -169,13 +174,6 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 	} else {
 		if err := s.userRepo.Create(ctx, user); err != nil {
 			return nil, err
-		}
-		if s.privateGroups != nil {
-			provisionResult, err = s.privateGroups.ProvisionPrivatePlatformGroups(ctx, user.ID)
-			if err != nil {
-				return nil, err
-			}
-			s.privateGroups.AfterCommit(ctx, provisionResult)
 		}
 	}
 
@@ -295,18 +293,26 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	if input.AllowedGroups != nil {
 		// 强制保留该用户 private-{userId}-* 组 ID，防止前端 Modal 只回写 standard 勾选导致抹除。
-		merged := *input.AllowedGroups
-		if s.groupRepo != nil {
-			privateIDs := make([]Group, 0, len(AllowedQuotaPlatforms))
-			for _, platform := range AllowedQuotaPlatforms {
-				name := PrivateGroupName(user.ID, platform)
-				if g, err := s.groupRepo.GetByName(ctx, name); err == nil && g != nil {
-					privateIDs = append(privateIDs, *g)
-				}
-			}
-			merged = mergePrivateAllowedGroupIDs(merged, privateIDs, user.ID)
+		// groupRepo 缺失或 GetByName 非 not-found 错误必须 fail-closed，避免瞬时故障抹掉 private allowed。
+		if s.groupRepo == nil {
+			return nil, errors.New("misconfigured AdminService: groupRepo required to preserve private allowed groups")
 		}
-		user.AllowedGroups = merged
+		merged := *input.AllowedGroups
+		privateIDs := make([]Group, 0, len(AllowedQuotaPlatforms))
+		for _, platform := range AllowedQuotaPlatforms {
+			name := PrivateGroupName(user.ID, platform)
+			g, err := s.groupRepo.GetByName(ctx, name)
+			if err != nil {
+				if errors.Is(err, ErrGroupNotFound) {
+					continue
+				}
+				return nil, fmt.Errorf("load private group for allowed merge: %s: %w", name, err)
+			}
+			if g != nil {
+				privateIDs = append(privateIDs, *g)
+			}
+		}
+		user.AllowedGroups = mergePrivateAllowedGroupIDs(merged, privateIDs, user.ID)
 	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
