@@ -254,4 +254,15 @@ describe('PlazaModelPricingTable', () => {
     // 旧 bug:image_output_price × 0.1 = 0.000003 被当按次价
     expect(text).not.toContain('$0.000003')
   })
+
+  it('点击或键盘激活列表行时抛出所选模型', async () => {
+    const model = tokenModel()
+    const wrapper = mountTable([model], 1)
+    const row = wrapper.get('tbody tr')
+
+    await row.trigger('click')
+    await row.trigger('keydown', { key: 'Enter' })
+
+    expect(wrapper.emitted('select')).toEqual([[model], [model]])
+  })
 })

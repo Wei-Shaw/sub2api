@@ -60,7 +60,12 @@
         <tr
           v-for="m in sortedModels"
           :key="m.name"
-          class="border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50/70 dark:border-dark-800 dark:hover:bg-dark-800/50"
+          class="cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500/40 dark:border-dark-800 dark:hover:bg-dark-800/50"
+          tabindex="0"
+          :aria-label="t('modelPlaza.detail.open', { model: m.name })"
+          @click="$emit('select', m)"
+          @keydown.enter="$emit('select', m)"
+          @keydown.space.prevent="$emit('select', m)"
         >
           <!-- 模型名 + 非 token 计费模式徽章 -->
           <td class="border-r border-gray-100 py-2.5 pr-4 align-middle dark:border-dark-700/60">
@@ -216,6 +221,8 @@ const props = defineProps<{
   /** 用户专属倍率;与默认不同,实付价按此计算并划线展示原倍率。 */
   userRateMultiplier?: number | null
 }>()
+
+defineEmits<{ select: [model: PlazaModel] }>()
 
 const { t } = useI18n()
 

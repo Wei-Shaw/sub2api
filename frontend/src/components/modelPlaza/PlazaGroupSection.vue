@@ -1,10 +1,19 @@
 <template>
   <section
-    class="rounded-2xl border bg-white shadow-card dark:bg-dark-800/50"
-    :class="[platformBorderStrongClass(group.platform)]"
+    :class="
+      viewMode === 'list'
+        ? ['rounded-2xl border bg-white shadow-card dark:bg-dark-800/50', platformBorderStrongClass(group.platform)]
+        : 'space-y-3'
+    "
   >
     <!-- 分组头部:名称/平台/倍率徽章/专属/订阅徽章 + 描述 -->
-    <header class="border-b border-gray-100 px-5 py-4 dark:border-dark-700/60">
+    <header
+      :class="
+        viewMode === 'list'
+          ? 'border-b border-gray-100 px-5 py-4 dark:border-dark-700/60'
+          : 'px-1'
+      "
+    >
       <div class="flex flex-wrap items-center gap-2">
         <GroupBadge
           :name="group.name"
@@ -45,13 +54,22 @@
     </header>
 
     <!-- 模型价格表 -->
-    <div class="px-5">
+    <div :class="viewMode === 'list' ? 'px-5' : ''">
       <PlazaModelPricingTable
-        v-if="group.models.length > 0"
+        v-if="group.models.length > 0 && viewMode === 'list'"
         :models="group.models"
         :platform="group.platform"
         :rate-multiplier="group.rate_multiplier"
         :user-rate-multiplier="group.user_rate_multiplier ?? null"
+        @select="emit('selectModel', $event)"
+      />
+      <PlazaModelCardGrid
+        v-else-if="group.models.length > 0"
+        :models="group.models"
+        :platform="group.platform"
+        :rate-multiplier="group.rate_multiplier"
+        :user-rate-multiplier="group.user_rate_multiplier ?? null"
+        @select="emit('selectModel', $event)"
       />
       <p v-else class="py-4 text-center text-sm text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.detail.noModels') }}
@@ -65,16 +83,24 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
+import PlazaModelCardGrid from './PlazaModelCardGrid.vue'
 import PlazaModelPricingTable from './PlazaModelPricingTable.vue'
 import type { ModelPlazaGroup } from '@/api/modelPlaza'
+import type { PlazaModel } from '@/api/modelPlaza'
 import type { GroupPlatform, SubscriptionType } from '@/types'
+import type { ModelPlazaViewMode } from './viewMode'
 import { platformBorderStrongClass } from '@/utils/platformColors'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { useAppStore } from '@/stores/app'
 
 const props = defineProps<{
   group: ModelPlazaGroup
+  viewMode?: ModelPlazaViewMode
 }>()
+
+const emit = defineEmits<{ selectModel: [model: PlazaModel] }>()
+
+const viewMode = computed(() => props.viewMode ?? 'list')
 
 const { t } = useI18n()
 const appStore = useAppStore()

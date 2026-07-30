@@ -538,9 +538,20 @@ export default {
       platformLabel: '平台',
       groupLabel: '分组',
       rateLabel: '倍率',
+      billingLabel: '计费类型',
       modelLabel: '模型',
       searchPlaceholder: '搜索模型名称',
-      all: '全部'
+      clearSearch: '清空搜索',
+      all: '全部',
+      advanced: '筛选',
+      reset: '重置筛选',
+      resultCount: '{count} 个模型',
+      tokenBilling: '按 Token'
+    },
+    view: {
+      label: '展示方式',
+      list: '列表模式',
+      card: '卡片模式'
     },
     badges: {
       exclusive: '专属分组',
@@ -549,7 +560,22 @@ export default {
     detail: {
       noModels: '该分组暂未配置模型',
       noPricing: '未配置定价',
-      peakNote: '高峰时段 {window} 计费倍率 ×{multiplier}'
+      noOfficialPricing: '暂无官方参考价',
+      peakNote: '高峰时段 {window} 计费倍率 ×{multiplier}',
+      open: '查看 {model} 详情',
+      close: '关闭模型详情',
+      paidPricing: '实付价格',
+      officialReference: '官方参考价',
+      unitPrice: '单价',
+      tier: '计费档位',
+      cacheWrite: '缓存写入',
+      cacheRead: '缓存读取',
+      groupInfo: '分组与计费信息',
+      effectiveRate: '生效倍率',
+      groupType: '分组类型',
+      standard: '标准',
+      access: '访问范围',
+      publicGroup: '公开分组'
     },
     table: {
       model: '模型',
