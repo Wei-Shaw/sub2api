@@ -205,12 +205,18 @@ function extractErrorMessage(error: unknown, fallback: string): string {
 }
 
 async function loadCredentials(): Promise<void> {
+  if (!props.enabled) {
+    credentials.value = []
+    return
+  }
   loading.value = true
   try {
     credentials.value = await passkeyAPI.list()
   } catch (error) {
-    const code = (error as { code?: string }).code
-    if (code !== 'PASSKEY_DISABLED') {
+    // 字符串错误码在 reason 字段（code 是数字状态码）；
+    // 设置变更竞态下后端仍可能返回 PASSKEY_DISABLED，静默处理
+    const reason = (error as { reason?: string }).reason
+    if (reason !== 'PASSKEY_DISABLED') {
       appStore.showError(t('profile.passkey.loadFailed'))
     }
   } finally {
