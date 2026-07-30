@@ -354,74 +354,182 @@ func canonicalJSON(raw string) string {
 	return string(encoded)
 }
 
-// ListDueOllamaCloudUsageAccounts returns at most one due representative per
-// exact API key before hydration, preventing one shared group from consuming a
-// whole runner cycle.
-func (r *accountRepository) ListDueOllamaCloudUsageAccounts(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
+// ollamaCloudUsageParseRFC3339SQL reuses the verified RFC3339(/Nano) parse path
+// for a snapshot timestamp expression. Invalid or missing values fail open to NULL.
+//
+// The value is rewritten twice before it reaches jsonpath:
+//  1. Sub-second precision beyond 6 digits is truncated, because .datetime()
+//     rejects more than microsecond resolution while Go emits 9 digits.
+//  2. A trailing "Z" is rewritten to "+00:00". jsonpath .datetime() only learned
+//     to accept the ISO-8601 "Z" designator in PostgreSQL 17, and every timestamp
+//     this service writes is UTC (hence "Z"). Without this rewrite the parse
+//     silently yields NULL on PostgreSQL <= 16, which makes every due column NULL
+//     and collapses ListDueOllamaCloudUsageAccounts into its fail-open branch.
+//
+// jsonpath (rather than a direct ::timestamptz cast) is required so that values
+// passing the shape regex but naming an impossible date (e.g. 2026-02-30) fail
+// open to NULL instead of aborting the whole query.
+func ollamaCloudUsageParseRFC3339SQL(expression string) string {
+	return `CASE
+		WHEN ` + expression + ` IS NULL THEN NULL
+		WHEN ` + expression + ` ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
+			THEN jsonb_path_query_first_tz(
+				to_jsonb(regexp_replace(
+					regexp_replace(
+						` + expression + `,
+						'(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$',
+						'\1\2'
+					),
+					'Z$',
+					'+00:00'
+				)),
+				'$.datetime()', '{}'::jsonb, true
+			) #>> '{}'
+		ELSE NULL
+	END`
+}
+
+// ListDueOllamaCloudUsageAccounts returns at most one truly-due activity-driven
+// candidate per exact API key. Due timing (debounce, max-wait, failure backoff)
+// is evaluated in SQL before LIMIT so non-due active groups cannot starve due ones.
+// Account.LastUsedAt is stamped with the group MAX(last_used_at) for a service
+// pure-function recheck against races between list and refresh.
+//
+// Rules mirror service.ollamaCloudUsageAutoRefreshDueAt (keep both in sync):
+//   - missing/invalid snapshot or times → fail-open first due
+//   - success: activity after fetched_at;
+//     due_at = GREATEST(LEAST(last_used+debounce, fetched+maxWait), fetched+minFetchInterval)
+//   - failed/unauthorized: activity after last_attempt; activity_due = LEAST(...);
+//     final due_at is not earlier than a valid next_refresh_at (invalid/missing fail-open)
+func (r *accountRepository) ListDueOllamaCloudUsageAccounts(
+	ctx context.Context,
+	now time.Time,
+	debounce, maxWait time.Duration,
+	limit int,
+) ([]service.Account, error) {
 	if limit <= 0 {
 		return []service.Account{}, nil
 	}
 	if r == nil || r.sql == nil {
 		return nil, errors.New("account repository SQL executor not configured")
 	}
+	if debounce <= 0 {
+		debounce = time.Minute
+	}
+	if maxWait <= 0 {
+		maxWait = time.Hour
+	}
+	debounceSeconds := debounce.Seconds()
+	maxWaitSeconds := maxWait.Seconds()
+	minFetchIntervalSeconds := service.OllamaCloudUsageMinFetchInterval.Seconds()
 	rows, err := r.sql.QueryContext(ctx, `
-		WITH candidates AS (
-			SELECT id, credentials ->> 'api_key' AS api_key,
-				extra #>> '{ollama_cloud_usage_snapshot,next_refresh_at}' AS next_refresh_at
+		WITH eligible AS (
+			SELECT id,
+				credentials ->> 'api_key' AS api_key,
+				last_used_at,
+				extra -> 'ollama_cloud_usage_snapshot' AS snapshot
 			FROM accounts
 			WHERE deleted_at IS NULL
 				AND status = 'active'
 				AND `+ollamaCloudUsageEligibleSQL+`
 				AND jsonb_typeof(extra -> 'ollama_cloud_usage_session') = 'string'
 				AND extra @> '{"ollama_cloud_usage_auto_refresh": true}'::jsonb
+		), group_activity AS (
+			SELECT credentials ->> 'api_key' AS api_key,
+				MAX(last_used_at) AS group_last_used_at
+			FROM accounts
+			WHERE deleted_at IS NULL
+				AND `+ollamaCloudUsageEligibleSQL+`
+				AND jsonb_typeof(credentials -> 'api_key') = 'string'
+			GROUP BY credentials ->> 'api_key'
+		), joined AS (
+			SELECT e.id, e.api_key, e.snapshot, g.group_last_used_at,
+				e.snapshot #>> '{status}' AS status,
+				e.snapshot #>> '{fetched_at}' AS fetched_at,
+				e.snapshot #>> '{last_attempt_at}' AS last_attempt_at,
+				e.snapshot #>> '{next_refresh_at}' AS next_refresh_at
+			FROM eligible e
+			JOIN group_activity g ON g.api_key = e.api_key
 		), parsed AS MATERIALIZED (
-			SELECT id, api_key, next_refresh_at,
-				next_refresh_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$' AS rfc3339_shape,
-				jsonb_path_query_first_tz(
-					to_jsonb(regexp_replace(
-						next_refresh_at,
-						'(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$',
-						'\1\2'
-					)),
-					'$.datetime()', '{}'::jsonb, true
-				) #>> '{}' AS parsed_next_refresh_at
-			FROM candidates
-		), due AS (
+			SELECT id, api_key, snapshot, group_last_used_at, status,
+				`+ollamaCloudUsageParseRFC3339SQL("fetched_at")+` AS parsed_fetched_at,
+				`+ollamaCloudUsageParseRFC3339SQL("last_attempt_at")+` AS parsed_last_attempt_at,
+				`+ollamaCloudUsageParseRFC3339SQL("next_refresh_at")+` AS parsed_next_refresh_at
+			FROM joined
+		), timed AS (
 			SELECT *,
-				CASE WHEN next_refresh_at IS NULL OR NOT rfc3339_shape OR parsed_next_refresh_at IS NULL THEN 0 ELSE 1 END AS due_class
+				CASE
+					WHEN status = 'ok'
+						AND parsed_fetched_at IS NOT NULL
+						AND group_last_used_at IS NOT NULL
+						AND group_last_used_at > parsed_fetched_at::timestamptz
+					THEN GREATEST(
+						LEAST(
+							group_last_used_at + make_interval(secs => $2::double precision),
+							parsed_fetched_at::timestamptz + make_interval(secs => $3::double precision)
+						),
+						parsed_fetched_at::timestamptz + make_interval(secs => $5::double precision)
+					)
+					WHEN status IN ('failed', 'unauthorized')
+						AND parsed_last_attempt_at IS NOT NULL
+						AND group_last_used_at IS NOT NULL
+						AND group_last_used_at > parsed_last_attempt_at::timestamptz
+					THEN GREATEST(
+						LEAST(
+							group_last_used_at + make_interval(secs => $2::double precision),
+							parsed_last_attempt_at::timestamptz + make_interval(secs => $3::double precision)
+						),
+						COALESCE(parsed_next_refresh_at::timestamptz, '-infinity'::timestamptz)
+					)
+					ELSE NULL
+				END AS activity_due_at
 			FROM parsed
-			WHERE next_refresh_at IS NULL
-				OR NOT rfc3339_shape
-				OR parsed_next_refresh_at IS NULL
-				OR parsed_next_refresh_at::timestamptz <= $1
+		), candidates AS (
+			SELECT *,
+				CASE
+					WHEN snapshot IS NULL OR snapshot = 'null'::jsonb OR status IS NULL
+						OR status NOT IN ('ok', 'failed', 'unauthorized') THEN 0
+					WHEN status = 'ok' AND parsed_fetched_at IS NULL THEN 0
+					WHEN status IN ('failed', 'unauthorized') AND parsed_last_attempt_at IS NULL THEN 0
+					WHEN activity_due_at IS NOT NULL AND $1 >= activity_due_at THEN 1
+					ELSE NULL
+				END AS due_class,
+				activity_due_at AS due_at
+			FROM timed
 		), ranked AS (
-			SELECT *, row_number() OVER (
-				PARTITION BY api_key
-				ORDER BY due_class,
-					CASE WHEN rfc3339_shape AND parsed_next_refresh_at IS NOT NULL THEN parsed_next_refresh_at::timestamptz END NULLS FIRST,
-					id
-			) AS group_rank
-			FROM due
+			SELECT id, api_key, group_last_used_at, due_class, due_at,
+				row_number() OVER (
+					PARTITION BY api_key
+					ORDER BY due_class,
+						due_at NULLS FIRST,
+						id
+				) AS group_rank
+			FROM candidates
+			WHERE due_class IS NOT NULL
 		)
-		SELECT id
+		SELECT id, group_last_used_at
 		FROM ranked
 		WHERE group_rank = 1
-		ORDER BY due_class,
-			CASE WHEN rfc3339_shape AND parsed_next_refresh_at IS NOT NULL THEN parsed_next_refresh_at::timestamptz END NULLS FIRST,
-			id
-		LIMIT $2
-	`, now.UTC(), limit)
+		ORDER BY due_class, due_at NULLS FIRST, id
+		LIMIT $4
+	`, now.UTC(), debounceSeconds, maxWaitSeconds, limit, minFetchIntervalSeconds)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
+	type dueRow struct {
+		id            int64
+		groupLastUsed *time.Time
+	}
+	rowsOut := make([]dueRow, 0, limit)
 	ids := make([]int64, 0, limit)
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var row dueRow
+		if err := rows.Scan(&row.id, &row.groupLastUsed); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		rowsOut = append(rowsOut, row)
+		ids = append(ids, row.id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -430,11 +538,26 @@ func (r *accountRepository) ListDueOllamaCloudUsageAccounts(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	result := make([]service.Account, 0, len(accounts))
+	byID := make(map[int64]*service.Account, len(accounts))
 	for _, account := range accounts {
 		if account != nil {
-			result = append(result, *account)
+			byID[account.ID] = account
 		}
+	}
+	result := make([]service.Account, 0, len(rowsOut))
+	for _, row := range rowsOut {
+		account := byID[row.id]
+		if account == nil {
+			continue
+		}
+		// Stamp group MAX(last_used_at) for service due evaluation.
+		if row.groupLastUsed != nil {
+			ts := row.groupLastUsed.UTC()
+			account.LastUsedAt = &ts
+		} else {
+			account.LastUsedAt = nil
+		}
+		result = append(result, *account)
 	}
 	return result, nil
 }

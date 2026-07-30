@@ -61,7 +61,7 @@ func (r *ollamaCloudUsageHandlerTestRepo) UpdateOllamaCloudUsageSnapshot(context
 func (r *ollamaCloudUsageHandlerTestRepo) DisableOllamaCloudUsageAutoRefresh(context.Context, *service.Account) error {
 	return nil
 }
-func (r *ollamaCloudUsageHandlerTestRepo) ListDueOllamaCloudUsageAccounts(context.Context, time.Time, int) ([]service.Account, error) {
+func (r *ollamaCloudUsageHandlerTestRepo) ListDueOllamaCloudUsageAccounts(context.Context, time.Time, time.Duration, time.Duration, int) ([]service.Account, error) {
 	return nil, nil
 }
 
@@ -273,4 +273,5 @@ func TestGetOllamaCloudUsageSettingsHandlerSuccess(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Contains(t, recorder.Body.String(), `"enabled":false`)
 	require.Contains(t, recorder.Body.String(), `"interval_minutes":60`)
+	require.Contains(t, recorder.Body.String(), `"debounce_minutes":1`)
 }

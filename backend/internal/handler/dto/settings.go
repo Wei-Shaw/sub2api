@@ -36,9 +36,13 @@ type SystemSettings struct {
 	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
 	TotpEnabled                      bool                     `json:"totp_enabled"`                   // TOTP 双因素认证
 	TotpEncryptionKeyConfigured      bool                     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
-	SessionBindingEnabled            bool                     `json:"session_binding_enabled"`        // 会话 IP/UA 绑定
-	StepUpEnabled                    bool                     `json:"step_up_enabled"`                // 敏感操作 step-up 2FA
-	AuditLogRetentionDays            int                      `json:"audit_log_retention_days"`       // 审计日志保留天数
+	PasskeyEnabled                   bool                     `json:"passkey_enabled"`
+	PasskeyConfigured                bool                     `json:"passkey_configured"`
+	PasskeyRPID                      string                   `json:"passkey_rp_id"`
+	PasskeyRPOrigins                 []string                 `json:"passkey_rp_origins"`
+	SessionBindingEnabled            bool                     `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
+	StepUpEnabled                    bool                     `json:"step_up_enabled"`          // 敏感操作 step-up 2FA
+	AuditLogRetentionDays            int                      `json:"audit_log_retention_days"` // 审计日志保留天数
 	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                   `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
@@ -286,6 +290,11 @@ type SystemSettings struct {
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// Model Plaza feature (public group/model pricing showcase)
+	ModelPlazaEnabled     bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth bool   `json:"model_plaza_require_auth"`
+	ModelPlazaDescription string `json:"model_plaza_description"`
+
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
@@ -320,6 +329,7 @@ type PublicSettings struct {
 	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
 	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
 	TotpEnabled                      bool                     `json:"totp_enabled"` // TOTP 双因素认证
+	PasskeyEnabled                   bool                     `json:"passkey_enabled"`
 	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                   `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
@@ -369,6 +379,9 @@ type PublicSettings struct {
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	ModelPlazaEnabled     bool `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth bool `json:"model_plaza_require_auth"`
+
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
 	RiskControlEnabled bool `json:"risk_control_enabled"`
@@ -392,6 +405,15 @@ type OverloadCooldownSettings struct {
 type RateLimit429CooldownSettings struct {
 	Enabled         bool `json:"enabled"`
 	CooldownSeconds int  `json:"cooldown_seconds"`
+}
+
+// PanelRateLimitSettings 面板 API 限流配置 DTO
+type PanelRateLimitSettings struct {
+	Enabled     bool `json:"enabled"`
+	UserRPM     int  `json:"user_rpm"`
+	HeavyRPM    int  `json:"heavy_rpm"`
+	ExemptAdmin bool `json:"exempt_admin"`
+	PublicIPRPM int  `json:"public_ip_rpm"`
 }
 
 // StreamTimeoutSettings 流超时处理配置 DTO
