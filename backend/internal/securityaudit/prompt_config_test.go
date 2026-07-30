@@ -37,10 +37,13 @@ func TestDefaultConfigIsOff(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ModeOff, active.EffectiveMode())
 	require.Equal(t, AllScannerIDs, storage.Scanners)
+	require.False(t, storage.ContinueOnGuardFailure)
+	require.Equal(t, PromptAuditModelFilter{Type: ModelFilterAll, Models: []string{}}, storage.ModelFilter)
 	publicJSON, err := json.Marshal(PublicFromStorage(storage, true, nil))
 	require.NoError(t, err)
 	require.Contains(t, string(publicJSON), `"group_ids":[]`)
 	require.Contains(t, string(publicJSON), `"endpoints":[]`)
+	require.Contains(t, string(publicJSON), `"continue_on_guard_failure":false`)
 }
 
 func TestBlockingLatestTurnOnlyConfigRoundTrip(t *testing.T) {
@@ -417,6 +420,38 @@ func TestParseLegacyConfigDefaultsMissingFieldsWithoutEnablingBlocking(t *testin
 	require.Equal(t, DefaultQueueCapacity, storage.QueueCapacity)
 	require.Equal(t, AllScannerIDs, storage.Scanners)
 	require.True(t, storage.AllGroups)
+	require.False(t, storage.ContinueOnGuardFailure)
+	require.Equal(t, PromptAuditModelFilter{Type: ModelFilterAll, Models: []string{}}, storage.ModelFilter)
+}
+
+func TestPromptAuditModelFilterMatchesContentModerationSemantics(t *testing.T) {
+	config := ActiveConfig{ModelFilter: PromptAuditModelFilter{Type: ModelFilterAll}}
+	require.True(t, config.IncludesModel("gpt-5"))
+
+	config.ModelFilter = PromptAuditModelFilter{Type: ModelFilterInclude, Models: []string{" GPT-5 ", "gpt-5", "claude-sonnet"}}
+	require.True(t, config.IncludesModel("gpt-5"))
+	require.True(t, config.IncludesModel("CLAUDE-SONNET"))
+	require.False(t, config.IncludesModel("gpt-4"))
+
+	config.ModelFilter = PromptAuditModelFilter{Type: ModelFilterExclude, Models: []string{"gpt-5"}}
+	require.False(t, config.IncludesModel("GPT-5"))
+	require.True(t, config.IncludesModel("gpt-4"))
+
+	err := validateUpdateConfigRequest(UpdateConfigRequest{Strategy: "priority", WorkerCount: 1, QueueCapacity: 1,
+		Scanners: []string{"pii"}, AllGroups: true, ModelFilter: PromptAuditModelFilter{Type: ModelFilterInclude}})
+	require.Equal(t, "prompt_audit_models_required", infraerrors.Reason(err))
+}
+
+func TestContinueOnGuardFailureIsOnlyPersistedForBlockingMode(t *testing.T) {
+	config := DefaultStorageConfig()
+	config.ContinueOnGuardFailure = true
+	normalizeStorageConfig(&config)
+	require.False(t, config.ContinueOnGuardFailure)
+
+	config.BlockingEnabled = true
+	config.ContinueOnGuardFailure = true
+	normalizeStorageConfig(&config)
+	require.True(t, config.ContinueOnGuardFailure)
 }
 
 func TestUpdateConfigStrictBoundsAndKnownValues(t *testing.T) {

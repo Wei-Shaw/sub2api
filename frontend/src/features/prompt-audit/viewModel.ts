@@ -2,6 +2,8 @@ import type {
   PromptAuditConfig,
   PromptAuditDraft,
   PromptAuditEndpointDraft,
+  PromptAuditModelFilter,
+  PromptAuditModelFilterType,
   PromptAuditUpdateRequest,
   PromptEventFilters,
 } from './types'
@@ -30,8 +32,11 @@ export function cloneData<T>(value: T): T {
 export function configToDraft(config: PromptAuditConfig): PromptAuditDraft {
   return {
     ...cloneData(config),
+    blocking_latest_turn_only: config.blocking_latest_turn_only === true,
+    continue_on_guard_failure: config.continue_on_guard_failure === true,
     group_ids: [...(config.group_ids ?? [])],
     scanners: [...(config.scanners ?? [])],
+    model_filter: normalizeModelFilter(config.model_filter),
     endpoints: (config.endpoints ?? []).map((endpoint) => ({
       ...endpoint,
       token: '',
@@ -63,6 +68,7 @@ export function buildUpdateRequest(draft: PromptAuditDraft): PromptAuditUpdateRe
     enabled: draft.enabled,
     blocking_enabled: draft.enabled && draft.blocking_enabled,
     blocking_latest_turn_only: draft.blocking_latest_turn_only,
+    continue_on_guard_failure: draft.enabled && draft.blocking_enabled && draft.continue_on_guard_failure,
     store_pass_events: draft.store_pass_events,
     strategy: 'priority',
     worker_count: Number(draft.worker_count),
@@ -70,6 +76,7 @@ export function buildUpdateRequest(draft: PromptAuditDraft): PromptAuditUpdateRe
     scanners: [...draft.scanners],
     all_groups: draft.all_groups,
     group_ids: draft.all_groups ? [] : [...draft.group_ids].sort((a, b) => a - b),
+    model_filter: normalizeModelFilter(draft.model_filter),
     endpoints: draft.endpoints.map((endpoint) => ({
       id: endpoint.id.trim(),
       name: endpoint.name.trim(),
@@ -83,6 +90,23 @@ export function buildUpdateRequest(draft: PromptAuditDraft): PromptAuditUpdateRe
       enabled: endpoint.enabled,
     })),
   }
+}
+
+export function normalizeModelFilter(value: unknown): PromptAuditModelFilter {
+  if (!value || typeof value !== 'object') return { type: 'all', models: [] }
+  const raw = value as Partial<PromptAuditModelFilter>
+  const type: PromptAuditModelFilterType = raw.type === 'include' || raw.type === 'exclude' || raw.type === 'all' ? raw.type : 'all'
+  if (type === 'all') return { type, models: [] }
+
+  const seen = new Set<string>()
+  const models: string[] = []
+  for (const item of Array.isArray(raw.models) ? raw.models : []) {
+    const model = String(item ?? '').trim()
+    if (!model || seen.has(model.toLowerCase())) continue
+    seen.add(model.toLowerCase())
+    models.push(model)
+  }
+  return { type, models }
 }
 
 export function draftFingerprint(draft: PromptAuditDraft | null): string {

@@ -43,6 +43,32 @@
         </div>
 
         <fieldset class="mt-5 border-t border-gray-100 pt-5 dark:border-dark-800">
+          <legend class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.policy.modelFilter') }}</legend>
+          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.policy.modelFilterHint') }}</p>
+          <div class="mt-3 grid gap-2 sm:grid-cols-3">
+            <button
+              v-for="option in modelFilterOptions"
+              :key="option.value"
+              type="button"
+              class="rounded-lg border p-3 text-left transition-colors"
+              :class="draft.model_filter.type === option.value
+                ? 'border-primary-300 bg-primary-50 text-primary-900 shadow-sm dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-100'
+                : 'border-gray-100 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/60'"
+              :aria-pressed="draft.model_filter.type === option.value"
+              @click="setModelFilterType(option.value)"
+            >
+              <span class="block text-sm font-semibold">{{ option.label }}</span>
+              <span class="mt-1 block text-xs leading-5 text-gray-500 dark:text-dark-400">{{ option.description }}</span>
+            </button>
+          </div>
+          <div v-if="draft.model_filter.type !== 'all'" class="mt-4 space-y-2">
+            <label class="block text-sm text-gray-700 dark:text-dark-200">{{ t('admin.promptAudit.policy.modelFilterModels') }}</label>
+            <ModelWhitelistSelector :model-value="draft.model_filter.models" @update:model-value="setModelFilterModels" />
+            <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.policy.modelFilterModelCount', { count: draft.model_filter.models.length }) }}</p>
+          </div>
+        </fieldset>
+
+        <fieldset class="mt-5 border-t border-gray-100 pt-5 dark:border-dark-800">
           <legend class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.policy.scanners') }}</legend>
           <div class="mt-3 grid gap-2 sm:grid-cols-2">
             <label v-for="scanner in SCANNER_CATALOG" :key="scanner.id" class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-dark-200 dark:hover:bg-dark-800">
@@ -74,8 +100,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import type { PromptAuditDraft, PromptAuditGroup } from '../types'
-import { cloneData, SCANNER_CATALOG } from '../viewModel'
+import { cloneData, normalizeModelFilter, SCANNER_CATALOG } from '../viewModel'
 
 const props = defineProps<{ draft: PromptAuditDraft; groups: PromptAuditGroup[] }>()
 const emit = defineEmits<{ (event: 'update:draft', value: PromptAuditDraft): void }>()
@@ -89,6 +116,11 @@ const filteredGroups = computed(() => {
 })
 const knownGroupIds = computed(() => new Set(props.groups.map((group) => group.id)))
 const missingGroupIds = computed(() => props.draft.group_ids.filter((id) => !knownGroupIds.value.has(id)))
+const modelFilterOptions = computed(() => [
+  { value: 'all' as const, label: t('admin.promptAudit.policy.modelFilterAll'), description: t('admin.promptAudit.policy.modelFilterAllDesc') },
+  { value: 'include' as const, label: t('admin.promptAudit.policy.modelFilterInclude'), description: t('admin.promptAudit.policy.modelFilterIncludeDesc') },
+  { value: 'exclude' as const, label: t('admin.promptAudit.policy.modelFilterExclude'), description: t('admin.promptAudit.policy.modelFilterExcludeDesc') },
+])
 
 function patch(value: Partial<PromptAuditDraft>) {
   emit('update:draft', { ...cloneData(props.draft), ...value })
@@ -104,6 +136,12 @@ function toggleScanner(id: string) {
   if (selected.has(id)) selected.delete(id)
   else selected.add(id)
   patch({ scanners: SCANNER_CATALOG.map((item) => item.id).filter((item) => selected.has(item)) })
+}
+function setModelFilterType(type: 'all' | 'include' | 'exclude') {
+  patch({ model_filter: type === 'all' ? { type, models: [] } : { type, models: [...props.draft.model_filter.models] } })
+}
+function setModelFilterModels(models: string[]) {
+  patch({ model_filter: normalizeModelFilter({ type: props.draft.model_filter.type, models }) })
 }
 function scannerLabel(id: string): string {
   return t(`admin.promptAudit.scanners.${id}`)
