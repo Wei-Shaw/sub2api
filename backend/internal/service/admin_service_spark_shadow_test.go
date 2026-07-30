@@ -373,15 +373,16 @@ func TestPersistOpenAI429PlanType_SkipsShadow(t *testing.T) {
 	t.Run("shadow_skipped", func(t *testing.T) {
 		repo := newSparkShadowRepoStub()
 		shadow := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{}, ParentAccountID: &parentID}
-		persistOpenAI429PlanType(ctx, repo, shadow, body)
+		persistOpenAI429PlanType(ctx, repo, nil, shadow, body)
 		require.Empty(t, shadow.Credentials, "影子不可被写入 plan_type 凭据")
 	})
 
 	t.Run("normal_account_writes", func(t *testing.T) {
 		repo := newSparkShadowRepoStub()
 		normal := &Account{ID: 9, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{}}
-		persistOpenAI429PlanType(ctx, repo, normal, body)
+		persistOpenAI429PlanType(ctx, repo, nil, normal, body)
 		require.Equal(t, "pro", normal.Credentials["plan_type"], "普通账号应写入 plan_type(反向对照,证明 body 有效、写路径通)")
+		require.Equal(t, "pro", normal.UpstreamPlan, "应同步 accounts.upstream_plan 列")
 	})
 }
 

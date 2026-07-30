@@ -20,18 +20,19 @@ import (
 
 // RateLimitService 处理限流和过载状态管理
 type RateLimitService struct {
-	accountRepo           AccountRepository
-	usageRepo             UsageLogRepository
-	cfg                   *config.Config
-	geminiQuotaService    *GeminiQuotaService
-	tempUnschedCache      TempUnschedCache
-	timeoutCounterCache   TimeoutCounterCache
-	openAI403CounterCache OpenAI403CounterCache
-	settingService        *SettingService
-	tokenCacheInvalidator TokenCacheInvalidator
-	runtimeBlocker        AccountRuntimeBlocker
-	usageCacheMu          sync.RWMutex
-	usageCache            map[int64]*geminiUsageCacheEntry
+	accountRepo            AccountRepository
+	usageRepo              UsageLogRepository
+	cfg                    *config.Config
+	geminiQuotaService     *GeminiQuotaService
+	tempUnschedCache       TempUnschedCache
+	timeoutCounterCache    TimeoutCounterCache
+	openAI403CounterCache  OpenAI403CounterCache
+	settingService         *SettingService
+	tokenCacheInvalidator  TokenCacheInvalidator
+	runtimeBlocker         AccountRuntimeBlocker
+	accountGroupRecomputer ManagedLinkRecomputer
+	usageCacheMu           sync.RWMutex
+	usageCache             map[int64]*geminiUsageCacheEntry
 }
 
 type AccountRuntimeBlocker interface {
@@ -95,6 +96,11 @@ func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogReposi
 // SetTimeoutCounterCache 设置超时计数器缓存（可选依赖）
 func (s *RateLimitService) SetTimeoutCounterCache(cache TimeoutCounterCache) {
 	s.timeoutCounterCache = cache
+}
+
+// SetAccountGroupRecomputer 注入 managed 链接重算器（可选；用于 429 plan 同步后 recompute）。
+func (s *RateLimitService) SetAccountGroupRecomputer(recomputer ManagedLinkRecomputer) {
+	s.accountGroupRecomputer = recomputer
 }
 
 // SetOpenAI403CounterCache 设置 OpenAI 403 连续失败计数器（可选依赖）
@@ -937,7 +943,7 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	}
 	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {
-		persistOpenAI429PlanType(ctx, s.accountRepo, account, responseBody)
+		persistOpenAI429PlanType(ctx, s.accountRepo, s.accountGroupRecomputer, account, responseBody)
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
 		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
 			s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
@@ -1531,13 +1537,14 @@ func parseOpenAIRateLimitPlanType(body []byte) string {
 	return strings.ToLower(strings.TrimSpace(planType))
 }
 
-func persistOpenAI429PlanType(ctx context.Context, repo AccountRepository, account *Account, body []byte) {
+// persistOpenAI429PlanType 从 429 body 提取 plan_type，经唯一入口 ApplyProbedPlan 写列 + credentials + recompute。
+// recomputer 可为 nil（系统号路径 recompute 本就 no-op）。
+func persistOpenAI429PlanType(ctx context.Context, repo AccountRepository, recomputer ManagedLinkRecomputer, account *Account, body []byte) {
 	if repo == nil || account == nil || account.Platform != PlatformOpenAI {
 		return
 	}
-	// spark 影子账号恒不持凭据:即便收到带 plan_type 的 429,也不能把 plan_type 写进影子 credentials
-	// ——该路径走 repo.BulkUpdate 直写、不经 persistAccountCredentials 守卫(外审第7轮 P1)。
-	// plan_type 由母账号在自己的请求上维护,影子跳过。
+	// spark 影子账号恒不持凭据:即便收到带 plan_type 的 429,也不能把 plan_type 写进影子 credentials。
+	// plan_type 由母账号在自己的请求上维护,影子跳过（ApplyProbedPlan 内亦有守卫）。
 	if account.IsCredentialShadow() {
 		return
 	}
@@ -1548,22 +1555,16 @@ func persistOpenAI429PlanType(ctx context.Context, repo AccountRepository, accou
 	}
 
 	current := strings.TrimSpace(account.GetCredential("plan_type"))
-	if strings.EqualFold(current, planType) {
+	if strings.EqualFold(current, planType) &&
+		NormalizeUpstreamPlanCode(account.UpstreamPlan) == NormalizeUpstreamPlanFromProbe(PlatformOpenAI, planType) {
 		return
 	}
 
-	if _, err := repo.BulkUpdate(ctx, []int64{account.ID}, AccountBulkUpdate{
-		Credentials: map[string]any{"plan_type": planType},
-	}); err != nil {
+	if err := ApplyProbedPlan(ctx, repo, recomputer, account, planType); err != nil {
 		slog.Warn("openai_429_plan_type_sync_failed", "account_id", account.ID, "plan_type", planType, "error", err)
 		return
 	}
-
-	if account.Credentials == nil {
-		account.Credentials = make(map[string]any, 1)
-	}
-	account.Credentials["plan_type"] = planType
-	slog.Info("openai_429_plan_type_synced", "account_id", account.ID, "previous_plan_type", current, "plan_type", planType)
+	slog.Info("openai_429_plan_type_synced", "account_id", account.ID, "previous_plan_type", current, "plan_type", planType, "upstream_plan", account.UpstreamPlan)
 }
 
 // handle529 处理529过载错误

@@ -84,6 +84,26 @@ func (r *openAIAccountTestRepo) BulkUpdate(_ context.Context, ids []int64, updat
 	return int64(len(ids)), nil
 }
 
+func (r *openAIAccountTestRepo) Update(_ context.Context, account *Account) error {
+	if account == nil {
+		return nil
+	}
+	// 与 BulkUpdate 对称：记录 plan 类写路径，便于断言 ApplyProbedPlan 落库。
+	r.bulkUpdatedIDs = []int64{account.ID}
+	r.bulkUpdatedPayload = AccountBulkUpdate{
+		Credentials:  account.Credentials,
+		UpstreamPlan: strPtrIfNonEmpty(account.UpstreamPlan),
+	}
+	return nil
+}
+
+func strPtrIfNonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 func (r *openAIAccountTestRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
 	r.rateLimitedID = id
 	r.rateLimitedAt = &resetAt
@@ -336,7 +356,10 @@ func TestAccountTestService_OpenAI429SyncsObservedPlanType(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, []int64{account.ID}, repo.bulkUpdatedIDs)
 	require.Equal(t, "free", repo.bulkUpdatedPayload.Credentials["plan_type"])
+	require.NotNil(t, repo.bulkUpdatedPayload.UpstreamPlan)
+	require.Equal(t, "free", *repo.bulkUpdatedPayload.UpstreamPlan)
 	require.Equal(t, "free", account.Credentials["plan_type"])
+	require.Equal(t, "free", account.UpstreamPlan)
 	require.Equal(t, account.ID, repo.rateLimitedID)
 	require.NotNil(t, account.RateLimitResetAt)
 }

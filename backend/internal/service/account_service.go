@@ -163,6 +163,8 @@ type AccountBulkUpdate struct {
 	Credentials    map[string]any
 	Extra          map[string]any
 	ProbeEnabled   *bool
+	// UpstreamPlan nil=不修改；非 nil 空串=清空列；非空=写入规范化 code。
+	UpstreamPlan *string
 }
 
 // CreateAccountRequest 创建账号请求

@@ -125,10 +125,11 @@ func snapshotOAuthRefreshAccount(account *Account) *Account {
 // OAuthRefreshAPI 统一的 OAuth Token 刷新入口
 // 封装分布式锁、进程内互斥锁、DB 重读、已刷新检查、竞争恢复等通用逻辑
 type OAuthRefreshAPI struct {
-	accountRepo AccountRepository
-	tokenCache  GeminiTokenCache // 可选，nil = 无分布式锁
-	lockTTL     time.Duration
-	localLocks  sync.Map // key: cacheKey string -> value: *contextMutex
+	accountRepo            AccountRepository
+	tokenCache             GeminiTokenCache // 可选，nil = 无分布式锁
+	lockTTL                time.Duration
+	localLocks             sync.Map // key: cacheKey string -> value: *contextMutex
+	accountGroupRecomputer ManagedLinkRecomputer
 }
 
 // NewOAuthRefreshAPI 创建统一刷新 API
@@ -143,6 +144,14 @@ func NewOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCac
 		tokenCache:  tokenCache,
 		lockTTL:     ttl,
 	}
+}
+
+// SetAccountGroupRecomputer 注入 managed 链接重算器（OAuth 刷新后同步 upstream_plan 用）。
+func (api *OAuthRefreshAPI) SetAccountGroupRecomputer(recomputer ManagedLinkRecomputer) {
+	if api == nil {
+		return
+	}
+	api.accountGroupRecomputer = recomputer
 }
 
 // getLocalLock 返回指定 cacheKey 的进程内互斥锁
@@ -356,6 +365,18 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 				"error", updateErr,
 			)
 			return nil, fmt.Errorf("%w: %v", errOAuthRefreshCredentialPersist, updateErr)
+		}
+	}
+
+	// OAuth 刷新后若 credentials 含 plan 类字段，委托 ApplyProbedPlan 同步列 + recompute（K16）。
+	// 失败仅记日志，不阻断刷新成功（token 已落库；reprobe 可补偿）。
+	if newCredentials != nil {
+		if err := ApplyProbedPlanFromCredentials(ctx, api.accountRepo, api.accountGroupRecomputer, freshAccount); err != nil {
+			slog.Warn("oauth_refresh_apply_probed_plan_failed",
+				"account_id", freshAccount.ID,
+				"platform", freshAccount.Platform,
+				"error", err,
+			)
 		}
 	}
 

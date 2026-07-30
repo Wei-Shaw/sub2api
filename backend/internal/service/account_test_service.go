@@ -1023,7 +1023,7 @@ func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, accoun
 		return
 	}
 
-	persistOpenAI429PlanType(ctx, s.accountRepo, account, body)
+	persistOpenAI429PlanType(ctx, s.accountRepo, nil, account, body)
 
 	var resetAt *time.Time
 	if calculated := calculateOpenAI429ResetTime(headers); calculated != nil {

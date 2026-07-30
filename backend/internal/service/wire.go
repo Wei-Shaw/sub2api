@@ -42,8 +42,10 @@ func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
 }
 
 // ProvideOAuthRefreshAPI creates OAuthRefreshAPI with the default lock TTL.
-func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCache) *OAuthRefreshAPI {
-	return NewOAuthRefreshAPI(accountRepo, tokenCache)
+func ProvideOAuthRefreshAPI(accountRepo AccountRepository, groupRepo GroupRepository, tokenCache GeminiTokenCache) *OAuthRefreshAPI {
+	api := NewOAuthRefreshAPI(accountRepo, tokenCache)
+	api.SetAccountGroupRecomputer(NewAccountGroupRecomputer(accountRepo, groupRepo))
+	return api
 }
 
 func ProvideBatchImageModelPricingResolver(resolver *ModelPricingResolver) *BatchImageModelPricingResolver {
@@ -92,6 +94,10 @@ func ProvideTokenRefreshService(
 	// 调用侧显式注入后台刷新策略，避免策略漂移
 	svc.SetRefreshPolicy(DefaultBackgroundRefreshPolicy())
 	svc.SetAccountRuntimeBlocker(runtimeBlocker)
+	// legacy 刷新路径 ApplyProbedPlan 与 OAuthRefreshAPI 共用 recompute 能力
+	if refreshAPI != nil {
+		svc.SetAccountGroupRecomputer(refreshAPI.accountGroupRecomputer)
+	}
 	svc.Start()
 	return svc
 }
@@ -346,6 +352,7 @@ func ProvideSchedulerSnapshotService(
 // ProvideRateLimitService creates RateLimitService with optional dependencies.
 func ProvideRateLimitService(
 	accountRepo AccountRepository,
+	groupRepo GroupRepository,
 	usageRepo UsageLogRepository,
 	cfg *config.Config,
 	geminiQuotaService *GeminiQuotaService,
@@ -360,6 +367,7 @@ func ProvideRateLimitService(
 	svc.SetOpenAI403CounterCache(openAI403CounterCache)
 	svc.SetSettingService(settingService)
 	svc.SetTokenCacheInvalidator(tokenCacheInvalidator)
+	svc.SetAccountGroupRecomputer(NewAccountGroupRecomputer(accountRepo, groupRepo))
 	return svc
 }
 

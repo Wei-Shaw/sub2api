@@ -3009,6 +3009,16 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		args = append(args, *updates.Schedulable)
 		idx++
 	}
+	if updates.UpstreamPlan != nil {
+		plan := strings.TrimSpace(*updates.UpstreamPlan)
+		if plan == "" {
+			setClauses = append(setClauses, "upstream_plan = NULL")
+		} else {
+			setClauses = append(setClauses, "upstream_plan = $"+itoa(idx))
+			args = append(args, plan)
+			idx++
+		}
+	}
 	if updates.ProbeEnabled != nil {
 		if updates.Extra == nil {
 			updates.Extra = make(map[string]any)
