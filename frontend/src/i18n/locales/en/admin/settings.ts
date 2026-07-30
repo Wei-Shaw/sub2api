@@ -315,6 +315,26 @@ export default {
         defaultPlatformQuotas: 'Default Platform Quotas (on signup)',
         defaultPlatformQuotasHint: 'Automatically assigned to new users on signup; existing users are not affected. Leave blank = unlimited.',
         platformQuotaNotice: 'Monthly quota uses a 30-day rolling window, not a calendar month.',
+        privateGroupExpiresDate: 'Private Group Unified Expiry Date',
+        privateGroupExpiresDateHint:
+          'Absolute expiry for new users\' private-{userId}-{platform} subscriptions (Asia/Shanghai end of day 23:59:59). Clear to make new private subscriptions expire immediately. Affects future users only; saving does not change existing subscriptions.',
+        privateGroupExpiresDateClear: 'Clear',
+        privateGroupExpiresDatePlaceholder: 'YYYY-MM-DD',
+        syncPrivateSubscriptions: 'Sync to All Private Subscriptions',
+        syncPrivateSubscriptionsHint:
+          'Separate action — not run on settings save. Bulk-updates all private exclusive subscriptions using the saved expiry date.',
+        syncPrivateSubscriptionsConfirmTitle: 'Sync to all private subscriptions?',
+        syncPrivateSubscriptionsConfirmMessage:
+          'This will set expires_at on ALL private exclusive subscriptions (including expired and suspended) to the configured absolute date (Asia/Shanghai 23:59:59).',
+        syncPrivateSubscriptionsConfirmDetail:
+          'S1 status rules: if the new expiry is in the future → status=active (revives expired and suspended private subscriptions); if past → status=expired. Non-private subscriptions are not touched. This cannot be undone.',
+        syncPrivateSubscriptionsConfirm: 'Confirm sync',
+        syncPrivateSubscriptionsSuccess:
+          'Synced {updated} private subscription(s); expires_at {expiresAt}; status {status}',
+        syncPrivateSubscriptionsFailed: 'Failed to sync private subscription expiry',
+        syncPrivateSubscriptionsNeedDate:
+          'Configure and save the private group expiry date before syncing',
+        syncingPrivateSubscriptions: 'Syncing...',
       },
       platformQuota: {
         platform:    'Platform',

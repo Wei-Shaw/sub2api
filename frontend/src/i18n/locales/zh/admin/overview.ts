@@ -552,6 +552,15 @@ export default {
       failedToToggle: '更新用户状态失败',
       failedToLoadApiKeys: '加载用户 API 密钥失败',
       deleteConfirm: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
+      provisionPrivateGroups: '补建私有专属组',
+      provisionPrivateGroupsConfirmTitle: '补建私有专属平台组？',
+      provisionPrivateGroupsConfirm:
+        "为用户 '{email}' 幂等补建 private-{userId}-{platform} 专属组、授权与订阅。已存在的组/订阅不会改期。仅 role=user 可用。",
+      provisionPrivateGroupsConfirmButton: '确认补建',
+      provisionPrivateGroupsSuccess:
+        '补建完成：新建 {created} 个组，已存在 {ensured} 个',
+      provisionPrivateGroupsFailed: '补建私有专属组失败',
+      provisioningPrivateGroups: '补建中...',
       roles: {
         admin: '管理员',
         user: '用户'

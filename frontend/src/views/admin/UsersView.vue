@@ -666,7 +666,7 @@
     <Teleport to="body">
       <div
         v-if="activeMenuId !== null && menuPosition"
-        class="action-menu-content fixed z-[9999] w-48 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
+        class="action-menu-content fixed z-[9999] w-56 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
         :style="{ top: menuPosition.top + 'px', left: menuPosition.left + 'px' }"
       >
         <div class="py-1">
@@ -730,6 +730,17 @@
                 {{ t('admin.users.balanceHistory') }}
               </button>
 
+              <!-- Provision private platform groups (role=user only) -->
+              <button
+                v-if="user.role === 'user'"
+                data-testid="provision-private-groups-btn"
+                @click="handleProvisionPrivateGroups(user); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <Icon name="users" size="sm" class="text-primary-500" :stroke-width="2" />
+                {{ t('admin.users.provisionPrivateGroups') }}
+              </button>
+
               <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
 
               <!-- Delete (not for admin) -->
@@ -748,6 +759,19 @@
     </Teleport>
 
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.users.deleteUser')" :message="t('admin.users.deleteConfirm', { email: deletingUser?.email })" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog
+      :show="showProvisionPrivateDialog"
+      :title="t('admin.users.provisionPrivateGroupsConfirmTitle')"
+      :message="t('admin.users.provisionPrivateGroupsConfirm', { email: provisioningUser?.email })"
+      :confirm-text="
+        provisioningPrivateGroups
+          ? t('admin.users.provisioningPrivateGroups')
+          : t('admin.users.provisionPrivateGroupsConfirmButton')
+      "
+      data-testid="provision-private-groups-confirm"
+      @confirm="confirmProvisionPrivateGroups"
+      @cancel="closeProvisionPrivateDialog"
+    />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
     <BulkEditUserModal
@@ -1782,6 +1806,47 @@ const confirmDelete = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToDelete'))
     console.error('Error deleting user:', error)
+  }
+}
+
+const showProvisionPrivateDialog = ref(false)
+const provisioningUser = ref<AdminUser | null>(null)
+const provisioningPrivateGroups = ref(false)
+
+const handleProvisionPrivateGroups = (user: AdminUser) => {
+  if (user.role !== 'user') return
+  provisioningUser.value = user
+  showProvisionPrivateDialog.value = true
+}
+
+const closeProvisionPrivateDialog = () => {
+  if (provisioningPrivateGroups.value) return
+  showProvisionPrivateDialog.value = false
+  provisioningUser.value = null
+}
+
+const confirmProvisionPrivateGroups = async () => {
+  if (!provisioningUser.value || provisioningPrivateGroups.value) return
+  provisioningPrivateGroups.value = true
+  try {
+    const result = await adminAPI.users.provisionPrivateGroups(provisioningUser.value.id)
+    appStore.showSuccess(
+      t('admin.users.provisionPrivateGroupsSuccess', {
+        created: result.created_count,
+        ensured: result.ensured_count
+      })
+    )
+    showProvisionPrivateDialog.value = false
+    provisioningUser.value = null
+  } catch (error: any) {
+    appStore.showError(
+      error.response?.data?.detail ||
+        error.response?.data?.message ||
+        t('admin.users.provisionPrivateGroupsFailed')
+    )
+    console.error('Error provisioning private groups:', error)
+  } finally {
+    provisioningPrivateGroups.value = false
   }
 }
 

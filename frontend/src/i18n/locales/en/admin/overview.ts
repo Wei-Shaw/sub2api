@@ -593,6 +593,15 @@ export default {
       failedToSave: 'Failed to save user',
       failedToAdjust: 'Adjustment failed',
       deleteConfirm: "Are you sure you want to delete '{email}'? This action cannot be undone.",
+      provisionPrivateGroups: 'Provision private groups',
+      provisionPrivateGroupsConfirmTitle: 'Provision private platform groups?',
+      provisionPrivateGroupsConfirm:
+        "Idempotently provision private-{userId}-{platform} exclusive groups, allowed groups, and subscriptions for '{email}'. Existing groups/subscriptions keep their expiry. Only available for role=user.",
+      provisionPrivateGroupsConfirmButton: 'Confirm provision',
+      provisionPrivateGroupsSuccess:
+        'Provisioned: {created} created, {ensured} already present',
+      provisionPrivateGroupsFailed: 'Failed to provision private groups',
+      provisioningPrivateGroups: 'Provisioning...',
       setAllowedGroups: 'Set Allowed Groups',
       allowedGroupsHint:
         'Select which standard groups this user can use. Subscription groups are managed separately.',

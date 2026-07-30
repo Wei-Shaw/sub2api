@@ -382,6 +382,11 @@ export interface SystemSettings {
   affiliate_admin_recharge_enabled: boolean;
   default_concurrency: number;
   default_user_rpm_limit: number;
+  /**
+   * 私有专属平台组统一绝对到期日（YYYY-MM-DD，Asia/Shanghai 当日 23:59:59）。
+   * 空串表示未配置（新用户私有订阅立即 expired）。
+   */
+  private_group_expires_date: string;
   default_subscriptions: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;
   auth_source_default_email_concurrency?: number;
@@ -689,6 +694,11 @@ export interface UpdateSettingsRequest {
   affiliate_admin_recharge_enabled?: boolean;
   default_concurrency?: number;
   default_user_rpm_limit?: number;
+  /**
+   * 私有专属平台组绝对到期日。传 "" 清空；省略则保留库中值。
+   * 保存不会自动同步存量订阅——需调用 syncPrivateGroupExpires。
+   */
+  private_group_expires_date?: string;
   default_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;
   auth_source_default_email_concurrency?: number;
@@ -954,6 +964,26 @@ export async function updateSettings(
   const { data } = await apiClient.put<SystemSettings>(
     "/admin/settings",
     settings,
+  );
+  return data;
+}
+
+/** 批量同步私有订阅到期日响应（S1） */
+export interface SyncPrivateGroupExpiresResponse {
+  updated: number;
+  expires_at: string;
+  status: string;
+}
+
+/**
+ * 将全部私有专属订阅 expires_at 同步为已配置的绝对到期日。
+ * 与 settings 保存分离（product B）；confirm 必须为 true。
+ * S1：含 expired/suspended；target 未来→active（救活），过去→expired。
+ */
+export async function syncPrivateGroupExpires(): Promise<SyncPrivateGroupExpiresResponse> {
+  const { data } = await apiClient.post<SyncPrivateGroupExpiresResponse>(
+    "/admin/settings/private-group-expires/sync",
+    { confirm: true },
   );
   return data;
 }
@@ -1451,6 +1481,7 @@ export async function resetWebSearchUsage(payload: {
 export const settingsAPI = {
   getSettings,
   updateSettings,
+  syncPrivateGroupExpires,
   testSmtpConnection,
   sendTestEmail,
   getEmailTemplates,

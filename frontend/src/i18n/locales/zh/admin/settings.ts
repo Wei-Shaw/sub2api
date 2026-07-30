@@ -310,6 +310,24 @@ export default {
         defaultPlatformQuotas: '默认平台限额（注册时分配）',
         defaultPlatformQuotasHint: '新用户注册时自动写入平台限额记录；已有用户不受影响。留空 = 该平台该窗口不限制。',
         platformQuotaNotice: '月限额为 30 天滚动窗口，非自然月',
+        privateGroupExpiresDate: '私有专属组统一到期日',
+        privateGroupExpiresDateHint:
+          '新用户 private-{userId}-{platform} 订阅的绝对到期日（Asia/Shanghai 当日 23:59:59）。清空则新用户私有订阅立即 expired。仅影响未来新用户，保存不会改存量。',
+        privateGroupExpiresDateClear: '清空',
+        privateGroupExpiresDatePlaceholder: 'YYYY-MM-DD',
+        syncPrivateSubscriptions: '同步到全部私有订阅',
+        syncPrivateSubscriptionsHint:
+          '独立操作，不会随设置保存自动执行。使用已保存的到期日批量改写全部私有专属订阅。',
+        syncPrivateSubscriptionsConfirmTitle: '确认同步到全部私有订阅？',
+        syncPrivateSubscriptionsConfirmMessage:
+          '将把全部私有专属订阅（含已过期、已暂停）的到期日统一改为已配置的绝对日期（Asia/Shanghai 23:59:59）。',
+        syncPrivateSubscriptionsConfirmDetail:
+          'S1 状态规则：新到期日在未来 → status=active（会救活已过期与已暂停的私有订阅）；新到期日已过去 → status=expired。非私有订阅不受影响。此操作不可撤销。',
+        syncPrivateSubscriptionsConfirm: '确认同步',
+        syncPrivateSubscriptionsSuccess: '已同步 {updated} 条私有订阅，到期日 {expiresAt}，状态 {status}',
+        syncPrivateSubscriptionsFailed: '同步私有订阅到期日失败',
+        syncPrivateSubscriptionsNeedDate: '请先配置并保存私有专属组统一到期日后再同步',
+        syncingPrivateSubscriptions: '同步中...',
       },
       platformQuota: {
         platform:    '平台',

@@ -3445,6 +3445,85 @@
                     {{ t("admin.settings.defaults.defaultUserRpmLimitHint") }}
                   </p>
                 </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    for="private-group-expires-date"
+                  >
+                    {{ t("admin.settings.defaults.privateGroupExpiresDate") }}
+                  </label>
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="private-group-expires-date"
+                      v-model="form.private_group_expires_date"
+                      type="date"
+                      class="input flex-1"
+                      data-testid="private-group-expires-date"
+                      :placeholder="
+                        t(
+                          'admin.settings.defaults.privateGroupExpiresDatePlaceholder',
+                        )
+                      "
+                    />
+                    <button
+                      v-if="form.private_group_expires_date"
+                      type="button"
+                      class="btn btn-secondary btn-sm shrink-0"
+                      data-testid="private-group-expires-date-clear"
+                      @click="form.private_group_expires_date = ''"
+                    >
+                      {{
+                        t("admin.settings.defaults.privateGroupExpiresDateClear")
+                      }}
+                    </button>
+                  </div>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t("admin.settings.defaults.privateGroupExpiresDateHint")
+                    }}
+                  </p>
+                </div>
+              </div>
+
+              <!-- Private group expiry bulk sync (product B: separate from save) -->
+              <div
+                class="rounded-lg border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900/40 dark:bg-amber-950/20"
+              >
+                <div
+                  class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div class="min-w-0">
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{
+                        t("admin.settings.defaults.syncPrivateSubscriptions")
+                      }}
+                    </label>
+                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                      {{
+                        t(
+                          "admin.settings.defaults.syncPrivateSubscriptionsHint",
+                        )
+                      }}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm shrink-0 border-amber-300 text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                    data-testid="sync-private-subscriptions-btn"
+                    :disabled="syncingPrivateSubscriptions"
+                    @click="openSyncPrivateSubscriptionsConfirm"
+                  >
+                    {{
+                      syncingPrivateSubscriptions
+                        ? t(
+                            "admin.settings.defaults.syncingPrivateSubscriptions",
+                          )
+                        : t(
+                            "admin.settings.defaults.syncPrivateSubscriptions",
+                          )
+                    }}
+                  </button>
+                </div>
               </div>
 
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
@@ -7934,6 +8013,31 @@
         @confirm="handleAffiliateConfirm"
         @cancel="cancelAffiliateConfirm"
       />
+      <ConfirmDialog
+        :show="showSyncPrivateSubscriptionsDialog"
+        :title="
+          t('admin.settings.defaults.syncPrivateSubscriptionsConfirmTitle')
+        "
+        :message="
+          t('admin.settings.defaults.syncPrivateSubscriptionsConfirmMessage')
+        "
+        :confirm-text="
+          t('admin.settings.defaults.syncPrivateSubscriptionsConfirm')
+        "
+        danger
+        data-testid="sync-private-subscriptions-confirm"
+        @confirm="confirmSyncPrivateSubscriptions"
+        @cancel="showSyncPrivateSubscriptionsDialog = false"
+      >
+        <p
+          class="text-sm font-medium text-amber-800 dark:text-amber-300"
+          data-testid="sync-private-subscriptions-s1-detail"
+        >
+          {{
+            t("admin.settings.defaults.syncPrivateSubscriptionsConfirmDetail")
+          }}
+        </p>
+      </ConfirmDialog>
       <!-- 关闭 step-up 开关等敏感保存操作触发的 TOTP 二次验证 -->
       <TotpStepUpDialog :controller="settingsStepUp" />
     </div>
@@ -8131,6 +8235,10 @@ const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
 const subscriptionGroups = ref<AdminGroup[]>([]);
+
+// 私有订阅到期日批量同步（与 settings save 分离）
+const showSyncPrivateSubscriptionsDialog = ref(false);
+const syncingPrivateSubscriptions = ref(false);
 
 // Upstream billing probe state
 const upstreamBillingProbeLoading = ref(true);
@@ -8717,6 +8825,7 @@ const form = reactive<SettingsForm>({
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
+  private_group_expires_date: "",
   site_name: "Sub2API",
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
@@ -9873,6 +9982,11 @@ async function loadSettings() {
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
     form.backend_mode_enabled = settings.backend_mode_enabled;
+    // 未配置 / null → 空串，保证 date input 与清空语义一致
+    form.private_group_expires_date =
+      typeof settings.private_group_expires_date === "string"
+        ? settings.private_group_expires_date
+        : "";
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
@@ -10236,6 +10350,8 @@ async function saveSettings() {
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
+      // 显式发送（含 ""）以支持清空；省略会走 OmittedSettingKeys 保留库中值
+      private_group_expires_date: form.private_group_expires_date || "",
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,
@@ -10525,6 +10641,10 @@ async function saveSettings() {
     }
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
     form.default_platform_quotas = normalizePlatformQuotasMap(updated.default_platform_quotas);
+    form.private_group_expires_date =
+      typeof updated.private_group_expires_date === "string"
+        ? updated.private_group_expires_date
+        : "";
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         updated.registration_email_suffix_whitelist,
@@ -10739,6 +10859,42 @@ function copyNewKey() {
     .catch(() => {
       appStore.showError(t("common.copyFailed"));
     });
+}
+
+function openSyncPrivateSubscriptionsConfirm() {
+  // 同步读后端已保存的日期；表单未填时先提示保存，避免无意义 400
+  if (!form.private_group_expires_date) {
+    appStore.showError(
+      t("admin.settings.defaults.syncPrivateSubscriptionsNeedDate"),
+    );
+    return;
+  }
+  showSyncPrivateSubscriptionsDialog.value = true;
+}
+
+async function confirmSyncPrivateSubscriptions() {
+  if (syncingPrivateSubscriptions.value) return;
+  syncingPrivateSubscriptions.value = true;
+  try {
+    const result = await adminAPI.settings.syncPrivateGroupExpires();
+    showSyncPrivateSubscriptionsDialog.value = false;
+    appStore.showSuccess(
+      t("admin.settings.defaults.syncPrivateSubscriptionsSuccess", {
+        updated: result.updated,
+        expiresAt: result.expires_at,
+        status: result.status,
+      }),
+    );
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.defaults.syncPrivateSubscriptionsFailed"),
+      ),
+    );
+  } finally {
+    syncingPrivateSubscriptions.value = false;
+  }
 }
 
 async function loadUpstreamBillingProbeSettings() {
