@@ -12,6 +12,8 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+
+	"go.uber.org/zap"
 )
 
 // PrivateGroupProvisioner 在用户创建/删除路径上供给与撤销私有专属平台分组。
@@ -163,10 +165,23 @@ func (p *privateGroupProvisioner) ProvisionPrivatePlatformGroups(ctx context.Con
 
 	user, err := p.userRepo.GetByID(ctx, userID)
 	if err != nil {
+		logger.L().Error("private_group_provision",
+			zap.String("component", "service.private_group"),
+			zap.String("event", "private_group_provision"),
+			zap.String("result", "error"),
+			zap.Int64("user_id", userID),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("get user for private provision: %w", err)
 	}
 	if user.Role != RoleUser {
-		logger.LegacyPrintf("service.private_group", "private_group_provision skip non-user: user_id=%d role=%s", userID, user.Role)
+		logger.L().Info("private_group_provision",
+			zap.String("component", "service.private_group"),
+			zap.String("event", "private_group_provision"),
+			zap.String("result", "skipped"),
+			zap.Int64("user_id", userID),
+			zap.String("role", user.Role),
+		)
 		return result, nil
 	}
 
@@ -183,7 +198,15 @@ func (p *privateGroupProvisioner) ProvisionPrivatePlatformGroups(ctx context.Con
 	for _, platform := range privateGroupPlatforms() {
 		group, created, err := p.ensurePrivateGroup(ctx, userID, platform)
 		if err != nil {
-			logger.LegacyPrintf("service.private_group", "private_group_provision failed: user_id=%d platform=%s err=%v", userID, platform, err)
+			logger.L().Error("private_group_provision",
+				zap.String("component", "service.private_group"),
+				zap.String("event", "private_group_provision"),
+				zap.String("result", "error"),
+				zap.Int64("user_id", userID),
+				zap.String("platform", platform),
+				zap.Time("expires_at", expiresAt),
+				zap.Error(err),
+			)
 			return nil, err
 		}
 		if created {
@@ -192,17 +215,46 @@ func (p *privateGroupProvisioner) ProvisionPrivatePlatformGroups(ctx context.Con
 		result.EnsuredGroupIDs = append(result.EnsuredGroupIDs, group.ID)
 
 		if err := p.userRepo.AddGroupToAllowedGroups(ctx, userID, group.ID); err != nil {
-			return nil, fmt.Errorf("add private group to allowed: user_id=%d group_id=%d: %w", userID, group.ID, err)
+			err = fmt.Errorf("add private group to allowed: user_id=%d group_id=%d: %w", userID, group.ID, err)
+			logger.L().Error("private_group_provision",
+				zap.String("component", "service.private_group"),
+				zap.String("event", "private_group_provision"),
+				zap.String("result", "error"),
+				zap.Int64("user_id", userID),
+				zap.String("platform", platform),
+				zap.Int64("group_id", group.ID),
+				zap.Time("expires_at", expiresAt),
+				zap.Error(err),
+			)
+			return nil, err
 		}
 
 		notes := fmt.Sprintf("private platform group provision user_id=%d platform=%s", userID, platform)
 		if _, err := p.subEnsure.EnsureSubscriptionWithExpiresAt(ctx, userID, group.ID, expiresAt, notes, inOuterTx); err != nil {
-			return nil, fmt.Errorf("ensure private subscription: user_id=%d group_id=%d: %w", userID, group.ID, err)
+			err = fmt.Errorf("ensure private subscription: user_id=%d group_id=%d: %w", userID, group.ID, err)
+			logger.L().Error("private_group_provision",
+				zap.String("component", "service.private_group"),
+				zap.String("event", "private_group_provision"),
+				zap.String("result", "error"),
+				zap.Int64("user_id", userID),
+				zap.String("platform", platform),
+				zap.Int64("group_id", group.ID),
+				zap.Time("expires_at", expiresAt),
+				zap.Error(err),
+			)
+			return nil, err
 		}
 	}
 
-	logger.LegacyPrintf("service.private_group", "private_group_provision ok: user_id=%d created=%d ensured=%d expires_at=%s",
-		userID, len(result.CreatedGroupIDs), len(result.EnsuredGroupIDs), expiresAt.Format(time.RFC3339))
+	logger.L().Info("private_group_provision",
+		zap.String("component", "service.private_group"),
+		zap.String("event", "private_group_provision"),
+		zap.String("result", "ok"),
+		zap.Int64("user_id", userID),
+		zap.Int("created", len(result.CreatedGroupIDs)),
+		zap.Int("ensured", len(result.EnsuredGroupIDs)),
+		zap.Time("expires_at", expiresAt),
+	)
 	return result, nil
 }
 
@@ -272,14 +324,30 @@ func (p *privateGroupProvisioner) RevokePrivatePlatformGroups(ctx context.Contex
 			if firstErr == nil {
 				firstErr = fmt.Errorf("get private group for revoke: %s: %w", name, err)
 			}
-			logger.LegacyPrintf("service.private_group", "private_group_revoke get failed: user_id=%d name=%s err=%v", userID, name, err)
+			logger.L().Error("private_group_revoke",
+				zap.String("component", "service.private_group"),
+				zap.String("event", "private_group_revoke"),
+				zap.String("result", "error"),
+				zap.Int64("user_id", userID),
+				zap.String("name", name),
+				zap.String("platform", platform),
+				zap.Error(err),
+			)
 			continue
 		}
 		if _, err := p.groupRepo.DeleteCascade(ctx, g.ID); err != nil {
 			if firstErr == nil {
 				firstErr = fmt.Errorf("delete cascade private group %d: %w", g.ID, err)
 			}
-			logger.LegacyPrintf("service.private_group", "private_group_revoke delete failed: user_id=%d group_id=%d err=%v", userID, g.ID, err)
+			logger.L().Error("private_group_revoke",
+				zap.String("component", "service.private_group"),
+				zap.String("event", "private_group_revoke"),
+				zap.String("result", "error"),
+				zap.Int64("user_id", userID),
+				zap.Int64("group_id", g.ID),
+				zap.String("platform", platform),
+				zap.Error(err),
+			)
 			continue
 		}
 		result.DeletedGroupIDs = append(result.DeletedGroupIDs, g.ID)
@@ -291,12 +359,23 @@ func (p *privateGroupProvisioner) RevokePrivatePlatformGroups(ctx context.Contex
 	}
 
 	if firstErr != nil {
-		logger.LegacyPrintf("service.private_group", "private_group_revoke partial: user_id=%d deleted=%d err=%v",
-			userID, len(result.DeletedGroupIDs), firstErr)
+		logger.L().Error("private_group_revoke",
+			zap.String("component", "service.private_group"),
+			zap.String("event", "private_group_revoke"),
+			zap.String("result", "partial"),
+			zap.Int64("user_id", userID),
+			zap.Int("deleted", len(result.DeletedGroupIDs)),
+			zap.Error(firstErr),
+		)
 		return result, firstErr
 	}
-	logger.LegacyPrintf("service.private_group", "private_group_revoke ok: user_id=%d deleted=%d",
-		userID, len(result.DeletedGroupIDs))
+	logger.L().Info("private_group_revoke",
+		zap.String("component", "service.private_group"),
+		zap.String("event", "private_group_revoke"),
+		zap.String("result", "ok"),
+		zap.Int64("user_id", userID),
+		zap.Int("deleted", len(result.DeletedGroupIDs)),
+	)
 	return result, nil
 }
 
@@ -370,7 +449,14 @@ func (p *privateGroupProvisioner) AfterCommit(ctx context.Context, result *Provi
 	}
 	for _, gid := range result.CreatedGroupIDs {
 		if err := p.groupRepo.EnqueueGroupChanged(ctx, gid); err != nil {
-			logger.LegacyPrintf("service.private_group", "enqueue group changed after provision failed: group_id=%d err=%v", gid, err)
+			logger.L().Warn("private_group_provision",
+				zap.String("component", "service.private_group"),
+				zap.String("event", "private_group_provision_after_commit"),
+				zap.String("result", "error"),
+				zap.Int64("user_id", result.UserID),
+				zap.Int64("group_id", gid),
+				zap.Error(err),
+			)
 		}
 	}
 	for _, gid := range result.EnsuredGroupIDs {
@@ -384,7 +470,14 @@ func (p *privateGroupProvisioner) AfterRevokeCommit(ctx context.Context, result 
 	}
 	for _, gid := range result.DeletedGroupIDs {
 		if err := p.groupRepo.EnqueueGroupChanged(ctx, gid); err != nil {
-			logger.LegacyPrintf("service.private_group", "enqueue group changed after revoke failed: group_id=%d err=%v", gid, err)
+			logger.L().Warn("private_group_revoke",
+				zap.String("component", "service.private_group"),
+				zap.String("event", "private_group_revoke_after_commit"),
+				zap.String("result", "error"),
+				zap.Int64("user_id", result.UserID),
+				zap.Int64("group_id", gid),
+				zap.Error(err),
+			)
 		}
 		p.invalidateGroupCaches(result.UserID, gid)
 	}
