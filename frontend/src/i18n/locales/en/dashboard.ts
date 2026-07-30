@@ -525,7 +525,7 @@ export default {
     title: 'My Accounts',
     description: 'Create and manage your own upstream accounts',
     subtitle:
-      'Accounts you contribute are used by the gateway for your private group, or shared into matching share-pool groups when public.',
+      'Admins and users share this page. Create uses the same form as admin account creation (no group pick; private/public instead). Private binds to your platform private group; public may join matching share-pool groups after plan probe.',
     create: 'Add Account',
     createTitle: 'Add upstream account',
     deleteTitle: 'Delete account',
