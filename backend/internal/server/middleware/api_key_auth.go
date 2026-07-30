@@ -197,9 +197,11 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		var subscription *service.UserSubscription
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+		// 企业 API Key 绑定公司订阅：消费走组织订阅计数器，不加载个人订阅。
+		isEnterpriseKey := apiKey.OrganizationSubscriptionID != nil
 
 		// 倍率自省不需要订阅数据；/v1/usage 仍保留原有订阅读取行为。
-		if isSubscriptionType && subscriptionService != nil && !billingInfoRequest {
+		if isSubscriptionType && subscriptionService != nil && !billingInfoRequest && !isEnterpriseKey {
 			sub, subErr := subscriptionService.GetActiveSubscription(
 				c.Request.Context(),
 				apiKey.User.ID,
@@ -239,8 +241,24 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				return
 			}
 
-			// 订阅模式：验证订阅限额
-			if subscription != nil {
+			// 企业 Key：校验所绑定公司订阅的活跃性与限额（不检查个人余额）
+			if isEnterpriseKey {
+				if validateErr := apiKeyService.ValidateEnterpriseSubscription(c.Request.Context(), apiKey); validateErr != nil {
+					code := "SUBSCRIPTION_INVALID"
+					status := 403
+					if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
+						errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
+						errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
+						code = "USAGE_LIMIT_EXCEEDED"
+						status = 429
+					} else if errors.Is(validateErr, service.ErrOrgSubscriptionNotFound) {
+						code = "SUBSCRIPTION_NOT_FOUND"
+					}
+					AbortWithError(c, status, code, validateErr.Error())
+					return
+				}
+			} else if subscription != nil {
+				// 订阅模式：验证订阅限额
 				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
 				if needsMaintenance {
 					refreshed, maintenanceErr := subscriptionService.EnsureWindowMaintenance(c.Request.Context(), subscription)

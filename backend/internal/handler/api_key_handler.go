@@ -30,13 +30,15 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 
 // CreateAPIKeyRequest represents the create API key request payload
 type CreateAPIKeyRequest struct {
-	Name          string   `json:"name" binding:"required"`
-	GroupID       *int64   `json:"group_id"`        // nullable
-	CustomKey     *string  `json:"custom_key"`      // 可选的自定义key
-	IPWhitelist   []string `json:"ip_whitelist"`    // IP 白名单
-	IPBlacklist   []string `json:"ip_blacklist"`    // IP 黑名单
-	Quota         *float64 `json:"quota"`           // 配额限制 (USD)
-	ExpiresInDays *int     `json:"expires_in_days"` // 过期天数
+	Name    string `json:"name" binding:"required"`
+	GroupID *int64 `json:"group_id"` // nullable
+	// OrganizationSubscriptionID 绑定公司订阅，创建企业 API Key（消费走公司订阅）
+	OrganizationSubscriptionID *int64   `json:"organization_subscription_id"`
+	CustomKey                  *string  `json:"custom_key"`      // 可选的自定义key
+	IPWhitelist                []string `json:"ip_whitelist"`    // IP 白名单
+	IPBlacklist                []string `json:"ip_blacklist"`    // IP 黑名单
+	Quota                      *float64 `json:"quota"`           // 配额限制 (USD)
+	ExpiresInDays              *int     `json:"expires_in_days"` // 过期天数
 
 	// Rate limit fields (0 = unlimited)
 	RateLimit5h *float64 `json:"rate_limit_5h"`
@@ -46,14 +48,16 @@ type CreateAPIKeyRequest struct {
 
 // UpdateAPIKeyRequest represents the update API key request payload
 type UpdateAPIKeyRequest struct {
-	Name        string    `json:"name"`
-	GroupID     *int64    `json:"group_id"`
-	Status      string    `json:"status" binding:"omitempty,oneof=active inactive"`
-	IPWhitelist *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
-	IPBlacklist *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
-	Quota       *float64  `json:"quota"`        // 配额限制 (USD), 0=无限制
-	ExpiresAt   *string   `json:"expires_at"`   // 过期时间 (ISO 8601)
-	ResetQuota  *bool     `json:"reset_quota"`  // 重置已用配额
+	Name    string `json:"name"`
+	GroupID *int64 `json:"group_id"`
+	// OrganizationSubscriptionID 重新绑定公司订阅（企业 API Key）
+	OrganizationSubscriptionID *int64    `json:"organization_subscription_id"`
+	Status                     string    `json:"status" binding:"omitempty,oneof=active inactive"`
+	IPWhitelist                *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
+	IPBlacklist                *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
+	Quota                      *float64  `json:"quota"`        // 配额限制 (USD), 0=无限制
+	ExpiresAt                  *string   `json:"expires_at"`   // 过期时间 (ISO 8601)
+	ResetQuota                 *bool     `json:"reset_quota"`  // 重置已用配额
 
 	// Rate limit fields (nil = no change, 0 = unlimited)
 	RateLimit5h         *float64 `json:"rate_limit_5h"`
@@ -154,12 +158,13 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	}
 
 	svcReq := service.CreateAPIKeyRequest{
-		Name:          req.Name,
-		GroupID:       req.GroupID,
-		CustomKey:     req.CustomKey,
-		IPWhitelist:   req.IPWhitelist,
-		IPBlacklist:   req.IPBlacklist,
-		ExpiresInDays: req.ExpiresInDays,
+		Name:                       req.Name,
+		GroupID:                    req.GroupID,
+		OrganizationSubscriptionID: req.OrganizationSubscriptionID,
+		CustomKey:                  req.CustomKey,
+		IPWhitelist:                req.IPWhitelist,
+		IPBlacklist:                req.IPBlacklist,
+		ExpiresInDays:              req.ExpiresInDays,
 	}
 	if req.Quota != nil {
 		svcReq.Quota = *req.Quota
@@ -218,6 +223,7 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		svcReq.Name = &req.Name
 	}
 	svcReq.GroupID = req.GroupID
+	svcReq.OrganizationSubscriptionID = req.OrganizationSubscriptionID
 	if req.Status != "" {
 		svcReq.Status = &req.Status
 	}
@@ -290,6 +296,25 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 		out = append(out, *dto.GroupFromService(&groups[i]))
 	}
 	response.Success(c, out)
+}
+
+// GetBindableOrganizationSubscriptions 获取当前用户（作为组织成员）可绑定的活跃公司订阅。
+// 前端据此在创建企业 API Key 时展示"公司订阅分组"可选项。
+// GET /api/v1/api-keys/organization-subscriptions
+func (h *APIKeyHandler) GetBindableOrganizationSubscriptions(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	subs, err := h.apiKeyService.ListBindableOrganizationSubscriptions(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"subscriptions": subs})
 }
 
 // GetUserGroupRates 获取当前用户的专属分组倍率配置

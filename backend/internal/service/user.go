@@ -10,6 +10,9 @@ type User struct {
 	ID                      int64
 	Email                   string
 	AccountID               string
+	// CompanyID 组织公司标识（'c' 前缀 + 15 位数字），用于构造 IAM 登录后缀。
+	// 仅在需要展示 IAM 登录名的场景（登录、/me、成员列表）填充，不持久化在 users 表。
+	CompanyID               string
 	ExternalUserID          string
 	IdentityType            string
 	LoginName               string
@@ -83,10 +86,10 @@ func (u *User) IsActive() bool {
 func (u *User) IsIAM() bool { return u != nil && u.IdentityType == "iam" }
 
 func (u *User) IAMPrincipal() string {
-	if !u.IsIAM() || u.LoginName == "" || u.AccountID == "" {
+	if !u.IsIAM() || u.LoginName == "" || u.CompanyID == "" {
 		return ""
 	}
-	return CanonicalIAMPrincipal(u.LoginName, u.AccountID)
+	return CanonicalIAMPrincipal(u.LoginName, u.CompanyID)
 }
 
 // CanBindGroup checks whether a user can bind to a given group.

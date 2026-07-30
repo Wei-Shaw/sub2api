@@ -99,6 +99,20 @@ func (_c *APIKeyCreate) SetNillableGroupID(v *int64) *APIKeyCreate {
 	return _c
 }
 
+// SetOrganizationSubscriptionID sets the "organization_subscription_id" field.
+func (_c *APIKeyCreate) SetOrganizationSubscriptionID(v int64) *APIKeyCreate {
+	_c.mutation.SetOrganizationSubscriptionID(v)
+	return _c
+}
+
+// SetNillableOrganizationSubscriptionID sets the "organization_subscription_id" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableOrganizationSubscriptionID(v *int64) *APIKeyCreate {
+	if v != nil {
+		_c.SetOrganizationSubscriptionID(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *APIKeyCreate) SetStatus(v string) *APIKeyCreate {
 	_c.mutation.SetStatus(v)
@@ -531,6 +545,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
 		_node.Name = value
 	}
+	if value, ok := _c.mutation.OrganizationSubscriptionID(); ok {
+		_spec.SetField(apikey.FieldOrganizationSubscriptionID, field.TypeInt64, value)
+		_node.OrganizationSubscriptionID = &value
+	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 		_node.Status = value
@@ -778,6 +796,30 @@ func (u *APIKeyUpsert) UpdateGroupID() *APIKeyUpsert {
 // ClearGroupID clears the value of the "group_id" field.
 func (u *APIKeyUpsert) ClearGroupID() *APIKeyUpsert {
 	u.SetNull(apikey.FieldGroupID)
+	return u
+}
+
+// SetOrganizationSubscriptionID sets the "organization_subscription_id" field.
+func (u *APIKeyUpsert) SetOrganizationSubscriptionID(v int64) *APIKeyUpsert {
+	u.Set(apikey.FieldOrganizationSubscriptionID, v)
+	return u
+}
+
+// UpdateOrganizationSubscriptionID sets the "organization_subscription_id" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateOrganizationSubscriptionID() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldOrganizationSubscriptionID)
+	return u
+}
+
+// AddOrganizationSubscriptionID adds v to the "organization_subscription_id" field.
+func (u *APIKeyUpsert) AddOrganizationSubscriptionID(v int64) *APIKeyUpsert {
+	u.Add(apikey.FieldOrganizationSubscriptionID, v)
+	return u
+}
+
+// ClearOrganizationSubscriptionID clears the value of the "organization_subscription_id" field.
+func (u *APIKeyUpsert) ClearOrganizationSubscriptionID() *APIKeyUpsert {
+	u.SetNull(apikey.FieldOrganizationSubscriptionID)
 	return u
 }
 
@@ -1203,6 +1245,34 @@ func (u *APIKeyUpsertOne) UpdateGroupID() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearGroupID() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetOrganizationSubscriptionID sets the "organization_subscription_id" field.
+func (u *APIKeyUpsertOne) SetOrganizationSubscriptionID(v int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetOrganizationSubscriptionID(v)
+	})
+}
+
+// AddOrganizationSubscriptionID adds v to the "organization_subscription_id" field.
+func (u *APIKeyUpsertOne) AddOrganizationSubscriptionID(v int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddOrganizationSubscriptionID(v)
+	})
+}
+
+// UpdateOrganizationSubscriptionID sets the "organization_subscription_id" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateOrganizationSubscriptionID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateOrganizationSubscriptionID()
+	})
+}
+
+// ClearOrganizationSubscriptionID clears the value of the "organization_subscription_id" field.
+func (u *APIKeyUpsertOne) ClearOrganizationSubscriptionID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearOrganizationSubscriptionID()
 	})
 }
 
@@ -1841,6 +1911,34 @@ func (u *APIKeyUpsertBulk) UpdateGroupID() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearGroupID() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetOrganizationSubscriptionID sets the "organization_subscription_id" field.
+func (u *APIKeyUpsertBulk) SetOrganizationSubscriptionID(v int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetOrganizationSubscriptionID(v)
+	})
+}
+
+// AddOrganizationSubscriptionID adds v to the "organization_subscription_id" field.
+func (u *APIKeyUpsertBulk) AddOrganizationSubscriptionID(v int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddOrganizationSubscriptionID(v)
+	})
+}
+
+// UpdateOrganizationSubscriptionID sets the "organization_subscription_id" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateOrganizationSubscriptionID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateOrganizationSubscriptionID()
+	})
+}
+
+// ClearOrganizationSubscriptionID clears the value of the "organization_subscription_id" field.
+func (u *APIKeyUpsertBulk) ClearOrganizationSubscriptionID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearOrganizationSubscriptionID()
 	})
 }
 

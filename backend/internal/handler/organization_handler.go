@@ -115,7 +115,6 @@ func (h *OrganizationHandler) SubmitApplication(c *gin.Context) {
 	}
 	var req struct {
 		CompanyName    string `json:"company_name" binding:"required"`
-		EnglishName    string `json:"english_name" binding:"required"`
 		CompanySize    string `json:"company_size" binding:"required"`
 		IdempotencyKey string `json:"idempotency_key" binding:"required"`
 	}
@@ -123,7 +122,7 @@ func (h *OrganizationHandler) SubmitApplication(c *gin.Context) {
 		response.BadRequest(c, "Invalid company application")
 		return
 	}
-	application, err := h.organization.SubmitApplication(c.Request.Context(), userID, req.CompanyName, req.EnglishName, req.CompanySize, req.IdempotencyKey)
+	application, err := h.organization.SubmitApplication(c.Request.Context(), userID, req.CompanyName, req.CompanySize, req.IdempotencyKey)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -464,6 +463,85 @@ func (h *OrganizationHandler) TransferBalance(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"operation": req.Operation})
+}
+
+// CompanyBalanceTransfer moves funds between the owner's personal balance and
+// the company balance (deposit tops the company up, withdraw reverses it).
+func (h *OrganizationHandler) CompanyBalanceTransfer(c *gin.Context) {
+	ownerID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Amount         string `json:"amount" binding:"required"`
+		IdempotencyKey string `json:"idempotency_key" binding:"required"`
+		Operation      string `json:"operation" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Operation != "deposit" && req.Operation != "withdraw") {
+		response.BadRequest(c, "Invalid company balance operation")
+		return
+	}
+	if err := h.organization.DepositToCompany(c.Request.Context(), ownerID, req.Amount, req.IdempotencyKey, req.Operation == "withdraw"); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"operation": req.Operation})
+}
+
+// ListSubscriptions returns the company's subscription plans. Visible to the
+// owner and to accounts holding organization.finance.balance.read.
+func (h *OrganizationHandler) ListSubscriptions(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	subscriptions, err := h.organization.ListOrganizationSubscriptions(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"subscriptions": subscriptions})
+}
+
+// CreateSubscription provisions a subscription plan (group) for the company.
+// Owner-only (enforced downstream).
+func (h *OrganizationHandler) CreateSubscription(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		GroupID      int64  `json:"group_id" binding:"required"`
+		ValidityDays int    `json:"validity_days"`
+		Notes        string `json:"notes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid subscription request")
+		return
+	}
+	subscription, err := h.organization.CreateOrganizationSubscription(c.Request.Context(), userID, req.GroupID, req.ValidityDays, req.Notes)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, subscription)
+}
+
+// CancelSubscription cancels a company subscription plan. Owner-only.
+func (h *OrganizationHandler) CancelSubscription(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	subscriptionID, ok := parseOrganizationIDParam(c, "subscription_id")
+	if !ok {
+		return
+	}
+	if err := h.organization.CancelOrganizationSubscription(c.Request.Context(), userID, subscriptionID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"subscription_id": subscriptionID})
 }
 
 func (h *OrganizationHandler) Finance(c *gin.Context) {

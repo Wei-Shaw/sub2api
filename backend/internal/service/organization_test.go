@@ -25,7 +25,7 @@ type organizationRepoStub struct {
 	findContext       *OrganizationContext
 	findErr           error
 	findLoginName     string
-	findAccountID     string
+	findCompanyID     string
 	resolved          *BillingContext
 	resolveErr        error
 	policyErr         error
@@ -43,11 +43,11 @@ func (s *organizationRepoStub) CreateIAMMember(_ context.Context, _ int64, user 
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
-	return &IAMMember{UserID: 2, ExternalUserID: "201705485041478971", LoginName: user.LoginName, Principal: CanonicalIAMPrincipal(user.LoginName, "1719905235756637"), Status: MembershipStatusActive, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}}, nil
+	return &IAMMember{UserID: 2, ExternalUserID: "201705485041478971", LoginName: user.LoginName, Principal: CanonicalIAMPrincipal(user.LoginName, "c123456789012345"), Status: MembershipStatusActive, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}}, nil
 }
-func (s *organizationRepoStub) FindIAMByPrincipal(_ context.Context, loginName, accountID string) (*User, *OrganizationContext, error) {
+func (s *organizationRepoStub) FindIAMByPrincipal(_ context.Context, loginName, companyID string) (*User, *OrganizationContext, error) {
 	s.findLoginName = loginName
-	s.findAccountID = accountID
+	s.findCompanyID = companyID
 	return s.findUser, s.findContext, s.findErr
 }
 func (s *organizationRepoStub) ResolveBillingContext(context.Context, int64) (*BillingContext, error) {
@@ -97,7 +97,7 @@ func TestOrganizationServiceCreateIAMMemberHashesOwnerPasswordAndHonorsPasswordC
 	member, password, err := service.CreateIAMMember(context.Background(), 1, " Finance.Reader ", "recovery@example.com", initialPassword, false)
 	require.NoError(t, err)
 	require.Equal(t, "finance.reader", member.LoginName)
-	require.Equal(t, "finance.reader@1719905235756637.opentk.ai", member.Principal)
+	require.Equal(t, "finance.reader@c123456789012345.opentk.ai", member.Principal)
 	require.Equal(t, initialPassword, password)
 	require.False(t, member.MustChangePassword)
 	require.NotNil(t, repo.createdUser)
@@ -145,11 +145,11 @@ func TestOrganizationServiceAuthenticateIAMParsesCanonicalPrincipal(t *testing.T
 	}
 	service := NewOrganizationService(repo, &organizationUserRepoStub{}, companyTestConfig())
 
-	_, _, err = service.AuthenticateIAM(context.Background(), "reader@1719905235756637.opentk.ai", validPassword)
+	_, _, err = service.AuthenticateIAM(context.Background(), "reader@c123456789012345.opentk.ai", validPassword)
 
 	require.NoError(t, err)
 	require.Equal(t, "reader", repo.findLoginName)
-	require.Equal(t, "1719905235756637", repo.findAccountID)
+	require.Equal(t, "c123456789012345", repo.findCompanyID)
 }
 
 func TestOrganizationServiceAuthenticateIAMUsesGenericFailures(t *testing.T) {
@@ -163,7 +163,7 @@ func TestOrganizationServiceAuthenticateIAMUsesGenericFailures(t *testing.T) {
 		principal string
 		password  string
 		repo      *organizationRepoStub
-	}{{"malformed", "recovery@example.com", validPassword, &organizationRepoStub{}}, {"legacy principal", "reader@1719905235756637", validPassword, &organizationRepoStub{}}, {"unknown", "reader@1719905235756637.opentk.ai", validPassword, &organizationRepoStub{findErr: ErrIAMMemberNotFound}}, {"disabled membership", "reader@1719905235756637.opentk.ai", validPassword, &organizationRepoStub{findUser: &User{Status: StatusActive, PasswordHash: string(hash)}, findContext: &OrganizationContext{OrganizationStatus: OrganizationStatusActive, MembershipStatus: MembershipStatusDisabled}}}, {"disabled user", "reader@1719905235756637.opentk.ai", validPassword, &organizationRepoStub{findUser: &User{Status: "disabled", PasswordHash: string(hash)}, findContext: active}}, {"wrong password", "reader@1719905235756637.opentk.ai", "wrong", &organizationRepoStub{findUser: &User{Status: StatusActive, PasswordHash: string(hash)}, findContext: active}}} {
+	}{{"malformed", "recovery@example.com", validPassword, &organizationRepoStub{}}, {"legacy numeric principal", "reader@1719905235756637.opentk.ai", validPassword, &organizationRepoStub{}}, {"unknown", "reader@c123456789012345.opentk.ai", validPassword, &organizationRepoStub{findErr: ErrIAMMemberNotFound}}, {"disabled membership", "reader@c123456789012345.opentk.ai", validPassword, &organizationRepoStub{findUser: &User{Status: StatusActive, PasswordHash: string(hash)}, findContext: &OrganizationContext{OrganizationStatus: OrganizationStatusActive, MembershipStatus: MembershipStatusDisabled}}}, {"disabled user", "reader@c123456789012345.opentk.ai", validPassword, &organizationRepoStub{findUser: &User{Status: "disabled", PasswordHash: string(hash)}, findContext: active}}, {"wrong password", "reader@c123456789012345.opentk.ai", "wrong", &organizationRepoStub{findUser: &User{Status: StatusActive, PasswordHash: string(hash)}, findContext: active}}} {
 		t.Run(test.name, func(t *testing.T) {
 			service := NewOrganizationService(test.repo, &organizationUserRepoStub{}, companyTestConfig())
 			_, _, err := service.AuthenticateIAM(context.Background(), test.principal, test.password)
@@ -175,7 +175,7 @@ func TestOrganizationServiceAuthenticateIAMUsesGenericFailures(t *testing.T) {
 func TestOrganizationServiceAuthenticateIAMRejectsWhenFeatureDisabled(t *testing.T) {
 	service := NewOrganizationService(&organizationRepoStub{}, &organizationUserRepoStub{}, &config.Config{})
 
-	user, organization, err := service.AuthenticateIAM(context.Background(), "reader@1719905235756637.opentk.ai", "password")
+	user, organization, err := service.AuthenticateIAM(context.Background(), "reader@c123456789012345.opentk.ai", "password")
 
 	require.ErrorIs(t, err, ErrIAMFeatureDisabled)
 	require.Nil(t, user)

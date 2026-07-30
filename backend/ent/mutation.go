@@ -164,51 +164,53 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                              Op
+	typ                             string
+	id                              *int64
+	created_at                      *time.Time
+	updated_at                      *time.Time
+	deleted_at                      *time.Time
+	key                             *string
+	name                            *string
+	organization_subscription_id    *int64
+	addorganization_subscription_id *int64
+	status                          *string
+	last_used_at                    *time.Time
+	ip_whitelist                    *[]string
+	appendip_whitelist              []string
+	ip_blacklist                    *[]string
+	appendip_blacklist              []string
+	quota                           *float64
+	addquota                        *float64
+	quota_used                      *float64
+	addquota_used                   *float64
+	expires_at                      *time.Time
+	rate_limit_5h                   *float64
+	addrate_limit_5h                *float64
+	rate_limit_1d                   *float64
+	addrate_limit_1d                *float64
+	rate_limit_7d                   *float64
+	addrate_limit_7d                *float64
+	usage_5h                        *float64
+	addusage_5h                     *float64
+	usage_1d                        *float64
+	addusage_1d                     *float64
+	usage_7d                        *float64
+	addusage_7d                     *float64
+	window_5h_start                 *time.Time
+	window_1d_start                 *time.Time
+	window_7d_start                 *time.Time
+	clearedFields                   map[string]struct{}
+	user                            *int64
+	cleareduser                     bool
+	group                           *int64
+	clearedgroup                    bool
+	usage_logs                      map[int64]struct{}
+	removedusage_logs               map[int64]struct{}
+	clearedusage_logs               bool
+	done                            bool
+	oldValue                        func(context.Context) (*APIKey, error)
+	predicates                      []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -585,6 +587,76 @@ func (m *APIKeyMutation) GroupIDCleared() bool {
 func (m *APIKeyMutation) ResetGroupID() {
 	m.group = nil
 	delete(m.clearedFields, apikey.FieldGroupID)
+}
+
+// SetOrganizationSubscriptionID sets the "organization_subscription_id" field.
+func (m *APIKeyMutation) SetOrganizationSubscriptionID(i int64) {
+	m.organization_subscription_id = &i
+	m.addorganization_subscription_id = nil
+}
+
+// OrganizationSubscriptionID returns the value of the "organization_subscription_id" field in the mutation.
+func (m *APIKeyMutation) OrganizationSubscriptionID() (r int64, exists bool) {
+	v := m.organization_subscription_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationSubscriptionID returns the old "organization_subscription_id" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldOrganizationSubscriptionID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationSubscriptionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationSubscriptionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationSubscriptionID: %w", err)
+	}
+	return oldValue.OrganizationSubscriptionID, nil
+}
+
+// AddOrganizationSubscriptionID adds i to the "organization_subscription_id" field.
+func (m *APIKeyMutation) AddOrganizationSubscriptionID(i int64) {
+	if m.addorganization_subscription_id != nil {
+		*m.addorganization_subscription_id += i
+	} else {
+		m.addorganization_subscription_id = &i
+	}
+}
+
+// AddedOrganizationSubscriptionID returns the value that was added to the "organization_subscription_id" field in this mutation.
+func (m *APIKeyMutation) AddedOrganizationSubscriptionID() (r int64, exists bool) {
+	v := m.addorganization_subscription_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearOrganizationSubscriptionID clears the value of the "organization_subscription_id" field.
+func (m *APIKeyMutation) ClearOrganizationSubscriptionID() {
+	m.organization_subscription_id = nil
+	m.addorganization_subscription_id = nil
+	m.clearedFields[apikey.FieldOrganizationSubscriptionID] = struct{}{}
+}
+
+// OrganizationSubscriptionIDCleared returns if the "organization_subscription_id" field was cleared in this mutation.
+func (m *APIKeyMutation) OrganizationSubscriptionIDCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldOrganizationSubscriptionID]
+	return ok
+}
+
+// ResetOrganizationSubscriptionID resets all changes to the "organization_subscription_id" field.
+func (m *APIKeyMutation) ResetOrganizationSubscriptionID() {
+	m.organization_subscription_id = nil
+	m.addorganization_subscription_id = nil
+	delete(m.clearedFields, apikey.FieldOrganizationSubscriptionID)
 }
 
 // SetStatus sets the "status" field.
@@ -1588,7 +1660,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1609,6 +1681,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.group != nil {
 		fields = append(fields, apikey.FieldGroupID)
+	}
+	if m.organization_subscription_id != nil {
+		fields = append(fields, apikey.FieldOrganizationSubscriptionID)
 	}
 	if m.status != nil {
 		fields = append(fields, apikey.FieldStatus)
@@ -1680,6 +1755,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case apikey.FieldGroupID:
 		return m.GroupID()
+	case apikey.FieldOrganizationSubscriptionID:
+		return m.OrganizationSubscriptionID()
 	case apikey.FieldStatus:
 		return m.Status()
 	case apikey.FieldLastUsedAt:
@@ -1735,6 +1812,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldName(ctx)
 	case apikey.FieldGroupID:
 		return m.OldGroupID(ctx)
+	case apikey.FieldOrganizationSubscriptionID:
+		return m.OldOrganizationSubscriptionID(ctx)
 	case apikey.FieldStatus:
 		return m.OldStatus(ctx)
 	case apikey.FieldLastUsedAt:
@@ -1824,6 +1903,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGroupID(v)
+		return nil
+	case apikey.FieldOrganizationSubscriptionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationSubscriptionID(v)
 		return nil
 	case apikey.FieldStatus:
 		v, ok := value.(string)
@@ -1945,6 +2031,9 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *APIKeyMutation) AddedFields() []string {
 	var fields []string
+	if m.addorganization_subscription_id != nil {
+		fields = append(fields, apikey.FieldOrganizationSubscriptionID)
+	}
 	if m.addquota != nil {
 		fields = append(fields, apikey.FieldQuota)
 	}
@@ -1977,6 +2066,8 @@ func (m *APIKeyMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case apikey.FieldOrganizationSubscriptionID:
+		return m.AddedOrganizationSubscriptionID()
 	case apikey.FieldQuota:
 		return m.AddedQuota()
 	case apikey.FieldQuotaUsed:
@@ -2002,6 +2093,13 @@ func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *APIKeyMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case apikey.FieldOrganizationSubscriptionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOrganizationSubscriptionID(v)
+		return nil
 	case apikey.FieldQuota:
 		v, ok := value.(float64)
 		if !ok {
@@ -2072,6 +2170,9 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldGroupID) {
 		fields = append(fields, apikey.FieldGroupID)
 	}
+	if m.FieldCleared(apikey.FieldOrganizationSubscriptionID) {
+		fields = append(fields, apikey.FieldOrganizationSubscriptionID)
+	}
 	if m.FieldCleared(apikey.FieldLastUsedAt) {
 		fields = append(fields, apikey.FieldLastUsedAt)
 	}
@@ -2112,6 +2213,9 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldGroupID:
 		m.ClearGroupID()
+		return nil
+	case apikey.FieldOrganizationSubscriptionID:
+		m.ClearOrganizationSubscriptionID()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ClearLastUsedAt()
@@ -2162,6 +2266,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldGroupID:
 		m.ResetGroupID()
+		return nil
+	case apikey.FieldOrganizationSubscriptionID:
+		m.ResetOrganizationSubscriptionID()
 		return nil
 	case apikey.FieldStatus:
 		m.ResetStatus()

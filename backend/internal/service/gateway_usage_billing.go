@@ -272,7 +272,11 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	// user-specific) rate multiplier consumes subscription quota at the expected
 	// speed. TotalCost remains the raw (pre-multiplier) value; downstream guards
 	// on "> 0" still correctly skip free subscriptions (RateMultiplier == 0).
-	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
+	if p.IsSubscriptionBill && p.Cost.TotalCost > 0 && p.APIKey.OrganizationSubscriptionID != nil {
+		// Enterprise API key: consume the bound company subscription.
+		cmd.OrganizationSubscriptionID = p.APIKey.OrganizationSubscriptionID
+		cmd.SubscriptionCost = p.Cost.ActualCost
+	} else if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
 		cmd.SubscriptionID = &p.Subscription.ID
 		cmd.SubscriptionCost = p.Cost.ActualCost
 	} else if p.Cost.ActualCost > 0 {
@@ -373,7 +377,10 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	}
 
 	if p.IsSubscriptionBill {
-		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+		// 企业 Key 消费公司订阅，直接落库（IncrementOrganizationSubscriptionUsage），
+		// 不走个人订阅用量缓存队列。
+		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil &&
+			p.APIKey.OrganizationSubscriptionID == nil {
 			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
@@ -783,8 +790,10 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	opts.IsKiroAccount = account != nil && account.Platform == PlatformKiro
 	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
 
-	// 判断计费方式：订阅模式 vs 余额模式
-	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+	// 判断计费方式：订阅模式 vs 余额模式。
+	// 企业 API Key（绑定公司订阅）即使没有个人订阅，也按订阅模式计费，消费走公司订阅计数器。
+	isSubscriptionBilling := apiKey.Group != nil && apiKey.Group.IsSubscriptionType() &&
+		(subscription != nil || apiKey.OrganizationSubscriptionID != nil)
 	billingType := BillingTypeBalance
 	if isSubscriptionBilling {
 		billingType = BillingTypeSubscription

@@ -180,11 +180,16 @@ type APIKeyAuthCacheInvalidator interface {
 
 // CreateAPIKeyRequest 创建API Key请求
 type CreateAPIKeyRequest struct {
-	Name        string   `json:"name"`
-	GroupID     *int64   `json:"group_id"`
-	CustomKey   *string  `json:"custom_key"`   // 可选的自定义key
-	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
-	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
+	Name    string `json:"name"`
+	GroupID *int64 `json:"group_id"`
+	// OrganizationSubscriptionID, when set, creates an enterprise API key bound
+	// to the given company subscription. The key's group is forced to the
+	// subscription's group and consumption is charged against the organization
+	// subscription instead of a personal subscription.
+	OrganizationSubscriptionID *int64   `json:"organization_subscription_id"`
+	CustomKey                  *string  `json:"custom_key"`   // 可选的自定义key
+	IPWhitelist                []string `json:"ip_whitelist"` // IP 白名单
+	IPBlacklist                []string `json:"ip_blacklist"` // IP 黑名单
 
 	// Quota fields
 	Quota         float64 `json:"quota"`           // Quota limit in USD (0 = unlimited)
@@ -198,11 +203,15 @@ type CreateAPIKeyRequest struct {
 
 // UpdateAPIKeyRequest 更新API Key请求
 type UpdateAPIKeyRequest struct {
-	Name        *string   `json:"name"`
-	GroupID     *int64    `json:"group_id"`
-	Status      *string   `json:"status"`
-	IPWhitelist *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
-	IPBlacklist *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
+	Name    *string `json:"name"`
+	GroupID *int64  `json:"group_id"`
+	// OrganizationSubscriptionID, when set, re-binds this key to a company
+	// subscription (enterprise key). Selecting a normal GroupID clears the
+	// enterprise binding.
+	OrganizationSubscriptionID *int64    `json:"organization_subscription_id"`
+	Status                     *string   `json:"status"`
+	IPWhitelist                *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
+	IPBlacklist                *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
 
 	// Quota fields
 	Quota           *float64   `json:"quota"`       // Quota limit in USD (nil = no change, 0 = unlimited)
@@ -427,6 +436,56 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 	return user.CanBindGroup(group.ID, group.IsExclusive)
 }
 
+// resolveBindableOrganizationSubscription 校验用户可绑定指定公司订阅并返回它。
+// 用户必须是该订阅所属组织的活跃成员，且订阅处于活跃且未过期状态。
+func (s *APIKeyService) resolveBindableOrganizationSubscription(ctx context.Context, userID, subscriptionID int64) (*OrganizationSubscription, error) {
+	if s.organizationRepo == nil {
+		return nil, ErrGroupNotAllowed
+	}
+	orgSub, err := s.organizationRepo.GetActiveOrganizationSubscriptionForMember(ctx, userID, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	return orgSub, nil
+}
+
+// ListBindableOrganizationSubscriptions 返回当前用户（作为组织成员）可绑定的活跃公司订阅。
+func (s *APIKeyService) ListBindableOrganizationSubscriptions(ctx context.Context, userID int64) ([]OrganizationSubscription, error) {
+	if s.organizationRepo == nil {
+		return []OrganizationSubscription{}, nil
+	}
+	return s.organizationRepo.ListActiveOrganizationSubscriptionsForMember(ctx, userID)
+}
+
+// ValidateEnterpriseSubscription 校验企业 API Key 所绑定的公司订阅是否处于活跃且
+// 未超限状态。订阅缺失/失效/过期返回 ErrOrgSubscriptionNotFound；命中日/周/月限额
+// 分别返回 Err{Daily,Weekly,Monthly}LimitExceeded。非企业 Key 直接返回 nil。
+func (s *APIKeyService) ValidateEnterpriseSubscription(ctx context.Context, apiKey *APIKey) error {
+	if apiKey == nil || apiKey.OrganizationSubscriptionID == nil {
+		return nil
+	}
+	if s.organizationRepo == nil {
+		return ErrOrgSubscriptionNotFound
+	}
+	rt, err := s.organizationRepo.GetOrganizationSubscriptionForBilling(ctx, *apiKey.OrganizationSubscriptionID)
+	if err != nil {
+		return err
+	}
+	if !rt.IsActive() {
+		return ErrOrgSubscriptionNotFound
+	}
+	daily, weekly, monthly := rt.CheckAllLimits(0)
+	switch {
+	case !daily:
+		return ErrDailyLimitExceeded
+	case !weekly:
+		return ErrWeeklyLimitExceeded
+	case !monthly:
+		return ErrMonthlyLimitExceeded
+	}
+	return nil
+}
+
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
 	// 验证用户存在
@@ -449,8 +508,17 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		}
 	}
 
-	// 验证分组权限（如果指定了分组）
-	if req.GroupID != nil {
+	// 企业 API Key：绑定公司订阅。校验用户是该订阅所属组织的活跃成员，
+	// 并将分组强制设置为订阅所属分组（消费走公司订阅计数器）。
+	if req.OrganizationSubscriptionID != nil {
+		orgSub, err := s.resolveBindableOrganizationSubscription(ctx, userID, *req.OrganizationSubscriptionID)
+		if err != nil {
+			return nil, err
+		}
+		gid := orgSub.GroupID
+		req.GroupID = &gid
+	} else if req.GroupID != nil {
+		// 验证分组权限（个人 Key）
 		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
 		if err != nil {
 			return nil, fmt.Errorf("get group: %w", err)
@@ -499,18 +567,19 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:      userID,
-		Key:         key,
-		Name:        html.EscapeString(req.Name),
-		GroupID:     req.GroupID,
-		Status:      StatusActive,
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
-		Quota:       req.Quota,
-		QuotaUsed:   0,
-		RateLimit5h: req.RateLimit5h,
-		RateLimit1d: req.RateLimit1d,
-		RateLimit7d: req.RateLimit7d,
+		UserID:                     userID,
+		Key:                        key,
+		Name:                       html.EscapeString(req.Name),
+		GroupID:                    req.GroupID,
+		OrganizationSubscriptionID: req.OrganizationSubscriptionID,
+		Status:                     StatusActive,
+		IPWhitelist:                req.IPWhitelist,
+		IPBlacklist:                req.IPBlacklist,
+		Quota:                      req.Quota,
+		QuotaUsed:                  0,
+		RateLimit5h:                req.RateLimit5h,
+		RateLimit1d:                req.RateLimit1d,
+		RateLimit7d:                req.RateLimit7d,
 	}
 
 	// Set expiration time if specified
@@ -753,8 +822,17 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		apiKey.Name = html.EscapeString(*req.Name)
 	}
 
-	if req.GroupID != nil {
-		// 验证分组权限
+	if req.OrganizationSubscriptionID != nil {
+		// 重新绑定为企业 Key
+		orgSub, err := s.resolveBindableOrganizationSubscription(ctx, userID, *req.OrganizationSubscriptionID)
+		if err != nil {
+			return nil, err
+		}
+		gid := orgSub.GroupID
+		apiKey.GroupID = &gid
+		apiKey.OrganizationSubscriptionID = req.OrganizationSubscriptionID
+	} else if req.GroupID != nil {
+		// 验证分组权限（个人 Key），并清除可能存在的企业绑定
 		user, err := s.userRepo.GetByID(ctx, userID)
 		if err != nil {
 			return nil, fmt.Errorf("get user: %w", err)
@@ -770,6 +848,7 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		}
 
 		apiKey.GroupID = req.GroupID
+		apiKey.OrganizationSubscriptionID = nil
 	}
 
 	if req.Status != nil {

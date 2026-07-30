@@ -19,24 +19,28 @@ type UsageBillingCommand struct {
 	RequestFingerprint string
 	RequestPayloadHash string
 
-	UserID              int64
-	OrganizationID      *int64
-	PayerUserID         int64
-	BalanceSource       string
-	AuthzGeneration     int64
-	AccountID           int64
-	SubscriptionID      *int64
-	AccountType         string
-	Model               string
-	ServiceTier         string
-	ReasoningEffort     string
-	BillingType         int8
-	InputTokens         int
-	OutputTokens        int
-	CacheCreationTokens int
-	CacheReadTokens     int
-	ImageCount          int
-	MediaType           string
+	UserID          int64
+	OrganizationID  *int64
+	PayerUserID     int64
+	BalanceSource   string
+	AuthzGeneration int64
+	AccountID       int64
+	SubscriptionID  *int64
+	// OrganizationSubscriptionID, when set, routes SubscriptionCost to the
+	// referenced organization_subscriptions row (enterprise API key) instead of
+	// a personal user subscription.
+	OrganizationSubscriptionID *int64
+	AccountType                string
+	Model                      string
+	ServiceTier                string
+	ReasoningEffort            string
+	BillingType                int8
+	InputTokens                int
+	OutputTokens               int
+	CacheCreationTokens        int
+	CacheReadTokens            int
+	ImageCount                 int
+	MediaType                  string
 
 	BalanceCost         float64
 	SubscriptionCost    float64
@@ -60,7 +64,7 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 		return ""
 	}
 	raw := fmt.Sprintf(
-		"%d|%d|%d|%d|%s|%d|%d|%s|%s|%s|%s|%d|%d|%d|%d|%d|%d|%s|%d|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f",
+		"%d|%d|%d|%d|%s|%d|%d|%s|%s|%s|%s|%d|%d|%d|%d|%d|%d|%s|%d|%d|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f",
 		c.UserID,
 		valueOrZero(c.OrganizationID),
 		c.PayerUserID,
@@ -80,6 +84,7 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 		c.ImageCount,
 		strings.TrimSpace(c.MediaType),
 		valueOrZero(c.SubscriptionID),
+		valueOrZero(c.OrganizationSubscriptionID),
 		c.BalanceCost,
 		c.SubscriptionCost,
 		c.APIKeyQuotaCost,

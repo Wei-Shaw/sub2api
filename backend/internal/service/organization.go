@@ -47,9 +47,7 @@ var (
 	ErrApplicationNotFound    = infraerrors.NotFound("COMPANY_APPLICATION_NOT_FOUND", "company application not found")
 	ErrApplicationTerminal    = infraerrors.Conflict("COMPANY_APPLICATION_TERMINAL", "company application is already decided")
 	ErrReasonRequired         = infraerrors.BadRequest("REJECTION_REASON_REQUIRED", "rejection reason is required")
-	ErrCompanyEnglishNameInvalid = infraerrors.BadRequest("COMPANY_ENGLISH_NAME_INVALID", "company english name is required and must contain only English letters, digits, spaces and basic punctuation")
-	ErrCompanyEnglishNameTaken   = infraerrors.Conflict("COMPANY_ENGLISH_NAME_TAKEN", "company english name is already taken")
-	ErrCompanySizeInvalid        = infraerrors.BadRequest("COMPANY_SIZE_INVALID", "company size is required and must be one of the allowed ranges")
+	ErrCompanySizeInvalid     = infraerrors.BadRequest("COMPANY_SIZE_INVALID", "company size is required and must be one of the allowed ranges")
 	ErrIAMFeatureDisabled     = infraerrors.Forbidden("IAM_FEATURE_DISABLED", "IAM user creation is disabled")
 	ErrIAMMemberLimit         = infraerrors.Conflict("IAM_MEMBER_LIMIT", "organization IAM member limit reached")
 	ErrIAMLoginName           = infraerrors.BadRequest("IAM_LOGIN_NAME_INVALID", "IAM login name is invalid")
@@ -57,19 +55,22 @@ var (
 	ErrIAMMemberNotFound      = infraerrors.NotFound("IAM_MEMBER_NOT_FOUND", "IAM member not found")
 	ErrOrganizationPermission = infraerrors.Forbidden("ORGANIZATION_PERMISSION_DENIED", "organization permission denied")
 	ErrIAMFinancialOperation  = infraerrors.Forbidden("IAM_FINANCIAL_OPERATION_DENIED", "IAM users cannot perform this financial operation")
+
+	ErrSubscriptionGroupInvalid  = infraerrors.BadRequest("SUBSCRIPTION_GROUP_INVALID", "the subscription group is invalid or unavailable")
+	ErrOrgSubscriptionExists     = infraerrors.Conflict("ORGANIZATION_SUBSCRIPTION_EXISTS", "an active subscription for this group already exists")
+	ErrOrgSubscriptionNotFound   = infraerrors.NotFound("ORGANIZATION_SUBSCRIPTION_NOT_FOUND", "organization subscription not found")
+	ErrSubscriptionValidityRange = infraerrors.BadRequest("SUBSCRIPTION_VALIDITY_INVALID", "validity days must be between 0 and 3650")
 )
 
 var iamLoginNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
-var rootAccountIDPattern = regexp.MustCompile(`^[1-9][0-9]{15}$`)
 
-// englishCompanyNamePattern restricts the company english name to English
-// letters, digits, spaces and a small set of common punctuation; a separate
-// pattern requires at least one letter so pure-number names are rejected.
-var englishCompanyNamePattern = regexp.MustCompile(`^[A-Za-z0-9 &.,'()\-]+$`)
-var englishCompanyNameLetter = regexp.MustCompile(`[A-Za-z]`)
+// companyIDPattern matches a company identifier: a leading 'c' prefix followed
+// by 15 digits (first digit 1-9), e.g. "c123456789012345". IAM principals use
+// the company id as the login suffix.
+var companyIDPattern = regexp.MustCompile(`^c[1-9][0-9]{14}$`)
 
-func CanonicalIAMPrincipal(loginName, accountID string) string {
-	return strings.TrimSpace(loginName) + "@" + strings.TrimSpace(accountID) + "." + IAMPrincipalDomain
+func CanonicalIAMPrincipal(loginName, companyID string) string {
+	return strings.TrimSpace(loginName) + "@" + strings.TrimSpace(companyID) + "." + IAMPrincipalDomain
 }
 
 func parseIAMPrincipal(principal string) (string, string, bool) {
@@ -78,11 +79,11 @@ func parseIAMPrincipal(principal string) (string, string, bool) {
 	if !found || strings.Contains(host, "@") || !strings.HasSuffix(strings.ToLower(host), suffix) {
 		return "", "", false
 	}
-	accountID := host[:len(host)-len(suffix)]
-	if !iamLoginNamePattern.MatchString(loginName) || !rootAccountIDPattern.MatchString(accountID) {
+	companyID := host[:len(host)-len(suffix)]
+	if !iamLoginNamePattern.MatchString(loginName) || !companyIDPattern.MatchString(companyID) {
 		return "", "", false
 	}
-	return loginName, accountID, true
+	return loginName, companyID, true
 }
 
 var organizationRuntimeMetrics struct {
@@ -105,6 +106,7 @@ func CurrentOrganizationRuntimeMetrics() OrganizationRuntimeMetrics {
 type OrganizationContext struct {
 	OrganizationID     int64     `json:"organization_id"`
 	AccountID          string    `json:"account_id"`
+	CompanyID          string    `json:"company_id"`
 	OwnerUserID        int64     `json:"owner_user_id"`
 	CompanyName        string    `json:"company_name"`
 	OrganizationStatus string    `json:"organization_status"`
@@ -143,7 +145,6 @@ type CompanyApplication struct {
 	ApplicantUserID int64      `json:"applicant_user_id"`
 	ApplicantEmail  string     `json:"applicant_email,omitempty"`
 	RequestedName   string     `json:"requested_name"`
-	RequestedEnglishName string `json:"requested_english_name"`
 	CompanySize     string     `json:"company_size"`
 	Status          string     `json:"status"`
 	FeeAmount       string     `json:"fee_amount"`
@@ -198,6 +199,7 @@ type OrganizationNameChangeRequest struct {
 type AdminOrganization struct {
 	ID          int64     `json:"id"`
 	AccountID   string    `json:"account_id"`
+	CompanyID   string    `json:"company_id"`
 	Name        string    `json:"name"`
 	Status      string    `json:"status"`
 	OwnerUserID int64     `json:"owner_user_id"`
@@ -243,6 +245,106 @@ type FinanceSummary struct {
 	Available     *string `json:"available,omitempty"`
 	Frozen        *string `json:"frozen,omitempty"`
 	Total         *string `json:"total,omitempty"`
+	// Company balance is only populated for privileged viewers (the owner or an
+	// account holding organization.finance.balance.read). It is independent from
+	// the owner's personal balance above.
+	CompanyAvailable *string `json:"company_available,omitempty"`
+	CompanyFrozen    *string `json:"company_frozen,omitempty"`
+	CompanyTotal     *string `json:"company_total,omitempty"`
+}
+
+// OrganizationSubscription is a subscription plan (group) held by a company,
+// independent from any individual user's subscription. Quota limits are read
+// from the referenced group; the usage counters below track the current
+// sliding windows. Enterprise API keys bind to one of these subscriptions.
+type OrganizationSubscription struct {
+	ID               int64     `json:"id"`
+	OrganizationID   int64     `json:"organization_id"`
+	GroupID          int64     `json:"group_id"`
+	GroupName        string    `json:"group_name"`
+	Platform         string    `json:"platform"`
+	SubscriptionType string    `json:"subscription_type"`
+	StartsAt         time.Time `json:"starts_at"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	Status           string    `json:"status"`
+	DailyLimitUSD    *string   `json:"daily_limit_usd,omitempty"`
+	WeeklyLimitUSD   *string   `json:"weekly_limit_usd,omitempty"`
+	MonthlyLimitUSD  *string   `json:"monthly_limit_usd,omitempty"`
+	DailyUsageUSD    string    `json:"daily_usage_usd"`
+	WeeklyUsageUSD   string    `json:"weekly_usage_usd"`
+	MonthlyUsageUSD  string    `json:"monthly_usage_usd"`
+	Notes            string    `json:"notes,omitempty"`
+	AssignedBy       *int64    `json:"assigned_by,omitempty"`
+	AssignedAt       time.Time `json:"assigned_at"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+// OrgSubscriptionRuntime is the internal, billing-oriented view of a company
+// subscription. It mirrors UserSubscription's rolling-window semantics
+// (daily = 24h, weekly = 7*24h, monthly = 30*24h) so enterprise API keys behave
+// consistently with personal subscriptions. Limits are resolved from the group.
+type OrgSubscriptionRuntime struct {
+	ID             int64
+	OrganizationID int64
+	GroupID        int64
+	Status         string
+	StartsAt       time.Time
+	ExpiresAt      time.Time
+
+	DailyWindowStart   *time.Time
+	WeeklyWindowStart  *time.Time
+	MonthlyWindowStart *time.Time
+
+	DailyUsageUSD   float64
+	WeeklyUsageUSD  float64
+	MonthlyUsageUSD float64
+
+	DailyLimitUSD   *float64
+	WeeklyLimitUSD  *float64
+	MonthlyLimitUSD *float64
+}
+
+// IsActive reports whether the subscription is usable right now.
+func (s *OrgSubscriptionRuntime) IsActive() bool {
+	return s != nil && s.Status == SubscriptionStatusActive && time.Now().Before(s.ExpiresAt)
+}
+
+func (s *OrgSubscriptionRuntime) needsDailyReset(now time.Time) bool {
+	return s.DailyWindowStart != nil && !now.Before(s.DailyWindowStart.Add(24*time.Hour))
+}
+
+func (s *OrgSubscriptionRuntime) needsWeeklyReset(now time.Time) bool {
+	return s.WeeklyWindowStart != nil && now.Sub(*s.WeeklyWindowStart) >= 7*24*time.Hour
+}
+
+func (s *OrgSubscriptionRuntime) needsMonthlyReset(now time.Time) bool {
+	return s.MonthlyWindowStart != nil && now.Sub(*s.MonthlyWindowStart) >= 30*24*time.Hour
+}
+
+// effectiveUsage returns current usage treating expired windows as reset to 0.
+func (s *OrgSubscriptionRuntime) effectiveUsage(now time.Time) (daily, weekly, monthly float64) {
+	daily, weekly, monthly = s.DailyUsageUSD, s.WeeklyUsageUSD, s.MonthlyUsageUSD
+	if s.needsDailyReset(now) {
+		daily = 0
+	}
+	if s.needsWeeklyReset(now) {
+		weekly = 0
+	}
+	if s.needsMonthlyReset(now) {
+		monthly = 0
+	}
+	return
+}
+
+// CheckAllLimits reports whether adding additionalCost keeps each configured
+// limit satisfied (window-aware). A nil limit means unlimited.
+func (s *OrgSubscriptionRuntime) CheckAllLimits(additionalCost float64) (daily, weekly, monthly bool) {
+	now := time.Now()
+	du, wu, mu := s.effectiveUsage(now)
+	daily = s.DailyLimitUSD == nil || du+additionalCost <= *s.DailyLimitUSD
+	weekly = s.WeeklyLimitUSD == nil || wu+additionalCost <= *s.WeeklyLimitUSD
+	monthly = s.MonthlyLimitUSD == nil || mu+additionalCost <= *s.MonthlyLimitUSD
+	return
 }
 
 type BillingContext struct {
@@ -299,7 +401,7 @@ type OrganizationRepository interface {
 	GetContextForUser(ctx context.Context, userID int64) (*OrganizationContext, error)
 	GetApplicationForUser(ctx context.Context, userID int64) (*CompanyApplication, error)
 	GetApplication(ctx context.Context, applicationID int64) (*CompanyApplicationDetail, error)
-	SubmitApplication(ctx context.Context, userID int64, name, normalizedName, englishName, normalizedEnglishName, companySize, idempotencyKey, fee, currency string) (*CompanyApplication, error)
+	SubmitApplication(ctx context.Context, userID int64, name, normalizedName, companySize, idempotencyKey, fee, currency string) (*CompanyApplication, error)
 	WithdrawApplication(ctx context.Context, userID, applicationID int64) (*CompanyApplication, error)
 	ListApplications(ctx context.Context, status string, page, pageSize int) ([]CompanyApplication, int64, error)
 	ListNameChangeRequests(ctx context.Context, status string, page, pageSize int) ([]OrganizationNameChangeRequest, int64, error)
@@ -315,11 +417,29 @@ type OrganizationRepository interface {
 	GetIAMMember(ctx context.Context, actorID, memberUserID int64) (*IAMMember, error)
 	SetIAMMemberStatus(ctx context.Context, ownerID, memberUserID int64, status string) error
 	UpdateIAMPassword(ctx context.Context, actorID, memberUserID int64, passwordHash string, requireChange bool) error
-	FindIAMByPrincipal(ctx context.Context, loginName, accountID string) (*User, *OrganizationContext, error)
+	FindIAMByPrincipal(ctx context.Context, loginName, companyID string) (*User, *OrganizationContext, error)
 	ListPolicies(ctx context.Context, actorID int64) ([]ManagedPolicyView, error)
 	ListMemberPolicyAttachments(ctx context.Context, ownerID, memberUserID int64) ([]ManagedPolicyView, error)
 	SetPolicyAttachment(ctx context.Context, ownerID, memberUserID int64, policyKey string, attach bool, correlationID string) error
 	TransferBalance(ctx context.Context, ownerID, memberUserID int64, amount, idempotencyKey string, reclaim bool) error
+	DepositToCompany(ctx context.Context, ownerID int64, amount, idempotencyKey string, withdraw bool) error
+	CreateOrganizationSubscription(ctx context.Context, userID, groupID int64, validityDays int, notes string) (*OrganizationSubscription, error)
+	ListOrganizationSubscriptions(ctx context.Context, userID int64) ([]OrganizationSubscription, error)
+	CancelOrganizationSubscription(ctx context.Context, userID, subscriptionID int64) error
+	// ListActiveOrganizationSubscriptionsForMember returns the active, non-expired
+	// company subscriptions that the given user (as an active member of the org)
+	// may bind an enterprise API key to.
+	ListActiveOrganizationSubscriptionsForMember(ctx context.Context, userID int64) ([]OrganizationSubscription, error)
+	// GetActiveOrganizationSubscriptionForMember validates that the user is an
+	// active member of the organization owning the subscription and that the
+	// subscription is active and not expired, then returns it.
+	GetActiveOrganizationSubscriptionForMember(ctx context.Context, userID, subscriptionID int64) (*OrganizationSubscription, error)
+	// GetOrganizationSubscriptionForBilling loads a company subscription's usage
+	// windows, counters and group limits for request-time validation and billing.
+	GetOrganizationSubscriptionForBilling(ctx context.Context, subscriptionID int64) (*OrgSubscriptionRuntime, error)
+	// IncrementOrganizationSubscriptionUsage atomically adds costUSD to the
+	// subscription's daily/weekly/monthly usage counters (window-aware).
+	IncrementOrganizationSubscriptionUsage(ctx context.Context, subscriptionID int64, costUSD float64) error
 	FinanceSummary(ctx context.Context, userID int64) (*FinanceSummary, error)
 	ListUsage(ctx context.Context, userID int64, filter OrganizationUsageFilter) ([]OrganizationUsageRow, int64, error)
 	UsageStats(ctx context.Context, userID int64, filter OrganizationUsageFilter) (*OrganizationUsageStats, error)
@@ -381,19 +501,6 @@ func normalizeCompanyName(value string) (string, string, error) {
 	name := strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
 	if name == "" || len([]rune(name)) > 255 {
 		return "", "", infraerrors.BadRequest("COMPANY_NAME_INVALID", "company name is required and must not exceed 255 characters")
-	}
-	return name, strings.ToLower(name), nil
-}
-
-// normalizeEnglishName validates and normalizes the globally-unique company
-// english name. It returns the display form (whitespace-collapsed, original
-// case preserved) and the normalized lowercase form used for uniqueness.
-func normalizeEnglishName(value string) (string, string, error) {
-	name := strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
-	if name == "" || len(name) > 255 ||
-		!englishCompanyNamePattern.MatchString(name) ||
-		!englishCompanyNameLetter.MatchString(name) {
-		return "", "", ErrCompanyEnglishNameInvalid
 	}
 	return name, strings.ToLower(name), nil
 }
@@ -467,15 +574,11 @@ func (s *OrganizationService) GetApplication(ctx context.Context, applicationID 
 	return s.repo.GetApplication(ctx, applicationID)
 }
 
-func (s *OrganizationService) SubmitApplication(ctx context.Context, userID int64, name, englishName, companySize, idempotencyKey string) (*CompanyApplication, error) {
+func (s *OrganizationService) SubmitApplication(ctx context.Context, userID int64, name, companySize, idempotencyKey string) (*CompanyApplication, error) {
 	if s.cfg == nil || !s.cfg.Company.ApplicationsEnabled {
 		return nil, ErrCompanyFeatureDisabled
 	}
 	name, normalized, err := normalizeCompanyName(name)
-	if err != nil {
-		return nil, err
-	}
-	englishName, normalizedEnglish, err := normalizeEnglishName(englishName)
 	if err != nil {
 		return nil, err
 	}
@@ -492,7 +595,7 @@ func (s *OrganizationService) SubmitApplication(ctx context.Context, userID int6
 		// become no-op amount=0 operations and the balance is never frozen.
 		fee = decimal.Zero.StringFixed(8)
 	}
-	return s.repo.SubmitApplication(ctx, userID, name, normalized, englishName, normalizedEnglish, companySize, idempotencyKey, fee, s.cfg.Company.UpgradeCurrency)
+	return s.repo.SubmitApplication(ctx, userID, name, normalized, companySize, idempotencyKey, fee, s.cfg.Company.UpgradeCurrency)
 }
 
 func (s *OrganizationService) WithdrawApplication(ctx context.Context, userID, applicationID int64) (*CompanyApplication, error) {
@@ -655,11 +758,11 @@ func (s *OrganizationService) AuthenticateIAM(ctx context.Context, principal, pa
 	if s.cfg == nil || !s.cfg.Company.IAMEnabled {
 		return nil, nil, ErrIAMFeatureDisabled
 	}
-	loginName, accountID, ok := parseIAMPrincipal(principal)
+	loginName, companyID, ok := parseIAMPrincipal(principal)
 	if !ok {
 		return nil, nil, ErrInvalidCredentials
 	}
-	user, org, err := s.repo.FindIAMByPrincipal(ctx, loginName, accountID)
+	user, org, err := s.repo.FindIAMByPrincipal(ctx, loginName, companyID)
 	if err != nil || user == nil || org == nil || !user.IsActive() || !org.Active() || !user.CheckPassword(password) {
 		return nil, nil, ErrInvalidCredentials
 	}
@@ -697,8 +800,56 @@ func (s *OrganizationService) TransferBalance(ctx context.Context, ownerID, memb
 	return s.repo.TransferBalance(ctx, ownerID, memberID, d.StringFixed(8), idempotencyKey, reclaim)
 }
 
+// DepositToCompany moves funds between the caller's personal balance and the
+// company balance. When withdraw is false the caller tops the company balance
+// up from their personal balance; when true the flow is reversed. Only the
+// organization owner may perform this (enforced in the repository).
+func (s *OrganizationService) DepositToCompany(ctx context.Context, ownerID int64, amount, idempotencyKey string, withdraw bool) error {
+	d, err := decimal.NewFromString(strings.TrimSpace(amount))
+	if err != nil || !d.IsPositive() {
+		return infraerrors.BadRequest("AMOUNT_INVALID", "amount must be positive")
+	}
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if idempotencyKey == "" || len(idempotencyKey) > 96 {
+		return infraerrors.BadRequest("IDEMPOTENCY_KEY_REQUIRED", "an idempotency key is required")
+	}
+	return s.repo.DepositToCompany(ctx, ownerID, d.StringFixed(8), idempotencyKey, withdraw)
+}
+
 func (s *OrganizationService) FinanceSummary(ctx context.Context, userID int64) (*FinanceSummary, error) {
 	return s.repo.FinanceSummary(ctx, userID)
+}
+
+// CreateOrganizationSubscription provisions a subscription plan (group) for the
+// caller's company. Only the organization owner may do this (enforced in the
+// repository). When validityDays is 0 the group's default validity is used.
+func (s *OrganizationService) CreateOrganizationSubscription(ctx context.Context, userID, groupID int64, validityDays int, notes string) (*OrganizationSubscription, error) {
+	if groupID <= 0 {
+		return nil, ErrSubscriptionGroupInvalid
+	}
+	if validityDays < 0 || validityDays > 3650 {
+		return nil, ErrSubscriptionValidityRange
+	}
+	notes = strings.TrimSpace(notes)
+	if len([]rune(notes)) > 500 {
+		return nil, infraerrors.BadRequest("SUBSCRIPTION_NOTES_TOO_LONG", "notes must not exceed 500 characters")
+	}
+	return s.repo.CreateOrganizationSubscription(ctx, userID, groupID, validityDays, notes)
+}
+
+// ListOrganizationSubscriptions returns the company's subscriptions. Visible to
+// the owner and to accounts holding organization.finance.balance.read.
+func (s *OrganizationService) ListOrganizationSubscriptions(ctx context.Context, userID int64) ([]OrganizationSubscription, error) {
+	return s.repo.ListOrganizationSubscriptions(ctx, userID)
+}
+
+// CancelOrganizationSubscription cancels (soft-deletes) a company subscription.
+// Owner-only (enforced in the repository).
+func (s *OrganizationService) CancelOrganizationSubscription(ctx context.Context, userID, subscriptionID int64) error {
+	if subscriptionID <= 0 {
+		return ErrOrgSubscriptionNotFound
+	}
+	return s.repo.CancelOrganizationSubscription(ctx, userID, subscriptionID)
 }
 
 func (s *OrganizationService) ListUsage(ctx context.Context, userID int64, filter OrganizationUsageFilter) ([]OrganizationUsageRow, int64, error) {

@@ -11,11 +11,16 @@ import type {
   ManagedPolicy,
   OrganizationContext,
   OrganizationNameChangeRequest,
+  OrganizationSubscription,
   OrganizationUsageParams,
   OrganizationUsageStats,
   OrganizationUsageTrendPoint,
   PaginatedOrganizationUsage,
 } from '@/types'
+
+function randomIdempotencyKey(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
 
 export interface IAMLoginRequest {
   principal: string
@@ -43,8 +48,8 @@ export const organizationAPI = {
     const { data } = await apiClient.get<CompanyUpgradeEligibility>('/organization/applications/eligibility')
     return data
   },
-  async submitApplication(companyName: string, englishName: string, companySize: string, idempotencyKey: string): Promise<CompanyApplication> {
-    const { data } = await apiClient.post('/organization/applications', { company_name: companyName, english_name: englishName, company_size: companySize, idempotency_key: idempotencyKey })
+  async submitApplication(companyName: string, companySize: string, idempotencyKey: string): Promise<CompanyApplication> {
+    const { data } = await apiClient.post('/organization/applications', { company_name: companyName, company_size: companySize, idempotency_key: idempotencyKey })
     return data
   },
   async withdrawApplication(id: number): Promise<CompanyApplication> {
@@ -100,11 +105,25 @@ export const organizationAPI = {
     await apiClient.put(`/organization/members/${memberID}/policies`, { policy_key: policyKey, attached })
   },
   async transferBalance(memberID: number, amount: string, operation: 'allocate' | 'reclaim'): Promise<void> {
-    await apiClient.post(`/organization/members/${memberID}/balance`, { amount, operation, idempotency_key: crypto.randomUUID() })
+    await apiClient.post(`/organization/members/${memberID}/balance`, { amount: String(amount), operation, idempotency_key: randomIdempotencyKey() })
+  },
+  async transferCompanyBalance(amount: string, operation: 'deposit' | 'withdraw'): Promise<void> {
+    await apiClient.post('/organization/company-balance', { amount: String(amount), operation, idempotency_key: randomIdempotencyKey() })
   },
   async getFinance(): Promise<FinanceSummary> {
     const { data } = await apiClient.get('/organization/finance')
     return data
+  },
+  async listSubscriptions(): Promise<OrganizationSubscription[]> {
+    const { data } = await apiClient.get<{ subscriptions: OrganizationSubscription[] }>('/organization/subscriptions')
+    return data.subscriptions
+  },
+  async createSubscription(groupID: number, validityDays: number, notes: string): Promise<OrganizationSubscription> {
+    const { data } = await apiClient.post<OrganizationSubscription>('/organization/subscriptions', { group_id: groupID, validity_days: validityDays, notes })
+    return data
+  },
+  async cancelSubscription(id: number): Promise<void> {
+    await apiClient.delete(`/organization/subscriptions/${id}`)
   },
   async getUsage(params: OrganizationUsageParams = {}): Promise<PaginatedOrganizationUsage> {
     const { data } = await apiClient.get('/organization/usage', { params })

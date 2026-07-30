@@ -5,6 +5,7 @@ export type IAMMemberStatus = 'active' | 'disabled' | 'archived'
 export interface OrganizationContext {
   organization_id: number
   account_id: string
+  company_id: string
   owner_user_id: number
   company_name: string
   organization_status: OrganizationStatus
@@ -22,7 +23,6 @@ export interface CompanyApplication {
   applicant_user_id: number
   applicant_email?: string
   requested_name: string
-  requested_english_name?: string
   company_size?: string
   status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
   fee_amount: string
@@ -77,6 +77,7 @@ export interface OrganizationNameChangeRequest {
 export interface AdminOrganization {
 	id: number
 	account_id: string
+	company_id: string
 	name: string
 	status: OrganizationStatus
 	owner_user_id: number
@@ -122,6 +123,31 @@ export interface FinanceSummary {
   available?: string
   frozen?: string
   total?: string
+  company_available?: string
+  company_frozen?: string
+  company_total?: string
+}
+
+export interface OrganizationSubscription {
+  id: number
+  organization_id: number
+  group_id: number
+  group_name: string
+  platform: string
+  subscription_type: string
+  starts_at: string
+  expires_at: string
+  status: 'active' | 'expired' | 'cancelled'
+  daily_limit_usd?: string
+  weekly_limit_usd?: string
+  monthly_limit_usd?: string
+  daily_usage_usd: string
+  weekly_usage_usd: string
+  monthly_usage_usd: string
+  notes?: string
+  assigned_by?: number
+  assigned_at: string
+  created_at: string
 }
 
 export interface OrganizationUsageRow {

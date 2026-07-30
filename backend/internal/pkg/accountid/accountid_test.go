@@ -21,6 +21,10 @@ func TestGenerateFormats(t *testing.T) {
 	iam, err := GenerateIAM()
 	require.NoError(t, err)
 	require.Regexp(t, `^[1-9][0-9]{17}$`, iam)
+	company, err := GenerateCompany()
+	require.NoError(t, err)
+	require.Regexp(t, `^c[1-9][0-9]{14}$`, company)
+	require.Len(t, company, CompanyLength)
 }
 
 func TestGenerateConcurrentUniqueness(t *testing.T) {

@@ -28,14 +28,18 @@ func IsWindowExpired(windowStart *time.Time, duration time.Duration) bool {
 }
 
 type APIKey struct {
-	ID          int64
-	UserID      int64
-	Key         string
-	Name        string
-	GroupID     *int64
-	Status      string
-	IPWhitelist []string
-	IPBlacklist []string
+	ID      int64
+	UserID  int64
+	Key     string
+	Name    string
+	GroupID *int64
+	// OrganizationSubscriptionID, when set, marks this as an enterprise API key
+	// that consumes the referenced organization subscription
+	// (organization_subscriptions.id) instead of the owner's personal subscription.
+	OrganizationSubscriptionID *int64
+	Status                     string
+	IPWhitelist                []string
+	IPBlacklist                []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`

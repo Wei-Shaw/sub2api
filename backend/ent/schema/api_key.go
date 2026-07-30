@@ -44,6 +44,15 @@ func (APIKey) Fields() []ent.Field {
 		field.Int64("group_id").
 			Optional().
 			Nillable(),
+		// When set, this API key is an enterprise key that consumes the
+		// referenced organization subscription (organization_subscriptions.id)
+		// instead of the owner's personal user subscription. It is a plain
+		// reference (not an ent edge) because organization_subscriptions is a
+		// raw-SQL managed table.
+		field.Int64("organization_subscription_id").
+			Optional().
+			Nillable().
+			Comment("Bound organization subscription id for enterprise API keys (organization_subscriptions.id)"),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
@@ -138,6 +147,7 @@ func (APIKey) Indexes() []ent.Index {
 		// key 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("user_id"),
 		index.Fields("group_id"),
+		index.Fields("organization_subscription_id"),
 		index.Fields("status"),
 		index.Fields("deleted_at"),
 		index.Fields("last_used_at"),

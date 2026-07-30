@@ -47,12 +47,15 @@ func isolateOrganizationIntegrationTest(t *testing.T) {
 		ctx := context.Background()
 		_, err := integrationDB.ExecContext(ctx, `
 			TRUNCATE organization_name_change_requests,member_policy_attachments,organization_memberships,
-			organization_financial_ledger,organization_audit_events,company_upgrade_applications,organizations
+			organization_financial_ledger,organization_audit_events,company_upgrade_applications,
+			organization_subscriptions,organizations
 			RESTART IDENTITY CASCADE`)
 		require.NoError(t, err)
 		_, err = integrationDB.ExecContext(ctx, `DELETE FROM notification_outbox WHERE event LIKE 'company.%'`)
 		require.NoError(t, err)
 		_, err = integrationDB.ExecContext(ctx, `DELETE FROM users WHERE email LIKE 'company-%@example.com'`)
+		require.NoError(t, err)
+		_, err = integrationDB.ExecContext(ctx, `DELETE FROM groups WHERE name LIKE 'orgsub-%'`)
 		require.NoError(t, err)
 	}
 	cleanup()
@@ -102,15 +105,15 @@ func TestCompanyUpgradeReservationDecisionsAndFrozenMismatch(t *testing.T) {
 
 	withdrawRoot := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
 	key := uuid.NewString()
-	application, err := repo.SubmitApplication(ctx, withdrawRoot.ID, "Withdraw Company", "withdraw company", "Withdraw Company", "withdraw company", "1-20", key, "20.00000000", "USD")
+	application, err := repo.SubmitApplication(ctx, withdrawRoot.ID, "Withdraw Company", "withdraw company", "1-20", key, "20.00000000", "USD")
 	require.NoError(t, err)
-	replayed, err := repo.SubmitApplication(ctx, withdrawRoot.ID, "Withdraw Company", "withdraw company", "Withdraw Company", "withdraw company", "1-20", key, "20.00000000", "USD")
+	replayed, err := repo.SubmitApplication(ctx, withdrawRoot.ID, "Withdraw Company", "withdraw company", "1-20", key, "20.00000000", "USD")
 	require.NoError(t, err)
 	require.Equal(t, application.ID, replayed.ID)
 	assertUserBalances(t, withdrawRoot.ID, "80.00000000", "20.00000000")
 
 	otherRoot := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
-	otherApplication, err := repo.SubmitApplication(ctx, otherRoot.ID, "Other Company", "other company", "Other Company", "other company", "20-100", key, "20.00000000", "USD")
+	otherApplication, err := repo.SubmitApplication(ctx, otherRoot.ID, "Other Company", "other company", "20-100", key, "20.00000000", "USD")
 	require.NoError(t, err)
 	require.NotEqual(t, application.ID, otherApplication.ID)
 	require.Equal(t, otherRoot.ID, otherApplication.ApplicantUserID)
@@ -121,7 +124,7 @@ func TestCompanyUpgradeReservationDecisionsAndFrozenMismatch(t *testing.T) {
 	assertUserBalances(t, withdrawRoot.ID, "100.00000000", "0.00000000")
 
 	approveRoot := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
-	approved, err := repo.SubmitApplication(ctx, approveRoot.ID, "Approved Company", "approved company", "Approved Company", "approved company", "100-300", uuid.NewString(), "20.00000000", "USD")
+	approved, err := repo.SubmitApplication(ctx, approveRoot.ID, "Approved Company", "approved company", "100-300", uuid.NewString(), "20.00000000", "USD")
 	require.NoError(t, err)
 	approved, err = repo.DecideApplication(ctx, admin.ID, approved.ID, true, "", 20)
 	require.NoError(t, err)
@@ -133,7 +136,7 @@ func TestCompanyUpgradeReservationDecisionsAndFrozenMismatch(t *testing.T) {
 	require.Equal(t, 1, owners)
 
 	brokenRoot := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
-	broken, err := repo.SubmitApplication(ctx, brokenRoot.ID, "Broken Frozen", "broken frozen", "Broken Frozen", "broken frozen", "1-20", uuid.NewString(), "20.00000000", "USD")
+	broken, err := repo.SubmitApplication(ctx, brokenRoot.ID, "Broken Frozen", "broken frozen", "1-20", uuid.NewString(), "20.00000000", "USD")
 	require.NoError(t, err)
 	_, err = integrationDB.ExecContext(ctx, `UPDATE users SET frozen_balance=0 WHERE id=$1`, brokenRoot.ID)
 	require.NoError(t, err)
@@ -166,19 +169,19 @@ func TestCompanyUpgradeAcceptance_EnqueuesReviewAndOutcomeNotifications(t *testi
 	require.Contains(t, adminRecipients, admin.Email)
 
 	withdrawApplicant := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
-	withdrawApplication, err := repo.SubmitApplication(ctx, withdrawApplicant.ID, "Withdraw Notification Company", "withdraw notification company", "Withdraw Notification Company", "withdraw notification company", "20-100", uuid.NewString(), "20.00000000", "USD")
+	withdrawApplication, err := repo.SubmitApplication(ctx, withdrawApplicant.ID, "Withdraw Notification Company", "withdraw notification company", "20-100", uuid.NewString(), "20.00000000", "USD")
 	require.NoError(t, err)
 	_, err = repo.WithdrawApplication(ctx, withdrawApplicant.ID, withdrawApplication.ID)
 	require.NoError(t, err)
 
 	approveApplicant := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
-	approveApplication, err := repo.SubmitApplication(ctx, approveApplicant.ID, "Approve Notification Company", "approve notification company", "Approve Notification Company", "approve notification company", "300-1000", uuid.NewString(), "20.00000000", "USD")
+	approveApplication, err := repo.SubmitApplication(ctx, approveApplicant.ID, "Approve Notification Company", "approve notification company", "300-1000", uuid.NewString(), "20.00000000", "USD")
 	require.NoError(t, err)
 	_, err = repo.DecideApplication(ctx, admin.ID, approveApplication.ID, true, "", 20)
 	require.NoError(t, err)
 
 	rejectApplicant := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
-	rejectApplication, err := repo.SubmitApplication(ctx, rejectApplicant.ID, "Reject Notification Company", "reject notification company", "Reject Notification Company", "reject notification company", "1000+", uuid.NewString(), "20.00000000", "USD")
+	rejectApplication, err := repo.SubmitApplication(ctx, rejectApplicant.ID, "Reject Notification Company", "reject notification company", "1000+", uuid.NewString(), "20.00000000", "USD")
 	require.NoError(t, err)
 	_, err = repo.DecideApplication(ctx, admin.ID, rejectApplication.ID, false, "not approved", 20)
 	require.NoError(t, err)
@@ -224,7 +227,7 @@ func TestCompanyUpgradeSelfReviewAllowed(t *testing.T) {
 	ctx := context.Background()
 	repo := NewOrganizationRepository(integrationDB)
 	applicant := createOrganizationRoot(t, integrationEntClient, 100, service.RoleAdmin)
-	application, err := repo.SubmitApplication(ctx, applicant.ID, "Self Review", "self review", "Self Review", "self review", "1-20", uuid.NewString(), "20.00000000", "USD")
+	application, err := repo.SubmitApplication(ctx, applicant.ID, "Self Review", "self review", "1-20", uuid.NewString(), "20.00000000", "USD")
 	require.NoError(t, err)
 	approved, err := repo.DecideApplication(ctx, applicant.ID, application.ID, true, "", 20)
 	require.NoError(t, err)
@@ -260,7 +263,7 @@ func TestCompanyUpgradeRejectAndConcurrentDecisionAreSettledOnce(t *testing.T) {
 	secondAdmin := createOrganizationRoot(t, integrationEntClient, 0, service.RoleAdmin)
 
 	rejectedRoot := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
-	rejected, err := repo.SubmitApplication(ctx, rejectedRoot.ID, "Rejected Company", "rejected company", "Rejected Company", "rejected company", "20-100", uuid.NewString(), "20.00000000", "USD")
+	rejected, err := repo.SubmitApplication(ctx, rejectedRoot.ID, "Rejected Company", "rejected company", "20-100", uuid.NewString(), "20.00000000", "USD")
 	require.NoError(t, err)
 	rejected, err = repo.DecideApplication(ctx, firstAdmin.ID, rejected.ID, false, "insufficient information", 20)
 	require.NoError(t, err)
@@ -271,7 +274,7 @@ func TestCompanyUpgradeRejectAndConcurrentDecisionAreSettledOnce(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrApplicationTerminal)
 
 	racingRoot := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
-	tracing, err := repo.SubmitApplication(ctx, racingRoot.ID, "Racing Company", "racing company", "Racing Company", "racing company", "100-300", uuid.NewString(), "20.00000000", "USD")
+	tracing, err := repo.SubmitApplication(ctx, racingRoot.ID, "Racing Company", "racing company", "100-300", uuid.NewString(), "20.00000000", "USD")
 	require.NoError(t, err)
 	errCh := make(chan error, 2)
 	go func() {
@@ -455,6 +458,107 @@ func TestOrganizationAllocationPayerSelectionAndFinanceRedaction(t *testing.T) {
 	assertUserBalances(t, owner.ID, "85.00000000", "0.00000000")
 	assertUserBalances(t, memberID, "15.00000000", "0.00000000")
 	assertCombinedAvailableBalance(t, owner.ID, memberID, "100.00000000")
+}
+
+func TestOrganizationCompanyBalanceDepositAndWithdraw(t *testing.T) {
+	isolateOrganizationIntegrationTest(t)
+	ctx := context.Background()
+	repo := NewOrganizationRepository(integrationDB)
+	owner := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
+	organizationID := createActiveOrganization(t, owner, 20)
+
+	assertCompanyBalance := func(available, frozen string) {
+		t.Helper()
+		var gotAvailable, gotFrozen string
+		require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance::text,frozen_balance::text FROM organizations WHERE id=$1`, organizationID).Scan(&gotAvailable, &gotFrozen))
+		require.Equal(t, available, gotAvailable)
+		require.Equal(t, frozen, gotFrozen)
+	}
+
+	// Depositing is idempotent per key: the second call with the same key is a
+	// no-op rather than a double charge.
+	depositKey := uuid.NewString()
+	require.NoError(t, repo.DepositToCompany(ctx, owner.ID, "30.00000000", depositKey, false))
+	require.NoError(t, repo.DepositToCompany(ctx, owner.ID, "30.00000000", depositKey, false))
+	assertUserBalances(t, owner.ID, "70.00000000", "0.00000000")
+	assertCompanyBalance("30.00000000", "0.00000000")
+
+	// Reusing a key with a different amount conflicts.
+	require.Error(t, repo.DepositToCompany(ctx, owner.ID, "31.00000000", depositKey, false))
+
+	// Withdrawing returns funds from the company balance to the owner.
+	require.NoError(t, repo.DepositToCompany(ctx, owner.ID, "10.00000000", uuid.NewString(), true))
+	assertUserBalances(t, owner.ID, "80.00000000", "0.00000000")
+	assertCompanyBalance("20.00000000", "0.00000000")
+
+	// Withdrawing more than the company balance is rejected.
+	require.ErrorIs(t, repo.DepositToCompany(ctx, owner.ID, "999.00000000", uuid.NewString(), true), service.ErrInsufficientBalance)
+
+	// The owner sees the company balance in the finance summary.
+	summary, err := repo.FinanceSummary(ctx, owner.ID)
+	require.NoError(t, err)
+	require.NotNil(t, summary.CompanyAvailable)
+	require.Equal(t, "20.00000000", *summary.CompanyAvailable)
+
+	// A user who is not the owner of any active organization cannot move company funds.
+	stranger := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
+	require.ErrorIs(t, repo.DepositToCompany(ctx, stranger.ID, "1.00000000", uuid.NewString(), false), service.ErrOrganizationPermission)
+}
+
+func createOrgSubscriptionGroup(t *testing.T, defaultValidityDays int, dailyLimit string) int64 {
+	t.Helper()
+	var groupID int64
+	require.NoError(t, integrationDB.QueryRowContext(context.Background(),
+		`INSERT INTO groups(name,status,platform,subscription_type,default_validity_days,daily_limit_usd) VALUES($1,'active','codex','plan',$2,$3::numeric) RETURNING id`,
+		"orgsub-"+uuid.NewString(), defaultValidityDays, dailyLimit).Scan(&groupID))
+	return groupID
+}
+
+func TestOrganizationSubscriptionLifecycle(t *testing.T) {
+	isolateOrganizationIntegrationTest(t)
+	ctx := context.Background()
+	repo := NewOrganizationRepository(integrationDB)
+	owner := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
+	createActiveOrganization(t, owner, 20)
+	groupID := createOrgSubscriptionGroup(t, 45, "12.5")
+
+	// The owner can provision a subscription; validity defaults to the group's.
+	created, err := repo.CreateOrganizationSubscription(ctx, owner.ID, groupID, 0, "primary plan")
+	require.NoError(t, err)
+	require.Equal(t, "active", created.Status)
+	require.Equal(t, groupID, created.GroupID)
+	require.NotNil(t, created.DailyLimitUSD)
+	require.Equal(t, 45, int(created.ExpiresAt.Sub(created.StartsAt).Hours()/24+0.5))
+
+	// Only one live subscription per group is allowed.
+	_, err = repo.CreateOrganizationSubscription(ctx, owner.ID, groupID, 30, "")
+	require.ErrorIs(t, err, service.ErrOrgSubscriptionExists)
+
+	// An unknown group is rejected.
+	_, err = repo.CreateOrganizationSubscription(ctx, owner.ID, 999999, 0, "")
+	require.ErrorIs(t, err, service.ErrSubscriptionGroupInvalid)
+
+	// A non-owner cannot provision.
+	stranger := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
+	_, err = repo.CreateOrganizationSubscription(ctx, stranger.ID, groupID, 0, "")
+	require.ErrorIs(t, err, service.ErrOrganizationPermission)
+
+	// The owner can list the company subscriptions.
+	list, err := repo.ListOrganizationSubscriptions(ctx, owner.ID)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, created.ID, list[0].ID)
+
+	// Cancelling soft-deletes the subscription and frees the group for re-provisioning.
+	require.NoError(t, repo.CancelOrganizationSubscription(ctx, owner.ID, created.ID))
+	list, err = repo.ListOrganizationSubscriptions(ctx, owner.ID)
+	require.NoError(t, err)
+	require.Empty(t, list)
+	require.ErrorIs(t, repo.CancelOrganizationSubscription(ctx, owner.ID, created.ID), service.ErrOrgSubscriptionNotFound)
+
+	reprovisioned, err := repo.CreateOrganizationSubscription(ctx, owner.ID, groupID, 10, "")
+	require.NoError(t, err)
+	require.NotEqual(t, created.ID, reprovisioned.ID)
 }
 
 func TestOrganizationDomainAuditCoverageAndCorrelation(t *testing.T) {

@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OrganizationConsoleView from '@/views/user/OrganizationConsoleView.vue'
 import CompanyUpgradeView from '@/views/user/CompanyUpgradeView.vue'
 import CompanyApplicationsView from '@/views/admin/CompanyApplicationsView.vue'
+import Select from '@/components/common/Select.vue'
 import ProfileIAMRecoveryEmailCard from '@/components/user/profile/ProfileIAMRecoveryEmailCard.vue'
 import enOrganization from '@/i18n/locales/en/organization'
 import zhOrganization from '@/i18n/locales/zh/organization'
@@ -222,10 +223,12 @@ describe('organization views', () => {
     const wrapper = mount(CompanyUpgradeView, mountOptions)
     await flushPromises()
     await wrapper.get('#company-name').setValue('New Company')
+    wrapper.findComponent(Select).vm.$emit('update:modelValue', '1-20')
+    await flushPromises()
     await wrapper.get('[data-testid="company-upgrade-form"]').trigger('submit')
     await flushPromises()
 
-    expect(api.submitApplication).toHaveBeenCalledWith('New Company', expect.any(String))
+    expect(api.submitApplication).toHaveBeenCalledWith('New Company', '1-20', expect.any(String))
     expect(auth.refreshUser).toHaveBeenCalledOnce()
     expect(wrapper.get('[data-testid="company-upgrade-application"]').text()).toContain('New Company')
   })

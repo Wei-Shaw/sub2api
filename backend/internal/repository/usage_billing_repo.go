@@ -172,7 +172,12 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 }
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
-	if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
+	if cmd.SubscriptionCost > 0 && cmd.OrganizationSubscriptionID != nil {
+		// Enterprise API key: charge the bound company subscription.
+		if err := incrementUsageBillingOrgSubscription(ctx, tx, *cmd.OrganizationSubscriptionID, cmd.SubscriptionCost); err != nil {
+			return err
+		}
+	} else if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
 		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost); err != nil {
 			return err
 		}
@@ -242,6 +247,36 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 		return nil
 	}
 	return service.ErrSubscriptionNotFound
+}
+
+// incrementUsageBillingOrgSubscription charges a company subscription's usage
+// counters within the billing transaction. It is window-aware, mirroring the
+// rolling-window reset semantics used for personal subscriptions: a NULL or
+// expired window is (re)started at NOW() with usage set to costUSD.
+func incrementUsageBillingOrgSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64) error {
+	const updateSQL = `
+		UPDATE organization_subscriptions SET
+			daily_usage_usd = CASE WHEN daily_window_start IS NULL OR NOW() - daily_window_start >= INTERVAL '24 hours' THEN $1 ELSE daily_usage_usd + $1 END,
+			daily_window_start = CASE WHEN daily_window_start IS NULL OR NOW() - daily_window_start >= INTERVAL '24 hours' THEN NOW() ELSE daily_window_start END,
+			weekly_usage_usd = CASE WHEN weekly_window_start IS NULL OR NOW() - weekly_window_start >= INTERVAL '7 days' THEN $1 ELSE weekly_usage_usd + $1 END,
+			weekly_window_start = CASE WHEN weekly_window_start IS NULL OR NOW() - weekly_window_start >= INTERVAL '7 days' THEN NOW() ELSE weekly_window_start END,
+			monthly_usage_usd = CASE WHEN monthly_window_start IS NULL OR NOW() - monthly_window_start >= INTERVAL '30 days' THEN $1 ELSE monthly_usage_usd + $1 END,
+			monthly_window_start = CASE WHEN monthly_window_start IS NULL OR NOW() - monthly_window_start >= INTERVAL '30 days' THEN NOW() ELSE monthly_window_start END,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+	res, err := tx.ExecContext(ctx, updateSQL, costUSD, subscriptionID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected > 0 {
+		return nil
+	}
+	return service.ErrOrgSubscriptionNotFound
 }
 
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, bool, error) {

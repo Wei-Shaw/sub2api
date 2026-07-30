@@ -10,6 +10,9 @@ import (
 const (
 	RootLength = 16
 	IAMLength  = 18
+	// CompanyLength is the total length of a company identifier, including the
+	// leading 'c' prefix (1 prefix character followed by 15 digits).
+	CompanyLength = 16
 )
 
 var collisionRetries atomic.Uint64
@@ -25,6 +28,18 @@ func CurrentMetrics() Metrics { return Metrics{CollisionRetries: collisionRetrie
 func GenerateRoot() (string, error) { return generate(rand.Reader, RootLength) }
 
 func GenerateIAM() (string, error) { return generate(rand.Reader, IAMLength) }
+
+// GenerateCompany returns a company account identifier: a leading 'c' prefix
+// followed by 15 digits (first digit 1-9), e.g. "c123456789012345". The prefix
+// keeps company identifiers visually distinct from the numeric root/IAM account
+// identifiers while still fitting within a VARCHAR(16) column.
+func GenerateCompany() (string, error) {
+	digits, err := generate(rand.Reader, CompanyLength-1)
+	if err != nil {
+		return "", err
+	}
+	return "c" + digits, nil
+}
 
 func generate(reader io.Reader, length int) (string, error) {
 	if length < 1 {

@@ -503,6 +503,8 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	if h.organizationService != nil {
 		organization, _ = h.organizationService.Context(c.Request.Context(), subject.UserID)
 		if organization != nil {
+			// IAM 登录名后缀使用公司 ID，此处补齐以便展示 iam_principal。
+			user.CompanyID = organization.CompanyID
 			finance, _ = h.organizationService.FinanceSummary(c.Request.Context(), subject.UserID)
 		}
 	}

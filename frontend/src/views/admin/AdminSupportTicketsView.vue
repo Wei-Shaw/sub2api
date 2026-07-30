@@ -7,35 +7,33 @@
           <!-- status -->
           <div>
             <label class="input-label">{{ t('support.common.status') }}</label>
-            <select v-model="filter.status" class="input mt-1" @change="reloadFromFirstPage">
-              <option value="">{{ t('admin.tickets.filters.statusAll') }}</option>
-              <option value="open">{{ t('support.statusLabel.open') }}</option>
-              <option value="in_progress">{{ t('support.statusLabel.in_progress') }}</option>
-              <option value="closed">{{ t('support.statusLabel.closed') }}</option>
-            </select>
+            <Select
+              class="mt-1"
+              :model-value="filter.status"
+              :options="statusFilterOptions"
+              @change="onFilterStatusChange"
+            />
           </div>
           <!-- priority -->
           <div>
             <label class="input-label">{{ t('support.common.priority') }}</label>
-            <select v-model="filter.priority" class="input mt-1" @change="reloadFromFirstPage">
-              <option value="">{{ t('admin.tickets.filters.priorityAll') }}</option>
-              <option value="high">{{ t('support.priorityLabel.high') }}</option>
-              <option value="normal">{{ t('support.priorityLabel.normal') }}</option>
-              <option value="low">{{ t('support.priorityLabel.low') }}</option>
-            </select>
+            <Select
+              class="mt-1"
+              :model-value="filter.priority"
+              :options="priorityFilterOptions"
+              @change="onFilterPriorityChange"
+            />
           </div>
           <!-- category -->
           <div>
             <label class="input-label">{{ t('support.common.category') }}</label>
-            <select
+            <Select
               v-if="categories.length > 0"
-              v-model="filter.category"
-              class="input mt-1"
-              @change="reloadFromFirstPage"
-            >
-              <option value="">{{ t('admin.tickets.filters.categoryAll') }}</option>
-              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
-            </select>
+              class="mt-1"
+              :model-value="filter.category"
+              :options="categoryFilterOptions"
+              @change="onFilterCategoryChange"
+            />
             <input
               v-else
               v-model.trim="filter.category"
@@ -318,25 +316,31 @@
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <label class="input-label">{{ t('admin.tickets.drawer.statusLabel') }}</label>
-                <select v-model="patchForm.status" class="input mt-1">
-                  <option value="open">{{ t('support.statusLabel.open') }}</option>
-                  <option value="in_progress">{{ t('support.statusLabel.in_progress') }}</option>
-                  <option value="closed">{{ t('support.statusLabel.closed') }}</option>
-                </select>
+                <Select
+                  class="mt-1"
+                  :model-value="patchForm.status"
+                  :options="statusEditOptions"
+                  @change="onPatchStatusChange"
+                />
               </div>
               <div>
                 <label class="input-label">{{ t('admin.tickets.drawer.priorityLabel') }}</label>
-                <select v-model="patchForm.priority" class="input mt-1">
-                  <option value="high">{{ t('support.priorityLabel.high') }}</option>
-                  <option value="normal">{{ t('support.priorityLabel.normal') }}</option>
-                  <option value="low">{{ t('support.priorityLabel.low') }}</option>
-                </select>
+                <Select
+                  class="mt-1"
+                  :model-value="patchForm.priority"
+                  :options="priorityEditOptions"
+                  @change="onPatchPriorityChange"
+                />
               </div>
               <div>
                 <label class="input-label">{{ t('admin.tickets.drawer.categoryLabel') }}</label>
-                <select v-if="categories.length > 0" v-model="patchForm.category" class="input mt-1">
-                  <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
-                </select>
+                <Select
+                  v-if="categories.length > 0"
+                  class="mt-1"
+                  :model-value="patchForm.category"
+                  :options="categoryEditOptions"
+                  @change="onPatchCategoryChange"
+                />
                 <input v-else v-model.trim="patchForm.category" type="text" class="input mt-1" />
               </div>
             </div>
@@ -403,6 +407,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select from '@/components/common/Select.vue'
 import SupportStatusBadge from '@/components/support/SupportStatusBadge.vue'
 import SupportPriorityBadge from '@/components/support/SupportPriorityBadge.vue'
 import SupportTicketImageUploader from '@/components/support/SupportTicketImageUploader.vue'
@@ -413,6 +418,62 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const route = useRoute()
 const router = useRouter()
+
+// 工单状态下拉框选项（与项目下拉框共用 Select 组件样式）
+const statusFilterOptions = computed(() => [
+  { value: '', label: t('admin.tickets.filters.statusAll') },
+  { value: 'open', label: t('support.statusLabel.open') },
+  { value: 'in_progress', label: t('support.statusLabel.in_progress') },
+  { value: 'closed', label: t('support.statusLabel.closed') },
+])
+const statusEditOptions = computed(() => [
+  { value: 'open', label: t('support.statusLabel.open') },
+  { value: 'in_progress', label: t('support.statusLabel.in_progress') },
+  { value: 'closed', label: t('support.statusLabel.closed') },
+])
+function onFilterStatusChange(value: string | number | boolean | null) {
+  filter.status = (value ?? '') as TicketStatus | ''
+  reloadFromFirstPage()
+}
+function onPatchStatusChange(value: string | number | boolean | null) {
+  patchForm.status = value as TicketStatus
+}
+
+// 工单优先级下拉框选项（与项目下拉框共用 Select 组件样式）
+const priorityFilterOptions = computed(() => [
+  { value: '', label: t('admin.tickets.filters.priorityAll') },
+  { value: 'high', label: t('support.priorityLabel.high') },
+  { value: 'normal', label: t('support.priorityLabel.normal') },
+  { value: 'low', label: t('support.priorityLabel.low') },
+])
+const priorityEditOptions = computed(() => [
+  { value: 'high', label: t('support.priorityLabel.high') },
+  { value: 'normal', label: t('support.priorityLabel.normal') },
+  { value: 'low', label: t('support.priorityLabel.low') },
+])
+function onFilterPriorityChange(value: string | number | boolean | null) {
+  filter.priority = (value ?? '') as TicketPriority | ''
+  reloadFromFirstPage()
+}
+function onPatchPriorityChange(value: string | number | boolean | null) {
+  patchForm.priority = value as TicketPriority
+}
+
+// 工单分类下拉框选项（与项目下拉框共用 Select 组件样式）
+const categoryFilterOptions = computed(() => [
+  { value: '', label: t('admin.tickets.filters.categoryAll') },
+  ...categories.value.map((cat) => ({ value: cat, label: cat })),
+])
+const categoryEditOptions = computed(() =>
+  categories.value.map((cat) => ({ value: cat, label: cat })),
+)
+function onFilterCategoryChange(value: string | number | boolean | null) {
+  filter.category = (value ?? '') as string
+  reloadFromFirstPage()
+}
+function onPatchCategoryChange(value: string | number | boolean | null) {
+  patchForm.category = (value ?? '') as string
+}
 
 const loading = ref(false)
 const tickets = ref<SupportTicket[]>([])

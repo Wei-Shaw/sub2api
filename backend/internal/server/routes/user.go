@@ -66,6 +66,8 @@ func RegisterUserRoutes(
 		keys := authenticated.Group("/keys")
 		{
 			keys.GET("", h.APIKey.List)
+			// 可绑定的公司订阅（用于创建企业 API Key）
+			keys.GET("/organization-subscriptions", h.APIKey.GetBindableOrganizationSubscriptions)
 			keys.GET("/:id", h.APIKey.GetByID)
 			keys.POST("", h.APIKey.Create)
 			keys.PUT("/:id", h.APIKey.Update)

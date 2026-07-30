@@ -44,7 +44,7 @@ func NewOrganizationRepository(db *sql.DB) service.OrganizationRepository {
 
 func (r *organizationRepository) GetContextForUser(ctx context.Context, userID int64) (*service.OrganizationContext, error) {
 	const query = `
-		SELECT o.id, o.account_id, o.owner_user_id, o.name, o.status,
+		SELECT o.id, o.account_id, COALESCE(o.company_id, ''), o.owner_user_id, o.name, o.status,
 		       m.id, m.role, m.status, m.authz_generation, o.effective_at,
 		       COALESCE(array_agg(DISTINCT p.policy_key) FILTER (WHERE a.detached_at IS NULL AND p.id IS NOT NULL), '{}'),
 		       COALESCE(array_agg(DISTINCT pa.action) FILTER (WHERE a.detached_at IS NULL AND pa.id IS NOT NULL), '{}')
@@ -57,7 +57,7 @@ func (r *organizationRepository) GetContextForUser(ctx context.Context, userID i
 		GROUP BY o.id, m.id`
 	var out service.OrganizationContext
 	err := r.db.QueryRowContext(ctx, query, userID).Scan(
-		&out.OrganizationID, &out.AccountID, &out.OwnerUserID, &out.CompanyName, &out.OrganizationStatus,
+		&out.OrganizationID, &out.AccountID, &out.CompanyID, &out.OwnerUserID, &out.CompanyName, &out.OrganizationStatus,
 		&out.MembershipID, &out.Role, &out.MembershipStatus, &out.AuthzGeneration, &out.EffectiveAt,
 		pq.Array(&out.PolicyNames), pq.Array(&out.Actions),
 	)
@@ -70,7 +70,7 @@ func (r *organizationRepository) GetContextForUser(ctx context.Context, userID i
 func scanCompanyApplication(row interface{ Scan(...any) error }) (*service.CompanyApplication, error) {
 	var app service.CompanyApplication
 	var fee string
-	err := row.Scan(&app.ID, &app.ApplicantUserID, &app.ApplicantEmail, &app.RequestedName, &app.RequestedEnglishName, &app.CompanySize, &app.Status,
+	err := row.Scan(&app.ID, &app.ApplicantUserID, &app.ApplicantEmail, &app.RequestedName, &app.CompanySize, &app.Status,
 		&fee, &app.FeeCurrency, &app.ReviewerUserID, &app.ReviewReason, &app.OrganizationID, &app.CreatedAt, &app.DecidedAt)
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func scanCompanyApplication(row interface{ Scan(...any) error }) (*service.Compa
 }
 
 const applicationSelect = `
-	SELECT a.id, a.applicant_user_id, COALESCE(u.email, ''), a.requested_name, COALESCE(a.requested_english_name, ''), COALESCE(a.company_size, ''), a.status,
+	SELECT a.id, a.applicant_user_id, COALESCE(u.email, ''), a.requested_name, COALESCE(a.company_size, ''), a.status,
 	       a.fee_amount::text, a.fee_currency, a.reviewer_user_id, COALESCE(a.review_reason, ''),
 	       a.organization_id, a.created_at, a.decided_at
 	FROM company_upgrade_applications a JOIN users u ON u.id = a.applicant_user_id`
@@ -196,7 +196,7 @@ func enqueueAdminNotifications(ctx context.Context, tx *sql.Tx, event string, ap
 	return nil
 }
 
-func (r *organizationRepository) SubmitApplication(ctx context.Context, userID int64, name, normalizedName, englishName, normalizedEnglishName, companySize, idempotencyKey, fee, currency string) (_ *service.CompanyApplication, err error) {
+func (r *organizationRepository) SubmitApplication(ctx context.Context, userID int64, name, normalizedName, companySize, idempotencyKey, fee, currency string) (_ *service.CompanyApplication, err error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -222,13 +222,10 @@ func (r *organizationRepository) SubmitApplication(ctx context.Context, userID i
 	}
 	var applicationID int64
 	if err := tx.QueryRowContext(ctx, `
-		INSERT INTO company_upgrade_applications(applicant_user_id,requested_name,normalized_name,requested_english_name,normalized_english_name,company_size,fee_amount,fee_currency,idempotency_key)
-		VALUES($1,$2,$3,$4,$5,$6,$7::numeric,$8,$9) RETURNING id`, userID, name, normalizedName, englishName, normalizedEnglishName, companySize, fee, currency, idempotencyKey).Scan(&applicationID); err != nil {
+		INSERT INTO company_upgrade_applications(applicant_user_id,requested_name,normalized_name,company_size,fee_amount,fee_currency,idempotency_key)
+		VALUES($1,$2,$3,$4,$5::numeric,$6,$7) RETURNING id`, userID, name, normalizedName, companySize, fee, currency, idempotencyKey).Scan(&applicationID); err != nil {
 		if isConstraintNamed(err, "company_upgrade_one_pending_per_user") {
 			return nil, service.ErrCompanyPending
-		}
-		if isConstraintNamed(err, "company_upgrade_pending_english_unique") {
-			return nil, service.ErrCompanyEnglishNameTaken
 		}
 		return nil, err
 	}
@@ -399,7 +396,7 @@ func (r *organizationRepository) GetNameChangeRequest(ctx context.Context, reque
 	return request, nil
 }
 
-const adminOrganizationSelect = `SELECT o.id,o.account_id,o.name,o.status,o.owner_user_id,COALESCE(u.email,''),
+const adminOrganizationSelect = `SELECT o.id,o.account_id,COALESCE(o.company_id,''),o.name,o.status,o.owner_user_id,COALESCE(u.email,''),
 	(SELECT count(*) FROM organization_memberships m WHERE m.organization_id=o.id AND m.role='member' AND m.status<>'archived'),
 	o.member_limit,o.effective_at,o.created_at FROM organizations o JOIN users u ON u.id=o.owner_user_id`
 
@@ -413,7 +410,7 @@ func requireActiveAdminDB(ctx context.Context, db *sql.DB, actorID int64) error 
 
 func scanAdminOrganization(scanner interface{ Scan(...any) error }) (*service.AdminOrganization, error) {
 	var organization service.AdminOrganization
-	if err := scanner.Scan(&organization.ID, &organization.AccountID, &organization.Name, &organization.Status,
+	if err := scanner.Scan(&organization.ID, &organization.AccountID, &organization.CompanyID, &organization.Name, &organization.Status,
 		&organization.OwnerUserID, &organization.OwnerEmail, &organization.MemberCount, &organization.MemberLimit,
 		&organization.EffectiveAt, &organization.CreatedAt); err != nil {
 		return nil, err
@@ -510,11 +507,11 @@ func (r *organizationRepository) DecideApplication(ctx context.Context, reviewer
 		return nil, err
 	}
 	var applicantID int64
-	var status, fee, currency, requestedName, normalizedName, englishName, normalizedEnglishName, companySize, accountID, email string
+	var status, fee, currency, requestedName, normalizedName, companySize, accountID, email string
 	if err := tx.QueryRowContext(ctx, `
-		SELECT a.applicant_user_id,a.status,a.fee_amount::text,a.fee_currency,a.requested_name,a.normalized_name,COALESCE(a.requested_english_name,''),COALESCE(a.normalized_english_name,''),COALESCE(a.company_size,''),u.account_id,COALESCE(u.email,'')
+		SELECT a.applicant_user_id,a.status,a.fee_amount::text,a.fee_currency,a.requested_name,a.normalized_name,COALESCE(a.company_size,''),u.account_id,COALESCE(u.email,'')
 		FROM company_upgrade_applications a JOIN users u ON u.id=a.applicant_user_id
-		WHERE a.id=$1 FOR UPDATE`, applicationID).Scan(&applicantID, &status, &fee, &currency, &requestedName, &normalizedName, &englishName, &normalizedEnglishName, &companySize, &accountID, &email); err != nil {
+		WHERE a.id=$1 FOR UPDATE`, applicationID).Scan(&applicantID, &status, &fee, &currency, &requestedName, &normalizedName, &companySize, &accountID, &email); err != nil {
 		return nil, service.ErrApplicationNotFound
 	}
 	if status != "pending" {
@@ -525,11 +522,39 @@ func (r *organizationRepository) DecideApplication(ctx context.Context, reviewer
 	event := service.NotificationEmailEventCompanyUpgradeRejected
 	if approve {
 		var orgID int64
-		if err := tx.QueryRowContext(ctx, `INSERT INTO organizations(account_id,owner_user_id,name,normalized_name,english_name,normalized_english_name,company_size,status,member_limit,effective_at) VALUES($1,$2,$3,$4,$5,$6,$7,'active',$8,$9) RETURNING id`, accountID, applicantID, requestedName, normalizedName, nullableString(englishName), nullableString(normalizedEnglishName), nullableString(companySize), memberLimit, now).Scan(&orgID); err != nil {
-			if isConstraintNamed(err, "organizations_normalized_english_name_unique") {
-				return nil, service.ErrCompanyEnglishNameTaken
+		var companyID string
+		// Companies get their own public identifier (a 'c' prefix followed by 15
+		// digits) generated independently from the numeric account_id, which the
+		// organization still shares with its IAM members. Retry on the unlikely
+		// collision against the unique index.
+		for attempt := 0; attempt < 20; attempt++ {
+			companyID, err = accountid.GenerateCompany()
+			if err != nil {
+				return nil, err
 			}
-			return nil, err
+			if _, err = tx.ExecContext(ctx, `SAVEPOINT org_company_id_retry`); err != nil {
+				return nil, err
+			}
+			err = tx.QueryRowContext(ctx, `INSERT INTO organizations(account_id,company_id,owner_user_id,name,normalized_name,company_size,status,member_limit,effective_at) VALUES($1,$2,$3,$4,$5,$6,'active',$7,$8) RETURNING id`, accountID, companyID, applicantID, requestedName, normalizedName, nullableString(companySize), memberLimit, now).Scan(&orgID)
+			if err == nil {
+				_, err = tx.ExecContext(ctx, `RELEASE SAVEPOINT org_company_id_retry`)
+				break
+			}
+			insertErr := err
+			if _, rollbackErr := tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT org_company_id_retry`); rollbackErr != nil {
+				return nil, fmt.Errorf("rollback company ID retry savepoint: %w", rollbackErr)
+			}
+			if _, releaseErr := tx.ExecContext(ctx, `RELEASE SAVEPOINT org_company_id_retry`); releaseErr != nil {
+				return nil, fmt.Errorf("release company ID retry savepoint: %w", releaseErr)
+			}
+			if !isConstraintNamed(insertErr, "organizations_company_id_unique") {
+				return nil, insertErr
+			}
+			accountid.RecordCollisionRetry()
+			err = insertErr
+		}
+		if err != nil {
+			return nil, fmt.Errorf("company ID collision retry limit exhausted: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO organization_memberships(organization_id,user_id,role,status) VALUES($1,$2,'owner','active')`, orgID, applicantID); err != nil {
 			return nil, err
@@ -684,8 +709,8 @@ func (r *organizationRepository) CreateIAMMember(ctx context.Context, ownerID in
 	}
 	defer func() { _ = tx.Rollback() }()
 	var orgID int64
-	var accountID, orgStatus string
-	if err := tx.QueryRowContext(ctx, `SELECT o.id,o.account_id,o.status FROM organizations o JOIN organization_memberships m ON m.organization_id=o.id WHERE m.user_id=$1 AND m.role='owner' AND m.status='active' FOR UPDATE OF o`, ownerID).Scan(&orgID, &accountID, &orgStatus); err != nil || orgStatus != "active" {
+	var accountID, companyID, orgStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT o.id,o.account_id,COALESCE(o.company_id,''),o.status FROM organizations o JOIN organization_memberships m ON m.organization_id=o.id WHERE m.user_id=$1 AND m.role='owner' AND m.status='active' FOR UPDATE OF o`, ownerID).Scan(&orgID, &accountID, &companyID, &orgStatus); err != nil || orgStatus != "active" {
 		return nil, service.ErrOrganizationPermission
 	}
 	var count int
@@ -741,7 +766,7 @@ func (r *organizationRepository) CreateIAMMember(ctx context.Context, ownerID in
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &service.IAMMember{UserID: userID, ExternalUserID: externalID, LoginName: user.LoginName, Principal: service.CanonicalIAMPrincipal(user.LoginName, accountID), Status: "active", Balance: "0", FrozenBalance: "0", RecoveryEmail: user.RecoveryEmail, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}, CreatedAt: time.Now().UTC()}, nil
+	return &service.IAMMember{UserID: userID, ExternalUserID: externalID, LoginName: user.LoginName, Principal: service.CanonicalIAMPrincipal(user.LoginName, companyID), Status: "active", Balance: "0", FrozenBalance: "0", RecoveryEmail: user.RecoveryEmail, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}, CreatedAt: time.Now().UTC()}, nil
 }
 
 func (r *organizationRepository) ListIAMMembers(ctx context.Context, actorID int64) ([]service.IAMMember, int, error) {
@@ -772,7 +797,7 @@ func (r *organizationRepository) ListIAMMembers(ctx context.Context, actorID int
 		if err := rows.Scan(&member.UserID, &member.ExternalUserID, &member.LoginName, &member.Status, &member.Balance, &member.FrozenBalance, &member.RecoveryEmail, &member.RecoveryVerifiedAt, &member.MustChangePassword, &member.CreatedAt, pq.Array(&member.PolicyNames)); err != nil {
 			return nil, 0, err
 		}
-		member.Principal = service.CanonicalIAMPrincipal(member.LoginName, org.AccountID)
+		member.Principal = service.CanonicalIAMPrincipal(member.LoginName, org.CompanyID)
 		members = append(members, member)
 	}
 	return members, memberLimit, rows.Err()
@@ -802,7 +827,7 @@ func (r *organizationRepository) GetIAMMember(ctx context.Context, actorID, memb
 	if err != nil {
 		return nil, err
 	}
-	member.Principal = service.CanonicalIAMPrincipal(member.LoginName, org.AccountID)
+	member.Principal = service.CanonicalIAMPrincipal(member.LoginName, org.CompanyID)
 	return &member, nil
 }
 
@@ -891,11 +916,12 @@ func (r *organizationRepository) UpdateIAMPassword(ctx context.Context, actorID,
 	return tx.Commit()
 }
 
-func (r *organizationRepository) FindIAMByPrincipal(ctx context.Context, loginName, accountID string) (*service.User, *service.OrganizationContext, error) {
+func (r *organizationRepository) FindIAMByPrincipal(ctx context.Context, loginName, companyID string) (*service.User, *service.OrganizationContext, error) {
 	var user service.User
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id,COALESCE(email,''),account_id,external_user_id,identity_type,login_name,password_hash,role,balance,frozen_balance,concurrency,status,must_change_password,COALESCE(recovery_email,''),recovery_email_verified_at,authz_generation,created_at,updated_at
-		FROM users WHERE account_id=$1 AND lower(login_name)=lower($2) AND identity_type='iam' AND deleted_at IS NULL`, accountID, loginName).
+		SELECT u.id,COALESCE(u.email,''),u.account_id,u.external_user_id,u.identity_type,u.login_name,u.password_hash,u.role,u.balance,u.frozen_balance,u.concurrency,u.status,u.must_change_password,COALESCE(u.recovery_email,''),u.recovery_email_verified_at,u.authz_generation,u.created_at,u.updated_at
+		FROM users u JOIN organizations o ON o.account_id=u.account_id
+		WHERE o.company_id=$1 AND lower(u.login_name)=lower($2) AND u.identity_type='iam' AND u.deleted_at IS NULL`, companyID, loginName).
 		Scan(&user.ID, &user.Email, &user.AccountID, &user.ExternalUserID, &user.IdentityType, &user.LoginName, &user.PasswordHash, &user.Role, &user.Balance, &user.FrozenBalance, &user.Concurrency, &user.Status, &user.MustChangePassword, &user.RecoveryEmail, &user.RecoveryEmailVerifiedAt, &user.AuthzGeneration, &user.CreatedAt, &user.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, service.ErrInvalidCredentials
@@ -904,6 +930,9 @@ func (r *organizationRepository) FindIAMByPrincipal(ctx context.Context, loginNa
 		return nil, nil, err
 	}
 	org, err := r.GetContextForUser(ctx, user.ID)
+	if err == nil && org != nil {
+		user.CompanyID = org.CompanyID
+	}
 	return &user, org, err
 }
 
@@ -1082,6 +1111,358 @@ func (r *organizationRepository) TransferBalance(ctx context.Context, ownerID, m
 	return tx.Commit()
 }
 
+// DepositToCompany moves funds between the owner's personal users.balance and
+// the organization's own balance. When withdraw is false funds flow from the
+// owner into the company balance (a top-up); when true they flow back. Only the
+// active owner of an active organization may perform this. The movement is
+// idempotent per (organization, idempotency key) and is recorded in
+// organization_financial_ledger with the user side referenced and the company
+// side left NULL.
+func (r *organizationRepository) DepositToCompany(ctx context.Context, ownerID int64, amount, idempotencyKey string, withdraw bool) (err error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var orgID, rootID int64
+	if err := tx.QueryRowContext(ctx, `SELECT o.id,o.owner_user_id FROM organizations o JOIN organization_memberships m ON m.organization_id=o.id WHERE m.user_id=$1 AND m.role='owner' AND m.status='active' AND o.status='active'`, ownerID).Scan(&orgID, &rootID); err != nil {
+		return service.ErrOrganizationPermission
+	}
+	// Lock the owner user row and the organization row (users first, then
+	// organizations) to keep a stable ordering with concurrent operations.
+	if _, err := tx.ExecContext(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, rootID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT id FROM organizations WHERE id=$1 FOR UPDATE`, orgID); err != nil {
+		return err
+	}
+	kind := "company_deposit"
+	if withdraw {
+		kind = "company_withdraw"
+	}
+	ledgerKey := fmt.Sprintf("organization:company_balance:%d:%s", orgID, idempotencyKey)
+	var existingKind, existingAmount string
+	var existingActor int64
+	replayErr := tx.QueryRowContext(ctx, `SELECT kind,actor_user_id,amount::text FROM organization_financial_ledger WHERE idempotency_key=$1`, ledgerKey).
+		Scan(&existingKind, &existingActor, &existingAmount)
+	if replayErr == nil {
+		requestedAmount, parseErr := decimal.NewFromString(amount)
+		persistedAmount, persistedParseErr := decimal.NewFromString(existingAmount)
+		if parseErr != nil || persistedParseErr != nil || existingKind != kind || existingActor != ownerID || !requestedAmount.Equal(persistedAmount) {
+			return infraerrors.Conflict("IDEMPOTENCY_KEY_CONFLICT", "idempotency key was already used for another company balance operation")
+		}
+		return nil
+	}
+	if !errors.Is(replayErr, sql.ErrNoRows) {
+		return replayErr
+	}
+	var userAfter, companyAfter string
+	var sourceUser, destinationUser sql.NullInt64
+	if !withdraw {
+		if err := tx.QueryRowContext(ctx, `UPDATE users SET balance=balance-$2::numeric,updated_at=NOW() WHERE id=$1 AND balance >= $2::numeric RETURNING balance::text`, rootID, amount).Scan(&userAfter); errors.Is(err, sql.ErrNoRows) {
+			return service.ErrInsufficientBalance
+		} else if err != nil {
+			return err
+		}
+		if err := tx.QueryRowContext(ctx, `UPDATE organizations SET balance=balance+$2::numeric,updated_at=NOW() WHERE id=$1 RETURNING balance::text`, orgID, amount).Scan(&companyAfter); err != nil {
+			return err
+		}
+		sourceUser = sql.NullInt64{Int64: rootID, Valid: true}
+	} else {
+		if err := tx.QueryRowContext(ctx, `UPDATE organizations SET balance=balance-$2::numeric,updated_at=NOW() WHERE id=$1 AND balance >= $2::numeric RETURNING balance::text`, orgID, amount).Scan(&companyAfter); errors.Is(err, sql.ErrNoRows) {
+			return service.ErrInsufficientBalance
+		} else if err != nil {
+			return err
+		}
+		if err := tx.QueryRowContext(ctx, `UPDATE users SET balance=balance+$2::numeric,updated_at=NOW() WHERE id=$1 RETURNING balance::text`, rootID, amount).Scan(&userAfter); err != nil {
+			return err
+		}
+		destinationUser = sql.NullInt64{Int64: rootID, Valid: true}
+	}
+	// The debited side is recorded as the source balance snapshot.
+	sourceAfter, destinationAfter := userAfter, companyAfter
+	if withdraw {
+		sourceAfter, destinationAfter = companyAfter, userAfter
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO organization_financial_ledger(idempotency_key,kind,organization_id,actor_user_id,source_user_id,destination_user_id,amount,currency,source_balance_after,destination_balance_after) VALUES($1,$2,$3,$4,$5,$6,$7::numeric,'USD',$8::numeric,$9::numeric)`, ledgerKey, kind, orgID, ownerID, sourceUser, destinationUser, amount, sourceAfter, destinationAfter); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO organization_audit_events(organization_id,actor_user_id,subject_user_id,action,result,correlation_id,metadata) VALUES($1,$2,$3,$4,'success',$5,jsonb_build_object('amount',$6::numeric))`, orgID, ownerID, rootID, "organization.balance."+kind, organizationCorrelationID(ctx), amount); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func organizationNullStringPtr(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+	v := value.String
+	return &v
+}
+
+// CreateOrganizationSubscription provisions a subscription plan (group) for the
+// caller's company. Only the active owner of an active organization may do
+// this. When validityDays is 0 the group's default validity is used.
+func (r *organizationRepository) CreateOrganizationSubscription(ctx context.Context, userID, groupID int64, validityDays int, notes string) (_ *service.OrganizationSubscription, err error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var orgID int64
+	if err := tx.QueryRowContext(ctx, `SELECT o.id FROM organizations o JOIN organization_memberships m ON m.organization_id=o.id WHERE m.user_id=$1 AND m.role='owner' AND m.status='active' AND o.status='active'`, userID).Scan(&orgID); err != nil {
+		return nil, service.ErrOrganizationPermission
+	}
+	var (
+		groupStatus, groupName, platform, subscriptionType string
+		groupDefaultValidity                               int
+		dailyLimit, weeklyLimit, monthlyLimit              sql.NullString
+	)
+	if err := tx.QueryRowContext(ctx, `SELECT status,name,platform,subscription_type,default_validity_days,daily_limit_usd::text,weekly_limit_usd::text,monthly_limit_usd::text FROM groups WHERE id=$1 AND deleted_at IS NULL`, groupID).
+		Scan(&groupStatus, &groupName, &platform, &subscriptionType, &groupDefaultValidity, &dailyLimit, &weeklyLimit, &monthlyLimit); errors.Is(err, sql.ErrNoRows) {
+		return nil, service.ErrSubscriptionGroupInvalid
+	} else if err != nil {
+		return nil, err
+	}
+	if groupStatus != "active" {
+		return nil, service.ErrSubscriptionGroupInvalid
+	}
+	if validityDays <= 0 {
+		validityDays = groupDefaultValidity
+	}
+	if validityDays <= 0 {
+		validityDays = 30
+	}
+	var (
+		id                                         int64
+		startsAt, expiresAt, assignedAt, createdAt time.Time
+		status                                     string
+	)
+	insertErr := tx.QueryRowContext(ctx, `INSERT INTO organization_subscriptions(organization_id,group_id,starts_at,expires_at,status,assigned_by,assigned_at,notes) VALUES($1,$2,NOW(),NOW()+($3::int * INTERVAL '1 day'),'active',$4,NOW(),NULLIF($5,'')) RETURNING id,starts_at,expires_at,status,assigned_at,created_at`, orgID, groupID, validityDays, userID, notes).
+		Scan(&id, &startsAt, &expiresAt, &status, &assignedAt, &createdAt)
+	if isUniqueViolation(insertErr) {
+		return nil, service.ErrOrgSubscriptionExists
+	} else if insertErr != nil {
+		return nil, insertErr
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO organization_audit_events(organization_id,actor_user_id,action,result,correlation_id,metadata) VALUES($1,$2,'organization.subscription.create','success',$3,jsonb_build_object('group_id',$4::bigint,'subscription_id',$5::bigint))`, orgID, userID, organizationCorrelationID(ctx), groupID, id); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	assignedBy := userID
+	return &service.OrganizationSubscription{
+		ID:               id,
+		OrganizationID:   orgID,
+		GroupID:          groupID,
+		GroupName:        groupName,
+		Platform:         platform,
+		SubscriptionType: subscriptionType,
+		StartsAt:         startsAt,
+		ExpiresAt:        expiresAt,
+		Status:           status,
+		DailyLimitUSD:    organizationNullStringPtr(dailyLimit),
+		WeeklyLimitUSD:   organizationNullStringPtr(weeklyLimit),
+		MonthlyLimitUSD:  organizationNullStringPtr(monthlyLimit),
+		DailyUsageUSD:    "0",
+		WeeklyUsageUSD:   "0",
+		MonthlyUsageUSD:  "0",
+		Notes:            notes,
+		AssignedBy:       &assignedBy,
+		AssignedAt:       assignedAt,
+		CreatedAt:        createdAt,
+	}, nil
+}
+
+// ListOrganizationSubscriptions returns the company's non-deleted subscriptions
+// joined with their group. Visible to the owner and to accounts holding
+// organization.finance.balance.read.
+func (r *organizationRepository) ListOrganizationSubscriptions(ctx context.Context, userID int64) ([]service.OrganizationSubscription, error) {
+	org, err := r.GetContextForUser(ctx, userID)
+	if err != nil || !org.Active() {
+		return nil, service.ErrOrganizationPermission
+	}
+	if !org.Owner() && !org.HasAction(service.ActionFinanceBalanceRead) {
+		return nil, service.ErrOrganizationPermission
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT s.id,s.organization_id,s.group_id,g.name,g.platform,g.subscription_type,s.starts_at,s.expires_at,s.status,g.daily_limit_usd::text,g.weekly_limit_usd::text,g.monthly_limit_usd::text,s.daily_usage_usd::text,s.weekly_usage_usd::text,s.monthly_usage_usd::text,COALESCE(s.notes,''),s.assigned_by,s.assigned_at,s.created_at FROM organization_subscriptions s JOIN groups g ON g.id=s.group_id WHERE s.organization_id=$1 AND s.deleted_at IS NULL ORDER BY s.created_at DESC`, org.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	subscriptions := make([]service.OrganizationSubscription, 0)
+	for rows.Next() {
+		var (
+			s                                     service.OrganizationSubscription
+			dailyLimit, weeklyLimit, monthlyLimit sql.NullString
+			assignedBy                            sql.NullInt64
+		)
+		if err := rows.Scan(&s.ID, &s.OrganizationID, &s.GroupID, &s.GroupName, &s.Platform, &s.SubscriptionType, &s.StartsAt, &s.ExpiresAt, &s.Status, &dailyLimit, &weeklyLimit, &monthlyLimit, &s.DailyUsageUSD, &s.WeeklyUsageUSD, &s.MonthlyUsageUSD, &s.Notes, &assignedBy, &s.AssignedAt, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		s.DailyLimitUSD = organizationNullStringPtr(dailyLimit)
+		s.WeeklyLimitUSD = organizationNullStringPtr(weeklyLimit)
+		s.MonthlyLimitUSD = organizationNullStringPtr(monthlyLimit)
+		if assignedBy.Valid {
+			by := assignedBy.Int64
+			s.AssignedBy = &by
+		}
+		subscriptions = append(subscriptions, s)
+	}
+	return subscriptions, rows.Err()
+}
+
+// CancelOrganizationSubscription soft-deletes a company subscription. Only the
+// active owner of an active organization may do this.
+func (r *organizationRepository) CancelOrganizationSubscription(ctx context.Context, userID, subscriptionID int64) (err error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var orgID int64
+	if err := tx.QueryRowContext(ctx, `SELECT o.id FROM organizations o JOIN organization_memberships m ON m.organization_id=o.id WHERE m.user_id=$1 AND m.role='owner' AND m.status='active' AND o.status='active'`, userID).Scan(&orgID); err != nil {
+		return service.ErrOrganizationPermission
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE organization_subscriptions SET status='cancelled',deleted_at=NOW(),updated_at=NOW() WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL`, subscriptionID, orgID)
+	if err != nil {
+		return err
+	}
+	if affected, _ := res.RowsAffected(); affected == 0 {
+		return service.ErrOrgSubscriptionNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO organization_audit_events(organization_id,actor_user_id,action,result,correlation_id,metadata) VALUES($1,$2,'organization.subscription.cancel','success',$3,jsonb_build_object('subscription_id',$4::bigint))`, orgID, userID, organizationCorrelationID(ctx), subscriptionID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+const organizationSubscriptionSelectColumns = `s.id,s.organization_id,s.group_id,g.name,g.platform,g.subscription_type,s.starts_at,s.expires_at,s.status,g.daily_limit_usd::text,g.weekly_limit_usd::text,g.monthly_limit_usd::text,s.daily_usage_usd::text,s.weekly_usage_usd::text,s.monthly_usage_usd::text,COALESCE(s.notes,''),s.assigned_by,s.assigned_at,s.created_at`
+
+func scanOrganizationSubscription(scan func(dest ...any) error) (service.OrganizationSubscription, error) {
+	var (
+		s                                     service.OrganizationSubscription
+		dailyLimit, weeklyLimit, monthlyLimit sql.NullString
+		assignedBy                            sql.NullInt64
+	)
+	if err := scan(&s.ID, &s.OrganizationID, &s.GroupID, &s.GroupName, &s.Platform, &s.SubscriptionType, &s.StartsAt, &s.ExpiresAt, &s.Status, &dailyLimit, &weeklyLimit, &monthlyLimit, &s.DailyUsageUSD, &s.WeeklyUsageUSD, &s.MonthlyUsageUSD, &s.Notes, &assignedBy, &s.AssignedAt, &s.CreatedAt); err != nil {
+		return service.OrganizationSubscription{}, err
+	}
+	s.DailyLimitUSD = organizationNullStringPtr(dailyLimit)
+	s.WeeklyLimitUSD = organizationNullStringPtr(weeklyLimit)
+	s.MonthlyLimitUSD = organizationNullStringPtr(monthlyLimit)
+	if assignedBy.Valid {
+		by := assignedBy.Int64
+		s.AssignedBy = &by
+	}
+	return s, nil
+}
+
+// ListActiveOrganizationSubscriptionsForMember returns the active, non-expired
+// company subscriptions that the given user (as an active member of an active
+// organization) may bind an enterprise API key to. Non-members receive an empty
+// list rather than an error so the create dialog can degrade gracefully.
+func (r *organizationRepository) ListActiveOrganizationSubscriptionsForMember(ctx context.Context, userID int64) ([]service.OrganizationSubscription, error) {
+	org, err := r.GetContextForUser(ctx, userID)
+	if err != nil || !org.Active() {
+		return []service.OrganizationSubscription{}, nil
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT `+organizationSubscriptionSelectColumns+` FROM organization_subscriptions s JOIN groups g ON g.id=s.group_id WHERE s.organization_id=$1 AND s.deleted_at IS NULL AND s.status='active' AND s.expires_at > NOW() AND g.status='active' AND g.deleted_at IS NULL ORDER BY s.created_at DESC`, org.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	subscriptions := make([]service.OrganizationSubscription, 0)
+	for rows.Next() {
+		s, err := scanOrganizationSubscription(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		subscriptions = append(subscriptions, s)
+	}
+	return subscriptions, rows.Err()
+}
+
+// GetActiveOrganizationSubscriptionForMember validates that the user is an active
+// member of the organization owning the subscription and that the subscription
+// is active and not expired, then returns it.
+func (r *organizationRepository) GetActiveOrganizationSubscriptionForMember(ctx context.Context, userID, subscriptionID int64) (*service.OrganizationSubscription, error) {
+	org, err := r.GetContextForUser(ctx, userID)
+	if err != nil || !org.Active() {
+		return nil, service.ErrOrganizationPermission
+	}
+	s, err := scanOrganizationSubscription(func(dest ...any) error {
+		return r.db.QueryRowContext(ctx, `SELECT `+organizationSubscriptionSelectColumns+` FROM organization_subscriptions s JOIN groups g ON g.id=s.group_id WHERE s.id=$1 AND s.organization_id=$2 AND s.deleted_at IS NULL AND s.status='active' AND s.expires_at > NOW() AND g.status='active' AND g.deleted_at IS NULL`, subscriptionID, org.OrganizationID).Scan(dest...)
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, service.ErrOrgSubscriptionNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// GetOrganizationSubscriptionForBilling loads a company subscription's usage
+// windows, counters and group limits for request-time validation and billing.
+func (r *organizationRepository) GetOrganizationSubscriptionForBilling(ctx context.Context, subscriptionID int64) (*service.OrgSubscriptionRuntime, error) {
+	var (
+		rt                     service.OrgSubscriptionRuntime
+		dWin, wWin, mWin       sql.NullTime
+		dLimit, wLimit, mLimit sql.NullFloat64
+	)
+	err := r.db.QueryRowContext(ctx, `SELECT s.id,s.organization_id,s.group_id,s.status,s.starts_at,s.expires_at,s.daily_window_start,s.weekly_window_start,s.monthly_window_start,s.daily_usage_usd,s.weekly_usage_usd,s.monthly_usage_usd,g.daily_limit_usd,g.weekly_limit_usd,g.monthly_limit_usd FROM organization_subscriptions s JOIN groups g ON g.id=s.group_id WHERE s.id=$1 AND s.deleted_at IS NULL`, subscriptionID).
+		Scan(&rt.ID, &rt.OrganizationID, &rt.GroupID, &rt.Status, &rt.StartsAt, &rt.ExpiresAt, &dWin, &wWin, &mWin, &rt.DailyUsageUSD, &rt.WeeklyUsageUSD, &rt.MonthlyUsageUSD, &dLimit, &wLimit, &mLimit)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, service.ErrOrgSubscriptionNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	if dWin.Valid {
+		rt.DailyWindowStart = &dWin.Time
+	}
+	if wWin.Valid {
+		rt.WeeklyWindowStart = &wWin.Time
+	}
+	if mWin.Valid {
+		rt.MonthlyWindowStart = &mWin.Time
+	}
+	if dLimit.Valid {
+		v := dLimit.Float64
+		rt.DailyLimitUSD = &v
+	}
+	if wLimit.Valid {
+		v := wLimit.Float64
+		rt.WeeklyLimitUSD = &v
+	}
+	if mLimit.Valid {
+		v := mLimit.Float64
+		rt.MonthlyLimitUSD = &v
+	}
+	return &rt, nil
+}
+
+// IncrementOrganizationSubscriptionUsage atomically adds costUSD to the
+// subscription's daily/weekly/monthly usage counters. It is window-aware:
+// a NULL or expired window is (re)started at NOW() with usage reset to costUSD,
+// mirroring the rolling-window semantics used for personal subscriptions.
+func (r *organizationRepository) IncrementOrganizationSubscriptionUsage(ctx context.Context, subscriptionID int64, costUSD float64) error {
+	if costUSD == 0 {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx, `UPDATE organization_subscriptions SET
+        daily_usage_usd = CASE WHEN daily_window_start IS NULL OR NOW() - daily_window_start >= INTERVAL '24 hours' THEN $2 ELSE daily_usage_usd + $2 END,
+        daily_window_start = CASE WHEN daily_window_start IS NULL OR NOW() - daily_window_start >= INTERVAL '24 hours' THEN NOW() ELSE daily_window_start END,
+        weekly_usage_usd = CASE WHEN weekly_window_start IS NULL OR NOW() - weekly_window_start >= INTERVAL '7 days' THEN $2 ELSE weekly_usage_usd + $2 END,
+        weekly_window_start = CASE WHEN weekly_window_start IS NULL OR NOW() - weekly_window_start >= INTERVAL '7 days' THEN NOW() ELSE weekly_window_start END,
+        monthly_usage_usd = CASE WHEN monthly_window_start IS NULL OR NOW() - monthly_window_start >= INTERVAL '30 days' THEN $2 ELSE monthly_usage_usd + $2 END,
+        monthly_window_start = CASE WHEN monthly_window_start IS NULL OR NOW() - monthly_window_start >= INTERVAL '30 days' THEN NOW() ELSE monthly_window_start END,
+        updated_at = NOW()
+        WHERE id = $1 AND deleted_at IS NULL`, subscriptionID, costUSD)
+	return err
+}
+
 func (r *organizationRepository) FinanceSummary(ctx context.Context, userID int64) (*service.FinanceSummary, error) {
 	org, err := r.GetContextForUser(ctx, userID)
 	if err != nil || !org.Active() {
@@ -1116,7 +1497,28 @@ func (r *organizationRepository) FinanceSummary(ctx context.Context, userID int6
 		return nil, err
 	}
 	total = total.Add(frozenValue)
-	return &service.FinanceSummary{BalanceSource: source, Available: &available, Frozen: &frozen, Total: organizationStringPtr(total.String())}, nil
+	summary := &service.FinanceSummary{BalanceSource: source, Available: &available, Frozen: &frozen, Total: organizationStringPtr(total.String())}
+	// Privileged viewers additionally see the company's own balance, which is
+	// independent from the personal balance reported above.
+	if viewRoot {
+		var companyAvailable, companyFrozen string
+		if err := r.db.QueryRowContext(ctx, `SELECT balance::text,frozen_balance::text FROM organizations WHERE id=$1`, org.OrganizationID).Scan(&companyAvailable, &companyFrozen); err != nil {
+			return nil, err
+		}
+		companyTotal, err := decimal.NewFromString(companyAvailable)
+		if err != nil {
+			return nil, err
+		}
+		companyFrozenValue, err := decimal.NewFromString(companyFrozen)
+		if err != nil {
+			return nil, err
+		}
+		companyTotal = companyTotal.Add(companyFrozenValue)
+		summary.CompanyAvailable = &companyAvailable
+		summary.CompanyFrozen = &companyFrozen
+		summary.CompanyTotal = organizationStringPtr(companyTotal.String())
+	}
+	return summary, nil
 }
 
 func organizationStringPtr(value string) *string { return &value }
