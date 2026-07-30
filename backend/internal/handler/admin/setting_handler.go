@@ -237,6 +237,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                                     settings.DefaultConcurrency,
 		DefaultBalance:                                         settings.DefaultBalance,
+		PrivateGroupExpiresDate:                                settings.PrivateGroupExpiresDate,
 		RiskControlEnabled:                                     settings.RiskControlEnabled,
 		CyberSessionBlockEnabled:                               settings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds:                            settings.CyberSessionBlockTTLSeconds,

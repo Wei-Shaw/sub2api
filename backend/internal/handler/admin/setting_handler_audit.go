@@ -305,6 +305,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DefaultBalance != after.DefaultBalance {
 		changed = append(changed, "default_balance")
 	}
+	if before.PrivateGroupExpiresDate != after.PrivateGroupExpiresDate {
+		changed = append(changed, "private_group_expires_date")
+	}
 	if before.AffiliateRebateRate != after.AffiliateRebateRate {
 		changed = append(changed, "affiliate_rebate_rate")
 	}

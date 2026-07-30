@@ -1731,6 +1731,22 @@ func (stubGroupRepo) ExistsByName(ctx context.Context, name string) (bool, error
 	return false, errors.New("not implemented")
 }
 
+func (stubGroupRepo) GetByName(ctx context.Context, name string) (*service.Group, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubGroupRepo) ListActiveExcludingPrivate(ctx context.Context) ([]service.Group, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubGroupRepo) ListByIDs(ctx context.Context, ids []int64) ([]service.Group, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubGroupRepo) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
+	return errors.New("not implemented")
+}
+
 func (stubGroupRepo) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {
 	return 0, 0, errors.New("not implemented")
 }

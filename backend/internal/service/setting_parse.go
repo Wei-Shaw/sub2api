@@ -123,6 +123,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoUsernamePath:           "",
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeyPrivateGroupExpiresDate:                   "",
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
@@ -358,6 +359,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.DefaultBalance = balance
 	} else {
 		result.DefaultBalance = s.cfg.Default.UserBalance
+	}
+	// 非法历史值读侧降级为空（未配置），写侧仍会校验
+	if date, err := normalizePrivateGroupExpiresDate(settings[SettingKeyPrivateGroupExpiresDate]); err == nil {
+		result.PrivateGroupExpiresDate = date
+	} else {
+		result.PrivateGroupExpiresDate = ""
 	}
 	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebateRate], 64); err == nil {
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)

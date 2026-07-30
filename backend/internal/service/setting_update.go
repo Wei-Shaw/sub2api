@@ -338,6 +338,13 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
 	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
+	// 私有组绝对到期日：空串显式写入以支持「清空」；未发送字段由 OmittedSettingKeys 剔除
+	privateExpiresDate, err := normalizePrivateGroupExpiresDate(settings.PrivateGroupExpiresDate)
+	if err != nil {
+		return nil, err
+	}
+	settings.PrivateGroupExpiresDate = privateExpiresDate
+	updates[SettingKeyPrivateGroupExpiresDate] = privateExpiresDate
 	settings.AffiliateRebateRate = clampAffiliateRebateRate(settings.AffiliateRebateRate)
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {

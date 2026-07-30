@@ -252,6 +252,22 @@ func (s *groupRepoStub) ExistsByName(ctx context.Context, name string) (bool, er
 	panic("unexpected ExistsByName call")
 }
 
+func (s *groupRepoStub) GetByName(ctx context.Context, name string) (*Group, error) {
+	panic("unexpected GetByName call")
+}
+
+func (s *groupRepoStub) ListActiveExcludingPrivate(ctx context.Context) ([]Group, error) {
+	panic("unexpected ListActiveExcludingPrivate call")
+}
+
+func (s *groupRepoStub) ListByIDs(ctx context.Context, ids []int64) ([]Group, error) {
+	panic("unexpected ListByIDs call")
+}
+
+func (s *groupRepoStub) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
+	panic("unexpected EnqueueGroupChanged call")
+}
+
 func (s *groupRepoStub) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {
 	panic("unexpected GetAccountCount call")
 }

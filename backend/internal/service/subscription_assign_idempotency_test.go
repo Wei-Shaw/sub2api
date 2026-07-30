@@ -78,6 +78,18 @@ func (groupRepoNoop) ListActiveByPlatform(context.Context, string) ([]Group, err
 func (groupRepoNoop) ExistsByName(context.Context, string) (bool, error) {
 	panic("unexpected ExistsByName call")
 }
+func (groupRepoNoop) GetByName(context.Context, string) (*Group, error) {
+	panic("unexpected GetByName call")
+}
+func (groupRepoNoop) ListActiveExcludingPrivate(context.Context) ([]Group, error) {
+	panic("unexpected ListActiveExcludingPrivate call")
+}
+func (groupRepoNoop) ListByIDs(context.Context, []int64) ([]Group, error) {
+	panic("unexpected ListByIDs call")
+}
+func (groupRepoNoop) EnqueueGroupChanged(context.Context, int64) error {
+	panic("unexpected EnqueueGroupChanged call")
+}
 func (groupRepoNoop) GetAccountCount(context.Context, int64) (int64, int64, error) {
 	panic("unexpected GetAccountCount call")
 }

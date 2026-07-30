@@ -11,6 +11,10 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 // IsRegistrationEnabled 检查是否开放注册
@@ -260,6 +264,54 @@ func (s *SettingService) GetDefaultBalance(ctx context.Context) float64 {
 		return v
 	}
 	return s.cfg.Default.UserBalance
+}
+
+// GetPrivateGroupExpiresDate 读取私有专属分组绝对到期日（YYYY-MM-DD）。
+// ok=false 表示未配置（空串或缺失）。
+func (s *SettingService) GetPrivateGroupExpiresDate(ctx context.Context) (date string, ok bool) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyPrivateGroupExpiresDate)
+	if err != nil {
+		return "", false
+	}
+	date, err = normalizePrivateGroupExpiresDate(value)
+	if err != nil || date == "" {
+		return "", false
+	}
+	return date, true
+}
+
+// ResolvePrivateGroupExpiresAt 将配置的绝对到期日解析为 Asia/Shanghai 当日 23:59:59。
+// 未配置时 ok=false，expiresAt 为零值；调用方应回落为 now + expired。
+func (s *SettingService) ResolvePrivateGroupExpiresAt(ctx context.Context) (expiresAt time.Time, ok bool) {
+	date, ok := s.GetPrivateGroupExpiresDate(ctx)
+	if !ok {
+		return time.Time{}, false
+	}
+	loc := timezone.Location()
+	// 优先使用显式 Asia/Shanghai，保证与产品契约一致；timezone 未初始化时回落 Location()。
+	if shanghai, err := time.LoadLocation("Asia/Shanghai"); err == nil {
+		loc = shanghai
+	}
+	t, err := time.ParseInLocation("2006-01-02", date, loc)
+	if err != nil {
+		return time.Time{}, false
+	}
+	// 当日结束 23:59:59
+	return time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, loc), true
+}
+
+// normalizePrivateGroupExpiresDate 校验并规范化私有组到期日。
+// 空串合法（表示清空/未配置）；非空必须为 YYYY-MM-DD。
+func normalizePrivateGroupExpiresDate(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	t, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return "", infraerrors.BadRequest("INVALID_PRIVATE_GROUP_EXPIRES_DATE", "private_group_expires_date must be YYYY-MM-DD or empty")
+	}
+	return t.Format("2006-01-02"), nil
 }
 
 // GetDefaultUserRPMLimit 获取新用户默认 RPM 限制（0 = 不限制）。未配置则返回 0。

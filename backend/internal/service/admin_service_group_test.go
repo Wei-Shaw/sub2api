@@ -127,6 +127,22 @@ func (s *groupRepoStubForAdmin) ExistsByName(_ context.Context, _ string) (bool,
 	panic("unexpected ExistsByName call")
 }
 
+func (s *groupRepoStubForAdmin) GetByName(_ context.Context, _ string) (*Group, error) {
+	panic("unexpected GetByName call")
+}
+
+func (s *groupRepoStubForAdmin) ListActiveExcludingPrivate(_ context.Context) ([]Group, error) {
+	panic("unexpected ListActiveExcludingPrivate call")
+}
+
+func (s *groupRepoStubForAdmin) ListByIDs(_ context.Context, _ []int64) ([]Group, error) {
+	panic("unexpected ListByIDs call")
+}
+
+func (s *groupRepoStubForAdmin) EnqueueGroupChanged(_ context.Context, _ int64) error {
+	panic("unexpected EnqueueGroupChanged call")
+}
+
 func (s *groupRepoStubForAdmin) GetAccountCount(_ context.Context, _ int64) (int64, int64, error) {
 	panic("unexpected GetAccountCount call")
 }
@@ -1139,6 +1155,22 @@ func (s *groupRepoStubForFallbackCycle) ExistsByName(_ context.Context, _ string
 	panic("unexpected ExistsByName call")
 }
 
+func (s *groupRepoStubForFallbackCycle) GetByName(_ context.Context, _ string) (*Group, error) {
+	panic("unexpected GetByName call")
+}
+
+func (s *groupRepoStubForFallbackCycle) ListActiveExcludingPrivate(_ context.Context) ([]Group, error) {
+	panic("unexpected ListActiveExcludingPrivate call")
+}
+
+func (s *groupRepoStubForFallbackCycle) ListByIDs(_ context.Context, _ []int64) ([]Group, error) {
+	panic("unexpected ListByIDs call")
+}
+
+func (s *groupRepoStubForFallbackCycle) EnqueueGroupChanged(_ context.Context, _ int64) error {
+	panic("unexpected EnqueueGroupChanged call")
+}
+
 func (s *groupRepoStubForFallbackCycle) GetAccountCount(_ context.Context, _ int64) (int64, int64, error) {
 	panic("unexpected GetAccountCount call")
 }
@@ -1212,6 +1244,22 @@ func (s *groupRepoStubForInvalidRequestFallback) ListActiveByPlatform(_ context.
 
 func (s *groupRepoStubForInvalidRequestFallback) ExistsByName(_ context.Context, _ string) (bool, error) {
 	panic("unexpected ExistsByName call")
+}
+
+func (s *groupRepoStubForInvalidRequestFallback) GetByName(_ context.Context, _ string) (*Group, error) {
+	panic("unexpected GetByName call")
+}
+
+func (s *groupRepoStubForInvalidRequestFallback) ListActiveExcludingPrivate(_ context.Context) ([]Group, error) {
+	panic("unexpected ListActiveExcludingPrivate call")
+}
+
+func (s *groupRepoStubForInvalidRequestFallback) ListByIDs(_ context.Context, _ []int64) ([]Group, error) {
+	panic("unexpected ListByIDs call")
+}
+
+func (s *groupRepoStubForInvalidRequestFallback) EnqueueGroupChanged(_ context.Context, _ int64) error {
+	panic("unexpected EnqueueGroupChanged call")
 }
 
 func (s *groupRepoStubForInvalidRequestFallback) GetAccountCount(_ context.Context, _ int64) (int64, int64, error) {

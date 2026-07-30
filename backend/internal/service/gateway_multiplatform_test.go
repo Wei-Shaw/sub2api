@@ -320,6 +320,18 @@ func (m *mockGroupRepoForGateway) ListActiveByPlatform(ctx context.Context, plat
 func (m *mockGroupRepoForGateway) ExistsByName(ctx context.Context, name string) (bool, error) {
 	return false, nil
 }
+func (m *mockGroupRepoForGateway) GetByName(ctx context.Context, name string) (*Group, error) {
+	return nil, nil
+}
+func (m *mockGroupRepoForGateway) ListActiveExcludingPrivate(ctx context.Context) ([]Group, error) {
+	return nil, nil
+}
+func (m *mockGroupRepoForGateway) ListByIDs(ctx context.Context, ids []int64) ([]Group, error) {
+	return nil, nil
+}
+func (m *mockGroupRepoForGateway) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
+	return nil
+}
 func (m *mockGroupRepoForGateway) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {
 	return 0, 0, nil
 }

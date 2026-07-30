@@ -53,6 +53,18 @@ func (s *stubGroupRepoForAvailable) ListActiveByPlatform(ctx context.Context, pl
 func (s *stubGroupRepoForAvailable) ExistsByName(ctx context.Context, name string) (bool, error) {
 	return false, nil
 }
+func (s *stubGroupRepoForAvailable) GetByName(ctx context.Context, name string) (*Group, error) {
+	return nil, nil
+}
+func (s *stubGroupRepoForAvailable) ListActiveExcludingPrivate(ctx context.Context) ([]Group, error) {
+	return s.ListActive(ctx)
+}
+func (s *stubGroupRepoForAvailable) ListByIDs(ctx context.Context, ids []int64) ([]Group, error) {
+	return nil, nil
+}
+func (s *stubGroupRepoForAvailable) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
+	return nil
+}
 func (s *stubGroupRepoForAvailable) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {
 	return 0, 0, nil
 }

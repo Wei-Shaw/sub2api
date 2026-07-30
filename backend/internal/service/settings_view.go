@@ -146,8 +146,11 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	DefaultConcurrency           int
-	DefaultBalance               float64
+	DefaultConcurrency int
+	DefaultBalance     float64
+	// PrivateGroupExpiresDate 私有专属平台分组订阅统一绝对到期日（YYYY-MM-DD）。
+	// 空串表示未配置：新用户 provision 时 expires_at=now 且 status=expired。
+	PrivateGroupExpiresDate      string
 	RiskControlEnabled           bool
 	CyberSessionBlockEnabled     bool
 	CyberSessionBlockTTLSeconds  int

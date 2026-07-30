@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -150,8 +151,10 @@ type UpdateSettingsRequest struct {
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
 	// 默认配置
-	DefaultConcurrency                        int                               `json:"default_concurrency"`
-	DefaultBalance                            float64                           `json:"default_balance"`
+	DefaultConcurrency int     `json:"default_concurrency"`
+	DefaultBalance     float64 `json:"default_balance"`
+	// PrivateGroupExpiresDate 私有专属分组绝对到期日（YYYY-MM-DD）；空串清空；字段省略由 OmittedSettingKeys 保留库值
+	PrivateGroupExpiresDate                   string                            `json:"private_group_expires_date"`
 	AffiliateRebateRate                       *float64                          `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
@@ -491,6 +494,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if req.DefaultBalance < 0 {
 		req.DefaultBalance = 0
+	}
+	// 校验 private_group_expires_date（仅当请求显式携带该字段时）
+	if _, sent := sentFields["private_group_expires_date"]; sent {
+		if _, err := time.Parse("2006-01-02", strings.TrimSpace(req.PrivateGroupExpiresDate)); err != nil && strings.TrimSpace(req.PrivateGroupExpiresDate) != "" {
+			response.BadRequest(c, "private_group_expires_date must be YYYY-MM-DD or empty")
+			return
+		}
+		req.PrivateGroupExpiresDate = strings.TrimSpace(req.PrivateGroupExpiresDate)
 	}
 	affiliateRebateRate := previousSettings.AffiliateRebateRate
 	if req.AffiliateRebateRate != nil {
@@ -1421,6 +1432,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        customEndpointsJSON,
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
+		PrivateGroupExpiresDate:                req.PrivateGroupExpiresDate,
 		AffiliateRebateRate:                    affiliateRebateRate,
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
@@ -1950,6 +1962,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                                         updatedSettings.DefaultBalance,
+		PrivateGroupExpiresDate:                                updatedSettings.PrivateGroupExpiresDate,
 		AffiliateRebateRate:                                    updatedSettings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:                             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:                            updatedSettings.AffiliateRebateDurationDays,

@@ -247,6 +247,18 @@ func (m *mockGroupRepoForGemini) ListActiveByPlatform(ctx context.Context, platf
 func (m *mockGroupRepoForGemini) ExistsByName(ctx context.Context, name string) (bool, error) {
 	return false, nil
 }
+func (m *mockGroupRepoForGemini) GetByName(ctx context.Context, name string) (*Group, error) {
+	return nil, nil
+}
+func (m *mockGroupRepoForGemini) ListActiveExcludingPrivate(ctx context.Context) ([]Group, error) {
+	return nil, nil
+}
+func (m *mockGroupRepoForGemini) ListByIDs(ctx context.Context, ids []int64) ([]Group, error) {
+	return nil, nil
+}
+func (m *mockGroupRepoForGemini) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
+	return nil
+}
 func (m *mockGroupRepoForGemini) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {
 	return 0, 0, nil
 }

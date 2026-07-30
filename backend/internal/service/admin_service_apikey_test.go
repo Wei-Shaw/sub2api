@@ -248,6 +248,18 @@ func (s *groupRepoStubForGroupUpdate) ListActiveByPlatform(context.Context, stri
 func (s *groupRepoStubForGroupUpdate) ExistsByName(context.Context, string) (bool, error) {
 	panic("unexpected")
 }
+func (s *groupRepoStubForGroupUpdate) GetByName(context.Context, string) (*Group, error) {
+	panic("unexpected")
+}
+func (s *groupRepoStubForGroupUpdate) ListActiveExcludingPrivate(context.Context) ([]Group, error) {
+	panic("unexpected")
+}
+func (s *groupRepoStubForGroupUpdate) ListByIDs(context.Context, []int64) ([]Group, error) {
+	panic("unexpected")
+}
+func (s *groupRepoStubForGroupUpdate) EnqueueGroupChanged(context.Context, int64) error {
+	panic("unexpected")
+}
 func (s *groupRepoStubForGroupUpdate) GetAccountCount(context.Context, int64) (int64, int64, error) {
 	panic("unexpected")
 }

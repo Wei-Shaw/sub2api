@@ -215,6 +215,69 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 	return s.assignOrExtendSubscription(ctx, input, false)
 }
 
+// EnsureSubscriptionWithExpiresAt 幂等确保用户在订阅组上存在订阅记录。
+// 与 AssignOrExtendSubscription 的「天数续期」语义不同：
+//   - 已存在（含任意 status）：原样返回，不改 expires_at / status
+//   - 不存在：按绝对 expiresAt 创建；expiresAt.After(now) → active，否则 expired
+//
+// expiresAt 会被 clamp 到 MaxExpiresAt（UTC 2099-12-31）。
+func (s *SubscriptionService) EnsureSubscriptionWithExpiresAt(
+	ctx context.Context,
+	userID, groupID int64,
+	expiresAt time.Time,
+	notes string,
+) (*UserSubscription, error) {
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("group not found: %w", err)
+	}
+	if !group.IsSubscriptionType() {
+		return nil, ErrGroupNotSubscriptionType
+	}
+
+	existingSub, err := s.userSubRepo.GetByUserIDAndGroupID(ctx, userID, groupID)
+	if err == nil && existingSub != nil {
+		// 幂等：已存在不改期
+		return existingSub, nil
+	}
+
+	now := time.Now()
+	if expiresAt.After(MaxExpiresAt) {
+		expiresAt = MaxExpiresAt
+	}
+
+	status := SubscriptionStatusExpired
+	if expiresAt.After(now) {
+		status = SubscriptionStatusActive
+	}
+
+	sub := &UserSubscription{
+		UserID:     userID,
+		GroupID:    groupID,
+		StartsAt:   now,
+		ExpiresAt:  expiresAt,
+		Status:     status,
+		AssignedAt: now,
+		Notes:      notes,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+
+	if err := s.userSubRepo.Create(ctx, sub); err != nil {
+		// 并发创建时可能撞唯一约束：重读返回已有记录
+		if existing, getErr := s.userSubRepo.GetByUserIDAndGroupID(ctx, userID, groupID); getErr == nil && existing != nil {
+			return existing, nil
+		}
+		return nil, err
+	}
+
+	// 与 AssignOrExtend 一致：同步失效 assignment 缓存
+	s.maybeInvalidateAssignmentCaches(userID, groupID, false)
+
+	// 重新获取完整订阅信息（包含关联）
+	return s.userSubRepo.GetByID(ctx, sub.ID)
+}
+
 func (s *SubscriptionService) assignOrExtendSubscription(ctx context.Context, input *AssignSubscriptionInput, deferCacheInvalidation bool) (*UserSubscription, bool, error) {
 	// 检查分组是否存在且为订阅类型
 	group, err := s.groupRepo.GetByID(ctx, input.GroupID)
