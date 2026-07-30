@@ -510,6 +510,7 @@ func cloneActiveConfig(cfg ActiveConfig) ActiveConfig {
 	cfg.Scanners = append([]string(nil), cfg.Scanners...)
 	cfg.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
 	cfg.ModelFilter = cloneModelFilter(cfg.ModelFilter)
+	cfg.modelFilterSet = modelFilterSet(cfg.ModelFilter.Models)
 	cfg.Endpoints = append([]ActiveEndpoint(nil), cfg.Endpoints...)
 	return cfg
 }

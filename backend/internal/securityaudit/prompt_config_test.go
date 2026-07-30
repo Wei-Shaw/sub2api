@@ -440,6 +440,17 @@ func TestPromptAuditModelFilterMatchesContentModerationSemantics(t *testing.T) {
 	err := validateUpdateConfigRequest(UpdateConfigRequest{Strategy: "priority", WorkerCount: 1, QueueCapacity: 1,
 		Scanners: []string{"pii"}, AllGroups: true, ModelFilter: PromptAuditModelFilter{Type: ModelFilterInclude}})
 	require.Equal(t, "prompt_audit_models_required", infraerrors.Reason(err))
+
+	_, err = ParseStorageConfig(`{"model_filter":{"type":"includee","models":["gpt-5"]}}`)
+	require.Equal(t, "prompt_audit_invalid_model_filter", infraerrors.Reason(err))
+
+	storage := DefaultStorageConfig()
+	storage.ModelFilter = PromptAuditModelFilter{Type: ModelFilterInclude, Models: []string{"GPT-5", "claude-sonnet"}}
+	active, err := ActiveFromStorage(storage, true, prefixEncryptor{})
+	require.NoError(t, err)
+	require.Len(t, active.modelFilterSet, 2)
+	require.True(t, active.IncludesModel("gpt-5"))
+	require.False(t, active.IncludesModel("gpt-4"))
 }
 
 func TestContinueOnGuardFailureIsOnlyPersistedForBlockingMode(t *testing.T) {
@@ -471,6 +482,9 @@ func TestUpdateConfigStrictBoundsAndKnownValues(t *testing.T) {
 		{name: "unknown scanner", mutate: func(req *UpdateConfigRequest) { req.Scanners = []string{"made_up"} }, reason: "prompt_audit_invalid_scanner"},
 		{name: "group required", mutate: func(req *UpdateConfigRequest) { req.AllGroups = false; req.GroupIDs = nil }, reason: "prompt_audit_groups_required"},
 		{name: "group positive", mutate: func(req *UpdateConfigRequest) { req.AllGroups = false; req.GroupIDs = []int64{0} }, reason: "prompt_audit_invalid_group"},
+		{name: "invalid model filter", mutate: func(req *UpdateConfigRequest) {
+			req.ModelFilter = PromptAuditModelFilter{Type: "includee", Models: []string{"gpt-5"}}
+		}, reason: "prompt_audit_invalid_model_filter"},
 		{name: "timeout low", mutate: func(req *UpdateConfigRequest) { req.Endpoints[0].TimeoutMS = MinTimeoutMS - 1 }, reason: "prompt_audit_invalid_timeout"},
 		{name: "timeout high", mutate: func(req *UpdateConfigRequest) { req.Endpoints[0].TimeoutMS = MaxTimeoutMS + 1 }, reason: "prompt_audit_invalid_timeout"},
 		{name: "input low", mutate: func(req *UpdateConfigRequest) { req.Endpoints[0].InputLimit = MinInputLimit - 1 }, reason: "prompt_audit_invalid_input_limit"},

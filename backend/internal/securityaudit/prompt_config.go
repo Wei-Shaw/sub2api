@@ -129,6 +129,7 @@ type ActiveConfig struct {
 	AllGroups              bool
 	GroupIDs               []int64
 	ModelFilter            PromptAuditModelFilter
+	modelFilterSet         map[string]struct{}
 	Endpoints              []ActiveEndpoint
 	ConfigVersion          int64
 	UpdatedAt              time.Time
@@ -284,6 +285,9 @@ func normalizeStorageConfig(cfg *storageConfig) {
 
 func validateStorageConfig(cfg storageConfig) error {
 	cfg.ModelFilter = normalizeModelFilter(cfg.ModelFilter)
+	if err := validateModelFilter(cfg.ModelFilter); err != nil {
+		return err
+	}
 	if cfg.BlockingEnabled && !cfg.Enabled {
 		return infraerrors.BadRequest(ErrorCodeRequiresEnabled, "开启同步阻止前必须先启用提示词审计")
 	}
@@ -298,9 +302,6 @@ func validateStorageConfig(cfg storageConfig) error {
 	}
 	if !cfg.AllGroups && len(cfg.GroupIDs) == 0 {
 		return infraerrors.BadRequest("prompt_audit_groups_required", "指定分组模式至少需要选择一个分组")
-	}
-	if cfg.ModelFilter.Type != ModelFilterAll && len(cfg.ModelFilter.Models) == 0 {
-		return infraerrors.BadRequest("prompt_audit_models_required", "指定或排除模型时至少需要配置一个模型")
 	}
 	if len(cfg.Scanners) == 0 {
 		return infraerrors.BadRequest("prompt_audit_scanners_required", "至少需要启用一个风险分类")
@@ -366,8 +367,8 @@ func validateUpdateConfigRequest(req UpdateConfigRequest) error {
 		}
 	}
 	filter := normalizeModelFilter(req.ModelFilter)
-	if filter.Type != ModelFilterAll && len(filter.Models) == 0 {
-		return infraerrors.BadRequest("prompt_audit_models_required", "指定或排除模型时至少需要配置一个模型")
+	if err := validateModelFilter(filter); err != nil {
+		return err
 	}
 	for _, endpoint := range req.Endpoints {
 		if endpoint.TimeoutMS < MinTimeoutMS || endpoint.TimeoutMS > MaxTimeoutMS {
@@ -402,15 +403,28 @@ func (cfg ActiveConfig) IncludesGroup(groupID *int64) bool {
 }
 
 func (cfg ActiveConfig) IncludesModel(model string) bool {
-	filter := normalizeModelFilter(cfg.ModelFilter)
-	switch filter.Type {
-	case ModelFilterInclude:
-		return modelFilterContains(filter.Models, model)
-	case ModelFilterExclude:
-		return !modelFilterContains(filter.Models, model)
-	default:
+	switch cfg.ModelFilter.Type {
+	case "", ModelFilterAll:
 		return true
+	case ModelFilterInclude:
+		return cfg.modelFilterIncludes(model)
+	case ModelFilterExclude:
+		return !cfg.modelFilterIncludes(model)
+	default:
+		return false
 	}
+}
+
+func (cfg ActiveConfig) modelFilterIncludes(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return false
+	}
+	if cfg.modelFilterSet != nil {
+		_, ok := cfg.modelFilterSet[model]
+		return ok
+	}
+	return modelFilterContains(cfg.ModelFilter.Models, model)
 }
 
 func (cfg ActiveConfig) EnabledEndpoints() []ActiveEndpoint {
@@ -471,12 +485,13 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 }
 
 func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor SecretEncryptor) (ActiveConfig, error) {
+	modelFilter := cloneModelFilter(cfg.ModelFilter)
 	active := ActiveConfig{
 		RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled,
 		BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly, ContinueOnGuardFailure: cfg.ContinueOnGuardFailure,
 		StorePassEvents: cfg.StorePassEvents, Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
 		QueueCapacity: cfg.QueueCapacity, Scanners: append([]string(nil), cfg.Scanners...), AllGroups: cfg.AllGroups,
-		GroupIDs: append([]int64(nil), cfg.GroupIDs...), ModelFilter: cloneModelFilter(cfg.ModelFilter), ConfigVersion: cfg.ConfigVersion,
+		GroupIDs: append([]int64(nil), cfg.GroupIDs...), ModelFilter: modelFilter, modelFilterSet: modelFilterSet(modelFilter.Models), ConfigVersion: cfg.ConfigVersion,
 		UpdatedAt: cfg.UpdatedAt, UpdatedBy: cfg.UpdatedBy, ChangeSummary: cfg.ChangeSummary,
 		Endpoints: make([]ActiveEndpoint, 0, len(cfg.Endpoints)),
 	}
@@ -563,14 +578,36 @@ func cloneModelFilter(filter PromptAuditModelFilter) PromptAuditModelFilter {
 }
 
 func normalizeModelFilterType(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case ModelFilterInclude:
-		return ModelFilterInclude
-	case ModelFilterExclude:
-		return ModelFilterExclude
-	default:
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
 		return ModelFilterAll
 	}
+	return value
+}
+
+func validateModelFilter(filter PromptAuditModelFilter) error {
+	switch filter.Type {
+	case ModelFilterAll:
+		return nil
+	case ModelFilterInclude, ModelFilterExclude:
+		if len(filter.Models) == 0 {
+			return infraerrors.BadRequest("prompt_audit_models_required", "指定或排除模型时至少需要配置一个模型")
+		}
+		return nil
+	default:
+		return infraerrors.BadRequest("prompt_audit_invalid_model_filter", "提示词审计模型范围无效")
+	}
+}
+
+func modelFilterSet(models []string) map[string]struct{} {
+	if len(models) == 0 {
+		return nil
+	}
+	result := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		result[strings.ToLower(model)] = struct{}{}
+	}
+	return result
 }
 
 func canonicalModelNames(values []string) []string {
