@@ -229,6 +229,15 @@ docker compose down -v
 
 ### Environment Variables
 
+`deploy/.env` now serves two purposes for Docker deployments:
+
+- Compose variable substitution such as `${SERVER_PORT}`
+- Container environment injection for `sub2api` via `env_file`
+
+This means application-level settings in `.env` (for example `LOG_*`,
+`SERVER_H2C_*`, `SERVER_MAX_REQUEST_BODY_SIZE`) are available to the app
+without needing to duplicate each one in `docker-compose*.yml`.
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `POSTGRES_PASSWORD` | **Yes** | - | PostgreSQL password |
