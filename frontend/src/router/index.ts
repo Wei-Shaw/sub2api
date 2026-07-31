@@ -279,10 +279,12 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/my-accounts',
     name: 'MyAccounts',
-    component: () => import('@/views/user/MyAccountsView.vue'),
+    // 与 /admin/accounts 共用 AccountsView；通过 meta.accountScope 区分 mine/all
+    component: () => import('@/views/admin/AccountsView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
+      accountScope: 'mine',
       title: 'My Accounts',
       titleKey: 'myAccounts.title',
       descriptionKey: 'myAccounts.description'
@@ -531,6 +533,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
+      accountScope: 'all',
       title: 'Account Management',
       titleKey: 'admin.accounts.title',
       descriptionKey: 'admin.accounts.description'

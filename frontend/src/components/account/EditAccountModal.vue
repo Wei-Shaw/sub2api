@@ -1407,7 +1407,7 @@
         </div>
       </div>
 
-      <div v-if="!isSparkShadow">
+      <div v-if="!isSparkShadow && !isUserMode">
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
@@ -1415,20 +1415,20 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div class="grid grid-cols-2 gap-4" :class="isUserMode ? 'lg:grid-cols-2' : 'lg:grid-cols-4'">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input"
             @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
         </div>
-        <div>
+        <div v-if="!isUserMode">
           <label class="input-label">{{ t('admin.accounts.loadFactor') }}</label>
           <input v-model.number="form.load_factor" type="number" min="1"
             class="input" :placeholder="String(form.concurrency || 1)"
             @input="form.load_factor = (form.load_factor &amp;&amp; form.load_factor >= 1) ? form.load_factor : null" />
           <p class="input-hint">{{ t('admin.accounts.loadFactorHint') }}</p>
         </div>
-        <div>
+        <div v-if="!isUserMode">
           <label class="input-label">{{ t('admin.accounts.priority') }}</label>
           <input
             v-model.number="form.priority"
@@ -2527,9 +2527,9 @@
         </div>
       </div>
 
-      <!-- Group Selection - 仅标准模式显示 -->
+      <!-- Group Selection - 仅标准模式显示；用户自建账号禁止改分组 -->
       <GroupSelector
-        v-if="!authStore.isSimpleMode"
+        v-if="!authStore.isSimpleMode && !isUserMode"
         v-model="form.group_ids"
         :groups="groups"
         :platform="account?.platform"
@@ -2596,6 +2596,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import { userAccountsAPI } from '@/api/userAccounts'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
@@ -2661,9 +2662,13 @@ interface Props {
   account: Account | null
   proxies: Proxy[]
   groups: AdminGroup[]
+  /** admin=全站管理；user=用户自建（禁止改 group/proxy，走 /user/accounts） */
+  mode?: 'admin' | 'user'
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  mode: 'admin'
+})
 const emit = defineEmits<{
   close: []
   updated: [account: Account]
@@ -2672,6 +2677,8 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+
+const isUserMode = computed(() => props.mode === 'user')
 
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。
@@ -3913,7 +3920,9 @@ function toPositiveNumber(value: unknown) {
   return Math.trunc(num)
 }
 
-const needsMixedChannelCheck = () => props.account?.platform === 'antigravity' || props.account?.platform === 'anthropic'
+const needsMixedChannelCheck = () =>
+  !isUserMode.value &&
+  (props.account?.platform === 'antigravity' || props.account?.platform === 'anthropic')
 
 const buildMixedChannelDetails = (resp?: CheckMixedChannelResponse) => {
   const details = resp?.details
@@ -4002,15 +4011,54 @@ const handleClose = () => {
   emit('close')
 }
 
+/** 用户自建账号更新白名单（不提交 group_ids / proxy_id 等管理端字段） */
+const buildUserUpdatePayload = (fullPayload: Record<string, unknown>) => {
+  const payload: Record<string, unknown> = {}
+  if (typeof fullPayload.name === 'string') payload.name = fullPayload.name
+  if (typeof fullPayload.notes === 'string' || fullPayload.notes === null) {
+    payload.notes = fullPayload.notes ?? ''
+  }
+  if (fullPayload.credentials && typeof fullPayload.credentials === 'object') {
+    payload.credentials = fullPayload.credentials
+  }
+  if (typeof fullPayload.status === 'string') {
+    // 表单 inactive → 用户 API 可接受 inactive
+    payload.status = fullPayload.status === 'disabled' ? 'inactive' : fullPayload.status
+  }
+  if (typeof fullPayload.concurrency === 'number') {
+    payload.concurrency = Math.max(1, fullPayload.concurrency || 1)
+  }
+  if (typeof fullPayload.schedulable === 'boolean') {
+    payload.schedulable = fullPayload.schedulable
+  }
+  if (typeof fullPayload.rate_multiplier === 'number') {
+    payload.rate_multiplier = fullPayload.rate_multiplier
+  }
+  if (fullPayload.extra && typeof fullPayload.extra === 'object') {
+    payload.extra = fullPayload.extra
+  }
+  return payload
+}
+
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
   submitting.value = true
   try {
-    const updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
+    let updatedAccount: Account
+    if (isUserMode.value) {
+      updatedAccount = await userAccountsAPI.update(accountID, buildUserUpdatePayload(updatePayload))
+    } else {
+      updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
+    }
     appStore.showSuccess(t('admin.accounts.accountUpdated'))
     emit('updated', updatedAccount)
     handleClose()
   } catch (error: any) {
-    if (error.status === 409 && error.error === 'mixed_channel_warning' && needsMixedChannelCheck()) {
+    if (
+      !isUserMode.value &&
+      error.status === 409 &&
+      error.error === 'mixed_channel_warning' &&
+      needsMixedChannelCheck()
+    ) {
       openMixedChannelDialog({
         message: error.message,
         onConfirm: async () => {

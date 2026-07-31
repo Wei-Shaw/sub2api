@@ -7,6 +7,7 @@
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
+            :mine-scope="isMineScope"
             @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
@@ -83,58 +84,60 @@
                     @click.stop
                   >
                     <div class="overflow-y-auto p-2" :style="{ maxHeight: `${accountToolsDropdownPosition.maxHeight}px` }">
-                      <div class="px-2 py-2">
-                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                          {{ t('admin.accounts.dataActions') }}
+                      <template v-if="!isMineScope">
+                        <div class="px-2 py-2">
+                          <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                            {{ t('admin.accounts.dataActions') }}
+                          </div>
                         </div>
-                      </div>
-                      <button class="account-tools-menu-item" @click="openSyncFromCrs">
-                        <span class="account-tools-menu-icon bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
-                          <Icon name="sync" size="sm" />
-                        </span>
-                        <span class="flex-1 text-left">{{ t('admin.accounts.syncFromCrs') }}</span>
-                      </button>
-                      <button class="account-tools-menu-item" @click="openImportData">
-                        <span class="account-tools-menu-icon bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
-                          <Icon name="upload" size="sm" />
-                        </span>
-                        <span class="flex-1 text-left">{{ t('admin.accounts.dataImport') }}</span>
-                      </button>
-                      <button class="account-tools-menu-item" @click="openExportDataDialogFromMenu">
-                        <span class="account-tools-menu-icon bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">
-                          <Icon name="download" size="sm" />
-                        </span>
-                        <span class="flex-1 text-left">
-                          {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
-                        </span>
-                        <span
-                          v-if="selIds.length"
-                          class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
-                        >
-                          {{ t('admin.accounts.selectedCount', { count: selIds.length }) }}
-                        </span>
-                      </button>
+                        <button class="account-tools-menu-item" @click="openSyncFromCrs">
+                          <span class="account-tools-menu-icon bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+                            <Icon name="sync" size="sm" />
+                          </span>
+                          <span class="flex-1 text-left">{{ t('admin.accounts.syncFromCrs') }}</span>
+                        </button>
+                        <button class="account-tools-menu-item" @click="openImportData">
+                          <span class="account-tools-menu-icon bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
+                            <Icon name="upload" size="sm" />
+                          </span>
+                          <span class="flex-1 text-left">{{ t('admin.accounts.dataImport') }}</span>
+                        </button>
+                        <button class="account-tools-menu-item" @click="openExportDataDialogFromMenu">
+                          <span class="account-tools-menu-icon bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">
+                            <Icon name="download" size="sm" />
+                          </span>
+                          <span class="flex-1 text-left">
+                            {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
+                          </span>
+                          <span
+                            v-if="selIds.length"
+                            class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
+                          >
+                            {{ t('admin.accounts.selectedCount', { count: selIds.length }) }}
+                          </span>
+                        </button>
 
-                      <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
-                      <div class="px-2 py-2">
-                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                          {{ t('admin.accounts.toolActions') }}
+                        <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
+                        <div class="px-2 py-2">
+                          <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                            {{ t('admin.accounts.toolActions') }}
+                          </div>
                         </div>
-                      </div>
-                      <button class="account-tools-menu-item" @click="openErrorPassthrough">
-                        <span class="account-tools-menu-icon bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
-                          <Icon name="shield" size="sm" />
-                        </span>
-                        <span class="flex-1 text-left">{{ t('admin.errorPassthrough.title') }}</span>
-                      </button>
-                      <button class="account-tools-menu-item" @click="openTLSFingerprintProfiles">
-                        <span class="account-tools-menu-icon bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          <Icon name="lock" size="sm" />
-                        </span>
-                        <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
-                      </button>
+                        <button class="account-tools-menu-item" @click="openErrorPassthrough">
+                          <span class="account-tools-menu-icon bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
+                            <Icon name="shield" size="sm" />
+                          </span>
+                          <span class="flex-1 text-left">{{ t('admin.errorPassthrough.title') }}</span>
+                        </button>
+                        <button class="account-tools-menu-item" @click="openTLSFingerprintProfiles">
+                          <span class="account-tools-menu-icon bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                            <Icon name="lock" size="sm" />
+                          </span>
+                          <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
+                        </button>
 
-                      <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
+                        <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
+                      </template>
                       <div class="px-2 py-2">
                         <div class="flex items-center justify-between gap-3">
                           <span class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -177,6 +180,7 @@
       <template #table>
         <AccountBulkActionsBar
           :selected-ids="selIds"
+          :mine-scope="isMineScope"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
@@ -441,7 +445,11 @@
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
                 <span class="text-xs">{{ t('common.delete') }}</span>
               </button>
-              <button @click="openMenu(row, $event)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white">
+              <button
+                v-if="!isMineScope"
+                @click="openMenu(row, $event)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
+              >
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></svg>
                 <span class="text-xs">{{ t('common.more') }}</span>
               </button>
@@ -452,16 +460,48 @@
       </template>
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
-    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
-    <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
-    <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
-    <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
-    <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
-    <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
-    <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
-    <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
+    <CreateAccountModal
+      :show="showCreate"
+      :mode="isMineScope ? 'user' : 'admin'"
+      :proxies="isMineScope ? [] : proxies"
+      :groups="isMineScope ? [] : groups"
+      @close="showCreate = false"
+      @created="reload"
+    />
+    <EditAccountModal
+      :show="showEdit"
+      :mode="isMineScope ? 'user' : 'admin'"
+      :account="edAcc"
+      :proxies="isMineScope ? [] : proxies"
+      :groups="isMineScope ? [] : groups"
+      @close="showEdit = false"
+      @updated="handleAccountUpdated"
+    />
+    <ReAuthAccountModal v-if="!isMineScope" :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
+    <AccountTestModal v-if="!isMineScope" :show="showTest" :account="testingAcc" @close="closeTestModal" />
+    <AccountStatsModal v-if="!isMineScope" :show="showStats" :account="statsAcc" @close="closeStatsModal" />
+    <ScheduledTestsPanel v-if="!isMineScope" :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
+    <AccountActionMenu
+      :show="menu.show && !isMineScope"
+      :account="menu.acc"
+      :position="menu.pos"
+      :mine-scope="isMineScope"
+      @close="menu.show = false"
+      @test="handleTest"
+      @stats="handleViewStats"
+      @schedule="handleSchedule"
+      @duplicate="handleDuplicateAccount"
+      @reauth="handleReAuth"
+      @refresh-token="handleRefresh"
+      @recover-state="handleRecoverState"
+      @reset-quota="handleResetQuota"
+      @set-privacy="handleSetPrivacy"
+      @create-spark-shadow="handleCreateSparkShadow"
+    />
+    <SyncFromCrsModal v-if="!isMineScope" :show="showSync" @close="showSync = false" @synced="reload" />
+    <ImportDataModal v-if="!isMineScope" :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
+      v-if="!isMineScope"
       :show="showBulkEdit"
       :account-ids="selIds"
       :selected-platforms="selPlatforms"
@@ -474,26 +514,28 @@
     />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
-    <ConfirmDialog :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
-    <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
+    <ConfirmDialog v-if="!isMineScope" :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
+    <ConfirmDialog v-if="!isMineScope" :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
       <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
         <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" v-model="includeProxyOnExport" />
         <span>{{ t('admin.accounts.dataExportIncludeProxies') }}</span>
       </label>
     </ConfirmDialog>
-    <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
-    <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
-    <TotpStepUpDialog :controller="accountExportStepUp" />
+    <ErrorPassthroughRulesModal v-if="!isMineScope" :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
+    <TLSFingerprintProfilesModal v-if="!isMineScope" :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
+    <TotpStepUpDialog v-if="!isMineScope" :controller="accountExportStepUp" />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import { userAccountsAPI } from '@/api/userAccounts'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -535,8 +577,17 @@ import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
+const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+
+/** mine=/my-accounts；all=/admin/accounts（默认；测试无 router 时亦为 all） */
+const accountScope = computed(() =>
+  (route as { meta?: { accountScope?: string } } | undefined)?.meta?.accountScope === 'mine'
+    ? 'mine'
+    : 'all'
+)
+const isMineScope = computed(() => accountScope.value === 'mine')
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
@@ -707,6 +758,12 @@ const buildDefaultTodayStats = (): WindowStats => ({
 })
 
 const refreshTodayStatsBatch = async () => {
+  // 用户自建列表无 admin today-stats API
+  if (isMineScope.value) {
+    todayStatsLoading.value = false
+    todayStatsError.value = null
+    return
+  }
   // Why this checks both columns:
   // - today_stats column shows dedicated today's metrics.
   // - usage column also embeds today's stats for Key/Bedrock rows.
@@ -923,7 +980,20 @@ const {
   handlePageChange: baseHandlePageChange,
   handlePageSizeChange: baseHandlePageSizeChange
 } = useTableLoader<Account, any>({
-  fetchFn: adminAPI.accounts.list,
+  // 运行时按 scope 分流：mine → /user/accounts；all → /admin/accounts
+  fetchFn: (page, pageSize, filters, options) => {
+    if (isMineScope.value) {
+      return userAccountsAPI.list(page, pageSize, {
+        signal: options?.signal,
+        sort_by: typeof filters?.sort_by === 'string' ? filters.sort_by : undefined,
+        sort_order: filters?.sort_order === 'asc' || filters?.sort_order === 'desc' ? filters.sort_order : undefined,
+        platform: typeof filters?.platform === 'string' ? filters.platform : undefined,
+        status: typeof filters?.status === 'string' ? filters.status : undefined,
+        search: typeof filters?.search === 'string' ? filters.search : undefined
+      })
+    }
+    return adminAPI.accounts.list(page, pageSize, filters, options)
+  },
   initialParams: {
     platform: '',
     type: '',
@@ -1163,36 +1233,52 @@ const refreshAccountsIncrementally = async () => {
   syncAccountListDerivedParams()
   autoRefreshFetching.value = true
   try {
-    const result = await adminAPI.accounts.listWithEtag(
-      pagination.page,
-      pagination.page_size,
-      toRaw(params) as {
-        platform?: string
-        type?: string
-        status?: string
-        privacy_mode?: string
-        group?: string
-        search?: string
-        sort_by?: string
-        sort_order?: AccountSortOrder
-
-      },
-      { etag: autoRefreshETag.value }
-    )
-
-    if (result.etag) {
-      autoRefreshETag.value = result.etag
-    }
-    if (!result.notModified && result.data) {
-      pagination.total = result.data.total || 0
-      pagination.pages = result.data.pages || 0
-      mergeAccountsIncrementally(result.data.items || [])
+    if (isMineScope.value) {
+      const raw = toRaw(params) as Record<string, unknown>
+      const data = await userAccountsAPI.list(pagination.page, pagination.page_size, {
+        sort_by: typeof raw.sort_by === 'string' ? raw.sort_by : undefined,
+        sort_order: raw.sort_order === 'asc' || raw.sort_order === 'desc' ? raw.sort_order : undefined,
+        platform: typeof raw.platform === 'string' ? raw.platform : undefined,
+        status: typeof raw.status === 'string' ? raw.status : undefined,
+        search: typeof raw.search === 'string' ? raw.search : undefined
+      })
+      pagination.total = data.total || 0
+      pagination.pages = data.pages || 0
+      mergeAccountsIncrementally(data.items || [])
       hasPendingListSync.value = false
-      markUpstreamBillingSortRefresh()
+    } else {
+      const result = await adminAPI.accounts.listWithEtag(
+        pagination.page,
+        pagination.page_size,
+        toRaw(params) as {
+          platform?: string
+          type?: string
+          status?: string
+          privacy_mode?: string
+          group?: string
+          search?: string
+          sort_by?: string
+          sort_order?: AccountSortOrder
+        },
+        { etag: autoRefreshETag.value }
+      )
+
+      if (result.etag) {
+        autoRefreshETag.value = result.etag
+      }
+      if (!result.notModified && result.data) {
+        pagination.total = result.data.total || 0
+        pagination.pages = result.data.pages || 0
+        mergeAccountsIncrementally(result.data.items || [])
+        hasPendingListSync.value = false
+        markUpstreamBillingSortRefresh()
+      }
     }
     upstreamBillingNow.value = Date.now()
 
-    await refreshTodayStatsBatch()
+    if (!isMineScope.value) {
+      await refreshTodayStatsBatch()
+    }
   } catch (error) {
     console.error('Auto refresh failed:', error)
   } finally {
@@ -1201,7 +1287,11 @@ const refreshAccountsIncrementally = async () => {
 }
 
 const handleManualRefresh = async () => {
-  await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
+  if (isMineScope.value) {
+    await load()
+  } else {
+    await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
+  }
   // Force usage cells to refetch /usage on explicit user refresh.
   usageManualRefreshToken.value += 1
 }
@@ -1504,7 +1594,20 @@ const toggleSelectAllVisible = (event: Event) => {
   const target = event.target as HTMLInputElement
   toggleVisible(target.checked)
 }
-const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); clearSelection(); reload() } catch (error) { console.error('Failed to bulk delete accounts:', error) } }
+const handleBulkDelete = async () => {
+  if (!confirm(t('common.confirm'))) return
+  try {
+    if (isMineScope.value) {
+      await userAccountsAPI.batchDelete([...selIds.value])
+    } else {
+      await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id)))
+    }
+    clearSelection()
+    reload()
+  } catch (error) {
+    console.error('Failed to bulk delete accounts:', error)
+  }
+}
 const handleBulkResetStatus = async () => {
   if (!confirm(t('common.confirm'))) return
   try {
@@ -1639,6 +1742,31 @@ const normalizeBulkSchedulableResult = (
 const handleBulkToggleSchedulable = async (schedulable: boolean) => {
   const accountIds = [...selIds.value]
   try {
+    if (isMineScope.value) {
+      const result = await userAccountsAPI.batchSetSchedulable(accountIds, schedulable)
+      const successIds = result.success_ids || []
+      const failedIds = result.failed_ids || []
+      if (successIds.length > 0) {
+        updateSchedulableInList(successIds, schedulable)
+      }
+      if (result.success > 0 && result.failed === 0) {
+        const message = schedulable
+          ? t('admin.accounts.bulkSchedulableEnabled', { count: result.success })
+          : t('admin.accounts.bulkSchedulableDisabled', { count: result.success })
+        appStore.showSuccess(message)
+        clearSelection()
+      } else if (result.failed > 0) {
+        appStore.showError(
+          t('admin.accounts.bulkSchedulablePartial', {
+            success: result.success,
+            failed: result.failed
+          })
+        )
+        setSelectedIds(failedIds.length > 0 ? failedIds : accountIds)
+      }
+      return
+    }
+
     const result = await adminAPI.accounts.bulkUpdate(accountIds, { schedulable })
     const { successIds, failedIds, successCount, failedCount, hasIds, hasCounts } = normalizeBulkSchedulableResult(result, accountIds)
     if (!hasIds && !hasCounts) {
@@ -2035,12 +2163,28 @@ const confirmCreateSparkShadow = async () => {
   }
 }
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }
-const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() } catch (error) { console.error('Failed to delete account:', error) } }
+const confirmDelete = async () => {
+  if (!deletingAcc.value) return
+  try {
+    if (isMineScope.value) {
+      await userAccountsAPI.remove(deletingAcc.value.id)
+    } else {
+      await adminAPI.accounts.delete(deletingAcc.value.id)
+    }
+    showDeleteDialog.value = false
+    deletingAcc.value = null
+    reload()
+  } catch (error) {
+    console.error('Failed to delete account:', error)
+  }
+}
 const handleToggleSchedulable = async (a: Account) => {
   const nextSchedulable = !a.schedulable
   togglingSchedulable.value = a.id
   try {
-    const updated = await adminAPI.accounts.setSchedulable(a.id, nextSchedulable)
+    const updated = isMineScope.value
+      ? await userAccountsAPI.setSchedulable(a.id, nextSchedulable)
+      : await adminAPI.accounts.setSchedulable(a.id, nextSchedulable)
     updateSchedulableInList([a.id], updated?.schedulable ?? nextSchedulable)
     enterAutoRefreshSilentWindow()
   } catch (error) {
@@ -2050,7 +2194,11 @@ const handleToggleSchedulable = async (a: Account) => {
     togglingSchedulable.value = null
   }
 }
-const handleShowTempUnsched = (a: Account) => { tempUnschedAcc.value = a; showTempUnsched.value = true }
+const handleShowTempUnsched = (a: Account) => {
+  if (isMineScope.value) return // 暂无用户侧 temp-unsched API
+  tempUnschedAcc.value = a
+  showTempUnsched.value = true
+}
 const handleTempUnschedReset = async (updated: Account) => {
   showTempUnsched.value = false
   tempUnschedAcc.value = null
@@ -2106,13 +2254,15 @@ const handleClickOutside = (event: MouseEvent) => {
 
 onMounted(async () => {
   load()
-  loadUpstreamBillingProbeGlobalState()
-  try {
-    const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
-    proxies.value = p
-    groups.value = g
-  } catch (error) {
-    console.error('Failed to load proxies/groups:', error)
+  if (!isMineScope.value) {
+    loadUpstreamBillingProbeGlobalState()
+    try {
+      const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
+      proxies.value = p
+      groups.value = g
+    } catch (error) {
+      console.error('Failed to load proxies/groups:', error)
+    }
   }
   window.addEventListener('scroll', handleScroll, true)
   window.addEventListener('resize', handleViewportResize)

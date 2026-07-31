@@ -26,14 +26,30 @@
     <div class="flex gap-2">
       <template v-if="selectedIds.length > 0">
         <button @click="$emit('delete')" class="btn btn-danger btn-sm">{{ t('admin.accounts.bulkActions.delete') }}</button>
-        <button @click="$emit('reset-status')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.resetStatus') }}</button>
-        <button @click="$emit('refresh-token')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.refreshToken') }}</button>
-        <button @click="$emit('probe-upstream-billing')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.probeUpstreamBilling') }}</button>
+        <button
+          v-if="!mineScope"
+          @click="$emit('reset-status')"
+          class="btn btn-secondary btn-sm"
+        >{{ t('admin.accounts.bulkActions.resetStatus') }}</button>
+        <button
+          v-if="!mineScope"
+          @click="$emit('refresh-token')"
+          class="btn btn-secondary btn-sm"
+        >{{ t('admin.accounts.bulkActions.refreshToken') }}</button>
+        <button
+          v-if="!mineScope"
+          @click="$emit('probe-upstream-billing')"
+          class="btn btn-secondary btn-sm"
+        >{{ t('admin.accounts.bulkActions.probeUpstreamBilling') }}</button>
         <button @click="$emit('toggle-schedulable', true)" class="btn btn-success btn-sm">{{ t('admin.accounts.bulkActions.enableScheduling') }}</button>
         <button @click="$emit('toggle-schedulable', false)" class="btn btn-warning btn-sm">{{ t('admin.accounts.bulkActions.disableScheduling') }}</button>
-        <button @click="$emit('edit-selected')" class="btn btn-primary btn-sm">{{ t('admin.accounts.bulkActions.edit') }}</button>
+        <button
+          v-if="!mineScope"
+          @click="$emit('edit-selected')"
+          class="btn btn-primary btn-sm"
+        >{{ t('admin.accounts.bulkActions.edit') }}</button>
       </template>
-      <button @click="$emit('edit-filtered')" class="btn btn-primary btn-sm">
+      <button v-if="!mineScope" @click="$emit('edit-filtered')" class="btn btn-primary btn-sm">
         {{ t('admin.accounts.bulkEdit.submit') }}
       </button>
     </div>
@@ -43,7 +59,14 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
-defineProps<{ selectedIds: number[] }>()
+withDefaults(
+  defineProps<{
+    selectedIds: number[]
+    /** 用户「我的账号」范围：仅保留删除 / 可调度 */
+    mineScope?: boolean
+  }>(),
+  { mineScope: false }
+)
 defineEmits([
   'delete',
   'edit-selected',

@@ -10,15 +10,32 @@
     <Select :model-value="filters.platform" class="w-40" :options="pOpts" @update:model-value="updatePlatform" @change="$emit('change')" />
     <Select :model-value="filters.type" class="w-40" :options="tOpts" @update:model-value="updateType" @change="$emit('change')" />
     <Select :model-value="filters.status" class="w-40" :options="sOpts" @update:model-value="updateStatus" @change="$emit('change')" />
-    <Select :model-value="filters.privacy_mode" class="w-40" :options="privacyOpts" @update:model-value="updatePrivacyMode" @change="$emit('change')" />
-    <Select :model-value="filters.group" class="w-40" :options="gOpts" @update:model-value="updateGroup" @change="$emit('change')" />
+    <Select
+      v-if="!mineScope"
+      :model-value="filters.privacy_mode"
+      class="w-40"
+      :options="privacyOpts"
+      @update:model-value="updatePrivacyMode"
+      @change="$emit('change')"
+    />
+    <Select
+      v-if="!mineScope"
+      :model-value="filters.group"
+      class="w-40"
+      :options="gOpts"
+      @update:model-value="updateGroup"
+      @change="$emit('change')"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'; import { useI18n } from 'vue-i18n'; import Select from '@/components/common/Select.vue'; import SearchInput from '@/components/common/SearchInput.vue'
 import type { AdminGroup } from '@/types'
-const props = defineProps<{ searchQuery: string; filters: Record<string, any>; groups?: AdminGroup[] }>()
+const props = withDefaults(
+  defineProps<{ searchQuery: string; filters: Record<string, any>; groups?: AdminGroup[]; mineScope?: boolean }>(),
+  { mineScope: false }
+)
 const emit = defineEmits(['update:searchQuery', 'update:filters', 'change']); const { t } = useI18n()
 const updatePlatform = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, platform: value }) }
 const updateType = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, type: value }) }

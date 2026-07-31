@@ -46,9 +46,13 @@ func RegisterUserRoutes(
 				{
 					accounts.GET("", h.UserAccount.List)
 					accounts.POST("", h.UserAccount.Create)
+					// 批量路由须在 /:id 之前注册，避免被当成 id
+					accounts.POST("/batch-delete", h.UserAccount.BatchDelete)
+					accounts.POST("/batch-set-schedulable", h.UserAccount.BatchSetSchedulable)
 					accounts.GET("/:id", h.UserAccount.Get)
 					accounts.PATCH("/:id", h.UserAccount.Update)
 					accounts.PUT("/:id/visibility", h.UserAccount.SetVisibility)
+					accounts.PUT("/:id/schedulable", h.UserAccount.SetSchedulable)
 					accounts.DELETE("/:id", h.UserAccount.Delete)
 				}
 			}

@@ -39,7 +39,7 @@ var (
 	)
 	ErrUserAccountInvalidStatus = infraerrors.BadRequest(
 		"INVALID_STATUS",
-		"status must be active or disabled",
+		"status must be active, inactive, or disabled",
 	)
 )
 
@@ -60,6 +60,12 @@ type UserAccountService interface {
 	Update(ctx context.Context, userID, accountID int64, input *UpdateUserAccountInput) (*Account, error)
 	Delete(ctx context.Context, userID, accountID int64) error
 	SetVisibility(ctx context.Context, userID, accountID int64, visibility string) (*Account, error)
+	// SetSchedulable 仅允许操作本人账号。
+	SetSchedulable(ctx context.Context, userID, accountID int64, schedulable bool) (*Account, error)
+	// BatchDeleteOwned 仅删除本人账号；非本人 ID 记入 FailedIDs（404 语义，不暴露存在性）。
+	BatchDeleteOwned(ctx context.Context, userID int64, ids []int64) (*UserAccountBatchDeleteResult, error)
+	// BatchSetSchedulableOwned 批量设置本人账号可调度状态。
+	BatchSetSchedulableOwned(ctx context.Context, userID int64, ids []int64, schedulable bool) (*UserAccountBatchSchedulableResult, error)
 }
 
 // CreateUserAccountInput 用户创建账号输入（K17）。
@@ -75,12 +81,34 @@ type CreateUserAccountInput struct {
 	Concurrency int
 }
 
-// UpdateUserAccountInput 用户更新白名单（K15）。
+// UpdateUserAccountInput 用户更新白名单（K15 扩展）。
+// 不接受 group_ids / proxy_id（handler 不绑定；服务层亦不处理）。
 type UpdateUserAccountInput struct {
-	Name        *string
-	Notes       *string
-	Credentials map[string]any
-	Status      *string // active|disabled only
+	Name           *string
+	Notes          *string
+	Credentials    map[string]any
+	Status         *string  // active|inactive|disabled（inactive/disabled 统一存 inactive）
+	Concurrency    *int     // 账号并发；nil 不改
+	Schedulable    *bool    // nil 不改
+	RateMultiplier *float64 // nil 不改；>=0
+	// Extra 浅合并到现有 extra（禁止 owner 相关键）
+	Extra map[string]any
+}
+
+// UserAccountBatchDeleteResult 批量删除结果。
+type UserAccountBatchDeleteResult struct {
+	DeletedIDs []int64 `json:"deleted_ids"`
+	FailedIDs  []int64 `json:"failed_ids"`
+	Deleted    int     `json:"deleted"`
+	Failed     int     `json:"failed"`
+}
+
+// UserAccountBatchSchedulableResult 批量设置 schedulable 结果。
+type UserAccountBatchSchedulableResult struct {
+	SuccessIDs []int64 `json:"success_ids"`
+	FailedIDs  []int64 `json:"failed_ids"`
+	Success    int     `json:"success"`
+	Failed     int     `json:"failed"`
 }
 
 // UserAccountListFilters 预留扩展（v1 List 仅 owner=me）。
@@ -436,15 +464,53 @@ func (s *userAccountService) Update(ctx context.Context, userID, accountID int64
 	}
 	if input.Status != nil {
 		st := strings.ToLower(strings.TrimSpace(*input.Status))
-		if st != StatusActive && st != StatusDisabled {
+		// 兼容前端 admin 表单 inactive 与早期 user API disabled
+		switch st {
+		case StatusActive:
+			account.Status = StatusActive
+		case StatusDisabled, "inactive":
+			account.Status = "inactive"
+		default:
 			return nil, ErrUserAccountInvalidStatus
 		}
-		account.Status = st
 	}
 	if len(input.Credentials) > 0 {
 		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
 		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
 			return nil, err
+		}
+	}
+	if input.Concurrency != nil {
+		account.Concurrency = normalizeAccountConcurrency(account.Platform, account.Type, *input.Concurrency)
+		if account.Concurrency < 1 {
+			account.Concurrency = 1
+		}
+	}
+	if input.Schedulable != nil {
+		account.Schedulable = *input.Schedulable
+	}
+	if input.RateMultiplier != nil {
+		if *input.RateMultiplier < 0 {
+			return nil, infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", "rate_multiplier must be >= 0")
+		}
+		rm := *input.RateMultiplier
+		account.RateMultiplier = &rm
+	}
+	if len(input.Extra) > 0 {
+		if account.Extra == nil {
+			account.Extra = map[string]any{}
+		}
+		for k, v := range input.Extra {
+			key := strings.TrimSpace(k)
+			if key == "" {
+				continue
+			}
+			// 禁止经 extra 注入归属相关键
+			lk := strings.ToLower(key)
+			if lk == "owner_user_id" || lk == "owner" || lk == "owner_id" {
+				continue
+			}
+			account.Extra[key] = v
 		}
 	}
 
@@ -474,6 +540,98 @@ func (s *userAccountService) Delete(ctx context.Context, userID, accountID int64
 	}
 	// 与 Admin DeleteAccount 同仓库路径（硬删 account_groups + 软删账号）
 	return s.accountRepo.Delete(ctx, accountID)
+}
+
+func (s *userAccountService) SetSchedulable(ctx context.Context, userID, accountID int64, schedulable bool) (*Account, error) {
+	if err := s.requireFeatureEnabled(ctx); err != nil {
+		return nil, err
+	}
+	if _, err := s.getOwned(ctx, userID, accountID); err != nil {
+		return nil, err
+	}
+	if err := s.accountRepo.SetSchedulable(ctx, accountID, schedulable); err != nil {
+		return nil, err
+	}
+	return s.accountRepo.GetByID(ctx, accountID)
+}
+
+func (s *userAccountService) BatchDeleteOwned(ctx context.Context, userID int64, ids []int64) (*UserAccountBatchDeleteResult, error) {
+	if err := s.requireFeatureEnabled(ctx); err != nil {
+		return nil, err
+	}
+	if userID <= 0 {
+		return nil, ErrUserAccountNotFound
+	}
+	ids = dedupePositiveIDs(ids)
+	if len(ids) == 0 {
+		return nil, infraerrors.BadRequest("INVALID_IDS", "ids is required")
+	}
+	if len(ids) > 100 {
+		return nil, infraerrors.BadRequest("INVALID_IDS", "ids must contain at most 100 items")
+	}
+	out := &UserAccountBatchDeleteResult{
+		DeletedIDs: make([]int64, 0, len(ids)),
+		FailedIDs:  make([]int64, 0),
+	}
+	for _, id := range ids {
+		if err := s.Delete(ctx, userID, id); err != nil {
+			out.FailedIDs = append(out.FailedIDs, id)
+			continue
+		}
+		out.DeletedIDs = append(out.DeletedIDs, id)
+	}
+	out.Deleted = len(out.DeletedIDs)
+	out.Failed = len(out.FailedIDs)
+	return out, nil
+}
+
+func (s *userAccountService) BatchSetSchedulableOwned(ctx context.Context, userID int64, ids []int64, schedulable bool) (*UserAccountBatchSchedulableResult, error) {
+	if err := s.requireFeatureEnabled(ctx); err != nil {
+		return nil, err
+	}
+	if userID <= 0 {
+		return nil, ErrUserAccountNotFound
+	}
+	ids = dedupePositiveIDs(ids)
+	if len(ids) == 0 {
+		return nil, infraerrors.BadRequest("INVALID_IDS", "ids is required")
+	}
+	if len(ids) > 100 {
+		return nil, infraerrors.BadRequest("INVALID_IDS", "ids must contain at most 100 items")
+	}
+	out := &UserAccountBatchSchedulableResult{
+		SuccessIDs: make([]int64, 0, len(ids)),
+		FailedIDs:  make([]int64, 0),
+	}
+	for _, id := range ids {
+		if _, err := s.SetSchedulable(ctx, userID, id, schedulable); err != nil {
+			out.FailedIDs = append(out.FailedIDs, id)
+			continue
+		}
+		out.SuccessIDs = append(out.SuccessIDs, id)
+	}
+	out.Success = len(out.SuccessIDs)
+	out.Failed = len(out.FailedIDs)
+	return out, nil
+}
+
+func dedupePositiveIDs(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 // SetVisibility private ↔ public；升 public 时 Ensure 私有组；无匹配共享池则强制 private。

@@ -35,17 +35,38 @@ type CreateUserAccountRequest struct {
 	Concurrency int `json:"concurrency"`
 }
 
-// UpdateUserAccountRequest PATCH /api/v1/user/accounts/:id（K15 allowlist）
+// UpdateUserAccountRequest PATCH /api/v1/user/accounts/:id（allowlist）
+// 不绑定 group_ids / proxy_id，客户端误传将被忽略。
 type UpdateUserAccountRequest struct {
-	Name        *string        `json:"name"`
-	Notes       *string        `json:"notes"`
-	Credentials map[string]any `json:"credentials"`
-	Status      *string        `json:"status"` // active|disabled
+	Name           *string        `json:"name"`
+	Notes          *string        `json:"notes"`
+	Credentials    map[string]any `json:"credentials"`
+	Status         *string        `json:"status"` // active|inactive|disabled
+	Concurrency    *int           `json:"concurrency"`
+	Schedulable    *bool          `json:"schedulable"`
+	RateMultiplier *float64       `json:"rate_multiplier"`
+	Extra          map[string]any `json:"extra"`
 }
 
 // SetVisibilityRequest PUT /api/v1/user/accounts/:id/visibility
 type SetVisibilityRequest struct {
 	Visibility string `json:"visibility" binding:"required"`
+}
+
+// SetUserAccountSchedulableRequest PUT /api/v1/user/accounts/:id/schedulable
+type SetUserAccountSchedulableRequest struct {
+	Schedulable bool `json:"schedulable"`
+}
+
+// BatchDeleteUserAccountsRequest POST /api/v1/user/accounts/batch-delete
+type BatchDeleteUserAccountsRequest struct {
+	IDs []int64 `json:"ids" binding:"required,min=1"`
+}
+
+// BatchSetUserAccountSchedulableRequest POST /api/v1/user/accounts/batch-set-schedulable
+type BatchSetUserAccountSchedulableRequest struct {
+	IDs         []int64 `json:"ids" binding:"required,min=1"`
+	Schedulable bool    `json:"schedulable"`
 }
 
 // List GET /api/v1/user/accounts
@@ -141,18 +162,87 @@ func (h *UserAccountHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "Invalid request body")
 		return
 	}
-	// 显式拒绝越权字段：若客户端误传，body 中无对应字段即可（struct 不绑定 group_ids 等）
+	// 显式拒绝越权字段：struct 不绑定 group_ids / proxy_id
 	account, err := h.svc.Update(c.Request.Context(), subject.UserID, id, &service.UpdateUserAccountInput{
-		Name:        req.Name,
-		Notes:       req.Notes,
-		Credentials: req.Credentials,
-		Status:      req.Status,
+		Name:           req.Name,
+		Notes:          req.Notes,
+		Credentials:    req.Credentials,
+		Status:         req.Status,
+		Concurrency:    req.Concurrency,
+		Schedulable:    req.Schedulable,
+		RateMultiplier: req.RateMultiplier,
+		Extra:          req.Extra,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, dto.AccountFromService(account))
+}
+
+// SetSchedulable PUT /api/v1/user/accounts/:id/schedulable
+func (h *UserAccountHandler) SetSchedulable(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	var req SetUserAccountSchedulableRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	account, err := h.svc.SetSchedulable(c.Request.Context(), subject.UserID, id, req.Schedulable)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.AccountFromService(account))
+}
+
+// BatchDelete POST /api/v1/user/accounts/batch-delete
+func (h *UserAccountHandler) BatchDelete(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req BatchDeleteUserAccountsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	result, err := h.svc.BatchDeleteOwned(c.Request.Context(), subject.UserID, req.IDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// BatchSetSchedulable POST /api/v1/user/accounts/batch-set-schedulable
+func (h *UserAccountHandler) BatchSetSchedulable(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req BatchSetUserAccountSchedulableRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	result, err := h.svc.BatchSetSchedulableOwned(c.Request.Context(), subject.UserID, req.IDs, req.Schedulable)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 // SetVisibility PUT /api/v1/user/accounts/:id/visibility
