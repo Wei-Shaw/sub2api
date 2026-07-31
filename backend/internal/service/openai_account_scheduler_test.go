@@ -445,6 +445,142 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabledUsesLega
 	require.False(t, decision.StickyPreviousHit)
 }
 
+func TestOpenAIGatewayService_SelectAccountForHTTPResponseContinuation_PinsNativeAPIKey(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10107)
+	accounts := []Account{
+		{
+			ID:          36101,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    5,
+			Extra:       map[string]any{"openai_responses_supported": true},
+		},
+		{
+			ID:          36102,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Extra:       map[string]any{"openai_responses_supported": true},
+		},
+	}
+	cache := &schedulerTestGatewayCache{}
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              cache,
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	store := svc.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_http_native_001", 36101, time.Hour))
+
+	selection, decision, err := svc.SelectAccountForHTTPResponseContinuation(
+		ctx,
+		&groupID,
+		"resp_http_native_001",
+		"",
+		"gpt-5.1",
+		OpenAIEndpointCapabilityResponses,
+		false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(36101), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
+	require.True(t, decision.StickyPreviousHit)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountForHTTPResponseContinuation_OAuthRequiresBoundConnection(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10108)
+	account := Account{
+		ID:          36201,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"responses_websockets_v2_enabled": true,
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cache := &schedulerTestGatewayCache{}
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              cache,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		openaiWSResolver:   NewOpenAIWSProtocolResolver(cfg),
+	}
+
+	store := svc.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_http_oauth_001", account.ID, time.Hour))
+
+	selection, _, err := svc.SelectAccountForHTTPResponseContinuation(
+		ctx,
+		&groupID,
+		"resp_http_oauth_001",
+		"",
+		"gpt-5.1",
+		OpenAIEndpointCapabilityResponses,
+		false,
+	)
+	require.ErrorIs(t, err, ErrOpenAIHTTPPreviousResponseNotFound)
+	require.Nil(t, selection)
+
+	store.BindResponseConn("resp_http_oauth_001", "conn_http_oauth_001", time.Hour)
+	selection, decision, err := svc.SelectAccountForHTTPResponseContinuation(
+		ctx,
+		&groupID,
+		"resp_http_oauth_001",
+		"",
+		"gpt-5.1",
+		OpenAIEndpointCapabilityResponses,
+		false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.True(t, decision.StickyPreviousHit)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountForHTTPResponseContinuation_UnknownIDIsTerminal(t *testing.T) {
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, cache: &schedulerTestGatewayCache{}}
+	groupID := int64(10109)
+
+	selection, _, err := svc.SelectAccountForHTTPResponseContinuation(
+		context.Background(),
+		&groupID,
+		"resp_unknown_001",
+		"",
+		"gpt-5.1",
+		OpenAIEndpointCapabilityResponses,
+		false,
+	)
+	require.ErrorIs(t, err, ErrOpenAIHTTPPreviousResponseNotFound)
+	require.Nil(t, selection)
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_RequiredWSV2_SkipsHTTPOnlyAccount(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 

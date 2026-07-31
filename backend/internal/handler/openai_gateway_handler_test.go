@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
 
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
@@ -831,62 +832,72 @@ func TestOpenAIResponses_RejectsMessageIDAsPreviousResponseID(t *testing.T) {
 	require.Contains(t, w.Body.String(), "previous_response_id must be a response.id")
 }
 
-func TestOpenAIResponses_RejectsHTTPContinuationPreviousResponseID(t *testing.T) {
+func TestOpenAIResponses_RejectsNonStringPreviousResponseID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(
-		`{"model":"gpt-5.1","stream":false,"previous_response_id":"resp_123456","input":[{"type":"input_text","text":"hello"}]}`,
-	))
-	c.Request.Header.Set("Content-Type", "application/json")
+	for _, value := range []string{`123`, `true`, `{}`, `[]`} {
+		t.Run(value, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(
+				`{"model":"gpt-5.1","stream":false,"previous_response_id":`+value+`,"input":"hello"}`,
+			))
+			c.Request.Header.Set("Content-Type", "application/json")
 
-	groupID := int64(2)
-	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-		ID:      101,
-		GroupID: &groupID,
-		User:    &service.User{ID: 1},
-	})
-	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
-		UserID:      1,
-		Concurrency: 1,
-	})
+			groupID := int64(2)
+			c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+				ID:      101,
+				GroupID: &groupID,
+				User:    &service.User{ID: 1},
+			})
+			c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
+				UserID:      1,
+				Concurrency: 1,
+			})
 
-	h := newOpenAIHandlerForPreviousResponseIDValidation(t, nil)
-	h.Responses(c)
+			newOpenAIHandlerForPreviousResponseIDValidation(t, nil).Responses(c)
 
-	require.Equal(t, http.StatusBadRequest, w.Code)
-	require.Contains(t, w.Body.String(), "Responses WebSocket v2")
-	require.Contains(t, w.Body.String(), "previous_response_id")
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.Contains(t, w.Body.String(), "previous_response_id must be a string or null")
+		})
+	}
 }
 
-func TestOpenAIResponses_FunctionCallOutputHTTPGuidanceDoesNotSuggestPreviousResponseReuse(t *testing.T) {
+func TestOpenAIResponses_FunctionCallOutputWithPreviousResponseIDRequiresCallID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(
-		`{"model":"gpt-5.1","stream":false,"input":[{"type":"function_call_output","output":"{}"}]}`,
-	))
-	c.Request.Header.Set("Content-Type", "application/json")
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "missing call_id is rejected",
+			body: `{"model":"gpt-5.1","previous_response_id":"resp_123456","input":[{"type":"function_call_output","output":"{}"}]}`,
+			want: false,
+		},
+		{
+			name: "valid call_id is accepted",
+			body: `{"model":"gpt-5.1","previous_response_id":"resp_123456","input":[{"type":"function_call_output","call_id":"call_123","output":"{}"}]}`,
+			want: true,
+		},
+	}
 
-	groupID := int64(2)
-	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-		ID:      101,
-		GroupID: &groupID,
-		User:    &service.User{ID: 1},
-	})
-	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
-		UserID:      1,
-		Concurrency: 1,
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			accepted := (&OpenAIGatewayHandler{}).validateFunctionCallOutputRequest(c, []byte(tt.body), zap.NewNop())
 
-	h := newOpenAIHandlerForPreviousResponseIDValidation(t, nil)
-	h.Responses(c)
-
-	require.Equal(t, http.StatusBadRequest, w.Code)
-	require.Contains(t, w.Body.String(), "Responses WebSocket v2")
-	require.NotContains(t, w.Body.String(), "reuse previous_response_id")
+			require.Equal(t, tt.want, accepted)
+			if tt.want {
+				require.False(t, c.Writer.Written())
+				return
+			}
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.Contains(t, w.Body.String(), "call_id")
+		})
+	}
 }
 
 func TestOpenAIResponsesWebSocket_SetsClientTransportWSWhenUpgradeValid(t *testing.T) {
@@ -1794,6 +1805,14 @@ type openAIHTTPPassthroughFailoverUpstream struct {
 	accountIDs []int64
 }
 
+type openAIHTTPContinuationFailoverUpstream struct {
+	service.HTTPUpstream
+	mu            sync.Mutex
+	accountIDs    []int64
+	bodies        [][]byte
+	failureStatus int
+}
+
 func (u *openAIHTTPPassthroughFailoverUpstream) Do(_ *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
 	u.mu.Lock()
 	u.accountIDs = append(u.accountIDs, accountID)
@@ -1809,6 +1828,50 @@ func (u *openAIHTTPPassthroughFailoverUpstream) calls() []int64 {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	return append([]int64(nil), u.accountIDs...)
+}
+
+func (u *openAIHTTPContinuationFailoverUpstream) Do(req *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
+	var body []byte
+	if req != nil && req.Body != nil {
+		body, _ = io.ReadAll(req.Body)
+	}
+
+	u.mu.Lock()
+	u.accountIDs = append(u.accountIDs, accountID)
+	u.bodies = append(u.bodies, append([]byte(nil), body...))
+	callCount := len(u.accountIDs)
+	u.mu.Unlock()
+
+	if callCount == 1 {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"id":"resp_http_bound","object":"response","status":"completed","model":"gpt-5.2","output":[],"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0}}}`,
+			)),
+		}, nil
+	}
+
+	header := http.Header{"Content-Type": []string{"application/json"}}
+	if u.failureStatus == http.StatusTooManyRequests {
+		header.Set("Retry-After", "7")
+	}
+	return &http.Response{
+		StatusCode: u.failureStatus,
+		Header:     header,
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"upstream_error","message":"temporary upstream failure"}}`)),
+	}, nil
+}
+
+func (u *openAIHTTPContinuationFailoverUpstream) snapshot() ([]int64, [][]byte) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	accountIDs := append([]int64(nil), u.accountIDs...)
+	bodies := make([][]byte, len(u.bodies))
+	for i := range u.bodies {
+		bodies[i] = append([]byte(nil), u.bodies[i]...)
+	}
+	return accountIDs, bodies
 }
 
 func (s *openAIWSFailoverHandlerAccountRepoStub) ListSchedulableByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
@@ -2009,6 +2072,113 @@ func TestOpenAIResponses_APIKeyPassthroughPool5xxRetriesThenExhaustsMaxSwitches(
 	require.Equal(t, http.StatusBadGateway, rec.Code)
 	require.Equal(t, "upstream_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
 	require.Equal(t, "Upstream service temporarily unavailable", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+}
+
+func TestOpenAIResponses_HTTPContinuationDoesNotFailOverToAnotherAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name   string
+		status int
+	}{
+		{name: "429", status: http.StatusTooManyRequests},
+		{name: "5xx", status: http.StatusBadGateway},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groupID := int64(4204)
+			accounts := []service.Account{
+				{
+					ID: 9920, Name: "bound-api-key", Platform: service.PlatformOpenAI,
+					Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 1,
+					Credentials: map[string]any{"api_key": "sk-bound", "base_url": "https://api.example.test"},
+					Extra:       map[string]any{"openai_responses_supported": true},
+				},
+				{
+					ID: 9921, Name: "fallback-api-key", Platform: service.PlatformOpenAI,
+					Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 2,
+					Credentials: map[string]any{"api_key": "sk-fallback", "base_url": "https://api.example.test"},
+					Extra:       map[string]any{"openai_responses_supported": true},
+				},
+			}
+			cfg := &config.Config{RunMode: config.RunModeSimple}
+			cfg.Default.RateMultiplier = 1
+			cfg.Security.URLAllowlist.Enabled = false
+			cfg.Gateway.MaxAccountSwitches = 3
+
+			accountRepo := &openAIWSFailoverHandlerAccountRepoStub{accounts: accounts}
+			upstream := &openAIHTTPContinuationFailoverUpstream{failureStatus: tt.status}
+			billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+			t.Cleanup(billingCacheSvc.Stop)
+			gatewaySvc := service.NewOpenAIGatewayService(
+				accountRepo,
+				nil,
+				nil,
+				nil,
+				nil,
+				nil,
+				nil,
+				cfg,
+				nil,
+				nil,
+				service.NewBillingService(cfg, nil),
+				nil,
+				billingCacheSvc,
+				upstream,
+				&service.DeferredService{},
+				nil,
+				nil,
+				nil,
+				nil,
+				nil,
+				nil,
+				nil,
+			)
+			h := NewOpenAIGatewayHandler(
+				gatewaySvc,
+				service.NewConcurrencyService(nil),
+				billingCacheSvc,
+				service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
+				nil,
+				nil,
+				nil,
+				nil,
+				cfg,
+			)
+
+			apiKey := &service.APIKey{
+				ID: 1804, GroupID: &groupID,
+				User:  &service.User{ID: 1704, Status: service.StatusActive},
+				Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+			}
+			request := func(body string) *httptest.ResponseRecorder {
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(body))
+				c.Request.Header.Set("Content-Type", "application/json")
+				c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+				c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1704, Concurrency: 0})
+				h.Responses(c)
+				return rec
+			}
+
+			first := request(`{"model":"gpt-5.2","input":"hello","stream":false}`)
+			require.Equal(t, http.StatusOK, first.Code)
+			require.Equal(t, "resp_http_bound", gjson.GetBytes(first.Body.Bytes(), "id").String())
+
+			continuation := request(`{"model":"gpt-5.2","previous_response_id":"resp_http_bound","input":"continue","stream":false}`)
+			require.Equal(t, tt.status, continuation.Code)
+			if tt.status == http.StatusTooManyRequests {
+				require.Equal(t, "7", continuation.Header().Get("Retry-After"))
+			}
+
+			accountIDs, bodies := upstream.snapshot()
+			require.Equal(t, []int64{9920, 9920}, accountIDs, "the bound continuation must not probe account B")
+			require.Len(t, bodies, 2)
+			require.Equal(t, "resp_http_bound", gjson.GetBytes(bodies[1], "previous_response_id").String())
+		})
+	}
 }
 
 func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T) {

@@ -89,19 +89,29 @@ func TestOpenAIClientTransport_NilAndUnknownInput(t *testing.T) {
 	require.False(t, exists)
 }
 
-func TestResolveOpenAIWSDecisionByClientTransport(t *testing.T) {
+func TestResolveOpenAIWSDecisionByClientTransport_HTTP(t *testing.T) {
 	base := OpenAIWSProtocolDecision{
 		Transport: OpenAIUpstreamTransportResponsesWebsocketV2,
 		Reason:    "ws_v2_enabled",
 	}
 
-	httpDecision := resolveOpenAIWSDecisionByClientTransport(base, OpenAIClientTransportHTTP)
-	require.Equal(t, OpenAIUpstreamTransportHTTPSSE, httpDecision.Transport)
-	require.Equal(t, "client_protocol_http", httpDecision.Reason)
+	apiKeyDecision := resolveOpenAIWSDecisionByClientTransport(base, OpenAIClientTransportHTTP, &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+	})
+	require.Equal(t, OpenAIUpstreamTransportHTTPSSE, apiKeyDecision.Transport)
+	require.Equal(t, "client_protocol_http", apiKeyDecision.Reason)
 
-	wsDecision := resolveOpenAIWSDecisionByClientTransport(base, OpenAIClientTransportWS)
+	oauthDecision := resolveOpenAIWSDecisionByClientTransport(base, OpenAIClientTransportHTTP, &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+	})
+	require.Equal(t, OpenAIUpstreamTransportResponsesWebsocketV2, oauthDecision.Transport)
+	require.Equal(t, "http_responses_facade_ws_v2_enabled", oauthDecision.Reason)
+
+	wsDecision := resolveOpenAIWSDecisionByClientTransport(base, OpenAIClientTransportWS, nil)
 	require.Equal(t, base, wsDecision)
 
-	unknownDecision := resolveOpenAIWSDecisionByClientTransport(base, OpenAIClientTransportUnknown)
+	unknownDecision := resolveOpenAIWSDecisionByClientTransport(base, OpenAIClientTransportUnknown, nil)
 	require.Equal(t, base, unknownDecision)
 }
