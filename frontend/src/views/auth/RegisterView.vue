@@ -134,6 +134,27 @@
           </transition>
         </div>
 
+        <!-- Affiliate Invitation Code Input (Optional) -->
+        <div v-else-if="affiliateEnabled" data-testid="affiliate-invitation-field">
+          <label for="affiliate_code" class="input-label">
+            {{ t('auth.invitationCodeLabel') }}
+            <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">({{ t('common.optional') }})</span>
+          </label>
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <Icon name="key" size="md" class="text-gray-400 dark:text-dark-500" />
+            </div>
+            <input
+              id="affiliate_code"
+              v-model="formData.aff_code"
+              type="text"
+              :disabled="registrationActionDisabled"
+              class="input pl-11"
+              :placeholder="t('auth.invitationCodePlaceholder')"
+            />
+          </div>
+        </div>
+
         <!-- Promo Code Input (Optional) -->
         <div v-if="promoCodeEnabled">
           <label for="promo_code" class="input-label">
@@ -183,7 +204,7 @@
         </div>
 
         <!-- Turnstile Widget -->
-        <div v-if="turnstileEnabled && turnstileSiteKey">
+        <div v-if="turnstileEnabled && turnstileSiteKey" data-testid="registration-turnstile">
           <TurnstileWidget
             ref="turnstileRef"
             :site-key="turnstileSiteKey"
@@ -351,6 +372,7 @@ const registrationEnabled = ref<boolean>(true)
 const emailVerifyEnabled = ref<boolean>(false)
 const promoCodeEnabled = ref<boolean>(true)
 const invitationCodeEnabled = ref<boolean>(false)
+const affiliateEnabled = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const siteName = ref<string>('Sub2API')
@@ -459,6 +481,7 @@ onMounted(async () => {
     emailVerifyEnabled.value = settings.email_verify_enabled
     promoCodeEnabled.value = settings.promo_code_enabled
     invitationCodeEnabled.value = settings.invitation_code_enabled
+    affiliateEnabled.value = settings.affiliate_enabled
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     siteName.value = settings.site_name || 'Sub2API'

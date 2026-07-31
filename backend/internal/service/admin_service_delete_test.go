@@ -86,7 +86,7 @@ func (s *userRepoStub) GetFirstAdmin(ctx context.Context) (*User, error) {
 	panic("unexpected GetFirstAdmin call")
 }
 
-func (s *userRepoStub) Update(ctx context.Context, user *User) error {
+func (s *userRepoStub) Update(ctx context.Context, user *User, fields UserUpdateFields) error {
 	s.updated = append(s.updated, user)
 	if s.usersByEmail == nil {
 		s.usersByEmail = make(map[string]*User)
@@ -139,6 +139,14 @@ func (s *userRepoStub) UpdateBalance(ctx context.Context, id int64, amount float
 
 func (s *userRepoStub) DeductBalance(ctx context.Context, id int64, amount float64) error {
 	panic("unexpected DeductBalance call")
+}
+
+func (s *userRepoStub) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (s *userRepoStub) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
 }
 
 func (s *userRepoStub) UpdateConcurrency(ctx context.Context, id int64, amount int) error {

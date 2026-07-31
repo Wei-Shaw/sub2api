@@ -44,7 +44,7 @@ type ConfigStore interface {
 	// It must stay false when blocking is not intended, even if config is
 	// untrusted—otherwise default-off deployments fail closed for all traffic.
 	BlockingActivationDegraded() bool
-	Public() PublicConfig
+	Public() (PublicConfig, error)
 	Save(ctx context.Context, req UpdateConfigRequest, actorID int64) (PublicConfig, error)
 	RuntimeState() (expected int64, active int64, loadedAt *time.Time, loadError string)
 	Encrypt(value string) (string, error)
@@ -90,6 +90,11 @@ type ActiveEndpoint struct {
 	TimeoutMS  int
 	InputLimit int
 	Enabled    bool
+	// TokenInvalid marks an endpoint whose persisted token ciphertext cannot be
+	// decrypted with the current encryption key (key changed or auto-generated
+	// on restart). The endpoint is kept visible for admins but excluded from
+	// runtime use until the token is re-entered or cleared (issue #4887).
+	TokenInvalid bool
 }
 
 type ActiveConfig struct {
@@ -365,7 +370,23 @@ func (cfg ActiveConfig) EnabledEndpoints() []ActiveEndpoint {
 	return result
 }
 
-func PublicFromStorage(cfg storageConfig, riskControlEnabled bool) PublicConfig {
+// InvalidTokenEndpointIDs lists endpoints whose stored token could not be
+// decrypted with the current encryption key.
+func (cfg ActiveConfig) InvalidTokenEndpointIDs() []string {
+	ids := make([]string, 0)
+	for _, ep := range cfg.Endpoints {
+		if ep.TokenInvalid {
+			ids = append(ids, ep.ID)
+		}
+	}
+	return ids
+}
+
+func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenEndpointIDs []string) PublicConfig {
+	invalid := make(map[string]struct{}, len(invalidTokenEndpointIDs))
+	for _, id := range invalidTokenEndpointIDs {
+		invalid[id] = struct{}{}
+	}
 	scanners := append([]string{}, cfg.Scanners...)
 	groupIDs := append([]int64{}, cfg.GroupIDs...)
 	endpoints := make([]PublicEndpoint, 0, len(cfg.Endpoints))
@@ -374,6 +395,9 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool) PublicConfig 
 		status := "missing"
 		if hasToken {
 			status = "configured"
+			if _, ok := invalid[ep.ID]; ok {
+				status = "invalid"
+			}
 		}
 		endpoints = append(endpoints, PublicEndpoint{
 			ID: ep.ID, Name: ep.Name, Protocol: ep.Protocol, BaseURL: ep.BaseURL,
@@ -402,19 +426,27 @@ func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor Sec
 	}
 	for _, ep := range cfg.Endpoints {
 		token := ""
+		tokenInvalid := false
 		if ep.TokenCiphertext != "" {
 			if encryptor == nil {
 				return ActiveConfig{}, fmt.Errorf("prompt audit secret encryptor unavailable")
 			}
 			plain, err := encryptor.Decrypt(ep.TokenCiphertext)
 			if err != nil {
-				return ActiveConfig{}, fmt.Errorf("decrypt prompt audit endpoint token %q: %w", ep.ID, err)
+				// An undecryptable token (encryption key changed or regenerated)
+				// must not take the whole config down: admins would otherwise be
+				// locked out of the real config version and unable to recover
+				// (issue #4887). Keep the ciphertext persisted, but exclude the
+				// endpoint from runtime use until the token is re-entered.
+				tokenInvalid = true
+			} else {
+				token = plain
 			}
-			token = plain
 		}
 		active.Endpoints = append(active.Endpoints, ActiveEndpoint{
 			ID: ep.ID, Name: ep.Name, Protocol: ep.Protocol, BaseURL: ep.BaseURL, Model: ep.Model,
-			Token: token, TimeoutMS: ep.TimeoutMS, InputLimit: ep.InputLimit, Enabled: ep.Enabled,
+			Token: token, TimeoutMS: ep.TimeoutMS, InputLimit: ep.InputLimit,
+			Enabled: ep.Enabled && !tokenInvalid, TokenInvalid: tokenInvalid,
 		})
 	}
 	return active, nil

@@ -30,6 +30,16 @@ export default {
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
         },
+        modelPlaza: {
+          title: '模型广场',
+          description: '以分组为单位向访客展示可用模型与价格的公开页面。默认关闭。',
+          enabled: '启用模型广场',
+          enabledHint: '开启后顶栏显示入口，页面可通过 /model-plaza 独立访问。',
+          requireAuth: '需要登录才可访问',
+          requireAuthHint: '开启后未登录访问将跳转登录页；关闭则公开可见，匿名访客仅展示非专属分组。',
+          priceDescription: '价格说明（Markdown）',
+          priceDescriptionHint: '展示在模型广场页面顶部，可用于说明计费规则、汇率、优惠活动等。',
+        },
         riskControl: {
           title: '风控中心',
           description: '启用内容审计菜单和全端点请求审核入口。默认关闭。',
@@ -127,6 +137,14 @@ export default {
           '请先在环境变量中配置 TOTP_ENCRYPTION_KEY。使用命令 openssl rand -hex 32 生成密钥。'
       },
       security: {
+        passkey: 'Passkey 登录',
+        passkeyHint: '当依赖方配置有效时，允许无密码登录及用户自行管理 Passkey。',
+        passkeyConfigured: 'WebAuthn 依赖方配置有效。',
+        passkeyNotConfigured: '请先配置有效的 RP ID 与允许的 HTTPS 来源，再启用 Passkey 登录。',
+        passkeyRPID: 'RP ID',
+        passkeyOrigins: '允许的 HTTPS 来源',
+        passkeyValueNotConfigured: '未配置',
+        passkeyDeploymentHint: '请由服务器运维在部署配置中将 webauthn.enabled 设为 true，填写 webauthn.rp_id（仅域名）与 webauthn.rp_origins（完整 HTTPS 来源），然后重启服务。',
         stepUp: '敏感操作二次验证 (step-up 2FA)',
         stepUpHint: '开启后，账号/代理导出、备份创建与下载、S3 配置修改、提升管理员等敏感操作需要先完成 TOTP 二次验证（15 分钟内有效）。开启前需本人已启用 2FA；关闭该开关本身也需要二次验证。',
         stepUpEnableRequiresTotp: '开启敏感操作二次验证前，请先在个人资料中为当前账号启用 2FA (TOTP)。',
@@ -134,6 +152,24 @@ export default {
         sessionBindingHint: '将登录会话与客户端 IP 和 User-Agent 绑定，任一变化即强制该会话失效并需重新登录（提升被盗凭证的利用门槛）。',
         auditRetention: '操作日志保留天数',
         auditRetentionHint: '超过该天数的操作日志将被自动清理；填 0 表示永久保留（仅支持手动清空）。'
+      },
+      panelRateLimit: {
+        title: '面板接口限流',
+        description: '限制面板 API 的请求频率，防止高频刷接口（如用量统计、仪表盘查询）打爆数据库',
+        proxySafeNote: '登录后的接口按「用户账号」维度计数，与来源 IP 无关——反向代理、NAT 共享出口等场景不会被误拦截；公开接口按真实客户端 IP 计数，回环与内网地址（反代内部转发地址）会自动跳过。',
+        enabled: '启用面板接口限流',
+        enabledHint: '对登录后的面板接口按账号限流；超出阈值返回 429，窗口重置后自动恢复。',
+        userRpm: '每账号请求上限',
+        userRpmHint: '单个账号每分钟允许的面板 API 请求总数，正常页面操作远达不到该阈值；0 表示不限制。',
+        heavyRpm: '重查询请求上限',
+        heavyRpmHint: '单个账号每分钟允许的用量/仪表盘等聚合统计查询次数（这类请求对数据库压力最大）；0 表示不限制。',
+        publicIpRpm: '公开接口每 IP 上限',
+        publicIpRpmHint: '无需登录的公开接口（如站点公开设置）每个真实客户端 IP 每分钟的请求上限；0 表示不限制。',
+        perMinute: '次/分钟',
+        exemptAdmin: '管理员豁免',
+        exemptAdminHint: '开启后管理员账号不受面板限流约束，避免批量运维操作被误拦。',
+        saved: '面板接口限流配置已保存',
+        saveFailed: '保存面板接口限流配置失败'
       },
       turnstile: {
         title: 'Cloudflare Turnstile',

@@ -44,9 +44,9 @@ export default {
     pool: {
       title: 'Audit pool', description: 'Enabled OpenAI-compatible nodes are tried in order. Probes run from the server network.',
       add: 'Add node', edit: 'Edit node', empty: 'No audit nodes configured.', node: 'Node', model: 'Model', limits: 'Timeout / chunk limit', credential: 'Credential and probe',
-      configured: 'API Key configured', missing: 'API Key missing', probe: 'Test connection', probing: 'Probing…',
+      configured: 'API Key configured', missing: 'API Key missing', invalid: 'API Key cannot be decrypted; re-enter it', probe: 'Test connection', probing: 'Probing…',
       probeProgress: 'Config validated ✓ · request sent · awaiting service response…', probeResult: 'Config ✓ · request ✓ · HTTP {http} · {status} · {latency} ms',
-      name: 'Node name', id: 'Stable node ID', baseUrl: 'Base URL', apiKey: 'API Key', keepSecret: 'Leave blank to keep the saved API Key',
+      name: 'Node name', id: 'Stable node ID', baseUrl: 'Base URL', apiKey: 'API Key', keepSecret: 'Leave blank to keep the saved API Key', reenterSecret: 'The saved API Key cannot be decrypted (encryption key changed); enter a new one',
       secretHint: 'Plaintext exists only in this editor and is cleared immediately after a successful save.', clearSecret: 'Explicitly clear the saved API Key', timeout: 'Total timeout (ms)', inputLimit: 'Unicode characters per chunk',
       toggleNode: 'Toggle node {name}', deleteConfirm: 'Remove “{name}” from the draft? It takes effect after saving.',
     },
@@ -93,6 +93,7 @@ export default {
     errors: {
       loadConfig: 'Unable to load Prompt Audit configuration.', loadRuntime: 'Unable to load Prompt Audit runtime.', loadGroups: 'Unable to load groups.', loadEvents: 'Unable to load audit events.', loadDetail: 'Unable to load event details.', saveConfig: 'Unable to save the configuration.', probe: 'Node probe failed.', delete: 'Unable to delete events.', previewDelete: 'Unable to create a deletion preview. Check the time range.', deleteConfirmation: 'The deletion confirmation is invalid or expired. Preview again.',
       prompt_audit_config_conflict: 'Another administrator updated this configuration. Reload the server version before deciding how to merge your draft.',
+      prompt_audit_encryption_key_required: 'No fixed encryption key is configured, so audit node API Keys would be lost on restart. Set the TOTP_ENCRYPTION_KEY environment variable and restart the service first.',
       prompt_guard_requires_audit_enabled: 'Enable Prompt Audit before synchronous blocking.', prompt_audit_invalid_endpoint: 'The audit node configuration is invalid.', prompt_audit_endpoint_required: 'Enable at least one audit node before enabling Prompt Audit.', prompt_audit_groups_required: 'Select at least one group in selected-group mode.', prompt_audit_scanners_required: 'Enable at least one risk category.',
     },
   },
