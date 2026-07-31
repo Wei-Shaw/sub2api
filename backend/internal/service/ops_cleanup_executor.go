@@ -16,6 +16,14 @@ const (
 	opsCleanupHeartbeatTimeout = 2 * time.Second
 )
 
+// opsCleanupDB is implemented by both *sql.DB and *sql.Conn. Keeping the
+// executor connection-agnostic lets minimal storage reuse the established ops
+// cleanup behavior while holding its own session advisory lock.
+type opsCleanupDB interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 type opsCleanupTarget struct {
 	retentionDays int
 	table         string
@@ -65,7 +73,7 @@ func opsCleanupPlan(now time.Time, days int) (cutoff time.Time, truncate, ok boo
 
 func opsCleanupRunOne(
 	ctx context.Context,
-	db *sql.DB,
+	db opsCleanupDB,
 	truncate bool,
 	cutoff time.Time,
 	table, timeCol string,
@@ -80,7 +88,7 @@ func opsCleanupRunOne(
 
 func deleteOldRowsByID(
 	ctx context.Context,
-	db *sql.DB,
+	db opsCleanupDB,
 	table string,
 	timeColumn string,
 	cutoff time.Time,
@@ -132,7 +140,7 @@ WHERE id IN (SELECT id FROM batch)
 }
 
 // truncateOpsTable 用 TRUNCATE TABLE 清空指定表，先 SELECT COUNT(*) 取得清空前行数用于 heartbeat。
-func truncateOpsTable(ctx context.Context, db *sql.DB, table string) (int64, error) {
+func truncateOpsTable(ctx context.Context, db opsCleanupDB, table string) (int64, error) {
 	if db == nil {
 		return 0, nil
 	}

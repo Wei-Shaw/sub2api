@@ -53,9 +53,10 @@ type ConfigManager struct {
 	lastLoadError string
 	lastErrorAt   *time.Time
 
-	lifecycleMu sync.Mutex
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
+	lifecycleMu   sync.Mutex
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	forceDisabled bool
 }
 
 func NewConfigManager(db *sql.DB, settings service.SettingRepository, redisClient *redis.Client, encryptor service.SecretEncryptor, cfg *config.Config) *ConfigManager {
@@ -63,6 +64,26 @@ func NewConfigManager(db *sql.DB, settings service.SettingRepository, redisClien
 		db: db, settings: settings, redis: redisClient, encryptor: encryptor, clock: realClock{},
 		encryptionKeyConfigured: cfg != nil && cfg.Totp.EncryptionKeyConfigured,
 	}
+}
+
+func (m *ConfigManager) SetForceDisabled(disabled bool) {
+	if m != nil {
+		m.forceDisabled = disabled
+	}
+}
+
+func (m *ConfigManager) installDisabledSnapshot() {
+	if m == nil {
+		return
+	}
+	storage := DefaultStorageConfig()
+	active := ActiveConfig{ConfigVersion: storage.ConfigVersion}
+	now := m.clock.Now()
+	m.expected.Store(storage.ConfigVersion)
+	m.expectedBlocking.Store(false)
+	m.snapshot.Store(&activeConfigSnapshot{storage: storage, active: active, loadedAt: now})
+	m.configUntrusted.Store(false)
+	m.clearLoadError()
 }
 
 func (m *ConfigManager) Start(ctx context.Context) error {
@@ -77,6 +98,10 @@ func (m *ConfigManager) Start(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	m.cancel = cancel
 	m.lifecycleMu.Unlock()
+	if m.forceDisabled {
+		m.installDisabledSnapshot()
+		return nil
+	}
 	loadErr := m.Reload(runCtx)
 	if loadErr != nil {
 		m.markConfigUntrusted()
@@ -106,6 +131,10 @@ func (m *ConfigManager) Shutdown(_ context.Context) error {
 }
 
 func (m *ConfigManager) Reload(ctx context.Context) error {
+	if m != nil && m.forceDisabled {
+		m.installDisabledSnapshot()
+		return nil
+	}
 	if m == nil || m.settings == nil {
 		m.markUntrustedIfNoActiveSnapshot()
 		return errors.New("prompt audit setting repository unavailable")
@@ -244,6 +273,9 @@ func (m *ConfigManager) Public() (PublicConfig, error) {
 }
 
 func (m *ConfigManager) Save(ctx context.Context, req UpdateConfigRequest, actorID int64) (PublicConfig, error) {
+	if m != nil && m.forceDisabled {
+		return PublicConfig{}, infraerrors.BadRequest("prompt_audit_disabled_by_storage_mode", "minimal storage mode disables prompt auditing")
+	}
 	if m == nil || m.db == nil || m.encryptor == nil {
 		return PublicConfig{}, errors.New("prompt audit config persistence unavailable")
 	}

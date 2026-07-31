@@ -554,6 +554,29 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 	}
 }
 
+// compactUsageLogForStorage removes request-level diagnostic metadata in
+// minimal mode while preserving the counters used by scheduling, rate limits,
+// quota windows, and billing reconciliation.
+func compactUsageLogForStorage(cfg *config.Config, usageLog *UsageLog) {
+	if usageLog == nil || cfg == nil || !cfg.MinimalStorageEnabled() {
+		return
+	}
+	usageLog.ModelMappingChain = nil
+	usageLog.ReasoningEffort = nil
+	usageLog.InboundEndpoint = nil
+	usageLog.UpstreamEndpoint = nil
+	usageLog.DurationMs = nil
+	usageLog.FirstTokenMs = nil
+	usageLog.UserAgent = nil
+	usageLog.IPAddress = nil
+	usageLog.ImageSizeBreakdown = nil
+}
+
+func writeUsageLogForStorage(ctx context.Context, repo UsageLogRepository, cfg *config.Config, usageLog *UsageLog, logKey string) {
+	compactUsageLogForStorage(cfg, usageLog)
+	writeUsageLogBestEffort(ctx, repo, usageLog, logKey)
+}
+
 // recordUsageOpts 内部选项，参数化普通计费与长上下文计费的差异点。
 type recordUsageOpts struct {
 	// 长上下文计费（仅 Gemini 路径需要）
@@ -746,7 +769,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+		writeUsageLogForStorage(ctx, s.usageLogRepo, s.cfg, usageLog, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
@@ -779,7 +802,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if billingErr != nil {
 		return billingErr
 	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+	writeUsageLogForStorage(ctx, s.usageLogRepo, s.cfg, usageLog, "service.gateway")
 
 	return nil
 }

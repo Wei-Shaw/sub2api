@@ -101,6 +101,31 @@ webauthn:
 run_mode: "standard"
 
 # =============================================================================
+# Storage Policy
+# 数据存储策略
+# =============================================================================
+storage:
+  # standard keeps operational dashboards and full usage history.
+  # minimal keeps only core proxy/auth/billing state plus a compact rolling usage
+  # window required by scheduling, rate limits, and provider quota checks.
+  # standard 保留运维面板和完整用量历史；minimal 仅保留代理、鉴权、调度、
+  # 扣费核心状态，以及限流与供应商配额判断所需的精简滚动用量。
+  mode: "standard"
+  # WARNING: minimal deletes allowlisted history irreversibly. Switching back to
+  # standard only resumes future collection. Back up the database before use.
+  # 警告：minimal 会不可逆地删除白名单内的历史；切回 standard 只会恢复后续
+  # 记录。启用前请先备份数据库。
+  # Compact usage retention in minimal mode. 35 days covers monthly quota windows.
+  # minimal 模式精简用量保留天数；35 天用于覆盖月度配额窗口。
+  usage_retention_days: 35
+  # Minimal mode billing idempotency window. Older keys are deleted directly.
+  # minimal 模式下防重复扣费键保留天数，超过后直接删除，不进入永久归档。
+  billing_dedup_retention_days: 14
+  # Minimal cleanup interval. Lock waits are bounded and row deletes are batched.
+  # minimal 清理周期（分钟）；锁等待有上限，逐行删除会分批执行。
+  cleanup_interval_minutes: 360
+
+# =============================================================================
 # CORS Configuration
 # 跨域资源共享 (CORS) 配置
 # =============================================================================

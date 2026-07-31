@@ -707,6 +707,23 @@ Simple Mode is designed for individual developers or internal teams who want qui
 
 ---
 
+## Minimal Storage Mode
+
+Minimal storage mode is for deployments that only need API proxying, authentication, scheduling, rate limiting, and billing:
+
+```bash
+STORAGE_MODE=minimal
+STORAGE_USAGE_RETENTION_DAYS=35
+STORAGE_BILLING_DEDUP_RETENTION_DAYS=14
+STORAGE_CLEANUP_INTERVAL_MINUTES=360
+```
+
+It stops persisting HTTP access, ops, administrator audit, prompt-audit, and content-moderation history in PostgreSQL. Usage rows are stripped of request diagnostics (IP, user agent, endpoints, latency, mapping chain, and image breakdown) and kept only as a bounded rolling window. The 35-day default is intentional: scheduling and provider quota enforcement include weekly and monthly windows. Scheduled channel monitoring and scheduled tests are also stopped. Users, API keys, upstream accounts, groups, balances, subscriptions, payments, and short-lived billing idempotency state remain intact.
+
+Warning: minimal mode uses an explicit history-table allowlist and non-cascading `TRUNCATE` at startup and on the cleanup interval to release non-essential tables and indexes. Expired usage and billing-idempotency rows are removed in bounded batches to avoid a large WAL spike; fully expired monthly usage partitions are dropped immediately when partitioning is enabled. Back up the database before enabling it. Deleted history cannot be recovered: switching back to `standard` only resumes future collection. Keep `standard` mode if detailed usage history or ops dashboards are required.
+
+---
+
 ## Asynchronous Image Tasks
 
 Long-running OpenAI/Grok image generation and editing can be submitted through `/v1/images/generations/async` or `/v1/images/edits/async`, then polled at `/v1/images/tasks/{task_id}` without holding a CDN connection open. See [Asynchronous Image Tasks](docs/ASYNC_IMAGE_TASKS.md) for request and response examples.

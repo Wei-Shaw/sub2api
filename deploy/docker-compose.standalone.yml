@@ -42,6 +42,10 @@ services:
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
+      - STORAGE_MODE=${STORAGE_MODE:-standard}
+      - STORAGE_USAGE_RETENTION_DAYS=${STORAGE_USAGE_RETENTION_DAYS:-35}
+      - STORAGE_BILLING_DEDUP_RETENTION_DAYS=${STORAGE_BILLING_DEDUP_RETENTION_DAYS:-14}
+      - STORAGE_CLEANUP_INTERVAL_MINUTES=${STORAGE_CLEANUP_INTERVAL_MINUTES:-360}
 
       # =======================================================================
       # Database Configuration (PostgreSQL) - Required

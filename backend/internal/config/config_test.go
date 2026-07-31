@@ -49,6 +49,34 @@ func TestLoadRedisUsernameFromEnvironment(t *testing.T) {
 	require.Equal(t, "app-user", cfg.Redis.Username)
 }
 
+func TestLoadMinimalStorageMode(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("STORAGE_MODE", "minimal")
+	t.Setenv("STORAGE_USAGE_RETENTION_DAYS", "35")
+	t.Setenv("STORAGE_BILLING_DEDUP_RETENTION_DAYS", "14")
+	t.Setenv("STORAGE_CLEANUP_INTERVAL_MINUTES", "60")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.MinimalStorageEnabled())
+	require.False(t, cfg.Ops.Enabled)
+	require.False(t, cfg.Ops.Aggregation.Enabled)
+	require.False(t, cfg.DashboardAgg.Enabled)
+	require.False(t, cfg.UsageCleanup.Enabled)
+	require.False(t, cfg.Log.Output.ToFile)
+	require.Equal(t, 35, cfg.Storage.UsageRetentionDays)
+	require.Equal(t, 14, cfg.Storage.BillingDedupRetentionDays)
+	require.Equal(t, 60, cfg.Storage.CleanupIntervalMinutes)
+}
+
+func TestLoadRejectsInvalidStorageMode(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("STORAGE_MODE", "archive-everything")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "storage.mode must be one of")
+}
+
 func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	cfg, err := Load()
