@@ -28,6 +28,7 @@ type openAIWSClientFrameConn struct {
 	// The relay observes upstream payloads, while clients must keep seeing the
 	// model identifier they supplied for the current turn.
 	restoreResponseModel func([]byte) []byte
+	rewriteResponse      func([]byte) []byte
 }
 
 // openAIWSPolicyEnforcingFrameConn wraps a client-side FrameConn and runs
@@ -639,6 +640,9 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 		if c.restoreResponseModel != nil {
 			payload = c.restoreResponseModel(payload)
 		}
+		if c.rewriteResponse != nil {
+			payload = c.rewriteResponse(payload)
+		}
 	}
 	return c.conn.Write(ctx, msgType, payload)
 }
@@ -915,6 +919,18 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			}
 			requestModel, upstreamModel := usageMeta.turnModels("")
 			return replaceOpenAIWSMessageModel(payload, upstreamModel, requestModel)
+		},
+		rewriteResponse: func(payload []byte) []byte {
+			eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
+			if eventType != "response.failed" {
+				return payload
+			}
+			failedMessage := extractOpenAISSEErrorMessage(payload)
+			updatedPayload, status, errType, errMsg, _ := applyOpenAIStreamFailedEventPassthroughRule(
+				c, account, payload, failedMessage,
+			)
+			MarkOpsStreamError(c, errType, errMsg, status)
+			return updatedPayload
 		},
 	}
 	policyClientConn := &openAIWSPolicyEnforcingFrameConn{

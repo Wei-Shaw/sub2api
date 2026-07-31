@@ -942,6 +942,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					})
 				}
 			}
+			terminalFailurePayload := upstreamMessage
+			if eventType == "response.failed" {
+				failedMessage := extractOpenAISSEErrorMessage(upstreamMessage)
+				updatedMessage, status, errType, errMsg, _ := applyOpenAIStreamFailedEventPassthroughRule(
+					c, account, upstreamMessage, failedMessage,
+				)
+				upstreamMessage = updatedMessage
+				MarkOpsStreamError(c, errType, errMsg, status)
+			}
 
 			if !clientDisconnected {
 				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
@@ -978,7 +987,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if isTerminalEvent {
 				canonicalModel := canonicalOpenAIAccountSchedulingModel(account, originalModel)
-				terminalEvent := s.handleOpenAIWSTerminalTransientFailure(ctx, account, canonicalModel, lease.HandshakeHeaders(), upstreamMessage)
+				terminalEvent := s.handleOpenAIWSTerminalTransientFailure(ctx, account, canonicalModel, lease.HandshakeHeaders(), terminalFailurePayload)
 				// 客户端已断连时，上游连接的 session 状态不可信，标记 broken 避免回池复用。
 				if clientDisconnected {
 					lease.MarkBroken()

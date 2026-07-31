@@ -247,7 +247,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 	} else {
-		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
+		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, account, reqModel, upstreamPassthroughModel)
 		if err != nil {
 			return nil, err
 		}
@@ -856,6 +856,72 @@ func applyOpenAIStreamFailedErrorPassthroughRule(
 	)
 }
 
+// applyOpenAIStreamFailedEventPassthroughRule applies a matched rule to an
+// in-band response.failed event. The wire status may already be committed, so
+// the returned status is the logical stream-error status while a custom message
+// is written back into the original Responses payload.
+func applyOpenAIStreamFailedEventPassthroughRule(
+	c *gin.Context,
+	account *Account,
+	payload []byte,
+	failedMessage string,
+) (updatedPayload []byte, status int, errType string, errMsg string, matched bool) {
+	failedMessage = strings.TrimSpace(failedMessage)
+	if failedMessage == "" {
+		failedMessage = "Upstream response failed"
+	}
+	status = openAIStreamFailedEventSemanticStatus(payload, failedMessage)
+	errType = "upstream_error"
+	errMsg = failedMessage
+	updatedPayload = payload
+
+	platform := PlatformOpenAI
+	if account != nil && strings.TrimSpace(account.Platform) != "" {
+		platform = strings.TrimSpace(account.Platform)
+	}
+	ruleStatus, ruleErrType, ruleErrMsg, ruleMatched := applyOpenAIStreamFailedErrorPassthroughRule(
+		c,
+		platform,
+		payload,
+		failedMessage,
+	)
+	if !ruleMatched {
+		return updatedPayload, status, errType, errMsg, false
+	}
+	status = ruleStatus
+	errType = ruleErrType
+	if strings.TrimSpace(ruleErrMsg) != "" {
+		errMsg = ruleErrMsg
+	}
+	if strings.TrimSpace(errMsg) == "" || errMsg == extractOpenAISSEErrorMessage(payload) {
+		return updatedPayload, status, errType, errMsg, true
+	}
+
+	paths := make([]string, 0, 2)
+	if gjson.GetBytes(payload, "response.error").IsObject() {
+		paths = append(paths, "response.error.message")
+	}
+	if gjson.GetBytes(payload, "error").IsObject() {
+		paths = append(paths, "error.message")
+	}
+	if len(paths) == 0 {
+		if gjson.GetBytes(payload, "response").IsObject() {
+			paths = append(paths, "response.error.message")
+		} else {
+			paths = append(paths, "error.message")
+		}
+	}
+
+	for _, path := range paths {
+		next, err := sjson.SetBytes(updatedPayload, path, errMsg)
+		if err != nil {
+			return payload, status, errType, errMsg, true
+		}
+		updatedPayload = next
+	}
+	return updatedPayload, status, errType, errMsg, true
+}
+
 func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool {
 	if isOpenAIContextWindowError(message, payload) {
 		return false
@@ -1113,6 +1179,18 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 							s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
 					}
 				}
+				if openAIStreamClientOutputStarted(c, clientOutputStarted) {
+					updatedData, status, errType, errMsg, _ := applyOpenAIStreamFailedEventPassthroughRule(
+						c, account, dataBytes, failedMessage,
+					)
+					failedMessage = errMsg
+					if !bytes.Equal(updatedData, dataBytes) {
+						dataBytes = updatedData
+						trimmedData = strings.TrimSpace(string(updatedData))
+						line = "data: " + string(updatedData)
+					}
+					MarkOpsStreamError(c, errType, failedMessage, status)
+				}
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
 			}
@@ -1227,6 +1305,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	mappedModel string,
 ) (*openaiNonStreamingResultPassthrough, error) {
@@ -1240,7 +1319,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	// stream=false was requested. Without this conversion the client would
 	// receive raw SSE text or a terminal event with empty output.
 	if isEventStreamResponse(resp.Header) {
-		return s.handlePassthroughSSEToJSON(resp, c, body, originalModel, mappedModel)
+		return s.handlePassthroughSSEToJSON(resp, c, body, account, originalModel, mappedModel)
 	}
 
 	usage := &OpenAIUsage{}
@@ -1285,7 +1364,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 // response for the passthrough path. It mirrors handleSSEToJSON while
 // preserving passthrough payloads, except compact-only model remapping may
 // rewrite model fields back to the original requested model.
-func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel string, mappedModel string) (*openaiNonStreamingResultPassthrough, error) {
+func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c *gin.Context, body []byte, account *Account, originalModel string, mappedModel string) (*openaiNonStreamingResultPassthrough, error) {
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
 
@@ -1322,7 +1401,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			if msg == "" {
 				msg = "Upstream compact response failed"
 			}
-			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+			upstreamStatus := resolveOpenAIResponseFailedUpstreamStatus(resp, terminalPayload)
+			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, account, upstreamStatus, terminalPayload, msg)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
 		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {

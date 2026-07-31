@@ -385,6 +385,15 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				upstreamMessage = corrected
 			}
 		}
+		terminalFailurePayload := upstreamMessage
+		if eventType == "response.failed" {
+			failedMessage := extractOpenAISSEErrorMessage(upstreamMessage)
+			updatedMessage, status, errType, errMsg, _ := applyOpenAIStreamFailedEventPassthroughRule(
+				c, account, upstreamMessage, failedMessage,
+			)
+			upstreamMessage = updatedMessage
+			MarkOpsStreamError(c, errType, errMsg, status)
+		}
 		replayCollector.AddEvent(eventType, upstreamMessage)
 
 		var upstreamEventErr error
@@ -449,7 +458,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			return resultWithUsage(), upstreamEventErr
 		}
 		if isOpenAIWSTerminalEvent(eventType) {
-			upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, canonicalOpenAIAccountSchedulingModel(account, originalModel), resp.Header, upstreamMessage)
+			upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, canonicalOpenAIAccountSchedulingModel(account, originalModel), resp.Header, terminalFailurePayload)
 			terminalEventCount++
 			firstTokenMsValue := -1
 			if firstTokenMs != nil {
