@@ -228,6 +228,16 @@ REDACTED
 	return nil, ErrGroupNotFound
 REDACTED
 
+func TestSettingService_UpdateSettings_PersistsCompactHomeEnabled(t *testing.T) {
+	repo := &settingUpdateRepoStub{REDACTED
+	svc := NewSettingService(repo, &config.Config{REDACTED)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{CompactHomeEnabled: trueREDACTED)
+
+REDACTED
+	require.Equal(t, "true", repo.updates[SettingKeyCompactHomeEnabled])
+REDACTED
+
 func TestSettingService_UpdateSettings_DefaultSubscriptions_ValidGroup(t *testing.T) {
 	repo := &settingUpdateRepoStub{REDACTED
 	groupReader := &defaultSubGroupReaderStub{
