@@ -53,6 +53,7 @@ func RegisterUserRoutes(
 					accounts.GET("/export", h.UserAccount.ExportData)
 					accounts.POST("/import", h.UserAccount.ImportData)
 					accounts.GET("/:id", h.UserAccount.Get)
+					accounts.GET("/:id/usage", h.UserAccount.GetUsage)
 					accounts.PATCH("/:id", h.UserAccount.Update)
 					accounts.PUT("/:id/visibility", h.UserAccount.SetVisibility)
 					accounts.PUT("/:id/schedulable", h.UserAccount.SetSchedulable)

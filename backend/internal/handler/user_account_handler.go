@@ -16,12 +16,20 @@ import (
 
 // UserAccountHandler 用户自建上游账号 HTTP 接口。
 type UserAccountHandler struct {
-	svc service.UserAccountService
+	svc   service.UserAccountService
+	usage *service.AccountUsageService
 }
 
 // NewUserAccountHandler 创建 handler。
 func NewUserAccountHandler(svc service.UserAccountService) *UserAccountHandler {
 	return &UserAccountHandler{svc: svc}
+}
+
+// SetUsageService 注入用量查询服务（wire 中 accountUsageService 创建后调用）。
+func (h *UserAccountHandler) SetUsageService(usage *service.AccountUsageService) {
+	if h != nil {
+		h.usage = usage
+	}
 }
 
 // CreateUserAccountRequest POST /api/v1/user/accounts
@@ -244,6 +252,43 @@ func (h *UserAccountHandler) BatchSetSchedulable(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+// GetUsage GET /api/v1/user/accounts/:id/usage?source=passive|active&force=true
+// 仅允许查询本人账号的上游用量窗口。
+func (h *UserAccountHandler) GetUsage(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	// 鉴权：必须本人拥有
+	if _, err := h.svc.Get(c.Request.Context(), subject.UserID, id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if h.usage == nil {
+		response.ErrorFrom(c, service.ErrUserOwnedAccountsDisabled)
+		return
+	}
+	source := c.DefaultQuery("source", "active")
+	force := c.Query("force") == "true"
+	var usage *service.UsageInfo
+	if source == "passive" {
+		usage, err = h.usage.GetPassiveUsage(c.Request.Context(), id)
+	} else {
+		usage, err = h.usage.GetUsage(c.Request.Context(), id, force)
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, usage)
 }
 
 // ExportData GET /api/v1/user/accounts/export?ids=1,2,3

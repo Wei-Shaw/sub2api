@@ -625,6 +625,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
+import { userAccountsAPI } from '@/api/userAccounts'
 import type { GrokQuotaProbeResult } from '@/api/admin/grok'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
@@ -646,13 +647,29 @@ const props = withDefaults(
     todayStats?: WindowStats | null
     todayStatsLoading?: boolean
     manualRefreshToken?: number
+    /** admin=管理端 usage API；user=用户自建账号 usage API（owner 校验） */
+    usageApi?: 'admin' | 'user'
   }>(),
   {
     todayStats: null,
     todayStatsLoading: false,
-    manualRefreshToken: 0
+    manualRefreshToken: 0,
+    usageApi: 'admin'
   }
 )
+
+const fetchUsage = (
+  source?: 'passive' | 'active',
+  force?: boolean
+) => {
+  if (props.usageApi === 'user') {
+    return userAccountsAPI.getUsage(props.account.id, source, force)
+  }
+  if (source) {
+    return adminAPI.accounts.getUsage(props.account.id, source, force)
+  }
+  return adminAPI.accounts.getUsage(props.account.id)
+}
 
 const { t } = useI18n()
 const desktopViewportQuery = '(min-width: 768px)'
@@ -1279,9 +1296,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
   error.value = null
 
   try {
-    const fetchFn = () => options?.source
-      ? adminAPI.accounts.getUsage(props.account.id, options.source)
-      : adminAPI.accounts.getUsage(props.account.id)
+    const fetchFn = () => fetchUsage(options?.source)
     const result = await enqueueUsageRequest(props.account, fetchFn)
     if (!unmounted.value) {
       usageInfo.value = result
@@ -1350,7 +1365,7 @@ const attachVisibilityObserver = () => {
 const loadActiveUsage = async () => {
   activeQueryLoading.value = true
   try {
-    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    usageInfo.value = await fetchUsage('active', true)
   } catch (e: any) {
     console.error('Failed to load active usage:', e)
   } finally {

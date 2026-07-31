@@ -191,6 +191,25 @@ export interface UserAccountDataImportResult {
   proxy_failed?: number
 }
 
+/**
+ * Get owned account upstream usage windows (5h/7d etc.)
+ * Mirrors admin GET /admin/accounts/:id/usage with owner check.
+ */
+export async function getUsage(
+  id: number,
+  source?: 'passive' | 'active',
+  force?: boolean
+): Promise<import('@/types').AccountUsageInfo> {
+  const params: Record<string, string> = {}
+  if (source) params.source = source
+  if (force) params.force = 'true'
+  const { data } = await apiClient.get<import('@/types').AccountUsageInfo>(
+    `/user/accounts/${id}/usage`,
+    { params: Object.keys(params).length > 0 ? params : undefined }
+  )
+  return data
+}
+
 /** Export owned accounts (no proxies). Optional ids filter. */
 export async function exportData(options?: {
   ids?: number[]
@@ -223,6 +242,7 @@ export const userAccountsAPI = {
   remove,
   batchDelete,
   batchSetSchedulable,
+  getUsage,
   exportData,
   importData
 }

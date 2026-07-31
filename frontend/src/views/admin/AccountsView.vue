@@ -344,6 +344,7 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
+              :usage-api="isMineScope ? 'user' : 'admin'"
             />
           </template>
           <template #cell-proxy="{ row }">
