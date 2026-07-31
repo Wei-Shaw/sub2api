@@ -26,6 +26,50 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <!-- 用户自建：私有 / 公用（与创建表单一致） -->
+      <div
+        v-if="isUserMode"
+        class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+        data-testid="edit-account-visibility"
+      >
+        <label class="input-label">{{ t('myAccounts.form.visibility') }}</label>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            @click="form.visibility = 'private'"
+            :class="[
+              'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all min-w-[8rem]',
+              form.visibility === 'private'
+                ? 'bg-primary-500 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600'
+            ]"
+            data-testid="edit-account-visibility-private"
+          >
+            {{ t('myAccounts.visibility.private') }}
+          </button>
+          <button
+            type="button"
+            @click="form.visibility = 'public'"
+            :class="[
+              'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all min-w-[8rem]',
+              form.visibility === 'public'
+                ? 'bg-sky-500 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600'
+            ]"
+            data-testid="edit-account-visibility-public"
+          >
+            {{ t('myAccounts.visibility.public') }}
+          </button>
+        </div>
+        <p class="input-hint mt-2">{{ t('myAccounts.form.visibilityHint') }}</p>
+        <p
+          v-if="form.visibility === 'public' && !userModeSupportsPublic"
+          class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+        >
+          {{ t('myAccounts.form.publicUnsupportedHint') }}
+        </p>
+      </div>
+
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div>
@@ -2680,6 +2724,15 @@ const authStore = useAuthStore()
 
 const isUserMode = computed(() => props.mode === 'user')
 
+/** openai apikey 不可选公用（与创建表单一致；后端也会拒绝） */
+const userModeSupportsPublic = computed(() => {
+  if (!props.account) return true
+  if (props.account.platform === 'openai' && props.account.type === 'apikey') {
+    return false
+  }
+  return true
+})
+
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
@@ -3162,7 +3215,9 @@ const form = reactive({
   rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive' | 'error',
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  /** 用户自建：private | public */
+  visibility: 'private' as 'private' | 'public'
 })
 
 const statusOptions = computed(() => {
@@ -3254,6 +3309,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     : 'active'
   form.group_ids = newAccount.group_ids || []
   form.expires_at = newAccount.expires_at ?? null
+  form.visibility =
+    newAccount.visibility === 'public' || newAccount.visibility === 'private'
+      ? newAccount.visibility
+      : 'private'
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
@@ -4040,16 +4099,46 @@ const buildUserUpdatePayload = (fullPayload: Record<string, unknown>) => {
   return payload
 }
 
+const visibilityReasonLabel = (reason: string): string => {
+  if (reason === 'plan_probe_failed') return t('myAccounts.reasons.planProbeFailed')
+  if (reason === 'plan_probe_unsupported') return t('myAccounts.reasons.planProbeUnsupported')
+  if (reason === 'plan_empty') return t('myAccounts.reasons.planEmpty')
+  if (reason === 'no_share_pool_match') return t('myAccounts.reasons.noSharePoolMatch')
+  return reason
+}
+
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
   submitting.value = true
   try {
     let updatedAccount: Account
     if (isUserMode.value) {
       updatedAccount = await userAccountsAPI.update(accountID, buildUserUpdatePayload(updatePayload))
+      // 私有/公用单独走 SetVisibility（含共享池匹配与强制降级）
+      const nextVis = form.visibility === 'public' ? 'public' : 'private'
+      const prevVis =
+        props.account?.visibility === 'public' || props.account?.visibility === 'private'
+          ? props.account.visibility
+          : 'private'
+      if (nextVis !== prevVis) {
+        updatedAccount = await userAccountsAPI.setVisibility(accountID, nextVis)
+        if (updatedAccount.visibility_reason) {
+          appStore.showError(
+            t('myAccounts.visibilityForcedPrivate', {
+              reason: visibilityReasonLabel(updatedAccount.visibility_reason)
+            })
+          )
+        } else {
+          appStore.showSuccess(
+            nextVis === 'public' ? t('myAccounts.madePublic') : t('myAccounts.madePrivate')
+          )
+        }
+      } else {
+        appStore.showSuccess(t('admin.accounts.accountUpdated'))
+      }
     } else {
       updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
+      appStore.showSuccess(t('admin.accounts.accountUpdated'))
     }
-    appStore.showSuccess(t('admin.accounts.accountUpdated'))
     emit('updated', updatedAccount)
     handleClose()
   } catch (error: any) {
