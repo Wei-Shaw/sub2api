@@ -16,12 +16,13 @@ type OrganizationHandler struct {
 	organization *service.OrganizationService
 	auth         *service.AuthService
 	operations   *service.CompanyOperationsMonitor
+	ops          *service.OpsService
 }
 
 const OrganizationContextKey = "organization_context"
 
-func NewOrganizationHandler(organization *service.OrganizationService, auth *service.AuthService, operations *service.CompanyOperationsMonitor) *OrganizationHandler {
-	return &OrganizationHandler{organization: organization, auth: auth, operations: operations}
+func NewOrganizationHandler(organization *service.OrganizationService, auth *service.AuthService, operations *service.CompanyOperationsMonitor, ops *service.OpsService) *OrganizationHandler {
+	return &OrganizationHandler{organization: organization, auth: auth, operations: operations, ops: ops}
 }
 
 // RequireOrganization derives organization scope exclusively from the
@@ -173,6 +174,7 @@ func (h *OrganizationHandler) CreateMember(c *gin.Context) {
 	}
 	var req struct {
 		LoginName          string `json:"login_name" binding:"required"`
+		Username           string `json:"username"`
 		RecoveryEmail      string `json:"recovery_email"`
 		Password           string `json:"password" binding:"required"`
 		MustChangePassword *bool  `json:"must_change_password"`
@@ -185,7 +187,7 @@ func (h *OrganizationHandler) CreateMember(c *gin.Context) {
 	if req.MustChangePassword != nil {
 		mustChangePassword = *req.MustChangePassword
 	}
-	member, password, err := h.organization.CreateIAMMember(c.Request.Context(), ownerID, req.LoginName, req.RecoveryEmail, req.Password, mustChangePassword)
+	member, password, err := h.organization.CreateIAMMember(c.Request.Context(), ownerID, req.LoginName, req.Username, req.RecoveryEmail, req.Password, mustChangePassword)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -503,6 +505,25 @@ func (h *OrganizationHandler) ListSubscriptions(c *gin.Context) {
 	response.Success(c, gin.H{"subscriptions": subscriptions})
 }
 
+// SubscriptionGroups lists the active subscription-type plans the owner may
+// subscribe the company to. Owner-only (enforced downstream).
+func (h *OrganizationHandler) SubscriptionGroups(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	groups, err := h.organization.ListSubscriptionGroups(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.Group, 0, len(groups))
+	for i := range groups {
+		out = append(out, *dto.GroupFromService(&groups[i]))
+	}
+	response.Success(c, out)
+}
+
 // CreateSubscription provisions a subscription plan (group) for the company.
 // Owner-only (enforced downstream).
 func (h *OrganizationHandler) CreateSubscription(c *gin.Context) {
@@ -525,6 +546,57 @@ func (h *OrganizationHandler) CreateSubscription(c *gin.Context) {
 		return
 	}
 	response.Success(c, subscription)
+}
+
+// CreateSubscriptionOrderRequest is the request body for placing a paid
+// enterprise subscription order. It mirrors the personal payment CreateOrder
+// request but purchases the plan on behalf of the company.
+type CreateSubscriptionOrderRequest struct {
+	PlanID        int64  `json:"plan_id" binding:"required"`
+	PaymentType   string `json:"payment_type" binding:"required"`
+	OpenID        string `json:"openid"`
+	ReturnURL     string `json:"return_url"`
+	PaymentSource string `json:"payment_source"`
+	IsMobile      *bool  `json:"is_mobile,omitempty"`
+}
+
+// CreateSubscriptionOrder places a paid subscription order for the company via
+// the standard payment gateway. Owner-only (enforced downstream). Payment is
+// charged to the owner through the normal personal payment pipeline, and the
+// subscription is fulfilled onto the company subject once payment is confirmed.
+// POST /api/v1/organization/subscription-orders
+func (h *OrganizationHandler) CreateSubscriptionOrder(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	var req CreateSubscriptionOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid subscription order request: "+err.Error())
+		return
+	}
+	mobile := isMobile(c)
+	if req.IsMobile != nil {
+		mobile = *req.IsMobile
+	}
+	result, err := h.organization.CreateSubscriptionOrder(c.Request.Context(), userID, service.OrganizationSubscriptionOrderInput{
+		PlanID:          req.PlanID,
+		PaymentType:     req.PaymentType,
+		OpenID:          req.OpenID,
+		ClientIP:        c.ClientIP(),
+		IsMobile:        mobile,
+		IsWeChatBrowser: isWeChatBrowser(c),
+		SrcHost:         c.Request.Host,
+		SrcURL:          c.Request.Referer(),
+		ReturnURL:       req.ReturnURL,
+		PaymentSource:   req.PaymentSource,
+		Locale:          c.GetHeader("Accept-Language"),
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 // CancelSubscription cancels a company subscription plan. Owner-only.
@@ -592,7 +664,10 @@ func (h *OrganizationHandler) Usage(c *gin.Context) {
 
 func organizationUsageTimeFilter(c *gin.Context) service.OrganizationUsageFilter {
 	filter := service.OrganizationUsageFilter{
-		Model: c.Query("model"), Endpoint: c.Query("endpoint"), Status: c.Query("status"),
+		Model: c.Query("model"), Endpoint: c.Query("endpoint"), Status: c.Query("status"), Granularity: c.Query("granularity"),
+	}
+	if filter.Granularity != "hour" {
+		filter.Granularity = "day"
 	}
 	if value := c.Query("start"); value != "" {
 		filter.Start, _ = time.Parse(time.RFC3339, value)
@@ -610,6 +685,18 @@ func organizationUsageTimeFilter(c *gin.Context) service.OrganizationUsageFilter
 			filter.APIKeyID = &id
 		}
 	}
+	if value := c.Query("group_id"); value != "" {
+		if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
+			filter.GroupID = &id
+		}
+	}
+	if value := c.Query("billing_type"); value != "" {
+		if parsed, err := strconv.ParseInt(value, 10, 8); err == nil && (parsed == 0 || parsed == 1) {
+			billingType := int8(parsed)
+			filter.BillingType = &billingType
+		}
+	}
+	filter.BillingMode = c.Query("billing_mode")
 	return filter
 }
 
@@ -637,6 +724,210 @@ func (h *OrganizationHandler) UsageTrend(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"items": trend})
+}
+
+func (h *OrganizationHandler) UsageCharts(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	charts, err := h.organization.UsageCharts(c.Request.Context(), userID, organizationUsageTimeFilter(c))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, charts)
+}
+
+func (h *OrganizationHandler) Dashboard(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	stats, err := h.organization.OrganizationDashboard(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, stats)
+}
+
+func (h *OrganizationHandler) SearchAPIKeys(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	var memberID *int64
+	if raw := c.Query("member_id"); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
+			memberID = &parsed
+		}
+	}
+	items, err := h.organization.SearchOrganizationAPIKeys(c.Request.Context(), userID, memberID, c.Query("q"), 20)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"items": items})
+}
+
+func organizationDashboardLimit(c *gin.Context, fallback, maximum int) int {
+	limit, err := strconv.Atoi(c.Query("limit"))
+	if err != nil || limit <= 0 {
+		return fallback
+	}
+	if limit > maximum {
+		return maximum
+	}
+	return limit
+}
+
+func (h *OrganizationHandler) SpendingRanking(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	result, err := h.organization.OrganizationSpendingRanking(c.Request.Context(), userID, organizationUsageTimeFilter(c), organizationDashboardLimit(c, 12, 100))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *OrganizationHandler) UserBreakdown(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	filter := organizationUsageTimeFilter(c)
+	filter.Model = c.Query("model")
+	items, err := h.organization.OrganizationUserBreakdown(c.Request.Context(), userID, filter, organizationDashboardLimit(c, 50, 200))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"users": items})
+}
+
+func (h *OrganizationHandler) UsersTrend(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	items, err := h.organization.OrganizationUsersTrend(c.Request.Context(), userID, organizationUsageTimeFilter(c), organizationDashboardLimit(c, 12, 50))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"trend": items})
+}
+
+func (h *OrganizationHandler) UsageErrors(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	org, err := h.organization.Context(c.Request.Context(), userID)
+	if err != nil || org == nil || !org.Active() || !org.Owner() {
+		response.ErrorFrom(c, service.ErrOrganizationPermission)
+		return
+	}
+	if h.ops == nil {
+		response.Error(c, 503, "Ops service not available")
+		return
+	}
+	userIDs, err := h.organization.ListOrganizationUserIDs(c.Request.Context(), org.OrganizationID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	filter := &service.OpsErrorLogFilter{Page: 1, PageSize: 20, StartTime: &org.EffectiveAt}
+	filter.Page, filter.PageSize = response.ParsePagination(c)
+	if raw := c.Query("start"); raw != "" {
+		if value, parseErr := time.Parse(time.RFC3339, raw); parseErr == nil {
+			if value.After(org.EffectiveAt) {
+				filter.StartTime = &value
+			}
+		} else {
+			response.BadRequest(c, "Invalid start time")
+			return
+		}
+	}
+	if raw := c.Query("end"); raw != "" {
+		value, parseErr := time.Parse(time.RFC3339, raw)
+		if parseErr != nil {
+			response.BadRequest(c, "Invalid end time")
+			return
+		}
+		filter.EndTime = &value
+	}
+	if raw := c.Query("member_id"); raw != "" {
+		value, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil || value <= 0 {
+			response.BadRequest(c, "Invalid member ID")
+			return
+		}
+		filter.UserID = &value
+	}
+	if raw := c.Query("api_key_id"); raw != "" {
+		value, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil || value <= 0 {
+			response.BadRequest(c, "Invalid API key ID")
+			return
+		}
+		filter.APIKeyID = &value
+	}
+	filter.Model = c.Query("model")
+	if raw := c.Query("status_code"); raw != "" {
+		value, parseErr := strconv.Atoi(raw)
+		if parseErr != nil || value < 0 {
+			response.BadRequest(c, "Invalid status code")
+			return
+		}
+		filter.StatusCodes = []int{value}
+	}
+	if category := c.Query("category"); category != "" {
+		filter.ErrorPhasesAny, filter.ErrorTypesAny = service.CategoryToFilter(category)
+	}
+	filter.SetSort(c.Query("sort_by"), c.Query("sort_order"))
+	result, err := h.ops.ListOrganizationErrorRequests(c.Request.Context(), org.OrganizationID, userIDs, filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, result.Items, int64(result.Total), result.Page, result.PageSize)
+}
+
+func (h *OrganizationHandler) UsageErrorDetail(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	org, err := h.organization.Context(c.Request.Context(), userID)
+	if err != nil || org == nil || !org.Active() || !org.Owner() {
+		response.ErrorFrom(c, service.ErrOrganizationPermission)
+		return
+	}
+	errorID, ok := parseOrganizationIDParam(c, "error_id")
+	if !ok {
+		return
+	}
+	userIDs, err := h.organization.ListOrganizationUserIDs(c.Request.Context(), org.OrganizationID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if h.ops == nil {
+		response.Error(c, 503, "Ops service not available")
+		return
+	}
+	detail, err := h.ops.GetOrganizationErrorRequestDetail(c.Request.Context(), org.OrganizationID, userIDs, errorID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, detail)
 }
 
 func parsePositiveQuery(value string, fallback int) int {
@@ -736,6 +1027,110 @@ func (h *OrganizationHandler) AdminGetOrganization(c *gin.Context) {
 		return
 	}
 	response.Success(c, detail)
+}
+
+func (h *OrganizationHandler) AdminCreateSubscription(c *gin.Context) {
+	actorID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	organizationID, ok := parseOrganizationIDParam(c, "organization_id")
+	if !ok {
+		return
+	}
+	var req struct {
+		GroupID      int64  `json:"group_id" binding:"required"`
+		ValidityDays int    `json:"validity_days" binding:"required,min=1,max=36500"`
+		Notes        string `json:"notes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid enterprise subscription")
+		return
+	}
+	subscription, err := h.organization.AdminCreateOrganizationSubscription(c.Request.Context(), actorID, organizationID, req.GroupID, req.ValidityDays, req.Notes)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, subscription)
+}
+
+func (h *OrganizationHandler) AdminListSubscriptions(c *gin.Context) {
+	actorID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	var groupID *int64
+	if raw := c.Query("group_id"); raw != "" {
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value <= 0 {
+			response.BadRequest(c, "Invalid group ID")
+			return
+		}
+		groupID = &value
+	}
+	items, total, err := h.organization.AdminListOrganizationSubscriptions(c.Request.Context(), actorID, page, pageSize, groupID, c.Query("status"), c.Query("platform"), c.DefaultQuery("sort_by", "created_at"), c.DefaultQuery("sort_order", "desc"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, total, page, pageSize)
+}
+
+func (h *OrganizationHandler) AdminExtendSubscription(c *gin.Context) {
+	actorID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	subscriptionID, ok := parseOrganizationIDParam(c, "subscription_id")
+	if !ok {
+		return
+	}
+	var req struct {
+		Days int `json:"days" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid subscription adjustment")
+		return
+	}
+	if err := h.organization.AdminExtendOrganizationSubscription(c.Request.Context(), actorID, subscriptionID, req.Days); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"success": true})
+}
+
+func (h *OrganizationHandler) AdminResetSubscriptionQuota(c *gin.Context) {
+	actorID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	subscriptionID, ok := parseOrganizationIDParam(c, "subscription_id")
+	if !ok {
+		return
+	}
+	if err := h.organization.AdminResetOrganizationSubscriptionQuota(c.Request.Context(), actorID, subscriptionID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"success": true})
+}
+
+func (h *OrganizationHandler) AdminRevokeSubscription(c *gin.Context) {
+	actorID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	subscriptionID, ok := parseOrganizationIDParam(c, "subscription_id")
+	if !ok {
+		return
+	}
+	if err := h.organization.AdminRevokeOrganizationSubscription(c.Request.Context(), actorID, subscriptionID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"success": true})
 }
 
 func (h *OrganizationHandler) AdminDecideApplication(c *gin.Context) {

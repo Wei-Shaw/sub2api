@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -54,6 +55,7 @@ var (
 	ErrIAMPassword            = infraerrors.BadRequest("IAM_PASSWORD_INVALID", "IAM password must be between 8 and 72 bytes")
 	ErrIAMMemberNotFound      = infraerrors.NotFound("IAM_MEMBER_NOT_FOUND", "IAM member not found")
 	ErrOrganizationPermission = infraerrors.Forbidden("ORGANIZATION_PERMISSION_DENIED", "organization permission denied")
+	ErrOrganizationSuspended  = infraerrors.Conflict("ORGANIZATION_SUSPENDED", "organization is suspended")
 	ErrIAMFinancialOperation  = infraerrors.Forbidden("IAM_FINANCIAL_OPERATION_DENIED", "IAM users cannot perform this financial operation")
 
 	ErrSubscriptionGroupInvalid  = infraerrors.BadRequest("SUBSCRIPTION_GROUP_INVALID", "the subscription group is invalid or unavailable")
@@ -218,6 +220,7 @@ type AdminOrganizationDetail struct {
 type IAMMember struct {
 	UserID             int64      `json:"user_id"`
 	ExternalUserID     string     `json:"external_user_id"`
+	Username           string     `json:"username"`
 	LoginName          string     `json:"login_name"`
 	Principal          string     `json:"principal"`
 	Status             string     `json:"status"`
@@ -260,6 +263,8 @@ type FinanceSummary struct {
 type OrganizationSubscription struct {
 	ID               int64     `json:"id"`
 	OrganizationID   int64     `json:"organization_id"`
+	OrganizationName string    `json:"organization_name,omitempty"`
+	CompanyID        string    `json:"company_id,omitempty"`
 	GroupID          int64     `json:"group_id"`
 	GroupName        string    `json:"group_name"`
 	Platform         string    `json:"platform"`
@@ -356,31 +361,53 @@ type BillingContext struct {
 }
 
 type OrganizationUsageFilter struct {
-	Start    time.Time
-	End      time.Time
-	MemberID *int64
-	APIKeyID *int64
-	Model    string
-	Endpoint string
-	Status   string
-	Page     int
-	PageSize int
+	Start       time.Time
+	End         time.Time
+	MemberID    *int64
+	APIKeyID    *int64
+	GroupID     *int64
+	BillingType *int8
+	BillingMode string
+	Model       string
+	Endpoint    string
+	Status      string
+	Granularity string
+	Page        int
+	PageSize    int
 }
 
 type OrganizationUsageRow struct {
-	ID            int64     `json:"id"`
-	MemberUserID  int64     `json:"member_user_id"`
-	MemberLogin   string    `json:"member_login"`
-	APIKeyName    string    `json:"api_key_name"`
-	Model         string    `json:"model"`
-	InputTokens   int       `json:"input_tokens"`
-	OutputTokens  int       `json:"output_tokens"`
-	ActualCost    string    `json:"actual_cost"`
-	Endpoint      string    `json:"endpoint"`
-	Status        string    `json:"status"`
-	DurationMS    *int      `json:"duration_ms,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	BalanceSource string    `json:"balance_source"`
+	ID                    int64     `json:"id"`
+	MemberUserID          int64     `json:"member_user_id"`
+	MemberLogin           string    `json:"member_login"`
+	MemberUsername        string    `json:"member_username"`
+	APIKeyName            string    `json:"api_key_name"`
+	Model                 string    `json:"model"`
+	InputTokens           int       `json:"input_tokens"`
+	OutputTokens          int       `json:"output_tokens"`
+	CacheCreationTokens   int       `json:"cache_creation_tokens"`
+	CacheReadTokens       int       `json:"cache_read_tokens"`
+	CacheCreation5mTokens int       `json:"cache_creation_5m_tokens"`
+	CacheCreation1hTokens int       `json:"cache_creation_1h_tokens"`
+	ActualCost            string    `json:"actual_cost"`
+	TotalCost             string    `json:"total_cost"`
+	RateMultiplier        float64   `json:"rate_multiplier"`
+	Endpoint              string    `json:"endpoint"`
+	GroupID               *int64    `json:"group_id,omitempty"`
+	GroupName             string    `json:"group_name"`
+	RequestType           string    `json:"request_type"`
+	BillingType           int8      `json:"billing_type"`
+	BillingMode           string    `json:"billing_mode"`
+	ImageCount            int       `json:"image_count"`
+	ImageURLs             []string  `json:"image_urls"`
+	CosURLs               []string  `json:"cos_urls"`
+	IPAddress             string    `json:"ip_address"`
+	UserAgent             string    `json:"user_agent"`
+	Status                string    `json:"status"`
+	FirstTokenMS          *int      `json:"first_token_ms"`
+	DurationMS            *int      `json:"duration_ms,omitempty"`
+	CreatedAt             time.Time `json:"created_at"`
+	BalanceSource         string    `json:"balance_source"`
 }
 
 type OrganizationUsageStats struct {
@@ -390,11 +417,57 @@ type OrganizationUsageStats struct {
 	ActualCost   string `json:"actual_cost"`
 }
 
+type OrganizationAPIKeyOption struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 type OrganizationUsageTrendPoint struct {
-	Bucket     time.Time `json:"bucket"`
-	Requests   int64     `json:"requests"`
-	Tokens     int64     `json:"tokens"`
-	ActualCost string    `json:"actual_cost"`
+	Date                string  `json:"date"`
+	Requests            int64   `json:"requests"`
+	InputTokens         int64   `json:"input_tokens"`
+	OutputTokens        int64   `json:"output_tokens"`
+	CacheCreationTokens int64   `json:"cache_creation_tokens"`
+	CacheReadTokens     int64   `json:"cache_read_tokens"`
+	TotalTokens         int64   `json:"total_tokens"`
+	Cost                float64 `json:"cost"`
+	ActualCost          float64 `json:"actual_cost"`
+}
+
+type OrganizationModelStat struct {
+	Model               string  `json:"model"`
+	Requests            int64   `json:"requests"`
+	InputTokens         int64   `json:"input_tokens"`
+	OutputTokens        int64   `json:"output_tokens"`
+	CacheCreationTokens int64   `json:"cache_creation_tokens"`
+	CacheReadTokens     int64   `json:"cache_read_tokens"`
+	TotalTokens         int64   `json:"total_tokens"`
+	Cost                float64 `json:"cost"`
+	ActualCost          float64 `json:"actual_cost"`
+}
+
+type OrganizationGroupStat struct {
+	GroupID     int64   `json:"group_id"`
+	GroupName   string  `json:"group_name"`
+	Requests    int64   `json:"requests"`
+	TotalTokens int64   `json:"total_tokens"`
+	Cost        float64 `json:"cost"`
+	ActualCost  float64 `json:"actual_cost"`
+}
+
+type OrganizationEndpointStat struct {
+	Endpoint    string  `json:"endpoint"`
+	Requests    int64   `json:"requests"`
+	TotalTokens int64   `json:"total_tokens"`
+	Cost        float64 `json:"cost"`
+	ActualCost  float64 `json:"actual_cost"`
+}
+
+type OrganizationUsageCharts struct {
+	Trend     []OrganizationUsageTrendPoint `json:"trend"`
+	Models    []OrganizationModelStat       `json:"models"`
+	Groups    []OrganizationGroupStat       `json:"groups"`
+	Endpoints []OrganizationEndpointStat    `json:"endpoints"`
 }
 
 type OrganizationRepository interface {
@@ -424,6 +497,16 @@ type OrganizationRepository interface {
 	TransferBalance(ctx context.Context, ownerID, memberUserID int64, amount, idempotencyKey string, reclaim bool) error
 	DepositToCompany(ctx context.Context, ownerID int64, amount, idempotencyKey string, withdraw bool) error
 	CreateOrganizationSubscription(ctx context.Context, userID, groupID int64, validityDays int, notes string) (*OrganizationSubscription, error)
+	AdminCreateOrganizationSubscription(ctx context.Context, actorID, organizationID, groupID int64, validityDays int, notes string) (*OrganizationSubscription, error)
+	AdminListOrganizationSubscriptions(ctx context.Context, actorID int64, page, pageSize int, groupID *int64, status, platform, sortBy, sortOrder string) ([]OrganizationSubscription, int64, error)
+	AdminExtendOrganizationSubscription(ctx context.Context, actorID, subscriptionID int64, days int) error
+	AdminResetOrganizationSubscriptionQuota(ctx context.Context, actorID, subscriptionID int64) error
+	AdminRevokeOrganizationSubscription(ctx context.Context, actorID, subscriptionID int64) error
+	// AssignOrExtendOrganizationSubscription provisions or extends a company
+	// subscription during paid-order fulfillment. It operates directly on the
+	// company (orgID) rather than resolving an owner, and is idempotent on
+	// orderID so webhook retries do not double-provision.
+	AssignOrExtendOrganizationSubscription(ctx context.Context, orgID, groupID int64, validityDays int, orderID int64) error
 	ListOrganizationSubscriptions(ctx context.Context, userID int64) ([]OrganizationSubscription, error)
 	CancelOrganizationSubscription(ctx context.Context, userID, subscriptionID int64) error
 	// ListActiveOrganizationSubscriptionsForMember returns the active, non-expired
@@ -444,6 +527,12 @@ type OrganizationRepository interface {
 	ListUsage(ctx context.Context, userID int64, filter OrganizationUsageFilter) ([]OrganizationUsageRow, int64, error)
 	UsageStats(ctx context.Context, userID int64, filter OrganizationUsageFilter) (*OrganizationUsageStats, error)
 	UsageTrend(ctx context.Context, userID int64, filter OrganizationUsageFilter) ([]OrganizationUsageTrendPoint, error)
+	UsageCharts(ctx context.Context, userID int64, filter OrganizationUsageFilter) (*OrganizationUsageCharts, error)
+	OrganizationDashboard(ctx context.Context, userID int64) (*usagestats.DashboardStats, error)
+	OrganizationSpendingRanking(ctx context.Context, userID int64, filter OrganizationUsageFilter, limit int) (*usagestats.UserSpendingRankingResponse, error)
+	OrganizationUserBreakdown(ctx context.Context, userID int64, filter OrganizationUsageFilter, limit int) ([]usagestats.UserBreakdownItem, error)
+	OrganizationUsersTrend(ctx context.Context, userID int64, filter OrganizationUsageFilter, limit int) ([]usagestats.UserUsageTrendPoint, error)
+	SearchOrganizationAPIKeys(ctx context.Context, userID int64, memberID *int64, query string, limit int) ([]OrganizationAPIKeyOption, error)
 	ResolveBillingContext(ctx context.Context, consumerUserID int64) (*BillingContext, error)
 	Reconcile(ctx context.Context) (map[string]int64, error)
 	ListOrganizationUserIDs(ctx context.Context, organizationID int64) ([]int64, error)
@@ -455,17 +544,69 @@ type CompanyUpgradeChargeReader interface {
 	IsCompanyUpgradeChargeEnabled(ctx context.Context) bool
 }
 
+// SubscriptionGroupLister lists all active groups so the organization service
+// can surface subscription-type plans available for the owner to subscribe to.
+type SubscriptionGroupLister interface {
+	ListActive(ctx context.Context) ([]Group, error)
+}
+
+// SubscriptionOrderCreator places a subscription payment order through the
+// standard payment gateway flow. The organization service delegates enterprise
+// subscription purchases to it after resolving and authorizing the company
+// context, so that the full personal payment pipeline (gateway selection, QR
+// code, polling, webhook fulfillment) is reused verbatim — only the order now
+// carries an OrganizationID and is fulfilled onto the company subject.
+type SubscriptionOrderCreator interface {
+	CreateOrder(ctx context.Context, req CreateOrderRequest) (*CreateOrderResponse, error)
+}
+
+// OrganizationSubscriptionOrderInput carries the request-scoped fields needed
+// to place an enterprise subscription order. Everything except PlanID mirrors
+// the personal CreateOrder request and is populated by the handler from the
+// gin context / request body.
+type OrganizationSubscriptionOrderInput struct {
+	PlanID          int64
+	PaymentType     string
+	OpenID          string
+	ClientIP        string
+	IsMobile        bool
+	IsWeChatBrowser bool
+	SrcHost         string
+	SrcURL          string
+	ReturnURL       string
+	PaymentSource   string
+	Locale          string
+}
+
 type OrganizationService struct {
 	repo         OrganizationRepository
 	userRepo     UserRepository
 	cfg          *config.Config
 	authCache    APIKeyAuthCacheInvalidator
 	chargeReader CompanyUpgradeChargeReader
+	groupLister  SubscriptionGroupLister
+	orderCreator SubscriptionOrderCreator
 }
 
 func (s *OrganizationService) SetAuthCacheInvalidator(invalidator APIKeyAuthCacheInvalidator) {
 	if s != nil {
 		s.authCache = invalidator
+	}
+}
+
+// SetSubscriptionGroupLister injects the catalog used to list subscription
+// plans the owner can subscribe to.
+func (s *OrganizationService) SetSubscriptionGroupLister(lister SubscriptionGroupLister) {
+	if s != nil {
+		s.groupLister = lister
+	}
+}
+
+// SetSubscriptionOrderCreator injects the payment pipeline used to place
+// enterprise subscription orders through the standard gateway flow.
+func (s *OrganizationService) SetSubscriptionOrderCreator(creator SubscriptionOrderCreator) {
+	if s != nil {
+		s.orderCreator = creator
 	}
 }
 
@@ -622,6 +763,32 @@ func (s *OrganizationService) GetOrganization(ctx context.Context, actorID, orga
 	return s.repo.GetOrganization(ctx, actorID, organizationID)
 }
 
+func (s *OrganizationService) AdminCreateOrganizationSubscription(ctx context.Context, actorID, organizationID, groupID int64, validityDays int, notes string) (*OrganizationSubscription, error) {
+	if validityDays < 1 || validityDays > 36500 {
+		return nil, infraerrors.BadRequest("SUBSCRIPTION_VALIDITY_INVALID", "validity days must be between 1 and 36500")
+	}
+	return s.repo.AdminCreateOrganizationSubscription(ctx, actorID, organizationID, groupID, validityDays, strings.TrimSpace(notes))
+}
+
+func (s *OrganizationService) AdminListOrganizationSubscriptions(ctx context.Context, actorID int64, page, pageSize int, groupID *int64, status, platform, sortBy, sortOrder string) ([]OrganizationSubscription, int64, error) {
+	return s.repo.AdminListOrganizationSubscriptions(ctx, actorID, page, pageSize, groupID, status, platform, sortBy, sortOrder)
+}
+
+func (s *OrganizationService) AdminExtendOrganizationSubscription(ctx context.Context, actorID, subscriptionID int64, days int) error {
+	if days == 0 || days < -36500 || days > 36500 {
+		return infraerrors.BadRequest("SUBSCRIPTION_VALIDITY_INVALID", "adjustment days must be between -36500 and 36500 and cannot be zero")
+	}
+	return s.repo.AdminExtendOrganizationSubscription(ctx, actorID, subscriptionID, days)
+}
+
+func (s *OrganizationService) AdminResetOrganizationSubscriptionQuota(ctx context.Context, actorID, subscriptionID int64) error {
+	return s.repo.AdminResetOrganizationSubscriptionQuota(ctx, actorID, subscriptionID)
+}
+
+func (s *OrganizationService) AdminRevokeOrganizationSubscription(ctx context.Context, actorID, subscriptionID int64) error {
+	return s.repo.AdminRevokeOrganizationSubscription(ctx, actorID, subscriptionID)
+}
+
 func (s *OrganizationService) DecideApplication(ctx context.Context, reviewerID, applicationID int64, approve bool, reason string) (*CompanyApplication, error) {
 	if !approve && strings.TrimSpace(reason) == "" {
 		return nil, ErrReasonRequired
@@ -671,13 +838,17 @@ func generateInitialPassword() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-func (s *OrganizationService) CreateIAMMember(ctx context.Context, ownerID int64, loginName, recoveryEmail, password string, mustChangePassword bool) (*IAMMember, string, error) {
+func (s *OrganizationService) CreateIAMMember(ctx context.Context, ownerID int64, loginName, username, recoveryEmail, password string, mustChangePassword bool) (*IAMMember, string, error) {
 	if s.cfg == nil || !s.cfg.Company.IAMEnabled {
 		return nil, "", ErrIAMFeatureDisabled
 	}
 	loginName = strings.ToLower(strings.TrimSpace(loginName))
 	if !iamLoginNamePattern.MatchString(loginName) {
 		return nil, "", ErrIAMLoginName
+	}
+	username = strings.TrimSpace(username)
+	if len([]rune(username)) > 100 {
+		return nil, "", infraerrors.BadRequest("USERNAME_INVALID", "username must not exceed 100 characters")
 	}
 	recoveryEmail = strings.TrimSpace(recoveryEmail)
 	if recoveryEmail != "" {
@@ -695,7 +866,7 @@ func (s *OrganizationService) CreateIAMMember(ctx context.Context, ownerID int64
 	}
 	limit := s.cfg.Company.DefaultMemberLimit
 	member, err := s.repo.CreateIAMMember(ctx, ownerID, &User{
-		IdentityType: IdentityTypeIAM, LoginName: loginName, PasswordHash: string(hash), Role: RoleUser,
+		IdentityType: IdentityTypeIAM, LoginName: loginName, Username: username, PasswordHash: string(hash), Role: RoleUser,
 		Status: StatusActive, RecoveryEmail: recoveryEmail, MustChangePassword: mustChangePassword, AuthzGeneration: 1,
 	}, limit)
 	if err != nil {
@@ -843,6 +1014,84 @@ func (s *OrganizationService) ListOrganizationSubscriptions(ctx context.Context,
 	return s.repo.ListOrganizationSubscriptions(ctx, userID)
 }
 
+// ListSubscriptionGroups returns the active subscription-type groups that the
+// owner may subscribe the company to. Unlike /groups/available (which only
+// surfaces subscription groups the caller already subscribed to), this returns
+// the full catalog of subscribable plans. Owner-only.
+func (s *OrganizationService) ListSubscriptionGroups(ctx context.Context, userID int64) ([]Group, error) {
+	orgCtx, err := s.repo.GetContextForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !orgCtx.Active() || !orgCtx.Owner() {
+		return nil, ErrOrganizationPermission
+	}
+	if s.groupLister == nil {
+		return []Group{}, nil
+	}
+	groups, err := s.groupLister.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Group, 0, len(groups))
+	for i := range groups {
+		if groups[i].IsSubscriptionType() && groups[i].IsActive() {
+			result = append(result, groups[i])
+		}
+	}
+	return result, nil
+}
+
+// CreateSubscriptionOrder places a payment order for a company subscription.
+//
+// The owner pays through the standard personal payment gateway (WeChat /
+// Alipay / Stripe / ...), exactly like a personal subscription purchase. The
+// only difference is that the resulting order carries the company's
+// OrganizationID, so once payment is confirmed the fulfillment path provisions
+// an organization_subscriptions row for the company instead of a personal
+// user_subscriptions row.
+//
+// Authorization: only an active owner of an active company may place the order.
+func (s *OrganizationService) CreateSubscriptionOrder(ctx context.Context, userID int64, input OrganizationSubscriptionOrderInput) (*CreateOrderResponse, error) {
+	if input.PlanID <= 0 {
+		return nil, ErrOrgSubscriptionNotFound
+	}
+	orgCtx, err := s.repo.GetContextForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !orgCtx.Active() || !orgCtx.Owner() {
+		return nil, ErrOrganizationPermission
+	}
+	if s.orderCreator == nil {
+		return nil, ErrOrganizationPermission
+	}
+	return s.orderCreator.CreateOrder(ctx, CreateOrderRequest{
+		UserID:          userID,
+		PaymentType:     input.PaymentType,
+		OpenID:          input.OpenID,
+		ClientIP:        input.ClientIP,
+		IsMobile:        input.IsMobile,
+		IsWeChatBrowser: input.IsWeChatBrowser,
+		SrcHost:         input.SrcHost,
+		SrcURL:          input.SrcURL,
+		ReturnURL:       input.ReturnURL,
+		PaymentSource:   input.PaymentSource,
+		OrderType:       "subscription",
+		PlanID:          input.PlanID,
+		OrganizationID:  orgCtx.OrganizationID,
+		Locale:          input.Locale,
+	})
+}
+
+// FulfillOrganizationSubscriptionOrder provisions (or extends) the company
+// subscription once a paid enterprise subscription order is confirmed. It is
+// invoked by the payment fulfillment pipeline (as an
+// OrganizationSubscriptionFulfiller) and must be idempotent on orderID.
+func (s *OrganizationService) FulfillOrganizationSubscriptionOrder(ctx context.Context, orgID, groupID int64, validityDays int, orderID int64) error {
+	return s.repo.AssignOrExtendOrganizationSubscription(ctx, orgID, groupID, validityDays, orderID)
+}
+
 // CancelOrganizationSubscription cancels (soft-deletes) a company subscription.
 // Owner-only (enforced in the repository).
 func (s *OrganizationService) CancelOrganizationSubscription(ctx context.Context, userID, subscriptionID int64) error {
@@ -856,12 +1105,40 @@ func (s *OrganizationService) ListUsage(ctx context.Context, userID int64, filte
 	return s.repo.ListUsage(ctx, userID, filter)
 }
 
+func (s *OrganizationService) ListOrganizationUserIDs(ctx context.Context, organizationID int64) ([]int64, error) {
+	return s.repo.ListOrganizationUserIDs(ctx, organizationID)
+}
+
 func (s *OrganizationService) UsageStats(ctx context.Context, userID int64, filter OrganizationUsageFilter) (*OrganizationUsageStats, error) {
 	return s.repo.UsageStats(ctx, userID, filter)
 }
 
 func (s *OrganizationService) UsageTrend(ctx context.Context, userID int64, filter OrganizationUsageFilter) ([]OrganizationUsageTrendPoint, error) {
 	return s.repo.UsageTrend(ctx, userID, filter)
+}
+
+func (s *OrganizationService) UsageCharts(ctx context.Context, userID int64, filter OrganizationUsageFilter) (*OrganizationUsageCharts, error) {
+	return s.repo.UsageCharts(ctx, userID, filter)
+}
+
+func (s *OrganizationService) OrganizationDashboard(ctx context.Context, userID int64) (*usagestats.DashboardStats, error) {
+	return s.repo.OrganizationDashboard(ctx, userID)
+}
+
+func (s *OrganizationService) OrganizationSpendingRanking(ctx context.Context, userID int64, filter OrganizationUsageFilter, limit int) (*usagestats.UserSpendingRankingResponse, error) {
+	return s.repo.OrganizationSpendingRanking(ctx, userID, filter, limit)
+}
+
+func (s *OrganizationService) OrganizationUserBreakdown(ctx context.Context, userID int64, filter OrganizationUsageFilter, limit int) ([]usagestats.UserBreakdownItem, error) {
+	return s.repo.OrganizationUserBreakdown(ctx, userID, filter, limit)
+}
+
+func (s *OrganizationService) OrganizationUsersTrend(ctx context.Context, userID int64, filter OrganizationUsageFilter, limit int) ([]usagestats.UserUsageTrendPoint, error) {
+	return s.repo.OrganizationUsersTrend(ctx, userID, filter, limit)
+}
+
+func (s *OrganizationService) SearchOrganizationAPIKeys(ctx context.Context, userID int64, memberID *int64, query string, limit int) ([]OrganizationAPIKeyOption, error) {
+	return s.repo.SearchOrganizationAPIKeys(ctx, userID, memberID, query, limit)
 }
 
 func (s *OrganizationService) Reconcile(ctx context.Context) (map[string]int64, error) {

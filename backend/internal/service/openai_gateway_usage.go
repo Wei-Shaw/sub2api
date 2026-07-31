@@ -229,7 +229,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	// Determine billing type
-	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+	// Enterprise keys bind directly to an organization subscription and do not
+	// carry a personal UserSubscription in request context.
+	isSubscriptionBilling := isSubscriptionBillingForAPIKey(apiKey, subscription)
 	billingType := BillingTypeBalance
 	if isSubscriptionBilling {
 		billingType = BillingTypeSubscription

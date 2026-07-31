@@ -44,10 +44,10 @@
 
 	<div v-else class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
 		<table class="w-full text-sm">
-			<thead class="bg-gray-50 text-left dark:bg-dark-800"><tr><th class="p-3">{{ t('organization.companyName') }}</th><th class="p-3">{{ t('organization.accountId') }}</th><th class="p-3">{{ t('organization.admin.members') }}</th><th class="p-3">{{ t('common.status') }}</th><th class="p-3">{{ t('common.actions') }}</th></tr></thead>
+			<thead class="bg-gray-50 text-left dark:bg-dark-800"><tr><th class="p-3">{{ t('organization.companyName') }}</th><th class="p-3">{{ t('organization.companyId') }}</th><th class="p-3">{{ t('organization.admin.members') }}</th><th class="p-3">{{ t('common.status') }}</th><th class="p-3">{{ t('common.actions') }}</th></tr></thead>
 			<tbody><tr v-for="organization in organizations" :key="organization.id" class="cursor-pointer border-t border-gray-100 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800" @click="openOrganization(organization)">
 				<td class="p-3"><div class="font-medium">{{ organization.name }}</div><div class="text-xs text-gray-500">{{ organization.owner_email || organization.owner_user_id }}</div></td>
-				<td class="p-3 font-mono text-xs">{{ organization.account_id }}</td>
+				<td class="p-3 font-mono text-xs">{{ organization.company_id }}</td>
 				<td class="p-3">{{ organization.member_count }}/{{ organization.member_limit }}</td>
 				<td class="p-3">{{ t(`organization.status.${organization.status}`) }}</td>
 				<td class="p-3" @click.stop><button v-if="organization.status === 'active'" class="btn btn-ghost btn-sm text-red-600" @click="setOrganizationStatus(organization, 'suspended')">{{ t('organization.admin.suspend') }}</button><button v-else class="btn btn-primary btn-sm" @click="setOrganizationStatus(organization, 'active')">{{ t('organization.admin.reactivate') }}</button></td>
@@ -67,7 +67,7 @@
 
 	<div v-if="organizationDetail" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" @click.self="organizationDetail = undefined">
 		<section class="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-md bg-white p-5 shadow-xl dark:bg-dark-800">
-			<div class="flex items-start justify-between gap-3"><div><h3 class="font-semibold">{{ organizationDetail.organization.name }}</h3><p class="mt-1 font-mono text-xs text-gray-500">{{ organizationDetail.organization.account_id }}</p></div><button class="icon-btn" :aria-label="t('common.close')" @click="organizationDetail = undefined"><Icon name="x" size="sm" /></button></div>
+			<div class="flex items-start justify-between gap-3"><div><h3 class="font-semibold">{{ organizationDetail.organization.name }}</h3><p class="mt-1 font-mono text-xs text-gray-500">{{ organizationDetail.organization.company_id }}</p></div><button class="icon-btn" :aria-label="t('common.close')" @click="organizationDetail = undefined"><Icon name="x" size="sm" /></button></div>
 			<dl class="mt-5 grid gap-4 sm:grid-cols-2"><div><dt class="text-xs text-gray-500">{{ t('organization.admin.members') }}</dt><dd class="mt-1">{{ organizationDetail.organization.member_count }}/{{ organizationDetail.organization.member_limit }}</dd></div><div><dt class="text-xs text-gray-500">{{ t('common.status') }}</dt><dd class="mt-1">{{ t(`organization.status.${organizationDetail.organization.status}`) }}</dd></div></dl>
 			<h4 class="mt-6 text-sm font-medium">{{ t('organization.admin.audit') }}</h4>
 			<ol class="mt-2 divide-y divide-gray-100 text-sm dark:divide-dark-700"><li v-for="event in organizationDetail.audit" :key="event.id" class="py-3"><div class="flex justify-between gap-3"><span>{{ event.action }} · {{ event.result }}</span><time class="text-xs text-gray-500">{{ new Date(event.created_at).toLocaleString() }}</time></div><div v-if="event.correlation_id" class="mt-1 font-mono text-xs text-gray-500">{{ event.correlation_id }}</div></li></ol>

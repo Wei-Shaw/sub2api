@@ -754,12 +754,19 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		return ErrBillingServiceUnavailable
 	}
 
-	// 判断计费模式
-	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
+	// 企业 Key 直接绑定 organization_subscriptions，不携带个人
+	// UserSubscription；它仍然必须按订阅模式处理，不能回退检查 IAM 划拨余额。
+	isEnterpriseSubscription := apiKey != nil && apiKey.OrganizationSubscriptionID != nil
+	isSubscriptionMode := isEnterpriseSubscription ||
+		(group != nil && group.IsSubscriptionType() && subscription != nil)
 
 	if isSubscriptionMode {
-		if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
-			return err
+		// 企业订阅的活跃性和日/周/月限额由 API Key 认证中间件通过
+		// ValidateEnterpriseSubscription 校验；这里只处理个人订阅缓存。
+		if !isEnterpriseSubscription {
+			if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
+				return err
+			}
 		}
 	} else {
 		payerUserID := user.ID

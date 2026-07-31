@@ -526,10 +526,11 @@ func ProvideNotificationOutboxWorker(repo NotificationOutboxRepository, emailer 
 	return worker
 }
 
-func ProvideOrganizationService(repo OrganizationRepository, userRepo UserRepository, cfg *config.Config, invalidator APIKeyAuthCacheInvalidator, settingService *SettingService) *OrganizationService {
+func ProvideOrganizationService(repo OrganizationRepository, userRepo UserRepository, cfg *config.Config, invalidator APIKeyAuthCacheInvalidator, settingService *SettingService, groupLister SubscriptionGroupLister) *OrganizationService {
 	organization := NewOrganizationService(repo, userRepo, cfg)
 	organization.SetAuthCacheInvalidator(invalidator)
 	organization.SetUpgradeChargeReader(settingService)
+	organization.SetSubscriptionGroupLister(groupLister)
 	return organization
 }
 
@@ -726,6 +727,7 @@ func ProvideAPIKeyService(
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	ProvideOrganizationService,
+	wire.Bind(new(SubscriptionGroupLister), new(GroupRepository)),
 	ProvideCompanyOperationsMonitor,
 	NewBillingContextResolver,
 	ProvideNotificationOutboxWorker,
@@ -917,9 +919,20 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 }
 
 // ProvidePaymentService creates PaymentService and attaches notification email delivery.
-func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService) *PaymentService {
+//
+// It also wires the bidirectional enterprise-subscription link with the
+// OrganizationService: PaymentService gains an OrganizationSubscriptionFulfiller
+// (to provision company subscriptions on paid-order fulfillment) and the
+// OrganizationService gains a SubscriptionOrderCreator (to place company
+// subscription orders through the standard gateway). The link is established
+// here rather than in ProvideOrganizationService because OrganizationService is
+// constructed first and only depends on PaymentService via lazy setter
+// injection, keeping the wire graph acyclic.
+func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService, organizationService *OrganizationService) *PaymentService {
 	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
 	svc.SetNotificationEmailService(notificationEmailService)
+	svc.SetOrganizationSubscriptionFulfiller(organizationService)
+	organizationService.SetSubscriptionOrderCreator(svc)
 	return svc
 }
 

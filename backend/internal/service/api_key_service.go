@@ -486,6 +486,13 @@ func (s *APIKeyService) ValidateEnterpriseSubscription(ctx context.Context, apiK
 	return nil
 }
 
+func (s *APIKeyService) IncrementEnterpriseSubscriptionUsage(ctx context.Context, subscriptionID int64, costUSD float64) error {
+	if s.organizationRepo == nil {
+		return ErrOrgSubscriptionNotFound
+	}
+	return s.organizationRepo.IncrementOrganizationSubscriptionUsage(ctx, subscriptionID, costUSD)
+}
+
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
 	// 验证用户存在

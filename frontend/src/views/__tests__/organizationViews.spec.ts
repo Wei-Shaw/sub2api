@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import OrganizationConsoleView from '@/views/user/OrganizationConsoleView.vue'
@@ -13,6 +14,9 @@ import zhOrganization from '@/i18n/locales/zh/organization'
 
 const api = vi.hoisted(() => ({
   getContext: vi.fn(), listMembers: vi.fn(), listPolicies: vi.fn(), getUsage: vi.fn(),
+  getUsageStats: vi.fn(), getUsageCharts: vi.fn(), getDashboard: vi.fn(),
+  getDashboardSpendingRanking: vi.fn(), getDashboardUserBreakdown: vi.fn(),
+  getDashboardUsersTrend: vi.fn(),
   getUpgradeEligibility: vi.fn(), getCurrentApplication: vi.fn(),
   listApplications: vi.fn(), listNameChanges: vi.fn(), getApplication: vi.fn(),
   createMember: vi.fn(), setMemberStatus: vi.fn(), resetMemberPassword: vi.fn(),
@@ -28,9 +32,13 @@ vi.mock('@/api', () => ({ organizationAPI: api }))
 vi.mock('@/stores', () => ({ useAuthStore: () => auth }))
 
 const i18n = createI18n({ legacy: false, locale: 'en', messages: { en: {} }, missingWarn: false, fallbackWarn: false })
+const router = createRouter({
+  history: createMemoryHistory(),
+  routes: [{ path: '/organization', component: { template: '<div />' } }],
+})
 const mountOptions = {
   global: {
-    plugins: [i18n, createPinia()],
+    plugins: [i18n, createPinia(), router],
     stubs: {
       AppLayout: { template: '<div data-testid="app-layout"><slot /></div>' },
     },
@@ -38,13 +46,35 @@ const mountOptions = {
 }
 
 describe('organization views', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    await router.replace('/organization')
     api.listPolicies.mockResolvedValue([])
     api.listMembers.mockResolvedValue({ items: [], member_limit: 20, used_slots: 0 })
     api.getUsage.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+    api.getUsageStats.mockResolvedValue({ requests: 0, input_tokens: 0, output_tokens: 0, actual_cost: '0' })
+    api.getUsageCharts.mockResolvedValue({ trend: [], models: [], groups: [], endpoints: [] })
+    api.getDashboard.mockResolvedValue({ total_api_keys: 0, active_api_keys: 0, total_accounts: 0, normal_accounts: 0, today_requests: 0, total_requests: 0, today_new_users: 0, total_users: 0, today_tokens: 0, total_tokens: 0, rpm: 0, tpm: 0, average_duration_ms: 0, active_users: 0, today_actual_cost: 0, today_account_cost: 0, today_cost: 0, total_actual_cost: 0, total_account_cost: 0, total_cost: 0 })
+    api.getDashboardSpendingRanking.mockResolvedValue({ ranking: [], total_actual_cost: 0, total_requests: 0, total_tokens: 0 })
+    api.getDashboardUserBreakdown.mockResolvedValue({ users: [] })
+    api.getDashboardUsersTrend.mockResolvedValue([])
     api.listNameChanges.mockResolvedValue({ items: [], total: 0 })
 	api.listOrganizations.mockResolvedValue({ items: [], total: 0 })
+  })
+
+  it('restores the selected owner tab from the URL and keeps tab changes addressable', async () => {
+    await router.replace('/organization?tab=usage')
+    api.getContext.mockResolvedValue({
+      organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'owner', actions: [] },
+      finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
+    })
+    const wrapper = mount(OrganizationConsoleView, mountOptions)
+    await flushPromises()
+
+    expect((wrapper.vm as unknown as { activeTab: string }).activeTab).toBe('usage')
+    await wrapper.get('#organization-tab-subscriptions').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.tab).toBe('subscriptions')
   })
 
   it('does not request owner usage or member APIs for a finance-only IAM user', async () => {
@@ -72,6 +102,10 @@ describe('organization views', () => {
     expect(wrapper.get('[data-testid="app-layout"]').exists()).toBe(true)
     expect(api.listMembers).toHaveBeenCalledOnce()
     expect(api.getUsage).toHaveBeenCalledOnce()
+    expect(api.getUsageCharts).toHaveBeenCalledTimes(2)
+    expect(api.getDashboard).toHaveBeenCalledOnce()
+    expect(api.getDashboardUsersTrend).toHaveBeenCalledOnce()
+    expect(api.getUsageCharts).toHaveBeenCalledWith(expect.objectContaining({ granularity: 'hour', start: expect.any(String), end: expect.any(String) }))
     expect((wrapper.vm as unknown as { memberLimit: number }).memberLimit).toBe(20)
   })
 
@@ -88,7 +122,10 @@ describe('organization views', () => {
     api.getUsage.mockResolvedValue({
       items: [{
         id: 1, member_user_id: 42, member_login: 'reader', api_key_name: 'member-key', model: 'gpt-5',
-        input_tokens: 10, output_tokens: 5, actual_cost: '1.25', endpoint: '/v1/responses', status: 'charged',
+        input_tokens: 10, output_tokens: 5, actual_cost: '1.25', total_cost: '1', rate_multiplier: 1.25,
+        endpoint: '/v1/responses', status: 'charged', balance_source: 'subscription',
+        group_id: 7, group_name: 'Enterprise', request_type: 'stream', billing_type: 1, billing_mode: 'token',
+        image_count: 0, image_urls: [], cos_urls: [], ip_address: '203.0.113.10', user_agent: 'test-agent',
         duration_ms: 120, created_at: '2026-07-26T00:00:00Z', upstream_account: 'SECRET-UPSTREAM',
         internal_cost: 'SECRET-COST', raw_error: 'SECRET-ERROR',
       }], total: 1, page: 1, page_size: 20, pages: 1,
@@ -99,21 +136,34 @@ describe('organization views', () => {
     ;(wrapper.vm as unknown as { activeTab: string }).activeTab = 'usage'
     await wrapper.vm.$nextTick()
 
-    const selects = wrapper.findAll('form select')
-    await selects[0].setValue('42')
-    const inputs = wrapper.findAll('form input')
-    await inputs[0].setValue('99')
-    await inputs[1].setValue('gpt-5')
-    await wrapper.get('form').trigger('submit')
+    const vm = wrapper.vm as unknown as {
+      usageFilters: { memberId: string; apiKeyId: string; model: string; groupId: string; billingType: string; billingMode: string }
+      searchUsage: () => Promise<void>
+    }
+    vm.usageFilters.memberId = '42'
+    vm.usageFilters.apiKeyId = '99'
+    vm.usageFilters.model = 'gpt-5'
+    vm.usageFilters.groupId = '7'
+    vm.usageFilters.billingType = '1'
+    vm.usageFilters.billingMode = 'token'
+    expect(wrapper.find('input[placeholder="organization.usage.searchApiKeyPlaceholder"]').exists()).toBe(true)
+    expect(wrapper.findAll('button').some(button => button.text() === 'common.search')).toBe(false)
+    await vm.searchUsage()
     await flushPromises()
 
-    expect(api.getUsage).toHaveBeenLastCalledWith(expect.objectContaining({ member_id: 42, api_key_id: 99, model: 'gpt-5', page: 1 }))
+    expect(api.getUsage).toHaveBeenLastCalledWith(expect.objectContaining({ member_id: 42, api_key_id: 99, model: 'gpt-5', group_id: 7, billing_type: 1, billing_mode: 'token', page: 1 }))
     expect(wrapper.text()).toContain('member-key')
     expect(wrapper.text()).not.toContain('SECRET-UPSTREAM')
     expect(wrapper.text()).not.toContain('SECRET-COST')
     expect(wrapper.text()).not.toContain('SECRET-ERROR')
-    expect(wrapper.get('table').classes()).toContain('min-w-[1050px]')
-    expect(wrapper.get('table').element.parentElement?.classList.contains('overflow-x-auto')).toBe(true)
+    expect(wrapper.text()).toContain('$1.250000')
+    expect(wrapper.text()).toContain('organization.balanceSource.subscription')
+    expect(wrapper.text()).toContain('Enterprise')
+    expect(wrapper.text()).toContain('203.0.113.10')
+    expect(wrapper.text()).toContain('test-agent')
+    const usageTable = wrapper.findAll('table').find(table => table.classes().includes('min-w-[1900px]'))
+    expect(usageTable).toBeDefined()
+    expect(usageTable!.element.parentElement?.classList.contains('overflow-x-auto')).toBe(true)
   })
 
   it('creates an IAM member with the account-domain suffix and password options', async () => {
@@ -123,7 +173,7 @@ describe('organization views', () => {
     })
     const wrapper = mount(OrganizationConsoleView, mountOptions)
     await flushPromises()
-    ;(wrapper.vm as unknown as { activeTab: string }).activeTab = 'members'
+    ;(wrapper.vm as unknown as { activeTab: string }).activeTab = 'finance'
     await wrapper.vm.$nextTick()
 
     await wrapper.get('section button.btn-primary').trigger('click')
@@ -140,6 +190,7 @@ describe('organization views', () => {
     expect(passwordInput.attributes('type')).toBe('text')
 
     await wrapper.get('#iam-member-login-name').setValue('finance.reader')
+    await wrapper.get('#iam-member-username').setValue('Finance Reader')
     await mustChange.setValue(false)
     api.createMember.mockResolvedValue({
       member: { principal: 'finance.reader@1719905235756637.opentk.ai' },
@@ -148,7 +199,7 @@ describe('organization views', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(api.createMember).toHaveBeenCalledWith('finance.reader', generatedPassword, false, undefined)
+    expect(api.createMember).toHaveBeenCalledWith('finance.reader', generatedPassword, false, undefined, 'Finance Reader')
   })
 
   it('renders the configured upgrade fee returned by eligibility', async () => {

@@ -30,6 +30,13 @@ type organizationRepoStub struct {
 	resolveErr        error
 	policyErr         error
 	memberStatusErr   error
+	adminOrgSub       *OrganizationSubscription
+	adminOrgSubErr    error
+	adminActorID      int64
+	adminOrganization int64
+	adminGroupID      int64
+	adminValidity     int
+	adminNotes        string
 }
 
 func (s *organizationRepoStub) GetContextForUser(context.Context, int64) (*OrganizationContext, error) {
@@ -43,7 +50,7 @@ func (s *organizationRepoStub) CreateIAMMember(_ context.Context, _ int64, user 
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
-	return &IAMMember{UserID: 2, ExternalUserID: "201705485041478971", LoginName: user.LoginName, Principal: CanonicalIAMPrincipal(user.LoginName, "c123456789012345"), Status: MembershipStatusActive, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}}, nil
+	return &IAMMember{UserID: 2, ExternalUserID: "201705485041478971", Username: user.Username, LoginName: user.LoginName, Principal: CanonicalIAMPrincipal(user.LoginName, "c123456789012345"), Status: MembershipStatusActive, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}}, nil
 }
 func (s *organizationRepoStub) FindIAMByPrincipal(_ context.Context, loginName, companyID string) (*User, *OrganizationContext, error) {
 	s.findLoginName = loginName
@@ -58,6 +65,14 @@ func (s *organizationRepoStub) SetPolicyAttachment(context.Context, int64, int64
 }
 func (s *organizationRepoStub) SetIAMMemberStatus(context.Context, int64, int64, string) error {
 	return s.memberStatusErr
+}
+func (s *organizationRepoStub) AdminCreateOrganizationSubscription(_ context.Context, actorID, organizationID, groupID int64, validityDays int, notes string) (*OrganizationSubscription, error) {
+	s.adminActorID = actorID
+	s.adminOrganization = organizationID
+	s.adminGroupID = groupID
+	s.adminValidity = validityDays
+	s.adminNotes = notes
+	return s.adminOrgSub, s.adminOrgSubErr
 }
 
 type organizationAuthCacheInvalidatorStub struct{ userIDs []int64 }
@@ -94,9 +109,10 @@ func TestOrganizationServiceCreateIAMMemberHashesOwnerPasswordAndHonorsPasswordC
 	service := NewOrganizationService(repo, &organizationUserRepoStub{}, companyTestConfig())
 	initialPassword := "Owner-chosen-password-123"
 
-	member, password, err := service.CreateIAMMember(context.Background(), 1, " Finance.Reader ", "recovery@example.com", initialPassword, false)
+	member, password, err := service.CreateIAMMember(context.Background(), 1, " Finance.Reader ", " Finance Reader ", "recovery@example.com", initialPassword, false)
 	require.NoError(t, err)
 	require.Equal(t, "finance.reader", member.LoginName)
+	require.Equal(t, "Finance Reader", member.Username)
 	require.Equal(t, "finance.reader@c123456789012345.opentk.ai", member.Principal)
 	require.Equal(t, initialPassword, password)
 	require.False(t, member.MustChangePassword)
@@ -104,6 +120,7 @@ func TestOrganizationServiceCreateIAMMemberHashesOwnerPasswordAndHonorsPasswordC
 	require.NotEqual(t, password, repo.createdUser.PasswordHash)
 	require.NoError(t, bcrypt.CompareHashAndPassword([]byte(repo.createdUser.PasswordHash), []byte(password)))
 	require.False(t, repo.createdUser.MustChangePassword)
+	require.Equal(t, "Finance Reader", repo.createdUser.Username)
 	require.Equal(t, RoleUser, repo.createdUser.Role, "organization ownership must not become a global admin role")
 	require.Zero(t, repo.createdUser.Balance)
 
@@ -117,7 +134,7 @@ func TestOrganizationServiceCreateIAMMemberDoesNotReturnCredentialOnFailure(t *t
 	repo := &organizationRepoStub{createErr: ErrIAMMemberLimit}
 	service := NewOrganizationService(repo, &organizationUserRepoStub{}, companyTestConfig())
 
-	member, password, err := service.CreateIAMMember(context.Background(), 1, "member", "", "initial-password", true)
+	member, password, err := service.CreateIAMMember(context.Background(), 1, "member", "", "", "initial-password", true)
 	require.ErrorIs(t, err, ErrIAMMemberLimit)
 	require.Nil(t, member)
 	require.Empty(t, password)
@@ -127,12 +144,37 @@ func TestOrganizationServiceCreateIAMMemberRejectsInvalidPasswordLength(t *testi
 	repo := &organizationRepoStub{}
 	service := NewOrganizationService(repo, &organizationUserRepoStub{}, companyTestConfig())
 
-	member, password, err := service.CreateIAMMember(context.Background(), 1, "member", "", "short", true)
+	member, password, err := service.CreateIAMMember(context.Background(), 1, "member", "", "", "short", true)
 
 	require.ErrorIs(t, err, ErrIAMPassword)
 	require.Nil(t, member)
 	require.Empty(t, password)
 	require.Nil(t, repo.createdUser)
+}
+
+func TestOrganizationServiceAdminCreateOrganizationSubscription(t *testing.T) {
+	repo := &organizationRepoStub{adminOrgSub: &OrganizationSubscription{ID: 7, OrganizationID: 11, GroupID: 13}}
+	service := NewOrganizationService(repo, &organizationUserRepoStub{}, companyTestConfig())
+
+	subscription, err := service.AdminCreateOrganizationSubscription(context.Background(), 5, 11, 13, 30, " admin grant ")
+
+	require.NoError(t, err)
+	require.Equal(t, int64(7), subscription.ID)
+	require.Equal(t, int64(5), repo.adminActorID)
+	require.Equal(t, int64(11), repo.adminOrganization)
+	require.Equal(t, int64(13), repo.adminGroupID)
+	require.Equal(t, 30, repo.adminValidity)
+	require.Equal(t, "admin grant", repo.adminNotes)
+}
+
+func TestOrganizationServiceAdminCreateOrganizationSubscriptionRejectsInvalidValidity(t *testing.T) {
+	repo := &organizationRepoStub{}
+	service := NewOrganizationService(repo, &organizationUserRepoStub{}, companyTestConfig())
+
+	_, err := service.AdminCreateOrganizationSubscription(context.Background(), 5, 11, 13, 0, "")
+
+	require.Error(t, err)
+	require.Zero(t, repo.adminActorID)
 }
 
 func TestOrganizationServiceAuthenticateIAMParsesCanonicalPrincipal(t *testing.T) {

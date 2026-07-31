@@ -88,6 +88,16 @@ type fakeGoogleSubscriptionRepo struct {
 	resetMonthly   func(ctx context.Context, id int64, start time.Time) error
 }
 
+type fakeGoogleOrganizationRepo struct {
+	service.OrganizationRepository
+	runtime *service.OrgSubscriptionRuntime
+	err     error
+}
+
+func (f fakeGoogleOrganizationRepo) GetOrganizationSubscriptionForBilling(context.Context, int64) (*service.OrgSubscriptionRuntime, error) {
+	return f.runtime, f.err
+}
+
 func (f fakeAPIKeyRepo) Create(ctx context.Context, key *service.APIKey) error {
 	return errors.New("not implemented")
 }
@@ -392,6 +402,41 @@ func TestApiKeyAuthWithSubscriptionGoogleSetsGroupContext(t *testing.T) {
 	r.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestApiKeyAuthWithSubscriptionGoogleAcceptsEnterpriseSubscription(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(99)
+	organizationSubscriptionID := int64(501)
+	apiKey := &service.APIKey{
+		ID: 100, UserID: 7, Key: "enterprise-google-key", Status: service.StatusActive,
+		GroupID: &groupID, OrganizationSubscriptionID: &organizationSubscriptionID,
+		User:  &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive},
+		Group: &service.Group{ID: groupID, Status: service.StatusActive, Platform: service.PlatformGemini, SubscriptionType: service.SubscriptionTypeSubscription, Hydrated: true},
+	}
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		clone := *apiKey
+		return &clone, nil
+	}})
+	apiKeyService.SetOrganizationRepository(fakeGoogleOrganizationRepo{runtime: &service.OrgSubscriptionRuntime{
+		ID: organizationSubscriptionID, OrganizationID: 3, GroupID: groupID, Status: service.SubscriptionStatusActive,
+		StartsAt: time.Now().Add(-time.Hour), ExpiresAt: time.Now().Add(24 * time.Hour),
+	}})
+	personalRepo := fakeGoogleSubscriptionRepo{getActive: func(context.Context, int64, int64) (*service.UserSubscription, error) {
+		t.Fatal("enterprise key must not query personal subscriptions")
+		return nil, service.ErrSubscriptionNotFound
+	}}
+	subscriptionService := service.NewSubscriptionService(nil, personalRepo, nil, nil, &config.Config{})
+	r := gin.New()
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, &config.Config{}))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.Status(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.Header.Set("x-goog-api-key", apiKey.Key)
+	rec := httptest.NewRecorder()
+
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 }
 
 func TestApiKeyAuthWithSubscriptionGoogle_QueryKeyAllowedOnV1Beta(t *testing.T) {

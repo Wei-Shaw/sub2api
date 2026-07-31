@@ -107,6 +107,26 @@ func TestCheckBillingEligibility_AllocatedBalanceChecksMemberPayer(t *testing.T)
 	require.Equal(t, int64(20), cache.lastUserID.Load())
 }
 
+func TestCheckBillingEligibility_EnterpriseSubscriptionDoesNotCheckAllocatedBalance(t *testing.T) {
+	cache := &balanceEligibilityCacheStub{balance: 0}
+	resolver := &billingEligibilityResolverStub{result: &BillingContext{
+		ConsumerUserID: 20,
+		PayerUserID:    20,
+		BalanceSource:  "allocated",
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc.SetBillingContextResolver(resolver)
+	t.Cleanup(svc.Stop)
+	organizationSubscriptionID := int64(501)
+	group := &Group{ID: 88, SubscriptionType: SubscriptionTypeSubscription}
+	key := &APIKey{OrganizationSubscriptionID: &organizationSubscriptionID, Group: group}
+
+	require.NoError(t, svc.CheckBillingEligibility(context.Background(), &User{ID: 20}, key, group, nil, "openai"))
+	require.NoError(t, svc.CheckBillingEligibility(context.Background(), &User{ID: 20}, key, nil, nil, "openai"))
+	require.Zero(t, cache.lastUserID.Load())
+	require.Zero(t, resolver.calls.Load())
+}
+
 func TestCheckBillingEligibility_PayerResolutionFailsClosed(t *testing.T) {
 	cache := &balanceEligibilityCacheStub{balance: 1}
 	expected := errors.New("payer resolution unavailable")

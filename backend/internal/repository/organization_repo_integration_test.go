@@ -410,23 +410,41 @@ func TestOrganizationAllocationPayerSelectionAndFinanceRedaction(t *testing.T) {
 	ctx := context.Background()
 	repo := NewOrganizationRepository(integrationDB)
 	owner := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
-	createActiveOrganization(t, owner, 20)
+	organizationID := createActiveOrganization(t, owner, 20)
 	memberID := createIAMMemberForOrganizationTest(t, owner.ID, "billing-member")
 
+	assertCompanyBalance := func(available, frozen string) {
+		t.Helper()
+		var gotAvailable, gotFrozen string
+		require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance::text,frozen_balance::text FROM organizations WHERE id=$1`, organizationID).Scan(&gotAvailable, &gotFrozen))
+		require.Equal(t, available, gotAvailable)
+		require.Equal(t, frozen, gotFrozen)
+	}
+
+	// Fund the company balance from the owner's personal balance. Allocation
+	// draws from the company balance, not the owner's personal balance.
+	require.NoError(t, repo.DepositToCompany(ctx, owner.ID, "50.00000000", uuid.NewString(), false))
+	assertUserBalances(t, owner.ID, "50.00000000", "0.00000000")
+	assertCompanyBalance("50.00000000", "0.00000000")
+
 	transferKey := uuid.NewString()
+	// Allocation moves funds from the company balance to the member. The owner's
+	// personal balance is untouched.
 	require.NoError(t, repo.TransferBalance(ctx, owner.ID, memberID, "25.00000000", transferKey, false))
 	require.NoError(t, repo.TransferBalance(ctx, owner.ID, memberID, "25.00000000", transferKey, false))
-	require.Error(t, repo.TransferBalance(ctx, owner.ID, memberID, "24.00000000", transferKey, false))
-	assertUserBalances(t, owner.ID, "75.00000000", "0.00000000")
+	// Allocating beyond the remaining company balance is rejected.
+	require.ErrorIs(t, repo.TransferBalance(ctx, owner.ID, memberID, "24.00000000", uuid.NewString(), false), service.ErrInsufficientBalance)
+	assertUserBalances(t, owner.ID, "50.00000000", "0.00000000")
 	assertUserBalances(t, memberID, "25.00000000", "0.00000000")
-	assertCombinedAvailableBalance(t, owner.ID, memberID, "100.00000000")
+	assertCompanyBalance("25.00000000", "0.00000000")
 
 	otherOwner := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
 	createActiveOrganization(t, otherOwner, 20)
 	otherMemberID := createIAMMemberForOrganizationTest(t, otherOwner.ID, "other-billing-member")
-	require.NoError(t, repo.TransferBalance(ctx, otherOwner.ID, otherMemberID, "25.00000000", transferKey, false))
+	require.NoError(t, repo.DepositToCompany(ctx, otherOwner.ID, "50.00000000", uuid.NewString(), false))
+	require.NoError(t, repo.TransferBalance(ctx, otherOwner.ID, otherMemberID, "25.00000000", uuid.NewString(), false))
 	require.ErrorIs(t, repo.SetPolicyAttachment(ctx, owner.ID, otherMemberID, service.PolicyCompanySharedBalance, true, uuid.NewString()), service.ErrIAMMemberNotFound)
-	assertUserBalances(t, otherOwner.ID, "75.00000000", "0.00000000")
+	assertUserBalances(t, otherOwner.ID, "50.00000000", "0.00000000")
 	assertUserBalances(t, otherMemberID, "25.00000000", "0.00000000")
 	resolved, err := repo.ResolveBillingContext(ctx, memberID)
 	require.NoError(t, err)
@@ -447,17 +465,21 @@ func TestOrganizationAllocationPayerSelectionAndFinanceRedaction(t *testing.T) {
 	visible, err := repo.FinanceSummary(ctx, memberID)
 	require.NoError(t, err)
 	require.NotNil(t, visible.Available)
-	require.Equal(t, "75.00000000", *visible.Available)
+	require.Equal(t, "50.00000000", *visible.Available)
+	// A privileged viewer also sees the company balance.
+	require.NotNil(t, visible.CompanyAvailable)
+	require.Equal(t, "25.00000000", *visible.CompanyAvailable)
 
 	require.NoError(t, repo.SetPolicyAttachment(ctx, owner.ID, memberID, service.PolicyCompanySharedBalance, false, uuid.NewString()))
 	resolved, err = repo.ResolveBillingContext(ctx, memberID)
 	require.NoError(t, err)
 	require.Equal(t, memberID, resolved.PayerUserID)
 	require.Equal(t, "allocated", resolved.BalanceSource)
+	// Reclaim moves funds from the member back into the company balance.
 	require.NoError(t, repo.TransferBalance(ctx, owner.ID, memberID, "10.00000000", uuid.NewString(), true))
-	assertUserBalances(t, owner.ID, "85.00000000", "0.00000000")
+	assertUserBalances(t, owner.ID, "50.00000000", "0.00000000")
 	assertUserBalances(t, memberID, "15.00000000", "0.00000000")
-	assertCombinedAvailableBalance(t, owner.ID, memberID, "100.00000000")
+	assertCompanyBalance("35.00000000", "0.00000000")
 }
 
 func TestOrganizationCompanyBalanceDepositAndWithdraw(t *testing.T) {
@@ -559,6 +581,35 @@ func TestOrganizationSubscriptionLifecycle(t *testing.T) {
 	reprovisioned, err := repo.CreateOrganizationSubscription(ctx, owner.ID, groupID, 10, "")
 	require.NoError(t, err)
 	require.NotEqual(t, created.ID, reprovisioned.ID)
+}
+
+func TestAdminCreateOrganizationSubscription(t *testing.T) {
+	isolateOrganizationIntegrationTest(t)
+	ctx := context.Background()
+	repo := NewOrganizationRepository(integrationDB)
+	admin := createOrganizationRoot(t, integrationEntClient, 100, service.RoleAdmin)
+	owner := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
+	organizationID := createActiveOrganization(t, owner, 20)
+	var groupID int64
+	require.NoError(t, integrationDB.QueryRowContext(ctx,
+		`INSERT INTO groups(name,status,platform,subscription_type,default_validity_days,daily_limit_usd) VALUES($1,'active','codex','subscription',30,10) RETURNING id`,
+		"admin-orgsub-"+uuid.NewString()).Scan(&groupID))
+
+	created, err := repo.AdminCreateOrganizationSubscription(ctx, admin.ID, organizationID, groupID, 30, "admin grant")
+
+	require.NoError(t, err)
+	require.Equal(t, organizationID, created.OrganizationID)
+	require.Equal(t, groupID, created.GroupID)
+	require.Equal(t, "admin grant", created.Notes)
+	require.NotNil(t, created.AssignedBy)
+	require.Equal(t, admin.ID, *created.AssignedBy)
+
+	items, total, err := repo.AdminListOrganizationSubscriptions(ctx, admin.ID, 1, 20, &groupID, service.SubscriptionStatusActive, "codex", "created_at", "desc")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, items, 1)
+	require.Equal(t, organizationID, items[0].OrganizationID)
+	require.NotEmpty(t, items[0].OrganizationName)
 }
 
 func TestOrganizationDomainAuditCoverageAndCorrelation(t *testing.T) {

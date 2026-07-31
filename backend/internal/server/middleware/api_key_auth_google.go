@@ -166,7 +166,19 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		}
 
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
-		if isSubscriptionType && subscriptionService != nil {
+		isEnterpriseKey := apiKey.OrganizationSubscriptionID != nil
+		if isEnterpriseKey {
+			if err := apiKeyService.ValidateEnterpriseSubscription(c.Request.Context(), apiKey); err != nil {
+				status := 403
+				if errors.Is(err, service.ErrDailyLimitExceeded) ||
+					errors.Is(err, service.ErrWeeklyLimitExceeded) ||
+					errors.Is(err, service.ErrMonthlyLimitExceeded) {
+					status = 429
+				}
+				abortWithGoogleError(c, status, err.Error())
+				return
+			}
+		} else if isSubscriptionType && subscriptionService != nil {
 			subscription, err := subscriptionService.GetActiveSubscription(
 				c.Request.Context(),
 				apiKey.User.ID,

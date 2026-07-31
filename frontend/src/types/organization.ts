@@ -96,6 +96,7 @@ export interface AdminOrganizationDetail {
 export interface IAMMember {
   user_id: number
   external_user_id: string
+  username: string
   login_name: string
   principal: string
   status: IAMMemberStatus
@@ -131,13 +132,15 @@ export interface FinanceSummary {
 export interface OrganizationSubscription {
   id: number
   organization_id: number
+  organization_name?: string
+  company_id?: string
   group_id: number
   group_name: string
   platform: string
   subscription_type: string
   starts_at: string
   expires_at: string
-  status: 'active' | 'expired' | 'cancelled'
+  status: 'active' | 'expired' | 'cancelled' | 'suspended'
   daily_limit_usd?: string
   weekly_limit_usd?: string
   monthly_limit_usd?: string
@@ -154,16 +157,34 @@ export interface OrganizationUsageRow {
   id: number
   member_user_id: number
   member_login: string
+  member_username: string
   api_key_name: string
   model: string
   input_tokens: number
   output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  cache_creation_5m_tokens: number
+  cache_creation_1h_tokens: number
   actual_cost: string
+  total_cost: string
+  rate_multiplier: number
   endpoint: string
+  group_id?: number | null
+  group_name: string
+  request_type: 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber'
+  billing_type: number
+  billing_mode: string
+  image_count: number
+  image_urls: string[]
+  cos_urls: string[]
+  ip_address: string
+  user_agent: string
   status: string
+  first_token_ms?: number | null
   duration_ms?: number
   created_at: string
-  balance_source?: 'self' | 'allocated' | 'shared'
+  balance_source?: 'self' | 'allocated' | 'shared' | 'subscription'
 }
 
 export interface OrganizationUsageParams {
@@ -171,9 +192,13 @@ export interface OrganizationUsageParams {
   end?: string
   member_id?: number
   api_key_id?: number
+  group_id?: number
+  billing_type?: number
+  billing_mode?: string
   model?: string
   endpoint?: string
   status?: string
+  granularity?: 'hour' | 'day'
   page?: number
   page_size?: number
 }
@@ -194,8 +219,13 @@ export interface OrganizationUsageStats {
 }
 
 export interface OrganizationUsageTrendPoint {
-  bucket: string
+  date: string
   requests: number
-  tokens: number
-  actual_cost: string
+  input_tokens: number
+  output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  total_tokens: number
+  cost: number
+  actual_cost: number
 }

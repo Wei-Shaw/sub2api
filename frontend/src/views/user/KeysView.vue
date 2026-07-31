@@ -1094,8 +1094,10 @@
             :class="[
               'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors',
               'border-b border-gray-100 last:border-0 dark:border-dark-700',
-              selectedKeyForGroup?.group_id === option.value ||
-              (!selectedKeyForGroup?.group_id && option.value === null)
+              (typeof option.value === 'string' && option.value.startsWith('org:')
+                ? selectedKeyForGroup?.organization_subscription_id === Number(option.value.slice(4))
+                : selectedKeyForGroup?.group_id === option.value) ||
+              (!selectedKeyForGroup?.group_id && !selectedKeyForGroup?.organization_subscription_id && option.value === null)
                 ? 'bg-primary-50 dark:bg-primary-900/20'
                 : 'hover:bg-gray-100 dark:hover:bg-dark-700'
             ]"
@@ -1113,8 +1115,10 @@
               :peak-rate-multiplier="option.peakRateMultiplier"
               :description="option.description"
               :selected="
-                selectedKeyForGroup?.group_id === option.value ||
-                (!selectedKeyForGroup?.group_id && option.value === null)
+                (typeof option.value === 'string' && option.value.startsWith('org:')
+                  ? selectedKeyForGroup?.organization_subscription_id === Number(option.value.slice(4))
+                  : selectedKeyForGroup?.group_id === option.value) ||
+                (!selectedKeyForGroup?.group_id && !selectedKeyForGroup?.organization_subscription_id && option.value === null)
               "
             />
           </button>
@@ -1453,20 +1457,40 @@ const orgSubscriptionOptions = computed(() => {
   }
   return orgSubscriptions.value.map((sub) => {
     const typeLabel = typeLabels[sub.subscription_type] || sub.subscription_type
+    const group = groups.value.find(item => item.id === sub.group_id)
     return {
       value: sub.id,
       label: `${sub.group_name} · ${typeLabel}`,
-      description: sub.notes || undefined
+      description: sub.notes || undefined,
+      rate: group?.rate_multiplier ?? 1,
+      platform: group?.platform || 'composite',
+      userRate: userGroupRates.value[sub.group_id] ?? null,
     }
   })
 })
 
 // Group dropdown search
 const groupSearchQuery = ref('')
+const quickGroupOptions = computed(() => [
+  ...groupOptions.value,
+  ...orgSubscriptionOptions.value.map(option => ({
+    ...option,
+    value: `org:${option.value}`,
+    label: `${t('keys.orgSubscriptionLabel')}: ${option.label}`,
+    platform: 'composite' as const,
+    rate: option.rate,
+    userRate: undefined,
+    peakRateEnabled: false,
+    peakStart: undefined,
+    peakEnd: undefined,
+    peakRateMultiplier: undefined,
+    subscriptionType: undefined,
+  })),
+])
 const filteredGroupOptions = computed(() => {
   const query = groupSearchQuery.value.trim().toLowerCase()
-  if (!query) return groupOptions.value
-  return groupOptions.value.filter((opt) => {
+  if (!query) return quickGroupOptions.value
+  return quickGroupOptions.value.filter((opt) => {
     return opt.label.toLowerCase().includes(query) ||
       (opt.description && opt.description.toLowerCase().includes(query))
   })
@@ -1679,13 +1703,21 @@ const openGroupSelector = (key: ApiKey) => {
   }
 }
 
-const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
+const changeGroup = async (key: ApiKey, selectedValue: number | string | null) => {
   groupSelectorKeyId.value = null
   dropdownPosition.value = null
-  if (key.group_id === newGroupId) return
+  const organizationSubscriptionID = typeof selectedValue === 'string' && selectedValue.startsWith('org:')
+    ? Number(selectedValue.slice(4))
+    : null
+  const newGroupId = organizationSubscriptionID
+    ? (orgSubscriptions.value.find(subscription => subscription.id === organizationSubscriptionID)?.group_id ?? null)
+    : typeof selectedValue === 'number' ? selectedValue : null
+  if (key.group_id === newGroupId && (key.organization_subscription_id ?? null) === organizationSubscriptionID) return
 
   try {
-    await keysAPI.update(key.id, { group_id: newGroupId })
+    await keysAPI.update(key.id, organizationSubscriptionID
+      ? { organization_subscription_id: organizationSubscriptionID }
+      : { group_id: newGroupId, organization_subscription_id: null })
     appStore.showSuccess(t('keys.groupChangedSuccess'))
     loadApiKeys()
   } catch (error) {

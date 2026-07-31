@@ -151,7 +151,12 @@ func registerOrganizationAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers
 		organizations.GET("/name-change-requests", h.Organization.AdminListNameChanges)
 		organizations.GET("/name-change-requests/:request_id", h.Organization.AdminGetNameChange)
 		organizations.POST("/name-change-requests/:request_id/decision", h.Organization.AdminDecideNameChange)
+		organizations.GET("/subscriptions", h.Organization.AdminListSubscriptions)
+		organizations.POST("/subscriptions/:subscription_id/extend", h.Organization.AdminExtendSubscription)
+		organizations.POST("/subscriptions/:subscription_id/reset-quota", h.Organization.AdminResetSubscriptionQuota)
+		organizations.POST("/subscriptions/:subscription_id/revoke", h.Organization.AdminRevokeSubscription)
 		organizations.GET("/:organization_id", h.Organization.AdminGetOrganization)
+		organizations.POST("/:organization_id/subscriptions", h.Organization.AdminCreateSubscription)
 		organizations.PATCH("/:organization_id/status", h.Organization.AdminSetOrganizationStatus)
 	}
 }

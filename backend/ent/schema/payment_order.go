@@ -102,6 +102,12 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.Int("subscription_days").
 			Optional().
 			Nillable(),
+		// 企业订阅关联：非空表示这是一笔为公司主体（organizations.id）购买的订阅订单，
+		// 履约时挂到 organization_subscriptions 而非个人 user_subscriptions。
+		// 为 NULL 时表示个人订阅/充值订单，行为不变。
+		field.Int64("organization_id").
+			Optional().
+			Nillable(),
 		field.String("provider_instance_id").
 			Optional().
 			Nillable().
@@ -210,5 +216,7 @@ func (PaymentOrder) Indexes() []ent.Index {
 		index.Fields("paid_at"),
 		index.Fields("payment_type", "paid_at"),
 		index.Fields("order_type"),
+		index.Fields("organization_id").
+			Annotations(entsql.IndexWhere("organization_id IS NOT NULL")),
 	}
 }

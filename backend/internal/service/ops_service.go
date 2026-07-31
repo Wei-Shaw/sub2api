@@ -806,6 +806,59 @@ func (s *OpsService) ListUserErrorRequests(ctx context.Context, userID int64, fi
 	}, nil
 }
 
+func (s *OpsService) ListOrganizationErrorRequests(ctx context.Context, organizationID int64, userIDs []int64, filter *OpsErrorLogFilter) (*UserErrorRequestList, error) {
+	if organizationID <= 0 || len(userIDs) == 0 {
+		return &UserErrorRequestList{Items: []*UserErrorRequest{}, Page: 1, PageSize: 20}, nil
+	}
+	if s.opsRepo == nil {
+		return nil, infraerrors.ServiceUnavailable("OPS_REPO_UNAVAILABLE", "Ops repository not available")
+	}
+	if filter == nil {
+		filter = &OpsErrorLogFilter{}
+	}
+	f := *filter
+	f.OrganizationID = &organizationID
+	f.UserIDs = append([]int64(nil), userIDs...)
+	f.View = "all"
+	f.ExcludeCountTokens = true
+	f.ModelFuzzy = true
+	f.UserQuery = ""
+	f.Owner = ""
+	f.Source = ""
+	f.Phase = ""
+	f.IncludeRecoveredUpstream = false
+	list, err := s.opsRepo.ListErrorLogs(ctx, &f)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*UserErrorRequest, 0, len(list.Errors))
+	for _, entry := range list.Errors {
+		if item := ToUserErrorRequest(entry); item != nil {
+			items = append(items, item)
+		}
+	}
+	return &UserErrorRequestList{Items: items, Total: list.Total, Page: list.Page, PageSize: list.PageSize}, nil
+}
+
+func (s *OpsService) GetOrganizationErrorRequestDetail(ctx context.Context, organizationID int64, userIDs []int64, id int64) (*UserErrorRequestDetail, error) {
+	if s.opsRepo == nil || id <= 0 {
+		return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
+	}
+	filter := &OpsErrorLogFilter{ID: &id, OrganizationID: &organizationID, UserIDs: userIDs, View: "all", Page: 1, PageSize: 1}
+	list, err := s.opsRepo.ListErrorLogs(ctx, filter)
+	if err != nil || len(list.Errors) == 0 {
+		return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
+	}
+	detail, err := s.opsRepo.GetErrorLogByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
+		}
+		return nil, infraerrors.InternalServer("OPS_ERROR_LOAD_FAILED", "Failed to load ops error log").WithCause(err)
+	}
+	return ToUserErrorRequestDetail(detail), nil
+}
+
 func (s *OpsService) GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorLogDetail, error) {
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return nil, err

@@ -38,33 +38,6 @@
     </p>
     <div v-if="loading" class="py-10 text-center text-sm text-gray-500">{{ t('common.loading') }}</div>
 
-    <section v-else-if="activeTab === 'allocation'" class="space-y-3">
-      <p class="text-sm text-gray-500">
-        {{ t('organization.allocation.rootAvailable', { amount: companyAmount(finance?.available) }) }}
-      </p>
-      <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
-        <table class="w-full min-w-[720px] text-sm">
-          <thead class="bg-gray-50 text-left dark:bg-dark-800">
-            <tr><th class="p-3">{{ t('organization.login.loginName') }}</th><th class="p-3">{{ t('organization.finance.available') }}</th><th class="p-3">{{ t('organization.finance.frozen') }}</th><th class="p-3">{{ t('organization.allocation.amount') }}</th><th class="p-3">{{ t('common.actions') }}</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="member in activeMembers" :key="member.user_id" class="border-t border-gray-100 dark:border-dark-700">
-              <td class="p-3">{{ member.login_name }}</td>
-              <td class="p-3 font-mono">{{ companyAmount(member.balance) }}</td>
-              <td class="p-3 font-mono">{{ companyAmount(member.frozen_balance) }}</td>
-              <td class="p-3"><input v-model.trim="amounts[member.user_id]" class="input w-36 py-1.5" type="number" min="0.00000001" step="0.00000001"></td>
-              <td class="p-3">
-                <div class="flex gap-1">
-                  <button class="btn btn-secondary btn-sm" :disabled="!canAllocate(member) || isBusy(member)" @click="transfer(member, 'allocate')">{{ t('organization.allocation.allocate') }}</button>
-                  <button class="btn btn-ghost btn-sm" :disabled="!canReclaim(member) || isBusy(member)" @click="transfer(member, 'reclaim')">{{ t('organization.allocation.reclaim') }}</button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
     <div v-else-if="activeTab === 'finance'" class="space-y-6">
       <section v-if="finance?.company_available !== undefined" class="space-y-4">
         <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.finance.companyBalance') }}</h3>
@@ -103,12 +76,13 @@
           </div>
         </div>
         <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
-          <table class="w-full min-w-[860px] text-sm">
+          <table class="w-full min-w-[960px] text-sm">
             <thead class="bg-gray-50 text-left dark:bg-dark-800">
               <tr>
                 <th class="p-3">{{ t('organization.login.loginName') }}</th>
                 <th class="p-3">{{ t('organization.iamUserId') }}</th>
                 <th class="p-3">{{ t('common.status') }}</th>
+                <th class="p-3">{{ t('organization.finance.available') }}</th>
                 <th class="p-3">{{ t('organization.policies') }}</th>
                 <th class="p-3 text-right">{{ t('common.actions') }}</th>
               </tr>
@@ -124,6 +98,7 @@
                 </td>
                 <td class="p-3 font-mono text-xs">{{ member.external_user_id }}</td>
                 <td class="p-3">{{ t(`organization.status.${member.status}`) }}</td>
+                <td class="p-3 font-mono">{{ companyAmount(member.balance) }}</td>
                 <td class="max-w-xs break-words p-3">{{ member.policy_names.join(', ') || '-' }}</td>
                 <td class="p-3 text-right">
                   <div class="flex flex-wrap justify-end gap-1">
@@ -142,54 +117,58 @@
       </section>
     </div>
 
+    <div v-else-if="activeTab === 'dashboard'" class="space-y-6">
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <DashboardStatCard icon="key" color="blue" :label="t('admin.dashboard.apiKeys')" :value="dashboardStats?.total_api_keys ?? 0" :detail="`${dashboardStats?.active_api_keys ?? 0} ${t('common.active')}`" />
+        <DashboardStatCard icon="server" color="purple" :label="t('admin.dashboard.accounts')" :value="dashboardStats?.total_accounts ?? 0" :detail="`${dashboardStats?.normal_accounts ?? 0} ${t('common.active')}`" />
+        <DashboardStatCard icon="chart" color="green" :label="t('admin.dashboard.todayRequests')" :value="dashboardStats?.today_requests ?? 0" :detail="`${t('common.total')}: ${formatDashboardTokens(dashboardStats?.total_requests ?? 0)}`" />
+        <DashboardStatCard icon="creditCard" color="emerald" :label="t('dashboard.todayCost')" :value="`$${formatDashboardCost(dashboardStats?.today_actual_cost ?? 0)}`" :detail="t('admin.dashboard.actual')" />
+      </div>
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <DashboardStatCard icon="cube" color="amber" :label="t('admin.dashboard.todayTokens')" :value="formatDashboardTokens(dashboardStats?.today_tokens ?? 0)" :detail="dashboardCostDetail('today')">
+          <template #detail><DashboardCostDetail :actual="dashboardStats?.today_actual_cost ?? 0" :account="dashboardStats?.today_account_cost ?? 0" :standard="dashboardStats?.today_cost ?? 0" /></template>
+        </DashboardStatCard>
+        <DashboardStatCard icon="database" color="indigo" :label="t('admin.dashboard.totalTokens')" :value="formatDashboardTokens(dashboardStats?.total_tokens ?? 0)" :detail="dashboardCostDetail('total')">
+          <template #detail><DashboardCostDetail :actual="dashboardStats?.total_actual_cost ?? 0" :account="dashboardStats?.total_account_cost ?? 0" :standard="dashboardStats?.total_cost ?? 0" /></template>
+        </DashboardStatCard>
+        <DashboardStatCard icon="bolt" color="violet" :label="t('admin.dashboard.performance')" :value="`${formatDashboardTokens(dashboardStats?.rpm ?? 0)} RPM`" :detail="`${formatDashboardTokens(dashboardStats?.tpm ?? 0)} TPM`" />
+        <DashboardStatCard icon="clock" color="rose" :label="t('admin.dashboard.avgResponse')" :value="formatDashboardDuration(dashboardStats?.average_duration_ms ?? 0)" :detail="`${dashboardStats?.active_users ?? 0} ${t('admin.dashboard.activeUsers')}`" />
+      </div>
+      <div class="card p-4">
+        <div class="flex flex-wrap items-center gap-4">
+          <div class="flex items-center gap-2"><span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.timeRange') }}:</span><DateRangePicker v-model:start-date="dashboardStartDate" v-model:end-date="dashboardEndDate" @change="onDashboardDateRangeChange" /></div>
+          <button type="button" class="btn btn-secondary" :disabled="dashboardChartsLoading" @click="loadDashboardAggregates">{{ t('common.refresh') }}</button>
+          <div class="ml-auto flex items-center gap-2"><span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.granularity') }}:</span><div class="w-28"><Select v-model="dashboardGranularity" :options="usageGranularityOptions" @change="loadDashboardAggregates" /></div></div>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <ModelDistributionChart :model-stats="dashboardModelStats" :loading="dashboardChartsLoading" :show-metric-toggle="false" :show-source-toggle="false" :enable-breakdown="true" :enable-ranking-view="true" :show-account-cost="true" :ranking-items="dashboardRankingItems" :ranking-total-actual-cost="dashboardRankingTotalActualCost" :ranking-total-requests="dashboardRankingTotalRequests" :ranking-total-tokens="dashboardRankingTotalTokens" :ranking-loading="dashboardChartsLoading" :start-date="dashboardStartDate" :end-date="dashboardEndDate" :breakdown-loader="loadOrganizationBreakdown" />
+        <TokenUsageTrend :trend-data="dashboardTrend" :loading="dashboardChartsLoading" />
+      </div>
+      <UserUsageTrendChart :items="userUsageTrend" :loading="dashboardChartsLoading" />
+    </div>
+
     <div v-else-if="activeTab === 'subscriptions'" class="space-y-6">
       <p class="text-sm text-gray-500">{{ t('organization.subscriptions.description') }}</p>
 
       <section v-if="isOwner" class="space-y-3 rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
         <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.subscriptions.createTitle') }}</h3>
-        <div class="flex flex-wrap items-end gap-3">
-          <div class="min-w-[220px] flex-1">
-            <label class="input-label" for="subscription-group">{{ t('organization.subscriptions.group') }}</label>
-            <Select
-              v-model="subscriptionForm.groupID"
-              :options="subscriptionGroupOptions"
-              :placeholder="t('organization.subscriptions.selectGroup')"
-              :searchable="true"
-            >
-              <template #selected="{ option }">
-                <GroupBadge
-                  v-if="option"
-                  :name="(option as unknown as SubscriptionGroupOption).label"
-                  :platform="(option as unknown as SubscriptionGroupOption).platform"
-                  :subscription-type="(option as unknown as SubscriptionGroupOption).subscriptionType"
-                  :rate-multiplier="(option as unknown as SubscriptionGroupOption).rate"
-                  :peak-rate-enabled="(option as unknown as SubscriptionGroupOption).peakRateEnabled"
-                  :peak-start="(option as unknown as SubscriptionGroupOption).peakStart"
-                  :peak-end="(option as unknown as SubscriptionGroupOption).peakEnd"
-                  :peak-rate-multiplier="(option as unknown as SubscriptionGroupOption).peakRateMultiplier"
-                />
-                <span v-else class="text-gray-400">{{ t('organization.subscriptions.selectGroup') }}</span>
-              </template>
-              <template #option="{ option, selected }">
-                <GroupOptionItem
-                  :name="(option as unknown as SubscriptionGroupOption).label"
-                  :platform="(option as unknown as SubscriptionGroupOption).platform"
-                  :subscription-type="(option as unknown as SubscriptionGroupOption).subscriptionType"
-                  :rate-multiplier="(option as unknown as SubscriptionGroupOption).rate"
-                  :peak-rate-enabled="(option as unknown as SubscriptionGroupOption).peakRateEnabled"
-                  :peak-start="(option as unknown as SubscriptionGroupOption).peakStart"
-                  :peak-end="(option as unknown as SubscriptionGroupOption).peakEnd"
-                  :peak-rate-multiplier="(option as unknown as SubscriptionGroupOption).peakRateMultiplier"
-                  :description="(option as unknown as SubscriptionGroupOption).description"
-                  :selected="selected"
-                />
-              </template>
-            </Select>
-          </div>
-          <button class="btn btn-primary" :disabled="!subscriptionForm.groupID || operationKey !== ''" @click="createSubscription">{{ t('organization.subscriptions.create') }}</button>
-        </div>
         <p class="text-xs text-gray-500">{{ t('organization.subscriptions.createHint') }}</p>
+        <PlanPlazaCards :cards="planCards" :loading="plansLoading" emit-select @select="openPurchase" />
       </section>
+
+      <!-- Enterprise subscription purchase modal: reuses the embedded payment flow. -->
+      <div v-if="showPurchase" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
+        <div class="my-8 w-full max-w-2xl rounded-lg bg-white shadow-xl dark:bg-dark-800">
+          <div class="flex items-center justify-between border-b border-gray-200 px-5 py-3 dark:border-dark-700">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.subscriptions.createTitle') }}</h3>
+            <button type="button" class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-dark-700" :aria-label="t('common.close')" @click="closePurchase"><Icon name="x" size="sm" /></button>
+          </div>
+          <div class="max-h-[75vh] overflow-y-auto px-5 py-3">
+            <PaymentView embedded :initial-plan-id="selectedPlanId" @refresh-subscriptions="onPurchaseFulfilled" @cancel="closePurchase" />
+          </div>
+        </div>
+      </div>
 
       <div v-if="subscriptions.length === 0" class="rounded-md border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-dark-700">
         {{ t('organization.subscriptions.empty') }}
@@ -246,47 +225,119 @@
         </div>
       </div>
 
-      <section class="rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-        <div class="mb-3 text-sm font-medium">{{ t('organization.usage.trendTitle') }}</div>
-        <p v-if="!usageTrend.length" class="py-6 text-center text-sm text-gray-500">{{ t('organization.usage.trendEmpty') }}</p>
-        <div v-else class="flex h-40 items-end gap-1">
-          <div
-            v-for="point in usageTrend"
-            :key="point.bucket"
-            class="flex min-w-0 flex-1 flex-col items-center justify-end"
-            :title="`${new Date(point.bucket).toLocaleDateString()} · ${point.requests} ${t('organization.usage.statRequests')} · ${point.tokens} ${t('organization.usage.tokens')} · ${formatMoney(point.actual_cost)}`"
-          >
-            <div class="w-full rounded-t bg-blue-500/70 transition-all dark:bg-blue-400/70" :style="{ height: trendBarHeight(point) }"></div>
-            <div class="mt-1 w-full truncate text-center text-[10px] text-gray-400">{{ new Date(point.bucket).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) }}</div>
+      <div class="space-y-4">
+        <div class="card p-4">
+          <div class="flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.timeRange') }}:</span>
+              <DateRangePicker v-model:start-date="usageStartDate" v-model:end-date="usageEndDate" @change="onUsageDateRangeChange" />
+            </div>
+            <div class="ml-auto flex items-center gap-2">
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.granularity') }}:</span>
+              <div class="w-28"><Select v-model="usageGranularity" :options="usageGranularityOptions" @change="loadUsageAggregates" /></div>
+            </div>
           </div>
         </div>
-      </section>
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ModelDistributionChart
+            v-model:metric="distributionMetric"
+            :model-stats="modelStats"
+            :loading="usageChartsLoading"
+            :show-metric-toggle="true"
+            :show-source-toggle="false"
+            :enable-breakdown="false"
+            :enable-ranking-view="false"
+            :show-account-cost="false"
+          />
+          <GroupDistributionChart
+            v-model:metric="distributionMetric"
+            :group-stats="groupStats"
+            :loading="usageChartsLoading"
+            :show-metric-toggle="true"
+            :enable-breakdown="false"
+            :show-account-cost="false"
+          />
+        </div>
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <EndpointDistributionChart
+            v-model:metric="distributionMetric"
+            :endpoint-stats="endpointStats"
+            :loading="usageChartsLoading"
+            :show-metric-toggle="true"
+            :show-source-toggle="false"
+            :enable-breakdown="false"
+          />
+          <TokenUsageTrend :trend-data="usageTrend" :loading="usageChartsLoading" />
+        </div>
+      </div>
 
-      <form class="grid gap-3 md:grid-cols-3 xl:grid-cols-4" @submit.prevent="searchUsage">
-        <select v-model="usageFilters.memberId" class="input">
-          <option value="">{{ t('organization.usage.allMembers') }}</option>
-          <option v-for="member in members" :key="member.user_id" :value="String(member.user_id)">{{ member.login_name }}</option>
-        </select>
-        <input v-model.trim="usageFilters.apiKeyId" class="input" type="number" min="1" :placeholder="t('organization.usage.apiKeyId')">
-        <input v-model.trim="usageFilters.model" class="input" :placeholder="t('organization.usage.model')">
-        <input v-model.trim="usageFilters.endpoint" class="input" :placeholder="t('organization.usage.endpoint')">
-        <select v-model="usageFilters.status" class="input">
-          <option value="">{{ t('common.all') }}</option>
-          <option value="charged">{{ t('organization.usage.charged') }}</option>
-          <option value="refunded">{{ t('organization.usage.refunded') }}</option>
-        </select>
-        <input v-model="usageFilters.start" class="input" type="datetime-local" :aria-label="t('organization.usage.start')">
-        <input v-model="usageFilters.end" class="input" type="datetime-local" :aria-label="t('organization.usage.end')">
-        <button class="btn btn-secondary" type="submit" :disabled="usageLoading">{{ t('common.search') }}</button>
-      </form>
+      <div class="flex border-b border-gray-200 dark:border-dark-700">
+        <button type="button" class="border-b-2 px-4 py-2 text-sm font-medium" :class="usageDetailTab === 'usage' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500'" @click="usageDetailTab = 'usage'">{{ t('usage.tabs.usage') }}</button>
+        <button type="button" class="border-b-2 px-4 py-2 text-sm font-medium" :class="usageDetailTab === 'errors' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500'" @click="switchUsageDetailTab('errors')">{{ t('usage.tabs.errors') }}</button>
+      </div>
+
+      <div class="space-y-3">
+        <div class="grid items-end gap-3 md:grid-cols-3 xl:grid-cols-4">
+          <div><label class="input-label">{{ t('organization.usage.member') }}</label><Select v-model="usageFilters.memberId" :options="usageMemberOptions" searchable @change="onUsageMemberChange" /></div>
+          <div ref="usageAPIKeySearchRef" class="relative">
+            <label class="input-label">{{ t('organization.usage.apiKey') }}</label>
+            <input v-model="usageAPIKeyKeyword" class="input w-full pr-8" :placeholder="t('organization.usage.searchApiKeyPlaceholder')" @input="debounceUsageAPIKeySearch" @focus="onUsageAPIKeyFocus">
+            <button v-if="usageFilters.apiKeyId" type="button" class="absolute right-2 top-9 text-gray-400" aria-label="Clear API key filter" @click="clearUsageAPIKey">✕</button>
+            <div v-if="showUsageAPIKeyDropdown && usageAPIKeyResults.length" class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800">
+              <button v-for="key in usageAPIKeyResults" :key="key.id" type="button" class="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-700" @click="selectUsageAPIKey(key)"><span class="truncate">{{ key.name || `#${key.id}` }}</span><span class="ml-2 text-xs text-gray-400">#{{ key.id }}</span></button>
+            </div>
+          </div>
+          <div><label class="input-label">{{ t('organization.usage.model') }}</label><input v-model.trim="usageFilters.model" class="input w-full" :placeholder="t('organization.usage.model')" @input="debounceUsageFilterChange"></div>
+          <div v-if="usageDetailTab === 'usage'"><label class="input-label">{{ t('admin.usage.group') }}</label><Select v-model="usageFilters.groupId" :options="usageGroupOptions" searchable @change="applyUsageFilters" /></div>
+          <div v-if="usageDetailTab === 'usage'"><label class="input-label">{{ t('admin.usage.billingType') }}</label><Select v-model="usageFilters.billingType" :options="usageBillingTypeOptions" @change="applyUsageFilters" /></div>
+          <div v-if="usageDetailTab === 'usage'"><label class="input-label">{{ t('admin.usage.billingMode') }}</label><Select v-model="usageFilters.billingMode" :options="usageBillingModeOptions" @change="applyUsageFilters" /></div>
+          <div v-else><label class="input-label">{{ t('usage.errors.category') }}</label><Select v-model="usageErrorFilters.category" :options="usageErrorCategoryOptions" @change="loadUsageErrors(1)" /></div>
+          <div v-if="usageDetailTab === 'errors'"><label class="input-label">{{ t('usage.errors.status') }}</label><input v-model.trim="usageErrorFilters.statusCode" class="input w-full" type="number" min="0" :placeholder="t('usage.errors.status')" @input="debounceUsageFilterChange"></div>
+        </div>
+        <div class="flex justify-end gap-2">
+        <button type="button" class="btn btn-secondary" :disabled="usageLoading || usageErrorsLoading" @click="refreshUsageDetails">
+          <Icon name="refresh" size="sm" />
+          {{ t('common.refresh') }}
+        </button>
+        <div ref="usageColumnDropdownRef" class="relative">
+          <button type="button" class="btn btn-secondary w-full" @click="showUsageColumnDropdown = !showUsageColumnDropdown">
+            <Icon name="grid" size="sm" />
+            {{ t('organization.usage.columnSettings') }}
+          </button>
+          <div v-if="showUsageColumnDropdown" class="absolute right-0 top-full z-50 mt-1 max-h-80 w-52 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800">
+            <button v-for="column in currentUsageToggleableColumns" :key="column.key" type="button" class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700" @click="toggleCurrentUsageColumn(column.key)">
+              <span>{{ column.label }}</span>
+              <Icon v-if="isCurrentUsageColumnVisible(column.key)" name="check" size="sm" class="text-primary-500" />
+            </button>
+          </div>
+        </div>
+        </div>
+      </div>
+      <template v-if="usageDetailTab === 'usage'">
       <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
-        <table class="w-full min-w-[1180px] text-sm">
+        <table class="w-full min-w-[1900px] text-sm">
           <thead class="bg-gray-50 text-left dark:bg-dark-800">
-            <tr><th class="p-3">{{ t('organization.usage.member') }}</th><th class="p-3">{{ t('organization.usage.apiKey') }}</th><th class="p-3">{{ t('organization.usage.model') }}</th><th class="p-3">{{ t('organization.usage.endpoint') }}</th><th class="p-3">{{ t('common.status') }}</th><th class="p-3">{{ t('organization.usage.tokens') }}</th><th class="p-3">{{ t('organization.usage.charge') }}</th><th class="p-3">{{ t('organization.balanceSource.label') }}</th><th class="p-3">{{ t('organization.usage.duration') }}</th><th class="p-3">{{ t('organization.usage.time') }}</th></tr>
+            <tr><th v-if="isUsageColumnVisible('member_login')" class="p-3">{{ t('organization.usage.member') }}</th><th v-if="isUsageColumnVisible('username')" class="p-3">{{ t('organization.usage.username') }}</th><th v-if="isUsageColumnVisible('api_key')" class="p-3">{{ t('organization.usage.apiKey') }}</th><th v-if="isUsageColumnVisible('model')" class="p-3">{{ t('organization.usage.model') }}</th><th v-if="isUsageColumnVisible('endpoint')" class="p-3">{{ t('organization.usage.endpoint') }}</th><th v-if="isUsageColumnVisible('group')" class="p-3">{{ t('admin.usage.group') }}</th><th v-if="isUsageColumnVisible('type')" class="p-3">{{ t('usage.type') }}</th><th v-if="isUsageColumnVisible('billing_type')" class="p-3">{{ t('admin.usage.billingType') }}</th><th v-if="isUsageColumnVisible('billing_mode')" class="p-3">{{ t('admin.usage.billingMode') }}</th><th v-if="isUsageColumnVisible('tokens')" class="p-3">{{ t('usage.tokens') }}</th><th v-if="isUsageColumnVisible('result')" class="p-3">{{ t('usage.result') }}</th><th v-if="isUsageColumnVisible('cost')" class="p-3">{{ t('usage.cost') }}</th><th v-if="isUsageColumnVisible('balance_source')" class="p-3">{{ t('organization.balanceSource.label') }}</th><th v-if="isUsageColumnVisible('latency')" class="p-3">{{ t('usage.latency') }}</th><th v-if="isUsageColumnVisible('ip_address')" class="p-3">{{ t('admin.usage.ipAddress') }}</th><th v-if="isUsageColumnVisible('user_agent')" class="p-3">{{ t('usage.userAgent') }}</th><th v-if="isUsageColumnVisible('created_at')" class="p-3">{{ t('organization.usage.time') }}</th></tr>
           </thead>
           <tbody>
             <tr v-for="row in usagePage.items" :key="row.id" class="border-t border-gray-100 dark:border-dark-700">
-              <td class="p-3">{{ row.member_login }}</td><td class="p-3">{{ row.api_key_name || '-' }}</td><td class="p-3">{{ row.model }}</td><td class="max-w-xs break-all p-3">{{ row.endpoint || '-' }}</td><td class="p-3">{{ row.status }}</td><td class="p-3">{{ row.input_tokens + row.output_tokens }}</td><td class="p-3 font-mono">{{ formatMoney(row.actual_cost) }}</td><td class="p-3 whitespace-nowrap">{{ t(`organization.balanceSource.${row.balance_source || 'self'}`) }}</td><td class="p-3">{{ row.duration_ms ?? '-' }}</td><td class="p-3 whitespace-nowrap">{{ new Date(row.created_at).toLocaleString() }}</td>
+              <td v-if="isUsageColumnVisible('member_login')" class="p-3">{{ row.member_login }}</td>
+              <td v-if="isUsageColumnVisible('username')" class="p-3">{{ row.member_username || '-' }}</td>
+              <td v-if="isUsageColumnVisible('api_key')" class="p-3">{{ row.api_key_name || '-' }}</td>
+              <td v-if="isUsageColumnVisible('model')" class="p-3">{{ row.model }}</td>
+              <td v-if="isUsageColumnVisible('endpoint')" class="max-w-xs break-all p-3">{{ row.endpoint || '-' }}</td>
+              <td v-if="isUsageColumnVisible('group')" class="p-3"><span v-if="row.group_name" class="inline-flex rounded bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">{{ row.group_name }}</span><span v-else>-</span></td>
+              <td v-if="isUsageColumnVisible('type')" class="p-3"><span class="inline-flex rounded px-2 py-0.5 text-xs font-medium" :class="usageRequestTypeClass(row.request_type)">{{ usageRequestTypeLabel(row.request_type) }}</span></td>
+              <td v-if="isUsageColumnVisible('billing_type')" class="p-3 whitespace-nowrap">{{ row.billing_type === 1 ? t('admin.usage.billingTypeSubscription') : t('admin.usage.billingTypeBalance') }}</td>
+              <td v-if="isUsageColumnVisible('billing_mode')" class="p-3"><span class="inline-flex rounded px-2 py-0.5 text-xs font-medium" :class="getBillingModeBadgeClass(row.billing_mode)">{{ getBillingModeLabel(row.billing_mode, t) }}</span></td>
+              <td v-if="isUsageColumnVisible('tokens')" class="p-3"><UsageTokenBreakdown :input-tokens="row.input_tokens" :output-tokens="row.output_tokens" :cache-creation-tokens="row.cache_creation_tokens || 0" :cache-read-tokens="row.cache_read_tokens || 0" :cache-creation-5m-tokens="row.cache_creation_5m_tokens || 0" :cache-creation-1h-tokens="row.cache_creation_1h_tokens || 0" /></td>
+              <td v-if="isUsageColumnVisible('result')" class="p-3"><div v-if="usageResultURLs(row).length" class="flex max-w-[180px] flex-wrap gap-1.5"><a v-for="(url, index) in usageResultURLs(row)" :key="index" :href="url" target="_blank" rel="noopener noreferrer" class="block h-12 w-12 overflow-hidden rounded border border-gray-200 hover:ring-2 hover:ring-blue-400 dark:border-dark-700"><img :src="url" loading="lazy" alt="result" class="h-full w-full object-cover"></a></div><span v-else>-</span></td>
+              <td v-if="isUsageColumnVisible('cost')" class="p-3 font-mono"><div class="font-medium text-green-600 dark:text-green-400">${{ formatUsageCost(row.actual_cost) }}</div><div class="text-[11px] text-gray-400" :title="`${t('usage.rate')}: ${row.rate_multiplier || 1}x`">${{ formatUsageCost(row.total_cost) }}</div></td>
+              <td v-if="isUsageColumnVisible('balance_source')" class="p-3 whitespace-nowrap">{{ t(`organization.balanceSource.${row.balance_source || 'self'}`) }}</td>
+              <td v-if="isUsageColumnVisible('latency')" class="p-3"><UsageLatencyCell :first-token-ms="row.first_token_ms" :duration-ms="row.duration_ms" /></td>
+              <td v-if="isUsageColumnVisible('ip_address')" class="p-3 font-mono text-xs">{{ row.ip_address || '-' }}</td>
+              <td v-if="isUsageColumnVisible('user_agent')" class="max-w-xs truncate p-3 text-xs" :title="row.user_agent">{{ row.user_agent || '-' }}</td>
+              <td v-if="isUsageColumnVisible('created_at')" class="p-3 whitespace-nowrap">{{ new Date(row.created_at).toLocaleString() }}</td>
             </tr>
           </tbody>
         </table>
@@ -298,11 +349,29 @@
           <button class="btn btn-secondary btn-sm" :disabled="usageLoading || usagePage.page >= usagePage.pages" @click="loadUsage(usagePage.page + 1)">{{ t('organization.usage.next') }}</button>
         </div>
       </div>
+      </template>
+      <UserErrorRequestsTable
+        v-else
+        :rows="usageErrors.items"
+        :total="usageErrors.total"
+        :loading="usageErrorsLoading"
+        :page="usageErrors.page"
+        :page-size="usageErrors.page_size"
+        :visible-column-keys="usageErrorVisibleColumnKeys"
+        :detail-loader="organizationAPI.getUsageErrorDetail"
+        @sort="onUsageErrorSort"
+        @update:page="loadUsageErrors"
+        @update:pageSize="onUsageErrorPageSize"
+      />
     </section>
 
     <div v-if="showCreate" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
       <form class="w-full max-w-lg space-y-4 rounded-md bg-white p-5 shadow-xl dark:bg-dark-800" @submit.prevent="createMember">
         <h3 class="font-semibold">{{ t('organization.members.create') }}</h3>
+        <div>
+          <label class="input-label" for="iam-member-username">{{ t('organization.members.username') }}</label>
+          <input id="iam-member-username" v-model.trim="createForm.username" class="input" maxlength="100" autocomplete="off" :placeholder="t('organization.members.usernamePlaceholder')">
+        </div>
         <div>
           <label class="input-label" for="iam-member-login-name">{{ t('organization.login.loginName') }}</label>
           <div class="flex min-w-0 flex-col sm:flex-row">
@@ -386,7 +455,7 @@
       <div class="w-full max-w-md space-y-4 rounded-md bg-white p-5 shadow-xl dark:bg-dark-800">
         <h3 class="font-semibold">{{ t('organization.members.allocateFunds') }}</h3>
         <p class="text-sm text-gray-500">{{ allocationTarget.login_name }}</p>
-        <p class="text-sm text-gray-500">{{ t('organization.allocation.rootAvailable', { amount: companyAmount(finance?.available) }) }}</p>
+        <p class="text-sm text-gray-500">{{ t('organization.allocation.rootAvailable', { amount: companyAmount(finance?.company_available) }) }}</p>
         <p class="text-sm text-gray-500">{{ t('organization.allocation.targetAvailable') }}: <span class="font-mono">{{ companyAmount(allocationTarget.balance) }}</span></p>
         <div>
           <label class="input-label" for="iam-allocate-amount">{{ t('organization.allocation.amount') }}</label>
@@ -447,23 +516,40 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { organizationAPI, userGroupsAPI } from '@/api'
+import { useRoute, useRouter } from 'vue-router'
+import { organizationAPI } from '@/api'
+import { plazaAPI } from '@/api/plaza'
 import { Icon } from '@/components/icons'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import PaymentView from '@/views/user/PaymentView.vue'
+import PlanPlazaCards from '@/components/plaza/PlanPlazaCards.vue'
+import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
+import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'
+import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
+import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
+import DashboardStatCard from '@/components/usage/DashboardStatCard.vue'
+import DashboardCostDetail from '@/components/usage/DashboardCostDetail.vue'
+import UsageTokenBreakdown from '@/components/usage/UsageTokenBreakdown.vue'
+import UsageLatencyCell from '@/components/usage/UsageLatencyCell.vue'
+import UserUsageTrendChart from '@/components/usage/UserUsageTrendChart.vue'
+import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
+import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
-import GroupBadge from '@/components/common/GroupBadge.vue'
-import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { getLocale } from '@/i18n'
-import type { FinanceSummary, Group, GroupPlatform, IAMMember, ManagedPolicy, OrganizationContext, OrganizationSubscription, OrganizationUsageParams, OrganizationUsageStats, OrganizationUsageTrendPoint, PaginatedOrganizationUsage, SubscriptionType } from '@/types'
+import { getBillingModeBadgeClass, getBillingModeLabel } from '@/utils/billingMode'
+import type { DashboardStats, EndpointStat, FinanceSummary, GroupStat, IAMMember, ManagedPolicy, ModelStat, OrganizationContext, OrganizationSubscription, OrganizationUsageParams, OrganizationUsageRow, OrganizationUsageStats, OrganizationUsageTrendPoint, PaginatedOrganizationUsage, UserBreakdownItem, UserErrorRequest, UserSpendingRankingItem, UserUsageTrendPoint } from '@/types'
+import type { PlazaPlanCard } from '@/api/plaza'
 import { useAuthStore } from '@/stores'
 
 const { t, te } = useI18n()
+const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const { copyToClipboard } = useClipboard()
-type Tab = 'allocation' | 'finance' | 'subscriptions' | 'usage'
+type Tab = 'finance' | 'dashboard' | 'subscriptions' | 'usage'
 
 const activeTab = ref<Tab>('finance')
 const organization = ref<OrganizationContext>()
@@ -472,7 +558,53 @@ const policies = ref<ManagedPolicy[]>([])
 const finance = ref<FinanceSummary>()
 const usagePage = ref<PaginatedOrganizationUsage>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
 const usageStats = ref<OrganizationUsageStats | null>(null)
+const dashboardStats = ref<DashboardStats | null>(null)
+const dashboardChartsLoading = ref(false)
+const dashboardModelStats = ref<ModelStat[]>([])
+const dashboardTrend = ref<OrganizationUsageTrendPoint[]>([])
+const dashboardRankingItems = ref<UserSpendingRankingItem[]>([])
+const dashboardRankingTotalActualCost = ref(0)
+const dashboardRankingTotalRequests = ref(0)
+const dashboardRankingTotalTokens = ref(0)
+const userUsageTrend = ref<UserUsageTrendPoint[]>([])
+const rankingItems = ref<UserSpendingRankingItem[]>([])
+const rankingTotalActualCost = ref(0)
+const rankingTotalRequests = ref(0)
+const rankingTotalTokens = ref(0)
 const usageTrend = ref<OrganizationUsageTrendPoint[]>([])
+const modelStats = ref<ModelStat[]>([])
+const groupStats = ref<GroupStat[]>([])
+const endpointStats = ref<EndpointStat[]>([])
+const usageChartsLoading = ref(false)
+const distributionMetric = ref<'tokens' | 'actual_cost'>('tokens')
+function formatDashboardTokens(value: number): string {
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K`
+  return value.toLocaleString()
+}
+function formatDashboardDuration(ms: number): string {
+  if (ms < 1000) return `${ms.toFixed(0)}ms`
+  return `${(ms / 1000).toFixed(2)}s`
+}
+function formatDashboardCost(value: number): string {
+  return value >= 1 ? value.toFixed(2) : value >= 0.01 ? value.toFixed(3) : value.toFixed(4)
+}
+function dashboardCostDetail(scope: 'today' | 'total'): string {
+  const stats = dashboardStats.value
+  if (!stats) return '$0.0000 / $0.0000 / $0.0000'
+  return `$${stats[`${scope}_actual_cost`].toFixed(4)} / $${stats[`${scope}_account_cost`].toFixed(4)} / $${stats[`${scope}_cost`].toFixed(4)}`
+}
+const formatLocalDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const usageRangeEnd = new Date()
+const usageRangeStart = new Date(usageRangeEnd.getTime() - 24 * 60 * 60 * 1000)
+const usageStartDate = ref(formatLocalDate(usageRangeStart))
+const usageEndDate = ref(formatLocalDate(usageRangeEnd))
+const usageGranularity = ref<'hour' | 'day'>('hour')
+const dashboardStartDate = ref(formatLocalDate(usageRangeStart))
+const dashboardEndDate = ref(formatLocalDate(usageRangeEnd))
+const dashboardGranularity = ref<'hour' | 'day'>('hour')
+const usageGranularityOptions = computed(() => [{ value: 'day', label: t('admin.dashboard.day') }, { value: 'hour', label: t('admin.dashboard.hour') }])
 const memberLimit = ref(20)
 const usedSlots = ref(0)
 const showCreate = ref(false)
@@ -482,62 +614,140 @@ const renameMessage = ref('')
 const credential = ref<{ principal: string; password: string } | null>(null)
 const allocationTarget = ref<IAMMember | null>(null)
 const authorizationTarget = ref<IAMMember | null>(null)
-const createForm = reactive({ loginName: '', password: '', mustChangePassword: true, recoveryEmail: '' })
+const createForm = reactive({ username: '', loginName: '', password: '', mustChangePassword: true, recoveryEmail: '' })
 const passwordVisible = ref(false)
 const amounts = reactive<Record<number, string>>({})
-const usageFilters = reactive({ memberId: '', apiKeyId: '', model: '', endpoint: '', status: '', start: '', end: '' })
+const usageFilters = reactive({ memberId: '', apiKeyId: '', model: '', groupId: '', billingType: '', billingMode: '' })
+const usageAPIKeyKeyword = ref('')
+const usageAPIKeyResults = ref<Array<{ id: number; name: string }>>([])
+const showUsageAPIKeyDropdown = ref(false)
+const usageAPIKeySearchRef = ref<HTMLElement | null>(null)
+let usageAPIKeySearchTimer: ReturnType<typeof setTimeout> | undefined
+let usageFilterTimer: ReturnType<typeof setTimeout> | undefined
+const usageDetailTab = ref<'usage' | 'errors'>('usage')
+const usageErrors = ref<{ items: UserErrorRequest[]; total: number; page: number; page_size: number; pages: number }>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+const usageErrorsLoading = ref(false)
+const usageErrorFilters = reactive({ category: '', statusCode: '' })
+const usageErrorCategories = ['auth', 'rate_limit', 'quota', 'invalid_request', 'service_unavailable', 'upstream', 'internal', 'cyber']
+const usageErrorSort = reactive({ by: 'created_at', order: 'desc' as 'asc' | 'desc' })
+const usageMemberOptions = computed(() => [
+  { value: '', label: t('organization.usage.allMembers') },
+  ...members.value.map(member => ({
+    value: String(member.user_id),
+    label: member.username ? `${member.login_name} (${member.username})` : member.login_name,
+  })),
+])
+const usageErrorCategoryOptions = computed(() => [
+  { value: '', label: t('usage.errors.allCategories') },
+  ...usageErrorCategories.map(category => ({ value: category, label: t(`usage.errors.categories.${category}`) })),
+])
+const usageGroupOptions = computed(() => [
+  { value: '', label: t('admin.usage.allGroups') },
+  ...groupStats.value.filter(group => group.group_id > 0).map(group => ({ value: String(group.group_id), label: group.group_name || `#${group.group_id}` })),
+])
+const usageBillingTypeOptions = computed(() => [
+  { value: '', label: t('admin.usage.allBillingTypes') },
+  { value: '0', label: t('admin.usage.billingTypeBalance') },
+  { value: '1', label: t('admin.usage.billingTypeSubscription') },
+])
+const usageBillingModeOptions = computed(() => [
+  { value: '', label: t('admin.usage.allBillingModes') },
+  { value: 'token', label: t('admin.usage.billingModeToken') },
+  { value: 'per_request', label: t('admin.usage.billingModePerRequest') },
+  { value: 'image', label: t('admin.usage.billingModeImage') },
+  { value: 'video', label: t('admin.usage.billingModeVideo') },
+])
+
+const usageColumns = computed(() => [
+  { key: 'member_login', label: t('organization.usage.member') },
+  { key: 'username', label: t('organization.usage.username') },
+  { key: 'api_key', label: t('organization.usage.apiKey') },
+  { key: 'model', label: t('organization.usage.model') },
+  { key: 'endpoint', label: t('organization.usage.endpoint') },
+  { key: 'group', label: t('admin.usage.group') },
+  { key: 'type', label: t('usage.type') },
+  { key: 'billing_type', label: t('admin.usage.billingType') },
+  { key: 'billing_mode', label: t('admin.usage.billingMode') },
+  { key: 'tokens', label: t('usage.tokens') },
+  { key: 'result', label: t('usage.result') },
+  { key: 'cost', label: t('usage.cost') },
+  { key: 'balance_source', label: t('organization.balanceSource.label') },
+  { key: 'latency', label: t('usage.latency') },
+  { key: 'ip_address', label: t('admin.usage.ipAddress') },
+  { key: 'user_agent', label: t('usage.userAgent') },
+  { key: 'created_at', label: t('organization.usage.time') },
+])
+const usageErrorColumns = computed(() => [
+  { key: 'key_name', label: t('usage.errors.keyName') },
+  { key: 'model', label: t('usage.errors.model') },
+  { key: 'endpoint', label: t('usage.errors.endpoint') },
+  { key: 'client_ip', label: 'IP' },
+  { key: 'group', label: t('admin.usage.group') },
+  { key: 'type', label: t('usage.type') },
+  { key: 'platform', label: t('usage.errors.platform') },
+  { key: 'category', label: t('usage.errors.category') },
+  { key: 'status', label: t('usage.errors.status') },
+  { key: 'message', label: t('usage.errors.message') },
+  { key: 'created_at', label: t('usage.errors.time') },
+  { key: 'user_agent', label: t('usage.userAgent') },
+])
+const usageHiddenColumns = reactive(new Set<string>())
+const usageErrorHiddenColumns = reactive(new Set<string>())
+const showUsageColumnDropdown = ref(false)
+const usageColumnDropdownRef = ref<HTMLElement | null>(null)
+const currentUsageToggleableColumns = computed(() => usageDetailTab.value === 'errors' ? usageErrorColumns.value : usageColumns.value)
+const usageErrorVisibleColumnKeys = computed(() => usageErrorColumns.value.filter(column => !usageErrorHiddenColumns.has(column.key)).map(column => column.key))
+const isUsageColumnVisible = (key: string) => !usageHiddenColumns.has(key)
+const isCurrentUsageColumnVisible = (key: string) => usageDetailTab.value === 'errors' ? !usageErrorHiddenColumns.has(key) : !usageHiddenColumns.has(key)
+const toggleCurrentUsageColumn = (key: string) => {
+  const hidden = usageDetailTab.value === 'errors' ? usageErrorHiddenColumns : usageHiddenColumns
+  if (hidden.has(key)) hidden.delete(key)
+  else hidden.add(key)
+  localStorage.setItem(usageDetailTab.value === 'errors' ? 'organization-usage-error-hidden-columns' : 'organization-usage-hidden-columns', JSON.stringify([...hidden]))
+}
+const loadUsageColumnSettings = () => {
+  for (const [key, target] of [
+    ['organization-usage-hidden-columns', usageHiddenColumns],
+    ['organization-usage-error-hidden-columns', usageErrorHiddenColumns],
+  ] as const) {
+    try {
+      const saved = localStorage.getItem(key)
+      if (saved) (JSON.parse(saved) as string[]).forEach(column => target.add(column))
+    } catch {
+      target.clear()
+    }
+  }
+}
+const handleUsageColumnClickOutside = (event: MouseEvent) => {
+  if (usageColumnDropdownRef.value && !usageColumnDropdownRef.value.contains(event.target as Node)) showUsageColumnDropdown.value = false
+  if (usageAPIKeySearchRef.value && !usageAPIKeySearchRef.value.contains(event.target as Node)) showUsageAPIKeyDropdown.value = false
+}
 const loading = ref(true)
 const usageLoading = ref(false)
 const operationKey = ref('')
 const error = ref('')
 const modalError = ref('')
 const subscriptions = ref<OrganizationSubscription[]>([])
-const availableGroups = ref<Group[]>([])
-const subscriptionForm = reactive({ groupID: 0 })
-
-type SubscriptionGroupOption = {
-  value: number
-  label: string
-  description: string | null
-  rate: number
-  peakRateEnabled: boolean
-  peakStart: string
-  peakEnd: string
-  peakRateMultiplier: number
-  subscriptionType: SubscriptionType
-  platform: GroupPlatform
-}
-
-// 仅保留订阅类型分组（subscription_type === 'subscription'），非订阅分组不应出现在套餐里。
-const subscriptionGroupOptions = computed<SubscriptionGroupOption[]>(() =>
-  availableGroups.value
-    .filter((group) => group.subscription_type === 'subscription')
-    .map((group) => ({
-      value: group.id,
-      label: group.name,
-      description: group.description,
-      rate: group.rate_multiplier,
-      peakRateEnabled: group.peak_rate_enabled,
-      peakStart: group.peak_start,
-      peakEnd: group.peak_end,
-      peakRateMultiplier: group.peak_rate_multiplier,
-      subscriptionType: group.subscription_type,
-      platform: group.platform,
-    })),
-)
+const planCards = ref<PlazaPlanCard[]>([])
+const plansLoading = ref(false)
+const showPurchase = ref(false)
+// 当前要购买的套餐 id（由点击的套餐卡片决定），透传给弹窗里的 PaymentView，
+// 使其直接进入该套餐的付款确认页，而非再展示一次套餐列表。
+const selectedPlanId = ref<number | null>(null)
 
 const isOwner = computed(() => organization.value?.role === 'owner')
 const actions = computed(() => organization.value?.actions || [])
 const visibleTabs = computed<Tab[]>(() => isOwner.value
-  ? ['finance', 'subscriptions', 'allocation', 'usage']
+  ? ['finance', 'dashboard', 'subscriptions', 'usage']
   : (actions.value.includes('organization.finance.balance.read') ? ['finance', 'subscriptions'] : []))
-const activeMembers = computed(() => members.value.filter(item => item.status === 'active'))
 
-const tabIcons: Record<Tab, 'creditCard' | 'users' | 'chart' | 'sparkles'> = { finance: 'creditCard', subscriptions: 'sparkles', allocation: 'users', usage: 'chart' }
+const tabIcons: Record<Tab, 'creditCard' | 'chart' | 'sparkles'> = { finance: 'creditCard', dashboard: 'chart', subscriptions: 'sparkles', usage: 'chart' }
 const tabKeyboardActions: Record<string, number | 'first' | 'last'> = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1, Home: 'first', End: 'last' }
 
 function selectTab(tab: Tab) {
+  if (!visibleTabs.value.includes(tab)) return
   activeTab.value = tab
+  void router.push({ query: { ...route.query, tab } })
 }
 
 function focusTab(tab: Tab) {
@@ -559,9 +769,30 @@ function handleTabKeydown(event: KeyboardEvent, tab: Tab) {
   else nextIndex = (currentIndex + action + tabs.length) % tabs.length
   const nextTab = tabs[nextIndex]
   if (!nextTab) return
-  activeTab.value = nextTab
+  selectTab(nextTab)
   focusTab(nextTab)
 }
+
+function routeTab(): Tab | null {
+  const value = Array.isArray(route.query.tab) ? route.query.tab[0] : route.query.tab
+  return value === 'finance' || value === 'dashboard' || value === 'subscriptions' || value === 'usage' ? value : null
+}
+
+function restoreTabFromRoute() {
+  const requested = routeTab()
+  const nextTab = requested && visibleTabs.value.includes(requested)
+    ? requested
+    : visibleTabs.value[0]
+  if (!nextTab) return
+  activeTab.value = nextTab
+  if (route.query.tab !== nextTab) {
+    void router.replace({ query: { ...route.query, tab: nextTab } })
+  }
+}
+
+watch(() => route.query.tab, () => {
+  if (organization.value) restoreTabFromRoute()
+})
 
 function errorMessage(cause: unknown): string {
   return (cause as { message?: string })?.message || t('common.error')
@@ -577,6 +808,31 @@ function formatMoney(value: string | number | null | undefined): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount)
+}
+
+function formatUsageCost(value: string | number | null | undefined): string {
+  const amount = Number(value ?? 0)
+  return (Number.isFinite(amount) ? amount : 0).toFixed(6)
+}
+
+function usageRequestTypeLabel(type: OrganizationUsageRow['request_type']): string {
+  if (type === 'ws_v2') return t('usage.ws')
+  if (type === 'stream') return t('usage.stream')
+  if (type === 'sync') return t('usage.sync')
+  if (type === 'cyber') return t('usage.cyber')
+  return t('usage.unknown')
+}
+
+function usageRequestTypeClass(type: OrganizationUsageRow['request_type']): string {
+  if (type === 'cyber') return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+  if (type === 'ws_v2') return 'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200'
+  if (type === 'stream') return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+  if (type === 'sync') return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+  return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+}
+
+function usageResultURLs(row: OrganizationUsageRow): string[] {
+  return row.cos_urls?.length ? row.cos_urls : (row.image_urls || [])
 }
 
 /** 企业余额格式化：不做千分位分组、货币符号仅保留 $（不含 US），空值返回破折号。 */
@@ -613,27 +869,35 @@ async function loadSubscriptions() {
   }
 }
 
-async function loadAvailableGroups() {
+// 企业订阅套餐展示复用首页/广场的订阅卡片 UI（PlanPlazaCards），视觉更精致。
+// 卡片以 emit-select 模式运行：点击「立即购买」不跳转 /purchase，而是弹出内嵌
+// PaymentView（企业嵌入模式）完成下单，下单主体为公司。
+async function loadPlans() {
+  plansLoading.value = true
   try {
-    availableGroups.value = await userGroupsAPI.getAvailable()
-  } catch {
-    availableGroups.value = []
-  }
-}
-
-async function createSubscription() {
-  if (!subscriptionForm.groupID) return
-  operationKey.value = 'subscription:create'
-  error.value = ''
-  try {
-    await organizationAPI.createSubscription(subscriptionForm.groupID, 0, '')
-    subscriptionForm.groupID = 0
-    await loadSubscriptions()
+    const resp = await plazaAPI.listPlans()
+    planCards.value = resp.cards
   } catch (cause) {
     error.value = errorMessage(cause)
   } finally {
-    operationKey.value = ''
+    plansLoading.value = false
   }
+}
+
+function openPurchase(card: PlazaPlanCard) {
+  selectedPlanId.value = card.id
+  showPurchase.value = true
+}
+
+function closePurchase() {
+  showPurchase.value = false
+  selectedPlanId.value = null
+}
+
+function onPurchaseFulfilled() {
+  showPurchase.value = false
+  selectedPlanId.value = null
+  void loadSubscriptions()
 }
 
 async function cancelSubscription(item: OrganizationSubscription) {
@@ -659,7 +923,7 @@ function positiveAmount(member: IAMMember): number {
 }
 
 function canAllocate(member: IAMMember): boolean {
-  return positiveAmount(member) > 0 && positiveAmount(member) <= Number(finance.value?.available || 0)
+  return positiveAmount(member) > 0 && positiveAmount(member) <= Number(finance.value?.company_available || 0)
 }
 
 function canReclaim(member: IAMMember): boolean {
@@ -681,10 +945,37 @@ const canCompanyWithdraw = computed(
   () => companyTransferAmount.value > 0 && companyTransferAmount.value <= Number(finance.value?.company_available || 0),
 )
 
-function toISO(value: string): string | undefined {
-  if (!value) return undefined
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString()
+function usageRangeISO(value: string, exclusiveEnd = false): string | undefined {
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return undefined
+  if (exclusiveEnd) parsed.setDate(parsed.getDate() + 1)
+  return parsed.toISOString()
+}
+
+function usageGranularityForRange(start: string, end: string): 'hour' | 'day' {
+  return new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime() <= 24 * 60 * 60 * 1000 ? 'hour' : 'day'
+}
+
+async function onUsageDateRangeChange(range: { startDate: string; endDate: string }) {
+  usageStartDate.value = range.startDate
+  usageEndDate.value = range.endDate
+  usageGranularity.value = usageGranularityForRange(range.startDate, range.endDate)
+  await searchUsage()
+}
+
+async function onDashboardDateRangeChange(range: { startDate: string; endDate: string }) {
+  dashboardStartDate.value = range.startDate
+  dashboardEndDate.value = range.endDate
+  dashboardGranularity.value = usageGranularityForRange(range.startDate, range.endDate)
+  await loadDashboardAggregates()
+}
+
+function organizationDashboardParams(): OrganizationUsageParams {
+  return {
+    start: usageRangeISO(dashboardStartDate.value),
+    end: usageRangeISO(dashboardEndDate.value, true),
+    granularity: dashboardGranularity.value,
+  }
 }
 
 function organizationUsageParams(page: number): OrganizationUsageParams {
@@ -693,18 +984,14 @@ function organizationUsageParams(page: number): OrganizationUsageParams {
     page_size: usagePage.value.page_size || 20,
     member_id: usageFilters.memberId ? Number(usageFilters.memberId) : undefined,
     api_key_id: usageFilters.apiKeyId ? Number(usageFilters.apiKeyId) : undefined,
+    group_id: usageFilters.groupId ? Number(usageFilters.groupId) : undefined,
+    billing_type: usageFilters.billingType !== '' ? Number(usageFilters.billingType) : undefined,
+    billing_mode: usageFilters.billingMode || undefined,
     model: usageFilters.model || undefined,
-    endpoint: usageFilters.endpoint || undefined,
-    status: usageFilters.status || undefined,
-    start: toISO(usageFilters.start),
-    end: toISO(usageFilters.end),
+    start: usageRangeISO(usageStartDate.value),
+    end: usageRangeISO(usageEndDate.value, true),
+    granularity: usageGranularity.value,
   }
-}
-
-const maxTrendTokens = computed(() => Math.max(1, ...usageTrend.value.map(point => point.tokens)))
-
-function trendBarHeight(point: OrganizationUsageTrendPoint): string {
-  return `${Math.max(2, Math.round((point.tokens / maxTrendTokens.value) * 100))}%`
 }
 
 async function loadUsage(page = 1) {
@@ -722,21 +1009,167 @@ async function loadUsage(page = 1) {
 
 async function loadUsageAggregates() {
   if (!isOwner.value) return
+  usageChartsLoading.value = true
   try {
     const params = organizationUsageParams(1)
-    const [stats, trend] = await Promise.all([
+    const [stats, charts, ranking] = await Promise.all([
       organizationAPI.getUsageStats(params),
-      organizationAPI.getUsageTrend(params),
+      organizationAPI.getUsageCharts(params),
+      organizationAPI.getDashboardSpendingRanking({ ...params, limit: 12 }),
     ])
     usageStats.value = stats
-    usageTrend.value = trend
+    usageTrend.value = charts.trend
+    modelStats.value = charts.models
+    groupStats.value = charts.groups
+    endpointStats.value = charts.endpoints
+    rankingItems.value = ranking.ranking || []
+    rankingTotalActualCost.value = ranking.total_actual_cost || 0
+    rankingTotalRequests.value = ranking.total_requests || 0
+    rankingTotalTokens.value = ranking.total_tokens || 0
   } catch (cause) {
     error.value = errorMessage(cause)
+  } finally {
+    usageChartsLoading.value = false
   }
+}
+
+async function loadDashboardAggregates() {
+  if (!isOwner.value) return
+  dashboardChartsLoading.value = true
+  try {
+    const params = organizationDashboardParams()
+    const [charts, ranking, usersTrend] = await Promise.all([
+      organizationAPI.getUsageCharts(params),
+      organizationAPI.getDashboardSpendingRanking({ ...params, limit: 12 }),
+      organizationAPI.getDashboardUsersTrend({ ...params, limit: 12 }),
+    ])
+    dashboardTrend.value = charts.trend
+    dashboardModelStats.value = charts.models
+    dashboardRankingItems.value = ranking.ranking || []
+    dashboardRankingTotalActualCost.value = ranking.total_actual_cost || 0
+    dashboardRankingTotalRequests.value = ranking.total_requests || 0
+    dashboardRankingTotalTokens.value = ranking.total_tokens || 0
+    userUsageTrend.value = usersTrend
+  } catch (cause) {
+    error.value = errorMessage(cause)
+  } finally {
+    dashboardChartsLoading.value = false
+  }
+}
+
+async function loadOrganizationBreakdown(params: Record<string, unknown>): Promise<{ users: UserBreakdownItem[] }> {
+  return organizationAPI.getDashboardUserBreakdown({
+    ...organizationDashboardParams(),
+    model: typeof params.model === 'string' ? params.model : undefined,
+    limit: 50,
+  })
 }
 
 async function searchUsage() {
   await Promise.all([loadUsage(1), loadUsageAggregates()])
+}
+
+function applyUsageFilters() {
+  if (usageDetailTab.value === 'errors') void loadUsageErrors(1)
+  else void searchUsage()
+}
+
+function refreshUsageDetails() {
+  applyUsageFilters()
+}
+
+function debounceUsageFilterChange() {
+  if (usageFilterTimer) clearTimeout(usageFilterTimer)
+  usageFilterTimer = setTimeout(applyUsageFilters, 350)
+}
+
+async function searchUsageAPIKeys() {
+  try {
+    usageAPIKeyResults.value = await organizationAPI.searchUsageAPIKeys(
+      usageAPIKeyKeyword.value.trim(),
+      usageFilters.memberId ? Number(usageFilters.memberId) : undefined,
+    )
+    showUsageAPIKeyDropdown.value = true
+  } catch {
+    usageAPIKeyResults.value = []
+  }
+}
+
+function debounceUsageAPIKeySearch() {
+  if (usageFilters.apiKeyId) {
+    usageFilters.apiKeyId = ''
+    applyUsageFilters()
+  }
+  if (usageAPIKeySearchTimer) clearTimeout(usageAPIKeySearchTimer)
+  usageAPIKeySearchTimer = setTimeout(() => void searchUsageAPIKeys(), 300)
+}
+
+function onUsageAPIKeyFocus() {
+  showUsageAPIKeyDropdown.value = true
+  if (!usageAPIKeyResults.value.length) void searchUsageAPIKeys()
+}
+
+function selectUsageAPIKey(key: { id: number; name: string }) {
+  usageFilters.apiKeyId = String(key.id)
+  usageAPIKeyKeyword.value = key.name || String(key.id)
+  showUsageAPIKeyDropdown.value = false
+  applyUsageFilters()
+}
+
+function clearUsageAPIKey() {
+  usageFilters.apiKeyId = ''
+  usageAPIKeyKeyword.value = ''
+  usageAPIKeyResults.value = []
+  showUsageAPIKeyDropdown.value = false
+  applyUsageFilters()
+}
+
+function onUsageMemberChange() {
+  usageFilters.apiKeyId = ''
+  usageAPIKeyKeyword.value = ''
+  usageAPIKeyResults.value = []
+  applyUsageFilters()
+}
+
+async function loadUsageErrors(page = 1) {
+	if (!isOwner.value) return
+	usageErrorsLoading.value = true
+	try {
+		usageErrors.value = await organizationAPI.getUsageErrors({
+			page,
+			page_size: usageErrors.value.page_size,
+			member_id: usageFilters.memberId ? Number(usageFilters.memberId) : undefined,
+			api_key_id: usageFilters.apiKeyId ? Number(usageFilters.apiKeyId) : undefined,
+			model: usageFilters.model || undefined,
+			category: usageErrorFilters.category || undefined,
+			status_code: usageErrorFilters.statusCode ? Number(usageErrorFilters.statusCode) : undefined,
+			start: usageRangeISO(usageStartDate.value),
+			end: usageRangeISO(usageEndDate.value, true),
+			sort_by: usageErrorSort.by,
+			sort_order: usageErrorSort.order,
+		})
+	} catch (cause) {
+		error.value = errorMessage(cause)
+	} finally {
+		usageErrorsLoading.value = false
+	}
+}
+
+function switchUsageDetailTab(tab: 'usage' | 'errors') {
+	usageDetailTab.value = tab
+	showUsageColumnDropdown.value = false
+	if (tab === 'errors' && usageErrors.value.items.length === 0) void loadUsageErrors(1)
+}
+
+function onUsageErrorSort(sortBy: string, sortOrder: 'asc' | 'desc') {
+	usageErrorSort.by = sortBy
+	usageErrorSort.order = sortOrder
+	void loadUsageErrors(1)
+}
+
+function onUsageErrorPageSize(pageSize: number) {
+	usageErrors.value.page_size = pageSize
+	void loadUsageErrors(1)
 }
 
 async function load() {
@@ -746,17 +1179,19 @@ async function load() {
     const context = await organizationAPI.getContext()
     organization.value = context.organization
     finance.value = context.finance
-    if (visibleTabs.value.includes('subscriptions')) await loadSubscriptions()
+    restoreTabFromRoute()
+    if (visibleTabs.value.includes('subscriptions')) {
+      await loadSubscriptions()
+      if (isOwner.value) void loadPlans()
+    }
     if (isOwner.value) {
       const [memberData, policyData] = await Promise.all([organizationAPI.listMembers(), organizationAPI.listPolicies()])
       members.value = memberData.items
       memberLimit.value = memberData.member_limit
       usedSlots.value = memberData.used_slots
       policies.value = policyData
-      if (!visibleTabs.value.includes(activeTab.value)) activeTab.value = 'finance'
-      await Promise.all([loadUsage(usagePage.value.page || 1), loadUsageAggregates(), loadAvailableGroups()])
-    } else {
-      activeTab.value = 'finance'
+      const [, , dashboard] = await Promise.all([loadUsage(usagePage.value.page || 1), loadUsageAggregates(), organizationAPI.getDashboard(), loadDashboardAggregates()])
+      dashboardStats.value = dashboard
     }
   } catch (cause) {
     error.value = errorMessage(cause)
@@ -774,6 +1209,7 @@ async function createMember() {
       createForm.password,
       createForm.mustChangePassword,
       createForm.recoveryEmail || undefined,
+      createForm.username || undefined,
     )
     credential.value = { principal: result.member.principal, password: result.initial_password }
     closeCreate()
@@ -788,6 +1224,7 @@ async function createMember() {
 function closeCreate() {
   showCreate.value = false
   createForm.loginName = ''
+  createForm.username = ''
   createForm.password = ''
   createForm.mustChangePassword = true
   createForm.recoveryEmail = ''
@@ -874,22 +1311,6 @@ function closeAuthorization() {
   modalError.value = ''
 }
 
-async function transfer(member: IAMMember, operation: 'allocate' | 'reclaim') {
-  const amount = amounts[member.user_id]
-  if (!amount || (operation === 'allocate' ? !canAllocate(member) : !canReclaim(member))) return
-  operationKey.value = `${member.user_id}:balance`
-  error.value = ''
-  try {
-    await organizationAPI.transferBalance(member.user_id, amount, operation)
-    amounts[member.user_id] = ''
-    await load()
-  } catch (cause) {
-    error.value = errorMessage(cause)
-  } finally {
-    operationKey.value = ''
-  }
-}
-
 async function transferCompanyBalance(operation: 'deposit' | 'withdraw') {
   if (operation === 'deposit' ? !canCompanyDeposit.value : !canCompanyWithdraw.value) return
   operationKey.value = 'company:balance'
@@ -950,7 +1371,17 @@ async function requestNameChange() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  loadUsageColumnSettings()
+  document.addEventListener('click', handleUsageColumnClickOutside)
+  void load()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleUsageColumnClickOutside)
+  if (usageAPIKeySearchTimer) clearTimeout(usageAPIKeySearchTimer)
+  if (usageFilterTimer) clearTimeout(usageFilterTimer)
+})
 </script>
 
 <style scoped>

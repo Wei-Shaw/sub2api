@@ -155,7 +155,6 @@
                   <div v-if="organization" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.companyName') }}</dt><dd class="text-right">{{ organization.company_name }}</dd></div>
                   <div v-if="organization" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.role') }}</dt><dd>{{ t(`organization.roleValue.${organization.role}`) }} / {{ t(`organization.status.${organization.membership_status}`) }}</dd></div>
                   <div v-if="organization?.policy_names?.length"><dt class="text-gray-500">{{ t('organization.policies') }}</dt><dd class="mt-1 break-words">{{ organization.policy_names.join(', ') }}</dd></div>
-                  <div v-if="user.organization_finance?.balance_source" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.balanceSource.label') }}</dt><dd>{{ t(`organization.balanceSource.${user.organization_finance.balance_source}`) }}</dd></div>
                 </dl>
               </div>
 

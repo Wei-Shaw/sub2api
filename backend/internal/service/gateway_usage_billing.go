@@ -83,6 +83,19 @@ type postUsageBillingParams struct {
 	BillingContext        *BillingContext
 }
 
+func isSubscriptionBillingForAPIKey(apiKey *APIKey, subscription *UserSubscription) bool {
+	if apiKey == nil {
+		return false
+	}
+	// A validated organization subscription binding is authoritative. Do not
+	// fall back to balance billing because a stale/partial group snapshot lacks
+	// SubscriptionType.
+	if apiKey.OrganizationSubscriptionID != nil {
+		return true
+	}
+	return apiKey.Group != nil && apiKey.Group.IsSubscriptionType() && subscription != nil
+}
+
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
 // apiKey 为 nil 或 Group 信息缺失时返回空串（调用方据此 short-circuit quota 累加）。
 // 导出供 handler 层调用。
@@ -145,8 +158,16 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		// Subscription usage tracked by ActualCost so group rate multiplier
 		// consumes the quota at the expected speed.
 		if cost.ActualCost > 0 {
-			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.ActualCost); err != nil {
-				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
+			if enterpriseUpdater, ok := p.APIKeyService.(interface {
+				IncrementEnterpriseSubscriptionUsage(context.Context, int64, float64) error
+			}); p.APIKey.OrganizationSubscriptionID != nil && ok {
+				if err := enterpriseUpdater.IncrementEnterpriseSubscriptionUsage(billingCtx, *p.APIKey.OrganizationSubscriptionID, cost.ActualCost); err != nil {
+					slog.Error("increment enterprise subscription usage failed", "subscription_id", *p.APIKey.OrganizationSubscriptionID, "error", err)
+				}
+			} else if p.Subscription != nil {
+				if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.ActualCost); err != nil {
+					slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
+				}
 			}
 		}
 	} else {
@@ -313,6 +334,7 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 			return false, err
 		}
 	}
+	snapshotEnterpriseSubscriptionSource(usageLog, p, resolved)
 
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
@@ -349,6 +371,16 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 func usageBillingInt64Ptr(value int64) *int64 { return &value }
 
 func usageBillingStringPtr(value string) *string { return &value }
+
+func snapshotEnterpriseSubscriptionSource(usageLog *UsageLog, p *postUsageBillingParams, resolved *BillingContext) {
+	if p == nil || resolved == nil || !p.IsSubscriptionBill || p.APIKey == nil || p.APIKey.OrganizationSubscriptionID == nil {
+		return
+	}
+	resolved.BalanceSource = "subscription"
+	if usageLog != nil {
+		usageLog.BalanceSource = usageBillingStringPtr(resolved.BalanceSource)
+	}
+}
 
 func resolveAndSnapshotBillingContext(ctx context.Context, usageLog *UsageLog, user *User, resolver *BillingContextResolver) (*BillingContext, error) {
 	if user == nil {
@@ -792,8 +824,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 判断计费方式：订阅模式 vs 余额模式。
 	// 企业 API Key（绑定公司订阅）即使没有个人订阅，也按订阅模式计费，消费走公司订阅计数器。
-	isSubscriptionBilling := apiKey.Group != nil && apiKey.Group.IsSubscriptionType() &&
-		(subscription != nil || apiKey.OrganizationSubscriptionID != nil)
+	isSubscriptionBilling := isSubscriptionBillingForAPIKey(apiKey, subscription)
 	billingType := BillingTypeBalance
 	if isSubscriptionBilling {
 		billingType = BillingTypeSubscription

@@ -280,6 +280,7 @@ const props = withDefaults(defineProps<{
   startDate?: string
   endDate?: string
   filters?: Record<string, any>
+  breakdownLoader?: (params: Record<string, any>) => Promise<{ users: UserBreakdownItem[] }>
 }>(), {
   upstreamModelStats: () => [],
   mappingModelStats: () => [],
@@ -313,13 +314,16 @@ const toggleBreakdown = async (type: string, id: string) => {
   breakdownLoading.value = true
   breakdownItems.value = []
   try {
-    const res = await getUserBreakdown({
+    const params = {
       ...props.filters,
       start_date: props.startDate,
       end_date: props.endDate,
       model: id,
       model_source: props.source,
-    })
+    }
+    const res = props.breakdownLoader
+      ? await props.breakdownLoader(params)
+      : await getUserBreakdown(params)
     breakdownItems.value = res.users || []
   } catch {
     breakdownItems.value = []

@@ -1,12 +1,19 @@
 import { apiClient } from './client'
+import type { CreateOrderResult } from '@/types/payment'
 import type {
   AuthResponse,
   CompanyApplication,
   CompanyApplicationDetail,
   CompanyUpgradeEligibility,
+	DashboardStats,
+	UserBreakdownItem,
+	UserSpendingRankingResponse,
+	UserUsageTrendPoint,
 	AdminOrganization,
 	AdminOrganizationDetail,
+  EndpointStat,
   FinanceSummary,
+  Group,
   IAMMember,
   ManagedPolicy,
   OrganizationContext,
@@ -15,7 +22,12 @@ import type {
   OrganizationUsageParams,
   OrganizationUsageStats,
   OrganizationUsageTrendPoint,
+  GroupStat,
+  ModelStat,
   PaginatedOrganizationUsage,
+  UserErrorListParams,
+  UserErrorRequest,
+  UserErrorRequestDetail,
 } from '@/types'
 
 function randomIdempotencyKey(): string {
@@ -67,12 +79,13 @@ export const organizationAPI = {
     const { data } = await apiClient.get<IAMMember>(`/organization/members/${id}`)
     return data
   },
-  async createMember(loginName: string, password: string, mustChangePassword = true, recoveryEmail?: string): Promise<{ member: IAMMember; initial_password: string }> {
+  async createMember(loginName: string, password: string, mustChangePassword = true, recoveryEmail?: string, username?: string): Promise<{ member: IAMMember; initial_password: string }> {
     const { data } = await apiClient.post('/organization/members', {
       login_name: loginName,
       password,
       must_change_password: mustChangePassword,
       recovery_email: recoveryEmail,
+      username,
     })
     return data
   },
@@ -114,12 +127,43 @@ export const organizationAPI = {
     const { data } = await apiClient.get('/organization/finance')
     return data
   },
+	async getDashboard(): Promise<DashboardStats> {
+		const { data } = await apiClient.get<DashboardStats>('/organization/dashboard')
+		return data
+	},
+	async getDashboardSpendingRanking(params: OrganizationUsageParams & { limit?: number } = {}): Promise<UserSpendingRankingResponse> {
+		const { data } = await apiClient.get<UserSpendingRankingResponse>('/organization/dashboard/spending-ranking', { params })
+		return data
+	},
+	async getDashboardUserBreakdown(params: OrganizationUsageParams & { limit?: number } = {}): Promise<{ users: UserBreakdownItem[] }> {
+		const { data } = await apiClient.get<{ users: UserBreakdownItem[] }>('/organization/dashboard/user-breakdown', { params })
+		return data
+	},
+	async getDashboardUsersTrend(params: OrganizationUsageParams & { limit?: number } = {}): Promise<UserUsageTrendPoint[]> {
+		const { data } = await apiClient.get<{ trend: UserUsageTrendPoint[] }>('/organization/dashboard/users-trend', { params })
+		return data.trend
+	},
   async listSubscriptions(): Promise<OrganizationSubscription[]> {
     const { data } = await apiClient.get<{ subscriptions: OrganizationSubscription[] }>('/organization/subscriptions')
     return data.subscriptions
   },
+  async listSubscriptionGroups(): Promise<Group[]> {
+    const { data } = await apiClient.get<Group[]>('/organization/subscription-groups')
+    return data
+  },
   async createSubscription(groupID: number, validityDays: number, notes: string): Promise<OrganizationSubscription> {
     const { data } = await apiClient.post<OrganizationSubscription>('/organization/subscriptions', { group_id: groupID, validity_days: validityDays, notes })
+    return data
+  },
+  async createSubscriptionOrder(payload: {
+    plan_id: number
+    payment_type: string
+    openid?: string
+    return_url?: string
+    payment_source?: string
+    is_mobile?: boolean
+  }): Promise<CreateOrderResult> {
+    const { data } = await apiClient.post<CreateOrderResult>('/organization/subscription-orders', payload)
     return data
   },
   async cancelSubscription(id: number): Promise<void> {
@@ -129,6 +173,12 @@ export const organizationAPI = {
     const { data } = await apiClient.get('/organization/usage', { params })
     return data
   },
+	async searchUsageAPIKeys(query = '', memberID?: number): Promise<Array<{ id: number; name: string }>> {
+		const { data } = await apiClient.get<{ items: Array<{ id: number; name: string }> }>('/organization/usage/api-keys/search', {
+			params: { q: query || undefined, member_id: memberID },
+		})
+		return data.items
+	},
   async getUsageStats(params: OrganizationUsageParams = {}): Promise<OrganizationUsageStats> {
     const { data } = await apiClient.get<OrganizationUsageStats>('/organization/usage/stats', { params })
     return data
@@ -136,6 +186,15 @@ export const organizationAPI = {
   async getUsageTrend(params: OrganizationUsageParams = {}): Promise<OrganizationUsageTrendPoint[]> {
     const { data } = await apiClient.get<{ items: OrganizationUsageTrendPoint[] }>('/organization/usage/trend', { params })
     return data.items
+  },
+  async getUsageCharts(params: OrganizationUsageParams = {}): Promise<{
+    trend: OrganizationUsageTrendPoint[]
+    models: ModelStat[]
+    groups: GroupStat[]
+    endpoints: EndpointStat[]
+  }> {
+    const { data } = await apiClient.get('/organization/usage/charts', { params })
+    return data
   },
   async listApplications(params: { status?: string; page?: number; page_size?: number } = {}): Promise<{ items: CompanyApplication[]; total: number }> {
     const { data } = await apiClient.get('/admin/organizations/applications', { params })
@@ -164,11 +223,40 @@ export const organizationAPI = {
 		const { data } = await apiClient.get('/admin/organizations', { params })
 		return data
 	},
+	async getUsageErrors(params: UserErrorListParams & { member_id?: number; start?: string; end?: string }): Promise<{ items: UserErrorRequest[]; total: number; page: number; page_size: number; pages: number }> {
+		const { data } = await apiClient.get('/organization/usage/errors', { params })
+		return data
+	},
+	async getUsageErrorDetail(id: number): Promise<UserErrorRequestDetail> {
+		const { data } = await apiClient.get<UserErrorRequestDetail>(`/organization/usage/errors/${id}`)
+		return data
+	},
 	async getOrganization(id: number): Promise<AdminOrganizationDetail> {
 		const { data } = await apiClient.get<AdminOrganizationDetail>(`/admin/organizations/${id}`)
 		return data
 	},
 	async setOrganizationStatus(id: number, status: 'active' | 'suspended'): Promise<void> {
 		await apiClient.patch(`/admin/organizations/${id}/status`, { status })
+	},
+	async assignOrganizationSubscription(id: number, groupId: number, validityDays: number, notes = ''): Promise<OrganizationSubscription> {
+		const { data } = await apiClient.post<OrganizationSubscription>(`/admin/organizations/${id}/subscriptions`, {
+			group_id: groupId,
+			validity_days: validityDays,
+			notes,
+		})
+		return data
+	},
+	async listAdminOrganizationSubscriptions(params: { page: number; page_size: number; status?: string; group_id?: number; platform?: string; sort_by?: string; sort_order?: 'asc' | 'desc' }, signal?: AbortSignal): Promise<{ items: OrganizationSubscription[]; total: number; pages: number }> {
+		const { data } = await apiClient.get('/admin/organizations/subscriptions', { params, signal })
+		return data
+	},
+	async extendAdminOrganizationSubscription(id: number, days: number): Promise<void> {
+		await apiClient.post(`/admin/organizations/subscriptions/${id}/extend`, { days })
+	},
+	async resetAdminOrganizationSubscriptionQuota(id: number): Promise<void> {
+		await apiClient.post(`/admin/organizations/subscriptions/${id}/reset-quota`)
+	},
+	async revokeAdminOrganizationSubscription(id: number): Promise<void> {
+		await apiClient.post(`/admin/organizations/subscriptions/${id}/revoke`)
 	},
 }

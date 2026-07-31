@@ -84,7 +84,12 @@ type CreateOrderRequest struct {
 	PaymentSource   string
 	OrderType       string
 	PlanID          int64
-	Locale          string
+	// OrganizationID 非零表示这是一笔企业订阅订单：付费主体仍是下单的
+	// owner 用户（走个人支付网关），但履约时订阅挂到该公司主体
+	// （organization_subscriptions）而非个人 user_subscriptions。
+	// 仅对 OrderType = subscription 有意义；为 0 时保持个人订单行为不变。
+	OrganizationID int64
+	Locale         string
 	// ClientExpectedBonus 携带前端在提交瞬间、对 Amount 算出的赠送
 	// 预览金额（mirror 算法 = ResolveRechargeBonus）。仅当前端正在向
 	// 用户展示一笔 > 0 的赠送时才有值；订阅订单 / 未到档 / 无活动
@@ -204,6 +209,17 @@ type PaymentService struct {
 	resumeService            *PaymentResumeService
 	affiliateService         *AffiliateService
 	notificationEmailService *NotificationEmailService
+	orgSubFulfiller          OrganizationSubscriptionFulfiller
+}
+
+// OrganizationSubscriptionFulfiller provisions (or extends) a company
+// subscription when a paid enterprise subscription order is confirmed. It is
+// the organization-scoped counterpart of the personal
+// assignOrExtendSubscription path. Implementations must be idempotent with
+// respect to orderID so that webhook retries / manual re-fulfillment do not
+// double-provision.
+type OrganizationSubscriptionFulfiller interface {
+	FulfillOrganizationSubscriptionOrder(ctx context.Context, orgID, groupID int64, validityDays int, orderID int64) error
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
@@ -214,6 +230,13 @@ func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, load
 
 func (s *PaymentService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
 	s.notificationEmailService = notificationEmailService
+}
+
+// SetOrganizationSubscriptionFulfiller injects the enterprise subscription
+// fulfillment path used when a paid subscription order carries an
+// OrganizationID.
+func (s *PaymentService) SetOrganizationSubscriptionFulfiller(f OrganizationSubscriptionFulfiller) {
+	s.orgSubFulfiller = f
 }
 
 // --- Provider Registry ---

@@ -272,6 +272,10 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if plan != nil {
 		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit))
 	}
+	// 企业订阅订单：标记公司主体，履约时挂到 organization_subscriptions。
+	if req.OrganizationID > 0 {
+		b.SetOrganizationID(req.OrganizationID)
+	}
 	order, err := b.Save(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create order: %w", err)

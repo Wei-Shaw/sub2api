@@ -915,6 +915,23 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	clauses := make([]string, 0, 12)
 	args := make([]any, 0, 12)
 	clauses = append(clauses, "1=1")
+	if filter != nil && filter.ID != nil && *filter.ID > 0 {
+		args = append(args, *filter.ID)
+		clauses = append(clauses, "e.id = $"+itoa(len(args)))
+	}
+	if filter != nil && filter.OrganizationID != nil && *filter.OrganizationID > 0 {
+		args = append(args, *filter.OrganizationID)
+		n := itoa(len(args))
+		clauses = append(clauses, `(EXISTS (
+			SELECT 1 FROM usage_logs ul
+			WHERE ul.organization_id = $`+n+`
+			  AND NULLIF(e.request_id,'') IS NOT NULL AND ul.request_id=e.request_id
+		) OR EXISTS (
+			SELECT 1 FROM api_keys ok
+			JOIN organization_subscriptions os ON os.id=ok.organization_subscription_id
+			WHERE ok.id=e.api_key_id AND os.organization_id=$`+n+`
+		))`)
+	}
 
 	phaseFilter := ""
 	if filter != nil {
@@ -1033,6 +1050,10 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 		args = append(args, *filter.UserID)
 		n := itoa(len(args))
 		clauses = append(clauses, "e.user_id = $"+n)
+	}
+	if len(filter.UserIDs) > 0 {
+		args = append(args, pq.Array(filter.UserIDs))
+		clauses = append(clauses, "e.user_id = ANY($"+itoa(len(args))+")")
 	}
 	if filter.APIKeyID != nil && *filter.APIKeyID > 0 {
 		args = append(args, *filter.APIKeyID)
