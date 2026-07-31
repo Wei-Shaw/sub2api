@@ -133,6 +133,12 @@
                         </span>
                         <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
                       </button>
+                      <button class="account-tools-menu-item" @click="openGroupProxyBinding">
+                        <span class="account-tools-menu-icon bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">
+                          <Icon name="link" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.accounts.groupProxyBinding.menu') }}</span>
+                      </button>
 
                       <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
                       <div class="px-2 py-2">
@@ -462,6 +468,13 @@
     </ConfirmDialog>
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
+    <GroupProxyBindingModal
+      :show="showGroupProxyBinding"
+      :groups="groups"
+      :proxies="proxies"
+      @close="showGroupProxyBinding = false"
+      @updated="handleGroupProxyBindingUpdated"
+    />
     <TotpStepUpDialog :controller="accountExportStepUp" />
   </AppLayout>
 </template>
@@ -505,6 +518,7 @@ import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
+import GroupProxyBindingModal from '@/components/admin/account/GroupProxyBindingModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
@@ -576,6 +590,7 @@ const showTest = ref(false)
 const showStats = ref(false)
 const showErrorPassthrough = ref(false)
 const showTLSFingerprintProfiles = ref(false)
+const showGroupProxyBinding = ref(false)
 const edAcc = ref<Account | null>(null)
 const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
@@ -1067,7 +1082,8 @@ const isAnyModalOpen = computed(() => {
     showStats.value ||
     showSchedulePanel.value ||
     showErrorPassthrough.value ||
-    showTLSFingerprintProfiles.value
+    showTLSFingerprintProfiles.value ||
+    showGroupProxyBinding.value
   )
 })
 
@@ -1236,6 +1252,25 @@ const openErrorPassthrough = () => {
 const openTLSFingerprintProfiles = () => {
   closeAccountToolsDropdown()
   showTLSFingerprintProfiles.value = true
+}
+
+const openGroupProxyBinding = () => {
+  closeAccountToolsDropdown()
+  showGroupProxyBinding.value = true
+}
+
+const refreshAccountLookups = async () => {
+  const [proxyItems, groupItems] = await Promise.all([
+    adminAPI.proxies.getAll(),
+    adminAPI.groups.getAll()
+  ])
+  proxies.value = proxyItems
+  groups.value = groupItems
+}
+
+const handleGroupProxyBindingUpdated = async () => {
+  showGroupProxyBinding.value = false
+  await Promise.all([reload(), refreshAccountLookups()])
 }
 
 const syncPendingListChanges = async () => {
@@ -2095,9 +2130,7 @@ onMounted(async () => {
   load()
   loadUpstreamBillingProbeGlobalState()
   try {
-    const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
-    proxies.value = p
-    groups.value = g
+    await refreshAccountLookups()
   } catch (error) {
     console.error('Failed to load proxies/groups:', error)
   }
