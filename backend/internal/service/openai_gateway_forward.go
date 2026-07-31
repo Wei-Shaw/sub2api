@@ -57,6 +57,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if toolSchemaSanitized {
 		body = sanitizedToolBody
 	}
+	boundaryBody, boundaryChanged, boundaryErr := normalizeOpenAIResponsesRequestBoundary(body)
+	if boundaryErr != nil {
+		return nil, boundaryErr
+	}
+	if boundaryChanged {
+		body = boundaryBody
+	}
 	if account.IsOpenAIOAuth() && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
 		liteBody, changed, liteErr := normalizeOpenAIResponsesLiteToolsPayload(body)
 		if liteErr != nil {
