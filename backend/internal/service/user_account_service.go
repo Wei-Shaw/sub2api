@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -66,6 +67,47 @@ type UserAccountService interface {
 	BatchDeleteOwned(ctx context.Context, userID int64, ids []int64) (*UserAccountBatchDeleteResult, error)
 	// BatchSetSchedulableOwned 批量设置本人账号可调度状态。
 	BatchSetSchedulableOwned(ctx context.Context, userID int64, ids []int64, schedulable bool) (*UserAccountBatchSchedulableResult, error)
+	// ExportOwned 导出本人账号（不含代理；ids 空则导出全部本人账号）。
+	ExportOwned(ctx context.Context, userID int64, ids []int64) (*UserAccountDataPayload, error)
+	// ImportOwned 导入账号为本人自建号（忽略 proxy；不走管理端默认分组绑定）。
+	ImportOwned(ctx context.Context, userID int64, payload *UserAccountDataPayload) (*UserAccountDataImportResult, error)
+}
+
+// UserAccountDataPayload 用户导入/导出 JSON（与管理端 sub2api-data 兼容的 accounts 段；proxies 恒为空）。
+type UserAccountDataPayload struct {
+	Type       string                   `json:"type,omitempty"`
+	Version    int                      `json:"version,omitempty"`
+	ExportedAt string                   `json:"exported_at"`
+	Proxies    []any                    `json:"proxies"`
+	Accounts   []UserAccountDataAccount `json:"accounts"`
+}
+
+// UserAccountDataAccount 导出项（凭据原文，用户显式备份）。
+type UserAccountDataAccount struct {
+	Name           string         `json:"name"`
+	Notes          *string        `json:"notes,omitempty"`
+	Platform       string         `json:"platform"`
+	Type           string         `json:"type"`
+	Credentials    map[string]any `json:"credentials"`
+	Extra          map[string]any `json:"extra,omitempty"`
+	Concurrency    int            `json:"concurrency"`
+	RateMultiplier *float64       `json:"rate_multiplier,omitempty"`
+	Visibility     string         `json:"visibility,omitempty"` // private|public
+	UpstreamPlan   string         `json:"upstream_plan,omitempty"`
+}
+
+// UserAccountDataImportResult 用户导入结果。
+type UserAccountDataImportResult struct {
+	AccountCreated int                         `json:"account_created"`
+	AccountFailed  int                         `json:"account_failed"`
+	Errors         []UserAccountDataImportError `json:"errors,omitempty"`
+}
+
+// UserAccountDataImportError 单条导入失败。
+type UserAccountDataImportError struct {
+	Kind    string `json:"kind"`
+	Name    string `json:"name,omitempty"`
+	Message string `json:"message"`
 }
 
 // CreateUserAccountInput 用户创建账号输入（K17）。
@@ -613,6 +655,150 @@ func (s *userAccountService) BatchSetSchedulableOwned(ctx context.Context, userI
 	out.Success = len(out.SuccessIDs)
 	out.Failed = len(out.FailedIDs)
 	return out, nil
+}
+
+const userAccountDataType = "sub2api-data"
+const userAccountDataVersion = 1
+
+func (s *userAccountService) ExportOwned(ctx context.Context, userID int64, ids []int64) (*UserAccountDataPayload, error) {
+	if err := s.requireFeatureEnabled(ctx); err != nil {
+		return nil, err
+	}
+	var accounts []Account
+	ids = dedupePositiveIDs(ids)
+	if len(ids) > 0 {
+		if len(ids) > 500 {
+			return nil, infraerrors.BadRequest("INVALID_IDS", "ids must contain at most 500 items")
+		}
+		accounts = make([]Account, 0, len(ids))
+		for _, id := range ids {
+			acc, err := s.getOwned(ctx, userID, id)
+			if err != nil {
+				// 跳过非本人/不存在，不暴露
+				continue
+			}
+			if acc.IsCredentialShadow() {
+				continue
+			}
+			accounts = append(accounts, *acc)
+		}
+	} else {
+		all, err := s.listAllOwned(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		for i := range all {
+			if all[i].IsCredentialShadow() {
+				continue
+			}
+			accounts = append(accounts, all[i])
+		}
+	}
+
+	dataAccounts := make([]UserAccountDataAccount, 0, len(accounts))
+	for i := range accounts {
+		acc := accounts[i]
+		item := UserAccountDataAccount{
+			Name:           acc.Name,
+			Notes:          acc.Notes,
+			Platform:       acc.Platform,
+			Type:           acc.Type,
+			Credentials:    cloneAnyMap(acc.Credentials),
+			Extra:          cloneAnyMap(acc.Extra),
+			Concurrency:    acc.Concurrency,
+			RateMultiplier: acc.RateMultiplier,
+			Visibility:     acc.Visibility,
+			UpstreamPlan:   acc.UpstreamPlan,
+		}
+		dataAccounts = append(dataAccounts, item)
+	}
+
+	return &UserAccountDataPayload{
+		Type:       userAccountDataType,
+		Version:    userAccountDataVersion,
+		ExportedAt: time.Now().UTC().Format(time.RFC3339),
+		Proxies:    []any{},
+		Accounts:   dataAccounts,
+	}, nil
+}
+
+func (s *userAccountService) ImportOwned(ctx context.Context, userID int64, payload *UserAccountDataPayload) (*UserAccountDataImportResult, error) {
+	if err := s.requireFeatureEnabled(ctx); err != nil {
+		return nil, err
+	}
+	if payload == nil {
+		return nil, infraerrors.BadRequest("INVALID_DATA", "data is required")
+	}
+	// 兼容管理端导出：type 空或 sub2api-data / sub2api-bundle
+	if payload.Type != "" && payload.Type != userAccountDataType && payload.Type != "sub2api-bundle" {
+		return nil, infraerrors.BadRequest("INVALID_DATA", "unsupported data type")
+	}
+	out := &UserAccountDataImportResult{
+		Errors: make([]UserAccountDataImportError, 0),
+	}
+	for i := range payload.Accounts {
+		item := payload.Accounts[i]
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			name = fmt.Sprintf("imported-%d", i+1)
+		}
+		if len(item.Credentials) == 0 {
+			out.AccountFailed++
+			out.Errors = append(out.Errors, UserAccountDataImportError{
+				Kind: "account", Name: name, Message: "credentials required",
+			})
+			continue
+		}
+		// 用户导入强制无私有/公用时默认 private；若导出带 public 则尝试
+		vis := VisibilityPrivate
+		if strings.EqualFold(strings.TrimSpace(item.Visibility), VisibilityPublic) {
+			vis = VisibilityPublic
+		}
+		_, err := s.Create(ctx, userID, &CreateUserAccountInput{
+			Name:        name,
+			Platform:    item.Platform,
+			Type:        item.Type,
+			Credentials: item.Credentials,
+			Extra:       item.Extra,
+			Visibility:  vis,
+			Concurrency: item.Concurrency,
+		})
+		if err != nil {
+			out.AccountFailed++
+			out.Errors = append(out.Errors, UserAccountDataImportError{
+				Kind: "account", Name: name, Message: err.Error(),
+			})
+			continue
+		}
+		out.AccountCreated++
+	}
+	return out, nil
+}
+
+func (s *userAccountService) listAllOwned(ctx context.Context, userID int64) ([]Account, error) {
+	const pageSize = 100
+	page := 1
+	all := make([]Account, 0)
+	for {
+		items, total, err := s.List(ctx, userID, pagination.PaginationParams{
+			Page:      page,
+			PageSize:  pageSize,
+			SortBy:    "id",
+			SortOrder: "asc",
+		})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+		if int64(len(all)) >= total || len(items) == 0 {
+			break
+		}
+		page++
+		if page > 1000 {
+			break
+		}
+	}
+	return all, nil
 }
 
 func dedupePositiveIDs(ids []int64) []int64 {

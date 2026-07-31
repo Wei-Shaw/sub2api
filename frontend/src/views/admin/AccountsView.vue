@@ -84,39 +84,44 @@
                     @click.stop
                   >
                     <div class="overflow-y-auto p-2" :style="{ maxHeight: `${accountToolsDropdownPosition.maxHeight}px` }">
-                      <template v-if="!isMineScope">
-                        <div class="px-2 py-2">
-                          <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                            {{ t('admin.accounts.dataActions') }}
-                          </div>
+                      <!-- 导入/导出：mine 与 all 均开放；mine 仅操作本人账号 -->
+                      <div class="px-2 py-2">
+                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                          {{ t('admin.accounts.dataActions') }}
                         </div>
-                        <button class="account-tools-menu-item" @click="openSyncFromCrs">
-                          <span class="account-tools-menu-icon bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
-                            <Icon name="sync" size="sm" />
-                          </span>
-                          <span class="flex-1 text-left">{{ t('admin.accounts.syncFromCrs') }}</span>
-                        </button>
-                        <button class="account-tools-menu-item" @click="openImportData">
-                          <span class="account-tools-menu-icon bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
-                            <Icon name="upload" size="sm" />
-                          </span>
-                          <span class="flex-1 text-left">{{ t('admin.accounts.dataImport') }}</span>
-                        </button>
-                        <button class="account-tools-menu-item" @click="openExportDataDialogFromMenu">
-                          <span class="account-tools-menu-icon bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">
-                            <Icon name="download" size="sm" />
-                          </span>
-                          <span class="flex-1 text-left">
-                            {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
-                          </span>
-                          <span
-                            v-if="selIds.length"
-                            class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
-                          >
-                            {{ t('admin.accounts.selectedCount', { count: selIds.length }) }}
-                          </span>
-                        </button>
+                      </div>
+                      <button
+                        v-if="!isMineScope"
+                        class="account-tools-menu-item"
+                        @click="openSyncFromCrs"
+                      >
+                        <span class="account-tools-menu-icon bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+                          <Icon name="sync" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.accounts.syncFromCrs') }}</span>
+                      </button>
+                      <button class="account-tools-menu-item" @click="openImportData">
+                        <span class="account-tools-menu-icon bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
+                          <Icon name="upload" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.accounts.dataImport') }}</span>
+                      </button>
+                      <button class="account-tools-menu-item" @click="openExportDataDialogFromMenu">
+                        <span class="account-tools-menu-icon bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">
+                          <Icon name="download" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">
+                          {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
+                        </span>
+                        <span
+                          v-if="selIds.length"
+                          class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
+                        >
+                          {{ t('admin.accounts.selectedCount', { count: selIds.length }) }}
+                        </span>
+                      </button>
 
+                      <template v-if="!isMineScope">
                         <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
                         <div class="px-2 py-2">
                           <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -135,9 +140,9 @@
                           </span>
                           <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
                         </button>
-
-                        <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
                       </template>
+
+                      <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
                       <div class="px-2 py-2">
                         <div class="flex items-center justify-between gap-3">
                           <span class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -499,7 +504,12 @@
       @create-spark-shadow="handleCreateSparkShadow"
     />
     <SyncFromCrsModal v-if="!isMineScope" :show="showSync" @close="showSync = false" @synced="reload" />
-    <ImportDataModal v-if="!isMineScope" :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
+    <ImportDataModal
+      :show="showImportData"
+      :mode="isMineScope ? 'user' : 'admin'"
+      @close="showImportData = false"
+      @imported="handleDataImported"
+    />
     <BulkEditAccountModal
       v-if="!isMineScope"
       :show="showBulkEdit"
@@ -515,8 +525,19 @@
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
     <ConfirmDialog v-if="!isMineScope" :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
-    <ConfirmDialog v-if="!isMineScope" :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
-      <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+    <ConfirmDialog
+      :show="showExportDataDialog"
+      :title="t('admin.accounts.dataExport')"
+      :message="t('admin.accounts.dataExportConfirmMessage')"
+      :confirm-text="t('admin.accounts.dataExportConfirm')"
+      :cancel-text="t('common.cancel')"
+      @confirm="handleExportData"
+      @cancel="showExportDataDialog = false"
+    >
+      <label
+        v-if="!isMineScope"
+        class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+      >
         <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" v-model="includeProxyOnExport" />
         <span>{{ t('admin.accounts.dataExportIncludeProxies') }}</span>
       </label>
@@ -1991,14 +2012,24 @@ const handleExportData = async () => {
   if (exportingData.value) return
   exportingData.value = true
   try {
-    const dataPayload = await accountExportStepUp.run(() => adminAPI.accounts.exportData(
-      selIds.value.length > 0
-        ? { ids: selIds.value, includeProxies: includeProxyOnExport.value }
-        : {
-            includeProxies: includeProxyOnExport.value,
-            filters: buildAccountQueryFilters()
-          }
-    ))
+    let dataPayload: Record<string, unknown>
+    if (isMineScope.value) {
+      // 用户导出：仅本人账号，不含代理，无需 step-up
+      dataPayload = (await userAccountsAPI.exportData(
+        selIds.value.length > 0 ? { ids: selIds.value } : undefined
+      )) as unknown as Record<string, unknown>
+    } else {
+      dataPayload = (await accountExportStepUp.run(() =>
+        adminAPI.accounts.exportData(
+          selIds.value.length > 0
+            ? { ids: selIds.value, includeProxies: includeProxyOnExport.value }
+            : {
+                includeProxies: includeProxyOnExport.value,
+                filters: buildAccountQueryFilters()
+              }
+        )
+      )) as unknown as Record<string, unknown>
+    }
     const timestamp = formatExportTimestamp()
     const filename = `sub2api-account-${timestamp}.json`
     const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' })
@@ -2010,8 +2041,9 @@ const handleExportData = async () => {
     URL.revokeObjectURL(url)
     // spark 影子账号被后端排除出备份(其凭据透传母账号、调度配置不可经凭据型导入重建);
     // 跳过非零时明确提示用户,避免「下载成功但少了账号」的静默丢失。
-    if (dataPayload.skipped_shadows && dataPayload.skipped_shadows > 0) {
-      appStore.showWarning(t('admin.accounts.dataExportedSkippedShadows', { count: dataPayload.skipped_shadows }))
+    const skipped = Number((dataPayload as { skipped_shadows?: number }).skipped_shadows || 0)
+    if (skipped > 0) {
+      appStore.showWarning(t('admin.accounts.dataExportedSkippedShadows', { count: skipped }))
     } else {
       appStore.showSuccess(t('admin.accounts.dataExported'))
     }

@@ -100,11 +100,14 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { adminAPI } from '@/api/admin'
+import { userAccountsAPI, type UserAccountDataPayload } from '@/api/userAccounts'
 import { useAppStore } from '@/stores/app'
 import type { AdminDataImportResult, AdminDataPayload } from '@/types'
 
 interface Props {
   show: boolean
+  /** admin=管理端全站导入；user=仅导入为当前用户自建账号 */
+  mode?: 'admin' | 'user'
 }
 
 interface Emits {
@@ -112,8 +115,11 @@ interface Emits {
   (e: 'imported'): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  mode: 'admin'
+})
 const emit = defineEmits<Emits>()
+const isUserMode = computed(() => props.mode === 'user')
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -246,7 +252,8 @@ const isValidDataPayload = (payload: unknown): payload is AdminDataPayload => {
   ) {
     return false
   }
-  return Array.isArray(candidate.proxies) && Array.isArray(candidate.accounts)
+  const proxiesOk = candidate.proxies === undefined || Array.isArray(candidate.proxies)
+  return proxiesOk && Array.isArray(candidate.accounts)
 }
 
 const mergeDataPayloads = (payloads: AdminDataPayload[]): AdminDataPayload => {
@@ -293,23 +300,49 @@ const handleImport = async () => {
     }
     const dataPayload = mergeDataPayloads(dataPayloads)
 
-    const res = await adminAPI.accounts.importData({
-      data: dataPayload,
-      skip_default_group_bind: true
-    })
+    let res: AdminDataImportResult
+    if (isUserMode.value) {
+      const userRes = await userAccountsAPI.importData({
+        data: {
+          type: dataPayload.type,
+          version: dataPayload.version,
+          exported_at: dataPayload.exported_at || new Date().toISOString(),
+          proxies: [],
+          accounts: (dataPayload.accounts || []) as UserAccountDataPayload['accounts']
+        }
+      })
+      // 映射为管理端结果结构，复用同一摘要文案
+      res = {
+        account_created: userRes.account_created,
+        account_failed: userRes.account_failed,
+        proxy_created: 0,
+        proxy_reused: 0,
+        proxy_failed: 0,
+        errors: (userRes.errors || []).map((e) => ({
+          kind: e.kind,
+          name: e.name,
+          message: e.message
+        }))
+      }
+    } else {
+      res = await adminAPI.accounts.importData({
+        data: dataPayload,
+        skip_default_group_bind: true
+      })
+    }
 
     result.value = res
 
     const msgParams: Record<string, unknown> = {
       account_created: res.account_created,
       account_failed: res.account_failed,
-      proxy_created: res.proxy_created,
-      proxy_reused: res.proxy_reused,
-      proxy_failed: res.proxy_failed,
+      proxy_created: res.proxy_created ?? 0,
+      proxy_reused: res.proxy_reused ?? 0,
+      proxy_failed: res.proxy_failed ?? 0,
     }
-    if (res.account_failed > 0 || res.proxy_failed > 0) {
+    if (res.account_failed > 0 || (res.proxy_failed ?? 0) > 0) {
       // 部分成功也创建了数据;弹窗关闭时通过 imported 通知父组件刷新列表
-      if (res.account_created > 0 || res.proxy_created > 0) {
+      if (res.account_created > 0 || (res.proxy_created ?? 0) > 0) {
         hasCreatedData.value = true
       }
       appStore.showError(t('admin.accounts.dataImportCompletedWithErrors', msgParams))

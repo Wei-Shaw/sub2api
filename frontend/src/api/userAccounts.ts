@@ -163,6 +163,56 @@ export async function batchSetSchedulable(
   return data
 }
 
+export interface UserAccountDataPayload {
+  type?: string
+  version?: number
+  exported_at: string
+  proxies?: unknown[]
+  accounts: Array<{
+    name: string
+    notes?: string | null
+    platform: string
+    type: string
+    credentials: Record<string, unknown>
+    extra?: Record<string, unknown>
+    concurrency?: number
+    rate_multiplier?: number
+    visibility?: string
+    upstream_plan?: string
+  }>
+}
+
+export interface UserAccountDataImportResult {
+  account_created: number
+  account_failed: number
+  errors?: Array<{ kind: string; name?: string; message: string }>
+  proxy_created?: number
+  proxy_reused?: number
+  proxy_failed?: number
+}
+
+/** Export owned accounts (no proxies). Optional ids filter. */
+export async function exportData(options?: {
+  ids?: number[]
+}): Promise<UserAccountDataPayload> {
+  const params: Record<string, string> = {}
+  if (options?.ids && options.ids.length > 0) {
+    params.ids = options.ids.join(',')
+  }
+  const { data } = await apiClient.get<UserAccountDataPayload>('/user/accounts/data', { params })
+  return data
+}
+
+/** Import as owned accounts (proxies ignored). */
+export async function importData(payload: {
+  data: UserAccountDataPayload
+}): Promise<UserAccountDataImportResult> {
+  const { data } = await apiClient.post<UserAccountDataImportResult>('/user/accounts/data', {
+    data: payload.data
+  })
+  return data
+}
+
 export const userAccountsAPI = {
   list,
   getById,
@@ -172,7 +222,9 @@ export const userAccountsAPI = {
   setSchedulable,
   remove,
   batchDelete,
-  batchSetSchedulable
+  batchSetSchedulable,
+  exportData,
+  importData
 }
 
 export default userAccountsAPI

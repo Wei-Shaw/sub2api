@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -243,6 +244,74 @@ func (h *UserAccountHandler) BatchSetSchedulable(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+// ExportData GET /api/v1/user/accounts/data?ids=1,2,3
+// 仅导出本人账号；不含代理。
+func (h *UserAccountHandler) ExportData(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	ids, err := parsePositiveIDList(c.Query("ids"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	payload, err := h.svc.ExportOwned(c.Request.Context(), subject.UserID, ids)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, payload)
+}
+
+// ImportDataRequest POST /api/v1/user/accounts/data
+type ImportDataRequest struct {
+	Data service.UserAccountDataPayload `json:"data"`
+}
+
+// ImportData POST /api/v1/user/accounts/data
+// 导入为本人自建账号（忽略 proxies；分组由 Ensure 私有组自动处理）。
+func (h *UserAccountHandler) ImportData(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req ImportDataRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	result, err := h.svc.ImportOwned(c.Request.Context(), subject.UserID, &req.Data)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func parsePositiveIDList(raw string) ([]int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]int64, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(p, 10, 64)
+		if err != nil || id <= 0 {
+			return nil, fmt.Errorf("invalid id %q", p)
+		}
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 // SetVisibility PUT /api/v1/user/accounts/:id/visibility
