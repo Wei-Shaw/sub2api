@@ -611,6 +611,11 @@ func BuildVideoURLWithValidator(baseURL, requestID string, validator BaseURLVali
 	if requestID == "" {
 		return "", fmt.Errorf("request id is required")
 	}
+	// requestID 由客户端提供并拼进上游 URL 的 path。PathEscape 之外再要求它不是
+	// 纯点片段、不含控制字符，保证它只能是一个普通的路径片段。
+	if requestID == "." || requestID == ".." || strings.ContainsAny(requestID, "\x00\r\n") {
+		return "", fmt.Errorf("invalid request id")
+	}
 	return validatedBaseURL + "/videos/" + url.PathEscape(requestID), nil
 }
 

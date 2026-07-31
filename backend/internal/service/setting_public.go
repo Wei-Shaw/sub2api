@@ -189,6 +189,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyCustomerServiceText,
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
+		SettingKeyCompactHomeEnabled,
 		SettingKeyHideCcsImportButton,
 		SettingKeyPurchaseSubscriptionEnabled,
 		SettingKeyPurchaseSubscriptionURL,
@@ -327,6 +328,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		CustomerServiceText:              strings.TrimSpace(settings[SettingKeyCustomerServiceText]),
 		DocURL:                           settings[SettingKeyDocURL],
 		HomeContent:                      settings[SettingKeyHomeContent],
+		CompactHomeEnabled:               settings[SettingKeyCompactHomeEnabled] == "true",
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
@@ -525,6 +527,7 @@ type PublicSettingsInjectionPayload struct {
 	CustomerServiceText              string                   `json:"customer_service_text"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
+	CompactHomeEnabled               bool                     `json:"compact_home_enabled"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
@@ -607,6 +610,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		CustomerServiceText:              settings.CustomerServiceText,
 		DocURL:                           settings.DocURL,
 		HomeContent:                      settings.HomeContent,
+		CompactHomeEnabled:               settings.CompactHomeEnabled,
 		HideCcsImportButton:              settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:          settings.PurchaseSubscriptionURL,

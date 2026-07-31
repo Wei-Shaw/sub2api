@@ -1356,6 +1356,14 @@ func TestOpenAIStreamingPostOutputDisconnectQuarantinesSharedProxyWithoutSameStr
 	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
 		MaxLineSize: defaultMaxLineSize,
 	}}}
+	// collapseInterval 0: the two loop iterations below record within the
+	// production collapse window and must count as distinct failure events here.
+	svc.openaiProxyStreamCircuit = newOpenAIProxyStreamCircuit(openAIProxyStreamCircuitSettings{
+		failureThreshold: 2,
+		failureWindow:    time.Minute,
+		quarantineTTL:    10 * time.Minute,
+		maxEntries:       16,
+	})
 
 	for _, readErr := range []error{
 		io.ErrUnexpectedEOF,
@@ -1474,6 +1482,7 @@ func TestOpenAIStreamingResponseFailedBeforeOutputReturnsFailover(t *testing.T) 
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount)
 	require.Contains(t, string(failoverErr.ResponseBody), "An error occurred while processing your request")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
@@ -1510,11 +1519,21 @@ func TestOpenAIStreamingResponseFailedBeforeOutputCapacityErrorReturnsFailover(t
 		Header: http.Header{"X-Request-Id": []string{"rid-capacity-failed"}},
 	}
 
-	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Name:     "pool-account",
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+	}
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
 	require.Error(t, err)
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
 	require.Contains(t, string(failoverErr.ResponseBody), "Selected model is at capacity")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
@@ -2008,6 +2027,14 @@ func TestOpenAIStreamingPassthroughPostOutputDisconnectQuarantinesSharedProxy(t 
 	proxyID := int64(4698)
 	account := &Account{ID: 469804, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, ProxyID: &proxyID}
 	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+	// collapseInterval 0: the loop below records within the production collapse
+	// window and must count as distinct failure events here.
+	svc.openaiProxyStreamCircuit = newOpenAIProxyStreamCircuit(openAIProxyStreamCircuitSettings{
+		failureThreshold: 2,
+		failureWindow:    time.Minute,
+		quarantineTTL:    10 * time.Minute,
+		maxEntries:       16,
+	})
 
 	for _, readErr := range []error{io.ErrUnexpectedEOF, errors.New("http2: client connection lost")} {
 		rec := httptest.NewRecorder()
@@ -2029,7 +2056,7 @@ func TestOpenAIStreamingPassthroughPostOutputDisconnectQuarantinesSharedProxy(t 
 		require.Contains(t, rec.Body.String(), "partial")
 	}
 
-	require.True(t, svc.isOpenAIProxyStreamQuarantined(account))
+	require.True(t, svc.isOpenAIProxyStreamQuarantined(context.Background(), account))
 }
 
 func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *testing.T) {

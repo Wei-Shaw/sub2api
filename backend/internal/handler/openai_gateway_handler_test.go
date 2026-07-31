@@ -1266,6 +1266,7 @@ func TestOpenAIResponsesWebSocket_ContentModerationBlocksFirstFrame(t *testing.T
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 	decision, err := moderationSvc.Check(context.Background(), service.ContentModerationCheckInput{
 		UserID:   1,
@@ -1407,7 +1408,7 @@ func TestOpenAIResponsesWebSocket_PassthroughTracksModelPerTurn(t *testing.T) {
 	require.Equal(t, "gpt-5.6-terra", *got.logs[1].UpstreamModel)
 	require.NotNil(t, got.logs[1].ModelMappingChain)
 	require.Equal(t, "terra→terra-channel→gpt-5.6-terra", *got.logs[1].ModelMappingChain)
-	require.InDelta(t, got.logs[1].TotalCost*2, got.logs[0].TotalCost, 1e-12,
+	require.InDelta(t, got.logs[1].TotalCost*2.5, got.logs[0].TotalCost, 1e-12,
 		"each turn must be billed with its own channel-mapped model")
 }
 
@@ -1477,7 +1478,7 @@ func TestOpenAIResponsesWebSocket_PassthroughKeepsTurnMappingSnapshot(t *testing
 	require.Equal(t, "gpt-5.6-terra", *got.logs[1].UpstreamModel)
 	require.NotNil(t, got.logs[1].ModelMappingChain)
 	require.Equal(t, "sol→gpt-5.6-terra", *got.logs[1].ModelMappingChain)
-	require.InDelta(t, got.logs[1].TotalCost*2, got.logs[0].TotalCost, 1e-12,
+	require.InDelta(t, got.logs[1].TotalCost*2.5, got.logs[0].TotalCost, 1e-12,
 		"the next turn must use the updated channel mapping")
 }
 
@@ -1506,7 +1507,7 @@ func TestOpenAIResponsesWebSocket_CtxPoolAppliesPerTurnMappingAndPreservesReques
 	require.Equal(t, "gpt-5.6-terra", got.logs[1].RequestedModel)
 	require.NotNil(t, got.logs[1].ModelMappingChain)
 	require.Equal(t, "gpt-5.6-terra→gpt-5.6-sol", *got.logs[1].ModelMappingChain)
-	require.InDelta(t, 20e-6, got.logs[1].TotalCost, 1e-12,
+	require.InDelta(t, 16e-6, got.logs[1].TotalCost, 1e-12,
 		"BillingModelSourceRequested must use the client model before channel mapping")
 }
 

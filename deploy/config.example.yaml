@@ -425,7 +425,10 @@ gateway:
     fallback_window_seconds: 60
     fallback_ttl_seconds: 600
   # OpenAI Responses SSE 代理断流熔断；按 proxy_id 跨账号隔离，仅影响下一次调度。
+  # 隔离是偏好而非硬闸：当全部候选账号都在被隔离代理下时自动放行（fail-open），
+  # 不会因熔断而返回"无可用账号"。3 秒内的并发断流合并为一次失败事件。
   openai_proxy_stream_circuit:
+    disabled: false
     failure_threshold: 2
     window_seconds: 60
     ttl_seconds: 600
