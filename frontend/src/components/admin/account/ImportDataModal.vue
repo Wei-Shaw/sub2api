@@ -319,7 +319,7 @@ const handleImport = async () => {
         proxy_reused: 0,
         proxy_failed: 0,
         errors: (userRes.errors || []).map((e) => ({
-          kind: e.kind,
+          kind: (e.kind === 'proxy' ? 'proxy' : 'account') as 'proxy' | 'account',
           name: e.name,
           message: e.message
         }))
