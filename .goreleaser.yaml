@@ -95,6 +95,7 @@ dockers_v2:
     extra_files:
       - deploy/docker-entrypoint.sh
       - CONTROL-PLANE-MANIFEST.json
+      - backend/resources
     platforms:
       - linux/amd64
       - linux/arm64

@@ -3,91 +3,115 @@
 package service
 
 import (
-	"bufio"
 	"bytes"
 	"io"
 	"mime"
 	"mime/quotedprintable"
 	"net/mail"
+	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildEmailMessageEncodesUTF8ForLegacySMTP(t *testing.T) {
+func TestBuildSMTPMessageProducesStandardsCompliantMIME(t *testing.T) {
 	config := &SMTPConfig{
-		From:     "alert@tokensupply.net",
-		FromName: "令牌供应",
+		Host:     "smtp.example.com",
+		From:     "reply@example.com",
+		FromName: "Sub2API 通知",
 	}
-	now := time.Date(2026, time.July, 22, 12, 34, 56, 0, time.FixedZone("CST", 8*60*60))
-	body := "<p>您的验证码是：123456</p>"
+	body := "<html>\n<body>验证码：123456 &amp; ready</body>\n</html>"
 
-	raw, err := buildEmailMessage(
-		config,
-		"recipient@example.com",
-		"[TokenSupply] 邮箱验证码",
-		body,
-		now,
-		"<test-message@tokensupply.net>",
-	)
+	message, err := buildSMTPMessage(config, "User <user@example.net>", "邮箱验证码", body)
+	require.NoError(t, err)
+	require.Equal(t, "reply@example.com", message.envelopeFrom)
+	require.Equal(t, "user@example.net", message.envelopeTo)
+
+	parsed, err := mail.ReadMessage(bytes.NewReader(message.data))
 	require.NoError(t, err)
 
-	headerEnd := bytes.Index(raw, []byte("\r\n\r\n"))
-	require.Positive(t, headerEnd)
-	for _, value := range raw {
-		require.Less(t, value, byte(0x80), "raw SMTP message must remain 7-bit ASCII")
-	}
-
-	message, err := mail.ReadMessage(bufio.NewReader(bytes.NewReader(raw)))
+	from, err := mail.ParseAddress(parsed.Header.Get("From"))
 	require.NoError(t, err)
+	require.Equal(t, "Sub2API 通知", from.Name)
+	require.Equal(t, "reply@example.com", from.Address)
 
-	decodedSubject, err := new(mime.WordDecoder).DecodeHeader(message.Header.Get("Subject"))
+	recipient, err := mail.ParseAddress(parsed.Header.Get("To"))
 	require.NoError(t, err)
-	require.Equal(t, "[TokenSupply] 邮箱验证码", decodedSubject)
+	require.Equal(t, "User", recipient.Name)
+	require.Equal(t, "user@example.net", recipient.Address)
 
-	from, err := mail.ParseAddress(message.Header.Get("From"))
+	decodedSubject, err := new(mime.WordDecoder).DecodeHeader(parsed.Header.Get("Subject"))
 	require.NoError(t, err)
-	require.Equal(t, "令牌供应", from.Name)
-	require.Equal(t, "alert@tokensupply.net", from.Address)
-	require.Equal(t, now.Format(time.RFC1123Z), message.Header.Get("Date"))
-	require.Equal(t, "<test-message@tokensupply.net>", message.Header.Get("Message-ID"))
-	require.Equal(t, "quoted-printable", message.Header.Get("Content-Transfer-Encoding"))
+	require.Equal(t, "邮箱验证码", decodedSubject)
+	require.NotEmpty(t, parsed.Header.Get("Date"))
+	_, err = mail.ParseDate(parsed.Header.Get("Date"))
+	require.NoError(t, err)
+	require.Regexp(t, regexp.MustCompile(`^<[0-9a-f]{32}@example\.com>$`), parsed.Header.Get("Message-ID"))
+	require.Equal(t, "1.0", parsed.Header.Get("MIME-Version"))
+	require.Equal(t, "quoted-printable", parsed.Header.Get("Content-Transfer-Encoding"))
 
-	decodedBody, err := io.ReadAll(quotedprintable.NewReader(message.Body))
+	mediaType, params, err := mime.ParseMediaType(parsed.Header.Get("Content-Type"))
 	require.NoError(t, err)
-	require.Equal(t, body, string(decodedBody))
+	require.Equal(t, "text/html", mediaType)
+	require.Equal(t, "UTF-8", params["charset"])
+
+	decodedBody, err := io.ReadAll(quotedprintable.NewReader(parsed.Body))
+	require.NoError(t, err)
+	require.Equal(t, strings.ReplaceAll(body, "\n", "\r\n"), string(decodedBody))
 }
 
-func TestBuildEmailMessageKeepsASCIISubjectAndBlocksHeaderInjection(t *testing.T) {
+func TestBuildSMTPMessagePreventsHeaderInjection(t *testing.T) {
 	config := &SMTPConfig{
-		From:     "alert@tokensupply.net\r\nBcc: attacker@example.com",
-		FromName: "TokenSupply\r\nX-Injected: yes",
+		Host:     "smtp.example.com",
+		From:     "reply@example.com",
+		FromName: "Sender\r\nBcc: hidden@example.com",
 	}
 
-	raw, err := buildEmailMessage(
-		config,
-		"recipient@example.com\r\nBcc: attacker@example.com",
-		"Email verification code\r\nX-Injected: yes",
-		"<p>hello</p>",
-		time.Unix(0, 0).UTC(),
-		"<test-message@tokensupply.net>",
-	)
+	message, err := buildSMTPMessage(config, "user@example.net", "Subject\r\nCc: hidden@example.com", "body")
 	require.NoError(t, err)
 
-	message, err := mail.ReadMessage(bufio.NewReader(bytes.NewReader(raw)))
+	parsed, err := mail.ReadMessage(bytes.NewReader(message.data))
 	require.NoError(t, err)
-	require.Equal(t, "Email verification codeX-Injected: yes", message.Header.Get("Subject"))
-	require.Empty(t, message.Header.Get("X-Injected"))
-	require.Empty(t, message.Header.Get("Bcc"))
-	require.NotContains(t, string(raw), "\r\nX-Injected:")
-	require.NotContains(t, string(raw), "\r\nBcc:")
+	require.Empty(t, parsed.Header.Get("Bcc"))
+	require.Empty(t, parsed.Header.Get("Cc"))
+
+	decodedSubject, err := new(mime.WordDecoder).DecodeHeader(parsed.Header.Get("Subject"))
+	require.NoError(t, err)
+	require.Equal(t, "SubjectCc: hidden@example.com", decodedSubject)
 }
 
-func TestGenerateEmailMessageIDUsesSenderDomain(t *testing.T) {
-	messageID, err := generateEmailMessageID("alert@tokensupply.net")
+func TestBuildSMTPMessageRejectsInvalidConfiguration(t *testing.T) {
+	_, err := buildSMTPMessage(nil, "user@example.net", "subject", "body")
+	require.ErrorContains(t, err, "missing SMTP configuration")
+
+	_, err = buildSMTPMessage(&SMTPConfig{Host: "smtp.example.com"}, "user@example.net", "subject", "body")
+	require.ErrorContains(t, err, "invalid SMTP from address")
+
+	_, err = buildSMTPMessage(&SMTPConfig{
+		Host: "smtp.example.com",
+		From: "reply@example.com",
+	}, "invalid recipient <>", "subject", "body")
+	require.ErrorContains(t, err, "invalid SMTP recipient address")
+
+	_, err = buildSMTPMessage(&SMTPConfig{
+		Host: "smtp.example.com",
+		From: "reply@example.com",
+	}, "user@example.net\r\nBcc: hidden@example.net", "subject", "body")
+	require.ErrorContains(t, err, "invalid SMTP recipient address")
+}
+
+func TestBuildSMTPMessageUsesUniqueMessageIDs(t *testing.T) {
+	config := &SMTPConfig{Host: "smtp.example.com", From: "reply@example.com"}
+
+	first, err := buildSMTPMessage(config, "user@example.net", "subject", "body")
 	require.NoError(t, err)
-	require.True(t, strings.HasPrefix(messageID, "<"))
-	require.True(t, strings.HasSuffix(messageID, "@tokensupply.net>"))
+	second, err := buildSMTPMessage(config, "user@example.net", "subject", "body")
+	require.NoError(t, err)
+
+	firstParsed, err := mail.ReadMessage(bytes.NewReader(first.data))
+	require.NoError(t, err)
+	secondParsed, err := mail.ReadMessage(bytes.NewReader(second.data))
+	require.NoError(t, err)
+	require.NotEqual(t, firstParsed.Header.Get("Message-ID"), secondParsed.Header.Get("Message-ID"))
 }

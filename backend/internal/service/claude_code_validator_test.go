@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -133,6 +134,152 @@ func TestClaudeCodeValidator_BillingBlockRecognizedWithoutIdentityPrompt(t *test
 		},
 	})
 	require.True(t, ok)
+}
+
+func TestClaudeCodeValidator_SecurityMonitorWithoutBillingBlock(t *testing.T) {
+	monitorPrompt, err := os.ReadFile("testdata/security_monitor_system_prompt.txt")
+	require.NoError(t, err)
+
+	validHeaders := map[string]string{
+		"User-Agent":        "claude-cli/2.1.220 (external, cli)",
+		"X-App":             "cli",
+		"anthropic-beta":    "claude-code-20250219",
+		"anthropic-version": "2023-06-01",
+	}
+	validBody := func(prompt string) map[string]any {
+		return map[string]any{
+			"model": "claude-haiku-4-5-20251001",
+			"system": []any{
+				map[string]any{"type": "text", "text": prompt},
+			},
+			"metadata": map[string]any{"user_id": claudeCodeMetadataUserIDJSON},
+		}
+	}
+
+	tests := []struct {
+		name       string
+		headers    map[string]string
+		body       map[string]any
+		wantAccept bool
+	}{
+		{
+			name:       "official classifier request",
+			headers:    validHeaders,
+			body:       validBody(string(monitorPrompt)),
+			wantAccept: true,
+		},
+		{
+			name:    "classifier output with category element",
+			headers: validHeaders,
+			body: validBody(strings.Replace(
+				string(monitorPrompt),
+				"<block>yes</block><reason>",
+				"<block>yes</block><category>Exact BLOCK Rule Name</category><reason>",
+				1,
+			)),
+			wantAccept: true,
+		},
+		{
+			name: "non-Claude user agent",
+			headers: map[string]string{
+				"User-Agent":        "curl/8.0.0",
+				"X-App":             "cli",
+				"anthropic-beta":    "claude-code-20250219",
+				"anthropic-version": "2023-06-01",
+			},
+			body: validBody(string(monitorPrompt)),
+		},
+		{
+			name: "missing X-App",
+			headers: map[string]string{
+				"User-Agent":        validHeaders["User-Agent"],
+				"anthropic-beta":    validHeaders["anthropic-beta"],
+				"anthropic-version": validHeaders["anthropic-version"],
+			},
+			body: validBody(string(monitorPrompt)),
+		},
+		{
+			name: "missing anthropic-beta",
+			headers: map[string]string{
+				"User-Agent":        validHeaders["User-Agent"],
+				"X-App":             validHeaders["X-App"],
+				"anthropic-version": validHeaders["anthropic-version"],
+			},
+			body: validBody(string(monitorPrompt)),
+		},
+		{
+			name: "missing anthropic-version",
+			headers: map[string]string{
+				"User-Agent":     validHeaders["User-Agent"],
+				"X-App":          validHeaders["X-App"],
+				"anthropic-beta": validHeaders["anthropic-beta"],
+			},
+			body: validBody(string(monitorPrompt)),
+		},
+		{
+			name:    "missing metadata",
+			headers: validHeaders,
+			body: map[string]any{
+				"model":  "claude-haiku-4-5-20251001",
+				"system": []any{map[string]any{"type": "text", "text": string(monitorPrompt)}},
+			},
+		},
+		{
+			name:    "invalid metadata user ID",
+			headers: validHeaders,
+			body: func() map[string]any {
+				body := validBody(string(monitorPrompt))
+				body["metadata"] = map[string]any{"user_id": "invalid"}
+				return body
+			}(),
+		},
+		{
+			name:       "unrelated prompt",
+			headers:    validHeaders,
+			body:       validBody("You are a different security classifier for coding agents."),
+			wantAccept: false,
+		},
+		{
+			name:       "opening sentence alone",
+			headers:    validHeaders,
+			body:       validBody(claudeCodeSecurityMonitorPromptPrefix),
+			wantAccept: false,
+		},
+		{
+			name:    "opening sentence plus arbitrary altered suffix",
+			headers: validHeaders,
+			body: validBody(claudeCodeSecurityMonitorPromptPrefix + "\n\n" +
+				strings.Repeat("This is arbitrary altered classifier content. ", 300)),
+			wantAccept: false,
+		},
+		{
+			name:    "multiple system entries without billing block",
+			headers: validHeaders,
+			body: func() map[string]any {
+				body := validBody(string(monitorPrompt))
+				system, ok := body["system"].([]any)
+				require.True(t, ok)
+				body["system"] = append(system, map[string]any{
+					"type": "text",
+					"text": "Additional unrelated system content.",
+				})
+				return body
+			}(),
+			wantAccept: false,
+		},
+	}
+
+	validator := NewClaudeCodeValidator()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+			for name, value := range tt.headers {
+				req.Header.Set(name, value)
+			}
+
+			require.Equal(t, tt.wantAccept, validator.Validate(req, tt.body))
+		})
+	}
 }
 
 func TestClaudeCodeValidator_BillingBlockVSCodeEntrypointRecognized(t *testing.T) {

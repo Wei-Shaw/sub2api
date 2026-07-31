@@ -48,9 +48,14 @@ var claudeCodeSystemPrompts = []string{
 }
 
 const (
+	// These markers identify Claude Code's official security-monitor classifier
+	// request without coupling validation to every wording change in the prompt.
+	claudeCodeSecurityMonitorPromptPrefix = "You are a security monitor for autonomous AI coding agents."
+	claudeCodeSecurityMonitorPromptMinLen = 10_000
+
 	// claudeCodeBillingHeaderPrefix 是 Claude Code 在 system 数组首块注入的计费归因块前缀。
-	// 该块存在于所有真实 Claude Code CLI 请求中（含安全监视器等无身份 prose 的子请求），
-	// 格式固定、不随提示词改版漂移，是比身份 prose 更稳定的客户端标识。
+	// 大多数真实 CLI 请求（含部分无身份 prose 的子请求）会携带该块；不携带该块的
+	// 固定官方辅助请求由独立规则识别。该格式比身份 prose 更稳定。
 	// 生成见 gateway_billing_block.go；同类识别见 pkg/apicompat/anthropic_to_responses.go。
 	claudeCodeBillingHeaderPrefix = "x-anthropic-billing-header"
 	// claudeCodeEntrypointMarker 标识计费块携带入口归因字段。不绑定具体入口值
@@ -167,6 +172,10 @@ func (v *ClaudeCodeValidator) hasClaudeCodeSystemPrompt(body map[string]any) boo
 		return false
 	}
 
+	if isClaudeCodeSecurityMonitorPrompt(systemEntries) {
+		return true
+	}
+
 	// 检查每个 system entry
 	for _, entry := range systemEntries {
 		entryMap, ok := entry.(map[string]any)
@@ -194,6 +203,46 @@ func (v *ClaudeCodeValidator) hasClaudeCodeSystemPrompt(body map[string]any) boo
 	}
 
 	return false
+}
+
+func isClaudeCodeSecurityMonitorPrompt(systemEntries []any) bool {
+	if len(systemEntries) != 1 {
+		return false
+	}
+
+	entry, ok := systemEntries[0].(map[string]any)
+	if !ok {
+		return false
+	}
+
+	entryType, ok := entry["type"].(string)
+	if !ok || entryType != "text" {
+		return false
+	}
+
+	text, ok := entry["text"].(string)
+	if !ok || len(text) < claudeCodeSecurityMonitorPromptMinLen ||
+		!strings.HasPrefix(text, claudeCodeSecurityMonitorPromptPrefix) {
+		return false
+	}
+
+	markers := []string{
+		"## Threat Model",
+		"- `<transcript>`:",
+		"## HARD BLOCK",
+		"## SOFT BLOCK",
+		"## Classification Process",
+		"## Output Format",
+		"<block>yes</block>",
+		"<block>no</block>",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(text, marker) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // bestSimilarityScore 计算文本与所有 Claude Code 模板的最佳相似度
