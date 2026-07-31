@@ -1481,6 +1481,34 @@
         </div>
       </div>
 
+      <!-- OpenAI reasoning-effort account routing preference -->
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label mb-0">{{ t('admin.accounts.openai.reasoningEffortPreferences') }}</label>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.openai.reasoningEffortPreferencesDesc') }}
+        </p>
+        <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <label
+            v-for="option in openAIReasoningEffortPreferenceOptions"
+            :key="option.value"
+            class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+          >
+            <input
+              type="checkbox"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+              :data-testid="`openai-reasoning-effort-${option.value}`"
+              :checked="openAIReasoningEffortPreferences.includes(option.value)"
+              @change="toggleOpenAIReasoningEffortPreference(option.value)"
+            />
+            <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
+          </label>
+        </div>
+        <p class="input-hint">{{ t('admin.accounts.openai.reasoningEffortPreferencesHint') }}</p>
+      </div>
+
       <!-- OpenAI Codex hosted image_generation bridge policy -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
@@ -2649,6 +2677,11 @@ import {
   resolveOpenAIWSModeFromExtra
 } from '@/utils/openaiWsMode'
 import {
+  OPENAI_REASONING_EFFORT_PREFERENCES,
+  normalizeOpenAIReasoningEffortPreferences,
+  type OpenAIReasoningEffortPreference
+} from '@/utils/openaiReasoningEffortPreferences'
+import {
   getPresetMappingsByPlatform,
   commonErrorCodes,
   buildModelMappingObject,
@@ -2841,6 +2874,7 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+const openAIReasoningEffortPreferences = ref<OpenAIReasoningEffortPreference[]>([])
 const openAILongContextBillingEnabled = ref(false)
 // OpenAI 订阅档位（Plus/Pro/Free）手动覆盖值,存于 credentials.plan_type;'' 表示清空/自动识别
 const editPlanType = ref<string>('')
@@ -2882,6 +2916,23 @@ const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
 const editWeeklyResetDay = ref<number | null>(null)
 const editWeeklyResetHour = ref<number | null>(null)
 const editResetTimezone = ref<string | null>(null)
+const openAIReasoningEffortPreferenceOptions = computed(() =>
+  OPENAI_REASONING_EFFORT_PREFERENCES.map((value) => ({
+    value,
+    label: t(`admin.accounts.openai.reasoningEffort${value.charAt(0).toUpperCase()}${value.slice(1)}`)
+  }))
+)
+const toggleOpenAIReasoningEffortPreference = (effort: OpenAIReasoningEffortPreference) => {
+  if (openAIReasoningEffortPreferences.value.includes(effort)) {
+    openAIReasoningEffortPreferences.value = openAIReasoningEffortPreferences.value.filter(
+      (value) => value !== effort
+    )
+    return
+  }
+  openAIReasoningEffortPreferences.value = OPENAI_REASONING_EFFORT_PREFERENCES.filter(
+    (value) => value === effort || openAIReasoningEffortPreferences.value.includes(value)
+  )
+}
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
@@ -3276,6 +3327,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
+  openAIReasoningEffortPreferences.value = []
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
   openAICompactMode.value = 'auto'
@@ -3292,6 +3344,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   webSearchEmulationMode.value = 'default'
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
+    openAIReasoningEffortPreferences.value = normalizeOpenAIReasoningEffortPreferences(
+      extra?.reasoning_effort_preferences
+    )
     const longContextBillingValue = extra?.openai_long_context_billing_enabled
     openAILongContextBillingEnabled.value = longContextBillingValue === true
     // plan_type 手动覆盖仅 OAuth 有实际调度语义(IsOpenAIChatGPTSubscription 要求 oauth),故只对 oauth 回填
@@ -4525,6 +4580,11 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.openai_passthrough
         delete newExtra.openai_oauth_passthrough
+      }
+      if (openAIReasoningEffortPreferences.value.length > 0) {
+        newExtra.reasoning_effort_preferences = [...openAIReasoningEffortPreferences.value]
+      } else {
+        delete newExtra.reasoning_effort_preferences
       }
       if (isSparkShadow.value) {
         delete newExtra.openai_long_context_billing_enabled

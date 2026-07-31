@@ -317,6 +317,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			body = cappedBody
 		}
 	}
+	reasoningEffort := service.ExtractOpenAIReasoningEffortForRouting(body, reqModel)
 
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
@@ -392,6 +393,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// Get subscription info (may be nil)
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
+	if requestPlatform != service.PlatformOpenAI {
+		reasoningEffort = ""
+	}
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
@@ -448,7 +452,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		// Select account supporting the requested model
 		reqLog.Debug("openai.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
+		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapabilityAndReasoningEffort(
 			c.Request.Context(),
 			apiKey.GroupID,
 			previousResponseID,
@@ -460,6 +464,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			requireCompact,
 			false,
 			!imageIntent,
+			reasoningEffort,
 			requestPlatform,
 		)
 		if err != nil {
@@ -1716,13 +1721,23 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage) && requestPlatform == service.PlatformOpenAI {
 		requiredCapability = service.OpenAIEndpointCapabilityResponses
 	}
+	routingMessage := firstMessage
+	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
+		if policyBody, changed := service.ApplyOpenAIReasoningEffortPolicy(routingMessage, apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings); changed {
+			routingMessage = policyBody
+		}
+	}
+	reasoningEffort := ""
+	if requestPlatform == service.PlatformOpenAI {
+		reasoningEffort = service.ExtractOpenAIReasoningEffortForRouting(routingMessage, reqModel)
+	}
 
 	for {
 		if ctx.Err() != nil {
 			return
 		}
 		reqLog.Debug("openai.websocket_account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
+		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapabilityAndReasoningEffort(
 			ctx,
 			apiKey.GroupID,
 			previousResponseID,
@@ -1734,6 +1749,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			false,
 			previousResponseCanMove,
 			!imageIntent,
+			reasoningEffort,
 			requestPlatform,
 		)
 		if err != nil {

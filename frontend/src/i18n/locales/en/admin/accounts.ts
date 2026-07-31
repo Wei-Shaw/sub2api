@@ -489,6 +489,17 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        reasoningEffortPreferences: 'Reasoning effort preferences',
+        reasoningEffortPreferencesDesc:
+          'Select the reasoning efforts this account should serve first. Matching accounts still use the existing priority, load, and sticky routing rules.',
+        reasoningEffortPreferencesHint:
+          'No selection means a regular account. If no matching account is available, routing automatically falls back to the existing account pool.',
+        reasoningEffortMinimal: 'Minimal',
+        reasoningEffortLow: 'Low',
+        reasoningEffortMedium: 'Medium',
+        reasoningEffortHigh: 'High',
+        reasoningEffortXhigh: 'XHigh',
+        reasoningEffortMax: 'Max',
         longContextBilling: 'API long-context pricing',
         longContextBillingDesc:
           'Disabled by default. Enable only when this account\'s upstream charges OpenAI API long-context rates above the model threshold.',
