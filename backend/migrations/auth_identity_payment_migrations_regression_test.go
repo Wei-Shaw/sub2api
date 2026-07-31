@@ -240,3 +240,15 @@ func TestMigration173AllowsCyberBlockedUsageRequestType(t *testing.T) {
 	require.Contains(t, sql, "ADD CONSTRAINT usage_logs_request_type_check")
 	require.Contains(t, sql, "CHECK (request_type IN (0, 1, 2, 3, 4)) NOT VALID")
 }
+
+func TestMigration200KeepsChannelServiceTierExpansionRollbackCompatible(t *testing.T) {
+	content, err := FS.ReadFile("200_add_channel_service_tier_config.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS service_tier_config JSONB;")
+	require.NotContains(t, sql, "service_tier_config JSONB NOT NULL")
+	require.NotContains(t, sql, "service_tier_config JSONB DEFAULT")
+	require.Contains(t, sql, "service_tier_config IS NULL OR jsonb_typeof(service_tier_config) = 'object'")
+	require.Contains(t, sql, "NOT VALID")
+}
