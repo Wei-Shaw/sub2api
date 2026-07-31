@@ -16,6 +16,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func filterGrokPingTestInput(t *testing.T, input string) string {
+REDACTED
+	body := newGrokResponsesBillingPingFilterBody(
+		io.NopCloser(strings.NewReader(input)),
+		&Account{Platform: PlatformGrokREDACTED,
+		defaultMaxLineSize,
+	)
+	output, err := io.ReadAll(body)
+REDACTED
+	require.NoError(t, body.Close())
+	return string(output)
+REDACTED
+
 func TestGrokResponsesBillingPingFilter(t *testing.T) {
 	input := strings.Join([]string{
 		": upstream keepalive",
@@ -37,18 +50,11 @@ func TestGrokResponsesBillingPingFilter(t *testing.T) {
 		"",
 REDACTED, "\n")
 
-	body := newGrokResponsesBillingPingFilterBody(
-		io.NopCloser(strings.NewReader(input)),
-		&Account{Platform: PlatformGrokREDACTED,
-		defaultMaxLineSize,
-	)
-	output, err := io.ReadAll(body)
-REDACTED
-	require.NoError(t, body.Close())
-
-	result := string(output)
+	result := filterGrokPingTestInput(t, input)
+	require.NotContains(t, result, "event: ping")
 	require.NotContains(t, result, `"x-opencode-type":"inference-cost"`)
 	require.NotContains(t, result, `{"type":"ping","cost":"0"REDACTED`)
+	require.Equal(t, 2, strings.Count(result, ": ping\n\n"))
 	require.Contains(t, result, ": upstream keepalive\n\n")
 	require.Contains(t, result, "event: response.output_text.delta")
 	require.Contains(t, result, `{"type":"response.output_text.delta","delta":"hello"REDACTED`)
@@ -58,79 +64,94 @@ REDACTED
 	require.Contains(t, result, `"usage":{"input_tokens":3,"output_tokens":5REDACTED`)
 REDACTED
 
-func TestGrokResponsesBillingPingFilterPreservesUnrelatedPingFrames(t *testing.T) {
+// Every `event: ping` frame is outside the Responses closed event enum and
+// breaks strict clients regardless of its payload shape, so all variants are
+// rewritten into an SSE comment (issue #5105).
+func TestGrokResponsesBillingPingFilterConvertsPingVariants(t *testing.T) {
+	frames := []string{
+		"event: ping\ndata: {\"type\":\"ping\",\"x-opencode-type\":\"inference-cost\",\"cost\":\"0.06029240\"REDACTED\n\n",
+		"event: ping\ndata: {\"type\":\"ping\",\"cost\":\"0\"REDACTED\n\n",
+		"event: ping\ndata: {\"type\":\"ping\",\"cost\":\"0.06029240\"REDACTED\n\n",
+		"event: ping\ndata: {\"type\":\"ping\",\"kind\":\"keepalive\"REDACTED\n\n",
+		"event: ping\ndata: {\"type\":\"ping\"REDACTED\n\n",
+		"event: ping\ndata: {\"type\":\"ping\",\"cost\":2REDACTED\n\n",
+		"event: ping\ndata: {\"type\":\"ping\",\"cost\":0.0001REDACTED\n\n",
+		"event: ping\ndata: {\"type\":\"ping\",\"cost\":\" 0 \"REDACTED\n\n",
+		"event: ping\ndata: {\"type\":\"ping\",\"x-opencode-type\":\"keepalive\",\"cost\":0REDACTED\n\n",
+		"event: ping\ndata: {\"type\":\"ping\",\"x-opencode-type\":null,\"cost\":0REDACTED\n\n",
+		"event: ping\ndata: {\"cost\":\"0\"REDACTED\n\n",
+		"event: ping\ndata: {not-jsonREDACTED\n\n",
+		"event: ping\n\n",
+		"event: ping\n: vendor note\ndata: {\"type\":\"ping\"REDACTED\n\n",
+REDACTED
+	result := filterGrokPingTestInput(t, strings.Join(frames, ""))
+	require.Equal(t, strings.Repeat(": ping\n\n", len(frames)), result)
+REDACTED
+
+func TestGrokResponsesBillingPingFilterPreservesNonPingFrames(t *testing.T) {
 	input := strings.Join([]string{
-		"event: ping",
-		`data: {"type":"ping","kind":"keepalive"REDACTED`,
-		"",
-		"event: ping",
-		`data: {"type":"ping","cost":2REDACTED`,
-		"",
-		"event: ping",
-		`data: {"type":"ping"REDACTED`,
-		"",
-		"event: ping",
-		`data: {"type":"ping","cost":0.0001REDACTED`,
-		"",
-		"event: ping",
-		`data: {"type":"ping","cost":0REDACTED`,
-		"",
-		"event: ping",
-		`data: {"type":"ping","cost":" 0 "REDACTED`,
-		"",
-		"event: ping",
-		`data: {"type":"ping","x-opencode-type":"keepalive","cost":0REDACTED`,
-		"",
 		"event: ping",
 		`data: {"type":" ping ","cost":0REDACTED`,
 		"",
 		"event: ping",
-		`data: {"type":"ping","x-opencode-type":null,"cost":0REDACTED`,
+		`data: {"type":"response.completed"REDACTED`,
 		"",
 		"event: custom",
 		`data: {"type":"ping","x-opencode-type":"inference-cost"REDACTED`,
 		"",
+		`data: {"type":"ping","cost":"0"REDACTED`,
+		"",
+		": keepalive comment",
+		"",
+		"retry: 1000",
+		"",
 REDACTED, "\n")
 
-	body := newGrokResponsesBillingPingFilterBody(
-		io.NopCloser(strings.NewReader(input)),
-		&Account{Platform: PlatformGrokREDACTED,
-		defaultMaxLineSize,
-	)
-	output, err := io.ReadAll(body)
-REDACTED
-	require.NoError(t, body.Close())
-	require.Equal(t, input, string(output))
+	require.Equal(t, input, filterGrokPingTestInput(t, input))
 REDACTED
 
-func TestGrokResponsesBillingPingFilterPreservesFramingAndMalformedInput(t *testing.T) {
+// A ping candidate that turns out to carry an unexpected SSE field is not a
+// vendor billing/keepalive frame; it must be replayed byte for byte.
+func TestGrokResponsesBillingPingFilterPassesThroughPingFrameWithUnknownField(t *testing.T) {
+	input := "event: ping\nid: 7\ndata: {\"type\":\"ping\",\"cost\":\"0\"REDACTED\n\n"
+	require.Equal(t, input, filterGrokPingTestInput(t, input))
+REDACTED
+
+// Buffering caps: a ping candidate that grows past the line or byte limit is
+// streamed through unchanged instead of accumulating unbounded memory.
+func TestGrokResponsesBillingPingFilterPassesThroughOversizedPingFrame(t *testing.T) {
+	lines := []string{"event: ping"REDACTED
+	for i := 0; i < grokResponsesPingFrameMaxLines; i++ {
+		lines = append(lines, ": filler comment")
+REDACTED
+	lines = append(lines, `data: {"type":"ping","cost":"0"REDACTED`, "")
+	byLines := strings.Join(lines, "\n")
+	require.Equal(t, byLines, filterGrokPingTestInput(t, byLines))
+
+	byBytes := "event: ping\ndata: {\"type\":\"ping\",\"pad\":\"" +
+		strings.Repeat("x", grokResponsesPingFrameMaxBytes) + "\"REDACTED\n\n"
+	require.Equal(t, byBytes, filterGrokPingTestInput(t, byBytes))
+REDACTED
+
+func TestGrokResponsesBillingPingFilterConvertsMalformedPingFrames(t *testing.T) {
 	input := "event: ping\r\ndata: {not-jsonREDACTED\r\n\r\n" +
 		"event: ping\r\ndata: {\"type\":\"ping\",\"cost\":\"0\"REDACTED trailing\r\n\r\n" +
 		"event: future.response.event\r\ndata: {\"type\":\"future.response.event\"REDACTED"
-	body := newGrokResponsesBillingPingFilterBody(
-		io.NopCloser(strings.NewReader(input)),
-		&Account{Platform: PlatformGrokREDACTED,
-		defaultMaxLineSize,
-	)
-	output, err := io.ReadAll(body)
-REDACTED
-	require.NoError(t, body.Close())
-	require.Equal(t, input, string(output))
+	want := ": ping\n\n" + ": ping\n\n" +
+		"event: future.response.event\r\ndata: {\"type\":\"future.response.event\"REDACTED"
+	require.Equal(t, want, filterGrokPingTestInput(t, input))
 REDACTED
 
 func TestGrokResponsesBillingPingFilterHandlesBareCRFrames(t *testing.T) {
 	input := "event: ping\rdata: {\"type\":\"ping\",\"cost\":\"0\"REDACTED\r\r" +
 		"event: future.event\rdata: {\"type\":\"future.event\"REDACTED\r\r"
-	want := "event: future.event\rdata: {\"type\":\"future.event\"REDACTED\r\r"
-	body := newGrokResponsesBillingPingFilterBody(
-		io.NopCloser(strings.NewReader(input)),
-		&Account{Platform: PlatformGrokREDACTED,
-		defaultMaxLineSize,
-	)
-	output, err := io.ReadAll(body)
+	want := ": ping\n\n" + "event: future.event\rdata: {\"type\":\"future.event\"REDACTED\r\r"
+	require.Equal(t, want, filterGrokPingTestInput(t, input))
 REDACTED
-	require.NoError(t, body.Close())
-	require.Equal(t, want, string(output))
+
+func TestGrokResponsesBillingPingFilterConvertsPartialPingFrameAtEOF(t *testing.T) {
+	input := "event: ping\ndata: {\"type\":\"ping\",\"cost\":\"0\"REDACTED"
+	require.Equal(t, ": ping\n\n", filterGrokPingTestInput(t, input))
 REDACTED
 
 func TestGrokResponsesBillingPingFilterDoesNotFilterNonGrokAccounts(t *testing.T) {
@@ -177,6 +198,7 @@ REDACTED
 	require.Equal(t, "resp_1", result.responseID)
 	require.Contains(t, recorder.Body.String(), "response.completed")
 	require.NotContains(t, recorder.Body.String(), "inference-cost")
+	require.NotContains(t, recorder.Body.String(), "event: ping")
 REDACTED
 
 type grokPingFilterTestReadCloser struct {
