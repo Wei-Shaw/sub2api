@@ -994,6 +994,10 @@ func init() {
 	errorpassthroughruleDescSkipMonitoring := errorpassthroughruleFields[11].Descriptor()
 	// errorpassthroughrule.DefaultSkipMonitoring holds the default value on creation for the skip_monitoring field.
 	errorpassthroughrule.DefaultSkipMonitoring = errorpassthroughruleDescSkipMonitoring.Default.(bool)
+	// errorpassthroughruleDescSkipFailover is the schema descriptor for skip_failover field.
+	errorpassthroughruleDescSkipFailover := errorpassthroughruleFields[12].Descriptor()
+	// errorpassthroughrule.DefaultSkipFailover holds the default value on creation for the skip_failover field.
+	errorpassthroughrule.DefaultSkipFailover = errorpassthroughruleDescSkipFailover.Default.(bool)
 	groupMixin := schema.Group{}.Mixin()
 	groupMixinHooks1 := groupMixin[1].Hooks()
 	group.Hooks[0] = groupMixinHooks1[0]

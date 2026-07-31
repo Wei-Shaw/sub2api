@@ -20546,6 +20546,7 @@ type ErrorPassthroughRuleMutation struct {
 	passthrough_body  *bool
 	custom_message    *string
 	skip_monitoring   *bool
+	skip_failover     *bool
 	description       *string
 	clearedFields     map[string]struct{}
 	done              bool
@@ -21309,6 +21310,42 @@ func (m *ErrorPassthroughRuleMutation) ResetSkipMonitoring() {
 	m.skip_monitoring = nil
 }
 
+// SetSkipFailover sets the "skip_failover" field.
+func (m *ErrorPassthroughRuleMutation) SetSkipFailover(b bool) {
+	m.skip_failover = &b
+}
+
+// SkipFailover returns the value of the "skip_failover" field in the mutation.
+func (m *ErrorPassthroughRuleMutation) SkipFailover() (r bool, exists bool) {
+	v := m.skip_failover
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSkipFailover returns the old "skip_failover" field's value of the ErrorPassthroughRule entity.
+// If the ErrorPassthroughRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ErrorPassthroughRuleMutation) OldSkipFailover(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSkipFailover is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSkipFailover requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSkipFailover: %w", err)
+	}
+	return oldValue.SkipFailover, nil
+}
+
+// ResetSkipFailover resets all changes to the "skip_failover" field.
+func (m *ErrorPassthroughRuleMutation) ResetSkipFailover() {
+	m.skip_failover = nil
+}
+
 // SetDescription sets the "description" field.
 func (m *ErrorPassthroughRuleMutation) SetDescription(s string) {
 	m.description = &s
@@ -21392,7 +21429,7 @@ func (m *ErrorPassthroughRuleMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ErrorPassthroughRuleMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.created_at != nil {
 		fields = append(fields, errorpassthroughrule.FieldCreatedAt)
 	}
@@ -21435,6 +21472,9 @@ func (m *ErrorPassthroughRuleMutation) Fields() []string {
 	if m.skip_monitoring != nil {
 		fields = append(fields, errorpassthroughrule.FieldSkipMonitoring)
 	}
+	if m.skip_failover != nil {
+		fields = append(fields, errorpassthroughrule.FieldSkipFailover)
+	}
 	if m.description != nil {
 		fields = append(fields, errorpassthroughrule.FieldDescription)
 	}
@@ -21474,6 +21514,8 @@ func (m *ErrorPassthroughRuleMutation) Field(name string) (ent.Value, bool) {
 		return m.CustomMessage()
 	case errorpassthroughrule.FieldSkipMonitoring:
 		return m.SkipMonitoring()
+	case errorpassthroughrule.FieldSkipFailover:
+		return m.SkipFailover()
 	case errorpassthroughrule.FieldDescription:
 		return m.Description()
 	}
@@ -21513,6 +21555,8 @@ func (m *ErrorPassthroughRuleMutation) OldField(ctx context.Context, name string
 		return m.OldCustomMessage(ctx)
 	case errorpassthroughrule.FieldSkipMonitoring:
 		return m.OldSkipMonitoring(ctx)
+	case errorpassthroughrule.FieldSkipFailover:
+		return m.OldSkipFailover(ctx)
 	case errorpassthroughrule.FieldDescription:
 		return m.OldDescription(ctx)
 	}
@@ -21621,6 +21665,13 @@ func (m *ErrorPassthroughRuleMutation) SetField(name string, value ent.Value) er
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSkipMonitoring(v)
+		return nil
+	case errorpassthroughrule.FieldSkipFailover:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSkipFailover(v)
 		return nil
 	case errorpassthroughrule.FieldDescription:
 		v, ok := value.(string)
@@ -21785,6 +21836,9 @@ func (m *ErrorPassthroughRuleMutation) ResetField(name string) error {
 		return nil
 	case errorpassthroughrule.FieldSkipMonitoring:
 		m.ResetSkipMonitoring()
+		return nil
+	case errorpassthroughrule.FieldSkipFailover:
+		m.ResetSkipFailover()
 		return nil
 	case errorpassthroughrule.FieldDescription:
 		m.ResetDescription()

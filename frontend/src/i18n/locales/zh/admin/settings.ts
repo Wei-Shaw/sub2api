@@ -1283,6 +1283,8 @@ export default {
         customMessagePlaceholder: '返回给客户端的错误信息...',
         skipMonitoring: '跳过运维监控记录',
         skipMonitoringHint: '开启后，匹配此规则的错误不会被记录到运维监控中',
+        skipFailover: '命中后跳过重试',
+        skipFailoverHint: '开启后，匹配此规则的错误直接返回给客户端，不再尝试其它账号；关闭时先换号重试，全部失败后再按此规则返回',
         enabled: '启用此规则'
       },
 

@@ -111,6 +111,10 @@ func (ErrorPassthroughRule) Fields() []ent.Field {
 		field.Bool("skip_monitoring").
 			Default(false),
 
+		// skip_failover: 命中时直接返回错误，不再尝试其它账号
+		field.Bool("skip_failover").
+			Default(false),
+
 		// description: 规则描述，用于说明规则的用途
 		field.Text("description").
 			Optional().

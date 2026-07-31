@@ -109,6 +109,11 @@ func SkipMonitoring(v bool) predicate.ErrorPassthroughRule {
 	return predicate.ErrorPassthroughRule(sql.FieldEQ(FieldSkipMonitoring, v))
 }
 
+// SkipFailover applies equality check predicate on the "skip_failover" field. It's identical to SkipFailoverEQ.
+func SkipFailover(v bool) predicate.ErrorPassthroughRule {
+	return predicate.ErrorPassthroughRule(sql.FieldEQ(FieldSkipFailover, v))
+}
+
 // Description applies equality check predicate on the "description" field. It's identical to DescriptionEQ.
 func Description(v string) predicate.ErrorPassthroughRule {
 	return predicate.ErrorPassthroughRule(sql.FieldEQ(FieldDescription, v))
@@ -557,6 +562,16 @@ func SkipMonitoringEQ(v bool) predicate.ErrorPassthroughRule {
 // SkipMonitoringNEQ applies the NEQ predicate on the "skip_monitoring" field.
 func SkipMonitoringNEQ(v bool) predicate.ErrorPassthroughRule {
 	return predicate.ErrorPassthroughRule(sql.FieldNEQ(FieldSkipMonitoring, v))
+}
+
+// SkipFailoverEQ applies the EQ predicate on the "skip_failover" field.
+func SkipFailoverEQ(v bool) predicate.ErrorPassthroughRule {
+	return predicate.ErrorPassthroughRule(sql.FieldEQ(FieldSkipFailover, v))
+}
+
+// SkipFailoverNEQ applies the NEQ predicate on the "skip_failover" field.
+func SkipFailoverNEQ(v bool) predicate.ErrorPassthroughRule {
+	return predicate.ErrorPassthroughRule(sql.FieldNEQ(FieldSkipFailover, v))
 }
 
 // DescriptionEQ applies the EQ predicate on the "description" field.

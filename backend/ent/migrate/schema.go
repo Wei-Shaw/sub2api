@@ -872,6 +872,7 @@ var (
 		{Name: "passthrough_body", Type: field.TypeBool, Default: true},
 		{Name: "custom_message", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "skip_monitoring", Type: field.TypeBool, Default: false},
+		{Name: "skip_failover", Type: field.TypeBool, Default: false},
 		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
 	}
 	// ErrorPassthroughRulesTable holds the schema information for the "error_passthrough_rules" table.

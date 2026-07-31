@@ -241,6 +241,20 @@ func (_u *ErrorPassthroughRuleUpdate) SetNillableSkipMonitoring(v *bool) *ErrorP
 	return _u
 }
 
+// SetSkipFailover sets the "skip_failover" field.
+func (_u *ErrorPassthroughRuleUpdate) SetSkipFailover(v bool) *ErrorPassthroughRuleUpdate {
+	_u.mutation.SetSkipFailover(v)
+	return _u
+}
+
+// SetNillableSkipFailover sets the "skip_failover" field if the given value is not nil.
+func (_u *ErrorPassthroughRuleUpdate) SetNillableSkipFailover(v *bool) *ErrorPassthroughRuleUpdate {
+	if v != nil {
+		_u.SetSkipFailover(*v)
+	}
+	return _u
+}
+
 // SetDescription sets the "description" field.
 func (_u *ErrorPassthroughRuleUpdate) SetDescription(v string) *ErrorPassthroughRuleUpdate {
 	_u.mutation.SetDescription(v)
@@ -403,6 +417,9 @@ func (_u *ErrorPassthroughRuleUpdate) sqlSave(ctx context.Context) (_node int, e
 	}
 	if value, ok := _u.mutation.SkipMonitoring(); ok {
 		_spec.SetField(errorpassthroughrule.FieldSkipMonitoring, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SkipFailover(); ok {
+		_spec.SetField(errorpassthroughrule.FieldSkipFailover, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Description(); ok {
 		_spec.SetField(errorpassthroughrule.FieldDescription, field.TypeString, value)
@@ -642,6 +659,20 @@ func (_u *ErrorPassthroughRuleUpdateOne) SetNillableSkipMonitoring(v *bool) *Err
 	return _u
 }
 
+// SetSkipFailover sets the "skip_failover" field.
+func (_u *ErrorPassthroughRuleUpdateOne) SetSkipFailover(v bool) *ErrorPassthroughRuleUpdateOne {
+	_u.mutation.SetSkipFailover(v)
+	return _u
+}
+
+// SetNillableSkipFailover sets the "skip_failover" field if the given value is not nil.
+func (_u *ErrorPassthroughRuleUpdateOne) SetNillableSkipFailover(v *bool) *ErrorPassthroughRuleUpdateOne {
+	if v != nil {
+		_u.SetSkipFailover(*v)
+	}
+	return _u
+}
+
 // SetDescription sets the "description" field.
 func (_u *ErrorPassthroughRuleUpdateOne) SetDescription(v string) *ErrorPassthroughRuleUpdateOne {
 	_u.mutation.SetDescription(v)
@@ -834,6 +865,9 @@ func (_u *ErrorPassthroughRuleUpdateOne) sqlSave(ctx context.Context) (_node *Er
 	}
 	if value, ok := _u.mutation.SkipMonitoring(); ok {
 		_spec.SetField(errorpassthroughrule.FieldSkipMonitoring, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SkipFailover(); ok {
+		_spec.SetField(errorpassthroughrule.FieldSkipFailover, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Description(); ok {
 		_spec.SetField(errorpassthroughrule.FieldDescription, field.TypeString, value)

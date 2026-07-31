@@ -46,6 +46,8 @@ type ErrorPassthroughRule struct {
 	CustomMessage *string `json:"custom_message,omitempty"`
 	// SkipMonitoring holds the value of the "skip_monitoring" field.
 	SkipMonitoring bool `json:"skip_monitoring,omitempty"`
+	// SkipFailover holds the value of the "skip_failover" field.
+	SkipFailover bool `json:"skip_failover,omitempty"`
 	// Description holds the value of the "description" field.
 	Description  *string `json:"description,omitempty"`
 	selectValues sql.SelectValues
@@ -58,7 +60,7 @@ func (*ErrorPassthroughRule) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case errorpassthroughrule.FieldErrorCodes, errorpassthroughrule.FieldKeywords, errorpassthroughrule.FieldPlatforms:
 			values[i] = new([]byte)
-		case errorpassthroughrule.FieldEnabled, errorpassthroughrule.FieldPassthroughCode, errorpassthroughrule.FieldPassthroughBody, errorpassthroughrule.FieldSkipMonitoring:
+		case errorpassthroughrule.FieldEnabled, errorpassthroughrule.FieldPassthroughCode, errorpassthroughrule.FieldPassthroughBody, errorpassthroughrule.FieldSkipMonitoring, errorpassthroughrule.FieldSkipFailover:
 			values[i] = new(sql.NullBool)
 		case errorpassthroughrule.FieldID, errorpassthroughrule.FieldPriority, errorpassthroughrule.FieldResponseCode:
 			values[i] = new(sql.NullInt64)
@@ -179,6 +181,12 @@ func (_m *ErrorPassthroughRule) assignValues(columns []string, values []any) err
 			} else if value.Valid {
 				_m.SkipMonitoring = value.Bool
 			}
+		case errorpassthroughrule.FieldSkipFailover:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field skip_failover", values[i])
+			} else if value.Valid {
+				_m.SkipFailover = value.Bool
+			}
 		case errorpassthroughrule.FieldDescription:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field description", values[i])
@@ -267,6 +275,9 @@ func (_m *ErrorPassthroughRule) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("skip_monitoring=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SkipMonitoring))
+	builder.WriteString(", ")
+	builder.WriteString("skip_failover=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SkipFailover))
 	builder.WriteString(", ")
 	if v := _m.Description; v != nil {
 		builder.WriteString("description=")

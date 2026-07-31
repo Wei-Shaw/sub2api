@@ -707,6 +707,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
+		// 命中要求跳过重试的透传规则时不换号，落到下方 handleErrorResponse 按规则改写。
+		if ruleSkipsFailover(c, account.Platform, resp.StatusCode, respBody) {
+			return s.handleErrorResponse(ctx, resp, c, account, reqModel)
+		}
+
 		// 调试日志：打印上游错误响应
 		logger.LegacyPrintf("service.gateway", "[Forward] Upstream error (failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
 			account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(respBody), 1000))

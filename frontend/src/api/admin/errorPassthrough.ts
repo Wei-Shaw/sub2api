@@ -22,6 +22,7 @@ export interface ErrorPassthroughRule {
   passthrough_body: boolean
   custom_message: string | null
   skip_monitoring: boolean
+  skip_failover: boolean
   description: string | null
   created_at: string
   updated_at: string
@@ -43,6 +44,7 @@ export interface CreateRuleRequest {
   passthrough_body?: boolean
   custom_message?: string | null
   skip_monitoring?: boolean
+  skip_failover?: boolean
   description?: string | null
 }
 
@@ -62,6 +64,7 @@ export interface UpdateRuleRequest {
   passthrough_body?: boolean
   custom_message?: string | null
   skip_monitoring?: boolean
+  skip_failover?: boolean
   description?: string | null
 }
 

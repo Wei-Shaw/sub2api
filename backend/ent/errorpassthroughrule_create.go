@@ -186,6 +186,20 @@ func (_c *ErrorPassthroughRuleCreate) SetNillableSkipMonitoring(v *bool) *ErrorP
 	return _c
 }
 
+// SetSkipFailover sets the "skip_failover" field.
+func (_c *ErrorPassthroughRuleCreate) SetSkipFailover(v bool) *ErrorPassthroughRuleCreate {
+	_c.mutation.SetSkipFailover(v)
+	return _c
+}
+
+// SetNillableSkipFailover sets the "skip_failover" field if the given value is not nil.
+func (_c *ErrorPassthroughRuleCreate) SetNillableSkipFailover(v *bool) *ErrorPassthroughRuleCreate {
+	if v != nil {
+		_c.SetSkipFailover(*v)
+	}
+	return _c
+}
+
 // SetDescription sets the "description" field.
 func (_c *ErrorPassthroughRuleCreate) SetDescription(v string) *ErrorPassthroughRuleCreate {
 	_c.mutation.SetDescription(v)
@@ -267,6 +281,10 @@ func (_c *ErrorPassthroughRuleCreate) defaults() {
 		v := errorpassthroughrule.DefaultSkipMonitoring
 		_c.mutation.SetSkipMonitoring(v)
 	}
+	if _, ok := _c.mutation.SkipFailover(); !ok {
+		v := errorpassthroughrule.DefaultSkipFailover
+		_c.mutation.SetSkipFailover(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -307,6 +325,9 @@ func (_c *ErrorPassthroughRuleCreate) check() error {
 	}
 	if _, ok := _c.mutation.SkipMonitoring(); !ok {
 		return &ValidationError{Name: "skip_monitoring", err: errors.New(`ent: missing required field "ErrorPassthroughRule.skip_monitoring"`)}
+	}
+	if _, ok := _c.mutation.SkipFailover(); !ok {
+		return &ValidationError{Name: "skip_failover", err: errors.New(`ent: missing required field "ErrorPassthroughRule.skip_failover"`)}
 	}
 	return nil
 }
@@ -390,6 +411,10 @@ func (_c *ErrorPassthroughRuleCreate) createSpec() (*ErrorPassthroughRule, *sqlg
 	if value, ok := _c.mutation.SkipMonitoring(); ok {
 		_spec.SetField(errorpassthroughrule.FieldSkipMonitoring, field.TypeBool, value)
 		_node.SkipMonitoring = value
+	}
+	if value, ok := _c.mutation.SkipFailover(); ok {
+		_spec.SetField(errorpassthroughrule.FieldSkipFailover, field.TypeBool, value)
+		_node.SkipFailover = value
 	}
 	if value, ok := _c.mutation.Description(); ok {
 		_spec.SetField(errorpassthroughrule.FieldDescription, field.TypeString, value)
@@ -642,6 +667,18 @@ func (u *ErrorPassthroughRuleUpsert) SetSkipMonitoring(v bool) *ErrorPassthrough
 // UpdateSkipMonitoring sets the "skip_monitoring" field to the value that was provided on create.
 func (u *ErrorPassthroughRuleUpsert) UpdateSkipMonitoring() *ErrorPassthroughRuleUpsert {
 	u.SetExcluded(errorpassthroughrule.FieldSkipMonitoring)
+	return u
+}
+
+// SetSkipFailover sets the "skip_failover" field.
+func (u *ErrorPassthroughRuleUpsert) SetSkipFailover(v bool) *ErrorPassthroughRuleUpsert {
+	u.Set(errorpassthroughrule.FieldSkipFailover, v)
+	return u
+}
+
+// UpdateSkipFailover sets the "skip_failover" field to the value that was provided on create.
+func (u *ErrorPassthroughRuleUpsert) UpdateSkipFailover() *ErrorPassthroughRuleUpsert {
+	u.SetExcluded(errorpassthroughrule.FieldSkipFailover)
 	return u
 }
 
@@ -936,6 +973,20 @@ func (u *ErrorPassthroughRuleUpsertOne) SetSkipMonitoring(v bool) *ErrorPassthro
 func (u *ErrorPassthroughRuleUpsertOne) UpdateSkipMonitoring() *ErrorPassthroughRuleUpsertOne {
 	return u.Update(func(s *ErrorPassthroughRuleUpsert) {
 		s.UpdateSkipMonitoring()
+	})
+}
+
+// SetSkipFailover sets the "skip_failover" field.
+func (u *ErrorPassthroughRuleUpsertOne) SetSkipFailover(v bool) *ErrorPassthroughRuleUpsertOne {
+	return u.Update(func(s *ErrorPassthroughRuleUpsert) {
+		s.SetSkipFailover(v)
+	})
+}
+
+// UpdateSkipFailover sets the "skip_failover" field to the value that was provided on create.
+func (u *ErrorPassthroughRuleUpsertOne) UpdateSkipFailover() *ErrorPassthroughRuleUpsertOne {
+	return u.Update(func(s *ErrorPassthroughRuleUpsert) {
+		s.UpdateSkipFailover()
 	})
 }
 
@@ -1399,6 +1450,20 @@ func (u *ErrorPassthroughRuleUpsertBulk) SetSkipMonitoring(v bool) *ErrorPassthr
 func (u *ErrorPassthroughRuleUpsertBulk) UpdateSkipMonitoring() *ErrorPassthroughRuleUpsertBulk {
 	return u.Update(func(s *ErrorPassthroughRuleUpsert) {
 		s.UpdateSkipMonitoring()
+	})
+}
+
+// SetSkipFailover sets the "skip_failover" field.
+func (u *ErrorPassthroughRuleUpsertBulk) SetSkipFailover(v bool) *ErrorPassthroughRuleUpsertBulk {
+	return u.Update(func(s *ErrorPassthroughRuleUpsert) {
+		s.SetSkipFailover(v)
+	})
+}
+
+// UpdateSkipFailover sets the "skip_failover" field to the value that was provided on create.
+func (u *ErrorPassthroughRuleUpsertBulk) UpdateSkipFailover() *ErrorPassthroughRuleUpsertBulk {
+	return u.Update(func(s *ErrorPassthroughRuleUpsert) {
+		s.UpdateSkipFailover()
 	})
 }
 

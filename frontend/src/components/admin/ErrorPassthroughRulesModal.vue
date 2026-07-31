@@ -389,6 +389,19 @@
         </div>
         <p class="input-hint text-xs -mt-3">{{ t('admin.errorPassthrough.form.skipMonitoringHint') }}</p>
 
+        <!-- Skip Failover -->
+        <div class="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            v-model="form.skip_failover"
+            class="h-3.5 w-3.5 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+          />
+          <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.errorPassthrough.form.skipFailover') }}
+          </span>
+        </div>
+        <p class="input-hint text-xs -mt-3">{{ t('admin.errorPassthrough.form.skipFailoverHint') }}</p>
+
         <!-- Enabled -->
         <div class="flex items-center gap-1.5">
           <input
@@ -477,6 +490,7 @@ const form = reactive({
   passthrough_body: true,
   custom_message: null as string | null,
   skip_monitoring: false,
+  skip_failover: false,
   description: null as string | null
 })
 
@@ -523,6 +537,7 @@ const resetForm = () => {
   form.passthrough_body = true
   form.custom_message = null
   form.skip_monitoring = false
+  form.skip_failover = false
   form.description = null
   errorCodesInput.value = ''
   keywordsInput.value = ''
@@ -547,6 +562,7 @@ const handleEdit = (rule: ErrorPassthroughRule) => {
   form.passthrough_body = rule.passthrough_body
   form.custom_message = rule.custom_message
   form.skip_monitoring = rule.skip_monitoring
+  form.skip_failover = rule.skip_failover ?? false
   form.description = rule.description
   errorCodesInput.value = rule.error_codes.join(', ')
   keywordsInput.value = rule.keywords.join('\n')
@@ -603,6 +619,7 @@ const handleSubmit = async () => {
       passthrough_body: form.passthrough_body,
       custom_message: form.passthrough_body ? null : form.custom_message,
       skip_monitoring: form.skip_monitoring,
+      skip_failover: form.skip_failover,
       description: form.description?.trim() || null
     }
 

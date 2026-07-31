@@ -41,6 +41,8 @@ const (
 	FieldCustomMessage = "custom_message"
 	// FieldSkipMonitoring holds the string denoting the skip_monitoring field in the database.
 	FieldSkipMonitoring = "skip_monitoring"
+	// FieldSkipFailover holds the string denoting the skip_failover field in the database.
+	FieldSkipFailover = "skip_failover"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
 	// Table holds the table name of the errorpassthroughrule in the database.
@@ -64,6 +66,7 @@ var Columns = []string{
 	FieldPassthroughBody,
 	FieldCustomMessage,
 	FieldSkipMonitoring,
+	FieldSkipFailover,
 	FieldDescription,
 }
 
@@ -100,6 +103,8 @@ var (
 	DefaultPassthroughBody bool
 	// DefaultSkipMonitoring holds the default value on creation for the "skip_monitoring" field.
 	DefaultSkipMonitoring bool
+	// DefaultSkipFailover holds the default value on creation for the "skip_failover" field.
+	DefaultSkipFailover bool
 )
 
 // OrderOption defines the ordering options for the ErrorPassthroughRule queries.
@@ -163,6 +168,11 @@ func ByCustomMessage(opts ...sql.OrderTermOption) OrderOption {
 // BySkipMonitoring orders the results by the skip_monitoring field.
 func BySkipMonitoring(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSkipMonitoring, opts...).ToFunc()
+}
+
+// BySkipFailover orders the results by the skip_failover field.
+func BySkipFailover(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSkipFailover, opts...).ToFunc()
 }
 
 // ByDescription orders the results by the description field.

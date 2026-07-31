@@ -1289,6 +1289,8 @@ export default {
         customMessagePlaceholder: 'Error message to return to client...',
         skipMonitoring: 'Skip monitoring',
         skipMonitoringHint: 'When enabled, errors matching this rule will not be recorded in ops monitoring',
+        skipFailover: 'Skip retry on match',
+        skipFailoverHint: 'When enabled, errors matching this rule return to the client immediately without trying other accounts. When disabled, failover runs first and this rule applies only after all accounts fail',
         enabled: 'Enable this rule'
       },
 

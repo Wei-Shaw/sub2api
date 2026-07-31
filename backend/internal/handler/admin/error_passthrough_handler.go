@@ -33,6 +33,7 @@ type CreateErrorPassthroughRuleRequest struct {
 	PassthroughBody *bool    `json:"passthrough_body"`
 	CustomMessage   *string  `json:"custom_message"`
 	SkipMonitoring  *bool    `json:"skip_monitoring"`
+	SkipFailover    *bool    `json:"skip_failover"`
 	Description     *string  `json:"description"`
 }
 
@@ -50,6 +51,7 @@ type UpdateErrorPassthroughRuleRequest struct {
 	PassthroughBody *bool    `json:"passthrough_body"`
 	CustomMessage   *string  `json:"custom_message"`
 	SkipMonitoring  *bool    `json:"skip_monitoring"`
+	SkipFailover    *bool    `json:"skip_failover"`
 	Description     *string  `json:"description"`
 }
 
@@ -127,6 +129,9 @@ func (h *ErrorPassthroughHandler) Create(c *gin.Context) {
 	if req.SkipMonitoring != nil {
 		rule.SkipMonitoring = *req.SkipMonitoring
 	}
+	if req.SkipFailover != nil {
+		rule.SkipFailover = *req.SkipFailover
+	}
 	rule.ResponseCode = req.ResponseCode
 	rule.CustomMessage = req.CustomMessage
 	rule.Description = req.Description
@@ -196,6 +201,7 @@ func (h *ErrorPassthroughHandler) Update(c *gin.Context) {
 		PassthroughBody: existing.PassthroughBody,
 		CustomMessage:   existing.CustomMessage,
 		SkipMonitoring:  existing.SkipMonitoring,
+		SkipFailover:    existing.SkipFailover,
 		Description:     existing.Description,
 	}
 
@@ -238,6 +244,9 @@ func (h *ErrorPassthroughHandler) Update(c *gin.Context) {
 	}
 	if req.SkipMonitoring != nil {
 		rule.SkipMonitoring = *req.SkipMonitoring
+	}
+	if req.SkipFailover != nil {
+		rule.SkipFailover = *req.SkipFailover
 	}
 
 	// 确保切片不为 nil
