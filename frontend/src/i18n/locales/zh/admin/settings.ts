@@ -674,6 +674,7 @@ export default {
         typeDisabled: '类型已禁用',
         enableTypesFirst: '请先在上方启用至少一种服务商',
         easypayRedirect: '跳转',
+        easypayA5Compatibility: 'A5 兼容模式',
         paymentMode: '支付模式',
         modeRedirect: '跳转',
         modeQRCode: '二维码',

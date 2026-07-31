@@ -679,6 +679,7 @@ export default {
         typeDisabled: 'type disabled',
         enableTypesFirst: 'Enable at least one payment type above first',
         easypayRedirect: 'Redirect',
+        easypayA5Compatibility: 'A5 Compatibility',
         paymentMode: 'Payment Mode',
         modeRedirect: 'Redirect',
         modeQRCode: 'QR Code',

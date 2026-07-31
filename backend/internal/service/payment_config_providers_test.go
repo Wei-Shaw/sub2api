@@ -129,6 +129,17 @@ func TestValidateEasyPayCustomMethods(t *testing.T) {
 			supportedTypes: "alipay,wxpay,ldc",
 		},
 		{
+			name:           "valid A5 compatibility",
+			config:         map[string]string{"compatibilityMode": "a5"},
+			supportedTypes: "alipay,wxpay",
+		},
+		{
+			name:           "invalid compatibility mode",
+			config:         map[string]string{"compatibilityMode": "unknown"},
+			supportedTypes: "alipay,wxpay",
+			wantErr:        "compatibilityMode must be standard or a5",
+		},
+		{
 			name:           "malformed custom methods json",
 			config:         map[string]string{"customMethods": `not-json`},
 			supportedTypes: "alipay,wxpay,ldc",
@@ -498,6 +509,15 @@ func TestUpdateProviderInstanceRejectsProtectedConfigChangesWhilePendingOrders(t
 			wantValue:     "pid-test",
 		},
 		{
+			name:          "easypay compatibility mode",
+			providerKey:   payment.TypeEasyPay,
+			createConfig:  validEasyPayProviderConfig,
+			supportedType: []string{payment.TypeAlipay},
+			updateConfig:  map[string]string{"compatibilityMode": "a5"},
+			fieldName:     "compatibilityMode",
+			wantValue:     "",
+		},
+		{
 			name:          "stripe currency",
 			providerKey:   payment.TypeStripe,
 			createConfig:  validStripeProviderConfig,
@@ -675,6 +695,115 @@ func TestUpdateProviderInstanceClearsAirwallexAccountID(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, cfg["accountId"])
 	require.Equal(t, "client-id-test", cfg["clientId"])
+}
+
+func TestUpdateProviderInstanceProtectsA5ModeWithUnresolvedRefunds(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		withPending bool
+		wantReason  string
+	}{
+		{name: "rejects mode change with pending refund", withPending: true, wantReason: "A5_UNRESOLVED_REFUNDS"},
+		{name: "allows mode change without pending refund"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			client := newPaymentConfigServiceTestClient(t)
+			svc := &PaymentConfigService{
+				entClient:     client,
+				encryptionKey: []byte("0123456789abcdef0123456789abcdef"),
+			}
+			config := validEasyPayProviderConfig(t)
+			config["compatibilityMode"] = "a5"
+			instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+				ProviderKey:    payment.TypeEasyPay,
+				Name:           "a5-mode-protection",
+				Config:         config,
+				SupportedTypes: []string{payment.TypeAlipay, payment.TypeWxpay},
+				Enabled:        true,
+				RefundEnabled:  true,
+			})
+			require.NoError(t, err)
+
+			if tc.withPending {
+				createProviderRefundOrder(t, ctx, client, instance, OrderStatusRefundPending, "a5-mode-protection")
+			}
+
+			updated, err := svc.UpdateProviderInstance(ctx, instance.ID, UpdateProviderInstanceRequest{
+				Config: map[string]string{"compatibilityMode": "standard"},
+			})
+			if tc.wantReason != "" {
+				require.Nil(t, updated)
+				require.Error(t, err)
+				require.Equal(t, tc.wantReason, infraerrors.Reason(err))
+				return
+			}
+			require.NoError(t, err)
+			savedConfig, err := svc.decryptConfig(updated.Config)
+			require.NoError(t, err)
+			require.Equal(t, "standard", savedConfig["compatibilityMode"])
+		})
+	}
+}
+
+func TestUpdateProviderInstanceRejectsEnablingA5WithUnresolvedRefund(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	svc := &PaymentConfigService{
+		entClient:     client,
+		encryptionKey: []byte("0123456789abcdef0123456789abcdef"),
+	}
+	config := validEasyPayProviderConfig(t)
+	config["compatibilityMode"] = "standard"
+	instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey:    payment.TypeEasyPay,
+		Name:           "standard-to-a5-protection",
+		Config:         config,
+		SupportedTypes: []string{payment.TypeAlipay},
+		Enabled:        true,
+		RefundEnabled:  true,
+	})
+	require.NoError(t, err)
+	createProviderRefundOrder(t, ctx, client, instance, OrderStatusRefundPending, "standard-to-a5-protection")
+
+	updated, err := svc.UpdateProviderInstance(ctx, instance.ID, UpdateProviderInstanceRequest{
+		Config: map[string]string{"compatibilityMode": "a5"},
+	})
+	require.Nil(t, updated)
+	require.Error(t, err)
+	require.Equal(t, "A5_UNRESOLVED_REFUNDS", infraerrors.Reason(err))
+}
+
+func createProviderRefundOrder(t *testing.T, ctx context.Context, client *dbent.Client, instance *dbent.PaymentProviderInstance, status, suffix string) *dbent.PaymentOrder {
+	t.Helper()
+	user, err := client.User.Create().
+		SetEmail(suffix + "@example.com").
+		SetPasswordHash("hash").
+		SetUsername(suffix).
+		Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(100).
+		SetPayAmount(100).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-" + suffix).
+		SetOutTradeNo("sub2_" + suffix).
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-" + suffix).
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(status).
+		SetRefundAmount(100).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderInstanceID(strconv.FormatInt(instance.ID, 10)).
+		Save(ctx)
+	require.NoError(t, err)
+	return order
 }
 
 func createPendingProviderConfigOrder(t *testing.T, ctx context.Context, client *dbent.Client, instance *dbent.PaymentProviderInstance) {

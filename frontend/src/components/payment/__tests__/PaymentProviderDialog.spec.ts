@@ -9,6 +9,7 @@ const messages: Record<string, string> = {
   'admin.settings.payment.providerConfig': 'Credentials',
   'admin.settings.payment.easypayCustomMethods': 'Custom EasyPay methods',
   'admin.settings.payment.easypayCustomMethodsHint': 'Add provider-specific EasyPay type values.',
+  'admin.settings.payment.easypayA5Compatibility': 'A5 compatibility mode',
   'admin.settings.payment.addCustomMethod': 'Add method',
   'admin.settings.payment.customMethodType': 'Payment type',
   'admin.settings.payment.customMethodUpstreamType': 'Upstream type',
@@ -88,7 +89,9 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
           template: '<div />',
         },
         ToggleSwitch: {
-          template: '<div />',
+          props: ['label', 'checked'],
+          emits: ['toggle'],
+          template: '<button type="button" class="toggle-stub" :data-label="label" :aria-pressed="String(checked)" @click="$emit(\'toggle\')" />',
         },
       },
     },
@@ -207,6 +210,60 @@ describe('PaymentProviderDialog payment guide', () => {
     }
     expect(payload.config.customMethods).toBe('[{"type":"ldc","upstreamType":"epay","displayName":"LDC"}]')
     expect(payload.supported_types).toEqual(['alipay', 'wxpay', 'ldc'])
+  })
+
+  it('defaults legacy EasyPay providers to standard compatibility mode', async () => {
+    const provider = providerFactory({
+      provider_key: 'easypay',
+      name: 'EasyPay',
+      config: {
+        pid: 'pid-1',
+        apiBase: 'https://pay.example.com',
+        notifyUrl: 'https://example.com/api/v1/payment/webhook/easypay',
+        returnUrl: 'https://example.com/payment/result',
+      },
+      supported_types: ['alipay', 'wxpay'],
+      payment_mode: 'qrcode',
+    })
+    const wrapper = mountDialog({ editing: provider })
+
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+
+    const toggle = wrapper.find('button[data-label="A5 compatibility mode"]')
+    expect(toggle.attributes('aria-pressed')).toBe('false')
+    await wrapper.find('form').trigger('submit.prevent')
+
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
+    expect(payload.config.compatibilityMode).toBe('standard')
+  })
+
+  it('loads and explicitly disables A5 compatibility mode', async () => {
+    const provider = providerFactory({
+      provider_key: 'easypay',
+      name: 'A5 EasyPay',
+      config: {
+        pid: 'pid-1',
+        apiBase: 'https://pay.example.com',
+        notifyUrl: 'https://example.com/api/v1/payment/webhook/easypay',
+        returnUrl: 'https://example.com/payment/result',
+        compatibilityMode: 'a5',
+      },
+      supported_types: ['alipay', 'wxpay'],
+      payment_mode: 'popup',
+    })
+    const wrapper = mountDialog({ editing: provider })
+
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+
+    const toggle = wrapper.find('button[data-label="A5 compatibility mode"]')
+    expect(toggle.attributes('aria-pressed')).toBe('true')
+    await toggle.trigger('click')
+    await wrapper.find('form').trigger('submit.prevent')
+
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
+    expect(payload.config.compatibilityMode).toBe('standard')
   })
 
   it('rejects custom EasyPay method types with built-in payment prefixes', async () => {

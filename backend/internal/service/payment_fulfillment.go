@@ -783,7 +783,7 @@ func hasPaymentSubscriptionOrderNote(notes string, orderNote string) bool {
 }
 
 func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action string) bool {
-	exists, _ := paymentAuditLogExists(ctx, s.entClient, orderID, action)
+	exists, _ := paymentAuditLogExists(ctx, paymentAuditClient(ctx, s.entClient), orderID, action)
 	return exists
 }
 

@@ -408,6 +408,22 @@ func (s *UserRepoSuite) TestUpdateBalance_Negative() {
 	s.Require().InDelta(7.0, got.Balance, 1e-6)
 }
 
+func (s *UserRepoSuite) TestAdjustBalanceDoesNotIncreaseTotalRecharged() {
+	user := s.mustCreateUser(&service.User{Email: "bal-adjust@test.com", Balance: 10})
+	_, err := s.client.User.UpdateOneID(user.ID).SetTotalRecharged(25).Save(s.ctx)
+	s.Require().NoError(err)
+
+	change, err := s.repo.AdjustBalance(s.ctx, user.ID, 2.5)
+	s.Require().NoError(err)
+	s.Require().InDelta(10, change.Old, 1e-6)
+	s.Require().InDelta(12.5, change.New, 1e-6)
+
+	got, err := s.client.User.Get(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().InDelta(12.5, got.Balance, 1e-6)
+	s.Require().InDelta(25, got.TotalRecharged, 1e-6)
+}
+
 func (s *UserRepoSuite) TestApplyRedeemBalanceAdjustment_ConcurrentNeverNegative() {
 	user := s.mustCreateUser(&service.User{Email: "redeem-bal-concurrent@test.com", Balance: 10})
 

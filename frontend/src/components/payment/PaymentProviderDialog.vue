@@ -34,6 +34,12 @@
         <ToggleSwitch :label="t('common.enabled')" :checked="form.enabled" @toggle="form.enabled = !form.enabled" />
         <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled; if (!form.refund_enabled) form.allow_user_refund = false" />
         <ToggleSwitch v-if="form.refund_enabled" :label="t('admin.settings.payment.allowUserRefund')" :checked="form.allow_user_refund" @toggle="form.allow_user_refund = !form.allow_user_refund" />
+        <ToggleSwitch
+          v-if="form.provider_key === 'easypay'"
+          :label="t('admin.settings.payment.easypayA5Compatibility')"
+          :checked="form.easypay_a5_compatibility"
+          @toggle="form.easypay_a5_compatibility = !form.easypay_a5_compatibility"
+        />
         <div v-if="supportsPaymentMode" class="flex items-center gap-2">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.paymentMode') }}</span>
           <div class="flex gap-1.5">
@@ -403,6 +409,7 @@ const form = reactive({
   payment_mode: PAYMENT_MODE_QRCODE,
   refund_enabled: false,
   allow_user_refund: false,
+  easypay_a5_compatibility: false,
 })
 const config = reactive<Record<string, string>>({})
 const limits = reactive<Record<string, Record<string, number>>>({})
@@ -603,6 +610,7 @@ function clearConfig() {
   returnBaseUrl.value = ''
   limitsExpanded.value = false
   easyPayCustomMethods.splice(0, easyPayCustomMethods.length)
+  form.easypay_a5_compatibility = false
 }
 
 function applyDefaults() {
@@ -699,6 +707,7 @@ function handleSave() {
   }
   if (form.provider_key === 'easypay') {
     filteredConfig.customMethods = serializeEasyPayCustomMethods(normalizedEasyPayCustomMethods())
+    filteredConfig.compatibilityMode = form.easypay_a5_compatibility ? 'a5' : 'standard'
   }
 
   // Inject computed callback URLs (each URL = independent base + fixed path)
@@ -791,6 +800,7 @@ function reset(defaultKey: string) {
   form.payment_mode = defaultPaymentMode(defaultKey)
   form.refund_enabled = false
   form.allow_user_refund = false
+  form.easypay_a5_compatibility = false
   clearConfig()
   applyDefaults()
 }
@@ -819,6 +829,10 @@ function loadProvider(provider: ProviderInstance) {
       if (k === 'notifyUrl' || k === 'returnUrl') continue
       if (k === 'customMethods' && provider.provider_key === 'easypay') {
         easyPayCustomMethods.push(...parseEasyPayCustomMethods(v))
+        continue
+      }
+      if (k === 'compatibilityMode' && provider.provider_key === 'easypay') {
+        form.easypay_a5_compatibility = v.trim().toLowerCase() === 'a5'
         continue
       }
       config[k] = v

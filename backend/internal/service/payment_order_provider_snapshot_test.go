@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"testing"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +30,7 @@ func TestBuildPaymentOrderProviderSnapshot_ExcludesSensitiveConfig(t *testing.T)
 
 	snapshot := buildPaymentOrderProviderSnapshot(sel, CreateOrderRequest{})
 	require.Equal(t, map[string]any{
-		"schema_version":       2,
+		"schema_version":       3,
 		"provider_instance_id": "12",
 		"provider_key":         payment.TypeWxpay,
 		"payment_mode":         "popup",
@@ -101,7 +103,7 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), valueOrEmpty(order.ProviderInstanceID))
 	require.Equal(t, payment.TypeAlipay, valueOrEmpty(order.ProviderKey))
-	require.Equal(t, float64(2), order.ProviderSnapshot["schema_version"])
+	require.Equal(t, float64(3), order.ProviderSnapshot["schema_version"])
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), order.ProviderSnapshot["provider_instance_id"])
 	require.Equal(t, payment.TypeAlipay, order.ProviderSnapshot["provider_key"])
 	require.Equal(t, "redirect", order.ProviderSnapshot["payment_mode"])
@@ -154,14 +156,71 @@ func TestBuildPaymentOrderProviderSnapshot_IncludesEasyPayMerchantIdentity(t *te
 		InstanceID:  "66",
 		ProviderKey: payment.TypeEasyPay,
 		Config: map[string]string{
-			"pid":  "easypay-merchant-66",
-			"pkey": "secret",
+			"pid":               "easypay-merchant-66",
+			"pkey":              "secret",
+			"compatibilityMode": "a5",
 		},
 		PaymentMode: "popup",
 	}, CreateOrderRequest{PaymentType: payment.TypeAlipay})
 
 	require.Equal(t, "easypay-merchant-66", snapshot["merchant_id"])
+	require.Equal(t, provider.EasyPayCompatibilityA5, snapshot["compatibility_mode"])
 	require.NotContains(t, snapshot, "pkey")
+}
+
+func TestPinEasyPayCompatibilityModeToOrderUsesHistoricalSnapshot(t *testing.T) {
+	t.Parallel()
+
+	instance := &dbent.PaymentProviderInstance{ProviderKey: payment.TypeEasyPay}
+	for _, tc := range []struct {
+		name        string
+		snapshot    map[string]any
+		currentMode string
+		wantMode    string
+	}{
+		{
+			name:        "A5 order remains A5 after instance switches to standard",
+			snapshot:    map[string]any{"schema_version": 3, "provider_key": payment.TypeEasyPay, "compatibility_mode": provider.EasyPayCompatibilityA5},
+			currentMode: provider.EasyPayCompatibilityStandard,
+			wantMode:    provider.EasyPayCompatibilityA5,
+		},
+		{
+			name:        "standard order remains standard after instance switches to A5",
+			snapshot:    map[string]any{"schema_version": 3, "provider_key": payment.TypeEasyPay, "compatibility_mode": provider.EasyPayCompatibilityStandard},
+			currentMode: provider.EasyPayCompatibilityA5,
+			wantMode:    provider.EasyPayCompatibilityStandard,
+		},
+		{
+			name:        "legacy snapshot follows the current verified instance mode",
+			snapshot:    map[string]any{"schema_version": 2, "provider_key": payment.TypeEasyPay},
+			currentMode: provider.EasyPayCompatibilityA5,
+			wantMode:    provider.EasyPayCompatibilityA5,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			original := map[string]string{provider.EasyPayCompatibilityModeKey: tc.currentMode, "pid": "merchant-test"}
+			pinned, err := pinEasyPayCompatibilityModeToOrder(instance, &dbent.PaymentOrder{ID: 42, ProviderSnapshot: tc.snapshot}, original)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantMode, pinned[provider.EasyPayCompatibilityModeKey])
+			require.Equal(t, tc.currentMode, original[provider.EasyPayCompatibilityModeKey])
+			require.Equal(t, "merchant-test", pinned["pid"])
+		})
+	}
+}
+
+func TestPinEasyPayCompatibilityModeToOrderRejectsInvalidSchemaThreeMode(t *testing.T) {
+	t.Parallel()
+
+	instance := &dbent.PaymentProviderInstance{ID: 7, ProviderKey: payment.TypeEasyPay}
+	_, err := pinEasyPayCompatibilityModeToOrder(instance, &dbent.PaymentOrder{
+		ID: 99,
+		ProviderSnapshot: map[string]any{
+			"schema_version": 3,
+			"provider_key":   payment.TypeEasyPay,
+		},
+	}, map[string]string{provider.EasyPayCompatibilityModeKey: provider.EasyPayCompatibilityA5})
+	require.ErrorContains(t, err, "missing or invalid")
 }
 
 func TestBuildPaymentOrderProviderSnapshot_IncludesProviderCurrency(t *testing.T) {

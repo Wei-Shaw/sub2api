@@ -123,7 +123,7 @@ var providerSensitiveConfigFields = map[string]map[string]struct{}{
 // all provider identity fields that are snapshotted into orders or used by
 // webhook/refund verification.
 var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{}{
-	payment.TypeEasyPay:   {"pkey": {}, "pid": {}},
+	payment.TypeEasyPay:   {"pkey": {}, "pid": {}, "compatibilitymode": {}},
 	payment.TypeAlipay:    {"privatekey": {}, "publickey": {}, "alipaypublickey": {}, "appid": {}},
 	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}, "appid": {}, "mpappid": {}, "mchid": {}, "publickeyid": {}, "certserial": {}},
 	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}, "currency": {}},
@@ -235,6 +235,10 @@ func validateEasyPayCustomMethods(config map[string]string, supportedTypes strin
 	if config == nil {
 		config = map[string]string{}
 	}
+	mode := provider.EasyPayCompatibilityMode(config)
+	if mode != provider.EasyPayCompatibilityStandard && mode != provider.EasyPayCompatibilityA5 {
+		return infraerrors.BadRequest("VALIDATION_ERROR", "compatibilityMode must be standard or a5")
+	}
 	raw := strings.TrimSpace(config["customMethods"])
 	methods := make([]easyPayCustomMethodConfig, 0)
 	if raw != "" {
@@ -278,6 +282,15 @@ func validateEasyPayCustomMethods(config map[string]string, supportedTypes strin
 		}
 	}
 	return nil
+}
+
+func (s *PaymentConfigService) countUnresolvedRefundOrders(ctx context.Context, providerInstanceID int64) (int, error) {
+	return s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.ProviderInstanceIDEQ(strconv.FormatInt(providerInstanceID, 10)),
+			paymentorder.StatusIn(OrderStatusRefundRequested, OrderStatusRefunding, OrderStatusRefundPending),
+		).
+		Count(ctx)
 }
 
 func easyPayCustomMethodTypeConflictsWithBuiltin(methodType string) bool {
@@ -364,6 +377,24 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 	finalEnabled := current.Enabled
 	if req.Enabled != nil {
 		finalEnabled = *req.Enabled
+	}
+	if current.ProviderKey == payment.TypeEasyPay {
+		currentConfig, decryptErr := s.decryptConfig(current.Config)
+		if decryptErr != nil {
+			return nil, fmt.Errorf("decrypt existing config: %w", decryptErr)
+		}
+		currentMode := provider.EasyPayCompatibilityMode(currentConfig)
+		nextMode := provider.EasyPayCompatibilityMode(configToValidate)
+		if currentMode != nextMode || (currentMode == provider.EasyPayCompatibilityA5 && !finalEnabled) {
+			count, countErr := s.countUnresolvedRefundOrders(ctx, id)
+			if countErr != nil {
+				return nil, fmt.Errorf("check unresolved refunds: %w", countErr)
+			}
+			if count > 0 {
+				return nil, infraerrors.Conflict("A5_UNRESOLVED_REFUNDS", "EasyPay compatibility mode cannot be changed while refunds are unresolved").
+					WithMetadata(map[string]string{"count": strconv.Itoa(count)})
+			}
+		}
 	}
 	if finalEnabled {
 		if err := s.validateProviderConfig(current.ProviderKey, configToValidate); err != nil {

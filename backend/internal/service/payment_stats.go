@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
@@ -180,10 +181,50 @@ func roundAmount(amount float64) float64 {
 // --- Audit Logs ---
 
 func (s *PaymentService) writeAuditLog(ctx context.Context, oid int64, action, op string, detail map[string]any) {
-	err := createPaymentAuditLog(ctx, s.entClient, oid, action, op, detail)
+	err := createPaymentAuditLog(ctx, paymentAuditClient(ctx, s.entClient), oid, action, op, detail)
 	if err != nil {
 		slog.Error("audit log failed", "orderID", oid, "action", action, "error", err)
 	}
+}
+
+func (s *PaymentService) writeAuditLogOnce(ctx context.Context, oid int64, action, op string, detail map[string]any) {
+	client := paymentAuditClient(ctx, s.entClient)
+	if client == nil {
+		slog.Error("audit log failed", "orderID", oid, "action", action, "error", "payment audit client is unavailable")
+		return
+	}
+	dj, err := json.Marshal(detail)
+	if err != nil {
+		slog.Error("audit log failed", "orderID", oid, "action", action, "error", err)
+		return
+	}
+	orderID := strconv.FormatInt(oid, 10)
+	existing, queryErr := client.PaymentAuditLog.Query().
+		Where(paymentauditlog.OrderIDEQ(orderID), paymentauditlog.ActionEQ(action)).
+		Order(paymentauditlog.ByCreatedAt(sql.OrderDesc())).
+		First(ctx)
+	if queryErr == nil {
+		_, err = existing.Update().SetDetail(string(dj)).SetOperator(op).Save(ctx)
+	} else if dbent.IsNotFound(queryErr) {
+		err = client.PaymentAuditLog.Create().
+			SetOrderID(orderID).
+			SetAction(action).
+			SetDetail(string(dj)).
+			SetOperator(op).
+			Exec(ctx)
+	} else {
+		err = queryErr
+	}
+	if err != nil {
+		slog.Error("audit log failed", "orderID", oid, "action", action, "error", err)
+	}
+}
+
+func paymentAuditClient(ctx context.Context, fallback *dbent.Client) *dbent.Client {
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return tx.Client()
+	}
+	return fallback
 }
 
 func createPaymentAuditLog(ctx context.Context, client *dbent.Client, oid int64, action, op string, detail map[string]any) error {
