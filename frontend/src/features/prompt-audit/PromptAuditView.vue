@@ -96,6 +96,20 @@
           <SaveToggle :label="t('admin.promptAudit.saveBar.enabled')" :model-value="draft.enabled" data-test="enabled-toggle" @update:model-value="setEnabled" />
           <SaveToggle :label="t('admin.promptAudit.saveBar.blocking')" :model-value="draft.blocking_enabled" :disabled="!draft.enabled" data-test="blocking-toggle" @update:model-value="setBlocking" />
           <SaveToggle :label="t('admin.promptAudit.saveBar.storePass')" :model-value="draft.store_pass_events" data-test="store-pass-toggle" @update:model-value="replaceDraft({ ...draft!, store_pass_events: $event })" />
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-dark-200">
+            <span>{{ t('admin.promptAudit.saveBar.promptSelection') }}</span>
+            <select
+              :value="draft.prompt_selection"
+              class="input py-1.5 text-sm"
+              data-test="prompt-selection"
+              :aria-label="t('admin.promptAudit.saveBar.promptSelection')"
+              @change="replaceDraft({ ...draft!, prompt_selection: ($event.target as HTMLSelectElement).value as PromptAuditDraft['prompt_selection'] })"
+            >
+              <option value="full_context">{{ t('admin.promptAudit.saveBar.fullContext') }}</option>
+              <option value="last_user_only">{{ t('admin.promptAudit.saveBar.lastUserOnly') }}</option>
+              <option value="after_last_ai">{{ t('admin.promptAudit.saveBar.afterLastAI') }}</option>
+            </select>
+          </label>
         </div>
         <div class="flex items-center gap-3">
           <span class="text-sm" :class="dirty ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-dark-400'">

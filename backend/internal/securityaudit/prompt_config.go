@@ -14,17 +14,20 @@ import (
 )
 
 const (
-	DefaultWorkerCount   = 4
-	MaxWorkerCount       = 32
-	DefaultQueueCapacity = 32768
-	MaxQueueCapacity     = 100000
-	DefaultTimeoutMS     = 3000
-	MinTimeoutMS         = 100
-	MaxTimeoutMS         = 30000
-	DefaultInputLimit    = 4000
-	MinInputLimit        = 128
-	MaxInputLimit        = 100000
-	DefaultPayloadTTL    = 30 * time.Minute
+	DefaultWorkerCount          = 4
+	MaxWorkerCount              = 32
+	DefaultQueueCapacity        = 32768
+	MaxQueueCapacity            = 100000
+	DefaultTimeoutMS            = 3000
+	MinTimeoutMS                = 100
+	MaxTimeoutMS                = 30000
+	DefaultInputLimit           = 4000
+	MinInputLimit               = 128
+	MaxInputLimit               = 100000
+	DefaultPayloadTTL           = 30 * time.Minute
+	PromptSelectionLastUserOnly = "last_user_only"
+	PromptSelectionAfterLastAI  = "after_last_ai"
+	PromptSelectionFullContext  = "full_context"
 )
 
 type SecretEncryptor interface {
@@ -67,6 +70,7 @@ type storageConfig struct {
 	Enabled         bool              `json:"enabled"`
 	BlockingEnabled bool              `json:"blocking_enabled"`
 	StorePassEvents bool              `json:"store_pass_events"`
+	PromptSelection string            `json:"prompt_selection"`
 	Strategy        string            `json:"strategy"`
 	WorkerCount     int               `json:"worker_count"`
 	QueueCapacity   int               `json:"queue_capacity"`
@@ -102,6 +106,7 @@ type ActiveConfig struct {
 	Enabled            bool
 	BlockingEnabled    bool
 	StorePassEvents    bool
+	PromptSelection    string
 	Strategy           string
 	WorkerCount        int
 	QueueCapacity      int
@@ -132,6 +137,7 @@ type PublicConfig struct {
 	Enabled         bool             `json:"enabled"`
 	BlockingEnabled bool             `json:"blocking_enabled"`
 	StorePassEvents bool             `json:"store_pass_events"`
+	PromptSelection string           `json:"prompt_selection"`
 	EffectiveMode   Mode             `json:"effective_mode"`
 	Strategy        string           `json:"strategy"`
 	WorkerCount     int              `json:"worker_count"`
@@ -164,6 +170,7 @@ type UpdateConfigRequest struct {
 	Enabled               bool             `json:"enabled"`
 	BlockingEnabled       bool             `json:"blocking_enabled"`
 	StorePassEvents       bool             `json:"store_pass_events"`
+	PromptSelection       string           `json:"prompt_selection"`
 	Strategy              string           `json:"strategy"`
 	WorkerCount           int              `json:"worker_count"`
 	QueueCapacity         int              `json:"queue_capacity"`
@@ -178,6 +185,7 @@ func DefaultStorageConfig() storageConfig {
 		Enabled:         false,
 		BlockingEnabled: false,
 		StorePassEvents: false,
+		PromptSelection: PromptSelectionFullContext,
 		Strategy:        "priority",
 		WorkerCount:     DefaultWorkerCount,
 		QueueCapacity:   DefaultQueueCapacity,
@@ -225,6 +233,10 @@ func normalizeStorageConfig(cfg *storageConfig) {
 	}
 	cfg.Scanners = canonicalScannerIDs(cfg.Scanners)
 	cfg.GroupIDs = canonicalInt64s(cfg.GroupIDs)
+	cfg.PromptSelection = strings.ToLower(strings.TrimSpace(cfg.PromptSelection))
+	if cfg.PromptSelection == "" {
+		cfg.PromptSelection = PromptSelectionFullContext
+	}
 	// Preserve an invalid blocking-without-audit combination so validation can
 	// reject it instead of silently changing administrator intent.
 	for i := range cfg.Endpoints {
@@ -255,6 +267,9 @@ func validateStorageConfig(cfg storageConfig) error {
 	}
 	if cfg.Strategy != "priority" {
 		return infraerrors.BadRequest("prompt_audit_invalid_strategy", "提示词审计策略仅支持 priority")
+	}
+	if cfg.PromptSelection != PromptSelectionLastUserOnly && cfg.PromptSelection != PromptSelectionAfterLastAI && cfg.PromptSelection != PromptSelectionFullContext {
+		return infraerrors.BadRequest("prompt_audit_invalid_prompt_selection", "提示词审计选取策略无效")
 	}
 	if cfg.WorkerCount < 1 || cfg.WorkerCount > MaxWorkerCount {
 		return infraerrors.BadRequest("prompt_audit_invalid_worker_count", "Worker 数量超出允许范围")
@@ -303,6 +318,10 @@ func validateStorageConfig(cfg storageConfig) error {
 func validateUpdateConfigRequest(req UpdateConfigRequest) error {
 	if strings.TrimSpace(req.Strategy) != "priority" {
 		return infraerrors.BadRequest("prompt_audit_invalid_strategy", "提示词审计策略仅支持 priority")
+	}
+	selection := strings.ToLower(strings.TrimSpace(req.PromptSelection))
+	if selection != "" && selection != PromptSelectionLastUserOnly && selection != PromptSelectionAfterLastAI && selection != PromptSelectionFullContext {
+		return infraerrors.BadRequest("prompt_audit_invalid_prompt_selection", "提示词审计选取策略无效")
 	}
 	if req.WorkerCount < 1 || req.WorkerCount > MaxWorkerCount {
 		return infraerrors.BadRequest("prompt_audit_invalid_worker_count", "Worker 数量超出允许范围")
@@ -407,7 +426,7 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 	}
 	active := ActiveConfig{RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled}
 	return PublicConfig{
-		Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled, StorePassEvents: cfg.StorePassEvents,
+		Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled, StorePassEvents: cfg.StorePassEvents, PromptSelection: cfg.PromptSelection,
 		EffectiveMode: active.EffectiveMode(), Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
 		QueueCapacity: cfg.QueueCapacity, Scanners: scanners, AllGroups: cfg.AllGroups,
 		GroupIDs: groupIDs, Endpoints: endpoints, ConfigVersion: cfg.ConfigVersion,
@@ -417,7 +436,7 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 
 func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor SecretEncryptor) (ActiveConfig, error) {
 	active := ActiveConfig{
-		RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled,
+		RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled, PromptSelection: cfg.PromptSelection,
 		StorePassEvents: cfg.StorePassEvents, Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
 		QueueCapacity: cfg.QueueCapacity, Scanners: append([]string(nil), cfg.Scanners...), AllGroups: cfg.AllGroups,
 		GroupIDs: append([]int64(nil), cfg.GroupIDs...), ConfigVersion: cfg.ConfigVersion,
@@ -457,12 +476,13 @@ func changeSummary(cfg storageConfig) string {
 		Enabled         bool   `json:"enabled"`
 		BlockingEnabled bool   `json:"blocking_enabled"`
 		StorePassEvents bool   `json:"store_pass_events"`
+		PromptSelection string `json:"prompt_selection"`
 		EndpointCount   int    `json:"endpoint_count"`
 		ScannerCount    int    `json:"scanner_count"`
 		AllGroups       bool   `json:"all_groups"`
 		GroupCount      int    `json:"group_count"`
 		GroupHash       string `json:"group_hash"`
-	}{cfg.Enabled, cfg.BlockingEnabled, cfg.StorePassEvents, len(cfg.Endpoints), len(cfg.Scanners), cfg.AllGroups, len(cfg.GroupIDs), ""}
+	}{cfg.Enabled, cfg.BlockingEnabled, cfg.StorePassEvents, cfg.PromptSelection, len(cfg.Endpoints), len(cfg.Scanners), cfg.AllGroups, len(cfg.GroupIDs), ""}
 	rawGroups, _ := json.Marshal(cfg.GroupIDs)
 	digest := sha256.Sum256(rawGroups)
 	summary.GroupHash = hex.EncodeToString(digest[:])

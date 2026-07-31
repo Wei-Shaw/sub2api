@@ -14,6 +14,7 @@ const config = (): PromptAuditConfig => ({
   enabled: true,
   blocking_enabled: false,
   store_pass_events: false,
+  prompt_selection: 'full_context',
   effective_mode: 'async_audit',
   strategy: 'priority',
   worker_count: 4,
@@ -54,6 +55,15 @@ describe('Prompt Audit view model', () => {
     draft.endpoints[0].token = ''
     draft.endpoints[0].clear_token = true
     expect(buildUpdateRequest(draft).endpoints[0]).toMatchObject({ token: undefined, clear_token: true })
+  })
+
+  it('defaults and sends the prompt selection option', () => {
+    const legacy = { ...config(), prompt_selection: undefined } as unknown as PromptAuditConfig
+    expect(configToDraft(legacy).prompt_selection).toBe('full_context')
+
+    const draft = configToDraft(config())
+    draft.prompt_selection = 'after_last_ai'
+    expect(buildUpdateRequest(draft)).toMatchObject({ prompt_selection: 'after_last_ai' })
   })
 
   it('tracks dirty state from the full normalized save payload', () => {

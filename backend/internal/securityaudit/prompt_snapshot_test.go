@@ -37,6 +37,68 @@ func TestExtractPromptSnapshotProtocols(t *testing.T) {
 	}
 }
 
+func TestPromptSnapshotSelection(t *testing.T) {
+	body := []byte(`{"messages":[{"role":"system","content":"system policy"},{"role":"user","content":"earlier input"},{"role":"assistant","content":"prior reply"},{"role":"tool","content":"tool context"},{"role":"user","content":"latest input"}]}`)
+
+	full, err := ExtractPromptSnapshotWithSelection(Request{Protocol: "openai_chat_completions", Body: body}, PromptSelectionFullContext)
+	require.NoError(t, err)
+	for _, value := range []string{"system policy", "earlier input", "prior reply", "tool context", "latest input"} {
+		require.Contains(t, full.ScanText, value)
+	}
+
+	lastUser, err := ExtractPromptSnapshotWithSelection(Request{Protocol: "openai_chat_completions", Body: body}, PromptSelectionLastUserOnly)
+	require.NoError(t, err)
+	require.Equal(t, "latest input", metadataTextForTest(lastUser.ScanText))
+
+	afterLastAI, err := ExtractPromptSnapshotWithSelection(Request{Protocol: "openai_chat_completions", Body: body}, PromptSelectionAfterLastAI)
+	require.NoError(t, err)
+	require.Equal(t, "latest input\n\ntool context", metadataTextForTest(afterLastAI.ScanText))
+
+	gemini := []byte(`{"contents":[{"role":"user","parts":[{"text":"before"}]},{"role":"model","parts":[{"text":"model reply"}]},{"role":"user","parts":[{"text":"after"}]}]}`)
+	modelBoundary, err := ExtractPromptSnapshotWithSelection(Request{Protocol: "gemini", Body: gemini}, PromptSelectionAfterLastAI)
+	require.NoError(t, err)
+	require.Equal(t, "after", metadataTextForTest(modelBoundary.ScanText))
+
+	noAI := []byte(`{"messages":[{"role":"system","content":"system policy"},{"role":"user","content":"earlier user input"},{"role":"tool","content":"tool context"},{"role":"user","content":"latest user input"}]}`)
+	userOnly, err := ExtractPromptSnapshotWithSelection(Request{Protocol: "openai_chat_completions", Body: noAI}, PromptSelectionAfterLastAI)
+	require.NoError(t, err)
+	require.Equal(t, "latest user input\n\nearlier user input", metadataTextForTest(userOnly.ScanText))
+
+	noUser := []byte(`{"messages":[{"role":"system","content":"system policy"},{"role":"tool","content":"tool context"}]}`)
+	_, err = ExtractPromptSnapshotWithSelection(Request{Protocol: "openai_chat_completions", Body: noUser}, PromptSelectionAfterLastAI)
+	require.ErrorIs(t, err, ErrNoPromptText)
+}
+
+func TestPromptSnapshotLastUserOnlySelectsLatestUserMessage(t *testing.T) {
+	body := []byte(`{
+		"messages":[
+			{"role":"system","content":"system instruction"},
+			{"role":"user","content":"historical user input"},
+			{"role":"assistant","content":"historical assistant output"},
+			{"role":"user","content":[{"type":"text","text":"  final   user input  "}]},
+			{"role":"assistant","content":"tool call"}
+		]
+	}`)
+	snapshot, err := ExtractPromptSnapshotWithSelection(Request{Protocol: "openai_chat_completions", Body: body}, PromptSelectionLastUserOnly)
+	require.NoError(t, err)
+	require.Equal(t, "final user input", snapshot.FullPrompt)
+	require.Equal(t, 1, snapshot.MessageCount)
+
+	toolLoop := []byte(`{"messages":[{"role":"user","content":"original request"},{"role":"assistant","content":"tool call"}]}`)
+	snapshot, err = ExtractPromptSnapshotWithSelection(Request{Protocol: "openai_chat_completions", Body: toolLoop}, PromptSelectionLastUserOnly)
+	require.NoError(t, err)
+	require.Equal(t, "original request", snapshot.ScanText)
+
+	adjacentUsers := []byte(`{"messages":[{"role":"user","content":"first user message"},{"role":"user","content":"last user message"}]}`)
+	snapshot, err = ExtractPromptSnapshotWithSelection(Request{Protocol: "openai_chat_completions", Body: adjacentUsers}, PromptSelectionLastUserOnly)
+	require.NoError(t, err)
+	require.Equal(t, "last user message", snapshot.ScanText)
+
+	noUser := []byte(`{"messages":[{"role":"system","content":"system instruction"},{"role":"assistant","content":"assistant output"}]}`)
+	_, err = ExtractPromptSnapshotWithSelection(Request{Protocol: "openai_chat_completions", Body: noUser}, PromptSelectionLastUserOnly)
+	require.ErrorIs(t, err, ErrNoPromptText)
+}
+
 func TestSnapshotRedactsCanariesAndPreservesHashOfScanText(t *testing.T) {
 	body := `{"messages":[{"role":"user","content":"PROMPT_CANARY_ABC123 email@example.com +86 138 0013 8000 Bearer AUTH_CANARY_XYZ sk-secretvalue123 password=supersecret123"}]}`
 	snapshot, err := ExtractPromptSnapshot(Request{Protocol: "openai_chat_completions", Body: []byte(body)})

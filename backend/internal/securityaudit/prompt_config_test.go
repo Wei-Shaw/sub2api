@@ -36,10 +36,31 @@ func TestDefaultConfigIsOff(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ModeOff, active.EffectiveMode())
 	require.Equal(t, AllScannerIDs, storage.Scanners)
+	require.Equal(t, PromptSelectionFullContext, storage.PromptSelection)
 	publicJSON, err := json.Marshal(PublicFromStorage(storage, true, nil))
 	require.NoError(t, err)
 	require.Contains(t, string(publicJSON), `"group_ids":[]`)
 	require.Contains(t, string(publicJSON), `"endpoints":[]`)
+}
+
+func TestPromptSelectionDefaults(t *testing.T) {
+	legacy, err := ParseStorageConfig(`{"last_user_only":true}`)
+	require.NoError(t, err)
+	require.Equal(t, PromptSelectionFullContext, legacy.PromptSelection)
+
+	empty, err := ParseStorageConfig(`{"prompt_selection":""}`)
+	require.NoError(t, err)
+	require.Equal(t, PromptSelectionFullContext, empty.PromptSelection)
+
+	_, err = ParseStorageConfig(`{"prompt_selection":"unsupported"}`)
+	require.Error(t, err)
+	require.Equal(t, "prompt_audit_invalid_prompt_selection", infraerrors.Reason(err))
+
+	req := promptAuditUpdateRequest(1, 1, "")
+	req.PromptSelection = PromptSelectionAfterLastAI
+	require.NoError(t, validateUpdateConfigRequest(req))
+	req.PromptSelection = "unsupported"
+	require.Equal(t, "prompt_audit_invalid_prompt_selection", infraerrors.Reason(validateUpdateConfigRequest(req)))
 }
 
 func TestConfigRejectsBlockingWithoutAudit(t *testing.T) {
