@@ -603,6 +603,12 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	}
 	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, parsed.Stream)
 	defer releaseUpstreamCtx()
+	if account.AsyncImageTaskRelayEnabled() && account.AsyncImageTaskUpstreamAsyncEnabled() && IsAsyncImageTask(upstreamCtx) {
+		forwardBody, forwardContentType, err = markOpenAIImagesRequestAsync(forwardBody, forwardContentType)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	token, _, err := s.GetAccessToken(upstreamCtx, account)
 	if err != nil {
@@ -706,7 +712,16 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: imageOutputSizes,
 		}, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
+		var nonStreamUsage OpenAIUsage
+		var nonStreamCount int
+		var nonStreamSizes []string
+		if account.AsyncImageTaskRelayEnabled() && IsAsyncImageTask(upstreamCtx) {
+			nonStreamUsage, nonStreamCount, nonStreamSizes, err = s.handleOpenAIImagesNonStreamingResponseWithTaskRelay(
+				resp, c, upstreamCtx, account, account.GetOpenAIBaseURL(), upstreamReq.Header,
+			)
+		} else {
+			nonStreamUsage, nonStreamCount, nonStreamSizes, err = s.handleOpenAIImagesNonStreamingResponse(resp, c)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -729,6 +744,21 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: nonStreamSizes,
 		}, nil
 	}
+}
+
+// markOpenAIImagesRequestAsync asks an opted-in upstream relay to create its
+// own task. This only runs inside the local async worker; synchronous callers
+// keep the original request body unchanged.
+func markOpenAIImagesRequestAsync(body []byte, contentType string) ([]byte, string, error) {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err == nil && strings.EqualFold(mediaType, "multipart/form-data") {
+		return body, contentType, nil
+	}
+	rewritten, err := sjson.SetBytes(body, "async", true)
+	if err != nil {
+		return nil, "", fmt.Errorf("mark image request async: %w", err)
+	}
+	return rewritten, contentType, nil
 }
 
 func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
@@ -882,17 +912,54 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
-	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	contentType := "application/json"
-	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
-		if upstreamType := resp.Header.Get("Content-Type"); upstreamType != "" {
-			contentType = upstreamType
-		}
-	}
-	c.Data(resp.StatusCode, contentType, body)
+	s.writeOpenAIImagesJSONResponse(c, resp.StatusCode, resp.Header, body)
 
 	usage, _ := extractOpenAIUsageFromJSONBytes(body)
 	return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
+}
+
+func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponseWithTaskRelay(
+	resp *http.Response,
+	c *gin.Context,
+	ctx context.Context,
+	account *Account,
+	baseURL string,
+	requestHeaders http.Header,
+) (OpenAIUsage, int, []string, error) {
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		return OpenAIUsage{}, 0, nil, err
+	}
+	relayed, err := s.pollImageTaskRelay(ctx, c, account, baseURL, requestHeaders, body)
+	if err != nil {
+		return OpenAIUsage{}, 0, nil, err
+	}
+	statusCode := resp.StatusCode
+	responseHeaders := resp.Header
+	if relayed.relayed {
+		statusCode = http.StatusOK
+		if relayed.responseHeader != nil {
+			responseHeaders = relayed.responseHeader
+		}
+	}
+	s.writeOpenAIImagesJSONResponse(c, statusCode, responseHeaders, relayed.body)
+
+	usage, _ := extractOpenAIUsageFromJSONBytes(relayed.body)
+	return usage, extractOpenAIImageCountFromJSONBytes(relayed.body), collectOpenAIResponseImageOutputSizesFromJSONBytes(relayed.body), nil
+}
+
+func (s *OpenAIGatewayService) writeOpenAIImagesJSONResponse(c *gin.Context, statusCode int, headers http.Header, body []byte) {
+	if c == nil {
+		return
+	}
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), headers, s.responseHeaderFilter)
+	contentType := "application/json"
+	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
+		if upstreamType := headers.Get("Content-Type"); upstreamType != "" {
+			contentType = upstreamType
+		}
+	}
+	c.Data(statusCode, contentType, body)
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(

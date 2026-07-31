@@ -641,6 +641,17 @@ export default {
         testModeCompact: 'Compact 探测',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
       },
+      asyncImageTaskRelay: {
+        title: '透传上游异步生图任务',
+        description: '本地异步生图时轮询第三方上游任务，完成后将图片保存到本网关 S3，再返回本地链接。',
+        statusURL: '上游任务查询地址（可选）',
+        statusURLPlaceholder: '留空使用 /v1/image-tasks/{task_id}',
+        statusURLHint: '可填写完整 URL 或包含 {task_id} 的路径模板，仅影响本地异步生图接口。',
+        upstreamAsync: '向上游请求异步任务（async=true）',
+        upstreamAsyncHint: 'OpenAI 兼容中转默认开启；如果上游始终返回 task_id 或不接受 async 字段，可以关闭。',
+        pollInterval: '轮询间隔（秒）',
+        pollIntervalHint: '网关按此间隔查询上游任务，允许范围为 1-60 秒。'
+      },
       grok: {
         baseUrlHint: 'Grok OAuth 账号会转发到官方 xAI API Base URL。',
         apiKeyHint: 'Grok 订阅支持使用 OAuth refresh token；API Key 账号不在本次范围内。'

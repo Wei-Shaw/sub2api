@@ -2781,6 +2781,56 @@
         </div>
       </div>
 
+      <!-- Upstream async image task relay (API key image relays) -->
+      <div
+        v-if="(form.platform === 'openai' || form.platform === 'grok') && accountCategory === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.asyncImageTaskRelay.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.asyncImageTaskRelay.description') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="asyncImageTaskRelayEnabled = !asyncImageTaskRelayEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              asyncImageTaskRelayEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                asyncImageTaskRelayEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+        <div v-if="asyncImageTaskRelayEnabled" class="mt-3">
+          <label class="input-label">{{ t('admin.accounts.asyncImageTaskRelay.statusURL') }}</label>
+          <input
+            v-model="asyncImageTaskStatusURL"
+            type="text"
+            class="input font-mono text-sm"
+            :placeholder="t('admin.accounts.asyncImageTaskRelay.statusURLPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.asyncImageTaskRelay.statusURLHint') }}</p>
+          <label class="mt-3 inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="asyncImageTaskUpstreamAsync" type="checkbox" />
+            <span>{{ t('admin.accounts.asyncImageTaskRelay.upstreamAsync') }}</span>
+          </label>
+          <p class="input-hint">{{ t('admin.accounts.asyncImageTaskRelay.upstreamAsyncHint') }}</p>
+          <div class="mt-3 max-w-xs">
+            <label class="input-label">{{ t('admin.accounts.asyncImageTaskRelay.pollInterval') }}</label>
+            <input v-model.number="asyncImageTaskPollInterval" type="number" min="1" max="60" class="input" />
+            <p class="input-hint">{{ t('admin.accounts.asyncImageTaskRelay.pollIntervalHint') }}</p>
+          </div>
+        </div>
+      </div>
+
       <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
       <div
         v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
@@ -3778,6 +3828,10 @@ const applyGrokOAuthUpstreamConfig = (credentials: Record<string, unknown>) => {
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
+const asyncImageTaskRelayEnabled = ref(false)
+const asyncImageTaskStatusURL = ref('')
+const asyncImageTaskUpstreamAsync = ref(true)
+const asyncImageTaskPollInterval = ref(3)
 const openAILongContextBillingEnabled = ref(false)
 const openAILongContextBillingTouched = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
@@ -4656,6 +4710,10 @@ const resetForm = () => {
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
+  asyncImageTaskRelayEnabled.value = false
+  asyncImageTaskStatusURL.value = ''
+  asyncImageTaskUpstreamAsync.value = true
+  asyncImageTaskPollInterval.value = 3
   openAILongContextBillingEnabled.value = false
   openAILongContextBillingTouched.value = false
   openAICompactMode.value = 'auto'
@@ -5216,6 +5274,31 @@ const createAccountAndFinish = async (
     if (Object.keys(quotaExtra).length > 0) {
       finalExtra = quotaExtra
     }
+  }
+  if ((platform === 'openai' || platform === 'grok') && type === 'apikey') {
+    const asyncExtra: Record<string, unknown> = { ...(finalExtra || {}) }
+    if (asyncImageTaskRelayEnabled.value) {
+      asyncExtra.async_image_task_relay_enabled = true
+      if (asyncImageTaskStatusURL.value.trim()) {
+        asyncExtra.async_image_task_status_url = asyncImageTaskStatusURL.value.trim()
+      }
+      if (!asyncImageTaskUpstreamAsync.value) {
+        asyncExtra.async_image_task_upstream_async_enabled = false
+      } else {
+        delete asyncExtra.async_image_task_upstream_async_enabled
+      }
+      if (asyncImageTaskPollInterval.value !== 3) {
+        asyncExtra.async_image_task_poll_interval_seconds = Math.min(60, Math.max(1, asyncImageTaskPollInterval.value || 3))
+      } else {
+        delete asyncExtra.async_image_task_poll_interval_seconds
+      }
+    } else {
+      delete asyncExtra.async_image_task_relay_enabled
+      delete asyncExtra.async_image_task_status_url
+      delete asyncExtra.async_image_task_upstream_async_enabled
+      delete asyncExtra.async_image_task_poll_interval_seconds
+    }
+    finalExtra = Object.keys(asyncExtra).length > 0 ? asyncExtra : undefined
   }
   if (platform === 'openai') {
     if (type === 'apikey') {

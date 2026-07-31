@@ -95,6 +95,7 @@ func (u *ImageResultUploader) Rewrite(ctx context.Context, taskID string, result
 		}
 		item["url"] = urlRaw
 		delete(item, "b64_json")
+		delete(item, "image_url")
 		items[i] = item
 	}
 	newData, err := json.Marshal(items)
@@ -123,6 +124,14 @@ func (u *ImageResultUploader) fetchImageBytes(ctx context.Context, item map[stri
 		}
 	}
 	if raw, ok := item["url"]; ok {
+		var rawURL string
+		if err := json.Unmarshal(raw, &rawURL); err == nil {
+			if rawURL = strings.TrimSpace(rawURL); rawURL != "" {
+				return u.download(ctx, rawURL)
+			}
+		}
+	}
+	if raw, ok := item["image_url"]; ok {
 		var rawURL string
 		if err := json.Unmarshal(raw, &rawURL); err == nil {
 			if rawURL = strings.TrimSpace(rawURL); rawURL != "" {

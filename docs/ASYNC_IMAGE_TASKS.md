@@ -53,6 +53,14 @@ image_storage:
 
 When a task completes, each generated image is uploaded to the bucket and the result is rewritten to a compact form: `data[].url` points at the stored object (a permanent `public_base_url/key` link, or a time-limited presigned URL) and `b64_json` is removed. Only this small JSON is stored in Redis. If an upload fails, the task is marked `failed` rather than persisting the raw base64.
 
+### Relaying an upstream async image task
+
+For an OpenAI/Grok API-key account whose image endpoint is itself a relay, enable **Relay upstream async image tasks** in the account settings. The setting is account-scoped and only applies while the local async worker is executing; synchronous image requests keep their existing behavior.
+
+The upstream create response may contain `task_id` (or `id`) with a processing status. For an opted-in JSON Images request, the gateway adds `async: true` by default so an upstream relay can return its own task immediately. Disable this per account with `async_image_task_upstream_async_enabled: false` when the provider always creates tasks or rejects the field. It polls `GET /v1/image-tasks/{task_id}` by default, using the same account credentials, proxy and request-header overrides. If the create response contains `poll_url` or `status_url`, that URL is preferred. Set `async_image_task_status_url` in the account extra configuration when the provider uses another path, for example `/v1/images/generations/{task_id}`. The value may be an absolute HTTP(S) URL or a path containing `{task_id}`. `async_image_task_poll_interval_seconds` controls polling frequency from 1 to 60 seconds and defaults to 3.
+
+The poller accepts common `processing`/`pending`/`queued` and `completed`/`succeeded` states. A completed OpenAI-compatible `data` response, a nested `result.data` response, or a direct `url`/`image_url` is normalized before the existing S3 uploader stores it. The local task response never exposes the upstream task ID.
+
 To support a different vendor beyond the S3-compatible client, implement the `service.ImageStorage` interface (`Save(ctx, key, contentType, data) (url, error)`) and provide it in place of the S3 implementation.
 
 ### Troubleshooting: the endpoints return 404 after enabling

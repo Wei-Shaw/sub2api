@@ -419,6 +419,19 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		return nil, err
 	}
 	if endpoint == GrokMediaEndpointImagesGenerations || endpoint == GrokMediaEndpointImagesEdits {
+		if account.AsyncImageTaskRelayEnabled() && IsAsyncImageTask(ctx) {
+			relayed, relayErr := s.pollImageTaskRelay(ctx, c, account, account.GetGrokMediaBaseURL(), upstreamReq.Header, respBody)
+			if relayErr != nil {
+				return nil, relayErr
+			}
+			if relayed.relayed {
+				respBody = relayed.body
+				resp.StatusCode = http.StatusOK
+				if relayed.responseHeader != nil {
+					resp.Header = relayed.responseHeader
+				}
+			}
+		}
 		if countOpenAIResponseImageOutputsFromJSONBytes(respBody) <= 0 {
 			setOpsUpstreamError(c, http.StatusBadGateway, "xAI upstream returned no image output", truncateString(string(respBody), 512))
 			return nil, &UpstreamFailoverError{

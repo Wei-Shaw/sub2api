@@ -1481,6 +1481,57 @@
         </div>
       </div>
 
+      <!-- Upstream async image task relay (API key image relays) -->
+      <div
+        v-if="(account?.platform === 'openai' || account?.platform === 'grok') && account?.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.asyncImageTaskRelay.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.asyncImageTaskRelay.description') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="async-image-task-relay-toggle"
+            @click="asyncImageTaskRelayEnabled = !asyncImageTaskRelayEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              asyncImageTaskRelayEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                asyncImageTaskRelayEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+        <div v-if="asyncImageTaskRelayEnabled" class="mt-3">
+          <label class="input-label">{{ t('admin.accounts.asyncImageTaskRelay.statusURL') }}</label>
+          <input
+            v-model="asyncImageTaskStatusURL"
+            type="text"
+            class="input font-mono text-sm"
+            :placeholder="t('admin.accounts.asyncImageTaskRelay.statusURLPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.asyncImageTaskRelay.statusURLHint') }}</p>
+          <label class="mt-3 inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="asyncImageTaskUpstreamAsync" type="checkbox" />
+            <span>{{ t('admin.accounts.asyncImageTaskRelay.upstreamAsync') }}</span>
+          </label>
+          <p class="input-hint">{{ t('admin.accounts.asyncImageTaskRelay.upstreamAsyncHint') }}</p>
+          <div class="mt-3 max-w-xs">
+            <label class="input-label">{{ t('admin.accounts.asyncImageTaskRelay.pollInterval') }}</label>
+            <input v-model.number="asyncImageTaskPollInterval" type="number" min="1" max="60" class="input" />
+            <p class="input-hint">{{ t('admin.accounts.asyncImageTaskRelay.pollIntervalHint') }}</p>
+          </div>
+        </div>
+      </div>
+
       <!-- OpenAI Codex hosted image_generation bridge policy -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
@@ -2841,6 +2892,10 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+const asyncImageTaskRelayEnabled = ref(false)
+const asyncImageTaskStatusURL = ref('')
+const asyncImageTaskUpstreamAsync = ref(true)
+const asyncImageTaskPollInterval = ref(3)
 const openAILongContextBillingEnabled = ref(false)
 // OpenAI 订阅档位（Plus/Pro/Free）手动覆盖值,存于 credentials.plan_type;'' 表示清空/自动识别
 const editPlanType = ref<string>('')
@@ -3276,6 +3331,18 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
+  asyncImageTaskRelayEnabled.value = false
+  asyncImageTaskStatusURL.value = ''
+  asyncImageTaskUpstreamAsync.value = true
+  asyncImageTaskPollInterval.value = 3
+  asyncImageTaskRelayEnabled.value = extra?.async_image_task_relay_enabled === true
+  asyncImageTaskStatusURL.value = typeof extra?.async_image_task_status_url === 'string'
+    ? extra.async_image_task_status_url
+    : ''
+  asyncImageTaskUpstreamAsync.value = extra?.async_image_task_upstream_async_enabled !== false
+  asyncImageTaskPollInterval.value = typeof extra?.async_image_task_poll_interval_seconds === 'number'
+    ? Math.min(60, Math.max(1, extra.async_image_task_poll_interval_seconds))
+    : 3
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
   openAICompactMode.value = 'auto'
@@ -4342,6 +4409,37 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
+    // Third-party OpenAI/Grok image relays: keep the switch in account extra so
+    // the async task worker can apply it to the selected upstream account.
+    if ((props.account.platform === 'openai' || props.account.platform === 'grok') && props.account.type === 'apikey') {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      if (asyncImageTaskRelayEnabled.value) {
+        newExtra.async_image_task_relay_enabled = true
+        if (asyncImageTaskStatusURL.value.trim()) {
+          newExtra.async_image_task_status_url = asyncImageTaskStatusURL.value.trim()
+        } else {
+          delete newExtra.async_image_task_status_url
+        }
+        if (!asyncImageTaskUpstreamAsync.value) {
+          newExtra.async_image_task_upstream_async_enabled = false
+        } else {
+          delete newExtra.async_image_task_upstream_async_enabled
+        }
+        if (asyncImageTaskPollInterval.value !== 3) {
+          newExtra.async_image_task_poll_interval_seconds = Math.min(60, Math.max(1, asyncImageTaskPollInterval.value || 3))
+        } else {
+          delete newExtra.async_image_task_poll_interval_seconds
+        }
+      } else {
+        delete newExtra.async_image_task_relay_enabled
+        delete newExtra.async_image_task_status_url
+        delete newExtra.async_image_task_upstream_async_enabled
+        delete newExtra.async_image_task_poll_interval_seconds
+      }
+      updatePayload.extra = newExtra
+    }
+
     // OpenAI: 手动覆盖订阅档位 plan_type（Plus/Pro/Free）。仅 OAuth 非影子账号：
     // 影子账号凭据由母账号管理(且后端会 sanitize),setup-token 无订阅调度语义。
     if (props.account.platform === 'openai' && props.account.type === 'oauth' && !isSparkShadow.value) {
@@ -4508,7 +4606,10 @@ const handleSubmit = async () => {
 
     // For OpenAI OAuth/SetupToken/API Key accounts, handle passthrough mode in extra
     if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'apikey')) {
-      const currentExtra = (props.account.extra as Record<string, unknown>) || {}
+      // Preserve settings assembled earlier in this submit, including the
+      // account-level async image task relay toggle.
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {

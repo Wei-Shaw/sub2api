@@ -581,6 +581,17 @@ export default {
         testModeCompact: 'Compact probe',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
+      asyncImageTaskRelay: {
+        title: 'Relay upstream async image tasks',
+        description: 'For an async local image task, poll a third-party upstream task and store the final image in this gateway S3 before returning it.',
+        statusURL: 'Upstream task status URL (optional)',
+        statusURLPlaceholder: 'Leave blank for /v1/image-tasks/{task_id}',
+        statusURLHint: 'Use an absolute URL or a path template containing {task_id}. This setting only affects local async image endpoints.',
+        upstreamAsync: 'Ask the upstream for an async task (async=true)',
+        upstreamAsyncHint: 'Enabled by default for OpenAI-compatible relays. Disable it when the provider always returns a task ID or rejects the async field.',
+        pollInterval: 'Polling interval (seconds)',
+        pollIntervalHint: 'The gateway polls the upstream task at this interval. Allowed range: 1-60 seconds.'
+      },
       grok: {
         baseUrlHint: 'Grok OAuth accounts forward to the official xAI API base URL.',
         apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.'
