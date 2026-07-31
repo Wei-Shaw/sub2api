@@ -1651,6 +1651,15 @@ func (r *stubUserRepo) DisableTotp(ctx context.Context, userID int64) error {
 func (r *stubUserRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
 	panic("unexpected GetByIDIncludeDeleted call")
 }
+func (r *stubUserRepo) SetSystemTokenHash(context.Context, int64, *string) error {
+	return nil
+}
+func (r *stubUserRepo) GetUserBySystemTokenHash(context.Context, string) (*service.User, error) {
+	return nil, nil
+}
+func (r *stubUserRepo) HasSystemToken(context.Context, int64) (bool, error) {
+	return false, nil
+}
 
 type stubApiKeyCache struct{}
 

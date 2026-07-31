@@ -47178,6 +47178,7 @@ type UserMutation struct {
 	addtotal_recharged            *float64
 	rpm_limit                     *int
 	addrpm_limit                  *int
+	system_token_hash             *string
 	clearedFields                 map[string]struct{}
 	api_keys                      map[int64]struct{}
 	removedapi_keys               map[int64]struct{}
@@ -48384,6 +48385,55 @@ func (m *UserMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetSystemTokenHash sets the "system_token_hash" field.
+func (m *UserMutation) SetSystemTokenHash(s string) {
+	m.system_token_hash = &s
+}
+
+// SystemTokenHash returns the value of the "system_token_hash" field in the mutation.
+func (m *UserMutation) SystemTokenHash() (r string, exists bool) {
+	v := m.system_token_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSystemTokenHash returns the old "system_token_hash" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldSystemTokenHash(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSystemTokenHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSystemTokenHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSystemTokenHash: %w", err)
+	}
+	return oldValue.SystemTokenHash, nil
+}
+
+// ClearSystemTokenHash clears the value of the "system_token_hash" field.
+func (m *UserMutation) ClearSystemTokenHash() {
+	m.system_token_hash = nil
+	m.clearedFields[user.FieldSystemTokenHash] = struct{}{}
+}
+
+// SystemTokenHashCleared returns if the "system_token_hash" field was cleared in this mutation.
+func (m *UserMutation) SystemTokenHashCleared() bool {
+	_, ok := m.clearedFields[user.FieldSystemTokenHash]
+	return ok
+}
+
+// ResetSystemTokenHash resets all changes to the "system_token_hash" field.
+func (m *UserMutation) ResetSystemTokenHash() {
+	m.system_token_hash = nil
+	delete(m.clearedFields, user.FieldSystemTokenHash)
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *UserMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -49120,7 +49170,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 25)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -49193,6 +49243,9 @@ func (m *UserMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, user.FieldRpmLimit)
 	}
+	if m.system_token_hash != nil {
+		fields = append(fields, user.FieldSystemTokenHash)
+	}
 	return fields
 }
 
@@ -49249,6 +49302,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.TotalRecharged()
 	case user.FieldRpmLimit:
 		return m.RpmLimit()
+	case user.FieldSystemTokenHash:
+		return m.SystemTokenHash()
 	}
 	return nil, false
 }
@@ -49306,6 +49361,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTotalRecharged(ctx)
 	case user.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case user.FieldSystemTokenHash:
+		return m.OldSystemTokenHash(ctx)
 	}
 	return nil, fmt.Errorf("unknown User field %s", name)
 }
@@ -49483,6 +49540,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRpmLimit(v)
 		return nil
+	case user.FieldSystemTokenHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSystemTokenHash(v)
+		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)
 }
@@ -49606,6 +49670,9 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldBalanceNotifyThreshold) {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
 	}
+	if m.FieldCleared(user.FieldSystemTokenHash) {
+		fields = append(fields, user.FieldSystemTokenHash)
+	}
 	return fields
 }
 
@@ -49637,6 +49704,9 @@ func (m *UserMutation) ClearField(name string) error {
 		return nil
 	case user.FieldBalanceNotifyThreshold:
 		m.ClearBalanceNotifyThreshold()
+		return nil
+	case user.FieldSystemTokenHash:
+		m.ClearSystemTokenHash()
 		return nil
 	}
 	return fmt.Errorf("unknown User nullable field %s", name)
@@ -49717,6 +49787,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case user.FieldSystemTokenHash:
+		m.ResetSystemTokenHash()
 		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)

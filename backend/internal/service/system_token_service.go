@@ -4,29 +4,49 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 )
 
-const systemTokenPrefix = "sat_"
+const (
+	systemTokenPrefix    = "sat_"
+	systemTokenHexLen    = 64 // 32 bytes → hex
+	systemTokenTotalLen  = len(systemTokenPrefix) + systemTokenHexLen
+)
 
 var ErrSystemTokenNotFound = errors.New("system token not found")
 
 // SystemTokenService manages long-lived system access tokens (系统访问令牌)
 // for programmatic access to the management API without JWT login.
 type SystemTokenService struct {
-	db *sql.DB
+	userRepo UserRepository
 }
 
-func NewSystemTokenService(db *sql.DB) *SystemTokenService {
-	return &SystemTokenService{db: db}
+func NewSystemTokenService(userRepo UserRepository) *SystemTokenService {
+	return &SystemTokenService{userRepo: userRepo}
 }
 
-// IsSystemToken returns true if the token string looks like a system access token.
+// IsSystemToken returns true if the token string has the sat_ prefix.
 func IsSystemToken(token string) bool {
 	return len(token) > len(systemTokenPrefix) && token[:len(systemTokenPrefix)] == systemTokenPrefix
+}
+
+// IsValidSystemTokenFormat performs strict format check: sat_ + 64 lowercase hex chars.
+// Use before any DB lookup to prevent unauthenticated DB amplification.
+func IsValidSystemTokenFormat(token string) bool {
+	if len(token) != systemTokenTotalLen {
+		return false
+	}
+	if token[:len(systemTokenPrefix)] != systemTokenPrefix {
+		return false
+	}
+	for _, c := range token[len(systemTokenPrefix):] {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 // Generate creates a new system access token for the user, replacing any existing one.
@@ -39,52 +59,30 @@ func (s *SystemTokenService) Generate(ctx context.Context, userID int64) (string
 	token := systemTokenPrefix + hex.EncodeToString(raw)
 	hash := sha256Hex(token)
 
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE users SET system_token_hash = $1 WHERE id = $2 AND deleted_at IS NULL`,
-		hash, userID)
-	if err != nil {
+	if err := s.userRepo.SetSystemTokenHash(ctx, userID, &hash); err != nil {
 		return "", fmt.Errorf("save system token: %w", err)
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return "", errors.New("user not found")
 	}
 	return token, nil
 }
 
 // Revoke clears the system access token for the user.
 func (s *SystemTokenService) Revoke(ctx context.Context, userID int64) error {
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE users SET system_token_hash = NULL WHERE id = $1 AND deleted_at IS NULL`,
-		userID)
-	return err
+	return s.userRepo.SetSystemTokenHash(ctx, userID, nil)
 }
 
 // HasToken reports whether the user has a system access token set.
 func (s *SystemTokenService) HasToken(ctx context.Context, userID int64) (bool, error) {
-	var exists bool
-	err := s.db.QueryRowContext(ctx,
-		`SELECT system_token_hash IS NOT NULL FROM users WHERE id = $1 AND deleted_at IS NULL`,
-		userID).Scan(&exists)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	return exists, err
+	return s.userRepo.HasSystemToken(ctx, userID)
 }
 
 // GetUserIDByToken validates a system access token and returns the owner's user ID.
 func (s *SystemTokenService) GetUserIDByToken(ctx context.Context, token string) (int64, error) {
 	hash := sha256Hex(token)
-	var userID int64
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id FROM users WHERE system_token_hash = $1 AND deleted_at IS NULL`,
-		hash).Scan(&userID)
-	if errors.Is(err, sql.ErrNoRows) {
+	user, err := s.userRepo.GetUserBySystemTokenHash(ctx, hash)
+	if err != nil {
 		return 0, ErrSystemTokenNotFound
 	}
-	if err != nil {
-		return 0, err
-	}
-	return userID, nil
+	return user.ID, nil
 }
 
 func sha256Hex(s string) string {

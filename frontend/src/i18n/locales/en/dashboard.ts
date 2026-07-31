@@ -777,6 +777,9 @@ export default {
       confirmRevoke: 'Revoking will immediately break all integrations using this token. Confirm?',
       copySuccess: 'Copied to clipboard',
       usage: 'Usage: add Authorization: Bearer sat_xxx to your request headers',
+      passwordRequired: 'Enter your password to verify identity',
+      passwordPlaceholder: 'Enter password',
+      passwordIncorrect: 'Incorrect password, please try again',
     },
     balanceNotify: {
       title: 'Balance Low Notification',

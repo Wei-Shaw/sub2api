@@ -1410,3 +1410,38 @@ func (r *userRepository) DisableTotp(ctx context.Context, userID int64) error {
 	}
 	return nil
 }
+
+func (r *userRepository) SetSystemTokenHash(ctx context.Context, userID int64, hash *string) error {
+	client := clientFromContext(ctx, r.client)
+	b := client.User.UpdateOneID(userID)
+	if hash != nil {
+		b.SetSystemTokenHash(*hash)
+	} else {
+		b.ClearSystemTokenHash()
+	}
+	_, err := b.Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	return nil
+}
+
+func (r *userRepository) GetUserBySystemTokenHash(ctx context.Context, hash string) (*service.User, error) {
+	u, err := r.client.User.Query().
+		Where(dbuser.SystemTokenHash(hash)).
+		Where(dbuser.DeletedAtIsNil()).
+		Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	return userEntityToService(u), nil
+}
+
+func (r *userRepository) HasSystemToken(ctx context.Context, userID int64) (bool, error) {
+	u, err := r.client.User.Query().
+		Where(dbuser.ID(userID)).
+		Where(dbuser.DeletedAtIsNil()).
+		Where(dbuser.SystemTokenHashNotNil()).
+		Exist(ctx)
+	return u, err
+}

@@ -61,6 +61,10 @@ func jwtAuth(
 
 		// 系统访问令牌 (System Access Token) 快捷路径
 		if service.IsSystemToken(tokenString) {
+			if !service.IsValidSystemTokenFormat(tokenString) {
+				AbortWithError(c, 401, "INVALID_SYSTEM_TOKEN", "Invalid system access token")
+				return
+			}
 			authenticateWithSystemToken(c, systemTokenService, userService, activityToucher, tokenString)
 			return
 		}
@@ -146,6 +150,7 @@ func authenticateWithSystemToken(
 	})
 	c.Set(string(ContextKeyUserRole), user.Role)
 	c.Set(ContextKeyAuthEmail, user.Email)
+	c.Set("auth_method", service.AuditAuthMethodSystemToken)
 	if activityToucher != nil {
 		activityToucher.TouchLastActiveForUser(c.Request.Context(), user)
 	}

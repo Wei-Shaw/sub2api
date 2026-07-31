@@ -354,6 +354,20 @@ func (_c *UserCreate) SetNillableRpmLimit(v *int) *UserCreate {
 	return _c
 }
 
+// SetSystemTokenHash sets the "system_token_hash" field.
+func (_c *UserCreate) SetSystemTokenHash(v string) *UserCreate {
+	_c.mutation.SetSystemTokenHash(v)
+	return _c
+}
+
+// SetNillableSystemTokenHash sets the "system_token_hash" field if the given value is not nil.
+func (_c *UserCreate) SetNillableSystemTokenHash(v *string) *UserCreate {
+	if v != nil {
+		_c.SetSystemTokenHash(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *UserCreate) AddAPIKeyIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -745,6 +759,11 @@ func (_c *UserCreate) check() error {
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "User.rpm_limit"`)}
 	}
+	if v, ok := _c.mutation.SystemTokenHash(); ok {
+		if err := user.SystemTokenHashValidator(v); err != nil {
+			return &ValidationError{Name: "system_token_hash", err: fmt.Errorf(`ent: validator failed for field "User.system_token_hash": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -867,6 +886,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(user.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.SystemTokenHash(); ok {
+		_spec.SetField(user.FieldSystemTokenHash, field.TypeString, value)
+		_node.SystemTokenHash = &value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1480,6 +1503,24 @@ func (u *UserUpsert) AddRpmLimit(v int) *UserUpsert {
 	return u
 }
 
+// SetSystemTokenHash sets the "system_token_hash" field.
+func (u *UserUpsert) SetSystemTokenHash(v string) *UserUpsert {
+	u.Set(user.FieldSystemTokenHash, v)
+	return u
+}
+
+// UpdateSystemTokenHash sets the "system_token_hash" field to the value that was provided on create.
+func (u *UserUpsert) UpdateSystemTokenHash() *UserUpsert {
+	u.SetExcluded(user.FieldSystemTokenHash)
+	return u
+}
+
+// ClearSystemTokenHash clears the value of the "system_token_hash" field.
+func (u *UserUpsert) ClearSystemTokenHash() *UserUpsert {
+	u.SetNull(user.FieldSystemTokenHash)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1928,6 +1969,27 @@ func (u *UserUpsertOne) AddRpmLimit(v int) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateRpmLimit() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetSystemTokenHash sets the "system_token_hash" field.
+func (u *UserUpsertOne) SetSystemTokenHash(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSystemTokenHash(v)
+	})
+}
+
+// UpdateSystemTokenHash sets the "system_token_hash" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateSystemTokenHash() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSystemTokenHash()
+	})
+}
+
+// ClearSystemTokenHash clears the value of the "system_token_hash" field.
+func (u *UserUpsertOne) ClearSystemTokenHash() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearSystemTokenHash()
 	})
 }
 
@@ -2545,6 +2607,27 @@ func (u *UserUpsertBulk) AddRpmLimit(v int) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateRpmLimit() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetSystemTokenHash sets the "system_token_hash" field.
+func (u *UserUpsertBulk) SetSystemTokenHash(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSystemTokenHash(v)
+	})
+}
+
+// UpdateSystemTokenHash sets the "system_token_hash" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateSystemTokenHash() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSystemTokenHash()
+	})
+}
+
+// ClearSystemTokenHash clears the value of the "system_token_hash" field.
+func (u *UserUpsertBulk) ClearSystemTokenHash() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearSystemTokenHash()
 	})
 }
 

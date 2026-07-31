@@ -283,6 +283,16 @@ func (m *mockUserRepo) WithUserProfileIdentityTx(ctx context.Context, fn func(tx
 	return nil
 }
 
+func (m *mockUserRepo) SetSystemTokenHash(context.Context, int64, *string) error {
+	panic("unexpected")
+}
+func (m *mockUserRepo) GetUserBySystemTokenHash(context.Context, string) (*User, error) {
+	panic("unexpected")
+}
+func (m *mockUserRepo) HasSystemToken(context.Context, int64) (bool, error) {
+	panic("unexpected")
+}
+
 // --- mock: APIKeyAuthCacheInvalidator ---
 
 type mockAuthCacheInvalidator struct {

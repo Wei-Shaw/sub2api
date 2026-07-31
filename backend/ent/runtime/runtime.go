@@ -2209,6 +2209,10 @@ func init() {
 	userDescRpmLimit := userFields[20].Descriptor()
 	// user.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	user.DefaultRpmLimit = userDescRpmLimit.Default.(int)
+	// userDescSystemTokenHash is the schema descriptor for system_token_hash field.
+	userDescSystemTokenHash := userFields[21].Descriptor()
+	// user.SystemTokenHashValidator is a validator for the "system_token_hash" field. It is called by the builders before save.
+	user.SystemTokenHashValidator = userDescSystemTokenHash.Validators[0].(func(string) error)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

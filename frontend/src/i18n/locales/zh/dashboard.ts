@@ -782,6 +782,9 @@ export default {
       confirmRevoke: '撤销后使用该令牌的所有集成将立即失效，确认撤销？',
       copySuccess: '已复制到剪贴板',
       usage: '使用方式：在请求 Header 中添加 Authorization: Bearer sat_xxx',
+      passwordRequired: '请输入当前密码以验证身份',
+      passwordPlaceholder: '输入密码',
+      passwordIncorrect: '密码错误，请重试',
     },
     balanceNotify: {
       title: '余额不足提醒',

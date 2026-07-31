@@ -155,6 +155,15 @@ func (s *userHandlerRepoStub) UnbindUserAuthProvider(_ context.Context, _ int64,
 	s.identities = append([]service.UserAuthIdentityRecord(nil), filtered...)
 	return nil
 }
+func (s *userHandlerRepoStub) SetSystemTokenHash(context.Context, int64, *string) error {
+	return nil
+}
+func (s *userHandlerRepoStub) GetUserBySystemTokenHash(context.Context, string) (*service.User, error) {
+	return nil, nil
+}
+func (s *userHandlerRepoStub) HasSystemToken(context.Context, int64) (bool, error) {
+	return false, nil
+}
 
 func TestUserHandlerUpdateProfileReturnsAvatarURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)

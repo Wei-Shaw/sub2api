@@ -5,8 +5,8 @@ export async function getSystemTokenStatus(): Promise<{ has_token: boolean }> {
   return data
 }
 
-export async function generateSystemToken(): Promise<{ token: string }> {
-  const { data } = await apiClient.post<{ token: string }>('/user/system-token')
+export async function generateSystemToken(password: string): Promise<{ token: string }> {
+  const { data } = await apiClient.post<{ token: string }>('/user/system-token', { password })
   return data
 }
 

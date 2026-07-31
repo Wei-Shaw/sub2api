@@ -42,8 +42,30 @@
         </p>
       </template>
 
+      <!-- Password input (shown when generating) -->
+      <div v-if="showPasswordInput" class="space-y-2">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          {{ t('profile.systemToken.passwordRequired') }}
+        </label>
+        <input
+          v-model="password"
+          type="password"
+          :placeholder="t('profile.systemToken.passwordPlaceholder')"
+          class="input w-full max-w-sm"
+          @keyup.enter="confirmGenerate"
+        />
+        <div class="flex gap-2">
+          <button @click="confirmGenerate" :disabled="operating || !password" class="btn btn-primary">
+            {{ t('common.confirm') }}
+          </button>
+          <button @click="cancelGenerate" :disabled="operating" class="btn btn-secondary">
+            {{ t('common.cancel') }}
+          </button>
+        </div>
+      </div>
+
       <!-- Actions -->
-      <div class="flex gap-3">
+      <div v-if="!showPasswordInput" class="flex gap-3">
         <button
           v-if="!hasToken && !generatedToken"
           @click="handleGenerate"
@@ -86,6 +108,8 @@ const loading = ref(true)
 const operating = ref(false)
 const hasToken = ref(false)
 const generatedToken = ref('')
+const showPasswordInput = ref(false)
+const password = ref('')
 
 onMounted(async () => {
   try {
@@ -98,22 +122,35 @@ onMounted(async () => {
   }
 })
 
-async function handleGenerate() {
+function handleGenerate() {
+  showPasswordInput.value = true
+  password.value = ''
+}
+
+function handleRegenerate() {
+  if (!confirm(t('profile.systemToken.confirmRegenerate'))) return
+  handleGenerate()
+}
+
+function cancelGenerate() {
+  showPasswordInput.value = false
+  password.value = ''
+}
+
+async function confirmGenerate() {
+  if (!password.value) return
   operating.value = true
   try {
-    const res = await systemTokenAPI.generateSystemToken()
+    const res = await systemTokenAPI.generateSystemToken(password.value)
     generatedToken.value = res.token
     hasToken.value = true
+    showPasswordInput.value = false
+    password.value = ''
   } catch {
-    appStore.showError(t('common.operationFailed'))
+    appStore.showError(t('profile.systemToken.passwordIncorrect'))
   } finally {
     operating.value = false
   }
-}
-
-async function handleRegenerate() {
-  if (!confirm(t('profile.systemToken.confirmRegenerate'))) return
-  await handleGenerate()
 }
 
 async function handleRevoke() {
