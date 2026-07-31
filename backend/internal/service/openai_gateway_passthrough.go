@@ -63,6 +63,13 @@ REDACTED
 		REDACTED)
 			return nil, fmt.Errorf("openai passthrough rejected before upstream: %s", rejectReason)
 	REDACTED
+		if isOpenAICodexModel(reqModel) && !gjson.GetBytes(body, "instructions").Exists() {
+			nextBody, setErr := sjson.SetBytes(body, "instructions", defaultCodexSynthInstructions(reqModel))
+			if setErr != nil {
+				return nil, fmt.Errorf("set passthrough codex instructions: %w", setErr)
+		REDACTED
+			body = nextBody
+	REDACTED
 
 		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body, isOpenAIResponsesCompactPath(c))
 		if err != nil {
