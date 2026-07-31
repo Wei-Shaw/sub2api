@@ -199,59 +199,62 @@ export interface LoginAgreementDocument {
 }
 
 export interface PublicSettings {
-	registration_enabled: boolean;
-	email_verify_enabled: boolean;
-	force_email_on_third_party_signup: boolean;
-	registration_email_suffix_whitelist: string[];
-	promo_code_enabled: boolean;
-	password_reset_enabled: boolean;
-	invitation_code_enabled: boolean;
-	login_agreement_enabled?: boolean;
-	login_agreement_mode?: "modal" | "checkbox" | string;
-	login_agreement_updated_at?: string;
-	login_agreement_revision?: string;
-	login_agreement_documents?: LoginAgreementDocument[];
-	turnstile_enabled: boolean;
-	turnstile_site_key: string;
-	site_name: string;
-	site_logo: string;
-	site_subtitle: string;
-	api_base_url: string;
-	contact_info: string;
-	doc_url: string;
-	home_content: string;
-	hide_ccs_import_button: boolean;
-	payment_enabled: boolean;
-	risk_control_enabled: boolean;
-	table_default_page_size: number;
-	table_page_size_options: number[];
-	custom_menu_items: CustomMenuItem[];
-	custom_endpoints: CustomEndpoint[];
-	linuxdo_oauth_enabled: boolean;
-	dingtalk_oauth_enabled?: boolean;
-	wechat_oauth_enabled: boolean;
-	wechat_oauth_open_enabled?: boolean;
-	wechat_oauth_mp_enabled?: boolean;
-	wechat_oauth_mobile_enabled?: boolean;
-	oidc_oauth_enabled: boolean;
-	oidc_oauth_provider_name: string;
-	github_oauth_enabled: boolean;
-	google_oauth_enabled: boolean;
-	backend_mode_enabled: boolean;
-	version: string;
-	// 服务器全局时区（IANA 名称与当前 UTC 偏移），高峰时段等服务端本地时间窗口的展示标注用；
-	// 可选：注入的 __APP_CONFIG__ 旧缓存可能缺失
-	server_timezone?: string;
-	server_utc_offset?: string;
-	balance_low_notify_enabled: boolean;
-	account_quota_notify_enabled: boolean;
-	balance_low_notify_threshold: number;
-	channel_monitor_enabled: boolean;
-	channel_monitor_default_interval_seconds: number;
-	available_channels_enabled: boolean;
-	service_quota_enabled: boolean;
-	affiliate_enabled: boolean;
-	allow_user_view_error_requests?: boolean;
+  registration_enabled: boolean;
+  email_verify_enabled: boolean;
+  force_email_on_third_party_signup: boolean;
+  registration_email_suffix_whitelist: string[];
+  promo_code_enabled: boolean;
+  password_reset_enabled: boolean;
+  invitation_code_enabled: boolean;
+  login_agreement_enabled?: boolean;
+  login_agreement_mode?: "modal" | "checkbox" | string;
+  login_agreement_updated_at?: string;
+  login_agreement_revision?: string;
+  login_agreement_documents?: LoginAgreementDocument[];
+  turnstile_enabled: boolean;
+  passkey_enabled?: boolean;
+  turnstile_site_key: string;
+  site_name: string;
+  site_logo: string;
+  site_subtitle: string;
+  api_base_url: string;
+  contact_info: string;
+  doc_url: string;
+  home_content: string;
+  hide_ccs_import_button: boolean;
+  payment_enabled: boolean;
+  risk_control_enabled: boolean;
+  table_default_page_size: number;
+  table_page_size_options: number[];
+  custom_menu_items: CustomMenuItem[];
+  custom_endpoints: CustomEndpoint[];
+  linuxdo_oauth_enabled: boolean;
+  dingtalk_oauth_enabled?: boolean;
+  wechat_oauth_enabled: boolean;
+  wechat_oauth_open_enabled?: boolean;
+  wechat_oauth_mp_enabled?: boolean;
+  wechat_oauth_mobile_enabled?: boolean;
+  oidc_oauth_enabled: boolean;
+  oidc_oauth_provider_name: string;
+  github_oauth_enabled: boolean;
+  google_oauth_enabled: boolean;
+  backend_mode_enabled: boolean;
+  version: string;
+  // 服务器全局时区（IANA 名称与当前 UTC 偏移），高峰时段等服务端本地时间窗口的展示标注用；
+  // 可选：注入的 __APP_CONFIG__ 旧缓存可能缺失
+  server_timezone?: string;
+  server_utc_offset?: string;
+  balance_low_notify_enabled: boolean;
+  account_quota_notify_enabled: boolean;
+  balance_low_notify_threshold: number;
+  channel_monitor_enabled: boolean;
+  channel_monitor_default_interval_seconds: number;
+  available_channels_enabled: boolean;
+  model_plaza_enabled: boolean;
+  model_plaza_require_auth: boolean;
+  service_quota_enabled: boolean;
+  affiliate_enabled: boolean;
+  allow_user_view_error_requests?: boolean;
 }
 
 export interface AuthResponse {

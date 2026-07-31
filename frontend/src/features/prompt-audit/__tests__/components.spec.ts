@@ -50,6 +50,21 @@ describe('Prompt Audit components', () => {
     expect(wrapper.emitted('probe')?.[0]?.[0]).toMatchObject({ id: 'guard-1' })
   })
 
+  it('surfaces an undecryptable saved credential and prompts for re-entry', async () => {
+    const invalidEndpoint = { ...endpoint(), token_status: 'invalid' }
+    const wrapper = mount(EndpointPool, {
+      props: { endpoints: [invalidEndpoint], probeResults: {}, probingIds: [] },
+      global: { stubs: { BaseDialog: DialogStub } },
+    })
+    expect(wrapper.text()).toContain('admin.promptAudit.pool.invalid')
+    expect(wrapper.text()).not.toContain('admin.promptAudit.pool.configured')
+
+    const edit = wrapper.findAll('button').find((button) => button.text().includes('common.edit'))
+    await edit!.trigger('click')
+    const token = wrapper.get<HTMLInputElement>('[aria-label="admin.promptAudit.pool.apiKey"]')
+    expect(token.attributes('placeholder')).toContain('admin.promptAudit.pool.reenterSecret')
+  })
+
   it('supports group search, stale configured groups, nine scanners, and bounded worker inputs', async () => {
     const draft: PromptAuditDraft = {
       enabled: true, blocking_enabled: false, store_pass_events: false, effective_mode: 'async_audit', strategy: 'priority',

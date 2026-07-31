@@ -12,7 +12,7 @@ export interface PromptAuditEndpoint {
   input_limit: number
   enabled: boolean
   has_token: boolean
-  token_status: 'configured' | 'missing' | string
+  token_status: 'configured' | 'missing' | 'invalid' | string
 }
 
 export interface PromptAuditEndpointDraft extends PromptAuditEndpoint {

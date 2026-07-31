@@ -33,7 +33,6 @@ const routes: RouteRecordRaw[] = [
 		},
 	},
 
-	// ==================== Public Routes ====================
 	{
 		path: "/home",
 		name: "Home",
@@ -179,6 +178,163 @@ const routes: RouteRecordRaw[] = [
 			title: "Legal Document",
 		},
 	},
+=======
+  // ==================== Public Routes ====================
+  {
+    path: '/home',
+    name: 'Home',
+    component: () => import('@/views/HomeView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Home'
+    }
+  },
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/auth/LoginView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Login',
+      titleKey: 'home.login'
+    }
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: () => import('@/views/auth/RegisterView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Register',
+      titleKey: 'auth.createAccount'
+    }
+  },
+  {
+    path: '/email-verify',
+    name: 'EmailVerify',
+    component: () => import('@/views/auth/EmailVerifyView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Verify Email'
+    }
+  },
+  {
+    path: '/auth/callback',
+    name: 'OAuthCallback',
+    alias: '/auth/oauth/callback',
+    component: () => import('@/views/auth/OAuthCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'OAuth Callback',
+      titleKey: 'auth.oauthCallbackPageTitle'
+    }
+  },
+  {
+    path: '/auth/linuxdo/callback',
+    name: 'LinuxDoOAuthCallback',
+    component: () => import('@/views/auth/LinuxDoCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'LinuxDo OAuth Callback',
+      titleKey: 'auth.linuxdoCallbackPageTitle'
+    }
+  },
+  {
+    path: '/auth/wechat/callback',
+    name: 'WeChatOAuthCallback',
+    component: () => import('@/views/auth/WechatCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'WeChat OAuth Callback',
+      titleKey: 'auth.wechatCallbackPageTitle'
+    }
+  },
+  {
+    path: '/auth/wechat/payment/callback',
+    name: 'WeChatPaymentOAuthCallback',
+    component: () => import('@/views/auth/WechatPaymentCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'WeChat Payment Callback',
+      titleKey: 'auth.wechatPaymentCallbackPageTitle'
+    }
+  },
+  {
+    path: '/auth/dingtalk/callback',
+    name: 'DingTalkOAuthCallback',
+    component: () => import('@/views/auth/DingTalkCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'DingTalk OAuth Callback',
+      titleKey: 'auth.dingtalkCallbackPageTitle'
+    }
+  },
+  {
+    path: '/auth/dingtalk/email-completion',
+    name: 'dingtalk-email-completion',
+    component: () => import('@/views/auth/DingTalkEmailCompletionView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'DingTalk Email Completion'
+    }
+  },
+  {
+    path: '/auth/oidc/callback',
+    name: 'OIDCOAuthCallback',
+    component: () => import('@/views/auth/OidcCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'OIDC OAuth Callback',
+      titleKey: 'auth.oidcCallbackPageTitle'
+    }
+  },
+  {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: () => import('@/views/auth/ForgotPasswordView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Forgot Password',
+      titleKey: 'auth.forgotPasswordTitle'
+    }
+  },
+  {
+    path: '/reset-password',
+    name: 'ResetPassword',
+    component: () => import('@/views/auth/ResetPasswordView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Reset Password'
+    }
+  },
+  {
+    path: '/key-usage',
+    name: 'KeyUsage',
+    component: () => import('@/views/KeyUsageView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Key Usage',
+    }
+  },
+  {
+    path: '/legal/:documentId',
+    name: 'LegalDocument',
+    component: () => import('@/views/public/LegalDocumentView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Legal Document'
+    }
+  },
+  {
+    path: '/model-plaza',
+    name: 'ModelPlaza',
+    component: () => import('@/views/ModelPlazaView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Model Plaza',
+      titleKey: 'modelPlaza.title'
+    }
+  },
 
 	// ==================== User Routes ====================
 	{
@@ -853,37 +1009,62 @@ router.beforeEach(async (to, _from, next) => {
 		}
 	}
 
-	// If route doesn't require auth, allow access
-	if (!requiresAuth) {
-		// If already authenticated and trying to access login/register, redirect to appropriate dashboard
-		if (
-			authStore.isAuthenticated &&
-			(to.path === "/login" || to.path === "/register")
-		) {
-			// In backend mode, non-admin users should NOT be redirected away from login
-			// (they are blocked from all protected routes, so redirecting would cause a loop)
-			if (appStore.backendModeEnabled && !authStore.isAdmin) {
-				next();
-				return;
-			}
-			// Admin users go to admin dashboard, regular users go to user dashboard
-			next(authStore.isAdmin ? "/admin/dashboard" : "/dashboard");
-			return;
-		}
-		// Backend mode: block public pages for unauthenticated users (except login, key-usage, setup)
-		if (appStore.backendModeEnabled && !authStore.isAuthenticated) {
-			const isAllowed = isBackendModePublicRouteAllowed(
-				to.path,
-				authStore.hasPendingAuthSession,
-			);
-			if (!isAllowed) {
-				next("/login");
-				return;
-			}
-		}
-		next();
-		return;
-	}
+  // If route doesn't require auth, allow access
+  if (!requiresAuth) {
+    // If already authenticated and trying to access login/register, redirect to appropriate dashboard
+    if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
+      // In backend mode, non-admin users should NOT be redirected away from login
+      // (they are blocked from all protected routes, so redirecting would cause a loop)
+      if (appStore.backendModeEnabled && !authStore.isAdmin) {
+        next()
+        return
+      }
+      // Admin users go to admin dashboard, regular users go to user dashboard
+      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      return
+    }
+    // Model Plaza:公开路由但受「启用开关 + 可选强制登录」双重控制(后端同口径 fail-closed)
+    if (to.path === '/model-plaza') {
+      if (!appStore.publicSettingsLoaded) {
+        try {
+          await appStore.fetchPublicSettings()
+        } catch (error) {
+          console.warn('Failed to load public settings in route guard', error)
+        }
+      }
+      const plazaSettings = appStore.cachedPublicSettings
+      // 仅在设置成功加载且明确为 false 时拦截(瞬时加载失败视为未知,由后端 404 兜底)
+      if (appStore.publicSettingsLoaded && plazaSettings?.model_plaza_enabled === false) {
+        next(
+          authStore.isAuthenticated
+            ? authStore.isAdmin
+              ? '/admin/dashboard'
+              : '/dashboard'
+            : '/home'
+        )
+        return
+      }
+      if (plazaSettings?.model_plaza_require_auth === true && !authStore.isAuthenticated) {
+        next({ path: '/login', query: { redirect: to.fullPath } })
+        return
+      }
+      // Backend mode:登录的非管理员也不可见(匿名由下方公共拦截处理,广场不在白名单)
+      if (appStore.backendModeEnabled && authStore.isAuthenticated && !authStore.isAdmin) {
+        next('/login')
+        return
+      }
+    }
+    // Backend mode: block public pages for unauthenticated users (except login, key-usage, setup)
+    if (appStore.backendModeEnabled && !authStore.isAuthenticated) {
+      const isAllowed = isBackendModePublicRouteAllowed(to.path, authStore.hasPendingAuthSession)
+      if (!isAllowed) {
+        next('/login')
+        return
+      }
+    }
+    next()
+    return
+  }
 
 	// Route requires authentication
 	if (!authStore.isAuthenticated) {
