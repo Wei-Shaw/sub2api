@@ -4,8 +4,9 @@ package geminicli
 import "time"
 
 const (
-	AIStudioBaseURL  = "https://generativelanguage.googleapis.com"
-	GeminiCliBaseURL = "https://cloudcode-pa.googleapis.com"
+	AIStudioBaseURL      = "https://generativelanguage.googleapis.com"
+	VertexExpressBaseURL = "https://aiplatform.googleapis.com"
+	GeminiCliBaseURL     = "https://cloudcode-pa.googleapis.com"
 
 	AuthorizeURL = "https://accounts.google.com/o/oauth2/v2/auth"
 	TokenURL     = "https://oauth2.googleapis.com/token"

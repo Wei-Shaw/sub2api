@@ -242,6 +242,33 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBeUndefined()
   })
 
+  it('creates a Gemini Vertex API key account with the Express endpoint and GCP tier', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Gemini')
+    await selectButtonByText(wrapper, 'admin.accounts.gemini.accountType.apiKeyTitle')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Vertex API Key')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('vertex-api-key')
+    await wrapper.get('[data-testid="gemini-api-mode"]').setValue('vertex')
+
+    expect((wrapper.get('[data-testid="api-key-base-url"]').element as HTMLInputElement).value)
+      .toBe('https://aiplatform.googleapis.com')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'gemini',
+      type: 'apikey',
+      credentials: {
+        api_key: 'vertex-api-key',
+        api_mode: 'vertex',
+        base_url: 'https://aiplatform.googleapis.com',
+        tier_id: 'gcp_standard'
+      }
+    })
+  })
+
   it('leaves Codex session import billing ownership to the backend', async () => {
     const wrapper = await openCodexImportStep()
     await wrapper.get('[data-testid="import-codex-session"]').trigger('click')

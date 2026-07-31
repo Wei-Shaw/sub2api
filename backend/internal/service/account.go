@@ -261,6 +261,29 @@ func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
 }
 
+const (
+	GeminiAPIModeAIStudio = "ai_studio"
+	GeminiAPIModeVertex   = "vertex"
+)
+
+// GeminiAPIMode returns the upstream API family used by a Gemini API-key
+// account. Legacy accounts do not have api_mode and remain on AI Studio.
+func (a *Account) GeminiAPIMode() string {
+	if a == nil || a.Platform != PlatformGemini || a.Type != AccountTypeAPIKey {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(a.GetCredential("api_mode"))) {
+	case GeminiAPIModeVertex:
+		return GeminiAPIModeVertex
+	default:
+		return GeminiAPIModeAIStudio
+	}
+}
+
+func (a *Account) IsGeminiVertexAPIKey() bool {
+	return a != nil && a.GeminiAPIMode() == GeminiAPIModeVertex
+}
+
 func (a *Account) IsGrok() bool {
 	return a.Platform == PlatformGrok
 }

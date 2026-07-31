@@ -1156,12 +1156,24 @@ export default {
         modelPassthrough: 'Gemini 直接转发模型',
         modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
         baseUrlHint: '留空使用官方 Gemini API',
+        baseUrlHintVertex: '留空使用 Vertex AI Express Mode 官方地址',
         apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
+        apiModeLabel: 'API 模式',
+        apiModeHint: 'AI Studio 与 Vertex AI Express Mode 使用不同的上游资源路径。',
+        apiMode: {
+          aiStudio: 'Google AI Studio',
+          vertex: 'Vertex AI API Key'
+        },
         tier: {
           label: '账号等级',
           hint: '提示：系统会优先尝试自动识别账号等级；若自动识别不可用或失败，则使用你选择的等级作为回退（本地模拟配额）。',
           aiStudioHint:
             'AI Studio 的配额是按模型分别限流（Pro/Flash 独立）。若已绑卡（按量付费），请选 Pay-as-you-go。',
+          vertexHint: 'Vertex AI API Key 使用 GCP 配额档位。',
+          vertex: {
+            standard: 'GCP Standard',
+            enterprise: 'GCP Enterprise'
+          },
           googleOne: {
             free: 'Google One Free',
             pro: 'Google One Pro',
@@ -1179,9 +1191,9 @@ export default {
         accountType: {
           oauthTitle: 'OAuth 授权（Gemini）',
           oauthDesc: '使用 Google 账号授权，并选择 OAuth 子类型。',
-          apiKeyTitle: 'API 密钥（AI Studio）',
-          apiKeyDesc: '最快接入方式，使用 AIza API Key。',
-          apiKeyNote: '适合轻量测试。免费层限流严格，数据可能用于训练。',
+          apiKeyTitle: 'API 密钥（AI Studio / Vertex）',
+          apiKeyDesc: '使用 AIza API Key，并选择 AI Studio 或 Vertex AI 路由。',
+          apiKeyNote: 'AI Studio 与 Vertex AI Express Mode 使用不同的请求地址，请在下方选择对应模式。',
           apiKeyLink: '获取 API Key',
           quotaLink: '配额说明'
         },

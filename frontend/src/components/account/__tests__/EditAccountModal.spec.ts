@@ -216,6 +216,21 @@ function buildVertexAccount() {
   } as any
 }
 
+function buildVertexAPIKeyAccount() {
+  return {
+    ...buildAccount(),
+    id: 7,
+    name: 'Vertex API Key',
+    platform: 'gemini',
+    credentials: {
+      api_key: 'vertex-api-key',
+      api_mode: 'vertex',
+      base_url: 'https://aiplatform.googleapis.com',
+      tier_id: 'gcp_enterprise'
+    }
+  } as any
+}
+
 function buildAntigravityAccount(projectId = 'configured-project') {
   return {
     id: 3,
@@ -314,6 +329,28 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+  })
+
+  it('rehydrates and updates the Gemini API key routing mode', async () => {
+    const account = buildVertexAPIKeyAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="edit-gemini-api-mode"]').element as HTMLSelectElement).value)
+      .toBe('vertex')
+    expect((wrapper.get('[data-testid="edit-api-key-base-url"]').element as HTMLInputElement).value)
+      .toBe('https://aiplatform.googleapis.com')
+
+    await wrapper.get('[data-testid="edit-gemini-api-mode"]').setValue('ai_studio')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      api_mode: 'ai_studio',
+      base_url: 'https://generativelanguage.googleapis.com',
+      tier_id: 'aistudio_free'
+    })
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {

@@ -1111,12 +1111,24 @@ export default {
         modelPassthroughDesc:
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
+        baseUrlHintVertex: 'Leave default for the official Vertex AI Express Mode endpoint',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)',
+        apiModeLabel: 'API Mode',
+        apiModeHint: 'AI Studio and Vertex AI Express Mode use different upstream resource paths.',
+        apiMode: {
+          aiStudio: 'Google AI Studio',
+          vertex: 'Vertex AI API Key'
+        },
         tier: {
           label: 'Account Tier',
           hint: 'Tip: The system will try to auto-detect the tier first; if auto-detection is unavailable or fails, your selected tier is used as a fallback (simulated quota).',
           aiStudioHint:
             'AI Studio quotas are per-model (Pro/Flash are limited independently). If billing is enabled, choose Pay-as-you-go.',
+          vertexHint: 'Vertex AI API keys use GCP quota tiers.',
+          vertex: {
+            standard: 'GCP Standard',
+            enterprise: 'GCP Enterprise'
+          },
           googleOne: {
             free: 'Google One Free',
             pro: 'Google One Pro',
@@ -1134,10 +1146,10 @@ export default {
         accountType: {
           oauthTitle: 'OAuth (Gemini)',
           oauthDesc: 'Authorize with your Google account and choose an OAuth type.',
-          apiKeyTitle: 'API Key (AI Studio)',
-          apiKeyDesc: 'Fastest setup. Use an AIza API key.',
+          apiKeyTitle: 'API Key (AI Studio / Vertex)',
+          apiKeyDesc: 'Use an AIza API key with either AI Studio or Vertex AI routing.',
           apiKeyNote:
-            'Best for light testing. Free tier has strict rate limits and data may be used for training.',
+            'AI Studio and Vertex AI Express Mode use different request endpoints; choose the matching mode below.',
           apiKeyLink: 'Get API Key',
           quotaLink: 'Quota guide'
         },
