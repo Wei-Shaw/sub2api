@@ -51,7 +51,7 @@ function makeAccount(overrides: Partial<Account>): Account {
 }
 
 describe('AccountStatusIndicator', () => {
-it('keeps pending Grok Free accounts limited without showing a recovery countdown', () => {
+  it('keeps pending Grok Free accounts limited without showing a recovery countdown', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {
         account: makeAccount({
@@ -66,6 +66,31 @@ it('keeps pending Grok Free accounts limited without showing a recovery countdow
           rate_limited_at: '2026-07-11T12:00:00Z',
           rate_limit_reset_at: '2000-01-01T00:00:00Z'
         })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.find('.badge-warning').text()).toBe('admin.accounts.status.rateLimited')
+    expect(wrapper.text()).toContain('429')
+    expect(wrapper.get('[data-testid="rate-limit-resume"]').text()).toBe(
+      'admin.accounts.status.grokFreeRecoveryNextProbe'
+    )
+    expect(wrapper.get('[data-testid="rate-limit-tooltip"]').text()).toContain(
+      'admin.accounts.status.grokFreeRecoveryPending'
+    )
+    expect(wrapper.get('[data-testid="rate-limit-tooltip"]').text()).toContain(
+      'admin.accounts.status.grokFreeRecoveryLastProbe'
+    )
+    expect(wrapper.get('[data-testid="rate-limit-tooltip"]').text()).toContain(
+      'admin.accounts.status.grokFreeRecoveryProbeResult'
+    )
+    expect(wrapper.text()).not.toContain('admin.accounts.status.rateLimitedAutoResume')
+    expect(wrapper.text()).not.toContain('admin.accounts.status.rateLimitedUntil')
+  })
 
   it('Claude 5 模型限流时显示 Opus 和 Sonnet 的短别名', () => {
     const wrapper = mount(AccountStatusIndicator, {
