@@ -20,7 +20,7 @@ env:
   CUSTOM_BRANCH: feat/openai-403-config
   VERSION_FILE: backend/cmd/server/VERSION
   CANDIDATE_BRANCH: automation/upstream-sync-${{ github.run_id }}-${{ github.run_attempt }}
-  GH_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ secrets.SUB2API_PAT }}
   GH_REPO: ${{ github.repository }}
 
 jobs:
@@ -32,6 +32,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          token: ${{ secrets.SUB2API_PAT }}
 
       - name: Configure repositories
         run: |
@@ -109,33 +110,35 @@ jobs:
 
       - name: Push candidate branch
         if: steps.inspect.outputs.decision == 'prepare'
+        id: push-candidate
         env:
           PREPARED_CUSTOM_SHA: ${{ steps.prepare.outputs.prepared_custom_sha }}
         run: |
           set -euo pipefail
+          push_time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          printf 'push_time=%s\n' "$push_time" >>"$GITHUB_OUTPUT"
           git push origin \
             "${PREPARED_CUSTOM_SHA}:refs/heads/${CANDIDATE_BRANCH}"
 
-      - name: Run Backend CI on candidate
+      - name: Wait for Backend CI on candidate
         if: steps.inspect.outputs.decision == 'prepare'
         env:
           PREPARED_CUSTOM_SHA: ${{ steps.prepare.outputs.prepared_custom_sha }}
+          PUSH_TIME: ${{ steps.push-candidate.outputs.push_time }}
         run: |
           set -euo pipefail
-          dispatch_time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-          gh workflow run backend-ci.yml --ref "$CANDIDATE_BRANCH"
 
           run_id=''
           for _ in $(seq 1 60); do
             run_id=$(gh api --method GET \
               "repos/${GITHUB_REPOSITORY}/actions/workflows/backend-ci.yml/runs" \
-              -f event=workflow_dispatch \
+              -f event=push \
               -f per_page=50 \
               --jq ".workflow_runs
                 | map(select(
                     .head_sha == \"${PREPARED_CUSTOM_SHA}\"
                     and .head_branch == \"${CANDIDATE_BRANCH}\"
-                    and .created_at >= \"${dispatch_time}\"
+                    and .created_at >= \"${PUSH_TIME}\"
                   ))
                 | sort_by(.created_at)
                 | last
@@ -195,6 +198,7 @@ jobs:
 
       - name: Publish tested refs
         if: steps.inspect.outputs.decision == 'prepare'
+        id: publish
         env:
           ORIGIN_MAIN_SHA: ${{ steps.prepare.outputs.origin_main_sha }}
           ORIGIN_CUSTOM_SHA: ${{ steps.prepare.outputs.origin_custom_sha }}
@@ -204,6 +208,8 @@ jobs:
           TAG_MESSAGE_FILE: ${{ steps.tag-message.outputs.path }}
         run: |
           set -euo pipefail
+          publish_time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          printf 'publish_time=%s\n' "$publish_time" >>"$GITHUB_OUTPUT"
           .github/scripts/sync-upstream.sh publish \
             "$ORIGIN_MAIN_SHA" \
             "$ORIGIN_CUSTOM_SHA" \
@@ -218,31 +224,39 @@ jobs:
         env:
           TARGET_TAG: ${{ steps.inspect.outputs.target_tag }}
           UPSTREAM_VERSION: ${{ steps.inspect.outputs.upstream_version }}
+          DECISION: ${{ steps.inspect.outputs.decision }}
+          PUBLISH_TIME: ${{ steps.publish.outputs.publish_time }}
         run: |
           set -euo pipefail
           git fetch --force origin "refs/tags/${TARGET_TAG}:refs/tags/${TARGET_TAG}"
           .github/scripts/sync-upstream.sh validate-release-notes \
             "$TARGET_TAG" "$UPSTREAM_REPOSITORY" "$UPSTREAM_VERSION"
           target_sha=$(git rev-list -n 1 "$TARGET_TAG")
-          dispatch_time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
           expected_title="Release ${TARGET_TAG}"
 
-          gh workflow run release.yml \
-            --ref "$TARGET_TAG" \
-            -f tag="$TARGET_TAG" \
-            -f simple_release=true
+          if [[ $DECISION == retry-release ]]; then
+            run_event=workflow_dispatch
+            run_started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+            gh workflow run release.yml \
+              --ref "$TARGET_TAG" \
+              -f tag="$TARGET_TAG" \
+              -f simple_release=true
+          else
+            run_event=push
+            run_started_at=$PUBLISH_TIME
+          fi
 
           run_id=''
           for _ in $(seq 1 60); do
             run_id=$(gh api --method GET \
               "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs" \
-              -f event=workflow_dispatch \
+              -f event="$run_event" \
               -f per_page=50 \
               --jq ".workflow_runs
                 | map(select(
                     .head_sha == \"${target_sha}\"
                     and .display_title == \"${expected_title}\"
-                    and .created_at >= \"${dispatch_time}\"
+                    and .created_at >= \"${run_started_at}\"
                   ))
                 | sort_by(.created_at)
                 | last

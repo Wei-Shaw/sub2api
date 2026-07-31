@@ -493,8 +493,17 @@ test_orchestration_contract() {
   rg -q '^  contents: write' "$workflow"
   rg -q 'backend-ci\.yml' "$workflow"
   rg -q 'head_branch.*CANDIDATE_BRANCH' "$workflow"
+  rg -Fq 'PUSH_TIME: ${{ steps.push-candidate.outputs.push_time }}' "$workflow"
+  if rg -Fq 'gh workflow run backend-ci.yml' "$workflow"; then
+    printf 'PAT-backed candidate push must not dispatch duplicate Backend CI\n' >&2
+    return 1
+  fi
   rg -q 'release\.yml' "$workflow"
   rg -q 'simple_release=true' "$workflow"
+  rg -Fq 'DECISION: ${{ steps.inspect.outputs.decision }}' "$workflow"
+  rg -Fq 'if [[ $DECISION == retry-release ]]; then' "$workflow"
+  rg -Fq 'event=push' "$workflow"
+  rg -Fq 'event=workflow_dispatch' "$workflow"
   rg -q 'gh run watch' "$workflow"
   rg -q 'gh release view' "$workflow"
   rg -Fq "printf 'Sync upstream %s\\n\\n'" "$workflow"
@@ -507,8 +516,10 @@ test_orchestration_contract() {
   fi
   rg -Fq '.github/scripts/sync-upstream.sh validate-release-notes \' "$workflow"
   rg -q 'if: always\(\)' "$workflow"
-  if rg -q '(^|[^A-Z_])PAT([^A-Z_]|$)' "$workflow"; then
-    printf 'workflow must not depend on a PAT\n' >&2
+  rg -Fq 'GH_TOKEN: ${{ secrets.SUB2API_PAT }}' "$workflow"
+  rg -Fq 'token: ${{ secrets.SUB2API_PAT }}' "$workflow"
+  if rg -Fq 'GH_TOKEN: ${{ github.token }}' "$workflow"; then
+    printf 'workflow still uses the built-in token for gh commands\n' >&2
     return 1
   fi
 }
