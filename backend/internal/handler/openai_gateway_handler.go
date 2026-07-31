@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -105,6 +106,18 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 }
 
 type openAIModelBodyReplaceFunc func([]byte, string) []byte
+
+type openAIResponsesAttemptForwardFunc func(context.Context, *gin.Context, *service.Account, []byte) (*service.OpenAIForwardResult, error)
+
+func applyOpenAIResponsesReasoningPolicy(body []byte, group *service.Group) []byte {
+	if group == nil || group.Platform != service.PlatformOpenAI {
+		return body
+	}
+	if cappedBody, changed := service.ApplyOpenAIReasoningEffortPolicy(body, group.MaxReasoningEffort, group.ReasoningEffortMappings); changed {
+		return cappedBody
+	}
+	return body
+}
 
 func openAIModelMappedBody(body []byte, mapped bool, mappedModel string, replace openAIModelBodyReplaceFunc) []byte {
 	if !mapped || replace == nil {
@@ -312,11 +325,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
 		return
 	}
-	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
-		if cappedBody, changed := service.ApplyOpenAIReasoningEffortPolicy(body, apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings); changed {
-			body = cappedBody
-		}
-	}
+	body = applyOpenAIResponsesReasoningPolicy(body, apiKey.Group)
 
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
@@ -325,27 +334,32 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+	previousResponseIDKind := ""
+	deferOfficialCompatibilityValidation := openai.IsCodexOfficialClientByHeaders(
+		c.GetHeader("User-Agent"), c.GetHeader("originator"),
+	)
 	if previousResponseID != "" {
-		previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
+		previousResponseIDKind = service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 		reqLog = reqLog.With(
 			zap.Bool("has_previous_response_id", true),
 			zap.String("previous_response_id_kind", previousResponseIDKind),
 			zap.Int("previous_response_id_len", len(previousResponseID)),
 		)
-		if previousResponseIDKind == service.OpenAIPreviousResponseIDKindMessageID {
+		if !deferOfficialCompatibilityValidation {
+			if previousResponseIDKind == service.OpenAIPreviousResponseIDKindMessageID {
+				reqLog.Warn("openai.request_validation_failed",
+					zap.String("reason", "previous_response_id_looks_like_message_id"),
+				)
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id must be a response.id (resp_*), not a message id")
+				return
+			}
 			reqLog.Warn("openai.request_validation_failed",
-				zap.String("reason", "previous_response_id_looks_like_message_id"),
+				zap.String("reason", "previous_response_id_requires_wsv2"),
 			)
-			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id must be a response.id (resp_*), not a message id")
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id is only supported on Responses WebSocket v2")
 			return
 		}
-		reqLog.Warn("openai.request_validation_failed",
-			zap.String("reason", "previous_response_id_requires_wsv2"),
-		)
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id is only supported on Responses WebSocket v2")
-		return
 	}
-
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
@@ -380,7 +394,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped, imageIntent)
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
-	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
+	if !deferOfficialCompatibilityValidation && !h.validateFunctionCallOutputRequest(c, body, reqLog) {
 		return
 	}
 
@@ -431,7 +445,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	var passthroughFailoverState openAIPassthroughFailoverState
-
 	// 生图意图的 /v1/responses 请求必须调度到确实支持 Responses API 的账号，否则
 	// 会在 forward 阶段被静默降级为无法生图的 Chat Completions 直转（#4417）。
 	// 仅对 OpenAI 平台生效：Grok 生图走独立的 forwardGrokResponses 路径，不应被过滤。
@@ -448,20 +461,46 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		// Select account supporting the requested model
 		reqLog.Debug("openai.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-			c.Request.Context(),
-			apiKey.GroupID,
-			previousResponseID,
-			sessionHash,
-			reqModel,
-			failedAccountIDs,
-			service.OpenAIUpstreamTransportAny,
-			requiredCapability,
-			requireCompact,
-			false,
-			!imageIntent,
-			requestPlatform,
-		)
+		var selection *service.AccountSelectionResult
+		var scheduleDecision service.OpenAIAccountScheduleDecision
+		var err error
+		if deferOfficialCompatibilityValidation && previousResponseID != "" {
+			selection, scheduleDecision, err = h.gatewayService.SelectOfficialCodexTransparentHTTPAccountByPreviousResponseID(
+				c.Request.Context(),
+				apiKey.GroupID,
+				previousResponseID,
+				reqModel,
+				failedAccountIDs,
+				requiredCapability,
+				requireCompact,
+			)
+			if err == nil && (selection == nil || selection.Account == nil) {
+				if lastFailoverErr != nil {
+					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+					return
+				}
+				reqLog.Warn("openai.previous_response_affinity_miss",
+					zap.String("previous_response_id_kind", previousResponseIDKind),
+				)
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id is not bound to an available transparent OAuth account")
+				return
+			}
+		} else {
+			selection, scheduleDecision, err = h.gatewayService.SelectAccountWithSchedulerForCapability(
+				c.Request.Context(),
+				apiKey.GroupID,
+				previousResponseID,
+				sessionHash,
+				reqModel,
+				failedAccountIDs,
+				service.OpenAIUpstreamTransportAny,
+				requiredCapability,
+				requireCompact,
+				false,
+				!imageIntent,
+				requestPlatform,
+			)
+		}
 		if err != nil {
 			if failoverClientGone(c) {
 				reqLog.Info("openai.account_select_aborted_client_disconnected", zap.Error(err))
@@ -512,6 +551,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			zap.Float64("load_skew", scheduleDecision.LoadSkew),
 		)
 		account := selection.Account
+		if deferOfficialCompatibilityValidation && !h.validateOpenAIResponsesAttemptCompatibility(
+			c, account, body, previousResponseID, previousResponseIDKind, reqLog,
+		) {
+			if selection.Acquired && selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			return
+		}
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
@@ -527,17 +574,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 用扣除 compact 心跳字节的口径快照：心跳注释不构成语义响应，
 		// 不能因心跳字节变化而放弃 failover 换号（#3887）。
 		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
-		// 跨 passthrough 边界的 failover：从 Kiro 等透传账号切到 Bedrock 等非透传账号前，
-		// 从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
-		// reasoning item（含耦合的 id/summary），避免非透传上游 400 拒绝 Kiro reasoning 形态。
-		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, forwardBody, account, &passthroughFailoverState)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.Forward(c.Request.Context(), c, account, attemptBody)
+			return h.forwardOpenAIResponsesAttempt(
+				c.Request.Context(), c, account, forwardBody, reqLog, &passthroughFailoverState, h.gatewayService.Forward,
+			)
 		}()
 		cyberBlockKeyHTTP := ""
 		if service.GetOpsCyberPolicy(c) != nil {
@@ -554,7 +599,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if err == nil && result != nil && result.FirstTokenMs != nil {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
-		if err != nil {
+		forwardFailedWithUsage := err != nil && result != nil && errors.Is(err, service.ErrOfficialCodexTransparentStreamFailed)
+		if forwardFailedWithUsage {
+			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), false, nil)
+			reqLog.Warn("openai.forward_failed_with_usage",
+				zap.Int64("account_id", account.ID),
+				zap.Bool("fallback_error_response_written", false),
+				zap.Int("input_tokens", result.Usage.InputTokens),
+				zap.Int("output_tokens", result.Usage.OutputTokens),
+				zap.Error(err),
+			)
+		} else if err != nil {
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
@@ -664,7 +719,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
+			if !forwardFailedWithUsage {
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
+			}
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), openAIForwardSucceededForScheduling(result), nil)
 		}
@@ -1328,6 +1385,52 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 	)
 	h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
 	return false
+}
+
+func (h *OpenAIGatewayHandler) forwardOpenAIResponsesAttempt(
+	ctx context.Context,
+	c *gin.Context,
+	account *service.Account,
+	forwardBody []byte,
+	reqLog *zap.Logger,
+	passthroughFailoverState *openAIPassthroughFailoverState,
+	forward openAIResponsesAttemptForwardFunc,
+) (*service.OpenAIForwardResult, error) {
+	if forward == nil {
+		return nil, errors.New("OpenAI Responses forward function is nil")
+	}
+	// Derive each attempt from the canonical policy- and mapping-adjusted body so
+	// failover-specific compatibility changes never discard mandatory transforms.
+	attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, forwardBody, account, passthroughFailoverState)
+	return forward(ctx, c, account, attemptBody)
+}
+
+func (h *OpenAIGatewayHandler) validateOpenAIResponsesAttemptCompatibility(
+	c *gin.Context,
+	account *service.Account,
+	body []byte,
+	previousResponseID string,
+	previousResponseIDKind string,
+	reqLog *zap.Logger,
+) bool {
+	if service.ShouldUseOfficialCodexResponsesTransparentPassthrough(c, account) {
+		return true
+	}
+	if previousResponseID != "" {
+		if previousResponseIDKind == service.OpenAIPreviousResponseIDKindMessageID {
+			reqLog.Warn("openai.request_validation_failed",
+				zap.String("reason", "previous_response_id_looks_like_message_id"),
+			)
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id must be a response.id (resp_*), not a message id")
+			return false
+		}
+		reqLog.Warn("openai.request_validation_failed",
+			zap.String("reason", "previous_response_id_requires_wsv2"),
+		)
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id is only supported on Responses WebSocket v2")
+		return false
+	}
+	return h.validateFunctionCallOutputRequest(c, body, reqLog)
 }
 
 func (h *OpenAIGatewayHandler) acquireResponsesUserSlot(
@@ -2503,16 +2606,7 @@ func shouldLogOpenAIForwardFailureAsWarn(c *gin.Context, wroteFallback bool) boo
 }
 
 // openAIForwardErrorAlreadyCommunicated reports whether Forward returned an
-// error after it had already written the upstream terminal error response to
-// the client.
-//
-// This matters for Responses streams: upstream may return HTTP 200 with a
-// non-retryable `response.failed` event (for example a policy/safety rejection).
-// The service layer forwards that terminal event verbatim, then returns an
-// error so the caller can log/account for the failed upstream response. The
-// handler must not append its generic fallback `response.failed`, otherwise
-// strict clients may see the useful upstream message replaced by "Upstream
-// request failed" or receive duplicate terminal events.
+// error after it had already written a complete terminal error response.
 func openAIForwardErrorAlreadyCommunicated(c *gin.Context, writerSizeBeforeForward int, err error) bool {
 	if err == nil || c == nil || c.Writer == nil {
 		return false
@@ -2531,7 +2625,9 @@ func openAIForwardErrorAlreadyCommunicated(c *gin.Context, writerSizeBeforeForwa
 	if service.GetOpsCyberPolicy(c) != nil {
 		return true
 	}
-
+	if errors.Is(err, service.ErrOfficialCodexTransparentStreamFailed) {
+		return true
+	}
 	msg := strings.TrimSpace(err.Error())
 	for _, prefix := range []string{
 		"upstream response failed:",

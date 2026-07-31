@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -17,12 +18,37 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
+
+var (
+	ErrOfficialCodexTransparentStreamFailed    = errors.New("official Codex transparent stream failed")
+	ErrOfficialCodexTransparentStreamIntegrity = errors.New("official Codex transparent stream integrity failure")
+)
+
+const openAITransparentSSEReaderBufferSize = 32 * 1024
+
+func shouldPreserveOfficialCodexResponsesPayload(c *gin.Context, account *Account) bool {
+	if c == nil || account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.IsOpenAIAgentIdentity() {
+		return false
+	}
+	return openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
+}
+
+func shouldUseOfficialCodexResponsesTransparentPassthrough(c *gin.Context, account *Account) bool {
+	return shouldPreserveOfficialCodexResponsesPayload(c, account) &&
+		account.IsOpenAIPassthroughEnabled() &&
+		!isOpenAIResponsesCompactPath(c)
+}
+
+func ShouldUseOfficialCodexResponsesTransparentPassthrough(c *gin.Context, account *Account) bool {
+	return shouldUseOfficialCodexResponsesTransparentPassthrough(c, account)
+}
 
 func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	ctx context.Context,
@@ -36,8 +62,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
+	transparentPassthrough := shouldUseOfficialCodexResponsesTransparentPassthrough(c, account)
 	upstreamPassthroughModel := ""
-	if isOpenAIResponsesCompactPath(c) {
+	if !transparentPassthrough && isOpenAIResponsesCompactPath(c) {
 		compactMappedModel := resolveOpenAICompactForwardModel(account, reqModel)
 		if compactMappedModel != "" && compactMappedModel != reqModel {
 			nextBody, setErr := sjson.SetBytes(body, "model", compactMappedModel)
@@ -50,7 +77,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 	}
 
-	if account != nil && account.Type == AccountTypeOAuth {
+	if account != nil && account.Type == AccountTypeOAuth && !transparentPassthrough {
 		if rejectReason := detectOpenAIPassthroughInstructionsRejectReason(reqModel, body); rejectReason != "" {
 			rejectMsg := "OpenAI codex passthrough requires a non-empty instructions field"
 			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
@@ -74,12 +101,14 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		reqStream = gjson.GetBytes(body, "stream").Bool()
 	}
 
-	sanitizedBody, sanitized, err := sanitizeEmptyBase64InputImagesInOpenAIBody(body)
-	if err != nil {
-		return nil, err
-	}
-	if sanitized {
-		body = sanitizedBody
+	if !transparentPassthrough {
+		sanitizedBody, sanitized, err := sanitizeEmptyBase64InputImagesInOpenAIBody(body)
+		if err != nil {
+			return nil, err
+		}
+		if sanitized {
+			body = sanitizedBody
+		}
 	}
 
 	// Apply OpenAI fast policy to the passthrough body (filter/block by service_tier).
@@ -204,7 +233,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		if resp.StatusCode < 400 {
 			break
 		}
-
 		// Peek only to identify an invalid task. Restore the body so the existing
 		// passthrough error handling sees the same response after recovery fails.
 		probeBody := s.readUpstreamErrorBody(resp)
@@ -236,10 +264,15 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	responseID := ""
 	imageCount := 0
 	var imageOutputSizes []string
+	var responseErr error
 	if reqStream {
 		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
-		if err != nil {
+		if err != nil && !errors.Is(err, ErrOfficialCodexTransparentStreamFailed) && !errors.Is(err, ErrOfficialCodexTransparentStreamIntegrity) {
 			return nil, err
+		}
+		responseErr = err
+		if result == nil {
+			return nil, responseErr
 		}
 		usage = result.usage
 		firstTokenMs = result.firstTokenMs
@@ -247,7 +280,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 	} else {
-		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
+		var result *openaiNonStreamingResultPassthrough
+		var err error
+		if transparentPassthrough {
+			result, err = s.handleNonStreamingResponseTransparentPassthrough(resp, c)
+		} else {
+			result, err = s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -256,7 +295,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 	}
-	s.bindHTTPResponseAccount(ctx, c, account, responseID)
+	if responseErr == nil {
+		s.bindHTTPResponseAccount(ctx, c, account, responseID)
+	}
 
 	// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
 	if !account.IsShadow() {
@@ -265,6 +306,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 	}
 
+	if errors.Is(responseErr, ErrOfficialCodexTransparentStreamFailed) && usage == nil {
+		return nil, responseErr
+	}
 	if usage == nil {
 		usage = &OpenAIUsage{}
 	}
@@ -289,7 +333,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		forwardResult.ImageOutputSizes = imageOutputSizes
 		forwardResult.BillingModel = imageBillingModel
 	}
-	return forwardResult, nil
+	return forwardResult, responseErr
 }
 
 func logOpenAIPassthroughInstructionsRejected(
@@ -754,6 +798,127 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	return !openAIStreamEventIsPreamble(eventType)
 }
 
+func sanitizeOpenAITransparentFailedPayload(payload []byte) ([]byte, bool) {
+	if len(payload) == 0 || !gjson.ValidBytes(payload) || strings.TrimSpace(gjson.GetBytes(payload, "type").String()) != "response.failed" {
+		return payload, false
+	}
+
+	usagePath := ""
+	usageRaw := ""
+	if value := gjson.GetBytes(payload, "response.usage"); value.Exists() && value.IsObject() {
+		usagePath = "response.usage"
+		usageRaw = value.Raw
+	} else if value := gjson.GetBytes(payload, "usage"); value.Exists() && value.IsObject() {
+		usagePath = "usage"
+		usageRaw = value.Raw
+	}
+
+	updated, _ := sanitizeOpenAIResponseFailedEventForClient(payload, "response.failed", true)
+	errorPath := "error"
+	if gjson.GetBytes(updated, "response").Exists() {
+		errorPath = "response.error"
+	}
+	next, err := sjson.SetBytes(updated, errorPath, map[string]any{
+		"type":    "upstream_error",
+		"code":    "upstream_error",
+		"message": "Upstream request failed",
+	})
+	if err != nil {
+		return payload, false
+	}
+	updated = next
+	if usagePath != "" {
+		updated, err = sjson.SetRawBytes(updated, usagePath, []byte(usageRaw))
+		if err != nil {
+			return payload, false
+		}
+	}
+	return updated, true
+}
+
+func replaceOpenAISSEDataPayload(event, payload []byte) []byte {
+	if len(event) == 0 {
+		return event
+	}
+	separator := []byte("\n")
+	lines := bytes.Split(event, separator)
+	replaced := false
+	out := make([][]byte, 0, len(lines))
+	for _, line := range lines {
+		trimmed := bytes.TrimSuffix(line, []byte("\r"))
+		if bytes.HasPrefix(trimmed, []byte("data:")) {
+			if replaced {
+				continue
+			}
+			replacement := append([]byte("data: "), payload...)
+			if len(line) != len(trimmed) {
+				replacement = append(replacement, '\r')
+			}
+			out = append(out, replacement)
+			replaced = true
+			continue
+		}
+		out = append(out, line)
+	}
+	if !replaced {
+		return event
+	}
+	return bytes.Join(out, separator)
+}
+
+func openAITransparentOversizedEventType(prefix []byte) string {
+	explicitType := ""
+	for len(prefix) > 0 {
+		line := prefix
+		if newline := bytes.IndexByte(prefix, '\n'); newline >= 0 {
+			line = prefix[:newline]
+			prefix = prefix[newline+1:]
+		} else {
+			prefix = nil
+		}
+		line = bytes.TrimSpace(line)
+		switch {
+		case bytes.HasPrefix(line, []byte("event:")):
+			explicitType = strings.TrimSpace(string(bytes.TrimPrefix(line, []byte("event:"))))
+		case bytes.HasPrefix(line, []byte("data:")):
+			decoder := json.NewDecoder(bytes.NewReader(bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))))
+			token, err := decoder.Token()
+			if err != nil || token != json.Delim('{') {
+				continue
+			}
+			for decoder.More() {
+				keyToken, keyErr := decoder.Token()
+				if keyErr != nil {
+					break
+				}
+				key, ok := keyToken.(string)
+				if !ok {
+					break
+				}
+				if key == "type" {
+					valueToken, valueErr := decoder.Token()
+					if valueErr == nil {
+						if eventType, ok := valueToken.(string); ok {
+							return strings.TrimSpace(eventType)
+						}
+					}
+					break
+				}
+				var discarded json.RawMessage
+				if decodeErr := decoder.Decode(&discarded); decodeErr != nil {
+					break
+				}
+			}
+		}
+	}
+	return explicitType
+}
+
+func openAITransparentOversizedEventIsObservableNonterminal(eventType string) bool {
+	eventType = strings.TrimSpace(eventType)
+	return strings.HasPrefix(eventType, "response.") && !isOpenAIWSTerminalEvent(eventType)
+}
+
 func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 	if isOpenAIContextWindowError(message, payload) {
 		return http.StatusBadRequest
@@ -968,6 +1133,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	originalModel string,
 	mappedModel string,
 ) (*openaiStreamingResultPassthrough, error) {
+	if shouldUseOfficialCodexResponsesTransparentPassthrough(c, account) {
+		return s.handleStreamingResponseTransparentPassthrough(ctx, resp, c, account, startTime)
+	}
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	// SSE headers
@@ -1223,6 +1391,228 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	return resultWithUsage(), nil
 }
 
+func (s *OpenAIGatewayService) handleStreamingResponseTransparentPassthrough(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	startTime time.Time,
+) (*openaiStreamingResultPassthrough, error) {
+	writeOpenAITransparentResponseHeaders(c.Writer.Header(), resp.Header)
+	c.Writer.WriteHeader(resp.StatusCode)
+
+	w := c.Writer
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return nil, errors.New("streaming not supported")
+	}
+	flusher.Flush()
+
+	var usage *OpenAIUsage
+	imageCounter := newOpenAIImageOutputCounter()
+	var firstTokenMs *int
+	responseID := ""
+	sawTerminalEvent := false
+	sawFailedEvent := false
+	failedMessage := ""
+	clientDisconnected := false
+	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	maxObservedEventSize := defaultMaxLineSize
+	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+		maxObservedEventSize = s.cfg.Gateway.MaxLineSize
+	}
+	eventBuffer := make([]byte, 0, min(4096, maxObservedEventSize))
+	eventOverflow := false
+	eventOverflowForwarded := false
+	integrityFailure := ""
+	downstreamTerminated := false
+
+	forwardEvent := func(event []byte) {
+		if clientDisconnected || len(event) == 0 {
+			return
+		}
+		if _, writeErr := w.Write(event); writeErr != nil {
+			clientDisconnected = true
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] client disconnected during transparent stream, continuing to drain usage: account=%d", account.ID)
+			return
+		}
+		flusher.Flush()
+	}
+	observeEvent := func(event []byte) ([]byte, bool) {
+		if integrityFailure != "" {
+			return event, false
+		}
+		forward := true
+		observedEvent := event
+		if openAITransparentSSEEventContainsDone(event) && !sawTerminalEvent {
+			integrityFailure = "SSE [DONE] arrived before a trustworthy terminal event"
+			return observedEvent, false
+		}
+		forEachOpenAISSEDataPayload(string(event), func(dataBytes []byte) {
+			if downstreamTerminated {
+				forward = false
+				return
+			}
+			trimmedData := strings.TrimSpace(string(dataBytes))
+			if !gjson.ValidBytes(dataBytes) {
+				integrityFailure = "malformed SSE data event"
+				forward = false
+				return
+			}
+			eventType := strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			parsedUsage, usageParsed := extractTrustworthyOpenAITransparentUsageFromJSONBytes(dataBytes)
+			if usageParsed {
+				parsedUsageCopy := parsedUsage
+				usage = &parsedUsageCopy
+			}
+			imageCounter.AddSSEData(dataBytes)
+			if responseID == "" {
+				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
+			}
+			if firstTokenMs == nil && openAIStreamDataStartsClientOutput(trimmedData, eventType) {
+				ms := int(time.Since(startTime).Milliseconds())
+				firstTokenMs = &ms
+			}
+			if !openAIStreamEventIsTerminal(trimmedData) {
+				return
+			}
+			if eventType == "response.failed" {
+				sawTerminalEvent = true
+				sawFailedEvent = true
+				downstreamTerminated = true
+				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+				s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "http_error", dataBytes, failedMessage)
+				if hit, code, msg := detectOpenAICyberPolicy(dataBytes); hit {
+					inputTokens := 0
+					outputTokens := 0
+					if usage != nil {
+						inputTokens = usage.InputTokens
+						outputTokens = usage.OutputTokens
+					}
+					MarkOpsCyberPolicy(c, CyberPolicyMark{
+						Code:           code,
+						Message:        msg,
+						Body:           truncateString(string(dataBytes), 4096),
+						UpstreamStatus: http.StatusOK,
+						UpstreamInTok:  inputTokens,
+						UpstreamOutTok: outputTokens,
+					})
+				}
+				if sanitizedPayload, sanitized := sanitizeOpenAITransparentFailedPayload(dataBytes); sanitized {
+					observedEvent = replaceOpenAISSEDataPayload(event, sanitizedPayload)
+				} else {
+					integrityFailure = "response.failed event could not be sanitized"
+					forward = false
+				}
+				return
+			}
+			if (eventType == "response.completed" || eventType == "response.done") && !usageParsed {
+				integrityFailure = "terminal event did not contain trustworthy usage"
+				forward = false
+				return
+			}
+			sawTerminalEvent = true
+		})
+		return observedEvent, forward && integrityFailure == ""
+	}
+	finishEvent := func() {
+		if eventOverflow {
+			// Oversized ordinary events were already streamed while their local
+			// observation was discarded. Terminal or unclassifiable events are
+			// suppressed and leave integrityFailure set.
+		} else if !downstreamTerminated && len(eventBuffer) > 0 {
+			if observedEvent, shouldForward := observeEvent(eventBuffer); shouldForward {
+				forwardEvent(observedEvent)
+			}
+		}
+		eventBuffer = eventBuffer[:0]
+		eventOverflow = false
+		eventOverflowForwarded = false
+	}
+	resultWithUsage := func() *openaiStreamingResultPassthrough {
+		return &openaiStreamingResultPassthrough{
+			usage:            usage,
+			firstTokenMs:     firstTokenMs,
+			responseID:       responseID,
+			imageCount:       imageCounter.Count(),
+			imageOutputSizes: imageCounter.Sizes(),
+		}
+	}
+
+	reader := bufio.NewReaderSize(resp.Body, openAITransparentSSEReaderBufferSize)
+	for {
+		fragment, readErr := reader.ReadSlice('\n')
+		if len(fragment) > 0 && !downstreamTerminated {
+			switch {
+			case eventOverflow:
+				if eventOverflowForwarded {
+					forwardEvent(fragment)
+				}
+			case len(eventBuffer)+len(fragment) > maxObservedEventSize:
+				observationPrefix := append([]byte(nil), eventBuffer...)
+				remaining := maxObservedEventSize - len(observationPrefix)
+				if remaining > len(fragment) {
+					remaining = len(fragment)
+				}
+				if remaining > 0 {
+					observationPrefix = append(observationPrefix, fragment[:remaining]...)
+				}
+				eventType := openAITransparentOversizedEventType(observationPrefix)
+				eventOverflow = true
+				if openAITransparentOversizedEventIsObservableNonterminal(eventType) {
+					eventOverflowForwarded = true
+					if firstTokenMs == nil && openAIStreamDataStartsClientOutput("observed", eventType) {
+						ms := int(time.Since(startTime).Milliseconds())
+						firstTokenMs = &ms
+					}
+					forwardEvent(eventBuffer)
+					forwardEvent(fragment)
+				} else if integrityFailure == "" {
+					integrityFailure = "SSE event exceeded bounded observation limit with terminal or unknown type"
+				}
+				eventBuffer = eventBuffer[:0]
+			default:
+				eventBuffer = append(eventBuffer, fragment...)
+			}
+		}
+		if bytes.Equal(fragment, []byte("\n")) || bytes.Equal(fragment, []byte("\r\n")) {
+			finishEvent()
+		}
+		if errors.Is(readErr, bufio.ErrBufferFull) {
+			continue
+		}
+		if readErr == nil {
+			continue
+		}
+		if errors.Is(readErr, io.EOF) {
+			if len(eventBuffer) > 0 || eventOverflow {
+				finishEvent()
+			}
+			break
+		}
+		s.recordOpenAIProxyStreamDisconnect(account, readErr, upstreamRequestID)
+		return resultWithUsage(), fmt.Errorf("transparent stream read error: %w", readErr)
+	}
+	if integrityFailure != "" {
+		s.recordOpenAIProxyStreamDisconnect(account, errors.New(integrityFailure), upstreamRequestID)
+		return resultWithUsage(), fmt.Errorf("%w: %s", ErrOfficialCodexTransparentStreamIntegrity, integrityFailure)
+	}
+	if !sawTerminalEvent {
+		logger.FromContext(ctx).With(
+			zap.String("component", "service.openai_gateway"),
+			zap.Int64("account_id", account.ID),
+			zap.String("upstream_request_id", upstreamRequestID),
+		).Info("OpenAI passthrough 上游流在未收到 [DONE] 时结束，疑似断流")
+		s.recordOpenAIProxyStreamDisconnect(account, errors.New("stream ended before terminal event"), upstreamRequestID)
+		return resultWithUsage(), fmt.Errorf("%w: missing terminal event", ErrOfficialCodexTransparentStreamIntegrity)
+	}
+	if sawFailedEvent {
+		return resultWithUsage(), ErrOfficialCodexTransparentStreamFailed
+	}
+	s.clearOpenAIProxyStreamDisconnect(account)
+	return resultWithUsage(), nil
+}
+
 func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	ctx context.Context,
 	resp *http.Response,
@@ -1279,6 +1669,138 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 	}, nil
+}
+
+func (s *OpenAIGatewayService) handleNonStreamingResponseTransparentPassthrough(
+	resp *http.Response,
+	c *gin.Context,
+) (*openaiNonStreamingResultPassthrough, error) {
+	observationLimit := resolveUpstreamResponseReadLimit(s.cfg)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, observationLimit+1))
+	if err != nil {
+		return nil, fmt.Errorf("read official Codex upstream response: %w", err)
+	}
+	if int64(len(body)) > observationLimit {
+		reason := "response exceeded bounded observation limit"
+		setOpsUpstreamError(c, http.StatusBadGateway, reason, "")
+		return nil, fmt.Errorf("official Codex nonstream response rejected before commit: %s", reason)
+	}
+	usage := &OpenAIUsage{}
+	usageParsed := false
+	responseID := ""
+	imageCount := 0
+	var imageOutputSizes []string
+	if isEventStreamResponse(resp.Header) || bodyHasSSEFraming(body) {
+		if finalResponse, ok := extractCodexFinalResponse(string(body)); ok {
+			if parsedUsage, parsed := extractTrustworthyOpenAITransparentUsageFromJSONBytes(finalResponse); parsed {
+				*usage = parsedUsage
+				usageParsed = true
+			}
+			responseID = extractOpenAIResponseIDFromJSONBytes(finalResponse)
+		}
+		imageCount = countOpenAIImageOutputsFromSSEBody(string(body))
+		imageOutputSizes = collectOpenAIImageOutputSizesFromSSEBody(string(body))
+	} else if parsedUsage, ok := extractTrustworthyOpenAITransparentUsageFromJSONBytes(body); ok {
+		usage = &parsedUsage
+		usageParsed = true
+		responseID = extractOpenAIResponseIDFromJSONBytes(body)
+		imageCount = countOpenAIResponseImageOutputsFromJSONBytes(body)
+		imageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
+	}
+	if !usageParsed {
+		reason := "response did not contain trustworthy usage"
+		setOpsUpstreamError(c, http.StatusBadGateway, reason, "")
+		return nil, fmt.Errorf("official Codex nonstream response rejected before commit: %s", reason)
+	}
+
+	writeOpenAITransparentResponseHeaders(c.Writer.Header(), resp.Header)
+	MarkResponseCommitted(c)
+	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
+	return &openaiNonStreamingResultPassthrough{
+		OpenAIUsage:      usage,
+		usage:            usage,
+		responseID:       responseID,
+		imageCount:       imageCount,
+		imageOutputSizes: imageOutputSizes,
+	}, nil
+}
+
+func extractTrustworthyOpenAITransparentUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return OpenAIUsage{}, false
+	}
+
+	for _, candidate := range []struct {
+		usagePath    string
+		imageGenPath string
+	}{
+		{usagePath: "usage", imageGenPath: "tool_usage.image_gen"},
+		{usagePath: "response.usage", imageGenPath: "response.tool_usage.image_gen"},
+	} {
+		usageValue := gjson.GetBytes(body, candidate.usagePath)
+		if !openAITransparentUsageHasRecognizedTokenCount(usageValue) {
+			continue
+		}
+		usage, ok := openAIUsageFromGJSON(usageValue)
+		if !ok {
+			continue
+		}
+		mergeHostedImageGenToolUsage(gjson.GetBytes(body, candidate.imageGenPath), &usage)
+		return usage, true
+	}
+
+	return OpenAIUsage{}, false
+}
+
+func openAITransparentSSEEventContainsDone(event []byte) bool {
+	for _, line := range strings.Split(string(event), "\n") {
+		data, ok := extractOpenAISSEDataLine(strings.TrimRight(line, "\r\n"))
+		if ok && strings.TrimSpace(data) == "[DONE]" {
+			return true
+		}
+	}
+	return false
+}
+
+func openAITransparentUsageHasRecognizedTokenCount(usage gjson.Result) bool {
+	if !usage.Exists() || !usage.IsObject() {
+		return false
+	}
+
+	for _, path := range []string{
+		"input_tokens",
+		"prompt_tokens",
+		"output_tokens",
+		"completion_tokens",
+		"cache_read_input_tokens",
+		"cache_read_tokens",
+		"cached_tokens",
+		"cache_write_tokens",
+		"cache_creation_input_tokens",
+		"cache_write_input_tokens",
+		"cache_creation_tokens",
+		"input_tokens_details.cached_tokens",
+		"prompt_tokens_details.cached_tokens",
+		"input_tokens_details.cache_write_tokens",
+		"prompt_tokens_details.cache_write_tokens",
+		"input_tokens_details.cache_creation_tokens",
+		"prompt_tokens_details.cache_creation_tokens",
+		"input_tokens_details.image_tokens",
+		"prompt_tokens_details.image_tokens",
+		"output_tokens_details.image_tokens",
+		"completion_tokens_details.image_tokens",
+	} {
+		value := usage.Get(path)
+		if value.Type != gjson.Number {
+			continue
+		}
+		tokenCount := value.Float()
+		if !math.IsNaN(tokenCount) && !math.IsInf(tokenCount, 0) && tokenCount >= 0 && math.Trunc(tokenCount) == tokenCount {
+			return true
+		}
+	}
+
+	return false
 }
 
 // handlePassthroughSSEToJSON converts an SSE response body into a JSON
@@ -1397,6 +1919,39 @@ func writeOpenAIPassthroughResponseHeaders(dst http.Header, src http.Header, fil
 		dst.Del(key)
 		for _, v := range vals {
 			dst.Add(key, v)
+		}
+	}
+}
+
+func writeOpenAITransparentResponseHeaders(dst http.Header, src http.Header) {
+	if dst == nil || src == nil {
+		return
+	}
+	connectionHeaders := make(map[string]struct{})
+	for key, values := range src {
+		if !strings.EqualFold(key, "Connection") {
+			continue
+		}
+		for _, value := range values {
+			for _, token := range strings.Split(value, ",") {
+				if token = strings.ToLower(strings.TrimSpace(token)); token != "" {
+					connectionHeaders[token] = struct{}{}
+				}
+			}
+		}
+	}
+	for key, values := range src {
+		lowerKey := strings.ToLower(strings.TrimSpace(key))
+		switch lowerKey {
+		case "connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "set-cookie":
+			continue
+		}
+		if _, isConnectionHeader := connectionHeaders[lowerKey]; isConnectionHeader {
+			continue
+		}
+		dst.Del(key)
+		for _, value := range values {
+			dst.Add(key, value)
 		}
 	}
 }

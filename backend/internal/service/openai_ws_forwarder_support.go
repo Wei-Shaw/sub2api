@@ -387,6 +387,39 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	return s.selectAccountByPreviousResponseIDForCapability(ctx, groupID, previousResponseID, requestedModel, excludedIDs, "", requireCompact)
 }
 
+// SelectOfficialCodexTransparentHTTPAccountByPreviousResponseID resolves an
+// HTTP Responses continuation to the OAuth passthrough account that issued the
+// previous response. A miss is intentionally returned to the caller instead of
+// falling back to normal scheduling, because response chains are account-local.
+func (s *OpenAIGatewayService) SelectOfficialCodexTransparentHTTPAccountByPreviousResponseID(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredCapability OpenAIEndpointCapability,
+	requireCompact bool,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	selection, err := s.selectAccountByPreviousResponseIDForCapabilityMode(
+		ctx,
+		groupID,
+		previousResponseID,
+		requestedModel,
+		excludedIDs,
+		requiredCapability,
+		requireCompact,
+		true,
+	)
+	decision := OpenAIAccountScheduleDecision{}
+	if selection != nil && selection.Account != nil {
+		decision.Layer = openAIAccountScheduleLayerPreviousResponse
+		decision.StickyPreviousHit = true
+		decision.SelectedAccountID = selection.Account.ID
+		decision.SelectedAccountType = selection.Account.Type
+	}
+	return selection, decision, err
+}
+
 func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 	ctx context.Context,
 	groupID *int64,
@@ -396,10 +429,41 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 	requiredCapability OpenAIEndpointCapability,
 	requireCompact bool,
 ) (*AccountSelectionResult, error) {
+	return s.selectAccountByPreviousResponseIDForCapabilityMode(
+		ctx,
+		groupID,
+		previousResponseID,
+		requestedModel,
+		excludedIDs,
+		requiredCapability,
+		requireCompact,
+		false,
+	)
+}
+
+func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapabilityMode(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredCapability OpenAIEndpointCapability,
+	requireCompact bool,
+	allowTransparentHTTP bool,
+) (*AccountSelectionResult, error) {
 	if s == nil {
 		return nil, nil
 	}
-	accountID, account, responseID, store := s.resolveAccountByPreviousResponseIDForCapability(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
+	accountID, account, responseID, store := s.resolveAccountByPreviousResponseIDForCapability(
+		ctx,
+		groupID,
+		previousResponseID,
+		requestedModel,
+		excludedIDs,
+		requiredCapability,
+		requireCompact,
+		allowTransparentHTTP,
+	)
 	if accountID <= 0 || account == nil || store == nil {
 		return nil, nil
 	}
@@ -443,8 +507,16 @@ func (s *OpenAIGatewayService) ResolveAccountIDByPreviousResponseIDForScheduler(
 	requiredCapability OpenAIEndpointCapability,
 	requireCompact bool,
 ) int64 {
-	accountID, _, _, _ := s.resolveAccountByPreviousResponseIDForCapability(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
+	accountID, _, _, _ := s.resolveAccountByPreviousResponseIDForCapability(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact, false)
 	return accountID
+}
+
+func isOfficialCodexTransparentHTTPAffinityAccount(account *Account) bool {
+	return account != nil &&
+		account.Platform == PlatformOpenAI &&
+		account.Type == AccountTypeOAuth &&
+		!account.IsOpenAIAgentIdentity() &&
+		account.IsOpenAIPassthroughEnabled()
 }
 
 func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
@@ -455,6 +527,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	excludedIDs map[int64]struct{},
 	requiredCapability OpenAIEndpointCapability,
 	requireCompact bool,
+	allowTransparentHTTP bool,
 ) (int64, *Account, string, OpenAIWSStateStore) {
 	if s == nil {
 		return 0, nil, "", nil
@@ -483,9 +556,14 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
-	// 非 WSv2 场景（如 force_http/全局关闭）不应使用 previous_response_id 粘连，
-	// 以保持“回滚到 HTTP”后的历史行为一致性。
-	if s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
+	transport := s.getOpenAIWSProtocolResolver().Resolve(account).Transport
+	if allowTransparentHTTP && !isOfficialCodexTransparentHTTPAffinityAccount(account) {
+		return 0, nil, "", nil
+	}
+	// Keep the historical WS-only behavior for every existing caller. The sole
+	// exception is the explicit official-Codex transparent HTTP continuation
+	// path above, which must remain on its issuing OAuth passthrough account.
+	if transport != OpenAIUpstreamTransportResponsesWebsocketV2 && !allowTransparentHTTP {
 		return 0, nil, "", nil
 	}
 	if shouldClearStickySession(account, requestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
