@@ -102,7 +102,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import { adminAPI } from '@/api/admin'
 import { userAccountsAPI, type UserAccountDataPayload } from '@/api/userAccounts'
 import { useAppStore } from '@/stores/app'
-import type { AdminDataImportResult, AdminDataPayload } from '@/types'
+import type { AdminDataImportError, AdminDataImportResult, AdminDataPayload } from '@/types'
 
 interface Props {
   show: boolean
@@ -318,11 +318,13 @@ const handleImport = async () => {
         proxy_created: 0,
         proxy_reused: 0,
         proxy_failed: 0,
-        errors: (userRes.errors || []).map((e) => ({
-          kind: (e.kind === 'proxy' ? 'proxy' : 'account') as 'proxy' | 'account',
-          name: e.name,
-          message: e.message
-        }))
+        errors: (userRes.errors || []).map(
+          (e): AdminDataImportError => ({
+            kind: e.kind === 'proxy' ? 'proxy' : 'account',
+            name: e.name,
+            message: e.message
+          })
+        )
       }
     } else {
       res = await adminAPI.accounts.importData({
