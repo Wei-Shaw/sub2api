@@ -225,6 +225,8 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.upstreamBillingProbe.intervalHint": "范围 5–1440 分钟。",
     "admin.settings.upstreamBillingProbe.saved": "上游倍率自动探测设置已保存",
     "admin.settings.upstreamBillingProbe.saveFailed": "保存上游倍率自动探测设置失败",
+    "admin.settings.security.passkeyDeploymentHint":
+      "请由服务器运维在部署配置中将 webauthn.enabled 设为 true，填写 webauthn.rp_id（仅域名）与 webauthn.rp_origins（完整 HTTPS 来源），然后重启服务。",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
     "admin.settings.platformQuota.platform": "平台",
@@ -376,6 +378,7 @@ const baseSettingsResponse = {
   contact_info: "",
   doc_url: "",
   home_content: "",
+  compact_home_enabled: false,
   hide_ccs_import_button: false,
   table_default_page_size: 20,
   table_page_size_options: [10, 20, 50, 100],
@@ -678,6 +681,22 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
+  it("submits the compact home page toggle", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+
+    const toggle = wrapper.get('[data-testid="compact-home-toggle"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+
+    await toggle.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ compact_home_enabled: true }),
+    );
+  });
+
   it("renders panel rate limit card and saves settings", async () => {
     getPanelRateLimitSettings.mockClear();
     updatePanelRateLimitSettings.mockClear();
@@ -737,6 +756,7 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(toggle.attributes("disabled")).toBeUndefined();
     expect(settings.text()).toContain("sub3.nebula-spaces.com");
     expect(settings.text()).toContain("https://sub3.nebula-spaces.com");
+    expect(settings.text()).not.toContain("webauthn.enabled");
 
     await toggle.setValue(false);
     await wrapper.find("form").trigger("submit.prevent");
@@ -762,9 +782,14 @@ describe("admin SettingsView payment visible method controls", () => {
 
     const settings = wrapper.get('[data-testid="passkey-settings"]');
     expect(settings.get('[data-testid="passkey-toggle"]').attributes("disabled")).toBeDefined();
-    expect(settings.get('[data-testid="passkey-config-status"]').text()).toContain(
+    const status = settings.get('[data-testid="passkey-config-status"]');
+    expect(status.text()).toContain(
       "admin.settings.security.passkeyNotConfigured",
     );
+    expect(status.text()).toContain("webauthn.enabled");
+    expect(status.text()).toContain("webauthn.rp_id");
+    expect(status.text()).toContain("webauthn.rp_origins");
+    expect(status.text()).toContain("然后重启服务");
   });
 
   it("loads, edits, validates, and saves forwarded client-IP headers", async () => {
