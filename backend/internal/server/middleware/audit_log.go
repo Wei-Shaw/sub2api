@@ -58,6 +58,12 @@ var auditExtraAllowedKeys = map[string]struct{}{
 	"http_status": {}, "latency_ms": {}, "token_applied": {}, "retryable": {},
 	"event_id": {}, "requested_count": {}, "deleted_events": {}, "deleted_jobs": {},
 	"matched_count": {}, "snapshot_max_id": {}, "filter_hash": {}, "confirm": {},
+	"service_tier_standard_enabled_before": {}, "service_tier_standard_enabled_after": {},
+	"service_tier_standard_multiplier_before": {}, "service_tier_standard_multiplier_after": {},
+	"service_tier_priority_enabled_before": {}, "service_tier_priority_enabled_after": {},
+	"service_tier_priority_multiplier_before": {}, "service_tier_priority_multiplier_after": {},
+	"service_tier_flex_enabled_before": {}, "service_tier_flex_enabled_after": {},
+	"service_tier_flex_multiplier_before": {}, "service_tier_flex_multiplier_after": {},
 }
 
 // SetAuditExtra adds allowlisted, scalar details to the current audit entry.

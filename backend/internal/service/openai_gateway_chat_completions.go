@@ -235,16 +235,17 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	// 4b. Apply OpenAI fast policy (may filter service_tier or block the request).
-	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, responsesBody)
+	updatedBody, policyErr := s.applyOpenAIFastAndChannelPolicyToBody(ctx, c, account, upstreamModel, responsesBody)
 	if policyErr != nil {
 		var blocked *OpenAIFastBlockedError
 		if errors.As(policyErr, &blocked) {
 			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
-			writeChatCompletionsError(c, http.StatusForbidden, "permission_error", blocked.Message)
+			writeChatCompletionsBlockedError(c, blocked)
 		}
 		return nil, policyErr
 	}
 	responsesBody = updatedBody
+	outboundServiceTier := extractOpenAIServiceTierFromBody(responsesBody)
 
 	// 5. Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
@@ -322,10 +323,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
 	if handleErr == nil && result != nil {
-		if responsesReq.ServiceTier != "" {
-			st := responsesReq.ServiceTier
-			result.ServiceTier = &st
-		}
+		result.ServiceTier = outboundServiceTier
 		if responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
 			re := responsesReq.Reasoning.Effort
 			result.ReasoningEffort = &re
@@ -477,13 +475,14 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	c.JSON(http.StatusOK, chatResp)
 
 	return &OpenAIForwardResult{
-		RequestID:     requestID,
-		Usage:         usage,
-		Model:         originalModel,
-		BillingModel:  billingModel,
-		UpstreamModel: upstreamModel,
-		Stream:        false,
-		Duration:      time.Since(startTime),
+		RequestID:         requestID,
+		Usage:             usage,
+		Model:             originalModel,
+		BillingModel:      billingModel,
+		UpstreamModel:     upstreamModel,
+		ActualServiceTier: optionalOpenAIProtocolTier(finalResponse.ServiceTier),
+		Stream:            false,
+		Duration:          time.Since(startTime),
 	}, nil
 }
 
@@ -510,6 +509,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	var usage OpenAIUsage
 	var firstTokenMs *int
+	var actualServiceTier *string
 	firstChunk := true
 	clientDisconnected := false
 	clientOutputStarted := false
@@ -536,18 +536,22 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
-			RequestID:     requestID,
-			Usage:         usage,
-			Model:         originalModel,
-			BillingModel:  billingModel,
-			UpstreamModel: upstreamModel,
-			Stream:        true,
-			Duration:      time.Since(startTime),
-			FirstTokenMs:  firstTokenMs,
+			RequestID:         requestID,
+			Usage:             usage,
+			Model:             originalModel,
+			BillingModel:      billingModel,
+			UpstreamModel:     upstreamModel,
+			Stream:            true,
+			Duration:          time.Since(startTime),
+			FirstTokenMs:      firstTokenMs,
+			ActualServiceTier: actualServiceTier,
 		}
 	}
 
 	processDataLine := func(payload string) bool {
+		if tier := extractOpenAIActualServiceTierFromJSONBytes([]byte(payload)); tier != nil {
+			actualServiceTier = tier
+		}
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
@@ -956,13 +960,23 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 // writeChatCompletionsError writes an error response in OpenAI Chat Completions format.
 func writeChatCompletionsError(c *gin.Context, statusCode int, errType, message string) {
+	writeChatCompletionsErrorWithCode(c, statusCode, errType, "", message)
+}
+
+func writeChatCompletionsBlockedError(c *gin.Context, err *OpenAIFastBlockedError) {
+	if err == nil {
+		return
+	}
+	writeChatCompletionsErrorWithCode(c, http.StatusForbidden, "permission_error", err.Code, err.Message)
+}
+
+func writeChatCompletionsErrorWithCode(c *gin.Context, statusCode int, errType, code, message string) {
 	MarkResponseCommitted(c)
-	c.JSON(statusCode, gin.H{
-		"error": gin.H{
-			"type":    errType,
-			"message": message,
-		},
-	})
+	payload := gin.H{"type": errType, "message": message}
+	if strings.TrimSpace(code) != "" {
+		payload["code"] = code
+	}
+	c.JSON(statusCode, gin.H{"error": payload})
 }
 
 // buildChatStreamErrorSSE builds one SSE data frame carrying an OpenAI chat

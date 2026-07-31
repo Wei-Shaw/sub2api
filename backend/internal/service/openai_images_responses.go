@@ -356,6 +356,9 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 
 	req := []byte(`{"instructions":"","stream":true,"reasoning":{"effort":"medium","summary":"auto"},"parallel_tool_calls":true,"include":["reasoning.encrypted_content"],"model":"","store":false,"tool_choice":{"type":"image_generation"}}`)
 	req, _ = sjson.SetBytes(req, "model", openAIImagesResponsesMainModel)
+	if serviceTier := strings.TrimSpace(parsed.ServiceTier); serviceTier != "" {
+		req, _ = sjson.SetBytes(req, "service_tier", serviceTier)
+	}
 
 	input := []byte(`[{"type":"message","role":"user","content":[{"type":"input_text","text":""}]}]`)
 	input, _ = sjson.SetBytes(input, "0.content.0.text", prompt)
@@ -1241,9 +1244,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
+	noteOpenAIImagesActualServiceTier(c, body)
 
 	var usage OpenAIUsage
 	forEachOpenAISSEDataPayload(string(body), func(data []byte) {
+		noteOpenAIImagesActualServiceTier(c, data)
 		s.parseOpenAIImagesSSEUsageBytes(data, &usage)
 	})
 	results, createdAt, usageRaw, firstMeta, _, err := collectOpenAIImagesFromResponsesBody(body)
@@ -1351,6 +1356,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
+		noteOpenAIImagesActualServiceTier(c, dataBytes)
 		s.parseOpenAIImagesSSEUsageBytes(dataBytes, &usage)
 		if !gjson.ValidBytes(dataBytes) {
 			return
@@ -1777,18 +1783,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		if err != nil {
 			if imageCount > 0 {
 				return &OpenAIForwardResult{
-					RequestID:        resp.Header.Get("x-request-id"),
-					Usage:            usage,
-					Model:            requestModel,
-					UpstreamModel:    requestModel,
-					Stream:           parsed.Stream,
-					ResponseHeaders:  resp.Header.Clone(),
-					Duration:         time.Since(startTime),
-					FirstTokenMs:     firstTokenMs,
-					ImageCount:       imageCount,
-					ImageSize:        parsed.SizeTier,
-					ImageInputSize:   parsed.Size,
-					ImageOutputSizes: imageOutputSizes,
+					RequestID:         resp.Header.Get("x-request-id"),
+					Usage:             usage,
+					Model:             requestModel,
+					UpstreamModel:     requestModel,
+					Stream:            parsed.Stream,
+					ResponseHeaders:   resp.Header.Clone(),
+					Duration:          time.Since(startTime),
+					FirstTokenMs:      firstTokenMs,
+					ImageCount:        imageCount,
+					ImageSize:         parsed.SizeTier,
+					ImageInputSize:    parsed.Size,
+					ImageOutputSizes:  imageOutputSizes,
+					ActualServiceTier: openAIImagesActualServiceTier(c),
 				}, err
 			}
 			return nil, s.handleOpenAIImagesOAuthResponseError(
@@ -1821,18 +1828,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		imageCount = parsed.N
 	}
 	return &OpenAIForwardResult{
-		RequestID:        resp.Header.Get("x-request-id"),
-		Usage:            usage,
-		Model:            requestModel,
-		UpstreamModel:    requestModel,
-		Stream:           parsed.Stream,
-		ResponseHeaders:  resp.Header.Clone(),
-		Duration:         time.Since(startTime),
-		FirstTokenMs:     firstTokenMs,
-		ImageCount:       imageCount,
-		ImageSize:        parsed.SizeTier,
-		ImageInputSize:   parsed.Size,
-		ImageOutputSizes: imageOutputSizes,
+		RequestID:         resp.Header.Get("x-request-id"),
+		Usage:             usage,
+		Model:             requestModel,
+		UpstreamModel:     requestModel,
+		Stream:            parsed.Stream,
+		ResponseHeaders:   resp.Header.Clone(),
+		Duration:          time.Since(startTime),
+		FirstTokenMs:      firstTokenMs,
+		ImageCount:        imageCount,
+		ImageSize:         parsed.SizeTier,
+		ImageInputSize:    parsed.Size,
+		ImageOutputSizes:  imageOutputSizes,
+		ActualServiceTier: openAIImagesActualServiceTier(c),
 	}, nil
 }
 

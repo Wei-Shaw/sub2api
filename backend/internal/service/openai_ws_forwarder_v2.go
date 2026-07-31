@@ -354,6 +354,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	firstEventType := ""
 	lastEventType := ""
 	upstreamTerminalEvent := ""
+	var actualServiceTier *string
 
 	var flusher http.Flusher
 	if reqStream {
@@ -506,6 +507,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 		if normalized, changed := normalizeCompletedImageGenerationStatus(message); changed {
 			message = normalized
+		}
+		if tier := extractOpenAIActualServiceTierFromJSONBytes(message); tier != nil {
+			actualServiceTier = tier
 		}
 
 		eventType, eventResponseID, responseField := parseOpenAIWSEventEnvelope(message)
@@ -755,6 +759,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		ImageCount:            imageCounter.Count(),
 		ImageOutputSizes:      imageCounter.Sizes(),
 		ServiceTier:           extractOpenAIServiceTier(reqBody),
+		ActualServiceTier:     actualServiceTier,
 		ReasoningEffort:       extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel),
 		Stream:                reqStream,
 		OpenAIWSMode:          true,

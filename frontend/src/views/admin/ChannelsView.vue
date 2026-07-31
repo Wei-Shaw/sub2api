@@ -228,6 +228,63 @@
               </p>
             </div>
 
+            <!-- OpenAI Service Tiers -->
+            <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
+              <div class="mb-3">
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.channels.form.serviceTiers') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.channels.form.serviceTiersHint') }}
+                </p>
+                <p
+                  v-if="editingChannel?.service_tier_config_error"
+                  class="mt-1 text-xs text-red-600 dark:text-red-400"
+                >
+                  {{ t('admin.channels.form.serviceTierConfigInvalid') }}
+                </p>
+              </div>
+              <div class="divide-y divide-gray-200 border-y border-gray-200 dark:divide-dark-700 dark:border-dark-700">
+                <div
+                  v-for="tier in serviceTierDefinitions"
+                  :key="tier.key"
+                  class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 py-3"
+                >
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t(tier.labelKey) }}
+                    </div>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t(tier.hintKey) }}
+                    </p>
+                  </div>
+                  <Toggle
+                    :modelValue="form.service_tier_config[tier.key].enabled"
+                    @update:modelValue="form.service_tier_config[tier.key].enabled = $event"
+                  />
+                  <div class="relative w-28">
+                    <input
+                      v-model.number="form.service_tier_config[tier.key].multiplier"
+                      type="number"
+                      min="0.01"
+                      max="100"
+                      step="0.01"
+                      class="input pr-7 text-right"
+                      :disabled="!form.service_tier_config[tier.key].enabled"
+                      :aria-label="t('admin.channels.form.serviceTierMultiplier', { tier: t(tier.labelKey) })"
+                    />
+                    <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">x</span>
+                  </div>
+                </div>
+              </div>
+              <p
+                v-if="!form.service_tier_config.standard.enabled"
+                class="mt-2 text-xs text-amber-600 dark:text-amber-400"
+              >
+                {{ t('admin.channels.form.standardTierDisabledWarning') }}
+              </p>
+            </div>
+
             <!-- Platform Management -->
             <div class="space-y-3">
               <label class="input-label mb-0">{{ t('admin.channels.form.platformConfig') }}</label>
@@ -633,6 +690,8 @@ import { adminAPI } from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
+import { cloneServiceTierConfig, defaultServiceTierConfig, validateServiceTierConfig } from '@/components/admin/channel/serviceTier'
+import type { ServiceTierKey } from '@/components/admin/channel/serviceTier'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
@@ -716,6 +775,12 @@ const billingModelSourceOptions = computed(() => [
   { value: 'upstream', label: t('admin.channels.form.billingModelSourceUpstream', 'Bill by final upstream model') }
 ])
 
+const serviceTierDefinitions: Array<{ key: ServiceTierKey, labelKey: string, hintKey: string }> = [
+  { key: 'standard', labelKey: 'admin.channels.form.serviceTierStandard', hintKey: 'admin.channels.form.serviceTierStandardHint' },
+  { key: 'priority', labelKey: 'admin.channels.form.serviceTierPriority', hintKey: 'admin.channels.form.serviceTierPriorityHint' },
+  { key: 'flex', labelKey: 'admin.channels.form.serviceTierFlex', hintKey: 'admin.channels.form.serviceTierFlexHint' },
+]
+
 // ── State ──
 const channels = ref<Channel[]>([])
 const loading = ref(false)
@@ -753,6 +818,7 @@ const form = reactive({
   status: 'active',
   restrict_models: false,
   billing_model_source: 'channel_mapped' as string,
+  service_tier_config: defaultServiceTierConfig(),
   platforms: [] as PlatformSection[],
   apply_pricing_to_account_stats: false,
 })
@@ -1323,6 +1389,7 @@ function resetForm() {
   form.status = 'active'
   form.restrict_models = false
   form.billing_model_source = 'channel_mapped'
+  form.service_tier_config = defaultServiceTierConfig()
   form.platforms = []
   form.apply_pricing_to_account_stats = false
   activeTab.value = 'basic'
@@ -1345,6 +1412,9 @@ async function openEditDialog(channel: Channel) {
   form.status = channel.status
   form.restrict_models = channel.restrict_models || false
   form.billing_model_source = channel.billing_model_source || 'channel_mapped'
+  form.service_tier_config = channel.service_tier_config_error
+    ? defaultServiceTierConfig()
+    : cloneServiceTierConfig(channel.service_tier_config)
   form.apply_pricing_to_account_stats = channel.apply_pricing_to_account_stats || false
   // Must load groups first so apiToForm can map groupID → platform
   await Promise.all([loadGroups(), loadAllChannelsForConflict()])
@@ -1445,6 +1515,18 @@ async function handleSubmit() {
     return
   }
 
+  const serviceTierValidation = validateServiceTierConfig(form.service_tier_config)
+  if (serviceTierValidation === 'no_enabled_tier') {
+    appStore.showError(t('admin.channels.form.serviceTierAtLeastOne'))
+    activeTab.value = 'basic'
+    return
+  }
+  if (serviceTierValidation === 'invalid_multiplier') {
+    appStore.showError(t('admin.channels.form.serviceTierMultiplierInvalid'))
+    activeTab.value = 'basic'
+    return
+  }
+
   // Check for pricing entries with empty models (would be silently skipped)
   for (const section of form.platforms.filter(s => s.enabled)) {
     if (section.group_ids.length === 0) {
@@ -1528,6 +1610,7 @@ async function handleSubmit() {
   try {
     if (editingChannel.value) {
       const req: UpdateChannelRequest = {
+        expected_updated_at: editingChannel.value.updated_at,
         name: form.name.trim(),
         description: form.description.trim() || undefined,
         status: form.status,
@@ -1537,6 +1620,7 @@ async function handleSubmit() {
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models,
         features_config,
+        service_tier_config: form.service_tier_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
         account_stats_pricing_rules: accountStatsRulesToAPI()
       }
@@ -1552,6 +1636,7 @@ async function handleSubmit() {
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models,
         features_config,
+        service_tier_config: form.service_tier_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
         account_stats_pricing_rules: accountStatsRulesToAPI()
       }
@@ -1573,12 +1658,16 @@ async function handleSubmit() {
 async function toggleChannelStatus(channel: Channel) {
   const newStatus = channel.status === 'active' ? 'disabled' : 'active'
   try {
-    await adminAPI.channels.update(channel.id, { status: newStatus })
+    const updated = await adminAPI.channels.update(channel.id, {
+      status: newStatus,
+      expected_updated_at: channel.updated_at
+    })
     if (filters.status && filters.status !== newStatus) {
       // Item no longer matches the active filter — reload list
       await loadChannels()
     } else {
-      channel.status = newStatus
+      channel.status = updated.status
+      channel.updated_at = updated.updated_at
     }
   } catch (error) {
     appStore.showError(t('admin.channels.updateError', 'Failed to update channel'))

@@ -35,7 +35,7 @@ func alphaSearchResponsesSSE(output string) string {
 		"event: response.output_text.annotation.added\n" +
 		`data: {"type":"response.output_text.annotation.added","annotation":{"type":"url_citation","url":"https://example.com/news","title":"Example News"}}` + "\n\n" +
 		"event: response.completed\n" +
-		`data: {"type":"response.completed","response":{"output":[{"type":"message","content":[{"type":"output_text","text":` + strconv.Quote(output) + `}]}]}}` + "\n\n"
+		`data: {"type":"response.completed","response":{"service_tier":"standard","output":[{"type":"message","content":[{"type":"output_text","text":` + strconv.Quote(output) + `}]}]}}` + "\n\n"
 }
 
 func TestForwardAlphaSearchOAuthPreservesWire(t *testing.T) {
@@ -100,7 +100,8 @@ func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
 		"model":"gpt-5.6-sol",
 		"commands":{"search_query":[{"q":"OpenAI news"}]},
 		"prompt_cache_key":"responses-cache-key",
-		"prompt_cache_retention":"24h"
+		"prompt_cache_retention":"24h",
+		"service_tier":"priority"
 	}`)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -144,6 +145,8 @@ func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.WebSearchCalls)
 	require.Equal(t, "/v1/responses", result.UpstreamEndpoint)
+	require.NotNil(t, result.ActualServiceTier)
+	require.Equal(t, "standard", *result.ActualServiceTier)
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.JSONEq(t, `{"output":"search result","results":[{"type":"text_result","ref_id":"turn0search0","url":"https://example.com/news","title":"Example News"}]}`, recorder.Body.String())
 	require.Equal(t, chatgptCodexURL, upstream.lastReq.URL.String())
@@ -163,6 +166,7 @@ func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
 	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
 	require.Equal(t, "web_search", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())

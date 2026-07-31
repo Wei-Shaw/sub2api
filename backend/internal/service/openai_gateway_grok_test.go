@@ -744,6 +744,77 @@ func TestExtractGrokMediaModelSupportsJSONAndMultipart(t *testing.T) {
 	require.Equal(t, "grok-imagine-edit", ExtractGrokMediaModel(writer.FormDataContentType(), buf.Bytes()))
 }
 
+func TestParseGrokMediaRequestReadsServiceTierFromJSONAndMultipart(t *testing.T) {
+	require.Equal(t, "priority", ParseGrokMediaRequest("application/json", []byte(`{"model":"grok-imagine","service_tier":"priority"}`)).ServiceTier)
+
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	require.NoError(t, writer.WriteField("model", "grok-imagine-edit"))
+	require.NoError(t, writer.WriteField("service_tier", "flex"))
+	require.NoError(t, writer.Close())
+	require.Equal(t, "flex", ParseGrokMediaRequest(writer.FormDataContentType(), buf.Bytes()).ServiceTier)
+}
+
+func TestNativeGrokRejectsUnsupportedServiceTierBeforeUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	account := &Account{ID: 1, Platform: PlatformGrok, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "secret"}}
+
+	t.Run("responses rejects scale", func(t *testing.T) {
+		body := []byte(`{"model":"grok-4.5","service_tier":"scale"}`)
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+		upstream := &httpUpstreamRecorder{}
+		svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+		result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok-4.5", false, time.Now())
+		require.Nil(t, result)
+		var blocked *OpenAIFastBlockedError
+		require.ErrorAs(t, err, &blocked)
+		require.Equal(t, "SERVICE_TIER_UNSUPPORTED_FOR_PLATFORM", blocked.Code)
+		require.Nil(t, upstream.lastReq)
+		require.Equal(t, blocked.Code, gjson.Get(recorder.Body.String(), "error.code").String())
+	})
+
+	t.Run("responses rejects priority forced by global policy", func(t *testing.T) {
+		body := []byte(`{"model":"grok-4.5","service_tier":"auto"}`)
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+		upstream := &httpUpstreamRecorder{}
+		svc := newOpenAIGatewayServiceWithSettings(t, &OpenAIFastPolicySettings{Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: "auto",
+			Action:      OpenAIFastPolicyActionForcePriority,
+			Scope:       BetaPolicyScopeAll,
+		}}})
+		svc.httpUpstream = upstream
+
+		result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok-4.5", false, time.Now())
+		require.Nil(t, result)
+		var blocked *OpenAIFastBlockedError
+		require.ErrorAs(t, err, &blocked)
+		require.Equal(t, "SERVICE_TIER_UNSUPPORTED_FOR_PLATFORM", blocked.Code)
+		require.Nil(t, upstream.lastReq)
+		require.Equal(t, blocked.Code, gjson.Get(recorder.Body.String(), "error.code").String())
+	})
+
+	t.Run("media rejects priority before credential and upstream", func(t *testing.T) {
+		body := []byte(`{"model":"grok-imagine","prompt":"cat","service_tier":"priority"}`)
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+		upstream := &httpUpstreamRecorder{}
+		svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+		result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointImagesGenerations, "", body, "application/json")
+		require.Nil(t, result)
+		var blocked *OpenAIFastBlockedError
+		require.ErrorAs(t, err, &blocked)
+		require.Equal(t, "SERVICE_TIER_UNSUPPORTED_FOR_PLATFORM", blocked.Code)
+		require.Nil(t, upstream.lastReq)
+	})
+}
+
 func TestParseGrokMediaRequestBuildsMultipartModerationBody(t *testing.T) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
@@ -1640,6 +1711,17 @@ func TestForwardGrokResponsesAPIKeyUsesXAIResponses(t *testing.T) {
 	body := []byte(`{"model":"grok","input":"hi","stream":true}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	tierConfig := DefaultChannelServiceTierConfig()
+	tierConfig.Standard.Multiplier = 1.25
+	c.Set(openAIServiceTierSnapshotContextKey, openAIServiceTierSnapshotLookup{
+		Found: true,
+		Snapshot: &ChannelServiceTierSnapshot{
+			ChannelID:   53,
+			GroupID:     7,
+			ChannelName: "grok-api-key",
+			Config:      tierConfig,
+		},
+	})
 
 	account := &Account{
 		ID:          53,
@@ -1655,7 +1737,7 @@ func TestForwardGrokResponsesAPIKeyUsesXAIResponses(t *testing.T) {
 	upstreamBody := strings.Join([]string{
 		`data: {"type":"response.output_text.delta","sequence_number":0,"delta":"ok"}`,
 		"",
-		`data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_grok_api_key","model":"grok-4.5","usage":{"input_tokens":2,"output_tokens":1}}}`,
+		`data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_grok_api_key","model":"grok-4.5","service_tier":"priority","usage":{"input_tokens":2,"output_tokens":1}}}`,
 		"",
 	}, "\n")
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -1663,7 +1745,7 @@ func TestForwardGrokResponsesAPIKeyUsesXAIResponses(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
 	}}
-	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	svc := &OpenAIGatewayService{httpUpstream: upstream, channelService: &ChannelService{}}
 
 	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", true, time.Now())
 	require.NoError(t, err)
@@ -1675,6 +1757,49 @@ func TestForwardGrokResponsesAPIKeyUsesXAIResponses(t *testing.T) {
 	require.Equal(t, "resp_grok_api_key", result.ResponseID)
 	require.Equal(t, 2, result.Usage.InputTokens)
 	require.Equal(t, 1, result.Usage.OutputTokens)
+	require.NotNil(t, result.ActualServiceTier)
+	require.Equal(t, "priority", *result.ActualServiceTier)
+	tierState := OpenAIServiceTierStateFromContext(c)
+	require.NotNil(t, tierState)
+	require.Equal(t, OpenAICommercialTierStandard, tierState.OutboundTier)
+	require.Equal(t, 1.25, tierState.Snapshot.Config.Standard.Multiplier)
+}
+
+func TestForwardGrokResponsesRejectsChannelDisabledStandardBeforeUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok","input":"hi","stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	tierConfig := DefaultChannelServiceTierConfig()
+	tierConfig.Standard.Enabled = false
+	c.Set(openAIServiceTierSnapshotContextKey, openAIServiceTierSnapshotLookup{
+		Found: true,
+		Snapshot: &ChannelServiceTierSnapshot{
+			ChannelID:   54,
+			GroupID:     7,
+			ChannelName: "grok-disabled-standard",
+			Config:      tierConfig,
+		},
+	})
+	account := &Account{
+		ID:          54,
+		Name:        "grok-disabled-standard",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 2,
+		Credentials: map[string]any{"api_key": "unused"},
+	}
+	upstream := &httpUpstreamRecorder{}
+	svc := &OpenAIGatewayService{httpUpstream: upstream, channelService: &ChannelService{}}
+
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", false, time.Now())
+	require.Nil(t, result)
+	var blocked *OpenAIFastBlockedError
+	require.ErrorAs(t, err, &blocked)
+	require.Equal(t, "CHANNEL_SERVICE_TIER_NOT_ALLOWED", blocked.Code)
+	require.Nil(t, upstream.lastReq, "channel policy must reject before any upstream request")
 }
 
 func TestForwardGrokResponsesRetriesInvalidEncryptedContentOnce(t *testing.T) {
@@ -2120,7 +2245,7 @@ func TestForwardGrokResponsesNonStreamingUsesCacheIdentityAndCachedUsage(t *test
 			"Content-Type":   []string{"application/json"},
 			"Xai-Request-Id": []string{"xai-non-stream-req"},
 		},
-		Body: io.NopCloser(strings.NewReader(`{"id":"resp_grok_non_stream","object":"response","model":"grok-4.3","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":7,"output_tokens":2,"total_tokens":9,"input_tokens_details":{"cached_tokens":4}}}`)),
+		Body: io.NopCloser(strings.NewReader(`{"id":"resp_grok_non_stream","object":"response","model":"grok-4.3","service_tier":"flex","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":7,"output_tokens":2,"total_tokens":9,"input_tokens_details":{"cached_tokens":4}}}`)),
 	}}
 	svc := &OpenAIGatewayService{
 		httpUpstream:      upstream,
@@ -2136,6 +2261,8 @@ func TestForwardGrokResponsesNonStreamingUsesCacheIdentityAndCachedUsage(t *test
 	require.Equal(t, 7, result.Usage.InputTokens)
 	require.Equal(t, 2, result.Usage.OutputTokens)
 	require.Equal(t, 4, result.Usage.CacheReadInputTokens)
+	require.NotNil(t, result.ActualServiceTier)
+	require.Equal(t, "flex", *result.ActualServiceTier)
 	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
 	identity := gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String()
 	require.NotEmpty(t, identity)

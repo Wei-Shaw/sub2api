@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -44,6 +45,11 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	if account.Type != AccountTypeOAuth && account.Type != AccountTypeAPIKey {
 		return nil, fmt.Errorf("grok account type %s is not supported by Responses forwarding", account.Type)
 	}
+	if blocked := ValidateNativeGrokServiceTier(openAIProtocolTier(body)); blocked != nil {
+		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+		writeOpenAIFastPolicyBlockedResponse(c, blocked)
+		return nil, blocked
+	}
 
 	upstreamModel := account.GetMappedModel(originalModel)
 	if strings.TrimSpace(upstreamModel) == "" {
@@ -83,6 +89,23 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	patchedBody, err = applyGrokFreeRequestToolCacheRoute(c, patchedBody, mixedCacheIntentBody, account, cacheIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
+	}
+	patchedBody, err = s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, patchedBody)
+	if err != nil {
+		var blocked *OpenAIFastBlockedError
+		if errors.As(err, &blocked) {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+			writeOpenAIFastPolicyBlockedResponse(c, blocked)
+		}
+		return nil, err
+	}
+	if err := s.applyOpenAIChannelPolicyToFinalBody(ctx, c, account, body, patchedBody); err != nil {
+		var blocked *OpenAIFastBlockedError
+		if errors.As(err, &blocked) {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+			writeOpenAIFastPolicyBlockedResponse(c, blocked)
+		}
+		return nil, err
 	}
 
 	token, _, err := s.getRequestCredential(ctx, c, account)
@@ -177,6 +200,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 
 	var usage *OpenAIUsage
 	var firstTokenMs *int
+	var actualServiceTier *string
 	responseID := ""
 	if reqStream {
 		if hasGrokResponsesClientToolMapping(clientToolMapping) {
@@ -192,6 +216,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		}
 		usage = streamResult.usage
 		firstTokenMs = streamResult.firstTokenMs
+		actualServiceTier = streamResult.actualServiceTier
 		responseID = strings.TrimSpace(streamResult.responseID)
 	} else {
 		nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
@@ -199,6 +224,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			return nil, err
 		}
 		usage = nonStreamResult.usage
+		actualServiceTier = nonStreamResult.actualServiceTier
 		responseID = strings.TrimSpace(nonStreamResult.responseID)
 	}
 
@@ -207,17 +233,18 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	}
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(patchedBody, originalModel)
 	return &OpenAIForwardResult{
-		RequestID:       firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
-		ResponseID:      responseID,
-		Usage:           *usage,
-		Model:           originalModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		Stream:          reqStream,
-		OpenAIWSMode:    false,
-		ResponseHeaders: resp.Header.Clone(),
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:         firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
+		ResponseID:        responseID,
+		Usage:             *usage,
+		Model:             originalModel,
+		UpstreamModel:     upstreamModel,
+		ActualServiceTier: actualServiceTier,
+		ReasoningEffort:   reasoningEffort,
+		Stream:            reqStream,
+		OpenAIWSMode:      false,
+		ResponseHeaders:   resp.Header.Clone(),
+		Duration:          time.Since(startTime),
+		FirstTokenMs:      firstTokenMs,
 	}, nil
 }
 

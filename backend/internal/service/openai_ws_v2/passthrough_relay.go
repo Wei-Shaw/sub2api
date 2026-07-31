@@ -46,6 +46,7 @@ type RelayTurnResult struct {
 	Usage             Usage
 	RequestID         string
 	TerminalEventType string
+	ActualServiceTier string
 	Duration          time.Duration
 	FirstTokenMs      *int
 }
@@ -104,12 +105,13 @@ type relayExitSignal struct {
 }
 
 type observedUpstreamEvent struct {
-	terminal   bool
-	eventType  string
-	responseID string
-	usage      Usage
-	duration   time.Duration
-	firstToken *int
+	terminal          bool
+	eventType         string
+	responseID        string
+	actualServiceTier string
+	usage             Usage
+	duration          time.Duration
+	firstToken        *int
 }
 
 type relayTurnTiming struct {
@@ -674,9 +676,10 @@ func observeUpstreamMessage(
 	}
 	parsedUsage := parseUsageAndAccumulate(state, message, eventType, onUsageParseFailure)
 	observed := observedUpstreamEvent{
-		eventType:  eventType,
-		responseID: responseID,
-		usage:      parsedUsage,
+		eventType:         eventType,
+		responseID:        responseID,
+		actualServiceTier: openAIWSRelayActualServiceTier(message),
+		usage:             parsedUsage,
 	}
 	if responseID != "" {
 		turnTiming := openAIWSRelayGetOrInitTurnTiming(state, responseID, now)
@@ -727,9 +730,20 @@ func emitTurnComplete(
 		Usage:             observed.usage,
 		RequestID:         responseID,
 		TerminalEventType: observed.eventType,
+		ActualServiceTier: observed.actualServiceTier,
 		Duration:          observed.duration,
 		FirstTokenMs:      openAIWSRelayCloneIntPtr(observed.firstToken),
 	})
+}
+
+func openAIWSRelayActualServiceTier(message []byte) string {
+	for _, path := range []string{"response.service_tier", "service_tier"} {
+		value := gjson.GetBytes(message, path)
+		if value.Type == gjson.String {
+			return strings.TrimSpace(value.String())
+		}
+	}
+	return ""
 }
 
 func openAIWSRelayGetOrInitTurnTiming(state *relayState, responseID string, now time.Time) *relayTurnTiming {

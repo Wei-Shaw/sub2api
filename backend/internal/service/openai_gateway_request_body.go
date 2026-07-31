@@ -839,6 +839,7 @@ func normalizeOpenAIServiceTier(raw string) *string {
 // OpenAIFastBlockedError indicates a request was rejected by the OpenAI fast
 // policy (action=block). Mirrors BetaBlockedError on the Claude side.
 type OpenAIFastBlockedError struct {
+	Code    string
 	Message string
 }
 
@@ -1046,12 +1047,14 @@ func writeOpenAIFastPolicyBlockedResponse(c *gin.Context, err *OpenAIFastBlocked
 		writeOpenAICompactSSEFailureMessage(c, http.StatusForbidden, "permission_error", err.Message)
 		return
 	}
-	c.JSON(http.StatusForbidden, gin.H{
-		"error": gin.H{
-			"type":    "permission_error",
-			"message": err.Message,
-		},
-	})
+	payload := gin.H{
+		"type":    "permission_error",
+		"message": err.Message,
+	}
+	if err.Code != "" {
+		payload["code"] = err.Code
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": payload})
 }
 
 // applyOpenAIFastPolicyToWSResponseCreate evaluates the OpenAI fast policy
@@ -1182,12 +1185,16 @@ func buildOpenAIFastPolicyBlockedWSEvent(err *OpenAIFastBlockedError) []byte {
 		return nil
 	}
 	eventID := newOpenAIFastPolicyWSEventID()
+	code := strings.TrimSpace(err.Code)
+	if code == "" {
+		code = "policy_violation"
+	}
 	payload, mErr := json.Marshal(map[string]any{
 		"event_id": eventID,
 		"type":     "error",
 		"error": map[string]any{
 			"type":    "invalid_request_error",
-			"code":    "policy_violation",
+			"code":    code,
 			"message": err.Message,
 		},
 	})

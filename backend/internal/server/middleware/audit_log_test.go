@@ -130,6 +130,31 @@ func TestPromptAuditAdminOperationsUseOmittedBodiesAndAllowlistedDetails(t *test
 	require.Equal(t, true, probe.Extra["token_applied"])
 }
 
+func TestSetAuditExtraAllowsChannelServiceTierBeforeAfterFields(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	SetAuditExtra(c, map[string]any{
+		"service_tier_standard_enabled_before":    true,
+		"service_tier_standard_enabled_after":     false,
+		"service_tier_standard_multiplier_before": 1.0,
+		"service_tier_standard_multiplier_after":  1.25,
+		"service_tier_priority_enabled_before":    true,
+		"service_tier_priority_enabled_after":     true,
+		"service_tier_priority_multiplier_before": 2.0,
+		"service_tier_priority_multiplier_after":  3.0,
+		"service_tier_flex_enabled_before":        true,
+		"service_tier_flex_enabled_after":         false,
+		"service_tier_flex_multiplier_before":     0.5,
+		"service_tier_flex_multiplier_after":      0.4,
+	})
+	value, ok := c.Get(auditCtxKeyExtra)
+	require.True(t, ok)
+	extra, ok := value.(map[string]any)
+	require.True(t, ok)
+	require.Len(t, extra, 12)
+	require.Equal(t, false, extra["service_tier_flex_enabled_after"])
+	require.Equal(t, 3.0, extra["service_tier_priority_multiplier_after"])
+}
+
 func TestPromptAuditMutationAuditRoutesHaveStableActionsAndOmitBodies(t *testing.T) {
 	expected := map[string]string{
 		"PUT /api/v1/admin/prompt-audit/config":                   "admin.prompt_audit.config.update",

@@ -279,6 +279,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	firstEventType := ""
 	lastEventType := ""
 	upstreamTerminalEvent := ""
+	var actualServiceTier *string
 	sawDone := false
 	wroteDownstream := false
 	clientDisconnected := false
@@ -304,6 +305,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			Model:                 originalModel,
 			UpstreamModel:         mappedModel,
 			ServiceTier:           extractOpenAIServiceTierFromBody(body),
+			ActualServiceTier:     actualServiceTier,
 			ReasoningEffort:       ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(body, mappedModel, originalModel), body, mappedModel),
 			Stream:                reqStream,
 			OpenAIWSMode:          true,
@@ -353,6 +355,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		upstreamMessage := []byte(trimmedData)
 		if normalized, changed := normalizeCompletedImageGenerationStatus(upstreamMessage); changed {
 			upstreamMessage = normalized
+		}
+		if tier := extractOpenAIActualServiceTierFromJSONBytes(upstreamMessage); tier != nil {
+			actualServiceTier = tier
 		}
 		eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)
 		if responseID == "" && eventResponseID != "" {

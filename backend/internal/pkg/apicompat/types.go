@@ -331,12 +331,13 @@ func (t *ResponsesTool) UnmarshalJSON(data []byte) error {
 
 // ResponsesResponse is the non-streaming response from POST /v1/responses.
 type ResponsesResponse struct {
-	ID     string            `json:"id"`
-	Object string            `json:"object"` // "response"
-	Model  string            `json:"model"`
-	Status string            `json:"status"` // "completed" | "incomplete" | "failed"
-	Output []ResponsesOutput `json:"output"`
-	Usage  *ResponsesUsage   `json:"usage,omitempty"`
+	ID          string            `json:"id"`
+	Object      string            `json:"object"` // "response"
+	Model       string            `json:"model"`
+	Status      string            `json:"status"` // "completed" | "incomplete" | "failed"
+	ServiceTier string            `json:"service_tier,omitempty"`
+	Output      []ResponsesOutput `json:"output"`
+	Usage       *ResponsesUsage   `json:"usage,omitempty"`
 
 	// incomplete_details is present when status="incomplete"
 	IncompleteDetails *ResponsesIncompleteDetails `json:"incomplete_details,omitempty"`

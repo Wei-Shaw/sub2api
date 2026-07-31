@@ -881,22 +881,18 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 	pricing = &cloned
 	if channelPricing.InputPrice != nil {
 		pricing.InputPricePerToken = *channelPricing.InputPrice
-		pricing.InputPricePerTokenPriority = *channelPricing.InputPrice
 	}
 	if channelPricing.OutputPrice != nil {
 		pricing.OutputPricePerToken = *channelPricing.OutputPrice
-		pricing.OutputPricePerTokenPriority = *channelPricing.OutputPrice
 	}
 	if channelPricing.CacheWritePrice != nil {
 		pricing.CacheCreationPricePerToken = *channelPricing.CacheWritePrice
-		pricing.CacheCreationPricePerTokenPriority = *channelPricing.CacheWritePrice
 		pricing.CacheCreationPriceExplicit = true
 		pricing.CacheCreation5mPrice = *channelPricing.CacheWritePrice
 		pricing.CacheCreation1hPrice = *channelPricing.CacheWritePrice
 	}
 	if channelPricing.CacheReadPrice != nil {
 		pricing.CacheReadPricePerToken = *channelPricing.CacheReadPrice
-		pricing.CacheReadPricePerTokenPriority = *channelPricing.CacheReadPrice
 	}
 	if channelPricing.ImageOutputPrice != nil {
 		pricing.ImageOutputPricePerToken = *channelPricing.ImageOutputPrice
@@ -919,7 +915,8 @@ type CostInput struct {
 	RequestCount              int    // 按次计费时使用
 	SizeTier                  string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
 	RateMultiplier            float64
-	ServiceTier               string                // "priority","flex","" 等
+	ServiceTier               string // "priority","flex","" 等
+	ServiceTierSnapshot       *ChannelServiceTierSnapshot
 	Resolver                  *ModelPricingResolver // 定价解析器
 	Resolved                  *ResolvedPricing      // 可选：预解析的定价结果（避免重复 Resolve 调用）
 	LongContextBillingEnabled *bool
@@ -930,6 +927,11 @@ type CostInput struct {
 func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, error) {
 	if input.Resolver == nil {
 		// 无 Resolver，回退到旧路径
+		input.RateMultiplier, input.ServiceTier = applyChannelServiceTierRateMultiplier(
+			input.RateMultiplier,
+			input.ServiceTier,
+			input.ServiceTierSnapshot,
+		)
 		applyLongContextBilling := true
 		if input.LongContextBillingEnabled != nil {
 			applyLongContextBilling = *input.LongContextBillingEnabled
@@ -948,10 +950,20 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 	resolved := input.Resolved
 	if resolved == nil {
 		resolved = input.Resolver.Resolve(input.Ctx, PricingInput{
-			Model:   input.Model,
-			GroupID: input.GroupID,
+			Model:               input.Model,
+			GroupID:             input.GroupID,
+			ServiceTierSnapshot: input.ServiceTierSnapshot,
 		})
 	}
+	serviceTierSnapshot := input.ServiceTierSnapshot
+	if serviceTierSnapshot == nil && resolved != nil {
+		serviceTierSnapshot = resolved.ServiceTierSnapshot
+	}
+	input.RateMultiplier, input.ServiceTier = applyChannelServiceTierRateMultiplier(
+		input.RateMultiplier,
+		input.ServiceTier,
+		serviceTierSnapshot,
+	)
 
 	// 保存时强制 > 0；若仍有负数泄漏（缓存/迁移残留），按 0 处理避免按 1x 误扣。
 	if input.RateMultiplier < 0 {

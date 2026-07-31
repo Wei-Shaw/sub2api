@@ -38,6 +38,15 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	if upstreamModel != originalModel {
 		upstreamBody = ReplaceModelInBody(body, upstreamModel)
 	}
+	upstreamBody, err := s.applyOpenAIFastAndChannelPolicyToBody(ctx, c, account, upstreamModel, upstreamBody)
+	if err != nil {
+		var blocked *OpenAIFastBlockedError
+		if errors.As(err, &blocked) {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+			writeOpenAIFastPolicyBlockedResponse(c, blocked)
+		}
+		return nil, err
+	}
 
 	logger.L().Debug("openai embeddings: forwarding",
 		zap.Int64("account_id", account.ID),
@@ -154,13 +163,14 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	writeOpenAIEmbeddingsUpstreamResponse(c, resp, respBody, s.responseHeaderFilter)
 
 	return &OpenAIForwardResult{
-		RequestID:     firstNonEmptyString(resp.Header.Get("x-request-id"), resp.Header.Get("request-id")),
-		Usage:         extractOpenAIEmbeddingsUsage(respBody),
-		Model:         originalModel,
-		BillingModel:  billingModel,
-		UpstreamModel: upstreamModel,
-		Stream:        false,
-		Duration:      time.Since(startTime),
+		RequestID:         firstNonEmptyString(resp.Header.Get("x-request-id"), resp.Header.Get("request-id")),
+		Usage:             extractOpenAIEmbeddingsUsage(respBody),
+		Model:             originalModel,
+		BillingModel:      billingModel,
+		UpstreamModel:     upstreamModel,
+		ActualServiceTier: extractOpenAIActualServiceTierFromJSONBytes(respBody),
+		Stream:            false,
+		Duration:          time.Since(startTime),
 	}, nil
 }
 

@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -28,20 +30,22 @@ func NewChannelHandler(channelService *service.ChannelService, billingService *s
 // --- Request / Response types ---
 
 type createChannelRequest struct {
-	Name                       string                           `json:"name" binding:"required,max=100"`
-	Description                string                           `json:"description"`
-	GroupIDs                   []int64                          `json:"group_ids"`
-	ModelPricing               []channelModelPricingRequest     `json:"model_pricing"`
-	ModelMapping               map[string]map[string]string     `json:"model_mapping"`
-	BillingModelSource         string                           `json:"billing_model_source" binding:"omitempty,oneof=requested upstream channel_mapped"`
-	RestrictModels             bool                             `json:"restrict_models"`
-	Features                   string                           `json:"features"`
-	FeaturesConfig             map[string]any                   `json:"features_config"`
-	ApplyPricingToAccountStats bool                             `json:"apply_pricing_to_account_stats"`
-	AccountStatsPricingRules   []accountStatsPricingRuleRequest `json:"account_stats_pricing_rules"`
+	Name                       string                            `json:"name" binding:"required,max=100"`
+	Description                string                            `json:"description"`
+	GroupIDs                   []int64                           `json:"group_ids"`
+	ModelPricing               []channelModelPricingRequest      `json:"model_pricing"`
+	ModelMapping               map[string]map[string]string      `json:"model_mapping"`
+	BillingModelSource         string                            `json:"billing_model_source" binding:"omitempty,oneof=requested upstream channel_mapped"`
+	RestrictModels             bool                              `json:"restrict_models"`
+	Features                   string                            `json:"features"`
+	FeaturesConfig             map[string]any                    `json:"features_config"`
+	ServiceTierConfig          *service.ChannelServiceTierConfig `json:"service_tier_config"`
+	ApplyPricingToAccountStats bool                              `json:"apply_pricing_to_account_stats"`
+	AccountStatsPricingRules   []accountStatsPricingRuleRequest  `json:"account_stats_pricing_rules"`
 }
 
 type updateChannelRequest struct {
+	ExpectedUpdatedAt          string                            `json:"expected_updated_at"`
 	Name                       string                            `json:"name" binding:"omitempty,max=100"`
 	Description                *string                           `json:"description"`
 	Status                     string                            `json:"status" binding:"omitempty,oneof=active disabled"`
@@ -52,6 +56,7 @@ type updateChannelRequest struct {
 	RestrictModels             *bool                             `json:"restrict_models"`
 	Features                   *string                           `json:"features"`
 	FeaturesConfig             map[string]any                    `json:"features_config"`
+	ServiceTierConfig          *service.ChannelServiceTierConfig `json:"service_tier_config"`
 	ApplyPricingToAccountStats *bool                             `json:"apply_pricing_to_account_stats"`
 	AccountStatsPricingRules   *[]accountStatsPricingRuleRequest `json:"account_stats_pricing_rules"`
 }
@@ -98,6 +103,8 @@ type channelResponse struct {
 	RestrictModels             bool                              `json:"restrict_models"`
 	Features                   string                            `json:"features"`
 	FeaturesConfig             map[string]any                    `json:"features_config"`
+	ServiceTierConfig          service.ChannelServiceTierConfig  `json:"service_tier_config"`
+	ServiceTierConfigError     string                            `json:"service_tier_config_error,omitempty"`
 	GroupIDs                   []int64                           `json:"group_ids"`
 	ModelPricing               []channelModelPricingResponse     `json:"model_pricing"`
 	ModelMapping               map[string]map[string]string      `json:"model_mapping"`
@@ -148,17 +155,19 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 		return nil
 	}
 	resp := &channelResponse{
-		ID:             ch.ID,
-		Name:           ch.Name,
-		Description:    ch.Description,
-		Status:         ch.Status,
-		RestrictModels: ch.RestrictModels,
-		Features:       ch.Features,
-		FeaturesConfig: ch.FeaturesConfig,
-		GroupIDs:       ch.GroupIDs,
-		ModelMapping:   ch.ModelMapping,
-		CreatedAt:      ch.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		UpdatedAt:      ch.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		ID:                     ch.ID,
+		Name:                   ch.Name,
+		Description:            ch.Description,
+		Status:                 ch.Status,
+		RestrictModels:         ch.RestrictModels,
+		Features:               ch.Features,
+		FeaturesConfig:         ch.FeaturesConfig,
+		ServiceTierConfig:      ch.ServiceTierConfig,
+		ServiceTierConfigError: ch.ServiceTierConfigError,
+		GroupIDs:               ch.GroupIDs,
+		ModelMapping:           ch.ModelMapping,
+		CreatedAt:              ch.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:              ch.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
 	resp.BillingModelSource = ch.BillingModelSource
 	if resp.GroupIDs == nil {
@@ -386,6 +395,7 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 		RestrictModels:             req.RestrictModels,
 		Features:                   req.Features,
 		FeaturesConfig:             req.FeaturesConfig,
+		ServiceTierConfig:          req.ServiceTierConfig,
 		ApplyPricingToAccountStats: req.ApplyPricingToAccountStats,
 		AccountStatsPricingRules:   statsRules,
 	})
@@ -395,6 +405,23 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 	}
 
 	response.Success(c, channelToResponse(channel))
+}
+
+func channelServiceTierAuditExtra(before, after service.ChannelServiceTierConfig) map[string]any {
+	return map[string]any{
+		"service_tier_standard_enabled_before":    before.Standard.Enabled,
+		"service_tier_standard_enabled_after":     after.Standard.Enabled,
+		"service_tier_standard_multiplier_before": before.Standard.Multiplier,
+		"service_tier_standard_multiplier_after":  after.Standard.Multiplier,
+		"service_tier_priority_enabled_before":    before.Priority.Enabled,
+		"service_tier_priority_enabled_after":     after.Priority.Enabled,
+		"service_tier_priority_multiplier_before": before.Priority.Multiplier,
+		"service_tier_priority_multiplier_after":  after.Priority.Multiplier,
+		"service_tier_flex_enabled_before":        before.Flex.Enabled,
+		"service_tier_flex_enabled_after":         after.Flex.Enabled,
+		"service_tier_flex_multiplier_before":     before.Flex.Multiplier,
+		"service_tier_flex_multiplier_after":      after.Flex.Multiplier,
+	}
 }
 
 // Update handles updating a channel
@@ -411,8 +438,17 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 		response.ErrorFrom(c, infraerrors.BadRequest("VALIDATION_ERROR", err.Error()))
 		return
 	}
-
+	var expectedUpdatedAt *time.Time
+	if revision := strings.TrimSpace(req.ExpectedUpdatedAt); revision != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, revision)
+		if err != nil {
+			response.ErrorFrom(c, infraerrors.BadRequest("INVALID_CHANNEL_REVISION", "expected_updated_at must be an RFC3339 timestamp"))
+			return
+		}
+		expectedUpdatedAt = &parsed
+	}
 	input := &service.UpdateChannelInput{
+		ExpectedUpdatedAt:          expectedUpdatedAt,
 		Name:                       req.Name,
 		Description:                req.Description,
 		Status:                     req.Status,
@@ -422,6 +458,7 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 		RestrictModels:             req.RestrictModels,
 		Features:                   req.Features,
 		FeaturesConfig:             req.FeaturesConfig,
+		ServiceTierConfig:          req.ServiceTierConfig,
 		ApplyPricingToAccountStats: req.ApplyPricingToAccountStats,
 	}
 	if req.ModelPricing != nil {
@@ -453,10 +490,13 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 		input.AccountStatsPricingRules = &statsRules
 	}
 
-	channel, err := h.channelService.Update(c.Request.Context(), id, input)
+	channel, auditSnapshot, err := h.channelService.UpdateWithServiceTierAuditSnapshot(c.Request.Context(), id, input)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	if req.ServiceTierConfig != nil {
+		middleware.SetAuditExtra(c, channelServiceTierAuditExtra(auditSnapshot.Before, auditSnapshot.After))
 	}
 
 	response.Success(c, channelToResponse(channel))

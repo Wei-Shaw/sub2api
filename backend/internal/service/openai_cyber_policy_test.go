@@ -18,7 +18,7 @@ func TestMarkAndGetOpsCyberPolicy(t *testing.T) {
 	MarkOpsCyberPolicy(c, CyberPolicyMark{
 		Code:           "cyber_policy",
 		Message:        "This request was flagged for cyber policy.",
-		Body:           `{"error":{"code":"cyber_policy"}}`,
+		Body:           `{"type":"response.failed","response":{"service_tier":"standard","error":{"code":"cyber_policy"}}}`,
 		UpstreamStatus: 400,
 	})
 
@@ -26,6 +26,8 @@ func TestMarkAndGetOpsCyberPolicy(t *testing.T) {
 	require.NotNil(t, got)
 	require.Equal(t, "cyber_policy", got.Code)
 	require.Equal(t, 400, got.UpstreamStatus)
+	require.NotNil(t, got.ActualServiceTier)
+	require.Equal(t, "standard", *got.ActualServiceTier)
 }
 
 func TestMarkOpsCyberPolicyFirstWins(t *testing.T) {

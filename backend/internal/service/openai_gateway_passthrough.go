@@ -92,7 +92,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if policyModel == "" {
 		policyModel = reqModel
 	}
-	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, policyModel, body)
+	updatedBody, policyErr := s.applyOpenAIFastAndChannelPolicyToBody(ctx, c, account, policyModel, body)
 	if policyErr != nil {
 		var blocked *OpenAIFastBlockedError
 		if errors.As(policyErr, &blocked) {
@@ -233,6 +233,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 	var usage *OpenAIUsage
 	var firstTokenMs *int
+	var actualServiceTier *string
 	responseID := ""
 	imageCount := 0
 	var imageOutputSizes []string
@@ -246,6 +247,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		responseID = strings.TrimSpace(result.responseID)
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
+		actualServiceTier = result.actualServiceTier
 	} else {
 		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
 		if err != nil {
@@ -255,6 +257,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		responseID = strings.TrimSpace(result.responseID)
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
+		actualServiceTier = result.actualServiceTier
 	}
 	s.bindHTTPResponseAccount(ctx, c, account, responseID)
 
@@ -270,17 +273,18 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	forwardResult := &OpenAIForwardResult{
-		RequestID:       resp.Header.Get("x-request-id"),
-		ResponseID:      responseID,
-		Usage:           *usage,
-		Model:           reqModel,
-		UpstreamModel:   upstreamPassthroughModel,
-		ServiceTier:     serviceTier,
-		ReasoningEffort: reasoningEffort,
-		Stream:          reqStream,
-		OpenAIWSMode:    false,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:         resp.Header.Get("x-request-id"),
+		ResponseID:        responseID,
+		Usage:             *usage,
+		Model:             reqModel,
+		UpstreamModel:     upstreamPassthroughModel,
+		ServiceTier:       serviceTier,
+		ActualServiceTier: actualServiceTier,
+		ReasoningEffort:   reasoningEffort,
+		Stream:            reqStream,
+		OpenAIWSMode:      false,
+		Duration:          time.Since(startTime),
+		FirstTokenMs:      firstTokenMs,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
@@ -712,19 +716,21 @@ func collectOpenAIPassthroughTimeoutHeaders(h http.Header) []string {
 }
 
 type openaiStreamingResultPassthrough struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage             *OpenAIUsage
+	firstTokenMs      *int
+	responseID        string
+	actualServiceTier *string
+	imageCount        int
+	imageOutputSizes  []string
 }
 
 type openaiNonStreamingResultPassthrough struct {
 	*OpenAIUsage
-	usage            *OpenAIUsage
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage             *OpenAIUsage
+	responseID        string
+	actualServiceTier *string
+	imageCount        int
+	imageOutputSizes  []string
 }
 
 func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
@@ -988,6 +994,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
+	var actualServiceTier *string
 	responseID := ""
 	clientDisconnected := false
 	sawDone := false
@@ -1033,11 +1040,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
+			usage:             usage,
+			firstTokenMs:      firstTokenMs,
+			responseID:        responseID,
+			actualServiceTier: actualServiceTier,
+			imageCount:        imageCounter.Count(),
+			imageOutputSizes:  imageCounter.Sizes(),
 		}
 	}
 
@@ -1047,6 +1055,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
+			if tier := extractOpenAIActualServiceTierFromJSONBytes(dataBytes); tier != nil {
+				actualServiceTier = tier
+			}
 			trimmedData := strings.TrimSpace(data)
 			if needModelReplace && strings.Contains(data, mappedModel) {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
@@ -1273,11 +1284,12 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		c.Data(resp.StatusCode, contentType, body)
 	}
 	return &openaiNonStreamingResultPassthrough{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
-		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		OpenAIUsage:       usage,
+		usage:             usage,
+		responseID:        extractOpenAIResponseIDFromJSONBytes(body),
+		actualServiceTier: extractOpenAIActualServiceTierFromJSONBytes(body),
+		imageCount:        countOpenAIResponseImageOutputsFromJSONBytes(body),
+		imageOutputSizes:  collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 	}, nil
 }
 
@@ -1345,11 +1357,12 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	}
 
 	return &openaiNonStreamingResultPassthrough{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
-		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		OpenAIUsage:       usage,
+		usage:             usage,
+		responseID:        extractOpenAIResponseIDFromJSONBytes(body),
+		actualServiceTier: extractOpenAIActualServiceTierFromJSONBytes(body),
+		imageCount:        countOpenAIImageOutputsFromSSEBody(bodyText),
+		imageOutputSizes:  collectOpenAIImageOutputSizesFromSSEBody(bodyText),
 	}, nil
 }
 

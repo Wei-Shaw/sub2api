@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,7 @@ type mockChannelRepository struct {
 	createFn                   func(ctx context.Context, channel *Channel) error
 	getByIDFn                  func(ctx context.Context, id int64) (*Channel, error)
 	updateFn                   func(ctx context.Context, channel *Channel) error
+	updatePreviousConfig       *ChannelServiceTierConfig
 	deleteFn                   func(ctx context.Context, id int64) error
 	listFn                     func(ctx context.Context, params pagination.PaginationParams, status, search string) ([]Channel, *pagination.PaginationResult, error)
 	existsByNameFn             func(ctx context.Context, name string) (bool, error)
@@ -51,11 +53,19 @@ func (m *mockChannelRepository) GetByID(ctx context.Context, id int64) (*Channel
 	return nil, ErrChannelNotFound
 }
 
-func (m *mockChannelRepository) Update(ctx context.Context, channel *Channel) error {
+func (m *mockChannelRepository) Update(ctx context.Context, channel *Channel) (ChannelServiceTierAuditSnapshot, error) {
 	if m.updateFn != nil {
-		return m.updateFn(ctx, channel)
+		if err := m.updateFn(ctx, channel); err != nil {
+			return ChannelServiceTierAuditSnapshot{}, err
+		}
 	}
-	return nil
+	audit := ChannelServiceTierAuditSnapshot{After: channel.ServiceTierConfig}
+	if m.updatePreviousConfig != nil {
+		audit.Before = *m.updatePreviousConfig
+		return audit, nil
+	}
+	audit.Before = channel.ServiceTierConfig
+	return audit, nil
 }
 
 func (m *mockChannelRepository) Delete(ctx context.Context, id int64) error {
@@ -1168,22 +1178,16 @@ func TestBuildCache_DBError(t *testing.T) {
 	require.Contains(t, err.Error(), "database down")
 	require.Equal(t, 1, callCount)
 
-	// Second call within error-TTL should use error cache, but still return error
-	// Because buildCache stores error-TTL cache and returns error, the cached value
-	// is still within TTL and loadCache returns it (which is an empty cache).
-	// Actually, re-reading the code: buildCache returns nil, err, and the error cache
-	// only serves as a "don't retry immediately" mechanism. The singleflight.Do
-	// returns the error. On next call within error-TTL, the cache has an empty but
-	// valid entry, so loadCache returns it (with empty maps). GetChannelForGroup
-	// will find nothing and return nil, nil.
+	// Cold start must remain fail-closed. A transient DB error must not be turned
+	// into an empty cache, because that would silently bypass channel policy.
 	result, err := svc.GetChannelForGroup(context.Background(), 10)
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.Nil(t, result)
-	// Should NOT have hit DB again (error-TTL cache is active)
-	require.Equal(t, 1, callCount)
+	require.Equal(t, 2, callCount)
 }
 
 func TestBuildCache_GroupPlatformError(t *testing.T) {
+	callCount := 0
 	ch := Channel{
 		ID:       1,
 		Status:   StatusActive,
@@ -1197,6 +1201,7 @@ func TestBuildCache_GroupPlatformError(t *testing.T) {
 			return []Channel{ch}, nil
 		},
 		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
+			callCount++
 			return nil, errors.New("group platforms failed")
 		},
 	}
@@ -1207,10 +1212,153 @@ func TestBuildCache_GroupPlatformError(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 
-	// Within error-TTL, second call should hit cache (empty) and return nil, nil
+	// Cold start retries and remains fail-closed; it never installs an empty cache.
 	result2, err2 := svc.GetChannelForGroup(context.Background(), 10)
-	require.NoError(t, err2)
+	require.Error(t, err2)
 	require.Nil(t, result2)
+	require.Equal(t, 2, callCount)
+}
+
+func TestLoadCache_RefreshFailureKeepsLastValidServiceTierSnapshot(t *testing.T) {
+	failRefresh := false
+	listCalls := 0
+	config := DefaultChannelServiceTierConfig()
+	config.Priority.Multiplier = 3
+	ch := Channel{
+		ID:                1,
+		Name:              "stable-channel",
+		Status:            StatusActive,
+		GroupIDs:          []int64{10},
+		ServiceTierConfig: config,
+	}
+	repo := &mockChannelRepository{
+		listAllFn: func(_ context.Context) ([]Channel, error) {
+			listCalls++
+			if failRefresh {
+				return nil, errors.New("database temporarily unavailable")
+			}
+			return []Channel{ch}, nil
+		},
+		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
+			return map[int64]string{10: PlatformOpenAI}, nil
+		},
+	}
+	svc := newTestChannelService(repo)
+
+	snapshot, found, err := svc.GetServiceTierSnapshotForGroup(context.Background(), 10)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.InDelta(t, 3, snapshot.Config.Priority.Multiplier, 1e-12)
+
+	cached, ok := svc.cache.Load().(*channelCache)
+	require.True(t, ok)
+	cached.loadedAt = time.Now().Add(-(channelCacheTTL + time.Minute))
+	failRefresh = true
+
+	snapshot, found, err = svc.GetServiceTierSnapshotForGroup(context.Background(), 10)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.InDelta(t, 3, snapshot.Config.Priority.Multiplier, 1e-12)
+	require.Equal(t, 2, listCalls)
+
+	snapshot, found, err = svc.GetServiceTierSnapshotForGroup(context.Background(), 10)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.InDelta(t, 3, snapshot.Config.Priority.Multiplier, 1e-12)
+	require.Equal(t, 2, listCalls, "refresh failure backoff must avoid another immediate database call")
+
+	svc.cacheRefreshAfter.Store(time.Now().Add(-time.Second).UnixNano())
+	snapshot, found, err = svc.GetServiceTierSnapshotForGroup(context.Background(), 10)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.InDelta(t, 3, snapshot.Config.Priority.Multiplier, 1e-12)
+	require.Equal(t, 3, listCalls, "refresh should be attempted again after the bounded backoff")
+}
+
+func TestGetServiceTierSnapshotForGroup_FreshSnapshotPreservesUnassignedGroup(t *testing.T) {
+	repo := &mockChannelRepository{
+		listAllFn: func(_ context.Context) ([]Channel, error) {
+			return nil, nil
+		},
+		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
+			return map[int64]string{}, nil
+		},
+	}
+	svc := newTestChannelService(repo)
+
+	snapshot, found, err := svc.GetServiceTierSnapshotForGroup(context.Background(), 99)
+	require.NoError(t, err)
+	require.False(t, found)
+	require.Nil(t, snapshot)
+}
+
+func TestGetServiceTierSnapshotForGroup_RefreshFailureRejectsExpiredSnapshot(t *testing.T) {
+	failRefresh := false
+	listCalls := 0
+	ch := Channel{
+		ID:                1,
+		Name:              "expired-channel",
+		Status:            StatusActive,
+		GroupIDs:          []int64{10},
+		ServiceTierConfig: DefaultChannelServiceTierConfig(),
+	}
+	repo := &mockChannelRepository{
+		listAllFn: func(_ context.Context) ([]Channel, error) {
+			listCalls++
+			if failRefresh {
+				return nil, errors.New("database temporarily unavailable")
+			}
+			return []Channel{ch}, nil
+		},
+		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
+			return map[int64]string{10: PlatformOpenAI}, nil
+		},
+	}
+	svc := newTestChannelService(repo)
+
+	snapshot, found, err := svc.GetServiceTierSnapshotForGroup(context.Background(), 10)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.NotNil(t, snapshot)
+
+	cached, ok := svc.cache.Load().(*channelCache)
+	require.True(t, ok)
+	cached.loadedAt = time.Now().Add(-(channelCacheMaxTierStale + time.Second))
+	failRefresh = true
+
+	snapshot, found, err = svc.GetServiceTierSnapshotForGroup(context.Background(), 10)
+	require.ErrorIs(t, err, ErrChannelServiceTierSnapshotStale)
+	require.False(t, found)
+	require.Nil(t, snapshot)
+	require.Equal(t, 2, listCalls)
+
+	// The refresh backoff must not turn an over-age snapshot back into an
+	// accepted service-tier policy on the next request.
+	snapshot, found, err = svc.GetServiceTierSnapshotForGroup(context.Background(), 10)
+	require.ErrorIs(t, err, ErrChannelServiceTierSnapshotStale)
+	require.False(t, found)
+	require.Nil(t, snapshot)
+	require.Equal(t, 2, listCalls)
+
+	// An expired snapshot cannot prove that an unknown group is still
+	// unassigned. It must fail closed until a refresh succeeds.
+	snapshot, found, err = svc.GetServiceTierSnapshotForGroup(context.Background(), 99)
+	require.ErrorIs(t, err, ErrChannelServiceTierSnapshotStale)
+	require.False(t, found)
+	require.Nil(t, snapshot)
+	require.Equal(t, 2, listCalls)
+
+	refreshedConfig := DefaultChannelServiceTierConfig()
+	refreshedConfig.Priority.Multiplier = 4
+	ch.ServiceTierConfig = refreshedConfig
+	failRefresh = false
+	svc.cacheRefreshAfter.Store(time.Now().Add(-time.Second).UnixNano())
+	snapshot, found, err = svc.GetServiceTierSnapshotForGroup(context.Background(), 10)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.NotNil(t, snapshot)
+	require.InDelta(t, 4, snapshot.Config.Priority.Multiplier, 1e-12)
+	require.Equal(t, 3, listCalls, "a successful refresh must automatically restore the affected channel")
 }
 
 func TestBuildCache_MultipleGroupsSameChannel(t *testing.T) {
@@ -1332,6 +1480,95 @@ func TestInvalidateCache(t *testing.T) {
 	result = svc.GetChannelModelPricing(context.Background(), 10, "claude-opus-4")
 	require.NotNil(t, result)
 	require.Equal(t, 2, callCount) // rebuilt
+}
+
+func TestUpdate_NormalizesLegacyEmptyServiceTierConfig(t *testing.T) {
+	stored := Channel{
+		ID:       42,
+		Name:     "legacy-channel",
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+	}
+	repo := &mockChannelRepository{
+		getByIDFn: func(_ context.Context, id int64) (*Channel, error) {
+			require.Equal(t, int64(42), id)
+			return stored.Clone(), nil
+		},
+		updateFn: func(_ context.Context, channel *Channel) error {
+			stored = *channel.Clone()
+			return nil
+		},
+		listAllFn: func(_ context.Context) ([]Channel, error) {
+			return []Channel{stored}, nil
+		},
+		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
+			return map[int64]string{10: PlatformOpenAI}, nil
+		},
+	}
+	svc := newTestChannelService(repo)
+
+	updated, err := svc.Update(context.Background(), 42, &UpdateChannelInput{
+		ModelMapping: map[string]map[string]string{PlatformOpenAI: {"alias": "gpt-5"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, DefaultChannelServiceTierConfig(), updated.ServiceTierConfig)
+	require.Equal(t, DefaultChannelServiceTierConfig(), stored.ServiceTierConfig)
+}
+
+func TestUpdateWithServiceTierAuditSnapshotUsesRepositoryTransactionSnapshot(t *testing.T) {
+	previous := DefaultChannelServiceTierConfig()
+	previous.Priority.Multiplier = 2.5
+	stored := Channel{ID: 42, Name: "channel", Status: StatusActive, ServiceTierConfig: previous}
+	repo := &mockChannelRepository{
+		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) {
+			return stored.Clone(), nil
+		},
+		updatePreviousConfig: &previous,
+		updateFn: func(_ context.Context, channel *Channel) error {
+			stored = *channel.Clone()
+			return nil
+		},
+	}
+	svc := newTestChannelService(repo)
+	after := DefaultChannelServiceTierConfig()
+	after.Priority.Multiplier = 3
+
+	updated, auditSnapshot, err := svc.UpdateWithServiceTierAuditSnapshot(context.Background(), 42, &UpdateChannelInput{ServiceTierConfig: &after})
+	require.NoError(t, err)
+	require.Equal(t, previous, auditSnapshot.Before)
+	require.Equal(t, after, auditSnapshot.After)
+	require.Equal(t, after, updated.ServiceTierConfig)
+}
+
+func TestUpdateRejectsBrowserRevisionBeforeApplyingStaleForm(t *testing.T) {
+	currentRevision := time.Date(2026, 7, 31, 12, 0, 0, 987654000, time.UTC)
+	staleRevision := currentRevision.Add(-time.Minute)
+	stored := Channel{
+		ID:                42,
+		Name:              "channel-after-admin-a",
+		Status:            StatusActive,
+		ServiceTierConfig: DefaultChannelServiceTierConfig(),
+		UpdatedAt:         currentRevision,
+	}
+	repo := &mockChannelRepository{
+		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) {
+			return stored.Clone(), nil
+		},
+		updateFn: func(_ context.Context, _ *Channel) error {
+			t.Fatal("stale browser form must be rejected before repository update")
+			return nil
+		},
+	}
+	svc := newTestChannelService(repo)
+	staleName := "channel-from-stale-admin-b"
+
+	updated, err := svc.Update(context.Background(), 42, &UpdateChannelInput{
+		ExpectedUpdatedAt: &staleRevision,
+		Name:              staleName,
+	})
+	require.Nil(t, updated)
+	require.ErrorIs(t, err, ErrChannelUpdateConflict)
+	require.Equal(t, "channel-after-admin-a", stored.Name)
 }
 
 // ===========================================================================

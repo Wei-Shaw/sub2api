@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -711,7 +712,7 @@ func findOpenAIImageTestSSEEvent(events []openAIImageTestSSEEvent, name string) 
 
 func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","n":3}`)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","n":3,"service_tier":"priority"}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -732,7 +733,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 				"X-Request-Id": []string{"req_img_123"},
 			},
 			Body: io.NopCloser(strings.NewReader(
-				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000000,\"usage\":{\"input_tokens\":11,\"output_tokens\":22,\"input_tokens_details\":{\"cached_tokens\":3},\"output_tokens_details\":{\"image_tokens\":7}},\"tool_usage\":{\"image_gen\":{\"input_tokens\":46,\"output_tokens\":2459,\"output_tokens_details\":{\"image_tokens\":2459},\"images\":3}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMQ==\",\"revised_prompt\":\"draw a cat 1\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"},{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMg==\",\"revised_prompt\":\"draw a cat 2\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"},{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMw==\",\"revised_prompt\":\"draw a cat 3\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"}]}}\n\n" +
+				"data: {\"type\":\"response.completed\",\"response\":{\"service_tier\":\"standard\",\"created_at\":1710000000,\"usage\":{\"input_tokens\":11,\"output_tokens\":22,\"input_tokens_details\":{\"cached_tokens\":3},\"output_tokens_details\":{\"image_tokens\":7}},\"tool_usage\":{\"image_gen\":{\"input_tokens\":46,\"output_tokens\":2459,\"output_tokens_details\":{\"image_tokens\":2459},\"images\":3}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMQ==\",\"revised_prompt\":\"draw a cat 1\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"},{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMg==\",\"revised_prompt\":\"draw a cat 2\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"},{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMw==\",\"revised_prompt\":\"draw a cat 3\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"}]}}\n\n" +
 					"data: [DONE]\n\n",
 			)),
 		},
@@ -759,6 +760,8 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 	require.Equal(t, 46, result.Usage.InputTokens)
 	require.Equal(t, 2459, result.Usage.OutputTokens)
 	require.Equal(t, 2459, result.Usage.ImageOutputTokens)
+	require.NotNil(t, result.ActualServiceTier)
+	require.Equal(t, "standard", *result.ActualServiceTier)
 
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, chatgptCodexURL, upstream.lastReq.URL.String())
@@ -770,6 +773,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 	require.Equal(t, "responses=experimental", upstream.lastReq.Header.Get("OpenAI-Beta"))
 
 	require.Equal(t, openAIImagesResponsesMainModel, gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.Equal(t, "image_generation", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
 	require.Equal(t, "generate", gjson.GetBytes(upstream.lastBody, "tools.0.action").String())
@@ -787,6 +791,152 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 	require.Equal(t, "aW1hZ2UtMw==", gjson.Get(rec.Body.String(), "data.2.b64_json").String())
 	require.Equal(t, "draw a cat 1", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
 	require.Equal(t, "draw a cat 3", gjson.Get(rec.Body.String(), "data.2.revised_prompt").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_MultipartTierPolicyUsesStructuredField(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	account := &Account{
+		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-api-key", "base_url": "https://image-upstream.example/v1"},
+	}
+
+	makeRequest := func(t *testing.T, tier string) ([]byte, *gin.Context, *httptest.ResponseRecorder) {
+		t.Helper()
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		require.NoError(t, writer.WriteField("model", "gpt-image-2"))
+		require.NoError(t, writer.WriteField("prompt", "draw a cat"))
+		require.NoError(t, writer.WriteField("service_tier", tier))
+		require.NoError(t, writer.Close())
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body.Bytes()))
+		c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+		return body.Bytes(), c, recorder
+	}
+	setSnapshot := func(c *gin.Context, config ChannelServiceTierConfig) {
+		c.Set(openAIServiceTierSnapshotContextKey, openAIServiceTierSnapshotLookup{
+			Found: true,
+			Snapshot: &ChannelServiceTierSnapshot{
+				ChannelID: 1, GroupID: 2, ChannelName: "images", Config: config,
+			},
+		})
+	}
+
+	t.Run("disabled priority is rejected before upstream", func(t *testing.T) {
+		body, c, recorder := makeRequest(t, "priority")
+		config := DefaultChannelServiceTierConfig()
+		config.Priority.Enabled = false
+		setSnapshot(c, config)
+		upstream := &httpUpstreamRecorder{}
+		svc := &OpenAIGatewayService{channelService: &ChannelService{}, httpUpstream: upstream}
+		parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+		require.NoError(t, err)
+		require.Equal(t, "priority", parsed.ServiceTier)
+
+		result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+		require.Nil(t, result)
+		var blocked *OpenAIFastBlockedError
+		require.ErrorAs(t, err, &blocked)
+		require.Equal(t, "CHANNEL_SERVICE_TIER_NOT_ALLOWED", blocked.Code)
+		require.Nil(t, upstream.lastReq)
+		require.Equal(t, blocked.Code, gjson.Get(recorder.Body.String(), "error.code").String())
+	})
+
+	for _, tt := range []struct {
+		name       string
+		inputTier  string
+		settings   *OpenAIFastPolicySettings
+		wantTier   string
+		wantAbsent bool
+	}{
+		{name: "global filter removes multipart priority", inputTier: "priority", settings: openAIFastFilterPriorityPolicy(), wantAbsent: true},
+		{name: "global force rewrites multipart flex", inputTier: "flex", settings: &OpenAIFastPolicySettings{Rules: []OpenAIFastPolicyRule{{ServiceTier: OpenAIFastTierFlex, Action: OpenAIFastPolicyActionForcePriority, Scope: BetaPolicyScopeAll}}}, wantTier: "priority"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			body, c, _ := makeRequest(t, tt.inputTier)
+			setSnapshot(c, DefaultChannelServiceTierConfig())
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"data":[{"b64_json":"aGVsbG8="}]}`)),
+			}}
+			svc := newOpenAIGatewayServiceWithSettings(t, tt.settings)
+			svc.cfg = &config.Config{}
+			svc.channelService = &ChannelService{}
+			svc.httpUpstream = upstream
+			parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+			require.NoError(t, err)
+
+			result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			_, params, err := mime.ParseMediaType(upstream.lastReq.Header.Get("Content-Type"))
+			require.NoError(t, err)
+			form, err := multipart.NewReader(bytes.NewReader(upstream.lastBody), params["boundary"]).ReadForm(1 << 20)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, form.RemoveAll())
+			})
+			values, exists := form.Value["service_tier"]
+			if tt.wantAbsent {
+				require.False(t, exists)
+				return
+			}
+			require.True(t, exists)
+			require.Equal(t, []string{tt.wantTier}, values)
+		})
+	}
+}
+
+func TestOpenAIGatewayServiceForwardImages_TierPolicyUsesMappedModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-customer-alias","prompt":"draw a cat","service_tier":"priority"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(openAIServiceTierSnapshotContextKey, openAIServiceTierSnapshotLookup{
+		Found: true,
+		Snapshot: &ChannelServiceTierSnapshot{
+			ChannelID: 1, GroupID: 2, ChannelName: "images", Config: DefaultChannelServiceTierConfig(),
+		},
+	})
+
+	settings := &OpenAIFastPolicySettings{Rules: []OpenAIFastPolicyRule{{
+		ServiceTier:    OpenAIFastTierPriority,
+		Action:         BetaPolicyActionPass,
+		Scope:          BetaPolicyScopeAll,
+		ModelWhitelist: []string{"gpt-image-3"},
+		FallbackAction: BetaPolicyActionBlock,
+	}}}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"b64_json":"aGVsbG8="}]}`)),
+	}}
+	svc := newOpenAIGatewayServiceWithSettings(t, settings)
+	svc.cfg = &config.Config{}
+	svc.channelService = &ChannelService{}
+	svc.httpUpstream = upstream
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+	account := &Account{
+		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "test-api-key",
+			"base_url":      "https://image-upstream.example/v1",
+			"model_mapping": map[string]any{"gpt-image-2": "gpt-image-3"},
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "gpt-image-2")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq, "mapped-model whitelist match must reach upstream")
+	require.Equal(t, "gpt-image-3", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
 }
 
 func TestParseOpenAIImagesSSEUsageBytes_ToolUsagePrecedenceAndFallback(t *testing.T) {
@@ -1126,7 +1276,7 @@ func TestOpenAIImagesSSEClientErrorsAreNotRetryable(t *testing.T) {
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json","service_tier":"priority"}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -1143,7 +1293,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseU
 					"Content-Type": []string{"application/json"},
 					"X-Request-Id": []string{"req_img_apikey"},
 				},
-				Body: io.NopCloser(strings.NewReader(`{"created":1710000007,"data":[{"b64_json":"aGVsbG8=","revised_prompt":"draw a cat"}]}`)),
+				Body: io.NopCloser(strings.NewReader(`{"created":1710000007,"service_tier":"standard","data":[{"b64_json":"aGVsbG8=","revised_prompt":"draw a cat"}]}`)),
 			},
 		},
 	}
@@ -1167,6 +1317,8 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseU
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, "gpt-image-2", result.Model)
 	require.Equal(t, "gpt-image-2", result.UpstreamModel)
+	require.NotNil(t, result.ActualServiceTier)
+	require.Equal(t, "standard", *result.ActualServiceTier)
 
 	upstream, ok := svc.httpUpstream.(*httpUpstreamRecorder)
 	require.True(t, ok)
@@ -1175,6 +1327,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseU
 	require.Equal(t, "Bearer test-api-key", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
@@ -1398,7 +1551,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyEditUsesConfiguredV1BaseURL(t *
 
 func TestOpenAIGatewayServiceForwardImages_OAuthStreamingTransformsEvents(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"response_format":"url"}`)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"response_format":"url","service_tier":"priority"}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -1420,7 +1573,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingTransformsEvents(t *tes
 			Body: io.NopCloser(strings.NewReader(
 				"data: {\"type\":\"response.created\",\"response\":{\"created_at\":1710000001,\"tools\":[{\"type\":\"image_generation\",\"model\":\"gpt-image-2\",\"background\":\"auto\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"}]}}\n\n" +
 					"data: {\"type\":\"response.image_generation_call.partial_image\",\"partial_image_b64\":\"cGFydGlhbA==\",\"partial_image_index\":0,\"output_format\":\"png\",\"background\":\"auto\"}\n\n" +
-					"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000001,\"usage\":{\"input_tokens\":5,\"output_tokens\":9,\"output_tokens_details\":{\"image_tokens\":4}},\"tool_usage\":{\"image_gen\":{\"input_tokens\":46,\"output_tokens\":2459,\"output_tokens_details\":{\"image_tokens\":2459},\"images\":1}},\"tools\":[{\"type\":\"image_generation\",\"model\":\"gpt-image-2\",\"background\":\"auto\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"}],\"output\":[{\"type\":\"image_generation_call\",\"result\":\"ZmluYWw=\",\"output_format\":\"png\"}]}}\n\n" +
+					"data: {\"type\":\"response.completed\",\"response\":{\"service_tier\":\"standard\",\"created_at\":1710000001,\"usage\":{\"input_tokens\":5,\"output_tokens\":9,\"output_tokens_details\":{\"image_tokens\":4}},\"tool_usage\":{\"image_gen\":{\"input_tokens\":46,\"output_tokens\":2459,\"output_tokens_details\":{\"image_tokens\":2459},\"images\":1}},\"tools\":[{\"type\":\"image_generation\",\"model\":\"gpt-image-2\",\"background\":\"auto\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"}],\"output\":[{\"type\":\"image_generation_call\",\"result\":\"ZmluYWw=\",\"output_format\":\"png\"}]}}\n\n" +
 					"data: [DONE]\n\n",
 			)),
 		},
@@ -1443,6 +1596,9 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingTransformsEvents(t *tes
 	require.True(t, result.Stream)
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, OpenAIUsage{InputTokens: 46, OutputTokens: 2459, ImageOutputTokens: 2459}, result.Usage)
+	require.NotNil(t, result.ActualServiceTier)
+	require.Equal(t, "standard", *result.ActualServiceTier)
+	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
 	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
 	partial, ok := findOpenAIImageTestSSEEvent(events, "image_generation.partial_image")
 	require.True(t, ok)
@@ -1473,7 +1629,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingTransformsEvents(t *tes
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingDrainsAfterClientDisconnect(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true}`)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"service_tier":"priority"}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -1498,7 +1654,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingDrainsAfterClientDisco
 				},
 				Body: io.NopCloser(strings.NewReader(
 					"data: {\"type\":\"image_generation.partial_image\",\"b64_json\":\"cGFydGlhbA==\"}\n\n" +
-						"data: {\"type\":\"image_generation.completed\",\"usage\":{\"input_tokens\":3,\"output_tokens\":4,\"output_tokens_details\":{\"image_tokens\":2}},\"b64_json\":\"ZmluYWw=\",\"output_format\":\"png\"}\n\n" +
+						"data: {\"type\":\"image_generation.completed\",\"service_tier\":\"standard\",\"usage\":{\"input_tokens\":3,\"output_tokens\":4,\"output_tokens_details\":{\"image_tokens\":2}},\"b64_json\":\"ZmluYWw=\",\"output_format\":\"png\"}\n\n" +
 						"data: [DONE]\n\n",
 				)),
 			},
@@ -1524,6 +1680,8 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingDrainsAfterClientDisco
 	require.Equal(t, 3, result.Usage.InputTokens)
 	require.Equal(t, 4, result.Usage.OutputTokens)
 	require.Equal(t, 2, result.Usage.ImageOutputTokens)
+	require.NotNil(t, result.ActualServiceTier)
+	require.Equal(t, "standard", *result.ActualServiceTier)
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t *testing.T) {

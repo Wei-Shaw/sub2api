@@ -3,6 +3,8 @@
 package admin
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +22,31 @@ import (
 
 func float64Ptr(v float64) *float64 { return &v }
 func intPtr(v int) *int             { return &v }
+
+type channelRevisionRepositoryStub struct {
+	service.ChannelRepository
+	stored      service.Channel
+	updateCalls int
+}
+
+func (r *channelRevisionRepositoryStub) GetByID(_ context.Context, id int64) (*service.Channel, error) {
+	if id != r.stored.ID {
+		return nil, service.ErrChannelNotFound
+	}
+	return r.stored.Clone(), nil
+}
+
+func (r *channelRevisionRepositoryStub) Update(_ context.Context, channel *service.Channel) (service.ChannelServiceTierAuditSnapshot, error) {
+	r.updateCalls++
+	before := r.stored.ServiceTierConfig
+	r.stored = *channel.Clone()
+	r.stored.UpdatedAt = r.stored.UpdatedAt.Add(time.Microsecond)
+	return service.ChannelServiceTierAuditSnapshot{Before: before, After: channel.ServiceTierConfig}, nil
+}
+
+func (r *channelRevisionRepositoryStub) ListAll(_ context.Context) ([]service.Channel, error) {
+	return []service.Channel{*r.stored.Clone()}, nil
+}
 
 // ---------------------------------------------------------------------------
 // 1. channelToResponse
@@ -88,6 +115,81 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 	require.Equal(t, float64Ptr(0.002), p.CacheReadPrice)
 	require.Equal(t, float64Ptr(0.5), p.PerRequestPrice)
 	require.Empty(t, p.Intervals)
+}
+
+func TestChannelToResponseUpdatedAtPreservesRevisionPrecision(t *testing.T) {
+	revision := time.Date(2026, 7, 31, 12, 0, 0, 987654000, time.UTC)
+	resp := channelToResponse(&service.Channel{UpdatedAt: revision})
+	require.Equal(t, "2026-07-31T12:00:00.987654Z", resp.UpdatedAt)
+	parsed, err := time.Parse(time.RFC3339Nano, resp.UpdatedAt)
+	require.NoError(t, err)
+	require.True(t, revision.Equal(parsed))
+}
+
+func TestChannelUpdateRejectsSecondBrowserWithSameStaleRevision(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	revision := time.Date(2026, 7, 31, 12, 0, 0, 987654000, time.UTC)
+	repo := &channelRevisionRepositoryStub{stored: service.Channel{
+		ID:                42,
+		Name:              "channel",
+		Status:            service.StatusActive,
+		ServiceTierConfig: service.DefaultChannelServiceTierConfig(),
+		UpdatedAt:         revision,
+	}}
+	handler := NewChannelHandler(service.NewChannelService(repo, nil, nil, nil), nil, nil)
+	router := gin.New()
+	router.PUT("/channels/:id", handler.Update)
+
+	sendUpdate := func(multiplier float64) *httptest.ResponseRecorder {
+		config := service.DefaultChannelServiceTierConfig()
+		config.Priority.Multiplier = multiplier
+		body, err := json.Marshal(gin.H{
+			"expected_updated_at": revision.Format(time.RFC3339Nano),
+			"service_tier_config": config,
+		})
+		require.NoError(t, err)
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/channels/42", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(recorder, req)
+		return recorder
+	}
+
+	first := sendUpdate(3)
+	require.Equal(t, http.StatusOK, first.Code)
+	require.Equal(t, 1, repo.updateCalls)
+	require.Equal(t, 3.0, repo.stored.ServiceTierConfig.Priority.Multiplier)
+
+	second := sendUpdate(4)
+	require.Equal(t, http.StatusConflict, second.Code)
+	require.Equal(t, 1, repo.updateCalls, "stale second browser must not reach repository update")
+	require.Equal(t, 3.0, repo.stored.ServiceTierConfig.Priority.Multiplier)
+	require.Contains(t, second.Body.String(), "CHANNEL_UPDATE_CONFLICT")
+}
+
+func TestChannelUpdateAcceptsLegacyClientWithoutRevision(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &channelRevisionRepositoryStub{stored: service.Channel{
+		ID:                42,
+		Name:              "channel",
+		Status:            service.StatusActive,
+		ServiceTierConfig: service.DefaultChannelServiceTierConfig(),
+		UpdatedAt:         time.Date(2026, 7, 31, 12, 0, 0, 987654000, time.UTC),
+	}}
+	handler := NewChannelHandler(service.NewChannelService(repo, nil, nil, nil), nil, nil)
+	router := gin.New()
+	router.PUT("/channels/:id", handler.Update)
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/channels/42", bytes.NewBufferString(`{"status":"disabled"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, 1, repo.updateCalls)
+	require.Equal(t, service.StatusDisabled, repo.stored.Status)
+	require.Equal(t, service.DefaultChannelServiceTierConfig(), repo.stored.ServiceTierConfig,
+		"legacy updates must preserve the channel tier configuration")
 }
 
 func TestChannelToResponse_EmptyDefaults(t *testing.T) {
@@ -474,4 +576,25 @@ func TestSyncPricingModels_ValidPlatform_EmptyService(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		require.NotNil(t, body.Data.Models, "models must not be null for platform=%s", platform)
 	}
+}
+
+func TestChannelServiceTierAuditExtraContainsBeforeAndAfterValues(t *testing.T) {
+	before := service.DefaultChannelServiceTierConfig()
+	after := before
+	after.Standard.Enabled = false
+	after.Standard.Multiplier = 1.25
+	after.Priority.Multiplier = 3
+	after.Flex.Enabled = false
+	after.Flex.Multiplier = 0.4
+
+	extra := channelServiceTierAuditExtra(before, after)
+	require.Len(t, extra, 12)
+	require.Equal(t, true, extra["service_tier_standard_enabled_before"])
+	require.Equal(t, false, extra["service_tier_standard_enabled_after"])
+	require.Equal(t, 1.0, extra["service_tier_standard_multiplier_before"])
+	require.Equal(t, 1.25, extra["service_tier_standard_multiplier_after"])
+	require.Equal(t, 2.0, extra["service_tier_priority_multiplier_before"])
+	require.Equal(t, 3.0, extra["service_tier_priority_multiplier_after"])
+	require.Equal(t, true, extra["service_tier_flex_enabled_before"])
+	require.Equal(t, false, extra["service_tier_flex_enabled_after"])
 }

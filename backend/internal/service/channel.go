@@ -51,8 +51,12 @@ type Channel struct {
 	RestrictModels     bool           // 是否限制模型（仅允许定价列表中的模型）
 	Features           string         // 渠道特性描述（JSON 数组），用于支付页面展示
 	FeaturesConfig     map[string]any // 渠道功能配置（如 web search emulation）
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ServiceTierConfig  ChannelServiceTierConfig
+	// ServiceTierConfigError 仅用于标记数据库中该渠道的配置损坏。
+	// 它不参与 JSON 持久化；请求热路径会只拒绝受影响的渠道。
+	ServiceTierConfigError string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 
 	// 关联的分组 ID 列表
 	GroupIDs []int64

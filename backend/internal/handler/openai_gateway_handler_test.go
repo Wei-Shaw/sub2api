@@ -1891,16 +1891,17 @@ func (s *openAIWSUsageHandlerChannelRepoStub) GetByID(ctx context.Context, id in
 	return nil, service.ErrChannelNotFound
 }
 
-func (s *openAIWSUsageHandlerChannelRepoStub) Update(ctx context.Context, channel *service.Channel) error {
+func (s *openAIWSUsageHandlerChannelRepoStub) Update(ctx context.Context, channel *service.Channel) (service.ChannelServiceTierAuditSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.channels {
 		if s.channels[i].ID == channel.ID {
+			previous := s.channels[i].ServiceTierConfig
 			s.channels[i] = *channel.Clone()
-			return nil
+			return service.ChannelServiceTierAuditSnapshot{Before: previous, After: channel.ServiceTierConfig}, nil
 		}
 	}
-	return service.ErrChannelNotFound
+	return service.ChannelServiceTierAuditSnapshot{}, service.ErrChannelNotFound
 }
 
 func (s *openAIWSUsageHandlerChannelRepoStub) GetGroupIDs(ctx context.Context, channelID int64) ([]int64, error) {

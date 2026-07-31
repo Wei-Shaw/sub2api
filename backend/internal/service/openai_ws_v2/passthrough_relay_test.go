@@ -283,7 +283,7 @@ func TestRelay_ClientDisconnect_DrainCapturesLateUsage(t *testing.T) {
 	upstreamBase := newPassthroughTestFrameConn([]passthroughTestFrame{
 		{
 			msgType: coderws.MessageText,
-			payload: []byte(`{"type":"response.completed","response":{"id":"resp_drain","usage":{"input_tokens":6,"output_tokens":4,"input_tokens_details":{"cached_tokens":1}}}}`),
+			payload: []byte(`{"type":"response.completed","response":{"id":"resp_drain","service_tier":"flex","usage":{"input_tokens":6,"output_tokens":4,"input_tokens_details":{"cached_tokens":1}}}}`),
 		},
 	}, true)
 	upstreamConn := &delayedReadFrameConn{
@@ -295,8 +295,12 @@ func TestRelay_ClientDisconnect_DrainCapturesLateUsage(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
+	var drainedTurn RelayTurnResult
 	result, relayExit := Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
 		UpstreamDrainTimeout: 400 * time.Millisecond,
+		OnTurnComplete: func(turn RelayTurnResult) {
+			drainedTurn = turn
+		},
 	})
 	require.NotNil(t, relayExit)
 	require.Equal(t, "client_disconnected", relayExit.Stage)
@@ -305,6 +309,8 @@ func TestRelay_ClientDisconnect_DrainCapturesLateUsage(t *testing.T) {
 	require.Equal(t, 6, result.Usage.InputTokens)
 	require.Equal(t, 4, result.Usage.OutputTokens)
 	require.Equal(t, 1, result.Usage.CacheReadInputTokens)
+	require.Equal(t, "resp_drain", drainedTurn.RequestID)
+	require.Equal(t, "flex", drainedTurn.ActualServiceTier)
 	require.Equal(t, int64(1), result.ClientToUpstreamFrames)
 	require.Equal(t, int64(0), result.UpstreamToClientFrames)
 	require.Equal(t, int64(1), result.DroppedDownstreamFrames)
@@ -440,11 +446,11 @@ func TestRelay_OnTurnComplete_PerTerminalEvent(t *testing.T) {
 	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
 		{
 			msgType: coderws.MessageText,
-			payload: []byte(`{"type":"response.completed","response":{"id":"resp_turn_1","usage":{"input_tokens":2,"output_tokens":1}}}`),
+			payload: []byte(`{"type":"response.completed","response":{"id":"resp_turn_1","service_tier":"standard","usage":{"input_tokens":2,"output_tokens":1}}}`),
 		},
 		{
 			msgType: coderws.MessageText,
-			payload: []byte(`{"type":"response.failed","response":{"id":"resp_turn_2","usage":{"input_tokens":3,"output_tokens":4}}}`),
+			payload: []byte(`{"type":"response.failed","response":{"id":"resp_turn_2","service_tier":"flex","usage":{"input_tokens":3,"output_tokens":4}}}`),
 		},
 	}, true)
 
@@ -462,10 +468,12 @@ func TestRelay_OnTurnComplete_PerTerminalEvent(t *testing.T) {
 	require.Len(t, turns, 2)
 	require.Equal(t, "resp_turn_1", turns[0].RequestID)
 	require.Equal(t, "response.completed", turns[0].TerminalEventType)
+	require.Equal(t, "standard", turns[0].ActualServiceTier)
 	require.Equal(t, 2, turns[0].Usage.InputTokens)
 	require.Equal(t, 1, turns[0].Usage.OutputTokens)
 	require.Equal(t, "resp_turn_2", turns[1].RequestID)
 	require.Equal(t, "response.failed", turns[1].TerminalEventType)
+	require.Equal(t, "flex", turns[1].ActualServiceTier)
 	require.Equal(t, 3, turns[1].Usage.InputTokens)
 	require.Equal(t, 4, turns[1].Usage.OutputTokens)
 	require.Equal(t, 5, result.Usage.InputTokens)

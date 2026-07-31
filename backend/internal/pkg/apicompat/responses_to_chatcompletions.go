@@ -23,10 +23,11 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 	}
 
 	out := &ChatCompletionsResponse{
-		ID:      id,
-		Object:  "chat.completion",
-		Created: time.Now().Unix(),
-		Model:   model,
+		ID:          id,
+		Object:      "chat.completion",
+		Created:     time.Now().Unix(),
+		Model:       model,
+		ServiceTier: resp.ServiceTier,
 	}
 
 	var contentText string

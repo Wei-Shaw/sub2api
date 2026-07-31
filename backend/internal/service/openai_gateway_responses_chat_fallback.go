@@ -72,7 +72,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completions fallback request: %w", err)
 	}
-	chatBody, err = s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, chatBody)
+	chatBody, err = s.applyOpenAIFastAndChannelPolicyToBody(ctx, c, account, upstreamModel, chatBody)
 	if err != nil {
 		var blocked *OpenAIFastBlockedError
 		if errors.As(err, &blocked) {
@@ -143,15 +143,16 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	c.JSON(http.StatusOK, responsesResp)
 
 	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          false,
-		Duration:        time.Since(startTime),
+		RequestID:         requestID,
+		Usage:             usage,
+		Model:             originalModel,
+		BillingModel:      billingModel,
+		UpstreamModel:     upstreamModel,
+		ReasoningEffort:   reasoningEffort,
+		ServiceTier:       serviceTier,
+		ActualServiceTier: optionalOpenAIProtocolTier(ccResp.ServiceTier),
+		Stream:            false,
+		Duration:          time.Since(startTime),
 	}, nil
 }
 
@@ -209,16 +210,17 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 
 	if scan.Err != nil {
 		return &OpenAIForwardResult{
-			RequestID:       requestID,
-			Usage:           scan.Usage,
-			Model:           originalModel,
-			BillingModel:    billingModel,
-			UpstreamModel:   upstreamModel,
-			ReasoningEffort: reasoningEffort,
-			ServiceTier:     serviceTier,
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    scan.FirstTokenMs,
+			RequestID:         requestID,
+			Usage:             scan.Usage,
+			Model:             originalModel,
+			BillingModel:      billingModel,
+			UpstreamModel:     upstreamModel,
+			ReasoningEffort:   reasoningEffort,
+			ServiceTier:       serviceTier,
+			ActualServiceTier: scan.ServiceTier,
+			Stream:            true,
+			Duration:          time.Since(startTime),
+			FirstTokenMs:      scan.FirstTokenMs,
 		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
 	}
 
@@ -237,16 +239,17 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	}
 
 	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           scan.Usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          true,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    scan.FirstTokenMs,
+		RequestID:         requestID,
+		Usage:             scan.Usage,
+		Model:             originalModel,
+		BillingModel:      billingModel,
+		UpstreamModel:     upstreamModel,
+		ReasoningEffort:   reasoningEffort,
+		ServiceTier:       serviceTier,
+		ActualServiceTier: scan.ServiceTier,
+		Stream:            true,
+		Duration:          time.Since(startTime),
+		FirstTokenMs:      scan.FirstTokenMs,
 	}, nil
 }
 

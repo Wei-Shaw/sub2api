@@ -153,6 +153,16 @@ func startPassthroughLifecycleServer(
 	svc *OpenAIGatewayService,
 	account *Account,
 ) (*httptest.Server, <-chan error) {
+	return startPassthroughLifecycleServerWithHooks(t, controlCtx, svc, account, nil)
+}
+
+func startPassthroughLifecycleServerWithHooks(
+	t *testing.T,
+	controlCtx context.Context,
+	svc *OpenAIGatewayService,
+	account *Account,
+	hooks *OpenAIWSIngressHooks,
+) (*httptest.Server, <-chan error) {
 	t.Helper()
 	serverErr := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +194,7 @@ func startPassthroughLifecycleServer(
 		req := r.Clone(controlCtx)
 		req.Header = req.Header.Clone()
 		ginCtx.Request = req
-		serverErr <- svc.ProxyResponsesWebSocketFromClient(controlCtx, ginCtx, conn, account, "sk-test", firstMessage, nil)
+		serverErr <- svc.ProxyResponsesWebSocketFromClient(controlCtx, ginCtx, conn, account, "sk-test", firstMessage, hooks)
 	}))
 	return server, serverErr
 }
@@ -308,6 +318,65 @@ func TestPassthroughLifecycle_CompletedTurnStartsInterTurnIdle(t *testing.T) {
 	case <-serverErr:
 	case <-time.After(3 * time.Second):
 		t.Fatal("passthrough idle reader did not exit")
+	}
+}
+
+func TestPassthroughLifecycle_ActualServiceTierIsBoundToEachTerminalTurn(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+	upstream := newStagedPassthroughConn()
+	actualTiers := make(chan string, 2)
+	hooks := &OpenAIWSIngressHooks{
+		AfterTurn: func(_ int, result *OpenAIForwardResult, turnErr error) {
+			if turnErr == nil && result != nil && result.ActualServiceTier != nil {
+				actualTiers <- *result.ActualServiceTier
+			}
+		},
+	}
+	server, serverErr := startPassthroughLifecycleServerWithHooks(
+		t,
+		controlCtx,
+		newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream),
+		passthroughLifecycleAccount(),
+		hooks,
+	)
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+	require.Equal(t, "response.create", gjson.GetBytes(requirePassthroughUpstreamWrite(t, upstream, time.Second), "type").String())
+
+	upstream.Send(`{"type":"response.completed","response":{"id":"resp_tier_standard","model":"gpt-5.1","service_tier":"standard","usage":{"input_tokens":1,"output_tokens":1}}}`)
+	completed, err := readPassthroughLifecycleFrame(t, clientConn, time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "resp_tier_standard", gjson.GetBytes(completed, "response.id").String())
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","previous_response_id":"resp_tier_standard"}`))
+	cancelWrite()
+	require.NoError(t, err)
+	require.Equal(t, "response.create", gjson.GetBytes(requirePassthroughUpstreamWrite(t, upstream, time.Second), "type").String())
+	upstream.Send(`{"type":"response.completed","response":{"id":"resp_tier_flex","model":"gpt-5.1","service_tier":"flex","usage":{"input_tokens":1,"output_tokens":1}}}`)
+	completed, err = readPassthroughLifecycleFrame(t, clientConn, time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "resp_tier_flex", gjson.GetBytes(completed, "response.id").String())
+
+	readActualTier := func() string {
+		select {
+		case tier := <-actualTiers:
+			return tier
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for passthrough turn billing tier")
+			return ""
+		}
+	}
+	require.Equal(t, "standard", readActualTier())
+	require.Equal(t, "flex", readActualTier())
+	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
+	select {
+	case <-serverErr:
+	case <-time.After(3 * time.Second):
+		t.Fatal("passthrough tier test did not exit")
 	}
 }
 

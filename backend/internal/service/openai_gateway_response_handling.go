@@ -23,19 +23,21 @@ import (
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage             *OpenAIUsage
+	firstTokenMs      *int
+	responseID        string
+	actualServiceTier *string
+	imageCount        int
+	imageOutputSizes  []string
 }
 
 type openaiNonStreamingResult struct {
 	*OpenAIUsage
-	usage            *OpenAIUsage
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage             *OpenAIUsage
+	responseID        string
+	actualServiceTier *string
+	imageCount        int
+	imageOutputSizes  []string
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
@@ -97,6 +99,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		maxLineSize = s.cfg.Gateway.MaxLineSize
 	}
 	var firstTokenMs *int
+	var actualServiceTier *string
 	bufferedWriter := bufio.NewWriterSize(w, 4*1024)
 	var firstOutputStage *openAIFirstOutputStage
 	if guardFirstOutput {
@@ -290,11 +293,12 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	streamSeenImages := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
+			usage:             usage,
+			firstTokenMs:      firstTokenMs,
+			responseID:        responseID,
+			actualServiceTier: actualServiceTier,
+			imageCount:        imageCounter.Count(),
+			imageOutputSizes:  imageCounter.Sizes(),
 		}
 	}
 	flushPending := func(disconnectMessage string) {
@@ -404,6 +408,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
+			if tier := extractOpenAIActualServiceTierFromJSONBytes(dataBytes); tier != nil {
+				actualServiceTier = tier
+			}
 			eventTypeRaw := gjson.GetBytes(dataBytes, "type").String()
 			eventType := strings.TrimSpace(eventTypeRaw)
 			// 初始上游 data 的 type 只解析一次：原始值保持终止事件的精确匹配，规范化值供后续分支复用。
@@ -1175,11 +1182,12 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	}
 
 	return &openaiNonStreamingResult{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
-		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		OpenAIUsage:       usage,
+		usage:             usage,
+		responseID:        extractOpenAIResponseIDFromJSONBytes(body),
+		actualServiceTier: extractOpenAIActualServiceTierFromJSONBytes(body),
+		imageCount:        countOpenAIResponseImageOutputsFromJSONBytes(body),
+		imageOutputSizes:  collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 	}, nil
 }
 
@@ -1269,12 +1277,29 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	}
 
 	return &openaiNonStreamingResult{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
-		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		OpenAIUsage:       usage,
+		usage:             usage,
+		responseID:        extractOpenAIResponseIDFromJSONBytes(body),
+		actualServiceTier: extractOpenAIActualServiceTierFromJSONBytes(body),
+		imageCount:        countOpenAIImageOutputsFromSSEBody(bodyText),
+		imageOutputSizes:  collectOpenAIImageOutputSizesFromSSEBody(bodyText),
 	}, nil
+}
+
+func extractOpenAIActualServiceTierFromJSONBytes(body []byte) *string {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return nil
+	}
+	for _, path := range []string{"response.service_tier", "service_tier"} {
+		value := gjson.GetBytes(body, path)
+		if value.Type != gjson.String {
+			continue
+		}
+		if tier := optionalOpenAIProtocolTier(value.String()); tier != nil {
+			return tier
+		}
+	}
+	return nil
 }
 
 func extractOpenAISSETerminalEvent(body string) (string, []byte, bool) {

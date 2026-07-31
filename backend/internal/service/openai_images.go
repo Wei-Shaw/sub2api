@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -77,6 +78,7 @@ type OpenAIImagesRequest struct {
 	Moderation         string
 	InputFidelity      string
 	Style              string
+	ServiceTier        string
 	OutputCompression  *int
 	PartialImages      *int
 	HasMask            bool
@@ -88,6 +90,32 @@ type OpenAIImagesRequest struct {
 	MaskUpload         *OpenAIImagesUpload
 	Body               []byte
 	bodyHash           string
+}
+
+const openAIImagesActualServiceTierContextKey = "openai_images_actual_service_tier"
+
+func resetOpenAIImagesActualServiceTier(c *gin.Context) {
+	if c != nil {
+		c.Set(openAIImagesActualServiceTierContextKey, (*string)(nil))
+	}
+}
+
+func noteOpenAIImagesActualServiceTier(c *gin.Context, body []byte) {
+	if c == nil {
+		return
+	}
+	if tier := extractOpenAIActualServiceTierFromJSONBytes(body); tier != nil {
+		c.Set(openAIImagesActualServiceTierContextKey, tier)
+	}
+}
+
+func openAIImagesActualServiceTier(c *gin.Context) *string {
+	if c == nil {
+		return nil
+	}
+	value, _ := c.Get(openAIImagesActualServiceTierContextKey)
+	tier, _ := value.(*string)
+	return tier
 }
 
 func (r *OpenAIImagesRequest) ModerationBody() []byte {
@@ -258,6 +286,7 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 	req.Moderation = strings.TrimSpace(gjson.GetBytes(body, "moderation").String())
 	req.InputFidelity = strings.TrimSpace(gjson.GetBytes(body, "input_fidelity").String())
 	req.Style = strings.TrimSpace(gjson.GetBytes(body, "style").String())
+	req.ServiceTier = strings.TrimSpace(gjson.GetBytes(body, "service_tier").String())
 	req.HasMask = gjson.GetBytes(body, "mask").Exists()
 	if outputCompression := gjson.GetBytes(body, "output_compression"); outputCompression.Exists() {
 		if outputCompression.Type != gjson.Number {
@@ -409,6 +438,8 @@ func parseOpenAIImagesMultipartRequest(body []byte, contentType string, req *Ope
 		case "style":
 			req.Style = value
 			req.HasNativeOptions = true
+		case "service_tier":
+			req.ServiceTier = value
 		case "output_compression":
 			n, err := strconv.Atoi(value)
 			if err != nil {
@@ -556,9 +587,43 @@ func (s *OpenAIGatewayService) ForwardImages(
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	resetOpenAIImagesActualServiceTier(c)
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
+	requestedServiceTier := parsed.ServiceTier
+	requestedTierBody := []byte(`{}`)
+	var err error
+	if strings.TrimSpace(requestedServiceTier) != "" {
+		requestedTierBody, err = sjson.SetBytes(requestedTierBody, "service_tier", requestedServiceTier)
+		if err != nil {
+			return nil, fmt.Errorf("encode image service tier policy input: %w", err)
+		}
+	}
+	policyModel := strings.TrimSpace(parsed.Model)
+	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
+		policyModel = mapped
+	}
+	if account != nil && account.Type == AccountTypeAPIKey {
+		policyModel = account.GetMappedModel(policyModel)
+	}
+	checkedTierBody, err := s.applyOpenAIFastAndChannelPolicyToBody(ctx, c, account, policyModel, requestedTierBody)
+	if err != nil {
+		var blocked *OpenAIFastBlockedError
+		if errors.As(err, &blocked) {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+			writeOpenAIFastPolicyBlockedResponse(c, blocked)
+		}
+		return nil, err
+	}
+	outboundTier := openAIProtocolTier(checkedTierBody)
+	if requestedServiceTier != outboundTier {
+		body, parsed.ContentType, err = rewriteOpenAIImagesServiceTier(body, parsed.ContentType, outboundTier)
+		if err != nil {
+			return nil, err
+		}
+	}
+	parsed.ServiceTier = outboundTier
 	switch account.Type {
 	case AccountTypeAPIKey:
 		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
@@ -671,18 +736,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		if err != nil {
 			if streamCount > 0 {
 				return &OpenAIForwardResult{
-					RequestID:        resp.Header.Get("x-request-id"),
-					Usage:            streamUsage,
-					Model:            requestModel,
-					UpstreamModel:    upstreamModel,
-					Stream:           parsed.Stream,
-					ResponseHeaders:  resp.Header.Clone(),
-					Duration:         time.Since(startTime),
-					FirstTokenMs:     ttft,
-					ImageCount:       streamCount,
-					ImageSize:        parsed.SizeTier,
-					ImageInputSize:   parsed.Size,
-					ImageOutputSizes: streamSizes,
+					RequestID:         resp.Header.Get("x-request-id"),
+					Usage:             streamUsage,
+					Model:             requestModel,
+					UpstreamModel:     upstreamModel,
+					Stream:            parsed.Stream,
+					ResponseHeaders:   resp.Header.Clone(),
+					Duration:          time.Since(startTime),
+					FirstTokenMs:      ttft,
+					ImageCount:        streamCount,
+					ImageSize:         parsed.SizeTier,
+					ImageInputSize:    parsed.Size,
+					ImageOutputSizes:  streamSizes,
+					ActualServiceTier: openAIImagesActualServiceTier(c),
 				}, err
 			}
 			return nil, err
@@ -692,18 +758,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		imageOutputSizes := streamSizes
 		firstTokenMs = ttft
 		return &OpenAIForwardResult{
-			RequestID:        resp.Header.Get("x-request-id"),
-			Usage:            usage,
-			Model:            requestModel,
-			UpstreamModel:    upstreamModel,
-			Stream:           parsed.Stream,
-			ResponseHeaders:  resp.Header.Clone(),
-			Duration:         time.Since(startTime),
-			FirstTokenMs:     firstTokenMs,
-			ImageCount:       imageCount,
-			ImageSize:        parsed.SizeTier,
-			ImageInputSize:   parsed.Size,
-			ImageOutputSizes: imageOutputSizes,
+			RequestID:         resp.Header.Get("x-request-id"),
+			Usage:             usage,
+			Model:             requestModel,
+			UpstreamModel:     upstreamModel,
+			Stream:            parsed.Stream,
+			ResponseHeaders:   resp.Header.Clone(),
+			Duration:          time.Since(startTime),
+			FirstTokenMs:      firstTokenMs,
+			ImageCount:        imageCount,
+			ImageSize:         parsed.SizeTier,
+			ImageInputSize:    parsed.Size,
+			ImageOutputSizes:  imageOutputSizes,
+			ActualServiceTier: openAIImagesActualServiceTier(c),
 		}, nil
 	} else {
 		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
@@ -715,18 +782,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			imageCount = nonStreamCount
 		}
 		return &OpenAIForwardResult{
-			RequestID:        resp.Header.Get("x-request-id"),
-			Usage:            usage,
-			Model:            requestModel,
-			UpstreamModel:    upstreamModel,
-			Stream:           parsed.Stream,
-			ResponseHeaders:  resp.Header.Clone(),
-			Duration:         time.Since(startTime),
-			FirstTokenMs:     firstTokenMs,
-			ImageCount:       imageCount,
-			ImageSize:        parsed.SizeTier,
-			ImageInputSize:   parsed.Size,
-			ImageOutputSizes: nonStreamSizes,
+			RequestID:         resp.Header.Get("x-request-id"),
+			Usage:             usage,
+			Model:             requestModel,
+			UpstreamModel:     upstreamModel,
+			Stream:            parsed.Stream,
+			ResponseHeaders:   resp.Header.Clone(),
+			Duration:          time.Since(startTime),
+			FirstTokenMs:      firstTokenMs,
+			ImageCount:        imageCount,
+			ImageSize:         parsed.SizeTier,
+			ImageInputSize:    parsed.Size,
+			ImageOutputSizes:  nonStreamSizes,
+			ActualServiceTier: openAIImagesActualServiceTier(c),
 		}, nil
 	}
 }
@@ -808,6 +876,86 @@ func rewriteOpenAIImagesModel(body []byte, contentType string, model string) ([]
 	return rewritten, contentType, nil
 }
 
+func rewriteOpenAIImagesServiceTier(body []byte, contentType string, serviceTier string) ([]byte, string, error) {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err == nil && strings.EqualFold(mediaType, "multipart/form-data") {
+		return rewriteOpenAIImagesMultipartServiceTier(body, contentType, serviceTier)
+	}
+	if strings.TrimSpace(serviceTier) == "" {
+		rewritten, err := sjson.DeleteBytes(body, "service_tier")
+		if err != nil {
+			return nil, "", fmt.Errorf("remove image request service_tier: %w", err)
+		}
+		return rewritten, contentType, nil
+	}
+	rewritten, err := sjson.SetBytes(body, "service_tier", serviceTier)
+	if err != nil {
+		return nil, "", fmt.Errorf("rewrite image request service_tier: %w", err)
+	}
+	return rewritten, contentType, nil
+}
+
+func rewriteOpenAIImagesMultipartServiceTier(body []byte, contentType string, serviceTier string) ([]byte, string, error) {
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, "", fmt.Errorf("parse multipart content-type: %w", err)
+	}
+	boundary := strings.TrimSpace(params["boundary"])
+	if boundary == "" {
+		return nil, "", fmt.Errorf("multipart boundary is required")
+	}
+
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	var buffer bytes.Buffer
+	writer := multipart.NewWriter(&buffer)
+	tierWritten := false
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, "", fmt.Errorf("read multipart body: %w", err)
+		}
+		formName := strings.TrimSpace(part.FormName())
+		if formName == "service_tier" && part.FileName() == "" {
+			if serviceTier != "" && !tierWritten {
+				target, createErr := writer.CreatePart(cloneMultipartHeader(part.Header))
+				if createErr != nil {
+					_ = part.Close()
+					return nil, "", fmt.Errorf("create multipart service_tier part: %w", createErr)
+				}
+				if _, writeErr := target.Write([]byte(serviceTier)); writeErr != nil {
+					_ = part.Close()
+					return nil, "", fmt.Errorf("rewrite multipart service_tier: %w", writeErr)
+				}
+				tierWritten = true
+			}
+			_ = part.Close()
+			continue
+		}
+		target, createErr := writer.CreatePart(cloneMultipartHeader(part.Header))
+		if createErr != nil {
+			_ = part.Close()
+			return nil, "", fmt.Errorf("create multipart part: %w", createErr)
+		}
+		if _, copyErr := io.Copy(target, part); copyErr != nil {
+			_ = part.Close()
+			return nil, "", fmt.Errorf("copy multipart part: %w", copyErr)
+		}
+		_ = part.Close()
+	}
+	if serviceTier != "" && !tierWritten {
+		if err := writer.WriteField("service_tier", serviceTier); err != nil {
+			return nil, "", fmt.Errorf("append multipart service_tier field: %w", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", fmt.Errorf("finalize multipart body: %w", err)
+	}
+	return buffer.Bytes(), writer.FormDataContentType(), nil
+}
+
 func rewriteOpenAIImagesMultipartModel(body []byte, contentType string, model string) ([]byte, string, error) {
 	_, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
@@ -882,6 +1030,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
+	noteOpenAIImagesActualServiceTier(c, body)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -929,6 +1078,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 		seenSSEData = true
 		fallbackBody.Reset()
 		fallbackBytes = 0
+		noteOpenAIImagesActualServiceTier(c, dataBytes)
 		mergeOpenAIUsage(&usage, dataBytes)
 		imageCounter.AddSSEData(dataBytes)
 	}
@@ -979,6 +1129,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 		if len(body) == 0 {
 			return
 		}
+		noteOpenAIImagesActualServiceTier(c, body)
 		mergeOpenAIUsage(&usage, body)
 		imageCounter.AddJSONResponse(body)
 	}

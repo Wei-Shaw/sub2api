@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -150,6 +151,85 @@ func TestForwardAsAnthropic_ForceChatCompletionsNonStreaming(t *testing.T) {
 	require.Equal(t, 2, result.Usage.OutputTokens)
 	require.Equal(t, 1, result.Usage.CacheReadInputTokens)
 	require.False(t, result.Stream)
+}
+
+func TestForwardAsAnthropic_ForceChatCompletionsMapsFastHeaderThroughChannelPolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.4","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("anthropic-beta", claude.BetaFastMode)
+	c.Set(openAIServiceTierSnapshotContextKey, openAIServiceTierSnapshotLookup{
+		Found: true,
+		Snapshot: &ChannelServiceTierSnapshot{
+			ChannelID: 1,
+			GroupID:   2,
+			Config:    DefaultChannelServiceTierConfig(),
+		},
+	})
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_fast","object":"chat.completion","model":"gpt-5.4","service_tier":"standard","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:            rawChatCompletionsTestConfig(),
+		httpUpstream:   upstream,
+		channelService: &ChannelService{},
+	}
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, forceChatMessagesFallbackAccount(), body, "", "")
+	require.NoError(t, err)
+	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
+	require.NotNil(t, result.ActualServiceTier)
+	require.Equal(t, "standard", *result.ActualServiceTier)
+	state := OpenAIServiceTierStateFromContext(c)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAICommercialTierPriority, state.OutboundTier)
+}
+
+func TestForwardAsAnthropic_ForceChatCompletionsTierRejectionMarksOpsBusinessLimited(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.4","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("anthropic-beta", claude.BetaFastMode)
+	tierConfig := DefaultChannelServiceTierConfig()
+	tierConfig.Priority.Enabled = false
+	c.Set(openAIServiceTierSnapshotContextKey, openAIServiceTierSnapshotLookup{
+		Found: true,
+		Snapshot: &ChannelServiceTierSnapshot{
+			ChannelID: 1,
+			GroupID:   2,
+			Config:    tierConfig,
+		},
+	})
+	upstream := &httpUpstreamRecorder{}
+	svc := &OpenAIGatewayService{
+		cfg:            rawChatCompletionsTestConfig(),
+		httpUpstream:   upstream,
+		channelService: &ChannelService{},
+	}
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, forceChatMessagesFallbackAccount(), body, "", "")
+	require.Nil(t, result)
+	var blocked *OpenAIFastBlockedError
+	require.ErrorAs(t, err, &blocked)
+	require.Equal(t, "CHANNEL_SERVICE_TIER_NOT_ALLOWED", blocked.Code)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.True(t, HasOpsClientBusinessLimited(c))
+	require.Nil(t, upstream.lastReq, "local tier policy must reject before any upstream request")
+	reason, ok := c.Get(OpsClientBusinessLimitedReasonKey)
+	require.True(t, ok)
+	require.Equal(t, OpsClientBusinessLimitedReasonLocalPolicyDenied, reason)
+	require.Equal(t, blocked.Code, gjson.Get(rec.Body.String(), "error.code").String())
 }
 
 // Covers the fully-new streaming composition: text block is still open when

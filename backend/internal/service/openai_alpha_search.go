@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -45,6 +46,15 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(ctx context.Context, c *gin.Co
 		return nil, fmt.Errorf("sanitize alpha search request body: %w", err)
 	}
 	body = sanitizedBody
+	body, err = s.applyOpenAIFastAndChannelPolicyToBody(ctx, c, account, upstreamModel, body)
+	if err != nil {
+		var blocked *OpenAIFastBlockedError
+		if errors.As(err, &blocked) {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+			writeOpenAIFastPolicyBlockedResponse(c, blocked)
+		}
+		return nil, err
+	}
 
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
@@ -121,11 +131,12 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(ctx context.Context, c *gin.Co
 		return nil, nil
 	}
 	return &OpenAIForwardResult{
-		RequestID:      strings.TrimSpace(resp.Header.Get("x-request-id")),
-		Model:          requestedModel,
-		UpstreamModel:  upstreamModel,
-		Duration:       time.Since(upstreamStart),
-		WebSearchCalls: 1,
+		RequestID:         strings.TrimSpace(resp.Header.Get("x-request-id")),
+		Model:             requestedModel,
+		UpstreamModel:     upstreamModel,
+		ActualServiceTier: extractOpenAIActualServiceTierFromJSONBytes(respBody),
+		Duration:          time.Since(upstreamStart),
+		WebSearchCalls:    1,
 	}, nil
 }
 
@@ -201,13 +212,14 @@ func (s *OpenAIGatewayService) forwardAlphaSearchViaResponsesWebSearch(
 	}
 	c.Data(http.StatusOK, "application/json", alphaRespBody)
 	return &OpenAIForwardResult{
-		RequestID:        strings.TrimSpace(resp.Header.Get("x-request-id")),
-		Model:            requestedModel,
-		UpstreamModel:    upstreamModel,
-		UpstreamEndpoint: "/v1/responses",
-		ResponseHeaders:  resp.Header.Clone(),
-		Duration:         time.Since(upstreamStart),
-		WebSearchCalls:   1,
+		RequestID:         strings.TrimSpace(resp.Header.Get("x-request-id")),
+		Model:             requestedModel,
+		UpstreamModel:     upstreamModel,
+		ActualServiceTier: extractOpenAIActualServiceTierFromSSEBytes(respBody),
+		UpstreamEndpoint:  "/v1/responses",
+		ResponseHeaders:   resp.Header.Clone(),
+		Duration:          time.Since(upstreamStart),
+		WebSearchCalls:    1,
 	}, nil
 }
 
@@ -300,6 +312,9 @@ func buildOpenAIAlphaSearchResponsesWebSearchBody(alphaBody []byte, model string
 			},
 		},
 		"tools": []any{tool},
+	}
+	if serviceTier := strings.TrimSpace(gjson.GetBytes(alphaBody, "service_tier").String()); serviceTier != "" {
+		payload["service_tier"] = serviceTier
 	}
 	return json.Marshal(payload)
 }
@@ -587,6 +602,21 @@ func openAIAlphaSearchSSEData(block string) string {
 		lines = append(lines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func extractOpenAIActualServiceTierFromSSEBytes(body []byte) *string {
+	text := strings.ReplaceAll(string(body), "\r\n", "\n")
+	var actual *string
+	for _, block := range strings.Split(text, "\n\n") {
+		data := openAIAlphaSearchSSEData(block)
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		if tier := extractOpenAIActualServiceTierFromJSONBytes([]byte(data)); tier != nil {
+			actual = tier
+		}
+	}
+	return actual
 }
 
 func extractOpenAIResponsesCompletedText(response any) string {

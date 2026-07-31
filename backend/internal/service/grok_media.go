@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -51,6 +52,7 @@ func (e GrokMediaEndpoint) IsGenerationRequest() bool {
 
 type GrokMediaRequestInfo struct {
 	Model           string
+	ServiceTier     string
 	Prompt          string
 	N               int
 	Size            string
@@ -120,6 +122,7 @@ func ParseGrokMediaRequest(contentType string, body []byte) GrokMediaRequestInfo
 		parseGrokMediaMultipartRequest(contentType, body, &info)
 	}
 	info.Model = strings.TrimSpace(info.Model)
+	info.ServiceTier = strings.TrimSpace(info.ServiceTier)
 	info.Prompt = strings.TrimSpace(info.Prompt)
 	info.Size = strings.TrimSpace(info.Size)
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
@@ -136,6 +139,7 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 		return
 	}
 	info.Model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	info.ServiceTier = strings.TrimSpace(gjson.GetBytes(body, "service_tier").String())
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
 	info.Resolution = strings.TrimSpace(gjson.GetBytes(body, "resolution").String())
@@ -245,6 +249,8 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 		switch name {
 		case "model":
 			info.Model = value
+		case "service_tier":
+			info.ServiceTier = value
 		case "prompt":
 			info.Prompt = value
 		case "size":
@@ -331,6 +337,14 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	if account.Platform != PlatformGrok {
 		return nil, fmt.Errorf("account platform %s is not supported for grok media", account.Platform)
 	}
+	requestInfo := ParseGrokMediaRequest(contentType, body)
+	if err := s.applyOpenAIChannelAndPlatformPolicyToTier(ctx, c, account, requestInfo.ServiceTier); err != nil {
+		var blocked *OpenAIFastBlockedError
+		if errors.As(err, &blocked) {
+			writeOpenAIFastPolicyBlockedResponse(c, blocked)
+		}
+		return nil, err
+	}
 
 	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {
@@ -352,7 +366,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	if err != nil {
 		return nil, err
 	}
-	requestInfo := ParseGrokMediaRequest(contentType, body)
+	requestInfo = ParseGrokMediaRequest(contentType, body)
 	upstreamModel := requestInfo.Model
 	if endpoint.RequiresRequestBody() && gjson.ValidBytes(body) {
 		if mappedModel := strings.TrimSpace(account.GetMappedModel(requestInfo.Model)); mappedModel != "" {
