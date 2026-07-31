@@ -1,7 +1,6 @@
 package service
 
 import (
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -81,14 +80,27 @@ func TestStripOpenAIResponsesInputNamespaces(t *testing.T) {
 			{"type":"item","namespace":"n4"},
 			{"type":"item","namespace":"n5"},
 			{"type":"item","namespace":"n6"},
-			{"type":"item","namespace":"n7"}
+			{"type":"item","namespace":"n7"},
+			{"type":"item","namespace":"n8"},
+			{"type":"item","namespace":"n9"}
 		]
 	}`)
 
 	stripped, err := stripOpenAIResponsesInputNamespaces(body)
 	require.NoError(t, err)
-	for index := 0; index < 8; index++ {
-		require.False(t, gjson.GetBytes(stripped, "input."+strconv.Itoa(index)+".namespace").Exists())
+	require.Equal(t, "n0", gjson.GetBytes(stripped, "input.0.namespace").String())
+	require.Equal(t, "n2", gjson.GetBytes(stripped, "input.2.namespace").String())
+	for _, path := range []string{
+		"input.1.namespace",
+		"input.3.namespace",
+		"input.4.namespace",
+		"input.5.namespace",
+		"input.6.namespace",
+		"input.7.namespace",
+		"input.8.namespace",
+		"input.9.namespace",
+	} {
+		require.False(t, gjson.GetBytes(stripped, path).Exists())
 	}
 	require.Equal(t, "nested", gjson.GetBytes(stripped, "input.0.content.namespace").String())
 	require.Equal(t, "nested-content", gjson.GetBytes(stripped, "input.1.content.0.namespace").String())
@@ -97,6 +109,15 @@ func TestStripOpenAIResponsesInputNamespaces(t *testing.T) {
 	require.Equal(t, gjson.GetBytes(body, "scientific").Raw, gjson.GetBytes(stripped, "scientific").Raw)
 	require.Equal(t, gjson.GetBytes(body, "escaped").Raw, gjson.GetBytes(stripped, "escaped").Raw)
 	require.Equal(t, gjson.GetBytes(body, "input.0.large").Raw, gjson.GetBytes(stripped, "input.0.large").Raw)
+}
+
+func TestStripOpenAIResponsesInputNamespacesLeavesNamespaceBearingCallsByteExact(t *testing.T) {
+	body := []byte(`{"input":[{"type":"function_call","call_id":"call_1","name":"list_agents","namespace":"collaboration","arguments":"{}"},{"type":"custom_tool_call","call_id":"call_2","name":"exec","namespace":"mcp__python","input":"print(1)"}]}`)
+
+	stripped, err := stripOpenAIResponsesInputNamespaces(body)
+
+	require.NoError(t, err)
+	require.Equal(t, body, stripped)
 }
 
 func TestStripOpenAIResponsesInputNamespacesLeavesOtherShapesByteExact(t *testing.T) {

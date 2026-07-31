@@ -114,9 +114,13 @@ func openAIResponsesRejectedNamespaceIndex(param string) (int, bool) {
 
 func removeOpenAIResponsesRejectedNamespaceAtIndex(body []byte, index int) ([]byte, string, bool, error) {
 	itemPath := fmt.Sprintf("input.%d", index)
+	item := gjson.GetBytes(body, itemPath)
+	if openAIResponsesInputItemSupportsNamespace(item) {
+		return nil, "", false, nil
+	}
 	itemType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, itemPath+".type").String()))
 	switch itemType {
-	case "function_call", "tool_call", "custom_tool_call", "mcp_tool_call":
+	case "tool_call", "mcp_tool_call":
 	default:
 		return nil, "", false, nil
 	}
