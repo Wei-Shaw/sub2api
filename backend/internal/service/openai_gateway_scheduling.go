@@ -1243,7 +1243,7 @@ REDACTED
 	if s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel) {
 		return nil
 REDACTED
-	if s.isOpenAIProxyStreamQuarantined(fresh) {
+	if s.isOpenAIProxyStreamQuarantined(ctx, fresh) {
 		return nil
 REDACTED
 	return fresh
@@ -1275,7 +1275,7 @@ REDACTED
 		if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 			return nil
 	REDACTED
-		if s.isOpenAIProxyStreamQuarantined(account) {
+		if s.isOpenAIProxyStreamQuarantined(ctx, account) {
 			return nil
 	REDACTED
 		return account
@@ -1297,7 +1297,7 @@ REDACTED
 	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
 		return nil
 REDACTED
-	if s.isOpenAIProxyStreamQuarantined(latest) {
+	if s.isOpenAIProxyStreamQuarantined(ctx, latest) {
 		return nil
 REDACTED
 	return latest
