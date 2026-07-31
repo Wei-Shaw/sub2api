@@ -30,6 +30,8 @@ type CreateUserAccountRequest struct {
 	Type        string         `json:"type" binding:"required"`
 	Credentials map[string]any `json:"credentials"`
 	Visibility  string         `json:"visibility"` // private|public；默认 private
+	// Concurrency 账号并发上限；0 或缺省时由服务层按平台默认规范化
+	Concurrency int `json:"concurrency"`
 }
 
 // UpdateUserAccountRequest PATCH /api/v1/user/accounts/:id（K15 allowlist）
@@ -111,6 +113,7 @@ func (h *UserAccountHandler) Create(c *gin.Context) {
 		Type:        req.Type,
 		Credentials: req.Credentials,
 		Visibility:  req.Visibility,
+		Concurrency: req.Concurrency,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

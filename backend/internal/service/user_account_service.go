@@ -67,6 +67,8 @@ type CreateUserAccountInput struct {
 	Type        string
 	Credentials map[string]any
 	Visibility  string // private|public；最终可能因探测失败强制 private
+	// Concurrency 账号并发上限；<=0 时 normalizeAccountConcurrency 按平台默认处理
+	Concurrency int
 }
 
 // UpdateUserAccountInput 用户更新白名单（K15）。
@@ -202,7 +204,7 @@ func (s *userAccountService) Create(ctx context.Context, userID int64, input *Cr
 		Type:        accountType,
 		Credentials: cloneAnyMap(input.Credentials),
 		Extra:       map[string]any{},
-		Concurrency: normalizeAccountConcurrency(platform, accountType, 0),
+		Concurrency: normalizeAccountConcurrency(platform, accountType, input.Concurrency),
 		Priority:    0,
 		Status:      StatusActive,
 		Schedulable: true,

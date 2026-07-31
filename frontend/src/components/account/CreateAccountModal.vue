@@ -2747,6 +2747,19 @@
         </p>
       </div>
 
+      <!-- 用户自建模式：显示并发数（与管理端字段同源 form.concurrency） -->
+      <div v-if="isUserMode">
+        <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
+        <input
+          v-model.number="form.concurrency"
+          type="number"
+          min="1"
+          class="input"
+          data-testid="account-form-concurrency-user"
+          @input="form.concurrency = Math.max(1, form.concurrency || 1)"
+        />
+      </div>
+
       <div v-if="!isUserMode">
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
@@ -4647,7 +4660,8 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
         platform: payload.platform,
         type: payload.type,
         credentials: payload.credentials,
-        visibility: form.visibility
+        visibility: form.visibility,
+        concurrency: payload.concurrency ?? form.concurrency
       })
       if (created.visibility_reason) {
         const reasonText =

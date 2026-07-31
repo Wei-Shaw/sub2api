@@ -16,6 +16,8 @@ export interface CreateUserAccountRequest {
   credentials?: Record<string, unknown>
   /** private | public；探测失败时后端可能强制 private */
   visibility?: UserAccountVisibility | string
+  /** 账号并发数（>=1） */
+  concurrency?: number
 }
 
 export interface UpdateUserAccountRequest {
