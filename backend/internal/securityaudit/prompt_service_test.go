@@ -68,6 +68,25 @@ func TestPromptServiceStartReportsDependencyFailureWithoutPanic(t *testing.T) {
 	require.NoError(t, service.Shutdown(ctx))
 REDACTED
 
+func TestPromptServiceBlockingLatestTurnOnlyUsesNarrowSnapshot(t *testing.T) {
+	seen := make([]string, 0, 2)
+	evaluator := newGuardEvaluator(PromptScannerFunc(func(_ context.Context, _ ActiveEndpoint, chunk string, _ []string) (*NormalizedResult, error) {
+		seen = append(seen, chunk)
+		return &NormalizedResult{Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow, ScannerScores: map[string]float64{REDACTED, ScannerEvidence: map[string]string{REDACTEDREDACTED, nil
+REDACTED), nil, NewAtomicMetrics(), 2, 2)
+	service := &PromptService{
+		config: &fakeConfigStore{active: true, cfg: ActiveConfig{
+			RiskControlEnabled: true, Enabled: true, BlockingEnabled: true, BlockingLatestTurnOnly: true, AllGroups: true,
+			Scanners: AllScannerIDs, Endpoints: []ActiveEndpoint{{ID: "guard-1", Enabled: true, TimeoutMS: 1000, InputLimit: 4096REDACTEDREDACTED,
+REDACTED
+		evaluator: evaluator,
+REDACTED
+	decision, err := service.Evaluate(context.Background(), Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"system","content":"system instruction"REDACTED,{"role":"user","content":"older user input"REDACTED,{"role":"assistant","content":"previous output"REDACTED,{"role":"user","content":"latest user input"REDACTED]REDACTED`)REDACTED)
+REDACTED
+	require.Equal(t, DecisionAllow, decision.Kind)
+	require.Equal(t, []string{"latest user input", "previous output"REDACTED, seen)
+REDACTED
+
 func TestPromptServiceRejectsInvalidDeleteConfirmationClaims(t *testing.T) {
 	now := time.Date(2026, 7, 16, 10, 0, 0, 0, time.UTC)
 	start, end := now.Add(-time.Hour), now.Add(time.Hour)

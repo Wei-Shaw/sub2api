@@ -156,7 +156,7 @@ REDACTED
 	if cfg.EffectiveMode() != ModeBlocking || !cfg.IncludesGroup(req.GroupID) {
 		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: trueREDACTED, nil
 REDACTED
-	snapshot, err := ExtractPromptSnapshot(req)
+	snapshot, err := ExtractBlockingPromptSnapshot(req, cfg.BlockingLatestTurnOnly)
 	if errors.Is(err, ErrNoPromptText) {
 		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: trueREDACTED, nil
 REDACTED

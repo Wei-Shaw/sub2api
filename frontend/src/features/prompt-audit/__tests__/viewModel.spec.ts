@@ -13,6 +13,7 @@ REDACTED from '../viewModel'
 const config = (): PromptAuditConfig => ({
   enabled: true,
   blocking_enabled: false,
+  blocking_latest_turn_only: false,
   store_pass_events: false,
   effective_mode: 'async_audit',
   strategy: 'priority',
@@ -54,6 +55,12 @@ describe('Prompt Audit view model', () => {
     draft.endpoints[0].token = ''
     draft.endpoints[0].clear_token = true
     expect(buildUpdateRequest(draft).endpoints[0]).toMatchObject({ token: undefined, clear_token: true REDACTED)
+  REDACTED)
+
+  it('includes the optional narrow blocking scope in the update payload', () => {
+    const draft = configToDraft(config())
+    draft.blocking_latest_turn_only = true
+    expect(buildUpdateRequest(draft)).toMatchObject({ blocking_latest_turn_only: true REDACTED)
   REDACTED)
 
   it('tracks dirty state from the full normalized save payload', () => {
