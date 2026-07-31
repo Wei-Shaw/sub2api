@@ -1,6 +1,6 @@
 <template>
   <!-- Admin-configured overrides intentionally keep their existing full-page behavior. -->
-  <div v-if="homeContent" class="min-h-screen">
+  <div v-if="hasHomeContent" class="min-h-screen">
     <iframe
       v-if="isHomeContentUrl"
       :src="homeContent.trim()"
@@ -9,6 +9,19 @@
     ></iframe>
     <div v-else v-html="homeContent"></div>
   </div>
+
+  <HomeCompact
+    v-else-if="compactHomeEnabled"
+    :site-name="siteName"
+    :site-logo="siteLogo"
+    :site-subtitle="siteSubtitle"
+    :doc-url="docUrl"
+    :is-authenticated="isAuthenticated"
+    :dashboard-path="dashboardPath"
+    :is-dark="isDark"
+    :current-year="currentYear"
+    @toggle-theme="toggleTheme"
+  />
 
   <div v-else class="mac-home" :class="{ 'mac-home--dark': isDark }">
     <div class="mac-home__backdrop" aria-hidden="true">
@@ -55,6 +68,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import HomeCapabilities from '@/components/home/HomeCapabilities.vue'
+import HomeCompact from '@/components/home/HomeCompact.vue'
 import HomeFooter from '@/components/home/HomeFooter.vue'
 import HomeHero from '@/components/home/HomeHero.vue'
 import HomeNavigation from '@/components/home/HomeNavigation.vue'
@@ -84,6 +98,10 @@ const apiBaseUrl = computed(() => {
   return sanitizeUrl(configured || window.location.origin, { allowRelative: true })
 })
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
+const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
+const compactHomeEnabled = computed(
+  () => appStore.cachedPublicSettings?.compact_home_enabled === true
+)
 const isHomeContentUrl = computed(() => {
   const content = homeContent.value.trim()
   return content.startsWith('http://') || content.startsWith('https://')

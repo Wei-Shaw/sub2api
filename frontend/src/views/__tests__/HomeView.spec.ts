@@ -11,7 +11,7 @@ const source = readFileSync(
 
 describe('HomeView macOS landing page assembly', () => {
   it('preserves configured URL and HTML home content overrides', () => {
-    expect(source).toContain('v-if="homeContent"')
+    expect(source).toContain('v-if="hasHomeContent"')
     expect(source).toContain('v-if="isHomeContentUrl"')
     expect(source).toContain('v-html="homeContent"')
   })
