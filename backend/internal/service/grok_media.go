@@ -744,19 +744,46 @@ func sanitizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conte
 	if !endpoint.RequiresRequestBody() || !gjson.ValidBytes(body) {
 		return body, contentType, nil
 	}
+	out := body
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
-		if !gjson.GetBytes(body, "size").Exists() {
-			return body, contentType, nil
+		if gjson.GetBytes(out, "size").Exists() {
+			sanitized, err := sjson.DeleteBytes(out, "size")
+			if err != nil {
+				return nil, "", fmt.Errorf("sanitize grok media size: %w", err)
+			}
+			out = sanitized
 		}
-		out, err := sjson.DeleteBytes(body, "size")
-		if err != nil {
-			return nil, "", fmt.Errorf("sanitize grok media size: %w", err)
-		}
-		return out, contentType, nil
-	default:
-		return body, contentType, nil
+	case GrokMediaEndpointVideosGenerations, GrokMediaEndpointVideosEdits, GrokMediaEndpointVideosExtensions:
+		// xAI documents prompt as optional for image-to-video. Drop null/blank
+		// prompt keys so we never forward "", null, or whitespace-only values
+		// that can make create succeed while later status polling returns 400.
+		out = stripEmptyGrokMediaPrompt(out)
 	}
+	return out, contentType, nil
+}
+
+func stripEmptyGrokMediaPrompt(body []byte) []byte {
+	prompt := gjson.GetBytes(body, "prompt")
+	if !prompt.Exists() {
+		return body
+	}
+	switch prompt.Type {
+	case gjson.Null:
+		// drop
+	case gjson.String:
+		if strings.TrimSpace(prompt.String()) != "" {
+			return body
+		}
+	default:
+		// Non-string prompts (arrays/objects) are left to the upstream.
+		return body
+	}
+	out, err := sjson.DeleteBytes(body, "prompt")
+	if err != nil {
+		return body
+	}
+	return out
 }
 
 func (r GrokMediaRequestInfo) HasInputImage() bool {

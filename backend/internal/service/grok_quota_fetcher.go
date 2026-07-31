@@ -78,6 +78,12 @@ func (f *GrokQuotaFetcher) BuildUsageInfo(account *Account) *UsageInfo {
 	usage.GrokRequestQuota = snapshot.Requests
 	usage.GrokTokenQuota = snapshot.Tokens
 	usage.GrokRetryAfterSeconds = snapshot.RetryAfterSeconds
+	// Prefer the observed Free rolling-window limit (current 1M or legacy 2M)
+	// so the UI progress bar matches the server-reported exhaustion payload.
+	if snapshot.Tokens != nil && snapshot.Tokens.Limit != nil &&
+		xai.IsGrokFreeRolling24hTokenLimit(*snapshot.Tokens.Limit) {
+		usage.GrokFreeTokenLimit = *snapshot.Tokens.Limit
+	}
 	if usage.SubscriptionTier == "" {
 		usage.SubscriptionTier = snapshot.SubscriptionTier
 		usage.SubscriptionTierRaw = snapshot.SubscriptionTier
@@ -122,6 +128,15 @@ func (f *GrokQuotaFetcher) BuildUsageInfo(account *Account) *UsageInfo {
 			}
 		case 429:
 			usage.ErrorCode = "rate_limited"
+		}
+	}
+	// free-usage-exhausted is a durable Free quota exhaustion signal even when
+	// the last HTTP status on the snapshot is not 429 (e.g. subsequent probes).
+	if strings.TrimSpace(snapshot.ProviderErrorCode) == grokFreeUsageExhaustedErrorCode {
+		usage.ErrorCode = "rate_limited"
+		if usage.SubscriptionTier == "" {
+			usage.SubscriptionTier = "free"
+			usage.SubscriptionTierRaw = "free"
 		}
 	}
 	applyGrokCredentialUsageFallback(usage, account)

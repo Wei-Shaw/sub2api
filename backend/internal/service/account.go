@@ -1501,6 +1501,10 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 // new image/video generation requests. OAuth media fails closed unless billing
 // observations provide positive paid-entitlement evidence. An explicit
 // operator override takes precedence over probe data.
+//
+// Accounts whose access_token JWT carries bot_flag_source=1 are also rejected:
+// xAI still returns 200 for media calls, but degrades output to random/cached
+// assets (issue #4578).
 func (a *Account) GrokMediaGenerationEligibility() (bool, string) {
 	if a == nil || !a.IsGrok() {
 		return false, "not_grok"
@@ -1528,7 +1532,52 @@ func (a *Account) GrokMediaGenerationEligibility() (bool, string) {
 	if !grokBillingHasAuthoritativeQuota(billing) {
 		return false, "billing_inconclusive"
 	}
+	if isGrokOAuthBotFlagged(a) {
+		return false, "token_bot_flagged"
+	}
 	return true, "eligible"
+}
+
+// isGrokOAuthBotFlagged reports whether the account's current access token (or
+// last-persisted bot_flag_source credential) indicates xAI risk-control marking.
+func isGrokOAuthBotFlagged(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if token := strings.TrimSpace(account.GetCredential("access_token")); token != "" {
+		claims := xai.DecodeJWTClaims(token)
+		if claims != nil {
+			flag, ok := xai.JWTClaimInt64(claims, "bot_flag_source")
+			return ok && flag == 1
+		}
+	}
+	if account.Credentials == nil {
+		return false
+	}
+	raw, exists := account.Credentials["bot_flag_source"]
+	if !exists || raw == nil {
+		return false
+	}
+	switch value := raw.(type) {
+	case float64:
+		return int64(value) == 1
+	case float32:
+		return int64(value) == 1
+	case int64:
+		return value == 1
+	case int:
+		return value == 1
+	case int32:
+		return int64(value) == 1
+	case json.Number:
+		parsed, err := value.Int64()
+		return err == nil && parsed == 1
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		return err == nil && parsed == 1
+	default:
+		return false
+	}
 }
 
 func grokMediaEligibilityOverride(extra map[string]any) (bool, bool) {

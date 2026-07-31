@@ -387,6 +387,55 @@ func JWTClaimString(claims map[string]any, key string) string {
 	return strings.TrimSpace(value)
 }
 
+// JWTClaimInt64 reads a numeric claim as int64. JSON numbers decode as float64
+// into map[string]any; integer and string forms are also accepted.
+func JWTClaimInt64(claims map[string]any, key string) (int64, bool) {
+	if claims == nil {
+		return 0, false
+	}
+	raw, ok := claims[key]
+	if !ok || raw == nil {
+		return 0, false
+	}
+	switch value := raw.(type) {
+	case float64:
+		return int64(value), true
+	case float32:
+		return int64(value), true
+	case int64:
+		return value, true
+	case int:
+		return int64(value), true
+	case int32:
+		return int64(value), true
+	case json.Number:
+		parsed, err := value.Int64()
+		return parsed, err == nil
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
+}
+
+// AccessTokenBotFlagSource returns the bot_flag_source claim from an access
+// token JWT when present. A value of 1 is treated as xAI risk-control marking
+// (see community reports of degraded image/video generation).
+func AccessTokenBotFlagSource(token string) (int64, bool) {
+	claims := DecodeJWTClaims(token)
+	if claims == nil {
+		return 0, false
+	}
+	return JWTClaimInt64(claims, "bot_flag_source")
+}
+
+// IsBotFlaggedToken reports whether the JWT carries bot_flag_source == 1.
+func IsBotFlaggedToken(token string) bool {
+	flag, ok := AccessTokenBotFlagSource(token)
+	return ok && flag == 1
+}
+
 func sleepContext(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
 	defer timer.Stop()

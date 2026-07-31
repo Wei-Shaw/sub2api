@@ -1256,6 +1256,124 @@ func TestForwardGrokMediaVideoGenerationPreservesImageToVideoModel(t *testing.T)
 	require.Equal(t, VideoBillingDefaultDurationSeconds, result.VideoDurationSeconds)
 }
 
+func TestForwardGrokMediaImageToVideoOmitsPromptField(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	// Issue #4546: I2V with image.url and no prompt must stay optional-shape.
+	// Do not inject prompt / serialize null / empty string.
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "missing prompt key",
+			body: `{"model":"grok-imagine-video-1.5","image":{"url":"data:image/jpeg;base64,/9j/4AAQ"},"duration":10,"resolution":"480p"}`,
+			want: `{"model":"grok-imagine-video-1.5","image":{"url":"data:image/jpeg;base64,/9j/4AAQ"},"duration":10,"resolution":"480p"}`,
+		},
+		{
+			name: "blank prompt is stripped",
+			body: `{"model":"grok-imagine-video-1.5","prompt":"   ","image":{"url":"data:image/jpeg;base64,/9j/4AAQ"},"duration":10,"resolution":"480p"}`,
+			want: `{"model":"grok-imagine-video-1.5","image":{"url":"data:image/jpeg;base64,/9j/4AAQ"},"duration":10,"resolution":"480p"}`,
+		},
+		{
+			name: "null prompt is stripped",
+			body: `{"model":"grok-imagine-video-1.5","prompt":null,"image":{"url":"data:image/jpeg;base64,/9j/4AAQ"},"duration":10,"resolution":"480p"}`,
+			want: `{"model":"grok-imagine-video-1.5","image":{"url":"data:image/jpeg;base64,/9j/4AAQ"},"duration":10,"resolution":"480p"}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			body := []byte(tc.body)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			account := &Account{
+				ID:          64,
+				Name:        "grok",
+				Platform:    PlatformGrok,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: map[string]any{
+					"api_key":  "api-key",
+					"base_url": "https://xai.test/v1",
+				},
+			}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"request_id":"video-request-i2v"}`)),
+			}}
+			svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+			result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
+			require.NoError(t, err)
+			require.JSONEq(t, tc.want, string(upstream.lastBody))
+			require.False(t, gjson.GetBytes(upstream.lastBody, "prompt").Exists(), "prompt must be omitted for optional I2V")
+			require.Equal(t, "video-request-i2v", result.ResponseID)
+			require.Equal(t, "grok-imagine-video-1.5", result.BillingModel)
+			require.Equal(t, 10, result.VideoDurationSeconds)
+			require.Equal(t, "480p", result.VideoResolution)
+		})
+	}
+}
+
+func TestHandleGrokMediaErrorResponseSurfacesTopLevelErrorString(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/task-1", nil)
+
+	account := &Account{
+		ID:          65,
+		Name:        "grok",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "api-key"},
+		Extra: map[string]any{
+			// Treat 400 as a terminal client error (not failover).
+			"custom_error_codes_enabled": true,
+			"custom_error_codes":         []any{float64(http.StatusBadRequest)},
+		},
+	}
+	svc := &OpenAIGatewayService{}
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{},
+		Body: io.NopCloser(strings.NewReader(
+			`{"code":"Client specified an invalid argument","error":"prompt may not be empty when no image is provided"}`,
+		)),
+	}
+
+	result, err := svc.handleGrokMediaErrorResponse(context.Background(), resp, c, account, "request-id", "grok-imagine-video")
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "prompt may not be empty when no image is provided")
+	require.Contains(t, recorder.Body.String(), "prompt may not be empty when no image is provided")
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+}
+
+func TestExtractUpstreamErrorMessageSupportsTopLevelErrorString(t *testing.T) {
+	t.Parallel()
+	require.Equal(
+		t,
+		"prompt may not be empty when no image is provided",
+		extractUpstreamErrorMessage([]byte(`{"code":"bad_request","error":"prompt may not be empty when no image is provided"}`)),
+	)
+	require.Equal(
+		t,
+		"nested message wins",
+		extractUpstreamErrorMessage([]byte(`{"error":{"message":"nested message wins"}}`)),
+	)
+}
+
 func TestForwardGrokMediaOAuthImageToVideoUsesOfficialAPIForLargeBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
