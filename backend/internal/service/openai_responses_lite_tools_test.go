@@ -268,7 +268,7 @@ func TestOpenAIGatewayServiceForward_NormalizesResponsesLiteToolsForOAuth(t *tes
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 				Body: io.NopCloser(strings.NewReader(
-					"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_lite\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n" +
+					"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_lite\",\"output\":[{\"type\":\"function_call\",\"namespace\":\"collaboration\",\"name\":\"spawn_agent\",\"call_id\":\"call_2\",\"arguments\":\"{}\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n" +
 						"data: [DONE]\n\n",
 				)),
 			}}
@@ -288,7 +288,10 @@ func TestOpenAIGatewayServiceForward_NormalizesResponsesLiteToolsForOAuth(t *tes
 					{"type":"tool_search"},
 					{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object"}}]}
 				],
-				"input":[{"type":"message","role":"user","content":"hello"}],
+				"input":[
+					{"type":"function_call","namespace":"collaboration","name":"spawn_agent","call_id":"call_1","arguments":"{}"},
+					{"type":"message","role":"user","namespace":"residual-message-namespace","content":"hello"}
+				],
 				"tool_choice":{"type":"namespace","name":"collaboration"}
 			}`)
 
@@ -304,8 +307,16 @@ func TestOpenAIGatewayServiceForward_NormalizesResponsesLiteToolsForOAuth(t *tes
 			require.Equal(t, "exec", gjson.GetBytes(upstream.lastBody, `tools.#(type=="custom").name`).String())
 			require.True(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="tool_search")`).Exists())
 			require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, `input.#(type=="additional_tools").tools.0.name`).String())
+			require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, `input.#(type=="function_call").namespace`).String())
+			require.Equal(t, "spawn_agent", gjson.GetBytes(upstream.lastBody, `input.#(type=="function_call").name`).String())
+			require.False(t, gjson.GetBytes(upstream.lastBody, `input.#(type=="message").namespace`).Exists())
 			require.Equal(t, "namespace", gjson.GetBytes(upstream.lastBody, "tool_choice.type").String())
 			require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, "tool_choice.name").String())
+
+			completed := findSSEEvent(t, collectSSEDataPayloads(t, rec.Body.String()), "response.completed", "")
+			require.Equal(t, "collaboration", gjson.Get(completed, "response.output.0.namespace").String())
+			require.Equal(t, "spawn_agent", gjson.Get(completed, "response.output.0.name").String())
+			require.NotEqual(t, "collaboration__spawn_agent", gjson.Get(completed, "response.output.0.name").String())
 		})
 	}
 }
