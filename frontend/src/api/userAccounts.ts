@@ -14,6 +14,8 @@ export interface CreateUserAccountRequest {
   platform: AccountPlatform | string
   type: AccountType | string
   credentials?: Record<string, unknown>
+  /** 非敏感扩展（privacy_mode、load_code_assist 等） */
+  extra?: Record<string, unknown>
   /** private | public；探测失败时后端可能强制 private */
   visibility?: UserAccountVisibility | string
   /** 账号并发数（>=1） */

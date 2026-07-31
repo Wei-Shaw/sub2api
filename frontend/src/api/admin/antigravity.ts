@@ -30,6 +30,12 @@ export interface AntigravityTokenInfo {
   expires_in?: number
   project_id?: string
   email?: string
+  /** 订阅档位展示名 Pro/Free/Ultra */
+  plan_type?: string
+  /** privacy_set / privacy_set_failed */
+  privacy_mode?: string
+  /** LoadCodeAssist tier id，如 g1-pro-tier */
+  tier_id?: string
   [key: string]: unknown
 }
 

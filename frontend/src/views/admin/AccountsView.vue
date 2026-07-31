@@ -1333,23 +1333,43 @@ function getOpenAIAuthMode(row: any): string | undefined {
 function getAntigravityTierFromRow(row: any): string | null {
   if (row.platform !== 'antigravity') return null
   const extra = row.extra as Record<string, unknown> | undefined
-  if (!extra) return null
-  const lca = extra.load_code_assist as Record<string, unknown> | undefined
-  if (!lca) return null
-  const paid = lca.paidTier as Record<string, unknown> | undefined
-  if (paid && typeof paid.id === 'string') return paid.id
-  const current = lca.currentTier as Record<string, unknown> | undefined
-  if (current && typeof current.id === 'string') return current.id
+  const lca = extra?.load_code_assist as Record<string, unknown> | undefined
+  if (lca) {
+    const paid = lca.paidTier as Record<string, unknown> | undefined
+    if (paid && typeof paid.id === 'string' && paid.id.trim()) return paid.id.trim()
+    const current = lca.currentTier as Record<string, unknown> | undefined
+    if (current && typeof current.id === 'string' && current.id.trim()) return current.id.trim()
+  }
+  // fallback：credentials.tier_id / plan_type / 权威列 upstream_plan
+  const tierId = row.credentials?.tier_id
+  if (typeof tierId === 'string' && tierId.trim()) return tierId.trim()
+  const upstream = typeof row.upstream_plan === 'string' ? row.upstream_plan.trim() : ''
+  if (upstream) return upstream
+  const planType = typeof row.credentials?.plan_type === 'string' ? row.credentials.plan_type.trim() : ''
+  if (planType) {
+    const lower = planType.toLowerCase()
+    if (lower === 'pro' || lower === 'g1-pro-tier' || lower === 'g1_pro_tier') return 'g1-pro-tier'
+    if (lower === 'ultra' || lower === 'g1-ultra-tier' || lower === 'g1_ultra_tier') return 'g1-ultra-tier'
+    if (lower === 'free' || lower === 'free-tier' || lower === 'free_tier') return 'free-tier'
+  }
   return null
 }
 
 function getAntigravityTierLabel(row: any): string | null {
   const tier = getAntigravityTierFromRow(row)
+  if (!tier) return null
   switch (tier) {
     case 'free-tier': return t('admin.accounts.tier.free')
     case 'g1-pro-tier': return t('admin.accounts.tier.pro')
     case 'g1-ultra-tier': return t('admin.accounts.tier.ultra')
-    default: return null
+    default: {
+      // 未知 id 时尝试用展示名
+      const lower = tier.toLowerCase()
+      if (lower.includes('ultra')) return t('admin.accounts.tier.ultra')
+      if (lower.includes('pro')) return t('admin.accounts.tier.pro')
+      if (lower.includes('free')) return t('admin.accounts.tier.free')
+      return null
+    }
   }
 }
 

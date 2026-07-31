@@ -161,7 +161,7 @@ export function useAntigravityOAuth(opts?: OAuthComposableOptions) {
       ? tokenInfo.refresh_token
       : fallbackRefreshToken
 
-    return {
+    const creds: Record<string, unknown> = {
       access_token: tokenInfo.access_token,
       refresh_token: refreshToken,
       token_type: tokenInfo.token_type,
@@ -169,6 +169,28 @@ export function useAntigravityOAuth(opts?: OAuthComposableOptions) {
       project_id: tokenInfo.project_id,
       email: tokenInfo.email
     }
+    const planType =
+      typeof tokenInfo.plan_type === 'string' ? tokenInfo.plan_type.trim() : ''
+    if (planType) creds.plan_type = planType
+    const tierId = typeof tokenInfo.tier_id === 'string' ? tokenInfo.tier_id.trim() : ''
+    if (tierId) creds.tier_id = tierId
+    return creds
+  }
+
+  /** 列表 Private/Pro 角标依赖的 extra 字段 */
+  const buildExtraInfo = (tokenInfo: AntigravityTokenInfo): Record<string, unknown> | undefined => {
+    const extra: Record<string, unknown> = {}
+    const privacy =
+      typeof tokenInfo.privacy_mode === 'string' ? tokenInfo.privacy_mode.trim() : ''
+    if (privacy) extra.privacy_mode = privacy
+    const tierId = typeof tokenInfo.tier_id === 'string' ? tokenInfo.tier_id.trim() : ''
+    if (tierId) {
+      extra.load_code_assist = {
+        currentTier: { id: tierId },
+        paidTier: { id: tierId }
+      }
+    }
+    return Object.keys(extra).length > 0 ? extra : undefined
   }
 
   return {
@@ -181,6 +203,7 @@ export function useAntigravityOAuth(opts?: OAuthComposableOptions) {
     generateAuthUrl,
     exchangeAuthCode,
     validateRefreshToken,
-    buildCredentials
+    buildCredentials,
+    buildExtraInfo
   }
 }

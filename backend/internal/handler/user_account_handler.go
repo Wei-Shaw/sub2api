@@ -29,6 +29,7 @@ type CreateUserAccountRequest struct {
 	Platform    string         `json:"platform" binding:"required"`
 	Type        string         `json:"type" binding:"required"`
 	Credentials map[string]any `json:"credentials"`
+	Extra       map[string]any `json:"extra"`
 	Visibility  string         `json:"visibility"` // private|public；默认 private
 	// Concurrency 账号并发上限；0 或缺省时由服务层按平台默认规范化
 	Concurrency int `json:"concurrency"`
@@ -112,6 +113,7 @@ func (h *UserAccountHandler) Create(c *gin.Context) {
 		Platform:    req.Platform,
 		Type:        req.Type,
 		Credentials: req.Credentials,
+		Extra:       req.Extra,
 		Visibility:  req.Visibility,
 		Concurrency: req.Concurrency,
 	})

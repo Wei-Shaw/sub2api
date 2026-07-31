@@ -105,6 +105,12 @@ func ExtractProbedPlanRaw(account *Account) string {
 	if account == nil {
 		return ""
 	}
+	// Antigravity：优先 tier_id（g1-pro-tier），再 plan_type 展示名
+	if strings.EqualFold(account.Platform, PlatformAntigravity) {
+		if v := strings.TrimSpace(account.GetCredential("tier_id")); v != "" {
+			return v
+		}
+	}
 	key := planCredentialKey(account.Platform)
 	if v := strings.TrimSpace(account.GetCredential(key)); v != "" {
 		return v

@@ -68,7 +68,9 @@ type CreateUserAccountInput struct {
 	Platform    string
 	Type        string
 	Credentials map[string]any
-	Visibility  string // private|public；最终可能因探测失败强制 private
+	// Extra 非敏感扩展字段（如 privacy_mode、load_code_assist 摘要）；与 credentials 分离
+	Extra map[string]any
+	Visibility string // private|public；最终可能因探测失败强制 private
 	// Concurrency 账号并发上限；<=0 时 normalizeAccountConcurrency 按平台默认处理
 	Concurrency int
 }
@@ -200,18 +202,47 @@ func (s *userAccountService) Create(ctx context.Context, userID int64, input *Cr
 	}
 
 	ownerID := userID
+	extra := cloneAnyMap(input.Extra)
+	if extra == nil {
+		extra = map[string]any{}
+	}
+	// credentials 中若带 privacy_mode（兼容），提升到 extra
+	if pm, ok := input.Credentials["privacy_mode"].(string); ok {
+		if strings.TrimSpace(pm) != "" {
+			if _, exists := extra["privacy_mode"]; !exists {
+				extra["privacy_mode"] = strings.TrimSpace(pm)
+			}
+		}
+	}
+	// tier_id 可写入 load_code_assist 摘要供列表 Pro 角标
+	if tid, ok := input.Credentials["tier_id"].(string); ok {
+		tid = strings.TrimSpace(tid)
+		if tid != "" {
+			if _, exists := extra["load_code_assist"]; !exists {
+				extra["load_code_assist"] = map[string]any{
+					"currentTier": map[string]any{"id": tid},
+					"paidTier":    map[string]any{"id": tid},
+				}
+			}
+		}
+	}
+
 	account := &Account{
 		Name:        name,
 		Platform:    platform,
 		Type:        accountType,
 		Credentials: cloneAnyMap(input.Credentials),
-		Extra:       map[string]any{},
+		Extra:       extra,
 		Concurrency: normalizeAccountConcurrency(platform, accountType, input.Concurrency),
 		Priority:    0,
 		Status:      StatusActive,
 		Schedulable: true,
 		OwnerUserID: &ownerID,
 		Visibility:  VisibilityPrivate, // K17：一律先 private
+	}
+	// 勿把 privacy_mode 留在 credentials
+	if account.Credentials != nil {
+		delete(account.Credentials, "privacy_mode")
 	}
 	account.AutoPauseOnExpired = true
 
@@ -268,6 +299,22 @@ func (s *userAccountService) Create(ctx context.Context, userID int64, input *Cr
 
 	if s.privateGroups != nil && provisionResult != nil && provisionResult.NeedsAfterCommit {
 		s.privateGroups.AfterCommit(ctx, provisionResult)
+	}
+
+	// Antigravity OAuth：若创建时未带 privacy_mode，异步补写（与管理端 CreateAccount 对齐）
+	if created != nil && created.Platform == PlatformAntigravity && created.Type == AccountTypeOAuth {
+		go func(accID int64) {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("user_account_antigravity_privacy_panic", "account_id", accID, "recover", r)
+				}
+			}()
+			acc, err := s.accountRepo.GetByID(context.Background(), accID)
+			if err != nil || acc == nil {
+				return
+			}
+			ensureUserOwnedAntigravityPrivacy(context.Background(), s.accountRepo, acc)
+		}(created.ID)
 	}
 
 	// 事务外 best-effort：从 credentials 提取 plan 并 ApplyProbedPlan
@@ -624,6 +671,38 @@ func userAccountTypeSupportsPublicProbe(platform, accountType string) bool {
 	}
 	// 允许的 type 均可尝试；anthropic/gemini probe 可能失败并降 private
 	return isUserAllowedAccountType(platform, accountType)
+}
+
+// ensureUserOwnedAntigravityPrivacy 用户自建号补写 privacy_mode（与 admin EnsureAntigravityPrivacy 同探测逻辑，无 proxy）。
+func ensureUserOwnedAntigravityPrivacy(ctx context.Context, repo AccountRepository, account *Account) {
+	if account == nil || repo == nil {
+		return
+	}
+	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
+		return
+	}
+	if account.Extra != nil {
+		if existing, ok := account.Extra["privacy_mode"].(string); ok && existing == AntigravityPrivacySet {
+			return
+		}
+	}
+	token, _ := account.Credentials["access_token"].(string)
+	if strings.TrimSpace(token) == "" {
+		return
+	}
+	projectID, _ := account.Credentials["project_id"].(string)
+	mode := setAntigravityPrivacy(ctx, token, projectID, "")
+	if mode == "" {
+		return
+	}
+	if err := repo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode}); err != nil {
+		slog.Warn("user_account_antigravity_privacy_update_failed",
+			"account_id", account.ID,
+			"error", err.Error(),
+		)
+		return
+	}
+	applyAntigravityPrivacyMode(account, mode)
 }
 
 func cloneAnyMap(in map[string]any) map[string]any {

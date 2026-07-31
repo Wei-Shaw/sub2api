@@ -4661,6 +4661,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
         platform: payload.platform,
         type: payload.type,
         credentials: payload.credentials,
+        extra: payload.extra,
         visibility: form.visibility,
         concurrency: payload.concurrency ?? form.concurrency
       })
@@ -5971,14 +5972,14 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
         // Generate account name with index for batch
         const accountName = refreshTokens.length > 1 ? `${form.name} #${i + 1}` : form.name
 
-        // Note: Antigravity doesn't have buildExtraInfo, so we pass empty extra or rely on credentials
+        const tokenExtra = antigravityOAuth.buildExtraInfo(tokenInfo) || {}
         const createPayload = withAntigravityConfirmFlag({
           name: accountName,
           notes: form.notes,
           platform: 'antigravity',
           type: 'oauth',
           credentials,
-          extra: {},
+          extra: { ...(buildAntigravityExtra() || {}), ...tokenExtra },
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
@@ -6094,8 +6095,16 @@ const handleAntigravityExchange = async (authCode: string) => {
 		if (antigravityModelMapping) {
 			credentials.model_mapping = antigravityModelMapping
 		}
-		const extra = buildAntigravityExtra()
-		await createAccountAndFinish('antigravity', 'oauth', credentials, extra)
+		const extra = {
+			...(buildAntigravityExtra() || {}),
+			...(antigravityOAuth.buildExtraInfo(tokenInfo) || {})
+		}
+		await createAccountAndFinish(
+			'antigravity',
+			'oauth',
+			credentials,
+			Object.keys(extra).length > 0 ? extra : undefined
+		)
   } catch (error: any) {
     antigravityOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(antigravityOAuth.error.value)
