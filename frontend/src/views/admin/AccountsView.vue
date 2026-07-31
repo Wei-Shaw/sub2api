@@ -280,17 +280,12 @@
           <template #cell-platform_type="{ row }">
             <div class="flex min-w-0 flex-col gap-1">
               <div class="flex flex-wrap items-center gap-1">
+                <!-- 档位只走 PlatformTypeBadge，避免与旁侧 Antigravity tier span 重复显示 Pro -->
                 <PlatformTypeBadge :platform="row.platform" :type="row.type"
                   :auth-mode="getOpenAIAuthMode(row)"
                   :plan-type="getAccountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
                   :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
-                <span
-                  v-if="getAntigravityTierLabel(row)"
-                  :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
-                >
-                  {{ getAntigravityTierLabel(row) }}
-                </span>
               </div>
               <div
                 v-if="getOpenAICompactMeta(row)"
@@ -1320,6 +1315,25 @@ function getAccountPlanType(row: any): string | undefined {
       undefined
     )
   }
+  // Antigravity：plan_type / tier_id / load_code_assist / upstream_plan 均可，PlatformTypeBadge 会映射为 Pro 等友好名
+  if (row.platform === 'antigravity') {
+    const planType = row.credentials?.plan_type
+    if (typeof planType === 'string' && planType.trim()) return planType.trim()
+    const tierId = row.credentials?.tier_id
+    if (typeof tierId === 'string' && tierId.trim()) return tierId.trim()
+    const lca = (row.extra as Record<string, any> | undefined)?.load_code_assist as
+      | Record<string, any>
+      | undefined
+    const paidId = lca?.paidTier?.id
+    if (typeof paidId === 'string' && paidId.trim()) return paidId.trim()
+    const currentId = lca?.currentTier?.id
+    if (typeof currentId === 'string' && currentId.trim()) return currentId.trim()
+    if (typeof row.upstream_plan === 'string' && row.upstream_plan.trim()) return row.upstream_plan.trim()
+    if (typeof row.parent_plan_type === 'string' && row.parent_plan_type.trim()) {
+      return row.parent_plan_type.trim()
+    }
+    return undefined
+  }
   return row.credentials?.plan_type || row.parent_plan_type || undefined
 }
 
@@ -1327,50 +1341,6 @@ function getOpenAIAuthMode(row: any): string | undefined {
   if (!row || row.platform !== 'openai' || row.type !== 'oauth') return undefined
   const authMode = row.credentials?.auth_mode
   return typeof authMode === 'string' && authMode.trim() ? authMode : undefined
-}
-
-// Antigravity 订阅等级辅助函数
-function getAntigravityTierFromRow(row: any): string | null {
-  if (row.platform !== 'antigravity') return null
-  const extra = row.extra as Record<string, unknown> | undefined
-  const lca = extra?.load_code_assist as Record<string, unknown> | undefined
-  if (lca) {
-    const paid = lca.paidTier as Record<string, unknown> | undefined
-    if (paid && typeof paid.id === 'string' && paid.id.trim()) return paid.id.trim()
-    const current = lca.currentTier as Record<string, unknown> | undefined
-    if (current && typeof current.id === 'string' && current.id.trim()) return current.id.trim()
-  }
-  // fallback：credentials.tier_id / plan_type / 权威列 upstream_plan
-  const tierId = row.credentials?.tier_id
-  if (typeof tierId === 'string' && tierId.trim()) return tierId.trim()
-  const upstream = typeof row.upstream_plan === 'string' ? row.upstream_plan.trim() : ''
-  if (upstream) return upstream
-  const planType = typeof row.credentials?.plan_type === 'string' ? row.credentials.plan_type.trim() : ''
-  if (planType) {
-    const lower = planType.toLowerCase()
-    if (lower === 'pro' || lower === 'g1-pro-tier' || lower === 'g1_pro_tier') return 'g1-pro-tier'
-    if (lower === 'ultra' || lower === 'g1-ultra-tier' || lower === 'g1_ultra_tier') return 'g1-ultra-tier'
-    if (lower === 'free' || lower === 'free-tier' || lower === 'free_tier') return 'free-tier'
-  }
-  return null
-}
-
-function getAntigravityTierLabel(row: any): string | null {
-  const tier = getAntigravityTierFromRow(row)
-  if (!tier) return null
-  switch (tier) {
-    case 'free-tier': return t('admin.accounts.tier.free')
-    case 'g1-pro-tier': return t('admin.accounts.tier.pro')
-    case 'g1-ultra-tier': return t('admin.accounts.tier.ultra')
-    default: {
-      // 未知 id 时尝试用展示名
-      const lower = tier.toLowerCase()
-      if (lower.includes('ultra')) return t('admin.accounts.tier.ultra')
-      if (lower.includes('pro')) return t('admin.accounts.tier.pro')
-      if (lower.includes('free')) return t('admin.accounts.tier.free')
-      return null
-    }
-  }
 }
 
 // 账号显示邮箱:优先账号自身(extra/credentials),影子账号回退母账号 parent_email。
@@ -1430,16 +1400,6 @@ function getOpenAICompactTitle(row: any): string {
   const label = getOpenAICompactMeta(row)?.label || ''
   if (!checkedAt) return label
   return `${label} | ${t('admin.accounts.openai.compactLastChecked')}: ${formatDateTime(new Date(checkedAt))}`
-}
-
-function getAntigravityTierClass(row: any): string {
-  const tier = getAntigravityTierFromRow(row)
-  switch (tier) {
-    case 'free-tier': return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
-    case 'g1-pro-tier': return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
-    case 'g1-ultra-tier': return 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
-    default: return ''
-  }
 }
 
 // All available columns
