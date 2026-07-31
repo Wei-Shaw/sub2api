@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   在 Windows 本机交叉编译 Sub2API 的 Linux x86_64 (amd64) 二进制（含嵌入前端）。
