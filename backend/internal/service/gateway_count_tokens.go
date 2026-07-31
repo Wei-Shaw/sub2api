@@ -584,6 +584,10 @@ func sanitizeCountTokensRequestBody(body []byte) []byte {
 		"stream",
 		"stop_sequences",
 		"stop",
+		// Anthropic's /v1/messages/count_tokens accepts request-input fields only.
+		// max_tokens is a generation parameter; OAuth mimicry may inject it to
+		// resemble Claude Code messages requests, so it must never reach this endpoint.
+		"max_tokens",
 	} {
 		if gjson.GetBytes(out, path).Exists() {
 			if next, ok := deleteJSONPathBytes(out, path); ok {

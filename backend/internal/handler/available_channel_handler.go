@@ -12,12 +12,11 @@ import (
 
 // AvailableChannelHandler 处理用户侧「可用渠道」查询。
 //
-// 用户侧接口委托 ChannelService.ListAvailable，并在返回前做三层过滤：
+// 用户侧接口委托 ChannelService.ListAvailable，并在返回前做四层过滤：
 //  1. 行过滤：只保留状态为 Active 且与当前用户可访问分组有交集的渠道；
 //  2. 分组过滤：渠道的 Groups 只保留用户可访问的那些；
-//  3. 平台过滤：渠道的 SupportedModels 只保留平台在用户可见 Groups 中出现过的模型，
-//     防止"渠道同时挂在 antigravity / anthropic 两个平台的分组上，用户只访问
-//     antigravity，却看到 anthropic 模型"这类跨平台信息泄漏；
+//  3. 平台过滤：普通分组只保留自身平台模型；Composite 分组按渠道已配置的具体模型平台
+//     展开。这样既防止普通分组跨平台泄漏，也让 Composite 正确展示其多平台能力；
 //  4. 字段白名单：仅返回用户需要的字段（省略 BillingModelSource / RestrictModels
 //     / 内部 ID / Status 等管理字段）。
 type AvailableChannelHandler struct {
@@ -172,18 +171,46 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 }
 
 // buildPlatformSections 把一个渠道按 visibleGroups 的平台集合拆成有序的 section 列表：
-// 每个 section 对应一个平台，只包含该平台的 groups 和 supported_models。
+// 每个 section 对应一个具体平台，只包含该平台的 groups 和 supported_models。
+//
+// Composite 分组可访问渠道中所有已配置的具体平台，因此会被展开到每个有支持模型的
+// 平台 section。普通分组仍严格留在自身平台，避免跨平台模型信息泄漏。Composite 渠道
+// 尚未配置任何模型时保留 composite section，以便前端继续展示该分组和“未配置模型”状态。
 // 输出按 platform 字母序稳定排序，便于前端等效比较与回归测试。
 func buildPlatformSections(
 	ch service.AvailableChannel,
 	visibleGroups []userAvailableGroup,
 ) []userChannelPlatformSection {
 	groupsByPlatform := make(map[string][]userAvailableGroup, 4)
+	compositeGroups := make([]userAvailableGroup, 0, 1)
 	for _, g := range visibleGroups {
 		if g.Platform == "" {
 			continue
 		}
+		if g.Platform == service.PlatformComposite {
+			compositeGroups = append(compositeGroups, g)
+			continue
+		}
 		groupsByPlatform[g.Platform] = append(groupsByPlatform[g.Platform], g)
+	}
+
+	if len(compositeGroups) > 0 {
+		modelPlatforms := make(map[string]struct{}, len(ch.SupportedModels))
+		for i := range ch.SupportedModels {
+			if platform := ch.SupportedModels[i].Platform; platform != "" {
+				modelPlatforms[platform] = struct{}{}
+			}
+		}
+		if len(modelPlatforms) == 0 {
+			groupsByPlatform[service.PlatformComposite] = append(
+				groupsByPlatform[service.PlatformComposite],
+				compositeGroups...,
+			)
+		} else {
+			for platform := range modelPlatforms {
+				groupsByPlatform[platform] = append(groupsByPlatform[platform], compositeGroups...)
+			}
+		}
 	}
 	if len(groupsByPlatform) == 0 {
 		return nil

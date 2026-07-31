@@ -131,9 +131,9 @@ func TestOpsScheduledReportLegacyTemplateReceivesSummaryHTML(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, attempts)
 	require.Equal(t, int64(1), smtpServer.messageCount())
-	message := smtpServer.lastMessage()
-	require.Contains(t, message, `<section data-template="legacy">`)
-	require.Contains(t, message, `<h2>日报</h2>`)
+	messageBody := smtpServer.lastMessageBody(t)
+	require.Contains(t, messageBody, `<section data-template="legacy">`)
+	require.Contains(t, messageBody, `<h2>日报</h2>`)
 }
 
 func TestFormatOpsReportIntegerGroupsDigits(t *testing.T) {

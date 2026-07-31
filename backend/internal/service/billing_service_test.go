@@ -158,17 +158,19 @@ func TestGetModelPricing_FallbackWarnPerModelNotGlobal(t *testing.T) {
 	require.Equal(t, 0, strings.Count(out, "model: GLM-5.2"), out) // 大写经 ToLower 归一,不应单独成行
 }
 
-// 回归:glm-5.2 仍解析到 glm-5 兜底价(计费金额不变,防止日志改动掩盖未来计费回归)。
-func TestGetModelPricing_GLM52FallsBackToGLM5Price(t *testing.T) {
+// 回归:glm-5.2 必须命中自己的兜底价,不能被 strings.Contains("glm-5") 抢成 glm-5 价。
+// 历史 bug:兜底表缺 glm-5.2 条目,使用记录按 $1.00/$3.20 计费,比官方 $1.40/$4.40 少收约 27%。
+func TestGetModelPricing_GLM52UsesOwnPrice(t *testing.T) {
 	svc := newTestBillingService()
 
 	got, err := svc.GetModelPricing("glm-5.2")
 	require.NoError(t, err)
 	require.NotNil(t, got)
 
-	// glm-5 base：Input 1e-6 / Output 3.2e-6(见 TestGetFallbackPricing_FamilyMatching)。
-	require.InDelta(t, 1e-6, got.InputPricePerToken, 1e-12)
-	require.InDelta(t, 3.2e-6, got.OutputPricePerToken, 1e-12)
+	// 官方 z.ai 口径:与 glm-5.1 同价(见 TestGetFallbackPricing_FamilyMatching)。
+	require.InDelta(t, 1.4e-6, got.InputPricePerToken, 1e-12)
+	require.InDelta(t, 4.4e-6, got.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 0.26e-6, got.CacheReadPricePerToken, 1e-12)
 }
 
 func TestGetModelPricing_UnknownClaudeModelFallsBackToSonnet(t *testing.T) {
@@ -490,6 +492,13 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 
 		// ---- 智谱 GLM（z.ai USD 口径）----
 		{
+			name:              "glm 5.2 flagship",
+			model:             "glm-5.2",
+			expectedInput:     1.4e-6,
+			expectedOutput:    floatPtr(4.4e-6),
+			expectedCacheRead: floatPtr(0.26e-6),
+		},
+		{
 			name:              "glm 5.1 flagship",
 			model:             "glm-5.1",
 			expectedInput:     1.4e-6,
@@ -572,11 +581,18 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			expectedInput:  0.1e-6,
 			expectedOutput: floatPtr(0.1e-6),
 		},
-		// 关键：5.1 必须先于 5 匹配（避免被 glm-5 抢走）
+		// 关键：5.1 / 5.2 必须先于 5 匹配（避免被 glm-5 抢走）
 		{
 			name:              "glm 5.1 vs glm 5 ordering (verbatim 5.1)",
 			model:             "glm-5.1",
 			expectedInput:     1.4e-6, // = glm-5.1 价格
+			expectedOutput:    floatPtr(4.4e-6),
+			expectedCacheRead: floatPtr(0.26e-6),
+		},
+		{
+			name:              "glm 5.2 vs glm 5 ordering (verbatim 5.2)",
+			model:             "glm-5.2",
+			expectedInput:     1.4e-6, // = glm-5.2 价格（不是 glm-5 的 1e-6）
 			expectedOutput:    floatPtr(4.4e-6),
 			expectedCacheRead: floatPtr(0.26e-6),
 		},
@@ -589,6 +605,41 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		},
 
 		// ---- 月之暗面 Kimi ----
+		{
+			name:              "kimi k3 flagship",
+			model:             "kimi-k3",
+			expectedInput:     3e-6,
+			expectedOutput:    floatPtr(15e-6),
+			expectedCacheRead: floatPtr(0.30e-6),
+		},
+		{
+			name:              "kimi code bare alias k3",
+			model:             "k3",
+			expectedInput:     3e-6,
+			expectedOutput:    floatPtr(15e-6),
+			expectedCacheRead: floatPtr(0.30e-6),
+		},
+		{
+			name:              "kimi code bare alias k3-256k",
+			model:             "k3-256k",
+			expectedInput:     3e-6,
+			expectedOutput:    floatPtr(15e-6),
+			expectedCacheRead: floatPtr(0.30e-6),
+		},
+		{
+			name:              "kimi k3 path suffix moonshot",
+			model:             "moonshot/kimi-k3",
+			expectedInput:     3e-6,
+			expectedOutput:    floatPtr(15e-6),
+			expectedCacheRead: floatPtr(0.30e-6),
+		},
+		{
+			name:              "kimi code bare path suffix",
+			model:             "kimi-code/k3",
+			expectedInput:     3e-6,
+			expectedOutput:    floatPtr(15e-6),
+			expectedCacheRead: floatPtr(0.30e-6),
+		},
 		{
 			name:              "kimi k2.6 flagship",
 			model:             "kimi-k2.6",
@@ -704,6 +755,16 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		{name: "doubao text embedding no fallback", model: "doubao-embedding-text-240515", expectNilPricing: true},
 		{name: "hunyuan unknown no fallback", model: "hunyuan-t1", expectNilPricing: true},
 		{name: "moonshot v1 not covered", model: "moonshot-v1-8k", expectNilPricing: true},
+		// bare k3 仅精确/后缀匹配：相似未知型号不得因含 "k3" 误命中。
+		{name: "k3-like unknown no fallback", model: "foo-k3-bar", expectNilPricing: true},
+		// 路径最后一段不是 /k3：foo-k3 不得因 HasSuffix("/k3") 或 Contains 误命中。
+		{name: "path segment not bare k3 no fallback", model: "vendor/foo-k3", expectNilPricing: true},
+		// kimi-k3 非 Contains：kimi-k30 / 内嵌 foo-kimi-k3-bar 不得误命中。
+		{name: "kimi-k30 unknown no fallback", model: "kimi-k30", expectNilPricing: true},
+		{name: "embedded kimi-k3 unknown no fallback", model: "foo-kimi-k3-bar", expectNilPricing: true},
+		// kimi-k3[1m] 是 Claude Code 上下文选择语法，不是 Kimi API 模型 ID，不命中 fallback。
+		{name: "kimi-k3[1m] not an API model id no fallback", model: "kimi-k3[1m]", expectNilPricing: true},
+		{name: "path kimi-k3[1m] not an API model id no fallback", model: "moonshot/kimi-k3[1m]", expectNilPricing: true},
 		// kimi-k2-0905 / kimi-k2-0711 官方未公布独立价，走 kimi-k2 隐性回退（接受）——
 		// 如未来官方公布独立价，需在 getFallbackPricing 加显式分支。
 		{

@@ -73,6 +73,22 @@ server:
     max_upload_buffer_per_stream: 524288
 
 # =============================================================================
+# WebAuthn / Passkey Configuration
+# WebAuthn / Passkey 配置
+# =============================================================================
+# Passkeys require HTTPS in production. The RP ID is the domain only (no scheme
+# or port), while RP origins are exact browser origins.
+# Passkey 在生产环境要求 HTTPS。RP ID 只填写域名（不含协议和端口），RP origins
+# 填写浏览器访问使用的完整 Origin。
+webauthn:
+  enabled: false
+  rp_display_name: "Sub2API"
+  # Example / 示例: "sub2api.example.com"
+  rp_id: ""
+  # Example / 示例: ["https://sub2api.example.com"]
+  rp_origins: []
+
+# =============================================================================
 # Run Mode Configuration
 # 运行模式配置
 # =============================================================================
@@ -127,6 +143,8 @@ security:
       - "api.openai.com"
       - "api.anthropic.com"
       - "api.kimi.com"
+      - "api.moonshot.ai"
+      - "api.moonshot.cn"
       - "open.bigmodel.cn"
       - "api.minimaxi.com"
       - "generativelanguage.googleapis.com"
@@ -405,7 +423,10 @@ gateway:
     fallback_window_seconds: 60
     fallback_ttl_seconds: 600
   # OpenAI Responses SSE 代理断流熔断；按 proxy_id 跨账号隔离，仅影响下一次调度。
+  # 隔离是偏好而非硬闸：当全部候选账号都在被隔离代理下时自动放行（fail-open），
+  # 不会因熔断而返回"无可用账号"。3 秒内的并发断流合并为一次失败事件。
   openai_proxy_stream_circuit:
+    disabled: false
     failure_threshold: 2
     window_seconds: 60
     ttl_seconds: 600

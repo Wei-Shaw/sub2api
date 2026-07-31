@@ -38,6 +38,16 @@ export default {
           maxAccounts: '每用户账号上限',
           maxAccountsHint: '单个用户可持有的未删除自建账号数量软上限。范围 1 – 1000，默认 10。',
         },
+        modelPlaza: {
+          title: '模型广场',
+          description: '以分组为单位向访客展示可用模型与价格的公开页面。默认关闭。',
+          enabled: '启用模型广场',
+          enabledHint: '开启后顶栏显示入口，页面可通过 /model-plaza 独立访问。',
+          requireAuth: '需要登录才可访问',
+          requireAuthHint: '开启后未登录访问将跳转登录页；关闭则公开可见，匿名访客仅展示非专属分组。',
+          priceDescription: '价格说明（Markdown）',
+          priceDescriptionHint: '展示在模型广场页面顶部，可用于说明计费规则、汇率、优惠活动等。',
+        },
         riskControl: {
           title: '风控中心',
           description: '启用内容审计菜单和全端点请求审核入口。默认关闭。',
@@ -135,6 +145,14 @@ export default {
           '请先在环境变量中配置 TOTP_ENCRYPTION_KEY。使用命令 openssl rand -hex 32 生成密钥。'
       },
       security: {
+        passkey: 'Passkey 登录',
+        passkeyHint: '当依赖方配置有效时，允许无密码登录及用户自行管理 Passkey。',
+        passkeyConfigured: 'WebAuthn 依赖方配置有效。',
+        passkeyNotConfigured: '请先配置有效的 RP ID 与允许的 HTTPS 来源，再启用 Passkey 登录。',
+        passkeyRPID: 'RP ID',
+        passkeyOrigins: '允许的 HTTPS 来源',
+        passkeyValueNotConfigured: '未配置',
+        passkeyDeploymentHint: '请由服务器运维在部署配置中将 webauthn.enabled 设为 true，填写 webauthn.rp_id（仅域名）与 webauthn.rp_origins（完整 HTTPS 来源），然后重启服务。',
         stepUp: '敏感操作二次验证 (step-up 2FA)',
         stepUpHint: '开启后，账号/代理导出、备份创建与下载、S3 配置修改、提升管理员等敏感操作需要先完成 TOTP 二次验证（15 分钟内有效）。开启前需本人已启用 2FA；关闭该开关本身也需要二次验证。',
         stepUpEnableRequiresTotp: '开启敏感操作二次验证前，请先在个人资料中为当前账号启用 2FA (TOTP)。',

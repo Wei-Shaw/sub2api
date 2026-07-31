@@ -20,6 +20,7 @@ type SystemSettings struct {
 	FrontendURL                      string
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
+	PasskeyEnabled                   bool // Passkey 登录
 	SessionBindingEnabled            bool // 会话 IP/UA 绑定（变更即失效）
 	StepUpEnabled                    bool // 敏感操作 step-up 2FA 门控
 	AuditLogRetentionDays            int  // 审计日志保留天数（<=0 永久保留）
@@ -194,6 +195,11 @@ type SystemSettings struct {
 	// MaxUserOwnedAccounts soft cap per user (admin-only; not public-injected)
 	MaxUserOwnedAccounts int `json:"max_user_owned_accounts"`
 
+	// Model Plaza feature (public group/model pricing showcase)
+	ModelPlazaEnabled     bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth bool   `json:"model_plaza_require_auth"`
+	ModelPlazaDescription string `json:"model_plaza_description"`
+
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string
@@ -294,6 +300,7 @@ type PublicSettings struct {
 	PasswordResetEnabled             bool
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
+	PasskeyEnabled                   bool
 	LoginAgreementEnabled            bool
 	LoginAgreementMode               string
 	LoginAgreementUpdatedAt          string
@@ -345,6 +352,10 @@ type PublicSettings struct {
 
 	// User-owned accounts feature switch (user-facing "My Accounts")
 	UserOwnedAccountsEnabled bool `json:"user_owned_accounts_enabled"`
+
+	// Model Plaza feature (public group/model pricing showcase)
+	ModelPlazaEnabled     bool `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth bool `json:"model_plaza_require_auth"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`

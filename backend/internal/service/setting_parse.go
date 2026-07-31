@@ -196,6 +196,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyUserOwnedAccountsEnabled: "false",
 		SettingKeyMaxUserOwnedAccounts:     strconv.Itoa(DefaultMaxUserOwnedAccounts),
 
+		// Model plaza feature (default disabled; opt-in, public unless require_auth)
+		SettingKeyModelPlazaEnabled:     "false",
+		SettingKeyModelPlazaRequireAuth: "false",
+		SettingKeyModelPlazaDescription: "",
+
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled:              "false",
 		SettingKeyAffiliateAdminRechargeEnabled: strconv.FormatBool(AdminRechargeRebateEnabledDefault),
@@ -305,6 +310,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		FrontendURL:                      settings[SettingKeyFrontendURL],
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
+		PasskeyEnabled:                   s.passkeySettingEnabled(settings),
 		SessionBindingEnabled:            settings[SettingKeySessionBindingEnabled] == "true", // 默认关闭
 		StepUpEnabled:                    settings[SettingKeyStepUpEnabled] == "true",         // 默认关闭
 		AuditLogRetentionDays:            parseAuditLogRetentionDays(settings[SettingKeyAuditLogRetentionDays]),
@@ -784,6 +790,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// User-owned accounts feature (default: disabled; strict true; max default 10)
 	result.UserOwnedAccountsEnabled = settings[SettingKeyUserOwnedAccountsEnabled] == "true"
 	result.MaxUserOwnedAccounts = parseMaxUserOwnedAccounts(settings[SettingKeyMaxUserOwnedAccounts])
+
+	// Model plaza feature (default: disabled; strict true)
+	result.ModelPlazaEnabled = settings[SettingKeyModelPlazaEnabled] == "true"
+	result.ModelPlazaRequireAuth = settings[SettingKeyModelPlazaRequireAuth] == "true"
+	result.ModelPlazaDescription = settings[SettingKeyModelPlazaDescription]
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"

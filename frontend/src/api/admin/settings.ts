@@ -372,6 +372,10 @@ export interface SystemSettings {
   invitation_code_enabled: boolean;
   totp_enabled: boolean; // TOTP 双因素认证
   totp_encryption_key_configured: boolean; // TOTP 加密密钥是否已配置
+  passkey_enabled: boolean;
+  passkey_configured: boolean;
+  passkey_rp_id: string;
+  passkey_rp_origins: string[];
   session_binding_enabled: boolean; // 会话 IP/UA 绑定
   step_up_enabled: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days: number; // 审计日志保留天数
@@ -675,6 +679,11 @@ export interface SystemSettings {
   user_owned_accounts_enabled: boolean;
   max_user_owned_accounts: number;
 
+  // Model Plaza feature switches + description
+  model_plaza_enabled: boolean;
+  model_plaza_require_auth: boolean;
+  model_plaza_description: string;
+
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
 
@@ -694,6 +703,7 @@ export interface UpdateSettingsRequest {
   frontend_url?: string;
   invitation_code_enabled?: boolean;
   totp_enabled?: boolean; // TOTP 双因素认证
+  passkey_enabled?: boolean;
   session_binding_enabled?: boolean; // 会话 IP/UA 绑定
   step_up_enabled?: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days?: number; // 审计日志保留天数
@@ -955,6 +965,11 @@ export interface UpdateSettingsRequest {
   // User-owned accounts feature switch + soft cap
   user_owned_accounts_enabled?: boolean;
   max_user_owned_accounts?: number;
+
+  // Model Plaza feature switches + description
+  model_plaza_enabled?: boolean;
+  model_plaza_require_auth?: boolean;
+  model_plaza_description?: string;
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;

@@ -179,7 +179,8 @@ const (
 	settingKeyForwardedClientIPModeV2   = "forwarded_client_ip_mode_v2_migrated"
 
 	// TOTP 双因素认证设置
-	SettingKeyTotpEnabled = "totp_enabled" // 是否启用 TOTP 2FA 功能
+	SettingKeyTotpEnabled    = "totp_enabled"    // 是否启用 TOTP 2FA 功能
+	SettingKeyPasskeyEnabled = "passkey_enabled" // 是否启用 Passkey 登录（仍要求有效的 WebAuthn 部署配置）
 
 	// 会话安全设置
 	SettingKeySessionBindingEnabled = "session_binding_enabled" // 会话 IP/UA 绑定（变更即失效），默认关闭
@@ -405,6 +406,20 @@ const (
 	// SettingKeyMaxUserOwnedAccounts is the soft cap on active (non-deleted) user-owned
 	// accounts per user. Admin-only; not injected into public settings. Default 10.
 	SettingKeyMaxUserOwnedAccounts = "max_user_owned_accounts"
+
+	// SettingKeyModelPlazaEnabled is a DB-backed soft switch for the Model Plaza page
+	// (public group/model pricing showcase). When false: the plaza endpoint returns 404
+	// and the header entry is hidden. Defaults to false (opt-in feature).
+	SettingKeyModelPlazaEnabled = "model_plaza_enabled"
+
+	// SettingKeyModelPlazaRequireAuth controls whether the Model Plaza page requires a
+	// logged-in user. When false the page is public and anonymous visitors see only
+	// non-exclusive groups.
+	SettingKeyModelPlazaRequireAuth = "model_plaza_require_auth"
+
+	// SettingKeyModelPlazaDescription stores the Markdown blurb rendered at the top of
+	// the Model Plaza page (global pricing notes, exchange rate, promotions, ...).
+	SettingKeyModelPlazaDescription = "model_plaza_description"
 
 	// SettingKeyUpstreamBillingProbeSettings stores the global enable switch and interval
 	// for probing remote Sub2API API-key billing metadata.

@@ -45,7 +45,9 @@ func (s *userRepoStubForGroupUpdate) GetByEmail(context.Context, string) (*User,
 func (s *userRepoStubForGroupUpdate) GetFirstAdmin(context.Context) (*User, error) {
 	panic("unexpected")
 }
-func (s *userRepoStubForGroupUpdate) Update(context.Context, *User) error { panic("unexpected") }
+func (s *userRepoStubForGroupUpdate) Update(context.Context, *User, UserUpdateFields) error {
+	panic("unexpected")
+}
 func (s *userRepoStubForGroupUpdate) Delete(context.Context, int64) error { panic("unexpected") }
 func (s *userRepoStubForGroupUpdate) GetUserAvatar(context.Context, int64) (*UserAvatar, error) {
 	panic("unexpected")
@@ -67,6 +69,14 @@ func (s *userRepoStubForGroupUpdate) UpdateBalance(context.Context, int64, float
 }
 func (s *userRepoStubForGroupUpdate) DeductBalance(context.Context, int64, float64) error {
 	panic("unexpected")
+}
+
+func (s *userRepoStubForGroupUpdate) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (s *userRepoStubForGroupUpdate) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
 }
 func (s *userRepoStubForGroupUpdate) UpdateConcurrency(context.Context, int64, int) error {
 	panic("unexpected")
@@ -134,7 +144,7 @@ func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*API
 	clone := *s.key
 	return &clone, nil
 }
-func (s *apiKeyRepoStubForGroupUpdate) Update(_ context.Context, key *APIKey) error {
+func (s *apiKeyRepoStubForGroupUpdate) Update(_ context.Context, key *APIKey, _ APIKeyUpdateFields) error {
 	if s.updateErr != nil {
 		return s.updateErr
 	}
