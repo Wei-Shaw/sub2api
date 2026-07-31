@@ -199,7 +199,7 @@ export async function exportData(options?: {
   if (options?.ids && options.ids.length > 0) {
     params.ids = options.ids.join(',')
   }
-  const { data } = await apiClient.get<UserAccountDataPayload>('/user/accounts/data', { params })
+  const { data } = await apiClient.get<UserAccountDataPayload>('/user/accounts/export', { params })
   return data
 }
 
@@ -207,7 +207,7 @@ export async function exportData(options?: {
 export async function importData(payload: {
   data: UserAccountDataPayload
 }): Promise<UserAccountDataImportResult> {
-  const { data } = await apiClient.post<UserAccountDataImportResult>('/user/accounts/data', {
+  const { data } = await apiClient.post<UserAccountDataImportResult>('/user/accounts/import', {
     data: payload.data
   })
   return data

@@ -49,8 +49,9 @@ func RegisterUserRoutes(
 					// 批量 / 数据路由须在 /:id 之前注册，避免被当成 id
 					accounts.POST("/batch-delete", h.UserAccount.BatchDelete)
 					accounts.POST("/batch-set-schedulable", h.UserAccount.BatchSetSchedulable)
-					accounts.GET("/data", h.UserAccount.ExportData)
-					accounts.POST("/data", h.UserAccount.ImportData)
+					// 使用 /export|/import 而非 /data，避免部分运行时把 "data" 匹配进 /:id
+					accounts.GET("/export", h.UserAccount.ExportData)
+					accounts.POST("/import", h.UserAccount.ImportData)
 					accounts.GET("/:id", h.UserAccount.Get)
 					accounts.PATCH("/:id", h.UserAccount.Update)
 					accounts.PUT("/:id/visibility", h.UserAccount.SetVisibility)

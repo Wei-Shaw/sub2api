@@ -246,7 +246,7 @@ func (h *UserAccountHandler) BatchSetSchedulable(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// ExportData GET /api/v1/user/accounts/data?ids=1,2,3
+// ExportData GET /api/v1/user/accounts/export?ids=1,2,3
 // 仅导出本人账号；不含代理。
 func (h *UserAccountHandler) ExportData(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
@@ -267,12 +267,12 @@ func (h *UserAccountHandler) ExportData(c *gin.Context) {
 	response.Success(c, payload)
 }
 
-// ImportDataRequest POST /api/v1/user/accounts/data
+// ImportDataRequest POST /api/v1/user/accounts/import
 type ImportDataRequest struct {
 	Data service.UserAccountDataPayload `json:"data"`
 }
 
-// ImportData POST /api/v1/user/accounts/data
+// ImportData POST /api/v1/user/accounts/import
 // 导入为本人自建账号（忽略 proxies；分组由 Ensure 私有组自动处理）。
 func (h *UserAccountHandler) ImportData(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
