@@ -1266,6 +1266,7 @@ REDACTEDREDACTED
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 	decision, err := moderationSvc.Check(context.Background(), service.ContentModerationCheckInput{
 		UserID:   1,
