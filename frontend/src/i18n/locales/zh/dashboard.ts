@@ -575,7 +575,8 @@ export default {
     reasons: {
       planProbeFailed: '套餐探测失败',
       planProbeUnsupported: '该类型不支持公用探测',
-      planEmpty: '上游档位未知'
+      planEmpty: '上游档位未知且无匹配的空档位共享池',
+      noSharePoolMatch: '没有匹配的共享池分组'
     },
     form: {
       name: '名称',

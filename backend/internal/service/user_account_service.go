@@ -48,6 +48,8 @@ const (
 	VisibilityReasonPlanProbeFailed      = "plan_probe_failed"
 	VisibilityReasonPlanProbeUnsupported = "plan_probe_unsupported"
 	VisibilityReasonPlanEmpty            = "plan_empty"
+	// VisibilityReasonNoSharePoolMatch 请求 public 但无匹配共享池组（含空档位无空档位共享池）。
+	VisibilityReasonNoSharePoolMatch = "no_share_pool_match"
 )
 
 // UserAccountService 用户自建上游账号 CRUD + visibility（与 Admin API 分离）。
@@ -282,23 +284,30 @@ func (s *userAccountService) Create(ctx context.Context, userID int64, input *Cr
 		created = reloaded
 	}
 
-	// 若用户请求 public 且 plan 非空 → Tx2 升 public + recompute
+	// 请求 public：尝试升 public；无匹配共享池则强制 private（含空档位空对空）
 	wantPublic := strings.EqualFold(strings.TrimSpace(input.Visibility), VisibilityPublic) && forcePrivateReason == ""
-	plan := strings.TrimSpace(created.UpstreamPlan)
-	if wantPublic && plan != "" {
+	if wantPublic {
 		if err := s.promoteToPublic(ctx, created); err != nil {
 			slog.Error("user_account_create_promote_public_failed",
 				"account_id", created.ID,
 				"user_id", userID,
 				"error", err.Error(),
 			)
-			// 账号已存在且保持 private；返回当前态 + reason（禁止假 public）
 			visibilityReason = VisibilityReasonPlanProbeFailed
 		} else if reloaded, err := s.accountRepo.GetByID(ctx, created.ID); err == nil && reloaded != nil {
 			created = reloaded
 		}
-	} else if wantPublic && plan == "" {
-		visibilityReason = VisibilityReasonPlanProbeFailed
+		if reason, demoteErr := s.demotePublicIfNoSharePoolMatch(ctx, created); demoteErr != nil {
+			slog.Error("user_account_create_demote_no_pool_failed",
+				"account_id", created.ID,
+				"error", demoteErr.Error(),
+			)
+		} else if reason != "" {
+			visibilityReason = reason
+			if reloaded, err := s.accountRepo.GetByID(ctx, created.ID); err == nil && reloaded != nil {
+				created = reloaded
+			}
+		}
 	}
 
 	if visibilityReason != "" {
@@ -400,7 +409,7 @@ func (s *userAccountService) Delete(ctx context.Context, userID, accountID int64
 	return s.accountRepo.Delete(ctx, accountID)
 }
 
-// SetVisibility private ↔ public；升 public 时 Ensure 私有组；无 plan 强制 private。
+// SetVisibility private ↔ public；升 public 时 Ensure 私有组；无匹配共享池则强制 private。
 func (s *userAccountService) SetVisibility(ctx context.Context, userID, accountID int64, visibility string) (*Account, error) {
 	if err := s.requireFeatureEnabled(ctx); err != nil {
 		return nil, err
@@ -435,16 +444,29 @@ func (s *userAccountService) SetVisibility(ctx context.Context, userID, accountI
 					s.privateGroups.AfterCommit(ctx, prov)
 				}
 			}
-			// 若 plan 空：尝试从 credentials 提取
+			// 若 plan 空：尝试从 credentials 提取（成功则按有档位匹配）
 			if strings.TrimSpace(account.UpstreamPlan) == "" {
 				_ = ApplyProbedPlanFromCredentials(ctx, s.accountRepo, s.recomputer, account)
 				if reloaded, gerr := s.accountRepo.GetByID(ctx, account.ID); gerr == nil && reloaded != nil {
 					account = reloaded
 				}
 			}
+			// 空档位仍允许尝试 public，靠空==空匹配共享池；无匹配则下方 demote
+		}
+	}
+
+	if visibility == VisibilityPublic && reason == "" {
+		// 先校验是否存在可匹配共享池，避免假 public
+		n, cerr := s.countSharePoolMatches(ctx, account)
+		if cerr != nil {
+			return nil, cerr
+		}
+		if n == 0 {
+			visibility = VisibilityPrivate
 			if strings.TrimSpace(account.UpstreamPlan) == "" {
-				visibility = VisibilityPrivate
 				reason = VisibilityReasonPlanEmpty
+			} else {
+				reason = VisibilityReasonNoSharePoolMatch
 			}
 		}
 	}
@@ -473,6 +495,57 @@ func (s *userAccountService) SetVisibility(ctx context.Context, userID, accountI
 		"visibility_reason", reason,
 	)
 	return out, nil
+}
+
+// demotePublicIfNoSharePoolMatch 若当前为 public 且无可匹配共享池，强制 private 并 recompute。
+func (s *userAccountService) demotePublicIfNoSharePoolMatch(ctx context.Context, account *Account) (string, error) {
+	if account == nil || account.Visibility != VisibilityPublic {
+		return "", nil
+	}
+	n, err := s.countSharePoolMatches(ctx, account)
+	if err != nil {
+		return "", err
+	}
+	if n > 0 {
+		return "", nil
+	}
+	account.Visibility = VisibilityPrivate
+	if err := s.accountRepo.Update(ctx, account); err != nil {
+		return "", err
+	}
+	if s.recomputer != nil {
+		if err := s.recomputer.RecomputeManagedLinks(ctx, account); err != nil {
+			return "", err
+		}
+	}
+	if strings.TrimSpace(account.UpstreamPlan) == "" {
+		return VisibilityReasonPlanEmpty, nil
+	}
+	return VisibilityReasonNoSharePoolMatch, nil
+}
+
+func (s *userAccountService) countSharePoolMatches(ctx context.Context, account *Account) (int, error) {
+	if s == nil || account == nil {
+		return 0, nil
+	}
+	if s.recomputer != nil {
+		return s.recomputer.CountSharePoolMatches(ctx, account)
+	}
+	if s.groupRepo == nil {
+		return 0, nil
+	}
+	matches, err := s.groupRepo.ListSharePoolMatches(ctx, account.Platform, account.UpstreamPlan)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for i := range matches {
+		g := &matches[i]
+		if isSharePoolCandidate(g) && plansMatchForSharePool(account.UpstreamPlan, g.UpstreamPlan) {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (s *userAccountService) getOwned(ctx context.Context, userID, accountID int64) (*Account, error) {

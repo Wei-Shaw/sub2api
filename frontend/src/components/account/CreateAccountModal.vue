@@ -4672,7 +4672,9 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
               ? t('myAccounts.reasons.planProbeUnsupported')
               : created.visibility_reason === 'plan_empty'
                 ? t('myAccounts.reasons.planEmpty')
-                : created.visibility_reason
+                : created.visibility_reason === 'no_share_pool_match'
+                  ? t('myAccounts.reasons.noSharePoolMatch')
+                  : created.visibility_reason
         appStore.showSuccess(t('myAccounts.createSuccessForcedPrivate', { reason: reasonText }))
       } else {
         appStore.showSuccess(t('myAccounts.createSuccess'))

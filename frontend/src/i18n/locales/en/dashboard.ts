@@ -570,7 +570,8 @@ export default {
     reasons: {
       planProbeFailed: 'plan probe failed',
       planProbeUnsupported: 'type does not support public plan probe',
-      planEmpty: 'upstream plan unknown'
+      planEmpty: 'upstream plan unknown and no empty-plan share-pool group',
+      noSharePoolMatch: 'no matching share-pool group'
     },
     form: {
       name: 'Name',

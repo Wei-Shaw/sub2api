@@ -231,6 +231,7 @@ function visibilityReasonLabel(reason: string): string {
   if (reason === 'plan_probe_failed') return t('myAccounts.reasons.planProbeFailed')
   if (reason === 'plan_probe_unsupported') return t('myAccounts.reasons.planProbeUnsupported')
   if (reason === 'plan_empty') return t('myAccounts.reasons.planEmpty')
+  if (reason === 'no_share_pool_match') return t('myAccounts.reasons.noSharePoolMatch')
   return reason
 }
 

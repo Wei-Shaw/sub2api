@@ -1979,19 +1979,25 @@ func (r *accountRepository) ListOwnerAccountsBoundToGroup(ctx context.Context, g
 }
 
 // ListPublicOwnerAccountsByPlatformPlan 扫描 public + platform + plan 严格匹配的用户自建号。
+// plan 空表示匹配无档位账号（upstream_plan 为空或 NULL）。
 func (r *accountRepository) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*service.Account, error) {
 	platform = strings.TrimSpace(platform)
 	plan = strings.TrimSpace(plan)
-	if platform == "" || plan == "" {
+	if platform == "" {
 		return []*service.Account{}, nil
 	}
+	preds := []dbpredicate.Account{
+		dbaccount.OwnerUserIDNotNil(),
+		dbaccount.VisibilityEQ(service.VisibilityPublic),
+		dbaccount.PlatformEQ(platform),
+	}
+	if plan == "" {
+		preds = append(preds, dbaccount.Or(dbaccount.UpstreamPlanIsNil(), dbaccount.UpstreamPlanEQ("")))
+	} else {
+		preds = append(preds, dbaccount.UpstreamPlanEQ(plan))
+	}
 	entAccounts, err := r.client.Account.Query().
-		Where(
-			dbaccount.OwnerUserIDNotNil(),
-			dbaccount.VisibilityEQ(service.VisibilityPublic),
-			dbaccount.PlatformEQ(platform),
-			dbaccount.UpstreamPlanEQ(plan),
-		).
+		Where(preds...).
 		All(ctx)
 	if err != nil {
 		return nil, err

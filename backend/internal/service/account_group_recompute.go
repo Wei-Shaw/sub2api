@@ -140,14 +140,16 @@ func (r *AccountGroupRecomputer) OnSharePoolGroupChange(ctx context.Context, bef
 	affected := uniqueAccountsByID(boundOwnerAccounts, absorbCandidates)
 
 	if before != nil && after != nil {
-		if before.Platform != after.Platform && strings.TrimSpace(before.UpstreamPlan) != "" {
+		// 平台变更：旧平台+旧档位（含空档位）上的 public 号需 recompute
+		if before.Platform != after.Platform {
 			extra, err := r.accountRepo.ListPublicOwnerAccountsByPlatformPlan(ctx, before.Platform, before.UpstreamPlan)
 			if err != nil {
 				return fmt.Errorf("list public owner accounts for platform change: %w", err)
 			}
 			affected = uniqueAccountsByID(affected, extra)
 		}
-		if before.UpstreamPlan != after.UpstreamPlan && before.IsSharePool && strings.TrimSpace(before.UpstreamPlan) != "" {
+		// 档位变更（含变为空/从空变有）：旧 plan 上的 public 号需 recompute
+		if normalizeUpstreamPlanForMatch(before.UpstreamPlan) != normalizeUpstreamPlanForMatch(after.UpstreamPlan) && before.IsSharePool {
 			extra, err := r.accountRepo.ListPublicOwnerAccountsByPlatformPlan(ctx, before.Platform, before.UpstreamPlan)
 			if err != nil {
 				return fmt.Errorf("list public owner accounts for plan change: %w", err)
@@ -169,6 +171,7 @@ func (r *AccountGroupRecomputer) OnSharePoolGroupChange(ctx context.Context, bef
 }
 
 // isSharePoolCandidate 与共享池匹配谓词一致（不含 platform 上下文，由调用方保证）。
+// 空 upstream_plan 仍可为候选：与账号空档位按「空==空」匹配（见 desiredManaged）。
 func isSharePoolCandidate(g *Group) bool {
 	if g == nil {
 		return false
@@ -182,10 +185,17 @@ func isSharePoolCandidate(g *Group) bool {
 	if IsPrivateGroupName(g.Name) {
 		return false
 	}
-	if strings.TrimSpace(g.UpstreamPlan) == "" {
-		return false
-	}
 	return true
+}
+
+// normalizeUpstreamPlanForMatch 档位匹配用规范化（trim；空串表示无档位）。
+func normalizeUpstreamPlanForMatch(plan string) string {
+	return strings.TrimSpace(plan)
+}
+
+// plansMatchForSharePool 平台档位严格相等，含「双方都空」。
+func plansMatchForSharePool(accountPlan, groupPlan string) bool {
+	return normalizeUpstreamPlanForMatch(accountPlan) == normalizeUpstreamPlanForMatch(groupPlan)
 }
 
 // desiredManaged 返回应存在的 managed group ID 集合（K18：Get only，无 Ensure）。
@@ -212,7 +222,8 @@ func (r *AccountGroupRecomputer) desiredManaged(ctx context.Context, account *Ac
 		out[private.ID] = struct{}{}
 	}
 
-	if account.Visibility != VisibilityPublic || strings.TrimSpace(account.UpstreamPlan) == "" {
+	// public：按 platform + plan 严格匹配共享池（空档位可匹配空档位组）
+	if account.Visibility != VisibilityPublic {
 		return out, nil
 	}
 	matches, err := r.groupRepo.ListSharePoolMatches(ctx, account.Platform, account.UpstreamPlan)
@@ -220,11 +231,31 @@ func (r *AccountGroupRecomputer) desiredManaged(ctx context.Context, account *Ac
 		return nil, fmt.Errorf("list share pool matches: %w", err)
 	}
 	for i := range matches {
-		if isSharePoolCandidate(&matches[i]) {
-			out[matches[i].ID] = struct{}{}
+		g := &matches[i]
+		if isSharePoolCandidate(g) && plansMatchForSharePool(account.UpstreamPlan, g.UpstreamPlan) {
+			out[g.ID] = struct{}{}
 		}
 	}
 	return out, nil
+}
+
+// CountSharePoolMatches 统计当前账号在 public 语义下可匹配的共享池组数量（不含私有组）。
+func (r *AccountGroupRecomputer) CountSharePoolMatches(ctx context.Context, account *Account) (int, error) {
+	if r == nil || r.groupRepo == nil || account == nil {
+		return 0, nil
+	}
+	matches, err := r.groupRepo.ListSharePoolMatches(ctx, account.Platform, account.UpstreamPlan)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for i := range matches {
+		g := &matches[i]
+		if isSharePoolCandidate(g) && plansMatchForSharePool(account.UpstreamPlan, g.UpstreamPlan) {
+			n++
+		}
+	}
+	return n, nil
 }
 
 // currentManagedIDs 过滤当前绑定中仍属 managed 谓词的链接。

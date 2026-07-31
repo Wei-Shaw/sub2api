@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -205,11 +206,15 @@ func (r *recomputeGroupRepo) ListByIDs(_ context.Context, ids []int64) ([]Group,
 
 func (r *recomputeGroupRepo) ListSharePoolMatches(_ context.Context, platform, plan string) ([]Group, error) {
 	out := make([]Group, 0)
+	plan = strings.TrimSpace(plan)
 	for _, g := range r.byID {
 		if !g.IsSharePool || g.IsExclusive || g.Status != StatusActive {
 			continue
 		}
-		if g.Platform != platform || g.UpstreamPlan != plan {
+		if g.Platform != platform {
+			continue
+		}
+		if strings.TrimSpace(g.UpstreamPlan) != plan {
 			continue
 		}
 		if IsPrivateGroupName(g.Name) {
@@ -436,7 +441,8 @@ func TestOnSharePoolGroupChange_ForcedUnlinkEvenIfRecomputeIsNoop(t *testing.T) 
 
 func TestIsSharePoolCandidate(t *testing.T) {
 	require.False(t, isSharePoolCandidate(nil))
-	require.False(t, isSharePoolCandidate(&Group{IsSharePool: true, Status: StatusActive})) // plan empty
+	// 空档位共享池仍是候选（空==空匹配）
+	require.True(t, isSharePoolCandidate(&Group{IsSharePool: true, Status: StatusActive, Name: "pool-empty"}))
 	require.False(t, isSharePoolCandidate(&Group{IsSharePool: true, UpstreamPlan: "plus", Status: StatusDisabled}))
 	require.False(t, isSharePoolCandidate(&Group{IsSharePool: true, UpstreamPlan: "plus", Status: StatusActive, IsExclusive: true}))
 	require.False(t, isSharePoolCandidate(&Group{
@@ -446,4 +452,42 @@ func TestIsSharePoolCandidate(t *testing.T) {
 	require.True(t, isSharePoolCandidate(&Group{
 		IsSharePool: true, UpstreamPlan: "plus", Status: StatusActive, Name: "pool",
 	}))
+}
+
+func TestDesiredManaged_EmptyPlanMatchesEmptySharePool(t *testing.T) {
+	owner := int64(11)
+	private := &Group{
+		ID: 101, Name: PrivateGroupName(owner, PlatformAntigravity), Platform: PlatformAntigravity,
+		IsExclusive: true, Status: StatusActive,
+	}
+	emptyPool := &Group{
+		ID: 201, Name: "ag-empty-pool", Platform: PlatformAntigravity,
+		IsSharePool: true, UpstreamPlan: "", Status: StatusActive,
+	}
+	proPool := &Group{
+		ID: 202, Name: "ag-pro-pool", Platform: PlatformAntigravity,
+		IsSharePool: true, UpstreamPlan: "g1-pro-tier", Status: StatusActive,
+	}
+	acc := &Account{
+		ID: 50, OwnerUserID: &owner, Platform: PlatformAntigravity,
+		Visibility: VisibilityPublic, UpstreamPlan: "",
+		GroupIDs: []int64{101},
+	}
+	accountRepo := newRecomputeAccountRepo(acc)
+	groupRepo := newRecomputeGroupRepo(private, emptyPool, proPool)
+	rec := NewAccountGroupRecomputer(accountRepo, groupRepo)
+
+	err := rec.RecomputeManagedLinks(context.Background(), acc)
+	require.NoError(t, err)
+	require.Contains(t, accountRepo.bindings[50], int64(101), "private kept")
+	require.Contains(t, accountRepo.bindings[50], int64(201), "empty plan share pool matched")
+	require.NotContains(t, accountRepo.bindings[50], int64(202), "pro pool not matched for empty plan")
+}
+
+func TestPlansMatchForSharePool(t *testing.T) {
+	require.True(t, plansMatchForSharePool("", ""))
+	require.True(t, plansMatchForSharePool("  ", ""))
+	require.True(t, plansMatchForSharePool("plus", "plus"))
+	require.False(t, plansMatchForSharePool("", "plus"))
+	require.False(t, plansMatchForSharePool("plus", ""))
 }

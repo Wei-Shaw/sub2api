@@ -10,6 +10,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -719,23 +720,30 @@ func (r *groupRepository) ListByIDs(ctx context.Context, ids []int64) ([]service
 	return r.attachAccountCounts(ctx, groups)
 }
 
-// ListSharePoolMatches 返回 platform+plan 匹配的活跃共享池组（排除 private-* / exclusive / plan 空）。
+// ListSharePoolMatches 返回 platform+plan 匹配的活跃共享池组（排除 private-* / exclusive）。
+// plan 空字符串表示匹配「无档位」组（upstream_plan 为空或 NULL）。
 func (r *groupRepository) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]service.Group, error) {
 	platform = strings.TrimSpace(platform)
 	plan = strings.TrimSpace(plan)
-	if platform == "" || plan == "" {
+	if platform == "" {
 		return []service.Group{}, nil
 	}
 	client := clientFromContext(ctx, r.client)
+	preds := []predicate.Group{
+		group.PlatformEQ(platform),
+		group.IsSharePoolEQ(true),
+		group.IsExclusiveEQ(false),
+		group.StatusEQ(service.StatusActive),
+		group.Not(group.NameHasPrefix("private-")),
+	}
+	if plan == "" {
+		// 空档位：NULL 或 ""
+		preds = append(preds, group.Or(group.UpstreamPlanIsNil(), group.UpstreamPlanEQ("")))
+	} else {
+		preds = append(preds, group.UpstreamPlanEQ(plan))
+	}
 	groups, err := client.Group.Query().
-		Where(
-			group.PlatformEQ(platform),
-			group.UpstreamPlanEQ(plan),
-			group.IsSharePoolEQ(true),
-			group.IsExclusiveEQ(false),
-			group.StatusEQ(service.StatusActive),
-			group.Not(group.NameHasPrefix("private-")),
-		).
+		Where(preds...).
 		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
 		All(ctx)
 	if err != nil {
