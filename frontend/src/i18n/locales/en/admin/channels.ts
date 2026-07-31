@@ -623,7 +623,9 @@ export default {
       quotaEndsInMinutes: 'Quota ends in {minutesREDACTEDm',
       quotaEndsInHoursMinutes: 'Quota ends in {hoursREDACTEDh {minutesREDACTEDm',
       quotaEndsInDaysHours: 'Quota ends in {daysREDACTEDd {hoursREDACTEDh',
-      daysRemaining: 'days remaining',
+      daysRemaining: '{daysREDACTED days remaining',
+      hoursMinutesRemaining: '{hoursREDACTEDh {minutesREDACTEDm remaining',
+      minutesRemaining: '{minutesREDACTEDm remaining',
       remainingDays: 'Remaining days',
       noExpiration: 'No expiration',
       status: {
