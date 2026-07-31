@@ -27,6 +27,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/embeddings", EndpointEmbeddings},
 		{"/v1/alpha/search", EndpointAlphaSearch},
 		{"/v1/responses", EndpointResponses},
+		{"/v1/responses/input_tokens", EndpointResponsesInputTokens},
 		{"/v1/responses/compact", EndpointResponsesCompact},
 		{"/v1/responses/compact/detail", EndpointResponsesCompact},
 		{"/v1/images/generations", EndpointImagesGenerations},
@@ -39,6 +40,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		// Prefixed paths (antigravity, openai) — root Responses.
 		{"/antigravity/v1/messages", EndpointMessages},
 		{"/openai/v1/responses", EndpointResponses},
+		{"/openai/v1/responses/input_tokens", EndpointResponsesInputTokens},
 		{"/openai/v1/images/generations", EndpointImagesGenerations},
 		{"/openai/v1/images/edits", EndpointImagesEdits},
 		{"/antigravity/v1beta/models/gemini:generateContent", EndpointGeminiModels},
@@ -50,6 +52,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 
 		// Bare top-level alias route "/responses" — root vs. compact.
 		{"/responses", EndpointResponses},
+		{"/responses/input_tokens", EndpointResponsesInputTokens},
 		{"/responses/compact", EndpointResponsesCompact},
 		{"/responses/compact/detail", EndpointResponsesCompact},
 		{"/alpha/search", EndpointAlphaSearch},
@@ -57,6 +60,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 
 		// Bare Codex direct alias route — root vs. compact.
 		{"/backend-api/codex/responses", EndpointResponses},
+		{"/backend-api/codex/responses/input_tokens", EndpointResponsesInputTokens},
 		{"/backend-api/codex/responses/compact", EndpointResponsesCompact},
 		{"/backend-api/codex/responses/compact/detail", EndpointResponsesCompact},
 		{"/backend-api/codex/alpha/search", EndpointAlphaSearch},
@@ -100,6 +104,9 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 
 		// OpenAI — root Responses.
 		{"openai responses root", EndpointResponses, "/v1/responses", service.PlatformOpenAI, EndpointResponses},
+		{"openai responses input tokens", EndpointResponsesInputTokens, "/v1/responses/input_tokens", service.PlatformOpenAI, EndpointResponsesInputTokens},
+		{"openai bare responses input tokens", EndpointResponsesInputTokens, "/responses/input_tokens", service.PlatformOpenAI, EndpointResponsesInputTokens},
+		{"openai codex direct input tokens", EndpointResponsesInputTokens, "/backend-api/codex/responses/input_tokens", service.PlatformOpenAI, EndpointResponsesInputTokens},
 
 		// OpenAI — compact, raw path carries the derivable "/compact"
 		// (or nested) suffix, which must be preserved on the upstream
@@ -245,12 +252,15 @@ func TestResponsesSubpathSuffix(t *testing.T) {
 		{"/v1/responses", ""},
 		{"/v1/responses/", ""},
 		{"/v1/responses/compact", "/compact"},
+		{"/v1/responses/input_tokens", "/input_tokens"},
 		{"/openai/v1/responses/compact/detail", "/compact/detail"},
 		{"/responses", ""},
 		{"/responses/compact", "/compact"},
+		{"/responses/input_tokens", "/input_tokens"},
 		{"/responses/compact/detail", "/compact/detail"},
 		{"/backend-api/codex/responses", ""},
 		{"/backend-api/codex/responses/compact", "/compact"},
+		{"/backend-api/codex/responses/input_tokens", "/input_tokens"},
 		{"/backend-api/codex/responses/compact/detail", "/compact/detail"},
 		{"/v1/messages", ""},
 		{"", ""},

@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -53,6 +54,129 @@ func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 	setOpsRequestContext(c, parsedReq.Model, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(false, false)))
 	c.JSON(http.StatusOK, gin.H{"input_tokens": estimated})
+}
+
+// InputTokens handles OpenAI-compatible POST /v1/responses/input_tokens.
+// It deliberately selects and calls only one account: token counting is an
+// auxiliary request and must not fan out across accounts or mutate account
+// scheduling state when an OAuth upstream rejects the endpoint.
+func (h *OpenAIGatewayHandler) InputTokens(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
+
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
+		return
+	}
+	reqLog := requestLogger(
+		c,
+		"handler.openai_gateway.input_tokens",
+		zap.Int64("user_id", subject.UserID),
+		zap.Int64("api_key_id", apiKey.ID),
+		zap.Any("group_id", apiKey.GroupID),
+	)
+	if !h.ensureResponsesDependencies(c, reqLog) {
+		return
+	}
+
+	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	if err != nil {
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+			return
+		}
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		return
+	}
+	if len(body) == 0 {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
+		return
+	}
+	if !gjson.ValidBytes(body) {
+		logRequestBodyParseFailure(reqLog, body, nil)
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+	}
+
+	modelResult := gjson.GetBytes(body, "model")
+	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		return
+	}
+	reqModel := modelResult.String()
+	ensureCompositeTargetPlatform(c, apiKey, reqModel)
+	if !compositeTargetPlatformAllowed(c, apiKey, reqModel, service.PlatformOpenAI) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI endpoint for composite groups")
+		return
+	}
+
+	reqLog = reqLog.With(zap.String("model", reqModel))
+	setOpsRequestContext(c, reqModel, false)
+	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
+
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+
+	subscription, _ := middleware2.GetSubscriptionFromContext(c)
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+		reqLog.Info("openai_input_tokens.billing_eligibility_check_failed", zap.Error(err))
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.errorResponse(c, status, code, message)
+		return
+	}
+
+	requestStart := time.Now()
+	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
+	routingModel := service.NormalizeOpenAICompatRequestedModel(reqModel)
+	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
+		c.Request.Context(),
+		apiKey.GroupID,
+		"",
+		sessionHash,
+		routingModel,
+		nil,
+		service.OpenAIUpstreamTransportAny,
+		service.OpenAIEndpointCapabilityResponses,
+		false,
+		false,
+		false,
+		service.PlatformOpenAI,
+	)
+	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
+	if err != nil {
+		reqLog.Warn("openai_input_tokens.account_select_failed", zap.Error(openAICompatibleSelectionErrorForLog(err, service.PlatformOpenAI)))
+		cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, routingModel, reqModel)
+		if !cls.ModelNotFound {
+			markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+		}
+		h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
+		return
+	}
+	if selection == nil || selection.Account == nil {
+		cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, routingModel, reqModel)
+		if !cls.ModelNotFound {
+			markOpsRoutingCapacityLimited(c)
+		}
+		h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
+		return
+	}
+
+	account := selection.Account
+	setOpsSelectedAccount(c, account.ID, account.Platform)
+	if selection.Acquired && selection.ReleaseFunc != nil {
+		defer selection.ReleaseFunc()
+	}
+
+	if err := h.gatewayService.ForwardInputTokens(c.Request.Context(), c, account, forwardBody); err != nil {
+		reqLog.Warn("openai_input_tokens.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+	}
 }
 
 // CountTokens handles Anthropic-compatible POST /v1/messages/count_tokens for OpenAI groups.
