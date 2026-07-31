@@ -8,10 +8,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
 // ChannelMonitorRepository 渠道监控数据访问接口。
@@ -63,8 +60,11 @@ type ChannelMonitorRepository interface {
 
 // ChannelMonitorService 渠道监控管理服务。
 type ChannelMonitorService struct {
-	repo      ChannelMonitorRepository
-	encryptor SecretEncryptor
+	repo          ChannelMonitorRepository
+	encryptor     SecretEncryptor
+	apiKeyRepo    APIKeyRepository
+	gateway       anthropicGroupProbeGateway
+	openAIGateway openAIGroupProbeGateway
 	// scheduler 由 wire 通过 SetScheduler 注入；CRUD 后调用对应钩子即时同步任务。
 	// 测试或未注入场景下保持 nil，所有钩子调用变为 no-op。
 	scheduler MonitorScheduler
@@ -81,6 +81,13 @@ const ChannelMonitorDuplicateOperationIDMetadataKey = "sub2api:duplicate_operati
 // NewChannelMonitorService 创建渠道监控服务实例。
 func NewChannelMonitorService(repo ChannelMonitorRepository, encryptor SecretEncryptor) *ChannelMonitorService {
 	return &ChannelMonitorService{repo: repo, encryptor: encryptor}
+}
+
+// SetGroupAccountProbeDependencies injects optional dependencies for scheduler-backed group probing.
+func (s *ChannelMonitorService) SetGroupAccountProbeDependencies(apiKeyRepo APIKeyRepository, gateway anthropicGroupProbeGateway, openAIGateway openAIGroupProbeGateway) {
+	s.apiKeyRepo = apiKeyRepo
+	s.gateway = gateway
+	s.openAIGateway = openAIGateway
 }
 
 // ---------- CRUD ----------
@@ -425,7 +432,7 @@ func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model
 
 // ---------- 业务 ----------
 
-// RunCheck 同步触发对一个监控的检测：并发跑 primary + extra 模型，
+// RunCheck 同步触发对一个监控的检测：依次检测 primary + extra 模型，
 // 写历史记录并更新 last_checked_at。返回每个模型的检测结果。
 func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*CheckResult, error) {
 	m, err := s.Get(ctx, id) // 已解密 APIKey
@@ -435,7 +442,7 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 	if m.APIKeyDecryptFailed {
 		return nil, ErrChannelMonitorAPIKeyDecryptFailed
 	}
-	results := s.runChecksConcurrent(ctx, m)
+	results := s.runChecksSerial(ctx, m)
 	s.persistCheckResults(ctx, m, results)
 	return results, nil
 }
@@ -465,38 +472,75 @@ func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *Chan
 	}
 }
 
-// runChecksConcurrent 对 primary + extra 模型并发执行检测。
-// errgroup 仅用于等待，不传播错误（每个 model 失败都已打包进 CheckResult）。
-func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *ChannelMonitor) []*CheckResult {
+// runChecksSerial 对 primary + extra 模型串行执行检测，避免同一监控在短时间内
+// 对同一上游或账号发出并发请求。
+func (s *ChannelMonitorService) runChecksSerial(ctx context.Context, m *ChannelMonitor) []*CheckResult {
 	models := append([]string{m.PrimaryModel}, m.ExtraModels...)
 	results := make([]*CheckResult, len(models))
 
 	// ping 共享一次，所有模型记录同一个 ping 延迟。
 	pingMs := pingEndpointOrigin(ctx, m.Endpoint)
 
-	// 所有模型共用同一份 CheckOptions（来自监控的快照字段）。
-	opts := &CheckOptions{
+	opts := monitorRuntimeCheckOptions(m)
+	group, groupProbeErr := s.resolveMonitorProbeGroup(ctx, m)
+
+	for i, model := range models {
+		if i > 0 && !sleepMonitorWithContext(ctx, monitorModelCheckGap) {
+			results[i] = cancelledMonitorCheckResult(model)
+			continue
+		}
+
+		var r *CheckResult
+		if groupProbeErr != nil {
+			r = groupAccountProbeErrorResult(model, time.Now(), groupProbeErr.Error())
+		} else if group != nil {
+			if m.Provider == MonitorProviderAnthropic {
+				r = s.runAnthropicGroupAccountProbeForModel(ctx, m, model, opts, group)
+			} else {
+				r = s.runGroupAccountProbeForModel(ctx, m, model, opts, group)
+			}
+		} else {
+			r := runCheckForModel(ctx, m.Provider, m.Endpoint, m.APIKey, model, opts)
+			r.PingLatencyMs = pingMs
+			results[i] = r
+			continue
+		}
+		r.PingLatencyMs = pingMs
+		results[i] = r
+	}
+	return results
+}
+
+func monitorRuntimeCheckOptions(m *ChannelMonitor) *CheckOptions {
+	return &CheckOptions{
 		APIMode:          m.APIMode,
 		ExtraHeaders:     m.ExtraHeaders,
 		BodyOverrideMode: m.BodyOverrideMode,
 		BodyOverride:     m.BodyOverride,
 	}
+}
 
-	var eg errgroup.Group
-	var mu sync.Mutex
-	for i, model := range models {
-		i, model := i, model
-		eg.Go(func() error {
-			r := runCheckForModel(ctx, m.Provider, m.Endpoint, m.APIKey, model, opts)
-			r.PingLatencyMs = pingMs
-			mu.Lock()
-			results[i] = r
-			mu.Unlock()
-			return nil
-		})
+func sleepMonitorWithContext(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return true
 	}
-	_ = eg.Wait()
-	return results
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func cancelledMonitorCheckResult(model string) *CheckResult {
+	return &CheckResult{
+		Model:     model,
+		Status:    MonitorStatusError,
+		Message:   "check cancelled",
+		CheckedAt: time.Now(),
+	}
 }
 
 // ---------- 调度器协作 ----------

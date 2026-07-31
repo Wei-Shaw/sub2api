@@ -830,8 +830,13 @@ func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService, lockCache Lead
 func ProvideChannelMonitorService(
 	repo ChannelMonitorRepository,
 	encryptor SecretEncryptor,
+	apiKeyRepo APIKeyRepository,
+	gateway *GatewayService,
+	openAIGateway *OpenAIGatewayService,
 ) *ChannelMonitorService {
-	return NewChannelMonitorService(repo, encryptor)
+	svc := NewChannelMonitorService(repo, encryptor)
+	svc.SetGroupAccountProbeDependencies(apiKeyRepo, gateway, openAIGateway)
+	return svc
 }
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。

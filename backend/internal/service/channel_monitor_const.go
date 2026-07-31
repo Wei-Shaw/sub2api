@@ -93,6 +93,12 @@ const (
 	monitorAnthropicAPIVersion = "2023-06-01"
 	// monitorChallengeMaxTokens 单次 challenge 请求的 max_tokens（足够回答个位数算术）。
 	monitorChallengeMaxTokens = 50
+	// monitorModelCheckGap 同一 monitor 内多个 model 或 group probe 候选之间的保护间隔。
+	monitorModelCheckGap = 1200 * time.Millisecond
+	// monitorTransientRetryDelay 短暂 5xx 重试前的保护间隔。
+	monitorTransientRetryDelay = 1200 * time.Millisecond
+	// monitorTransientMaxAttempts 短暂 5xx 最多尝试次数（含首次请求）。
+	monitorTransientMaxAttempts = 2
 
 	// monitorRunOneBuffer runOne 的总超时缓冲（除请求超时与 ping 超时外的额外裕量）。
 	monitorRunOneBuffer = 10 * time.Second
