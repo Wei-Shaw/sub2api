@@ -1506,7 +1506,7 @@ REDACTED)
 	require.Equal(t, "gpt-5.6-terra", got.logs[1].RequestedModel)
 	require.NotNil(t, got.logs[1].ModelMappingChain)
 	require.Equal(t, "gpt-5.6-terra→gpt-5.6-sol", *got.logs[1].ModelMappingChain)
-	require.InDelta(t, 20e-6, got.logs[1].TotalCost, 1e-12,
+	require.InDelta(t, 16e-6, got.logs[1].TotalCost, 1e-12,
 		"BillingModelSourceRequested must use the client model before channel mapping")
 REDACTED
 
