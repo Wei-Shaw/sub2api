@@ -264,7 +264,7 @@ func TestApplyChannelServiceTierRateMultiplierOverridesLegacyPolicyOnce(t *testi
 	require.Equal(t, "priority", legacyTier)
 }
 
-func TestResolveOpenAIServiceTierBillingDecisionPrefersKnownActualTier(t *testing.T) {
+func TestResolveOpenAIServiceTierBillingDecisionUsesAPIResponseForAPIKey(t *testing.T) {
 	snapshot := &ChannelServiceTierSnapshot{ChannelID: 3, GroupID: 4, Config: DefaultChannelServiceTierConfig()}
 	state := &OpenAIServiceTierRequestState{
 		Snapshot:              snapshot,
@@ -275,7 +275,7 @@ func TestResolveOpenAIServiceTierBillingDecisionPrefersKnownActualTier(t *testin
 	}
 	actual := "standard"
 	result := &OpenAIForwardResult{ActualServiceTier: &actual}
-	decision := resolveOpenAIServiceTierBillingDecision(result, state)
+	decision := resolveOpenAIServiceTierBillingDecision(result, state, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey})
 
 	require.True(t, decision.ActualWasUsed)
 	require.Equal(t, OpenAICommercialTierStandard, decision.CommercialTier)
@@ -302,11 +302,56 @@ func TestResolveOpenAIServiceTierBillingDecisionPrefersKnownActualTier(t *testin
 
 	unknown := "turbo"
 	result = &OpenAIForwardResult{ActualServiceTier: &unknown}
-	decision = resolveOpenAIServiceTierBillingDecision(result, state)
+	decision = resolveOpenAIServiceTierBillingDecision(result, state, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey})
 	require.True(t, decision.ActualWasUnknown)
 	require.False(t, decision.ActualWasUsed)
 	require.Equal(t, OpenAICommercialTierPriority, decision.CommercialTier)
 	require.Equal(t, "priority", decision.ProtocolTier)
+}
+
+func TestResolveOpenAIServiceTierBillingDecisionUsesOAuthOutboundForCodexFast(t *testing.T) {
+	state := &OpenAIServiceTierRequestState{
+		RequestedProtocolTier: "fast",
+		OutboundProtocolTier:  "priority",
+		RequestedTier:         OpenAICommercialTierPriority,
+		OutboundTier:          OpenAICommercialTierPriority,
+	}
+	actual := "default"
+	result := &OpenAIForwardResult{ActualServiceTier: &actual}
+	decision := resolveOpenAIServiceTierBillingDecision(result, state, &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+	})
+
+	require.True(t, decision.ActualWasObserved)
+	require.False(t, decision.ActualWasUsed)
+	require.False(t, decision.ActualWasUnknown)
+	require.Equal(t, openAIServiceTierEvidenceOAuthOutboundAuthoritative, decision.Evidence)
+	require.Equal(t, OpenAICommercialTierPriority, decision.CommercialTier)
+	require.Equal(t, "priority", decision.ProtocolTier)
+	require.NotNil(t, result.BillingServiceTier)
+	require.Equal(t, "priority", *result.BillingServiceTier)
+}
+
+func TestResolveOpenAIServiceTierBillingDecisionOAuthUnknownResponseCannotDowngrade(t *testing.T) {
+	state := &OpenAIServiceTierRequestState{
+		RequestedProtocolTier: "fast",
+		OutboundProtocolTier:  "priority",
+		RequestedTier:         OpenAICommercialTierPriority,
+		OutboundTier:          OpenAICommercialTierPriority,
+	}
+	actual := "internal_default"
+	result := &OpenAIForwardResult{ActualServiceTier: &actual}
+	decision := resolveOpenAIServiceTierBillingDecision(result, state, &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+	})
+
+	require.True(t, decision.ActualWasObserved)
+	require.True(t, decision.ActualWasUnknown)
+	require.False(t, decision.ActualWasUsed)
+	require.Equal(t, openAIServiceTierEvidenceOAuthOutboundAuthoritative, decision.Evidence)
+	require.Equal(t, OpenAICommercialTierPriority, decision.CommercialTier)
 }
 
 func TestExtractOpenAIActualServiceTier(t *testing.T) {

@@ -189,13 +189,30 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		result.UpstreamModel,
 		result.Model,
 	)
-	serviceTierDecision := resolveOpenAIServiceTierBillingDecision(result, input.ServiceTierState)
+	billingAccount := account
+	if account.IsShadow() {
+		billingAccount, err = resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil {
+			return err
+		}
+	}
+	serviceTierDecision := resolveOpenAIServiceTierBillingDecision(result, input.ServiceTierState, billingAccount)
 	serviceTier := serviceTierDecision.ProtocolTier
-	if serviceTierDecision.ActualWasUnknown {
+	if serviceTierDecision.Evidence == openAIServiceTierEvidenceOAuthOutboundAuthoritative &&
+		serviceTierDecision.ActualWasObserved {
+		logger.L().With(
+			zap.String("component", "service.openai_gateway"),
+			zap.String("actual_service_tier", serviceTierDecision.ActualProtocolTier),
+			zap.String("billing_service_tier", serviceTier),
+			zap.String("service_tier_evidence", string(serviceTierDecision.Evidence)),
+			zap.Int64("account_id", account.ID),
+		).Debug("openai_usage.oauth_observed_service_tier")
+	} else if serviceTierDecision.ActualWasUnknown {
 		logger.L().With(
 			zap.String("component", "service.openai_gateway"),
 			zap.String("actual_service_tier", serviceTierDecision.ActualProtocolTier),
 			zap.String("fallback_service_tier", serviceTier),
+			zap.String("service_tier_evidence", string(serviceTierDecision.Evidence)),
 			zap.Int64("account_id", account.ID),
 		).Warn("openai_usage.unknown_actual_service_tier")
 	}
@@ -211,6 +228,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			zap.String("outbound_service_tier", input.ServiceTierState.OutboundProtocolTier),
 			zap.String("actual_service_tier", serviceTierDecision.ActualProtocolTier),
 			zap.String("billing_service_tier", string(serviceTierDecision.CommercialTier)),
+			zap.String("service_tier_evidence", string(serviceTierDecision.Evidence)),
 			zap.String("service_tier_mismatch_direction", mismatchDirection),
 			zap.String("model", billingModel),
 			zap.Int64("account_id", account.ID),
@@ -227,13 +245,6 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			entry.Info("openai_usage.service_tier_mismatch")
 		} else {
 			entry.Warn("openai_usage.service_tier_mismatch")
-		}
-	}
-	billingAccount := account
-	if account.IsShadow() {
-		billingAccount, err = resolveCredentialAccount(ctx, s.accountRepo, account)
-		if err != nil {
-			return err
 		}
 	}
 	longContextBillingEnabled := billingAccount.IsOpenAILongContextBillingEnabled()

@@ -103,7 +103,7 @@ func TestRecordCyberPolicyUsageLog_BillsRealUpstreamTokens(t *testing.T) {
 	require.InDelta(t, expected.ActualCost, userRepo.lastAmount, 1e-12)
 }
 
-func TestRecordCyberPolicyUsageLog_ActualTierOverridesOutboundUsingSnapshot(t *testing.T) {
+func TestRecordCyberPolicyUsageLog_APIKeyActualTierOverridesOutboundUsingSnapshot(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
@@ -115,7 +115,7 @@ func TestRecordCyberPolicyUsageLog_ActualTierOverridesOutboundUsingSnapshot(t *t
 
 	svc.RecordCyberPolicyUsageLog(context.Background(), CyberPolicyUsageInput{
 		APIKey:            &APIKey{ID: 2, User: &User{ID: 1}},
-		Account:           &Account{ID: 3},
+		Account:           &Account{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
 		RequestID:         "rid-cyber-priority",
 		Model:             "gpt-5.1",
 		Stream:            true,
@@ -139,6 +139,45 @@ func TestRecordCyberPolicyUsageLog_ActualTierOverridesOutboundUsingSnapshot(t *t
 	expected := expectedOpenAICost(t, svc, "gpt-5.1", usage, 1.1*1.25)
 	require.InDelta(t, expected.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
 	require.InDelta(t, expected.ActualCost, userRepo.lastAmount, 1e-12)
+}
+
+func TestRecordCyberPolicyUsageLog_OAuthFastKeepsOutboundPriorityWhenResponseIsDefault(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+	usage := OpenAIUsage{InputTokens: 1200, OutputTokens: 300}
+	config := DefaultChannelServiceTierConfig()
+	config.Standard.Multiplier = 1.25
+	config.Priority.Multiplier = 3
+	actualTier := "default"
+
+	svc.RecordCyberPolicyUsageLog(context.Background(), CyberPolicyUsageInput{
+		APIKey:            &APIKey{ID: 2, User: &User{ID: 1}},
+		Account:           &Account{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+		RequestID:         "rid-cyber-oauth-fast",
+		Model:             "gpt-5.1",
+		Stream:            true,
+		InputTokens:       usage.InputTokens,
+		OutputTokens:      usage.OutputTokens,
+		ActualServiceTier: &actualTier,
+		ServiceTierState: &OpenAIServiceTierRequestState{
+			Snapshot:              &ChannelServiceTierSnapshot{ChannelID: 1, GroupID: 2, Config: config},
+			RequestedProtocolTier: "fast",
+			OutboundProtocolTier:  "priority",
+			RequestedTier:         OpenAICommercialTierPriority,
+			OutboundTier:          OpenAICommercialTierPriority,
+		},
+	})
+
+	require.Equal(t, 1, usageRepo.calls)
+	require.NotNil(t, usageRepo.lastLog.ServiceTier)
+	require.Equal(t, "priority", *usageRepo.lastLog.ServiceTier)
+	require.Greater(t, usageRepo.lastLog.ActualCost, 0.0)
+
+	// The configured channel priority multiplier must be used, even though the
+	// OAuth response reports the internal "default" tier.
+	expected := expectedOpenAICost(t, svc, "gpt-5.1", usage, 1.1*3)
+	require.InDelta(t, expected.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
 func TestRecordCyberPolicyUsageLog_NonStreamZeroTokensZeroCost(t *testing.T) {

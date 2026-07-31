@@ -28,10 +28,20 @@ type OpenAIServiceTierRequestState struct {
 	OutboundTier          OpenAICommercialServiceTier
 }
 
+type openAIServiceTierBillingEvidence string
+
+const (
+	openAIServiceTierEvidenceUnavailable                openAIServiceTierBillingEvidence = "unavailable"
+	openAIServiceTierEvidenceAPIResponseAuthoritative   openAIServiceTierBillingEvidence = "api_response_authoritative"
+	openAIServiceTierEvidenceOAuthOutboundAuthoritative openAIServiceTierBillingEvidence = "oauth_outbound_authoritative"
+)
+
 type openAIServiceTierBillingDecision struct {
 	ProtocolTier       string
 	CommercialTier     OpenAICommercialServiceTier
 	Snapshot           *ChannelServiceTierSnapshot
+	Evidence           openAIServiceTierBillingEvidence
+	ActualWasObserved  bool
 	ActualWasUsed      bool
 	ActualWasUnknown   bool
 	ActualProtocolTier string
@@ -69,9 +79,15 @@ func optionalOpenAIProtocolTier(raw string) *string {
 func resolveOpenAIServiceTierBillingDecision(
 	result *OpenAIForwardResult,
 	state *OpenAIServiceTierRequestState,
+	account *Account,
 ) openAIServiceTierBillingDecision {
-	decision := openAIServiceTierBillingDecision{CommercialTier: OpenAICommercialTierStandard}
+	decision := openAIServiceTierBillingDecision{
+		CommercialTier: OpenAICommercialTierStandard,
+		Evidence:       openAIServiceTierEvidenceUnavailable,
+	}
+	hasOutboundEvidence := false
 	if state != nil {
+		hasOutboundEvidence = true
 		decision.Snapshot = cloneChannelServiceTierSnapshot(state.Snapshot)
 		decision.ProtocolTier = state.OutboundProtocolTier
 		decision.CommercialTier = state.OutboundTier
@@ -86,14 +102,19 @@ func resolveOpenAIServiceTierBillingDecision(
 	}
 
 	if result == nil {
+		if hasOutboundEvidence && account != nil && account.IsOpenAIOAuth() {
+			decision.Evidence = openAIServiceTierEvidenceOAuthOutboundAuthoritative
+		}
 		return decision
 	}
 	if result.OutboundServiceTier != nil && state == nil {
+		hasOutboundEvidence = true
 		decision.ProtocolTier = strings.TrimSpace(*result.OutboundServiceTier)
 		if tier, ok := NormalizeOpenAICommercialTier(decision.ProtocolTier); ok {
 			decision.CommercialTier = tier
 		}
 	} else if state == nil && result.ServiceTier != nil {
+		hasOutboundEvidence = true
 		decision.ProtocolTier = strings.TrimSpace(*result.ServiceTier)
 		if tier, ok := NormalizeOpenAICommercialTier(decision.ProtocolTier); ok {
 			decision.CommercialTier = tier
@@ -103,13 +124,24 @@ func resolveOpenAIServiceTierBillingDecision(
 	if result.ActualServiceTier != nil {
 		actual := strings.ToLower(strings.TrimSpace(*result.ActualServiceTier))
 		decision.ActualProtocolTier = actual
-		if tier, ok := NormalizeOpenAICommercialTier(actual); ok {
+		decision.ActualWasObserved = actual != ""
+		if _, ok := NormalizeOpenAICommercialTier(actual); !ok && actual != "" {
+			decision.ActualWasUnknown = true
+		}
+
+		// ChatGPT OAuth's response.service_tier describes its internal routing and
+		// commonly reports default even when Codex Fast sent priority. The outbound
+		// request is therefore the authoritative billing evidence for OAuth.
+		if hasOutboundEvidence && account != nil && account.IsOpenAIOAuth() {
+			decision.Evidence = openAIServiceTierEvidenceOAuthOutboundAuthoritative
+		} else if tier, ok := NormalizeOpenAICommercialTier(actual); ok {
 			decision.ProtocolTier = actual
 			decision.CommercialTier = tier
 			decision.ActualWasUsed = true
-		} else if actual != "" {
-			decision.ActualWasUnknown = true
+			decision.Evidence = openAIServiceTierEvidenceAPIResponseAuthoritative
 		}
+	} else if hasOutboundEvidence && account != nil && account.IsOpenAIOAuth() {
+		decision.Evidence = openAIServiceTierEvidenceOAuthOutboundAuthoritative
 	}
 	billingTier := string(decision.CommercialTier)
 	result.BillingServiceTier = &billingTier
