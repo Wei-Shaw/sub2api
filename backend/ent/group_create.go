@@ -649,6 +649,20 @@ func (_c *GroupCreate) SetNillableRequirePrivacySet(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetDelayedStatusCode sets the "delayed_status_code" field.
+func (_c *GroupCreate) SetDelayedStatusCode(v bool) *GroupCreate {
+	_c.mutation.SetDelayedStatusCode(v)
+	return _c
+}
+
+// SetNillableDelayedStatusCode sets the "delayed_status_code" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDelayedStatusCode(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetDelayedStatusCode(*v)
+	}
+	return _c
+}
+
 // SetDefaultMappedModel sets the "default_mapped_model" field.
 func (_c *GroupCreate) SetDefaultMappedModel(v string) *GroupCreate {
 	_c.mutation.SetDefaultMappedModel(v)
@@ -1016,6 +1030,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRequirePrivacySet
 		_c.mutation.SetRequirePrivacySet(v)
 	}
+	if _, ok := _c.mutation.DelayedStatusCode(); !ok {
+		v := group.DefaultDelayedStatusCode
+		_c.mutation.SetDelayedStatusCode(v)
+	}
 	if _, ok := _c.mutation.DefaultMappedModel(); !ok {
 		v := group.DefaultDefaultMappedModel
 		_c.mutation.SetDefaultMappedModel(v)
@@ -1181,6 +1199,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RequirePrivacySet(); !ok {
 		return &ValidationError{Name: "require_privacy_set", err: errors.New(`ent: missing required field "Group.require_privacy_set"`)}
+	}
+	if _, ok := _c.mutation.DelayedStatusCode(); !ok {
+		return &ValidationError{Name: "delayed_status_code", err: errors.New(`ent: missing required field "Group.delayed_status_code"`)}
 	}
 	if _, ok := _c.mutation.DefaultMappedModel(); !ok {
 		return &ValidationError{Name: "default_mapped_model", err: errors.New(`ent: missing required field "Group.default_mapped_model"`)}
@@ -1429,6 +1450,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RequirePrivacySet(); ok {
 		_spec.SetField(group.FieldRequirePrivacySet, field.TypeBool, value)
 		_node.RequirePrivacySet = value
+	}
+	if value, ok := _c.mutation.DelayedStatusCode(); ok {
+		_spec.SetField(group.FieldDelayedStatusCode, field.TypeBool, value)
+		_node.DelayedStatusCode = value
 	}
 	if value, ok := _c.mutation.DefaultMappedModel(); ok {
 		_spec.SetField(group.FieldDefaultMappedModel, field.TypeString, value)
@@ -2357,6 +2382,18 @@ func (u *GroupUpsert) SetRequirePrivacySet(v bool) *GroupUpsert {
 // UpdateRequirePrivacySet sets the "require_privacy_set" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateRequirePrivacySet() *GroupUpsert {
 	u.SetExcluded(group.FieldRequirePrivacySet)
+	return u
+}
+
+// SetDelayedStatusCode sets the "delayed_status_code" field.
+func (u *GroupUpsert) SetDelayedStatusCode(v bool) *GroupUpsert {
+	u.Set(group.FieldDelayedStatusCode, v)
+	return u
+}
+
+// UpdateDelayedStatusCode sets the "delayed_status_code" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDelayedStatusCode() *GroupUpsert {
+	u.SetExcluded(group.FieldDelayedStatusCode)
 	return u
 }
 
@@ -3392,6 +3429,20 @@ func (u *GroupUpsertOne) SetRequirePrivacySet(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRequirePrivacySet() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRequirePrivacySet()
+	})
+}
+
+// SetDelayedStatusCode sets the "delayed_status_code" field.
+func (u *GroupUpsertOne) SetDelayedStatusCode(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDelayedStatusCode(v)
+	})
+}
+
+// UpdateDelayedStatusCode sets the "delayed_status_code" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDelayedStatusCode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDelayedStatusCode()
 	})
 }
 
@@ -4614,6 +4665,20 @@ func (u *GroupUpsertBulk) SetRequirePrivacySet(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRequirePrivacySet() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRequirePrivacySet()
+	})
+}
+
+// SetDelayedStatusCode sets the "delayed_status_code" field.
+func (u *GroupUpsertBulk) SetDelayedStatusCode(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDelayedStatusCode(v)
+	})
+}
+
+// UpdateDelayedStatusCode sets the "delayed_status_code" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDelayedStatusCode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDelayedStatusCode()
 	})
 }
 

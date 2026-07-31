@@ -207,6 +207,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("require_privacy_set").
 			Default(false).
 			Comment("调度时仅允许 privacy 已成功设置的账号"),
+		field.Bool("delayed_status_code").
+			Default(false).
+			Comment("状态码延迟返回：首个语义输出前不发 keepalive 心跳，避免提前提交 HTTP 200 而堵死流内错误的 failover"),
 		field.String("default_mapped_model").
 			MaxLen(100).
 			Default("").

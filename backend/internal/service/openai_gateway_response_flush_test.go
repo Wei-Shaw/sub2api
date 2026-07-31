@@ -387,18 +387,41 @@ func TestOpenAIResponseFlush_FailedAndErrorEventsFlushAtBoundaries(t *testing.T)
 		require.Contains(t, flushes[1], "response.failed")
 	})
 
-	t.Run("error event", func(t *testing.T) {
+	// 输出开始前的裸 error 帧现在是失败终止事件：不写给客户端，改为返回 failover
+	// 错误让上层换号。写出它会提交 HTTP 200，堵死 failover 前置门槛。
+	t.Run("error event before output triggers failover", func(t *testing.T) {
 		body := "data: {\"type\":\"error\",\"error\":{\"message\":\"failed\"}}\n\n" +
 			"data: [DONE]\n\n"
 		recorder := newOpenAIResponseFlushRecorder()
 
 		result, err := runOpenAIResponseFlushTest(recorder, io.NopCloser(strings.NewReader(body)), config.GatewayConfig{})
 
-		require.NoError(t, err)
+		require.Error(t, err)
+		var failoverErr *UpstreamFailoverError
+		require.ErrorAs(t, err, &failoverErr)
 		require.NotNil(t, result)
 		gotBody, flushes := recorder.snapshot()
-		require.Equal(t, body, gotBody)
-		require.Len(t, flushes, 2)
+		require.Empty(t, gotBody, "输出开始前的 error 帧不得写给客户端")
+		require.Empty(t, flushes)
+	})
+
+	// 输出已经开始之后到达的 error 帧照常透传，且不得 failover（换号会把两个模型的
+	// 输出拼接在一起）。与 response.failed 的既有语义一致：仍返回非 failover 错误。
+	t.Run("error event after output does not failover", func(t *testing.T) {
+		body := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"a\"}\n\n" +
+			"data: {\"type\":\"error\",\"error\":{\"message\":\"failed\"}}\n\n" +
+			"data: [DONE]\n\n"
+		recorder := newOpenAIResponseFlushRecorder()
+
+		result, err := runOpenAIResponseFlushTest(recorder, io.NopCloser(strings.NewReader(body)), config.GatewayConfig{})
+
+		require.Error(t, err)
+		var failoverErr *UpstreamFailoverError
+		require.False(t, errors.As(err, &failoverErr), "输出已开始时不得 failover")
+		require.NotNil(t, result)
+		gotBody, _ := recorder.snapshot()
+		require.Contains(t, gotBody, "response.output_text.delta")
+		require.Contains(t, gotBody, "\"type\":\"error\"")
 	})
 }
 

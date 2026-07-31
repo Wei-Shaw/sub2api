@@ -903,6 +903,9 @@ export default {
         oauthOnlyEnabled: '已启用 — 排除 API Key 类型账号',
         privacySetOnly: '仅允许隐私保护已设置的账号',
         privacySetOnlyEnabled: '已启用 — Privacy 未设置的账号将被排除',
+        delayedStatusCode: '状态码延迟返回',
+        delayedStatusCodeEnabled:
+          '已启用 — 首个输出前不发心跳，上游流内错误可换号重试；上游首个 token 较慢时客户端会有一段无数据等待',
         disabled: '未启用'
       },
       enterGroupName: '请输入分组名称',

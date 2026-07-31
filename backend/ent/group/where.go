@@ -275,6 +275,11 @@ func RequirePrivacySet(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRequirePrivacySet, v))
 }
 
+// DelayedStatusCode applies equality check predicate on the "delayed_status_code" field. It's identical to DelayedStatusCodeEQ.
+func DelayedStatusCode(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDelayedStatusCode, v))
+}
+
 // DefaultMappedModel applies equality check predicate on the "default_mapped_model" field. It's identical to DefaultMappedModelEQ.
 func DefaultMappedModel(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultMappedModel, v))
@@ -2033,6 +2038,16 @@ func RequirePrivacySetEQ(v bool) predicate.Group {
 // RequirePrivacySetNEQ applies the NEQ predicate on the "require_privacy_set" field.
 func RequirePrivacySetNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldRequirePrivacySet, v))
+}
+
+// DelayedStatusCodeEQ applies the EQ predicate on the "delayed_status_code" field.
+func DelayedStatusCodeEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDelayedStatusCode, v))
+}
+
+// DelayedStatusCodeNEQ applies the NEQ predicate on the "delayed_status_code" field.
+func DelayedStatusCodeNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDelayedStatusCode, v))
 }
 
 // DefaultMappedModelEQ applies the EQ predicate on the "default_mapped_model" field.

@@ -830,6 +830,9 @@ export default {
         oauthOnlyEnabled: 'Enabled — API Key accounts will be excluded',
         privacySetOnly: 'Only allow accounts with privacy protection set',
         privacySetOnlyEnabled: 'Enabled — accounts with unset Privacy will be excluded',
+        delayedStatusCode: 'Delayed status code',
+        delayedStatusCodeEnabled:
+          'Enabled — no keepalive before first output, so in-stream upstream errors can fail over; clients may see a longer silent wait when the upstream first token is slow',
         disabled: 'Disabled'
       },
       form: {

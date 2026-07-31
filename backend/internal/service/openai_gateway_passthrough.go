@@ -761,7 +761,10 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	if trimmed == "" {
 		return false
 	}
-	if strings.TrimSpace(eventType) == "response.failed" {
+	// response.failed 与裸 error 帧都是失败终止事件，不是客户端输出。写出它们会让
+	// c.Writer.Written() 变真，堵死后续 failover 的前置门槛。
+	switch strings.TrimSpace(eventType) {
+	case "response.failed", "error":
 		return false
 	}
 	return !openAIStreamEventIsPreamble(eventType)
@@ -1134,7 +1137,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				}
 			}
 			eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
-			if eventType == "response.failed" {
+			if eventType == "response.failed" || eventType == "error" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
 				// response.failed 自带上游已消耗的 usage（input token 通常已扣）；必须先解析
 				// 再打 cyber 标记，否则 mark 记到的是解析前的 0，导致流式 cyber 按 0 token 计费

@@ -564,7 +564,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		refusalDetector.ObservePayload([]byte(payload))
 
-		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
+		// 裸 error 帧是失败终止事件。与 openai_gateway_messages.go 保持一致：在调用点
+		// 局部判定，不修改公共的 isOpenAICompatResponsesTerminalEvent，避免波及
+		// passthrough 的 sawTerminalEvent 与断流判定。
+		isBareErrorEvent := strings.TrimSpace(event.Type) == "error"
+		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type) || isBareErrorEvent
 		if isTerminalEvent {
 			if event.Usage != nil {
 				usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
@@ -573,7 +577,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
 			}
 		}
-		if strings.TrimSpace(event.Type) == "response.failed" {
+		if strings.TrimSpace(event.Type) == "response.failed" || isBareErrorEvent {
 			payloadBytes := []byte(payload)
 			message := extractOpenAISSEErrorMessage(payloadBytes)
 			if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
@@ -649,6 +653,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
+		// preamble（response.created / response.in_progress）转换出的 chunk 不是确定性
+		// 结果：写出它会提交 HTTP 200，使流内错误无法换号。缓冲到首个真实输出为止，
+		// 与 silent-refusal 的 64KB 阈值解耦——小请求同样需要保住 failover 窗口。
+		isPreambleEvent := openAIStreamEventIsPreamble(event.Type)
 		if !clientDisconnected {
 			for _, chunk := range chunks {
 				refusalDetector.ObserveChatChunk(chunk)
@@ -660,7 +668,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					continue
 				}
-				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+				if !clientOutputStarted && (isPreambleEvent || !refusalDetector.ShouldReleaseClientOutput()) {
 					pendingSSE = append(pendingSSE, sse)
 					continue
 				}
@@ -935,6 +943,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				continue
 			}
 			if refusalDetector.Enabled() && !clientOutputStarted {
+				continue
+			}
+			// 「状态码延迟返回」开启时，首个输出前的心跳会提交 HTTP 200，
+			// 使流内错误无法换号。与 silent-refusal 阈值无关，独立判定。
+			if openAIDelayedStatusCodeEnabled(c) && !clientOutputStarted {
 				continue
 			}
 			if time.Since(lastDataAt) < keepaliveInterval {

@@ -414,7 +414,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
 			}
 			forceFlushFailedEvent := false
-			if eventType == "response.failed" {
+			if eventType == "response.failed" || eventType == "error" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
 				// response.failed 自带上游已消耗的 usage（input token 通常已扣）；必须先解析
 				// 再打 cyber 标记，否则 mark 记到的是解析前的 0，导致流式 cyber 按 0 token 计费
@@ -712,6 +712,12 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				continue
 			}
 			if time.Since(lastDownstreamWriteAt) < keepaliveInterval {
+				continue
+			}
+			// 「状态码延迟返回」开启时，首个语义输出前不得写出任何字节：心跳会提交
+			// HTTP 200，使 c.Writer.Written() 变真，堵死流内错误的 failover 前置门槛。
+			// 按设计不做超时兜底，依赖上游 stream interval timeout 与客户端自身超时。
+			if openAIDelayedStatusCodeEnabled(c) && !openAIStreamClientOutputStarted(c, clientOutputStarted) {
 				continue
 			}
 			if guardFirstOutput {

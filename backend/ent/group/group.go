@@ -108,6 +108,8 @@ const (
 	FieldRequireOauthOnly = "require_oauth_only"
 	// FieldRequirePrivacySet holds the string denoting the require_privacy_set field in the database.
 	FieldRequirePrivacySet = "require_privacy_set"
+	// FieldDelayedStatusCode holds the string denoting the delayed_status_code field in the database.
+	FieldDelayedStatusCode = "delayed_status_code"
 	// FieldDefaultMappedModel holds the string denoting the default_mapped_model field in the database.
 	FieldDefaultMappedModel = "default_mapped_model"
 	// FieldMessagesDispatchModelConfig holds the string denoting the messages_dispatch_model_config field in the database.
@@ -247,6 +249,7 @@ var Columns = []string{
 	FieldAllowLive,
 	FieldRequireOauthOnly,
 	FieldRequirePrivacySet,
+	FieldDelayedStatusCode,
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
 	FieldModelsListConfig,
@@ -359,6 +362,8 @@ var (
 	DefaultRequireOauthOnly bool
 	// DefaultRequirePrivacySet holds the default value on creation for the "require_privacy_set" field.
 	DefaultRequirePrivacySet bool
+	// DefaultDelayedStatusCode holds the default value on creation for the "delayed_status_code" field.
+	DefaultDelayedStatusCode bool
 	// DefaultDefaultMappedModel holds the default value on creation for the "default_mapped_model" field.
 	DefaultDefaultMappedModel string
 	// DefaultMappedModelValidator is a validator for the "default_mapped_model" field. It is called by the builders before save.
@@ -609,6 +614,11 @@ func ByRequireOauthOnly(opts ...sql.OrderTermOption) OrderOption {
 // ByRequirePrivacySet orders the results by the require_privacy_set field.
 func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRequirePrivacySet, opts...).ToFunc()
+}
+
+// ByDelayedStatusCode orders the results by the delayed_status_code field.
+func ByDelayedStatusCode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDelayedStatusCode, opts...).ToFunc()
 }
 
 // ByDefaultMappedModel orders the results by the default_mapped_model field.

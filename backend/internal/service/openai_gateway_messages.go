@@ -1166,6 +1166,11 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			if clientDisconnected {
 				continue
 			}
+			// 「状态码延迟返回」开启时，首个输出前的 ping 会提交 HTTP 200，
+			// 使流内错误无法换号。
+			if openAIDelayedStatusCodeEnabled(c) && !clientOutputStarted {
+				continue
+			}
 			if time.Since(lastDataAt) < keepaliveInterval {
 				continue
 			}

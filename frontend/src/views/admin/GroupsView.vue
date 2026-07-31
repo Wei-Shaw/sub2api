@@ -1790,6 +1790,44 @@
               />
             </button>
           </div>
+
+          <!-- delayed_status_code toggle -->
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400"
+                >{{ t("admin.groups.accountFilters.delayedStatusCode") }}</label
+              >
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{
+                  createForm.delayed_status_code
+                    ? t("admin.groups.accountFilters.delayedStatusCodeEnabled")
+                    : t("admin.groups.accountFilters.disabled")
+                }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="
+                createForm.delayed_status_code =
+                  !createForm.delayed_status_code
+              "
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                createForm.delayed_status_code
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  createForm.delayed_status_code
+                    ? 'translate-x-6'
+                    : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
         </div>
 
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
@@ -3391,6 +3429,43 @@
               />
             </button>
           </div>
+
+          <!-- delayed_status_code toggle -->
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400"
+                >{{ t("admin.groups.accountFilters.delayedStatusCode") }}</label
+              >
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{
+                  editForm.delayed_status_code
+                    ? t("admin.groups.accountFilters.delayedStatusCodeEnabled")
+                    : t("admin.groups.accountFilters.disabled")
+                }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="
+                editForm.delayed_status_code = !editForm.delayed_status_code
+              "
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                editForm.delayed_status_code
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  editForm.delayed_status_code
+                    ? 'translate-x-6'
+                    : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
         </div>
 
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
@@ -4743,6 +4818,7 @@ const createForm = reactive({
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
   require_privacy_set: false,
+  delayed_status_code: false,
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -5098,6 +5174,7 @@ const editForm = reactive({
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
   require_privacy_set: false,
+  delayed_status_code: false,
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -5537,6 +5614,7 @@ const closeCreateModal = () => {
   createForm.allow_live = false;
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
+  createForm.delayed_status_code = false;
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
@@ -5763,6 +5841,7 @@ const handleEdit = async (group: AdminGroup) => {
     messagesDispatchFormState.exact_model_mappings;
   editForm.require_oauth_only = group.require_oauth_only ?? false;
   editForm.require_privacy_set = group.require_privacy_set ?? false;
+  editForm.delayed_status_code = group.delayed_status_code ?? false;
   editForm.model_routing_enabled = group.model_routing_enabled || false;
   editForm.supported_model_scopes = group.supported_model_scopes || [
     "claude",
@@ -6252,6 +6331,7 @@ watch(
     if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
       createForm.require_oauth_only = false;
       createForm.require_privacy_set = false;
+      createForm.delayed_status_code = false;
     }
     resetDisabledBatchImagePricing(createForm);
     resetModelsListState(createModelsListState);
@@ -6300,6 +6380,7 @@ watch(
     if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
       editForm.require_oauth_only = false;
       editForm.require_privacy_set = false;
+      editForm.delayed_status_code = false;
     }
     resetDisabledBatchImagePricing(editForm);
     if (editingGroup.value) {
