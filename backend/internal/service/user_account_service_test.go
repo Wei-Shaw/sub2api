@@ -9,6 +9,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/imroc/req/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -150,8 +151,25 @@ func (s *userAccountRepoStub) Update(_ context.Context, account *Account) error 
 	if account.Credentials != nil {
 		cp.Credentials = cloneAnyMap(account.Credentials)
 	}
+	if account.Extra != nil {
+		cp.Extra = cloneAnyMap(account.Extra)
+	}
 	cp.GroupIDs = append([]int64(nil), account.GroupIDs...)
 	s.accounts[account.ID] = &cp
+	return nil
+}
+
+func (s *userAccountRepoStub) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
+	a, ok := s.accounts[id]
+	if !ok {
+		return ErrAccountNotFound
+	}
+	if a.Extra == nil {
+		a.Extra = make(map[string]any)
+	}
+	for k, v := range updates {
+		a.Extra[k] = v
+	}
 	return nil
 }
 
@@ -285,7 +303,7 @@ func newUserAccountServiceForTest(
 			groups = append(groups, g)
 		}
 	}
-	return NewUserAccountService(repo, newRecomputeGroupRepo(groups...), prov, settings, nil)
+	return NewUserAccountService(repo, newRecomputeGroupRepo(groups...), prov, settings, nil, nil)
 }
 
 // --- tests ---
@@ -342,24 +360,28 @@ func TestUserAccountService_CreatePublicWithoutPlan_StaysPrivate(t *testing.T) {
 	prov := &userAccountProvisionerStub{}
 	svc := newUserAccountServiceForTest(repo, prov, newTestSettingService(true, 10))
 
-	// openai oauth without plan credentials → probe empty → force private
+	// openai oauth without plan credentials → 无匹配共享池 → 强制 private（空档位 reason=plan_empty）
 	acc, err := svc.Create(context.Background(), 7, &CreateUserAccountInput{
 		Name: "oauth-acc", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Visibility: VisibilityPublic,
 		Credentials: map[string]any{"access_token": "tok", "refresh_token": "rt"},
 	})
 	require.NoError(t, err)
 	require.Equal(t, VisibilityPrivate, acc.Visibility)
-	require.Equal(t, VisibilityReasonPlanProbeFailed, acc.VisibilityReason)
+	require.Equal(t, VisibilityReasonPlanEmpty, acc.VisibilityReason)
 	require.Empty(t, acc.UpstreamPlan)
 }
 
 func TestUserAccountService_CreatePublicWithPlan_Promotes(t *testing.T) {
 	repo := newUserAccountRepoStub()
-	// seed private group for Ensure + recompute GetByName
+	// seed private group + matching share pool（升 public 要求至少命中一个共享池）
 	g := &Group{ID: 501, Name: PrivateGroupName(7, PlatformOpenAI), Platform: PlatformOpenAI, Status: StatusActive}
+	pool := &Group{
+		ID: 502, Name: "openai-plus-pool", Platform: PlatformOpenAI,
+		IsSharePool: true, UpstreamPlan: "plus", Status: StatusActive,
+	}
 	prov := &userAccountProvisionerStub{groups: map[string]*Group{PlatformOpenAI: g}}
-	groupRepo := newRecomputeGroupRepo(g)
-	svc := NewUserAccountService(repo, groupRepo, prov, newTestSettingService(true, 10), nil)
+	groupRepo := newRecomputeGroupRepo(g, pool)
+	svc := NewUserAccountService(repo, groupRepo, prov, newTestSettingService(true, 10), nil, nil)
 
 	acc, err := svc.Create(context.Background(), 7, &CreateUserAccountInput{
 		Name: "oauth-plus", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Visibility: VisibilityPublic,
@@ -372,6 +394,36 @@ func TestUserAccountService_CreatePublicWithPlan_Promotes(t *testing.T) {
 	// plus 在 DefaultGroupUpstreamPlansSeed(openai) 中 → 应升 public
 	require.Equal(t, "plus", acc.UpstreamPlan)
 	require.Equal(t, VisibilityPublic, acc.Visibility)
+}
+
+func TestEnsureUserOwnedOpenAIPrivacy_SetsMode(t *testing.T) {
+	repo := newUserAccountRepoStub()
+	acc := &Account{
+		ID:       11,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "tok",
+		},
+		Extra: map[string]any{},
+	}
+	repo.accounts[11] = acc
+
+	// factory nil → no-op
+	ensureUserOwnedOpenAIPrivacy(context.Background(), repo, nil, acc)
+	require.Empty(t, acc.Extra["privacy_mode"])
+
+	// factory 创建客户端失败 → disableOpenAITraining 返回 PrivacyModeFailed 并落库
+	factory := PrivacyClientFactory(func(proxyURL string) (*req.Client, error) {
+		return nil, errors.New("no client")
+	})
+	ensureUserOwnedOpenAIPrivacy(context.Background(), repo, factory, acc)
+	require.Equal(t, PrivacyModeFailed, acc.Extra["privacy_mode"])
+
+	// already training_off → skip（不覆盖）
+	acc.Extra["privacy_mode"] = PrivacyModeTrainingOff
+	ensureUserOwnedOpenAIPrivacy(context.Background(), repo, factory, acc)
+	require.Equal(t, PrivacyModeTrainingOff, acc.Extra["privacy_mode"])
 }
 
 func TestUserAccountService_NonOwnerGet_404(t *testing.T) {

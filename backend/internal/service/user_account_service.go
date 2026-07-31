@@ -91,33 +91,37 @@ type UserAccountListFilters struct {
 }
 
 type userAccountService struct {
-	accountRepo   AccountRepository
-	groupRepo     GroupRepository
-	privateGroups PrivateGroupProvisioner
-	recomputer    *AccountGroupRecomputer
-	settingSvc    *SettingService
-	entClient     *dbent.Client
+	accountRepo          AccountRepository
+	groupRepo            GroupRepository
+	privateGroups        PrivateGroupProvisioner
+	recomputer           *AccountGroupRecomputer
+	settingSvc           *SettingService
+	entClient            *dbent.Client
+	privacyClientFactory PrivacyClientFactory // OpenAI 隐私 API（可空；空则跳过 Ensure）
 }
 
 // NewUserAccountService 构造用户自建账号服务。
+// privacyFactory 可为 nil（测试）；生产应注入 ImpersonateChrome 工厂以便 OpenAI 隐私兜底。
 func NewUserAccountService(
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
 	privateGroups PrivateGroupProvisioner,
 	settingSvc *SettingService,
 	entClient *dbent.Client,
+	privacyFactory PrivacyClientFactory,
 ) UserAccountService {
 	var recomputer *AccountGroupRecomputer
 	if accountRepo != nil && groupRepo != nil {
 		recomputer = NewAccountGroupRecomputer(accountRepo, groupRepo)
 	}
 	return &userAccountService{
-		accountRepo:   accountRepo,
-		groupRepo:     groupRepo,
-		privateGroups: privateGroups,
-		recomputer:    recomputer,
-		settingSvc:    settingSvc,
-		entClient:     entClient,
+		accountRepo:          accountRepo,
+		groupRepo:            groupRepo,
+		privateGroups:        privateGroups,
+		recomputer:           recomputer,
+		settingSvc:           settingSvc,
+		entClient:            entClient,
+		privacyClientFactory: privacyFactory,
 	}
 }
 
@@ -301,20 +305,36 @@ func (s *userAccountService) Create(ctx context.Context, userID int64, input *Cr
 		s.privateGroups.AfterCommit(ctx, provisionResult)
 	}
 
-	// Antigravity OAuth：若创建时未带 privacy_mode，异步补写（与管理端 CreateAccount 对齐）
-	if created != nil && created.Platform == PlatformAntigravity && created.Type == AccountTypeOAuth {
-		go func(accID int64) {
-			defer func() {
-				if r := recover(); r != nil {
-					slog.Error("user_account_antigravity_privacy_panic", "account_id", accID, "recover", r)
+	// OAuth 隐私兜底：创建时未带 privacy_mode 则异步补写（与管理端 CreateAccount 对齐）
+	if created != nil && created.Type == AccountTypeOAuth {
+		switch created.Platform {
+		case PlatformAntigravity:
+			go func(accID int64) {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("user_account_antigravity_privacy_panic", "account_id", accID, "recover", r)
+					}
+				}()
+				acc, err := s.accountRepo.GetByID(context.Background(), accID)
+				if err != nil || acc == nil {
+					return
 				}
-			}()
-			acc, err := s.accountRepo.GetByID(context.Background(), accID)
-			if err != nil || acc == nil {
-				return
-			}
-			ensureUserOwnedAntigravityPrivacy(context.Background(), s.accountRepo, acc)
-		}(created.ID)
+				ensureUserOwnedAntigravityPrivacy(context.Background(), s.accountRepo, acc)
+			}(created.ID)
+		case PlatformOpenAI:
+			go func(accID int64) {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("user_account_openai_privacy_panic", "account_id", accID, "recover", r)
+					}
+				}()
+				acc, err := s.accountRepo.GetByID(context.Background(), accID)
+				if err != nil || acc == nil {
+					return
+				}
+				ensureUserOwnedOpenAIPrivacy(context.Background(), s.accountRepo, s.privacyClientFactory, acc)
+			}(created.ID)
+		}
 	}
 
 	// 事务外 best-effort：从 credentials 提取 plan 并 ApplyProbedPlan
@@ -703,6 +723,44 @@ func ensureUserOwnedAntigravityPrivacy(ctx context.Context, repo AccountReposito
 		return
 	}
 	applyAntigravityPrivacyMode(account, mode)
+}
+
+// ensureUserOwnedOpenAIPrivacy 用户自建 OpenAI OAuth 号补写 privacy_mode（与 admin EnsureOpenAIPrivacy 对齐，无 proxy）。
+func ensureUserOwnedOpenAIPrivacy(ctx context.Context, repo AccountRepository, factory PrivacyClientFactory, account *Account) {
+	if account == nil || repo == nil {
+		return
+	}
+	if account.IsCredentialShadow() {
+		return
+	}
+	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		return
+	}
+	if factory == nil {
+		return
+	}
+	if shouldSkipOpenAIPrivacyEnsure(account.Extra) {
+		return
+	}
+	token, _ := account.Credentials["access_token"].(string)
+	if strings.TrimSpace(token) == "" {
+		return
+	}
+	mode := disableOpenAITraining(ctx, factory, token, "")
+	if mode == "" {
+		return
+	}
+	if err := repo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode}); err != nil {
+		slog.Warn("user_account_openai_privacy_update_failed",
+			"account_id", account.ID,
+			"error", err.Error(),
+		)
+		return
+	}
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+	}
+	account.Extra["privacy_mode"] = mode
 }
 
 func cloneAnyMap(in map[string]any) map[string]any {
