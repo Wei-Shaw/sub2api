@@ -246,8 +246,8 @@ func TestCodexModelsHonorsAccountSwitchLimit(t *testing.T) {
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status: got %d, want %d; body=%s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
 	}
-	if body := recorder.Body.String(); !strings.Contains(body, "upstream error 504") {
-		t.Fatalf("body does not preserve the limit-ending upstream error: %s", body)
+	if body := recorder.Body.String(); !strings.Contains(body, publicServiceUnavailableMessage) {
+		t.Fatalf("body does not contain expected neutral message: %s", body)
 	}
 }
 

@@ -2128,7 +2128,7 @@ func (h *OpenAIGatewayHandler) ensureResponsesDependencies(c *gin.Context, reqLo
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": gin.H{
 				"type":    "api_error",
-				"message": "Service temporarily unavailable",
+				"message": publicServiceUnavailableMessage,
 			},
 		})
 	}
