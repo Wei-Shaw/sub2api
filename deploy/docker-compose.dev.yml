@@ -17,6 +17,8 @@ services:
         NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.comREDACTED
     container_name: sub2api-dev
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "${BIND_HOST:-127.0.0.1REDACTED:${SERVER_PORT:-8080REDACTED:8080"
     volumes:
