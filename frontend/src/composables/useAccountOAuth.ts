@@ -1,6 +1,13 @@
 import { ref } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { apiClient } from '@/api/client'
+import {
+  type OAuthComposableOptions,
+  type OAuthSurface,
+  effectiveProxyId,
+  oauthPrefix
+} from '@/utils/oauthSurface'
 
 export type AddMethod = 'oauth' | 'setup-token'
 export type AuthInputMethod = 'manual' | 'cookie' | 'refresh_token' | 'mobile_refresh_token' | 'session_token' | 'access_token' | 'codex_session' | 'agent_identity' | 'codex_pat' | 'sso_cookie'
@@ -21,8 +28,10 @@ export interface TokenInfo {
   [key: string]: unknown
 }
 
-export function useAccountOAuth() {
+export function useAccountOAuth(opts?: OAuthComposableOptions) {
   const appStore = useAppStore()
+  const surface: OAuthSurface = opts?.surface ?? 'admin'
+  const prefix = oauthPrefix(surface, 'accounts')
 
   // State
   const authUrl = ref('')
@@ -42,6 +51,21 @@ export function useAccountOAuth() {
     error.value = ''
   }
 
+  const postOAuth = async <T>(
+    endpoint: string,
+    body: Record<string, unknown>
+  ): Promise<T> => {
+    if (surface === 'user') {
+      const { data } = await apiClient.post<T>(endpoint, body)
+      return data
+    }
+    // admin: reuse accounts helpers that take full endpoint path
+    if (endpoint.includes('exchange') || endpoint.includes('cookie-auth')) {
+      return (await adminAPI.accounts.exchangeCode(endpoint, body as any)) as T
+    }
+    return (await adminAPI.accounts.generateAuthUrl(endpoint, body as any)) as T
+  }
+
   // Generate auth URL
   const generateAuthUrl = async (
     addMethod: AddMethod,
@@ -53,13 +77,17 @@ export function useAccountOAuth() {
     error.value = ''
 
     try {
-      const proxyConfig = proxyId ? { proxy_id: proxyId } : {}
+      const effectiveProxy = effectiveProxyId(surface, proxyId)
+      const proxyConfig = effectiveProxy ? { proxy_id: effectiveProxy } : {}
       const endpoint =
         addMethod === 'oauth'
-          ? '/admin/accounts/generate-auth-url'
-          : '/admin/accounts/generate-setup-token-url'
+          ? `${prefix}/generate-auth-url`
+          : `${prefix}/generate-setup-token-url`
 
-      const response = await adminAPI.accounts.generateAuthUrl(endpoint, proxyConfig)
+      const response = await postOAuth<{ auth_url: string; session_id: string }>(
+        endpoint,
+        proxyConfig
+      )
       authUrl.value = response.auth_url
       sessionId.value = response.session_id
       return true
@@ -86,19 +114,20 @@ export function useAccountOAuth() {
     error.value = ''
 
     try {
-      const proxyConfig = proxyId ? { proxy_id: proxyId } : {}
+      const effectiveProxy = effectiveProxyId(surface, proxyId)
+      const proxyConfig = effectiveProxy ? { proxy_id: effectiveProxy } : {}
       const endpoint =
         addMethod === 'oauth'
-          ? '/admin/accounts/exchange-code'
-          : '/admin/accounts/exchange-setup-token-code'
+          ? `${prefix}/exchange-code`
+          : `${prefix}/exchange-setup-token-code`
 
-      const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
+      const tokenInfo = await postOAuth<TokenInfo>(endpoint, {
         session_id: sessionId.value,
         code: authCode.value.trim(),
         ...proxyConfig
       })
 
-      return tokenInfo as TokenInfo
+      return tokenInfo
     } catch (err: any) {
       error.value = err.response?.data?.detail || 'Failed to exchange auth code'
       appStore.showError(error.value)
@@ -123,19 +152,20 @@ export function useAccountOAuth() {
     error.value = ''
 
     try {
-      const proxyConfig = proxyId ? { proxy_id: proxyId } : {}
+      const effectiveProxy = effectiveProxyId(surface, proxyId)
+      const proxyConfig = effectiveProxy ? { proxy_id: effectiveProxy } : {}
       const endpoint =
         addMethod === 'oauth'
-          ? '/admin/accounts/cookie-auth'
-          : '/admin/accounts/setup-token-cookie-auth'
+          ? `${prefix}/cookie-auth`
+          : `${prefix}/setup-token-cookie-auth`
 
-      const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
+      const tokenInfo = await postOAuth<TokenInfo>(endpoint, {
         session_id: '',
         code: sessionKeyValue.trim(),
         ...proxyConfig
       })
 
-      return tokenInfo as TokenInfo
+      return tokenInfo
     } catch (err: any) {
       error.value = err.response?.data?.detail || 'Cookie authorization failed'
       return null

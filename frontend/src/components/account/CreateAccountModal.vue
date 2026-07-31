@@ -3690,12 +3690,13 @@ const proxies = computed(() => props.proxies ?? [])
 
 const appStore = useAppStore()
 
-// OAuth composables
-const oauth = useAccountOAuth() // For Anthropic OAuth
-const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
-const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
-const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
-const grokOAuth = useGrokOAuth() // For Grok OAuth
+// OAuth composables — user mode hits /user/... OAuth routes (not AdminAuth)
+const oauthSurface = props.mode === 'user' ? 'user' : 'admin'
+const oauth = useAccountOAuth({ surface: oauthSurface }) // For Anthropic OAuth
+const openaiOAuth = useOpenAIOAuth({ surface: oauthSurface }) // For OpenAI OAuth
+const geminiOAuth = useGeminiOAuth({ surface: oauthSurface }) // For Gemini OAuth
+const antigravityOAuth = useAntigravityOAuth({ surface: oauthSurface }) // For Antigravity OAuth
+const grokOAuth = useGrokOAuth({ surface: oauthSurface }) // For Grok OAuth
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {

@@ -2,7 +2,14 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { apiClient } from '@/api/client'
 import type { GeminiOAuthCapabilities } from '@/api/admin/gemini'
+import {
+  type OAuthComposableOptions,
+  type OAuthSurface,
+  effectiveProxyId,
+  oauthPrefix
+} from '@/utils/oauthSurface'
 
 export interface GeminiTokenInfo {
   access_token?: string
@@ -17,9 +24,11 @@ export interface GeminiTokenInfo {
   [key: string]: unknown
 }
 
-export function useGeminiOAuth() {
+export function useGeminiOAuth(opts?: OAuthComposableOptions) {
   const appStore = useAppStore()
   const { t } = useI18n()
+  const surface: OAuthSurface = opts?.surface ?? 'admin'
+  const prefix = oauthPrefix(surface, 'gemini')
 
   const authUrl = ref('')
   const sessionId = ref('')
@@ -49,14 +58,25 @@ export function useGeminiOAuth() {
 
     try {
       const payload: Record<string, unknown> = {}
-      if (proxyId) payload.proxy_id = proxyId
+      const effectiveProxy = effectiveProxyId(surface, proxyId)
+      if (effectiveProxy) payload.proxy_id = effectiveProxy
       const trimmedProjectID = projectId?.trim()
       if (trimmedProjectID) payload.project_id = trimmedProjectID
       if (oauthType) payload.oauth_type = oauthType
       const trimmedTierID = tierId?.trim()
       if (trimmedTierID) payload.tier_id = trimmedTierID
 
-      const response = await adminAPI.gemini.generateAuthUrl(payload as any)
+      let response: { auth_url: string; session_id: string; state: string }
+      if (surface === 'user') {
+        const { data } = await apiClient.post<{
+          auth_url: string
+          session_id: string
+          state: string
+        }>(`${prefix}/auth-url`, payload)
+        response = data
+      } else {
+        response = await adminAPI.gemini.generateAuthUrl(payload as any)
+      }
       authUrl.value = response.auth_url
       sessionId.value = response.session_id
       state.value = response.state
@@ -93,11 +113,16 @@ export function useGeminiOAuth() {
         state: params.state,
         code
       }
-      if (params.proxyId) payload.proxy_id = params.proxyId
+      const effectiveProxy = effectiveProxyId(surface, params.proxyId)
+      if (effectiveProxy) payload.proxy_id = effectiveProxy
       if (params.oauthType) payload.oauth_type = params.oauthType
       const trimmedTierID = params.tierId?.trim()
       if (trimmedTierID) payload.tier_id = trimmedTierID
 
+      if (surface === 'user') {
+        const { data } = await apiClient.post<GeminiTokenInfo>(`${prefix}/exchange-code`, payload)
+        return data
+      }
       const tokenInfo = await adminAPI.gemini.exchangeCode(payload as any)
       return tokenInfo as GeminiTokenInfo
     } catch (err: any) {
@@ -142,6 +167,10 @@ export function useGeminiOAuth() {
 
   const getCapabilities = async (): Promise<GeminiOAuthCapabilities | null> => {
     try {
+      if (surface === 'user') {
+        const { data } = await apiClient.get<GeminiOAuthCapabilities>(`${prefix}/capabilities`)
+        return data
+      }
       return await adminAPI.gemini.getCapabilities()
     } catch (err: any) {
       // Capabilities are optional for older servers; don't block the UI.

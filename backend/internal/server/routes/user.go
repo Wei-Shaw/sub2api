@@ -53,6 +53,52 @@ func RegisterUserRoutes(
 				}
 			}
 
+			// 用户自建账号 OAuth（与 admin 共用 service；flag + session owner + 禁 proxy）
+			if h.UserOAuth != nil {
+				// Anthropic (Claude)
+				accountsOAuth := user.Group("/accounts/oauth")
+				{
+					accountsOAuth.POST("/generate-auth-url", h.UserOAuth.GenerateAuthURL)
+					accountsOAuth.POST("/generate-setup-token-url", h.UserOAuth.GenerateSetupTokenURL)
+					accountsOAuth.POST("/exchange-code", h.UserOAuth.ExchangeCode)
+					accountsOAuth.POST("/exchange-setup-token-code", h.UserOAuth.ExchangeSetupTokenCode)
+					accountsOAuth.POST("/cookie-auth", h.UserOAuth.CookieAuth)
+					accountsOAuth.POST("/setup-token-cookie-auth", h.UserOAuth.SetupTokenCookieAuth)
+				}
+
+				// OpenAI（无 create-from-oauth / create-from-codex-pat）
+				openai := user.Group("/openai")
+				{
+					openai.POST("/generate-auth-url", h.UserOAuth.OpenAIGenerateAuthURL)
+					openai.POST("/exchange-code", h.UserOAuth.OpenAIExchangeCode)
+					openai.POST("/refresh-token", h.UserOAuth.OpenAIRefreshToken)
+				}
+
+				// Gemini
+				gemini := user.Group("/gemini/oauth")
+				{
+					gemini.POST("/auth-url", h.UserOAuth.GeminiGenerateAuthURL)
+					gemini.POST("/exchange-code", h.UserOAuth.GeminiExchangeCode)
+					gemini.GET("/capabilities", h.UserOAuth.GeminiGetCapabilities)
+				}
+
+				// Antigravity
+				antigravity := user.Group("/antigravity/oauth")
+				{
+					antigravity.POST("/auth-url", h.UserOAuth.AntigravityGenerateAuthURL)
+					antigravity.POST("/exchange-code", h.UserOAuth.AntigravityExchangeCode)
+					antigravity.POST("/refresh-token", h.UserOAuth.AntigravityRefreshToken)
+				}
+
+				// Grok（无 create-from-oauth / sso-to-oauth）
+				grok := user.Group("/grok/oauth")
+				{
+					grok.POST("/auth-url", h.UserOAuth.GrokGenerateAuthURL)
+					grok.POST("/exchange-code", h.UserOAuth.GrokExchangeCode)
+					grok.POST("/refresh-token", h.UserOAuth.GrokRefreshToken)
+				}
+			}
+
 			// 通知邮箱管理
 			notifyEmail := user.Group("/notify-email")
 			{
