@@ -10,7 +10,9 @@ import (
 	"html"
 	"log/slog"
 	"math/big"
+	"mime"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"net/url"
 	"strconv"
@@ -190,13 +192,10 @@ func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body
 	to = sanitizeEmailHeader(to)
 	subject = sanitizeEmailHeader(subject)
 
-	from := sanitizeEmailHeader(config.From)
-	if config.FromName != "" {
-		from = fmt.Sprintf("%s <%s>", sanitizeEmailHeader(config.FromName), sanitizeEmailHeader(config.From))
-	}
+	from := formatEmailAddressHeader(config.From, config.FromName)
 
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
-		from, to, subject, body)
+		from, to, encodeEmailTextHeader(subject), body)
 
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
@@ -206,6 +205,19 @@ func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body
 	}
 
 	return s.sendMailPlain(addr, auth, config.From, to, []byte(msg), config.Host)
+}
+
+func encodeEmailTextHeader(value string) string {
+	return mime.QEncoding.Encode("UTF-8", sanitizeEmailHeader(value))
+}
+
+func formatEmailAddressHeader(address, name string) string {
+	address = sanitizeEmailHeader(address)
+	name = sanitizeEmailHeader(name)
+	if strings.TrimSpace(name) == "" {
+		return address
+	}
+	return (&mail.Address{Name: name, Address: address}).String()
 }
 
 // sendMailPlain sends mail without TLS using a dialer with timeout.
