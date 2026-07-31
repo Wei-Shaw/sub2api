@@ -531,7 +531,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestDefaultPricingUsesReducedCodexAutoReviewRates(t *testing.T) {
+func TestDefaultPricingUsesCurrentCodexAutoReviewBaseRates(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
 REDACTED
 
@@ -543,11 +543,18 @@ REDACTED
 	got := svc.GetModelPricing("codex-auto-review")
 	require.NotNil(t, got)
 	require.InDelta(t, 0.2e-6, got.InputCostPerToken, 1e-12)
-	require.InDelta(t, 0.4e-6, got.InputCostPerTokenPriority, 1e-12)
 	require.InDelta(t, 1.2e-6, got.OutputCostPerToken, 1e-12)
-	require.InDelta(t, 2.4e-6, got.OutputCostPerTokenPriority, 1e-12)
 	require.InDelta(t, 0.02e-6, got.CacheReadInputTokenCost, 1e-12)
-	require.InDelta(t, 0.04e-6, got.CacheReadInputTokenCostPriority, 1e-12)
+
+	// Auto-review is an internal Codex model. Do not infer public GPT-5.6 API
+	// service-tier, cache-write, or long-context pricing without an upstream
+	// usage contract for this dedicated model.
+	require.Zero(t, got.InputCostPerTokenPriority)
+	require.Zero(t, got.OutputCostPerTokenPriority)
+	require.Zero(t, got.CacheReadInputTokenCostPriority)
+	require.Zero(t, got.CacheCreationInputTokenCost)
+	require.Zero(t, got.CacheCreationInputTokenCostPriority)
+	require.Zero(t, got.LongContextInputTokenThreshold)
 REDACTED
 
 func TestGetModelPricing_Gpt54MiniUsesDedicatedStaticFallbackWhenRemoteMissing(t *testing.T) {
