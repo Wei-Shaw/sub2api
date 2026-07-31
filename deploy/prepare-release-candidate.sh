@@ -30,6 +30,7 @@ fi
 
 mkdir -p \
   "$CANDIDATE_DIR/release-assets" \
+  "$CANDIDATE_DIR/oci-context/backend" \
   "$CANDIDATE_DIR/oci-context/deploy" \
   "$CANDIDATE_DIR/oci-context/linux/amd64" \
   "$CANDIDATE_DIR/oci-context/linux/arm64"
@@ -69,6 +70,7 @@ for arch in amd64 arm64; do
     "$CANDIDATE_DIR/release-assets/sub2api-deployer-linux-$arch" \
     "$CANDIDATE_DIR/oci-context/linux/$arch/sub2api-deployer"
 done
+cp -R "$REPO_ROOT/backend/resources" "$CANDIDATE_DIR/oci-context/backend/resources"
 install -m 0755 "$REPO_ROOT/deploy/docker-entrypoint.sh" "$CANDIDATE_DIR/oci-context/deploy/docker-entrypoint.sh"
 install -m 0644 "$CONTROL_MANIFEST" "$CANDIDATE_DIR/CONTROL-PLANE-MANIFEST.json"
 

@@ -41,6 +41,10 @@ CANDIDATE="$TEST_ROOT/candidate"
 "$REPO_ROOT/deploy/prepare-release-candidate.sh" \
   "$DIST/artifacts.json" "$CANDIDATE" "$VERSION" "$COMMIT" ghcr.io/example/sub2api
 [[ -x "$CANDIDATE/oci-context/linux/amd64/sub2api-deployer" ]] || fail "OCI deployer was not prepared"
+diff -r \
+  "$REPO_ROOT/backend/resources" \
+  "$CANDIDATE/oci-context/backend/resources" >/dev/null || \
+  fail "OCI runtime resources were not prepared exactly"
 DIGEST="sha256:$(printf 'a%.0s' {1..64})"
 "$REPO_ROOT/deploy/finalize-release-candidate.sh" "$CANDIDATE" "$DIGEST"
 "$REPO_ROOT/deploy/verify-release-candidate.sh" "$CANDIDATE" "$VERSION" "$COMMIT"
