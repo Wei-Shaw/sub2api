@@ -80,6 +80,12 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	}
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
 	input.Body = StripEmptyTextBlocks(input.Body)
+	// Apply the capability learned from a prior upstream validation error before
+	// sending. This is keyed by account + base URL + mapped model, so different
+	// Anthropic-compatible providers can keep different thinking contracts.
+	if rewritten, applied := s.applyCachedAnthropicThinkingMode(account, input.RequestModel, input.Body); applied {
+		input.Body = rewritten
+	}
 	// Pre-filter: strip web-search history blocks the upstream cannot accept
 	// (emulation-synthesized ones always; genuine ones additionally for
 	// passback-required third-party upstreams such as GLM/Kimi/DeepSeek,
@@ -94,6 +100,9 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 
 	var resp *http.Response
 	retryStart := time.Now()
+	thinkingCompatibilityRetried := false
+	var pendingThinkingMode anthropicThinkingMode
+	hasPendingThinkingMode := false
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, input.RequestStream)
 		upstreamReq, wireBody, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token)
@@ -139,7 +148,50 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
-		// 透传分支禁止 400 请求体降级重试（该重试会改写请求体）
+		if resp.StatusCode == 400 {
+			respBody, readErr := s.readUpstreamErrorBody(resp)
+			if readErr == nil {
+				_ = resp.Body.Close()
+
+				if !thinkingCompatibilityRetried {
+					adaptedBody, learnedMode, applied := adaptAnthropicThinkingForUpstreamError(input.Body, respBody)
+					if applied && time.Since(retryStart) < maxRetryElapsed {
+						thinkingCompatibilityRetried = true
+						pendingThinkingMode = learnedMode
+						hasPendingThinkingMode = true
+						appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+							Platform:           account.Platform,
+							AccountID:          account.ID,
+							AccountName:        account.Name,
+							UpstreamStatusCode: resp.StatusCode,
+							UpstreamRequestID:  resp.Header.Get("x-request-id"),
+							UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+							Passthrough:        true,
+							Kind:               "anthropic_thinking_compat",
+							Message:            extractUpstreamErrorMessage(respBody),
+							Detail: func() string {
+								if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+									return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+								}
+								return ""
+							}(),
+						})
+						logger.LegacyPrintf("service.gateway", "Anthropic passthrough account %d: learned thinking compatibility for model %s, retrying request", account.ID, input.RequestModel)
+						input.Body = adaptedBody
+						if input.Parsed != nil {
+							if err := input.Parsed.ReplaceBody(input.Body); err != nil {
+								return nil, err
+							}
+						}
+						continue
+					}
+				}
+
+				resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			}
+		}
+
+		// 透传分支只允许明确识别的 thinking capability retry；其他 400 不改写请求体。
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
 			if attempt < maxRetryAttempts {
 				elapsed := time.Since(retryStart)
@@ -186,6 +238,9 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		}
 
 		break
+	}
+	if resp != nil && resp.StatusCode < 400 && hasPendingThinkingMode {
+		s.rememberAnthropicThinkingMode(account, input.RequestModel, pendingThinkingMode)
 	}
 	if resp == nil || resp.Body == nil {
 		return nil, errors.New("upstream request failed: empty response")

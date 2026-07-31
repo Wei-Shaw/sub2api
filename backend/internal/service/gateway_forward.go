@@ -332,6 +332,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if err := replaceBody(StripEmptyTextBlocks(body)); err != nil {
 		return nil, err
 	}
+	if rewritten, applied := s.applyCachedAnthropicThinkingMode(account, reqModel, body); applied {
+		if err := replaceBody(rewritten); err != nil {
+			return nil, err
+		}
+	}
 	// Pre-filter: strip web-search history blocks the upstream cannot accept
 	// (emulation-synthesized server_tool_use / web_search_tool_result always;
 	// genuine ones additionally for passback-required upstreams). See
@@ -367,6 +372,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	var resp *http.Response
 	lastWireBody := body
 	retryStart := time.Now()
+	thinkingCompatibilityRetried := false
+	var pendingThinkingMode anthropicThinkingMode
+	hasPendingThinkingMode := false
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
@@ -415,6 +423,36 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			respBody, readErr := s.readUpstreamErrorBody(resp)
 			if readErr == nil {
 				_ = resp.Body.Close()
+
+				if !thinkingCompatibilityRetried {
+					adaptedBody, learnedMode, applied := adaptAnthropicThinkingForUpstreamError(body, respBody)
+					if applied && time.Since(retryStart) < maxRetryElapsed {
+						thinkingCompatibilityRetried = true
+						pendingThinkingMode = learnedMode
+						hasPendingThinkingMode = true
+						appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+							Platform:           account.Platform,
+							AccountID:          account.ID,
+							AccountName:        account.Name,
+							UpstreamStatusCode: resp.StatusCode,
+							UpstreamRequestID:  resp.Header.Get("x-request-id"),
+							UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+							Kind:               "anthropic_thinking_compat",
+							Message:            extractUpstreamErrorMessage(respBody),
+							Detail: func() string {
+								if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+									return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+								}
+								return ""
+							}(),
+						})
+						logger.LegacyPrintf("service.gateway", "Account %d: learned Anthropic thinking compatibility for model %s, retrying request", account.ID, reqModel)
+						if err := replaceBody(adaptedBody); err != nil {
+							return nil, err
+						}
+						continue
+					}
+				}
 
 				if s.shouldRectifySignatureError(ctx, account, respBody, reqModel) {
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -663,6 +701,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			}
 		}
 		break
+	}
+	if resp != nil && resp.StatusCode < 400 && hasPendingThinkingMode {
+		s.rememberAnthropicThinkingMode(account, reqModel, pendingThinkingMode)
 	}
 	if resp == nil || resp.Body == nil {
 		return nil, errors.New("upstream request failed: empty response")

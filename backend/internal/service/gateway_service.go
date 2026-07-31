@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -717,6 +718,9 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	// Learned per-upstream/model thinking capabilities. Zero-value safe for tests
+	// and for services constructed through older call sites.
+	anthropicThinkingModes sync.Map
 }
 
 // NewGatewayService creates a new GatewayService
