@@ -131,9 +131,17 @@ const planLabel = computed(() => {
       return 'Team'
     case 'chatgptpro':
     case 'pro':
+    // Antigravity LoadCodeAssist / upstream_plan code（去分隔符后）
+    case 'g1protier':
+    case 'g1pro':
       return 'Pro'
+    case 'g1ultratier':
+    case 'g1ultra':
+    case 'ultra':
+      return 'Ultra'
     case 'free':
     case 'basic':
+    case 'freetier':
       return props.platform === 'grok' ? 'Grok Free' : 'Free'
     case 'supergrok':
       return 'SuperGrok'
@@ -141,8 +149,14 @@ const planLabel = computed(() => {
       return 'SuperGrok Heavy'
     case 'abnormal':
       return t('admin.accounts.subscriptionAbnormal')
-    default:
+    default: {
+      // 兜底：含 pro/ultra/free 的 code 仍显示友好名（避免露出 g1-pro-tier）
+      const raw = normalizedPlanType.value
+      if (raw.includes('ultra')) return 'Ultra'
+      if (raw.includes('pro')) return 'Pro'
+      if (raw.includes('free')) return props.platform === 'grok' ? 'Grok Free' : 'Free'
       return props.planType
+    }
   }
 })
 
