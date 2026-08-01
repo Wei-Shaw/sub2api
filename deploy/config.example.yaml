@@ -1281,7 +1281,7 @@ update:
 # 整体返回 404、不创建任务、不写 Redis。
 #
 # 换其它厂商对象存储：只要它兼容 S3 API 即可直接用；如需完全自定义，实现
-# service.ImageStorage 接口（Save(ctx, key, contentType, data) -> url）即可。
+# service.ImageStorage 接口（Save / Load / Delete）即可。桶必须保持私有。
 image_storage:
   enabled: false
   # S3 兼容端点。AWS 官方可留空；R2 形如 https://<account_id>.r2.cloudflarestorage.com
@@ -1295,11 +1295,7 @@ image_storage:
   prefix: "images/"
   # MinIO / 需要路径风格（path-style）访问的桶设为 true
   force_path_style: false
-  # 若填写公开桶 / CDN 域名，则返回 public_base_url/key 永久直链；
-  # 留空则返回带过期时间的 presigned 临时链接
-  public_base_url: ""
-  # public_base_url 为空时，presigned 链接的有效时长（小时）
-  presign_expiry_hours: 24
+  # 不要配置桶公开访问或 CDN 直链。图片只通过应用鉴权接口读取。
   # 任务记录与生成文件的保留时长（小时，默认 24，最大 168）
   retention_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）

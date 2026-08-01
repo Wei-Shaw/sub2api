@@ -54,8 +54,10 @@ func (passthroughEncryptor) Decrypt(ciphertext string) (string, error) { return 
 
 type noopImageStorage struct{}
 
-func (noopImageStorage) Save(context.Context, string, string, []byte) (string, error) {
-	return "https://cdn.example.test/object.png", nil
+func (noopImageStorage) Save(context.Context, string, string, []byte) error { return nil }
+
+func (noopImageStorage) Load(context.Context, string, int64) ([]byte, string, error) {
+	return []byte("image"), "image/png", nil
 }
 
 func (noopImageStorage) Delete(context.Context, string) error { return nil }

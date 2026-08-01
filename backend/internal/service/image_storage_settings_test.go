@@ -64,9 +64,13 @@ func (reversibleEncryptor) Decrypt(ciphertext string) (string, error) {
 
 type recordingStorage struct{ saved []string }
 
-func (s *recordingStorage) Save(_ context.Context, key, _ string, _ []byte) (string, error) {
+func (s *recordingStorage) Save(_ context.Context, key, _ string, _ []byte) error {
 	s.saved = append(s.saved, key)
-	return "https://cdn.example.com/" + key, nil
+	return nil
+}
+
+func (s *recordingStorage) Load(context.Context, string, int64) ([]byte, string, error) {
+	return []byte("image"), "image/png", nil
 }
 
 func (s *recordingStorage) Delete(context.Context, string) error { return nil }

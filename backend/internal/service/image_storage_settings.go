@@ -34,8 +34,6 @@ type ImageStorageSettings struct {
 
 	Bucket           string `json:"bucket"` // 留空且复用备份时，沿用备份桶
 	Prefix           string `json:"prefix"`
-	PublicBaseURL    string `json:"public_base_url"`
-	PresignExpiry    int    `json:"presign_expiry_hours"`
 	RetentionHours   int    `json:"retention_hours"`
 	MaxDownloadBytes int64  `json:"max_download_bytes"`
 
@@ -268,8 +266,6 @@ func (s *ImageStorageSettingService) toImageStorageConfig(ctx context.Context, i
 		Enabled:         in.Enabled,
 		Bucket:          in.Bucket,
 		Prefix:          in.Prefix,
-		PublicBaseURL:   in.PublicBaseURL,
-		PresignExpiry:   in.PresignExpiry,
 		RetentionHours:  in.RetentionHours,
 		MaxDownloadByte: in.MaxDownloadBytes,
 		Endpoint:        in.Endpoint,
@@ -336,8 +332,6 @@ func settingsFromConfig(cfg config.ImageStorageConfig) *ImageStorageSettings {
 		Enabled:          cfg.Enabled,
 		Bucket:           cfg.Bucket,
 		Prefix:           cfg.Prefix,
-		PublicBaseURL:    cfg.PublicBaseURL,
-		PresignExpiry:    cfg.PresignExpiry,
 		RetentionHours:   cfg.RetentionHours,
 		MaxDownloadBytes: cfg.MaxDownloadByte,
 		Endpoint:         cfg.Endpoint,
@@ -354,8 +348,6 @@ func normalizeImageStorageSettings(in *ImageStorageSettings) {
 	in.Region = strings.TrimSpace(in.Region)
 	in.AccessKeyID = strings.TrimSpace(in.AccessKeyID)
 	in.SecretAccessKey = strings.TrimSpace(in.SecretAccessKey)
-	in.PublicBaseURL = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(in.PublicBaseURL), "/"))
-
 	in.Prefix = strings.TrimSpace(in.Prefix)
 	if in.Prefix == "" {
 		in.Prefix = "images/"
@@ -366,22 +358,11 @@ func normalizeImageStorageSettings(in *ImageStorageSettings) {
 	if in.Region == "" {
 		in.Region = "auto"
 	}
-	if in.PresignExpiry <= 0 {
-		in.PresignExpiry = 24
-	}
 	if in.RetentionHours <= 0 {
 		in.RetentionHours = 24
 	}
-	// AWS S3 presigned GET URLs support at most seven days. Keeping the two
-	// periods aligned guarantees the link remains valid for the full period.
 	if in.RetentionHours > 168 {
 		in.RetentionHours = 168
-	}
-	if in.PresignExpiry < in.RetentionHours {
-		in.PresignExpiry = in.RetentionHours
-	}
-	if in.PresignExpiry > 168 {
-		in.PresignExpiry = 168
 	}
 	if in.MaxDownloadBytes <= 0 {
 		in.MaxDownloadBytes = defaultImageMaxDownloadBytes

@@ -10,9 +10,10 @@ The authenticated gateway exposes both `/v1` paths and their existing no-prefix 
 POST /v1/images/generations/async
 POST /v1/images/edits/async
 GET  /v1/images/tasks/{task_id}
+GET  /v1/images/tasks/{task_id}/images/{image_index}
 ```
 
-The aliases are `/images/generations/async`, `/images/edits/async`, and `/images/tasks/{task_id}`.
+The aliases are `/images/generations/async`, `/images/edits/async`, `/images/tasks/{task_id}`, and `/images/tasks/{task_id}/images/{image_index}`.
 
 Only OpenAI and Grok groups are supported. Requests use the same JSON or multipart payload as the corresponding synchronous endpoint. Streaming image requests are rejected because a polled task returns one final JSON result.
 
@@ -46,19 +47,17 @@ image_storage:
   secret_access_key: "..."
   prefix: "images/"
   force_path_style: false          # MinIO/path-style buckets set true
-  public_base_url: ""              # set to return public_base_url/key直链; empty → presigned URL
-  presign_expiry_hours: 24         # presigned link TTL when public_base_url is empty
   retention_hours: 24              # task and generated-file retention (1-168 hours)
   max_download_bytes: 33554432     # cap when re-hosting an upstream image URL (32MB)
 ```
 
-When a task completes, each generated image is uploaded to the bucket and the result is rewritten to a compact form: `data[].url` points at the stored object (a `public_base_url/key` link, or a time-limited presigned URL) and `b64_json` is removed. Only this small JSON is stored in Redis. A Redis-backed cleanup schedule deletes stored objects after `retention_hours`, including after a service restart. If an upload fails, the task is marked `failed` rather than persisting the raw base64.
+The bucket must remain private. When a task completes, each generated image is uploaded under a private object key; both the upstream `url` and `b64_json` are removed before the compact metadata is stored in Redis. Poll responses expose only an application endpoint that requires the same API key, never an object-store URL or a presigned URL. A Redis-backed cleanup schedule deletes stored objects after `retention_hours`, including after a service restart. If an upload fails, the task is marked `failed` rather than persisting the raw base64.
 
 Reference images uploaded from Image Playground are request inputs only. Multipart parsing may use the operating system's temporary directory for large requests, and those temporary files are removed when the request finishes; reference images are not copied into the image bucket or retained with the task. Generated images are the only long-lived image objects.
 
 Cleanup records include a non-secret fingerprint of the endpoint, region, bucket and path-style mode used for the upload. Rotating credentials or changing the object prefix does not interrupt cleanup. If the endpoint or bucket changes while old images are still retained, deletion is refused and the cleanup record is kept instead of falsely reporting success against the new bucket. Restore the previous target to run those pending deletions, or remove the old objects through that storage provider.
 
-To support a different vendor beyond the S3-compatible client, implement the `service.ImageStorage` interface (`Save` and idempotent `Delete`) and provide it in place of the S3 implementation.
+To support a different vendor beyond the S3-compatible client, implement the `service.ImageStorage` interface (`Save`, authenticated `Load`, and idempotent `Delete`) and provide it in place of the S3 implementation.
 
 ### Troubleshooting: the endpoints return 404 after enabling
 
@@ -72,7 +71,7 @@ WARN image_storage.enabled is true but object storage is not fully configured; a
 
 `missing_keys` names exactly which credentials were empty when the config was loaded.
 
-Note that releases **before v0.1.161 silently dropped `IMAGE_STORAGE_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` and `_PUBLIC_BASE_URL`** when they were supplied only through the environment: those keys had no registered default, and viper cannot see an environment variable for a key it does not already know about. Deployments driven purely by `environment:` — which is what `deploy/docker-compose.yml` does by default — therefore reported `enabled: true` with empty credentials and 404'd on every async call. On an affected release the workaround is to also place the `image_storage` block in `/app/data/config.yaml` (copy it from `deploy/config.example.yaml`); once the keys exist in the file, the environment overrides apply normally.
+Note that releases **before v0.1.161 silently dropped `IMAGE_STORAGE_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY_ID`, and `_SECRET_ACCESS_KEY`** when they were supplied only through the environment: those keys had no registered default, and viper cannot see an environment variable for a key it does not already know about. Deployments driven purely by `environment:` — which is what `deploy/docker-compose.yml` does by default — therefore reported `enabled: true` with empty credentials and 404'd on every async call. On an affected release the workaround is to also place the `image_storage` block in `/app/data/config.yaml` (copy it from `deploy/config.example.yaml`); once the keys exist in the file, the environment overrides apply normally.
 
 Two further causes of a 404 that are unrelated to storage: the API key's group must be on the **OpenAI or Grok** platform (any other platform, or a key with no group at all, yields `Images API is not supported for this platform`), and a task may only be polled with the **same API key that submitted it** — polling with a different key of the same user returns `image task not found` by design.
 
@@ -127,7 +126,7 @@ While work is in progress:
 }
 ```
 
-On success, `result` mirrors the synchronous image API body, except each image has been offloaded to object storage: `data[].url` points at the stored object and `b64_json` is stripped (so both URL and base64 upstream formats end up as compact stored links):
+On success, `result` keeps the synchronous response metadata, but `data[].url` is a relative, API-key-protected application endpoint. It is not an object-store or presigned link, and the same key must be supplied when reading it:
 
 ```json
 {
@@ -136,10 +135,10 @@ On success, `result` mirrors the synchronous image API body, except each image h
   "object": "image.generation.task",
   "status": "completed",
   "http_status": 200,
-  "image_url": "https://...",
+  "image_url": "/v1/images/tasks/imgtask_0123456789abcdef/images/0",
   "result": {
     "created": 1784092923,
-    "data": [{"url": "https://..."}]
+    "data": [{"url": "/v1/images/tasks/imgtask_0123456789abcdef/images/0"}]
   },
   "created_at": 1784092800,
   "completed_at": 1784092923,
@@ -147,7 +146,15 @@ On success, `result` mirrors the synchronous image API body, except each image h
 }
 ```
 
-For URL responses, `image_url` mirrors the first `data[].url` for simple clients. On failure, the task reaches `failed` and exposes the original OpenAI-compatible error object where available:
+Fetch the image with the same key; another key belonging to the same user still receives `404`:
+
+```bash
+curl https://api.example.com/v1/images/tasks/imgtask_0123456789abcdef/images/0 \
+  -H 'Authorization: Bearer sk-...' \
+  --output generated.png
+```
+
+For compatibility, `image_url` mirrors the first protected `data[].url`. On failure, the task reaches `failed` and exposes the original OpenAI-compatible error object where available:
 
 ```json
 {

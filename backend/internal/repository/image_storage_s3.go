@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
@@ -16,11 +17,10 @@ import (
 
 // S3ImageStorage 用 S3 兼容对象存储实现 service.ImageStorage。
 type S3ImageStorage struct {
-	client        *s3.Client
-	deleteObject  func(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
-	bucket        string
-	publicBaseURL string
-	presignExpiry time.Duration
+	client       *s3.Client
+	getObject    func(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	deleteObject func(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
+	bucket       string
 }
 
 var _ service.ImageStorage = (*S3ImageStorage)(nil)
@@ -38,28 +38,15 @@ func NewS3ImageStorage(ctx context.Context, cfg *config.ImageStorageConfig) (*S3
 		return nil, err
 	}
 
-	expiry := time.Duration(cfg.PresignExpiry) * time.Hour
-	if expiry <= 0 {
-		expiry = 24 * time.Hour
-	}
-	if retention := time.Duration(cfg.RetentionHours) * time.Hour; retention > expiry {
-		expiry = retention
-	}
-	if expiry > 168*time.Hour {
-		expiry = 168 * time.Hour
-	}
-
 	return &S3ImageStorage{
-		client:        client,
-		deleteObject:  client.DeleteObject,
-		bucket:        cfg.Bucket,
-		publicBaseURL: strings.TrimRight(cfg.PublicBaseURL, "/"),
-		presignExpiry: expiry,
+		client:       client,
+		getObject:    client.GetObject,
+		deleteObject: client.DeleteObject,
+		bucket:       cfg.Bucket,
 	}, nil
 }
 
-// Save 上传图片字节，返回可访问 URL：配了 public_base_url 则返回公开直链，否则返回 presigned 临时链接。
-func (s *S3ImageStorage) Save(ctx context.Context, key, contentType string, data []byte) (string, error) {
+func (s *S3ImageStorage) Save(ctx context.Context, key, contentType string, data []byte) error {
 	finish := servertiming.ObserveDependency(ctx, "s3")
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      &s.bucket,
@@ -69,22 +56,45 @@ func (s *S3ImageStorage) Save(ctx context.Context, key, contentType string, data
 	})
 	finish()
 	if err != nil {
-		return "", fmt.Errorf("S3 PutObject: %w", err)
+		return fmt.Errorf("S3 PutObject: %w", err)
 	}
+	return nil
+}
 
-	if s.publicBaseURL != "" {
-		return s.publicBaseURL + "/" + strings.TrimLeft(key, "/"), nil
+func (s *S3ImageStorage) Load(ctx context.Context, key string, maxBytes int64) ([]byte, string, error) {
+	if maxBytes <= 0 {
+		return nil, "", fmt.Errorf("S3 GetObject: invalid maximum size")
 	}
-
-	presignClient := s3.NewPresignClient(s.client)
-	result, err := presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
-		Bucket: &s.bucket,
-		Key:    &key,
-	}, s3.WithPresignExpires(s.presignExpiry))
+	finish := servertiming.ObserveDependency(ctx, "s3")
+	getObject := s.getObject
+	if getObject == nil && s.client != nil {
+		getObject = s.client.GetObject
+	}
+	if getObject == nil {
+		finish()
+		return nil, "", fmt.Errorf("S3 GetObject: client is unavailable")
+	}
+	output, err := getObject(ctx, &s3.GetObjectInput{Bucket: &s.bucket, Key: &key})
+	finish()
 	if err != nil {
-		return "", fmt.Errorf("presign url: %w", err)
+		return nil, "", fmt.Errorf("S3 GetObject: %w", err)
 	}
-	return result.URL, nil
+	if output == nil || output.Body == nil {
+		return nil, "", fmt.Errorf("S3 GetObject: empty body")
+	}
+	defer func() { _ = output.Body.Close() }()
+	data, err := io.ReadAll(io.LimitReader(output.Body, maxBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("S3 GetObject read: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, "", fmt.Errorf("S3 GetObject exceeds %d bytes", maxBytes)
+	}
+	contentType := strings.ToLower(http.DetectContentType(data))
+	if !strings.HasPrefix(contentType, "image/") {
+		return nil, "", fmt.Errorf("S3 GetObject content type %q is not an image", contentType)
+	}
+	return data, contentType, nil
 }
 
 func (s *S3ImageStorage) Delete(ctx context.Context, key string) error {

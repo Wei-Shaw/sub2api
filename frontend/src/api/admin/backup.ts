@@ -69,8 +69,6 @@ export interface ImageStorageConfig {
   reuse_backup_s3: boolean
   bucket: string
   prefix: string
-  public_base_url: string
-  presign_expiry_hours: number
   retention_hours: number
   max_download_bytes: number
   endpoint: string

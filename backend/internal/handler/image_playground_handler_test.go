@@ -299,16 +299,15 @@ func TestImagePlaygroundSubmitValidatesInput(t *testing.T) {
 }
 
 func TestImagePlaygroundGetTaskBuildsPreviewAndDownloadURLs(t *testing.T) {
-	result := json.RawMessage(`{"data":[{"url":"https://cdn.example/image.png"}]}`)
 	tasks := &imagePlaygroundTasksStub{task: &service.ImageTask{
-		ID:        "imgtask_123",
-		Status:    service.ImageTaskStatusCompleted,
-		GroupID:   3,
-		Platform:  service.PlatformOpenAI,
-		Model:     "gpt-image-2",
-		Result:    result,
-		CreatedAt: 1,
-		ExpiresAt: 2,
+		ID:         "imgtask_123",
+		Status:     service.ImageTaskStatusCompleted,
+		GroupID:    3,
+		Platform:   service.PlatformOpenAI,
+		Model:      "gpt-image-2",
+		ImageCount: 1,
+		CreatedAt:  1,
+		ExpiresAt:  2,
 	}}
 	h := &ImagePlaygroundHandler{playground: &imagePlaygroundApplicationStub{}, tasks: tasks}
 	c, recorder := imagePlaygroundTestContext(http.MethodGet, "/api/v1/image-playground/tasks/imgtask_123", nil)
@@ -431,7 +430,7 @@ func TestImagePlaygroundDeleteTaskUsesAuthenticatedOwner(t *testing.T) {
 func TestImagePlaygroundListTasksUsesAuthenticatedUser(t *testing.T) {
 	tasks := &imagePlaygroundTasksStub{tasks: []*service.ImageTask{{
 		ID: "imgtask_123", Status: service.ImageTaskStatusCompleted, Model: "gpt-image-2",
-		Result: json.RawMessage(`{"data":[{"url":"https://cdn.example/image.png"}]}`),
+		ImageCount: 1,
 	}}}
 	h := &ImagePlaygroundHandler{playground: &imagePlaygroundApplicationStub{}, tasks: tasks}
 	c, recorder := imagePlaygroundTestContext(http.MethodGet, "/api/v1/image-playground/tasks", nil)

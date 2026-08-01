@@ -590,24 +590,13 @@ func imagePlaygroundTaskToResponse(task *service.ImageTask) imagePlaygroundTaskR
 	result.CompletedAt = task.CompletedAt
 	result.ExpiresAt = task.ExpiresAt
 	result.PollURL = imagePlaygroundPollURL(task.ID)
-	if len(task.Result) > 0 && json.Valid(task.Result) {
-		var payload struct {
-			Data []struct {
-				URL string `json:"url"`
-			} `json:"data"`
-		}
-		if json.Unmarshal(task.Result, &payload) == nil {
-			for index, image := range payload.Data {
-				if imageURL := strings.TrimSpace(image.URL); imageURL != "" {
-					previewURL := fmt.Sprintf("%s/images/%d", result.PollURL, index)
-					result.Images = append(result.Images, imagePlaygroundImage{
-						Index:       index,
-						URL:         previewURL,
-						DownloadURL: fmt.Sprintf("%s/images/%d/download", result.PollURL, index),
-					})
-				}
-			}
-		}
+	for index := 0; index < task.ImageCount; index++ {
+		previewURL := fmt.Sprintf("%s/images/%d", result.PollURL, index)
+		result.Images = append(result.Images, imagePlaygroundImage{
+			Index:       index,
+			URL:         previewURL,
+			DownloadURL: fmt.Sprintf("%s/images/%d/download", result.PollURL, index),
+		})
 	}
 	return result
 }

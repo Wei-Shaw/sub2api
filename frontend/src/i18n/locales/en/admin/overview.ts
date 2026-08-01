@@ -110,11 +110,8 @@ export default {
         bucket: 'Bucket',
         bucketInherited: 'Leave empty to use the backup bucket',
         prefix: 'Key prefix',
-        publicBaseUrl: 'Public base URL',
-        publicBaseUrlPlaceholder: 'Leave empty to return presigned links',
-        presignExpiryHours: 'Presigned link TTL (hours)',
         retentionHours: 'Generated file retention (hours)',
-        retentionHint: 'Defaults to 24 hours, up to 168 hours. Task records and stored files are removed after expiry.',
+        retentionHint: 'Defaults to 24 hours, up to 168 hours. Images require login or API-key authentication; task records and stored files are removed after expiry.',
         saved: 'Async image object storage saved'
       },
       schedule: {

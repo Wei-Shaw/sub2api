@@ -70,7 +70,8 @@ type ImageTask struct {
 	InputImageCount int             `json:"input_image_count,omitempty"`
 	Status          string          `json:"status"`
 	HTTPStatus      int             `json:"http_status,omitempty"`
-	ImageURL        string          `json:"image_url,omitempty"`
+	ImageURL        string          `json:"image_url,omitempty"` // reserved for compatibility; never contains an object-store URL
+	ImageCount      int             `json:"image_count,omitempty"`
 	Result          json.RawMessage `json:"result,omitempty"`
 	Error           json.RawMessage `json:"error,omitempty"`
 	CreatedAt       int64           `json:"created_at"`
@@ -309,17 +310,34 @@ func (s *ImageTaskService) DownloadForUser(ctx context.Context, userID int64, id
 	if userID <= 0 || task.UserID != userID {
 		return nil, ErrImageTaskNotFound
 	}
-	if task.Status != ImageTaskStatusCompleted {
-		return nil, ErrImageTaskNotReady
-	}
-	imageURL, err := imageTaskURLAt(task.Result, imageIndex)
+	return s.downloadRecord(ctx, task, imageIndex)
+}
+
+// Download is the API-key scoped counterpart of DownloadForUser. Both the user
+// and the exact key that submitted the asynchronous request must match.
+func (s *ImageTaskService) Download(ctx context.Context, owner ImageTaskOwner, id string, imageIndex int) (*ImageTaskDownload, error) {
+	task, err := s.getRecord(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	data, contentType, err := (&ImageResultUploader{
-		httpClient:       defaultImageDownloadHTTPClient(),
-		maxDownloadBytes: defaultImageMaxDownloadBytes,
-	}).download(ctx, imageURL)
+	if owner.UserID <= 0 || owner.APIKeyID <= 0 || task.UserID != owner.UserID || task.APIKeyID != owner.APIKeyID {
+		return nil, ErrImageTaskNotFound
+	}
+	return s.downloadRecord(ctx, task, imageIndex)
+}
+
+func (s *ImageTaskService) downloadRecord(ctx context.Context, task *ImageTaskRecord, imageIndex int) (*ImageTaskDownload, error) {
+	if task.Status != ImageTaskStatusCompleted {
+		return nil, ErrImageTaskNotReady
+	}
+	if imageIndex < 0 || imageIndex >= len(task.StorageKeys) {
+		return nil, ErrImageTaskImageNotFound
+	}
+	uploader, err := s.uploaderForStorage(task.StorageIdentity)
+	if err != nil {
+		return nil, ErrImageTaskUnavailable.WithCause(err)
+	}
+	data, contentType, err := uploader.Load(ctx, task.StorageKeys[imageIndex])
 	if err != nil {
 		return nil, ErrImageTaskUnavailable.WithCause(err)
 	}
@@ -389,6 +407,7 @@ func (s *ImageTaskService) Complete(ctx context.Context, id string, statusCode i
 		storageKeys = keys
 		storageIdentity = uploader.StorageIdentity()
 	}
+	result = sanitizeImageTaskResult(result)
 	err := s.finish(ctx, id, ImageTaskStatusCompleted, statusCode, result, nil, storageKeys, storageIdentity)
 	if err != nil && len(storageKeys) > 0 {
 		if uploader != nil {
@@ -541,32 +560,13 @@ func imageTaskToPublic(task *ImageTaskRecord) *ImageTask {
 		InputImageCount: task.InputImageCount,
 		Status:          task.Status,
 		HTTPStatus:      task.HTTPStatus,
-		ImageURL:        firstImageTaskURL(task.Result),
-		Result:          task.Result,
+		ImageCount:      len(task.StorageKeys),
+		Result:          sanitizeImageTaskResult(task.Result),
 		Error:           task.Error,
 		CreatedAt:       task.CreatedAt,
 		CompletedAt:     task.CompletedAt,
 		ExpiresAt:       task.ExpiresAt,
 	}
-}
-
-func imageTaskURLAt(result json.RawMessage, index int) (string, error) {
-	if index < 0 || len(result) == 0 || !json.Valid(result) {
-		return "", ErrImageTaskImageNotFound
-	}
-	var response struct {
-		Data []struct {
-			URL string `json:"url"`
-		} `json:"data"`
-	}
-	if json.Unmarshal(result, &response) != nil || index >= len(response.Data) {
-		return "", ErrImageTaskImageNotFound
-	}
-	rawURL := strings.TrimSpace(response.Data[index].URL)
-	if rawURL == "" || (!strings.HasPrefix(rawURL, "https://") && !strings.HasPrefix(rawURL, "http://")) {
-		return "", ErrImageTaskImageNotFound
-	}
-	return rawURL, nil
 }
 
 func truncateImageTaskText(value string, maxRunes int) string {
@@ -581,19 +581,48 @@ func truncateImageTaskText(value string, maxRunes int) string {
 	return string(runes[:maxRunes])
 }
 
-func firstImageTaskURL(result json.RawMessage) string {
+// sanitizeImageTaskResult removes both upstream image bytes and every kind of
+// object URL from persisted legacy records before they cross an API boundary.
+func sanitizeImageTaskResult(result json.RawMessage) json.RawMessage {
 	if len(result) == 0 || !json.Valid(result) {
-		return ""
+		return nil
 	}
-	var response struct {
-		Data []struct {
-			URL string `json:"url"`
-		} `json:"data"`
+	var value any
+	if json.Unmarshal(result, &value) != nil {
+		return nil
 	}
-	if json.Unmarshal(result, &response) != nil || len(response.Data) == 0 {
-		return ""
+	removeImageResultSecrets(value)
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil
 	}
-	return strings.TrimSpace(response.Data[0].URL)
+	return encoded
+}
+
+func removeImageResultSecrets(value any) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if isPrivateImageResultField(key) {
+				delete(typed, key)
+				continue
+			}
+			removeImageResultSecrets(child)
+		}
+	case []any:
+		for _, child := range typed {
+			removeImageResultSecrets(child)
+		}
+	}
+}
+
+func isPrivateImageResultField(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "url", "image_url", "download_url", "b64_json":
+		return true
+	default:
+		return false
+	}
 }
 
 func imageTaskErrorJSON(errorType, message string) json.RawMessage {

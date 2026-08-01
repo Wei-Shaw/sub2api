@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"time"
 
@@ -208,7 +209,35 @@ func (h *AsyncImageHandler) Get(c *gin.Context) {
 	if task.Status == service.ImageTaskStatusProcessing {
 		c.Header("Retry-After", "3")
 	}
-	c.JSON(http.StatusOK, task)
+	c.JSON(http.StatusOK, asyncImageTaskResponse(task, c.Request.URL.Path))
+}
+
+// GetImage serves a retained result through API-key authentication. It never
+// redirects to or reveals the private object-store endpoint.
+func (h *AsyncImageHandler) GetImage(c *gin.Context) {
+	if !h.pollable() {
+		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
+		return
+	}
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil || apiKey.UserID <= 0 || apiKey.ID <= 0 {
+		imageTaskError(c, service.ErrImageTaskForbidden)
+		return
+	}
+	imageIndex, err := strconv.Atoi(c.Param("image_index"))
+	if err != nil || imageIndex < 0 {
+		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "invalid image index")
+		return
+	}
+	download, err := h.tasks.Download(c.Request.Context(), service.ImageTaskOwner{
+		UserID: apiKey.UserID, APIKeyID: apiKey.ID,
+	}, c.Param("task_id"), imageIndex)
+	if err != nil {
+		imageTaskError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "private, no-store")
+	c.Data(http.StatusOK, download.ContentType, download.Data)
 }
 
 func (h *AsyncImageHandler) validateRequest(c *gin.Context, platform string, body []byte) error {
@@ -316,6 +345,46 @@ func imageTaskPollURL(submitPath, taskID string) string {
 		return "/v1/images/tasks/" + taskID
 	}
 	return "/images/tasks/" + taskID
+}
+
+func asyncImageTaskResponse(task *service.ImageTask, pollPath string) any {
+	if task == nil {
+		return task
+	}
+	encoded, _ := json.Marshal(task)
+	var response map[string]any
+	if json.Unmarshal(encoded, &response) != nil {
+		return task
+	}
+	basePath := strings.TrimSuffix(pollPath, "/") + "/images/"
+	var result map[string]any
+	if len(task.Result) > 0 {
+		_ = json.Unmarshal(task.Result, &result)
+	}
+	if result == nil {
+		result = make(map[string]any)
+	}
+	items := make([]any, task.ImageCount)
+	if existing, ok := result["data"].([]any); ok {
+		copy(items, existing)
+	}
+	for index := range items {
+		item, _ := items[index].(map[string]any)
+		if item == nil {
+			item = make(map[string]any)
+		}
+		item["url"] = basePath + strconv.Itoa(index)
+		delete(item, "b64_json")
+		items[index] = item
+	}
+	if task.ImageCount > 0 {
+		result["data"] = items
+		response["result"] = result
+		response["image_url"] = basePath + "0"
+	} else {
+		delete(response, "image_url")
+	}
+	return response
 }
 
 func extractImageTaskError(body []byte) json.RawMessage {

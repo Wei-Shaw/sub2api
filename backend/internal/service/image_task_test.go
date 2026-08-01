@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"testing"
 	"time"
@@ -115,10 +114,43 @@ func TestImageTaskServiceLifecycleAndOwnership(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ImageTaskStatusCompleted, completed.Status)
 	require.Equal(t, http.StatusOK, completed.HTTPStatus)
-	require.Equal(t, "https://example.test/image.png", completed.ImageURL)
-	require.JSONEq(t, string(result), string(completed.Result))
+	require.Empty(t, completed.ImageURL)
+	require.Zero(t, completed.ImageCount, "a legacy result without private storage keys must not be advertised as downloadable")
+	require.NotContains(t, string(completed.Result), "example.test")
 	require.NotNil(t, completed.CompletedAt)
 	require.InDelta(t, *completed.CompletedAt+int64(time.Hour/time.Second), completed.ExpiresAt, 1)
+}
+
+func TestImageTaskServiceNeverExposesLegacyStoredURLs(t *testing.T) {
+	store := &imageTaskMemoryStore{task: &ImageTaskRecord{
+		ID: "legacy", UserID: 7, APIKeyID: 9, Status: ImageTaskStatusCompleted,
+		Result:      json.RawMessage(`{"data":[{"url":"https://public.example/images/legacy.png","b64_json":"secret","revised_prompt":"kept"}]}`),
+		StorageKeys: []string{"images/legacy-0.png"},
+	}}
+	svc := NewImageTaskServiceWithOptions(store, time.Hour, time.Minute)
+
+	task, err := svc.Get(context.Background(), ImageTaskOwner{UserID: 7, APIKeyID: 9}, "legacy")
+	require.NoError(t, err)
+	require.Equal(t, 1, task.ImageCount)
+	require.NotContains(t, string(task.Result), "public.example")
+	require.NotContains(t, string(task.Result), "b64_json")
+	require.Contains(t, string(task.Result), "revised_prompt")
+}
+
+func TestImageTaskServiceStripsNonstandardImageURLsBeforePersistence(t *testing.T) {
+	store := &imageTaskMemoryStore{}
+	storage := &fakeImageStorage{}
+	svc := NewImageTaskServiceWithUploader(store, NewImageResultUploader(storage, "images/", 0, nil), time.Hour, time.Minute)
+	owner := ImageTaskOwner{UserID: 7, APIKeyID: 9}
+	created, err := svc.Create(context.Background(), owner)
+	require.NoError(t, err)
+	b64 := base64.StdEncoding.EncodeToString(pngBytes)
+	result := json.RawMessage(`{"data":[{"b64_json":"` + b64 + `","metadata":{"image_url":"https://public.example/image.png","download_url":"https://public.example/download"}}]}`)
+	require.NoError(t, svc.Complete(context.Background(), created.ID, http.StatusOK, result))
+
+	require.NotContains(t, string(store.task.Result), "public.example")
+	require.NotContains(t, string(store.task.Result), "image_url")
+	require.NotContains(t, string(store.task.Result), "download_url")
 }
 
 func TestImageTaskServiceInvalidResultBecomesFailed(t *testing.T) {
@@ -186,23 +218,17 @@ func TestImageTaskServiceListForUserFiltersForeignRecords(t *testing.T) {
 }
 
 func TestImageTaskServiceDownloadForUser(t *testing.T) {
-	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write([]byte("png-data"))
-	}))
-	defer imageServer.Close()
-
 	store := &imageTaskMemoryStore{}
-	svc := NewImageTaskServiceWithUploader(store, nil, time.Hour, time.Minute)
+	storage := &fakeImageStorage{}
+	svc := NewImageTaskServiceWithUploader(store, NewImageResultUploader(storage, "images/", 0, nil), time.Hour, time.Minute)
 	created, err := svc.Create(context.Background(), ImageTaskOwner{UserID: 7, APIKeyID: 9})
 	require.NoError(t, err)
 
 	_, err = svc.DownloadForUser(context.Background(), 7, created.ID, 0)
 	require.ErrorIs(t, err, ErrImageTaskNotReady)
 
-	result, err := json.Marshal(map[string]any{"data": []map[string]string{{"url": imageServer.URL + "/image.png"}}})
-	require.NoError(t, err)
-	require.NoError(t, svc.Complete(context.Background(), created.ID, http.StatusOK, result))
+	b64 := base64.StdEncoding.EncodeToString(pngBytes)
+	require.NoError(t, svc.Complete(context.Background(), created.ID, http.StatusOK, json.RawMessage(`{"data":[{"b64_json":"`+b64+`"}]}`)))
 
 	_, err = svc.DownloadForUser(context.Background(), 8, created.ID, 0)
 	require.ErrorIs(t, err, ErrImageTaskNotFound)
@@ -211,9 +237,28 @@ func TestImageTaskServiceDownloadForUser(t *testing.T) {
 
 	download, err := svc.DownloadForUser(context.Background(), 7, created.ID, 0)
 	require.NoError(t, err)
-	require.Equal(t, []byte("png-data"), download.Data)
+	require.Equal(t, pngBytes, download.Data)
 	require.Equal(t, "image/png", download.ContentType)
 	require.Equal(t, created.ID+"-1.png", download.Filename)
+}
+
+func TestImageTaskServiceDownloadRequiresSubmittingAPIKey(t *testing.T) {
+	store := &imageTaskMemoryStore{}
+	storage := &fakeImageStorage{}
+	svc := NewImageTaskServiceWithUploader(store, NewImageResultUploader(storage, "images/", 0, nil), time.Hour, time.Minute)
+	owner := ImageTaskOwner{UserID: 7, APIKeyID: 9}
+	created, err := svc.Create(context.Background(), owner)
+	require.NoError(t, err)
+	b64 := base64.StdEncoding.EncodeToString(pngBytes)
+	require.NoError(t, svc.Complete(context.Background(), created.ID, http.StatusOK, json.RawMessage(`{"data":[{"b64_json":"`+b64+`"}]}`)))
+
+	_, err = svc.Download(context.Background(), ImageTaskOwner{UserID: 7, APIKeyID: 10}, created.ID, 0)
+	require.ErrorIs(t, err, ErrImageTaskNotFound)
+	_, err = svc.Download(context.Background(), ImageTaskOwner{UserID: 8, APIKeyID: 9}, created.ID, 0)
+	require.ErrorIs(t, err, ErrImageTaskNotFound)
+	download, err := svc.Download(context.Background(), owner, created.ID, 0)
+	require.NoError(t, err)
+	require.Equal(t, pngBytes, download.Data)
 }
 
 func TestImageTaskServiceDeleteForUserRemovesStoredFilesAndRecord(t *testing.T) {

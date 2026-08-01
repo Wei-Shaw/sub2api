@@ -244,12 +244,13 @@ type ImageStorageConfig struct {
 	Bucket          string `mapstructure:"bucket"`
 	AccessKeyID     string `mapstructure:"access_key_id"`
 	SecretAccessKey string `mapstructure:"secret_access_key"`
-	Prefix          string `mapstructure:"prefix"`               // S3 key 前缀，如 "images/"
-	ForcePathStyle  bool   `mapstructure:"force_path_style"`     // MinIO/路径风格桶
-	PublicBaseURL   string `mapstructure:"public_base_url"`      // 配了则返回 public_base_url/key 直链；否则 presigned
-	PresignExpiry   int    `mapstructure:"presign_expiry_hours"` // public_base_url 为空时的 presigned 过期时长(小时)
-	RetentionHours  int    `mapstructure:"retention_hours"`      // 任务与生成文件的保留时长(小时)
-	MaxDownloadByte int64  `mapstructure:"max_download_bytes"`   // 下载上游 url 图片的字节上限
+	Prefix          string `mapstructure:"prefix"`           // S3 key 前缀，如 "images/"
+	ForcePathStyle  bool   `mapstructure:"force_path_style"` // MinIO/路径风格桶
+	// Deprecated compatibility fields. Private image results ignore both values.
+	PublicBaseURL   string `mapstructure:"public_base_url"`
+	PresignExpiry   int    `mapstructure:"presign_expiry_hours"`
+	RetentionHours  int    `mapstructure:"retention_hours"`    // 任务与生成文件的保留时长(小时)
+	MaxDownloadByte int64  `mapstructure:"max_download_bytes"` // 下载上游 url 图片的字节上限
 }
 
 // IsConfigured 检查对象存储必要字段是否已配置

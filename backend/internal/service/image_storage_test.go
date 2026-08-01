@@ -26,8 +26,8 @@ type savedImage struct {
 type fakeImageStorage struct {
 	saved     []savedImage
 	deleted   []string
-	url       string
 	err       error
+	loadErr   error
 	deleteErr error
 	failAfter int
 }
@@ -46,18 +46,27 @@ func (f *fakeImageStorage) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-func (f *fakeImageStorage) Save(_ context.Context, key, contentType string, data []byte) (string, error) {
+func (f *fakeImageStorage) Save(_ context.Context, key, contentType string, data []byte) error {
 	if f.err != nil {
-		return "", f.err
+		return f.err
 	}
 	if f.failAfter > 0 && len(f.saved) >= f.failAfter {
-		return "", errors.New("injected save failure")
+		return errors.New("injected save failure")
 	}
 	f.saved = append(f.saved, savedImage{key: key, contentType: contentType, data: append([]byte(nil), data...)})
-	if f.url != "" {
-		return f.url, nil
+	return nil
+}
+
+func (f *fakeImageStorage) Load(_ context.Context, key string, _ int64) ([]byte, string, error) {
+	if f.loadErr != nil {
+		return nil, "", f.loadErr
 	}
-	return "https://cdn.test/" + key, nil
+	for _, image := range f.saved {
+		if image.key == key {
+			return append([]byte(nil), image.data...), image.contentType, nil
+		}
+	}
+	return nil, "", errors.New("object not found")
 }
 
 func TestImageResultUploaderRewritesB64JSON(t *testing.T) {
@@ -80,7 +89,8 @@ func TestImageResultUploaderRewritesB64JSON(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(out, &parsed))
 	require.Len(t, parsed.Data, 1)
-	require.JSONEq(t, `"https://cdn.test/images/imgtask_abc-0.png"`, string(parsed.Data[0]["url"]))
+	_, hasURL := parsed.Data[0]["url"]
+	require.False(t, hasURL, "object storage URL must never be persisted")
 	_, hasB64 := parsed.Data[0]["b64_json"]
 	require.False(t, hasB64, "b64_json must be stripped after offload")
 	require.JSONEq(t, `"a cat"`, string(parsed.Data[0]["revised_prompt"]), "unrelated fields preserved")
@@ -108,7 +118,8 @@ func TestImageResultUploaderRewritesURL(t *testing.T) {
 		Data []map[string]json.RawMessage `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(out, &parsed))
-	require.JSONEq(t, `"https://cdn.test/images/imgtask_xyz-0.png"`, string(parsed.Data[0]["url"]))
+	_, hasURL := parsed.Data[0]["url"]
+	require.False(t, hasURL)
 }
 
 func TestImageResultUploaderRewritesImageDataURLWithoutHTTP(t *testing.T) {
@@ -134,7 +145,8 @@ func TestImageResultUploaderRewritesImageDataURLWithoutHTTP(t *testing.T) {
 		Data []map[string]json.RawMessage `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(out, &parsed))
-	require.JSONEq(t, `"https://cdn.test/images/imgtask_data-0.png"`, string(parsed.Data[0]["url"]))
+	_, hasURL := parsed.Data[0]["url"]
+	require.False(t, hasURL)
 	require.JSONEq(t, `"kept"`, string(parsed.Data[0]["revised_prompt"]))
 }
 
@@ -244,8 +256,12 @@ func TestImageTaskServiceCompleteOffloadsToStorage(t *testing.T) {
 	got, err := svc.Get(context.Background(), owner, created.ID)
 	require.NoError(t, err)
 	require.Equal(t, ImageTaskStatusCompleted, got.Status)
-	require.Equal(t, "https://cdn.test/images/"+created.ID+"-0.png", got.ImageURL)
+	require.Empty(t, got.ImageURL)
+	require.Equal(t, 1, got.ImageCount)
+	require.NotContains(t, string(got.Result), "cdn.test")
 	require.NotContains(t, string(got.Result), "b64_json", "large base64 must not be persisted to Redis")
+	require.NotContains(t, string(store.task.Result), "url", "Redis record must not contain an object-store URL")
+	require.NotContains(t, string(store.task.Result), "b64_json", "Redis record must not contain image bytes")
 	require.Len(t, storage.saved, 1)
 }
 
