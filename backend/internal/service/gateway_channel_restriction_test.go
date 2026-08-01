@@ -4,10 +4,381 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestImagePlaygroundModelEligible_RequestedAndChannelMapped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		source  string
+		mapping map[string]map[string]string
+		pricing []string
+		model   string
+		want    bool
+	}{
+		{
+			name:    "requested model allowed",
+			source:  BillingModelSourceRequested,
+			pricing: []string{"gpt-image-1"},
+			model:   "gpt-image-1",
+			want:    true,
+		},
+		{
+			name:    "requested model blocked",
+			source:  BillingModelSourceRequested,
+			pricing: []string{"gpt-image-2"},
+			model:   "gpt-image-1",
+			want:    false,
+		},
+		{
+			name:    "channel mapped model allowed",
+			source:  BillingModelSourceChannelMapped,
+			mapping: map[string]map[string]string{PlatformOpenAI: {"gpt-image-1": "gpt-image-2"}},
+			pricing: []string{"gpt-image-2"},
+			model:   "gpt-image-1",
+			want:    true,
+		},
+		{
+			name:    "channel mapped model blocked",
+			source:  BillingModelSourceChannelMapped,
+			mapping: map[string]map[string]string{PlatformOpenAI: {"gpt-image-1": "gpt-image-1.5"}},
+			pricing: []string{"gpt-image-2"},
+			model:   "gpt-image-1",
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			channelSvc := newTestChannelService(makeStandardRepo(Channel{
+				ID:                 1,
+				Status:             StatusActive,
+				GroupIDs:           []int64{10},
+				RestrictModels:     true,
+				BillingModelSource: tt.source,
+				ModelPricing:       []ChannelModelPricing{{Platform: PlatformOpenAI, Models: tt.pricing}},
+				ModelMapping:       tt.mapping,
+			}, map[int64]string{10: PlatformOpenAI}))
+			repo := &mockAccountRepoForPlatform{accounts: []Account{{
+				ID:            1,
+				Platform:      PlatformOpenAI,
+				Type:          AccountTypeAPIKey,
+				Status:        StatusActive,
+				Schedulable:   true,
+				AccountGroups: []AccountGroup{{GroupID: 10}},
+			}}}
+			svc := &GatewayService{accountRepo: repo, channelService: channelSvc}
+
+			require.Equal(t, tt.want, svc.IsImagePlaygroundModelEligible(
+				context.Background(), 10, PlatformOpenAI, tt.model,
+			))
+		})
+	}
+}
+
+func TestImagePlaygroundModelEligible_ChannelMappedRequiresExecutableAccountMapping(t *testing.T) {
+	t.Parallel()
+
+	channelSvc := newTestChannelService(makeStandardRepo(Channel{
+		ID:                 1,
+		Status:             StatusActive,
+		GroupIDs:           []int64{10},
+		RestrictModels:     true,
+		BillingModelSource: BillingModelSourceChannelMapped,
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformOpenAI, Models: []string{"gpt-image-2"}},
+		},
+		ModelMapping: map[string]map[string]string{
+			PlatformOpenAI: {"gpt-image-1": "gpt-image-2"},
+		},
+	}, map[int64]string{10: PlatformOpenAI}))
+	repo := &mockAccountRepoForPlatform{accounts: []Account{{
+		ID:            1,
+		Platform:      PlatformOpenAI,
+		Type:          AccountTypeAPIKey,
+		Status:        StatusActive,
+		Schedulable:   true,
+		AccountGroups: []AccountGroup{{GroupID: 10}},
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"gpt-image-1": "gpt-image-1"},
+		},
+	}}}
+	svc := &GatewayService{accountRepo: repo, channelService: channelSvc}
+
+	require.False(t, svc.IsImagePlaygroundModelEligible(
+		context.Background(), 10, PlatformOpenAI, "gpt-image-1",
+	), "pricing alone is insufficient when no account accepts the channel-mapped model")
+
+	repo.accounts[0].Credentials = map[string]any{
+		"model_mapping": map[string]any{
+			"gpt-image-1": "gpt-image-1",
+			"gpt-image-2": "gpt-image-2",
+		},
+	}
+	require.True(t, svc.IsImagePlaygroundModelEligible(
+		context.Background(), 10, PlatformOpenAI, "gpt-image-1",
+	))
+}
+
+func TestImagePlaygroundModelEligible_UpstreamRequiresAllowedAccountMapping(t *testing.T) {
+	t.Parallel()
+
+	channelSvc := newTestChannelService(makeStandardRepo(Channel{
+		ID:                 1,
+		Status:             StatusActive,
+		GroupIDs:           []int64{10},
+		RestrictModels:     true,
+		BillingModelSource: BillingModelSourceUpstream,
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformOpenAI, Models: []string{"gpt-image-2"}},
+		},
+	}, map[int64]string{10: PlatformOpenAI}))
+	repo := &mockAccountRepoForPlatform{accounts: []Account{
+		{
+			ID:            1,
+			Platform:      PlatformOpenAI,
+			Type:          AccountTypeAPIKey,
+			Status:        StatusActive,
+			Schedulable:   true,
+			AccountGroups: []AccountGroup{{GroupID: 10}},
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"gpt-image-1": "gpt-image-1.5"},
+			},
+		},
+		{
+			ID:            2,
+			Platform:      PlatformOpenAI,
+			Type:          AccountTypeAPIKey,
+			Status:        StatusActive,
+			Schedulable:   true,
+			AccountGroups: []AccountGroup{{GroupID: 10}},
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"gpt-image-1": "gpt-image-2"},
+			},
+		},
+	}}
+	svc := &GatewayService{accountRepo: repo, channelService: channelSvc}
+
+	require.True(t, svc.IsImagePlaygroundModelEligible(
+		context.Background(), 10, PlatformOpenAI, "gpt-image-1",
+	))
+	require.False(t, svc.IsImagePlaygroundModelEligible(
+		context.Background(), 10, PlatformOpenAI, "gpt-image-1.5",
+	))
+	require.False(t, svc.IsImagePlaygroundModelEligible(
+		context.Background(), 10, PlatformGrok, "gpt-image-1",
+	), "accounts from another platform must not make the model eligible")
+}
+
+func TestImagePlaygroundModelEligible_UpstreamUsesImageForwardMappingOrder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		accountType    string
+		originalMapped string
+		channelMapped  string
+		allowedModel   string
+		want           bool
+	}{
+		{
+			name:           "API key allows its mapped channel result",
+			accountType:    AccountTypeAPIKey,
+			originalMapped: "gpt-image-wrong-order",
+			channelMapped:  "gpt-image-2",
+			allowedModel:   "gpt-image-2",
+			want:           true,
+		},
+		{
+			name:           "API key blocks its unpriced mapped channel result",
+			accountType:    AccountTypeAPIKey,
+			originalMapped: "gpt-image-2",
+			channelMapped:  "gpt-image-disallowed",
+			allowedModel:   "gpt-image-2",
+			want:           false,
+		},
+		{
+			name:           "OAuth allows the priced channel result",
+			accountType:    AccountTypeOAuth,
+			originalMapped: "gpt-image-wrong-order",
+			channelMapped:  "gpt-image-disallowed",
+			allowedModel:   "gpt-image-1.5",
+			want:           true,
+		},
+		{
+			name:           "OAuth blocks the unpriced channel result",
+			accountType:    AccountTypeOAuth,
+			originalMapped: "gpt-image-2",
+			channelMapped:  "gpt-image-2",
+			allowedModel:   "gpt-image-2",
+			want:           false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			channelSvc := newTestChannelService(makeStandardRepo(Channel{
+				ID:                 1,
+				Status:             StatusActive,
+				GroupIDs:           []int64{10},
+				RestrictModels:     true,
+				BillingModelSource: BillingModelSourceUpstream,
+				ModelPricing: []ChannelModelPricing{
+					{Platform: PlatformOpenAI, Models: []string{tt.allowedModel}},
+				},
+				ModelMapping: map[string]map[string]string{
+					PlatformOpenAI: {"gpt-image-1": "gpt-image-1.5"},
+				},
+			}, map[int64]string{10: PlatformOpenAI}))
+			repo := &mockAccountRepoForPlatform{accounts: []Account{{
+				ID:            1,
+				Platform:      PlatformOpenAI,
+				Type:          tt.accountType,
+				Status:        StatusActive,
+				Schedulable:   true,
+				AccountGroups: []AccountGroup{{GroupID: 10}},
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{
+						"gpt-image-1":   tt.originalMapped,
+						"gpt-image-1.5": tt.channelMapped,
+					},
+				},
+			}}}
+			svc := &GatewayService{accountRepo: repo, channelService: channelSvc}
+
+			require.Equal(t, tt.want, svc.IsImagePlaygroundModelEligible(
+				context.Background(), 10, PlatformOpenAI, "gpt-image-1",
+			))
+		})
+	}
+}
+
+func TestImagePlaygroundModelEligible_OpenAIUsesForwardedModelForAccountSupport(t *testing.T) {
+	t.Parallel()
+
+	channelSvc := newTestChannelService(makeStandardRepo(Channel{
+		ID:                 1,
+		Status:             StatusActive,
+		GroupIDs:           []int64{10},
+		RestrictModels:     true,
+		BillingModelSource: BillingModelSourceUpstream,
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformOpenAI, Models: []string{"gpt-image-2", "gpt-image-1.5"}},
+		},
+		ModelMapping: map[string]map[string]string{
+			PlatformOpenAI: {"gpt-image-1": "gpt-image-1.5"},
+		},
+	}, map[int64]string{10: PlatformOpenAI}))
+	repo := &mockAccountRepoForPlatform{accounts: []Account{
+		{
+			ID:            1,
+			Platform:      PlatformOpenAI,
+			Type:          AccountTypeAPIKey,
+			Status:        StatusActive,
+			Schedulable:   true,
+			AccountGroups: []AccountGroup{{GroupID: 10}},
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"gpt-image-1.5": "gpt-image-2"},
+			},
+		},
+	}}
+	svc := &GatewayService{accountRepo: repo, channelService: channelSvc}
+
+	require.True(t, svc.IsImagePlaygroundModelEligible(
+		context.Background(), 10, PlatformOpenAI, "gpt-image-1",
+	), "API key support must be checked after the channel mapping")
+
+	repo.accounts[0].Type = AccountTypeOAuth
+	repo.accounts[0].Credentials = map[string]any{
+		"model_mapping": map[string]any{"unrelated-text-model": "gpt-5"},
+	}
+	require.True(t, svc.IsImagePlaygroundModelEligible(
+		context.Background(), 10, PlatformOpenAI, "gpt-image-1",
+	), "OAuth image forwarding does not use the account model mapping")
+}
+
+func TestImagePlaygroundModelEligible_GrokUpstreamUsesAccountMappingForAllAccountTypes(t *testing.T) {
+	t.Parallel()
+
+	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuth} {
+		accountType := accountType
+		t.Run(accountType, func(t *testing.T) {
+			t.Parallel()
+			channelSvc := newTestChannelService(makeStandardRepo(Channel{
+				ID:                 1,
+				Status:             StatusActive,
+				GroupIDs:           []int64{10},
+				RestrictModels:     true,
+				BillingModelSource: BillingModelSourceUpstream,
+				ModelPricing: []ChannelModelPricing{
+					{Platform: PlatformGrok, Models: []string{"grok-imagine-image-quality"}},
+				},
+				ModelMapping: map[string]map[string]string{
+					PlatformGrok: {"grok-imagine-image": "grok-channel-mapped"},
+				},
+			}, map[int64]string{10: PlatformGrok}))
+			repo := &mockAccountRepoForPlatform{accounts: []Account{
+				{
+					ID:            1,
+					Platform:      PlatformGrok,
+					Type:          accountType,
+					Status:        StatusActive,
+					Schedulable:   true,
+					AccountGroups: []AccountGroup{{GroupID: 10}},
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{"grok-imagine-image": "grok-imagine-image-quality"},
+					},
+				},
+			}}
+			svc := &GatewayService{accountRepo: repo, channelService: channelSvc}
+
+			require.True(t, svc.IsImagePlaygroundModelEligible(
+				context.Background(), 10, PlatformGrok, "grok-imagine-image",
+			))
+
+			repo.accounts[0].Credentials = map[string]any{
+				"model_mapping": map[string]any{"grok-imagine-image": "grok-unpriced"},
+			}
+			require.False(t, svc.IsImagePlaygroundModelEligible(
+				context.Background(), 10, PlatformGrok, "grok-imagine-image",
+			))
+		})
+	}
+}
+
+func TestImagePlaygroundModelEligible_UpstreamLookupFailureClosesPicker(t *testing.T) {
+	t.Parallel()
+
+	channelSvc := newTestChannelService(makeStandardRepo(Channel{
+		ID:                 1,
+		Status:             StatusActive,
+		GroupIDs:           []int64{10},
+		RestrictModels:     true,
+		BillingModelSource: BillingModelSourceUpstream,
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformOpenAI, Models: []string{"gpt-image-2"}},
+		},
+	}, map[int64]string{10: PlatformOpenAI}))
+	repo := &mockAccountRepoForPlatform{
+		listModelAvailabilityCandidatesFunc: func(context.Context, *int64, []string, bool) ([]Account, error) {
+			return nil, errors.New("database unavailable")
+		},
+	}
+	svc := &GatewayService{accountRepo: repo, channelService: channelSvc}
+
+	require.False(t, svc.IsImagePlaygroundModelEligible(
+		context.Background(), 10, PlatformOpenAI, "gpt-image-2",
+	))
+}
 
 // --- billingModelForRestriction ---
 

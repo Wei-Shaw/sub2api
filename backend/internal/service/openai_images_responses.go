@@ -1890,10 +1890,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	channelMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
-	requestModel := strings.TrimSpace(parsed.Model)
-	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
-		requestModel = mapped
-	}
+	requestModel := resolveOpenAIImagesUpstreamModel(account, parsed.Model, channelMappedModel)
 	if requestModel == "" {
 		requestModel = "gpt-image-2"
 	}

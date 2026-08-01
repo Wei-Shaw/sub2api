@@ -44,6 +44,15 @@ func (s *imagePlaygroundSchedulableModelSourceStub) GetSchedulablePlatforms(_ co
 	return s.platformsByGroup[*groupID]
 }
 
+type imagePlaygroundEligibleModelSourceStub struct {
+	imagePlaygroundModelSourceStub
+	eligibleByModel map[string]bool
+}
+
+func (s *imagePlaygroundEligibleModelSourceStub) IsImagePlaygroundModelEligible(_ context.Context, _ int64, _, model string) bool {
+	return s.eligibleByModel[model]
+}
+
 type imagePlaygroundTaskGateStub bool
 
 func (s imagePlaygroundTaskGateStub) Enabled() bool { return bool(s) }
@@ -188,6 +197,32 @@ func TestImagePlaygroundOptionsUsesDefaultsForSchedulableAccountsWithoutMappings
 	require.Len(t, options.Groups, 1)
 	require.True(t, options.Groups[0].Available)
 	require.NotEmpty(t, options.Groups[0].Models)
+}
+
+func TestImagePlaygroundOptionsExcludesModelsBlockedByChannelPricing(t *testing.T) {
+	group := imagePlaygroundGroup(1, PlatformOpenAI)
+	svc := &ImagePlaygroundService{
+		keys: &imagePlaygroundKeySourceStub{
+			groups: []Group{group},
+			keys:   []APIKey{imagePlaygroundKey(10, 7, group.ID)},
+		},
+		models: &imagePlaygroundEligibleModelSourceStub{
+			imagePlaygroundModelSourceStub: imagePlaygroundModelSourceStub{byGroup: map[int64][]string{
+				group.ID: {"gpt-image-1", "gpt-image-1.5", "gpt-image-2"},
+			}},
+			eligibleByModel: map[string]bool{"gpt-image-2": true},
+		},
+		tasks: imagePlaygroundTaskGateStub(true),
+		flags: imagePlaygroundFeatureGateStub(true),
+	}
+
+	options, err := svc.Options(context.Background(), 7)
+	require.NoError(t, err)
+	require.Len(t, options.Groups, 1)
+	require.Equal(t, []ImagePlaygroundModelOption{
+		imagePlaygroundModelOption(PlatformOpenAI, "gpt-image-2"),
+	}, options.Groups[0].Models)
+	require.ErrorIs(t, svc.ValidateModel(context.Background(), &group, "gpt-image-1"), ErrImagePlaygroundModelNotAvailable)
 }
 
 func TestImagePlaygroundOptionsReportsStorageDisabled(t *testing.T) {

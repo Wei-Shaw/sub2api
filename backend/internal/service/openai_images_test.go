@@ -27,6 +27,32 @@ type failingOpenAIImageWriter struct {
 	writes    int
 }
 
+func TestResolveOpenAIImagesUpstreamModelMatchesForwardingOrder(t *testing.T) {
+	t.Parallel()
+
+	apiKey := &Account{
+		Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gpt-image-1":   "gpt-image-wrong-order",
+				"gpt-image-1.5": "gpt-image-2",
+			},
+		},
+	}
+	oauth := &Account{
+		Type: AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"gpt-image-1.5": "gpt-image-wrong-order"},
+		},
+	}
+
+	require.Equal(t, "gpt-image-2", resolveOpenAIImagesUpstreamModel(apiKey, "gpt-image-1", "gpt-image-1.5"))
+	require.Equal(t, "gpt-image-1.5", resolveOpenAIImagesUpstreamModel(oauth, "gpt-image-1", "gpt-image-1.5"))
+	require.True(t, isOpenAIImageModelSupportedByAccount(apiKey, "gpt-image-1", "gpt-image-1.5"))
+	require.True(t, isOpenAIImageModelSupportedByAccount(oauth, "gpt-image-1", "gpt-image-1.5"))
+	require.False(t, isOpenAIImageModelSupportedByAccount(oauth, "gpt-image-1", "gpt-5"))
+}
+
 func (w *failingOpenAIImageWriter) Write(p []byte) (int, error) {
 	if w.writes >= w.failAfter {
 		return 0, errors.New("write failed: client disconnected")

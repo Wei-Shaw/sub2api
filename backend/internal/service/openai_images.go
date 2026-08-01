@@ -45,10 +45,49 @@ const (
 
 type OpenAIImagesCapability string
 
+type openAIImagesRequestContextKey struct{}
+
 const (
 	OpenAIImagesCapabilityBasic  OpenAIImagesCapability = "images-basic"
 	OpenAIImagesCapabilityNative OpenAIImagesCapability = "images-native"
 )
+
+func withOpenAIImagesRequest(ctx context.Context) context.Context {
+	return context.WithValue(WithOpenAIImageGenerationIntent(ctx), openAIImagesRequestContextKey{}, true)
+}
+
+func openAIImagesRequestFromContext(ctx context.Context) bool {
+	enabled, _ := ctx.Value(openAIImagesRequestContextKey{}).(bool)
+	return enabled
+}
+
+// resolveOpenAIImagesUpstreamModel mirrors the model rewrite order used by
+// ForwardImages. API-key accounts apply their mapping after the channel
+// mapping, while OAuth image requests send the channel-mapped model directly.
+func resolveOpenAIImagesUpstreamModel(account *Account, requestedModel, channelMappedModel string) string {
+	requestModel := strings.TrimSpace(requestedModel)
+	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
+		requestModel = mapped
+	}
+	if account != nil && account.Type == AccountTypeAPIKey {
+		return account.GetMappedModel(requestModel)
+	}
+	return requestModel
+}
+
+func isOpenAIImageModelSupportedByAccount(account *Account, requestedModel, channelMappedModel string) bool {
+	if account == nil {
+		return false
+	}
+	if err := validateOpenAIImagesModel(resolveOpenAIImagesUpstreamModel(account, requestedModel, channelMappedModel)); err != nil {
+		return false
+	}
+	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
+		return true
+	}
+	model := resolveOpenAIImagesUpstreamModel(nil, requestedModel, channelMappedModel)
+	return model != "" && account.IsModelSupported(model)
+}
 
 type OpenAIImagesUpload struct {
 	FieldName   string
@@ -648,14 +687,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	channelMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
-	requestModel := strings.TrimSpace(parsed.Model)
-	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
-		requestModel = mapped
-	}
+	requestModel := resolveOpenAIImagesUpstreamModel(nil, parsed.Model, channelMappedModel)
 	if err := validateOpenAIImagesModel(requestModel); err != nil {
 		return nil, err
 	}
-	upstreamModel := account.GetMappedModel(requestModel)
+	upstreamModel := resolveOpenAIImagesUpstreamModel(account, parsed.Model, channelMappedModel)
 	if err := validateOpenAIImagesModel(upstreamModel); err != nil {
 		return nil, err
 	}

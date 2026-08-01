@@ -106,6 +106,26 @@ describe('API Client', () => {
       expect(config.params?.timezone).toBeUndefined()
     })
 
+    it('FormData 上传不会被默认 JSON 请求头序列化', async () => {
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+      const form = new FormData()
+      form.append('group_id', '12')
+      form.append('images', new File(['image'], 'reference.png', { type: 'image/png' }))
+
+      await apiClient.post('/image-playground/tasks', form)
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.data).toBe(form)
+      expect(config.headers.get('Content-Type')).not.toBe('application/json')
+    })
+
     it('请求默认带 withCredentials 以支持跨域 cookie', async () => {
       const adapter = vi.fn().mockResolvedValue({
         status: 200,

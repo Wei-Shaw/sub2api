@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -91,6 +92,10 @@ type imagePlaygroundKeySource interface {
 
 type imagePlaygroundModelSource interface {
 	GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string
+}
+
+type imagePlaygroundModelEligibilitySource interface {
+	IsImagePlaygroundModelEligible(ctx context.Context, groupID int64, platform, model string) bool
 }
 
 type imagePlaygroundSchedulablePlatformSource interface {
@@ -327,6 +332,10 @@ func (s *ImagePlaygroundService) modelsForGroup(ctx context.Context, group *Grou
 		if !isImagePlaygroundModel(group.Platform, model) || !groupAllowsPlaygroundModel(group, model) {
 			continue
 		}
+		if eligibility, ok := s.models.(imagePlaygroundModelEligibilitySource); ok &&
+			!eligibility.IsImagePlaygroundModelEligible(ctx, group.ID, group.Platform, model) {
+			continue
+		}
 		if _, ok := seen[model]; ok {
 			continue
 		}
@@ -335,6 +344,64 @@ func (s *ImagePlaygroundService) modelsForGroup(ctx context.Context, group *Grou
 	}
 	sort.SliceStable(models, func(i, j int) bool { return models[i].ID < models[j].ID })
 	return models
+}
+
+// IsImagePlaygroundModelEligible keeps the dashboard model picker aligned with
+// the same channel pricing restriction enforced later by account scheduling.
+func (s *GatewayService) IsImagePlaygroundModelEligible(ctx context.Context, groupID int64, platform, model string) bool {
+	if s == nil {
+		return false
+	}
+	var channel *Channel
+	if s.channelService != nil {
+		var err error
+		channel, err = s.channelService.GetChannelForGroup(ctx, groupID)
+		if err != nil {
+			slog.Warn("failed to verify image playground channel pricing", "group_id", groupID, "error", err)
+			return false
+		}
+	}
+	upstreamPricing := channel != nil && channel.RestrictModels && channel.BillingModelSource == BillingModelSourceUpstream
+	if channel != nil && channel.RestrictModels && !upstreamPricing && s.checkChannelPricingRestriction(ctx, &groupID, model) {
+		return false
+	}
+
+	platform = strings.TrimSpace(platform)
+	if s.accountRepo == nil || platform == "" {
+		return false
+	}
+	accounts, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, &groupID, []string{platform}, false)
+	if err != nil {
+		slog.Warn("failed to verify image playground upstream models", "group_id", groupID, "platform", platform, "error", err)
+		return false
+	}
+	for i := range accounts {
+		account := &accounts[i]
+		upstreamModel := ""
+		switch platform {
+		case PlatformOpenAI:
+			channelMappedModel := model
+			if s.channelService != nil {
+				channelMappedModel = s.channelService.ResolveChannelMapping(ctx, groupID, model).MappedModel
+			}
+			if !isOpenAIImageModelSupportedByAccount(account, model, channelMappedModel) {
+				continue
+			}
+			upstreamModel = resolveOpenAIImagesUpstreamModel(account, model, channelMappedModel)
+		case PlatformGrok:
+			if !account.IsModelSupported(model) {
+				continue
+			}
+			upstreamModel = account.GetMappedModel(model)
+		}
+		if upstreamModel == "" {
+			continue
+		}
+		if !upstreamPricing || !s.channelService.IsModelRestricted(ctx, groupID, upstreamModel) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *APIKeyService) ListImagePlaygroundAPIKeys(ctx context.Context, userID int64) ([]APIKey, error) {

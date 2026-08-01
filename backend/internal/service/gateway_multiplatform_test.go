@@ -21,10 +21,11 @@ func testConfig() *config.Config {
 
 // mockAccountRepoForPlatform 单平台测试用的 mock
 type mockAccountRepoForPlatform struct {
-	accounts         []Account
-	accountsByID     map[int64]*Account
-	listPlatformFunc func(ctx context.Context, platform string) ([]Account, error)
-	getByIDCalls     int
+	accounts                            []Account
+	accountsByID                        map[int64]*Account
+	listPlatformFunc                    func(ctx context.Context, platform string) ([]Account, error)
+	listModelAvailabilityCandidatesFunc func(ctx context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]Account, error)
+	getByIDCalls                        int
 }
 
 func (m *mockAccountRepoForPlatform) GetByID(ctx context.Context, id int64) (*Account, error) {
@@ -156,7 +157,10 @@ func (m *mockAccountRepoForPlatform) ListSchedulableUngroupedByPlatform(ctx cont
 func (m *mockAccountRepoForPlatform) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
 	return m.ListSchedulableByPlatforms(ctx, platforms)
 }
-func (m *mockAccountRepoForPlatform) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]Account, error) {
+func (m *mockAccountRepoForPlatform) ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]Account, error) {
+	if m.listModelAvailabilityCandidatesFunc != nil {
+		return m.listModelAvailabilityCandidatesFunc(ctx, groupID, platforms, includeGrouped)
+	}
 	platformSet := make(map[string]struct{}, len(platforms))
 	for _, platform := range platforms {
 		platformSet[platform] = struct{}{}
