@@ -180,6 +180,7 @@ func newAuthServiceForInviteLoginTest(
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 	authService.SetInviteLoginDeviceResolver(userDeviceRepo)
 	if bootstrapSvc != nil {
@@ -189,6 +190,34 @@ func newAuthServiceForInviteLoginTest(
 		}
 	}
 	return authService
+}
+
+func TestProvideAuthServiceWiresInviteLoginDependencies(t *testing.T) {
+	apiKeyService := &APIKeyService{}
+	userDeviceRepo := &inviteLoginUserDeviceRepoStub{}
+	groupRepo := &inviteBootstrapGroupRepoStub{}
+	authService := ProvideAuthService(
+		nil,
+		&userRepoStub{},
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		&config.Config{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		apiKeyService,
+		userDeviceRepo,
+		groupRepo,
+	)
+
+	require.Same(t, apiKeyService, authService.inviteBootstrapAPIKeySvc)
+	require.Same(t, userDeviceRepo, authService.inviteLoginDeviceRepo)
+	require.Same(t, groupRepo, authService.groupRepo)
 }
 
 func TestAuthServiceInviteLoginAcceptsDeviceLoginCode(t *testing.T) {
