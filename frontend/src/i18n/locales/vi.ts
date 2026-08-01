@@ -5490,8 +5490,8 @@ export default {
         maxVersionPlaceholder: 'Ví dụ 2.5.0',
         maxVersionHint: 'Từ chối các yêu cầu từ client Claude Code có phiên bản cao hơn giá trị này (định dạng semver). Để trống để không giới hạn phiên bản tối đa.',
         antigravityVersion: 'Phiên bản User-Agent Antigravity',
-        antigravityVersionPlaceholder: 'Ví dụ 1.0.0',
-        antigravityVersionHint: 'Dùng cho các API Antigravity upstream tiếp theo. Để trống sẽ dùng giá trị env/mặc định.'
+        antigravityVersionPlaceholder: 'Ví dụ 1.23.2',
+        antigravityVersionHint: 'Dùng cho API upstream Antigravity. Để trống sẽ dùng ANTIGRAVITY_USER_AGENT_VERSION hoặc mặc định tích hợp 1.23.2; khi điền, cài đặt trong admin sẽ được ưu tiên.'
       },
       scheduling: {
         title: 'Cài đặt điều phối gateway',

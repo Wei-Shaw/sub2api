@@ -373,7 +373,10 @@ export default {
         minVersionHint: '拒绝低于此版本的 Claude Code 客户端请求（semver 格式）。留空则不检查版本。',
         maxVersion: '最高版本号',
         maxVersionPlaceholder: '例如 2.5.0',
-        maxVersionHint: '拒绝高于此版本的 Claude Code 客户端请求（semver 格式）。留空则不限制最高版本。'
+        maxVersionHint: '拒绝高于此版本的 Claude Code 客户端请求（semver 格式）。留空则不限制最高版本。',
+        antigravityVersion: 'Antigravity User-Agent 版本',
+        antigravityVersionPlaceholder: '例如 1.23.2',
+        antigravityVersionHint: '用于 Antigravity 上游 API 请求。留空时使用 ANTIGRAVITY_USER_AGENT_VERSION 或内置默认值 1.23.2；填写后后台设置优先。'
       },
       scheduling: {
         title: '网关调度设置',

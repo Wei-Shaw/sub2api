@@ -381,7 +381,11 @@ export default {
         maxVersion: 'Maximum Version',
         maxVersionPlaceholder: 'e.g. 2.5.0',
         maxVersionHint:
-          'Reject Claude Code clients above this version (semver format). Leave empty to allow any version.'
+          'Reject Claude Code clients above this version (semver format). Leave empty to allow any version.',
+        antigravityVersion: 'Antigravity User-Agent Version',
+        antigravityVersionPlaceholder: 'e.g. 1.23.2',
+        antigravityVersionHint:
+          'Used by Antigravity upstream API requests. Leave empty to use ANTIGRAVITY_USER_AGENT_VERSION or the built-in default 1.23.2; when set, the admin setting takes precedence.'
       },
       scheduling: {
         title: 'Gateway Scheduling Settings',

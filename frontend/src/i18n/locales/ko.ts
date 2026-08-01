@@ -5491,8 +5491,8 @@ export default {
         maxVersionPlaceholder: '예: 2.5.0',
         maxVersionHint: '이 버전보다 높은 Claude Code 클라이언트 요청을 거부합니다(semver 형식). 비워 두면 최대 버전 제한이 없습니다.',
         antigravityVersion: 'Antigravity User-Agent 버전',
-        antigravityVersionPlaceholder: '예: 1.0.0',
-        antigravityVersionHint: '이후 Antigravity 업스트림 API 요청에 사용됩니다. 비워 두면 env/default 값을 사용합니다.'
+        antigravityVersionPlaceholder: '예: 1.23.2',
+        antigravityVersionHint: 'Antigravity 업스트림 API 요청에 사용됩니다. 비워 두면 ANTIGRAVITY_USER_AGENT_VERSION 또는 내장 기본값 1.23.2를 사용하며, 설정하면 관리자 설정이 우선합니다.'
       },
       scheduling: {
         title: '게이트웨이 스케줄링 설정',
