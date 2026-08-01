@@ -24,21 +24,25 @@ func NewProxyGroupHandler(svc *service.ProxyGroupService) *ProxyGroupHandler {
 }
 
 type CreateProxyGroupRequest struct {
-	Name            string  `json:"name" binding:"required"`
-	Description     string  `json:"description"`
-	Strategy        string  `json:"strategy" binding:"omitempty,oneof=round_robin random sticky"`
-	StickyByAccount bool    `json:"sticky_by_account"`
-	Status          string  `json:"status" binding:"omitempty,oneof=active inactive"`
-	ProxyIDs        []int64 `json:"proxy_ids"`
+	Name                   string  `json:"name" binding:"required"`
+	Description            string  `json:"description"`
+	Strategy               string  `json:"strategy" binding:"omitempty,oneof=round_robin random sticky"`
+	StickyByAccount        bool    `json:"sticky_by_account"`
+	Status                 string  `json:"status" binding:"omitempty,oneof=active inactive"`
+	ProxyIDs               []int64 `json:"proxy_ids"`
+	HealthFailThreshold    *int    `json:"health_fail_threshold" binding:"omitempty,min=0"`
+	HealthSuccessThreshold *int    `json:"health_success_threshold" binding:"omitempty,min=0"`
 }
 
 type UpdateProxyGroupRequest struct {
-	Name            *string  `json:"name"`
-	Description     *string  `json:"description"`
-	Strategy        *string  `json:"strategy" binding:"omitempty,oneof=round_robin random sticky"`
-	StickyByAccount *bool    `json:"sticky_by_account"`
-	Status          *string  `json:"status" binding:"omitempty,oneof=active inactive"`
-	ProxyIDs        *[]int64 `json:"proxy_ids"` // nil=不改成员；非 nil（含空）=替换
+	Name                   *string  `json:"name"`
+	Description            *string  `json:"description"`
+	Strategy               *string  `json:"strategy" binding:"omitempty,oneof=round_robin random sticky"`
+	StickyByAccount        *bool    `json:"sticky_by_account"`
+	Status                 *string  `json:"status" binding:"omitempty,oneof=active inactive"`
+	ProxyIDs               *[]int64 `json:"proxy_ids"` // nil=不改成员；非 nil（含空）=替换
+	HealthFailThreshold    *int     `json:"health_fail_threshold" binding:"omitempty,min=0"`
+	HealthSuccessThreshold *int     `json:"health_success_threshold" binding:"omitempty,min=0"`
 }
 
 type SetProxyGroupMembersRequest struct {
@@ -112,12 +116,14 @@ func (h *ProxyGroupHandler) Create(c *gin.Context) {
 	}
 	executeAdminIdempotentJSON(c, "admin.proxy_groups.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		group, err := h.svc.Create(ctx, service.CreateProxyGroupInput{
-			Name:            strings.TrimSpace(req.Name),
-			Description:     strings.TrimSpace(req.Description),
-			Strategy:        strings.TrimSpace(req.Strategy),
-			StickyByAccount: req.StickyByAccount,
-			Status:          strings.TrimSpace(req.Status),
-			ProxyIDs:        req.ProxyIDs,
+			Name:                   strings.TrimSpace(req.Name),
+			Description:            strings.TrimSpace(req.Description),
+			Strategy:               strings.TrimSpace(req.Strategy),
+			StickyByAccount:        req.StickyByAccount,
+			Status:                 strings.TrimSpace(req.Status),
+			ProxyIDs:               req.ProxyIDs,
+			HealthFailThreshold:    req.HealthFailThreshold,
+			HealthSuccessThreshold: req.HealthSuccessThreshold,
 		})
 		if err != nil {
 			return nil, err
@@ -139,12 +145,14 @@ func (h *ProxyGroupHandler) Update(c *gin.Context) {
 		return
 	}
 	input := service.UpdateProxyGroupInput{
-		Name:            trimPtr(req.Name),
-		Description:     trimPtr(req.Description),
-		Strategy:        trimPtr(req.Strategy),
-		StickyByAccount: req.StickyByAccount,
-		Status:          trimPtr(req.Status),
-		ProxyIDs:        req.ProxyIDs,
+		Name:                   trimPtr(req.Name),
+		Description:            trimPtr(req.Description),
+		Strategy:               trimPtr(req.Strategy),
+		StickyByAccount:        req.StickyByAccount,
+		Status:                 trimPtr(req.Status),
+		ProxyIDs:               req.ProxyIDs,
+		HealthFailThreshold:    req.HealthFailThreshold,
+		HealthSuccessThreshold: req.HealthSuccessThreshold,
 	}
 	group, err := h.svc.Update(c.Request.Context(), id, input)
 	if err != nil {

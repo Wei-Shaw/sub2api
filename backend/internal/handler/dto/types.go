@@ -385,14 +385,16 @@ type ProxyAccountSummary struct {
 
 // ProxyGroup 代理组（管理端）。
 type ProxyGroup struct {
-	ID              int64     `json:"id"`
-	Name            string    `json:"name"`
-	Description     string    `json:"description,omitempty"`
-	Strategy        string    `json:"strategy"`
-	StickyByAccount bool      `json:"sticky_by_account"`
-	Status          string    `json:"status"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                     int64     `json:"id"`
+	Name                   string    `json:"name"`
+	Description            string    `json:"description,omitempty"`
+	Strategy               string    `json:"strategy"`
+	StickyByAccount        bool      `json:"sticky_by_account"`
+	Status                 string    `json:"status"`
+	HealthFailThreshold    *int      `json:"health_fail_threshold,omitempty"`
+	HealthSuccessThreshold *int      `json:"health_success_threshold,omitempty"`
+	CreatedAt              time.Time `json:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at"`
 }
 
 // ProxyGroupWithProxies 代理组 + 成员。

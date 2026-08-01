@@ -135,6 +135,8 @@ type ProxyHealthConfig struct {
 	LeaderLockTTLSec int `mapstructure:"leader_lock_ttl_sec"`
 	// BatchSize caps how many proxies are probed per tick.
 	BatchSize int `mapstructure:"batch_size"`
+	// ProbeMode: connectivity (default, exit IP probe) | quality (connectivity + AI target quality).
+	ProbeMode string `mapstructure:"probe_mode"`
 }
 
 // WarpConfig configures the optional Cloudflare WARP gateway control client.
@@ -2279,6 +2281,7 @@ func setDefaults() {
 	viper.SetDefault("proxy_health.skip_name_prefix", []string{"warp-"})
 	viper.SetDefault("proxy_health.leader_lock_ttl_sec", 50)
 	viper.SetDefault("proxy_health.batch_size", 100)
+	viper.SetDefault("proxy_health.probe_mode", "connectivity")
 
 	// Cloudflare WARP gateway (tools/warp-gateway) — disabled by default
 	viper.SetDefault("warp.enabled", false)
@@ -3718,6 +3721,14 @@ func normalizeProxyHealthConfig(cfg *ProxyHealthConfig) error {
 		// ok
 	default:
 		return fmt.Errorf("proxy_health.probe_scope must be group_members or all_active")
+	}
+	switch strings.TrimSpace(strings.ToLower(cfg.ProbeMode)) {
+	case "", "connectivity":
+		cfg.ProbeMode = "connectivity"
+	case "quality":
+		cfg.ProbeMode = "quality"
+	default:
+		return fmt.Errorf("proxy_health.probe_mode must be connectivity or quality")
 	}
 	if cfg.LeaderLockTTLSec <= 0 {
 		cfg.LeaderLockTTLSec = 50

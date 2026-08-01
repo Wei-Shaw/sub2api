@@ -484,6 +484,69 @@ func (r *proxyRepository) CountByGroupID(ctx context.Context, groupID int64) (in
 	return c, err
 }
 
+// UpdateHealthAudit writes durable health counters used for SQL audit / ops (Phase 3).
+func (r *proxyRepository) UpdateHealthAudit(ctx context.Context, proxyID int64, failCount int, lastHealthAt *time.Time, isolatedBy string) error {
+	if r == nil || r.sql == nil || proxyID <= 0 {
+		return nil
+	}
+	if failCount < 0 {
+		failCount = 0
+	}
+	var last any
+	if lastHealthAt != nil {
+		last = *lastHealthAt
+	}
+	var iso any
+	if isolatedBy != "" {
+		iso = isolatedBy
+	}
+	_, err := r.sql.ExecContext(ctx, `
+		UPDATE proxies
+		SET health_fail_count = $2,
+		    last_health_at = $3,
+		    health_isolated_by = $4,
+		    updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`,
+		proxyID, failCount, last, iso,
+	)
+	return err
+}
+
+// GetHealthAudit loads durable health snapshot columns.
+func (r *proxyRepository) GetHealthAudit(ctx context.Context, proxyID int64) (failCount int, lastHealthAt *time.Time, isolatedBy string, err error) {
+	if r == nil || r.sql == nil || proxyID <= 0 {
+		return 0, nil, "", nil
+	}
+	var fc sql.NullInt64
+	var lha sql.NullTime
+	var iso sql.NullString
+	err = scanSingleRow(ctx, r.sql, `
+		SELECT health_fail_count, last_health_at, COALESCE(health_isolated_by, '')
+		FROM proxies WHERE id = $1 AND deleted_at IS NULL`,
+		[]any{proxyID}, &fc, &lha, &iso)
+	if err == sql.ErrNoRows {
+		return 0, nil, "", service.ErrProxyNotFound
+	}
+	if err != nil {
+		// Pre-migration or missing columns should not break health worker.
+		if strings.Contains(err.Error(), "health_fail_count") || strings.Contains(err.Error(), "does not exist") {
+			return 0, nil, "", nil
+		}
+		return 0, nil, "", err
+	}
+	if fc.Valid {
+		failCount = int(fc.Int64)
+	}
+	if lha.Valid {
+		t := lha.Time
+		lastHealthAt = &t
+	}
+	if iso.Valid {
+		isolatedBy = iso.String
+	}
+	return failCount, lastHealthAt, isolatedBy, nil
+}
+
 // ExistsByHostPortAuth checks if a proxy with the same host, port, username, and password exists
 func (r *proxyRepository) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error) {
 	q := r.client.Proxy.Query().

@@ -39,6 +39,10 @@ type ProxyRepository interface {
 	// 代理组成员查询（供 ProxyGroupResolver / 管理端使用）
 	ListByGroupID(ctx context.Context, groupID int64) ([]Proxy, error)
 	CountByGroupID(ctx context.Context, groupID int64) (int64, error)
+
+	// Health audit snapshot (Phase 3 DB fields; independent of Redis meta).
+	UpdateHealthAudit(ctx context.Context, proxyID int64, failCount int, lastHealthAt *time.Time, isolatedBy string) error
+	GetHealthAudit(ctx context.Context, proxyID int64) (failCount int, lastHealthAt *time.Time, isolatedBy string, err error)
 }
 
 // CreateProxyRequest 创建代理请求

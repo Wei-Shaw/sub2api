@@ -28,6 +28,7 @@ type ProxyHealthWorker struct {
 }
 
 // ProvideProxyHealthWorker constructs and starts the worker when enabled.
+// metrics is optional (may be nil); counters live on the service when provided.
 func ProvideProxyHealthWorker(
 	cfg *config.Config,
 	svc *ProxyHealthService,

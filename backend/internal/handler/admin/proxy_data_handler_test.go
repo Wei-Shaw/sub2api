@@ -28,7 +28,7 @@ func setupProxyDataRouter() (*gin.Engine, *stubAdminService) {
 	router := gin.New()
 	adminSvc := newStubAdminService()
 
-	h := NewProxyHandler(adminSvc)
+	h := NewProxyHandler(adminSvc, nil)
 	router.GET("/api/v1/admin/proxies/data", h.ExportData)
 	router.POST("/api/v1/admin/proxies/data", h.ImportData)
 

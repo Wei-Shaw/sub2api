@@ -29,21 +29,25 @@ func NewProxyGroupService(
 }
 
 type CreateProxyGroupInput struct {
-	Name            string
-	Description     string
-	Strategy        string
-	StickyByAccount bool
-	Status          string
-	ProxyIDs        []int64
+	Name                   string
+	Description            string
+	Strategy               string
+	StickyByAccount        bool
+	Status                 string
+	ProxyIDs               []int64
+	HealthFailThreshold    *int
+	HealthSuccessThreshold *int
 }
 
 type UpdateProxyGroupInput struct {
-	Name            *string
-	Description     *string
-	Strategy        *string
-	StickyByAccount *bool
-	Status          *string
-	ProxyIDs        *[]int64 // nil = 不改成员；非 nil（含空切片）= 替换成员集
+	Name                   *string
+	Description            *string
+	Strategy               *string
+	StickyByAccount        *bool
+	Status                 *string
+	ProxyIDs               *[]int64 // nil = 不改成员；非 nil（含空切片）= 替换成员集
+	HealthFailThreshold    *int     // nil=不改；0=清回全局默认
+	HealthSuccessThreshold *int
 }
 
 func (s *ProxyGroupService) Create(ctx context.Context, input CreateProxyGroupInput) (*ProxyGroupWithProxies, error) {
@@ -60,11 +64,13 @@ func (s *ProxyGroupService) Create(ctx context.Context, input CreateProxyGroupIn
 		status = StatusActive
 	}
 	group := &ProxyGroup{
-		Name:            name,
-		Description:     strings.TrimSpace(input.Description),
-		Strategy:        strategy,
-		StickyByAccount: input.StickyByAccount,
-		Status:          status,
+		Name:                   name,
+		Description:            strings.TrimSpace(input.Description),
+		Strategy:               strategy,
+		StickyByAccount:        input.StickyByAccount,
+		Status:                 status,
+		HealthFailThreshold:    normalizeHealthThresholdPtr(input.HealthFailThreshold),
+		HealthSuccessThreshold: normalizeHealthThresholdPtr(input.HealthSuccessThreshold),
 	}
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
@@ -143,6 +149,12 @@ func (s *ProxyGroupService) Update(ctx context.Context, id int64, input UpdatePr
 			group.Status = status
 		}
 	}
+	if input.HealthFailThreshold != nil {
+		group.HealthFailThreshold = normalizeHealthThresholdPtr(input.HealthFailThreshold)
+	}
+	if input.HealthSuccessThreshold != nil {
+		group.HealthSuccessThreshold = normalizeHealthThresholdPtr(input.HealthSuccessThreshold)
+	}
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
 	}
@@ -200,6 +212,17 @@ func (s *ProxyGroupService) invalidate(groupID int64) {
 	if s != nil && s.resolver != nil {
 		s.resolver.InvalidateGroup(groupID)
 	}
+}
+
+func normalizeHealthThresholdPtr(v *int) *int {
+	if v == nil {
+		return nil
+	}
+	if *v <= 0 {
+		return nil
+	}
+	n := *v
+	return &n
 }
 
 func normalizeProxyGroupStrategy(strategy string) string {

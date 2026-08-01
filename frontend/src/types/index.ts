@@ -895,6 +895,8 @@ export interface ProxyGroup {
 	strategy: ProxyGroupStrategy;
 	sticky_by_account: boolean;
 	status: "active" | "inactive";
+	health_fail_threshold?: number | null;
+	health_success_threshold?: number | null;
 	proxy_count?: number;
 	proxies?: Proxy[];
 	created_at: string;
@@ -908,6 +910,8 @@ export interface CreateProxyGroupRequest {
 	sticky_by_account?: boolean;
 	status?: "active" | "inactive";
 	proxy_ids?: number[];
+	health_fail_threshold?: number | null;
+	health_success_threshold?: number | null;
 }
 
 export interface UpdateProxyGroupRequest {
@@ -917,6 +921,8 @@ export interface UpdateProxyGroupRequest {
 	sticky_by_account?: boolean;
 	status?: "active" | "inactive";
 	proxy_ids?: number[];
+	health_fail_threshold?: number | null;
+	health_success_threshold?: number | null;
 }
 
 export interface ProxyAccountSummary {

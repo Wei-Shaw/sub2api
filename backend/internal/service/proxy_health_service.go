@@ -9,15 +9,39 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 )
 
 // ProxyHealthRunResult summarizes one RunOnce tick.
 type ProxyHealthRunResult struct {
-	Probed    int
-	Isolated  int
-	Recovered int
-	Skipped   int
-	Errors    int
+	Probed    int `json:"probed"`
+	Isolated  int `json:"isolated"`
+	Recovered int `json:"recovered"`
+	Skipped   int `json:"skipped"`
+	Errors    int `json:"errors"`
+}
+
+// ProxyHealthDetail is the admin health detail payload.
+type ProxyHealthDetail struct {
+	ProxyID       int64  `json:"proxy_id"`
+	Status        string `json:"status"`
+	FailCount     int    `json:"fail_count"`
+	SuccessCount  int    `json:"success_count"`
+	LastCheckedAt int64  `json:"last_checked_at,omitempty"`
+	LastOKAt      int64  `json:"last_ok_at,omitempty"`
+	LastError     string `json:"last_error,omitempty"`
+	LatencyMs     int64  `json:"latency_ms,omitempty"`
+	ExitIP        string `json:"exit_ip,omitempty"`
+	IsolatedBy    string `json:"isolated_by,omitempty"`
+	IsolatedAt    int64  `json:"isolated_at,omitempty"`
+	// DB audit mirror
+	DBFailCount      int    `json:"db_fail_count"`
+	DBIsolatedBy     string `json:"db_isolated_by,omitempty"`
+	DBLastHealthAt   *int64 `json:"db_last_health_at,omitempty"`
+	FailThreshold    int    `json:"fail_threshold"`
+	SuccessThreshold int    `json:"success_threshold"`
+	ProbeMode        string `json:"probe_mode"`
+	AutoRecover      bool   `json:"auto_recover"`
 }
 
 // ProxyHealthService probes proxies and isolates/recovers by consecutive thresholds.
@@ -29,8 +53,13 @@ type ProxyHealthService struct {
 	health    ProxyHealthCache
 	latency   ProxyLatencyCache
 	resolver  ProxyGroupResolver
+	metrics   *ProxyHealthMetrics
 	log       *slog.Logger
 	now       func() time.Time
+
+	// group threshold cache for current RunOnce
+	groupFailTh map[int64]int
+	groupSuccTh map[int64]int
 }
 
 // NewProxyHealthService constructs the domain service (not started).
@@ -42,6 +71,7 @@ func NewProxyHealthService(
 	health ProxyHealthCache,
 	latency ProxyLatencyCache,
 	resolver ProxyGroupResolver,
+	metrics *ProxyHealthMetrics,
 ) *ProxyHealthService {
 	return &ProxyHealthService{
 		cfg:       cfg,
@@ -51,6 +81,7 @@ func NewProxyHealthService(
 		health:    health,
 		latency:   latency,
 		resolver:  resolver,
+		metrics:   metrics,
 		log:       slog.Default().With("component", "proxy_health"),
 		now:       time.Now,
 	}
@@ -68,9 +99,68 @@ func (s *ProxyHealthService) conf() config.ProxyHealthConfig {
 			AutoRecover:      true,
 			SkipNamePrefix:   []string{"warp-"},
 			BatchSize:        100,
+			ProbeMode:        "connectivity",
 		}
 	}
 	return s.cfg.ProxyHealth
+}
+
+// Metrics returns the process-local metrics holder (may be nil).
+func (s *ProxyHealthService) Metrics() *ProxyHealthMetrics {
+	if s == nil {
+		return nil
+	}
+	return s.metrics
+}
+
+// GetHealth returns Redis meta + DB audit for one proxy.
+func (s *ProxyHealthService) GetHealth(ctx context.Context, proxyID int64) (*ProxyHealthDetail, error) {
+	if s == nil || s.proxyRepo == nil {
+		return nil, fmt.Errorf("proxy health service not configured")
+	}
+	proxy, err := s.proxyRepo.GetByID(ctx, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	cfg := s.conf()
+	failTh, succTh := cfg.FailThreshold, cfg.SuccessThreshold
+	if proxy.GroupID != nil && s.groupRepo != nil {
+		if g, gerr := s.groupRepo.GetByID(ctx, *proxy.GroupID); gerr == nil && g != nil {
+			failTh, succTh = s.thresholdsForGroup(g, cfg)
+		}
+	}
+	meta := s.loadMeta(ctx, proxyID)
+	detail := &ProxyHealthDetail{
+		ProxyID:          proxy.ID,
+		Status:           proxy.Status,
+		FailCount:        meta.FailCount,
+		SuccessCount:     meta.SuccessCount,
+		LastCheckedAt:    meta.LastCheckedAt,
+		LastOKAt:         meta.LastOKAt,
+		LastError:        meta.LastError,
+		LatencyMs:        meta.LatencyMs,
+		ExitIP:           meta.ExitIP,
+		IsolatedBy:       meta.IsolatedBy,
+		IsolatedAt:       meta.IsolatedAt,
+		FailThreshold:    failTh,
+		SuccessThreshold: succTh,
+		ProbeMode:        cfg.ProbeMode,
+		AutoRecover:      cfg.AutoRecover,
+	}
+	if fc, lha, iso, aerr := s.proxyRepo.GetHealthAudit(ctx, proxyID); aerr == nil {
+		detail.DBFailCount = fc
+		detail.DBIsolatedBy = iso
+		if lha != nil {
+			u := lha.Unix()
+			detail.DBLastHealthAt = &u
+		}
+	}
+	return detail, nil
+}
+
+// RunScan is the admin-facing alias for a single full probe round.
+func (s *ProxyHealthService) RunScan(ctx context.Context) (*ProxyHealthRunResult, error) {
+	return s.RunOnce(ctx)
 }
 
 // RunOnce selects candidates, probes concurrently, and applies isolate/recover.
@@ -79,12 +169,14 @@ func (s *ProxyHealthService) RunOnce(ctx context.Context) (*ProxyHealthRunResult
 		return &ProxyHealthRunResult{}, nil
 	}
 	cfg := s.conf()
+	s.loadGroupThresholdIndex(ctx)
 	candidates, err := s.listCandidates(ctx)
 	if err != nil {
 		return nil, err
 	}
 	result := &ProxyHealthRunResult{}
 	if len(candidates) == 0 {
+		s.metrics.recordRun(result, s.now().Unix())
 		return result, nil
 	}
 	if cfg.BatchSize > 0 && len(candidates) > cfg.BatchSize {
@@ -145,13 +237,75 @@ func (s *ProxyHealthService) RunOnce(ctx context.Context) (*ProxyHealthRunResult
 		case <-ctx.Done():
 			close(jobs)
 			wg.Wait()
+			s.metrics.recordRun(result, s.now().Unix())
 			return result, ctx.Err()
 		case jobs <- job{proxy: p}:
 		}
 	}
 	close(jobs)
 	wg.Wait()
+	s.metrics.recordRun(result, s.now().Unix())
 	return result, nil
+}
+
+func (s *ProxyHealthService) loadGroupThresholdIndex(ctx context.Context) {
+	s.groupFailTh = map[int64]int{}
+	s.groupSuccTh = map[int64]int{}
+	if s.groupRepo == nil {
+		return
+	}
+	groups, err := s.groupRepo.ListActive(ctx)
+	if err != nil {
+		return
+	}
+	for _, g := range groups {
+		if g.HealthFailThreshold != nil && *g.HealthFailThreshold > 0 {
+			s.groupFailTh[g.ID] = *g.HealthFailThreshold
+		}
+		if g.HealthSuccessThreshold != nil && *g.HealthSuccessThreshold > 0 {
+			s.groupSuccTh[g.ID] = *g.HealthSuccessThreshold
+		}
+	}
+}
+
+func (s *ProxyHealthService) thresholdsForProxy(p Proxy, cfg config.ProxyHealthConfig) (failTh, succTh int) {
+	failTh, succTh = cfg.FailThreshold, cfg.SuccessThreshold
+	if failTh <= 0 {
+		failTh = 3
+	}
+	if succTh <= 0 {
+		succTh = 2
+	}
+	if p.GroupID == nil {
+		return failTh, succTh
+	}
+	if v, ok := s.groupFailTh[*p.GroupID]; ok && v > 0 {
+		failTh = v
+	}
+	if v, ok := s.groupSuccTh[*p.GroupID]; ok && v > 0 {
+		succTh = v
+	}
+	return failTh, succTh
+}
+
+func (s *ProxyHealthService) thresholdsForGroup(g *ProxyGroup, cfg config.ProxyHealthConfig) (failTh, succTh int) {
+	failTh, succTh = cfg.FailThreshold, cfg.SuccessThreshold
+	if failTh <= 0 {
+		failTh = 3
+	}
+	if succTh <= 0 {
+		succTh = 2
+	}
+	if g == nil {
+		return failTh, succTh
+	}
+	if g.HealthFailThreshold != nil && *g.HealthFailThreshold > 0 {
+		failTh = *g.HealthFailThreshold
+	}
+	if g.HealthSuccessThreshold != nil && *g.HealthSuccessThreshold > 0 {
+		succTh = *g.HealthSuccessThreshold
+	}
+	return failTh, succTh
 }
 
 func (s *ProxyHealthService) shouldSkip(p Proxy) bool {
@@ -186,14 +340,6 @@ func (s *ProxyHealthService) listAllActiveCandidates(ctx context.Context) ([]Pro
 			out = append(out, p)
 		}
 	}
-	if !s.conf().AutoRecover || s.health == nil {
-		return out, nil
-	}
-	// Recovery path for all_active is limited: we only re-probe inactive
-	// proxies that already carry isolated_by=health via group membership
-	// listing is not available; scan is skipped for inactive outside groups.
-	// Operators who need recover on non-group proxies can switch to group_members
-	// or re-enable manually. (Phase 2 may add ListByStatus.)
 	return out, nil
 }
 
@@ -228,13 +374,15 @@ func (s *ProxyHealthService) listGroupMemberCandidates(ctx context.Context) ([]P
 				if !cfg.AutoRecover {
 					continue
 				}
-				// Only recover health-isolated; check meta cheaply.
 				if s.health == nil {
 					continue
 				}
 				meta, err := s.health.GetProxyHealth(ctx, p.ID)
 				if err != nil || meta == nil || meta.IsolatedBy != ProxyHealthIsolatedByHealth {
-					continue
+					// Fall back to DB audit mark.
+					if _, _, iso, aerr := s.proxyRepo.GetHealthAudit(ctx, p.ID); aerr != nil || iso != ProxyHealthIsolatedByHealth {
+						continue
+					}
 				}
 				seen[p.ID] = struct{}{}
 				out = append(out, p)
@@ -246,9 +394,14 @@ func (s *ProxyHealthService) listGroupMemberCandidates(ctx context.Context) ([]P
 
 func (s *ProxyHealthService) probeAndEvaluate(ctx context.Context, proxy Proxy) (isolated, recovered bool, err error) {
 	cfg := s.conf()
+	failTh, succTh := s.thresholdsForProxy(proxy, cfg)
 	timeout := time.Duration(cfg.TimeoutMS) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 10 * time.Second
+	}
+	// Quality mode needs more headroom for multi-target HTTP.
+	if cfg.ProbeMode == "quality" && timeout < 30*time.Second {
+		timeout = 30 * time.Second
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -257,14 +410,21 @@ func (s *ProxyHealthService) probeAndEvaluate(ctx context.Context, proxy Proxy) 
 	now := s.now()
 	meta := s.loadMeta(ctx, proxy.ID)
 
+	if probeErr == nil && cfg.ProbeMode == "quality" {
+		if qerr := s.probeQuality(probeCtx, proxy.URL()); qerr != nil {
+			probeErr = fmt.Errorf("quality: %w", qerr)
+		}
+	}
+
 	if probeErr != nil {
 		meta.FailCount++
 		meta.SuccessCount = 0
 		meta.LastCheckedAt = now.Unix()
 		meta.LastError = truncateErr(probeErr.Error(), 256)
 		s.saveMeta(ctx, proxy.ID, meta)
+		s.persistAudit(ctx, proxy.ID, meta, now)
 		s.writeLatencyFail(ctx, proxy.ID, meta.LastError, now)
-		if proxy.Status == StatusActive && meta.FailCount >= cfg.FailThreshold {
+		if proxy.Status == StatusActive && meta.FailCount >= failTh {
 			if isoErr := s.isolate(ctx, proxy, meta, now); isoErr != nil {
 				return false, false, isoErr
 			}
@@ -283,18 +443,41 @@ func (s *ProxyHealthService) probeAndEvaluate(ctx context.Context, proxy Proxy) 
 		meta.ExitIP = exitInfo.IP
 	}
 	s.saveMeta(ctx, proxy.ID, meta)
+	s.persistAudit(ctx, proxy.ID, meta, now)
 	s.writeLatencyOK(ctx, proxy.ID, exitInfo, latencyMs, now)
 
 	if cfg.AutoRecover &&
 		proxy.Status == StatusInactive &&
 		meta.IsolatedBy == ProxyHealthIsolatedByHealth &&
-		meta.SuccessCount >= cfg.SuccessThreshold {
+		meta.SuccessCount >= succTh {
 		if recErr := s.recover(ctx, proxy, meta, now); recErr != nil {
 			return false, false, recErr
 		}
 		return false, true, nil
 	}
 	return false, false, nil
+}
+
+// probeQuality runs AI-target quality checks (shared with admin quality check).
+// Any hard fail (status=fail) counts as unhealthy; warn/challenge do not isolate.
+func (s *ProxyHealthService) probeQuality(ctx context.Context, proxyURL string) error {
+	client, err := httpclient.GetClient(httpclient.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               proxyQualityRequestTimeout,
+		ResponseHeaderTimeout: proxyQualityResponseHeaderTimeout,
+	})
+	if err != nil {
+		return err
+	}
+	// Use the first quality target as a lightweight gate (full multi-target is expensive in poller).
+	if len(proxyQualityTargets) == 0 {
+		return nil
+	}
+	item := runProxyQualityTarget(ctx, client, proxyQualityTargets[0])
+	if item.Status == "fail" {
+		return fmt.Errorf("%s: %s", item.Target, item.Message)
+	}
+	return nil
 }
 
 func (s *ProxyHealthService) isolate(ctx context.Context, proxy Proxy, meta *ProxyHealthMeta, now time.Time) error {
@@ -305,6 +488,7 @@ func (s *ProxyHealthService) isolate(ctx context.Context, proxy Proxy, meta *Pro
 	meta.IsolatedBy = ProxyHealthIsolatedByHealth
 	meta.IsolatedAt = now.Unix()
 	s.saveMeta(ctx, proxy.ID, meta)
+	s.persistAudit(ctx, proxy.ID, meta, now)
 	s.invalidateGroup(proxy.GroupID)
 	s.log.Info("proxy health isolated",
 		"proxy_id", proxy.ID,
@@ -323,6 +507,7 @@ func (s *ProxyHealthService) recover(ctx context.Context, proxy Proxy, meta *Pro
 	meta.IsolatedAt = 0
 	meta.FailCount = 0
 	s.saveMeta(ctx, proxy.ID, meta)
+	s.persistAudit(ctx, proxy.ID, meta, now)
 	s.invalidateGroup(proxy.GroupID)
 	s.log.Info("proxy health recovered",
 		"proxy_id", proxy.ID,
@@ -331,6 +516,17 @@ func (s *ProxyHealthService) recover(ctx context.Context, proxy Proxy, meta *Pro
 		"at", now.Unix(),
 	)
 	return nil
+}
+
+func (s *ProxyHealthService) persistAudit(ctx context.Context, proxyID int64, meta *ProxyHealthMeta, now time.Time) {
+	if s.proxyRepo == nil || meta == nil {
+		return
+	}
+	t := now
+	if err := s.proxyRepo.UpdateHealthAudit(ctx, proxyID, meta.FailCount, &t, meta.IsolatedBy); err != nil {
+		// Missing migration should not break the poller.
+		s.log.Debug("proxy health audit persist skipped/failed", "proxy_id", proxyID, "err", err)
+	}
 }
 
 func (s *ProxyHealthService) invalidateGroup(groupID *int64) {
@@ -346,7 +542,18 @@ func (s *ProxyHealthService) loadMeta(ctx context.Context, proxyID int64) *Proxy
 			return meta
 		}
 	}
-	return &ProxyHealthMeta{}
+	// Seed from DB audit when Redis empty.
+	meta := &ProxyHealthMeta{}
+	if s.proxyRepo != nil {
+		if fc, lha, iso, err := s.proxyRepo.GetHealthAudit(ctx, proxyID); err == nil {
+			meta.FailCount = fc
+			meta.IsolatedBy = iso
+			if lha != nil {
+				meta.LastCheckedAt = lha.Unix()
+			}
+		}
+	}
+	return meta
 }
 
 func (s *ProxyHealthService) saveMeta(ctx context.Context, proxyID int64, meta *ProxyHealthMeta) {
@@ -398,7 +605,6 @@ func truncateErr(s string, n int) string {
 }
 
 // ApplyProbeResult is a pure helper for unit tests: update meta + decide action.
-// status is current proxy status; returns next status and updated meta flags.
 func ApplyProbeResult(
 	status string,
 	meta ProxyHealthMeta,

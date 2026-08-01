@@ -156,6 +156,57 @@ export async function checkProxyQuality(id: number): Promise<ProxyQualityCheckRe
   return data
 }
 
+export interface ProxyHealthDetail {
+  proxy_id: number
+  status: string
+  fail_count: number
+  success_count: number
+  last_checked_at?: number
+  last_ok_at?: number
+  last_error?: string
+  latency_ms?: number
+  exit_ip?: string
+  isolated_by?: string
+  isolated_at?: number
+  db_fail_count?: number
+  db_isolated_by?: string
+  db_last_health_at?: number
+  fail_threshold: number
+  success_threshold: number
+  probe_mode: string
+  auto_recover: boolean
+}
+
+export interface ProxyHealthScanResult {
+  probed: number
+  isolated: number
+  recovered: number
+  skipped: number
+  errors: number
+  metrics?: {
+    ticks: number
+    probed_total: number
+    isolated_total: number
+    recovered_total: number
+    error_total: number
+    skipped_total: number
+    last_tick_unix: number
+    last_scan_unix: number
+  }
+}
+
+/** Trigger one full proxy-pool health scan (admin). */
+export async function healthScan(): Promise<ProxyHealthScanResult> {
+  const { data } = await apiClient.post<ProxyHealthScanResult>('/admin/proxies/health-scan')
+  return data
+}
+
+/** Get health meta (Redis + DB audit) for one proxy. */
+export async function getHealth(id: number): Promise<ProxyHealthDetail> {
+  const { data } = await apiClient.get<ProxyHealthDetail>(`/admin/proxies/${id}/health`)
+  return data
+}
+
 /**
  * Get proxy usage statistics
  * @param id - Proxy ID
@@ -266,6 +317,8 @@ export const proxiesAPI = {
   toggleStatus,
   testProxy,
   checkProxyQuality,
+  healthScan,
+  getHealth,
   getStats,
   getProxyAccounts,
   batchCreate,

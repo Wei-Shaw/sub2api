@@ -47,6 +47,15 @@
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
             <button
+              @click="handleHealthScan"
+              :disabled="healthScanning || loading"
+              class="btn btn-secondary"
+              :title="t('admin.proxies.healthScan')"
+            >
+              <Icon name="refresh" size="md" class="mr-2" :class="healthScanning ? 'animate-spin' : ''" />
+              {{ healthScanning ? t('admin.proxies.healthScanRunning') : t('admin.proxies.healthScan') }}
+            </button>
+            <button
               @click="handleBatchTest"
               :disabled="batchTesting || loading"
               class="btn btn-secondary"
@@ -256,15 +265,28 @@
             <span class="text-xs text-gray-600 dark:text-gray-300">{{ formatDateTime(row.created_at) }}</span>
           </template>
 
-          <template #cell-status="{ value }">
-            <span
-              :class="[
-                'badge',
-                value === 'active' ? 'badge-success' : value === 'expired' ? 'badge-danger' : 'badge-danger'
-              ]"
+          <template #cell-status="{ row, value }">
+            <button
+              type="button"
+              class="inline-flex flex-col items-start gap-0.5"
+              @click="openHealthDetail(row)"
+              :title="t('admin.proxies.healthDetail')"
             >
-              {{ t('admin.accounts.status.' + value) }}
-            </span>
+              <span
+                :class="[
+                  'badge',
+                  value === 'active' ? 'badge-success' : value === 'expired' ? 'badge-danger' : 'badge-danger'
+                ]"
+              >
+                {{ t('admin.accounts.status.' + value) }}
+              </span>
+              <span
+                v-if="value === 'inactive' && row.latency_status === 'failed'"
+                class="text-[10px] text-amber-600 dark:text-amber-400"
+              >
+                {{ t('admin.proxies.healthIsolatedByHealth') }}
+              </span>
+            </button>
           </template>
 
           <template #cell-actions="{ row }">
@@ -916,6 +938,68 @@
       </template>
     </BaseDialog>
 
+    <!-- Health Detail Dialog -->
+    <BaseDialog
+      :show="showHealthModal"
+      :title="t('admin.proxies.healthDetail') + (healthProxy ? ` · ${healthProxy.name}` : '')"
+      width="normal"
+      @close="closeHealthDetail"
+    >
+      <div v-if="healthLoading" class="flex items-center justify-center py-8 text-sm text-gray-500">
+        <Icon name="refresh" size="md" class="mr-2 animate-spin" />
+        {{ t('common.loading') }}
+      </div>
+      <div v-else-if="healthDetail" class="space-y-3 text-sm">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <div class="text-xs text-gray-500">{{ t('admin.proxies.status') }}</div>
+            <div class="font-medium">{{ healthDetail.status }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">{{ t('admin.proxies.healthProbeMode') }}</div>
+            <div class="font-medium">{{ healthDetail.probe_mode }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">{{ t('admin.proxies.healthFailCount') }}</div>
+            <div class="font-medium">{{ healthDetail.fail_count }} / {{ healthDetail.fail_threshold }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">{{ t('admin.proxies.healthSuccessCount') }}</div>
+            <div class="font-medium">{{ healthDetail.success_count }} / {{ healthDetail.success_threshold }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">{{ t('admin.proxies.healthExitIP') }}</div>
+            <div class="font-mono">{{ healthDetail.exit_ip || '-' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">{{ t('admin.proxies.healthAutoRecover') }}</div>
+            <div class="font-medium">{{ healthDetail.auto_recover ? t('common.yes') : t('common.no') }}</div>
+          </div>
+          <div class="col-span-2">
+            <div class="text-xs text-gray-500">{{ t('admin.proxies.healthLastError') }}</div>
+            <div class="break-all text-red-600 dark:text-red-400">{{ healthDetail.last_error || '-' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">{{ t('admin.proxies.healthLastChecked') }}</div>
+            <div>{{ healthDetail.last_checked_at ? formatDateTime(new Date(healthDetail.last_checked_at * 1000).toISOString()) : '-' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">{{ t('admin.proxies.healthDBAudit') }}</div>
+            <div class="text-xs text-gray-600 dark:text-gray-300">
+              fail={{ healthDetail.db_fail_count ?? 0 }}
+              · by={{ healthDetail.db_isolated_by || '-' }}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-else class="py-6 text-center text-sm text-gray-500">-</div>
+      <template #footer>
+        <div class="flex justify-end">
+          <button @click="closeHealthDetail" class="btn btn-secondary">{{ t('common.close') }}</button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- Proxy Accounts Dialog -->
     <BaseDialog
       :show="showAccountsModal"
@@ -969,6 +1053,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { Proxy, ProxyAccountSummary, ProxyProtocol, ProxyQualityCheckResult } from '@/types'
+import type { ProxyHealthDetail } from '@/api/admin/proxies'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -1072,6 +1157,11 @@ const exportingData = ref(false)
 const testingProxyIds = ref<Set<number>>(new Set())
 const qualityCheckingProxyIds = ref<Set<number>>(new Set())
 const batchTesting = ref(false)
+const healthScanning = ref(false)
+const showHealthModal = ref(false)
+const healthLoading = ref(false)
+const healthProxy = ref<Proxy | null>(null)
+const healthDetail = ref<ProxyHealthDetail | null>(null)
 const batchQualityChecking = ref(false)
 const proxyTableRef = ref<HTMLElement | null>(null)
 const {
@@ -1825,6 +1915,50 @@ const runBatchProxyTests = async (ids: number[]) => {
 
   const workers = Array.from({ length: Math.min(concurrency, ids.length) }, () => worker())
   await Promise.all(workers)
+}
+
+const handleHealthScan = async () => {
+  if (healthScanning.value) return
+  healthScanning.value = true
+  try {
+    const result = await adminAPI.proxies.healthScan()
+    appStore.showSuccess(
+      t('admin.proxies.healthScanDone', {
+        probed: result.probed,
+        isolated: result.isolated,
+        recovered: result.recovered,
+        skipped: result.skipped,
+        errors: result.errors
+      })
+    )
+    await loadProxies()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.proxies.healthScanFailed'))
+    console.error('Error running proxy health scan:', error)
+  } finally {
+    healthScanning.value = false
+  }
+}
+
+const openHealthDetail = async (row: Proxy) => {
+  healthProxy.value = row
+  showHealthModal.value = true
+  healthLoading.value = true
+  healthDetail.value = null
+  try {
+    healthDetail.value = await adminAPI.proxies.getHealth(row.id)
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.proxies.healthScanFailed'))
+    console.error('Error loading proxy health:', error)
+  } finally {
+    healthLoading.value = false
+  }
+}
+
+const closeHealthDetail = () => {
+  showHealthModal.value = false
+  healthProxy.value = null
+  healthDetail.value = null
 }
 
 const handleBatchTest = async () => {

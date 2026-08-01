@@ -50,6 +50,9 @@ func (r *proxyGroupRepository) Create(ctx context.Context, group *service.ProxyG
 		return err
 	}
 	applyProxyGroupEntityToService(group, created)
+	if err := r.writeGroupHealthThresholds(ctx, group.ID, group.HealthFailThreshold, group.HealthSuccessThreshold); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -61,7 +64,9 @@ func (r *proxyGroupRepository) GetByID(ctx context.Context, id int64) (*service.
 		}
 		return nil, err
 	}
-	return proxyGroupEntityToService(m), nil
+	g := proxyGroupEntityToService(m)
+	r.attachGroupHealthThresholds(ctx, g)
+	return g, nil
 }
 
 func (r *proxyGroupRepository) Update(ctx context.Context, group *service.ProxyGroup) error {
@@ -86,6 +91,9 @@ func (r *proxyGroupRepository) Update(ctx context.Context, group *service.ProxyG
 		return err
 	}
 	applyProxyGroupEntityToService(group, updated)
+	if err := r.writeGroupHealthThresholds(ctx, group.ID, group.HealthFailThreshold, group.HealthSuccessThreshold); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -122,6 +130,7 @@ func (r *proxyGroupRepository) List(ctx context.Context, params pagination.Pagin
 			out = append(out, *g)
 		}
 	}
+	r.attachGroupHealthThresholdsBatch(ctx, out)
 	return out, paginationResultFromTotal(int64(total), params), nil
 }
 
@@ -140,7 +149,91 @@ func (r *proxyGroupRepository) ListActive(ctx context.Context) ([]service.ProxyG
 			out = append(out, *g)
 		}
 	}
+	r.attachGroupHealthThresholdsBatch(ctx, out)
 	return out, nil
+}
+
+func (r *proxyGroupRepository) writeGroupHealthThresholds(ctx context.Context, groupID int64, fail, success *int) error {
+	if r == nil || r.sql == nil || groupID <= 0 {
+		return nil
+	}
+	var failV, succV any
+	if fail != nil && *fail > 0 {
+		failV = *fail
+	}
+	if success != nil && *success > 0 {
+		succV = *success
+	}
+	_, err := r.sql.ExecContext(ctx, `
+		UPDATE proxy_groups
+		SET health_fail_threshold = $2,
+		    health_success_threshold = $3,
+		    updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`,
+		groupID, failV, succV,
+	)
+	return err
+}
+
+func (r *proxyGroupRepository) attachGroupHealthThresholds(ctx context.Context, g *service.ProxyGroup) {
+	if g == nil || r == nil || r.sql == nil {
+		return
+	}
+	var fail, succ sql.NullInt64
+	err := scanSingleRow(ctx, r.sql, `
+		SELECT health_fail_threshold, health_success_threshold
+		FROM proxy_groups WHERE id = $1 AND deleted_at IS NULL`,
+		[]any{g.ID}, &fail, &succ)
+	if err != nil {
+		return
+	}
+	if fail.Valid && fail.Int64 > 0 {
+		v := int(fail.Int64)
+		g.HealthFailThreshold = &v
+	}
+	if succ.Valid && succ.Int64 > 0 {
+		v := int(succ.Int64)
+		g.HealthSuccessThreshold = &v
+	}
+}
+
+func (r *proxyGroupRepository) attachGroupHealthThresholdsBatch(ctx context.Context, groups []service.ProxyGroup) {
+	if len(groups) == 0 || r == nil || r.sql == nil {
+		return
+	}
+	ids := make([]int64, 0, len(groups))
+	index := make(map[int64]int, len(groups))
+	for i := range groups {
+		ids = append(ids, groups[i].ID)
+		index[groups[i].ID] = i
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id, health_fail_threshold, health_success_threshold
+		FROM proxy_groups WHERE id = ANY($1) AND deleted_at IS NULL`, pq.Array(ids),
+	)
+	if err != nil {
+		return
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		var fail, succ sql.NullInt64
+		if err := rows.Scan(&id, &fail, &succ); err != nil {
+			continue
+		}
+		i, ok := index[id]
+		if !ok {
+			continue
+		}
+		if fail.Valid && fail.Int64 > 0 {
+			v := int(fail.Int64)
+			groups[i].HealthFailThreshold = &v
+		}
+		if succ.Valid && succ.Int64 > 0 {
+			v := int(succ.Int64)
+			groups[i].HealthSuccessThreshold = &v
+		}
+	}
 }
 
 func (r *proxyGroupRepository) CountProxiesByGroupID(ctx context.Context, groupID int64) (int64, error) {

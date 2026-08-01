@@ -29,6 +29,9 @@ type ProxyGroup struct {
 	Status          string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	// Optional per-group health thresholds (nil or <=0 = use global proxy_health config).
+	HealthFailThreshold    *int
+	HealthSuccessThreshold *int
 }
 
 func (g *ProxyGroup) IsActive() bool {

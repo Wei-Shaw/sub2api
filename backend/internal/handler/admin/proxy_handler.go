@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -16,13 +17,62 @@ import (
 // ProxyHandler handles admin proxy management
 type ProxyHandler struct {
 	adminService service.AdminService
+	healthSvc    *service.ProxyHealthService
 }
 
 // NewProxyHandler creates a new admin proxy handler
-func NewProxyHandler(adminService service.AdminService) *ProxyHandler {
+func NewProxyHandler(adminService service.AdminService, healthSvc *service.ProxyHealthService) *ProxyHandler {
 	return &ProxyHandler{
 		adminService: adminService,
+		healthSvc:    healthSvc,
 	}
+}
+
+// HealthScan triggers one full proxy health probe round (admin).
+// POST /api/v1/admin/proxies/health-scan
+func (h *ProxyHandler) HealthScan(c *gin.Context) {
+	if h.healthSvc == nil {
+		response.ErrorFrom(c, fmt.Errorf("proxy health service not configured"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Minute)
+	defer cancel()
+	result, err := h.healthSvc.RunScan(ctx)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := gin.H{
+		"probed":    result.Probed,
+		"isolated":  result.Isolated,
+		"recovered": result.Recovered,
+		"skipped":   result.Skipped,
+		"errors":    result.Errors,
+	}
+	if m := h.healthSvc.Metrics(); m != nil {
+		out["metrics"] = m.Snapshot()
+	}
+	response.Success(c, out)
+}
+
+// GetHealth returns Redis + DB health detail for one proxy.
+// GET /api/v1/admin/proxies/:id/health
+func (h *ProxyHandler) GetHealth(c *gin.Context) {
+	if h.healthSvc == nil {
+		response.ErrorFrom(c, fmt.Errorf("proxy health service not configured"))
+		return
+	}
+	proxyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid proxy ID")
+		return
+	}
+	detail, err := h.healthSvc.GetHealth(c.Request.Context(), proxyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, detail)
 }
 
 // CreateProxyRequest represents create proxy request

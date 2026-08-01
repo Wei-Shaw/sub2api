@@ -571,14 +571,16 @@ func ProxyGroupFromService(g *service.ProxyGroup) *ProxyGroup {
 		return nil
 	}
 	return &ProxyGroup{
-		ID:              g.ID,
-		Name:            g.Name,
-		Description:     g.Description,
-		Strategy:        g.Strategy,
-		StickyByAccount: g.StickyByAccount,
-		Status:          g.Status,
-		CreatedAt:       g.CreatedAt,
-		UpdatedAt:       g.UpdatedAt,
+		ID:                     g.ID,
+		Name:                   g.Name,
+		Description:            g.Description,
+		Strategy:               g.Strategy,
+		StickyByAccount:        g.StickyByAccount,
+		Status:                 g.Status,
+		HealthFailThreshold:    g.HealthFailThreshold,
+		HealthSuccessThreshold: g.HealthSuccessThreshold,
+		CreatedAt:              g.CreatedAt,
+		UpdatedAt:              g.UpdatedAt,
 	}
 }
 

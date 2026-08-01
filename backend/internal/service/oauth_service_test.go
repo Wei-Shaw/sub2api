@@ -115,6 +115,10 @@ func (m *mockProxyRepoForOAuth) ListByGroupID(ctx context.Context, groupID int64
 func (m *mockProxyRepoForOAuth) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	panic("CountByGroupID not implemented")
 }
+func (m *mockProxyRepoForOAuth) UpdateHealthAudit(context.Context, int64, int, *time.Time, string) error { return nil }
+func (m *mockProxyRepoForOAuth) GetHealthAudit(context.Context, int64) (int, *time.Time, string, error) {
+	return 0, nil, "", nil
+}
 
 // =====================
 // 测试用例

@@ -845,6 +845,9 @@ proxy_health:
   leader_lock_ttl_sec: 50
   # Max proxies probed per tick
   batch_size: 100
+  # connectivity = exit-IP probe only; quality = connectivity + AI target quality checks
+  # connectivity 仅测出口连通；quality 在连通成功后再跑 AI 目标质量探测（更慢）
+  probe_mode: connectivity
 
 # =============================================================================
 # Cloudflare WARP Gateway (tools/warp-gateway)

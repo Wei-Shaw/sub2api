@@ -107,6 +107,29 @@
           </label>
         </div>
         <p class="text-xs text-gray-500">{{ t('admin.proxyGroups.stickyHint') }}</p>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="input-label">{{ t('admin.proxyGroups.healthFailThreshold') }}</label>
+            <input
+              v-model.number="form.health_fail_threshold"
+              type="number"
+              min="0"
+              class="input"
+              :placeholder="t('admin.proxyGroups.healthThresholdGlobal')"
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.proxyGroups.healthSuccessThreshold') }}</label>
+            <input
+              v-model.number="form.health_success_threshold"
+              type="number"
+              min="0"
+              class="input"
+              :placeholder="t('admin.proxyGroups.healthThresholdGlobal')"
+            />
+          </div>
+        </div>
+        <p class="text-xs text-gray-500">{{ t('admin.proxyGroups.healthThresholdHint') }}</p>
 
         <!-- Member proxies: search + batch select + pagination -->
         <div>
@@ -295,7 +318,9 @@ const form = reactive({
   strategy: 'round_robin' as ProxyGroupStrategy,
   sticky_by_account: false,
   status: 'active' as 'active' | 'inactive',
-  proxy_ids: [] as number[]
+  proxy_ids: [] as number[],
+  health_fail_threshold: undefined as number | undefined,
+  health_success_threshold: undefined as number | undefined
 })
 
 const columns = computed<Column[]>(() => [
@@ -432,6 +457,8 @@ function openCreate() {
   form.sticky_by_account = false
   form.status = 'active'
   form.proxy_ids = []
+  form.health_fail_threshold = undefined
+  form.health_success_threshold = undefined
   resetMemberPicker()
   showForm.value = true
 }
@@ -443,10 +470,14 @@ async function openEdit(row: ProxyGroup) {
   form.strategy = row.strategy || 'round_robin'
   form.sticky_by_account = !!row.sticky_by_account
   form.status = row.status === 'inactive' ? 'inactive' : 'active'
+  form.health_fail_threshold = row.health_fail_threshold ?? undefined
+  form.health_success_threshold = row.health_success_threshold ?? undefined
   resetMemberPicker()
   try {
     const detail = await adminAPI.proxyGroups.getById(row.id)
     form.proxy_ids = (detail.proxies || []).map((p) => p.id)
+    form.health_fail_threshold = detail.health_fail_threshold ?? undefined
+    form.health_success_threshold = detail.health_success_threshold ?? undefined
   } catch {
     form.proxy_ids = []
   }
@@ -465,6 +496,12 @@ async function submitForm() {
   }
   submitting.value = true
   try {
+    const healthFail =
+      form.health_fail_threshold && form.health_fail_threshold > 0 ? form.health_fail_threshold : 0
+    const healthSucc =
+      form.health_success_threshold && form.health_success_threshold > 0
+        ? form.health_success_threshold
+        : 0
     if (editing.value) {
       await adminAPI.proxyGroups.update(editing.value.id, {
         name: form.name.trim(),
@@ -472,7 +509,9 @@ async function submitForm() {
         strategy: form.strategy,
         sticky_by_account: form.sticky_by_account,
         status: form.status,
-        proxy_ids: form.proxy_ids
+        proxy_ids: form.proxy_ids,
+        health_fail_threshold: healthFail,
+        health_success_threshold: healthSucc
       })
       appStore.showSuccess(t('admin.proxyGroups.updated'))
     } else {
@@ -482,6 +521,8 @@ async function submitForm() {
         strategy: form.strategy,
         sticky_by_account: form.sticky_by_account,
         status: form.status,
+        health_fail_threshold: healthFail || undefined,
+        health_success_threshold: healthSucc || undefined,
         proxy_ids: form.proxy_ids
       })
       appStore.showSuccess(t('admin.proxyGroups.created'))

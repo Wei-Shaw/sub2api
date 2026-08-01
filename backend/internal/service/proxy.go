@@ -29,6 +29,10 @@ type Proxy struct {
 	BackupProxyID  *int64
 	ExpiryWarnDays int
 	GroupID        *int64 // optional membership in a proxy group
+	// Health audit (DB-backed, Phase 3)
+	HealthFailCount  int
+	LastHealthAt     *time.Time
+	HealthIsolatedBy string
 }
 
 func (p *Proxy) IsActive() bool {
