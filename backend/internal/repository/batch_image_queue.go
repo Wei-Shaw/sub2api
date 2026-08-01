@@ -13,11 +13,12 @@ import (
 )
 
 const (
-	defaultBatchImageReadyKey       = "batch_image:queue:ready"
-	defaultBatchImageDelayedKey     = "batch_image:queue:delayed"
-	defaultBatchImageActiveKey      = "batch_image:queue:active"
-	defaultBatchImageInflightPrefix = "batch_image:queue:inflight:"
-	defaultBatchImageLockPrefix     = "batch_image:queue:lock:"
+	batchImageHashTag               = "{sub2api:batch-image}"
+	defaultBatchImageReadyKey       = "batch_image:" + batchImageHashTag + ":queue:ready"
+	defaultBatchImageDelayedKey     = "batch_image:" + batchImageHashTag + ":queue:delayed"
+	defaultBatchImageActiveKey      = "batch_image:" + batchImageHashTag + ":queue:active"
+	defaultBatchImageInflightPrefix = "batch_image:" + batchImageHashTag + ":queue:inflight:"
+	defaultBatchImageLockPrefix     = "batch_image:" + batchImageHashTag + ":queue:lock:"
 	defaultBatchImageInflightTTL    = 7 * 24 * time.Hour
 	defaultBatchImageJobLockTTL     = 5 * time.Minute
 

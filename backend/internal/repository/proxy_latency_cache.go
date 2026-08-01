@@ -29,31 +29,25 @@ func (c *proxyLatencyCache) GetProxyLatencies(ctx context.Context, proxyIDs []in
 		return results, nil
 	}
 
-	keys := make([]string, 0, len(proxyIDs))
+	pipe := c.rdb.Pipeline()
+	commands := make([]*redis.StringCmd, 0, len(proxyIDs))
 	for _, id := range proxyIDs {
-		keys = append(keys, proxyLatencyKey(id))
+		commands = append(commands, pipe.Get(ctx, proxyLatencyKey(id)))
 	}
-
-	values, err := c.rdb.MGet(ctx, keys...).Result()
-	if err != nil {
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
 		return results, err
 	}
 
-	for i, raw := range values {
-		if raw == nil {
+	for i, command := range commands {
+		raw, err := command.Result()
+		if err == redis.Nil {
 			continue
 		}
-		var payload []byte
-		switch v := raw.(type) {
-		case string:
-			payload = []byte(v)
-		case []byte:
-			payload = v
-		default:
-			continue
+		if err != nil {
+			return results, err
 		}
 		var info service.ProxyLatencyInfo
-		if err := json.Unmarshal(payload, &info); err != nil {
+		if err := json.Unmarshal([]byte(raw), &info); err != nil {
 			continue
 		}
 		results[proxyIDs[i]] = &info

@@ -23,33 +23,38 @@ import (
 // 3. 使用 ZREMRANGEBYSCORE 清理过期槽位，避免手动管理 TTL
 // 4. 单次 Redis 调用完成计数，减少网络往返
 const (
+	concurrencyHashTag = "{sub2api:concurrency}"
 	// 并发槽位键前缀（有序集合）
 	// 格式: concurrency:account:{accountID}
-	accountSlotKeyPrefix = "concurrency:account:"
+	accountSlotKeyPrefix = "concurrency:" + concurrencyHashTag + ":account:"
 	// 格式: concurrency:user:{userID}
-	userSlotKeyPrefix = "concurrency:user:"
+	userSlotKeyPrefix = "concurrency:" + concurrencyHashTag + ":user:"
 	// 格式: concurrency:api_key:{apiKeyID}
-	apiKeySlotKeyPrefix      = "concurrency:api_key:"
-	liveAccountSlotKeyPrefix = "concurrency:live:account:"
-	liveUserSlotKeyPrefix    = "concurrency:live:user:"
-	liveAPIKeySlotKeyPrefix  = "concurrency:live:api_key:"
+	apiKeySlotKeyPrefix      = "concurrency:" + concurrencyHashTag + ":api_key:"
+	liveAccountSlotKeyPrefix = "concurrency:" + concurrencyHashTag + ":live:account:"
+	liveUserSlotKeyPrefix    = "concurrency:" + concurrencyHashTag + ":live:user:"
+	liveAPIKeySlotKeyPrefix  = "concurrency:" + concurrencyHashTag + ":live:api_key:"
 	// API-key-scoped client WebSocket ingress leases use a shorter TTL than
 	// ordinary request slots, because idle ingress sessions do not hold a turn slot.
-	openAIWSIngressLeaseKeyPrefix  = "concurrency:openai_ws_ingress:api_key:"
+	openAIWSIngressLeaseKeyPrefix  = "concurrency:" + concurrencyHashTag + ":openai_ws_ingress:api_key:"
 	openAIWSIngressLeaseTTLSeconds = 60
 	liveLeaseTTLSeconds            = 60
 	// 等待队列计数器格式: concurrency:wait:{userID}
-	waitQueueKeyPrefix = "concurrency:wait:"
+	waitQueueKeyPrefix = "concurrency:" + concurrencyHashTag + ":wait:"
 	// 账号级等待队列计数器格式: wait:account:{accountID}
-	accountWaitKeyPrefix = "wait:account:"
+	accountWaitKeyPrefix = "concurrency:" + concurrencyHashTag + ":wait:account:"
+	// These pre-cluster prefixes are scanned once during an upgrade so stale
+	// counters from the previous keyspace cannot survive indefinitely.
+	legacyWaitQueueKeyPrefix   = "concurrency:wait:"
+	legacyAccountWaitKeyPrefix = "wait:account:"
 
 	// 默认槽位过期时间（分钟），可通过配置覆盖
 	defaultSlotTTLMinutes = 15
 
 	// 活跃索引用来替代后台任务全量 SCAN 槽位键。
 	// member 是账号/用户 ID，score 是“预计仍需关注到”的 Redis Unix 秒时间戳。
-	accountActiveIndexKey = "concurrency:account:active_index" // ZSET member=accountID, score=expireAtUnixSeconds
-	userActiveIndexKey    = "concurrency:user:active_index"    // ZSET member=userID, score=expireAtUnixSeconds
+	accountActiveIndexKey = "concurrency:" + concurrencyHashTag + ":account:active_index" // ZSET member=accountID, score=expireAtUnixSeconds
+	userActiveIndexKey    = "concurrency:" + concurrencyHashTag + ":user:active_index"    // ZSET member=userID, score=expireAtUnixSeconds
 
 	// 后台清理只按批处理索引候选，避免单次任务占用 Redis 太久。
 	activeIndexCleanupBatchSize  = 1000
@@ -57,7 +62,7 @@ const (
 
 	// 一次性迁移 marker：活跃索引机制上线前遗留的等待计数键无法被索引发现，
 	// 且有流量时 TTL 会被不断刷新，必须清扫一次。marker 存在即代表已完成。
-	legacyWaitSweepMarkerKey = "concurrency:startup:legacy_wait_sweep:v1"
+	legacyWaitSweepMarkerKey = "concurrency:" + concurrencyHashTag + ":startup:legacy_wait_sweep:v1"
 )
 
 var (
@@ -1180,22 +1185,13 @@ func (c *concurrencyCache) sweepLegacyWaitKeysOnce(ctx context.Context) error {
 	if exists > 0 {
 		return nil
 	}
-	for _, pattern := range []string{accountWaitKeyPrefix + "*", waitQueueKeyPrefix + "*"} {
-		var cursor uint64
-		for {
-			keys, next, err := c.rdb.Scan(ctx, cursor, pattern, 200).Result()
-			if err != nil {
-				return fmt.Errorf("scan legacy wait keys %s: %w", pattern, err)
-			}
-			if len(keys) > 0 {
-				if err := c.rdb.Del(ctx, keys...).Err(); err != nil {
-					return fmt.Errorf("delete legacy wait keys: %w", err)
-				}
-			}
-			cursor = next
-			if cursor == 0 {
-				break
-			}
+	for _, pattern := range []string{legacyAccountWaitKeyPrefix + "*", legacyWaitQueueKeyPrefix + "*"} {
+		keys, err := scanRedisKeys(ctx, c.rdb, pattern, 200)
+		if err != nil {
+			return fmt.Errorf("scan legacy wait keys %s: %w", pattern, err)
+		}
+		if err := deleteRedisKeys(ctx, c.rdb, keys); err != nil {
+			return fmt.Errorf("delete legacy wait keys: %w", err)
 		}
 	}
 	if err := c.rdb.Set(ctx, legacyWaitSweepMarkerKey, "1", 0).Err(); err != nil {
