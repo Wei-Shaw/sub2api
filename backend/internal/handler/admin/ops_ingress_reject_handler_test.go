@@ -11,7 +11,7 @@ import (
 )
 
 func newIngressRejectHandlerForTest() *OpsHandler {
-	return NewOpsHandler(service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil))
+	return NewOpsHandler(service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), nil)
 }
 
 func TestListIngressRejectsValidatesFilters(t *testing.T) {

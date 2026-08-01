@@ -53,7 +53,7 @@ func sanitizeCursorResponsesShapeBody(body []byte) ([]byte, error) {
 	} else if changed {
 		result = normalized
 	}
-	stripped, _, err := stripOpenAIResponsesInputNamespaces(result)
+	stripped, err := stripOpenAIResponsesInputNamespaces(result)
 	if err != nil {
 		return nil, err
 	}
@@ -69,27 +69,6 @@ func normalizeOpenAIResponsesToolChoiceLiteral(body []byte) ([]byte, bool, error
 		return nil, false, fmt.Errorf("normalize tool_choice any: %w", err)
 	}
 	return result, true, nil
-}
-
-func stripOpenAIResponsesInputNamespaces(body []byte) ([]byte, bool, error) {
-	input := gjson.GetBytes(body, "input")
-	if !input.IsArray() {
-		return body, false, nil
-	}
-	result := body
-	changed := false
-	for idx, item := range input.Array() {
-		if !item.Get("namespace").Exists() {
-			continue
-		}
-		stripped, err := sjson.DeleteBytes(result, fmt.Sprintf("input.%d.namespace", idx))
-		if err != nil {
-			return nil, false, fmt.Errorf("strip input.%d.namespace: %w", idx, err)
-		}
-		result = stripped
-		changed = true
-	}
-	return result, changed, nil
 }
 
 // ForwardAsChatCompletions accepts a Chat Completions request body, converts it

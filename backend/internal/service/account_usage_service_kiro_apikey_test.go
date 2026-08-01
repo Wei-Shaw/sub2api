@@ -16,7 +16,7 @@ func TestAccountUsageService_GetUsage_KiroAPIKeyUnsupported(t *testing.T) {
 		Type:     AccountTypeAPIKey,
 	}
 	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	usage, err := svc.GetUsage(context.Background(), account.ID)
 	require.Nil(t, usage)
@@ -31,7 +31,7 @@ func TestAccountUsageService_GetPassiveUsage_KiroAPIKeyUnsupported(t *testing.T)
 		Type:     AccountTypeAPIKey,
 	}
 	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	usage, err := svc.GetPassiveUsage(context.Background(), account.ID)
 	require.Nil(t, usage)

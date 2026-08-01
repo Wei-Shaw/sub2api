@@ -61,7 +61,6 @@ IMPORTANT: You must NEVER generate or guess URLs for the user unless you are con
 	debugGatewayBodyEnv                    = "SUB2API_DEBUG_GATEWAY_BODY"
 	// 上游错误体只需要提取错误 JSON/日志摘要，默认 512KiB 避免错误风暴叠加大请求体。
 	gatewayUpstreamErrorBodyReadLimit int64 = 512 << 10
-	defaultKiroStreamKeepalive              = 25 * time.Second
 )
 
 const (
@@ -718,19 +717,6 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
-}
-
-func (s *GatewayService) streamKeepaliveIntervalForAccount(account *Account) time.Duration {
-	if account != nil && account.Platform == PlatformKiro {
-		if s != nil && s.cfg != nil && s.cfg.Gateway.KiroStreamKeepaliveInterval > 0 {
-			return time.Duration(s.cfg.Gateway.KiroStreamKeepaliveInterval) * time.Second
-		}
-		return defaultKiroStreamKeepalive
-	}
-	if s == nil || s.cfg == nil || s.cfg.Gateway.StreamKeepaliveInterval <= 0 {
-		return 0
-	}
-	return time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
 }
 
 // NewGatewayService creates a new GatewayService

@@ -523,13 +523,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			requestView = newOpenAIRequestView(body)
 		}
 	}
-	if stripped, changed, stripErr := stripOpenAIResponsesInputNamespaces(body); stripErr != nil {
-		return nil, stripErr
-	} else if changed {
-		body = stripped
-		requestView = newOpenAIRequestView(body)
-		reqBody = nil
-	}
 	imageBillingModel := ""
 	imageSizeTier := ""
 	imageInputSize := ""
