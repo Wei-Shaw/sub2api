@@ -14,6 +14,7 @@ import (
 
 func TestUpdateProfile_OnlyDeclaresRequestedColumns(t *testing.T) {
 	username := "renamed"
+	telegramChatID := "-1001234567890"
 	tests := []struct {
 		name string
 		req  UpdateProfileRequest
@@ -28,6 +29,11 @@ func TestUpdateProfile_OnlyDeclaresRequestedColumns(t *testing.T) {
 			name: "notify settings only",
 			req:  UpdateProfileRequest{BalanceNotifyEnabled: boolPtr(true)},
 			want: UserUpdateFields{BalanceNotifySettings: true},
+		},
+		{
+			name: "telegram chat id only",
+			req:  UpdateProfileRequest{BalanceNotifyTelegramChatID: &telegramChatID},
+			want: UserUpdateFields{BalanceNotifyTelegramChatID: true},
 		},
 		{
 			name: "username and notify threshold",

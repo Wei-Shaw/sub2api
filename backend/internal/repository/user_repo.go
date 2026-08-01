@@ -304,6 +304,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 	if fields.BalanceNotifyExtraEmails {
 		updateOp = updateOp.SetBalanceNotifyExtraEmails(marshalExtraEmails(userIn.BalanceNotifyExtraEmails))
 	}
+	if fields.BalanceNotifyTelegramChatID {
+		updateOp = updateOp.SetBalanceNotifyTelegramChatID(userIn.BalanceNotifyTelegramChatID)
+	}
 	if fields.SignupSource && userIn.SignupSource != "" {
 		updateOp = updateOp.SetSignupSource(userIn.SignupSource)
 	}

@@ -38,13 +38,14 @@ type APIKeyAuthUserSnapshot struct {
 	AllowedGroups []int64 `json:"allowed_groups,omitempty"`
 
 	// Balance notification fields (required for CheckBalanceAfterDeduction)
-	Email                      string             `json:"email"`
-	Username                   string             `json:"username"`
-	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`
-	BalanceNotifyThresholdType string             `json:"balance_notify_threshold_type"`
-	BalanceNotifyThreshold     *float64           `json:"balance_notify_threshold,omitempty"`
-	BalanceNotifyExtraEmails   []NotifyEmailEntry `json:"balance_notify_extra_emails,omitempty"`
-	TotalRecharged             float64            `json:"total_recharged"`
+	Email                       string             `json:"email"`
+	Username                    string             `json:"username"`
+	BalanceNotifyEnabled        bool               `json:"balance_notify_enabled"`
+	BalanceNotifyThresholdType  string             `json:"balance_notify_threshold_type"`
+	BalanceNotifyThreshold      *float64           `json:"balance_notify_threshold,omitempty"`
+	BalanceNotifyExtraEmails    []NotifyEmailEntry `json:"balance_notify_extra_emails,omitempty"`
+	BalanceNotifyTelegramChatID string             `json:"balance_notify_telegram_chat_id,omitempty"`
+	TotalRecharged              float64            `json:"total_recharged"`
 
 	// RPMLimit 用户级每分钟请求数上限（0 = 不限制）；用于 billing_cache_service.checkRPM 兜底判断。
 	RPMLimit int `json:"rpm_limit"`

@@ -165,6 +165,11 @@ func BalanceNotifyExtraEmails(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldBalanceNotifyExtraEmails, v))
 }
 
+// BalanceNotifyTelegramChatID applies equality check predicate on the "balance_notify_telegram_chat_id" field. It's identical to BalanceNotifyTelegramChatIDEQ.
+func BalanceNotifyTelegramChatID(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldBalanceNotifyTelegramChatID, v))
+}
+
 // TotalRecharged applies equality check predicate on the "total_recharged" field. It's identical to TotalRechargedEQ.
 func TotalRecharged(v float64) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldTotalRecharged, v))
@@ -1303,6 +1308,71 @@ func BalanceNotifyExtraEmailsEqualFold(v string) predicate.User {
 // BalanceNotifyExtraEmailsContainsFold applies the ContainsFold predicate on the "balance_notify_extra_emails" field.
 func BalanceNotifyExtraEmailsContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldBalanceNotifyExtraEmails, v))
+}
+
+// BalanceNotifyTelegramChatIDEQ applies the EQ predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldBalanceNotifyTelegramChatID, v))
+}
+
+// BalanceNotifyTelegramChatIDNEQ applies the NEQ predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldBalanceNotifyTelegramChatID, v))
+}
+
+// BalanceNotifyTelegramChatIDIn applies the In predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldBalanceNotifyTelegramChatID, vs...))
+}
+
+// BalanceNotifyTelegramChatIDNotIn applies the NotIn predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldBalanceNotifyTelegramChatID, vs...))
+}
+
+// BalanceNotifyTelegramChatIDGT applies the GT predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldBalanceNotifyTelegramChatID, v))
+}
+
+// BalanceNotifyTelegramChatIDGTE applies the GTE predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldBalanceNotifyTelegramChatID, v))
+}
+
+// BalanceNotifyTelegramChatIDLT applies the LT predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldBalanceNotifyTelegramChatID, v))
+}
+
+// BalanceNotifyTelegramChatIDLTE applies the LTE predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldBalanceNotifyTelegramChatID, v))
+}
+
+// BalanceNotifyTelegramChatIDContains applies the Contains predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldBalanceNotifyTelegramChatID, v))
+}
+
+// BalanceNotifyTelegramChatIDHasPrefix applies the HasPrefix predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldBalanceNotifyTelegramChatID, v))
+}
+
+// BalanceNotifyTelegramChatIDHasSuffix applies the HasSuffix predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldBalanceNotifyTelegramChatID, v))
+}
+
+// BalanceNotifyTelegramChatIDEqualFold applies the EqualFold predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldBalanceNotifyTelegramChatID, v))
+}
+
+// BalanceNotifyTelegramChatIDContainsFold applies the ContainsFold predicate on the "balance_notify_telegram_chat_id" field.
+func BalanceNotifyTelegramChatIDContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldBalanceNotifyTelegramChatID, v))
 }
 
 // TotalRechargedEQ applies the EQ predicate on the "total_recharged" field.

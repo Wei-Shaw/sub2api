@@ -3646,6 +3646,34 @@ func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, am
 	return nil
 }
 
+// AddQuotaLimit 原子增加账号总额度上限（美元），用于管理员记录上游账号充值。
+func (r *accountRepository) AddQuotaLimit(ctx context.Context, id int64, amount float64) error {
+	if amount <= 0 {
+		return service.ErrAccountNilInput
+	}
+	res, err := r.sql.ExecContext(ctx,
+		`UPDATE accounts SET extra = (
+			COALESCE(extra, '{}'::jsonb)
+			|| jsonb_build_object('quota_limit', COALESCE((extra->>'quota_limit')::numeric, 0) + $1)
+		), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL`,
+		amount, id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAccountNotFound
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota credit failed: account=%d err=%v", id, err)
+	}
+	return nil
+}
+
 // ResetQuotaUsed 重置账号所有维度的配额用量为 0
 // 保留固定重置模式的配置字段（quota_daily_reset_mode 等），仅清零用量和窗口起始时间
 func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error {

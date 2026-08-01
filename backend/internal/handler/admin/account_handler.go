@@ -2335,6 +2335,32 @@ func (h *AccountHandler) ClearRateLimit(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+// AddCreditRequest represents adding prepaid credit to an upstream API key account.
+type AddCreditRequest struct {
+	Amount float64 `json:"amount" binding:"required,gt=0"`
+}
+
+// AddCredit handles adding account credit by increasing quota_limit.
+// POST /api/v1/admin/accounts/:id/add-credit
+func (h *AccountHandler) AddCredit(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	var req AddCreditRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	account, err := h.adminService.AddAccountCredit(c.Request.Context(), accountID, req.Amount)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
 // ResetQuota handles resetting account quota usage
 // POST /api/v1/admin/accounts/:id/reset-quota
 func (h *AccountHandler) ResetQuota(c *gin.Context) {

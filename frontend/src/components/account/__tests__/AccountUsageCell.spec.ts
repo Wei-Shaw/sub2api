@@ -1531,6 +1531,47 @@ describe('AccountUsageCell', () => {
 		expect(wrapper.findAll('.animate-pulse').length).toBeGreaterThan(0)
   })
 
+  it('Key 账号会读取 extra 里的 credit quota 并展示列表 remaining credit', async () => {
+		const wrapper = mount(AccountUsageCell, {
+		  props: {
+		    account: makeAccount({
+		      id: 3004,
+		      platform: 'anthropic',
+		      type: 'apikey',
+          extra: {
+            quota_limit: 100,
+            quota_used: 25,
+            quota_daily_limit: 10,
+            quota_daily_used: 4,
+            quota_weekly_limit: 70,
+            quota_weekly_used: 35,
+            quota_daily_start: '2026-03-15T00:00:00Z',
+            quota_weekly_start: '2026-03-15T00:00:00Z'
+          }
+		    }),
+		    todayStats: null,
+		    todayStatsLoading: false
+		  },
+		  global: {
+		    stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color', 'valueText', 'valueTitle'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}|{{ color }}|{{ valueText }}</div>'
+          },
+		      AccountQuotaInfo: true
+		    }
+		  }
+		})
+
+		await flushPromises()
+
+    expect(wrapper.text()).toContain('1d|40|2026-03-16T00:00:00.000Z|indigo|$6.00')
+    expect(wrapper.text()).toContain('7d|50|2026-03-22T00:00:00.000Z|emerald|$35.00')
+    expect(wrapper.text()).toContain('total|25||purple|$75.00')
+    expect(wrapper.text()).not.toContain('total|25||purple|25%')
+    expect(wrapper.text()).not.toBe('-')
+  })
+
   it('Key 账号在无 today stats 且无配额时显示兜底短横线', async () => {
 		const wrapper = mount(AccountUsageCell, {
 		  props: {

@@ -115,6 +115,8 @@ type UserUpdateFields struct {
 	BalanceNotifySettings bool
 	// BalanceNotifyExtraEmails 与上一项分开，避免"改通知阈值"覆盖并发的"加通知邮箱"。
 	BalanceNotifyExtraEmails bool
+	// BalanceNotifyTelegramChatID 与其它通知设置分开，避免资料更新覆盖并发绑定的聊天 ID。
+	BalanceNotifyTelegramChatID bool
 	// AllowedGroups 为 true 时才同步 user_allowed_groups 关联表。
 	AllowedGroups bool
 }
@@ -248,12 +250,13 @@ const (
 
 // UpdateProfileRequest 更新用户资料请求
 type UpdateProfileRequest struct {
-	Email                  *string  `json:"email"`
-	Username               *string  `json:"username"`
-	AvatarURL              *string  `json:"avatar_url"`
-	Concurrency            *int     `json:"concurrency"`
-	BalanceNotifyEnabled   *bool    `json:"balance_notify_enabled"`
-	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold"`
+	Email                       *string  `json:"email"`
+	Username                    *string  `json:"username"`
+	AvatarURL                   *string  `json:"avatar_url"`
+	Concurrency                 *int     `json:"concurrency"`
+	BalanceNotifyEnabled        *bool    `json:"balance_notify_enabled"`
+	BalanceNotifyThreshold      *float64 `json:"balance_notify_threshold"`
+	BalanceNotifyTelegramChatID *string  `json:"balance_notify_telegram_chat_id"`
 }
 
 type UserAvatar struct {
@@ -551,6 +554,10 @@ func (s *UserService) updateProfile(ctx context.Context, userID int64, req Updat
 			user.BalanceNotifyThreshold = req.BalanceNotifyThreshold
 		}
 		fields.BalanceNotifySettings = true
+	}
+	if req.BalanceNotifyTelegramChatID != nil {
+		user.BalanceNotifyTelegramChatID = NormalizeBalanceNotifyTelegramChatID(*req.BalanceNotifyTelegramChatID)
+		fields.BalanceNotifyTelegramChatID = true
 	}
 
 	if err := s.userRepo.Update(ctx, user, fields); err != nil {

@@ -97,6 +97,7 @@ export interface User {
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
+  balance_notify_telegram_chat_id: string
   subscriptions?: UserSubscription[] // User's active subscriptions
   last_active_at?: string | null
   created_at: string
@@ -1051,6 +1052,10 @@ export interface OllamaCloudUsageSettings {
   interval_minutes: number
   /** Trailing quiet period after the latest model request (minutes). */
   debounce_minutes: number
+}
+
+export interface AddAccountCreditRequest {
+  amount: number
 }
 
 export interface Account {

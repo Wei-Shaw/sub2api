@@ -662,6 +662,8 @@
         label="1d"
         :utilization="quotaDailyBar.utilization"
         :resets-at="quotaDailyBar.resetsAt"
+        :value-text="quotaDailyBar.remainingText"
+        :value-title="quotaDailyBar.remainingTitle"
         color="indigo"
       />
       <UsageProgressBar
@@ -669,12 +671,16 @@
         label="7d"
         :utilization="quotaWeeklyBar.utilization"
         :resets-at="quotaWeeklyBar.resetsAt"
+        :value-text="quotaWeeklyBar.remainingText"
+        :value-title="quotaWeeklyBar.remainingTitle"
         color="emerald"
       />
       <UsageProgressBar
         v-if="quotaTotalBar"
         label="total"
         :utilization="quotaTotalBar.utilization"
+        :value-text="quotaTotalBar.remainingText"
+        :value-title="quotaTotalBar.remainingTitle"
         color="purple"
       />
 
@@ -695,7 +701,7 @@ import type { GrokQuotaProbeResult } from '@/api/admin/grok'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
-import { formatCompactNumber, formatRelativeTime } from '@/utils/format'
+import { formatCompactNumber, formatCurrency, formatRelativeTime } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
@@ -1672,6 +1678,57 @@ const handleGrokProbed = (result: GrokQuotaProbeResult) => {
 interface QuotaBarInfo {
   utilization: number
   resetsAt: string | null
+  remainingText: string
+  remainingTitle: string
+}
+
+const accountRecord = computed(() => props.account as unknown as Record<string, unknown>)
+const accountExtra = computed(() => {
+  const extra = props.account.extra
+  return extra && typeof extra === 'object' ? (extra as Record<string, unknown>) : undefined
+})
+
+const toQuotaNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+const toQuotaString = (value: unknown): string | undefined => {
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined
+}
+
+const readQuotaNumber = (key: string): number => {
+  const topLevel = toQuotaNumber(accountRecord.value[key])
+  const extra = toQuotaNumber(accountExtra.value?.[key])
+
+  // Admin add-credit currently persists quota counters in extra; older list payloads may
+  // surface the same counters as top-level fields. Prefer a positive top-level value when
+  // present, otherwise fall back to extra so newly-added API-key credit renders immediately.
+  if (topLevel != null && topLevel > 0) return topLevel
+  if (extra != null) return extra
+  return topLevel ?? 0
+}
+
+const readQuotaString = (key: string): string | undefined => {
+  return toQuotaString(accountRecord.value[key]) ?? toQuotaString(accountExtra.value?.[key])
+}
+
+const formatQuotaCredit = (value: number): string => {
+  return formatCurrency(Math.max(0, value), 'USD')
+}
+
+const makeRemainingCreditTitle = (used: number, limit: number, remaining: number): string => {
+  const remainingLabel = t('admin.accounts.accountCredit.remaining')
+  const usedLabel = t('admin.accounts.accountCredit.used')
+  const limitLabel = t('admin.accounts.accountCredit.currentLimit')
+  return [
+    `${remainingLabel}: ${formatQuotaCredit(remaining)}`,
+    `${usedLabel}: ${formatQuotaCredit(used)} / ${limitLabel}: ${formatQuotaCredit(limit)}`
+  ].join(' · ')
 }
 
 const makeQuotaBar = (
@@ -1680,21 +1737,21 @@ const makeQuotaBar = (
   startKey?: string
 ): QuotaBarInfo => {
   const utilization = limit > 0 ? (used / limit) * 100 : 0
+  const remaining = Math.max(0, limit - used)
   let resetsAt: string | null = null
   if (startKey) {
-    const extra = props.account.extra as Record<string, unknown> | undefined
     const isDaily = startKey.includes('daily')
     const mode = isDaily
-      ? (extra?.quota_daily_reset_mode as string) || 'rolling'
-      : (extra?.quota_weekly_reset_mode as string) || 'rolling'
+      ? readQuotaString('quota_daily_reset_mode') || 'rolling'
+      : readQuotaString('quota_weekly_reset_mode') || 'rolling'
 
     if (mode === 'fixed') {
       // Use pre-computed next reset time for fixed mode
       const resetAtKey = isDaily ? 'quota_daily_reset_at' : 'quota_weekly_reset_at'
-      resetsAt = (extra?.[resetAtKey] as string) || null
+      resetsAt = readQuotaString(resetAtKey) || null
     } else {
       // Rolling mode: compute from start + period
-      const startStr = extra?.[startKey] as string | undefined
+      const startStr = readQuotaString(startKey)
       if (startStr) {
         const startDate = new Date(startStr)
         const periodMs = isDaily ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000
@@ -1702,34 +1759,39 @@ const makeQuotaBar = (
       }
     }
   }
-  return { utilization, resetsAt }
+  return {
+    utilization,
+    resetsAt,
+    remainingText: formatQuotaCredit(remaining),
+    remainingTitle: makeRemainingCreditTitle(used, limit, remaining)
+  }
 }
 
 const hasApiKeyQuota = computed(() => {
   if (props.account.type !== 'apikey' && props.account.type !== 'bedrock') return false
   return (
-    (props.account.quota_daily_limit ?? 0) > 0 ||
-    (props.account.quota_weekly_limit ?? 0) > 0 ||
-    (props.account.quota_limit ?? 0) > 0
+    readQuotaNumber('quota_daily_limit') > 0 ||
+    readQuotaNumber('quota_weekly_limit') > 0 ||
+    readQuotaNumber('quota_limit') > 0
   )
 })
 
 const quotaDailyBar = computed((): QuotaBarInfo | null => {
-  const limit = props.account.quota_daily_limit ?? 0
+  const limit = readQuotaNumber('quota_daily_limit')
   if (limit <= 0) return null
-  return makeQuotaBar(props.account.quota_daily_used ?? 0, limit, 'quota_daily_start')
+  return makeQuotaBar(readQuotaNumber('quota_daily_used'), limit, 'quota_daily_start')
 })
 
 const quotaWeeklyBar = computed((): QuotaBarInfo | null => {
-  const limit = props.account.quota_weekly_limit ?? 0
+  const limit = readQuotaNumber('quota_weekly_limit')
   if (limit <= 0) return null
-  return makeQuotaBar(props.account.quota_weekly_used ?? 0, limit, 'quota_weekly_start')
+  return makeQuotaBar(readQuotaNumber('quota_weekly_used'), limit, 'quota_weekly_start')
 })
 
 const quotaTotalBar = computed((): QuotaBarInfo | null => {
-  const limit = props.account.quota_limit ?? 0
+  const limit = readQuotaNumber('quota_limit')
   if (limit <= 0) return null
-  return makeQuotaBar(props.account.quota_used ?? 0, limit)
+  return makeQuotaBar(readQuotaNumber('quota_used'), limit)
 })
 
 // ===== Key account today stats formatters =====

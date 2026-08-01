@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, addCreditMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
+  addCreditMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
   authIsSimpleMode: { value: true }
 }))
@@ -28,6 +29,7 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       update: updateAccountMock,
+      addCredit: addCreditMock,
       checkMixedChannelRisk: checkMixedChannelRiskMock
     },
     settings: {
@@ -213,6 +215,23 @@ function buildOpenAISparkShadowAccount() {
   } as any
 }
 
+function buildAnthropicAccount() {
+  return {
+    ...buildAccount(),
+    id: 3,
+    name: 'Anthropic Key',
+    platform: 'anthropic',
+    credentials: {
+      api_key: 'sk-ant-test',
+      base_url: 'https://api.anthropic.com'
+    },
+    extra: {
+      quota_limit: 8,
+      quota_used: 1
+    }
+  } as any
+}
+
 function buildVertexAccount() {
   return {
     id: 2,
@@ -221,7 +240,7 @@ function buildVertexAccount() {
     platform: 'gemini',
     type: 'service_account',
     credentials: {
-      service_account_json: '{"type":"service_account","client_email":"sa@example.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\\nMIIE\\n-----END PRIVATE KEY-----\\n"}',
+      service_account_json: '{"type":"service_account","client_email":"sa@example.iam.gserviceaccount.com","private_key":"[REDACTED PRIVATE KEY]\\n"}',
       project_id: 'demo-project',
       client_email: 'sa@example.iam.gserviceaccount.com',
       location: 'us-central1',
@@ -339,6 +358,66 @@ describe('EditAccountModal', () => {
     authIsSimpleMode.value = true
   })
 
+  it('adds prepaid account credit without submitting the edit form', async () => {
+    const account = buildAccount()
+    account.extra = { quota_limit: 5, quota_used: 2 }
+    const updatedAccount = {
+      ...account,
+      extra: { quota_limit: 17.5, quota_used: 2 }
+    }
+    updateAccountMock.mockReset()
+    addCreditMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    addCreditMock.mockResolvedValue(updatedAccount)
+
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('$5.0000')
+    expect(wrapper.text()).toContain('$2.0000')
+    expect(wrapper.text()).toContain('$3.0000')
+
+    await wrapper.get('[data-testid="account-credit-amount-input"]').setValue('12.5')
+    await wrapper.get('[data-testid="account-credit-add-button"]').trigger('click')
+    await flushPromises()
+
+    expect(addCreditMock).toHaveBeenCalledWith(1, { amount: 12.5 })
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    expect(wrapper.emitted('updated')?.[0]?.[0]).toEqual(updatedAccount)
+    expect(wrapper.text()).toContain('$17.5000')
+    expect(wrapper.text()).toContain('$15.5000')
+  })
+
+  it('shows prepaid add-credit controls for Anthropic API key accounts', async () => {
+    const account = buildAnthropicAccount()
+    const updatedAccount = {
+      ...account,
+      extra: { quota_limit: 10.5, quota_used: 1 }
+    }
+    updateAccountMock.mockReset()
+    addCreditMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    addCreditMock.mockResolvedValue(updatedAccount)
+
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.accounts.anthropic.apiKeyPassthrough')
+    expect(wrapper.text()).toContain('admin.accounts.accountCredit.title')
+    expect(wrapper.text()).toContain('$8.0000')
+    expect(wrapper.text()).toContain('$1.0000')
+    expect(wrapper.text()).toContain('$7.0000')
+
+    await wrapper.get('[data-testid="account-credit-amount-input"]').setValue('2.5')
+    await wrapper.get('[data-testid="account-credit-add-button"]').trigger('click')
+    await flushPromises()
+
+    expect(addCreditMock).toHaveBeenCalledWith(3, { amount: 2.5 })
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    expect(wrapper.emitted('updated')?.[0]?.[0]).toEqual(updatedAccount)
+    expect(wrapper.text()).toContain('$10.5000')
+    expect(wrapper.text()).toContain('$9.5000')
+  })
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()

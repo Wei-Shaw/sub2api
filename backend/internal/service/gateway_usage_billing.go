@@ -125,13 +125,23 @@ func (p *postUsageBillingParams) shouldUpdateRateLimits() bool {
 }
 
 func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
-	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
+	return p != nil && p.Account != nil && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
+}
+
+func resolveAccountQuotaCost(usageLog *UsageLog, p *postUsageBillingParams) float64 {
+	if p == nil || p.Cost == nil {
+		return 0
+	}
+	if usageLog != nil && usageLog.AccountStatsCost != nil && *usageLog.AccountStatsCost > 0 {
+		return *usageLog.AccountStatsCost
+	}
+	return p.Cost.TotalCost * p.AccountRateMultiplier
 }
 
 // postUsageBilling is the legacy fallback billing path used when the unified
 // billing repo is unavailable (nil). Production uses applyUsageBilling → repo.Apply
 // for atomic billing. This path only runs in tests or degraded mode.
-func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps) {
+func postUsageBilling(ctx context.Context, usageLog *UsageLog, p *postUsageBillingParams, deps *billingDeps) {
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
 
@@ -170,9 +180,11 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 	}
 
 	if p.shouldUpdateAccountQuota() {
-		accountCost := cost.TotalCost * p.AccountRateMultiplier
-		if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
-			slog.Error("increment account quota used failed", "account_id", p.Account.ID, "cost", accountCost, "error", err)
+		accountCost := resolveAccountQuotaCost(usageLog, p)
+		if accountCost > 0 {
+			if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
+				slog.Error("increment account quota used failed", "account_id", p.Account.ID, "cost", accountCost, "error", err)
+			}
 		}
 	}
 
@@ -282,7 +294,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		cmd.APIKeyRateLimitCost = p.Cost.ActualCost
 	}
 	if p.shouldUpdateAccountQuota() {
-		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
+		cmd.AccountQuotaCost = resolveAccountQuotaCost(usageLog, p)
 	}
 
 	cmd.Normalize()
@@ -296,7 +308,7 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
-		postUsageBilling(ctx, p, deps)
+		postUsageBilling(ctx, usageLog, p, deps)
 		return true, nil
 	}
 
@@ -450,7 +462,11 @@ func notifyAccountQuota(p *postUsageBillingParams, deps *billingDeps, result *Us
 			slog.Error("panic in notifyAccountQuota", "recover", r)
 		}
 	}()
-	if p.Cost.TotalCost <= 0 || p.Account == nil || !p.Account.IsAPIKeyOrBedrock() || deps.balanceNotifyService == nil {
+	accountCost := resolveAccountQuotaCost(nil, p)
+	if result != nil && result.AccountQuotaCost > 0 {
+		accountCost = result.AccountQuotaCost
+	}
+	if p.Account == nil || !p.Account.IsAPIKeyOrBedrock() || deps.balanceNotifyService == nil || accountCost <= 0 {
 		slog.Debug("notifyAccountQuota: skipped",
 			"total_cost", p.Cost.TotalCost,
 			"account_nil", p.Account == nil,
@@ -459,7 +475,6 @@ func notifyAccountQuota(p *postUsageBillingParams, deps *billingDeps, result *Us
 		)
 		return
 	}
-	accountCost := p.Cost.TotalCost * p.AccountRateMultiplier
 	var quotaState *AccountQuotaState
 	if result != nil {
 		quotaState = result.QuotaState

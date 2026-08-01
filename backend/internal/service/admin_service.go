@@ -87,6 +87,7 @@ type AdminService interface {
 	// It never creates an account.
 	RecoverDuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*Account, error)
 	UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error)
+	AddAccountCredit(ctx context.Context, id int64, amount float64) (*Account, error)
 	// UpdateAccountExtra 仅对 Extra 做 JSONB 增量合并（key 级覆盖），不会影响其它字段或运行态键。
 	// 用于刷新流程持久化 account_uuid / org_uuid 等少量键，避免被全量快照覆盖。
 	UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error
@@ -136,6 +137,12 @@ type AdminService interface {
 	BatchDeleteRedeemCodes(ctx context.Context, ids []int64) (int64, error)
 	ExpireRedeemCode(ctx context.Context, id int64) (*RedeemCode, error)
 	ResetAccountQuota(ctx context.Context, id int64) error
+}
+
+var ErrAccountCreditAmountInvalid = infraerrors.BadRequest("ACCOUNT_CREDIT_AMOUNT_INVALID", "account credit amount must be > 0")
+
+type accountQuotaLimitAdder interface {
+	AddQuotaLimit(ctx context.Context, id int64, amount float64) error
 }
 
 // CreateUserInput represents input for creating a new user via admin operations.

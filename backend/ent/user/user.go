@@ -59,6 +59,8 @@ const (
 	FieldBalanceNotifyThreshold = "balance_notify_threshold"
 	// FieldBalanceNotifyExtraEmails holds the string denoting the balance_notify_extra_emails field in the database.
 	FieldBalanceNotifyExtraEmails = "balance_notify_extra_emails"
+	// FieldBalanceNotifyTelegramChatID holds the string denoting the balance_notify_telegram_chat_id field in the database.
+	FieldBalanceNotifyTelegramChatID = "balance_notify_telegram_chat_id"
 	// FieldTotalRecharged holds the string denoting the total_recharged field in the database.
 	FieldTotalRecharged = "total_recharged"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
@@ -252,6 +254,7 @@ var Columns = []string{
 	FieldBalanceNotifyThresholdType,
 	FieldBalanceNotifyThreshold,
 	FieldBalanceNotifyExtraEmails,
+	FieldBalanceNotifyTelegramChatID,
 	FieldTotalRecharged,
 	FieldRpmLimit,
 }
@@ -322,6 +325,10 @@ var (
 	DefaultBalanceNotifyThresholdType string
 	// DefaultBalanceNotifyExtraEmails holds the default value on creation for the "balance_notify_extra_emails" field.
 	DefaultBalanceNotifyExtraEmails string
+	// DefaultBalanceNotifyTelegramChatID holds the default value on creation for the "balance_notify_telegram_chat_id" field.
+	DefaultBalanceNotifyTelegramChatID string
+	// BalanceNotifyTelegramChatIDValidator is a validator for the "balance_notify_telegram_chat_id" field. It is called by the builders before save.
+	BalanceNotifyTelegramChatIDValidator func(string) error
 	// DefaultTotalRecharged holds the default value on creation for the "total_recharged" field.
 	DefaultTotalRecharged float64
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
@@ -444,6 +451,11 @@ func ByBalanceNotifyThreshold(opts ...sql.OrderTermOption) OrderOption {
 // ByBalanceNotifyExtraEmails orders the results by the balance_notify_extra_emails field.
 func ByBalanceNotifyExtraEmails(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBalanceNotifyExtraEmails, opts...).ToFunc()
+}
+
+// ByBalanceNotifyTelegramChatID orders the results by the balance_notify_telegram_chat_id field.
+func ByBalanceNotifyTelegramChatID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBalanceNotifyTelegramChatID, opts...).ToFunc()
 }
 
 // ByTotalRecharged orders the results by the total_recharged field.

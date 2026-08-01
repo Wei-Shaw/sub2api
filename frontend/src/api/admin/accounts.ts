@@ -25,7 +25,8 @@ import type {
   UpstreamBillingProbeResult,
   UpstreamBillingProbeSettings,
   OllamaCloudUsageSettings,
-  OllamaCloudUsageState
+  OllamaCloudUsageState,
+  AddAccountCreditRequest
 } from '@/types'
 
 /**
@@ -195,6 +196,14 @@ export async function duplicate(id: number): Promise<Account> {
  */
 export async function update(id: number, updates: UpdateAccountRequest): Promise<Account> {
   const { data } = await apiClient.put<Account>(`/admin/accounts/${id}`, updates)
+  return data
+}
+
+/**
+ * Add prepaid credit to an API Key/Bedrock account by increasing quota_limit.
+ */
+export async function addCredit(id: number, payload: AddAccountCreditRequest): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/add-credit`, payload)
   return data
 }
 
@@ -949,6 +958,7 @@ export const accountsAPI = {
   create,
   duplicate,
   update,
+  addCredit,
   checkMixedChannelRisk,
   delete: deleteAccount,
   toggleStatus,

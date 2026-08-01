@@ -39,6 +39,7 @@ export async function updateProfile(profile: {
   balance_notify_enabled?: boolean
   balance_notify_threshold?: number | null
   balance_notify_extra_emails?: NotifyEmailEntry[]
+  balance_notify_telegram_chat_id?: string
 }): Promise<User> {
   const { data } = await apiClient.put<User>('/user', profile)
   return data

@@ -67,6 +67,7 @@ func TestAPIContracts(t *testing.T) {
 					"balance_notify_threshold_type": "",
 					"balance_notify_threshold": null,
 					"balance_notify_extra_emails": null,
+					"balance_notify_telegram_chat_id": "",
 					"total_recharged": 0,
 					"linuxdo_bound": false,
 					"oidc_bound": false,

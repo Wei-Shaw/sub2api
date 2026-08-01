@@ -97,6 +97,10 @@ func (s *TelegramNotifyService) isEnabled(ctx context.Context, settingKey string
 }
 
 func (s *TelegramNotifyService) sendMessage(ctx context.Context, text string) error {
+	return s.sendMessageToChat(ctx, "", text)
+}
+
+func (s *TelegramNotifyService) sendMessageToChat(ctx context.Context, chatID string, text string) error {
 	cfg, err := s.getConfig(ctx)
 	if err != nil {
 		return err
@@ -104,7 +108,13 @@ func (s *TelegramNotifyService) sendMessage(ctx context.Context, text string) er
 	if cfg == nil {
 		return nil
 	}
-
+	cfg = &telegramConfig{Token: cfg.Token, ChatID: cfg.ChatID}
+	if override := strings.TrimSpace(chatID); override != "" {
+		cfg.ChatID = override
+	}
+	if strings.TrimSpace(cfg.Token) == "" || strings.TrimSpace(cfg.ChatID) == "" {
+		return nil
+	}
 	return s.sendMessageWithConfig(ctx, cfg, text)
 }
 
@@ -351,6 +361,22 @@ func (s *TelegramNotifyService) NotifyBalanceLow(ctx context.Context, userEmail 
 	if !s.isEnabled(ctx, SettingTelegramNotifyBalanceLow) {
 		return
 	}
+	if err := s.sendBalanceLowMessage(ctx, "", userEmail, balance, threshold); err != nil {
+		slog.Error("telegram notify balance low failed", "error", err, "email", userEmail)
+	}
+}
+
+// NotifyBalanceLowToChat sends a customer-directed balance low alert to a specific Telegram chat ID.
+func (s *TelegramNotifyService) NotifyBalanceLowToChat(ctx context.Context, chatID, userEmail string, balance, threshold float64) {
+	if strings.TrimSpace(chatID) == "" || !s.isEnabled(ctx, SettingTelegramNotifyBalanceLow) {
+		return
+	}
+	if err := s.sendBalanceLowMessage(ctx, chatID, userEmail, balance, threshold); err != nil {
+		slog.Error("telegram notify balance low direct failed", "error", err, "email", userEmail)
+	}
+}
+
+func (s *TelegramNotifyService) sendBalanceLowMessage(ctx context.Context, chatID, userEmail string, balance, threshold float64) error {
 	text := fmt.Sprintf(
 		" <b>Balance Low</b>\n\n"+
 			" User: <code>%s</code>\n"+
@@ -362,9 +388,7 @@ func (s *TelegramNotifyService) NotifyBalanceLow(ctx context.Context, userEmail 
 		threshold,
 		time.Now().Format("2006-01-02 15:04:05"),
 	)
-	if err := s.sendMessage(ctx, text); err != nil {
-		slog.Error("telegram notify balance low failed", "error", err, "email", userEmail)
-	}
+	return s.sendMessageToChat(ctx, chatID, text)
 }
 
 // NotifyOpsAlert sends a notification when an ops alert fires.

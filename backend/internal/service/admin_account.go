@@ -1500,6 +1500,27 @@ func (e *MixedChannelError) Error() string {
 		e.GroupName, e.CurrentPlatform, e.OtherPlatform)
 }
 
+func (s *adminServiceImpl) AddAccountCredit(ctx context.Context, id int64, amount float64) (*Account, error) {
+	if amount <= 0 {
+		return nil, ErrAccountCreditAmountInvalid
+	}
+	account, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !account.IsAPIKeyOrBedrock() {
+		return nil, infraerrors.BadRequest("ACCOUNT_CREDIT_UNSUPPORTED_TYPE", "account credit tracking is only supported for API key or Bedrock accounts")
+	}
+	adder, ok := s.accountRepo.(accountQuotaLimitAdder)
+	if !ok || adder == nil {
+		return nil, infraerrors.InternalServer("ACCOUNT_CREDIT_UNAVAILABLE", "account credit update is unavailable")
+	}
+	if err := adder.AddQuotaLimit(ctx, id, amount); err != nil {
+		return nil, err
+	}
+	return s.accountRepo.GetByID(ctx, id)
+}
+
 func (s *adminServiceImpl) ResetAccountQuota(ctx context.Context, id int64) error {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {

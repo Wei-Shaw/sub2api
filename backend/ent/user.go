@@ -61,6 +61,8 @@ type User struct {
 	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold,omitempty"`
 	// BalanceNotifyExtraEmails holds the value of the "balance_notify_extra_emails" field.
 	BalanceNotifyExtraEmails string `json:"balance_notify_extra_emails,omitempty"`
+	// BalanceNotifyTelegramChatID holds the value of the "balance_notify_telegram_chat_id" field.
+	BalanceNotifyTelegramChatID string `json:"balance_notify_telegram_chat_id,omitempty"`
 	// TotalRecharged holds the value of the "total_recharged" field.
 	TotalRecharged float64 `json:"total_recharged,omitempty"`
 	// RpmLimit holds the value of the "rpm_limit" field.
@@ -287,7 +289,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case user.FieldID, user.FieldConcurrency, user.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
+		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldBalanceNotifyTelegramChatID:
 			values[i] = new(sql.NullString)
 		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt, user.FieldLastLoginAt, user.FieldLastActiveAt:
 			values[i] = new(sql.NullTime)
@@ -449,6 +451,12 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field balance_notify_extra_emails", values[i])
 			} else if value.Valid {
 				_m.BalanceNotifyExtraEmails = value.String
+			}
+		case user.FieldBalanceNotifyTelegramChatID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field balance_notify_telegram_chat_id", values[i])
+			} else if value.Valid {
+				_m.BalanceNotifyTelegramChatID = value.String
 			}
 		case user.FieldTotalRecharged:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -665,6 +673,9 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("balance_notify_extra_emails=")
 	builder.WriteString(_m.BalanceNotifyExtraEmails)
+	builder.WriteString(", ")
+	builder.WriteString("balance_notify_telegram_chat_id=")
+	builder.WriteString(_m.BalanceNotifyTelegramChatID)
 	builder.WriteString(", ")
 	builder.WriteString("total_recharged=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TotalRecharged))

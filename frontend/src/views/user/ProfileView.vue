@@ -39,6 +39,7 @@
         :enabled="user.balance_notify_enabled ?? true"
         :threshold="user.balance_notify_threshold"
         :extra-emails="user.balance_notify_extra_emails ?? []"
+        :telegram-chat-id="user.balance_notify_telegram_chat_id ?? ''"
         :system-default-threshold="systemDefaultThreshold"
         :user-email="user.email"
       />

@@ -557,6 +557,34 @@ func (s *stubAdminService) UpdateAccount(ctx context.Context, id int64, input *s
 	return &account, nil
 }
 
+func (s *stubAdminService) AddAccountCredit(ctx context.Context, id int64, amount float64) (*service.Account, error) {
+	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
+	if len(s.accounts) > 0 {
+		for _, existing := range s.accounts {
+			if existing.ID == id {
+				account = existing
+				break
+			}
+		}
+	}
+	if account.Extra == nil {
+		account.Extra = map[string]any{}
+	}
+	currentLimit := 0.0
+	if raw, ok := account.Extra["quota_limit"]; ok {
+		switch v := raw.(type) {
+		case float64:
+			currentLimit = v
+		case int:
+			currentLimit = float64(v)
+		case int64:
+			currentLimit = float64(v)
+		}
+	}
+	account.Extra["quota_limit"] = currentLimit + amount
+	return &account, nil
+}
+
 func (s *stubAdminService) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
 	s.updateAccountExtraCalls++
 	return nil

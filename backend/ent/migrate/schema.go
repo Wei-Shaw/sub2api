@@ -1946,6 +1946,7 @@ var (
 		{Name: "balance_notify_threshold_type", Type: field.TypeString, Default: "fixed"},
 		{Name: "balance_notify_threshold", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "balance_notify_extra_emails", Type: field.TypeString, Default: "[]", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "balance_notify_telegram_chat_id", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "total_recharged", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
 	}

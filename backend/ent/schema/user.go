@@ -108,6 +108,9 @@ func (User) Fields() []ent.Field {
 		field.String("balance_notify_extra_emails").
 			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Default("[]"),
+		field.String("balance_notify_telegram_chat_id").
+			MaxLen(64).
+			Default(""),
 		field.Float("total_recharged").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),

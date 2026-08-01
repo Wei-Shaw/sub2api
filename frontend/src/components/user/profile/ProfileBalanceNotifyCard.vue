@@ -45,6 +45,30 @@
           </div>
         </div>
 
+        <!-- Telegram chat ID -->
+        <div>
+          <label class="input-label">{{ t('profile.balanceNotify.telegramChatId') }}</label>
+          <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">{{ t('profile.balanceNotify.telegramChatIdHint') }}</p>
+          <div class="flex items-center gap-2">
+            <input
+              v-model="telegramChatId"
+              type="text"
+              inputmode="numeric"
+              class="input flex-1"
+              data-testid="balance-notify-telegram-chat-id-input"
+              :placeholder="t('profile.balanceNotify.telegramChatIdPlaceholder')"
+            />
+            <button
+              @click="handleTelegramChatIdUpdate"
+              :disabled="savingTelegramChatId"
+              class="btn btn-primary btn-sm whitespace-nowrap"
+              data-testid="balance-notify-telegram-chat-id-save"
+            >
+              {{ savingTelegramChatId ? t('common.saving') : t('common.save') }}
+            </button>
+          </div>
+        </div>
+
         <!-- Email list with toggles -->
         <div>
           <label class="input-label">{{ t('profile.balanceNotify.extraEmails') }}</label>
@@ -181,6 +205,7 @@ const props = defineProps<{
   enabled: boolean
   threshold: number | null
   extraEmails: NotifyEmailEntry[]
+  telegramChatId: string
   systemDefaultThreshold: number
   userEmail: string
 }>()
@@ -192,9 +217,11 @@ const appStore = useAppStore()
 const notifyEnabled = ref(props.enabled)
 const customThreshold = ref<number | null>(props.threshold)
 const emailEntries = ref<NotifyEmailEntry[]>([...props.extraEmails])
+const telegramChatId = ref(props.telegramChatId || '')
 const pendingEmails = ref<PendingEmail[]>([])
 const newEmail = ref('')
 const savingThreshold = ref(false)
+const savingTelegramChatId = ref(false)
 
 // State for verifying saved unverified emails
 const verifyingEmail = ref('')
@@ -211,6 +238,7 @@ const canAddMore = computed(() => {
 watch(() => props.enabled, (val) => { notifyEnabled.value = val })
 watch(() => props.threshold, (val) => { customThreshold.value = val })
 watch(() => props.extraEmails, (val) => { emailEntries.value = [...val] })
+watch(() => props.telegramChatId, (val) => { telegramChatId.value = val || '' })
 
 // When list is empty on mount, pre-fill the add input with user's email
 onMounted(() => {
@@ -247,6 +275,22 @@ const handleThresholdUpdate = async () => {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {
     savingThreshold.value = false
+  }
+}
+
+const handleTelegramChatIdUpdate = async () => {
+  savingTelegramChatId.value = true
+  try {
+    const updated = await userAPI.updateProfile({
+      balance_notify_telegram_chat_id: telegramChatId.value.trim()
+    })
+    authStore.user = updated
+    telegramChatId.value = updated.balance_notify_telegram_chat_id || ''
+    appStore.showSuccess(t('common.saved'))
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    savingTelegramChatId.value = false
   }
 }
 

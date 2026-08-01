@@ -123,6 +123,26 @@ func crossedDownward(oldV, newV, threshold float64) bool {
 	return oldV >= threshold && newV < threshold
 }
 
+func NormalizeBalanceNotifyTelegramChatID(raw string) string {
+	chatID := strings.TrimSpace(raw)
+	if chatID == "" {
+		return ""
+	}
+	start := 0
+	if strings.HasPrefix(chatID, "-") {
+		start = 1
+		if len(chatID) == 1 {
+			return ""
+		}
+	}
+	for _, r := range chatID[start:] {
+		if r < '0' || r > '9' {
+			return ""
+		}
+	}
+	return chatID
+}
+
 // dispatchBalanceLowEmail collects recipients and sends the alert in a goroutine.
 func (s *BalanceNotifyService) dispatchBalanceLowEmail(ctx context.Context, user *User, newBalance, threshold float64, rechargeURL string) {
 	siteName := s.getSiteName(ctx)
@@ -137,9 +157,13 @@ func (s *BalanceNotifyService) dispatchBalanceLowEmail(ctx context.Context, user
 		}()
 		s.sendBalanceLowEmails(recipients, user.ID, user.Username, user.Email, newBalance, threshold, siteName, rechargeURL)
 	}()
-	// Telegram notification
+	// Telegram notification: keep the global/admin alert and additionally send direct
+	// customer alert when the user configured a Telegram chat ID.
 	if s.telegramNotifySvc != nil {
 		go s.telegramNotifySvc.NotifyBalanceLow(context.Background(), user.Email, newBalance, threshold)
+		if chatID := NormalizeBalanceNotifyTelegramChatID(user.BalanceNotifyTelegramChatID); chatID != "" {
+			go s.telegramNotifySvc.NotifyBalanceLowToChat(context.Background(), chatID, user.Email, newBalance, threshold)
+		}
 	}
 }
 

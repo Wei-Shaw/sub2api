@@ -77,11 +77,12 @@ type ChangePasswordRequest struct {
 
 // UpdateProfileRequest represents the update profile request payload
 type UpdateProfileRequest struct {
-	Email                  *string  `json:"email"`
-	Username               *string  `json:"username"`
-	AvatarURL              *string  `json:"avatar_url"`
-	BalanceNotifyEnabled   *bool    `json:"balance_notify_enabled"`
-	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold"`
+	Email                       *string  `json:"email"`
+	Username                    *string  `json:"username"`
+	AvatarURL                   *string  `json:"avatar_url"`
+	BalanceNotifyEnabled        *bool    `json:"balance_notify_enabled"`
+	BalanceNotifyThreshold      *float64 `json:"balance_notify_threshold"`
+	BalanceNotifyTelegramChatID *string  `json:"balance_notify_telegram_chat_id"`
 }
 
 type userProfileResponse struct {
@@ -175,11 +176,12 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	svcReq := service.UpdateProfileRequest{
-		Email:                  req.Email,
-		Username:               req.Username,
-		AvatarURL:              req.AvatarURL,
-		BalanceNotifyEnabled:   req.BalanceNotifyEnabled,
-		BalanceNotifyThreshold: req.BalanceNotifyThreshold,
+		Email:                       req.Email,
+		Username:                    req.Username,
+		AvatarURL:                   req.AvatarURL,
+		BalanceNotifyEnabled:        req.BalanceNotifyEnabled,
+		BalanceNotifyThreshold:      req.BalanceNotifyThreshold,
+		BalanceNotifyTelegramChatID: req.BalanceNotifyTelegramChatID,
 	}
 	updatedUser, err := h.userService.UpdateProfile(c.Request.Context(), subject.UserID, svcReq)
 	if err != nil {

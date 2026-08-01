@@ -329,6 +329,20 @@ func (_c *UserCreate) SetNillableBalanceNotifyExtraEmails(v *string) *UserCreate
 	return _c
 }
 
+// SetBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field.
+func (_c *UserCreate) SetBalanceNotifyTelegramChatID(v string) *UserCreate {
+	_c.mutation.SetBalanceNotifyTelegramChatID(v)
+	return _c
+}
+
+// SetNillableBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field if the given value is not nil.
+func (_c *UserCreate) SetNillableBalanceNotifyTelegramChatID(v *string) *UserCreate {
+	if v != nil {
+		_c.SetBalanceNotifyTelegramChatID(*v)
+	}
+	return _c
+}
+
 // SetTotalRecharged sets the "total_recharged" field.
 func (_c *UserCreate) SetTotalRecharged(v float64) *UserCreate {
 	_c.mutation.SetTotalRecharged(v)
@@ -711,6 +725,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultBalanceNotifyExtraEmails
 		_c.mutation.SetBalanceNotifyExtraEmails(v)
 	}
+	if _, ok := _c.mutation.BalanceNotifyTelegramChatID(); !ok {
+		v := user.DefaultBalanceNotifyTelegramChatID
+		_c.mutation.SetBalanceNotifyTelegramChatID(v)
+	}
 	if _, ok := _c.mutation.TotalRecharged(); !ok {
 		v := user.DefaultTotalRecharged
 		_c.mutation.SetTotalRecharged(v)
@@ -801,6 +819,14 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.BalanceNotifyExtraEmails(); !ok {
 		return &ValidationError{Name: "balance_notify_extra_emails", err: errors.New(`ent: missing required field "User.balance_notify_extra_emails"`)}
+	}
+	if _, ok := _c.mutation.BalanceNotifyTelegramChatID(); !ok {
+		return &ValidationError{Name: "balance_notify_telegram_chat_id", err: errors.New(`ent: missing required field "User.balance_notify_telegram_chat_id"`)}
+	}
+	if v, ok := _c.mutation.BalanceNotifyTelegramChatID(); ok {
+		if err := user.BalanceNotifyTelegramChatIDValidator(v); err != nil {
+			return &ValidationError{Name: "balance_notify_telegram_chat_id", err: fmt.Errorf(`ent: validator failed for field "User.balance_notify_telegram_chat_id": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.TotalRecharged(); !ok {
 		return &ValidationError{Name: "total_recharged", err: errors.New(`ent: missing required field "User.total_recharged"`)}
@@ -922,6 +948,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.BalanceNotifyExtraEmails(); ok {
 		_spec.SetField(user.FieldBalanceNotifyExtraEmails, field.TypeString, value)
 		_node.BalanceNotifyExtraEmails = value
+	}
+	if value, ok := _c.mutation.BalanceNotifyTelegramChatID(); ok {
+		_spec.SetField(user.FieldBalanceNotifyTelegramChatID, field.TypeString, value)
+		_node.BalanceNotifyTelegramChatID = value
 	}
 	if value, ok := _c.mutation.TotalRecharged(); ok {
 		_spec.SetField(user.FieldTotalRecharged, field.TypeFloat64, value)
@@ -1571,6 +1601,18 @@ func (u *UserUpsert) UpdateBalanceNotifyExtraEmails() *UserUpsert {
 	return u
 }
 
+// SetBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field.
+func (u *UserUpsert) SetBalanceNotifyTelegramChatID(v string) *UserUpsert {
+	u.Set(user.FieldBalanceNotifyTelegramChatID, v)
+	return u
+}
+
+// UpdateBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field to the value that was provided on create.
+func (u *UserUpsert) UpdateBalanceNotifyTelegramChatID() *UserUpsert {
+	u.SetExcluded(user.FieldBalanceNotifyTelegramChatID)
+	return u
+}
+
 // SetTotalRecharged sets the "total_recharged" field.
 func (u *UserUpsert) SetTotalRecharged(v float64) *UserUpsert {
 	u.Set(user.FieldTotalRecharged, v)
@@ -2013,6 +2055,20 @@ func (u *UserUpsertOne) SetBalanceNotifyExtraEmails(v string) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateBalanceNotifyExtraEmails() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateBalanceNotifyExtraEmails()
+	})
+}
+
+// SetBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field.
+func (u *UserUpsertOne) SetBalanceNotifyTelegramChatID(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetBalanceNotifyTelegramChatID(v)
+	})
+}
+
+// UpdateBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateBalanceNotifyTelegramChatID() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateBalanceNotifyTelegramChatID()
 	})
 }
 
@@ -2630,6 +2686,20 @@ func (u *UserUpsertBulk) SetBalanceNotifyExtraEmails(v string) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateBalanceNotifyExtraEmails() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateBalanceNotifyExtraEmails()
+	})
+}
+
+// SetBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field.
+func (u *UserUpsertBulk) SetBalanceNotifyTelegramChatID(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetBalanceNotifyTelegramChatID(v)
+	})
+}
+
+// UpdateBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateBalanceNotifyTelegramChatID() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateBalanceNotifyTelegramChatID()
 	})
 }
 

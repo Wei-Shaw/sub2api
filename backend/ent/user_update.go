@@ -393,6 +393,20 @@ func (_u *UserUpdate) SetNillableBalanceNotifyExtraEmails(v *string) *UserUpdate
 	return _u
 }
 
+// SetBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field.
+func (_u *UserUpdate) SetBalanceNotifyTelegramChatID(v string) *UserUpdate {
+	_u.mutation.SetBalanceNotifyTelegramChatID(v)
+	return _u
+}
+
+// SetNillableBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableBalanceNotifyTelegramChatID(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetBalanceNotifyTelegramChatID(*v)
+	}
+	return _u
+}
+
 // SetTotalRecharged sets the "total_recharged" field.
 func (_u *UserUpdate) SetTotalRecharged(v float64) *UserUpdate {
 	_u.mutation.ResetTotalRecharged()
@@ -1126,6 +1140,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BalanceNotifyTelegramChatID(); ok {
+		if err := user.BalanceNotifyTelegramChatIDValidator(v); err != nil {
+			return &ValidationError{Name: "balance_notify_telegram_chat_id", err: fmt.Errorf(`ent: validator failed for field "User.balance_notify_telegram_chat_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1233,6 +1252,9 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.BalanceNotifyExtraEmails(); ok {
 		_spec.SetField(user.FieldBalanceNotifyExtraEmails, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BalanceNotifyTelegramChatID(); ok {
+		_spec.SetField(user.FieldBalanceNotifyTelegramChatID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.TotalRecharged(); ok {
 		_spec.SetField(user.FieldTotalRecharged, field.TypeFloat64, value)
@@ -2393,6 +2415,20 @@ func (_u *UserUpdateOne) SetNillableBalanceNotifyExtraEmails(v *string) *UserUpd
 	return _u
 }
 
+// SetBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field.
+func (_u *UserUpdateOne) SetBalanceNotifyTelegramChatID(v string) *UserUpdateOne {
+	_u.mutation.SetBalanceNotifyTelegramChatID(v)
+	return _u
+}
+
+// SetNillableBalanceNotifyTelegramChatID sets the "balance_notify_telegram_chat_id" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableBalanceNotifyTelegramChatID(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetBalanceNotifyTelegramChatID(*v)
+	}
+	return _u
+}
+
 // SetTotalRecharged sets the "total_recharged" field.
 func (_u *UserUpdateOne) SetTotalRecharged(v float64) *UserUpdateOne {
 	_u.mutation.ResetTotalRecharged()
@@ -3139,6 +3175,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BalanceNotifyTelegramChatID(); ok {
+		if err := user.BalanceNotifyTelegramChatIDValidator(v); err != nil {
+			return &ValidationError{Name: "balance_notify_telegram_chat_id", err: fmt.Errorf(`ent: validator failed for field "User.balance_notify_telegram_chat_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -3263,6 +3304,9 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.BalanceNotifyExtraEmails(); ok {
 		_spec.SetField(user.FieldBalanceNotifyExtraEmails, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BalanceNotifyTelegramChatID(); ok {
+		_spec.SetField(user.FieldBalanceNotifyTelegramChatID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.TotalRecharged(); ok {
 		_spec.SetField(user.FieldTotalRecharged, field.TypeFloat64, value)
