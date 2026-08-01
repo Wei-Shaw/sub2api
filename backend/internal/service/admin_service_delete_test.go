@@ -375,7 +375,9 @@ func (s *proxyRepoStub) ListByGroupID(_ context.Context, _ int64) ([]Proxy, erro
 func (s *proxyRepoStub) CountByGroupID(_ context.Context, _ int64) (int64, error) {
 	return 0, nil
 }
-func (s *proxyRepoStub) UpdateHealthAudit(context.Context, int64, int, *time.Time, string) error { return nil }
+func (s *proxyRepoStub) UpdateHealthAudit(context.Context, int64, int, *time.Time, string) error {
+	return nil
+}
 func (s *proxyRepoStub) GetHealthAudit(context.Context, int64) (int, *time.Time, string, error) {
 	return 0, nil, "", nil
 }

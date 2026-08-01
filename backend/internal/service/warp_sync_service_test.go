@@ -93,7 +93,9 @@ func (m *memProxyRepo) ListByGroupID(ctx context.Context, groupID int64) ([]Prox
 func (m *memProxyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	return 0, nil
 }
-func (m *memProxyRepo) UpdateHealthAudit(context.Context, int64, int, *time.Time, string) error { return nil }
+func (m *memProxyRepo) UpdateHealthAudit(context.Context, int64, int, *time.Time, string) error {
+	return nil
+}
 func (m *memProxyRepo) GetHealthAudit(context.Context, int64) (int, *time.Time, string, error) {
 	return 0, nil, "", nil
 }

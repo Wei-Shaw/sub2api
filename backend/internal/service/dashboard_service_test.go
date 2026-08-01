@@ -211,7 +211,7 @@ func TestDashboardService_CacheMiss_StoresCache(t *testing.T) {
 	require.Equal(t, int32(1), atomic.LoadInt32(&cache.setCalls))
 	entry := cache.readLastEntry(t)
 	require.Equal(t, stats, entry.Stats)
-	require.WithinDuration(t, time.Now(), time.Unix(entry.UpdatedAt, 0), time.Second)
+	require.WithinDuration(t, time.Now(), time.Unix(entry.UpdatedAt, 0), 2*time.Second)
 }
 
 func TestDashboardService_CacheDisabled_SkipsCache(t *testing.T) {

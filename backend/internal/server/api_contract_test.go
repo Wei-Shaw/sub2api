@@ -2059,7 +2059,9 @@ func (stubProxyRepo) ListByGroupID(ctx context.Context, groupID int64) ([]servic
 func (stubProxyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	return 0, nil
 }
-func (stubProxyRepo) UpdateHealthAudit(context.Context, int64, int, *time.Time, string) error { return nil }
+func (stubProxyRepo) UpdateHealthAudit(context.Context, int64, int, *time.Time, string) error {
+	return nil
+}
 func (stubProxyRepo) GetHealthAudit(context.Context, int64) (int, *time.Time, string, error) {
 	return 0, nil, "", nil
 }

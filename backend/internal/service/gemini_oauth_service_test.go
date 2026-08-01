@@ -823,7 +823,9 @@ func (m *mockGeminiProxyRepo) ListByGroupID(ctx context.Context, groupID int64) 
 func (m *mockGeminiProxyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	panic("not impl")
 }
-func (m *mockGeminiProxyRepo) UpdateHealthAudit(context.Context, int64, int, *time.Time, string) error { return nil }
+func (m *mockGeminiProxyRepo) UpdateHealthAudit(context.Context, int64, int, *time.Time, string) error {
+	return nil
+}
 func (m *mockGeminiProxyRepo) GetHealthAudit(context.Context, int64) (int, *time.Time, string, error) {
 	return 0, nil, "", nil
 }
