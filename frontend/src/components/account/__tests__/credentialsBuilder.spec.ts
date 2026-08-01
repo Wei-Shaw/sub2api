@@ -9,8 +9,10 @@ import {
   applyPlanType,
   buildHeaderOverridesObject,
   buildPlanTypeOptions,
+  getHeaderOverrideTemplate,
   isCustomGrokBaseUrl,
   isHeaderOverrideCapable,
+  mergeHeaderOverrideTemplate,
   GROK_BASE_URL_PRESETS,
   parseHeaderOverridesJson,
   planTypeDisplayLabel,
@@ -116,6 +118,37 @@ describe('isHeaderOverrideCapable', () => {
     expect(isHeaderOverrideCapable('gemini', 'apikey')).toBe(false)
     expect(isHeaderOverrideCapable('antigravity', 'apikey')).toBe(false)
     expect(isHeaderOverrideCapable('', 'apikey')).toBe(false)
+  })
+})
+
+describe('header override templates', () => {
+  it('preserves the Anthropic and OpenAI fork templates', () => {
+    expect(getHeaderOverrideTemplate('anthropic').map((row) => row.name)).toContain(
+      'anthropic-version'
+    )
+    expect(getHeaderOverrideTemplate('openai').map((row) => row.name)).toContain('originator')
+  })
+
+  it('does not apply an Anthropic template to the upstream-added Grok capability', () => {
+    expect(getHeaderOverrideTemplate('grok')).toEqual([])
+  })
+
+  it('keeps configured rows, drops blank placeholders, and skips duplicate template names', () => {
+    const rows = mergeHeaderOverrideTemplate(
+      [
+        { name: 'User-Agent', value: 'custom-client' },
+        { name: '', value: '' },
+        { name: 'x-custom', value: 'custom' }
+      ],
+      'openai'
+    )
+
+    expect(rows.filter((row) => row.name.toLowerCase() === 'user-agent')).toEqual([
+      { name: 'User-Agent', value: 'custom-client' }
+    ])
+    expect(rows).toContainEqual({ name: 'originator', value: '' })
+    expect(rows).toContainEqual({ name: 'x-custom', value: 'custom' })
+    expect(rows).not.toContainEqual({ name: '', value: '' })
   })
 })
 

@@ -46,6 +46,14 @@
   </button>
 
   <div class="flex flex-wrap gap-2">
+    <button
+      v-if="canFillTemplate"
+      type="button"
+      class="rounded-lg bg-primary-50 px-3 py-1 text-xs text-primary-700 transition-colors hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-400 dark:hover:bg-primary-900/50"
+      @click="fillTemplate"
+    >
+      + {{ t('admin.accounts.headerOverride.fillTemplate') }}
+    </button>
     <HeaderOverrideJsonTools :rows="rows" @update:rows="emit('update:rows', $event)" />
   </div>
 
@@ -55,13 +63,19 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import HeaderOverrideJsonTools from './HeaderOverrideJsonTools.vue'
-import type { HeaderOverrideRow } from './credentialsBuilder'
+import {
+  getHeaderOverrideTemplate,
+  mergeHeaderOverrideTemplate,
+  type HeaderOverrideRow
+} from './credentialsBuilder'
 
 const props = defineProps<{
   rows: HeaderOverrideRow[]
+  templatePlatform?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -73,6 +87,12 @@ const { t } = useI18n()
 const getHeaderOverrideRowKey = createStableObjectKeyResolver<HeaderOverrideRow>(
   'header-override-row'
 )
+
+const canFillTemplate = computed(() => getHeaderOverrideTemplate(props.templatePlatform ?? '').length > 0)
+
+const fillTemplate = () => {
+  emit('update:rows', mergeHeaderOverrideTemplate(props.rows, props.templatePlatform ?? ''))
+}
 
 const addRow = () => {
   emit('update:rows', [...props.rows, { name: '', value: '' }])

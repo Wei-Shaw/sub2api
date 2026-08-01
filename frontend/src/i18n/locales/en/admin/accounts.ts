@@ -755,6 +755,7 @@ export default {
         namePlaceholder: 'Header name (e.g. user-agent)',
         valuePlaceholder: 'Override value (leave empty to skip)',
         addRow: 'Add Header',
+        fillTemplate: 'Fill Template',
         importJson: 'Import JSON',
         importJsonApply: 'Parse & Fill',
         importJsonCancel: 'Cancel',

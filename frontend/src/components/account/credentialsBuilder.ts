@@ -46,6 +46,42 @@ export function isHeaderOverrideCapable(platform: string, type: string): boolean
   return false
 }
 
+/** Fork-preserved standard client header templates. Grok intentionally has no template. */
+const HEADER_OVERRIDE_TEMPLATES: Partial<Record<string, readonly string[]>> = {
+  anthropic: [
+    'user-agent',
+    'x-app',
+    'anthropic-beta',
+    'anthropic-version',
+    'anthropic-dangerous-direct-browser-access',
+    'x-stainless-lang',
+    'x-stainless-package-version',
+    'x-stainless-os',
+    'x-stainless-arch',
+    'x-stainless-runtime',
+    'x-stainless-runtime-version',
+    'x-stainless-retry-count',
+    'x-stainless-timeout'
+  ],
+  openai: ['user-agent', 'originator', 'openai-beta', 'version', 'accept', 'accept-language']
+}
+
+export function getHeaderOverrideTemplate(platform: string): HeaderOverrideRow[] {
+  return (HEADER_OVERRIDE_TEMPLATES[platform] ?? []).map((name) => ({ name, value: '' }))
+}
+
+export function mergeHeaderOverrideTemplate(
+  rows: HeaderOverrideRow[],
+  platform: string
+): HeaderOverrideRow[] {
+  const existing = new Set(rows.map((row) => row.name.trim().toLowerCase()).filter(Boolean))
+  const merged = rows.filter((row) => row.name.trim() || row.value.trim())
+  for (const row of getHeaderOverrideTemplate(platform)) {
+    if (!existing.has(row.name)) merged.push(row)
+  }
+  return merged
+}
+
 /** 禁止覆写的请求头（与后端 headerOverrideBlockedNames 保持一致） */
 const HEADER_OVERRIDE_BLOCKED_NAMES = new Set([
   'host',

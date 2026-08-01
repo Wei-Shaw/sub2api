@@ -18,7 +18,7 @@ func TestUserHandlerCreateForwardsSelectedRole(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	adminSvc := newStubAdminService()
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -40,7 +40,7 @@ func TestUserHandlerUpdateForwardsSelectedRole(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	adminSvc := newStubAdminService()
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -64,7 +64,7 @@ func TestUserHandlerUpdateStatusAdminBypassesMarketingScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	adminSvc := newStubAdminService()
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -86,7 +86,7 @@ func TestUserHandlerUpdateStatusMarketingRequiresAffiliateScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	adminSvc := newStubAdminService()
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -112,7 +112,7 @@ func TestUserHandlerUpdateMarketingAllowsAffiliateScopedPendingActivation(t *tes
 
 	adminSvc := newStubAdminService()
 	adminSvc.users = []service.User{{ID: 42, Email: "customer@example.com", Status: service.StatusPendingActivation}}
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -141,7 +141,7 @@ func TestUserHandlerUpdateMarketingAllowsAffiliateScopedActiveUserBlock(t *testi
 
 	adminSvc := newStubAdminService()
 	adminSvc.users = []service.User{{ID: 42, Email: "customer@example.com", Status: service.StatusActive}}
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -166,7 +166,7 @@ func TestUserHandlerUpdateMarketingAllowsAffiliateScopedProfilePayload(t *testin
 
 	adminSvc := newStubAdminService()
 	adminSvc.users = []service.User{{ID: 42, Email: "customer@example.com", Status: service.StatusActive}}
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -208,7 +208,7 @@ func TestUserHandlerUpdateMarketingRejectsRolePayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	adminSvc := newStubAdminService()
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -231,7 +231,7 @@ func TestUserHandlerMarketingUpdateBalanceAllowsAffiliateScopedUser(t *testing.T
 	marketingUserID := int64(91)
 	adminSvc := newStubAdminService()
 	adminSvc.users = []service.User{{ID: 7, Email: "scoped@example.com", Status: service.StatusActive}}
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -261,7 +261,7 @@ func TestUserHandlerMarketingUpdateBalanceRejectsUserOutsideAffiliateScope(t *te
 
 	adminSvc := newStubAdminService()
 	adminSvc.users = nil
-	handler := NewUserHandler(adminSvc, nil, nil, nil)
+	handler := NewUserHandler(adminSvc, nil, nil, nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)

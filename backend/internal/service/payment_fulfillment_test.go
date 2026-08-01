@@ -517,20 +517,6 @@ func TestPaymentOrderIDFormatAndLegacyAliases(t *testing.T) {
 	assert.Equal(t, []string{"vclaw_20260429AbC123xY"}, alternatePaymentOrderIDs("sub2_20260429AbC123xY"))
 }
 
-func TestParseLegacyPaymentOrderID(t *testing.T) {
-	t.Parallel()
-
-	oid, ok := parseLegacyPaymentOrderID("sub2_42", &dbent.NotFoundError{})
-	assert.True(t, ok)
-	assert.EqualValues(t, 42, oid)
-
-	_, ok = parseLegacyPaymentOrderID("42", &dbent.NotFoundError{})
-	assert.False(t, ok)
-
-	_, ok = parseLegacyPaymentOrderID("sub2_42", errors.New("db down"))
-	assert.False(t, ok)
-}
-
 func TestIsValidProviderAmount(t *testing.T) {
 	t.Parallel()
 

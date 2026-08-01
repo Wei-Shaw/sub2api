@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
   PAYMENT_CURRENCY_OPTIONS,
+  PAYMENT_MODE_MANUAL,
+  PAYMENT_MODE_POPUP,
+  PAYMENT_MODE_QRCODE,
+  PAYMENT_MODE_REDIRECT,
   PROVIDER_CONFIG_FIELDS,
+  defaultProviderPaymentMode,
+  getProviderPaymentModes,
   isBuiltInAlipayMethod,
   isBuiltInWxpayMethod,
+  isValidProviderPaymentMode,
   parseEasyPayCustomMethods,
   serializeEasyPayCustomMethods,
 } from '@/components/payment/providerConfig'
@@ -104,5 +111,28 @@ describe('built-in payment method helpers', () => {
     expect(isBuiltInWxpayMethod('wxpay')).toBe(true)
     expect(isBuiltInWxpayMethod('wxpay_direct')).toBe(true)
     expect(isBuiltInWxpayMethod('card_wxpay')).toBe(false)
+  })
+})
+
+describe('provider payment modes', () => {
+  it('keeps upstream Alipay redirect while preserving fork manual QR support', () => {
+    expect(getProviderPaymentModes('alipay')).toEqual([
+      PAYMENT_MODE_QRCODE,
+      PAYMENT_MODE_REDIRECT,
+      PAYMENT_MODE_MANUAL,
+    ])
+  })
+
+  it('keeps provider-specific mode sets instead of exposing unsupported popup modes', () => {
+    expect(getProviderPaymentModes('easypay')).toEqual([PAYMENT_MODE_QRCODE, PAYMENT_MODE_POPUP])
+    expect(getProviderPaymentModes('wxpay')).toEqual([PAYMENT_MODE_QRCODE, PAYMENT_MODE_MANUAL])
+  })
+
+  it('validates stored values and falls back to each provider default', () => {
+    expect(isValidProviderPaymentMode('alipay', PAYMENT_MODE_REDIRECT)).toBe(true)
+    expect(isValidProviderPaymentMode('alipay', PAYMENT_MODE_POPUP)).toBe(false)
+    expect(isValidProviderPaymentMode('stripe', '')).toBe(true)
+    expect(defaultProviderPaymentMode('alipay')).toBe(PAYMENT_MODE_QRCODE)
+    expect(defaultProviderPaymentMode('stripe')).toBe('')
   })
 })

@@ -58,8 +58,9 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 	// vclaw_* and legacy sub2_* aliases before treating the webhook as unknown.
 	order, err := s.findPaymentOrderForNotification(ctx, n.OrderID)
 	if err != nil {
-		// Fallback only for true legacy "sub2_N" DB-ID payloads when the
-		// current out_trade_no lookup genuinely did not find an order.
+		// Fall back to a legacy numeric "sub2_N" DB ID only after the exact and
+		// alias out_trade_no lookups genuinely return not found. Other database
+		// errors must not be interpreted as a legacy order or redirect fulfillment.
 		if oid, ok := parseLegacyPaymentOrderID(n.OrderID, err); ok {
 			return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, n.Currency, pk, n.Metadata)
 		}

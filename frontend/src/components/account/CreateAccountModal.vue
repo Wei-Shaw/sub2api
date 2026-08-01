@@ -2081,6 +2081,7 @@
 
             <HeaderOverrideEditor
               :rows="headerOverrideRows"
+              :template-platform="form.platform"
               @update:rows="headerOverrideRows = $event"
             />
           </div>
@@ -2530,6 +2531,7 @@
 
           <HeaderOverrideEditor
             :rows="headerOverrideRows"
+            :template-platform="form.platform"
             @update:rows="headerOverrideRows = $event"
           />
         </div>

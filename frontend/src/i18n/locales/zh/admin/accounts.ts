@@ -819,6 +819,7 @@ export default {
         namePlaceholder: '请求头名称（如 user-agent）',
         valuePlaceholder: '覆写值（留空表示不覆写）',
         addRow: '添加请求头',
+        fillTemplate: '填入模板',
         importJson: 'JSON 导入',
         importJsonApply: '解析并填入',
         importJsonCancel: '取消',

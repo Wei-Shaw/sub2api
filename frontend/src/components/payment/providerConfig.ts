@@ -63,7 +63,27 @@ export function isBuiltInWxpayMethod(type: string): boolean {
 /** Payment mode constants */
 export const PAYMENT_MODE_QRCODE = 'qrcode'
 export const PAYMENT_MODE_POPUP = 'popup'
+export const PAYMENT_MODE_REDIRECT = 'redirect'
 export const PAYMENT_MODE_MANUAL = 'manual'
+
+const PROVIDER_PAYMENT_MODES: Record<string, readonly string[]> = {
+  easypay: [PAYMENT_MODE_QRCODE, PAYMENT_MODE_POPUP],
+  alipay: [PAYMENT_MODE_QRCODE, PAYMENT_MODE_REDIRECT, PAYMENT_MODE_MANUAL],
+  wxpay: [PAYMENT_MODE_QRCODE, PAYMENT_MODE_MANUAL]
+}
+
+export function getProviderPaymentModes(providerKey: string): readonly string[] {
+  return PROVIDER_PAYMENT_MODES[providerKey] ?? []
+}
+
+export function defaultProviderPaymentMode(providerKey: string): string {
+  return getProviderPaymentModes(providerKey)[0] ?? ''
+}
+
+export function isValidProviderPaymentMode(providerKey: string, mode: string): boolean {
+  const supported = getProviderPaymentModes(providerKey)
+  return supported.length === 0 ? mode === '' : supported.includes(mode)
+}
 
 /** Common settlement currencies admins can assign to provider instances; custom ISO-4217 codes can still be typed in the UI. */
 export const PAYMENT_CURRENCY_CODES = [

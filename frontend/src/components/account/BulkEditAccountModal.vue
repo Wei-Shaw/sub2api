@@ -596,6 +596,7 @@
 
             <HeaderOverrideEditor
               :rows="headerOverrideRows"
+              :template-platform="headerOverrideTemplatePlatform"
               @update:rows="headerOverrideRows = $event"
             />
           </div>
@@ -1355,6 +1356,9 @@ const appStore = useAppStore()
 const targetMode = computed(() => props.target?.mode ?? 'selected')
 const targetPreviewCount = computed(() => props.target?.previewCount ?? props.accountIds.length)
 const targetSelectedPlatforms = computed(() => props.target?.selectedPlatforms ?? props.selectedPlatforms)
+const headerOverrideTemplatePlatform = computed(() =>
+  targetSelectedPlatforms.value.length === 1 ? targetSelectedPlatforms.value[0] : null
+)
 const targetSelectedTypes = computed(() => props.target?.selectedTypes ?? props.selectedTypes)
 // Grok 快捷端点仅在所选账号全部为 grok 平台时展示（其他平台不显示）
 const allTargetsGrok = computed(

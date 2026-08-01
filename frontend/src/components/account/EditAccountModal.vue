@@ -624,6 +624,7 @@
 
           <HeaderOverrideEditor
             :rows="headerOverrideRows"
+            :template-platform="props.account?.platform || ''"
             @update:rows="headerOverrideRows = $event"
           />
         </div>

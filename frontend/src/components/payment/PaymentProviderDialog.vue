@@ -446,9 +446,13 @@ import {
   WEBHOOK_PATHS,
   PAYMENT_MODE_QRCODE,
   PAYMENT_MODE_POPUP,
+  PAYMENT_MODE_REDIRECT,
   PAYMENT_MODE_MANUAL,
   STRIPE_SDK_API_VERSION,
+  defaultProviderPaymentMode,
   getAvailableTypes,
+  getProviderPaymentModes,
+  isValidProviderPaymentMode,
   extractBaseUrl,
   parseEasyPayCustomMethods,
   serializeEasyPayCustomMethods,
@@ -540,17 +544,19 @@ const callbackPaths = computed(() => {
 })
 
 const supportsManualPaymentMode = computed(() => ['alipay', 'wxpay'].includes(form.provider_key))
-const supportsPaymentModeSelector = computed(() => form.provider_key === 'easypay' || supportsManualPaymentMode.value)
+const supportsPaymentModeSelector = computed(() => getProviderPaymentModes(form.provider_key).length > 0)
 
 const paymentModeOptions = computed(() => {
-  const options = [
-    { value: PAYMENT_MODE_QRCODE, label: t('admin.settings.payment.modeQRCode') },
-    { value: PAYMENT_MODE_POPUP, label: t('admin.settings.payment.modePopup') },
-  ]
-  if (supportsManualPaymentMode.value) {
-    options.push({ value: PAYMENT_MODE_MANUAL, label: t('admin.settings.payment.modeManual') })
+  const labels: Record<string, string> = {
+    [PAYMENT_MODE_QRCODE]: t('admin.settings.payment.modeQRCode'),
+    [PAYMENT_MODE_POPUP]: t('admin.settings.payment.modePopup'),
+    [PAYMENT_MODE_REDIRECT]: t('admin.settings.payment.modeRedirect'),
+    [PAYMENT_MODE_MANUAL]: t('admin.settings.payment.modeManual')
   }
-  return options
+  return getProviderPaymentModes(form.provider_key).map(value => ({
+    value,
+    label: labels[value] || value
+  }))
 })
 
 const availableTypes = computed(() => {
@@ -970,7 +976,7 @@ async function loadSepayBankAccounts() {
 
 function onKeyChange() {
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[form.provider_key] || [])]
-  form.payment_mode = supportsPaymentModeSelector.value ? PAYMENT_MODE_QRCODE : ''
+  form.payment_mode = defaultProviderPaymentMode(form.provider_key)
   clearConfig()
   applyDefaults()
 }
@@ -1053,8 +1059,8 @@ function handleSave() {
     emitValidationError(t('admin.settings.payment.validationNameRequired'))
     return
   }
-  if (supportsPaymentModeSelector.value && !paymentModeOptions.value.some(option => option.value === form.payment_mode)) {
-    form.payment_mode = PAYMENT_MODE_QRCODE
+  if (!isValidProviderPaymentMode(form.provider_key, form.payment_mode)) {
+    form.payment_mode = defaultProviderPaymentMode(form.provider_key)
   }
   if (form.provider_key === 'easypay') {
     const validationError = validateEasyPayCustomMethods()
@@ -1188,7 +1194,7 @@ function reset(defaultKey: string) {
   form.provider_key = defaultKey
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
   form.enabled = true
-  form.payment_mode = defaultKey === 'easypay' || ['alipay', 'wxpay'].includes(defaultKey) ? PAYMENT_MODE_QRCODE : ''
+  form.payment_mode = defaultProviderPaymentMode(defaultKey)
   form.refund_enabled = false
   form.allow_user_refund = false
   clearConfig()
@@ -1202,7 +1208,9 @@ function loadProvider(provider: ProviderInstance) {
     ? [...provider.supported_types]
     : []
   form.enabled = provider.enabled
-  form.payment_mode = provider.payment_mode || (['easypay', 'alipay', 'wxpay'].includes(provider.provider_key) ? PAYMENT_MODE_QRCODE : '')
+  form.payment_mode = isValidProviderPaymentMode(provider.provider_key, provider.payment_mode || '')
+    ? (provider.payment_mode || '')
+    : defaultProviderPaymentMode(provider.provider_key)
   form.refund_enabled = provider.refund_enabled
   form.allow_user_refund = provider.allow_user_refund
   clearConfig()
