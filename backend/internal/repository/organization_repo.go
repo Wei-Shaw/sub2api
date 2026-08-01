@@ -792,7 +792,7 @@ func (r *organizationRepository) CreateIAMMember(ctx context.Context, ownerID in
 
 func (r *organizationRepository) ListIAMMembers(ctx context.Context, actorID int64) ([]service.IAMMember, int, error) {
 	org, err := r.GetContextForUser(ctx, actorID)
-	if err != nil || !org.Active() || !org.Owner() {
+	if err != nil || !org.Active() {
 		return nil, 0, service.ErrOrganizationPermission
 	}
 	var memberLimit int
@@ -806,8 +806,8 @@ func (r *organizationRepository) ListIAMMembers(ctx context.Context, actorID int
 		FROM organization_memberships m JOIN users u ON u.id=m.user_id
 		LEFT JOIN member_policy_attachments a ON a.membership_id=m.id AND a.detached_at IS NULL
 		LEFT JOIN managed_policies p ON p.id=a.policy_id
-		WHERE m.organization_id=$1 AND m.role='member'
-		GROUP BY u.id,m.status ORDER BY u.id`, org.OrganizationID)
+		WHERE m.organization_id=$1 AND m.role='member' AND ($2 OR m.user_id=$3)
+		GROUP BY u.id,m.status ORDER BY u.id`, org.OrganizationID, org.Owner(), actorID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1417,9 +1417,10 @@ func (r *organizationRepository) AdminListOrganizationSubscriptions(ctx context.
 		return nil, 0, err
 	}
 	sortField := "s.created_at"
-	if sortBy == "expires_at" {
+	switch sortBy {
+	case "expires_at":
 		sortField = "s.expires_at"
-	} else if sortBy == "status" {
+	case "status":
 		sortField = "s.status"
 	}
 	direction := "DESC"
@@ -1847,7 +1848,7 @@ func (r *organizationRepository) FinanceSummary(ctx context.Context, userID int6
 
 func organizationStringPtr(value string) *string { return &value }
 
-func (r *organizationRepository) ResolveBillingContext(ctx context.Context, consumerUserID int64) (*service.BillingContext, error) {
+func (r *organizationRepository) ResolveBillingContext(ctx context.Context, consumerUserID int64, requiredAmount float64) (*service.BillingContext, error) {
 	var identity string
 	if err := r.db.QueryRowContext(ctx, `SELECT identity_type FROM users WHERE id=$1 AND status='active' AND deleted_at IS NULL`, consumerUserID).Scan(&identity); err != nil {
 		return nil, service.ErrUserNotFound
@@ -1862,17 +1863,107 @@ func (r *organizationRepository) ResolveBillingContext(ctx context.Context, cons
 		if err == nil {
 			orgID, generation = &org.OrganizationID, org.AuthzGeneration
 		}
-		return &service.BillingContext{ConsumerUserID: consumerUserID, OrganizationID: orgID, PayerUserID: consumerUserID, BalanceSource: "self", AuthzGeneration: generation}, nil
+		return &service.BillingContext{ConsumerUserID: consumerUserID, OrganizationID: orgID, PayerUserID: consumerUserID, BalanceSource: service.BalanceSourceSelf, AuthzGeneration: generation}, nil
 	}
 	org, err := r.GetContextForUser(ctx, consumerUserID)
 	if err != nil || !org.Active() {
 		return nil, service.ErrOrganizationPermission
 	}
-	payer, source := consumerUserID, "allocated"
+	payer, source := consumerUserID, service.BalanceSourceAllocated
 	if org.HasAction(service.ActionSharedBalanceUse) {
-		payer, source = org.OwnerUserID, "shared"
+		var allocationCoversCharge bool
+		if err := r.db.QueryRowContext(ctx, `
+			SELECT CASE
+				WHEN $2::numeric > 0 THEN balance >= $2::numeric
+				ELSE balance > 0
+			END
+			FROM users
+			WHERE id=$1 AND status='active' AND deleted_at IS NULL
+		`, consumerUserID, requiredAmount).Scan(&allocationCoversCharge); err != nil {
+			return nil, err
+		}
+		if !allocationCoversCharge {
+			// PayerUserID remains owner attribution for compatibility, while the
+			// company source routes all money movement to organizations.balance.
+			payer, source = org.OwnerUserID, service.BalanceSourceCompany
+		}
 	}
 	return &service.BillingContext{ConsumerUserID: consumerUserID, OrganizationID: &org.OrganizationID, PayerUserID: payer, BalanceSource: source, AuthzGeneration: org.AuthzGeneration}, nil
+}
+
+func (r *organizationRepository) GetOrganizationBalance(ctx context.Context, organizationID int64) (float64, error) {
+	return r.organizationBalanceValue(ctx, `SELECT balance FROM organizations WHERE id=$1`, organizationID)
+}
+
+func (r *organizationRepository) DeductOrganizationBalance(ctx context.Context, organizationID int64, amount float64) (float64, error) {
+	balance, err := r.organizationBalanceValue(ctx, `
+		UPDATE organizations SET balance=balance-$2,updated_at=NOW()
+		WHERE id=$1 AND balance >= $2
+		RETURNING balance`, organizationID, amount)
+	if !errors.Is(err, sql.ErrNoRows) {
+		return balance, err
+	}
+	exists, existsErr := r.organizationExists(ctx, organizationID)
+	if existsErr != nil {
+		return 0, existsErr
+	}
+	if !exists {
+		return 0, service.ErrCompanyNotFound
+	}
+	return 0, service.ErrBalanceInsufficient
+}
+
+func (r *organizationRepository) CreditOrganizationBalance(ctx context.Context, organizationID int64, amount float64) (float64, error) {
+	balance, err := r.organizationBalanceValue(ctx, `
+		UPDATE organizations SET balance=balance+$2,updated_at=NOW()
+		WHERE id=$1
+		RETURNING balance`, organizationID, amount)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, service.ErrCompanyNotFound
+	}
+	return balance, err
+}
+
+func (r *organizationRepository) organizationBalanceValue(ctx context.Context, query string, args ...any) (float64, error) {
+	exec := txAwareSQLExecutor(ctx, r.db, nil)
+	if exec == nil {
+		return 0, errors.New("organization balance SQL executor is unavailable")
+	}
+	rows, err := exec.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return 0, err
+		}
+		return 0, sql.ErrNoRows
+	}
+	var balance float64
+	if err := rows.Scan(&balance); err != nil {
+		return 0, err
+	}
+	return balance, rows.Err()
+}
+
+func (r *organizationRepository) organizationExists(ctx context.Context, organizationID int64) (bool, error) {
+	exec := txAwareSQLExecutor(ctx, r.db, nil)
+	if exec == nil {
+		return false, errors.New("organization balance SQL executor is unavailable")
+	}
+	rows, err := exec.QueryContext(ctx, `SELECT 1 FROM organizations WHERE id=$1`, organizationID)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	return true, rows.Err()
 }
 
 func (r *organizationRepository) organizationUsageScope(ctx context.Context, userID int64, filter service.OrganizationUsageFilter) (string, []any, error) {
@@ -1967,7 +2058,11 @@ func (r *organizationRepository) UsageStats(ctx context.Context, userID int64, f
 		return nil, err
 	}
 	var out service.OrganizationUsageStats
-	err = r.db.QueryRowContext(ctx, `SELECT count(*),COALESCE(sum(l.input_tokens),0),COALESCE(sum(l.output_tokens),0),COALESCE(sum(l.actual_cost),0)::text FROM usage_logs l WHERE `+where, args...).Scan(&out.Requests, &out.InputTokens, &out.OutputTokens, &out.ActualCost)
+	err = r.db.QueryRowContext(ctx, `SELECT count(*),COALESCE(sum(l.input_tokens),0),COALESCE(sum(l.output_tokens),0),
+		COALESCE(sum(l.cache_creation_tokens),0),COALESCE(sum(l.cache_read_tokens),0),
+		COALESCE(sum(l.input_tokens+l.output_tokens+l.cache_creation_tokens+l.cache_read_tokens),0),
+		COALESCE(sum(l.actual_cost),0)::text FROM usage_logs l WHERE `+where, args...).Scan(
+		&out.Requests, &out.InputTokens, &out.OutputTokens, &out.CacheCreationTokens, &out.CacheReadTokens, &out.TotalTokens, &out.ActualCost)
 	return &out, err
 }
 
@@ -2184,16 +2279,23 @@ func (r *organizationRepository) OrganizationSpendingRanking(ctx context.Context
 	args = append(args, limit)
 	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`
 		WITH user_spend AS (
-			SELECT l.user_id, COALESCE(NULLIF(u.username,''),NULLIF(u.email,''),NULLIF(u.login_name,''),'') AS email,
+			SELECT l.user_id, COALESCE(u.username,'') AS username, COALESCE(u.email,'') AS email,
+				COALESCE(u.login_name,'') AS login_name, COALESCE(u.identity_type,'') AS identity_type,
+				COALESCE(o.company_id,'') AS company_id,
 				COALESCE(sum(l.actual_cost),0)::float8 AS actual_cost, count(*) AS requests,
 				COALESCE(sum(l.input_tokens+l.output_tokens+l.cache_creation_tokens+l.cache_read_tokens),0) AS tokens
-			FROM usage_logs l JOIN users u ON u.id=l.user_id WHERE %s GROUP BY l.user_id,u.username,u.email,u.login_name
+			FROM usage_logs l
+			JOIN users u ON u.id=l.user_id
+			LEFT JOIN organizations o ON o.id=l.organization_id
+			WHERE %s
+			GROUP BY l.user_id,u.username,u.email,u.login_name,u.identity_type,o.company_id
 		), ranked AS (
 			SELECT *, sum(actual_cost) OVER () AS total_actual_cost, sum(requests) OVER () AS total_requests,
 				sum(tokens) OVER () AS total_tokens FROM user_spend
 			ORDER BY actual_cost DESC,tokens DESC,user_id LIMIT $%d
 		)
-		SELECT user_id,email,actual_cost,requests,tokens,total_actual_cost,total_requests,total_tokens
+		SELECT user_id,username,email,login_name,identity_type,company_id,
+			actual_cost,requests,tokens,total_actual_cost,total_requests,total_tokens
 		FROM ranked ORDER BY actual_cost DESC,tokens DESC,user_id`, where, len(args)), args...)
 	if err != nil {
 		return nil, err
@@ -2202,13 +2304,29 @@ func (r *organizationRepository) OrganizationSpendingRanking(ctx context.Context
 	result := &usagestats.UserSpendingRankingResponse{Ranking: []usagestats.UserSpendingRankingItem{}}
 	for rows.Next() {
 		var item usagestats.UserSpendingRankingItem
-		if err := rows.Scan(&item.UserID, &item.Email, &item.ActualCost, &item.Requests, &item.Tokens,
+		var username, email, loginName, identityType, companyID string
+		if err := rows.Scan(&item.UserID, &username, &email, &loginName, &identityType, &companyID,
+			&item.ActualCost, &item.Requests, &item.Tokens,
 			&result.TotalActualCost, &result.TotalRequests, &result.TotalTokens); err != nil {
 			return nil, err
 		}
+		item.Email = organizationRankingUserLabel(username, email, loginName, identityType, companyID)
 		result.Ranking = append(result.Ranking, item)
 	}
 	return result, rows.Err()
+}
+
+func organizationRankingUserLabel(username, email, loginName, identityType, companyID string) string {
+	if value := strings.TrimSpace(username); value != "" {
+		return value
+	}
+	if identityType == service.IdentityTypeIAM && strings.TrimSpace(loginName) != "" && strings.TrimSpace(companyID) != "" {
+		return service.CanonicalIAMPrincipal(loginName, companyID)
+	}
+	if value := strings.TrimSpace(email); value != "" {
+		return value
+	}
+	return strings.TrimSpace(loginName)
 }
 
 func (r *organizationRepository) OrganizationUsersTrend(ctx context.Context, userID int64, filter service.OrganizationUsageFilter, limit int) ([]usagestats.UserUsageTrendPoint, error) {
@@ -2280,6 +2398,353 @@ func (r *organizationRepository) OrganizationUserBreakdown(ctx context.Context, 
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func scanSpendLimitRule(row interface{ Scan(...any) error }) (*service.OrganizationSpendLimitRule, error) {
+	var rule service.OrganizationSpendLimitRule
+	var daily, monthly sql.NullString
+	if err := row.Scan(&rule.ID, &rule.OrganizationID, &rule.MemberUserID, &rule.MemberLogin, &daily, &monthly,
+		&rule.AlertEnabled, &rule.AlertThresholdPct, pq.Array(&rule.AdditionalRecipients), &rule.Revision,
+		&rule.CreatedAt, &rule.UpdatedAt); err != nil {
+		return nil, err
+	}
+	if daily.Valid {
+		rule.DailyLimitUSD = &daily.String
+	}
+	if monthly.Valid {
+		rule.MonthlyLimitUSD = &monthly.String
+	}
+	if rule.AdditionalRecipients == nil {
+		rule.AdditionalRecipients = []string{}
+	}
+	return &rule, nil
+}
+
+const spendLimitRuleSelect = `
+	SELECT l.id,l.organization_id,l.member_user_id,COALESCE(u.login_name,''),
+	       l.daily_limit_usd::text,l.monthly_limit_usd::text,l.alert_enabled,
+	       l.alert_threshold_pct::float8,l.additional_recipients,l.revision,l.created_at,l.updated_at
+	FROM organization_member_spend_limits l
+	LEFT JOIN users u ON u.id=l.member_user_id`
+
+func (r *organizationRepository) ListSpendLimitRules(ctx context.Context, actorID int64) ([]service.OrganizationSpendLimitRule, error) {
+	org, err := r.GetContextForUser(ctx, actorID)
+	if err != nil || !org.Active() || !org.Owner() {
+		return nil, service.ErrOrganizationPermission
+	}
+	rows, err := r.db.QueryContext(ctx, spendLimitRuleSelect+` WHERE l.organization_id=$1 ORDER BY l.member_user_id NULLS FIRST,l.id`, org.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	rules := make([]service.OrganizationSpendLimitRule, 0)
+	for rows.Next() {
+		rule, scanErr := scanSpendLimitRule(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		rules = append(rules, *rule)
+	}
+	return rules, rows.Err()
+}
+
+func (r *organizationRepository) UpsertSpendLimitRules(ctx context.Context, ownerID int64, memberIDs []int64, daily, monthly *string, alertEnabled bool, threshold float64, recipients []string) (_ []service.OrganizationSpendLimitRule, err error) {
+	if recipients == nil {
+		recipients = []string{}
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var organizationID int64
+	if err := tx.QueryRowContext(ctx, `SELECT o.id FROM organizations o JOIN organization_memberships m ON m.organization_id=o.id WHERE m.user_id=$1 AND m.role='owner' AND m.status='active' AND o.status='active' FOR UPDATE OF o`, ownerID).Scan(&organizationID); err != nil {
+		return nil, service.ErrOrganizationPermission
+	}
+	if len(memberIDs) > 0 {
+		var count int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM organization_memberships WHERE organization_id=$1 AND user_id=ANY($2) AND role='member' AND status<>'archived'`, organizationID, pq.Array(memberIDs)).Scan(&count); err != nil {
+			return nil, err
+		}
+		if count != len(memberIDs) {
+			return nil, service.ErrIAMMemberNotFound
+		}
+	}
+	targets := make([]*int64, 0, len(memberIDs)+1)
+	if len(memberIDs) == 0 {
+		targets = append(targets, nil)
+	} else {
+		for i := range memberIDs {
+			targets = append(targets, &memberIDs[i])
+		}
+	}
+	for _, memberID := range targets {
+		var query string
+		if memberID == nil {
+			query = `INSERT INTO organization_member_spend_limits(organization_id,member_user_id,daily_limit_usd,monthly_limit_usd,alert_enabled,alert_threshold_pct,additional_recipients)
+				VALUES($1,NULL,$2::numeric,$3::numeric,$4,$5,$6)
+				ON CONFLICT (organization_id) WHERE member_user_id IS NULL DO UPDATE SET
+				daily_limit_usd=EXCLUDED.daily_limit_usd,monthly_limit_usd=EXCLUDED.monthly_limit_usd,
+				alert_enabled=EXCLUDED.alert_enabled,alert_threshold_pct=EXCLUDED.alert_threshold_pct,
+				additional_recipients=EXCLUDED.additional_recipients,revision=organization_member_spend_limits.revision+1,updated_at=NOW()`
+		} else {
+			query = `INSERT INTO organization_member_spend_limits(organization_id,member_user_id,daily_limit_usd,monthly_limit_usd,alert_enabled,alert_threshold_pct,additional_recipients)
+				VALUES($1,$7,$2::numeric,$3::numeric,$4,$5,$6)
+				ON CONFLICT (organization_id,member_user_id) WHERE member_user_id IS NOT NULL DO UPDATE SET
+				daily_limit_usd=EXCLUDED.daily_limit_usd,monthly_limit_usd=EXCLUDED.monthly_limit_usd,
+				alert_enabled=EXCLUDED.alert_enabled,alert_threshold_pct=EXCLUDED.alert_threshold_pct,
+				additional_recipients=EXCLUDED.additional_recipients,revision=organization_member_spend_limits.revision+1,updated_at=NOW()`
+		}
+		args := []any{organizationID, daily, monthly, alertEnabled, threshold, pq.Array(recipients)}
+		if memberID != nil {
+			args = append(args, *memberID)
+		}
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO organization_audit_events(organization_id,actor_user_id,subject_user_id,action,result,correlation_id,metadata) VALUES($1,$2,$3,'spend_limit.upsert','success',$4,jsonb_build_object('scope',CASE WHEN $3::bigint IS NULL THEN 'all' ELSE 'member' END))`, organizationID, ownerID, memberID, organizationCorrelationID(ctx)); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.ListSpendLimitRules(ctx, ownerID)
+}
+
+func (r *organizationRepository) DeleteSpendLimitRule(ctx context.Context, ownerID int64, memberID *int64) (err error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var organizationID int64
+	if err := tx.QueryRowContext(ctx, `SELECT o.id FROM organizations o JOIN organization_memberships m ON m.organization_id=o.id WHERE m.user_id=$1 AND m.role='owner' AND m.status='active' AND o.status='active'`, ownerID).Scan(&organizationID); err != nil {
+		return service.ErrOrganizationPermission
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM organization_member_spend_limits WHERE organization_id=$1 AND member_user_id IS NOT DISTINCT FROM $2`, organizationID, memberID)
+	if err != nil {
+		return err
+	}
+	if count, _ := result.RowsAffected(); count != 1 {
+		return service.ErrIAMMemberNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO organization_audit_events(organization_id,actor_user_id,subject_user_id,action,result,correlation_id) VALUES($1,$2,$3,'spend_limit.delete','success',$4)`, organizationID, ownerID, memberID, organizationCorrelationID(ctx)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *organizationRepository) ListSpendLimitUsage(ctx context.Context, actorID int64) ([]service.OrganizationSpendUsage, error) {
+	org, err := r.GetContextForUser(ctx, actorID)
+	if err != nil || !org.Active() {
+		return nil, service.ErrOrganizationPermission
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT m.user_id,COALESCE(NULLIF(u.login_name,''),NULLIF(u.username,''),COALESCE(u.email,'')),
+		       COALESCE((SELECT GREATEST(sum(CASE WHEN l.billing_status='refunded' THEN -abs(l.actual_cost) ELSE l.actual_cost END),0)::text
+		                 FROM usage_logs l WHERE l.organization_id=m.organization_id AND l.user_id=m.user_id
+		                   AND l.balance_source IN ('company','shared','subscription')
+		                   AND l.created_at >= date_trunc('day',NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),'0'),
+		       COALESCE((SELECT GREATEST(sum(CASE WHEN l.billing_status='refunded' THEN -abs(l.actual_cost) ELSE l.actual_cost END),0)::text
+		                 FROM usage_logs l WHERE l.organization_id=m.organization_id AND l.user_id=m.user_id
+		                   AND l.balance_source IN ('company','shared','subscription')
+		                   AND l.created_at >= date_trunc('month',NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),'0'),
+		       rule.daily_limit_usd::text,rule.monthly_limit_usd::text
+		FROM organization_memberships m JOIN users u ON u.id=m.user_id
+		LEFT JOIN LATERAL (
+			SELECT l.daily_limit_usd,l.monthly_limit_usd
+			FROM organization_member_spend_limits l
+			WHERE l.organization_id=m.organization_id AND (l.member_user_id=m.user_id OR l.member_user_id IS NULL)
+			ORDER BY (l.member_user_id IS NOT NULL) DESC LIMIT 1
+		) rule ON TRUE
+		WHERE m.organization_id=$1 AND m.role='member' AND m.status<>'archived' AND ($2 OR m.user_id=$3)
+		ORDER BY m.user_id`, org.OrganizationID, org.Owner(), actorID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]service.OrganizationSpendUsage, 0)
+	for rows.Next() {
+		var item service.OrganizationSpendUsage
+		var daily, monthly sql.NullString
+		if err := rows.Scan(&item.MemberUserID, &item.MemberLogin, &item.DailyUsedUSD, &item.MonthlyUsedUSD, &daily, &monthly); err != nil {
+			return nil, err
+		}
+		if daily.Valid {
+			item.DailyLimitUSD = &daily.String
+		}
+		if monthly.Valid {
+			item.MonthlyLimitUSD = &monthly.String
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *organizationRepository) CheckOrganizationSpendLimit(ctx context.Context, consumerUserID int64, balanceSource string, amount float64) error {
+	if amount < 0 || (balanceSource != service.BalanceSourceCompany && balanceSource != service.BalanceSourceLegacyShared && balanceSource != service.BalanceSourceSubscription) {
+		return nil
+	}
+	var dailyLimit, monthlyLimit, dailyUsed, monthlyUsed sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+		SELECT rule.daily_limit_usd::text,rule.monthly_limit_usd::text,
+		       COALESCE((SELECT GREATEST(sum(CASE WHEN l.billing_status='refunded' THEN -abs(l.actual_cost) ELSE l.actual_cost END),0)::text
+		                 FROM usage_logs l WHERE l.organization_id=m.organization_id AND l.user_id=m.user_id
+		                   AND l.balance_source IN ('company','shared','subscription')
+		                   AND l.created_at >= date_trunc('day',NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),'0'),
+		       COALESCE((SELECT GREATEST(sum(CASE WHEN l.billing_status='refunded' THEN -abs(l.actual_cost) ELSE l.actual_cost END),0)::text
+		                 FROM usage_logs l WHERE l.organization_id=m.organization_id AND l.user_id=m.user_id
+		                   AND l.balance_source IN ('company','shared','subscription')
+		                   AND l.created_at >= date_trunc('month',NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),'0')
+		FROM organization_memberships m JOIN organizations o ON o.id=m.organization_id
+		JOIN LATERAL (
+			SELECT l.daily_limit_usd,l.monthly_limit_usd FROM organization_member_spend_limits l
+			WHERE l.organization_id=m.organization_id AND (l.member_user_id=m.user_id OR l.member_user_id IS NULL)
+			ORDER BY (l.member_user_id IS NOT NULL) DESC LIMIT 1
+		) rule ON TRUE
+		WHERE m.user_id=$1 AND m.role='member' AND m.status='active' AND o.status='active'`, consumerUserID).
+		Scan(&dailyLimit, &monthlyLimit, &dailyUsed, &monthlyUsed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	charge := decimal.NewFromFloat(amount)
+	exceeds := func(limit, used sql.NullString) (bool, error) {
+		if !limit.Valid {
+			return false, nil
+		}
+		limitAmount, parseErr := decimal.NewFromString(limit.String)
+		if parseErr != nil {
+			return false, parseErr
+		}
+		usedAmount := decimal.Zero
+		if used.Valid {
+			usedAmount, parseErr = decimal.NewFromString(used.String)
+			if parseErr != nil {
+				return false, parseErr
+			}
+		}
+		if charge.IsZero() {
+			return usedAmount.GreaterThanOrEqual(limitAmount), nil
+		}
+		return usedAmount.Add(charge).GreaterThan(limitAmount), nil
+	}
+	dailyExceeded, err := exceeds(dailyLimit, dailyUsed)
+	if err != nil {
+		return err
+	}
+	monthlyExceeded, err := exceeds(monthlyLimit, monthlyUsed)
+	if err != nil {
+		return err
+	}
+	switch {
+	case dailyExceeded && monthlyExceeded:
+		return service.ErrDailyAndMonthlySpendLimitExceeded
+	case dailyExceeded:
+		return service.ErrDailySpendLimitExceeded
+	case monthlyExceeded:
+		return service.ErrMonthlySpendLimitExceeded
+	}
+	return nil
+}
+
+func (r *organizationRepository) RecordSpendLimitAlert(ctx context.Context, consumerUserID int64, balanceSource string) (err error) {
+	if balanceSource != service.BalanceSourceCompany && balanceSource != service.BalanceSourceLegacyShared && balanceSource != service.BalanceSourceSubscription {
+		return nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var organizationID, revision int64
+	var companyName, memberLogin, memberEmail string
+	var alertEnabled bool
+	var threshold float64
+	var recipients []string
+	var dailyLimit, monthlyLimit sql.NullString
+	var dailyUsed, monthlyUsed string
+	var dailyStart, monthlyStart time.Time
+	err = tx.QueryRowContext(ctx, `
+		SELECT o.id,o.name,COALESCE(NULLIF(u.login_name,''),NULLIF(u.username,''),COALESCE(u.email,'')),
+		       COALESCE(CASE WHEN u.recovery_email_verified_at IS NOT NULL THEN NULLIF(u.recovery_email,'') END,NULLIF(u.email,''),''),
+		       rule.alert_enabled,rule.alert_threshold_pct::float8,rule.additional_recipients,rule.revision,
+		       rule.daily_limit_usd::text,rule.monthly_limit_usd::text,
+		       COALESCE((SELECT GREATEST(sum(CASE WHEN l.billing_status='refunded' THEN -abs(l.actual_cost) ELSE l.actual_cost END),0)::text
+		                 FROM usage_logs l WHERE l.organization_id=m.organization_id AND l.user_id=m.user_id
+		                   AND l.balance_source IN ('company','shared','subscription')
+		                   AND l.created_at >= date_trunc('day',NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),'0'),
+		       COALESCE((SELECT GREATEST(sum(CASE WHEN l.billing_status='refunded' THEN -abs(l.actual_cost) ELSE l.actual_cost END),0)::text
+		                 FROM usage_logs l WHERE l.organization_id=m.organization_id AND l.user_id=m.user_id
+		                   AND l.balance_source IN ('company','shared','subscription')
+		                   AND l.created_at >= date_trunc('month',NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),'0'),
+		       date_trunc('day',NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC',
+		       date_trunc('month',NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+		FROM organization_memberships m JOIN organizations o ON o.id=m.organization_id JOIN users u ON u.id=m.user_id
+		JOIN LATERAL (
+			SELECT l.* FROM organization_member_spend_limits l
+			WHERE l.organization_id=m.organization_id AND (l.member_user_id=m.user_id OR l.member_user_id IS NULL)
+			ORDER BY (l.member_user_id IS NOT NULL) DESC LIMIT 1
+		) rule ON TRUE
+		WHERE m.user_id=$1 AND m.role='member'`, consumerUserID).
+		Scan(&organizationID, &companyName, &memberLogin, &memberEmail, &alertEnabled, &threshold, pq.Array(&recipients), &revision,
+			&dailyLimit, &monthlyLimit, &dailyUsed, &monthlyUsed, &dailyStart, &monthlyStart)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !alertEnabled {
+		return nil
+	}
+	recipientSet := make(map[string]struct{}, len(recipients)+1)
+	if memberEmail = strings.ToLower(strings.TrimSpace(memberEmail)); memberEmail != "" {
+		recipientSet[memberEmail] = struct{}{}
+	}
+	for _, recipient := range recipients {
+		if recipient = strings.ToLower(strings.TrimSpace(recipient)); recipient != "" {
+			recipientSet[recipient] = struct{}{}
+		}
+	}
+	type periodUsage struct {
+		name   string
+		used   string
+		limit  sql.NullString
+		window time.Time
+	}
+	periods := []periodUsage{{name: "daily", used: dailyUsed, limit: dailyLimit, window: dailyStart}, {name: "monthly", used: monthlyUsed, limit: monthlyLimit, window: monthlyStart}}
+	for _, period := range periods {
+		if !period.limit.Valid {
+			continue
+		}
+		used, parseErr := decimal.NewFromString(period.used)
+		if parseErr != nil {
+			return parseErr
+		}
+		limit, parseErr := decimal.NewFromString(period.limit.String)
+		if parseErr != nil {
+			return parseErr
+		}
+		trigger := limit.Mul(decimal.NewFromFloat(threshold)).Div(decimal.NewFromInt(100))
+		if used.LessThan(trigger) {
+			continue
+		}
+		variables := map[string]string{
+			"company_name": companyName, "member_name": memberLogin, "period": period.name,
+			"used": used.StringFixed(10), "limit": limit.StringFixed(10), "threshold": decimal.NewFromFloat(threshold).String(),
+		}
+		for recipient := range recipientSet {
+			dedup := fmt.Sprintf("company.spend_limit.alert:%d:%d:%d:%s:%s:%s", organizationID, consumerUserID, revision, period.name, period.window.UTC().Format(time.RFC3339), recipient)
+			if err := enqueueNotification(ctx, tx, service.NotificationEmailEventCompanySpendLimitAlert, dedup, recipient, variables); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
 }
 
 func (r *organizationRepository) Reconcile(ctx context.Context) (map[string]int64, error) {

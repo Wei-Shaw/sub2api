@@ -262,15 +262,15 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	}
 	apiKeyID := owner.APIKeyID
 	accountID := account.ID
-	billingContext := &BillingContext{ConsumerUserID: owner.UserID, PayerUserID: owner.UserID, BalanceSource: "self"}
+	holdAmount := pricingSnapshot.HoldAmount
+	billingContext := &BillingContext{ConsumerUserID: owner.UserID, PayerUserID: owner.UserID, BalanceSource: BalanceSourceSelf}
 	if s.BillingContextResolver != nil {
-		billingContext, err = s.BillingContextResolver.Resolve(ctx, owner.UserID)
+		billingContext, err = s.BillingContextResolver.ResolveForAmount(ctx, owner.UserID, holdAmount)
 		if err != nil {
 			return nil, err
 		}
 	}
 	holdID := BatchImageHoldRequestID(batchID)
-	holdAmount := pricingSnapshot.HoldAmount
 	job, err := s.Repo.CreateBatchImageJob(ctx, CreateBatchImageJobParams{
 		BatchID:                 batchID,
 		UserID:                  owner.UserID,
@@ -313,7 +313,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		s.hidePreUpstreamSubmitFailure(ctx, owner, job)
 		return nil, err
 	}
-	s.invalidateBillingCaches(ctx, billingContext.PayerUserID)
+	s.invalidateBillingCaches(ctx, job)
 	if err := s.createPendingItems(ctx, job.BatchID, requestHash, normalized.Items); err != nil {
 		if releaseErr := s.releaseFailedSubmitHold(ctx, job, requestHash); releaseErr != nil {
 			return nil, releaseErr
@@ -424,7 +424,7 @@ func (s *BatchImagePublicService) releaseFailedSubmitHold(ctx context.Context, j
 		s.enqueueBillingRetry(ctx, job.BatchID)
 		return ErrBatchImageBillingHoldFailed
 	}
-	s.invalidateBillingCaches(ctx, batchImagePayerUserID(job))
+	s.invalidateBillingCaches(ctx, job)
 	return nil
 }
 
@@ -732,7 +732,7 @@ func (s *BatchImagePublicService) Cancel(ctx context.Context, owner BatchImageOw
 				s.enqueueBillingRetry(ctx, job.BatchID)
 				return nil, ErrBatchImageCancelFailed
 			}
-			s.invalidateBillingCaches(ctx, batchImagePayerUserID(job))
+			s.invalidateBillingCaches(ctx, job)
 		}
 		return BatchImageJobToPublic(job), nil
 	}
@@ -778,7 +778,7 @@ func (s *BatchImagePublicService) Cancel(ctx context.Context, owner BatchImageOw
 		s.enqueueBillingRetry(ctx, job.BatchID)
 		return nil, ErrBatchImageCancelFailed
 	}
-	s.invalidateBillingCaches(ctx, batchImagePayerUserID(job))
+	s.invalidateBillingCaches(ctx, job)
 	updated, err := s.Repo.GetBatchImageJobByBatchIDForOwner(ctx, owner.UserID, owner.APIKeyID, batchID)
 	if err != nil {
 		return nil, err
@@ -1108,7 +1108,11 @@ func (s *BatchImagePublicService) enabled() bool {
 	return s != nil && s.Repo != nil && s.AccountRepo != nil && s.Config != nil && s.Config.BatchImage.Enabled
 }
 
-func (s *BatchImagePublicService) invalidateBillingCaches(ctx context.Context, userID int64) {
+func (s *BatchImagePublicService) invalidateBillingCaches(ctx context.Context, job *BatchImageJob) {
+	if batchImageUsesCompanyBalance(job) {
+		return
+	}
+	userID := batchImagePayerUserID(job)
 	if s != nil && s.AuthCache != nil && userID > 0 {
 		s.AuthCache.InvalidateAuthCacheByUserID(ctx, userID)
 	}

@@ -48,7 +48,13 @@ type SystemSettings struct {
 	SessionBindingEnabled            bool     `json:"session_binding_enabled"`        // 会话 IP/UA 绑定
 	StepUpEnabled                    bool     `json:"step_up_enabled"`                // 敏感操作 step-up 2FA（upstream）
 	CompanyUpgradeChargeEnabled      bool     `json:"company_upgrade_charge_enabled"` // 企业升级是否收费/冻结资金
-	AuditLogRetentionDays            int      `json:"audit_log_retention_days"`       // 审计日志保留天数
+	CompanyUpgradeFee                float64  `json:"company_upgrade_fee"`
+	CompanyApplicationsEnabled       bool     `json:"company_applications_enabled"`
+	CompanyIAMEnabled                bool     `json:"company_iam_enabled"`
+	CompanyPublicIDsFinalized        bool     `json:"company_public_ids_finalized"`
+	CompanyBillingIntegrationEnabled bool     `json:"company_billing_integration_enabled"`
+	CompanyDocumentationURL          string   `json:"company_documentation_url"`
+	AuditLogRetentionDays            int      `json:"audit_log_retention_days"` // 审计日志保留天数
 
 	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
 	TrustedProxiesDynamicEnabled    bool                                `json:"trusted_proxies_dynamic_enabled"`
@@ -454,6 +460,7 @@ type PublicSettings struct {
 	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
 	CompanyApplicationsEnabled       bool                     `json:"company_applications_enabled"`
 	CompanyIAMEnabled                bool                     `json:"company_iam_enabled"`
+	CompanyDocumentationURL          string                   `json:"company_documentation_url"`
 	PaymentEnabled                   bool                     `json:"payment_enabled"`
 	Version                          string                   `json:"version"`
 	// 服务器全局时区（IANA 名称与当前 UTC 偏移，如 "Asia/Shanghai" / "+08:00"）。

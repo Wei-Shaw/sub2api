@@ -98,6 +98,8 @@ onBeforeUnmount(() => {
     class="group relative ml-1 inline-flex items-center align-middle"
     @mouseenter="onEnter"
     @mouseleave="onLeave"
+    @focusin="onEnter"
+    @focusout="onLeave"
     @click="onClick"
   >
     <!-- Trigger Icon -->

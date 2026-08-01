@@ -354,6 +354,13 @@ const baseSettingsResponse = {
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
+  company_upgrade_charge_enabled: true,
+  company_upgrade_fee: 20,
+  company_applications_enabled: false,
+  company_iam_enabled: false,
+  company_public_ids_finalized: false,
+  company_billing_integration_enabled: false,
+  company_documentation_url: "",
   default_balance: 0,
   default_concurrency: 1,
   default_subscriptions: [],
@@ -577,6 +584,16 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openFeaturesTab(wrapper: ReturnType<typeof mountView>) {
+  const featuresTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.features"));
+
+  expect(featuresTabButton).toBeDefined();
+  await featuresTabButton?.trigger("click");
+  await flushPromises();
+}
+
 describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
     getSettings.mockReset();
@@ -678,6 +695,45 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(wrapper.text()).not.toContain("可见方式");
     expect(wrapper.text()).not.toContain("支付来源");
+  });
+
+  it("loads and saves company feature switches and documentation URL", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      company_applications_enabled: true,
+      company_iam_enabled: true,
+      company_public_ids_finalized: true,
+      company_billing_integration_enabled: true,
+      company_documentation_url: "https://docs.example.com/company",
+      company_upgrade_fee: 35,
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openFeaturesTab(wrapper);
+
+    const companyCard = wrapper
+      .findAll(".card")
+      .find((node) => node.text().includes("admin.settings.features.company.title"));
+    expect(companyCard).toBeDefined();
+    expect(companyCard!.get('input[type="url"]').element).toHaveProperty(
+      "value",
+      "https://docs.example.com/company",
+    );
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        company_applications_enabled: true,
+        company_iam_enabled: true,
+        company_public_ids_finalized: true,
+        company_billing_integration_enabled: true,
+        company_documentation_url: "https://docs.example.com/company",
+        company_upgrade_fee: 35,
+      }),
+    );
   });
 
   it("loads, edits, validates, and saves forwarded client-IP headers", async () => {

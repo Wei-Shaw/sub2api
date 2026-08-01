@@ -197,38 +197,65 @@
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="(item, index) in rankingDisplayItems"
-              :key="item.isOther ? 'others' : `${item.user_id}-${index}`"
-              class="border-t border-gray-100 transition-colors dark:border-dark-700"
-              :class="item.isOther
-                ? 'bg-gray-50/70 dark:bg-dark-700/20'
-                : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/40'"
-              @click="item.isOther ? undefined : emit('ranking-click', item)"
-            >
-              <td class="py-1.5">
-                <div class="flex min-w-0 items-center gap-2">
-                  <span class="shrink-0 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
-                    {{ item.isOther ? 'Σ' : `#${index + 1}` }}
-                  </span>
-                  <span
-                    class="block max-w-[140px] truncate font-medium text-gray-900 dark:text-white"
-                    :title="getRankingRowLabel(item)"
-                  >
-                    {{ getRankingRowLabel(item) }}
-                  </span>
-                </div>
-              </td>
-              <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
-                {{ formatNumber(item.requests) }}
-              </td>
-              <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
-                {{ formatTokens(item.tokens) }}
-              </td>
-              <td class="py-1.5 text-right text-green-600 dark:text-green-400">
-                ${{ formatCost(item.actual_cost) }}
-              </td>
-            </tr>
+            <template v-for="(item, index) in rankingDisplayItems" :key="item.isOther ? 'others' : `${item.user_id}-${index}`">
+              <tr
+                class="border-t border-gray-100 transition-colors dark:border-dark-700"
+                :class="item.isOther
+                  ? 'bg-gray-50/70 dark:bg-dark-700/20'
+                  : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/40'"
+                :data-testid="item.isOther ? 'spending-ranking-others' : `spending-ranking-row-${item.user_id}`"
+                @click="item.isOther ? undefined : toggleRankingBreakdown(item)"
+              >
+                <td class="py-1.5">
+                  <div class="flex min-w-0 items-center gap-2">
+                    <Icon
+                      v-if="rankingBreakdownLoader && !item.isOther"
+                      :name="expandedRankingUserID === item.user_id ? 'chevronDown' : 'chevronRight'"
+                      size="xs"
+                      class="shrink-0 text-blue-600 dark:text-blue-400"
+                    />
+                    <span class="shrink-0 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                      {{ item.isOther ? 'Σ' : `#${index + 1}` }}
+                    </span>
+                    <span
+                      class="block max-w-[140px] truncate font-medium"
+                      :class="rankingBreakdownLoader && !item.isOther
+                        ? 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300'
+                        : 'text-gray-900 dark:text-white'"
+                      :title="getRankingRowLabel(item)"
+                    >
+                      {{ getRankingRowLabel(item) }}
+                    </span>
+                  </div>
+                </td>
+                <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
+                  {{ formatNumber(item.requests) }}
+                </td>
+                <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
+                  {{ formatTokens(item.tokens) }}
+                </td>
+                <td class="py-1.5 text-right text-green-600 dark:text-green-400">
+                  ${{ formatCost(item.actual_cost) }}
+                </td>
+              </tr>
+              <tr v-if="!item.isOther && expandedRankingUserID === item.user_id" :data-testid="`spending-ranking-detail-${item.user_id}`">
+                <td colspan="4" class="bg-gray-50/70 p-0 dark:bg-dark-800/60">
+                  <div v-if="rankingBreakdownLoading" class="flex h-20 items-center justify-center"><LoadingSpinner /></div>
+                  <div v-else-if="rankingBreakdownError" class="px-4 py-5 text-center text-xs text-red-600 dark:text-red-400">{{ t('admin.dashboard.failedToLoad') }}</div>
+                  <div v-else-if="rankingBreakdownItems.length === 0" class="px-4 py-5 text-center text-xs text-gray-500">{{ t('admin.dashboard.noDataAvailable') }}</div>
+                  <table v-else class="w-full text-xs">
+                    <tbody>
+                      <tr v-for="model in rankingBreakdownItems" :key="model.model" class="border-t border-gray-200 dark:border-dark-700">
+                        <td class="max-w-[180px] truncate px-4 py-2 font-medium text-gray-900 dark:text-white" :title="model.model">{{ model.model }}</td>
+                        <td class="px-2 py-2 text-right text-gray-600 dark:text-gray-400">{{ formatNumber(model.requests) }}</td>
+                        <td class="px-2 py-2 text-right text-gray-600 dark:text-gray-400">{{ formatTokens(model.total_tokens) }}</td>
+                        <td class="px-4 py-2 text-right text-green-600 dark:text-green-400">${{ formatCost(model.actual_cost) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -243,11 +270,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { Doughnut } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import { Icon } from '@/components/icons'
 import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
 import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
@@ -281,6 +309,7 @@ const props = withDefaults(defineProps<{
   endDate?: string
   filters?: Record<string, any>
   breakdownLoader?: (params: Record<string, any>) => Promise<{ users: UserBreakdownItem[] }>
+  rankingBreakdownLoader?: (item: UserSpendingRankingItem) => Promise<ModelStat[]>
 }>(), {
   upstreamModelStats: () => [],
   mappingModelStats: () => [],
@@ -303,6 +332,11 @@ const props = withDefaults(defineProps<{
 const expandedKey = ref<string | null>(null)
 const breakdownItems = ref<UserBreakdownItem[]>([])
 const breakdownLoading = ref(false)
+const expandedRankingUserID = ref<number | null>(null)
+const rankingBreakdownItems = ref<ModelStat[]>([])
+const rankingBreakdownLoading = ref(false)
+const rankingBreakdownError = ref(false)
+let rankingBreakdownRequest = 0
 
 const toggleBreakdown = async (type: string, id: string) => {
   const key = `${type}-${id}`
@@ -337,6 +371,41 @@ const emit = defineEmits<{
   'update:source': [value: ModelSource]
   'ranking-click': [item: UserSpendingRankingItem]
 }>()
+
+const toggleRankingBreakdown = async (item: UserSpendingRankingItem) => {
+  emit('ranking-click', item)
+  if (!props.rankingBreakdownLoader) return
+  if (expandedRankingUserID.value === item.user_id) {
+    expandedRankingUserID.value = null
+    rankingBreakdownRequest += 1
+    return
+  }
+
+  const request = ++rankingBreakdownRequest
+  expandedRankingUserID.value = item.user_id
+  rankingBreakdownItems.value = []
+  rankingBreakdownLoading.value = true
+  rankingBreakdownError.value = false
+  try {
+    const models = await props.rankingBreakdownLoader(item)
+    if (request !== rankingBreakdownRequest || expandedRankingUserID.value !== item.user_id) return
+    rankingBreakdownItems.value = models
+  } catch {
+    if (request !== rankingBreakdownRequest || expandedRankingUserID.value !== item.user_id) return
+    rankingBreakdownError.value = true
+  } finally {
+    if (request === rankingBreakdownRequest) rankingBreakdownLoading.value = false
+  }
+}
+
+watch(
+  () => [props.startDate, props.endDate, props.rankingItems],
+  () => {
+    expandedRankingUserID.value = null
+    rankingBreakdownItems.value = []
+    rankingBreakdownRequest += 1
+  },
+)
 
 const enableRankingView = computed(() => props.enableRankingView)
 const showAccountCost = computed(() => props.showAccountCost)

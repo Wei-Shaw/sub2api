@@ -34,12 +34,17 @@ describe('organization route access', () => {
     const financeMember = user({ identity_type: 'iam', organization: {
       organization_id: 1, organization_status: 'active', membership_status: 'active', role: 'member', actions: ['organization.finance.balance.read'],
     } as User['organization'] })
+    const ordinaryMember = user({ identity_type: 'iam', organization: {
+      organization_id: 1, organization_status: 'active', membership_status: 'active', role: 'member', actions: [],
+    } as User['organization'] })
     const suspended = user({ organization: {
       organization_id: 1, organization_status: 'suspended', membership_status: 'active', role: 'owner', actions: [],
     } as User['organization'] })
 
     expect(canAccessOrganizationRoute(owner, 'organization.finance.balance.read', true)).toBe(true)
     expect(canAccessOrganizationRoute(financeMember, 'organization.finance.balance.read')).toBe(true)
+    expect(canAccessOrganizationRoute(ordinaryMember)).toBe(true)
+    expect(canAccessOrganizationRoute(ordinaryMember, 'organization.finance.balance.read')).toBe(false)
     expect(canAccessOrganizationRoute(financeMember, undefined, true)).toBe(false)
     expect(canAccessOrganizationRoute(financeMember, 'organization.members.manage')).toBe(false)
     expect(canAccessOrganizationRoute(suspended)).toBe(false)

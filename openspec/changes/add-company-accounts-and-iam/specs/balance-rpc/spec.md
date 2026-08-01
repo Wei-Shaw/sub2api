@@ -2,7 +2,7 @@
 
 ### Requirement: 扣费（不透支、幂等、原因必填）
 
-系统在 `Deduct` 时 SHALL 将请求的 `user_id` 视为消费用户，并通过统一计费上下文解析实际付款用户。个人/主账号与无共享余额权限的 IAM 用户 SHALL 以自身为付款用户；拥有有效 `CompanySharedBalanceUse` 权限的 IAM 用户 SHALL 以公司主账号为付款用户。`Deduct` SHALL 仅扣减实际付款用户的 `users.balance`，不触碰 apikey 配额/限流/账号配额/订阅用量。`Deduct` SHALL 要求 `amount > 0` 且 `description` 非空，否则返回参数错误。
+系统在 `Deduct` 时 SHALL 将请求的 `user_id` 视为消费用户，并通过统一计费上下文按 `amount` 解析实际付款钱包。个人/主账号 SHALL 使用自身余额。IAM 用户的划拨余额足以覆盖完整扣费时 SHALL 使用自身余额；划拨余额不足且拥有有效 `CompanySharedBalanceUse` 权限时 SHALL 使用企业独立余额 `organizations.balance`，不得扣减公司 owner/管理员的个人 `users.balance`。一次扣费 SHALL NOT 拆分到两种余额来源。`Deduct` SHALL 不触碰 apikey 配额/限流/账号配额/订阅用量。`Deduct` SHALL 要求 `amount > 0` 且 `description` 非空，否则返回参数错误。
 
 系统 SHALL NOT 允许实际付款用户透支：当付款用户余额小于扣费金额时，SHALL 拒绝本次扣费，不得回退到另一余额来源，也不得把任何余额扣成负数。
 
@@ -17,18 +17,23 @@
 - **AND** 落一条 `kind=deduct`、`request_id=R1` 且含消费方与付款方快照的流水
 - **AND** 返回付款方扣后余额
 
-#### Scenario: 共享余额 IAM 用户扣费
+#### Scenario: IAM 用户优先扣划拨余额
 
-- **WHEN** `user_id` 属于拥有有效共享余额权限的 IAM 用户
-- **THEN** 系统 SHALL 扣减该组织主账号余额
-- **AND** SHALL NOT 扣减 IAM 用户的划拨余额
+- **WHEN** `user_id` 属于拥有有效共享余额权限的 IAM 用户且划拨余额 ≥ A
+- **THEN** 系统 SHALL 扣减 IAM 用户的划拨余额
+- **AND** SHALL NOT 扣减该组织主账号余额
 
-#### Scenario: 选定付款方余额不足且不回退
+#### Scenario: 划拨余额不足时使用共享余额
 
-- **WHEN** 解析出的付款用户余额 < A
+- **WHEN** IAM 用户划拨余额 < A 且拥有有效共享余额权限
+- **THEN** 系统 SHALL 从企业独立余额完整扣减 A
+- **AND** IAM 用户剩余划拨余额保持不变
+- **AND** 公司 owner/管理员的个人余额保持不变
+
+#### Scenario: 无共享权限且划拨余额不足
+
+- **WHEN** IAM 用户划拨余额 < A 且没有有效共享余额权限
 - **THEN** 系统 SHALL 返回 INSUFFICIENT_BALANCE（FAILED_PRECONDITION）
-- **AND** 消费用户与付款用户余额均保持不变
-- **AND** SHALL NOT 尝试另一余额来源
 - **AND** 不落下“已扣”的脏流水
 
 #### Scenario: 相同 request_id 幂等重放
@@ -44,7 +49,7 @@
 
 ### Requirement: 退费（部分退、凭原流水冲销、双幂等）
 
-系统在 `Refund` 时 SHALL 支持部分退：调用方提供本次退费 `amount`，系统 SHALL 凭 `original_request_id` 定位本 app 自己的原 `kind=deduct` 流水并对其反向冲销。退款 SHALL 始终增加原流水快照中的 `payer_user_id` 余额，不得依据退款时的组织关系、用户状态或权限重新选择付款方。系统 SHALL NOT 允许某原扣的累计已退金额超过其原扣金额。
+系统在 `Refund` 时 SHALL 支持部分退：调用方提供本次退费 `amount`，系统 SHALL 凭 `original_request_id` 定位本 app 自己的原 `kind=deduct` 流水并对其反向冲销。退款 SHALL 始终退回原流水快照的钱包：新 `balance_source=company` 流水退回 `organization_id` 对应企业余额，个人/划拨流水退回 `payer_user_id`；历史 `balance_source=shared` 流水继续退回原 owner 钱包。系统不得依据退款时的组织关系、用户状态或权限重新选择钱包，也 SHALL NOT 允许某原扣的累计已退金额超过其原扣金额。
 
 系统 SHALL 仅允许冲销由本 `app_id` 经本 RPC 产生的扣费流水；对不存在的原扣流水 SHALL 返回未找到。`Refund` 同样 SHALL 要求 `amount > 0` 且 `description` 非空。
 

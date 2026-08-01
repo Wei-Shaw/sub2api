@@ -75,7 +75,10 @@ func (r *balanceLedgerRepository) Deduct(ctx context.Context, cmd *service.Ledge
 	}
 	balanceSource := cmd.BalanceSource
 	if balanceSource == "" {
-		balanceSource = "self"
+		balanceSource = service.BalanceSourceSelf
+	}
+	if balanceSource == service.BalanceSourceCompany && (cmd.OrganizationID == nil || *cmd.OrganizationID <= 0) {
+		return nil, service.ErrCompanyNotFound
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -107,12 +110,23 @@ func (r *balanceLedgerRepository) Deduct(ctx context.Context, cmd *service.Ledge
 
 	// 2. 不透支扣减。
 	var newBalance float64
-	err = tx.QueryRowContext(ctx, `
-		UPDATE users SET balance = balance - $1, updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL AND balance >= $1
-		RETURNING balance
-	`, cmd.Amount, payerUserID).Scan(&newBalance)
+	if balanceSource == service.BalanceSourceCompany && cmd.OrganizationID != nil && *cmd.OrganizationID > 0 {
+		err = tx.QueryRowContext(ctx, `
+			UPDATE organizations SET balance = balance - $1, updated_at = NOW()
+			WHERE id = $2 AND balance >= $1
+			RETURNING balance
+		`, cmd.Amount, *cmd.OrganizationID).Scan(&newBalance)
+	} else {
+		err = tx.QueryRowContext(ctx, `
+			UPDATE users SET balance = balance - $1, updated_at = NOW()
+			WHERE id = $2 AND deleted_at IS NULL AND balance >= $1
+			RETURNING balance
+		`, cmd.Amount, payerUserID).Scan(&newBalance)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
+		if balanceSource == service.BalanceSourceCompany && cmd.OrganizationID != nil && *cmd.OrganizationID > 0 {
+			return nil, r.classifyOrganizationDeductFailure(ctx, tx, *cmd.OrganizationID)
+		}
 		// 区分「用户不存在」与「余额不足」。
 		return nil, r.classifyDeductFailure(ctx, tx, payerUserID)
 	}
@@ -169,6 +183,17 @@ func (r *balanceLedgerRepository) classifyDeductFailure(ctx context.Context, tx 
 	}
 	if !exists {
 		return service.ErrUserNotFound
+	}
+	return service.ErrBalanceInsufficient
+}
+
+func (r *balanceLedgerRepository) classifyOrganizationDeductFailure(ctx context.Context, tx *sql.Tx, organizationID int64) error {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM organizations WHERE id = $1)`, organizationID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return service.ErrCompanyNotFound
 	}
 	return service.ErrBalanceInsufficient
 }
@@ -238,12 +263,26 @@ func (r *balanceLedgerRepository) Refund(ctx context.Context, cmd *service.Ledge
 		return nil, err
 	}
 	var newBalance float64
-	err = tx.QueryRowContext(ctx, `
-		UPDATE users SET balance = balance + $1, updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
-		RETURNING balance
-	`, cmd.Amount, origPayerUserID).Scan(&newBalance)
+	if origBalanceSource == service.BalanceSourceCompany && !origOrganizationID.Valid {
+		return nil, service.ErrCompanyNotFound
+	}
+	if origBalanceSource == service.BalanceSourceCompany {
+		err = tx.QueryRowContext(ctx, `
+			UPDATE organizations SET balance = balance + $1, updated_at = NOW()
+			WHERE id = $2
+			RETURNING balance
+		`, cmd.Amount, origOrganizationID.Int64).Scan(&newBalance)
+	} else {
+		err = tx.QueryRowContext(ctx, `
+			UPDATE users SET balance = balance + $1, updated_at = NOW()
+			WHERE id = $2 AND deleted_at IS NULL
+			RETURNING balance
+		`, cmd.Amount, origPayerUserID).Scan(&newBalance)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
+		if origBalanceSource == service.BalanceSourceCompany {
+			return nil, service.ErrCompanyNotFound
+		}
 		return nil, service.ErrUserNotFound
 	}
 	if err != nil {
@@ -257,12 +296,17 @@ func (r *balanceLedgerRepository) Refund(ctx context.Context, cmd *service.Ledge
 		return nil, err
 	}
 	tx = nil
+	var organizationID *int64
+	if origOrganizationID.Valid {
+		organizationID = &origOrganizationID.Int64
+	}
 	return &service.LedgerRefundResult{
 		Applied:         true,
 		UserID:          origPayerUserID,
 		PayerUserID:     origPayerUserID,
 		BalanceAfter:    newBalance,
 		RefundedTotal:   origRefunded + cmd.Amount,
+		OrganizationID:  organizationID,
 		BalanceSource:   origBalanceSource,
 		AuthzGeneration: origAuthzGeneration.Int64,
 	}, nil
@@ -297,12 +341,17 @@ func (r *balanceLedgerRepository) replayRefund(ctx context.Context, tx *sql.Tx, 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	var orgID *int64
+	if organizationID.Valid {
+		orgID = &organizationID.Int64
+	}
 	return &service.LedgerRefundResult{
 		Applied:         false,
 		UserID:          payerUserID,
 		PayerUserID:     payerUserID,
 		BalanceAfter:    balanceAfter.Float64,
 		RefundedTotal:   origRefunded,
+		OrganizationID:  orgID,
 		BalanceSource:   balanceSource,
 		AuthzGeneration: authzGeneration.Int64,
 	}, nil

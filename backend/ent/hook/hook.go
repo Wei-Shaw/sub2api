@@ -429,6 +429,18 @@ func (f OrganizationFinancialLedgerFunc) Mutate(ctx context.Context, m ent.Mutat
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrganizationFinancialLedgerMutation", m)
 }
 
+// The OrganizationMemberSpendLimitFunc type is an adapter to allow the use of ordinary
+// function as OrganizationMemberSpendLimit mutator.
+type OrganizationMemberSpendLimitFunc func(context.Context, *ent.OrganizationMemberSpendLimitMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OrganizationMemberSpendLimitFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OrganizationMemberSpendLimitMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrganizationMemberSpendLimitMutation", m)
+}
+
 // The OrganizationMembershipFunc type is an adapter to allow the use of ordinary
 // function as OrganizationMembership mutator.
 type OrganizationMembershipFunc func(context.Context, *ent.OrganizationMembershipMutation) (ent.Value, error)

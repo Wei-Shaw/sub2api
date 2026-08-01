@@ -25,6 +25,10 @@ const (
 	FieldStatus = "status"
 	// FieldMemberLimit holds the string denoting the member_limit field in the database.
 	FieldMemberLimit = "member_limit"
+	// FieldBalance holds the string denoting the balance field in the database.
+	FieldBalance = "balance"
+	// FieldFrozenBalance holds the string denoting the frozen_balance field in the database.
+	FieldFrozenBalance = "frozen_balance"
 	// FieldEffectiveAt holds the string denoting the effective_at field in the database.
 	FieldEffectiveAt = "effective_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -44,6 +48,8 @@ var Columns = []string{
 	FieldNormalizedName,
 	FieldStatus,
 	FieldMemberLimit,
+	FieldBalance,
+	FieldFrozenBalance,
 	FieldEffectiveAt,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -72,6 +78,10 @@ var (
 	StatusValidator func(string) error
 	// DefaultMemberLimit holds the default value on creation for the "member_limit" field.
 	DefaultMemberLimit int
+	// DefaultBalance holds the default value on creation for the "balance" field.
+	DefaultBalance float64
+	// DefaultFrozenBalance holds the default value on creation for the "frozen_balance" field.
+	DefaultFrozenBalance float64
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -116,6 +126,16 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByMemberLimit orders the results by the member_limit field.
 func ByMemberLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMemberLimit, opts...).ToFunc()
+}
+
+// ByBalance orders the results by the balance field.
+func ByBalance(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBalance, opts...).ToFunc()
+}
+
+// ByFrozenBalance orders the results by the frozen_balance field.
+func ByFrozenBalance(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFrozenBalance, opts...).ToFunc()
 }
 
 // ByEffectiveAt orders the results by the effective_at field.

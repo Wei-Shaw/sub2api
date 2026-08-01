@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -78,6 +79,85 @@ func TestBalanceLedgerRepository_Deduct_Idempotent(t *testing.T) {
 	var balance float64
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance FROM users WHERE id=$1`, userID).Scan(&balance))
 	require.InDelta(t, 70, balance, 1e-9)
+}
+
+func TestBalanceLedgerService_IAMAllocationBeforeSharedBalance(t *testing.T) {
+	isolateOrganizationIntegrationTest(t)
+	ctx := context.Background()
+	organizationRepo := NewOrganizationRepository(integrationDB)
+	owner := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
+	organizationID := createActiveOrganization(t, owner, 20)
+	memberID := createIAMMemberForOrganizationTest(t, owner.ID, "ledger-priority")
+
+	require.NoError(t, organizationRepo.DepositToCompany(ctx, owner.ID, "50.00000000", uuid.NewString(), false))
+	require.NoError(t, organizationRepo.TransferBalance(ctx, owner.ID, memberID, "25.00000000", uuid.NewString(), false))
+	require.NoError(t, organizationRepo.SetPolicyAttachment(ctx, owner.ID, memberID, service.PolicyCompanySharedBalance, true, uuid.NewString()))
+
+	ledgerService := service.NewBalanceLedgerService(NewBalanceLedgerRepository(integrationDB), nil)
+	ledgerService.SetBillingContextResolver(service.NewBillingContextResolver(organizationRepo))
+	appID, ledgerID := newLedgerTestScope()
+
+	allocated, err := ledgerService.Deduct(ctx, &service.LedgerDeductCommand{
+		AppID: appID, RequestID: ledgerID("allocated"), UserID: memberID, Amount: 10, Description: "allocated first",
+	})
+	require.NoError(t, err)
+	require.Equal(t, memberID, allocated.PayerUserID)
+	require.Equal(t, "allocated", allocated.BalanceSource)
+	assertUserBalances(t, memberID, "15.00000000", "0.00000000")
+	assertUserBalances(t, owner.ID, "50.00000000", "0.00000000")
+
+	sharedRequestID := ledgerID("shared")
+	shared, err := ledgerService.Deduct(ctx, &service.LedgerDeductCommand{
+		AppID: appID, RequestID: sharedRequestID, UserID: memberID, Amount: 20, Description: "shared fallback",
+	})
+	require.NoError(t, err)
+	require.Equal(t, owner.ID, shared.PayerUserID)
+	require.Equal(t, service.BalanceSourceCompany, shared.BalanceSource)
+	assertUserBalances(t, memberID, "15.00000000", "0.00000000")
+	assertUserBalances(t, owner.ID, "50.00000000", "0.00000000")
+	assertOrganizationBalances(t, organizationID, "5.00000000", "0.00000000")
+
+	refunded, err := ledgerService.Refund(ctx, &service.LedgerRefundCommand{
+		AppID: appID, RefundRequestID: ledgerID("shared-refund"), OriginalRequestID: sharedRequestID,
+		Amount: 20, Description: "refund original payer",
+	})
+	require.NoError(t, err)
+	require.Equal(t, owner.ID, refunded.PayerUserID)
+	assertUserBalances(t, memberID, "15.00000000", "0.00000000")
+	assertUserBalances(t, owner.ID, "50.00000000", "0.00000000")
+	assertOrganizationBalances(t, organizationID, "25.00000000", "0.00000000")
+}
+
+func TestBalanceLedgerRepository_LegacySharedRefundReturnsToOwnerWallet(t *testing.T) {
+	isolateOrganizationIntegrationTest(t)
+	ctx := context.Background()
+	repo := NewBalanceLedgerRepository(integrationDB)
+	owner := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
+	organizationID := createActiveOrganization(t, owner, 20)
+	memberID := createIAMMemberForOrganizationTest(t, owner.ID, "legacy-shared-refund")
+	appID, ledgerID := newLedgerTestScope()
+	deductID := ledgerID("legacy-shared")
+
+	charged, err := repo.Deduct(ctx, &service.LedgerDeductCommand{
+		AppID: appID, RequestID: deductID, UserID: memberID,
+		OrganizationID: &organizationID, PayerUserID: owner.ID,
+		BalanceSource: service.BalanceSourceLegacyShared,
+		Amount:        10, Description: "legacy owner wallet charge",
+	})
+	require.NoError(t, err)
+	require.Equal(t, service.BalanceSourceLegacyShared, charged.BalanceSource)
+	assertUserBalances(t, owner.ID, "90.00000000", "0.00000000")
+	assertOrganizationBalances(t, organizationID, "0.00000000", "0.00000000")
+
+	refunded, err := repo.Refund(ctx, &service.LedgerRefundCommand{
+		AppID: appID, RefundRequestID: ledgerID("legacy-shared-refund"),
+		OriginalRequestID: deductID, Amount: 10, Description: "legacy owner wallet refund",
+	})
+	require.NoError(t, err)
+	require.Equal(t, service.BalanceSourceLegacyShared, refunded.BalanceSource)
+	require.Equal(t, owner.ID, refunded.PayerUserID)
+	assertUserBalances(t, owner.ID, "100.00000000", "0.00000000")
+	assertOrganizationBalances(t, organizationID, "0.00000000", "0.00000000")
 }
 
 func TestBalanceLedgerRepository_Refund_PartialAndOverRefund(t *testing.T) {

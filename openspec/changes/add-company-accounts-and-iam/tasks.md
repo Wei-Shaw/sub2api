@@ -105,3 +105,27 @@
 - [x] 11.8 Generate `frontend/audit.json`, run `python tools/check_pnpm_audit_exceptions.py --audit frontend/audit.json --exceptions .github/audit-exceptions.yml` with the repository's expected working directory, and resolve unapproved findings.
 - [x] 11.9 Perform end-to-end acceptance for upgrade reserve/approve/reject/withdraw emails, 20-member concurrency, IAM login/recovery, policy revocation, allocation/shared billing, async refund to original payer, finance redaction, usage scoping, and organization suspension.
 - [x] 11.10 Keep company application and IAM creation feature flags disabled until backfill constraints, billing-path matrix, reconciliation checks, and acceptance tests all pass; then enable in staged rollout with rollback monitoring.
+
+## 12. Allocated-Balance Priority
+
+- [ ] 12.1 Make IAM billing amount-aware so a sufficient member allocation is charged before shared/root balance, with shared balance used only when the allocation cannot cover the full charge; preserve original-payer snapshots across settlement and refund, and add focused unit/integration coverage.
+
+## 13. Member Company-Sponsored Spend Limits
+
+- [x] 13.1 Add idempotent SQL migration and Ent parity for all-member/member-specific daily and monthly spend-limit rules, alert configuration, rule revision, and indexes.
+- [x] 13.2 Implement owner-only rule list/upsert/delete APIs, effective member usage summaries, same-organization validation, email normalization, and immutable audit events.
+- [x] 13.3 Enforce effective limits for shared-balance and enterprise-subscription billing across synchronous, balance-RPC, asynchronous media, and batch-image entry points while excluding allocated balance.
+- [x] 13.4 Register localized durable quota-alert email templates and enqueue window/revision-deduplicated alerts to the affected member plus additional recipients.
+- [x] 13.5 Add enterprise-console rule controls and per-member daily/monthly `used / limit` presentation with focused backend, API, frontend, and authorization tests.
+
+## 14. Independent Company Wallet Billing
+
+- [x] 14.1 Route new shared-balance consumption to `organizations.balance` with `balance_source=company`, preserve legacy `shared` wallet snapshots for refunds, and cover synchronous gateway, balance RPC, UsageService, async media, batch holds, preflight, cache isolation, and owner-balance invariants.
+
+## 15. Organization Dashboard Drill-Down
+
+- [x] 15.1 Add user-row drill-down to the organization dashboard spending ranking with organization-scoped per-model request, token, and actual-charge totals; fall back to the canonical IAM principal when username is empty, and add focused backend and frontend tests.
+
+## 16. Runtime Company Feature Settings
+
+- [x] 16.1 Add configuration-backed runtime company switches and upgrade fee plus a validated documentation URL to the system-settings feature panel, apply the effective values to company application/IAM checks, expose the documentation URL safely, and render a new-window help icon beside the company-console menu with focused backend and frontend tests.

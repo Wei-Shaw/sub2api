@@ -15,28 +15,43 @@ import (
 
 type organizationRepoStub struct {
 	OrganizationRepository
-	contextResult     *OrganizationContext
-	contextErr        error
-	applicationResult *CompanyApplication
-	applicationErr    error
-	createdUser       *User
-	createErr         error
-	findUser          *User
-	findContext       *OrganizationContext
-	findErr           error
-	findLoginName     string
-	findCompanyID     string
-	resolved          *BillingContext
-	resolveErr        error
-	policyErr         error
-	memberStatusErr   error
-	adminOrgSub       *OrganizationSubscription
-	adminOrgSubErr    error
-	adminActorID      int64
-	adminOrganization int64
-	adminGroupID      int64
-	adminValidity     int
-	adminNotes        string
+	contextResult              *OrganizationContext
+	contextErr                 error
+	applicationResult          *CompanyApplication
+	applicationErr             error
+	createdUser                *User
+	createErr                  error
+	findUser                   *User
+	findContext                *OrganizationContext
+	findErr                    error
+	findLoginName              string
+	findCompanyID              string
+	resolved                   *BillingContext
+	resolveErr                 error
+	requiredAmount             float64
+	policyErr                  error
+	memberStatusErr            error
+	adminOrgSub                *OrganizationSubscription
+	adminOrgSubErr             error
+	adminActorID               int64
+	adminOrganization          int64
+	adminGroupID               int64
+	adminValidity              int
+	adminNotes                 string
+	spendMemberIDs             []int64
+	spendDaily                 *string
+	spendMonthly               *string
+	spendAlert                 bool
+	spendThreshold             float64
+	spendRecipients            []string
+	spendCheckCalls            int
+	spendCheckSource           string
+	spendCheckAmount           float64
+	spendCheckErr              error
+	organizationBalance        float64
+	organizationBalanceErr     error
+	organizationBalanceDebits  []float64
+	organizationBalanceCredits []float64
 }
 
 func (s *organizationRepoStub) GetContextForUser(context.Context, int64) (*OrganizationContext, error) {
@@ -57,7 +72,8 @@ func (s *organizationRepoStub) FindIAMByPrincipal(_ context.Context, loginName, 
 	s.findCompanyID = companyID
 	return s.findUser, s.findContext, s.findErr
 }
-func (s *organizationRepoStub) ResolveBillingContext(context.Context, int64) (*BillingContext, error) {
+func (s *organizationRepoStub) ResolveBillingContext(_ context.Context, _ int64, requiredAmount float64) (*BillingContext, error) {
+	s.requiredAmount = requiredAmount
 	return s.resolved, s.resolveErr
 }
 func (s *organizationRepoStub) SetPolicyAttachment(context.Context, int64, int64, string, bool, string) error {
@@ -73,6 +89,61 @@ func (s *organizationRepoStub) AdminCreateOrganizationSubscription(_ context.Con
 	s.adminValidity = validityDays
 	s.adminNotes = notes
 	return s.adminOrgSub, s.adminOrgSubErr
+}
+func (s *organizationRepoStub) ListSpendLimitRules(context.Context, int64) ([]OrganizationSpendLimitRule, error) {
+	return []OrganizationSpendLimitRule{}, nil
+}
+func (s *organizationRepoStub) UpsertSpendLimitRules(_ context.Context, _ int64, memberIDs []int64, daily, monthly *string, alert bool, threshold float64, recipients []string) ([]OrganizationSpendLimitRule, error) {
+	s.spendMemberIDs = append([]int64(nil), memberIDs...)
+	s.spendDaily = daily
+	s.spendMonthly = monthly
+	s.spendAlert = alert
+	s.spendThreshold = threshold
+	s.spendRecipients = append([]string(nil), recipients...)
+	return []OrganizationSpendLimitRule{}, nil
+}
+func (s *organizationRepoStub) DeleteSpendLimitRule(context.Context, int64, *int64) error {
+	return nil
+}
+func (s *organizationRepoStub) ListSpendLimitUsage(context.Context, int64) ([]OrganizationSpendUsage, error) {
+	return []OrganizationSpendUsage{}, nil
+}
+func (s *organizationRepoStub) CheckOrganizationSpendLimit(_ context.Context, _ int64, source string, amount float64) error {
+	s.spendCheckCalls++
+	s.spendCheckSource = source
+	s.spendCheckAmount = amount
+	return s.spendCheckErr
+}
+func (s *organizationRepoStub) RecordSpendLimitAlert(context.Context, int64, string) error {
+	return nil
+}
+func (s *organizationRepoStub) GetOrganizationBalance(context.Context, int64) (float64, error) {
+	return s.organizationBalance, s.organizationBalanceErr
+}
+func (s *organizationRepoStub) DeductOrganizationBalance(_ context.Context, _ int64, amount float64) (float64, error) {
+	if s.organizationBalanceErr != nil {
+		return 0, s.organizationBalanceErr
+	}
+	s.organizationBalanceDebits = append(s.organizationBalanceDebits, amount)
+	s.organizationBalance -= amount
+	return s.organizationBalance, nil
+}
+func (s *organizationRepoStub) CreditOrganizationBalance(_ context.Context, _ int64, amount float64) (float64, error) {
+	if s.organizationBalanceErr != nil {
+		return 0, s.organizationBalanceErr
+	}
+	s.organizationBalanceCredits = append(s.organizationBalanceCredits, amount)
+	s.organizationBalance += amount
+	return s.organizationBalance, nil
+}
+
+func TestBillingContextCompanySourceRequiresOrganizationID(t *testing.T) {
+	billing := &BillingContext{PayerUserID: 99, BalanceSource: BalanceSourceCompany}
+	require.True(t, billing.UsesCompanyBalance())
+
+	resolver := NewBillingContextResolver(&organizationRepoStub{})
+	_, err := resolver.DeductOrganizationBalance(context.Background(), billing, 1)
+	require.ErrorIs(t, err, ErrCompanyNotFound)
 }
 
 type organizationAuthCacheInvalidatorStub struct{ userIDs []int64 }
@@ -102,6 +173,30 @@ func companyTestConfig() *config.Config {
 	cfg.Company.UpgradeFee = 20
 	cfg.Company.UpgradeCurrency = "USD"
 	return cfg
+}
+
+type organizationFeatureReaderStub struct {
+	applications bool
+	iam          bool
+}
+
+func (s organizationFeatureReaderStub) IsCompanyApplicationsEnabled(context.Context) bool {
+	return s.applications
+}
+
+func (s organizationFeatureReaderStub) IsCompanyIAMEnabled(context.Context) bool {
+	return s.iam
+}
+
+func TestOrganizationServiceUsesRuntimeIAMFeatureSetting(t *testing.T) {
+	repo := &organizationRepoStub{}
+	svc := NewOrganizationService(repo, &organizationUserRepoStub{}, &config.Config{})
+	svc.SetCompanyFeatureReader(organizationFeatureReaderStub{iam: true})
+
+	member, _, err := svc.CreateIAMMember(context.Background(), 1, "member", "", "", "initial-password", true)
+
+	require.NoError(t, err)
+	require.NotNil(t, member)
 }
 
 func TestOrganizationServiceCreateIAMMemberHashesOwnerPasswordAndHonorsPasswordChangeChoice(t *testing.T) {
@@ -245,6 +340,68 @@ func TestBillingContextResolverFailsClosedWithoutFallback(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, expected)
 	require.Nil(t, resolved)
+}
+
+func TestBillingContextResolverPassesRequiredAmount(t *testing.T) {
+	repo := &organizationRepoStub{resolved: &BillingContext{ConsumerUserID: 12, PayerUserID: 12, BalanceSource: "allocated"}}
+	resolver := NewBillingContextResolver(repo)
+
+	resolved, err := resolver.ResolveForAmount(context.Background(), 12, 3.25)
+	require.NoError(t, err)
+	require.Equal(t, 3.25, repo.requiredAmount)
+	require.Equal(t, int64(12), resolved.PayerUserID)
+}
+
+func TestOrganizationServiceNormalizesSpendLimitBatch(t *testing.T) {
+	repo := &organizationRepoStub{}
+	svc := NewOrganizationService(repo, &organizationUserRepoStub{}, companyTestConfig())
+	daily := " 10.5 "
+	monthly := "100"
+
+	_, err := svc.UpsertSpendLimitRules(context.Background(), 1, []int64{22, 22, 23}, &daily, &monthly, true, 80, []string{" Ops@Example.com ", "ops@example.com", "finance@example.com"})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{22, 23}, repo.spendMemberIDs)
+	require.Equal(t, "10.5000000000", *repo.spendDaily)
+	require.Equal(t, "100.0000000000", *repo.spendMonthly)
+	require.True(t, repo.spendAlert)
+	require.Equal(t, 80.0, repo.spendThreshold)
+	require.Equal(t, []string{"ops@example.com", "finance@example.com"}, repo.spendRecipients)
+}
+
+func TestOrganizationServiceRejectsInvalidSpendLimitConfiguration(t *testing.T) {
+	svc := NewOrganizationService(&organizationRepoStub{}, &organizationUserRepoStub{}, companyTestConfig())
+
+	_, err := svc.UpsertSpendLimitRules(context.Background(), 1, nil, nil, nil, false, 80, nil)
+	require.ErrorIs(t, err, ErrSpendLimitInvalid)
+	daily := "10"
+	_, err = svc.UpsertSpendLimitRules(context.Background(), 1, nil, &daily, nil, true, 0, nil)
+	require.ErrorIs(t, err, ErrSpendLimitThreshold)
+	_, err = svc.UpsertSpendLimitRules(context.Background(), 1, nil, &daily, nil, true, 80, []string{"not-an-email"})
+	require.Error(t, err)
+}
+
+func TestBillingContextResolverChecksOnlyCompanySponsoredSources(t *testing.T) {
+	repo := &organizationRepoStub{resolved: &BillingContext{ConsumerUserID: 12, PayerUserID: 12, BalanceSource: "allocated"}}
+	resolver := NewBillingContextResolver(repo)
+
+	_, err := resolver.ResolveForAmount(context.Background(), 12, 3.25)
+	require.NoError(t, err)
+	require.Zero(t, repo.spendCheckCalls)
+
+	organizationID := int64(8)
+	repo.resolved = &BillingContext{ConsumerUserID: 12, OrganizationID: &organizationID, PayerUserID: 1, BalanceSource: BalanceSourceCompany}
+	repo.spendCheckErr = ErrSpendLimitExceeded
+	_, err = resolver.ResolveForAmount(context.Background(), 12, 4.5)
+	require.ErrorIs(t, err, ErrSpendLimitExceeded)
+	require.Equal(t, 1, repo.spendCheckCalls)
+	require.Equal(t, BalanceSourceCompany, repo.spendCheckSource)
+	require.Equal(t, 4.5, repo.spendCheckAmount)
+
+	_, err = resolver.ResolveForAmount(context.Background(), 12, 0)
+	require.ErrorIs(t, err, ErrSpendLimitExceeded)
+	require.Equal(t, 2, repo.spendCheckCalls)
+	require.Zero(t, repo.spendCheckAmount)
 }
 
 func TestOrganizationAuthorizationMutationsInvalidateUserCaches(t *testing.T) {

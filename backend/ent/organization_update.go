@@ -91,6 +91,48 @@ func (_u *OrganizationUpdate) AddMemberLimit(v int) *OrganizationUpdate {
 	return _u
 }
 
+// SetBalance sets the "balance" field.
+func (_u *OrganizationUpdate) SetBalance(v float64) *OrganizationUpdate {
+	_u.mutation.ResetBalance()
+	_u.mutation.SetBalance(v)
+	return _u
+}
+
+// SetNillableBalance sets the "balance" field if the given value is not nil.
+func (_u *OrganizationUpdate) SetNillableBalance(v *float64) *OrganizationUpdate {
+	if v != nil {
+		_u.SetBalance(*v)
+	}
+	return _u
+}
+
+// AddBalance adds value to the "balance" field.
+func (_u *OrganizationUpdate) AddBalance(v float64) *OrganizationUpdate {
+	_u.mutation.AddBalance(v)
+	return _u
+}
+
+// SetFrozenBalance sets the "frozen_balance" field.
+func (_u *OrganizationUpdate) SetFrozenBalance(v float64) *OrganizationUpdate {
+	_u.mutation.ResetFrozenBalance()
+	_u.mutation.SetFrozenBalance(v)
+	return _u
+}
+
+// SetNillableFrozenBalance sets the "frozen_balance" field if the given value is not nil.
+func (_u *OrganizationUpdate) SetNillableFrozenBalance(v *float64) *OrganizationUpdate {
+	if v != nil {
+		_u.SetFrozenBalance(*v)
+	}
+	return _u
+}
+
+// AddFrozenBalance adds value to the "frozen_balance" field.
+func (_u *OrganizationUpdate) AddFrozenBalance(v float64) *OrganizationUpdate {
+	_u.mutation.AddFrozenBalance(v)
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *OrganizationUpdate) SetUpdatedAt(v time.Time) *OrganizationUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -185,6 +227,18 @@ func (_u *OrganizationUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.AddedMemberLimit(); ok {
 		_spec.AddField(organization.FieldMemberLimit, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.Balance(); ok {
+		_spec.SetField(organization.FieldBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBalance(); ok {
+		_spec.AddField(organization.FieldBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.FrozenBalance(); ok {
+		_spec.SetField(organization.FieldFrozenBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFrozenBalance(); ok {
+		_spec.AddField(organization.FieldFrozenBalance, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(organization.FieldUpdatedAt, field.TypeTime, value)
 	}
@@ -268,6 +322,48 @@ func (_u *OrganizationUpdateOne) SetNillableMemberLimit(v *int) *OrganizationUpd
 // AddMemberLimit adds value to the "member_limit" field.
 func (_u *OrganizationUpdateOne) AddMemberLimit(v int) *OrganizationUpdateOne {
 	_u.mutation.AddMemberLimit(v)
+	return _u
+}
+
+// SetBalance sets the "balance" field.
+func (_u *OrganizationUpdateOne) SetBalance(v float64) *OrganizationUpdateOne {
+	_u.mutation.ResetBalance()
+	_u.mutation.SetBalance(v)
+	return _u
+}
+
+// SetNillableBalance sets the "balance" field if the given value is not nil.
+func (_u *OrganizationUpdateOne) SetNillableBalance(v *float64) *OrganizationUpdateOne {
+	if v != nil {
+		_u.SetBalance(*v)
+	}
+	return _u
+}
+
+// AddBalance adds value to the "balance" field.
+func (_u *OrganizationUpdateOne) AddBalance(v float64) *OrganizationUpdateOne {
+	_u.mutation.AddBalance(v)
+	return _u
+}
+
+// SetFrozenBalance sets the "frozen_balance" field.
+func (_u *OrganizationUpdateOne) SetFrozenBalance(v float64) *OrganizationUpdateOne {
+	_u.mutation.ResetFrozenBalance()
+	_u.mutation.SetFrozenBalance(v)
+	return _u
+}
+
+// SetNillableFrozenBalance sets the "frozen_balance" field if the given value is not nil.
+func (_u *OrganizationUpdateOne) SetNillableFrozenBalance(v *float64) *OrganizationUpdateOne {
+	if v != nil {
+		_u.SetFrozenBalance(*v)
+	}
+	return _u
+}
+
+// AddFrozenBalance adds value to the "frozen_balance" field.
+func (_u *OrganizationUpdateOne) AddFrozenBalance(v float64) *OrganizationUpdateOne {
+	_u.mutation.AddFrozenBalance(v)
 	return _u
 }
 
@@ -394,6 +490,18 @@ func (_u *OrganizationUpdateOne) sqlSave(ctx context.Context) (_node *Organizati
 	}
 	if value, ok := _u.mutation.AddedMemberLimit(); ok {
 		_spec.AddField(organization.FieldMemberLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.Balance(); ok {
+		_spec.SetField(organization.FieldBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBalance(); ok {
+		_spec.AddField(organization.FieldBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.FrozenBalance(); ok {
+		_spec.SetField(organization.FieldFrozenBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFrozenBalance(); ok {
+		_spec.AddField(organization.FieldFrozenBalance, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(organization.FieldUpdatedAt, field.TypeTime, value)

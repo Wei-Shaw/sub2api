@@ -61,6 +61,7 @@ type BatchImageSettlementService struct {
 	Pricing      BatchImagePricingResolver
 	AuthCache    APIKeyAuthCacheInvalidator
 	BalanceCache UserBalanceCacheInvalidator
+	SpendLimits  *BillingContextResolver
 	Config       *config.Config
 }
 
@@ -157,7 +158,7 @@ func (s *BatchImageSettlementService) Settle(ctx context.Context, batchID string
 		}
 		return nil, err
 	}
-	s.invalidateBillingCaches(ctx, batchImagePayerUserID(job))
+	s.invalidateBillingCaches(ctx, job)
 
 	now := time.Now()
 	outputExpiresAt := now.Add(s.outputRetentionAfterTerminal())
@@ -179,6 +180,12 @@ func (s *BatchImageSettlementService) Settle(ctx context.Context, batchID string
 		return nil, err
 	}
 	s.recordUsageLog(ctx, job, actualCost, result.RequestID, now)
+	if s.SpendLimits != nil {
+		billing := &BillingContext{ConsumerUserID: job.UserID, OrganizationID: job.OrganizationID, PayerUserID: batchImagePayerUserID(job), BalanceSource: batchImageDerefString(job.BalanceSource)}
+		if err := s.SpendLimits.RecordSpendLimitAlert(ctx, billing); err != nil {
+			logger.L().Warn("batch_image.spend_limit_alert_failed", zap.String("batch_id", job.BatchID), zap.Error(err))
+		}
+	}
 
 	return result, nil
 }
@@ -231,7 +238,7 @@ func (s *BatchImageSettlementService) failExhaustedSettlement(ctx context.Contex
 		}
 		return ErrBatchImageSettlementBillingFailed.WithCause(err)
 	}
-	s.invalidateBillingCaches(ctx, batchImagePayerUserID(job))
+	s.invalidateBillingCaches(ctx, job)
 	msg := strings.TrimSpace(message)
 	if msg == "" {
 		msg = "settlement billing retry limit reached"
@@ -287,7 +294,11 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 	writeUsageLogBestEffort(ctx, s.UsageLogRepo, usageLog, "service.batch_image_settlement")
 }
 
-func (s *BatchImageSettlementService) invalidateBillingCaches(ctx context.Context, userID int64) {
+func (s *BatchImageSettlementService) invalidateBillingCaches(ctx context.Context, job *BatchImageJob) {
+	if batchImageUsesCompanyBalance(job) {
+		return
+	}
+	userID := batchImagePayerUserID(job)
 	if s != nil && s.AuthCache != nil && userID > 0 {
 		s.AuthCache.InvalidateAuthCacheByUserID(ctx, userID)
 	}

@@ -209,6 +209,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyWeChatConnectRedirectURL,
 		SettingKeyWeChatConnectFrontendRedirectURL,
 		SettingKeyBackendModeEnabled,
+		SettingKeyCompanyApplicationsEnabled,
+		SettingKeyCompanyIAMEnabled,
+		SettingKeyCompanyDocumentationURL,
 		SettingPaymentEnabled,
 		SettingKeyOIDCConnectEnabled,
 		SettingKeyOIDCConnectProviderName,
@@ -295,6 +298,18 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	}
 	captchaRuntime := captchaRuntimeFromSettings(settings)
 
+	companyApplicationsEnabled := s != nil && s.cfg != nil && s.cfg.Company.ApplicationsEnabled
+	companyIAMEnabled := s != nil && s.cfg != nil && s.cfg.Company.IAMEnabled
+	companyDocumentationURL := ""
+	if s != nil && s.cfg != nil {
+		companyDocumentationURL = strings.TrimSpace(s.cfg.Company.DocumentationURL)
+	}
+	companyApplicationsEnabled = boolSettingOrDefault(settings, SettingKeyCompanyApplicationsEnabled, companyApplicationsEnabled)
+	companyIAMEnabled = boolSettingOrDefault(settings, SettingKeyCompanyIAMEnabled, companyIAMEnabled)
+	if value, ok := settings[SettingKeyCompanyDocumentationURL]; ok {
+		companyDocumentationURL = strings.TrimSpace(value)
+	}
+
 	return &PublicSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
@@ -338,8 +353,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		WeChatOAuthMPEnabled:             weChatMPEnabled,
 		WeChatOAuthMobileEnabled:         weChatMobileEnabled,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
-		CompanyApplicationsEnabled:       s.cfg != nil && s.cfg.Company.ApplicationsEnabled,
-		CompanyIAMEnabled:                s.cfg != nil && s.cfg.Company.IAMEnabled,
+		CompanyApplicationsEnabled:       companyApplicationsEnabled,
+		CompanyIAMEnabled:                companyIAMEnabled,
+		CompanyDocumentationURL:          companyDocumentationURL,
 		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
 		OIDCOAuthEnabled:                 oidcEnabled,
 		OIDCOAuthProviderName:            oidcProviderName,
@@ -522,6 +538,7 @@ type PublicSettingsInjectionPayload struct {
 	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
 	CompanyApplicationsEnabled       bool                     `json:"company_applications_enabled"`
 	CompanyIAMEnabled                bool                     `json:"company_iam_enabled"`
+	CompanyDocumentationURL          string                   `json:"company_documentation_url"`
 	PaymentEnabled                   bool                     `json:"payment_enabled"`
 	Version                          string                   `json:"version"`
 	// 服务器全局时区（IANA 名称与当前 UTC 偏移），高峰时段等服务端本地时间窗口的展示标注用
@@ -607,6 +624,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		CompanyApplicationsEnabled:       settings.CompanyApplicationsEnabled,
 		CompanyIAMEnabled:                settings.CompanyIAMEnabled,
+		CompanyDocumentationURL:          settings.CompanyDocumentationURL,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		Version:                          s.version,
 		ServerTimezone:                   timezone.Name(),

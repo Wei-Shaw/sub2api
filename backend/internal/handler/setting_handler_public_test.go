@@ -82,6 +82,34 @@ func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	require.True(t, resp.Data.ForceEmailOnThirdPartySignup)
 }
 
+func TestSettingHandler_GetPublicSettings_ExposesCompanyDocumentationURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerPublicRepoStub{values: map[string]string{
+		service.SettingKeyCompanyApplicationsEnabled: "true",
+		service.SettingKeyCompanyIAMEnabled:          "true",
+		service.SettingKeyCompanyDocumentationURL:    "https://docs.example.com/company",
+	}}
+	h := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), "test-version")
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+
+	h.GetPublicSettings(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Data struct {
+			ApplicationsEnabled bool   `json:"company_applications_enabled"`
+			IAMEnabled          bool   `json:"company_iam_enabled"`
+			DocumentationURL    string `json:"company_documentation_url"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.True(t, resp.Data.ApplicationsEnabled)
+	require.True(t, resp.Data.IAMEnabled)
+	require.Equal(t, "https://docs.example.com/company", resp.Data.DocumentationURL)
+}
+
 func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{

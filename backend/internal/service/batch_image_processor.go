@@ -239,10 +239,10 @@ func (p *BatchImageProviderProcessor) releaseTerminalHold(ctx context.Context, j
 	if err := releaseBatchImageBalanceHold(ctx, p.BillingRepo, job, batchImageDerefString(job.RequestHash)); err != nil {
 		return err
 	}
-	if p.AuthCache != nil && job.UserID > 0 {
+	if !batchImageUsesCompanyBalance(job) && p.AuthCache != nil && job.UserID > 0 {
 		p.AuthCache.InvalidateAuthCacheByUserID(ctx, batchImagePayerUserID(job))
 	}
-	if p.BalanceCache != nil && batchImagePayerUserID(job) > 0 {
+	if !batchImageUsesCompanyBalance(job) && p.BalanceCache != nil && batchImagePayerUserID(job) > 0 {
 		if err := p.BalanceCache.InvalidateUserBalance(ctx, batchImagePayerUserID(job)); err != nil {
 			logger.L().Warn("batch_image.balance_cache_invalidate_failed", zap.Int64("payer_user_id", batchImagePayerUserID(job)), zap.Error(err))
 		}

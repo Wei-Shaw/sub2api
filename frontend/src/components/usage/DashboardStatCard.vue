@@ -6,7 +6,7 @@
       </div>
       <div class="min-w-0">
         <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ label }}</p>
-        <p class="truncate text-xl font-bold text-gray-900 dark:text-white" :title="String(value)">{{ value }}</p>
+        <p class="truncate text-xl font-bold text-gray-900 dark:text-white" :title="String(value)"><slot name="value">{{ value }}</slot></p>
         <div class="truncate text-xs text-gray-500 dark:text-gray-400" :title="detail"><slot name="detail">{{ detail }}</slot></div>
       </div>
     </div>
@@ -17,7 +17,7 @@
 import { computed } from 'vue'
 import { Icon } from '@/components/icons'
 
-type DashboardIcon = 'key' | 'server' | 'chart' | 'creditCard' | 'cube' | 'database' | 'bolt' | 'clock'
+type DashboardIcon = 'key' | 'server' | 'chart' | 'creditCard' | 'dollar' | 'cube' | 'database' | 'bolt' | 'clock'
 type DashboardColor = 'blue' | 'purple' | 'green' | 'emerald' | 'amber' | 'indigo' | 'violet' | 'rose'
 
 const props = defineProps<{

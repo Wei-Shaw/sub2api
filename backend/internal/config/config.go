@@ -109,6 +109,7 @@ type CompanyConfig struct {
 	IAMEnabled                bool    `mapstructure:"iam_enabled"`
 	PublicIDsFinalized        bool    `mapstructure:"public_ids_finalized"`
 	BillingIntegrationEnabled bool    `mapstructure:"billing_integration_enabled"`
+	DocumentationURL          string  `mapstructure:"documentation_url"`
 	UpgradeFee                float64 `mapstructure:"upgrade_fee"`
 	UpgradeCurrency           string  `mapstructure:"upgrade_currency"`
 	DefaultMemberLimit        int     `mapstructure:"default_member_limit"`
@@ -2511,6 +2512,7 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("company.iam_enabled", false)
 	viper.SetDefault("company.public_ids_finalized", false)
 	viper.SetDefault("company.billing_integration_enabled", false)
+	viper.SetDefault("company.documentation_url", "")
 	viper.SetDefault("company.upgrade_fee", 20.0)
 	viper.SetDefault("company.upgrade_currency", "USD")
 	viper.SetDefault("company.default_member_limit", 20)
@@ -2540,6 +2542,14 @@ func (c *Config) Validate() error {
 	}
 	if (c.Company.ApplicationsEnabled || c.Company.IAMEnabled) && (!c.Company.PublicIDsFinalized || !c.Company.BillingIntegrationEnabled) {
 		return fmt.Errorf("company features require public_ids_finalized and billing_integration_enabled")
+	}
+	c.Company.DocumentationURL = strings.TrimSpace(c.Company.DocumentationURL)
+	if c.Company.DocumentationURL != "" {
+		parsedDocumentationURL, err := url.Parse(c.Company.DocumentationURL)
+		if err != nil || parsedDocumentationURL.Host == "" || (parsedDocumentationURL.Scheme != "http" && parsedDocumentationURL.Scheme != "https") {
+			return fmt.Errorf("company.documentation_url must be an absolute HTTP(S) URL")
+		}
+		c.Company.DocumentationURL = parsedDocumentationURL.String()
 	}
 	forwardedClientIPHeaders, err := NormalizeForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)
 	if err != nil {

@@ -185,7 +185,13 @@ const (
 	SettingKeyStepUpEnabled = "step_up_enabled" // 敏感操作（导出/备份/S3配置/提升管理员等）要求 step-up 2FA，默认关闭
 
 	// 企业升级费用设置
-	SettingKeyCompanyUpgradeChargeEnabled = "company_upgrade_charge_enabled" // 企业升级是否收取升级费/冻结资金，默认开启（true）
+	SettingKeyCompanyUpgradeChargeEnabled      = "company_upgrade_charge_enabled"      // 企业升级是否收取升级费/冻结资金，默认开启（true）
+	SettingKeyCompanyUpgradeFee                = "company_upgrade_fee"                 // 企业升级费（USD），默认读取 company.upgrade_fee
+	SettingKeyCompanyApplicationsEnabled       = "company_applications_enabled"        // 企业升级申请功能开关，默认读取 company.applications_enabled
+	SettingKeyCompanyIAMEnabled                = "company_iam_enabled"                 // 企业 IAM 功能开关，默认读取 company.iam_enabled
+	SettingKeyCompanyPublicIDsFinalized        = "company_public_ids_finalized"        // 企业公共 ID 就绪开关，默认读取 company.public_ids_finalized
+	SettingKeyCompanyBillingIntegrationEnabled = "company_billing_integration_enabled" // 企业计费链路就绪开关，默认读取 company.billing_integration_enabled
+	SettingKeyCompanyDocumentationURL          = "company_documentation_url"           // 企业控制台说明文档 HTTP(S) 地址
 
 	// 操作审计日志设置
 	SettingKeyAuditLogRetentionDays = "audit_log_retention_days" // 审计日志保留天数（<=0 永久保留），默认 180

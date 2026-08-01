@@ -186,7 +186,8 @@ apiClient.interceptors.response.use(
       if (status === 401 && !originalRequest._retry) {
         const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
-          url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')
+          url.includes('/auth/login') || url.includes('/auth/iam/login') || url.includes('/auth/register') || url.includes('/auth/refresh')
+        const isLoginPage = window.location.pathname === '/login' || window.location.pathname === '/iam-login'
 
         // If we have a refresh token and this is not an auth endpoint, try to refresh
         if (refreshToken && !isAuthEndpoint) {
@@ -266,7 +267,7 @@ apiClient.interceptors.response.use(
             localStorage.removeItem('token_expires_at')
             sessionStorage.setItem('auth_expired', '1')
 
-            if (!window.location.pathname.includes('/login')) {
+            if (!isLoginPage) {
               window.location.href = '/login'
             }
 
@@ -297,7 +298,7 @@ apiClient.interceptors.response.use(
           sessionStorage.setItem('auth_expired', '1')
         }
         // Only redirect if not already on login page
-        if (!window.location.pathname.includes('/login')) {
+        if (!isAuthEndpoint && !isLoginPage) {
           window.location.href = '/login'
         }
       }

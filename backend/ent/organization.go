@@ -29,6 +29,10 @@ type Organization struct {
 	Status string `json:"status,omitempty"`
 	// MemberLimit holds the value of the "member_limit" field.
 	MemberLimit int `json:"member_limit,omitempty"`
+	// Balance holds the value of the "balance" field.
+	Balance float64 `json:"balance,omitempty"`
+	// FrozenBalance holds the value of the "frozen_balance" field.
+	FrozenBalance float64 `json:"frozen_balance,omitempty"`
 	// EffectiveAt holds the value of the "effective_at" field.
 	EffectiveAt time.Time `json:"effective_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -43,6 +47,8 @@ func (*Organization) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case organization.FieldBalance, organization.FieldFrozenBalance:
+			values[i] = new(sql.NullFloat64)
 		case organization.FieldID, organization.FieldOwnerUserID, organization.FieldMemberLimit:
 			values[i] = new(sql.NullInt64)
 		case organization.FieldAccountID, organization.FieldName, organization.FieldNormalizedName, organization.FieldStatus:
@@ -105,6 +111,18 @@ func (_m *Organization) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field member_limit", values[i])
 			} else if value.Valid {
 				_m.MemberLimit = int(value.Int64)
+			}
+		case organization.FieldBalance:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field balance", values[i])
+			} else if value.Valid {
+				_m.Balance = value.Float64
+			}
+		case organization.FieldFrozenBalance:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field frozen_balance", values[i])
+			} else if value.Valid {
+				_m.FrozenBalance = value.Float64
 			}
 		case organization.FieldEffectiveAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -177,6 +195,12 @@ func (_m *Organization) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("member_limit=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MemberLimit))
+	builder.WriteString(", ")
+	builder.WriteString("balance=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Balance))
+	builder.WriteString(", ")
+	builder.WriteString("frozen_balance=")
+	builder.WriteString(fmt.Sprintf("%v", _m.FrozenBalance))
 	builder.WriteString(", ")
 	builder.WriteString("effective_at=")
 	builder.WriteString(_m.EffectiveAt.Format(time.ANSIC))

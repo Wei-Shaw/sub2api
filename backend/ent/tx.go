@@ -84,6 +84,8 @@ type Tx struct {
 	OrganizationAuditEvent *OrganizationAuditEventClient
 	// OrganizationFinancialLedger is the client for interacting with the OrganizationFinancialLedger builders.
 	OrganizationFinancialLedger *OrganizationFinancialLedgerClient
+	// OrganizationMemberSpendLimit is the client for interacting with the OrganizationMemberSpendLimit builders.
+	OrganizationMemberSpendLimit *OrganizationMemberSpendLimitClient
 	// OrganizationMembership is the client for interacting with the OrganizationMembership builders.
 	OrganizationMembership *OrganizationMembershipClient
 	// OrganizationNameChangeRequest is the client for interacting with the OrganizationNameChangeRequest builders.
@@ -314,6 +316,7 @@ func (tx *Tx) init() {
 	tx.Organization = NewOrganizationClient(tx.config)
 	tx.OrganizationAuditEvent = NewOrganizationAuditEventClient(tx.config)
 	tx.OrganizationFinancialLedger = NewOrganizationFinancialLedgerClient(tx.config)
+	tx.OrganizationMemberSpendLimit = NewOrganizationMemberSpendLimitClient(tx.config)
 	tx.OrganizationMembership = NewOrganizationMembershipClient(tx.config)
 	tx.OrganizationNameChangeRequest = NewOrganizationNameChangeRequestClient(tx.config)
 	tx.PaymentAuditLog = NewPaymentAuditLogClient(tx.config)

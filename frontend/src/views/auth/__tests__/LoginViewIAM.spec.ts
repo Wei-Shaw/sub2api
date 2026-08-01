@@ -42,10 +42,6 @@ vi.mock('vue-i18n', async importOriginal => {
   }
 })
 
-vi.mock('@/composables/useCaptchaSubmit', () => ({
-  useCaptchaSubmit: () => ({ submit: vi.fn() }),
-}))
-
 function publicSettings(companyIAMEnabled: boolean) {
   return {
     company_iam_enabled: companyIAMEnabled,
@@ -86,6 +82,7 @@ describe('LoginView IAM entry', () => {
     vi.clearAllMocks()
     mocks.appStore.cachedPublicSettings = null
     mocks.getPublicSettings.mockReset()
+    mocks.getPublicSettings.mockResolvedValue(publicSettings(false))
   })
 
   it('hides IAM login while company IAM is disabled', async () => {
@@ -114,17 +111,75 @@ describe('LoginView IAM entry', () => {
         },
       },
     })
+    await flushPromises()
 
     expect(wrapper.find('#iam-account-id').exists()).toBe(false)
-    await wrapper.get('#iam-principal').setValue('reader@1719905235756637.opentk.ai')
+    await wrapper.get('#iam-principal').setValue('reader@c123456789012345.opentk.ai')
     await wrapper.get('#iam-password').setValue('secret-password')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
     expect(mocks.authStore.loginIAM).toHaveBeenCalledWith({
-      principal: 'reader@1719905235756637.opentk.ai',
+      principal: 'reader@c123456789012345.opentk.ai',
       password: 'secret-password',
+      captcha_payload: undefined,
     })
     expect(mocks.routerReplace).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('stays on IAM login and shows authentication failures in a toast', async () => {
+    mocks.authStore.loginIAM.mockRejectedValue(new Error('invalid credentials'))
+    const wrapper = shallowMount(IAMLoginView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' },
+          RouterLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('#iam-principal').setValue('reader@c123456789012345.opentk.ai')
+    await wrapper.get('#iam-password').setValue('wrong-password')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('organization.login.genericError')
+    expect(mocks.appStore.showError).toHaveBeenCalledWith('invalid credentials')
+    expect(mocks.routerReplace).not.toHaveBeenCalled()
+  })
+
+  it('requires and submits the configured captcha for IAM login', async () => {
+    mocks.getPublicSettings.mockResolvedValue({
+      ...publicSettings(true),
+      captcha_enabled: true,
+      turnstile_enabled: true,
+      captcha_site_key: 'site-key',
+      turnstile_site_key: 'site-key',
+    })
+    mocks.authStore.loginIAM.mockResolvedValue({ user: { must_change_password: false } })
+    const wrapper = shallowMount(IAMLoginView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' },
+          RouterLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
+        },
+      },
+    })
+    await flushPromises()
+
+    const captcha = wrapper.findComponent({ name: 'CaptchaWidget' })
+    expect(captcha.exists()).toBe(true)
+    await captcha.vm.$emit('verify', 'captcha-token')
+    await wrapper.get('#iam-principal').setValue('reader@c123456789012345.opentk.ai')
+    await wrapper.get('#iam-password').setValue('secret-password')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.authStore.loginIAM).toHaveBeenCalledWith({
+      principal: 'reader@c123456789012345.opentk.ai',
+      password: 'secret-password',
+      captcha_payload: { token: 'captcha-token' },
+    })
   })
 })

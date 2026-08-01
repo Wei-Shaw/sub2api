@@ -19,6 +19,8 @@ import type {
   OrganizationContext,
   OrganizationNameChangeRequest,
   OrganizationSubscription,
+  OrganizationSpendLimitRule,
+  OrganizationSpendUsage,
   OrganizationUsageParams,
   OrganizationUsageStats,
   OrganizationUsageTrendPoint,
@@ -37,6 +39,7 @@ function randomIdempotencyKey(): string {
 export interface IAMLoginRequest {
   principal: string
   password: string
+  captcha_payload?: Record<string, string>
 }
 
 export interface IAMLoginResponse extends AuthResponse {
@@ -168,6 +171,29 @@ export const organizationAPI = {
   },
   async cancelSubscription(id: number): Promise<void> {
     await apiClient.delete(`/organization/subscriptions/${id}`)
+  },
+  async listSpendLimits(): Promise<OrganizationSpendLimitRule[]> {
+    const { data } = await apiClient.get<{ items: OrganizationSpendLimitRule[] }>('/organization/spend-limits')
+    return data.items
+  },
+  async upsertSpendLimits(payload: {
+    target: 'all' | 'members'
+    member_ids?: number[]
+    daily_limit_usd?: string | number
+    monthly_limit_usd?: string | number
+    alert_enabled: boolean
+    alert_threshold_pct: number
+    additional_recipients: string[]
+  }): Promise<OrganizationSpendLimitRule[]> {
+    const { data } = await apiClient.put<{ items: OrganizationSpendLimitRule[] }>('/organization/spend-limits', payload)
+    return data.items
+  },
+  async deleteSpendLimit(memberID?: number): Promise<void> {
+    await apiClient.delete('/organization/spend-limits', { params: { member_id: memberID } })
+  },
+  async getSpendLimitUsage(): Promise<OrganizationSpendUsage[]> {
+    const { data } = await apiClient.get<{ items: OrganizationSpendUsage[] }>('/organization/spend-limits/usage')
+    return data.items
   },
   async getUsage(params: OrganizationUsageParams = {}): Promise<PaginatedOrganizationUsage> {
     const { data } = await apiClient.get('/organization/usage', { params })

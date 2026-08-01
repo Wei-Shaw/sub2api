@@ -105,6 +105,26 @@ func TestSettingService_GetPublicSettings_ExposesCompanyApplicationsFeature(t *t
 	require.NoError(t, err)
 	require.True(t, enabled.CompanyApplicationsEnabled)
 	require.True(t, enabled.CompanyIAMEnabled)
+
+	repo.values[SettingKeyCompanyApplicationsEnabled] = "false"
+	repo.values[SettingKeyCompanyIAMEnabled] = "false"
+	repo.values[SettingKeyCompanyDocumentationURL] = "https://docs.example.com/company"
+	overridden, err := NewSettingService(repo, cfg).GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, overridden.CompanyApplicationsEnabled)
+	require.False(t, overridden.CompanyIAMEnabled)
+	require.Equal(t, "https://docs.example.com/company", overridden.CompanyDocumentationURL)
+}
+
+func TestNormalizeCompanyDocumentationURL(t *testing.T) {
+	normalized, err := NormalizeCompanyDocumentationURL(" https://docs.example.com/company ")
+	require.NoError(t, err)
+	require.Equal(t, "https://docs.example.com/company", normalized)
+
+	for _, invalid := range []string{"javascript:alert(1)", "/company", "ftp://example.com/company"} {
+		_, err = NormalizeCompanyDocumentationURL(invalid)
+		require.Error(t, err, invalid)
+	}
 }
 
 func TestSettingService_GetPublicSettings_ExposesAllowUserViewErrorRequests(t *testing.T) {

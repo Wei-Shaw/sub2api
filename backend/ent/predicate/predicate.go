@@ -111,6 +111,9 @@ type OrganizationAuditEvent func(*sql.Selector)
 // OrganizationFinancialLedger is the predicate function for organizationfinancialledger builders.
 type OrganizationFinancialLedger func(*sql.Selector)
 
+// OrganizationMemberSpendLimit is the predicate function for organizationmemberspendlimit builders.
+type OrganizationMemberSpendLimit func(*sql.Selector)
+
 // OrganizationMembership is the predicate function for organizationmembership builders.
 type OrganizationMembership func(*sql.Selector)
 

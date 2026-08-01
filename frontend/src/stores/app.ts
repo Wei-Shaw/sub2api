@@ -366,6 +366,7 @@ export const useAppStore = defineStore('app', () => {
         backend_mode_enabled: false,
         company_applications_enabled: false,
         company_iam_enabled: false,
+        company_documentation_url: '',
         version: siteVersion.value,
         balance_low_notify_enabled: false,
         account_quota_notify_enabled: false,

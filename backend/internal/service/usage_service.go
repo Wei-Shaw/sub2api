@@ -81,9 +81,9 @@ func (s *UsageService) SetBillingContextResolver(resolver *BillingContextResolve
 
 // Create 创建使用日志
 func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*UsageLog, error) {
-	billingContext := &BillingContext{ConsumerUserID: req.UserID, PayerUserID: req.UserID, BalanceSource: "self"}
+	billingContext := &BillingContext{ConsumerUserID: req.UserID, PayerUserID: req.UserID, BalanceSource: BalanceSourceSelf}
 	if s.billingResolver != nil {
-		resolved, err := s.billingResolver.Resolve(ctx, req.UserID)
+		resolved, err := s.billingResolver.ResolveForAmount(ctx, req.UserID, req.ActualCost)
 		if err != nil {
 			return nil, fmt.Errorf("resolve billing context: %w", err)
 		}
@@ -144,7 +144,11 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	// 扣除用户余额
 	balanceUpdated := false
 	if inserted && req.ActualCost > 0 {
-		if err := s.userRepo.UpdateBalance(txCtx, billingContext.PayerUserID, -req.ActualCost); err != nil {
+		if billingContext.UsesCompanyBalance() {
+			if _, err := s.billingResolver.DeductOrganizationBalance(txCtx, billingContext, req.ActualCost); err != nil {
+				return nil, fmt.Errorf("update organization balance: %w", err)
+			}
+		} else if err := s.userRepo.UpdateBalance(txCtx, billingContext.PayerUserID, -req.ActualCost); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
 		}
 		balanceUpdated = true
@@ -156,7 +160,12 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 		}
 	}
 
-	s.invalidateUsageCaches(ctx, billingContext.PayerUserID, balanceUpdated)
+	if !billingContext.UsesCompanyBalance() {
+		s.invalidateUsageCaches(ctx, billingContext.PayerUserID, balanceUpdated)
+	}
+	if inserted && req.ActualCost > 0 && s.billingResolver != nil {
+		_ = s.billingResolver.RecordSpendLimitAlert(ctx, billingContext)
+	}
 
 	return usageLog, nil
 }

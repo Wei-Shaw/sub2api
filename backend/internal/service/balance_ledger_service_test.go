@@ -21,7 +21,7 @@ type failingBillingContextRepository struct {
 	err error
 }
 
-func (r *failingBillingContextRepository) ResolveBillingContext(context.Context, int64) (*BillingContext, error) {
+func (r *failingBillingContextRepository) ResolveBillingContext(context.Context, int64, float64) (*BillingContext, error) {
 	return nil, r.err
 }
 

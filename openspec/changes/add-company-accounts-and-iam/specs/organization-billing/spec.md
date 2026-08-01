@@ -26,41 +26,48 @@ An active organization owner SHALL be able to reclaim only an IAM user's availab
 - **THEN** the operation SHALL fail without changing root or member balances
 
 ### Requirement: Central effective-payer resolution
-Every billable operation SHALL resolve an immutable billing context containing consuming user, organization, effective payer, balance source, and authorization version before reserving or deducting funds. A root or personal user SHALL pay from their own balance. An IAM user with an effective `CompanySharedBalanceUse` attachment SHALL use the organization root as payer; an IAM user without it SHALL use their own allocated balance. The system SHALL NOT fall back between those sources when the selected payer lacks funds.
+Every billable operation SHALL resolve an immutable billing context containing consuming user, organization, effective wallet attribution, balance source, and authorization version before reserving or deducting funds. A root or personal user SHALL pay from their own balance. An IAM user's allocated balance SHALL be selected when it can cover the full charge. When the allocated balance cannot cover the charge, an effective `CompanySharedBalanceUse` attachment SHALL select the organization's independent balance; it SHALL NOT debit the organization owner's personal balance. Without that attachment, the member SHALL remain the selected payer and the charge SHALL fail for insufficient balance. One charge SHALL NOT be split across both balances.
 
-#### Scenario: IAM user consumes shared balance
-- **WHEN** an active IAM user has `CompanySharedBalanceUse` at authorization time
-- **THEN** the billing context SHALL select the root user as effective payer
-- **AND** the member's allocated balance SHALL remain unchanged
+#### Scenario: Allocated balance takes priority over shared permission
+- **WHEN** an active IAM user has `CompanySharedBalanceUse` and allocated balance sufficient for charge A
+- **THEN** the billing context SHALL select the IAM user as effective payer
+- **AND** charge A SHALL be deducted from the member's allocated balance
+- **AND** the root balance SHALL remain unchanged
 
 #### Scenario: IAM user consumes allocated balance
 - **WHEN** an active IAM user lacks `CompanySharedBalanceUse`
 - **THEN** the billing context SHALL select that IAM user as effective payer
 
-#### Scenario: Selected root payer has insufficient balance
-- **WHEN** a shared-balance member's root account cannot cover the charge
-- **THEN** billing SHALL fail for insufficient balance
-- **AND** SHALL NOT fall back to the member's allocated balance
+#### Scenario: Shared balance covers an insufficient allocation
+- **WHEN** an active IAM user's allocated balance cannot cover charge A and `CompanySharedBalanceUse` is effective
+- **THEN** the billing context SHALL select the organization balance as the effective wallet for the full charge
+- **AND** the member's remaining allocated balance SHALL remain unchanged
+- **AND** the organization owner's personal balance SHALL remain unchanged
+
+#### Scenario: Allocation is insufficient without shared permission
+- **WHEN** an active IAM user's allocated balance cannot cover charge A and `CompanySharedBalanceUse` is not effective
+- **THEN** billing SHALL fail for insufficient balance without changing either balance
 
 #### Scenario: Shared policy is revoked
 - **WHEN** `CompanySharedBalanceUse` is revoked before a new request resolves billing context
 - **THEN** the new request SHALL select the member's allocated balance
+- **AND** SHALL fail if that balance cannot cover the charge
 
 ### Requirement: Payer snapshot across all billing paths
-Gateway billing, balance RPC deduction and refund, synchronous and asynchronous image billing, cache updates, low-balance notifications, reconciliation, and compensating refunds SHALL use the central billing context. Holds and deductions SHALL persist `consumer_user_id`, `organization_id`, `payer_user_id`, and balance source so later capture, release, refund, and reconciliation always target the original payer even if permissions change.
+Gateway billing, balance RPC deduction and refund, synchronous and asynchronous image billing, cache updates, low-balance notifications, reconciliation, and compensating refunds SHALL use the central billing context. Holds and deductions SHALL persist `consumer_user_id`, `organization_id`, `payer_user_id`, and balance source so later capture, release, refund, and reconciliation always target the original wallet even if permissions change. New organization-wallet operations SHALL use `balance_source=company`; historical `balance_source=shared` snapshots SHALL retain their original owner-wallet settlement semantics during rollout.
 
 #### Scenario: Permission changes after asynchronous hold
-- **WHEN** a media task reserves root funds and the member's shared-balance policy is then revoked
-- **THEN** task capture or release SHALL still operate on the snapshotted root payer
+- **WHEN** a media task reserves organization funds and the member's shared-balance policy is then revoked
+- **THEN** task capture or release SHALL still operate on the snapshotted organization wallet
 
 #### Scenario: Refund after permission changes
 - **WHEN** a charged request is refunded after its member's policy or lifecycle state changes
 - **THEN** the refund SHALL credit the payer recorded by the original charge
 
 #### Scenario: Low-balance notification
-- **WHEN** consumption uses the root as payer and crosses a configured threshold
-- **THEN** notification evaluation SHALL use the root payer's balance and notification settings
-- **AND** SHALL not treat the member's allocated balance as the charged balance
+- **WHEN** consumption uses the organization wallet and crosses a configured threshold
+- **THEN** personal owner low-balance notification and personal balance-cache mutation SHALL NOT run
+- **AND** organization member spend-limit alert evaluation SHALL use the company-sponsored usage
 
 ### Requirement: Financial visibility boundaries
 The organization owner and IAM users with `CompanyFinanceReadOnly` SHALL view the root available, frozen, and total balance. Other IAM users SHALL view only their own allocated available and frozen balances plus a non-numeric indication of whether their current consumption source is shared or allocated. Shared-balance permission alone SHALL never expose the root balance amount.

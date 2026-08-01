@@ -6924,27 +6924,111 @@
           </div>
         </div>
 
-        <!-- Company upgrade (企业升级) feature card -->
+        <!-- Company account feature card -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.settings.features.companyUpgrade.title') }}
+              {{ t('admin.settings.features.company.title') }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ t('admin.settings.features.companyUpgrade.description') }}
+              {{ t('admin.settings.features.company.description') }}
             </p>
           </div>
           <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.company.publicIdsFinalized') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.company.publicIdsFinalizedHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.company_public_ids_finalized" />
+            </div>
+
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.company.billingIntegrationEnabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.company.billingIntegrationEnabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.company_billing_integration_enabled" />
+            </div>
+
+            <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.features.company.applicationsEnabled') }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.features.company.applicationsEnabledHint') }}
+                  </p>
+                </div>
+                <Toggle v-model="form.company_applications_enabled" />
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.company.iamEnabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.company.iamEnabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.company_iam_enabled" />
+            </div>
+
             <div class="flex items-center justify-between">
               <div>
                 <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.features.companyUpgrade.chargeEnabled') }}
+                  {{ t('admin.settings.features.company.chargeEnabled') }}
                 </label>
                 <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.features.companyUpgrade.chargeEnabledHint') }}
+                  {{ t('admin.settings.features.company.chargeEnabledHint') }}
                 </p>
               </div>
               <Toggle v-model="form.company_upgrade_charge_enabled" />
+            </div>
+
+            <div v-if="form.company_upgrade_charge_enabled">
+              <label class="input-label">
+                {{ t('admin.settings.features.company.upgradeFee') }}
+              </label>
+              <div class="relative">
+                <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-gray-500">$</span>
+                <input
+                  v-model.number="form.company_upgrade_fee"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  class="input pl-7"
+                />
+              </div>
+              <p class="mt-1 text-xs text-gray-400">
+                {{ t('admin.settings.features.company.upgradeFeeHint') }}
+              </p>
+            </div>
+
+            <div>
+              <label class="input-label">
+                {{ t('admin.settings.features.company.documentationURL') }}
+              </label>
+              <input
+                v-model.trim="form.company_documentation_url"
+                type="url"
+                class="input"
+                placeholder="https://docs.example.com/company"
+              />
+              <p class="mt-1 text-xs text-gray-400">
+                {{ t('admin.settings.features.company.documentationURLHint') }}
+              </p>
             </div>
           </div>
         </div>
@@ -10182,6 +10266,12 @@ const form = reactive<SettingsForm>({
   session_binding_enabled: false,
   step_up_enabled: false,
   company_upgrade_charge_enabled: false,
+  company_upgrade_fee: 20,
+  company_applications_enabled: false,
+  company_iam_enabled: false,
+  company_public_ids_finalized: false,
+  company_billing_integration_enabled: false,
+  company_documentation_url: "",
   audit_log_retention_days: 180,
   // 可信代理动态拉取（switch-trusted-proxies-dynamic）：admin 面板管理，热更新。
   trusted_proxies_dynamic_enabled: false,
@@ -11923,6 +12013,15 @@ async function saveSettings() {
     // Optional URL fields: auto-clear invalid values so they don't cause backend 400 errors
     if (!isValidHttpUrl(form.frontend_url)) form.frontend_url = "";
     if (!isValidHttpUrl(form.doc_url)) form.doc_url = "";
+    if (!isValidHttpUrl(form.company_documentation_url)) {
+      appStore.showError(t("admin.settings.features.company.documentationURLInvalid"));
+      return;
+    }
+    const normalizedCompanyUpgradeFee = Number(form.company_upgrade_fee);
+    if (!Number.isFinite(normalizedCompanyUpgradeFee) || normalizedCompanyUpgradeFee <= 0) {
+      appStore.showError(t("admin.settings.features.company.upgradeFeeInvalid"));
+      return;
+    }
     syncWeChatConnectMode();
     const wechatStoredMode = deriveWeChatConnectStoredMode(
       form.wechat_connect_open_enabled,
@@ -11951,6 +12050,12 @@ async function saveSettings() {
       session_binding_enabled: form.session_binding_enabled,
       step_up_enabled: form.step_up_enabled,
       company_upgrade_charge_enabled: form.company_upgrade_charge_enabled,
+      company_upgrade_fee: normalizedCompanyUpgradeFee,
+      company_applications_enabled: form.company_applications_enabled,
+      company_iam_enabled: form.company_iam_enabled,
+      company_public_ids_finalized: form.company_public_ids_finalized,
+      company_billing_integration_enabled: form.company_billing_integration_enabled,
+      company_documentation_url: form.company_documentation_url.trim(),
       // 清空数字框时 v-model.number 会得到空串，后端 int 字段解析空串会 400 拒绝整次保存；
       // 空/非法值回退默认 180（与后端 parseAuditLogRetentionDays("") 语义一致，0 仍表示永久保留）。
       audit_log_retention_days: Number.isFinite(form.audit_log_retention_days)

@@ -1588,6 +1588,8 @@ var (
 		{Name: "normalized_name", Type: field.TypeString, Size: 255},
 		{Name: "status", Type: field.TypeString, Size: 16, Default: "active"},
 		{Name: "member_limit", Type: field.TypeInt, Default: 20},
+		{Name: "balance", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "frozen_balance", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "effective_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
@@ -1661,6 +1663,52 @@ var (
 				Name:    "organizationfinancialledger_organization_id_created_at",
 				Unique:  false,
 				Columns: []*schema.Column{OrganizationFinancialLedgerColumns[3], OrganizationFinancialLedgerColumns[12]},
+			},
+		},
+	}
+	// OrganizationMemberSpendLimitsColumns holds the columns for the "organization_member_spend_limits" table.
+	OrganizationMemberSpendLimitsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "organization_id", Type: field.TypeInt64},
+		{Name: "member_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "daily_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,10)"}},
+		{Name: "monthly_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,10)"}},
+		{Name: "alert_enabled", Type: field.TypeBool, Default: false},
+		{Name: "alert_threshold_pct", Type: field.TypeFloat64, Default: 80, SchemaType: map[string]string{"postgres": "numeric(5,2)"}},
+		{Name: "additional_recipients", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "text[]"}},
+		{Name: "revision", Type: field.TypeInt64, Default: 1},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OrganizationMemberSpendLimitsTable holds the schema information for the "organization_member_spend_limits" table.
+	OrganizationMemberSpendLimitsTable = &schema.Table{
+		Name:       "organization_member_spend_limits",
+		Columns:    OrganizationMemberSpendLimitsColumns,
+		PrimaryKey: []*schema.Column{OrganizationMemberSpendLimitsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "organizationmemberspendlimit_organization_id",
+				Unique:  true,
+				Columns: []*schema.Column{OrganizationMemberSpendLimitsColumns[1]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "member_user_id IS NULL",
+				},
+			},
+			{
+				Name:    "organizationmemberspendlimit_organization_id_member_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{OrganizationMemberSpendLimitsColumns[1], OrganizationMemberSpendLimitsColumns[2]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "member_user_id IS NOT NULL",
+				},
+			},
+			{
+				Name:    "organizationmemberspendlimit_member_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OrganizationMemberSpendLimitsColumns[2]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "member_user_id IS NOT NULL",
+				},
 			},
 		},
 	}
@@ -3109,6 +3157,7 @@ var (
 		OrganizationsTable,
 		OrganizationAuditEventsTable,
 		OrganizationFinancialLedgerTable,
+		OrganizationMemberSpendLimitsTable,
 		OrganizationMembershipsTable,
 		OrganizationNameChangeRequestsTable,
 		PaymentAuditLogsTable,
@@ -3265,6 +3314,9 @@ func init() {
 	}
 	OrganizationFinancialLedgerTable.Annotation = &entsql.Annotation{
 		Table: "organization_financial_ledger",
+	}
+	OrganizationMemberSpendLimitsTable.Annotation = &entsql.Annotation{
+		Table: "organization_member_spend_limits",
 	}
 	OrganizationMembershipsTable.Annotation = &entsql.Annotation{
 		Table: "organization_memberships",

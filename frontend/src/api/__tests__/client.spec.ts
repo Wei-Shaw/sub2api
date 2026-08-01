@@ -344,6 +344,38 @@ describe('API Client', () => {
         writable: true,
       })
     })
+
+    it('IAM 登录失败时保留 IAM 登录页', async () => {
+      const originalLocation = window.location
+      Object.defineProperty(window, 'location', {
+        value: { ...originalLocation, pathname: '/iam-login', href: '/iam-login' },
+        writable: true,
+      })
+
+      const adapter = vi.fn().mockRejectedValue({
+        response: {
+          status: 401,
+          data: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
+        },
+        config: {
+          url: '/auth/iam/login',
+          headers: {},
+        },
+        code: 'ERR_BAD_REQUEST',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await expect(apiClient.post('/auth/iam/login', {})).rejects.toEqual(
+        expect.objectContaining({ status: 401, code: 'INVALID_CREDENTIALS' })
+      )
+      expect(window.location.pathname).toBe('/iam-login')
+      expect(window.location.href).toBe('/iam-login')
+
+      Object.defineProperty(window, 'location', {
+        value: originalLocation,
+        writable: true,
+      })
+    })
   })
 
   // --- 网络错误 ---

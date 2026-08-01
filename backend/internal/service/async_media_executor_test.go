@@ -81,6 +81,47 @@ func TestAsyncMediaFailedRefundUsesSnapshottedPayer(t *testing.T) {
 	require.Equal(t, []int64{payerID}, cache.userIDs)
 }
 
+func TestAsyncMediaCompanyBalanceChargeAndRefundSkipsOwnerWallet(t *testing.T) {
+	fs := newFalTestServer(t)
+	fs.statusCode = http.StatusBadRequest
+	defer fs.Close()
+
+	groupID := int64(1)
+	pricing := newImageBillingResolver(t, groupID, domain.FalSlugTextToImage, 0.05)
+	userRepo := &fakeUserRepo{balance: 100}
+	taskRepo := newFakeTaskRepo()
+	organizationID := int64(8)
+	ownerID := int64(99)
+	organizationRepo := &organizationRepoStub{
+		resolved: &BillingContext{
+			ConsumerUserID: 22, OrganizationID: &organizationID, PayerUserID: ownerID,
+			BalanceSource: BalanceSourceCompany, AuthzGeneration: 7,
+		},
+		organizationBalance: 100,
+	}
+	svc := NewAsyncMediaService(taskRepo, userRepo, nil, newTestBillingService(), pricing, nil)
+	svc.SetBillingContextResolver(NewBillingContextResolver(organizationRepo))
+	svc.SetPollInterval(time.Millisecond)
+
+	task, err := svc.SubmitAsync(context.Background(), newSubmitInput(newFalAccount(fs.URL), groupID, 2))
+	require.NoError(t, err)
+	require.InDelta(t, 99.90, organizationRepo.organizationBalance, 1e-9)
+	require.Empty(t, userRepo.deductUserIDs)
+	require.Equal(t, &organizationID, task.OrganizationID)
+	require.Equal(t, &ownerID, task.PayerUserID)
+	require.NotNil(t, task.BalanceSource)
+	require.Equal(t, BalanceSourceCompany, *task.BalanceSource)
+
+	final, err := svc.WaitForTerminal(context.Background(), task, newSubmitInput(newFalAccount(fs.URL), groupID, 2))
+	require.NoError(t, err)
+	require.Equal(t, AsyncMediaStatusRefunded, final.Status)
+	require.InDelta(t, 100, organizationRepo.organizationBalance, 1e-9)
+	require.Empty(t, userRepo.refundUserIDs)
+	require.Equal(t, []float64{0.10}, organizationRepo.organizationBalanceDebits)
+	require.Equal(t, []float64{0.10}, organizationRepo.organizationBalanceCredits)
+	require.Equal(t, BalanceSourceCompany, *taskRepo.lastUsageLog().BalanceSource)
+}
+
 func (r *fakeUserRepo) totalRefunded() float64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()

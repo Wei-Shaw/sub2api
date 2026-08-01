@@ -7,9 +7,9 @@ import (
 )
 
 type User struct {
-	ID                      int64
-	Email                   string
-	AccountID               string
+	ID        int64
+	Email     string
+	AccountID string
 	// CompanyID 组织公司标识（'c' 前缀 + 15 位数字），用于构造 IAM 登录后缀。
 	// 仅在需要展示 IAM 登录名的场景（登录、/me、成员列表）填充，不持久化在 users 表。
 	CompanyID               string

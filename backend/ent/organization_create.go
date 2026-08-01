@@ -74,6 +74,34 @@ func (_c *OrganizationCreate) SetNillableMemberLimit(v *int) *OrganizationCreate
 	return _c
 }
 
+// SetBalance sets the "balance" field.
+func (_c *OrganizationCreate) SetBalance(v float64) *OrganizationCreate {
+	_c.mutation.SetBalance(v)
+	return _c
+}
+
+// SetNillableBalance sets the "balance" field if the given value is not nil.
+func (_c *OrganizationCreate) SetNillableBalance(v *float64) *OrganizationCreate {
+	if v != nil {
+		_c.SetBalance(*v)
+	}
+	return _c
+}
+
+// SetFrozenBalance sets the "frozen_balance" field.
+func (_c *OrganizationCreate) SetFrozenBalance(v float64) *OrganizationCreate {
+	_c.mutation.SetFrozenBalance(v)
+	return _c
+}
+
+// SetNillableFrozenBalance sets the "frozen_balance" field if the given value is not nil.
+func (_c *OrganizationCreate) SetNillableFrozenBalance(v *float64) *OrganizationCreate {
+	if v != nil {
+		_c.SetFrozenBalance(*v)
+	}
+	return _c
+}
+
 // SetEffectiveAt sets the "effective_at" field.
 func (_c *OrganizationCreate) SetEffectiveAt(v time.Time) *OrganizationCreate {
 	_c.mutation.SetEffectiveAt(v)
@@ -151,6 +179,14 @@ func (_c *OrganizationCreate) defaults() {
 		v := organization.DefaultMemberLimit
 		_c.mutation.SetMemberLimit(v)
 	}
+	if _, ok := _c.mutation.Balance(); !ok {
+		v := organization.DefaultBalance
+		_c.mutation.SetBalance(v)
+	}
+	if _, ok := _c.mutation.FrozenBalance(); !ok {
+		v := organization.DefaultFrozenBalance
+		_c.mutation.SetFrozenBalance(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := organization.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -200,6 +236,12 @@ func (_c *OrganizationCreate) check() error {
 	}
 	if _, ok := _c.mutation.MemberLimit(); !ok {
 		return &ValidationError{Name: "member_limit", err: errors.New(`ent: missing required field "Organization.member_limit"`)}
+	}
+	if _, ok := _c.mutation.Balance(); !ok {
+		return &ValidationError{Name: "balance", err: errors.New(`ent: missing required field "Organization.balance"`)}
+	}
+	if _, ok := _c.mutation.FrozenBalance(); !ok {
+		return &ValidationError{Name: "frozen_balance", err: errors.New(`ent: missing required field "Organization.frozen_balance"`)}
 	}
 	if _, ok := _c.mutation.EffectiveAt(); !ok {
 		return &ValidationError{Name: "effective_at", err: errors.New(`ent: missing required field "Organization.effective_at"`)}
@@ -260,6 +302,14 @@ func (_c *OrganizationCreate) createSpec() (*Organization, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.MemberLimit(); ok {
 		_spec.SetField(organization.FieldMemberLimit, field.TypeInt, value)
 		_node.MemberLimit = value
+	}
+	if value, ok := _c.mutation.Balance(); ok {
+		_spec.SetField(organization.FieldBalance, field.TypeFloat64, value)
+		_node.Balance = value
+	}
+	if value, ok := _c.mutation.FrozenBalance(); ok {
+		_spec.SetField(organization.FieldFrozenBalance, field.TypeFloat64, value)
+		_node.FrozenBalance = value
 	}
 	if value, ok := _c.mutation.EffectiveAt(); ok {
 		_spec.SetField(organization.FieldEffectiveAt, field.TypeTime, value)
@@ -376,6 +426,42 @@ func (u *OrganizationUpsert) UpdateMemberLimit() *OrganizationUpsert {
 // AddMemberLimit adds v to the "member_limit" field.
 func (u *OrganizationUpsert) AddMemberLimit(v int) *OrganizationUpsert {
 	u.Add(organization.FieldMemberLimit, v)
+	return u
+}
+
+// SetBalance sets the "balance" field.
+func (u *OrganizationUpsert) SetBalance(v float64) *OrganizationUpsert {
+	u.Set(organization.FieldBalance, v)
+	return u
+}
+
+// UpdateBalance sets the "balance" field to the value that was provided on create.
+func (u *OrganizationUpsert) UpdateBalance() *OrganizationUpsert {
+	u.SetExcluded(organization.FieldBalance)
+	return u
+}
+
+// AddBalance adds v to the "balance" field.
+func (u *OrganizationUpsert) AddBalance(v float64) *OrganizationUpsert {
+	u.Add(organization.FieldBalance, v)
+	return u
+}
+
+// SetFrozenBalance sets the "frozen_balance" field.
+func (u *OrganizationUpsert) SetFrozenBalance(v float64) *OrganizationUpsert {
+	u.Set(organization.FieldFrozenBalance, v)
+	return u
+}
+
+// UpdateFrozenBalance sets the "frozen_balance" field to the value that was provided on create.
+func (u *OrganizationUpsert) UpdateFrozenBalance() *OrganizationUpsert {
+	u.SetExcluded(organization.FieldFrozenBalance)
+	return u
+}
+
+// AddFrozenBalance adds v to the "frozen_balance" field.
+func (u *OrganizationUpsert) AddFrozenBalance(v float64) *OrganizationUpsert {
+	u.Add(organization.FieldFrozenBalance, v)
 	return u
 }
 
@@ -505,6 +591,48 @@ func (u *OrganizationUpsertOne) AddMemberLimit(v int) *OrganizationUpsertOne {
 func (u *OrganizationUpsertOne) UpdateMemberLimit() *OrganizationUpsertOne {
 	return u.Update(func(s *OrganizationUpsert) {
 		s.UpdateMemberLimit()
+	})
+}
+
+// SetBalance sets the "balance" field.
+func (u *OrganizationUpsertOne) SetBalance(v float64) *OrganizationUpsertOne {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.SetBalance(v)
+	})
+}
+
+// AddBalance adds v to the "balance" field.
+func (u *OrganizationUpsertOne) AddBalance(v float64) *OrganizationUpsertOne {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.AddBalance(v)
+	})
+}
+
+// UpdateBalance sets the "balance" field to the value that was provided on create.
+func (u *OrganizationUpsertOne) UpdateBalance() *OrganizationUpsertOne {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.UpdateBalance()
+	})
+}
+
+// SetFrozenBalance sets the "frozen_balance" field.
+func (u *OrganizationUpsertOne) SetFrozenBalance(v float64) *OrganizationUpsertOne {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.SetFrozenBalance(v)
+	})
+}
+
+// AddFrozenBalance adds v to the "frozen_balance" field.
+func (u *OrganizationUpsertOne) AddFrozenBalance(v float64) *OrganizationUpsertOne {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.AddFrozenBalance(v)
+	})
+}
+
+// UpdateFrozenBalance sets the "frozen_balance" field to the value that was provided on create.
+func (u *OrganizationUpsertOne) UpdateFrozenBalance() *OrganizationUpsertOne {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.UpdateFrozenBalance()
 	})
 }
 
@@ -802,6 +930,48 @@ func (u *OrganizationUpsertBulk) AddMemberLimit(v int) *OrganizationUpsertBulk {
 func (u *OrganizationUpsertBulk) UpdateMemberLimit() *OrganizationUpsertBulk {
 	return u.Update(func(s *OrganizationUpsert) {
 		s.UpdateMemberLimit()
+	})
+}
+
+// SetBalance sets the "balance" field.
+func (u *OrganizationUpsertBulk) SetBalance(v float64) *OrganizationUpsertBulk {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.SetBalance(v)
+	})
+}
+
+// AddBalance adds v to the "balance" field.
+func (u *OrganizationUpsertBulk) AddBalance(v float64) *OrganizationUpsertBulk {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.AddBalance(v)
+	})
+}
+
+// UpdateBalance sets the "balance" field to the value that was provided on create.
+func (u *OrganizationUpsertBulk) UpdateBalance() *OrganizationUpsertBulk {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.UpdateBalance()
+	})
+}
+
+// SetFrozenBalance sets the "frozen_balance" field.
+func (u *OrganizationUpsertBulk) SetFrozenBalance(v float64) *OrganizationUpsertBulk {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.SetFrozenBalance(v)
+	})
+}
+
+// AddFrozenBalance adds v to the "frozen_balance" field.
+func (u *OrganizationUpsertBulk) AddFrozenBalance(v float64) *OrganizationUpsertBulk {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.AddFrozenBalance(v)
+	})
+}
+
+// UpdateFrozenBalance sets the "frozen_balance" field to the value that was provided on create.
+func (u *OrganizationUpsertBulk) UpdateFrozenBalance() *OrganizationUpsertBulk {
+	return u.Update(func(s *OrganizationUpsert) {
+		s.UpdateFrozenBalance()
 	})
 }
 

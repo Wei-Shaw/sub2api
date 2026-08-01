@@ -41,6 +41,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/organizationauditevent"
 	"github.com/Wei-Shaw/sub2api/ent/organizationfinancialledger"
 	"github.com/Wei-Shaw/sub2api/ent/organizationmembership"
+	"github.com/Wei-Shaw/sub2api/ent/organizationmemberspendlimit"
 	"github.com/Wei-Shaw/sub2api/ent/organizationnamechangerequest"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
@@ -2049,12 +2050,20 @@ func init() {
 	organizationDescMemberLimit := organizationFields[5].Descriptor()
 	// organization.DefaultMemberLimit holds the default value on creation for the member_limit field.
 	organization.DefaultMemberLimit = organizationDescMemberLimit.Default.(int)
+	// organizationDescBalance is the schema descriptor for balance field.
+	organizationDescBalance := organizationFields[6].Descriptor()
+	// organization.DefaultBalance holds the default value on creation for the balance field.
+	organization.DefaultBalance = organizationDescBalance.Default.(float64)
+	// organizationDescFrozenBalance is the schema descriptor for frozen_balance field.
+	organizationDescFrozenBalance := organizationFields[7].Descriptor()
+	// organization.DefaultFrozenBalance holds the default value on creation for the frozen_balance field.
+	organization.DefaultFrozenBalance = organizationDescFrozenBalance.Default.(float64)
 	// organizationDescCreatedAt is the schema descriptor for created_at field.
-	organizationDescCreatedAt := organizationFields[7].Descriptor()
+	organizationDescCreatedAt := organizationFields[9].Descriptor()
 	// organization.DefaultCreatedAt holds the default value on creation for the created_at field.
 	organization.DefaultCreatedAt = organizationDescCreatedAt.Default.(func() time.Time)
 	// organizationDescUpdatedAt is the schema descriptor for updated_at field.
-	organizationDescUpdatedAt := organizationFields[8].Descriptor()
+	organizationDescUpdatedAt := organizationFields[10].Descriptor()
 	// organization.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	organization.DefaultUpdatedAt = organizationDescUpdatedAt.Default.(func() time.Time)
 	// organization.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -2097,6 +2106,34 @@ func init() {
 	organizationfinancialledgerDescCreatedAt := organizationfinancialledgerFields[11].Descriptor()
 	// organizationfinancialledger.DefaultCreatedAt holds the default value on creation for the created_at field.
 	organizationfinancialledger.DefaultCreatedAt = organizationfinancialledgerDescCreatedAt.Default.(func() time.Time)
+	organizationmemberspendlimitFields := schema.OrganizationMemberSpendLimit{}.Fields()
+	_ = organizationmemberspendlimitFields
+	// organizationmemberspendlimitDescAlertEnabled is the schema descriptor for alert_enabled field.
+	organizationmemberspendlimitDescAlertEnabled := organizationmemberspendlimitFields[4].Descriptor()
+	// organizationmemberspendlimit.DefaultAlertEnabled holds the default value on creation for the alert_enabled field.
+	organizationmemberspendlimit.DefaultAlertEnabled = organizationmemberspendlimitDescAlertEnabled.Default.(bool)
+	// organizationmemberspendlimitDescAlertThresholdPct is the schema descriptor for alert_threshold_pct field.
+	organizationmemberspendlimitDescAlertThresholdPct := organizationmemberspendlimitFields[5].Descriptor()
+	// organizationmemberspendlimit.DefaultAlertThresholdPct holds the default value on creation for the alert_threshold_pct field.
+	organizationmemberspendlimit.DefaultAlertThresholdPct = organizationmemberspendlimitDescAlertThresholdPct.Default.(float64)
+	// organizationmemberspendlimitDescAdditionalRecipients is the schema descriptor for additional_recipients field.
+	organizationmemberspendlimitDescAdditionalRecipients := organizationmemberspendlimitFields[6].Descriptor()
+	// organizationmemberspendlimit.DefaultAdditionalRecipients holds the default value on creation for the additional_recipients field.
+	organizationmemberspendlimit.DefaultAdditionalRecipients = organizationmemberspendlimitDescAdditionalRecipients.Default.([]string)
+	// organizationmemberspendlimitDescRevision is the schema descriptor for revision field.
+	organizationmemberspendlimitDescRevision := organizationmemberspendlimitFields[7].Descriptor()
+	// organizationmemberspendlimit.DefaultRevision holds the default value on creation for the revision field.
+	organizationmemberspendlimit.DefaultRevision = organizationmemberspendlimitDescRevision.Default.(int64)
+	// organizationmemberspendlimitDescCreatedAt is the schema descriptor for created_at field.
+	organizationmemberspendlimitDescCreatedAt := organizationmemberspendlimitFields[8].Descriptor()
+	// organizationmemberspendlimit.DefaultCreatedAt holds the default value on creation for the created_at field.
+	organizationmemberspendlimit.DefaultCreatedAt = organizationmemberspendlimitDescCreatedAt.Default.(func() time.Time)
+	// organizationmemberspendlimitDescUpdatedAt is the schema descriptor for updated_at field.
+	organizationmemberspendlimitDescUpdatedAt := organizationmemberspendlimitFields[9].Descriptor()
+	// organizationmemberspendlimit.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	organizationmemberspendlimit.DefaultUpdatedAt = organizationmemberspendlimitDescUpdatedAt.Default.(func() time.Time)
+	// organizationmemberspendlimit.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	organizationmemberspendlimit.UpdateDefaultUpdatedAt = organizationmemberspendlimitDescUpdatedAt.UpdateDefault.(func() time.Time)
 	organizationmembershipFields := schema.OrganizationMembership{}.Fields()
 	_ = organizationmembershipFields
 	// organizationmembershipDescRole is the schema descriptor for role field.

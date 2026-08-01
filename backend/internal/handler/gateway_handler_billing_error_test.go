@@ -55,6 +55,26 @@ func TestBillingErrorDetails_UnknownErrorFallsBackTo403(t *testing.T) {
 	require.NotEmpty(t, msg)
 }
 
+func TestBillingErrorDetails_MapsOrganizationSpendLimitToTooManyRequests(t *testing.T) {
+	for _, err := range []error{
+		service.ErrSpendLimitExceeded,
+		service.ErrDailySpendLimitExceeded,
+		service.ErrMonthlySpendLimitExceeded,
+		service.ErrDailyAndMonthlySpendLimitExceeded,
+	} {
+		status, code, msg, retryAfter := billingErrorDetails(err)
+		require.Equal(t, http.StatusTooManyRequests, status)
+		require.Equal(t, "rate_limit_exceeded", code)
+		require.NotEmpty(t, msg)
+		require.Zero(t, retryAfter)
+	}
+}
+
+func TestOpenAIWSBillingErrorMessagePreservesSpendLimitPeriod(t *testing.T) {
+	require.Contains(t, openAIWSBillingErrorMessage(service.ErrDailySpendLimitExceeded), "daily")
+	require.Contains(t, openAIWSBillingErrorMessage(service.ErrMonthlySpendLimitExceeded), "monthly")
+}
+
 func TestExtractQuotaResetSeconds_T19_HappyPath(t *testing.T) {
 	err := service.ErrUserPlatformDailyQuotaExhausted.WithMetadata(map[string]string{
 		"window_resets_at": time.Now().Add(10 * time.Second).UTC().Format(time.RFC3339),

@@ -92,6 +92,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		CompanyApplicationsEnabled:       settings.CompanyApplicationsEnabled,
 		CompanyIAMEnabled:                settings.CompanyIAMEnabled,
+		CompanyDocumentationURL:          settings.CompanyDocumentationURL,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		Version:                          h.version,
 		ServerTimezone:                   timezone.Name(),

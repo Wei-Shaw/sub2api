@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,7 +33,13 @@ type UpdateSettingsRequest struct {
 	SessionBindingEnabled            *bool    `json:"session_binding_enabled"`        // 会话 IP/UA 绑定（省略=保持现值，upstream）
 	StepUpEnabled                    *bool    `json:"step_up_enabled"`                // 敏感操作 step-up 2FA（省略=保持现值，upstream）
 	CompanyUpgradeChargeEnabled      *bool    `json:"company_upgrade_charge_enabled"` // 企业升级是否收费/冻结资金（省略=保持现值，默认开启）
-	AuditLogRetentionDays            int      `json:"audit_log_retention_days"`       // 审计日志保留天数
+	CompanyUpgradeFee                *float64 `json:"company_upgrade_fee"`
+	CompanyApplicationsEnabled       *bool    `json:"company_applications_enabled"`
+	CompanyIAMEnabled                *bool    `json:"company_iam_enabled"`
+	CompanyPublicIDsFinalized        *bool    `json:"company_public_ids_finalized"`
+	CompanyBillingIntegrationEnabled *bool    `json:"company_billing_integration_enabled"`
+	CompanyDocumentationURL          *string  `json:"company_documentation_url"`
+	AuditLogRetentionDays            int      `json:"audit_log_retention_days"` // 审计日志保留天数
 
 	// 可信代理动态拉取（switch-trusted-proxies-dynamic）—— 与 Session 同款非指针风格
 	// （nil 表示"未传"由 handler 层用 previousSettings 兜底；见下方赋值段）。
@@ -460,6 +467,43 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	companyUpgradeChargeEnabled := previousSettings.CompanyUpgradeChargeEnabled
 	if req.CompanyUpgradeChargeEnabled != nil {
 		companyUpgradeChargeEnabled = *req.CompanyUpgradeChargeEnabled
+	}
+	companyUpgradeFee := previousSettings.CompanyUpgradeFee
+	if req.CompanyUpgradeFee != nil {
+		companyUpgradeFee = *req.CompanyUpgradeFee
+	}
+	if companyUpgradeFee <= 0 || math.IsNaN(companyUpgradeFee) || math.IsInf(companyUpgradeFee, 0) {
+		response.BadRequest(c, "company_upgrade_fee must be a positive finite amount")
+		return
+	}
+	companyApplicationsEnabled := previousSettings.CompanyApplicationsEnabled
+	if req.CompanyApplicationsEnabled != nil {
+		companyApplicationsEnabled = *req.CompanyApplicationsEnabled
+	}
+	companyIAMEnabled := previousSettings.CompanyIAMEnabled
+	if req.CompanyIAMEnabled != nil {
+		companyIAMEnabled = *req.CompanyIAMEnabled
+	}
+	companyPublicIDsFinalized := previousSettings.CompanyPublicIDsFinalized
+	if req.CompanyPublicIDsFinalized != nil {
+		companyPublicIDsFinalized = *req.CompanyPublicIDsFinalized
+	}
+	companyBillingIntegrationEnabled := previousSettings.CompanyBillingIntegrationEnabled
+	if req.CompanyBillingIntegrationEnabled != nil {
+		companyBillingIntegrationEnabled = *req.CompanyBillingIntegrationEnabled
+	}
+	companyDocumentationURL := previousSettings.CompanyDocumentationURL
+	if req.CompanyDocumentationURL != nil {
+		companyDocumentationURL = *req.CompanyDocumentationURL
+	}
+	normalizedCompanyDocumentationURL, err := service.NormalizeCompanyDocumentationURL(companyDocumentationURL)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if (companyApplicationsEnabled || companyIAMEnabled) && (!companyPublicIDsFinalized || !companyBillingIntegrationEnabled) {
+		response.BadRequest(c, "company applications and IAM require public IDs and billing integration to be ready")
+		return
 	}
 	forwardedClientIPHeaders := append([]string(nil), previousSettings.ForwardedClientIPHeaders...)
 	if req.ForwardedClientIPHeaders != nil {
@@ -1372,6 +1416,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SessionBindingEnabled:            sessionBindingEnabled,
 		StepUpEnabled:                    stepUpEnabled,
 		CompanyUpgradeChargeEnabled:      companyUpgradeChargeEnabled,
+		CompanyUpgradeFee:                companyUpgradeFee,
+		CompanyApplicationsEnabled:       companyApplicationsEnabled,
+		CompanyIAMEnabled:                companyIAMEnabled,
+		CompanyPublicIDsFinalized:        companyPublicIDsFinalized,
+		CompanyBillingIntegrationEnabled: companyBillingIntegrationEnabled,
+		CompanyDocumentationURL:          normalizedCompanyDocumentationURL,
 		AuditLogRetentionDays:            req.AuditLogRetentionDays,
 		TrustedProxiesDynamicEnabled:     trustedProxiesDynamicEnabled,
 		TrustedProxiesDynamicSources:     trustedProxiesDynamicSources,
@@ -2115,6 +2165,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SessionBindingEnabled:                                  updatedSettings.SessionBindingEnabled,
 		StepUpEnabled:                                          updatedSettings.StepUpEnabled,
 		CompanyUpgradeChargeEnabled:                            updatedSettings.CompanyUpgradeChargeEnabled,
+		CompanyUpgradeFee:                                      updatedSettings.CompanyUpgradeFee,
+		CompanyApplicationsEnabled:                             updatedSettings.CompanyApplicationsEnabled,
+		CompanyIAMEnabled:                                      updatedSettings.CompanyIAMEnabled,
+		CompanyPublicIDsFinalized:                              updatedSettings.CompanyPublicIDsFinalized,
+		CompanyBillingIntegrationEnabled:                       updatedSettings.CompanyBillingIntegrationEnabled,
+		CompanyDocumentationURL:                                updatedSettings.CompanyDocumentationURL,
 		AuditLogRetentionDays:                                  updatedSettings.AuditLogRetentionDays,
 		TrustedProxiesDynamicEnabled:                           updatedSettings.TrustedProxiesDynamicEnabled,
 		TrustedProxiesDynamicSources:                           updatedSettings.TrustedProxiesDynamicSources,

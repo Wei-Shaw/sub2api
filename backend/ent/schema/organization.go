@@ -25,6 +25,8 @@ func (Organization) Fields() []ent.Field {
 		field.String("normalized_name").MaxLen(255),
 		field.String("status").MaxLen(16).Default("active"),
 		field.Int("member_limit").Default(20),
+		field.Float("balance").SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).Default(0),
+		field.Float("frozen_balance").SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).Default(0),
 		field.Time("effective_at").Immutable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("created_at").Immutable().Default(time.Now).SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now).SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),

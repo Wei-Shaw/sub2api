@@ -84,6 +84,16 @@ func MemberLimit(v int) predicate.Organization {
 	return predicate.Organization(sql.FieldEQ(FieldMemberLimit, v))
 }
 
+// Balance applies equality check predicate on the "balance" field. It's identical to BalanceEQ.
+func Balance(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldEQ(FieldBalance, v))
+}
+
+// FrozenBalance applies equality check predicate on the "frozen_balance" field. It's identical to FrozenBalanceEQ.
+func FrozenBalance(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldEQ(FieldFrozenBalance, v))
+}
+
 // EffectiveAt applies equality check predicate on the "effective_at" field. It's identical to EffectiveAtEQ.
 func EffectiveAt(v time.Time) predicate.Organization {
 	return predicate.Organization(sql.FieldEQ(FieldEffectiveAt, v))
@@ -437,6 +447,86 @@ func MemberLimitLT(v int) predicate.Organization {
 // MemberLimitLTE applies the LTE predicate on the "member_limit" field.
 func MemberLimitLTE(v int) predicate.Organization {
 	return predicate.Organization(sql.FieldLTE(FieldMemberLimit, v))
+}
+
+// BalanceEQ applies the EQ predicate on the "balance" field.
+func BalanceEQ(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldEQ(FieldBalance, v))
+}
+
+// BalanceNEQ applies the NEQ predicate on the "balance" field.
+func BalanceNEQ(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldNEQ(FieldBalance, v))
+}
+
+// BalanceIn applies the In predicate on the "balance" field.
+func BalanceIn(vs ...float64) predicate.Organization {
+	return predicate.Organization(sql.FieldIn(FieldBalance, vs...))
+}
+
+// BalanceNotIn applies the NotIn predicate on the "balance" field.
+func BalanceNotIn(vs ...float64) predicate.Organization {
+	return predicate.Organization(sql.FieldNotIn(FieldBalance, vs...))
+}
+
+// BalanceGT applies the GT predicate on the "balance" field.
+func BalanceGT(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldGT(FieldBalance, v))
+}
+
+// BalanceGTE applies the GTE predicate on the "balance" field.
+func BalanceGTE(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldGTE(FieldBalance, v))
+}
+
+// BalanceLT applies the LT predicate on the "balance" field.
+func BalanceLT(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldLT(FieldBalance, v))
+}
+
+// BalanceLTE applies the LTE predicate on the "balance" field.
+func BalanceLTE(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldLTE(FieldBalance, v))
+}
+
+// FrozenBalanceEQ applies the EQ predicate on the "frozen_balance" field.
+func FrozenBalanceEQ(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldEQ(FieldFrozenBalance, v))
+}
+
+// FrozenBalanceNEQ applies the NEQ predicate on the "frozen_balance" field.
+func FrozenBalanceNEQ(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldNEQ(FieldFrozenBalance, v))
+}
+
+// FrozenBalanceIn applies the In predicate on the "frozen_balance" field.
+func FrozenBalanceIn(vs ...float64) predicate.Organization {
+	return predicate.Organization(sql.FieldIn(FieldFrozenBalance, vs...))
+}
+
+// FrozenBalanceNotIn applies the NotIn predicate on the "frozen_balance" field.
+func FrozenBalanceNotIn(vs ...float64) predicate.Organization {
+	return predicate.Organization(sql.FieldNotIn(FieldFrozenBalance, vs...))
+}
+
+// FrozenBalanceGT applies the GT predicate on the "frozen_balance" field.
+func FrozenBalanceGT(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldGT(FieldFrozenBalance, v))
+}
+
+// FrozenBalanceGTE applies the GTE predicate on the "frozen_balance" field.
+func FrozenBalanceGTE(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldGTE(FieldFrozenBalance, v))
+}
+
+// FrozenBalanceLT applies the LT predicate on the "frozen_balance" field.
+func FrozenBalanceLT(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldLT(FieldFrozenBalance, v))
+}
+
+// FrozenBalanceLTE applies the LTE predicate on the "frozen_balance" field.
+func FrozenBalanceLTE(v float64) predicate.Organization {
+	return predicate.Organization(sql.FieldLTE(FieldFrozenBalance, v))
 }
 
 // EffectiveAtEQ applies the EQ predicate on the "effective_at" field.

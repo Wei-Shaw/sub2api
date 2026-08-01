@@ -142,6 +142,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySessionBindingEnabled] = strconv.FormatBool(settings.SessionBindingEnabled)
 	updates[SettingKeyStepUpEnabled] = strconv.FormatBool(settings.StepUpEnabled)
 	updates[SettingKeyCompanyUpgradeChargeEnabled] = strconv.FormatBool(settings.CompanyUpgradeChargeEnabled)
+	updates[SettingKeyCompanyUpgradeFee] = strconv.FormatFloat(settings.CompanyUpgradeFee, 'f', -1, 64)
+	updates[SettingKeyCompanyApplicationsEnabled] = strconv.FormatBool(settings.CompanyApplicationsEnabled)
+	updates[SettingKeyCompanyIAMEnabled] = strconv.FormatBool(settings.CompanyIAMEnabled)
+	updates[SettingKeyCompanyPublicIDsFinalized] = strconv.FormatBool(settings.CompanyPublicIDsFinalized)
+	updates[SettingKeyCompanyBillingIntegrationEnabled] = strconv.FormatBool(settings.CompanyBillingIntegrationEnabled)
+	updates[SettingKeyCompanyDocumentationURL] = strings.TrimSpace(settings.CompanyDocumentationURL)
 	updates[SettingKeyAuditLogRetentionDays] = strconv.Itoa(settings.AuditLogRetentionDays)
 
 	// 可信代理动态拉取（switch-trusted-proxies-dynamic）

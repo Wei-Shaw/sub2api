@@ -7,6 +7,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // 余额 RPC 入参校验错误。
@@ -58,18 +59,20 @@ func (s *BalanceLedgerService) Deduct(ctx context.Context, cmd *LedgerDeductComm
 	if existing != nil {
 		return existing, nil
 	}
+	billing := &BillingContext{ConsumerUserID: cmd.UserID, PayerUserID: cmd.UserID, BalanceSource: BalanceSourceSelf}
 	if s.resolver != nil {
-		billing, err := s.resolver.Resolve(ctx, cmd.UserID)
+		resolved, err := s.resolver.ResolveForAmount(ctx, cmd.UserID, cmd.Amount)
 		if err != nil {
 			return nil, err
 		}
+		billing = resolved
 		cmd.OrganizationID = billing.OrganizationID
 		cmd.PayerUserID = billing.PayerUserID
 		cmd.BalanceSource = billing.BalanceSource
 		cmd.AuthzGeneration = billing.AuthzGeneration
 	} else {
 		cmd.PayerUserID = cmd.UserID
-		cmd.BalanceSource = "self"
+		cmd.BalanceSource = BalanceSourceSelf
 	}
 
 	res, err := s.repo.Deduct(ctx, cmd)
@@ -77,7 +80,14 @@ func (s *BalanceLedgerService) Deduct(ctx context.Context, cmd *LedgerDeductComm
 		return nil, err
 	}
 	// 提交后同步失效缓存：下次 GetBalance / 网关 preflight 立刻读到新余额。
-	s.invalidateBalance(ctx, res.PayerUserID)
+	if res.BalanceSource != BalanceSourceCompany {
+		s.invalidateBalance(ctx, res.PayerUserID)
+	}
+	if s.resolver != nil {
+		if err := s.resolver.RecordSpendLimitAlert(ctx, billing); err != nil {
+			logger.L().Warn("balance_ledger.spend_limit_alert_failed", zap.Error(err))
+		}
+	}
 	return res, nil
 }
 
@@ -101,7 +111,9 @@ func (s *BalanceLedgerService) Refund(ctx context.Context, cmd *LedgerRefundComm
 	if err != nil {
 		return nil, err
 	}
-	s.invalidateBalance(ctx, res.PayerUserID)
+	if res.BalanceSource != BalanceSourceCompany {
+		s.invalidateBalance(ctx, res.PayerUserID)
+	}
 	return res, nil
 }
 
@@ -110,7 +122,7 @@ func (s *BalanceLedgerService) GetBalance(ctx context.Context, userID int64) (*B
 	if s == nil || s.cache == nil {
 		return nil, fmt.Errorf("balance ledger: nil cache")
 	}
-	billing := &BillingContext{ConsumerUserID: userID, PayerUserID: userID, BalanceSource: "self"}
+	billing := &BillingContext{ConsumerUserID: userID, PayerUserID: userID, BalanceSource: BalanceSourceSelf}
 	if s.resolver != nil {
 		resolved, err := s.resolver.Resolve(ctx, userID)
 		if err != nil {
@@ -118,7 +130,13 @@ func (s *BalanceLedgerService) GetBalance(ctx context.Context, userID int64) (*B
 		}
 		billing = resolved
 	}
-	balance, err := s.cache.GetUserBalance(ctx, billing.PayerUserID)
+	var balance float64
+	var err error
+	if billing.UsesCompanyBalance() {
+		balance, err = s.resolver.GetOrganizationBalance(ctx, billing)
+	} else {
+		balance, err = s.cache.GetUserBalance(ctx, billing.PayerUserID)
+	}
 	if err != nil {
 		return nil, err
 	}

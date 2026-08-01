@@ -80,6 +80,100 @@ func TestUsageBillingRepositoryApply_DeduplicatesBalanceBilling(t *testing.T) {
 	require.Equal(t, 1, dedupCount)
 }
 
+func TestUsageBillingRepositoryApply_CompanyBalanceLeavesOwnerBalanceUnchanged(t *testing.T) {
+	isolateOrganizationIntegrationTest(t)
+	ctx := context.Background()
+	client := testEntClient(t)
+	billingRepo := NewUsageBillingRepository(client, integrationDB)
+	organizationRepo := NewOrganizationRepository(integrationDB)
+
+	owner := createOrganizationRoot(t, client, 100, service.RoleUser)
+	organizationID := createActiveOrganization(t, owner, 20)
+	require.NoError(t, organizationRepo.DepositToCompany(ctx, owner.ID, "50.00000000", uuid.NewString(), false))
+	memberID := createIAMMemberForOrganizationTest(t, owner.ID, "usage-company-"+uuid.NewString())
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID: memberID,
+		Key:    "sk-usage-company-" + uuid.NewString(),
+		Name:   "company billing",
+	})
+
+	cmd := &service.UsageBillingCommand{
+		RequestID:      uuid.NewString(),
+		APIKeyID:       apiKey.ID,
+		UserID:         memberID,
+		OrganizationID: &organizationID,
+		PayerUserID:    owner.ID,
+		BalanceSource:  service.BalanceSourceCompany,
+		BalanceCost:    10,
+	}
+	result, err := billingRepo.Apply(ctx, cmd)
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+	require.NotNil(t, result.NewBalance)
+	require.InDelta(t, 40, *result.NewBalance, 1e-9)
+	assertUserBalances(t, owner.ID, "50.00000000", "0.00000000")
+	assertUserBalances(t, memberID, "0.00000000", "0.00000000")
+	assertOrganizationBalances(t, organizationID, "40.00000000", "0.00000000")
+
+	insufficient := *cmd
+	insufficient.RequestID = uuid.NewString()
+	insufficient.BalanceCost = 41
+	_, err = billingRepo.Apply(ctx, &insufficient)
+	require.ErrorIs(t, err, service.ErrBalanceInsufficient)
+	assertUserBalances(t, owner.ID, "50.00000000", "0.00000000")
+	assertUserBalances(t, memberID, "0.00000000", "0.00000000")
+	assertOrganizationBalances(t, organizationID, "40.00000000", "0.00000000")
+}
+
+func TestUsageServiceCreate_CompanyBalanceUsesExistingTransaction(t *testing.T) {
+	isolateOrganizationIntegrationTest(t)
+	ctx := context.Background()
+	client := testEntClient(t)
+	organizationRepo := NewOrganizationRepository(integrationDB)
+	owner := createOrganizationRoot(t, client, 100, service.RoleUser)
+	organizationID := createActiveOrganization(t, owner, 20)
+	require.NoError(t, organizationRepo.DepositToCompany(ctx, owner.ID, "25.00000000", uuid.NewString(), false))
+	memberID := createIAMMemberForOrganizationTest(t, owner.ID, "usage-service-company-"+uuid.NewString())
+	require.NoError(t, organizationRepo.SetPolicyAttachment(ctx, owner.ID, memberID, service.PolicyCompanySharedBalance, true, uuid.NewString()))
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID: memberID,
+		Key:    "sk-usage-service-company-" + uuid.NewString(),
+		Name:   "usage service company billing",
+	})
+	account := mustCreateAccount(t, client, &service.Account{
+		Name: "usage-service-company-" + uuid.NewString(),
+		Type: service.AccountTypeAPIKey,
+	})
+
+	usageService := service.NewUsageService(
+		NewUsageLogRepository(client, integrationDB),
+		NewUserRepository(client, integrationDB),
+		client,
+		nil,
+	)
+	usageService.SetBillingContextResolver(service.NewBillingContextResolver(organizationRepo))
+	requestID := "usage-service-company-" + uuid.NewString()
+	usageLog, err := usageService.Create(ctx, service.CreateUsageLogRequest{
+		UserID: memberID, APIKeyID: apiKey.ID, AccountID: account.ID,
+		RequestID: requestID, Model: "test-model", ActualCost: 5, TotalCost: 5,
+		RateMultiplier: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, &organizationID, usageLog.OrganizationID)
+	require.Equal(t, service.BalanceSourceCompany, *usageLog.BalanceSource)
+	require.Equal(t, owner.ID, *usageLog.PayerUserID)
+	assertUserBalances(t, owner.ID, "75.00000000", "0.00000000")
+	assertUserBalances(t, memberID, "0.00000000", "0.00000000")
+	assertOrganizationBalances(t, organizationID, "20.00000000", "0.00000000")
+
+	var persistedSource string
+	require.NoError(t, integrationDB.QueryRowContext(ctx,
+		`SELECT balance_source FROM usage_logs WHERE request_id=$1 AND api_key_id=$2`,
+		requestID, apiKey.ID,
+	).Scan(&persistedSource))
+	require.Equal(t, service.BalanceSourceCompany, persistedSource)
+}
+
 func TestUsageBillingRepository_BatchImageReleaseUsesOriginalPayerAfterLifecycleChanges(t *testing.T) {
 	isolateOrganizationIntegrationTest(t)
 	ctx := context.Background()
@@ -122,11 +216,13 @@ func TestUsageBillingRepository_BatchImageReleaseUsesOriginalPayerAfterLifecycle
 		t.Run(tt.name, func(t *testing.T) {
 			owner := createOrganizationRoot(t, client, 100, service.RoleUser)
 			organizationID := createActiveOrganization(t, owner, 20)
+			require.NoError(t, organizationRepo.DepositToCompany(ctx, owner.ID, "25.00000000", uuid.NewString(), false))
 			memberID := createIAMMemberForOrganizationTest(t, owner.ID, "snapshot-"+uuid.NewString())
 			require.NoError(t, organizationRepo.SetPolicyAttachment(ctx, owner.ID, memberID, service.PolicyCompanySharedBalance, true, uuid.NewString()))
-			resolved, err := organizationRepo.ResolveBillingContext(ctx, memberID)
+			resolved, err := organizationRepo.ResolveBillingContext(ctx, memberID, 10)
 			require.NoError(t, err)
 			require.Equal(t, owner.ID, resolved.PayerUserID)
+			require.Equal(t, service.BalanceSourceCompany, resolved.BalanceSource)
 
 			apiKey := mustCreateApiKey(t, client, &service.APIKey{
 				UserID: memberID, Key: "sk-snapshot-" + uuid.NewString(), Name: "snapshot",
@@ -141,8 +237,9 @@ func TestUsageBillingRepository_BatchImageReleaseUsesOriginalPayerAfterLifecycle
 			reserved, err := billingRepo.ReserveBatchImageBalance(ctx, hold)
 			require.NoError(t, err)
 			require.True(t, reserved.Applied)
-			assertUserBalances(t, owner.ID, "90.00000000", "10.00000000")
+			assertUserBalances(t, owner.ID, "75.00000000", "0.00000000")
 			assertUserBalances(t, memberID, "0.00000000", "0.00000000")
+			assertOrganizationBalances(t, organizationID, "15.00000000", "10.00000000")
 
 			require.NoError(t, tt.mutate(owner.ID, memberID, organizationID))
 			release := *hold
@@ -150,9 +247,9 @@ func TestUsageBillingRepository_BatchImageReleaseUsesOriginalPayerAfterLifecycle
 			released, err := billingRepo.ReleaseBatchImageBalance(ctx, &release)
 			require.NoError(t, err)
 			require.True(t, released.Applied)
-			assertUserBalances(t, owner.ID, "100.00000000", "0.00000000")
+			assertUserBalances(t, owner.ID, "75.00000000", "0.00000000")
 			assertUserBalances(t, memberID, "0.00000000", "0.00000000")
-			assertCombinedAvailableBalance(t, owner.ID, memberID, "100.00000000")
+			assertOrganizationBalances(t, organizationID, "25.00000000", "0.00000000")
 		})
 	}
 }

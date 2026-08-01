@@ -23,7 +23,13 @@ type SystemSettings struct {
 	SessionBindingEnabled            bool // 会话 IP/UA 绑定（变更即失效）
 	StepUpEnabled                    bool // 敏感操作 step-up 2FA 门控
 	CompanyUpgradeChargeEnabled      bool // 企业升级是否收费/冻结资金（默认开启）
-	AuditLogRetentionDays            int  // 审计日志保留天数（<=0 永久保留）
+	CompanyUpgradeFee                float64
+	CompanyApplicationsEnabled       bool // 企业升级申请开关（配置文件默认，系统设置覆盖）
+	CompanyIAMEnabled                bool // 企业 IAM 开关（配置文件默认，系统设置覆盖）
+	CompanyPublicIDsFinalized        bool // 公共 ID 就绪开关（配置文件默认，系统设置覆盖）
+	CompanyBillingIntegrationEnabled bool // 企业计费链路就绪开关（配置文件默认，系统设置覆盖）
+	CompanyDocumentationURL          string
+	AuditLogRetentionDays            int // 审计日志保留天数（<=0 永久保留）
 
 	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
 	TrustedProxiesDynamicEnabled    bool                        // 总开关
@@ -405,6 +411,7 @@ type PublicSettings struct {
 	BackendModeEnabled         bool
 	CompanyApplicationsEnabled bool
 	CompanyIAMEnabled          bool
+	CompanyDocumentationURL    string
 	PaymentEnabled             bool
 	OIDCOAuthEnabled           bool
 	OIDCOAuthProviderName      string

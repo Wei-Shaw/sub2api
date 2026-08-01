@@ -156,11 +156,12 @@ Resolution rules:
 
 ```text
 personal/root -> payer = consumer, source = self
-IAM + shared action -> payer = root, source = shared
-IAM without shared action -> payer = consumer, source = allocated
+IAM + allocated balance covering the full charge -> payer = consumer, source = allocated
+IAM + insufficient allocated balance + shared action -> wallet = organization, source = company
+IAM + insufficient allocated balance without shared action -> payer = consumer, source = allocated (deduction fails)
 ```
 
-Once a hold or deduction starts, the context is persisted and later stages must not resolve it again. Insufficient funds fail against the selected payer with no fallback. Refund and release always use the original snapshot. Low-balance notifications and balance-cache updates follow the payer. Usage preserves both consumer and payer.
+Amount-aware paths resolve against the full deduction or hold amount; they do not split one charge across the member and organization balances. Preflight and balance-query paths without an exact amount select an allocated balance while it is positive, otherwise they select the organization wallet when shared permission is effective. New organization-wallet snapshots use `balance_source=company`; the organization ID identifies the debited wallet while `payer_user_id` remains attribution metadata. Historical `balance_source=shared` snapshots continue settling against their original owner wallet so in-flight refunds are not redirected across wallets during rollout. Once a hold or deduction starts, the context is persisted and later stages must not resolve it again. Refund and release always use the original wallet snapshot. Personal balance caches and personal low-balance notifications are not updated for organization-wallet charges. Usage preserves both consumer and wallet attribution.
 
 New financial code uses PostgreSQL `numeric` and the existing `shopspring/decimal` dependency for application-side validation and serialization. It does not introduce new float arithmetic for ledger transitions.
 
@@ -170,7 +171,7 @@ New financial code uses PostgreSQL `numeric` and the existing `shopspring/decima
 
 Allocation transfers available funds from root to IAM-owned available balance. Reclaim transfers only the member's available, unfrozen amount back. Both lock source and destination rows in stable ID order, write paired ledger movements, and use a command idempotency key.
 
-Shared balance does not transfer funds. It only changes the payer chosen for a request. Revoking shared permission therefore makes the next request use any existing allocated member balance. Neither finance-read nor shared-use permission enables recharge or subscription operations.
+Shared balance does not transfer funds. It authorizes the organization's independent balance as the fallback wallet for a charge that the member's allocated balance cannot fully cover. It never debits the owner's personal balance. Revoking shared permission therefore makes an insufficient-allocation request fail against the member balance. Neither finance-read nor shared-use permission enables recharge or subscription operations.
 
 ### 9. Derive organization usage scope in the backend
 
@@ -185,6 +186,26 @@ The frontend adds focused organization pages under `frontend/src/views/organizat
 Review transactions insert business state and `notification_outbox` rows together. A worker claims rows with `FOR UPDATE SKIP LOCKED`, renders registered `NotificationEmailService` events, retries with bounded exponential backoff, and records delivery outcome. A logical deduplication key such as `<event>:<application>:<recipient>` prevents duplicate sends during retries.
 
 The current in-memory `EmailQueueService` is not sufficient for approval notifications because process restart can lose queued work. It remains available for existing flows; the outbox worker invokes the existing template and SMTP abstraction.
+
+### 11. Enforce member company-sponsored spend limits at billing-context resolution
+
+An organization may define one all-member default rule and zero or more member-specific overrides. A member-specific rule wins over the all-member rule. Batch configuration of selected members writes the same rule independently for each member, so limits are always evaluated per consuming member rather than as a shared pool.
+
+Each rule has optional positive daily and monthly USD limits, an alert-enabled flag, a percentage threshold from 1 through 100, and normalized additional recipient emails. At least one of the daily or monthly limits is required. Calendar windows use UTC boundaries, matching the existing organization dashboard. Usage is the net `actual_cost` of organization usage rows whose balance source is `company`, legacy `shared`, or `subscription`; `allocated` and `self` sources never count. Refunded rows reduce counted usage.
+
+`BillingContextResolver` checks the effective rule after the final balance source is known and before a new hold or deduction. A charge that would exceed either configured limit fails closed and does not fall back to another payer. Gateway preflight cannot know the final synchronous usage charge, so once current company-sponsored usage has reached a limit it rejects the member before making a tentative allocated-versus-company wallet choice; this prevents a small positive allocation from repeatedly passing preflight and falling back to the company wallet after the upstream response. The stored billing snapshot remains authoritative for settlement and refund, so later rule changes do not redirect money.
+
+Quota alerts use the durable notification outbox. Deduplication keys include organization, member, rule revision, period and UTC window start, so each threshold crossing sends at most once per window. The affected member's verified recovery email (or primary email when present) is included by default; owner-configured additional recipients are validated, normalized and deduplicated.
+
+**Alternative: derive limits from allocated balance.** Rejected because allocation is an owned member balance and the requested control applies only to company-sponsored shared and subscription consumption.
+
+**Alternative: keep only one aggregate rule for selected users.** Rejected because selecting multiple members is intended to apply the same per-user cap, not make unrelated members race for one shared budget.
+
+### 12. Layer runtime company settings over configuration defaults
+
+The four company rollout booleans and positive USD upgrade fee remain available in the deployment configuration as startup defaults. The system-settings store may override each value at runtime so administrators can manage them from the feature-switch panel without editing deployment files. Enabling company applications or IAM requires both public-ID finalization and billing integration to be enabled in the same effective settings snapshot. Fee changes apply only to newly submitted applications because every application retains its fee snapshot.
+
+An optional absolute HTTP(S) company documentation URL follows the same configuration-default and persisted-override model. Only the effective URL is exposed through public settings. The frontend sanitizes it again and renders a help icon beside the organization-console navigation item for users who can already see that item; it opens with `noopener noreferrer` in a new window.
 
 ## Risks / Trade-offs
 

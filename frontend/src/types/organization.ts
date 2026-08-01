@@ -153,6 +153,30 @@ export interface OrganizationSubscription {
   created_at: string
 }
 
+export interface OrganizationSpendLimitRule {
+  id: number
+  organization_id: number
+  member_user_id?: number
+  member_login?: string
+  daily_limit_usd?: string
+  monthly_limit_usd?: string
+  alert_enabled: boolean
+  alert_threshold_pct: number
+  additional_recipients: string[]
+  revision: number
+  created_at: string
+  updated_at: string
+}
+
+export interface OrganizationSpendUsage {
+  member_user_id: number
+  member_login: string
+  daily_used_usd: string
+  monthly_used_usd: string
+  daily_limit_usd?: string
+  monthly_limit_usd?: string
+}
+
 export interface OrganizationUsageRow {
   id: number
   member_user_id: number
@@ -184,7 +208,7 @@ export interface OrganizationUsageRow {
   first_token_ms?: number | null
   duration_ms?: number
   created_at: string
-  balance_source?: 'self' | 'allocated' | 'shared' | 'subscription'
+  balance_source?: 'self' | 'allocated' | 'shared' | 'company' | 'subscription'
 }
 
 export interface OrganizationUsageParams {
@@ -215,6 +239,9 @@ export interface OrganizationUsageStats {
   requests: number
   input_tokens: number
   output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  total_tokens: number
   actual_cost: string
 }
 

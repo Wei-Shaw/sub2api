@@ -46,6 +46,12 @@ func isolateOrganizationIntegrationTest(t *testing.T) {
 	cleanup := func() {
 		ctx := context.Background()
 		_, err := integrationDB.ExecContext(ctx, `
+			DELETE FROM usage_logs
+			WHERE organization_id IS NOT NULL
+			   OR user_id IN (SELECT user_id FROM organization_memberships)
+			   OR user_id IN (SELECT id FROM users WHERE email LIKE 'company-%@example.com')`)
+		require.NoError(t, err)
+		_, err = integrationDB.ExecContext(ctx, `
 			TRUNCATE organization_name_change_requests,member_policy_attachments,organization_memberships,
 			organization_financial_ledger,organization_audit_events,company_upgrade_applications,
 			organization_subscriptions,organizations
@@ -329,14 +335,14 @@ func TestCompanyNameReviewAndOrganizationSuspensionLifecycle(t *testing.T) {
 	require.Equal(t, "Approved New Name", organization.CompanyName)
 
 	require.NoError(t, repo.SetOrganizationStatus(ctx, admin.ID, organizationID, service.OrganizationStatusSuspended))
-	_, err = repo.ResolveBillingContext(ctx, memberID)
+	_, err = repo.ResolveBillingContext(ctx, memberID, 0)
 	require.ErrorIs(t, err, service.ErrOrganizationPermission)
 	memberContext, err := repo.GetContextForUser(ctx, memberID)
 	require.NoError(t, err)
 	require.False(t, memberContext.Active())
 
 	require.NoError(t, repo.SetOrganizationStatus(ctx, admin.ID, organizationID, service.OrganizationStatusActive))
-	resolved, err := repo.ResolveBillingContext(ctx, memberID)
+	resolved, err := repo.ResolveBillingContext(ctx, memberID, 0)
 	require.NoError(t, err)
 	require.Equal(t, memberID, resolved.PayerUserID)
 
@@ -403,6 +409,12 @@ func TestIAMMemberLimitConcurrentArchiveAndLoginReuse(t *testing.T) {
 		}
 	}
 	require.Equal(t, 20, counted)
+
+	selfMembers, selfLimit, err := repo.ListIAMMembers(ctx, replacement.UserID)
+	require.NoError(t, err)
+	require.Equal(t, 20, selfLimit)
+	require.Len(t, selfMembers, 1)
+	require.Equal(t, replacement.UserID, selfMembers[0].UserID)
 }
 
 func TestOrganizationAllocationPayerSelectionAndFinanceRedaction(t *testing.T) {
@@ -433,7 +445,7 @@ func TestOrganizationAllocationPayerSelectionAndFinanceRedaction(t *testing.T) {
 	require.NoError(t, repo.TransferBalance(ctx, owner.ID, memberID, "25.00000000", transferKey, false))
 	require.NoError(t, repo.TransferBalance(ctx, owner.ID, memberID, "25.00000000", transferKey, false))
 	// Allocating beyond the remaining company balance is rejected.
-	require.ErrorIs(t, repo.TransferBalance(ctx, owner.ID, memberID, "24.00000000", uuid.NewString(), false), service.ErrInsufficientBalance)
+	require.ErrorIs(t, repo.TransferBalance(ctx, owner.ID, memberID, "26.00000000", uuid.NewString(), false), service.ErrInsufficientBalance)
 	assertUserBalances(t, owner.ID, "50.00000000", "0.00000000")
 	assertUserBalances(t, memberID, "25.00000000", "0.00000000")
 	assertCompanyBalance("25.00000000", "0.00000000")
@@ -446,16 +458,21 @@ func TestOrganizationAllocationPayerSelectionAndFinanceRedaction(t *testing.T) {
 	require.ErrorIs(t, repo.SetPolicyAttachment(ctx, owner.ID, otherMemberID, service.PolicyCompanySharedBalance, true, uuid.NewString()), service.ErrIAMMemberNotFound)
 	assertUserBalances(t, otherOwner.ID, "50.00000000", "0.00000000")
 	assertUserBalances(t, otherMemberID, "25.00000000", "0.00000000")
-	resolved, err := repo.ResolveBillingContext(ctx, memberID)
+	resolved, err := repo.ResolveBillingContext(ctx, memberID, 10)
 	require.NoError(t, err)
 	require.Equal(t, memberID, resolved.PayerUserID)
 	require.Equal(t, "allocated", resolved.BalanceSource)
 
 	require.NoError(t, repo.SetPolicyAttachment(ctx, owner.ID, memberID, service.PolicyCompanySharedBalance, true, uuid.NewString()))
-	resolved, err = repo.ResolveBillingContext(ctx, memberID)
+	resolved, err = repo.ResolveBillingContext(ctx, memberID, 10)
+	require.NoError(t, err)
+	require.Equal(t, memberID, resolved.PayerUserID)
+	require.Equal(t, "allocated", resolved.BalanceSource)
+
+	resolved, err = repo.ResolveBillingContext(ctx, memberID, 30)
 	require.NoError(t, err)
 	require.Equal(t, owner.ID, resolved.PayerUserID)
-	require.Equal(t, "shared", resolved.BalanceSource)
+	require.Equal(t, service.BalanceSourceCompany, resolved.BalanceSource)
 	redacted, err := repo.FinanceSummary(ctx, memberID)
 	require.NoError(t, err)
 	require.Nil(t, redacted.Available)
@@ -471,7 +488,7 @@ func TestOrganizationAllocationPayerSelectionAndFinanceRedaction(t *testing.T) {
 	require.Equal(t, "25.00000000", *visible.CompanyAvailable)
 
 	require.NoError(t, repo.SetPolicyAttachment(ctx, owner.ID, memberID, service.PolicyCompanySharedBalance, false, uuid.NewString()))
-	resolved, err = repo.ResolveBillingContext(ctx, memberID)
+	resolved, err = repo.ResolveBillingContext(ctx, memberID, 10)
 	require.NoError(t, err)
 	require.Equal(t, memberID, resolved.PayerUserID)
 	require.Equal(t, "allocated", resolved.BalanceSource)
@@ -629,6 +646,7 @@ func TestOrganizationDomainAuditCoverageAndCorrelation(t *testing.T) {
 	require.NoError(t, repo.UpdateIAMPassword(ctx, memberID, memberID, "member-change-hash", false))
 	require.NoError(t, repo.SetPolicyAttachment(ctx, owner.ID, memberID, service.PolicyCompanyFinanceReadOnly, true, ""))
 	require.NoError(t, repo.SetPolicyAttachment(ctx, owner.ID, memberID, service.PolicyCompanyFinanceReadOnly, false, ""))
+	require.NoError(t, repo.DepositToCompany(ctx, owner.ID, "10.00000000", uuid.NewString(), false))
 	require.NoError(t, repo.TransferBalance(ctx, owner.ID, memberID, "5.00000000", uuid.NewString(), false))
 	require.NoError(t, repo.TransferBalance(ctx, owner.ID, memberID, "2.00000000", uuid.NewString(), true))
 
@@ -638,16 +656,17 @@ func TestOrganizationDomainAuditCoverageAndCorrelation(t *testing.T) {
 	require.ErrorIs(t, repo.TransferBalance(ctx, owner.ID, foreignMemberID, "1.00000000", uuid.NewString(), false), service.ErrIAMMemberNotFound)
 
 	expected := map[string]int{
-		"iam.member.status:success":             2,
-		"iam.member.status:denied":              1,
-		"iam.member.password.reset:success":     1,
-		"iam.member.password.reset:denied":      1,
-		"iam.member.password.change:success":    1,
-		"iam.policy.change:success":             2,
-		"iam.policy.change:denied":              1,
-		"organization.balance.allocate:success": 1,
-		"organization.balance.reclaim:success":  1,
-		"organization.balance.transfer:denied":  1,
+		"iam.member.status:success":                    2,
+		"iam.member.status:denied":                     1,
+		"iam.member.password.reset:success":            1,
+		"iam.member.password.reset:denied":             1,
+		"iam.member.password.change:success":           1,
+		"iam.policy.change:success":                    2,
+		"iam.policy.change:denied":                     1,
+		"organization.balance.company_deposit:success": 1,
+		"organization.balance.allocate:success":        1,
+		"organization.balance.reclaim:success":         1,
+		"organization.balance.transfer:denied":         1,
 	}
 	rows, err := integrationDB.QueryContext(ctx, `
 		SELECT action || ':' || result, count(*)
@@ -728,6 +747,14 @@ func assertUserBalances(t *testing.T, userID int64, available, frozen string) {
 	require.NoError(t, integrationDB.QueryRowContext(context.Background(), `SELECT balance::text,frozen_balance::text FROM users WHERE id=$1`, userID).Scan(&actualAvailable, &actualFrozen))
 	require.Equal(t, available, actualAvailable)
 	require.Equal(t, frozen, actualFrozen)
+}
+
+func assertOrganizationBalances(t *testing.T, organizationID int64, available, frozen string) {
+	t.Helper()
+	var gotAvailable, gotFrozen string
+	require.NoError(t, integrationDB.QueryRowContext(context.Background(), `SELECT balance::text,frozen_balance::text FROM organizations WHERE id=$1`, organizationID).Scan(&gotAvailable, &gotFrozen))
+	require.Equal(t, available, gotAvailable)
+	require.Equal(t, frozen, gotFrozen)
 }
 
 func assertCombinedAvailableBalance(t *testing.T, firstUserID, secondUserID int64, expected string) {
@@ -811,8 +838,8 @@ func TestOrganizationUsageFiltersCannotCrossOrganizationAndHistoricalNullsRemain
 	insertUsage := func(userID, organizationID, payerID, apiKeyID int64, suffix string) int64 {
 		var id int64
 		err := integrationDB.QueryRowContext(ctx, `
-			INSERT INTO usage_logs(user_id,organization_id,payer_user_id,balance_source,authz_generation,api_key_id,account_id,request_id,model,input_tokens,output_tokens,total_cost,actual_cost,billing_status,created_at)
-			VALUES($1,$2,$3,'allocated',1,$4,$5,$6,'gpt-company-test',10,5,1,1,'charged',NOW()) RETURNING id`,
+			INSERT INTO usage_logs(user_id,organization_id,payer_user_id,balance_source,authz_generation,api_key_id,account_id,request_id,model,input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens,total_cost,actual_cost,billing_status,created_at)
+			VALUES($1,$2,$3,'allocated',1,$4,$5,$6,'gpt-company-test',10,5,3,2,1,1,'charged',NOW()) RETURNING id`,
 			userID, organizationID, payerID, apiKeyID, account.ID, prefix+suffix).Scan(&id)
 		require.NoError(t, err)
 		return id
@@ -825,13 +852,20 @@ func TestOrganizationUsageFiltersCannotCrossOrganizationAndHistoricalNullsRemain
 	require.EqualValues(t, 1, total)
 	require.Len(t, rows, 1)
 	require.Equal(t, firstMemberID, rows[0].MemberUserID)
+	stats, err := repo.UsageStats(ctx, firstOwner.ID, service.OrganizationUsageFilter{})
+	require.NoError(t, err)
+	require.EqualValues(t, 10, stats.InputTokens)
+	require.EqualValues(t, 5, stats.OutputTokens)
+	require.EqualValues(t, 3, stats.CacheCreationTokens)
+	require.EqualValues(t, 2, stats.CacheReadTokens)
+	require.EqualValues(t, 20, stats.TotalTokens)
 
 	foreignFilter := service.OrganizationUsageFilter{MemberID: &secondMemberID, Page: 1, PageSize: 20}
 	rows, total, err = repo.ListUsage(ctx, firstOwner.ID, foreignFilter)
 	require.NoError(t, err)
 	require.Zero(t, total)
 	require.Empty(t, rows)
-	stats, err := repo.UsageStats(ctx, firstOwner.ID, foreignFilter)
+	stats, err = repo.UsageStats(ctx, firstOwner.ID, foreignFilter)
 	require.NoError(t, err)
 	require.Zero(t, stats.Requests)
 	trend, err := repo.UsageTrend(ctx, firstOwner.ID, foreignFilter)
@@ -847,4 +881,135 @@ func TestOrganizationUsageFiltersCannotCrossOrganizationAndHistoricalNullsRemain
 	require.NoError(t, err)
 	require.Nil(t, historical.OrganizationID)
 	require.Nil(t, historical.PayerUserID)
+}
+
+func TestOrganizationSpendingRankingIAMPrincipalAndModelDrillDown(t *testing.T) {
+	isolateOrganizationIntegrationTest(t)
+	ctx := context.Background()
+	repo := NewOrganizationRepository(integrationDB)
+	owner := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
+	organizationID := createActiveOrganization(t, owner, 20)
+	const companyID = "c123456789012345"
+	_, err := integrationDB.ExecContext(ctx, `UPDATE organizations SET company_id=$2 WHERE id=$1`, organizationID, companyID)
+	require.NoError(t, err)
+	memberID := createIAMMemberForOrganizationTest(t, owner.ID, "ranking-reader")
+	_, err = integrationDB.ExecContext(ctx, `UPDATE users SET username='',email=NULL WHERE id=$1`, memberID)
+	require.NoError(t, err)
+	account := mustCreateAccount(t, integrationEntClient, &service.Account{Name: "organization-ranking-account"})
+	apiKey := mustCreateApiKey(t, integrationEntClient, &service.APIKey{UserID: memberID})
+	prefix := "org-rank-" + uuid.NewString()[:8]
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(context.Background(), `DELETE FROM usage_logs WHERE request_id LIKE $1`, prefix+"%")
+	})
+
+	insertUsage := func(suffix, model string, requests, tokens int, actualCost float64) {
+		for index := 0; index < requests; index++ {
+			_, insertErr := integrationDB.ExecContext(ctx, `
+				INSERT INTO usage_logs(user_id,organization_id,payer_user_id,balance_source,authz_generation,api_key_id,account_id,request_id,model,requested_model,input_tokens,output_tokens,total_cost,actual_cost,billing_status,created_at)
+				VALUES($1,$2,$1,'company',1,$3,$4,$5,$6,$6,$7,0,$8,$8,'charged',NOW())`,
+				memberID, organizationID, apiKey.ID, account.ID, fmt.Sprintf("%s-%s-%d", prefix, suffix, index), model, tokens/requests, actualCost/float64(requests))
+			require.NoError(t, insertErr)
+		}
+	}
+	insertUsage("sonnet", "claude-sonnet-4-6", 2, 1000, 1.25)
+	insertUsage("gpt", "gpt-5.4", 1, 400, 0.5)
+
+	ranking, err := repo.OrganizationSpendingRanking(ctx, owner.ID, service.OrganizationUsageFilter{}, 12)
+	require.NoError(t, err)
+	require.Len(t, ranking.Ranking, 1)
+	require.Equal(t, memberID, ranking.Ranking[0].UserID)
+	require.Equal(t, "ranking-reader@"+companyID+".opentk.ai", ranking.Ranking[0].Email)
+	require.EqualValues(t, 3, ranking.Ranking[0].Requests)
+	require.EqualValues(t, 1400, ranking.Ranking[0].Tokens)
+	require.InDelta(t, 1.75, ranking.Ranking[0].ActualCost, 0.000001)
+
+	charts, err := repo.UsageCharts(ctx, owner.ID, service.OrganizationUsageFilter{MemberID: &memberID})
+	require.NoError(t, err)
+	require.Len(t, charts.Models, 2)
+	require.Equal(t, "claude-sonnet-4-6", charts.Models[0].Model)
+	require.EqualValues(t, 2, charts.Models[0].Requests)
+	require.EqualValues(t, 1000, charts.Models[0].TotalTokens)
+	require.InDelta(t, 1.25, charts.Models[0].ActualCost, 0.000001)
+}
+
+func TestOrganizationSpendLimitsScopePrecedenceAccountingAndAlerts(t *testing.T) {
+	isolateOrganizationIntegrationTest(t)
+	ctx := context.Background()
+	repo := NewOrganizationRepository(integrationDB)
+	spendRepo, ok := repo.(service.OrganizationSpendLimitRepository)
+	require.True(t, ok)
+	owner := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
+	organizationID := createActiveOrganization(t, owner, 20)
+	memberID := createIAMMemberForOrganizationTest(t, owner.ID, "limited-member")
+	otherOwner := createOrganizationRoot(t, integrationEntClient, 100, service.RoleUser)
+	createActiveOrganization(t, otherOwner, 20)
+	foreignMemberID := createIAMMemberForOrganizationTest(t, otherOwner.ID, "foreign-member")
+	recoveryEmail := fmt.Sprintf("limited-%s@example.com", uuid.NewString())
+	_, err := integrationDB.ExecContext(ctx, `UPDATE users SET recovery_email=$2,recovery_email_verified_at=NOW() WHERE id=$1`, memberID, recoveryEmail)
+	require.NoError(t, err)
+
+	daily, monthly := "10", "100"
+	rules, err := spendRepo.UpsertSpendLimitRules(ctx, owner.ID, nil, &daily, &monthly, true, 80, []string{"ops@example.com"})
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	require.Nil(t, rules[0].MemberUserID)
+	_, err = spendRepo.UpsertSpendLimitRules(ctx, owner.ID, []int64{foreignMemberID}, &daily, nil, false, 80, nil)
+	require.ErrorIs(t, err, service.ErrIAMMemberNotFound)
+
+	account := mustCreateAccount(t, integrationEntClient, &service.Account{Name: "organization-spend-limit-account"})
+	key := mustCreateApiKey(t, integrationEntClient, &service.APIKey{UserID: memberID})
+	prefix := uuid.NewString()
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(context.Background(), `DELETE FROM usage_logs WHERE request_id LIKE $1`, prefix+"%")
+	})
+	insertUsage := func(source, suffix string, cost float64) {
+		_, insertErr := integrationDB.ExecContext(ctx, `
+			INSERT INTO usage_logs(user_id,organization_id,payer_user_id,balance_source,authz_generation,api_key_id,account_id,request_id,model,total_cost,actual_cost,billing_status,created_at)
+			VALUES($1,$2,$3,$4,1,$5,$6,$7,'gpt-spend-limit',$8,$8,'charged',NOW())`,
+			memberID, organizationID, owner.ID, source, key.ID, account.ID, prefix+suffix, cost)
+		require.NoError(t, insertErr)
+	}
+	insertUsage("shared", "-shared", 5)
+	insertUsage("subscription", "-subscription", 3)
+	insertUsage("allocated", "-allocated", 50)
+
+	usage, err := spendRepo.ListSpendLimitUsage(ctx, owner.ID)
+	require.NoError(t, err)
+	require.Len(t, usage, 1)
+	require.Equal(t, "8.0000000000", usage[0].DailyUsedUSD)
+	require.Equal(t, "10.0000000000", *usage[0].DailyLimitUSD)
+	require.NoError(t, spendRepo.CheckOrganizationSpendLimit(ctx, memberID, "shared", 2))
+	dailyErr := spendRepo.CheckOrganizationSpendLimit(ctx, memberID, "shared", 2.01)
+	require.ErrorIs(t, dailyErr, service.ErrSpendLimitExceeded)
+	require.ErrorIs(t, dailyErr, service.ErrDailySpendLimitExceeded)
+	require.NoError(t, spendRepo.CheckOrganizationSpendLimit(ctx, memberID, "shared", 0))
+	require.NoError(t, spendRepo.CheckOrganizationSpendLimit(ctx, memberID, "allocated", 1000))
+
+	require.NoError(t, spendRepo.RecordSpendLimitAlert(ctx, memberID, "shared"))
+	require.NoError(t, spendRepo.RecordSpendLimitAlert(ctx, memberID, "shared"))
+	var alertCount int
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT count(*) FROM notification_outbox WHERE event=$1`, service.NotificationEmailEventCompanySpendLimitAlert).Scan(&alertCount))
+	require.Equal(t, 2, alertCount, "one member recovery email and one additional recipient, deduplicated across retries")
+
+	overrideDaily := "5"
+	_, err = spendRepo.UpsertSpendLimitRules(ctx, owner.ID, []int64{memberID}, &overrideDaily, nil, false, 80, nil)
+	require.NoError(t, err)
+	usage, err = spendRepo.ListSpendLimitUsage(ctx, memberID)
+	require.NoError(t, err)
+	require.Len(t, usage, 1)
+	require.Equal(t, "5.0000000000", *usage[0].DailyLimitUSD)
+	require.Nil(t, usage[0].MonthlyLimitUSD, "member override replaces the whole default rule")
+	dailyErr = spendRepo.CheckOrganizationSpendLimit(ctx, memberID, "subscription", 0)
+	require.ErrorIs(t, dailyErr, service.ErrSpendLimitExceeded)
+	require.ErrorIs(t, dailyErr, service.ErrDailySpendLimitExceeded)
+	dailyErr = spendRepo.CheckOrganizationSpendLimit(ctx, memberID, "subscription", 0.01)
+	require.ErrorIs(t, dailyErr, service.ErrSpendLimitExceeded)
+	require.ErrorIs(t, dailyErr, service.ErrDailySpendLimitExceeded)
+
+	overrideMonthly := "5"
+	_, err = spendRepo.UpsertSpendLimitRules(ctx, owner.ID, []int64{memberID}, nil, &overrideMonthly, false, 80, nil)
+	require.NoError(t, err)
+	monthlyErr := spendRepo.CheckOrganizationSpendLimit(ctx, memberID, "subscription", 0)
+	require.ErrorIs(t, monthlyErr, service.ErrSpendLimitExceeded)
+	require.ErrorIs(t, monthlyErr, service.ErrMonthlySpendLimitExceeded)
 }

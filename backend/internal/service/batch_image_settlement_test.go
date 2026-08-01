@@ -51,6 +51,26 @@ func TestBatchImageSettlementService_SettlesAndChargesSuccessfulImagesOnly(t *te
 	require.NotContains(t, fmt.Sprintf("%+v", billing.captures[0]), "prompt")
 }
 
+func TestBatchImageSettlementService_CompanyBalanceSkipsOwnerBalanceCache(t *testing.T) {
+	repo := newFakeBatchImageRepository()
+	job := testSettlingBatchImageJob("imgbatch_company_cache")
+	job.SuccessCount = 1
+	job.FailCount = 0
+	job.ItemCount = 1
+	organizationID, ownerID, source := int64(88), int64(99), BalanceSourceCompany
+	job.OrganizationID, job.PayerUserID, job.BalanceSource = &organizationID, &ownerID, &source
+	repo.jobs[job.BatchID] = job
+	cache := &fakeBalanceInvalidator{}
+	svc := &BatchImageSettlementService{
+		Repo: repo, BillingRepo: &fakeBatchImageBillingRepo{}, BalanceCache: cache,
+		Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.25},
+	}
+
+	_, err := svc.Settle(context.Background(), job.BatchID)
+	require.NoError(t, err)
+	require.Empty(t, cache.userIDs)
+}
+
 func TestBatchImageSettlementService_ZeroSuccessCanComplete(t *testing.T) {
 	repo := newFakeBatchImageRepository()
 	job := testSettlingBatchImageJob("imgbatch_zero")

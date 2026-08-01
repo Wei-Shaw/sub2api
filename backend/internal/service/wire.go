@@ -530,6 +530,8 @@ func ProvideOrganizationService(repo OrganizationRepository, userRepo UserReposi
 	organization := NewOrganizationService(repo, userRepo, cfg)
 	organization.SetAuthCacheInvalidator(invalidator)
 	organization.SetUpgradeChargeReader(settingService)
+	organization.SetUpgradeFeeReader(settingService)
+	organization.SetCompanyFeatureReader(settingService)
 	organization.SetSubscriptionGroupLister(groupLister)
 	return organization
 }

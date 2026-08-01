@@ -33,14 +33,38 @@ func (s *balanceEligibilityCacheStub) GetUserBalance(_ context.Context, userID i
 }
 
 type billingEligibilityResolverStub struct {
-	result *BillingContext
-	err    error
-	calls  atomic.Int64
+	result                   *BillingContext
+	err                      error
+	organizationBalance      float64
+	organizationBalanceErr   error
+	spendLimitErr            error
+	calls                    atomic.Int64
+	organizationBalanceCalls atomic.Int64
+	spendLimitCalls          atomic.Int64
+	spendLimitSource         string
+	spendLimitAmount         float64
 }
 
 func (s *billingEligibilityResolverStub) Resolve(context.Context, int64) (*BillingContext, error) {
 	s.calls.Add(1)
 	return s.result, s.err
+}
+
+func (s *billingEligibilityResolverStub) ResolveForAmount(context.Context, int64, float64) (*BillingContext, error) {
+	s.calls.Add(1)
+	return s.result, s.err
+}
+
+func (s *billingEligibilityResolverStub) GetOrganizationBalance(context.Context, *BillingContext) (float64, error) {
+	s.organizationBalanceCalls.Add(1)
+	return s.organizationBalance, s.organizationBalanceErr
+}
+
+func (s *billingEligibilityResolverStub) CheckSpendLimit(_ context.Context, billing *BillingContext, amount float64) error {
+	s.spendLimitCalls.Add(1)
+	s.spendLimitSource = billing.BalanceSource
+	s.spendLimitAmount = amount
+	return s.spendLimitErr
 }
 
 func (s *balanceEligibilityCacheStub) DeductUserBalance(context.Context, int64, float64) error {
@@ -76,20 +100,37 @@ func TestCheckBillingEligibility_AllowsBalanceAtMinimumReserve(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestCheckBillingEligibility_SharedBalanceChecksRootPayer(t *testing.T) {
+func TestCheckBillingEligibility_CompanyBalanceDoesNotReadOwnerCache(t *testing.T) {
 	cache := &balanceEligibilityCacheStub{balance: 1}
+	organizationID := int64(8)
 	resolver := &billingEligibilityResolverStub{result: &BillingContext{
-		ConsumerUserID: 20,
-		PayerUserID:    10,
-		BalanceSource:  "shared",
-	}}
+		ConsumerUserID: 20, OrganizationID: &organizationID,
+		PayerUserID: 10, BalanceSource: BalanceSourceCompany,
+	}, organizationBalance: 1}
 	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
 	svc.SetBillingContextResolver(resolver)
 	t.Cleanup(svc.Stop)
 
 	require.NoError(t, svc.CheckBillingEligibility(context.Background(), &User{ID: 20}, nil, nil, nil, ""))
-	require.Equal(t, int64(10), cache.lastUserID.Load())
+	require.Zero(t, cache.lastUserID.Load())
 	require.Equal(t, int64(1), resolver.calls.Load())
+	require.Equal(t, int64(1), resolver.organizationBalanceCalls.Load())
+}
+
+func TestSyncBalanceCacheAfterDeduction_CompanyBalanceSkipsOwnerCache(t *testing.T) {
+	cache := &balanceEligibilityCacheStub{balance: 100}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	t.Cleanup(svc.Stop)
+	newBalance := 8.0
+
+	syncBalanceCacheAfterDeduction(context.Background(), &postUsageBillingParams{
+		Cost: &CostBreakdown{ActualCost: 2}, User: &User{ID: 20},
+	}, &billingDeps{billingCacheService: svc}, &UsageBillingApplyResult{
+		NewBalance: &newBalance, PayerUserID: 10, BalanceSource: BalanceSourceCompany,
+	})
+
+	require.Zero(t, cache.invalidateCalls.Load())
+	require.Zero(t, cache.deductCalls.Load())
 }
 
 func TestCheckBillingEligibility_AllocatedBalanceChecksMemberPayer(t *testing.T) {
@@ -107,7 +148,28 @@ func TestCheckBillingEligibility_AllocatedBalanceChecksMemberPayer(t *testing.T)
 	require.Equal(t, int64(20), cache.lastUserID.Load())
 }
 
-func TestCheckBillingEligibility_EnterpriseSubscriptionDoesNotCheckAllocatedBalance(t *testing.T) {
+func TestCheckBillingEligibility_StandardRequestRejectsExhaustedOrganizationLimitBeforeAllocationFallback(t *testing.T) {
+	resolver := &billingEligibilityResolverStub{
+		result: &BillingContext{
+			ConsumerUserID: 20,
+			PayerUserID:    20,
+			BalanceSource:  BalanceSourceAllocated,
+		},
+		spendLimitErr: ErrSpendLimitExceeded,
+	}
+	svc := NewBillingCacheService(&balanceEligibilityCacheStub{balance: 0.003}, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc.SetBillingContextResolver(resolver)
+	t.Cleanup(svc.Stop)
+
+	err := svc.CheckBillingEligibility(context.Background(), &User{ID: 20}, nil, nil, nil, "openai")
+	require.ErrorIs(t, err, ErrSpendLimitExceeded)
+	require.Zero(t, resolver.calls.Load())
+	require.Equal(t, int64(1), resolver.spendLimitCalls.Load())
+	require.Equal(t, BalanceSourceCompany, resolver.spendLimitSource)
+	require.Zero(t, resolver.spendLimitAmount)
+}
+
+func TestCheckBillingEligibility_EnterpriseSubscriptionChecksSpendLimitWithoutAllocatedBalance(t *testing.T) {
 	cache := &balanceEligibilityCacheStub{balance: 0}
 	resolver := &billingEligibilityResolverStub{result: &BillingContext{
 		ConsumerUserID: 20,
@@ -125,6 +187,37 @@ func TestCheckBillingEligibility_EnterpriseSubscriptionDoesNotCheckAllocatedBala
 	require.NoError(t, svc.CheckBillingEligibility(context.Background(), &User{ID: 20}, key, nil, nil, "openai"))
 	require.Zero(t, cache.lastUserID.Load())
 	require.Zero(t, resolver.calls.Load())
+	require.Equal(t, int64(2), resolver.spendLimitCalls.Load())
+	require.Equal(t, BalanceSourceSubscription, resolver.spendLimitSource)
+	require.Zero(t, resolver.spendLimitAmount)
+}
+
+func TestCheckBillingEligibility_EnterpriseSubscriptionRejectsExceededMemberLimit(t *testing.T) {
+	resolver := &billingEligibilityResolverStub{spendLimitErr: ErrSpendLimitExceeded}
+	svc := NewBillingCacheService(&balanceEligibilityCacheStub{}, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc.SetBillingContextResolver(resolver)
+	t.Cleanup(svc.Stop)
+	organizationSubscriptionID := int64(501)
+	key := &APIKey{OrganizationSubscriptionID: &organizationSubscriptionID}
+
+	err := svc.CheckBillingEligibility(context.Background(), &User{ID: 20}, key, nil, nil, "openai")
+	require.ErrorIs(t, err, ErrSpendLimitExceeded)
+	require.Equal(t, int64(1), resolver.spendLimitCalls.Load())
+}
+
+func TestCheckBillingEligibility_PersonalSubscriptionRejectsExceededOrganizationMemberLimit(t *testing.T) {
+	resolver := &billingEligibilityResolverStub{spendLimitErr: ErrSpendLimitExceeded}
+	svc := NewBillingCacheService(&balanceEligibilityCacheStub{}, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc.SetBillingContextResolver(resolver)
+	t.Cleanup(svc.Stop)
+	group := &Group{ID: 88, SubscriptionType: SubscriptionTypeSubscription}
+	subscription := &UserSubscription{Status: SubscriptionStatusActive}
+
+	err := svc.CheckBillingEligibility(context.Background(), &User{ID: 20}, nil, group, subscription, "openai")
+	require.ErrorIs(t, err, ErrSpendLimitExceeded)
+	require.Equal(t, int64(1), resolver.spendLimitCalls.Load())
+	require.Equal(t, BalanceSourceSubscription, resolver.spendLimitSource)
+	require.Zero(t, resolver.spendLimitAmount)
 }
 
 func TestCheckBillingEligibility_PayerResolutionFailsClosed(t *testing.T) {

@@ -44,6 +44,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/organizationauditevent"
 	"github.com/Wei-Shaw/sub2api/ent/organizationfinancialledger"
 	"github.com/Wei-Shaw/sub2api/ent/organizationmembership"
+	"github.com/Wei-Shaw/sub2api/ent/organizationmemberspendlimit"
 	"github.com/Wei-Shaw/sub2api/ent/organizationnamechangerequest"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
@@ -1079,6 +1080,33 @@ func (f TraverseOrganizationFinancialLedger) Traverse(ctx context.Context, q ent
 	return fmt.Errorf("unexpected query type %T. expect *ent.OrganizationFinancialLedgerQuery", q)
 }
 
+// The OrganizationMemberSpendLimitFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OrganizationMemberSpendLimitFunc func(context.Context, *ent.OrganizationMemberSpendLimitQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OrganizationMemberSpendLimitFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OrganizationMemberSpendLimitQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OrganizationMemberSpendLimitQuery", q)
+}
+
+// The TraverseOrganizationMemberSpendLimit type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOrganizationMemberSpendLimit func(context.Context, *ent.OrganizationMemberSpendLimitQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOrganizationMemberSpendLimit) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOrganizationMemberSpendLimit) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OrganizationMemberSpendLimitQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OrganizationMemberSpendLimitQuery", q)
+}
+
 // The OrganizationMembershipFunc type is an adapter to allow the use of ordinary function as a Querier.
 type OrganizationMembershipFunc func(context.Context, *ent.OrganizationMembershipQuery) (ent.Value, error)
 
@@ -2016,6 +2044,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.OrganizationAuditEventQuery, predicate.OrganizationAuditEvent, organizationauditevent.OrderOption]{typ: ent.TypeOrganizationAuditEvent, tq: q}, nil
 	case *ent.OrganizationFinancialLedgerQuery:
 		return &query[*ent.OrganizationFinancialLedgerQuery, predicate.OrganizationFinancialLedger, organizationfinancialledger.OrderOption]{typ: ent.TypeOrganizationFinancialLedger, tq: q}, nil
+	case *ent.OrganizationMemberSpendLimitQuery:
+		return &query[*ent.OrganizationMemberSpendLimitQuery, predicate.OrganizationMemberSpendLimit, organizationmemberspendlimit.OrderOption]{typ: ent.TypeOrganizationMemberSpendLimit, tq: q}, nil
 	case *ent.OrganizationMembershipQuery:
 		return &query[*ent.OrganizationMembershipQuery, predicate.OrganizationMembership, organizationmembership.OrderOption]{typ: ent.TypeOrganizationMembership, tq: q}, nil
 	case *ent.OrganizationNameChangeRequestQuery:

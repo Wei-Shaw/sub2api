@@ -17,6 +17,8 @@ const api = vi.hoisted(() => ({
   getUsageStats: vi.fn(), getUsageCharts: vi.fn(), getDashboard: vi.fn(),
   getDashboardSpendingRanking: vi.fn(), getDashboardUserBreakdown: vi.fn(),
   getDashboardUsersTrend: vi.fn(),
+  listSubscriptions: vi.fn(),
+  listSpendLimits: vi.fn(), getSpendLimitUsage: vi.fn(), upsertSpendLimits: vi.fn(), deleteSpendLimit: vi.fn(),
   getUpgradeEligibility: vi.fn(), getCurrentApplication: vi.fn(),
   listApplications: vi.fn(), listNameChanges: vi.fn(), getApplication: vi.fn(),
   createMember: vi.fn(), setMemberStatus: vi.fn(), resetMemberPassword: vi.fn(),
@@ -27,9 +29,15 @@ const api = vi.hoisted(() => ({
 }))
 
 const auth = vi.hoisted(() => ({ user: { id: 99 }, refreshUser: vi.fn() }))
+const plaza = vi.hoisted(() => ({ listPlans: vi.fn() }))
 
 vi.mock('@/api', () => ({ organizationAPI: api }))
+vi.mock('@/api/plaza', () => ({ plazaAPI: plaza }))
 vi.mock('@/stores', () => ({ useAuthStore: () => auth }))
+vi.mock('vue-chartjs', () => ({
+  Doughnut: { template: '<div data-testid="doughnut-chart" />' },
+  Line: { template: '<div data-testid="line-chart" />' },
+}))
 
 const i18n = createI18n({ legacy: false, locale: 'en', messages: { en: {} }, missingWarn: false, fallbackWarn: false })
 const router = createRouter({
@@ -41,6 +49,7 @@ const mountOptions = {
     plugins: [i18n, createPinia(), router],
     stubs: {
       AppLayout: { template: '<div data-testid="app-layout"><slot /></div>' },
+      Doughnut: true,
     },
   },
 }
@@ -58,6 +67,11 @@ describe('organization views', () => {
     api.getDashboardSpendingRanking.mockResolvedValue({ ranking: [], total_actual_cost: 0, total_requests: 0, total_tokens: 0 })
     api.getDashboardUserBreakdown.mockResolvedValue({ users: [] })
     api.getDashboardUsersTrend.mockResolvedValue([])
+    api.listSubscriptions.mockResolvedValue([])
+    api.listSpendLimits.mockResolvedValue([])
+    api.getSpendLimitUsage.mockResolvedValue([])
+    api.upsertSpendLimits.mockResolvedValue([])
+    plaza.listPlans.mockResolvedValue({ cards: [] })
     api.listNameChanges.mockResolvedValue({ items: [], total: 0 })
 	api.listOrganizations.mockResolvedValue({ items: [], total: 0 })
   })
@@ -77,17 +91,39 @@ describe('organization views', () => {
     expect(router.currentRoute.value.query.tab).toBe('subscriptions')
   })
 
-  it('does not request owner usage or member APIs for a finance-only IAM user', async () => {
+  it('shows the console to IAM users while limiting finance and member data by permission', async () => {
     api.getContext.mockResolvedValue({
-      organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'member', actions: ['organization.finance.balance.read'] },
-      finance: { balance_source: 'allocated', available: '12', frozen: '0', total: '12' }
+      organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'member', actions: [] },
+      finance: { balance_source: 'shared' }
     })
-    mount(OrganizationConsoleView, mountOptions)
+    api.listMembers.mockResolvedValue({
+      items: [
+        { user_id: 99, login_name: 'self', principal: 'self@company.opentk.ai', external_user_id: '201705485041478971', status: 'active', balance: '5', frozen_balance: '0', policy_names: ['CompanySharedBalanceUse'], must_change_password: false, created_at: '2026-01-01T00:00:00Z' },
+        { user_id: 100, login_name: 'other-member', principal: 'other@company.opentk.ai', external_user_id: '201705485041478972', status: 'active', balance: '8', frozen_balance: '0', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' },
+      ],
+      member_limit: 20,
+      used_slots: 2,
+    })
+    const wrapper = mount(OrganizationConsoleView, mountOptions)
     await flushPromises()
 
-    expect(api.listMembers).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="organization-header"]').classes()).toContain('card')
+    expect(wrapper.get('[data-testid="company-finance-summary"]').classes()).toContain('card')
+    expect(wrapper.get('[data-testid="organization-members"]').classes()).toContain('card')
+    expect(wrapper.get('#organization-tab-finance').exists()).toBe(true)
+    expect(wrapper.find('#organization-tab-subscriptions').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="company-finance-summary"]').text().match(/organization\.finance\.noPermission/g)).toHaveLength(3)
+    expect(wrapper.get('[data-testid="organization-members"]').text()).toContain('self')
+    expect(wrapper.get('[data-testid="organization-members"]').text()).not.toContain('other-member')
+    expect(wrapper.find('th.text-right').exists()).toBe(false)
+    expect(api.listMembers).toHaveBeenCalledOnce()
     expect(api.listPolicies).not.toHaveBeenCalled()
     expect(api.getUsage).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="member-policy-CompanySharedBalanceUse"]').trigger('mouseenter')
+    await flushPromises()
+    const tooltips = document.body.querySelectorAll('[role="tooltip"]')
+    expect(tooltips[tooltips.length - 1]?.textContent).toContain('organization.policyMeta.CompanySharedBalanceUse.description')
   })
 
   it('loads the stable member limit and company usage only for an owner', async () => {
@@ -107,6 +143,133 @@ describe('organization views', () => {
     expect(api.getDashboardUsersTrend).toHaveBeenCalledOnce()
     expect(api.getUsageCharts).toHaveBeenCalledWith(expect.objectContaining({ granularity: 'hour', start: expect.any(String), end: expect.any(String) }))
     expect((wrapper.vm as unknown as { memberLimit: number }).memberLimit).toBe(20)
+  })
+
+  it('shows company today cost like the user dashboard with totals underneath', async () => {
+    api.getContext.mockResolvedValue({
+      organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'owner', actions: [] },
+      finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
+    })
+    api.getDashboard.mockResolvedValue({
+      total_api_keys: 0, active_api_keys: 0, total_accounts: 0, normal_accounts: 0,
+      today_requests: 0, total_requests: 0, today_tokens: 0, total_tokens: 0,
+      rpm: 0, tpm: 0, average_duration_ms: 0, active_users: 0,
+      today_actual_cost: 1.25, today_account_cost: 1.75, today_cost: 2.5,
+      total_actual_cost: 10, total_account_cost: 15, total_cost: 20,
+    })
+
+    const wrapper = mount(OrganizationConsoleView, mountOptions)
+    await flushPromises()
+    ;(wrapper.vm as unknown as { activeTab: string }).activeTab = 'dashboard'
+    await wrapper.vm.$nextTick()
+
+    const card = wrapper.get('[data-testid="organization-today-cost"]')
+    expect(card.text()).toContain('dashboard.todayCost')
+    expect(card.text()).toContain('$1.25 / $2.50')
+    expect(card.text()).toContain('common.total: $10.00 / $20.00')
+    expect(card.text()).not.toContain('$1.75')
+    expect(card.text()).not.toContain('$15.00')
+  })
+
+  it('loads model usage for a selected dashboard spending user', async () => {
+    api.getContext.mockResolvedValue({
+      organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'owner', actions: [] },
+      finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
+    })
+    api.getDashboardSpendingRanking.mockResolvedValue({
+      ranking: [{ user_id: 42, email: 'reader@c123456789012345.opentk.ai', actual_cost: 1.25, requests: 7, tokens: 1000 }],
+      total_actual_cost: 1.25,
+      total_requests: 7,
+      total_tokens: 1000,
+    })
+
+    const wrapper = mount(OrganizationConsoleView, mountOptions)
+    await flushPromises()
+    ;(wrapper.vm as unknown as { activeTab: string }).activeTab = 'dashboard'
+    await wrapper.vm.$nextTick()
+
+    const rankingButton = wrapper.findAll('button').find((button) => button.text() === 'admin.dashboard.viewSpendingRanking')
+    await rankingButton!.trigger('click')
+    api.getUsageCharts.mockResolvedValueOnce({
+      trend: [], groups: [], endpoints: [],
+      models: [{ model: 'gpt-5.4', requests: 7, input_tokens: 600, output_tokens: 400, cache_creation_tokens: 0, cache_read_tokens: 0, total_tokens: 1000, cost: 2, actual_cost: 1.25 }],
+    })
+    await wrapper.get('[data-testid="spending-ranking-row-42"]').trigger('click')
+    await flushPromises()
+
+    expect(api.getUsageCharts).toHaveBeenLastCalledWith(expect.objectContaining({ member_id: 42, start: expect.any(String), end: expect.any(String) }))
+    expect(wrapper.get('[data-testid="spending-ranking-detail-42"]').text()).toContain('gpt-5.4')
+  })
+
+  it('lets an owner configure selected-member limits and shows effective usage', async () => {
+    api.getContext.mockResolvedValue({
+      organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'owner', actions: [] },
+      finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
+    })
+    api.listMembers.mockResolvedValue({
+      items: [{ user_id: 42, login_name: 'reader', principal: 'reader@company.opentk.ai', external_user_id: '201705485041478971', status: 'active', balance: '0', frozen_balance: '0', recovery_email: 'reader@example.com', recovery_email_verified_at: '2026-01-01T00:00:00Z', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' }],
+      member_limit: 20,
+      used_slots: 1,
+    })
+    api.getSpendLimitUsage.mockResolvedValue([{ member_user_id: 42, member_login: 'reader', daily_used_usd: '10', monthly_used_usd: '8', daily_limit_usd: '10', monthly_limit_usd: '50' }])
+
+    const wrapper = mount(OrganizationConsoleView, mountOptions)
+    await flushPromises()
+    await wrapper.get('#organization-tab-limits').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="spend-limit-form"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="spend-limit-form"]').classes()).toContain('card')
+    expect(wrapper.get('[data-testid="spend-limit-usage"]').classes()).toContain('card')
+    expect(wrapper.get('[data-testid="spend-limit-usage"]').text()).toContain('$10.00 / $10.00')
+    expect(wrapper.get('[data-testid="spend-limit-usage"]').text()).not.toContain('US$')
+    expect(wrapper.get('[data-testid="spend-limit-daily-42"]').classes()).toContain('text-red-600')
+    expect(wrapper.get('[data-testid="spend-limit-monthly-42"]').classes()).not.toContain('text-red-600')
+    const vm = wrapper.vm as unknown as {
+      spendLimitForm: { target: 'all' | 'members'; daily: string; monthly: string; alertEnabled: boolean; threshold: number; recipients: string }
+      spendLimitMemberIDs: number[]
+      saveSpendLimit: () => Promise<void>
+    }
+    vm.spendLimitForm.target = 'members'
+    vm.spendLimitForm.daily = '10'
+    vm.spendLimitForm.monthly = '50'
+    vm.spendLimitForm.alertEnabled = true
+    vm.spendLimitForm.threshold = 80
+    vm.spendLimitMemberIDs = [42]
+    await wrapper.vm.$nextTick()
+
+    const granularity = wrapper.get('[data-testid="spend-limit-granularity"]')
+    const dailyLimit = wrapper.get('#spend-limit-daily')
+    expect(granularity.element.compareDocumentPosition(dailyLimit.element) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    const alertSettings = wrapper.get('[data-testid="spend-limit-alert-settings"]')
+    expect(alertSettings.find('#spend-limit-threshold').exists()).toBe(true)
+    expect(alertSettings.find('#spend-limit-recipient-input').exists()).toBe(true)
+    expect(wrapper.get('#spend-limit-member-emails option').attributes('value')).toBe('reader@example.com')
+    await wrapper.get('#spend-limit-recipient-input').setValue('reader@example.com')
+    await wrapper.get('#spend-limit-recipient-input').trigger('keydown', { key: 'Enter' })
+    vm.spendLimitForm.recipients += ', ops@example.com, finance@example.com'
+    await vm.saveSpendLimit()
+
+    expect(api.upsertSpendLimits).toHaveBeenCalledWith({
+      target: 'members', member_ids: [42], daily_limit_usd: '10', monthly_limit_usd: '50',
+      alert_enabled: true, alert_threshold_pct: 80, additional_recipients: ['reader@example.com', 'ops@example.com', 'finance@example.com'],
+    })
+  })
+
+  it('shows only self spend usage to an IAM member without mutation controls', async () => {
+    api.getContext.mockResolvedValue({
+      organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'member', actions: [] },
+      finance: { balance_source: 'shared' },
+    })
+    api.getSpendLimitUsage.mockResolvedValue([{ member_user_id: 99, member_login: 'self', daily_used_usd: '1', monthly_used_usd: '3' }])
+    const wrapper = mount(OrganizationConsoleView, mountOptions)
+    await flushPromises()
+    await wrapper.get('#organization-tab-limits').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="spend-limit-form"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="spend-limit-usage"]').text()).toContain('$1.00 · organization.spendLimits.unlimited')
+    expect(api.listSpendLimits).not.toHaveBeenCalled()
   })
 
   it('uses scoped usage filters and never renders admin-only usage fields', async () => {
@@ -146,6 +309,7 @@ describe('organization views', () => {
     vm.usageFilters.groupId = '7'
     vm.usageFilters.billingType = '1'
     vm.usageFilters.billingMode = 'token'
+    expect(wrapper.get('[data-testid="organization-usage-details"]').classes()).toContain('card')
     expect(wrapper.find('input[placeholder="organization.usage.searchApiKeyPlaceholder"]').exists()).toBe(true)
     expect(wrapper.findAll('button').some(button => button.text() === 'common.search')).toBe(false)
     await vm.searchUsage()
@@ -166,9 +330,39 @@ describe('organization views', () => {
     expect(usageTable!.element.parentElement?.classList.contains('overflow-x-auto')).toBe(true)
   })
 
-  it('creates an IAM member with the account-domain suffix and password options', async () => {
+  it('shows total tokens with input, output, and cache details like admin usage', async () => {
     api.getContext.mockResolvedValue({
       organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'owner', actions: [] },
+      finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
+    })
+    api.getUsageStats.mockResolvedValue({
+      requests: 3,
+      input_tokens: 100,
+      output_tokens: 50,
+      cache_creation_tokens: 12,
+      cache_read_tokens: 22,
+      total_tokens: 184,
+      actual_cost: '1.25',
+    })
+
+    const wrapper = mount(OrganizationConsoleView, mountOptions)
+    await flushPromises()
+    ;(wrapper.vm as unknown as { activeTab: string }).activeTab = 'usage'
+    await wrapper.vm.$nextTick()
+
+    const tokenCard = wrapper.get('[data-testid="usage-token-summary"]')
+    expect(tokenCard.text()).toContain('usage.totalTokens')
+    expect(tokenCard.text()).toContain('184')
+    expect(tokenCard.text()).toContain('usage.in: 100')
+    expect(tokenCard.text()).toContain('usage.out: 50')
+    expect(tokenCard.text()).toContain('usage.cacheTotal: 34')
+    expect(wrapper.get('[data-testid="usage-cache-detail"]').text()).toContain('12')
+    expect(wrapper.get('[data-testid="usage-cache-detail"]').text()).toContain('22')
+  })
+
+  it('creates an IAM member with the company ID suffix and password options', async () => {
+    api.getContext.mockResolvedValue({
+      organization: { organization_id: 1, account_id: '1719905235756637', company_id: 'c123456789012345', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'owner', actions: [] },
       finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' }
     })
     const wrapper = mount(OrganizationConsoleView, mountOptions)
@@ -176,10 +370,10 @@ describe('organization views', () => {
     ;(wrapper.vm as unknown as { activeTab: string }).activeTab = 'finance'
     await wrapper.vm.$nextTick()
 
-    await wrapper.get('section button.btn-primary').trigger('click')
+    await wrapper.get('[data-testid="create-iam-member"]').trigger('click')
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.get('[data-testid="iam-principal-suffix"]').text()).toBe('@1719905235756637.opentk.ai')
+    expect(wrapper.get('[data-testid="iam-principal-suffix"]').text()).toBe('@c123456789012345.opentk.ai')
     const mustChange = wrapper.get<HTMLInputElement>('[data-testid="must-change-password"]')
     expect(mustChange.element.checked).toBe(true)
 
@@ -193,7 +387,7 @@ describe('organization views', () => {
     await wrapper.get('#iam-member-username').setValue('Finance Reader')
     await mustChange.setValue(false)
     api.createMember.mockResolvedValue({
-      member: { principal: 'finance.reader@1719905235756637.opentk.ai' },
+      member: { principal: 'finance.reader@c123456789012345.opentk.ai' },
       initial_password: generatedPassword,
     })
     await wrapper.get('form').trigger('submit')

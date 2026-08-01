@@ -377,7 +377,7 @@ const routes: RouteRecordRaw[] = [
     path: '/organization',
     name: 'OrganizationConsole',
     component: () => import('@/views/user/OrganizationConsoleView.vue'),
-    meta: { requiresAuth: true, requiresOrganization: true, requiresOrganizationAction: 'organization.finance.balance.read', titleKey: 'organization.console' }
+    meta: { requiresAuth: true, requiresOrganization: true, titleKey: 'organization.console' }
   },
   {
     path: '/organization/change-password',

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -211,6 +212,62 @@ func (s *SettingService) IsCompanyUpgradeChargeEnabled(ctx context.Context) bool
 		return true // 默认开启
 	}
 	return value != "false"
+}
+
+func (s *SettingService) GetCompanyUpgradeFee(ctx context.Context) float64 {
+	fallback := 20.0
+	if s != nil && s.cfg != nil && s.cfg.Company.UpgradeFee > 0 && !math.IsNaN(s.cfg.Company.UpgradeFee) && !math.IsInf(s.cfg.Company.UpgradeFee, 0) {
+		fallback = s.cfg.Company.UpgradeFee
+	}
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyCompanyUpgradeFee)
+	if err != nil {
+		return fallback
+	}
+	fee, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil || fee <= 0 || math.IsNaN(fee) || math.IsInf(fee, 0) {
+		return fallback
+	}
+	return fee
+}
+
+func (s *SettingService) companyBoolSetting(ctx context.Context, key string, fallback bool) bool {
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	value, err := s.settingRepo.GetValue(ctx, key)
+	if err != nil {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func (s *SettingService) IsCompanyApplicationsEnabled(ctx context.Context) bool {
+	fallback := s != nil && s.cfg != nil && s.cfg.Company.ApplicationsEnabled
+	return s.companyBoolSetting(ctx, SettingKeyCompanyApplicationsEnabled, fallback)
+}
+
+func (s *SettingService) IsCompanyIAMEnabled(ctx context.Context) bool {
+	fallback := s != nil && s.cfg != nil && s.cfg.Company.IAMEnabled
+	return s.companyBoolSetting(ctx, SettingKeyCompanyIAMEnabled, fallback)
+}
+
+func NormalizeCompanyDocumentationURL(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", fmt.Errorf("company documentation URL must be an absolute HTTP(S) URL")
+	}
+	return parsed.String(), nil
 }
 
 // defaultAuditLogRetentionDays 审计日志默认保留天数。

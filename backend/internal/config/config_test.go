@@ -363,6 +363,21 @@ func TestValidateCompanyFeatureFlagsRequireRolloutReadiness(t *testing.T) {
 	}
 }
 
+func TestValidateCompanyDocumentationURL(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	cfg.Company.DocumentationURL = " https://docs.example.com/company "
+	require.NoError(t, cfg.Validate())
+	require.Equal(t, "https://docs.example.com/company", cfg.Company.DocumentationURL)
+
+	resetViperWithJWTSecret(t)
+	cfg, err = Load()
+	require.NoError(t, err)
+	cfg.Company.DocumentationURL = "javascript:alert(1)"
+	require.ErrorContains(t, cfg.Validate(), "company.documentation_url")
+}
+
 func TestLoadDefaultOpenAIFirstOutputTimeoutsDisabled(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

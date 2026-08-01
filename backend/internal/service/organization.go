@@ -38,6 +38,12 @@ const (
 	ActionFinanceBalanceRead     = "organization.finance.balance.read"
 	ActionSharedBalanceUse       = "organization.balance.shared.use"
 	IAMPrincipalDomain           = "opentk.ai"
+
+	BalanceSourceSelf         = "self"
+	BalanceSourceAllocated    = "allocated"
+	BalanceSourceLegacyShared = "shared"
+	BalanceSourceCompany      = "company"
+	BalanceSourceSubscription = "subscription"
 )
 
 var (
@@ -62,6 +68,21 @@ var (
 	ErrOrgSubscriptionExists     = infraerrors.Conflict("ORGANIZATION_SUBSCRIPTION_EXISTS", "an active subscription for this group already exists")
 	ErrOrgSubscriptionNotFound   = infraerrors.NotFound("ORGANIZATION_SUBSCRIPTION_NOT_FOUND", "organization subscription not found")
 	ErrSubscriptionValidityRange = infraerrors.BadRequest("SUBSCRIPTION_VALIDITY_INVALID", "validity days must be between 0 and 3650")
+	ErrSpendLimitInvalid         = infraerrors.BadRequest("ORGANIZATION_SPEND_LIMIT_INVALID", "a positive daily or monthly spend limit is required")
+	ErrSpendLimitExceeded        = infraerrors.Conflict("ORGANIZATION_SPEND_LIMIT_EXCEEDED", "organization spend limit would be exceeded")
+	ErrDailySpendLimitExceeded   = infraerrors.Conflict(
+		"ORGANIZATION_DAILY_SPEND_LIMIT_EXCEEDED",
+		"organization daily spend limit would be exceeded",
+	).WithCause(ErrSpendLimitExceeded).WithMetadata(map[string]string{"period": "daily"})
+	ErrMonthlySpendLimitExceeded = infraerrors.Conflict(
+		"ORGANIZATION_MONTHLY_SPEND_LIMIT_EXCEEDED",
+		"organization monthly spend limit would be exceeded",
+	).WithCause(ErrSpendLimitExceeded).WithMetadata(map[string]string{"period": "monthly"})
+	ErrDailyAndMonthlySpendLimitExceeded = infraerrors.Conflict(
+		"ORGANIZATION_DAILY_AND_MONTHLY_SPEND_LIMIT_EXCEEDED",
+		"organization daily and monthly spend limits would be exceeded",
+	).WithCause(ErrSpendLimitExceeded).WithMetadata(map[string]string{"period": "daily,monthly"})
+	ErrSpendLimitThreshold = infraerrors.BadRequest("ORGANIZATION_SPEND_ALERT_THRESHOLD_INVALID", "alert threshold must be between 1 and 100 percent")
 )
 
 var iamLoginNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
@@ -360,6 +381,56 @@ type BillingContext struct {
 	AuthzGeneration int64
 }
 
+func (c *BillingContext) UsesCompanyBalance() bool {
+	return c != nil && c.BalanceSource == BalanceSourceCompany
+}
+
+// OrganizationBalanceRepository provides transaction-aware access to the
+// organization's independent wallet. It is separate from OrganizationRepository
+// so lightweight test repositories remain source-compatible.
+type OrganizationBalanceRepository interface {
+	GetOrganizationBalance(ctx context.Context, organizationID int64) (float64, error)
+	DeductOrganizationBalance(ctx context.Context, organizationID int64, amount float64) (float64, error)
+	CreditOrganizationBalance(ctx context.Context, organizationID int64, amount float64) (float64, error)
+}
+
+// OrganizationSpendLimitRule is an owner-managed company-sponsored spend cap.
+// MemberUserID nil denotes the all-member default rule.
+type OrganizationSpendLimitRule struct {
+	ID                   int64     `json:"id"`
+	OrganizationID       int64     `json:"organization_id"`
+	MemberUserID         *int64    `json:"member_user_id,omitempty"`
+	MemberLogin          string    `json:"member_login,omitempty"`
+	DailyLimitUSD        *string   `json:"daily_limit_usd,omitempty"`
+	MonthlyLimitUSD      *string   `json:"monthly_limit_usd,omitempty"`
+	AlertEnabled         bool      `json:"alert_enabled"`
+	AlertThresholdPct    float64   `json:"alert_threshold_pct"`
+	AdditionalRecipients []string  `json:"additional_recipients"`
+	Revision             int64     `json:"revision"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
+}
+
+type OrganizationSpendUsage struct {
+	MemberUserID    int64   `json:"member_user_id"`
+	MemberLogin     string  `json:"member_login"`
+	DailyUsedUSD    string  `json:"daily_used_usd"`
+	MonthlyUsedUSD  string  `json:"monthly_used_usd"`
+	DailyLimitUSD   *string `json:"daily_limit_usd,omitempty"`
+	MonthlyLimitUSD *string `json:"monthly_limit_usd,omitempty"`
+}
+
+// OrganizationSpendLimitRepository is optional so older repository test stubs
+// remain source-compatible while the feature is rolled out.
+type OrganizationSpendLimitRepository interface {
+	ListSpendLimitRules(ctx context.Context, actorID int64) ([]OrganizationSpendLimitRule, error)
+	UpsertSpendLimitRules(ctx context.Context, ownerID int64, memberIDs []int64, daily, monthly *string, alertEnabled bool, threshold float64, recipients []string) ([]OrganizationSpendLimitRule, error)
+	DeleteSpendLimitRule(ctx context.Context, ownerID int64, memberID *int64) error
+	ListSpendLimitUsage(ctx context.Context, actorID int64) ([]OrganizationSpendUsage, error)
+	CheckOrganizationSpendLimit(ctx context.Context, consumerUserID int64, balanceSource string, amount float64) error
+	RecordSpendLimitAlert(ctx context.Context, consumerUserID int64, balanceSource string) error
+}
+
 type OrganizationUsageFilter struct {
 	Start       time.Time
 	End         time.Time
@@ -411,10 +482,13 @@ type OrganizationUsageRow struct {
 }
 
 type OrganizationUsageStats struct {
-	Requests     int64  `json:"requests"`
-	InputTokens  int64  `json:"input_tokens"`
-	OutputTokens int64  `json:"output_tokens"`
-	ActualCost   string `json:"actual_cost"`
+	Requests            int64  `json:"requests"`
+	InputTokens         int64  `json:"input_tokens"`
+	OutputTokens        int64  `json:"output_tokens"`
+	CacheCreationTokens int64  `json:"cache_creation_tokens"`
+	CacheReadTokens     int64  `json:"cache_read_tokens"`
+	TotalTokens         int64  `json:"total_tokens"`
+	ActualCost          string `json:"actual_cost"`
 }
 
 type OrganizationAPIKeyOption struct {
@@ -533,7 +607,7 @@ type OrganizationRepository interface {
 	OrganizationUserBreakdown(ctx context.Context, userID int64, filter OrganizationUsageFilter, limit int) ([]usagestats.UserBreakdownItem, error)
 	OrganizationUsersTrend(ctx context.Context, userID int64, filter OrganizationUsageFilter, limit int) ([]usagestats.UserUsageTrendPoint, error)
 	SearchOrganizationAPIKeys(ctx context.Context, userID int64, memberID *int64, query string, limit int) ([]OrganizationAPIKeyOption, error)
-	ResolveBillingContext(ctx context.Context, consumerUserID int64) (*BillingContext, error)
+	ResolveBillingContext(ctx context.Context, consumerUserID int64, requiredAmount float64) (*BillingContext, error)
 	Reconcile(ctx context.Context) (map[string]int64, error)
 	ListOrganizationUserIDs(ctx context.Context, organizationID int64) ([]int64, error)
 }
@@ -542,6 +616,15 @@ type OrganizationRepository interface {
 // upgrade fee / freeze funds. Injected from the settings layer.
 type CompanyUpgradeChargeReader interface {
 	IsCompanyUpgradeChargeEnabled(ctx context.Context) bool
+}
+
+type CompanyUpgradeFeeReader interface {
+	GetCompanyUpgradeFee(ctx context.Context) float64
+}
+
+type CompanyFeatureReader interface {
+	IsCompanyApplicationsEnabled(ctx context.Context) bool
+	IsCompanyIAMEnabled(ctx context.Context) bool
 }
 
 // SubscriptionGroupLister lists all active groups so the organization service
@@ -579,13 +662,15 @@ type OrganizationSubscriptionOrderInput struct {
 }
 
 type OrganizationService struct {
-	repo         OrganizationRepository
-	userRepo     UserRepository
-	cfg          *config.Config
-	authCache    APIKeyAuthCacheInvalidator
-	chargeReader CompanyUpgradeChargeReader
-	groupLister  SubscriptionGroupLister
-	orderCreator SubscriptionOrderCreator
+	repo          OrganizationRepository
+	userRepo      UserRepository
+	cfg           *config.Config
+	authCache     APIKeyAuthCacheInvalidator
+	chargeReader  CompanyUpgradeChargeReader
+	feeReader     CompanyUpgradeFeeReader
+	featureReader CompanyFeatureReader
+	groupLister   SubscriptionGroupLister
+	orderCreator  SubscriptionOrderCreator
 }
 
 func (s *OrganizationService) SetAuthCacheInvalidator(invalidator APIKeyAuthCacheInvalidator) {
@@ -617,6 +702,42 @@ func (s *OrganizationService) SetUpgradeChargeReader(reader CompanyUpgradeCharge
 	if s != nil {
 		s.chargeReader = reader
 	}
+}
+
+func (s *OrganizationService) SetUpgradeFeeReader(reader CompanyUpgradeFeeReader) {
+	if s != nil {
+		s.feeReader = reader
+	}
+}
+
+func (s *OrganizationService) upgradeFee(ctx context.Context) float64 {
+	if s != nil && s.feeReader != nil {
+		return s.feeReader.GetCompanyUpgradeFee(ctx)
+	}
+	if s != nil && s.cfg != nil && s.cfg.Company.UpgradeFee > 0 {
+		return s.cfg.Company.UpgradeFee
+	}
+	return 20
+}
+
+func (s *OrganizationService) SetCompanyFeatureReader(reader CompanyFeatureReader) {
+	if s != nil {
+		s.featureReader = reader
+	}
+}
+
+func (s *OrganizationService) companyApplicationsEnabled(ctx context.Context) bool {
+	if s != nil && s.featureReader != nil {
+		return s.featureReader.IsCompanyApplicationsEnabled(ctx)
+	}
+	return s != nil && s.cfg != nil && s.cfg.Company.ApplicationsEnabled
+}
+
+func (s *OrganizationService) companyIAMEnabled(ctx context.Context) bool {
+	if s != nil && s.featureReader != nil {
+		return s.featureReader.IsCompanyIAMEnabled(ctx)
+	}
+	return s != nil && s.cfg != nil && s.cfg.Company.IAMEnabled
 }
 
 // upgradeChargeEnabled returns true when the upgrade fee should be charged.
@@ -675,9 +796,11 @@ func (s *OrganizationService) CurrentApplication(ctx context.Context, userID int
 }
 
 func (s *OrganizationService) UpgradeEligibility(ctx context.Context, userID int64) (*CompanyUpgradeEligibility, error) {
-	result := &CompanyUpgradeEligibility{FeeAmount: "20.00000000", FeeCurrency: "USD"}
+	result := &CompanyUpgradeEligibility{
+		FeeAmount:   decimal.NewFromFloat(s.upgradeFee(ctx)).StringFixed(8),
+		FeeCurrency: "USD",
+	}
 	if s.cfg != nil {
-		result.FeeAmount = decimal.NewFromFloat(s.cfg.Company.UpgradeFee).StringFixed(8)
 		result.FeeCurrency = s.cfg.Company.UpgradeCurrency
 	}
 	if !s.upgradeChargeEnabled(ctx) {
@@ -716,7 +839,7 @@ func (s *OrganizationService) GetApplication(ctx context.Context, applicationID 
 }
 
 func (s *OrganizationService) SubmitApplication(ctx context.Context, userID int64, name, companySize, idempotencyKey string) (*CompanyApplication, error) {
-	if s.cfg == nil || !s.cfg.Company.ApplicationsEnabled {
+	if !s.companyApplicationsEnabled(ctx) {
 		return nil, ErrCompanyFeatureDisabled
 	}
 	name, normalized, err := normalizeCompanyName(name)
@@ -730,7 +853,7 @@ func (s *OrganizationService) SubmitApplication(ctx context.Context, userID int6
 	if strings.TrimSpace(idempotencyKey) == "" || len(idempotencyKey) > 128 {
 		return nil, infraerrors.BadRequest("IDEMPOTENCY_KEY_REQUIRED", "a valid idempotency key is required")
 	}
-	fee := decimal.NewFromFloat(s.cfg.Company.UpgradeFee).StringFixed(8)
+	fee := decimal.NewFromFloat(s.upgradeFee(ctx)).StringFixed(8)
 	if !s.upgradeChargeEnabled(ctx) {
 		// Charging disabled: snapshot a zero fee so that reserve/capture/release
 		// become no-op amount=0 operations and the balance is never frozen.
@@ -839,7 +962,7 @@ func generateInitialPassword() (string, error) {
 }
 
 func (s *OrganizationService) CreateIAMMember(ctx context.Context, ownerID int64, loginName, username, recoveryEmail, password string, mustChangePassword bool) (*IAMMember, string, error) {
-	if s.cfg == nil || !s.cfg.Company.IAMEnabled {
+	if !s.companyIAMEnabled(ctx) {
 		return nil, "", ErrIAMFeatureDisabled
 	}
 	loginName = strings.ToLower(strings.TrimSpace(loginName))
@@ -881,6 +1004,104 @@ func (s *OrganizationService) ListIAMMembers(ctx context.Context, actorID int64)
 
 func (s *OrganizationService) GetIAMMember(ctx context.Context, actorID, memberUserID int64) (*IAMMember, error) {
 	return s.repo.GetIAMMember(ctx, actorID, memberUserID)
+}
+
+func normalizeSpendLimitAmount(value *string) (*string, error) {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return nil, nil
+	}
+	amount, err := decimal.NewFromString(strings.TrimSpace(*value))
+	if err != nil || !amount.IsPositive() || !amount.Equal(amount.Round(10)) || amount.GreaterThanOrEqual(decimal.New(1, 10)) {
+		return nil, ErrSpendLimitInvalid
+	}
+	normalized := amount.StringFixed(10)
+	return &normalized, nil
+}
+
+func normalizeSpendLimitRecipients(values []string) ([]string, error) {
+	if len(values) > 20 {
+		return nil, infraerrors.BadRequest("ORGANIZATION_SPEND_LIMIT_RECIPIENTS_INVALID", "at most 20 additional recipients are allowed")
+	}
+	seen := make(map[string]struct{}, len(values))
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		email := strings.ToLower(strings.TrimSpace(value))
+		parsed, err := mail.ParseAddress(email)
+		if err != nil || parsed.Address != email || len(email) > 255 {
+			return nil, infraerrors.BadRequest("ORGANIZATION_SPEND_LIMIT_RECIPIENT_INVALID", "an additional recipient email is invalid")
+		}
+		if _, exists := seen[email]; exists {
+			continue
+		}
+		seen[email] = struct{}{}
+		normalized = append(normalized, email)
+	}
+	return normalized, nil
+}
+
+func (s *OrganizationService) ListSpendLimitRules(ctx context.Context, actorID int64) ([]OrganizationSpendLimitRule, error) {
+	repo, ok := s.repo.(OrganizationSpendLimitRepository)
+	if !ok {
+		return nil, ErrOrganizationPermission
+	}
+	return repo.ListSpendLimitRules(ctx, actorID)
+}
+
+func (s *OrganizationService) UpsertSpendLimitRules(ctx context.Context, ownerID int64, memberIDs []int64, daily, monthly *string, alertEnabled bool, threshold float64, recipients []string) ([]OrganizationSpendLimitRule, error) {
+	daily, err := normalizeSpendLimitAmount(daily)
+	if err != nil {
+		return nil, err
+	}
+	monthly, err = normalizeSpendLimitAmount(monthly)
+	if err != nil {
+		return nil, err
+	}
+	if daily == nil && monthly == nil {
+		return nil, ErrSpendLimitInvalid
+	}
+	if !alertEnabled && threshold == 0 {
+		threshold = 80
+	}
+	if threshold < 1 || threshold > 100 {
+		return nil, ErrSpendLimitThreshold
+	}
+	recipients, err = normalizeSpendLimitRecipients(recipients)
+	if err != nil {
+		return nil, err
+	}
+	uniqueMembers := make([]int64, 0, len(memberIDs))
+	seen := make(map[int64]struct{}, len(memberIDs))
+	for _, memberID := range memberIDs {
+		if memberID <= 0 {
+			return nil, ErrIAMMemberNotFound
+		}
+		if _, exists := seen[memberID]; exists {
+			continue
+		}
+		seen[memberID] = struct{}{}
+		uniqueMembers = append(uniqueMembers, memberID)
+	}
+	repo, ok := s.repo.(OrganizationSpendLimitRepository)
+	if !ok {
+		return nil, ErrOrganizationPermission
+	}
+	return repo.UpsertSpendLimitRules(ctx, ownerID, uniqueMembers, daily, monthly, alertEnabled, threshold, recipients)
+}
+
+func (s *OrganizationService) DeleteSpendLimitRule(ctx context.Context, ownerID int64, memberID *int64) error {
+	repo, ok := s.repo.(OrganizationSpendLimitRepository)
+	if !ok {
+		return ErrOrganizationPermission
+	}
+	return repo.DeleteSpendLimitRule(ctx, ownerID, memberID)
+}
+
+func (s *OrganizationService) ListSpendLimitUsage(ctx context.Context, actorID int64) ([]OrganizationSpendUsage, error) {
+	repo, ok := s.repo.(OrganizationSpendLimitRepository)
+	if !ok {
+		return nil, ErrOrganizationPermission
+	}
+	return repo.ListSpendLimitUsage(ctx, actorID)
 }
 
 func (s *OrganizationService) SetIAMMemberStatus(ctx context.Context, ownerID, memberUserID int64, status string) error {
@@ -926,7 +1147,7 @@ func (s *OrganizationService) ChangeIAMPassword(ctx context.Context, userID int6
 }
 
 func (s *OrganizationService) AuthenticateIAM(ctx context.Context, principal, password string) (*User, *OrganizationContext, error) {
-	if s.cfg == nil || !s.cfg.Company.IAMEnabled {
+	if !s.companyIAMEnabled(ctx) {
 		return nil, nil, ErrIAMFeatureDisabled
 	}
 	loginName, companyID, ok := parseIAMPrincipal(principal)
@@ -1152,18 +1373,104 @@ func NewBillingContextResolver(repo OrganizationRepository) *BillingContextResol
 }
 
 func (r *BillingContextResolver) Resolve(ctx context.Context, consumerUserID int64) (*BillingContext, error) {
+	return r.ResolveForAmount(ctx, consumerUserID, 0)
+}
+
+// ResolveForAmount prefers an IAM member's allocation when it can cover the
+// complete charge, and uses shared balance only as an authorized fallback.
+func (r *BillingContextResolver) ResolveForAmount(ctx context.Context, consumerUserID int64, requiredAmount float64) (*BillingContext, error) {
+	return r.resolveForAmount(ctx, consumerUserID, requiredAmount, true)
+}
+
+// ResolveForSettlement selects the wallet for an already completed request.
+// Spend limits are enforced before upstream execution; settlement must always
+// persist and charge completed usage instead of making the usage record vanish.
+func (r *BillingContextResolver) ResolveForSettlement(ctx context.Context, consumerUserID int64, requiredAmount float64) (*BillingContext, error) {
+	return r.resolveForAmount(ctx, consumerUserID, requiredAmount, false)
+}
+
+func (r *BillingContextResolver) resolveForAmount(ctx context.Context, consumerUserID int64, requiredAmount float64, enforceSpendLimit bool) (*BillingContext, error) {
 	if r == nil || r.repo == nil {
-		return &BillingContext{ConsumerUserID: consumerUserID, PayerUserID: consumerUserID, BalanceSource: "self"}, nil
+		return &BillingContext{ConsumerUserID: consumerUserID, PayerUserID: consumerUserID, BalanceSource: BalanceSourceSelf}, nil
 	}
-	resolved, err := r.repo.ResolveBillingContext(ctx, consumerUserID)
+	resolved, err := r.repo.ResolveBillingContext(ctx, consumerUserID, requiredAmount)
 	if errors.Is(err, ErrCompanyNotFound) {
-		return &BillingContext{ConsumerUserID: consumerUserID, PayerUserID: consumerUserID, BalanceSource: "self"}, nil
+		return &BillingContext{ConsumerUserID: consumerUserID, PayerUserID: consumerUserID, BalanceSource: BalanceSourceSelf}, nil
 	}
 	if err != nil {
 		organizationRuntimeMetrics.payerResolutionFailures.Add(1)
 		return nil, fmt.Errorf("resolve billing context: %w", err)
 	}
+	if enforceSpendLimit {
+		if err := r.CheckSpendLimit(ctx, resolved, requiredAmount); err != nil {
+			return nil, err
+		}
+	}
 	return resolved, nil
+}
+
+func (r *BillingContextResolver) CheckSpendLimit(ctx context.Context, billing *BillingContext, amount float64) error {
+	if r == nil || billing == nil || amount < 0 || !companySponsoredBalanceSource(billing.BalanceSource) {
+		return nil
+	}
+	repo, ok := r.repo.(OrganizationSpendLimitRepository)
+	if !ok {
+		return nil
+	}
+	return repo.CheckOrganizationSpendLimit(ctx, billing.ConsumerUserID, billing.BalanceSource, amount)
+}
+
+func (r *BillingContextResolver) RecordSpendLimitAlert(ctx context.Context, billing *BillingContext) error {
+	if r == nil || billing == nil || !companySponsoredBalanceSource(billing.BalanceSource) {
+		return nil
+	}
+	repo, ok := r.repo.(OrganizationSpendLimitRepository)
+	if !ok {
+		return nil
+	}
+	return repo.RecordSpendLimitAlert(ctx, billing.ConsumerUserID, billing.BalanceSource)
+}
+
+func companySponsoredBalanceSource(source string) bool {
+	return source == BalanceSourceCompany || source == BalanceSourceLegacyShared || source == BalanceSourceSubscription
+}
+
+func (r *BillingContextResolver) GetOrganizationBalance(ctx context.Context, billing *BillingContext) (float64, error) {
+	repo, organizationID, err := r.organizationBalanceRepository(billing)
+	if err != nil {
+		return 0, err
+	}
+	return repo.GetOrganizationBalance(ctx, organizationID)
+}
+
+func (r *BillingContextResolver) DeductOrganizationBalance(ctx context.Context, billing *BillingContext, amount float64) (float64, error) {
+	repo, organizationID, err := r.organizationBalanceRepository(billing)
+	if err != nil {
+		return 0, err
+	}
+	return repo.DeductOrganizationBalance(ctx, organizationID, amount)
+}
+
+func (r *BillingContextResolver) CreditOrganizationBalance(ctx context.Context, billing *BillingContext, amount float64) (float64, error) {
+	repo, organizationID, err := r.organizationBalanceRepository(billing)
+	if err != nil {
+		return 0, err
+	}
+	return repo.CreditOrganizationBalance(ctx, organizationID, amount)
+}
+
+func (r *BillingContextResolver) organizationBalanceRepository(billing *BillingContext) (OrganizationBalanceRepository, int64, error) {
+	if r == nil || r.repo == nil || billing == nil || !billing.UsesCompanyBalance() {
+		return nil, 0, fmt.Errorf("organization balance context is unavailable")
+	}
+	if billing.OrganizationID == nil || *billing.OrganizationID <= 0 {
+		return nil, 0, ErrCompanyNotFound
+	}
+	repo, ok := r.repo.(OrganizationBalanceRepository)
+	if !ok {
+		return nil, 0, fmt.Errorf("organization balance repository is unavailable")
+	}
+	return repo, *billing.OrganizationID, nil
 }
 
 func GuardIAMFinancialOperation(user *User) error {

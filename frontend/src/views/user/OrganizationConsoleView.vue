@@ -1,7 +1,7 @@
 <template>
   <AppLayout>
     <div class="space-y-5">
-    <div>
+    <div class="card p-5" data-testid="organization-header">
       <div class="flex flex-wrap items-center gap-2">
         <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ organization?.company_name }}</h2>
         <button v-if="isOwner" class="btn btn-ghost btn-sm" @click="showRename = true">
@@ -33,18 +33,18 @@
       </nav>
     </div>
 
-    <p v-if="error" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">
+    <p v-if="error" class="card border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
       {{ error }}
     </p>
-    <div v-if="loading" class="py-10 text-center text-sm text-gray-500">{{ t('common.loading') }}</div>
+    <div v-if="loading" class="card py-10 text-center text-sm text-gray-500">{{ t('common.loading') }}</div>
 
     <div v-else-if="activeTab === 'finance'" class="space-y-6">
-      <section v-if="finance?.company_available !== undefined" class="space-y-4">
+      <section class="card space-y-4 p-5" data-testid="company-finance-summary">
         <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.finance.companyBalance') }}</h3>
         <div class="grid gap-4 sm:grid-cols-3">
-          <div v-for="field in (['company_available', 'company_frozen', 'company_total'] as const)" :key="field" class="rounded-md border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
+          <div v-for="field in (['company_available', 'company_frozen', 'company_total'] as const)" :key="field" class="rounded-md border border-gray-200 bg-gray-50 p-5 dark:border-dark-700 dark:bg-dark-900/50">
             <div class="text-xs text-gray-500">{{ t(`organization.finance.${field}`) }}</div>
-            <div class="mt-2 break-all font-mono text-xl">{{ companyAmount(finance?.[field]) }}</div>
+            <div class="mt-2 break-all font-mono text-xl">{{ canViewCompanyFinance ? companyAmount(finance?.[field]) : t('organization.finance.noPermission') }}</div>
           </div>
         </div>
         <div v-if="isOwner" class="space-y-2">
@@ -65,12 +65,12 @@
         <p v-if="isOwner" class="text-xs text-gray-500">{{ t('organization.finance.companyBalanceHint') }}</p>
       </section>
 
-      <section v-if="isOwner" class="space-y-4">
+      <section class="card space-y-4 p-5" data-testid="organization-members">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.tabs.members') }}</h3>
-          <div class="flex flex-wrap items-center gap-3">
+          <div v-if="isOwner" class="flex flex-wrap items-center gap-3">
             <span class="text-sm text-gray-500">{{ t('organization.members.slots', { used: usedSlots, limit: memberLimit }) }}</span>
-            <button class="btn btn-primary" :disabled="usedSlots >= memberLimit || operationKey !== ''" @click="showCreate = true">
+            <button data-testid="create-iam-member" class="btn btn-primary" :disabled="usedSlots >= memberLimit || operationKey !== ''" @click="showCreate = true">
               {{ t('organization.members.create') }}
             </button>
           </div>
@@ -84,11 +84,11 @@
                 <th class="p-3">{{ t('common.status') }}</th>
                 <th class="p-3">{{ t('organization.finance.available') }}</th>
                 <th class="p-3">{{ t('organization.policies') }}</th>
-                <th class="p-3 text-right">{{ t('common.actions') }}</th>
+                <th v-if="isOwner" class="p-3 text-right">{{ t('common.actions') }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="member in members" :key="member.user_id" class="border-t border-gray-100 dark:border-dark-700">
+              <tr v-for="member in visibleMembers" :key="member.user_id" class="border-t border-gray-100 dark:border-dark-700">
                 <td class="p-3">
                   <div class="font-medium">{{ member.login_name }}</div>
                   <div class="flex items-center gap-1">
@@ -99,8 +99,29 @@
                 <td class="p-3 font-mono text-xs">{{ member.external_user_id }}</td>
                 <td class="p-3">{{ t(`organization.status.${member.status}`) }}</td>
                 <td class="p-3 font-mono">{{ companyAmount(member.balance) }}</td>
-                <td class="max-w-xs break-words p-3">{{ member.policy_names.join(', ') || '-' }}</td>
-                <td class="p-3 text-right">
+                <td class="max-w-xs p-3">
+                  <span v-if="member.policy_names.length === 0">-</span>
+                  <div v-else class="flex flex-wrap gap-1.5">
+                    <HelpTooltip
+                      v-for="policyKey in member.policy_names"
+                      :key="policyKey"
+                      :content="policyDescriptionForKey(policyKey)"
+                      width-class="w-72 max-w-[calc(100vw-2rem)]"
+                    >
+                      <template #trigger>
+                        <button
+                          type="button"
+                          class="inline-flex max-w-full rounded border border-gray-200 bg-gray-50 px-2 py-1 text-left text-xs text-gray-700 hover:border-primary-300 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200"
+                          :data-testid="`member-policy-${policyKey}`"
+                          :aria-label="`${policyNameForKey(policyKey)}: ${policyDescriptionForKey(policyKey)}`"
+                        >
+                          <span class="break-words">{{ policyNameForKey(policyKey) }}</span>
+                        </button>
+                      </template>
+                    </HelpTooltip>
+                  </div>
+                </td>
+                <td v-if="isOwner" class="p-3 text-right">
                   <div class="flex flex-wrap justify-end gap-1">
                     <button v-if="member.status !== 'archived'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="openAuthorization(member)">{{ t('organization.members.authorize') }}</button>
                     <button v-if="member.status === 'active'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="openAllocation(member)">{{ t('organization.members.allocateFunds') }}</button>
@@ -117,12 +138,175 @@
       </section>
     </div>
 
+    <div v-else-if="activeTab === 'limits'" class="space-y-6">
+      <section v-if="isOwner" class="card space-y-4 p-5" data-testid="spend-limit-form">
+        <div>
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.spendLimits.configure') }}</h3>
+          <p class="mt-1 text-sm text-gray-500">{{ t('organization.spendLimits.description') }}</p>
+        </div>
+
+        <div class="space-y-3 border-y border-gray-200 py-5 dark:border-dark-700" data-testid="spend-limit-granularity">
+          <label class="input-label">{{ t('organization.spendLimits.target') }}</label>
+          <div class="inline-flex rounded-md border border-gray-200 p-1 dark:border-dark-600">
+            <button type="button" :class="['btn btn-sm', spendLimitForm.target === 'all' ? 'btn-primary' : 'btn-ghost']" @click="spendLimitForm.target = 'all'">
+              {{ t('organization.spendLimits.allMembers') }}
+            </button>
+            <button type="button" :class="['btn btn-sm', spendLimitForm.target === 'members' ? 'btn-primary' : 'btn-ghost']" @click="spendLimitForm.target = 'members'">
+              {{ t('organization.spendLimits.selectedMembers') }}
+            </button>
+          </div>
+          <div v-if="spendLimitForm.target === 'members'" class="max-h-48 space-y-1 overflow-y-auto rounded-md border border-gray-200 p-2 dark:border-dark-600">
+            <label v-for="member in configurableMembers" :key="member.user_id" class="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-700">
+              <input v-model="spendLimitMemberIDs" type="checkbox" :value="member.user_id" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+              <span class="min-w-0 flex-1 truncate">{{ member.login_name }}</span>
+              <span class="font-mono text-xs text-gray-400">{{ member.external_user_id }}</span>
+            </label>
+            <p v-if="configurableMembers.length === 0" class="p-2 text-sm text-gray-500">{{ t('organization.spendLimits.noMembers') }}</p>
+          </div>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label class="input-label" for="spend-limit-daily">{{ t('organization.spendLimits.dailyLimit') }}</label>
+            <input id="spend-limit-daily" v-model.trim="spendLimitForm.daily" class="input w-full" type="number" min="0.0000000001" step="0.01" placeholder="USD">
+          </div>
+          <div>
+            <label class="input-label" for="spend-limit-monthly">{{ t('organization.spendLimits.monthlyLimit') }}</label>
+            <input id="spend-limit-monthly" v-model.trim="spendLimitForm.monthly" class="input w-full" type="number" min="0.0000000001" step="0.01" placeholder="USD">
+          </div>
+        </div>
+
+        <div class="space-y-4 border-y border-gray-200 py-5 dark:border-dark-700" data-testid="spend-limit-alert-settings">
+          <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+            <input v-model="spendLimitForm.alertEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+            {{ t('organization.spendLimits.enableAlert') }}
+          </label>
+          <div v-if="spendLimitForm.alertEnabled" class="grid gap-4 lg:grid-cols-2">
+            <div class="max-w-xs">
+              <label class="input-label" for="spend-limit-threshold">{{ t('organization.spendLimits.alertThreshold') }}</label>
+              <div class="flex items-center gap-2">
+                <input id="spend-limit-threshold" v-model.number="spendLimitForm.threshold" class="input w-full" type="number" min="1" max="100" step="1">
+                <span class="text-sm text-gray-500">%</span>
+              </div>
+            </div>
+            <div>
+              <label class="input-label" for="spend-limit-recipient-input">{{ t('organization.spendLimits.additionalRecipients') }}</label>
+              <div class="flex gap-2">
+                <input
+                  id="spend-limit-recipient-input"
+                  v-model.trim="spendLimitRecipientInput"
+                  class="input min-w-0 flex-1"
+                  type="email"
+                  list="spend-limit-member-emails"
+                  autocomplete="off"
+                  :placeholder="t('organization.spendLimits.recipientsPlaceholder')"
+                  @keydown.enter.prevent="addSpendLimitRecipient()"
+                >
+                <datalist id="spend-limit-member-emails">
+                  <option v-for="option in spendLimitRecipientOptions" :key="option.email" :value="option.email" :label="option.label" />
+                </datalist>
+                <button type="button" class="btn btn-secondary shrink-0" @click="addSpendLimitRecipient()">{{ t('common.add') }}</button>
+              </div>
+              <p v-if="spendLimitRecipientError" class="mt-1 text-xs text-red-600 dark:text-red-400">{{ spendLimitRecipientError }}</p>
+              <p class="mt-1 text-xs text-gray-500">{{ t('organization.spendLimits.recipientsHint') }}</p>
+              <div v-if="parsedSpendLimitRecipients.length" class="mt-2 flex flex-wrap gap-2">
+                <span v-for="email in parsedSpendLimitRecipients" :key="email" class="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                  {{ email }}
+                  <button type="button" class="rounded p-0.5 hover:bg-blue-100 dark:hover:bg-blue-800/50" :title="t('organization.spendLimits.removeRecipient')" :aria-label="t('organization.spendLimits.removeRecipient')" @click="removeSpendLimitRecipient(email)">
+                    <Icon name="x" size="xs" />
+                  </button>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end">
+          <button class="btn btn-primary" :disabled="!canSaveSpendLimit || operationKey !== ''" @click="saveSpendLimit">
+            {{ t('common.save') }}
+          </button>
+        </div>
+      </section>
+
+      <section v-if="isOwner && spendLimitRules.length" class="card space-y-3 p-5" data-testid="spend-limit-rules">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.spendLimits.rules') }}</h3>
+        <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
+          <table class="w-full min-w-[760px] text-sm">
+            <thead class="bg-gray-50 text-left dark:bg-dark-800"><tr>
+              <th class="p-3">{{ t('organization.spendLimits.target') }}</th>
+              <th class="p-3">{{ t('organization.spendLimits.dailyLimit') }}</th>
+              <th class="p-3">{{ t('organization.spendLimits.monthlyLimit') }}</th>
+              <th class="p-3">{{ t('organization.spendLimits.alert') }}</th>
+              <th class="p-3 text-right">{{ t('common.actions') }}</th>
+            </tr></thead>
+            <tbody>
+              <tr v-for="rule in spendLimitRules" :key="rule.id" class="border-t border-gray-100 dark:border-dark-700">
+                <td class="p-3 font-medium">{{ rule.member_user_id ? rule.member_login : t('organization.spendLimits.allMembers') }}</td>
+                <td class="p-3 font-mono">{{ rule.daily_limit_usd ? formatMoney(rule.daily_limit_usd) : '-' }}</td>
+                <td class="p-3 font-mono">{{ rule.monthly_limit_usd ? formatMoney(rule.monthly_limit_usd) : '-' }}</td>
+                <td class="p-3">{{ rule.alert_enabled ? `${rule.alert_threshold_pct}%` : t('common.disabled') }}</td>
+                <td class="p-3 text-right"><button class="btn btn-ghost btn-sm text-red-600" :disabled="operationKey !== ''" @click="deleteSpendLimit(rule)">{{ t('common.delete') }}</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card space-y-3 p-5" data-testid="spend-limit-usage">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.spendLimits.currentUsage') }}</h3>
+        <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
+          <table class="w-full min-w-[640px] text-sm">
+            <thead class="bg-gray-50 text-left dark:bg-dark-800"><tr>
+              <th class="p-3">{{ t('organization.usage.member') }}</th>
+              <th class="p-3">{{ t('organization.spendLimits.dailyUsage') }}</th>
+              <th class="p-3">{{ t('organization.spendLimits.monthlyUsage') }}</th>
+            </tr></thead>
+            <tbody>
+              <tr v-for="item in spendLimitUsage" :key="item.member_user_id" class="border-t border-gray-100 dark:border-dark-700">
+                <td class="p-3 font-medium">{{ item.member_login }}</td>
+                <td
+                  :class="['p-3 font-mono', spendUsageExceeded(item.daily_used_usd, item.daily_limit_usd) ? 'font-semibold text-red-600 dark:text-red-400' : '']"
+                  :data-testid="`spend-limit-daily-${item.member_user_id}`"
+                >
+                  {{ formatSpendUsage(item.daily_used_usd, item.daily_limit_usd) }}
+                </td>
+                <td
+                  :class="['p-3 font-mono', spendUsageExceeded(item.monthly_used_usd, item.monthly_limit_usd) ? 'font-semibold text-red-600 dark:text-red-400' : '']"
+                  :data-testid="`spend-limit-monthly-${item.member_user_id}`"
+                >
+                  {{ formatSpendUsage(item.monthly_used_usd, item.monthly_limit_usd) }}
+                </td>
+              </tr>
+              <tr v-if="spendLimitUsage.length === 0"><td colspan="3" class="p-8 text-center text-gray-500">{{ t('organization.spendLimits.noUsage') }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
     <div v-else-if="activeTab === 'dashboard'" class="space-y-6">
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <DashboardStatCard icon="key" color="blue" :label="t('admin.dashboard.apiKeys')" :value="dashboardStats?.total_api_keys ?? 0" :detail="`${dashboardStats?.active_api_keys ?? 0} ${t('common.active')}`" />
         <DashboardStatCard icon="server" color="purple" :label="t('admin.dashboard.accounts')" :value="dashboardStats?.total_accounts ?? 0" :detail="`${dashboardStats?.normal_accounts ?? 0} ${t('common.active')}`" />
         <DashboardStatCard icon="chart" color="green" :label="t('admin.dashboard.todayRequests')" :value="dashboardStats?.today_requests ?? 0" :detail="`${t('common.total')}: ${formatDashboardTokens(dashboardStats?.total_requests ?? 0)}`" />
-        <DashboardStatCard icon="creditCard" color="emerald" :label="t('dashboard.todayCost')" :value="`$${formatDashboardCost(dashboardStats?.today_actual_cost ?? 0)}`" :detail="t('admin.dashboard.actual')" />
+        <DashboardStatCard
+          data-testid="organization-today-cost"
+          icon="dollar"
+          color="purple"
+          :label="t('dashboard.todayCost')"
+          :value="`$${formatDashboardCost(dashboardStats?.today_actual_cost ?? 0)} / $${formatDashboardCost(dashboardStats?.today_cost ?? 0)}`"
+          :detail="`${t('common.total')}: $${formatDashboardCost(dashboardStats?.total_actual_cost ?? 0)} / $${formatDashboardCost(dashboardStats?.total_cost ?? 0)}`"
+        >
+          <template #value>
+            <span class="text-purple-600 dark:text-purple-400" :title="t('dashboard.actual')">${{ formatDashboardCost(dashboardStats?.today_actual_cost ?? 0) }}</span>
+            <span class="text-sm font-normal text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')"> / ${{ formatDashboardCost(dashboardStats?.today_cost ?? 0) }}</span>
+          </template>
+          <template #detail>
+            <span class="text-gray-500 dark:text-gray-400">{{ t('common.total') }}: </span>
+            <span class="text-purple-600 dark:text-purple-400" :title="t('dashboard.actual')">${{ formatDashboardCost(dashboardStats?.total_actual_cost ?? 0) }}</span>
+            <span class="text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')"> / ${{ formatDashboardCost(dashboardStats?.total_cost ?? 0) }}</span>
+          </template>
+        </DashboardStatCard>
       </div>
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <DashboardStatCard icon="cube" color="amber" :label="t('admin.dashboard.todayTokens')" :value="formatDashboardTokens(dashboardStats?.today_tokens ?? 0)" :detail="dashboardCostDetail('today')">
@@ -142,16 +326,16 @@
         </div>
       </div>
       <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ModelDistributionChart :model-stats="dashboardModelStats" :loading="dashboardChartsLoading" :show-metric-toggle="false" :show-source-toggle="false" :enable-breakdown="true" :enable-ranking-view="true" :show-account-cost="true" :ranking-items="dashboardRankingItems" :ranking-total-actual-cost="dashboardRankingTotalActualCost" :ranking-total-requests="dashboardRankingTotalRequests" :ranking-total-tokens="dashboardRankingTotalTokens" :ranking-loading="dashboardChartsLoading" :start-date="dashboardStartDate" :end-date="dashboardEndDate" :breakdown-loader="loadOrganizationBreakdown" />
+        <ModelDistributionChart :model-stats="dashboardModelStats" :loading="dashboardChartsLoading" :show-metric-toggle="false" :show-source-toggle="false" :enable-breakdown="true" :enable-ranking-view="true" :show-account-cost="true" :ranking-items="dashboardRankingItems" :ranking-total-actual-cost="dashboardRankingTotalActualCost" :ranking-total-requests="dashboardRankingTotalRequests" :ranking-total-tokens="dashboardRankingTotalTokens" :ranking-loading="dashboardChartsLoading" :start-date="dashboardStartDate" :end-date="dashboardEndDate" :breakdown-loader="loadOrganizationBreakdown" :ranking-breakdown-loader="loadOrganizationRankingModels" />
         <TokenUsageTrend :trend-data="dashboardTrend" :loading="dashboardChartsLoading" />
       </div>
       <UserUsageTrendChart :items="userUsageTrend" :loading="dashboardChartsLoading" />
     </div>
 
     <div v-else-if="activeTab === 'subscriptions'" class="space-y-6">
-      <p class="text-sm text-gray-500">{{ t('organization.subscriptions.description') }}</p>
+      <p class="card p-4 text-sm text-gray-500">{{ t('organization.subscriptions.description') }}</p>
 
-      <section v-if="isOwner" class="space-y-3 rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+      <section v-if="isOwner" class="card space-y-3 p-5">
         <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.subscriptions.createTitle') }}</h3>
         <p class="text-xs text-gray-500">{{ t('organization.subscriptions.createHint') }}</p>
         <PlanPlazaCards :cards="planCards" :loading="plansLoading" emit-select @select="openPurchase" />
@@ -170,10 +354,10 @@
         </div>
       </div>
 
-      <div v-if="subscriptions.length === 0" class="rounded-md border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-dark-700">
+      <div v-if="subscriptions.length === 0" class="card border-dashed p-8 text-center text-sm text-gray-500">
         {{ t('organization.subscriptions.empty') }}
       </div>
-      <div v-else class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
+      <div v-else class="card overflow-x-auto">
         <table class="w-full min-w-[820px] text-sm">
           <thead class="bg-gray-50 text-left dark:bg-dark-800">
             <tr>
@@ -206,20 +390,19 @@
     </div>
 
     <section v-else class="space-y-4">
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div class="rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div class="card p-4">
           <div class="text-xs text-gray-500">{{ t('organization.usage.statRequests') }}</div>
           <div class="mt-1 text-xl font-semibold">{{ (usageStats?.requests ?? 0).toLocaleString() }}</div>
         </div>
-        <div class="rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-          <div class="text-xs text-gray-500">{{ t('organization.usage.statInputTokens') }}</div>
-          <div class="mt-1 text-xl font-semibold">{{ (usageStats?.input_tokens ?? 0).toLocaleString() }}</div>
-        </div>
-        <div class="rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-          <div class="text-xs text-gray-500">{{ t('organization.usage.statOutputTokens') }}</div>
-          <div class="mt-1 text-xl font-semibold">{{ (usageStats?.output_tokens ?? 0).toLocaleString() }}</div>
-        </div>
-        <div class="rounded-md border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+        <UsageTokenSummaryCard
+          :input-tokens="usageStats?.input_tokens ?? 0"
+          :output-tokens="usageStats?.output_tokens ?? 0"
+          :cache-creation-tokens="usageStats?.cache_creation_tokens ?? 0"
+          :cache-read-tokens="usageStats?.cache_read_tokens ?? 0"
+          :total-tokens="usageStats?.total_tokens ?? 0"
+        />
+        <div class="card p-4">
           <div class="text-xs text-gray-500">{{ t('organization.usage.statCost') }}</div>
           <div class="mt-1 break-all font-mono text-xl font-semibold">{{ companyAmount(usageStats?.actual_cost) }}</div>
         </div>
@@ -271,12 +454,13 @@
         </div>
       </div>
 
-      <div class="flex border-b border-gray-200 dark:border-dark-700">
+      <div class="card" data-testid="organization-usage-details">
+      <div class="flex border-b border-gray-200 px-2 dark:border-dark-700 sm:px-4">
         <button type="button" class="border-b-2 px-4 py-2 text-sm font-medium" :class="usageDetailTab === 'usage' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500'" @click="usageDetailTab = 'usage'">{{ t('usage.tabs.usage') }}</button>
         <button type="button" class="border-b-2 px-4 py-2 text-sm font-medium" :class="usageDetailTab === 'errors' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500'" @click="switchUsageDetailTab('errors')">{{ t('usage.tabs.errors') }}</button>
       </div>
 
-      <div class="space-y-3">
+      <div class="space-y-3 p-4">
         <div class="grid items-end gap-3 md:grid-cols-3 xl:grid-cols-4">
           <div><label class="input-label">{{ t('organization.usage.member') }}</label><Select v-model="usageFilters.memberId" :options="usageMemberOptions" searchable @change="onUsageMemberChange" /></div>
           <div ref="usageAPIKeySearchRef" class="relative">
@@ -352,6 +536,7 @@
       </template>
       <UserErrorRequestsTable
         v-else
+        flat
         :rows="usageErrors.items"
         :total="usageErrors.total"
         :loading="usageErrorsLoading"
@@ -363,6 +548,7 @@
         @update:page="loadUsageErrors"
         @update:pageSize="onUsageErrorPageSize"
       />
+      </div>
     </section>
 
     <div v-if="showCreate" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
@@ -377,7 +563,7 @@
           <div class="flex min-w-0 flex-col sm:flex-row">
             <input id="iam-member-login-name" v-model.trim="createForm.loginName" class="input min-w-0 flex-1 sm:rounded-r-none" required pattern="[A-Za-z0-9._-]{1,64}" autocomplete="off">
             <span data-testid="iam-principal-suffix" class="flex min-h-10 max-w-full items-center break-all rounded-md border border-gray-300 bg-gray-50 px-3 font-mono text-xs text-gray-600 sm:-ml-px sm:rounded-l-none sm:whitespace-nowrap dark:border-dark-600 dark:bg-dark-900 dark:text-dark-300">
-              @{{ organization?.account_id }}.opentk.ai
+              @{{ organization?.company_id }}.opentk.ai
             </span>
           </div>
         </div>
@@ -537,23 +723,31 @@ import UserUsageTrendChart from '@/components/usage/UserUsageTrendChart.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
+import UsageTokenSummaryCard from '@/components/usage/UsageTokenSummaryCard.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { getLocale } from '@/i18n'
 import { getBillingModeBadgeClass, getBillingModeLabel } from '@/utils/billingMode'
-import type { DashboardStats, EndpointStat, FinanceSummary, GroupStat, IAMMember, ManagedPolicy, ModelStat, OrganizationContext, OrganizationSubscription, OrganizationUsageParams, OrganizationUsageRow, OrganizationUsageStats, OrganizationUsageTrendPoint, PaginatedOrganizationUsage, UserBreakdownItem, UserErrorRequest, UserSpendingRankingItem, UserUsageTrendPoint } from '@/types'
+import type { DashboardStats, EndpointStat, FinanceSummary, GroupStat, IAMMember, ManagedPolicy, ModelStat, OrganizationContext, OrganizationSpendLimitRule, OrganizationSpendUsage, OrganizationSubscription, OrganizationUsageParams, OrganizationUsageRow, OrganizationUsageStats, OrganizationUsageTrendPoint, PaginatedOrganizationUsage, UserBreakdownItem, UserErrorRequest, UserSpendingRankingItem, UserUsageTrendPoint } from '@/types'
 import type { PlazaPlanCard } from '@/api/plaza'
 import { useAuthStore } from '@/stores'
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const { copyToClipboard } = useClipboard()
-type Tab = 'finance' | 'dashboard' | 'subscriptions' | 'usage'
+type Tab = 'finance' | 'limits' | 'dashboard' | 'subscriptions' | 'usage'
 
 const activeTab = ref<Tab>('finance')
 const organization = ref<OrganizationContext>()
 const members = ref<IAMMember[]>([])
+const spendLimitRules = ref<OrganizationSpendLimitRule[]>([])
+const spendLimitUsage = ref<OrganizationSpendUsage[]>([])
+const spendLimitMemberIDs = ref<number[]>([])
+const spendLimitForm = reactive({ target: 'all' as 'all' | 'members', daily: '', monthly: '', alertEnabled: false, threshold: 80, recipients: '' })
+const spendLimitRecipientInput = ref('')
+const spendLimitRecipientError = ref('')
 const policies = ref<ManagedPolicy[]>([])
 const finance = ref<FinanceSummary>()
 const usagePage = ref<PaginatedOrganizationUsage>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
@@ -737,11 +931,36 @@ const selectedPlanId = ref<number | null>(null)
 
 const isOwner = computed(() => organization.value?.role === 'owner')
 const actions = computed(() => organization.value?.actions || [])
+const canViewCompanyFinance = computed(() => isOwner.value || actions.value.includes('organization.finance.balance.read'))
+const visibleMembers = computed(() => isOwner.value
+  ? members.value
+  : members.value.filter(member => member.user_id === auth.user?.id))
 const visibleTabs = computed<Tab[]>(() => isOwner.value
-  ? ['finance', 'dashboard', 'subscriptions', 'usage']
-  : (actions.value.includes('organization.finance.balance.read') ? ['finance', 'subscriptions'] : []))
+  ? ['finance', 'limits', 'dashboard', 'subscriptions', 'usage']
+  : (canViewCompanyFinance.value ? ['finance', 'limits', 'subscriptions'] : ['finance', 'limits']))
 
-const tabIcons: Record<Tab, 'creditCard' | 'chart' | 'sparkles'> = { finance: 'creditCard', dashboard: 'chart', subscriptions: 'sparkles', usage: 'chart' }
+const configurableMembers = computed(() => members.value.filter(member => member.status !== 'archived'))
+const parsedSpendLimitRecipients = computed(() => spendLimitForm.recipients
+  .split(/[\s,;]+/)
+  .map(value => value.trim().toLowerCase())
+  .filter(Boolean))
+const spendLimitRecipientOptions = computed(() => {
+  const selected = new Set(parsedSpendLimitRecipients.value)
+  const seen = new Set<string>()
+  return configurableMembers.value.flatMap(member => {
+    const email = member.recovery_email?.trim().toLowerCase() || ''
+    if (!email || selected.has(email) || seen.has(email)) return []
+    seen.add(email)
+    return [{ email, label: `${member.login_name} · ${email}` }]
+  })
+})
+const canSaveSpendLimit = computed(() => {
+  if (!spendLimitForm.daily && !spendLimitForm.monthly) return false
+  if (spendLimitForm.target === 'members' && spendLimitMemberIDs.value.length === 0) return false
+  return !spendLimitForm.alertEnabled || (spendLimitForm.threshold >= 1 && spendLimitForm.threshold <= 100)
+})
+
+const tabIcons: Record<Tab, 'creditCard' | 'chart' | 'sparkles'> = { finance: 'creditCard', limits: 'chart', dashboard: 'chart', subscriptions: 'sparkles', usage: 'chart' }
 const tabKeyboardActions: Record<string, number | 'first' | 'last'> = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1, Home: 'first', End: 'last' }
 
 function selectTab(tab: Tab) {
@@ -775,7 +994,7 @@ function handleTabKeydown(event: KeyboardEvent, tab: Tab) {
 
 function routeTab(): Tab | null {
   const value = Array.isArray(route.query.tab) ? route.query.tab[0] : route.query.tab
-  return value === 'finance' || value === 'dashboard' || value === 'subscriptions' || value === 'usage' ? value : null
+  return value === 'finance' || value === 'limits' || value === 'dashboard' || value === 'subscriptions' || value === 'usage' ? value : null
 }
 
 function restoreTabFromRoute() {
@@ -805,9 +1024,80 @@ function formatMoney(value: string | number | null | undefined): string {
   return new Intl.NumberFormat(getLocale(), {
     style: 'currency',
     currency: 'USD',
+    currencyDisplay: 'narrowSymbol',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount)
+}
+
+function formatSpendUsage(used: string, limit?: string): string {
+  return limit
+    ? `${formatMoney(used)} / ${formatMoney(limit)}`
+    : `${formatMoney(used)} · ${t('organization.spendLimits.unlimited')}`
+}
+
+function spendUsageExceeded(used: string, limit?: string): boolean {
+  if (limit === undefined || limit === '') return false
+  const usedAmount = Number(used)
+  const limitAmount = Number(limit)
+  return Number.isFinite(usedAmount) && Number.isFinite(limitAmount) && usedAmount >= limitAmount
+}
+
+function addSpendLimitRecipient(value = spendLimitRecipientInput.value) {
+  const email = value.trim().toLowerCase()
+  if (!email) return
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    spendLimitRecipientError.value = t('common.invalidEmail')
+    return
+  }
+  const recipients = [...parsedSpendLimitRecipients.value]
+  if (!recipients.includes(email)) recipients.push(email)
+  spendLimitForm.recipients = recipients.join(', ')
+  spendLimitRecipientInput.value = ''
+  spendLimitRecipientError.value = ''
+}
+
+function removeSpendLimitRecipient(email: string) {
+  spendLimitForm.recipients = parsedSpendLimitRecipients.value.filter(recipient => recipient !== email).join(', ')
+}
+
+async function saveSpendLimit() {
+  if (!canSaveSpendLimit.value) return
+  operationKey.value = 'spend-limit-save'
+  error.value = ''
+  try {
+    spendLimitRules.value = await organizationAPI.upsertSpendLimits({
+      target: spendLimitForm.target,
+      member_ids: spendLimitForm.target === 'members' ? spendLimitMemberIDs.value : undefined,
+      daily_limit_usd: spendLimitForm.daily || undefined,
+      monthly_limit_usd: spendLimitForm.monthly || undefined,
+      alert_enabled: spendLimitForm.alertEnabled,
+      alert_threshold_pct: spendLimitForm.threshold,
+      additional_recipients: parsedSpendLimitRecipients.value,
+    })
+    spendLimitUsage.value = await organizationAPI.getSpendLimitUsage()
+    spendLimitMemberIDs.value = []
+  } catch (cause) {
+    error.value = errorMessage(cause)
+  } finally {
+    operationKey.value = ''
+  }
+}
+
+async function deleteSpendLimit(rule: OrganizationSpendLimitRule) {
+  if (!window.confirm(t('organization.spendLimits.deleteConfirm'))) return
+  operationKey.value = `spend-limit-delete-${rule.id}`
+  error.value = ''
+  try {
+    await organizationAPI.deleteSpendLimit(rule.member_user_id)
+    const [rules, usage] = await Promise.all([organizationAPI.listSpendLimits(), organizationAPI.getSpendLimitUsage()])
+    spendLimitRules.value = rules
+    spendLimitUsage.value = usage
+  } catch (cause) {
+    error.value = errorMessage(cause)
+  } finally {
+    operationKey.value = ''
+  }
 }
 
 function formatUsageCost(value: string | number | null | undefined): string {
@@ -1065,6 +1355,14 @@ async function loadOrganizationBreakdown(params: Record<string, unknown>): Promi
   })
 }
 
+async function loadOrganizationRankingModels(item: UserSpendingRankingItem): Promise<ModelStat[]> {
+  const charts = await organizationAPI.getUsageCharts({
+    ...organizationDashboardParams(),
+    member_id: item.user_id,
+  })
+  return charts.models
+}
+
 async function searchUsage() {
   await Promise.all([loadUsage(1), loadUsageAggregates()])
 }
@@ -1185,13 +1483,21 @@ async function load() {
       if (isOwner.value) void loadPlans()
     }
     if (isOwner.value) {
-      const [memberData, policyData] = await Promise.all([organizationAPI.listMembers(), organizationAPI.listPolicies()])
+      const [memberData, policyData, rules, limitUsage] = await Promise.all([
+        organizationAPI.listMembers(), organizationAPI.listPolicies(), organizationAPI.listSpendLimits(), organizationAPI.getSpendLimitUsage(),
+      ])
       members.value = memberData.items
       memberLimit.value = memberData.member_limit
       usedSlots.value = memberData.used_slots
       policies.value = policyData
+      spendLimitRules.value = rules
+      spendLimitUsage.value = limitUsage
       const [, , dashboard] = await Promise.all([loadUsage(usagePage.value.page || 1), loadUsageAggregates(), organizationAPI.getDashboard(), loadDashboardAggregates()])
       dashboardStats.value = dashboard
+    } else {
+      const [memberData, limitUsage] = await Promise.all([organizationAPI.listMembers(), organizationAPI.getSpendLimitUsage()])
+      members.value = memberData.items
+      spendLimitUsage.value = limitUsage
     }
   } catch (cause) {
     error.value = errorMessage(cause)
@@ -1292,13 +1598,25 @@ async function togglePolicy(member: IAMMember, key: string, attached: boolean) {
 }
 
 function policyName(policy: ManagedPolicy): string {
-  const key = `organization.policyMeta.${policy.key}.name`
-  return te(key) ? t(key) : policy.display_name
+  return isKnownPolicyKey(policy.key) ? policyNameForKey(policy.key) : policy.display_name
 }
 
 function policyDescription(policy: ManagedPolicy): string {
-  const key = `organization.policyMeta.${policy.key}.description`
-  return te(key) ? t(key) : policy.description
+  return isKnownPolicyKey(policy.key) ? policyDescriptionForKey(policy.key) : policy.description
+}
+
+const knownPolicyKeys = new Set(['CompanyFinanceReadOnly', 'CompanySharedBalanceUse'])
+
+function isKnownPolicyKey(key: string): boolean {
+  return knownPolicyKeys.has(key)
+}
+
+function policyNameForKey(key: string): string {
+  return isKnownPolicyKey(key) ? t(`organization.policyMeta.${key}.name`) : key
+}
+
+function policyDescriptionForKey(key: string): string {
+  return isKnownPolicyKey(key) ? t(`organization.policyMeta.${key}.description`) : ''
 }
 
 function openAuthorization(member: IAMMember) {

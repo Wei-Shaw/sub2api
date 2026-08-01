@@ -69,6 +69,10 @@ func batchImagePayerUserID(job *BatchImageJob) int64 {
 	return 0
 }
 
+func batchImageUsesCompanyBalance(job *BatchImageJob) bool {
+	return job != nil && batchImageDerefString(job.BalanceSource) == BalanceSourceCompany
+}
+
 func batchImageDerefInt64(value *int64) int64 {
 	if value == nil {
 		return 0

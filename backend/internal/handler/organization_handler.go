@@ -1,11 +1,16 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -20,6 +25,47 @@ type OrganizationHandler struct {
 }
 
 const OrganizationContextKey = "organization_context"
+
+type optionalDecimalString struct {
+	value *string
+}
+
+func (f *optionalDecimalString) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Equal(trimmed, []byte("null")) {
+		f.value = nil
+		return nil
+	}
+
+	var text string
+	if err := json.Unmarshal(trimmed, &text); err == nil {
+		text = strings.TrimSpace(text)
+		if text == "" {
+			f.value = nil
+			return nil
+		}
+		f.value = &text
+		return nil
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(trimmed))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return fmt.Errorf("invalid decimal value: %w", err)
+	}
+	number, ok := value.(json.Number)
+	if !ok {
+		return fmt.Errorf("invalid decimal value: %s", string(trimmed))
+	}
+	normalized := number.String()
+	f.value = &normalized
+	return nil
+}
+
+func (f optionalDecimalString) Pointer() *string {
+	return f.value
+}
 
 func NewOrganizationHandler(organization *service.OrganizationService, auth *service.AuthService, operations *service.CompanyOperationsMonitor, ops *service.OpsService) *OrganizationHandler {
 	return &OrganizationHandler{organization: organization, auth: auth, operations: operations, ops: ops}
@@ -355,11 +401,18 @@ func (h *OrganizationHandler) VerifyRecoveryEmail(c *gin.Context) {
 
 func (h *OrganizationHandler) IAMLogin(c *gin.Context) {
 	var req struct {
-		Principal string `json:"principal" binding:"required"`
-		Password  string `json:"password" binding:"required"`
+		Principal      string            `json:"principal" binding:"required"`
+		Password       string            `json:"password" binding:"required"`
+		CaptchaPayload map[string]string `json:"captcha_payload"`
+		CaptchaToken   string            `json:"captcha_token"`
+		TurnstileToken string            `json:"turnstile_token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorFrom(c, service.ErrInvalidCredentials)
+		return
+	}
+	if err := h.auth.VerifyCaptchaPayload(c.Request.Context(), extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken), ip.GetClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	user, org, err := h.organization.AuthenticateIAM(c.Request.Context(), req.Principal, req.Password)
@@ -440,6 +493,82 @@ func (h *OrganizationHandler) SetPolicy(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"attached": req.Attached})
+}
+
+func (h *OrganizationHandler) ListSpendLimits(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	rules, err := h.organization.ListSpendLimitRules(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"items": rules})
+}
+
+func (h *OrganizationHandler) UpsertSpendLimits(c *gin.Context) {
+	ownerID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Target               string                `json:"target" binding:"required"`
+		MemberIDs            []int64               `json:"member_ids"`
+		DailyLimitUSD        optionalDecimalString `json:"daily_limit_usd"`
+		MonthlyLimitUSD      optionalDecimalString `json:"monthly_limit_usd"`
+		AlertEnabled         bool                  `json:"alert_enabled"`
+		AlertThresholdPct    float64               `json:"alert_threshold_pct"`
+		AdditionalRecipients []string              `json:"additional_recipients"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Target != "all" && req.Target != "members") || (req.Target == "members" && len(req.MemberIDs) == 0) {
+		response.BadRequest(c, "Invalid spend limit rule")
+		return
+	}
+	if req.Target == "all" {
+		req.MemberIDs = nil
+	}
+	rules, err := h.organization.UpsertSpendLimitRules(c.Request.Context(), ownerID, req.MemberIDs, req.DailyLimitUSD.Pointer(), req.MonthlyLimitUSD.Pointer(), req.AlertEnabled, req.AlertThresholdPct, req.AdditionalRecipients)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"items": rules})
+}
+
+func (h *OrganizationHandler) DeleteSpendLimit(c *gin.Context) {
+	ownerID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	var memberID *int64
+	if value := strings.TrimSpace(c.Query("member_id")); value != "" {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed <= 0 {
+			response.BadRequest(c, "Invalid member ID")
+			return
+		}
+		memberID = &parsed
+	}
+	if err := h.organization.DeleteSpendLimitRule(c.Request.Context(), ownerID, memberID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
+}
+
+func (h *OrganizationHandler) SpendLimitUsage(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	items, err := h.organization.ListSpendLimitUsage(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"items": items})
 }
 
 func (h *OrganizationHandler) TransferBalance(c *gin.Context) {

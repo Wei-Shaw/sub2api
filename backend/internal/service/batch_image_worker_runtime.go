@@ -30,6 +30,7 @@ func ProvideBatchImageWorkerRuntime(
 	pricing *BatchImageModelPricingResolver,
 	authCache APIKeyAuthCacheInvalidator,
 	balanceCache *BillingCacheService,
+	spendLimits *BillingContextResolver,
 	cfg *config.Config,
 ) *BatchImageWorkerRuntime {
 	processor := &BatchImagePipelineProcessor{
@@ -48,6 +49,7 @@ func ProvideBatchImageWorkerRuntime(
 			Pricing:      pricing,
 			AuthCache:    authCache,
 			BalanceCache: balanceCache,
+			SpendLimits:  spendLimits,
 			Config:       cfg,
 		},
 	}

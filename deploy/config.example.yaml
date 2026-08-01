@@ -1264,6 +1264,8 @@ company:
   iam_enabled: false
   public_ids_finalized: false
   billing_integration_enabled: false
+  # Optional HTTP(S) guide shown beside the enterprise console menu.
+  documentation_url: ""
   upgrade_fee: 20
   upgrade_currency: "USD"
   default_member_limit: 20

@@ -49,6 +49,7 @@ const (
 	NotificationEmailEventCompanyNameSubmitted    = "company.name.submitted"
 	NotificationEmailEventCompanyNameApproved     = "company.name.approved"
 	NotificationEmailEventCompanyNameRejected     = "company.name.rejected"
+	NotificationEmailEventCompanySpendLimitAlert  = "company.spend_limit.alert"
 
 	notificationEmailTemplateKeyPrefix    = "notification_email_template:"
 	notificationEmailPreferenceKeyPrefix  = "notification_email_preference:"
@@ -1059,6 +1060,7 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventCompanyNameSubmitted,
 	NotificationEmailEventCompanyNameApproved,
 	NotificationEmailEventCompanyNameRejected,
+	NotificationEmailEventCompanySpendLimitAlert,
 }
 
 var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
@@ -1204,6 +1206,11 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 	NotificationEmailEventCompanyNameSubmitted:    companyNotificationEventInfo(NotificationEmailEventCompanyNameSubmitted, "Company name change submitted", "Sent to system administrators when a company name change enters review."),
 	NotificationEmailEventCompanyNameApproved:     companyNotificationEventInfo(NotificationEmailEventCompanyNameApproved, "Company name change approved", "Sent to the organization owner after approval."),
 	NotificationEmailEventCompanyNameRejected:     companyNotificationEventInfo(NotificationEmailEventCompanyNameRejected, "Company name change rejected", "Sent to the organization owner after rejection."),
+	NotificationEmailEventCompanySpendLimitAlert: {
+		Event: NotificationEmailEventCompanySpendLimitAlert, Label: "Company member spend limit alert",
+		Description: "Sent when a member reaches an owner-configured company-sponsored spending threshold.", Category: "company", Optional: false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "company_name", "member_name", "period", "used", "limit", "threshold"),
+	},
 }
 
 func companyNotificationEventInfo(event, label, description string) NotificationEmailEventInfo {
@@ -1573,6 +1580,30 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 		"Company name change rejected", "企业名称变更未通过",
 		"The company name change to <strong>{{company_name}}</strong> was rejected. Reason: {{reason}}.",
 		"企业名称变更为 <strong>{{company_name}}</strong> 的申请未通过。原因：{{reason}}。"),
+	NotificationEmailEventCompanySpendLimitAlert: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Company member spending alert",
+			HTML: notificationEmailCard("#b45309", "Company member spending alert", `
+<p>Hello {{recipient_name}},</p>
+<p><strong>{{member_name}}</strong> in <strong>{{company_name}}</strong> reached the configured {{period}} company-sponsored spending threshold.</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td>Current usage</td><td>${{used}}</td></tr>
+  <tr><td>Limit</td><td>${{limit}}</td></tr>
+  <tr><td>Alert threshold</td><td>{{threshold}}%</td></tr>
+</table>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 企业成员消费限额告警",
+			HTML: notificationEmailCard("#b45309", "企业成员消费限额告警", `
+<p>{{recipient_name}}，您好：</p>
+<p><strong>{{company_name}}</strong> 的成员 <strong>{{member_name}}</strong> 已达到配置的{{period}}企业承担消费告警阈值。</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td>当前用量</td><td>${{used}}</td></tr>
+  <tr><td>限额</td><td>${{limit}}</td></tr>
+  <tr><td>告警阈值</td><td>{{threshold}}%</td></tr>
+</table>`),
+		},
+	},
 }
 
 func companyNotificationTemplates(titleEN, titleZH, bodyEN, bodyZH string) map[string]notificationEmailOfficialTemplate {

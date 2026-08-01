@@ -172,9 +172,15 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		}
 	} else {
 		if cost.ActualCost > 0 {
-			if err := deps.userRepo.DeductBalance(billingCtx, payerUserID, cost.ActualCost); err != nil {
+			var err error
+			if resolved != nil && resolved.UsesCompanyBalance() && deps.billingContextResolver != nil {
+				_, err = deps.billingContextResolver.DeductOrganizationBalance(billingCtx, resolved, cost.ActualCost)
+			} else {
+				err = deps.userRepo.DeductBalance(billingCtx, payerUserID, cost.ActualCost)
+			}
+			if err != nil {
 				slog.Error("deduct balance failed", "consumer_user_id", p.User.ID, "payer_user_id", payerUserID, "error", err)
-			} else if deps.billingCacheService != nil {
+			} else if deps.billingCacheService != nil && (resolved == nil || !resolved.UsesCompanyBalance()) {
 				if err := deps.billingCacheService.InvalidateUserBalance(billingCtx, payerUserID); err != nil {
 					slog.Warn("invalidate balance cache after legacy deduction failed", "payer_user_id", payerUserID, "error", err)
 				}
@@ -328,14 +334,17 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 
 	resolved := p.BillingContext
 	if resolved == nil {
+		requiredAmount := 0.0
+		if p.Cost != nil {
+			requiredAmount = p.Cost.ActualCost
+		}
 		var err error
-		resolved, err = resolveAndSnapshotBillingContext(billingCtx, usageLog, p.User, deps.billingContextResolver)
+		resolved, err = resolveAndSnapshotBillingContext(billingCtx, usageLog, p.User, deps.billingContextResolver, requiredAmount)
 		if err != nil {
 			return false, err
 		}
 	}
 	snapshotEnterpriseSubscriptionSource(usageLog, p, resolved)
-
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
 		postUsageBilling(ctx, p, deps, resolved)
@@ -363,6 +372,11 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 			invalidator.InvalidateAuthCacheByKey(billingCtx, p.APIKey.Key)
 		}
 	}
+	if deps.billingContextResolver != nil {
+		if err := deps.billingContextResolver.RecordSpendLimitAlert(billingCtx, resolved); err != nil {
+			slog.WarnContext(billingCtx, "failed to enqueue organization spend limit alert", "consumer_user_id", resolved.ConsumerUserID, "error", err)
+		}
+	}
 
 	finalizePostUsageBilling(billingCtx, p, deps, result)
 	return true, nil
@@ -376,20 +390,20 @@ func snapshotEnterpriseSubscriptionSource(usageLog *UsageLog, p *postUsageBillin
 	if p == nil || resolved == nil || !p.IsSubscriptionBill || p.APIKey == nil || p.APIKey.OrganizationSubscriptionID == nil {
 		return
 	}
-	resolved.BalanceSource = "subscription"
+	resolved.BalanceSource = BalanceSourceSubscription
 	if usageLog != nil {
 		usageLog.BalanceSource = usageBillingStringPtr(resolved.BalanceSource)
 	}
 }
 
-func resolveAndSnapshotBillingContext(ctx context.Context, usageLog *UsageLog, user *User, resolver *BillingContextResolver) (*BillingContext, error) {
+func resolveAndSnapshotBillingContext(ctx context.Context, usageLog *UsageLog, user *User, resolver *BillingContextResolver, requiredAmount float64) (*BillingContext, error) {
 	if user == nil {
 		return nil, ErrUserNotFound
 	}
-	resolved := &BillingContext{ConsumerUserID: user.ID, PayerUserID: user.ID, BalanceSource: "self"}
+	resolved := &BillingContext{ConsumerUserID: user.ID, PayerUserID: user.ID, BalanceSource: BalanceSourceSelf}
 	if resolver != nil {
 		var err error
-		resolved, err = resolver.Resolve(ctx, user.ID)
+		resolved, err = resolver.ResolveForSettlement(ctx, user.ID, requiredAmount)
 		if err != nil {
 			return nil, err
 		}
@@ -469,6 +483,9 @@ func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingPara
 	if p == nil || p.Cost == nil || p.User == nil || deps == nil || deps.billingCacheService == nil {
 		return
 	}
+	if result != nil && result.BalanceSource == BalanceSourceCompany {
+		return
+	}
 	payerUserID := effectiveUsagePayerID(p, result)
 	if result != nil && result.NewBalance != nil && deps.billingCacheService.balanceBelowEligibilityThreshold(*result.NewBalance) {
 		if err := deps.billingCacheService.InvalidateUserBalance(ctx, payerUserID); err != nil {
@@ -503,7 +520,7 @@ func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *Usag
 			slog.Error("panic in notifyBalanceLow", "recover", r)
 		}
 	}()
-	if p.IsSubscriptionBill || p.Cost.ActualCost <= 0 || p.User == nil || deps.balanceNotifyService == nil {
+	if p.IsSubscriptionBill || p.Cost.ActualCost <= 0 || p.User == nil || deps.balanceNotifyService == nil || (result != nil && result.BalanceSource == BalanceSourceCompany) {
 		slog.Debug("notifyBalanceLow: skipped",
 			"is_subscription", p.IsSubscriptionBill,
 			"actual_cost", p.Cost.ActualCost,
@@ -851,7 +868,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 			cost.TotalCost,
 		)
 	}
-	resolvedBillingContext, err := resolveAndSnapshotBillingContext(ctx, usageLog, user, s.billingContextResolver)
+	resolvedBillingContext, err := resolveAndSnapshotBillingContext(ctx, usageLog, user, s.billingContextResolver, cost.ActualCost)
 	if err != nil {
 		return err
 	}
