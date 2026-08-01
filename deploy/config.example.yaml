@@ -816,6 +816,37 @@ connection_risk:
   emit_timeout_ms: 8
 
 # =============================================================================
+# Proxy pool health poller (generic SOCKS/HTTP proxies)
+# 代理池轮询测活：连续失败自动标记 inactive（停用），可选自动恢复
+# WARP 代理仍由 warp.auto_detach_unhealthy + WarpSyncWorker 管理
+# =============================================================================
+proxy_health:
+  # Master switch (default off). Enable after confirming probe endpoints work.
+  # 总开关（默认关）；确认探测可达后再开
+  enabled: false
+  # Full round interval (seconds, min 10)
+  interval_sec: 60
+  # Single probe timeout (ms)
+  timeout_ms: 10000
+  # Concurrent probes per tick
+  concurrency: 8
+  # Consecutive failures before status=inactive
+  fail_threshold: 3
+  # Consecutive successes before auto-recover (only isolated_by=health)
+  success_threshold: 2
+  # group_members = only proxies in active groups; all_active = every active proxy
+  probe_scope: group_members
+  # Re-enable health-isolated proxies after success_threshold
+  auto_recover: true
+  # Skip name prefixes (avoid double-probe with WarpSyncWorker)
+  skip_name_prefix:
+    - "warp-"
+  # Redis leader lock TTL for multi-instance deployments
+  leader_lock_ttl_sec: 50
+  # Max proxies probed per tick
+  batch_size: 100
+
+# =============================================================================
 # Cloudflare WARP Gateway (tools/warp-gateway)
 # WARP 出站控制面：实例池 / 健康检查 / rotate / exit_ip 去重
 # Docs: docs/warp-gateway.md

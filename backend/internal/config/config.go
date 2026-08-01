@@ -104,8 +104,37 @@ type Config struct {
 	// connection detection (方案 B). When Enabled is false, emit and worker
 	// are both no-ops regardless of admin settings JSON.
 	ConnectionRisk ConnectionRiskConfig `mapstructure:"connection_risk"`
+	// ProxyHealth is the generic proxy-pool connectivity poller that auto-isolates
+	// failed proxies as inactive.
+	ProxyHealth ProxyHealthConfig `mapstructure:"proxy_health"`
 	// Warp integrates with tools/warp-gateway for Cloudflare WARP SOCKS exits.
 	Warp WarpConfig `mapstructure:"warp"`
+}
+
+// ProxyHealthConfig controls periodic proxy connectivity probes and auto-isolation.
+type ProxyHealthConfig struct {
+	// Enabled master switch (default false).
+	Enabled bool `mapstructure:"enabled"`
+	// IntervalSec is the minimum interval between full probe rounds.
+	IntervalSec int `mapstructure:"interval_sec"`
+	// TimeoutMS bounds a single ProbeProxy call.
+	TimeoutMS int `mapstructure:"timeout_ms"`
+	// Concurrency is the max concurrent probes per tick.
+	Concurrency int `mapstructure:"concurrency"`
+	// FailThreshold consecutive failures before marking inactive.
+	FailThreshold int `mapstructure:"fail_threshold"`
+	// SuccessThreshold consecutive successes before auto-recover (when AutoRecover).
+	SuccessThreshold int `mapstructure:"success_threshold"`
+	// ProbeScope: group_members | all_active
+	ProbeScope string `mapstructure:"probe_scope"`
+	// AutoRecover re-enables proxies isolated by health after success_threshold.
+	AutoRecover bool `mapstructure:"auto_recover"`
+	// SkipNamePrefix skips proxies whose name starts with any prefix (e.g. warp-).
+	SkipNamePrefix []string `mapstructure:"skip_name_prefix"`
+	// LeaderLockTTLSec is Redis leader lock TTL for multi-instance safety.
+	LeaderLockTTLSec int `mapstructure:"leader_lock_ttl_sec"`
+	// BatchSize caps how many proxies are probed per tick.
+	BatchSize int `mapstructure:"batch_size"`
 }
 
 // WarpConfig configures the optional Cloudflare WARP gateway control client.
@@ -2238,6 +2267,19 @@ func setDefaults() {
 	viper.SetDefault("connection_risk.enabled", false)
 	viper.SetDefault("connection_risk.emit_timeout_ms", 8)
 
+	// Proxy pool health poller — disabled by default
+	viper.SetDefault("proxy_health.enabled", false)
+	viper.SetDefault("proxy_health.interval_sec", 60)
+	viper.SetDefault("proxy_health.timeout_ms", 10000)
+	viper.SetDefault("proxy_health.concurrency", 8)
+	viper.SetDefault("proxy_health.fail_threshold", 3)
+	viper.SetDefault("proxy_health.success_threshold", 2)
+	viper.SetDefault("proxy_health.probe_scope", "group_members")
+	viper.SetDefault("proxy_health.auto_recover", true)
+	viper.SetDefault("proxy_health.skip_name_prefix", []string{"warp-"})
+	viper.SetDefault("proxy_health.leader_lock_ttl_sec", 50)
+	viper.SetDefault("proxy_health.batch_size", 100)
+
 	// Cloudflare WARP gateway (tools/warp-gateway) — disabled by default
 	viper.SetDefault("warp.enabled", false)
 	viper.SetDefault("warp.gateway.base_url", "http://127.0.0.1:19798")
@@ -2650,6 +2692,9 @@ func (c *Config) Validate() error {
 	}
 	if c.ConnectionRisk.EmitTimeoutMS > 1000 {
 		return fmt.Errorf("connection_risk.emit_timeout_ms must be at most 1000")
+	}
+	if err := normalizeProxyHealthConfig(&c.ProxyHealth); err != nil {
+		return err
 	}
 	jwtSecret := strings.TrimSpace(c.JWT.Secret)
 	if jwtSecret == "" {
@@ -3631,6 +3676,59 @@ func (c *Config) Validate() error {
 	}
 	if err := ValidateDingTalkConfig(c.DingTalk); err != nil {
 		return fmt.Errorf("dingtalk_connect: %w", err)
+	}
+	return nil
+}
+
+func normalizeProxyHealthConfig(cfg *ProxyHealthConfig) error {
+	if cfg == nil {
+		return nil
+	}
+	if cfg.IntervalSec < 0 {
+		return fmt.Errorf("proxy_health.interval_sec must be non-negative")
+	}
+	if cfg.IntervalSec == 0 {
+		cfg.IntervalSec = 60
+	}
+	if cfg.IntervalSec < 10 {
+		cfg.IntervalSec = 10
+	}
+	if cfg.TimeoutMS < 0 {
+		return fmt.Errorf("proxy_health.timeout_ms must be non-negative")
+	}
+	if cfg.TimeoutMS == 0 {
+		cfg.TimeoutMS = 10000
+	}
+	if cfg.Concurrency <= 0 {
+		cfg.Concurrency = 8
+	}
+	if cfg.Concurrency > 64 {
+		cfg.Concurrency = 64
+	}
+	if cfg.FailThreshold <= 0 {
+		cfg.FailThreshold = 3
+	}
+	if cfg.SuccessThreshold <= 0 {
+		cfg.SuccessThreshold = 2
+	}
+	switch strings.TrimSpace(cfg.ProbeScope) {
+	case "", "group_members":
+		cfg.ProbeScope = "group_members"
+	case "all_active":
+		// ok
+	default:
+		return fmt.Errorf("proxy_health.probe_scope must be group_members or all_active")
+	}
+	if cfg.LeaderLockTTLSec <= 0 {
+		cfg.LeaderLockTTLSec = 50
+	}
+	if cfg.BatchSize <= 0 {
+		cfg.BatchSize = 100
+	}
+	if len(cfg.SkipNamePrefix) == 0 {
+		cfg.SkipNamePrefix = []string{"warp-"}
+	} else {
+		cfg.SkipNamePrefix = normalizeStringSlice(cfg.SkipNamePrefix)
 	}
 	return nil
 }

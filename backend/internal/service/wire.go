@@ -783,6 +783,9 @@ var ProviderSet = wire.NewSet(
 	NewConnectionSignalEmitter,
 	ProvideConnectionRiskWorker,
 	NewConnectionRiskService,
+	// Proxy pool health poller (generic proxies; skip warp- by default)
+	NewProxyHealthService,
+	ProvideProxyHealthWorker,
 	// Cloudflare WARP gateway sync (auto 落库 + admin API + reconcile worker)
 	ProvideWarpGatewayClient,
 	NewWarpSyncService,

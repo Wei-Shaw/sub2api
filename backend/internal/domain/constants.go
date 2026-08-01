@@ -4,6 +4,8 @@ package domain
 const (
 	StatusActive   = "active"
 	StatusDisabled = "disabled"
+	// StatusInactive is the admin/proxy-list "停用" value (API oneof=active inactive).
+	StatusInactive = "inactive"
 	StatusError    = "error"
 	StatusUnused   = "unused"
 	StatusUsed     = "used"

@@ -191,6 +191,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	adminAccountRepository := repository.NewAdminAccountRepository(client, db, schedulerCache, defaultProxyGroupResolver)
 	proxyExitInfoProber := repository.NewProxyExitInfoProber(configConfig)
 	proxyLatencyCache := repository.NewProxyLatencyCache(redisClient)
+	proxyHealthCache := repository.NewProxyHealthCache(redisClient)
 	adminService := service.NewAdminService(userRepository, adminGroupRepository, adminAccountRepository, proxyRepository, apiKeyRepository, redeemCodeRepository, userGroupRateRepository, userRPMCache, billingCacheService, proxyExitInfoProber, proxyLatencyCache, apiKeyAuthCacheInvalidator, client, settingService, subscriptionService, userSubscriptionRepository, privacyClientFactory, openAIGatewayService, affiliateService, compositeModelRouteRepository, compositeRouteResolver)
 	adminUserHandler := admin.NewUserHandler(adminService, concurrencyService, serviceUserPlatformQuotaRepository, billingCache, totpService, userService, settingService)
 	groupCapacityService := service.NewGroupCapacityService(accountRepository, groupRepository, concurrencyService, sessionLimitCache, rpmCache)
@@ -344,7 +345,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
 	connectionRiskWorker := service.ProvideConnectionRiskWorker(configConfig, settingService, connectionSignalCache, connectionRiskEventRepository, leaderLockCache, concurrencyCache, userRepository, apiKeyService, connectionRiskMetrics, riskActionPolicy)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, grokFreeRecoveryService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, auditLogService, promptService, connectionRiskWorker, warpSyncWorker)
+	proxyHealthService := service.NewProxyHealthService(configConfig, proxyRepository, proxyGroupRepository, proxyExitInfoProber, proxyHealthCache, proxyLatencyCache, defaultProxyGroupResolver)
+	proxyHealthWorker := service.ProvideProxyHealthWorker(configConfig, proxyHealthService, leaderLockCache)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, grokFreeRecoveryService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, auditLogService, promptService, connectionRiskWorker, warpSyncWorker, proxyHealthWorker)
 	application := &Application{
 		Server:      httpServer,
 		PromptAudit: promptService,
@@ -417,6 +420,7 @@ func provideCleanup(
 	promptAudit *securityaudit.PromptService,
 	connectionRiskWorker *service.ConnectionRiskWorker,
 	warpSyncWorker *service.WarpSyncWorker,
+	proxyHealthWorker *service.ProxyHealthWorker,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -497,6 +501,12 @@ func provideCleanup(
 			{"WarpSyncWorker", func() error {
 				if warpSyncWorker != nil {
 					warpSyncWorker.Stop()
+				}
+				return nil
+			}},
+			{"ProxyHealthWorker", func() error {
+				if proxyHealthWorker != nil {
+					proxyHealthWorker.Stop()
 				}
 				return nil
 			}},

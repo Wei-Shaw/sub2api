@@ -10,6 +10,7 @@ import (
 const (
 	StatusActive   = domain.StatusActive
 	StatusDisabled = domain.StatusDisabled
+	StatusInactive = domain.StatusInactive
 	StatusError    = domain.StatusError
 	StatusUnused   = domain.StatusUnused
 	StatusUsed     = domain.StatusUsed

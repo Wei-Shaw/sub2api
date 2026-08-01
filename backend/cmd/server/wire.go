@@ -116,6 +116,8 @@ func provideCleanup(
 	auditLog *service.AuditLogService,
 	promptAudit *securityaudit.PromptService,
 	connectionRiskWorker *service.ConnectionRiskWorker,
+	warpSyncWorker *service.WarpSyncWorker,
+	proxyHealthWorker *service.ProxyHealthWorker,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -191,6 +193,18 @@ func provideCleanup(
 			{"ConnectionRiskWorker", func() error {
 				if connectionRiskWorker != nil {
 					connectionRiskWorker.Stop()
+				}
+				return nil
+			}},
+			{"WarpSyncWorker", func() error {
+				if warpSyncWorker != nil {
+					warpSyncWorker.Stop()
+				}
+				return nil
+			}},
+			{"ProxyHealthWorker", func() error {
+				if proxyHealthWorker != nil {
+					proxyHealthWorker.Stop()
 				}
 				return nil
 			}},
