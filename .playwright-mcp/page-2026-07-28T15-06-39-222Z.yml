@@ -1,0 +1,13 @@
+- generic [ref=f2e3]:
+  - generic [ref=f2e4]: "[plugin:vite:css] [postcss] /Users/mac/sub2api-src/frontend/src/style.css:1:1: The `dark:border-dark-700` class does not exist. If `dark:border-dark-700` is a custom class, make sure it is defined within a `@layer` directive."
+  - generic [ref=f2e5]: /Users/mac/sub2api-src/frontend/src/style.css:1:0
+  - generic [ref=f2e6]: 1 | @tailwind base; | ^ 2 | @tailwind components; 3 | @tailwind utilities;
+  - generic [ref=f2e7]: at Input.error (/Users/mac/sub2api-src/frontend/node_modules/.pnpm/postcss@8.5.6/node_modules/postcss/lib/input.js:135:16) at AtRule.error (/Users/mac/sub2api-src/frontend/node_modules/.pnpm/postcss@8.5.6/node_modules/postcss/lib/node.js:146:32) at processApply (/Users/mac/sub2api-src/frontend/node_modules/.pnpm/tailwindcss@3.4.19/node_modules/tailwindcss/lib/lib/expandApplyAtRules.js:380:29) at /Users/mac/sub2api-src/frontend/node_modules/.pnpm/tailwindcss@3.4.19/node_modules/tailwindcss/lib/lib/expandApplyAtRules.js:551:9 at /Users/mac/sub2api-src/frontend/node_modules/.pnpm/tailwindcss@3.4.19/node_modules/tailwindcss/lib/processTailwindFeatures.js:55:50 at async plugins (/Users/mac/sub2api-src/frontend/node_modules/.pnpm/tailwindcss@3.4.19/node_modules/tailwindcss/lib/plugin.js:38:17) at async LazyResult.runAsync (/Users/mac/sub2api-src/frontend/node_modules/.pnpm/postcss@8.5.6/node_modules/postcss/lib/lazy-result.js:293:11) at async compileCSS (file:///Users/mac/sub2api-src/frontend/node_modules/.pnpm/vite@5.4.21_@types+node@20.19.27/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36898:21) at async TransformPluginContext.transform (file:///Users/mac/sub2api-src/frontend/node_modules/.pnpm/vite@5.4.21_@types+node@20.19.27/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36171:11) at async PluginContainer.transform (file:///Users/mac/sub2api-src/frontend/node_modules/.pnpm/vite@5.4.21_@types+node@20.19.27/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18
+  - generic [ref=f2e8]:
+    - text: Click outside, press Esc key, or fix the code to dismiss.You can also disable this overlay by setting
+    - code [ref=f2e9]: server.hmr.overlay
+    - text: to
+    - code [ref=f2e10]: "false"
+    - text: in
+    - code [ref=f2e11]: vite.config.js
+    - text: .

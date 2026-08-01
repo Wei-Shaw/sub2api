@@ -1,0 +1,236 @@
+- generic [ref=f9e60]:
+  - complementary [ref=f9e61]:
+    - generic [ref=f9e62]:
+      - link [ref=f9e63] [cursor=pointer]:
+        - /url: /admin/dashboard
+        - img "Logo" [ref=f9e64]
+      - generic [ref=f9e65]:
+        - link "Sub2API" [ref=f9e66] [cursor=pointer]:
+          - /url: /admin/dashboard
+        - button "v0.1.163" [ref=f9e68] [cursor=pointer]
+    - navigation [ref=f9e73]:
+      - generic [ref=f9e74]:
+        - link "仪表盘" [ref=f9e75] [cursor=pointer]:
+          - /url: /admin/dashboard
+        - link "运维监控" [ref=f9e79] [cursor=pointer]:
+          - /url: /admin/ops
+        - link "用户管理" [ref=f9e83] [cursor=pointer]:
+          - /url: /admin/users
+        - link "分组管理" [ref=f9e87] [cursor=pointer]:
+          - /url: /admin/groups
+        - button "渠道管理" [ref=f9e91] [cursor=pointer]
+        - link "订阅管理" [ref=f9e98] [cursor=pointer]:
+          - /url: /admin/subscriptions
+        - link "账号管理" [ref=f9e102] [cursor=pointer]:
+          - /url: /admin/accounts
+        - link "公告" [ref=f9e106] [cursor=pointer]:
+          - /url: /admin/announcements
+        - link "IP管理" [ref=f9e110] [cursor=pointer]:
+          - /url: /admin/proxies
+        - link "兑换码" [ref=f9e114] [cursor=pointer]:
+          - /url: /admin/redeem
+        - link "优惠码" [ref=f9e118] [cursor=pointer]:
+          - /url: /admin/promo-codes
+        - link "使用记录" [ref=f9e122] [cursor=pointer]:
+          - /url: /admin/usage
+        - link "操作日志" [ref=f9e126] [cursor=pointer]:
+          - /url: /admin/audit-logs
+        - link "系统设置" [ref=f9e130] [cursor=pointer]:
+          - /url: /admin/settings
+      - generic [ref=f9e135]:
+        - generic [ref=f9e136]: 我的账户
+        - link "API 密钥" [ref=f9e138] [cursor=pointer]:
+          - /url: /keys
+        - link "使用记录" [ref=f9e142] [cursor=pointer]:
+          - /url: /usage
+        - link "渠道状态" [ref=f9e146] [cursor=pointer]:
+          - /url: /monitor
+        - link "我的订阅" [ref=f9e150] [cursor=pointer]:
+          - /url: /subscriptions
+        - link "兑换" [ref=f9e154] [cursor=pointer]:
+          - /url: /redeem
+        - link "个人资料" [ref=f9e158] [cursor=pointer]:
+          - /url: /profile
+    - generic [ref=f9e162]:
+      - button "深色模式" [ref=f9e163] [cursor=pointer]
+      - button "收起" [ref=f9e167] [cursor=pointer]
+  - generic [ref=f9e171]:
+    - banner [ref=f9e172]:
+      - generic [ref=f9e173]:
+        - generic [ref=f9e175]:
+          - heading "仪表盘" [level=1] [ref=f9e176]
+          - paragraph [ref=f9e177]: 欢迎回来！这是您账户的概览。
+        - generic [ref=f9e178]:
+          - button "公告" [ref=f9e180] [cursor=pointer]
+          - button "🇨🇳 ZH" [ref=f9e184] [cursor=pointer]:
+            - generic [ref=f9e185]: 🇨🇳
+            - generic [ref=f9e186]: ZH
+          - generic [ref=f9e189]: $10000.00
+          - button "用户菜单" [ref=f9e194] [cursor=pointer]:
+            - generic [ref=f9e195]: "27"
+            - generic [ref=f9e197]:
+              - generic [ref=f9e198]: "2741365591"
+              - generic [ref=f9e199]: admin
+    - main [ref=f9e202]:
+      - generic [ref=f9e203]:
+        - generic [ref=f9e204]:
+          - heading "概览" [level=1] [ref=f9e205]
+          - paragraph [ref=f9e206]: 2741365591@qq.com，这里是你的账户与 API 使用概况
+        - generic [ref=f9e207]:
+          - generic [ref=f9e213]:
+            - paragraph [ref=f9e214]: 余额
+            - paragraph [ref=f9e215]: $10,000.00
+            - paragraph [ref=f9e216]: 可用
+          - generic [ref=f9e222]:
+            - paragraph [ref=f9e223]: API 密钥
+            - paragraph [ref=f9e224]: "1"
+            - paragraph [ref=f9e225]: 1 启用
+          - generic [ref=f9e231]:
+            - paragraph [ref=f9e232]: 今日请求
+            - paragraph [ref=f9e233]: "0"
+            - paragraph [ref=f9e234]: "总计: 0"
+          - generic [ref=f9e240]:
+            - paragraph [ref=f9e241]: 今日消费
+            - paragraph [ref=f9e242]: $0.0000 / $0.0000
+            - paragraph [ref=f9e243]: "总计: $0.0000 / $0.0000"
+        - generic [ref=f9e244]:
+          - generic [ref=f9e245]:
+            - heading "按平台拆分" [level=3] [ref=f9e246]
+            - generic [ref=f9e247]: 0 个平台
+          - generic [ref=f9e248]:
+            - generic [ref=f9e249]:
+              - generic [ref=f9e250]:
+                - generic [ref=f9e251]: Claude
+                - generic "实际" [ref=f9e252]: $0.0000
+              - generic [ref=f9e253]:
+                - generic [ref=f9e254]:
+                  - generic [ref=f9e255]: 今日消费
+                  - generic [ref=f9e256]: $0.0000
+                - generic [ref=f9e257]:
+                  - generic [ref=f9e258]: 请求
+                  - generic [ref=f9e259]: "-"
+                - generic [ref=f9e260]:
+                  - generic [ref=f9e261]: Token
+                  - generic [ref=f9e262]: "-"
+            - generic [ref=f9e263]:
+              - generic [ref=f9e264]:
+                - generic [ref=f9e265]: OpenAI
+                - generic "实际" [ref=f9e266]: $0.0000
+              - generic [ref=f9e267]:
+                - generic [ref=f9e268]:
+                  - generic [ref=f9e269]: 今日消费
+                  - generic [ref=f9e270]: $0.0000
+                - generic [ref=f9e271]:
+                  - generic [ref=f9e272]: 请求
+                  - generic [ref=f9e273]: "-"
+                - generic [ref=f9e274]:
+                  - generic [ref=f9e275]: Token
+                  - generic [ref=f9e276]: "-"
+            - generic [ref=f9e277]:
+              - generic [ref=f9e278]:
+                - generic [ref=f9e279]: Gemini
+                - generic "实际" [ref=f9e280]: $0.0000
+              - generic [ref=f9e281]:
+                - generic [ref=f9e282]:
+                  - generic [ref=f9e283]: 今日消费
+                  - generic [ref=f9e284]: $0.0000
+                - generic [ref=f9e285]:
+                  - generic [ref=f9e286]: 请求
+                  - generic [ref=f9e287]: "-"
+                - generic [ref=f9e288]:
+                  - generic [ref=f9e289]: Token
+                  - generic [ref=f9e290]: "-"
+            - generic [ref=f9e291]:
+              - generic [ref=f9e292]:
+                - generic [ref=f9e293]: Antigravity
+                - generic "实际" [ref=f9e294]: $0.0000
+              - generic [ref=f9e295]:
+                - generic [ref=f9e296]:
+                  - generic [ref=f9e297]: 今日消费
+                  - generic [ref=f9e298]: $0.0000
+                - generic [ref=f9e299]:
+                  - generic [ref=f9e300]: 请求
+                  - generic [ref=f9e301]: "-"
+                - generic [ref=f9e302]:
+                  - generic [ref=f9e303]: Token
+                  - generic [ref=f9e304]: "-"
+            - generic [ref=f9e305]:
+              - generic [ref=f9e306]:
+                - generic [ref=f9e307]: grok
+                - generic "实际" [ref=f9e308]: $0.0000
+              - generic [ref=f9e309]:
+                - generic [ref=f9e310]:
+                  - generic [ref=f9e311]: 今日消费
+                  - generic [ref=f9e312]: $0.0000
+                - generic [ref=f9e313]:
+                  - generic [ref=f9e314]: 请求
+                  - generic [ref=f9e315]: "-"
+                - generic [ref=f9e316]:
+                  - generic [ref=f9e317]: Token
+                  - generic [ref=f9e318]: "-"
+        - generic [ref=f9e319]:
+          - generic [ref=f9e320]:
+            - generic [ref=f9e321]:
+              - heading "快速接入" [level=2] [ref=f9e322]
+              - paragraph [ref=f9e323]: OpenAI 兼容 API 地址
+            - generic [ref=f9e324]: 服务正常
+          - generic [ref=f9e326]:
+            - generic [ref=f9e328]:
+              - paragraph [ref=f9e329]: BASE URL
+              - paragraph [ref=f9e330]: http://localhost:3000/v1
+            - generic [ref=f9e332]:
+              - paragraph [ref=f9e333]: AUTHORIZATION
+              - paragraph [ref=f9e334]: Bearer sk-550...0e4f
+          - generic [ref=f9e335]:
+            - button "复制地址" [ref=f9e336] [cursor=pointer]
+            - button "配置教程" [ref=f9e337] [cursor=pointer]
+        - generic [ref=f9e338]:
+          - generic [ref=f9e339]:
+            - generic [ref=f9e340]:
+              - generic [ref=f9e341]: "今日 Token: 0"
+              - generic [ref=f9e342]: "累计 Token: 0"
+              - generic [ref=f9e343]: "RPM: 0"
+              - generic [ref=f9e344]: "TPM: 0"
+              - generic [ref=f9e345]: "平均响应: 0ms"
+            - generic [ref=f9e346]:
+              - generic [ref=f9e347]:
+                - generic [ref=f9e348]: "时间范围:"
+                - button "近 7 天" [ref=f9e350] [cursor=pointer]
+              - button "刷新" [ref=f9e358] [cursor=pointer]
+              - generic [ref=f9e359]:
+                - generic [ref=f9e360]: "粒度:"
+                - button "Select option" [ref=f9e363] [cursor=pointer]:
+                  - generic [ref=f9e364]: 按天
+          - generic [ref=f9e368]:
+            - generic [ref=f9e369]:
+              - heading "模型分布" [level=3] [ref=f9e370]
+              - generic [ref=f9e371]:
+                - generic [ref=f9e372]: 暂无数据
+                - table [ref=f9e375]:
+                  - rowgroup [ref=f9e376]:
+                    - row [ref=f9e377]:
+                      - columnheader "模型" [ref=f9e378]
+                      - columnheader "请求" [ref=f9e379]
+                      - columnheader "Token" [ref=f9e380]
+                      - columnheader "实际" [ref=f9e381]
+                      - columnheader "标准" [ref=f9e382]
+                  - rowgroup
+            - generic [ref=f9e383]:
+              - heading "Token 使用趋势" [level=3] [ref=f9e384]
+              - generic [ref=f9e385]: 暂无数据
+        - generic [ref=f9e386]:
+          - heading "快捷操作" [level=2] [ref=f9e388]
+          - generic [ref=f9e389]:
+            - button "创建 API 密钥" [ref=f9e390] [cursor=pointer]
+            - button "查看使用记录" [ref=f9e395] [cursor=pointer]
+            - button "兑换码" [ref=f9e400] [cursor=pointer]
+        - generic [ref=f9e405]:
+          - generic [ref=f9e406]:
+            - heading "最近使用" [level=2] [ref=f9e407]
+            - generic [ref=f9e408]:
+              - generic [ref=f9e409]: 近 7 天
+              - link "查看完整账单 →" [ref=f9e410] [cursor=pointer]:
+                - /url: /usage
+          - generic [ref=f9e413]:
+            - heading "暂无使用记录" [level=3] [ref=f9e417]
+            - paragraph [ref=f9e418]: 开始使用 API 后，您的使用历史将显示在这里。

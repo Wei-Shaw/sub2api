@@ -1,0 +1,296 @@
+- generic [ref=e1]:
+  - generic [ref=e35]:
+    - complementary [ref=e36]:
+      - generic [ref=e37]:
+        - link [ref=e38] [cursor=pointer]:
+          - /url: /admin/dashboard
+          - img "Logo" [ref=e39]
+        - generic [ref=e40]:
+          - link "Sub2API" [ref=e41] [cursor=pointer]:
+            - /url: /admin/dashboard
+          - button "已是最新版本" [ref=e43] [cursor=pointer]
+      - navigation [ref=e45]:
+        - generic [ref=e46]:
+          - link "仪表盘" [ref=e47] [cursor=pointer]:
+            - /url: /admin/dashboard
+          - link "运维监控" [ref=e51] [cursor=pointer]:
+            - /url: /admin/ops
+          - link "用户管理" [ref=e55] [cursor=pointer]:
+            - /url: /admin/users
+          - link "分组管理" [ref=e59] [cursor=pointer]:
+            - /url: /admin/groups
+          - button "渠道管理" [ref=e63] [cursor=pointer]
+          - link "订阅管理" [ref=e70] [cursor=pointer]:
+            - /url: /admin/subscriptions
+          - link "账号管理" [ref=e74] [cursor=pointer]:
+            - /url: /admin/accounts
+          - link "公告" [ref=e78] [cursor=pointer]:
+            - /url: /admin/announcements
+          - link "IP管理" [ref=e82] [cursor=pointer]:
+            - /url: /admin/proxies
+          - link "兑换码" [ref=e86] [cursor=pointer]:
+            - /url: /admin/redeem
+          - link "优惠码" [ref=e90] [cursor=pointer]:
+            - /url: /admin/promo-codes
+          - link "使用记录" [ref=e94] [cursor=pointer]:
+            - /url: /admin/usage
+          - link "操作日志" [ref=e98] [cursor=pointer]:
+            - /url: /admin/audit-logs
+          - link "系统设置" [ref=e102] [cursor=pointer]:
+            - /url: /admin/settings
+        - generic [ref=e107]:
+          - generic [ref=e108]: 我的账户
+          - link "API 密钥" [ref=e110] [cursor=pointer]:
+            - /url: /keys
+          - link "使用记录" [ref=e114] [cursor=pointer]:
+            - /url: /usage
+          - link "渠道状态" [ref=e118] [cursor=pointer]:
+            - /url: /monitor
+          - link "我的订阅" [ref=e122] [cursor=pointer]:
+            - /url: /subscriptions
+          - link "兑换" [ref=e126] [cursor=pointer]:
+            - /url: /redeem
+          - link "个人资料" [ref=e130] [cursor=pointer]:
+            - /url: /profile
+      - generic [ref=e134]:
+        - button "深色模式" [ref=e135] [cursor=pointer]
+        - button "收起" [ref=e139] [cursor=pointer]
+    - generic [ref=e143]:
+      - banner [ref=e144]:
+        - generic [ref=e145]:
+          - generic [ref=e147]:
+            - heading "仪表盘" [level=1] [ref=e148]
+            - paragraph [ref=e149]: 欢迎回来！这是您账户的概览。
+          - generic [ref=e150]:
+            - button "公告" [ref=e152] [cursor=pointer]
+            - button "🇨🇳 ZH" [ref=e156] [cursor=pointer]:
+              - generic [ref=e157]: 🇨🇳
+              - generic [ref=e158]: ZH
+            - generic [ref=e161]: $10000.00
+            - button "用户菜单" [ref=e166] [cursor=pointer]:
+              - generic [ref=e167]: "27"
+              - generic [ref=e169]:
+                - generic [ref=e170]: "2741365591"
+                - generic [ref=e171]: admin
+      - main [ref=e174]:
+        - generic [ref=e175]:
+          - generic [ref=e176]:
+            - generic [ref=e182]:
+              - paragraph [ref=e183]: 余额
+              - paragraph [ref=e184]: $10,000.00
+              - paragraph [ref=e185]: 可用
+            - generic [ref=e191]:
+              - paragraph [ref=e192]: API 密钥
+              - paragraph [ref=e193]: "1"
+              - paragraph [ref=e194]: 1 启用
+            - generic [ref=e200]:
+              - paragraph [ref=e201]: 今日请求
+              - paragraph [ref=e202]: "0"
+              - paragraph [ref=e203]: "总计: 0"
+            - generic [ref=e209]:
+              - paragraph [ref=e210]: 今日消费
+              - paragraph [ref=e211]: $0.0000 / $0.0000
+              - paragraph [ref=e212]: "总计: $0.0000 / $0.0000"
+          - generic [ref=e213]:
+            - generic [ref=e219]:
+              - paragraph [ref=e220]: 今日 Token
+              - paragraph [ref=e221]: "0"
+              - paragraph [ref=e222]: "输入: 0 / 输出: 0"
+            - generic [ref=e228]:
+              - paragraph [ref=e229]: 累计 Token
+              - paragraph [ref=e230]: "0"
+              - paragraph [ref=e231]: "输入: 0 / 输出: 0"
+            - generic [ref=e237]:
+              - paragraph [ref=e238]: 性能指标
+              - generic [ref=e239]:
+                - paragraph [ref=e240]: "0"
+                - generic [ref=e241]: RPM
+              - generic [ref=e242]:
+                - paragraph [ref=e243]: "0"
+                - generic [ref=e244]: TPM
+            - generic [ref=e250]:
+              - paragraph [ref=e251]: 平均响应
+              - paragraph [ref=e252]: 0ms
+              - paragraph [ref=e253]: 平均时间
+          - generic [ref=e254]:
+            - generic [ref=e255]:
+              - heading "按平台拆分" [level=3] [ref=e256]
+              - generic [ref=e257]: 0 个平台
+            - generic [ref=e258]:
+              - generic [ref=e259]:
+                - generic [ref=e260]:
+                  - generic [ref=e261]: Claude
+                  - generic "实际" [ref=e262]: $0.0000
+                - generic [ref=e263]:
+                  - generic [ref=e264]:
+                    - generic [ref=e265]: 今日消费
+                    - generic [ref=e266]: $0.0000
+                  - generic [ref=e267]:
+                    - generic [ref=e268]: 请求
+                    - generic [ref=e269]: "-"
+                  - generic [ref=e270]:
+                    - generic [ref=e271]: Token
+                    - generic [ref=e272]: "-"
+              - generic [ref=e273]:
+                - generic [ref=e274]:
+                  - generic [ref=e275]: OpenAI
+                  - generic "实际" [ref=e276]: $0.0000
+                - generic [ref=e277]:
+                  - generic [ref=e278]:
+                    - generic [ref=e279]: 今日消费
+                    - generic [ref=e280]: $0.0000
+                  - generic [ref=e281]:
+                    - generic [ref=e282]: 请求
+                    - generic [ref=e283]: "-"
+                  - generic [ref=e284]:
+                    - generic [ref=e285]: Token
+                    - generic [ref=e286]: "-"
+              - generic [ref=e287]:
+                - generic [ref=e288]:
+                  - generic [ref=e289]: Gemini
+                  - generic "实际" [ref=e290]: $0.0000
+                - generic [ref=e291]:
+                  - generic [ref=e292]:
+                    - generic [ref=e293]: 今日消费
+                    - generic [ref=e294]: $0.0000
+                  - generic [ref=e295]:
+                    - generic [ref=e296]: 请求
+                    - generic [ref=e297]: "-"
+                  - generic [ref=e298]:
+                    - generic [ref=e299]: Token
+                    - generic [ref=e300]: "-"
+              - generic [ref=e301]:
+                - generic [ref=e302]:
+                  - generic [ref=e303]: Antigravity
+                  - generic "实际" [ref=e304]: $0.0000
+                - generic [ref=e305]:
+                  - generic [ref=e306]:
+                    - generic [ref=e307]: 今日消费
+                    - generic [ref=e308]: $0.0000
+                  - generic [ref=e309]:
+                    - generic [ref=e310]: 请求
+                    - generic [ref=e311]: "-"
+                  - generic [ref=e312]:
+                    - generic [ref=e313]: Token
+                    - generic [ref=e314]: "-"
+              - generic [ref=e315]:
+                - generic [ref=e316]:
+                  - generic [ref=e317]: grok
+                  - generic "实际" [ref=e318]: $0.0000
+                - generic [ref=e319]:
+                  - generic [ref=e320]:
+                    - generic [ref=e321]: 今日消费
+                    - generic [ref=e322]: $0.0000
+                  - generic [ref=e323]:
+                    - generic [ref=e324]: 请求
+                    - generic [ref=e325]: "-"
+                  - generic [ref=e326]:
+                    - generic [ref=e327]: Token
+                    - generic [ref=e328]: "-"
+          - generic [ref=e329]:
+            - generic [ref=e331]:
+              - generic [ref=e332]:
+                - generic [ref=e333]: "时间范围:"
+                - button "近 7 天" [ref=e335] [cursor=pointer]
+              - button "刷新" [ref=e343] [cursor=pointer]
+              - generic [ref=e344]:
+                - generic [ref=e345]: "粒度:"
+                - button "Select option" [ref=e348] [cursor=pointer]:
+                  - generic [ref=e349]: 按天
+            - generic [ref=e353]:
+              - generic [ref=e354]:
+                - heading "模型分布" [level=3] [ref=e355]
+                - generic [ref=e356]:
+                  - generic [ref=e357]: 暂无数据
+                  - table [ref=e360]:
+                    - rowgroup [ref=e361]:
+                      - row [ref=e362]:
+                        - columnheader "模型" [ref=e363]
+                        - columnheader "请求" [ref=e364]
+                        - columnheader "Token" [ref=e365]
+                        - columnheader "实际" [ref=e366]
+                        - columnheader "标准" [ref=e367]
+                    - rowgroup
+              - generic [ref=e368]:
+                - heading "Token 使用趋势" [level=3] [ref=e369]
+                - generic [ref=e370]: 暂无数据
+          - generic [ref=e371]:
+            - generic [ref=e373]:
+              - generic [ref=e374]:
+                - heading "最近使用" [level=2] [ref=e375]
+                - generic [ref=e376]: 近 7 天
+              - generic [ref=e379]:
+                - heading "暂无使用记录" [level=3] [ref=e383]
+                - paragraph [ref=e384]: 开始使用 API 后，您的使用历史将显示在这里。
+            - generic [ref=e386]:
+              - heading "快捷操作" [level=2] [ref=e388]
+              - generic [ref=e389]:
+                - button [ref=e390] [cursor=pointer]:
+                  - generic [ref=e394]:
+                    - paragraph [ref=e395]: 创建 API 密钥
+                    - paragraph [ref=e396]: 生成新的 API 密钥
+                - button [ref=e399] [cursor=pointer]:
+                  - generic [ref=e403]:
+                    - paragraph [ref=e404]: 查看使用记录
+                    - paragraph [ref=e405]: 查看详细的使用日志
+                - button [ref=e408] [cursor=pointer]:
+                  - generic [ref=e412]:
+                    - paragraph [ref=e413]: 兑换码
+                    - paragraph [ref=e414]: 使用兑换码充值
+  - generic [ref=e419]:
+    - paragraph [ref=e424]: 登录成功！欢迎回来。
+    - button "Close notification" [ref=e425] [cursor=pointer]
+  - dialog [ref=e430]:
+    - generic [ref=e431]:
+      - heading "部署与运营合规确认" [level=3] [ref=e433]
+      - generic [ref=e435]:
+        - generic [ref=e440]:
+          - paragraph [ref=e441]: 继续使用控制台前，须完成部署与运营合规确认。
+          - paragraph [ref=e442]: 本确认用于以清晰、显著、可留痕的方式提示自部署实例的合规义务与运营风险。
+        - generic [ref=e443]:
+          - generic [ref=e445]:
+            - heading "Sub2API 部署与运营合规承诺" [level=1] [ref=e446]
+            - paragraph [ref=e447]: 版本：v2026.06.10
+            - paragraph [ref=e448]: 本文件适用于部署、配置、管理、运营或实际控制 Sub2API 实例的个人、组织及其授权代表。继续访问或使用控制台功能前，确认主体应完整阅读、理解并接受本文件。
+            - heading "一、适用范围" [level=2] [ref=e449]
+            - paragraph [ref=e450]: Sub2API 是开源软件。任何基于 Sub2API 进行的自部署、二次开发、托管运行、对外服务、商业化使用、用户管理、内容处理、数据处理、支付结算、客户支持及上游账号或接口使用行为，均由相应实例的部署、运营或控制主体自行负责。
+            - paragraph [ref=e451]: 本文件不替代开源许可证、上游服务条款、用户协议、隐私政策、数据处理协议、商业合同、监管备案、行政许可、安全评估或其他依法应当具备的文件、手续或义务。
+            - heading "二、主体责任" [level=2] [ref=e452]
+            - paragraph [ref=e453]: 确认主体应自行评估并持续遵守其所在地、服务器所在地、目标用户所在地、业务实际开展地以及上游服务提供方所在地可能适用的法律法规、监管要求、行业规范、合同约定和平台规则。
+            - paragraph [ref=e454]: 确认主体应确保其已具备部署和运营相关实例所需的授权、资质、备案、许可、评估、合同、风控能力、内容安全能力、数据保护能力、投诉处理机制和应急处置能力。相关义务不得因使用开源软件而转移、免除或降低。
+            - heading "三、非关联关系与责任隔离" [level=2] [ref=e455]
+            - paragraph [ref=e456]: 任何第三方实例、商业服务、收费套餐、用户招揽、内容处理、数据处理、账号使用、接口调用、支付结算、客户支持或推广活动，均由相应部署、运营或控制主体独立实施，并不因本项目开源、代码贡献、议题讨论、文档维护、版本发布、缺陷修复、社区交流或一般性技术说明而形成开源项目、著作权人、贡献者或维护者对该等活动的参与、授权、认可、担保、共同经营、代理、合伙、雇佣、授权运营、共同控制、收益分配、共同侵权或其他连带责任关系。
+            - paragraph [ref=e457]: 确认主体不得以项目名称、标识、文档、截图、社区内容或开源仓库信息明示或暗示其第三方实例、商业服务、收费套餐或运营活动获得开源项目、著作权人、贡献者、维护者或社区的参与、授权、认可、担保或背书。
+            - paragraph [ref=e458]: 确认主体应独立承担因其部署、配置、运营、推广、收费、用户行为管理、内容处理、数据处理、账号使用、接口调用及违反法律法规、监管要求、合同约定或上游规则所产生的相关后果。
+            - paragraph [ref=e459]: 依法不得由协议排除或限制的强制性责任，依相关法律规定处理；该等法定例外不构成对任何第三方部署、运营或商业活动的参与、授权、认可、担保或背书。
+            - heading "四、合规承诺" [level=2] [ref=e460]
+            - paragraph [ref=e461]: 确认主体在继续使用控制台功能时，作出以下承诺：
+            - list [ref=e462]:
+              - listitem [ref=e463]: 已独立审阅并将持续遵守 OpenAI、Anthropic、Google 及其他上游服务提供方的服务条款、可接受使用政策、支持国家和地区、账号/API Key 使用规则、商业使用要求、转售限制、风控要求和技术限制。
+              - listitem [ref=e464]: 不利用本项目规避或协助他人规避上游服务的地区限制、访问限制、账号限制、风控限制、计费限制、身份验证、使用限制或服务条款。
+              - listitem [ref=e465]: 不在缺乏必要授权、资质、备案、许可、评估或合同安排的情况下，向公众或不特定对象提供 API 中转、模型调用转售、账号额度分发、共享订阅、付费调用、代充代付或其他类似服务。
+              - listitem [ref=e466]: 如在中国大陆境内或面向中国大陆公众提供生成式人工智能服务、深度合成服务、算法相关服务、API 中转、付费调用或其他可能受监管服务，将自行完成可能适用的互联网信息服务、生成式人工智能服务、深度合成、算法备案、安全评估、网络安全、数据安全、个人信息保护、内容安全、支付结算、税务及上游授权等义务。
+              - listitem [ref=e467]: 建立与业务规模和风险相匹配的用户管理、访问控制、内容审核、滥用处理、日志留存、隐私保护、数据删除、投诉处理、应急下线和安全事件响应机制。
+              - listitem [ref=e468]: 不向任何用户、客户、合作方、渠道方、监管机构或第三方作出与本文件第三条相冲突的陈述、承诺、宣传或保证。
+              - listitem [ref=e469]: 对其部署、运营、推广、收费、用户行为管理、内容处理、数据处理、账号使用、接口调用及违反法律法规、监管要求、合同约定或上游规则所产生的后果独立承担责任。
+            - heading "五、风险与责任提示" [level=2] [ref=e470]
+            - paragraph [ref=e471]: 将 Sub2API 用于公开 API 服务、商业中转、额度分发、团队共享、付费调用或类似用途，可能涉及服务条款、合同违约、数据保护、内容安全、消费者权益、支付结算、税务、出口管制、制裁合规、网络安全、行业准入及行政监管等风险。不同司法辖区和业务场景的要求可能不同，并可能随时间变化。
+            - paragraph [ref=e472]: 控制台中的强制提示、协议链接、逐字输入确认和本地确认记录，旨在以清晰、显著、可留痕的方式提示部署与运营风险，确认控制台使用者已阅读当前版本文件，并在开源项目、著作权人、贡献者、维护者与第三方部署、运营或控制主体之间形成明确的责任隔离记录。
+            - heading "六、电子确认" [level=2] [ref=e473]
+            - paragraph [ref=e474]: 确认主体通过继续使用控制台、打开协议链接、阅读本文件并按页面要求逐字输入确认短语，即表示其以电子方式确认已阅读、理解并同意本文件，并同意系统记录确认版本、确认时间、控制台账户标识、IP 地址和 User-Agent 等必要留痕信息。
+          - complementary [ref=e475]:
+            - generic [ref=e476]:
+              - paragraph [ref=e477]: 协议版本
+              - paragraph [ref=e478]: v2026.06.10
+            - link "在 GitHub 查看协议文件" [active] [ref=e479] [cursor=pointer]:
+              - /url: https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.zh.md
+            - paragraph [ref=e482]: 协议正文来自本项目仓库中的 Markdown 文件。修改协议内容时必须同步递增协议版本；已确认的旧版本将失效，控制台使用者须重新确认。
+        - generic [ref=e483]:
+          - generic [ref=e484]: 请逐字输入以下确认短语
+          - generic [ref=e485]: 我已阅读、理解并同意 Sub2API 部署与运营合规承诺
+          - textbox "请逐字输入以下确认短语" [ref=e488]:
+            - /placeholder: 输入确认短语以继续
+        - paragraph [ref=e489]: 本确认用于明确自部署实例与开源项目、著作权人、贡献者及维护者之间的非关联关系和责任边界；部署、运营或控制相关实例的主体应独立承担其适用义务。
+      - generic [ref=e491]:
+        - button "退出登录" [ref=e492] [cursor=pointer]
+        - button "确认并继续" [disabled] [ref=e493]

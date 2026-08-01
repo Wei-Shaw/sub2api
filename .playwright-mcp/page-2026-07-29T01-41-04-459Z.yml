@@ -1,0 +1,293 @@
+- generic [ref=f9e1]:
+  - generic:
+    - generic:
+      - complementary:
+        - generic:
+          - link "Logo":
+            - /url: /admin/dashboard
+            - img "Logo"
+          - generic:
+            - link "Sub2API":
+              - /url: /admin/dashboard
+            - generic:
+              - button "v0.1.163"
+        - navigation:
+          - generic:
+            - link "仪表盘":
+              - /url: /admin/dashboard
+            - link "运维监控":
+              - /url: /admin/ops
+            - link "用户管理":
+              - /url: /admin/users
+            - link "分组管理":
+              - /url: /admin/groups
+            - button "渠道管理"
+            - link "订阅管理":
+              - /url: /admin/subscriptions
+            - link "账号管理":
+              - /url: /admin/accounts
+            - link "公告":
+              - /url: /admin/announcements
+            - link "IP管理":
+              - /url: /admin/proxies
+            - link "兑换码":
+              - /url: /admin/redeem
+            - link "优惠码":
+              - /url: /admin/promo-codes
+            - link "使用记录":
+              - /url: /admin/usage
+            - link "操作日志":
+              - /url: /admin/audit-logs
+            - link "系统设置":
+              - /url: /admin/settings
+          - generic:
+            - generic: 我的账户
+            - link "API 密钥":
+              - /url: /keys
+            - link "使用记录":
+              - /url: /usage
+            - link "渠道状态":
+              - /url: /monitor
+            - link "我的订阅":
+              - /url: /subscriptions
+            - link "兑换":
+              - /url: /redeem
+            - link "个人资料":
+              - /url: /profile
+        - generic:
+          - button "深色模式"
+          - button "收起"
+      - generic:
+        - banner:
+          - generic:
+            - generic:
+              - generic:
+                - heading "仪表盘" [level=1]
+                - paragraph: 欢迎回来！这是您账户的概览。
+            - generic:
+              - generic:
+                - button "公告"
+              - generic:
+                - button "🇨🇳 ZH":
+                  - generic: 🇨🇳
+                  - generic: ZH
+              - generic: $10000.00
+              - generic:
+                - button "用户菜单":
+                  - generic: "27"
+                  - generic:
+                    - generic: "2741365591"
+                    - generic: admin
+        - main:
+          - generic:
+            - generic:
+              - heading "概览" [level=1]
+              - paragraph: 2741365591@qq.com，这里是你的账户与 API 使用概况
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - paragraph: 余额
+                    - paragraph: $10,000.00
+                    - paragraph: 可用
+              - generic:
+                - generic:
+                  - generic:
+                    - paragraph: API 密钥
+                    - paragraph: "1"
+                    - paragraph: 1 启用
+              - generic:
+                - generic:
+                  - generic:
+                    - paragraph: 今日请求
+                    - paragraph: "0"
+                    - paragraph: "总计: 0"
+              - generic:
+                - generic:
+                  - generic:
+                    - paragraph: 今日消费
+                    - paragraph: $0.0000 / $0.0000
+                    - paragraph: "总计: $0.0000 / $0.0000"
+            - generic:
+              - generic:
+                - heading "按平台拆分" [level=3]
+                - generic: 0 个平台
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: Claude
+                    - generic "实际": $0.0000
+                  - generic:
+                    - generic:
+                      - generic: 今日消费
+                      - generic: $0.0000
+                    - generic:
+                      - generic: 请求
+                      - generic: "-"
+                    - generic:
+                      - generic: Token
+                      - generic: "-"
+                - generic:
+                  - generic:
+                    - generic: OpenAI
+                    - generic "实际": $0.0000
+                  - generic:
+                    - generic:
+                      - generic: 今日消费
+                      - generic: $0.0000
+                    - generic:
+                      - generic: 请求
+                      - generic: "-"
+                    - generic:
+                      - generic: Token
+                      - generic: "-"
+                - generic:
+                  - generic:
+                    - generic: Gemini
+                    - generic "实际": $0.0000
+                  - generic:
+                    - generic:
+                      - generic: 今日消费
+                      - generic: $0.0000
+                    - generic:
+                      - generic: 请求
+                      - generic: "-"
+                    - generic:
+                      - generic: Token
+                      - generic: "-"
+                - generic:
+                  - generic:
+                    - generic: Antigravity
+                    - generic "实际": $0.0000
+                  - generic:
+                    - generic:
+                      - generic: 今日消费
+                      - generic: $0.0000
+                    - generic:
+                      - generic: 请求
+                      - generic: "-"
+                    - generic:
+                      - generic: Token
+                      - generic: "-"
+                - generic:
+                  - generic:
+                    - generic: grok
+                    - generic "实际": $0.0000
+                  - generic:
+                    - generic:
+                      - generic: 今日消费
+                      - generic: $0.0000
+                    - generic:
+                      - generic: 请求
+                      - generic: "-"
+                    - generic:
+                      - generic: Token
+                      - generic: "-"
+            - generic:
+              - generic:
+                - generic:
+                  - heading "快速接入" [level=2]
+                  - paragraph: OpenAI 兼容 API 地址
+                - generic: 服务正常
+              - generic:
+                - generic:
+                  - generic:
+                    - paragraph: BASE URL
+                    - paragraph: http://localhost:3000/v1
+                - generic:
+                  - generic:
+                    - paragraph: AUTHORIZATION
+                    - paragraph: Bearer sk-550...0e4f
+              - generic:
+                - button "复制地址"
+                - button "配置教程"
+            - generic:
+              - generic:
+                - generic:
+                  - generic: "今日 Token: 0"
+                  - generic: "累计 Token: 0"
+                  - generic: "RPM: 0"
+                  - generic: "TPM: 0"
+                  - generic: "平均响应: 0ms"
+                - generic:
+                  - generic:
+                    - generic: "时间范围:"
+                    - generic:
+                      - button "近 7 天"
+                  - button "刷新"
+                  - generic:
+                    - generic: "粒度:"
+                    - generic:
+                      - generic:
+                        - button "Select option":
+                          - generic: 按天
+              - generic:
+                - generic:
+                  - heading "模型分布" [level=3]
+                  - generic:
+                    - generic: 暂无数据
+                    - generic:
+                      - table:
+                        - rowgroup:
+                          - row "模型 请求 Token 实际 标准":
+                            - columnheader "模型"
+                            - columnheader "请求"
+                            - columnheader "Token"
+                            - columnheader "实际"
+                            - columnheader "标准"
+                        - rowgroup
+                - generic:
+                  - heading "Token 使用趋势" [level=3]
+                  - generic: 暂无数据
+            - generic:
+              - generic:
+                - heading "快捷操作" [level=2]
+              - generic:
+                - button "创建 API 密钥"
+                - button "查看使用记录"
+                - button "兑换码"
+            - generic:
+              - generic:
+                - heading "最近使用" [level=2]
+                - generic:
+                  - generic: 近 7 天
+                  - link "查看完整账单 →":
+                    - /url: /usage
+              - generic:
+                - generic:
+                  - generic:
+                    - heading "暂无使用记录" [level=3]
+                    - paragraph: 开始使用 API 后，您的使用历史将显示在这里。
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - paragraph: 登录成功！欢迎回来。
+          - button "Close notification"
+  - dialog [ref=f9e35]:
+    - button "Close" [active] [ref=f9e36] [cursor=pointer]: ×
+    - banner [ref=f9e37]: 👋 欢迎使用 Sub2API
+    - generic [ref=f9e39]:
+      - paragraph [ref=f9e40]: Sub2API 是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。
+      - paragraph [ref=f9e41]: 🎯 核心功能：
+      - list [ref=f9e42]:
+        - listitem [ref=f9e43]: 📦 分组管理 - 创建不同的服务套餐（VIP、免费试用等）
+        - listitem [ref=f9e44]: 🔗 账号池 - 连接多个上游 AI 服务商账号
+        - listitem [ref=f9e45]: 🔑 密钥分发 - 为用户生成独立的 API Key
+        - listitem [ref=f9e46]: 💰 计费管理 - 灵活的费率和配额控制
+      - paragraph [ref=f9e47]: 接下来，我们将用 3 分钟带您完成首次配置 →
+    - contentinfo [ref=f9e48]:
+      - generic [ref=f9e49]:
+        - generic [ref=f9e50]: 1 of 21
+        - generic [ref=f9e51]:
+          - generic [ref=f9e52]:
+            - generic [ref=f9e53]: ←
+            - generic [ref=f9e54]: →
+            - text: 翻页
+          - generic [ref=f9e55]:
+            - generic [ref=f9e56]: ESC
+            - text: 退出
+      - generic [ref=f9e57]:
+        - button "跳过" [disabled]
+        - button "开始配置 🚀" [ref=f9e58] [cursor=pointer]

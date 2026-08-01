@@ -1,0 +1,75 @@
+- generic [ref=f5e3]:
+  - banner [ref=f5e4]:
+    - navigation [ref=f5e5]:
+      - img "Logo" [ref=f5e8]
+      - generic [ref=f5e9]:
+        - button "🇨🇳 ZH" [ref=f5e11] [cursor=pointer]:
+          - generic [ref=f5e12]: 🇨🇳
+          - generic [ref=f5e13]: ZH
+        - button "切换到深色模式" [ref=f5e16] [cursor=pointer]
+        - link "登录" [ref=f5e19] [cursor=pointer]:
+          - /url: /login
+  - main [ref=f5e20]:
+    - generic [ref=f5e21]:
+      - generic [ref=f5e22]:
+        - generic [ref=f5e23]:
+          - heading "Sub2API" [level=1] [ref=f5e24]
+          - paragraph [ref=f5e25]: AI API Gateway Platform
+          - link "立即开始" [ref=f5e27] [cursor=pointer]:
+            - /url: /login
+        - generic [ref=f5e32]:
+          - generic [ref=f5e33]: terminal
+          - generic [ref=f5e39]:
+            - generic [ref=f5e40]:
+              - generic [ref=f5e41]: $
+              - generic [ref=f5e42]: curl
+              - generic [ref=f5e43]: "-X POST"
+              - generic [ref=f5e44]: /v1/messages
+            - generic [ref=f5e45]: "# Routing to upstream..."
+            - generic [ref=f5e47]:
+              - generic [ref=f5e48]: 200 OK
+              - generic [ref=f5e49]: "{ \"content\": \"Hello!\" }"
+            - generic [ref=f5e50]: $
+      - generic [ref=f5e53]:
+        - generic [ref=f5e54]: 订阅转 API
+        - generic [ref=f5e58]: 会话保持
+        - generic [ref=f5e62]: 按量计费
+      - generic [ref=f5e66]:
+        - generic [ref=f5e67]:
+          - heading "一键接入" [level=3] [ref=f5e71]
+          - paragraph [ref=f5e72]: 获取一个 API 密钥，即可调用所有已接入的 AI 模型，无需分别申请。
+        - generic [ref=f5e73]:
+          - heading "稳定可靠" [level=3] [ref=f5e77]
+          - paragraph [ref=f5e78]: 智能调度多个上游账号，自动切换和负载均衡，告别频繁报错。
+        - generic [ref=f5e79]:
+          - heading "用多少付多少" [level=3] [ref=f5e83]
+          - paragraph [ref=f5e84]: 按实际使用量计费，支持设置配额上限，团队用量一目了然。
+      - generic [ref=f5e85]:
+        - heading "已支持的 AI 模型" [level=2] [ref=f5e86]
+        - paragraph [ref=f5e87]: 一个 API，多种选择
+      - generic [ref=f5e88]:
+        - generic [ref=f5e89]:
+          - generic [ref=f5e90]: C
+          - generic [ref=f5e92]: Claude
+          - generic [ref=f5e93]: 已支持
+        - generic [ref=f5e94]:
+          - generic [ref=f5e95]: G
+          - generic [ref=f5e97]: GPT
+          - generic [ref=f5e98]: 已支持
+        - generic [ref=f5e99]:
+          - generic [ref=f5e100]: G
+          - generic [ref=f5e102]: Gemini
+          - generic [ref=f5e103]: 已支持
+        - generic [ref=f5e104]:
+          - generic [ref=f5e105]: A
+          - generic [ref=f5e107]: Antigravity
+          - generic [ref=f5e108]: 已支持
+        - generic [ref=f5e109]:
+          - generic [ref=f5e110]: +
+          - generic [ref=f5e112]: 更多
+          - generic [ref=f5e113]: 即将推出
+  - contentinfo [ref=f5e114]:
+    - generic [ref=f5e115]:
+      - paragraph [ref=f5e116]: © 2026 Sub2API. 保留所有权利。
+      - link "GitHub" [ref=f5e118] [cursor=pointer]:
+        - /url: https://github.com/Wei-Shaw/sub2api

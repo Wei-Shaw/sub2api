@@ -1,0 +1,26 @@
+- generic [ref=f7e5]:
+  - generic [ref=f7e6]:
+    - img "Logo" [ref=f7e8]
+    - heading "Sub2API" [level=1] [ref=f7e9]
+    - paragraph [ref=f7e10]: Subscription to API Conversion Platform
+  - generic [ref=f7e12]:
+    - generic [ref=f7e13]:
+      - heading "欢迎回来" [level=2] [ref=f7e14]
+      - paragraph [ref=f7e15]: 登录您的账户以继续
+    - generic [ref=f7e16]:
+      - generic [ref=f7e17]:
+        - generic [ref=f7e18]: 邮箱
+        - textbox "邮箱" [active] [ref=f7e20]:
+          - /placeholder: 请输入邮箱
+      - generic [ref=f7e21]:
+        - generic [ref=f7e22]: 密码
+        - generic [ref=f7e23]:
+          - textbox "密码" [ref=f7e24]:
+            - /placeholder: 请输入密码
+          - button [ref=f7e25] [cursor=pointer]
+      - button "登录" [ref=f7e28] [cursor=pointer]
+  - paragraph [ref=f7e32]:
+    - text: 还没有账户？
+    - link "注册" [ref=f7e33] [cursor=pointer]:
+      - /url: /register
+  - generic [ref=f7e34]: © 2026 Sub2API. All rights reserved.

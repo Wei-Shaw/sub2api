@@ -1,0 +1,79 @@
+- generic [ref=f4e3]:
+  - complementary [ref=f4e4]:
+    - generic [ref=f4e5]:
+      - link [ref=f4e6] [cursor=pointer]:
+        - /url: /admin/dashboard
+        - img "Logo" [ref=f4e7]
+      - generic [ref=f4e8]:
+        - link "Sub2API" [ref=f4e9] [cursor=pointer]:
+          - /url: /admin/dashboard
+        - button "v0.1.163" [ref=f4e11] [cursor=pointer]
+    - navigation [ref=f4e16]:
+      - generic [ref=f4e17]:
+        - link "仪表盘" [ref=f4e18] [cursor=pointer]:
+          - /url: /admin/dashboard
+        - link "运维监控" [ref=f4e22] [cursor=pointer]:
+          - /url: /admin/ops
+        - link "用户管理" [ref=f4e26] [cursor=pointer]:
+          - /url: /admin/users
+        - link "分组管理" [ref=f4e30] [cursor=pointer]:
+          - /url: /admin/groups
+        - button "渠道管理" [ref=f4e34] [cursor=pointer]
+        - link "订阅管理" [ref=f4e41] [cursor=pointer]:
+          - /url: /admin/subscriptions
+        - link "账号管理" [ref=f4e45] [cursor=pointer]:
+          - /url: /admin/accounts
+        - link "公告" [ref=f4e49] [cursor=pointer]:
+          - /url: /admin/announcements
+        - link "IP管理" [ref=f4e53] [cursor=pointer]:
+          - /url: /admin/proxies
+        - link "兑换码" [ref=f4e57] [cursor=pointer]:
+          - /url: /admin/redeem
+        - link "优惠码" [ref=f4e61] [cursor=pointer]:
+          - /url: /admin/promo-codes
+        - link "使用记录" [ref=f4e65] [cursor=pointer]:
+          - /url: /admin/usage
+        - link "操作日志" [ref=f4e69] [cursor=pointer]:
+          - /url: /admin/audit-logs
+        - link "系统设置" [ref=f4e73] [cursor=pointer]:
+          - /url: /admin/settings
+      - generic [ref=f4e78]:
+        - generic [ref=f4e79]: 我的账户
+        - link "API 密钥" [ref=f4e81] [cursor=pointer]:
+          - /url: /keys
+        - link "使用记录" [ref=f4e85] [cursor=pointer]:
+          - /url: /usage
+        - link "渠道状态" [ref=f4e89] [cursor=pointer]:
+          - /url: /monitor
+        - link "我的订阅" [ref=f4e93] [cursor=pointer]:
+          - /url: /subscriptions
+        - link "充值/订阅" [ref=f4e97] [cursor=pointer]:
+          - /url: /purchase
+        - link "我的订单" [ref=f4e105] [cursor=pointer]:
+          - /url: /orders
+        - link "兑换" [ref=f4e109] [cursor=pointer]:
+          - /url: /redeem
+        - link "个人资料" [ref=f4e113] [cursor=pointer]:
+          - /url: /profile
+    - generic [ref=f4e117]:
+      - button "深色模式" [ref=f4e118] [cursor=pointer]
+      - button "收起" [ref=f4e122] [cursor=pointer]
+  - generic [ref=f4e126]:
+    - banner [ref=f4e127]:
+      - generic [ref=f4e128]:
+        - generic [ref=f4e130]:
+          - heading "仪表盘" [level=1] [ref=f4e131]
+          - paragraph [ref=f4e132]: 欢迎回来！这是您账户的概览。
+        - generic [ref=f4e133]:
+          - button "公告" [ref=f4e135] [cursor=pointer]
+          - button "🇨🇳 ZH" [ref=f4e139] [cursor=pointer]:
+            - generic [ref=f4e140]: 🇨🇳
+            - generic [ref=f4e141]: ZH
+          - generic [ref=f4e144]: $10000.00
+          - button "用户菜单" [ref=f4e149] [cursor=pointer]:
+            - generic [ref=f4e150]: "27"
+            - generic [ref=f4e152]:
+              - generic [ref=f4e153]: "2741365591"
+              - generic [ref=f4e154]: admin
+    - main [ref=f4e157]:
+      - status "加载中..." [ref=f4e160]
