@@ -33,15 +33,19 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "thinking":
-			if block.Thinking != "" {
-				outputs = append(outputs, ResponsesOutput{
-					Type: "reasoning",
-					ID:   generateItemID(),
-					Summary: []ResponsesSummary{{
+			if block.Thinking != "" || block.Signature != "" {
+				item := ResponsesOutput{
+					Type:             "reasoning",
+					ID:               generateItemID(),
+					EncryptedContent: block.Signature,
+				}
+				if block.Thinking != "" {
+					item.Summary = []ResponsesSummary{{
 						Type: "summary_text",
 						Text: block.Thinking,
-					}},
-				})
+					}}
+				}
+				outputs = append(outputs, item)
 			}
 		case "text":
 			if block.Text != "" {
@@ -152,6 +156,7 @@ type AnthropicEventToResponsesState struct {
 
 	// For message output: accumulate text parts
 	ContentIndex int
+	TextPartOpen bool
 	// TextAccum accumulates the current text part so that output_text.done and
 	// content_part.done can carry the full text (deltas carry increments only).
 	TextAccum string
@@ -161,9 +166,10 @@ type AnthropicEventToResponsesState struct {
 	CurrentName   string
 
 	// Content of the currently open item, folded into Outputs when it closes.
-	CurrentContent []ResponsesContentPart // message
-	CurrentArgs    string                 // function_call
-	CurrentSummary string                 // reasoning
+	CurrentContent   []ResponsesContentPart // message
+	CurrentArgs      string                 // function_call
+	CurrentSummary   string                 // reasoning
+	CurrentSignature string                 // reasoning signature
 
 	// Outputs accumulates every closed output item so that response.completed
 	// can carry the full output list. The OpenAI SDK's get_final_response()
@@ -222,10 +228,15 @@ func FinalizeAnthropicResponsesStream(state *AnthropicEventToResponsesState) []R
 
 	var events []ResponsesStreamEvent
 
-	// Close any open item
+	// Preserve any deltas received before an abrupt EOF, then close the item.
+	events = append(events, anthToResHandleContentBlockStop(nil, state)...)
 	events = append(events, closeCurrentResponsesItem(state)...)
 
 	status, incompleteDetails := anthropicResponsesStreamTerminalState(state.StopReason)
+	if state.StopReason == "" {
+		status = "failed"
+		incompleteDetails = nil
+	}
 	events = append(events, makeResponsesCompletedEvent(state, status, incompleteDetails))
 	state.CompletedSent = true
 	return events
@@ -277,9 +288,14 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 
 	switch evt.ContentBlock.Type {
 	case "thinking":
+		// Close any prior open item before starting reasoning (mirrors tool_use).
+		events = append(events, closeCurrentResponsesItem(state)...)
+
 		state.CurrentItemID = generateItemID()
 		state.CurrentItemType = "reasoning"
 		state.ContentIndex = 0
+		state.CurrentSummary = ""
+		state.CurrentSignature = evt.ContentBlock.Signature
 
 		events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
 			OutputIndex: state.OutputIndex,
@@ -290,38 +306,10 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		}))
 
 	case "text":
-		// If we don't have an open message item, open one
-		if state.CurrentItemType != "message" {
-			state.CurrentItemID = generateItemID()
-			state.CurrentItemType = "message"
-			state.ContentIndex = 0
-
-			events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
-				OutputIndex: state.OutputIndex,
-				Item: &ResponsesOutput{
-					Type:   "message",
-					ID:     state.CurrentItemID,
-					Role:   "assistant",
-					Status: "in_progress",
-				},
-			}))
-		}
-
-		// response.content_part.added must precede the output_text.delta events
-		// for that part. The message item is added with content: [], and the
-		// OpenAI SDK's accumulating stream helper (client.responses.stream) only
-		// appends a content part when it sees content_part.added. Without it the
-		// following output_text.delta indexes output.content[content_index] and
-		// raises IndexError. Raw event iteration
-		// (responses.create(stream=True)) does not accumulate, which is why this
-		// went unnoticed.
-		events = append(events, makeResponsesEvent(state, "response.content_part.added", &ResponsesStreamEvent{
-			OutputIndex:  state.OutputIndex,
-			ContentIndex: state.ContentIndex,
-			ItemID:       state.CurrentItemID,
-			Part:         &ResponsesContentPart{Type: "output_text", Text: ""},
-		}))
+		// Delay opening the Responses message/part until the first non-empty
+		// delta, so zero-length Anthropic text blocks do not leak downstream.
 		state.TextAccum = ""
+		state.TextPartOpen = false
 
 	case "tool_use":
 		// Close previous item if any
@@ -357,13 +345,39 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.Text == "" {
 			return nil
 		}
+		var events []ResponsesStreamEvent
+		if state.CurrentItemType != "message" {
+			events = append(events, closeCurrentResponsesItem(state)...)
+			state.CurrentItemID = generateItemID()
+			state.CurrentItemType = "message"
+			state.ContentIndex = 0
+			events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
+				OutputIndex: state.OutputIndex,
+				Item: &ResponsesOutput{
+					Type:   "message",
+					ID:     state.CurrentItemID,
+					Role:   "assistant",
+					Status: "in_progress",
+				},
+			}))
+		}
 		state.TextAccum += evt.Delta.Text
-		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.output_text.delta", &ResponsesStreamEvent{
+		if !state.TextPartOpen {
+			state.TextPartOpen = true
+			events = append(events, makeResponsesEvent(state, "response.content_part.added", &ResponsesStreamEvent{
+				OutputIndex:  state.OutputIndex,
+				ContentIndex: state.ContentIndex,
+				ItemID:       state.CurrentItemID,
+				Part:         &ResponsesContentPart{Type: "output_text", Text: ""},
+			}))
+		}
+		events = append(events, makeResponsesEvent(state, "response.output_text.delta", &ResponsesStreamEvent{
 			OutputIndex:  state.OutputIndex,
 			ContentIndex: state.ContentIndex,
 			Delta:        evt.Delta.Text,
 			ItemID:       state.CurrentItemID,
-		})}
+		}))
+		return events
 
 	case "thinking_delta":
 		if evt.Delta.Thinking == "" {
@@ -391,7 +405,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		})}
 
 	case "signature_delta":
-		// Anthropic signature deltas have no Responses equivalent; skip
+		state.CurrentSignature += evt.Delta.Signature
 		return nil
 	}
 
@@ -426,22 +440,29 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 		return events
 
 	case "message":
+		if !state.TextPartOpen {
+			state.TextAccum = ""
+			return nil
+		}
 		// Text block is done: emit output_text.done then content_part.done (the
 		// order OpenAI uses), both carrying the part's full text. The message
 		// item itself stays open since more blocks may follow.
 		text := state.TextAccum
+		contentIndex := state.ContentIndex
 		state.TextAccum = ""
+		state.TextPartOpen = false
+		state.ContentIndex++
 		state.CurrentContent = append(state.CurrentContent, ResponsesContentPart{Type: "output_text", Text: text})
 		return []ResponsesStreamEvent{
 			makeResponsesEvent(state, "response.output_text.done", &ResponsesStreamEvent{
 				OutputIndex:  state.OutputIndex,
-				ContentIndex: state.ContentIndex,
+				ContentIndex: contentIndex,
 				ItemID:       state.CurrentItemID,
 				Text:         text,
 			}),
 			makeResponsesEvent(state, "response.content_part.done", &ResponsesStreamEvent{
 				OutputIndex:  state.OutputIndex,
-				ContentIndex: state.ContentIndex,
+				ContentIndex: contentIndex,
 				ItemID:       state.CurrentItemID,
 				Part:         &ResponsesContentPart{Type: "output_text", Text: text},
 			}),
@@ -523,6 +544,7 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 		if state.CurrentSummary != "" {
 			item.Summary = []ResponsesSummary{{Type: "summary_text", Text: state.CurrentSummary}}
 		}
+		item.EncryptedContent = state.CurrentSignature
 	}
 	state.Outputs = append(state.Outputs, item)
 
@@ -534,7 +556,9 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 	state.CurrentContent = nil
 	state.CurrentArgs = ""
 	state.CurrentSummary = ""
+	state.CurrentSignature = ""
 	state.TextAccum = ""
+	state.TextPartOpen = false
 	state.OutputIndex++
 	state.ContentIndex = 0
 
@@ -586,6 +610,8 @@ func makeResponsesCompletedEvent(
 	eventType := "response.completed"
 	if status == "incomplete" {
 		eventType = "response.incomplete"
+	} else if status == "failed" {
+		eventType = "response.failed"
 	}
 
 	// Carry the output items accumulated over the stream. The SDK's
@@ -596,18 +622,26 @@ func makeResponsesCompletedEvent(
 		outputs = []ResponsesOutput{}
 	}
 
+	response := &ResponsesResponse{
+		ID:                state.ResponseID,
+		Object:            "response",
+		Model:             state.Model,
+		Status:            status,
+		Output:            outputs,
+		Usage:             usage,
+		IncompleteDetails: incompleteDetails,
+	}
+	if status == "failed" {
+		response.Error = &ResponsesError{
+			Code:    "server_error",
+			Message: "Upstream stream ended before a terminal event",
+		}
+	}
+
 	return ResponsesStreamEvent{
 		Type:           eventType,
 		SequenceNumber: seq,
-		Response: &ResponsesResponse{
-			ID:                state.ResponseID,
-			Object:            "response",
-			Model:             state.Model,
-			Status:            status,
-			Output:            outputs,
-			Usage:             usage,
-			IncompleteDetails: incompleteDetails,
-		},
+		Response:       response,
 	}
 }
 

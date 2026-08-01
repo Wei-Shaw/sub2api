@@ -289,7 +289,7 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 		sig := strings.TrimSpace(b.Signature)
 		// Only replay provider ciphertext. Skip GPT/Codex-style gAAAA blobs and
 		// empty placeholders — xAI returns 400 on decrypt for foreign signatures.
-		if sig == "" || strings.HasPrefix(sig, "gAAAA") {
+		if !isReplayableAnthropicThinkingSignature(sig) {
 			continue
 		}
 		items = append(items, ResponsesInputItem{

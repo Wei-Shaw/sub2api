@@ -64,6 +64,20 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 		}
 	}
 
+	// Signed thinking history requires thinking mode on Anthropic-compatible
+	// upstreams (Claude, Kimi, etc.). Enable it even when the client omitted
+	// reasoning.effort or sent effort=low.
+	if messagesContainThinkingBlocks(out.Messages) && (out.Thinking == nil || out.Thinking.Type != "enabled") {
+		effort := "medium"
+		if out.OutputConfig != nil && out.OutputConfig.Effort != "" {
+			effort = out.OutputConfig.Effort
+		}
+		out.Thinking = &AnthropicThinking{
+			Type:         "enabled",
+			BudgetTokens: defaultThinkingBudget(effort),
+		}
+	}
+
 	return out, nil
 }
 
@@ -131,6 +145,31 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 			if text != "" {
 				systemParts = append(systemParts, text)
 			}
+
+		case item.Type == "reasoning":
+			// Only replay provider ciphertext. Mirror anthropic_to_responses:
+			// drop summary-only items and GPT/Codex gAAAA blobs — Claude/xAI
+			// return 400 on foreign signatures. Kimi/Claude signed thinking
+			// must still round-trip verbatim.
+			sig := strings.TrimSpace(item.EncryptedContent)
+			if !isReplayableAnthropicThinkingSignature(sig) {
+				break
+			}
+			var thinking strings.Builder
+			for _, summary := range item.Summary {
+				if summary.Type == "summary_text" {
+					thinking.WriteString(summary.Text)
+				}
+			}
+			blockJSON, _ := json.Marshal([]AnthropicContentBlock{{
+				Type:      "thinking",
+				Thinking:  thinking.String(),
+				Signature: sig,
+			}})
+			messages = append(messages, AnthropicMessage{
+				Role:    "assistant",
+				Content: blockJSON,
+			})
 
 		case item.Type == "function_call":
 			// function_call → assistant message with tool_use block
@@ -552,6 +591,26 @@ func parseContentBlocks(raw json.RawMessage) []AnthropicContentBlock {
 		return []AnthropicContentBlock{{Type: "text", Text: s}}
 	}
 	return nil
+}
+
+// isReplayableAnthropicThinkingSignature reports whether a thinking signature /
+// Responses encrypted_content is safe to send to Anthropic-compatible upstreams.
+// Empty placeholders and OpenAI/Codex gAAAA blobs must be dropped — Claude/xAI
+// return 400 on foreign ciphertext.
+func isReplayableAnthropicThinkingSignature(sig string) bool {
+	sig = strings.TrimSpace(sig)
+	return sig != "" && !strings.HasPrefix(sig, "gAAAA")
+}
+
+func messagesContainThinkingBlocks(messages []AnthropicMessage) bool {
+	for _, msg := range messages {
+		for _, block := range parseContentBlocks(msg.Content) {
+			if block.Type == "thinking" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // convertResponsesToAnthropicTools maps Responses API tools to Anthropic format.
