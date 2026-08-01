@@ -72,10 +72,12 @@ type Handlers struct {
 	FalGateway                *FalGatewayHandler
 	Setting                   *SettingHandler
 	Totp                      *TotpHandler
+	Passkey                   *PasskeyHandler
 	Payment                   *PaymentHandler
 	PaymentWebhook            *PaymentWebhookHandler
 	AvailableChannel          *AvailableChannelHandler
 	Plaza                     *PlazaHandler
+	ModelPlaza                *ModelPlazaHandler
 	SupportTicket             *SupportTicketHandler
 	SupportTicketAttachment   *SupportTicketAttachmentHandler
 	SupportTicketNotification *SupportTicketNotificationHandler

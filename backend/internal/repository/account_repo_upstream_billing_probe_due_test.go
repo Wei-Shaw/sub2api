@@ -32,6 +32,7 @@ func TestAccountRepositoryListDueUpstreamBillingProbeAccountsBoundsQuery(t *test
 	require.Contains(t, normalized, "type = 'apikey'")
 	require.Contains(t, normalized, `extra @> '{"upstream_billing_probe_enabled": true}'::jsonb`)
 	require.Contains(t, normalized, "jsonb_path_query_first_tz")
+	require.Contains(t, normalized, `'(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$'`)
 	require.Contains(t, normalized, "parsed AS MATERIALIZED")
 	require.Contains(t, normalized, "parsed_next_probe_at::timestamptz <= $1")
 	require.Contains(t, normalized, "LIMIT $2")

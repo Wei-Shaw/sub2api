@@ -1028,6 +1028,7 @@ export default {
         endpoint: '端点',
         targetPlatform: '目标平台',
         upstreamModel: '上游模型',
+        upstreamModelHint: '留空表示透传原始请求模型：前缀匹配下每个命中模型各自原样转发（如 deepseek-v4-flash、deepseek-v4-pro 分别转发）；填写则所有命中请求都固定转发该模型。',
         notes: '备注',
         enabled: '启用',
         preview: '预览',
@@ -1092,6 +1093,14 @@ export default {
         targetModel: '目标模型',
         targetModelPlaceholder: '例如: gpt-5.4',
         removeExactMapping: '删除精确映射'
+      },
+      openaiLive: {
+        title: 'OpenAI Live',
+        allow: '允许访问 Live',
+        hint: '启用后，此 OpenAI 分组的 API Key 可以创建并控制 Live 语音会话。默认关闭。运行 Sub2API 的服务端必须是 Apple Silicon Mac，并安装官方 ChatGPT App；客户端平台不受限制。',
+        unsupportedTitle: '当前服务端不支持 Live',
+        unsupportedMessage: '当前 Sub2API 服务端无法生成 Live 所需的设备证明，即使开启也不能使用。是否仍然开启？',
+        enableAnyway: '仍然开启'
       },
       invalidRequestFallback: {
         title: '无效请求兜底分组',

@@ -42,6 +42,28 @@ func TestGatewayChatCredentialStopDoesNotSelectAnotherAccountAndReturnsSafe503(t
 	require.NotContains(t, recorder.Body.String(), "client_secret")
 }
 
+func TestGatewayChatAntigravityCredentialFailureReturnsActionableMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+
+	(&GatewayHandler{}).handleCCFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:        http.StatusUnauthorized,
+		Stage:             service.GatewayFailureStageAccountAuth,
+		Scope:             service.GatewayFailureScopeAccount,
+		Reason:            service.AntigravityCredentialRejectedReason,
+		NextAccountAction: service.NextAccountRetry,
+		ClientStatusCode:  http.StatusBadGateway,
+		ClientMessage:     service.AntigravityCredentialRejectedClientMessage,
+		ResponseBody:      []byte(`{"error":{"message":"Invalid bearer token","refresh_token":"must-not-leak"}}`),
+	}, false)
+
+	require.Equal(t, http.StatusBadGateway, recorder.Code)
+	require.Contains(t, recorder.Body.String(), service.AntigravityCredentialRejectedClientMessage)
+	require.NotContains(t, strings.ToLower(recorder.Body.String()), "bearer")
+	require.NotContains(t, strings.ToLower(recorder.Body.String()), "refresh_token")
+}
+
 func TestGatewayChatInferenceExhaustionRestoresRetryAfter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

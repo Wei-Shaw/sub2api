@@ -159,20 +159,22 @@ func extractCaptchaPayload(captchaPayload map[string]string, captchaToken, turns
 // respondWithTokenPair 生成 Token 对并返回认证响应
 // 如果 Token 对生成失败，回退到只返回 Access Token（向后兼容）
 func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
+	// 登录成功后尽力签发 OIDC Provider SSO cookie，必须在写响应体前执行。
+	h.issueSsoSession(c, user.ID)
+	respondWithTokenPair(c, h.authService, user)
+}
+
+func respondWithTokenPair(c *gin.Context, authService *service.AuthService, user *service.User) {
 	if err := ensureLoginUserActive(user); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
-	// 登录成功 → 尽力签发 OIDC Provider SSO cookie (仅当功能开启时生效)。
-	// 必须在写响应体之前设置 Set-Cookie。
-	h.issueSsoSession(c, user.ID)
-
-	tokenPair, err := h.authService.GenerateTokenPair(c.Request.Context(), user, "")
+	tokenPair, err := authService.GenerateTokenPair(c.Request.Context(), user, "")
 	if err != nil {
 		slog.Error("failed to generate token pair", "error", err, "user_id", user.ID)
 		// 回退到只返回Access Token
-		token, tokenErr := h.authService.GenerateToken(c.Request.Context(), user)
+		token, tokenErr := authService.GenerateToken(c.Request.Context(), user)
 		if tokenErr != nil {
 			response.InternalError(c, "Failed to generate token")
 			return

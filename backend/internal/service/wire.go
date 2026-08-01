@@ -726,15 +726,22 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+// ProvideSubscriptionGroupLister exposes the group repository's read-only
+// active-group capability to the organization service.
+func ProvideSubscriptionGroupLister(groupRepo GroupRepository) SubscriptionGroupLister {
+	return groupRepo
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	ProvideOrganizationService,
-	wire.Bind(new(SubscriptionGroupLister), new(GroupRepository)),
+	ProvideSubscriptionGroupLister,
 	ProvideCompanyOperationsMonitor,
 	NewBillingContextResolver,
 	ProvideNotificationOutboxWorker,
 	// Core services
 	NewAuthService,
+	NewPasskeyService,
 	NewUserService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
