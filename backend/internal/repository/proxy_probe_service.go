@@ -92,13 +92,12 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 
 	// 不跟随重定向：被劫持时常见 302 → 备案拦截 HTML，跟随后得到 200 HTML 只会污染错误信息。
 	// 直接把 3xx 当失败，快速切换到下一个探测目标（尤其是 HTTPS）。
-	client := &http.Client{
-		Transport: base.Transport,
-		Timeout:   base.Timeout,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+	// 浅拷贝 base 以保留 httpclient.GetClient 设置的其它字段（与 http_upstream 惯例一致）。
+	clone := *base
+	clone.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
+	client := &clone
 
 	var lastErr error
 	for _, probe := range s.targets() {
