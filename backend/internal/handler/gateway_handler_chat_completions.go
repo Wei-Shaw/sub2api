@@ -175,11 +175,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
-				message := cls.Message
-				if !cls.ModelNotFound {
-					message = "No available accounts: " + err.Error()
-				}
-				h.chatCompletionsErrorResponse(c, cls.Status, cls.ErrType, message)
+				h.chatCompletionsErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
 				return
 			}
 			action := fs.HandleSelectionExhausted(c.Request.Context())
@@ -191,9 +187,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				return
 			default:
 				if fs.LastFailoverErr != nil {
-					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
+					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, groupPlatform, streamStarted)
 				} else {
-					h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "All available accounts exhausted")
+					h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", publicServiceUnavailableMessage)
 				}
 				return
 			}
@@ -206,7 +202,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
 				markOpsRoutingCapacityLimited(c)
-				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", publicServiceUnavailableMessage)
 				return
 			}
 			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
@@ -243,7 +239,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		setActualUpstreamEndpoint(c, "")
 		if account.Platform == service.PlatformGemini {
 			if h.geminiCompatService == nil {
-				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Gemini compatibility service is not configured")
+				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", publicServiceUnavailableMessage)
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
@@ -252,7 +248,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			result, err = h.geminiCompatService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody)
 		} else if shouldUseAntigravityCompat(account) {
 			if h.antigravityGatewayService == nil {
-				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Antigravity compatibility service is not configured")
+				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", publicServiceUnavailableMessage)
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
@@ -272,7 +268,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				if c.Writer.Size() != writerSizeBeforeForward {
-					h.handleCCFailoverExhausted(c, failoverErr, true)
+					h.handleCCFailoverExhausted(c, failoverErr, account.Platform, true)
 					return
 				}
 				action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
@@ -280,7 +276,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				case FailoverContinue:
 					continue
 				case FailoverExhausted:
-					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
+					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
 					return
 				case FailoverCanceled:
 					failoverClientGone(c)
@@ -348,26 +344,38 @@ func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int
 }
 
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.
-func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
+func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
 	if streamStarted {
 		return
 	}
-	if lastErr != nil {
-		copyFailoverRetryAfter(c, lastErr.ResponseHeaders)
+	if lastErr == nil {
+		h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", publicServiceUnavailableMessage)
+		return
 	}
-	if lastErr != nil && lastErr.IsCredentialFailure() {
+	copyFailoverRetryAfter(c, lastErr.ResponseHeaders)
+	if lastErr.IsCredentialFailure() {
 		status, message := credentialFailoverClientResponse(lastErr)
 		h.chatCompletionsErrorResponse(c, status, "server_error", message)
 		return
 	}
 	statusCode := http.StatusBadGateway
-	if lastErr != nil && lastErr.StatusCode > 0 {
+	if lastErr.StatusCode > 0 {
 		statusCode = lastErr.StatusCode
 	}
-	if lastErr != nil && service.IsOpenAISilentRefusalErrorBody(lastErr.ResponseBody) {
+	if service.IsOpenAISilentRefusalErrorBody(lastErr.ResponseBody) {
 		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
-		h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage())
+		h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", publicServiceUnavailableMessage)
 		return
 	}
-	h.chatCompletionsErrorResponse(c, statusCode, "server_error", "All available accounts exhausted")
+	if responseCode, message, matched := matchGatewayErrorPassthrough(
+		c, h.errorPassthroughService, platform, statusCode, lastErr.ResponseBody,
+	); matched {
+		h.chatCompletionsErrorResponse(c, responseCode, "upstream_error", message)
+		return
+	}
+
+	upstreamMessage := service.ExtractUpstreamErrorMessage(lastErr.ResponseBody)
+	service.SetOpsUpstreamError(c, statusCode, upstreamMessage, "")
+	status, errType, message := h.mapUpstreamError(statusCode)
+	h.chatCompletionsErrorResponse(c, status, errType, message)
 }

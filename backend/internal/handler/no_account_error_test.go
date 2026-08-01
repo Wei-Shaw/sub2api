@@ -58,6 +58,8 @@ func TestClassifyNoAccountError_NilDiagnoser_Falls503(t *testing.T) {
 
 	require.Equal(t, http.StatusServiceUnavailable, cls.Status)
 	require.Equal(t, "api_error", cls.ErrType)
+	require.Equal(t, publicServiceUnavailableMessage, cls.Message)
+	require.NotContains(t, cls.Message, "account")
 	require.False(t, cls.ModelNotFound)
 }
 
@@ -107,6 +109,7 @@ func TestClassifyNoAccountError_ModelNotSupported_Returns404(t *testing.T) {
 	require.Equal(t, "model_not_found", cls.ErrType)
 	require.True(t, cls.ModelNotFound)
 	require.Contains(t, cls.Message, "gpt-5.1-codex-mini", "message must surface the requested model")
+	require.NotContains(t, cls.Message, "account")
 
 	require.Len(t, fd.calls, 1)
 	require.Equal(t, "gpt-5.1-codex-mini", fd.calls[0].Model)

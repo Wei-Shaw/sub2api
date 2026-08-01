@@ -47,10 +47,13 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 				return
 			}
 			if lastUpstreamErr != nil {
-				h.errorResponse(c, infraerrors.Code(lastUpstreamErr), "upstream_error", infraerrors.Message(lastUpstreamErr))
+				status := infraerrors.Code(lastUpstreamErr)
+				service.SetOpsUpstreamError(c, status, infraerrors.Message(lastUpstreamErr), "")
+				h.errorResponse(c, status, "upstream_error", publicServiceUnavailableMessage)
 				return
 			}
-			h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", "No available OpenAI accounts")
+			markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+			h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", publicServiceUnavailableMessage)
 			return
 		}
 		// 让 ops 错误日志携带实际选中的上游账号，便于定位失效账号（#4544）。
@@ -67,7 +70,9 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 				lastUpstreamErr = err
 				continue
 			}
-			h.errorResponse(c, infraerrors.Code(err), "upstream_error", infraerrors.Message(err))
+			status := infraerrors.Code(err)
+			service.SetOpsUpstreamError(c, status, infraerrors.Message(err), "")
+			h.errorResponse(c, status, "upstream_error", publicServiceUnavailableMessage)
 			return
 		}
 		if c.Request.Context().Err() != nil {

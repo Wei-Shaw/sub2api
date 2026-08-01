@@ -1271,7 +1271,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ModeOffReturnsPo
 		var closeErr *OpenAIWSClientCloseError
 		require.ErrorAs(t, serverErr, &closeErr)
 		require.Equal(t, coderws.StatusPolicyViolation, closeErr.StatusCode())
-		require.Equal(t, "websocket mode is disabled for this account", closeErr.Reason())
+		require.Equal(t, "websocket mode is unavailable for this request", closeErr.Reason())
 	case <-time.After(5 * time.Second):
 		t.Fatal("等待 ingress websocket 结束超时")
 	}

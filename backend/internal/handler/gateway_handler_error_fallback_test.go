@@ -135,16 +135,20 @@ func TestGatewayForwardErrorAlreadyCommunicated(t *testing.T) {
 		require.False(t, reported)
 	})
 
-	// apikey 场景核心回归：复刻 GatewayService.handleErrorResponse 的 case 400 ——
-	// 原样透传上游 JSON body 后返回 err。此时错误已经完整告知客户端，
-	// handler 不得再追加 data:{"type":"error"} 帧，否则响应被污染成「JSON + 一行 data:」。
-	t.Run("upstream 400 json passthrough via c.Data", func(t *testing.T) {
+	// apikey 场景核心回归：GatewayService.handleErrorResponse 的 case 400 会写入
+	// 标准化、脱敏后的 JSON 再返回 err。handler 不得追加第二个 SSE error 帧。
+	t.Run("upstream 400 normalized json response", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodPost, EndpointMessages, nil)
 		before := c.Writer.Size()
-		upstreamBody := []byte(`{"type":"error","error":{"type":"upstream_error","message":"Your Claude Code version (2.1.39) is below the minimum required version (2.1.81). Please update: npm update -g @anthropic-ai/claude-code"}}`)
-		c.Data(http.StatusBadRequest, "application/json", upstreamBody)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    "upstream_error",
+				"message": "Your Claude Code version (2.1.39) is below the minimum required version (2.1.81). Please update: npm update -g @anthropic-ai/claude-code",
+			},
+		})
 
 		reported := gatewayForwardErrorAlreadyCommunicated(c, before, errors.New("upstream error: 400 message=version too low"))
 
