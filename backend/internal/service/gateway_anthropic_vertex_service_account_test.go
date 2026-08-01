@@ -13,7 +13,6 @@ import (
 )
 
 func TestGatewayService_BuildAnthropicVertexServiceAccountRequest(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -72,7 +71,6 @@ func readRequestBodyForTest(t *testing.T, req *http.Request) []byte {
 // 但 body 带 context_management 字段 → Vertex builder 必须 strip 字段，与 Anthropic
 // 直连 / Bedrock 路径保持一致。
 func TestGatewayService_BuildAnthropicVertexServiceAccount_StripsContextManagementWhenBetaMissing(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
@@ -104,7 +102,6 @@ func TestGatewayService_BuildAnthropicVertexServiceAccount_StripsContextManageme
 
 // Vertex 路径反面：客户端 header 含 context-management beta 时保留字段。
 func TestGatewayService_BuildAnthropicVertexServiceAccount_PreservesContextManagementWhenBetaPresent(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)

@@ -170,27 +170,77 @@ func TestGatewayServiceRecordUsage_BillingFingerprintFallsBackToContextRequestID
 	require.Equal(t, "local:req-local-123", billingRepo.lastCmd.RequestPayloadHash)
 }
 
+func TestGatewayServiceRecordUsage_CarriesCatalogUsagePin(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+	)
+	decision := catalogDecisionForUsagePinIntegrationTest(t)
+	usageFields := (ChannelMappingResult{
+		Mapped:             true,
+		MappedModel:        "catalog/model-effective",
+		BillingModelSource: BillingModelSourceChannelMapped,
+		CatalogDecision:    decision,
+	}).ToUsageFields("catalog-model", "catalog/model-effective")
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_catalog_pinned",
+			Usage:     ClaudeUsage{InputTokens: 10, OutputTokens: 6},
+			Model:     "catalog-model",
+			Duration:  time.Second,
+		},
+		APIKey:             &APIKey{ID: 501, Quota: 100},
+		User:               &User{ID: 601},
+		Account:            &Account{ID: 701, Type: AccountTypeAPIKey},
+		ChannelUsageFields: usageFields,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.CatalogEpoch)
+	require.Equal(t, int64(7), *usageRepo.lastLog.CatalogEpoch)
+	require.Equal(t, int64(31), *usageRepo.lastLog.CatalogRevisionID)
+	require.Equal(t, int64(20), *usageRepo.lastLog.RequestedModelRevisionID)
+	require.Equal(t, int64(21), *usageRepo.lastLog.EffectiveModelRevisionID)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, int64(7), billingRepo.lastCmd.CatalogEpoch)
+	require.NotEmpty(t, billingRepo.lastCmd.PricingSnapshotHash)
+}
+
 func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
 	mappedModel := "claude-sonnet-4-20250514"
+	apiKey := new(APIKey)
+	apiKey.ID = 501
+	apiKey.Quota = 100
 
 	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID:     "gateway_models_split",
 			Usage:         ClaudeUsage{InputTokens: 10, OutputTokens: 6},
-			Model:         "claude-sonnet-4",
+			Model:         mappedModel,
 			UpstreamModel: mappedModel,
 			Duration:      time.Second,
 		},
-		APIKey:  &APIKey{ID: 501, Quota: 100},
+		APIKey:  apiKey,
 		User:    &User{ID: 601},
 		Account: &Account{ID: 701},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel:      "claude-sonnet-4",
+			ChannelMappedModel: mappedModel,
+			ModelMappingChain:  "claude-sonnet-4→" + mappedModel,
+		},
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, usageRepo.lastLog)
-	require.Equal(t, "claude-sonnet-4", usageRepo.lastLog.Model)
+	require.Equal(t, mappedModel, usageRepo.lastLog.Model)
 	require.Equal(t, "claude-sonnet-4", usageRepo.lastLog.RequestedModel)
 	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
 	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)

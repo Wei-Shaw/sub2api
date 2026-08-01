@@ -8,6 +8,7 @@ import (
 // PricingSource 定价来源标识
 const (
 	PricingSourceChannel  = "channel"
+	PricingSourceCatalog  = "catalog"
 	PricingSourceLiteLLM  = "litellm"
 	PricingSourceFallback = "fallback"
 )
@@ -17,7 +18,7 @@ type ResolvedPricing struct {
 	// Mode 计费模式
 	Mode BillingMode
 
-	// Token 模式：基础定价（来自 LiteLLM 或 fallback）
+	// Token 模式：基础定价（catalog decision、LiteLLM 或 fallback）
 	BasePricing *ModelPricing
 
 	// Token 模式：区间定价列表（如有，覆盖 BasePricing 中的对应字段）
@@ -30,7 +31,7 @@ type ResolvedPricing struct {
 	DefaultPerRequestPrice float64
 
 	// 来源标识
-	Source string // "channel", "litellm", "fallback"
+	Source string // "channel", "catalog", "litellm", "fallback"
 
 	// 是否支持缓存细分
 	SupportsCacheBreakdown bool
@@ -40,7 +41,8 @@ type ResolvedPricing struct {
 }
 
 // ModelPricingResolver 统一模型定价解析器。
-// 解析链：Channel → LiteLLM → Fallback。
+// 已 admission 的请求使用 pinned catalog base price，再应用 scoped channel
+// override；legacy 请求保留 Channel → LiteLLM → Fallback 兼容链。
 type ModelPricingResolver struct {
 	channelService *ChannelService
 	billingService *BillingService
@@ -56,12 +58,13 @@ func NewModelPricingResolver(channelService *ChannelService, billingService *Bil
 
 // PricingInput 定价解析输入
 type PricingInput struct {
-	Model   string
-	GroupID *int64 // nil 表示不检查渠道
+	Model           string
+	GroupID         *int64 // nil 表示不检查渠道
+	CatalogDecision *CatalogDecision
 }
 
 // Resolve 解析模型定价。
-// 1. 获取基础定价（LiteLLM → Fallback）
+// 1. 获取基础定价（pinned catalog decision 或 LiteLLM → Fallback）
 // 2. 如果指定了 GroupID，查找渠道定价并覆盖
 func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) *ResolvedPricing {
 	var chPricing *ChannelModelPricing
@@ -85,7 +88,7 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 	}
 
 	// 1. 获取基础定价
-	basePricing, source := r.resolveBasePricing(input.Model)
+	basePricing, source := r.resolveBasePricing(input)
 
 	resolved := &ResolvedPricing{
 		Mode:                   BillingModeToken,
@@ -106,15 +109,52 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 	return resolved
 }
 
-// resolveBasePricing 从 LiteLLM 或 Fallback 获取基础定价
-func (r *ModelPricingResolver) resolveBasePricing(model string) (*ModelPricing, string) {
-	pricing, err := r.billingService.GetModelPricing(model)
+// resolveBasePricing 优先从请求已 pin 的 catalog decision 读取基础定价；
+// 只有 legacy 请求才允许读取 LiteLLM/fallback 兼容价格。
+func (r *ModelPricingResolver) resolveBasePricing(input PricingInput) (*ModelPricing, string) {
+	if input.CatalogDecision != nil {
+		decision := input.CatalogDecision
+		if !decision.Valid() || !decision.Effective.HasPricing {
+			return nil, PricingSourceCatalog
+		}
+		pricing := modelPricingFromCatalog(decision.Effective.Pricing)
+		if r.billingService != nil {
+			pricing = r.billingService.applyModelSpecificPricingPolicy(input.Model, pricing)
+		}
+		return pricing, PricingSourceCatalog
+	}
+
+	pricing, err := r.billingService.GetModelPricing(input.Model)
 	if err != nil {
 		slog.Debug("failed to get model pricing from LiteLLM, using fallback",
-			"model", model, "error", err)
+			"model", input.Model, "error", err)
 		return nil, PricingSourceFallback
 	}
 	return pricing, PricingSourceLiteLLM
+}
+
+func modelPricingFromCatalog(pricing LiteLLMModelPricing) *ModelPricing {
+	cacheWrite5m := pricing.CacheCreationInputTokenCost
+	cacheWrite1h := pricing.CacheCreationInputTokenCostAbove1hr
+	return &ModelPricing{
+		InputPricePerToken:                 pricing.InputCostPerToken,
+		InputPricePerTokenPriority:         pricing.InputCostPerTokenPriority,
+		OutputPricePerToken:                pricing.OutputCostPerToken,
+		OutputPricePerTokenPriority:        pricing.OutputCostPerTokenPriority,
+		CacheCreationPricePerToken:         pricing.CacheCreationInputTokenCost,
+		CacheCreationPricePerTokenPriority: pricing.CacheCreationInputTokenCostPriority,
+		CacheReadPricePerToken:             pricing.CacheReadInputTokenCost,
+		CacheReadPricePerTokenPriority:     pricing.CacheReadInputTokenCostPriority,
+		CacheCreation5mPrice:               cacheWrite5m,
+		CacheCreation1hPrice:               cacheWrite1h,
+		SupportsCacheBreakdown:             cacheWrite1h > 0 && cacheWrite1h > cacheWrite5m,
+		LongContextInputThreshold:          pricing.LongContextInputTokenThreshold,
+		LongContextInputMultiplier:         pricing.LongContextInputCostMultiplier,
+		LongContextOutputMultiplier:        pricing.LongContextOutputCostMultiplier,
+		ImageInputPricePerToken:            pricing.InputCostPerImageToken,
+		ImageOutputPricePerToken:           pricing.OutputCostPerImageToken,
+		ImageOutputPriceExplicit:           pricing.OutputCostPerImageToken > 0,
+	}
 }
 
 // applyChannelOverrides 应用渠道定价覆盖

@@ -162,6 +162,16 @@ type UsageLog struct {
 	// AccountStatsCost 账号统计定价预计算费用（nil = 使用默认公式 total_cost × account_rate_multiplier）
 	AccountStatsCost *float64
 
+	// Catalog provenance is nullable during the legacy/shadow rollout. When a
+	// catalog decision is used, these fields pin the immutable revision and
+	// normalized unit-price snapshot used for settlement.
+	CatalogEpoch             *int64
+	CatalogRevisionID        *int64
+	RequestedModelRevisionID *int64
+	EffectiveModelRevisionID *int64
+	PricingSource            *string
+	PricingSnapshot          map[string]any
+
 	BillingType  int8
 	RequestType  RequestType
 	Stream       bool

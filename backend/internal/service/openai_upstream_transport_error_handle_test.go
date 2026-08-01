@@ -32,7 +32,6 @@ func (r *openaiTransportAccountRepoStub) SetTempUnschedulable(_ context.Context,
 }
 
 func newOpenAITransportErrTestContext() (*gin.Context, *httptest.ResponseRecorder) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)

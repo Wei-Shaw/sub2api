@@ -537,6 +537,23 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 // the compat paths (Chat Completions and Anthropic Messages).
 type compatErrorWriter func(c *gin.Context, statusCode int, errType, message string)
 
+const preserveCompatErrorTypeContextKey = "preserve_compat_error_type"
+
+func writeCompatErrorPreservingType(c *gin.Context, writeError compatErrorWriter, statusCode int, errType, message string) {
+	c.Set(preserveCompatErrorTypeContextKey, true)
+	writeError(c, statusCode, errType, message)
+	c.Set(preserveCompatErrorTypeContextKey, false)
+}
+
+func compatErrorTypeForHTTPStatus(c *gin.Context, statusCode int, fallback string) string {
+	if c != nil {
+		if preserve, ok := c.Get(preserveCompatErrorTypeContextKey); ok && preserve == true {
+			return fallback
+		}
+	}
+	return clienterror.TypeForHTTPStatus(statusCode, fallback)
+}
+
 // handleCompatErrorResponse is the shared non-failover error handler for the
 // Chat Completions and Anthropic Messages compat paths. It mirrors the logic of
 // handleErrorResponse (passthrough rules, ShouldHandleErrorCode, rate-limit
@@ -579,7 +596,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		clientMsg := grokContentPolicyClientMessage(body)
 		setOpsUpstreamError(c, resp.StatusCode, clientMsg, truncateString(string(body), 2048))
 		MarkResponseCommitted(c)
-		writeError(c, http.StatusForbidden, "invalid_request_error", clientMsg)
+		writeCompatErrorPreservingType(c, writeError, http.StatusForbidden, "invalid_request_error", clientMsg)
 		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 	}
 

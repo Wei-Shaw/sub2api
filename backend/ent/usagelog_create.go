@@ -379,6 +379,82 @@ func (_c *UsageLogCreate) SetNillableAccountRateMultiplier(v *float64) *UsageLog
 	return _c
 }
 
+// SetCatalogEpoch sets the "catalog_epoch" field.
+func (_c *UsageLogCreate) SetCatalogEpoch(v int64) *UsageLogCreate {
+	_c.mutation.SetCatalogEpoch(v)
+	return _c
+}
+
+// SetNillableCatalogEpoch sets the "catalog_epoch" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCatalogEpoch(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetCatalogEpoch(*v)
+	}
+	return _c
+}
+
+// SetCatalogRevisionID sets the "catalog_revision_id" field.
+func (_c *UsageLogCreate) SetCatalogRevisionID(v int64) *UsageLogCreate {
+	_c.mutation.SetCatalogRevisionID(v)
+	return _c
+}
+
+// SetNillableCatalogRevisionID sets the "catalog_revision_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCatalogRevisionID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetCatalogRevisionID(*v)
+	}
+	return _c
+}
+
+// SetRequestedModelRevisionID sets the "requested_model_revision_id" field.
+func (_c *UsageLogCreate) SetRequestedModelRevisionID(v int64) *UsageLogCreate {
+	_c.mutation.SetRequestedModelRevisionID(v)
+	return _c
+}
+
+// SetNillableRequestedModelRevisionID sets the "requested_model_revision_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRequestedModelRevisionID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetRequestedModelRevisionID(*v)
+	}
+	return _c
+}
+
+// SetEffectiveModelRevisionID sets the "effective_model_revision_id" field.
+func (_c *UsageLogCreate) SetEffectiveModelRevisionID(v int64) *UsageLogCreate {
+	_c.mutation.SetEffectiveModelRevisionID(v)
+	return _c
+}
+
+// SetNillableEffectiveModelRevisionID sets the "effective_model_revision_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableEffectiveModelRevisionID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetEffectiveModelRevisionID(*v)
+	}
+	return _c
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (_c *UsageLogCreate) SetPricingSource(v string) *UsageLogCreate {
+	_c.mutation.SetPricingSource(v)
+	return _c
+}
+
+// SetNillablePricingSource sets the "pricing_source" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillablePricingSource(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetPricingSource(*v)
+	}
+	return _c
+}
+
+// SetPricingSnapshot sets the "pricing_snapshot" field.
+func (_c *UsageLogCreate) SetPricingSnapshot(v map[string]interface{}) *UsageLogCreate {
+	_c.mutation.SetPricingSnapshot(v)
+	return _c
+}
+
 // SetBillingType sets the "billing_type" field.
 func (_c *UsageLogCreate) SetBillingType(v int8) *UsageLogCreate {
 	_c.mutation.SetBillingType(v)
@@ -845,6 +921,11 @@ func (_c *UsageLogCreate) check() error {
 	if _, ok := _c.mutation.LongContextBillingApplied(); !ok {
 		return &ValidationError{Name: "long_context_billing_applied", err: errors.New(`ent: missing required field "UsageLog.long_context_billing_applied"`)}
 	}
+	if v, ok := _c.mutation.PricingSource(); ok {
+		if err := usagelog.PricingSourceValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.pricing_source": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.BillingType(); !ok {
 		return &ValidationError{Name: "billing_type", err: errors.New(`ent: missing required field "UsageLog.billing_type"`)}
 	}
@@ -1025,6 +1106,30 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
 		_node.AccountRateMultiplier = &value
+	}
+	if value, ok := _c.mutation.CatalogEpoch(); ok {
+		_spec.SetField(usagelog.FieldCatalogEpoch, field.TypeInt64, value)
+		_node.CatalogEpoch = &value
+	}
+	if value, ok := _c.mutation.CatalogRevisionID(); ok {
+		_spec.SetField(usagelog.FieldCatalogRevisionID, field.TypeInt64, value)
+		_node.CatalogRevisionID = &value
+	}
+	if value, ok := _c.mutation.RequestedModelRevisionID(); ok {
+		_spec.SetField(usagelog.FieldRequestedModelRevisionID, field.TypeInt64, value)
+		_node.RequestedModelRevisionID = &value
+	}
+	if value, ok := _c.mutation.EffectiveModelRevisionID(); ok {
+		_spec.SetField(usagelog.FieldEffectiveModelRevisionID, field.TypeInt64, value)
+		_node.EffectiveModelRevisionID = &value
+	}
+	if value, ok := _c.mutation.PricingSource(); ok {
+		_spec.SetField(usagelog.FieldPricingSource, field.TypeString, value)
+		_node.PricingSource = &value
+	}
+	if value, ok := _c.mutation.PricingSnapshot(); ok {
+		_spec.SetField(usagelog.FieldPricingSnapshot, field.TypeJSON, value)
+		_node.PricingSnapshot = value
 	}
 	if value, ok := _c.mutation.BillingType(); ok {
 		_spec.SetField(usagelog.FieldBillingType, field.TypeInt8, value)
@@ -1708,6 +1813,138 @@ func (u *UsageLogUpsert) AddAccountRateMultiplier(v float64) *UsageLogUpsert {
 // ClearAccountRateMultiplier clears the value of the "account_rate_multiplier" field.
 func (u *UsageLogUpsert) ClearAccountRateMultiplier() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldAccountRateMultiplier)
+	return u
+}
+
+// SetCatalogEpoch sets the "catalog_epoch" field.
+func (u *UsageLogUpsert) SetCatalogEpoch(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldCatalogEpoch, v)
+	return u
+}
+
+// UpdateCatalogEpoch sets the "catalog_epoch" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCatalogEpoch() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCatalogEpoch)
+	return u
+}
+
+// AddCatalogEpoch adds v to the "catalog_epoch" field.
+func (u *UsageLogUpsert) AddCatalogEpoch(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldCatalogEpoch, v)
+	return u
+}
+
+// ClearCatalogEpoch clears the value of the "catalog_epoch" field.
+func (u *UsageLogUpsert) ClearCatalogEpoch() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCatalogEpoch)
+	return u
+}
+
+// SetCatalogRevisionID sets the "catalog_revision_id" field.
+func (u *UsageLogUpsert) SetCatalogRevisionID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldCatalogRevisionID, v)
+	return u
+}
+
+// UpdateCatalogRevisionID sets the "catalog_revision_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCatalogRevisionID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCatalogRevisionID)
+	return u
+}
+
+// AddCatalogRevisionID adds v to the "catalog_revision_id" field.
+func (u *UsageLogUpsert) AddCatalogRevisionID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldCatalogRevisionID, v)
+	return u
+}
+
+// ClearCatalogRevisionID clears the value of the "catalog_revision_id" field.
+func (u *UsageLogUpsert) ClearCatalogRevisionID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCatalogRevisionID)
+	return u
+}
+
+// SetRequestedModelRevisionID sets the "requested_model_revision_id" field.
+func (u *UsageLogUpsert) SetRequestedModelRevisionID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldRequestedModelRevisionID, v)
+	return u
+}
+
+// UpdateRequestedModelRevisionID sets the "requested_model_revision_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRequestedModelRevisionID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRequestedModelRevisionID)
+	return u
+}
+
+// AddRequestedModelRevisionID adds v to the "requested_model_revision_id" field.
+func (u *UsageLogUpsert) AddRequestedModelRevisionID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldRequestedModelRevisionID, v)
+	return u
+}
+
+// ClearRequestedModelRevisionID clears the value of the "requested_model_revision_id" field.
+func (u *UsageLogUpsert) ClearRequestedModelRevisionID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRequestedModelRevisionID)
+	return u
+}
+
+// SetEffectiveModelRevisionID sets the "effective_model_revision_id" field.
+func (u *UsageLogUpsert) SetEffectiveModelRevisionID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldEffectiveModelRevisionID, v)
+	return u
+}
+
+// UpdateEffectiveModelRevisionID sets the "effective_model_revision_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateEffectiveModelRevisionID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldEffectiveModelRevisionID)
+	return u
+}
+
+// AddEffectiveModelRevisionID adds v to the "effective_model_revision_id" field.
+func (u *UsageLogUpsert) AddEffectiveModelRevisionID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldEffectiveModelRevisionID, v)
+	return u
+}
+
+// ClearEffectiveModelRevisionID clears the value of the "effective_model_revision_id" field.
+func (u *UsageLogUpsert) ClearEffectiveModelRevisionID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldEffectiveModelRevisionID)
+	return u
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (u *UsageLogUpsert) SetPricingSource(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldPricingSource, v)
+	return u
+}
+
+// UpdatePricingSource sets the "pricing_source" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdatePricingSource() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldPricingSource)
+	return u
+}
+
+// ClearPricingSource clears the value of the "pricing_source" field.
+func (u *UsageLogUpsert) ClearPricingSource() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldPricingSource)
+	return u
+}
+
+// SetPricingSnapshot sets the "pricing_snapshot" field.
+func (u *UsageLogUpsert) SetPricingSnapshot(v map[string]interface{}) *UsageLogUpsert {
+	u.Set(usagelog.FieldPricingSnapshot, v)
+	return u
+}
+
+// UpdatePricingSnapshot sets the "pricing_snapshot" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdatePricingSnapshot() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldPricingSnapshot)
+	return u
+}
+
+// ClearPricingSnapshot clears the value of the "pricing_snapshot" field.
+func (u *UsageLogUpsert) ClearPricingSnapshot() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldPricingSnapshot)
 	return u
 }
 
@@ -2607,6 +2844,160 @@ func (u *UsageLogUpsertOne) UpdateAccountRateMultiplier() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearAccountRateMultiplier() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearAccountRateMultiplier()
+	})
+}
+
+// SetCatalogEpoch sets the "catalog_epoch" field.
+func (u *UsageLogUpsertOne) SetCatalogEpoch(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCatalogEpoch(v)
+	})
+}
+
+// AddCatalogEpoch adds v to the "catalog_epoch" field.
+func (u *UsageLogUpsertOne) AddCatalogEpoch(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCatalogEpoch(v)
+	})
+}
+
+// UpdateCatalogEpoch sets the "catalog_epoch" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCatalogEpoch() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCatalogEpoch()
+	})
+}
+
+// ClearCatalogEpoch clears the value of the "catalog_epoch" field.
+func (u *UsageLogUpsertOne) ClearCatalogEpoch() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCatalogEpoch()
+	})
+}
+
+// SetCatalogRevisionID sets the "catalog_revision_id" field.
+func (u *UsageLogUpsertOne) SetCatalogRevisionID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCatalogRevisionID(v)
+	})
+}
+
+// AddCatalogRevisionID adds v to the "catalog_revision_id" field.
+func (u *UsageLogUpsertOne) AddCatalogRevisionID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCatalogRevisionID(v)
+	})
+}
+
+// UpdateCatalogRevisionID sets the "catalog_revision_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCatalogRevisionID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCatalogRevisionID()
+	})
+}
+
+// ClearCatalogRevisionID clears the value of the "catalog_revision_id" field.
+func (u *UsageLogUpsertOne) ClearCatalogRevisionID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCatalogRevisionID()
+	})
+}
+
+// SetRequestedModelRevisionID sets the "requested_model_revision_id" field.
+func (u *UsageLogUpsertOne) SetRequestedModelRevisionID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestedModelRevisionID(v)
+	})
+}
+
+// AddRequestedModelRevisionID adds v to the "requested_model_revision_id" field.
+func (u *UsageLogUpsertOne) AddRequestedModelRevisionID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRequestedModelRevisionID(v)
+	})
+}
+
+// UpdateRequestedModelRevisionID sets the "requested_model_revision_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRequestedModelRevisionID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestedModelRevisionID()
+	})
+}
+
+// ClearRequestedModelRevisionID clears the value of the "requested_model_revision_id" field.
+func (u *UsageLogUpsertOne) ClearRequestedModelRevisionID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRequestedModelRevisionID()
+	})
+}
+
+// SetEffectiveModelRevisionID sets the "effective_model_revision_id" field.
+func (u *UsageLogUpsertOne) SetEffectiveModelRevisionID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetEffectiveModelRevisionID(v)
+	})
+}
+
+// AddEffectiveModelRevisionID adds v to the "effective_model_revision_id" field.
+func (u *UsageLogUpsertOne) AddEffectiveModelRevisionID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddEffectiveModelRevisionID(v)
+	})
+}
+
+// UpdateEffectiveModelRevisionID sets the "effective_model_revision_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateEffectiveModelRevisionID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateEffectiveModelRevisionID()
+	})
+}
+
+// ClearEffectiveModelRevisionID clears the value of the "effective_model_revision_id" field.
+func (u *UsageLogUpsertOne) ClearEffectiveModelRevisionID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearEffectiveModelRevisionID()
+	})
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (u *UsageLogUpsertOne) SetPricingSource(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPricingSource(v)
+	})
+}
+
+// UpdatePricingSource sets the "pricing_source" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdatePricingSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePricingSource()
+	})
+}
+
+// ClearPricingSource clears the value of the "pricing_source" field.
+func (u *UsageLogUpsertOne) ClearPricingSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPricingSource()
+	})
+}
+
+// SetPricingSnapshot sets the "pricing_snapshot" field.
+func (u *UsageLogUpsertOne) SetPricingSnapshot(v map[string]interface{}) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPricingSnapshot(v)
+	})
+}
+
+// UpdatePricingSnapshot sets the "pricing_snapshot" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdatePricingSnapshot() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePricingSnapshot()
+	})
+}
+
+// ClearPricingSnapshot clears the value of the "pricing_snapshot" field.
+func (u *UsageLogUpsertOne) ClearPricingSnapshot() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPricingSnapshot()
 	})
 }
 
@@ -3721,6 +4112,160 @@ func (u *UsageLogUpsertBulk) UpdateAccountRateMultiplier() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearAccountRateMultiplier() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearAccountRateMultiplier()
+	})
+}
+
+// SetCatalogEpoch sets the "catalog_epoch" field.
+func (u *UsageLogUpsertBulk) SetCatalogEpoch(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCatalogEpoch(v)
+	})
+}
+
+// AddCatalogEpoch adds v to the "catalog_epoch" field.
+func (u *UsageLogUpsertBulk) AddCatalogEpoch(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCatalogEpoch(v)
+	})
+}
+
+// UpdateCatalogEpoch sets the "catalog_epoch" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCatalogEpoch() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCatalogEpoch()
+	})
+}
+
+// ClearCatalogEpoch clears the value of the "catalog_epoch" field.
+func (u *UsageLogUpsertBulk) ClearCatalogEpoch() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCatalogEpoch()
+	})
+}
+
+// SetCatalogRevisionID sets the "catalog_revision_id" field.
+func (u *UsageLogUpsertBulk) SetCatalogRevisionID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCatalogRevisionID(v)
+	})
+}
+
+// AddCatalogRevisionID adds v to the "catalog_revision_id" field.
+func (u *UsageLogUpsertBulk) AddCatalogRevisionID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCatalogRevisionID(v)
+	})
+}
+
+// UpdateCatalogRevisionID sets the "catalog_revision_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCatalogRevisionID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCatalogRevisionID()
+	})
+}
+
+// ClearCatalogRevisionID clears the value of the "catalog_revision_id" field.
+func (u *UsageLogUpsertBulk) ClearCatalogRevisionID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCatalogRevisionID()
+	})
+}
+
+// SetRequestedModelRevisionID sets the "requested_model_revision_id" field.
+func (u *UsageLogUpsertBulk) SetRequestedModelRevisionID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestedModelRevisionID(v)
+	})
+}
+
+// AddRequestedModelRevisionID adds v to the "requested_model_revision_id" field.
+func (u *UsageLogUpsertBulk) AddRequestedModelRevisionID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRequestedModelRevisionID(v)
+	})
+}
+
+// UpdateRequestedModelRevisionID sets the "requested_model_revision_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRequestedModelRevisionID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestedModelRevisionID()
+	})
+}
+
+// ClearRequestedModelRevisionID clears the value of the "requested_model_revision_id" field.
+func (u *UsageLogUpsertBulk) ClearRequestedModelRevisionID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRequestedModelRevisionID()
+	})
+}
+
+// SetEffectiveModelRevisionID sets the "effective_model_revision_id" field.
+func (u *UsageLogUpsertBulk) SetEffectiveModelRevisionID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetEffectiveModelRevisionID(v)
+	})
+}
+
+// AddEffectiveModelRevisionID adds v to the "effective_model_revision_id" field.
+func (u *UsageLogUpsertBulk) AddEffectiveModelRevisionID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddEffectiveModelRevisionID(v)
+	})
+}
+
+// UpdateEffectiveModelRevisionID sets the "effective_model_revision_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateEffectiveModelRevisionID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateEffectiveModelRevisionID()
+	})
+}
+
+// ClearEffectiveModelRevisionID clears the value of the "effective_model_revision_id" field.
+func (u *UsageLogUpsertBulk) ClearEffectiveModelRevisionID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearEffectiveModelRevisionID()
+	})
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (u *UsageLogUpsertBulk) SetPricingSource(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPricingSource(v)
+	})
+}
+
+// UpdatePricingSource sets the "pricing_source" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdatePricingSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePricingSource()
+	})
+}
+
+// ClearPricingSource clears the value of the "pricing_source" field.
+func (u *UsageLogUpsertBulk) ClearPricingSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPricingSource()
+	})
+}
+
+// SetPricingSnapshot sets the "pricing_snapshot" field.
+func (u *UsageLogUpsertBulk) SetPricingSnapshot(v map[string]interface{}) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPricingSnapshot(v)
+	})
+}
+
+// UpdatePricingSnapshot sets the "pricing_snapshot" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdatePricingSnapshot() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePricingSnapshot()
+	})
+}
+
+// ClearPricingSnapshot clears the value of the "pricing_snapshot" field.
+func (u *UsageLogUpsertBulk) ClearPricingSnapshot() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPricingSnapshot()
 	})
 }
 

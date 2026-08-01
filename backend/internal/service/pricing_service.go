@@ -172,12 +172,14 @@ type LiteLLMRawEntry struct {
 
 // PricingService 动态价格服务
 type PricingService struct {
-	cfg          *config.Config
-	remoteClient PricingRemoteClient
-	mu           sync.RWMutex
-	pricingData  map[string]*LiteLLMModelPricing
-	lastUpdated  time.Time
-	localHash    string
+	cfg                    *config.Config
+	remoteClient           PricingRemoteClient
+	mu                     sync.RWMutex
+	pricingData            map[string]*LiteLLMModelPricing
+	lastUpdated            time.Time
+	localHash              string
+	catalogReader          ModelCatalogReader
+	catalogPricingReadMode string
 
 	// 停止信号
 	stopCh chan struct{}
@@ -193,6 +195,27 @@ func NewPricingService(cfg *config.Config, remoteClient PricingRemoteClient) *Pr
 		stopCh:       make(chan struct{}),
 	}
 	return s
+}
+
+// SetCatalogRuntime binds the immutable request-time catalog projection. The
+// binding is startup-only; DB/Redis/import paths remain background concerns.
+func (s *PricingService) SetCatalogRuntime(reader ModelCatalogReader, readMode string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.catalogReader = reader
+	s.catalogPricingReadMode = normalizeModelCatalogReadMode(readMode, "legacy", "legacy", "shadow", "db")
+	s.mu.Unlock()
+}
+
+func (s *PricingService) CatalogPricingReadMode() string {
+	if s == nil {
+		return "legacy"
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.catalogPricingReadMode
 }
 
 // Initialize 初始化价格服务
@@ -708,6 +731,17 @@ func (s *PricingService) CatalogStatus() PricingCatalogStatus {
 // GetModelPricing 获取模型价格（带模糊匹配）
 func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing {
 	s.mu.RLock()
+	catalogReader := s.catalogReader
+	catalogReadMode := s.catalogPricingReadMode
+	s.mu.RUnlock()
+	if catalogReadMode == "db" {
+		if pricing := s.getCatalogModelPricing(catalogReader, modelName); pricing != nil {
+			return pricing
+		}
+		return nil
+	}
+
+	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	if modelName == "" {
@@ -758,6 +792,22 @@ func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing 
 	}
 
 	return nil
+}
+
+func (s *PricingService) getCatalogModelPricing(reader ModelCatalogReader, modelName string) *LiteLLMModelPricing {
+	if reader == nil || strings.TrimSpace(modelName) == "" {
+		return nil
+	}
+	view, err := reader.BeginDecision(time.Now().UTC())
+	if err != nil {
+		return nil
+	}
+	decision, ok := view.Resolve(modelName, CatalogPlatformScopeAny)
+	if !ok || !decision.HasPricing {
+		return nil
+	}
+	pricing := decision.Pricing
+	return &pricing
 }
 
 func (s *PricingService) buildModelLookupCandidates(modelLower string) []string {

@@ -663,6 +663,239 @@ var (
 			},
 		},
 	}
+	// CatalogLifecycleAuditsColumns holds the columns for the "catalog_lifecycle_audits" table.
+	CatalogLifecycleAuditsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "model_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "catalog_revision_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "action", Type: field.TypeString},
+		{Name: "actor_type", Type: field.TypeString},
+		{Name: "actor_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "reason", Type: field.TypeString, Nullable: true},
+		{Name: "before_state", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "after_state", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "request_id", Type: field.TypeString, Nullable: true},
+		{Name: "correlation_id", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// CatalogLifecycleAuditsTable holds the schema information for the "catalog_lifecycle_audits" table.
+	CatalogLifecycleAuditsTable = &schema.Table{
+		Name:       "catalog_lifecycle_audits",
+		Columns:    CatalogLifecycleAuditsColumns,
+		PrimaryKey: []*schema.Column{CatalogLifecycleAuditsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "cataloglifecycleaudit_model_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{CatalogLifecycleAuditsColumns[1], CatalogLifecycleAuditsColumns[11]},
+			},
+			{
+				Name:    "cataloglifecycleaudit_catalog_revision_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{CatalogLifecycleAuditsColumns[2], CatalogLifecycleAuditsColumns[11]},
+			},
+		},
+	}
+	// CatalogModelsColumns holds the columns for the "catalog_models" table.
+	CatalogModelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "canonical_key", Type: field.TypeString},
+		{Name: "canonical_key_normalized", Type: field.TypeString, Unique: true},
+		{Name: "operator_state", Type: field.TypeString, Default: "enabled"},
+		{Name: "operator_reason", Type: field.TypeString, Nullable: true},
+		{Name: "replacement_model_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "operator_version", Type: field.TypeInt64, Default: 1},
+		{Name: "first_seen_at", Type: field.TypeTime},
+		{Name: "last_operator_change_at", Type: field.TypeTime, Nullable: true},
+		{Name: "retired_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// CatalogModelsTable holds the schema information for the "catalog_models" table.
+	CatalogModelsTable = &schema.Table{
+		Name:       "catalog_models",
+		Columns:    CatalogModelsColumns,
+		PrimaryKey: []*schema.Column{CatalogModelsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "catalogmodel_operator_state",
+				Unique:  false,
+				Columns: []*schema.Column{CatalogModelsColumns[3]},
+			},
+		},
+	}
+	// CatalogModelAliasesColumns holds the columns for the "catalog_model_aliases" table.
+	CatalogModelAliasesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "alias_normalized", Type: field.TypeString},
+		{Name: "platform_scope", Type: field.TypeString, Default: "*"},
+		{Name: "model_id", Type: field.TypeInt64},
+		{Name: "source", Type: field.TypeString},
+		{Name: "state", Type: field.TypeString},
+		{Name: "introduced_revision_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "retired_revision_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// CatalogModelAliasesTable holds the schema information for the "catalog_model_aliases" table.
+	CatalogModelAliasesTable = &schema.Table{
+		Name:       "catalog_model_aliases",
+		Columns:    CatalogModelAliasesColumns,
+		PrimaryKey: []*schema.Column{CatalogModelAliasesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "catalogmodelalias_platform_scope_alias_normalized",
+				Unique:  true,
+				Columns: []*schema.Column{CatalogModelAliasesColumns[2], CatalogModelAliasesColumns[1]},
+			},
+			{
+				Name:    "catalogmodelalias_model_id",
+				Unique:  false,
+				Columns: []*schema.Column{CatalogModelAliasesColumns[3]},
+			},
+		},
+	}
+	// CatalogModelRevisionsColumns holds the columns for the "catalog_model_revisions" table.
+	CatalogModelRevisionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "catalog_revision_id", Type: field.TypeInt64},
+		{Name: "model_id", Type: field.TypeInt64},
+		{Name: "source_state", Type: field.TypeString},
+		{Name: "provider", Type: field.TypeString},
+		{Name: "platform", Type: field.TypeString},
+		{Name: "mode", Type: field.TypeString},
+		{Name: "capabilities", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "context_window", Type: field.TypeInt64, Nullable: true},
+		{Name: "max_output_tokens", Type: field.TypeInt64, Nullable: true},
+		{Name: "pricing_schema_version", Type: field.TypeInt},
+		{Name: "pricing_json", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "pricing_valid", Type: field.TypeBool, Default: false},
+		{Name: "pricing_source", Type: field.TypeString, Nullable: true},
+		{Name: "source_metadata", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "source_hash", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// CatalogModelRevisionsTable holds the schema information for the "catalog_model_revisions" table.
+	CatalogModelRevisionsTable = &schema.Table{
+		Name:       "catalog_model_revisions",
+		Columns:    CatalogModelRevisionsColumns,
+		PrimaryKey: []*schema.Column{CatalogModelRevisionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "catalogmodelrevision_catalog_revision_id_model_id",
+				Unique:  true,
+				Columns: []*schema.Column{CatalogModelRevisionsColumns[1], CatalogModelRevisionsColumns[2]},
+			},
+			{
+				Name:    "catalogmodelrevision_catalog_revision_id",
+				Unique:  false,
+				Columns: []*schema.Column{CatalogModelRevisionsColumns[1]},
+			},
+			{
+				Name:    "catalogmodelrevision_model_id",
+				Unique:  false,
+				Columns: []*schema.Column{CatalogModelRevisionsColumns[2]},
+			},
+		},
+	}
+	// CatalogOutboxColumns holds the columns for the "catalog_outbox" table.
+	CatalogOutboxColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "event_type", Type: field.TypeString},
+		{Name: "scope", Type: field.TypeString},
+		{Name: "publication_epoch", Type: field.TypeInt64},
+		{Name: "catalog_revision_id", Type: field.TypeInt64},
+		{Name: "model_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "payload", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "dedup_key", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// CatalogOutboxTable holds the schema information for the "catalog_outbox" table.
+	CatalogOutboxTable = &schema.Table{
+		Name:       "catalog_outbox",
+		Columns:    CatalogOutboxColumns,
+		PrimaryKey: []*schema.Column{CatalogOutboxColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "catalogoutbox_scope_publication_epoch_id",
+				Unique:  false,
+				Columns: []*schema.Column{CatalogOutboxColumns[2], CatalogOutboxColumns[3], CatalogOutboxColumns[0]},
+			},
+			{
+				Name:    "catalogoutbox_dedup_key",
+				Unique:  true,
+				Columns: []*schema.Column{CatalogOutboxColumns[7]},
+			},
+		},
+	}
+	// CatalogPublicationsColumns holds the columns for the "catalog_publications" table.
+	CatalogPublicationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "scope", Type: field.TypeString, Unique: true},
+		{Name: "active_revision_id", Type: field.TypeInt64},
+		{Name: "epoch", Type: field.TypeInt64},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// CatalogPublicationsTable holds the schema information for the "catalog_publications" table.
+	CatalogPublicationsTable = &schema.Table{
+		Name:       "catalog_publications",
+		Columns:    CatalogPublicationsColumns,
+		PrimaryKey: []*schema.Column{CatalogPublicationsColumns[0]},
+	}
+	// CatalogRevisionsColumns holds the columns for the "catalog_revisions" table.
+	CatalogRevisionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "revision", Type: field.TypeInt64, Unique: true},
+		{Name: "sync_run_id", Type: field.TypeInt64},
+		{Name: "normalized_hash", Type: field.TypeString, Unique: true},
+		{Name: "normalizer_version", Type: field.TypeString},
+		{Name: "state", Type: field.TypeString},
+		{Name: "model_count", Type: field.TypeInt},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "validated_at", Type: field.TypeTime, Nullable: true},
+		{Name: "published_at", Type: field.TypeTime, Nullable: true},
+	}
+	// CatalogRevisionsTable holds the schema information for the "catalog_revisions" table.
+	CatalogRevisionsTable = &schema.Table{
+		Name:       "catalog_revisions",
+		Columns:    CatalogRevisionsColumns,
+		PrimaryKey: []*schema.Column{CatalogRevisionsColumns[0]},
+	}
+	// CatalogSyncRunsColumns holds the columns for the "catalog_sync_runs" table.
+	CatalogSyncRunsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "source_set", Type: field.TypeString},
+		{Name: "trigger", Type: field.TypeString},
+		{Name: "actor_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "upstream_version", Type: field.TypeString, Nullable: true},
+		{Name: "upstream_etag", Type: field.TypeString, Nullable: true},
+		{Name: "upstream_hash", Type: field.TypeString, Nullable: true},
+		{Name: "normalized_hash", Type: field.TypeString, Nullable: true},
+		{Name: "normalizer_version", Type: field.TypeString},
+		{Name: "status", Type: field.TypeString},
+		{Name: "source_count", Type: field.TypeInt, Default: 0},
+		{Name: "normalized_count", Type: field.TypeInt, Default: 0},
+		{Name: "added_count", Type: field.TypeInt, Default: 0},
+		{Name: "changed_count", Type: field.TypeInt, Default: 0},
+		{Name: "missing_count", Type: field.TypeInt, Default: 0},
+		{Name: "invalid_count", Type: field.TypeInt, Default: 0},
+		{Name: "validation_errors", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "started_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// CatalogSyncRunsTable holds the schema information for the "catalog_sync_runs" table.
+	CatalogSyncRunsTable = &schema.Table{
+		Name:       "catalog_sync_runs",
+		Columns:    CatalogSyncRunsColumns,
+		PrimaryKey: []*schema.Column{CatalogSyncRunsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "catalogsyncrun_status_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{CatalogSyncRunsColumns[9], CatalogSyncRunsColumns[17]},
+			},
+		},
+	}
 	// ChannelMonitorsColumns holds the columns for the "channel_monitors" table.
 	ChannelMonitorsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1795,6 +2028,12 @@ var (
 		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
 		{Name: "long_context_billing_applied", Type: field.TypeBool, Default: false},
 		{Name: "account_rate_multiplier", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
+		{Name: "catalog_epoch", Type: field.TypeInt64, Nullable: true},
+		{Name: "catalog_revision_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "requested_model_revision_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "effective_model_revision_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "pricing_source", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "pricing_snapshot", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "billing_type", Type: field.TypeInt8, Default: 0},
 		{Name: "stream", Type: field.TypeBool, Default: false},
 		{Name: "duration_ms", Type: field.TypeInt, Nullable: true},
@@ -1826,31 +2065,31 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "usage_logs_api_keys_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[41]},
+				Columns:    []*schema.Column{UsageLogsColumns[47]},
 				RefColumns: []*schema.Column{APIKeysColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_accounts_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[42]},
+				Columns:    []*schema.Column{UsageLogsColumns[48]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_groups_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[43]},
+				Columns:    []*schema.Column{UsageLogsColumns[49]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "usage_logs_users_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[44]},
+				Columns:    []*schema.Column{UsageLogsColumns[50]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_user_subscriptions_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[45]},
+				Columns:    []*schema.Column{UsageLogsColumns[51]},
 				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1859,32 +2098,32 @@ var (
 			{
 				Name:    "usagelog_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[44]},
+				Columns: []*schema.Column{UsageLogsColumns[50]},
 			},
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[41]},
+				Columns: []*schema.Column{UsageLogsColumns[47]},
 			},
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[42]},
+				Columns: []*schema.Column{UsageLogsColumns[48]},
 			},
 			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[43]},
+				Columns: []*schema.Column{UsageLogsColumns[49]},
 			},
 			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[45]},
+				Columns: []*schema.Column{UsageLogsColumns[51]},
 			},
 			{
 				Name:    "usagelog_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[40]},
+				Columns: []*schema.Column{UsageLogsColumns[46]},
 			},
 			{
 				Name:    "usagelog_model",
@@ -1904,17 +2143,17 @@ var (
 			{
 				Name:    "usagelog_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[44], UsageLogsColumns[40]},
+				Columns: []*schema.Column{UsageLogsColumns[50], UsageLogsColumns[46]},
 			},
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[41], UsageLogsColumns[40]},
+				Columns: []*schema.Column{UsageLogsColumns[47], UsageLogsColumns[46]},
 			},
 			{
 				Name:    "usagelog_group_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[43], UsageLogsColumns[40]},
+				Columns: []*schema.Column{UsageLogsColumns[49], UsageLogsColumns[46]},
 			},
 		},
 	}
@@ -2306,6 +2545,14 @@ var (
 		BatchImageEventsTable,
 		BatchImageItemsTable,
 		BatchImageJobsTable,
+		CatalogLifecycleAuditsTable,
+		CatalogModelsTable,
+		CatalogModelAliasesTable,
+		CatalogModelRevisionsTable,
+		CatalogOutboxTable,
+		CatalogPublicationsTable,
+		CatalogRevisionsTable,
+		CatalogSyncRunsTable,
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
@@ -2383,6 +2630,30 @@ func init() {
 	}
 	BatchImageJobsTable.Annotation = &entsql.Annotation{
 		Table: "batch_image_jobs",
+	}
+	CatalogLifecycleAuditsTable.Annotation = &entsql.Annotation{
+		Table: "catalog_lifecycle_audits",
+	}
+	CatalogModelsTable.Annotation = &entsql.Annotation{
+		Table: "catalog_models",
+	}
+	CatalogModelAliasesTable.Annotation = &entsql.Annotation{
+		Table: "catalog_model_aliases",
+	}
+	CatalogModelRevisionsTable.Annotation = &entsql.Annotation{
+		Table: "catalog_model_revisions",
+	}
+	CatalogOutboxTable.Annotation = &entsql.Annotation{
+		Table: "catalog_outbox",
+	}
+	CatalogPublicationsTable.Annotation = &entsql.Annotation{
+		Table: "catalog_publications",
+	}
+	CatalogRevisionsTable.Annotation = &entsql.Annotation{
+		Table: "catalog_revisions",
+	}
+	CatalogSyncRunsTable.Annotation = &entsql.Annotation{
+		Table: "catalog_sync_runs",
 	}
 	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{

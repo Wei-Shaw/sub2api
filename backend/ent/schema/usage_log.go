@@ -110,6 +110,20 @@ func (UsageLog) Fields() []ent.Field {
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
 
+		// Catalog dual-write references. These remain nullable until the catalog
+		// projection and legacy parity gates are complete.
+		field.Int64("catalog_epoch").Optional().Nillable(),
+		field.Int64("catalog_revision_id").Optional().Nillable(),
+		field.Int64("requested_model_revision_id").Optional().Nillable(),
+		field.Int64("effective_model_revision_id").Optional().Nillable(),
+		field.String("pricing_source").
+			MaxLen(64).
+			Optional().
+			Nillable(),
+		field.JSON("pricing_snapshot", map[string]any{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+
 		// 其他字段
 		field.Int8("billing_type").
 			Default(0),

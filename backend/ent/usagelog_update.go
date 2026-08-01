@@ -583,6 +583,146 @@ func (_u *UsageLogUpdate) ClearAccountRateMultiplier() *UsageLogUpdate {
 	return _u
 }
 
+// SetCatalogEpoch sets the "catalog_epoch" field.
+func (_u *UsageLogUpdate) SetCatalogEpoch(v int64) *UsageLogUpdate {
+	_u.mutation.ResetCatalogEpoch()
+	_u.mutation.SetCatalogEpoch(v)
+	return _u
+}
+
+// SetNillableCatalogEpoch sets the "catalog_epoch" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCatalogEpoch(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCatalogEpoch(*v)
+	}
+	return _u
+}
+
+// AddCatalogEpoch adds value to the "catalog_epoch" field.
+func (_u *UsageLogUpdate) AddCatalogEpoch(v int64) *UsageLogUpdate {
+	_u.mutation.AddCatalogEpoch(v)
+	return _u
+}
+
+// ClearCatalogEpoch clears the value of the "catalog_epoch" field.
+func (_u *UsageLogUpdate) ClearCatalogEpoch() *UsageLogUpdate {
+	_u.mutation.ClearCatalogEpoch()
+	return _u
+}
+
+// SetCatalogRevisionID sets the "catalog_revision_id" field.
+func (_u *UsageLogUpdate) SetCatalogRevisionID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetCatalogRevisionID()
+	_u.mutation.SetCatalogRevisionID(v)
+	return _u
+}
+
+// SetNillableCatalogRevisionID sets the "catalog_revision_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCatalogRevisionID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCatalogRevisionID(*v)
+	}
+	return _u
+}
+
+// AddCatalogRevisionID adds value to the "catalog_revision_id" field.
+func (_u *UsageLogUpdate) AddCatalogRevisionID(v int64) *UsageLogUpdate {
+	_u.mutation.AddCatalogRevisionID(v)
+	return _u
+}
+
+// ClearCatalogRevisionID clears the value of the "catalog_revision_id" field.
+func (_u *UsageLogUpdate) ClearCatalogRevisionID() *UsageLogUpdate {
+	_u.mutation.ClearCatalogRevisionID()
+	return _u
+}
+
+// SetRequestedModelRevisionID sets the "requested_model_revision_id" field.
+func (_u *UsageLogUpdate) SetRequestedModelRevisionID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetRequestedModelRevisionID()
+	_u.mutation.SetRequestedModelRevisionID(v)
+	return _u
+}
+
+// SetNillableRequestedModelRevisionID sets the "requested_model_revision_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRequestedModelRevisionID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRequestedModelRevisionID(*v)
+	}
+	return _u
+}
+
+// AddRequestedModelRevisionID adds value to the "requested_model_revision_id" field.
+func (_u *UsageLogUpdate) AddRequestedModelRevisionID(v int64) *UsageLogUpdate {
+	_u.mutation.AddRequestedModelRevisionID(v)
+	return _u
+}
+
+// ClearRequestedModelRevisionID clears the value of the "requested_model_revision_id" field.
+func (_u *UsageLogUpdate) ClearRequestedModelRevisionID() *UsageLogUpdate {
+	_u.mutation.ClearRequestedModelRevisionID()
+	return _u
+}
+
+// SetEffectiveModelRevisionID sets the "effective_model_revision_id" field.
+func (_u *UsageLogUpdate) SetEffectiveModelRevisionID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetEffectiveModelRevisionID()
+	_u.mutation.SetEffectiveModelRevisionID(v)
+	return _u
+}
+
+// SetNillableEffectiveModelRevisionID sets the "effective_model_revision_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableEffectiveModelRevisionID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetEffectiveModelRevisionID(*v)
+	}
+	return _u
+}
+
+// AddEffectiveModelRevisionID adds value to the "effective_model_revision_id" field.
+func (_u *UsageLogUpdate) AddEffectiveModelRevisionID(v int64) *UsageLogUpdate {
+	_u.mutation.AddEffectiveModelRevisionID(v)
+	return _u
+}
+
+// ClearEffectiveModelRevisionID clears the value of the "effective_model_revision_id" field.
+func (_u *UsageLogUpdate) ClearEffectiveModelRevisionID() *UsageLogUpdate {
+	_u.mutation.ClearEffectiveModelRevisionID()
+	return _u
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (_u *UsageLogUpdate) SetPricingSource(v string) *UsageLogUpdate {
+	_u.mutation.SetPricingSource(v)
+	return _u
+}
+
+// SetNillablePricingSource sets the "pricing_source" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillablePricingSource(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetPricingSource(*v)
+	}
+	return _u
+}
+
+// ClearPricingSource clears the value of the "pricing_source" field.
+func (_u *UsageLogUpdate) ClearPricingSource() *UsageLogUpdate {
+	_u.mutation.ClearPricingSource()
+	return _u
+}
+
+// SetPricingSnapshot sets the "pricing_snapshot" field.
+func (_u *UsageLogUpdate) SetPricingSnapshot(v map[string]interface{}) *UsageLogUpdate {
+	_u.mutation.SetPricingSnapshot(v)
+	return _u
+}
+
+// ClearPricingSnapshot clears the value of the "pricing_snapshot" field.
+func (_u *UsageLogUpdate) ClearPricingSnapshot() *UsageLogUpdate {
+	_u.mutation.ClearPricingSnapshot()
+	return _u
+}
+
 // SetBillingType sets the "billing_type" field.
 func (_u *UsageLogUpdate) SetBillingType(v int8) *UsageLogUpdate {
 	_u.mutation.ResetBillingType()
@@ -1031,6 +1171,11 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PricingSource(); ok {
+		if err := usagelog.PricingSourceValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.pricing_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAgent(); ok {
 		if err := usagelog.UserAgentValidator(v); err != nil {
 			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)}
@@ -1224,6 +1369,54 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.AccountRateMultiplierCleared() {
 		_spec.ClearField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.CatalogEpoch(); ok {
+		_spec.SetField(usagelog.FieldCatalogEpoch, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCatalogEpoch(); ok {
+		_spec.AddField(usagelog.FieldCatalogEpoch, field.TypeInt64, value)
+	}
+	if _u.mutation.CatalogEpochCleared() {
+		_spec.ClearField(usagelog.FieldCatalogEpoch, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CatalogRevisionID(); ok {
+		_spec.SetField(usagelog.FieldCatalogRevisionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCatalogRevisionID(); ok {
+		_spec.AddField(usagelog.FieldCatalogRevisionID, field.TypeInt64, value)
+	}
+	if _u.mutation.CatalogRevisionIDCleared() {
+		_spec.ClearField(usagelog.FieldCatalogRevisionID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.RequestedModelRevisionID(); ok {
+		_spec.SetField(usagelog.FieldRequestedModelRevisionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedRequestedModelRevisionID(); ok {
+		_spec.AddField(usagelog.FieldRequestedModelRevisionID, field.TypeInt64, value)
+	}
+	if _u.mutation.RequestedModelRevisionIDCleared() {
+		_spec.ClearField(usagelog.FieldRequestedModelRevisionID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.EffectiveModelRevisionID(); ok {
+		_spec.SetField(usagelog.FieldEffectiveModelRevisionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedEffectiveModelRevisionID(); ok {
+		_spec.AddField(usagelog.FieldEffectiveModelRevisionID, field.TypeInt64, value)
+	}
+	if _u.mutation.EffectiveModelRevisionIDCleared() {
+		_spec.ClearField(usagelog.FieldEffectiveModelRevisionID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PricingSource(); ok {
+		_spec.SetField(usagelog.FieldPricingSource, field.TypeString, value)
+	}
+	if _u.mutation.PricingSourceCleared() {
+		_spec.ClearField(usagelog.FieldPricingSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.PricingSnapshot(); ok {
+		_spec.SetField(usagelog.FieldPricingSnapshot, field.TypeJSON, value)
+	}
+	if _u.mutation.PricingSnapshotCleared() {
+		_spec.ClearField(usagelog.FieldPricingSnapshot, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.BillingType(); ok {
 		_spec.SetField(usagelog.FieldBillingType, field.TypeInt8, value)
@@ -2040,6 +2233,146 @@ func (_u *UsageLogUpdateOne) ClearAccountRateMultiplier() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetCatalogEpoch sets the "catalog_epoch" field.
+func (_u *UsageLogUpdateOne) SetCatalogEpoch(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetCatalogEpoch()
+	_u.mutation.SetCatalogEpoch(v)
+	return _u
+}
+
+// SetNillableCatalogEpoch sets the "catalog_epoch" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCatalogEpoch(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCatalogEpoch(*v)
+	}
+	return _u
+}
+
+// AddCatalogEpoch adds value to the "catalog_epoch" field.
+func (_u *UsageLogUpdateOne) AddCatalogEpoch(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddCatalogEpoch(v)
+	return _u
+}
+
+// ClearCatalogEpoch clears the value of the "catalog_epoch" field.
+func (_u *UsageLogUpdateOne) ClearCatalogEpoch() *UsageLogUpdateOne {
+	_u.mutation.ClearCatalogEpoch()
+	return _u
+}
+
+// SetCatalogRevisionID sets the "catalog_revision_id" field.
+func (_u *UsageLogUpdateOne) SetCatalogRevisionID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetCatalogRevisionID()
+	_u.mutation.SetCatalogRevisionID(v)
+	return _u
+}
+
+// SetNillableCatalogRevisionID sets the "catalog_revision_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCatalogRevisionID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCatalogRevisionID(*v)
+	}
+	return _u
+}
+
+// AddCatalogRevisionID adds value to the "catalog_revision_id" field.
+func (_u *UsageLogUpdateOne) AddCatalogRevisionID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddCatalogRevisionID(v)
+	return _u
+}
+
+// ClearCatalogRevisionID clears the value of the "catalog_revision_id" field.
+func (_u *UsageLogUpdateOne) ClearCatalogRevisionID() *UsageLogUpdateOne {
+	_u.mutation.ClearCatalogRevisionID()
+	return _u
+}
+
+// SetRequestedModelRevisionID sets the "requested_model_revision_id" field.
+func (_u *UsageLogUpdateOne) SetRequestedModelRevisionID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetRequestedModelRevisionID()
+	_u.mutation.SetRequestedModelRevisionID(v)
+	return _u
+}
+
+// SetNillableRequestedModelRevisionID sets the "requested_model_revision_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRequestedModelRevisionID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRequestedModelRevisionID(*v)
+	}
+	return _u
+}
+
+// AddRequestedModelRevisionID adds value to the "requested_model_revision_id" field.
+func (_u *UsageLogUpdateOne) AddRequestedModelRevisionID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddRequestedModelRevisionID(v)
+	return _u
+}
+
+// ClearRequestedModelRevisionID clears the value of the "requested_model_revision_id" field.
+func (_u *UsageLogUpdateOne) ClearRequestedModelRevisionID() *UsageLogUpdateOne {
+	_u.mutation.ClearRequestedModelRevisionID()
+	return _u
+}
+
+// SetEffectiveModelRevisionID sets the "effective_model_revision_id" field.
+func (_u *UsageLogUpdateOne) SetEffectiveModelRevisionID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetEffectiveModelRevisionID()
+	_u.mutation.SetEffectiveModelRevisionID(v)
+	return _u
+}
+
+// SetNillableEffectiveModelRevisionID sets the "effective_model_revision_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableEffectiveModelRevisionID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetEffectiveModelRevisionID(*v)
+	}
+	return _u
+}
+
+// AddEffectiveModelRevisionID adds value to the "effective_model_revision_id" field.
+func (_u *UsageLogUpdateOne) AddEffectiveModelRevisionID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddEffectiveModelRevisionID(v)
+	return _u
+}
+
+// ClearEffectiveModelRevisionID clears the value of the "effective_model_revision_id" field.
+func (_u *UsageLogUpdateOne) ClearEffectiveModelRevisionID() *UsageLogUpdateOne {
+	_u.mutation.ClearEffectiveModelRevisionID()
+	return _u
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (_u *UsageLogUpdateOne) SetPricingSource(v string) *UsageLogUpdateOne {
+	_u.mutation.SetPricingSource(v)
+	return _u
+}
+
+// SetNillablePricingSource sets the "pricing_source" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillablePricingSource(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetPricingSource(*v)
+	}
+	return _u
+}
+
+// ClearPricingSource clears the value of the "pricing_source" field.
+func (_u *UsageLogUpdateOne) ClearPricingSource() *UsageLogUpdateOne {
+	_u.mutation.ClearPricingSource()
+	return _u
+}
+
+// SetPricingSnapshot sets the "pricing_snapshot" field.
+func (_u *UsageLogUpdateOne) SetPricingSnapshot(v map[string]interface{}) *UsageLogUpdateOne {
+	_u.mutation.SetPricingSnapshot(v)
+	return _u
+}
+
+// ClearPricingSnapshot clears the value of the "pricing_snapshot" field.
+func (_u *UsageLogUpdateOne) ClearPricingSnapshot() *UsageLogUpdateOne {
+	_u.mutation.ClearPricingSnapshot()
+	return _u
+}
+
 // SetBillingType sets the "billing_type" field.
 func (_u *UsageLogUpdateOne) SetBillingType(v int8) *UsageLogUpdateOne {
 	_u.mutation.ResetBillingType()
@@ -2501,6 +2834,11 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PricingSource(); ok {
+		if err := usagelog.PricingSourceValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.pricing_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAgent(); ok {
 		if err := usagelog.UserAgentValidator(v); err != nil {
 			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)}
@@ -2711,6 +3049,54 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.AccountRateMultiplierCleared() {
 		_spec.ClearField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.CatalogEpoch(); ok {
+		_spec.SetField(usagelog.FieldCatalogEpoch, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCatalogEpoch(); ok {
+		_spec.AddField(usagelog.FieldCatalogEpoch, field.TypeInt64, value)
+	}
+	if _u.mutation.CatalogEpochCleared() {
+		_spec.ClearField(usagelog.FieldCatalogEpoch, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CatalogRevisionID(); ok {
+		_spec.SetField(usagelog.FieldCatalogRevisionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCatalogRevisionID(); ok {
+		_spec.AddField(usagelog.FieldCatalogRevisionID, field.TypeInt64, value)
+	}
+	if _u.mutation.CatalogRevisionIDCleared() {
+		_spec.ClearField(usagelog.FieldCatalogRevisionID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.RequestedModelRevisionID(); ok {
+		_spec.SetField(usagelog.FieldRequestedModelRevisionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedRequestedModelRevisionID(); ok {
+		_spec.AddField(usagelog.FieldRequestedModelRevisionID, field.TypeInt64, value)
+	}
+	if _u.mutation.RequestedModelRevisionIDCleared() {
+		_spec.ClearField(usagelog.FieldRequestedModelRevisionID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.EffectiveModelRevisionID(); ok {
+		_spec.SetField(usagelog.FieldEffectiveModelRevisionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedEffectiveModelRevisionID(); ok {
+		_spec.AddField(usagelog.FieldEffectiveModelRevisionID, field.TypeInt64, value)
+	}
+	if _u.mutation.EffectiveModelRevisionIDCleared() {
+		_spec.ClearField(usagelog.FieldEffectiveModelRevisionID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PricingSource(); ok {
+		_spec.SetField(usagelog.FieldPricingSource, field.TypeString, value)
+	}
+	if _u.mutation.PricingSourceCleared() {
+		_spec.ClearField(usagelog.FieldPricingSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.PricingSnapshot(); ok {
+		_spec.SetField(usagelog.FieldPricingSnapshot, field.TypeJSON, value)
+	}
+	if _u.mutation.PricingSnapshotCleared() {
+		_spec.ClearField(usagelog.FieldPricingSnapshot, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.BillingType(); ok {
 		_spec.SetField(usagelog.FieldBillingType, field.TypeInt8, value)

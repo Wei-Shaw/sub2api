@@ -82,7 +82,6 @@ func TestExtractOpenAIReasoningEffortModelCandidates(t *testing.T) {
 // normalizeCodexModel 剥掉 effort 后缀，用量元数据的 effort 必须仍能从
 // 原始模型名后缀推导出来。
 func TestOpenAIGatewayServiceForwardOAuthDerivesEffortFromSuffixModel(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{
 		resp: &http.Response{
 			StatusCode: http.StatusOK,

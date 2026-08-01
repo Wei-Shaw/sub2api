@@ -688,9 +688,16 @@ func (s *UsageLogRepoSuite) TestListWithFilters() {
 	s.Require().Equal(int64(1), page.Total)
 }
 
+func (s *UsageLogRepoSuite) resetDashboardStatsState() {
+	s.T().Helper()
+	_, err := s.tx.ExecContext(s.ctx, `TRUNCATE TABLE users, accounts, groups RESTART IDENTITY CASCADE`)
+	s.Require().NoError(err, "reset dashboard stats fixture state")
+}
+
 // --- GetDashboardStats ---
 
 func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
+	s.resetDashboardStatsState()
 	now := time.Now().UTC()
 	todayStart := truncateToDayUTC(now)
 	baseStats, err := s.repo.GetDashboardStats(s.ctx)
@@ -805,6 +812,7 @@ func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
 }
 
 func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
+	s.resetDashboardStatsState()
 	now := time.Now().UTC()
 	todayStart := truncateToDayUTC(now)
 	rangeStart := todayStart.Add(-24 * time.Hour)

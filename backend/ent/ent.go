@@ -23,6 +23,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
+	"github.com/Wei-Shaw/sub2api/ent/cataloglifecycleaudit"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodel"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodelalias"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodelrevision"
+	"github.com/Wei-Shaw/sub2api/ent/catalogoutbox"
+	"github.com/Wei-Shaw/sub2api/ent/catalogpublication"
+	"github.com/Wei-Shaw/sub2api/ent/catalogrevision"
+	"github.com/Wei-Shaw/sub2api/ent/catalogsyncrun"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -125,6 +133,14 @@ func checkColumn(t, c string) error {
 			batchimageevent.Table:               batchimageevent.ValidColumn,
 			batchimageitem.Table:                batchimageitem.ValidColumn,
 			batchimagejob.Table:                 batchimagejob.ValidColumn,
+			cataloglifecycleaudit.Table:         cataloglifecycleaudit.ValidColumn,
+			catalogmodel.Table:                  catalogmodel.ValidColumn,
+			catalogmodelalias.Table:             catalogmodelalias.ValidColumn,
+			catalogmodelrevision.Table:          catalogmodelrevision.ValidColumn,
+			catalogoutbox.Table:                 catalogoutbox.ValidColumn,
+			catalogpublication.Table:            catalogpublication.ValidColumn,
+			catalogrevision.Table:               catalogrevision.ValidColumn,
+			catalogsyncrun.Table:                catalogsyncrun.ValidColumn,
 			channelmonitor.Table:                channelmonitor.ValidColumn,
 			channelmonitordailyrollup.Table:     channelmonitordailyrollup.ValidColumn,
 			channelmonitorhistory.Table:         channelmonitorhistory.ValidColumn,

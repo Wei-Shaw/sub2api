@@ -50,6 +50,10 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	if dsn := strings.TrimSpace(os.Getenv("SUB2API_TEST_POSTGRES_DSN")); dsn != "" {
+		os.Exit(runPostgresOnlyIntegration(ctx, m, dsn))
+	}
+
 	if !dockerIsAvailable(ctx) {
 		// In CI we expect Docker to be available so integration tests should fail loudly.
 		if os.Getenv("CI") != "" {
@@ -88,6 +92,13 @@ func TestMain(m *testing.M) {
 	dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable", "TimeZone=UTC")
 	if err != nil {
 		log.Printf("failed to get postgres dsn: %v", err)
+		os.Exit(1)
+	}
+	// Helper subprocesses re-enter TestMain. Point them at this same
+	// testcontainers instance instead of booting an isolated database that
+	// cannot see the claim created by the parent test process.
+	if err := os.Setenv("SUB2API_TEST_POSTGRES_DSN", dsn); err != nil {
+		log.Printf("failed to export postgres dsn to helper processes: %v", err)
 		os.Exit(1)
 	}
 
@@ -132,6 +143,24 @@ func TestMain(m *testing.M) {
 	_ = integrationDB.Close()
 
 	os.Exit(code)
+}
+
+func runPostgresOnlyIntegration(ctx context.Context, m *testing.M, dsn string) int {
+	var err error
+	integrationDB, err = openSQLWithRetry(ctx, dsn, 30*time.Second)
+	if err != nil {
+		log.Printf("failed to open local postgres integration db: %v", err)
+		return 1
+	}
+	defer integrationDB.Close()
+	if err := ApplyMigrations(ctx, integrationDB); err != nil {
+		log.Printf("failed to apply db migrations: %v", err)
+		return 1
+	}
+	drv := entsql.OpenDB(dialect.Postgres, integrationDB)
+	integrationEntClient = dbent.NewClient(dbent.Driver(drv))
+	defer integrationEntClient.Close()
+	return m.Run()
 }
 
 func dockerIsAvailable(ctx context.Context) bool {

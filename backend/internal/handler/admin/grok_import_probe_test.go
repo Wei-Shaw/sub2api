@@ -193,6 +193,10 @@ func TestGrokImportProbeSchedulerTimeoutCancelsProbe(t *testing.T) {
 
 	calls, _, _ := prober.snapshot()
 	require.Equal(t, 1, calls[201])
+	require.Eventually(t, func() bool {
+		snapshot := snapshotGrokImportProbeScheduler(scheduler)
+		return snapshot.queued == 0 && snapshot.workers == 0
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestGrokImportProbeSchedulerSkipsMissingServiceAndNonGrokAccounts(t *testing.T) {
@@ -225,7 +229,8 @@ func TestGrokImportProbeFailureLogDoesNotIncludeErrorMessage(t *testing.T) {
 	awaitGrokProbeSignal(t, prober.done)
 
 	require.Eventually(t, func() bool {
-		return bytes.Contains(logs.Bytes(), []byte("grok_import_active_probe_failed"))
+		snapshot := snapshotGrokImportProbeScheduler(scheduler)
+		return snapshot.queued == 0 && snapshot.workers == 0
 	}, time.Second, 10*time.Millisecond)
 	require.Contains(t, logs.String(), "GROK_TEST_PROBE_FAILED")
 	require.NotContains(t, logs.String(), "refresh-token-secret")

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/require"
 )
@@ -197,6 +198,20 @@ func TestBuildPaymentOrderProviderSnapshot_IncludesProviderCurrency(t *testing.T
 	}, CreateOrderRequest{})
 	require.Equal(t, "USD", airwallexSnapshot["currency"])
 	require.Equal(t, "acct-78", airwallexSnapshot["merchant_id"])
+}
+
+func TestPaymentOrderCurrencyFallsBackWhenSnapshotOmitsCurrency(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentCurrency: "VND",
+		ProviderSnapshot: map[string]any{
+			"schema_version":   1,
+			"payment_currency": "VND",
+		},
+	}
+
+	require.Equal(t, "VND", PaymentOrderCurrency(order))
 }
 
 func valueOrEmpty(v *string) string {

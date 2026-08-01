@@ -38,7 +38,6 @@ func TestBuildOpenAIEmbeddingsURL(t *testing.T) {
 }
 
 func TestForwardEmbeddings_APIKeyPassthroughRecordsUsageAndBatchInput(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	reqBody := []byte(`{
 		"model":"nowledge-embedding",

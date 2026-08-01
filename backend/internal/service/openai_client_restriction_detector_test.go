@@ -25,7 +25,6 @@ func newCodexDetectorTestContext(ua string, originator string) *gin.Context {
 }
 
 func TestOpenAICodexClientRestrictionDetector_Detect(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	t.Run("未开启开关时绕过", func(t *testing.T) {
 		detector := NewOpenAICodexClientRestrictionDetector(nil)
@@ -125,7 +124,6 @@ func TestOpenAICodexClientRestrictionDetector_Detect(t *testing.T) {
 }
 
 func TestOpenAICodexClientRestrictionDetector_Detect_AllowedClients(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	const (
 		claudeCodeUA         = "Claude Code/0.5.0 (Macos 15.5; arm64) iTerm2.app (Claude Code; 1.0.4)"
@@ -217,7 +215,6 @@ func TestOpenAICodexClientRestrictionDetector_Detect_AllowedClients(t *testing.T
 }
 
 func TestDetect_V3_AppServerAndSkipAndVersionScope(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	acc := func() *Account {
 		return &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_cli_only": true}}
 	}
@@ -285,7 +282,6 @@ func TestDetect_V3_AppServerAndSkipAndVersionScope(t *testing.T) {
 }
 
 func TestDetect_VersionGateCarriesVersionFields(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	d := NewOpenAICodexClientRestrictionDetector(nil)
 	acc := func() *Account {
 		return &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_cli_only": true}}
@@ -345,7 +341,6 @@ func TestCodexClientRestrictionMessage(t *testing.T) {
 }
 
 func TestDetect_EngineFingerprintSignals(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	det := NewOpenAICodexClientRestrictionDetector(&config.Config{})
 	acct := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_cli_only": true}}
 
@@ -380,7 +375,6 @@ func TestDetect_EngineFingerprintSignals(t *testing.T) {
 }
 
 func TestDetect_AccountAppServerToggle(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	d := NewOpenAICodexClientRestrictionDetector(nil)
 	acctOn := func() *Account {
 		return &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_cli_only": true, "codex_cli_only_allow_app_server": true}}

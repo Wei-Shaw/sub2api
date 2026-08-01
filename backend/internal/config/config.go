@@ -83,6 +83,7 @@ type Config struct {
 	Default                 DefaultConfig                 `mapstructure:"default"`
 	RateLimit               RateLimitConfig               `mapstructure:"rate_limit"`
 	Pricing                 PricingConfig                 `mapstructure:"pricing"`
+	ModelCatalog            ModelCatalogConfig            `mapstructure:"model_catalog"`
 	Gateway                 GatewayConfig                 `mapstructure:"gateway"`
 	APIKeyAuth              APIKeyAuthCacheConfig         `mapstructure:"api_key_auth_cache"`
 	SubscriptionCache       SubscriptionCacheConfig       `mapstructure:"subscription_cache"`
@@ -655,6 +656,20 @@ type PricingConfig struct {
 	UpdateIntervalHours int `mapstructure:"update_interval_hours"`
 	// 哈希校验间隔（分钟）
 	HashCheckIntervalMinutes int `mapstructure:"hash_check_interval_minutes"`
+}
+
+// ModelCatalogConfig controls the additive DB-backed model/pricing catalog.
+// "legacy" keeps the existing PricingService authoritative; "shadow" runs
+// projection and parity plumbing without changing request admission/billing.
+type ModelCatalogConfig struct {
+	Mode                   string `mapstructure:"mode"`
+	Scope                  string `mapstructure:"scope"`
+	MaxStaleMinutes        int    `mapstructure:"max_stale_minutes"`
+	RefreshIntervalMinutes int    `mapstructure:"refresh_interval_minutes"`
+	ImportMode             string `mapstructure:"import_mode"`
+	ListReadMode           string `mapstructure:"list_read_mode"`
+	PricingReadMode        string `mapstructure:"pricing_read_mode"`
+	AdmissionMode          string `mapstructure:"admission_mode"`
 }
 
 type ServerConfig struct {
@@ -1703,6 +1718,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 
 	cfg.RunMode = NormalizeRunMode(cfg.RunMode)
+	normalizeModelCatalogConfig(&cfg.ModelCatalog)
 	cfg.Server.Mode = strings.ToLower(strings.TrimSpace(cfg.Server.Mode))
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "debug"
@@ -1844,6 +1860,40 @@ func configureConfigSource(setConfigFile, addConfigPath func(string)) {
 	addConfigPath(".")
 	addConfigPath("./config")
 	addConfigPath("/etc/sub2api")
+}
+
+func normalizeModelCatalogConfig(cfg *ModelCatalogConfig) {
+	if cfg == nil {
+		return
+	}
+	cfg.Mode = strings.ToLower(strings.TrimSpace(cfg.Mode))
+	if cfg.Mode != "shadow" {
+		cfg.Mode = "legacy"
+	}
+	cfg.Scope = strings.ToLower(strings.TrimSpace(cfg.Scope))
+	if cfg.Scope == "" {
+		cfg.Scope = "global"
+	}
+	if cfg.MaxStaleMinutes <= 0 {
+		cfg.MaxStaleMinutes = 10
+	}
+	if cfg.RefreshIntervalMinutes <= 0 {
+		cfg.RefreshIntervalMinutes = 10
+	}
+	cfg.ImportMode = normalizeCatalogConfigMode(cfg.ImportMode, "off", "shadow", "publish")
+	cfg.ListReadMode = normalizeCatalogConfigMode(cfg.ListReadMode, "legacy", "shadow", "db")
+	cfg.PricingReadMode = normalizeCatalogConfigMode(cfg.PricingReadMode, "legacy", "shadow", "db")
+	cfg.AdmissionMode = normalizeCatalogConfigMode(cfg.AdmissionMode, "off", "observe", "enforce")
+}
+
+func normalizeCatalogConfigMode(value, fallback string, allowed ...string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, candidate := range allowed {
+		if value == candidate {
+			return value
+		}
+	}
+	return fallback
 }
 
 func setDefaults() {
@@ -2153,6 +2203,16 @@ func setDefaults() {
 	viper.SetDefault("pricing.fallback_file", "./resources/model-pricing/model_prices_and_context_window.json")
 	viper.SetDefault("pricing.update_interval_hours", 24)
 	viper.SetDefault("pricing.hash_check_interval_minutes", 10)
+
+	// Model catalog - additive rollout defaults to legacy authority.
+	viper.SetDefault("model_catalog.mode", "legacy")
+	viper.SetDefault("model_catalog.scope", "global")
+	viper.SetDefault("model_catalog.max_stale_minutes", 10)
+	viper.SetDefault("model_catalog.refresh_interval_minutes", 10)
+	viper.SetDefault("model_catalog.import_mode", "off")
+	viper.SetDefault("model_catalog.list_read_mode", "legacy")
+	viper.SetDefault("model_catalog.pricing_read_mode", "legacy")
+	viper.SetDefault("model_catalog.admission_mode", "off")
 
 	// Timezone (default to Asia/Shanghai for Chinese users)
 	viper.SetDefault("timezone", "Asia/Shanghai")

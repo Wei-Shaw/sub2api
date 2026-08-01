@@ -390,6 +390,8 @@ type ChannelUsageFields struct {
 	ChannelMappedModel string // 渠道映射后的模型名（无映射时等于 OriginalModel）
 	BillingModelSource string // 计费模型来源："requested" / "upstream" / "channel_mapped"
 	ModelMappingChain  string // 映射链描述，如 "a→b→c"
+	CatalogDecision    *CatalogDecision
+	CatalogError       error // defense-in-depth: usage must not settle after failed enforce admission
 }
 
 // SupportedModel 渠道的一个支持模型条目（无通配符、可直接展示给用户）

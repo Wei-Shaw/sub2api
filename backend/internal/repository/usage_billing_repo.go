@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -12,11 +14,163 @@ import (
 )
 
 type usageBillingRepository struct {
-	db *sql.DB
+	db           *sql.DB
+	usageLogRepo service.UsageLogRepository
 }
 
-func NewUsageBillingRepository(_ *dbent.Client, sqlDB *sql.DB) service.UsageBillingRepository {
+func NewUsageBillingRepository(_ *dbent.Client, sqlDB *sql.DB) *usageBillingRepository {
 	return &usageBillingRepository{db: sqlDB}
+}
+
+func (r *usageBillingRepository) SetUsageLogRepository(repo service.UsageLogRepository) {
+	if r == nil {
+		return
+	}
+	r.usageLogRepo = repo
+}
+
+type usageLogTransactionalWriter interface {
+	CreateInTx(ctx context.Context, tx *sql.Tx, log *service.UsageLog) (bool, error)
+}
+
+func (r *usageBillingRepository) EnqueueSettlement(ctx context.Context, cmd *service.UsageBillingCommand, usageLog *service.UsageLog) error {
+	if r == nil || r.db == nil {
+		return errors.New("usage billing settlement database is nil")
+	}
+	if cmd == nil || usageLog == nil {
+		return errors.New("usage billing settlement command and usage log are required")
+	}
+	cmd.Normalize()
+	if cmd.RequestID == "" || cmd.APIKeyID == 0 {
+		return errors.New("usage billing settlement request identity is required")
+	}
+	writer, ok := r.usageLogRepo.(usageLogTransactionalWriter)
+	if !ok {
+		return errors.New("usage log repository does not support transactional settlement enqueue")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := writer.CreateInTx(ctx, tx, usageLog); err != nil {
+		return err
+	}
+	payload, err := json.Marshal(cmd)
+	if err != nil {
+		return err
+	}
+
+	if _, err = tx.ExecContext(ctx, `
+		INSERT INTO usage_billing_settlements
+			(request_id, api_key_id, usage_log_id, request_fingerprint, command)
+		VALUES ($1, $2, $3, $4, $5::jsonb)
+		ON CONFLICT (request_id, api_key_id) DO NOTHING
+	`, cmd.RequestID, cmd.APIKeyID, usageLog.ID, cmd.RequestFingerprint, payload); err != nil {
+		return err
+	}
+
+	var existingFingerprint string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT request_fingerprint
+		FROM usage_billing_settlements
+		WHERE request_id = $1 AND api_key_id = $2
+	`, cmd.RequestID, cmd.APIKeyID).Scan(&existingFingerprint); err != nil {
+		return err
+	}
+	if existingFingerprint != "" && cmd.RequestFingerprint != "" && existingFingerprint != cmd.RequestFingerprint {
+		return service.ErrUsageBillingRequestConflict
+	}
+	return tx.Commit()
+}
+
+func (r *usageBillingRepository) ClaimDueSettlements(ctx context.Context, limit int, lease time.Duration) ([]service.UsageBillingSettlementJob, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("usage billing settlement database is nil")
+	}
+	if limit <= 0 {
+		limit = 32
+	}
+	if lease <= 0 {
+		lease = 30 * time.Second
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		WITH picked AS (
+			SELECT id
+			FROM usage_billing_settlements
+			WHERE (status IN ('pending', 'retry') AND next_attempt_at <= NOW())
+			   OR (status = 'processing' AND locked_until <= NOW())
+			ORDER BY id
+			FOR UPDATE SKIP LOCKED
+			LIMIT $1
+		)
+		UPDATE usage_billing_settlements s
+		SET status = 'processing',
+			attempts = s.attempts + 1,
+			locked_until = NOW() + ($2 * INTERVAL '1 second'),
+			updated_at = NOW()
+		FROM picked
+		WHERE s.id = picked.id
+		RETURNING s.id, s.attempts, s.request_id, s.api_key_id, s.command
+	`, limit, int64(lease/time.Second))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	jobs := make([]service.UsageBillingSettlementJob, 0, limit)
+	for rows.Next() {
+		var job service.UsageBillingSettlementJob
+		var payload []byte
+		if err := rows.Scan(&job.ID, &job.Attempts, &job.RequestID, &job.APIKeyID, &payload); err != nil {
+			return nil, err
+		}
+		var cmd service.UsageBillingCommand
+		if err := json.Unmarshal(payload, &cmd); err != nil {
+			return nil, err
+		}
+		cmd.Normalize()
+		job.Command = &cmd
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return jobs, nil
+}
+
+func (r *usageBillingRepository) MarkSettlementApplied(ctx context.Context, requestID string, apiKeyID int64) error {
+	if r == nil || r.db == nil {
+		return errors.New("usage billing settlement database is nil")
+	}
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE usage_billing_settlements
+		SET status = 'applied', locked_until = NULL, last_error = NULL,
+			applied_at = COALESCE(applied_at, NOW()), updated_at = NOW()
+		WHERE request_id = $1 AND api_key_id = $2
+	`, requestID, apiKeyID)
+	return err
+}
+
+func (r *usageBillingRepository) MarkSettlementRetry(ctx context.Context, id int64, reason string, retryAfter time.Duration) error {
+	if r == nil || r.db == nil {
+		return errors.New("usage billing settlement database is nil")
+	}
+	if retryAfter <= 0 {
+		retryAfter = time.Second
+	}
+	if len(reason) > 4000 {
+		reason = reason[:4000]
+	}
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE usage_billing_settlements
+		SET status = 'retry', locked_until = NULL, last_error = $2,
+			next_attempt_at = NOW() + ($3 * INTERVAL '1 second'), updated_at = NOW()
+		WHERE id = $1
+	`, id, strings.TrimSpace(reason), int64(retryAfter/time.Second))
+	return err
 }
 
 func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBillingCommand) (_ *service.UsageBillingApplyResult, err error) {

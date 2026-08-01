@@ -79,6 +79,18 @@ type UsageLog struct {
 	LongContextBillingApplied bool `json:"long_context_billing_applied,omitempty"`
 	// AccountRateMultiplier holds the value of the "account_rate_multiplier" field.
 	AccountRateMultiplier *float64 `json:"account_rate_multiplier,omitempty"`
+	// CatalogEpoch holds the value of the "catalog_epoch" field.
+	CatalogEpoch *int64 `json:"catalog_epoch,omitempty"`
+	// CatalogRevisionID holds the value of the "catalog_revision_id" field.
+	CatalogRevisionID *int64 `json:"catalog_revision_id,omitempty"`
+	// RequestedModelRevisionID holds the value of the "requested_model_revision_id" field.
+	RequestedModelRevisionID *int64 `json:"requested_model_revision_id,omitempty"`
+	// EffectiveModelRevisionID holds the value of the "effective_model_revision_id" field.
+	EffectiveModelRevisionID *int64 `json:"effective_model_revision_id,omitempty"`
+	// PricingSource holds the value of the "pricing_source" field.
+	PricingSource *string `json:"pricing_source,omitempty"`
+	// PricingSnapshot holds the value of the "pricing_snapshot" field.
+	PricingSnapshot map[string]interface{} `json:"pricing_snapshot,omitempty"`
 	// BillingType holds the value of the "billing_type" field.
 	BillingType int8 `json:"billing_type,omitempty"`
 	// Stream holds the value of the "stream" field.
@@ -196,15 +208,15 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case usagelog.FieldImageSizeBreakdown:
+		case usagelog.FieldPricingSnapshot, usagelog.FieldImageSizeBreakdown:
 			values[i] = new([]byte)
 		case usagelog.FieldLongContextBillingApplied, usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
 			values[i] = new(sql.NullBool)
 		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
+		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldCatalogEpoch, usagelog.FieldCatalogRevisionID, usagelog.FieldRequestedModelRevisionID, usagelog.FieldEffectiveModelRevisionID, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldPricingSource, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -405,6 +417,49 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.AccountRateMultiplier = new(float64)
 				*_m.AccountRateMultiplier = value.Float64
+			}
+		case usagelog.FieldCatalogEpoch:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field catalog_epoch", values[i])
+			} else if value.Valid {
+				_m.CatalogEpoch = new(int64)
+				*_m.CatalogEpoch = value.Int64
+			}
+		case usagelog.FieldCatalogRevisionID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field catalog_revision_id", values[i])
+			} else if value.Valid {
+				_m.CatalogRevisionID = new(int64)
+				*_m.CatalogRevisionID = value.Int64
+			}
+		case usagelog.FieldRequestedModelRevisionID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field requested_model_revision_id", values[i])
+			} else if value.Valid {
+				_m.RequestedModelRevisionID = new(int64)
+				*_m.RequestedModelRevisionID = value.Int64
+			}
+		case usagelog.FieldEffectiveModelRevisionID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field effective_model_revision_id", values[i])
+			} else if value.Valid {
+				_m.EffectiveModelRevisionID = new(int64)
+				*_m.EffectiveModelRevisionID = value.Int64
+			}
+		case usagelog.FieldPricingSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field pricing_source", values[i])
+			} else if value.Valid {
+				_m.PricingSource = new(string)
+				*_m.PricingSource = value.String
+			}
+		case usagelog.FieldPricingSnapshot:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field pricing_snapshot", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.PricingSnapshot); err != nil {
+					return fmt.Errorf("unmarshal field pricing_snapshot: %w", err)
+				}
 			}
 		case usagelog.FieldBillingType:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -682,6 +737,34 @@ func (_m *UsageLog) String() string {
 		builder.WriteString("account_rate_multiplier=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
+	builder.WriteString(", ")
+	if v := _m.CatalogEpoch; v != nil {
+		builder.WriteString("catalog_epoch=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.CatalogRevisionID; v != nil {
+		builder.WriteString("catalog_revision_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.RequestedModelRevisionID; v != nil {
+		builder.WriteString("requested_model_revision_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.EffectiveModelRevisionID; v != nil {
+		builder.WriteString("effective_model_revision_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.PricingSource; v != nil {
+		builder.WriteString("pricing_source=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("pricing_snapshot=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PricingSnapshot))
 	builder.WriteString(", ")
 	builder.WriteString("billing_type=")
 	builder.WriteString(fmt.Sprintf("%v", _m.BillingType))

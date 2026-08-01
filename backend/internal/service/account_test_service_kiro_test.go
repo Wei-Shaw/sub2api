@@ -9,13 +9,11 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
 
 func TestAccountTestService_KiroUsesKiroUpstreamInsteadOfAnthropic(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
 	account := &Account{
@@ -56,7 +54,6 @@ func TestAccountTestService_KiroUsesKiroUpstreamInsteadOfAnthropic(t *testing.T)
 }
 
 func TestAccountTestService_Kiro429DoesNotFallbackToCodeWhispererEndpoint(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
 	account := &Account{
@@ -95,7 +92,6 @@ func TestAccountTestService_Kiro429DoesNotFallbackToCodeWhispererEndpoint(t *tes
 }
 
 func TestAccountTestService_KiroIDCWithoutProfileArnOmitsProfileArnAndUsesDefaultRuntimeRegion(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
 	account := &Account{
@@ -135,7 +131,6 @@ func TestAccountTestService_KiroIDCWithoutProfileArnOmitsProfileArnAndUsesDefaul
 }
 
 func TestAccountTestService_KiroInvalidModelErrorPassthrough(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
 	account := &Account{
@@ -168,7 +163,6 @@ func TestAccountTestService_KiroInvalidModelErrorPassthrough(t *testing.T) {
 }
 
 func TestAccountTestService_KiroInvalidModelDoesNotRefreshProfileArnOrRetry(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
 	account := &Account{
@@ -207,7 +201,6 @@ func TestAccountTestService_KiroInvalidModelDoesNotRefreshProfileArnOrRetry(t *t
 }
 
 func TestAccountTestService_KiroPreferredEndpointIsIgnored(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
 	account := &Account{
@@ -244,7 +237,6 @@ func TestAccountTestService_KiroPreferredEndpointIsIgnored(t *testing.T) {
 }
 
 func TestAccountTestService_KiroOpus48ThinkingTestRequestUsesResolvedModelID(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
 	account := &Account{

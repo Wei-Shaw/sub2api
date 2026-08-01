@@ -110,6 +110,15 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		return
 	}
 
+	channelMapping := service.ChannelMappingResult{MappedModel: requestModel, Platform: service.PlatformGrok}
+	if endpoint.IsGenerationRequest() {
+		channelMapping = h.gatewayService.ResolveCatalogAdmission(requestModel, requestModel, service.PlatformGrok)
+		if channelMapping.CatalogError != nil {
+			writeCatalogAdmissionError(c, channelMapping.CatalogError)
+			return
+		}
+	}
+
 	reqLog = reqLog.With(zap.String("model", requestModel))
 	setOpsRequestContext(c, requestModel, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
@@ -292,6 +301,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		if endpoint.IsGenerationRequest() && !finalizeCatalogEffectiveModel(c, &channelMapping, account, requestModel, selection.ReleaseFunc) {
+			return
+		}
 
 		accountReleaseFunc, accountAcquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
 		if !accountAcquired {
@@ -405,7 +417,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			}
 		}
 		if shouldRecordGrokMediaUsage(endpoint, requestModel) {
-			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID)
+			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, channelMapping, requestModel, body, requestID)
 		}
 		reqLog.Debug("grok_media.request_completed",
 			zap.Int64("account_id", account.ID),
@@ -459,6 +471,7 @@ func recordGrokMediaUsage(
 	subscription *service.UserSubscription,
 	account *service.Account,
 	result *service.OpenAIForwardResult,
+	channelMapping service.ChannelMappingResult,
 	requestModel string,
 	body []byte,
 	requestID string,
@@ -473,13 +486,7 @@ func recordGrokMediaUsage(
 	inboundEndpoint := GetInboundEndpoint(c)
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
-	// OriginalModel 记录客户端请求的模型：composite 分组下 body 已被改写为具体模型，
-	// 公开别名需从 context 取回，与其他端点的用量归因口径一致（计费不受影响：
-	// BillingModelSource 为空不会触发来源覆盖）。
-	channelUsageFields := service.ChannelUsageFields{
-		OriginalModel:      clientRequestedModel(c, requestModel),
-		ChannelMappedModel: requestModel,
-	}
+	channelUsageFields := clientRequestedUsageFields(c, channelMapping, requestModel, result.UpstreamModel)
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,

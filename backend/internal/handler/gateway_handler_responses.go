@@ -96,6 +96,10 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(requestCtx, apiKey.GroupID, reqModel)
+	if channelMapping.CatalogError != nil {
+		writeCatalogAdmissionError(c, channelMapping.CatalogError)
+		return
+	}
 
 	// Claude Code only restriction:
 	// /v1/responses is never a Claude Code endpoint.
@@ -201,6 +205,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		if !finalizeCatalogEffectiveModel(c, &channelMapping, account, reqModel, selection.ReleaseFunc) {
+			return
+		}
 
 		// 4. Acquire account concurrency slot
 		accountReleaseFunc := selection.ReleaseFunc

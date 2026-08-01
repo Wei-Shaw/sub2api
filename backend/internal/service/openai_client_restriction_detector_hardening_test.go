@@ -11,7 +11,6 @@ import (
 )
 
 func hdrCtx(h map[string]string) *gin.Context {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
@@ -37,7 +36,6 @@ func TestDetect_N1_StrictOfficialUA(t *testing.T) {
 }
 
 func TestDetectCodexClientRestriction_NilSettingServiceFailsClosed(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	// settingService 缺失（仅测试/误配可达）：账号已开 codex_cli_only、官方 UA、但无 x-codex- 指纹头。
 	// 零值 policy 不得让指纹门失败开放——gateway 应回退默认种子指纹信号并拒（MissingEngineFingerprint）。
 	s := &OpenAIGatewayService{}

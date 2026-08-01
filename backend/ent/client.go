@@ -26,6 +26,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
+	"github.com/Wei-Shaw/sub2api/ent/cataloglifecycleaudit"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodel"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodelalias"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodelrevision"
+	"github.com/Wei-Shaw/sub2api/ent/catalogoutbox"
+	"github.com/Wei-Shaw/sub2api/ent/catalogpublication"
+	"github.com/Wei-Shaw/sub2api/ent/catalogrevision"
+	"github.com/Wei-Shaw/sub2api/ent/catalogsyncrun"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -88,6 +96,22 @@ type Client struct {
 	BatchImageItem *BatchImageItemClient
 	// BatchImageJob is the client for interacting with the BatchImageJob builders.
 	BatchImageJob *BatchImageJobClient
+	// CatalogLifecycleAudit is the client for interacting with the CatalogLifecycleAudit builders.
+	CatalogLifecycleAudit *CatalogLifecycleAuditClient
+	// CatalogModel is the client for interacting with the CatalogModel builders.
+	CatalogModel *CatalogModelClient
+	// CatalogModelAlias is the client for interacting with the CatalogModelAlias builders.
+	CatalogModelAlias *CatalogModelAliasClient
+	// CatalogModelRevision is the client for interacting with the CatalogModelRevision builders.
+	CatalogModelRevision *CatalogModelRevisionClient
+	// CatalogOutbox is the client for interacting with the CatalogOutbox builders.
+	CatalogOutbox *CatalogOutboxClient
+	// CatalogPublication is the client for interacting with the CatalogPublication builders.
+	CatalogPublication *CatalogPublicationClient
+	// CatalogRevision is the client for interacting with the CatalogRevision builders.
+	CatalogRevision *CatalogRevisionClient
+	// CatalogSyncRun is the client for interacting with the CatalogSyncRun builders.
+	CatalogSyncRun *CatalogSyncRunClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -172,6 +196,14 @@ func (c *Client) init() {
 	c.BatchImageEvent = NewBatchImageEventClient(c.config)
 	c.BatchImageItem = NewBatchImageItemClient(c.config)
 	c.BatchImageJob = NewBatchImageJobClient(c.config)
+	c.CatalogLifecycleAudit = NewCatalogLifecycleAuditClient(c.config)
+	c.CatalogModel = NewCatalogModelClient(c.config)
+	c.CatalogModelAlias = NewCatalogModelAliasClient(c.config)
+	c.CatalogModelRevision = NewCatalogModelRevisionClient(c.config)
+	c.CatalogOutbox = NewCatalogOutboxClient(c.config)
+	c.CatalogPublication = NewCatalogPublicationClient(c.config)
+	c.CatalogRevision = NewCatalogRevisionClient(c.config)
+	c.CatalogSyncRun = NewCatalogSyncRunClient(c.config)
 	c.ChannelMonitor = NewChannelMonitorClient(c.config)
 	c.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(c.config)
 	c.ChannelMonitorHistory = NewChannelMonitorHistoryClient(c.config)
@@ -306,6 +338,14 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		BatchImageEvent:               NewBatchImageEventClient(cfg),
 		BatchImageItem:                NewBatchImageItemClient(cfg),
 		BatchImageJob:                 NewBatchImageJobClient(cfg),
+		CatalogLifecycleAudit:         NewCatalogLifecycleAuditClient(cfg),
+		CatalogModel:                  NewCatalogModelClient(cfg),
+		CatalogModelAlias:             NewCatalogModelAliasClient(cfg),
+		CatalogModelRevision:          NewCatalogModelRevisionClient(cfg),
+		CatalogOutbox:                 NewCatalogOutboxClient(cfg),
+		CatalogPublication:            NewCatalogPublicationClient(cfg),
+		CatalogRevision:               NewCatalogRevisionClient(cfg),
+		CatalogSyncRun:                NewCatalogSyncRunClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -367,6 +407,14 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		BatchImageEvent:               NewBatchImageEventClient(cfg),
 		BatchImageItem:                NewBatchImageItemClient(cfg),
 		BatchImageJob:                 NewBatchImageJobClient(cfg),
+		CatalogLifecycleAudit:         NewCatalogLifecycleAuditClient(cfg),
+		CatalogModel:                  NewCatalogModelClient(cfg),
+		CatalogModelAlias:             NewCatalogModelAliasClient(cfg),
+		CatalogModelRevision:          NewCatalogModelRevisionClient(cfg),
+		CatalogOutbox:                 NewCatalogOutboxClient(cfg),
+		CatalogPublication:            NewCatalogPublicationClient(cfg),
+		CatalogRevision:               NewCatalogRevisionClient(cfg),
+		CatalogSyncRun:                NewCatalogSyncRunClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -429,7 +477,9 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.AuthIdentity, c.AuthIdentityChannel, c.BalancePackage, c.BatchImageEvent,
-		c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
+		c.BatchImageItem, c.BatchImageJob, c.CatalogLifecycleAudit, c.CatalogModel,
+		c.CatalogModelAlias, c.CatalogModelRevision, c.CatalogOutbox,
+		c.CatalogPublication, c.CatalogRevision, c.CatalogSyncRun, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
 		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
@@ -449,7 +499,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.AuthIdentity, c.AuthIdentityChannel, c.BalancePackage, c.BatchImageEvent,
-		c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
+		c.BatchImageItem, c.BatchImageJob, c.CatalogLifecycleAudit, c.CatalogModel,
+		c.CatalogModelAlias, c.CatalogModelRevision, c.CatalogOutbox,
+		c.CatalogPublication, c.CatalogRevision, c.CatalogSyncRun, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
 		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
@@ -488,6 +540,22 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.BatchImageItem.mutate(ctx, m)
 	case *BatchImageJobMutation:
 		return c.BatchImageJob.mutate(ctx, m)
+	case *CatalogLifecycleAuditMutation:
+		return c.CatalogLifecycleAudit.mutate(ctx, m)
+	case *CatalogModelMutation:
+		return c.CatalogModel.mutate(ctx, m)
+	case *CatalogModelAliasMutation:
+		return c.CatalogModelAlias.mutate(ctx, m)
+	case *CatalogModelRevisionMutation:
+		return c.CatalogModelRevision.mutate(ctx, m)
+	case *CatalogOutboxMutation:
+		return c.CatalogOutbox.mutate(ctx, m)
+	case *CatalogPublicationMutation:
+		return c.CatalogPublication.mutate(ctx, m)
+	case *CatalogRevisionMutation:
+		return c.CatalogRevision.mutate(ctx, m)
+	case *CatalogSyncRunMutation:
+		return c.CatalogSyncRun.mutate(ctx, m)
 	case *ChannelMonitorMutation:
 		return c.ChannelMonitor.mutate(ctx, m)
 	case *ChannelMonitorDailyRollupMutation:
@@ -2258,6 +2326,1070 @@ func (c *BatchImageJobClient) mutate(ctx context.Context, m *BatchImageJobMutati
 		return (&BatchImageJobDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown BatchImageJob mutation op: %q", m.Op())
+	}
+}
+
+// CatalogLifecycleAuditClient is a client for the CatalogLifecycleAudit schema.
+type CatalogLifecycleAuditClient struct {
+	config
+}
+
+// NewCatalogLifecycleAuditClient returns a client for the CatalogLifecycleAudit from the given config.
+func NewCatalogLifecycleAuditClient(c config) *CatalogLifecycleAuditClient {
+	return &CatalogLifecycleAuditClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `cataloglifecycleaudit.Hooks(f(g(h())))`.
+func (c *CatalogLifecycleAuditClient) Use(hooks ...Hook) {
+	c.hooks.CatalogLifecycleAudit = append(c.hooks.CatalogLifecycleAudit, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `cataloglifecycleaudit.Intercept(f(g(h())))`.
+func (c *CatalogLifecycleAuditClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CatalogLifecycleAudit = append(c.inters.CatalogLifecycleAudit, interceptors...)
+}
+
+// Create returns a builder for creating a CatalogLifecycleAudit entity.
+func (c *CatalogLifecycleAuditClient) Create() *CatalogLifecycleAuditCreate {
+	mutation := newCatalogLifecycleAuditMutation(c.config, OpCreate)
+	return &CatalogLifecycleAuditCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CatalogLifecycleAudit entities.
+func (c *CatalogLifecycleAuditClient) CreateBulk(builders ...*CatalogLifecycleAuditCreate) *CatalogLifecycleAuditCreateBulk {
+	return &CatalogLifecycleAuditCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CatalogLifecycleAuditClient) MapCreateBulk(slice any, setFunc func(*CatalogLifecycleAuditCreate, int)) *CatalogLifecycleAuditCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CatalogLifecycleAuditCreateBulk{err: fmt.Errorf("calling to CatalogLifecycleAuditClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CatalogLifecycleAuditCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CatalogLifecycleAuditCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CatalogLifecycleAudit.
+func (c *CatalogLifecycleAuditClient) Update() *CatalogLifecycleAuditUpdate {
+	mutation := newCatalogLifecycleAuditMutation(c.config, OpUpdate)
+	return &CatalogLifecycleAuditUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CatalogLifecycleAuditClient) UpdateOne(_m *CatalogLifecycleAudit) *CatalogLifecycleAuditUpdateOne {
+	mutation := newCatalogLifecycleAuditMutation(c.config, OpUpdateOne, withCatalogLifecycleAudit(_m))
+	return &CatalogLifecycleAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CatalogLifecycleAuditClient) UpdateOneID(id int64) *CatalogLifecycleAuditUpdateOne {
+	mutation := newCatalogLifecycleAuditMutation(c.config, OpUpdateOne, withCatalogLifecycleAuditID(id))
+	return &CatalogLifecycleAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CatalogLifecycleAudit.
+func (c *CatalogLifecycleAuditClient) Delete() *CatalogLifecycleAuditDelete {
+	mutation := newCatalogLifecycleAuditMutation(c.config, OpDelete)
+	return &CatalogLifecycleAuditDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CatalogLifecycleAuditClient) DeleteOne(_m *CatalogLifecycleAudit) *CatalogLifecycleAuditDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CatalogLifecycleAuditClient) DeleteOneID(id int64) *CatalogLifecycleAuditDeleteOne {
+	builder := c.Delete().Where(cataloglifecycleaudit.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CatalogLifecycleAuditDeleteOne{builder}
+}
+
+// Query returns a query builder for CatalogLifecycleAudit.
+func (c *CatalogLifecycleAuditClient) Query() *CatalogLifecycleAuditQuery {
+	return &CatalogLifecycleAuditQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCatalogLifecycleAudit},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CatalogLifecycleAudit entity by its id.
+func (c *CatalogLifecycleAuditClient) Get(ctx context.Context, id int64) (*CatalogLifecycleAudit, error) {
+	return c.Query().Where(cataloglifecycleaudit.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CatalogLifecycleAuditClient) GetX(ctx context.Context, id int64) *CatalogLifecycleAudit {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CatalogLifecycleAuditClient) Hooks() []Hook {
+	return c.hooks.CatalogLifecycleAudit
+}
+
+// Interceptors returns the client interceptors.
+func (c *CatalogLifecycleAuditClient) Interceptors() []Interceptor {
+	return c.inters.CatalogLifecycleAudit
+}
+
+func (c *CatalogLifecycleAuditClient) mutate(ctx context.Context, m *CatalogLifecycleAuditMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CatalogLifecycleAuditCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CatalogLifecycleAuditUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CatalogLifecycleAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CatalogLifecycleAuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CatalogLifecycleAudit mutation op: %q", m.Op())
+	}
+}
+
+// CatalogModelClient is a client for the CatalogModel schema.
+type CatalogModelClient struct {
+	config
+}
+
+// NewCatalogModelClient returns a client for the CatalogModel from the given config.
+func NewCatalogModelClient(c config) *CatalogModelClient {
+	return &CatalogModelClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `catalogmodel.Hooks(f(g(h())))`.
+func (c *CatalogModelClient) Use(hooks ...Hook) {
+	c.hooks.CatalogModel = append(c.hooks.CatalogModel, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `catalogmodel.Intercept(f(g(h())))`.
+func (c *CatalogModelClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CatalogModel = append(c.inters.CatalogModel, interceptors...)
+}
+
+// Create returns a builder for creating a CatalogModel entity.
+func (c *CatalogModelClient) Create() *CatalogModelCreate {
+	mutation := newCatalogModelMutation(c.config, OpCreate)
+	return &CatalogModelCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CatalogModel entities.
+func (c *CatalogModelClient) CreateBulk(builders ...*CatalogModelCreate) *CatalogModelCreateBulk {
+	return &CatalogModelCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CatalogModelClient) MapCreateBulk(slice any, setFunc func(*CatalogModelCreate, int)) *CatalogModelCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CatalogModelCreateBulk{err: fmt.Errorf("calling to CatalogModelClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CatalogModelCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CatalogModelCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CatalogModel.
+func (c *CatalogModelClient) Update() *CatalogModelUpdate {
+	mutation := newCatalogModelMutation(c.config, OpUpdate)
+	return &CatalogModelUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CatalogModelClient) UpdateOne(_m *CatalogModel) *CatalogModelUpdateOne {
+	mutation := newCatalogModelMutation(c.config, OpUpdateOne, withCatalogModel(_m))
+	return &CatalogModelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CatalogModelClient) UpdateOneID(id int64) *CatalogModelUpdateOne {
+	mutation := newCatalogModelMutation(c.config, OpUpdateOne, withCatalogModelID(id))
+	return &CatalogModelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CatalogModel.
+func (c *CatalogModelClient) Delete() *CatalogModelDelete {
+	mutation := newCatalogModelMutation(c.config, OpDelete)
+	return &CatalogModelDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CatalogModelClient) DeleteOne(_m *CatalogModel) *CatalogModelDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CatalogModelClient) DeleteOneID(id int64) *CatalogModelDeleteOne {
+	builder := c.Delete().Where(catalogmodel.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CatalogModelDeleteOne{builder}
+}
+
+// Query returns a query builder for CatalogModel.
+func (c *CatalogModelClient) Query() *CatalogModelQuery {
+	return &CatalogModelQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCatalogModel},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CatalogModel entity by its id.
+func (c *CatalogModelClient) Get(ctx context.Context, id int64) (*CatalogModel, error) {
+	return c.Query().Where(catalogmodel.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CatalogModelClient) GetX(ctx context.Context, id int64) *CatalogModel {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CatalogModelClient) Hooks() []Hook {
+	return c.hooks.CatalogModel
+}
+
+// Interceptors returns the client interceptors.
+func (c *CatalogModelClient) Interceptors() []Interceptor {
+	return c.inters.CatalogModel
+}
+
+func (c *CatalogModelClient) mutate(ctx context.Context, m *CatalogModelMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CatalogModelCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CatalogModelUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CatalogModelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CatalogModelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CatalogModel mutation op: %q", m.Op())
+	}
+}
+
+// CatalogModelAliasClient is a client for the CatalogModelAlias schema.
+type CatalogModelAliasClient struct {
+	config
+}
+
+// NewCatalogModelAliasClient returns a client for the CatalogModelAlias from the given config.
+func NewCatalogModelAliasClient(c config) *CatalogModelAliasClient {
+	return &CatalogModelAliasClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `catalogmodelalias.Hooks(f(g(h())))`.
+func (c *CatalogModelAliasClient) Use(hooks ...Hook) {
+	c.hooks.CatalogModelAlias = append(c.hooks.CatalogModelAlias, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `catalogmodelalias.Intercept(f(g(h())))`.
+func (c *CatalogModelAliasClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CatalogModelAlias = append(c.inters.CatalogModelAlias, interceptors...)
+}
+
+// Create returns a builder for creating a CatalogModelAlias entity.
+func (c *CatalogModelAliasClient) Create() *CatalogModelAliasCreate {
+	mutation := newCatalogModelAliasMutation(c.config, OpCreate)
+	return &CatalogModelAliasCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CatalogModelAlias entities.
+func (c *CatalogModelAliasClient) CreateBulk(builders ...*CatalogModelAliasCreate) *CatalogModelAliasCreateBulk {
+	return &CatalogModelAliasCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CatalogModelAliasClient) MapCreateBulk(slice any, setFunc func(*CatalogModelAliasCreate, int)) *CatalogModelAliasCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CatalogModelAliasCreateBulk{err: fmt.Errorf("calling to CatalogModelAliasClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CatalogModelAliasCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CatalogModelAliasCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CatalogModelAlias.
+func (c *CatalogModelAliasClient) Update() *CatalogModelAliasUpdate {
+	mutation := newCatalogModelAliasMutation(c.config, OpUpdate)
+	return &CatalogModelAliasUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CatalogModelAliasClient) UpdateOne(_m *CatalogModelAlias) *CatalogModelAliasUpdateOne {
+	mutation := newCatalogModelAliasMutation(c.config, OpUpdateOne, withCatalogModelAlias(_m))
+	return &CatalogModelAliasUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CatalogModelAliasClient) UpdateOneID(id int64) *CatalogModelAliasUpdateOne {
+	mutation := newCatalogModelAliasMutation(c.config, OpUpdateOne, withCatalogModelAliasID(id))
+	return &CatalogModelAliasUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CatalogModelAlias.
+func (c *CatalogModelAliasClient) Delete() *CatalogModelAliasDelete {
+	mutation := newCatalogModelAliasMutation(c.config, OpDelete)
+	return &CatalogModelAliasDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CatalogModelAliasClient) DeleteOne(_m *CatalogModelAlias) *CatalogModelAliasDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CatalogModelAliasClient) DeleteOneID(id int64) *CatalogModelAliasDeleteOne {
+	builder := c.Delete().Where(catalogmodelalias.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CatalogModelAliasDeleteOne{builder}
+}
+
+// Query returns a query builder for CatalogModelAlias.
+func (c *CatalogModelAliasClient) Query() *CatalogModelAliasQuery {
+	return &CatalogModelAliasQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCatalogModelAlias},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CatalogModelAlias entity by its id.
+func (c *CatalogModelAliasClient) Get(ctx context.Context, id int64) (*CatalogModelAlias, error) {
+	return c.Query().Where(catalogmodelalias.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CatalogModelAliasClient) GetX(ctx context.Context, id int64) *CatalogModelAlias {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CatalogModelAliasClient) Hooks() []Hook {
+	return c.hooks.CatalogModelAlias
+}
+
+// Interceptors returns the client interceptors.
+func (c *CatalogModelAliasClient) Interceptors() []Interceptor {
+	return c.inters.CatalogModelAlias
+}
+
+func (c *CatalogModelAliasClient) mutate(ctx context.Context, m *CatalogModelAliasMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CatalogModelAliasCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CatalogModelAliasUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CatalogModelAliasUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CatalogModelAliasDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CatalogModelAlias mutation op: %q", m.Op())
+	}
+}
+
+// CatalogModelRevisionClient is a client for the CatalogModelRevision schema.
+type CatalogModelRevisionClient struct {
+	config
+}
+
+// NewCatalogModelRevisionClient returns a client for the CatalogModelRevision from the given config.
+func NewCatalogModelRevisionClient(c config) *CatalogModelRevisionClient {
+	return &CatalogModelRevisionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `catalogmodelrevision.Hooks(f(g(h())))`.
+func (c *CatalogModelRevisionClient) Use(hooks ...Hook) {
+	c.hooks.CatalogModelRevision = append(c.hooks.CatalogModelRevision, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `catalogmodelrevision.Intercept(f(g(h())))`.
+func (c *CatalogModelRevisionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CatalogModelRevision = append(c.inters.CatalogModelRevision, interceptors...)
+}
+
+// Create returns a builder for creating a CatalogModelRevision entity.
+func (c *CatalogModelRevisionClient) Create() *CatalogModelRevisionCreate {
+	mutation := newCatalogModelRevisionMutation(c.config, OpCreate)
+	return &CatalogModelRevisionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CatalogModelRevision entities.
+func (c *CatalogModelRevisionClient) CreateBulk(builders ...*CatalogModelRevisionCreate) *CatalogModelRevisionCreateBulk {
+	return &CatalogModelRevisionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CatalogModelRevisionClient) MapCreateBulk(slice any, setFunc func(*CatalogModelRevisionCreate, int)) *CatalogModelRevisionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CatalogModelRevisionCreateBulk{err: fmt.Errorf("calling to CatalogModelRevisionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CatalogModelRevisionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CatalogModelRevisionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CatalogModelRevision.
+func (c *CatalogModelRevisionClient) Update() *CatalogModelRevisionUpdate {
+	mutation := newCatalogModelRevisionMutation(c.config, OpUpdate)
+	return &CatalogModelRevisionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CatalogModelRevisionClient) UpdateOne(_m *CatalogModelRevision) *CatalogModelRevisionUpdateOne {
+	mutation := newCatalogModelRevisionMutation(c.config, OpUpdateOne, withCatalogModelRevision(_m))
+	return &CatalogModelRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CatalogModelRevisionClient) UpdateOneID(id int64) *CatalogModelRevisionUpdateOne {
+	mutation := newCatalogModelRevisionMutation(c.config, OpUpdateOne, withCatalogModelRevisionID(id))
+	return &CatalogModelRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CatalogModelRevision.
+func (c *CatalogModelRevisionClient) Delete() *CatalogModelRevisionDelete {
+	mutation := newCatalogModelRevisionMutation(c.config, OpDelete)
+	return &CatalogModelRevisionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CatalogModelRevisionClient) DeleteOne(_m *CatalogModelRevision) *CatalogModelRevisionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CatalogModelRevisionClient) DeleteOneID(id int64) *CatalogModelRevisionDeleteOne {
+	builder := c.Delete().Where(catalogmodelrevision.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CatalogModelRevisionDeleteOne{builder}
+}
+
+// Query returns a query builder for CatalogModelRevision.
+func (c *CatalogModelRevisionClient) Query() *CatalogModelRevisionQuery {
+	return &CatalogModelRevisionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCatalogModelRevision},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CatalogModelRevision entity by its id.
+func (c *CatalogModelRevisionClient) Get(ctx context.Context, id int64) (*CatalogModelRevision, error) {
+	return c.Query().Where(catalogmodelrevision.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CatalogModelRevisionClient) GetX(ctx context.Context, id int64) *CatalogModelRevision {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CatalogModelRevisionClient) Hooks() []Hook {
+	return c.hooks.CatalogModelRevision
+}
+
+// Interceptors returns the client interceptors.
+func (c *CatalogModelRevisionClient) Interceptors() []Interceptor {
+	return c.inters.CatalogModelRevision
+}
+
+func (c *CatalogModelRevisionClient) mutate(ctx context.Context, m *CatalogModelRevisionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CatalogModelRevisionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CatalogModelRevisionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CatalogModelRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CatalogModelRevisionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CatalogModelRevision mutation op: %q", m.Op())
+	}
+}
+
+// CatalogOutboxClient is a client for the CatalogOutbox schema.
+type CatalogOutboxClient struct {
+	config
+}
+
+// NewCatalogOutboxClient returns a client for the CatalogOutbox from the given config.
+func NewCatalogOutboxClient(c config) *CatalogOutboxClient {
+	return &CatalogOutboxClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `catalogoutbox.Hooks(f(g(h())))`.
+func (c *CatalogOutboxClient) Use(hooks ...Hook) {
+	c.hooks.CatalogOutbox = append(c.hooks.CatalogOutbox, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `catalogoutbox.Intercept(f(g(h())))`.
+func (c *CatalogOutboxClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CatalogOutbox = append(c.inters.CatalogOutbox, interceptors...)
+}
+
+// Create returns a builder for creating a CatalogOutbox entity.
+func (c *CatalogOutboxClient) Create() *CatalogOutboxCreate {
+	mutation := newCatalogOutboxMutation(c.config, OpCreate)
+	return &CatalogOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CatalogOutbox entities.
+func (c *CatalogOutboxClient) CreateBulk(builders ...*CatalogOutboxCreate) *CatalogOutboxCreateBulk {
+	return &CatalogOutboxCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CatalogOutboxClient) MapCreateBulk(slice any, setFunc func(*CatalogOutboxCreate, int)) *CatalogOutboxCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CatalogOutboxCreateBulk{err: fmt.Errorf("calling to CatalogOutboxClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CatalogOutboxCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CatalogOutboxCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CatalogOutbox.
+func (c *CatalogOutboxClient) Update() *CatalogOutboxUpdate {
+	mutation := newCatalogOutboxMutation(c.config, OpUpdate)
+	return &CatalogOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CatalogOutboxClient) UpdateOne(_m *CatalogOutbox) *CatalogOutboxUpdateOne {
+	mutation := newCatalogOutboxMutation(c.config, OpUpdateOne, withCatalogOutbox(_m))
+	return &CatalogOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CatalogOutboxClient) UpdateOneID(id int64) *CatalogOutboxUpdateOne {
+	mutation := newCatalogOutboxMutation(c.config, OpUpdateOne, withCatalogOutboxID(id))
+	return &CatalogOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CatalogOutbox.
+func (c *CatalogOutboxClient) Delete() *CatalogOutboxDelete {
+	mutation := newCatalogOutboxMutation(c.config, OpDelete)
+	return &CatalogOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CatalogOutboxClient) DeleteOne(_m *CatalogOutbox) *CatalogOutboxDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CatalogOutboxClient) DeleteOneID(id int64) *CatalogOutboxDeleteOne {
+	builder := c.Delete().Where(catalogoutbox.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CatalogOutboxDeleteOne{builder}
+}
+
+// Query returns a query builder for CatalogOutbox.
+func (c *CatalogOutboxClient) Query() *CatalogOutboxQuery {
+	return &CatalogOutboxQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCatalogOutbox},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CatalogOutbox entity by its id.
+func (c *CatalogOutboxClient) Get(ctx context.Context, id int64) (*CatalogOutbox, error) {
+	return c.Query().Where(catalogoutbox.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CatalogOutboxClient) GetX(ctx context.Context, id int64) *CatalogOutbox {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CatalogOutboxClient) Hooks() []Hook {
+	return c.hooks.CatalogOutbox
+}
+
+// Interceptors returns the client interceptors.
+func (c *CatalogOutboxClient) Interceptors() []Interceptor {
+	return c.inters.CatalogOutbox
+}
+
+func (c *CatalogOutboxClient) mutate(ctx context.Context, m *CatalogOutboxMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CatalogOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CatalogOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CatalogOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CatalogOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CatalogOutbox mutation op: %q", m.Op())
+	}
+}
+
+// CatalogPublicationClient is a client for the CatalogPublication schema.
+type CatalogPublicationClient struct {
+	config
+}
+
+// NewCatalogPublicationClient returns a client for the CatalogPublication from the given config.
+func NewCatalogPublicationClient(c config) *CatalogPublicationClient {
+	return &CatalogPublicationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `catalogpublication.Hooks(f(g(h())))`.
+func (c *CatalogPublicationClient) Use(hooks ...Hook) {
+	c.hooks.CatalogPublication = append(c.hooks.CatalogPublication, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `catalogpublication.Intercept(f(g(h())))`.
+func (c *CatalogPublicationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CatalogPublication = append(c.inters.CatalogPublication, interceptors...)
+}
+
+// Create returns a builder for creating a CatalogPublication entity.
+func (c *CatalogPublicationClient) Create() *CatalogPublicationCreate {
+	mutation := newCatalogPublicationMutation(c.config, OpCreate)
+	return &CatalogPublicationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CatalogPublication entities.
+func (c *CatalogPublicationClient) CreateBulk(builders ...*CatalogPublicationCreate) *CatalogPublicationCreateBulk {
+	return &CatalogPublicationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CatalogPublicationClient) MapCreateBulk(slice any, setFunc func(*CatalogPublicationCreate, int)) *CatalogPublicationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CatalogPublicationCreateBulk{err: fmt.Errorf("calling to CatalogPublicationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CatalogPublicationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CatalogPublicationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CatalogPublication.
+func (c *CatalogPublicationClient) Update() *CatalogPublicationUpdate {
+	mutation := newCatalogPublicationMutation(c.config, OpUpdate)
+	return &CatalogPublicationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CatalogPublicationClient) UpdateOne(_m *CatalogPublication) *CatalogPublicationUpdateOne {
+	mutation := newCatalogPublicationMutation(c.config, OpUpdateOne, withCatalogPublication(_m))
+	return &CatalogPublicationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CatalogPublicationClient) UpdateOneID(id int64) *CatalogPublicationUpdateOne {
+	mutation := newCatalogPublicationMutation(c.config, OpUpdateOne, withCatalogPublicationID(id))
+	return &CatalogPublicationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CatalogPublication.
+func (c *CatalogPublicationClient) Delete() *CatalogPublicationDelete {
+	mutation := newCatalogPublicationMutation(c.config, OpDelete)
+	return &CatalogPublicationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CatalogPublicationClient) DeleteOne(_m *CatalogPublication) *CatalogPublicationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CatalogPublicationClient) DeleteOneID(id int64) *CatalogPublicationDeleteOne {
+	builder := c.Delete().Where(catalogpublication.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CatalogPublicationDeleteOne{builder}
+}
+
+// Query returns a query builder for CatalogPublication.
+func (c *CatalogPublicationClient) Query() *CatalogPublicationQuery {
+	return &CatalogPublicationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCatalogPublication},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CatalogPublication entity by its id.
+func (c *CatalogPublicationClient) Get(ctx context.Context, id int64) (*CatalogPublication, error) {
+	return c.Query().Where(catalogpublication.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CatalogPublicationClient) GetX(ctx context.Context, id int64) *CatalogPublication {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CatalogPublicationClient) Hooks() []Hook {
+	return c.hooks.CatalogPublication
+}
+
+// Interceptors returns the client interceptors.
+func (c *CatalogPublicationClient) Interceptors() []Interceptor {
+	return c.inters.CatalogPublication
+}
+
+func (c *CatalogPublicationClient) mutate(ctx context.Context, m *CatalogPublicationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CatalogPublicationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CatalogPublicationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CatalogPublicationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CatalogPublicationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CatalogPublication mutation op: %q", m.Op())
+	}
+}
+
+// CatalogRevisionClient is a client for the CatalogRevision schema.
+type CatalogRevisionClient struct {
+	config
+}
+
+// NewCatalogRevisionClient returns a client for the CatalogRevision from the given config.
+func NewCatalogRevisionClient(c config) *CatalogRevisionClient {
+	return &CatalogRevisionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `catalogrevision.Hooks(f(g(h())))`.
+func (c *CatalogRevisionClient) Use(hooks ...Hook) {
+	c.hooks.CatalogRevision = append(c.hooks.CatalogRevision, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `catalogrevision.Intercept(f(g(h())))`.
+func (c *CatalogRevisionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CatalogRevision = append(c.inters.CatalogRevision, interceptors...)
+}
+
+// Create returns a builder for creating a CatalogRevision entity.
+func (c *CatalogRevisionClient) Create() *CatalogRevisionCreate {
+	mutation := newCatalogRevisionMutation(c.config, OpCreate)
+	return &CatalogRevisionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CatalogRevision entities.
+func (c *CatalogRevisionClient) CreateBulk(builders ...*CatalogRevisionCreate) *CatalogRevisionCreateBulk {
+	return &CatalogRevisionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CatalogRevisionClient) MapCreateBulk(slice any, setFunc func(*CatalogRevisionCreate, int)) *CatalogRevisionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CatalogRevisionCreateBulk{err: fmt.Errorf("calling to CatalogRevisionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CatalogRevisionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CatalogRevisionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CatalogRevision.
+func (c *CatalogRevisionClient) Update() *CatalogRevisionUpdate {
+	mutation := newCatalogRevisionMutation(c.config, OpUpdate)
+	return &CatalogRevisionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CatalogRevisionClient) UpdateOne(_m *CatalogRevision) *CatalogRevisionUpdateOne {
+	mutation := newCatalogRevisionMutation(c.config, OpUpdateOne, withCatalogRevision(_m))
+	return &CatalogRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CatalogRevisionClient) UpdateOneID(id int64) *CatalogRevisionUpdateOne {
+	mutation := newCatalogRevisionMutation(c.config, OpUpdateOne, withCatalogRevisionID(id))
+	return &CatalogRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CatalogRevision.
+func (c *CatalogRevisionClient) Delete() *CatalogRevisionDelete {
+	mutation := newCatalogRevisionMutation(c.config, OpDelete)
+	return &CatalogRevisionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CatalogRevisionClient) DeleteOne(_m *CatalogRevision) *CatalogRevisionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CatalogRevisionClient) DeleteOneID(id int64) *CatalogRevisionDeleteOne {
+	builder := c.Delete().Where(catalogrevision.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CatalogRevisionDeleteOne{builder}
+}
+
+// Query returns a query builder for CatalogRevision.
+func (c *CatalogRevisionClient) Query() *CatalogRevisionQuery {
+	return &CatalogRevisionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCatalogRevision},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CatalogRevision entity by its id.
+func (c *CatalogRevisionClient) Get(ctx context.Context, id int64) (*CatalogRevision, error) {
+	return c.Query().Where(catalogrevision.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CatalogRevisionClient) GetX(ctx context.Context, id int64) *CatalogRevision {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CatalogRevisionClient) Hooks() []Hook {
+	return c.hooks.CatalogRevision
+}
+
+// Interceptors returns the client interceptors.
+func (c *CatalogRevisionClient) Interceptors() []Interceptor {
+	return c.inters.CatalogRevision
+}
+
+func (c *CatalogRevisionClient) mutate(ctx context.Context, m *CatalogRevisionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CatalogRevisionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CatalogRevisionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CatalogRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CatalogRevisionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CatalogRevision mutation op: %q", m.Op())
+	}
+}
+
+// CatalogSyncRunClient is a client for the CatalogSyncRun schema.
+type CatalogSyncRunClient struct {
+	config
+}
+
+// NewCatalogSyncRunClient returns a client for the CatalogSyncRun from the given config.
+func NewCatalogSyncRunClient(c config) *CatalogSyncRunClient {
+	return &CatalogSyncRunClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `catalogsyncrun.Hooks(f(g(h())))`.
+func (c *CatalogSyncRunClient) Use(hooks ...Hook) {
+	c.hooks.CatalogSyncRun = append(c.hooks.CatalogSyncRun, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `catalogsyncrun.Intercept(f(g(h())))`.
+func (c *CatalogSyncRunClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CatalogSyncRun = append(c.inters.CatalogSyncRun, interceptors...)
+}
+
+// Create returns a builder for creating a CatalogSyncRun entity.
+func (c *CatalogSyncRunClient) Create() *CatalogSyncRunCreate {
+	mutation := newCatalogSyncRunMutation(c.config, OpCreate)
+	return &CatalogSyncRunCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CatalogSyncRun entities.
+func (c *CatalogSyncRunClient) CreateBulk(builders ...*CatalogSyncRunCreate) *CatalogSyncRunCreateBulk {
+	return &CatalogSyncRunCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CatalogSyncRunClient) MapCreateBulk(slice any, setFunc func(*CatalogSyncRunCreate, int)) *CatalogSyncRunCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CatalogSyncRunCreateBulk{err: fmt.Errorf("calling to CatalogSyncRunClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CatalogSyncRunCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CatalogSyncRunCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CatalogSyncRun.
+func (c *CatalogSyncRunClient) Update() *CatalogSyncRunUpdate {
+	mutation := newCatalogSyncRunMutation(c.config, OpUpdate)
+	return &CatalogSyncRunUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CatalogSyncRunClient) UpdateOne(_m *CatalogSyncRun) *CatalogSyncRunUpdateOne {
+	mutation := newCatalogSyncRunMutation(c.config, OpUpdateOne, withCatalogSyncRun(_m))
+	return &CatalogSyncRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CatalogSyncRunClient) UpdateOneID(id int64) *CatalogSyncRunUpdateOne {
+	mutation := newCatalogSyncRunMutation(c.config, OpUpdateOne, withCatalogSyncRunID(id))
+	return &CatalogSyncRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CatalogSyncRun.
+func (c *CatalogSyncRunClient) Delete() *CatalogSyncRunDelete {
+	mutation := newCatalogSyncRunMutation(c.config, OpDelete)
+	return &CatalogSyncRunDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CatalogSyncRunClient) DeleteOne(_m *CatalogSyncRun) *CatalogSyncRunDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CatalogSyncRunClient) DeleteOneID(id int64) *CatalogSyncRunDeleteOne {
+	builder := c.Delete().Where(catalogsyncrun.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CatalogSyncRunDeleteOne{builder}
+}
+
+// Query returns a query builder for CatalogSyncRun.
+func (c *CatalogSyncRunClient) Query() *CatalogSyncRunQuery {
+	return &CatalogSyncRunQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCatalogSyncRun},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CatalogSyncRun entity by its id.
+func (c *CatalogSyncRunClient) Get(ctx context.Context, id int64) (*CatalogSyncRun, error) {
+	return c.Query().Where(catalogsyncrun.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CatalogSyncRunClient) GetX(ctx context.Context, id int64) *CatalogSyncRun {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CatalogSyncRunClient) Hooks() []Hook {
+	return c.hooks.CatalogSyncRun
+}
+
+// Interceptors returns the client interceptors.
+func (c *CatalogSyncRunClient) Interceptors() []Interceptor {
+	return c.inters.CatalogSyncRun
+}
+
+func (c *CatalogSyncRunClient) mutate(ctx context.Context, m *CatalogSyncRunMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CatalogSyncRunCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CatalogSyncRunUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CatalogSyncRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CatalogSyncRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CatalogSyncRun mutation op: %q", m.Op())
 	}
 }
 
@@ -7474,7 +8606,9 @@ type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, BalancePackage, BatchImageEvent, BatchImageItem,
-		BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
+		BatchImageJob, CatalogLifecycleAudit, CatalogModel, CatalogModelAlias,
+		CatalogModelRevision, CatalogOutbox, CatalogPublication, CatalogRevision,
+		CatalogSyncRun, ChannelMonitor, ChannelMonitorDailyRollup,
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
 		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
@@ -7486,7 +8620,9 @@ type (
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, BalancePackage, BatchImageEvent, BatchImageItem,
-		BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
+		BatchImageJob, CatalogLifecycleAudit, CatalogModel, CatalogModelAlias,
+		CatalogModelRevision, CatalogOutbox, CatalogPublication, CatalogRevision,
+		CatalogSyncRun, ChannelMonitor, ChannelMonitorDailyRollup,
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
 		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,

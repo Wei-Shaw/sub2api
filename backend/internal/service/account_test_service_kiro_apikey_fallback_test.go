@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -14,7 +13,6 @@ import (
 )
 
 func TestAccountTestService_KiroAPIKeyUsesGenericAnthropicCompatiblePath(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
 	account := &Account{
@@ -57,7 +55,6 @@ func TestAccountTestService_KiroAPIKeyUsesGenericAnthropicCompatiblePath(t *test
 }
 
 func TestAccountTestService_KiroAPIKeyWithoutBaseURLErrors(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
 	account := &Account{

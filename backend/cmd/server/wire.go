@@ -95,9 +95,11 @@ func provideCleanup(
 	batchImageCleanup *service.BatchImageCleanupService,
 	batchImageWorker *service.BatchImageWorkerRuntime,
 	pricing *service.PricingService,
+	modelCatalog *service.ModelCatalogProjectionRuntime,
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
+	usageBillingSettlementWorker *service.UsageBillingSettlementWorker,
 	subscriptionService *service.SubscriptionService,
 	oauth *service.OAuthService,
 	openaiOAuth *service.OpenAIOAuthService,
@@ -257,6 +259,12 @@ func provideCleanup(
 				}
 				return nil
 			}},
+			{"ModelCatalogProjectionRuntime", func() error {
+				if modelCatalog != nil {
+					modelCatalog.Stop()
+				}
+				return nil
+			}},
 			{"PricingService", func() error {
 				pricing.Stop()
 				return nil
@@ -272,6 +280,12 @@ func provideCleanup(
 			{"UsageRecordWorkerPool", func() error {
 				if usageRecordWorkerPool != nil {
 					usageRecordWorkerPool.Stop()
+				}
+				return nil
+			}},
+			{"UsageBillingSettlementWorker", func() error {
+				if usageBillingSettlementWorker != nil {
+					usageBillingSettlementWorker.Stop()
 				}
 				return nil
 			}},

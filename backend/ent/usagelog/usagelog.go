@@ -70,6 +70,18 @@ const (
 	FieldLongContextBillingApplied = "long_context_billing_applied"
 	// FieldAccountRateMultiplier holds the string denoting the account_rate_multiplier field in the database.
 	FieldAccountRateMultiplier = "account_rate_multiplier"
+	// FieldCatalogEpoch holds the string denoting the catalog_epoch field in the database.
+	FieldCatalogEpoch = "catalog_epoch"
+	// FieldCatalogRevisionID holds the string denoting the catalog_revision_id field in the database.
+	FieldCatalogRevisionID = "catalog_revision_id"
+	// FieldRequestedModelRevisionID holds the string denoting the requested_model_revision_id field in the database.
+	FieldRequestedModelRevisionID = "requested_model_revision_id"
+	// FieldEffectiveModelRevisionID holds the string denoting the effective_model_revision_id field in the database.
+	FieldEffectiveModelRevisionID = "effective_model_revision_id"
+	// FieldPricingSource holds the string denoting the pricing_source field in the database.
+	FieldPricingSource = "pricing_source"
+	// FieldPricingSnapshot holds the string denoting the pricing_snapshot field in the database.
+	FieldPricingSnapshot = "pricing_snapshot"
 	// FieldBillingType holds the string denoting the billing_type field in the database.
 	FieldBillingType = "billing_type"
 	// FieldStream holds the string denoting the stream field in the database.
@@ -184,6 +196,12 @@ var Columns = []string{
 	FieldRateMultiplier,
 	FieldLongContextBillingApplied,
 	FieldAccountRateMultiplier,
+	FieldCatalogEpoch,
+	FieldCatalogRevisionID,
+	FieldRequestedModelRevisionID,
+	FieldEffectiveModelRevisionID,
+	FieldPricingSource,
+	FieldPricingSnapshot,
 	FieldBillingType,
 	FieldStream,
 	FieldDurationMs,
@@ -256,6 +274,8 @@ var (
 	DefaultRateMultiplier float64
 	// DefaultLongContextBillingApplied holds the default value on creation for the "long_context_billing_applied" field.
 	DefaultLongContextBillingApplied bool
+	// PricingSourceValidator is a validator for the "pricing_source" field. It is called by the builders before save.
+	PricingSourceValidator func(string) error
 	// DefaultBillingType holds the default value on creation for the "billing_type" field.
 	DefaultBillingType int8
 	// DefaultStream holds the default value on creation for the "stream" field.
@@ -430,6 +450,31 @@ func ByLongContextBillingApplied(opts ...sql.OrderTermOption) OrderOption {
 // ByAccountRateMultiplier orders the results by the account_rate_multiplier field.
 func ByAccountRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccountRateMultiplier, opts...).ToFunc()
+}
+
+// ByCatalogEpoch orders the results by the catalog_epoch field.
+func ByCatalogEpoch(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCatalogEpoch, opts...).ToFunc()
+}
+
+// ByCatalogRevisionID orders the results by the catalog_revision_id field.
+func ByCatalogRevisionID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCatalogRevisionID, opts...).ToFunc()
+}
+
+// ByRequestedModelRevisionID orders the results by the requested_model_revision_id field.
+func ByRequestedModelRevisionID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRequestedModelRevisionID, opts...).ToFunc()
+}
+
+// ByEffectiveModelRevisionID orders the results by the effective_model_revision_id field.
+func ByEffectiveModelRevisionID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEffectiveModelRevisionID, opts...).ToFunc()
+}
+
+// ByPricingSource orders the results by the pricing_source field.
+func ByPricingSource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPricingSource, opts...).ToFunc()
 }
 
 // ByBillingType orders the results by the billing_type field.

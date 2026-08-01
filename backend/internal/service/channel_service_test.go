@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -2489,4 +2490,61 @@ func TestUpdate_MappingConflict(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "MAPPING_PATTERN_CONFLICT")
+}
+
+func TestChannelServiceResolveChannelMapping_AttachesCatalogDecision(t *testing.T) {
+	now := time.Now().UTC()
+	reader := NewAtomicModelCatalogReader(
+		mustCatalogSnapshot(t, catalogSnapshotFixture(7, 701, now, 5e-6)),
+		time.Hour,
+	)
+	svc := NewChannelService(nil, nil, nil, nil)
+	svc.SetCatalogAdmission(reader, "observe")
+	svc.cache.Store(&channelCache{
+		channelByGroupID: map[int64]*Channel{
+			1: {ID: 11, Status: StatusActive},
+		},
+		groupPlatform: map[int64]string{1: PlatformOpenAI},
+		loadedAt:      now,
+	})
+
+	result := svc.ResolveChannelMapping(context.Background(), 1, "gpt-5.6")
+
+	require.Equal(t, PlatformOpenAI, result.Platform)
+	require.NotNil(t, result.CatalogDecision)
+	require.Equal(t, int64(7), result.CatalogDecision.CatalogEpoch())
+	require.Equal(t, "gpt-5.6-sol", result.CatalogDecision.Effective.CanonicalKey)
+}
+
+func TestChannelServiceResolveCatalogAdmissionPinsAndFinalizesWithoutChannelMapping(t *testing.T) {
+	now := time.Now().UTC()
+	reader := NewAtomicModelCatalogReader(
+		mustCatalogSnapshot(t, catalogSnapshotFixture(8, 801, now, 6e-6)),
+		time.Hour,
+	)
+	svc := NewChannelService(nil, nil, nil, nil)
+	svc.SetCatalogAdmission(reader, "enforce")
+
+	result := svc.ResolveCatalogAdmission("gpt-5.6", "gpt-5.6", PlatformOpenAI)
+	require.NoError(t, result.CatalogError)
+	require.NotNil(t, result.CatalogDecision)
+	require.Equal(t, int64(8), result.CatalogDecision.CatalogEpoch())
+
+	require.NoError(t, result.FinalizeCatalogEffectiveModel("gpt-5.6-sol"))
+	require.NotNil(t, result.CatalogDecision)
+	require.Equal(t, int64(801), result.CatalogDecision.Effective.RevisionID)
+}
+
+func TestChannelServiceResolveCatalogAdmissionRejectsUnknownModelInEnforceMode(t *testing.T) {
+	now := time.Now().UTC()
+	reader := NewAtomicModelCatalogReader(
+		mustCatalogSnapshot(t, catalogSnapshotFixture(9, 901, now, 7e-6)),
+		time.Hour,
+	)
+	svc := NewChannelService(nil, nil, nil, nil)
+	svc.SetCatalogAdmission(reader, "enforce")
+
+	result := svc.ResolveCatalogAdmission("missing-model", "missing-model", PlatformOpenAI)
+	require.ErrorIs(t, result.CatalogError, ErrCatalogModelNotFound)
+	require.Nil(t, result.CatalogDecision)
 }

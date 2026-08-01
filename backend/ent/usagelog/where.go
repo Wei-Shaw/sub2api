@@ -195,6 +195,31 @@ func AccountRateMultiplier(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldAccountRateMultiplier, v))
 }
 
+// CatalogEpoch applies equality check predicate on the "catalog_epoch" field. It's identical to CatalogEpochEQ.
+func CatalogEpoch(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCatalogEpoch, v))
+}
+
+// CatalogRevisionID applies equality check predicate on the "catalog_revision_id" field. It's identical to CatalogRevisionIDEQ.
+func CatalogRevisionID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCatalogRevisionID, v))
+}
+
+// RequestedModelRevisionID applies equality check predicate on the "requested_model_revision_id" field. It's identical to RequestedModelRevisionIDEQ.
+func RequestedModelRevisionID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRequestedModelRevisionID, v))
+}
+
+// EffectiveModelRevisionID applies equality check predicate on the "effective_model_revision_id" field. It's identical to EffectiveModelRevisionIDEQ.
+func EffectiveModelRevisionID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldEffectiveModelRevisionID, v))
+}
+
+// PricingSource applies equality check predicate on the "pricing_source" field. It's identical to PricingSourceEQ.
+func PricingSource(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldPricingSource, v))
+}
+
 // BillingType applies equality check predicate on the "billing_type" field. It's identical to BillingTypeEQ.
 func BillingType(v int8) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldBillingType, v))
@@ -1528,6 +1553,291 @@ func AccountRateMultiplierIsNil() predicate.UsageLog {
 // AccountRateMultiplierNotNil applies the NotNil predicate on the "account_rate_multiplier" field.
 func AccountRateMultiplierNotNil() predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotNull(FieldAccountRateMultiplier))
+}
+
+// CatalogEpochEQ applies the EQ predicate on the "catalog_epoch" field.
+func CatalogEpochEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCatalogEpoch, v))
+}
+
+// CatalogEpochNEQ applies the NEQ predicate on the "catalog_epoch" field.
+func CatalogEpochNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCatalogEpoch, v))
+}
+
+// CatalogEpochIn applies the In predicate on the "catalog_epoch" field.
+func CatalogEpochIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCatalogEpoch, vs...))
+}
+
+// CatalogEpochNotIn applies the NotIn predicate on the "catalog_epoch" field.
+func CatalogEpochNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCatalogEpoch, vs...))
+}
+
+// CatalogEpochGT applies the GT predicate on the "catalog_epoch" field.
+func CatalogEpochGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCatalogEpoch, v))
+}
+
+// CatalogEpochGTE applies the GTE predicate on the "catalog_epoch" field.
+func CatalogEpochGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCatalogEpoch, v))
+}
+
+// CatalogEpochLT applies the LT predicate on the "catalog_epoch" field.
+func CatalogEpochLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCatalogEpoch, v))
+}
+
+// CatalogEpochLTE applies the LTE predicate on the "catalog_epoch" field.
+func CatalogEpochLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCatalogEpoch, v))
+}
+
+// CatalogEpochIsNil applies the IsNil predicate on the "catalog_epoch" field.
+func CatalogEpochIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldCatalogEpoch))
+}
+
+// CatalogEpochNotNil applies the NotNil predicate on the "catalog_epoch" field.
+func CatalogEpochNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldCatalogEpoch))
+}
+
+// CatalogRevisionIDEQ applies the EQ predicate on the "catalog_revision_id" field.
+func CatalogRevisionIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCatalogRevisionID, v))
+}
+
+// CatalogRevisionIDNEQ applies the NEQ predicate on the "catalog_revision_id" field.
+func CatalogRevisionIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCatalogRevisionID, v))
+}
+
+// CatalogRevisionIDIn applies the In predicate on the "catalog_revision_id" field.
+func CatalogRevisionIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCatalogRevisionID, vs...))
+}
+
+// CatalogRevisionIDNotIn applies the NotIn predicate on the "catalog_revision_id" field.
+func CatalogRevisionIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCatalogRevisionID, vs...))
+}
+
+// CatalogRevisionIDGT applies the GT predicate on the "catalog_revision_id" field.
+func CatalogRevisionIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCatalogRevisionID, v))
+}
+
+// CatalogRevisionIDGTE applies the GTE predicate on the "catalog_revision_id" field.
+func CatalogRevisionIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCatalogRevisionID, v))
+}
+
+// CatalogRevisionIDLT applies the LT predicate on the "catalog_revision_id" field.
+func CatalogRevisionIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCatalogRevisionID, v))
+}
+
+// CatalogRevisionIDLTE applies the LTE predicate on the "catalog_revision_id" field.
+func CatalogRevisionIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCatalogRevisionID, v))
+}
+
+// CatalogRevisionIDIsNil applies the IsNil predicate on the "catalog_revision_id" field.
+func CatalogRevisionIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldCatalogRevisionID))
+}
+
+// CatalogRevisionIDNotNil applies the NotNil predicate on the "catalog_revision_id" field.
+func CatalogRevisionIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldCatalogRevisionID))
+}
+
+// RequestedModelRevisionIDEQ applies the EQ predicate on the "requested_model_revision_id" field.
+func RequestedModelRevisionIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRequestedModelRevisionID, v))
+}
+
+// RequestedModelRevisionIDNEQ applies the NEQ predicate on the "requested_model_revision_id" field.
+func RequestedModelRevisionIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldRequestedModelRevisionID, v))
+}
+
+// RequestedModelRevisionIDIn applies the In predicate on the "requested_model_revision_id" field.
+func RequestedModelRevisionIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldRequestedModelRevisionID, vs...))
+}
+
+// RequestedModelRevisionIDNotIn applies the NotIn predicate on the "requested_model_revision_id" field.
+func RequestedModelRevisionIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldRequestedModelRevisionID, vs...))
+}
+
+// RequestedModelRevisionIDGT applies the GT predicate on the "requested_model_revision_id" field.
+func RequestedModelRevisionIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldRequestedModelRevisionID, v))
+}
+
+// RequestedModelRevisionIDGTE applies the GTE predicate on the "requested_model_revision_id" field.
+func RequestedModelRevisionIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldRequestedModelRevisionID, v))
+}
+
+// RequestedModelRevisionIDLT applies the LT predicate on the "requested_model_revision_id" field.
+func RequestedModelRevisionIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldRequestedModelRevisionID, v))
+}
+
+// RequestedModelRevisionIDLTE applies the LTE predicate on the "requested_model_revision_id" field.
+func RequestedModelRevisionIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldRequestedModelRevisionID, v))
+}
+
+// RequestedModelRevisionIDIsNil applies the IsNil predicate on the "requested_model_revision_id" field.
+func RequestedModelRevisionIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRequestedModelRevisionID))
+}
+
+// RequestedModelRevisionIDNotNil applies the NotNil predicate on the "requested_model_revision_id" field.
+func RequestedModelRevisionIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRequestedModelRevisionID))
+}
+
+// EffectiveModelRevisionIDEQ applies the EQ predicate on the "effective_model_revision_id" field.
+func EffectiveModelRevisionIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldEffectiveModelRevisionID, v))
+}
+
+// EffectiveModelRevisionIDNEQ applies the NEQ predicate on the "effective_model_revision_id" field.
+func EffectiveModelRevisionIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldEffectiveModelRevisionID, v))
+}
+
+// EffectiveModelRevisionIDIn applies the In predicate on the "effective_model_revision_id" field.
+func EffectiveModelRevisionIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldEffectiveModelRevisionID, vs...))
+}
+
+// EffectiveModelRevisionIDNotIn applies the NotIn predicate on the "effective_model_revision_id" field.
+func EffectiveModelRevisionIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldEffectiveModelRevisionID, vs...))
+}
+
+// EffectiveModelRevisionIDGT applies the GT predicate on the "effective_model_revision_id" field.
+func EffectiveModelRevisionIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldEffectiveModelRevisionID, v))
+}
+
+// EffectiveModelRevisionIDGTE applies the GTE predicate on the "effective_model_revision_id" field.
+func EffectiveModelRevisionIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldEffectiveModelRevisionID, v))
+}
+
+// EffectiveModelRevisionIDLT applies the LT predicate on the "effective_model_revision_id" field.
+func EffectiveModelRevisionIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldEffectiveModelRevisionID, v))
+}
+
+// EffectiveModelRevisionIDLTE applies the LTE predicate on the "effective_model_revision_id" field.
+func EffectiveModelRevisionIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldEffectiveModelRevisionID, v))
+}
+
+// EffectiveModelRevisionIDIsNil applies the IsNil predicate on the "effective_model_revision_id" field.
+func EffectiveModelRevisionIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldEffectiveModelRevisionID))
+}
+
+// EffectiveModelRevisionIDNotNil applies the NotNil predicate on the "effective_model_revision_id" field.
+func EffectiveModelRevisionIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldEffectiveModelRevisionID))
+}
+
+// PricingSourceEQ applies the EQ predicate on the "pricing_source" field.
+func PricingSourceEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldPricingSource, v))
+}
+
+// PricingSourceNEQ applies the NEQ predicate on the "pricing_source" field.
+func PricingSourceNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldPricingSource, v))
+}
+
+// PricingSourceIn applies the In predicate on the "pricing_source" field.
+func PricingSourceIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldPricingSource, vs...))
+}
+
+// PricingSourceNotIn applies the NotIn predicate on the "pricing_source" field.
+func PricingSourceNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldPricingSource, vs...))
+}
+
+// PricingSourceGT applies the GT predicate on the "pricing_source" field.
+func PricingSourceGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldPricingSource, v))
+}
+
+// PricingSourceGTE applies the GTE predicate on the "pricing_source" field.
+func PricingSourceGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldPricingSource, v))
+}
+
+// PricingSourceLT applies the LT predicate on the "pricing_source" field.
+func PricingSourceLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldPricingSource, v))
+}
+
+// PricingSourceLTE applies the LTE predicate on the "pricing_source" field.
+func PricingSourceLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldPricingSource, v))
+}
+
+// PricingSourceContains applies the Contains predicate on the "pricing_source" field.
+func PricingSourceContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldPricingSource, v))
+}
+
+// PricingSourceHasPrefix applies the HasPrefix predicate on the "pricing_source" field.
+func PricingSourceHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldPricingSource, v))
+}
+
+// PricingSourceHasSuffix applies the HasSuffix predicate on the "pricing_source" field.
+func PricingSourceHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldPricingSource, v))
+}
+
+// PricingSourceIsNil applies the IsNil predicate on the "pricing_source" field.
+func PricingSourceIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldPricingSource))
+}
+
+// PricingSourceNotNil applies the NotNil predicate on the "pricing_source" field.
+func PricingSourceNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldPricingSource))
+}
+
+// PricingSourceEqualFold applies the EqualFold predicate on the "pricing_source" field.
+func PricingSourceEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldPricingSource, v))
+}
+
+// PricingSourceContainsFold applies the ContainsFold predicate on the "pricing_source" field.
+func PricingSourceContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldPricingSource, v))
+}
+
+// PricingSnapshotIsNil applies the IsNil predicate on the "pricing_snapshot" field.
+func PricingSnapshotIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldPricingSnapshot))
+}
+
+// PricingSnapshotNotNil applies the NotNil predicate on the "pricing_snapshot" field.
+func PricingSnapshotNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldPricingSnapshot))
 }
 
 // BillingTypeEQ applies the EQ predicate on the "billing_type" field.

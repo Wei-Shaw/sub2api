@@ -380,6 +380,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	if channelMapping.CatalogError != nil {
+		writeCatalogAdmissionError(c, channelMapping.CatalogError)
+		return
+	}
 	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 	seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped, imageIntent)
 
@@ -523,6 +527,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		if !finalizeCatalogEffectiveModel(c, &channelMapping, account, reqModel, selection.ReleaseFunc) {
+			return
+		}
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
@@ -956,6 +963,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMappingMsg, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	if channelMappingMsg.CatalogError != nil {
+		writeCatalogAdmissionError(c, channelMappingMsg.CatalogError)
+		return
+	}
 	mappedBodyForMessages := newOpenAIModelMappedBodyCache(body, h.gatewayService.ReplaceModelInBody)
 
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
@@ -1069,6 +1080,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		reqLog.Debug("openai_messages.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		_ = scheduleDecision
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		if !finalizeCatalogEffectiveModelWithBase(c, &channelMappingMsg, account, reqModel, effectiveMappedModel, selection.ReleaseFunc) {
+			return
+		}
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
@@ -1612,6 +1626,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMappingWS, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
+	if channelMappingWS.CatalogError != nil {
+		writeOpenAIWSCatalogAdmissionError(ctx, wsConn, channelMappingWS.CatalogError)
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model catalog admission failed")
+		return
+	}
 
 	var currentUserRelease func()
 	var currentAccountRelease func()
@@ -1775,6 +1794,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 
 		account := selection.Account
+		if err := catalogEffectiveModelAdmissionError(&channelMappingWS, account, reqModel); err != nil {
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			writeOpenAIWSCatalogAdmissionError(ctx, wsConn, err)
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model catalog admission failed")
+			return
+		}
 		accountMaxConcurrency := account.Concurrency
 		if selection.WaitPlan != nil && selection.WaitPlan.MaxConcurrency > 0 {
 			accountMaxConcurrency = selection.WaitPlan.MaxConcurrency
@@ -1858,6 +1885,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				if model == "" {
 					model = reqModel
+				}
+				if model != reqModel {
+					writeOpenAIWSModelPinError(ctx, wsConn, reqModel, model)
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "websocket session model is pinned; reconnect for a different model", nil)
 				}
 				if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload, "subsequent_turn"); decision != nil && !decision.AllowNextStage {
 					writeSecurityAuditWSError(ctx, wsConn, decision)
@@ -2699,6 +2730,56 @@ func writeOpenAIWSBillingError(ctx context.Context, conn *coderws.Conn, err erro
 	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = conn.Write(writeCtx, coderws.MessageText, openAIWSBillingErrorPayload(err))
+}
+
+func writeOpenAIWSCatalogAdmissionError(ctx context.Context, conn *coderws.Conn, err error) {
+	if conn == nil || err == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	payload, marshalErr := json.Marshal(gin.H{
+		"event_id": "evt_model_catalog_admission_failed",
+		"type":     "error",
+		"error": gin.H{
+			"type":    "invalid_request_error",
+			"code":    catalogAdmissionErrorCode(err),
+			"message": err.Error(),
+		},
+	})
+	if marshalErr != nil {
+		payload = []byte(`{"event_id":"evt_model_catalog_admission_failed","type":"error","error":{"type":"invalid_request_error","code":"model_catalog_unavailable","message":"model catalog admission failed"}}`)
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = conn.Write(writeCtx, coderws.MessageText, payload)
+}
+
+func writeOpenAIWSModelPinError(ctx context.Context, conn *coderws.Conn, pinnedModel, requestedModel string) {
+	if conn == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	payload, err := json.Marshal(gin.H{
+		"event_id": "evt_model_catalog_session_pin_failed",
+		"type":     "error",
+		"error": gin.H{
+			"type":            "invalid_request_error",
+			"code":            "model_session_pinned",
+			"message":         "websocket session model is pinned; reconnect for a different model",
+			"pinned_model":    pinnedModel,
+			"requested_model": requestedModel,
+		},
+	})
+	if err != nil {
+		payload = []byte(`{"event_id":"evt_model_catalog_session_pin_failed","type":"error","error":{"type":"invalid_request_error","code":"model_session_pinned","message":"websocket session model is pinned; reconnect for a different model"}}`)
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = conn.Write(writeCtx, coderws.MessageText, payload)
 }
 
 func writeContentModerationWSError(ctx context.Context, conn *coderws.Conn, decision *service.ContentModerationDecision) {

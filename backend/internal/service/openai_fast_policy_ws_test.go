@@ -384,7 +384,6 @@ func TestPolicyEnforcingFrameConn_WithoutCapturedFallbackPolicyMisses(t *testing
 // is normalized + filtered out by an explicit admin policy before being
 // written upstream.
 func TestWSResponseCreate_IngressFiltersServiceTierBeforeUpstream(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.Enabled = false
@@ -506,7 +505,6 @@ func TestWSResponseCreate_IngressFiltersServiceTierBeforeUpstream(t *testing.T) 
 // asserts that with a custom block rule, the client receives a Realtime-style
 // error event AND the upstream FrameConn never receives the offending frame.
 func TestWSResponseCreate_IngressBlockSendsErrorEventAndSkipsUpstream(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.Enabled = false

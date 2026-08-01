@@ -544,6 +544,15 @@ func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Cont
 	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
 }
 
+// ResolveCatalogAdmission admits model-bearing protocol paths that intentionally
+// bypass channel mapping (for example Grok media generation).
+func (s *OpenAIGatewayService) ResolveCatalogAdmission(requestedModel, effectiveModel, platform string) ChannelMappingResult {
+	if s == nil || s.channelService == nil {
+		return ChannelMappingResult{MappedModel: effectiveModel, Platform: platform}
+	}
+	return s.channelService.ResolveCatalogAdmission(requestedModel, effectiveModel, platform)
+}
+
 func (s *OpenAIGatewayService) isCodexImageGenerationBridgeEnabled(ctx context.Context, account *Account, apiKey *APIKey) bool {
 	if override := account.CodexImageGenerationBridgeOverride(); override != nil {
 		return *override

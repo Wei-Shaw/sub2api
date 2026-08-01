@@ -40,6 +40,50 @@ jobs:
         working-directory: backend
         run: make test-integration
 
+  usage-billing-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.1-alpine3.23
+        env:
+          POSTGRES_DB: sub2api_billing_ci
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d sub2api_billing_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:8.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+      - name: Verify Go version
+        run: |
+          go version | grep -q 'go1.26.5'
+      - name: Run gateway and settlement billing regressions
+        working-directory: backend
+        env:
+          SUB2API_TEST_POSTGRES_DSN: "postgres://postgres@127.0.0.1:5432/sub2api_billing_ci?sslmode=disable&TimeZone=UTC"
+          SUB2API_TEST_REDIS_ADDR: "127.0.0.1:6379"
+        run: make test-usage-billing-integration
+
   frontend:
     runs-on: ubuntu-latest
     steps:

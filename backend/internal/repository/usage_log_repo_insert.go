@@ -81,6 +81,12 @@ var usageLogInsertArgTypes = [...]string{
 	"numeric",     // account_stats_cost
 	"text",        // session_id
 	"timestamptz", // created_at
+	"bigint",      // catalog_epoch
+	"bigint",      // catalog_revision_id
+	"bigint",      // requested_model_revision_id
+	"bigint",      // effective_model_revision_id
+	"varchar",     // pricing_source
+	"jsonb",       // pricing_snapshot
 }
 
 const (
@@ -144,6 +150,16 @@ const (
 	usageLogCreateStateCompleted
 	usageLogCreateStateCanceled
 )
+
+// CreateInTx persists a usage log using the caller's SQL transaction. It is
+// intentionally an optional repository capability so the broad UsageLogRepository
+// interface does not force test doubles and read-only implementations to expose SQL.
+func (r *usageLogRepository) CreateInTx(ctx context.Context, tx *sql.Tx, log *service.UsageLog) (bool, error) {
+	if tx == nil {
+		return false, errors.New("usage log transaction is nil")
+	}
+	return r.createSingle(ctx, tx, log)
+}
 
 func (r *usageLogRepository) Create(ctx context.Context, log *service.UsageLog) (bool, error) {
 	if log == nil {
@@ -276,14 +292,20 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			billing_mode,
 			account_stats_cost,
 			session_id,
-			created_at
+			created_at,
+			catalog_epoch,
+			catalog_revision_id,
+			requested_model_revision_id,
+			effective_model_revision_id,
+			pricing_source,
+			pricing_snapshot
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
 			$8, $9,
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -731,12 +753,17 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			billing_mode,
 			account_stats_cost,
 			session_id,
-			created_at
+			created_at,
+			catalog_epoch,
+			catalog_revision_id,
+			requested_model_revision_id,
+			effective_model_revision_id,
+			pricing_source,
+			pricing_snapshot
 		) AS (VALUES `)
 
-	// Each batch row prepends the synthetic input_index before the 57
-	// usage-log column values.
-	args := make([]any, 0, len(keys)*58)
+	// Each batch row prepends the synthetic input_index before the usage-log values.
+	args := make([]any, 0, len(keys)*(len(usageLogInsertArgTypes)+1))
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -821,7 +848,13 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				billing_mode,
 				account_stats_cost,
 				session_id,
-				created_at
+				created_at,
+				catalog_epoch,
+				catalog_revision_id,
+				requested_model_revision_id,
+				effective_model_revision_id,
+				pricing_source,
+				pricing_snapshot
 			)
 			SELECT
 				user_id,
@@ -880,7 +913,13 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				billing_mode,
 				account_stats_cost,
 				session_id,
-				created_at
+				created_at,
+				catalog_epoch,
+				catalog_revision_id,
+				requested_model_revision_id,
+				effective_model_revision_id,
+				pricing_source,
+				pricing_snapshot
 			FROM input
 			ON CONFLICT (request_id, api_key_id) DO NOTHING
 			RETURNING request_id, api_key_id, id, created_at
@@ -979,10 +1018,16 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_mode,
 			account_stats_cost,
 			session_id,
-			created_at
+			created_at,
+			catalog_epoch,
+			catalog_revision_id,
+			requested_model_revision_id,
+			effective_model_revision_id,
+			pricing_source,
+			pricing_snapshot
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*57)
+	args := make([]any, 0, len(preparedList)*len(usageLogInsertArgTypes))
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1064,7 +1109,13 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_mode,
 			account_stats_cost,
 			session_id,
-			created_at
+			created_at,
+			catalog_epoch,
+			catalog_revision_id,
+			requested_model_revision_id,
+			effective_model_revision_id,
+			pricing_source,
+			pricing_snapshot
 		)
 		SELECT
 			user_id,
@@ -1123,7 +1174,13 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_mode,
 			account_stats_cost,
 			session_id,
-			created_at
+			created_at,
+			catalog_epoch,
+			catalog_revision_id,
+			requested_model_revision_id,
+			effective_model_revision_id,
+			pricing_source,
+			pricing_snapshot
 		FROM input
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`)
@@ -1190,14 +1247,20 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			billing_mode,
 			account_stats_cost,
 			session_id,
-			created_at
+			created_at,
+			catalog_epoch,
+			catalog_revision_id,
+			requested_model_revision_id,
+			effective_model_revision_id,
+			pricing_source,
+			pricing_snapshot
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
 			$8, $9,
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1239,6 +1302,8 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	billingTier := nullString(log.BillingTier)
 	billingMode := nullString(log.BillingMode)
 	sessionID := nullString(log.SessionID)
+	pricingSource := nullString(log.PricingSource)
+	pricingSnapshot := nullJSONMap(log.PricingSnapshot)
 	requestedModel := strings.TrimSpace(log.RequestedModel)
 	if requestedModel == "" {
 		requestedModel = strings.TrimSpace(log.Model)
@@ -1313,6 +1378,12 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.AccountStatsCost, // account_stats_cost
 			sessionID,            // session_id
 			createdAt,
+			log.CatalogEpoch,
+			log.CatalogRevisionID,
+			log.RequestedModelRevisionID,
+			log.EffectiveModelRevisionID,
+			pricingSource,
+			pricingSnapshot,
 		},
 	}
 }

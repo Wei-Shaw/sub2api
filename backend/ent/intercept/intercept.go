@@ -19,6 +19,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
+	"github.com/Wei-Shaw/sub2api/ent/cataloglifecycleaudit"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodel"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodelalias"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodelrevision"
+	"github.com/Wei-Shaw/sub2api/ent/catalogoutbox"
+	"github.com/Wei-Shaw/sub2api/ent/catalogpublication"
+	"github.com/Wei-Shaw/sub2api/ent/catalogrevision"
+	"github.com/Wei-Shaw/sub2api/ent/catalogsyncrun"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -404,6 +412,222 @@ func (f TraverseBatchImageJob) Traverse(ctx context.Context, q ent.Query) error 
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.BatchImageJobQuery", q)
+}
+
+// The CatalogLifecycleAuditFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CatalogLifecycleAuditFunc func(context.Context, *ent.CatalogLifecycleAuditQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CatalogLifecycleAuditFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CatalogLifecycleAuditQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CatalogLifecycleAuditQuery", q)
+}
+
+// The TraverseCatalogLifecycleAudit type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCatalogLifecycleAudit func(context.Context, *ent.CatalogLifecycleAuditQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCatalogLifecycleAudit) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCatalogLifecycleAudit) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CatalogLifecycleAuditQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CatalogLifecycleAuditQuery", q)
+}
+
+// The CatalogModelFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CatalogModelFunc func(context.Context, *ent.CatalogModelQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CatalogModelFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CatalogModelQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CatalogModelQuery", q)
+}
+
+// The TraverseCatalogModel type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCatalogModel func(context.Context, *ent.CatalogModelQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCatalogModel) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCatalogModel) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CatalogModelQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CatalogModelQuery", q)
+}
+
+// The CatalogModelAliasFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CatalogModelAliasFunc func(context.Context, *ent.CatalogModelAliasQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CatalogModelAliasFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CatalogModelAliasQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CatalogModelAliasQuery", q)
+}
+
+// The TraverseCatalogModelAlias type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCatalogModelAlias func(context.Context, *ent.CatalogModelAliasQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCatalogModelAlias) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCatalogModelAlias) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CatalogModelAliasQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CatalogModelAliasQuery", q)
+}
+
+// The CatalogModelRevisionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CatalogModelRevisionFunc func(context.Context, *ent.CatalogModelRevisionQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CatalogModelRevisionFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CatalogModelRevisionQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CatalogModelRevisionQuery", q)
+}
+
+// The TraverseCatalogModelRevision type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCatalogModelRevision func(context.Context, *ent.CatalogModelRevisionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCatalogModelRevision) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCatalogModelRevision) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CatalogModelRevisionQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CatalogModelRevisionQuery", q)
+}
+
+// The CatalogOutboxFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CatalogOutboxFunc func(context.Context, *ent.CatalogOutboxQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CatalogOutboxFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CatalogOutboxQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CatalogOutboxQuery", q)
+}
+
+// The TraverseCatalogOutbox type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCatalogOutbox func(context.Context, *ent.CatalogOutboxQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCatalogOutbox) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCatalogOutbox) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CatalogOutboxQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CatalogOutboxQuery", q)
+}
+
+// The CatalogPublicationFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CatalogPublicationFunc func(context.Context, *ent.CatalogPublicationQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CatalogPublicationFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CatalogPublicationQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CatalogPublicationQuery", q)
+}
+
+// The TraverseCatalogPublication type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCatalogPublication func(context.Context, *ent.CatalogPublicationQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCatalogPublication) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCatalogPublication) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CatalogPublicationQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CatalogPublicationQuery", q)
+}
+
+// The CatalogRevisionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CatalogRevisionFunc func(context.Context, *ent.CatalogRevisionQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CatalogRevisionFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CatalogRevisionQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CatalogRevisionQuery", q)
+}
+
+// The TraverseCatalogRevision type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCatalogRevision func(context.Context, *ent.CatalogRevisionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCatalogRevision) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCatalogRevision) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CatalogRevisionQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CatalogRevisionQuery", q)
+}
+
+// The CatalogSyncRunFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CatalogSyncRunFunc func(context.Context, *ent.CatalogSyncRunQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CatalogSyncRunFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CatalogSyncRunQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CatalogSyncRunQuery", q)
+}
+
+// The TraverseCatalogSyncRun type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCatalogSyncRun func(context.Context, *ent.CatalogSyncRunQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCatalogSyncRun) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCatalogSyncRun) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CatalogSyncRunQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CatalogSyncRunQuery", q)
 }
 
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1268,6 +1492,22 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.BatchImageItemQuery, predicate.BatchImageItem, batchimageitem.OrderOption]{typ: ent.TypeBatchImageItem, tq: q}, nil
 	case *ent.BatchImageJobQuery:
 		return &query[*ent.BatchImageJobQuery, predicate.BatchImageJob, batchimagejob.OrderOption]{typ: ent.TypeBatchImageJob, tq: q}, nil
+	case *ent.CatalogLifecycleAuditQuery:
+		return &query[*ent.CatalogLifecycleAuditQuery, predicate.CatalogLifecycleAudit, cataloglifecycleaudit.OrderOption]{typ: ent.TypeCatalogLifecycleAudit, tq: q}, nil
+	case *ent.CatalogModelQuery:
+		return &query[*ent.CatalogModelQuery, predicate.CatalogModel, catalogmodel.OrderOption]{typ: ent.TypeCatalogModel, tq: q}, nil
+	case *ent.CatalogModelAliasQuery:
+		return &query[*ent.CatalogModelAliasQuery, predicate.CatalogModelAlias, catalogmodelalias.OrderOption]{typ: ent.TypeCatalogModelAlias, tq: q}, nil
+	case *ent.CatalogModelRevisionQuery:
+		return &query[*ent.CatalogModelRevisionQuery, predicate.CatalogModelRevision, catalogmodelrevision.OrderOption]{typ: ent.TypeCatalogModelRevision, tq: q}, nil
+	case *ent.CatalogOutboxQuery:
+		return &query[*ent.CatalogOutboxQuery, predicate.CatalogOutbox, catalogoutbox.OrderOption]{typ: ent.TypeCatalogOutbox, tq: q}, nil
+	case *ent.CatalogPublicationQuery:
+		return &query[*ent.CatalogPublicationQuery, predicate.CatalogPublication, catalogpublication.OrderOption]{typ: ent.TypeCatalogPublication, tq: q}, nil
+	case *ent.CatalogRevisionQuery:
+		return &query[*ent.CatalogRevisionQuery, predicate.CatalogRevision, catalogrevision.OrderOption]{typ: ent.TypeCatalogRevision, tq: q}, nil
+	case *ent.CatalogSyncRunQuery:
+		return &query[*ent.CatalogSyncRunQuery, predicate.CatalogSyncRun, catalogsyncrun.OrderOption]{typ: ent.TypeCatalogSyncRun, tq: q}, nil
 	case *ent.ChannelMonitorQuery:
 		return &query[*ent.ChannelMonitorQuery, predicate.ChannelMonitor, channelmonitor.OrderOption]{typ: ent.TypeChannelMonitor, tq: q}, nil
 	case *ent.ChannelMonitorDailyRollupQuery:

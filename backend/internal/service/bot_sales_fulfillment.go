@@ -1055,6 +1055,7 @@ func botSalesProviderSnapshot(req BotSalesTokenFulfillmentRequest, pkg *dbent.Ba
 		"payment_provider_txn_id": strings.TrimSpace(req.PaymentProviderTxnID),
 		"payment_amount":          paymentAmount,
 		"payment_amount_source":   paymentAmountSource,
+		"currency":                currency,
 		"payment_currency":        currency,
 		"quantity":                botSalesQuantity(req),
 		"operation":               req.Operation,

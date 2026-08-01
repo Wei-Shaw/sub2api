@@ -39,6 +39,30 @@ type BatchImageItem func(*sql.Selector)
 // BatchImageJob is the predicate function for batchimagejob builders.
 type BatchImageJob func(*sql.Selector)
 
+// CatalogLifecycleAudit is the predicate function for cataloglifecycleaudit builders.
+type CatalogLifecycleAudit func(*sql.Selector)
+
+// CatalogModel is the predicate function for catalogmodel builders.
+type CatalogModel func(*sql.Selector)
+
+// CatalogModelAlias is the predicate function for catalogmodelalias builders.
+type CatalogModelAlias func(*sql.Selector)
+
+// CatalogModelRevision is the predicate function for catalogmodelrevision builders.
+type CatalogModelRevision func(*sql.Selector)
+
+// CatalogOutbox is the predicate function for catalogoutbox builders.
+type CatalogOutbox func(*sql.Selector)
+
+// CatalogPublication is the predicate function for catalogpublication builders.
+type CatalogPublication func(*sql.Selector)
+
+// CatalogRevision is the predicate function for catalogrevision builders.
+type CatalogRevision func(*sql.Selector)
+
+// CatalogSyncRun is the predicate function for catalogsyncrun builders.
+type CatalogSyncRun func(*sql.Selector)
+
 // ChannelMonitor is the predicate function for channelmonitor builders.
 type ChannelMonitor func(*sql.Selector)
 

@@ -15,6 +15,33 @@ import (
 // CalculateCostUnified
 // ---------------------------------------------------------------------------
 
+func TestBillingServiceCatalogDecisionForPricingFollowsReadMode(t *testing.T) {
+	decision := catalogDecisionForUsagePinIntegrationTest(t)
+
+	for _, tc := range []struct {
+		name     string
+		readMode string
+		want     bool
+	}{
+		{name: "legacy keeps legacy billing authority", readMode: "legacy", want: false},
+		{name: "shadow keeps legacy billing authority", readMode: "shadow", want: false},
+		{name: "db enables catalog billing authority", readMode: "db", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pricing := NewPricingService(&config.Config{}, nil)
+			pricing.SetCatalogRuntime(nil, tc.readMode)
+			billing := NewBillingService(&config.Config{}, pricing)
+
+			got := billing.catalogDecisionForPricing(decision)
+			if tc.want {
+				require.Same(t, decision, got)
+				return
+			}
+			require.Nil(t, got)
+		})
+	}
+}
+
 func TestCalculateCostUnified_NilResolver_FallsBackToOldPath(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -35,6 +62,36 @@ func TestCalculateCostUnified_NilResolver_FallsBackToOldPath(t *testing.T) {
 	require.InDelta(t, expected.ActualCost, cost.ActualCost, 1e-10)
 	// BillingMode is NOT set by old path through CalculateCostUnified (resolver == nil)
 	require.Empty(t, cost.BillingMode)
+}
+
+func TestCalculateCostUnified_CatalogDecisionRequiresResolver(t *testing.T) {
+	bs := newTestBillingService()
+
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Model:           "claude-sonnet-4",
+		Tokens:          UsageTokens{InputTokens: 100},
+		RateMultiplier:  1,
+		CatalogDecision: catalogDecisionForUsagePinIntegrationTest(t),
+	})
+
+	require.Nil(t, cost)
+	require.ErrorIs(t, err, ErrModelPricingUnavailable)
+}
+
+func TestCalculateCostUnified_InvalidCatalogDecisionFailsClosed(t *testing.T) {
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, bs)
+
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Model:           "claude-sonnet-4",
+		Tokens:          UsageTokens{InputTokens: 100},
+		RateMultiplier:  1,
+		Resolver:        resolver,
+		CatalogDecision: &CatalogDecision{},
+	})
+
+	require.Nil(t, cost)
+	require.ErrorIs(t, err, ErrCatalogDecisionInvalid)
 }
 
 func TestCalculateCostUnified_TokenMode(t *testing.T) {
@@ -271,6 +328,31 @@ func TestCalculateCostUnified_UsesPreResolvedPricing(t *testing.T) {
 	// 2 * $0.07 = $0.14
 	require.InDelta(t, 0.14, cost.TotalCost, 1e-10)
 	require.Equal(t, string(BillingModePerRequest), cost.BillingMode)
+}
+
+func TestCalculateCostUnified_CatalogDecisionIgnoresUnpinnedPreResolvedPricing(t *testing.T) {
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, bs)
+	decision := catalogDecisionForUsagePinIntegrationTest(t)
+
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "catalog/model-effective",
+		Tokens:         UsageTokens{InputTokens: 100, OutputTokens: 50},
+		RequestCount:   2,
+		RateMultiplier: 1,
+		Resolver:       resolver,
+		Resolved: &ResolvedPricing{
+			Mode:                   BillingModePerRequest,
+			DefaultPerRequestPrice: 99,
+		},
+		CatalogDecision: decision,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, cost)
+	require.Equal(t, string(BillingModeToken), cost.BillingMode)
+	require.InDelta(t, 100*1e-6+50*2e-6, cost.TotalCost, 1e-12)
 }
 
 // ---------------------------------------------------------------------------

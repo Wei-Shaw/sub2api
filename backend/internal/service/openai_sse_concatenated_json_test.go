@@ -29,7 +29,6 @@ func TestOpenAIStreamingPassthroughRepairsConcatenatedJSONDocumentsInSingleDataL
 }
 
 func TestOpenAIWSv2StreamingRepairsConcatenatedJSONDocumentsInSingleMessage(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	largeInProgress, outputItemAdded, completed := openAIConcatenatedJSONTestEvents(t)
 	captureConn := &openAIWSCaptureConn{events: [][]byte{
@@ -100,7 +99,6 @@ func TestOpenAIWSv2RejectsMalformedUntypedMessageBeforeWritingDownstream(t *test
 }
 
 func TestOpenAIWSv2RejectsMalformedEventAfterWritingDownstream(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	outputTextDelta := `{"type":"response.output_text.delta","delta":"ok","sequence_number":1}`
 	malformedMessage := `{"type":"response.in_progress"}unexpected-tail`
@@ -162,7 +160,6 @@ func TestOpenAIWSv2RejectsMalformedEventAfterWritingDownstream(t *testing.T) {
 
 func testOpenAIWSv2RejectsMalformedEventBeforeWritingDownstream(t *testing.T, malformedMessage []byte) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
 
 	_, _, completed := openAIConcatenatedJSONTestEvents(t)
 	outputTextDelta := `{"type":"response.output_text.delta","delta":"ok","sequence_number":3}`
@@ -242,7 +239,6 @@ func TestSplitOpenAIConcatenatedJSONDocumentsRejectsPayloadOverRepairLimit(t *te
 }
 
 func TestOpenAIWSv2StreamingBreaksConnectionWhenTerminalHasTrailingDocument(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	completed := `{"type":"response.completed","response":{"id":"resp_terminal_tail","usage":{"input_tokens":2,"output_tokens":1}}}`
 	tail := `{"type":"error","error":{"type":"upstream_error","message":"tail"}}`
 	captureConn := &openAIWSCaptureConn{events: [][]byte{[]byte(completed + tail)}}
@@ -296,7 +292,6 @@ func TestOpenAIWSv2StreamingBreaksConnectionWhenTerminalHasTrailingDocument(t *t
 
 func testOpenAIStreamingRepairsConcatenatedJSONDocuments(t *testing.T, passthrough bool, streamDataIntervalTimeout int) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
 
 	largeInProgress, outputItemAdded, completed := openAIConcatenatedJSONTestEvents(t)
 

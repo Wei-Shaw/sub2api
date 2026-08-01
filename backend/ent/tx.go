@@ -36,6 +36,22 @@ type Tx struct {
 	BatchImageItem *BatchImageItemClient
 	// BatchImageJob is the client for interacting with the BatchImageJob builders.
 	BatchImageJob *BatchImageJobClient
+	// CatalogLifecycleAudit is the client for interacting with the CatalogLifecycleAudit builders.
+	CatalogLifecycleAudit *CatalogLifecycleAuditClient
+	// CatalogModel is the client for interacting with the CatalogModel builders.
+	CatalogModel *CatalogModelClient
+	// CatalogModelAlias is the client for interacting with the CatalogModelAlias builders.
+	CatalogModelAlias *CatalogModelAliasClient
+	// CatalogModelRevision is the client for interacting with the CatalogModelRevision builders.
+	CatalogModelRevision *CatalogModelRevisionClient
+	// CatalogOutbox is the client for interacting with the CatalogOutbox builders.
+	CatalogOutbox *CatalogOutboxClient
+	// CatalogPublication is the client for interacting with the CatalogPublication builders.
+	CatalogPublication *CatalogPublicationClient
+	// CatalogRevision is the client for interacting with the CatalogRevision builders.
+	CatalogRevision *CatalogRevisionClient
+	// CatalogSyncRun is the client for interacting with the CatalogSyncRun builders.
+	CatalogSyncRun *CatalogSyncRunClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -240,6 +256,14 @@ func (tx *Tx) init() {
 	tx.BatchImageEvent = NewBatchImageEventClient(tx.config)
 	tx.BatchImageItem = NewBatchImageItemClient(tx.config)
 	tx.BatchImageJob = NewBatchImageJobClient(tx.config)
+	tx.CatalogLifecycleAudit = NewCatalogLifecycleAuditClient(tx.config)
+	tx.CatalogModel = NewCatalogModelClient(tx.config)
+	tx.CatalogModelAlias = NewCatalogModelAliasClient(tx.config)
+	tx.CatalogModelRevision = NewCatalogModelRevisionClient(tx.config)
+	tx.CatalogOutbox = NewCatalogOutboxClient(tx.config)
+	tx.CatalogPublication = NewCatalogPublicationClient(tx.config)
+	tx.CatalogRevision = NewCatalogRevisionClient(tx.config)
+	tx.CatalogSyncRun = NewCatalogSyncRunClient(tx.config)
 	tx.ChannelMonitor = NewChannelMonitorClient(tx.config)
 	tx.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(tx.config)
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)

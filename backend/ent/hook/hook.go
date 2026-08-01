@@ -141,6 +141,102 @@ func (f BatchImageJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BatchImageJobMutation", m)
 }
 
+// The CatalogLifecycleAuditFunc type is an adapter to allow the use of ordinary
+// function as CatalogLifecycleAudit mutator.
+type CatalogLifecycleAuditFunc func(context.Context, *ent.CatalogLifecycleAuditMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CatalogLifecycleAuditFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CatalogLifecycleAuditMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CatalogLifecycleAuditMutation", m)
+}
+
+// The CatalogModelFunc type is an adapter to allow the use of ordinary
+// function as CatalogModel mutator.
+type CatalogModelFunc func(context.Context, *ent.CatalogModelMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CatalogModelFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CatalogModelMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CatalogModelMutation", m)
+}
+
+// The CatalogModelAliasFunc type is an adapter to allow the use of ordinary
+// function as CatalogModelAlias mutator.
+type CatalogModelAliasFunc func(context.Context, *ent.CatalogModelAliasMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CatalogModelAliasFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CatalogModelAliasMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CatalogModelAliasMutation", m)
+}
+
+// The CatalogModelRevisionFunc type is an adapter to allow the use of ordinary
+// function as CatalogModelRevision mutator.
+type CatalogModelRevisionFunc func(context.Context, *ent.CatalogModelRevisionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CatalogModelRevisionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CatalogModelRevisionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CatalogModelRevisionMutation", m)
+}
+
+// The CatalogOutboxFunc type is an adapter to allow the use of ordinary
+// function as CatalogOutbox mutator.
+type CatalogOutboxFunc func(context.Context, *ent.CatalogOutboxMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CatalogOutboxFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CatalogOutboxMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CatalogOutboxMutation", m)
+}
+
+// The CatalogPublicationFunc type is an adapter to allow the use of ordinary
+// function as CatalogPublication mutator.
+type CatalogPublicationFunc func(context.Context, *ent.CatalogPublicationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CatalogPublicationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CatalogPublicationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CatalogPublicationMutation", m)
+}
+
+// The CatalogRevisionFunc type is an adapter to allow the use of ordinary
+// function as CatalogRevision mutator.
+type CatalogRevisionFunc func(context.Context, *ent.CatalogRevisionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CatalogRevisionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CatalogRevisionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CatalogRevisionMutation", m)
+}
+
+// The CatalogSyncRunFunc type is an adapter to allow the use of ordinary
+// function as CatalogSyncRun mutator.
+type CatalogSyncRunFunc func(context.Context, *ent.CatalogSyncRunMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CatalogSyncRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CatalogSyncRunMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CatalogSyncRunMutation", m)
+}
+
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary
 // function as ChannelMonitor mutator.
 type ChannelMonitorFunc func(context.Context, *ent.ChannelMonitorMutation) (ent.Value, error)

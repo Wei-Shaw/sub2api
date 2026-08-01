@@ -81,7 +81,9 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementRepository,
 	NewAnnouncementReadRepository,
 	NewUsageLogRepository,
+	NewModelCatalogRepository,
 	NewUsageBillingRepository,
+	ProvideUsageBillingRepository,
 	NewBatchImageRepository,
 	NewIdempotencyRepository,
 	NewUsageCleanupRepository,
@@ -169,6 +171,11 @@ var ProviderSet = wire.NewSet(
 
 // ProvideAccountRepository wires account error Telegram notifications without
 // creating a service/repository construction cycle.
+func ProvideUsageBillingRepository(repo *usageBillingRepository, usageLogRepo service.UsageLogRepository) service.UsageBillingRepository {
+	repo.SetUsageLogRepository(usageLogRepo)
+	return repo
+}
+
 func ProvideAccountRepository(client *ent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache, telegramNotifyService *service.TelegramNotifyService) service.AccountRepository {
 	repo := NewAccountRepository(client, sqlDB, schedulerCache)
 	SetAccountRepoOnErrorHook(repo, func(ctx context.Context, id int64, errorMsg string) {

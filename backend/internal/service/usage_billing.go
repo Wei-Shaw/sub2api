@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 var ErrUsageBillingRequestIDRequired = errors.New("usage billing request_id is required")
@@ -34,6 +36,13 @@ type UsageBillingCommand struct {
 	ImageCount          int
 	MediaType           string
 
+	CatalogEpoch             int64
+	CatalogRevisionID        int64
+	RequestedModelRevisionID int64
+	EffectiveModelRevisionID int64
+	PricingSource            string
+	PricingSnapshotHash      string
+
 	BalanceCost         float64
 	SubscriptionCost    float64
 	APIKeyQuotaCost     float64
@@ -46,6 +55,8 @@ func (c *UsageBillingCommand) Normalize() {
 		return
 	}
 	c.RequestID = strings.TrimSpace(c.RequestID)
+	c.PricingSource = strings.TrimSpace(c.PricingSource)
+	c.PricingSnapshotHash = strings.TrimSpace(c.PricingSnapshotHash)
 	if strings.TrimSpace(c.RequestFingerprint) == "" {
 		c.RequestFingerprint = buildUsageBillingFingerprint(c)
 	}
@@ -81,6 +92,19 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash
 	}
+	if c.CatalogEpoch > 0 || c.CatalogRevisionID > 0 ||
+		c.RequestedModelRevisionID > 0 || c.EffectiveModelRevisionID > 0 ||
+		strings.TrimSpace(c.PricingSource) != "" || strings.TrimSpace(c.PricingSnapshotHash) != "" {
+		raw += fmt.Sprintf(
+			"|catalog:%d:%d:%d:%d:%s:%s",
+			c.CatalogEpoch,
+			c.CatalogRevisionID,
+			c.RequestedModelRevisionID,
+			c.EffectiveModelRevisionID,
+			strings.TrimSpace(c.PricingSource),
+			strings.TrimSpace(c.PricingSnapshotHash),
+		)
+	}
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
@@ -91,6 +115,17 @@ func HashUsageRequestPayload(payload []byte) string {
 	}
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
+}
+
+func hashUsagePricingSnapshot(snapshot map[string]any) string {
+	if snapshot == nil {
+		return ""
+	}
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		return ""
+	}
+	return HashUsageRequestPayload(encoded)
 }
 
 func valueOrZero(v *int64) int64 {
@@ -118,6 +153,27 @@ type UsageBillingApplyResult struct {
 	BalanceOverdrafted   bool               // true when the sufficient-balance guard missed and debt was still recorded
 	QuotaState           *AccountQuotaState // post-increment quota state (nil = no quota increment)
 	AccountQuotaCost     float64            // actual account quota/credit increment applied
+}
+
+// UsageBillingSettlementJob is a persisted, retryable billing command.
+// The command carries only immutable request-time billing inputs; pricing
+// provenance and the full settlement snapshot live in the usage log row.
+type UsageBillingSettlementJob struct {
+	ID        int64
+	Attempts  int
+	RequestID string
+	APIKeyID  int64
+	Command   *UsageBillingCommand
+}
+
+// UsageBillingSettlementRepository is the durable outbox contract used by
+// request-path billing and the background retry worker. Implementations must
+// persist the usage log and pending settlement in one database transaction.
+type UsageBillingSettlementRepository interface {
+	EnqueueSettlement(ctx context.Context, cmd *UsageBillingCommand, usageLog *UsageLog) error
+	ClaimDueSettlements(ctx context.Context, limit int, lease time.Duration) ([]UsageBillingSettlementJob, error)
+	MarkSettlementApplied(ctx context.Context, requestID string, apiKeyID int64) error
+	MarkSettlementRetry(ctx context.Context, id int64, reason string, retryAfter time.Duration) error
 }
 
 // BatchImageBalanceHoldCommand describes an idempotent balance hold operation.

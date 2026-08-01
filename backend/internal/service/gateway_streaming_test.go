@@ -138,7 +138,6 @@ func TestParseSSEUsage_DoneEvent(t *testing.T) {
 // --- 流式响应端到端测试 ---
 
 func TestHandleStreamingResponse_CacheTokens(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -167,7 +166,6 @@ func TestHandleStreamingResponse_CacheTokens(t *testing.T) {
 }
 
 func TestHandleStreamingResponse_EmptyStream(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -190,7 +188,6 @@ func TestHandleStreamingResponse_EmptyStream(t *testing.T) {
 }
 
 func TestHandleStreamingResponse_SpecialCharactersInJSON(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -225,7 +222,6 @@ func TestHandleStreamingResponse_SpecialCharactersInJSON(t *testing.T) {
 // 上游中途读错误（如 HTTP/2 GOAWAY 触发的 unexpected EOF）发生在向客户端写入任何字节前：
 // 网关应返回 *UpstreamFailoverError 触发账号 failover/重试，而不是把错误事件直接发给客户端。
 func TestHandleStreamingResponse_StreamReadErrorBeforeOutput_TriggersFailover(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -264,7 +260,6 @@ func TestHandleStreamingResponse_StreamReadErrorBeforeOutput_TriggersFailover(t 
 // 上游已经发送过事件（c.Writer 已写过字节）后再发生读错误：
 // SSE 协议无 resume，网关只能透传 stream_read_error 错误事件给客户端，不能 failover。
 func TestHandleStreamingResponse_StreamReadErrorAfterOutput_PassesThrough(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -355,7 +350,6 @@ func TestSanitizeStreamError_KnownErrors(t *testing.T) {
 // failover ResponseBody 必须用 sanitize 过的消息，避免泄露给客户端 / 写入 ops 日志
 // 时携带内部地址信息。
 func TestHandleStreamingResponse_FailoverBodyDoesNotLeakAddresses(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -398,7 +392,6 @@ func TestHandleStreamingResponse_FailoverBodyDoesNotLeakAddresses(t *testing.T) 
 // 且 RawData 等于上游 data: 行的原始 JSON。这是 Forward 主流程后续把 dataLine
 // 透传到 UpstreamFailoverError.ResponseBody 与 ops_error_logs 的前提。
 func TestHandleStreamingResponse_SSEErrorEvent_ReturnsTypedErrorWithRawData(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -437,7 +430,6 @@ func TestHandleStreamingResponse_SSEErrorEvent_ReturnsTypedErrorWithRawData(t *t
 // 边界用例：上游只发了 event: error 而没有 data 行。RawData 为空，
 // 调用方不得 panic，UpstreamFailoverError.ResponseBody 应回退为空切片。
 func TestHandleStreamingResponse_SSEErrorEvent_EmptyDataLine(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -466,7 +458,6 @@ func TestHandleStreamingResponse_SSEErrorEvent_EmptyDataLine(t *testing.T) {
 // 必须仍然返回 *sseStreamErrorEventError 且 RawData 包含真实错误体，
 // 让 Forward 调用方能正确补全 ResponseBody 与 ops 事件。
 func TestHandleStreamingResponse_SSEErrorEvent_AfterPartialStreamOutput(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -504,7 +495,6 @@ func TestHandleStreamingResponse_SSEErrorEvent_AfterPartialStreamOutput(t *testi
 // RawData 必须保留原始字节，ExtractUpstreamErrorMessage 不得 panic，
 // upstreamMsg 回退为空字符串（不再丢失原始诊断线索 — Detail 字段仍保留原始 body）。
 func TestHandleStreamingResponse_SSEErrorEvent_NonJSONDataLine(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()

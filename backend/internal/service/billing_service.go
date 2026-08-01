@@ -195,6 +195,27 @@ func NewBillingService(cfg *config.Config, pricingService *PricingService) *Bill
 	return s
 }
 
+// catalogDecisionForPricing keeps catalog admission/provenance independent
+// from billing authority during rollout. A decision is always carried into the
+// usage pin, but only the db pricing read mode may use its immutable catalog
+// price to calculate the balance charge. Legacy and shadow modes continue to
+// calculate from the legacy pricing chain.
+func (s *BillingService) catalogDecisionForPricing(decision *CatalogDecision) *CatalogDecision {
+	if decision == nil {
+		return nil
+	}
+	// Explicit unit-level callers may not construct a PricingService. Preserve
+	// their existing catalog-authoritative contract; production wiring always
+	// provides the service and an explicit normalized read mode.
+	if s == nil || s.pricingService == nil {
+		return decision
+	}
+	if s.pricingService.CatalogPricingReadMode() != "db" {
+		return nil
+	}
+	return decision
+}
+
 func (s *BillingService) ListFallbackModelPricing() map[string]*ModelPricing {
 	if s == nil {
 		return nil
@@ -869,7 +890,9 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	// 1. 优先从动态价格服务获取
 	if s.pricingService != nil {
 		litellmPricing := s.pricingService.GetModelPricing(model)
-		// 仅有图片价、无 token 价的条目（如 LiteLLM 的 imagen 类模型）不能用于
+		if s.pricingService.CatalogPricingReadMode() == "db" && litellmPricing == nil {
+			return nil, fmt.Errorf("%w for model: %s", ErrModelPricingUnavailable, model)
+		} // 仅有图片价、无 token 价的条目（如 LiteLLM 的 imagen 类模型）不能用于
 		// token 计费：直接返回会把 token 流量按 $0 计费。跳过后走 fallback，
 		// 无 fallback 则 fail-closed（ErrModelPricingUnavailable）。
 		// 图片计费路径（getDefaultImagePrice / getImageUnitPrice）直接读
@@ -975,14 +998,23 @@ type CostInput struct {
 	ServiceTier               string                // "priority","flex","" 等
 	Resolver                  *ModelPricingResolver // 定价解析器
 	Resolved                  *ResolvedPricing      // 可选：预解析的定价结果（避免重复 Resolve 调用）
+	CatalogDecision           *CatalogDecision      // 请求已 pin 的不可变 catalog decision
 	LongContextBillingEnabled *bool
 }
 
 // CalculateCostUnified 统一计费入口，支持三种计费模式。
 // 使用 ModelPricingResolver 解析定价，然后根据 BillingMode 分发计算。
 func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, error) {
+	if input.CatalogDecision != nil {
+		if !input.CatalogDecision.Valid() {
+			return nil, fmt.Errorf("calculate catalog pricing for model %q: %w", input.Model, ErrCatalogDecisionInvalid)
+		}
+		if input.Resolver == nil {
+			return nil, fmt.Errorf("calculate catalog pricing for model %q requires resolver: %w", input.Model, ErrModelPricingUnavailable)
+		}
+	}
 	if input.Resolver == nil {
-		// 无 Resolver，回退到旧路径
+		// Legacy callers without an admitted catalog decision retain the old path.
 		applyLongContextBilling := true
 		if input.LongContextBillingEnabled != nil {
 			applyLongContextBilling = *input.LongContextBillingEnabled
@@ -997,13 +1029,19 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 		)
 	}
 
-	// 优先使用预解析结果，避免重复 Resolve 调用
+	// A catalog-backed request must always resolve from its pinned decision.
+	// Never trust a pre-resolved value supplied by a legacy caller because it may
+	// have been built from a different publication or the legacy JSON/fallback map.
 	resolved := input.Resolved
-	if resolved == nil {
+	if input.CatalogDecision != nil || resolved == nil {
 		resolved = input.Resolver.Resolve(input.Ctx, PricingInput{
-			Model:   input.Model,
-			GroupID: input.GroupID,
+			Model:           input.Model,
+			GroupID:         input.GroupID,
+			CatalogDecision: input.CatalogDecision,
 		})
+	}
+	if resolved == nil {
+		return nil, fmt.Errorf("resolve pricing for model %q: %w", input.Model, ErrModelPricingUnavailable)
 	}
 
 	// 保存时强制 > 0；若仍有负数泄漏（缓存/迁移残留），按 0 处理避免按 1x 误扣。

@@ -29,7 +29,6 @@ func (r *grokAccountTestRateLimitRepo) SetRateLimited(_ context.Context, _ int64
 }
 
 func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	account := &Account{
 		ID:          13,
@@ -87,7 +86,6 @@ func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testin
 }
 
 func TestAccountTestService_TestAccountConnection_GrokDefaultsEmptyModelTo45(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	account := &Account{
 		ID:          16,
@@ -129,7 +127,6 @@ func TestAccountTestService_TestAccountConnection_GrokDefaultsEmptyModelTo45(t *
 }
 
 func TestAccountTestService_Grok429PersistsRateLimitReset(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	account := &Account{
 		ID:          14,
@@ -169,7 +166,6 @@ func TestAccountTestService_Grok429PersistsRateLimitReset(t *testing.T) {
 }
 
 func TestAccountTestService_Grok429WithoutQuotaHeadersUsesFallback(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	account := &Account{
 		ID: 15, Name: "grok-oauth-limited-no-headers", Platform: PlatformGrok,
 		Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1,

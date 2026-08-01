@@ -191,6 +191,78 @@ func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) 
 	requireIndexAbsent(t, tx, "payment_orders", "paymentorder_out_trade_no_unique")
 }
 
+func TestMigrationsRunner_ModelPricingCatalogSchemaIsAdditiveAndComplete(t *testing.T) {
+	tx := testTx(t)
+
+	for _, table := range []string{
+		"catalog_models",
+		"catalog_sync_runs",
+		"catalog_revisions",
+		"catalog_model_revisions",
+		"catalog_model_aliases",
+		"catalog_publications",
+		"catalog_lifecycle_audits",
+		"catalog_outbox",
+	} {
+		requireTable(t, tx, table)
+	}
+
+	requireColumn(t, tx, "catalog_models", "canonical_key", "text", 0, false)
+	requireColumn(t, tx, "catalog_models", "canonical_key_normalized", "text", 0, false)
+	requireColumn(t, tx, "catalog_models", "operator_state", "text", 0, false)
+	requireColumn(t, tx, "catalog_models", "replacement_model_id", "bigint", 0, true)
+	requireIndex(t, tx, "catalog_models", "catalog_models_canonical_key_normalized_key")
+	requireIndex(t, tx, "catalog_models", "idx_catalog_models_operator_state")
+
+	requireColumn(t, tx, "catalog_sync_runs", "source_set", "text", 0, false)
+	requireColumn(t, tx, "catalog_sync_runs", "validation_errors", "jsonb", 0, false)
+	requireColumn(t, tx, "catalog_sync_runs", "completed_at", "timestamp with time zone", 0, true)
+
+	requireColumn(t, tx, "catalog_revisions", "normalized_hash", "text", 0, false)
+	requireColumn(t, tx, "catalog_revisions", "state", "text", 0, false)
+	requireIndex(t, tx, "catalog_revisions", "catalog_revisions_revision_key")
+	requireIndex(t, tx, "catalog_revisions", "catalog_revisions_normalized_hash_key")
+
+	requireColumn(t, tx, "catalog_model_revisions", "capabilities", "jsonb", 0, false)
+	requireColumn(t, tx, "catalog_model_revisions", "pricing_json", "jsonb", 0, true)
+	requireColumn(t, tx, "catalog_model_revisions", "pricing_valid", "boolean", 0, false)
+	requireColumn(t, tx, "catalog_model_revisions", "source_metadata", "jsonb", 0, false)
+	requireIndex(t, tx, "catalog_model_revisions", "catalog_model_revisions_revision_model_key")
+
+	requireColumn(t, tx, "catalog_model_aliases", "alias_normalized", "text", 0, false)
+	requireColumn(t, tx, "catalog_model_aliases", "platform_scope", "text", 0, false)
+	requireIndex(t, tx, "catalog_model_aliases", "catalog_model_aliases_platform_scope_alias_normalized_key")
+
+	requireColumn(t, tx, "catalog_publications", "active_revision_id", "bigint", 0, false)
+	requireColumn(t, tx, "catalog_publications", "epoch", "bigint", 0, false)
+
+	requireColumn(t, tx, "catalog_lifecycle_audits", "after_state", "jsonb", 0, false)
+	requireColumn(t, tx, "catalog_lifecycle_audits", "before_state", "jsonb", 0, true)
+	requireIndex(t, tx, "catalog_lifecycle_audits", "idx_catalog_lifecycle_audits_model_created_at")
+
+	requireColumn(t, tx, "catalog_outbox", "publication_epoch", "bigint", 0, false)
+	requireColumn(t, tx, "catalog_outbox", "payload", "jsonb", 0, true)
+	requireIndex(t, tx, "catalog_outbox", "idx_catalog_outbox_scope_epoch_id")
+	requireIndex(t, tx, "catalog_outbox", "idx_catalog_outbox_pending_dedup_key")
+
+	// Dual-write billing references remain nullable so historical usage rows and
+	// the legacy request path continue to work during shadow rollout.
+	requireColumn(t, tx, "usage_logs", "catalog_epoch", "bigint", 0, true)
+	requireColumn(t, tx, "usage_logs", "catalog_revision_id", "bigint", 0, true)
+	requireColumn(t, tx, "usage_logs", "requested_model_revision_id", "bigint", 0, true)
+	requireColumn(t, tx, "usage_logs", "effective_model_revision_id", "bigint", 0, true)
+	requireColumn(t, tx, "usage_logs", "pricing_source", "character varying", 64, true)
+	requireColumn(t, tx, "usage_logs", "pricing_snapshot", "jsonb", 0, true)
+}
+
+func requireTable(t *testing.T, tx *sql.Tx, table string) {
+	t.Helper()
+	var regclass sql.NullString
+	err := tx.QueryRowContext(context.Background(), "SELECT to_regclass($1)", "public."+table).Scan(&regclass)
+	require.NoError(t, err, "query table %s", table)
+	require.True(t, regclass.Valid, "expected table %s to exist", table)
+}
+
 func requireIndex(t *testing.T, tx *sql.Tx, table, index string) {
 	t.Helper()
 

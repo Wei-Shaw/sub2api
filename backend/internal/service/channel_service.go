@@ -109,6 +109,9 @@ type ChannelMappingResult struct {
 	ChannelID          int64  // 渠道 ID（0 = 无渠道关联）
 	Mapped             bool   // 是否发生了映射
 	BillingModelSource string // 计费模型来源（"requested" / "upstream" / "channel_mapped"）
+	Platform           string // 请求/渠道平台，用于 catalog requested/effective lookup
+	CatalogDecision    *CatalogDecision
+	CatalogError       error // enforce 模式下的 fail-closed admission error
 }
 
 // BuildModelMappingChain 根据映射结果和上游实际模型构建映射链描述。
@@ -130,6 +133,9 @@ func (r ChannelMappingResult) BuildModelMappingChain(reqModel, upstreamModel str
 
 // ToUsageFields 将渠道映射结果转为使用记录字段
 func (r ChannelMappingResult) ToUsageFields(reqModel, upstreamModel string) ChannelUsageFields {
+	if strings.TrimSpace(upstreamModel) != "" {
+		_ = r.FinalizeCatalogEffectiveModel(upstreamModel)
+	}
 	channelMappedModel := reqModel
 	if r.Mapped {
 		channelMappedModel = r.MappedModel
@@ -140,7 +146,32 @@ func (r ChannelMappingResult) ToUsageFields(reqModel, upstreamModel string) Chan
 		ChannelMappedModel: channelMappedModel,
 		BillingModelSource: r.BillingModelSource,
 		ModelMappingChain:  r.BuildModelMappingChain(reqModel, upstreamModel),
+		CatalogDecision:    r.CatalogDecision,
+		CatalogError:       r.CatalogError,
 	}
+}
+
+// FinalizeCatalogEffectiveModel validates a provider/account-mapped target
+// against the request's pinned catalog view. Callers must invoke this before
+// upstream I/O once the selected account's effective model is known.
+func (r *ChannelMappingResult) FinalizeCatalogEffectiveModel(effectiveModel string) error {
+	if r == nil {
+		return ErrCatalogDecisionInvalid
+	}
+	if r.CatalogError != nil {
+		return r.CatalogError
+	}
+	if r.CatalogDecision == nil {
+		return nil
+	}
+	finalized, err := r.CatalogDecision.WithEffectiveModel(effectiveModel, r.Platform)
+	if err != nil {
+		r.CatalogError = err
+		r.CatalogDecision = nil
+		return err
+	}
+	r.CatalogDecision = &finalized
+	return nil
 }
 
 const (
@@ -155,6 +186,8 @@ type ChannelService struct {
 	groupRepo            GroupRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	pricingService       *PricingService // 用于「可用渠道」展示时回落到全局定价；可为 nil（测试场景）
+	catalogReader        ModelCatalogReader
+	catalogAdmissionMode string
 
 	cache   atomic.Value // *channelCache
 	cacheSF singleflight.Group
@@ -171,6 +204,66 @@ func NewChannelService(repo ChannelRepository, groupRepo GroupRepository, authCa
 		pricingService:       pricingService,
 	}
 	return s
+}
+
+// SetCatalogAdmission attaches the immutable catalog reader to the common
+// mapping boundary. In enforce mode, a missing/stale/invalid catalog decision
+// is returned to the protocol adapter and must stop the request before routing.
+func (s *ChannelService) SetCatalogAdmission(reader ModelCatalogReader, mode string) {
+	if s == nil {
+		return
+	}
+	s.catalogReader = reader
+	s.catalogAdmissionMode = normalizeModelCatalogReadMode(mode, "off", "off", "observe", "enforce")
+}
+
+func (s *ChannelService) attachCatalogDecision(result ChannelMappingResult, requestedModel string) ChannelMappingResult {
+	if s == nil || s.catalogReader == nil || s.catalogAdmissionMode == "off" {
+		if s != nil && s.catalogAdmissionMode == "enforce" && s.catalogReader == nil {
+			result.CatalogError = ErrCatalogUnavailable
+		}
+		return result
+	}
+	now := time.Now().UTC()
+	view, err := s.catalogReader.BeginDecision(now)
+	if err != nil {
+		if s.catalogAdmissionMode == "enforce" {
+			result.CatalogError = err
+		} else {
+			slog.Debug("catalog admission observation unavailable", "error", err)
+		}
+		return result
+	}
+	decision, err := ResolveCatalogDecision(view, CatalogDecisionRequest{
+		RequestedModel: requestedModel,
+		EffectiveModel: result.MappedModel,
+		Platform:       result.Platform,
+	}, now)
+	if err != nil {
+		if s.catalogAdmissionMode == "enforce" {
+			result.CatalogError = err
+		} else {
+			slog.Debug("catalog admission observation did not resolve model", "requested_model", requestedModel, "effective_model", result.MappedModel, "platform", result.Platform, "error", err)
+		}
+		return result
+	}
+	result.CatalogDecision = &decision
+	return result
+}
+
+// ResolveCatalogAdmission admits a model-bearing protocol that does not use
+// channel mapping. The returned decision is pinned to the same atomic catalog
+// reader and can be finalized after account selection.
+func (s *ChannelService) ResolveCatalogAdmission(requestedModel, effectiveModel, platform string) ChannelMappingResult {
+	result := ChannelMappingResult{
+		MappedModel:        strings.TrimSpace(effectiveModel),
+		BillingModelSource: BillingModelSourceUpstream,
+		Platform:           strings.TrimSpace(platform),
+	}
+	if result.MappedModel == "" {
+		result.MappedModel = strings.TrimSpace(requestedModel)
+	}
+	return s.attachCatalogDecision(result, requestedModel)
 }
 
 // loadCache 加载或返回缓存的渠道数据
@@ -524,9 +617,13 @@ func (s *ChannelService) ResolveChannelMapping(ctx context.Context, groupID int6
 		slog.Warn("failed to load channel cache for mapping", "group_id", groupID, "error", err)
 	}
 	if lk == nil {
-		return ChannelMappingResult{MappedModel: model}
+		result := ChannelMappingResult{MappedModel: model}
+		if cache, cacheErr := s.loadCache(ctx); cacheErr == nil && cache != nil {
+			result.Platform = cache.groupPlatform[groupID]
+		}
+		return s.attachCatalogDecision(result, model)
 	}
-	return resolveMapping(lk, groupID, model)
+	return s.attachCatalogDecision(resolveMapping(lk, groupID, model), model)
 }
 
 // IsModelRestricted 检查模型是否被渠道限制。
@@ -548,13 +645,19 @@ func (s *ChannelService) IsModelRestricted(ctx context.Context, groupID int64, m
 // restricted 始终返回 false，保留签名兼容性。
 func (s *ChannelService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
 	if groupID == nil {
-		return ChannelMappingResult{MappedModel: model}, false
+		return s.attachCatalogDecision(ChannelMappingResult{MappedModel: model}, model), false
 	}
-	lk, _ := s.lookupGroupChannel(ctx, *groupID)
+	lk, lookupErr := s.lookupGroupChannel(ctx, *groupID)
 	if lk == nil {
-		return ChannelMappingResult{MappedModel: model}, false
+		result := ChannelMappingResult{MappedModel: model}
+		if lookupErr == nil {
+			if cache, cacheErr := s.loadCache(ctx); cacheErr == nil && cache != nil {
+				result.Platform = cache.groupPlatform[*groupID]
+			}
+		}
+		return s.attachCatalogDecision(result, model), false
 	}
-	return resolveMapping(lk, *groupID, model), false
+	return s.attachCatalogDecision(resolveMapping(lk, *groupID, model), model), false
 }
 
 // resolveMapping 基于已查找的渠道信息解析模型映射。
@@ -566,6 +669,7 @@ func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappi
 		MappedModel:        model,
 		ChannelID:          lk.channel.ID,
 		BillingModelSource: lk.channel.BillingModelSource,
+		Platform:           lk.platform,
 	}
 
 	modelLower := strings.ToLower(model)

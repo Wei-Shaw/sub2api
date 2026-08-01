@@ -23,6 +23,36 @@ func resetViperWithJWTSecret(t *testing.T) {
 	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
 }
 
+func TestLoadModelCatalogDefaultsAndIndependentModes(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "legacy", cfg.ModelCatalog.Mode)
+	require.Equal(t, "global", cfg.ModelCatalog.Scope)
+	require.Equal(t, 10, cfg.ModelCatalog.MaxStaleMinutes)
+	require.Equal(t, 10, cfg.ModelCatalog.RefreshIntervalMinutes)
+	require.Equal(t, "off", cfg.ModelCatalog.ImportMode)
+	require.Equal(t, "legacy", cfg.ModelCatalog.ListReadMode)
+	require.Equal(t, "legacy", cfg.ModelCatalog.PricingReadMode)
+	require.Equal(t, "off", cfg.ModelCatalog.AdmissionMode)
+
+	viper.Set("model_catalog.mode", "shadow")
+	viper.Set("model_catalog.scope", "Platform-A")
+	viper.Set("model_catalog.import_mode", "SHADOW")
+	viper.Set("model_catalog.list_read_mode", "db")
+	viper.Set("model_catalog.pricing_read_mode", "shadow")
+	viper.Set("model_catalog.admission_mode", "enforce")
+	cfg, err = Load()
+	require.NoError(t, err)
+	require.Equal(t, "shadow", cfg.ModelCatalog.Mode)
+	require.Equal(t, "platform-a", cfg.ModelCatalog.Scope)
+	require.Equal(t, "shadow", cfg.ModelCatalog.ImportMode)
+	require.Equal(t, "db", cfg.ModelCatalog.ListReadMode)
+	require.Equal(t, "shadow", cfg.ModelCatalog.PricingReadMode)
+	require.Equal(t, "enforce", cfg.ModelCatalog.AdmissionMode)
+}
+
 func TestLoadServerTimingConfig(t *testing.T) {
 	t.Run("disabled by default", func(t *testing.T) {
 		resetViperWithJWTSecret(t)

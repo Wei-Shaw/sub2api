@@ -226,7 +226,6 @@ func newOpenAIRejectedFieldTestService(upstream *httpUpstreamRecorder) *OpenAIGa
 }
 
 func newOpenAIRejectedFieldTestContext(body []byte) *gin.Context {
-	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))

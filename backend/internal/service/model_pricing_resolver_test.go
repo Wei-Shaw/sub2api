@@ -57,6 +57,60 @@ func TestResolve_UnknownModel(t *testing.T) {
 	require.Equal(t, "fallback", resolved.Source)
 }
 
+func TestResolve_CatalogDecisionUsesPinnedBasePricing(t *testing.T) {
+	bs := newTestBillingServiceForResolver()
+	bs.fallbackPrices["catalog/model-effective"] = &ModelPricing{
+		InputPricePerToken:  99e-6,
+		OutputPricePerToken: 199e-6,
+	}
+	resolver := NewModelPricingResolver(nil, bs)
+	decision := catalogDecisionForUsagePinIntegrationTest(t)
+
+	resolved := resolver.Resolve(context.Background(), PricingInput{
+		Model:           "catalog/model-effective",
+		CatalogDecision: decision,
+	})
+
+	require.NotNil(t, resolved)
+	require.Equal(t, PricingSourceCatalog, resolved.Source)
+	require.NotNil(t, resolved.BasePricing)
+	require.InDelta(t, 1e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 2e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
+}
+
+func TestResolve_CatalogDecisionRetainsPinnedBaseUnderPartialChannelOverride(t *testing.T) {
+	groupID := int64(44)
+	channelService := newTestChannelServiceWithCache(t, &channelCache{
+		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{
+			{groupID: groupID, platform: "openai", model: "catalog/model-effective"}: {
+				BillingMode: BillingModeToken,
+				InputPrice:  testPtrFloat64(9e-6),
+			},
+		},
+		channelByGroupID:        map[int64]*Channel{groupID: {ID: groupID, Status: StatusActive}},
+		groupPlatform:           map[int64]string{groupID: "openai"},
+		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
+		mappingByGroupModel:     map[channelModelKey]string{},
+		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
+		byID:                    map[int64]*Channel{},
+	})
+	bs := newTestBillingServiceForResolver()
+	bs.fallbackPrices["catalog/model-effective"] = &ModelPricing{OutputPricePerToken: 199e-6}
+	resolver := NewModelPricingResolver(channelService, bs)
+
+	resolved := resolver.Resolve(context.Background(), PricingInput{
+		Model:           "catalog/model-effective",
+		GroupID:         &groupID,
+		CatalogDecision: catalogDecisionForUsagePinIntegrationTest(t),
+	})
+
+	require.NotNil(t, resolved)
+	require.Equal(t, PricingSourceChannel, resolved.Source)
+	require.NotNil(t, resolved.BasePricing)
+	require.InDelta(t, 9e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 2e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
+}
+
 func TestGetIntervalPricing_NoIntervals(t *testing.T) {
 	bs := newTestBillingServiceForResolver()
 	r := NewModelPricingResolver(&ChannelService{}, bs)

@@ -139,6 +139,7 @@ docs/*
 !docs/legal/
 !docs/legal/*.md
 !docs/vclaw-entitlement-mapping.md
+!docs/MODEL_PRICING_CATALOG_TDD.md
 .serena/
 .codex/
 frontend/coverage/

@@ -16,6 +16,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
+	"github.com/Wei-Shaw/sub2api/ent/cataloglifecycleaudit"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodel"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodelalias"
+	"github.com/Wei-Shaw/sub2api/ent/catalogmodelrevision"
+	"github.com/Wei-Shaw/sub2api/ent/catalogoutbox"
+	"github.com/Wei-Shaw/sub2api/ent/catalogpublication"
+	"github.com/Wei-Shaw/sub2api/ent/catalogrevision"
+	"github.com/Wei-Shaw/sub2api/ent/catalogsyncrun"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -685,6 +693,118 @@ func init() {
 	batchimagejob.DefaultUpdatedAt = batchimagejobDescUpdatedAt.Default.(func() time.Time)
 	// batchimagejob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	batchimagejob.UpdateDefaultUpdatedAt = batchimagejobDescUpdatedAt.UpdateDefault.(func() time.Time)
+	cataloglifecycleauditFields := schema.CatalogLifecycleAudit{}.Fields()
+	_ = cataloglifecycleauditFields
+	// cataloglifecycleauditDescCreatedAt is the schema descriptor for created_at field.
+	cataloglifecycleauditDescCreatedAt := cataloglifecycleauditFields[10].Descriptor()
+	// cataloglifecycleaudit.DefaultCreatedAt holds the default value on creation for the created_at field.
+	cataloglifecycleaudit.DefaultCreatedAt = cataloglifecycleauditDescCreatedAt.Default.(func() time.Time)
+	catalogmodelFields := schema.CatalogModel{}.Fields()
+	_ = catalogmodelFields
+	// catalogmodelDescOperatorState is the schema descriptor for operator_state field.
+	catalogmodelDescOperatorState := catalogmodelFields[2].Descriptor()
+	// catalogmodel.DefaultOperatorState holds the default value on creation for the operator_state field.
+	catalogmodel.DefaultOperatorState = catalogmodelDescOperatorState.Default.(string)
+	// catalogmodelDescOperatorVersion is the schema descriptor for operator_version field.
+	catalogmodelDescOperatorVersion := catalogmodelFields[5].Descriptor()
+	// catalogmodel.DefaultOperatorVersion holds the default value on creation for the operator_version field.
+	catalogmodel.DefaultOperatorVersion = catalogmodelDescOperatorVersion.Default.(int64)
+	// catalogmodelDescFirstSeenAt is the schema descriptor for first_seen_at field.
+	catalogmodelDescFirstSeenAt := catalogmodelFields[6].Descriptor()
+	// catalogmodel.DefaultFirstSeenAt holds the default value on creation for the first_seen_at field.
+	catalogmodel.DefaultFirstSeenAt = catalogmodelDescFirstSeenAt.Default.(func() time.Time)
+	// catalogmodelDescCreatedAt is the schema descriptor for created_at field.
+	catalogmodelDescCreatedAt := catalogmodelFields[9].Descriptor()
+	// catalogmodel.DefaultCreatedAt holds the default value on creation for the created_at field.
+	catalogmodel.DefaultCreatedAt = catalogmodelDescCreatedAt.Default.(func() time.Time)
+	// catalogmodelDescUpdatedAt is the schema descriptor for updated_at field.
+	catalogmodelDescUpdatedAt := catalogmodelFields[10].Descriptor()
+	// catalogmodel.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	catalogmodel.DefaultUpdatedAt = catalogmodelDescUpdatedAt.Default.(func() time.Time)
+	catalogmodelaliasFields := schema.CatalogModelAlias{}.Fields()
+	_ = catalogmodelaliasFields
+	// catalogmodelaliasDescPlatformScope is the schema descriptor for platform_scope field.
+	catalogmodelaliasDescPlatformScope := catalogmodelaliasFields[1].Descriptor()
+	// catalogmodelalias.DefaultPlatformScope holds the default value on creation for the platform_scope field.
+	catalogmodelalias.DefaultPlatformScope = catalogmodelaliasDescPlatformScope.Default.(string)
+	// catalogmodelaliasDescCreatedAt is the schema descriptor for created_at field.
+	catalogmodelaliasDescCreatedAt := catalogmodelaliasFields[7].Descriptor()
+	// catalogmodelalias.DefaultCreatedAt holds the default value on creation for the created_at field.
+	catalogmodelalias.DefaultCreatedAt = catalogmodelaliasDescCreatedAt.Default.(func() time.Time)
+	// catalogmodelaliasDescUpdatedAt is the schema descriptor for updated_at field.
+	catalogmodelaliasDescUpdatedAt := catalogmodelaliasFields[8].Descriptor()
+	// catalogmodelalias.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	catalogmodelalias.DefaultUpdatedAt = catalogmodelaliasDescUpdatedAt.Default.(func() time.Time)
+	catalogmodelrevisionFields := schema.CatalogModelRevision{}.Fields()
+	_ = catalogmodelrevisionFields
+	// catalogmodelrevisionDescCapabilities is the schema descriptor for capabilities field.
+	catalogmodelrevisionDescCapabilities := catalogmodelrevisionFields[6].Descriptor()
+	// catalogmodelrevision.DefaultCapabilities holds the default value on creation for the capabilities field.
+	catalogmodelrevision.DefaultCapabilities = catalogmodelrevisionDescCapabilities.Default.(map[string]interface{})
+	// catalogmodelrevisionDescPricingValid is the schema descriptor for pricing_valid field.
+	catalogmodelrevisionDescPricingValid := catalogmodelrevisionFields[11].Descriptor()
+	// catalogmodelrevision.DefaultPricingValid holds the default value on creation for the pricing_valid field.
+	catalogmodelrevision.DefaultPricingValid = catalogmodelrevisionDescPricingValid.Default.(bool)
+	// catalogmodelrevisionDescSourceMetadata is the schema descriptor for source_metadata field.
+	catalogmodelrevisionDescSourceMetadata := catalogmodelrevisionFields[13].Descriptor()
+	// catalogmodelrevision.DefaultSourceMetadata holds the default value on creation for the source_metadata field.
+	catalogmodelrevision.DefaultSourceMetadata = catalogmodelrevisionDescSourceMetadata.Default.(map[string]interface{})
+	// catalogmodelrevisionDescCreatedAt is the schema descriptor for created_at field.
+	catalogmodelrevisionDescCreatedAt := catalogmodelrevisionFields[15].Descriptor()
+	// catalogmodelrevision.DefaultCreatedAt holds the default value on creation for the created_at field.
+	catalogmodelrevision.DefaultCreatedAt = catalogmodelrevisionDescCreatedAt.Default.(func() time.Time)
+	catalogoutboxFields := schema.CatalogOutbox{}.Fields()
+	_ = catalogoutboxFields
+	// catalogoutboxDescCreatedAt is the schema descriptor for created_at field.
+	catalogoutboxDescCreatedAt := catalogoutboxFields[7].Descriptor()
+	// catalogoutbox.DefaultCreatedAt holds the default value on creation for the created_at field.
+	catalogoutbox.DefaultCreatedAt = catalogoutboxDescCreatedAt.Default.(func() time.Time)
+	catalogpublicationFields := schema.CatalogPublication{}.Fields()
+	_ = catalogpublicationFields
+	// catalogpublicationDescUpdatedAt is the schema descriptor for updated_at field.
+	catalogpublicationDescUpdatedAt := catalogpublicationFields[3].Descriptor()
+	// catalogpublication.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	catalogpublication.DefaultUpdatedAt = catalogpublicationDescUpdatedAt.Default.(func() time.Time)
+	catalogrevisionFields := schema.CatalogRevision{}.Fields()
+	_ = catalogrevisionFields
+	// catalogrevisionDescCreatedAt is the schema descriptor for created_at field.
+	catalogrevisionDescCreatedAt := catalogrevisionFields[6].Descriptor()
+	// catalogrevision.DefaultCreatedAt holds the default value on creation for the created_at field.
+	catalogrevision.DefaultCreatedAt = catalogrevisionDescCreatedAt.Default.(func() time.Time)
+	catalogsyncrunFields := schema.CatalogSyncRun{}.Fields()
+	_ = catalogsyncrunFields
+	// catalogsyncrunDescSourceCount is the schema descriptor for source_count field.
+	catalogsyncrunDescSourceCount := catalogsyncrunFields[9].Descriptor()
+	// catalogsyncrun.DefaultSourceCount holds the default value on creation for the source_count field.
+	catalogsyncrun.DefaultSourceCount = catalogsyncrunDescSourceCount.Default.(int)
+	// catalogsyncrunDescNormalizedCount is the schema descriptor for normalized_count field.
+	catalogsyncrunDescNormalizedCount := catalogsyncrunFields[10].Descriptor()
+	// catalogsyncrun.DefaultNormalizedCount holds the default value on creation for the normalized_count field.
+	catalogsyncrun.DefaultNormalizedCount = catalogsyncrunDescNormalizedCount.Default.(int)
+	// catalogsyncrunDescAddedCount is the schema descriptor for added_count field.
+	catalogsyncrunDescAddedCount := catalogsyncrunFields[11].Descriptor()
+	// catalogsyncrun.DefaultAddedCount holds the default value on creation for the added_count field.
+	catalogsyncrun.DefaultAddedCount = catalogsyncrunDescAddedCount.Default.(int)
+	// catalogsyncrunDescChangedCount is the schema descriptor for changed_count field.
+	catalogsyncrunDescChangedCount := catalogsyncrunFields[12].Descriptor()
+	// catalogsyncrun.DefaultChangedCount holds the default value on creation for the changed_count field.
+	catalogsyncrun.DefaultChangedCount = catalogsyncrunDescChangedCount.Default.(int)
+	// catalogsyncrunDescMissingCount is the schema descriptor for missing_count field.
+	catalogsyncrunDescMissingCount := catalogsyncrunFields[13].Descriptor()
+	// catalogsyncrun.DefaultMissingCount holds the default value on creation for the missing_count field.
+	catalogsyncrun.DefaultMissingCount = catalogsyncrunDescMissingCount.Default.(int)
+	// catalogsyncrunDescInvalidCount is the schema descriptor for invalid_count field.
+	catalogsyncrunDescInvalidCount := catalogsyncrunFields[14].Descriptor()
+	// catalogsyncrun.DefaultInvalidCount holds the default value on creation for the invalid_count field.
+	catalogsyncrun.DefaultInvalidCount = catalogsyncrunDescInvalidCount.Default.(int)
+	// catalogsyncrunDescValidationErrors is the schema descriptor for validation_errors field.
+	catalogsyncrunDescValidationErrors := catalogsyncrunFields[15].Descriptor()
+	// catalogsyncrun.DefaultValidationErrors holds the default value on creation for the validation_errors field.
+	catalogsyncrun.DefaultValidationErrors = catalogsyncrunDescValidationErrors.Default.([]interface{})
+	// catalogsyncrunDescStartedAt is the schema descriptor for started_at field.
+	catalogsyncrunDescStartedAt := catalogsyncrunFields[16].Descriptor()
+	// catalogsyncrun.DefaultStartedAt holds the default value on creation for the started_at field.
+	catalogsyncrun.DefaultStartedAt = catalogsyncrunDescStartedAt.Default.(func() time.Time)
 	channelmonitorMixin := schema.ChannelMonitor{}.Mixin()
 	channelmonitorMixinFields0 := channelmonitorMixin[0].Fields()
 	_ = channelmonitorMixinFields0
@@ -2185,56 +2305,60 @@ func init() {
 	usagelogDescLongContextBillingApplied := usagelogFields[26].Descriptor()
 	// usagelog.DefaultLongContextBillingApplied holds the default value on creation for the long_context_billing_applied field.
 	usagelog.DefaultLongContextBillingApplied = usagelogDescLongContextBillingApplied.Default.(bool)
+	// usagelogDescPricingSource is the schema descriptor for pricing_source field.
+	usagelogDescPricingSource := usagelogFields[32].Descriptor()
+	// usagelog.PricingSourceValidator is a validator for the "pricing_source" field. It is called by the builders before save.
+	usagelog.PricingSourceValidator = usagelogDescPricingSource.Validators[0].(func(string) error)
 	// usagelogDescBillingType is the schema descriptor for billing_type field.
-	usagelogDescBillingType := usagelogFields[28].Descriptor()
+	usagelogDescBillingType := usagelogFields[34].Descriptor()
 	// usagelog.DefaultBillingType holds the default value on creation for the billing_type field.
 	usagelog.DefaultBillingType = usagelogDescBillingType.Default.(int8)
 	// usagelogDescStream is the schema descriptor for stream field.
-	usagelogDescStream := usagelogFields[29].Descriptor()
+	usagelogDescStream := usagelogFields[35].Descriptor()
 	// usagelog.DefaultStream holds the default value on creation for the stream field.
 	usagelog.DefaultStream = usagelogDescStream.Default.(bool)
 	// usagelogDescUserAgent is the schema descriptor for user_agent field.
-	usagelogDescUserAgent := usagelogFields[32].Descriptor()
+	usagelogDescUserAgent := usagelogFields[38].Descriptor()
 	// usagelog.UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
 	usagelog.UserAgentValidator = usagelogDescUserAgent.Validators[0].(func(string) error)
 	// usagelogDescIPAddress is the schema descriptor for ip_address field.
-	usagelogDescIPAddress := usagelogFields[33].Descriptor()
+	usagelogDescIPAddress := usagelogFields[39].Descriptor()
 	// usagelog.IPAddressValidator is a validator for the "ip_address" field. It is called by the builders before save.
 	usagelog.IPAddressValidator = usagelogDescIPAddress.Validators[0].(func(string) error)
 	// usagelogDescImageCount is the schema descriptor for image_count field.
-	usagelogDescImageCount := usagelogFields[34].Descriptor()
+	usagelogDescImageCount := usagelogFields[40].Descriptor()
 	// usagelog.DefaultImageCount holds the default value on creation for the image_count field.
 	usagelog.DefaultImageCount = usagelogDescImageCount.Default.(int)
 	// usagelogDescImageSize is the schema descriptor for image_size field.
-	usagelogDescImageSize := usagelogFields[35].Descriptor()
+	usagelogDescImageSize := usagelogFields[41].Descriptor()
 	// usagelog.ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
 	usagelog.ImageSizeValidator = usagelogDescImageSize.Validators[0].(func(string) error)
 	// usagelogDescImageInputSize is the schema descriptor for image_input_size field.
-	usagelogDescImageInputSize := usagelogFields[36].Descriptor()
+	usagelogDescImageInputSize := usagelogFields[42].Descriptor()
 	// usagelog.ImageInputSizeValidator is a validator for the "image_input_size" field. It is called by the builders before save.
 	usagelog.ImageInputSizeValidator = usagelogDescImageInputSize.Validators[0].(func(string) error)
 	// usagelogDescImageOutputSize is the schema descriptor for image_output_size field.
-	usagelogDescImageOutputSize := usagelogFields[37].Descriptor()
+	usagelogDescImageOutputSize := usagelogFields[43].Descriptor()
 	// usagelog.ImageOutputSizeValidator is a validator for the "image_output_size" field. It is called by the builders before save.
 	usagelog.ImageOutputSizeValidator = usagelogDescImageOutputSize.Validators[0].(func(string) error)
 	// usagelogDescImageSizeSource is the schema descriptor for image_size_source field.
-	usagelogDescImageSizeSource := usagelogFields[38].Descriptor()
+	usagelogDescImageSizeSource := usagelogFields[44].Descriptor()
 	// usagelog.ImageSizeSourceValidator is a validator for the "image_size_source" field. It is called by the builders before save.
 	usagelog.ImageSizeSourceValidator = usagelogDescImageSizeSource.Validators[0].(func(string) error)
 	// usagelogDescVideoCount is the schema descriptor for video_count field.
-	usagelogDescVideoCount := usagelogFields[40].Descriptor()
+	usagelogDescVideoCount := usagelogFields[46].Descriptor()
 	// usagelog.DefaultVideoCount holds the default value on creation for the video_count field.
 	usagelog.DefaultVideoCount = usagelogDescVideoCount.Default.(int)
 	// usagelogDescVideoResolution is the schema descriptor for video_resolution field.
-	usagelogDescVideoResolution := usagelogFields[41].Descriptor()
+	usagelogDescVideoResolution := usagelogFields[47].Descriptor()
 	// usagelog.VideoResolutionValidator is a validator for the "video_resolution" field. It is called by the builders before save.
 	usagelog.VideoResolutionValidator = usagelogDescVideoResolution.Validators[0].(func(string) error)
 	// usagelogDescCacheTTLOverridden is the schema descriptor for cache_ttl_overridden field.
-	usagelogDescCacheTTLOverridden := usagelogFields[43].Descriptor()
+	usagelogDescCacheTTLOverridden := usagelogFields[49].Descriptor()
 	// usagelog.DefaultCacheTTLOverridden holds the default value on creation for the cache_ttl_overridden field.
 	usagelog.DefaultCacheTTLOverridden = usagelogDescCacheTTLOverridden.Default.(bool)
 	// usagelogDescCreatedAt is the schema descriptor for created_at field.
-	usagelogDescCreatedAt := usagelogFields[44].Descriptor()
+	usagelogDescCreatedAt := usagelogFields[50].Descriptor()
 	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{}.Mixin()
