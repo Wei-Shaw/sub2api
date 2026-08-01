@@ -1314,7 +1314,8 @@ func sanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string
 		return payload, false
 	}
 	updated := payload
-	if clientOutputStarted && isOpenAIContextWindowError(extractOpenAISSEErrorMessage(payload), payload) {
+	upstreamMessage := extractOpenAISSEErrorMessage(payload)
+	if clientOutputStarted {
 		errorPath := ""
 		switch {
 		case gjson.GetBytes(updated, "response.error").Exists():
@@ -1322,7 +1323,20 @@ func sanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string
 		case gjson.GetBytes(updated, "error").Exists():
 			errorPath = "error"
 		}
-		if errorPath != "" {
+		switch {
+		case errorPath != "" && isOpenAITransientProcessingError(http.StatusBadRequest, upstreamMessage, payload):
+			for path, value := range map[string]string{
+				errorPath + ".type":    "server_error",
+				errorPath + ".code":    "upstream_temporarily_unavailable",
+				errorPath + ".message": openAIWSTransientFailureClientMessage,
+			} {
+				next, err := sjson.SetBytes(updated, path, value)
+				if err != nil {
+					return payload, false
+				}
+				updated = next
+			}
+		case errorPath != "" && isOpenAIContextWindowError(upstreamMessage, payload):
 			next, err := sjson.SetBytes(updated, errorPath+".type", "invalid_request_error")
 			if err != nil {
 				return payload, false
