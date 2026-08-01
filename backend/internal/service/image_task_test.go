@@ -21,6 +21,7 @@ type imageTaskMemoryStore struct {
 	getErr  error
 	cleanup []ImageTaskCleanup
 	deleted bool
+	listed  []*ImageTaskRecord
 }
 
 func (s *imageTaskMemoryStore) Save(_ context.Context, task *ImageTaskRecord, ttl time.Duration) error {
@@ -42,6 +43,25 @@ func (s *imageTaskMemoryStore) Get(_ context.Context, _ string) (*ImageTaskRecor
 	}
 	copy := *s.task
 	return &copy, nil
+}
+
+func (s *imageTaskMemoryStore) ListByUser(_ context.Context, userID int64, _ int) ([]*ImageTaskRecord, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	if s.listed != nil {
+		out := make([]*ImageTaskRecord, 0, len(s.listed))
+		for _, task := range s.listed {
+			copy := *task
+			out = append(out, &copy)
+		}
+		return out, nil
+	}
+	if s.task == nil || s.task.UserID != userID {
+		return []*ImageTaskRecord{}, nil
+	}
+	copy := *s.task
+	return []*ImageTaskRecord{&copy}, nil
 }
 
 func (s *imageTaskMemoryStore) Delete(_ context.Context, _ string) error {
@@ -144,6 +164,25 @@ func TestImageTaskServiceDashboardMetadataAndUserOwnership(t *testing.T) {
 
 	_, err = svc.GetForUser(context.Background(), 8, created.ID)
 	require.ErrorIs(t, err, ErrImageTaskNotFound)
+}
+
+func TestImageTaskServiceListForUserFiltersForeignRecords(t *testing.T) {
+	store := &imageTaskMemoryStore{listed: []*ImageTaskRecord{
+		{ID: "own-new", UserID: 7, CreatedAt: 3, Status: ImageTaskStatusCompleted},
+		{ID: "foreign", UserID: 8, CreatedAt: 2, Status: ImageTaskStatusCompleted},
+		{ID: "own-old", UserID: 7, CreatedAt: 1, Status: ImageTaskStatusFailed},
+	}}
+	svc := NewImageTaskServiceWithOptions(store, time.Hour, time.Minute)
+
+	tasks, err := svc.ListForUser(context.Background(), 7, 24)
+	require.NoError(t, err)
+	require.Len(t, tasks, 2)
+	require.Equal(t, "own-new", tasks[0].ID)
+	require.Equal(t, "own-old", tasks[1].ID)
+
+	tasks, err = svc.ListForUser(context.Background(), 0, 24)
+	require.NoError(t, err)
+	require.Empty(t, tasks)
 }
 
 func TestImageTaskServiceDownloadForUser(t *testing.T) {

@@ -136,22 +136,26 @@
         ref="composerRef"
         class="sticky bottom-3 z-20 mt-auto overflow-visible rounded-lg border border-gray-300 bg-white/95 shadow-[0_16px_50px_rgba(0,0,0,0.15)] backdrop-blur-xl dark:border-dark-600 dark:bg-dark-900/95"
       >
-        <div class="flex items-center justify-between border-b border-gray-200 px-4 py-2.5 dark:border-dark-700 lg:hidden">
-          <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('imagePlayground.composer.settings') }}</span>
+        <div class="flex min-h-12 items-center justify-between gap-3 border-b border-gray-200 px-4 py-2.5 dark:border-dark-700">
+          <div class="min-w-0">
+            <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('imagePlayground.composer.settings') }}</span>
+            <span v-if="!composerExpanded" class="ml-2 truncate text-xs text-gray-400 dark:text-gray-500">{{ composerStatus }}</span>
+          </div>
           <button
             type="button"
-            class="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-800"
+            data-test="composer-toggle"
+            class="flex h-8 w-8 flex-none items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-800"
             :title="composerExpanded ? t('imagePlayground.composer.collapse') : t('imagePlayground.composer.expand')"
+            :aria-label="composerExpanded ? t('imagePlayground.composer.collapse') : t('imagePlayground.composer.expand')"
+            :aria-expanded="composerExpanded"
             @click="composerExpanded = !composerExpanded"
           >
             <Icon :name="composerExpanded ? 'chevronDown' : 'chevronUp'" size="sm" />
           </button>
         </div>
 
-        <div
-          class="grid-cols-2 gap-3 border-b border-gray-200 p-4 dark:border-dark-700 lg:grid lg:grid-cols-[1.1fr_1.1fr_1.35fr_0.72fr_0.68fr_0.78fr_104px] lg:items-end"
-          :class="composerExpanded ? 'grid' : 'hidden'"
-        >
+        <div v-show="composerExpanded" data-test="composer-content">
+        <div class="grid grid-cols-2 gap-3 border-b border-gray-200 p-4 dark:border-dark-700 lg:grid-cols-[1.1fr_1.1fr_1.35fr_0.72fr_0.68fr_0.78fr_104px] lg:items-end">
           <label class="col-span-2 min-w-0 sm:col-span-1">
             <span class="composer-label">{{ t('imagePlayground.fields.group') }}</span>
             <Select
@@ -287,6 +291,7 @@
             <span class="hidden sm:inline">{{ submitting ? t('imagePlayground.actions.submitting') : t('imagePlayground.actions.generate') }}</span>
           </button>
         </form>
+        </div>
 
         <div class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-2 text-xs text-gray-400 dark:border-dark-800 dark:text-gray-500">
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -343,8 +348,10 @@ import { extractApiErrorCode } from '@/utils/apiError'
 import {
   downloadImagePlaygroundImage,
   deleteImagePlaygroundTask,
+  getImagePlaygroundImagePreview,
   getImagePlaygroundOptions,
   getImagePlaygroundTask,
+  listImagePlaygroundTasks,
   submitImagePlaygroundTask,
   type ImagePlaygroundGroupOption,
   type ImagePlaygroundOptions,
@@ -377,7 +384,7 @@ const loadingOptions = ref(true)
 const refreshing = ref(false)
 const submitting = ref(false)
 const deletingTasks = ref(false)
-const composerExpanded = ref(false)
+const composerExpanded = ref(window.innerWidth >= 1024)
 const showDeleteAllDialog = ref(false)
 const prompt = ref('')
 const selectedGroupId = ref<number | null>(null)
@@ -397,8 +404,10 @@ const statusFilter = ref<'all' | ImagePlaygroundTaskStatus>('all')
 const promptInputRef = ref<HTMLTextAreaElement | null>(null)
 const composerRef = ref<HTMLElement | null>(null)
 const pollTimers = new Map<string, number>()
+const previewObjectURLs = new Map<string, string>()
 const expiryNow = ref(Date.now())
 let expiryTimer: number | null = null
+let viewActive = true
 
 const statusFilters = computed(() => [
   { value: 'all' as const, label: t('imagePlayground.filters.all') },
@@ -651,11 +660,11 @@ async function initialize(): Promise<void> {
 async function restoreHistory(): Promise<void> {
   const stored = readHistory()
   taskMeta.value = stored.meta
-  if (stored.ids.length === 0) return
-  const results = await Promise.allSettled(stored.ids.map((id) => getImagePlaygroundTask(id)))
-  tasks.value = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
+  const serverTasks = await listImagePlaygroundTasks()
+  tasks.value = serverTasks.map(taskWithCachedPreviews)
   persistHistory()
   tasks.value.filter((task) => task.status === 'processing').forEach((task) => schedulePoll(task.id))
+  serverTasks.filter((task) => task.status === 'completed').forEach((task) => void loadTaskPreviews(task))
 }
 
 function buildPayload(): ImagePlaygroundSubmitRequest {
@@ -679,7 +688,7 @@ async function generate(payloadOverride?: ImagePlaygroundSubmitRequest, imageOve
   if (submitting.value) return
   const payload = payloadOverride ?? (canSubmit.value ? buildPayload() : null)
   if (!payload) return
-	const images = imageOverride ?? (payloadOverride ? [] : referenceImages.value)
+  const images = imageOverride ?? (payloadOverride ? [] : referenceImages.value)
 
   submitting.value = true
   try {
@@ -706,10 +715,11 @@ function schedulePoll(taskId: string): void {
     pollTimers.delete(taskId)
     try {
       const updated = await getImagePlaygroundTask(taskId)
-      replaceTask(updated)
+      replaceTask(taskWithCachedPreviews(updated))
       if (updated.status === 'processing') {
         schedulePoll(taskId)
       } else if (updated.status === 'completed') {
+        void loadTaskPreviews(updated)
         appStore.showSuccess(t('imagePlayground.messages.completed'))
       } else {
         appStore.showError(t('imagePlayground.errors.generationFailed'))
@@ -730,6 +740,55 @@ function schedulePoll(taskId: string): void {
   pollTimers.set(taskId, timer)
 }
 
+function previewObjectURLKey(taskId: string, imageIndex: number): string {
+  return `${taskId}:${imageIndex}`
+}
+
+function taskWithCachedPreviews(task: ImagePlaygroundTask): ImagePlaygroundTask {
+  return {
+    ...task,
+    images: task.images.map((image) => ({
+      ...image,
+      url: previewObjectURLs.get(previewObjectURLKey(task.id, image.index)) || '',
+    })),
+  }
+}
+
+async function loadTaskPreviews(task: ImagePlaygroundTask, includeAll = false): Promise<void> {
+  try {
+    const images = await Promise.all(task.images.map(async (image) => {
+      const key = previewObjectURLKey(task.id, image.index)
+      let previewURL = previewObjectURLs.get(key)
+      if (!previewURL && !includeAll && image.index !== task.images[0]?.index) {
+        return { ...image, url: '' }
+      }
+      if (!previewURL) {
+        const blob = await getImagePlaygroundImagePreview(task.id, image.index)
+        if (!viewActive || !tasks.value.some((item) => item.id === task.id)) {
+          return { ...image, url: '' }
+        }
+        previewURL = URL.createObjectURL(blob)
+        previewObjectURLs.set(key, previewURL)
+      }
+      return { ...image, url: previewURL }
+    }))
+    if (viewActive && tasks.value.some((item) => item.id === task.id)) {
+      replaceTask({ ...task, images })
+    }
+  } catch (error) {
+    appStore.showError(getErrorMessage(error))
+  }
+}
+
+function releaseTaskPreviews(taskId: string): void {
+  const prefix = `${taskId}:`
+  for (const [key, url] of previewObjectURLs) {
+    if (!key.startsWith(prefix)) continue
+    URL.revokeObjectURL(url)
+    previewObjectURLs.delete(key)
+  }
+}
+
 function replaceTask(updated: ImagePlaygroundTask): void {
   const index = tasks.value.findIndex((task) => task.id === updated.id)
   if (index >= 0) tasks.value.splice(index, 1, updated)
@@ -738,14 +797,16 @@ function replaceTask(updated: ImagePlaygroundTask): void {
 }
 
 async function refreshTasks(): Promise<void> {
-  if (refreshing.value || tasks.value.length === 0) return
+  if (refreshing.value) return
   refreshing.value = true
   try {
-    const results = await Promise.allSettled(tasks.value.map((task) => getImagePlaygroundTask(task.id)))
-    const refreshed = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
-    tasks.value = refreshed
+    const refreshed = await listImagePlaygroundTasks()
+    const refreshedIDs = new Set(refreshed.map((task) => task.id))
+    tasks.value.filter((task) => !refreshedIDs.has(task.id)).forEach((task) => releaseTaskPreviews(task.id))
+    tasks.value = refreshed.map(taskWithCachedPreviews)
     persistHistory()
     refreshed.filter((task) => task.status === 'processing').forEach((task) => schedulePoll(task.id))
+    refreshed.filter((task) => task.status === 'completed').forEach((task) => void loadTaskPreviews(task))
   } finally {
     refreshing.value = false
   }
@@ -753,6 +814,7 @@ async function refreshTasks(): Promise<void> {
 
 function openTask(task: ImagePlaygroundTask): void {
   detailTask.value = task
+  void loadTaskPreviews(task, true)
 }
 
 async function downloadImage(task: ImagePlaygroundTask, imageIndex: number): Promise<void> {
@@ -843,6 +905,7 @@ async function confirmDeleteAll(): Promise<void> {
       const timer = pollTimers.get(id)
       if (timer) window.clearTimeout(timer)
       pollTimers.delete(id)
+      releaseTaskPreviews(id)
       delete taskMeta.value[id]
     })
     tasks.value = tasks.value.filter(task => failedIds.has(task.id))
@@ -872,6 +935,7 @@ function isNotFoundError(error: unknown): boolean {
 }
 
 onMounted(() => {
+  viewActive = true
   expiryNow.value = Date.now()
   expiryTimer = window.setInterval(() => {
     expiryNow.value = Date.now()
@@ -880,9 +944,12 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  viewActive = false
   if (expiryTimer !== null) window.clearInterval(expiryTimer)
   pollTimers.forEach((timer) => window.clearTimeout(timer))
   pollTimers.clear()
+  previewObjectURLs.forEach((url) => URL.revokeObjectURL(url))
+  previewObjectURLs.clear()
 })
 </script>
 

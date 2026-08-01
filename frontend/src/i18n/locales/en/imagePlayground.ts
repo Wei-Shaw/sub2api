@@ -12,7 +12,7 @@ export default {
     },
     placeholders: { group: 'Select a group', model: 'Select a model', prompt: 'Describe the image you want to create...', editPrompt: 'Describe how to use the references, or leave blank for a natural variation' },
     filters: { all: 'All', processing: 'Generating', completed: 'Completed', failed: 'Failed' },
-    status: { generating: 'Generating', failed: 'Generation failed' },
+    status: { generating: 'Generating', loadingPreview: 'Loading preview', failed: 'Generation failed' },
     actions: {
       generate: 'Generate', submitting: 'Submitting', preview: 'Preview', download: 'Download image',
       reuse: 'Reuse prompt', regenerate: 'Generate again', deleteAll: 'Delete all', deleting: 'Deleting',

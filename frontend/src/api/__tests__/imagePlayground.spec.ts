@@ -13,8 +13,10 @@ vi.mock('@/api/client', () => ({
 import {
   downloadImagePlaygroundImage,
   deleteImagePlaygroundTask,
+  getImagePlaygroundImagePreview,
   getImagePlaygroundOptions,
   getImagePlaygroundTask,
+  listImagePlaygroundTasks,
   submitImagePlaygroundTask,
 } from '@/api/imagePlayground'
 
@@ -46,21 +48,36 @@ describe('image playground api', () => {
     })
   })
 
-  it('encodes task ids and requests downloads as blobs', async () => {
+  it('encodes task ids and requests previews and downloads as blobs', async () => {
     const task = { id: 'task/one', status: 'completed' }
     const blob = new Blob(['image'], { type: 'image/png' })
     get.mockResolvedValueOnce({ data: task })
     get.mockResolvedValueOnce({ data: blob })
+    get.mockResolvedValueOnce({ data: blob })
 
     await expect(getImagePlaygroundTask('task/one')).resolves.toBe(task)
+    await expect(getImagePlaygroundImagePreview('task/one', 1)).resolves.toBe(blob)
     await expect(downloadImagePlaygroundImage('task/one', 2)).resolves.toBe(blob)
 
     expect(get).toHaveBeenNthCalledWith(1, '/image-playground/tasks/task%2Fone')
     expect(get).toHaveBeenNthCalledWith(
       2,
+      '/image-playground/tasks/task%2Fone/images/1',
+      { responseType: 'blob', timeout: 60000 },
+    )
+    expect(get).toHaveBeenNthCalledWith(
+      3,
       '/image-playground/tasks/task%2Fone/images/2/download',
       { responseType: 'blob', timeout: 60000 },
     )
+  })
+
+  it('lists the authenticated user image tasks', async () => {
+    const tasks = [{ id: 'task-1', status: 'completed' }]
+    get.mockResolvedValueOnce({ data: tasks })
+
+    await expect(listImagePlaygroundTasks()).resolves.toBe(tasks)
+    expect(get).toHaveBeenCalledWith('/image-playground/tasks')
   })
 
   it('deletes a task using an encoded id', async () => {

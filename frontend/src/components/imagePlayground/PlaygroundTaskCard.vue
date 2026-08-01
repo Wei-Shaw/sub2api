@@ -5,11 +5,11 @@
     <button
       type="button"
       class="relative block aspect-square w-full overflow-hidden bg-gray-100 text-left dark:bg-dark-900"
-      :disabled="task.status !== 'completed' || task.images.length === 0"
+      :disabled="task.status !== 'completed' || !task.images[0]?.url"
       @click="$emit('open', task)"
     >
       <img
-        v-if="task.status === 'completed' && task.images[0]"
+        v-if="task.status === 'completed' && task.images[0]?.url"
         :src="task.images[0].url"
         :alt="task.prompt_preview || t('imagePlayground.generatedImage')"
         class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
@@ -17,7 +17,7 @@
       />
 
       <div
-        v-else-if="task.status === 'processing'"
+        v-else-if="task.status === 'processing' || (task.status === 'completed' && task.images.length > 0)"
         class="absolute inset-0 flex flex-col items-center justify-center px-6"
       >
         <div class="playground-shimmer absolute inset-0" />
@@ -25,7 +25,7 @@
           <Icon name="sparkles" size="lg" class="animate-pulse text-gray-700 dark:text-gray-200" />
         </div>
         <p class="relative mt-4 text-sm font-medium text-gray-700 dark:text-gray-200">
-          {{ t('imagePlayground.status.generating') }}
+          {{ task.status === 'processing' ? t('imagePlayground.status.generating') : t('imagePlayground.status.loadingPreview') }}
         </p>
         <div class="relative mt-3 h-1 w-24 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
           <span class="playground-progress block h-full w-1/2 bg-gray-800 dark:bg-gray-100" />
@@ -88,7 +88,7 @@
 
         <div class="flex flex-shrink-0 items-center gap-0.5">
           <button
-            v-if="task.status === 'completed' && task.images[0]"
+            v-if="task.status === 'completed' && task.images[0]?.url"
             type="button"
             class="task-action"
             :title="t('imagePlayground.actions.download')"

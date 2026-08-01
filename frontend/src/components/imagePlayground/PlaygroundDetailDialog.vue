@@ -32,7 +32,13 @@
             :class="selectedIndex === image.index ? 'border-gray-900 dark:border-white' : 'border-transparent hover:border-gray-300 dark:hover:border-dark-500'"
             @click="selectedIndex = image.index"
           >
-            <img :src="image.url" :alt="`${t('imagePlayground.generatedImage')} ${image.index + 1}`" class="h-full w-full object-cover" />
+            <img
+              v-if="image.url"
+              :src="image.url"
+              :alt="`${t('imagePlayground.generatedImage')} ${image.index + 1}`"
+              class="h-full w-full object-cover"
+            />
+            <span v-else class="block h-full w-full animate-pulse bg-gray-200 dark:bg-dark-700" />
           </button>
         </div>
       </div>

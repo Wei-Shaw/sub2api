@@ -107,6 +107,7 @@ type ImageTaskCleanup struct {
 type ImageTaskStore interface {
 	Save(ctx context.Context, task *ImageTaskRecord, ttl time.Duration) error
 	Get(ctx context.Context, id string) (*ImageTaskRecord, error)
+	ListByUser(ctx context.Context, userID int64, limit int) ([]*ImageTaskRecord, error)
 	Delete(ctx context.Context, id string) error
 	ScheduleCleanup(ctx context.Context, cleanup ImageTaskCleanup) error
 	ListDueCleanup(ctx context.Context, now time.Time, limit int) ([]ImageTaskCleanup, error)
@@ -268,6 +269,36 @@ func (s *ImageTaskService) GetForUser(ctx context.Context, userID int64, id stri
 		return nil, ErrImageTaskNotFound
 	}
 	return imageTaskToPublic(task), nil
+}
+
+func (s *ImageTaskService) ListForUser(ctx context.Context, userID int64, limit int) ([]*ImageTask, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrImageTaskUnavailable
+	}
+	if userID <= 0 {
+		return []*ImageTask{}, nil
+	}
+	if limit <= 0 {
+		limit = 24
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	records, err := s.store.ListByUser(ctx, userID, limit)
+	if err != nil {
+		return nil, ErrImageTaskUnavailable.WithCause(err)
+	}
+	tasks := make([]*ImageTask, 0, len(records))
+	for _, record := range records {
+		if record == nil || record.UserID != userID {
+			continue
+		}
+		tasks = append(tasks, imageTaskToPublic(record))
+		if len(tasks) == limit {
+			break
+		}
+	}
+	return tasks, nil
 }
 
 func (s *ImageTaskService) DownloadForUser(ctx context.Context, userID int64, id string, imageIndex int) (*ImageTaskDownload, error) {

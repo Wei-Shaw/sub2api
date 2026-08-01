@@ -78,7 +78,7 @@ export interface ImagePlaygroundTask {
 
 export async function getImagePlaygroundOptions(): Promise<ImagePlaygroundOptions> {
   const response = await apiClient.get<ImagePlaygroundOptions>('/image-playground/options')
-  return response.data
+	return response.data
 }
 
 export async function submitImagePlaygroundTask(
@@ -110,12 +110,28 @@ export async function getImagePlaygroundTask(taskId: string): Promise<ImagePlayg
   return response.data
 }
 
+export async function listImagePlaygroundTasks(): Promise<ImagePlaygroundTask[]> {
+  const response = await apiClient.get<ImagePlaygroundTask[]>('/image-playground/tasks')
+  return response.data
+}
+
 export async function downloadImagePlaygroundImage(
   taskId: string,
   imageIndex: number,
 ): Promise<Blob> {
   const response = await apiClient.get<Blob>(
     `/image-playground/tasks/${encodeURIComponent(taskId)}/images/${imageIndex}/download`,
+    { responseType: 'blob', timeout: 60000 },
+  )
+  return response.data
+}
+
+export async function getImagePlaygroundImagePreview(
+  taskId: string,
+  imageIndex: number,
+): Promise<Blob> {
+  const response = await apiClient.get<Blob>(
+    `/image-playground/tasks/${encodeURIComponent(taskId)}/images/${imageIndex}`,
     { responseType: 'blob', timeout: 60000 },
   )
   return response.data

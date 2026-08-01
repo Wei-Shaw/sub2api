@@ -44,6 +44,23 @@ func (s *asyncImageMemoryStore) Get(_ context.Context, id string) (*service.Imag
 	return &copy, nil
 }
 
+func (s *asyncImageMemoryStore) ListByUser(_ context.Context, userID int64, limit int) ([]*service.ImageTaskRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*service.ImageTaskRecord, 0)
+	for _, task := range s.tasks {
+		if task.UserID != userID {
+			continue
+		}
+		copy := *task
+		out = append(out, &copy)
+		if len(out) == limit {
+			break
+		}
+	}
+	return out, nil
+}
+
 func (s *asyncImageMemoryStore) Delete(_ context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

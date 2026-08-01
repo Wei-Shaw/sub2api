@@ -99,6 +99,7 @@ func RegisterUserRoutes(
 		imagePlayground := authenticated.Group("/image-playground")
 		{
 			imagePlayground.GET("/options", h.ImagePlayground.Options)
+			imagePlayground.GET("/tasks", h.ImagePlayground.ListTasks)
 			imagePlayground.POST(
 				"/tasks",
 				middleware.RequestBodyLimit(handler.ImagePlaygroundMaxRequestBodyBytes),
@@ -108,6 +109,7 @@ func RegisterUserRoutes(
 			)
 			imagePlayground.GET("/tasks/:task_id", h.ImagePlayground.GetTask)
 			imagePlayground.DELETE("/tasks/:task_id", h.ImagePlayground.DeleteTask)
+			imagePlayground.GET("/tasks/:task_id/images/:image_index", h.ImagePlayground.Preview)
 			imagePlayground.GET("/tasks/:task_id/images/:image_index/download", h.ImagePlayground.Download)
 		}
 

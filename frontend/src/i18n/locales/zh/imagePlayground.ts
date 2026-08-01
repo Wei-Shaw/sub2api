@@ -12,7 +12,7 @@ export default {
     },
     placeholders: { group: '选择分组', model: '选择模型', prompt: '描述你想生成的画面...', editPrompt: '描述如何使用参考图；留空则生成自然变体' },
     filters: { all: '全部', processing: '生成中', completed: '已完成', failed: '失败' },
-    status: { generating: '正在生成', failed: '生成失败' },
+    status: { generating: '正在生成', loadingPreview: '正在加载预览', failed: '生成失败' },
     actions: {
       generate: '生成图片', submitting: '正在提交', preview: '预览', download: '下载图片',
       reuse: '复用提示词', regenerate: '重新生成', deleteAll: '删除全部', deleting: '正在删除',
