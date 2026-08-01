@@ -247,7 +247,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	// ?deregister_cloudflare=false to skip CF API (local-only delete)
 	opts := service.DeleteOptions{}
 	if v := r.URL.Query().Get("deregister_cloudflare"); v != "" {
-		b := !(v == "0" || strings.EqualFold(v, "false") || strings.EqualFold(v, "no"))
+		b := v != "0" && !strings.EqualFold(v, "false") && !strings.EqualFold(v, "no")
 		opts.DeregisterCloudflare = &b
 	}
 	// optional JSON body override

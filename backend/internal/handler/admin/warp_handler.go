@@ -190,7 +190,8 @@ func (h *WarpHandler) DeleteInstance(c *gin.Context) {
 	}
 	deregister := true
 	if v := c.Query("deregister_cloudflare"); v != "" {
-		deregister = !(v == "0" || strings.EqualFold(v, "false") || strings.EqualFold(v, "no"))
+		// keep true unless explicitly disabled
+		deregister = v != "0" && !strings.EqualFold(v, "false") && !strings.EqualFold(v, "no")
 	}
 	groupName := strings.TrimSpace(c.Query("group_name"))
 	var body struct {
