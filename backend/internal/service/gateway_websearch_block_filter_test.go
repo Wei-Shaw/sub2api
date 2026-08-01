@@ -3,8 +3,10 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -137,4 +139,148 @@ func TestFilterWebSearchHistoryBlocks_PreservesOtherToolBlocks(t *testing.T) {
 	out := FilterWebSearchHistoryBlocks(body, "glm-4.7")
 
 	require.Equal(t, []string{"tool_use", "text", "tool_result"}, collectContentTypes(t, out))
+}
+
+// --- StripAnthropicWebSearchServerTools tests ---
+
+func TestStripWebSearchServerTools_KimiMixedTools(t *testing.T) {
+	req := &apicompat.AnthropicRequest{
+		Model: "k3-256k",
+		Tools: []apicompat.AnthropicTool{
+			{Type: "web_search_20250305", Name: "web_search"},
+			{Name: "exec_command", InputSchema: json.RawMessage(`{"type":"object"}`)},
+			{Name: "apply_patch", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	}
+
+	removed := StripAnthropicWebSearchServerTools(req, "k3-256k")
+
+	require.True(t, removed)
+	require.Len(t, req.Tools, 2)
+	require.Equal(t, "exec_command", req.Tools[0].Name)
+	require.Equal(t, "apply_patch", req.Tools[1].Name)
+}
+
+func TestStripWebSearchServerTools_ClaudePreservesAll(t *testing.T) {
+	req := &apicompat.AnthropicRequest{
+		Model: "claude-sonnet-4-6",
+		Tools: []apicompat.AnthropicTool{
+			{Type: "web_search_20250305", Name: "web_search"},
+			{Name: "exec_command", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	}
+
+	removed := StripAnthropicWebSearchServerTools(req, "claude-sonnet-4-6")
+
+	require.False(t, removed)
+	require.Len(t, req.Tools, 2)
+	require.Equal(t, "web_search_20250305", req.Tools[0].Type)
+}
+
+func TestStripWebSearchServerTools_ModelMappingUsed(t *testing.T) {
+	req := &apicompat.AnthropicRequest{
+		Model: "k3-256k",
+		Tools: []apicompat.AnthropicTool{
+			{Type: "web_search_20250305", Name: "web_search"},
+			{Name: "exec_command", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	}
+
+	removed := StripAnthropicWebSearchServerTools(req, "k3-256k")
+
+	require.True(t, removed)
+	require.Len(t, req.Tools, 1)
+	require.Equal(t, "exec_command", req.Tools[0].Name)
+}
+
+func TestStripWebSearchServerTools_ForcedToolChoiceCleared(t *testing.T) {
+	req := &apicompat.AnthropicRequest{
+		Model: "k3-256k",
+		Tools: []apicompat.AnthropicTool{
+			{Type: "web_search_20250305", Name: "web_search"},
+			{Name: "exec_command", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+		ToolChoice: json.RawMessage(`{"type":"tool","name":"web_search"}`),
+	}
+
+	removed := StripAnthropicWebSearchServerTools(req, "k3-256k")
+
+	require.True(t, removed)
+	require.Nil(t, req.ToolChoice, "tool_choice referencing removed tool must be cleared")
+}
+
+func TestStripWebSearchServerTools_ToolChoiceAutoPreserved(t *testing.T) {
+	req := &apicompat.AnthropicRequest{
+		Model: "k3-256k",
+		Tools: []apicompat.AnthropicTool{
+			{Type: "web_search_20250305", Name: "web_search"},
+			{Name: "exec_command", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+		ToolChoice: json.RawMessage(`{"type":"auto"}`),
+	}
+
+	removed := StripAnthropicWebSearchServerTools(req, "k3-256k")
+
+	require.True(t, removed)
+	require.NotNil(t, req.ToolChoice, "auto tool_choice should be preserved")
+}
+
+func TestStripWebSearchServerTools_FunctionToolNamedWebSearchKept(t *testing.T) {
+	req := &apicompat.AnthropicRequest{
+		Model: "k3-256k",
+		Tools: []apicompat.AnthropicTool{
+			{Name: "web_search", InputSchema: json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}}}`)},
+		},
+	}
+
+	removed := StripAnthropicWebSearchServerTools(req, "k3-256k")
+
+	require.False(t, removed, "function tool named web_search (no Type) must not be stripped")
+	require.Len(t, req.Tools, 1)
+}
+
+func TestStripWebSearchServerTools_NoWebSearch(t *testing.T) {
+	req := &apicompat.AnthropicRequest{
+		Model: "k3-256k",
+		Tools: []apicompat.AnthropicTool{
+			{Name: "exec_command", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	}
+
+	removed := StripAnthropicWebSearchServerTools(req, "k3-256k")
+
+	require.False(t, removed)
+	require.Len(t, req.Tools, 1)
+}
+
+func TestStripWebSearchServerTools_GoogleSearchAlsoStripped(t *testing.T) {
+	req := &apicompat.AnthropicRequest{
+		Model: "deepseek-v4",
+		Tools: []apicompat.AnthropicTool{
+			{Type: "google_search", Name: "google_search"},
+			{Name: "exec_command", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	}
+
+	removed := StripAnthropicWebSearchServerTools(req, "deepseek-v4")
+
+	require.True(t, removed)
+	require.Len(t, req.Tools, 1)
+	require.Equal(t, "exec_command", req.Tools[0].Name)
+}
+
+func TestStripWebSearchServerTools_AllToolsRemovedClearsChoice(t *testing.T) {
+	req := &apicompat.AnthropicRequest{
+		Model: "k3-256k",
+		Tools: []apicompat.AnthropicTool{
+			{Type: "web_search_20250305", Name: "web_search"},
+		},
+		ToolChoice: json.RawMessage(`{"type":"auto"}`),
+	}
+
+	removed := StripAnthropicWebSearchServerTools(req, "k3-256k")
+
+	require.True(t, removed)
+	require.Empty(t, req.Tools)
+	require.Nil(t, req.ToolChoice, "tool_choice must be cleared when no tools remain")
 }

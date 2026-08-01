@@ -5,8 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
+
+const anthropicWebSearchStatusPrefix = "Search results for query:"
 
 // ---------------------------------------------------------------------------
 // Non-streaming: AnthropicResponse → ResponsesResponse
@@ -30,7 +33,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 	var outputs []ResponsesOutput
 	var msgParts []ResponsesContentPart
 
-	for _, block := range resp.Content {
+	for i, block := range resp.Content {
 		switch block.Type {
 		case "thinking":
 			if block.Thinking != "" || block.Signature != "" {
@@ -49,6 +52,9 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 			}
 		case "text":
 			if block.Text != "" {
+				if anthropicIsWebSearchStatusText(block.Text, resp.Content, i) {
+					continue
+				}
 				msgParts = append(msgParts, ResponsesContentPart{
 					Type: "output_text",
 					Text: block.Text,
@@ -67,6 +73,21 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 				Arguments: args,
 				Status:    "completed",
 			})
+		case "server_tool_use":
+			if block.Name == "web_search" {
+				query := anthropicExtractWebSearchQuery(block.Input)
+				outputs = append(outputs, ResponsesOutput{
+					Type:   "web_search_call",
+					ID:     generateItemID(),
+					Status: "completed",
+					Action: &WebSearchAction{
+						Type:  "search",
+						Query: query,
+					},
+				})
+			}
+		case "web_search_tool_result":
+			// Paired with server_tool_use; emitted as web_search_call above.
 		}
 	}
 
@@ -186,6 +207,17 @@ type AnthropicEventToResponsesState struct {
 	CacheCreationInputTokens int
 
 	StopReason string
+
+	// Web search server tool tracking
+	WebSearchItemID    string // Responses item ID for the current web_search_call
+	WebSearchToolUseID string // Anthropic tool_use_id to correlate result blocks
+	WebSearchQuery     string // extracted query from server_tool_use input
+	WebSearchActive    bool   // true while processing web search blocks
+
+	// Delayed search status text filtering
+	MaybeSearchStatus      bool   // tentatively holding text that might be search status
+	PendingStatusText      string // buffered text content
+	PendingStatusTextReady bool   // text block closed, waiting for next block to decide
 }
 
 // NewAnthropicEventToResponsesState returns an initialised stream state.
@@ -227,6 +259,10 @@ func FinalizeAnthropicResponsesStream(state *AnthropicEventToResponsesState) []R
 	}
 
 	var events []ResponsesStreamEvent
+
+	if state.PendingStatusTextReady {
+		events = append(events, anthToResFlushPendingStatusText(state)...)
+	}
 
 	// Preserve any deltas received before an abrupt EOF, then close the item.
 	events = append(events, anthToResHandleContentBlockStop(nil, state)...)
@@ -286,6 +322,15 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 
 	var events []ResponsesStreamEvent
 
+	if state.PendingStatusTextReady {
+		if evt.ContentBlock.Type == "server_tool_use" && evt.ContentBlock.Name == "web_search" {
+			state.PendingStatusText = ""
+			state.PendingStatusTextReady = false
+		} else {
+			events = append(events, anthToResFlushPendingStatusText(state)...)
+		}
+	}
+
 	switch evt.ContentBlock.Type {
 	case "thinking":
 		// Close any prior open item before starting reasoning (mirrors tool_use).
@@ -310,6 +355,7 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		// delta, so zero-length Anthropic text blocks do not leak downstream.
 		state.TextAccum = ""
 		state.TextPartOpen = false
+		state.MaybeSearchStatus = true
 
 	case "tool_use":
 		// Close previous item if any
@@ -330,6 +376,68 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 				Status: "in_progress",
 			},
 		}))
+
+	case "server_tool_use":
+		if evt.ContentBlock.Name == "web_search" {
+			state.PendingStatusText = ""
+			state.PendingStatusTextReady = false
+
+			events = append(events, closeCurrentResponsesItem(state)...)
+
+			state.WebSearchItemID = generateItemID()
+			state.WebSearchToolUseID = evt.ContentBlock.ID
+			state.WebSearchActive = true
+			state.CurrentItemType = "web_search_call"
+
+			query := anthropicExtractWebSearchQuery(evt.ContentBlock.Input)
+			state.WebSearchQuery = query
+
+			events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
+				OutputIndex: state.OutputIndex,
+				Item: &ResponsesOutput{
+					Type:   "web_search_call",
+					ID:     state.WebSearchItemID,
+					Status: "in_progress",
+					Action: &WebSearchAction{
+						Type:  "search",
+						Query: query,
+					},
+				},
+			}))
+		}
+
+	case "web_search_tool_result":
+		if state.WebSearchActive {
+			state.WebSearchActive = false
+			state.CurrentItemType = ""
+
+			events = append(events, makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+				OutputIndex: state.OutputIndex,
+				Item: &ResponsesOutput{
+					Type:   "web_search_call",
+					ID:     state.WebSearchItemID,
+					Status: "completed",
+					Action: &WebSearchAction{
+						Type:  "search",
+						Query: state.WebSearchQuery,
+					},
+				},
+			}))
+
+			state.Outputs = append(state.Outputs, ResponsesOutput{
+				Type:   "web_search_call",
+				ID:     state.WebSearchItemID,
+				Status: "completed",
+				Action: &WebSearchAction{
+					Type:  "search",
+					Query: state.WebSearchQuery,
+				},
+			})
+			state.OutputIndex++
+			state.WebSearchItemID = ""
+			state.WebSearchToolUseID = ""
+			state.WebSearchQuery = ""
+		}
 	}
 
 	return events
@@ -345,6 +453,19 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.Text == "" {
 			return nil
 		}
+
+		if state.MaybeSearchStatus && !state.TextPartOpen {
+			state.TextAccum += evt.Delta.Text
+			if strings.HasPrefix(anthropicWebSearchStatusPrefix, state.TextAccum) ||
+				strings.HasPrefix(state.TextAccum, anthropicWebSearchStatusPrefix) {
+				return nil
+			}
+			state.MaybeSearchStatus = false
+			buffered := state.TextAccum
+			state.TextAccum = ""
+			return anthToResEmitTextDelta(state, buffered)
+		}
+
 		var events []ResponsesStreamEvent
 		if state.CurrentItemType != "message" {
 			events = append(events, closeCurrentResponsesItem(state)...)
@@ -413,6 +534,21 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 }
 
 func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
+	if state.MaybeSearchStatus && !state.TextPartOpen && state.TextAccum != "" {
+		state.MaybeSearchStatus = false
+		if strings.HasPrefix(state.TextAccum, anthropicWebSearchStatusPrefix) {
+			state.PendingStatusText = state.TextAccum
+			state.PendingStatusTextReady = true
+			state.TextAccum = ""
+			return nil
+		}
+		return anthToResEmitTextBlockDone(state)
+	}
+	if state.MaybeSearchStatus && !state.TextPartOpen {
+		state.MaybeSearchStatus = false
+		state.TextAccum = ""
+	}
+
 	switch state.CurrentItemType {
 	case "reasoning":
 		// Emit reasoning summary done + output item done
@@ -507,6 +643,125 @@ func anthToResHandleMessageStop(state *AnthropicEventToResponsesState) []Respons
 }
 
 // --- helper functions ---
+
+func anthropicIsWebSearchStatusText(text string, blocks []AnthropicContentBlock, index int) bool {
+	if !strings.HasPrefix(text, anthropicWebSearchStatusPrefix) {
+		return false
+	}
+	if index+1 >= len(blocks) {
+		return false
+	}
+	next := blocks[index+1]
+	return next.Type == "server_tool_use" && next.Name == "web_search"
+}
+
+func anthropicExtractWebSearchQuery(input json.RawMessage) string {
+	if len(input) == 0 {
+		return ""
+	}
+	var inputObj struct {
+		Query string `json:"query"`
+	}
+	if json.Unmarshal(input, &inputObj) == nil {
+		return inputObj.Query
+	}
+	return ""
+}
+
+func anthToResOpenTextMessage(state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
+	if state.CurrentItemType == "message" {
+		return nil
+	}
+	var events []ResponsesStreamEvent
+	events = append(events, closeCurrentResponsesItem(state)...)
+	state.CurrentItemID = generateItemID()
+	state.CurrentItemType = "message"
+	state.ContentIndex = 0
+	events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
+		OutputIndex: state.OutputIndex,
+		Item: &ResponsesOutput{
+			Type:   "message",
+			ID:     state.CurrentItemID,
+			Role:   "assistant",
+			Status: "in_progress",
+		},
+	}))
+	return events
+}
+
+func anthToResEmitTextDelta(state *AnthropicEventToResponsesState, text string) []ResponsesStreamEvent {
+	if text == "" {
+		return nil
+	}
+	var events []ResponsesStreamEvent
+	events = append(events, anthToResOpenTextMessage(state)...)
+	state.TextAccum += text
+	if !state.TextPartOpen {
+		state.TextPartOpen = true
+		events = append(events, makeResponsesEvent(state, "response.content_part.added", &ResponsesStreamEvent{
+			OutputIndex:  state.OutputIndex,
+			ContentIndex: state.ContentIndex,
+			ItemID:       state.CurrentItemID,
+			Part:         &ResponsesContentPart{Type: "output_text", Text: ""},
+		}))
+	}
+	events = append(events, makeResponsesEvent(state, "response.output_text.delta", &ResponsesStreamEvent{
+		OutputIndex:  state.OutputIndex,
+		ContentIndex: state.ContentIndex,
+		Delta:        text,
+		ItemID:       state.CurrentItemID,
+	}))
+	return events
+}
+
+func anthToResEmitTextBlockDone(state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
+	text := state.TextAccum
+	if text == "" {
+		return nil
+	}
+	state.TextAccum = ""
+	var events []ResponsesStreamEvent
+	events = append(events, anthToResEmitTextDelta(state, text)...)
+	return append(events, anthToResCloseTextPart(state)...)
+}
+
+func anthToResCloseTextPart(state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
+	if !state.TextPartOpen {
+		return nil
+	}
+	text := state.TextAccum
+	contentIndex := state.ContentIndex
+	state.TextAccum = ""
+	state.TextPartOpen = false
+	state.ContentIndex++
+	state.CurrentContent = append(state.CurrentContent, ResponsesContentPart{Type: "output_text", Text: text})
+	return []ResponsesStreamEvent{
+		makeResponsesEvent(state, "response.output_text.done", &ResponsesStreamEvent{
+			OutputIndex:  state.OutputIndex,
+			ContentIndex: contentIndex,
+			ItemID:       state.CurrentItemID,
+			Text:         text,
+		}),
+		makeResponsesEvent(state, "response.content_part.done", &ResponsesStreamEvent{
+			OutputIndex:  state.OutputIndex,
+			ContentIndex: contentIndex,
+			ItemID:       state.CurrentItemID,
+			Part:         &ResponsesContentPart{Type: "output_text", Text: text},
+		}),
+	}
+}
+
+func anthToResFlushPendingStatusText(state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
+	text := state.PendingStatusText
+	state.PendingStatusText = ""
+	state.PendingStatusTextReady = false
+	if text == "" {
+		return nil
+	}
+	var events []ResponsesStreamEvent
+	events = append(events, anthToResEmitTextDelta(state, text)...)
+	return append(events, anthToResCloseTextPart(state)...)
+}
 
 func anthropicResponsesStreamTerminalState(stopReason string) (string, *ResponsesIncompleteDetails) {
 	if stopReason == "max_tokens" {
