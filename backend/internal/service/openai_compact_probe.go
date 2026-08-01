@@ -12,12 +12,16 @@ const (
 	AccountTestModeDefault = "default"
 	// AccountTestModeCompact drives the /responses/compact compact-probe test.
 	AccountTestModeCompact = "compact"
+	// AccountTestModeImage explicitly forces the OpenAI-compatible image-generation probe.
+	AccountTestModeImage = "image"
 )
 
 func normalizeAccountTestMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case AccountTestModeCompact:
 		return AccountTestModeCompact
+	case AccountTestModeImage:
+		return AccountTestModeImage
 	default:
 		return AccountTestModeDefault
 	}

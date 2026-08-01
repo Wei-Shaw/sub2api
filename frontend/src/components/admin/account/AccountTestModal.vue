@@ -55,7 +55,7 @@
         />
       </div>
 
-      <div v-if="isOpenAIAccount" class="space-y-1.5">
+      <div v-if="isOpenAIAccount && !supportsOpenAIImageTest" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.openai.testMode') }}
         </label>
@@ -288,11 +288,12 @@ const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
 const previewImageUrl = ref('')
-const testMode = ref<'default' | 'compact'>('default')
+const testMode = ref<'default' | 'compact' | 'image'>('default')
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') },
+  { value: 'image', label: t('admin.accounts.openai.testModeImage') }
 ])
 const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
 const supportsGeminiImageTest = computed(() => {
@@ -308,7 +309,10 @@ const supportsOpenAIImageTest = computed(() => {
   return props.account?.platform === 'openai'
 })
 
-const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
+const forcesOpenAIImageTest = computed(() => isOpenAIAccount.value && testMode.value === 'image')
+const supportsImageTest = computed(() =>
+  supportsGeminiImageTest.value || supportsOpenAIImageTest.value || forcesOpenAIImageTest.value
+)
 
 const sortTestModels = (models: ClaudeModel[]) => {
   const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
@@ -337,7 +341,13 @@ watch(
 )
 
 watch(selectedModelId, () => {
-  if (supportsImageTest.value && !testPrompt.value.trim()) {
+  if ((supportsGeminiImageTest.value || supportsOpenAIImageTest.value) && !testPrompt.value.trim()) {
+    testPrompt.value = t('admin.accounts.imagePromptDefault')
+  }
+})
+
+watch(testMode, (mode) => {
+  if (mode === 'image' && !testPrompt.value.trim()) {
     testPrompt.value = t('admin.accounts.imagePromptDefault')
   }
 })
@@ -422,13 +432,13 @@ const startTest = async () => {
     const requestBody: {
       model_id: string
       prompt: string
-      mode?: 'default' | 'compact'
+      mode?: 'default' | 'compact' | 'image'
     } = {
       model_id: selectedModelId.value,
       prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
     }
     if (isOpenAIAccount.value) {
-      requestBody.mode = testMode.value
+      requestBody.mode = supportsOpenAIImageTest.value ? 'default' : testMode.value
     }
 
     // Use the configured API base; EventSource does not support POST.
