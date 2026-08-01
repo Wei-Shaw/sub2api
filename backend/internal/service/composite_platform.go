@@ -179,7 +179,7 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 
 func isConcreteRequestPlatform(platform string) bool {
 	switch platform {
-	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok:
+	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok, PlatformMiniMax:
 		return true
 	default:
 		return false

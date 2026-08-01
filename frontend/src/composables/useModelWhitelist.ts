@@ -194,9 +194,8 @@ const doubaoModels = [
 
 // MiniMax
 const minimaxModels = [
-  'abab6.5-chat', 'abab6.5s-chat', 'abab6.5s-chat-pro',
-  'abab6-chat',
-  'abab5.5-chat', 'abab5.5s-chat'
+  'MiniMax-M3',
+  'MiniMax-M2.7'
 ]
 
 // 百度 文心

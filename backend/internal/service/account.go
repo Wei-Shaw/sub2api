@@ -915,12 +915,19 @@ func (a *Account) GetBaseURL() string {
 	}
 	baseURL := a.GetCredential("base_url")
 	if baseURL == "" {
+		if a.Platform == PlatformMiniMax {
+			return "https://api.minimax.io/anthropic"
+		}
 		return "https://api.anthropic.com"
 	}
 	if a.Platform == PlatformAntigravity {
 		return strings.TrimRight(baseURL, "/") + "/antigravity"
 	}
 	return baseURL
+}
+
+func (a *Account) IsMiniMax() bool {
+	return a != nil && a.Platform == PlatformMiniMax
 }
 
 // GetGeminiBaseURL 返回 Gemini 兼容端点的 base URL。
