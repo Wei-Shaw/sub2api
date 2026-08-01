@@ -9,7 +9,7 @@
 }
 
 # 修改为你的域名
-api.sub2api.com {
+wendeai.net {
 	# This baseline assumes clients connect directly to Caddy. When Caddy is
 	# behind a CDN, configure explicit trusted proxy CIDRs and {client_ip} as
 	# documented in EDGE_SECURITY.md; {remote_host} would otherwise be the CDN.
