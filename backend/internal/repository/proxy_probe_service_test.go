@@ -50,14 +50,17 @@ func (s *ProxyProbeServiceSuite) TestProbeProxy_UnsupportedProxyScheme() {
 }
 
 func (s *ProxyProbeServiceSuite) TestProbeProxy_Success_IPAPI() {
+	// 限制为 HTTP 探测目标，避免 mock HTTP 代理无法处理 HTTPS CONNECT 导致超时。
+	s.prober.probeURLs = []probeTarget{
+		{"http://ip-api.com/json/?lang=zh-CN", "ip-api"},
+		{"http://api64.ipify.org?format=json", "ipify"},
+	}
 	s.setupProxyServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 检查是否是 ip-api 请求
 		if strings.Contains(r.RequestURI, "ip-api.com") {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"status":"success","query":"1.2.3.4","city":"c","regionName":"r","country":"cc","countryCode":"CC"}`)
 			return
 		}
-		// 其他请求返回错误
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 
@@ -72,13 +75,15 @@ func (s *ProxyProbeServiceSuite) TestProbeProxy_Success_IPAPI() {
 }
 
 func (s *ProxyProbeServiceSuite) TestProbeProxy_Success_IPifyFallback() {
+	s.prober.probeURLs = []probeTarget{
+		{"http://ip-api.com/json/?lang=zh-CN", "ip-api"},
+		{"http://api64.ipify.org?format=json", "ipify"},
+	}
 	s.setupProxyServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// ip-api 失败
 		if strings.Contains(r.RequestURI, "ip-api.com") {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		// ipify 成功
 		if strings.Contains(r.RequestURI, "api64.ipify.org") {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"ip": "5.6.7.8"}`)
@@ -93,7 +98,71 @@ func (s *ProxyProbeServiceSuite) TestProbeProxy_Success_IPifyFallback() {
 	require.Equal(s.T(), "5.6.7.8", info.IP)
 }
 
+func (s *ProxyProbeServiceSuite) TestProbeProxy_SkipsHTTPWebblockAndFallsBack() {
+	// 模拟：明文 HTTP 探测被 302 劫持；后续目标返回真实出口 IP JSON。
+	s.prober.probeURLs = []probeTarget{
+		{"http://ip-api.com/json/?lang=zh-CN", "ip-api"},
+		{"http://api64.ipify.org?format=json", "ipify"},
+	}
+	s.setupProxyServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.RequestURI, "ip-api.com") {
+			w.Header().Set("Location", "https://dnspod.qcloud.com/static/webblock.html?d=ip-api.com")
+			w.WriteHeader(http.StatusFound)
+			return
+		}
+		if strings.Contains(r.RequestURI, "api64.ipify.org") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"ip":"9.9.9.9"}`)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+
+	info, _, err := s.prober.ProbeProxy(s.ctx, s.proxySrv.URL)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), "9.9.9.9", info.IP)
+}
+
+func (s *ProxyProbeServiceSuite) TestProbeProxy_RejectsHTMLBody() {
+	s.prober.probeURLs = []probeTarget{
+		{"http://api64.ipify.org?format=json", "ipify"},
+	}
+	s.setupProxyServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `<!DOCTYPE html><html><body class="beian-block">blocked</body></html>`)
+	}))
+
+	_, _, err := s.prober.ProbeProxy(s.ctx, s.proxySrv.URL)
+	require.Error(s.T(), err)
+	require.ErrorContains(s.T(), err, "HTML")
+}
+
+func (s *ProxyProbeServiceSuite) TestProbeProxy_DoesNotFollowRedirect() {
+	s.prober.probeURLs = []probeTarget{
+		{"http://api64.ipify.org?format=json", "ipify"},
+	}
+	s.setupProxyServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.RequestURI, "api64.ipify.org") {
+			w.Header().Set("Location", "http://example.invalid/webblock")
+			w.WriteHeader(http.StatusFound)
+			return
+		}
+		// 若错误地跟随了重定向，这里会返回“假成功”
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ip":"should-not-use"}`)
+	}))
+
+	_, _, err := s.prober.ProbeProxy(s.ctx, s.proxySrv.URL)
+	require.Error(s.T(), err)
+	require.ErrorContains(s.T(), err, "status: 302")
+}
+
 func (s *ProxyProbeServiceSuite) TestProbeProxy_AllFailed() {
+	s.prober.probeURLs = []probeTarget{
+		{"http://ip-api.com/json/?lang=zh-CN", "ip-api"},
+		{"http://api64.ipify.org?format=json", "ipify"},
+	}
 	s.setupProxyServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
@@ -104,13 +173,16 @@ func (s *ProxyProbeServiceSuite) TestProbeProxy_AllFailed() {
 }
 
 func (s *ProxyProbeServiceSuite) TestProbeProxy_InvalidJSON() {
+	s.prober.probeURLs = []probeTarget{
+		{"http://ip-api.com/json/?lang=zh-CN", "ip-api"},
+		{"http://api64.ipify.org?format=json", "ipify"},
+	}
 	s.setupProxyServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.RequestURI, "ip-api.com") {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, "not-json")
 			return
 		}
-		// ipify 也返回无效响应
 		if strings.Contains(r.RequestURI, "api64.ipify.org") {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, "not-json")
@@ -125,6 +197,9 @@ func (s *ProxyProbeServiceSuite) TestProbeProxy_InvalidJSON() {
 }
 
 func (s *ProxyProbeServiceSuite) TestProbeProxy_ProxyServerClosed() {
+	s.prober.probeURLs = []probeTarget{
+		{"http://api64.ipify.org?format=json", "ipify"},
+	}
 	s.setupProxyServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	s.proxySrv.Close()
 
@@ -164,6 +239,20 @@ func (s *ProxyProbeServiceSuite) TestParseIPify_NoIP() {
 	_, _, err := s.prober.parseIPify(body, 50)
 	require.Error(s.T(), err)
 	require.ErrorContains(s.T(), err, "no IP found")
+}
+
+func (s *ProxyProbeServiceSuite) TestLooksLikeHTMLProbeBody() {
+	require.True(s.T(), looksLikeHTMLProbeBody([]byte("<!DOCTYPE html><html></html>")))
+	require.True(s.T(), looksLikeHTMLProbeBody([]byte(` <div class="beian-block">x</div>`)))
+	require.True(s.T(), looksLikeHTMLProbeBody([]byte(`webblock intercept`)))
+	require.False(s.T(), looksLikeHTMLProbeBody([]byte(`{"ip":"1.2.3.4"}`)))
+	require.False(s.T(), looksLikeHTMLProbeBody(nil))
+}
+
+func (s *ProxyProbeServiceSuite) TestDefaultProbeURLsPreferHTTPS() {
+	require.GreaterOrEqual(s.T(), len(defaultProbeURLs), 2)
+	require.True(s.T(), strings.HasPrefix(defaultProbeURLs[0].url, "https://"))
+	require.True(s.T(), strings.HasPrefix(defaultProbeURLs[1].url, "https://"))
 }
 
 func TestProxyProbeServiceSuite(t *testing.T) {

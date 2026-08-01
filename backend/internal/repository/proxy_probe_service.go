@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -44,12 +45,19 @@ const (
 	defaultProxyProbeResponseMaxBytes = int64(1024 * 1024)
 )
 
-// probeURLs 按优先级排列的探测 URL 列表
-// 某些 AI API 专用代理只允许访问特定域名，因此需要多个备选
-var probeURLs = []struct {
+type probeTarget struct {
 	url    string
 	parser string // "ip-api" or "ipify"
-}{
+}
+
+// defaultProbeURLs 按优先级排列的探测 URL 列表。
+//
+// 优先使用 HTTPS：真实 AI 出站流量也是 HTTPS，且明文 HTTP 探测在国内云厂商
+// 出口上常被 DNS/备案中间页劫持（302 → webblock HTML），导致代理明明可用却被误判失败。
+// HTTP 作为兜底，兼容只放行特定明文域名的专用代理。
+var defaultProbeURLs = []probeTarget{
+	{"https://api64.ipify.org?format=json", "ipify"},
+	{"https://api.ipify.org?format=json", "ipify"},
 	{"http://ip-api.com/json/?lang=zh-CN", "ip-api"},
 	{"http://api64.ipify.org?format=json", "ipify"},
 }
@@ -59,10 +67,19 @@ type proxyProbeService struct {
 	allowPrivateHosts  bool
 	validateResolvedIP bool
 	maxResponseBytes   int64
+	// probeURLs 仅测试可注入；生产为空时使用 defaultProbeURLs。
+	probeURLs []probeTarget
+}
+
+func (s *proxyProbeService) targets() []probeTarget {
+	if len(s.probeURLs) > 0 {
+		return s.probeURLs
+	}
+	return defaultProbeURLs
 }
 
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
-	client, err := httpclient.GetClient(httpclient.Options{
+	base, err := httpclient.GetClient(httpclient.Options{
 		ProxyURL:           proxyURL,
 		Timeout:            defaultProxyProbeTimeout,
 		InsecureSkipVerify: s.insecureSkipVerify,
@@ -73,8 +90,18 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 		return nil, 0, fmt.Errorf("failed to create proxy client: %w", err)
 	}
 
+	// 不跟随重定向：被劫持时常见 302 → 备案拦截 HTML，跟随后得到 200 HTML 只会污染错误信息。
+	// 直接把 3xx 当失败，快速切换到下一个探测目标（尤其是 HTTPS）。
+	client := &http.Client{
+		Transport: base.Transport,
+		Timeout:   base.Timeout,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
 	var lastErr error
-	for _, probe := range probeURLs {
+	for _, probe := range s.targets() {
 		exitInfo, latencyMs, err := s.probeWithURL(ctx, client, probe.url, probe.parser)
 		if err == nil {
 			return exitInfo, latencyMs, nil
@@ -91,6 +118,9 @@ func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Clien
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
+	// 降低被中间页/WAF 当成浏览器爬虫的概率（对探测接口通常无害）
+	req.Header.Set("Accept", "application/json,text/plain,*/*")
+	req.Header.Set("User-Agent", "sub2api-proxy-probe/1.0")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -116,6 +146,11 @@ func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Clien
 		return nil, latencyMs, fmt.Errorf("proxy probe response exceeds limit: %d", maxResponseBytes)
 	}
 
+	// 明文 HTTP 被劫持时常见：状态 200 但 body 是 HTML 拦截页
+	if looksLikeHTMLProbeBody(body) {
+		return nil, latencyMs, fmt.Errorf("probe returned HTML instead of IP JSON (possible intercept/webblock)")
+	}
+
 	switch parser {
 	case "ip-api":
 		return s.parseIPAPI(body, latencyMs)
@@ -124,6 +159,23 @@ func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Clien
 	default:
 		return nil, latencyMs, fmt.Errorf("unknown parser: %s", parser)
 	}
+}
+
+func looksLikeHTMLProbeBody(body []byte) bool {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return false
+	}
+	// 快速路径：标准 HTML 文档
+	if bytes.HasPrefix(trimmed, []byte("<!")) ||
+		bytes.HasPrefix(trimmed, []byte("<html")) ||
+		bytes.HasPrefix(trimmed, []byte("<HTML")) {
+		return true
+	}
+	lower := bytes.ToLower(trimmed)
+	return bytes.Contains(lower, []byte("<html")) ||
+		bytes.Contains(lower, []byte("webblock")) ||
+		bytes.Contains(lower, []byte("beian-block"))
 }
 
 func (s *proxyProbeService) parseIPAPI(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
