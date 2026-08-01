@@ -357,7 +357,7 @@ func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
 
 func provideCleanup(
 	entClient *ent.Client,
-	rdb *redis.Client,
+	rdb redis.UniversalClient,
 	opsMetricsCollector *service.OpsMetricsCollector,
 	opsAggregation *service.OpsAggregationService,
 	opsAlertEvaluator *service.OpsAlertEvaluatorService,

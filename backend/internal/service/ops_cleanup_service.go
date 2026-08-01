@@ -45,7 +45,7 @@ return 0
 type OpsCleanupService struct {
 	opsRepo           OpsRepository
 	db                *sql.DB
-	redisClient       *redis.Client
+	redisClient       redis.UniversalClient
 	cfg               *config.Config
 	channelMonitorSvc *ChannelMonitorService
 	settingRepo       SettingRepository
@@ -67,7 +67,7 @@ type OpsCleanupService struct {
 func NewOpsCleanupService(
 	opsRepo OpsRepository,
 	db *sql.DB,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 	channelMonitorSvc *ChannelMonitorService,
 	settingRepo SettingRepository,

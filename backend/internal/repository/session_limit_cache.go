@@ -156,13 +156,13 @@ var (
 )
 
 type sessionLimitCache struct {
-	rdb                *redis.Client
+	rdb                redis.UniversalClient
 	defaultIdleTimeout time.Duration // 默认空闲超时（用于 GetActiveSessionCount）
 }
 
 // NewSessionLimitCache 创建会话限制缓存
 // defaultIdleTimeoutMinutes: 默认空闲超时时间（分钟），用于无参数查询
-func NewSessionLimitCache(rdb *redis.Client, defaultIdleTimeoutMinutes int) service.SessionLimitCache {
+func NewSessionLimitCache(rdb redis.UniversalClient, defaultIdleTimeoutMinutes int) service.SessionLimitCache {
 	if defaultIdleTimeoutMinutes <= 0 {
 		defaultIdleTimeoutMinutes = 5 // 默认 5 分钟
 	}

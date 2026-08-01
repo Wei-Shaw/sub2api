@@ -49,6 +49,28 @@ func TestLoadRedisUsernameFromEnvironment(t *testing.T) {
 	require.Equal(t, "app-user", cfg.Redis.Username)
 }
 
+func TestLoadRedisClusterFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("REDIS_MODE", RedisModeCluster)
+	t.Setenv("REDIS_ADDRESSES", " valkey-0:6379, valkey-1:6379 ")
+	t.Setenv("REDIS_DB", "0")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Redis.IsCluster())
+	require.Equal(t, []string{"valkey-0:6379", "valkey-1:6379"}, cfg.Redis.ConnectionAddresses())
+}
+
+func TestRedisClusterValidation(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("REDIS_MODE", RedisModeCluster)
+	t.Setenv("REDIS_ADDRESSES", "valkey-0:6379")
+	t.Setenv("REDIS_DB", "1")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "redis.db must be 0 in cluster mode")
+}
+
 func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	cfg, err := Load()
@@ -1208,6 +1230,14 @@ func TestConfigAddressHelpers(t *testing.T) {
 	if redis.Address() != "redis:6379" {
 		t.Fatalf("RedisConfig.Address() = %q", redis.Address())
 	}
+	require.Equal(t, []string{"redis:6379"}, redis.ConnectionAddresses())
+
+	clusterRedis := RedisConfig{
+		Mode:      RedisModeCluster,
+		Addresses: []string{" valkey-0:6379 ", "", "valkey-1:6379"},
+	}
+	require.True(t, clusterRedis.IsCluster())
+	require.Equal(t, []string{"valkey-0:6379", "valkey-1:6379"}, clusterRedis.ConnectionAddresses())
 }
 
 func TestNormalizeStringSlice(t *testing.T) {

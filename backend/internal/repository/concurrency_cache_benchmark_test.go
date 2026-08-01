@@ -93,7 +93,7 @@ func BenchmarkAccountConcurrency(b *testing.B) {
 	}
 }
 
-func scanSlotCount(ctx context.Context, rdb *redis.Client, pattern string) (int, error) {
+func scanSlotCount(ctx context.Context, rdb redis.UniversalClient, pattern string) (int, error) {
 	var cursor uint64
 	count := 0
 	for {
@@ -110,7 +110,7 @@ func scanSlotCount(ctx context.Context, rdb *redis.Client, pattern string) (int,
 	return count, nil
 }
 
-func newBenchmarkRedisClient(b *testing.B) *redis.Client {
+func newBenchmarkRedisClient(b *testing.B) redis.UniversalClient {
 	b.Helper()
 
 	redisURL := os.Getenv("TEST_REDIS_URL")

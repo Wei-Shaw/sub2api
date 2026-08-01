@@ -43,10 +43,10 @@ func passwordResetSentAtKey(email string) string {
 }
 
 type emailCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewEmailCache(rdb *redis.Client) service.EmailCache {
+func NewEmailCache(rdb redis.UniversalClient) service.EmailCache {
 	return &emailCache{rdb: rdb}
 }
 

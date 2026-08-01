@@ -34,10 +34,10 @@ var tempUnschedSetScript = redis.NewScript(`
 `)
 
 type tempUnschedCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewTempUnschedCache(rdb *redis.Client) service.TempUnschedCache {
+func NewTempUnschedCache(rdb redis.UniversalClient) service.TempUnschedCache {
 	return &tempUnschedCache{rdb: rdb}
 }
 

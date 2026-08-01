@@ -25,7 +25,8 @@ func TestBuildRedisOptions(t *testing.T) {
 	}
 
 	opts := buildRedisOptions(cfg)
-	require.Equal(t, "localhost:6379", opts.Addr)
+	require.Equal(t, []string{"localhost:6379"}, opts.Addrs)
+	require.False(t, opts.IsClusterMode)
 	require.Equal(t, "app-user", opts.Username)
 	require.Equal(t, "secret", opts.Password)
 	require.Equal(t, 2, opts.DB)
@@ -46,4 +47,26 @@ func TestBuildRedisOptions(t *testing.T) {
 	optsTLS := buildRedisOptions(cfgTLS)
 	require.NotNil(t, optsTLS.TLSConfig)
 	require.Equal(t, "localhost", optsTLS.TLSConfig.ServerName)
+}
+
+func TestBuildRedisClusterOptions(t *testing.T) {
+	cfg := &config.Config{
+		Redis: config.RedisConfig{
+			Mode:                config.RedisModeCluster,
+			Addresses:           []string{"valkey-0:6379", "valkey-1:6379"},
+			Username:            "sub2api",
+			Password:            "secret",
+			DB:                  0,
+			DialTimeoutSeconds:  5,
+			ReadTimeoutSeconds:  3,
+			WriteTimeoutSeconds: 4,
+			PoolSize:            100,
+			MinIdleConns:        10,
+		},
+	}
+
+	opts := buildRedisOptions(cfg)
+	require.True(t, opts.IsClusterMode)
+	require.Equal(t, []string{"valkey-0:6379", "valkey-1:6379"}, opts.Addrs)
+	require.Equal(t, 0, opts.DB)
 }

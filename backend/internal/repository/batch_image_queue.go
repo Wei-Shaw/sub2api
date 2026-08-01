@@ -82,7 +82,7 @@ return 0
 `)
 
 type batchImageQueue struct {
-	rdb            *redis.Client
+	rdb            redis.UniversalClient
 	readyKey       string
 	delayedKey     string
 	activeKey      string
@@ -92,7 +92,7 @@ type batchImageQueue struct {
 	lockTTL        time.Duration
 }
 
-func NewBatchImageQueue(rdb *redis.Client, cfg *config.Config) service.BatchImageQueue {
+func NewBatchImageQueue(rdb redis.UniversalClient, cfg *config.Config) service.BatchImageQueue {
 	return newBatchImageQueueWithOptions(rdb, batchImageQueueOptionsFromConfig(cfg))
 }
 
@@ -106,7 +106,7 @@ type batchImageQueueOptions struct {
 	LockTTL        time.Duration
 }
 
-func newBatchImageQueueWithOptions(rdb *redis.Client, opts batchImageQueueOptions) *batchImageQueue {
+func newBatchImageQueueWithOptions(rdb redis.UniversalClient, opts batchImageQueueOptions) *batchImageQueue {
 	opts = normalizeBatchImageQueueOptions(opts)
 	return &batchImageQueue{
 		rdb:            rdb,
@@ -318,7 +318,7 @@ func (q *batchImageQueue) lockKey(batchID string) string {
 }
 
 type batchImageRedisJobLock struct {
-	rdb   *redis.Client
+	rdb   redis.UniversalClient
 	key   string
 	token string
 }

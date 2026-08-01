@@ -16,10 +16,10 @@ const stickySessionPrefix = "sticky_session:"
 const liveCallPrefix = "live:call:"
 
 type gatewayCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
+func NewGatewayCache(rdb redis.UniversalClient) service.GatewayCache {
 	return &gatewayCache{rdb: rdb}
 }
 

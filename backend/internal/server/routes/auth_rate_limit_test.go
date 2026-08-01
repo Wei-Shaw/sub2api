@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newAuthRoutesTestRouter(redisClient *redis.Client) *gin.Engine {
+func newAuthRoutesTestRouter(redisClient redis.UniversalClient) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	v1 := router.Group("/api/v1")

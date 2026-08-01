@@ -355,7 +355,7 @@ var (
 )
 
 type concurrencyCache struct {
-	rdb                 *redis.Client
+	rdb                 redis.UniversalClient
 	slotTTLSeconds      int // 槽位过期时间（秒）
 	waitQueueTTLSeconds int // 等待队列过期时间（秒）
 }
@@ -363,7 +363,7 @@ type concurrencyCache struct {
 // NewConcurrencyCache 创建并发控制缓存
 // slotTTLMinutes: 槽位过期时间（分钟），0 或负数使用默认值 15 分钟
 // waitQueueTTLSeconds: 等待队列过期时间（秒），0 或负数使用 slot TTL
-func NewConcurrencyCache(rdb *redis.Client, slotTTLMinutes int, waitQueueTTLSeconds int) service.ConcurrencyCache {
+func NewConcurrencyCache(rdb redis.UniversalClient, slotTTLMinutes int, waitQueueTTLSeconds int) service.ConcurrencyCache {
 	if slotTTLMinutes <= 0 {
 		slotTTLMinutes = defaultSlotTTLMinutes
 	}
@@ -610,7 +610,7 @@ func (c *concurrencyCache) removeActiveIndexMembers(ctx context.Context, indexKe
 }
 
 // runScriptInt64Pair 执行返回两元素整数数组的 Lua 脚本并解析（如 {result, now}、{removed, remaining}）。
-func runScriptInt64Pair(ctx context.Context, rdb *redis.Client, script *redis.Script, keys []string, args ...any) (int64, int64, error) {
+func runScriptInt64Pair(ctx context.Context, rdb redis.UniversalClient, script *redis.Script, keys []string, args ...any) (int64, int64, error) {
 	raw, err := script.Run(ctx, rdb, keys, args...).Result()
 	if err != nil {
 		return 0, 0, err

@@ -943,6 +943,16 @@ database:
 # Redis 配置
 # =============================================================================
 redis:
+  # Connection mode: standalone or cluster
+  # 连接模式：standalone 或 cluster
+  mode: "standalone"
+  # Cluster seed addresses. Required when mode is cluster.
+  # Redis/Valkey Cluster 种子节点地址，cluster 模式必填
+  addresses: []
+  # Example:
+  # addresses:
+  #   - "valkey-0.example:6379"
+  #   - "valkey-1.example:6379"
   # Redis host address
   # Redis 主机地址
   host: "localhost"
@@ -955,8 +965,8 @@ redis:
   # Redis password (leave empty if no password is set)
   # Redis 密码（如果未设置密码则留空）
   password: ""
-  # Database number (0-15)
-  # 数据库编号（0-15）
+  # Database number (0-15). Cluster mode requires 0.
+  # 数据库编号（0-15），cluster 模式必须为 0
   db: 0
   # Connection pool size (max concurrent connections)
   # 连接池大小（最大并发连接数）

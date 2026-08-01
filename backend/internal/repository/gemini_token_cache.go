@@ -16,10 +16,10 @@ const (
 )
 
 type geminiTokenCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewGeminiTokenCache(rdb *redis.Client) service.GeminiTokenCache {
+func NewGeminiTokenCache(rdb redis.UniversalClient) service.GeminiTokenCache {
 	return &geminiTokenCache{rdb: rdb}
 }
 

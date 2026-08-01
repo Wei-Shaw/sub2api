@@ -220,16 +220,16 @@ return 1
 )
 
 type schedulerCache struct {
-	rdb            *redis.Client
+	rdb            redis.UniversalClient
 	mgetChunkSize  int
 	writeChunkSize int
 }
 
-func NewSchedulerCache(rdb *redis.Client) service.SchedulerCache {
+func NewSchedulerCache(rdb redis.UniversalClient) service.SchedulerCache {
 	return newSchedulerCacheWithChunkSizes(rdb, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize)
 }
 
-func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChunkSize int) service.SchedulerCache {
+func newSchedulerCacheWithChunkSizes(rdb redis.UniversalClient, mgetChunkSize, writeChunkSize int) service.SchedulerCache {
 	if mgetChunkSize <= 0 {
 		mgetChunkSize = defaultSchedulerSnapshotMGetChunkSize
 	}

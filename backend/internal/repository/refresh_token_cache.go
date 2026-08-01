@@ -32,11 +32,11 @@ func tokenFamilyKey(familyID string) string {
 }
 
 type refreshTokenCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
 // NewRefreshTokenCache creates a new RefreshTokenCache implementation.
-func NewRefreshTokenCache(rdb *redis.Client) service.RefreshTokenCache {
+func NewRefreshTokenCache(rdb redis.UniversalClient) service.RefreshTokenCache {
 	return &refreshTokenCache{rdb: rdb}
 }
 

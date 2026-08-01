@@ -15,7 +15,7 @@ import (
 
 // ProvideConcurrencyCache 创建并发控制缓存，从配置读取 TTL 参数
 // 性能优化：TTL 可配置，支持长时间运行的 LLM 请求场景
-func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config) service.ConcurrencyCache {
+func ProvideConcurrencyCache(rdb redis.UniversalClient, cfg *config.Config) service.ConcurrencyCache {
 	waitTTLSeconds := int(cfg.Gateway.Scheduling.StickySessionWaitTimeout.Seconds())
 	if cfg.Gateway.Scheduling.FallbackWaitTimeout > cfg.Gateway.Scheduling.StickySessionWaitTimeout {
 		waitTTLSeconds = int(cfg.Gateway.Scheduling.FallbackWaitTimeout.Seconds())
@@ -40,7 +40,7 @@ func ProvidePricingRemoteClient(cfg *config.Config) service.PricingRemoteClient 
 
 // ProvideSessionLimitCache 创建会话限制缓存
 // 用于 Anthropic OAuth/SetupToken 账号的并发会话数量控制
-func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) service.SessionLimitCache {
+func ProvideSessionLimitCache(rdb redis.UniversalClient, cfg *config.Config) service.SessionLimitCache {
 	defaultIdleTimeoutMinutes := 5 // 默认 5 分钟空闲超时
 	if cfg != nil && cfg.Gateway.SessionIdleTimeoutMinutes > 0 {
 		defaultIdleTimeoutMinutes = cfg.Gateway.SessionIdleTimeoutMinutes
@@ -49,7 +49,7 @@ func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) service.Ses
 }
 
 // ProvideSchedulerCache 创建调度快照缓存，并注入快照分块参数。
-func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.SchedulerCache {
+func ProvideSchedulerCache(rdb redis.UniversalClient, cfg *config.Config) service.SchedulerCache {
 	mgetChunkSize := defaultSchedulerSnapshotMGetChunkSize
 	writeChunkSize := defaultSchedulerSnapshotWriteChunkSize
 	if cfg != nil {
@@ -221,7 +221,7 @@ func ProvideSQLDB(client *ent.Client) (*sql.DB, error) {
 //   - 实时统计数据
 //
 // 依赖：config.Config
-// 提供：*redis.Client
-func ProvideRedis(cfg *config.Config) *redis.Client {
+// 提供：redis.UniversalClient
+func ProvideRedis(cfg *config.Config) redis.UniversalClient {
 	return InitRedis(cfg)
 }

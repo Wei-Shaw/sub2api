@@ -137,10 +137,10 @@ var (
 )
 
 type billingCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewBillingCache(rdb *redis.Client) service.BillingCache {
+func NewBillingCache(rdb redis.UniversalClient) service.BillingCache {
 	return &billingCache{rdb: rdb}
 }
 

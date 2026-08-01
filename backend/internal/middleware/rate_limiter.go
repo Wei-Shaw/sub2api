@@ -41,7 +41,7 @@ return {current, repaired}
 `)
 
 // rateLimitRun 允许测试覆写脚本执行逻辑
-var rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+var rateLimitRun = func(ctx context.Context, client redis.UniversalClient, key string, windowMillis int64) (int64, bool, error) {
 	values, err := rateLimitScript.Run(ctx, client, []string{key}, windowMillis).Slice()
 	if err != nil {
 		return 0, false, err
@@ -62,12 +62,12 @@ var rateLimitRun = func(ctx context.Context, client *redis.Client, key string, w
 
 // RateLimiter Redis 速率限制器
 type RateLimiter struct {
-	redis  *redis.Client
+	redis  redis.UniversalClient
 	prefix string
 }
 
 // NewRateLimiter 创建速率限制器实例
-func NewRateLimiter(redisClient *redis.Client) *RateLimiter {
+func NewRateLimiter(redisClient redis.UniversalClient) *RateLimiter {
 	return &RateLimiter{
 		redis:  redisClient,
 		prefix: "rate_limit:",

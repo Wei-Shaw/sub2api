@@ -52,7 +52,7 @@ type OpsMetricsCollector struct {
 	concurrencyService *ConcurrencyService
 
 	db          *sql.DB
-	redisClient *redis.Client
+	redisClient redis.UniversalClient
 	instanceID  string
 
 	lastCgroupCPUUsageNanos uint64
@@ -72,7 +72,7 @@ func NewOpsMetricsCollector(
 	accountRepo AccountRepository,
 	concurrencyService *ConcurrencyService,
 	db *sql.DB,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 ) *OpsMetricsCollector {
 	return &OpsMetricsCollector{

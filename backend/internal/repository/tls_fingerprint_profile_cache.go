@@ -19,13 +19,13 @@ const (
 )
 
 type tlsFingerprintProfileCache struct {
-	rdb        *redis.Client
+	rdb        redis.UniversalClient
 	localCache []*model.TLSFingerprintProfile
 	localMu    sync.RWMutex
 }
 
 // NewTLSFingerprintProfileCache 创建 TLS 指纹模板缓存
-func NewTLSFingerprintProfileCache(rdb *redis.Client) service.TLSFingerprintProfileCache {
+func NewTLSFingerprintProfileCache(rdb redis.UniversalClient) service.TLSFingerprintProfileCache {
 	return &tlsFingerprintProfileCache{
 		rdb: rdb,
 	}

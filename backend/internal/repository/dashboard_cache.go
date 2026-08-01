@@ -13,11 +13,11 @@ import (
 const dashboardStatsCacheKey = "dashboard:stats:v1"
 
 type dashboardCache struct {
-	rdb       *redis.Client
+	rdb       redis.UniversalClient
 	keyPrefix string
 }
 
-func NewDashboardCache(rdb *redis.Client, cfg *config.Config) service.DashboardStatsCache {
+func NewDashboardCache(rdb redis.UniversalClient, cfg *config.Config) service.DashboardStatsCache {
 	prefix := "sub2api:"
 	if cfg != nil {
 		prefix = strings.TrimSpace(cfg.Dashboard.KeyPrefix)

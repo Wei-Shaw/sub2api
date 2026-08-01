@@ -39,7 +39,7 @@ type OpsScheduledReportService struct {
 	opsService   *OpsService
 	userService  *UserService
 	emailService *EmailService
-	redisClient  *redis.Client
+	redisClient  redis.UniversalClient
 	cfg          *config.Config
 
 	instanceID string
@@ -59,7 +59,7 @@ func NewOpsScheduledReportService(
 	opsService *OpsService,
 	userService *UserService,
 	emailService *EmailService,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 ) *OpsScheduledReportService {
 	lockOn := cfg == nil || strings.TrimSpace(cfg.RunMode) != config.RunModeSimple

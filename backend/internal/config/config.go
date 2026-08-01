@@ -1431,14 +1431,21 @@ func (d *DatabaseConfig) DSNWithTimezone(tz string) string {
 	)
 }
 
+const (
+	RedisModeStandalone = "standalone"
+	RedisModeCluster    = "cluster"
+)
+
 // RedisConfig Redis 连接配置
 // 性能优化：新增连接池和超时参数，提升高并发场景下的吞吐量
 type RedisConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
+	Mode      string   `mapstructure:"mode"`
+	Addresses []string `mapstructure:"addresses"`
+	Host      string   `mapstructure:"host"`
+	Port      int      `mapstructure:"port"`
+	Username  string   `mapstructure:"username"`
+	Password  string   `mapstructure:"password"`
+	DB        int      `mapstructure:"db"`
 	// 连接池与超时配置（性能优化：可配置化连接池参数）
 	// DialTimeoutSeconds: 建立连接超时，防止慢连接阻塞
 	DialTimeoutSeconds int `mapstructure:"dial_timeout_seconds"`
@@ -1456,6 +1463,24 @@ type RedisConfig struct {
 
 func (r *RedisConfig) Address() string {
 	return fmt.Sprintf("%s:%d", r.Host, r.Port)
+}
+
+func (r *RedisConfig) IsCluster() bool {
+	return strings.EqualFold(strings.TrimSpace(r.Mode), RedisModeCluster)
+}
+
+func (r *RedisConfig) ConnectionAddresses() []string {
+	if !r.IsCluster() {
+		return []string{r.Address()}
+	}
+
+	addresses := make([]string, 0, len(r.Addresses))
+	for _, address := range r.Addresses {
+		if address = strings.TrimSpace(address); address != "" {
+			addresses = append(addresses, address)
+		}
+	}
+	return addresses
 }
 
 type OpsConfig struct {
@@ -1673,6 +1698,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 	trustedProxiesEnv, trustedProxiesEnvConfigured := os.LookupEnv("SERVER_TRUSTED_PROXIES")
 	forwardedClientIPHeadersEnv, forwardedClientIPHeadersEnvConfigured := os.LookupEnv("SECURITY_FORWARDED_CLIENT_IP_HEADERS")
+	redisAddressesEnv, redisAddressesEnvConfigured := os.LookupEnv("REDIS_ADDRESSES")
 	trustedProxiesConfigured := viper.InConfig("server.trusted_proxies") ||
 		viper.IsSet("server.trusted_proxies") || trustedProxiesEnvConfigured
 
@@ -1685,6 +1711,9 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 	if forwardedClientIPHeadersEnvConfigured {
 		cfg.Security.ForwardedClientIPHeaders = normalizeStringSlice(strings.Split(forwardedClientIPHeadersEnv, ","))
+	}
+	if redisAddressesEnvConfigured {
+		cfg.Redis.Addresses = normalizeStringSlice(strings.Split(redisAddressesEnv, ","))
 	}
 	cfg.Server.TrustedProxiesConfigured = trustedProxiesConfigured
 	if cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs == 0 {
@@ -2025,6 +2054,8 @@ func setDefaults() {
 	viper.SetDefault("database.user_platform_quota_flush_batch_size", 1000)
 
 	// Redis
+	viper.SetDefault("redis.mode", RedisModeStandalone)
+	viper.SetDefault("redis.addresses", []string{})
 	viper.SetDefault("redis.host", "localhost")
 	viper.SetDefault("redis.port", 6379)
 	viper.SetDefault("redis.username", "")
@@ -2879,6 +2910,21 @@ func (c *Config) Validate() error {
 	}
 	if c.Redis.DialTimeoutSeconds <= 0 {
 		return fmt.Errorf("redis.dial_timeout_seconds must be positive")
+	}
+	redisMode := strings.ToLower(strings.TrimSpace(c.Redis.Mode))
+	if redisMode == "" {
+		redisMode = RedisModeStandalone
+	}
+	if redisMode != RedisModeStandalone && redisMode != RedisModeCluster {
+		return fmt.Errorf("redis.mode must be %q or %q", RedisModeStandalone, RedisModeCluster)
+	}
+	if redisMode == RedisModeCluster {
+		if c.Redis.DB != 0 {
+			return fmt.Errorf("redis.db must be 0 in cluster mode")
+		}
+		if len(c.Redis.ConnectionAddresses()) == 0 {
+			return fmt.Errorf("redis.addresses must not be empty in cluster mode")
+		}
 	}
 	if c.Redis.ReadTimeoutSeconds <= 0 {
 		return fmt.Errorf("redis.read_timeout_seconds must be positive")

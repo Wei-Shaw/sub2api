@@ -16,10 +16,10 @@ func proxyLatencyKey(proxyID int64) string {
 }
 
 type proxyLatencyCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewProxyLatencyCache(rdb *redis.Client) service.ProxyLatencyCache {
+func NewProxyLatencyCache(rdb redis.UniversalClient) service.ProxyLatencyCache {
 	return &proxyLatencyCache{rdb: rdb}
 }
 
