@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -20,9 +21,32 @@ type ChannelServiceTierOption struct {
 }
 
 type ChannelServiceTierConfig struct {
-	Standard ChannelServiceTierOption `json:"standard"`
-	Priority ChannelServiceTierOption `json:"priority"`
-	Flex     ChannelServiceTierOption `json:"flex"`
+	Standard                  ChannelServiceTierOption `json:"standard"`
+	Priority                  ChannelServiceTierOption `json:"priority"`
+	Flex                      ChannelServiceTierOption `json:"flex"`
+	UseOutboundTierForBilling bool                     `json:"use_outbound_tier_for_billing"`
+}
+
+func (c *ChannelServiceTierConfig) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Standard                  ChannelServiceTierOption `json:"standard"`
+		Priority                  ChannelServiceTierOption `json:"priority"`
+		Flex                      ChannelServiceTierOption `json:"flex"`
+		UseOutboundTierForBilling *bool                    `json:"use_outbound_tier_for_billing"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	*c = ChannelServiceTierConfig{
+		Standard:                  wire.Standard,
+		Priority:                  wire.Priority,
+		Flex:                      wire.Flex,
+		UseOutboundTierForBilling: true,
+	}
+	if wire.UseOutboundTierForBilling != nil {
+		c.UseOutboundTierForBilling = *wire.UseOutboundTierForBilling
+	}
+	return nil
 }
 
 type ChannelServiceTierSnapshot struct {
@@ -48,9 +72,10 @@ func cloneChannelServiceTierSnapshot(snapshot *ChannelServiceTierSnapshot) *Chan
 
 func DefaultChannelServiceTierConfig() ChannelServiceTierConfig {
 	return ChannelServiceTierConfig{
-		Standard: ChannelServiceTierOption{Enabled: true, Multiplier: 1},
-		Priority: ChannelServiceTierOption{Enabled: true, Multiplier: 2},
-		Flex:     ChannelServiceTierOption{Enabled: true, Multiplier: 0.5},
+		Standard:                  ChannelServiceTierOption{Enabled: true, Multiplier: 1},
+		Priority:                  ChannelServiceTierOption{Enabled: true, Multiplier: 2},
+		Flex:                      ChannelServiceTierOption{Enabled: true, Multiplier: 0.5},
+		UseOutboundTierForBilling: true,
 	}
 }
 

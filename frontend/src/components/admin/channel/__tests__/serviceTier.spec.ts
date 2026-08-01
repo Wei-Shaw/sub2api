@@ -11,6 +11,7 @@ describe('channel service tier form helpers', () => {
       standard: { enabled: true, multiplier: 1 },
       priority: { enabled: true, multiplier: 2 },
       flex: { enabled: true, multiplier: 0.5 },
+      use_outbound_tier_for_billing: true,
     })
   })
 
@@ -18,7 +19,19 @@ describe('channel service tier form helpers', () => {
     const source = defaultServiceTierConfig()
     const clone = cloneServiceTierConfig(source)
     clone.priority.multiplier = 3
+    clone.use_outbound_tier_for_billing = false
     expect(source.priority.multiplier).toBe(2)
+    expect(source.use_outbound_tier_for_billing).toBe(true)
+  })
+
+  it('defaults an omitted legacy billing switch to enabled', () => {
+    const legacy = {
+      standard: { enabled: true, multiplier: 1 },
+      priority: { enabled: true, multiplier: 2 },
+      flex: { enabled: true, multiplier: 0.5 },
+    } as unknown as Parameters<typeof cloneServiceTierConfig>[0]
+
+    expect(cloneServiceTierConfig(legacy).use_outbound_tier_for_billing).toBe(true)
   })
 
   it('requires at least one enabled tier', () => {

@@ -53,6 +53,7 @@ export interface ChannelServiceTierConfig {
   standard: ChannelServiceTierOption
   priority: ChannelServiceTierOption
   flex: ChannelServiceTierOption
+  use_outbound_tier_for_billing: boolean
 }
 
 export interface Channel {

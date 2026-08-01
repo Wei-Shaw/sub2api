@@ -157,6 +157,8 @@ export default {
         standardTierDisabledWarning: '关闭 Standard 后，未指定 service_tier 的普通请求也会被拒绝。',
         serviceTierAtLeastOne: '至少需要启用一个 OpenAI 服务档位',
         serviceTierMultiplierInvalid: '服务档位倍率必须是 0.01 到 100 之间的数字',
+        outboundTierBilling: '以发给上游的档位计费',
+        outboundTierBillingHint: '同时适用于 OAuth 和 API Key。开启后，以实际发出的档位和上方倍率结算，回包档位仅用于观察；关闭后，优先按回包中的可识别档位结算，回包缺失或无法识别时仍以出站档位兜底。',
         selectedCount: '已选 {count} 个',
         searchGroups: '搜索分组...',
         noGroupsMatch: '没有匹配的分组',

@@ -570,7 +570,7 @@ func unmarshalServiceTierConfig(data []byte) (service.ChannelServiceTierConfig, 
 	if len(data) == 0 || string(data) == "null" {
 		return service.DefaultChannelServiceTierConfig(), ""
 	}
-	var config service.ChannelServiceTierConfig
+	config := service.DefaultChannelServiceTierConfig()
 	if err := json.Unmarshal(data, &config); err != nil {
 		return service.ChannelServiceTierConfig{}, fmt.Sprintf("decode service_tier_config: %v", err)
 	}

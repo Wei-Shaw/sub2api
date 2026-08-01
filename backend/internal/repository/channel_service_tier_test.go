@@ -26,6 +26,14 @@ func TestChannelServiceTierConfigJSON(t *testing.T) {
 	require.Empty(t, configError)
 	require.Equal(t, defaults, decoded)
 
+	decoded, configError = unmarshalServiceTierConfig([]byte(`{"standard":{"enabled":true,"multiplier":1},"priority":{"enabled":true,"multiplier":2},"flex":{"enabled":true,"multiplier":0.5}}`))
+	require.Empty(t, configError)
+	require.True(t, decoded.UseOutboundTierForBilling, "legacy channel JSON must preserve the safe outbound-authoritative default")
+
+	decoded, configError = unmarshalServiceTierConfig([]byte(`{"standard":{"enabled":true,"multiplier":1},"priority":{"enabled":true,"multiplier":2},"flex":{"enabled":true,"multiplier":0.5},"use_outbound_tier_for_billing":false}`))
+	require.Empty(t, configError)
+	require.False(t, decoded.UseOutboundTierForBilling, "an explicit false must remain distinguishable from an omitted legacy field")
+
 	_, configError = unmarshalServiceTierConfig([]byte(`{"standard":`))
 	require.Contains(t, configError, "decode service_tier_config")
 

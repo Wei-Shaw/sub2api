@@ -586,9 +586,10 @@ func TestChannelServiceTierAuditExtraContainsBeforeAndAfterValues(t *testing.T) 
 	after.Priority.Multiplier = 3
 	after.Flex.Enabled = false
 	after.Flex.Multiplier = 0.4
+	after.UseOutboundTierForBilling = false
 
 	extra := channelServiceTierAuditExtra(before, after)
-	require.Len(t, extra, 12)
+	require.Len(t, extra, 14)
 	require.Equal(t, true, extra["service_tier_standard_enabled_before"])
 	require.Equal(t, false, extra["service_tier_standard_enabled_after"])
 	require.Equal(t, 1.0, extra["service_tier_standard_multiplier_before"])
@@ -597,4 +598,6 @@ func TestChannelServiceTierAuditExtraContainsBeforeAndAfterValues(t *testing.T) 
 	require.Equal(t, 3.0, extra["service_tier_priority_multiplier_after"])
 	require.Equal(t, true, extra["service_tier_flex_enabled_before"])
 	require.Equal(t, false, extra["service_tier_flex_enabled_after"])
+	require.Equal(t, true, extra["service_tier_outbound_billing_before"])
+	require.Equal(t, false, extra["service_tier_outbound_billing_after"])
 }

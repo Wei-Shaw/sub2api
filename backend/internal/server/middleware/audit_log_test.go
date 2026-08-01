@@ -145,14 +145,17 @@ func TestSetAuditExtraAllowsChannelServiceTierBeforeAfterFields(t *testing.T) {
 		"service_tier_flex_enabled_after":         false,
 		"service_tier_flex_multiplier_before":     0.5,
 		"service_tier_flex_multiplier_after":      0.4,
+		"service_tier_outbound_billing_before":    true,
+		"service_tier_outbound_billing_after":     false,
 	})
 	value, ok := c.Get(auditCtxKeyExtra)
 	require.True(t, ok)
 	extra, ok := value.(map[string]any)
 	require.True(t, ok)
-	require.Len(t, extra, 12)
+	require.Len(t, extra, 14)
 	require.Equal(t, false, extra["service_tier_flex_enabled_after"])
 	require.Equal(t, 3.0, extra["service_tier_priority_multiplier_after"])
+	require.Equal(t, false, extra["service_tier_outbound_billing_after"])
 }
 
 func TestPromptAuditMutationAuditRoutesHaveStableActionsAndOmitBodies(t *testing.T) {

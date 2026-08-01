@@ -283,6 +283,17 @@
               >
                 {{ t('admin.channels.form.standardTierDisabledWarning') }}
               </p>
+              <div class="mt-3 flex items-start justify-between gap-4 border-t border-gray-200 pt-3 dark:border-dark-700">
+                <div class="min-w-0">
+                  <div class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.channels.form.outboundTierBilling') }}
+                  </div>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.channels.form.outboundTierBillingHint') }}
+                  </p>
+                </div>
+                <Toggle v-model="form.service_tier_config.use_outbound_tier_for_billing" />
+              </div>
             </div>
 
             <!-- Platform Management -->

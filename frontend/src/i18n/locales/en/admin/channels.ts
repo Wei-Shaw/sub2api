@@ -157,6 +157,8 @@ export default {
         standardTierDisabledWarning: 'When Standard is disabled, regular requests without service_tier are also rejected.',
         serviceTierAtLeastOne: 'At least one OpenAI service tier must be enabled',
         serviceTierMultiplierInvalid: 'Service tier multipliers must be numbers between 0.01 and 100',
+        outboundTierBilling: 'Bill by the tier sent upstream',
+        outboundTierBillingHint: 'Applies to both OAuth and API Key accounts. When enabled, billing uses the tier actually sent upstream and the multipliers above; the response tier is observational only. When disabled, billing prefers a recognized response tier and falls back to the outbound tier when the response omits or does not identify one.',
         selectedCount: '{count} selected',
         searchGroups: 'Search groups...',
         noGroupsMatch: 'No groups match your search',

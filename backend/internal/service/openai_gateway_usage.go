@@ -198,7 +198,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	serviceTierDecision := resolveOpenAIServiceTierBillingDecision(result, input.ServiceTierState, billingAccount)
 	serviceTier := serviceTierDecision.ProtocolTier
-	if serviceTierDecision.Evidence == openAIServiceTierEvidenceOAuthOutboundAuthoritative &&
+	if serviceTierDecision.Evidence == openAIServiceTierEvidenceChannelOutboundAuthoritative &&
 		serviceTierDecision.ActualWasObserved {
 		logger.L().With(
 			zap.String("component", "service.openai_gateway"),
@@ -206,7 +206,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			zap.String("billing_service_tier", serviceTier),
 			zap.String("service_tier_evidence", string(serviceTierDecision.Evidence)),
 			zap.Int64("account_id", account.ID),
-		).Debug("openai_usage.oauth_observed_service_tier")
+		).Debug("openai_usage.outbound_authoritative_observed_service_tier")
 	} else if serviceTierDecision.ActualWasUnknown {
 		logger.L().With(
 			zap.String("component", "service.openai_gateway"),

@@ -64,6 +64,7 @@ var auditExtraAllowedKeys = map[string]struct{}{
 	"service_tier_priority_multiplier_before": {}, "service_tier_priority_multiplier_after": {},
 	"service_tier_flex_enabled_before": {}, "service_tier_flex_enabled_after": {},
 	"service_tier_flex_multiplier_before": {}, "service_tier_flex_multiplier_after": {},
+	"service_tier_outbound_billing_before": {}, "service_tier_outbound_billing_after": {},
 }
 
 // SetAuditExtra adds allowlisted, scalar details to the current audit entry.

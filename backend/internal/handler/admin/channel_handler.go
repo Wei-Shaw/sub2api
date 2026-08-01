@@ -421,6 +421,8 @@ func channelServiceTierAuditExtra(before, after service.ChannelServiceTierConfig
 		"service_tier_flex_enabled_after":         after.Flex.Enabled,
 		"service_tier_flex_multiplier_before":     before.Flex.Multiplier,
 		"service_tier_flex_multiplier_after":      after.Flex.Multiplier,
+		"service_tier_outbound_billing_before":    before.UseOutboundTierForBilling,
+		"service_tier_outbound_billing_after":     after.UseOutboundTierForBilling,
 	}
 }
 
