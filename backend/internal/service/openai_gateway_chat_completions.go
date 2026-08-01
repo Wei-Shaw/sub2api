@@ -53,7 +53,7 @@ func sanitizeCursorResponsesShapeBody(body []byte) ([]byte, error) {
 	} else if changed {
 		result = normalized
 	}
-	stripped, err := stripOpenAIResponsesInputNamespaces(result)
+	stripped, err := stripOpenAIResponsesInputNamespaces(result, false)
 	if err != nil {
 		return nil, err
 	}
