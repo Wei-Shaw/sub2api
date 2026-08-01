@@ -1807,8 +1807,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthMultiNonStreaming(
 
 		if requestID == "" {
 			requestID = strings.TrimSpace(resp.Header.Get("x-request-id"))
-			responseHeaders = resp.Header.Clone()
 		}
+		responseHeaders = resp.Header.Clone()
 		if resp.StatusCode >= http.StatusBadRequest {
 			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()

@@ -772,6 +772,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthFansOutNAndReturnsAllImages(t *t
 	require.Equal(t, 46, result.Usage.InputTokens)
 	require.Equal(t, 2459, result.Usage.OutputTokens)
 	require.Equal(t, 2459, result.Usage.ImageOutputTokens)
+	require.Equal(t, "req_img_3", result.ResponseHeaders.Get("x-request-id"))
 	require.NotNil(t, result.ActualServiceTier)
 	require.Equal(t, "standard", *result.ActualServiceTier)
 
