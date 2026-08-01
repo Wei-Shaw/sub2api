@@ -1,0 +1,3 @@
+[      50ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/src/style.css:0
+[      62ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/src/components/common/NavigationProgress.vue?vue&type=style&index=0&scoped=b083dbca&lang.css:0
+[      79ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/src/components/admin/AdminComplianceDialog.vue?vue&type=style&index=0&scoped=3ccb04a0&lang.css:0
