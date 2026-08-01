@@ -81,6 +81,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userDeviceRepository := repository.NewUserDeviceRepository(client)
 	authService := service.NewAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, emailQueueService, promoService, subscriptionService, affiliateService, serviceUserPlatformQuotaRepository)
 	authService.SetInviteLoginDeviceResolver(userDeviceRepository)
+	authService.SetInviteBootstrapAPIKeyService(apiKeyService)
+	authService.SetInviteBootstrapGroupRepository(groupRepository)
 	userService := service.NewUserService(userRepository, settingRepository, apiKeyAuthCacheInvalidator, billingCache)
 	redeemCache := repository.NewRedeemCache(redisClient)
 	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator, affiliateService)

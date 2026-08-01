@@ -59,6 +59,11 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 		return nil, ErrServiceUnavailable
 	}
 
+	bootstrapKeys, err := s.provisionInviteBootstrapAPIKeys(ctx, user.ID, code)
+	if err != nil {
+		return nil, err
+	}
+
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
 	if err != nil {
 		return nil, fmt.Errorf("generate token pair: %w", err)
@@ -69,7 +74,8 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 	}
 
 	return &InviteLoginResult{
-		TokenPair: tokenPair,
-		User:      user,
+		TokenPair:        tokenPair,
+		User:             user,
+		BootstrapAPIKeys: bootstrapKeys,
 	}, nil
 }

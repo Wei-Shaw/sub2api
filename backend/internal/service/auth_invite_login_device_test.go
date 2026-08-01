@@ -16,6 +16,34 @@ type inviteLoginUserDeviceRepoStub struct {
 	updatedLoginIDs     []int64
 }
 
+type inviteBootstrapAPIKeyServiceStub struct {
+	groups       []Group
+	createdKeys  []*APIKey
+	createErrors map[int64]error
+}
+
+func (s *inviteBootstrapAPIKeyServiceStub) GetAvailableGroups(context.Context, int64) ([]Group, error) {
+	return append([]Group(nil), s.groups...), nil
+}
+
+func (s *inviteBootstrapAPIKeyServiceStub) Create(_ context.Context, _ int64, req CreateAPIKeyRequest) (*APIKey, error) {
+	groupID := int64(0)
+	if req.GroupID != nil {
+		groupID = *req.GroupID
+	}
+	if err, ok := s.createErrors[groupID]; ok {
+		return nil, err
+	}
+	created := &APIKey{
+		ID:      int64(len(s.createdKeys) + 1),
+		Name:    req.Name,
+		Key:     "sk-bootstrap-" + req.Name,
+		GroupID: &groupID,
+	}
+	s.createdKeys = append(s.createdKeys, created)
+	return created, nil
+}
+
 func (s *inviteLoginUserDeviceRepoStub) GetByDeviceHash(context.Context, string) (*UserDevice, error) {
 	panic("unexpected GetByDeviceHash call")
 }
@@ -54,6 +82,7 @@ func newAuthServiceForInviteLoginTest(
 	redeemRepo RedeemCodeRepository,
 	userDeviceRepo UserDeviceRepository,
 	settings map[string]string,
+	bootstrapSvc InviteBootstrapAPIKeyService,
 ) *AuthService {
 	cfg := &config.Config{
 		JWT: config.JWTConfig{
@@ -84,6 +113,9 @@ func newAuthServiceForInviteLoginTest(
 		nil,
 	)
 	authService.SetInviteLoginDeviceResolver(userDeviceRepo)
+	if bootstrapSvc != nil {
+		authService.SetInviteBootstrapAPIKeyService(bootstrapSvc)
+	}
 	return authService
 }
 
@@ -122,11 +154,20 @@ func TestAuthServiceInviteLoginAcceptsDeviceLoginCode(t *testing.T) {
 			},
 		},
 	}
+	bootstrapSvc := &inviteBootstrapAPIKeyServiceStub{
+		groups: []Group{{
+			ID:                 101,
+			Platform:           "openai",
+			Status:             StatusActive,
+			ActiveAccountCount: 1,
+		}},
+	}
 	authService := newAuthServiceForInviteLoginTest(
 		userRepo,
 		&redeemCodeRepoStub{codesByCode: map[string]*RedeemCode{loginCode: loginRedeem}},
 		userDeviceRepo,
 		map[string]string{SettingKeyRegistrationEnabled: "false"},
+		bootstrapSvc,
 	)
 
 	result, err := authService.InviteLogin(context.Background(), InviteLoginInput{
@@ -142,6 +183,10 @@ func TestAuthServiceInviteLoginAcceptsDeviceLoginCode(t *testing.T) {
 	require.NotNil(t, result.User)
 	require.Equal(t, int64(51), result.User.ID)
 	require.Equal(t, []int64{2}, userDeviceRepo.updatedLoginIDs)
+	require.Len(t, result.BootstrapAPIKeys, 1)
+	require.Equal(t, "openai", result.BootstrapAPIKeys[0].Platform)
+	require.Equal(t, "sk-bootstrap-bootstrap-openai", result.BootstrapAPIKeys[0].Key)
+	require.Len(t, bootstrapSvc.createdKeys, 1)
 }
 
 func TestAuthServiceInviteLoginRejectsDeviceMismatch(t *testing.T) {
@@ -172,6 +217,7 @@ func TestAuthServiceInviteLoginRejectsDeviceMismatch(t *testing.T) {
 		&redeemCodeRepoStub{codesByCode: map[string]*RedeemCode{loginCode: loginRedeem}},
 		userDeviceRepo,
 		map[string]string{SettingKeyRegistrationEnabled: "false"},
+		nil,
 	)
 
 	result, err := authService.InviteLogin(context.Background(), InviteLoginInput{
