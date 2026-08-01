@@ -150,13 +150,9 @@ func (r *healthGroupRepoStub) SetGroupMembers(context.Context, int64, []int64) e
 	panic("unused")
 }
 
-type healthProberStub struct {
-	failIDs map[int64]bool
-}
+type healthProberStub struct{}
 
 func (p *healthProberStub) ProbeProxy(_ context.Context, proxyURL string) (*ProxyExitInfo, int64, error) {
-	// proxy URL embeds host as 127.0.0.1:PORT where port encodes id for tests — unused;
-	// fail based on password field "fail" or we parse host. Simpler: always fail if password==fail.
 	if proxyURL == "" {
 		return nil, 0, errors.New("empty")
 	}
