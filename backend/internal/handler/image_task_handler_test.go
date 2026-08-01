@@ -44,6 +44,23 @@ func (s *asyncImageMemoryStore) Get(_ context.Context, id string) (*service.Imag
 	return &copy, nil
 }
 
+func (s *asyncImageMemoryStore) Delete(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.tasks, id)
+	return nil
+}
+
+func (s *asyncImageMemoryStore) ScheduleCleanup(context.Context, service.ImageTaskCleanup) error {
+	return nil
+}
+
+func (s *asyncImageMemoryStore) ListDueCleanup(context.Context, time.Time, int) ([]service.ImageTaskCleanup, error) {
+	return nil, nil
+}
+
+func (s *asyncImageMemoryStore) DeleteCleanup(context.Context, string) error { return nil }
+
 func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &asyncImageMemoryStore{tasks: make(map[string]*service.ImageTaskRecord)}

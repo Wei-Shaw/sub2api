@@ -30,6 +30,12 @@ export default {
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
         },
+        imagePlayground: {
+          title: '图片工作台',
+          description: '让用户在控制台中选择图片专用分组，用提示词或参考图生成并下载图片。默认关闭。',
+          enabled: '启用图片工作台',
+          enabledHint: '关闭后用户侧边栏入口隐藏，直接访问页面会被拦截，相关接口也不可调用。',
+        },
         modelPlaza: {
           title: '模型广场',
           description: '以分组为单位向访客展示可用模型与价格的公开页面。默认关闭。',

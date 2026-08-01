@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -68,6 +69,8 @@ func (s *recordingStorage) Save(_ context.Context, key, _ string, _ []byte) (str
 	return "https://cdn.example.com/" + key, nil
 }
 
+func (s *recordingStorage) Delete(context.Context, string) error { return nil }
+
 func newImageStorageFixture(t *testing.T, fallback config.ImageStorageConfig) (*ImageStorageSettingService, *stubSettingRepo, *[]config.ImageStorageConfig) {
 	return newImageStorageFixtureWithKey(t, fallback, true)
 }
@@ -107,23 +110,26 @@ func TestImageStorageSettingsToggleTakesEffectWithoutRestart(t *testing.T) {
 		Prefix: "backups/",
 	})
 
-	uploader, enabled := svc.resolve()
+	uploader, enabled, _ := svc.resolve()
 	require.False(t, enabled, "disabled until an admin turns it on")
 	require.Nil(t, uploader)
 
-	_, err := svc.Update(ctx, ImageStorageSettings{Enabled: true, ReuseBackupS3: true})
+	_, err := svc.Update(ctx, ImageStorageSettings{Enabled: true, ReuseBackupS3: true, RetentionHours: 48})
 	require.NoError(t, err)
 
-	uploader, enabled = svc.resolve()
+	uploader, enabled, retention := svc.resolve()
 	require.True(t, enabled, "saving the setting must enable the feature immediately")
 	require.NotNil(t, uploader)
+	require.Equal(t, 48*time.Hour, retention)
 
 	_, err = svc.Update(ctx, ImageStorageSettings{Enabled: false, ReuseBackupS3: true})
 	require.NoError(t, err)
-	_, enabled = svc.resolve()
+	uploader, enabled, retention = svc.resolve()
 	require.False(t, enabled, "turning it back off must also apply immediately")
+	require.NotNil(t, uploader, "configured storage remains available for deleting retained files")
+	require.Equal(t, 24*time.Hour, retention)
 
-	require.Len(t, *built, 1, "the S3 client is built only when the feature is on")
+	require.Len(t, *built, 2)
 }
 
 func TestImageStorageSettingsReuseBackupCredentials(t *testing.T) {
@@ -137,7 +143,7 @@ func TestImageStorageSettingsReuseBackupCredentials(t *testing.T) {
 
 	_, err := svc.Update(ctx, ImageStorageSettings{Enabled: true, ReuseBackupS3: true, Prefix: "images"})
 	require.NoError(t, err)
-	_, enabled := svc.resolve()
+	_, enabled, _ := svc.resolve()
 	require.True(t, enabled)
 
 	require.Len(t, *built, 1)
@@ -179,7 +185,7 @@ func TestImageStorageSettingsOwnCredentialsAreEncryptedAndMasked(t *testing.T) {
 	require.Empty(t, fetched.SecretAccessKey)
 	require.True(t, svc.SecretConfigured(ctx))
 
-	_, enabled := svc.resolve()
+	_, enabled, _ := svc.resolve()
 	require.True(t, enabled)
 	require.Equal(t, "super-secret", (*built)[0].SecretAccessKey, "the stored secret must be decrypted before use")
 
@@ -189,7 +195,7 @@ func TestImageStorageSettingsOwnCredentialsAreEncryptedAndMasked(t *testing.T) {
 		Endpoint: "https://acct.r2.cloudflarestorage.com", AccessKeyID: "ak",
 	})
 	require.NoError(t, err)
-	svc.resolve()
+	_, _, _ = svc.resolve()
 	require.Equal(t, "super-secret", (*built)[1].SecretAccessKey)
 }
 
@@ -228,7 +234,7 @@ func TestImageStorageSettingsIncompleteStaysDisabled(t *testing.T) {
 	_, err := svc.Update(ctx, ImageStorageSettings{Enabled: true, Bucket: "my-images"})
 	require.NoError(t, err)
 
-	_, enabled := svc.resolve()
+	_, enabled, _ := svc.resolve()
 	require.False(t, enabled, "missing credentials must not enable the feature")
 	require.Empty(t, *built, "no client is built from an incomplete configuration")
 }
@@ -242,7 +248,7 @@ func TestImageStorageSettingsFallBackToConfigFile(t *testing.T) {
 		Prefix: "images/", MaxDownloadByte: 1024,
 	})
 
-	_, enabled := svc.resolve()
+	_, enabled, _ := svc.resolve()
 	require.True(t, enabled, "config.yaml still enables the feature when nothing is stored yet")
 	require.Equal(t, "yaml-bucket", (*built)[0].Bucket)
 
@@ -251,4 +257,24 @@ func TestImageStorageSettingsFallBackToConfigFile(t *testing.T) {
 	require.True(t, fetched.Enabled)
 	require.Equal(t, "yaml-bucket", fetched.Bucket)
 	require.Empty(t, fetched.SecretAccessKey)
+}
+
+func TestImageStorageIdentityTracksTargetButNotCredentialsOrPrefix(t *testing.T) {
+	base := config.ImageStorageConfig{
+		Endpoint:        "https://acct.r2.cloudflarestorage.com/",
+		Region:          "auto",
+		Bucket:          "images",
+		Prefix:          "images/",
+		AccessKeyID:     "old-ak",
+		SecretAccessKey: "old-secret",
+	}
+	rotatedCredentials := base
+	rotatedCredentials.AccessKeyID = "new-ak"
+	rotatedCredentials.SecretAccessKey = "new-secret"
+	rotatedCredentials.Prefix = "new-prefix/"
+	otherBucket := base
+	otherBucket.Bucket = "other-images"
+
+	require.Equal(t, imageStorageIdentity(&base), imageStorageIdentity(&rotatedCredentials))
+	require.NotEqual(t, imageStorageIdentity(&base), imageStorageIdentity(&otherBucket))
 }

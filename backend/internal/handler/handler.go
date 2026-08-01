@@ -64,6 +64,7 @@ type Handlers struct {
 	AvailableChannel *AvailableChannelHandler
 	ModelPlaza       *ModelPlazaHandler
 	AsyncImage       *AsyncImageHandler
+	ImagePlayground  *ImagePlaygroundHandler
 	BatchImage       *BatchImageHandler
 }
 

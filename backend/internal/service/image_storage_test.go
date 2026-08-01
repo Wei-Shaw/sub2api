@@ -24,9 +24,12 @@ type savedImage struct {
 }
 
 type fakeImageStorage struct {
-	saved []savedImage
-	url   string
-	err   error
+	saved     []savedImage
+	deleted   []string
+	url       string
+	err       error
+	deleteErr error
+	failAfter int
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -35,9 +38,20 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+func (f *fakeImageStorage) Delete(_ context.Context, key string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.deleted = append(f.deleted, key)
+	return nil
+}
+
 func (f *fakeImageStorage) Save(_ context.Context, key, contentType string, data []byte) (string, error) {
 	if f.err != nil {
 		return "", f.err
+	}
+	if f.failAfter > 0 && len(f.saved) >= f.failAfter {
+		return "", errors.New("injected save failure")
 	}
 	f.saved = append(f.saved, savedImage{key: key, contentType: contentType, data: append([]byte(nil), data...)})
 	if f.url != "" {
@@ -190,6 +204,18 @@ func TestImageResultUploaderPropagatesStorageError(t *testing.T) {
 	_, err := uploader.Rewrite(context.Background(), "imgtask_err", result)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "bucket unreachable")
+}
+
+func TestImageResultUploaderRollsBackPartialUpload(t *testing.T) {
+	storage := &fakeImageStorage{failAfter: 1}
+	uploader := NewImageResultUploader(storage, "images/", 0, nil)
+	b64 := base64.StdEncoding.EncodeToString(pngBytes)
+	result := json.RawMessage(`{"data":[{"b64_json":"` + b64 + `"},{"b64_json":"` + b64 + `"}]}`)
+
+	_, keys, err := uploader.RewriteWithKeys(context.Background(), "imgtask_partial", result)
+	require.ErrorContains(t, err, "injected save failure")
+	require.Empty(t, keys)
+	require.Equal(t, []string{"images/imgtask_partial-0.png"}, storage.deleted)
 }
 
 func TestImageResultUploaderNilStoragePassthrough(t *testing.T) {

@@ -25,6 +25,7 @@ const appStore = vi.hoisted(() => ({
   cachedPublicSettings: null as null | {
     payment_enabled?: boolean
     risk_control_enabled?: boolean
+    image_playground_enabled?: boolean
     custom_menu_items?: []
   },
   fetchPublicSettings: vi.fn(),
@@ -173,5 +174,33 @@ describe('feature route guard', () => {
     expect(appStore.fetchPublicSettings).not.toHaveBeenCalled()
     expect(next).toHaveBeenCalledOnce()
     expect(next).toHaveBeenCalledWith(target)
+  })
+
+  it('allows the image playground only when its opt-in switch is enabled', async () => {
+    appStore.cachedPublicSettings = { image_playground_enabled: true }
+    appStore.publicSettingsLoaded = true
+
+    const { navigation, next } = runGuard(
+      { requiresImagePlayground: true },
+      '/image-playground'
+    )
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('redirects direct image playground access when the switch is disabled', async () => {
+    appStore.cachedPublicSettings = { image_playground_enabled: false }
+    appStore.publicSettingsLoaded = true
+
+    const { navigation, next } = runGuard(
+      { requiresImagePlayground: true },
+      '/image-playground'
+    )
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith('/dashboard')
   })
 })

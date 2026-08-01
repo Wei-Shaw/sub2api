@@ -17,6 +17,7 @@ import (
 // S3ImageStorage 用 S3 兼容对象存储实现 service.ImageStorage。
 type S3ImageStorage struct {
 	client        *s3.Client
+	deleteObject  func(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
 	bucket        string
 	publicBaseURL string
 	presignExpiry time.Duration
@@ -41,9 +42,16 @@ func NewS3ImageStorage(ctx context.Context, cfg *config.ImageStorageConfig) (*S3
 	if expiry <= 0 {
 		expiry = 24 * time.Hour
 	}
+	if retention := time.Duration(cfg.RetentionHours) * time.Hour; retention > expiry {
+		expiry = retention
+	}
+	if expiry > 168*time.Hour {
+		expiry = 168 * time.Hour
+	}
 
 	return &S3ImageStorage{
 		client:        client,
+		deleteObject:  client.DeleteObject,
 		bucket:        cfg.Bucket,
 		publicBaseURL: strings.TrimRight(cfg.PublicBaseURL, "/"),
 		presignExpiry: expiry,
@@ -77,4 +85,25 @@ func (s *S3ImageStorage) Save(ctx context.Context, key, contentType string, data
 		return "", fmt.Errorf("presign url: %w", err)
 	}
 	return result.URL, nil
+}
+
+func (s *S3ImageStorage) Delete(ctx context.Context, key string) error {
+	finish := servertiming.ObserveDependency(ctx, "s3")
+	deleteObject := s.deleteObject
+	if deleteObject == nil && s.client != nil {
+		deleteObject = s.client.DeleteObject
+	}
+	if deleteObject == nil {
+		finish()
+		return fmt.Errorf("S3 DeleteObject: client is unavailable")
+	}
+	_, err := deleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: &s.bucket,
+		Key:    &key,
+	})
+	finish()
+	if err != nil {
+		return fmt.Errorf("S3 DeleteObject: %w", err)
+	}
+	return nil
 }

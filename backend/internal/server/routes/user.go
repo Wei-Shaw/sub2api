@@ -13,6 +13,7 @@ func RegisterUserRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
 	jwtAuth middleware.JWTAuthMiddleware,
+	apiKeyAuth middleware.APIKeyAuthMiddleware,
 	auditLog middleware.AuditLogMiddleware,
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
@@ -93,6 +94,21 @@ func RegisterUserRoutes(
 		channels := authenticated.Group("/channels")
 		{
 			channels.GET("/available", h.AvailableChannel.List)
+		}
+
+		imagePlayground := authenticated.Group("/image-playground")
+		{
+			imagePlayground.GET("/options", h.ImagePlayground.Options)
+			imagePlayground.POST(
+				"/tasks",
+				middleware.RequestBodyLimit(handler.ImagePlaygroundMaxRequestBodyBytes),
+				h.ImagePlayground.ResolveAPIKey,
+				gin.HandlerFunc(apiKeyAuth),
+				h.ImagePlayground.Submit,
+			)
+			imagePlayground.GET("/tasks/:task_id", h.ImagePlayground.GetTask)
+			imagePlayground.DELETE("/tasks/:task_id", h.ImagePlayground.DeleteTask)
+			imagePlayground.GET("/tasks/:task_id/images/:image_index/download", h.ImagePlayground.Download)
 		}
 
 		// 使用记录（聚合统计属重查询，叠加更严格的按用户限流）

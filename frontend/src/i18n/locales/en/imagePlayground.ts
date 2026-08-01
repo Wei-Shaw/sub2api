@@ -1,0 +1,93 @@
+export default {
+  imagePlayground: {
+    title: 'Image Playground',
+    galleryTitle: 'Creations',
+    description: 'Choose a group and image model, then generate, preview, and download images directly from a prompt.',
+    generatedImage: 'Generated image',
+    images: 'images',
+    untitledPrompt: 'Untitled prompt',
+    fields: {
+      group: 'Group', model: 'Model', platform: 'Platform', size: 'Size', quality: 'Quality',
+      format: 'Format', background: 'Background', count: 'Count', width: 'Width (px)', height: 'Height (px)',
+    },
+    placeholders: { group: 'Select a group', model: 'Select a model', prompt: 'Describe the image you want to create...', editPrompt: 'Describe how to use the references, or leave blank for a natural variation' },
+    filters: { all: 'All', processing: 'Generating', completed: 'Completed', failed: 'Failed' },
+    status: { generating: 'Generating', failed: 'Generation failed' },
+    actions: {
+      generate: 'Generate', submitting: 'Submitting', preview: 'Preview', download: 'Download image',
+      reuse: 'Reuse prompt', regenerate: 'Generate again', deleteAll: 'Delete all', deleting: 'Deleting',
+      createAPIKey: 'Create API key',
+      decreaseCount: 'Decrease count', increaseCount: 'Increase count', swapDimensions: 'Swap width and height',
+    },
+    deleteAll: {
+      title: 'Delete all images?',
+      message: 'This permanently deletes the records and object-storage files for {count} tasks. Deleted images cannot be viewed, downloaded, or recovered. Tasks still generating are kept.',
+      confirm: 'Delete all',
+    },
+    retention: {
+      current: 'Files retained for {hours} hours',
+      countdown: '{time} remaining',
+      expired: 'Expired',
+      expiresAt: 'Automatically deleted at {time}',
+      dayUnit: 'd',
+    },
+    composer: {
+      settings: 'Generation settings', expand: 'Expand settings', collapse: 'Collapse settings', ready: 'Ready to generate',
+      processingCount: '{count} tasks generating',
+      referenceReady: '{count} reference images selected',
+    },
+    references: {
+      title: 'Reference images', add: 'Upload reference images', addShort: 'Add', remove: 'Remove reference image', clear: 'Clear',
+      usedCount: 'Used {count} reference images',
+      errors: {
+        tooMany: 'You can upload up to 4 reference images',
+        tooLarge: '“{name}” is larger than 10 MB',
+        invalidType: '“{name}” must be a PNG, JPEG, or WebP image',
+        reupload: 'This task used reference images. Upload them again before generating.',
+      },
+    },
+    empty: {
+      title: 'Start with an idea',
+      description: 'Enter a prompt below. Generated images will appear here and continue running after you leave the page.',
+      filtered: 'No tasks with this status yet',
+    },
+    detail: { title: 'Image details', prompt: 'Prompt', createdAt: 'Created', expiresAt: 'Available until' },
+    messages: { submitted: 'Task submitted and generating in the background', completed: 'Image generation completed', deleted: 'Deleted {count} image tasks' },
+    errors: {
+      loadFailed: 'Could not load Image Playground',
+      generationFailed: 'The provider did not generate an image. Adjust the prompt or settings and try again.',
+      deleteFailed: '{count} tasks could not be deleted or are still generating and remain in the playground.',
+    },
+    unavailable: {
+      storageTitle: 'Image Playground is not enabled',
+      storageDescription: 'An administrator needs to configure Redis and object storage before asynchronous results can be stored safely.',
+      noGroups: 'No image groups are available',
+      dedicatedGroupTitle: 'No dedicated image group',
+      contactAdminForDedicatedGroup: 'Contact an administrator to configure a dedicated image group.',
+      apiKeyTitle: 'Image group API key required',
+      createImageGroupAPIKey: 'Create an API key bound to a dedicated image group, then return here to generate images.',
+      reasons: {
+        IMAGE_STORAGE_REQUIRED: 'Image storage is not configured',
+        API_KEY_REQUIRED: 'No API key for this group',
+        API_KEY_UNUSABLE: 'The API key for this group is unavailable',
+        NO_IMAGE_MODELS: 'No image models are available',
+      },
+    },
+    optionLabels: {
+      auto: 'Auto', low: 'Low', medium: 'Medium', high: 'High', standard: 'Standard', hd: 'HD',
+      opaque: 'Opaque', transparent: 'Transparent',
+    },
+    size: {
+      square: 'Square', landscape: 'Landscape', portrait: 'Portrait', custom: 'Custom size',
+      valid: '{ratio} · {megapixels} MP',
+      experimental: '{megapixels} MP · resolutions above 2K are experimental',
+      errors: {
+        positiveIntegers: 'Width and height must be positive integers',
+        multipleOf: 'Width and height must be multiples of {value}',
+        maxEdge: 'Neither edge can exceed {value}px',
+        aspectRatio: 'Aspect ratio cannot exceed {value}:1',
+        totalPixels: 'Total pixels must be between {min} and {max} MP',
+      },
+    },
+  },
+}

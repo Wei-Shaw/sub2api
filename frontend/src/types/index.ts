@@ -250,6 +250,7 @@ export interface PublicSettings {
   channel_monitor_enabled: boolean
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
+  image_playground_enabled: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
   service_quota_enabled: boolean

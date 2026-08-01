@@ -24,7 +24,7 @@ Asynchronous image tasks are **disabled by default** and gated on object storage
 
 **Admin → Backup → Async image object storage.** Saving the form takes effect immediately — the object-storage client is rebuilt on the next request, so there is no container restart.
 
-Because the async image storage and the database backup share one S3 client, the form defaults to **reusing the backup S3 configuration**: it borrows the endpoint, region and credentials already configured above and keeps only its own bucket and prefix, so backups stay under `backups/` while images go to `images/`. Leave the bucket empty to use the backup bucket as well. Untick the box to point images at a completely separate account.
+The form defaults to **reusing the backup S3 configuration**: image storage builds its own client from the endpoint, region and credentials already configured for backups, while keeping its own bucket and prefix. Backups therefore stay under `backups/` and images go to `images/`. Leave the image bucket empty to use the backup bucket as well. Untick the box to point images at a completely separate account.
 
 Saving requires step-up 2FA when that gate is enabled, for the same reason the backup S3 form does: changing the target redirects generated content to another account.
 
@@ -48,12 +48,17 @@ image_storage:
   force_path_style: false          # MinIO/path-style buckets set true
   public_base_url: ""              # set to return public_base_url/key直链; empty → presigned URL
   presign_expiry_hours: 24         # presigned link TTL when public_base_url is empty
+  retention_hours: 24              # task and generated-file retention (1-168 hours)
   max_download_bytes: 33554432     # cap when re-hosting an upstream image URL (32MB)
 ```
 
-When a task completes, each generated image is uploaded to the bucket and the result is rewritten to a compact form: `data[].url` points at the stored object (a permanent `public_base_url/key` link, or a time-limited presigned URL) and `b64_json` is removed. Only this small JSON is stored in Redis. If an upload fails, the task is marked `failed` rather than persisting the raw base64.
+When a task completes, each generated image is uploaded to the bucket and the result is rewritten to a compact form: `data[].url` points at the stored object (a `public_base_url/key` link, or a time-limited presigned URL) and `b64_json` is removed. Only this small JSON is stored in Redis. A Redis-backed cleanup schedule deletes stored objects after `retention_hours`, including after a service restart. If an upload fails, the task is marked `failed` rather than persisting the raw base64.
 
-To support a different vendor beyond the S3-compatible client, implement the `service.ImageStorage` interface (`Save(ctx, key, contentType, data) (url, error)`) and provide it in place of the S3 implementation.
+Reference images uploaded from Image Playground are request inputs only. Multipart parsing may use the operating system's temporary directory for large requests, and those temporary files are removed when the request finishes; reference images are not copied into the image bucket or retained with the task. Generated images are the only long-lived image objects.
+
+Cleanup records include a non-secret fingerprint of the endpoint, region, bucket and path-style mode used for the upload. Rotating credentials or changing the object prefix does not interrupt cleanup. If the endpoint or bucket changes while old images are still retained, deletion is refused and the cleanup record is kept instead of falsely reporting success against the new bucket. Restore the previous target to run those pending deletions, or remove the old objects through that storage provider.
+
+To support a different vendor beyond the S3-compatible client, implement the `service.ImageStorage` interface (`Save` and idempotent `Delete`) and provide it in place of the S3 implementation.
 
 ### Troubleshooting: the endpoints return 404 after enabling
 
@@ -161,6 +166,6 @@ For URL responses, `image_url` mirrors the first `data[].url` for simple clients
 }
 ```
 
-All submit and poll responses include `Cache-Control: no-store`, preventing a CDN from caching the `processing` state. Tasks and results expire 24 hours after their latest state update. A task executes for at most 30 minutes.
+All submit and poll responses include `Cache-Control: no-store`, preventing a CDN from caching the `processing` state. Tasks and generated files expire after the administrator-configured retention period, which defaults to 24 hours. A task executes for at most 30 minutes.
 
 Task ownership is scoped to both user and API key. Unknown task IDs and IDs owned by another key both return `404`, avoiding task-existence disclosure. Polling remains available when the completed generation used the key's remaining balance; normal authentication, disabled-key, user, IP, and group checks still apply.

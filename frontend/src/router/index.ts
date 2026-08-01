@@ -13,6 +13,7 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 
 /**
  * Route definitions with lazy loading
@@ -213,6 +214,19 @@ const routes: RouteRecordRaw[] = [
       title: 'API Keys',
       titleKey: 'keys.title',
       descriptionKey: 'keys.description'
+    }
+  },
+  {
+    path: '/image-playground',
+    name: 'ImagePlayground',
+    component: () => import('@/views/user/ImagePlaygroundView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Image Playground',
+      titleKey: 'imagePlayground.title',
+      descriptionKey: 'imagePlayground.description',
+      requiresImagePlayground: true
     }
   },
   {
@@ -895,7 +909,7 @@ router.beforeEach(async (to, _from, next) => {
   // 公共设置可能尚未加载（App.vue 的 onMounted 异步拉取晚于首次导航，且纯静态部署
   // 无 __APP_CONFIG__ 注入）。此时 cachedPublicSettings 为空会把 payment/risk_control
   // 误判为“未启用”而错误拦截，故这里先确保设置加载完成。
-  if ((to.meta.requiresPayment || to.meta.requiresRiskControl) && !appStore.publicSettingsLoaded) {
+  if ((to.meta.requiresPayment || to.meta.requiresRiskControl || to.meta.requiresImagePlayground) && !appStore.publicSettingsLoaded) {
     try {
       await appStore.fetchPublicSettings()
     } catch (error) {
@@ -920,6 +934,16 @@ router.beforeEach(async (to, _from, next) => {
     appStore.cachedPublicSettings?.risk_control_enabled === false
   ) {
     next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
+    return
+  }
+
+  // Image Playground is opt-in. If public settings are unavailable, keep it
+  // hidden and let the administrator explicitly enable it first.
+  if (
+    to.meta.requiresImagePlayground &&
+    !isFeatureFlagEnabled(FeatureFlags.imagePlayground)
+  ) {
+    next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
     return
   }
 

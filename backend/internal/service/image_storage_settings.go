@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -34,6 +36,7 @@ type ImageStorageSettings struct {
 	Prefix           string `json:"prefix"`
 	PublicBaseURL    string `json:"public_base_url"`
 	PresignExpiry    int    `json:"presign_expiry_hours"`
+	RetentionHours   int    `json:"retention_hours"`
 	MaxDownloadBytes int64  `json:"max_download_bytes"`
 
 	// 以下仅在 ReuseBackupS3 为假时使用
@@ -58,10 +61,11 @@ type ImageStorageSettingService struct {
 	// 保证升级前已用配置文件开启该功能的部署不被打断。
 	fallback config.ImageStorageConfig
 
-	mu       sync.Mutex
-	resolved bool
-	uploader *ImageResultUploader
-	enabled  bool
+	mu        sync.Mutex
+	resolved  bool
+	uploader  *ImageResultUploader
+	enabled   bool
+	retention time.Duration
 }
 
 func NewImageStorageSettingService(
@@ -82,47 +86,68 @@ func NewImageStorageSettingService(
 
 // Resolver 返回可注入 ImageTaskService 的解析函数。
 func (s *ImageStorageSettingService) Resolver() ImageStorageResolver {
-	return func() (*ImageResultUploader, bool) {
+	return func() (*ImageResultUploader, bool, time.Duration) {
 		return s.resolve()
 	}
 }
 
-func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
+func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool, time.Duration) {
 	if s == nil {
-		return nil, false
+		return nil, false, defaultImageTaskTTL
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.resolved {
-		return s.uploader, s.enabled
+		return s.uploader, s.enabled, s.retention
 	}
 
 	ctx := context.Background()
 	s.resolved = true
 	s.uploader, s.enabled = nil, false
+	s.retention = defaultImageTaskTTL
 
 	cfg, err := s.effectiveConfig(ctx)
 	if err != nil {
 		logger.L().Warn("image_storage.settings_load_failed; async image tasks stay disabled", zap.Error(err))
-		return nil, false
+		return nil, false, s.retention
 	}
-	if !cfg.Enabled {
-		return nil, false
+	if cfg.RetentionHours > 0 {
+		s.retention = time.Duration(cfg.RetentionHours) * time.Hour
+	}
+	if s.retention > 168*time.Hour {
+		s.retention = 168 * time.Hour
 	}
 	if !cfg.IsConfigured() {
-		logger.L().Warn("image_storage is enabled but not fully configured; async image tasks are disabled",
-			zap.Strings("missing_keys", cfg.MissingCredentialKeys()))
-		return nil, false
+		if cfg.Enabled {
+			logger.L().Warn("image_storage is enabled but not fully configured; async image tasks are disabled",
+				zap.Strings("missing_keys", cfg.MissingCredentialKeys()))
+		}
+		return nil, false, s.retention
 	}
 
 	storage, err := s.factory(ctx, cfg)
 	if err != nil {
 		logger.L().Error("image_storage.client_build_failed; async image tasks stay disabled", zap.Error(err))
-		return nil, false
+		return nil, false, s.retention
 	}
 	s.uploader = NewImageResultUploader(storage, cfg.Prefix, cfg.MaxDownloadByte, nil)
-	s.enabled = true
-	return s.uploader, true
+	s.uploader.storageIdentity = imageStorageIdentity(cfg)
+	s.enabled = cfg.Enabled
+	return s.uploader, s.enabled, s.retention
+}
+
+func imageStorageIdentity(cfg *config.ImageStorageConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	target := strings.Join([]string{
+		strings.ToLower(strings.TrimRight(strings.TrimSpace(cfg.Endpoint), "/")),
+		strings.ToLower(strings.TrimSpace(cfg.Region)),
+		strings.ToLower(strings.TrimSpace(cfg.Bucket)),
+		fmt.Sprintf("path_style=%t", cfg.ForcePathStyle),
+	}, "\n")
+	sum := sha256.Sum256([]byte(target))
+	return fmt.Sprintf("s3:%x", sum[:16])
 }
 
 // Invalidate 丢弃缓存，使下一次请求按最新设置重新解析。
@@ -134,6 +159,7 @@ func (s *ImageStorageSettingService) Invalidate() {
 	s.resolved = false
 	s.uploader = nil
 	s.enabled = false
+	s.retention = 0
 	s.mu.Unlock()
 }
 
@@ -244,6 +270,7 @@ func (s *ImageStorageSettingService) toImageStorageConfig(ctx context.Context, i
 		Prefix:          in.Prefix,
 		PublicBaseURL:   in.PublicBaseURL,
 		PresignExpiry:   in.PresignExpiry,
+		RetentionHours:  in.RetentionHours,
 		MaxDownloadByte: in.MaxDownloadBytes,
 		Endpoint:        in.Endpoint,
 		Region:          in.Region,
@@ -311,6 +338,7 @@ func settingsFromConfig(cfg config.ImageStorageConfig) *ImageStorageSettings {
 		Prefix:           cfg.Prefix,
 		PublicBaseURL:    cfg.PublicBaseURL,
 		PresignExpiry:    cfg.PresignExpiry,
+		RetentionHours:   cfg.RetentionHours,
 		MaxDownloadBytes: cfg.MaxDownloadByte,
 		Endpoint:         cfg.Endpoint,
 		Region:           cfg.Region,
@@ -340,6 +368,20 @@ func normalizeImageStorageSettings(in *ImageStorageSettings) {
 	}
 	if in.PresignExpiry <= 0 {
 		in.PresignExpiry = 24
+	}
+	if in.RetentionHours <= 0 {
+		in.RetentionHours = 24
+	}
+	// AWS S3 presigned GET URLs support at most seven days. Keeping the two
+	// periods aligned guarantees the link remains valid for the full period.
+	if in.RetentionHours > 168 {
+		in.RetentionHours = 168
+	}
+	if in.PresignExpiry < in.RetentionHours {
+		in.PresignExpiry = in.RetentionHours
+	}
+	if in.PresignExpiry > 168 {
+		in.PresignExpiry = 168
 	}
 	if in.MaxDownloadBytes <= 0 {
 		in.MaxDownloadBytes = defaultImageMaxDownloadBytes

@@ -55,6 +55,9 @@ declare module 'vue-router' {
      */
     requiresRiskControl?: boolean
 
+    /** Whether the Image Playground feature switch must be enabled. */
+    requiresImagePlayground?: boolean
+
     /**
      * i18n key for the page title
      */

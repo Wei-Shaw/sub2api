@@ -642,6 +642,66 @@ func TestOpenAIGatewayServiceRecordUsage_IncludesEndpointMetadata(t *testing.T) 
 	require.Equal(t, "/v1/responses", *usageRepo.lastLog.UpstreamEndpoint)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_ImageEditPreservesIdentityAndCostBreakdown(t *testing.T) {
+	groupID := int64(15)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.resolver = newOpenAITokenImageChannelPricingResolverForTest(t, groupID, "gpt-image-2")
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_playground_edit",
+			Model:     "gpt-image-2",
+			Usage: OpenAIUsage{
+				InputTokens:       371,
+				ImageInputTokens:  352,
+				OutputTokens:      439,
+				ImageOutputTokens: 439,
+			},
+			ImageCount: 1,
+			ImageSize:  "1024x1024",
+			Duration:   time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      1005,
+			UserID:  2005,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				Platform:       PlatformOpenAI,
+				RateMultiplier: 1,
+			},
+		},
+		User:            &User{ID: 2005},
+		Account:         &Account{ID: 3005, Platform: PlatformOpenAI},
+		InboundEndpoint: "/v1/images/edits",
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel: "gpt-image-2",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	log := usageRepo.lastLog
+	require.Equal(t, int64(2005), log.UserID)
+	require.Equal(t, int64(1005), log.APIKeyID)
+	require.Equal(t, i64p(groupID), log.GroupID)
+	require.Equal(t, "gpt-image-2", log.RequestedModel)
+	require.NotNil(t, log.InboundEndpoint)
+	require.Equal(t, "/v1/images/edits", *log.InboundEndpoint)
+	require.Equal(t, 371, log.InputTokens)
+	require.Equal(t, 352, log.ImageInputTokens)
+	require.Equal(t, 439, log.ImageOutputTokens)
+	require.Equal(t, 1, log.ImageCount)
+	require.InDelta(t, float64(19)*3e-6, log.InputCost, 1e-12)
+	require.InDelta(t, float64(352)*8e-6, log.ImageInputCost, 1e-12)
+	require.Zero(t, log.OutputCost)
+	require.InDelta(t, float64(439)*15e-6, log.ImageOutputCost, 1e-12)
+	require.InDelta(t, log.ActualCost, userRepo.lastAmount, 1e-12)
+	require.Equal(t, 1, userRepo.deductCalls)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_FallsBackToGroupDefaultRateOnResolverError(t *testing.T) {
 	groupID := int64(12)
 	groupRate := 1.6
@@ -2562,12 +2622,14 @@ func newOpenAIImageChannelPricingResolverForTest(t *testing.T, groupID int64, mo
 func newOpenAITokenImageChannelPricingResolverForTest(t *testing.T, groupID int64, model string) *ModelPricingResolver {
 	t.Helper()
 	inputPrice := 3e-6
+	imageInputPrice := 8e-6
 	outputPrice := 15e-6
 	imageOutputPrice := 15e-6
 	cache := newEmptyChannelCache()
 	cache.pricingByGroupModel[channelModelKey{groupID: groupID, model: model}] = &ChannelModelPricing{
 		BillingMode:      BillingModeToken,
 		InputPrice:       &inputPrice,
+		ImageInputPrice:  &imageInputPrice,
 		OutputPrice:      &outputPrice,
 		ImageOutputPrice: &imageOutputPrice,
 	}

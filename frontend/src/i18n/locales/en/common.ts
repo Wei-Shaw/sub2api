@@ -160,6 +160,7 @@ export default {
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
+    imagePlayground: 'Image Playground',
     batchImage: 'Batch Images',
     usage: 'Usage',
     redeem: 'Redeem',

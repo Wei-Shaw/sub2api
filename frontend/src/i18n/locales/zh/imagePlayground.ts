@@ -1,0 +1,93 @@
+export default {
+  imagePlayground: {
+    title: '图片工作台',
+    galleryTitle: '作品',
+    description: '选择分组和图片模型，用提示词直接生成、预览并下载图片。生成任务会在后台继续运行。',
+    generatedImage: '生成的图片',
+    images: '张',
+    untitledPrompt: '未命名提示词',
+    fields: {
+      group: '分组', model: '模型', platform: '平台', size: '尺寸', quality: '质量',
+      format: '格式', background: '背景', count: '张数', width: '宽度（px）', height: '高度（px）',
+    },
+    placeholders: { group: '选择分组', model: '选择模型', prompt: '描述你想生成的画面...', editPrompt: '描述如何使用参考图；留空则生成自然变体' },
+    filters: { all: '全部', processing: '生成中', completed: '已完成', failed: '失败' },
+    status: { generating: '正在生成', failed: '生成失败' },
+    actions: {
+      generate: '生成图片', submitting: '正在提交', preview: '预览', download: '下载图片',
+      reuse: '复用提示词', regenerate: '重新生成', deleteAll: '删除全部', deleting: '正在删除',
+      createAPIKey: '去创建 API Key',
+      decreaseCount: '减少一张', increaseCount: '增加一张', swapDimensions: '交换宽高',
+    },
+    deleteAll: {
+      title: '删除全部图片？',
+      message: '将永久删除 {count} 个任务的记录和对象存储文件，删除后无法查看、下载或恢复。正在生成的任务不会被删除。',
+      confirm: '确认删除',
+    },
+    retention: {
+      current: '文件保留 {hours} 小时',
+      countdown: '剩余 {time}',
+      expired: '已过期',
+      expiresAt: '将在 {time} 自动删除',
+      dayUnit: '天',
+    },
+    composer: {
+      settings: '生成参数', expand: '展开参数', collapse: '收起参数', ready: '准备生成',
+      processingCount: '{count} 个任务正在生成',
+      referenceReady: '已选择 {count} 张参考图',
+    },
+    references: {
+      title: '参考图片', add: '上传参考图片', addShort: '添加', remove: '移除参考图片', clear: '清空',
+      usedCount: '使用了 {count} 张参考图片',
+      errors: {
+        tooMany: '最多只能上传 4 张参考图片',
+        tooLarge: '“{name}”超过 10 MB，请压缩后重试',
+        invalidType: '“{name}”不是支持的图片格式，请使用 PNG、JPEG 或 WebP',
+        reupload: '这个任务使用了参考图片，请重新上传后再生成',
+      },
+    },
+    empty: {
+      title: '从一个想法开始',
+      description: '在下方输入提示词。生成的图片会在这里排列，离开页面后也能继续生成。',
+      filtered: '这个状态下还没有任务',
+    },
+    detail: { title: '图片详情', prompt: '提示词', createdAt: '创建时间', expiresAt: '保留至' },
+    messages: { submitted: '任务已提交，图片将在后台生成', completed: '图片生成完成', deleted: '已删除 {count} 个图片任务' },
+    errors: {
+      loadFailed: '图片工作台加载失败',
+      generationFailed: '上游没有成功生成图片，请调整提示词或参数后重试',
+      deleteFailed: '{count} 个任务删除失败或仍在生成，已保留在工作台中',
+    },
+    unavailable: {
+      storageTitle: '图片工作台尚未启用',
+      storageDescription: '需要管理员先配置 Redis 和对象存储，才能安全地保存异步生成结果。',
+      noGroups: '暂无可用的图片分组',
+      dedicatedGroupTitle: '暂无图片专用分组',
+      contactAdminForDedicatedGroup: '请联系管理员设置图片专用分组',
+      apiKeyTitle: '缺少图片分组专属 API Key',
+      createImageGroupAPIKey: '请先创建一个绑定到图片专用分组的 API Key，再返回这里生成图片。',
+      reasons: {
+        IMAGE_STORAGE_REQUIRED: '未配置图片存储',
+        API_KEY_REQUIRED: '该分组没有 API 密钥',
+        API_KEY_UNUSABLE: '该分组的 API 密钥不可用',
+        NO_IMAGE_MODELS: '没有可用图片模型',
+      },
+    },
+    optionLabels: {
+      auto: '自动', low: '低', medium: '标准', high: '高', standard: '标准', hd: '高清',
+      opaque: '不透明', transparent: '透明',
+    },
+    size: {
+      square: '方形', landscape: '横图', portrait: '竖图', custom: '自定义尺寸',
+      valid: '{ratio} · {megapixels} 百万像素',
+      experimental: '{megapixels} 百万像素 · 2K 以上为实验性支持',
+      errors: {
+        positiveIntegers: '宽高必须是正整数',
+        multipleOf: '宽高必须是 {value} 的倍数',
+        maxEdge: '任一边不能超过 {value}px',
+        aspectRatio: '长短边比例不能超过 {value}:1',
+        totalPixels: '总像素需在 {min}–{max} 百万之间',
+      },
+    },
+  },
+}

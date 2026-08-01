@@ -101,7 +101,8 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	}
 
 	taskCtx, recorder, cancel := newAsyncImageContext(c, body, h.tasks.ExecutionTimeout())
-	task, err := h.tasks.Create(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID})
+	metadata := h.imageTaskMetadataFromRequest(c, apiKey, platform, body)
+	task, err := h.tasks.CreateWithMetadata(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID}, metadata)
 	if err != nil {
 		cancel()
 		imageTaskError(c, err)
@@ -123,6 +124,29 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	})
 
 	go h.run(task.ID, platform, taskCtx, recorder, cancel)
+}
+
+func (h *AsyncImageHandler) imageTaskMetadataFromRequest(c *gin.Context, apiKey *service.APIKey, platform string, body []byte) service.ImageTaskMetadata {
+	metadata := service.ImageTaskMetadata{Platform: platform}
+	if apiKey != nil && apiKey.GroupID != nil {
+		metadata.GroupID = *apiKey.GroupID
+	}
+	if platform == service.PlatformGrok {
+		parsed := service.ParseGrokMediaRequest(c.GetHeader("Content-Type"), body)
+		metadata.Model = parsed.Model
+		metadata.PromptPreview = parsed.Prompt
+		return metadata
+	}
+	if c != nil && h != nil && h.openAI != nil && h.openAI.gatewayService != nil {
+		// The request has already passed validation. Parsing again here only
+		// captures safe task metadata for the dashboard response.
+		if parsed, err := h.openAI.gatewayService.ParseOpenAIImagesRequest(c, body); err == nil {
+			metadata.Model = parsed.Model
+			metadata.PromptPreview = parsed.Prompt
+			metadata.InputImageCount = len(parsed.InputImageURLs) + len(parsed.Uploads)
+		}
+	}
+	return metadata
 }
 
 func (h *AsyncImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, apiKey *service.APIKey, platform string, body []byte) bool {

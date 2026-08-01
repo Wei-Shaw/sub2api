@@ -113,6 +113,8 @@ export default {
         publicBaseUrl: '公开访问域名',
         publicBaseUrlPlaceholder: '留空则返回预签名临时链接',
         presignExpiryHours: '预签名链接有效期（小时）',
+        retentionHours: '生成文件保留时间（小时）',
+        retentionHint: '默认 24 小时，最多 168 小时。到期后任务记录和对象存储文件会自动清理。',
         saved: '异步生图对象存储配置已保存'
       },
       schedule: {

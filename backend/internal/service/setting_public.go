@@ -232,6 +232,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
+		SettingKeyImagePlaygroundEnabled,
 		SettingKeyModelPlazaEnabled,
 		SettingKeyModelPlazaRequireAuth,
 		SettingKeyAffiliateEnabled,
@@ -358,6 +359,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 
+		ImagePlaygroundEnabled: settings[SettingKeyImagePlaygroundEnabled] == "true",
+
 		ModelPlazaEnabled:     settings[SettingKeyModelPlazaEnabled] == "true",
 		ModelPlazaRequireAuth: settings[SettingKeyModelPlazaRequireAuth] == "true",
 
@@ -428,6 +431,19 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 // switch consumed by the user-facing handler.
 type AvailableChannelsRuntime struct {
 	Enabled bool
+}
+
+// IsImagePlaygroundEnabled reads the opt-in dashboard image playground switch.
+// It fails closed when settings are unavailable.
+func (s *SettingService) IsImagePlaygroundEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyImagePlaygroundEnabled})
+	if err != nil {
+		return false
+	}
+	return vals[SettingKeyImagePlaygroundEnabled] == "true"
 }
 
 // GetAvailableChannelsRuntime reads the available-channels feature switch directly
@@ -562,6 +578,7 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
+	ImagePlaygroundEnabled               bool `json:"image_playground_enabled"`
 	ModelPlazaEnabled                    bool `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth                bool `json:"model_plaza_require_auth"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
@@ -641,6 +658,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
+		ImagePlaygroundEnabled:               settings.ImagePlaygroundEnabled,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
 		AffiliateEnabled:                     settings.AffiliateEnabled,

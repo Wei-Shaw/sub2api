@@ -30,6 +30,12 @@ export default {
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
         },
+        imagePlayground: {
+          title: 'Image Playground',
+          description: 'Let users generate and download images from dedicated image groups using prompts or reference images. Disabled by default.',
+          enabled: 'Enable Image Playground',
+          enabledHint: 'When off, the sidebar entry is hidden, direct page access is blocked, and the related APIs are unavailable.',
+        },
         modelPlaza: {
           title: 'Model Plaza',
           description: 'A public page showcasing available models and pricing by group. Disabled by default.',

@@ -196,6 +196,9 @@ type SystemSettings struct {
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// Image Playground feature (user-facing image generation workspace)
+	ImagePlaygroundEnabled bool `json:"image_playground_enabled"`
+
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled     bool   `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth bool   `json:"model_plaza_require_auth"`
@@ -361,6 +364,9 @@ type PublicSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// Image Playground feature (user-facing image generation workspace)
+	ImagePlaygroundEnabled bool `json:"image_playground_enabled"`
 
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled     bool `json:"model_plaza_enabled"`

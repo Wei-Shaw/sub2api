@@ -242,8 +242,62 @@ func TestCalculateStatsCost_TokenBilling_WithImageOutput(t *testing.T) {
 	}
 	result := calculateStatsCost(pricing, tokens, 1)
 	require.NotNil(t, result)
-	// 100*0.001 + 50*0.002 + 10*0.01 = 0.1 + 0.1 + 0.1 = 0.3
-	require.InDelta(t, 0.3, *result, 1e-12)
+	// OutputTokens includes ImageOutputTokens: 40 text * 0.002 + 10 image * 0.01.
+	// Together with input this is 0.1 + 0.08 + 0.1 = 0.28.
+	require.InDelta(t, 0.28, *result, 1e-12)
+}
+
+func TestCalculateStatsCost_TokenBilling_SeparatesImageInput(t *testing.T) {
+	pricing := &ChannelModelPricing{
+		BillingMode:     BillingModeToken,
+		InputPrice:      testPtrFloat64(5e-6),
+		ImageInputPrice: testPtrFloat64(8e-6),
+		OutputPrice:     testPtrFloat64(10e-6),
+	}
+	tokens := UsageTokens{
+		InputTokens:      300,
+		ImageInputTokens: 200,
+		OutputTokens:     50,
+	}
+	result := calculateStatsCost(pricing, tokens, 1)
+	require.NotNil(t, result)
+	// 100 text input * $5/MTok + 200 image input * $8/MTok + 50 output * $10/MTok.
+	require.InDelta(t, 0.0026, *result, 1e-12)
+}
+
+func TestCalculateStatsCost_TokenBilling_ImageInputFallsBackToTextPrice(t *testing.T) {
+	pricing := &ChannelModelPricing{
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(5e-6),
+	}
+	tokens := UsageTokens{InputTokens: 300, ImageInputTokens: 200}
+	result := calculateStatsCost(pricing, tokens, 1)
+	require.NotNil(t, result)
+	require.InDelta(t, 0.0015, *result, 1e-12)
+}
+
+func TestCalculateStatsCost_TokenBilling_IntervalKeepsImagePrices(t *testing.T) {
+	pricing := &ChannelModelPricing{
+		BillingMode:      BillingModeToken,
+		ImageInputPrice:  testPtrFloat64(8e-6),
+		ImageOutputPrice: testPtrFloat64(30e-6),
+		Intervals: []PricingInterval{{
+			MinTokens:   0,
+			InputPrice:  testPtrFloat64(5e-6),
+			OutputPrice: testPtrFloat64(10e-6),
+		}},
+	}
+	tokens := UsageTokens{
+		InputTokens:       300,
+		ImageInputTokens:  200,
+		OutputTokens:      150,
+		ImageOutputTokens: 100,
+	}
+	result := calculateStatsCost(pricing, tokens, 1)
+	require.NotNil(t, result)
+	// 100 text input * 5e-6 + 200 image input * 8e-6 +
+	// 50 text output * 10e-6 + 100 image output * 30e-6.
+	require.InDelta(t, 0.0056, *result, 1e-12)
 }
 
 func TestCalculateStatsCost_TokenBilling_PartialPricesNil(t *testing.T) {
@@ -525,8 +579,29 @@ func TestTryModelFilePricing_WithImageOutput(t *testing.T) {
 	}
 	result := tryModelFilePricing(bs, "claude-sonnet-4", tokens)
 	require.NotNil(t, result)
-	// 100*0.001 + 50*0.002 + 10*0.01 = 0.1 + 0.1 + 0.1 = 0.3
-	require.InDelta(t, 0.3, *result, 1e-12)
+	// OutputTokens includes ImageOutputTokens: 40 text * 0.002 + 10 image * 0.01.
+	require.InDelta(t, 0.28, *result, 1e-12)
+}
+
+func TestTryModelFilePricing_SeparatesImageInputAndOutput(t *testing.T) {
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": {
+			InputPricePerToken:       5e-6,
+			ImageInputPricePerToken:  8e-6,
+			OutputPricePerToken:      10e-6,
+			ImageOutputPricePerToken: 30e-6,
+			ImageOutputPriceExplicit: true,
+		},
+	})
+	tokens := UsageTokens{
+		InputTokens:       371,
+		ImageInputTokens:  352,
+		OutputTokens:      439,
+		ImageOutputTokens: 439,
+	}
+	result := tryModelFilePricing(bs, "claude-sonnet-4", tokens)
+	require.NotNil(t, result)
+	require.InDelta(t, 0.016081, *result, 1e-12)
 }
 
 func TestTryModelFilePricing_WithCacheTokens(t *testing.T) {

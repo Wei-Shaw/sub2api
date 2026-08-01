@@ -1300,5 +1300,7 @@ image_storage:
   public_base_url: ""
   # public_base_url 为空时，presigned 链接的有效时长（小时）
   presign_expiry_hours: 24
+  # 任务记录与生成文件的保留时长（小时，默认 24，最大 168）
+  retention_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
   max_download_bytes: 33554432
