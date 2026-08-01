@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -440,9 +441,10 @@ REDACTED
 	requiredCapability := openAIResponsesRequiredCapability(imageIntent, requestPlatform)
 
 	// 分组利润控制：请求级装配定价上下文——pricingAt 固定本请求的
-	// D 与计费高峰因子，选号、槽位终检与全部 failover 重入共用同一门与阈值；
-	// 显式生图意图跳门（图片/视频不在利润门范围）。
-	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID, imageIntent)
+	// D 与计费高峰因子，选号、槽位终检与全部 failover 重入共用同一门与阈值。
+	// 生图意图只影响能力路由与图片计费，不关门：混合 /v1/responses 请求的
+	// token 计费部分仍受利润门保护，独立图片/视频端点才在门外。
+	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(pricingCtx)
 
 	for {
@@ -1007,7 +1009,7 @@ REDACTED
 	effectiveMappedModel := preferredMappedModel
 
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
-	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID, false)
+	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(msgPricingCtx)
 
 	for {
@@ -1398,7 +1400,9 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 		return nil, openAISlotAcquireFailed
 REDACTED
 
-	ctx := c.Request.Context()
+	// 终检与准入后绑定使用选号结果携带的门：composite 等跨分组调度解析出的
+	// 门只存在于调度栈的局部 ctx，必须经选号结果重放到本函数的 ctx 上。
+	ctx := service.ContextWithSelectionProfitGate(c.Request.Context(), selection)
 	account := selection.Account
 	if selection.Acquired {
 		latest, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(ctx, account)
@@ -1411,6 +1415,13 @@ REDACTED
 	REDACTED
 		account = latest
 		selection.Account = latest
+		// 调度器已抢槽路径无门时由选号内部完成 eager 绑定；门下选号内部
+		// 推迟绑定，这里在终检通过后补准入后绑定。
+		if selection.ProfitGateActive() {
+			if err := h.gatewayService.BindStickySessionAfterProfitAdmission(ctx, groupID, sessionHash, account.ID); err != nil {
+				reqLog.Warn("openai.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		REDACTED
+	REDACTED
 		return wrapReleaseOnDone(ctx, selection.ReleaseFunc), openAISlotAcquireOK
 REDACTED
 	if selection.WaitPlan == nil {
@@ -1786,10 +1797,11 @@ REDACTED
 		requiredCapability = service.OpenAIEndpointCapabilityResponses
 REDACTED
 
-	// 分组利润控制：WS 桥按连接装配定价上下文并装门（选号与抢槽
-	// 共用该 ctx）；连接内不重选号，每个 turn 的计费共用同一 pricingAt——长
-	// 连接跨峰谷边界属已知残余风险，由安全缓冲承担。显式生图意图跳门。
-	wsPricingCtx, wsPricingAt := h.gatewayService.WithOpenAIRequestPricingContext(ctx, apiKey.GroupID, imageIntent)
+	// 分组利润控制：WS 桥按连接装配定价上下文并装门（选号与抢槽共用该
+	// ctx）。连接内不重选号，但每个 turn 开始经 BeforeTurn 重新冻结 pricingAt
+	// 并按最新门复核当前账号（准入与计费同源），峰前建连保活不能让后续 turn
+	// 继续按建连时刻的谷价计费。生图意图只影响能力路由与图片计费，不关门。
+	wsPricingCtx, wsPricingAt := h.gatewayService.WithOpenAIRequestPricingContext(ctx, apiKey.GroupID)
 	ctx = wsPricingCtx
 
 	for {
@@ -1837,7 +1849,24 @@ REDACTED
 		if selection.WaitPlan != nil && selection.WaitPlan.MaxConcurrency > 0 {
 			accountMaxConcurrency = selection.WaitPlan.MaxConcurrency
 	REDACTED
+		// 终检、准入后绑定与后续 turn 级复核都使用选号结果携带的门（composite
+		// 等跨分组调度的门只存在于调度栈局部 ctx）；准入成功后并入连接 ctx。
+		admissionCtx := service.ContextWithSelectionProfitGate(ctx, selection)
 		accountReleaseFunc := selection.ReleaseFunc
+		if selection.Acquired {
+			// 调度器已抢槽路径同样终检：选号与抢槽之间账号倍率可能刷新。
+			latest, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(admissionCtx, account)
+			if vetoed {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+			REDACTED
+				reqLog.Debug("openai.websocket_account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
+				failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
+				continue
+		REDACTED
+			account = latest
+			selection.Account = latest
+	REDACTED
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
 				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "account is busy, please retry later")
@@ -1859,7 +1888,7 @@ REDACTED
 		REDACTED
 			// 分组利润控制：WS 快速抢槽成功后终检，越线则释放
 			// 槽位、排除该账号重新选号，全池耗尽由下一轮选号关闭连接。
-			latest, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(ctx, account)
+			latest, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(admissionCtx, account)
 			if vetoed {
 				if fastReleaseFunc != nil {
 					fastReleaseFunc()
@@ -1872,6 +1901,8 @@ REDACTED
 			selection.Account = latest
 			accountReleaseFunc = fastReleaseFunc
 	REDACTED
+		// 准入完成：门并入连接 ctx，turn 级复核与 failover 重选共用。
+		ctx = admissionCtx
 		currentAccountRelease = wrapReleaseOnDone(ctx, accountReleaseFunc)
 		if err := h.gatewayService.BindStickySessionAfterProfitAdmission(ctx, apiKey.GroupID, sessionHash, account.ID); err != nil {
 			reqLog.Warn("openai.websocket_bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
@@ -1912,6 +1943,11 @@ REDACTED
 		// turn-tagged slot preserves the exact mapping used for the in-flight request.
 		var turnChannelMapping atomic.Pointer[openAIWSTurnChannelMappingSnapshot]
 		turnChannelMapping.Store(&openAIWSTurnChannelMappingSnapshot{turn: 1, mapping: channelMappingWSREDACTED)
+		// turn 级定价：BeforeTurn 重新冻结 pricingAt 并按最新门复核当前账号，
+		// AfterTurn 的计费读取所属 turn 的时刻；turn 在连接内串行推进，互斥锁
+		// 只为跨用量提交 goroutine 的读取安全。
+		var turnPricingMu sync.Mutex
+		turnPricingAt := wsPricingAt
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel:     reqModel,
 			MaxReasoningEffort:      maxReasoningEffort,
@@ -1957,6 +1993,20 @@ REDACTED
 				if cyberBlockedThisConn {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, cyberSessionBlockedClientMsg, nil)
 			REDACTED
+				// 长连接跨峰谷/倍率刷新防护：每个 turn 按当前时刻重装门并复核
+				// 当前账号，越线即要求客户端重连重选（连接绑定单一上游账号，
+				// 无法中途换号）。本 turn 的准入与计费共用同一 pricingAt。
+				turnCtx, turnAt := h.gatewayService.WithOpenAITurnPricingContext(ctx, apiKey.GroupID)
+				if _, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(turnCtx, account); vetoed {
+					reqLog.Info("openai.websocket_turn_profit_vetoed",
+						zap.Int("turn", turn),
+						zap.Int64("account_id", account.ID),
+						zap.String("reason", reason))
+					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account is no longer eligible for this connection, please reconnect", nil)
+			REDACTED
+				turnPricingMu.Lock()
+				turnPricingAt = turnAt
+				turnPricingMu.Unlock()
 				if turn == 1 {
 					return nil
 			REDACTED
@@ -2055,6 +2105,9 @@ REDACTED
 				upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 				sessionID := service.ExtractClientSessionID(c)
+				turnPricingMu.Lock()
+				turnRecordPricingAt := turnPricingAt
+				turnPricingMu.Unlock()
 				cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
@@ -2072,7 +2125,7 @@ REDACTED
 						QuotaPlatform:      quotaPlatform,
 						SessionID:          sessionID,
 						ChannelUsageFields: turnUsageFields,
-						PricingAt:          wsPricingAt,
+						PricingAt:          turnRecordPricingAt,
 						CyberBlocked:       cyberBlocked,
 				REDACTED); err != nil {
 						reqLog.Error("openai.websocket_record_usage_failed",

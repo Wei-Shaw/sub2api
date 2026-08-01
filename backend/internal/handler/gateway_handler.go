@@ -424,7 +424,9 @@ REDACTED
 				// Slot acquired: no longer waiting in queue.
 				releaseWait()
 		REDACTED
-			latest, vetoed, reason := h.gatewayService.GatewayProfitControlVetoLatest(c.Request.Context(), account)
+			// 终检与准入后绑定使用选号结果携带的门（见 responses 同名注释）。
+			admissionCtx := service.ContextWithSelectionProfitGate(c.Request.Context(), selection)
+			latest, vetoed, reason := h.gatewayService.GatewayProfitControlVetoLatest(admissionCtx, account)
 			if vetoed {
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
@@ -435,8 +437,12 @@ REDACTED
 		REDACTED
 			account = latest
 			selection.Account = latest
-			if err := h.gatewayService.BindStickySessionAfterProfitAdmission(c.Request.Context(), apiKey.GroupID, sessionKey, account.ID, sessionBoundAccountID); err != nil {
-				reqLog.Warn("gateway.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			// 等待路径保持既有 eager 绑定（无门时 helper 直接绑定）；调度器已
+			// 抢槽的直达路径无门时由选号内部绑定，这里只在门下补准入后绑定。
+			if selection.ProfitGateActive() || !selection.Acquired {
+				if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, apiKey.GroupID, sessionKey, account.ID); err != nil {
+					reqLog.Warn("gateway.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			REDACTED
 		REDACTED
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
@@ -736,7 +742,9 @@ REDACTED
 				// Slot acquired: no longer waiting in queue.
 				releaseWait()
 		REDACTED
-			latest, vetoed, reason := h.gatewayService.GatewayProfitControlVetoLatest(c.Request.Context(), account)
+			// 终检与准入后绑定使用选号结果携带的门（见 responses 同名注释）。
+			admissionCtx := service.ContextWithSelectionProfitGate(c.Request.Context(), selection)
+			latest, vetoed, reason := h.gatewayService.GatewayProfitControlVetoLatest(admissionCtx, account)
 			if vetoed {
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
@@ -747,8 +755,12 @@ REDACTED
 		REDACTED
 			account = latest
 			selection.Account = latest
-			if err := h.gatewayService.BindStickySessionAfterProfitAdmission(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID, sessionBoundAccountID); err != nil {
-				reqLog.Warn("gateway.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			// 等待路径保持既有 eager 绑定（无门时 helper 直接绑定）；调度器已
+			// 抢槽的直达路径无门时由选号内部绑定，这里只在门下补准入后绑定。
+			if selection.ProfitGateActive() || !selection.Acquired {
+				if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+					reqLog.Warn("gateway.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			REDACTED
 		REDACTED
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)

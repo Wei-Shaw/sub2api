@@ -314,3 +314,57 @@ REDACTED
 	// 无门时保持既有行为。
 	require.True(t, isOpenAICompatibleAccountEligibleForRequest(context.Background(), expensive, PlatformOpenAI, "", false, ""))
 REDACTED
+
+// legacy 引擎粘性写回（评审 M-Legacy 回归）：门下选号阶段不得直写粘性——
+// 终检否决的账号不能成为新绑定；无门保持官方 eager 绑定与原 TTL 语义。
+func TestProfitControl_LegacyEngineDefersStickyBindingUnderGate(t *testing.T) {
+	now := time.Now()
+	cheap := upstreamCostTestAccount(45, UpstreamBillingProbeStatusOK, 0.3, now.Add(-time.Minute), 30*time.Minute)
+	expensive := upstreamCostTestAccount(46, UpstreamBillingProbeStatusOK, 0.8, now.Add(-time.Minute), 30*time.Minute)
+	profitControlTestAccountWithRate(cheap, 0.3)
+	profitControlTestAccountWithRate(expensive, 0.8)
+	for _, account := range []*Account{cheap, expensiveREDACTED {
+		account.Status = StatusActive
+		account.Schedulable = true
+		account.Concurrency = 2
+REDACTED
+	groupID := int64(9)
+	const sessionHash = "legacy-sticky"
+	newSvc := func(bindings map[string]int64) (*OpenAIGatewayService, *schedulerTestGatewayCache) {
+		cache := &schedulerTestGatewayCache{sessionBindings: bindingsREDACTED
+		return &OpenAIGatewayService{
+			accountRepo:        stubOpenAIAccountRepo{accounts: []Account{*cheap, *expensiveREDACTEDREDACTED,
+			cfg:                &config.Config{REDACTED,
+			rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("false"),
+			concurrencyService: NewConcurrencyService(stubConcurrencyCache{REDACTED),
+			cache:              cache,
+	REDACTED, cache
+REDACTED
+
+	t.Run("gated selection defers binding to terminal admission", func(t *testing.T) {
+		svc, cache := newSvc(map[string]int64{REDACTED)
+		ctx := profitControlTestCtx(profitControlTestGroup(groupID, 0.5, 0))
+		selection, _, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", sessionHash, "gpt-test", nil, OpenAIUpstreamTransportAny, false)
+	REDACTED
+		require.NotNil(t, selection)
+		require.Equal(t, cheap.ID, selection.Account.ID)
+		require.Empty(t, cache.sessionBindings, "门下 legacy 选号阶段不得直写粘性绑定")
+		require.True(t, selection.ProfitGateActive(), "legacy 选号结果同样携带门")
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+	REDACTED
+REDACTED)
+
+	t.Run("ungated selection keeps official eager binding", func(t *testing.T) {
+		svc, cache := newSvc(map[string]int64{REDACTED)
+		group := profitControlTestGroup(groupID, 0.5, 0)
+		group.ProfitControlEnabled = false
+		selection, _, err := svc.SelectAccountWithScheduler(profitControlTestCtx(group), &groupID, "", sessionHash, "gpt-test", nil, OpenAIUpstreamTransportAny, false)
+	REDACTED
+		require.NotNil(t, selection)
+		require.NotEmpty(t, cache.sessionBindings, "无门时 legacy 选号保持官方 eager 绑定")
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+	REDACTED
+REDACTED)
+REDACTED

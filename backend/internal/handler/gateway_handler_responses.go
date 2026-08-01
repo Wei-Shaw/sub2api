@@ -90,11 +90,13 @@ REDACTED
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 	requestCtx := c.Request.Context()
-	pricingAt := time.Time{REDACTED
+	// 定价上下文无条件装配：/v1/responses 是 token 计费端点，声明生图工具的
+	// 混合请求同样按 token 计费（外加图片部分），其 token 利润保护不因请求体
+	// 里的任何工具声明（含 Codex 被动 image_gen namespace）而关闭。生图意图
+	// 仅用于能力路由与图片计费；独立图片/视频端点才在利润门范围之外。
+	requestCtx, pricingAt := service.WithGatewayTokenRequestPricing(requestCtx)
 	if service.IsImageGenerationIntentForPlatform("/v1/responses", reqModel, body, openAICompatibleRequestPlatform(c.Request.Context(), apiKey)) {
 		requestCtx = service.WithOpenAIImageGenerationIntent(requestCtx)
-REDACTED else {
-		requestCtx, pricingAt = service.WithGatewayTokenRequestPricing(requestCtx)
 REDACTED
 	c.Request = c.Request.WithContext(requestCtx)
 
@@ -161,7 +163,6 @@ REDACTED
 		APIKeyID:  apiKey.ID,
 REDACTED
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
-	sessionBoundAccountID, _ := h.gatewayService.GetCachedSessionAccountID(requestCtx, apiKey.GroupID, sessionHash)
 
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
@@ -225,7 +226,11 @@ REDACTED
 				return
 		REDACTED
 	REDACTED
-		latest, vetoed, reason := h.gatewayService.GatewayProfitControlVetoLatest(requestCtx, account)
+		// 终检与准入后绑定必须使用选号结果携带的门：门安装在调度栈的局部
+		// ctx 上（composite/fallback 还可能解析出与入口分组不同的门），直接用
+		// requestCtx 会退化为空操作。
+		admissionCtx := service.ContextWithSelectionProfitGate(requestCtx, selection)
+		latest, vetoed, reason := h.gatewayService.GatewayProfitControlVetoLatest(admissionCtx, account)
 		if vetoed {
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
@@ -236,8 +241,10 @@ REDACTED
 	REDACTED
 		account = latest
 		selection.Account = latest
-		if err := h.gatewayService.BindStickySessionAfterProfitAdmission(requestCtx, apiKey.GroupID, sessionHash, account.ID, sessionBoundAccountID); err != nil {
-			reqLog.Warn("gateway.responses.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		if selection.ProfitGateActive() {
+			if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, apiKey.GroupID, sessionHash, account.ID); err != nil {
+				reqLog.Warn("gateway.responses.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		REDACTED
 	REDACTED
 		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 

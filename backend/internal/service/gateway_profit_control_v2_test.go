@@ -275,7 +275,6 @@ REDACTED
 		&group.ID,
 		"sticky-profit",
 		cheap.ID,
-		expensive.ID,
 	))
 	require.Equal(t, expensive.ID, cache.sessionBindings["sticky-profit"], "终检通过的 fallback 账号也不得覆盖旧绑定")
 	require.Zero(t, cache.deletedSessions["sticky-profit"])
@@ -382,4 +381,92 @@ REDACTED)
 	require.Same(t, &selected, latest)
 	require.False(t, vetoed)
 	require.Empty(t, reason)
+REDACTED
+
+// 选号结果携带门：门安装在调度栈局部 ctx 上，handler 必须经
+// ContextWithSelectionProfitGate 重放后终检与准入后绑定才可见（评审修复回归）。
+func TestGatewayProfitControlSelectionCarriesGateToHandlerContext(t *testing.T) {
+	group := gatewayProfitTestGroup(1, PlatformAnthropic)
+	svc := &GatewayService{REDACTED
+	expensive := gatewayProfitTestAccount(161, PlatformAnthropic, 0.9, group.ID)
+
+	gateCtx := svc.withGatewayProfitControlGate(gatewayProfitTestContext(group), &group.ID)
+	selection, err := svc.newSelectionResult(gateCtx, &expensive, true, nil, nil)
+REDACTED
+	require.True(t, selection.ProfitGateActive(), "选号结果必须携带调度栈内生效的门")
+
+	// 修复前的缺陷形态：handler 原始 ctx 不含门，终检退化为空操作。
+	_, vetoed, _ := svc.GatewayProfitControlVetoLatest(context.Background(), &expensive)
+	require.False(t, vetoed, "对照组：不重放门时终检确实看不到门")
+
+	handlerCtx := ContextWithSelectionProfitGate(context.Background(), selection)
+	latest, vetoed, reason := svc.GatewayProfitControlVetoLatest(handlerCtx, &expensive)
+	require.True(t, vetoed, "重放门后终检必须真实生效")
+	require.Equal(t, openAIProfitFilterReasonThreshold, reason)
+	require.NotNil(t, latest)
+
+	// 无门选号不携带门，重放为无操作。
+	plain, err := svc.newSelectionResult(context.Background(), &expensive, true, nil, nil)
+REDACTED
+	require.False(t, plain.ProfitGateActive())
+	require.Equal(t, context.Background(), ContextWithSelectionProfitGate(context.Background(), plain))
+REDACTED
+
+// 生图意图不关门（H1/H2 回归锚点）：/v1/responses 混合请求即使带生图声明，
+// token 定价上下文照常装配，共享门照常安装并否决越线账号。
+func TestGatewayProfitControlImageIntentDoesNotDisableGate(t *testing.T) {
+	group := gatewayProfitTestGroup(2, PlatformAnthropic)
+	svc := &GatewayService{REDACTED
+	expensive := gatewayProfitTestAccount(162, PlatformAnthropic, 0.9, group.ID)
+
+	ctx := gatewayProfitTestContext(group)
+	ctx = WithOpenAIImageGenerationIntent(ctx)
+	gateCtx := svc.withGatewayProfitControlGate(ctx, &group.ID)
+	require.False(t, svc.isGatewayAccountProfitEligible(gateCtx, &expensive),
+		"请求体里的生图声明（含被动 image_gen namespace）不得关闭利润门")
+REDACTED
+
+// 无门时准入后绑定回退官方 eager 语义；门下读失败保守不写（评审 M-Bind 回归）。
+func TestGatewayProfitControlAfterAdmissionBindSemantics(t *testing.T) {
+	groupID := int64(3)
+	expensiveID := int64(171)
+	cheapID := int64(172)
+
+	t.Run("eager without gate", func(t *testing.T) {
+		cache := &mockGatewayCacheForPlatform{sessionBindings: map[string]int64{"s": expensiveIDREDACTEDREDACTED
+		svc := &GatewayService{cache: cacheREDACTED
+		require.NoError(t, svc.BindStickySessionAfterProfitAdmission(context.Background(), &groupID, "s", cheapID))
+		require.Equal(t, cheapID, cache.sessionBindings["s"], "无门时保持既有 eager 绑定行为")
+REDACTED)
+
+	t.Run("gated read failure is conservative", func(t *testing.T) {
+		// mock 的 miss 返回非 sentinel 错误，等价于 Redis 读失败：门下保守不写。
+		cache := &mockGatewayCacheForPlatform{sessionBindings: map[string]int64{REDACTEDREDACTED
+		svc := &GatewayService{cache: cacheREDACTED
+		gate := &openAIProfitControlGate{groupID: groupID, platform: PlatformAnthropic, threshold: 0.5REDACTED
+		gateCtx := context.WithValue(context.Background(), openAIProfitControlGateCtxKey{REDACTED, gate)
+		require.NoError(t, svc.BindStickySessionAfterProfitAdmission(gateCtx, &groupID, "absent", cheapID))
+		require.NotContains(t, cache.sessionBindings, "absent")
+REDACTED)
+
+	t.Run("gated sentinel miss binds", func(t *testing.T) {
+		cache := &sentinelMissGatewayCache{mockGatewayCacheForPlatform: &mockGatewayCacheForPlatform{sessionBindings: map[string]int64{REDACTEDREDACTEDREDACTED
+		svc := &GatewayService{cache: cacheREDACTED
+		gate := &openAIProfitControlGate{groupID: groupID, platform: PlatformAnthropic, threshold: 0.5REDACTED
+		gateCtx := context.WithValue(context.Background(), openAIProfitControlGateCtxKey{REDACTED, gate)
+		require.NoError(t, svc.BindStickySessionAfterProfitAdmission(gateCtx, &groupID, "fresh", cheapID))
+		require.Equal(t, cheapID, cache.sessionBindings["fresh"], "门下无既有绑定（sentinel miss）应建立粘性")
+REDACTED)
+REDACTED
+
+// sentinelMissGatewayCache 让 miss 返回与真实仓库一致的 ErrStickySessionNotFound。
+type sentinelMissGatewayCache struct {
+	*mockGatewayCacheForPlatform
+REDACTED
+
+func (c *sentinelMissGatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
+	if id, ok := c.sessionBindings[sessionHash]; ok {
+		return id, nil
+REDACTED
+	return 0, ErrStickySessionNotFound
 REDACTED

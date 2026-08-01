@@ -22,14 +22,23 @@ package service
 //
 // 装门点（gate 随 ctx 传播，请求内复用，覆盖等待/重试/failover/抢槽后终检）：
 //   - handler 各文本入口经 WithOpenAIRequestPricingContext 在请求开始统一装门并
-//     固定 pricingAt；显式生图意图（responses image_generation）以抑制标记跳门，
-//     图片/视频保持既有调度不装门。
+//     固定 pricingAt。生图意图只用于能力路由与图片计费，不决定是否装门：混合
+//     /v1/responses 请求（含声明了生图工具的请求）的 token 计费部分仍受利润门
+//     保护，请求体内的任何工具声明都不能作为关门开关。
+//   - 门范围之外的路径显式携带 WithOpenAIProfitControlSuppressed 标记：独立
+//     图片/视频端点与 Grok 媒体（媒体计费另有倍率来源）、count_tokens（不计费）、
+//     live（按时长计费）。所有装门点（含防御性装门）都尊重该标记。
 //   - selectAccountWithScheduler 顶部：唯一文本调度入口的防御性装门（ctx 已有
-//     同分组门则复用，保证 failover 阈值稳定）；requiredImageCapability != "" 或
-//     requiredCapability == OpenAIEndpointCapabilityResponses（该值当前仅显式
-//     生图意图设置）不装门。
+//     同分组门则复用，保证 failover 阈值稳定）；requiredImageCapability != ""
+//     的专用图片调度不装门。
 //   - 公开 SelectAccountWithLoadAwareness / SelectAccountByPreviousResponseID：
 //     防御性装门，保证不经唯一入口的调用方无法绕过。
+//   - 选号结果通过 AccountSelectionResult 携带真实生效的门（composite/fallback
+//     路由可能解析出与入口分组不同的门），handler 经
+//     ContextWithSelectionProfitGate 重放后再做抢槽后终检与准入后粘性绑定。
+//   - 长连接（Responses WS）在每个 turn 开始经 WithOpenAITurnPricingContext
+//     重新冻结 pricingAt 并重装门：turn 的准入与计费同源，跨峰谷边界不再共用
+//     建连时刻的 D。
 //
 // 否决点（消费 gate，任何 fallback 都无法把已排除账号重新放回）：
 //   - defaultOpenAIAccountScheduler.isAccountRequestCompatibleReason：候选池
@@ -78,9 +87,9 @@ const (
 
 type openAIProfitControlGateCtxKey struct{REDACTED
 
-// openAIProfitControlSuppressCtxKey 标记本请求显式跳过利润门（生图意图等
-// 利润门范围外流量）。所有装门点看到该标记后一律不装门，防止 service 层防御性
-// 装门把边界外流量重新拉回利润过滤。
+// openAIProfitControlSuppressCtxKey 标记本请求显式跳过利润门（独立图片/视频
+// 端点、Grok 媒体、count_tokens、live 等利润门范围外流量）。所有装门点看到该
+// 标记后一律不装门，防止 service 层防御性装门把边界外流量重新拉回利润过滤。
 type openAIProfitControlSuppressCtxKey struct{REDACTED
 
 // openAIPricingAtCtxKey 携带请求级定价时刻 pricingAt：门的 D 与 RecordUsage
@@ -103,15 +112,47 @@ REDACTED
 
 // WithOpenAIRequestPricingContext 在请求开始处装配请求级定价上下文：固定
 // pricingAt（返回给调用方，供 RecordUsage 入参共用同一时刻），并按分组安装
-// 利润门；suppressProfitGate 为 true（显式生图意图）时只固定 pricingAt、写入
-// 抑制标记，不装门。handler 各文本入口应在选号循环前调用一次。
-func (s *OpenAIGatewayService) WithOpenAIRequestPricingContext(ctx context.Context, groupID *int64, suppressProfitGate bool) (context.Context, time.Time) {
+// 利润门。ctx 携带 WithOpenAIProfitControlSuppressed 标记（门范围外流量）时
+// 只固定 pricingAt、不装门。handler 各文本入口应在选号循环前调用一次。
+func (s *OpenAIGatewayService) WithOpenAIRequestPricingContext(ctx context.Context, groupID *int64) (context.Context, time.Time) {
 	pricingAt := timezone.Now()
 	ctx = context.WithValue(ctx, openAIPricingAtCtxKey{REDACTED, pricingAt)
-	if suppressProfitGate {
-		return context.WithValue(ctx, openAIProfitControlSuppressCtxKey{REDACTED, struct{REDACTED{REDACTED), pricingAt
-REDACTED
 	return s.withOpenAIProfitControlGate(ctx, groupID), pricingAt
+REDACTED
+
+// WithOpenAIProfitControlSuppressed 标记本请求在利润门范围之外（独立图片/视频
+// 端点、Grok 媒体、count_tokens、live）。所有装门点（含 service 层防御性装门）
+// 都尊重该标记；它只关闭利润准入过滤，不影响定价上下文与计费。
+func WithOpenAIProfitControlSuppressed(ctx context.Context) context.Context {
+	return context.WithValue(ctx, openAIProfitControlSuppressCtxKey{REDACTED, struct{REDACTED{REDACTED)
+REDACTED
+
+// WithOpenAITurnPricingContext 在长连接（Responses WS）的每个 turn 开始重新
+// 冻结 pricingAt 并按当前配置重装利润门，使 turn 的准入与计费同源：峰前建连
+// 保活不再让后续 turn 继续按建连时刻的谷价定价。连接可能被调度到与入口分组
+// 不同的分组（composite 成员分组），turn 级重装以连接上已装门的调度分组为准；
+// 连接从未装门时才回退入口分组。抑制标记下只刷新 pricingAt。
+func (s *OpenAIGatewayService) WithOpenAITurnPricingContext(ctx context.Context, groupID *int64) (context.Context, time.Time) {
+	pricingAt := timezone.Now()
+	ctx = context.WithValue(ctx, openAIPricingAtCtxKey{REDACTED, pricingAt)
+	if _, suppressed := ctx.Value(openAIProfitControlSuppressCtxKey{REDACTED).(struct{REDACTED); suppressed {
+		return ctx, pricingAt
+REDACTED
+	if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{REDACTED).(*openAIProfitControlGate); ok && existing != nil {
+		gid := existing.groupID
+		groupID = &gid
+REDACTED
+	gate := s.resolveOpenAIProfitControlGate(ctx, groupID)
+	if gate == nil {
+		// 分组已关门（或配置读取失败 fail-open）：清除旧 turn 的门，后续 turn
+		// 按无门放行，与 HTTP 路径的开关语义一致。
+		if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{REDACTED).(*openAIProfitControlGate); ok && existing != nil {
+			return context.WithValue(ctx, openAIProfitControlGateCtxKey{REDACTED, (*openAIProfitControlGate)(nil)), pricingAt
+	REDACTED
+		return ctx, pricingAt
+REDACTED
+	openAIProfitControlObserverInstance.recordInstall(gate.groupID, gate.platform, gate.threshold)
+	return context.WithValue(ctx, openAIProfitControlGateCtxKey{REDACTED, gate), pricingAt
 REDACTED
 
 // openAIPricingAtFromContext 返回请求级定价时刻；未装配（内部调用、非文本
@@ -215,6 +256,34 @@ REDACTED
 REDACTED
 REDACTED
 
+// attachSelectionProfitGate 把调度上下文里生效的利润门记录到选号结果上。门在
+// 选号函数内部的局部 ctx 上安装（composite/fallback 路由还可能解析出与入口
+// 分组不同的门），不随返回值离开调度栈；结果携带后 handler 才能对"真实过滤了
+// 候选的那个门"做抢槽后终检与准入后绑定。
+func attachSelectionProfitGate(ctx context.Context, sel *AccountSelectionResult) *AccountSelectionResult {
+	if sel == nil {
+		return nil
+REDACTED
+	if gate, ok := ctx.Value(openAIProfitControlGateCtxKey{REDACTED).(*openAIProfitControlGate); ok && gate != nil {
+		sel.profitGate = gate
+REDACTED
+	return sel
+REDACTED
+
+// ContextWithSelectionProfitGate 把选号时真实生效的利润门重放到 ctx 上。
+// handler 在拿到选号结果后必须用返回的 ctx 做抢槽后终检
+// （ProfitControlVetoLatest / GatewayProfitControlVetoLatest）与准入后粘性
+// 绑定，否则这两步会因为看不到调度栈内安装的门而退化为空操作。
+func ContextWithSelectionProfitGate(ctx context.Context, sel *AccountSelectionResult) context.Context {
+	if sel == nil || sel.profitGate == nil {
+		return ctx
+REDACTED
+	if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{REDACTED).(*openAIProfitControlGate); ok && existing == sel.profitGate {
+		return ctx
+REDACTED
+	return context.WithValue(ctx, openAIProfitControlGateCtxKey{REDACTED, sel.profitGate)
+REDACTED
+
 // openAIProfitControlVetoReason 报告利润门是否否决该账号。ctx 中没有门
 // （分组未启用利润控制或本请求跳门）或账号为 nil 时一律放行。
 func openAIProfitControlVetoReason(ctx context.Context, account *Account) (bool, string) {
@@ -267,12 +336,17 @@ REDACTED
 REDACTED
 
 // BindStickySessionAfterProfitAdmission records the terminally admitted
-// account without overwriting a different binding that already exists. A
-// temporarily ineligible account therefore remains sticky and becomes
-// eligible again automatically after its rate recovers.
+// account. Without a profit gate it preserves the pre-existing eager binding
+// behavior at the handler bind points. With a gate it never overwrites a
+// different binding that already exists, so a temporarily ineligible account
+// remains sticky and becomes eligible again automatically after its rate
+// recovers.
 func (s *OpenAIGatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
-	if sessionHash == "" || accountID <= 0 || !gatewayProfitControlGateActive(ctx) {
+	if sessionHash == "" || accountID <= 0 {
 		return nil
+REDACTED
+	if !gatewayProfitControlGateActive(ctx) {
+		return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 REDACTED
 	existingAccountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash)
 	if err != nil && !errors.Is(err, ErrStickySessionNotFound) {
@@ -286,6 +360,10 @@ REDACTED
 REDACTED
 
 // ---- 可观测性：按分组累计计数 + 采样日志（无逐请求输出） ----
+//
+// 计数按"每次准入评估"累计，而非每请求：粘性层校验与候选池过滤可能对同一账号
+// 各评估一次，failover 重入也会再次计数。计数用于确认门在真实流量上生效及否决
+// 构成，不能当作精确的请求数或账号数。
 
 type openAIProfitControlGroupStats struct {
 	installs         atomic.Int64

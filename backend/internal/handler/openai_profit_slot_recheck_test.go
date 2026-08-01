@@ -70,7 +70,10 @@ REDACTED
 		ProfitMinMargin:      0.5,
 REDACTED
 	base := context.WithValue(context.Background(), ctxkey.Group, group)
-	ctx, pricingAt := gw.WithOpenAIRequestPricingContext(base, &groupID, suppress)
+	if suppress {
+		base = service.WithOpenAIProfitControlSuppressed(base)
+REDACTED
+	ctx, pricingAt := gw.WithOpenAIRequestPricingContext(base, &groupID)
 	require.False(t, pricingAt.IsZero())
 	return ctx
 REDACTED

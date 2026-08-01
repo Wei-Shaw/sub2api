@@ -94,7 +94,9 @@ REDACTED
 		if err != nil || refreshed == nil {
 			slog.Warn("profit_control_account_refresh_failed", "group_id", gate.groupID, "platform", gate.platform, "account_id", selected.ID, "error", err)
 			openAIProfitControlObserverInstance.recordRefreshFailure(gate.groupID, gate.platform, gate.threshold)
-	REDACTED else {
+	REDACTED else if !refreshed.UpdatedAt.Before(selected.UpdatedAt) {
+			// 选号路径可能已做过 DB recheck，selected 比缓存快照更新鲜；只有
+			// 快照不落后时才替换，避免终检把新鲜账号换回较旧的缓存对象。
 			latest = refreshed
 	REDACTED
 REDACTED

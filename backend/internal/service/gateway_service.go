@@ -547,6 +547,15 @@ type AccountSelectionResult struct {
 	Acquired    bool
 	ReleaseFunc func()
 	WaitPlan    *AccountWaitPlan // nil means no wait allowed
+	// profitGate 携带本次选号真实生效的利润门（无门为 nil）。门安装在调度栈的
+	// 局部 ctx 上，handler 必须经 ContextWithSelectionProfitGate 重放后才能在
+	// 调度栈之外做抢槽后终检与准入后粘性绑定。
+	profitGate *openAIProfitControlGate
+REDACTED
+
+// ProfitGateActive 报告本次选号是否处于利润门之下。
+func (r *AccountSelectionResult) ProfitGateActive() bool {
+	return r != nil && r.profitGate != nil
 REDACTED
 
 // ClaudeUsage 表示Claude API返回的usage信息
@@ -894,15 +903,23 @@ REDACTED
 	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 REDACTED
 
-// BindStickySessionAfterProfitAdmission records a successful terminal
-// selection for a profit-controlled request without replacing the binding
-// observed at request start. A temporarily ineligible sticky account remains
-// bound and automatically becomes eligible again if its account rate recovers.
-func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID, existingAccountID int64) error {
+// BindStickySessionAfterProfitAdmission records a terminally admitted
+// account. Without a profit gate it preserves the pre-existing eager binding
+// behavior at the handler bind points. With a gate it never replaces a
+// different binding that already exists: a temporarily ineligible sticky
+// account remains bound and automatically becomes eligible again if its
+// account rate recovers.
+func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
 		return nil
 REDACTED
 	if !gatewayProfitControlGateActive(ctx) {
+		return s.BindStickySession(ctx, groupID, sessionHash, accountID)
+REDACTED
+	existingAccountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+	if err != nil && !errors.Is(err, ErrStickySessionNotFound) {
+		// 读失败时无法判断既有绑定，保守跳过而不是冒着覆盖健康绑定的风险写入。
+		slog.Warn("profit_control_sticky_binding_read_failed", "group_id", derefGroupID(groupID), "account_id", accountID, "error", err)
 		return nil
 REDACTED
 	if existingAccountID > 0 && existingAccountID != accountID {
