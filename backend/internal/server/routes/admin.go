@@ -63,6 +63,9 @@ func RegisterAdminRoutes(
 		// 代理组（代理池）管理 — 独立顶层组，避免与 /proxies/:id 冲突
 		registerProxyGroupRoutes(admin, h)
 
+		// Cloudflare WARP 网关同步（自动落库到 proxies / proxy-groups）
+		registerWarpRoutes(admin, h)
+
 		// 卡密管理
 		registerRedeemCodeRoutes(admin, h)
 
@@ -536,6 +539,25 @@ func registerProxyGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		groups.PUT("/:id", h.Admin.ProxyGroup.Update)
 		groups.DELETE("/:id", h.Admin.ProxyGroup.Delete)
 		groups.PUT("/:id/members", h.Admin.ProxyGroup.SetMembers)
+	}
+}
+
+func registerWarpRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h == nil || h.Admin == nil || h.Admin.Warp == nil {
+		return
+	}
+	warp := admin.Group("/warp")
+	{
+		warp.GET("/status", h.Admin.Warp.Status)
+		warp.GET("/snapshot", h.Admin.Warp.Snapshot)
+		warp.GET("/instances", h.Admin.Warp.ListInstances)
+		warp.GET("/attach-plan", h.Admin.Warp.PreviewPlan)
+		warp.POST("/sync", h.Admin.Warp.Sync)
+		warp.POST("/pools", h.Admin.Warp.CreatePool)
+		warp.POST("/register-pool", h.Admin.Warp.RegisterPool)
+		warp.POST("/bind-accounts", h.Admin.Warp.BindAccounts)
+		warp.POST("/health-sync", h.Admin.Warp.HealthSync)
+		warp.POST("/instances/:id/rotate", h.Admin.Warp.Rotate)
 	}
 }
 

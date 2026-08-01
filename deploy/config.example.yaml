@@ -816,6 +816,35 @@ connection_risk:
   emit_timeout_ms: 8
 
 # =============================================================================
+# Cloudflare WARP Gateway (tools/warp-gateway)
+# WARP 出站控制面：实例池 / 健康检查 / rotate / exit_ip 去重
+# Docs: docs/warp-gateway.md
+# =============================================================================
+warp:
+  # Enable HTTP client to warp-gateway control plane
+  # 是否启用 warp-gateway 控制面客户端
+  enabled: false
+  gateway:
+    base_url: "http://127.0.0.1:19798"
+    token: ""
+    timeout_ms: 3000
+    reconcile_interval_sec: 15
+    # Optional TLS / mTLS for multi-host control plane (use https:// base_url)
+    # 多机控制面可选 TLS / mTLS（base_url 使用 https://）
+    tls_ca_file: ""
+    tls_cert_file: ""
+    tls_key_file: ""
+    tls_insecure_skip_verify: false
+  # Phase 3: mark mapped proxies inactive when gateway reports unhealthy
+  auto_detach_unhealthy: true
+  # Phase 3: alert when multiple instances share the same exit IP
+  alert_duplicate_exit_ip: true
+  default_group_name: "warp-pool"
+  # Optional key material for profile secret handling (gateway prefers WARP_GATEWAY_PROFILE_KEY)
+  # 可选 profile 密钥材料（gateway 优先使用 WARP_GATEWAY_PROFILE_KEY 做落盘加密）
+  profile_encryption_key: ""
+
+# =============================================================================
 # Dashboard Cache Configuration
 # 仪表盘缓存配置
 # =============================================================================

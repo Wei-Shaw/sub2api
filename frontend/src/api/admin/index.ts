@@ -35,6 +35,7 @@ import affiliatesAPI from "./affiliates";
 import riskControlAPI from "./riskControl";
 import adminComplianceAPI from "./compliance";
 import auditAPI from "./audit";
+import warpAPI from "./warp";
 
 /**
  * Unified admin API object for convenient access
@@ -72,6 +73,7 @@ export const adminAPI = {
 	riskControl: riskControlAPI,
 	compliance: adminComplianceAPI,
 	audit: auditAPI,
+	warp: warpAPI,
 };
 
 export {
@@ -107,6 +109,7 @@ export {
 	riskControlAPI,
 	adminComplianceAPI,
 	auditAPI,
+	warpAPI,
 };
 
 export default adminAPI;

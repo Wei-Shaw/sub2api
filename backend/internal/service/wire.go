@@ -783,6 +783,10 @@ var ProviderSet = wire.NewSet(
 	NewConnectionSignalEmitter,
 	ProvideConnectionRiskWorker,
 	NewConnectionRiskService,
+	// Cloudflare WARP gateway sync (auto 落库 + admin API + reconcile worker)
+	ProvideWarpGatewayClient,
+	NewWarpSyncService,
+	ProvideWarpSyncWorker,
 	NewEmailService,
 	NewNotificationEmailService,
 	ProvideEmailQueueService,

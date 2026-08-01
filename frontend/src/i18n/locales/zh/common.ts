@@ -178,6 +178,7 @@ export default {
     proxies: 'IP管理',
     proxiesList: '代理列表',
     proxyGroups: '代理池',
+    warp: 'Cloudflare WARP',
     redeemCodes: '兑换码',
     ops: '运维监控',
     promoCodes: '优惠码',

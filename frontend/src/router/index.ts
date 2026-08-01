@@ -564,6 +564,18 @@ const routes: RouteRecordRaw[] = [
 		},
 	},
 	{
+		path: "/admin/warp",
+		name: "AdminWarp",
+		component: () => import("@/views/admin/WarpView.vue"),
+		meta: {
+			requiresAuth: true,
+			requiresAdmin: true,
+			title: "Cloudflare WARP",
+			titleKey: "admin.warp.title",
+			descriptionKey: "admin.warp.description",
+		},
+	},
+	{
 		path: "/admin/redeem",
 		name: "AdminRedeem",
 		component: () => import("@/views/admin/RedeemView.vue"),

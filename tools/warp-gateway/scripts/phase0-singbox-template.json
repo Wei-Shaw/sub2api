@@ -1,0 +1,60 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "udp",
+        "tag": "dns-through-wg",
+        "server": "1.1.1.1",
+        "server_port": 53
+      }
+    ],
+    "final": "dns-through-wg",
+    "strategy": "prefer_ipv4"
+  },
+  "endpoints": [
+    {
+      "type": "wireguard",
+      "tag": "wg-ep",
+      "system": false,
+      "mtu": 1280,
+      "address": [
+        "172.16.0.2/32"
+      ],
+      "private_key": "REPLACE_WITH_WARP_PRIVATE_KEY",
+      "peers": [
+        {
+          "address": "162.159.192.1",
+          "port": 2408,
+          "public_key": "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
+          "allowed_ips": [
+            "0.0.0.0/0",
+            "::/0"
+          ],
+          "persistent_keepalive_interval": 25
+        }
+      ]
+    }
+  ],
+  "inbounds": [
+    {
+      "type": "socks",
+      "tag": "socks-in",
+      "listen": "127.0.0.1",
+      "listen_port": 41001
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "wg-ep",
+    "default_domain_resolver": "dns-through-wg"
+  }
+}

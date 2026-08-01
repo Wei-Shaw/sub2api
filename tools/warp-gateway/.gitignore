@@ -1,0 +1,4 @@
+bin/
+.e2e-data*/
+data/
+*.log

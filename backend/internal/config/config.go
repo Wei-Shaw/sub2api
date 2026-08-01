@@ -104,6 +104,39 @@ type Config struct {
 	// connection detection (方案 B). When Enabled is false, emit and worker
 	// are both no-ops regardless of admin settings JSON.
 	ConnectionRisk ConnectionRiskConfig `mapstructure:"connection_risk"`
+	// Warp integrates with tools/warp-gateway for Cloudflare WARP SOCKS exits.
+	Warp WarpConfig `mapstructure:"warp"`
+}
+
+// WarpConfig configures the optional Cloudflare WARP gateway control client.
+type WarpConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	// Gateway control plane (tools/warp-gateway).
+	Gateway WarpGatewayConfig `mapstructure:"gateway"`
+	// AutoDetachUnhealthy marks mapped proxies inactive when gateway reports unhealthy (Phase 3).
+	AutoDetachUnhealthy bool `mapstructure:"auto_detach_unhealthy"`
+	// AlertDuplicateExitIP logs/alerts when multiple instances share an exit IP (Phase 3).
+	AlertDuplicateExitIP bool `mapstructure:"alert_duplicate_exit_ip"`
+	// DefaultGroupName used when attaching a pool to a ProxyGroup.
+	DefaultGroupName string `mapstructure:"default_group_name"`
+	// ProfileEncryptionKey is optional material for encrypting WARP profile secrets
+	// when mirrored/cached by sub2api (AES-256 hex 64 chars, or any passphrase hashed).
+	// Gateway uses WARP_GATEWAY_PROFILE_KEY for its own at-rest encryption.
+	ProfileEncryptionKey string `mapstructure:"profile_encryption_key"`
+}
+
+// WarpGatewayConfig is the HTTP client for warp-gateway.
+type WarpGatewayConfig struct {
+	BaseURL           string `mapstructure:"base_url"`
+	Token             string `mapstructure:"token"`
+	TimeoutMS         int    `mapstructure:"timeout_ms"`
+	ReconcileInterval int    `mapstructure:"reconcile_interval_sec"`
+	// TLS / mTLS for multi-host control plane.
+	// When TLS is used, base_url should be https://...
+	TLSCAFile             string `mapstructure:"tls_ca_file"`
+	TLSCertFile           string `mapstructure:"tls_cert_file"`
+	TLSKeyFile            string `mapstructure:"tls_key_file"`
+	TLSInsecureSkipVerify bool   `mapstructure:"tls_insecure_skip_verify"`
 }
 
 type LogConfig struct {
@@ -2204,6 +2237,16 @@ func setDefaults() {
 	// Connection risk detection (方案 B) — master kill default off
 	viper.SetDefault("connection_risk.enabled", false)
 	viper.SetDefault("connection_risk.emit_timeout_ms", 8)
+
+	// Cloudflare WARP gateway (tools/warp-gateway) — disabled by default
+	viper.SetDefault("warp.enabled", false)
+	viper.SetDefault("warp.gateway.base_url", "http://127.0.0.1:19798")
+	viper.SetDefault("warp.gateway.token", "")
+	viper.SetDefault("warp.gateway.timeout_ms", 3000)
+	viper.SetDefault("warp.gateway.reconcile_interval_sec", 15)
+	viper.SetDefault("warp.auto_detach_unhealthy", true)
+	viper.SetDefault("warp.alert_duplicate_exit_ip", true)
+	viper.SetDefault("warp.default_group_name", "warp-pool")
 
 	// Subscription auth L1 cache
 	viper.SetDefault("subscription_cache.l1_size", 16384)

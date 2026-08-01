@@ -778,6 +778,7 @@ const adminNavItems = computed((): NavItem[] => {
       children: [
         { path: '/admin/proxies', label: t('nav.proxiesList'), icon: ServerIcon },
         { path: '/admin/proxy-groups', label: t('nav.proxyGroups'), icon: ServerIcon },
+        { path: '/admin/warp', label: t('nav.warp'), icon: ServerIcon },
       ],
     },
     {
