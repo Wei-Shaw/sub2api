@@ -72,9 +72,9 @@ func (r *telegramNotifyTestSettingRepo) Delete(_ context.Context, key string) er
 	return nil
 }
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
+type telegramRoundTripFunc func(*http.Request) (*http.Response, error)
 
-func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+func (f telegramRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
@@ -85,7 +85,7 @@ func TestTelegramNotifyService_SendTestMessageWithOverrides_UsesUnsavedTokenAndC
 	var requestedURL string
 	var requestForm url.Values
 	svc.httpClient = &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		Transport: telegramRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requestedURL = req.URL.String()
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
@@ -131,7 +131,7 @@ func TestTelegramNotifyService_SendTestMessageWithOverrides_KeepsSavedTokenWhenO
 	var requestedURL string
 	var requestForm url.Values
 	svc.httpClient = &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		Transport: telegramRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requestedURL = req.URL.String()
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
@@ -174,7 +174,7 @@ func TestTelegramNotifyService_NotifyBalanceLowToChat_SendsDirectWhenAdminBalanc
 	called := false
 	var requestForm url.Values
 	svc.httpClient = &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		Transport: telegramRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			called = true
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
@@ -220,7 +220,7 @@ func TestTelegramNotifyService_NotifyBalanceLow_GlobalAdminChatRespectsBalanceLo
 
 	called := false
 	svc.httpClient = &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		Transport: telegramRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			called = true
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -247,7 +247,7 @@ func TestTelegramNotifyService_NotifyOpsAlertIncludesAccountContext(t *testing.T
 
 	var requestForm url.Values
 	svc.httpClient = &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		Transport: telegramRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
 				t.Fatalf("read request body: %v", err)
