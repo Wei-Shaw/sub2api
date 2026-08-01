@@ -5,6 +5,18 @@ export default {
       editPlan: '编辑计划',
       deletePlan: '删除计划',
       model: '模型',
+      probeModel: '账号探测模型',
+      selectModels: '选择失败模型',
+      selectedModels: '已选择 {count} 个模型',
+      allFailedModels: '全部失败模型',
+      clearSelection: '清空',
+      triggerMode: '测试方式',
+      scheduledMode: '定时测试',
+      errorRecoveryMode: '错误恢复',
+      errorRecoveryHelpAriaLabel: '说明错误恢复',
+      retryInterval: '重试间隔（分钟）',
+      advancedCron: '高级 Cron',
+      everyMinutes: '每 {minutes} 分钟',
       cronExpression: 'Cron 表达式',
       enabled: '启用',
       lastRun: '上次运行',
@@ -22,6 +34,7 @@ export default {
       success: '成功',
       failed: '失败',
       running: '运行中',
+      interrupted: '执行中断',
       schedule: '定时测试',
       cronHelp: '标准 5 字段 cron 表达式（例如 */30 * * * *）',
       cronTooltipTitle: 'Cron 表达式示例：',
@@ -37,7 +50,9 @@ export default {
       maxResultsTooltipExample: '例如填写 100，表示最多保存最近 100 次测试结果；第 101 次结果写入后，最早的一条会被清理。',
       maxResultsTooltipRange: '推荐填写范围：一般可填 20 到 200。只关注近期可用性时可填 20-50；需要回看较长时间的波动趋势时可填 100-200。',
       autoRecover: '自动恢复',
-      autoRecoverHelp: '测试成功后自动恢复异常状态的账号'
+      autoRecoverHelp: '测试成功后自动恢复异常状态的账号',
+      errorRecoveryTooltipFailedModels: '只测试系统记录的结构化错误；哪个模型失败就测试哪个模型。默认包含全部模型，也可以缩小范围。账号级错误使用首个已选模型探测一次。',
+      errorRecoveryTooltipBoundaries: 'AICredits、人工禁用或不可调度、过期状态不会通过此功能恢复。'
     },
 
     // Proxies Management

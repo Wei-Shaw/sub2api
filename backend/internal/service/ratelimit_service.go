@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,10 +40,24 @@ type AccountRuntimeBlocker interface {
 	ClearAccountSchedulingBlock(accountID int64)
 }
 
+type modelRateLimitRecoveryRepository interface {
+	ClearModelRateLimit(ctx context.Context, id int64, modelID string) error
+	ClearModelRateLimitIfMatch(ctx context.Context, id int64, modelID string, observed json.RawMessage) (bool, error)
+	RecoverAccountRuntimeStateIfUnchanged(ctx context.Context, id int64, observedUpdatedAt time.Time) (bool, error)
+}
+
+type ErrorRecoveryTarget struct {
+	ModelID                  string
+	ObservedModelRateLimit   json.RawMessage
+	ObservedAccountUpdatedAt time.Time
+	RecoverAccountState      bool
+}
+
 // SuccessfulTestRecoveryResult 表示测试成功后恢复了哪些运行时状态。
 type SuccessfulTestRecoveryResult struct {
-	ClearedError     bool
-	ClearedRateLimit bool
+	ClearedError          bool
+	ClearedRateLimit      bool
+	ClearedModelRateLimit bool
 }
 
 // AccountRecoveryOptions 控制账号恢复时的附加行为。
@@ -1732,14 +1747,20 @@ func (s *RateLimitService) samplePassiveUsageFromHeaders(ctx context.Context, ac
 
 // ClearRateLimit 清除账号的限流状态
 func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) error {
+	return s.clearRateLimit(ctx, accountID, true)
+}
+
+func (s *RateLimitService) clearRateLimit(ctx context.Context, accountID int64, clearAllModels bool) error {
 	if err := s.accountRepo.ClearRateLimit(ctx, accountID); err != nil {
 		return err
 	}
 	if err := s.accountRepo.ClearAntigravityQuotaScopes(ctx, accountID); err != nil {
 		return err
 	}
-	if err := s.accountRepo.ClearModelRateLimits(ctx, accountID); err != nil {
-		return err
+	if clearAllModels {
+		if err := s.accountRepo.ClearModelRateLimits(ctx, accountID); err != nil {
+			return err
+		}
 	}
 	// 清除限流时一并清理临时不可调度状态，避免周限/窗口重置后仍被本地临时状态阻断。
 	if err := s.accountRepo.ClearTempUnschedulable(ctx, accountID); err != nil {
@@ -1800,10 +1821,77 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 	return result, nil
 }
 
-// RecoverAccountAfterSuccessfulTest 将一次成功测试视为正常请求，
-// 按需恢复 error / rate-limit / overload / temp-unsched / model-rate-limit 等运行时状态。
-func (s *RateLimitService) RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64) (*SuccessfulTestRecoveryResult, error) {
-	return s.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{})
+// RecoverAccountAfterSuccessfulTest 将成功测试视为目标模型已恢复，账号级自动状态也可一并恢复。
+func (s *RateLimitService) RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64, modelID string) (*SuccessfulTestRecoveryResult, error) {
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &SuccessfulTestRecoveryResult{}
+	if account.Status == StatusError {
+		if err := s.accountRepo.ClearError(ctx, accountID); err != nil {
+			return nil, err
+		}
+		result.ClearedError = true
+	}
+	if hasAccountRecoverableRuntimeState(account) {
+		if err := s.clearRateLimit(ctx, accountID, false); err != nil {
+			return nil, err
+		}
+		result.ClearedRateLimit = true
+	}
+
+	modelKey := strings.TrimSpace(modelID)
+	if !account.isRateLimitActiveForKey(modelKey) {
+		modelKey = account.modelRateLimitKeyWithContext(ctx, modelID)
+	}
+	if modelKey != "" && modelKey != creditsExhaustedKey && account.isRateLimitActiveForKey(modelKey) {
+		repo, ok := s.accountRepo.(modelRateLimitRecoveryRepository)
+		if !ok {
+			return nil, fmt.Errorf("account repository does not support targeted model recovery")
+		}
+		if err := repo.ClearModelRateLimit(ctx, accountID, modelKey); err != nil {
+			return nil, err
+		}
+		result.ClearedModelRateLimit = true
+	}
+	if result.ClearedError || result.ClearedRateLimit || result.ClearedModelRateLimit {
+		s.ResetOpenAI403Counter(ctx, accountID)
+		if result.ClearedError && !result.ClearedRateLimit {
+			s.notifyAccountSchedulingBlockCleared(accountID)
+		}
+	}
+	return result, nil
+}
+
+func (s *RateLimitService) RecoverErrorTargetAfterSuccessfulTest(ctx context.Context, accountID int64, target ErrorRecoveryTarget) (*SuccessfulTestRecoveryResult, error) {
+	repo, ok := s.accountRepo.(modelRateLimitRecoveryRepository)
+	if !ok {
+		return nil, fmt.Errorf("account repository does not support conditional error recovery")
+	}
+
+	result := &SuccessfulTestRecoveryResult{}
+	if target.RecoverAccountState {
+		recovered, err := repo.RecoverAccountRuntimeStateIfUnchanged(ctx, accountID, target.ObservedAccountUpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		result.ClearedError = recovered
+		result.ClearedRateLimit = recovered
+	}
+	if len(target.ObservedModelRateLimit) > 0 {
+		cleared, err := repo.ClearModelRateLimitIfMatch(ctx, accountID, target.ModelID, target.ObservedModelRateLimit)
+		if err != nil {
+			return nil, err
+		}
+		result.ClearedModelRateLimit = cleared
+	}
+	if result.ClearedError || result.ClearedModelRateLimit {
+		s.ResetOpenAI403Counter(ctx, accountID)
+		s.notifyAccountSchedulingBlockCleared(accountID)
+	}
+	return result, nil
 }
 
 func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID int64) error {
@@ -1835,6 +1923,78 @@ func hasRecoverableRuntimeState(account *Account) bool {
 	}
 	return hasNonEmptyMapValue(account.Extra, "model_rate_limits") ||
 		hasNonEmptyMapValue(account.Extra, "antigravity_quota_scopes")
+}
+
+func hasAccountRecoverableRuntimeState(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	now := time.Now()
+	if (account.RateLimitResetAt != nil && now.Before(*account.RateLimitResetAt)) ||
+		(account.OverloadUntil != nil && now.Before(*account.OverloadUntil)) ||
+		(account.TempUnschedulableUntil != nil && now.Before(*account.TempUnschedulableUntil)) {
+		return true
+	}
+	return hasNonEmptyMapValue(account.Extra, "antigravity_quota_scopes")
+}
+
+func (s *RateLimitService) ErrorRecoveryTargets(ctx context.Context, accountID int64, accountProbeModel string) ([]ErrorRecoveryTarget, error) {
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if account.Status != StatusActive && account.Status != StatusError {
+		return nil, nil
+	}
+	if account.Status == StatusActive && !account.Schedulable {
+		return nil, nil
+	}
+	if account.ExpiresAt != nil && !time.Now().Before(*account.ExpiresAt) {
+		return nil, nil
+	}
+	hasAccountState := hasAccountRecoverableRuntimeState(account)
+	if account.Status == StatusError && !hasAccountState {
+		return nil, nil
+	}
+
+	targets := make(map[string]ErrorRecoveryTarget)
+	if limits, ok := account.Extra[modelRateLimitsKey].(map[string]any); ok {
+		for modelID, limit := range limits {
+			if modelID != creditsExhaustedKey &&
+				!isInternalModelRateLimitScope(modelID) &&
+				account.isRateLimitActiveForKey(modelID) {
+				observed, err := json.Marshal(limit)
+				if err != nil {
+					return nil, err
+				}
+				targets[modelID] = ErrorRecoveryTarget{
+					ModelID: modelID, ObservedModelRateLimit: observed, ObservedAccountUpdatedAt: account.UpdatedAt,
+				}
+			}
+		}
+	}
+	if hasAccountState && accountProbeModel != "" && !isInternalModelRateLimitScope(accountProbeModel) {
+		target := targets[accountProbeModel]
+		target.ModelID = accountProbeModel
+		target.ObservedAccountUpdatedAt = account.UpdatedAt
+		target.RecoverAccountState = true
+		targets[accountProbeModel] = target
+	}
+
+	modelIDs := make([]string, 0, len(targets))
+	for modelID := range targets {
+		modelIDs = append(modelIDs, modelID)
+	}
+	sort.Strings(modelIDs)
+	result := make([]ErrorRecoveryTarget, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if targets[modelID].RecoverAccountState {
+			result = append([]ErrorRecoveryTarget{targets[modelID]}, result...)
+			continue
+		}
+		result = append(result, targets[modelID])
+	}
+	return result, nil
 }
 
 func hasNonEmptyMapValue(extra map[string]any, key string) bool {

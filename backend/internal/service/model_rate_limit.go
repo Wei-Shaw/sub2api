@@ -17,6 +17,15 @@ const (
 	anthropicFableRateLimitKey = "claude-fable-5"
 )
 
+func isInternalModelRateLimitScope(modelID string) bool {
+	switch strings.TrimSpace(modelID) {
+	case antigravityGeminiModelRateLimitKey, openAIImageGenerationRateLimitKey:
+		return true
+	default:
+		return false
+	}
+}
+
 // isRateLimitActiveForKey 检查指定 key 的限流是否生效
 func (a *Account) isRateLimitActiveForKey(key string) bool {
 	resetAt := a.modelRateLimitResetAt(key)
@@ -45,6 +54,17 @@ func (a *Account) isModelRateLimitedWithContext(ctx context.Context, requestedMo
 	return false
 }
 
+func (a *Account) modelRateLimitKeyWithContext(ctx context.Context, requestedModel string) string {
+	if a == nil {
+		return ""
+	}
+	modelKey := a.GetMappedModel(requestedModel)
+	if a.Platform == PlatformAntigravity {
+		modelKey = resolveFinalAntigravityModelKey(ctx, a, requestedModel)
+	}
+	return strings.TrimSpace(modelKey)
+}
+
 // GetModelRateLimitRemainingTime 获取模型限流剩余时间
 // 返回 0 表示未限流或已过期
 func (a *Account) GetModelRateLimitRemainingTime(requestedModel string) time.Duration {
@@ -66,11 +86,7 @@ func (a *Account) modelRateLimitKeysForRequest(ctx context.Context, requestedMod
 		return nil
 	}
 
-	modelKey := a.GetMappedModel(requestedModel)
-	if a.Platform == PlatformAntigravity {
-		modelKey = resolveFinalAntigravityModelKey(ctx, a, requestedModel)
-	}
-	modelKey = strings.TrimSpace(modelKey)
+	modelKey := a.modelRateLimitKeyWithContext(ctx, requestedModel)
 	if modelKey == "" {
 		return nil
 	}

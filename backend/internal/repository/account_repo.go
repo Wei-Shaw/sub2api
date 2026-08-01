@@ -2207,6 +2207,7 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 	payload := map[string]string{
 		"rate_limited_at":     now.Format(time.RFC3339),
 		"rate_limit_reset_at": resetAt.UTC().Format(time.RFC3339),
+		"updated_at":          now.Format(time.RFC3339Nano),
 	}
 	if len(reason) > 0 {
 		if value := strings.TrimSpace(reason[0]); value != "" {
@@ -2422,6 +2423,92 @@ func (r *accountRepository) ClearModelRateLimits(ctx context.Context, id int64) 
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
+}
+
+func (r *accountRepository) ClearModelRateLimit(ctx context.Context, id int64, modelID string) error {
+	if modelID == "" {
+		return nil
+	}
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(
+		ctx,
+		`UPDATE accounts
+		 SET extra = COALESCE(extra, '{}'::jsonb) #- ARRAY['model_rate_limits', $1]::text[], updated_at = NOW()
+		 WHERE id = $2 AND deleted_at IS NULL`,
+		modelID,
+		id,
+	)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAccountNotFound
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear model rate limit failed: account=%d model=%s err=%v", id, modelID, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return nil
+}
+
+func (r *accountRepository) ClearModelRateLimitIfMatch(ctx context.Context, id int64, modelID string, observed json.RawMessage) (bool, error) {
+	if modelID == "" || len(observed) == 0 {
+		return false, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb) #- ARRAY['model_rate_limits', $1]::text[], updated_at = NOW()
+		WHERE id = $2
+			AND deleted_at IS NULL
+			AND extra #> ARRAY['model_rate_limits', $1]::text[] = $3::jsonb
+	`, modelID, id, string(observed))
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return false, err
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue conditional model recovery failed: account=%d model=%s err=%v", id, modelID, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return true, nil
+}
+
+func (r *accountRepository) RecoverAccountRuntimeStateIfUnchanged(ctx context.Context, id int64, observedUpdatedAt time.Time) (bool, error) {
+	result, err := r.sql.ExecContext(ctx, `
+		UPDATE accounts
+		SET status = CASE WHEN status = $3 THEN $4 ELSE status END,
+			error_message = CASE WHEN status = $3 THEN '' ELSE error_message END,
+			schedulable = CASE WHEN status = $3 THEN TRUE ELSE schedulable END,
+			rate_limited_at = NULL,
+			rate_limit_reset_at = NULL,
+			overload_until = NULL,
+			temp_unschedulable_until = NULL,
+			temp_unschedulable_reason = NULL,
+			extra = COALESCE(extra, '{}'::jsonb) - 'antigravity_quota_scopes',
+			updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL AND updated_at = $2
+	`, id, observedUpdatedAt, service.StatusError, service.StatusActive)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return false, err
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue conditional account recovery failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return true, nil
 }
 
 func (r *accountRepository) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {

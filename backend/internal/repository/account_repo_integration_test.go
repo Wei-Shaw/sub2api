@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -954,6 +955,101 @@ func (s *AccountRepoSuite) TestClearRateLimit() {
 	s.Require().Nil(got.RateLimitedAt)
 	s.Require().Nil(got.RateLimitResetAt)
 	s.Require().Nil(got.OverloadUntil)
+}
+
+func (s *AccountRepoSuite) TestClearModelRateLimitPreservesSiblingModels() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-model-clear"})
+	resetAt := time.Now().Add(time.Hour)
+	for _, modelID := range []string{"gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "AICredits"} {
+		s.Require().NoError(s.repo.SetModelRateLimit(s.ctx, account.ID, modelID, resetAt))
+	}
+
+	before, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	observed, err := json.Marshal(before.Extra["model_rate_limits"].(map[string]any)["gpt-5.6-sol"])
+	s.Require().NoError(err)
+
+	s.Require().NoError(s.repo.SetModelRateLimit(s.ctx, account.ID, "gpt-5.6-sol", resetAt))
+	cleared, err := s.repo.ClearModelRateLimitIfMatch(s.ctx, account.ID, "gpt-5.6-sol", observed)
+	s.Require().NoError(err)
+	s.Require().False(cleared)
+
+	current, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	observed, err = json.Marshal(current.Extra["model_rate_limits"].(map[string]any)["gpt-5.6-sol"])
+	s.Require().NoError(err)
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
+	cleared, err = s.repo.ClearModelRateLimitIfMatch(s.ctx, account.ID, "gpt-5.6-sol", observed)
+	s.Require().NoError(err)
+	s.Require().True(cleared)
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	limits, ok := got.Extra["model_rate_limits"].(map[string]any)
+	s.Require().True(ok)
+	s.Require().NotContains(limits, "gpt-5.6-sol")
+	s.Require().Contains(limits, "gpt-5.6-luna")
+	s.Require().Contains(limits, "gpt-5.6-terra")
+	s.Require().Contains(limits, "AICredits")
+}
+
+func (s *AccountRepoSuite) TestRecoverAccountRuntimeStateOnlyIfUnchanged() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "acc-conditional-recovery", Status: service.StatusActive, Schedulable: true,
+	})
+	until := time.Now().Add(time.Hour)
+	s.Require().NoError(s.repo.SetError(s.ctx, account.ID, "automatic upstream error"))
+	s.Require().NoError(s.repo.SetTempUnschedulable(s.ctx, account.ID, until, "automatic cooldown"))
+
+	observed, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	_, err = s.repo.sql.ExecContext(s.ctx, "UPDATE accounts SET updated_at = $2 WHERE id = $1", account.ID, observed.UpdatedAt.Add(time.Second))
+	s.Require().NoError(err)
+	recovered, err := s.repo.RecoverAccountRuntimeStateIfUnchanged(s.ctx, account.ID, observed.UpdatedAt)
+	s.Require().NoError(err)
+	s.Require().False(recovered)
+
+	current, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
+	recovered, err = s.repo.RecoverAccountRuntimeStateIfUnchanged(s.ctx, account.ID, current.UpdatedAt)
+	s.Require().NoError(err)
+	s.Require().True(recovered)
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusActive, got.Status)
+	s.Require().True(got.Schedulable)
+	s.Require().Nil(got.TempUnschedulableUntil)
+	s.Require().Nil(got.RateLimitResetAt)
+}
+
+func (s *AccountRepoSuite) TestConditionalModelRecoveryClearsTwoSiblingModels() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-two-model-recovery"})
+	resetAt := time.Now().Add(time.Hour)
+	s.Require().NoError(s.repo.SetModelRateLimit(s.ctx, account.ID, "gpt-5.6-luna", resetAt))
+	s.Require().NoError(s.repo.SetModelRateLimit(s.ctx, account.ID, "gpt-5.6-sol", resetAt))
+
+	observed, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	limits := observed.Extra["model_rate_limits"].(map[string]any)
+	for _, modelID := range []string{"gpt-5.6-luna", "gpt-5.6-sol"} {
+		raw, marshalErr := json.Marshal(limits[modelID])
+		s.Require().NoError(marshalErr)
+		cleared, clearErr := s.repo.ClearModelRateLimitIfMatch(s.ctx, account.ID, modelID, raw)
+		s.Require().NoError(clearErr)
+		s.Require().True(cleared)
+	}
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	remaining := got.Extra["model_rate_limits"].(map[string]any)
+	s.Require().NotContains(remaining, "gpt-5.6-luna")
+	s.Require().NotContains(remaining, "gpt-5.6-sol")
 }
 
 func (s *AccountRepoSuite) TestTempUnschedulableFieldsLoadedByGetByIDAndGetByIDs() {
