@@ -549,10 +549,6 @@ export interface Group {
   peak_start: string
   peak_end: string
   peak_rate_multiplier: number
-  // 分组利润控制（openai/anthropic/gemini/grok/antigravity 分组可启用；margin/buffer 为小数存储）
-  profit_control_enabled: boolean
-  profit_min_margin: number
-  profit_safety_buffer: number
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
@@ -570,6 +566,12 @@ export interface Group {
 REDACTED
 
 export interface AdminGroup extends Group {
+  // 分组利润控制（openai/anthropic/gemini/grok/antigravity 分组可启用；margin/buffer 为小数存储）。
+  // 仅管理员可见：与 rate_multiplier 相乘即可反推上游成本上限，不得下放到 Group。
+  profit_control_enabled: boolean
+  profit_min_margin: number
+  profit_safety_buffer: number
+
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean

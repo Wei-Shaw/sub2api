@@ -314,19 +314,23 @@ REDACTED{
 			name: "GET /api/v1/groups/available",
 			setup: func(t *testing.T, deps *contractDeps) {
 			REDACTED
-				// 普通用户可见的分组列表不应包含内部字段（如 model_routing/account_count）。
+				// 普通用户可见的分组列表不应包含内部字段（如 model_routing/account_count），
+				// 也不得包含利润控制配置——它与同响应的 rate_multiplier 相乘即可反推上游成本上限。
 				deps.groupRepo.SetActive([]service.Group{
 					{
-						ID:                  10,
-						Name:                "Group One",
-						Description:         "desc",
-						Platform:            service.PlatformAnthropic,
-						RateMultiplier:      1.5,
-						PeakRateMultiplier:  1.0,
-						IsExclusive:         false,
-						Status:              service.StatusActive,
-						SubscriptionType:    service.SubscriptionTypeStandard,
-						ModelRoutingEnabled: true,
+						ID:                   10,
+						Name:                 "Group One",
+						Description:          "desc",
+						Platform:             service.PlatformAnthropic,
+						RateMultiplier:       1.5,
+						PeakRateMultiplier:   1.0,
+						IsExclusive:          false,
+						Status:               service.StatusActive,
+						SubscriptionType:     service.SubscriptionTypeStandard,
+						ProfitControlEnabled: true,
+						ProfitMinMargin:      0.3,
+						ProfitSafetyBuffer:   0.05,
+						ModelRoutingEnabled:  true,
 						ModelRouting: map[string][]int64{
 							"claude-3-*": []int64{101, 102REDACTED,
 					REDACTED,
@@ -354,9 +358,6 @@ REDACTED{
 						"peak_start": "",
 						"peak_end": "",
 						"peak_rate_multiplier": 1,
-						"profit_control_enabled": false,
-						"profit_min_margin": 0,
-						"profit_safety_buffer": 0,
 						"is_exclusive": false,
 						"status": "active",
 						"subscription_type": "standard",

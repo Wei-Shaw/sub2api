@@ -111,20 +111,16 @@ type Group struct {
 	VideoRateIndependent         bool    `json:"video_rate_independent"`
 	VideoRateMultiplier          float64 `json:"video_rate_multiplier"`
 	// 高峰时段倍率配置
-	PeakRateEnabled    bool    `json:"peak_rate_enabled"`
-	PeakStart          string  `json:"peak_start"`
-	PeakEnd            string  `json:"peak_end"`
-	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
-	// 分组利润控制（五个 token 平台分组可启用；margin/buffer 为小数存储）
-	ProfitControlEnabled bool     `json:"profit_control_enabled"`
-	ProfitMinMargin      float64  `json:"profit_min_margin"`
-	ProfitSafetyBuffer   float64  `json:"profit_safety_buffer"`
-	ImagePrice1K         *float64 `json:"image_price_1k"`
-	ImagePrice2K         *float64 `json:"image_price_2k"`
-	ImagePrice4K         *float64 `json:"image_price_4k"`
-	VideoPrice480P       *float64 `json:"video_price_480p"`
-	VideoPrice720P       *float64 `json:"video_price_720p"`
-	VideoPrice1080P      *float64 `json:"video_price_1080p"`
+	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
+	PeakStart          string   `json:"peak_start"`
+	PeakEnd            string   `json:"peak_end"`
+	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
+	ImagePrice1K       *float64 `json:"image_price_1k"`
+	ImagePrice2K       *float64 `json:"image_price_2k"`
+	ImagePrice4K       *float64 `json:"image_price_4k"`
+	VideoPrice480P     *float64 `json:"video_price_480p"`
+	VideoPrice720P     *float64 `json:"video_price_720p"`
+	VideoPrice1080P    *float64 `json:"video_price_1080p"`
 	// Codex alpha/search 网页搜索单次价格（USD/次）；null 表示使用默认价 0.01
 	WebSearchPricePerCall *float64 `json:"web_search_price_per_call"`
 
@@ -158,6 +154,13 @@ REDACTED
 // 注意：普通用户接口不得返回 model_routing/account_count/account_groups 等内部信息。
 type AdminGroup struct {
 	Group
+
+	// 分组利润控制（五个 token 平台分组可启用；margin/buffer 为小数存储）。
+	// 仅管理员可见：这三个字段与同响应中的 rate_multiplier 相乘即可反推出
+	// 运营方的上游成本上限，属于内部经营信息，不得下放到 dto.Group。
+	ProfitControlEnabled bool    `json:"profit_control_enabled"`
+	ProfitMinMargin      float64 `json:"profit_min_margin"`
+	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
 
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`

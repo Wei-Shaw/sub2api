@@ -32,24 +32,37 @@ REDACTED;
 export const isProfitControlPlatform = (platform: string): boolean =>
   ["openai", "anthropic", "gemini", "grok", "antigravity"].includes(platform);
 
-// 提交前校验：margin/buffer 各自 ∈ [0,100)，且相加 < 100（否则阈值 <= 0，
+// 提交前校验：margin/buffer 各自 ∈ [0,1)，且相加 < 1（否则阈值 <= 0，
 // 所有可核价账号都会被排除）。返回 null 表示通过，否则返回错误信息的 i18n key
 //（相对 admin.groups.profitControl 前缀）。仅支持平台且开关开启时才校验。
+//
+// 上界校验必须落在 profitPercentToDecimal 的换算结果上，而不是界面百分比：
+// 后端 validProfitControlRatio 校验的是小数 [0,1)，而 99.999% 会被四舍五入
+// 进位成 1.0——按百分比判 `< 100` 会让前端放行、后端 400。
 export const validateProfitControlFormState = (
   form: ProfitControlFormState,
 ): string | null => {
   if (!isProfitControlPlatform(form.platform) || !form.profit_control_enabled) {
     return null;
   REDACTED
-  const margin = Number(form.profit_min_margin_percent || 0);
-  const buffer = Number(form.profit_safety_buffer_percent || 0);
-  if (!Number.isFinite(margin) || margin < 0 || margin >= 100) {
+  const marginPercent = Number(form.profit_min_margin_percent || 0);
+  const bufferPercent = Number(form.profit_safety_buffer_percent || 0);
+  if (!Number.isFinite(marginPercent) || marginPercent < 0) {
     return "marginRangeError";
   REDACTED
-  if (!Number.isFinite(buffer) || buffer < 0 || buffer >= 100) {
+  if (!Number.isFinite(bufferPercent) || bufferPercent < 0) {
     return "bufferRangeError";
   REDACTED
-  if (margin + buffer >= 100) {
+  // 校验实际提交给后端的小数值，边界按构造对齐。
+  const margin = profitPercentToDecimal(marginPercent);
+  const buffer = profitPercentToDecimal(bufferPercent);
+  if (margin >= 1) {
+    return "marginRangeError";
+  REDACTED
+  if (buffer >= 1) {
+    return "bufferRangeError";
+  REDACTED
+  if (margin + buffer >= 1) {
     return "sumTooHigh";
   REDACTED
   return null;

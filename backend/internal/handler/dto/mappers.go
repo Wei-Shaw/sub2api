@@ -146,6 +146,9 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 REDACTED
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
+		ProfitControlEnabled:        g.ProfitControlEnabled,
+		ProfitMinMargin:             g.ProfitMinMargin,
+		ProfitSafetyBuffer:          g.ProfitSafetyBuffer,
 		ModelRouting:                g.ModelRouting,
 		ModelRoutingEnabled:         g.ModelRoutingEnabled,
 		MCPXMLInject:                g.MCPXMLInject,
@@ -193,9 +196,6 @@ func groupFromServiceBase(g *service.Group) Group {
 		PeakStart:                       g.PeakStart,
 		PeakEnd:                         g.PeakEnd,
 		PeakRateMultiplier:              g.PeakRateMultiplier,
-		ProfitControlEnabled:            g.ProfitControlEnabled,
-		ProfitMinMargin:                 g.ProfitMinMargin,
-		ProfitSafetyBuffer:              g.ProfitSafetyBuffer,
 		ImagePrice1K:                    g.ImagePrice1K,
 		ImagePrice2K:                    g.ImagePrice2K,
 		ImagePrice4K:                    g.ImagePrice4K,

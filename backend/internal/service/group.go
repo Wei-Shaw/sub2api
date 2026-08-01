@@ -351,6 +351,17 @@ func validProfitControlRatio(v float64) bool {
 	return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 && v < 1
 REDACTED
 
+// NormalizeGroupPlatform 把创建分组时省略的 platform 归一化为默认平台。
+// handler 的入参预校验必须与 CreateGroup 落库时用同一个归一化结果，否则
+// 「省略 platform + 启用利润控制」会被 handler 以「平台不支持」400 掉，
+// 而该分组本会被建成受支持的 anthropic 分组。
+func NormalizeGroupPlatform(platform string) string {
+	if platform == "" {
+		return PlatformAnthropic
+REDACTED
+	return platform
+REDACTED
+
 // ValidateProfitControlConfig 是分组利润控制配置的唯一校验来源，handler 与 service 层共用。
 // enabled=true 时仅允许五个可计费平台分组；margin/buffer 各自 ∈ [0,1)，且 margin+buffer < 1
 // （相加 >=1 时阈值 <=0，所有可核价账号都会被排除，视为配置错误而不是静默全黑）。

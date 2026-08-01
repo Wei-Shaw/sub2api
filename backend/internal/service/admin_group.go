@@ -300,10 +300,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, errors.New("rate_multiplier must be > 0")
 REDACTED
 
-	platform := input.Platform
-	if platform == "" {
-		platform = PlatformAnthropic
-REDACTED
+	platform := NormalizeGroupPlatform(input.Platform)
 	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)

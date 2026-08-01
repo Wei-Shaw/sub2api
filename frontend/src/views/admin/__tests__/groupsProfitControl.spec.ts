@@ -150,4 +150,32 @@ describe("validateProfitControlFormState", () => {
       ),
     ).toBe("sumTooHigh");
   REDACTED);
+
+  // 上界按换算后的小数判定：99.999% 会被 profitPercentToDecimal 四舍五入
+  // 进位成 1.0，后端 validProfitControlRatio 要求严格 < 1，前端必须先拦下。
+  it("rejects percents that round up to a decimal the backend rejects", () => {
+    expect(profitPercentToDecimal(99.999)).toBe(1);
+    expect(
+      validateProfitControlFormState(
+        formState({ profit_min_margin_percent: 99.999 REDACTED),
+      ),
+    ).toBe("marginRangeError");
+    expect(
+      validateProfitControlFormState(
+        formState({
+          profit_min_margin_percent: 0,
+          profit_safety_buffer_percent: 99.999,
+        REDACTED),
+      ),
+    ).toBe("bufferRangeError");
+  REDACTED);
+
+  it("still accepts the largest percent that survives the rounding", () => {
+    expect(profitPercentToDecimal(99.99)).toBe(0.9999);
+    expect(
+      validateProfitControlFormState(
+        formState({ profit_min_margin_percent: 99.99 REDACTED),
+      ),
+    ).toBeNull();
+  REDACTED);
 REDACTED);

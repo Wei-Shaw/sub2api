@@ -481,7 +481,9 @@ REDACTED
 		return
 REDACTED
 
-	if err := service.ValidateProfitControlConfig(req.Platform, req.ProfitControlEnabled, float64ValueOrDefault(req.ProfitMinMargin, 0), float64ValueOrDefault(req.ProfitSafetyBuffer, 0)); err != nil {
+	// platform 是 omitempty：预校验必须用与 CreateGroup 落库一致的归一化平台，
+	// 否则省略 platform 的请求会被误判成「平台不支持利润控制」。
+	if err := service.ValidateProfitControlConfig(service.NormalizeGroupPlatform(req.Platform), req.ProfitControlEnabled, float64ValueOrDefault(req.ProfitMinMargin, 0), float64ValueOrDefault(req.ProfitSafetyBuffer, 0)); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 REDACTED

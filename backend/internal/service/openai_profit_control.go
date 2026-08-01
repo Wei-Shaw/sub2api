@@ -1,6 +1,6 @@
 package service
 
-// 分组利润控制（配套 migration 191/192 的 groups.profit_* 字段）。
+// 分组利润控制（配套 migration 192/193 的 groups.profit_* 字段）。
 //
 // 定位：利润控制是"候选准入过滤"，只决定账号能否进入调度候选池；既有的排序、
 // 评分、粘性、熔断、负载均衡在合格账号之间照常工作，本文件不改变它们的行为。
@@ -95,6 +95,23 @@ type openAIProfitControlSuppressCtxKey struct{REDACTED
 // openAIPricingAtCtxKey 携带请求级定价时刻 pricingAt：门的 D 与 RecordUsage
 // 的高峰因子共用，保证一个请求从准入到扣费不中途变价。
 type openAIPricingAtCtxKey struct{REDACTED
+
+// clampProfitControlThreshold 归一化利润门阈值。Validate/Normalize 已保证
+// margin+buffer < 1，这里只对存量脏数据兜底：阈值非有限或为负时按 0 处理
+// （等价于只放行免费上游）。装门点与 profit-preview 共用，避免口径漂移。
+func clampProfitControlThreshold(threshold float64) float64 {
+	if math.IsNaN(threshold) || math.IsInf(threshold, 0) || threshold < 0 {
+		return 0
+REDACTED
+	return threshold
+REDACTED
+
+// profitControlOverThreshold 是"上游倍率越线"的唯一定义：相对 epsilon 吸收
+// decimal(10,4) 落库与浮点乘法的边界误差，U == 阈值 判定为合格。
+// 线上否决点与 profit-preview 共用，两者不得各自实现。
+func profitControlOverThreshold(upstream, threshold float64) bool {
+	return upstream-threshold > profitControlRateEpsilon*math.Max(1, math.Abs(threshold))
+REDACTED
 
 // openAIProfitControlGate 是一个请求的利润准入门。除 pricingAt 外全部为预计算
 // 标量：候选过滤热路径上每账号只做一次快照解码与一次浮点比较。
@@ -209,7 +226,8 @@ REDACTED
 	if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
 		group = ctxGroup
 REDACTED else if s.schedulerSnapshot != nil {
-		loaded, err := s.schedulerSnapshot.GetGroupByID(ctx, *groupID)
+		// Lite 读取：门只用平台/倍率/利润/高峰字段，不需要账号计数聚合。
+		loaded, err := s.schedulerSnapshot.GetGroupByIDLite(ctx, *groupID)
 		if err != nil {
 			// fail-open：配置系统故障时可用性优先，该窗口内利润保证不成立，
 			// 依赖 WARN 暴露；不把瞬时 DB 抖动放大成全站不可调度。
@@ -242,12 +260,7 @@ REDACTED
 	downstream *= billingGroup.PeakMultiplierAt(pricingAt)
 
 	deduction := group.ProfitMinMargin + group.ProfitSafetyBuffer
-	threshold := downstream * (1 - deduction)
-	// Validate/Normalize 已保证 margin+buffer < 1；此处仅对存量脏数据兜底，
-	// 阈值非有限或为负时按 0 处理（等价于只放行免费上游）。
-	if math.IsNaN(threshold) || math.IsInf(threshold, 0) || threshold < 0 {
-		threshold = 0
-REDACTED
+	threshold := clampProfitControlThreshold(downstream * (1 - deduction))
 	return &openAIProfitControlGate{
 		groupID:   *groupID,
 		platform:  group.Platform,
@@ -299,7 +312,7 @@ REDACTED
 		return true, openAIProfitFilterReasonInvalidAccountRate
 REDACTED
 	upstream := *account.RateMultiplier
-	if upstream-gate.threshold > profitControlRateEpsilon*math.Max(1, math.Abs(gate.threshold)) {
+	if profitControlOverThreshold(upstream, gate.threshold) {
 		openAIProfitControlObserverInstance.recordVeto(gate.groupID, gate.platform, gate.threshold, openAIProfitFilterReasonThreshold)
 		return true, openAIProfitFilterReasonThreshold
 REDACTED

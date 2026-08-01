@@ -134,6 +134,9 @@ REDACTED
 		for _, model := range modelsWithZeroRemaining(report) {
 			fmt.Printf("  警告: 模型 %s 启用后利润门准入账号为 0\n", model)
 	REDACTED
+		for _, model := range modelsWithZeroRemainingUnderMinD(report) {
+			fmt.Printf("  警告: 模型 %s 在最低有效D（存在低倍率用户覆盖）下利润门准入账号为 0\n", model)
+	REDACTED
 REDACTED
 REDACTED
 
@@ -211,6 +214,21 @@ func modelsWithZeroRemaining(report service.ProfitPreviewGroupReport) []string {
 	var out []string
 	for model, count := range report.RemainingByModel {
 		if count == 0 {
+			out = append(out, model)
+	REDACTED
+REDACTED
+	sort.Strings(out)
+	return out
+REDACTED
+
+// modelsWithZeroRemainingUnderMinD 返回默认 D 下仍有准入账号、但在最低有效 D
+// 下会归零的模型。最低有效 D 来自分组内最低的用户级倍率覆盖：这些模型对那部分
+// 用户是全黑的，而只看默认 D 的告警完全看不出来。
+// 两档都为 0 的模型由 modelsWithZeroRemaining 报告，这里不重复。
+func modelsWithZeroRemainingUnderMinD(report service.ProfitPreviewGroupReport) []string {
+	var out []string
+	for model, count := range report.RemainingByModelMinD {
+		if count == 0 && report.RemainingByModel[model] > 0 {
 			out = append(out, model)
 	REDACTED
 REDACTED

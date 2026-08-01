@@ -181,6 +181,7 @@ REDACTED
 	// 范围内：显式豁免，防止 service 层防御性装门按文本 D 误过滤媒体请求，
 	// 也防止已计费的在途视频任务因绑定账号被门排除而查询返回伪 404。
 	requestCtx := service.WithOpenAIProfitControlSuppressed(c.Request.Context())
+	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{REDACTED)
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
@@ -298,8 +299,12 @@ REDACTED
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
 		if slotResult == openAISlotAcquireProfitVetoed {
-			// 媒体路径已显式豁免利润门（suppress 标记），此分支仅防御性兜底。
-			failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
+			// 媒体路径已显式豁免利润门（suppress 标记），此分支仅防御性兜底，
+			// 同样受否决上限约束。
+			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
+				h.handleOpenAIProfitVetoExhausted(c, streamStarted, reqLog, profitVetoCount)
+				return
+		REDACTED
 			continue
 	REDACTED
 		if slotResult != openAISlotAcquireOK {

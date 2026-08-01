@@ -432,7 +432,12 @@ REDACTED
 					accountReleaseFunc()
 			REDACTED
 				reqLog.Debug("gateway.account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
-				fs.FailedAccountIDs[account.ID] = struct{REDACTED{REDACTED
+				if fs.RecordProfitVeto(account.ID) == FailoverExhausted {
+					reqLog.Warn("gateway.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", fs.ProfitVetoCount()))
+					markOpsRoutingCapacityLimited(c)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", profitVetoExhaustedMessage, streamStarted)
+					return
+			REDACTED
 				continue
 		REDACTED
 			account = latest
@@ -750,7 +755,12 @@ REDACTED
 					accountReleaseFunc()
 			REDACTED
 				reqLog.Debug("gateway.account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
-				fs.FailedAccountIDs[account.ID] = struct{REDACTED{REDACTED
+				if fs.RecordProfitVeto(account.ID) == FailoverExhausted {
+					reqLog.Warn("gateway.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", fs.ProfitVetoCount()))
+					markOpsRoutingCapacityLimited(c)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", profitVetoExhaustedMessage, streamStarted)
+					return
+			REDACTED
 				continue
 		REDACTED
 			account = latest

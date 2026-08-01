@@ -54,3 +54,39 @@ REDACTED {
 		require.Nil(t, inputs)
 REDACTED
 REDACTED
+
+// TestModelsWithZeroRemainingWarnings 钉死两档 D 的归零告警分工：
+// 默认 D 归零由 modelsWithZeroRemaining 报告；默认 D 仍有账号但最低有效 D
+// （分组内存在更低的用户级倍率覆盖）归零的模型必须单独告警——那些用户的该
+// 模型会全黑，只看默认 D 完全看不出来。两档都为 0 时不重复告警。
+func TestModelsWithZeroRemainingWarnings(t *testing.T) {
+	report := service.ProfitPreviewGroupReport{
+		RemainingByModel: map[string]int{
+			"both-zero":      0,
+			"min-d-zero":     2,
+			"healthy":        3,
+			"min-d-zero-alt": 1,
+	REDACTED,
+		RemainingByModelMinD: map[string]int{
+			"both-zero":      0,
+			"min-d-zero":     0,
+			"healthy":        3,
+			"min-d-zero-alt": 0,
+	REDACTED,
+REDACTED
+
+	if got := modelsWithZeroRemaining(report); len(got) != 1 || got[0] != "both-zero" {
+		t.Fatalf("默认D归零告警应只覆盖 both-zero，got %v", got)
+REDACTED
+
+	got := modelsWithZeroRemainingUnderMinD(report)
+	want := []string{"min-d-zero", "min-d-zero-alt"REDACTED
+	if len(got) != len(want) {
+		t.Fatalf("最低有效D归零告警不符: got %v want %v", got, want)
+REDACTED
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("最低有效D归零告警不符（应按模型名排序）: got %v want %v", got, want)
+	REDACTED
+REDACTED
+REDACTED

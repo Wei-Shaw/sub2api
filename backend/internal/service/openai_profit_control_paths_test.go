@@ -266,8 +266,15 @@ type profitControlGroupRepo struct {
 	group *Group
 REDACTED
 
-func (r profitControlGroupRepo) GetByID(context.Context, int64) (*Group, error) {
+func (r profitControlGroupRepo) GetByIDLite(context.Context, int64) (*Group, error) {
 	return r.group, nil
+REDACTED
+
+// GetByID 故意 panic：利润门只需要分组配置，不需要 GetByID 附带的账号计数
+// 聚合查询。装门走 GetByID 会在 composite/模型路由/fallback 的每次装门（WS
+// 每 turn 一次）上多打一条聚合，且发生在「是否启用利润控制」判定之前。
+func (r profitControlGroupRepo) GetByID(context.Context, int64) (*Group, error) {
+	panic("profit control gate must read groups via GetByIDLite (no account-count aggregation)")
 REDACTED
 
 // composite 路由：门配置取被调度成员分组，D 取请求真实计费分组（ctx 认证分组）。

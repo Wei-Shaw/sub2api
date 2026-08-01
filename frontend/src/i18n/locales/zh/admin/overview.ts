@@ -1011,8 +1011,8 @@ export default {
         minMarginHint: '百分比输入，如 30 表示 30%；后端按小数存储',
         safetyBuffer: '安全缓冲（%）',
         safetyBufferHint: '与最低毛利率相加后从下游倍率中扣除，默认 0',
-        marginRangeError: '最低毛利率应在 0 到 100 之间（不含 100）',
-        bufferRangeError: '安全缓冲应在 0 到 100 之间（不含 100）',
+        marginRangeError: '最低毛利率应在 0 到 99.99 之间',
+        bufferRangeError: '安全缓冲应在 0 到 99.99 之间',
         sumTooHigh: '最低毛利率与安全缓冲之和必须小于 100%，否则将排除全部账号'
       REDACTED,
       modelsList: {

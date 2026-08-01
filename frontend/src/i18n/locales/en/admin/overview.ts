@@ -1014,8 +1014,8 @@ export default {
         minMarginHint: 'Percent input, e.g. 30 means 30%; stored as a decimal on the backend',
         safetyBuffer: 'Safety buffer (%)',
         safetyBufferHint: 'Added to min margin and deducted from the downstream multiplier; defaults to 0',
-        marginRangeError: 'Min gross margin must be between 0 and 100 (exclusive)',
-        bufferRangeError: 'Safety buffer must be between 0 and 100 (exclusive)',
+        marginRangeError: 'Min gross margin must be between 0 and 99.99',
+        bufferRangeError: 'Safety buffer must be between 0 and 99.99',
         sumTooHigh: 'Min gross margin plus safety buffer must be less than 100%, otherwise every account would be excluded'
       REDACTED,
       modelsList: {
