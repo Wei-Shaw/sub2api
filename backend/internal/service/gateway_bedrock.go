@@ -94,7 +94,7 @@ func (s *GatewayService) forwardBedrock(
 		proxyURL = account.Proxy.URL()
 	}
 
-	logger.LegacyPrintf("service.gateway", "[Bedrock] 命中 Bedrock 分支: account=%d name=%s model=%s->%s stream=%v",
+	logger.LegacyPrintf("service.gateway", "[Bedrock] Bedrock branch matched: account=%d name=%s model=%s->%s stream=%v",
 		account.ID, account.Name, reqModel, mappedModel, reqStream)
 
 	// 根据账号类型选择认证方式

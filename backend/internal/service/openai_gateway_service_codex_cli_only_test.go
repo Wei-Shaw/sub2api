@@ -165,8 +165,8 @@ func TestLogCodexCLIOnlyDetection_OnlyLogsRejected(t *testing.T) {
 		Reason:  CodexClientRestrictionReasonNotMatchedUA,
 	}, nil)
 
-	require.False(t, logSink.ContainsMessage("OpenAI codex_cli_only 允许官方客户端请求"))
-	require.True(t, logSink.ContainsMessage("OpenAI codex_cli_only 拒绝非官方客户端请求"))
+	require.False(t, logSink.ContainsMessage("OpenAI codex_cli_only allowed official-client request"))
+	require.True(t, logSink.ContainsMessage("OpenAI codex_cli_only rejected non-official-client request"))
 }
 
 func TestLogCodexCLIOnlyDetection_RejectedIncludesRequestDetails(t *testing.T) {
@@ -227,7 +227,7 @@ func TestLogOpenAIInstructionsRequiredDebug_LogsRequestDetails(t *testing.T) {
 		[]byte(`{"error":{"message":"Instructions are required","type":"invalid_request_error","param":"instructions","code":"missing_required_parameter"}}`),
 	)
 
-	require.True(t, logSink.ContainsMessageAtLevel("OpenAI 上游返回 Instructions are required，已记录请求详情用于排查", "warn"))
+	require.True(t, logSink.ContainsMessageAtLevel("OpenAI upstream returned Instructions are required; request details recorded for troubleshooting", "warn"))
 	require.True(t, logSink.ContainsFieldValue("request_user_agent", "curl/8.0"))
 	require.True(t, logSink.ContainsFieldValue("request_model", "gpt-5.1-codex"))
 	require.True(t, logSink.ContainsFieldValue("request_query", "trace=1"))
@@ -258,7 +258,7 @@ func TestLogOpenAIInstructionsRequiredDebug_NonTargetErrorSkipped(t *testing.T) 
 		[]byte(`{"error":{"message":"forbidden"}}`),
 	)
 
-	require.False(t, logSink.ContainsMessage("OpenAI 上游返回 Instructions are required，已记录请求详情用于排查"))
+	require.False(t, logSink.ContainsMessage("OpenAI upstream returned Instructions are required; request details recorded for troubleshooting"))
 }
 
 func TestIsOpenAITransientProcessingError(t *testing.T) {
@@ -368,7 +368,7 @@ func TestOpenAIGatewayService_Forward_LogsInstructionsRequiredDetails(t *testing
 	require.Equal(t, http.StatusBadGateway, rec.Code)
 	require.Contains(t, err.Error(), "upstream error: 400")
 
-	require.True(t, logSink.ContainsMessageAtLevel("OpenAI 上游返回 Instructions are required，已记录请求详情用于排查", "warn"))
+	require.True(t, logSink.ContainsMessageAtLevel("OpenAI upstream returned Instructions are required; request details recorded for troubleshooting", "warn"))
 	require.True(t, logSink.ContainsFieldValue("request_user_agent", "codex_cli_rs/0.1.0"))
 	require.True(t, logSink.ContainsFieldValue("request_model", "gpt-5.1-codex"))
 	require.True(t, logSink.ContainsFieldValue("request_headers", "openai-beta"))

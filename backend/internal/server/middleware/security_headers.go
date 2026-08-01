@@ -108,7 +108,7 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 			nonce, err := GenerateNonce()
 			if err != nil {
 				// crypto/rand 失败时降级为无 nonce 的 CSP 策略
-				log.Printf("[SecurityHeaders] %v — 降级为无 nonce 的 CSP", err)
+				log.Printf("[SecurityHeaders] %v — fallback to CSP without nonce", err)
 				c.Header("Content-Security-Policy", strings.ReplaceAll(finalPolicy, NonceTemplate, "'unsafe-inline'"))
 			} else {
 				c.Set(CSPNonceKey, nonce)

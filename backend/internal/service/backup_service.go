@@ -181,12 +181,12 @@ func (s *BackupService) Start() {
 	defer cancel()
 	schedule, err := s.GetSchedule(ctx)
 	if err != nil {
-		logger.LegacyPrintf("service.backup", "[Backup] 加载定时备份配置失败: %v", err)
+		logger.LegacyPrintf("service.backup", "[Backup] failed to load scheduled backup config: %v", err)
 		return
 	}
 	if schedule.Enabled && schedule.CronExpr != "" {
 		if err := s.applyCronSchedule(schedule); err != nil {
-			logger.LegacyPrintf("service.backup", "[Backup] 应用定时备份配置失败: %v", err)
+			logger.LegacyPrintf("service.backup", "[Backup] failed to apply scheduled backup config: %v", err)
 		}
 	}
 }
@@ -401,7 +401,7 @@ func (s *BackupService) applyCronSchedule(cfg *BackupScheduleConfig) error {
 		return infraerrors.BadRequest("INVALID_CRON", fmt.Sprintf("failed to schedule: %v", err))
 	}
 	s.cronEntryID = entryID
-	logger.LegacyPrintf("service.backup", "[Backup] 定时备份已启用: %s", cfg.CronExpr)
+	logger.LegacyPrintf("service.backup", "[Backup] scheduled backup enabled: %s", cfg.CronExpr)
 	return nil
 }
 
@@ -411,7 +411,7 @@ func (s *BackupService) removeCronSchedule() {
 	if s.cronSched != nil && s.cronEntryID != 0 {
 		s.cronSched.Remove(s.cronEntryID)
 		s.cronEntryID = 0
-		logger.LegacyPrintf("service.backup", "[Backup] 定时备份已停用")
+		logger.LegacyPrintf("service.backup", "[Backup] scheduled backup disabled")
 	}
 }
 
@@ -429,24 +429,24 @@ func (s *BackupService) runScheduledBackup() {
 		expireDays = schedule.RetainDays
 	}
 
-	logger.LegacyPrintf("service.backup", "[Backup] 开始执行定时备份, 过期天数: %d", expireDays)
+	logger.LegacyPrintf("service.backup", "[Backup] started scheduled backup, expiration_days=%d", expireDays)
 	record, err := s.CreateBackup(ctx, "scheduled", expireDays)
 	if err != nil {
 		if errors.Is(err, ErrBackupInProgress) {
-			logger.LegacyPrintf("service.backup", "[Backup] 定时备份跳过: 已有备份正在进行中")
+			logger.LegacyPrintf("service.backup", "[Backup] scheduled backup skipped: another backup is already running")
 		} else {
-			logger.LegacyPrintf("service.backup", "[Backup] 定时备份失败: %v", err)
+			logger.LegacyPrintf("service.backup", "[Backup] scheduled backup failed: %v", err)
 		}
 		return
 	}
-	logger.LegacyPrintf("service.backup", "[Backup] 定时备份完成: id=%s size=%d", record.ID, record.SizeBytes)
+	logger.LegacyPrintf("service.backup", "[Backup] scheduled backup completed: id=%s size=%d", record.ID, record.SizeBytes)
 
 	// 清理过期备份（复用已加载的 schedule）
 	if schedule == nil {
 		return
 	}
 	if err := s.cleanupOldBackups(ctx, schedule); err != nil {
-		logger.LegacyPrintf("service.backup", "[Backup] 清理过期备份失败: %v", err)
+		logger.LegacyPrintf("service.backup", "[Backup] failed to clean expired backups: %v", err)
 	}
 }
 
@@ -564,7 +564,7 @@ func (s *BackupService) CreateBackup(ctx context.Context, triggeredBy string, ex
 	record.Status = "completed"
 	record.FinishedAt = time.Now().Format(time.RFC3339)
 	if err := s.saveRecord(ctx, record); err != nil {
-		logger.LegacyPrintf("service.backup", "[Backup] 保存备份记录失败: %v", err)
+		logger.LegacyPrintf("service.backup", "[Backup] failed to save backup record: %v", err)
 	}
 
 	return record, nil
@@ -734,7 +734,7 @@ func (s *BackupService) executeBackup(record *BackupRecord, objectStore BackupOb
 	record.Progress = ""
 	record.FinishedAt = time.Now().Format(time.RFC3339)
 	if err := s.saveRecord(context.Background(), record); err != nil {
-		logger.LegacyPrintf("service.backup", "[Backup] 保存备份记录失败: %v", err)
+		logger.LegacyPrintf("service.backup", "[Backup] failed to save backup record: %v", err)
 	}
 }
 
@@ -894,7 +894,7 @@ func (s *BackupService) executeRestore(record *BackupRecord, objectStore BackupO
 	record.RestoreStatus = "completed"
 	record.RestoredAt = time.Now().Format(time.RFC3339)
 	if err := s.saveRecord(context.Background(), record); err != nil {
-		logger.LegacyPrintf("service.backup", "[Backup] 保存恢复记录失败: %v", err)
+		logger.LegacyPrintf("service.backup", "[Backup] failed to save restore record: %v", err)
 	}
 }
 
@@ -1003,7 +1003,7 @@ func (s *BackupService) loadS3Config(ctx context.Context) (*BackupS3Config, erro
 		decrypted, err := s.encryptor.Decrypt(cfg.SecretAccessKey)
 		if err != nil {
 			// 兼容未加密的旧数据：如果解密失败，保持原值
-			logger.LegacyPrintf("service.backup", "[Backup] S3 SecretAccessKey 解密失败（可能是旧的未加密数据）: %v", err)
+			logger.LegacyPrintf("service.backup", "[Backup] S3 SecretAccessKey decrypt failed (possibly legacy unencrypted data): %v", err)
 		} else {
 			cfg.SecretAccessKey = decrypted
 		}
@@ -1149,7 +1149,7 @@ func (s *BackupService) cleanupOldBackups(ctx context.Context, schedule *BackupS
 	}
 
 	if len(toDelete) > 0 {
-		logger.LegacyPrintf("service.backup", "[Backup] 自动清理了 %d 个过期备份", len(toDelete))
+		logger.LegacyPrintf("service.backup", "[Backup] automatically cleaned %d expired backups", len(toDelete))
 		return s.saveRecordsLocked(ctx, toKeep)
 	}
 	return nil

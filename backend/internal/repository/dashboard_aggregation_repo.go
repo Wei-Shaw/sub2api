@@ -26,7 +26,7 @@ func NewDashboardAggregationRepository(sqlDB *sql.DB) service.DashboardAggregati
 		return nil
 	}
 	if !isPostgresDriver(sqlDB) {
-		log.Printf("[DashboardAggregation] 检测到非 PostgreSQL 驱动，已自动禁用预聚合")
+		log.Printf("[DashboardAggregation] non-PostgreSQL driver detected; pre-aggregation disabled automatically")
 		return nil
 	}
 	return newDashboardAggregationRepositoryWithSQL(sqlDB)

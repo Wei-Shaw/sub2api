@@ -1576,8 +1576,8 @@ func TestClient_FetchAvailableModels_HTTPError_RealCall(t *testing.T) {
 	if err == nil {
 		t.Fatal("服务器返回 403 时应返回错误")
 	}
-	if !strings.Contains(err.Error(), "fetchAvailableModels 失败") {
-		t.Errorf("错误信息应包含 'fetchAvailableModels 失败': got %s", err.Error())
+	if !strings.Contains(err.Error(), "fetchAvailableModels failed") {
+		t.Errorf("错误信息应包含 'fetchAvailableModels failed': got %s", err.Error())
 	}
 }
 

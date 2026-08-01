@@ -7,6 +7,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import { useAppStore } from '@/stores'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { translateOpsText } from '../utils/opsMessageTranslations'
 
 const appStore = useAppStore()
 const { t } = useI18n()
@@ -123,7 +124,7 @@ const getExtraString = (extra: Record<string, any> | undefined, key: string) => 
 
 const formatSystemLogDetail = (row: OpsSystemLog) => {
   const parts: string[] = []
-  const msg = String(row.message || '').trim()
+  const msg = translateOpsText(row.message, t).trim()
   if (msg) parts.push(msg)
 
   const extra = row.extra || {}
@@ -154,9 +155,9 @@ const formatSystemLogDetail = (row: OpsSystemLog) => {
   if (row.model) corrParts.push(`model=${row.model}`)
   if (corrParts.length > 0) parts.push(corrParts.join(' '))
 
-  const errors = getExtraString(extra, 'errors')
+  const errors = translateOpsText(getExtraString(extra, 'errors'), t)
   if (errors) parts.push(`errors=${errors}`)
-  const err = getExtraString(extra, 'err') || getExtraString(extra, 'error')
+  const err = translateOpsText(getExtraString(extra, 'err') || getExtraString(extra, 'error'), t)
   if (err) parts.push(`error=${err}`)
 
   // Join with spaces so CSS can wrap detail text naturally.
@@ -444,7 +445,7 @@ onMounted(async () => {
           </div>
         </div>
       </div>
-      <p v-if="health.last_error" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ t('admin.ops.systemLogs.lastWriteError') }}{{ health.last_error }}</p>
+      <p v-if="health.last_error" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ t('admin.ops.systemLogs.lastWriteError') }}{{ translateOpsText(health.last_error, t) }}</p>
     </div>
 
     <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-5">

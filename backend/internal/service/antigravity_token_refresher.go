@@ -109,10 +109,10 @@ func (r *AntigravityTokenRefresher) Refresh(ctx context.Context, account *Accoun
 	if tokenInfo.ProjectIDMissing {
 		if tokenInfo.ProjectID != "" {
 			// 有旧的 project_id，本次获取失败，保留旧值
-			log.Printf("[AntigravityTokenRefresher] Account %d: LoadCodeAssist 临时失败，保留旧 project_id", account.ID)
+			log.Printf("[AntigravityTokenRefresher] Account %d: LoadCodeAssist temporary failure; keeping previous project_id", account.ID)
 		} else {
 			// 从未获取过 project_id，本次也失败，但不返回错误以允许下次重试
-			log.Printf("[AntigravityTokenRefresher] Account %d: LoadCodeAssist 失败，project_id 缺失，但 token 已更新，将在下次刷新时重试", account.ID)
+			log.Printf("[AntigravityTokenRefresher] Account %d: LoadCodeAssist failed; project_id missing but token was updated; will retry on next refresh", account.ID)
 		}
 	}
 

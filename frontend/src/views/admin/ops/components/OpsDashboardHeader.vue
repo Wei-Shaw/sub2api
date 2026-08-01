@@ -10,6 +10,7 @@ import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRe
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
 import { formatNumber } from '@/utils/format'
+import { translateOpsText } from '../utils/opsMessageTranslations'
 
 type RealtimeWindow = '1min' | '5min' | '30min' | '1h'
 
@@ -1578,7 +1579,7 @@ function handleToolbarRefresh() {
             v-if="hb.last_error"
             class="mt-3 rounded-lg bg-rose-50 p-2 text-xs text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
           >
-            {{ hb.last_error }}
+            {{ translateOpsText(hb.last_error, t) }}
           </div>
         </div>
       </div>

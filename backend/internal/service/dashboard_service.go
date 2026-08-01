@@ -20,7 +20,7 @@ const (
 )
 
 // ErrDashboardStatsCacheMiss 标记仪表盘缓存未命中。
-var ErrDashboardStatsCacheMiss = errors.New("仪表盘缓存未命中")
+var ErrDashboardStatsCacheMiss = errors.New("dashboard stats cache miss")
 
 // DashboardStatsCache 定义仪表盘统计缓存接口。
 type DashboardStatsCache interface {
@@ -113,7 +113,7 @@ func (s *DashboardService) GetDashboardStats(ctx context.Context) (*usagestats.D
 			return cached, nil
 		}
 		if err != nil && !errors.Is(err, ErrDashboardStatsCacheMiss) {
-			logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存读取失败: %v", err)
+			logger.LegacyPrintf("service.dashboard", "[Dashboard] dashboard cache read failed: %v", err)
 		}
 	}
 
@@ -190,7 +190,7 @@ func (s *DashboardService) getCachedDashboardStats(ctx context.Context) (*usages
 		return nil, false, ErrDashboardStatsCacheMiss
 	}
 	if entry.Stats == nil {
-		s.evictDashboardStatsCache(errors.New("仪表盘缓存缺少统计数据"))
+		s.evictDashboardStatsCache(errors.New("dashboard cache is missing stats payload"))
 		return nil, false, ErrDashboardStatsCacheMiss
 	}
 
@@ -226,7 +226,7 @@ func (s *DashboardService) refreshDashboardStatsAsync() {
 
 		stats, err := s.fetchDashboardStats(ctx)
 		if err != nil {
-			logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存异步刷新失败: %v", err)
+			logger.LegacyPrintf("service.dashboard", "[Dashboard] dashboard cache async refresh failed: %v", err)
 			return
 		}
 		s.applyAggregationStatus(ctx, stats)
@@ -258,12 +258,12 @@ func (s *DashboardService) saveDashboardStatsCache(ctx context.Context, stats *u
 	}
 	data, err := json.Marshal(entry)
 	if err != nil {
-		logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存序列化失败: %v", err)
+		logger.LegacyPrintf("service.dashboard", "[Dashboard] dashboard cache serialization failed: %v", err)
 		return
 	}
 
 	if err := s.cache.SetDashboardStats(ctx, string(data), s.cacheTTL); err != nil {
-		logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存写入失败: %v", err)
+		logger.LegacyPrintf("service.dashboard", "[Dashboard] dashboard cache write failed: %v", err)
 	}
 }
 
@@ -275,10 +275,10 @@ func (s *DashboardService) evictDashboardStatsCache(reason error) {
 	defer cancel()
 
 	if err := s.cache.DeleteDashboardStats(cacheCtx); err != nil {
-		logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存清理失败: %v", err)
+		logger.LegacyPrintf("service.dashboard", "[Dashboard] dashboard cache cleanup failed: %v", err)
 	}
 	if reason != nil {
-		logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存异常，已清理: %v", reason)
+		logger.LegacyPrintf("service.dashboard", "[Dashboard] dashboard cache invalid; cleared: %v", reason)
 	}
 }
 
@@ -309,7 +309,7 @@ func (s *DashboardService) fetchAggregationUpdatedAt(ctx context.Context) time.T
 	}
 	updatedAt, err := s.aggRepo.GetAggregationWatermark(ctx)
 	if err != nil {
-		logger.LegacyPrintf("service.dashboard", "[Dashboard] 读取聚合水位失败: %v", err)
+		logger.LegacyPrintf("service.dashboard", "[Dashboard] failed to read aggregation watermark: %v", err)
 		return time.Unix(0, 0).UTC()
 	}
 	if updatedAt.IsZero() {

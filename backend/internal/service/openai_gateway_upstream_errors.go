@@ -59,7 +59,7 @@ func logOpenAIInstructionsRequiredDebug(
 	}
 	fields = appendCodexCLIOnlyRejectedRequestFields(fields, c, requestBody)
 
-	logger.FromContext(ctx).With(fields...).Warn("OpenAI 上游返回 Instructions are required，已记录请求详情用于排查")
+	logger.FromContext(ctx).With(fields...).Warn("OpenAI upstream returned Instructions are required; request details recorded for troubleshooting")
 }
 
 func isOpenAIInstructionsRequiredError(upstreamStatusCode int, upstreamMsg string, upstreamBody []byte) bool {

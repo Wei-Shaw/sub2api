@@ -196,6 +196,7 @@ import type { Column } from '@/components/common/types'
 import { getSeverityClass, formatDateTime } from '../utils/opsFormatters'
 import { mapErrorCategory } from '@/utils/errorCategory'
 import { mapErrorSortKey, statusCodeBadgeClass } from '@/utils/errorBadges'
+import { formatOpsLogMessage } from '../utils/opsMessageTranslations'
 
 const { t } = useI18n()
 
@@ -319,22 +320,10 @@ const getStatusClass = statusCodeBadgeClass
 function formatSmartMessage(msg: string): string {
   if (!msg) return ''
 
-  if (msg.startsWith('{') || msg.startsWith('[')) {
-    try {
-      const obj = JSON.parse(msg)
-      if (obj?.error?.message) return String(obj.error.message)
-      if (obj?.message) return String(obj.message)
-      if (obj?.detail) return String(obj.detail)
-      if (typeof obj === 'object') return JSON.stringify(obj).substring(0, 150)
-    } catch {
-      // ignore parse error
-    }
-  }
-
   if (msg.includes('context deadline exceeded')) return t('admin.ops.errorLog.commonErrors.contextDeadlineExceeded')
   if (msg.includes('connection refused')) return t('admin.ops.errorLog.commonErrors.connectionRefused')
   if (msg.toLowerCase().includes('rate limit')) return t('admin.ops.errorLog.commonErrors.rateLimit')
 
-  return msg.length > 200 ? msg.substring(0, 200) + '...' : msg
+  return formatOpsLogMessage(msg, t)
 }
 </script>

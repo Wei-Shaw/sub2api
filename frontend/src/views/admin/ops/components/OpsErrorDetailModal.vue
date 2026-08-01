@@ -102,8 +102,8 @@
 
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
           <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.message') }}</div>
-          <div class="mt-1 truncate text-sm font-medium text-gray-900 dark:text-white" :title="detail.message">
-            {{ detail.message || '—' }}
+          <div class="mt-1 truncate text-sm font-medium text-gray-900 dark:text-white" :title="translateOpsText(detail.message, t)">
+            {{ translateOpsText(detail.message, t) || '—' }}
           </div>
         </div>
 
@@ -182,7 +182,7 @@
               </div>
             </div>
 
-            <div v-if="ev.message" class="mt-3 break-words text-sm font-medium text-gray-900 dark:text-white">{{ ev.message }}</div>
+            <div v-if="ev.message" class="mt-3 break-words text-sm font-medium text-gray-900 dark:text-white">{{ translateOpsText(ev.message, t) }}</div>
 
             <pre
               v-if="expandedUpstreamDetailIds.has(ev.id)"
@@ -204,6 +204,7 @@ import { useAppStore } from '@/stores'
 import { opsAPI, type OpsErrorDetail } from '@/api/admin/ops'
 import { formatDateTime } from '@/utils/format'
 import { resolvePrimaryResponseBody, resolveUpstreamPayload } from '../utils/errorDetailResponse'
+import { prettyOpsJSON, translateOpsText } from '../utils/opsMessageTranslations'
 
 interface Props {
   show: boolean
@@ -316,12 +317,7 @@ function close() {
 }
 
 function prettyJSON(raw?: string): string {
-  if (!raw) return 'N/A'
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return raw
-  }
+  return prettyOpsJSON(raw, t)
 }
 
 async function fetchDetail(id: number) {

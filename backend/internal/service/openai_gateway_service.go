@@ -1060,10 +1060,9 @@ func logCodexCLIOnlyDetection(ctx context.Context, c *gin.Context, account *Acco
 	}
 	log := logger.FromContext(ctx).With(fields...)
 	if result.Matched {
-		log.Info("OpenAI codex_cli_only 放行请求")
 		return
 	}
-	log.Warn("OpenAI codex_cli_only 拒绝非官方客户端请求")
+	log.Warn("OpenAI codex_cli_only rejected non-official-client request")
 }
 
 func appendCodexCLIOnlyRejectedRequestFields(fields []zap.Field, c *gin.Context, body []byte) []zap.Field {

@@ -132,7 +132,7 @@ func TestInit_FileOutputFailureDowngrade(t *testing.T) {
 
 	_ = stderrW.Close()
 	stderrBytes, _ := io.ReadAll(stderrR)
-	if !strings.Contains(string(stderrBytes), "日志文件输出初始化失败") {
+	if !strings.Contains(string(stderrBytes), "log file output initialization failed") {
 		t.Fatalf("stderr should contain fallback warning, got: %s", string(stderrBytes))
 	}
 }

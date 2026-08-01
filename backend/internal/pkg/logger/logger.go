@@ -284,7 +284,7 @@ func buildLogger(options InitOptions) (*zap.Logger, zap.AtomicLevel, error) {
 	if options.Output.ToFile {
 		fileCore, filePath, fileErr := buildFileCore(enc, atomic, options)
 		if fileErr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "time=%s level=WARN msg=\"日志文件输出初始化失败，降级为仅标准输出\" path=%s err=%v\n",
+			_, _ = fmt.Fprintf(os.Stderr, "time=%s level=WARN msg=\"log file output initialization failed; falling back to stdout-only\" path=%s err=%v\n",
 				time.Now().Format(time.RFC3339Nano),
 				filePath,
 				fileErr,

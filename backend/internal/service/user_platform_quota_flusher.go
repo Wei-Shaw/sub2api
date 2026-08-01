@@ -71,13 +71,13 @@ func NewUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache, qu
 	}
 	if batchSize > maxFlushBatchSize {
 		logger.LegacyPrintf("quota_flusher",
-			"[QuotaFlusher] flush_batch_size %d 超过上限 %d,已 clamp(避免 BatchSnapshotUsage 多子批非原子)",
+			"[QuotaFlusher] flush_batch_size %d exceeds limit %d; clamped to keep BatchSnapshotUsage atomic",
 			cfg.Database.UserPlatformQuotaFlushBatchSize, maxFlushBatchSize)
 		batchSize = maxFlushBatchSize
 	}
 	interval := time.Duration(cfg.Database.UserPlatformQuotaFlushIntervalMs) * time.Millisecond
 	if interval <= 0 {
-		logger.LegacyPrintf("quota_flusher", "[QuotaFlusher] flush_interval_ms %d 非法,回退 2000ms", cfg.Database.UserPlatformQuotaFlushIntervalMs)
+		logger.LegacyPrintf("quota_flusher", "[QuotaFlusher] invalid flush_interval_ms=%d; fallback to 2000ms", cfg.Database.UserPlatformQuotaFlushIntervalMs)
 		interval = 2 * time.Second
 	}
 	return &UserPlatformQuotaUsageFlusher{
@@ -109,7 +109,7 @@ func (s *UserPlatformQuotaUsageFlusher) updateLatencyMax(ms int64) {
 func (s *UserPlatformQuotaUsageFlusher) readdOrCountLost(ctx context.Context, keys []UserPlatformQuotaKey, stage string) {
 	if err := s.cache.ReaddDirtyUserPlatformQuotaKeys(ctx, keys); err != nil {
 		s.metrics.DirtyLostTotal.Add(int64(len(keys)))
-		logger.LegacyPrintf("quota_flusher", "[QuotaFlusher] ALERT: Readd after %s failed, %d keys 丢出脏集(DB 镜像缺这批,Redis 仍权威,活跃 key 下次 SADD 自愈): %v", stage, len(keys), err)
+		logger.LegacyPrintf("quota_flusher", "[QuotaFlusher] ALERT: Readd after %s failed; %d keys dropped from dirty set (DB snapshot missing this batch, Redis remains authoritative, active keys heal on next SADD): %v", stage, len(keys), err)
 		return
 	}
 	s.metrics.DirtyReaddTotal.Add(int64(len(keys)))
