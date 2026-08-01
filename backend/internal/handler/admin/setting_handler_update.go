@@ -712,6 +712,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			response.BadRequest(c, "Login agreement document content is too large (max 200KB)")
 			return
 		}
+		for _, title := range doc.TitleI18n {
+			if len(title) > 80 {
+				response.BadRequest(c, "Login agreement localized document title is too long (max 80 characters)")
+				return
+			}
+		}
+		for _, content := range doc.ContentMDI18n {
+			if len(content) > 200*1024 {
+				response.BadRequest(c, "Login agreement localized document content is too large (max 200KB)")
+				return
+			}
+		}
 	}
 	if req.LoginAgreementEnabled && len(loginAgreementDocuments) == 0 {
 		response.BadRequest(c, "Login agreement documents are required when enabled")

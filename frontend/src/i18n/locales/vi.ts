@@ -13,6 +13,10 @@ const messages = {
     login: 'Đăng nhập',
     getStarted: 'Bắt đầu ngay',
     goToDashboard: 'Vào bảng điều khiển',
+    legal: {
+      title: 'Tài liệu pháp lý',
+      description: 'Xem điều khoản dịch vụ, chính sách sử dụng, khu vực hỗ trợ và điều khoản riêng trước khi đăng nhập.'
+    },
     // Mới thêm: điểm nhấn giá trị cho người dùng
     heroSubtitle: 'Một khóa, dùng nhiều mô hình AI',
     heroDescription: 'Không cần quản lý nhiều tài khoản thuê bao, truy cập một chỗ tới Claude, GPT, Gemini và các dịch vụ AI phổ biến khác',
@@ -5574,7 +5578,9 @@ const messages = {
         documentTitle: 'Tiêu đề tài liệu',
         documentTitlePlaceholder: 'Ví dụ: Điều khoản dịch vụ',
         routeSlug: 'Slug đường dẫn',
-        markdownContent: 'Nội dung Markdown',
+        markdownContent: 'Nội dung Markdown (dự phòng)',
+        localizedTitles: 'Tiêu đề theo ngôn ngữ',
+        localizedMarkdownContent: 'Nội dung Markdown theo ngôn ngữ',
         markdownContentPlaceholder: 'Nhập nội dung tài liệu bằng Markdown. Để trống nếu muốn trang pháp lý công khai hiển thị trạng thái chưa có nội dung.',
         documentRequiredError: 'Hãy thêm ít nhất một tài liệu điều khoản trước khi bật điều khoản đăng nhập.',
         documentTitleRequiredError: 'Mỗi tài liệu điều khoản cần có tiêu đề.',

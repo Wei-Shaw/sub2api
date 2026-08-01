@@ -13,6 +13,10 @@ const messages = {
     login: '로그인',
     getStarted: '지금 시작하기',
     goToDashboard: '대시보드로 이동',
+    legal: {
+      title: '법적 문서',
+      description: '로그인하기 전에 서비스 약관, 이용 정책, 지원 지역 및 서비스별 약관을 확인하세요.'
+    },
     // 신규: 사용자 대상 핵심 가치 제안
     heroSubtitle: '하나의 키로 여러 AI 모델을 자유롭게 사용',
     heroDescription: '여러 구독 계정을 관리할 필요 없이 Claude, GPT, Gemini 등 주요 AI 서비스를 한 번에 연결하세요',
@@ -5574,7 +5578,9 @@ const messages = {
         documentTitle: '문서 제목',
         documentTitlePlaceholder: '예: 서비스 약관',
         routeSlug: '경로 슬러그',
-        markdownContent: 'Markdown 내용',
+        markdownContent: 'Markdown 콘텐츠(기본값)',
+        localizedTitles: '언어별 제목',
+        localizedMarkdownContent: '언어별 Markdown 콘텐츠',
         markdownContentPlaceholder: 'Markdown으로 문서 내용을 입력하세요. 비워 두면 공개 법적 문서 페이지에 빈 상태 메시지가 표시됩니다.',
         documentRequiredError: '로그인 약관을 활성화하기 전에 약관 문서를 하나 이상 추가하세요.',
         documentTitleRequiredError: '모든 약관 문서에는 제목이 필요합니다.',

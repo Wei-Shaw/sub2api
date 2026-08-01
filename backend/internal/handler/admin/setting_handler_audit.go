@@ -723,6 +723,18 @@ func platformQuotasValueOrDefault(value, fallback map[string]*service.DefaultPla
 	return value
 }
 
+func equalStringMap(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, value := range a {
+		if b[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
 func equalStringSlice(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -753,6 +765,9 @@ func equalLoginAgreementDocuments(a, b []service.LoginAgreementDocument) bool {
 	}
 	for i := range a {
 		if a[i].ID != b[i].ID || a[i].Title != b[i].Title || a[i].ContentMD != b[i].ContentMD {
+			return false
+		}
+		if !equalStringMap(a[i].TitleI18n, b[i].TitleI18n) || !equalStringMap(a[i].ContentMDI18n, b[i].ContentMDI18n) {
 			return false
 		}
 	}

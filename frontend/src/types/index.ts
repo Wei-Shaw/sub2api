@@ -202,6 +202,8 @@ export interface LoginAgreementDocument {
   id: string
   title: string
   content_md: string
+  title_i18n?: Record<string, string>
+  content_md_i18n?: Record<string, string>
 }
 
 export interface PublicSettings {

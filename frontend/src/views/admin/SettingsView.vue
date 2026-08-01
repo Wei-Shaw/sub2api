@@ -6314,16 +6314,55 @@
                         </div>
                       </div>
                     </div>
+
+                    <div class="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/50">
+                      <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-400">
+                        {{ t('admin.settings.loginAgreementSettings.localizedTitles') }}
+                      </p>
+                      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div v-for="localeOption in loginAgreementLocales" :key="`title-${doc.id || index}-${localeOption.code}`">
+                          <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                            {{ localeOption.label }}
+                          </label>
+                          <input
+                            v-model="doc.title_i18n![localeOption.code]"
+                            type="text"
+                            class="input text-sm"
+                            :placeholder="t('admin.settings.loginAgreementSettings.documentTitlePlaceholder')"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     <div class="mt-3">
                       <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                         {{ t('admin.settings.loginAgreementSettings.markdownContent') }}
                       </label>
-                        <textarea
-                          v-model="doc.content_md"
-                          rows="8"
-                          class="input font-mono text-sm"
-                          :placeholder="t('admin.settings.loginAgreementSettings.markdownContentPlaceholder')"
-                        ></textarea>
+                      <textarea
+                        v-model="doc.content_md"
+                        rows="5"
+                        class="input font-mono text-sm"
+                        :placeholder="t('admin.settings.loginAgreementSettings.markdownContentPlaceholder')"
+                      ></textarea>
+                    </div>
+
+                    <div class="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/50">
+                      <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-400">
+                        {{ t('admin.settings.loginAgreementSettings.localizedMarkdownContent') }}
+                      </p>
+                      <div class="space-y-3">
+                        <div v-for="localeOption in loginAgreementLocales" :key="`content-${doc.id || index}-${localeOption.code}`">
+                          <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                            {{ localeOption.label }}
+                          </label>
+                          <textarea
+                            v-model="doc.content_md_i18n![localeOption.code]"
+                            rows="6"
+                            class="input font-mono text-sm"
+                            :placeholder="t('admin.settings.loginAgreementSettings.markdownContentPlaceholder')"
+                          ></textarea>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -8953,27 +8992,112 @@ const tablePageSizeMin = 5;
 const tablePageSizeMax = 1000;
 const tablePageSizeDefault = 20;
 
+const loginAgreementLocales = [
+  { code: "zh", label: "中文" },
+  { code: "en", label: "English" },
+  { code: "vi", label: "Tiếng Việt" },
+  { code: "ko", label: "한국어" },
+] as const;
+
+function loginAgreementDefaultTitle(key: "terms" | "usagePolicy" | "supportedRegions" | "serviceSpecificTerms"): string {
+  return t(`admin.settings.loginAgreementSettings.defaultDocuments.${key}`);
+}
+
+function buildLoginAgreementTitleI18n(
+  zh: string,
+  en: string,
+  vi: string,
+  ko: string,
+): Record<string, string> {
+  return { zh, en, vi, ko };
+}
+
+function emptyLoginAgreementContentI18n(): Record<string, string> {
+  return { zh: "", en: "", vi: "", ko: "" };
+}
+
+function normalizeLoginAgreementLocalizedRecord(
+  values?: Record<string, string>,
+): Record<string, string> {
+  return loginAgreementLocales.reduce<Record<string, string>>((acc, { code }) => {
+    acc[code] = values?.[code]?.trim() || "";
+    return acc;
+  }, {});
+}
+
+function withLoginAgreementLocaleFields(doc: LoginAgreementDocument): LoginAgreementDocument {
+  const title_i18n = normalizeLoginAgreementLocalizedRecord(doc.title_i18n);
+  const content_md_i18n = normalizeLoginAgreementLocalizedRecord(doc.content_md_i18n);
+  if (!title_i18n.zh && doc.title?.trim()) {
+    title_i18n.zh = doc.title.trim();
+  }
+  if (!content_md_i18n.zh && doc.content_md?.trim()) {
+    content_md_i18n.zh = doc.content_md.trim();
+  }
+  return {
+    ...doc,
+    title: doc.title || title_i18n.zh || title_i18n.en || title_i18n.vi || title_i18n.ko || "",
+    content_md:
+      doc.content_md ||
+      content_md_i18n.zh ||
+      content_md_i18n.en ||
+      content_md_i18n.vi ||
+      content_md_i18n.ko ||
+      "",
+    title_i18n,
+    content_md_i18n,
+  };
+}
+
 function defaultLoginAgreementDocuments(): LoginAgreementDocument[] {
   return [
     {
       id: "terms",
-      title: t('admin.settings.loginAgreementSettings.defaultDocuments.terms'),
+      title: loginAgreementDefaultTitle("terms"),
       content_md: "",
+      title_i18n: buildLoginAgreementTitleI18n(
+        "服务条款",
+        "Terms of Service",
+        "Điều khoản dịch vụ",
+        "서비스 약관",
+      ),
+      content_md_i18n: emptyLoginAgreementContentI18n(),
     },
     {
       id: "usage-policy",
-      title: t('admin.settings.loginAgreementSettings.defaultDocuments.usagePolicy'),
+      title: loginAgreementDefaultTitle("usagePolicy"),
       content_md: "",
+      title_i18n: buildLoginAgreementTitleI18n(
+        "使用政策",
+        "Usage Policy",
+        "Chính sách sử dụng",
+        "이용 정책",
+      ),
+      content_md_i18n: emptyLoginAgreementContentI18n(),
     },
     {
       id: "supported-regions",
-      title: t('admin.settings.loginAgreementSettings.defaultDocuments.supportedRegions'),
+      title: loginAgreementDefaultTitle("supportedRegions"),
       content_md: "",
+      title_i18n: buildLoginAgreementTitleI18n(
+        "支持地区",
+        "Supported Regions",
+        "Khu vực hỗ trợ",
+        "지원 지역",
+      ),
+      content_md_i18n: emptyLoginAgreementContentI18n(),
     },
     {
       id: "service-specific-terms",
-      title: t('admin.settings.loginAgreementSettings.defaultDocuments.serviceSpecificTerms'),
+      title: loginAgreementDefaultTitle("serviceSpecificTerms"),
       content_md: "",
+      title_i18n: buildLoginAgreementTitleI18n(
+        "特定服务条款",
+        "Service-Specific Terms",
+        "Điều khoản riêng theo dịch vụ",
+        "서비스별 약관",
+      ),
+      content_md_i18n: emptyLoginAgreementContentI18n(),
     },
   ];
 }
@@ -11106,6 +11230,8 @@ function addLoginAgreementDocument() {
     id: `custom-${Date.now().toString(36)}`,
     title: "",
     content_md: "",
+    title_i18n: normalizeLoginAgreementLocalizedRecord(),
+    content_md_i18n: normalizeLoginAgreementLocalizedRecord(),
   });
 }
 
@@ -11113,16 +11239,37 @@ function removeLoginAgreementDocument(index: number) {
   form.login_agreement_documents.splice(index, 1);
 }
 
+function compactLoginAgreementLocalizedRecord(
+  values?: Record<string, string>,
+): Record<string, string> | undefined {
+  const compacted = normalizeLoginAgreementLocalizedRecord(values);
+  const entries = Object.entries(compacted).filter(([, value]) => value.trim());
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 function normalizeLoginAgreementDocumentsForSave(): LoginAgreementDocument[] {
   return form.login_agreement_documents
-    .map((doc, index) => ({
-      id:
-        normalizeLoginAgreementDocumentId(doc.id || doc.title) ||
-        `doc-${index + 1}`,
-      title: doc.title.trim(),
-      content_md: doc.content_md.trim(),
-    }))
-    .filter((doc) => doc.title || doc.content_md);
+    .map((doc, index) => {
+      const normalized = withLoginAgreementLocaleFields(doc);
+      const title_i18n = compactLoginAgreementLocalizedRecord(normalized.title_i18n);
+      const content_md_i18n = compactLoginAgreementLocalizedRecord(normalized.content_md_i18n);
+      return {
+        id:
+          normalizeLoginAgreementDocumentId(normalized.id || normalized.title) ||
+          `doc-${index + 1}`,
+        title: normalized.title.trim(),
+        content_md: normalized.content_md.trim(),
+        ...(title_i18n ? { title_i18n } : {}),
+        ...(content_md_i18n ? { content_md_i18n } : {}),
+      };
+    })
+    .filter(
+      (doc) =>
+        doc.title ||
+        doc.content_md ||
+        Object.keys(doc.title_i18n || {}).length > 0 ||
+        Object.keys(doc.content_md_i18n || {}).length > 0,
+    );
 }
 
 function findDuplicateLoginAgreementDocumentId(
@@ -11283,11 +11430,15 @@ async function loadSettings() {
     form.login_agreement_documents =
       Array.isArray(settings.login_agreement_documents) &&
       settings.login_agreement_documents.length > 0
-        ? settings.login_agreement_documents.map((doc) => ({
-            id: doc.id || "",
-            title: doc.title || "",
-            content_md: doc.content_md || "",
-          }))
+        ? settings.login_agreement_documents.map((doc) =>
+            withLoginAgreementLocaleFields({
+              id: doc.id || "",
+              title: doc.title || "",
+              content_md: doc.content_md || "",
+              title_i18n: doc.title_i18n,
+              content_md_i18n: doc.content_md_i18n,
+            }),
+          )
         : defaultLoginAgreementDocuments();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
@@ -11534,7 +11685,9 @@ async function saveSettings() {
     }
     form.login_agreement_mode =
       form.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
-    form.login_agreement_documents = normalizedLoginAgreementDocuments;
+    form.login_agreement_documents = normalizedLoginAgreementDocuments.map((doc) =>
+      withLoginAgreementLocaleFields(doc),
+    );
     form.forwarded_client_ip_headers = normalizeForwardedClientIpHeaders(
       form.forwarded_client_ip_headers,
     );

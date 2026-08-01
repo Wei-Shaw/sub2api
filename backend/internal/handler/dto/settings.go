@@ -421,9 +421,11 @@ type PublicSettings struct {
 }
 
 type LoginAgreementDocument struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	ContentMD string `json:"content_md"`
+	ID            string            `json:"id"`
+	Title         string            `json:"title"`
+	ContentMD     string            `json:"content_md"`
+	TitleI18n     map[string]string `json:"title_i18n,omitempty"`
+	ContentMDI18n map[string]string `json:"content_md_i18n,omitempty"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO

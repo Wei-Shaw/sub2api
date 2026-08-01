@@ -49,6 +49,51 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func normalizeLoginAgreementLocale(raw string) string {
+	locale := strings.ToLower(strings.TrimSpace(raw))
+	if idx := strings.Index(locale, "-"); idx >= 0 {
+		locale = locale[:idx]
+	}
+	switch locale {
+	case "zh", "en", "vi", "ko":
+		return locale
+	default:
+		return ""
+	}
+}
+
+func normalizeLoginAgreementLocalizedMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	normalized := make(map[string]string, len(values))
+	for key, value := range values {
+		locale := normalizeLoginAgreementLocale(key)
+		if locale == "" {
+			continue
+		}
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			normalized[locale] = trimmed
+		}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func firstLoginAgreementLocalizedValue(values map[string]string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	for _, locale := range []string{"zh", "en", "vi", "ko"} {
+		if value := strings.TrimSpace(values[locale]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
 	settingService           *service.SettingService
@@ -440,9 +485,11 @@ func loginAgreementDocumentsToDTO(items []service.LoginAgreementDocument) []dto.
 	result := make([]dto.LoginAgreementDocument, 0, len(items))
 	for _, item := range items {
 		result = append(result, dto.LoginAgreementDocument{
-			ID:        item.ID,
-			Title:     item.Title,
-			ContentMD: item.ContentMD,
+			ID:            item.ID,
+			Title:         item.Title,
+			ContentMD:     item.ContentMD,
+			TitleI18n:     item.TitleI18n,
+			ContentMDI18n: item.ContentMDI18n,
 		})
 	}
 	return result
@@ -453,13 +500,23 @@ func loginAgreementDocumentsToService(items []dto.LoginAgreementDocument) []serv
 	for _, item := range items {
 		title := strings.TrimSpace(item.Title)
 		content := strings.TrimSpace(item.ContentMD)
+		titleI18n := normalizeLoginAgreementLocalizedMap(item.TitleI18n)
+		contentI18n := normalizeLoginAgreementLocalizedMap(item.ContentMDI18n)
+		if title == "" {
+			title = firstLoginAgreementLocalizedValue(titleI18n)
+		}
+		if content == "" {
+			content = firstLoginAgreementLocalizedValue(contentI18n)
+		}
 		if title == "" && content == "" {
 			continue
 		}
 		result = append(result, service.LoginAgreementDocument{
-			ID:        strings.TrimSpace(item.ID),
-			Title:     title,
-			ContentMD: content,
+			ID:            strings.TrimSpace(item.ID),
+			Title:         title,
+			ContentMD:     content,
+			TitleI18n:     titleI18n,
+			ContentMDI18n: contentI18n,
 		})
 	}
 	return result

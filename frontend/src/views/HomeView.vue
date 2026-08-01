@@ -205,6 +205,29 @@
                 <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
               </router-link>
             </div>
+
+            <div
+              v-if="loginAgreementDocuments.length > 0"
+              class="mt-5 rounded-2xl border border-gray-200/70 bg-white/70 p-4 shadow-sm backdrop-blur-sm dark:border-dark-700/60 dark:bg-dark-800/60"
+            >
+              <p class="text-sm font-semibold text-gray-800 dark:text-dark-100">
+                {{ t('home.legal.title') }}
+              </p>
+              <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-dark-400">
+                {{ t('home.legal.description') }}
+              </p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <router-link
+                  v-for="doc in loginAgreementDocuments"
+                  :key="doc.id"
+                  :to="{ name: 'LegalDocument', params: { documentId: doc.id } }"
+                  class="inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:border-primary-300 hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-200 dark:hover:bg-primary-500/20"
+                >
+                  <Icon name="document" size="xs" />
+                  {{ doc.title }}
+                </router-link>
+              </div>
+            </div>
           </div>
 
           <!-- Right: Terminal Animation -->
@@ -480,8 +503,10 @@ import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
+import { resolveLoginAgreementDocuments } from '@/utils/loginAgreement'
+import type { LoginAgreementDocument } from '@/types'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const authStore = useAuthStore()
 const appStore = useAppStore()
@@ -494,6 +519,12 @@ const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
 const compactHomeEnabled = computed(() => appStore.cachedPublicSettings?.compact_home_enabled === true)
+const loginAgreementDocuments = computed<LoginAgreementDocument[]>(() =>
+  resolveLoginAgreementDocuments(
+    appStore.cachedPublicSettings?.login_agreement_documents || [],
+    locale.value,
+  ),
+)
 
 // Check if homeContent is a URL (for iframe display)
 const isHomeContentUrl = computed(() => {

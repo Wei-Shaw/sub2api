@@ -136,9 +136,11 @@ func publicLoginAgreementDocumentsToDTO(items []service.LoginAgreementDocument) 
 	result := make([]dto.LoginAgreementDocument, 0, len(items))
 	for _, item := range items {
 		result = append(result, dto.LoginAgreementDocument{
-			ID:        item.ID,
-			Title:     item.Title,
-			ContentMD: item.ContentMD,
+			ID:            item.ID,
+			Title:         item.Title,
+			ContentMD:     item.ContentMD,
+			TitleI18n:     item.TitleI18n,
+			ContentMDI18n: item.ContentMDI18n,
 		})
 	}
 	return result

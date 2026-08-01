@@ -5,12 +5,14 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -785,12 +787,7 @@ func TestAPIContracts(t *testing.T) {
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
-						"login_agreement_documents": [
-							{"id": "terms", "title": "服务条款", "content_md": ""},
-							{"id": "usage-policy", "title": "使用政策", "content_md": ""},
-							{"id": "supported-regions", "title": "支持的国家和地区", "content_md": ""},
-							{"id": "service-specific-terms", "title": "服务特定条款", "content_md": ""}
-						],
+						"login_agreement_documents": __DEFAULT_LOGIN_AGREEMENT_DOCUMENTS__,
 						"smtp_host": "smtp.example.com",
 						"smtp_port": 587,
 						"smtp_username": "user",
@@ -1136,12 +1133,7 @@ func TestAPIContracts(t *testing.T) {
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
-						"login_agreement_documents": [
-							{"id": "terms", "title": "服务条款", "content_md": ""},
-							{"id": "usage-policy", "title": "使用政策", "content_md": ""},
-							{"id": "supported-regions", "title": "支持的国家和地区", "content_md": ""},
-							{"id": "service-specific-terms", "title": "服务特定条款", "content_md": ""}
-						],
+						"login_agreement_documents": __DEFAULT_LOGIN_AGREEMENT_DOCUMENTS__,
 						"smtp_host": "",
 						"smtp_port": 587,
 						"smtp_username": "",
@@ -1461,9 +1453,19 @@ func TestAPIContracts(t *testing.T) {
 
 			status, body := doRequest(t, deps.router, tt.method, tt.path, tt.body, tt.headers)
 			require.Equal(t, tt.wantStatus, status)
-			require.JSONEq(t, tt.wantJSON, body)
+			require.JSONEq(t, expandContractJSONPlaceholders(t, tt.wantJSON), body)
 		})
 	}
+}
+
+func expandContractJSONPlaceholders(t *testing.T, raw string) string {
+	t.Helper()
+	if !strings.Contains(raw, "__DEFAULT_LOGIN_AGREEMENT_DOCUMENTS__") {
+		return raw
+	}
+	docsJSON, err := json.Marshal(service.DefaultLoginAgreementDocuments())
+	require.NoError(t, err)
+	return strings.ReplaceAll(raw, "__DEFAULT_LOGIN_AGREEMENT_DOCUMENTS__", string(docsJSON))
 }
 
 type contractDeps struct {
