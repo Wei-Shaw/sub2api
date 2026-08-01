@@ -132,7 +132,7 @@ type UsageCache struct {
 	kiroUsageCache      sync.Map           // accountID -> *kiroUsageCache
 	apiFlight           singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight   singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
-	kiroUsageFlight     singleflight.Group // 防止同一 Kiro 账号的并发请求击穿缓存
+	kiroUsageFlight     singleflight.Group // 防止同一 Kiro 账号的并发用量查询击穿上游
 	openCodeUsageFlight singleflight.Group // 防止同一 OpenCode 账号的并发用量查询击穿上游
 	openAIProbeCache    sync.Map           // accountID -> time.Time
 	grokProbeCache      sync.Map           // accountID -> last billing probe attempt
@@ -363,8 +363,13 @@ func NewAccountUsageService(
 	openAIQuotaService *OpenAIQuotaService,
 	cache *UsageCache,
 	identityCache IdentityCache,
-	tlsFPProfileService *TLSFingerprintProfileService,
+	tlsFingerprintProfileService *TLSFingerprintProfileService,
+	grokQuotaServices ...*GrokQuotaService,
 ) *AccountUsageService {
+	var grokQuotaService *GrokQuotaService
+	if len(grokQuotaServices) > 0 {
+		grokQuotaService = grokQuotaServices[0]
+	}
 	return &AccountUsageService{
 		accountRepo:             accountRepo,
 		usageLogRepo:            usageLogRepo,
@@ -376,7 +381,7 @@ func NewAccountUsageService(
 		openAIQuotaService:      openAIQuotaService,
 		cache:                   cache,
 		identityCache:           identityCache,
-		tlsFPProfileService:     tlsFPProfileService,
+		tlsFPProfileService:     tlsFingerprintProfileService,
 	}
 }
 

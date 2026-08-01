@@ -939,7 +939,7 @@ describe('AccountUsageCell', () => {
 		expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
   })
 
-  it('Grok OAuth 会展示本地 user billed 用量并把耗尽配额显示为 0% 剩余', async () => {
+  it('Grok OAuth 会展示本地 user billed 用量并保留超限百分比', async () => {
     getUsage.mockResolvedValue({
       grok_local_usage: {
         requests: 4,
@@ -991,7 +991,7 @@ describe('AccountUsageCell', () => {
     expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
   })
 
-  it('Grok OAuth 配额条按剩余容量显示 100% 满格和 25% 低量', async () => {
+  it('Grok OAuth quota bars show remaining capacity as 100% full and 25% low', async () => {
     getUsage.mockResolvedValue({
       grok_request_quota: {
         limit: 100,
