@@ -118,6 +118,11 @@ REDACTED{
 		// 跨平台官方域同样必无该端点，一并拦截。
 		{PlatformAnthropic, "https://api.x.ai/v1"REDACTED,
 		{PlatformGrok, "https://api.openai.com"REDACTED,
+		// Ollama Cloud 是本仓一等支持配置（platform openai/anthropic +
+		// base_url https://ollama.com/v1），同为官方 API，不能拿 Key 去空探。
+		{PlatformAnthropic, "https://ollama.com/v1"REDACTED,
+		{PlatformAnthropic, "https://ollama.com"REDACTED,
+		{PlatformAnthropic, "https://www.ollama.com/v1"REDACTED,
 REDACTED
 	for i, tc := range cases {
 		account := &Account{
@@ -149,11 +154,19 @@ func TestUpstreamBillingProbeOfficialAPIHostMatchingIsNormalized(t *testing.T) {
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://x.ai"))
 	// openai 官方域在全集内；openai 平台账号不经过本判定（行为级测试钉死照探）。
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.openai.com"))
+	// Ollama Cloud 官方域及其子域（Ollama Cloud 账号的 base_url 允许带 www.）。
+	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://ollama.com/v1"))
+	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://ollama.com:443/v1"))
+	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://www.ollama.com/v1"))
+	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("HTTPS://OLLAMA.COM./v1"))
 	// 相似但不同的注册域不拦：中转完全可能叫 *-x.ai 之外的任何名字。
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://relay.example/v1"))
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://notx.ai"))
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://anthropic.com.evil.example"))
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.relay-station.example"))
+	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://notollama.com/v1"))
+	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://ollama.com.evil.example/v1"))
+	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://ollama.example/v1"))
 REDACTED
 
 // OpenAI 语义保持不变：无自定义 base 时仍探官方域，且沿用 openai 传输画像。

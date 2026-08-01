@@ -40,6 +40,10 @@ const (
 	upstreamBillingProbeMaxPerCycle            = 20
 	upstreamBillingProbeConcurrency            = 4
 	upstreamBillingProbeMaxDelay               = 24 * time.Hour
+	// unsupported 账号的重探间隔倍数：上游不是 sub2api 中转就不会突然长出
+	// /v1/sub2api/billing，按常规 interval 重排只会持续占满每周期
+	// upstreamBillingProbeMaxPerCycle 个名额。
+	upstreamBillingProbeUnsupportedDelayFactor = 8
 	upstreamBillingProbeLeaderLockKey          = "upstream:billing:probe:leader"
 	upstreamBillingProbeLeaderLockTTL          = 2 * time.Minute
 )
@@ -661,13 +665,15 @@ func (s *UpstreamBillingProbeService) persistProbeFailure(
 		failureCount = previous.FailureCount + 1
 REDACTED
 	status := UpstreamBillingProbeStatusFailed
+	delay := nextProbeDelay(intervalMinutes, retryAfterDuration)
 	if reason == "unsupported" {
 		status = UpstreamBillingProbeStatusUnsupported
+		delay = unsupportedProbeDelay(intervalMinutes, retryAfterDuration)
 REDACTED
 	snapshot := &UpstreamBillingProbeSnapshot{
 		Status:        status,
 		LastAttemptAt: now,
-		NextProbeAt:   now.Add(nextProbeDelay(intervalMinutes, retryAfterDuration)),
+		NextProbeAt:   now.Add(delay),
 		FailureCount:  failureCount,
 		HTTPStatus:    statusCode,
 		LastError:     reason,
@@ -863,8 +869,12 @@ REDACTED
 // sub2api-compatible upstream answers it regardless of the account platform,
 // so eligibility is not restricted to OpenAI.
 // Non-sub2api upstreams return 404 and the snapshot records "unsupported".
-// OAuth/Bedrock credentials carry no static API key to present, hence the
-// type restriction.
+// Only AccountTypeAPIKey is in scope. OAuth/Bedrock hold no static API key to
+// present at all; AccountTypeUpstream (antigravity relay accounts) does carry
+// a base_url plus a static api_key, but it is deliberately left out of the
+// current supported set. New antigravity relay accounts are created with
+// type=apikey by the admin form, so only pre-existing type=upstream rows
+// cannot turn the probe on.
 func IsUpstreamBillingProbeIdentity(platform, accountType string) bool {
 	return platform != "" && accountType == AccountTypeAPIKey
 REDACTED
@@ -883,12 +893,16 @@ REDACTED
 // relays (the only targets that can answer /v1/sub2api/billing) always do
 // probe. OpenAI-platform accounts never reach this check: they keep the
 // upstream-official behavior of probing api.openai.com.
+// ollama.com is a first-class configuration here (Ollama Cloud accounts are
+// platform openai/anthropic with base_url https://ollama.com/v1), and it is
+// an official provider API just like the rest, so it belongs on this list.
 var upstreamBillingProbeOfficialAPIDomains = []string{
 	"anthropic.com",
 	"googleapis.com",
 	"x.ai",
 	"grok.com",
 	"openai.com",
+	"ollama.com",
 REDACTED
 
 func upstreamBillingProbeTargetIsOfficialAPI(baseURL string) bool {
@@ -951,6 +965,23 @@ REDACTED
 		return upstreamBillingProbeMaxDelay
 REDACTED
 	return interval
+REDACTED
+
+// unsupportedProbeDelay 拉长 unsupported 账号的重探间隔，让无效候选自然退出
+// 热队列，不再和真正接入 sub2api 的中转账号抢每周期的探测名额。
+// 仍按 upstreamBillingProbeMaxDelay 封顶，保证上游后来接入 sub2api 时最迟一天
+// 内会被重新发现；base 本身已达上限（例如 Retry-After 明确要求更久）时原样返回，
+// 不缩短上游指令。
+func unsupportedProbeDelay(intervalMinutes int, retryAfterDuration time.Duration) time.Duration {
+	base := nextProbeDelay(intervalMinutes, retryAfterDuration)
+	if base >= upstreamBillingProbeMaxDelay {
+		return base
+REDACTED
+	stretched := base * upstreamBillingProbeUnsupportedDelayFactor
+	if stretched > upstreamBillingProbeMaxDelay {
+		return upstreamBillingProbeMaxDelay
+REDACTED
+	return stretched
 REDACTED
 
 func retryAfter(header http.Header, now time.Time) time.Duration {

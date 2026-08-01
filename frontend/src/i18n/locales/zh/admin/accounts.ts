@@ -203,7 +203,7 @@ export default {
         enabled: '打开',
         disabled: '关闭',
         probeFailed: '探测上游倍率失败',
-        noEligibleAccounts: '请选择 OpenAI API Key 账号',
+        noEligibleAccounts: '请选择 API Key 账号',
         batchLimit: '每次最多探测 20 个账号',
         batchCompleted: '已完成 {countREDACTED 个账号的倍率探测',
         batchPartial: '倍率探测部分完成：成功 {successREDACTED 个，失败 {failedREDACTED 个'
