@@ -236,6 +236,8 @@ type UpdateSettingsRequest struct {
 	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
+	CustomImageModelPatterns               *string `json:"custom_image_model_patterns"`
+	CustomVideoModelPatterns               *string `json:"custom_video_model_patterns"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -1276,6 +1278,17 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	for key, raw := range map[string]*string{
+		service.SettingKeyCustomImageModelPatterns: req.CustomImageModelPatterns,
+		service.SettingKeyCustomVideoModelPatterns: req.CustomVideoModelPatterns,
+	} {
+		if raw != nil {
+			if err := service.ValidateCustomMediaModelPatterns(*raw); err != nil {
+				response.Error(c, http.StatusBadRequest, key+" "+err.Error())
+				return
+			}
+		}
+	}
 
 	// codex_cli_only 加固：最低/最高 Codex 版本（空=禁用，或合法 semver；max>=min）
 	if req.MinCodexVersion != "" && !semverPattern.MatchString(req.MinCodexVersion) {
@@ -1554,6 +1567,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.OpenAICodexUserAgent
 			}
 			return previousSettings.OpenAICodexUserAgent
+		}(),
+		CustomImageModelPatterns: func() string {
+			if req.CustomImageModelPatterns != nil {
+				return *req.CustomImageModelPatterns
+			}
+			return previousSettings.CustomImageModelPatterns
+		}(),
+		CustomVideoModelPatterns: func() string {
+			if req.CustomVideoModelPatterns != nil {
+				return *req.CustomVideoModelPatterns
+			}
+			return previousSettings.CustomVideoModelPatterns
 		}(),
 		MinCodexVersion:       strings.TrimSpace(req.MinCodexVersion),
 		MaxCodexVersion:       strings.TrimSpace(req.MaxCodexVersion),
@@ -2027,6 +2052,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableClientDatelineNormalization:                      updatedSettings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:                            updatedSettings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                                   updatedSettings.OpenAICodexUserAgent,
+		CustomImageModelPatterns:                               updatedSettings.CustomImageModelPatterns,
+		CustomVideoModelPatterns:                               updatedSettings.CustomVideoModelPatterns,
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,
 		MaxCodexVersion:                                        updatedSettings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  updatedSettings.CodexCLIOnlyBlacklist,

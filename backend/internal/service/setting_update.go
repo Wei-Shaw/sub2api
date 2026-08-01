@@ -438,6 +438,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyEnableClientDatelineNormalization] = strconv.FormatBool(settings.EnableClientDatelineNormalization)
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
+	if err := ValidateCustomMediaModelPatterns(settings.CustomImageModelPatterns); err != nil {
+		return nil, err
+	}
+	if err := ValidateCustomMediaModelPatterns(settings.CustomVideoModelPatterns); err != nil {
+		return nil, err
+	}
+	settings.CustomImageModelPatterns = normalizeCustomMediaModelPatterns(settings.CustomImageModelPatterns)
+	settings.CustomVideoModelPatterns = normalizeCustomMediaModelPatterns(settings.CustomVideoModelPatterns)
+	updates[SettingKeyCustomImageModelPatterns] = settings.CustomImageModelPatterns
+	updates[SettingKeyCustomVideoModelPatterns] = settings.CustomVideoModelPatterns
 	// codex_cli_only 加固
 	updates[SettingKeyMinCodexVersion] = strings.TrimSpace(settings.MinCodexVersion)
 	updates[SettingKeyMaxCodexVersion] = strings.TrimSpace(settings.MaxCodexVersion)
@@ -566,6 +576,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if settings == nil {
 		return
 	}
+	setCustomMediaModelPatterns(settings.CustomImageModelPatterns, settings.CustomVideoModelPatterns)
 
 	// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
 	versionBoundsSF.Forget("version_bounds")

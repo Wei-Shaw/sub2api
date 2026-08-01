@@ -425,6 +425,12 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: 'Used to bypass Cloudflare browser-UA challenges on the OpenAI upstream. Only applies when the client User-Agent is detected as a browser (Mozilla/...). Leave empty to use the built-in default.',
+        customImageModelPatterns: 'Custom Image Model Rules',
+        customImageModelPatternsPlaceholder: 'Exact model ID\nmodel-prefix-*',
+        customImageModelPatternsHint: 'Use exact model IDs or * as a wildcard. Separate multiple rules with new lines, commas, or spaces. Matching rules are included in image-model classification and routing decisions. Built-in models do not need to be listed.',
+        customVideoModelPatterns: 'Custom Video Model Rules',
+        customVideoModelPatternsPlaceholder: 'Exact model ID\nvideo-prefix-*',
+        customVideoModelPatternsHint: 'Use exact model IDs or * as a wildcard. Separate multiple rules with new lines, commas, or spaces. Video rules take precedence over image rules when both match and remain available for media capability checks. Built-in models do not need to be listed.',
         codexHardeningTitle: "Codex Settings",
         codexClientRestrictionTitle: "Codex client restriction",
         codexHardeningDesc:

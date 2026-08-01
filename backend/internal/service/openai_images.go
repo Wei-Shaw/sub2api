@@ -455,7 +455,19 @@ func applyOpenAIImagesDefaults(req *OpenAIImagesRequest) {
 }
 
 func isOpenAIImageGenerationModel(model string) bool {
+	switch classifyCustomMediaModel(model) {
+	case mediaModelVideo:
+		return false
+	case mediaModelImage:
+		return true
+	}
 	return IsGPTImageGenerationModel(model) || isGrokImageGenerationModel(model)
+}
+
+// IsImageGenerationModel identifies built-in and configured image-generation models.
+// Video rules take precedence when a model matches both rule sets.
+func IsImageGenerationModel(model string) bool {
+	return isOpenAIImageGenerationModel(model)
 }
 
 // IsGPTImageGenerationModel identifies the GPT native image-generation model family.

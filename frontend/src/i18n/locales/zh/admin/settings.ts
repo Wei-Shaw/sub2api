@@ -418,6 +418,12 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: '用于规避 OpenAI 上游 Cloudflare 对浏览器 UA 的访问质询。仅在检测到客户端 User-Agent 为浏览器（Mozilla/...）时生效，其他客户端原样透传。留空使用内置默认值。',
+        customImageModelPatterns: '自定义图片模型规则',
+        customImageModelPatternsPlaceholder: '精确模型 ID\n模型前缀-*',
+        customImageModelPatternsHint: '填写精确模型 ID，或使用 * 作为通配符。多个规则可用换行、逗号或空格分隔。匹配后纳入图片模型分类和路由判断。内置模型无需重复填写。',
+        customVideoModelPatterns: '自定义视频模型规则',
+        customVideoModelPatternsPlaceholder: '精确模型 ID\n视频前缀-*',
+        customVideoModelPatternsHint: '填写精确模型 ID，或使用 * 作为通配符。多个规则可用换行、逗号或空格分隔。两类规则同时匹配时视频规则优先，并保留给媒体能力判断使用。内置模型无需重复填写。',
         codexHardeningTitle: 'Codex 设置',
         codexClientRestrictionTitle: 'Codex 客户端限制',
         codexHardeningDesc:
