@@ -2244,9 +2244,14 @@ func setDefaults() {
 	viper.SetDefault("warp.gateway.token", "")
 	viper.SetDefault("warp.gateway.timeout_ms", 3000)
 	viper.SetDefault("warp.gateway.reconcile_interval_sec", 15)
+	viper.SetDefault("warp.gateway.tls_ca_file", "")
+	viper.SetDefault("warp.gateway.tls_cert_file", "")
+	viper.SetDefault("warp.gateway.tls_key_file", "")
+	viper.SetDefault("warp.gateway.tls_insecure_skip_verify", false)
 	viper.SetDefault("warp.auto_detach_unhealthy", true)
 	viper.SetDefault("warp.alert_duplicate_exit_ip", true)
 	viper.SetDefault("warp.default_group_name", "warp-pool")
+	viper.SetDefault("warp.profile_encryption_key", "")
 
 	// Subscription auth L1 cache
 	viper.SetDefault("subscription_cache.l1_size", 16384)
