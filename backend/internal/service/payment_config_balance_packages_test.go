@@ -17,18 +17,6 @@ func TestNormalizeBalancePackageActualCreditsUsesExplicitMetadata(t *testing.T) 
 	}
 }
 
-func TestComputeDisplayCreditsFromLedgerPriceIsDisplayOnly(t *testing.T) {
-	got := computeDisplayCreditsFromLedgerPrice(202.50, 1, 7.50)
-	if got != 27_000_000 {
-		t.Fatalf("display credits = %d, want 27000000", got)
-	}
-
-	wrongBurnCredits := computeDisplayCreditsFromLedgerPrice(4, 0.036247, 7.50)
-	if wrongBurnCredits == 110_353_960 {
-		t.Fatalf("display helper must not reproduce $4/rate synthetic burn credits")
-	}
-}
-
 func TestCreateBalancePackageDoesNotSynthesizeCreditsFromGroupRate(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)

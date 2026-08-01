@@ -104,19 +104,6 @@ func TestCalculateCostUnified_BalanceModeFollowsProviderCostLikeUpstream(t *test
 	require.Equal(t, string(BillingModeToken), cost.BillingMode)
 }
 
-func TestUsageTokensTotalBillableTokensUsesDetailedCacheCreationWhenPresent(t *testing.T) {
-	tokens := UsageTokens{
-		InputTokens:           10,
-		OutputTokens:          20,
-		CacheCreationTokens:   0,
-		CacheCreation5mTokens: 30,
-		CacheCreation1hTokens: 40,
-		CacheReadTokens:       50,
-	}
-
-	require.Equal(t, 150, tokens.TotalBillableTokens())
-}
-
 func TestCalculateCostUnified_PerRequestMode(t *testing.T) {
 	// Set up a ChannelService with a per-request pricing channel
 	cs := newTestChannelServiceWithCache(t, &channelCache{

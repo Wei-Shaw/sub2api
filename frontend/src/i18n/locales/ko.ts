@@ -2540,6 +2540,13 @@ const messages = {
         selectAccounts: '계정 선택',
         noAccounts: '이 그룹에는 계정이 없습니다',
         loadingAccounts: '계정 불러오는 중...',
+        claudeMaxSimulation: {
+          disabled: '비활성화됨',
+          enabled: '활성화됨 (1h 캐시 시뮬레이션)',
+          hint: '사용량 과금 로그의 토큰 카테고리만 조정됩니다. 요청별 매핑 상태는 저장되지 않습니다.',
+          title: 'Claude Max 사용량 시뮬레이션',
+          tooltip: '활성화하면, 업스트림 캐시 쓰기 사용량이 없는 Claude 모델에 대해 시스템이 결정론적으로 토큰을 소량 입력 + 1h 캐시 생성으로 매핑하면서 총 토큰은 그대로 유지합니다.',
+        },
         removeRule: '규칙 삭제',
         noRules: '라우팅 규칙이 없습니다',
         noRulesHint: '라우팅 규칙을 추가하여 특정 모델 요청을 지정된 계정으로 우선 보냅니다',
@@ -2559,13 +2566,6 @@ const messages = {
         geminiText: 'Gemini Text',
         geminiImage: 'Gemini Image',
         hint: '모델 시리즈를 하나 이상 선택하세요'
-      },
-      claudeMaxSimulation: {
-        disabled: 'Disabled',
-        enabled: 'Enabled (simulate 1h cache)',
-        hint: 'Only token categories in usage billing logs are adjusted. No per-request mapping state is persisted.',
-        title: 'Claude Max Usage Simulation',
-        tooltip: 'When enabled, for Claude models without upstream cache-write usage, the system deterministically maps tokens to a small input plus 1h cache creation while keeping total tokens unchanged.',
       },
       modelsList: {
         title: '사용자 정의 /v1/models 모델 목록',
@@ -3472,6 +3472,9 @@ const messages = {
         oauthPassthrough: '자동 패스스루(인증만 교체)',
         oauthPassthroughDesc:
           '활성화하면 이 OpenAI 계정은 요청과 응답을 자동으로 패스스루하고 인증만 교체하며, 과금/동시성/감사 및 필요한 보안 필터는 유지합니다. 호환성 문제가 있으면 언제든 비활성화하여 롤백할 수 있습니다.',
+        longContextBilling: 'API 장문 컨텍스트 과금',
+        longContextBillingDesc:
+          '기본값 비활성화. 이 계정의 업스트림이 모델 임계값에 따라 OpenAI API 장문 컨텍스트 요금을 부과할 때만 활성화하세요.',
         responsesWebsocketsV2: 'Responses WebSocket v2',
         responsesWebsocketsV2Desc:
           '기본값은 비활성화입니다. 활성화하면 responses_websockets_v2 프로토콜 기능을 사용할 수 있습니다(게이트웨이 전역 스위치 및 계정 유형 스위치의 제약을 받음).',
@@ -3491,6 +3494,10 @@ const messages = {
         apiKeyResponsesWebsocketsV2Desc:
           'OpenAI API Key에만 적용됩니다. 활성화 후에만 이 계정에서 OpenAI WebSocket Mode 프로토콜을 사용할 수 있습니다.',
         responsesWebsocketsV2PassthroughHint: '현재 자동 패스스루가 활성화되어 있습니다: HTTP 패스스루 경로에만 영향을 주며 WS mode에는 영향을 주지 않습니다.',
+        planType: '구독 등급 (수동 재정의)',
+        planTypeDesc:
+          '이 계정의 ChatGPT 구독 등급(Plus / Pro / Free)을 수동으로 재정의합니다. 참고: 토큰 갱신 또는 429 rate limit 발생 시 실제 등급이 이 값을 자동으로 덮어씁니다.',
+        planTypeClear: '초기화 (자동 감지)',
         codexCLIOnly: 'Codex 공식 클라이언트만 허용',
         codexCLIOnlyDesc: 'OpenAI OAuth에만 적용됩니다. 활성화하면 Codex 공식 클라이언트 계열만 접근할 수 있으며, 비활성화하면 완전히 우회하고 기존 로직을 유지합니다.',
         compactMode: 'Compact 모드',
@@ -3883,6 +3890,28 @@ const messages = {
           validateAndCreate: '검증 후 계정 생성',
           pleaseEnterRefreshToken: 'Refresh Token을 입력하세요',
           pleaseEnterSessionToken: 'Session Token을 입력하세요'
+        },
+        grok: {
+          title: 'Grok 계정 인증',
+          ssoCookieAuth: 'SSO 쿠키 가져오기',
+          ssoCookieDesc:
+            '한 줄에 하나의 Grok Web SSO 키를 붙여 넣으세요. 시스템이 자동으로 xAI Device Flow를 거쳐 Grok Build OAuth 자격 증명으로 변환합니다.',
+          ssoCookieLabel: 'Grok Web SSO Key',
+          ssoCookiePlaceholder: '한 줄에 하나의 SSO 키\n여러 개 지원, 한 줄에 하나씩',
+          ssoCookieHint:
+            '한 줄에 하나의 SSO 키; 여러 키는 3-way 동시성으로 가져오며 배치당 약 90초가 소요됩니다. 지역에 적합한 프록시를 사용하세요.',
+          convertingSSO: '변환 중...',
+          convertSSOAndCreate: '변환 및 계정 생성',
+          failedToConvertSSO: 'Grok SSO 변환 실패',
+          validating: '검증 중...',
+          validateAndCreate: '검증 후 계정 생성',
+          pleaseEnterRefreshToken: 'Refresh Token을 입력하세요',
+          refreshTokenAuth: 'RT 수동 입력',
+          refreshTokenDesc: '기존 xAI refresh token을 입력하세요. 여러 개를 한 줄에 하나씩 입력할 수 있습니다.',
+          refreshTokenPlaceholder: 'xAI refresh token을 붙여 넣으세요...\n여러 개 지원, 한 줄에 하나씩',
+          failedToGenerateUrl: 'Grok 인증 URL 생성 실패',
+          failedToExchangeCode: 'Grok 인증 코드 교환 실패',
+          failedToValidateRT: 'Grok refresh token 검증 실패',
         },
         kiro: {
           title: 'Kiro 인증',

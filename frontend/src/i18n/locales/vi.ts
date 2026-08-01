@@ -2539,6 +2539,13 @@ const messages = {
         selectAccounts: 'Chọn tài khoản',
         noAccounts: 'Nhóm này hiện chưa có tài khoản nào',
         loadingAccounts: 'Đang tải tài khoản...',
+        claudeMaxSimulation: {
+          disabled: 'Đã tắt',
+          enabled: 'Đã bật (mô phỏng cache 1h)',
+          hint: 'Chỉ các danh mục token trong log tính phí usage được điều chỉnh. Không lưu trạng thái ánh xạ theo từng request.',
+          title: 'Mô phỏng usage Claude Max',
+          tooltip: 'Khi bật, với các model Claude không có usage cache-write từ upstream, hệ thống sẽ ánh xạ token một cách xác định sang một input nhỏ cộng với tạo cache 1h, đồng thời giữ nguyên tổng số token.',
+        },
         removeRule: 'Xóa quy tắc',
         noRules: 'Chưa có quy tắc định tuyến',
         noRulesHint: 'Thêm quy tắc định tuyến để ưu tiên đưa request của model cụ thể tới tài khoản chỉ định',
@@ -2558,13 +2565,6 @@ const messages = {
         geminiText: 'Gemini Text',
         geminiImage: 'Gemini Image',
         hint: 'Chọn ít nhất một dòng model'
-      },
-      claudeMaxSimulation: {
-        disabled: 'Đã tắt',
-        enabled: 'Đã bật (mô phỏng cache 1h)',
-        hint: 'Chỉ các danh mục token trong log tính phí usage được điều chỉnh. Không lưu trạng thái ánh xạ theo từng request.',
-        title: 'Mô phỏng usage Claude Max',
-        tooltip: 'Khi bật, với các model Claude không có usage cache-write từ upstream, hệ thống sẽ ánh xạ token một cách xác định sang một input nhỏ cộng với tạo cache 1h, đồng thời giữ nguyên tổng số token.',
       },
       modelsList: {
         title: 'Model hiển thị theo nhóm',
@@ -3475,6 +3475,9 @@ const messages = {
         oauthPassthrough: 'Tự động passthrough (chỉ thay xác thực)',
         oauthPassthroughDesc:
           'Sau khi bật, tài khoản OpenAI này sẽ tự động passthrough request và response, chỉ thay phần xác thực, đồng thời giữ lại billing/concurrency/audit và các bộ lọc an toàn cần thiết; nếu gặp vấn đề tương thích có thể tắt để rollback bất cứ lúc nào.',
+        longContextBilling: 'API Long-Context Billing',
+        longContextBillingDesc:
+          'Mặc định tắt. Chỉ bật khi upstream của tài khoản này tính phí OpenAI API long-context theo ngưỡng model.',
         responsesWebsocketsV2: 'Responses WebSocket v2',
         responsesWebsocketsV2Desc:
           'Mặc định tắt. Sau khi bật, có thể sử dụng khả năng giao thức responses_websockets_v2 (chịu ràng buộc bởi công tắc toàn cục của gateway và công tắc theo loại tài khoản).',
@@ -3494,6 +3497,10 @@ const messages = {
         apiKeyResponsesWebsocketsV2Desc:
           'Chỉ áp dụng cho OpenAI API Key. Sau khi bật, tài khoản này mới được phép dùng giao thức OpenAI WebSocket Mode.',
         responsesWebsocketsV2PassthroughHint: 'Hiện đang bật tự động passthrough: chỉ ảnh hưởng tới luồng HTTP passthrough, không ảnh hưởng tới WS mode.',
+        planType: 'Bậc订阅 (Ghi đè thủ công)',
+        planTypeDesc:
+          'Ghi đè thủ công bậc订阅 ChatGPT cho tài khoản này (Plus / Pro / Free). Lưu ý: khi refresh token hoặc gặp 429 rate limit, bậc thực tế sẽ tự động ghi đè giá trị này.',
+        planTypeClear: 'Xóa (Tự động nhận diện)',
         codexCLIOnly: 'Chỉ cho phép client Codex chính thức',
         codexCLIOnlyDesc: 'Chỉ áp dụng cho OpenAI OAuth. Sau khi bật, chỉ cho phép họ client Codex chính thức truy cập; khi tắt sẽ bỏ qua hoàn toàn và giữ nguyên logic cũ.',
         compactMode: 'Chế độ Compact',
@@ -3895,6 +3902,28 @@ const messages = {
           validateAndCreate: 'Xác minh và tạo tài khoản',
           pleaseEnterRefreshToken: 'Vui lòng nhập Refresh Token',
           pleaseEnterSessionToken: 'Vui lòng nhập Session Token'
+        },
+        grok: {
+          title: 'Ủy quyền tài khoản Grok',
+          ssoCookieAuth: 'Nhập SSO Cookie',
+          ssoCookieDesc:
+            'Dán mỗi dòng một Grok Web SSO key. Hệ thống sẽ tự động đi qua xAI Device Flow và chuyển đổi thành thông tin xác thực Grok Build OAuth.',
+          ssoCookieLabel: 'Grok Web SSO Key',
+          ssoCookiePlaceholder: 'Mỗi dòng một SSO key\nHỗ trợ nhiều key, mỗi dòng một key',
+          ssoCookieHint:
+            'Mỗi dòng một SSO key; nhiều key được nhập đồng thời 3 luồng, mất khoảng 90 giây mỗi lô. Nên dùng proxy phù hợp với khu vực.',
+          convertingSSO: 'Đang chuyển đổi...',
+          convertSSOAndCreate: 'Chuyển đổi & Tạo tài khoản',
+          failedToConvertSSO: 'Chuyển đổi Grok SSO thất bại',
+          validating: 'Đang xác minh...',
+          validateAndCreate: 'Xác minh & Tạo tài khoản',
+          pleaseEnterRefreshToken: 'Vui lòng nhập Refresh Token',
+          refreshTokenAuth: 'Nhập RT thủ công',
+          refreshTokenDesc: 'Nhập xAI refresh token hiện có, hỗ trợ nhập hàng loạt (mỗi dòng một token).',
+          refreshTokenPlaceholder: 'Dán xAI refresh token của bạn...\nHỗ trợ nhiều token, mỗi dòng một token',
+          failedToGenerateUrl: 'Tạo URL ủy quyền Grok thất bại',
+          failedToExchangeCode: 'Đổi mã ủy quyền Grok thất bại',
+          failedToValidateRT: 'Xác minh Grok refresh token thất bại',
         },
         kiro: {
           title: 'Ủy quyền Kiro',

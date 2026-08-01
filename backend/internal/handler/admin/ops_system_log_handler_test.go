@@ -145,7 +145,7 @@ func TestOpsSystemLogHandler_ListSuccess(t *testing.T) {
 func TestOpsSystemLogHandler_ListAcceptsHost(t *testing.T) {
 	repo := &opsSystemLogCaptureRepo{}
 	svc := service.NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	h := NewOpsHandler(svc)
+	h := NewOpsHandler(svc, nil)
 	r := newOpsSystemLogTestRouter(h, false)
 
 	w := httptest.NewRecorder()
@@ -246,7 +246,7 @@ func TestOpsSystemLogHandler_CleanupAcceptsAPIKeyID(t *testing.T) {
 func TestOpsSystemLogHandler_CleanupAcceptsHost(t *testing.T) {
 	repo := &opsSystemLogCaptureRepo{}
 	svc := service.NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	h := NewOpsHandler(svc)
+	h := NewOpsHandler(svc, nil)
 	r := newOpsSystemLogTestRouter(h, true)
 
 	w := httptest.NewRecorder()

@@ -83,20 +83,20 @@ func (q EntitlementCreditQuota) MarshalJSON() ([]byte, error) {
 }
 
 type EntitlementItem struct {
-	GroupID              int64                   `json:"group_id"`
-	GroupName            string                  `json:"group_name"`
-	GroupPlatform        string                  `json:"group_platform,omitempty"`
-	Mode                 string                  `json:"mode"`
-	Status               string                  `json:"status"`
-	StartsAt             *time.Time              `json:"starts_at,omitempty"`
-	ExpiresAt            *time.Time              `json:"expires_at,omitempty"`
-	DailyUsageUSD        float64                 `json:"daily_usage_usd"`
-	WeeklyUsageUSD       float64                 `json:"weekly_usage_usd"`
-	MonthlyUsageUSD      float64                 `json:"monthly_usage_usd"`
-	DailyLimitUSD        *float64                `json:"daily_limit_usd,omitempty"`
-	WeeklyLimitUSD       *float64                `json:"weekly_limit_usd,omitempty"`
-	MonthlyLimitUSD      *float64                `json:"monthly_limit_usd,omitempty"`
-	RateMultiplier       float64                 `json:"rate_multiplier"`
+	GroupID         int64      `json:"group_id"`
+	GroupName       string     `json:"group_name"`
+	GroupPlatform   string     `json:"group_platform,omitempty"`
+	Mode            string     `json:"mode"`
+	Status          string     `json:"status"`
+	StartsAt        *time.Time `json:"starts_at,omitempty"`
+	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
+	DailyUsageUSD   float64    `json:"daily_usage_usd"`
+	WeeklyUsageUSD  float64    `json:"weekly_usage_usd"`
+	MonthlyUsageUSD float64    `json:"monthly_usage_usd"`
+	DailyLimitUSD   *float64   `json:"daily_limit_usd,omitempty"`
+	WeeklyLimitUSD  *float64   `json:"weekly_limit_usd,omitempty"`
+	MonthlyLimitUSD *float64   `json:"monthly_limit_usd,omitempty"`
+	RateMultiplier  float64    `json:"rate_multiplier"`
 
 	SupportedModelScopes []string                `json:"supported_model_scopes,omitempty"`
 	Switchable           bool                    `json:"switchable"`
@@ -423,9 +423,31 @@ func (s *EntitlementService) attachCurrentBalanceCreditQuota(ctx context.Context
 }
 
 func buildCurrentBalanceCreditQuota(balanceLedgerAmount, creditUnitScale float64, group *Group) *EntitlementCreditQuota {
-	// token_price_per_million removed; balance credit estimation via computeDisplayCreditsFromLedgerPrice
-	// is no longer accurate. Return nil — balance users don't get a per-group credit quota.
-	return nil
+	if group == nil || group.IsSubscriptionType() || balanceLedgerAmount <= 0 || group.RateMultiplier <= 0 {
+		return nil
+	}
+	credits := creditsFromUSD(balanceLedgerAmount, group.RateMultiplier)
+	if credits <= 0 {
+		return nil
+	}
+	if creditUnitScale <= 0 {
+		creditUnitScale = 1.0
+	}
+	return &EntitlementCreditQuota{
+		PurchasedLedgerAmount: balanceLedgerAmount,
+		PurchasedCredits:      credits,
+		UsedLedgerAmount:      0,
+		UsedCredits:           0,
+		RemainingCredits:      credits,
+		UsedPercent:           0,
+		NearLimit:             false,
+		CreditUnitScale:       creditUnitScale,
+		Accuracy:              "current_balance_estimate",
+		AccuracyNotes: []string{
+			"no completed balance package/order is linked to this credit; credits are derived from current balance and the selected balance group rate",
+			"remaining_credits = current_balance / rate_multiplier × 1,000,000",
+		},
+	}
 }
 
 func buildEntitlementCreditQuota(est usagestats.CreditUsageGroupEstimate, totalPurchasedCredits, totalUsedCredits, totalUsedLedger, creditUnitScale float64) *EntitlementCreditQuota {
@@ -598,14 +620,30 @@ func entitlementFallbackReason(balance float64) string {
 	return "insufficient_balance"
 }
 
-// (creditsFromUSD removed — token_price_per_million field dropped)
+func creditsFromUSD(usd, rateMultiplier float64) float64 {
+	if usd <= 0 || rateMultiplier <= 0 {
+		return 0
+	}
+	return usd / rateMultiplier * 1_000_000
+}
 
 func buildEntitlementCreditQuotaBucket(usedUSD float64, limitUSD *float64, rateMultiplier float64, resetAt *time.Time) *EntitlementCreditQuotaBucket {
-	_ = usedUSD
-	_ = limitUSD
-	_ = rateMultiplier
-	_ = resetAt
-	return &EntitlementCreditQuotaBucket{}
+	limit := 0.0
+	if limitUSD != nil {
+		limit = *limitUSD
+	}
+	usedCredits := creditsFromUSD(usedUSD, rateMultiplier)
+	totalCredits := creditsFromUSD(limit, rateMultiplier)
+	remainingCredits := totalCredits - usedCredits
+	if remainingCredits < 0 {
+		remainingCredits = 0
+	}
+	return &EntitlementCreditQuotaBucket{
+		UsedCredits:      usedCredits,
+		TotalCredits:     totalCredits,
+		RemainingCredits: remainingCredits,
+		ResetAt:          resetAt,
+	}
 }
 
 func buildSubscriptionCreditQuota(sub UserSubscription, group *Group) *EntitlementCreditQuota {
@@ -1092,12 +1130,12 @@ func selectCurrentAPIKey(keys []APIKey) *APIKey {
 
 func entitlementItemFromBalanceGroup(group Group) EntitlementItem {
 	return EntitlementItem{
-		GroupID:              group.ID,
-		GroupName:            group.Name,
-		GroupPlatform:        group.Platform,
-		Mode:                 EntitlementModeBalance,
-		Status:               group.Status,
-		RateMultiplier:       group.RateMultiplier,
+		GroupID:        group.ID,
+		GroupName:      group.Name,
+		GroupPlatform:  group.Platform,
+		Mode:           EntitlementModeBalance,
+		Status:         group.Status,
+		RateMultiplier: group.RateMultiplier,
 
 		SupportedModelScopes: append([]string(nil), group.SupportedModelScopes...),
 		Switchable:           group.IsActive(),
@@ -1147,20 +1185,20 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 	startsAt := sub.StartsAt
 	expiresAt := sub.ExpiresAt
 	return EntitlementItem{
-		GroupID:              sub.GroupID,
-		GroupName:            name,
-		GroupPlatform:        platform,
-		Mode:                 mode,
-		Status:               sub.Status,
-		StartsAt:             &startsAt,
-		ExpiresAt:            &expiresAt,
-		DailyUsageUSD:        sub.DailyUsageUSD,
-		WeeklyUsageUSD:       sub.WeeklyUsageUSD,
-		MonthlyUsageUSD:      sub.MonthlyUsageUSD,
-		DailyLimitUSD:        dailyLimit,
-		WeeklyLimitUSD:       weeklyLimit,
-		MonthlyLimitUSD:      monthlyLimit,
-		RateMultiplier:       rateMultiplier,
+		GroupID:         sub.GroupID,
+		GroupName:       name,
+		GroupPlatform:   platform,
+		Mode:            mode,
+		Status:          sub.Status,
+		StartsAt:        &startsAt,
+		ExpiresAt:       &expiresAt,
+		DailyUsageUSD:   sub.DailyUsageUSD,
+		WeeklyUsageUSD:  sub.WeeklyUsageUSD,
+		MonthlyUsageUSD: sub.MonthlyUsageUSD,
+		DailyLimitUSD:   dailyLimit,
+		WeeklyLimitUSD:  weeklyLimit,
+		MonthlyLimitUSD: monthlyLimit,
+		RateMultiplier:  rateMultiplier,
 
 		SupportedModelScopes: modelScopes,
 		Switchable:           subscriptionEntitlementSwitchable(sub, group),

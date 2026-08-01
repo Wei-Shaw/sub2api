@@ -33,6 +33,10 @@ type grokQuotaAccountRepo struct {
 	lastTempUnschedID     int64
 	lastTempUnschedUntil  time.Time
 	lastTempUnschedReason string
+	recoveryClearCalls    int
+	recoveryObservedAt    time.Time
+	recoveryObservedReset time.Time
+	recoveryClearResult   bool
 }
 
 func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
@@ -73,6 +77,17 @@ func (r *grokQuotaAccountRepo) SetTempUnschedulable(_ context.Context, id int64,
 	r.lastTempUnschedUntil = until
 	r.lastTempUnschedReason = reason
 	return nil
+}
+
+func (r *grokQuotaAccountRepo) ClearRateLimitIfObserved(
+	_ context.Context,
+	_ int64,
+	observedLimitedAt, observedResetAt time.Time,
+) (bool, error) {
+	r.recoveryClearCalls++
+	r.recoveryObservedAt = observedLimitedAt
+	r.recoveryObservedReset = observedResetAt
+	return r.recoveryClearResult, nil
 }
 
 type grokQuotaProxyRepo struct {

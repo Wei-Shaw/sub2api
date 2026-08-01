@@ -33,13 +33,14 @@ func TestGatewayServiceKiroStreamKeepaliveUsesKiroSpecificConfig(t *testing.T) {
 	svc := &GatewayService{
 		cfg: &config.Config{
 			Gateway: config.GatewayConfig{
-				StreamKeepaliveInterval:     10,
-				KiroStreamKeepaliveInterval: 25,
+				StreamKeepaliveInterval: 10,
 			},
 		},
 	}
 
+	// Kiro keeps the hard-coded 25 s default regardless of config.
 	require.Equal(t, 25*time.Second, svc.streamKeepaliveIntervalForAccount(&Account{Platform: PlatformKiro}))
+	// Non-Kiro platforms honour StreamKeepaliveInterval.
 	require.Equal(t, 10*time.Second, svc.streamKeepaliveIntervalForAccount(&Account{Platform: PlatformAnthropic}))
 }
 

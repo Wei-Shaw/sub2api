@@ -1636,7 +1636,7 @@
                     : 'sk-...'
             "
           />
-          <p class="input-hint">{{ apiKeyHint }}</p>
+          <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
 
         <div
