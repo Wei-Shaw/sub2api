@@ -123,6 +123,24 @@ export async function rotate(id: string, groupName?: string): Promise<WarpSyncRe
   return data
 }
 
+/** Delete instance; deregisterCloudflare defaults true (calls CF DELETE /reg/{device_id}) */
+export async function deleteInstance(
+  id: string,
+  opts?: { group_name?: string; deregister_cloudflare?: boolean }
+): Promise<WarpSyncResult> {
+  const { data } = await apiClient.delete<WarpSyncResult>(`/admin/warp/instances/${id}`, {
+    data: {
+      group_name: opts?.group_name,
+      deregister_cloudflare: opts?.deregister_cloudflare ?? true
+    },
+    params: {
+      deregister_cloudflare: opts?.deregister_cloudflare ?? true,
+      group_name: opts?.group_name
+    }
+  })
+  return data
+}
+
 export async function attachPlan(groupName?: string): Promise<{
   snapshot: WarpPoolSnapshot
   plan: WarpSyncResult['plan']
@@ -143,6 +161,7 @@ export const warpAPI = {
   bindAccounts,
   healthSync,
   rotate,
+  deleteInstance,
   attachPlan
 }
 

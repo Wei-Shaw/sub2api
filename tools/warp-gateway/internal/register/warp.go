@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -62,7 +63,7 @@ func RegisterFree(ctx context.Context) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("warp register: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("warp register HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 300))
@@ -71,6 +72,9 @@ func RegisterFree(ctx context.Context) (*Result, error) {
 	var parsed regResponse
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return nil, fmt.Errorf("decode warp register: %w", err)
+	}
+	if strings.TrimSpace(parsed.ID) == "" {
+		return nil, fmt.Errorf("warp register: empty device id")
 	}
 
 	addrs := []string{}
@@ -98,30 +102,69 @@ func RegisterFree(ctx context.Context) (*Result, error) {
 		}
 		ep := parsed.Config.Peers[0].Endpoint
 		if host := strings.TrimSpace(ep.Host); host != "" {
-			endpoint = host + ":2408"
+			endpoint = normalizeEndpoint(host)
 		} else if v4 := strings.TrimSpace(ep.V4); v4 != "" {
-			endpoint = v4 + ":2408"
+			endpoint = normalizeEndpoint(v4)
 		}
 	}
 
 	license := strings.TrimSpace(parsed.Account.License)
+	token := strings.TrimSpace(parsed.Token)
 	return &Result{
 		Profile: store.Profile{
-			PrivateKey: priv,
-			Address:    addrs,
-			DNS:        []string{"1.1.1.1", "1.0.0.1"},
-			MTU:        1280,
-			LicenseKey: license,
+			PrivateKey:  priv,
+			Address:     addrs,
+			DNS:         []string{"1.1.1.1", "1.0.0.1"},
+			MTU:         1280,
+			LicenseKey:  license,
+			DeviceID:    strings.TrimSpace(parsed.ID),
+			AccessToken: token,
+			AccountID:   strings.TrimSpace(parsed.Account.ID),
 			Peers: []store.PeerConfig{{
 				PublicKey:  peerPK,
 				Endpoint:   endpoint,
 				AllowedIPs: []string{"0.0.0.0/0", "::/0"},
 			}},
 		},
-		DeviceID:   parsed.ID,
-		AccountID:  parsed.Account.ID,
+		DeviceID:   strings.TrimSpace(parsed.ID),
+		AccountID:  strings.TrimSpace(parsed.Account.ID),
 		LicenseKey: license,
 	}, nil
+}
+
+// Unregister deletes a Cloudflare free WARP device.
+// API: DELETE https://api.cloudflareclient.com/v0a1922/reg/{device_id}
+// Authorization: Bearer {access_token from register response}
+func Unregister(ctx context.Context, deviceID, accessToken string) error {
+	deviceID = strings.TrimSpace(deviceID)
+	accessToken = strings.TrimSpace(accessToken)
+	if deviceID == "" {
+		return fmt.Errorf("device_id is required to unregister")
+	}
+	if accessToken == "" {
+		return fmt.Errorf("access_token is required to unregister")
+	}
+	url := defaultRegAPI + "/" + deviceID
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("User-Agent", "okhttp/3.12.1")
+	req.Header.Set("CF-Client-Version", "a-6.30-3596")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("warp unregister: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	// 204/200/404 (already gone) treat as success
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNoContent || resp.StatusCode < 300 {
+		return nil
+	}
+	return fmt.Errorf("warp unregister HTTP %d: %s", resp.StatusCode, truncate(string(body), 300))
 }
 
 // RegisterMany registers n free WARP profiles (sequential to reduce rate limits).
@@ -151,6 +194,7 @@ func RegisterMany(ctx context.Context, n int) ([]Result, error) {
 
 type regResponse struct {
 	ID      string `json:"id"`
+	Token   string `json:"token"`
 	Account struct {
 		ID      string `json:"id"`
 		License string `json:"license"`
@@ -185,6 +229,20 @@ func generateKeyPair() (privateB64, publicB64 string, err error) {
 	var pub [32]byte
 	curve25519.ScalarBaseMult(&pub, &priv)
 	return base64.StdEncoding.EncodeToString(priv[:]), base64.StdEncoding.EncodeToString(pub[:]), nil
+}
+
+// normalizeEndpoint ensures host:port without duplicating :2408.
+func normalizeEndpoint(hostOrEP string) string {
+	hostOrEP = strings.TrimSpace(hostOrEP)
+	if hostOrEP == "" {
+		return defaultEngage
+	}
+	// already host:port
+	if h, p, err := net.SplitHostPort(hostOrEP); err == nil && h != "" && p != "" {
+		return net.JoinHostPort(h, p)
+	}
+	// bare host / IP
+	return net.JoinHostPort(hostOrEP, "2408")
 }
 
 func truncate(s string, n int) string {

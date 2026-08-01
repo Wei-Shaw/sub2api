@@ -244,11 +244,28 @@ func (s *Server) handleInstanceHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := s.mgr.Delete(r.Context(), id); err != nil {
+	// ?deregister_cloudflare=false to skip CF API (local-only delete)
+	opts := service.DeleteOptions{}
+	if v := r.URL.Query().Get("deregister_cloudflare"); v != "" {
+		b := !(v == "0" || strings.EqualFold(v, "false") || strings.EqualFold(v, "no"))
+		opts.DeregisterCloudflare = &b
+	}
+	// optional JSON body override
+	var body struct {
+		DeregisterCloudflare *bool `json:"deregister_cloudflare"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.DeregisterCloudflare != nil {
+		opts.DeregisterCloudflare = body.DeregisterCloudflare
+	}
+	if err := s.mgr.DeleteWithOptions(r.Context(), id, opts); err != nil {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]string{"status": "deleted"})
+	writeJSON(w, 200, map[string]any{
+		"status":                "deleted",
+		"deregister_cloudflare": opts.DeregisterCloudflare == nil || (opts.DeregisterCloudflare != nil && *opts.DeregisterCloudflare),
+	})
 }
 
 func (s *Server) handleDupIPs(w http.ResponseWriter, r *http.Request) {

@@ -43,13 +43,13 @@ func NewManager(cfg config.Config, st *store.Store, rt runtime.Manager, log *slo
 }
 
 type CreateRequest struct {
-	Name          string         `json:"name"`
-	ListenHost    string         `json:"listen_host"`
-	ListenPort    int            `json:"listen_port"`
-	Profile       store.Profile  `json:"profile"`
+	Name          string             `json:"name"`
+	ListenHost    string             `json:"listen_host"`
+	ListenPort    int                `json:"listen_port"`
+	Profile       store.Profile      `json:"profile"`
 	DesiredState  store.DesiredState `json:"desired_state"`
-	SocksAuthUser string         `json:"socks_auth_user"`
-	SocksAuthPass string         `json:"socks_auth_pass"`
+	SocksAuthUser string             `json:"socks_auth_user"`
+	SocksAuthPass string             `json:"socks_auth_pass"`
 	// AutoStart defaults true when desired_state empty.
 	AutoStart *bool `json:"auto_start"`
 }
@@ -200,6 +200,9 @@ func RedactInstance(inst store.Instance) store.Instance {
 	if inst.Profile.PrivateKey != "" {
 		inst.Profile.PrivateKey = "***"
 	}
+	if inst.Profile.AccessToken != "" {
+		inst.Profile.AccessToken = "***"
+	}
 	if inst.Profile.LicenseKey != "" {
 		inst.Profile.LicenseKey = "***"
 	}
@@ -303,7 +306,8 @@ func (m *Manager) Restart(ctx context.Context, id string) error {
 }
 
 // Rotate restarts instance; optional new profile (Phase 3).
-// When newProfile is nil and runtime is sing-box, re-registers a free WARP profile.
+// When newProfile is nil and runtime is sing-box, re-registers a free WARP profile
+// and best-effort unregisters the previous Cloudflare device.
 func (m *Manager) Rotate(ctx context.Context, id string, newProfile *store.Profile) (*store.Instance, error) {
 	if newProfile != nil {
 		if _, err := m.store.Update(id, func(i *store.Instance) {
@@ -312,6 +316,7 @@ func (m *Manager) Rotate(ctx context.Context, id string, newProfile *store.Profi
 			return nil, err
 		}
 	} else if m.runtime.Name() == "sing-box" {
+		old, _ := m.store.Get(id)
 		reg, err := register.RegisterFree(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("rotate re-register: %w", err)
@@ -320,6 +325,12 @@ func (m *Manager) Rotate(ctx context.Context, id string, newProfile *store.Profi
 			i.Profile = reg.Profile
 		}); err != nil {
 			return nil, err
+		}
+		// Best-effort CF cleanup of previous device (do not fail rotate).
+		if old != nil {
+			if uerr := m.unregisterCloudflare(ctx, old.Profile); uerr != nil {
+				m.log.Warn("rotate: unregister old cloudflare device failed", "id", id, "err", uerr)
+			}
 		}
 	}
 	if err := m.Restart(ctx, id); err != nil {
@@ -333,9 +344,42 @@ func (m *Manager) Rotate(ctx context.Context, id string, newProfile *store.Profi
 	return &out, nil
 }
 
+// DeleteOptions controls Cloudflare deregistration behavior.
+type DeleteOptions struct {
+	// DeregisterCloudflare defaults to true: call CF DELETE /reg/{device_id}.
+	// Set false to only stop local instance/store.
+	DeregisterCloudflare *bool `json:"deregister_cloudflare"`
+}
+
 func (m *Manager) Delete(ctx context.Context, id string) error {
+	return m.DeleteWithOptions(ctx, id, DeleteOptions{})
+}
+
+// DeleteWithOptions stops instance, optionally unregisters CF device, removes store entry.
+func (m *Manager) DeleteWithOptions(ctx context.Context, id string, opts DeleteOptions) error {
+	inst, err := m.store.Get(id)
+	if err != nil {
+		return err
+	}
+	deregister := true
+	if opts.DeregisterCloudflare != nil {
+		deregister = *opts.DeregisterCloudflare
+	}
+	if deregister {
+		if uerr := m.unregisterCloudflare(ctx, inst.Profile); uerr != nil {
+			// Log but still delete local state so ops can recover.
+			m.log.Warn("cloudflare unregister failed; continuing local delete", "id", id, "device_id", inst.Profile.DeviceID, "err", uerr)
+		}
+	}
 	_ = m.Stop(ctx, id)
 	return m.store.Delete(id)
+}
+
+func (m *Manager) unregisterCloudflare(ctx context.Context, p store.Profile) error {
+	if p.DeviceID == "" || p.AccessToken == "" {
+		return nil // nothing to unregister (mock or legacy instance)
+	}
+	return register.Unregister(ctx, p.DeviceID, p.AccessToken)
 }
 
 func (m *Manager) Get(id string) (*store.Instance, error) {
@@ -492,12 +536,12 @@ func (m *Manager) Shutdown(ctx context.Context) {
 
 // PoolSnapshot is a Phase-3 view for attaching to sub2api ProxyGroup.
 type PoolSnapshot struct {
-	Instances     []store.Instance   `json:"instances"`
-	SocksURLs     []string           `json:"socks_urls"`
-	UnhealthyIDs  []string           `json:"unhealthy_ids"`
-	DuplicateIPs  map[string][]string `json:"duplicate_exit_ips"`
-	HealthyCount  int                `json:"healthy_count"`
-	TotalCount    int                `json:"total_count"`
+	Instances    []store.Instance    `json:"instances"`
+	SocksURLs    []string            `json:"socks_urls"`
+	UnhealthyIDs []string            `json:"unhealthy_ids"`
+	DuplicateIPs map[string][]string `json:"duplicate_exit_ips"`
+	HealthyCount int                 `json:"healthy_count"`
+	TotalCount   int                 `json:"total_count"`
 }
 
 func (m *Manager) PoolSnapshot() PoolSnapshot {

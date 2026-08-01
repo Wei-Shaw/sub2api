@@ -45,6 +45,10 @@ type Profile struct {
 	Peers      []PeerConfig `json:"peers,omitempty"`
 	// LicenseKey is optional metadata for registration flows.
 	LicenseKey string `json:"license_key,omitempty"`
+	// Cloudflare free-device registration (for DELETE /reg/{id}).
+	DeviceID    string `json:"device_id,omitempty"`
+	AccessToken string `json:"access_token,omitempty"` // encrypted at rest with PrivateKey
+	AccountID   string `json:"account_id,omitempty"`
 	// MockExitIP forces mock runtime probe result (local tests).
 	MockExitIP string `json:"mock_exit_ip,omitempty"`
 }
@@ -136,12 +140,21 @@ func (s *Store) load() error {
 	}
 	for i := range list {
 		inst := list[i]
-		if s.cipher != nil && inst.Profile.PrivateKey != "" {
-			plain, err := s.cipher.DecryptString(inst.Profile.PrivateKey)
-			if err != nil {
-				return fmt.Errorf("decrypt profile for %s: %w", inst.ID, err)
+		if s.cipher != nil {
+			if inst.Profile.PrivateKey != "" {
+				plain, err := s.cipher.DecryptString(inst.Profile.PrivateKey)
+				if err != nil {
+					return fmt.Errorf("decrypt profile for %s: %w", inst.ID, err)
+				}
+				inst.Profile.PrivateKey = plain
 			}
-			inst.Profile.PrivateKey = plain
+			if inst.Profile.AccessToken != "" {
+				plain, err := s.cipher.DecryptString(inst.Profile.AccessToken)
+				if err != nil {
+					return fmt.Errorf("decrypt access_token for %s: %w", inst.ID, err)
+				}
+				inst.Profile.AccessToken = plain
+			}
 		}
 		cp := inst
 		s.byID[inst.ID] = &cp
@@ -154,12 +167,21 @@ func (s *Store) persistLocked() error {
 	list := make([]Instance, 0, len(s.byID))
 	for _, inst := range s.byID {
 		cp := *inst
-		if s.cipher != nil && cp.Profile.PrivateKey != "" {
-			enc, err := s.cipher.EncryptString(cp.Profile.PrivateKey)
-			if err != nil {
-				return fmt.Errorf("encrypt profile key for %s: %w", cp.ID, err)
+		if s.cipher != nil {
+			if cp.Profile.PrivateKey != "" {
+				enc, err := s.cipher.EncryptString(cp.Profile.PrivateKey)
+				if err != nil {
+					return fmt.Errorf("encrypt profile key for %s: %w", cp.ID, err)
+				}
+				cp.Profile.PrivateKey = enc
 			}
-			cp.Profile.PrivateKey = enc
+			if cp.Profile.AccessToken != "" {
+				enc, err := s.cipher.EncryptString(cp.Profile.AccessToken)
+				if err != nil {
+					return fmt.Errorf("encrypt access_token for %s: %w", cp.ID, err)
+				}
+				cp.Profile.AccessToken = enc
+			}
 		}
 		list = append(list, cp)
 	}

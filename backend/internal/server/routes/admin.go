@@ -558,6 +558,7 @@ func registerWarpRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		warp.POST("/bind-accounts", h.Admin.Warp.BindAccounts)
 		warp.POST("/health-sync", h.Admin.Warp.HealthSync)
 		warp.POST("/instances/:id/rotate", h.Admin.Warp.Rotate)
+		warp.DELETE("/instances/:id", h.Admin.Warp.DeleteInstance)
 	}
 }
 

@@ -13,6 +13,11 @@ export default {
     registerPool: 'Register real WARP',
     bindAccounts: 'Bind accounts',
     rotate: 'Rotate instance',
+    delete: 'Delete instance',
+    deleteConfirm:
+      'Delete instance "{name}"? This stops the local SOCKS and attempts Cloudflare free-device deregistration.',
+    deleteOk: 'Instance deleted and synced',
+    deleteFailed: 'Failed to delete instance',
     namePrefix: 'Name prefix',
     count: 'Instance count',
     groupName: 'Proxy group name',

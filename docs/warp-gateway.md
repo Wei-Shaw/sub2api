@@ -122,7 +122,8 @@ warp:
 | POST | `/api/v1/admin/warp/register-pool` | **一键**注册真实 WARP + 建池 + 落库 |
 | POST | `/api/v1/admin/warp/bind-accounts` | 账号一键绑定 `proxy_group_id` → warp-pool |
 | POST | `/api/v1/admin/warp/health-sync` | 全量健康检查后同步（不健康可摘除） |
-| POST | `/api/v1/admin/warp/instances/:id/rotate` | rotate（sing-box 会重注册 profile）后同步 |
+| POST | `/api/v1/admin/warp/instances/:id/rotate` | rotate（sing-box 会重注册 profile，并 best-effort 注销旧 CF 设备）后同步 |
+| DELETE | `/api/v1/admin/warp/instances/:id` | 删除实例：停 SOCKS、**Cloudflare 注销设备**、同步并清理孤儿 `warp-*` 代理 |
 
 ### 落库规则
 
@@ -146,7 +147,23 @@ curl -sS -X POST https://YOUR/api/v1/admin/warp/sync \
   -H "Authorization: Bearer $ADMIN_JWT" \
   -H "Content-Type: application/json" \
   -d '{"group_name":"warp-pool"}'
+
+# 删除实例（默认向 Cloudflare 注销 free 设备）
+curl -sS -X DELETE "https://YOUR/api/v1/admin/warp/instances/$ID?group_name=warp-pool" \
+  -H "Authorization: Bearer $ADMIN_JWT"
+
+# 仅删本地、不调 CF 注销
+curl -sS -X DELETE "https://YOUR/api/v1/admin/warp/instances/$ID?deregister_cloudflare=false" \
+  -H "Authorization: Bearer $ADMIN_JWT"
 ```
+
+### 删除与 Cloudflare 注销
+
+- 注册时保存 `device_id` + `access_token`（落盘 AES 加密）。
+- 删除时默认 `DELETE https://api.cloudflareclient.com/v0a1922/reg/{device_id}`（Bearer token）。
+- CF 注销失败仍会删除本地实例（日志告警），避免卡死运维。
+- **旧实例**（删除功能上线前注册、无 token）只能做本地删除，无法云端注销。
+- 同步会删除 gateway 已不存在的孤儿代理（`warp-*` 前缀）。
 
 账号侧把 `proxy_group_id` 绑到返回的 `group.id` 即可。
 

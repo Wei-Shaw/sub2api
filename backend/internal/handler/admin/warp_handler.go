@@ -176,6 +176,42 @@ func (h *WarpHandler) Rotate(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// DeleteInstance DELETE /api/v1/admin/warp/instances/:id
+// Query/body: deregister_cloudflare (default true), group_name
+func (h *WarpHandler) DeleteInstance(c *gin.Context) {
+	if h.svc == nil || !h.svc.Enabled() {
+		response.BadRequest(c, "warp gateway is disabled")
+		return
+	}
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		response.BadRequest(c, "instance id required")
+		return
+	}
+	deregister := true
+	if v := c.Query("deregister_cloudflare"); v != "" {
+		deregister = !(v == "0" || strings.EqualFold(v, "false") || strings.EqualFold(v, "no"))
+	}
+	groupName := strings.TrimSpace(c.Query("group_name"))
+	var body struct {
+		DeregisterCloudflare *bool  `json:"deregister_cloudflare"`
+		GroupName            string `json:"group_name"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	if body.DeregisterCloudflare != nil {
+		deregister = *body.DeregisterCloudflare
+	}
+	if strings.TrimSpace(body.GroupName) != "" {
+		groupName = strings.TrimSpace(body.GroupName)
+	}
+	result, err := h.svc.DeleteInstanceAndSync(c.Request.Context(), id, groupName, deregister)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 // BindAccounts POST /api/v1/admin/warp/bind-accounts
 // { "account_ids": [1,2], "group_name": "warp-pool", "bind_all_active": false }
 func (h *WarpHandler) BindAccounts(c *gin.Context) {

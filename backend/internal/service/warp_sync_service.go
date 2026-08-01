@@ -70,6 +70,7 @@ type WarpSyncResult struct {
 	Plan           WarpPoolAttachPlan     `json:"plan"`
 	CreatedProxies []Proxy                `json:"created_proxies"`
 	UpdatedProxies []Proxy                `json:"updated_proxies"`
+	DeletedProxies []Proxy                `json:"deleted_proxies,omitempty"`
 	Group          *ProxyGroupWithProxies `json:"group,omitempty"`
 	MemberIDs      []int64                `json:"member_ids"`
 	DetachedIDs    []int64                `json:"detached_ids"`
@@ -223,6 +224,20 @@ func (s *WarpSyncService) RotateAndSync(ctx context.Context, instanceID, groupNa
 	return s.SyncFromGateway(ctx, groupName)
 }
 
+// DeleteInstanceAndSync deletes a gateway instance (optionally CF unregister) then syncs proxies.
+func (s *WarpSyncService) DeleteInstanceAndSync(ctx context.Context, instanceID, groupName string, deregisterCloudflare bool) (*WarpSyncResult, error) {
+	if !s.Enabled() {
+		return nil, fmt.Errorf("warp gateway is disabled")
+	}
+	if strings.TrimSpace(instanceID) == "" {
+		return nil, fmt.Errorf("instance id required")
+	}
+	if err := s.client.DeleteInstance(ctx, instanceID, deregisterCloudflare); err != nil {
+		return nil, err
+	}
+	return s.SyncFromGateway(ctx, groupName)
+}
+
 // SyncFromGateway pulls snapshot and upserts proxies + group membership.
 func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string) (*WarpSyncResult, error) {
 	if !s.Enabled() {
@@ -260,8 +275,12 @@ func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string)
 	}
 
 	memberIDs := make([]int64, 0, len(plan.ProxySpecs))
+	keepNames := map[string]struct{}{}
+	keepKeys := map[string]struct{}{}
 	for _, spec := range plan.ProxySpecs {
 		key := proxyHostPortKey(spec.Host, spec.Port)
+		keepNames[spec.Name] = struct{}{}
+		keepKeys[key] = struct{}{}
 		var p *Proxy
 		if existing, ok := byKey[key]; ok {
 			// update status/name
@@ -309,6 +328,25 @@ func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string)
 		} else {
 			result.DetachedIDs = append(result.DetachedIDs, p.ID)
 		}
+	}
+
+	// Prune orphan warp-* proxies no longer present on gateway.
+	for name, p := range byName {
+		if !strings.HasPrefix(name, "warp-") {
+			continue
+		}
+		key := proxyHostPortKey(p.Host, p.Port)
+		if _, ok := keepNames[name]; ok {
+			continue
+		}
+		if _, ok := keepKeys[key]; ok {
+			continue
+		}
+		if err := s.proxyRepo.Delete(ctx, p.ID); err != nil {
+			s.log.Warn("delete orphan warp proxy failed", "name", name, "id", p.ID, "err", err)
+			continue
+		}
+		result.DeletedProxies = append(result.DeletedProxies, p)
 	}
 
 	// Ensure group exists and set members.

@@ -68,14 +68,24 @@
             <div v-if="row.exit_colo" class="text-xs text-gray-500">{{ row.exit_colo }}</div>
           </template>
           <template #cell-actions="{ row }">
-            <button
-              class="btn-icon"
-              :disabled="!enabled || loading"
-              :title="t('admin.warp.rotate')"
-              @click="doRotate(row)"
-            >
-              <Icon name="refresh" size="sm" />
-            </button>
+            <div class="flex items-center gap-1">
+              <button
+                class="btn-icon"
+                :disabled="!enabled || loading"
+                :title="t('admin.warp.rotate')"
+                @click="doRotate(row)"
+              >
+                <Icon name="refresh" size="sm" />
+              </button>
+              <button
+                class="btn-icon text-red-600 dark:text-red-400"
+                :disabled="!enabled || loading"
+                :title="t('admin.warp.delete')"
+                @click="doDelete(row)"
+              >
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
           </template>
           <template #empty>
             <EmptyState
@@ -221,7 +231,7 @@ const columns = computed(() => [
   { key: 'socks', label: t('admin.warp.colSocks') },
   { key: 'status', label: t('admin.warp.colStatus') },
   { key: 'exit', label: t('admin.warp.colExit') },
-  { key: 'actions', label: t('common.actions'), width: '80px' }
+  { key: 'actions', label: t('common.actions'), width: '100px' }
 ])
 
 function statusClass(s: string) {
@@ -358,6 +368,25 @@ async function doRotate(row: WarpInstance) {
     appStore.showSuccess(t('admin.warp.rotateOk'))
   } catch (e: any) {
     appStore.showError(e?.message || t('admin.warp.rotateFailed'))
+  } finally {
+    loading.value = false
+  }
+}
+
+async function doDelete(row: WarpInstance) {
+  const ok = window.confirm(t('admin.warp.deleteConfirm', { name: row.name }))
+  if (!ok) return
+  loading.value = true
+  try {
+    const res = await warpAPI.deleteInstance(row.id, {
+      group_name: form.group_name,
+      deregister_cloudflare: true
+    })
+    applyResult(res)
+    await refresh()
+    appStore.showSuccess(t('admin.warp.deleteOk'))
+  } catch (e: any) {
+    appStore.showError(e?.message || t('admin.warp.deleteFailed'))
   } finally {
     loading.value = false
   }

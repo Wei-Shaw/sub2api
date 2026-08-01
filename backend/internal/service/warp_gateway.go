@@ -236,6 +236,17 @@ func (c *WarpGatewayClient) Rotate(ctx context.Context, id string) (*WarpInstanc
 	return &inst, nil
 }
 
+// DeleteInstance removes a gateway instance; deregisterCloudflare defaults to true.
+func (c *WarpGatewayClient) DeleteInstance(ctx context.Context, id string, deregisterCloudflare bool) error {
+	path := "/v1/instances/" + id
+	if !deregisterCloudflare {
+		path += "?deregister_cloudflare=false"
+	}
+	return c.do(ctx, http.MethodDelete, path, map[string]any{
+		"deregister_cloudflare": deregisterCloudflare,
+	}, nil)
+}
+
 // WarpPoolAttachPlan is a Phase-3 plan to sync gateway instances into Proxy rows/group.
 type WarpPoolAttachPlan struct {
 	// ProxySpecs ready to create or update in proxies table.
