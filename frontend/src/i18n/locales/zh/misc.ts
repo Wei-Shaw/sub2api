@@ -38,6 +38,8 @@ export default {
     deploymentRefresh: '部署完成后页面将自动刷新',
     deploymentUnavailable: '自动部署暂不可用',
     deploymentRolledBack: '新版本部署失败，流量已自动恢复到旧版本',
+    deploymentNotApplied: '更新未应用',
+    deploymentPreviousStillActive: '更新在切换流量前停止，旧版本已确认正常运行',
     deploymentRollbackFailed: '自动回滚失败，请立即进行人工检查',
     deploymentDegraded: '部署状态已降级，需要管理员人工核对并恢复',
     controlPlaneUpgradeFailed: '应用已更新，但宿主机 deployer 升级失败',

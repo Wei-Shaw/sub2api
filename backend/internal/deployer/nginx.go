@@ -168,7 +168,7 @@ func (m *Manager) validateManagedRoute(ctx context.Context, expectedPort int) er
 	}
 	proxyCount := proxyPassDirectiveCount([]byte(effectiveConfig), m.cfg.NginxUpstreamName)
 	if proxyCount != 1 {
-		return fmt.Errorf("effective nginx configuration must contain exactly one active proxy_pass for managed upstream %s, found %d", m.cfg.NginxUpstreamName, proxyCount)
+		return fmt.Errorf("effective nginx configuration must contain exactly one active proxy_pass for primary managed upstream %s, found %d; approved auxiliary locations must use a variable proxy_pass", m.cfg.NginxUpstreamName, proxyCount)
 	}
 	port, err := readManagedUpstreamPort([]byte(effectiveConfig), m.cfg.NginxUpstreamName)
 	if err != nil {

@@ -38,6 +38,9 @@ export default {
     deploymentRefresh: 'This page will refresh when deployment completes',
     deploymentUnavailable: 'Managed deployment is currently unavailable',
     deploymentRolledBack: 'The new deployment failed and traffic was restored to the previous version',
+    deploymentNotApplied: 'Update Not Applied',
+    deploymentPreviousStillActive:
+      'The update stopped before traffic switched; the previous version is confirmed healthy',
     deploymentRollbackFailed: 'Automatic rollback failed; immediate operator action is required',
     deploymentDegraded: 'Deployment state is degraded; operator reconciliation is required',
     controlPlaneUpgradeFailed: 'The application was updated, but the host deployer upgrade failed',

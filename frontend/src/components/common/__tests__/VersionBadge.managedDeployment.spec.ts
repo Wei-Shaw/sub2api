@@ -63,6 +63,7 @@ function terminalJob(status: DeploymentJobStatus): DeploymentJob {
     stage: 'failed',
     error: 'candidate deployment failed',
     rollback_error: status === 'rollback_failed' ? 'previous container did not recover' : undefined,
+    traffic_switched: false,
     rollback_performed: false,
     background_activated: false,
     created_at: '2026-07-24T00:00:00Z',
@@ -230,6 +231,59 @@ describe('VersionBadge managed deployment recovery', () => {
 
     expect(wrapper.get('[data-testid="deployment-error"]').text()).toContain(messageKey)
     expect(mocks.appStore.fetchVersion).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('shows a reconciled pre-switch failure as a healthy previous-version warning', async () => {
+    mocks.getCurrentDeploymentJob.mockResolvedValue({
+      ...terminalJob('failed'),
+      traffic_state: 'old',
+      traffic_switched: false,
+      rollback_error: 'historical rollback confirmation failed',
+      control_plane_upgrade_status: 'unknown',
+      control_plane_upgrade_error: 'status identity does not match'
+    })
+    const wrapper = mount(VersionBadge, {
+      props: { version: '0.1.164-ts.1' },
+      global: { stubs: { Icon: { template: '<span />' } } }
+    })
+
+    await flushPromises()
+
+    const badge = wrapper.get('[data-testid="version-badge"]')
+    expect(badge.classes()).toContain('bg-amber-100')
+    expect(badge.classes()).not.toContain('bg-red-100')
+    await badge.trigger('click')
+    const warning = wrapper.get('[data-testid="deployment-recovered-warning"]')
+    expect(warning.text()).toContain('version.deploymentNotApplied')
+    expect(warning.text()).toContain('version.deploymentPreviousStillActive')
+    expect(warning.text()).toContain('candidate deployment failed')
+    expect(warning.text()).not.toContain('version.controlPlaneUpgradeUnknown')
+    expect(warning.text()).not.toContain('historical rollback confirmation failed')
+    expect(warning.text()).not.toContain('status identity does not match')
+    expect(warning.text()).toContain('version.retry')
+
+    wrapper.unmount()
+  })
+
+  it('does not label a failed rollback as an update that was not applied', async () => {
+    mocks.getCurrentDeploymentJob.mockResolvedValue({
+      ...terminalJob('failed'),
+      action: 'rollback',
+      traffic_state: 'old',
+      traffic_switched: false
+    })
+    const wrapper = mount(VersionBadge, {
+      props: { version: '0.1.164-ts.1' },
+      global: { stubs: { Icon: { template: '<span />' } } }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-testid="version-badge"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="deployment-recovered-warning"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('version.deploymentNotApplied')
+
     wrapper.unmount()
   })
 

@@ -2100,6 +2100,130 @@ func TestEffectiveNginxValidationRejectsCommentsAndDuplicateProxyPass(t *testing
 	}
 }
 
+func TestEffectiveNginxValidationAllowsVariableAuxiliaryProxyPass(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	site := "server { proxy_pass http://sub2api_managed; }\n" +
+		"server { set $auxiliary_backend sub2api_managed; proxy_pass http://$auxiliary_backend; }\n"
+	if err := os.WriteFile(cfg.NginxSitePath, []byte(site), 0644); err != nil {
+		t.Fatal(err)
+	}
+	manager := &Manager{cfg: cfg, runner: &fakeRunner{}, now: time.Now}
+	if err := manager.validateManagedRoute(context.Background(), cfg.Slots[0].Port); err != nil {
+		t.Fatalf("variable auxiliary route rejected: %v", err)
+	}
+}
+
+func TestDeploymentPreflightRejectsRouteDriftWithoutCreatingJob(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	runner := &fakeRunner{}
+	manager, err := NewManager(cfg, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicate := "server { proxy_pass http://sub2api_managed; }\nserver { proxy_pass http://sub2api_managed; }\n"
+	if err := os.WriteFile(cfg.NginxSitePath, []byte(duplicate), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = manager.Start(DeployRequest{
+		Action:                 "update",
+		TargetVersion:          "0.1.2-ts.1",
+		ExpectedCurrentVersion: "0.1.1-ts.1",
+		RequestID:              "pre-switch-route-rejection-0001",
+	})
+	if err == nil || !strings.Contains(err.Error(), "deployment preflight failed") || !strings.Contains(err.Error(), "exactly one active proxy_pass") {
+		t.Fatalf("Start() error=%v, want actionable route preflight failure", err)
+	}
+	if _, err := manager.Job(""); !errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("route preflight failure created a durable job: %v", err)
+	}
+	if manager.Health().Degraded {
+		t.Fatalf("route preflight failure degraded the healthy active deployment: %+v", manager.Health())
+	}
+	runner.mu.Lock()
+	commands := strings.Join(runner.commands, "\n")
+	runner.mu.Unlock()
+	if strings.Contains(commands, " compose ") || strings.Contains(commands, "reload nginx") {
+		t.Fatalf("pre-switch rejection mutated the candidate or Nginx route:\n%s", commands)
+	}
+}
+
+func TestPreSwitchFailureKeepsHealthyPreviousDeploymentActiveDespiteRouteDrift(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	now := time.Now().UTC()
+	runner := &fakeRunner{candidate: true}
+	manager := &Manager{
+		cfg:        cfg,
+		runner:     runner,
+		httpClient: &http.Client{Timeout: time.Second},
+		now:        time.Now,
+		state: State{
+			ActiveSlot:        cfg.Slots[0].Name,
+			ActiveContainer:   cfg.InitialContainer,
+			ActiveContainerID: fakeContainerID(cfg.InitialContainer),
+			ActivePort:        cfg.Slots[0].Port,
+			ActiveVersion:     cfg.InitialVersion,
+			Job: &Job{
+				ID:                 "pre-switch-route-drift-0001",
+				Action:             "update",
+				Status:             JobStatusRunning,
+				Stage:              StagePreparing,
+				OldContainer:       cfg.InitialContainer,
+				OldContainerID:     fakeContainerID(cfg.InitialContainer),
+				OldSlot:            cfg.Slots[0].Name,
+				OldSlotCaptured:    true,
+				CandidateContainer: cfg.Slots[1].Name,
+				CandidateSlot:      cfg.Slots[1].Name,
+				CandidatePort:      cfg.Slots[1].Port,
+				TrafficState:       TrafficStateOld,
+				CreatedAt:          now,
+				StartedAt:          now,
+				UpdatedAt:          now,
+			},
+		},
+	}
+	if err := saveState(cfg.StatePath, manager.state); err != nil {
+		t.Fatal(err)
+	}
+	duplicate := "server { proxy_pass http://sub2api_managed; }\nserver { proxy_pass http://sub2api_managed; }\n"
+	if err := os.WriteFile(cfg.NginxSitePath, []byte(duplicate), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.fail(manager.state.Job.ID, errors.New("route changed after synchronous preflight")); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Job("pre-switch-route-drift-0001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != JobStatusFailed || manager.Health().Degraded || job.RollbackError != "" {
+		t.Fatalf("job=%+v health=%+v, want a safe failed deployment", job, manager.Health())
+	}
+}
+
+func TestPreSwitchFailureDoesNotInheritPreviousControlPlaneStatus(t *testing.T) {
+	cfg := testConfig(t, 18081)
+	job := &Job{
+		ID: "pre-switch-failed-0001", Action: "update", Status: JobStatusFailed,
+		TargetVersion: "0.1.169-ts.6", TrafficState: TrafficStateOld,
+	}
+	manager := &Manager{cfg: cfg, state: State{Job: job}}
+	previous := &Job{
+		ID: "previous-success-0001", Action: "update", Status: JobStatusSucceeded,
+		TargetVersion: "0.1.169-ts.5", CandidateContainerID: fakeContainerID("sub2api-blue"),
+	}
+	if err := manager.writeControlPlaneUpgradeStatus(previous, "succeeded", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := manager.Job(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ControlPlaneUpgradeStatus != "" || got.ControlPlaneUpgradeError != "" {
+		t.Fatalf("pre-switch failure inherited unrelated control-plane status: %+v", got)
+	}
+}
+
 func TestConfigRequiresLocalExactNginxHealthProbe(t *testing.T) {
 	cfg := testConfig(t, 18081)
 	cfg.HealthTimeout = Duration{Duration: 10 * time.Minute}

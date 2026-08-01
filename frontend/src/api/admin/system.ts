@@ -42,6 +42,8 @@ export interface DeploymentJob {
   from_version?: string
   target_image?: string
   target_digest?: string
+  traffic_state?: 'old' | 'switch_pending' | 'candidate' | 'restore_pending' | 'unknown'
+  traffic_switched?: boolean
   rollback_performed: boolean
   background_activated: boolean
   rollback_error?: string

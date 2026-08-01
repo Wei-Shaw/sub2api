@@ -465,6 +465,9 @@ func (m *Manager) Start(req DeployRequest) (*Job, error) {
 		return nil, ErrJobRunning
 	}
 	activeImage := m.state.ActiveImage
+	activePort := m.state.ActivePort
+	activeSlot := m.state.ActiveSlot
+	activeContainer := m.state.ActiveContainer
 	m.mu.RUnlock()
 	if m.cfg.ControlPlaneUpgradePath != "" {
 		if _, err := os.Lstat(m.cfg.ControlPlaneUpgradePath); err == nil {
@@ -472,6 +475,19 @@ func (m *Manager) Start(req DeployRequest) (*Job, error) {
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("inspect pending control-plane upgrade request: %w", err)
 		}
+	}
+	if activePort > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := m.validateManagedRoute(ctx, activePort); err != nil {
+			cancel()
+			return nil, fmt.Errorf("deployment preflight failed: %w", err)
+		}
+		allowEmptySlot := activeContainer == m.cfg.InitialContainer
+		if err := m.verifyRoutedHealth(ctx, activeSlot, allowEmptySlot); err != nil {
+			cancel()
+			return nil, fmt.Errorf("deployment preflight failed: active route is not healthy: %w", err)
+		}
+		cancel()
 	}
 	if req.Action == "update" && req.ExpectedTargetDigest == "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1287,6 +1303,13 @@ func (m *Manager) decorateControlPlaneUpgradeStatus(job *Job) {
 	if job == nil || m.controlPlaneUpgradeStatusPath() == "" {
 		return
 	}
+	// A control-plane activation belongs only to an application update that
+	// reached completion (or already persisted an activation status). Failed
+	// pre-switch jobs and rollback jobs must not inherit an unrelated status
+	// record from the previously active deployment.
+	if job.Action != "update" || (job.Status != JobStatusSucceeded && job.ControlPlaneUpgradeStatus == "") {
+		return
+	}
 	data, err := os.ReadFile(m.controlPlaneUpgradeStatusPath())
 	if err != nil {
 		return
@@ -1456,12 +1479,23 @@ func (m *Manager) restoreOldDeployment(ctx context.Context, job *Job, forceTraff
 		}
 	}
 	if trafficRestored {
-		if err := m.validateManagedRoute(ctx, oldPort); err != nil {
-			trafficRestored = false
-			failures = append(failures, "confirm restored nginx route: "+err.Error())
-		} else if err := m.verifyRoutedHealth(ctx, expectedOldSlot, allowEmptyOldSlot); err != nil {
-			trafficRestored = false
-			failures = append(failures, "confirm restored routed health: "+err.Error())
+		// A pre-switch failure leaves the old route untouched. In that case the
+		// routed health probe is the authoritative proof that the previous
+		// deployment is still serving; re-running the same route preflight that
+		// caused the failure would incorrectly turn a safe rejection into a
+		// rollback failure. After any attempted switch, retain the stricter
+		// managed-route validation before declaring restoration complete.
+		if needsTrafficRestore {
+			if err := m.validateManagedRoute(ctx, oldPort); err != nil {
+				trafficRestored = false
+				failures = append(failures, "confirm restored nginx route: "+err.Error())
+			}
+		}
+		if trafficRestored {
+			if err := m.verifyRoutedHealth(ctx, expectedOldSlot, allowEmptyOldSlot); err != nil {
+				trafficRestored = false
+				failures = append(failures, "confirm restored routed health: "+err.Error())
+			}
 		}
 	}
 	if trafficRestored {

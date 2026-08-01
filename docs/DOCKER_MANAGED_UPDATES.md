@@ -49,6 +49,31 @@ reuses that inactive slot only after a new image has been pulled. A rollback to
 that retained version starts it directly without pulling or requiring a label
 that may not exist on the initial pre-deployer image.
 
+### Nginx managed-route contract
+
+The effective Nginx configuration must contain exactly one literal primary
+route to the managed upstream:
+
+```nginx
+proxy_pass http://sub2api_managed;
+```
+
+Approved auxiliary locations, such as a health endpoint or CMS fallback, must
+reference the same upstream through a variable. They still follow every
+blue/green switch without being mistaken for a second primary route:
+
+```nginx
+location = /health {
+    set $managed_backend sub2api_managed;
+    proxy_pass http://$managed_backend;
+}
+```
+
+Do not relax the deployer check to accept multiple literal primary routes. A
+duplicate literal route can hide an unmanaged traffic path from route
+confirmation. A pre-switch violation rejects the update while the previous
+healthy deployment continues serving; it is not an automatic rollback failure.
+
 ## Database contract
 
 The candidate and active container share PostgreSQL. Migrations use a PostgreSQL

@@ -16,8 +16,10 @@
         :title="
           hasDangerousDeploymentState
             ? displayedUpdateError
-            : hasDeploymentWarning
-              ? deploymentJob?.cleanup_warning
+            : hasRecoveredDeploymentFailure
+              ? recoveredDeploymentMessage
+              : hasDeploymentWarning
+                ? deploymentJob?.cleanup_warning
               : versionWarning
               ? t('version.updateCheckWarning')
             : hasUpdate
@@ -179,6 +181,38 @@
                 <p class="text-[11px] leading-4 text-blue-600/70 dark:text-blue-400/70">
                   {{ t('version.deploymentRefresh') }}
                 </p>
+              </div>
+
+              <div
+                v-else-if="hasRecoveredDeploymentFailure"
+                data-testid="deployment-recovered-warning"
+                class="space-y-2"
+              >
+                <div
+                  class="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
+                >
+                  <Icon
+                    name="exclamationTriangle"
+                    size="sm"
+                    :stroke-width="2"
+                    class="mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-amber-700 dark:text-amber-300">
+                      {{ t('version.deploymentNotApplied') }}
+                    </p>
+                    <p class="break-words text-xs text-amber-600/80 dark:text-amber-400/80">
+                      {{ recoveredDeploymentMessage }}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  @click="retryFailedOperation"
+                  :disabled="updating"
+                  class="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {{ t('version.retry') }}
+                </button>
               </div>
 
               <!-- Priority 1: Update error (must check before hasUpdate) -->
@@ -856,10 +890,19 @@ const restartCountdown = ref(0)
 const successKind = ref<'update' | 'rollback'>('update')
 const deploymentJob = ref<DeploymentJob | null>(null)
 const hasDangerousDeploymentState = computed(() => isDangerousDeploymentJob(deploymentJob.value))
+const hasRecoveredDeploymentFailure = computed(() =>
+  isConfirmedPreviousDeploymentActive(deploymentJob.value)
+)
+const recoveredDeploymentMessage = computed(() =>
+  deploymentJob.value ? deploymentFailureMessage(deploymentJob.value) : ''
+)
 const hasDeploymentWarning = computed(
-  () => deploymentJob.value?.status === 'succeeded' && Boolean(deploymentJob.value.cleanup_warning)
+  () =>
+    hasRecoveredDeploymentFailure.value ||
+    (deploymentJob.value?.status === 'succeeded' && Boolean(deploymentJob.value.cleanup_warning))
 )
 const displayedUpdateError = computed(() => {
+  if (hasRecoveredDeploymentFailure.value) return ''
   if (hasDangerousDeploymentState.value && deploymentJob.value) {
     return deploymentFailureMessage(deploymentJob.value)
   }
@@ -1119,31 +1162,62 @@ function isAmbiguousSystemRequestError(error: unknown): boolean {
 }
 
 function isDangerousDeploymentJob(job: DeploymentJob | null): boolean {
+  if (isConfirmedPreviousDeploymentActive(job)) return false
   return (
     job?.status === 'degraded' ||
     job?.status === 'rollback_failed' ||
-    job?.control_plane_upgrade_status === 'failed' ||
-    job?.control_plane_upgrade_status === 'unknown' ||
+    (applicationWasActivated(job) && job?.control_plane_upgrade_status === 'failed') ||
+    (applicationWasActivated(job) && job?.control_plane_upgrade_status === 'unknown') ||
     Boolean(job?.rollback_error)
   )
 }
 
+function isConfirmedPreviousDeploymentActive(job: DeploymentJob | null): boolean {
+  return Boolean(
+    job?.action === 'update' &&
+      job.status === 'failed' &&
+      job.traffic_state === 'old' &&
+      !job.traffic_switched &&
+      !job.background_activated
+  )
+}
+
+function applicationWasActivated(job: DeploymentJob | null): boolean {
+  return Boolean(
+    job &&
+      job.action === 'update' &&
+      (job.status === 'succeeded' ||
+        job.background_activated ||
+        job.traffic_state === 'candidate' ||
+        job.traffic_switched)
+  )
+}
+
 function deploymentFailureMessage(job: DeploymentJob): string {
+  const previousDeploymentActive = isConfirmedPreviousDeploymentActive(job)
   const fallback =
-    job.status === 'degraded'
+    previousDeploymentActive
+      ? t('version.deploymentPreviousStillActive')
+      : job.status === 'degraded'
       ? t('version.deploymentDegraded')
       : job.status === 'rollback_failed'
         ? t('version.deploymentRollbackFailed')
         : job.rollback_performed
           ? t('version.deploymentRolledBack')
           : t('version.updateFailed')
-  const controlPlaneFallback =
-    job.control_plane_upgrade_status === 'failed'
+  const controlPlaneFallback = applicationWasActivated(job)
+    ? job.control_plane_upgrade_status === 'failed'
       ? t('version.controlPlaneUpgradeFailed')
       : job.control_plane_upgrade_status === 'unknown'
         ? t('version.controlPlaneUpgradeUnknown')
         : ''
-  const details = [controlPlaneFallback, job.error, job.rollback_error, job.control_plane_upgrade_error].filter(
+    : ''
+  const details = [
+    controlPlaneFallback,
+    job.error,
+    previousDeploymentActive ? '' : job.rollback_error,
+    applicationWasActivated(job) ? job.control_plane_upgrade_error : ''
+  ].filter(
     (value, index, values): value is string => Boolean(value) && values.indexOf(value) === index
   )
   return details.length > 0 ? `${fallback}: ${details.join('; ')}` : fallback
@@ -1371,7 +1445,7 @@ async function recoverCurrentDeployment() {
       }
       updateSuccess.value = false
       needRestart.value = false
-      updateError.value = deploymentFailureMessage(job)
+      updateError.value = isConfirmedPreviousDeploymentActive(job) ? '' : deploymentFailureMessage(job)
     }
   } catch (error) {
     const status = (error as { response?: { status?: number } }).response?.status
