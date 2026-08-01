@@ -922,7 +922,7 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 
 	// 失效 cache：对全部允许的 platform 统一 invalidate。
 	// Trade-off：精确失效（仅 req 涉及平台 + 被软删平台）需 upsert 前额外 ListByUser，
-	// 增加一次 DB 查询和逻辑复杂度。由于 AllowedQuotaPlatforms 数量很少，
+	// 增加一次 DB 查询和逻辑复杂度。由于 AllowedQuotaPlatforms 规模很小，
 	// 全量 invalidate 的额外开销可接受，且能可靠覆盖软删除场景。
 	if h.billingCache != nil {
 		for _, p := range service.AllowedQuotaPlatforms {

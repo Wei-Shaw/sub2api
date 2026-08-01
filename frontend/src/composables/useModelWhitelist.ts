@@ -115,6 +115,8 @@ const kiroModels = [
 
 // 智谱 GLM
 const zhipuModels = [
+  'glm-5.1', 'glm-5', 'glm-5-turbo',
+  'glm-4.7', 'glm-4.7-flashx', 'glm-4.7-flash',
   'glm-4', 'glm-4v', 'glm-4-plus', 'glm-4-0520',
   'glm-4-air', 'glm-4-airx', 'glm-4-long', 'glm-4-flash',
   'glm-4v-plus', 'glm-4.5', 'glm-4.6',
@@ -221,9 +223,35 @@ const doubaoModels = [
 
 // MiniMax
 const minimaxModels = [
+  'minimax-m2.7', 'minimax-m2.7-highspeed', 'minimax-m2.5',
+  'minimax-m2.1', 'minimax-m2', 'minimax-m1',
   'abab6.5-chat', 'abab6.5s-chat', 'abab6.5s-chat-pro',
   'abab6-chat',
   'abab5.5-chat', 'abab5.5s-chat'
+]
+
+// OpenCode Zen (/zen/go/v1/models returns raw model IDs, not opencode/* aliases)
+const opencodeModels = [
+  'minimax-m3',
+  'minimax-m2.7',
+  'minimax-m2.5',
+  'kimi-k2.7-code',
+  'kimi-k2.6',
+  'kimi-k2.5',
+  'glm-5.2',
+  'glm-5.1',
+  'glm-5',
+  'deepseek-v4-pro',
+  'deepseek-v4-flash',
+  'qwen3.7-max',
+  'qwen3.7-plus',
+  'qwen3.6-plus',
+  'qwen3.5-plus',
+  'mimo-v2-pro',
+  'mimo-v2-omni',
+  'mimo-v2.5-pro',
+  'mimo-v2.5',
+  'hy3-preview'
 ]
 
 // 百度 文心
@@ -272,6 +300,7 @@ const allModelsList: string[] = [
   ...moonshotModels,
   ...doubaoModels,
   ...minimaxModels,
+  ...opencodeModels,
   ...baiduModels,
   ...sparkModels,
   ...hunyuanModels,
@@ -343,6 +372,30 @@ const grokPresetMappings = [
   { label: 'Imagine Image', from: 'grok-imagine', to: 'grok-imagine-image-quality', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
   { label: 'Imagine Edit', from: 'grok-imagine-edit', to: 'grok-imagine-edit', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' },
   { label: 'Imagine Video', from: 'grok-imagine-video-1.5', to: 'grok-imagine-video-1.5', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
+]
+
+const deepseekPresetMappings = [
+  { label: 'DeepSeek Chat', from: 'deepseek-chat', to: 'deepseek-chat', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300' },
+  { label: 'DeepSeek Reasoner', from: 'deepseek-reasoner', to: 'deepseek-reasoner', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: 'Claude→Reasoner', from: 'claude-*', to: 'deepseek-reasoner', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' }
+]
+
+const glmPresetMappings = [
+  { label: 'GLM 4.7', from: 'glm-4.7', to: 'glm-4.7', color: 'bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 dark:bg-fuchsia-900/30 dark:text-fuchsia-300' },
+  { label: 'GLM 4.7 Flash', from: 'glm-4.7-flash', to: 'glm-4.7-flash', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-300' },
+  { label: 'Claude→GLM 4.7', from: 'claude-*', to: 'glm-4.7', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300' }
+]
+
+const minimaxPresetMappings = [
+  { label: 'MiniMax M2.7', from: 'minimax-m2.7', to: 'minimax-m2.7', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-300' },
+  { label: 'MiniMax M2.5', from: 'minimax-m2.5', to: 'minimax-m2.5', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-300' },
+  { label: 'Claude→M2.7', from: 'claude-*', to: 'minimax-m2.7', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' }
+]
+
+const opencodePresetMappings = [
+  { label: 'GLM 5.2', from: 'glm-5.2', to: 'glm-5.2', color: 'bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 dark:bg-fuchsia-900/30 dark:text-fuchsia-300' },
+  { label: 'DeepSeek V4 Pro', from: 'deepseek-v4-pro', to: 'deepseek-v4-pro', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300' },
+  { label: 'MiniMax M3', from: 'minimax-m3', to: 'minimax-m3', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-300' }
 ]
 
 // Antigravity 预设映射（支持通配符）
@@ -478,7 +531,9 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'gemini': return geminiModels
     case 'antigravity': return antigravityModels
     case 'kiro': return kiroModels
-    case 'zhipu': return zhipuModels
+    case 'zhipu':
+    case 'glm':
+    case 'zai': return zhipuModels
     case 'qwen': return qwenModels
     case 'deepseek': return deepseekModels
     case 'mistral': return mistralModels
@@ -490,6 +545,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'moonshot': return moonshotModels
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
+    case 'opencode': return opencodeModels
     case 'baidu': return baiduModels
     case 'spark': return sparkModels
     case 'hunyuan': return hunyuanModels
@@ -503,6 +559,10 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
+  if (platform === 'deepseek') return deepseekPresetMappings
+  if (platform === 'glm' || platform === 'zai' || platform === 'zhipu') return glmPresetMappings
+  if (platform === 'minimax') return minimaxPresetMappings
+  if (platform === 'opencode') return opencodePresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'kiro') return kiroPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings

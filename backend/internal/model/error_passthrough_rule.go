@@ -38,11 +38,16 @@ const (
 	PlatformAntigravity = "antigravity"
 	PlatformGrok        = "grok"
 	PlatformKiro        = "kiro"
+	PlatformDeepSeek    = "deepseek"
+	PlatformGLM         = "glm"
+	PlatformZAI         = "zai"
+	PlatformMiniMax     = "minimax"
+	PlatformOpenCode    = "opencode"
 )
 
 // AllPlatforms 返回所有支持的平台列表
 func AllPlatforms() []string {
-	return []string{PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok, PlatformKiro}
+	return []string{PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok, PlatformKiro, PlatformDeepSeek, PlatformGLM, PlatformZAI, PlatformMiniMax, PlatformOpenCode}
 }
 
 // Validate 验证规则配置的有效性

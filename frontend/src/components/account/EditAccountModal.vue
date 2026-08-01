@@ -34,19 +34,7 @@
             v-model="editBaseUrl"
             type="text"
             class="input"
-            :placeholder="
-              account.platform === 'openai'
-                ? 'https://api.openai.com'
-                : account.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
-                  : account.platform === 'grok'
-                    ? 'https://api.x.ai/v1'
-                    : account.platform === 'kiro'
-                      ? 'https://your-kiro-upstream.example.com'
-                      : account.platform === 'antigravity'
-                        ? 'https://cloudcode-pa.googleapis.com'
-                        : 'https://api.anthropic.com'
-            "
+            :placeholder="apiKeyCompatibleBaseUrl(account.platform)"
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
           <GrokBaseUrlPresets
@@ -65,22 +53,12 @@
             data-1p-ignore
             data-lpignore="true"
             data-bwignore="true"
-            :placeholder="
-              account.platform === 'openai'
-                ? 'sk-proj-...'
-                : account.platform === 'gemini'
-                  ? 'AIza...'
-                  : account.platform === 'kiro'
-                    ? 'sk-...'
-                  : account.platform === 'antigravity'
-                    ? 'sk-...'
-                    : 'sk-ant-...'
-            "
+            :placeholder="apiKeyCompatiblePlaceholder(account.platform)"
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
 
-        <div v-if="account.platform === 'kiro'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div v-if="account.platform === 'kiro' || account.platform === 'deepseek' || account.platform === 'glm' || account.platform === 'zai' || account.platform === 'minimax' || account.platform === 'opencode'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
           <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
@@ -2848,6 +2826,7 @@ import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
+  AccountPlatform,
   Proxy,
   AdminGroup,
   CheckMixedChannelResponse,
@@ -2933,11 +2912,47 @@ const handleOllamaCloudUsageUpdated = (state: OllamaCloudUsageState) => {
 }
 
 // Platform-specific hint for Base URL
+const apiKeyCompatibleBaseUrl = (platform: AccountPlatform | string) => {
+  switch (platform) {
+    case 'openai':
+      return 'https://api.openai.com'
+    case 'gemini':
+      return 'https://generativelanguage.googleapis.com'
+    case 'grok':
+      return 'https://api.x.ai/v1'
+    case 'kiro':
+      return ''
+    case 'antigravity':
+      return 'https://cloudcode-pa.googleapis.com'
+    case 'deepseek':
+      return 'https://api.deepseek.com'
+    case 'glm':
+      return 'https://api.z.ai/api/paas/v4'
+    case 'zai':
+      return 'https://chat.z.ai/api'
+    case 'minimax':
+      return 'https://api.minimax.io/v1'
+    case 'opencode':
+      return 'https://opencode.ai/zen/go/v1'
+    default:
+      return 'https://api.anthropic.com'
+  }
+}
+
+const apiKeyCompatiblePlaceholder = (platform: AccountPlatform | string) => {
+  if (platform === 'openai') return 'sk-proj-...'
+  if (platform === 'gemini') return 'AIza...'
+  if (platform === 'grok' || platform === 'kiro' || platform === 'antigravity') return 'sk-...'
+  if (platform === 'deepseek' || platform === 'glm' || platform === 'zai' || platform === 'minimax' || platform === 'opencode') return 'sk-...'
+  return 'sk-ant-...'
+}
+
 const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (props.account.platform === 'kiro') return t('admin.accounts.kiro.baseUrlHint')
+  if (props.account.platform === 'opencode') return t('admin.accounts.openai.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -3768,16 +3783,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Initialize API Key fields for apikey type
   if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
-    const platformDefaultUrl =
-      newAccount.platform === 'openai'
-        ? 'https://api.openai.com'
-        : newAccount.platform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
-          : newAccount.platform === 'grok'
-            ? 'https://api.x.ai/v1'
-            : newAccount.platform === 'kiro'
-              ? ''
-              : 'https://api.anthropic.com'
+    const platformDefaultUrl = apiKeyCompatibleBaseUrl(newAccount.platform)
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode

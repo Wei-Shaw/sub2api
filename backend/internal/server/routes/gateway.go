@@ -60,6 +60,17 @@ func RegisterGatewayRoutes(
 			return false
 		}
 	}
+	isOpenAIChatCompletionsGatewayPlatform := func(c *gin.Context) bool {
+		switch getGroupPlatform(c) {
+		case service.PlatformOpenAI, service.PlatformDeepSeek, service.PlatformGLM, service.PlatformZAI, service.PlatformMiniMax, service.PlatformOpenCode:
+			return true
+		default:
+			return false
+		}
+	}
+	isOpenAIChatCompletionsOnlyGatewayPlatform := func(c *gin.Context) bool {
+		return service.IsOpenAIChatCompletionsOnlyPlatform(getGroupPlatform(c))
+	}
 	isOpenAIGatewayPlatform := func(c *gin.Context) bool {
 		return getGroupPlatform(c) == service.PlatformOpenAI
 	}
@@ -83,6 +94,36 @@ func RegisterGatewayRoutes(
 	isOpenAIOnlyEndpointGatewayPlatform := func(c *gin.Context) bool {
 		return getGroupPlatform(c) == service.PlatformOpenAI
 	}
+
+	rejectUnsupportedEndpoint := func(c *gin.Context, endpoint string) {
+		platform := getGroupPlatform(c)
+		if platform == "" {
+			platform = "this platform"
+		}
+		switch platform {
+		case service.PlatformOpenAI:
+			platform = "OpenAI"
+		case service.PlatformGrok:
+			platform = "Grok"
+		case service.PlatformDeepSeek:
+			platform = "DeepSeek"
+		case service.PlatformGLM:
+			platform = "GLM"
+		case service.PlatformZAI:
+			platform = "Z.ai"
+		case service.PlatformMiniMax:
+			platform = "MiniMax"
+		case service.PlatformOpenCode:
+			platform = "OpenCode"
+		}
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"type":    "not_found_error",
+				"message": endpoint + " is not supported for " + platform + " groups",
+			},
+		})
+	}
 	imagesHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
 		case service.PlatformOpenAI:
@@ -90,13 +131,7 @@ func RegisterGatewayRoutes(
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokImages(c)
 		default:
-			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": gin.H{
-					"type":    "not_found_error",
-					"message": "Images API is not supported for this platform",
-				},
-			})
+			rejectUnsupportedEndpoint(c, "Images API")
 		}
 	}
 	videoGenerationHandler := func(c *gin.Context) {
@@ -104,13 +139,7 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.GrokVideoGeneration(c)
 			return
 		}
-		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"type":    "not_found_error",
-				"message": "Videos API is not supported for this platform",
-			},
-		})
+		rejectUnsupportedEndpoint(c, "Videos API")
 	}
 	videoStatusHandler := func(c *gin.Context) {
 		// Video status requests do not carry a model, so composite groups cannot
@@ -120,13 +149,7 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.GrokVideoStatus(c)
 			return
 		}
-		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"type":    "not_found_error",
-				"message": "Videos API is not supported for this platform",
-			},
-		})
+		rejectUnsupportedEndpoint(c, "Videos API")
 	}
 	videoContentHandler := func(c *gin.Context) {
 		// Video content requests do not carry a model, so composite groups cannot
@@ -136,29 +159,21 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.GrokVideoContent(c)
 			return
 		}
-		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"type":    "not_found_error",
-				"message": "Videos API is not supported for this platform",
-			},
-		})
+		rejectUnsupportedEndpoint(c, "Videos API")
 	}
 	videoEditHandler := func(c *gin.Context) {
 		if getGroupPlatform(c) == service.PlatformGrok {
 			h.OpenAIGateway.GrokVideoEdit(c)
 			return
 		}
-		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Videos API is not supported for this platform"}})
+		rejectUnsupportedEndpoint(c, "Videos API")
 	}
 	videoExtensionHandler := func(c *gin.Context) {
 		if getGroupPlatform(c) == service.PlatformGrok {
 			h.OpenAIGateway.GrokVideoExtension(c)
 			return
 		}
-		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Videos API is not supported for this platform"}})
+		rejectUnsupportedEndpoint(c, "Videos API")
 	}
 	// /responses/*subpath 的子路径会被转发到上游同名端点之后，因此在入口就拒掉
 	// 不可转发的子路径，不让它进入调度与转发流程。可转发的判定见
@@ -214,6 +229,10 @@ func RegisterGatewayRoutes(
 				h.OpenAIGateway.Responses(c)
 				return
 			}
+			if isOpenAIChatCompletionsOnlyGatewayPlatform(c) {
+				rejectUnsupportedEndpoint(c, "Responses API")
+				return
+			}
 			h.Gateway.Responses(c)
 		})
 		gateway.POST("/responses/*subpath", guardResponsesSubpath(func(c *gin.Context) {
@@ -221,15 +240,23 @@ func RegisterGatewayRoutes(
 				h.OpenAIGateway.Responses(c)
 				return
 			}
+			if isOpenAIChatCompletionsOnlyGatewayPlatform(c) {
+				rejectUnsupportedEndpoint(c, "Responses API")
+				return
+			}
 			h.Gateway.Responses(c)
 		}))
 		gateway.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
 		gateway.GET("/responses", func(c *gin.Context) {
+			if isOpenAIChatCompletionsOnlyGatewayPlatform(c) {
+				rejectUnsupportedEndpoint(c, "Responses WebSocket API")
+				return
+			}
 			h.OpenAIGateway.ResponsesWebSocket(c)
 		})
 		// OpenAI Chat Completions API: auto-route based on group platform
 		gateway.POST("/chat/completions", func(c *gin.Context) {
-			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+			if isOpenAIResponsesCompatibleGatewayPlatform(c) || isOpenAIChatCompletionsGatewayPlatform(c) {
 				h.OpenAIGateway.ChatCompletions(c)
 				return
 			}
@@ -264,8 +291,6 @@ func RegisterGatewayRoutes(
 		gateway.DELETE("/images/batches/:id", h.BatchImage.DeleteRecord)
 		gateway.DELETE("/images/batches/:id/outputs", h.BatchImage.DeleteOutputs)
 		gateway.POST("/videos/generations", videoGenerationHandler)
-		gateway.POST("/videos/edits", videoEditHandler)
-		gateway.POST("/videos/extensions", videoExtensionHandler)
 		gateway.GET("/videos/:request_id", videoStatusHandler)
 		gateway.GET("/videos/:request_id/content", videoContentHandler)
 	}
@@ -292,12 +317,20 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.Responses(c)
 			return
 		}
+		if isOpenAIChatCompletionsOnlyGatewayPlatform(c) {
+			rejectUnsupportedEndpoint(c, "Responses API")
+			return
+		}
 		h.Gateway.Responses(c)
 	}
 	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gatewayAPIKeyAuth, compositeTarget, requireGroupAnthropic, responsesHandler)
 	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gatewayAPIKeyAuth, compositeTarget, requireGroupAnthropic, guardResponsesSubpath(responsesHandler))
 	r.POST("/alpha/search", textBodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gatewayAPIKeyAuth, compositeTarget, requireGroupAnthropic, h.OpenAIGateway.AlphaSearch)
 	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gatewayAPIKeyAuth, compositeTarget, requireGroupAnthropic, func(c *gin.Context) {
+		if isOpenAIChatCompletionsOnlyGatewayPlatform(c) {
+			rejectUnsupportedEndpoint(c, "Responses WebSocket API")
+			return
+		}
 		h.OpenAIGateway.ResponsesWebSocket(c)
 	})
 	r.GET("/models", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gatewayAPIKeyAuth, requireGroupAnthropic, modelsHandler)
@@ -311,13 +344,17 @@ func RegisterGatewayRoutes(
 		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(responsesHandler))
 		codexDirect.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
 		codexDirect.GET("/responses", func(c *gin.Context) {
+			if isOpenAIChatCompletionsOnlyGatewayPlatform(c) {
+				rejectUnsupportedEndpoint(c, "Responses WebSocket API")
+				return
+			}
 			h.OpenAIGateway.ResponsesWebSocket(c)
 		})
 		codexDirect.GET("/models", h.OpenAIGateway.CodexModels)
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gatewayAPIKeyAuth, compositeTarget, requireGroupAnthropic, func(c *gin.Context) {
-		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+		if isOpenAIResponsesCompatibleGatewayPlatform(c) || isOpenAIChatCompletionsGatewayPlatform(c) {
 			h.OpenAIGateway.ChatCompletions(c)
 			return
 		}

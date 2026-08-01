@@ -10,7 +10,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -385,8 +384,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 // resolveOpenAIUpstreamEndpoint returns the actual upstream endpoint for an
 // OpenAI-compatible account. A forwarding result is authoritative because a
 // single inbound route may choose raw Chat or a Responses bridge at runtime.
-// The account-based derivation remains as a fallback for existing callers and
-// forwarding paths that do not report their endpoint yet.
+// The context value is the next-best source, followed by the account's
+// OpenAI-compatible transport policy for forwarding paths without endpoint data.
 func resolveOpenAIUpstreamEndpoint(c *gin.Context, account *service.Account, result *service.OpenAIForwardResult) string {
 	if result != nil {
 		if endpoint := strings.TrimSpace(result.UpstreamEndpoint); endpoint != "" {
@@ -396,8 +395,7 @@ func resolveOpenAIUpstreamEndpoint(c *gin.Context, account *service.Account, res
 	if endpoint := service.GetActualOpenAIUpstreamEndpoint(c); endpoint != "" {
 		return endpoint
 	}
-	if account != nil && account.Type == service.AccountTypeAPIKey &&
-		!openai_compat.ShouldUseResponsesAPI(account.Extra) {
+	if service.ShouldUseOpenAICompatibleChatCompletions(account) {
 		return EndpointChatCompletions
 	}
 	return GetUpstreamEndpoint(c, account.Platform)

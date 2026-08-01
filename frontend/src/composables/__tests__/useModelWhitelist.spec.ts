@@ -117,6 +117,26 @@ describe('useModelWhitelist', () => {
     expect(models.every((model) => !model.endsWith('-agentic') && !model.endsWith('-chat'))).toBe(true)
   })
 
+  it('opencode 模型列表暴露 Zen /models 返回的 raw model IDs', () => {
+    const models = getModelsByPlatform('opencode')
+
+    expect(models).toContain('glm-5.2')
+    expect(models).toContain('deepseek-v4-pro')
+    expect(models).toContain('minimax-m3')
+    expect(models.every(model => !model.startsWith('opencode/'))).toBe(true)
+  })
+
+  it('opencode 预设映射使用 Zen raw model IDs', () => {
+    const mappings = getPresetMappingsByPlatform('opencode')
+
+    expect(mappings.map(({ from, to }) => ({ from, to }))).toEqual(expect.arrayContaining([
+      { from: 'glm-5.2', to: 'glm-5.2' },
+      { from: 'deepseek-v4-pro', to: 'deepseek-v4-pro' },
+      { from: 'minimax-m3', to: 'minimax-m3' }
+    ]))
+    expect(mappings.every(item => !item.from.startsWith('opencode/') && !item.to.startsWith('opencode/'))).toBe(true)
+  })
+
   it('kiro 模型列表只保留 Claude 模型', () => {
     const models = getModelsByPlatform('kiro')
 

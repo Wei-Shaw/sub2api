@@ -901,7 +901,7 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": __DEFAULT_PLATFORM_QUOTAS__,
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -1213,7 +1213,7 @@ func TestAPIContracts(t *testing.T) {
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
 					"table_page_size_options": [10, 20, 50],
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": __DEFAULT_PLATFORM_QUOTAS__,
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -1474,7 +1474,24 @@ func expandContractJSONPlaceholders(t *testing.T, raw string) string {
 		require.NoError(t, err)
 		expanded = strings.ReplaceAll(expanded, "__DEFAULT_PLATFORM_PROFILE_REGISTRY__", string(registryJSON))
 	}
+	if strings.Contains(expanded, "__DEFAULT_PLATFORM_QUOTAS__") {
+		quotaJSON, err := json.Marshal(defaultPlatformQuotasContractMap())
+		require.NoError(t, err)
+		expanded = strings.ReplaceAll(expanded, "__DEFAULT_PLATFORM_QUOTAS__", string(quotaJSON))
+	}
 	return expanded
+}
+
+func defaultPlatformQuotasContractMap() map[string]map[string]*float64 {
+	quotas := make(map[string]map[string]*float64, len(service.AllowedQuotaPlatforms))
+	for _, platform := range service.AllowedQuotaPlatforms {
+		quotas[platform] = map[string]*float64{
+			"daily":   nil,
+			"weekly":  nil,
+			"monthly": nil,
+		}
+	}
+	return quotas
 }
 
 type contractDeps struct {

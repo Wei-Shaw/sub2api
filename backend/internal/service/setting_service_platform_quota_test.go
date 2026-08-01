@@ -63,7 +63,7 @@ func newSettingServiceForPlatformQuotaTest(seed map[string]string) *SettingServi
 func TestGetDefaultPlatformQuotas_ReturnsAllowedPlatforms(t *testing.T) {
 	zero := 0.0
 	svc := newSettingServiceForPlatformQuotaTest(map[string]string{
-		// 新 JSON 格式：anthropic daily=10.5, openai monthly=0, 其他平台无配置
+		// 新 JSON 格式：anthropic daily=10.5, openai monthly=0，其余允许平台无配置
 		SettingKeyDefaultPlatformQuotas: `{"anthropic":{"daily":10.5},"openai":{"monthly":0}}`,
 	})
 	got, err := svc.GetDefaultPlatformQuotas(context.Background())
@@ -96,7 +96,7 @@ func TestGetDefaultPlatformQuotas_ReturnsAllowedPlatforms(t *testing.T) {
 
 func TestGetAuthSourcePlatformQuotas_OnlyConfiguredReturned(t *testing.T) {
 	source := "email"
-	// 新 JSON 格式：anthropic daily=5, monthly=100；openai weekly=0；gemini/antigravity 无配置
+	// 新 JSON 格式：anthropic daily=5, monthly=100；openai weekly=0；其余平台无配置
 	svc := newSettingServiceForPlatformQuotaTest(map[string]string{
 		SettingKeyAuthSourcePlatformQuotas(source): `{"anthropic":{"daily":5,"monthly":100},"openai":{"weekly":0}}`,
 	})
@@ -152,7 +152,7 @@ func TestGetAuthSourcePlatformQuotas_AllNegativeOrEmpty_NoEntry(t *testing.T) {
 }
 
 // TestSystemPlatformQuotas_WriteReadRoundTrip 验证系统层 platform quota 经 buildSystemSettingsUpdates（写）
-// 再由 GetDefaultPlatformQuotas（读）正确往返，覆盖真实 write→read 路径并锁住平台补齐契约。
+// 再由 GetDefaultPlatformQuotas（读）正确往返——覆盖真实 write→read 路径，锁住 allowed-platform 补齐契约。
 func TestSystemPlatformQuotas_WriteReadRoundTrip(t *testing.T) {
 	svc := newSettingServiceForPlatformQuotaTest(nil)
 	ctx := context.Background()
@@ -171,7 +171,7 @@ func TestSystemPlatformQuotas_WriteReadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 平台补齐契约：无论写了几个 platform，读回必须含全部允许平台
+	// allowed-platform 补齐契约：无论写了几个 platform，读回必须含全部允许平台。
 	for _, p := range AllowedQuotaPlatforms {
 		if _, ok := got[p]; !ok {
 			t.Errorf("allowed-platform contract violated: missing platform %q", p)
