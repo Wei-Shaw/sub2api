@@ -83,7 +83,7 @@ func (m *memProxyRepo) SweepExpiredProxies(ctx context.Context, now time.Time) (
 	return 0, nil
 }
 func (m *memProxyRepo) ListAllForFallback(ctx context.Context) ([]Proxy, error) { return nil, nil }
-func (m *memProxyRepo) CountExpired(ctx context.Context) (int64, error)       { return 0, nil }
+func (m *memProxyRepo) CountExpired(ctx context.Context) (int64, error)         { return 0, nil }
 func (m *memProxyRepo) CountExpiringSoon(ctx context.Context, now time.Time) (int64, error) {
 	return 0, nil
 }
@@ -95,8 +95,8 @@ func (m *memProxyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64
 }
 
 type memGroupRepo struct {
-	nextID int64
-	groups map[int64]*ProxyGroup
+	nextID  int64
+	groups  map[int64]*ProxyGroup
 	members map[int64][]int64
 }
 

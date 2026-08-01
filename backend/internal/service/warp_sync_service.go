@@ -66,14 +66,14 @@ func ProvideWarpGatewayClient(cfg *config.Config) *WarpGatewayClient {
 
 // WarpSyncResult is returned by SyncFromGateway / CreatePoolAndSync.
 type WarpSyncResult struct {
-	Snapshot       *WarpPoolSnapshot `json:"snapshot"`
-	Plan           WarpPoolAttachPlan `json:"plan"`
-	CreatedProxies []Proxy           `json:"created_proxies"`
-	UpdatedProxies []Proxy           `json:"updated_proxies"`
+	Snapshot       *WarpPoolSnapshot      `json:"snapshot"`
+	Plan           WarpPoolAttachPlan     `json:"plan"`
+	CreatedProxies []Proxy                `json:"created_proxies"`
+	UpdatedProxies []Proxy                `json:"updated_proxies"`
 	Group          *ProxyGroupWithProxies `json:"group,omitempty"`
-	MemberIDs      []int64           `json:"member_ids"`
-	DetachedIDs    []int64           `json:"detached_ids"`
-	Alerts         []string          `json:"alerts,omitempty"`
+	MemberIDs      []int64                `json:"member_ids"`
+	DetachedIDs    []int64                `json:"detached_ids"`
+	Alerts         []string               `json:"alerts,omitempty"`
 }
 
 func (s *WarpSyncService) Enabled() bool {
@@ -123,11 +123,11 @@ func (s *WarpSyncService) RegisterProfilesAndSync(ctx context.Context, namePrefi
 
 // WarpBindAccountsResult is returned by BindAccountsToGroup.
 type WarpBindAccountsResult struct {
-	GroupID     int64   `json:"group_id"`
-	GroupName   string  `json:"group_name"`
-	UpdatedIDs  []int64 `json:"updated_ids"`
-	SkippedIDs  []int64 `json:"skipped_ids,omitempty"`
-	Failed      []string `json:"failed,omitempty"`
+	GroupID    int64    `json:"group_id"`
+	GroupName  string   `json:"group_name"`
+	UpdatedIDs []int64  `json:"updated_ids"`
+	SkippedIDs []int64  `json:"skipped_ids,omitempty"`
+	Failed     []string `json:"failed,omitempty"`
 }
 
 // BindAccountsToGroup sets proxy_group_id for the given accounts to the WARP pool group.

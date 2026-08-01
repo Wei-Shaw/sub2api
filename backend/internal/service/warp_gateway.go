@@ -52,12 +52,12 @@ func (i WarpInstance) SocksURL() string {
 
 // WarpPoolSnapshot mirrors gateway /v1/pools/snapshot.
 type WarpPoolSnapshot struct {
-	Instances    []WarpInstance     `json:"instances"`
-	SocksURLs    []string           `json:"socks_urls"`
-	UnhealthyIDs []string           `json:"unhealthy_ids"`
+	Instances    []WarpInstance      `json:"instances"`
+	SocksURLs    []string            `json:"socks_urls"`
+	UnhealthyIDs []string            `json:"unhealthy_ids"`
 	DuplicateIPs map[string][]string `json:"duplicate_exit_ips"`
-	HealthyCount int                `json:"healthy_count"`
-	TotalCount   int                `json:"total_count"`
+	HealthyCount int                 `json:"healthy_count"`
+	TotalCount   int                 `json:"total_count"`
 }
 
 // WarpGatewayClient talks to tools/warp-gateway control API.
@@ -70,7 +70,11 @@ func NewWarpGatewayClient(cfg WarpGatewayConfig) *WarpGatewayClient {
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 5 * time.Second
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		base = &http.Transport{}
+	}
+	transport := base.Clone()
 	if cfg.TLSCAFile != "" || cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" || cfg.TLSInsecureSkipVerify {
 		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: cfg.TLSInsecureSkipVerify}
 		if cfg.TLSCAFile != "" {
@@ -136,7 +140,7 @@ func (c *WarpGatewayClient) doClient(ctx context.Context, client *http.Client, m
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("warp gateway %s %s: HTTP %d: %s", method, path, resp.StatusCode, string(raw))
