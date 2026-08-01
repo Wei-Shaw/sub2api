@@ -67,6 +67,104 @@ func (_c *PaymentOrderCreate) SetPayAmount(v float64) *PaymentOrderCreate {
 	return _c
 }
 
+// SetPaymentCurrency sets the "payment_currency" field.
+func (_c *PaymentOrderCreate) SetPaymentCurrency(v string) *PaymentOrderCreate {
+	_c.mutation.SetPaymentCurrency(v)
+	return _c
+}
+
+// SetNillablePaymentCurrency sets the "payment_currency" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillablePaymentCurrency(v *string) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetPaymentCurrency(*v)
+	}
+	return _c
+}
+
+// SetPaymentAmount sets the "payment_amount" field.
+func (_c *PaymentOrderCreate) SetPaymentAmount(v float64) *PaymentOrderCreate {
+	_c.mutation.SetPaymentAmount(v)
+	return _c
+}
+
+// SetNillablePaymentAmount sets the "payment_amount" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillablePaymentAmount(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetPaymentAmount(*v)
+	}
+	return _c
+}
+
+// SetLedgerCurrency sets the "ledger_currency" field.
+func (_c *PaymentOrderCreate) SetLedgerCurrency(v string) *PaymentOrderCreate {
+	_c.mutation.SetLedgerCurrency(v)
+	return _c
+}
+
+// SetNillableLedgerCurrency sets the "ledger_currency" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableLedgerCurrency(v *string) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetLedgerCurrency(*v)
+	}
+	return _c
+}
+
+// SetLedgerAmount sets the "ledger_amount" field.
+func (_c *PaymentOrderCreate) SetLedgerAmount(v float64) *PaymentOrderCreate {
+	_c.mutation.SetLedgerAmount(v)
+	return _c
+}
+
+// SetNillableLedgerAmount sets the "ledger_amount" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableLedgerAmount(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetLedgerAmount(*v)
+	}
+	return _c
+}
+
+// SetFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field.
+func (_c *PaymentOrderCreate) SetFxRatePaymentToLedger(v float64) *PaymentOrderCreate {
+	_c.mutation.SetFxRatePaymentToLedger(v)
+	return _c
+}
+
+// SetNillableFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableFxRatePaymentToLedger(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetFxRatePaymentToLedger(*v)
+	}
+	return _c
+}
+
+// SetFxSource sets the "fx_source" field.
+func (_c *PaymentOrderCreate) SetFxSource(v string) *PaymentOrderCreate {
+	_c.mutation.SetFxSource(v)
+	return _c
+}
+
+// SetNillableFxSource sets the "fx_source" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableFxSource(v *string) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetFxSource(*v)
+	}
+	return _c
+}
+
+// SetFxTimestamp sets the "fx_timestamp" field.
+func (_c *PaymentOrderCreate) SetFxTimestamp(v time.Time) *PaymentOrderCreate {
+	_c.mutation.SetFxTimestamp(v)
+	return _c
+}
+
+// SetNillableFxTimestamp sets the "fx_timestamp" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableFxTimestamp(v *time.Time) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetFxTimestamp(*v)
+	}
+	return _c
+}
+
 // SetFeeRate sets the "fee_rate" field.
 func (_c *PaymentOrderCreate) SetFeeRate(v float64) *PaymentOrderCreate {
 	_c.mutation.SetFeeRate(v)
@@ -513,6 +611,26 @@ func (_c *PaymentOrderCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *PaymentOrderCreate) defaults() {
+	if _, ok := _c.mutation.PaymentCurrency(); !ok {
+		v := paymentorder.DefaultPaymentCurrency
+		_c.mutation.SetPaymentCurrency(v)
+	}
+	if _, ok := _c.mutation.PaymentAmount(); !ok {
+		v := paymentorder.DefaultPaymentAmount
+		_c.mutation.SetPaymentAmount(v)
+	}
+	if _, ok := _c.mutation.LedgerCurrency(); !ok {
+		v := paymentorder.DefaultLedgerCurrency
+		_c.mutation.SetLedgerCurrency(v)
+	}
+	if _, ok := _c.mutation.LedgerAmount(); !ok {
+		v := paymentorder.DefaultLedgerAmount
+		_c.mutation.SetLedgerAmount(v)
+	}
+	if _, ok := _c.mutation.FxRatePaymentToLedger(); !ok {
+		v := paymentorder.DefaultFxRatePaymentToLedger
+		_c.mutation.SetFxRatePaymentToLedger(v)
+	}
 	if _, ok := _c.mutation.FeeRate(); !ok {
 		v := paymentorder.DefaultFeeRate
 		_c.mutation.SetFeeRate(v)
@@ -573,6 +691,36 @@ func (_c *PaymentOrderCreate) check() error {
 	}
 	if _, ok := _c.mutation.PayAmount(); !ok {
 		return &ValidationError{Name: "pay_amount", err: errors.New(`ent: missing required field "PaymentOrder.pay_amount"`)}
+	}
+	if _, ok := _c.mutation.PaymentCurrency(); !ok {
+		return &ValidationError{Name: "payment_currency", err: errors.New(`ent: missing required field "PaymentOrder.payment_currency"`)}
+	}
+	if v, ok := _c.mutation.PaymentCurrency(); ok {
+		if err := paymentorder.PaymentCurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "payment_currency", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.payment_currency": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.PaymentAmount(); !ok {
+		return &ValidationError{Name: "payment_amount", err: errors.New(`ent: missing required field "PaymentOrder.payment_amount"`)}
+	}
+	if _, ok := _c.mutation.LedgerCurrency(); !ok {
+		return &ValidationError{Name: "ledger_currency", err: errors.New(`ent: missing required field "PaymentOrder.ledger_currency"`)}
+	}
+	if v, ok := _c.mutation.LedgerCurrency(); ok {
+		if err := paymentorder.LedgerCurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "ledger_currency", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.ledger_currency": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.LedgerAmount(); !ok {
+		return &ValidationError{Name: "ledger_amount", err: errors.New(`ent: missing required field "PaymentOrder.ledger_amount"`)}
+	}
+	if _, ok := _c.mutation.FxRatePaymentToLedger(); !ok {
+		return &ValidationError{Name: "fx_rate_payment_to_ledger", err: errors.New(`ent: missing required field "PaymentOrder.fx_rate_payment_to_ledger"`)}
+	}
+	if v, ok := _c.mutation.FxSource(); ok {
+		if err := paymentorder.FxSourceValidator(v); err != nil {
+			return &ValidationError{Name: "fx_source", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.fx_source": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.FeeRate(); !ok {
 		return &ValidationError{Name: "fee_rate", err: errors.New(`ent: missing required field "PaymentOrder.fee_rate"`)}
@@ -720,6 +868,34 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.PayAmount(); ok {
 		_spec.SetField(paymentorder.FieldPayAmount, field.TypeFloat64, value)
 		_node.PayAmount = value
+	}
+	if value, ok := _c.mutation.PaymentCurrency(); ok {
+		_spec.SetField(paymentorder.FieldPaymentCurrency, field.TypeString, value)
+		_node.PaymentCurrency = value
+	}
+	if value, ok := _c.mutation.PaymentAmount(); ok {
+		_spec.SetField(paymentorder.FieldPaymentAmount, field.TypeFloat64, value)
+		_node.PaymentAmount = value
+	}
+	if value, ok := _c.mutation.LedgerCurrency(); ok {
+		_spec.SetField(paymentorder.FieldLedgerCurrency, field.TypeString, value)
+		_node.LedgerCurrency = value
+	}
+	if value, ok := _c.mutation.LedgerAmount(); ok {
+		_spec.SetField(paymentorder.FieldLedgerAmount, field.TypeFloat64, value)
+		_node.LedgerAmount = value
+	}
+	if value, ok := _c.mutation.FxRatePaymentToLedger(); ok {
+		_spec.SetField(paymentorder.FieldFxRatePaymentToLedger, field.TypeFloat64, value)
+		_node.FxRatePaymentToLedger = value
+	}
+	if value, ok := _c.mutation.FxSource(); ok {
+		_spec.SetField(paymentorder.FieldFxSource, field.TypeString, value)
+		_node.FxSource = &value
+	}
+	if value, ok := _c.mutation.FxTimestamp(); ok {
+		_spec.SetField(paymentorder.FieldFxTimestamp, field.TypeTime, value)
+		_node.FxTimestamp = &value
 	}
 	if value, ok := _c.mutation.FeeRate(); ok {
 		_spec.SetField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
@@ -1009,6 +1185,120 @@ func (u *PaymentOrderUpsert) UpdatePayAmount() *PaymentOrderUpsert {
 // AddPayAmount adds v to the "pay_amount" field.
 func (u *PaymentOrderUpsert) AddPayAmount(v float64) *PaymentOrderUpsert {
 	u.Add(paymentorder.FieldPayAmount, v)
+	return u
+}
+
+// SetPaymentCurrency sets the "payment_currency" field.
+func (u *PaymentOrderUpsert) SetPaymentCurrency(v string) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldPaymentCurrency, v)
+	return u
+}
+
+// UpdatePaymentCurrency sets the "payment_currency" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdatePaymentCurrency() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldPaymentCurrency)
+	return u
+}
+
+// SetPaymentAmount sets the "payment_amount" field.
+func (u *PaymentOrderUpsert) SetPaymentAmount(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldPaymentAmount, v)
+	return u
+}
+
+// UpdatePaymentAmount sets the "payment_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdatePaymentAmount() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldPaymentAmount)
+	return u
+}
+
+// AddPaymentAmount adds v to the "payment_amount" field.
+func (u *PaymentOrderUpsert) AddPaymentAmount(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldPaymentAmount, v)
+	return u
+}
+
+// SetLedgerCurrency sets the "ledger_currency" field.
+func (u *PaymentOrderUpsert) SetLedgerCurrency(v string) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldLedgerCurrency, v)
+	return u
+}
+
+// UpdateLedgerCurrency sets the "ledger_currency" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateLedgerCurrency() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldLedgerCurrency)
+	return u
+}
+
+// SetLedgerAmount sets the "ledger_amount" field.
+func (u *PaymentOrderUpsert) SetLedgerAmount(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldLedgerAmount, v)
+	return u
+}
+
+// UpdateLedgerAmount sets the "ledger_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateLedgerAmount() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldLedgerAmount)
+	return u
+}
+
+// AddLedgerAmount adds v to the "ledger_amount" field.
+func (u *PaymentOrderUpsert) AddLedgerAmount(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldLedgerAmount, v)
+	return u
+}
+
+// SetFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field.
+func (u *PaymentOrderUpsert) SetFxRatePaymentToLedger(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldFxRatePaymentToLedger, v)
+	return u
+}
+
+// UpdateFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateFxRatePaymentToLedger() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldFxRatePaymentToLedger)
+	return u
+}
+
+// AddFxRatePaymentToLedger adds v to the "fx_rate_payment_to_ledger" field.
+func (u *PaymentOrderUpsert) AddFxRatePaymentToLedger(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldFxRatePaymentToLedger, v)
+	return u
+}
+
+// SetFxSource sets the "fx_source" field.
+func (u *PaymentOrderUpsert) SetFxSource(v string) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldFxSource, v)
+	return u
+}
+
+// UpdateFxSource sets the "fx_source" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateFxSource() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldFxSource)
+	return u
+}
+
+// ClearFxSource clears the value of the "fx_source" field.
+func (u *PaymentOrderUpsert) ClearFxSource() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldFxSource)
+	return u
+}
+
+// SetFxTimestamp sets the "fx_timestamp" field.
+func (u *PaymentOrderUpsert) SetFxTimestamp(v time.Time) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldFxTimestamp, v)
+	return u
+}
+
+// UpdateFxTimestamp sets the "fx_timestamp" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateFxTimestamp() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldFxTimestamp)
+	return u
+}
+
+// ClearFxTimestamp clears the value of the "fx_timestamp" field.
+func (u *PaymentOrderUpsert) ClearFxTimestamp() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldFxTimestamp)
 	return u
 }
 
@@ -1687,6 +1977,139 @@ func (u *PaymentOrderUpsertOne) AddPayAmount(v float64) *PaymentOrderUpsertOne {
 func (u *PaymentOrderUpsertOne) UpdatePayAmount() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdatePayAmount()
+	})
+}
+
+// SetPaymentCurrency sets the "payment_currency" field.
+func (u *PaymentOrderUpsertOne) SetPaymentCurrency(v string) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPaymentCurrency(v)
+	})
+}
+
+// UpdatePaymentCurrency sets the "payment_currency" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdatePaymentCurrency() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePaymentCurrency()
+	})
+}
+
+// SetPaymentAmount sets the "payment_amount" field.
+func (u *PaymentOrderUpsertOne) SetPaymentAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPaymentAmount(v)
+	})
+}
+
+// AddPaymentAmount adds v to the "payment_amount" field.
+func (u *PaymentOrderUpsertOne) AddPaymentAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddPaymentAmount(v)
+	})
+}
+
+// UpdatePaymentAmount sets the "payment_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdatePaymentAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePaymentAmount()
+	})
+}
+
+// SetLedgerCurrency sets the "ledger_currency" field.
+func (u *PaymentOrderUpsertOne) SetLedgerCurrency(v string) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetLedgerCurrency(v)
+	})
+}
+
+// UpdateLedgerCurrency sets the "ledger_currency" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateLedgerCurrency() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateLedgerCurrency()
+	})
+}
+
+// SetLedgerAmount sets the "ledger_amount" field.
+func (u *PaymentOrderUpsertOne) SetLedgerAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetLedgerAmount(v)
+	})
+}
+
+// AddLedgerAmount adds v to the "ledger_amount" field.
+func (u *PaymentOrderUpsertOne) AddLedgerAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddLedgerAmount(v)
+	})
+}
+
+// UpdateLedgerAmount sets the "ledger_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateLedgerAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateLedgerAmount()
+	})
+}
+
+// SetFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field.
+func (u *PaymentOrderUpsertOne) SetFxRatePaymentToLedger(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetFxRatePaymentToLedger(v)
+	})
+}
+
+// AddFxRatePaymentToLedger adds v to the "fx_rate_payment_to_ledger" field.
+func (u *PaymentOrderUpsertOne) AddFxRatePaymentToLedger(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddFxRatePaymentToLedger(v)
+	})
+}
+
+// UpdateFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateFxRatePaymentToLedger() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateFxRatePaymentToLedger()
+	})
+}
+
+// SetFxSource sets the "fx_source" field.
+func (u *PaymentOrderUpsertOne) SetFxSource(v string) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetFxSource(v)
+	})
+}
+
+// UpdateFxSource sets the "fx_source" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateFxSource() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateFxSource()
+	})
+}
+
+// ClearFxSource clears the value of the "fx_source" field.
+func (u *PaymentOrderUpsertOne) ClearFxSource() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearFxSource()
+	})
+}
+
+// SetFxTimestamp sets the "fx_timestamp" field.
+func (u *PaymentOrderUpsertOne) SetFxTimestamp(v time.Time) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetFxTimestamp(v)
+	})
+}
+
+// UpdateFxTimestamp sets the "fx_timestamp" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateFxTimestamp() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateFxTimestamp()
+	})
+}
+
+// ClearFxTimestamp clears the value of the "fx_timestamp" field.
+func (u *PaymentOrderUpsertOne) ClearFxTimestamp() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearFxTimestamp()
 	})
 }
 
@@ -2619,6 +3042,139 @@ func (u *PaymentOrderUpsertBulk) AddPayAmount(v float64) *PaymentOrderUpsertBulk
 func (u *PaymentOrderUpsertBulk) UpdatePayAmount() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdatePayAmount()
+	})
+}
+
+// SetPaymentCurrency sets the "payment_currency" field.
+func (u *PaymentOrderUpsertBulk) SetPaymentCurrency(v string) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPaymentCurrency(v)
+	})
+}
+
+// UpdatePaymentCurrency sets the "payment_currency" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdatePaymentCurrency() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePaymentCurrency()
+	})
+}
+
+// SetPaymentAmount sets the "payment_amount" field.
+func (u *PaymentOrderUpsertBulk) SetPaymentAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPaymentAmount(v)
+	})
+}
+
+// AddPaymentAmount adds v to the "payment_amount" field.
+func (u *PaymentOrderUpsertBulk) AddPaymentAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddPaymentAmount(v)
+	})
+}
+
+// UpdatePaymentAmount sets the "payment_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdatePaymentAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePaymentAmount()
+	})
+}
+
+// SetLedgerCurrency sets the "ledger_currency" field.
+func (u *PaymentOrderUpsertBulk) SetLedgerCurrency(v string) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetLedgerCurrency(v)
+	})
+}
+
+// UpdateLedgerCurrency sets the "ledger_currency" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateLedgerCurrency() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateLedgerCurrency()
+	})
+}
+
+// SetLedgerAmount sets the "ledger_amount" field.
+func (u *PaymentOrderUpsertBulk) SetLedgerAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetLedgerAmount(v)
+	})
+}
+
+// AddLedgerAmount adds v to the "ledger_amount" field.
+func (u *PaymentOrderUpsertBulk) AddLedgerAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddLedgerAmount(v)
+	})
+}
+
+// UpdateLedgerAmount sets the "ledger_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateLedgerAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateLedgerAmount()
+	})
+}
+
+// SetFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field.
+func (u *PaymentOrderUpsertBulk) SetFxRatePaymentToLedger(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetFxRatePaymentToLedger(v)
+	})
+}
+
+// AddFxRatePaymentToLedger adds v to the "fx_rate_payment_to_ledger" field.
+func (u *PaymentOrderUpsertBulk) AddFxRatePaymentToLedger(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddFxRatePaymentToLedger(v)
+	})
+}
+
+// UpdateFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateFxRatePaymentToLedger() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateFxRatePaymentToLedger()
+	})
+}
+
+// SetFxSource sets the "fx_source" field.
+func (u *PaymentOrderUpsertBulk) SetFxSource(v string) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetFxSource(v)
+	})
+}
+
+// UpdateFxSource sets the "fx_source" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateFxSource() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateFxSource()
+	})
+}
+
+// ClearFxSource clears the value of the "fx_source" field.
+func (u *PaymentOrderUpsertBulk) ClearFxSource() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearFxSource()
+	})
+}
+
+// SetFxTimestamp sets the "fx_timestamp" field.
+func (u *PaymentOrderUpsertBulk) SetFxTimestamp(v time.Time) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetFxTimestamp(v)
+	})
+}
+
+// UpdateFxTimestamp sets the "fx_timestamp" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateFxTimestamp() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateFxTimestamp()
+	})
+}
+
+// ClearFxTimestamp clears the value of the "fx_timestamp" field.
+func (u *PaymentOrderUpsertBulk) ClearFxTimestamp() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearFxTimestamp()
 	})
 }
 

@@ -551,6 +551,34 @@ func TestUpdatePaymentConfig_PersistsExplicitEmptyAndFalseValues(t *testing.T) {
 	}
 }
 
+func TestUpdatePaymentConfig_OmittedCurrencyFieldsDoNotOverwriteExistingSettings(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{
+		SettingLedgerCurrency:           "EUR",
+		SettingAllowedPaymentCurrencies: "EUR,GBP",
+		SettingManualFXRates:            `{"EUR":1,"GBP":0.85}`,
+	}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	enabled := true
+	if err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{Enabled: &enabled}); err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+
+	want := map[string]string{
+		SettingLedgerCurrency:           "EUR",
+		SettingAllowedPaymentCurrencies: "EUR,GBP",
+		SettingManualFXRates:            `{"EUR":1,"GBP":0.85}`,
+	}
+	for key, expected := range want {
+		if _, updated := repo.updates[key]; updated {
+			t.Errorf("omitted setting %s was included in update with value %q", key, repo.updates[key])
+		}
+		if got := repo.values[key]; got != expected {
+			t.Errorf("setting %s = %q, want preserved value %q", key, got, expected)
+		}
+	}
+}
+
 func paymentConfigStrPtr(value string) *string {
 	return &value
 }

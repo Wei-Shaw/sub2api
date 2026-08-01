@@ -2,9 +2,12 @@ package service
 
 import (
 	"crypto/rand"
-	"encoding/hex"
+	"fmt"
+	"strings"
 	"time"
 )
+
+const redeemCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 type RedeemCode struct {
 	ID        int64
@@ -48,9 +51,56 @@ func (r *RedeemCode) CanUse() bool {
 }
 
 func GenerateRedeemCode() (string, error) {
-	b := make([]byte, 16)
+	return GenerateRedeemCodeForType(RedeemTypeBalance)
+}
+
+func GenerateRedeemCodeForType(codeType string) (string, error) {
+	prefix, err := redeemCodePrefix(codeType)
+	if err != nil {
+		return "", err
+	}
+
+	parts := make([]string, 3)
+	for i := range parts {
+		part, err := generateRedeemCodeBlock(4)
+		if err != nil {
+			return "", err
+		}
+		parts[i] = part
+	}
+
+	return prefix + "-" + strings.Join(parts, "-"), nil
+}
+
+func NormalizeRedeemCode(code string) string {
+	return strings.ToUpper(strings.TrimSpace(code))
+}
+
+func redeemCodePrefix(codeType string) (string, error) {
+	switch codeType {
+	case RedeemTypeBalance, AdjustmentTypeAdminBalance:
+		return "BAL", nil
+	case RedeemTypeSubscription:
+		return "SUB", nil
+	case RedeemTypeInvitation:
+		return "INV", nil
+	case RedeemTypeConcurrency, AdjustmentTypeAdminConcurrency:
+		return "CON", nil
+	default:
+		return "", fmt.Errorf("unsupported redeem code type: %s", codeType)
+	}
+}
+
+func generateRedeemCodeBlock(length int) (string, error) {
+	b := make([]byte, length)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(b), nil
+
+	buf := make([]byte, length)
+	for i, value := range b {
+		buf[i] = redeemCodeAlphabet[int(value)%len(redeemCodeAlphabet)]
+	}
+
+	return string(buf), nil
 }

@@ -432,17 +432,19 @@ const fetchHistory = async () => {
 }
 
 const handleRedeem = async () => {
-  if (!redeemCode.value.trim()) {
+  const normalizedCode = redeemCode.value.trim().toUpperCase()
+  if (!normalizedCode) {
     appStore.showError(t('redeem.pleaseEnterCode'))
     return
   }
 
+  redeemCode.value = normalizedCode
   submitting.value = true
   errorMessage.value = ''
   redeemResult.value = null
 
   try {
-    const result = await redeemAPI.redeem(redeemCode.value.trim())
+    const result = await redeemAPI.redeem(normalizedCode)
 
     redeemResult.value = result
 

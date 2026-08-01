@@ -31,6 +31,15 @@
             @settled="onPaymentSettled"
           />
         </template>
+        <template v-else-if="paymentPhase === 'paddle'">
+          <PaddleCheckoutInline
+            :checkout-id="paymentState.checkoutId"
+            :client-token="checkout.paddle_client_token ?? ''"
+            :environment="checkout.paddle_environment"
+            @back="resetPayment"
+            @completed="onPaddleCompleted"
+          />
+        </template>
         <!-- Tab content (select phase) -->
         <template v-else>
           <!-- Top-up Tab -->
@@ -286,6 +295,7 @@ import {
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel } from '@/utils/platformColors'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
+import PaddleCheckoutInline from '@/components/payment/PaddleCheckoutInline.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import { planValiditySuffix as validitySuffixOf } from '@/components/payment/validity'
@@ -328,7 +338,7 @@ const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 
-const paymentPhase = ref<'select' | 'paying'>('select')
+const paymentPhase = ref<'select' | 'paying' | 'paddle'>('select')
 
 interface CreateOrderOptions {
   openid?: string
@@ -360,6 +370,7 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     currency: '',
     countryCode: '',
     paymentEnv: '',
+    checkoutId: '',
     payAmount: 0,
     orderType: '',
     paymentMode: '',
@@ -420,6 +431,12 @@ function resetPayment() {
   paymentPhase.value = 'select'
   paymentState.value = emptyPaymentState()
   removeRecoverySnapshot()
+}
+
+async function onPaddleCompleted() {
+  const resultState = { ...paymentState.value }
+  resetPayment()
+  await redirectToPaymentResult(resultState)
 }
 
 async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<void> {
@@ -502,7 +519,7 @@ function onPaymentSettled() {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, subscription_usd_to_cny_rate: 0, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, subscription_usd_to_cny_rate: 0, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '', paddle_client_token: '', paddle_environment: '',
 })
 
 const tabs = computed(() => {
@@ -845,6 +862,12 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     }
 
     if (decision.kind === 'unhandled') {
+      if (decision.paymentState.checkoutId) {
+        paymentState.value = decision.paymentState
+        paymentPhase.value = 'paddle'
+        persistRecoverySnapshot(decision.recovery)
+        return
+      }
       applyScenarioError({ reason: 'UNHANDLED_PAYMENT_SCENARIO' }, visibleMethod)
       return
     }

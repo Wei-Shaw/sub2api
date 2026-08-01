@@ -49,6 +49,7 @@ func (h *RedeemHandler) Redeem(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	req.Code = service.NormalizeRedeemCode(req.Code)
 
 	result, err := h.redeemService.Redeem(c.Request.Context(), subject.UserID, req.Code)
 	if err != nil {

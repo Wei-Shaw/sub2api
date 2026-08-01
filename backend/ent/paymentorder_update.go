@@ -133,6 +133,137 @@ func (_u *PaymentOrderUpdate) AddPayAmount(v float64) *PaymentOrderUpdate {
 	return _u
 }
 
+// SetPaymentCurrency sets the "payment_currency" field.
+func (_u *PaymentOrderUpdate) SetPaymentCurrency(v string) *PaymentOrderUpdate {
+	_u.mutation.SetPaymentCurrency(v)
+	return _u
+}
+
+// SetNillablePaymentCurrency sets the "payment_currency" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillablePaymentCurrency(v *string) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetPaymentCurrency(*v)
+	}
+	return _u
+}
+
+// SetPaymentAmount sets the "payment_amount" field.
+func (_u *PaymentOrderUpdate) SetPaymentAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetPaymentAmount()
+	_u.mutation.SetPaymentAmount(v)
+	return _u
+}
+
+// SetNillablePaymentAmount sets the "payment_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillablePaymentAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetPaymentAmount(*v)
+	}
+	return _u
+}
+
+// AddPaymentAmount adds value to the "payment_amount" field.
+func (_u *PaymentOrderUpdate) AddPaymentAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddPaymentAmount(v)
+	return _u
+}
+
+// SetLedgerCurrency sets the "ledger_currency" field.
+func (_u *PaymentOrderUpdate) SetLedgerCurrency(v string) *PaymentOrderUpdate {
+	_u.mutation.SetLedgerCurrency(v)
+	return _u
+}
+
+// SetNillableLedgerCurrency sets the "ledger_currency" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableLedgerCurrency(v *string) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetLedgerCurrency(*v)
+	}
+	return _u
+}
+
+// SetLedgerAmount sets the "ledger_amount" field.
+func (_u *PaymentOrderUpdate) SetLedgerAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetLedgerAmount()
+	_u.mutation.SetLedgerAmount(v)
+	return _u
+}
+
+// SetNillableLedgerAmount sets the "ledger_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableLedgerAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetLedgerAmount(*v)
+	}
+	return _u
+}
+
+// AddLedgerAmount adds value to the "ledger_amount" field.
+func (_u *PaymentOrderUpdate) AddLedgerAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddLedgerAmount(v)
+	return _u
+}
+
+// SetFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field.
+func (_u *PaymentOrderUpdate) SetFxRatePaymentToLedger(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetFxRatePaymentToLedger()
+	_u.mutation.SetFxRatePaymentToLedger(v)
+	return _u
+}
+
+// SetNillableFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableFxRatePaymentToLedger(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetFxRatePaymentToLedger(*v)
+	}
+	return _u
+}
+
+// AddFxRatePaymentToLedger adds value to the "fx_rate_payment_to_ledger" field.
+func (_u *PaymentOrderUpdate) AddFxRatePaymentToLedger(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddFxRatePaymentToLedger(v)
+	return _u
+}
+
+// SetFxSource sets the "fx_source" field.
+func (_u *PaymentOrderUpdate) SetFxSource(v string) *PaymentOrderUpdate {
+	_u.mutation.SetFxSource(v)
+	return _u
+}
+
+// SetNillableFxSource sets the "fx_source" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableFxSource(v *string) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetFxSource(*v)
+	}
+	return _u
+}
+
+// ClearFxSource clears the value of the "fx_source" field.
+func (_u *PaymentOrderUpdate) ClearFxSource() *PaymentOrderUpdate {
+	_u.mutation.ClearFxSource()
+	return _u
+}
+
+// SetFxTimestamp sets the "fx_timestamp" field.
+func (_u *PaymentOrderUpdate) SetFxTimestamp(v time.Time) *PaymentOrderUpdate {
+	_u.mutation.SetFxTimestamp(v)
+	return _u
+}
+
+// SetNillableFxTimestamp sets the "fx_timestamp" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableFxTimestamp(v *time.Time) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetFxTimestamp(*v)
+	}
+	return _u
+}
+
+// ClearFxTimestamp clears the value of the "fx_timestamp" field.
+func (_u *PaymentOrderUpdate) ClearFxTimestamp() *PaymentOrderUpdate {
+	_u.mutation.ClearFxTimestamp()
+	return _u
+}
+
 // SetFeeRate sets the "fee_rate" field.
 func (_u *PaymentOrderUpdate) SetFeeRate(v float64) *PaymentOrderUpdate {
 	_u.mutation.ResetFeeRate()
@@ -778,6 +909,21 @@ func (_u *PaymentOrderUpdate) check() error {
 			return &ValidationError{Name: "user_name", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.user_name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PaymentCurrency(); ok {
+		if err := paymentorder.PaymentCurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "payment_currency", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.payment_currency": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.LedgerCurrency(); ok {
+		if err := paymentorder.LedgerCurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "ledger_currency", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.ledger_currency": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.FxSource(); ok {
+		if err := paymentorder.FxSourceValidator(v); err != nil {
+			return &ValidationError{Name: "fx_source", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.fx_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RechargeCode(); ok {
 		if err := paymentorder.RechargeCodeValidator(v); err != nil {
 			return &ValidationError{Name: "recharge_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.recharge_code": %w`, err)}
@@ -874,6 +1020,42 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.AddedPayAmount(); ok {
 		_spec.AddField(paymentorder.FieldPayAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.PaymentCurrency(); ok {
+		_spec.SetField(paymentorder.FieldPaymentCurrency, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PaymentAmount(); ok {
+		_spec.SetField(paymentorder.FieldPaymentAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedPaymentAmount(); ok {
+		_spec.AddField(paymentorder.FieldPaymentAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.LedgerCurrency(); ok {
+		_spec.SetField(paymentorder.FieldLedgerCurrency, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LedgerAmount(); ok {
+		_spec.SetField(paymentorder.FieldLedgerAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedLedgerAmount(); ok {
+		_spec.AddField(paymentorder.FieldLedgerAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.FxRatePaymentToLedger(); ok {
+		_spec.SetField(paymentorder.FieldFxRatePaymentToLedger, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFxRatePaymentToLedger(); ok {
+		_spec.AddField(paymentorder.FieldFxRatePaymentToLedger, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.FxSource(); ok {
+		_spec.SetField(paymentorder.FieldFxSource, field.TypeString, value)
+	}
+	if _u.mutation.FxSourceCleared() {
+		_spec.ClearField(paymentorder.FieldFxSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.FxTimestamp(); ok {
+		_spec.SetField(paymentorder.FieldFxTimestamp, field.TypeTime, value)
+	}
+	if _u.mutation.FxTimestampCleared() {
+		_spec.ClearField(paymentorder.FieldFxTimestamp, field.TypeTime)
 	}
 	if value, ok := _u.mutation.FeeRate(); ok {
 		_spec.SetField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
@@ -1193,6 +1375,137 @@ func (_u *PaymentOrderUpdateOne) SetNillablePayAmount(v *float64) *PaymentOrderU
 // AddPayAmount adds value to the "pay_amount" field.
 func (_u *PaymentOrderUpdateOne) AddPayAmount(v float64) *PaymentOrderUpdateOne {
 	_u.mutation.AddPayAmount(v)
+	return _u
+}
+
+// SetPaymentCurrency sets the "payment_currency" field.
+func (_u *PaymentOrderUpdateOne) SetPaymentCurrency(v string) *PaymentOrderUpdateOne {
+	_u.mutation.SetPaymentCurrency(v)
+	return _u
+}
+
+// SetNillablePaymentCurrency sets the "payment_currency" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillablePaymentCurrency(v *string) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetPaymentCurrency(*v)
+	}
+	return _u
+}
+
+// SetPaymentAmount sets the "payment_amount" field.
+func (_u *PaymentOrderUpdateOne) SetPaymentAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetPaymentAmount()
+	_u.mutation.SetPaymentAmount(v)
+	return _u
+}
+
+// SetNillablePaymentAmount sets the "payment_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillablePaymentAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetPaymentAmount(*v)
+	}
+	return _u
+}
+
+// AddPaymentAmount adds value to the "payment_amount" field.
+func (_u *PaymentOrderUpdateOne) AddPaymentAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddPaymentAmount(v)
+	return _u
+}
+
+// SetLedgerCurrency sets the "ledger_currency" field.
+func (_u *PaymentOrderUpdateOne) SetLedgerCurrency(v string) *PaymentOrderUpdateOne {
+	_u.mutation.SetLedgerCurrency(v)
+	return _u
+}
+
+// SetNillableLedgerCurrency sets the "ledger_currency" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableLedgerCurrency(v *string) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetLedgerCurrency(*v)
+	}
+	return _u
+}
+
+// SetLedgerAmount sets the "ledger_amount" field.
+func (_u *PaymentOrderUpdateOne) SetLedgerAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetLedgerAmount()
+	_u.mutation.SetLedgerAmount(v)
+	return _u
+}
+
+// SetNillableLedgerAmount sets the "ledger_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableLedgerAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetLedgerAmount(*v)
+	}
+	return _u
+}
+
+// AddLedgerAmount adds value to the "ledger_amount" field.
+func (_u *PaymentOrderUpdateOne) AddLedgerAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddLedgerAmount(v)
+	return _u
+}
+
+// SetFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field.
+func (_u *PaymentOrderUpdateOne) SetFxRatePaymentToLedger(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetFxRatePaymentToLedger()
+	_u.mutation.SetFxRatePaymentToLedger(v)
+	return _u
+}
+
+// SetNillableFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableFxRatePaymentToLedger(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetFxRatePaymentToLedger(*v)
+	}
+	return _u
+}
+
+// AddFxRatePaymentToLedger adds value to the "fx_rate_payment_to_ledger" field.
+func (_u *PaymentOrderUpdateOne) AddFxRatePaymentToLedger(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddFxRatePaymentToLedger(v)
+	return _u
+}
+
+// SetFxSource sets the "fx_source" field.
+func (_u *PaymentOrderUpdateOne) SetFxSource(v string) *PaymentOrderUpdateOne {
+	_u.mutation.SetFxSource(v)
+	return _u
+}
+
+// SetNillableFxSource sets the "fx_source" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableFxSource(v *string) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetFxSource(*v)
+	}
+	return _u
+}
+
+// ClearFxSource clears the value of the "fx_source" field.
+func (_u *PaymentOrderUpdateOne) ClearFxSource() *PaymentOrderUpdateOne {
+	_u.mutation.ClearFxSource()
+	return _u
+}
+
+// SetFxTimestamp sets the "fx_timestamp" field.
+func (_u *PaymentOrderUpdateOne) SetFxTimestamp(v time.Time) *PaymentOrderUpdateOne {
+	_u.mutation.SetFxTimestamp(v)
+	return _u
+}
+
+// SetNillableFxTimestamp sets the "fx_timestamp" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableFxTimestamp(v *time.Time) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetFxTimestamp(*v)
+	}
+	return _u
+}
+
+// ClearFxTimestamp clears the value of the "fx_timestamp" field.
+func (_u *PaymentOrderUpdateOne) ClearFxTimestamp() *PaymentOrderUpdateOne {
+	_u.mutation.ClearFxTimestamp()
 	return _u
 }
 
@@ -1854,6 +2167,21 @@ func (_u *PaymentOrderUpdateOne) check() error {
 			return &ValidationError{Name: "user_name", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.user_name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PaymentCurrency(); ok {
+		if err := paymentorder.PaymentCurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "payment_currency", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.payment_currency": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.LedgerCurrency(); ok {
+		if err := paymentorder.LedgerCurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "ledger_currency", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.ledger_currency": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.FxSource(); ok {
+		if err := paymentorder.FxSourceValidator(v); err != nil {
+			return &ValidationError{Name: "fx_source", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.fx_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RechargeCode(); ok {
 		if err := paymentorder.RechargeCodeValidator(v); err != nil {
 			return &ValidationError{Name: "recharge_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.recharge_code": %w`, err)}
@@ -1967,6 +2295,42 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if value, ok := _u.mutation.AddedPayAmount(); ok {
 		_spec.AddField(paymentorder.FieldPayAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.PaymentCurrency(); ok {
+		_spec.SetField(paymentorder.FieldPaymentCurrency, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PaymentAmount(); ok {
+		_spec.SetField(paymentorder.FieldPaymentAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedPaymentAmount(); ok {
+		_spec.AddField(paymentorder.FieldPaymentAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.LedgerCurrency(); ok {
+		_spec.SetField(paymentorder.FieldLedgerCurrency, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LedgerAmount(); ok {
+		_spec.SetField(paymentorder.FieldLedgerAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedLedgerAmount(); ok {
+		_spec.AddField(paymentorder.FieldLedgerAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.FxRatePaymentToLedger(); ok {
+		_spec.SetField(paymentorder.FieldFxRatePaymentToLedger, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFxRatePaymentToLedger(); ok {
+		_spec.AddField(paymentorder.FieldFxRatePaymentToLedger, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.FxSource(); ok {
+		_spec.SetField(paymentorder.FieldFxSource, field.TypeString, value)
+	}
+	if _u.mutation.FxSourceCleared() {
+		_spec.ClearField(paymentorder.FieldFxSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.FxTimestamp(); ok {
+		_spec.SetField(paymentorder.FieldFxTimestamp, field.TypeTime, value)
+	}
+	if _u.mutation.FxTimestampCleared() {
+		_spec.ClearField(paymentorder.FieldFxTimestamp, field.TypeTime)
 	}
 	if value, ok := _u.mutation.FeeRate(); ok {
 		_spec.SetField(paymentorder.FieldFeeRate, field.TypeFloat64, value)

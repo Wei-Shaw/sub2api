@@ -33,6 +33,7 @@ var (
 	ErrPasswordIncorrect        = infraerrors.BadRequest("PASSWORD_INCORRECT", "current password is incorrect")
 	ErrBalanceNegative          = infraerrors.BadRequest("BALANCE_NEGATIVE", "balance cannot be negative")
 	ErrInsufficientPerms        = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
+	ErrEmailChangeRequiresAdmin = infraerrors.Forbidden("EMAIL_CHANGE_REQUIRES_ADMIN", "email can only be changed by an admin after the bootstrap email has been replaced")
 	ErrNotifyCodeUserRateLimit  = infraerrors.TooManyRequests("NOTIFY_CODE_USER_RATE_LIMIT", "too many verification codes requested, please try again later")
 	ErrAvatarInvalid            = infraerrors.BadRequest("AVATAR_INVALID", "avatar must be a valid image data URL or http(s) URL")
 	ErrAvatarTooLarge           = infraerrors.BadRequest("AVATAR_TOO_LARGE", "avatar image must be 100KB or smaller")
@@ -499,15 +500,22 @@ func (s *UserService) updateProfile(ctx context.Context, userID int64, req Updat
 
 	// 更新字段
 	if req.Email != nil {
+		newEmail := strings.TrimSpace(*req.Email)
+		if newEmail == "" {
+			return nil, oldConcurrency, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+		}
+		if !isBootstrapInviteEmail(user.Email) && newEmail != user.Email {
+			return nil, oldConcurrency, ErrEmailChangeRequiresAdmin
+		}
 		// 检查新邮箱是否已被使用
-		exists, err := s.userRepo.ExistsByEmail(ctx, *req.Email)
+		exists, err := s.userRepo.ExistsByEmail(ctx, newEmail)
 		if err != nil {
 			return nil, oldConcurrency, fmt.Errorf("check email exists: %w", err)
 		}
-		if exists && *req.Email != user.Email {
+		if exists && newEmail != user.Email {
 			return nil, oldConcurrency, ErrEmailExists
 		}
-		user.Email = *req.Email
+		user.Email = newEmail
 		fields.Email = true
 	}
 
@@ -547,6 +555,11 @@ func (s *UserService) updateProfile(ctx context.Context, userID int64, req Updat
 	}
 
 	return user, oldConcurrency, nil
+}
+
+func isBootstrapInviteEmail(email string) bool {
+	email = strings.TrimSpace(strings.ToLower(email))
+	return strings.HasSuffix(email, "@invite-login.invalid")
 }
 
 func (s *UserService) SetAvatar(ctx context.Context, userID int64, raw string) (*UserAvatar, error) {

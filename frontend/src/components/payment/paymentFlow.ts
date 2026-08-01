@@ -16,9 +16,10 @@ const VISIBLE_METHOD_ALIASES = {
   wxpay_direct: 'wxpay',
   stripe: 'stripe',
   airwallex: 'airwallex',
+  paddle: 'paddle',
 } as const
 
-export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe' | 'airwallex'
+export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe' | 'airwallex' | 'paddle'
 export type StripeVisibleMethod = 'alipay' | 'wechat_pay'
 export type PaymentLaunchKind =
   | 'qr_waiting'
@@ -44,6 +45,7 @@ export interface PaymentRecoverySnapshot {
   currency: string
   countryCode: string
   paymentEnv: string
+  checkoutId: string
   payAmount: number
   orderType: OrderType | ''
   paymentMode: string
@@ -164,6 +166,7 @@ export function decidePaymentLaunch(
     currency: result.currency || '',
     countryCode: result.country_code || '',
     paymentEnv: result.payment_env || '',
+    checkoutId: result.checkout_id || '',
     payAmount: result.pay_amount,
     orderType: context.orderType,
     paymentMode: (result.payment_mode || '').trim(),
@@ -177,6 +180,10 @@ export function decidePaymentLaunch(
     }
     const paymentState = { ...baseState, payUrl: context.airwallexRouteUrl || '' }
     return { kind: 'airwallex_route', paymentState, recovery: paymentState }
+  }
+
+  if (baseState.checkoutId) {
+    return { kind: 'unhandled', paymentState: baseState, recovery: baseState }
   }
 
   if (baseState.clientSecret) {
@@ -292,6 +299,7 @@ export function readPaymentRecoverySnapshot(
       || (parsed.currency != null && typeof parsed.currency !== 'string')
       || (parsed.countryCode != null && typeof parsed.countryCode !== 'string')
       || (parsed.paymentEnv != null && typeof parsed.paymentEnv !== 'string')
+      || (parsed.checkoutId != null && typeof parsed.checkoutId !== 'string')
       || typeof parsed.payAmount !== 'number'
       || typeof parsed.paymentMode !== 'string'
       || typeof parsed.resumeToken !== 'string'
@@ -323,6 +331,7 @@ export function readPaymentRecoverySnapshot(
       currency: parsed.currency || '',
       countryCode: parsed.countryCode || '',
       paymentEnv: parsed.paymentEnv || '',
+      checkoutId: parsed.checkoutId || '',
       payAmount: parsed.payAmount,
       orderType: parsed.orderType === 'subscription' ? 'subscription' : 'balance',
       paymentMode: parsed.paymentMode,

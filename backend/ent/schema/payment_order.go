@@ -47,6 +47,29 @@ func (PaymentOrder) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
 		field.Float("pay_amount").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
+		field.String("payment_currency").
+			MaxLen(8).
+			Default("CNY"),
+		field.Float("payment_amount").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Default(0),
+		field.String("ledger_currency").
+			MaxLen(8).
+			Default("USD"),
+		field.Float("ledger_amount").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Default(0),
+		field.Float("fx_rate_payment_to_ledger").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Default(1),
+		field.String("fx_source").
+			Optional().
+			Nillable().
+			MaxLen(32),
+		field.Time("fx_timestamp").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Float("fee_rate").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(0),

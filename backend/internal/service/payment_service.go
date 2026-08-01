@@ -73,6 +73,7 @@ func generateRandomString(n int) string {
 type CreateOrderRequest struct {
 	UserID          int64
 	Amount          float64
+	PaymentCurrency string
 	PaymentType     string
 	OpenID          string
 	ClientIP        string
@@ -90,6 +91,13 @@ type CreateOrderRequest struct {
 type CreateOrderResponse struct {
 	OrderID                       int64                           `json:"order_id"`
 	Amount                        float64                         `json:"amount"`
+	PaymentAmount                 float64                         `json:"payment_amount"`
+	PaymentCurrency               string                          `json:"payment_currency"`
+	LedgerAmount                  float64                         `json:"ledger_amount"`
+	LedgerCurrency                string                          `json:"ledger_currency"`
+	FXRate                        float64                         `json:"fx_rate"`
+	FXSource                      string                          `json:"fx_source"`
+	FXTimestamp                   time.Time                       `json:"fx_timestamp"`
 	PayAmount                     float64                         `json:"pay_amount"`
 	FeeRate                       float64                         `json:"fee_rate"`
 	Status                        string                          `json:"status"`
@@ -103,6 +111,7 @@ type CreateOrderResponse struct {
 	Currency                      string                          `json:"currency,omitempty"`
 	CountryCode                   string                          `json:"country_code,omitempty"`
 	PaymentEnv                    string                          `json:"payment_env,omitempty"`
+	CheckoutID                    string                          `json:"checkout_id,omitempty"`
 	OAuth                         *payment.WechatOAuthInfo        `json:"oauth,omitempty"`
 	JSAPI                         *payment.WechatJSAPIPayload     `json:"jsapi,omitempty"`
 	JSAPIPayload                  *payment.WechatJSAPIPayload     `json:"jsapi_payload,omitempty"`

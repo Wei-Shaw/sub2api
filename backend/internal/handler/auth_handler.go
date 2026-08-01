@@ -57,6 +57,37 @@ type RegisterRequest struct {
 	AffCode        string `json:"aff_code"`        // 邀请返利码
 }
 
+type InviteLoginRequest struct {
+	InvitationCode string `json:"invitation_code" binding:"required"`
+	DeviceHash     string `json:"device_hash"`
+	InstallID      string `json:"install_id"`
+	ClientKind     string `json:"client_kind"`
+	TurnstileToken string `json:"turnstile_token"`
+}
+
+type RedeemLoginRequest struct {
+	InvitationCode string `json:"invitation_code" binding:"required"`
+	TurnstileToken string `json:"turnstile_token"`
+}
+
+type InviteBootstrapAPIKeyResponse struct {
+	Platform   string `json:"platform"`
+	GroupID    int64  `json:"group_id"`
+	GroupName  string `json:"group_name"`
+	APIKeyID   int64  `json:"api_key_id"`
+	APIKey     string `json:"api_key"`
+	APIKeyName string `json:"api_key_name"`
+}
+
+type InviteLoginResponse struct {
+	AccessToken      string                          `json:"access_token"`
+	RefreshToken     string                          `json:"refresh_token,omitempty"`
+	ExpiresIn        int                             `json:"expires_in,omitempty"`
+	TokenType        string                          `json:"token_type"`
+	User             *dto.User                       `json:"user"`
+	BootstrapAPIKeys []InviteBootstrapAPIKeyResponse `json:"bootstrap_api_keys"`
+}
+
 // SendVerifyCodeRequest 发送验证码请求
 type SendVerifyCodeRequest struct {
 	Email          string `json:"email" binding:"required,email"`
@@ -78,11 +109,20 @@ type LoginRequest struct {
 
 // AuthResponse 认证响应格式（匹配前端期望）
 type AuthResponse struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token,omitempty"` // 新增：Refresh Token
-	ExpiresIn    int       `json:"expires_in,omitempty"`    // 新增：Access Token有效期（秒）
-	TokenType    string    `json:"token_type"`
-	User         *dto.User `json:"user"`
+	AccessToken      string                    `json:"access_token"`
+	RefreshToken     string                    `json:"refresh_token,omitempty"`
+	ExpiresIn        int                       `json:"expires_in,omitempty"`
+	TokenType        string                    `json:"token_type"`
+	User             *dto.User                 `json:"user"`
+	BootstrapAPIKeys []BootstrapAPIKeyResponse `json:"bootstrap_api_keys,omitempty"`
+}
+
+type BootstrapAPIKeyResponse struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Key      string `json:"key"`
+	GroupID  int64  `json:"group_id"`
+	Platform string `json:"platform"`
 }
 
 func ensureLoginUserActive(user *service.User) error {
@@ -190,6 +230,93 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	h.respondWithTokenPair(c, user)
+}
+
+// InviteLogin handles device-bound invite login.
+// POST /api/v1/auth/invite-login
+func (h *AuthHandler) InviteLogin(c *gin.Context) {
+	var req InviteLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	result, err := h.authService.InviteLogin(c.Request.Context(), service.InviteLoginInput{
+		InvitationCode: req.InvitationCode,
+		DeviceHash:     req.DeviceHash,
+		InstallID:      req.InstallID,
+		ClientKind:     req.ClientKind,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	apiKeysResp := make([]BootstrapAPIKeyResponse, 0, len(result.BootstrapAPIKeys))
+	for _, key := range result.BootstrapAPIKeys {
+		apiKeysResp = append(apiKeysResp, BootstrapAPIKeyResponse{
+			ID:       key.ID,
+			Name:     key.Name,
+			Key:      key.Key,
+			GroupID:  key.GroupID,
+			Platform: key.Platform,
+		})
+	}
+
+	response.Success(c, AuthResponse{
+		AccessToken:      result.TokenPair.AccessToken,
+		RefreshToken:     result.TokenPair.RefreshToken,
+		ExpiresIn:        result.TokenPair.ExpiresIn,
+		TokenType:        "Bearer",
+		User:             dto.UserFromService(result.User),
+		BootstrapAPIKeys: apiKeysResp,
+	})
+}
+
+// RedeemLogin handles the web redeem login.
+// POST /api/v1/auth/redeem-login
+func (h *AuthHandler) RedeemLogin(c *gin.Context) {
+	var req RedeemLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	result, err := h.authService.RedeemLogin(c.Request.Context(), req.InvitationCode)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	apiKeysResp := make([]BootstrapAPIKeyResponse, 0, len(result.BootstrapAPIKeys))
+	for _, key := range result.BootstrapAPIKeys {
+		apiKeysResp = append(apiKeysResp, BootstrapAPIKeyResponse{
+			ID:       key.ID,
+			Name:     key.Name,
+			Key:      key.Key,
+			GroupID:  key.GroupID,
+			Platform: key.Platform,
+		})
+	}
+
+	response.Success(c, AuthResponse{
+		AccessToken:      result.TokenPair.AccessToken,
+		RefreshToken:     result.TokenPair.RefreshToken,
+		ExpiresIn:        result.TokenPair.ExpiresIn,
+		TokenType:        "Bearer",
+		User:             dto.UserFromService(result.User),
+		BootstrapAPIKeys: apiKeysResp,
+	})
 }
 
 // SendVerifyCode 发送邮箱验证码

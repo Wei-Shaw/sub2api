@@ -123,6 +123,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoUsernamePath:           "",
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeyDeviceClaimBonusBalance:                   "0",
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
@@ -365,6 +366,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.DefaultBalance = balance
 	} else {
 		result.DefaultBalance = s.cfg.Default.UserBalance
+	}
+	if bonus, err := strconv.ParseFloat(settings[SettingKeyDeviceClaimBonusBalance], 64); err == nil && bonus >= 0 {
+		result.DeviceClaimBonusBalance = bonus
 	}
 	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebateRate], 64); err == nil {
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)

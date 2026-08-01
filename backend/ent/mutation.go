@@ -28778,60 +28778,70 @@ func (m *PaymentAuditLogMutation) ResetEdge(name string) error {
 // PaymentOrderMutation represents an operation that mutates the PaymentOrder nodes in the graph.
 type PaymentOrderMutation struct {
 	config
-	op                       Op
-	typ                      string
-	id                       *int64
-	user_email               *string
-	user_name                *string
-	user_notes               *string
-	amount                   *float64
-	addamount                *float64
-	pay_amount               *float64
-	addpay_amount            *float64
-	fee_rate                 *float64
-	addfee_rate              *float64
-	recharge_code            *string
-	out_trade_no             *string
-	payment_type             *string
-	payment_trade_no         *string
-	pay_url                  *string
-	qr_code                  *string
-	qr_code_img              *string
-	order_type               *string
-	plan_id                  *int64
-	addplan_id               *int64
-	subscription_group_id    *int64
-	addsubscription_group_id *int64
-	subscription_days        *int
-	addsubscription_days     *int
-	provider_instance_id     *string
-	provider_key             *string
-	provider_snapshot        *map[string]interface{}
-	status                   *string
-	refund_amount            *float64
-	addrefund_amount         *float64
-	refund_reason            *string
-	refund_at                *time.Time
-	force_refund             *bool
-	refund_requested_at      *time.Time
-	refund_request_reason    *string
-	refund_requested_by      *string
-	expires_at               *time.Time
-	paid_at                  *time.Time
-	completed_at             *time.Time
-	failed_at                *time.Time
-	failed_reason            *string
-	client_ip                *string
-	src_host                 *string
-	src_url                  *string
-	created_at               *time.Time
-	updated_at               *time.Time
-	clearedFields            map[string]struct{}
-	user                     *int64
-	cleareduser              bool
-	done                     bool
-	oldValue                 func(context.Context) (*PaymentOrder, error)
-	predicates               []predicate.PaymentOrder
+	op                           Op
+	typ                          string
+	id                           *int64
+	user_email                   *string
+	user_name                    *string
+	user_notes                   *string
+	amount                       *float64
+	addamount                    *float64
+	pay_amount                   *float64
+	addpay_amount                *float64
+	payment_currency             *string
+	payment_amount               *float64
+	addpayment_amount            *float64
+	ledger_currency              *string
+	ledger_amount                *float64
+	addledger_amount             *float64
+	fx_rate_payment_to_ledger    *float64
+	addfx_rate_payment_to_ledger *float64
+	fx_source                    *string
+	fx_timestamp                 *time.Time
+	fee_rate                     *float64
+	addfee_rate                  *float64
+	recharge_code                *string
+	out_trade_no                 *string
+	payment_type                 *string
+	payment_trade_no             *string
+	pay_url                      *string
+	qr_code                      *string
+	qr_code_img                  *string
+	order_type                   *string
+	plan_id                      *int64
+	addplan_id                   *int64
+	subscription_group_id        *int64
+	addsubscription_group_id     *int64
+	subscription_days            *int
+	addsubscription_days         *int
+	provider_instance_id         *string
+	provider_key                 *string
+	provider_snapshot            *map[string]interface{}
+	status                       *string
+	refund_amount                *float64
+	addrefund_amount             *float64
+	refund_reason                *string
+	refund_at                    *time.Time
+	force_refund                 *bool
+	refund_requested_at          *time.Time
+	refund_request_reason        *string
+	refund_requested_by          *string
+	expires_at                   *time.Time
+	paid_at                      *time.Time
+	completed_at                 *time.Time
+	failed_at                    *time.Time
+	failed_reason                *string
+	client_ip                    *string
+	src_host                     *string
+	src_url                      *string
+	created_at                   *time.Time
+	updated_at                   *time.Time
+	clearedFields                map[string]struct{}
+	user                         *int64
+	cleareduser                  bool
+	done                         bool
+	oldValue                     func(context.Context) (*PaymentOrder, error)
+	predicates                   []predicate.PaymentOrder
 }
 
 var _ ent.Mutation = (*PaymentOrderMutation)(nil)
@@ -29199,6 +29209,344 @@ func (m *PaymentOrderMutation) AddedPayAmount() (r float64, exists bool) {
 func (m *PaymentOrderMutation) ResetPayAmount() {
 	m.pay_amount = nil
 	m.addpay_amount = nil
+}
+
+// SetPaymentCurrency sets the "payment_currency" field.
+func (m *PaymentOrderMutation) SetPaymentCurrency(s string) {
+	m.payment_currency = &s
+}
+
+// PaymentCurrency returns the value of the "payment_currency" field in the mutation.
+func (m *PaymentOrderMutation) PaymentCurrency() (r string, exists bool) {
+	v := m.payment_currency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPaymentCurrency returns the old "payment_currency" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldPaymentCurrency(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPaymentCurrency is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPaymentCurrency requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPaymentCurrency: %w", err)
+	}
+	return oldValue.PaymentCurrency, nil
+}
+
+// ResetPaymentCurrency resets all changes to the "payment_currency" field.
+func (m *PaymentOrderMutation) ResetPaymentCurrency() {
+	m.payment_currency = nil
+}
+
+// SetPaymentAmount sets the "payment_amount" field.
+func (m *PaymentOrderMutation) SetPaymentAmount(f float64) {
+	m.payment_amount = &f
+	m.addpayment_amount = nil
+}
+
+// PaymentAmount returns the value of the "payment_amount" field in the mutation.
+func (m *PaymentOrderMutation) PaymentAmount() (r float64, exists bool) {
+	v := m.payment_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPaymentAmount returns the old "payment_amount" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldPaymentAmount(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPaymentAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPaymentAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPaymentAmount: %w", err)
+	}
+	return oldValue.PaymentAmount, nil
+}
+
+// AddPaymentAmount adds f to the "payment_amount" field.
+func (m *PaymentOrderMutation) AddPaymentAmount(f float64) {
+	if m.addpayment_amount != nil {
+		*m.addpayment_amount += f
+	} else {
+		m.addpayment_amount = &f
+	}
+}
+
+// AddedPaymentAmount returns the value that was added to the "payment_amount" field in this mutation.
+func (m *PaymentOrderMutation) AddedPaymentAmount() (r float64, exists bool) {
+	v := m.addpayment_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPaymentAmount resets all changes to the "payment_amount" field.
+func (m *PaymentOrderMutation) ResetPaymentAmount() {
+	m.payment_amount = nil
+	m.addpayment_amount = nil
+}
+
+// SetLedgerCurrency sets the "ledger_currency" field.
+func (m *PaymentOrderMutation) SetLedgerCurrency(s string) {
+	m.ledger_currency = &s
+}
+
+// LedgerCurrency returns the value of the "ledger_currency" field in the mutation.
+func (m *PaymentOrderMutation) LedgerCurrency() (r string, exists bool) {
+	v := m.ledger_currency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLedgerCurrency returns the old "ledger_currency" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldLedgerCurrency(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLedgerCurrency is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLedgerCurrency requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLedgerCurrency: %w", err)
+	}
+	return oldValue.LedgerCurrency, nil
+}
+
+// ResetLedgerCurrency resets all changes to the "ledger_currency" field.
+func (m *PaymentOrderMutation) ResetLedgerCurrency() {
+	m.ledger_currency = nil
+}
+
+// SetLedgerAmount sets the "ledger_amount" field.
+func (m *PaymentOrderMutation) SetLedgerAmount(f float64) {
+	m.ledger_amount = &f
+	m.addledger_amount = nil
+}
+
+// LedgerAmount returns the value of the "ledger_amount" field in the mutation.
+func (m *PaymentOrderMutation) LedgerAmount() (r float64, exists bool) {
+	v := m.ledger_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLedgerAmount returns the old "ledger_amount" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldLedgerAmount(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLedgerAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLedgerAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLedgerAmount: %w", err)
+	}
+	return oldValue.LedgerAmount, nil
+}
+
+// AddLedgerAmount adds f to the "ledger_amount" field.
+func (m *PaymentOrderMutation) AddLedgerAmount(f float64) {
+	if m.addledger_amount != nil {
+		*m.addledger_amount += f
+	} else {
+		m.addledger_amount = &f
+	}
+}
+
+// AddedLedgerAmount returns the value that was added to the "ledger_amount" field in this mutation.
+func (m *PaymentOrderMutation) AddedLedgerAmount() (r float64, exists bool) {
+	v := m.addledger_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLedgerAmount resets all changes to the "ledger_amount" field.
+func (m *PaymentOrderMutation) ResetLedgerAmount() {
+	m.ledger_amount = nil
+	m.addledger_amount = nil
+}
+
+// SetFxRatePaymentToLedger sets the "fx_rate_payment_to_ledger" field.
+func (m *PaymentOrderMutation) SetFxRatePaymentToLedger(f float64) {
+	m.fx_rate_payment_to_ledger = &f
+	m.addfx_rate_payment_to_ledger = nil
+}
+
+// FxRatePaymentToLedger returns the value of the "fx_rate_payment_to_ledger" field in the mutation.
+func (m *PaymentOrderMutation) FxRatePaymentToLedger() (r float64, exists bool) {
+	v := m.fx_rate_payment_to_ledger
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFxRatePaymentToLedger returns the old "fx_rate_payment_to_ledger" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldFxRatePaymentToLedger(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFxRatePaymentToLedger is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFxRatePaymentToLedger requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFxRatePaymentToLedger: %w", err)
+	}
+	return oldValue.FxRatePaymentToLedger, nil
+}
+
+// AddFxRatePaymentToLedger adds f to the "fx_rate_payment_to_ledger" field.
+func (m *PaymentOrderMutation) AddFxRatePaymentToLedger(f float64) {
+	if m.addfx_rate_payment_to_ledger != nil {
+		*m.addfx_rate_payment_to_ledger += f
+	} else {
+		m.addfx_rate_payment_to_ledger = &f
+	}
+}
+
+// AddedFxRatePaymentToLedger returns the value that was added to the "fx_rate_payment_to_ledger" field in this mutation.
+func (m *PaymentOrderMutation) AddedFxRatePaymentToLedger() (r float64, exists bool) {
+	v := m.addfx_rate_payment_to_ledger
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFxRatePaymentToLedger resets all changes to the "fx_rate_payment_to_ledger" field.
+func (m *PaymentOrderMutation) ResetFxRatePaymentToLedger() {
+	m.fx_rate_payment_to_ledger = nil
+	m.addfx_rate_payment_to_ledger = nil
+}
+
+// SetFxSource sets the "fx_source" field.
+func (m *PaymentOrderMutation) SetFxSource(s string) {
+	m.fx_source = &s
+}
+
+// FxSource returns the value of the "fx_source" field in the mutation.
+func (m *PaymentOrderMutation) FxSource() (r string, exists bool) {
+	v := m.fx_source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFxSource returns the old "fx_source" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldFxSource(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFxSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFxSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFxSource: %w", err)
+	}
+	return oldValue.FxSource, nil
+}
+
+// ClearFxSource clears the value of the "fx_source" field.
+func (m *PaymentOrderMutation) ClearFxSource() {
+	m.fx_source = nil
+	m.clearedFields[paymentorder.FieldFxSource] = struct{}{}
+}
+
+// FxSourceCleared returns if the "fx_source" field was cleared in this mutation.
+func (m *PaymentOrderMutation) FxSourceCleared() bool {
+	_, ok := m.clearedFields[paymentorder.FieldFxSource]
+	return ok
+}
+
+// ResetFxSource resets all changes to the "fx_source" field.
+func (m *PaymentOrderMutation) ResetFxSource() {
+	m.fx_source = nil
+	delete(m.clearedFields, paymentorder.FieldFxSource)
+}
+
+// SetFxTimestamp sets the "fx_timestamp" field.
+func (m *PaymentOrderMutation) SetFxTimestamp(t time.Time) {
+	m.fx_timestamp = &t
+}
+
+// FxTimestamp returns the value of the "fx_timestamp" field in the mutation.
+func (m *PaymentOrderMutation) FxTimestamp() (r time.Time, exists bool) {
+	v := m.fx_timestamp
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFxTimestamp returns the old "fx_timestamp" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldFxTimestamp(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFxTimestamp is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFxTimestamp requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFxTimestamp: %w", err)
+	}
+	return oldValue.FxTimestamp, nil
+}
+
+// ClearFxTimestamp clears the value of the "fx_timestamp" field.
+func (m *PaymentOrderMutation) ClearFxTimestamp() {
+	m.fx_timestamp = nil
+	m.clearedFields[paymentorder.FieldFxTimestamp] = struct{}{}
+}
+
+// FxTimestampCleared returns if the "fx_timestamp" field was cleared in this mutation.
+func (m *PaymentOrderMutation) FxTimestampCleared() bool {
+	_, ok := m.clearedFields[paymentorder.FieldFxTimestamp]
+	return ok
+}
+
+// ResetFxTimestamp resets all changes to the "fx_timestamp" field.
+func (m *PaymentOrderMutation) ResetFxTimestamp() {
+	m.fx_timestamp = nil
+	delete(m.clearedFields, paymentorder.FieldFxTimestamp)
 }
 
 // SetFeeRate sets the "fee_rate" field.
@@ -30800,7 +31148,7 @@ func (m *PaymentOrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentOrderMutation) Fields() []string {
-	fields := make([]string, 0, 39)
+	fields := make([]string, 0, 46)
 	if m.user != nil {
 		fields = append(fields, paymentorder.FieldUserID)
 	}
@@ -30818,6 +31166,27 @@ func (m *PaymentOrderMutation) Fields() []string {
 	}
 	if m.pay_amount != nil {
 		fields = append(fields, paymentorder.FieldPayAmount)
+	}
+	if m.payment_currency != nil {
+		fields = append(fields, paymentorder.FieldPaymentCurrency)
+	}
+	if m.payment_amount != nil {
+		fields = append(fields, paymentorder.FieldPaymentAmount)
+	}
+	if m.ledger_currency != nil {
+		fields = append(fields, paymentorder.FieldLedgerCurrency)
+	}
+	if m.ledger_amount != nil {
+		fields = append(fields, paymentorder.FieldLedgerAmount)
+	}
+	if m.fx_rate_payment_to_ledger != nil {
+		fields = append(fields, paymentorder.FieldFxRatePaymentToLedger)
+	}
+	if m.fx_source != nil {
+		fields = append(fields, paymentorder.FieldFxSource)
+	}
+	if m.fx_timestamp != nil {
+		fields = append(fields, paymentorder.FieldFxTimestamp)
 	}
 	if m.fee_rate != nil {
 		fields = append(fields, paymentorder.FieldFeeRate)
@@ -30938,6 +31307,20 @@ func (m *PaymentOrderMutation) Field(name string) (ent.Value, bool) {
 		return m.Amount()
 	case paymentorder.FieldPayAmount:
 		return m.PayAmount()
+	case paymentorder.FieldPaymentCurrency:
+		return m.PaymentCurrency()
+	case paymentorder.FieldPaymentAmount:
+		return m.PaymentAmount()
+	case paymentorder.FieldLedgerCurrency:
+		return m.LedgerCurrency()
+	case paymentorder.FieldLedgerAmount:
+		return m.LedgerAmount()
+	case paymentorder.FieldFxRatePaymentToLedger:
+		return m.FxRatePaymentToLedger()
+	case paymentorder.FieldFxSource:
+		return m.FxSource()
+	case paymentorder.FieldFxTimestamp:
+		return m.FxTimestamp()
 	case paymentorder.FieldFeeRate:
 		return m.FeeRate()
 	case paymentorder.FieldRechargeCode:
@@ -31025,6 +31408,20 @@ func (m *PaymentOrderMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldAmount(ctx)
 	case paymentorder.FieldPayAmount:
 		return m.OldPayAmount(ctx)
+	case paymentorder.FieldPaymentCurrency:
+		return m.OldPaymentCurrency(ctx)
+	case paymentorder.FieldPaymentAmount:
+		return m.OldPaymentAmount(ctx)
+	case paymentorder.FieldLedgerCurrency:
+		return m.OldLedgerCurrency(ctx)
+	case paymentorder.FieldLedgerAmount:
+		return m.OldLedgerAmount(ctx)
+	case paymentorder.FieldFxRatePaymentToLedger:
+		return m.OldFxRatePaymentToLedger(ctx)
+	case paymentorder.FieldFxSource:
+		return m.OldFxSource(ctx)
+	case paymentorder.FieldFxTimestamp:
+		return m.OldFxTimestamp(ctx)
 	case paymentorder.FieldFeeRate:
 		return m.OldFeeRate(ctx)
 	case paymentorder.FieldRechargeCode:
@@ -31141,6 +31538,55 @@ func (m *PaymentOrderMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPayAmount(v)
+		return nil
+	case paymentorder.FieldPaymentCurrency:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPaymentCurrency(v)
+		return nil
+	case paymentorder.FieldPaymentAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPaymentAmount(v)
+		return nil
+	case paymentorder.FieldLedgerCurrency:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLedgerCurrency(v)
+		return nil
+	case paymentorder.FieldLedgerAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLedgerAmount(v)
+		return nil
+	case paymentorder.FieldFxRatePaymentToLedger:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFxRatePaymentToLedger(v)
+		return nil
+	case paymentorder.FieldFxSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFxSource(v)
+		return nil
+	case paymentorder.FieldFxTimestamp:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFxTimestamp(v)
 		return nil
 	case paymentorder.FieldFeeRate:
 		v, ok := value.(float64)
@@ -31387,6 +31833,15 @@ func (m *PaymentOrderMutation) AddedFields() []string {
 	if m.addpay_amount != nil {
 		fields = append(fields, paymentorder.FieldPayAmount)
 	}
+	if m.addpayment_amount != nil {
+		fields = append(fields, paymentorder.FieldPaymentAmount)
+	}
+	if m.addledger_amount != nil {
+		fields = append(fields, paymentorder.FieldLedgerAmount)
+	}
+	if m.addfx_rate_payment_to_ledger != nil {
+		fields = append(fields, paymentorder.FieldFxRatePaymentToLedger)
+	}
 	if m.addfee_rate != nil {
 		fields = append(fields, paymentorder.FieldFeeRate)
 	}
@@ -31414,6 +31869,12 @@ func (m *PaymentOrderMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedAmount()
 	case paymentorder.FieldPayAmount:
 		return m.AddedPayAmount()
+	case paymentorder.FieldPaymentAmount:
+		return m.AddedPaymentAmount()
+	case paymentorder.FieldLedgerAmount:
+		return m.AddedLedgerAmount()
+	case paymentorder.FieldFxRatePaymentToLedger:
+		return m.AddedFxRatePaymentToLedger()
 	case paymentorder.FieldFeeRate:
 		return m.AddedFeeRate()
 	case paymentorder.FieldPlanID:
@@ -31446,6 +31907,27 @@ func (m *PaymentOrderMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddPayAmount(v)
+		return nil
+	case paymentorder.FieldPaymentAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPaymentAmount(v)
+		return nil
+	case paymentorder.FieldLedgerAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLedgerAmount(v)
+		return nil
+	case paymentorder.FieldFxRatePaymentToLedger:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFxRatePaymentToLedger(v)
 		return nil
 	case paymentorder.FieldFeeRate:
 		v, ok := value.(float64)
@@ -31492,6 +31974,12 @@ func (m *PaymentOrderMutation) ClearedFields() []string {
 	var fields []string
 	if m.FieldCleared(paymentorder.FieldUserNotes) {
 		fields = append(fields, paymentorder.FieldUserNotes)
+	}
+	if m.FieldCleared(paymentorder.FieldFxSource) {
+		fields = append(fields, paymentorder.FieldFxSource)
+	}
+	if m.FieldCleared(paymentorder.FieldFxTimestamp) {
+		fields = append(fields, paymentorder.FieldFxTimestamp)
 	}
 	if m.FieldCleared(paymentorder.FieldPayURL) {
 		fields = append(fields, paymentorder.FieldPayURL)
@@ -31566,6 +32054,12 @@ func (m *PaymentOrderMutation) ClearField(name string) error {
 	switch name {
 	case paymentorder.FieldUserNotes:
 		m.ClearUserNotes()
+		return nil
+	case paymentorder.FieldFxSource:
+		m.ClearFxSource()
+		return nil
+	case paymentorder.FieldFxTimestamp:
+		m.ClearFxTimestamp()
 		return nil
 	case paymentorder.FieldPayURL:
 		m.ClearPayURL()
@@ -31649,6 +32143,27 @@ func (m *PaymentOrderMutation) ResetField(name string) error {
 		return nil
 	case paymentorder.FieldPayAmount:
 		m.ResetPayAmount()
+		return nil
+	case paymentorder.FieldPaymentCurrency:
+		m.ResetPaymentCurrency()
+		return nil
+	case paymentorder.FieldPaymentAmount:
+		m.ResetPaymentAmount()
+		return nil
+	case paymentorder.FieldLedgerCurrency:
+		m.ResetLedgerCurrency()
+		return nil
+	case paymentorder.FieldLedgerAmount:
+		m.ResetLedgerAmount()
+		return nil
+	case paymentorder.FieldFxRatePaymentToLedger:
+		m.ResetFxRatePaymentToLedger()
+		return nil
+	case paymentorder.FieldFxSource:
+		m.ResetFxSource()
+		return nil
+	case paymentorder.FieldFxTimestamp:
+		m.ResetFxTimestamp()
 		return nil
 	case paymentorder.FieldFeeRate:
 		m.ResetFeeRate()

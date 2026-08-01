@@ -31,6 +31,20 @@ type PaymentOrder struct {
 	Amount float64 `json:"amount,omitempty"`
 	// PayAmount holds the value of the "pay_amount" field.
 	PayAmount float64 `json:"pay_amount,omitempty"`
+	// PaymentCurrency holds the value of the "payment_currency" field.
+	PaymentCurrency string `json:"payment_currency,omitempty"`
+	// PaymentAmount holds the value of the "payment_amount" field.
+	PaymentAmount float64 `json:"payment_amount,omitempty"`
+	// LedgerCurrency holds the value of the "ledger_currency" field.
+	LedgerCurrency string `json:"ledger_currency,omitempty"`
+	// LedgerAmount holds the value of the "ledger_amount" field.
+	LedgerAmount float64 `json:"ledger_amount,omitempty"`
+	// FxRatePaymentToLedger holds the value of the "fx_rate_payment_to_ledger" field.
+	FxRatePaymentToLedger float64 `json:"fx_rate_payment_to_ledger,omitempty"`
+	// FxSource holds the value of the "fx_source" field.
+	FxSource *string `json:"fx_source,omitempty"`
+	// FxTimestamp holds the value of the "fx_timestamp" field.
+	FxTimestamp *time.Time `json:"fx_timestamp,omitempty"`
 	// FeeRate holds the value of the "fee_rate" field.
 	FeeRate float64 `json:"fee_rate,omitempty"`
 	// RechargeCode holds the value of the "recharge_code" field.
@@ -132,13 +146,13 @@ func (*PaymentOrder) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case paymentorder.FieldForceRefund:
 			values[i] = new(sql.NullBool)
-		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldRefundAmount:
+		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldPaymentAmount, paymentorder.FieldLedgerAmount, paymentorder.FieldFxRatePaymentToLedger, paymentorder.FieldFeeRate, paymentorder.FieldRefundAmount:
 			values[i] = new(sql.NullFloat64)
 		case paymentorder.FieldID, paymentorder.FieldUserID, paymentorder.FieldPlanID, paymentorder.FieldSubscriptionGroupID, paymentorder.FieldSubscriptionDays:
 			values[i] = new(sql.NullInt64)
-		case paymentorder.FieldUserEmail, paymentorder.FieldUserName, paymentorder.FieldUserNotes, paymentorder.FieldRechargeCode, paymentorder.FieldOutTradeNo, paymentorder.FieldPaymentType, paymentorder.FieldPaymentTradeNo, paymentorder.FieldPayURL, paymentorder.FieldQrCode, paymentorder.FieldQrCodeImg, paymentorder.FieldOrderType, paymentorder.FieldProviderInstanceID, paymentorder.FieldProviderKey, paymentorder.FieldStatus, paymentorder.FieldRefundReason, paymentorder.FieldRefundRequestReason, paymentorder.FieldRefundRequestedBy, paymentorder.FieldFailedReason, paymentorder.FieldClientIP, paymentorder.FieldSrcHost, paymentorder.FieldSrcURL:
+		case paymentorder.FieldUserEmail, paymentorder.FieldUserName, paymentorder.FieldUserNotes, paymentorder.FieldPaymentCurrency, paymentorder.FieldLedgerCurrency, paymentorder.FieldFxSource, paymentorder.FieldRechargeCode, paymentorder.FieldOutTradeNo, paymentorder.FieldPaymentType, paymentorder.FieldPaymentTradeNo, paymentorder.FieldPayURL, paymentorder.FieldQrCode, paymentorder.FieldQrCodeImg, paymentorder.FieldOrderType, paymentorder.FieldProviderInstanceID, paymentorder.FieldProviderKey, paymentorder.FieldStatus, paymentorder.FieldRefundReason, paymentorder.FieldRefundRequestReason, paymentorder.FieldRefundRequestedBy, paymentorder.FieldFailedReason, paymentorder.FieldClientIP, paymentorder.FieldSrcHost, paymentorder.FieldSrcURL:
 			values[i] = new(sql.NullString)
-		case paymentorder.FieldRefundAt, paymentorder.FieldRefundRequestedAt, paymentorder.FieldExpiresAt, paymentorder.FieldPaidAt, paymentorder.FieldCompletedAt, paymentorder.FieldFailedAt, paymentorder.FieldCreatedAt, paymentorder.FieldUpdatedAt:
+		case paymentorder.FieldFxTimestamp, paymentorder.FieldRefundAt, paymentorder.FieldRefundRequestedAt, paymentorder.FieldExpiresAt, paymentorder.FieldPaidAt, paymentorder.FieldCompletedAt, paymentorder.FieldFailedAt, paymentorder.FieldCreatedAt, paymentorder.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -197,6 +211,50 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field pay_amount", values[i])
 			} else if value.Valid {
 				_m.PayAmount = value.Float64
+			}
+		case paymentorder.FieldPaymentCurrency:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field payment_currency", values[i])
+			} else if value.Valid {
+				_m.PaymentCurrency = value.String
+			}
+		case paymentorder.FieldPaymentAmount:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field payment_amount", values[i])
+			} else if value.Valid {
+				_m.PaymentAmount = value.Float64
+			}
+		case paymentorder.FieldLedgerCurrency:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field ledger_currency", values[i])
+			} else if value.Valid {
+				_m.LedgerCurrency = value.String
+			}
+		case paymentorder.FieldLedgerAmount:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field ledger_amount", values[i])
+			} else if value.Valid {
+				_m.LedgerAmount = value.Float64
+			}
+		case paymentorder.FieldFxRatePaymentToLedger:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field fx_rate_payment_to_ledger", values[i])
+			} else if value.Valid {
+				_m.FxRatePaymentToLedger = value.Float64
+			}
+		case paymentorder.FieldFxSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field fx_source", values[i])
+			} else if value.Valid {
+				_m.FxSource = new(string)
+				*_m.FxSource = value.String
+			}
+		case paymentorder.FieldFxTimestamp:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field fx_timestamp", values[i])
+			} else if value.Valid {
+				_m.FxTimestamp = new(time.Time)
+				*_m.FxTimestamp = value.Time
 			}
 		case paymentorder.FieldFeeRate:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -476,6 +534,31 @@ func (_m *PaymentOrder) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("pay_amount=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PayAmount))
+	builder.WriteString(", ")
+	builder.WriteString("payment_currency=")
+	builder.WriteString(_m.PaymentCurrency)
+	builder.WriteString(", ")
+	builder.WriteString("payment_amount=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PaymentAmount))
+	builder.WriteString(", ")
+	builder.WriteString("ledger_currency=")
+	builder.WriteString(_m.LedgerCurrency)
+	builder.WriteString(", ")
+	builder.WriteString("ledger_amount=")
+	builder.WriteString(fmt.Sprintf("%v", _m.LedgerAmount))
+	builder.WriteString(", ")
+	builder.WriteString("fx_rate_payment_to_ledger=")
+	builder.WriteString(fmt.Sprintf("%v", _m.FxRatePaymentToLedger))
+	builder.WriteString(", ")
+	if v := _m.FxSource; v != nil {
+		builder.WriteString("fx_source=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.FxTimestamp; v != nil {
+		builder.WriteString("fx_timestamp=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("fee_rate=")
 	builder.WriteString(fmt.Sprintf("%v", _m.FeeRate))

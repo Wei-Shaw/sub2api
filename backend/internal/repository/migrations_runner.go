@@ -100,7 +100,10 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return errors.New("nil sql db")
 	}
-	return applyMigrationsFS(ctx, db, migrations.FS)
+	if err := applyMigrationsFS(ctx, db, migrations.UpstreamFS); err != nil {
+		return err
+	}
+	return applyMigrationNamespaces(ctx, db, migrations.LocalFS, "local/")
 }
 
 // applyMigrationsFS 是迁移执行的核心实现。
@@ -145,27 +148,51 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		_ = pgAdvisoryUnlock(unlockCtx, lockConn)
 	}()
 
-	// 创建迁移记录表（如果不存在）。
-	// 该表记录所有已应用的迁移及其校验和。
+	return applyMigrationsFSUnlocked(ctx, lockConn, fsys)
+}
+
+func applyMigrationNamespaces(ctx context.Context, db *sql.DB, fsys fs.FS, glob string) error {
+	if db == nil {
+		return errors.New("nil sql db")
+	}
+
+	lockConn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migrations lock connection: %w", err)
+	}
+	defer func() { _ = lockConn.Close() }()
+	if err := pgAdvisoryLock(ctx, lockConn); err != nil {
+		return err
+	}
+	defer func() {
+		unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = pgAdvisoryUnlock(unlockCtx, lockConn)
+	}()
+
+	return applyMigrationsPatternUnlocked(ctx, lockConn, fsys, glob)
+}
+
+func applyMigrationsFSUnlocked(ctx context.Context, lockConn migrationConnection, fsys fs.FS) error {
+	return applyMigrationsPatternUnlocked(ctx, lockConn, fsys, "*.sql")
+}
+
+func applyMigrationsPatternUnlocked(ctx context.Context, lockConn migrationConnection, fsys fs.FS, pattern string) error {
 	if _, err := lockConn.ExecContext(ctx, schemaMigrationsTableDDL); err != nil {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	// 自动对齐 Atlas 基线（如果检测到 legacy schema_migrations 且缺失 atlas_schema_revisions）。
 	if err := ensureAtlasBaselineAligned(ctx, lockConn, fsys); err != nil {
 		return err
 	}
 
-	// 获取所有 .sql 迁移文件并按文件名排序。
-	// 命名规范：使用零填充数字前缀（如 001_init.sql, 002_add_users.sql）。
-	files, err := fs.Glob(fsys, "*.sql")
+	files, err := fs.Glob(fsys, pattern)
 	if err != nil {
 		return fmt.Errorf("list migrations: %w", err)
 	}
-	sort.Strings(files) // 确保按文件名顺序执行迁移
+	sort.Strings(files)
 
 	for _, name := range files {
-		// 读取迁移文件内容
 		contentBytes, err := fs.ReadFile(fsys, name)
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", name, err)
@@ -173,26 +200,19 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 
 		content := strings.TrimSpace(string(contentBytes))
 		if content == "" {
-			continue // 跳过空文件
+			continue
 		}
 
-		// 计算文件内容的 SHA256 校验和，用于检测文件是否被修改。
-		// 这是一种防篡改机制：如果有人修改了已应用的迁移文件，系统会拒绝启动。
 		sum := sha256.Sum256([]byte(content))
 		checksum := hex.EncodeToString(sum[:])
 
-		// 检查该迁移是否已经应用
 		var existing string
 		rowErr := lockConn.QueryRowContext(ctx, "SELECT checksum FROM schema_migrations WHERE filename = $1", name).Scan(&existing)
 		if rowErr == nil {
-			// 迁移已应用，验证校验和是否匹配
 			if existing != checksum {
-				// 兼容特定历史误改场景（仅白名单规则），其余仍保持严格不可变约束。
 				if isMigrationChecksumCompatible(name, existing, checksum) {
 					continue
 				}
-				// 校验和不匹配意味着迁移文件在应用后被修改，这是危险的。
-				// 正确的做法是创建新的迁移文件来进行变更。
 				return fmt.Errorf(
 					"migration %s checksum mismatch (db=%s file=%s)\n"+
 						"This means the migration file was modified after being applied to the database.\n"+
@@ -203,7 +223,7 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 					name, existing, checksum, name, name,
 				)
 			}
-			continue // 迁移已应用且校验和匹配，跳过
+			continue
 		}
 		if !errors.Is(rowErr, sql.ErrNoRows) {
 			return fmt.Errorf("check migration %s: %w", name, rowErr)
@@ -218,9 +238,6 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 			if err := prepareNonTransactionalMigration(ctx, lockConn, name); err != nil {
 				return fmt.Errorf("prepare migration %s: %w", name, err)
 			}
-
-			// *_notx.sql：用于 CREATE/DROP INDEX CONCURRENTLY 场景，必须非事务执行。
-			// 逐条语句执行，避免将多条 CONCURRENTLY 语句放入同一个隐式事务块。
 			statements := splitSQLStatements(content)
 			for i, stmt := range statements {
 				trimmed := strings.TrimSpace(stmt)
@@ -245,20 +262,14 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		if err != nil {
 			return fmt.Errorf("begin migration %s: %w", name, err)
 		}
-
-		// 执行迁移 SQL
 		if _, err := tx.ExecContext(ctx, content); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("apply migration %s: %w", name, err)
 		}
-
-		// 记录迁移已完成，保存文件名和校验和
 		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2)", name, checksum); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("record migration %s: %w", name, err)
 		}
-
-		// 提交事务
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("commit migration %s: %w", name, err)

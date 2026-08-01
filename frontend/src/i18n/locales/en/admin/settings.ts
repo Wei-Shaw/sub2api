@@ -317,11 +317,14 @@ export default {
         defaultBalanceHint: 'Initial balance for new users',
         affiliateRebateRate: 'Affiliate Rebate Rate',
         affiliateRebateRateHint:
-          'Rebate percentage credited to inviter after recharge (0-100%, e.g. 10 means 10%)',
+          'Percentage of each recharge returned to the inviter (0-100%, e.g. 10 means a 10% rebate).',
         defaultConcurrency: 'Default Concurrency',
         defaultConcurrencyHint: 'Maximum concurrent requests for new users',
         defaultUserRpmLimit: 'Default User RPM Limit',
         defaultUserRpmLimitHint: 'Default max requests per minute for new users; 0 = unlimited. Only applied at new user creation.',
+        deviceClaimBonusBalance: 'Device Claim Bonus Balance',
+        deviceClaimBonusBalanceHint:
+          'Extra balance granted once when a brand-new device completes its first V-Claw claim. Set to 0 to disable the bonus.',
         defaultSubscriptions: 'Default Subscriptions',
         defaultSubscriptionsHint: 'Auto-assign these subscriptions when a new user is created or registered',
         addDefaultSubscription: 'Add Default Subscription',

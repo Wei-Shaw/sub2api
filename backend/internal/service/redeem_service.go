@@ -2,11 +2,8 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -171,24 +168,7 @@ func NewRedeemService(
 
 // GenerateRandomCode 生成随机兑换码
 func (s *RedeemService) GenerateRandomCode() (string, error) {
-	// 生成16字节随机数据
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("generate random bytes: %w", err)
-	}
-
-	// 转换为十六进制字符串
-	code := hex.EncodeToString(bytes)
-
-	// 格式化为 XXXX-XXXX-XXXX-XXXX 格式
-	parts := []string{
-		strings.ToUpper(code[0:8]),
-		strings.ToUpper(code[8:16]),
-		strings.ToUpper(code[16:24]),
-		strings.ToUpper(code[24:32]),
-	}
-
-	return strings.Join(parts, "-"), nil
+	return GenerateRedeemCode()
 }
 
 // GenerateCodes 批量生成兑换码
@@ -247,7 +227,7 @@ func (s *RedeemService) CreateCode(ctx context.Context, code *RedeemCode) error 
 	if code == nil {
 		return errors.New("redeem code is required")
 	}
-	code.Code = strings.TrimSpace(code.Code)
+	code.Code = NormalizeRedeemCode(code.Code)
 	if code.Code == "" {
 		return errors.New("code is required")
 	}
@@ -386,6 +366,11 @@ func unsupportedRedeemTypeError(codeType string) error {
 
 // Redeem 使用兑换码
 func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (*RedeemCode, error) {
+	code = NormalizeRedeemCode(code)
+	if code == "" {
+		return nil, ErrRedeemCodeNotFound
+	}
+
 	// 检查限流
 	if err := s.checkRedeemRateLimit(ctx, userID); err != nil {
 		return nil, err
@@ -601,6 +586,7 @@ func (s *RedeemService) GetByID(ctx context.Context, id int64) (*RedeemCode, err
 
 // GetByCode 根据Code获取兑换码
 func (s *RedeemService) GetByCode(ctx context.Context, code string) (*RedeemCode, error) {
+	code = NormalizeRedeemCode(code)
 	redeemCode, err := s.redeemRepo.GetByCode(ctx, code)
 	if err != nil {
 		return nil, fmt.Errorf("get redeem code: %w", err)

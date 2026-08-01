@@ -26,6 +26,20 @@ const (
 	FieldAmount = "amount"
 	// FieldPayAmount holds the string denoting the pay_amount field in the database.
 	FieldPayAmount = "pay_amount"
+	// FieldPaymentCurrency holds the string denoting the payment_currency field in the database.
+	FieldPaymentCurrency = "payment_currency"
+	// FieldPaymentAmount holds the string denoting the payment_amount field in the database.
+	FieldPaymentAmount = "payment_amount"
+	// FieldLedgerCurrency holds the string denoting the ledger_currency field in the database.
+	FieldLedgerCurrency = "ledger_currency"
+	// FieldLedgerAmount holds the string denoting the ledger_amount field in the database.
+	FieldLedgerAmount = "ledger_amount"
+	// FieldFxRatePaymentToLedger holds the string denoting the fx_rate_payment_to_ledger field in the database.
+	FieldFxRatePaymentToLedger = "fx_rate_payment_to_ledger"
+	// FieldFxSource holds the string denoting the fx_source field in the database.
+	FieldFxSource = "fx_source"
+	// FieldFxTimestamp holds the string denoting the fx_timestamp field in the database.
+	FieldFxTimestamp = "fx_timestamp"
 	// FieldFeeRate holds the string denoting the fee_rate field in the database.
 	FieldFeeRate = "fee_rate"
 	// FieldRechargeCode holds the string denoting the recharge_code field in the database.
@@ -114,6 +128,13 @@ var Columns = []string{
 	FieldUserNotes,
 	FieldAmount,
 	FieldPayAmount,
+	FieldPaymentCurrency,
+	FieldPaymentAmount,
+	FieldLedgerCurrency,
+	FieldLedgerAmount,
+	FieldFxRatePaymentToLedger,
+	FieldFxSource,
+	FieldFxTimestamp,
 	FieldFeeRate,
 	FieldRechargeCode,
 	FieldOutTradeNo,
@@ -164,6 +185,22 @@ var (
 	UserEmailValidator func(string) error
 	// UserNameValidator is a validator for the "user_name" field. It is called by the builders before save.
 	UserNameValidator func(string) error
+	// DefaultPaymentCurrency holds the default value on creation for the "payment_currency" field.
+	DefaultPaymentCurrency string
+	// PaymentCurrencyValidator is a validator for the "payment_currency" field. It is called by the builders before save.
+	PaymentCurrencyValidator func(string) error
+	// DefaultPaymentAmount holds the default value on creation for the "payment_amount" field.
+	DefaultPaymentAmount float64
+	// DefaultLedgerCurrency holds the default value on creation for the "ledger_currency" field.
+	DefaultLedgerCurrency string
+	// LedgerCurrencyValidator is a validator for the "ledger_currency" field. It is called by the builders before save.
+	LedgerCurrencyValidator func(string) error
+	// DefaultLedgerAmount holds the default value on creation for the "ledger_amount" field.
+	DefaultLedgerAmount float64
+	// DefaultFxRatePaymentToLedger holds the default value on creation for the "fx_rate_payment_to_ledger" field.
+	DefaultFxRatePaymentToLedger float64
+	// FxSourceValidator is a validator for the "fx_source" field. It is called by the builders before save.
+	FxSourceValidator func(string) error
 	// DefaultFeeRate holds the default value on creation for the "fee_rate" field.
 	DefaultFeeRate float64
 	// RechargeCodeValidator is a validator for the "recharge_code" field. It is called by the builders before save.
@@ -242,6 +279,41 @@ func ByAmount(opts ...sql.OrderTermOption) OrderOption {
 // ByPayAmount orders the results by the pay_amount field.
 func ByPayAmount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPayAmount, opts...).ToFunc()
+}
+
+// ByPaymentCurrency orders the results by the payment_currency field.
+func ByPaymentCurrency(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPaymentCurrency, opts...).ToFunc()
+}
+
+// ByPaymentAmount orders the results by the payment_amount field.
+func ByPaymentAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPaymentAmount, opts...).ToFunc()
+}
+
+// ByLedgerCurrency orders the results by the ledger_currency field.
+func ByLedgerCurrency(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLedgerCurrency, opts...).ToFunc()
+}
+
+// ByLedgerAmount orders the results by the ledger_amount field.
+func ByLedgerAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLedgerAmount, opts...).ToFunc()
+}
+
+// ByFxRatePaymentToLedger orders the results by the fx_rate_payment_to_ledger field.
+func ByFxRatePaymentToLedger(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFxRatePaymentToLedger, opts...).ToFunc()
+}
+
+// ByFxSource orders the results by the fx_source field.
+func ByFxSource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFxSource, opts...).ToFunc()
+}
+
+// ByFxTimestamp orders the results by the fx_timestamp field.
+func ByFxTimestamp(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFxTimestamp, opts...).ToFunc()
 }
 
 // ByFeeRate orders the results by the fee_rate field.
