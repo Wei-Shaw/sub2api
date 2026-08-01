@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 )
 
@@ -83,6 +84,11 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 
 	if account.Platform == PlatformAntigravity && account.Type != AccountTypeAPIKey {
 		return s.fetchAntigravityOAuthUpstreamModels(ctx, account)
+	}
+
+	// CodeBuddy 通过 /v3/config 拉取真实可用模型列表，不走通用 /v1/models 端点。
+	if account.IsCodeBuddyOAuth() {
+		return s.fetchCodeBuddyUpstreamModels(ctx, account)
 	}
 
 	if s.httpUpstream == nil {
@@ -445,6 +451,44 @@ func (s *AccountTestService) fetchAntigravityOAuthUpstreamModels(ctx context.Con
 	models := make([]string, 0, len(modelsResp.Models))
 	for modelID := range modelsResp.Models {
 		models = append(models, strings.TrimSpace(modelID))
+	}
+	return dedupeAndSortModelIDs(models), nil
+}
+
+// fetchCodeBuddyUpstreamModels 通过 /v3/config 实时拉取 CodeBuddy 账号可用的真实模型列表。
+// 复用 codebuddy.FetchEnabledModels（与 OAuth 登录时同步模型列表相同的代码路径），
+// 使用 token provider 获取有效的 access_token，确保过期自动刷新。
+func (s *AccountTestService) fetchCodeBuddyUpstreamModels(ctx context.Context, account *Account) ([]string, error) {
+	if s.codeBuddyTokenProvider == nil {
+		return nil, newUpstreamModelSyncConfigError("CodeBuddy token provider is not configured", nil)
+	}
+
+	accessToken, err := s.codeBuddyTokenProvider.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, newUpstreamModelSyncUpstreamError("Failed to get CodeBuddy access token", err)
+	}
+	accessToken = strings.TrimSpace(accessToken)
+	if accessToken == "" {
+		return nil, newUpstreamModelSyncConfigError("No CodeBuddy access token is available", nil)
+	}
+
+	userID := strings.TrimSpace(account.GetCredential("uid"))
+	proxyURL := upstreamModelsProxyURL(account)
+
+	modelInfos, err := codebuddy.FetchEnabledModels(ctx, accessToken, userID, proxyURL)
+	if err != nil {
+		return nil, newUpstreamModelSyncUpstreamError("Failed to fetch CodeBuddy available models", err)
+	}
+	if len(modelInfos) == 0 {
+		return nil, newUpstreamModelSyncUpstreamError("Upstream returned no supported models", nil)
+	}
+
+	models := make([]string, 0, len(modelInfos))
+	for _, m := range modelInfos {
+		modelID := strings.TrimSpace(m.ID)
+		if modelID != "" && !codebuddy.NonModelEntries[modelID] {
+			models = append(models, modelID)
+		}
 	}
 	return dedupeAndSortModelIDs(models), nil
 }
