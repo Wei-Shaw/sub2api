@@ -13,6 +13,7 @@ import (
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 type GroupModelsListConfig = domain.GroupModelsListConfig
 type ReasoningEffortMapping = domain.ReasoningEffortMapping
+type ModelReasoningEffortRule = domain.ModelReasoningEffortRule
 
 type Group struct {
 	ID             int64
@@ -98,6 +99,8 @@ type Group struct {
 	MaxReasoningEffort string
 	// ReasoningEffortMappings rewrites explicit request values before applying the ceiling.
 	ReasoningEffortMappings []ReasoningEffortMapping
+	// ModelReasoningEffortRules fully override the group default policy for an exact client model.
+	ModelReasoningEffortRules []ModelReasoningEffortRule
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

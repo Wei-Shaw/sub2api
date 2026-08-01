@@ -305,6 +305,12 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesReasoningEffortPolicy(t *testi
 			ReasoningEffortMappings: []ReasoningEffortMapping{
 				{From: "max", To: "xhigh"},
 			},
+			ModelReasoningEffortRules: []ModelReasoningEffortRule{
+				{
+					Model:                   "gpt-5.6-luna",
+					ReasoningEffortMappings: []ReasoningEffortMapping{},
+				},
+			},
 		},
 	}
 
@@ -315,6 +321,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesReasoningEffortPolicy(t *testi
 	require.NotNil(t, roundTrip.Group)
 	require.Equal(t, "medium", roundTrip.Group.MaxReasoningEffort)
 	require.Equal(t, apiKey.Group.ReasoningEffortMappings, roundTrip.Group.ReasoningEffortMappings)
+	require.Equal(t, apiKey.Group.ModelReasoningEffortRules, roundTrip.Group.ModelReasoningEffortRules)
 }
 
 func TestAPIKeyService_GetByKey_IgnoresLegacyAuthCacheSnapshotWithoutMessagesDispatchConfig(t *testing.T) {

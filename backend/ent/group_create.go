@@ -725,6 +725,12 @@ func (_c *GroupCreate) SetReasoningEffortMappings(v []domain.ReasoningEffortMapp
 	return _c
 }
 
+// SetModelReasoningEffortRules sets the "model_reasoning_effort_rules" field.
+func (_c *GroupCreate) SetModelReasoningEffortRules(v []domain.ModelReasoningEffortRule) *GroupCreate {
+	_c.mutation.SetModelReasoningEffortRules(v)
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -998,6 +1004,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultReasoningEffortMappings
 		_c.mutation.SetReasoningEffortMappings(v)
 	}
+	if _, ok := _c.mutation.ModelReasoningEffortRules(); !ok {
+		v := group.DefaultModelReasoningEffortRules
+		_c.mutation.SetModelReasoningEffortRules(v)
+	}
 	return nil
 }
 
@@ -1155,6 +1165,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
 		return &ValidationError{Name: "reasoning_effort_mappings", err: errors.New(`ent: missing required field "Group.reasoning_effort_mappings"`)}
+	}
+	if _, ok := _c.mutation.ModelReasoningEffortRules(); !ok {
+		return &ValidationError{Name: "model_reasoning_effort_rules", err: errors.New(`ent: missing required field "Group.model_reasoning_effort_rules"`)}
 	}
 	return nil
 }
@@ -1390,6 +1403,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ReasoningEffortMappings(); ok {
 		_spec.SetField(group.FieldReasoningEffortMappings, field.TypeJSON, value)
 		_node.ReasoningEffortMappings = value
+	}
+	if value, ok := _c.mutation.ModelReasoningEffortRules(); ok {
+		_spec.SetField(group.FieldModelReasoningEffortRules, field.TypeJSON, value)
+		_node.ModelReasoningEffortRules = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -2360,6 +2377,18 @@ func (u *GroupUpsert) SetReasoningEffortMappings(v []domain.ReasoningEffortMappi
 // UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateReasoningEffortMappings() *GroupUpsert {
 	u.SetExcluded(group.FieldReasoningEffortMappings)
+	return u
+}
+
+// SetModelReasoningEffortRules sets the "model_reasoning_effort_rules" field.
+func (u *GroupUpsert) SetModelReasoningEffortRules(v []domain.ModelReasoningEffortRule) *GroupUpsert {
+	u.Set(group.FieldModelReasoningEffortRules, v)
+	return u
+}
+
+// UpdateModelReasoningEffortRules sets the "model_reasoning_effort_rules" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateModelReasoningEffortRules() *GroupUpsert {
+	u.SetExcluded(group.FieldModelReasoningEffortRules)
 	return u
 }
 
@@ -3360,6 +3389,20 @@ func (u *GroupUpsertOne) SetReasoningEffortMappings(v []domain.ReasoningEffortMa
 func (u *GroupUpsertOne) UpdateReasoningEffortMappings() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()
+	})
+}
+
+// SetModelReasoningEffortRules sets the "model_reasoning_effort_rules" field.
+func (u *GroupUpsertOne) SetModelReasoningEffortRules(v []domain.ModelReasoningEffortRule) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelReasoningEffortRules(v)
+	})
+}
+
+// UpdateModelReasoningEffortRules sets the "model_reasoning_effort_rules" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateModelReasoningEffortRules() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelReasoningEffortRules()
 	})
 }
 
@@ -4526,6 +4569,20 @@ func (u *GroupUpsertBulk) SetReasoningEffortMappings(v []domain.ReasoningEffortM
 func (u *GroupUpsertBulk) UpdateReasoningEffortMappings() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()
+	})
+}
+
+// SetModelReasoningEffortRules sets the "model_reasoning_effort_rules" field.
+func (u *GroupUpsertBulk) SetModelReasoningEffortRules(v []domain.ModelReasoningEffortRule) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelReasoningEffortRules(v)
+	})
+}
+
+// UpdateModelReasoningEffortRules sets the "model_reasoning_effort_rules" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateModelReasoningEffortRules() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelReasoningEffortRules()
 	})
 }
 

@@ -840,6 +840,99 @@ func TestAdminService_UpdateGroup_RejectsInvalidReasoningEffortMappings(t *testi
 	require.Nil(t, repo.updated)
 }
 
+func TestAdminService_UpdateGroup_ModelReasoningEffortRulesTriState(t *testing.T) {
+	existingRules := []ModelReasoningEffortRule{
+		{Model: "gpt-5.6-luna", MaxReasoningEffort: "", ReasoningEffortMappings: []ReasoningEffortMapping{}},
+	}
+	tests := []struct {
+		name  string
+		input *UpdateGroupInput
+		want  []ModelReasoningEffortRule
+	}{
+		{
+			name:  "nil preserves existing rules",
+			input: &UpdateGroupInput{},
+			want:  existingRules,
+		},
+		{
+			name: "empty array clears rules",
+			input: func() *UpdateGroupInput {
+				empty := []ModelReasoningEffortRule{}
+				return &UpdateGroupInput{ModelReasoningEffortRules: &empty}
+			}(),
+			want: []ModelReasoningEffortRule{},
+		},
+		{
+			name: "non empty array replaces and canonicalizes rules",
+			input: func() *UpdateGroupInput {
+				replacement := []ModelReasoningEffortRule{
+					{
+						Model:              " gpt-5.6-sol ",
+						MaxReasoningEffort: " X-HIGH ",
+						ReasoningEffortMappings: []ReasoningEffortMapping{
+							{From: " MAX ", To: " high "},
+						},
+					},
+				}
+				return &UpdateGroupInput{ModelReasoningEffortRules: &replacement}
+			}(),
+			want: []ModelReasoningEffortRule{
+				{
+					Model:              "gpt-5.6-sol",
+					MaxReasoningEffort: "xhigh",
+					ReasoningEffortMappings: []ReasoningEffortMapping{
+						{From: "max", To: "high"},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existing := &Group{
+				ID:                        1,
+				Name:                      "openai-group",
+				Platform:                  PlatformOpenAI,
+				Status:                    StatusActive,
+				ModelReasoningEffortRules: existingRules,
+			}
+			repo := &groupRepoStubForAdmin{getByID: existing}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			_, err := svc.UpdateGroup(context.Background(), existing.ID, tt.input)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, repo.updated.ModelReasoningEffortRules)
+		})
+	}
+}
+
+func TestAdminService_UpdateGroup_RejectsDuplicateModelReasoningEffortRules(t *testing.T) {
+	existing := &Group{
+		ID:               1,
+		Name:             "openai",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		RateMultiplier:   1,
+		Status:           StatusActive,
+	}
+	repo := &groupRepoStubForInvalidRequestFallback{groups: map[int64]*Group{existing.ID: existing}}
+	svc := &adminServiceImpl{groupRepo: repo}
+	invalid := []ModelReasoningEffortRule{
+		{Model: "gpt-5.6-luna"},
+		{Model: " gpt-5.6-luna "},
+	}
+
+	_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+		ModelReasoningEffortRules: &invalid,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate model reasoning effort rule")
+	require.Nil(t, repo.updated)
+}
+
 func TestAdminService_UpdateGroup_ClearsReasoningPolicyForUnsupportedPlatform(t *testing.T) {
 	existing := &Group{
 		ID:                      1,
@@ -848,6 +941,9 @@ func TestAdminService_UpdateGroup_ClearsReasoningPolicyForUnsupportedPlatform(t 
 		Status:                  StatusActive,
 		MaxReasoningEffort:      "medium",
 		ReasoningEffortMappings: []ReasoningEffortMapping{{From: "max", To: "xhigh"}},
+		ModelReasoningEffortRules: []ModelReasoningEffortRule{
+			{Model: "gpt-5.6-luna"},
+		},
 	}
 	repo := &groupRepoStubForAdmin{getByID: existing}
 	svc := &adminServiceImpl{groupRepo: repo}
@@ -857,6 +953,7 @@ func TestAdminService_UpdateGroup_ClearsReasoningPolicyForUnsupportedPlatform(t 
 	require.NoError(t, err)
 	require.Empty(t, repo.updated.MaxReasoningEffort)
 	require.Empty(t, repo.updated.ReasoningEffortMappings)
+	require.Empty(t, repo.updated.ModelReasoningEffortRules)
 }
 
 func TestAdminService_UpdateGroup_ClearsPeakRateWhenChangingToStandard(t *testing.T) {

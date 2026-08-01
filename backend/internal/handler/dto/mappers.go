@@ -210,6 +210,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		RPMLimit:                        g.RPMLimit,
 		MaxReasoningEffort:              g.MaxReasoningEffort,
 		ReasoningEffortMappings:         g.ReasoningEffortMappings,
+		ModelReasoningEffortRules:       g.ModelReasoningEffortRules,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

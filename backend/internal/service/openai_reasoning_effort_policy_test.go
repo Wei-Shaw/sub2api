@@ -80,6 +80,64 @@ func TestNormalizeMaxReasoningEffortForPlatform(t *testing.T) {
 	require.ErrorContains(t, err, "not supported")
 }
 
+func TestNormalizeModelReasoningEffortRules(t *testing.T) {
+	t.Run("canonicalizes complete exact model overrides", func(t *testing.T) {
+		got, err := NormalizeModelReasoningEffortRules(PlatformOpenAI, []ModelReasoningEffortRule{
+			{
+				Model:              " gpt-5.6-luna ",
+				MaxReasoningEffort: " X-HIGH ",
+				ReasoningEffortMappings: []ReasoningEffortMapping{
+					{From: " MAX ", To: " high "},
+				},
+			},
+			{Model: "gpt-5.6-luna-max"},
+		})
+		require.NoError(t, err)
+		require.Equal(t, []ModelReasoningEffortRule{
+			{
+				Model:              "gpt-5.6-luna",
+				MaxReasoningEffort: "xhigh",
+				ReasoningEffortMappings: []ReasoningEffortMapping{
+					{From: "max", To: "high"},
+				},
+			},
+			{
+				Model:                   "gpt-5.6-luna-max",
+				MaxReasoningEffort:      "",
+				ReasoningEffortMappings: []ReasoningEffortMapping{},
+			},
+		}, got)
+	})
+
+	t.Run("rejects empty and duplicate exact models", func(t *testing.T) {
+		_, err := NormalizeModelReasoningEffortRules(PlatformOpenAI, []ModelReasoningEffortRule{{Model: " "}})
+		require.ErrorContains(t, err, "empty model")
+
+		_, err = NormalizeModelReasoningEffortRules(PlatformOpenAI, []ModelReasoningEffortRule{
+			{Model: "gpt-5.6-luna"},
+			{Model: " gpt-5.6-luna "},
+		})
+		require.ErrorContains(t, err, "duplicate")
+	})
+
+	t.Run("rejects invalid nested policies and non OpenAI groups", func(t *testing.T) {
+		_, err := NormalizeModelReasoningEffortRules(PlatformOpenAI, []ModelReasoningEffortRule{
+			{Model: "gpt-5.6-luna", MaxReasoningEffort: "ultra"},
+		})
+		require.ErrorContains(t, err, "ceiling")
+
+		_, err = NormalizeModelReasoningEffortRules(PlatformOpenAI, []ModelReasoningEffortRule{
+			{Model: "gpt-5.6-luna", ReasoningEffortMappings: []ReasoningEffortMapping{{From: "max"}}},
+		})
+		require.ErrorContains(t, err, "mappings")
+
+		_, err = NormalizeModelReasoningEffortRules(PlatformAnthropic, []ModelReasoningEffortRule{
+			{Model: "claude-opus-4-1"},
+		})
+		require.ErrorContains(t, err, "only supported")
+	})
+}
+
 func TestApplyOpenAIReasoningEffortPolicy(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -113,4 +171,49 @@ func TestApplyOpenAIReasoningEffortPolicy(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestApplyOpenAIReasoningEffortPolicyForModel(t *testing.T) {
+	defaultMappings := []ReasoningEffortMapping{{From: "max", To: "high"}}
+	modelRules := []ModelReasoningEffortRule{
+		{
+			Model:                   "gpt-5.6-luna",
+			ReasoningEffortMappings: []ReasoningEffortMapping{},
+		},
+		{
+			Model:              "gpt-5.6-sol",
+			MaxReasoningEffort: "low",
+			ReasoningEffortMappings: []ReasoningEffortMapping{
+				{From: "max", To: "medium"},
+			},
+		},
+	}
+
+	t.Run("exact model can explicitly disable the group policy", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-5.6-luna","reasoning":{"effort":"max"}}`)
+		got, changed := ApplyOpenAIReasoningEffortPolicyForModel(body, "gpt-5.6-luna", "medium", defaultMappings, modelRules)
+		require.False(t, changed)
+		require.Equal(t, "max", gjson.GetBytes(got, "reasoning.effort").String())
+	})
+
+	t.Run("exact model applies its own mapping then ceiling", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-5.6-sol","reasoning":{"effort":"max"}}`)
+		got, changed := ApplyOpenAIReasoningEffortPolicyForModel(body, "gpt-5.6-sol", "high", defaultMappings, modelRules)
+		require.True(t, changed)
+		require.Equal(t, "low", gjson.GetBytes(got, "reasoning.effort").String())
+	})
+
+	t.Run("unmatched model falls back to the group default", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-5.6-terra","reasoning":{"effort":"max"}}`)
+		got, changed := ApplyOpenAIReasoningEffortPolicyForModel(body, "gpt-5.6-terra", "medium", defaultMappings, modelRules)
+		require.True(t, changed)
+		require.Equal(t, "medium", gjson.GetBytes(got, "reasoning.effort").String())
+	})
+
+	t.Run("matching is exact and case sensitive", func(t *testing.T) {
+		body := []byte(`{"model":"GPT-5.6-LUNA","reasoning":{"effort":"max"}}`)
+		got, changed := ApplyOpenAIReasoningEffortPolicyForModel(body, "GPT-5.6-LUNA", "medium", nil, modelRules)
+		require.True(t, changed)
+		require.Equal(t, "medium", gjson.GetBytes(got, "reasoning.effort").String())
+	})
 }

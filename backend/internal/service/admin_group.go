@@ -312,6 +312,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_REASONING_EFFORT_MAPPING", "%v", err)
 	}
+	modelReasoningEffortRules, err := NormalizeModelReasoningEffortRules(platform, input.ModelReasoningEffortRules)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MODEL_REASONING_EFFORT_RULE", "%v", err)
+	}
 
 	subscriptionType := input.SubscriptionType
 	if subscriptionType == "" {
@@ -479,6 +483,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RPMLimit:                        input.RPMLimit,
 		MaxReasoningEffort:              maxReasoningEffort,
 		ReasoningEffortMappings:         reasoningEffortMappings,
+		ModelReasoningEffortRules:       modelReasoningEffortRules,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if group.Platform != PlatformOpenAI {
@@ -815,6 +820,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_REASONING_EFFORT_MAPPING", "%v", err)
 		}
 		group.ReasoningEffortMappings = reasoningEffortMappings
+	}
+	if input.ModelReasoningEffortRules != nil {
+		modelReasoningEffortRules, err := NormalizeModelReasoningEffortRules(group.Platform, *input.ModelReasoningEffortRules)
+		if err != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MODEL_REASONING_EFFORT_RULE", "%v", err)
+		}
+		group.ModelReasoningEffortRules = modelReasoningEffortRules
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if group.Platform != PlatformOpenAI {

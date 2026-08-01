@@ -802,6 +802,10 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 	serverErrCh := make(chan error, 1)
 	resultCh := make(chan *OpenAIForwardResult, 1)
 	hooks := &OpenAIWSIngressHooks{
+		MaxReasoningEffort: "low",
+		ModelReasoningEffortRules: []ModelReasoningEffortRule{
+			{Model: "gpt-5.1", MaxReasoningEffort: "medium"},
+		},
 		AfterTurn: func(_ int, result *OpenAIForwardResult, turnErr error) {
 			if turnErr == nil && result != nil {
 				resultCh <- result
@@ -887,13 +891,16 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 		require.NotNil(t, result.ServiceTier)
 		require.Equal(t, "priority", *result.ServiceTier)
 		require.NotNil(t, result.ReasoningEffort)
-		require.Equal(t, "high", *result.ReasoningEffort)
+		require.Equal(t, "medium", *result.ReasoningEffort)
 	case <-time.After(2 * time.Second):
 		t.Fatal("未收到 passthrough turn 结果回调")
 	}
 
 	require.Equal(t, 1, captureDialer.DialCount(), "passthrough 模式应直接建立上游 websocket")
 	require.Len(t, upstreamConn.writes, 1, "passthrough 模式应透传首条 response.create")
+	reasoning, ok := upstreamConn.writes[0]["reasoning"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "medium", reasoning["effort"], "精确模型规则应覆盖分组默认 low 上限")
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughHeadersUsePromptCacheAndTurnState(t *testing.T) {
