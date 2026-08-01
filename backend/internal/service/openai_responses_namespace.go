@@ -42,6 +42,9 @@ func shouldFlattenOpenAIResponsesNamespaces(
 	passthroughEnabled bool,
 	compactPath bool,
 ) bool {
+	// Namespace flattening is specific to native OpenAI OAuth requests. The
+	// broader IsOpenAIOAuth helper also includes OpenAI-compatible providers
+	// such as Grok, whose tool namespace contract must remain untouched.
 	if account == nil || !account.IsOpenAI() || account.Type != AccountTypeOAuth {
 		return false
 	}

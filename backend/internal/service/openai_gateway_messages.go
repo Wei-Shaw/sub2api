@@ -1204,7 +1204,7 @@ func writeAnthropicError(c *gin.Context, statusCode int, errType, message string
 	c.JSON(statusCode, gin.H{
 		"type": "error",
 		"error": gin.H{
-			"type":    compatErrorTypeForHTTPStatus(c, statusCode, errType),
+			"type":    normalizeCompatErrorType(statusCode, errType),
 			"message": clienterror.UpstreamMessageWithCode(statusCode, errType, message),
 		},
 	})
