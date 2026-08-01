@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -21,6 +22,8 @@ type rateLimitClearRepoStub struct {
 	clearRateLimitCalls       int
 	clearAntigravityCalls     int
 	clearModelRateLimitCalls  int
+	clearModelRateLimitKeys   []string
+	recoverRuntimeCalls       int
 	clearTempUnschedCalls     int
 	clearErrorErr             error
 	clearRateLimitErr         error
@@ -55,6 +58,41 @@ func (r *rateLimitClearRepoStub) ClearAntigravityQuotaScopes(ctx context.Context
 func (r *rateLimitClearRepoStub) ClearModelRateLimits(ctx context.Context, id int64) error {
 	r.clearModelRateLimitCalls++
 	return r.clearModelRateLimitErr
+}
+
+func (r *rateLimitClearRepoStub) ClearModelRateLimit(ctx context.Context, id int64, modelID string) error {
+	r.clearModelRateLimitKeys = append(r.clearModelRateLimitKeys, modelID)
+	return r.clearModelRateLimitErr
+}
+
+func (r *rateLimitClearRepoStub) ClearModelRateLimitIfMatch(_ context.Context, _ int64, modelID string, observed json.RawMessage) (bool, error) {
+	if r.clearModelRateLimitErr != nil || r.getByIDAccount == nil {
+		return false, r.clearModelRateLimitErr
+	}
+	limits, _ := r.getByIDAccount.Extra[modelRateLimitsKey].(map[string]any)
+	current, ok := limits[modelID]
+	if !ok {
+		return false, nil
+	}
+	encoded, err := json.Marshal(current)
+	if err != nil || string(encoded) != string(observed) {
+		return false, err
+	}
+	delete(limits, modelID)
+	r.clearModelRateLimitKeys = append(r.clearModelRateLimitKeys, modelID)
+	r.getByIDAccount.UpdatedAt = r.getByIDAccount.UpdatedAt.Add(time.Nanosecond)
+	return true, nil
+}
+
+func (r *rateLimitClearRepoStub) RecoverAccountRuntimeStateIfUnchanged(_ context.Context, _ int64, observedUpdatedAt time.Time) (bool, error) {
+	if r.getByIDAccount == nil || !r.getByIDAccount.UpdatedAt.Equal(observedUpdatedAt) {
+		return false, nil
+	}
+	r.recoverRuntimeCalls++
+	r.getByIDAccount.Status = StatusActive
+	r.getByIDAccount.Schedulable = true
+	r.getByIDAccount.UpdatedAt = r.getByIDAccount.UpdatedAt.Add(time.Nanosecond)
+	return true, nil
 }
 
 func (r *rateLimitClearRepoStub) ClearTempUnschedulable(ctx context.Context, id int64) error {
@@ -202,6 +240,7 @@ func TestRateLimitService_ClearRateLimit_WithoutTempUnschedCache(t *testing.T) {
 
 func TestRateLimitService_RecoverAccountAfterSuccessfulTest_ClearsErrorAndRateLimitRelatedState(t *testing.T) {
 	now := time.Now()
+	resetAt := now.Add(time.Hour)
 	repo := &rateLimitClearRepoStub{
 		getByIDAccount: &Account{
 			ID:                     42,
@@ -210,8 +249,14 @@ func TestRateLimitService_RecoverAccountAfterSuccessfulTest_ClearsErrorAndRateLi
 			TempUnschedulableUntil: &now,
 			Extra: map[string]any{
 				"model_rate_limits": map[string]any{
-					"claude-sonnet-4-5": map[string]any{
-						"rate_limit_reset_at": now.Format(time.RFC3339),
+					"gpt-5.6-sol": map[string]any{
+						"rate_limit_reset_at": resetAt.Format(time.RFC3339),
+					},
+					"gpt-5.6-luna": map[string]any{
+						"rate_limit_reset_at": resetAt.Format(time.RFC3339),
+					},
+					"AICredits": map[string]any{
+						"rate_limit_reset_at": resetAt.Format(time.RFC3339),
 					},
 				},
 				"antigravity_quota_scopes": map[string]any{"gemini": true},
@@ -223,17 +268,19 @@ func TestRateLimitService_RecoverAccountAfterSuccessfulTest_ClearsErrorAndRateLi
 	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, cache)
 	svc.SetAccountRuntimeBlocker(blocker)
 
-	result, err := svc.RecoverAccountAfterSuccessfulTest(context.Background(), 42)
+	result, err := svc.RecoverAccountAfterSuccessfulTest(context.Background(), 42, "gpt-5.6-sol")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.True(t, result.ClearedError)
 	require.True(t, result.ClearedRateLimit)
+	require.True(t, result.ClearedModelRateLimit)
 
 	require.Equal(t, 1, repo.getByIDCalls)
 	require.Equal(t, 1, repo.clearErrorCalls)
 	require.Equal(t, 1, repo.clearRateLimitCalls)
 	require.Equal(t, 1, repo.clearAntigravityCalls)
-	require.Equal(t, 1, repo.clearModelRateLimitCalls)
+	require.Equal(t, 0, repo.clearModelRateLimitCalls)
+	require.Equal(t, []string{"gpt-5.6-sol"}, repo.clearModelRateLimitKeys)
 	require.Equal(t, 1, repo.clearTempUnschedCalls)
 	require.Equal(t, []int64{42}, cache.deletedIDs)
 	require.Equal(t, []int64{42}, blocker.clearedIDs)
@@ -251,17 +298,19 @@ func TestRateLimitService_RecoverAccountAfterSuccessfulTest_NoRecoverableStateIs
 	cache := &tempUnschedCacheRecorder{}
 	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, cache)
 
-	result, err := svc.RecoverAccountAfterSuccessfulTest(context.Background(), 7)
+	result, err := svc.RecoverAccountAfterSuccessfulTest(context.Background(), 7, "gpt-5.6-sol")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.False(t, result.ClearedError)
 	require.False(t, result.ClearedRateLimit)
+	require.False(t, result.ClearedModelRateLimit)
 
 	require.Equal(t, 1, repo.getByIDCalls)
 	require.Equal(t, 0, repo.clearErrorCalls)
 	require.Equal(t, 0, repo.clearRateLimitCalls)
 	require.Equal(t, 0, repo.clearAntigravityCalls)
 	require.Equal(t, 0, repo.clearModelRateLimitCalls)
+	require.Empty(t, repo.clearModelRateLimitKeys)
 	require.Equal(t, 0, repo.clearTempUnschedCalls)
 	require.Empty(t, cache.deletedIDs)
 }
@@ -276,7 +325,7 @@ func TestRateLimitService_RecoverAccountAfterSuccessfulTest_ClearErrorFailed(t *
 	}
 	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
 
-	result, err := svc.RecoverAccountAfterSuccessfulTest(context.Background(), 9)
+	result, err := svc.RecoverAccountAfterSuccessfulTest(context.Background(), 9, "gpt-5.6-sol")
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.Equal(t, 1, repo.getByIDCalls)

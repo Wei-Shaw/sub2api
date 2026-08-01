@@ -5,6 +5,18 @@ export default {
       editPlan: 'Edit Plan',
       deletePlan: 'Delete Plan',
       model: 'Model',
+      probeModel: 'Account Probe Model',
+      selectModels: 'Select failed models',
+      selectedModels: '{count} models selected',
+      allFailedModels: 'All failed models',
+      clearSelection: 'Clear',
+      triggerMode: 'Test Mode',
+      scheduledMode: 'Scheduled',
+      errorRecoveryMode: 'Error Recovery',
+      errorRecoveryHelpAriaLabel: 'Explain error recovery',
+      retryInterval: 'Retry Interval (minutes)',
+      advancedCron: 'Advanced Cron',
+      everyMinutes: 'Every {minutes} minutes',
       cronExpression: 'Cron Expression',
       enabled: 'Enabled',
       lastRun: 'Last Run',
@@ -22,6 +34,7 @@ export default {
       success: 'Success',
       failed: 'Failed',
       running: 'Running',
+      interrupted: 'Execution interrupted',
       schedule: 'Schedule',
       cronHelp: 'Standard 5-field cron expression (e.g., */30 * * * *)',
       cronTooltipTitle: 'Cron expression examples:',
@@ -37,7 +50,9 @@ export default {
       maxResultsTooltipExample: 'For example, 100 means keeping at most the latest 100 test results. When the 101st result is saved, the oldest one is removed.',
       maxResultsTooltipRange: 'Recommended range: usually 20 to 200. Use 20-50 when you only care about recent health status, or 100-200 if you want a longer trend history.',
       autoRecover: 'Auto Recover',
-      autoRecoverHelp: 'Automatically recover account from error/rate-limited state on successful test'
+      autoRecoverHelp: 'Automatically recover account from error/rate-limited state on successful test',
+      errorRecoveryTooltipFailedModels: 'Only structured errors recorded by the system are tested. Each failed model is tested individually; all models are included by default. Account-level errors use the first selected model once.',
+      errorRecoveryTooltipBoundaries: 'AICredits, manually disabled or unschedulable states, and expired accounts are not recovered by this feature.'
     },
 
     // Proxies

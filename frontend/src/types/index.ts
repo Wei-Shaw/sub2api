@@ -2223,7 +2223,11 @@ export interface ScheduledTestPlan {
   id: number
   account_id: number
   model_id: string
+  model_ids?: string[]
   cron_expression: string
+  trigger_mode: 'scheduled' | 'error_recovery'
+  retry_interval_minutes: number | null
+  retry_cron_expression: string | null
   enabled: boolean
   max_results: number
   auto_recover: boolean
@@ -2236,6 +2240,7 @@ export interface ScheduledTestPlan {
 export interface ScheduledTestResult {
   id: number
   plan_id: number
+  model_id: string
   status: string
   response_text: string
   error_message: string
@@ -2248,7 +2253,11 @@ export interface ScheduledTestResult {
 export interface CreateScheduledTestPlanRequest {
   account_id: number
   model_id: string
-  cron_expression: string
+  model_ids?: string[]
+  cron_expression?: string
+  trigger_mode?: 'scheduled' | 'error_recovery'
+  retry_interval_minutes?: number | null
+  retry_cron_expression?: string | null
   enabled?: boolean
   max_results?: number
   auto_recover?: boolean
@@ -2256,7 +2265,11 @@ export interface CreateScheduledTestPlanRequest {
 
 export interface UpdateScheduledTestPlanRequest {
   model_id?: string
+  model_ids?: string[]
   cron_expression?: string
+  trigger_mode?: 'scheduled' | 'error_recovery'
+  retry_interval_minutes?: number | null
+  retry_cron_expression?: string | null
   enabled?: boolean
   max_results?: number
   auto_recover?: boolean

@@ -1963,6 +1963,7 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 
 	return &ScheduledTestResult{
 		Status:       status,
+		ModelID:      modelID,
 		ResponseText: responseText,
 		ErrorMessage: errMsg,
 		LatencyMs:    finishedAt.Sub(startedAt).Milliseconds(),

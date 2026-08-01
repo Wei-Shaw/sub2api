@@ -20,20 +20,28 @@ func NewScheduledTestHandler(scheduledTestSvc *service.ScheduledTestService) *Sc
 }
 
 type createScheduledTestPlanRequest struct {
-	AccountID      int64  `json:"account_id" binding:"required"`
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression" binding:"required"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	AccountID            int64    `json:"account_id" binding:"required"`
+	ModelID              string   `json:"model_id"`
+	ModelIDs             []string `json:"model_ids"`
+	CronExpression       string   `json:"cron_expression"`
+	TriggerMode          string   `json:"trigger_mode"`
+	RetryIntervalMinutes *int     `json:"retry_interval_minutes"`
+	RetryCronExpression  *string  `json:"retry_cron_expression"`
+	Enabled              *bool    `json:"enabled"`
+	MaxResults           int      `json:"max_results"`
+	AutoRecover          *bool    `json:"auto_recover"`
 }
 
 type updateScheduledTestPlanRequest struct {
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	ModelID              string    `json:"model_id"`
+	ModelIDs             *[]string `json:"model_ids"`
+	CronExpression       string    `json:"cron_expression"`
+	TriggerMode          string    `json:"trigger_mode"`
+	RetryIntervalMinutes *int      `json:"retry_interval_minutes"`
+	RetryCronExpression  *string   `json:"retry_cron_expression"`
+	Enabled              *bool     `json:"enabled"`
+	MaxResults           int       `json:"max_results"`
+	AutoRecover          *bool     `json:"auto_recover"`
 }
 
 // ListByAccount GET /admin/accounts/:id/scheduled-test-plans
@@ -61,11 +69,15 @@ func (h *ScheduledTestHandler) Create(c *gin.Context) {
 	}
 
 	plan := &service.ScheduledTestPlan{
-		AccountID:      req.AccountID,
-		ModelID:        req.ModelID,
-		CronExpression: req.CronExpression,
-		Enabled:        true,
-		MaxResults:     req.MaxResults,
+		AccountID:            req.AccountID,
+		ModelID:              req.ModelID,
+		ModelIDs:             req.ModelIDs,
+		CronExpression:       req.CronExpression,
+		TriggerMode:          req.TriggerMode,
+		RetryIntervalMinutes: req.RetryIntervalMinutes,
+		RetryCronExpression:  req.RetryCronExpression,
+		Enabled:              true,
+		MaxResults:           req.MaxResults,
 	}
 	if req.Enabled != nil {
 		plan.Enabled = *req.Enabled
@@ -105,8 +117,22 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 	if req.ModelID != "" {
 		existing.ModelID = req.ModelID
 	}
+	if req.ModelIDs != nil {
+		existing.ModelIDs = *req.ModelIDs
+	}
 	if req.CronExpression != "" {
 		existing.CronExpression = req.CronExpression
+	}
+	if req.TriggerMode != "" {
+		existing.TriggerMode = req.TriggerMode
+	}
+	if req.RetryIntervalMinutes != nil {
+		existing.RetryIntervalMinutes = req.RetryIntervalMinutes
+		existing.RetryCronExpression = nil
+	}
+	if req.RetryCronExpression != nil {
+		existing.RetryCronExpression = req.RetryCronExpression
+		existing.RetryIntervalMinutes = nil
 	}
 	if req.Enabled != nil {
 		existing.Enabled = *req.Enabled
