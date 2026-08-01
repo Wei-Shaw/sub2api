@@ -261,6 +261,8 @@ type Account struct {
 	QuotaDailyUsed   *float64 `json:"quota_daily_used,omitempty"`
 	QuotaWeeklyLimit *float64 `json:"quota_weekly_limit,omitempty"`
 	QuotaWeeklyUsed  *float64 `json:"quota_weekly_used,omitempty"`
+	QuotaMonthlyLimit *float64 `json:"quota_monthly_limit,omitempty"`
+	QuotaMonthlyUsed  *float64 `json:"quota_monthly_used,omitempty"`
 
 	// 配额固定时间重置配置
 	QuotaDailyResetMode  *string `json:"quota_daily_reset_mode,omitempty"`
@@ -271,6 +273,7 @@ type Account struct {
 	QuotaResetTimezone   *string `json:"quota_reset_timezone,omitempty"`
 	QuotaDailyResetAt    *string `json:"quota_daily_reset_at,omitempty"`
 	QuotaWeeklyResetAt   *string `json:"quota_weekly_reset_at,omitempty"`
+	QuotaMonthlyResetAt  *string `json:"quota_monthly_reset_at,omitempty"`
 
 	// 配额通知配置
 	QuotaNotifyDailyEnabled    *bool    `json:"quota_notify_daily_enabled,omitempty"`

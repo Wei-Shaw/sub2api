@@ -26,6 +26,7 @@ const props = withDefaults(defineProps<{
   quotaNotifyTotalEnabled?: boolean | null
   quotaNotifyTotalThreshold?: number | null
   quotaNotifyTotalThresholdType?: QuotaThresholdType | null
+  syncFromUpstream?: boolean
 }>(), {
   quotaNotifyGlobalEnabled: false,
   quotaNotifyDailyEnabled: null,
@@ -37,6 +38,7 @@ const props = withDefaults(defineProps<{
   quotaNotifyTotalEnabled: null,
   quotaNotifyTotalThreshold: null,
   quotaNotifyTotalThresholdType: null,
+  syncFromUpstream: false,
 })
 
 const emit = defineEmits<{
@@ -58,15 +60,18 @@ const emit = defineEmits<{
   'update:quotaNotifyTotalEnabled': [value: boolean | null]
   'update:quotaNotifyTotalThreshold': [value: number | null]
   'update:quotaNotifyTotalThresholdType': [value: QuotaThresholdType | null]
+  'update:syncFromUpstream': [value: boolean]
 }>()
 
 const enabled = computed(() =>
   (props.totalLimit != null && props.totalLimit > 0) ||
   (props.dailyLimit != null && props.dailyLimit > 0) ||
-  (props.weeklyLimit != null && props.weeklyLimit > 0)
+  (props.weeklyLimit != null && props.weeklyLimit > 0) ||
+  props.syncFromUpstream === true
 )
 
 const localEnabled = ref(enabled.value)
+const localSyncFromUpstream = ref<boolean>(props.syncFromUpstream ?? false)
 const collapsed = ref(false)
 
 // Sync when props change externally
@@ -74,10 +79,18 @@ watch(enabled, (val) => {
   localEnabled.value = val
 })
 
+watch(() => props.syncFromUpstream, (val) => {
+  localSyncFromUpstream.value = val ?? false
+})
+
 // When toggle is turned off, clear all values and expand
 watch(localEnabled, (val) => {
   if (!val) {
     collapsed.value = false
+    if (localSyncFromUpstream.value) {
+      localSyncFromUpstream.value = false
+      emit('update:syncFromUpstream', false)
+    }
     emit('update:totalLimit', null)
     emit('update:dailyLimit', null)
     emit('update:weeklyLimit', null)
@@ -88,6 +101,21 @@ watch(localEnabled, (val) => {
     emit('update:weeklyResetHour', null)
     emit('update:resetTimezone', null)
   }
+})
+
+// 启用同步上游时，清空手动配额维度（quota_limit/used 由后端同步快照维护）
+watch(localSyncFromUpstream, (val) => {
+  if (val) {
+    emit('update:dailyLimit', null)
+    emit('update:weeklyLimit', null)
+    emit('update:dailyResetMode', null)
+    emit('update:dailyResetHour', null)
+    emit('update:weeklyResetMode', null)
+    emit('update:weeklyResetDay', null)
+    emit('update:weeklyResetHour', null)
+    emit('update:resetTimezone', null)
+  }
+  emit('update:syncFromUpstream', val)
 })
 
 // Common timezone options
@@ -164,6 +192,37 @@ const dailyFixedHint = computed(() =>
 
       <!-- Collapsible content -->
       <div v-if="localEnabled && !collapsed" class="space-y-2 p-4 pt-3">
+        <!-- 同步上游配额二级开关：开启后 quota_limit/used 由后端定期同步快照维护，隐藏手动维度输入 -->
+        <div class="rounded-md border border-gray-200 dark:border-dark-600 p-3 mb-2">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex-1">
+              <label class="input-label mb-0 cursor-pointer">{{ t('admin.accounts.quotaSyncUpstreamToggle') }}</label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaSyncUpstreamToggleHint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              data-testid="quota-sync-upstream-toggle"
+              role="switch"
+              :aria-checked="localSyncFromUpstream"
+              @click="localSyncFromUpstream = !localSyncFromUpstream"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                localSyncFromUpstream ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  localSyncFromUpstream ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
+        <template v-if="!localSyncFromUpstream">
         <!-- Daily quota -->
         <QuotaDimensionRow
           dim="daily"
@@ -241,6 +300,12 @@ const dailyFixedHint = computed(() =>
           @update:notify-threshold="emit('update:quotaNotifyTotalThreshold', $event)"
           @update:notify-threshold-type="emit('update:quotaNotifyTotalThresholdType', $event)"
         />
+        </template>
+
+        <!-- 同步上游模式提示：手动维度被隐藏时显示同步说明 -->
+        <p v-if="localSyncFromUpstream" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.quotaSyncUpstreamActiveHint') }}
+        </p>
       </div>
   </div>
 </template>

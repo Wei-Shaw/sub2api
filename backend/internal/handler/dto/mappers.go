@@ -342,6 +342,14 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 			}
 			out.QuotaWeeklyUsed = &used
 		}
+		if limit := a.GetQuotaMonthlyLimit(); limit > 0 {
+			out.QuotaMonthlyLimit = &limit
+			used := a.GetQuotaMonthlyUsed()
+			if a.IsMonthlyQuotaPeriodExpired() {
+				used = 0
+			}
+			out.QuotaMonthlyUsed = &used
+		}
 		// 固定时间重置配置
 		if mode := a.GetQuotaDailyResetMode(); mode == "fixed" {
 			out.QuotaDailyResetMode = &mode
@@ -365,6 +373,9 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 			}
 			if v, ok := a.Extra["quota_weekly_reset_at"].(string); ok && v != "" {
 				out.QuotaWeeklyResetAt = &v
+			}
+			if v, ok := a.Extra["quota_monthly_reset_at"].(string); ok && v != "" {
+				out.QuotaMonthlyResetAt = &v
 			}
 		}
 
@@ -401,7 +412,8 @@ func redactAccountManagedExtra(extra map[string]any) map[string]any {
 		switch key {
 		case service.OllamaCloudUsageSessionExtraKey,
 			service.OllamaCloudUsageAutoRefreshExtraKey,
-			service.OllamaCloudUsageSnapshotExtraKey:
+			service.OllamaCloudUsageSnapshotExtraKey,
+			service.UpstreamQuotaSyncExtraKey:
 			continue
 		default:
 			redacted[key] = value

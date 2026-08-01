@@ -31,6 +31,7 @@
     <!-- API Key 账号配额限制 -->
     <QuotaBadge v-if="showDailyQuota" :used="account.quota_daily_used ?? 0" :limit="account.quota_daily_limit!" label="D" />
     <QuotaBadge v-if="showWeeklyQuota" :used="account.quota_weekly_used ?? 0" :limit="account.quota_weekly_limit!" label="W" />
+    <QuotaBadge v-if="showMonthlyQuota" :used="account.quota_monthly_used ?? 0" :limit="account.quota_monthly_limit!" label="M" />
     <QuotaBadge v-if="showTotalQuota" :used="account.quota_used ?? 0" :limit="account.quota_limit!" />
   </div>
 </template>
@@ -183,6 +184,9 @@ const showDailyQuota = computed(() =>
 )
 const showWeeklyQuota = computed(() =>
   isQuotaEligible.value && props.account.quota_weekly_limit != null && props.account.quota_weekly_limit > 0
+)
+const showMonthlyQuota = computed(() =>
+  isQuotaEligible.value && props.account.quota_monthly_limit != null && props.account.quota_monthly_limit > 0
 )
 const showTotalQuota = computed(() =>
   isQuotaEligible.value && props.account.quota_limit != null && props.account.quota_limit > 0

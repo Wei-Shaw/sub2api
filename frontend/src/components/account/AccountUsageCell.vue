@@ -606,11 +606,47 @@
         color="emerald"
       />
       <UsageProgressBar
+        v-if="quotaMonthlyBar"
+        label="30d"
+        :utilization="quotaMonthlyBar.utilization"
+        :resets-at="quotaMonthlyBar.resetsAt"
+        color="amber"
+      />
+      <UsageProgressBar
         v-if="quotaTotalBar"
         label="total"
         :utilization="quotaTotalBar.utilization"
         color="purple"
       />
+
+      <!-- 手动刷新上游配额同步（仅当账号启用了同步上游配额时显示）。 -->
+      <!-- 样式复用 OpenAIQuotaResetCell 的「次数」按钮与 activeQuery 按钮：图标 + 文字标签。 -->
+      <button
+        v-if="showUpstreamQuotaSyncRefresh"
+        type="button"
+        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+        :disabled="props.manualRefreshingUpstreamQuotaSync"
+        :aria-label="t('admin.accounts.upstreamQuotaSync.refreshLabel')"
+        :title="t('admin.accounts.upstreamQuotaSync.manualRefresh')"
+        data-testid="upstream-quota-sync-refresh"
+        @click="emit('refresh-upstream-quota-sync')"
+      >
+        <svg
+          class="h-2.5 w-2.5"
+          :class="{ 'animate-spin': props.manualRefreshingUpstreamQuotaSync }"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          />
+        </svg>
+        {{ t('admin.accounts.upstreamQuotaSync.refreshLabel') }}
+      </button>
 
       <!-- No data at all -->
       <div
@@ -646,13 +682,19 @@ const props = withDefaults(
     todayStats?: WindowStats | null
     todayStatsLoading?: boolean
     manualRefreshToken?: number
+    manualRefreshingUpstreamQuotaSync?: boolean
   }>(),
   {
     todayStats: null,
     todayStatsLoading: false,
-    manualRefreshToken: 0
+    manualRefreshToken: 0,
+    manualRefreshingUpstreamQuotaSync: false
   }
 )
+
+const emit = defineEmits<{
+  'refresh-upstream-quota-sync': []
+}>()
 
 const { t } = useI18n()
 const desktopViewportQuery = '(min-width: 768px)'
@@ -1425,21 +1467,41 @@ const makeQuotaBar = (
   if (startKey) {
     const extra = props.account.extra as Record<string, unknown> | undefined
     const isDaily = startKey.includes('daily')
+    const isWeekly = startKey.includes('weekly')
+    const isMonthly = startKey.includes('monthly')
     const mode = isDaily
       ? (extra?.quota_daily_reset_mode as string) || 'rolling'
-      : (extra?.quota_weekly_reset_mode as string) || 'rolling'
+      : isWeekly
+        ? (extra?.quota_weekly_reset_mode as string) || 'rolling'
+        : isMonthly
+          ? (extra?.quota_monthly_reset_mode as string) || 'rolling'
+          : 'rolling'
 
     if (mode === 'fixed') {
       // Use pre-computed next reset time for fixed mode
-      const resetAtKey = isDaily ? 'quota_daily_reset_at' : 'quota_weekly_reset_at'
-      resetsAt = (extra?.[resetAtKey] as string) || null
+      const resetAtKey = isDaily
+        ? 'quota_daily_reset_at'
+        : isWeekly
+          ? 'quota_weekly_reset_at'
+          : isMonthly
+            ? 'quota_monthly_reset_at'
+            : null
+      resetsAt = resetAtKey ? ((extra?.[resetAtKey] as string) || null) : null
     } else {
       // Rolling mode: compute from start + period
       const startStr = extra?.[startKey] as string | undefined
       if (startStr) {
         const startDate = new Date(startStr)
-        const periodMs = isDaily ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000
-        resetsAt = new Date(startDate.getTime() + periodMs).toISOString()
+        const periodMs = isDaily
+          ? 24 * 60 * 60 * 1000
+          : isWeekly
+            ? 7 * 24 * 60 * 60 * 1000
+            : isMonthly
+              ? 30 * 24 * 60 * 60 * 1000
+              : 0
+        if (periodMs > 0) {
+          resetsAt = new Date(startDate.getTime() + periodMs).toISOString()
+        }
       }
     }
   }
@@ -1451,9 +1513,16 @@ const hasApiKeyQuota = computed(() => {
   return (
     (props.account.quota_daily_limit ?? 0) > 0 ||
     (props.account.quota_weekly_limit ?? 0) > 0 ||
+    (props.account.quota_monthly_limit ?? 0) > 0 ||
     (props.account.quota_limit ?? 0) > 0
   )
 })
+
+// 仅当 apikey/bedrock 账号启用了“同步上游配额”时显示手动刷新按钮。
+const showUpstreamQuotaSyncRefresh = computed(() =>
+  (props.account.type === 'apikey' || props.account.type === 'bedrock') &&
+  props.account.extra?.upstream_quota_sync_enabled === true
+)
 
 const quotaDailyBar = computed((): QuotaBarInfo | null => {
   const limit = props.account.quota_daily_limit ?? 0
@@ -1465,6 +1534,12 @@ const quotaWeeklyBar = computed((): QuotaBarInfo | null => {
   const limit = props.account.quota_weekly_limit ?? 0
   if (limit <= 0) return null
   return makeQuotaBar(props.account.quota_weekly_used ?? 0, limit, 'quota_weekly_start')
+})
+
+const quotaMonthlyBar = computed((): QuotaBarInfo | null => {
+  const limit = props.account.quota_monthly_limit ?? 0
+  if (limit <= 0) return null
+  return makeQuotaBar(props.account.quota_monthly_used ?? 0, limit, 'quota_monthly_start')
 })
 
 const quotaTotalBar = computed((): QuotaBarInfo | null => {

@@ -983,6 +983,43 @@ export interface UpstreamBillingProbeResult {
   error?: string
 }
 
+// ==================== Upstream Quota Sync ====================
+
+export type UpstreamQuotaSyncStatus = 'ok' | 'unsupported' | 'failed'
+export type UpstreamQuotaSyncMode = 'subscription' | 'balance' | 'quota_limited' | ''
+
+export interface UpstreamQuotaSyncWindow {
+  limit: number
+  used: number
+  remaining: number
+  window_start?: string
+  resets_at?: string
+}
+
+export interface UpstreamQuotaSyncSubscription {
+  daily?: UpstreamQuotaSyncWindow
+  weekly?: UpstreamQuotaSyncWindow
+  monthly?: UpstreamQuotaSyncWindow
+  expires_at?: string
+}
+
+export interface UpstreamQuotaSyncSnapshot {
+  status: UpstreamQuotaSyncStatus
+  mode?: UpstreamQuotaSyncMode
+  data?: Record<string, unknown>
+  limit?: number
+  used?: number
+  remaining?: number
+  subscription?: UpstreamQuotaSyncSubscription
+  balance?: number
+  received_at?: string
+  last_attempt_at: string
+  next_sync_at: string
+  failure_count?: number
+  http_status?: number
+  last_error?: string
+}
+
 export type OllamaCloudUsageStatus = 'ok' | 'unauthorized' | 'failed'
 
 export interface OllamaCloudUsageWindow {
@@ -1052,6 +1089,12 @@ export interface Account {
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     upstream_billing_probe_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    upstream_quota_sync_enabled?: boolean
+    upstream_quota_sync?: UpstreamQuotaSyncSnapshot
+    quota_monthly_limit?: number | null
+    quota_monthly_used?: number | null
+    quota_monthly_start?: string | null
+    quota_monthly_reset_at?: string | null
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null
@@ -1129,6 +1172,8 @@ export interface Account {
   quota_daily_used?: number | null
   quota_weekly_limit?: number | null
   quota_weekly_used?: number | null
+  quota_monthly_limit?: number | null
+  quota_monthly_used?: number | null
 
   // 配额固定时间重置配置
   quota_daily_reset_mode?: 'rolling' | 'fixed' | null
@@ -1139,6 +1184,7 @@ export interface Account {
   quota_reset_timezone?: string | null
   quota_daily_reset_at?: string | null
   quota_weekly_reset_at?: string | null
+  quota_monthly_reset_at?: string | null
 
   // 运行时状态（仅当启用对应限制时返回）
   current_window_cost?: number | null // 当前窗口费用
