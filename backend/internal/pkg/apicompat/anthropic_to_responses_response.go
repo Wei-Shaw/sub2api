@@ -76,10 +76,14 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 		case "server_tool_use":
 			if block.Name == "web_search" {
 				query := anthropicExtractWebSearchQuery(block.Input)
+				status := "in_progress"
+				if anthropicHasMatchingWebSearchResult(block.ID, resp.Content, i) {
+					status = "completed"
+				}
 				outputs = append(outputs, ResponsesOutput{
 					Type:   "web_search_call",
 					ID:     generateItemID(),
-					Status: "completed",
+					Status: status,
 					Action: &WebSearchAction{
 						Type:  "search",
 						Query: query,
@@ -87,7 +91,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 				})
 			}
 		case "web_search_tool_result":
-			// Paired with server_tool_use; emitted as web_search_call above.
+			// Paired with server_tool_use; represented by web_search_call above.
 		}
 	}
 
@@ -407,9 +411,17 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		}
 
 	case "web_search_tool_result":
-		if state.WebSearchActive {
+		if state.WebSearchActive && evt.ContentBlock != nil &&
+			evt.ContentBlock.ToolUseID == state.WebSearchToolUseID {
 			state.WebSearchActive = false
 			state.CurrentItemType = ""
+
+			// If query wasn't available at block_start (e.g. streamed via input_json_delta),
+			// try extracting from accumulated args.
+			query := state.WebSearchQuery
+			if query == "" && state.CurrentArgs != "" {
+				query = anthropicExtractWebSearchQuery(json.RawMessage(state.CurrentArgs))
+			}
 
 			events = append(events, makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
 				OutputIndex: state.OutputIndex,
@@ -419,7 +431,7 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 					Status: "completed",
 					Action: &WebSearchAction{
 						Type:  "search",
-						Query: state.WebSearchQuery,
+						Query: query,
 					},
 				},
 			}))
@@ -430,13 +442,14 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 				Status: "completed",
 				Action: &WebSearchAction{
 					Type:  "search",
-					Query: state.WebSearchQuery,
+					Query: query,
 				},
 			})
 			state.OutputIndex++
 			state.WebSearchItemID = ""
 			state.WebSearchToolUseID = ""
 			state.WebSearchQuery = ""
+			state.CurrentArgs = ""
 		}
 	}
 
@@ -514,6 +527,12 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 
 	case "input_json_delta":
 		if evt.Delta.PartialJSON == "" {
+			return nil
+		}
+		if state.CurrentItemType == "web_search_call" {
+			// Server tool input arrives as streaming JSON fragments; accumulate
+			// for query extraction but don't emit function_call events.
+			state.CurrentArgs += evt.Delta.PartialJSON
 			return nil
 		}
 		state.CurrentArgs += evt.Delta.PartialJSON
@@ -634,6 +653,11 @@ func anthToResHandleMessageStop(state *AnthropicEventToResponsesState) []Respons
 	}
 
 	var events []ResponsesStreamEvent
+
+	if state.PendingStatusTextReady {
+		events = append(events, anthToResFlushPendingStatusText(state)...)
+	}
+
 	events = append(events, closeCurrentResponsesItem(state)...)
 
 	status, incompleteDetails := anthropicResponsesStreamTerminalState(state.StopReason)
@@ -643,6 +667,15 @@ func anthToResHandleMessageStop(state *AnthropicEventToResponsesState) []Respons
 }
 
 // --- helper functions ---
+
+func anthropicHasMatchingWebSearchResult(toolUseID string, blocks []AnthropicContentBlock, startIndex int) bool {
+	for j := startIndex + 1; j < len(blocks); j++ {
+		if blocks[j].Type == "web_search_tool_result" && blocks[j].ToolUseID == toolUseID {
+			return true
+		}
+	}
+	return false
+}
 
 func anthropicIsWebSearchStatusText(text string, blocks []AnthropicContentBlock, index int) bool {
 	if !strings.HasPrefix(text, anthropicWebSearchStatusPrefix) {

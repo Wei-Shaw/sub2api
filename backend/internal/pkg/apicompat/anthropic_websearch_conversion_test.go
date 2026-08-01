@@ -374,6 +374,117 @@ func TestNonStreaming_MultipleWebSearches(t *testing.T) {
 	}
 }
 
+// TestStreaming_MessageStopFlushesHeldText verifies that pending status text
+// is flushed on normal message_stop (issue: text was lost when no further
+// content_block_start arrives to trigger flush decision).
+func TestStreaming_MessageStopFlushesHeldText(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+	state.Model = "k3-256k"
+
+	var events []ResponsesStreamEvent
+	feed := func(evt *AnthropicStreamEvent) {
+		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
+	}
+
+	idx0 := 0
+	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_ms1"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &idx0, ContentBlock: &AnthropicContentBlock{Type: "text"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &idx0, Delta: &AnthropicDelta{Type: "text_delta", Text: "Search results for query: last block"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &idx0})
+	// Normal message_delta + message_stop without any subsequent block
+	feed(&AnthropicStreamEvent{Type: "message_delta", Delta: &AnthropicDelta{StopReason: "end_turn"}})
+	feed(&AnthropicStreamEvent{Type: "message_stop"})
+
+	hasText := false
+	for _, e := range events {
+		if e.Type == "response.output_text.delta" && e.Delta == "Search results for query: last block" {
+			hasText = true
+		}
+	}
+	if !hasText {
+		t.Error("pending status text must be flushed on message_stop when no following block exists")
+	}
+
+	// Should also appear in completed output
+	var completed *ResponsesStreamEvent
+	for i := range events {
+		if events[i].Type == "response.completed" {
+			completed = &events[i]
+		}
+	}
+	if completed == nil || completed.Response == nil {
+		t.Fatal("response.completed not emitted")
+	}
+	if len(completed.Response.Output) == 0 {
+		t.Fatal("completed output is empty")
+	}
+	msg := completed.Response.Output[0]
+	if msg.Type != "message" || len(msg.Content) == 0 || msg.Content[0].Text != "Search results for query: last block" {
+		t.Errorf("completed output message content mismatch: %+v", msg)
+	}
+}
+
+// TestStreaming_WebSearchInputJsonDelta verifies that input_json_delta during
+// a web_search_call does NOT emit function_call_arguments.delta events.
+func TestStreaming_WebSearchInputJsonDelta(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+	state.Model = "k3-256k"
+
+	var events []ResponsesStreamEvent
+	feed := func(evt *AnthropicStreamEvent) {
+		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
+	}
+
+	idx0, idx1 := 0, 1
+	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_ijd"}})
+
+	// server_tool_use starts with empty input (will be streamed)
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &idx0, ContentBlock: &AnthropicContentBlock{
+		Type: "server_tool_use", ID: "srvtoolu_ijd", Name: "web_search",
+	}})
+	// Input arrives via input_json_delta
+	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &idx0, Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"query":`}})
+	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &idx0, Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `"streamed query"}`}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &idx0})
+
+	// web_search_tool_result
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &idx1, ContentBlock: &AnthropicContentBlock{
+		Type: "web_search_tool_result", ToolUseID: "srvtoolu_ijd",
+	}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &idx1})
+	feed(&AnthropicStreamEvent{Type: "message_stop"})
+
+	// Must NOT have any function_call_arguments.delta
+	for _, e := range events {
+		if e.Type == "response.function_call_arguments.delta" {
+			t.Errorf("input_json_delta during web_search_call must not emit function_call_arguments.delta; got: %q", e.Delta)
+		}
+	}
+
+	// Query should be extracted from accumulated input
+	var completed *ResponsesStreamEvent
+	for i := range events {
+		if events[i].Type == "response.completed" {
+			completed = &events[i]
+		}
+	}
+	if completed == nil || completed.Response == nil {
+		t.Fatal("response.completed not emitted")
+	}
+	foundWS := false
+	for _, o := range completed.Response.Output {
+		if o.Type == "web_search_call" {
+			foundWS = true
+			if o.Action == nil || o.Action.Query != "streamed query" {
+				t.Errorf("web_search_call query should be extracted from streamed input; got: %+v", o.Action)
+			}
+		}
+	}
+	if !foundWS {
+		t.Error("web_search_call not found in completed output")
+	}
+}
+
 // TestStreaming_FinalizeFlushesHeldText verifies that if the stream ends
 // abruptly after a pending status text without a following block, the text
 // is flushed (not lost).
