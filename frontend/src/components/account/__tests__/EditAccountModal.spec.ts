@@ -95,11 +95,11 @@ const ModelWhitelistSelectorStub = defineComponent({
 })
 
 const SelectStub = defineComponent({
-  name: 'Select',
+  name: 'UiSelectStub',
   props: {
     modelValue: {
-      type: [String, Number, Boolean, Object, Array],
-      default: ''
+      type: [String, Number, Boolean, null],
+      default: null
     },
     options: {
       type: Array,
@@ -110,11 +110,32 @@ const SelectStub = defineComponent({
       default: false
     }
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'change'],
+  methods: {
+    optionValue(option: any) {
+      return typeof option === 'object' && option !== null ? option.value : option
+    },
+    optionLabel(option: any) {
+      if (typeof option === 'object' && option !== null) {
+        return String(option.label ?? '')
+      }
+      return String(option ?? '')
+    },
+    onChange(event: Event) {
+      const value = (event.target as HTMLSelectElement).value
+      this.$emit('update:modelValue', value)
+      this.$emit('change', value, null)
+    }
+  },
   template: `
-    <select :disabled="disabled" :value="modelValue" @change="$emit('update:modelValue', $event.target.value)">
-      <option v-for="option in options" :key="String(option.value)" :value="option.value">
-        {{ option.label ?? option.value }}
+    <select :value="modelValue ?? ''" :disabled="disabled" @change="onChange">
+      <option
+        v-for="option in options"
+        :key="String(optionValue(option))"
+        :value="optionValue(option)"
+        :disabled="typeof option === 'object' && option !== null && !!option.disabled"
+      >
+        {{ optionLabel(option) }}
       </option>
     </select>
   `

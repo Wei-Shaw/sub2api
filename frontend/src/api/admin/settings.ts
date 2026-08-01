@@ -431,6 +431,11 @@ export interface SystemSettings {
   auth_source_default_google_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_google_grant_on_signup?: boolean;
   auth_source_default_google_grant_on_first_bind?: boolean;
+  auth_source_default_dingtalk_balance?: number;
+  auth_source_default_dingtalk_concurrency?: number;
+  auth_source_default_dingtalk_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_dingtalk_grant_on_signup?: boolean;
+  auth_source_default_dingtalk_grant_on_first_bind?: boolean;
   force_email_on_third_party_signup?: boolean;
   // ── 平台限额（嵌套 JSON，系统层 + 7 auth-source 层）────────────────────────────────
   default_platform_quotas?: DefaultPlatformQuotasMap;
@@ -766,6 +771,11 @@ export interface UpdateSettingsRequest {
   auth_source_default_google_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_google_grant_on_signup?: boolean;
   auth_source_default_google_grant_on_first_bind?: boolean;
+  auth_source_default_dingtalk_balance?: number;
+  auth_source_default_dingtalk_concurrency?: number;
+  auth_source_default_dingtalk_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_dingtalk_grant_on_signup?: boolean;
+  auth_source_default_dingtalk_grant_on_first_bind?: boolean;
   force_email_on_third_party_signup?: boolean;
   // ── 平台限额（嵌套 JSON，系统层 + 7 auth-source 层）────────────────────────────────
   default_platform_quotas?: DefaultPlatformQuotasMap;
