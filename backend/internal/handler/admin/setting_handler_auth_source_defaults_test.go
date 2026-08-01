@@ -258,6 +258,64 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedS
 	require.Equal(t, true, data["openai_advanced_scheduler_subscription_priority_enabled"])
 }
 
+func TestSettingHandler_UpdateSettings_PersistsPaymentFXSettings(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPromoCodeEnabled: "true",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	paymentConfigSvc := service.NewPaymentConfigService(nil, repo, nil)
+	handler := NewSettingHandler(svc, nil, nil, nil, paymentConfigSvc, nil, nil)
+
+	body := map[string]any{
+		"promo_code_enabled":                    true,
+		"payment_ledger_currency":               "usd",
+		"payment_allowed_currencies":            []string{"usd", "vnd", "cny"},
+		"payment_manual_fx_rates":               `{"USD":1,"VND":0.00004,"CNY":0.14}`,
+		"payment_fx_auto_sync_enabled":          true,
+		"payment_fx_auto_sync_provider":         "open_exchange_rates",
+		"payment_fx_auto_sync_interval_seconds": 900,
+		"payment_fx_rates_stale_after_seconds":  1800,
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "USD", repo.values[service.SettingLedgerCurrency])
+	require.Equal(t, "USD,VND,CNY", repo.values[service.SettingAllowedPaymentCurrencies])
+	require.JSONEq(t, `{"CNY":0.14,"USD":1,"VND":0.00004}`, repo.values[service.SettingManualFXRates])
+	require.Equal(t, "manual", repo.values[service.SettingFXRatesSource])
+	require.NotEmpty(t, repo.values[service.SettingFXRatesUpdatedAt])
+	require.Equal(t, "true", repo.values[service.SettingFXAutoSyncEnabled])
+	require.Equal(t, "open_exchange_rates", repo.values[service.SettingFXAutoSyncProvider])
+	require.Equal(t, "900", repo.values[service.SettingFXAutoSyncIntervalSec])
+	require.Equal(t, "1800", repo.values[service.SettingFXRatesStaleAfterSeconds])
+
+	var resp response.Response
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "USD", data["payment_ledger_currency"])
+	require.ElementsMatch(t, []any{"USD", "VND", "CNY"}, data["payment_allowed_currencies"])
+	require.Equal(t, true, data["payment_fx_auto_sync_enabled"])
+	require.Equal(t, "open_exchange_rates", data["payment_fx_auto_sync_provider"])
+	require.Equal(t, float64(900), data["payment_fx_auto_sync_interval_seconds"])
+	status, ok := data["payment_fx_status"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "manual", status["source"])
+	require.Equal(t, false, status["stale"])
+	require.Equal(t, float64(1800), status["stale_after_seconds"])
+}
+
 func TestSettingHandler_UpdateSettings_PreservesLegacyBlankPaymentVisibleMethodSource(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &settingHandlerRepoStub{

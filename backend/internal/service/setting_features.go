@@ -394,6 +394,30 @@ func (s *SettingService) GetAuthSourceDefaultSettings(ctx context.Context) (*Aut
 	}, nil
 }
 
+func authSourceSignupSettings(settings *AuthSourceDefaultSettings, signupSource string) (ProviderDefaultGrantSettings, bool) {
+	if settings == nil {
+		return ProviderDefaultGrantSettings{}, false
+	}
+	switch strings.ToLower(strings.TrimSpace(signupSource)) {
+	case "email", "mail", "password":
+		return settings.Email, true
+	case "linuxdo", "linux-do", "linux_do":
+		return settings.LinuxDo, true
+	case "oidc", "open_id_connect", "open-id-connect":
+		return settings.OIDC, true
+	case "wechat", "we_chat", "we-chat", "weixin":
+		return settings.WeChat, true
+	case "github", "git_hub", "git-hub":
+		return settings.GitHub, true
+	case "google":
+		return settings.Google, true
+	case "dingtalk", "ding_talk", "ding-talk":
+		return settings.DingTalk, true
+	default:
+		return ProviderDefaultGrantSettings{}, false
+	}
+}
+
 func (s *SettingService) ResolveAuthSourceGrantSettings(ctx context.Context, signupSource string, firstBind bool) (ProviderDefaultGrantSettings, bool, error) {
 	result := ProviderDefaultGrantSettings{
 		Balance:       s.GetDefaultBalance(ctx),

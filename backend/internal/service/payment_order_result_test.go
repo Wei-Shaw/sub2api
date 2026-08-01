@@ -103,6 +103,76 @@ func TestBuildCreateOrderResponseDefaultsToOrderCreated(t *testing.T) {
 	}
 }
 
+func TestBuildCreateOrderResponseIncludesCurrencySnapshot(t *testing.T) {
+	t.Parallel()
+
+	fxSource := fxSourceManual
+	fxTimestamp := time.Date(2026, 4, 29, 9, 30, 0, 0, time.UTC)
+	resp := buildCreateOrderResponse(
+		&dbent.PaymentOrder{
+			ID:                    91,
+			Amount:                10,
+			PaymentAmount:         255000,
+			PaymentCurrency:       "VND",
+			LedgerAmount:          10,
+			LedgerCurrency:        "USD",
+			FxRatePaymentToLedger: 10.0 / 255000.0,
+			FxSource:              &fxSource,
+			FxTimestamp:           &fxTimestamp,
+			PayAmount:             262650,
+			FeeRate:               3,
+			ExpiresAt:             time.Date(2026, 4, 29, 9, 45, 0, 0, time.UTC),
+			OutTradeNo:            "sub2_91",
+		},
+		CreateOrderRequest{PaymentType: payment.TypeSepay},
+		262650,
+		&payment.InstanceSelection{PaymentMode: "qrcode"},
+		&payment.CreatePaymentResponse{TradeNo: "sub2_91", QRCode: "https://qr.example/sub2_91"},
+		payment.CreatePaymentResultOrderCreated,
+	)
+
+	if resp.PaymentAmount != 255000 || resp.PaymentCurrency != "VND" {
+		t.Fatalf("payment snapshot = %.2f %s, want 255000 VND", resp.PaymentAmount, resp.PaymentCurrency)
+	}
+	if resp.LedgerAmount != 10 || resp.LedgerCurrency != "USD" {
+		t.Fatalf("ledger snapshot = %.2f %s, want 10 USD", resp.LedgerAmount, resp.LedgerCurrency)
+	}
+	if resp.FXRate != 10.0/255000.0 || resp.FXSource != fxSourceManual || !resp.FXTimestamp.Equal(fxTimestamp) {
+		t.Fatalf("fx snapshot = rate %v source %q timestamp %v", resp.FXRate, resp.FXSource, resp.FXTimestamp)
+	}
+	if resp.PayAmount != 262650 {
+		t.Fatalf("pay_amount = %v, want 262650", resp.PayAmount)
+	}
+}
+
+func TestBuildProviderCreatePaymentRequestUsesPayAmountAndCurrencySnapshot(t *testing.T) {
+	t.Parallel()
+
+	req := buildProviderCreatePaymentRequest(
+		CreateOrderRequest{PaymentType: payment.TypeSepay, ReturnURL: "https://app.example/payment/result"},
+		&payment.InstanceSelection{SupportedTypes: string(payment.TypeSepay)},
+		&dbent.PaymentOrder{
+			OutTradeNo:      "sub2_vnd",
+			PaymentAmount:   255000,
+			PayAmount:       262650,
+			PaymentCurrency: "VND",
+			LedgerAmount:    10,
+			LedgerCurrency:  "USD",
+		},
+		"Sub2API 10 USD",
+	)
+
+	if req.Amount != "262650" {
+		t.Fatalf("provider amount = %q, want local pay_amount after fee", req.Amount)
+	}
+	if req.PaymentCurrency != "VND" {
+		t.Fatalf("payment currency = %q, want VND", req.PaymentCurrency)
+	}
+	if req.LedgerAmount != "10.00" || req.LedgerCurrency != "USD" {
+		t.Fatalf("ledger snapshot = %q %s, want 10.00 USD", req.LedgerAmount, req.LedgerCurrency)
+	}
+}
+
 func TestBuildCreateOrderResponseCopiesJSAPIPayload(t *testing.T) {
 	t.Parallel()
 
@@ -409,6 +479,26 @@ func TestMaybeBuildWeChatOAuthRequiredResponse(t *testing.T) {
 	}
 	if resp.OAuth.AuthorizeURL != "/api/v1/auth/oauth/wechat/payment/start?amount=12.5&order_type=balance&payment_type=wxpay&redirect=%2Fpurchase%3Ffrom%3Dwechat&scope=snsapi_base" {
 		t.Fatalf("authorize_url = %q", resp.OAuth.AuthorizeURL)
+	}
+}
+
+func TestBuildWeChatPaymentOAuthStartURLPreservesCurrencyAmountMode(t *testing.T) {
+	t.Parallel()
+
+	got, err := buildWeChatPaymentOAuthStartURL(CreateOrderRequest{
+		Amount:          255000,
+		AmountMode:      PaymentAmountModePayment,
+		PaymentCurrency: "vnd",
+		PaymentType:     payment.TypeWxpay,
+		OrderType:       payment.OrderTypeBalance,
+		SrcURL:          "https://merchant.example/payment?from=wechat",
+	}, "snsapi_base")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "/api/v1/auth/oauth/wechat/payment/start?amount=255000&amount_mode=payment&order_type=balance&payment_currency=VND&payment_type=wxpay&redirect=%2Fpurchase%3Ffrom%3Dwechat&scope=snsapi_base"
+	if got != want {
+		t.Fatalf("authorize URL = %q, want %q", got, want)
 	}
 }
 

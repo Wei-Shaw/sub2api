@@ -660,6 +660,25 @@ func TestLoadIdempotencyConfigFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadPaymentFXConfigFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("PAYMENT_FX_OPEN_EXCHANGE_RATES_APP_ID", "  test-app-id  ")
+	t.Setenv("PAYMENT_FX_OPEN_EXCHANGE_RATES_BASE_URL", " https://fx.example.com/latest.json ")
+	t.Setenv("PAYMENT_FX_OPEN_EXCHANGE_RATES_TIMEOUT_SECONDS", "17")
+	t.Setenv("PAYMENT_FX_SYNC_MAX_ATTEMPTS", "5")
+	t.Setenv("PAYMENT_FX_SYNC_INITIAL_BACKOFF_SECONDS", "4")
+	t.Setenv("PAYMENT_FX_SYNC_MAX_BACKOFF_SECONDS", "60")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "test-app-id", cfg.PaymentFX.OpenExchangeRates.AppID)
+	require.Equal(t, "https://fx.example.com/latest.json", cfg.PaymentFX.OpenExchangeRates.BaseURL)
+	require.Equal(t, 17, cfg.PaymentFX.OpenExchangeRates.TimeoutSeconds)
+	require.Equal(t, 5, cfg.PaymentFX.Sync.MaxAttempts)
+	require.Equal(t, 4, cfg.PaymentFX.Sync.InitialBackoffSeconds)
+	require.Equal(t, 60, cfg.PaymentFX.Sync.MaxBackoffSeconds)
+}
+
 func TestLoadSchedulingConfigFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_SCHEDULING_STICKY_SESSION_MAX_WAITING", "5")

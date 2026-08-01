@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -295,6 +296,13 @@ type UpdateSettingsRequest struct {
 	PaymentProductNameSuffix         *string  `json:"payment_product_name_suffix"`
 	PaymentHelpImageURL              *string  `json:"payment_help_image_url"`
 	PaymentHelpText                  *string  `json:"payment_help_text"`
+	PaymentLedgerCurrency            *string  `json:"payment_ledger_currency"`
+	PaymentAllowedCurrencies         []string `json:"payment_allowed_currencies"`
+	PaymentManualFXRates             *string  `json:"payment_manual_fx_rates"`
+	PaymentFXAutoSyncEnabled         *bool    `json:"payment_fx_auto_sync_enabled"`
+	PaymentFXAutoSyncProvider        *string  `json:"payment_fx_auto_sync_provider"`
+	PaymentFXAutoSyncIntervalSeconds *int     `json:"payment_fx_auto_sync_interval_seconds"`
+	PaymentFXRatesStaleAfterSeconds  *int     `json:"payment_fx_rates_stale_after_seconds"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -1838,6 +1846,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			CancelRateLimitMode:           req.PaymentCancelRateLimitMode,
 			AlipayForceQRCode:             req.PaymentAlipayForceQRCode,
 			AlipayMobilePrecreateDeepLink: req.PaymentAlipayMobilePrecreateDeepLink,
+			LedgerCurrency:                req.PaymentLedgerCurrency,
+			AllowedPaymentCurrencies:      req.PaymentAllowedCurrencies,
+			ManualFXRates:                 req.PaymentManualFXRates,
+			FXAutoSyncEnabled:             req.PaymentFXAutoSyncEnabled,
+			FXAutoSyncProvider:            req.PaymentFXAutoSyncProvider,
+			FXAutoSyncIntervalSec:         req.PaymentFXAutoSyncIntervalSeconds,
+			FXRatesStaleAfterSeconds:      req.PaymentFXRatesStaleAfterSeconds,
 		}
 		if err := h.paymentConfigService.UpdatePaymentConfig(c.Request.Context(), paymentReq); err != nil {
 			response.ErrorFrom(c, err)
@@ -2092,6 +2107,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentProductNameSuffix:                               updatedPaymentCfg.ProductNameSuffix,
 		PaymentHelpImageURL:                                    updatedPaymentCfg.HelpImageURL,
 		PaymentHelpText:                                        updatedPaymentCfg.HelpText,
+		PaymentLedgerCurrency:                                  updatedPaymentCfg.LedgerCurrency,
+		PaymentAllowedCurrencies:                               updatedPaymentCfg.AllowedPaymentCurrencies,
+		PaymentManualFXRates:                                   updatedPaymentCfg.ManualFXRates,
+		PaymentFXStatus:                                        paymentFXStatusDTO(updatedPaymentCfg.FXStatus),
+		PaymentFXAutoSyncEnabled:                               updatedPaymentCfg.FXAutoSyncEnabled,
+		PaymentFXAutoSyncProvider:                              updatedPaymentCfg.FXAutoSyncProvider,
+		PaymentFXAutoSyncIntervalSeconds:                       updatedPaymentCfg.FXAutoSyncIntervalSec,
 		PaymentCancelRateLimitEnabled:                          updatedPaymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              updatedPaymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           updatedPaymentCfg.CancelRateLimitWindow,
@@ -2131,6 +2153,20 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
 }
 
+func paymentFXStatusDTO(status service.PaymentFXStatus) dto.PaymentFXStatus {
+	updatedAt := ""
+	if status.UpdatedAt != nil {
+		updatedAt = status.UpdatedAt.UTC().Format(time.RFC3339)
+	}
+	return dto.PaymentFXStatus{
+		Source:            status.Source,
+		UpdatedAt:         updatedAt,
+		StaleAfterSeconds: status.StaleAfterSeconds,
+		Stale:             status.Stale,
+		MissingCurrencies: status.MissingCurrencies,
+	}
+}
+
 // hasPaymentFields returns true if any payment-related field was explicitly provided.
 // mapDingTalkValidateError maps ValidateDingTalkConfig errors to machine-readable reason codes.
 func mapDingTalkValidateError(err error) string {
@@ -2153,7 +2189,11 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentRechargeFeeRate != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
-		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
+		req.PaymentHelpText != nil || req.PaymentLedgerCurrency != nil ||
+		req.PaymentAllowedCurrencies != nil || req.PaymentManualFXRates != nil ||
+		req.PaymentFXAutoSyncEnabled != nil || req.PaymentFXAutoSyncProvider != nil ||
+		req.PaymentFXAutoSyncIntervalSeconds != nil || req.PaymentFXRatesStaleAfterSeconds != nil ||
+		req.PaymentCancelRateLimitEnabled != nil ||
 		req.PaymentCancelRateLimitMax != nil || req.PaymentCancelRateLimitWindow != nil ||
 		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil ||
 		req.PaymentAlipayForceQRCode != nil || req.PaymentAlipayMobilePrecreateDeepLink != nil

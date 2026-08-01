@@ -7304,6 +7304,36 @@
                       {{ t("admin.settings.payment.orderTimeoutHint") }}
                     </p>
                   </div>
+                  <div class="min-w-64 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-dark-600 dark:bg-dark-800/60 dark:text-gray-300">
+                    <div class="mb-1 font-medium text-gray-800 dark:text-gray-100">
+                      FX status
+                    </div>
+                    <div>
+                      Ledger: {{ form.payment_ledger_currency || "USD" }} · Local:
+                      {{ (form.payment_allowed_currencies || []).join(", ") }}
+                    </div>
+                    <div>
+                      Source: {{ form.payment_fx_status?.source || "manual" }}
+                      <span
+                        :class="
+                          form.payment_fx_status?.stale
+                            ? 'text-amber-600 dark:text-amber-300'
+                            : 'text-emerald-600 dark:text-emerald-300'
+                        "
+                      >
+                        · {{ form.payment_fx_status?.stale ? "stale" : "fresh" }}
+                      </span>
+                    </div>
+                    <div v-if="form.payment_fx_status?.updated_at">
+                      Updated: {{ form.payment_fx_status.updated_at }}
+                    </div>
+                    <div
+                      v-if="form.payment_fx_status?.missing_currencies?.length"
+                      class="text-red-600 dark:text-red-300"
+                    >
+                      Missing: {{ form.payment_fx_status.missing_currencies.join(", ") }}
+                    </div>
+                  </div>
                 </div>
                 <!-- Row 3: Pending orders + load balance + cancel rate limit (all in one row) -->
                 <div class="flex flex-wrap items-end gap-4">
@@ -8888,6 +8918,18 @@ const form = reactive<SettingsForm>({
   payment_enabled_types: [],
   payment_help_image_url: "",
   payment_help_text: "",
+  payment_ledger_currency: "USD",
+  payment_allowed_currencies: ["USD", "CNY"],
+  payment_manual_fx_rates: { USD: 1, CNY: 1 },
+  payment_fx_status: {
+    source: "manual",
+    stale_after_seconds: 86400,
+    stale: false,
+    missing_currencies: [],
+  },
+  payment_fx_auto_sync_enabled: false,
+  payment_fx_auto_sync_provider: "manual",
+  payment_fx_auto_sync_interval_seconds: 3600,
   payment_product_name_prefix: "",
   payment_product_name_suffix: "",
   payment_load_balance_strategy: "round-robin",

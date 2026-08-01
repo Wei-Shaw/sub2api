@@ -10,6 +10,7 @@ import type {
   LoginAgreementDocument,
   NotifyEmailEntry,
 } from "@/types";
+import type { PaymentFXStatus } from "@/types/payment";
 
 export interface DefaultSubscriptionSetting {
   group_id: number;
@@ -607,6 +608,13 @@ export interface SystemSettings {
   payment_product_name_suffix: string;
   payment_help_image_url: string;
   payment_help_text: string;
+  payment_ledger_currency: string;
+  payment_allowed_currencies: string[];
+  payment_manual_fx_rates: Record<string, number>;
+  payment_fx_status: PaymentFXStatus;
+  payment_fx_auto_sync_enabled: boolean;
+  payment_fx_auto_sync_provider: string;
+  payment_fx_auto_sync_interval_seconds: number;
   payment_cancel_rate_limit_enabled: boolean;
   payment_cancel_rate_limit_max: number;
   payment_cancel_rate_limit_window: number;
@@ -897,6 +905,13 @@ export interface UpdateSettingsRequest {
   payment_product_name_suffix?: string;
   payment_help_image_url?: string;
   payment_help_text?: string;
+  payment_ledger_currency?: string;
+  payment_allowed_currencies?: string[];
+  payment_manual_fx_rates?: string;
+  payment_fx_auto_sync_enabled?: boolean;
+  payment_fx_auto_sync_provider?: string;
+  payment_fx_auto_sync_interval_seconds?: number;
+  payment_fx_rates_stale_after_seconds?: number;
   payment_cancel_rate_limit_enabled?: boolean;
   payment_cancel_rate_limit_max?: number;
   payment_cancel_rate_limit_window?: number;

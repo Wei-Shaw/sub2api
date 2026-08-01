@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
-	"github.com/shopspring/decimal"
 )
 
 const (
@@ -334,22 +333,19 @@ func mapPaddleStatus(status string) string {
 }
 
 func decimalAmountToMinorUnits(amount string, currency string) (string, error) {
-	value, err := decimal.NewFromString(strings.TrimSpace(amount))
+	minor, err := payment.AmountToMinorUnits(amount, currency)
 	if err != nil {
 		return "", err
 	}
-	minor := value.Mul(decimal.NewFromInt(100)).Round(0)
-	return minor.StringFixed(0), nil
+	return strconv.FormatInt(minor, 10), nil
 }
 
-func minorUnitsToDecimal(amount string, _ string) (float64, error) {
-	value, err := decimal.NewFromString(strings.TrimSpace(amount))
+func minorUnitsToDecimal(amount string, currency string) (float64, error) {
+	minor, err := strconv.ParseInt(strings.TrimSpace(amount), 10, 64)
 	if err != nil {
 		return 0, err
 	}
-	major := value.Div(decimal.NewFromInt(100))
-	result, _ := major.Float64()
-	return result, nil
+	return payment.MinorUnitsToAmount(minor, currency), nil
 }
 
 func firstNonEmpty(values ...string) string {

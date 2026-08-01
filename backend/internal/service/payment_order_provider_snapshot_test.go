@@ -6,6 +6,7 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/require"
@@ -83,6 +84,14 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 		&PaymentConfig{
 			MaxPendingOrders: 3,
 			OrderTimeoutMin:  30,
+			LedgerCurrency:   "USD",
+		},
+		fxSnapshot{
+			PaymentCurrency:     "CNY",
+			LedgerCurrency:      "USD",
+			RatePaymentToLedger: 1,
+			Source:              fxSourceIdentity,
+			Timestamp:           time.Now().UTC(),
 		},
 		88,
 		88,

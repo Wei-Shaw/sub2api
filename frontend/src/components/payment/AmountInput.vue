@@ -18,7 +18,7 @@
           ]"
           @click="selectAmount(amt)"
         >
-          {{ amt }}
+          {{ formatOptionAmount(amt) }}
         </button>
       </div>
     </div>
@@ -30,7 +30,7 @@
       </label>
       <div class="relative">
         <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-500">
-          $
+          {{ currencySymbol }}
         </span>
         <input
           type="text"
@@ -54,10 +54,14 @@ const props = withDefaults(defineProps<{
   modelValue: number | null
   min?: number
   max?: number
+  currencySymbol?: string
+  minorUnits?: number
 }>(), {
   amounts: () => [10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
   min: 0,
   max: 0,
+  currencySymbol: '$',
+  minorUnits: 2,
 })
 
 const emit = defineEmits<{
@@ -74,13 +78,24 @@ const filteredAmounts = computed(() =>
 )
 
 const placeholderText = computed(() => {
-  if (props.min > 0 && props.max > 0) return `${props.min} - ${props.max}`
-  if (props.min > 0) return `≥ ${props.min}`
-  if (props.max > 0) return `≤ ${props.max}`
+  if (props.min > 0 && props.max > 0) return `${formatOptionAmount(props.min)} - ${formatOptionAmount(props.max)}`
+  if (props.min > 0) return `≥ ${formatOptionAmount(props.min)}`
+  if (props.max > 0) return `≤ ${formatOptionAmount(props.max)}`
   return t('payment.enterAmount')
 })
 
-const AMOUNT_PATTERN = /^\d*(\.\d{0,2})?$/
+const amountPattern = computed(() => {
+  const units = Math.max(0, Math.min(props.minorUnits, 8))
+  return units === 0 ? /^\d*$/ : new RegExp(`^\\d*(\\.\\d{0,${units}})?$`)
+})
+
+function formatOptionAmount(amt: number): string {
+  const units = Math.max(0, Math.min(props.minorUnits, 8))
+  return `${props.currencySymbol}${amt.toLocaleString(undefined, {
+    minimumFractionDigits: units,
+    maximumFractionDigits: units,
+  })}`
+}
 
 function selectAmount(amt: number) {
   customText.value = String(amt)
@@ -89,7 +104,7 @@ function selectAmount(amt: number) {
 
 function handleInput(e: Event) {
   const val = (e.target as HTMLInputElement).value
-  if (!AMOUNT_PATTERN.test(val)) return
+  if (!amountPattern.value.test(val)) return
   customText.value = val
   if (val === '') {
     emit('update:modelValue', null)

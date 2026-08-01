@@ -445,7 +445,7 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		ClientIP:    req.ClientIP,
 		IsMobile:    req.IsMobile,
 		ReturnURL:   providerReturnURL,
-	}, sel, outTradeNo, payAmountStr, subject)
+	}, sel, order, subject)
 	providerReq.AlipayMobilePrecreate = shouldUseAlipayMobilePrecreate(req, cfg, sel)
 	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
 	pr, err := prov.CreatePayment(ctx, providerReq)
@@ -510,10 +510,15 @@ func removePostgresTextNUL(value string) string {
 	return strings.ReplaceAll(value, "\x00", "")
 }
 
-func buildProviderCreatePaymentRequest(req CreateOrderRequest, sel *payment.InstanceSelection, orderID, amount, subject string) payment.CreatePaymentRequest {
+func buildProviderCreatePaymentRequest(req CreateOrderRequest, sel *payment.InstanceSelection, order *dbent.PaymentOrder, subject string) payment.CreatePaymentRequest {
+	paymentCurrency := normalizeCurrencyCode(order.PaymentCurrency, defaultLedgerCurrency)
+	ledgerCurrency := normalizeCurrencyCode(order.LedgerCurrency, defaultLedgerCurrency)
 	return payment.CreatePaymentRequest{
-		OrderID:            orderID,
-		Amount:             amount,
+		OrderID:            order.OutTradeNo,
+		Amount:             formatCurrencyAmountForProvider(order.PayAmount, paymentCurrency),
+		PaymentCurrency:    paymentCurrency,
+		LedgerCurrency:     ledgerCurrency,
+		LedgerAmount:       formatCurrencyAmountForProvider(order.LedgerAmount, ledgerCurrency),
 		PaymentType:        req.PaymentType,
 		Subject:            subject,
 		ReturnURL:          req.ReturnURL,
@@ -730,28 +735,39 @@ func classifyCreatePaymentError(req CreateOrderRequest, providerKey string, err 
 }
 
 func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest, payAmount float64, sel *payment.InstanceSelection, pr *payment.CreatePaymentResponse, resultType payment.CreatePaymentResultType) *CreateOrderResponse {
-	return &CreateOrderResponse{
-		OrderID:      order.ID,
-		Amount:       order.Amount,
-		PayAmount:    payAmount,
-		FeeRate:      order.FeeRate,
-		Status:       OrderStatusPending,
-		ResultType:   resultType,
-		PaymentType:  req.PaymentType,
-		OutTradeNo:   order.OutTradeNo,
-		PayURL:       pr.PayURL,
-		QRCode:       pr.QRCode,
-		ClientSecret: pr.ClientSecret,
-		IntentID:     pr.IntentID,
-		Currency:     pr.Currency,
-		CountryCode:  pr.CountryCode,
-		PaymentEnv:   pr.PaymentEnv,
-		OAuth:        pr.OAuth,
-		JSAPI:        pr.JSAPI,
-		JSAPIPayload: pr.JSAPI,
-		ExpiresAt:    order.ExpiresAt,
-		PaymentMode:  sel.PaymentMode,
+	resp := &CreateOrderResponse{
+		OrderID:         order.ID,
+		Amount:          order.Amount,
+		PaymentAmount:   order.PaymentAmount,
+		PaymentCurrency: normalizeCurrencyCode(order.PaymentCurrency, defaultLedgerCurrency),
+		LedgerAmount:    order.LedgerAmount,
+		LedgerCurrency:  normalizeCurrencyCode(order.LedgerCurrency, defaultLedgerCurrency),
+		FXRate:          order.FxRatePaymentToLedger,
+		FXSource:        psStringValue(order.FxSource),
+		PayAmount:       payAmount,
+		FeeRate:         order.FeeRate,
+		Status:          OrderStatusPending,
+		ResultType:      resultType,
+		PaymentType:     req.PaymentType,
+		OutTradeNo:      order.OutTradeNo,
+		PayURL:          pr.PayURL,
+		QRCode:          pr.QRCode,
+		ClientSecret:    pr.ClientSecret,
+		IntentID:        pr.IntentID,
+		Currency:        pr.Currency,
+		CountryCode:     pr.CountryCode,
+		PaymentEnv:      pr.PaymentEnv,
+		CheckoutID:      pr.CheckoutID,
+		OAuth:           pr.OAuth,
+		JSAPI:           pr.JSAPI,
+		JSAPIPayload:    pr.JSAPI,
+		ExpiresAt:       order.ExpiresAt,
+		PaymentMode:     sel.PaymentMode,
 	}
+	if order.FxTimestamp != nil {
+		resp.FXTimestamp = *order.FxTimestamp
+	}
+	return resp
 }
 
 func buildWeChatPaymentOAuthStartURL(req CreateOrderRequest, scope string) (string, error) {
@@ -763,6 +779,15 @@ func buildWeChatPaymentOAuthStartURL(req CreateOrderRequest, scope string) (stri
 	q.Set("payment_type", strings.TrimSpace(req.PaymentType))
 	if req.Amount > 0 {
 		q.Set("amount", strconv.FormatFloat(req.Amount, 'f', -1, 64))
+	}
+	if amountMode := strings.TrimSpace(req.AmountMode); amountMode != "" {
+		q.Set("amount_mode", amountMode)
+	}
+	if quoteID := strings.TrimSpace(req.QuoteID); quoteID != "" {
+		q.Set("quote_id", quoteID)
+	}
+	if paymentCurrency := normalizeCurrencyCode(req.PaymentCurrency, ""); paymentCurrency != "" {
+		q.Set("payment_currency", paymentCurrency)
 	}
 	if orderType := strings.TrimSpace(req.OrderType); orderType != "" {
 		q.Set("order_type", orderType)

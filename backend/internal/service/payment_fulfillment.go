@@ -102,8 +102,11 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 		return err
 	}
 	expectedPaid := o.PayAmount
-	if o.PaymentAmount > 0 {
+	if expectedPaid <= 0 && o.PaymentAmount > 0 {
 		expectedPaid = o.PaymentAmount
+	}
+	if expectedPaid <= 0 {
+		expectedPaid = o.Amount
 	}
 	expectedCurrency := normalizeCurrencyCode(o.PaymentCurrency, defaultLedgerCurrency)
 	if expectedCurrency == "" {

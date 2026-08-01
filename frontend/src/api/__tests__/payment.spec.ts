@@ -37,4 +37,20 @@ describe('payment api', () => {
       resume_token: 'resume-token-123',
     })
   })
+
+  it('creates signed local-currency payment quote snapshots', async () => {
+    await paymentAPI.createQuote({
+      amount: 200000,
+      payment_currency: 'VND',
+      amount_mode: 'payment',
+      payment_type: 'sepay',
+    })
+
+    expect(post).toHaveBeenCalledWith('/payment/quote', {
+      amount: 200000,
+      payment_currency: 'VND',
+      amount_mode: 'payment',
+      payment_type: 'sepay',
+    })
+  })
 })

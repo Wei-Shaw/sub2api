@@ -70,10 +70,18 @@ func generateRandomString(n int) string {
 	return string(b)
 }
 
+const (
+	PaymentAmountModeLedger  = "ledger"
+	PaymentAmountModePayment = "payment"
+)
+
 type CreateOrderRequest struct {
 	UserID          int64
 	Amount          float64
+	AmountMode      string
 	PaymentCurrency string
+	QuoteID         string
+	paymentQuote    *PaymentQuoteClaims
 	PaymentType     string
 	OpenID          string
 	ClientIP        string

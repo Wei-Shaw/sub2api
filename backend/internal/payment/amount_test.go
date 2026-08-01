@@ -42,9 +42,9 @@ func TestYuanToFen(t *testing.T) {
 		// Single decimal place
 		{name: "single decimal 1.5", input: "1.5", want: 150},
 
-		// Negative values
-		{name: "negative one yuan", input: "-1.00", want: -100},
-		{name: "negative with fen", input: "-10.50", want: -1050},
+		// Negative values are rejected for provider charge/refund safety.
+		{name: "negative one yuan", input: "-1.00", wantErr: true},
+		{name: "negative with fen", input: "-10.50", wantErr: true},
 
 		// Invalid inputs
 		{name: "empty string", input: "", wantErr: true},
@@ -68,6 +68,55 @@ func TestYuanToFen(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("YuanToFen(%q) = %d, want %d", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAmountToMinorUnitsUsesCurrencyPrecision(t *testing.T) {
+	tests := []struct {
+		name     string
+		amount   string
+		currency string
+		want     int64
+	}{
+		{name: "usd cents", amount: "12.34", currency: "USD", want: 1234},
+		{name: "cny fen", amount: "12.34", currency: "CNY", want: 1234},
+		{name: "vnd zero decimal", amount: "200000", currency: "VND", want: 200000},
+		{name: "krw zero decimal", amount: "12000", currency: "KRW", want: 12000},
+		{name: "kwd three decimals", amount: "1.234", currency: "KWD", want: 1234},
+		{name: "unknown defaults two decimals", amount: "1.23", currency: "XYZ", want: 123},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := AmountToMinorUnits(tt.amount, tt.currency)
+			if err != nil {
+				t.Fatalf("AmountToMinorUnits returned error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("AmountToMinorUnits(%q, %q) = %d, want %d", tt.amount, tt.currency, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMinorUnitsToAmountUsesCurrencyPrecision(t *testing.T) {
+	tests := []struct {
+		name     string
+		minor    int64
+		currency string
+		want     float64
+	}{
+		{name: "usd cents", minor: 1234, currency: "USD", want: 12.34},
+		{name: "vnd zero decimal", minor: 200000, currency: "VND", want: 200000},
+		{name: "krw zero decimal", minor: 12000, currency: "KRW", want: 12000},
+		{name: "kwd three decimals", minor: 1234, currency: "KWD", want: 1.234},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MinorUnitsToAmount(tt.minor, tt.currency)
+			if math.Abs(got-tt.want) > 1e-9 {
+				t.Fatalf("MinorUnitsToAmount(%d, %q) = %f, want %f", tt.minor, tt.currency, got, tt.want)
 			}
 		})
 	}
