@@ -285,6 +285,77 @@ func TestPassthroughLifecycle_LeaseLossSendsRetryClose(t *testing.T) {
 	}
 }
 
+func TestPassthroughLifecycle_CapacityAfterCreatedReturnsFailoverWithoutErrorFrame(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+	upstream := newStagedPassthroughConn()
+	upstream.Send(`{"type":"response.created","response":{"id":"resp_capacity","model":"gpt-5.1"}}`)
+	upstream.Send(`{"type":"response.failed","response":{"id":"resp_capacity","error":{"type":"invalid_request_error","message":"Selected model is at capacity. Please try a different model."}}}`)
+	account := passthroughLifecycleAccount()
+	account.Credentials["pool_mode"] = true
+	account.Credentials["pool_mode_retry_count"] = float64(1)
+	server, serverErr := startPassthroughLifecycleServer(t, controlCtx, newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream), account)
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	created, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.created", gjson.GetBytes(created, "type").String())
+
+	_, err = readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.Error(t, err)
+	select {
+	case proxyErr := <-serverErr:
+		var failoverErr *UpstreamFailoverError
+		require.ErrorAs(t, proxyErr, &failoverErr)
+		require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
+		require.True(t, failoverErr.RetryableOnSameAccount)
+		require.NotContains(t, string(failoverErr.ResponseBody), "Selected model is at capacity")
+	case <-time.After(3 * time.Second):
+		t.Fatal("passthrough capacity failure did not return to the failover loop")
+	}
+}
+
+func TestPassthroughLifecycle_CapacityAfterToolOutputClosesWithoutReplayOrErrorFrame(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+	upstream := newStagedPassthroughConn()
+	upstream.Send(`{"type":"response.output_item.added","response_id":"resp_capacity_tool","item":{"id":"item_1","type":"function_call","call_id":"call_1","name":"shell","arguments":""}}`)
+	upstream.Send(`{"type":"response.failed","response":{"id":"resp_capacity_tool","error":{"type":"invalid_request_error","message":"Selected model is at capacity. Please try a different model."}}}`)
+	account := passthroughLifecycleAccount()
+	account.Credentials["pool_mode"] = true
+	account.Credentials["pool_mode_retry_count"] = float64(1)
+	server, serverErr := startPassthroughLifecycleServer(t, controlCtx, newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream), account)
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	toolEvent, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.output_item.added", gjson.GetBytes(toolEvent, "type").String())
+
+	_, err = readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	var websocketCloseErr coderws.CloseError
+	require.ErrorAs(t, err, &websocketCloseErr)
+	require.Equal(t, coderws.StatusTryAgainLater, websocketCloseErr.Code)
+	require.Equal(t, openAIWSTransientFailureClientMessage, websocketCloseErr.Reason)
+	select {
+	case proxyErr := <-serverErr:
+		var failoverErr *UpstreamFailoverError
+		require.False(t, errors.As(proxyErr, &failoverErr))
+		var clientCloseErr *OpenAIWSClientCloseError
+		require.ErrorAs(t, proxyErr, &clientCloseErr)
+		require.Equal(t, coderws.StatusTryAgainLater, clientCloseErr.StatusCode())
+		require.Equal(t, openAIWSTransientFailureClientMessage, clientCloseErr.Reason())
+		require.NotContains(t, proxyErr.Error(), "Selected model is at capacity")
+	case <-time.After(3 * time.Second):
+		t.Fatal("passthrough post-output capacity failure did not terminate")
+	}
+}
+
 func TestPassthroughLifecycle_CompletedTurnStartsInterTurnIdle(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
@@ -587,5 +658,46 @@ func TestPassthroughLifecycle_SecondTurnTimeoutIsNotFailoverSafe(t *testing.T) {
 		require.Equal(t, coderws.StatusGoingAway, closeErr.StatusCode())
 	case <-time.After(2500 * time.Millisecond):
 		t.Fatal("second turn first semantic output was left unbounded")
+	}
+}
+
+func TestPassthroughLifecycle_SecondTurnCapacityIsNotFailoverSafe(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+	upstream := newStagedPassthroughConn()
+	upstream.Send(`{"type":"response.completed","response":{"id":"resp_first","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`)
+	account := passthroughLifecycleAccount()
+	account.Credentials["pool_mode"] = true
+	account.Credentials["pool_mode_retry_count"] = float64(1)
+	server, serverErr := startPassthroughLifecycleServer(t, controlCtx, newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream), account)
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	completed, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","previous_response_id":"resp_first"}`))
+	cancelWrite()
+	require.NoError(t, err)
+	upstream.Send(`{"type":"response.failed","response":{"id":"resp_second","error":{"type":"invalid_request_error","message":"Selected model is at capacity. Please try a different model."}}}`)
+
+	_, err = readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	var websocketCloseErr coderws.CloseError
+	require.ErrorAs(t, err, &websocketCloseErr)
+	require.Equal(t, coderws.StatusTryAgainLater, websocketCloseErr.Code)
+	require.Equal(t, openAIWSTransientFailureClientMessage, websocketCloseErr.Reason)
+	select {
+	case proxyErr := <-serverErr:
+		var failoverErr *UpstreamFailoverError
+		require.NotErrorAs(t, proxyErr, &failoverErr, "handler must not replay the initial request for a later-turn capacity failure")
+		var closeErr *OpenAIWSClientCloseError
+		require.ErrorAs(t, proxyErr, &closeErr)
+		require.Equal(t, coderws.StatusTryAgainLater, closeErr.StatusCode())
+		require.NotContains(t, proxyErr.Error(), "Selected model is at capacity")
+	case <-time.After(3 * time.Second):
+		t.Fatal("second-turn capacity failure did not terminate")
 	}
 }

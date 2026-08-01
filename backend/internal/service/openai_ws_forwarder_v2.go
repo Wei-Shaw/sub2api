@@ -574,6 +574,21 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 					UpstreamOutTok: usage.OutputTokens,
 				})
 			}
+			if !wroteDownstream {
+				if failoverErr := s.newOpenAIWSTransientResponseFailoverError(
+					ctx,
+					c,
+					account,
+					mappedModel,
+					lease.HandshakeHeaders(),
+					message,
+				); failoverErr != nil {
+					lease.MarkBroken()
+					return nil, failoverErr
+				}
+			} else if isOpenAITransientProcessingError(http.StatusBadRequest, extractOpenAISSEErrorMessage(message), message) {
+				message = sanitizeOpenAIWSTransientFailureEvent(message)
+			}
 		}
 
 		if eventType == "error" {

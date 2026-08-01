@@ -2128,13 +2128,15 @@ func TestOpenAIResponses_APIKeyPassthroughSSERateLimitUsesConfiguredPoolRetry(t 
 	require.Equal(t, "Upstream rate limit exceeded, please retry later", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
 }
 
-func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T) {
+func TestOpenAIResponsesWebSocket_RetriesCapacityThenFailsOverOnUsageLimitEvent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	firstHitCh := make(chan []byte, 1)
+	firstHitCh := make(chan []byte, 2)
 	secondHitCh := make(chan []byte, 1)
+	var firstConnections atomic.Int32
 
 	firstUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connectionNo := firstConnections.Add(1)
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
 		if err != nil {
 			return
@@ -2148,8 +2150,12 @@ func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T
 			firstHitCh <- payload
 		}
 
+		upstreamEvent := `{"type":"error","error":{"code":"rate_limit_exceeded","type":"usage_limit_reached","message":"The usage limit has been reached"}}`
+		if connectionNo == 1 {
+			upstreamEvent = `{"type":"response.failed","response":{"id":"resp_ws_capacity","error":{"type":"invalid_request_error","message":"Selected model is at capacity. Please try a different model."}}}`
+		}
 		writeCtx, cancelWrite := context.WithTimeout(r.Context(), 3*time.Second)
-		_ = conn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"error","error":{"code":"rate_limit_exceeded","type":"usage_limit_reached","message":"The usage limit has been reached"}}`))
+		_ = conn.Write(writeCtx, coderws.MessageText, []byte(upstreamEvent))
 		cancelWrite()
 	}))
 	defer firstUpstream.Close()
@@ -2187,8 +2193,10 @@ func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T
 			Concurrency: 1,
 			Priority:    1,
 			Credentials: map[string]any{
-				"api_key":  "sk-first",
-				"base_url": firstUpstream.URL,
+				"api_key":               "sk-first",
+				"base_url":              firstUpstream.URL,
+				"pool_mode":             true,
+				"pool_mode_retry_count": float64(1),
 			},
 			Extra: map[string]any{
 				"openai_apikey_responses_websockets_v2_enabled": true,
@@ -2311,17 +2319,20 @@ func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T
 	require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
 	require.Equal(t, "resp_ws_failover_ok", gjson.GetBytes(event, "response.id").String())
 
-	select {
-	case <-firstHitCh:
-	case <-time.After(3 * time.Second):
-		t.Fatal("等待第一个上游收到首帧超时")
+	for attempt := 1; attempt <= 2; attempt++ {
+		select {
+		case <-firstHitCh:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("等待第一个上游收到第 %d 次请求超时", attempt)
+		}
 	}
 	select {
 	case <-secondHitCh:
 	case <-time.After(3 * time.Second):
 		t.Fatal("等待第二个上游收到重放首帧超时")
 	}
-	require.Equal(t, []int64{int64(9902)}, accountRepo.rateLimitedIDs)
+	require.Equal(t, int32(2), firstConnections.Load())
+	require.Empty(t, accountRepo.rateLimitedIDs)
 }
 
 func TestOpenAIResponsesWebSocket_FirstOutputTimeoutWithoutDownstreamReusesClientForOneFailover(t *testing.T) {
