@@ -1860,6 +1860,20 @@ func (a *Account) IsOpenAIResponsesFlattenNamespacesEnabled() bool {
 	return ok && enabled
 }
 
+// IsOpenAIAlphaSearchResponsesFallbackEnabled 返回 API Key 账号是否将网关的
+// standalone search 请求转换为标准 Responses API web_search 请求。
+// 字段：accounts.extra.openai_alpha_search_responses_fallback，缺省 false。
+//
+// 该兼容开关只适用于支持 Responses API web_search、但没有兼容 standalone
+// search 端点的 OpenAI 兼容上游。
+func (a *Account) IsOpenAIAlphaSearchResponsesFallbackEnabled() bool {
+	if a == nil || !a.IsOpenAIApiKey() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["openai_alpha_search_responses_fallback"].(bool)
+	return ok && enabled
+}
+
 // IsOpenAIWSAllowStoreRecoveryEnabled 返回账号级 store 恢复开关。
 // 字段：accounts.extra.openai_ws_allow_store_recovery。
 func (a *Account) IsOpenAIWSAllowStoreRecoveryEnabled() bool {

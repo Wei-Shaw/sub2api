@@ -59,11 +59,10 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(ctx context.Context, c *gin.Co
 		return nil, err
 	}
 
-	// Codex Personal Access Token（at-...）目前可访问 ChatGPT Codex
-	// /responses，但会被 standalone /alpha/search 的 access enforcement
-	// 拒绝为 no_matching_rule。对 PAT 账号使用等价的 hosted web_search
-	// Responses 路径兜底，避免把可用账号误判为搜索不可用。
-	if account.IsOpenAIPersonalAccessToken() {
+	// PAT 账号沿用 ChatGPT Responses fallback。API Key 账号仅在显式声明
+	// 上游支持 Responses API web_search 时复用同一响应适配器；默认仍原样
+	// 转发 standalone search 请求。
+	if account.IsOpenAIPersonalAccessToken() || account.IsOpenAIAlphaSearchResponsesFallbackEnabled() {
 		return s.forwardAlphaSearchViaResponsesWebSearch(ctx, c, account, body, token, proxyURL, requestedModel, upstreamModel)
 	}
 
@@ -212,7 +211,16 @@ func (s *OpenAIGatewayService) forwardAlphaSearchViaResponsesWebSearch(
 }
 
 func (s *OpenAIGatewayService) buildOpenAIAlphaSearchResponsesWebSearchRequest(ctx context.Context, c *gin.Context, account *Account, alphaBody []byte, body []byte, token string) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
+	targetURL := chatgptCodexURL
+	if account != nil && account.IsOpenAIApiKey() {
+		baseURL := account.GetOpenAIBaseURL()
+		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return nil, err
+		}
+		targetURL = buildOpenAIEndpointURL(validatedURL, "/v1/responses")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -227,13 +235,23 @@ func (s *OpenAIGatewayService) buildOpenAIAlphaSearchResponsesWebSearchRequest(c
 			req.Header.Add(key, value)
 		}
 	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	if account != nil && account.IsOpenAIApiKey() {
+		// API Key upstreams receive only the public Responses API contract.
+		// ChatGPT transport identity, version, session, and beta headers are specific
+		// to the OAuth/PAT transport and must not leak into generic relays.
+		if customUA := account.GetOpenAIUserAgent(); customUA != "" {
+			req.Header.Set("User-Agent", customUA)
+		}
+		account.ApplyHeaderOverrides(req.Header)
+		return req, nil
+	}
+
 	req.Host = "chatgpt.com"
 	if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, req.Header, account); err != nil {
 		return nil, fmt.Errorf("resolve chatgpt account headers: %w", err)
 	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
 	if turnMetadata := openAIAlphaSearchInboundHeader(c, "X-Codex-Turn-Metadata"); turnMetadata != "" {
 		req.Header.Set("X-Codex-Turn-Metadata", turnMetadata)
@@ -306,8 +324,8 @@ func buildOpenAIAlphaSearchResponsesWebSearchBody(alphaBody []byte, model string
 
 func openAIAlphaSearchResponsesWebSearchPrompt(alphaBody []byte) string {
 	var b strings.Builder
-	_, _ = b.WriteString("Execute this Codex standalone web.run request for another model.\n")
-	_, _ = b.WriteString("Use the hosted web_search tool when web/current information is needed.\n")
+	_, _ = b.WriteString("Execute the requested standalone web search for another model.\n")
+	_, _ = b.WriteString("Use the Responses API web_search tool when current information is needed.\n")
 	_, _ = b.WriteString("Return concise source-backed results. Include titles, URLs, dates, and direct answers when available.\n")
 	if commands := strings.TrimSpace(gjson.GetBytes(alphaBody, "commands").Raw); commands != "" {
 		_, _ = b.WriteString("\nCommands JSON:\n")

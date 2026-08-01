@@ -175,10 +175,32 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(wrapper.find('[data-testid="create-openai-flatten-namespaces-toggle"]').exists()).toBe(
       true
     )
+    expect(wrapper.find('[data-testid="create-openai-alpha-search-responses-fallback-toggle"]').exists()).toBe(
+      false
+    )
 
     await selectButtonByText(wrapper, 'API Key')
     expect(wrapper.find('[data-testid="create-openai-flatten-namespaces-toggle"]').exists()).toBe(
       false
+    )
+    expect(wrapper.find('[data-testid="create-openai-alpha-search-responses-fallback-toggle"]').exists()).toBe(
+      true
+    )
+  })
+
+  it('submits the API-key standalone search Responses bridge when enabled', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('[data-testid="create-openai-alpha-search-responses-fallback-toggle"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI compatible')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_alpha_search_responses_fallback).toBe(
+      true
     )
   })
 
