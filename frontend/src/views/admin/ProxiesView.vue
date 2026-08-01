@@ -272,13 +272,8 @@
               @click="openHealthDetail(row)"
               :title="t('admin.proxies.healthDetail')"
             >
-              <span
-                :class="[
-                  'badge',
-                  value === 'active' ? 'badge-success' : value === 'expired' ? 'badge-danger' : 'badge-danger'
-                ]"
-              >
-                {{ t('admin.accounts.status.' + value) }}
+              <span :class="proxyStatusBadgeClass(value)">
+                {{ t(proxyStatusLabelKey(value)) }}
               </span>
               <span
                 v-if="value === 'inactive' && row.latency_status === 'failed'"
@@ -1073,6 +1068,7 @@ import { useTableSelection } from '@/composables/useTableSelection'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
+import { proxyStatusBadgeClass, proxyStatusLabelKey } from '@/utils/proxyStatus'
 
 const { t } = useI18n()
 const appStore = useAppStore()

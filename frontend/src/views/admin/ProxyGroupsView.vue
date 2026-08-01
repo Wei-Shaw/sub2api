@@ -41,8 +41,8 @@
             {{ row.proxy_count ?? row.proxies?.length ?? 0 }}
           </template>
           <template #cell-status="{ row }">
-            <span :class="row.status === 'active' ? 'badge badge-success' : 'badge badge-gray'">
-              {{ row.status === 'active' ? t('common.active') : t('common.inactive') }}
+            <span :class="proxyStatusBadgeClass(row.status)">
+              {{ t(proxyStatusLabelKey(row.status)) }}
             </span>
           </template>
           <template #cell-actions="{ row }">
@@ -191,13 +191,27 @@
               v-for="proxy in pagedMemberProxies"
               :key="proxy.id"
               class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-dark-800"
+              :class="proxyStatusRowClass(proxy.status)"
             >
               <input v-model="form.proxy_ids" type="checkbox" :value="proxy.id" class="h-4 w-4 shrink-0 rounded" />
               <span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">
                 {{ proxy.name }}
               </span>
-              <span class="shrink-0 text-xs text-gray-400">
-                {{ proxy.protocol }}://{{ proxy.host }}:{{ proxy.port }}
+              <code class="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
+                {{ proxy.host }}:{{ proxy.port }}
+              </code>
+              <span
+                v-if="proxy.protocol"
+                class="badge badge-gray shrink-0 !px-1.5 !py-0 text-[10px]"
+              >
+                {{ proxy.protocol.toUpperCase() }}
+              </span>
+              <span
+                class="shrink-0 !px-1.5 !py-0 text-[10px]"
+                :class="proxyStatusBadgeClass(proxy.status)"
+                :title="t(proxyStatusLabelKey(proxy.status))"
+              >
+                {{ t(proxyStatusLabelKey(proxy.status)) }}
               </span>
             </label>
             <div
@@ -290,6 +304,12 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import {
+  proxyStatusBadgeClass,
+  proxyStatusLabelKey,
+  proxyStatusRowClass,
+  proxyStatusSortRank
+} from '@/utils/proxyStatus'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -352,10 +372,17 @@ const filteredGroups = computed(() => {
 
 const filteredMemberProxies = computed(() => {
   const q = memberSearch.value.trim().toLowerCase()
-  if (!q) return allProxies.value
-  return allProxies.value.filter((p) => {
-    const hay = `${p.name} ${p.protocol} ${p.host} ${p.port}`.toLowerCase()
-    return hay.includes(q)
+  const list = !q
+    ? [...allProxies.value]
+    : allProxies.value.filter((p) => {
+        const hay = `${p.name} ${p.protocol} ${p.host} ${p.port} ${p.status}`.toLowerCase()
+        return hay.includes(q)
+      })
+  // Active first so available IPs are easy to pick; keep relative order within same status.
+  return list.sort((a, b) => {
+    const rank = proxyStatusSortRank(a.status) - proxyStatusSortRank(b.status)
+    if (rank !== 0) return rank
+    return a.name.localeCompare(b.name)
   })
 })
 

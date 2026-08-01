@@ -89,12 +89,22 @@
               v-for="proxy in filteredProxies"
               :key="`proxy-${proxy.id}`"
               @click="selectOption(proxy.id)"
-              :class="['select-option', isSelected(proxy.id) && 'select-option-selected']"
+              :class="[
+                'select-option',
+                isSelected(proxy.id) && 'select-option-selected',
+                proxyStatusRowClass(proxy.status)
+              ]"
               :data-testid="`proxy-option-${proxy.id}`"
             >
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-2">
                   <span class="truncate font-medium">{{ proxy.name }}</span>
+                  <span
+                    class="shrink-0 !px-1.5 !py-0 text-[10px]"
+                    :class="proxyStatusBadgeClass(proxy.status)"
+                  >
+                    {{ t(proxyStatusLabelKey(proxy.status)) }}
+                  </span>
                   <span
                     v-if="proxy.account_count !== undefined"
                     class="inline-flex flex-shrink-0 items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-600 dark:text-gray-400"
@@ -175,12 +185,22 @@
               v-for="group in filteredGroups"
               :key="`group-${group.id}`"
               @click="selectOption(group.id)"
-              :class="['select-option', isSelected(group.id) && 'select-option-selected']"
+              :class="[
+                'select-option',
+                isSelected(group.id) && 'select-option-selected',
+                proxyStatusRowClass(group.status)
+              ]"
               :data-testid="`proxy-group-option-${group.id}`"
             >
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-2">
                   <span class="truncate font-medium">{{ group.name }}</span>
+                  <span
+                    class="shrink-0 !px-1.5 !py-0 text-[10px]"
+                    :class="proxyStatusBadgeClass(group.status)"
+                  >
+                    {{ t(proxyStatusLabelKey(group.status)) }}
+                  </span>
                   <span
                     v-if="group.proxy_count !== undefined"
                     class="inline-flex flex-shrink-0 items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-600 dark:text-gray-400"
@@ -226,6 +246,12 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import Icon from '@/components/icons/Icon.vue'
 import type { Proxy, ProxyGroup } from '@/types'
+import {
+  proxyStatusBadgeClass,
+  proxyStatusLabelKey,
+  proxyStatusRowClass,
+  proxyStatusSortRank
+} from '@/utils/proxyStatus'
 
 const { t } = useI18n()
 
@@ -312,37 +338,54 @@ const selectedLabel = computed(() => {
     }
     const g = selectedGroup.value
     const sticky = g.sticky_by_account ? ' · sticky' : ''
-    return `${g.name}${sticky} (${g.strategy})`
+    const status = t(proxyStatusLabelKey(g.status))
+    return `${g.name}${sticky} · ${status} (${g.strategy})`
   }
   if (!selectedProxy.value) {
     return t('admin.accounts.noProxy')
   }
   const proxy = selectedProxy.value
-  return `${proxy.name} (${proxy.protocol}://${proxy.host}:${proxy.port})`
+  const status = t(proxyStatusLabelKey(proxy.status))
+  return `${proxy.name} · ${status} (${proxy.protocol}://${proxy.host}:${proxy.port})`
 })
 
 const filteredProxies = computed(() => {
-  if (!searchQuery.value) {
-    return props.proxies
-  }
   const query = searchQuery.value.toLowerCase()
-  return props.proxies.filter((proxy) => {
-    const name = proxy.name.toLowerCase()
-    const host = proxy.host.toLowerCase()
-    return name.includes(query) || host.includes(query)
+  const list = !query
+    ? [...props.proxies]
+    : props.proxies.filter((proxy) => {
+        const name = proxy.name.toLowerCase()
+        const host = proxy.host.toLowerCase()
+        const status = (proxy.status || '').toLowerCase()
+        return name.includes(query) || host.includes(query) || status.includes(query)
+      })
+  return list.sort((a, b) => {
+    const rank = proxyStatusSortRank(a.status) - proxyStatusSortRank(b.status)
+    if (rank !== 0) return rank
+    return a.name.localeCompare(b.name)
   })
 })
 
 const filteredGroups = computed(() => {
-  if (!searchQuery.value) {
-    return props.groups
-  }
   const query = searchQuery.value.toLowerCase()
-  return props.groups.filter((group) => {
-    const name = group.name.toLowerCase()
-    const desc = (group.description || '').toLowerCase()
-    const strategy = (group.strategy || '').toLowerCase()
-    return name.includes(query) || desc.includes(query) || strategy.includes(query)
+  const list = !query
+    ? [...props.groups]
+    : props.groups.filter((group) => {
+        const name = group.name.toLowerCase()
+        const desc = (group.description || '').toLowerCase()
+        const strategy = (group.strategy || '').toLowerCase()
+        const status = (group.status || '').toLowerCase()
+        return (
+          name.includes(query) ||
+          desc.includes(query) ||
+          strategy.includes(query) ||
+          status.includes(query)
+        )
+      })
+  return list.sort((a, b) => {
+    const rank = proxyStatusSortRank(a.status) - proxyStatusSortRank(b.status)
+    if (rank !== 0) return rank
+    return a.name.localeCompare(b.name)
   })
 })
 

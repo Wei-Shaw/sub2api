@@ -29,6 +29,14 @@ const proxies: Proxy[] = [
     port: 8080,
     status: 'active',
   } as Proxy,
+  {
+    id: 13,
+    name: 'US-down',
+    protocol: 'socks5',
+    host: '2.2.2.2',
+    port: 1080,
+    status: 'inactive',
+  } as Proxy,
 ]
 
 const groups: ProxyGroup[] = [
@@ -116,5 +124,43 @@ describe('ProxySelector', () => {
 
     expect(wrapper.text()).toContain('grok-pool')
     expect(wrapper.text()).toContain('sticky')
+  })
+
+  it('annotates proxy options with status badges and sorts active first', async () => {
+    const wrapper = mount(ProxySelector, {
+      props: {
+        modelValue: null,
+        proxies,
+        mode: 'proxy',
+      },
+      global: { stubs: { Icon: true, Transition: false } },
+    })
+
+    await wrapper.get('[data-testid="proxy-selector"]').trigger('click')
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('admin.accounts.status.active')
+    expect(text).toContain('admin.accounts.status.inactive')
+    // active option should appear before inactive in DOM order
+    const activeIdx = wrapper.html().indexOf('proxy-option-12')
+    const inactiveIdx = wrapper.html().indexOf('proxy-option-13')
+    expect(activeIdx).toBeGreaterThan(-1)
+    expect(inactiveIdx).toBeGreaterThan(-1)
+    expect(activeIdx).toBeLessThan(inactiveIdx)
+  })
+
+  it('includes status in selected proxy label', () => {
+    const wrapper = mount(ProxySelector, {
+      props: {
+        modelValue: 13,
+        proxies,
+        mode: 'proxy',
+      },
+      global: { stubs: { Icon: true, Transition: false } },
+    })
+
+    expect(wrapper.text()).toContain('US-down')
+    expect(wrapper.text()).toContain('admin.accounts.status.inactive')
   })
 })
