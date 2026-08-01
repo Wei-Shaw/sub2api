@@ -792,6 +792,13 @@ REDACTED
 		if *input.RateMultiplier < 0 {
 			return nil, errors.New("rate_multiplier must be >= 0")
 	REDACTED
+		// 同步开启时倍率归上游所有，手工值活不过下一次成功探测（表现为"改了又自己
+		// 变回去"），与批量路径一样直接拒绝。判断的是本次请求生效后的状态：上面
+		// 已把请求携带的两个开关落进 account.Extra，所以"同一请求关闭同步 + 改倍率"
+		// （用户显式收回所有权）会走到这里时读到 false，正常放行。
+		if upstreamBillingRateSyncEnabled(account) {
+			return nil, ErrUpstreamBillingRateSyncConflict
+	REDACTED
 		account.RateMultiplier = input.RateMultiplier
 REDACTED
 	if input.LoadFactor != nil {

@@ -324,8 +324,12 @@ REDACTED
 	require.Equal(t, fixedNow.Add(time.Hour), *snapshot.FreshUntil)
 	require.False(t, snapshot.NextProbeAt.Before(fixedNow.Add(24*time.Minute)))
 	require.False(t, snapshot.NextProbeAt.After(fixedNow.Add(36*time.Minute)))
+	// 写回的是不含高峰因子的 resolved 倍率（0.6），不是探测那一刻含高峰的
+	// effective 倍率（0.9）——否则一个探测周期的峰值会被冻结进静态列。
 	require.NotNil(t, account.RateMultiplier)
-	require.Equal(t, 0.9, *account.RateMultiplier)
+	require.Equal(t, 0.6, *account.RateMultiplier)
+	require.NotNil(t, snapshot.SyncedRateMultiplier)
+	require.Equal(t, 0.6, *snapshot.SyncedRateMultiplier)
 	require.Equal(t, "https://upstream.example/v1/sub2api/billing", upstream.lastReq.URL.String())
 	require.Equal(t, http.MethodGet, upstream.lastReq.Method)
 	require.Equal(t, "Bearer sk-sensitive", upstream.lastReq.Header.Get("Authorization"))
@@ -336,7 +340,7 @@ REDACTED
 	require.Equal(t, snapshot.Status, persisted.Status)
 REDACTED
 
-func TestUpstreamBillingProbeSyncsEffectiveRateForAllAPIKeyPlatforms(t *testing.T) {
+func TestUpstreamBillingProbeSyncsResolvedRateForAllAPIKeyPlatforms(t *testing.T) {
 	for _, platform := range []string{
 		PlatformOpenAI,
 		PlatformAnthropic,
@@ -402,30 +406,149 @@ REDACTED
 	require.Contains(t, account.Extra, UpstreamBillingProbeExtraKey)
 REDACTED
 
-func TestUpstreamBillingProbeAccountRateMatchesDatabasePrecision(t *testing.T) {
+func TestUpstreamBillingProbeSyncRateRangeAndPrecision(t *testing.T) {
 	tests := []struct {
 		name  string
 		value float64
 		want  float64
 		ok    bool
 REDACTED{
-		{name: "zero", value: 0, want: 0, ok: trueREDACTED,
 		{name: "round to four decimals", value: 0.07654, want: 0.0765, ok: trueREDACTED,
-		{name: "maximum", value: upstreamBillingProbeAccountRateMax, want: upstreamBillingProbeAccountRateMax, ok: trueREDACTED,
-		{name: "positive below database precision", value: 0.00001, ok: falseREDACTED,
-		{name: "overflow before rounding", value: 999999.99991, ok: falseREDACTED,
-		{name: "overflow after rounding", value: 999999.99996, ok: falseREDACTED,
+		{name: "maximum", value: upstreamBillingRateSyncMaxMultiplier, want: upstreamBillingRateSyncMaxMultiplier, ok: trueREDACTED,
+		// 0 会让 accountCost 恒为 0，账号配额与成本告警全部静默失效，
+		// 自动写回一律拒绝（管理员手工设 0 仍然允许）。
+		{name: "zero is rejected", value: 0, ok: falseREDACTED,
+		{name: "positive below database precision rounds to zero", value: 0.00001, ok: falseREDACTED,
+		{name: "just above the write-back ceiling", value: 100.0001, ok: falseREDACTED,
+		{name: "column ceiling is far above the write-back ceiling", value: 999999.9999, ok: falseREDACTED,
+		{name: "negative", value: -1, ok: falseREDACTED,
 REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := upstreamBillingProbeAccountRate(map[string]any{"effective_rate_multiplier": tt.valueREDACTED)
+			got, ok := upstreamBillingProbeSyncRate(map[string]any{"resolved_rate_multiplier": tt.valueREDACTED)
 			require.Equal(t, tt.ok, ok)
 			if tt.ok {
 				require.Equal(t, tt.want, got)
 		REDACTED
 	REDACTED)
 REDACTED
+REDACTED
+
+// 只读取 resolved（时间无关的基准倍率）：effective 含探测那一刻的高峰系数，
+// 写回它会把一个探测周期的峰值/谷值冻结进静态列。
+func TestUpstreamBillingProbeSyncRateIgnoresEffectiveRate(t *testing.T) {
+	got, ok := upstreamBillingProbeSyncRate(map[string]any{
+		"resolved_rate_multiplier":  0.6,
+		"effective_rate_multiplier": 0.9,
+REDACTED)
+	require.True(t, ok)
+	require.Equal(t, 0.6, got)
+
+	_, ok = upstreamBillingProbeSyncRate(map[string]any{"effective_rate_multiplier": 0.9REDACTED)
+	require.False(t, ok)
+REDACTED
+
+// 上游声明超出自动写回值域时保持原倍率，但探测本身是成功的：
+// 快照照常记 ok，不累计 failure_count、不进入退避。
+func TestUpstreamBillingProbeKeepsRateWhenDeclarationOutOfSyncRange(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		declared string
+REDACTED{
+		{name: "zero", declared: "0"REDACTED,
+		{name: "above ceiling", declared: "1000"REDACTED,
+REDACTED {
+		t.Run(tt.name, func(t *testing.T) {
+			initialRate := 0.25
+			account := &Account{
+				ID:             21,
+				Platform:       PlatformOpenAI,
+				Type:           AccountTypeAPIKey,
+				Status:         StatusActive,
+				Concurrency:    1,
+				RateMultiplier: &initialRate,
+		REDACTED
+					"api_key":  "sk-sensitive",
+					"base_url": "https://upstream.example",
+			REDACTED,
+				Extra: map[string]any{
+					UpstreamBillingProbeEnabledExtraKey:    true,
+					UpstreamBillingRateSyncEnabledExtraKey: true,
+			REDACTED,
+		REDACTED
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+				Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{
+					"object":"sub2api.key_billing",
+					"schema_version":1,
+					"billing_scope":"token",
+					"group_rate_multiplier":%[1]s,
+					"resolved_rate_multiplier":%[1]s,
+					"peak_rate_enabled":false,
+					"effective_rate_multiplier":%[1]s,
+					"observed_at":"2026-07-13T01:00:00Z"
+			REDACTED`, tt.declared))),
+		REDACTEDREDACTED
+			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{REDACTED)
+
+			snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
+		REDACTED
+			require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+			require.Zero(t, snapshot.FailureCount)
+			require.Nil(t, snapshot.SyncedRateMultiplier)
+			require.NotNil(t, account.RateMultiplier)
+			require.Equal(t, initialRate, *account.RateMultiplier)
+			// 原始声明仍进快照供展示。
+			require.Equal(t, snapshot.Data["resolved_rate_multiplier"], snapshot.Data["effective_rate_multiplier"])
+	REDACTED)
+REDACTED
+REDACTED
+
+// 未开启同步的账号只观察上游声明：声明值不适配 accounts.rate_multiplier
+// 不得被记成探测失败（否则会累计 failure_count 并进入指数退避）。
+func TestUpstreamBillingProbeWithoutSyncIgnoresUnusableDeclaredRate(t *testing.T) {
+	account := &Account{
+		ID:          22,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "sk-sensitive",
+			"base_url": "https://upstream.example",
+	REDACTED,
+		Extra: map[string]any{UpstreamBillingProbeEnabledExtraKey: trueREDACTED,
+REDACTED
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body: io.NopCloser(strings.NewReader(`{
+			"object":"sub2api.key_billing",
+			"schema_version":1,
+			"billing_scope":"token",
+			"group_rate_multiplier":0,
+			"resolved_rate_multiplier":0,
+			"peak_rate_enabled":false,
+			"effective_rate_multiplier":0,
+			"observed_at":"2026-07-13T01:00:00Z"
+	REDACTED`)),
+REDACTEDREDACTED
+	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{REDACTED)
+
+	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
+REDACTED
+	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+	require.Zero(t, snapshot.FailureCount)
+	require.Empty(t, snapshot.LastError)
+	require.Nil(t, snapshot.SyncedRateMultiplier)
+	require.Equal(t, float64(0), snapshot.Data["resolved_rate_multiplier"])
+	require.Nil(t, account.RateMultiplier)
 REDACTED
 
 func TestUpstreamBillingProbeRejectsMissingRequiredMultiplier(t *testing.T) {

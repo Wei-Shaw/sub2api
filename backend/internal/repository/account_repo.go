@@ -401,17 +401,6 @@ func (r *accountRepository) Update(ctx context.Context, account *service.Account
 	return r.updateAccount(ctx, account, nil, nil, account.RateMultiplier)
 REDACTED
 
-// UpdateWithUpstreamBillingProbeEnabled applies an explicit probe switch in the
-// same row-lock transaction as the rest of an admin account edit.
-func (r *accountRepository) UpdateWithUpstreamBillingProbeEnabled(ctx context.Context, account *service.Account, enabled bool) error {
-	var rateSyncEnabled *bool
-	if !enabled {
-		disabled := false
-		rateSyncEnabled = &disabled
-REDACTED
-	return r.updateAccount(ctx, account, &enabled, rateSyncEnabled, nil)
-REDACTED
-
 // UpdateWithAccountBillingSettings applies an admin account edit while
 // preserving a concurrently probe-synchronized rate unless the request
 // explicitly includes a manual rate.
@@ -704,10 +693,11 @@ REDACTED
 		if explicitProbeEnabled != nil && !*explicitProbeEnabled {
 			rateSyncEnabled = false
 			rateSyncEnabledPresent = true
-	REDACTED else if rateSyncEnabled {
-			probeEnabled = true
-			probeEnabledPresent = true
 	REDACTED
+		// 同步依赖探测，方向是单向的：探测关闭（或探测键缺失）一律把同步归零。
+		// 不做反向推导——由 rate_sync=true 推出 probe=true 会让一条"同步开、探测键
+		// 缺失"的僵尸记录在任意一次无关编辑时静默打开周期性外呼。需要同时打开两个
+		// 开关的调用方（管理端编辑）自己显式传 explicitProbeEnabled=true。
 		if !probeEnabled {
 			rateSyncEnabled = false
 	REDACTED
