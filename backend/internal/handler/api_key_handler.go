@@ -37,6 +37,7 @@ type CreateAPIKeyRequest struct {
 	IPBlacklist   []string `json:"ip_blacklist"`    // IP 黑名单
 	Quota         *float64 `json:"quota"`           // 配额限制 (USD)
 	ExpiresInDays *int     `json:"expires_in_days"` // 过期天数
+	Concurrency   *int     `json:"concurrency" binding:"omitempty,min=0"`
 
 	// Rate limit fields (0 = unlimited)
 	RateLimit5h *float64 `json:"rate_limit_5h"`
@@ -54,6 +55,7 @@ type UpdateAPIKeyRequest struct {
 	Quota       *float64  `json:"quota"`        // 配额限制 (USD), 0=无限制
 	ExpiresAt   *string   `json:"expires_at"`   // 过期时间 (ISO 8601)
 	ResetQuota  *bool     `json:"reset_quota"`  // 重置已用配额
+	Concurrency *int      `json:"concurrency" binding:"omitempty,min=0"`
 
 	// Rate limit fields (nil = no change, 0 = unlimited)
 	RateLimit5h         *float64 `json:"rate_limit_5h"`
@@ -161,6 +163,9 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		IPBlacklist:   req.IPBlacklist,
 		ExpiresInDays: req.ExpiresInDays,
 	}
+	if req.Concurrency != nil {
+		svcReq.Concurrency = *req.Concurrency
+	}
 	if req.Quota != nil {
 		svcReq.Quota = *req.Quota
 	}
@@ -209,6 +214,7 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		IPBlacklist:         req.IPBlacklist,
 		Quota:               req.Quota,
 		ResetQuota:          req.ResetQuota,
+		Concurrency:         req.Concurrency,
 		RateLimit5h:         req.RateLimit5h,
 		RateLimit1d:         req.RateLimit1d,
 		RateLimit7d:         req.RateLimit7d,

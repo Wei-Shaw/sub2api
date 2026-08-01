@@ -17,6 +17,7 @@ func TestAPIKeyFromService_MapsLastUsedAt(t *testing.T) {
 		Key:                "sk-map-last-used",
 		Name:               "Mapper",
 		Status:             service.StatusActive,
+		Concurrency:        5,
 		LastUsedAt:         &lastUsed,
 		LastUsedIP:         &lastUsedIP,
 		CurrentConcurrency: 3,
@@ -29,6 +30,7 @@ func TestAPIKeyFromService_MapsLastUsedAt(t *testing.T) {
 	require.NotNil(t, out.LastUsedIP)
 	require.Equal(t, lastUsedIP, *out.LastUsedIP)
 	require.Equal(t, 3, out.CurrentConcurrency)
+	require.Equal(t, 5, out.Concurrency)
 }
 
 func TestAPIKeyFromService_MapsNilLastUsedAt(t *testing.T) {

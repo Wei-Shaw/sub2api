@@ -88,7 +88,7 @@ export default {
     id: 'ID',
     apiKey: 'API Key',
     group: 'Group',
-    currentConcurrency: 'Current Concurrency',
+    currentConcurrency: 'Concurrency (Current / Limit)',
     noGroup: 'No group',
     searchGroup: 'Search groups...',
     noGroupFound: 'No groups found',
@@ -211,6 +211,8 @@ export default {
     },
     // Quota and expiration
     quotaLimit: 'Quota Limit',
+    concurrencyLimit: 'Request Concurrency Limit',
+    concurrencyLimitHint: 'Maximum active requests for this key. 0 = no key-specific limit; the user limit still applies.',
     quotaAmount: 'Quota Amount (USD)',
     quotaAmountPlaceholder: 'Enter quota limit in USD',
     quotaAmountHint: 'Set the maximum amount this key can spend. 0 = unlimited.',

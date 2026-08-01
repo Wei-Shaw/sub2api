@@ -43,7 +43,7 @@ const messages: Record<string, string> = {
   'keys.expiresAt': 'Expires',
   'keys.group': 'Group',
   'keys.id': 'ID',
-  'keys.currentConcurrency': 'Current Concurrency',
+  'keys.currentConcurrency': 'Concurrency (Current / Limit)',
   'keys.lastUsedAt': 'Last Used',
   'keys.lastUsedIP': 'Last Used IP',
   'keys.rateLimitColumn': 'Rate Limit',
@@ -121,6 +121,7 @@ const createApiKey = (): ApiKey => ({
   expires_at: null,
   created_at: '2026-06-27T00:00:00Z',
   updated_at: '2026-06-27T00:00:00Z',
+  concurrency: 4,
   current_concurrency: 3,
   rate_limit_5h: 0,
   rate_limit_1d: 0,
@@ -381,7 +382,7 @@ describe('user KeysView column settings', () => {
     const columnMenuText = wrapper.text()
     expect(columnMenuText).toContain('API Key')
     expect(columnMenuText).toContain('ID')
-    expect(columnMenuText).toContain('Current Concurrency')
+    expect(columnMenuText).toContain('Concurrency (Current / Limit)')
     expect(columnMenuText).toContain('Rate Limit')
     expect(columnMenuText).toContain('Last Used IP')
     expect(columnMenuText).not.toContain('Name')
@@ -391,7 +392,7 @@ describe('user KeysView column settings', () => {
   it('renders the current concurrency value', async () => {
     const wrapper = await mountView()
 
-    expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('3')
+    expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('3 / 4')
   })
 
   it('marks current concurrency as sortable', async () => {

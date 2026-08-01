@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 17 // v17: include the OpenAI group Live gate
+const apiKeyAuthSnapshotVersion = 18 // v18: include API-key request concurrency
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -342,6 +342,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		GroupID:     apiKey.GroupID,
 		Name:        apiKey.Name,
 		Status:      apiKey.Status,
+		Concurrency: apiKey.Concurrency,
 		IPWhitelist: apiKey.IPWhitelist,
 		IPBlacklist: apiKey.IPBlacklist,
 		Quota:       apiKey.Quota,
@@ -436,6 +437,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		Key:         key,
 		Name:        snapshot.Name,
 		Status:      snapshot.Status,
+		Concurrency: snapshot.Concurrency,
 		IPWhitelist: snapshot.IPWhitelist,
 		IPBlacklist: snapshot.IPBlacklist,
 		Quota:       snapshot.Quota,

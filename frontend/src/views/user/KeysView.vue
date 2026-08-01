@@ -174,7 +174,7 @@
             </div>
           </template>
 
-          <template #cell-current_concurrency="{ value }">
+          <template #cell-current_concurrency="{ value, row }">
             <span
               :class="[
                 'inline-flex min-w-8 items-center justify-center rounded px-2 py-1 text-sm font-semibold tabular-nums',
@@ -183,7 +183,7 @@
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-dark-400'
               ]"
             >
-              {{ value ?? 0 }}
+              {{ value ?? 0 }} / {{ row.concurrency > 0 ? row.concurrency : '∞' }}
             </span>
           </template>
 
@@ -593,6 +593,20 @@
               <p class="input-hint">{{ t('keys.ipBlacklistHint') }}</p>
             </div>
           </div>
+        </div>
+
+        <!-- Request Concurrency Section -->
+        <div class="space-y-3">
+          <label class="input-label">{{ t('keys.concurrencyLimit') }}</label>
+          <input
+            v-model.number="formData.concurrency"
+            type="number"
+            step="1"
+            min="0"
+            class="input"
+            :placeholder="'0'"
+          />
+          <p class="input-hint">{{ t('keys.concurrencyLimitHint') }}</p>
         </div>
 
         <!-- Quota Limit Section -->
@@ -1339,6 +1353,7 @@ const formData = ref({
   // Quota settings (empty = unlimited)
   enable_quota: false,
   quota: null as number | null,
+  concurrency: 0,
   // Rate limit settings
   enable_rate_limit: false,
   rate_limit_5h: null as number | null,
@@ -1572,6 +1587,7 @@ const editKey = (key: ApiKey) => {
     ip_blacklist: (key.ip_blacklist || []).join('\n'),
     enable_quota: key.quota > 0,
     quota: key.quota > 0 ? key.quota : null,
+    concurrency: key.concurrency || 0,
     enable_rate_limit: (key.rate_limit_5h > 0) || (key.rate_limit_1d > 0) || (key.rate_limit_7d > 0),
     rate_limit_5h: key.rate_limit_5h || null,
     rate_limit_1d: key.rate_limit_1d || null,
@@ -1688,6 +1704,7 @@ const handleSubmit = async () => {
 
   // Calculate quota value (null/empty/0 = unlimited, stored as 0)
   const quota = formData.value.quota && formData.value.quota > 0 ? formData.value.quota : 0
+  const concurrency = Math.max(0, Math.trunc(Number(formData.value.concurrency) || 0))
 
   // Calculate expiration
   let expiresInDays: number | undefined
@@ -1724,6 +1741,7 @@ const handleSubmit = async () => {
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
+        concurrency,
         expires_at: expiresAt,
         rate_limit_5h: rateLimitData.rate_limit_5h,
         rate_limit_1d: rateLimitData.rate_limit_1d,
@@ -1744,6 +1762,7 @@ const handleSubmit = async () => {
         ipBlacklist,
         quota,
         expiresInDays,
+        concurrency,
         rateLimitData
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
@@ -1798,6 +1817,7 @@ const closeModals = () => {
     ip_blacklist: '',
     enable_quota: false,
     quota: null,
+    concurrency: 0,
     enable_rate_limit: false,
     rate_limit_5h: null,
     rate_limit_1d: null,

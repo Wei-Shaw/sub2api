@@ -2,6 +2,29 @@ package service
 
 import "testing"
 
+func TestAPIKeyService_AuthSnapshotPreservesConcurrency(t *testing.T) {
+	svc := &APIKeyService{}
+	apiKey := &APIKey{
+		ID:          1,
+		UserID:      2,
+		Key:         "sk-concurrency",
+		Status:      StatusActive,
+		Concurrency: 4,
+		User: &User{
+			ID:          2,
+			Status:      StatusActive,
+			Role:        RoleUser,
+			Concurrency: 10,
+		},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(t.Context(), apiKey)
+	restored := svc.snapshotToAPIKey(apiKey.Key, snapshot)
+	if restored.Concurrency != 4 {
+		t.Fatalf("expected concurrency 4 after auth snapshot round trip, got %d", restored.Concurrency)
+	}
+}
+
 func TestAPIKeyService_RejectsV10AuthSnapshotWithoutModelsListConfig(t *testing.T) {
 	groupID := int64(9)
 	svc := &APIKeyService{}

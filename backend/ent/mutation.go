@@ -117,6 +117,8 @@ type APIKeyMutation struct {
 	key                *string
 	name               *string
 	status             *string
+	concurrency        *int
+	addconcurrency     *int
 	last_used_at       *time.Time
 	ip_whitelist       *[]string
 	appendip_whitelist []string
@@ -565,6 +567,62 @@ func (m *APIKeyMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *APIKeyMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetConcurrency sets the "concurrency" field.
+func (m *APIKeyMutation) SetConcurrency(i int) {
+	m.concurrency = &i
+	m.addconcurrency = nil
+}
+
+// Concurrency returns the value of the "concurrency" field in the mutation.
+func (m *APIKeyMutation) Concurrency() (r int, exists bool) {
+	v := m.concurrency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConcurrency returns the old "concurrency" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldConcurrency(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConcurrency is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConcurrency requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConcurrency: %w", err)
+	}
+	return oldValue.Concurrency, nil
+}
+
+// AddConcurrency adds i to the "concurrency" field.
+func (m *APIKeyMutation) AddConcurrency(i int) {
+	if m.addconcurrency != nil {
+		*m.addconcurrency += i
+	} else {
+		m.addconcurrency = &i
+	}
+}
+
+// AddedConcurrency returns the value that was added to the "concurrency" field in this mutation.
+func (m *APIKeyMutation) AddedConcurrency() (r int, exists bool) {
+	v := m.addconcurrency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetConcurrency resets all changes to the "concurrency" field.
+func (m *APIKeyMutation) ResetConcurrency() {
+	m.concurrency = nil
+	m.addconcurrency = nil
 }
 
 // SetLastUsedAt sets the "last_used_at" field.
@@ -1532,7 +1590,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1556,6 +1614,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, apikey.FieldStatus)
+	}
+	if m.concurrency != nil {
+		fields = append(fields, apikey.FieldConcurrency)
 	}
 	if m.last_used_at != nil {
 		fields = append(fields, apikey.FieldLastUsedAt)
@@ -1626,6 +1687,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.GroupID()
 	case apikey.FieldStatus:
 		return m.Status()
+	case apikey.FieldConcurrency:
+		return m.Concurrency()
 	case apikey.FieldLastUsedAt:
 		return m.LastUsedAt()
 	case apikey.FieldIPWhitelist:
@@ -1681,6 +1744,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldGroupID(ctx)
 	case apikey.FieldStatus:
 		return m.OldStatus(ctx)
+	case apikey.FieldConcurrency:
+		return m.OldConcurrency(ctx)
 	case apikey.FieldLastUsedAt:
 		return m.OldLastUsedAt(ctx)
 	case apikey.FieldIPWhitelist:
@@ -1775,6 +1840,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case apikey.FieldConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConcurrency(v)
 		return nil
 	case apikey.FieldLastUsedAt:
 		v, ok := value.(time.Time)
@@ -1889,6 +1961,9 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *APIKeyMutation) AddedFields() []string {
 	var fields []string
+	if m.addconcurrency != nil {
+		fields = append(fields, apikey.FieldConcurrency)
+	}
 	if m.addquota != nil {
 		fields = append(fields, apikey.FieldQuota)
 	}
@@ -1921,6 +1996,8 @@ func (m *APIKeyMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case apikey.FieldConcurrency:
+		return m.AddedConcurrency()
 	case apikey.FieldQuota:
 		return m.AddedQuota()
 	case apikey.FieldQuotaUsed:
@@ -1946,6 +2023,13 @@ func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *APIKeyMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case apikey.FieldConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddConcurrency(v)
+		return nil
 	case apikey.FieldQuota:
 		v, ok := value.(float64)
 		if !ok {
@@ -2109,6 +2193,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case apikey.FieldConcurrency:
+		m.ResetConcurrency()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ResetLastUsedAt()
