@@ -146,6 +146,7 @@ type UpdateSettingsRequest struct {
 	FooterIcpURL                string                `json:"footer_icp_url"`
 	FooterPsbNumber             string                `json:"footer_psb_number"`
 	FooterPsbURL                string                `json:"footer_psb_url"`
+	CompactHomeEnabled          bool                  `json:"compact_home_enabled"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
@@ -1438,6 +1439,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FooterIcpURL:                           req.FooterIcpURL,
 		FooterPsbNumber:                        req.FooterPsbNumber,
 		FooterPsbURL:                           req.FooterPsbURL,
+		CompactHomeEnabled:                     req.CompactHomeEnabled,
 		HideCcsImportButton:                    req.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            purchaseEnabled,
 		PurchaseSubscriptionURL:                purchaseURL,
@@ -1994,6 +1996,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FooterIcpURL:                                           updatedSettings.FooterIcpURL,
 		FooterPsbNumber:                                        updatedSettings.FooterPsbNumber,
 		FooterPsbURL:                                           updatedSettings.FooterPsbURL,
+		CompactHomeEnabled:                                     updatedSettings.CompactHomeEnabled,
 		HideCcsImportButton:                                    updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:                            updatedSettings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:                                updatedSettings.PurchaseSubscriptionURL,

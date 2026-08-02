@@ -237,6 +237,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		FooterIcpURL:                                           settings.FooterIcpURL,
 		FooterPsbNumber:                                        settings.FooterPsbNumber,
 		FooterPsbURL:                                           settings.FooterPsbURL,
+		CompactHomeEnabled:                                     settings.CompactHomeEnabled,
 		HideCcsImportButton:                                    settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:                            settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:                                settings.PurchaseSubscriptionURL,

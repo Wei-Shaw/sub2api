@@ -444,6 +444,7 @@ export interface SystemSettings {
   footer_icp_url: string;
   footer_psb_number: string;
   footer_psb_url: string;
+  compact_home_enabled: boolean;
   hide_ccs_import_button: boolean;
   table_default_page_size: number;
   table_page_size_options: number[];
@@ -760,6 +761,7 @@ export interface UpdateSettingsRequest {
   footer_icp_url?: string;
   footer_psb_number?: string;
   footer_psb_url?: string;
+  compact_home_enabled?: boolean;
   hide_ccs_import_button?: boolean;
   table_default_page_size?: number;
   table_page_size_options?: number[];

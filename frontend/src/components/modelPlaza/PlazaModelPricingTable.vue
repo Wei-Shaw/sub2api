@@ -17,7 +17,7 @@
         >
           <th
             rowspan="2"
-            class="border-r border-gray-100 py-2.5 pr-4 text-left align-middle dark:border-dark-700/60"
+            class="border-r border-gray-100 py-2.5 pl-5 pr-4 text-left align-middle dark:border-dark-700/60"
           >
             {{ t('modelPlaza.table.model') }}
           </th>
@@ -38,7 +38,7 @@
           </th>
           <th
             rowspan="2"
-            class="border-l border-gray-100 py-2.5 pl-3 pr-1 text-right align-middle dark:border-dark-700/60"
+            class="border-l border-gray-100 py-2.5 pl-3 pr-5 text-right align-middle dark:border-dark-700/60"
           >
             {{ t('modelPlaza.table.rate') }}
           </th>
@@ -63,7 +63,7 @@
           class="border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50/70 dark:border-dark-800 dark:hover:bg-dark-800/50"
         >
           <!-- 模型名 + 非 token 计费模式徽章 -->
-          <td class="border-r border-gray-100 py-2.5 pr-4 align-middle dark:border-dark-700/60">
+          <td class="border-r border-gray-100 py-2.5 pl-5 pr-4 align-middle dark:border-dark-700/60">
             <div class="flex flex-wrap items-center gap-1.5">
               <span class="font-medium text-gray-900 dark:text-white">{{ m.name }}</span>
               <span
@@ -180,7 +180,7 @@
 
           <!-- 折扣倍率(专属倍率划线展示原倍率) -->
           <td
-            class="border-l border-gray-100 py-2.5 pl-3 pr-1 text-right align-middle font-mono text-xs dark:border-dark-700/60"
+            class="border-l border-gray-100 py-2.5 pl-3 pr-5 text-right align-middle font-mono text-xs dark:border-dark-700/60"
           >
             <template v-if="hasCustomRate">
               <span class="mr-1 text-gray-400 line-through dark:text-dark-500">{{ rateMultiplier }}x</span>
@@ -224,15 +224,23 @@ const accentStyle = computed(() => ({ '--plaza-accent': platformAccentColor(prop
 
 const PER_MILLION = 1_000_000
 
-/** 展示顺序:官方输出价从高到低;无官方价的排最后;同价按名称升序。 */
+/**
+ * 展示顺序:
+ * 1. token 计费的排在前,按图/按次计费的沉到末尾——它们的官方 token 价与实付的按张/按次价不同量纲,混排无意义;
+ * 2. 组内按官方输出价从高到低,无官方价的排最后;
+ * 3. 同价按名称降序(新版本号在前,如 gpt-5.6 先于 gpt-5.5)。
+ */
 const sortedModels = computed(() => {
   return [...props.models].sort((a, b) => {
+    const ta = billingMode(a) === BILLING_MODE_TOKEN
+    const tb = billingMode(b) === BILLING_MODE_TOKEN
+    if (ta !== tb) return ta ? -1 : 1
     const pa = a.official_pricing?.output_price ?? null
     const pb = b.official_pricing?.output_price ?? null
     if (pa != null && pb != null && pa !== pb) return pb - pa
     if (pa != null && pb == null) return -1
     if (pa == null && pb != null) return 1
-    return a.name.localeCompare(b.name)
+    return b.name.localeCompare(a.name)
   })
 })
 

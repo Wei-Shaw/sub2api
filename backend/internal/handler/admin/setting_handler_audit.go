@@ -311,6 +311,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.FooterPsbURL != after.FooterPsbURL {
 		changed = append(changed, "footer_psb_url")
 	}
+	if before.CompactHomeEnabled != after.CompactHomeEnabled {
+		changed = append(changed, "compact_home_enabled")
+	}
 	if before.HideCcsImportButton != after.HideCcsImportButton {
 		changed = append(changed, "hide_ccs_import_button")
 	}

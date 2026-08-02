@@ -143,6 +143,7 @@ type SystemSettings struct {
 	FooterIcpURL                string
 	FooterPsbNumber             string
 	FooterPsbURL                string
+	CompactHomeEnabled          bool
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
@@ -313,6 +314,7 @@ type PublicSettings struct {
 	FooterIcpURL                     string
 	FooterPsbNumber                  string
 	FooterPsbURL                     string
+	CompactHomeEnabled               bool
 	HideCcsImportButton              bool
 
 	PurchaseSubscriptionEnabled bool

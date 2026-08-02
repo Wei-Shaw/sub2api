@@ -334,6 +334,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		FooterIcpURL:                     settings[SettingKeyFooterIcpURL],
 		FooterPsbNumber:                  settings[SettingKeyFooterPsbNumber],
 		FooterPsbURL:                     settings[SettingKeyFooterPsbURL],
+		CompactHomeEnabled:               settings[SettingKeyCompactHomeEnabled] == "true",
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),

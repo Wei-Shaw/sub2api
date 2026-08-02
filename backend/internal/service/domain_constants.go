@@ -275,6 +275,7 @@ const (
 	SettingKeyFooterIcpURL                = "footer_icp_url"                // 页脚 ICP 备案链接
 	SettingKeyFooterPsbNumber             = "footer_psb_number"             // 页脚公安备案号
 	SettingKeyFooterPsbURL                = "footer_psb_url"                // 页脚公安备案链接
+	SettingKeyCompactHomeEnabled          = "compact_home_enabled"          // 是否启用内置简洁首页
 	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导入 CCS 按钮
 	SettingKeyPurchaseSubscriptionEnabled = "purchase_subscription_enabled" // 是否展示"购买订阅"页面入口
 	SettingKeyPurchaseSubscriptionURL     = "purchase_subscription_url"     // "购买订阅"页面 URL（作为 iframe src）

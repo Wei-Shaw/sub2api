@@ -953,6 +953,62 @@ func (_u *GroupUpdate) AppendReasoningEffortMappings(v []domain.ReasoningEffortM
 	return _u
 }
 
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (_u *GroupUpdate) SetProfitControlEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetProfitControlEnabled(v)
+	return _u
+}
+
+// SetNillableProfitControlEnabled sets the "profit_control_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableProfitControlEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetProfitControlEnabled(*v)
+	}
+	return _u
+}
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (_u *GroupUpdate) SetProfitMinMargin(v float64) *GroupUpdate {
+	_u.mutation.ResetProfitMinMargin()
+	_u.mutation.SetProfitMinMargin(v)
+	return _u
+}
+
+// SetNillableProfitMinMargin sets the "profit_min_margin" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableProfitMinMargin(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetProfitMinMargin(*v)
+	}
+	return _u
+}
+
+// AddProfitMinMargin adds value to the "profit_min_margin" field.
+func (_u *GroupUpdate) AddProfitMinMargin(v float64) *GroupUpdate {
+	_u.mutation.AddProfitMinMargin(v)
+	return _u
+}
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (_u *GroupUpdate) SetProfitSafetyBuffer(v float64) *GroupUpdate {
+	_u.mutation.ResetProfitSafetyBuffer()
+	_u.mutation.SetProfitSafetyBuffer(v)
+	return _u
+}
+
+// SetNillableProfitSafetyBuffer sets the "profit_safety_buffer" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableProfitSafetyBuffer(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetProfitSafetyBuffer(*v)
+	}
+	return _u
+}
+
+// AddProfitSafetyBuffer adds value to the "profit_safety_buffer" field.
+func (_u *GroupUpdate) AddProfitSafetyBuffer(v float64) *GroupUpdate {
+	_u.mutation.AddProfitSafetyBuffer(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1543,6 +1599,21 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, group.FieldReasoningEffortMappings, value)
 		})
+	}
+	if value, ok := _u.mutation.ProfitControlEnabled(); ok {
+		_spec.SetField(group.FieldProfitControlEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ProfitMinMargin(); ok {
+		_spec.SetField(group.FieldProfitMinMargin, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedProfitMinMargin(); ok {
+		_spec.AddField(group.FieldProfitMinMargin, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.ProfitSafetyBuffer(); ok {
+		_spec.SetField(group.FieldProfitSafetyBuffer, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedProfitSafetyBuffer(); ok {
+		_spec.AddField(group.FieldProfitSafetyBuffer, field.TypeFloat64, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2775,6 +2846,62 @@ func (_u *GroupUpdateOne) AppendReasoningEffortMappings(v []domain.ReasoningEffo
 	return _u
 }
 
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (_u *GroupUpdateOne) SetProfitControlEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetProfitControlEnabled(v)
+	return _u
+}
+
+// SetNillableProfitControlEnabled sets the "profit_control_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableProfitControlEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetProfitControlEnabled(*v)
+	}
+	return _u
+}
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (_u *GroupUpdateOne) SetProfitMinMargin(v float64) *GroupUpdateOne {
+	_u.mutation.ResetProfitMinMargin()
+	_u.mutation.SetProfitMinMargin(v)
+	return _u
+}
+
+// SetNillableProfitMinMargin sets the "profit_min_margin" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableProfitMinMargin(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetProfitMinMargin(*v)
+	}
+	return _u
+}
+
+// AddProfitMinMargin adds value to the "profit_min_margin" field.
+func (_u *GroupUpdateOne) AddProfitMinMargin(v float64) *GroupUpdateOne {
+	_u.mutation.AddProfitMinMargin(v)
+	return _u
+}
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (_u *GroupUpdateOne) SetProfitSafetyBuffer(v float64) *GroupUpdateOne {
+	_u.mutation.ResetProfitSafetyBuffer()
+	_u.mutation.SetProfitSafetyBuffer(v)
+	return _u
+}
+
+// SetNillableProfitSafetyBuffer sets the "profit_safety_buffer" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableProfitSafetyBuffer(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetProfitSafetyBuffer(*v)
+	}
+	return _u
+}
+
+// AddProfitSafetyBuffer adds value to the "profit_safety_buffer" field.
+func (_u *GroupUpdateOne) AddProfitSafetyBuffer(v float64) *GroupUpdateOne {
+	_u.mutation.AddProfitSafetyBuffer(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -3395,6 +3522,21 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, group.FieldReasoningEffortMappings, value)
 		})
+	}
+	if value, ok := _u.mutation.ProfitControlEnabled(); ok {
+		_spec.SetField(group.FieldProfitControlEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ProfitMinMargin(); ok {
+		_spec.SetField(group.FieldProfitMinMargin, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedProfitMinMargin(); ok {
+		_spec.AddField(group.FieldProfitMinMargin, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.ProfitSafetyBuffer(); ok {
+		_spec.SetField(group.FieldProfitSafetyBuffer, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedProfitSafetyBuffer(); ok {
+		_spec.AddField(group.FieldProfitSafetyBuffer, field.TypeFloat64, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

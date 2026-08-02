@@ -183,6 +183,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyFooterIcpURL,
 		SettingKeyFooterPsbNumber,
 		SettingKeyFooterPsbURL,
+		SettingKeyCompactHomeEnabled,
 		SettingKeyHideCcsImportButton,
 		SettingKeyPurchaseSubscriptionEnabled,
 		SettingKeyPurchaseSubscriptionURL,
@@ -315,6 +316,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		FooterIcpURL:                     settings[SettingKeyFooterIcpURL],
 		FooterPsbNumber:                  settings[SettingKeyFooterPsbNumber],
 		FooterPsbURL:                     settings[SettingKeyFooterPsbURL],
+		CompactHomeEnabled:               settings[SettingKeyCompactHomeEnabled] == "true",
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
@@ -507,6 +509,7 @@ type PublicSettingsInjectionPayload struct {
 	FooterIcpURL                     string                   `json:"footer_icp_url"`
 	FooterPsbNumber                  string                   `json:"footer_psb_number"`
 	FooterPsbURL                     string                   `json:"footer_psb_url"`
+	CompactHomeEnabled               bool                     `json:"compact_home_enabled"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
@@ -583,6 +586,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		FooterIcpURL:                     settings.FooterIcpURL,
 		FooterPsbNumber:                  settings.FooterPsbNumber,
 		FooterPsbURL:                     settings.FooterPsbURL,
+		CompactHomeEnabled:               settings.CompactHomeEnabled,
 		HideCcsImportButton:              settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:          settings.PurchaseSubscriptionURL,

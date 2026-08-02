@@ -144,6 +144,7 @@ export default {
         passkeyRPID: 'RP ID',
         passkeyOrigins: '允许的 HTTPS 来源',
         passkeyValueNotConfigured: '未配置',
+        passkeyDeploymentHint: '请由服务器运维在部署配置中将 webauthn.enabled 设为 true，填写 webauthn.rp_id（仅域名）与 webauthn.rp_origins（完整 HTTPS 来源），然后重启服务。',
         stepUp: '敏感操作二次验证 (step-up 2FA)',
         stepUpHint: '开启后，账号/代理导出、备份创建与下载、S3 配置修改、提升管理员等敏感操作需要先完成 TOTP 二次验证（15 分钟内有效）。开启前需本人已启用 2FA；关闭该开关本身也需要二次验证。',
         stepUpEnableRequiresTotp: '开启敏感操作二次验证前，请先在个人资料中为当前账号启用 2FA (TOTP)。',
@@ -353,7 +354,7 @@ export default {
       },
       upstreamBillingProbe: {
         title: '上游倍率自动探测',
-        description: '定期获取 OpenAI API Key 所连接上游 Sub2API 站点声明的计费倍率。',
+        description: '定期获取 API Key 账号所连接上游 Sub2API 站点声明的计费倍率；只有另行开启“同步上游声明倍率”的账号才会更新账号倍率。',
         enabled: '启用全局自动探测',
         enabledHint: '开启后，仅对账号自身已启用自动检测的账号执行定时探测；关闭后停止所有定时探测，手动探测不受影响。',
         intervalMinutes: '探测周期（分钟）',
@@ -557,6 +558,8 @@ export default {
         footerPsbUrl: '公安备案链接',
         footerPsbUrlPlaceholder: 'http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=...',
         footerPsbUrlHint: '点击公安备案号跳转的链接。',
+        compactHome: '简洁首页',
+        compactHomeHint: '未设置自定义首页内容时，展示简洁的站点信息页面。',
         hideCcsImportButton: '隐藏 CCS 导入按钮',
         hideCcsImportButtonHint: '启用后将在 API Keys 页面隐藏"导入 CCS"按钮'
       },

@@ -111,6 +111,67 @@ describe('PlazaModelPricingTable', () => {
     expect(names).toEqual(['model-expensive', 'model-cheap', 'model-no-official'])
   })
 
+  it('官方输出价相同时按模型名降序(新版本号在前)', () => {
+    const older = tokenModel({ name: 'gpt-5.5' })
+    const newer = tokenModel({ name: 'gpt-5.6-sol' })
+
+    const wrapper = mountTable([older, newer], 1)
+    const names = wrapper.findAll('tbody tr').map((tr) => tr.find('td').text())
+    expect(names).toEqual(['gpt-5.6-sol', 'gpt-5.5'])
+  })
+
+  it('按图片/按次计费的模型沉到末尾,不与 token 模型按官方价混排', () => {
+    // 官方输出价 $10,介于下面两个 token 模型之间,但因计费模式不同应排最后
+    const image = tokenModel({
+      name: 'gpt-image-2',
+      pricing: {
+        billing_mode: 'image',
+        input_price: null,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        image_input_price: null,
+        image_output_price: null,
+        per_request_price: 0.002,
+        intervals: []
+      },
+      official_pricing: {
+        input_price: 5e-6,
+        output_price: 1e-5,
+        cache_write_price: null,
+        cache_write_1h_price: null,
+        cache_read_price: 1.25e-6
+      }
+    })
+    const pricier = tokenModel({
+      name: 'gpt-5.6-terra',
+      official_pricing: {
+        input_price: 2.5e-6,
+        output_price: 1.5e-5,
+        cache_write_price: null,
+        cache_write_1h_price: null,
+        cache_read_price: null
+      }
+    })
+    const cheaper = tokenModel({
+      name: 'gpt-5.6-luna',
+      official_pricing: {
+        input_price: 1e-6,
+        output_price: 6e-6,
+        cache_write_price: null,
+        cache_write_1h_price: null,
+        cache_read_price: null
+      }
+    })
+
+    const wrapper = mountTable([pricier, image, cheaper], 1)
+    const names = wrapper.findAll('tbody tr').map((tr) => tr.find('td').text())
+    expect(names[0]).toBe('gpt-5.6-terra')
+    expect(names[1]).toBe('gpt-5.6-luna')
+    // 首列含「按图片计费」徽章文本,只断言模型名
+    expect(names[2]).toContain('gpt-image-2')
+  })
+
   it('两级表头:实付区与官方区各拆输入/输出/缓存列', () => {
     const wrapper = mountTable([tokenModel()], 1)
     const text = wrapper.text()

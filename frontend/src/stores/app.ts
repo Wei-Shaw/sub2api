@@ -346,6 +346,7 @@ export const useAppStore = defineStore('app', () => {
         footer_icp_url: '',
         footer_psb_number: '',
         footer_psb_url: '',
+        compact_home_enabled: false,
         hide_ccs_import_button: false,
         payment_enabled: false,
         table_default_page_size: 20,
