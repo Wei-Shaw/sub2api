@@ -149,7 +149,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 		currentRoutingModel = preferredMappedModel
 	}
 	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-		c.Request.Context(),
+		service.WithOpenAIMessagesRequestedModel(c.Request.Context(), reqModel),
 		apiKey.GroupID,
 		"",
 		sessionHash,
@@ -187,8 +187,14 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	if selection.Acquired && selection.ReleaseFunc != nil {
 		defer selection.ReleaseFunc()
 	}
+	if !allowOpenAICompatibleMessagesDispatch(apiKey) {
+		h.anthropicErrorResponse(c, http.StatusForbidden, "permission_error",
+			"This group does not allow /v1/messages dispatch")
+		return
+	}
+	channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	forwardBody := mappedBodyForMessages(channelMapping.Mapped, channelMapping.MappedModel)
-	defaultMappedModel := preferredMappedModel
+	defaultMappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
 
 	if err := h.gatewayService.ForwardCountTokensAsAnthropic(c.Request.Context(), c, account, forwardBody, defaultMappedModel); err != nil {
 		reqLog.Error("openai_count_tokens.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))

@@ -33,6 +33,9 @@ type APIKey struct {
 	Key     string
 	Name    string
 	GroupID *int64
+	// FallbackGroupIDs are tried in order when the primary group cannot select
+	// an eligible account before an upstream request is sent.
+	FallbackGroupIDs []int64
 	// OrganizationSubscriptionID, when set, marks this as an enterprise API key
 	// that consumes the referenced organization subscription
 	// (organization_subscriptions.id) instead of the owner's personal subscription.

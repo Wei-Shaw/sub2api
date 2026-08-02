@@ -12,6 +12,7 @@ type APIKeyAuthSnapshot struct {
 	APIKeyID                   int64                    `json:"api_key_id"`
 	UserID                     int64                    `json:"user_id"`
 	GroupID                    *int64                   `json:"group_id,omitempty"`
+	FallbackGroupIDs           []int64                  `json:"fallback_group_ids,omitempty"`
 	OrganizationSubscriptionID *int64                   `json:"organization_subscription_id,omitempty"`
 	Name                       string                   `json:"name"`
 	Status                     string                   `json:"status"`

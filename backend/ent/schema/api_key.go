@@ -44,6 +44,9 @@ func (APIKey) Fields() []ent.Field {
 		field.Int64("group_id").
 			Optional().
 			Nillable(),
+		field.JSON("fallback_group_ids", []int64{}).
+			Default([]int64{}).
+			Comment("Ordered fallback group IDs for personal API keys"),
 		// When set, this API key is an enterprise key that consumes the
 		// referenced organization subscription (organization_subscriptions.id)
 		// instead of the owner's personal user subscription. It is a plain

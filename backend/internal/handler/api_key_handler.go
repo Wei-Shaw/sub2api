@@ -30,8 +30,9 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 
 // CreateAPIKeyRequest represents the create API key request payload
 type CreateAPIKeyRequest struct {
-	Name    string `json:"name" binding:"required"`
-	GroupID *int64 `json:"group_id"` // nullable
+	Name             string  `json:"name" binding:"required"`
+	GroupID          *int64  `json:"group_id"` // nullable
+	FallbackGroupIDs []int64 `json:"fallback_group_ids"`
 	// OrganizationSubscriptionID 绑定公司订阅，创建企业 API Key（消费走公司订阅）
 	OrganizationSubscriptionID *int64   `json:"organization_subscription_id"`
 	CustomKey                  *string  `json:"custom_key"`      // 可选的自定义key
@@ -48,8 +49,9 @@ type CreateAPIKeyRequest struct {
 
 // UpdateAPIKeyRequest represents the update API key request payload
 type UpdateAPIKeyRequest struct {
-	Name    string `json:"name"`
-	GroupID *int64 `json:"group_id"`
+	Name             string   `json:"name"`
+	GroupID          *int64   `json:"group_id"`
+	FallbackGroupIDs *[]int64 `json:"fallback_group_ids"`
 	// OrganizationSubscriptionID 重新绑定公司订阅（企业 API Key）
 	OrganizationSubscriptionID *int64    `json:"organization_subscription_id"`
 	Status                     string    `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -160,6 +162,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	svcReq := service.CreateAPIKeyRequest{
 		Name:                       req.Name,
 		GroupID:                    req.GroupID,
+		FallbackGroupIDs:           req.FallbackGroupIDs,
 		OrganizationSubscriptionID: req.OrganizationSubscriptionID,
 		CustomKey:                  req.CustomKey,
 		IPWhitelist:                req.IPWhitelist,
@@ -212,6 +215,7 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 	svcReq := service.UpdateAPIKeyRequest{
 		IPWhitelist:         req.IPWhitelist,
 		IPBlacklist:         req.IPBlacklist,
+		FallbackGroupIDs:    req.FallbackGroupIDs,
 		Quota:               req.Quota,
 		ResetQuota:          req.ResetQuota,
 		RateLimit5h:         req.RateLimit5h,

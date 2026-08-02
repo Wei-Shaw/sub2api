@@ -94,7 +94,14 @@ func isSubscriptionBillingForAPIKey(apiKey *APIKey, subscription *UserSubscripti
 	if apiKey.OrganizationSubscriptionID != nil {
 		return true
 	}
-	return apiKey.Group != nil && apiKey.Group.IsSubscriptionType() && subscription != nil
+	return apiKey.Group != nil && apiKey.Group.IsSubscriptionType() && subscription != nil && subscription.ID > 0
+}
+
+func effectiveSubscriptionForAPIKey(apiKey *APIKey, subscription *UserSubscription) *UserSubscription {
+	if !isSubscriptionBillingForAPIKey(apiKey, subscription) || subscription == nil || subscription.ID <= 0 {
+		return nil
+	}
+	return subscription
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -778,6 +785,7 @@ type recordUsageCoreInput struct {
 // LongContextThreshold > 0 时 Token 计费回退走 CalculateCostWithLongContext。
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
 	result := input.Result
+	input.Subscription = effectiveSubscriptionForAPIKey(input.APIKey, input.Subscription)
 	apiKey := input.APIKey
 	user := input.User
 	account := input.Account
@@ -1214,7 +1222,7 @@ func resolveBillingMode(result *ForwardResult, cost *CostBreakdown) *string {
 }
 
 func optionalSubscriptionID(subscription *UserSubscription) *int64 {
-	if subscription != nil {
+	if subscription != nil && subscription.ID > 0 {
 		return &subscription.ID
 	}
 	return nil

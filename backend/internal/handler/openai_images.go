@@ -343,6 +343,15 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			failImageStatus("image generation concurrency limit exceeded")
 			return
 		}
+		if !service.GroupAllowsImageGeneration(apiKey.Group) {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			failImageStatus(service.ImageGenerationPermissionMessage())
+			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+			return
+		}
+		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, routingModel)
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		if !parsed.Stream && !jsonKeepaliveStarted {

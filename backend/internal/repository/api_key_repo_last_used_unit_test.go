@@ -76,6 +76,36 @@ func mustCreateAPIKeyRepoUsageLog(t *testing.T, ctx context.Context, client *dbe
 	require.NoError(t, err)
 }
 
+func TestAPIKeyRepositoryFallbackGroupIDsPreserveOrder(t *testing.T) {
+	repo, client := newAPIKeyRepoSQLite(t)
+	ctx := context.Background()
+	user := mustCreateAPIKeyRepoUser(t, ctx, client, "fallback-groups@test.com")
+	key := &service.APIKey{
+		UserID:           user.ID,
+		Key:              "sk-fallback-groups-order",
+		Name:             "Fallback order",
+		Status:           service.StatusActive,
+		FallbackGroupIDs: []int64{31, 12, 44},
+	}
+
+	require.NoError(t, repo.Create(ctx, key))
+
+	byID, err := repo.GetByID(ctx, key.ID)
+	require.NoError(t, err)
+	require.Equal(t, []int64{31, 12, 44}, byID.FallbackGroupIDs)
+
+	forAuth, err := repo.GetByKeyForAuth(ctx, key.Key)
+	require.NoError(t, err)
+	require.Equal(t, []int64{31, 12, 44}, forAuth.FallbackGroupIDs)
+
+	key.FallbackGroupIDs = []int64{44, 31}
+	require.NoError(t, repo.Update(ctx, key, service.APIKeyUpdateFields{FallbackGroupIDs: true}))
+
+	updated, err := repo.GetByID(ctx, key.ID)
+	require.NoError(t, err)
+	require.Equal(t, []int64{44, 31}, updated.FallbackGroupIDs)
+}
+
 func TestAPIKeyRepositoryListByUserIDAttachesLastUsedIP(t *testing.T) {
 	repo, client := newAPIKeyRepoSQLite(t)
 	ctx := context.Background()

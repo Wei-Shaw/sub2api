@@ -338,6 +338,77 @@ func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiP
 	require.Equal(t, PlatformGemini, acc.Platform, "无分组时应只返回 gemini 平台账户")
 }
 
+func TestGeminiMessagesCompatService_APIKeyFallbackGroupsInOrder(t *testing.T) {
+	groups := []*Group{
+		{ID: 10, Platform: PlatformGemini, Status: StatusActive},
+		{ID: 20, Platform: PlatformGemini, Status: StatusActive},
+		{ID: 30, Platform: PlatformGemini, Status: StatusActive},
+	}
+	account := Account{ID: 300, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: true}
+	var queried []int64
+	repo := &mockAccountRepoForGemini{
+		accountsByID: map[int64]*Account{account.ID: &account},
+		listByGroupFunc: func(_ context.Context, groupID int64, _ []string) ([]Account, error) {
+			queried = append(queried, groupID)
+			if groupID == groups[2].ID {
+				return []Account{account}, nil
+			}
+			return nil, nil
+		},
+	}
+	groupRepo := &mockGroupRepoForGemini{groups: map[int64]*Group{10: groups[0], 20: groups[1], 30: groups[2]}}
+	apiKey := &APIKey{GroupID: &groups[0].ID, Group: groups[0]}
+	state := NewAPIKeyRoutingState(apiKey, []APIKeyRoutingCandidate{{Group: groups[0]}, {Group: groups[1]}, {Group: groups[2]}})
+	ctx := WithAPIKeyRoutingState(context.Background(), state)
+	svc := &GeminiMessagesCompatService{accountRepo: repo, groupRepo: groupRepo, cache: &mockGatewayCacheForGemini{}}
+
+	selected, err := svc.SelectAccountForModelWithExclusions(ctx, apiKey.GroupID, "", "gemini-2.5-flash", nil)
+	require.NoError(t, err)
+	require.Equal(t, account.ID, selected.ID)
+	require.Equal(t, []int64{10, 20, 30}, queried)
+	require.Equal(t, groups[2].ID, *apiKey.GroupID)
+
+	queried = nil
+	selected, err = svc.SelectAccountForModelWithExclusions(ctx, apiKey.GroupID, "", "gemini-2.5-flash", nil)
+	require.NoError(t, err)
+	require.Equal(t, account.ID, selected.ID)
+	require.Equal(t, []int64{30}, queried, "committed requests must remain in the selected group")
+}
+
+func TestGeminiMessagesCompatService_AIStudioUsesAPIKeyFallbackGroup(t *testing.T) {
+	primary := &Group{ID: 10, Platform: PlatformGemini, Status: StatusActive}
+	fallback := &Group{ID: 20, Platform: PlatformGemini, Status: StatusActive}
+	account := Account{
+		ID: 200, Platform: PlatformGemini, Type: AccountTypeAPIKey, Priority: 1,
+		Status: StatusActive, Schedulable: true, Credentials: map[string]any{"api_key": "test"},
+	}
+	var queried []int64
+	repo := &mockAccountRepoForGemini{
+		accountsByID: map[int64]*Account{account.ID: &account},
+		listByGroupFunc: func(_ context.Context, groupID int64, _ []string) ([]Account, error) {
+			queried = append(queried, groupID)
+			if groupID == fallback.ID {
+				return []Account{account}, nil
+			}
+			return nil, nil
+		},
+	}
+	apiKey := &APIKey{GroupID: &primary.ID, Group: primary}
+	state := NewAPIKeyRoutingState(apiKey, []APIKeyRoutingCandidate{{Group: primary}, {Group: fallback}})
+	ctx := WithAPIKeyRoutingState(context.Background(), state)
+	svc := &GeminiMessagesCompatService{
+		accountRepo: repo,
+		groupRepo:   &mockGroupRepoForGemini{groups: map[int64]*Group{primary.ID: primary, fallback.ID: fallback}},
+		cache:       &mockGatewayCacheForGemini{},
+	}
+
+	selected, err := svc.SelectAccountForAIStudioEndpoints(ctx, apiKey.GroupID)
+	require.NoError(t, err)
+	require.Equal(t, account.ID, selected.ID)
+	require.Equal(t, []int64{primary.ID, fallback.ID}, queried)
+	require.Equal(t, fallback.ID, *apiKey.GroupID)
+}
+
 func TestGeminiMessagesCompatService_GroupResolution_ReusesContextGroup(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(7)

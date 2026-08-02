@@ -134,7 +134,7 @@
           </template>
 
           <template #cell-group="{ row }">
-            <div class="group/dropdown relative">
+            <div class="group/dropdown relative space-y-1.5">
               <button
                 :ref="(el) => setGroupButtonRef(row.id, el)"
                 @click="openGroupSelector(row)"
@@ -171,6 +171,13 @@
                   />
                 </svg>
               </button>
+              <div
+                v-if="row.fallback_group_ids?.length"
+                class="max-w-72 text-xs leading-5 text-gray-500 dark:text-gray-400"
+                data-test="fallback-group-summary"
+              >
+                {{ fallbackGroupSummary(row.fallback_group_ids) }}
+              </div>
             </div>
           </template>
 
@@ -517,6 +524,104 @@
               />
             </template>
           </Select>
+
+          <div class="mt-4 space-y-2" data-test="fallback-groups-editor">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <label class="input-label mb-0">{{ t('keys.fallbackGroupsLabel') }}</label>
+                <p class="input-hint mt-0.5">{{ t('keys.fallbackGroupsHint') }}</p>
+              </div>
+              <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                {{ formData.fallback_group_ids.length }}/5
+              </span>
+            </div>
+
+            <div
+              v-for="(groupId, index) in formData.fallback_group_ids"
+              :key="groupId"
+              class="flex min-h-11 items-center gap-2 border-b border-gray-200 py-2 last:border-b-0 dark:border-dark-600"
+              data-test="fallback-group-row"
+            >
+              <span class="w-5 flex-none text-center text-xs font-medium text-gray-500">{{ index + 1 }}</span>
+              <GroupBadge
+                v-if="groupById(groupId)"
+                class="min-w-0 flex-1"
+                :name="groupById(groupId)!.name"
+                :platform="groupById(groupId)!.platform"
+                :subscription-type="groupById(groupId)!.subscription_type"
+                :rate-multiplier="groupById(groupId)!.rate_multiplier"
+                :user-rate-multiplier="userGroupRates[groupId]"
+                :peak-rate-enabled="groupById(groupId)!.peak_rate_enabled"
+                :peak-start="groupById(groupId)!.peak_start"
+                :peak-end="groupById(groupId)!.peak_end"
+                :peak-rate-multiplier="groupById(groupId)!.peak_rate_multiplier"
+              />
+              <span v-else class="min-w-0 flex-1 truncate text-sm text-gray-600">#{{ groupId }}</span>
+              <button
+                type="button"
+                class="flex h-8 w-8 flex-none items-center justify-center rounded text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-dark-700"
+                :disabled="index === 0"
+                :title="t('keys.moveFallbackUp')"
+                data-test="fallback-move-up"
+                @click="moveFallbackGroup(index, -1)"
+              >
+                <Icon name="arrowUp" size="sm" />
+              </button>
+              <button
+                type="button"
+                class="flex h-8 w-8 flex-none items-center justify-center rounded text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-dark-700"
+                :disabled="index === formData.fallback_group_ids.length - 1"
+                :title="t('keys.moveFallbackDown')"
+                data-test="fallback-move-down"
+                @click="moveFallbackGroup(index, 1)"
+              >
+                <Icon name="arrowDown" size="sm" />
+              </button>
+              <button
+                type="button"
+                class="flex h-8 w-8 flex-none items-center justify-center rounded text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                :title="t('keys.removeFallbackGroup')"
+                data-test="fallback-remove"
+                @click="removeFallbackGroup(index)"
+              >
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+
+            <div
+              v-if="formData.group_id !== null && formData.fallback_group_ids.length < 5 && fallbackGroupOptions.length"
+              class="flex items-center gap-2"
+            >
+              <Select
+                v-model="fallbackGroupToAdd"
+                class="min-w-0 flex-1"
+                :options="fallbackGroupOptions"
+                :placeholder="t('keys.selectFallbackGroup')"
+                :searchable="true"
+                :search-placeholder="t('keys.searchGroup')"
+                data-test="fallback-group-select"
+              />
+              <button
+                type="button"
+                class="btn btn-secondary flex-none"
+                :disabled="fallbackGroupToAdd === null"
+                data-test="fallback-add"
+                @click="addFallbackGroup"
+              >
+                <Icon name="plus" size="sm" class="mr-1.5" />
+                {{ t('common.add') }}
+              </button>
+            </div>
+            <p v-else-if="formData.group_id === null" class="input-hint" data-test="fallback-select-primary">
+              {{ t('keys.fallbackGroupsSelectPrimary') }}
+            </p>
+            <p v-else-if="formData.fallback_group_ids.length >= 5" class="input-hint" data-test="fallback-limit">
+              {{ t('keys.fallbackGroupsLimit') }}
+            </p>
+            <p v-else class="input-hint" data-test="fallback-empty">
+              {{ t('keys.fallbackGroupsEmpty') }}
+            </p>
+          </div>
         </div>
 
         <!-- Custom Key Section (only for create) -->
@@ -1133,7 +1238,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, reactive, computed, onMounted, onUnmounted, nextTick, type ComponentPublicInstance } from 'vue'
+	import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useRoute, useRouter } from 'vue-router'
 	import { useAppStore } from '@/stores/app'
@@ -1352,6 +1457,7 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
 const formData = ref({
   name: '',
   group_id: null as number | null,
+  fallback_group_ids: [] as number[],
   organization_subscription_id: null as number | null,
   status: 'active' as 'active' | 'inactive',
   use_custom_key: false,
@@ -1446,6 +1552,86 @@ const groupOptions = computed(() =>
     platform: group.platform
   }))
 )
+
+const fallbackGroupToAdd = ref<number | null>(null)
+
+const groupById = (groupId: number) => groups.value.find(group => group.id === groupId)
+
+const eligibleFallbackGroups = computed(() => {
+  const primary = formData.value.group_id === null ? undefined : groupById(formData.value.group_id)
+  if (!primary || formData.value.organization_subscription_id) return []
+  const selected = new Set(formData.value.fallback_group_ids)
+  return groups.value.filter(group =>
+    group.id !== primary.id &&
+    group.platform === primary.platform &&
+    !selected.has(group.id)
+  )
+})
+
+const fallbackGroupOptions = computed(() => eligibleFallbackGroups.value.map(group => ({
+  value: group.id,
+  label: group.name,
+  description: group.description,
+  rate: group.rate_multiplier,
+  userRate: userGroupRates.value[group.id] ?? null,
+  peakRateEnabled: group.peak_rate_enabled,
+  peakStart: group.peak_start,
+  peakEnd: group.peak_end,
+  peakRateMultiplier: group.peak_rate_multiplier,
+  subscriptionType: group.subscription_type,
+  platform: group.platform
+})))
+
+const normalizeFallbackGroups = (primaryGroupId: number | null, fallbackGroupIds: number[]) => {
+  if (primaryGroupId === null) return []
+  const primary = groupById(primaryGroupId)
+  if (!primary) return []
+  const seen = new Set<number>()
+  return fallbackGroupIds.filter(groupId => {
+    const group = groupById(groupId)
+    if (!group || group.id === primary.id || group.platform !== primary.platform || seen.has(group.id)) {
+      return false
+    }
+    seen.add(group.id)
+    return true
+  }).slice(0, 5)
+}
+
+const addFallbackGroup = () => {
+  const groupId = Number(fallbackGroupToAdd.value)
+  if (!Number.isInteger(groupId) || groupId <= 0 || formData.value.fallback_group_ids.length >= 5) return
+  const allowed = eligibleFallbackGroups.value.some(group => group.id === groupId)
+  if (!allowed) return
+  formData.value.fallback_group_ids.push(groupId)
+  fallbackGroupToAdd.value = null
+}
+
+const removeFallbackGroup = (index: number) => {
+  formData.value.fallback_group_ids.splice(index, 1)
+}
+
+const moveFallbackGroup = (index: number, offset: -1 | 1) => {
+  const target = index + offset
+  if (target < 0 || target >= formData.value.fallback_group_ids.length) return
+  const [groupId] = formData.value.fallback_group_ids.splice(index, 1)
+  formData.value.fallback_group_ids.splice(target, 0, groupId)
+}
+
+const fallbackGroupSummary = (groupIds: number[]) => groupIds
+  .map((groupId, index) => `${index + 1}. ${groupById(groupId)?.name ?? `#${groupId}`}`)
+  .join(' -> ')
+
+watch(() => formData.value.group_id, groupId => {
+  formData.value.fallback_group_ids = normalizeFallbackGroups(groupId, formData.value.fallback_group_ids)
+  fallbackGroupToAdd.value = null
+})
+
+watch(() => formData.value.organization_subscription_id, organizationSubscriptionId => {
+  if (organizationSubscriptionId) {
+    formData.value.fallback_group_ids = []
+    fallbackGroupToAdd.value = null
+  }
+})
 
 // 公司订阅下拉选项：选中后创建的 API Key 将消耗对应公司订阅额度，
 // 并强制绑定订阅所属分组（无需再单独选择个人分组）。
@@ -1636,6 +1822,7 @@ const editKey = (key: ApiKey) => {
   formData.value = {
     name: key.name,
     group_id: key.group_id,
+    fallback_group_ids: [...(key.fallback_group_ids ?? [])],
     organization_subscription_id: key.organization_subscription_id ?? null,
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
     use_custom_key: false,
@@ -1715,9 +1902,12 @@ const changeGroup = async (key: ApiKey, selectedValue: number | string | null) =
   if (key.group_id === newGroupId && (key.organization_subscription_id ?? null) === organizationSubscriptionID) return
 
   try {
+    const fallbackGroupIds = organizationSubscriptionID
+      ? []
+      : normalizeFallbackGroups(newGroupId, key.fallback_group_ids ?? [])
     await keysAPI.update(key.id, organizationSubscriptionID
-      ? { organization_subscription_id: organizationSubscriptionID }
-      : { group_id: newGroupId, organization_subscription_id: null })
+      ? { organization_subscription_id: organizationSubscriptionID, fallback_group_ids: [] }
+      : { group_id: newGroupId, organization_subscription_id: null, fallback_group_ids: fallbackGroupIds })
     appStore.showSuccess(t('keys.groupChangedSuccess'))
     loadApiKeys()
   } catch (error) {
@@ -1804,8 +1994,12 @@ const handleSubmit = async () => {
         name: formData.value.name,
         // 绑定公司订阅时由后端强制关联订阅分组；否则更新个人分组并清除公司订阅绑定。
         ...(orgSubscriptionId
-          ? { organization_subscription_id: orgSubscriptionId }
-          : { group_id: formData.value.group_id, organization_subscription_id: null }),
+          ? { organization_subscription_id: orgSubscriptionId, fallback_group_ids: [] }
+          : {
+              group_id: formData.value.group_id,
+              organization_subscription_id: null,
+              fallback_group_ids: normalizeFallbackGroups(formData.value.group_id, formData.value.fallback_group_ids)
+            }),
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -1830,7 +2024,8 @@ const handleSubmit = async () => {
         quota,
         expiresInDays,
         rateLimitData,
-        orgSubscriptionId
+        orgSubscriptionId,
+        orgSubscriptionId ? [] : normalizeFallbackGroups(formData.value.group_id, formData.value.fallback_group_ids)
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1876,6 +2071,7 @@ const closeModals = () => {
   formData.value = {
     name: '',
     group_id: null,
+    fallback_group_ids: [],
     organization_subscription_id: null,
     status: 'active',
     use_custom_key: false,

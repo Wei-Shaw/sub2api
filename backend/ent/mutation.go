@@ -174,6 +174,8 @@ type APIKeyMutation struct {
 	deleted_at                      *time.Time
 	key                             *string
 	name                            *string
+	fallback_group_ids              *[]int64
+	appendfallback_group_ids        []int64
 	organization_subscription_id    *int64
 	addorganization_subscription_id *int64
 	status                          *string
@@ -589,6 +591,57 @@ func (m *APIKeyMutation) GroupIDCleared() bool {
 func (m *APIKeyMutation) ResetGroupID() {
 	m.group = nil
 	delete(m.clearedFields, apikey.FieldGroupID)
+}
+
+// SetFallbackGroupIds sets the "fallback_group_ids" field.
+func (m *APIKeyMutation) SetFallbackGroupIds(i []int64) {
+	m.fallback_group_ids = &i
+	m.appendfallback_group_ids = nil
+}
+
+// FallbackGroupIds returns the value of the "fallback_group_ids" field in the mutation.
+func (m *APIKeyMutation) FallbackGroupIds() (r []int64, exists bool) {
+	v := m.fallback_group_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFallbackGroupIds returns the old "fallback_group_ids" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldFallbackGroupIds(ctx context.Context) (v []int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFallbackGroupIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFallbackGroupIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFallbackGroupIds: %w", err)
+	}
+	return oldValue.FallbackGroupIds, nil
+}
+
+// AppendFallbackGroupIds adds i to the "fallback_group_ids" field.
+func (m *APIKeyMutation) AppendFallbackGroupIds(i []int64) {
+	m.appendfallback_group_ids = append(m.appendfallback_group_ids, i...)
+}
+
+// AppendedFallbackGroupIds returns the list of values that were appended to the "fallback_group_ids" field in this mutation.
+func (m *APIKeyMutation) AppendedFallbackGroupIds() ([]int64, bool) {
+	if len(m.appendfallback_group_ids) == 0 {
+		return nil, false
+	}
+	return m.appendfallback_group_ids, true
+}
+
+// ResetFallbackGroupIds resets all changes to the "fallback_group_ids" field.
+func (m *APIKeyMutation) ResetFallbackGroupIds() {
+	m.fallback_group_ids = nil
+	m.appendfallback_group_ids = nil
 }
 
 // SetOrganizationSubscriptionID sets the "organization_subscription_id" field.
@@ -1662,7 +1715,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 25)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1683,6 +1736,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.group != nil {
 		fields = append(fields, apikey.FieldGroupID)
+	}
+	if m.fallback_group_ids != nil {
+		fields = append(fields, apikey.FieldFallbackGroupIds)
 	}
 	if m.organization_subscription_id != nil {
 		fields = append(fields, apikey.FieldOrganizationSubscriptionID)
@@ -1757,6 +1813,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case apikey.FieldGroupID:
 		return m.GroupID()
+	case apikey.FieldFallbackGroupIds:
+		return m.FallbackGroupIds()
 	case apikey.FieldOrganizationSubscriptionID:
 		return m.OrganizationSubscriptionID()
 	case apikey.FieldStatus:
@@ -1814,6 +1872,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldName(ctx)
 	case apikey.FieldGroupID:
 		return m.OldGroupID(ctx)
+	case apikey.FieldFallbackGroupIds:
+		return m.OldFallbackGroupIds(ctx)
 	case apikey.FieldOrganizationSubscriptionID:
 		return m.OldOrganizationSubscriptionID(ctx)
 	case apikey.FieldStatus:
@@ -1905,6 +1965,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGroupID(v)
+		return nil
+	case apikey.FieldFallbackGroupIds:
+		v, ok := value.([]int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFallbackGroupIds(v)
 		return nil
 	case apikey.FieldOrganizationSubscriptionID:
 		v, ok := value.(int64)
@@ -2268,6 +2335,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldGroupID:
 		m.ResetGroupID()
+		return nil
+	case apikey.FieldFallbackGroupIds:
+		m.ResetFallbackGroupIds()
 		return nil
 	case apikey.FieldOrganizationSubscriptionID:
 		m.ResetOrganizationSubscriptionID()

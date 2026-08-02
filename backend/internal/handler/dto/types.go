@@ -49,19 +49,24 @@ type User struct {
 type AdminUser struct {
 	User
 
-	Notes      string     `json:"notes"`
-	LastUsedAt *time.Time `json:"last_used_at"`
+	Notes            string     `json:"notes"`
+	LastUsedAt       *time.Time `json:"last_used_at"`
+	RecoveryEmail    string     `json:"recovery_email,omitempty"`
+	CompanyID        string     `json:"company_id,omitempty"`
+	CompanyName      string     `json:"company_name,omitempty"`
+	OrganizationRole string     `json:"organization_role,omitempty"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`
 }
 
 type APIKey struct {
-	ID      int64  `json:"id"`
-	UserID  int64  `json:"user_id"`
-	Key     string `json:"key"`
-	Name    string `json:"name"`
-	GroupID *int64 `json:"group_id"`
+	ID               int64   `json:"id"`
+	UserID           int64   `json:"user_id"`
+	Key              string  `json:"key"`
+	Name             string  `json:"name"`
+	GroupID          *int64  `json:"group_id"`
+	FallbackGroupIDs []int64 `json:"fallback_group_ids"`
 	// OrganizationSubscriptionID is set for enterprise API keys bound to a
 	// company subscription.
 	OrganizationSubscriptionID *int64     `json:"organization_subscription_id,omitempty"`

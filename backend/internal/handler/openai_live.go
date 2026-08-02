@@ -149,7 +149,7 @@ func liveCallIdentity(
 	subscription *service.UserSubscription,
 ) service.LiveCallIdentity {
 	var subscriptionID *int64
-	if subscription != nil {
+	if subscription != nil && subscription.ID > 0 {
 		value := subscription.ID
 		subscriptionID = &value
 	}

@@ -155,6 +155,8 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		if !acquired {
 			return
 		}
+		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, requestedModel)
+		forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		writerSizeBeforeForward := c.Writer.Size()
 		forwardStart := time.Now()

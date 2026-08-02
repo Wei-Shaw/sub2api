@@ -113,6 +113,20 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			abortWithGoogleError(c, 401, "User account is not active")
 			return
 		}
+		routingState, routingErr := prepareAPIKeyRoutingState(
+			c.Request.Context(),
+			apiKeyService,
+			subscriptionService,
+			apiKey,
+			cfg.RunMode == config.RunModeSimple,
+		)
+		if routingErr != nil {
+			abortWithGoogleError(c, 403, "No available API key group")
+			return
+		}
+		if routingState != nil {
+			c.Request = c.Request.WithContext(service.WithAPIKeyRoutingState(c.Request.Context(), routingState))
+		}
 		if code, message, ok := validateAPIKeyGroupAvailable(apiKey); !ok {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
 			if code == "GROUP_DELETED" {
@@ -178,7 +192,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				abortWithGoogleError(c, status, err.Error())
 				return
 			}
-		} else if isSubscriptionType && subscriptionService != nil {
+		} else if routingState == nil && isSubscriptionType && subscriptionService != nil {
 			subscription, err := subscriptionService.GetActiveSubscription(
 				c.Request.Context(),
 				apiKey.User.ID,
@@ -211,6 +225,10 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			}
 
 			c.Set(string(ContextKeySubscription), subscription)
+		} else if routingState != nil {
+			if subscription := routingState.EffectiveSubscription(); subscription != nil {
+				c.Set(string(ContextKeySubscription), subscription)
+			}
 		} else {
 			if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
 				abortWithGoogleError(c, 403, "Insufficient account balance")

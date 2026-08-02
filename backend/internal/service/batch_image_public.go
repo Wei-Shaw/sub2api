@@ -239,7 +239,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		}
 	}
 
-	provider, account, err := s.selectProviderAndAccount(ctx, owner, normalized.Provider, normalized.Model)
+	provider, account, err := s.selectProviderAndAccount(ctx, &owner, normalized.Provider, normalized.Model)
 	if err != nil {
 		return nil, err
 	}
@@ -952,7 +952,42 @@ func maxBatchImageReferenceImagesForModel(model string) int {
 	return 0
 }
 
-func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, owner BatchImageOwner, requestedProvider, model string) (BatchImageProvider, *Account, error) {
+func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, owner *BatchImageOwner, requestedProvider, model string) (BatchImageProvider, *Account, error) {
+	if owner == nil {
+		return nil, nil, ErrBatchImageNoAccountAvailable
+	}
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(owner.GroupID)) == 0 {
+		return s.selectProviderAndAccountSingle(ctx, *owner, requestedProvider, model)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, nil, lastErr
+			}
+			return nil, nil, err
+		}
+		owner.GroupID = cloneInt64Pointer(state.apiKey.GroupID)
+		if err := s.ensureGroupAllowsBatchImage(ctx, owner.GroupID); err != nil {
+			return nil, nil, err
+		}
+		provider, account, err := s.selectProviderAndAccountSingle(ctx, *owner, requestedProvider, model)
+		if err == nil {
+			state.Commit(index)
+			return provider, account, nil
+		}
+		if !errors.Is(err, ErrBatchImageNoAccountAvailable) {
+			return nil, nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+func (s *BatchImagePublicService) selectProviderAndAccountSingle(ctx context.Context, owner BatchImageOwner, requestedProvider, model string) (BatchImageProvider, *Account, error) {
 	providers := batchImageProviderSelectionOrder(requestedProvider)
 	for _, providerName := range providers {
 		provider, ok := s.ProviderRegistry.Get(providerName)

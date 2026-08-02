@@ -24,14 +24,15 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound       = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
-	ErrGroupNotAllowed      = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
-	ErrAPIKeyExists         = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
-	ErrAPIKeyTooShort       = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
-	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
-	ErrAPIKeyRateLimited    = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrAPIKeyAuthOverloaded = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
-	ErrInvalidIPPattern     = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrAPIKeyNotFound        = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
+	ErrGroupNotAllowed       = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrAPIKeyExists          = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrAPIKeyTooShort        = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
+	ErrAPIKeyInvalidChars    = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrAPIKeyRateLimited     = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrAPIKeyAuthOverloaded  = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
+	ErrInvalidIPPattern      = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrInvalidFallbackGroups = infraerrors.BadRequest("INVALID_FALLBACK_GROUPS", "invalid fallback group configuration")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
 	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
 	// ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key quota exhausted")
@@ -48,6 +49,7 @@ const (
 	defaultAuthLookupConcurrency = 64
 	defaultNegativeAuthCacheSize = 16384
 	apiKeyMaxErrorsPerHour       = 20
+	maxAPIKeyFallbackGroups      = 5
 	apiKeyLastUsedMinTouch       = 30 * time.Second
 	apiKeySortCurrentConcurrency = "current_concurrency"
 	// DB 写失败后的短退避，避免请求路径持续同步重试造成写风暴与高延迟。
@@ -61,11 +63,12 @@ const (
 // 若编辑 Key 时无条件整行回写，并发累计的配额与限流计数就会被旧快照覆盖。
 // 因此调用方必须显式声明要改的列。
 type APIKeyUpdateFields struct {
-	Name      bool
-	Status    bool
-	Quota     bool
-	GroupID   bool
-	ExpiresAt bool
+	Name             bool
+	Status           bool
+	Quota            bool
+	GroupID          bool
+	FallbackGroupIDs bool
+	ExpiresAt        bool
 	// QuotaUsed 仅供"重置配额用量"路径声明；常规计费走 IncrementQuotaUsed。
 	QuotaUsed bool
 	// RateLimits 覆盖 rate_limit_5h / _1d / _7d 三个阈值。
@@ -209,8 +212,9 @@ type APIKeyAuthCacheInvalidator interface {
 
 // CreateAPIKeyRequest 创建API Key请求
 type CreateAPIKeyRequest struct {
-	Name    string `json:"name"`
-	GroupID *int64 `json:"group_id"`
+	Name             string  `json:"name"`
+	GroupID          *int64  `json:"group_id"`
+	FallbackGroupIDs []int64 `json:"fallback_group_ids"`
 	// OrganizationSubscriptionID, when set, creates an enterprise API key bound
 	// to the given company subscription. The key's group is forced to the
 	// subscription's group and consumption is charged against the organization
@@ -232,8 +236,9 @@ type CreateAPIKeyRequest struct {
 
 // UpdateAPIKeyRequest 更新API Key请求
 type UpdateAPIKeyRequest struct {
-	Name    *string `json:"name"`
-	GroupID *int64  `json:"group_id"`
+	Name             *string  `json:"name"`
+	GroupID          *int64   `json:"group_id"`
+	FallbackGroupIDs *[]int64 `json:"fallback_group_ids"`
 	// OrganizationSubscriptionID, when set, re-binds this key to a company
 	// subscription (enterprise key). Selecting a normal GroupID clears the
 	// enterprise binding.
@@ -547,6 +552,9 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 	// 企业 API Key：绑定公司订阅。校验用户是该订阅所属组织的活跃成员，
 	// 并将分组强制设置为订阅所属分组（消费走公司订阅计数器）。
 	if req.OrganizationSubscriptionID != nil {
+		if len(req.FallbackGroupIDs) > 0 {
+			return nil, ErrInvalidFallbackGroups
+		}
 		orgSub, err := s.resolveBindableOrganizationSubscription(ctx, userID, *req.OrganizationSubscriptionID)
 		if err != nil {
 			return nil, err
@@ -564,6 +572,9 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		if !s.canUserBindGroup(ctx, user, group) {
 			return nil, ErrGroupNotAllowed
 		}
+	}
+	if err := s.validateAPIKeyFallbackGroups(ctx, user, req.GroupID, req.FallbackGroupIDs); err != nil {
+		return nil, err
 	}
 
 	var key string
@@ -607,6 +618,7 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		Key:                        key,
 		Name:                       html.EscapeString(req.Name),
 		GroupID:                    req.GroupID,
+		FallbackGroupIDs:           append([]int64(nil), req.FallbackGroupIDs...),
 		OrganizationSubscriptionID: req.OrganizationSubscriptionID,
 		Status:                     StatusActive,
 		IPWhitelist:                req.IPWhitelist,
@@ -867,6 +879,9 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 
 	if req.OrganizationSubscriptionID != nil {
+		if req.FallbackGroupIDs != nil && len(*req.FallbackGroupIDs) > 0 {
+			return nil, ErrInvalidFallbackGroups
+		}
 		// 重新绑定为企业 Key
 		orgSub, err := s.resolveBindableOrganizationSubscription(ctx, userID, *req.OrganizationSubscriptionID)
 		if err != nil {
@@ -876,6 +891,10 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		apiKey.GroupID = &gid
 		apiKey.OrganizationSubscriptionID = req.OrganizationSubscriptionID
 		fields.GroupID = true
+		if len(apiKey.FallbackGroupIDs) > 0 {
+			apiKey.FallbackGroupIDs = []int64{}
+			fields.FallbackGroupIDs = true
+		}
 	} else if req.GroupID != nil {
 		// 验证分组权限（个人 Key），并清除可能存在的企业绑定
 		user, err := s.userRepo.GetByID(ctx, userID)
@@ -895,6 +914,24 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		apiKey.GroupID = req.GroupID
 		apiKey.OrganizationSubscriptionID = nil
 		fields.GroupID = true
+	}
+
+	if req.FallbackGroupIDs != nil {
+		if apiKey.OrganizationSubscriptionID != nil && len(*req.FallbackGroupIDs) > 0 {
+			return nil, ErrInvalidFallbackGroups
+		}
+		user := apiKey.User
+		if user == nil {
+			user, err = s.userRepo.GetByID(ctx, userID)
+			if err != nil {
+				return nil, fmt.Errorf("get user: %w", err)
+			}
+		}
+		if err := s.validateAPIKeyFallbackGroups(ctx, user, apiKey.GroupID, *req.FallbackGroupIDs); err != nil {
+			return nil, err
+		}
+		apiKey.FallbackGroupIDs = append([]int64(nil), (*req.FallbackGroupIDs)...)
+		fields.FallbackGroupIDs = true
 	}
 
 	if req.Status != nil {
@@ -1141,6 +1178,89 @@ func (s *APIKeyService) canUserBindGroupInternal(user *User, group *Group, subsc
 	}
 	// 标准类型分组：使用原有逻辑
 	return user.CanBindGroup(group.ID, group.IsExclusive)
+}
+
+func (s *APIKeyService) validateAPIKeyFallbackGroups(ctx context.Context, user *User, primaryGroupID *int64, fallbackGroupIDs []int64) error {
+	if len(fallbackGroupIDs) > maxAPIKeyFallbackGroups {
+		return ErrInvalidFallbackGroups
+	}
+	if len(fallbackGroupIDs) == 0 {
+		return nil
+	}
+	if primaryGroupID == nil || *primaryGroupID <= 0 {
+		return ErrInvalidFallbackGroups
+	}
+	primaryGroup, err := s.groupRepo.GetByID(ctx, *primaryGroupID)
+	if err != nil {
+		return fmt.Errorf("get primary group: %w", err)
+	}
+	if primaryGroup == nil || !primaryGroup.IsActive() {
+		return ErrGroupNotAllowed
+	}
+	seen := make(map[int64]struct{}, len(fallbackGroupIDs))
+	for _, groupID := range fallbackGroupIDs {
+		if groupID <= 0 || primaryGroupID != nil && groupID == *primaryGroupID {
+			return ErrInvalidFallbackGroups
+		}
+		if _, exists := seen[groupID]; exists {
+			return ErrInvalidFallbackGroups
+		}
+		seen[groupID] = struct{}{}
+
+		group, err := s.groupRepo.GetByID(ctx, groupID)
+		if err != nil {
+			return fmt.Errorf("get fallback group: %w", err)
+		}
+		if group == nil || !group.IsActive() || !s.canUserBindGroup(ctx, user, group) {
+			return ErrGroupNotAllowed
+		}
+		if group.Platform != primaryGroup.Platform {
+			return ErrInvalidFallbackGroups
+		}
+	}
+	return nil
+}
+
+// ResolveAPIKeyRoutingCandidates returns the primary group followed by the
+// configured fallback groups. Runtime-invalid fallbacks remain in the result
+// with Unavailable set so routing can preserve order and diagnostics.
+func (s *APIKeyService) ResolveAPIKeyRoutingCandidates(ctx context.Context, apiKey *APIKey) []APIKeyRoutingCandidate {
+	if apiKey == nil {
+		return nil
+	}
+	groupIDs := make([]int64, 0, 1+len(apiKey.FallbackGroupIDs))
+	if apiKey.GroupID != nil && *apiKey.GroupID > 0 {
+		groupIDs = append(groupIDs, *apiKey.GroupID)
+	}
+	groupIDs = append(groupIDs, apiKey.FallbackGroupIDs...)
+	candidates := make([]APIKeyRoutingCandidate, 0, len(groupIDs))
+	primaryPlatform := ""
+	for index, groupID := range groupIDs {
+		var group *Group
+		if index == 0 && apiKey.Group != nil && apiKey.Group.ID == groupID {
+			group = apiKey.Group
+		} else {
+			loaded, err := s.groupRepo.GetByID(ctx, groupID)
+			if err != nil {
+				candidates = append(candidates, APIKeyRoutingCandidate{Unavailable: err})
+				continue
+			}
+			group = loaded
+		}
+		candidate := APIKeyRoutingCandidate{Group: group}
+		if index == 0 && group != nil {
+			primaryPlatform = group.Platform
+		}
+		if group == nil || !group.IsActive() {
+			candidate.Unavailable = ErrGroupNotFound
+		} else if index > 0 && (primaryPlatform == "" || group.Platform != primaryPlatform) {
+			candidate.Unavailable = ErrGroupNotAllowed
+		} else if !group.IsSubscriptionType() && apiKey.User != nil && !apiKey.User.CanBindGroup(group.ID, group.IsExclusive) {
+			candidate.Unavailable = ErrGroupNotAllowed
+		}
+		candidates = append(candidates, candidate)
+	}
+	return candidates
 }
 
 func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error) {

@@ -271,6 +271,13 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		)
 
 		account := selection.Account
+		if endpoint.IsGenerationRequest() && !service.GroupAllowsImageGeneration(apiKey.Group) {
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+			return
+		}
 		if endpoint.IsGenerationRequest() {
 			eligible, eligibilityReason, eligibilityErr := h.ensureGrokMediaAccountEligibility(requestCtx, account)
 			if !eligible {

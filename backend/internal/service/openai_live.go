@@ -171,6 +171,18 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			}
 			return nil, ErrLiveConcurrencyFull
 		}
+		if state := APIKeyRoutingStateFromContext(ctx); state != nil {
+			if state.apiKey == nil || state.apiKey.Group == nil || !state.apiKey.Group.AllowLive {
+				selection.ReleaseFunc()
+				return nil, ErrLiveUnavailable
+			}
+			identity.GroupID = cloneInt64Pointer(state.apiKey.GroupID)
+			if subscription := state.EffectiveSubscription(); subscription != nil && subscription.ID > 0 {
+				identity.SubscriptionID = cloneInt64Pointer(&subscription.ID)
+			} else {
+				identity.SubscriptionID = nil
+			}
+		}
 
 		account := selection.Account
 		leaseID := generateRequestID()

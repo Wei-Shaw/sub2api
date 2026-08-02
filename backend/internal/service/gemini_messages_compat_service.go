@@ -104,6 +104,34 @@ func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context,
 }
 
 func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(groupID)) == 0 {
+		return s.selectAccountForModelWithExclusionsSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, err
+		}
+		account, err := s.selectAccountForModelWithExclusionsSingle(ctx, state.apiKey.GroupID, sessionHash, requestedModel, excludedIDs)
+		if err == nil {
+			state.Commit(index)
+			return account, nil
+		}
+		if !IsAPIKeyFallbackSelectionError(err) {
+			return nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+func (s *GeminiMessagesCompatService) selectAccountForModelWithExclusionsSingle(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
 	// 1. 确定目标平台和调度模式
 	// Determine target platform and scheduling mode
 	platform, useMixedScheduling, hasForcePlatform, err := s.resolvePlatformAndSchedulingMode(ctx, groupID)
@@ -139,9 +167,9 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 
 	if selected == nil {
 		if requestedModel != "" {
-			return nil, fmt.Errorf("no available Gemini accounts supporting model: %s", requestedModel)
+			return nil, fmt.Errorf("%w supporting model: %s", ErrNoAvailableAccounts, requestedModel)
 		}
-		return nil, errors.New("no available Gemini accounts")
+		return nil, ErrNoAvailableAccounts
 	}
 
 	// 5. 设置粘性会话绑定
@@ -501,12 +529,40 @@ func (s *GeminiMessagesCompatService) HasAntigravityAccounts(ctx context.Context
 // 3) OAuth accounts explicitly marked as ai_studio
 // 4) Any remaining Gemini accounts (fallback)
 func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx context.Context, groupID *int64) (*Account, error) {
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(groupID)) == 0 {
+		return s.selectAccountForAIStudioEndpointsSingle(ctx, groupID)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, err
+		}
+		account, err := s.selectAccountForAIStudioEndpointsSingle(ctx, state.apiKey.GroupID)
+		if err == nil {
+			state.Commit(index)
+			return account, nil
+		}
+		if !IsAPIKeyFallbackSelectionError(err) {
+			return nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+func (s *GeminiMessagesCompatService) selectAccountForAIStudioEndpointsSingle(ctx context.Context, groupID *int64) (*Account, error) {
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, PlatformGemini, true)
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
 	if len(accounts) == 0 {
-		return nil, errors.New("no available Gemini accounts")
+		return nil, ErrNoAvailableAccounts
 	}
 
 	rank := func(a *Account) int {

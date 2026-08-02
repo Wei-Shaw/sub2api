@@ -225,6 +225,15 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
 		// 5. Forward request
+		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(requestCtx, apiKey.GroupID, reqModel)
+		if apiKey.Group != nil && apiKey.Group.ClaudeCodeOnly {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			h.responsesErrorResponse(c, http.StatusForbidden, "permission_error",
+				"This group is restricted to Claude Code clients (/v1/messages only)")
+			return
+		}
 		writerSizeBeforeForward := c.Writer.Size()
 		forwardBody := body
 		if channelMapping.Mapped {

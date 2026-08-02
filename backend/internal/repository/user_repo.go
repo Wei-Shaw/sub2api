@@ -650,6 +650,20 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		userMap[u.ID] = &outUsers[len(outUsers)-1]
 	}
 
+	if len(userIDs) > 0 {
+		identities, err := r.loadEnterpriseIdentities(ctx, userIDs)
+		if err != nil {
+			return nil, nil, err
+		}
+		for userID, identity := range identities {
+			if user := userMap[userID]; user != nil {
+				user.CompanyID = identity.CompanyID
+				user.CompanyName = identity.CompanyName
+				user.OrganizationRole = identity.OrganizationRole
+			}
+		}
+	}
+
 	shouldLoadSubscriptions := filters.IncludeSubscriptions == nil || *filters.IncludeSubscriptions
 	if shouldLoadSubscriptions {
 		// Batch load active subscriptions with groups to avoid N+1.
@@ -682,6 +696,49 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	}
 
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
+}
+
+type userEnterpriseIdentity struct {
+	CompanyID        string
+	CompanyName      string
+	OrganizationRole string
+}
+
+func (r *userRepository) loadEnterpriseIdentities(ctx context.Context, userIDs []int64) (map[int64]userEnterpriseIdentity, error) {
+	result := make(map[int64]userEnterpriseIdentity, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+	if r.sql == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+	}
+
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT u.id, COALESCE(o.company_id, ''), o.name, m.role
+		FROM users u
+		JOIN organization_memberships m ON m.user_id = u.id
+		JOIN organizations o ON o.id = m.organization_id
+		WHERE u.id = ANY($1)
+	`, pq.Array(userIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var userID int64
+		var identity userEnterpriseIdentity
+		if err := rows.Scan(&userID, &identity.CompanyID, &identity.CompanyName, &identity.OrganizationRole); err != nil {
+			return nil, err
+		}
+		if identity.CompanyID != "" {
+			result[userID] = identity
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {

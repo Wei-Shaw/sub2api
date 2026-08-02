@@ -17,3 +17,21 @@ func TestUserPublicAccountIDsRemainJSONStrings(t *testing.T) {
 	require.Contains(t, string(wire), `"account_id":"1719905235756637"`)
 	require.Contains(t, string(wire), `"external_user_id":"201705485041478971"`)
 }
+
+func TestUserFromServiceAdminIncludesIAMPrincipal(t *testing.T) {
+	out := UserFromServiceAdmin(&service.User{
+		IdentityType:     "iam",
+		LoginName:        "finance",
+		CompanyID:        "c123456789012345",
+		CompanyName:      "Acme AI",
+		OrganizationRole: "member",
+		RecoveryEmail:    "finance@example.com",
+	})
+
+	require.NotNil(t, out)
+	require.Equal(t, "finance@c123456789012345.opentk.ai", out.IAMPrincipal)
+	require.Equal(t, "finance@example.com", out.RecoveryEmail)
+	require.Equal(t, "c123456789012345", out.CompanyID)
+	require.Equal(t, "Acme AI", out.CompanyName)
+	require.Equal(t, "member", out.OrganizationRole)
+}

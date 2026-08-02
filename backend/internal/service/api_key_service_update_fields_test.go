@@ -120,6 +120,29 @@ func TestAPIKeyUpdate_DeclaresStatusWhenReactivated(t *testing.T) {
 	require.Equal(t, []APIKeyUpdateFields{{Quota: true, Status: true}}, repo.updateFields)
 }
 
+func TestAPIKeyUpdate_FallbackGroupsPreserveOrderAndInvalidateAuthCache(t *testing.T) {
+	key := &APIKey{
+		ID: 1, UserID: 7, Key: "sk-fallback-update", Status: StatusActive,
+		GroupID: int64Ptr(1), User: &User{ID: 7}, FallbackGroupIDs: []int64{2, 3},
+	}
+	svc, repo := newUpdateFieldsAPIKeyService(key)
+	svc.groupRepo = &groupRepoStubForAdmin{getByIDByID: map[int64]*Group{
+		1: {ID: 1, Status: StatusActive, Platform: PlatformOpenAI, SubscriptionType: SubscriptionTypeStandard},
+		3: {ID: 3, Status: StatusActive, Platform: PlatformOpenAI, SubscriptionType: SubscriptionTypeStandard},
+		2: {ID: 2, Status: StatusActive, Platform: PlatformOpenAI, SubscriptionType: SubscriptionTypeStandard},
+	}}
+	cache := &quotaStateCacheStub{}
+	svc.cache = cache
+	ordered := []int64{3, 2}
+
+	updated, err := svc.Update(context.Background(), 1, 7, UpdateAPIKeyRequest{FallbackGroupIDs: &ordered})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{3, 2}, updated.FallbackGroupIDs)
+	require.Equal(t, []APIKeyUpdateFields{{FallbackGroupIDs: true}}, repo.updateFields)
+	require.Equal(t, []string{svc.authCacheKey(key.Key)}, cache.deleteAuthKeys)
+}
+
 // 计费热路径把 Key 标记为配额耗尽时只写 status，
 // 否则会把刚原子递增的 quota_used 按快照覆盖掉。
 func TestUpdateQuotaUsed_ExhaustedMarkOnlyDeclaresStatus(t *testing.T) {

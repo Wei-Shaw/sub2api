@@ -99,6 +99,12 @@ func (_c *APIKeyCreate) SetNillableGroupID(v *int64) *APIKeyCreate {
 	return _c
 }
 
+// SetFallbackGroupIds sets the "fallback_group_ids" field.
+func (_c *APIKeyCreate) SetFallbackGroupIds(v []int64) *APIKeyCreate {
+	_c.mutation.SetFallbackGroupIds(v)
+	return _c
+}
+
 // SetOrganizationSubscriptionID sets the "organization_subscription_id" field.
 func (_c *APIKeyCreate) SetOrganizationSubscriptionID(v int64) *APIKeyCreate {
 	_c.mutation.SetOrganizationSubscriptionID(v)
@@ -397,6 +403,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.FallbackGroupIds(); !ok {
+		v := apikey.DefaultFallbackGroupIds
+		_c.mutation.SetFallbackGroupIds(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -462,6 +472,9 @@ func (_c *APIKeyCreate) check() error {
 		if err := apikey.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "APIKey.name": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.FallbackGroupIds(); !ok {
+		return &ValidationError{Name: "fallback_group_ids", err: errors.New(`ent: missing required field "APIKey.fallback_group_ids"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "APIKey.status"`)}
@@ -544,6 +557,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
 		_node.Name = value
+	}
+	if value, ok := _c.mutation.FallbackGroupIds(); ok {
+		_spec.SetField(apikey.FieldFallbackGroupIds, field.TypeJSON, value)
+		_node.FallbackGroupIds = value
 	}
 	if value, ok := _c.mutation.OrganizationSubscriptionID(); ok {
 		_spec.SetField(apikey.FieldOrganizationSubscriptionID, field.TypeInt64, value)
@@ -796,6 +813,18 @@ func (u *APIKeyUpsert) UpdateGroupID() *APIKeyUpsert {
 // ClearGroupID clears the value of the "group_id" field.
 func (u *APIKeyUpsert) ClearGroupID() *APIKeyUpsert {
 	u.SetNull(apikey.FieldGroupID)
+	return u
+}
+
+// SetFallbackGroupIds sets the "fallback_group_ids" field.
+func (u *APIKeyUpsert) SetFallbackGroupIds(v []int64) *APIKeyUpsert {
+	u.Set(apikey.FieldFallbackGroupIds, v)
+	return u
+}
+
+// UpdateFallbackGroupIds sets the "fallback_group_ids" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateFallbackGroupIds() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldFallbackGroupIds)
 	return u
 }
 
@@ -1245,6 +1274,20 @@ func (u *APIKeyUpsertOne) UpdateGroupID() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearGroupID() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetFallbackGroupIds sets the "fallback_group_ids" field.
+func (u *APIKeyUpsertOne) SetFallbackGroupIds(v []int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetFallbackGroupIds(v)
+	})
+}
+
+// UpdateFallbackGroupIds sets the "fallback_group_ids" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateFallbackGroupIds() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateFallbackGroupIds()
 	})
 }
 
@@ -1911,6 +1954,20 @@ func (u *APIKeyUpsertBulk) UpdateGroupID() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearGroupID() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetFallbackGroupIds sets the "fallback_group_ids" field.
+func (u *APIKeyUpsertBulk) SetFallbackGroupIds(v []int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetFallbackGroupIds(v)
+	})
+}
+
+// UpdateFallbackGroupIds sets the "fallback_group_ids" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateFallbackGroupIds() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateFallbackGroupIds()
 	})
 }
 

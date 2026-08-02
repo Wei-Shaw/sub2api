@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -187,6 +188,36 @@ func (s *OpenAIGatewayService) SelectAccountForModel(ctx context.Context, groupI
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 // SelectAccountForModelWithExclusions 选择支持指定模型的账号，同时排除指定的账号。
 func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(groupID)) == 0 {
+		return s.selectAccountForModelWithExclusionsFallbackSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, err
+		}
+		effectiveGroupID := state.apiKey.GroupID
+		candidateModel := s.apiKeyFallbackCandidateModel(ctx, effectiveGroupID, requestedModel)
+		account, err := s.selectAccountForModelWithExclusionsFallbackSingle(ctx, effectiveGroupID, sessionHash, candidateModel, excludedIDs)
+		if err == nil {
+			state.Commit(index)
+			return account, nil
+		}
+		if !IsAPIKeyFallbackSelectionError(err) {
+			return nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsFallbackSingle(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
 	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "", false)
 }
 
@@ -842,6 +873,66 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool
 
 // SelectAccountWithLoadAwareness selects an account with load-awareness and wait plan.
 func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*AccountSelectionResult, error) {
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(groupID)) == 0 {
+		return s.selectAccountWithLoadAwarenessFallbackSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, err
+		}
+		effectiveGroupID := state.apiKey.GroupID
+		candidateModel := s.apiKeyFallbackCandidateModel(ctx, effectiveGroupID, requestedModel)
+		selection, err := s.selectAccountWithLoadAwarenessFallbackSingle(ctx, effectiveGroupID, sessionHash, candidateModel, excludedIDs)
+		if err == nil {
+			state.Commit(index)
+			selection.EffectiveGroupID = cloneInt64Pointer(effectiveGroupID)
+			return selection, nil
+		}
+		if !IsAPIKeyFallbackSelectionError(err) {
+			return nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+func (s *OpenAIGatewayService) apiKeyFallbackCandidateModel(ctx context.Context, groupID *int64, requestedModel string) string {
+	publicModel, messagesDispatch := ctx.Value(ctxkey.OpenAIMessagesRequestedModel).(string)
+	if messagesDispatch && strings.TrimSpace(publicModel) != "" {
+		requestedModel = strings.TrimSpace(publicModel)
+	}
+	if s != nil && s.channelService != nil && groupID != nil {
+		mapping, _ := s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, requestedModel)
+		if mapping.Mapped && strings.TrimSpace(mapping.MappedModel) != "" {
+			return mapping.MappedModel
+		}
+	}
+	if messagesDispatch {
+		if state := APIKeyRoutingStateFromContext(ctx); state != nil && state.apiKey != nil && state.apiKey.Group != nil {
+			if mapped := strings.TrimSpace(state.apiKey.Group.ResolveMessagesDispatchModel(requestedModel)); mapped != "" {
+				return mapped
+			}
+		}
+		return NormalizeOpenAICompatRequestedModel(requestedModel)
+	}
+	return requestedModel
+}
+
+func WithOpenAIMessagesRequestedModel(ctx context.Context, requestedModel string) context.Context {
+	if strings.TrimSpace(requestedModel) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, ctxkey.OpenAIMessagesRequestedModel, strings.TrimSpace(requestedModel))
+}
+
+func (s *OpenAIGatewayService) selectAccountWithLoadAwarenessFallbackSingle(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*AccountSelectionResult, error) {
 	return s.selectAccountWithLoadAwareness(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "", true)
 }
 

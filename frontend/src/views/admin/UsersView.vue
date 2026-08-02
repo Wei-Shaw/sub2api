@@ -279,21 +279,75 @@
           @sort="handleSort"
           @update:selected-keys="handleSelectedKeysUpdate"
         >
-          <template #cell-email="{ value }">
+          <template #cell-email="{ value, row }">
             <div class="flex items-center gap-2">
               <div
                 class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
               >
                 <span class="text-sm font-medium text-primary-700 dark:text-primary-300">
-                  {{ value.charAt(0).toUpperCase() }}
+                  {{ adminUserEmailInitial(row) }}
                 </span>
               </div>
-              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <span
+                v-if="row.identity_type === 'iam' && !row.recovery_email"
+                class="text-sm font-medium text-amber-700 dark:text-amber-300"
+                data-test="iam-email-unbound"
+              >
+                {{ t('admin.users.emailNotBound') }}
+              </span>
+              <span v-else class="font-medium text-gray-900 dark:text-white" data-test="user-email">
+                {{ row.identity_type === 'iam' ? row.recovery_email : value }}
+              </span>
             </div>
           </template>
 
           <template #cell-username="{ value }">
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ value || '-' }}</span>
+          </template>
+
+          <template #cell-iam_principal="{ row }">
+            <div v-if="row.identity_type === 'iam' && row.iam_principal" class="flex max-w-xs items-center gap-1.5">
+              <code
+                class="min-w-0 truncate text-xs text-gray-700 dark:text-gray-300"
+                :title="row.iam_principal"
+                data-test="iam-principal"
+              >
+                {{ row.iam_principal }}
+              </code>
+              <button
+                type="button"
+                class="flex h-7 w-7 flex-none items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+                :title="t('admin.users.copyIAMPrincipal')"
+                data-test="copy-iam-principal"
+                @click="copyToClipboard(row.iam_principal, t('admin.users.iamPrincipalCopied'))"
+              >
+                <Icon name="copy" size="sm" />
+              </button>
+            </div>
+            <span v-else class="text-sm text-gray-400">-</span>
+          </template>
+
+          <template #cell-enterprise_identity="{ row }">
+            <div v-if="row.company_id" class="max-w-xs" data-test="enterprise-identity">
+              <div class="flex min-w-0 items-center gap-1.5">
+                <span
+                  class="truncate text-sm font-medium text-gray-900 dark:text-white"
+                  :title="row.company_name || row.company_id"
+                >
+                  {{ row.company_name || row.company_id }}
+                </span>
+                <span
+                  class="flex-none rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+                  data-test="enterprise-role"
+                >
+                  {{ t(`admin.users.enterpriseIdentity.${row.organization_role || 'unknown'}`) }}
+                </span>
+              </div>
+              <code v-if="row.company_name" class="mt-0.5 block truncate text-xs text-gray-500" :title="row.company_id">
+                {{ row.company_id }}
+              </code>
+            </div>
+            <span v-else class="text-sm text-gray-400">-</span>
           </template>
 
           <template #cell-notes="{ value }">
@@ -785,6 +839,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
+import { useClipboard } from '@/composables/useClipboard'
 import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -820,6 +875,12 @@ import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryM
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
+const { copyToClipboard } = useClipboard()
+
+const adminUserEmailInitial = (user: AdminUser) => {
+  const email = user.identity_type === 'iam' ? user.recovery_email : user.email
+  return email?.trim().charAt(0).toUpperCase() || '?'
+}
 
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>
@@ -872,6 +933,8 @@ const allColumns = computed<Column[]>(() => [
   { key: 'email', label: t('admin.users.columns.user'), sortable: true },
   { key: 'id', label: t('admin.users.columns.id'), sortable: true },
   { key: 'username', label: t('admin.users.columns.username'), sortable: true },
+  { key: 'iam_principal', label: t('admin.users.columns.iamPrincipal'), sortable: false },
+  { key: 'enterprise_identity', label: t('admin.users.columns.enterpriseIdentity'), sortable: false },
   { key: 'notes', label: t('admin.users.columns.notes'), sortable: false },
   // Dynamic attribute columns
   ...attributeColumns.value,

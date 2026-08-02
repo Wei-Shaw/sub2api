@@ -130,6 +130,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
+	subscription = effectiveSubscriptionForAPIKey(apiKey, subscription)
 	if !isGrokVideoUsageResult(result, nil) {
 		var billingGroup *Group
 		if apiKey != nil {
@@ -354,7 +355,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if apiKey.GroupID != nil {
 		usageLog.GroupID = apiKey.GroupID
 	}
-	if subscription != nil {
+	if subscription != nil && subscription.ID > 0 {
 		usageLog.SubscriptionID = &subscription.ID
 	}
 

@@ -57,6 +57,7 @@ export async function getById(id: number): Promise<ApiKey> {
  * @param expiresInDays - Optional days until expiry (undefined = never expires)
  * @param rateLimitData - Optional rate limit fields
  * @param organizationSubscriptionId - Optional company subscription to bind (enterprise API key)
+ * @param fallbackGroupIds - Ordered fallback group IDs
  * @returns Created API key
  */
 export async function create(
@@ -68,13 +69,15 @@ export async function create(
   quota?: number,
   expiresInDays?: number,
   rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number },
-  organizationSubscriptionId?: number | null
+  organizationSubscriptionId?: number | null,
+  fallbackGroupIds?: number[]
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name }
   if (organizationSubscriptionId !== undefined && organizationSubscriptionId !== null) {
     payload.organization_subscription_id = organizationSubscriptionId
   } else if (groupId !== undefined) {
     payload.group_id = groupId
+    payload.fallback_group_ids = fallbackGroupIds ?? []
   }
   if (customKey) {
     payload.custom_key = customKey

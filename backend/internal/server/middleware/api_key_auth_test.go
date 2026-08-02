@@ -1522,6 +1522,116 @@ func requireAPIKeyAuthError(t *testing.T, w *httptest.ResponseRecorder, code, me
 	require.Equal(t, message, resp.Message)
 }
 
+func TestPrepareAPIKeyRoutingStateSubscriptionToMetered(t *testing.T) {
+	primary := &service.Group{ID: 1, Status: service.StatusActive, Platform: service.PlatformAnthropic, SubscriptionType: service.SubscriptionTypeSubscription}
+	fallback := &service.Group{ID: 2, Status: service.StatusActive, Platform: service.PlatformAnthropic, SubscriptionType: service.SubscriptionTypeStandard}
+	key := &service.APIKey{UserID: 7, GroupID: &primary.ID, Group: primary, FallbackGroupIDs: []int64{fallback.ID}}
+	keyService := service.NewAPIKeyService(nil, nil, &fallbackMiddlewareGroupRepo{groups: map[int64]*service.Group{fallback.ID: fallback}}, nil, nil, nil, &config.Config{})
+	subscriptionService := service.NewSubscriptionService(nil, &stubUserSubscriptionRepo{getActive: func(context.Context, int64, int64) (*service.UserSubscription, error) {
+		return nil, service.ErrSubscriptionNotFound
+	}}, nil, nil, &config.Config{})
+	t.Cleanup(subscriptionService.Stop)
+
+	state, err := prepareAPIKeyRoutingState(context.Background(), keyService, subscriptionService, key, false)
+	require.NoError(t, err)
+	require.NotNil(t, state)
+	require.Equal(t, fallback.ID, *key.GroupID)
+	require.Zero(t, state.SubscriptionRef().ID)
+}
+
+func TestPrepareAPIKeyRoutingStateStopsOnSubscriptionStoreError(t *testing.T) {
+	primary := &service.Group{ID: 1, Status: service.StatusActive, Platform: service.PlatformAnthropic, SubscriptionType: service.SubscriptionTypeSubscription}
+	fallback := &service.Group{ID: 2, Status: service.StatusActive, Platform: service.PlatformAnthropic, SubscriptionType: service.SubscriptionTypeStandard}
+	key := &service.APIKey{UserID: 7, GroupID: &primary.ID, Group: primary, FallbackGroupIDs: []int64{fallback.ID}}
+	keyService := service.NewAPIKeyService(nil, nil, &fallbackMiddlewareGroupRepo{groups: map[int64]*service.Group{fallback.ID: fallback}}, nil, nil, nil, &config.Config{})
+	wantErr := errors.New("subscription database unavailable")
+	subscriptionService := service.NewSubscriptionService(nil, &stubUserSubscriptionRepo{getActive: func(context.Context, int64, int64) (*service.UserSubscription, error) {
+		return nil, wantErr
+	}}, nil, nil, &config.Config{})
+	t.Cleanup(subscriptionService.Stop)
+
+	state, err := prepareAPIKeyRoutingState(context.Background(), keyService, subscriptionService, key, false)
+	require.ErrorIs(t, err, wantErr)
+	require.Nil(t, state)
+	require.Equal(t, primary.ID, *key.GroupID)
+}
+
+func TestPrepareAPIKeyRoutingStateSimpleModeSkipsSubscriptionLookup(t *testing.T) {
+	primary := &service.Group{ID: 1, Status: service.StatusActive, Platform: service.PlatformAnthropic, SubscriptionType: service.SubscriptionTypeSubscription}
+	fallback := &service.Group{ID: 2, Status: service.StatusActive, Platform: service.PlatformAnthropic, SubscriptionType: service.SubscriptionTypeStandard}
+	key := &service.APIKey{UserID: 7, GroupID: &primary.ID, Group: primary, FallbackGroupIDs: []int64{fallback.ID}}
+	keyService := service.NewAPIKeyService(nil, nil, &fallbackMiddlewareGroupRepo{groups: map[int64]*service.Group{fallback.ID: fallback}}, nil, nil, nil, &config.Config{})
+	calls := 0
+	subscriptionService := service.NewSubscriptionService(nil, &stubUserSubscriptionRepo{getActive: func(context.Context, int64, int64) (*service.UserSubscription, error) {
+		calls++
+		return nil, service.ErrSubscriptionNotFound
+	}}, nil, nil, &config.Config{})
+	t.Cleanup(subscriptionService.Stop)
+
+	state, err := prepareAPIKeyRoutingState(context.Background(), keyService, subscriptionService, key, true)
+	require.NoError(t, err)
+	require.NotNil(t, state)
+	require.Zero(t, calls)
+	require.Equal(t, primary.ID, *key.GroupID)
+}
+
+type fallbackMiddlewareGroupRepo struct {
+	groups map[int64]*service.Group
+}
+
+func (r *fallbackMiddlewareGroupRepo) Create(context.Context, *service.Group) error {
+	return errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) GetByID(_ context.Context, id int64) (*service.Group, error) {
+	group := r.groups[id]
+	if group == nil {
+		return nil, service.ErrGroupNotFound
+	}
+	return group, nil
+}
+func (r *fallbackMiddlewareGroupRepo) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
+	return r.GetByID(ctx, id)
+}
+func (r *fallbackMiddlewareGroupRepo) Update(context.Context, *service.Group) error {
+	return errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) Delete(context.Context, int64) error {
+	return errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) DeleteCascade(context.Context, int64) ([]int64, error) {
+	return nil, errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) List(context.Context, pagination.PaginationParams) ([]service.Group, *pagination.PaginationResult, error) {
+	return nil, nil, errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]service.Group, *pagination.PaginationResult, error) {
+	return nil, nil, errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) ListActive(context.Context) ([]service.Group, error) {
+	return nil, errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) ListActiveByPlatform(context.Context, string) ([]service.Group, error) {
+	return nil, errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) ExistsByName(context.Context, string) (bool, error) {
+	return false, errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) GetAccountCount(context.Context, int64) (int64, int64, error) {
+	return 0, 0, errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) DeleteAccountGroupsByGroupID(context.Context, int64) (int64, error) {
+	return 0, errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) GetAccountIDsByGroupIDs(context.Context, []int64) ([]int64, error) {
+	return nil, errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) BindAccountsToGroup(context.Context, int64, []int64) error {
+	return errors.New("not implemented")
+}
+func (r *fallbackMiddlewareGroupRepo) UpdateSortOrders(context.Context, []service.GroupSortOrderUpdate) error {
+	return errors.New("not implemented")
+}
+
 type stubApiKeyRepo struct {
 	getByKey       func(ctx context.Context, key string) (*service.APIKey, error)
 	updateLastUsed func(ctx context.Context, id int64, usedAt time.Time) error

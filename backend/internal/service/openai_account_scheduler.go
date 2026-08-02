@@ -2058,6 +2058,56 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(groupID)) == 0 {
+		return s.selectAccountWithSchedulerSingle(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	}
+	start := state.EffectiveIndex()
+	var lastSelection *AccountSelectionResult
+	var lastDecision OpenAIAccountScheduleDecision
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return lastSelection, lastDecision, lastErr
+			}
+			return nil, lastDecision, err
+		}
+		effectiveGroupID := state.apiKey.GroupID
+		candidateModel := s.apiKeyFallbackCandidateModel(ctx, effectiveGroupID, requestedModel)
+		selection, decision, err := s.selectAccountWithSchedulerSingle(ctx, effectiveGroupID, previousResponseID, sessionHash, candidateModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+		if err == nil {
+			state.Commit(index)
+			if selection != nil {
+				selection.EffectiveGroupID = cloneInt64Pointer(effectiveGroupID)
+			}
+			return selection, decision, nil
+		}
+		if !IsAPIKeyFallbackSelectionError(err) {
+			return selection, decision, err
+		}
+		lastSelection, lastDecision, lastErr = selection, decision, err
+		start = index + 1
+		previousResponseID = ""
+	}
+}
+
+func (s *OpenAIGatewayService) selectAccountWithSchedulerSingle(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredTransport OpenAIUpstreamTransport,
+	requiredCapability OpenAIEndpointCapability,
+	requiredImageCapability OpenAIImagesCapability,
+	requireCompact bool,
+	platform string,
+	previousResponseCanMove bool,
+	useUpstreamTokenCost bool,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	selection, decision, err := s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 	if err == nil || openAIProxyStreamQuarantineBypassed(ctx) {
 		return selection, decision, err

@@ -134,6 +134,11 @@ func (h *FalGatewayHandler) Images(c *gin.Context) {
 		h.jsonError(c, http.StatusServiceUnavailable, "api_error", "no available fal account")
 		return
 	}
+	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		failImageStatus(service.ImageGenerationPermissionMessage())
+		h.jsonError(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+		return
+	}
 	input := buildFalInputFromOpenAI(parsed)
 	if imageStatusRequestID != "" && h.imagesService != nil {
 		h.imagesService.MarkResponsesImageStatusRunning(c.Request.Context(), imageStatusRequestID)
@@ -433,6 +438,10 @@ func (h *FalGatewayHandler) nativeSubmit(c *gin.Context, model string) {
 	account, err := h.selectFalAccount(c, apiKey, model, "")
 	if err != nil || account == nil {
 		h.jsonError(c, http.StatusServiceUnavailable, "api_error", "no available fal account")
+		return
+	}
+	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		h.jsonError(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
 	submitInput := h.buildSubmitInput(c, apiKey, subject, service.AsyncMediaFacadeFal, model, account, input)

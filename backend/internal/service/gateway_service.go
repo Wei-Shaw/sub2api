@@ -533,6 +533,8 @@ type AccountSelectionResult struct {
 	Acquired    bool
 	ReleaseFunc func()
 	WaitPlan    *AccountWaitPlan // nil means no wait allowed
+	// EffectiveGroupID is the primary or fallback group used for this selection.
+	EffectiveGroupID *int64
 }
 
 // ClaudeUsage 表示Claude API返回的usage信息

@@ -317,6 +317,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	policySourceBody := body
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	if !compositeTargetPlatformAllowed(c, apiKey, reqModel, service.PlatformOpenAI, service.PlatformGrok) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
@@ -413,7 +414,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+	var forwardBody []byte
 	seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped, imageIntent)
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
@@ -563,6 +564,22 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
+			return
+		}
+		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+		body = policySourceBody
+		if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
+			if cappedBody, changed := service.ApplyOpenAIReasoningEffortPolicy(body, apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings); changed {
+				body = cappedBody
+			}
+		}
+		forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+		if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			failImageStatus(service.ImageGenerationPermissionMessage())
+			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 			return
 		}
 
@@ -1136,9 +1153,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		if effectiveMappedModel != "" {
 			currentRoutingModel = effectiveMappedModel
 		}
+		selectionCtx := service.WithOpenAIMessagesRequestedModel(c.Request.Context(), reqModel)
 		reqLog.Debug("openai_messages.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-			c.Request.Context(),
+			selectionCtx,
 			apiKey.GroupID,
 			"", // no previous_response_id
 			sessionHash,
@@ -1194,6 +1212,15 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
+			return
+		}
+		channelMappingMsg, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+		effectiveMappedModel = resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
+		if !allowOpenAICompatibleMessagesDispatch(apiKey) {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			h.anthropicStreamingAwareError(c, http.StatusForbidden, "permission_error", "This group does not allow /v1/messages dispatch", streamStarted)
 			return
 		}
 
@@ -1892,6 +1919,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 
 		account := selection.Account
+		if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
+			return
+		}
 		accountMaxConcurrency := account.Concurrency
 		if selection.WaitPlan != nil && selection.WaitPlan.MaxConcurrency > 0 {
 			accountMaxConcurrency = selection.WaitPlan.MaxConcurrency

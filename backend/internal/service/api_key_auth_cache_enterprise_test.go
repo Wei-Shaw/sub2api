@@ -23,3 +23,21 @@ func TestAPIKeyAuthSnapshotPreservesOrganizationSubscriptionID(t *testing.T) {
 	require.NotNil(t, restored.OrganizationSubscriptionID)
 	require.Equal(t, organizationSubscriptionID, *restored.OrganizationSubscriptionID)
 }
+
+func TestAPIKeyAuthSnapshotPreservesFallbackGroupOrder(t *testing.T) {
+	svc := &APIKeyService{}
+	key := &APIKey{
+		ID: 1, UserID: 2, FallbackGroupIDs: []int64{9, 3, 7},
+		User: &User{ID: 2, Status: StatusActive},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(context.Background(), key)
+	require.Equal(t, apiKeyAuthSnapshotVersion, snapshot.Version)
+	require.Equal(t, []int64{9, 3, 7}, snapshot.FallbackGroupIDs)
+
+	restored := svc.snapshotToAPIKey("secret", snapshot)
+	require.Equal(t, []int64{9, 3, 7}, restored.FallbackGroupIDs)
+
+	restored.FallbackGroupIDs[0] = 100
+	require.Equal(t, []int64{9, 3, 7}, snapshot.FallbackGroupIDs, "snapshot and restored key must not alias")
+}

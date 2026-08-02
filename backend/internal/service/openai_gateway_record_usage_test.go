@@ -362,6 +362,63 @@ func TestOpenAIGatewayServiceRecordUsage_ZeroUsageStillWritesUsageLog(t *testing
 	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_CrossBillingUsesEffectiveGroup(t *testing.T) {
+	newInput := func(apiKey *APIKey, subscription *UserSubscription, requestID string) *OpenAIRecordUsageInput {
+		return &OpenAIRecordUsageInput{
+			Result: &OpenAIForwardResult{
+				RequestID: requestID,
+				Usage:     OpenAIUsage{InputTokens: 100, OutputTokens: 20},
+				Model:     "gpt-5.1",
+				Duration:  time.Second,
+			},
+			APIKey:       apiKey,
+			User:         &User{ID: 2000},
+			Account:      &Account{ID: 3000, Type: AccountTypeAPIKey},
+			Subscription: subscription,
+		}
+	}
+
+	t.Run("subscription primary to metered fallback clears subscription billing", func(t *testing.T) {
+		usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+		billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+		svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+		metered := &Group{ID: 20, Platform: PlatformOpenAI, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 1}
+		apiKey := &APIKey{ID: 1000, GroupID: &metered.ID, Group: metered}
+		stalePrimarySubscription := &UserSubscription{ID: 101, UserID: 2000, GroupID: 10}
+
+		err := svc.RecordUsage(context.Background(), newInput(apiKey, stalePrimarySubscription, "resp_metered_fallback"))
+		require.NoError(t, err)
+		require.NotNil(t, usageRepo.lastLog.GroupID)
+		require.Equal(t, metered.ID, *usageRepo.lastLog.GroupID)
+		require.Nil(t, usageRepo.lastLog.SubscriptionID)
+		require.Equal(t, BillingTypeBalance, usageRepo.lastLog.BillingType)
+		require.Nil(t, billingRepo.lastCmd.SubscriptionID)
+		require.Positive(t, billingRepo.lastCmd.BalanceCost)
+		require.Zero(t, billingRepo.lastCmd.SubscriptionCost)
+	})
+
+	t.Run("metered primary to subscription fallback uses fallback subscription", func(t *testing.T) {
+		usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+		billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+		svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+		subscriptionGroup := &Group{ID: 30, Platform: PlatformOpenAI, SubscriptionType: SubscriptionTypeSubscription, RateMultiplier: 1}
+		apiKey := &APIKey{ID: 1000, GroupID: &subscriptionGroup.ID, Group: subscriptionGroup}
+		fallbackSubscription := &UserSubscription{ID: 303, UserID: 2000, GroupID: subscriptionGroup.ID}
+
+		err := svc.RecordUsage(context.Background(), newInput(apiKey, fallbackSubscription, "resp_subscription_fallback"))
+		require.NoError(t, err)
+		require.NotNil(t, usageRepo.lastLog.GroupID)
+		require.Equal(t, subscriptionGroup.ID, *usageRepo.lastLog.GroupID)
+		require.NotNil(t, usageRepo.lastLog.SubscriptionID)
+		require.Equal(t, fallbackSubscription.ID, *usageRepo.lastLog.SubscriptionID)
+		require.Equal(t, BillingTypeSubscription, usageRepo.lastLog.BillingType)
+		require.NotNil(t, billingRepo.lastCmd.SubscriptionID)
+		require.Equal(t, fallbackSubscription.ID, *billingRepo.lastCmd.SubscriptionID)
+		require.Zero(t, billingRepo.lastCmd.BalanceCost)
+		require.Positive(t, billingRepo.lastCmd.SubscriptionCost)
+	})
+}
+
 func TestOpenAIGatewayServiceRecordUsage_MissingPricingRecordsZeroCostUsageLog(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}

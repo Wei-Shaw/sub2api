@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 19 // v19: preserve enterprise subscription binding
+const apiKeyAuthSnapshotVersion = 20 // v20: preserve ordered API key fallback groups
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -342,6 +342,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		APIKeyID:                   apiKey.ID,
 		UserID:                     apiKey.UserID,
 		GroupID:                    apiKey.GroupID,
+		FallbackGroupIDs:           append([]int64(nil), apiKey.FallbackGroupIDs...),
 		OrganizationSubscriptionID: apiKey.OrganizationSubscriptionID,
 		Name:                       apiKey.Name,
 		Status:                     apiKey.Status,
@@ -451,6 +452,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		ID:                         snapshot.APIKeyID,
 		UserID:                     snapshot.UserID,
 		GroupID:                    snapshot.GroupID,
+		FallbackGroupIDs:           append([]int64(nil), snapshot.FallbackGroupIDs...),
 		OrganizationSubscriptionID: snapshot.OrganizationSubscriptionID,
 		Key:                        key,
 		Name:                       snapshot.Name,

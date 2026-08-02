@@ -32,6 +32,36 @@ func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int
 
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(groupID)) == 0 {
+		return s.selectAccountForModelWithExclusionsSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, err
+		}
+		effectiveGroupID := state.apiKey.GroupID
+		candidateModel := s.apiKeyFallbackCandidateModel(ctx, effectiveGroupID, requestedModel)
+		account, err := s.selectAccountForModelWithExclusionsSingle(ctx, effectiveGroupID, sessionHash, candidateModel, excludedIDs)
+		if err == nil {
+			state.Commit(index)
+			return account, nil
+		}
+		if !IsAPIKeyFallbackSelectionError(err) {
+			return nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+func (s *GatewayService) selectAccountForModelWithExclusionsSingle(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
 	// 优先检查 context 中的强制平台（/antigravity 路由）
 	var platform string
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
@@ -97,6 +127,45 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 // metadataUserID: 用于客户端亲和调度，从中提取客户端 ID
 // sub2apiUserID: 系统用户 ID，用于二维亲和调度
 func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(groupID)) == 0 {
+		return s.selectAccountWithLoadAwarenessSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, err
+		}
+		effectiveGroupID := state.apiKey.GroupID
+		candidateModel := s.apiKeyFallbackCandidateModel(ctx, effectiveGroupID, requestedModel)
+		selection, err := s.selectAccountWithLoadAwarenessSingle(ctx, effectiveGroupID, sessionHash, candidateModel, excludedIDs, metadataUserID, sub2apiUserID)
+		if err == nil {
+			state.Commit(index)
+			selection.EffectiveGroupID = cloneInt64Pointer(effectiveGroupID)
+			return selection, nil
+		}
+		if !IsAPIKeyFallbackSelectionError(err) {
+			return nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+func (s *GatewayService) apiKeyFallbackCandidateModel(ctx context.Context, groupID *int64, requestedModel string) string {
+	mapping, _ := s.ResolveChannelMappingAndRestrict(ctx, groupID, requestedModel)
+	if mapping.Mapped && strings.TrimSpace(mapping.MappedModel) != "" {
+		return mapping.MappedModel
+	}
+	return requestedModel
+}
+
+func (s *GatewayService) selectAccountWithLoadAwarenessSingle(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
 	// 调试日志：记录调度入口参数
 	excludedIDsList := make([]int64, 0, len(excludedIDs))
 	for id := range excludedIDs {

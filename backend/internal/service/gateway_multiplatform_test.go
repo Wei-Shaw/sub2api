@@ -23,7 +23,10 @@ func testConfig() *config.Config {
 type mockAccountRepoForPlatform struct {
 	accounts         []Account
 	accountsByID     map[int64]*Account
+	accountsByGroup  map[int64][]Account
 	listPlatformFunc func(ctx context.Context, platform string) ([]Account, error)
+	listGroupFunc    func(ctx context.Context, groupID int64, platforms []string) ([]Account, error)
+	queriedGroupIDs  []int64
 	getByIDCalls     int
 }
 
@@ -67,6 +70,13 @@ func (m *mockAccountRepoForPlatform) ListSchedulableByPlatform(ctx context.Conte
 }
 
 func (m *mockAccountRepoForPlatform) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
+	m.queriedGroupIDs = append(m.queriedGroupIDs, groupID)
+	if m.listGroupFunc != nil {
+		return m.listGroupFunc(ctx, groupID, []string{platform})
+	}
+	if m.accountsByGroup != nil {
+		return filterGatewayTestAccountsByPlatform(m.accountsByGroup[groupID], []string{platform}), nil
+	}
 	return m.ListSchedulableByPlatform(ctx, platform)
 }
 
@@ -148,7 +158,28 @@ func (m *mockAccountRepoForPlatform) ListSchedulableByPlatforms(ctx context.Cont
 	return result, nil
 }
 func (m *mockAccountRepoForPlatform) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error) {
+	m.queriedGroupIDs = append(m.queriedGroupIDs, groupID)
+	if m.listGroupFunc != nil {
+		return m.listGroupFunc(ctx, groupID, platforms)
+	}
+	if m.accountsByGroup != nil {
+		return filterGatewayTestAccountsByPlatform(m.accountsByGroup[groupID], platforms), nil
+	}
 	return m.ListSchedulableByPlatforms(ctx, platforms)
+}
+
+func filterGatewayTestAccountsByPlatform(accounts []Account, platforms []string) []Account {
+	allowed := make(map[string]struct{}, len(platforms))
+	for _, platform := range platforms {
+		allowed[platform] = struct{}{}
+	}
+	result := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if _, ok := allowed[account.Platform]; ok && account.IsSchedulable() {
+			result = append(result, account)
+		}
+	}
+	return result
 }
 func (m *mockAccountRepoForPlatform) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	return m.ListSchedulableByPlatform(ctx, platform)
@@ -341,6 +372,73 @@ func (m *mockGroupRepoForGateway) UpdateSortOrders(ctx context.Context, updates 
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+func TestGatewayService_APIKeyFallbackGroups(t *testing.T) {
+	groups := []*Group{
+		{ID: 10, Platform: PlatformAnthropic, Status: StatusActive},
+		{ID: 20, Platform: PlatformAnthropic, Status: StatusActive},
+		{ID: 30, Platform: PlatformAnthropic, Status: StatusActive},
+	}
+	account := Account{
+		ID: 300, Platform: PlatformAnthropic, Priority: 1,
+		Status: StatusActive, Schedulable: true, AccountGroups: []AccountGroup{{GroupID: groups[2].ID}},
+	}
+
+	t.Run("tries candidates in order and stays in the committed group", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: &account},
+			accountsByGroup: map[int64][]Account{
+				groups[0].ID: {},
+				groups[1].ID: {},
+				groups[2].ID: {account},
+			},
+		}
+		groupRepo := &mockGroupRepoForGateway{groups: map[int64]*Group{
+			groups[0].ID: groups[0], groups[1].ID: groups[1], groups[2].ID: groups[2],
+		}}
+		apiKey := &APIKey{GroupID: &groups[0].ID, Group: groups[0]}
+		state := NewAPIKeyRoutingState(apiKey, []APIKeyRoutingCandidate{{Group: groups[0]}, {Group: groups[1]}, {Group: groups[2]}})
+		ctx := WithAPIKeyRoutingState(context.Background(), state)
+		svc := &GatewayService{accountRepo: repo, groupRepo: groupRepo, cache: &mockGatewayCacheForPlatform{}, cfg: testConfig()}
+
+		selected, err := svc.SelectAccountForModelWithExclusions(ctx, apiKey.GroupID, "", "claude-sonnet-4-5", nil)
+		require.NoError(t, err)
+		require.Equal(t, account.ID, selected.ID)
+		require.Equal(t, []int64{10, 20, 30}, repo.queriedGroupIDs)
+		require.Equal(t, groups[2].ID, *apiKey.GroupID)
+
+		repo.queriedGroupIDs = nil
+		selected, err = svc.SelectAccountForModelWithExclusions(ctx, apiKey.GroupID, "", "claude-sonnet-4-5", nil)
+		require.NoError(t, err)
+		require.Equal(t, account.ID, selected.ID)
+		require.Equal(t, []int64{30}, repo.queriedGroupIDs, "same-request retries must stay in the committed group")
+	})
+
+	t.Run("infrastructure errors stop before later candidates", func(t *testing.T) {
+		queryErr := errors.New("account repository unavailable")
+		repo := &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: &account},
+			listGroupFunc: func(_ context.Context, groupID int64, _ []string) ([]Account, error) {
+				if groupID == groups[0].ID {
+					return nil, queryErr
+				}
+				return []Account{account}, nil
+			},
+		}
+		groupRepo := &mockGroupRepoForGateway{groups: map[int64]*Group{
+			groups[0].ID: groups[0], groups[1].ID: groups[1], groups[2].ID: groups[2],
+		}}
+		apiKey := &APIKey{GroupID: &groups[0].ID, Group: groups[0]}
+		state := NewAPIKeyRoutingState(apiKey, []APIKeyRoutingCandidate{{Group: groups[0]}, {Group: groups[1]}, {Group: groups[2]}})
+		ctx := WithAPIKeyRoutingState(context.Background(), state)
+		svc := &GatewayService{accountRepo: repo, groupRepo: groupRepo, cache: &mockGatewayCacheForPlatform{}, cfg: testConfig()}
+
+		_, err := svc.SelectAccountForModelWithExclusions(ctx, apiKey.GroupID, "", "claude-sonnet-4-5", nil)
+		require.ErrorIs(t, err, queryErr)
+		require.Equal(t, []int64{groups[0].ID}, repo.queriedGroupIDs)
+		require.Equal(t, groups[0].ID, *apiKey.GroupID)
+	})
 }
 
 // TestGatewayService_SelectAccountForModelWithPlatform_Anthropic 测试 anthropic 单平台选择

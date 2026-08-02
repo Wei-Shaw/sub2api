@@ -66,6 +66,71 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		require.Equal(t, "batch-session-123", batchImageDerefString(job.SessionID))
 	})
 
+	t.Run("falls back in order and prices with the effective group", func(t *testing.T) {
+		svc, repo, _, _, _ := newTestBatchImagePublicService(true)
+		primary := Group{
+			ID:                           7,
+			Status:                       StatusActive,
+			Platform:                     PlatformGemini,
+			SubscriptionType:             SubscriptionTypeStandard,
+			RateMultiplier:               1,
+			AllowImageGeneration:         true,
+			AllowBatchImageGeneration:    true,
+			BatchImageDiscountMultiplier: 0.5,
+			BatchImageHoldMultiplier:     0.6,
+		}
+		fallbackPrice := 0.4
+		fallback := Group{
+			ID:                           8,
+			Status:                       StatusActive,
+			Platform:                     PlatformGemini,
+			SubscriptionType:             SubscriptionTypeSubscription,
+			RateMultiplier:               2,
+			AllowImageGeneration:         true,
+			AllowBatchImageGeneration:    true,
+			ImagePrice1K:                 &fallbackPrice,
+			BatchImageDiscountMultiplier: 0.5,
+			BatchImageHoldMultiplier:     0.6,
+		}
+		accountMultiplier := 1.25
+		fallbackAccount := testBatchImageAccount(303, AccountTypeAPIKey)
+		fallbackAccount.RateMultiplier = &accountMultiplier
+		accountRepo := svc.AccountRepo.(*publicBatchImageAccountRepo)
+		accountRepo.accountsByGroup = map[int64][]Account{
+			primary.ID:  {},
+			fallback.ID: {fallbackAccount},
+		}
+		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
+			primary.ID:  &primary,
+			fallback.ID: &fallback,
+		}}
+		userRate := 0.5
+		svc.UserGroupRateRepo = &publicBatchImageUserGroupRateRepo{rates: map[int64]*float64{fallback.ID: &userRate}}
+
+		apiKey := &APIKey{GroupID: &primary.ID, Group: &primary}
+		routing := NewAPIKeyRoutingState(apiKey, []APIKeyRoutingCandidate{
+			{Group: &primary},
+			{Group: &fallback, Subscription: &UserSubscription{ID: 88, UserID: 11, GroupID: fallback.ID}},
+		})
+		ctx := WithAPIKeyRoutingState(ctx, routing)
+		owner := BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &primary.ID}
+
+		got, err := svc.Submit(ctx, owner, validBatchImageSubmitRequest(), "")
+		require.NoError(t, err)
+		require.Equal(t, []int64{primary.ID, fallback.ID}, accountRepo.queriedGroupIDs)
+		require.Equal(t, fallback.ID, *apiKey.GroupID)
+		require.Equal(t, 1, routing.EffectiveIndex())
+		require.Empty(t, routing.Candidates(apiKey.GroupID), "successful selection commits the effective group")
+
+		job := repo.jobs[got.ID]
+		require.NotNil(t, job.AccountID)
+		require.Equal(t, fallbackAccount.ID, *job.AccountID)
+		require.InDelta(t, fallbackPrice, job.BaseUnitPrice, 1e-12)
+		require.InDelta(t, userRate, job.GroupRateMultiplier, 1e-12)
+		require.InDelta(t, accountMultiplier, job.AccountRateMultiplier, 1e-12)
+		require.InDelta(t, 0.25, job.EstimatedCost, 1e-12)
+	})
+
 	t.Run("combines user group image rate account rate discount and hold margin", func(t *testing.T) {
 		svc, repo, _, _, _ := newTestBatchImagePublicService(true)
 		groupID := int64(7)
@@ -820,7 +885,9 @@ func requireBatchImagePublicJSONHasNoInternals(t *testing.T, body string) {
 }
 
 type publicBatchImageAccountRepo struct {
-	accounts []Account
+	accounts        []Account
+	accountsByGroup map[int64][]Account
+	queriedGroupIDs []int64
 }
 
 func (r *publicBatchImageAccountRepo) GetByID(_ context.Context, id int64) (*Account, error) {
@@ -842,7 +909,18 @@ func (r *publicBatchImageAccountRepo) ListSchedulableByPlatform(_ context.Contex
 	return out, nil
 }
 
-func (r *publicBatchImageAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, _ int64, platform string) ([]Account, error) {
+func (r *publicBatchImageAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
+	r.queriedGroupIDs = append(r.queriedGroupIDs, groupID)
+	if r.accountsByGroup != nil {
+		accounts := r.accountsByGroup[groupID]
+		out := make([]Account, 0, len(accounts))
+		for _, account := range accounts {
+			if account.Platform == platform {
+				out = append(out, account)
+			}
+		}
+		return out, nil
+	}
 	return r.ListSchedulableByPlatform(ctx, platform)
 }
 

@@ -112,6 +112,11 @@ export interface User {
 export interface AdminUser extends User {
   // 管理员备注（普通用户接口不返回）
   notes: string
+  // IAM 用户绑定的恢复邮箱；普通用户使用 email。
+  recovery_email?: string
+  company_id?: string
+  company_name?: string
+  organization_role?: 'owner' | 'member'
   last_used_at?: string | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
@@ -728,6 +733,7 @@ export interface ApiKey {
   key: string
   name: string
   group_id: number | null
+  fallback_group_ids: number[]
   organization_subscription_id: number | null
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
@@ -758,6 +764,7 @@ export interface ApiKey {
 export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
+  fallback_group_ids?: number[]
   organization_subscription_id?: number | null
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
@@ -772,6 +779,7 @@ export interface CreateApiKeyRequest {
 export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
+  fallback_group_ids?: number[]
   organization_subscription_id?: number | null
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]

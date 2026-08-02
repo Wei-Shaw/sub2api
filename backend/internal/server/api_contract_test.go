@@ -5,6 +5,7 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"math"
@@ -234,6 +235,7 @@ func TestAPIContracts(t *testing.T) {
 					"key": "sk_custom_1234567890",
 					"name": "Key One",
 					"group_id": null,
+					"fallback_group_ids": [],
 					"status": "active",
 					"ip_whitelist": null,
 					"ip_blacklist": null,
@@ -285,6 +287,7 @@ func TestAPIContracts(t *testing.T) {
 							"key": "sk_custom_1234567890",
 							"name": "Key One",
 							"group_id": null,
+							"fallback_group_ids": [],
 							"status": "active",
 							"ip_whitelist": null,
 							"ip_blacklist": null,
@@ -1481,6 +1484,76 @@ func TestAPIContracts(t *testing.T) {
 	}
 }
 
+func TestAPIKeyFallbackGroupsPersistThroughHTTP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	deps := newContractDeps(t)
+	deps.groupRepo.SetActive([]service.Group{
+		{ID: 10, Name: "OpenAI Subscription", Platform: service.PlatformOpenAI, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeSubscription},
+		{ID: 20, Name: "OpenAI Metered", Platform: service.PlatformOpenAI, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard},
+		{ID: 30, Name: "OpenAI Backup Subscription", Platform: service.PlatformOpenAI, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeSubscription},
+	})
+	deps.userSubRepo.SetActiveByUserID(1, []service.UserSubscription{
+		{GroupID: 10},
+		{GroupID: 30},
+	})
+
+	type apiKeyResponse struct {
+		Code int `json:"code"`
+		Data struct {
+			ID               int64   `json:"id"`
+			GroupID          *int64  `json:"group_id"`
+			FallbackGroupIDs []int64 `json:"fallback_group_ids"`
+		} `json:"data"`
+	}
+	decodeAPIKey := func(body string) apiKeyResponse {
+		t.Helper()
+		var payload apiKeyResponse
+		require.NoError(t, json.Unmarshal([]byte(body), &payload))
+		require.Zero(t, payload.Code, body)
+		return payload
+	}
+	headers := map[string]string{"Content-Type": "application/json"}
+
+	status, body := doRequest(t, deps.router, http.MethodPost, "/api/v1/keys",
+		`{"name":"Subscription Key","custom_key":"sk_fallback_contract_123456","group_id":10,"fallback_group_ids":[20,30]}`,
+		headers,
+	)
+	require.Equal(t, http.StatusOK, status, body)
+	created := decodeAPIKey(body)
+	require.Equal(t, int64(100), created.Data.ID)
+	require.Equal(t, ptr(int64(10)), created.Data.GroupID)
+	require.Equal(t, []int64{20, 30}, created.Data.FallbackGroupIDs)
+
+	status, body = doRequest(t, deps.router, http.MethodPut, "/api/v1/keys/100",
+		`{"fallback_group_ids":[30,20]}`,
+		headers,
+	)
+	require.Equal(t, http.StatusOK, status, body)
+	updated := decodeAPIKey(body)
+	require.Equal(t, []int64{30, 20}, updated.Data.FallbackGroupIDs)
+
+	status, body = doRequest(t, deps.router, http.MethodGet, "/api/v1/keys/100", "", nil)
+	require.Equal(t, http.StatusOK, status, body)
+	reloaded := decodeAPIKey(body)
+	require.Equal(t, []int64{30, 20}, reloaded.Data.FallbackGroupIDs)
+
+	status, body = doRequest(t, deps.router, http.MethodGet, "/api/v1/keys?page=1&page_size=10", "", nil)
+	require.Equal(t, http.StatusOK, status, body)
+	var listed struct {
+		Code int `json:"code"`
+		Data struct {
+			Items []struct {
+				FallbackGroupIDs []int64 `json:"fallback_group_ids"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &listed))
+	require.Zero(t, listed.Code, body)
+	require.Len(t, listed.Data.Items, 1)
+	require.Equal(t, []int64{30, 20}, listed.Data.Items[0].FallbackGroupIDs)
+}
+
 type contractDeps struct {
 	now         time.Time
 	router      http.Handler
@@ -1585,6 +1658,8 @@ func newContractDeps(t *testing.T) *contractDeps {
 	v1Keys.Use(jwtAuth)
 	v1Keys.GET("/keys", apiKeyHandler.List)
 	v1Keys.POST("/keys", apiKeyHandler.Create)
+	v1Keys.GET("/keys/:id", apiKeyHandler.GetByID)
+	v1Keys.PUT("/keys/:id", apiKeyHandler.Update)
 	v1Keys.GET("/groups/available", apiKeyHandler.GetAvailableGroups)
 
 	v1Usage := v1.Group("")
@@ -1855,12 +1930,18 @@ func (stubGroupRepo) Create(ctx context.Context, group *service.Group) error {
 	return errors.New("not implemented")
 }
 
-func (stubGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+func (r *stubGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+	for i := range r.active {
+		if r.active[i].ID == id {
+			group := r.active[i]
+			return &group, nil
+		}
+	}
 	return nil, service.ErrGroupNotFound
 }
 
-func (stubGroupRepo) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
-	return nil, service.ErrGroupNotFound
+func (r *stubGroupRepo) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
+	return r.GetByID(ctx, id)
 }
 
 func (stubGroupRepo) Update(ctx context.Context, group *service.Group) error {
@@ -2302,8 +2383,14 @@ func (stubUserSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, id in
 func (stubUserSubscriptionRepo) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
-	return nil, errors.New("not implemented")
+func (r *stubUserSubscriptionRepo) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+	for i := range r.activeByUser[userID] {
+		if r.activeByUser[userID][i].GroupID == groupID {
+			sub := r.activeByUser[userID][i]
+			return &sub, nil
+		}
+	}
+	return nil, service.ErrSubscriptionNotFound
 }
 func (stubUserSubscriptionRepo) Update(ctx context.Context, sub *service.UserSubscription) error {
 	return errors.New("not implemented")
