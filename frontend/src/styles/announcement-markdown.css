@@ -59,7 +59,7 @@
 }
 
 .markdown-body code {
-  @apply rounded-lg bg-gray-100 px-2 py-1 font-mono text-[13px] text-pink-600 dark:bg-dark-700 dark:text-pink-400;
+  @apply rounded-md bg-gray-100 px-2 py-1 font-mono text-[13px] text-blue-700 dark:bg-dark-700 dark:text-blue-300;
 }
 
 .markdown-body pre {
@@ -93,7 +93,7 @@
 }
 
 .markdown-body th {
-  @apply bg-gradient-to-br from-blue-50 to-indigo-50 font-semibold text-gray-900 dark:from-blue-900/20 dark:to-indigo-900/10 dark:text-white;
+  @apply bg-gray-50 font-semibold text-gray-900 dark:bg-dark-800 dark:text-white;
 }
 
 .markdown-body tbody tr {

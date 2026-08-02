@@ -145,6 +145,7 @@ type SystemSettings struct {
 	OfficialGroupQRCode         string
 	OfficialGroupLink           string
 	OfficialGroupLinkLabel      string
+	CustomerServiceEnabled      bool
 	CustomerServiceTextEnabled  bool
 	CustomerServiceText         string
 	DocURL                      string
@@ -325,6 +326,7 @@ type PublicSettings struct {
 	OfficialGroupQRCode              string
 	OfficialGroupLink                string
 	OfficialGroupLinkLabel           string
+	CustomerServiceEnabled           bool
 	CustomerServiceTextEnabled       bool
 	CustomerServiceText              string
 	DocURL                           string

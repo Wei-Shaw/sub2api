@@ -73,6 +73,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		OfficialGroupQRCode:              settings.OfficialGroupQRCode,
 		OfficialGroupLink:                settings.OfficialGroupLink,
 		OfficialGroupLinkLabel:           settings.OfficialGroupLinkLabel,
+		CustomerServiceEnabled:           settings.CustomerServiceEnabled,
 		CustomerServiceTextEnabled:       settings.CustomerServiceTextEnabled,
 		CustomerServiceText:              settings.CustomerServiceText,
 		DocURL:                           settings.DocURL,

@@ -3,17 +3,18 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview) int {
+func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview) float64 {
 	return computeDashboardHealthScoreResult(now, overview, nil).Score
 }
 
-func computeDashboardHealthScoreWithThresholds(now time.Time, overview *OpsDashboardOverview, thresholds *OpsMetricThresholds) int {
+func computeDashboardHealthScoreWithThresholds(now time.Time, overview *OpsDashboardOverview, thresholds *OpsMetricThresholds) float64 {
 	return computeDashboardHealthScoreResult(now, overview, thresholds).Score
 }
 
@@ -31,7 +32,7 @@ func TestComputeDashboardHealthScore_IdleReturns100(t *testing.T) {
 	t.Parallel()
 
 	score := computeDashboardHealthScore(time.Now().UTC(), &OpsDashboardOverview{})
-	require.Equal(t, 100, score)
+	require.Equal(t, 100.0, score)
 }
 
 func TestComputeDashboardHealthScore_IdleStillExposesInfrastructureFailure(t *testing.T) {
@@ -40,7 +41,7 @@ func TestComputeDashboardHealthScore_IdleStillExposesInfrastructureFailure(t *te
 	score := computeDashboardHealthScore(time.Now().UTC(), &OpsDashboardOverview{
 		SystemMetrics: &OpsSystemMetricsSnapshot{DBOK: boolPtr(false)},
 	})
-	require.Less(t, score, 90)
+	require.Less(t, score, 90.0)
 }
 
 func TestComputeDashboardHealthScoreExcludedOnlyTrafficUsesInfrastructureMode(t *testing.T) {
@@ -52,7 +53,7 @@ func TestComputeDashboardHealthScoreExcludedOnlyTrafficUsesInfrastructureMode(t 
 		SystemMetrics:     &OpsSystemMetricsSnapshot{DBOK: boolPtr(false)},
 	}, nil)
 
-	require.Equal(t, 60, result.Score)
+	require.Equal(t, 60.0, result.Score)
 	require.NotNil(t, result.Breakdown)
 	require.Equal(t, opsHealthScoreModeInfraOnly, result.Breakdown.Mode)
 	require.False(t, result.Breakdown.BusinessIncluded)
@@ -87,7 +88,7 @@ func TestComputeDashboardHealthScoreResultExplainsIdleJobDeduction(t *testing.T)
 		},
 	}, nil)
 
-	require.Equal(t, 94, result.Score)
+	require.Equal(t, 94.0, result.Score)
 	require.NotNil(t, result.Breakdown)
 	require.Equal(t, opsHealthScoreModeInfraOnly, result.Breakdown.Mode)
 	require.False(t, result.Breakdown.BusinessIncluded)
@@ -105,6 +106,65 @@ func TestComputeDashboardHealthScoreResultExplainsIdleJobDeduction(t *testing.T)
 	require.Equal(t, "job-stale", jobs.Reasons[0].JobName)
 	require.InDelta(t, 40*60, *jobs.Reasons[0].AgeSeconds, 0.01)
 	require.InDelta(t, 30*60, *jobs.Reasons[0].MaxAgeSeconds, 0.01)
+}
+
+func TestComputeDashboardHealthScoreIgnoresAdministrativelyDisabledJobs(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
+	recent := now.Add(-time.Minute)
+	stale := now.Add(-14 * 24 * time.Hour)
+	heartbeats := []*OpsJobHeartbeat{
+		{JobName: opsAlertEvaluatorJobName, LastSuccessAt: &recent},
+		{JobName: opsMetricsCollectorJobName, LastSuccessAt: &recent},
+		{JobName: opsAggHourlyJobName, LastSuccessAt: &recent},
+		{JobName: opsAggDailyJobName, LastSuccessAt: &recent},
+		{JobName: opsScheduledReportJobName, LastSuccessAt: &recent},
+		{JobName: opsCleanupJobName, LastSuccessAt: &stale},
+	}
+
+	withoutConfig := computeDashboardHealthScoreResult(now, &OpsDashboardOverview{
+		RequestCountSLA: 100,
+		JobHeartbeats:   heartbeats,
+	}, nil)
+	require.Equal(t, 98.5, withoutConfig.Score)
+	require.Equal(t, 1.5, withoutConfig.Breakdown.DeductionPoints)
+
+	withDisabledCleanup := computeDashboardHealthScoreResult(now, &OpsDashboardOverview{
+		RequestCountSLA:  100,
+		JobHeartbeats:    heartbeats,
+		DisabledJobNames: []string{opsCleanupJobName},
+	}, nil)
+	require.Equal(t, 100.0, withDisabledCleanup.Score)
+	require.Equal(t, 0.0, withDisabledCleanup.Breakdown.DeductionPoints)
+	require.Empty(t, withDisabledCleanup.Breakdown.Components[4].Reasons)
+}
+
+func TestDisabledOpsJobNamesReflectsOptionalTaskSettings(t *testing.T) {
+	t.Parallel()
+
+	svc := &OpsService{}
+	require.ElementsMatch(t, []string{
+		opsCleanupJobName,
+		opsAggHourlyJobName,
+		opsAggDailyJobName,
+		opsScheduledReportJobName,
+	}, svc.disabledOpsJobNames(context.Background()))
+
+	advanced := defaultOpsAdvancedSettings()
+	advanced.DataRetention.CleanupEnabled = true
+	advanced.Aggregation.AggregationEnabled = true
+	svc.storeAdvancedSettingsSnapshot(advanced)
+	require.Equal(t, []string{opsScheduledReportJobName}, svc.disabledOpsJobNames(context.Background()))
+
+	require.False(t, opsScheduledReportsEnabled(nil))
+	require.False(t, opsScheduledReportsEnabled(defaultOpsEmailNotificationConfig()))
+	require.True(t, opsScheduledReportsEnabled(&OpsEmailNotificationConfig{
+		Report: OpsEmailReportConfig{
+			Enabled:             true,
+			DailySummaryEnabled: true,
+		},
+	}))
 }
 
 func TestComputeDashboardHealthScoreResultExplainsBusinessDeduction(t *testing.T) {
@@ -217,8 +277,8 @@ func TestComputeDashboardHealthScore_DegradesOnBadSignals(t *testing.T) {
 	}
 
 	score := computeDashboardHealthScore(time.Now().UTC(), ov)
-	require.Less(t, score, 80)
-	require.GreaterOrEqual(t, score, 0)
+	require.Less(t, score, 80.0)
+	require.GreaterOrEqual(t, score, 0.0)
 }
 
 func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
@@ -396,10 +456,10 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			score := computeDashboardHealthScore(time.Now().UTC(), tt.overview)
-			require.GreaterOrEqual(t, score, tt.wantMin, "score should be >= %d", tt.wantMin)
-			require.LessOrEqual(t, score, tt.wantMax, "score should be <= %d", tt.wantMax)
-			require.GreaterOrEqual(t, score, 0, "score must be >= 0")
-			require.LessOrEqual(t, score, 100, "score must be <= 100")
+			require.GreaterOrEqual(t, score, float64(tt.wantMin), "score should be >= %d", tt.wantMin)
+			require.LessOrEqual(t, score, float64(tt.wantMax), "score should be <= %d", tt.wantMax)
+			require.GreaterOrEqual(t, score, 0.0, "score must be >= 0")
+			require.LessOrEqual(t, score, 100.0, "score must be <= 100")
 		})
 	}
 }

@@ -96,7 +96,7 @@ const overallLabel = computed(() => t(`channelStatus.overall.${props.overallStat
 const overallChipClass = computed(() => {
   switch (props.overallStatus) {
     case 'operational':
-      return 'bg-gray-100 text-gray-700 dark:bg-gray-500/15 dark:text-gray-300'
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
     case 'degraded':
     default:
       return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
@@ -106,7 +106,7 @@ const overallChipClass = computed(() => {
 const overallDotClass = computed(() => {
   switch (props.overallStatus) {
     case 'operational':
-      return 'bg-gray-500 animate-pulse'
+      return 'bg-blue-500 animate-pulse'
     case 'degraded':
     default:
       return 'bg-amber-500 animate-pulse'

@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import EmailNotificationPolicyCard from "../EmailNotificationPolicyCard.vue";
 
+type EmailNotificationPolicyCardExpose = {
+  savePolicy: (options?: { announceSuccess?: boolean }) => Promise<boolean>;
+};
+
 const {
   getPolicy,
   updatePolicy,
@@ -174,13 +178,13 @@ describe("EmailNotificationPolicyCard", () => {
     expect(refundRow.exists()).toBe(true);
     await refundRow.find("button[role='switch']").trigger("click");
 
-    const saveButton = wrapper
-      .findAll("button")
-      .find((node) => node.text().includes("common.save"));
-    expect(saveButton).toBeDefined();
-    await saveButton!.trigger("click");
+    expect(wrapper.text()).not.toContain("common.save");
+    const saved = await (
+      wrapper.vm as unknown as EmailNotificationPolicyCardExpose
+    ).savePolicy();
     await flushPromises();
 
+    expect(saved).toBe(true);
     expect(updatePolicy).toHaveBeenCalledTimes(1);
     const request = updatePolicy.mock.calls[0][0];
     expect(
@@ -246,13 +250,13 @@ describe("EmailNotificationPolicyCard", () => {
       .find('input[type="url"]')
       .setValue("https://example.com/recharge");
 
-    const saveButton = wrapper
-      .findAll("button")
-      .find((node) => node.text().includes("common.save"));
-    await saveButton!.trigger("click");
+    await (
+      wrapper.vm as unknown as EmailNotificationPolicyCardExpose
+    ).savePolicy({ announceSuccess: false });
     await flushPromises();
 
     expect(updatePolicy).toHaveBeenCalledTimes(1);
+    expect(showSuccess).not.toHaveBeenCalled();
     expect(updatePolicy.mock.calls[0][0].feature_settings).toEqual({
       subscription_expiry_enabled: true,
       balance_low_enabled: true,

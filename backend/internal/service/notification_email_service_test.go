@@ -159,6 +159,45 @@ func TestNotificationEmailAdditionalEventsAreListedAndPreviewable(t *testing.T) 
 	}
 }
 
+func TestOfficialNotificationEmailsUseTokenSupplyBrandLanguage(t *testing.T) {
+	ctx := context.Background()
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+
+	for _, event := range notificationEmailEventOrder {
+		for _, locale := range notificationEmailLocales {
+			tmpl, err := svc.GetTemplate(ctx, event, locale)
+			require.NoError(t, err)
+			require.Containsf(t, tmpl.HTML, "#2563eb", "%s/%s should use the TokenSupply blue", event, locale)
+			require.Containsf(t, tmpl.HTML, "#09090b", "%s/%s should use the neutral brand header", event, locale)
+			require.Containsf(t, tmpl.HTML, "brand-mark-bar-wide", "%s/%s should render the TokenSupply brand mark", event, locale)
+			require.NotContainsf(t, tmpl.HTML, "AI API infrastructure", "%s/%s should not retain the previous tagline", event, locale)
+			require.NotContainsf(t, tmpl.HTML, `>TS</`, "%s/%s should not replace the official mark with text initials", event, locale)
+			require.NotContainsf(t, tmpl.HTML, "linear-gradient", "%s/%s should not use the legacy purple gradient", event, locale)
+			require.NotContainsf(t, tmpl.HTML, "#667eea", "%s/%s should not use the legacy purple palette", event, locale)
+			require.NotContainsf(t, tmpl.HTML, "#764ba2", "%s/%s should not use the legacy purple palette", event, locale)
+
+			preview, err := svc.PreviewTemplate(ctx, NotificationEmailPreviewInput{Event: event, Locale: locale})
+			require.NoErrorf(t, err, "%s/%s official template should remain renderable", event, locale)
+			require.Contains(t, preview.HTML, "brand-mark-bar-wide")
+			require.NotContains(t, preview.HTML, "{{site_name}}")
+		}
+	}
+}
+
+func TestSMTPTestEmailUsesTokenSupplyBrandLanguage(t *testing.T) {
+	body := BuildSMTPTestEmailBody(`TokenSupply<script>alert(1)</script>`)
+	require.Contains(t, body, `class="brand-mark" role="img" aria-label="TokenSupply"`)
+	require.Contains(t, body, `brand-mark-bar-wide`)
+	require.NotContains(t, body, `>TS</`)
+	require.Contains(t, body, `class="brand-name">TokenSupply&lt;script&gt;alert(1)&lt;/script&gt;</div>`)
+	require.Contains(t, body, "Yet another API platform")
+	require.NotContains(t, body, "AI API infrastructure")
+	require.Contains(t, body, "#09090b")
+	require.Contains(t, body, "#2563eb")
+	require.NotContains(t, body, "<script>alert(1)</script>")
+	require.NotContains(t, body, "linear-gradient")
+}
+
 func TestCyberPolicyNoticeTemplateWrapsLongUpstreamMessages(t *testing.T) {
 	ctx := context.Background()
 	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)

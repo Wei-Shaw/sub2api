@@ -77,6 +77,13 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 		if filter.MaxDurationMs != nil {
 			addCondition(fmt.Sprintf("duration_ms <= $%d", len(args)+1), *filter.MaxDurationMs)
 		}
+		if filter.HasTTFT != nil {
+			if *filter.HasTTFT {
+				conditions = append(conditions, "first_token_ms IS NOT NULL")
+			} else {
+				conditions = append(conditions, "first_token_ms IS NULL")
+			}
+		}
 	}
 
 	where := ""
@@ -93,6 +100,7 @@ WITH combined AS (
     COALESCE(NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
     ul.model AS model,
     ul.duration_ms AS duration_ms,
+    ul.first_token_ms AS first_token_ms,
     NULL::INT AS status_code,
     NULL::BIGINT AS error_id,
     NULL::TEXT AS phase,
@@ -117,6 +125,7 @@ WITH combined AS (
     COALESCE(NULLIF(o.platform, ''), NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
     o.model AS model,
     o.duration_ms AS duration_ms,
+    o.time_to_first_token_ms AS first_token_ms,
     o.status_code AS status_code,
     o.id AS error_id,
     o.error_phase AS phase,
@@ -145,16 +154,13 @@ WITH combined AS (
 		}
 	}
 
-	sort := "ORDER BY created_at DESC"
+	sortValue := ""
 	if filter != nil {
-		switch strings.TrimSpace(strings.ToLower(filter.Sort)) {
-		case "", "created_at_desc":
-			// default
-		case "duration_desc":
-			sort = "ORDER BY duration_ms DESC NULLS LAST, created_at DESC"
-		default:
-			return nil, 0, fmt.Errorf("invalid sort")
-		}
+		sortValue = filter.Sort
+	}
+	sort, err := opsRequestDetailsOrderBy(sortValue)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	listQuery := fmt.Sprintf(`
@@ -166,6 +172,7 @@ SELECT
   platform,
   model,
   duration_ms,
+  first_token_ms,
   status_code,
   error_id,
   phase,
@@ -213,9 +220,10 @@ LIMIT $%d OFFSET $%d
 			platform  sql.NullString
 			model     sql.NullString
 
-			durationMs sql.NullInt64
-			statusCode sql.NullInt64
-			errorID    sql.NullInt64
+			durationMs   sql.NullInt64
+			firstTokenMs sql.NullInt64
+			statusCode   sql.NullInt64
+			errorID      sql.NullInt64
 
 			phase    sql.NullString
 			severity sql.NullString
@@ -236,6 +244,7 @@ LIMIT $%d OFFSET $%d
 			&platform,
 			&model,
 			&durationMs,
+			&firstTokenMs,
 			&statusCode,
 			&errorID,
 			&phase,
@@ -257,12 +266,13 @@ LIMIT $%d OFFSET $%d
 			Platform:  strings.TrimSpace(platform.String),
 			Model:     strings.TrimSpace(model.String),
 
-			DurationMs: toIntPtr(durationMs),
-			StatusCode: toIntPtr(statusCode),
-			ErrorID:    toInt64Ptr(errorID),
-			Phase:      phase.String,
-			Severity:   severity.String,
-			Message:    message.String,
+			DurationMs:   toIntPtr(durationMs),
+			FirstTokenMs: toIntPtr(firstTokenMs),
+			StatusCode:   toIntPtr(statusCode),
+			ErrorID:      toInt64Ptr(errorID),
+			Phase:        phase.String,
+			Severity:     severity.String,
+			Message:      message.String,
 
 			UserID:    toInt64Ptr(userID),
 			APIKeyID:  toInt64Ptr(apiKeyID),
@@ -283,4 +293,19 @@ LIMIT $%d OFFSET $%d
 	}
 
 	return out, total, nil
+}
+
+func opsRequestDetailsOrderBy(sortValue string) (string, error) {
+	switch strings.TrimSpace(strings.ToLower(sortValue)) {
+	case "", "created_at_desc":
+		return "ORDER BY created_at DESC", nil
+	case "duration_desc":
+		return "ORDER BY duration_ms DESC NULLS LAST, created_at DESC", nil
+	case "ttft_desc":
+		return "ORDER BY first_token_ms DESC NULLS LAST, created_at DESC", nil
+	case "ttft_asc":
+		return "ORDER BY first_token_ms ASC NULLS LAST, created_at DESC", nil
+	default:
+		return "", fmt.Errorf("invalid sort")
+	}
 }

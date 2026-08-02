@@ -105,6 +105,20 @@ func applyLegacyOpsAlertRuleCompatibility(rule *service.OpsAlertRule) {
 	}
 }
 
+// isObsoleteLegacyLatencyRule identifies only the two untouched rules seeded
+// by the old alert implementation. They measured total request duration, were
+// never supported by the v2 evaluator, and should not be presented as editable
+// TTFT rules. Operator-customized rules deliberately remain visible.
+func isObsoleteLegacyLatencyRule(rule *service.OpsAlertRule) bool {
+	return matchesLegacyOpsAlertRuleDefault(
+		rule, "P95延迟过高", "当 P95 延迟超过 2000ms 且持续 10 分钟时触发告警",
+		"p95_latency_ms", ">", "P2", 2000, 5, 10, 30,
+	) || matchesLegacyOpsAlertRuleDefault(
+		rule, "P99延迟过高", "当 P99 延迟超过 3000ms 且持续 10 分钟时触发告警",
+		"p99_latency_ms", ">", "P2", 3000, 5, 10, 30,
+	)
+}
+
 func applyLegacyOpsAlertRecovery(rule *service.OpsAlertRule, family string, threshold float64) {
 	rule.IncidentFamily = family
 	rule.RecoveryOperator = "<"
@@ -201,6 +215,12 @@ ORDER BY id DESC`
 			if err := json.Unmarshal(filtersRaw, &decoded); err == nil {
 				rule.Filters = decoded
 			}
+		}
+		// Untouched latency defaults are obsolete request-duration rules, not
+		// TTFT rules. Keep them in storage for auditability but do not expose
+		// them as configurable rules in the v2 UI/evaluator.
+		if isObsoleteLegacyLatencyRule(&rule) {
+			continue
 		}
 		// Legacy defaults predate the v2 rule schema. Apply the compatibility
 		// mapping in memory so older rows gain the same semantics as v2 rows

@@ -40,6 +40,7 @@ func TestSettingHandlerGetPublicSettingsMapsCustomerServiceFields(t *testing.T) 
 		service.SettingKeyOfficialGroupTitle:         "Community",
 		service.SettingKeyOfficialGroupLink:          "https://example.com/community",
 		service.SettingKeyOfficialGroupLinkLabel:     "Join now",
+		service.SettingKeyCustomerServiceEnabled:     "true",
 		service.SettingKeyCustomerServiceTextEnabled: "true",
 		service.SettingKeyCustomerServiceText:        "Support hours",
 	}}
@@ -61,6 +62,7 @@ func TestSettingHandlerGetPublicSettingsMapsCustomerServiceFields(t *testing.T) 
 	require.Equal(t, "Community", body.Data.OfficialGroupTitle)
 	require.Equal(t, "https://example.com/community", body.Data.OfficialGroupLink)
 	require.Equal(t, "Join now", body.Data.OfficialGroupLinkLabel)
+	require.True(t, body.Data.CustomerServiceEnabled)
 	require.True(t, body.Data.CustomerServiceTextEnabled)
 	require.Equal(t, "Support hours", body.Data.CustomerServiceText)
 }

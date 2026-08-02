@@ -135,7 +135,8 @@ describe('admin UsersView', () => {
       total: 1,
       page: 1,
       page_size: 20,
-      pages: 1
+      pages: 1,
+      total_balance: 1234.56
     })
     getAllGroups.mockResolvedValue([])
     getBatchUsersUsage.mockResolvedValue({ stats: {} })
@@ -145,6 +146,44 @@ describe('admin UsersView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('shows the all-user balance supplied by the server instead of summing the current page', async () => {
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          BulkEditUserModal: BulkEditUserModalStub,
+          UserPlatformQuotaModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const summary = wrapper.get('[data-test="total-user-balance"]')
+    expect(summary.text()).toContain('admin.users.totalBalance')
+    expect(summary.text()).toMatch(/1[,.]234[,.]56/)
   })
 
   it('shows active, used, and created activity columns in order and requests last_used_at sort', async () => {

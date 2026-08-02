@@ -3,85 +3,83 @@
     <Transition name="popup-fade">
       <div
         v-if="displayedAnnouncement"
-        class="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-gradient-to-br from-black/70 via-black/60 to-black/70 p-4 pt-[8vh] backdrop-blur-md"
+        data-testid="announcement-popup"
+        class="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-gray-950/75 p-4 pt-[7vh] backdrop-blur-sm sm:p-6 sm:pt-[9vh]"
       >
-        <div
-          class="w-full max-w-[680px] overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
+        <article
+          class="w-full max-w-[720px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-dark-700 dark:bg-dark-900"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="displayedAnnouncement.title"
           @click.stop
         >
-          <!-- Header with warm gradient -->
-          <div class="relative overflow-hidden border-b border-amber-100/80 bg-gradient-to-br from-amber-50/80 via-orange-50/50 to-yellow-50/30 px-8 py-6 dark:border-dark-700/50 dark:from-amber-900/20 dark:via-orange-900/10 dark:to-yellow-900/5">
-            <!-- Decorative background -->
-            <div class="absolute right-0 top-0 h-full w-64 bg-gradient-to-l from-orange-100/30 to-transparent dark:from-orange-900/20"></div>
-            <div class="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-gradient-to-br from-amber-400/20 to-orange-500/20 blur-3xl"></div>
-            <div class="absolute -left-4 -bottom-4 h-24 w-24 rounded-full bg-gradient-to-tr from-yellow-400/20 to-amber-500/20 blur-2xl"></div>
-
-            <div class="relative z-10">
-              <!-- Icon and badge -->
-              <div class="mb-3 flex items-center gap-2">
-                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/30">
-                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                  </svg>
-                </div>
-                <span class="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-2.5 py-1 text-xs font-medium text-white shadow-lg shadow-amber-500/30">
-                  <span class="relative flex h-2 w-2">
-                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
-                    <span class="relative inline-flex h-2 w-2 rounded-full bg-white"></span>
+          <header
+            class="relative border-b border-gray-200 bg-white px-6 py-6 dark:border-dark-700 dark:bg-dark-900 sm:px-8 sm:py-7"
+          >
+            <div class="absolute inset-y-0 left-0 w-1 bg-blue-500"></div>
+            <div class="flex items-start justify-between gap-5">
+              <div class="min-w-0 flex-1">
+                <div class="mb-5 flex flex-wrap items-center gap-3">
+                  <span
+                    class="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold tracking-wide text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
+                  >
+                    <span class="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400"></span>
+                    TokenSupply Notice
                   </span>
-                  {{ t('announcements.unread') }}
-                </span>
+                  <span
+                    v-if="!preview"
+                    class="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400"
+                  >
+                    <span class="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400"></span>
+                    {{ t('announcements.unread') }}
+                  </span>
+                </div>
+                <h2
+                  class="text-2xl font-semibold leading-tight tracking-tight text-gray-950 dark:text-white sm:text-3xl"
+                >
+                  {{ displayedAnnouncement.title }}
+                </h2>
+                <div class="mt-4 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                  <Icon name="clock" size="sm" />
+                  <time>{{ formatRelativeWithDateTime(displayedAnnouncement.created_at) }}</time>
+                </div>
               </div>
-
-              <!-- Title -->
-              <h2 class="mb-2 text-2xl font-bold leading-tight text-gray-900 dark:text-white">
-                {{ displayedAnnouncement.title }}
-              </h2>
-
-              <!-- Time -->
-              <div class="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <time>{{ formatRelativeWithDateTime(displayedAnnouncement.created_at) }}</time>
-              </div>
-            </div>
-          </div>
-
-          <!-- Body -->
-          <div class="max-h-[50vh] overflow-y-auto bg-white px-8 py-8 dark:bg-dark-800">
-            <div class="relative">
-              <div class="absolute left-0 top-0 bottom-0 w-1 rounded-full bg-gradient-to-b from-amber-500 via-orange-500 to-yellow-500"></div>
-              <div class="pl-6">
-                <div
-                  class="markdown-body prose prose-sm max-w-none dark:prose-invert"
-                  v-html="renderedContent"
-                ></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Footer -->
-          <div class="border-t border-gray-100 bg-gray-50/50 px-8 py-5 dark:border-dark-700 dark:bg-dark-900/30">
-            <div class="flex items-center justify-end">
-              <button
-                @click="handleDismiss"
-                data-testid="announcement-popup-dismiss"
-                class="rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-amber-500/30 transition-all hover:shadow-xl hover:scale-105"
+              <div
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-blue-600 dark:border-dark-600 dark:bg-dark-800 dark:text-blue-400"
               >
-                <span class="flex items-center gap-2">
-                  <svg v-if="preview" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                  <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  {{ preview ? t('common.close') : t('announcements.markRead') }}
-                </span>
-              </button>
+                <Icon name="bell" size="sm" />
+              </div>
             </div>
+          </header>
+
+          <div class="max-h-[52vh] overflow-y-auto bg-white px-6 py-7 dark:bg-dark-900 sm:px-8 sm:py-9">
+            <div
+              class="markdown-body prose prose-sm max-w-none dark:prose-invert"
+              v-html="renderedContent"
+            ></div>
           </div>
-        </div>
+
+          <footer class="flex flex-col gap-4 border-t border-gray-200 bg-gray-50 px-6 py-5 dark:border-dark-700 dark:bg-dark-950/50 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+            <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+              <span class="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-950 dark:border-dark-600">
+                <span class="flex flex-col gap-[2px]" aria-hidden="true">
+                  <span class="block h-[2px] w-3 rounded-full bg-current"></span>
+                  <span class="block h-[2px] w-2.5 rounded-full bg-current"></span>
+                  <span class="block h-[2px] w-1.5 rounded-full bg-current"></span>
+                </span>
+              </span>
+              <span>TokenSupply</span>
+            </div>
+            <button
+              @click="handleDismiss"
+              data-testid="announcement-popup-dismiss"
+              class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus-visible:ring-offset-dark-950"
+            >
+              <Icon :name="preview ? 'x' : 'check'" size="sm" />
+                  {{ preview ? t('common.close') : t('announcements.markRead') }}
+            </button>
+          </footer>
+        </article>
       </div>
     </Transition>
   </Teleport>
@@ -95,6 +93,7 @@ import DOMPurify from 'dompurify'
 import { useAnnouncementStore } from '@/stores/announcements'
 import { formatRelativeWithDateTime } from '@/utils/format'
 import type { Announcement, UserAnnouncement } from '@/types'
+import Icon from '@/components/icons/Icon.vue'
 import '@/styles/announcement-markdown.css'
 
 type PreviewAnnouncement = Pick<Announcement | UserAnnouncement, 'title' | 'content' | 'created_at'>
@@ -171,13 +170,13 @@ onBeforeUnmount(() => {
   opacity: 0;
 }
 
-.popup-fade-enter-from > div {
-  transform: scale(0.94) translateY(-12px);
+.popup-fade-enter-from > article {
+  transform: scale(0.97) translateY(-10px);
   opacity: 0;
 }
 
-.popup-fade-leave-to > div {
-  transform: scale(0.96) translateY(-8px);
+.popup-fade-leave-to > article {
+  transform: scale(0.98) translateY(-6px);
   opacity: 0;
 }
 
@@ -191,11 +190,11 @@ onBeforeUnmount(() => {
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, #cbd5e1, #94a3b8);
+  background: #9ca3af;
   border-radius: 4px;
 }
 
 .dark .overflow-y-auto::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, #4b5563, #374151);
+  background: #4b5563;
 }
 </style>

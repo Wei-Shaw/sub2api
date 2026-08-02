@@ -326,6 +326,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOfficialGroupQRCode] = strings.TrimSpace(settings.OfficialGroupQRCode)
 	updates[SettingKeyOfficialGroupLink] = strings.TrimSpace(settings.OfficialGroupLink)
 	updates[SettingKeyOfficialGroupLinkLabel] = strings.TrimSpace(settings.OfficialGroupLinkLabel)
+	updates[SettingKeyCustomerServiceEnabled] = strconv.FormatBool(settings.CustomerServiceEnabled)
 	updates[SettingKeyCustomerServiceTextEnabled] = strconv.FormatBool(settings.CustomerServiceTextEnabled)
 	updates[SettingKeyCustomerServiceText] = strings.TrimSpace(settings.CustomerServiceText)
 	updates[SettingKeyDocURL] = settings.DocURL

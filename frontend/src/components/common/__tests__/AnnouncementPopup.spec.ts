@@ -74,6 +74,32 @@ describe('AnnouncementPopup', () => {
     wrapper.unmount()
   })
 
+  it('uses the TokenSupply neutral palette with blue as the only accent', async () => {
+    const wrapper = mount(AnnouncementPopup, {
+      props: {
+        announcement,
+        preview: true,
+      },
+    })
+    await wrapper.vm.$nextTick()
+
+    const popup = document.body.querySelector<HTMLElement>('[data-testid="announcement-popup"]')
+    expect(popup?.className).toContain('bg-gray-950/75')
+    expect(popup?.innerHTML).toContain('bg-white')
+    expect(popup?.innerHTML).toContain('dark:bg-dark-900')
+    expect(popup?.innerHTML).toContain('bg-blue-600')
+
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/components/common/AnnouncementPopup.vue'),
+      'utf8',
+    )
+    expect(source).not.toMatch(/(?:amber|orange|yellow|indigo|purple|pink)-/)
+    expect(source).not.toContain('bg-gradient')
+    expect(source).not.toContain('animate-ping')
+
+    wrapper.unmount()
+  })
+
   it.each(['h2', 'h3', 'ul', 'li', 'blockquote', 'table', 'th', 'td', 'code'])(
     'loads a shared style rule for mixed-content <%s> elements',
     (element) => {

@@ -22,8 +22,9 @@ type OpsRequestDetail struct {
 	Platform string `json:"platform,omitempty"`
 	Model    string `json:"model,omitempty"`
 
-	DurationMs *int `json:"duration_ms,omitempty"`
-	StatusCode *int `json:"status_code,omitempty"`
+	DurationMs   *int `json:"duration_ms,omitempty"`
+	FirstTokenMs *int `json:"first_token_ms,omitempty"`
+	StatusCode   *int `json:"status_code,omitempty"`
 
 	// When Kind == "error", ErrorID links to /admin/ops/errors/:id.
 	ErrorID *int64 `json:"error_id,omitempty"`
@@ -60,8 +61,9 @@ type OpsRequestDetailFilter struct {
 
 	MinDurationMs *int
 	MaxDurationMs *int
+	HasTTFT       *bool
 
-	// Sort: created_at_desc (default) or duration_desc.
+	// Sort: created_at_desc (default), duration_desc, ttft_desc, or ttft_asc.
 	Sort string
 
 	Page     int

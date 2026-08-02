@@ -77,6 +77,7 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 	} else {
 		log.Printf("[Ops] ListJobHeartbeats failed: %v", err)
 	}
+	overview.DisabledJobNames = s.disabledOpsJobNames(ctx)
 
 	var thresholds *OpsMetricThresholds
 	if loaded, thresholdErr := s.GetMetricThresholds(ctx); thresholdErr == nil {
@@ -89,6 +90,36 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 	overview.HealthScoreBreakdown = healthResult.Breakdown
 
 	return overview, nil
+}
+
+// disabledOpsJobNames returns optional jobs that the administrator has
+// intentionally disabled. Their historical heartbeats remain useful for
+// audit, but stale records must not lower the current service-health score.
+func (s *OpsService) disabledOpsJobNames(ctx context.Context) []string {
+	advanced := s.OpsAdvancedSettingsSnapshot()
+	disabled := make([]string, 0, 4)
+	if !advanced.DataRetention.CleanupEnabled {
+		disabled = append(disabled, opsCleanupJobName)
+	}
+	if !advanced.Aggregation.AggregationEnabled {
+		disabled = append(disabled, opsAggHourlyJobName, opsAggDailyJobName)
+	}
+
+	emailCfg, err := s.GetEmailNotificationConfig(ctx)
+	if err == nil && !opsScheduledReportsEnabled(emailCfg) {
+		disabled = append(disabled, opsScheduledReportJobName)
+	}
+	return disabled
+}
+
+func opsScheduledReportsEnabled(cfg *OpsEmailNotificationConfig) bool {
+	if cfg == nil || !cfg.Report.Enabled {
+		return false
+	}
+	return cfg.Report.DailySummaryEnabled ||
+		cfg.Report.WeeklySummaryEnabled ||
+		cfg.Report.ErrorDigestEnabled ||
+		cfg.Report.AccountHealthEnabled
 }
 
 func (s *OpsService) resolveOpsQueryMode(ctx context.Context, requested OpsQueryMode) OpsQueryMode {

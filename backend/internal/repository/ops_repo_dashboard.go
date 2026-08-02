@@ -47,6 +47,22 @@ func (r *opsRepository) GetDashboardOverview(ctx context.Context, filter *servic
 	}
 }
 
+func (r *opsRepository) GetTTFTPercentiles(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsTTFTSummary, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("nil ops repository")
+	}
+	if filter == nil {
+		return nil, fmt.Errorf("nil filter")
+	}
+	if filter.StartTime.IsZero() || filter.EndTime.IsZero() {
+		return nil, fmt.Errorf("start_time/end_time required")
+	}
+
+	queryCtx, cancel := context.WithTimeout(ctx, opsRawLatencyQueryTimeout)
+	defer cancel()
+	return r.queryTTFTPercentiles(queryCtx, filter, filter.StartTime.UTC(), filter.EndTime.UTC())
+}
+
 func (r *opsRepository) getDashboardOverviewRaw(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsDashboardOverview, error) {
 	start := filter.StartTime.UTC()
 	end := filter.EndTime.UTC()
@@ -58,13 +74,14 @@ func (r *opsRepository) getDashboardOverviewRaw(ctx context.Context, filter *ser
 	}
 
 	latencyCtx, cancelLatency := context.WithTimeout(ctx, opsRawLatencyQueryTimeout)
-	duration, ttft, _, err := r.queryUsageLatency(latencyCtx, filter, start, end)
+	duration, ttft, ttftSampleCount, err := r.queryUsageLatency(latencyCtx, filter, start, end)
 	cancelLatency()
 	if err != nil {
 		if isQueryTimeoutErr(err) {
 			degraded = true
 			duration = service.OpsPercentiles{}
 			ttft = service.OpsPercentiles{}
+			ttftSampleCount = 0
 		} else {
 			return nil, err
 		}
@@ -137,6 +154,7 @@ func (r *opsRepository) getDashboardOverviewRaw(ctx context.Context, filter *ser
 		RequestCountTotal:    requestCountTotal,
 		RequestCountSLA:      requestCountSLA,
 		TokenConsumed:        tokenConsumed,
+		TTFTSampleCount:      ttftSampleCount,
 
 		SLA:                          roundTo4DP(sla),
 		ErrorRate:                    roundTo4DP(errorRate),
@@ -246,6 +264,7 @@ func (r *opsRepository) getDashboardOverviewPreaggregated(ctx context.Context, f
 	upstream529 := preagg.upstream529Count + head.upstream529Count + tail.upstream529Count
 
 	tokenConsumed := preagg.tokenConsumed + head.tokenConsumed + tail.tokenConsumed
+	ttftSampleCount := preagg.ttftSampleCount + head.ttftSampleCount + tail.ttftSampleCount
 
 	// Approximate percentiles across segments:
 	// - p50/p90/avg: weighted average by success_count
@@ -327,6 +346,7 @@ func (r *opsRepository) getDashboardOverviewPreaggregated(ctx context.Context, f
 		RequestCountTotal:    requestCountTotal,
 		RequestCountSLA:      requestCountSLA,
 		TokenConsumed:        tokenConsumed,
+		TTFTSampleCount:      ttftSampleCount,
 
 		SLA:                          roundTo4DP(sla),
 		ErrorRate:                    roundTo4DP(errorRate),
@@ -905,6 +925,35 @@ FROM usage_logs ul
 	}
 
 	return duration, ttft, tCount, nil
+}
+
+func (r *opsRepository) queryTTFTPercentiles(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (*service.OpsTTFTSummary, error) {
+	join, where, args, _ := buildUsageWhere(filter, start, end, 1)
+	q := `
+SELECT
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p95,
+  percentile_cont(0.99) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p99,
+  MAX(first_token_ms) AS ttft_max,
+  COUNT(first_token_ms) AS ttft_sample_count
+FROM usage_logs ul
+` + join + `
+` + where
+
+	var p95, p99 sql.NullFloat64
+	var max sql.NullInt64
+	var sampleCount int64
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&p95, &p99, &max, &sampleCount); err != nil {
+		return nil, err
+	}
+
+	result := &service.OpsTTFTSummary{SampleCount: sampleCount}
+	result.TTFT.P95 = floatToIntPtr(p95)
+	result.TTFT.P99 = floatToIntPtr(p99)
+	if max.Valid {
+		value := int(max.Int64)
+		result.TTFT.Max = &value
+	}
+	return result, nil
 }
 
 func (r *opsRepository) queryErrorCounts(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (

@@ -209,6 +209,13 @@ func TestOpsAlertRuleValidation(t *testing.T) {
 
 	require.True(t, isPercentOrRateMetric("error_rate"))
 	require.False(t, isPercentOrRateMetric("concurrency_queue_depth"))
+
+	raw["metric_type"] = json.RawMessage(`"ttft_p99_seconds"`)
+	raw["threshold"] = json.RawMessage(`5.25`)
+	validated, err = validateOpsAlertRulePayload(raw)
+	require.NoError(t, err)
+	require.Equal(t, "ttft_p99_seconds", validated.MetricType)
+	require.Equal(t, 5.25, validated.Threshold)
 }
 
 func TestOpsWSHelpers(t *testing.T) {

@@ -277,6 +277,7 @@ const (
 	SettingKeyOfficialGroupQRCode         = "official_group_qrcode"         // 官方群二维码
 	SettingKeyOfficialGroupLink           = "official_group_link"           // 官方群链接
 	SettingKeyOfficialGroupLinkLabel      = "official_group_link_label"     // 官方群链接文字
+	SettingKeyCustomerServiceEnabled      = "customer_service_enabled"      // 是否在顶栏显示在线客服入口
 	SettingKeyCustomerServiceTextEnabled  = "customer_service_text_enabled" // 是否显示客服弹窗底部自定义文字
 	SettingKeyCustomerServiceText         = "customer_service_text"         // 客服弹窗底部自定义文字
 	SettingKeyDocURL                      = "doc_url"                       // 文档链接

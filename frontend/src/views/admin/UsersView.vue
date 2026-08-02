@@ -125,6 +125,17 @@
 
           <!-- Right: Actions and Settings -->
           <div class="flex flex-wrap items-center justify-end gap-2">
+            <div
+              class="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 dark:border-blue-900/50 dark:bg-blue-950/30"
+              data-test="total-user-balance"
+              :title="t('admin.users.totalBalanceHint')"
+            >
+              <Icon name="dollar" size="sm" class="text-blue-500" />
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.users.totalBalance') }}</span>
+              <span class="text-sm font-bold tabular-nums text-gray-900 dark:text-white">
+                {{ totalUserBalance == null ? '—' : formatCurrency(totalUserBalance) }}
+              </span>
+            </div>
             <!-- Mobile: Secondary buttons (icon only) -->
             <div class="flex items-center gap-2 md:contents">
               <!-- Refresh Button -->
@@ -777,7 +788,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
-import { formatDateTime } from '@/utils/format'
+import { formatCurrency, formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
@@ -1021,6 +1032,7 @@ const columns = computed<Column[]>(() =>
 
 const users = ref<AdminUser[]>([])
 const loading = ref(false)
+const totalUserBalance = ref<number | null>(null)
 const searchQuery = ref('')
 const USER_SORT_STORAGE_KEY = 'admin-users-table-sort'
 const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' } => {
@@ -1595,6 +1607,9 @@ const loadUsers = async () => {
       return
     }
     users.value = response.items
+    totalUserBalance.value = typeof response.total_balance === 'number' && Number.isFinite(response.total_balance)
+      ? response.total_balance
+      : null
     pagination.total = response.total
     pagination.pages = response.pages
     usageStats.value = {}

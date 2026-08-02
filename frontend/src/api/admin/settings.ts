@@ -446,6 +446,7 @@ export interface SystemSettings {
   official_group_qrcode: string;
   official_group_link: string;
   official_group_link_label?: string;
+  customer_service_enabled: boolean;
   customer_service_text_enabled: boolean;
   customer_service_text?: string;
   doc_url: string;
@@ -776,6 +777,7 @@ export interface UpdateSettingsRequest {
   official_group_qrcode?: string;
   official_group_link?: string;
   official_group_link_label?: string;
+  customer_service_enabled?: boolean;
   customer_service_text_enabled?: boolean;
   customer_service_text?: string;
   doc_url?: string;

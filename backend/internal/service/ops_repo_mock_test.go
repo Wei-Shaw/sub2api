@@ -82,6 +82,10 @@ func (m *opsRepoMock) GetRealtimeTrafficSummary(ctx context.Context, filter *Ops
 	return &OpsRealtimeTrafficSummary{}, nil
 }
 
+func (m *opsRepoMock) GetTTFTPercentiles(ctx context.Context, filter *OpsDashboardFilter) (*OpsTTFTSummary, error) {
+	return &OpsTTFTSummary{}, nil
+}
+
 func (m *opsRepoMock) GetDashboardOverview(ctx context.Context, filter *OpsDashboardFilter) (*OpsDashboardOverview, error) {
 	return &OpsDashboardOverview{}, nil
 }

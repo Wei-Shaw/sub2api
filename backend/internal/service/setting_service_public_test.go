@@ -89,6 +89,7 @@ func TestSettingService_GetPublicSettings_ExposesCustomerServiceSettings(t *test
 			SettingKeyOfficialGroupQRCode:        " /group.png ",
 			SettingKeyOfficialGroupLink:          " https://t.me/group ",
 			SettingKeyOfficialGroupLinkLabel:     " Join now ",
+			SettingKeyCustomerServiceEnabled:     "false",
 			SettingKeyCustomerServiceTextEnabled: "true",
 			SettingKeyCustomerServiceText:        " Support hours ",
 		},
@@ -105,6 +106,7 @@ func TestSettingService_GetPublicSettings_ExposesCustomerServiceSettings(t *test
 	require.Equal(t, "/group.png", settings.OfficialGroupQRCode)
 	require.Equal(t, "https://t.me/group", settings.OfficialGroupLink)
 	require.Equal(t, "Join now", settings.OfficialGroupLinkLabel)
+	require.False(t, settings.CustomerServiceEnabled)
 	require.True(t, settings.CustomerServiceTextEnabled)
 	require.Equal(t, "Support hours", settings.CustomerServiceText)
 }

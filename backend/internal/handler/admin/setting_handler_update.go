@@ -148,6 +148,7 @@ type UpdateSettingsRequest struct {
 	OfficialGroupQRCode         string                `json:"official_group_qrcode"`
 	OfficialGroupLink           string                `json:"official_group_link"`
 	OfficialGroupLinkLabel      string                `json:"official_group_link_label"`
+	CustomerServiceEnabled      bool                  `json:"customer_service_enabled"`
 	CustomerServiceTextEnabled  bool                  `json:"customer_service_text_enabled"`
 	CustomerServiceText         string                `json:"customer_service_text"`
 	DocURL                      string                `json:"doc_url"`
@@ -1452,6 +1453,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OfficialGroupQRCode:                    req.OfficialGroupQRCode,
 		OfficialGroupLink:                      req.OfficialGroupLink,
 		OfficialGroupLinkLabel:                 req.OfficialGroupLinkLabel,
+		CustomerServiceEnabled:                 req.CustomerServiceEnabled,
 		CustomerServiceTextEnabled:             req.CustomerServiceTextEnabled,
 		CustomerServiceText:                    req.CustomerServiceText,
 		DocURL:                                 req.DocURL,
@@ -2025,6 +2027,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OfficialGroupQRCode:                                    updatedSettings.OfficialGroupQRCode,
 		OfficialGroupLink:                                      updatedSettings.OfficialGroupLink,
 		OfficialGroupLinkLabel:                                 updatedSettings.OfficialGroupLinkLabel,
+		CustomerServiceEnabled:                                 updatedSettings.CustomerServiceEnabled,
 		CustomerServiceTextEnabled:                             updatedSettings.CustomerServiceTextEnabled,
 		CustomerServiceText:                                    updatedSettings.CustomerServiceText,
 		DocURL:                                                 updatedSettings.DocURL,

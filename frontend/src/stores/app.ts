@@ -361,6 +361,7 @@ export const useAppStore = defineStore('app', () => {
         official_group_qrcode: '',
         official_group_link: '',
         official_group_link_label: '',
+        customer_service_enabled: true,
         customer_service_text_enabled: false,
         customer_service_text: '',
         doc_url: docUrl.value,

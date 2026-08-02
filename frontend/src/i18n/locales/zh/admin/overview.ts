@@ -430,6 +430,8 @@ export default {
       title: '用户管理',
       description: '管理用户账户和权限',
       createUser: '创建用户',
+      totalBalance: '所有用户余额',
+      totalBalanceHint: '所有未删除用户的可用余额总额，不受当前搜索、筛选和分页影响。',
       bulkLimits: {
         action: '批量设置限制（{count}）',
         title: '批量设置用户限制',

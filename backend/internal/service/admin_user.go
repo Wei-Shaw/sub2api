@@ -19,6 +19,18 @@ import (
 )
 
 // User management implementations
+type userBalanceSummaryRepository interface {
+	SumBalances(ctx context.Context) (float64, error)
+}
+
+func (s *adminServiceImpl) GetTotalUserBalance(ctx context.Context) (float64, error) {
+	repo, ok := s.userRepo.(userBalanceSummaryRepository)
+	if !ok {
+		return 0, fmt.Errorf("user balance summary repository unavailable")
+	}
+	return repo.SumBalances(ctx)
+}
+
 func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, filters UserListFilters, sortBy, sortOrder string) ([]User, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
 	users, result, err := s.userRepo.ListWithFilters(ctx, params, filters)

@@ -294,6 +294,15 @@ func (s *UserRepoSuite) TestList() {
 	s.Require().Equal(int64(2), page.Total)
 }
 
+func (s *UserRepoSuite) TestSumBalancesIncludesAllVisibleUsers() {
+	s.mustCreateUser(&service.User{Email: "balance-active@test.com", Balance: 10.25, Status: service.StatusActive})
+	s.mustCreateUser(&service.User{Email: "balance-disabled@test.com", Balance: 20.75, Status: service.StatusDisabled})
+
+	total, err := s.repo.SumBalances(s.ctx)
+	s.Require().NoError(err)
+	s.InDelta(31.0, total, 0.000001)
+}
+
 func (s *UserRepoSuite) TestListWithFilters_Status() {
 	s.mustCreateUser(&service.User{Email: "active@test.com", Status: service.StatusActive})
 	s.mustCreateUser(&service.User{Email: "disabled@test.com", Status: service.StatusDisabled})

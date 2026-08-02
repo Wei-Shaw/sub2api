@@ -15,8 +15,22 @@ var _ OpsRepository = (*stubOpsRepo)(nil)
 type stubOpsRepo struct {
 	OpsRepository
 	overview            *OpsDashboardOverview
+	ttft                *OpsTTFTSummary
 	classificationStats *OpsErrorClassificationStats
 	err                 error
+	ttftErr             error
+	ttftCalls           int
+}
+
+func (s *stubOpsRepo) GetTTFTPercentiles(ctx context.Context, filter *OpsDashboardFilter) (*OpsTTFTSummary, error) {
+	s.ttftCalls++
+	if s.ttftErr != nil {
+		return nil, s.ttftErr
+	}
+	if s.ttft != nil {
+		return s.ttft, nil
+	}
+	return &OpsTTFTSummary{}, nil
 }
 
 func (s *stubOpsRepo) GetErrorClassificationStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsErrorClassificationStats, error) {
@@ -381,7 +395,7 @@ func TestOpsAlertMetricRequiresMinimumSamplesAndBadCount(t *testing.T) {
 		RequestCountSLA: 4, ErrorCountSLA: 1, ErrorRate: 0.25,
 	}}}
 
-	result := svc.evaluateRuleMetric(context.Background(), rule, nil, now.Add(-5*time.Minute), now, "", nil, now)
+	result := svc.evaluateRuleMetric(context.Background(), rule, nil, now.Add(-5*time.Minute), now, "", nil, now, nil)
 	require.Equal(t, OpsAlertEvaluationStatusOK, result.Status)
 	require.False(t, result.Breached)
 	require.EqualValues(t, 4, result.SampleCount)
@@ -390,7 +404,7 @@ func TestOpsAlertMetricRequiresMinimumSamplesAndBadCount(t *testing.T) {
 	svc.opsRepo = &stubOpsRepo{overview: &OpsDashboardOverview{
 		RequestCountSLA: 50, ErrorCountSLA: 12, ErrorRate: 0.24,
 	}}
-	result = svc.evaluateRuleMetric(context.Background(), rule, nil, now.Add(-5*time.Minute), now, "", nil, now)
+	result = svc.evaluateRuleMetric(context.Background(), rule, nil, now.Add(-5*time.Minute), now, "", nil, now, nil)
 	require.Equal(t, OpsAlertEvaluationStatusBreached, result.Status)
 	require.True(t, result.Breached)
 }
@@ -402,15 +416,82 @@ func TestOpsAlertMetricDistinguishesStaleAndUnsupported(t *testing.T) {
 
 	stale := svc.evaluateRuleMetric(context.Background(), &OpsAlertRule{
 		MetricType: "cpu_usage_percent", Operator: ">", Threshold: 85,
-	}, &OpsSystemMetricsSnapshot{CreatedAt: now.Add(-10 * time.Minute), CPUUsagePercent: &cpu}, now.Add(-5*time.Minute), now, "", nil, now)
+	}, &OpsSystemMetricsSnapshot{CreatedAt: now.Add(-10 * time.Minute), CPUUsagePercent: &cpu}, now.Add(-5*time.Minute), now, "", nil, now, nil)
 	require.Equal(t, OpsAlertEvaluationStatusStale, stale.Status)
 	require.False(t, stale.Breached)
 
 	unsupported := svc.evaluateRuleMetric(context.Background(), &OpsAlertRule{
 		MetricType: "p99_latency_ms", Operator: ">", Threshold: 3000,
-	}, nil, now.Add(-5*time.Minute), now, "", nil, now)
+	}, nil, now.Add(-5*time.Minute), now, "", nil, now, nil)
 	require.Equal(t, OpsAlertEvaluationStatusUnsupported, unsupported.Status)
 	require.Equal(t, "unsupported_metric", unsupported.ErrorCode)
+}
+
+func TestOpsAlertMetricEvaluatesTTFTPercentilesAndMaxInSeconds(t *testing.T) {
+	now := time.Now().UTC()
+	p95, p99, max := 2400, 5100, 12750
+	svc := &OpsAlertEvaluatorService{opsRepo: &stubOpsRepo{ttft: &OpsTTFTSummary{
+		SampleCount: 37,
+		TTFT:        OpsPercentiles{P95: &p95, P99: &p99, Max: &max},
+	}}}
+
+	for _, tt := range []struct {
+		metric    string
+		threshold float64
+		wantValue float64
+		breached  bool
+	}{
+		{metric: "ttft_p95_seconds", threshold: 3, wantValue: 2.4, breached: false},
+		{metric: "ttft_p99_seconds", threshold: 5, wantValue: 5.1, breached: true},
+		{metric: "ttft_max_seconds", threshold: 10, wantValue: 12.75, breached: true},
+	} {
+		t.Run(tt.metric, func(t *testing.T) {
+			result := svc.evaluateRuleMetric(context.Background(), &OpsAlertRule{
+				MetricType: tt.metric, Operator: ">", Threshold: tt.threshold, MinimumSamples: 20,
+			}, nil, now.Add(-5*time.Minute), now, "", nil, now, nil)
+			require.Equal(t, tt.breached, result.Breached)
+			require.NotNil(t, result.Value)
+			require.InDelta(t, tt.wantValue, *result.Value, 0.0001)
+			require.Equal(t, int64(37), result.SampleCount)
+		})
+	}
+}
+
+func TestOpsAlertMetricTTFTRequiresRealTTFTSamples(t *testing.T) {
+	now := time.Now().UTC()
+	p99 := 5000
+	svc := &OpsAlertEvaluatorService{opsRepo: &stubOpsRepo{ttft: &OpsTTFTSummary{
+		SampleCount: 0, TTFT: OpsPercentiles{P99: &p99},
+	}}}
+	result := svc.evaluateRuleMetric(context.Background(), &OpsAlertRule{
+		MetricType: "ttft_p99_seconds", Operator: ">", Threshold: 3,
+	}, nil, now.Add(-5*time.Minute), now, "", nil, now, nil)
+	require.Equal(t, OpsAlertEvaluationStatusNoData, result.Status)
+	require.Equal(t, "empty_ttft_window", result.ErrorCode)
+}
+
+func TestOpsAlertMetricTTFTUsesDedicatedQueryAndCachesMatchingWindows(t *testing.T) {
+	now := time.Now().UTC()
+	p99 := 4200
+	repo := &stubOpsRepo{
+		ttft: &OpsTTFTSummary{SampleCount: 12, TTFT: OpsPercentiles{P99: &p99}},
+		// A dashboard-wide query failure must not make the dedicated TTFT metric fail.
+		err: context.DeadlineExceeded,
+	}
+	svc := &OpsAlertEvaluatorService{opsRepo: repo}
+	cache := make(map[opsAlertTTFTCacheKey]opsAlertTTFTCacheEntry)
+	rule := &OpsAlertRule{MetricType: "ttft_p99_seconds", Operator: ">", Threshold: 3}
+
+	first := svc.evaluateRuleMetric(
+		context.Background(), rule, nil, now.Add(-5*time.Minute), now, "openai", nil, now, cache,
+	)
+	second := svc.evaluateRuleMetric(
+		context.Background(), rule, nil, now.Add(-5*time.Minute), now, "openai", nil, now, cache,
+	)
+
+	require.Equal(t, OpsAlertEvaluationStatusBreached, first.Status)
+	require.Equal(t, OpsAlertEvaluationStatusBreached, second.Status)
+	require.Equal(t, 1, repo.ttftCalls)
 }
 
 func TestResetAlertRuleStateAfterEvaluationGap(t *testing.T) {

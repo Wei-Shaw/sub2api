@@ -259,6 +259,27 @@ const metricDefinitions = computed(() => {
 		description: t('admin.ops.alertRules.metricDescriptions.recoveredProviderErrorCount'),
 		recommendedOperator: '>=', recommendedThreshold: 20
 	},
+	{
+		type: 'ttft_p95_seconds',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.ttftP95'),
+		description: t('admin.ops.alertRules.metricDescriptions.ttftP95'),
+		recommendedOperator: '>', recommendedThreshold: 3, unit: 's'
+	},
+	{
+		type: 'ttft_p99_seconds',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.ttftP99'),
+		description: t('admin.ops.alertRules.metricDescriptions.ttftP99'),
+		recommendedOperator: '>', recommendedThreshold: 5, unit: 's'
+	},
+	{
+		type: 'ttft_max_seconds',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.ttftMax'),
+		description: t('admin.ops.alertRules.metricDescriptions.ttftMax'),
+		recommendedOperator: '>', recommendedThreshold: 15, unit: 's'
+	},
     {
       type: 'cpu_usage_percent',
       group: 'system',

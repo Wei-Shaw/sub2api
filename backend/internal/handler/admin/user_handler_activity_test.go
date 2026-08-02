@@ -28,6 +28,7 @@ func TestUserHandlerListIncludesActivityFieldsAndSortParams(t *testing.T) {
 			Email:        "activity@example.com",
 			Username:     "activity-user",
 			Role:         service.RoleUser,
+			Balance:      12.34,
 			Status:       service.StatusActive,
 			LastActiveAt: &lastActiveAt,
 			LastUsedAt:   &lastUsedAt,
@@ -55,7 +56,8 @@ func TestUserHandlerListIncludesActivityFieldsAndSortParams(t *testing.T) {
 	var resp struct {
 		Code int `json:"code"`
 		Data struct {
-			Items []struct {
+			TotalBalance float64 `json:"total_balance"`
+			Items        []struct {
 				LastActiveAt *time.Time `json:"last_active_at"`
 				LastUsedAt   *time.Time `json:"last_used_at"`
 			} `json:"items"`
@@ -63,6 +65,7 @@ func TestUserHandlerListIncludesActivityFieldsAndSortParams(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
 	require.Equal(t, 0, resp.Code)
+	require.InDelta(t, 12.34, resp.Data.TotalBalance, 0.000001)
 	require.Len(t, resp.Data.Items, 1)
 	require.WithinDuration(t, lastActiveAt, *resp.Data.Items[0].LastActiveAt, time.Second)
 	require.WithinDuration(t, lastUsedAt, *resp.Data.Items[0].LastUsedAt, time.Second)

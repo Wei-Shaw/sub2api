@@ -28,8 +28,14 @@ func TestBuildVerifyCodeEmailBody_EscapesSiteName(t *testing.T) {
 	t.Run("normal_site_name_unchanged", func(t *testing.T) {
 		body := svc.buildVerifyCodeEmailBody("654321", "My Site")
 
-		assert.Contains(t, body, "<h1>My Site</h1>")
+		assert.Contains(t, body, `class="brand-name">My Site</div>`)
+		assert.Contains(t, body, `class="brand-mark" role="img" aria-label="TokenSupply"`)
+		assert.Contains(t, body, `brand-mark-bar-wide`)
+		assert.Contains(t, body, "Yet another API platform")
+		assert.NotContains(t, body, "AI API infrastructure")
 		assert.Contains(t, body, "654321")
+		assert.Contains(t, body, "#2563eb")
+		assert.NotContains(t, body, "linear-gradient")
 	})
 }
 
@@ -53,8 +59,11 @@ func TestBuildPasswordResetEmailBody_EscapesSiteName(t *testing.T) {
 		resetURL := "https://example.com/reset?token=xyz"
 		body := svc.buildPasswordResetEmailBody(resetURL, "Sub2API")
 
-		assert.Contains(t, body, "<h1>Sub2API</h1>")
+		assert.Contains(t, body, `class="brand-name">Sub2API</div>`)
+		assert.Contains(t, body, `class="brand-mark" role="img" aria-label="TokenSupply"`)
+		assert.Contains(t, body, `brand-mark-bar-wide`)
 		assert.Contains(t, body, resetURL)
+		assert.NotContains(t, body, "linear-gradient")
 	})
 
 	t.Run("escapes_ampersand_in_reset_url", func(t *testing.T) {

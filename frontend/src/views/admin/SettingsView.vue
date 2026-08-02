@@ -6009,13 +6009,21 @@
 
           <!-- Customer Service -->
           <div class="card">
-            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t("admin.settings.customerService.title") }}
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.customerService.description") }}
-              </p>
+            <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-4 dark:border-dark-700 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.customerService.title") }}
+                </h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.customerService.description") }}
+                </p>
+              </div>
+              <div class="flex shrink-0 items-center gap-3">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.settings.customerService.enabled") }}
+                </span>
+                <Toggle v-model="form.customer_service_enabled" data-testid="customer-service-enabled-toggle" />
+              </div>
             </div>
             <div class="grid grid-cols-1 gap-6 p-6 lg:grid-cols-2">
               <section>
@@ -8017,7 +8025,7 @@
             </div>
           </div>
 
-          <EmailNotificationPolicyCard />
+          <EmailNotificationPolicyCard ref="emailNotificationPolicyCardRef" />
 
           <EmailTemplateEditor />
 
@@ -8278,6 +8286,9 @@ const { copyToClipboard } = useClipboard();
 const loading = ref(true);
 const loadFailed = ref(false);
 const saving = ref(false);
+const emailNotificationPolicyCardRef = ref<InstanceType<
+  typeof EmailNotificationPolicyCard
+> | null>(null);
 const testingSmtp = ref(false);
 const sendingTestEmail = ref(false);
 const smtpPasswordManuallyEdited = ref(false);
@@ -8897,6 +8908,7 @@ const form = reactive<SettingsForm>({
   official_group_qrcode: "",
   official_group_link: "",
   official_group_link_label: "",
+  customer_service_enabled: true,
   customer_service_text_enabled: false,
   customer_service_text: "",
   doc_url: "",
@@ -10229,7 +10241,9 @@ function findDuplicateDefaultSubscription(
 }
 
 async function saveSettings() {
+  if (saving.value) return;
   saving.value = true;
+  let emailPolicySaved = false;
   try {
     const normalizedTableDefaultPageSize = Math.floor(
       Number(form.table_default_page_size),
@@ -10426,6 +10440,7 @@ async function saveSettings() {
       official_group_qrcode: form.official_group_qrcode,
       official_group_link: form.official_group_link,
       official_group_link_label: form.official_group_link_label,
+      customer_service_enabled: form.customer_service_enabled,
       customer_service_text_enabled: form.customer_service_text_enabled,
       customer_service_text: form.customer_service_text,
       doc_url: form.doc_url,
@@ -10704,6 +10719,21 @@ async function saveSettings() {
     payload.default_platform_quotas = sanitizePlatformQuotasMap(form.default_platform_quotas);
     appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults);
 
+    if (activeTab.value === "email") {
+      const policyCard = emailNotificationPolicyCardRef.value;
+      if (!policyCard) {
+        appStore.showError(t("admin.settings.emailPolicy.notReady"));
+        return;
+      }
+      const policySaved = await policyCard.savePolicy({
+        announceSuccess: false,
+      });
+      if (!policySaved) {
+        return;
+      }
+      emailPolicySaved = true;
+    }
+
     const updated = await settingsStepUp.run(() =>
       adminAPI.settings.updateSettings(payload),
     );
@@ -10784,6 +10814,14 @@ async function saveSettings() {
       appStore.showSuccess(t("admin.settings.settingsSaved"));
     }
   } catch (error: unknown) {
+    if (emailPolicySaved) {
+      appStore.showError(
+        t("admin.settings.emailPolicy.partialSaveError", {
+          error: extractApiErrorMessage(error, t("admin.settings.failedToSave")),
+        }),
+      );
+      return;
+    }
     // 用户取消 step-up 验证：静默返回，不弹错误
     if (isStepUpCancelled(error)) {
       return;

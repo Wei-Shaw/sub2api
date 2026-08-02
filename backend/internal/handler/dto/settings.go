@@ -148,6 +148,7 @@ type SystemSettings struct {
 	OfficialGroupQRCode         string           `json:"official_group_qrcode"`
 	OfficialGroupLink           string           `json:"official_group_link"`
 	OfficialGroupLinkLabel      string           `json:"official_group_link_label"`
+	CustomerServiceEnabled      bool             `json:"customer_service_enabled"`
 	CustomerServiceTextEnabled  bool             `json:"customer_service_text_enabled"`
 	CustomerServiceText         string           `json:"customer_service_text"`
 	DocURL                      string           `json:"doc_url"`
@@ -368,6 +369,7 @@ type PublicSettings struct {
 	OfficialGroupQRCode              string                   `json:"official_group_qrcode"`
 	OfficialGroupLink                string                   `json:"official_group_link"`
 	OfficialGroupLinkLabel           string                   `json:"official_group_link_label"`
+	CustomerServiceEnabled           bool                     `json:"customer_service_enabled"`
 	CustomerServiceTextEnabled       bool                     `json:"customer_service_text_enabled"`
 	CustomerServiceText              string                   `json:"customer_service_text"`
 	DocURL                           string                   `json:"doc_url"`

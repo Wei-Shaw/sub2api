@@ -185,6 +185,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyOfficialGroupQRCode,
 		SettingKeyOfficialGroupLink,
 		SettingKeyOfficialGroupLinkLabel,
+		SettingKeyCustomerServiceEnabled,
 		SettingKeyCustomerServiceTextEnabled,
 		SettingKeyCustomerServiceText,
 		SettingKeyDocURL,
@@ -325,6 +326,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		OfficialGroupQRCode:              strings.TrimSpace(settings[SettingKeyOfficialGroupQRCode]),
 		OfficialGroupLink:                strings.TrimSpace(settings[SettingKeyOfficialGroupLink]),
 		OfficialGroupLinkLabel:           strings.TrimSpace(settings[SettingKeyOfficialGroupLinkLabel]),
+		CustomerServiceEnabled:           settings[SettingKeyCustomerServiceEnabled] != "false",
 		CustomerServiceTextEnabled:       settings[SettingKeyCustomerServiceTextEnabled] == "true",
 		CustomerServiceText:              strings.TrimSpace(settings[SettingKeyCustomerServiceText]),
 		DocURL:                           settings[SettingKeyDocURL],
@@ -539,6 +541,7 @@ type PublicSettingsInjectionPayload struct {
 	OfficialGroupQRCode              string                   `json:"official_group_qrcode"`
 	OfficialGroupLink                string                   `json:"official_group_link"`
 	OfficialGroupLinkLabel           string                   `json:"official_group_link_label"`
+	CustomerServiceEnabled           bool                     `json:"customer_service_enabled"`
 	CustomerServiceTextEnabled       bool                     `json:"customer_service_text_enabled"`
 	CustomerServiceText              string                   `json:"customer_service_text"`
 	DocURL                           string                   `json:"doc_url"`
@@ -623,6 +626,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		OfficialGroupQRCode:              settings.OfficialGroupQRCode,
 		OfficialGroupLink:                settings.OfficialGroupLink,
 		OfficialGroupLinkLabel:           settings.OfficialGroupLinkLabel,
+		CustomerServiceEnabled:           settings.CustomerServiceEnabled,
 		CustomerServiceTextEnabled:       settings.CustomerServiceTextEnabled,
 		CustomerServiceText:              settings.CustomerServiceText,
 		DocURL:                           settings.DocURL,

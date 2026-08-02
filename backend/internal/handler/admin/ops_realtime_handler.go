@@ -195,7 +195,7 @@ func parseOpsRealtimeWindow(v string) (time.Duration, string, bool) {
 	}
 }
 
-// GetRealtimeTrafficSummary returns QPS/TPS current/peak/avg for the selected window.
+// GetRealtimeTrafficSummary returns rate summaries and real traffic/cost buckets for the selected window.
 // GET /api/v1/admin/ops/realtime-traffic
 //
 // Query params:

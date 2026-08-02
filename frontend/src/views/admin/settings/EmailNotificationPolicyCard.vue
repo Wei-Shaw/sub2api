@@ -25,14 +25,6 @@
             :class="loading ? 'animate-spin' : ''"
           />
         </button>
-        <button
-          type="button"
-          class="btn btn-primary btn-sm"
-          :disabled="loading || saving || !policy"
-          @click="savePolicy"
-        >
-          {{ saving ? t("common.saving") : t("common.save") }}
-        </button>
       </div>
     </div>
 
@@ -657,8 +649,13 @@ async function loadPolicy(): Promise<void> {
   }
 }
 
-async function savePolicy(): Promise<void> {
-  if (!policy.value) return;
+async function savePolicy(
+  options: { announceSuccess?: boolean } = {},
+): Promise<boolean> {
+  if (!policy.value) {
+    appStore.showError(t("admin.settings.emailPolicy.notReady"));
+    return false;
+  }
   const balanceChannel = policy.value.channels.find(
     (channel) => channel.id === "balance",
   );
@@ -670,7 +667,7 @@ async function savePolicy(): Promise<void> {
     appStore.showError(
       t("admin.settings.emailPolicy.balanceRecipientRequired"),
     );
-    return;
+    return false;
   }
   if (
     policy.value.feature_settings.balance_low_enabled &&
@@ -680,7 +677,7 @@ async function savePolicy(): Promise<void> {
     appStore.showError(
       t("admin.settings.emailPolicy.balanceLow.thresholdRequired"),
     );
-    return;
+    return false;
   }
   const rechargeURL = policy.value.feature_settings.balance_low_recharge_url;
   if (rechargeURL) {
@@ -693,7 +690,7 @@ async function savePolicy(): Promise<void> {
       appStore.showError(
         t("admin.settings.emailPolicy.balanceLow.invalidRechargeURL"),
       );
-      return;
+      return false;
     }
   }
 
@@ -716,9 +713,13 @@ async function savePolicy(): Promise<void> {
         feature_settings: policy.value.feature_settings,
       }),
     );
-    appStore.showSuccess(t("admin.settings.emailPolicy.saveSuccess"));
+    if (options.announceSuccess !== false) {
+      appStore.showSuccess(t("admin.settings.emailPolicy.saveSuccess"));
+    }
+    return true;
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t("common.error")));
+    return false;
   } finally {
     saving.value = false;
   }
@@ -781,4 +782,6 @@ onMounted(() => {
   void loadPolicy();
   void loadDeliveries();
 });
+
+defineExpose({ savePolicy });
 </script>

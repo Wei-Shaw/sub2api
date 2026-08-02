@@ -15,6 +15,7 @@ export interface OpsRequestDetailsPreset {
   sort?: OpsRequestDetailsParams['sort']
   min_duration_ms?: number
   max_duration_ms?: number
+  has_ttft?: boolean
 }
 
 interface Props {
@@ -43,6 +44,7 @@ const items = ref<OpsRequestDetail[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
+const currentSort = ref<NonNullable<OpsRequestDetailsParams['sort']>>('created_at_desc')
 
 const close = () => emit('update:modelValue', false)
 
@@ -71,7 +73,7 @@ const fetchData = async () => {
       page: page.value,
       page_size: pageSize.value,
       kind: props.preset.kind ?? 'all',
-      sort: props.preset.sort ?? 'created_at_desc'
+      sort: currentSort.value
     }
 
     const platform = (props.platform || '').trim()
@@ -80,6 +82,7 @@ const fetchData = async () => {
 
     if (typeof props.preset.min_duration_ms === 'number') params.min_duration_ms = props.preset.min_duration_ms
     if (typeof props.preset.max_duration_ms === 'number') params.max_duration_ms = props.preset.max_duration_ms
+    if (typeof props.preset.has_ttft === 'boolean') params.has_ttft = props.preset.has_ttft
 
     const res = await opsAPI.listRequestDetails(params)
     items.value = res.items || []
@@ -100,6 +103,7 @@ watch(
     if (open) {
       page.value = 1
       pageSize.value = 10
+      currentSort.value = props.preset.sort ?? 'created_at_desc'
       fetchData()
     }
   }
@@ -111,9 +115,9 @@ watch(
     props.platform,
     props.groupId,
     props.preset.kind,
-    props.preset.sort,
     props.preset.min_duration_ms,
-    props.preset.max_duration_ms
+    props.preset.max_duration_ms,
+    props.preset.has_ttft
   ],
   () => {
     if (!props.modelValue) return
@@ -131,6 +135,16 @@ function handlePageSizeChange(next: number) {
   pageSize.value = next
   page.value = 1
   fetchData()
+}
+
+function handleSortChange() {
+  page.value = 1
+  fetchData()
+}
+
+function formatSeconds(milliseconds: number | null | undefined): string {
+  if (typeof milliseconds !== 'number' || !Number.isFinite(milliseconds)) return '-'
+  return `${(milliseconds / 1000).toFixed(2)} s`
 }
 
 async function handleCopyRequestId(requestId: string) {
@@ -156,17 +170,34 @@ const kindBadgeClass = (kind: string) => {
   <BaseDialog :show="modelValue" :title="props.preset.title || t('admin.ops.requestDetails.title')" width="full" @close="close">
     <template #default>
       <div class="flex h-full min-h-0 flex-col">
-        <div class="mb-4 flex flex-shrink-0 items-center justify-between">
+        <div class="mb-4 flex flex-shrink-0 flex-wrap items-center justify-between gap-3">
           <div class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.ops.requestDetails.rangeLabel', { range: rangeLabel }) }}
           </div>
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            @click="fetchData"
-          >
-            {{ t('common.refresh') }}
-          </button>
+          <div class="flex items-center gap-2">
+            <label for="ops-request-sort" class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              {{ t('admin.ops.requestDetails.sort.label') }}
+            </label>
+            <select
+              id="ops-request-sort"
+              v-model="currentSort"
+              class="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200"
+              data-testid="ops-request-sort"
+              @change="handleSortChange"
+            >
+              <option value="created_at_desc">{{ t('admin.ops.requestDetails.sort.newest') }}</option>
+              <option value="ttft_desc">{{ t('admin.ops.requestDetails.sort.ttftDesc') }}</option>
+              <option value="ttft_asc">{{ t('admin.ops.requestDetails.sort.ttftAsc') }}</option>
+              <option value="duration_desc">{{ t('admin.ops.requestDetails.sort.durationDesc') }}</option>
+            </select>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              @click="fetchData"
+            >
+              {{ t('common.refresh') }}
+            </button>
+          </div>
         </div>
 
         <!-- Loading -->
@@ -203,8 +234,13 @@ const kindBadgeClass = (kind: string) => {
                     <span class="ml-auto text-[11px] text-gray-500 dark:text-gray-400">{{ formatDateTime(row.created_at) }}</span>
                   </div>
                   <div class="break-all text-xs text-gray-600 dark:text-gray-300">{{ row.model || '-' }}</div>
+                  <div class="grid grid-cols-[max-content_max-content] gap-x-2 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
+                    <span class="text-gray-400">TTFT</span>
+                    <span class="font-medium tabular-nums">{{ formatSeconds(row.first_token_ms) }}</span>
+                    <span class="text-gray-400">{{ t('admin.ops.requestDetails.table.duration') }}</span>
+                    <span class="font-medium tabular-nums">{{ formatSeconds(row.duration_ms) }}</span>
+                  </div>
                   <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
-                    <span>{{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '-' }}</span>
                     <span>{{ row.status_code ?? '-' }}</span>
                   </div>
                   <div v-if="row.request_id" class="flex items-center gap-2">
@@ -243,6 +279,9 @@ const kindBadgeClass = (kind: string) => {
                     {{ t('admin.ops.requestDetails.table.model') }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    TTFT
+                  </th>
+                  <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     {{ t('admin.ops.requestDetails.table.duration') }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
@@ -273,7 +312,10 @@ const kindBadgeClass = (kind: string) => {
                     {{ row.model || '-' }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
-                    {{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '-' }}
+                    <span class="font-medium tabular-nums">{{ formatSeconds(row.first_token_ms) }}</span>
+                  </td>
+                  <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                    <span class="font-medium tabular-nums">{{ formatSeconds(row.duration_ms) }}</span>
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                     {{ row.status_code ?? '-' }}

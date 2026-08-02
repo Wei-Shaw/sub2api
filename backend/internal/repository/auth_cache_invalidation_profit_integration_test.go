@@ -2,7 +2,7 @@
 
 package repository
 
-// migration 193 回归：groups 触发器的 durable 失效监视清单必须覆盖利润控制
+// migration 202 回归：groups 触发器的 durable 失效监视清单必须覆盖利润控制
 // 配置及 D 依赖的分组计价字段（正常后台保存走 InvalidateAuthCacheByGroupID 即时失效，触发器兜底
 // 直改 SQL / 更新与失效之间崩溃等 out-of-band 场景）。
 

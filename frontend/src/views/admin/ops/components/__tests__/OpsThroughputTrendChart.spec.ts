@@ -42,6 +42,8 @@ describe('OpsThroughputTrendChart', () => {
     const toolbar = wrapper.get('[data-testid="throughput-chart-toolbar"]')
     expect(toolbar.classes()).toEqual(expect.arrayContaining(['w-full', 'flex-wrap', 'sm:w-auto']))
     expect(toolbar.findAll('button')).toHaveLength(3)
+    expect(toolbar.text()).toContain('RPM')
+    expect(toolbar.text()).toContain('admin.ops.tpsK')
     toolbar.findAll('button').forEach((button) => {
       expect(button.classes()).toContain('shrink-0')
       expect(button.classes()).not.toContain('ml-2')

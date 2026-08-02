@@ -26,7 +26,7 @@ type opsHealthComponentCalculation struct {
 }
 
 type opsHealthScoreResult struct {
-	Score     int
+	Score     float64
 	Breakdown *OpsHealthScoreBreakdown
 }
 
@@ -97,7 +97,7 @@ func computeDashboardHealthScoreResult(now time.Time, overview *OpsDashboardOver
 			Reasons:         reasons,
 		})
 	}
-	score := int(math.Round(clampFloat64(rawScore, 0, 100)))
+	score := roundHealthScoreValue(rawScore)
 
 	// Idle/no-data removes business-health evidence, but it must never hide
 	// infrastructure degradation such as a failed database or stale jobs.
@@ -107,6 +107,7 @@ func computeDashboardHealthScoreResult(now time.Time, overview *OpsDashboardOver
 			Mode:             mode,
 			BusinessIncluded: businessIncluded,
 			Score:            score,
+			DeductionPoints:  roundHealthScoreValue(100 - rawScore),
 			Components:       components,
 		},
 	}
@@ -296,8 +297,15 @@ func computeInfraHealthComponents(now time.Time, overview *OpsDashboardOverview)
 	}
 	failedJobs := 0
 	totalJobs := 0
+	disabledJobs := make(map[string]struct{}, len(overview.DisabledJobNames))
+	for _, jobName := range overview.DisabledJobNames {
+		disabledJobs[jobName] = struct{}{}
+	}
 	for _, hb := range overview.JobHeartbeats {
 		if hb == nil {
+			continue
+		}
+		if _, disabled := disabledJobs[hb.JobName]; disabled {
 			continue
 		}
 		totalJobs++

@@ -22,6 +22,7 @@ type OpsRepository interface {
 	GetWindowStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsWindowStats, error)
 	// Lightweight realtime traffic summary (for the Ops dashboard header card).
 	GetRealtimeTrafficSummary(ctx context.Context, filter *OpsDashboardFilter) (*OpsRealtimeTrafficSummary, error)
+	GetTTFTPercentiles(ctx context.Context, filter *OpsDashboardFilter) (*OpsTTFTSummary, error)
 
 	GetDashboardOverview(ctx context.Context, filter *OpsDashboardFilter) (*OpsDashboardOverview, error)
 	GetErrorClassificationStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsErrorClassificationStats, error)

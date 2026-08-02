@@ -430,6 +430,8 @@ export default {
       title: 'User Management',
       description: 'Manage users and their permissions',
       createUser: 'Create User',
+      totalBalance: 'All User Balances',
+      totalBalanceHint: 'Total available balance across all non-deleted users, unaffected by the current search, filters, or page.',
       bulkLimits: {
         action: 'Set limits ({count})',
         title: 'Set user limits',

@@ -1256,7 +1256,7 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 			HTML: notificationEmailCard("#4f46e5", "Email verification code", `
 <p>Hello {{recipient_name}},</p>
 <p>Your verification code is:</p>
-<p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center;">{{verification_code}}</p>
+<p class="verification-code">{{verification_code}}</p>
 <p>This code expires in <strong>{{expires_in_minutes}}</strong> minutes.</p>
 <p>If you did not request this code, please ignore this email.</p>`),
 		},
@@ -1265,7 +1265,7 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 			HTML: notificationEmailCard("#4f46e5", "邮箱验证码", `
 <p>{{recipient_name}}，您好：</p>
 <p>您的验证码是：</p>
-<p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center;">{{verification_code}}</p>
+<p class="verification-code">{{verification_code}}</p>
 <p>验证码将在 <strong>{{expires_in_minutes}}</strong> 分钟后失效。</p>
 <p>如果不是您本人操作，请忽略此邮件。</p>`),
 		},
@@ -1299,7 +1299,7 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p>Hello {{recipient_name}},</p>
 <p>You are adding this address as an extra notification email.</p>
 <p>Your verification code is:</p>
-<p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center;">{{verification_code}}</p>
+<p class="verification-code">{{verification_code}}</p>
 <p>This code expires in <strong>{{expires_in_minutes}}</strong> minutes.</p>
 <p>If you did not request this code, please ignore this email.</p>`),
 		},
@@ -1308,7 +1308,7 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 			HTML: notificationEmailCard("#0ea5e9", "通知邮箱验证", `
 <p>{{recipient_name}}，您好：</p>
 <p>您正在添加额外的通知邮箱，请输入以下验证码完成验证。</p>
-<p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center;">{{verification_code}}</p>
+<p class="verification-code">{{verification_code}}</p>
 <p>验证码将在 <strong>{{expires_in_minutes}}</strong> 分钟后失效。</p>
 <p>如果不是您本人操作，请忽略此邮件。</p>`),
 		},
@@ -1657,12 +1657,18 @@ func notificationEmailOpsScheduledReportTemplate(locale string) string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { margin: 0; padding: 24px 12px; background: #f4f6f8; color: #1f2937; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
-    .container { width: 100%; max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #dfe7ea; border-radius: 8px; overflow: hidden; }
-    .header { padding: 28px 32px 24px; background: #0f766e; color: #ffffff; }
-    .eyebrow { margin: 0 0 8px; color: #ccfbf1; font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: uppercase; }
+    body { margin: 0; padding: 28px 12px; background: #f4f4f5; color: #3f3f46; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+    .container { width: 100%; max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #e4e4e7; border-radius: 16px; overflow: hidden; }
+    .header { padding: 22px 32px 28px; background: #09090b; color: #ffffff; border-top: 3px solid #2563eb; }
+    .brand-name { margin: 0 0 24px; color: #ffffff; font-size: 16px; font-weight: 700; }
+    .brand-mark { display: inline-block; width: 30px; height: 30px; margin-right: 10px; padding-top: 5px; border-radius: 7px; background: #ffffff; box-sizing: border-box; vertical-align: middle; }
+    .brand-mark-bar { display: block; height: 5px; margin: 0 auto 2px; border-radius: 3px; background: #111317; font-size: 0; line-height: 0; }
+    .brand-mark-bar-wide { width: 21px; }
+    .brand-mark-bar-medium { width: 13px; height: 4px; }
+    .brand-mark-bar-short { width: 7px; margin-bottom: 0; }
+    .eyebrow { margin: 0 0 8px; color: #60a5fa; font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; }
     h1 { margin: 0; font-size: 26px; line-height: 1.3; }
-    .header p { margin: 8px 0 0; color: #e6fffb; font-size: 14px; }
+    .header p { margin: 8px 0 0; color: #a1a1aa; font-size: 13px; }
     .content { padding: 28px 32px 32px; }
     .meta { width: 100%; margin: 0 0 20px; border-collapse: collapse; background: #f8fafc; border: 1px solid #e2e8f0; }
     .meta td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
@@ -1673,15 +1679,15 @@ func notificationEmailOpsScheduledReportTemplate(locale string) string {
     .metric-cell { width: 50%; padding: 14px 16px; border: 1px solid #e2e8f0; background: #ffffff; vertical-align: top; }
     .metric-label { display: block; color: #64748b; font-size: 12px; line-height: 1.4; }
     .metric-value { display: block; margin-top: 6px; color: #0f172a; font-size: 20px; font-weight: 700; line-height: 1.2; }
-    .metric-value.good { color: #15803d; }
-    .metric-value.alert { color: #b91c1c; }
+    .metric-value.good { color: #2563eb; }
+    .metric-value.alert { color: #dc2626; }
     .detail { width: 100%; border-collapse: collapse; }
     .detail td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
     .detail td:first-child { width: 56%; color: #475569; }
     .detail td:last-child { color: #0f172a; font-weight: 600; text-align: right; }
     .report-detail { margin-top: 28px; }
     .report-detail:empty { display: none; }
-    .footer { padding: 18px 32px; background: #f8fafc; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px; line-height: 1.6; }
+    .footer { padding: 18px 32px; background: #fafafa; border-top: 1px solid #e4e4e7; color: #71717a; font-size: 12px; line-height: 1.6; }
     @media only screen and (max-width: 620px) {
       body { padding: 0; }
       .container { border: 0; border-radius: 0; }
@@ -1694,6 +1700,7 @@ func notificationEmailOpsScheduledReportTemplate(locale string) string {
 <body>
   <div class="container">
     <div class="header">
+      <p class="brand-name"><span class="brand-mark" role="img" aria-label="TokenSupply"><span class="brand-mark-bar brand-mark-bar-wide">&nbsp;</span><span class="brand-mark-bar brand-mark-bar-medium">&nbsp;</span><span class="brand-mark-bar brand-mark-bar-short">&nbsp;</span></span>{{site_name}}</p>
       <p class="eyebrow">运维报表</p>
       <h1>{{report_name}}</h1>
       <p>{{site_name}} 的运行概览</p>
@@ -1752,12 +1759,18 @@ func notificationEmailOpsScheduledReportTemplate(locale string) string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { margin: 0; padding: 24px 12px; background: #f4f6f8; color: #1f2937; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    .container { width: 100%; max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #dfe7ea; border-radius: 8px; overflow: hidden; }
-    .header { padding: 28px 32px 24px; background: #0f766e; color: #ffffff; }
-    .eyebrow { margin: 0 0 8px; color: #ccfbf1; font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: uppercase; }
+    body { margin: 0; padding: 28px 12px; background: #f4f4f5; color: #3f3f46; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .container { width: 100%; max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #e4e4e7; border-radius: 16px; overflow: hidden; }
+    .header { padding: 22px 32px 28px; background: #09090b; color: #ffffff; border-top: 3px solid #2563eb; }
+    .brand-name { margin: 0 0 24px; color: #ffffff; font-size: 16px; font-weight: 700; }
+    .brand-mark { display: inline-block; width: 30px; height: 30px; margin-right: 10px; padding-top: 5px; border-radius: 7px; background: #ffffff; box-sizing: border-box; vertical-align: middle; }
+    .brand-mark-bar { display: block; height: 5px; margin: 0 auto 2px; border-radius: 3px; background: #111317; font-size: 0; line-height: 0; }
+    .brand-mark-bar-wide { width: 21px; }
+    .brand-mark-bar-medium { width: 13px; height: 4px; }
+    .brand-mark-bar-short { width: 7px; margin-bottom: 0; }
+    .eyebrow { margin: 0 0 8px; color: #60a5fa; font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; }
     h1 { margin: 0; font-size: 26px; line-height: 1.3; }
-    .header p { margin: 8px 0 0; color: #e6fffb; font-size: 14px; }
+    .header p { margin: 8px 0 0; color: #a1a1aa; font-size: 13px; }
     .content { padding: 28px 32px 32px; }
     .meta { width: 100%; margin: 0 0 20px; border-collapse: collapse; background: #f8fafc; border: 1px solid #e2e8f0; }
     .meta td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
@@ -1768,15 +1781,15 @@ func notificationEmailOpsScheduledReportTemplate(locale string) string {
     .metric-cell { width: 50%; padding: 14px 16px; border: 1px solid #e2e8f0; background: #ffffff; vertical-align: top; }
     .metric-label { display: block; color: #64748b; font-size: 12px; line-height: 1.4; }
     .metric-value { display: block; margin-top: 6px; color: #0f172a; font-size: 20px; font-weight: 700; line-height: 1.2; }
-    .metric-value.good { color: #15803d; }
-    .metric-value.alert { color: #b91c1c; }
+    .metric-value.good { color: #2563eb; }
+    .metric-value.alert { color: #dc2626; }
     .detail { width: 100%; border-collapse: collapse; }
     .detail td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
     .detail td:first-child { width: 56%; color: #475569; }
     .detail td:last-child { color: #0f172a; font-weight: 600; text-align: right; }
     .report-detail { margin-top: 28px; }
     .report-detail:empty { display: none; }
-    .footer { padding: 18px 32px; background: #f8fafc; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px; line-height: 1.6; }
+    .footer { padding: 18px 32px; background: #fafafa; border-top: 1px solid #e4e4e7; color: #71717a; font-size: 12px; line-height: 1.6; }
     @media only screen and (max-width: 620px) {
       body { padding: 0; }
       .container { border: 0; border-radius: 0; }
@@ -1789,6 +1802,7 @@ func notificationEmailOpsScheduledReportTemplate(locale string) string {
 <body>
   <div class="container">
     <div class="header">
+      <p class="brand-name"><span class="brand-mark" role="img" aria-label="TokenSupply"><span class="brand-mark-bar brand-mark-bar-wide">&nbsp;</span><span class="brand-mark-bar brand-mark-bar-medium">&nbsp;</span><span class="brand-mark-bar brand-mark-bar-short">&nbsp;</span></span>{{site_name}}</p>
       <p class="eyebrow">Operations report</p>
       <h1>{{report_name}}</h1>
       <p>{{site_name}} runtime overview</p>
@@ -1842,28 +1856,25 @@ func notificationEmailOpsScheduledReportTemplate(locale string) string {
 }
 
 func notificationEmailCard(accent, title, content string) string {
-	return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
-    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
-    .header { background: ` + accent + `; color: #ffffff; padding: 28px 32px; }
-    .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
-    .content { padding: 32px; font-size: 15px; line-height: 1.7; }
-    .button { display: inline-block; margin-top: 12px; padding: 11px 18px; border-radius: 8px; background: ` + accent + `; color: #ffffff; text-decoration: none; font-weight: 600; }
-    .muted { color: #71717a; font-size: 13px; }
-    .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header"><h1>` + title + `</h1></div>
-    <div class="content">` + content + `</div>
-    <div class="footer">This email was sent by {{site_name}}. Please do not reply directly.</div>
-  </div>
-</body>
-</html>`
+	lang := "en"
+	eyebrow := "Service notification"
+	footer := "Automated service message. Please do not reply directly."
+	for _, char := range title {
+		if char > 127 {
+			lang = "zh-CN"
+			eyebrow = "服务通知"
+			footer = "此邮件由系统自动发送，请勿直接回复。"
+			break
+		}
+	}
+	return buildBrandedEmailDocument(brandedEmailDocumentOptions{
+		Lang:      lang,
+		Brand:     "{{site_name}}",
+		Accent:    accent,
+		Eyebrow:   eyebrow,
+		Title:     title,
+		Content:   content,
+		Footer:    footer,
+		Preheader: title,
+	})
 }

@@ -25,6 +25,15 @@ type UserWithConcurrency struct {
 	CurrentConcurrency int `json:"current_concurrency"`
 }
 
+type userListResponse struct {
+	Items        []UserWithConcurrency `json:"items"`
+	Total        int64                 `json:"total"`
+	Page         int                   `json:"page"`
+	PageSize     int                   `json:"page_size"`
+	Pages        int                   `json:"pages"`
+	TotalBalance float64               `json:"total_balance"`
+}
+
 // UserHandler handles admin user management
 type UserHandler struct {
 	adminService          service.AdminService
@@ -154,6 +163,11 @@ func (h *UserHandler) List(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	totalBalance, err := h.adminService.GetTotalUserBalance(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	// Batch get current concurrency (nil map if unavailable)
 	var loadInfo map[int64]*service.UserLoadInfo
@@ -179,7 +193,18 @@ func (h *UserHandler) List(c *gin.Context) {
 		}
 	}
 
-	response.Paginated(c, out, total, page, pageSize)
+	pages := int(math.Ceil(float64(total) / float64(pageSize)))
+	if pages < 1 {
+		pages = 1
+	}
+	response.Success(c, userListResponse{
+		Items:        out,
+		Total:        total,
+		Page:         page,
+		PageSize:     pageSize,
+		Pages:        pages,
+		TotalBalance: totalBalance,
+	})
 }
 
 // parseAttributeFilters extracts attribute filters from query params

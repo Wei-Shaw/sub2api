@@ -7,8 +7,8 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-// GetRealtimeTrafficSummary returns QPS/TPS current/peak/avg for the provided window.
-// This is used by the Ops dashboard "Realtime Traffic" card and is intentionally lightweight.
+// GetRealtimeTrafficSummary returns current/peak/average rates plus real traffic
+// and user-charge buckets for the provided window.
 func (s *OpsService) GetRealtimeTrafficSummary(ctx context.Context, filter *OpsDashboardFilter) (*OpsRealtimeTrafficSummary, error) {
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return nil, err

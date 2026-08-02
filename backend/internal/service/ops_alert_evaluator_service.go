@@ -235,6 +235,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 	}
 
 	systemMetrics, _ := s.opsRepo.GetLatestSystemMetrics(ctx, 1)
+	ttftCache := make(map[opsAlertTTFTCacheKey]opsAlertTTFTCacheEntry)
 
 	for _, rule := range rules {
 		if rule == nil || !rule.Enabled || rule.ID <= 0 {
@@ -252,7 +253,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 		windowStart := safeEnd.Add(-time.Duration(windowMinutes) * time.Minute)
 		windowEnd := safeEnd
 
-		metric := s.evaluateRuleMetric(ctx, rule, systemMetrics, windowStart, windowEnd, scopePlatform, scopeGroupID, now)
+		metric := s.evaluateRuleMetric(ctx, rule, systemMetrics, windowStart, windowEnd, scopePlatform, scopeGroupID, now, ttftCache)
 		evaluation := &OpsAlertRuleEvaluation{
 			RuleID: rule.ID, EvaluatedAt: now, WindowStart: windowStart, WindowEnd: windowEnd,
 			Status: metric.Status, Breached: metric.Breached, MetricValue: metric.Value,
@@ -519,6 +520,19 @@ type opsAlertMetricEvaluation struct {
 	ErrorMessage string
 }
 
+type opsAlertTTFTCacheKey struct {
+	StartUnix int64
+	EndUnix   int64
+	Platform  string
+	GroupID   int64
+	HasGroup  bool
+}
+
+type opsAlertTTFTCacheEntry struct {
+	Summary *OpsTTFTSummary
+	Err     error
+}
+
 func (s *OpsAlertEvaluatorService) evaluateRuleMetric(
 	ctx context.Context,
 	rule *OpsAlertRule,
@@ -528,6 +542,7 @@ func (s *OpsAlertEvaluatorService) evaluateRuleMetric(
 	platform string,
 	groupID *int64,
 	now time.Time,
+	ttftCache map[opsAlertTTFTCacheKey]opsAlertTTFTCacheEntry,
 ) opsAlertMetricEvaluation {
 	if rule == nil {
 		return opsAlertMetricEvaluation{Status: OpsAlertEvaluationStatusError, ErrorCode: "invalid_rule", ErrorMessage: "rule is nil"}
@@ -578,6 +593,33 @@ func (s *OpsAlertEvaluatorService) evaluateRuleMetric(
 		result.Value = float64Ptr(value)
 		dataAsOf := end.UTC()
 		result.DataAsOf = &dataAsOf
+	case "ttft_p95_seconds", "ttft_p99_seconds", "ttft_max_seconds":
+		ttft, err := s.getTTFTPercentiles(ctx, &OpsDashboardFilter{
+			StartTime: start, EndTime: end, Platform: platform, GroupID: groupID, QueryMode: OpsQueryModeRaw,
+		}, ttftCache)
+		if err != nil {
+			return opsAlertMetricEvaluation{Status: OpsAlertEvaluationStatusError, ErrorCode: "ttft_metric_query_failed", ErrorMessage: err.Error()}
+		}
+		if ttft == nil || ttft.SampleCount <= 0 {
+			return opsAlertMetricEvaluation{Status: OpsAlertEvaluationStatusNoData, ErrorCode: "empty_ttft_window"}
+		}
+		var milliseconds *int
+		switch metricType {
+		case "ttft_p95_seconds":
+			milliseconds = ttft.TTFT.P95
+		case "ttft_p99_seconds":
+			milliseconds = ttft.TTFT.P99
+		case "ttft_max_seconds":
+			milliseconds = ttft.TTFT.Max
+		}
+		if milliseconds == nil {
+			return opsAlertMetricEvaluation{Status: OpsAlertEvaluationStatusNoData, ErrorCode: "ttft_metric_missing"}
+		}
+		value := float64(*milliseconds) / 1000
+		result.Value = float64Ptr(value)
+		result.SampleCount = ttft.SampleCount
+		dataAsOf := end.UTC()
+		result.DataAsOf = &dataAsOf
 	case "availability_failure_rate", "platform_failure_rate", "provider_failure_rate", "unknown_failure_rate",
 		"platform_capacity_failure_count", "compatibility_error_count", "client_rejected_count",
 		"business_limited_count", "cancelled_count", "security_blocked_count", "recovered_provider_error_count":
@@ -626,12 +668,38 @@ func (s *OpsAlertEvaluatorService) evaluateRuleMetric(
 	return result
 }
 
+func (s *OpsAlertEvaluatorService) getTTFTPercentiles(
+	ctx context.Context,
+	filter *OpsDashboardFilter,
+	cache map[opsAlertTTFTCacheKey]opsAlertTTFTCacheEntry,
+) (*OpsTTFTSummary, error) {
+	if cache == nil {
+		return s.opsRepo.GetTTFTPercentiles(ctx, filter)
+	}
+	key := opsAlertTTFTCacheKey{
+		StartUnix: filter.StartTime.UTC().UnixNano(),
+		EndUnix:   filter.EndTime.UTC().UnixNano(),
+		Platform:  strings.TrimSpace(filter.Platform),
+	}
+	if filter.GroupID != nil {
+		key.GroupID = *filter.GroupID
+		key.HasGroup = true
+	}
+	if entry, ok := cache[key]; ok {
+		return entry.Summary, entry.Err
+	}
+	summary, err := s.opsRepo.GetTTFTPercentiles(ctx, filter)
+	cache[key] = opsAlertTTFTCacheEntry{Summary: summary, Err: err}
+	return summary, err
+}
+
 func isSupportedOpsAlertMetric(metricType string) bool {
 	switch metricType {
 	case "success_rate", "error_rate", "upstream_error_rate",
 		"availability_failure_rate", "platform_failure_rate", "provider_failure_rate", "unknown_failure_rate",
 		"platform_capacity_failure_count", "compatibility_error_count", "client_rejected_count",
 		"business_limited_count", "cancelled_count", "security_blocked_count", "recovered_provider_error_count",
+		"ttft_p95_seconds", "ttft_p99_seconds", "ttft_max_seconds",
 		"cpu_usage_percent", "memory_usage_percent", "concurrency_queue_depth",
 		"group_available_accounts", "group_available_ratio", "account_rate_limited_count",
 		"account_error_count", "account_temp_unscheduled_count", "group_rate_limit_ratio",

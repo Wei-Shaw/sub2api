@@ -6,6 +6,10 @@
 import { apiClient } from '../client'
 import type { AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types'
 
+export interface AdminUsersListResponse extends PaginatedResponse<AdminUser> {
+  total_balance?: number
+}
+
 export interface AdminBindAuthIdentityChannelRequest {
   channel: string
   channel_app_id: string
@@ -80,7 +84,7 @@ export async function list(
   options?: {
     signal?: AbortSignal
   }
-): Promise<PaginatedResponse<AdminUser>> {
+): Promise<AdminUsersListResponse> {
   // Build params with attribute filters in attr[id]=value format
   const params: Record<string, any> = {
     page,
@@ -103,7 +107,7 @@ export async function list(
       }
     }
   }
-  const { data } = await apiClient.get<PaginatedResponse<AdminUser>>('/admin/users', {
+  const { data } = await apiClient.get<AdminUsersListResponse>('/admin/users', {
     params,
     signal: options?.signal
   })

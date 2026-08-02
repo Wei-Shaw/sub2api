@@ -410,6 +410,7 @@ func TestSettingService_UpdateSettings_CustomerServiceSettings(t *testing.T) {
 		OfficialGroupQRCode:        " data:image/png;base64,abc ",
 		OfficialGroupLink:          " https://t.me/group ",
 		OfficialGroupLinkLabel:     " Join now ",
+		CustomerServiceEnabled:     true,
 		CustomerServiceTextEnabled: true,
 		CustomerServiceText:        " Support hours ",
 	})
@@ -422,6 +423,7 @@ func TestSettingService_UpdateSettings_CustomerServiceSettings(t *testing.T) {
 	require.Equal(t, "data:image/png;base64,abc", repo.updates[SettingKeyOfficialGroupQRCode])
 	require.Equal(t, "https://t.me/group", repo.updates[SettingKeyOfficialGroupLink])
 	require.Equal(t, "Join now", repo.updates[SettingKeyOfficialGroupLinkLabel])
+	require.Equal(t, "true", repo.updates[SettingKeyCustomerServiceEnabled])
 	require.Equal(t, "true", repo.updates[SettingKeyCustomerServiceTextEnabled])
 	require.Equal(t, "Support hours", repo.updates[SettingKeyCustomerServiceText])
 }

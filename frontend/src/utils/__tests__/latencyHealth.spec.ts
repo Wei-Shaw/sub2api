@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { durationSeverity, firstTokenSeverity } from '../latencyHealth'
+import {
+  durationSeverity,
+  firstTokenSeverity,
+  LATENCY_BAR_CLASSES,
+  LATENCY_BAR_FROM_CLASSES,
+  LATENCY_BAR_TO_CLASSES,
+  LATENCY_TEXT_CLASSES,
+} from '../latencyHealth'
 
 describe('latencyHealth', () => {
   it('classifies first-token latency at 10s/30s/60s boundaries', () => {
@@ -21,5 +28,12 @@ describe('latencyHealth', () => {
     expect(durationSeverity(180_000)).toBe('slow')
     expect(durationSeverity(299_999)).toBe('slow')
     expect(durationSeverity(300_000)).toBe('critical')
+  })
+
+  it('renders the healthy latency tier in blue', () => {
+    expect(LATENCY_TEXT_CLASSES.good).toContain('text-blue-600')
+    expect(LATENCY_BAR_CLASSES.good).toBe('bg-blue-500')
+    expect(LATENCY_BAR_FROM_CLASSES.good).toBe('from-blue-500')
+    expect(LATENCY_BAR_TO_CLASSES.good).toBe('to-blue-500')
   })
 })

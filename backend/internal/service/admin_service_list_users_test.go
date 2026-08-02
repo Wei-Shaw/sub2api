@@ -19,6 +19,12 @@ type userRepoStubForListUsers struct {
 	listWithFiltersParams pagination.PaginationParams
 	lastUsedByUserID      map[int64]*time.Time
 	lastUsedErr           error
+	totalBalance          float64
+	totalBalanceErr       error
+}
+
+func (s *userRepoStubForListUsers) SumBalances(context.Context) (float64, error) {
+	return s.totalBalance, s.totalBalanceErr
 }
 
 func (s *userRepoStubForListUsers) ListWithFilters(_ context.Context, params pagination.PaginationParams, _ UserListFilters) ([]User, *pagination.PaginationResult, error) {
@@ -164,6 +170,15 @@ func TestAdminService_ListUsers_PassesSortParams(t *testing.T) {
 		SortBy:    "email",
 		SortOrder: "ASC",
 	}, userRepo.listWithFiltersParams)
+}
+
+func TestAdminService_GetTotalUserBalance(t *testing.T) {
+	userRepo := &userRepoStubForListUsers{totalBalance: 1234.56}
+	svc := &adminServiceImpl{userRepo: userRepo}
+
+	total, err := svc.GetTotalUserBalance(context.Background())
+	require.NoError(t, err)
+	require.InDelta(t, 1234.56, total, 0.000001)
 }
 
 func TestAdminService_ListUsers_PopulatesLastUsedAt(t *testing.T) {

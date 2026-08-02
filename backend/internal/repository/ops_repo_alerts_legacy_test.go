@@ -105,6 +105,17 @@ func TestApplyLegacyOpsAlertRuleCompatibility(t *testing.T) {
 	}
 }
 
+func TestIsObsoleteLegacyLatencyRuleOnlyMatchesUntouchedDefaults(t *testing.T) {
+	rule := legacyOpsAlertRule(
+		"P99延迟过高", "当 P99 延迟超过 3000ms 且持续 10 分钟时触发告警",
+		"p99_latency_ms", ">", "P2", 3000, 5, 10, 30,
+	)
+	require.True(t, isObsoleteLegacyLatencyRule(rule))
+
+	rule.Name = "自定义 P99 请求时长"
+	require.False(t, isObsoleteLegacyLatencyRule(rule))
+}
+
 func TestApplyLegacyOpsAlertRuleCompatibilityPreservesOperatorChanges(t *testing.T) {
 	mutations := []struct {
 		name   string

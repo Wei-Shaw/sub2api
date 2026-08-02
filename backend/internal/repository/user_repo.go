@@ -488,6 +488,25 @@ func (r *userRepository) List(ctx context.Context, params pagination.PaginationP
 	return r.ListWithFilters(ctx, params, service.UserListFilters{})
 }
 
+// SumBalances returns the available balance held by all non-deleted users.
+// Frozen balance is intentionally excluded because the admin user table's
+// balance column represents available balance only.
+func (r *userRepository) SumBalances(ctx context.Context) (float64, error) {
+	var rows []struct {
+		Total *float64 `json:"total"`
+	}
+	err := r.client.User.Query().
+		Aggregate(dbent.As(dbent.Sum(dbuser.FieldBalance), "total")).
+		Scan(ctx, &rows)
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 || rows[0].Total == nil {
+		return 0, nil
+	}
+	return *rows[0].Total, nil
+}
+
 func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters service.UserListFilters) ([]service.User, *pagination.PaginationResult, error) {
 	// SkipSoftDelete 仅作用于 User 身份解析（下方 Count/All）；订阅、分组等关联实体沿用原始 ctx，避免穿透到这些同样带软删除的实体而带出已删除行。
 	userCtx := ctx

@@ -157,6 +157,14 @@ func (s *stubAdminService) ListUsers(ctx context.Context, page, pageSize int, fi
 	return s.users, int64(len(s.users)), nil
 }
 
+func (s *stubAdminService) GetTotalUserBalance(context.Context) (float64, error) {
+	var total float64
+	for i := range s.users {
+		total += s.users[i].Balance
+	}
+	return total, nil
+}
+
 func (s *stubAdminService) GetUser(ctx context.Context, id int64) (*service.User, error) {
 	if s.getUserErr != nil {
 		return nil, s.getUserErr

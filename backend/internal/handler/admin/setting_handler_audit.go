@@ -317,6 +317,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OfficialGroupLinkLabel != after.OfficialGroupLinkLabel {
 		changed = append(changed, "official_group_link_label")
 	}
+	if before.CustomerServiceEnabled != after.CustomerServiceEnabled {
+		changed = append(changed, "customer_service_enabled")
+	}
 	if before.CustomerServiceTextEnabled != after.CustomerServiceTextEnabled {
 		changed = append(changed, "customer_service_text_enabled")
 	}

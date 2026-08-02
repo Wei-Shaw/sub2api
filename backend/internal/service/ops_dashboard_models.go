@@ -29,12 +29,19 @@ type OpsPercentiles struct {
 	Max *int `json:"max_ms"`
 }
 
+// OpsTTFTSummary is the lightweight alert-evaluation view of first-token latency.
+type OpsTTFTSummary struct {
+	TTFT        OpsPercentiles
+	SampleCount int64
+}
+
 // OpsHealthScoreBreakdown makes the backend-owned health score explainable.
 // Component weights are expressed as a fraction of the final 100-point score.
 type OpsHealthScoreBreakdown struct {
 	Mode             string                     `json:"mode"`
 	BusinessIncluded bool                       `json:"business_included"`
-	Score            int                        `json:"score"`
+	Score            float64                    `json:"score"`
+	DeductionPoints  float64                    `json:"deduction_points"`
 	Components       []*OpsHealthScoreComponent `json:"components"`
 }
 
@@ -68,14 +75,15 @@ type OpsDashboardOverview struct {
 
 	// HealthScore is a backend-computed overall health score (0-100).
 	// It is derived from the monitored metrics in this overview, plus best-effort system metrics/job heartbeats.
-	HealthScore          int                      `json:"health_score"`
+	HealthScore          float64                  `json:"health_score"`
 	HealthScoreBreakdown *OpsHealthScoreBreakdown `json:"health_score_breakdown"`
 
 	// Latest system-level snapshot (window=1m, global).
 	SystemMetrics *OpsSystemMetricsSnapshot `json:"system_metrics"`
 
 	// Background jobs health (heartbeats).
-	JobHeartbeats []*OpsJobHeartbeat `json:"job_heartbeats"`
+	JobHeartbeats    []*OpsJobHeartbeat `json:"job_heartbeats"`
+	DisabledJobNames []string           `json:"disabled_job_names"`
 
 	SuccessCount         int64 `json:"success_count"`
 	ErrorCountTotal      int64 `json:"error_count_total"`
@@ -97,6 +105,10 @@ type OpsDashboardOverview struct {
 	RecoveredCount       int64 `json:"recovered_count"`
 
 	TokenConsumed int64 `json:"token_consumed"`
+	// TTFTSampleCount only includes successful usage rows that recorded a
+	// first-token latency. Alert sample gates must not use the broader success
+	// count because non-streaming requests do not have a TTFT observation.
+	TTFTSampleCount int64 `json:"ttft_sample_count"`
 
 	SLA                          float64 `json:"sla"`
 	ErrorRate                    float64 `json:"error_rate"`

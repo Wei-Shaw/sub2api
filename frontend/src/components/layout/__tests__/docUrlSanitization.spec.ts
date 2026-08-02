@@ -34,3 +34,12 @@ describe('doc_url sanitization', () => {
     expect(keyUsageViewSource).toContain('sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl')
   })
 })
+
+describe('customer service header entry', () => {
+  it('uses the public display switch and stays immediately before Model Plaza', () => {
+    expect(headerSource).toContain("publicSettings?.customer_service_enabled !== false")
+    expect(headerSource.indexOf('<CustomerServiceModal')).toBeLessThan(
+      headerSource.indexOf('<!-- Model Plaza Entry -->'),
+    )
+  })
+})
