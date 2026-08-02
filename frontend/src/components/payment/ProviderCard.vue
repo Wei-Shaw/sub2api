@@ -77,6 +77,7 @@ const PROVIDER_KEY_LABELS: Record<string, string> = {
   wxpay: 'admin.settings.payment.providerWxpay',
   stripe: 'admin.settings.payment.providerStripe',
   airwallex: 'admin.settings.payment.providerAirwallex',
+  lemonsqueezy: 'admin.settings.payment.providerLemonSqueezy',
 }
 
 const props = defineProps<{

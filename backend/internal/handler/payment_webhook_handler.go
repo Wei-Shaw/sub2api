@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -65,6 +66,12 @@ func (h *PaymentWebhookHandler) StripeWebhook(c *gin.Context) {
 // POST /api/v1/payment/webhook/airwallex
 func (h *PaymentWebhookHandler) AirwallexWebhook(c *gin.Context) {
 	h.handleNotify(c, payment.TypeAirwallex)
+}
+
+// LemonSqueezyWebhook handles Lemon Squeezy webhook events.
+// POST /api/v1/payment/webhook/lemonsqueezy
+func (h *PaymentWebhookHandler) LemonSqueezyWebhook(c *gin.Context) {
+	h.handleNotify(c, payment.TypeLemonSqueezy)
 }
 
 // handleNotify is the shared logic for all provider webhook handlers.
@@ -164,6 +171,22 @@ func extractOutTradeNo(rawBody, providerKey string) string {
 		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
 			return strings.TrimSpace(payload.Data.Object.MerchantOrderID)
 		}
+	case payment.TypeLemonSqueezy:
+		var payload struct {
+			Meta struct {
+				CustomData map[string]any `json:"custom_data"`
+			} `json:"meta"`
+		}
+		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
+			if value, ok := payload.Meta.CustomData["order_id"]; ok {
+				switch typed := value.(type) {
+				case string:
+					return strings.TrimSpace(typed)
+				case float64:
+					return strings.TrimSpace(strconv.FormatInt(int64(typed), 10))
+				}
+			}
+		}
 	}
 	// For other providers (Stripe, Alipay direct, WxPay direct), the registry
 	// typically has only one instance, so no instance lookup is needed.
@@ -208,7 +231,7 @@ func writeSuccessResponse(c *gin.Context, providerKey string) {
 	switch providerKey {
 	case payment.TypeWxpay:
 		c.JSON(http.StatusOK, wxpaySuccessResponse{Code: wxpaySuccessCode, Message: wxpaySuccessMessage})
-	case payment.TypeStripe, payment.TypeAirwallex:
+	case payment.TypeStripe, payment.TypeAirwallex, payment.TypeLemonSqueezy:
 		c.String(http.StatusOK, "")
 	default:
 		c.String(http.StatusOK, "success")

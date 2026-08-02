@@ -305,6 +305,15 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		}
 		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
 	}
+	if providerKey == payment.TypeLemonSqueezy {
+		if storeID := strings.TrimSpace(sel.Config["storeId"]); storeID != "" {
+			snapshot["merchant_id"] = storeID
+		}
+		if variantID := strings.TrimSpace(sel.Config["variantId"]); variantID != "" {
+			snapshot["merchant_app_id"] = variantID
+		}
+		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
+	}
 
 	if len(snapshot) == 1 {
 		return nil

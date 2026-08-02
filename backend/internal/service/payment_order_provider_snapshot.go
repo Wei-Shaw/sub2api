@@ -220,6 +220,37 @@ func validateProviderSnapshotMetadata(order *dbent.PaymentOrder, providerKey str
 		if actual := strings.TrimSpace(metadata["status"]); actual != "" && !strings.EqualFold(actual, "SUCCEEDED") {
 			return fmt.Errorf("airwallex status mismatch: expected SUCCEEDED, got %s", actual)
 		}
+	case payment.TypeLemonSqueezy:
+		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
+			actual := strings.TrimSpace(metadata["store_id"])
+			if actual == "" {
+				return fmt.Errorf("lemonsqueezy store_id missing")
+			}
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("lemonsqueezy store_id mismatch: expected %s, got %s", expected, actual)
+			}
+		}
+		if expected := strings.TrimSpace(snapshot.MerchantAppID); expected != "" {
+			actual := strings.TrimSpace(metadata["variant_id"])
+			if actual == "" {
+				return fmt.Errorf("lemonsqueezy variant_id missing")
+			}
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("lemonsqueezy variant_id mismatch: expected %s, got %s", expected, actual)
+			}
+		}
+		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
+			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
+			if actual == "" {
+				return fmt.Errorf("lemonsqueezy notification missing currency")
+			}
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("lemonsqueezy currency mismatch: expected %s, got %s", expected, actual)
+			}
+		}
+		if actual := strings.TrimSpace(metadata["status"]); actual != "" && !strings.EqualFold(actual, "paid") {
+			return fmt.Errorf("lemonsqueezy status mismatch: expected paid, got %s", actual)
+		}
 	}
 
 	return nil

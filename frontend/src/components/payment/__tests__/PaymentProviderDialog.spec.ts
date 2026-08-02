@@ -21,6 +21,7 @@ const messages: Record<string, string> = {
   'admin.settings.payment.stripeWebhookHint': 'Configure Stripe webhook.',
   'admin.settings.payment.stripeWebhookApiVersionHint': 'Use Stripe API version {version}.',
   'admin.settings.payment.airwallexWebhookHint': 'Select payment_intent.succeeded and use the latest stable API version.',
+  'admin.settings.payment.lemonsqueezyWebhookHint': 'Select order_created in Lemon Squeezy.',
 }
 
 vi.mock('vue-i18n', () => ({
@@ -65,12 +66,14 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
         { value: 'wxpay', label: 'WeChat Pay' },
         { value: 'stripe', label: 'Stripe' },
         { value: 'airwallex', label: 'Airwallex' },
+        { value: 'lemonsqueezy', label: 'Lemon Squeezy' },
       ],
       enabledKeyOptions: [
         { value: 'easypay', label: 'EasyPay' },
         { value: 'alipay', label: 'Alipay' },
         { value: 'wxpay', label: 'WeChat Pay' },
         { value: 'airwallex', label: 'Airwallex' },
+        { value: 'lemonsqueezy', label: 'Lemon Squeezy' },
       ],
       allPaymentTypes: [
         { value: 'alipay', label: 'Alipay' },
@@ -126,6 +129,16 @@ describe('PaymentProviderDialog payment guide', () => {
 
     expect(wrapper.text()).toContain(messages['admin.settings.payment.airwallexWebhookHint'])
     expect(wrapper.text()).toContain('/api/v1/payment/webhook/airwallex')
+  })
+
+  it('shows Lemon Squeezy webhook guidance with the webhook URL', async () => {
+    const wrapper = mountDialog()
+
+    ;(wrapper.vm as unknown as { reset: (key: string) => void }).reset('lemonsqueezy')
+    await nextTick()
+
+    expect(wrapper.text()).toContain(messages['admin.settings.payment.lemonsqueezyWebhookHint'])
+    expect(wrapper.text()).toContain('/api/v1/payment/webhook/lemonsqueezy')
   })
 
   it('shows Stripe webhook API version guidance with the integrated SDK version', async () => {
