@@ -105,9 +105,8 @@ func (m *memProxyRepo) UpdateHealthAudit(context.Context, int64, int, *time.Time
 func (m *memProxyRepo) GetHealthAudit(context.Context, int64) (int, *time.Time, string, error) {
 	return 0, nil, "", nil
 }
-func (m *memProxyRepo) CountHealthIsolated(context.Context) (int64, error) { return 0, nil }
+func (m *memProxyRepo) CountHealthIsolated(context.Context) (int64, error)       { return 0, nil }
 func (m *memProxyRepo) ListHealthIsolated(context.Context, int) ([]Proxy, error) { return nil, nil }
-
 
 type memGroupRepo struct {
 	nextID  int64

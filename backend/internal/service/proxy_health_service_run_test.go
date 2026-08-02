@@ -130,8 +130,9 @@ func (r *healthProxyRepoStub) GetHealthAudit(context.Context, int64) (int, *time
 	return 0, nil, "", nil
 }
 func (r *healthProxyRepoStub) CountHealthIsolated(context.Context) (int64, error) { return 0, nil }
-func (r *healthProxyRepoStub) ListHealthIsolated(context.Context, int) ([]Proxy, error) { return nil, nil }
-
+func (r *healthProxyRepoStub) ListHealthIsolated(context.Context, int) ([]Proxy, error) {
+	return nil, nil
+}
 
 type healthGroupRepoStub struct {
 	groups []ProxyGroup

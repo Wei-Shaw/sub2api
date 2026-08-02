@@ -485,13 +485,13 @@ func TestHandleSSEToJSONGrokRateLimitReturnsSemanticFailover(t *testing.T) {
 
 func TestReadOpenAICompatBufferedTerminalGrokBareAccountErrors(t *testing.T) {
 	tests := []struct {
-		name           string
-		statusCode     int
-		event          string
-		suffix         string
-		wantLimited    bool
-		wantSoftTemp   bool
-		wantPermanent  bool
+		name          string
+		statusCode    int
+		event         string
+		suffix        string
+		wantLimited   bool
+		wantSoftTemp  bool
+		wantPermanent bool
 	}{
 		{
 			name:        "rate limit",

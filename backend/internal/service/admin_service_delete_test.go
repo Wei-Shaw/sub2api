@@ -381,9 +381,8 @@ func (s *proxyRepoStub) UpdateHealthAudit(context.Context, int64, int, *time.Tim
 func (s *proxyRepoStub) GetHealthAudit(context.Context, int64) (int, *time.Time, string, error) {
 	return 0, nil, "", nil
 }
-func (s *proxyRepoStub) CountHealthIsolated(context.Context) (int64, error) { return 0, nil }
+func (s *proxyRepoStub) CountHealthIsolated(context.Context) (int64, error)       { return 0, nil }
 func (s *proxyRepoStub) ListHealthIsolated(context.Context, int) ([]Proxy, error) { return nil, nil }
-
 
 type redeemRepoStub struct {
 	deleteErrByID map[int64]error
