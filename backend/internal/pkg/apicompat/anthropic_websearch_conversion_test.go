@@ -676,11 +676,12 @@ func TestStreaming_WebSearchMissingResult_ClosesFailed(t *testing.T) {
 	}
 }
 
-// TestStreaming_WebSearchMismatchedResult_DoesNotComplete verifies that a
-// web_search_tool_result with a different tool_use_id neither completes the
-// active search nor produces a second phantom item; the original search is
-// closed as failed at message_stop.
-func TestStreaming_WebSearchMismatchedResult_DoesNotComplete(t *testing.T) {
+// TestStreaming_WebSearchMismatchedResultID_CompletesByOrdering verifies that
+// a web_search_tool_result whose tool_use_id differs from the server_tool_use
+// id still completes the only active search. Kimi K3 sends non-correlating
+// ids (server_tool_use "tool_*" vs result "srvtoolu_*"); with a single active
+// search, protocol ordering is the correlation signal.
+func TestStreaming_WebSearchMismatchedResultID_CompletesByOrdering(t *testing.T) {
 	state := NewAnthropicEventToResponsesState()
 	state.Model = "k3-256k"
 
@@ -692,11 +693,13 @@ func TestStreaming_WebSearchMismatchedResult_DoesNotComplete(t *testing.T) {
 	idx0, idx1 := 0, 1
 	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_mism"}})
 	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &idx0, ContentBlock: &AnthropicContentBlock{
-		Type: "server_tool_use", ID: "srvtoolu_a", Name: "web_search",
-		Input: json.RawMessage(`{"query":"query a"}`),
+		Type: "server_tool_use", ID: "tool_a", Name: "web_search",
 	}})
+	// Input streams in after block_start.
+	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &idx0, Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"query":"query a"}`}})
 	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &idx0})
-	// Result for a DIFFERENT tool_use_id — must not complete srvtoolu_a.
+	// Result with a DIFFERENT tool_use_id (Kimi's srvtoolu_* style) still
+	// completes the active search by ordering.
 	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &idx1, ContentBlock: &AnthropicContentBlock{
 		Type: "web_search_tool_result", ToolUseID: "srvtoolu_b",
 	}})
@@ -725,8 +728,11 @@ func TestStreaming_WebSearchMismatchedResult_DoesNotComplete(t *testing.T) {
 	if done.ID == "" || done.ID != addedID {
 		t.Errorf("done ID mismatch: added=%q done=%q", addedID, done.ID)
 	}
-	if done.Status != "failed" {
-		t.Errorf("mismatched result must not complete the search; status = %q, want failed", done.Status)
+	if done.Status != "completed" {
+		t.Errorf("result for the only active search should complete it; status = %q", done.Status)
+	}
+	if done.Action == nil || done.Action.Query != "query a" {
+		t.Errorf("query streamed via input_json_delta should survive; got %+v", done.Action)
 	}
 
 	// Terminal output must have exactly one web_search_call, coherent with the stream.
@@ -743,12 +749,49 @@ func TestStreaming_WebSearchMismatchedResult_DoesNotComplete(t *testing.T) {
 	for _, o := range completed.Response.Output {
 		if o.Type == "web_search_call" {
 			wsCount++
-			if o.ID != addedID || o.Status != "failed" {
+			if o.ID != addedID || o.Status != "completed" || o.Action == nil || o.Action.Query != "query a" {
 				t.Errorf("terminal web_search_call item incoherent: %+v", o)
 			}
 		}
 	}
 	if wsCount != 1 {
 		t.Errorf("expected exactly 1 web_search_call in terminal output, got %d", wsCount)
+	}
+}
+
+// TestStreaming_WebSearchResultWithoutActiveSearch_Ignored verifies that a
+// web_search_tool_result arriving with no active search produces no events
+// and no phantom output item.
+func TestStreaming_WebSearchResultWithoutActiveSearch_Ignored(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+	state.Model = "k3-256k"
+
+	var events []ResponsesStreamEvent
+	feed := func(evt *AnthropicStreamEvent) {
+		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
+	}
+
+	idx0 := 0
+	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_orphan"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &idx0, ContentBlock: &AnthropicContentBlock{
+		Type: "web_search_tool_result", ToolUseID: "srvtoolu_orphan",
+	}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &idx0})
+	feed(&AnthropicStreamEvent{Type: "message_delta", Delta: &AnthropicDelta{StopReason: "end_turn"}})
+	feed(&AnthropicStreamEvent{Type: "message_stop"})
+
+	for _, e := range events {
+		if e.Item != nil && e.Item.Type == "web_search_call" {
+			t.Errorf("orphan web_search_tool_result produced event %s with item %+v", e.Type, e.Item)
+		}
+	}
+	for i := range events {
+		if events[i].Type == "response.completed" && events[i].Response != nil {
+			for _, o := range events[i].Response.Output {
+				if o.Type == "web_search_call" {
+					t.Errorf("orphan web_search_tool_result leaked into terminal output: %+v", o)
+				}
+			}
+		}
 	}
 }

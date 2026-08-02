@@ -216,6 +216,7 @@ type AnthropicEventToResponsesState struct {
 	WebSearchItemID    string // Responses item ID for the current web_search_call
 	WebSearchToolUseID string // Anthropic tool_use_id to correlate result blocks
 	WebSearchQuery     string // extracted query from server_tool_use input
+	WebSearchArgs      string // accumulated input_json_delta while a search is active
 	WebSearchActive    bool   // true while processing web search blocks
 
 	// Delayed search status text filtering
@@ -395,6 +396,7 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 			state.WebSearchItemID = generateItemID()
 			state.WebSearchToolUseID = evt.ContentBlock.ID
 			state.WebSearchActive = true
+			state.WebSearchArgs = ""
 
 			query := anthropicExtractWebSearchQuery(evt.ContentBlock.Input)
 			state.WebSearchQuery = query
@@ -414,8 +416,12 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		}
 
 	case "web_search_tool_result":
-		if state.WebSearchActive && evt.ContentBlock != nil &&
-			evt.ContentBlock.ToolUseID == state.WebSearchToolUseID {
+		// Correlate by protocol ordering, not tool_use_id: Anthropic streams
+		// deliver a result right after its server_tool_use, and only one search
+		// can be active at a time here. Kimi K3 sends non-correlating ids
+		// (server_tool_use id "tool_*" vs result tool_use_id "srvtoolu_*"), so
+		// strict id matching would fail-close every successful Kimi search.
+		if state.WebSearchActive && evt.ContentBlock != nil {
 			events = append(events, closeActiveWebSearch(state, "completed")...)
 		}
 	}
@@ -498,8 +504,9 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		}
 		if state.WebSearchActive {
 			// Server tool input arrives as streaming JSON fragments; accumulate
-			// for query extraction but don't emit function_call events.
-			state.CurrentArgs += evt.Delta.PartialJSON
+			// into the search's own buffer (CurrentArgs is reset when later
+			// items close) but don't emit function_call events.
+			state.WebSearchArgs += evt.Delta.PartialJSON
 			return nil
 		}
 		state.CurrentArgs += evt.Delta.PartialJSON
@@ -837,8 +844,8 @@ func closeActiveWebSearch(state *AnthropicEventToResponsesState, status string) 
 	// If query wasn't available at block_start (e.g. streamed via
 	// input_json_delta), try extracting from accumulated args.
 	query := state.WebSearchQuery
-	if query == "" && state.CurrentArgs != "" {
-		query = anthropicExtractWebSearchQuery(json.RawMessage(state.CurrentArgs))
+	if query == "" && state.WebSearchArgs != "" {
+		query = anthropicExtractWebSearchQuery(json.RawMessage(state.WebSearchArgs))
 	}
 
 	item := ResponsesOutput{
@@ -858,7 +865,7 @@ func closeActiveWebSearch(state *AnthropicEventToResponsesState, status string) 
 	state.WebSearchItemID = ""
 	state.WebSearchToolUseID = ""
 	state.WebSearchQuery = ""
-	state.CurrentArgs = ""
+	state.WebSearchArgs = ""
 
 	return []ResponsesStreamEvent{
 		makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
