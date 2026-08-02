@@ -104,6 +104,11 @@ backend/internal/web/dist/*
 
 # 后端运行时缓存数据
 backend/data/
+# 从仓库根目录启动时生成的运行时缓存（定价等）
+/data/
+
+# 本地 WARP/代理 e2e 沙箱（二进制、密钥、日志、gateway 状态）
+.local-warp-e2e/
 
 # ===================
 # 本地配置文件（包含敏感信息）
