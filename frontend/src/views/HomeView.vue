@@ -412,6 +412,7 @@ const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
 const compactHomeEnabled = computed(() => appStore.cachedPublicSettings?.compact_home_enabled === true)
+const currentYear = computed(() => new Date().getFullYear())
 
 const isHomeContentUrl = computed(() => {
   const content = homeContent.value.trim()
