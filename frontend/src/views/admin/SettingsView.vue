@@ -5168,6 +5168,48 @@
                 </p>
               </div>
 
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.gatewayForwarding.customImageModelPatterns") }}
+                </label>
+                <textarea
+                  v-model="form.custom_image_model_patterns"
+                  rows="4"
+                  class="input min-h-24 w-full resize-y font-mono text-sm"
+                  :placeholder="
+                    t(
+                      'admin.settings.gatewayForwarding.customImageModelPatternsPlaceholder',
+                    )
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.customImageModelPatternsHint") }}
+                </p>
+              </div>
+
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.gatewayForwarding.customVideoModelPatterns") }}
+                </label>
+                <textarea
+                  v-model="form.custom_video_model_patterns"
+                  rows="4"
+                  class="input min-h-24 w-full resize-y font-mono text-sm"
+                  :placeholder="
+                    t(
+                      'admin.settings.gatewayForwarding.customVideoModelPatternsPlaceholder',
+                    )
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.customVideoModelPatternsHint") }}
+                </p>
+              </div>
+
             </div>
           </div>
 
@@ -9038,6 +9080,8 @@ const form = reactive<SettingsForm>({
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
+  custom_image_model_patterns: "",
+  custom_video_model_patterns: "",
   // codex_cli_only 加固
   min_codex_version: "",
   max_codex_version: "",
@@ -10510,6 +10554,10 @@ async function saveSettings() {
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
+      custom_image_model_patterns:
+        form.custom_image_model_patterns?.trim() || "",
+      custom_video_model_patterns:
+        form.custom_video_model_patterns?.trim() || "",
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:
