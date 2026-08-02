@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -513,11 +514,12 @@ func (r *proxyRepository) UpdateHealthAudit(ctx context.Context, proxyID int64, 
 }
 
 // UpdateStatusWithHealthIsolation sets status and health audit columns in one
-// UPDATE so isolate/recover cannot leave a crash window with inactive status
-// but empty health_isolated_by (which would block AutoRecover forever).
-func (r *proxyRepository) UpdateStatusWithHealthIsolation(ctx context.Context, proxyID int64, status string, failCount int, lastHealthAt *time.Time, isolatedBy string) error {
+// UPDATE with optional optimistic WHERE so admin status flips cannot be
+// overwritten after recheck. Returns updated=false when 0 rows match.
+// If updateHealthCounters=false, health counters are not touched (status-only for isolate).
+func (r *proxyRepository) UpdateStatusWithHealthIsolation(ctx context.Context, proxyID int64, status string, failCount int, lastHealthAt *time.Time, isolatedBy string, onlyIfStatus string, onlyIfIsolatedBy *string, updateHealthCounters bool) (bool, error) {
 	if r == nil || r.sql == nil || proxyID <= 0 {
-		return nil
+		return false, nil
 	}
 	if failCount < 0 {
 		failCount = 0
@@ -530,17 +532,45 @@ func (r *proxyRepository) UpdateStatusWithHealthIsolation(ctx context.Context, p
 	if isolatedBy != "" {
 		iso = isolatedBy
 	}
-	_, err := r.sql.ExecContext(ctx, `
+	query := `
 		UPDATE proxies
 		SET status = $2,
+		    updated_at = NOW()`
+	if updateHealthCounters {
+		query += `
 		    health_fail_count = $3,
 		    last_health_at = $4,
-		    health_isolated_by = $5,
-		    updated_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL`,
-		proxyID, status, failCount, last, iso,
-	)
-	return err
+		    health_isolated_by = $5`
+	}
+	query += `
+		WHERE id = $1 AND deleted_at IS NULL`
+	args := []any{proxyID, status}
+	argN := 3
+	if updateHealthCounters {
+		args = append(args, failCount, last, iso)
+		argN += 3
+	}
+	if onlyIfStatus != "" {
+		query += fmt.Sprintf(" AND status = $%d", argN)
+		args = append(args, onlyIfStatus)
+		argN++
+	}
+	if onlyIfIsolatedBy != nil {
+		query += fmt.Sprintf(" AND COALESCE(health_isolated_by,'') = $%d", argN)
+		args = append(args, *onlyIfIsolatedBy)
+	}
+	// generation optimistic lock for Status Multi-Writer Fence
+	query += fmt.Sprintf(" AND COALESCE(generation, 0) = $%d", argN)
+	args = append(args, 0)
+	result, err := r.sql.ExecContext(ctx, query, args...)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }
 
 // GetHealthAudit loads durable health snapshot columns.

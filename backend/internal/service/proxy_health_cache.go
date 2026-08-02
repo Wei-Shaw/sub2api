@@ -20,6 +20,7 @@ type ProxyHealthMeta struct {
 	// Version is a monotonic CAS token. Callers load meta, mutate, bump Version,
 	// then CompareAndSetProxyHealth with the previous Version as expected.
 	Version int64 `json:"version,omitempty"`
+	Generation int64 `json:"generation,omitempty"`
 }
 
 // ProxyHealthCache stores per-proxy health metadata in Redis.

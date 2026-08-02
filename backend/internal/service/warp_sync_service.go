@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -15,8 +16,13 @@ import (
 )
 
 // ErrWarpSyncBusy is returned when process-local sync is already running or the
-// peer leader lock could not be acquired (another instance is syncing).
+// peer leader lock could not be acquired (another instance is syncing) — 409.
 var ErrWarpSyncBusy = infraerrors.Conflict("WARP_SYNC_BUSY", "warp sync already running")
+
+// ErrWarpSyncLockUnavailable is returned when the leader-lock backend (Redis)
+// errors on acquire — peer may still hold the lock; do not run mutate/sync — 503.
+var ErrWarpSyncLockUnavailable = infraerrors.ServiceUnavailable(
+	"WARP_SYNC_LOCK_UNAVAILABLE", "warp sync leader lock backend unavailable")
 
 // WarpSyncService syncs warp-gateway instances into proxies + proxy_groups (auto 落库).
 type WarpSyncService struct {
@@ -47,6 +53,16 @@ type WarpSyncService struct {
 // drasticPruneConfirmRounds is how many consecutive drastic-drop observations
 // are required before orphan prune is permitted (process-local counter).
 const drasticPruneConfirmRounds = 3
+
+// isDrasticWarpDrop reports whether gateway returned far fewer specs than local
+// warp-* inventory. Protects small pools (e.g. 3→1 drop 2) as well as large ones:
+//   - relative: specs less than half of local
+//   - absolute: would remove at least 2 warps
+//
+// 3→1 drastic; 4→1 drastic; 10→4 drastic; 3→2 not; 2→1 not.
+func isDrasticWarpDrop(localWarpN, specN int) bool {
+	return specN > 0 && localWarpN >= 2 && specN*2 < localWarpN && (localWarpN-specN) >= 2
+}
 
 func NewWarpSyncService(
 	cfg *config.Config,
@@ -158,8 +174,19 @@ func (s *WarpSyncService) CreatePoolAndSyncEx(ctx context.Context, namePrefix st
 		return nil, infraerrors.BadRequest("WARP_POOL_COUNT_TOO_LARGE", "count must be <= 50")
 	}
 	return s.withSyncLeadershipTTL(ctx, s.createLockTTL(count, register), func(ctx context.Context) (*WarpSyncResult, error) {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("leadership lost before create: %w", ctx.Err())
+		}
 		if _, err := s.client.CreatePoolEx(ctx, namePrefix, count, register); err != nil {
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("gateway create may have completed but leadership lost/cancelled before sync: %w", ctx.Err())
+			}
 			return nil, err
+		}
+		// Create may have committed on gateway; if leadership/parent canceled before
+		// sync, surface partial success so callers do not assume full roll-forward.
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("gateway create may have completed but leadership lost/cancelled before sync: %w", err)
 		}
 		res, err := s.syncFromGatewayLocked(ctx, groupName)
 		if err != nil {
@@ -275,8 +302,17 @@ func (s *WarpSyncService) HealthAllAndSync(ctx context.Context, groupName string
 		return nil, fmt.Errorf("warp gateway is disabled")
 	}
 	return s.withSyncLeadership(ctx, func(ctx context.Context) (*WarpSyncResult, error) {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("leadership lost before health: %w", ctx.Err())
+		}
 		if _, _, _, err := s.client.HealthAll(ctx); err != nil {
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("gateway health may have completed but leadership lost/cancelled before sync: %w", ctx.Err())
+			}
 			return nil, err
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("gateway health may have completed but leadership lost/cancelled before sync: %w", err)
 		}
 		return s.syncFromGatewayLocked(ctx, groupName)
 	})
@@ -288,8 +324,17 @@ func (s *WarpSyncService) RotateAndSync(ctx context.Context, instanceID, groupNa
 		return nil, fmt.Errorf("warp gateway is disabled")
 	}
 	return s.withSyncLeadership(ctx, func(ctx context.Context) (*WarpSyncResult, error) {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("leadership lost before rotate: %w", ctx.Err())
+		}
 		if _, err := s.client.Rotate(ctx, instanceID); err != nil {
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("gateway rotate may have completed but leadership lost/cancelled before sync: %w", ctx.Err())
+			}
 			return nil, err
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("gateway rotate may have completed but leadership lost/cancelled before sync: %w", err)
 		}
 		return s.syncFromGatewayLocked(ctx, groupName)
 	})
@@ -304,8 +349,17 @@ func (s *WarpSyncService) DeleteInstanceAndSync(ctx context.Context, instanceID,
 		return nil, fmt.Errorf("instance id required")
 	}
 	return s.withSyncLeadership(ctx, func(ctx context.Context) (*WarpSyncResult, error) {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("leadership lost before delete: %w", ctx.Err())
+		}
 		if err := s.client.DeleteInstance(ctx, instanceID, deregisterCloudflare); err != nil {
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("gateway delete may have completed but leadership lost/cancelled before sync: %w", ctx.Err())
+			}
 			return nil, err
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("gateway delete may have completed but leadership lost/cancelled before sync: %w", err)
 		}
 		return s.syncFromGatewayLocked(ctx, groupName)
 	})
@@ -328,7 +382,7 @@ func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string)
 
 // withSyncLeadership runs fn while holding process singleflight + leader lock.
 // fn should call syncFromGatewayLocked or gateway mutate+sync.
-// Returns ErrWarpSyncBusy before any gateway mutate when the lock is held.
+// Returns ErrWarpSyncBusy (409) before any gateway mutate when the lock is held.
 func (s *WarpSyncService) withSyncLeadership(ctx context.Context, fn func(ctx context.Context) (*WarpSyncResult, error)) (*WarpSyncResult, error) {
 	return s.withSyncLeadershipTTL(ctx, s.syncLockTTL(), fn)
 }
@@ -368,20 +422,30 @@ func (s *WarpSyncService) withSyncLeadershipTTL(ctx context.Context, ttl time.Du
 	// Independent short context so a long parent deadline (or cancelled admin
 	// request) does not leave acquire hanging or race release.
 	lockCtx, lockCancel := context.WithTimeout(context.Background(), 2*time.Second)
-	release, ok := tryAcquireSingletonLeaderLock(lockCtx, s.lock, s.db, warpSyncWorkerLockKey, owner, ttl)
+	release, ok, unavail := tryAcquireSingletonLeaderLockEx(lockCtx, s.lock, s.db, warpSyncWorkerLockKey, owner, ttl)
 	lockCancel()
 	if !ok {
-		s.log.Debug("warp sync skipped: leader lock held by peer or backend unavailable")
+		// Peer busy 409 vs Redis unavailable 503 — see tryAcquireSingletonLeaderLockEx.
+		if unavail {
+			s.log.Warn("warp sync skipped: leader lock backend unavailable")
+			return nil, ErrWarpSyncLockUnavailable
+		}
+		s.log.Debug("warp sync skipped: leader lock held by peer")
 		return nil, ErrWarpSyncBusy
 	}
 	if release != nil {
 		defer release()
 	}
 	// Heartbeat ctx cancels when leadership is lost mid-sync so fn aborts.
+	// CreatePoolEx / HealthAll / Rotate / DeleteInstance all receive hbCtx via fn.
 	hbCtx, stopHB := startLeaderLockHeartbeat(ctx, s.lock, warpSyncWorkerLockKey, owner, ttl)
 	defer stopHB()
 
-	return fn(hbCtx)
+	result, err := fn(hbCtx)
+	if err != nil && hbCtx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(hbCtx.Err(), context.Canceled)) {
+		return result, fmt.Errorf("warp sync aborted: leadership lost: %w", err)
+	}
+	return result, err
 }
 
 // syncLockTTL is the leader-lock hold time for one withSyncLeadership critical section.
@@ -505,8 +569,8 @@ func (s *WarpSyncService) syncFromGatewayLocked(ctx context.Context, groupName s
 	// Still upsert present specs. Refuse orphan prune + SetMembers replace for the
 	// first few consecutive identical drastic observations so a flaky snapshot
 	// cannot wipe inventory or shrink group membership used for routing.
-	// After drasticPruneConfirmRounds with TotalCount==specN, allow prune + SetMembers
-	// (intentional shrink).
+	// After drasticPruneConfirmRounds with TotalCount==specN, take a second fresh
+	// gateway snapshot before destructive prune/SetMembers (W2 confirm).
 	//
 	// C3: streak is process-local under leader singleflight (only the leader runs
 	// sync). Leadership move resets streak → delayed prune (safe). TotalCount must
@@ -515,8 +579,9 @@ func (s *WarpSyncService) syncFromGatewayLocked(ctx context.Context, groupName s
 	allowOrphanPrune := true
 	allowMemberReplace := true
 	specN := len(plan.ProxySpecs)
-	if localWarpN >= 4 && specN > 0 && specN*2 < localWarpN {
+	if isDrasticWarpDrop(localWarpN, specN) {
 		totalConsistent := snap != nil && snap.TotalCount == specN
+		needConfirmSnapshot := false
 		s.drasticStreakMu.Lock()
 		if !totalConsistent {
 			// Shape mismatch: refuse prune/replace; do not advance streak.
@@ -547,17 +612,61 @@ func (s *WarpSyncService) syncFromGatewayLocked(ctx context.Context, groupName s
 				result.Alerts = append(result.Alerts, msg)
 				s.log.Warn(msg)
 			} else {
-				// Confirmed shrink: allow prune + SetMembers; reset streak so a later drop re-arms.
-				s.drasticStreak = 0
-				s.drasticLocalN = 0
-				s.drasticSpecN = 0
-				msg := fmt.Sprintf("gateway snapshot dropped from %d local warp-* to %d specs; allowing orphan prune after %d consistent rounds",
-					localWarpN, specN, drasticPruneConfirmRounds)
-				result.Alerts = append(result.Alerts, msg)
-				s.log.Warn(msg)
+				// Streak armed — confirm with a fresh gateway snapshot before prune.
+				needConfirmSnapshot = true
 			}
 		}
 		s.drasticStreakMu.Unlock()
+
+		if needConfirmSnapshot {
+			// W2: second snapshot before allow prune / SetMembers.
+			snap2, cerr := s.client.PoolSnapshot(ctx)
+			if cerr != nil {
+				allowOrphanPrune = false
+				allowMemberReplace = false
+				msg := fmt.Sprintf("gateway snapshot dropped from %d local warp-* to %d specs; drastic confirm snapshot failed; refusing prune: %v",
+					localWarpN, specN, cerr)
+				result.Alerts = append(result.Alerts, msg)
+				s.log.Warn(msg)
+				// Keep streak so next tick retries confirm.
+			} else {
+				plan2 := BuildAttachPlan(snap2, groupName)
+				specN2 := len(plan2.ProxySpecs)
+				confirmOK := snap2 != nil &&
+					isDrasticWarpDrop(localWarpN, specN2) &&
+					snap2.TotalCount == specN2 &&
+					specN2 == specN
+				if !confirmOK {
+					allowOrphanPrune = false
+					allowMemberReplace = false
+					// Shape changed on confirm — reset streak (prefer re-arm from scratch).
+					s.drasticStreakMu.Lock()
+					s.drasticStreak = 0
+					s.drasticLocalN = 0
+					s.drasticSpecN = 0
+					s.drasticStreakMu.Unlock()
+					tc2 := 0
+					if snap2 != nil {
+						tc2 = snap2.TotalCount
+					}
+					msg := fmt.Sprintf("gateway snapshot dropped from %d local warp-* to %d specs; drastic confirm mismatch (confirmSpecs=%d TotalCount=%d); refusing prune",
+						localWarpN, specN, specN2, tc2)
+					result.Alerts = append(result.Alerts, msg)
+					s.log.Warn(msg)
+				} else {
+					// Confirmed shrink: allow prune + SetMembers; reset streak so a later drop re-arms.
+					s.drasticStreakMu.Lock()
+					s.drasticStreak = 0
+					s.drasticLocalN = 0
+					s.drasticSpecN = 0
+					s.drasticStreakMu.Unlock()
+					msg := fmt.Sprintf("gateway snapshot dropped from %d local warp-* to %d specs; allowing orphan prune after %d consistent rounds",
+						localWarpN, specN, drasticPruneConfirmRounds)
+					result.Alerts = append(result.Alerts, msg)
+					s.log.Warn(msg)
+				}
+			}
+		}
 	} else {
 		s.drasticStreakMu.Lock()
 		s.drasticStreak = 0

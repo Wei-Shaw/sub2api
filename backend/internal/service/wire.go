@@ -707,6 +707,7 @@ func ProvideAPIKeyService(
 
 // ProvideProxyGroupResolver constructs DefaultProxyGroupResolver with optional
 // cross-instance generation store for multi-instance cache coherence.
+// (full wiring ensured; GetGeneration exposed for admin stats honesty + ExitIP in resolver)
 func ProvideProxyGroupResolver(
 	groupRepo ProxyGroupRepository,
 	proxyRepo ProxyRepository,

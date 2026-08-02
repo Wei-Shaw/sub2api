@@ -128,8 +128,8 @@ func (m *mockProxyRepoForOAuth) ListHealthIsolated(context.Context, int) ([]Prox
 func (m *mockProxyRepoForOAuth) ListHealthIsolatedByID(context.Context, int64, int) ([]Proxy, error) {
 	return nil, nil
 }
-func (m *mockProxyRepoForOAuth) UpdateStatusWithHealthIsolation(context.Context, int64, string, int, *time.Time, string) error {
-	return nil
+func (m *mockProxyRepoForOAuth) UpdateStatusWithHealthIsolation(context.Context, int64, string, int, *time.Time, string, string, *string, bool) (bool, error) {
+	return false, nil
 }
 func (m *mockProxyRepoForOAuth) ClearAccountProxyBindings(context.Context, int64) (int64, error) {
 	return 0, nil

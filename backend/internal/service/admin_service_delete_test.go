@@ -296,11 +296,11 @@ func (s *deleteGroupAPIKeyRepoStub) ListKeysByGroupID(ctx context.Context, group
 }
 
 type proxyRepoStub struct {
-	deleteErr          error
-	countErr           error
-	accountCount       int64
-	deletedIDs         []int64
-	clearedBindingIDs  []int64
+	deleteErr         error
+	countErr          error
+	accountCount      int64
+	deletedIDs        []int64
+	clearedBindingIDs []int64
 }
 
 func (s *proxyRepoStub) Create(ctx context.Context, proxy *Proxy) error {
@@ -391,8 +391,9 @@ func (s *proxyRepoStub) ClearAccountProxyBindings(_ context.Context, id int64) (
 	s.clearedBindingIDs = append(s.clearedBindingIDs, id)
 	return 0, nil
 }
-func (s *proxyRepoStub) UpdateStatusWithHealthIsolation(context.Context, int64, string, int, *time.Time, string) error {
-	return nil
+func (s *proxyRepoStub) UpdateStatusWithHealthIsolation(context.Context, int64, string, int, *time.Time, string, string, *string, bool) (bool, error) {
+	// no-op for test
+	return true, nil
 }
 
 type redeemRepoStub struct {

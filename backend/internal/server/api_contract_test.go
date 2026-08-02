@@ -2072,8 +2072,8 @@ func (stubProxyRepo) ListHealthIsolated(context.Context, int) ([]service.Proxy, 
 func (stubProxyRepo) ListHealthIsolatedByID(context.Context, int64, int) ([]service.Proxy, error) {
 	return nil, nil
 }
-func (stubProxyRepo) UpdateStatusWithHealthIsolation(context.Context, int64, string, int, *time.Time, string) error {
-	return nil
+func (stubProxyRepo) UpdateStatusWithHealthIsolation(context.Context, int64, string, int, *time.Time, string, string, *string, bool) (bool, error) {
+	return false, nil // simulate skip
 }
 func (stubProxyRepo) ClearAccountProxyBindings(context.Context, int64) (int64, error) {
 	return 0, nil

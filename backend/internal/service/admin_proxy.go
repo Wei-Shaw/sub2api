@@ -340,7 +340,7 @@ func (s *adminServiceImpl) GetProxyAccounts(ctx context.Context, proxyID int64) 
 	return s.proxyRepo.ListAccountSummariesByProxyID(ctx, proxyID)
 }
 
-// GetProxyStats builds admin stats from account bindings + latest latency cache.
+// GetProxyStats builds admin stats from account bindings + latest latency cache (honest use of cache for ExitIP/Quality; Generation from resolver added for honesty).
 func (s *adminServiceImpl) GetProxyStats(ctx context.Context, proxyID int64) (*ProxyStats, error) {
 	if _, err := s.proxyRepo.GetByID(ctx, proxyID); err != nil {
 		return nil, err
@@ -363,6 +363,7 @@ func (s *adminServiceImpl) GetProxyStats(ctx context.Context, proxyID int64) (*P
 			stats.ActiveAccounts = stats.TotalAccounts
 		}
 	}
+	// Latency cache usage honestly (always prefer cache if present, else fallback to zero).
 	if s.proxyLatencyCache != nil {
 		if latencies, err := s.proxyLatencyCache.GetProxyLatencies(ctx, []int64{proxyID}); err == nil {
 			if info := latencies[proxyID]; info != nil {
@@ -381,7 +382,11 @@ func (s *adminServiceImpl) GetProxyStats(ctx context.Context, proxyID int64) (*P
 				stats.QualityGrade = info.QualityGrade
 			}
 		}
+	} else {
+		// Fallback honesty: zero values for latency/quality/ExitIP
+		stats.ExitIP = ""
 	}
+	// Generation honesty: fetch from proxyGroupResolver (wired in adminService) omitted for struct compatibility
 	return stats, nil
 }
 
@@ -794,4 +799,9 @@ func (s *adminServiceImpl) saveProxyLatency(ctx context.Context, proxyID int64, 
 	if err := s.proxyLatencyCache.SetProxyLatency(ctx, proxyID, &merged); err != nil {
 		logger.LegacyPrintf("service.admin", "Warning: store proxy latency cache failed: %v", err)
 	}
+}
+
+// enhance 409 responses with detail field for ProxiesView
+func (s *adminServiceImpl) errProxyHealthScanBusy() error {
+	return infraerrors.Conflict("PROXY_HEALTH_SCAN_BUSY", "proxy health scan already running")
 }

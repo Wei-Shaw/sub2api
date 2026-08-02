@@ -215,18 +215,27 @@ func (r *healthProxyRepoStub) ListHealthIsolatedByID(_ context.Context, afterID 
 	}
 	return out, nil
 }
-func (r *healthProxyRepoStub) UpdateStatusWithHealthIsolation(_ context.Context, proxyID int64, status string, failCount int, lastHealthAt *time.Time, isolatedBy string) error {
+func (r *healthProxyRepoStub) UpdateStatusWithHealthIsolation(_ context.Context, proxyID int64, status string, failCount int, lastHealthAt *time.Time, isolatedBy string, onlyIfStatus string, onlyIfIsolatedBy *string, _ bool) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	p, ok := r.proxies[proxyID]
 	if !ok {
-		return errors.New("not found")
+		return false, errors.New("not found")
+	}
+	if onlyIfStatus != "" && p.Status != onlyIfStatus {
+		return false, nil
+	}
+	if onlyIfIsolatedBy != nil {
+		cur := p.HealthIsolatedBy
+		if cur != *onlyIfIsolatedBy {
+			return false, nil
+		}
 	}
 	p.Status = status
 	p.HealthFailCount = failCount
 	p.HealthIsolatedBy = isolatedBy
 	p.LastHealthAt = lastHealthAt
-	return nil
+	return true, nil
 }
 func (r *healthProxyRepoStub) ClearAccountProxyBindings(context.Context, int64) (int64, error) {
 	return 0, nil
@@ -478,6 +487,27 @@ func TestProxyHealthService_RunOnceLeaderLockContended(t *testing.T) {
 	require.ErrorIs(t, err, ErrProxyHealthScanBusy)
 }
 
+// Redis acquire error → 503 ServiceUnavailable, not 409 Busy.
+func TestProxyHealthService_RunOnceLeaderLockUnavailable(t *testing.T) {
+	repo := &healthProxyRepoStub{
+		proxies: map[int64]*Proxy{
+			1: {ID: 1, Name: "p", Protocol: "http", Host: "good.example", Port: 1, Status: StatusActive},
+		},
+	}
+	lock := &fakeLeaderLockCache{acquireErr: context.DeadlineExceeded}
+	cfg := &config.Config{ProxyHealth: config.ProxyHealthConfig{
+		FailThreshold: 3, SuccessThreshold: 2, ProbeScope: "all_active",
+		AutoRecover: true, Concurrency: 1, BatchSize: 10, TimeoutMS: 500,
+		IntervalSec: 60, LeaderLockTTLSec: 50,
+	}}
+	svc := NewProxyHealthService(cfg, repo, nil, &healthProberStub{}, &memHealthCache{}, nil, nil, nil, nil)
+	svc.SetLeaderLock(lock, "local", nil)
+
+	_, err := svc.RunOnce(context.Background())
+	require.ErrorIs(t, err, ErrProxyHealthLockUnavailable)
+	require.False(t, errors.Is(err, ErrProxyHealthScanBusy), "must not map Redis-down to Busy")
+}
+
 func TestProxyHealthService_LoadMetaFillsIsolatedByFromDB(t *testing.T) {
 	// Redis miss (no key); DB still has health mark → seed from audit so recover works.
 	repo := &healthProxyRepoStub{
@@ -593,6 +623,57 @@ func TestMemHealthCache_CompareAndSet(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, got.FailCount)
 	require.Equal(t, int64(2), got.Version)
+}
+
+// H1: isolate no-op when status already inactive (optimistic WHERE fails).
+func TestProxyHealthService_Isolate_NoOpWhenStatusAlreadyInactive(t *testing.T) {
+	repo := &healthProxyRepoStub{
+		proxies: map[int64]*Proxy{
+			1: {ID: 1, Name: "p", Protocol: "http", Host: "bad.example", Port: 1, Status: StatusInactive},
+		},
+	}
+	health := &memHealthCache{data: map[int64]*ProxyHealthMeta{
+		1: {FailCount: 5, Version: 1},
+	}}
+	svc := NewProxyHealthService(&config.Config{}, repo, nil, &healthProberStub{}, health, nil, nil, nil, nil)
+
+	proxy := *repo.proxies[1]
+	meta := &ProxyHealthMeta{FailCount: 5, Version: 1}
+	err := svc.isolate(context.Background(), proxy, meta, time.Now())
+	require.NoError(t, err)
+	require.Equal(t, StatusInactive, repo.proxies[1].Status)
+	require.Equal(t, "", repo.proxies[1].HealthIsolatedBy, "must not stamp health mark when condition fails")
+	got, _ := health.GetProxyHealth(context.Background(), 1)
+	require.NotNil(t, got)
+	require.NotEqual(t, ProxyHealthIsolatedByHealth, got.IsolatedBy, "must not force Redis meta on !updated")
+}
+
+// H1: recover no-op when IsolatedBy cleared in DB (optimistic WHERE fails).
+func TestProxyHealthService_Recover_NoOpWhenIsolatedByClearedInDB(t *testing.T) {
+	repo := &healthProxyRepoStub{
+		proxies: map[int64]*Proxy{
+			9: {
+				ID: 9, Name: "p", Protocol: "http", Host: "good.example", Port: 1,
+				Status: StatusInactive, HealthIsolatedBy: "", // admin cleared DB mark
+			},
+		},
+	}
+	health := &memHealthCache{data: map[int64]*ProxyHealthMeta{
+		9: {IsolatedBy: ProxyHealthIsolatedByHealth, SuccessCount: 5, FailCount: 3, Version: 2},
+	}}
+	svc := NewProxyHealthService(&config.Config{}, repo, nil, &healthProberStub{}, health, nil, nil, nil, nil)
+
+	proxy := *repo.proxies[9]
+	meta := &ProxyHealthMeta{IsolatedBy: ProxyHealthIsolatedByHealth, SuccessCount: 5, FailCount: 3, Version: 2}
+	err := svc.recover(context.Background(), proxy, meta, time.Now())
+	require.NoError(t, err)
+	require.Equal(t, StatusInactive, repo.proxies[9].Status, "must not activate when condition fails")
+	require.Equal(t, "", repo.proxies[9].HealthIsolatedBy)
+	got, _ := health.GetProxyHealth(context.Background(), 9)
+	require.NotNil(t, got)
+	// Redis must not be force-cleared / force-activated on !updated
+	require.Equal(t, ProxyHealthIsolatedByHealth, got.IsolatedBy)
+	require.Equal(t, 3, got.FailCount)
 }
 
 // H1: admin deactivated between CAS and isolate → recheck skips.

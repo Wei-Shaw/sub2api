@@ -84,6 +84,40 @@ func TestTryAcquireSingletonLeaderLock_CacheErrorSkips(t *testing.T) {
 	require.Nil(t, release)
 }
 
+// Ex path: cache error → ok=false, backendUnavailable=true (503 callers).
+func TestTryAcquireSingletonLeaderLockEx_CacheErrorUnavailable(t *testing.T) {
+	cache := &fakeLeaderLockCache{acquireErr: context.DeadlineExceeded}
+	release, ok, unavail := tryAcquireSingletonLeaderLockEx(context.Background(), cache, nil, "k", "inst", time.Minute)
+	require.False(t, ok)
+	require.True(t, unavail, "cache error must set backendUnavailable")
+	require.Nil(t, release)
+}
+
+// Ex path: peer held → ok=false, backendUnavailable=false (409 callers).
+func TestTryAcquireSingletonLeaderLockEx_PeerHeldNotUnavailable(t *testing.T) {
+	cache := &fakeLeaderLockCache{}
+	ctx := context.Background()
+	rel, ok, unavail := tryAcquireSingletonLeaderLockEx(ctx, cache, nil, "k", "A", time.Minute)
+	require.True(t, ok)
+	require.False(t, unavail)
+	require.NotNil(t, rel)
+	defer rel()
+
+	_, okB, unavailB := tryAcquireSingletonLeaderLockEx(ctx, cache, nil, "k", "B", time.Minute)
+	require.False(t, okB)
+	require.False(t, unavailB, "peer held must not look like backend unavailable")
+}
+
+func TestLeaderLockHeartbeatInterval_CapsAt15s(t *testing.T) {
+	// Long TTL: first tick sooner than bare ttl/3.
+	require.Equal(t, 15*time.Second, leaderLockHeartbeatInterval(3*time.Minute))
+	require.Equal(t, 15*time.Second, leaderLockHeartbeatInterval(90*time.Second))
+	// Short TTL still uses ttl/3 (floored at 2s).
+	require.Equal(t, 10*time.Second, leaderLockHeartbeatInterval(30*time.Second))
+	require.Equal(t, 2*time.Second, leaderLockHeartbeatInterval(6*time.Second))
+	require.Equal(t, 2*time.Second, leaderLockHeartbeatInterval(3*time.Second))
+}
+
 // When the cache errors AND the caller ctx is already canceled/deadline, still
 // skip (same path as any cache error — no ungated fallthrough).
 func TestTryAcquireSingletonLeaderLock_CacheErrorCanceledCtxSkips(t *testing.T) {
@@ -93,6 +127,10 @@ func TestTryAcquireSingletonLeaderLock_CacheErrorCanceledCtxSkips(t *testing.T) 
 	release, ok := tryAcquireSingletonLeaderLock(ctx, cache, nil, "k", "inst", time.Minute)
 	require.False(t, ok, "dead ctx + cache error must skip, not run ungated")
 	require.Nil(t, release)
+
+	_, okEx, unavail := tryAcquireSingletonLeaderLockEx(ctx, cache, nil, "k", "inst", time.Minute)
+	require.False(t, okEx)
+	require.True(t, unavail)
 }
 
 func TestSubscriptionExpiryService_ReminderSkipsScanWhenNotLeader(t *testing.T) {

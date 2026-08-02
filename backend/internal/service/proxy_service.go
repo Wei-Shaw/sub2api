@@ -13,8 +13,12 @@ var (
 	ErrProxyNotFound = infraerrors.NotFound("PROXY_NOT_FOUND", "proxy not found")
 	ErrProxyInUse    = infraerrors.Conflict("PROXY_IN_USE", "proxy is in use by accounts")
 	// ErrProxyHealthScanBusy is returned when a process-local or cluster-wide
-	// proxy health scan is already in flight (singleflight / leader lock).
+	// proxy health scan is already in flight (singleflight / peer holds leader lock) — 409.
 	ErrProxyHealthScanBusy = infraerrors.Conflict("PROXY_HEALTH_SCAN_BUSY", "proxy health scan already running")
+	// ErrProxyHealthLockUnavailable is returned when the leader-lock backend
+	// (Redis) errors on acquire — peer may still hold the lock; do not run — 503.
+	ErrProxyHealthLockUnavailable = infraerrors.ServiceUnavailable(
+		"PROXY_HEALTH_LOCK_UNAVAILABLE", "proxy health leader lock backend unavailable")
 )
 
 type ProxyRepository interface {
@@ -58,10 +62,11 @@ type ProxyRepository interface {
 	// Returns the number of accounts unbound.
 	ClearAccountProxyBindings(ctx context.Context, proxyID int64) (int64, error)
 
-	// UpdateStatusWithHealthIsolation atomically sets status + health audit
-	// columns so isolate/recover cannot leave inactive without health_isolated_by
-	// (or the reverse) if the process crashes between two writes.
-	UpdateStatusWithHealthIsolation(ctx context.Context, proxyID int64, status string, failCount int, lastHealthAt *time.Time, isolatedBy string) error
+	// UpdateStatusWithHealthIsolation updates status+audit in one SQL.
+	// onlyIfStatus: if non-empty, require current status equals this.
+	// onlyIfIsolatedBy: if non-nil, require COALESCE(health_isolated_by,'') equals *onlyIfIsolatedBy.
+	// Returns updated=false when 0 rows (condition failed) — caller must NOT force Redis meta.
+	UpdateStatusWithHealthIsolation(ctx context.Context, proxyID int64, status string, failCount int, lastHealthAt *time.Time, isolatedBy string, onlyIfStatus string, onlyIfIsolatedBy *string, updateHealthCounters bool) (updated bool, err error)
 }
 
 // CreateProxyRequest 创建代理请求

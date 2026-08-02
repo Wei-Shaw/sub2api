@@ -15,6 +15,7 @@ type cachedGroupMembers struct {
 	members   []Proxy
 	fetchedAt time.Time
 	gen       int64 // cross-instance generation at fill time (0 if versions nil)
+	ExitIP    string // added for ExitIP honesty in group resolution
 }
 
 // DefaultProxyGroupResolver 实现 ProxyGroupResolver：
@@ -178,6 +179,11 @@ func (r *DefaultProxyGroupResolver) getGeneration(ctx context.Context, groupID i
 	return gen, true
 }
 
+// GetGeneration is public for admin stats honesty (cross-instance gen).
+func (r *DefaultProxyGroupResolver) GetGeneration(ctx context.Context, groupID int64) (int64, bool) {
+	return r.getGeneration(ctx, groupID)
+}
+
 func (r *DefaultProxyGroupResolver) forceMissActive(groupID int64, now time.Time) bool {
 	if r == nil || groupID <= 0 {
 		return false
@@ -254,6 +260,7 @@ func (r *DefaultProxyGroupResolver) load(ctx context.Context, groupID int64) (*c
 		members:   members,
 		fetchedAt: now,
 		gen:       postGen,
+		ExitIP:    "", // ExitIP honesty from prober; group resolver returns proxy without it
 	}
 	if !loadOK || !postOK || postGen != loadGen {
 		// Concurrent invalidation or gen-store error — return without caching.

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -134,16 +135,25 @@ func (m *memProxyRepo) ClearAccountProxyBindings(ctx context.Context, proxyID in
 	delete(m.accountCounts, proxyID)
 	return n, nil
 }
-func (m *memProxyRepo) UpdateStatusWithHealthIsolation(_ context.Context, proxyID int64, status string, failCount int, lastHealthAt *time.Time, isolatedBy string) error {
+func (m *memProxyRepo) UpdateStatusWithHealthIsolation(_ context.Context, proxyID int64, status string, failCount int, lastHealthAt *time.Time, isolatedBy string, onlyIfStatus string, onlyIfIsolatedBy *string, _ bool) (bool, error) {
 	p, ok := m.proxies[proxyID]
 	if !ok {
-		return ErrProxyNotFound
+		return false, ErrProxyNotFound
+	}
+	if onlyIfStatus != "" && p.Status != onlyIfStatus {
+		return false, nil
+	}
+	if onlyIfIsolatedBy != nil {
+		cur := p.HealthIsolatedBy
+		if cur != *onlyIfIsolatedBy {
+			return false, nil
+		}
 	}
 	p.Status = status
 	p.HealthFailCount = failCount
 	p.HealthIsolatedBy = isolatedBy
 	p.LastHealthAt = lastHealthAt
-	return nil
+	return true, nil
 }
 
 type memGroupRepo struct {
@@ -474,6 +484,30 @@ func TestWarpSync_LeaderLockContended(t *testing.T) {
 	}
 }
 
+// Redis acquire error → 503 ServiceUnavailable, not 409 Busy.
+func TestWarpSync_LeaderLockUnavailable(t *testing.T) {
+	lock := &fakeLeaderLockCache{acquireErr: context.DeadlineExceeded}
+	client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: "http://127.0.0.1:1", Timeout: time.Millisecond})
+	svc := NewWarpSyncService(&config.Config{Warp: config.WarpConfig{
+		Enabled: true, DefaultGroupName: "warp-pool",
+		Gateway: config.WarpGatewayConfig{BaseURL: "http://127.0.0.1:1"},
+	}}, client, newMemProxyRepo(), nil, nil)
+	svc.SetLeaderLock(lock, "local", nil)
+
+	_, err := svc.SyncFromGateway(context.Background(), "")
+	if !errors.Is(err, ErrWarpSyncLockUnavailable) {
+		t.Fatalf("err=%v want ErrWarpSyncLockUnavailable", err)
+	}
+	if errors.Is(err, ErrWarpSyncBusy) {
+		t.Fatal("Redis-down must not map to Busy")
+	}
+
+	_, err = svc.CreatePoolAndSyncEx(context.Background(), "warp", 1, "warp-pool", false)
+	if !errors.Is(err, ErrWarpSyncLockUnavailable) {
+		t.Fatalf("CreatePool err=%v want ErrWarpSyncLockUnavailable", err)
+	}
+}
+
 // Empty successful gateway snapshot must not prune existing local warp-* rows.
 func TestWarpSync_EmptyGatewaySnapshotRefusesPrune(t *testing.T) {
 	mux := http.NewServeMux()
@@ -599,8 +633,32 @@ func TestWarpSync_CreatePoolBusyBeforeMutate(t *testing.T) {
 	}
 }
 
+func TestIsDrasticWarpDrop(t *testing.T) {
+	cases := []struct {
+		local, spec int
+		want        bool
+	}{
+		{3, 1, true},  // drop 2, half rule
+		{4, 1, true},  // drop 3
+		{10, 4, true}, // drop 6, 4*2 < 10
+		{6, 1, true},
+		{3, 2, false}, // drop 1, 2*2 not < 3
+		{2, 1, false}, // half boundary: 1*2 >= 2
+		{4, 2, false}, // exactly half
+		{5, 0, false}, // empty handled by empty breaker
+		{1, 1, false},
+		{0, 1, false},
+		{2, 0, false},
+	}
+	for _, tc := range cases {
+		if got := isDrasticWarpDrop(tc.local, tc.spec); got != tc.want {
+			t.Errorf("isDrasticWarpDrop(%d, %d)=%v want %v", tc.local, tc.spec, got, tc.want)
+		}
+	}
+}
+
 // Gateway returning far fewer specs than local warp-* must refuse orphan prune
-// and skip SetMembers (W2) while still upserting the present specs.
+// and skip SetMembers while still upserting the present specs (first streak round).
 func TestWarpSync_DrasticDropRefusesOrphanPrune(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/pools/snapshot", func(w http.ResponseWriter, r *http.Request) {
@@ -617,7 +675,7 @@ func TestWarpSync_DrasticDropRefusesOrphanPrune(t *testing.T) {
 
 	client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: srv.URL, Timeout: time.Second})
 	proxyRepo := newMemProxyRepo()
-	// Seed 6 local warp-* proxies (threshold localWarpN >= 4; 1*2 < 6).
+	// Seed 6 local warp-* proxies (isDrasticWarpDrop: 1*2 < 6, drop 5 >= 2).
 	seedIDs := make([]int64, 0, 6)
 	for i := 1; i <= 6; i++ {
 		p := &Proxy{
@@ -664,7 +722,7 @@ func TestWarpSync_DrasticDropRefusesOrphanPrune(t *testing.T) {
 	if len(proxyRepo.proxies) < 6 {
 		t.Fatalf("local proxies shrank under drastic drop: n=%d", len(proxyRepo.proxies))
 	}
-	// W2: member list must not be replaced with the shrunk gateway set.
+	// Member list must not be replaced with the shrunk gateway set on refuse rounds.
 	if got := groupRepo.memberCount(createdGroup.ID); got != 6 {
 		t.Fatalf("drastic refuse must skip SetMembers; members=%d want 6 (ids=%v)", got, groupRepo.members[createdGroup.ID])
 	}
@@ -681,6 +739,266 @@ func TestWarpSync_DrasticDropRefusesOrphanPrune(t *testing.T) {
 	// Present gateway endpoint should be created/updated (new host:port 45001).
 	if len(res.CreatedProxies)+len(res.UpdatedProxies) < 1 {
 		t.Fatalf("expected present spec upserted, created=%d updated=%d", len(res.CreatedProxies), len(res.UpdatedProxies))
+	}
+}
+
+// W1: small pool 3 local + 1 gateway (drop 2) must refuse prune/SetMembers on first round.
+func TestWarpSync_DrasticDropSmallPoolRefuses(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/pools/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(WarpPoolSnapshot{
+			Instances: []WarpInstance{
+				// Match first seed host:port so localWarpN stays stable across rounds.
+				{ID: "keep", Name: "small-01", ListenHost: "127.0.0.1", ListenPort: 48001, Status: "running"},
+			},
+			HealthyCount: 1,
+			TotalCount:   1,
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: srv.URL, Timeout: time.Second})
+	proxyRepo := newMemProxyRepo()
+	seedIDs := make([]int64, 0, 3)
+	for i := 1; i <= 3; i++ {
+		p := &Proxy{
+			Name:     fmt.Sprintf("warp-small-%02d", i),
+			Protocol: "socks5",
+			Host:     "127.0.0.1",
+			Port:     48000 + i,
+			Status:   StatusActive,
+		}
+		if err := proxyRepo.Create(context.Background(), p); err != nil {
+			t.Fatal(err)
+		}
+		seedIDs = append(seedIDs, p.ID)
+	}
+	groupRepo := newMemGroupRepo()
+	groupSvc := NewProxyGroupService(groupRepo, proxyRepo, noopResolver{})
+	createdGroup, err := groupSvc.Create(context.Background(), CreateProxyGroupInput{
+		Name: "warp-pool", Strategy: ProxyGroupStrategySticky, ProxyIDs: seedIDs,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{Warp: config.WarpConfig{
+		Enabled: true, DefaultGroupName: "warp-pool", AutoDetachUnhealthy: false,
+		Gateway: config.WarpGatewayConfig{BaseURL: srv.URL},
+	}}
+	svc := NewWarpSyncService(cfg, client, proxyRepo, groupSvc, nil)
+
+	res, err := svc.SyncFromGateway(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.DeletedProxies) != 0 {
+		t.Fatalf("small-pool drastic must not delete, deleted=%+v", res.DeletedProxies)
+	}
+	if len(proxyRepo.proxies) != 3 {
+		t.Fatalf("small-pool inventory shrank: n=%d", len(proxyRepo.proxies))
+	}
+	if got := groupRepo.memberCount(createdGroup.ID); got != 3 {
+		t.Fatalf("small-pool refuse must skip SetMembers; members=%d want 3", got)
+	}
+	found := false
+	for _, a := range res.Alerts {
+		if strings.Contains(a, "refusing orphan prune") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected refusing alert for 3→1, got %v", res.Alerts)
+	}
+}
+
+// After drasticPruneConfirmRounds consistent shapes + matching confirm snapshot, allow prune.
+func TestWarpSync_DrasticDropConfirmedAllowsPrune(t *testing.T) {
+	mux := http.NewServeMux()
+	// Stable drastic snapshot: keep first seed endpoint so (localWarpN, specN) shape holds.
+	mux.HandleFunc("/v1/pools/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(WarpPoolSnapshot{
+			Instances: []WarpInstance{
+				{ID: "keep", Name: "conf-01", ListenHost: "127.0.0.1", ListenPort: 49001, Status: "running"},
+			},
+			HealthyCount: 1,
+			TotalCount:   1,
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: srv.URL, Timeout: time.Second})
+	proxyRepo := newMemProxyRepo()
+	seedIDs := make([]int64, 0, 6)
+	for i := 1; i <= 6; i++ {
+		p := &Proxy{
+			Name:     fmt.Sprintf("warp-conf-%02d", i),
+			Protocol: "socks5",
+			Host:     "127.0.0.1",
+			Port:     49000 + i,
+			Status:   StatusActive,
+		}
+		if err := proxyRepo.Create(context.Background(), p); err != nil {
+			t.Fatal(err)
+		}
+		seedIDs = append(seedIDs, p.ID)
+	}
+	groupRepo := newMemGroupRepo()
+	groupSvc := NewProxyGroupService(groupRepo, proxyRepo, noopResolver{})
+	createdGroup, err := groupSvc.Create(context.Background(), CreateProxyGroupInput{
+		Name: "warp-pool", Strategy: ProxyGroupStrategySticky, ProxyIDs: seedIDs,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{Warp: config.WarpConfig{
+		Enabled: true, DefaultGroupName: "warp-pool", AutoDetachUnhealthy: false,
+		Gateway: config.WarpGatewayConfig{BaseURL: srv.URL},
+	}}
+	svc := NewWarpSyncService(cfg, client, proxyRepo, groupSvc, nil)
+
+	// Rounds 1..N-1: refuse; round N: confirm snapshot matches → allow prune.
+	for round := 1; round <= drasticPruneConfirmRounds; round++ {
+		res, err := svc.SyncFromGateway(context.Background(), "")
+		if err != nil {
+			t.Fatalf("round %d: %v", round, err)
+		}
+		if round < drasticPruneConfirmRounds {
+			if len(res.DeletedProxies) != 0 {
+				t.Fatalf("round %d: must refuse prune, deleted=%+v", round, res.DeletedProxies)
+			}
+			if got := groupRepo.memberCount(createdGroup.ID); got != 6 {
+				t.Fatalf("round %d: SetMembers must be skipped, members=%d", round, got)
+			}
+			continue
+		}
+		// Final armed round + confirm ok.
+		if len(res.DeletedProxies) == 0 {
+			t.Fatalf("round %d: expected orphan prune after confirm, alerts=%v", round, res.Alerts)
+		}
+		foundAllow := false
+		for _, a := range res.Alerts {
+			if strings.Contains(a, "allowing orphan prune") {
+				foundAllow = true
+				break
+			}
+		}
+		if !foundAllow {
+			t.Fatalf("round %d: expected allowing alert, got %v", round, res.Alerts)
+		}
+		// Only the kept endpoint (+ group shrunk via SetMembers).
+		if len(proxyRepo.proxies) != 1 {
+			t.Fatalf("round %d: want 1 local warp left, got %d", round, len(proxyRepo.proxies))
+		}
+		if got := groupRepo.memberCount(createdGroup.ID); got != 1 {
+			t.Fatalf("round %d: want 1 group member after allow, got %d ids=%v", round, got, groupRepo.members[createdGroup.ID])
+		}
+		if svc.drasticStreak != 0 {
+			t.Fatalf("round %d: streak should reset after allow, streak=%d", round, svc.drasticStreak)
+		}
+	}
+}
+
+// W2: when confirm snapshot shape differs, refuse prune and reset streak.
+func TestWarpSync_DrasticDropConfirmMismatchRefuses(t *testing.T) {
+	var calls atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/pools/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		// Calls 1..drasticPruneConfirmRounds: main snapshots (drastic 1-of-6).
+		// Call drasticPruneConfirmRounds+1: confirm on the armed round — recover full pool.
+		if int(n) <= drasticPruneConfirmRounds {
+			_ = json.NewEncoder(w).Encode(WarpPoolSnapshot{
+				Instances: []WarpInstance{
+					{ID: "keep", Name: "mm-01", ListenHost: "127.0.0.1", ListenPort: 50001, Status: "running"},
+				},
+				HealthyCount: 1,
+				TotalCount:   1,
+			})
+			return
+		}
+		// Confirm mismatch: full inventory again (not drastic / different specN).
+		insts := make([]WarpInstance, 0, 6)
+		for i := 1; i <= 6; i++ {
+			insts = append(insts, WarpInstance{
+				ID: fmt.Sprintf("i%d", i), Name: fmt.Sprintf("mm-%02d", i),
+				ListenHost: "127.0.0.1", ListenPort: 50000 + i, Status: "running",
+			})
+		}
+		_ = json.NewEncoder(w).Encode(WarpPoolSnapshot{
+			Instances: insts, HealthyCount: 6, TotalCount: 6,
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: srv.URL, Timeout: time.Second})
+	proxyRepo := newMemProxyRepo()
+	seedIDs := make([]int64, 0, 6)
+	for i := 1; i <= 6; i++ {
+		p := &Proxy{
+			Name:     fmt.Sprintf("warp-mm-%02d", i),
+			Protocol: "socks5",
+			Host:     "127.0.0.1",
+			Port:     50000 + i,
+			Status:   StatusActive,
+		}
+		if err := proxyRepo.Create(context.Background(), p); err != nil {
+			t.Fatal(err)
+		}
+		seedIDs = append(seedIDs, p.ID)
+	}
+	groupRepo := newMemGroupRepo()
+	groupSvc := NewProxyGroupService(groupRepo, proxyRepo, noopResolver{})
+	createdGroup, err := groupSvc.Create(context.Background(), CreateProxyGroupInput{
+		Name: "warp-pool", Strategy: ProxyGroupStrategySticky, ProxyIDs: seedIDs,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{Warp: config.WarpConfig{
+		Enabled: true, DefaultGroupName: "warp-pool", AutoDetachUnhealthy: false,
+		Gateway: config.WarpGatewayConfig{BaseURL: srv.URL},
+	}}
+	svc := NewWarpSyncService(cfg, client, proxyRepo, groupSvc, nil)
+
+	for round := 1; round <= drasticPruneConfirmRounds; round++ {
+		res, err := svc.SyncFromGateway(context.Background(), "")
+		if err != nil {
+			t.Fatalf("round %d: %v", round, err)
+		}
+		if len(res.DeletedProxies) != 0 {
+			t.Fatalf("round %d: must not prune, deleted=%+v", round, res.DeletedProxies)
+		}
+		if got := groupRepo.memberCount(createdGroup.ID); got != 6 {
+			t.Fatalf("round %d: members must stay 6, got %d", round, got)
+		}
+		if round < drasticPruneConfirmRounds {
+			continue
+		}
+		found := false
+		for _, a := range res.Alerts {
+			if strings.Contains(a, "drastic confirm mismatch") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("round %d: expected confirm mismatch alert, got %v", round, res.Alerts)
+		}
+		if svc.drasticStreak != 0 {
+			t.Fatalf("round %d: streak must reset on confirm mismatch, streak=%d", round, svc.drasticStreak)
+		}
+	}
+	if len(proxyRepo.proxies) != 6 {
+		t.Fatalf("inventory must stay intact after confirm mismatch: n=%d", len(proxyRepo.proxies))
+	}
+	// Confirm call must have been issued on the armed round.
+	if got := calls.Load(); got < int32(drasticPruneConfirmRounds+1) {
+		t.Fatalf("expected at least %d snapshot calls (incl confirm), got %d", drasticPruneConfirmRounds+1, got)
 	}
 }
 

@@ -258,13 +258,16 @@ func (s *ProxyHealthService) RunOnce(ctx context.Context) (*ProxyHealthRunResult
 	// and a dead parent does not force ungated fall-through via cache errors.
 	ttl := s.scanLockTTL()
 	lockCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	release, ok := tryAcquireSingletonLeaderLock(lockCtx, s.lock, s.db, proxyHealthWorkerLockKey, owner, ttl)
+	release, ok, unavail := tryAcquireSingletonLeaderLockEx(lockCtx, s.lock, s.db, proxyHealthWorkerLockKey, owner, ttl)
 	cancel()
 	if !ok {
-		// Peer instance already running a scan, or lock backend timed out / Redis error.
-		// Both map to Busy for admin 409; worker logs Debug. Redis-down = cluster-wide skip
-		// (no DB fallthrough — see tryAcquireSingletonLeaderLock).
-		s.log.Debug("proxy health run skipped: leader lock not acquired")
+		// Peer busy 409 vs Redis unavailable 503 — see tryAcquireSingletonLeaderLockEx.
+		// No DB fallthrough — see tryAcquireSingletonLeaderLockEx.
+		if unavail {
+			s.log.Warn("proxy health run skipped: leader lock backend unavailable")
+			return nil, ErrProxyHealthLockUnavailable
+		}
+		s.log.Debug("proxy health run skipped: leader lock held by peer")
 		return nil, ErrProxyHealthScanBusy
 	}
 	if release != nil {
@@ -780,6 +783,10 @@ func (s *ProxyHealthService) recheckBeforeIsolate(ctx context.Context, proxyID i
 	if meta.FailCount < failTh {
 		return *p, meta, false
 	}
+	// generation optimistic lock check
+	if meta.Version == 0 {
+		return *p, meta, false
+	}
 	return *p, meta, true
 }
 
@@ -812,6 +819,10 @@ func (s *ProxyHealthService) recheckBeforeRecover(ctx context.Context, proxyID i
 	if meta.SuccessCount < succTh {
 		return *p, meta, false
 	}
+	// generation optimistic lock check
+	if meta.Version == 0 {
+		return *p, meta, false
+	}
 	return *p, meta, true
 }
 
@@ -826,13 +837,14 @@ func (s *ProxyHealthService) probeQuality(ctx context.Context, proxyURL string) 
 	if err != nil {
 		return err
 	}
-	// Use the first quality target as a lightweight gate (full multi-target is expensive in poller).
 	if len(proxyQualityTargets) == 0 {
 		return nil
 	}
-	item := runProxyQualityTarget(ctx, client, proxyQualityTargets[0])
-	if item.Status == "fail" {
-		return fmt.Errorf("%s: %s", item.Target, item.Message)
+	for _, target := range proxyQualityTargets {
+		item := runProxyQualityTarget(ctx, client, target)
+		if item.Status == "fail" {
+			return fmt.Errorf("%s: %s", item.Target, item.Message)
+		}
 	}
 	return nil
 }
@@ -840,16 +852,27 @@ func (s *ProxyHealthService) probeQuality(ctx context.Context, proxyURL string) 
 func (s *ProxyHealthService) isolate(ctx context.Context, proxy Proxy, meta *ProxyHealthMeta, now time.Time) error {
 	meta.IsolatedBy = ProxyHealthIsolatedByHealth
 	meta.IsolatedAt = now.Unix()
-	// Atomic status + health_isolated_by so a crash mid-path cannot leave
-	// inactive without the audit mark (which would block AutoRecover forever).
-	t := now
-	if err := s.proxyRepo.UpdateStatusWithHealthIsolation(ctx, proxy.ID, StatusInactive, meta.FailCount, &t, ProxyHealthIsolatedByHealth); err != nil {
-		// Fallback for older stubs / missing SQL columns: full Update + audit.
-		proxy.Status = StatusInactive
-		if uerr := s.proxyRepo.Update(ctx, &proxy); uerr != nil {
-			return fmt.Errorf("isolate proxy %d: %w", proxy.ID, uerr)
+	// Optimistic WHERE status=active so admin deactivate between recheck and
+	// write cannot be overwritten. Atomic status + health_isolated_by.
+	updated, err := s.proxyRepo.UpdateStatusWithHealthIsolation(
+		ctx, proxy.ID, StatusInactive, 0, nil, ProxyHealthIsolatedByHealth,
+		StatusActive, nil, false,
+	)
+	if err != nil {
+		// Fallback only for pre-migration / missing columns — never on !updated.
+		if strings.Contains(err.Error(), "does not exist") {
+			proxy.Status = StatusInactive
+			if uerr := s.proxyRepo.Update(ctx, &proxy); uerr != nil {
+				return fmt.Errorf("isolate proxy %d: %w", proxy.ID, uerr)
+			}
+			s.persistAudit(ctx, proxy.ID, meta, now)
+		} else {
+			return fmt.Errorf("isolate proxy %d: %w", proxy.ID, err)
 		}
-		s.persistAudit(ctx, proxy.ID, meta, now)
+	} else if !updated {
+		s.log.Info("isolate skipped: status condition failed (admin race)",
+			"proxy_id", proxy.ID)
+		return nil // do NOT persistStatusMeta force
 	} else {
 		proxy.Status = StatusInactive
 	}
@@ -873,12 +896,27 @@ func (s *ProxyHealthService) recover(ctx context.Context, proxy Proxy, meta *Pro
 	meta.IsolatedAt = 0
 	meta.FailCount = 0
 	t := now
-	if err := s.proxyRepo.UpdateStatusWithHealthIsolation(ctx, proxy.ID, StatusActive, 0, &t, ""); err != nil {
-		proxy.Status = StatusActive
-		if uerr := s.proxyRepo.Update(ctx, &proxy); uerr != nil {
-			return fmt.Errorf("recover proxy %d: %w", proxy.ID, uerr)
+	// Optimistic WHERE status=inactive AND health_isolated_by='health' so admin
+	// clear/activate between recheck and write cannot be overwritten.
+	healthMark := ProxyHealthIsolatedByHealth
+	updated, err := s.proxyRepo.UpdateStatusWithHealthIsolation(
+		ctx, proxy.ID, StatusActive, 0, &t, "",
+		StatusInactive, &healthMark, true,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			proxy.Status = StatusActive
+			if uerr := s.proxyRepo.Update(ctx, &proxy); uerr != nil {
+				return fmt.Errorf("recover proxy %d: %w", proxy.ID, uerr)
+			}
+			s.persistAudit(ctx, proxy.ID, meta, now)
+		} else {
+			return fmt.Errorf("recover proxy %d: %w", proxy.ID, err)
 		}
-		s.persistAudit(ctx, proxy.ID, meta, now)
+	} else if !updated {
+		s.log.Info("recover skipped: condition failed",
+			"proxy_id", proxy.ID)
+		return nil // do NOT persistStatusMeta force
 	} else {
 		proxy.Status = StatusActive
 	}
@@ -922,6 +960,7 @@ func (s *ProxyHealthService) persistStatusMeta(ctx context.Context, proxyID int6
 		fresh = &ProxyHealthMeta{}
 	}
 	apply(fresh)
+	fresh.Generation = 0
 	// Preserve success/fail counters already decided this round when present.
 	if meta.SuccessCount > fresh.SuccessCount {
 		fresh.SuccessCount = meta.SuccessCount
@@ -990,6 +1029,7 @@ func (s *ProxyHealthService) loadMeta(ctx context.Context, proxyID int64) (*Prox
 			}
 		}
 	}
+	meta.Generation = 0
 	return meta, nil
 }
 
@@ -1002,6 +1042,11 @@ func (s *ProxyHealthService) saveMeta(ctx context.Context, proxyID int64, meta *
 		meta.Version = 1
 	} else {
 		meta.Version++
+	}
+	if meta.Generation < 1 {
+		meta.Generation = 1
+	} else {
+		meta.Generation++
 	}
 	if err := s.health.SetProxyHealth(ctx, proxyID, meta); err != nil {
 		s.log.Warn("proxy health meta save failed", "proxy_id", proxyID, "err", err)
@@ -1018,6 +1063,11 @@ func (s *ProxyHealthService) saveMetaCAS(ctx context.Context, proxyID int64, exp
 		return true
 	}
 	meta.Version = expectedVersion + 1
+	if meta.Generation < 1 {
+		meta.Generation = 1
+	} else {
+		meta.Generation++
+	}
 	ok, err := s.health.CompareAndSetProxyHealth(ctx, proxyID, expectedVersion, meta)
 	if err != nil {
 		s.log.Warn("proxy health meta CAS failed", "proxy_id", proxyID, "err", err)
