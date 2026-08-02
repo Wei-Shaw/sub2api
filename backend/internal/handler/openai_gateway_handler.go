@@ -1468,7 +1468,8 @@ REDACTED
 	reqLog.Info("openai.websocket_ingress_started")
 	clientIP := ip.GetClientIP(c)
 	userAgent := strings.TrimSpace(c.GetHeader("User-Agent"))
-	ctx := c.Request.Context()
+	clientLifecycleCtx := c.Request.Context()
+	ctx := clientLifecycleCtx
 	maxIngressConnections := 0
 	if h.cfg != nil {
 		maxIngressConnections = h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey
@@ -1825,6 +1826,7 @@ REDACTED
 		var turnChannelMapping atomic.Pointer[openAIWSTurnChannelMappingSnapshot]
 		turnChannelMapping.Store(&openAIWSTurnChannelMappingSnapshot{turn: 1, mapping: channelMappingWSREDACTED)
 		hooks := &service.OpenAIWSIngressHooks{
+			ClientLifecycleContext:  clientLifecycleCtx,
 			InitialRequestModel:     reqModel,
 			MaxReasoningEffort:      maxReasoningEffort,
 			ReasoningEffortMappings: reasoningEffortMappings,
