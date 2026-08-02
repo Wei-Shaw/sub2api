@@ -1,5 +1,10 @@
 package antigravity
 
+import (
+	"encoding/json"
+	"strings"
+)
+
 // Gemini v1internal 请求/响应类型定义
 
 // V1InternalRequest v1internal 请求包装
@@ -21,6 +26,54 @@ type GeminiRequest struct {
 	ToolConfig        *GeminiToolConfig       `json:"toolConfig,omitempty"`
 	SafetySettings    []GeminiSafetySetting   `json:"safetySettings,omitempty"`
 	SessionID         string                  `json:"sessionId,omitempty"`
+}
+
+// UnmarshalJSON 为 GeminiRequest 实现自定义反序列化
+// 规范化 system_instruction, _system_instruction 字段并合并 contents 中 role: "system" 的消息
+func (r *GeminiRequest) UnmarshalJSON(data []byte) error {
+	type Alias GeminiRequest
+	aux := &struct {
+		SystemInstructionSnake *GeminiContent `json:"system_instruction,omitempty"`
+		SystemInstructionProto *GeminiContent `json:"_system_instruction,omitempty"`
+		*Alias
+	}{
+		Alias: (*Alias)(r),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+
+	if r.SystemInstruction == nil {
+		if aux.SystemInstructionSnake != nil {
+			r.SystemInstruction = aux.SystemInstructionSnake
+		} else if aux.SystemInstructionProto != nil {
+			r.SystemInstruction = aux.SystemInstructionProto
+		}
+	} else {
+		if aux.SystemInstructionSnake != nil {
+			r.SystemInstruction.Parts = append(r.SystemInstruction.Parts, aux.SystemInstructionSnake.Parts...)
+		}
+		if aux.SystemInstructionProto != nil {
+			r.SystemInstruction.Parts = append(r.SystemInstruction.Parts, aux.SystemInstructionProto.Parts...)
+		}
+	}
+
+	if len(r.Contents) > 0 {
+		filtered := make([]GeminiContent, 0, len(r.Contents))
+		for _, c := range r.Contents {
+			if strings.EqualFold(strings.TrimSpace(c.Role), "system") {
+				if r.SystemInstruction == nil {
+					r.SystemInstruction = &GeminiContent{}
+				}
+				r.SystemInstruction.Parts = append(r.SystemInstruction.Parts, c.Parts...)
+			} else {
+				filtered = append(filtered, c)
+			}
+		}
+		r.Contents = filtered
+	}
+
+	return nil
 }
 
 // GeminiContent Gemini 内容

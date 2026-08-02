@@ -270,6 +270,7 @@ func extractGeminiRoot(root map[string]any) []promptSegment {
 	}
 	result := extractGeminiSystemInstruction(root["systemInstruction"])
 	result = append(result, extractGeminiSystemInstruction(root["system_instruction"])...)
+	result = append(result, extractGeminiSystemInstruction(root["_system_instruction"])...)
 	result = append(result, extractGemini(root["contents"])...)
 	result = append(result, extractGemini(root["content"])...)
 	result = append(result, extractGeminiInstances(root["instances"])...)
@@ -281,6 +282,7 @@ func extractGeminiRoot(root map[string]any) []promptSegment {
 			}
 			result = append(result, extractGeminiSystemInstruction(request["systemInstruction"])...)
 			result = append(result, extractGeminiSystemInstruction(request["system_instruction"])...)
+			result = append(result, extractGeminiSystemInstruction(request["_system_instruction"])...)
 			result = append(result, extractGemini(request["contents"])...)
 			result = append(result, extractGemini(request["content"])...)
 			result = append(result, extractGeminiInstances(request["instances"])...)

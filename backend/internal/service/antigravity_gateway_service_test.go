@@ -230,6 +230,105 @@ func (s *antigravitySettingRepoStub) Delete(ctx context.Context, key string) err
 	panic("unexpected Delete call")
 }
 
+func TestInjectIdentityPatchToGeminiRequest_Normalization(t *testing.T) {
+	t.Run("snake_case system_instruction is normalized and removed", func(t *testing.T) {
+		input := []byte(`{
+			"system_instruction": {"parts": [{"text": "custom system instruction"}]},
+			"contents": [{"role": "user", "parts": [{"text": "hi"}]}]
+		}`)
+		output, err := injectIdentityPatchToGeminiRequest(input)
+		require.NoError(t, err)
+
+		var result map[string]any
+		require.NoError(t, json.Unmarshal(output, &result))
+
+		require.NotContains(t, result, "system_instruction")
+		require.NotContains(t, result, "_system_instruction")
+		require.Contains(t, result, "systemInstruction")
+
+		sysInst, ok := result["systemInstruction"].(map[string]any)
+		require.True(t, ok)
+		parts, ok := sysInst["parts"].([]any)
+		require.True(t, ok)
+		require.Len(t, parts, 2)
+
+		// 第一部分是身份防护词
+		part0, ok := parts[0].(map[string]any)
+		require.True(t, ok)
+		require.Contains(t, part0["text"], "You are Antigravity")
+
+		// 第二部分是原始提示词
+		part1, ok := parts[1].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "custom system instruction", part1["text"])
+	})
+
+	t.Run("proto wrapper _system_instruction is normalized and removed", func(t *testing.T) {
+		input := []byte(`{
+			"_system_instruction": {"parts": [{"text": "proto system"}]},
+			"contents": [{"role": "user", "parts": [{"text": "hi"}]}]
+		}`)
+		output, err := injectIdentityPatchToGeminiRequest(input)
+		require.NoError(t, err)
+
+		var result map[string]any
+		require.NoError(t, json.Unmarshal(output, &result))
+
+		require.NotContains(t, result, "_system_instruction")
+		require.Contains(t, result, "systemInstruction")
+	})
+
+	t.Run("system role in contents is moved to systemInstruction", func(t *testing.T) {
+		input := []byte(`{
+			"contents": [
+				{"role": "system", "parts": [{"text": "system prompt in contents"}]},
+				{"role": "user", "parts": [{"text": "hello"}]}
+			]
+		}`)
+		output, err := injectIdentityPatchToGeminiRequest(input)
+		require.NoError(t, err)
+
+		var result map[string]any
+		require.NoError(t, json.Unmarshal(output, &result))
+
+		// contents 应该只包含 user 消息
+		contents, ok := result["contents"].([]any)
+		require.True(t, ok)
+		require.Len(t, contents, 1)
+		content0, ok := contents[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "user", content0["role"])
+
+		// systemInstruction 包含身份提示词和提取的系统消息
+		sysInst, ok := result["systemInstruction"].(map[string]any)
+		require.True(t, ok)
+		parts, ok := sysInst["parts"].([]any)
+		require.True(t, ok)
+		require.Len(t, parts, 2)
+
+		part1, ok := parts[1].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "system prompt in contents", part1["text"])
+	})
+
+	t.Run("idempotent when identity patch is already present", func(t *testing.T) {
+		input := []byte(`{
+			"systemInstruction": {"parts": [{"text": "You are Antigravity, an AI..."}, {"text": "user prompt"}]}
+		}`)
+		output, err := injectIdentityPatchToGeminiRequest(input)
+		require.NoError(t, err)
+
+		var result map[string]any
+		require.NoError(t, json.Unmarshal(output, &result))
+
+		sysInst, ok := result["systemInstruction"].(map[string]any)
+		require.True(t, ok)
+		parts, ok := sysInst["parts"].([]any)
+		require.True(t, ok)
+		require.Len(t, parts, 2, "should not duplicate identity patch")
+	})
+}
+
 func TestResolveAntigravityProjectID(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -559,51 +559,87 @@ func extractTextFromSSEResponse(respBody []byte) string {
 	return strings.Join(texts, "")
 }
 
-// injectIdentityPatchToGeminiRequest 为 Gemini 格式请求注入身份提示词
-// 如果请求中已包含 "You are Antigravity" 则不重复注入
+// injectIdentityPatchToGeminiRequest 为 Gemini 格式请求规范化 systemInstruction 并注入身份提示词
+// 解决 issue #1045:
+// 1. 规范化并合并 systemInstruction, system_instruction, _system_instruction 字段，并删除非标准/proto包装 key；
+// 2. 将 contents 中 role: "system" 的消息提取并转移至 systemInstruction，避免上游返回 400 INVALID_ARGUMENT；
+// 3. 如果请求中已包含 "You are Antigravity" 则不重复注入。
 func injectIdentityPatchToGeminiRequest(body []byte) ([]byte, error) {
 	var request map[string]any
 	if err := json.Unmarshal(body, &request); err != nil {
 		return nil, fmt.Errorf("解析 Gemini 请求失败: %w", err)
 	}
 
-	// 检查现有 systemInstruction 是否已包含身份提示词
-	if sysInst, ok := request["systemInstruction"].(map[string]any); ok {
-		if parts, ok := sysInst["parts"].([]any); ok {
-			for _, part := range parts {
-				if partMap, ok := part.(map[string]any); ok {
-					if text, ok := partMap["text"].(string); ok {
-						if strings.Contains(text, "You are Antigravity") {
-							// 已包含身份提示词，直接返回原始请求
-							return body, nil
-						}
-					}
+	var systemParts []any
+	systemKeys := []string{"systemInstruction", "system_instruction", "_system_instruction"}
+	for _, key := range systemKeys {
+		if val, exists := request[key]; exists && val != nil {
+			systemParts = append(systemParts, extractGeminiSystemInstructionParts(val)...)
+		}
+	}
+	delete(request, "system_instruction")
+	delete(request, "_system_instruction")
+
+	if contents, ok := request["contents"].([]any); ok && len(contents) > 0 {
+		filteredContents := make([]any, 0, len(contents))
+		for _, c := range contents {
+			if contentMap, ok := c.(map[string]any); ok {
+				role, _ := contentMap["role"].(string)
+				if strings.EqualFold(strings.TrimSpace(role), "system") {
+					systemParts = append(systemParts, extractGeminiSystemInstructionParts(contentMap)...)
+					continue
+				}
+			}
+			filteredContents = append(filteredContents, c)
+		}
+		request["contents"] = filteredContents
+	}
+
+	hasIdentityPatch := false
+	for _, part := range systemParts {
+		if partMap, ok := part.(map[string]any); ok {
+			if text, ok := partMap["text"].(string); ok {
+				if strings.Contains(text, "You are Antigravity") {
+					hasIdentityPatch = true
+					break
 				}
 			}
 		}
 	}
 
-	// 获取默认身份提示词
-	identityPatch := antigravity.GetDefaultIdentityPatch()
+	if !hasIdentityPatch {
+		identityPatch := antigravity.GetDefaultIdentityPatch()
+		newPart := map[string]any{"text": identityPatch}
+		systemParts = append([]any{newPart}, systemParts...)
+	}
 
-	// 构建新的 systemInstruction
-	newPart := map[string]any{"text": identityPatch}
-
-	if existing, ok := request["systemInstruction"].(map[string]any); ok {
-		// 已有 systemInstruction，在开头插入身份提示词
-		if parts, ok := existing["parts"].([]any); ok {
-			existing["parts"] = append([]any{newPart}, parts...)
-		} else {
-			existing["parts"] = []any{newPart}
-		}
-	} else {
-		// 没有 systemInstruction，创建新的
-		request["systemInstruction"] = map[string]any{
-			"parts": []any{newPart},
-		}
+	request["systemInstruction"] = map[string]any{
+		"parts": systemParts,
 	}
 
 	return json.Marshal(request)
+}
+
+func extractGeminiSystemInstructionParts(val any) []any {
+	if val == nil {
+		return nil
+	}
+	var result []any
+	switch v := val.(type) {
+	case map[string]any:
+		if parts, ok := v["parts"].([]any); ok {
+			result = append(result, parts...)
+		} else if text, ok := v["text"].(string); ok && text != "" {
+			result = append(result, map[string]any{"text": text})
+		}
+	case []any:
+		result = append(result, v...)
+	case string:
+		if v != "" {
+			result = append(result, map[string]any{"text": v})
+		}
+	}
+	return result
 }
 
 // wrapV1InternalRequest 包装请求为 v1internal 格式

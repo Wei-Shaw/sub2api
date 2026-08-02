@@ -139,7 +139,14 @@ func setGatewayRequestRanges(parsed *ParsedRequest, protocol string, jsonStr str
 	}
 	switch protocol {
 	case domain.PlatformGemini:
-		if sysParts := gjson.Get(jsonStr, "systemInstruction.parts"); sysParts.Exists() && sysParts.IsArray() {
+		sysParts := gjson.Get(jsonStr, "systemInstruction.parts")
+		if !sysParts.Exists() {
+			sysParts = gjson.Get(jsonStr, "system_instruction.parts")
+		}
+		if !sysParts.Exists() {
+			sysParts = gjson.Get(jsonStr, "_system_instruction.parts")
+		}
+		if sysParts.Exists() && sysParts.IsArray() {
 			parsed.systemRange = rangeFromResult(sysParts)
 		}
 		if contents := gjson.Get(jsonStr, "contents"); contents.Exists() && contents.IsArray() {

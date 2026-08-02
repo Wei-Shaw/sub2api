@@ -2506,13 +2506,16 @@ func isGeminiInsufficientScope(headers http.Header, body []byte) bool {
 func estimateGeminiCountTokens(reqBody []byte) int {
 	total := 0
 
-	// systemInstruction.parts[].text
-	gjson.GetBytes(reqBody, "systemInstruction.parts").ForEach(func(_, part gjson.Result) bool {
-		if t := strings.TrimSpace(part.Get("text").String()); t != "" {
-			total += estimateTokensForText(t)
-		}
-		return true
-	})
+	// systemInstruction.parts[].text / system_instruction.parts[].text / _system_instruction.parts[].text
+	sysKeys := []string{"systemInstruction.parts", "system_instruction.parts", "_system_instruction.parts"}
+	for _, sysKey := range sysKeys {
+		gjson.GetBytes(reqBody, sysKey).ForEach(func(_, part gjson.Result) bool {
+			if t := strings.TrimSpace(part.Get("text").String()); t != "" {
+				total += estimateTokensForText(t)
+			}
+			return true
+		})
+	}
 
 	// contents[].parts[].text
 	gjson.GetBytes(reqBody, "contents").ForEach(func(_, content gjson.Result) bool {
