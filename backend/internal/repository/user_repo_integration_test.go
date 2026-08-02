@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -477,6 +478,30 @@ func (s *UserRepoSuite) TestDeductBalance_AllowsOverdraft() {
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
 	s.Require().InDelta(-5.0, got.Balance, 1e-6, "Balance should be -5.0 after overdraft")
+REDACTED
+
+func (s *UserRepoSuite) TestDeductAvailableBalance_ClampsToNonnegativeBalance() {
+	for _, tc := range []struct {
+		name        string
+		balance     float64
+		requested   float64
+		wantDeduct  float64
+		wantBalance float64
+REDACTED{
+		{name: "enough balance", balance: 10, requested: 4, wantDeduct: 4, wantBalance: 6REDACTED,
+		{name: "insufficient balance", balance: 5, requested: 10, wantDeduct: 5, wantBalance: 0REDACTED,
+		{name: "negative balance unchanged", balance: -3, requested: 10, wantDeduct: 0, wantBalance: -3REDACTED,
+REDACTED {
+		s.Run(tc.name, func() {
+			user := s.mustCreateUser(&service.User{Email: "available-" + strings.ReplaceAll(tc.name, " ", "-") + "@test.com", Balance: tc.balanceREDACTED)
+			deducted, err := s.repo.DeductAvailableBalance(s.ctx, user.ID, tc.requested)
+			s.Require().NoError(err)
+			s.Require().InDelta(tc.wantDeduct, deducted, 1e-6)
+			got, err := s.repo.GetByID(s.ctx, user.ID)
+			s.Require().NoError(err)
+			s.Require().InDelta(tc.wantBalance, got.Balance, 1e-6)
+	REDACTED)
+REDACTED
 REDACTED
 
 // --- Concurrency ---
