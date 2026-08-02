@@ -424,6 +424,7 @@ export default {
     noActiveSubscription: '暂无有效订阅',
     tabTopUp: '充值',
     tabSubscribe: '订阅',
+    organizationSubscriptionNotice: '您正在为企业开通订阅套餐，费用由当前所有者支付，订阅将开通到公司主体。',
     noPlans: '暂无可用订阅套餐',
     notAvailable: '充值功能暂未开放',
     confirmSubscription: '确认订阅',

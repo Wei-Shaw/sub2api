@@ -10,6 +10,10 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
+type UserBalanceCacheInvalidator interface {
+	InvalidateUserBalance(ctx context.Context, userID int64) error
+}
+
 const (
 	BatchImageProviderGeminiAPI = "gemini_api"
 	BatchImageProviderVertex    = "vertex"
@@ -102,6 +106,10 @@ type BatchImageJob struct {
 	ID                int64
 	BatchID           string
 	UserID            int64
+	OrganizationID    *int64
+	PayerUserID       *int64
+	BalanceSource     *string
+	AuthzGeneration   *int64
 	APIKeyID          *int64
 	AccountID         *int64
 	Provider          string
@@ -137,6 +145,7 @@ type BatchImageJob struct {
 	IdempotencyKey *string
 	RequestHash    *string
 	ManifestHash   *string
+	SessionID      *string
 
 	RetryCount int
 	Version    int
@@ -161,6 +170,10 @@ type BatchImageJob struct {
 type CreateBatchImageJobParams struct {
 	BatchID           string
 	UserID            int64
+	OrganizationID    *int64
+	PayerUserID       *int64
+	BalanceSource     *string
+	AuthzGeneration   *int64
 	APIKeyID          *int64
 	AccountID         *int64
 	Provider          string
@@ -196,6 +209,7 @@ type CreateBatchImageJobParams struct {
 	IdempotencyKey *string
 	RequestHash    *string
 	ManifestHash   *string
+	SessionID      *string
 
 	RetryCount int
 

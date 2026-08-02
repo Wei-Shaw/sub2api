@@ -7,6 +7,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/inbox"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/kirocooldown"
@@ -49,6 +50,13 @@ func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiToke
 
 func ProvideBatchImageModelPricingResolver(resolver *ModelPricingResolver) *BatchImageModelPricingResolver {
 	return &BatchImageModelPricingResolver{Resolver: resolver}
+}
+
+func ProvideBatchImagePublicService(repo BatchImageRepository, accountRepo AccountRepository, groupRepo GroupRepository, userGroupRateRepo UserGroupRateRepository, queue BatchImageQueue, pricing *BatchImageModelPricingResolver, billingRepo UsageBillingRepository, authCache APIKeyAuthCacheInvalidator, billingCache *BillingCacheService, cfg *config.Config, billingContextResolver *BillingContextResolver) *BatchImagePublicService {
+	service := NewBatchImagePublicService(repo, accountRepo, groupRepo, userGroupRateRepo, queue, pricing, billingRepo, authCache, cfg)
+	service.SetBillingContextResolver(billingContextResolver)
+	service.BalanceCache = billingCache
+	return service
 }
 
 func ProvideBatchImageCleanupService(repo BatchImageRepository, accountRepo AccountRepository, cfg *config.Config) *BatchImageCleanupService {
@@ -512,6 +520,40 @@ func ProvideAPIKeyAuthCacheInvalidator(apiKeyService *APIKeyService) APIKeyAuthC
 	return apiKeyService
 }
 
+func ProvideNotificationOutboxWorker(repo NotificationOutboxRepository, emailer *NotificationEmailService, cfg *config.Config) *NotificationOutboxWorker {
+	worker := NewNotificationOutboxWorker(repo, emailer, cfg)
+	worker.Start()
+	return worker
+}
+
+func ProvideOrganizationService(repo OrganizationRepository, userRepo UserRepository, cfg *config.Config, invalidator APIKeyAuthCacheInvalidator, settingService *SettingService, groupLister SubscriptionGroupLister) *OrganizationService {
+	organization := NewOrganizationService(repo, userRepo, cfg)
+	organization.SetAuthCacheInvalidator(invalidator)
+	organization.SetUpgradeChargeReader(settingService)
+	organization.SetUpgradeFeeReader(settingService)
+	organization.SetCompanyFeatureReader(settingService)
+	organization.SetSubscriptionGroupLister(groupLister)
+	return organization
+}
+
+func ProvideCompanyOperationsMonitor(organization *OrganizationService, outbox *NotificationOutboxWorker, apiKeys *APIKeyService, cfg *config.Config) *CompanyOperationsMonitor {
+	monitor := NewCompanyOperationsMonitor(organization, outbox, apiKeys, cfg)
+	monitor.Start()
+	return monitor
+}
+
+func ProvideAffiliateService(repo AffiliateRepository, settingService *SettingService, invalidator APIKeyAuthCacheInvalidator, billing *BillingCacheService, publisher inbox.Publisher, userRepo UserRepository) *AffiliateService {
+	affiliate := NewAffiliateService(repo, settingService, invalidator, billing, publisher)
+	affiliate.SetUserRepository(userRepo)
+	return affiliate
+}
+
+func ProvideBalanceLedgerService(repo BalanceLedgerRepository, cache *BillingCacheService, resolver *BillingContextResolver) *BalanceLedgerService {
+	ledger := NewBalanceLedgerService(repo, cache)
+	ledger.SetBillingContextResolver(resolver)
+	return ledger
+}
+
 // ProvideImageStorageSettingService 构造异步生图对象存储的后台设置服务。
 //
 // config.yaml 里的 image_storage 作为回落：后台从未保存过设置时沿用它，
@@ -657,8 +699,11 @@ func ProvideBillingCacheService(
 	rateRepo UserGroupRateRepository,
 	cfg *config.Config,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	billingContextResolver *BillingContextResolver,
 ) *BillingCacheService {
-	return NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg, userPlatformQuotaRepo)
+	svc := NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg, userPlatformQuotaRepo)
+	svc.SetBillingContextResolver(billingContextResolver)
+	return svc
 }
 
 // ProvideAPIKeyService wires APIKeyService and connects rate-limit cache invalidation.
@@ -672,17 +717,31 @@ func ProvideAPIKeyService(
 	cfg *config.Config,
 	billingCacheService *BillingCacheService,
 	concurrencyService *ConcurrencyService,
+	organizationRepo OrganizationRepository,
 ) *APIKeyService {
 	svc := NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, userGroupRateRepo, cache, cfg)
 	svc.SetRateLimitCacheInvalidator(billingCacheService)
 	svc.SetConcurrencyService(concurrencyService)
+	svc.SetOrganizationRepository(organizationRepo)
 	return svc
+}
+
+// ProvideSubscriptionGroupLister exposes the group repository's read-only
+// active-group capability to the organization service.
+func ProvideSubscriptionGroupLister(groupRepo GroupRepository) SubscriptionGroupLister {
+	return groupRepo
 }
 
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
+	ProvideOrganizationService,
+	ProvideSubscriptionGroupLister,
+	ProvideCompanyOperationsMonitor,
+	NewBillingContextResolver,
+	ProvideNotificationOutboxWorker,
 	// Core services
 	NewAuthService,
+	NewPasskeyService,
 	NewUserService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
@@ -705,7 +764,7 @@ var ProviderSet = wire.NewSet(
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
 	ProvideBatchImageModelPricingResolver,
-	NewBatchImagePublicService,
+	ProvideBatchImagePublicService,
 	NewBatchImageDownloadService,
 	ProvideBatchImageCleanupService,
 	ProvideBatchImageWorkerRuntime,
@@ -792,7 +851,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAsyncMediaReconciler,
 	ProvideAsyncMediaConfigService,
 	NewContentModerationService,
-	NewAffiliateService,
+	ProvideAffiliateService,
 	NewRechargePromoActivityService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
@@ -835,9 +894,9 @@ var ProviderSet = wire.NewSet(
 	NewSsoSessionService,
 	NewOidcSigningService,
 	NewOidcClientService,
-	NewBillingAppTokenCodec, // 余额 RPC：接入方 token AES-GCM 加解密
-	NewBillingAppService,    // 余额 RPC：接入方身份与鉴权
-	NewBalanceLedgerService, // 余额 RPC：扣/退/查账本服务
+	NewBillingAppTokenCodec,     // 余额 RPC：接入方 token AES-GCM 加解密
+	NewBillingAppService,        // 余额 RPC：接入方身份与鉴权
+	ProvideBalanceLedgerService, // 余额 RPC：扣/退/查账本服务
 	NewOidcConsentService,
 	NewOidcProviderService,
 )
@@ -869,9 +928,20 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 }
 
 // ProvidePaymentService creates PaymentService and attaches notification email delivery.
-func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService) *PaymentService {
+//
+// It also wires the bidirectional enterprise-subscription link with the
+// OrganizationService: PaymentService gains an OrganizationSubscriptionFulfiller
+// (to provision company subscriptions on paid-order fulfillment) and the
+// OrganizationService gains a SubscriptionOrderCreator (to place company
+// subscription orders through the standard gateway). The link is established
+// here rather than in ProvideOrganizationService because OrganizationService is
+// constructed first and only depends on PaymentService via lazy setter
+// injection, keeping the wire graph acyclic.
+func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService, organizationService *OrganizationService) *PaymentService {
 	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
 	svc.SetNotificationEmailService(notificationEmailService)
+	svc.SetOrganizationSubscriptionFulfiller(organizationService)
+	organizationService.SetSubscriptionOrderCreator(svc)
 	return svc
 }
 
@@ -901,10 +971,14 @@ func ProvideAsyncMediaService(
 	resolver *ModelPricingResolver,
 	cos *COSImageTransferService,
 	deferred *DeferredService,
+	billingContextResolver *BillingContextResolver,
+	billingCache *BillingCacheService,
 	cfg *config.Config,
 ) *AsyncMediaService {
 	svc := NewAsyncMediaService(taskRepo, userRepo, groupRepo, billing, resolver, cos)
 	svc.SetDeferredService(deferred)
+	svc.SetBillingContextResolver(billingContextResolver)
+	svc.SetBalanceCache(billingCache)
 	if cfg != nil {
 		if cfg.AsyncMedia.PollIntervalSeconds > 0 {
 			svc.SetPollInterval(time.Duration(cfg.AsyncMedia.PollIntervalSeconds) * time.Second)

@@ -165,6 +165,29 @@ func TestJWTAuth_ValidToken_TouchesLastActive(t *testing.T) {
 	require.Equal(t, []int64{1}, toucher.userIDs)
 }
 
+func TestJWTAuth_IAMFirstLoginAllowsOnlyPasswordChange(t *testing.T) {
+	user := &service.User{
+		ID: 1, IdentityType: service.IdentityTypeIAM, LoginName: "reader",
+		Role: service.RoleUser, Status: service.StatusActive, Concurrency: 5,
+		MustChangePassword: true, AuthzGeneration: 1,
+	}
+	gateway, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
+	gateway.PUT("/api/v1/organization/password", func(c *gin.Context) { c.Status(http.StatusOK) })
+	token, err := authSvc.GenerateToken(context.Background(), user)
+	require.NoError(t, err)
+
+	for _, test := range []struct {
+		path string
+		want int
+	}{{"/protected", http.StatusForbidden}, {"/api/v1/organization/password", http.StatusOK}} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, test.path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		gateway.ServeHTTP(w, req)
+		require.Equal(t, test.want, w.Code, test.path)
+	}
+}
+
 func TestJWTAuth_MissingAuthorizationHeader(t *testing.T) {
 	router, _ := newJWTTestEnv(nil)
 

@@ -253,6 +253,20 @@ func (_c *PaymentOrderCreate) SetNillableSubscriptionDays(v *int) *PaymentOrderC
 	return _c
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_c *PaymentOrderCreate) SetOrganizationID(v int64) *PaymentOrderCreate {
+	_c.mutation.SetOrganizationID(v)
+	return _c
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableOrganizationID(v *int64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetOrganizationID(*v)
+	}
+	return _c
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (_c *PaymentOrderCreate) SetProviderInstanceID(v string) *PaymentOrderCreate {
 	_c.mutation.SetProviderInstanceID(v)
@@ -837,6 +851,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_spec.SetField(paymentorder.FieldSubscriptionDays, field.TypeInt, value)
 		_node.SubscriptionDays = &value
 	}
+	if value, ok := _c.mutation.OrganizationID(); ok {
+		_spec.SetField(paymentorder.FieldOrganizationID, field.TypeInt64, value)
+		_node.OrganizationID = &value
+	}
 	if value, ok := _c.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
 		_node.ProviderInstanceID = &value
@@ -1341,6 +1359,30 @@ func (u *PaymentOrderUpsert) AddSubscriptionDays(v int) *PaymentOrderUpsert {
 // ClearSubscriptionDays clears the value of the "subscription_days" field.
 func (u *PaymentOrderUpsert) ClearSubscriptionDays() *PaymentOrderUpsert {
 	u.SetNull(paymentorder.FieldSubscriptionDays)
+	return u
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *PaymentOrderUpsert) SetOrganizationID(v int64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldOrganizationID, v)
+	return u
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateOrganizationID() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldOrganizationID)
+	return u
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *PaymentOrderUpsert) AddOrganizationID(v int64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldOrganizationID, v)
+	return u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *PaymentOrderUpsert) ClearOrganizationID() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldOrganizationID)
 	return u
 }
 
@@ -2123,6 +2165,34 @@ func (u *PaymentOrderUpsertOne) UpdateSubscriptionDays() *PaymentOrderUpsertOne 
 func (u *PaymentOrderUpsertOne) ClearSubscriptionDays() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *PaymentOrderUpsertOne) SetOrganizationID(v int64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *PaymentOrderUpsertOne) AddOrganizationID(v int64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateOrganizationID() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *PaymentOrderUpsertOne) ClearOrganizationID() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearOrganizationID()
 	})
 }
 
@@ -3125,6 +3195,34 @@ func (u *PaymentOrderUpsertBulk) UpdateSubscriptionDays() *PaymentOrderUpsertBul
 func (u *PaymentOrderUpsertBulk) ClearSubscriptionDays() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *PaymentOrderUpsertBulk) SetOrganizationID(v int64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *PaymentOrderUpsertBulk) AddOrganizationID(v int64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateOrganizationID() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *PaymentOrderUpsertBulk) ClearOrganizationID() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearOrganizationID()
 	})
 }
 

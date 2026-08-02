@@ -7,12 +7,11 @@
 package balancepb
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -99,11 +98,15 @@ func (x *DeductRequest) GetExtra() string {
 }
 
 type DeductResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Applied       bool                   `protobuf:"varint,1,opt,name=applied,proto3" json:"applied,omitempty"` // false = 幂等重放
-	BalanceAfter  string                 `protobuf:"bytes,2,opt,name=balance_after,json=balanceAfter,proto3" json:"balance_after,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Applied         bool                   `protobuf:"varint,1,opt,name=applied,proto3" json:"applied,omitempty"` // false = 幂等重放
+	BalanceAfter    string                 `protobuf:"bytes,2,opt,name=balance_after,json=balanceAfter,proto3" json:"balance_after,omitempty"`
+	PayerUserId     int64                  `protobuf:"varint,3,opt,name=payer_user_id,json=payerUserId,proto3" json:"payer_user_id,omitempty"`
+	BalanceSource   string                 `protobuf:"bytes,4,opt,name=balance_source,json=balanceSource,proto3" json:"balance_source,omitempty"`
+	OrganizationId  int64                  `protobuf:"varint,5,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	AuthzGeneration int64                  `protobuf:"varint,6,opt,name=authz_generation,json=authzGeneration,proto3" json:"authz_generation,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *DeductResponse) Reset() {
@@ -148,6 +151,34 @@ func (x *DeductResponse) GetBalanceAfter() string {
 		return x.BalanceAfter
 	}
 	return ""
+}
+
+func (x *DeductResponse) GetPayerUserId() int64 {
+	if x != nil {
+		return x.PayerUserId
+	}
+	return 0
+}
+
+func (x *DeductResponse) GetBalanceSource() string {
+	if x != nil {
+		return x.BalanceSource
+	}
+	return ""
+}
+
+func (x *DeductResponse) GetOrganizationId() int64 {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return 0
+}
+
+func (x *DeductResponse) GetAuthzGeneration() int64 {
+	if x != nil {
+		return x.AuthzGeneration
+	}
+	return 0
 }
 
 type RefundRequest struct {
@@ -227,12 +258,16 @@ func (x *RefundRequest) GetExtra() string {
 }
 
 type RefundResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Applied       bool                   `protobuf:"varint,1,opt,name=applied,proto3" json:"applied,omitempty"`
-	BalanceAfter  string                 `protobuf:"bytes,2,opt,name=balance_after,json=balanceAfter,proto3" json:"balance_after,omitempty"`
-	RefundedTotal string                 `protobuf:"bytes,3,opt,name=refunded_total,json=refundedTotal,proto3" json:"refunded_total,omitempty"` // 原扣累计已退
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Applied         bool                   `protobuf:"varint,1,opt,name=applied,proto3" json:"applied,omitempty"`
+	BalanceAfter    string                 `protobuf:"bytes,2,opt,name=balance_after,json=balanceAfter,proto3" json:"balance_after,omitempty"`
+	RefundedTotal   string                 `protobuf:"bytes,3,opt,name=refunded_total,json=refundedTotal,proto3" json:"refunded_total,omitempty"` // 原扣累计已退
+	PayerUserId     int64                  `protobuf:"varint,4,opt,name=payer_user_id,json=payerUserId,proto3" json:"payer_user_id,omitempty"`
+	BalanceSource   string                 `protobuf:"bytes,5,opt,name=balance_source,json=balanceSource,proto3" json:"balance_source,omitempty"`
+	OrganizationId  int64                  `protobuf:"varint,6,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	AuthzGeneration int64                  `protobuf:"varint,7,opt,name=authz_generation,json=authzGeneration,proto3" json:"authz_generation,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *RefundResponse) Reset() {
@@ -286,6 +321,34 @@ func (x *RefundResponse) GetRefundedTotal() string {
 	return ""
 }
 
+func (x *RefundResponse) GetPayerUserId() int64 {
+	if x != nil {
+		return x.PayerUserId
+	}
+	return 0
+}
+
+func (x *RefundResponse) GetBalanceSource() string {
+	if x != nil {
+		return x.BalanceSource
+	}
+	return ""
+}
+
+func (x *RefundResponse) GetOrganizationId() int64 {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return 0
+}
+
+func (x *RefundResponse) GetAuthzGeneration() int64 {
+	if x != nil {
+		return x.AuthzGeneration
+	}
+	return 0
+}
+
 type GetBalanceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        int64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -331,10 +394,14 @@ func (x *GetBalanceRequest) GetUserId() int64 {
 }
 
 type GetBalanceResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Balance       string                 `protobuf:"bytes,1,opt,name=balance,proto3" json:"balance,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Balance         string                 `protobuf:"bytes,1,opt,name=balance,proto3" json:"balance,omitempty"`
+	PayerUserId     int64                  `protobuf:"varint,2,opt,name=payer_user_id,json=payerUserId,proto3" json:"payer_user_id,omitempty"`
+	BalanceSource   string                 `protobuf:"bytes,3,opt,name=balance_source,json=balanceSource,proto3" json:"balance_source,omitempty"`
+	OrganizationId  int64                  `protobuf:"varint,4,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	AuthzGeneration int64                  `protobuf:"varint,5,opt,name=authz_generation,json=authzGeneration,proto3" json:"authz_generation,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *GetBalanceResponse) Reset() {
@@ -374,6 +441,34 @@ func (x *GetBalanceResponse) GetBalance() string {
 	return ""
 }
 
+func (x *GetBalanceResponse) GetPayerUserId() int64 {
+	if x != nil {
+		return x.PayerUserId
+	}
+	return 0
+}
+
+func (x *GetBalanceResponse) GetBalanceSource() string {
+	if x != nil {
+		return x.BalanceSource
+	}
+	return ""
+}
+
+func (x *GetBalanceResponse) GetOrganizationId() int64 {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return 0
+}
+
+func (x *GetBalanceResponse) GetAuthzGeneration() int64 {
+	if x != nil {
+		return x.AuthzGeneration
+	}
+	return 0
+}
+
 var File_balance_proto protoreflect.FileDescriptor
 
 const file_balance_proto_rawDesc = "" +
@@ -385,24 +480,36 @@ const file_balance_proto_rawDesc = "" +
 	"request_id\x18\x02 \x01(\tR\trequestId\x12\x16\n" +
 	"\x06amount\x18\x03 \x01(\tR\x06amount\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x14\n" +
-	"\x05extra\x18\x05 \x01(\tR\x05extra\"O\n" +
+	"\x05extra\x18\x05 \x01(\tR\x05extra\"\xee\x01\n" +
 	"\x0eDeductResponse\x12\x18\n" +
 	"\aapplied\x18\x01 \x01(\bR\aapplied\x12#\n" +
-	"\rbalance_after\x18\x02 \x01(\tR\fbalanceAfter\"\xbb\x01\n" +
+	"\rbalance_after\x18\x02 \x01(\tR\fbalanceAfter\x12\"\n" +
+	"\rpayer_user_id\x18\x03 \x01(\x03R\vpayerUserId\x12%\n" +
+	"\x0ebalance_source\x18\x04 \x01(\tR\rbalanceSource\x12'\n" +
+	"\x0forganization_id\x18\x05 \x01(\x03R\x0eorganizationId\x12)\n" +
+	"\x10authz_generation\x18\x06 \x01(\x03R\x0fauthzGeneration\"\xbb\x01\n" +
 	"\rRefundRequest\x12*\n" +
 	"\x11refund_request_id\x18\x01 \x01(\tR\x0frefundRequestId\x12.\n" +
 	"\x13original_request_id\x18\x02 \x01(\tR\x11originalRequestId\x12\x16\n" +
 	"\x06amount\x18\x03 \x01(\tR\x06amount\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x14\n" +
-	"\x05extra\x18\x05 \x01(\tR\x05extra\"v\n" +
+	"\x05extra\x18\x05 \x01(\tR\x05extra\"\x95\x02\n" +
 	"\x0eRefundResponse\x12\x18\n" +
 	"\aapplied\x18\x01 \x01(\bR\aapplied\x12#\n" +
 	"\rbalance_after\x18\x02 \x01(\tR\fbalanceAfter\x12%\n" +
-	"\x0erefunded_total\x18\x03 \x01(\tR\rrefundedTotal\",\n" +
+	"\x0erefunded_total\x18\x03 \x01(\tR\rrefundedTotal\x12\"\n" +
+	"\rpayer_user_id\x18\x04 \x01(\x03R\vpayerUserId\x12%\n" +
+	"\x0ebalance_source\x18\x05 \x01(\tR\rbalanceSource\x12'\n" +
+	"\x0forganization_id\x18\x06 \x01(\x03R\x0eorganizationId\x12)\n" +
+	"\x10authz_generation\x18\a \x01(\x03R\x0fauthzGeneration\",\n" +
 	"\x11GetBalanceRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\x03R\x06userId\".\n" +
+	"\auser_id\x18\x01 \x01(\x03R\x06userId\"\xcd\x01\n" +
 	"\x12GetBalanceResponse\x12\x18\n" +
-	"\abalance\x18\x01 \x01(\tR\abalance2\x8e\x02\n" +
+	"\abalance\x18\x01 \x01(\tR\abalance\x12\"\n" +
+	"\rpayer_user_id\x18\x02 \x01(\x03R\vpayerUserId\x12%\n" +
+	"\x0ebalance_source\x18\x03 \x01(\tR\rbalanceSource\x12'\n" +
+	"\x0forganization_id\x18\x04 \x01(\x03R\x0eorganizationId\x12)\n" +
+	"\x10authz_generation\x18\x05 \x01(\x03R\x0fauthzGeneration2\x8e\x02\n" +
 	"\rBalanceLedger\x12O\n" +
 	"\x06Deduct\x12!.sub2api.balance.v1.DeductRequest\x1a\".sub2api.balance.v1.DeductResponse\x12O\n" +
 	"\x06Refund\x12!.sub2api.balance.v1.RefundRequest\x1a\".sub2api.balance.v1.RefundResponse\x12[\n" +

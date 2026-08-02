@@ -99,11 +99,24 @@ export interface User {
   created_at: string
   updated_at: string
   deleted_at?: string | null
+  account_id?: string
+  external_user_id?: string
+  identity_type?: 'root' | 'iam'
+  login_name?: string
+  iam_principal?: string
+  must_change_password?: boolean
+  organization?: import('./organization').OrganizationContext
+  organization_finance?: import('./organization').FinanceSummary
 }
 
 export interface AdminUser extends User {
   // 管理员备注（普通用户接口不返回）
   notes: string
+  // IAM 用户绑定的恢复邮箱；普通用户使用 email。
+  recovery_email?: string
+  company_id?: string
+  company_name?: string
+  organization_role?: 'owner' | 'member'
   last_used_at?: string | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
@@ -226,6 +239,7 @@ export interface PublicSettings {
   login_agreement_revision?: string
   login_agreement_documents?: LoginAgreementDocument[]
   turnstile_enabled: boolean
+  passkey_enabled?: boolean
   turnstile_site_key: string
   captcha_provider: 'turnstile' | 'hcaptcha' | 'tencent_captcha' | string
   captcha_enabled: boolean
@@ -238,6 +252,7 @@ export interface PublicSettings {
   doc_url: string
   home_content: string
   home_product_menu_items: CustomMenuItem[]
+  compact_home_enabled: boolean
   hide_ccs_import_button: boolean
   payment_enabled: boolean
   risk_control_enabled: boolean
@@ -258,6 +273,9 @@ export interface PublicSettings {
   github_oauth_enabled: boolean
   google_oauth_enabled: boolean
   backend_mode_enabled: boolean
+  company_applications_enabled: boolean
+  company_iam_enabled: boolean
+  company_documentation_url: string
   version: string
   // 服务器全局时区（IANA 名称与当前 UTC 偏移），高峰时段等服务端本地时间窗口的展示标注用；
   // 可选：注入的 __APP_CONFIG__ 旧缓存可能缺失
@@ -269,6 +287,8 @@ export interface PublicSettings {
   channel_monitor_enabled: boolean
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
+  model_plaza_enabled: boolean
+  model_plaza_require_auth: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean
   /** D1 客服工单总开关；关闭时 sidebar 入口隐藏，POST 工单接口直接 404。 */
@@ -299,6 +319,8 @@ export interface AuthResponse {
 export interface CurrentUserResponse extends User {
   run_mode?: 'standard' | 'simple'
 }
+
+export * from './organization'
 
 // ==================== Subscription Types ====================
 
@@ -603,6 +625,8 @@ export interface Group {
   fallback_group_id_on_invalid_request: number | null
   // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
   allow_messages_dispatch?: boolean
+  // OpenAI Live 接口开关
+  allow_live: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
@@ -617,6 +641,12 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  // 分组利润控制（openai/anthropic/gemini/grok/antigravity 分组可启用；margin/buffer 为小数存储）。
+  // 仅管理员可见：与 rate_multiplier 相乘即可反推上游成本上限，不得下放到 Group。
+  profit_control_enabled: boolean
+  profit_min_margin: number
+  profit_safety_buffer: number
+
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
@@ -709,6 +739,8 @@ export interface ApiKey {
   key: string
   name: string
   group_id: number | null
+  fallback_group_ids: number[]
+  organization_subscription_id: number | null
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
@@ -738,6 +770,8 @@ export interface ApiKey {
 export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
+  fallback_group_ids?: number[]
+  organization_subscription_id?: number | null
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -751,6 +785,8 @@ export interface CreateApiKeyRequest {
 export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
+  fallback_group_ids?: number[]
+  organization_subscription_id?: number | null
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -796,6 +832,10 @@ export interface CreateGroupRequest {
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
+  // 分组利润控制（五个 token 平台；margin/buffer 为小数）
+  profit_control_enabled?: boolean
+  profit_min_margin?: number
+  profit_safety_buffer?: number
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -803,6 +843,7 @@ export interface CreateGroupRequest {
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
   allow_messages_dispatch?: boolean
+  allow_live?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_routing?: Record<string, number[]> | null
@@ -855,6 +896,10 @@ export interface UpdateGroupRequest {
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
+  // 分组利润控制（五个 token 平台；margin/buffer 为小数）
+  profit_control_enabled?: boolean
+  profit_min_margin?: number
+  profit_safety_buffer?: number
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -862,6 +907,7 @@ export interface UpdateGroupRequest {
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
   allow_messages_dispatch?: boolean
+  allow_live?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_routing?: Record<string, number[]> | null
@@ -1036,6 +1082,9 @@ export interface UpstreamBillingProbeSnapshot {
   failure_count?: number
   http_status?: number
   last_error?: string
+  // Value this probe wrote into the account rate multiplier; absent when the
+  // probe did not sync a rate.
+  synced_rate_multiplier?: number
 }
 
 export interface UpstreamBillingProbeSettings {
@@ -1093,7 +1142,10 @@ export interface OllamaCloudUsageState {
 
 export interface OllamaCloudUsageSettings {
   enabled: boolean
+  /** Max wait while model requests keep arriving (minutes). */
   interval_minutes: number
+  /** Trailing quiet period after the latest model request (minutes). */
+  debounce_minutes: number
 }
 
 export interface Account {
@@ -1115,6 +1167,7 @@ export interface Account {
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     kiro_credit_unit_price_usd?: number
     upstream_billing_probe_enabled?: boolean
+    upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
   } & Record<string, unknown>)
   proxy_id: number | null
@@ -1453,6 +1506,8 @@ export interface UpdateAccountRequest {
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  upstream_billing_probe_enabled?: boolean
+  upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 
@@ -1621,7 +1676,7 @@ export interface CodexSessionImportResult {
 // ==================== Usage & Redeem Types ====================
 
 export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
-export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber'
+export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber' | 'live'
 export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
 export type ImageSizeBreakdown = Record<string, number>
 

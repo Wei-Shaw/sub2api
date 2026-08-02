@@ -164,7 +164,16 @@ const props = defineProps<{
    * /loading states stay clean.
    */
   viewAllHref?: string
+  /**
+   * When true, clicking the Buy CTA emits a `select` event with the card
+   * instead of navigating to `/purchase`. Lets embedding surfaces (e.g. the
+   * organization console) reuse the marketing card grid while driving their
+   * own in-place checkout flow. Defaults to the standard navigation behaviour.
+   */
+  emitSelect?: boolean
 }>()
+
+const emit = defineEmits<{ select: [card: PlazaPlanCard] }>()
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -207,6 +216,10 @@ const paymentEnabled = computed(
 )
 
 function onBuyNow(card: PlazaPlanCard) {
+  if (props.emitSelect) {
+    emit('select', card)
+    return
+  }
   void gotoOrLogin({
     path: '/purchase',
     query: { plan_id: String(card.id) },

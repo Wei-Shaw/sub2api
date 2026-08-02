@@ -39,7 +39,34 @@ func (User) Fields() []ent.Field {
 		// 见迁移文件 016_soft_delete_partial_unique_indexes.sql
 		field.String("email").
 			MaxLen(255).
-			NotEmpty(),
+			Optional(),
+		field.String("account_id").
+			MaxLen(16).
+			Optional().
+			Immutable(),
+		field.String("external_user_id").
+			MaxLen(18).
+			Optional().
+			Immutable(),
+		field.String("identity_type").
+			MaxLen(16).
+			Default("root").
+			Immutable(),
+		field.String("login_name").
+			MaxLen(64).
+			Optional().
+			Immutable(),
+		field.Bool("must_change_password").
+			Default(false),
+		field.String("recovery_email").
+			MaxLen(255).
+			Optional(),
+		field.Time("recovery_email_verified_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Int64("authz_generation").
+			Default(1),
 		field.String("password_hash").
 			MaxLen(255).
 			NotEmpty(),
@@ -145,5 +172,9 @@ func (User) Indexes() []ent.Index {
 		// email 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
 		index.Fields("deleted_at"),
+		index.Fields("external_user_id").
+			Unique().
+			Annotations(entsql.IndexWhere("external_user_id IS NOT NULL AND external_user_id <> ''")),
+		index.Fields("account_id"),
 	}
 }

@@ -36,6 +36,14 @@ type ollamaUsageTestRepo struct {
 	disableAutoAttempts atomic.Int64
 	disableAutoCalls    atomic.Int64
 	groupResolveCalls   atomic.Int64
+	getByIDCalls        atomic.Int64
+}
+
+// GetByID counts loads so a test can wait for a caller to reach the point just
+// before the singleflight group, instead of guessing with a sleep.
+func (r *ollamaUsageTestRepo) GetByID(ctx context.Context, id int64) (*Account, error) {
+	r.getByIDCalls.Add(1)
+	return r.upstreamBillingProbeAccountRepo.GetByID(ctx, id)
 }
 
 func (r *ollamaUsageTestRepo) ListOllamaCloudUsageGroupAccounts(_ context.Context, anchors []*Account) ([]Account, error) {
@@ -185,7 +193,7 @@ func applyOllamaUsageTestManagedExtra(account, source *Account) {
 	}
 }
 
-func (r *ollamaUsageTestRepo) ListDueOllamaCloudUsageAccounts(_ context.Context, _ time.Time, limit int) ([]Account, error) {
+func (r *ollamaUsageTestRepo) ListDueOllamaCloudUsageAccounts(_ context.Context, _ time.Time, _, _ time.Duration, limit int) ([]Account, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.due) > 0 {
@@ -313,15 +321,141 @@ func TestOllamaCloudUsageSettingsDefaultOffAndValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, settings.Enabled)
 	require.Equal(t, 60, settings.IntervalMinutes)
+	require.Equal(t, 1, settings.DebounceMinutes)
 
-	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 14})
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 14, DebounceMinutes: 1})
 	require.Error(t, err)
-	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 90})
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 90, DebounceMinutes: 61})
+	require.Error(t, err)
+	// DebounceMinutes=0 (legacy omit) defaults to 1 on write.
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 90, DebounceMinutes: 0})
+	require.NoError(t, err)
+	settings, err = settingsService.GetOllamaCloudUsageSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, settings.DebounceMinutes)
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 90, DebounceMinutes: 2})
 	require.NoError(t, err)
 	settings, err = settingsService.GetOllamaCloudUsageSettings(context.Background())
 	require.NoError(t, err)
 	require.True(t, settings.Enabled)
 	require.Equal(t, 90, settings.IntervalMinutes)
+	require.Equal(t, 2, settings.DebounceMinutes)
+
+	// debounce >= interval would make the debounce term unreachable in
+	// min(lastUsed+debounce, fetchedAt+maxWait), silently ignoring the operator's
+	// setting, so it is rejected rather than accepted and dropped.
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 15, DebounceMinutes: 15})
+	require.Error(t, err, "debounce equal to interval must be rejected")
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 15, DebounceMinutes: 60})
+	require.Error(t, err, "debounce greater than interval must be rejected")
+	err = settingsService.SetOllamaCloudUsageSettings(context.Background(), &OllamaCloudUsageSettings{Enabled: true, IntervalMinutes: 16, DebounceMinutes: 15})
+	require.NoError(t, err, "debounce below interval stays valid")
+
+	// Legacy JSON without debounce_minutes defaults to 1.
+	repo.values[SettingKeyOllamaCloudUsageSettings] = `{"enabled":true,"interval_minutes":45}`
+	settings, err = settingsService.GetOllamaCloudUsageSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 45, settings.IntervalMinutes)
+	require.Equal(t, 1, settings.DebounceMinutes)
+}
+
+func TestOllamaCloudUsageIsAutoRefreshDue(t *testing.T) {
+	debounce := time.Minute
+	maxWait := time.Hour
+	now := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
+	fetched := now.Add(-30 * time.Minute)
+	ptr := func(ts time.Time) *time.Time { return &ts }
+
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(nil, nil, now, debounce, maxWait), "missing snapshot first due")
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(&OllamaCloudUsageSnapshot{Status: "bogus"}, nil, now, debounce, maxWait), "invalid status first due")
+
+	okSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, FetchedAt: ptr(fetched),
+		LastAttemptAt: fetched, NextRefreshAt: fetched.Add(maxWait),
+	}
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(okSnap, nil, now, debounce, maxWait), "no request after success")
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(okSnap, ptr(fetched), now, debounce, maxWait), "request not after fetched_at")
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(okSnap, ptr(now.Add(-30*time.Second)), now, debounce, maxWait), "debounce not elapsed")
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(okSnap, ptr(now.Add(-time.Minute)), now, debounce, maxWait), "single request quiet for debounce")
+
+	// Continuous requests: last used is now, but max-wait from old fetch forces due.
+	oldFetched := now.Add(-2 * time.Hour)
+	oldSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, FetchedAt: ptr(oldFetched),
+		LastAttemptAt: oldFetched, NextRefreshAt: oldFetched.Add(maxWait),
+	}
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(oldSnap, ptr(now), now, debounce, maxWait), "max-wait forces due while requests continue")
+	// First request after a very old snapshot is immediately due because fetched+maxWait is past.
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(oldSnap, ptr(now.Add(-time.Second)), now, debounce, maxWait), "stale snapshot first request immediate")
+
+	failSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusFailed, FetchedAt: ptr(fetched),
+		LastAttemptAt: now.Add(-10 * time.Minute), NextRefreshAt: now.Add(20 * time.Minute),
+	}
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(failSnap, nil, now, debounce, maxWait), "failure without new request")
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(failSnap, ptr(now.Add(-time.Minute)), now, debounce, maxWait), "failure blocked by backoff")
+	failSnap.NextRefreshAt = now.Add(-time.Second)
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(failSnap, ptr(now.Add(-time.Minute)), now, debounce, maxWait), "failure after backoff with new request")
+
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(&OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, LastAttemptAt: now,
+	}, nil, now, debounce, maxWait), "ok without fetched_at fails open")
+}
+
+// The success path stopped consulting next_refresh_at, which is where
+// nextOllamaCloudUsageDelay used to apply the minimum interval. Activity may pull
+// a refresh forward only as far as that floor, otherwise request traffic spaced
+// just wider than the debounce drives the group's outbound rate far above the
+// pre-existing minimum.
+func TestOllamaCloudUsageAutoRefreshDueAtHonoursMinFetchInterval(t *testing.T) {
+	debounce := time.Minute
+	maxWait := time.Hour
+	now := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
+	ptr := func(ts time.Time) *time.Time { return &ts }
+
+	// Debounce elapsed, but the last successful fetch is inside the floor.
+	recent := now.Add(-5 * time.Minute)
+	recentSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, FetchedAt: ptr(recent), LastAttemptAt: recent,
+	}
+	dueAt, ok := ollamaCloudUsageAutoRefreshDueAt(recentSnap, ptr(now.Add(-2*time.Minute)), debounce, maxWait)
+	require.True(t, ok)
+	require.Equal(t, recent.Add(OllamaCloudUsageMinFetchInterval), dueAt,
+		"due time must be clamped to fetched_at + min fetch interval")
+	require.False(t, ollamaCloudUsageIsAutoRefreshDue(recentSnap, ptr(now.Add(-2*time.Minute)), now, debounce, maxWait),
+		"debounce alone must not refresh within the min fetch interval")
+
+	// Once the floor has passed the debounce governs again.
+	atFloor := now.Add(-OllamaCloudUsageMinFetchInterval)
+	floorSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, FetchedAt: ptr(atFloor), LastAttemptAt: atFloor,
+	}
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(floorSnap, ptr(now.Add(-2*time.Minute)), now, debounce, maxWait),
+		"past the floor a quiet debounce window is due")
+
+	// The floor never delays a refresh that max-wait has already forced.
+	stale := now.Add(-2 * time.Hour)
+	staleSnap := &OllamaCloudUsageSnapshot{
+		Status: OllamaCloudUsageStatusOK, FetchedAt: ptr(stale), LastAttemptAt: stale,
+	}
+	require.True(t, ollamaCloudUsageIsAutoRefreshDue(staleSnap, ptr(now), now, debounce, maxWait),
+		"max-wait still forces due on a stale snapshot")
+}
+
+func TestScheduleOllamaCloudUsageActivityOnlyForOllama(t *testing.T) {
+	deferred := NewDeferredService(nil, nil, time.Second)
+	ollama := ollamaUsageAccount(1)
+	other := ollamaUsageAccount(2)
+	other.Credentials["base_url"] = "https://api.openai.com"
+
+	scheduleOllamaCloudUsageActivity(deferred, ollama)
+	scheduleOllamaCloudUsageActivity(deferred, other)
+	scheduleOllamaCloudUsageActivity(nil, ollama)
+
+	_, ok := deferred.lastUsedUpdates.Load(int64(1))
+	require.True(t, ok)
+	_, ok = deferred.lastUsedUpdates.Load(int64(2))
+	require.False(t, ok)
 }
 
 func TestIsOllamaCloudUsageAccountStrictOfficialHost(t *testing.T) {
@@ -679,7 +813,19 @@ func TestOllamaCloudUsageRefreshSingleflightAndRunnerDeduplicateSharedGroup(t *t
 	errs := make(chan error, 2)
 	go func() { _, err := svc.Refresh(context.Background(), first.ID); errs <- err }()
 	<-started
+	// The first caller is now parked in the stub, having loaded the account twice
+	// (once to build the group key, once inside the singleflight function).
+	loadsBeforeSecond := repo.getByIDCalls.Load()
 	go func() { _, err := svc.Refresh(context.Background(), second.ID); errs <- err }()
+	// Only release the first caller once the second one has loaded its own
+	// account, which happens immediately before it joins the singleflight group.
+	// Releasing right after starting the goroutine raced: if the first refresh
+	// finished first, the second became a fresh singleflight execution, re-read
+	// the account, saw the LastAttemptAt just written, and failed with the 30s
+	// manual-refresh 429 instead of sharing the in-flight result.
+	require.Eventually(t, func() bool {
+		return repo.getByIDCalls.Load() > loadsBeforeSecond
+	}, 5*time.Second, time.Millisecond, "the second caller must reach the singleflight group before the first is released")
 	close(release)
 	require.NoError(t, <-errs)
 	require.NoError(t, <-errs)

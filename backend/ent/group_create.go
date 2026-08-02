@@ -655,6 +655,20 @@ func (_c *GroupCreate) SetNillableAllowMessagesDispatch(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetAllowLive sets the "allow_live" field.
+func (_c *GroupCreate) SetAllowLive(v bool) *GroupCreate {
+	_c.mutation.SetAllowLive(v)
+	return _c
+}
+
+// SetNillableAllowLive sets the "allow_live" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowLive(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowLive(*v)
+	}
+	return _c
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_c *GroupCreate) SetRequireOauthOnly(v bool) *GroupCreate {
 	_c.mutation.SetRequireOauthOnly(v)
@@ -826,6 +840,48 @@ func (_c *GroupCreate) SetNillableMaxReasoningEffort(v *string) *GroupCreate {
 // SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
 func (_c *GroupCreate) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupCreate {
 	_c.mutation.SetReasoningEffortMappings(v)
+	return _c
+}
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (_c *GroupCreate) SetProfitControlEnabled(v bool) *GroupCreate {
+	_c.mutation.SetProfitControlEnabled(v)
+	return _c
+}
+
+// SetNillableProfitControlEnabled sets the "profit_control_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableProfitControlEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetProfitControlEnabled(*v)
+	}
+	return _c
+}
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (_c *GroupCreate) SetProfitMinMargin(v float64) *GroupCreate {
+	_c.mutation.SetProfitMinMargin(v)
+	return _c
+}
+
+// SetNillableProfitMinMargin sets the "profit_min_margin" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableProfitMinMargin(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetProfitMinMargin(*v)
+	}
+	return _c
+}
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (_c *GroupCreate) SetProfitSafetyBuffer(v float64) *GroupCreate {
+	_c.mutation.SetProfitSafetyBuffer(v)
+	return _c
+}
+
+// SetNillableProfitSafetyBuffer sets the "profit_safety_buffer" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableProfitSafetyBuffer(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetProfitSafetyBuffer(*v)
+	}
 	return _c
 }
 
@@ -1078,6 +1134,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowMessagesDispatch
 		_c.mutation.SetAllowMessagesDispatch(v)
 	}
+	if _, ok := _c.mutation.AllowLive(); !ok {
+		v := group.DefaultAllowLive
+		_c.mutation.SetAllowLive(v)
+	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		v := group.DefaultRequireOauthOnly
 		_c.mutation.SetRequireOauthOnly(v)
@@ -1129,6 +1189,18 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
 		v := group.DefaultReasoningEffortMappings
 		_c.mutation.SetReasoningEffortMappings(v)
+	}
+	if _, ok := _c.mutation.ProfitControlEnabled(); !ok {
+		v := group.DefaultProfitControlEnabled
+		_c.mutation.SetProfitControlEnabled(v)
+	}
+	if _, ok := _c.mutation.ProfitMinMargin(); !ok {
+		v := group.DefaultProfitMinMargin
+		_c.mutation.SetProfitMinMargin(v)
+	}
+	if _, ok := _c.mutation.ProfitSafetyBuffer(); !ok {
+		v := group.DefaultProfitSafetyBuffer
+		_c.mutation.SetProfitSafetyBuffer(v)
 	}
 	return nil
 }
@@ -1260,6 +1332,9 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.AllowMessagesDispatch(); !ok {
 		return &ValidationError{Name: "allow_messages_dispatch", err: errors.New(`ent: missing required field "Group.allow_messages_dispatch"`)}
 	}
+	if _, ok := _c.mutation.AllowLive(); !ok {
+		return &ValidationError{Name: "allow_live", err: errors.New(`ent: missing required field "Group.allow_live"`)}
+	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		return &ValidationError{Name: "require_oauth_only", err: errors.New(`ent: missing required field "Group.require_oauth_only"`)}
 	}
@@ -1313,6 +1388,15 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
 		return &ValidationError{Name: "reasoning_effort_mappings", err: errors.New(`ent: missing required field "Group.reasoning_effort_mappings"`)}
+	}
+	if _, ok := _c.mutation.ProfitControlEnabled(); !ok {
+		return &ValidationError{Name: "profit_control_enabled", err: errors.New(`ent: missing required field "Group.profit_control_enabled"`)}
+	}
+	if _, ok := _c.mutation.ProfitMinMargin(); !ok {
+		return &ValidationError{Name: "profit_min_margin", err: errors.New(`ent: missing required field "Group.profit_min_margin"`)}
+	}
+	if _, ok := _c.mutation.ProfitSafetyBuffer(); !ok {
+		return &ValidationError{Name: "profit_safety_buffer", err: errors.New(`ent: missing required field "Group.profit_safety_buffer"`)}
 	}
 	return nil
 }
@@ -1529,6 +1613,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldAllowMessagesDispatch, field.TypeBool, value)
 		_node.AllowMessagesDispatch = value
 	}
+	if value, ok := _c.mutation.AllowLive(); ok {
+		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
+		_node.AllowLive = value
+	}
 	if value, ok := _c.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
 		_node.RequireOauthOnly = value
@@ -1580,6 +1668,18 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ReasoningEffortMappings(); ok {
 		_spec.SetField(group.FieldReasoningEffortMappings, field.TypeJSON, value)
 		_node.ReasoningEffortMappings = value
+	}
+	if value, ok := _c.mutation.ProfitControlEnabled(); ok {
+		_spec.SetField(group.FieldProfitControlEnabled, field.TypeBool, value)
+		_node.ProfitControlEnabled = value
+	}
+	if value, ok := _c.mutation.ProfitMinMargin(); ok {
+		_spec.SetField(group.FieldProfitMinMargin, field.TypeFloat64, value)
+		_node.ProfitMinMargin = value
+	}
+	if value, ok := _c.mutation.ProfitSafetyBuffer(); ok {
+		_spec.SetField(group.FieldProfitSafetyBuffer, field.TypeFloat64, value)
+		_node.ProfitSafetyBuffer = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -2493,6 +2593,18 @@ func (u *GroupUpsert) UpdateAllowMessagesDispatch() *GroupUpsert {
 	return u
 }
 
+// SetAllowLive sets the "allow_live" field.
+func (u *GroupUpsert) SetAllowLive(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowLive, v)
+	return u
+}
+
+// UpdateAllowLive sets the "allow_live" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowLive() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowLive)
+	return u
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (u *GroupUpsert) SetRequireOauthOnly(v bool) *GroupUpsert {
 	u.Set(group.FieldRequireOauthOnly, v)
@@ -2664,6 +2776,54 @@ func (u *GroupUpsert) SetReasoningEffortMappings(v []domain.ReasoningEffortMappi
 // UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateReasoningEffortMappings() *GroupUpsert {
 	u.SetExcluded(group.FieldReasoningEffortMappings)
+	return u
+}
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (u *GroupUpsert) SetProfitControlEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldProfitControlEnabled, v)
+	return u
+}
+
+// UpdateProfitControlEnabled sets the "profit_control_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProfitControlEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldProfitControlEnabled)
+	return u
+}
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (u *GroupUpsert) SetProfitMinMargin(v float64) *GroupUpsert {
+	u.Set(group.FieldProfitMinMargin, v)
+	return u
+}
+
+// UpdateProfitMinMargin sets the "profit_min_margin" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProfitMinMargin() *GroupUpsert {
+	u.SetExcluded(group.FieldProfitMinMargin)
+	return u
+}
+
+// AddProfitMinMargin adds v to the "profit_min_margin" field.
+func (u *GroupUpsert) AddProfitMinMargin(v float64) *GroupUpsert {
+	u.Add(group.FieldProfitMinMargin, v)
+	return u
+}
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (u *GroupUpsert) SetProfitSafetyBuffer(v float64) *GroupUpsert {
+	u.Set(group.FieldProfitSafetyBuffer, v)
+	return u
+}
+
+// UpdateProfitSafetyBuffer sets the "profit_safety_buffer" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProfitSafetyBuffer() *GroupUpsert {
+	u.SetExcluded(group.FieldProfitSafetyBuffer)
+	return u
+}
+
+// AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
+func (u *GroupUpsert) AddProfitSafetyBuffer(v float64) *GroupUpsert {
+	u.Add(group.FieldProfitSafetyBuffer, v)
 	return u
 }
 
@@ -3597,6 +3757,20 @@ func (u *GroupUpsertOne) UpdateAllowMessagesDispatch() *GroupUpsertOne {
 	})
 }
 
+// SetAllowLive sets the "allow_live" field.
+func (u *GroupUpsertOne) SetAllowLive(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowLive(v)
+	})
+}
+
+// UpdateAllowLive sets the "allow_live" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowLive() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowLive()
+	})
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (u *GroupUpsertOne) SetRequireOauthOnly(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -3797,6 +3971,62 @@ func (u *GroupUpsertOne) SetReasoningEffortMappings(v []domain.ReasoningEffortMa
 func (u *GroupUpsertOne) UpdateReasoningEffortMappings() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()
+	})
+}
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (u *GroupUpsertOne) SetProfitControlEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitControlEnabled(v)
+	})
+}
+
+// UpdateProfitControlEnabled sets the "profit_control_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProfitControlEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitControlEnabled()
+	})
+}
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (u *GroupUpsertOne) SetProfitMinMargin(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitMinMargin(v)
+	})
+}
+
+// AddProfitMinMargin adds v to the "profit_min_margin" field.
+func (u *GroupUpsertOne) AddProfitMinMargin(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitMinMargin(v)
+	})
+}
+
+// UpdateProfitMinMargin sets the "profit_min_margin" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProfitMinMargin() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitMinMargin()
+	})
+}
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (u *GroupUpsertOne) SetProfitSafetyBuffer(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitSafetyBuffer(v)
+	})
+}
+
+// AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
+func (u *GroupUpsertOne) AddProfitSafetyBuffer(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitSafetyBuffer(v)
+	})
+}
+
+// UpdateProfitSafetyBuffer sets the "profit_safety_buffer" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProfitSafetyBuffer() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitSafetyBuffer()
 	})
 }
 
@@ -4896,6 +5126,20 @@ func (u *GroupUpsertBulk) UpdateAllowMessagesDispatch() *GroupUpsertBulk {
 	})
 }
 
+// SetAllowLive sets the "allow_live" field.
+func (u *GroupUpsertBulk) SetAllowLive(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowLive(v)
+	})
+}
+
+// UpdateAllowLive sets the "allow_live" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowLive() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowLive()
+	})
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (u *GroupUpsertBulk) SetRequireOauthOnly(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -5096,6 +5340,62 @@ func (u *GroupUpsertBulk) SetReasoningEffortMappings(v []domain.ReasoningEffortM
 func (u *GroupUpsertBulk) UpdateReasoningEffortMappings() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()
+	})
+}
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (u *GroupUpsertBulk) SetProfitControlEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitControlEnabled(v)
+	})
+}
+
+// UpdateProfitControlEnabled sets the "profit_control_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProfitControlEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitControlEnabled()
+	})
+}
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (u *GroupUpsertBulk) SetProfitMinMargin(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitMinMargin(v)
+	})
+}
+
+// AddProfitMinMargin adds v to the "profit_min_margin" field.
+func (u *GroupUpsertBulk) AddProfitMinMargin(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitMinMargin(v)
+	})
+}
+
+// UpdateProfitMinMargin sets the "profit_min_margin" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProfitMinMargin() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitMinMargin()
+	})
+}
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (u *GroupUpsertBulk) SetProfitSafetyBuffer(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitSafetyBuffer(v)
+	})
+}
+
+// AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
+func (u *GroupUpsertBulk) AddProfitSafetyBuffer(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitSafetyBuffer(v)
+	})
+}
+
+// UpdateProfitSafetyBuffer sets the "profit_safety_buffer" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProfitSafetyBuffer() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitSafetyBuffer()
 	})
 }
 

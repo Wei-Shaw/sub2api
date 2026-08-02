@@ -5,7 +5,7 @@
  * instead of defining their own color mappings.
  */
 
-export type Platform = 'anthropic' | 'openai' | 'antigravity' | 'gemini' | 'kiro' | 'grok' | 'fal'| 'composite'
+export type Platform = 'anthropic' | 'openai' | 'antigravity' | 'gemini' | 'kiro' | 'grok' | 'fal' | 'composite'
 
 // ── Badge (bg + text + border, for inline badges with border) ───────
 const BADGE: Record<Platform, string> = {
@@ -44,6 +44,33 @@ const BORDER: Record<Platform, string> = {
   composite: 'border-cyan-500/20 dark:border-cyan-500/20',
 }
 const BORDER_DEFAULT = 'border-gray-200 dark:border-dark-700'
+
+// ── Border strong (higher-contrast platform tint, e.g. plaza group cards) ──
+const BORDER_STRONG: Record<Platform, string> = {
+  anthropic: 'border-orange-500/35 dark:border-orange-500/30',
+  openai: 'border-green-500/35 dark:border-green-500/30',
+  antigravity: 'border-purple-500/35 dark:border-purple-500/30',
+  gemini: 'border-blue-500/35 dark:border-blue-500/30',
+  fal: 'border-pink-500/35 dark:border-pink-500/30',
+  grok: 'border-zinc-800/35 dark:border-zinc-500/35',
+  kiro: 'border-violet-500/35 dark:border-violet-500/30',
+  composite: 'border-cyan-500/35 dark:border-cyan-500/30',
+}
+const BORDER_STRONG_DEFAULT = 'border-gray-300 dark:border-dark-600'
+
+// ── Accent (single raw color per platform; consumers derive washes/tints
+//    from it via CSS color-mix, e.g. plaza paid-price zone) ──
+const ACCENT: Record<Platform, string> = {
+  anthropic: '#f97316', // orange-500
+  openai: '#22c55e', // green-500
+  antigravity: '#a855f7', // purple-500
+  gemini: '#3b82f6', // blue-500
+  fal: '#ec4899', // pink-500
+  grok: '#71717a', // zinc-500
+  kiro: '#8b5cf6', // violet-500
+  composite: '#06b6d4', // cyan-500
+}
+const ACCENT_DEFAULT = '#14b8a6' // primary-500 (teal)
 
 // ── Accent bar (gradient) ───────────────────────────────────────────
 const ACCENT_BAR: Record<Platform, string> = {
@@ -164,6 +191,14 @@ export function platformBadgeLightClass(p: string): string {
 
 export function platformBorderClass(p: string): string {
   return isPlatform(p) ? BORDER[p] : BORDER_DEFAULT
+}
+
+export function platformBorderStrongClass(p: string): string {
+  return isPlatform(p) ? BORDER_STRONG[p] : BORDER_STRONG_DEFAULT
+}
+
+export function platformAccentColor(p: string): string {
+  return isPlatform(p) ? ACCENT[p] : ACCENT_DEFAULT
 }
 
 export function platformAccentBarClass(p: string): string {

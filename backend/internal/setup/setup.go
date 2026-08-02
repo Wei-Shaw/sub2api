@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/accountid"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -147,9 +149,23 @@ func decideAdminBootstrap(totalUsers, adminUsers int64) adminBootstrapDecision {
 	}
 }
 
+func skipSetupEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("SKIP_SETUP"))) {
+	case "true", "1", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
 // NeedsSetup checks if the system needs initial setup
 // Uses multiple checks to prevent attackers from forcing re-setup by deleting config
 func NeedsSetup() bool {
+	if skipSetupEnabled() {
+		logger.L().Debug("setup.needs_setup_bypassed", zap.String("reason", "skip_setup_enabled"))
+		return false
+	}
+
 	// Check 1: Config file must not exist
 	if _, err := os.Stat(GetConfigFilePath()); !os.IsNotExist(err) {
 		return false // Config exists, no setup needed
@@ -424,12 +440,17 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 	if err := admin.SetPassword(cfg.Admin.Password); err != nil {
 		return false, "", err
 	}
+	publicID, err := accountid.GenerateRoot()
+	if err != nil {
+		return false, "", fmt.Errorf("generate admin account ID: %w", err)
+	}
 
 	_, err = db.ExecContext(
 		ctx,
-		`INSERT INTO users (email, password_hash, role, balance, concurrency, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		`INSERT INTO users (email, account_id, external_user_id, identity_type, password_hash, role, balance, concurrency, status, created_at, updated_at)
+		 VALUES ($1, $2, $2, 'root', $3, $4, $5, $6, $7, $8, $9)`,
 		admin.Email,
+		publicID,
 		admin.PasswordHash,
 		admin.Role,
 		admin.Balance,

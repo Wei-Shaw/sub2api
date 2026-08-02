@@ -40,6 +40,31 @@ describe('HelpTooltip', () => {
     wrapper.unmount()
   })
 
+  it('shows hover tooltips for keyboard focus', async () => {
+    const wrapper = mount(HelpTooltip, {
+      attachTo: document.body,
+      props: {
+        content: 'focus details',
+      },
+      slots: {
+        trigger: '<button type="button">Policy</button>',
+      },
+    })
+
+    const button = wrapper.get('button')
+    const tooltip = getTooltipElement()
+
+    await button.trigger('focusin')
+    await nextTick()
+    expect(tooltip.style.display).not.toBe('none')
+
+    await button.trigger('focusout')
+    await nextTick()
+    expect(tooltip.style.display).toBe('none')
+
+    wrapper.unmount()
+  })
+
   it('supports click-to-toggle details and closes on outside click', async () => {
     const wrapper = mount(HelpTooltip, {
       attachTo: document.body,

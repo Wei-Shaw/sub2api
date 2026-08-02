@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import type { AdminUser } from '@/types'
+import enCustom from '@/i18n/locales/en/custom'
+import zhCustom from '@/i18n/locales/zh/custom'
 import UsersView from '../UsersView.vue'
 
 const {
@@ -9,13 +11,19 @@ const {
   getAllGroups,
   getBatchUsersUsage,
   listEnabledDefinitions,
-  getBatchUserAttributes
+  getBatchUserAttributes,
+  copyToClipboard
 } = vi.hoisted(() => ({
   listUsers: vi.fn(),
   getAllGroups: vi.fn(),
   getBatchUsersUsage: vi.fn(),
   listEnabledDefinitions: vi.fn(),
-  getBatchUserAttributes: vi.fn()
+  getBatchUserAttributes: vi.fn(),
+  copyToClipboard: vi.fn()
+}))
+
+vi.mock('@/composables/useClipboard', () => ({
+  useClipboard: () => ({ copyToClipboard })
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -97,6 +105,9 @@ const DataTableStub = {
         <slot :name="'header-' + col.key" :column="col" />
       </template>
       <div v-for="row in data" :key="row.id">
+        <slot name="cell-email" :value="row.email" :row="row" />
+        <slot name="cell-iam_principal" :value="row.iam_principal" :row="row" />
+        <slot name="cell-enterprise_identity" :value="row.enterprise_identity" :row="row" />
         <slot name="cell-last_used_at" :value="row.last_used_at" :row="row" />
       </div>
     </div>
@@ -158,6 +169,7 @@ describe('admin UsersView', () => {
     getBatchUsersUsage.mockReset()
     listEnabledDefinitions.mockReset()
     getBatchUserAttributes.mockReset()
+    copyToClipboard.mockReset()
 
     listUsers.mockResolvedValue({
       items: [createAdminUser()],
@@ -174,6 +186,13 @@ describe('admin UsersView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('defines administrator user identity labels in both locales', () => {
+    expect(zhCustom.admin.users.emailNotBound).toBe('未绑定邮箱')
+    expect(zhCustom.admin.users.columns.enterpriseIdentity).toBe('企业身份')
+    expect(enCustom.admin.users.emailNotBound).toBe('No email bound')
+    expect(enCustom.admin.users.columns.enterpriseIdentity).toBe('Enterprise Identity')
   })
 
   it('shows active, used, and created activity columns in order and requests last_used_at sort', async () => {
@@ -198,6 +217,87 @@ describe('admin UsersView', () => {
       }),
       expect.any(Object)
     )
+  })
+
+  it('shows and copies the full login principal for IAM users only', async () => {
+    listUsers.mockResolvedValue({
+      items: [
+        createAdminUser({
+          id: 1,
+          email: '',
+          identity_type: 'iam',
+          iam_principal: 'finance@c123456789012345.opentk.ai'
+        }),
+        createAdminUser({
+          id: 2,
+          email: '',
+          identity_type: 'iam',
+          iam_principal: 'ops@c123456789012345.opentk.ai',
+          recovery_email: 'ops@example.com'
+        }),
+        createAdminUser({ id: 3, email: 'personal@example.com', identity_type: 'root' })
+      ],
+      total: 3,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+
+    const wrapper = mountUsersView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="columns"]').text().split(',')).toContain('iam_principal')
+    expect(wrapper.findAll('[data-test="iam-principal"]')).toHaveLength(2)
+    expect(wrapper.findAll('[data-test="iam-principal"]')[0].text()).toBe('finance@c123456789012345.opentk.ai')
+    expect(wrapper.get('[data-test="iam-email-unbound"]').text()).toBe('admin.users.emailNotBound')
+    expect(wrapper.findAll('[data-test="user-email"]').map(node => node.text())).toEqual([
+      'ops@example.com',
+      'personal@example.com'
+    ])
+
+    await wrapper.get('[data-test="copy-iam-principal"]').trigger('click')
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      'finance@c123456789012345.opentk.ai',
+      'admin.users.iamPrincipalCopied'
+    )
+  })
+
+  it('shows enterprise identity for company owners and IAM members', async () => {
+    listUsers.mockResolvedValue({
+      items: [
+        createAdminUser({
+          id: 1,
+          identity_type: 'root',
+          company_id: 'c123456789012345',
+          company_name: 'Acme AI',
+          organization_role: 'owner'
+        }),
+        createAdminUser({
+          id: 2,
+          email: '',
+          identity_type: 'iam',
+          company_id: 'c123456789012345',
+          company_name: 'Acme AI',
+          organization_role: 'member'
+        }),
+        createAdminUser({ id: 3, identity_type: 'root' })
+      ],
+      total: 3,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+
+    const wrapper = mountUsersView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="columns"]').text().split(',')).toContain('enterprise_identity')
+    const identities = wrapper.findAll('[data-test="enterprise-identity"]')
+    expect(identities).toHaveLength(2)
+    expect(identities[0].text()).toContain('Acme AI')
+    expect(identities[0].text()).toContain('c123456789012345')
+    expect(identities[0].text()).toContain('admin.users.enterpriseIdentity.owner')
+    expect(identities[1].text()).toContain('admin.users.enterpriseIdentity.member')
   })
 
   it('lists Kiro usage in column settings while keeping it hidden by default', async () => {

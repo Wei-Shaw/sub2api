@@ -16,6 +16,14 @@ const (
 	FieldID = "id"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldOrganizationID holds the string denoting the organization_id field in the database.
+	FieldOrganizationID = "organization_id"
+	// FieldPayerUserID holds the string denoting the payer_user_id field in the database.
+	FieldPayerUserID = "payer_user_id"
+	// FieldBalanceSource holds the string denoting the balance_source field in the database.
+	FieldBalanceSource = "balance_source"
+	// FieldAuthzGeneration holds the string denoting the authz_generation field in the database.
+	FieldAuthzGeneration = "authz_generation"
 	// FieldAPIKeyID holds the string denoting the api_key_id field in the database.
 	FieldAPIKeyID = "api_key_id"
 	// FieldAccountID holds the string denoting the account_id field in the database.
@@ -165,6 +173,10 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldUserID,
+	FieldOrganizationID,
+	FieldPayerUserID,
+	FieldBalanceSource,
+	FieldAuthzGeneration,
 	FieldAPIKeyID,
 	FieldAccountID,
 	FieldRequestID,
@@ -226,6 +238,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// BalanceSourceValidator is a validator for the "balance_source" field. It is called by the builders before save.
+	BalanceSourceValidator func(string) error
 	// RequestIDValidator is a validator for the "request_id" field. It is called by the builders before save.
 	RequestIDValidator func(string) error
 	// ModelValidator is a validator for the "model" field. It is called by the builders before save.
@@ -309,6 +323,26 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByUserID orders the results by the user_id field.
 func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
+}
+
+// ByOrganizationID orders the results by the organization_id field.
+func ByOrganizationID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOrganizationID, opts...).ToFunc()
+}
+
+// ByPayerUserID orders the results by the payer_user_id field.
+func ByPayerUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPayerUserID, opts...).ToFunc()
+}
+
+// ByBalanceSource orders the results by the balance_source field.
+func ByBalanceSource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBalanceSource, opts...).ToFunc()
+}
+
+// ByAuthzGeneration orders the results by the authz_generation field.
+func ByAuthzGeneration(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAuthzGeneration, opts...).ToFunc()
 }
 
 // ByAPIKeyID orders the results by the api_key_id field.

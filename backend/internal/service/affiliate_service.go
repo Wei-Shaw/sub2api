@@ -230,6 +230,13 @@ type AffiliateService struct {
 	// inboxPub 通用信箱发布器（可空）：用于"被邀请人充值 → 给邀请人发信箱通知"。
 	// 非 nil 时才发布，失败 fail-open。
 	inboxPub inbox.Publisher
+	userRepo UserRepository
+}
+
+func (s *AffiliateService) SetUserRepository(repo UserRepository) {
+	if s != nil {
+		s.userRepo = repo
+	}
 }
 
 func NewAffiliateService(repo AffiliateRepository, settingService *SettingService, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService, inboxPub inbox.Publisher) *AffiliateService {
@@ -440,6 +447,15 @@ func (s *AffiliateService) globalRebateRatePercent(ctx context.Context) float64 
 func (s *AffiliateService) TransferAffiliateQuota(ctx context.Context, userID int64) (float64, float64, error) {
 	if s == nil || s.repo == nil {
 		return 0, 0, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+	if s.userRepo != nil {
+		user, err := s.userRepo.GetByID(ctx, userID)
+		if err != nil {
+			return 0, 0, err
+		}
+		if err := GuardIAMFinancialOperation(user); err != nil {
+			return 0, 0, err
+		}
 	}
 
 	transferred, balance, err := s.repo.TransferQuotaToBalance(ctx, userID)

@@ -15,6 +15,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	entuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -53,10 +54,13 @@ const refreshTokenPrefix = "rt_"
 
 // JWTClaims JWT载荷数据
 type JWTClaims struct {
-	UserID       int64  `json:"user_id"`
-	Email        string `json:"email"`
-	Role         string `json:"role"`
-	TokenVersion int64  `json:"token_version"` // Used to invalidate tokens on password change
+	UserID             int64  `json:"user_id"`
+	Email              string `json:"email"`
+	Role               string `json:"role"`
+	TokenVersion       int64  `json:"token_version"` // Used to invalidate tokens on password change
+	IdentityType       string `json:"identity_type,omitempty"`
+	AuthzGeneration    int64  `json:"authz_generation,omitempty"`
+	MustChangePassword bool   `json:"must_change_password,omitempty"`
 	// SessionID 会话 ID（与 refresh token family 对应），用于单会话撤销与 step-up 授权绑定。
 	SessionID string `json:"sid,omitempty"`
 	// BindingHash 会话指纹哈希（IP+UA），会话绑定开启时校验；空值表示旧 token（平滑升级）。
@@ -189,8 +193,8 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		}
 	}
 
-	// 检查邮箱是否已存在
-	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
+	// 检查邮箱是否已存在（含 +别名 / Gmail 点号变体归一化，防止单个收件箱批量派生注册）
+	existsEmail, err := s.existsByEmailOrAlias(ctx, email)
 	if err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email exists: %v", err)
 		return "", nil, ErrServiceUnavailable
@@ -224,7 +228,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		Status:       StatusActive,
 	}
 
-	if err := s.userRepo.Create(ctx, user); err != nil {
+	if err := s.userRepo.CreateWithEmailAliasGuard(ctx, user); err != nil {
 		// 优先检查邮箱冲突错误（竞态条件下可能发生）
 		if errors.Is(err, ErrEmailExists) {
 			return "", nil, ErrEmailExists
@@ -296,8 +300,8 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 		return err
 	}
 
-	// 检查邮箱是否已存在
-	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
+	// 检查邮箱是否已存在（含 +别名 / Gmail 点号变体归一化，防止单个收件箱批量派生注册）
+	existsEmail, err := s.existsByEmailOrAlias(ctx, email)
 	if err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email exists: %v", err)
 		return ErrServiceUnavailable
@@ -337,8 +341,8 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 		return nil, err
 	}
 
-	// 检查邮箱是否已存在
-	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
+	// 检查邮箱是否已存在（含 +别名 / Gmail 点号变体归一化；在发信前拦截，避免批量脚本消耗发信配额）
+	existsEmail, err := s.existsByEmailOrAlias(ctx, email)
 	if err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email exists: %v", err)
 		return nil, ErrServiceUnavailable
@@ -586,7 +590,7 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 	// 尽力补全：当用户名为空时，使用第三方返回的用户名回填。
 	if user.Username == "" && username != "" {
 		user.Username = username
-		if err := s.userRepo.Update(ctx, user); err != nil {
+		if err := s.userRepo.Update(ctx, user, UserUpdateFields{Username: true}); err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to update username after oauth login: %v", err)
 		}
 	}
@@ -778,7 +782,7 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 
 	if user.Username == "" && username != "" {
 		user.Username = username
-		if err := s.userRepo.Update(ctx, user); err != nil {
+		if err := s.userRepo.Update(ctx, user, UserUpdateFields{Username: true}); err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to update username after oauth login: %v", err)
 		}
 	}
@@ -967,6 +971,12 @@ func (s *AuthService) backfillEmailIdentityOnSuccessfulLogin(ctx context.Context
 	if s == nil || user == nil || user.ID <= 0 {
 		return
 	}
+	// Identity types without an email (e.g. IAM users identified by login name)
+	// have no email identity to backfill. Skip to avoid unnecessary work and to
+	// prevent operating on a nil identity downstream.
+	if strings.TrimSpace(user.Email) == "" {
+		return
+	}
 	identity, created := s.ensureEmailAuthIdentity(ctx, user, "auth_service_login_backfill")
 	if s.shouldApplyEmailFirstBindDefaults(ctx, user.ID, identity, created) {
 		if err := s.ApplyProviderDefaultSettingsOnFirstBind(ctx, user.ID, "email"); err != nil {
@@ -981,15 +991,15 @@ func (s *AuthService) shouldApplyEmailFirstBindDefaults(
 	identity *dbent.AuthIdentity,
 	created bool,
 ) bool {
+	if s == nil || s.entClient == nil || userID <= 0 || identity == nil || identity.UserID != userID {
+		return false
+	}
 	source := emailAuthIdentitySource(identity.Metadata)
 	if source == "auth_service_login_backfill" {
 		return false
 	}
 	if created {
 		return true
-	}
-	if s == nil || s.entClient == nil || userID <= 0 || identity == nil || identity.UserID != userID {
-		return false
 	}
 	if source != "auth_service_dual_write" {
 		return false
@@ -1236,12 +1246,15 @@ func (s *AuthService) generateAccessToken(user *User, sessionID, bindingHash str
 	}
 
 	claims := &JWTClaims{
-		UserID:       user.ID,
-		Email:        user.Email,
-		Role:         user.Role,
-		TokenVersion: resolvedTokenVersion(user),
-		SessionID:    sessionID,
-		BindingHash:  bindingHash,
+		UserID:             user.ID,
+		Email:              user.Email,
+		Role:               user.Role,
+		TokenVersion:       resolvedTokenVersion(user),
+		IdentityType:       user.IdentityType,
+		AuthzGeneration:    user.AuthzGeneration,
+		MustChangePassword: user.MustChangePassword,
+		SessionID:          sessionID,
+		BindingHash:        bindingHash,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -1341,11 +1354,10 @@ func (s *AuthService) IsPasswordResetEnabled(ctx context.Context) bool {
 // shouldProceed is false when we should silently return success (to prevent enumeration)
 func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendBaseURL string) (string, string, bool) {
 	// Check if user exists (but don't reveal this to the caller)
-	user, err := s.userRepo.GetByEmail(ctx, email)
+	user, err := s.resolvePasswordResetUser(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
-			// Security: Log but don't reveal that user doesn't exist
-			logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for non-existent email: %s", email)
+			logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for unknown email")
 			return "", "", false
 		}
 		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email for password reset: %v", err)
@@ -1354,7 +1366,7 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 
 	// Check if user is active
 	if !user.IsActive() {
-		logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for inactive user: %s", email)
+		logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for inactive user")
 		return "", "", false
 	}
 
@@ -1368,6 +1380,97 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 	resetURL := fmt.Sprintf("%s/reset-password", strings.TrimSuffix(frontendBaseURL, "/"))
 
 	return siteName, resetURL, true
+}
+
+// resolvePasswordResetUser preserves personal email recovery while allowing a
+// verified IAM recovery address. Recovery addresses are never login identifiers.
+func (s *AuthService) resolvePasswordResetUser(ctx context.Context, email string) (*User, error) {
+	email = strings.TrimSpace(email)
+	if user, err := s.userRepo.GetByEmail(ctx, email); err == nil {
+		return user, nil
+	} else if !errors.Is(err, ErrUserNotFound) {
+		return nil, err
+	}
+	if s.entClient == nil {
+		return nil, ErrUserNotFound
+	}
+	ids, err := s.entClient.User.Query().
+		Where(
+			entuser.IdentityTypeEQ(IdentityTypeIAM),
+			entuser.RecoveryEmailEqualFold(email),
+			entuser.RecoveryEmailVerifiedAtNotNil(),
+		).
+		Limit(2).
+		IDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) != 1 {
+		return nil, ErrUserNotFound
+	}
+	return s.userRepo.GetByID(ctx, ids[0])
+}
+
+// SendIAMRecoveryEmailCode stores the requested address as unverified before
+// sending a code. A failed delivery leaves no trusted recovery route behind.
+func (s *AuthService) SendIAMRecoveryEmailCode(ctx context.Context, userID int64, email string, locale ...string) error {
+	if s.emailService == nil || s.entClient == nil {
+		return ErrServiceUnavailable
+	}
+	email = strings.TrimSpace(email)
+	parsed, err := mail.ParseAddress(email)
+	if err != nil || !strings.EqualFold(parsed.Address, email) {
+		return infraerrors.BadRequest("RECOVERY_EMAIL_INVALID", "recovery email is invalid")
+	}
+	updated, err := s.entClient.User.Update().
+		Where(entuser.IDEQ(userID), entuser.IdentityTypeEQ(IdentityTypeIAM), entuser.StatusEQ(StatusActive)).
+		SetRecoveryEmail(email).
+		ClearRecoveryEmailVerifiedAt().
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return ErrUserNotFound
+	}
+	siteName := "Sub2API"
+	if s.settingService != nil {
+		siteName = s.settingService.GetSiteName(ctx)
+	}
+	return s.emailService.SendVerifyCode(ctx, email, siteName, firstEmailLocale(locale))
+}
+
+func (s *AuthService) VerifyIAMRecoveryEmail(ctx context.Context, userID int64, email, code string) error {
+	if s.emailService == nil || s.entClient == nil {
+		return ErrServiceUnavailable
+	}
+	email = strings.TrimSpace(email)
+	if err := s.emailService.VerifyCode(ctx, email, strings.TrimSpace(code)); err != nil {
+		return err
+	}
+	duplicate, err := s.entClient.User.Query().Where(
+		entuser.IDNEQ(userID),
+		entuser.IdentityTypeEQ(IdentityTypeIAM),
+		entuser.RecoveryEmailEqualFold(email),
+		entuser.RecoveryEmailVerifiedAtNotNil(),
+	).Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if duplicate {
+		return infraerrors.Conflict("RECOVERY_EMAIL_IN_USE", "recovery email is already in use")
+	}
+	updated, err := s.entClient.User.Update().
+		Where(entuser.IDEQ(userID), entuser.IdentityTypeEQ(IdentityTypeIAM), entuser.RecoveryEmailEqualFold(email)).
+		SetRecoveryEmailVerifiedAt(time.Now().UTC()).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return ErrUserNotFound
+	}
+	return nil
 }
 
 // RequestPasswordReset 请求密码重置（同步发送）
@@ -1436,7 +1539,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 	}
 
 	// Get user
-	user, err := s.userRepo.GetByEmail(ctx, email)
+	user, err := s.resolvePasswordResetUser(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return ErrInvalidResetToken // Token was valid but user was deleted
@@ -1456,11 +1559,16 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 		return fmt.Errorf("hash password: %w", err)
 	}
 
-	// Update password and increment TokenVersion
-	user.PasswordHash = hashedPassword
-	user.TokenVersion++ // Invalidate all existing tokens
-
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	// Update password and generations atomically so existing access tokens and
+	// organization authorization caches become stale immediately.
+	if s.entClient == nil {
+		return ErrServiceUnavailable
+	}
+	if _, err := s.entClient.User.UpdateOneID(user.ID).
+		SetPasswordHash(hashedPassword).
+		SetMustChangePassword(false).
+		AddAuthzGeneration(1).
+		Save(ctx); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Database error updating password for user %d: %v", user.ID, err)
 		return ErrServiceUnavailable
 	}
@@ -1471,7 +1579,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 		// Don't return error - password was already changed successfully
 	}
 
-	logger.LegacyPrintf("service.auth", "[Auth] Password reset successful for user: %s", email)
+	logger.LegacyPrintf("service.auth", "[Auth] Password reset successful for user %d", user.ID)
 	return nil
 }
 
@@ -1699,17 +1807,15 @@ func (s *AuthService) RevokeAllUserSessions(ctx context.Context, userID int64) e
 }
 
 // RevokeAllUserTokens invalidates both stateless access tokens and refresh sessions.
-// Access/refresh token verification both depend on TokenVersion, so bumping it provides
-// immediate revocation even if refresh-token cache cleanup later fails.
+//
+// 注意：users 表没有 token_version 列（resolvedTokenVersion 由 email+password_hash
+// 指纹推导），因此对 user.TokenVersion 自增只影响内存副本。之前紧跟其后的整行
+// Update 不写任何有效数据，却会用旧快照覆盖并发写入的列，故已移除。
+// 会话撤销由下面的 refresh session 清理承担；改密路径通过 password_hash 变化
+// 改变指纹，从而使旧 token 失效。
 func (s *AuthService) RevokeAllUserTokens(ctx context.Context, userID int64) error {
-	user, err := s.userRepo.GetByID(ctx, userID)
-	if err != nil {
+	if _, err := s.userRepo.GetByID(ctx, userID); err != nil {
 		return fmt.Errorf("get user: %w", err)
-	}
-
-	user.TokenVersion++
-	if err := s.userRepo.Update(ctx, user); err != nil {
-		return fmt.Errorf("update user: %w", err)
 	}
 
 	if err := s.RevokeAllUserSessions(ctx, userID); err != nil {

@@ -7,23 +7,36 @@ import (
 )
 
 type User struct {
-	ID             int64
-	Email          string
-	Username       string
-	Notes          string
-	AvatarURL      string
-	AvatarSource   string
-	AvatarMIME     string
-	AvatarByteSize int
-	AvatarSHA256   string
-	PasswordHash   string
-	Role           string
-	Balance        float64
-	FrozenBalance  float64
-	Concurrency    int
-	Status         string
-	AllowedGroups  []int64
-	TokenVersion   int64 // Incremented on password change to invalidate existing tokens
+	ID        int64
+	Email     string
+	AccountID string
+	// 企业归属字段不持久化在 users 表，在登录、成员列表和管理员用户列表等场景按需填充。
+	// CompanyID 也是 IAM 登录后缀的一部分（'c' 前缀 + 15 位数字）。
+	CompanyID               string
+	CompanyName             string
+	OrganizationRole        string
+	ExternalUserID          string
+	IdentityType            string
+	LoginName               string
+	MustChangePassword      bool
+	RecoveryEmail           string
+	RecoveryEmailVerifiedAt *time.Time
+	AuthzGeneration         int64
+	Username                string
+	Notes                   string
+	AvatarURL               string
+	AvatarSource            string
+	AvatarMIME              string
+	AvatarByteSize          int
+	AvatarSHA256            string
+	PasswordHash            string
+	Role                    string
+	Balance                 float64
+	FrozenBalance           float64
+	Concurrency             int
+	Status                  string
+	AllowedGroups           []int64
+	TokenVersion            int64 // Incremented on password change to invalidate existing tokens
 	// TokenVersionResolved indicates TokenVersion already contains the fingerprint-derived
 	// value expected in JWT claims and refresh-token state.
 	TokenVersionResolved bool
@@ -70,6 +83,15 @@ func (u *User) IsAdmin() bool {
 
 func (u *User) IsActive() bool {
 	return u.Status == StatusActive
+}
+
+func (u *User) IsIAM() bool { return u != nil && u.IdentityType == "iam" }
+
+func (u *User) IAMPrincipal() string {
+	if !u.IsIAM() || u.LoginName == "" || u.CompanyID == "" {
+		return ""
+	}
+	return CanonicalIAMPrincipal(u.LoginName, u.CompanyID)
 }
 
 // CanBindGroup checks whether a user can bind to a given group.

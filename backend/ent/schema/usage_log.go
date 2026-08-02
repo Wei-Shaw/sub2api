@@ -33,6 +33,10 @@ func (UsageLog) Fields() []ent.Field {
 	return []ent.Field{
 		// 关联字段
 		field.Int64("user_id"),
+		field.Int64("organization_id").Optional().Nillable(),
+		field.Int64("payer_user_id").Optional().Nillable(),
+		field.String("balance_source").MaxLen(16).Optional().Nillable(),
+		field.Int64("authz_generation").Optional().Nillable(),
 		field.Int64("api_key_id"),
 		field.Int64("account_id"),
 		field.String("request_id").
@@ -230,6 +234,7 @@ func (UsageLog) Edges() []ent.Edge {
 // Indexes 定义数据库索引，优化查询性能。
 func (UsageLog) Indexes() []ent.Index {
 	return []ent.Index{
+		index.Fields("organization_id", "created_at"),
 		index.Fields("user_id"),
 		index.Fields("api_key_id"),
 		index.Fields("account_id"),

@@ -194,6 +194,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
 
+		// Model plaza feature (default disabled; opt-in, public unless require_auth)
+		SettingKeyModelPlazaEnabled:     "false",
+		SettingKeyModelPlazaRequireAuth: "false",
+		SettingKeyModelPlazaDescription: "",
+
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled:              "false",
 		SettingKeyAffiliateAdminRechargeEnabled: strconv.FormatBool(AdminRechargeRebateEnabledDefault),
@@ -301,6 +306,34 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		captchaTencentSecretIDConfigured = captchaRuntime.Config["secret_id"] != ""
 		captchaTencentSecretKeyConfigured = captchaRuntime.Config["secret_key"] != ""
 	}
+	companyApplicationsEnabled := false
+	companyUpgradeFee := 20.0
+	companyIAMEnabled := false
+	companyPublicIDsFinalized := false
+	companyBillingIntegrationEnabled := false
+	companyDocumentationURL := ""
+	if s != nil && s.cfg != nil {
+		if s.cfg.Company.UpgradeFee > 0 && !math.IsNaN(s.cfg.Company.UpgradeFee) && !math.IsInf(s.cfg.Company.UpgradeFee, 0) {
+			companyUpgradeFee = s.cfg.Company.UpgradeFee
+		}
+		companyApplicationsEnabled = s.cfg.Company.ApplicationsEnabled
+		companyIAMEnabled = s.cfg.Company.IAMEnabled
+		companyPublicIDsFinalized = s.cfg.Company.PublicIDsFinalized
+		companyBillingIntegrationEnabled = s.cfg.Company.BillingIntegrationEnabled
+		companyDocumentationURL = strings.TrimSpace(s.cfg.Company.DocumentationURL)
+	}
+	companyApplicationsEnabled = boolSettingOrDefault(settings, SettingKeyCompanyApplicationsEnabled, companyApplicationsEnabled)
+	if value, ok := settings[SettingKeyCompanyUpgradeFee]; ok {
+		if parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil && parsed > 0 && !math.IsNaN(parsed) && !math.IsInf(parsed, 0) {
+			companyUpgradeFee = parsed
+		}
+	}
+	companyIAMEnabled = boolSettingOrDefault(settings, SettingKeyCompanyIAMEnabled, companyIAMEnabled)
+	companyPublicIDsFinalized = boolSettingOrDefault(settings, SettingKeyCompanyPublicIDsFinalized, companyPublicIDsFinalized)
+	companyBillingIntegrationEnabled = boolSettingOrDefault(settings, SettingKeyCompanyBillingIntegrationEnabled, companyBillingIntegrationEnabled)
+	if value, ok := settings[SettingKeyCompanyDocumentationURL]; ok {
+		companyDocumentationURL = strings.TrimSpace(value)
+	}
 	result := &SystemSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
@@ -310,8 +343,16 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		FrontendURL:                      settings[SettingKeyFrontendURL],
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
-		SessionBindingEnabled:            settings[SettingKeySessionBindingEnabled] == "true", // 默认关闭
-		StepUpEnabled:                    settings[SettingKeyStepUpEnabled] == "true",         // 默认关闭
+		PasskeyEnabled:                   s.passkeySettingEnabled(settings),
+		SessionBindingEnabled:            settings[SettingKeySessionBindingEnabled] == "true",        // 默认关闭
+		StepUpEnabled:                    settings[SettingKeyStepUpEnabled] == "true",                // 默认关闭
+		CompanyUpgradeChargeEnabled:      settings[SettingKeyCompanyUpgradeChargeEnabled] != "false", // 默认开启
+		CompanyUpgradeFee:                companyUpgradeFee,
+		CompanyApplicationsEnabled:       companyApplicationsEnabled,
+		CompanyIAMEnabled:                companyIAMEnabled,
+		CompanyPublicIDsFinalized:        companyPublicIDsFinalized,
+		CompanyBillingIntegrationEnabled: companyBillingIntegrationEnabled,
+		CompanyDocumentationURL:          companyDocumentationURL,
 		AuditLogRetentionDays:            parseAuditLogRetentionDays(settings[SettingKeyAuditLogRetentionDays]),
 		// 可信代理动态拉取（switch-trusted-proxies-dynamic）：三条 setting 全部 lenient 解析
 		TrustedProxiesDynamicEnabled:      settings[SettingKeyTrustedProxiesDynamicEnabled] == "true", // 默认关闭
@@ -348,6 +389,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		DocURL:                            settings[SettingKeyDocURL],
 		HomeContent:                       settings[SettingKeyHomeContent],
 		HomeProductMenuItems:              settings[SettingKeyHomeProductMenuItems],
+		CompactHomeEnabled:                settings[SettingKeyCompactHomeEnabled] == "true",
 		HideCcsImportButton:               settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:       settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:           strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
@@ -790,6 +832,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
 
+	// Model plaza feature (default: disabled; strict true)
+	result.ModelPlazaEnabled = settings[SettingKeyModelPlazaEnabled] == "true"
+	result.ModelPlazaRequireAuth = settings[SettingKeyModelPlazaRequireAuth] == "true"
+	result.ModelPlazaDescription = settings[SettingKeyModelPlazaDescription]
+
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"
 
@@ -1023,6 +1070,18 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 
 	return result
+}
+
+func boolSettingOrDefault(settings map[string]string, key string, fallback bool) bool {
+	value, ok := settings[key]
+	if !ok {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 func clampAffiliateRebateRate(value float64) float64 {

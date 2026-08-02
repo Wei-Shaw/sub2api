@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -173,6 +174,53 @@ func (s *SettingService) IsTotpEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// PasskeyEnabled reports the effective runtime switch. WebAuthn deployment
+// configuration remains the security boundary; the database setting can only
+// disable a valid configured relying party, never replace or weaken it.
+func (s *SettingService) PasskeyEnabled(ctx context.Context) (bool, error) {
+	if !s.passkeyConfigured() {
+		return false, nil
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyPasskeyEnabled)
+	if errors.Is(err, ErrSettingNotFound) {
+		return true, nil // configured deployments default to enabled until the admin persists the switch
+	}
+	if err != nil {
+		return false, fmt.Errorf("read passkey setting: %w", err)
+	}
+	return value == "true", nil
+}
+
+// PasskeyConfiguration returns non-secret relying-party configuration for the
+// admin status UI. Enabled configurations have already passed Config.Validate.
+func (s *SettingService) PasskeyConfiguration() (configured bool, rpID string, origins []string) {
+	if s == nil || s.cfg == nil {
+		return false, "", []string{}
+	}
+	origins = append([]string{}, s.cfg.WebAuthn.RPOrigins...)
+	return s.cfg.WebAuthn.Enabled,
+		strings.TrimSpace(s.cfg.WebAuthn.RPID),
+		origins
+}
+
+func (s *SettingService) passkeyConfigured() bool {
+	return s != nil && s.cfg != nil && s.cfg.WebAuthn.Enabled
+}
+
+// passkeySettingEnabled must stay ANDed with passkeyConfigured: a stale
+// "true" row after the WebAuthn config is removed would otherwise make the
+// admin update gate reject every settings save while the UI toggle is locked.
+func (s *SettingService) passkeySettingEnabled(settings map[string]string) bool {
+	if !s.passkeyConfigured() {
+		return false
+	}
+	value, ok := settings[SettingKeyPasskeyEnabled]
+	if !ok {
+		return true
+	}
+	return value == "true"
+}
+
 // IsTotpEncryptionKeyConfigured 检查 TOTP 加密密钥是否已手动配置
 // 只有手动配置了密钥才允许在管理后台启用 TOTP 功能
 func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
@@ -199,6 +247,74 @@ func (s *SettingService) IsStepUpEnabled(ctx context.Context) bool {
 		return false // 默认关闭
 	}
 	return value == "true"
+}
+
+// IsCompanyUpgradeChargeEnabled 检查企业升级是否收取升级费/冻结资金（默认开启）。
+// 关闭时提交升级申请不冻结、不扣升级费（费用快照记为 0）。
+// 仅当显式设置为 "false" 时才关闭，其余情况（未设置、读取出错）均按开启处理，
+// 以保持与历史行为一致。
+func (s *SettingService) IsCompanyUpgradeChargeEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyCompanyUpgradeChargeEnabled)
+	if err != nil {
+		return true // 默认开启
+	}
+	return value != "false"
+}
+
+func (s *SettingService) GetCompanyUpgradeFee(ctx context.Context) float64 {
+	fallback := 20.0
+	if s != nil && s.cfg != nil && s.cfg.Company.UpgradeFee > 0 && !math.IsNaN(s.cfg.Company.UpgradeFee) && !math.IsInf(s.cfg.Company.UpgradeFee, 0) {
+		fallback = s.cfg.Company.UpgradeFee
+	}
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyCompanyUpgradeFee)
+	if err != nil {
+		return fallback
+	}
+	fee, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil || fee <= 0 || math.IsNaN(fee) || math.IsInf(fee, 0) {
+		return fallback
+	}
+	return fee
+}
+
+func (s *SettingService) companyBoolSetting(ctx context.Context, key string, fallback bool) bool {
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	value, err := s.settingRepo.GetValue(ctx, key)
+	if err != nil {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func (s *SettingService) IsCompanyApplicationsEnabled(ctx context.Context) bool {
+	fallback := s != nil && s.cfg != nil && s.cfg.Company.ApplicationsEnabled
+	return s.companyBoolSetting(ctx, SettingKeyCompanyApplicationsEnabled, fallback)
+}
+
+func (s *SettingService) IsCompanyIAMEnabled(ctx context.Context) bool {
+	fallback := s != nil && s.cfg != nil && s.cfg.Company.IAMEnabled
+	return s.companyBoolSetting(ctx, SettingKeyCompanyIAMEnabled, fallback)
+}
+
+func NormalizeCompanyDocumentationURL(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", fmt.Errorf("company documentation URL must be an absolute HTTP(S) URL")
+	}
+	return parsed.String(), nil
 }
 
 // defaultAuditLogRetentionDays 审计日志默认保留天数。

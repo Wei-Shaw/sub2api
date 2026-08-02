@@ -16,6 +16,7 @@ const authStore = vi.hoisted(() => ({
   isAdmin: false,
   isSimpleMode: false,
   hasPendingAuthSession: false,
+  user: { identity_type: 'root' } as { identity_type: 'root' | 'iam'; organization?: object },
 }))
 
 const appStore = vi.hoisted(() => ({
@@ -25,6 +26,8 @@ const appStore = vi.hoisted(() => ({
   cachedPublicSettings: null as null | {
     payment_enabled?: boolean
     risk_control_enabled?: boolean
+    company_iam_enabled?: boolean
+    company_applications_enabled?: boolean
     custom_menu_items?: []
   },
   fetchPublicSettings: vi.fn(),
@@ -85,7 +88,7 @@ function createDeferred<T>() {
   return { promise, resolve }
 }
 
-function runGuard(meta: Record<string, unknown>, path: string) {
+function runGuard(meta: Record<string, unknown>, path: string, name = 'FeatureRoute') {
   if (!routerHarness.guard) {
     throw new Error('router guard was not registered')
   }
@@ -95,7 +98,7 @@ function runGuard(meta: Record<string, unknown>, path: string) {
     {
       path,
       fullPath: path,
-      name: 'FeatureRoute',
+      name,
       params: {},
       meta: { requiresAuth: true, ...meta },
     },
@@ -114,6 +117,7 @@ describe('feature route guard', () => {
     authStore.isAuthenticated = true
     authStore.isAdmin = false
     authStore.isSimpleMode = false
+    authStore.user = { identity_type: 'root' }
     appStore.publicSettingsLoaded = false
     appStore.cachedPublicSettings = null
     appStore.fetchPublicSettings.mockReset()
@@ -173,5 +177,37 @@ describe('feature route guard', () => {
     expect(appStore.fetchPublicSettings).not.toHaveBeenCalled()
     expect(next).toHaveBeenCalledOnce()
     expect(next).toHaveBeenCalledWith(target)
+  })
+
+  it('blocks the public IAM login route unless IAM is explicitly enabled', async () => {
+    authStore.isAuthenticated = false
+    appStore.fetchPublicSettings.mockImplementation(async () => {
+      appStore.cachedPublicSettings = { company_iam_enabled: false }
+      appStore.publicSettingsLoaded = true
+      return appStore.cachedPublicSettings
+    })
+
+    const disabled = runGuard({ requiresAuth: false, requiresIAM: true }, '/iam-login')
+    await disabled.navigation
+    expect(disabled.next).toHaveBeenCalledWith('/login')
+
+    appStore.cachedPublicSettings = { company_iam_enabled: true }
+    const enabled = runGuard({ requiresAuth: false, requiresIAM: true }, '/iam-login')
+    await enabled.navigation
+    expect(enabled.next).toHaveBeenCalledWith()
+  })
+
+  it('guards the company upgrade page under the profile route', async () => {
+    appStore.publicSettingsLoaded = true
+    appStore.cachedPublicSettings = { company_applications_enabled: false }
+
+    const disabled = runGuard({}, '/profile/company-upgrade', 'CompanyUpgrade')
+    await disabled.navigation
+    expect(disabled.next).toHaveBeenCalledWith('/dashboard')
+
+    appStore.cachedPublicSettings = { company_applications_enabled: true }
+    const enabled = runGuard({}, '/profile/company-upgrade', 'CompanyUpgrade')
+    await enabled.navigation
+    expect(enabled.next).toHaveBeenCalledWith()
   })
 })

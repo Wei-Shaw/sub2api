@@ -67,6 +67,10 @@ func (AsyncMediaTask) Fields() []ent.Field {
 			Comment("发起请求的 API Key ID"),
 		field.Int64("user_id").
 			Comment("所属用户 ID"),
+		field.Int64("organization_id").Optional().Nillable(),
+		field.Int64("payer_user_id").Optional().Nillable(),
+		field.String("balance_source").MaxLen(16).Optional().Nillable(),
+		field.Int64("authz_generation").Optional().Nillable(),
 		field.Int64("group_id").
 			Optional().
 			Nillable().
@@ -186,6 +190,7 @@ func (AsyncMediaTask) Indexes() []ent.Index {
 		index.Fields("internal_request_id").Unique(),
 		index.Fields("upstream_request_id"),
 		index.Fields("user_id"),
+		index.Fields("organization_id", "created_at"),
 		index.Fields("api_key_id"),
 		index.Fields("account_id"),
 		index.Fields("status"),

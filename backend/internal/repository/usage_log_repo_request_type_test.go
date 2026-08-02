@@ -99,6 +99,11 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // image_urls
 			sqlmock.AnyArg(), // cos_url
 			sqlmock.AnyArg(), // kiro_credits
+			sqlmock.AnyArg(), // organization_id
+			sqlmock.AnyArg(), // payer_user_id
+			sqlmock.AnyArg(), // balance_source
+			sqlmock.AnyArg(), // authz_generation
+			sqlmock.AnyArg(), // session_id
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
@@ -191,6 +196,11 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // image_urls
 			sqlmock.AnyArg(), // cos_url
 			sqlmock.AnyArg(), // kiro_credits
+			sqlmock.AnyArg(), // organization_id
+			sqlmock.AnyArg(), // payer_user_id
+			sqlmock.AnyArg(), // balance_source
+			sqlmock.AnyArg(), // authz_generation
+			sqlmock.AnyArg(), // session_id
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
@@ -375,6 +385,23 @@ func TestUsageLogRepositoryListWithFiltersRequestTypePriority(t *testing.T) {
 	require.Empty(t, logs)
 	require.NotNil(t, page)
 	require.Equal(t, int64(0), page.Total)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryListWithFiltersRequestID(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	filters := usagestats.UsageLogFilters{RequestID: " req-0123 "}
+
+	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE request_id = \\$1 ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
+		WithArgs("req-0123", 21, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20}, filters)
+	require.NoError(t, err)
+	require.Empty(t, logs)
+	require.NotNil(t, page)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -837,6 +864,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{}, // cos_urls_json
 			sql.NullString{}, // billing_status
 			sql.NullFloat64{},
+			sql.NullInt64{},
+			sql.NullInt64{},
+			sql.NullString{},
+			sql.NullInt64{},
+			sql.NullString{},
 			now,
 		}})
 		require.NoError(t, err)
@@ -916,6 +948,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // cos_urls_json
 			sql.NullString{},  // billing_status
 			sql.NullFloat64{}, // kiro_credits
+			sql.NullInt64{},   // organization_id
+			sql.NullInt64{},   // payer_user_id
+			sql.NullString{},  // balance_source
+			sql.NullInt64{},   // authz_generation
+			sql.NullString{},  // session_id
 			now,
 		}})
 		require.NoError(t, err)
@@ -978,6 +1015,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // cos_urls_json
 			sql.NullString{},  // billing_status
 			sql.NullFloat64{}, // kiro_credits
+			sql.NullInt64{},   // organization_id
+			sql.NullInt64{},   // payer_user_id
+			sql.NullString{},  // balance_source
+			sql.NullInt64{},   // authz_generation
+			sql.NullString{},  // session_id
 			now,
 		}})
 		require.NoError(t, err)
@@ -1040,6 +1082,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // cos_urls_json
 			sql.NullString{},  // billing_status
 			sql.NullFloat64{}, // kiro_credits
+			sql.NullInt64{},   // organization_id
+			sql.NullInt64{},   // payer_user_id
+			sql.NullString{},  // balance_source
+			sql.NullInt64{},   // authz_generation
+			sql.NullString{},  // session_id
 			now,
 		}})
 		require.NoError(t, err)

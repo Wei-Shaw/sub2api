@@ -7,6 +7,7 @@ import misc from './misc'
 import custom from './custom'
 import support from './support'
 import inbox from './inbox'
+import organization from './organization'
 import { mergeLocaleMessages } from '../merge'
 
 const upstream = {
@@ -19,4 +20,4 @@ const upstream = {
   ...inbox,
 }
 
-export default mergeLocaleMessages(mergeLocaleMessages(upstream, custom), support)
+export default mergeLocaleMessages(mergeLocaleMessages(mergeLocaleMessages(upstream, custom), support), organization)

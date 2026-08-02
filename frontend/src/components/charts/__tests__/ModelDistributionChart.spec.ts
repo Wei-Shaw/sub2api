@@ -187,4 +187,37 @@ describe('ModelDistributionChart', () => {
     expect(rows[2].text()).toContain('400')
     expect(rows[2].text()).toContain('$10.00')
   })
+
+  it('expands a ranked user into model request, token, and spend totals', async () => {
+    const rankingBreakdownLoader = vi.fn().mockResolvedValue([
+      { model: 'claude-sonnet-4-6', requests: 7, input_tokens: 600, output_tokens: 300, cache_creation_tokens: 50, cache_read_tokens: 50, total_tokens: 1000, cost: 2, actual_cost: 1.25 },
+    ])
+    const wrapper = mount(ModelDistributionChart, {
+      props: {
+        modelStats: [],
+        enableRankingView: true,
+        rankingItems: [{ user_id: 42, email: 'reader@c123456789012345.opentk.ai', actual_cost: 1.25, requests: 7, tokens: 1000 }],
+        rankingTotalActualCost: 1.25,
+        rankingTotalRequests: 7,
+        rankingTotalTokens: 1000,
+        rankingBreakdownLoader,
+      },
+      global: { stubs: { LoadingSpinner: true } },
+    })
+
+    const rankingButton = wrapper.findAll('button').find((button) => button.text() === 'User Spending Ranking')
+    await rankingButton!.trigger('click')
+    await wrapper.get('[data-testid="spending-ranking-row-42"]').trigger('click')
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(rankingBreakdownLoader).toHaveBeenCalledWith(expect.objectContaining({ user_id: 42 }))
+    expect(wrapper.get('[data-testid="spending-ranking-row-42"] span[title]').classes()).toContain('text-blue-600')
+    const detail = wrapper.get('[data-testid="spending-ranking-detail-42"]')
+    expect(detail.find('thead').exists()).toBe(false)
+    expect(detail.text()).toContain('claude-sonnet-4-6')
+    expect(detail.text()).toContain('7')
+    expect(detail.text()).toContain('1.00K')
+    expect(detail.text()).toContain('$1.25')
+  })
 })

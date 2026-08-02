@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -291,7 +292,7 @@ func TestGatewayHandlerMessages_InterceptWarmup_AntigravityAccount_MixedScheduli
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Equal(t, "msg_mock_warmup", resp["id"])
+	require.True(t, strings.HasPrefix(resp["id"].(string), "msg_01"))
 	require.Equal(t, "claude-sonnet-4-5", resp["model"])
 
 	content, ok := resp["content"].([]any)
@@ -380,6 +381,6 @@ func TestGatewayHandlerMessages_InterceptWarmup_AntigravityAccount_ForcePlatform
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Equal(t, "msg_mock_warmup", resp["id"])
+	require.True(t, strings.HasPrefix(resp["id"].(string), "msg_01"))
 	require.Equal(t, "claude-sonnet-4-5", resp["model"])
 }

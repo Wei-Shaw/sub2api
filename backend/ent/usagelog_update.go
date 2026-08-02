@@ -47,6 +47,107 @@ func (_u *UsageLogUpdate) SetNillableUserID(v *int64) *UsageLogUpdate {
 	return _u
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_u *UsageLogUpdate) SetOrganizationID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetOrganizationID()
+	_u.mutation.SetOrganizationID(v)
+	return _u
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableOrganizationID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetOrganizationID(*v)
+	}
+	return _u
+}
+
+// AddOrganizationID adds value to the "organization_id" field.
+func (_u *UsageLogUpdate) AddOrganizationID(v int64) *UsageLogUpdate {
+	_u.mutation.AddOrganizationID(v)
+	return _u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (_u *UsageLogUpdate) ClearOrganizationID() *UsageLogUpdate {
+	_u.mutation.ClearOrganizationID()
+	return _u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_u *UsageLogUpdate) SetPayerUserID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetPayerUserID()
+	_u.mutation.SetPayerUserID(v)
+	return _u
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillablePayerUserID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetPayerUserID(*v)
+	}
+	return _u
+}
+
+// AddPayerUserID adds value to the "payer_user_id" field.
+func (_u *UsageLogUpdate) AddPayerUserID(v int64) *UsageLogUpdate {
+	_u.mutation.AddPayerUserID(v)
+	return _u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (_u *UsageLogUpdate) ClearPayerUserID() *UsageLogUpdate {
+	_u.mutation.ClearPayerUserID()
+	return _u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_u *UsageLogUpdate) SetBalanceSource(v string) *UsageLogUpdate {
+	_u.mutation.SetBalanceSource(v)
+	return _u
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableBalanceSource(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetBalanceSource(*v)
+	}
+	return _u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (_u *UsageLogUpdate) ClearBalanceSource() *UsageLogUpdate {
+	_u.mutation.ClearBalanceSource()
+	return _u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_u *UsageLogUpdate) SetAuthzGeneration(v int64) *UsageLogUpdate {
+	_u.mutation.ResetAuthzGeneration()
+	_u.mutation.SetAuthzGeneration(v)
+	return _u
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableAuthzGeneration(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetAuthzGeneration(*v)
+	}
+	return _u
+}
+
+// AddAuthzGeneration adds value to the "authz_generation" field.
+func (_u *UsageLogUpdate) AddAuthzGeneration(v int64) *UsageLogUpdate {
+	_u.mutation.AddAuthzGeneration(v)
+	return _u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (_u *UsageLogUpdate) ClearAuthzGeneration() *UsageLogUpdate {
+	_u.mutation.ClearAuthzGeneration()
+	return _u
+}
+
 // SetAPIKeyID sets the "api_key_id" field.
 func (_u *UsageLogUpdate) SetAPIKeyID(v int64) *UsageLogUpdate {
 	_u.mutation.SetAPIKeyID(v)
@@ -1080,6 +1181,11 @@ func (_u *UsageLogUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *UsageLogUpdate) check() error {
+	if v, ok := _u.mutation.BalanceSource(); ok {
+		if err := usagelog.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.balance_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RequestID(); ok {
 		if err := usagelog.RequestIDValidator(v); err != nil {
 			return &ValidationError{Name: "request_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.request_id": %w`, err)}
@@ -1178,6 +1284,39 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.OrganizationID(); ok {
+		_spec.SetField(usagelog.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOrganizationID(); ok {
+		_spec.AddField(usagelog.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if _u.mutation.OrganizationIDCleared() {
+		_spec.ClearField(usagelog.FieldOrganizationID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PayerUserID(); ok {
+		_spec.SetField(usagelog.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPayerUserID(); ok {
+		_spec.AddField(usagelog.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.PayerUserIDCleared() {
+		_spec.ClearField(usagelog.FieldPayerUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BalanceSource(); ok {
+		_spec.SetField(usagelog.FieldBalanceSource, field.TypeString, value)
+	}
+	if _u.mutation.BalanceSourceCleared() {
+		_spec.ClearField(usagelog.FieldBalanceSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.AuthzGeneration(); ok {
+		_spec.SetField(usagelog.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedAuthzGeneration(); ok {
+		_spec.AddField(usagelog.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if _u.mutation.AuthzGenerationCleared() {
+		_spec.ClearField(usagelog.FieldAuthzGeneration, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)
@@ -1626,6 +1765,107 @@ func (_u *UsageLogUpdateOne) SetNillableUserID(v *int64) *UsageLogUpdateOne {
 	if v != nil {
 		_u.SetUserID(*v)
 	}
+	return _u
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (_u *UsageLogUpdateOne) SetOrganizationID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetOrganizationID()
+	_u.mutation.SetOrganizationID(v)
+	return _u
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableOrganizationID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetOrganizationID(*v)
+	}
+	return _u
+}
+
+// AddOrganizationID adds value to the "organization_id" field.
+func (_u *UsageLogUpdateOne) AddOrganizationID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddOrganizationID(v)
+	return _u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (_u *UsageLogUpdateOne) ClearOrganizationID() *UsageLogUpdateOne {
+	_u.mutation.ClearOrganizationID()
+	return _u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_u *UsageLogUpdateOne) SetPayerUserID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetPayerUserID()
+	_u.mutation.SetPayerUserID(v)
+	return _u
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillablePayerUserID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetPayerUserID(*v)
+	}
+	return _u
+}
+
+// AddPayerUserID adds value to the "payer_user_id" field.
+func (_u *UsageLogUpdateOne) AddPayerUserID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddPayerUserID(v)
+	return _u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (_u *UsageLogUpdateOne) ClearPayerUserID() *UsageLogUpdateOne {
+	_u.mutation.ClearPayerUserID()
+	return _u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_u *UsageLogUpdateOne) SetBalanceSource(v string) *UsageLogUpdateOne {
+	_u.mutation.SetBalanceSource(v)
+	return _u
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableBalanceSource(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetBalanceSource(*v)
+	}
+	return _u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (_u *UsageLogUpdateOne) ClearBalanceSource() *UsageLogUpdateOne {
+	_u.mutation.ClearBalanceSource()
+	return _u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_u *UsageLogUpdateOne) SetAuthzGeneration(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetAuthzGeneration()
+	_u.mutation.SetAuthzGeneration(v)
+	return _u
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableAuthzGeneration(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetAuthzGeneration(*v)
+	}
+	return _u
+}
+
+// AddAuthzGeneration adds value to the "authz_generation" field.
+func (_u *UsageLogUpdateOne) AddAuthzGeneration(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddAuthzGeneration(v)
+	return _u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (_u *UsageLogUpdateOne) ClearAuthzGeneration() *UsageLogUpdateOne {
+	_u.mutation.ClearAuthzGeneration()
 	return _u
 }
 
@@ -2675,6 +2915,11 @@ func (_u *UsageLogUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *UsageLogUpdateOne) check() error {
+	if v, ok := _u.mutation.BalanceSource(); ok {
+		if err := usagelog.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.balance_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RequestID(); ok {
 		if err := usagelog.RequestIDValidator(v); err != nil {
 			return &ValidationError{Name: "request_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.request_id": %w`, err)}
@@ -2790,6 +3035,39 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.OrganizationID(); ok {
+		_spec.SetField(usagelog.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOrganizationID(); ok {
+		_spec.AddField(usagelog.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if _u.mutation.OrganizationIDCleared() {
+		_spec.ClearField(usagelog.FieldOrganizationID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PayerUserID(); ok {
+		_spec.SetField(usagelog.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPayerUserID(); ok {
+		_spec.AddField(usagelog.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.PayerUserIDCleared() {
+		_spec.ClearField(usagelog.FieldPayerUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BalanceSource(); ok {
+		_spec.SetField(usagelog.FieldBalanceSource, field.TypeString, value)
+	}
+	if _u.mutation.BalanceSourceCleared() {
+		_spec.ClearField(usagelog.FieldBalanceSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.AuthzGeneration(); ok {
+		_spec.SetField(usagelog.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedAuthzGeneration(); ok {
+		_spec.AddField(usagelog.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if _u.mutation.AuthzGenerationCleared() {
+		_spec.ClearField(usagelog.FieldAuthzGeneration, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)

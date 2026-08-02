@@ -49,6 +49,107 @@ func (_u *BatchImageJobUpdate) AddUserID(v int64) *BatchImageJobUpdate {
 	return _u
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_u *BatchImageJobUpdate) SetOrganizationID(v int64) *BatchImageJobUpdate {
+	_u.mutation.ResetOrganizationID()
+	_u.mutation.SetOrganizationID(v)
+	return _u
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillableOrganizationID(v *int64) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetOrganizationID(*v)
+	}
+	return _u
+}
+
+// AddOrganizationID adds value to the "organization_id" field.
+func (_u *BatchImageJobUpdate) AddOrganizationID(v int64) *BatchImageJobUpdate {
+	_u.mutation.AddOrganizationID(v)
+	return _u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (_u *BatchImageJobUpdate) ClearOrganizationID() *BatchImageJobUpdate {
+	_u.mutation.ClearOrganizationID()
+	return _u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_u *BatchImageJobUpdate) SetPayerUserID(v int64) *BatchImageJobUpdate {
+	_u.mutation.ResetPayerUserID()
+	_u.mutation.SetPayerUserID(v)
+	return _u
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillablePayerUserID(v *int64) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetPayerUserID(*v)
+	}
+	return _u
+}
+
+// AddPayerUserID adds value to the "payer_user_id" field.
+func (_u *BatchImageJobUpdate) AddPayerUserID(v int64) *BatchImageJobUpdate {
+	_u.mutation.AddPayerUserID(v)
+	return _u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (_u *BatchImageJobUpdate) ClearPayerUserID() *BatchImageJobUpdate {
+	_u.mutation.ClearPayerUserID()
+	return _u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_u *BatchImageJobUpdate) SetBalanceSource(v string) *BatchImageJobUpdate {
+	_u.mutation.SetBalanceSource(v)
+	return _u
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillableBalanceSource(v *string) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetBalanceSource(*v)
+	}
+	return _u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (_u *BatchImageJobUpdate) ClearBalanceSource() *BatchImageJobUpdate {
+	_u.mutation.ClearBalanceSource()
+	return _u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_u *BatchImageJobUpdate) SetAuthzGeneration(v int64) *BatchImageJobUpdate {
+	_u.mutation.ResetAuthzGeneration()
+	_u.mutation.SetAuthzGeneration(v)
+	return _u
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillableAuthzGeneration(v *int64) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetAuthzGeneration(*v)
+	}
+	return _u
+}
+
+// AddAuthzGeneration adds value to the "authz_generation" field.
+func (_u *BatchImageJobUpdate) AddAuthzGeneration(v int64) *BatchImageJobUpdate {
+	_u.mutation.AddAuthzGeneration(v)
+	return _u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (_u *BatchImageJobUpdate) ClearAuthzGeneration() *BatchImageJobUpdate {
+	_u.mutation.ClearAuthzGeneration()
+	return _u
+}
+
 // SetAPIKeyID sets the "api_key_id" field.
 func (_u *BatchImageJobUpdate) SetAPIKeyID(v int64) *BatchImageJobUpdate {
 	_u.mutation.ResetAPIKeyID()
@@ -823,6 +924,11 @@ func (_u *BatchImageJobUpdate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *BatchImageJobUpdate) check() error {
+	if v, ok := _u.mutation.BalanceSource(); ok {
+		if err := batchimagejob.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.balance_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Provider(); ok {
 		if err := batchimagejob.ProviderValidator(v); err != nil {
 			return &ValidationError{Name: "provider", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.provider": %w`, err)}
@@ -918,6 +1024,39 @@ func (_u *BatchImageJobUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(batchimagejob.FieldUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.OrganizationID(); ok {
+		_spec.SetField(batchimagejob.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOrganizationID(); ok {
+		_spec.AddField(batchimagejob.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if _u.mutation.OrganizationIDCleared() {
+		_spec.ClearField(batchimagejob.FieldOrganizationID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PayerUserID(); ok {
+		_spec.SetField(batchimagejob.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPayerUserID(); ok {
+		_spec.AddField(batchimagejob.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.PayerUserIDCleared() {
+		_spec.ClearField(batchimagejob.FieldPayerUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BalanceSource(); ok {
+		_spec.SetField(batchimagejob.FieldBalanceSource, field.TypeString, value)
+	}
+	if _u.mutation.BalanceSourceCleared() {
+		_spec.ClearField(batchimagejob.FieldBalanceSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.AuthzGeneration(); ok {
+		_spec.SetField(batchimagejob.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedAuthzGeneration(); ok {
+		_spec.AddField(batchimagejob.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if _u.mutation.AuthzGenerationCleared() {
+		_spec.ClearField(batchimagejob.FieldAuthzGeneration, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.APIKeyID(); ok {
 		_spec.SetField(batchimagejob.FieldAPIKeyID, field.TypeInt64, value)
@@ -1173,6 +1312,107 @@ func (_u *BatchImageJobUpdateOne) SetNillableUserID(v *int64) *BatchImageJobUpda
 // AddUserID adds value to the "user_id" field.
 func (_u *BatchImageJobUpdateOne) AddUserID(v int64) *BatchImageJobUpdateOne {
 	_u.mutation.AddUserID(v)
+	return _u
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (_u *BatchImageJobUpdateOne) SetOrganizationID(v int64) *BatchImageJobUpdateOne {
+	_u.mutation.ResetOrganizationID()
+	_u.mutation.SetOrganizationID(v)
+	return _u
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillableOrganizationID(v *int64) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetOrganizationID(*v)
+	}
+	return _u
+}
+
+// AddOrganizationID adds value to the "organization_id" field.
+func (_u *BatchImageJobUpdateOne) AddOrganizationID(v int64) *BatchImageJobUpdateOne {
+	_u.mutation.AddOrganizationID(v)
+	return _u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (_u *BatchImageJobUpdateOne) ClearOrganizationID() *BatchImageJobUpdateOne {
+	_u.mutation.ClearOrganizationID()
+	return _u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_u *BatchImageJobUpdateOne) SetPayerUserID(v int64) *BatchImageJobUpdateOne {
+	_u.mutation.ResetPayerUserID()
+	_u.mutation.SetPayerUserID(v)
+	return _u
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillablePayerUserID(v *int64) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetPayerUserID(*v)
+	}
+	return _u
+}
+
+// AddPayerUserID adds value to the "payer_user_id" field.
+func (_u *BatchImageJobUpdateOne) AddPayerUserID(v int64) *BatchImageJobUpdateOne {
+	_u.mutation.AddPayerUserID(v)
+	return _u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (_u *BatchImageJobUpdateOne) ClearPayerUserID() *BatchImageJobUpdateOne {
+	_u.mutation.ClearPayerUserID()
+	return _u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_u *BatchImageJobUpdateOne) SetBalanceSource(v string) *BatchImageJobUpdateOne {
+	_u.mutation.SetBalanceSource(v)
+	return _u
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillableBalanceSource(v *string) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetBalanceSource(*v)
+	}
+	return _u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (_u *BatchImageJobUpdateOne) ClearBalanceSource() *BatchImageJobUpdateOne {
+	_u.mutation.ClearBalanceSource()
+	return _u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_u *BatchImageJobUpdateOne) SetAuthzGeneration(v int64) *BatchImageJobUpdateOne {
+	_u.mutation.ResetAuthzGeneration()
+	_u.mutation.SetAuthzGeneration(v)
+	return _u
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillableAuthzGeneration(v *int64) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetAuthzGeneration(*v)
+	}
+	return _u
+}
+
+// AddAuthzGeneration adds value to the "authz_generation" field.
+func (_u *BatchImageJobUpdateOne) AddAuthzGeneration(v int64) *BatchImageJobUpdateOne {
+	_u.mutation.AddAuthzGeneration(v)
+	return _u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (_u *BatchImageJobUpdateOne) ClearAuthzGeneration() *BatchImageJobUpdateOne {
+	_u.mutation.ClearAuthzGeneration()
 	return _u
 }
 
@@ -1963,6 +2203,11 @@ func (_u *BatchImageJobUpdateOne) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *BatchImageJobUpdateOne) check() error {
+	if v, ok := _u.mutation.BalanceSource(); ok {
+		if err := batchimagejob.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.balance_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Provider(); ok {
 		if err := batchimagejob.ProviderValidator(v); err != nil {
 			return &ValidationError{Name: "provider", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.provider": %w`, err)}
@@ -2075,6 +2320,39 @@ func (_u *BatchImageJobUpdateOne) sqlSave(ctx context.Context) (_node *BatchImag
 	}
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(batchimagejob.FieldUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.OrganizationID(); ok {
+		_spec.SetField(batchimagejob.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOrganizationID(); ok {
+		_spec.AddField(batchimagejob.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if _u.mutation.OrganizationIDCleared() {
+		_spec.ClearField(batchimagejob.FieldOrganizationID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PayerUserID(); ok {
+		_spec.SetField(batchimagejob.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPayerUserID(); ok {
+		_spec.AddField(batchimagejob.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.PayerUserIDCleared() {
+		_spec.ClearField(batchimagejob.FieldPayerUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BalanceSource(); ok {
+		_spec.SetField(batchimagejob.FieldBalanceSource, field.TypeString, value)
+	}
+	if _u.mutation.BalanceSourceCleared() {
+		_spec.ClearField(batchimagejob.FieldBalanceSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.AuthzGeneration(); ok {
+		_spec.SetField(batchimagejob.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedAuthzGeneration(); ok {
+		_spec.AddField(batchimagejob.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if _u.mutation.AuthzGenerationCleared() {
+		_spec.ClearField(batchimagejob.FieldAuthzGeneration, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.APIKeyID(); ok {
 		_spec.SetField(batchimagejob.FieldAPIKeyID, field.TypeInt64, value)

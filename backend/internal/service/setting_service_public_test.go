@@ -78,6 +78,25 @@ func TestSettingService_GetPublicSettings_ExposesTablePreferences(t *testing.T) 
 	require.Equal(t, []int{20, 50, 100}, settings.TablePageSizeOptions)
 }
 
+func TestSettingService_GetPublicSettings_ExposesCompactHomeEnabled(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyCompactHomeEnabled: "true",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+
+	require.NoError(t, err)
+	require.True(t, settings.CompactHomeEnabled)
+
+	missingSettings, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).
+		GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, missingSettings.CompactHomeEnabled)
+}
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{
@@ -89,6 +108,42 @@ func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	settings, err := svc.GetPublicSettings(context.Background())
 	require.NoError(t, err)
 	require.True(t, settings.ForceEmailOnThirdPartySignup)
+}
+
+func TestSettingService_GetPublicSettings_ExposesCompanyApplicationsFeature(t *testing.T) {
+	repo := &settingPublicRepoStub{values: map[string]string{}}
+	disabled, err := NewSettingService(repo, &config.Config{}).GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, disabled.CompanyApplicationsEnabled)
+	require.False(t, disabled.CompanyIAMEnabled)
+
+	cfg := &config.Config{}
+	cfg.Company.ApplicationsEnabled = true
+	cfg.Company.IAMEnabled = true
+	enabled, err := NewSettingService(repo, cfg).GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, enabled.CompanyApplicationsEnabled)
+	require.True(t, enabled.CompanyIAMEnabled)
+
+	repo.values[SettingKeyCompanyApplicationsEnabled] = "false"
+	repo.values[SettingKeyCompanyIAMEnabled] = "false"
+	repo.values[SettingKeyCompanyDocumentationURL] = "https://docs.example.com/company"
+	overridden, err := NewSettingService(repo, cfg).GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, overridden.CompanyApplicationsEnabled)
+	require.False(t, overridden.CompanyIAMEnabled)
+	require.Equal(t, "https://docs.example.com/company", overridden.CompanyDocumentationURL)
+}
+
+func TestNormalizeCompanyDocumentationURL(t *testing.T) {
+	normalized, err := NormalizeCompanyDocumentationURL(" https://docs.example.com/company ")
+	require.NoError(t, err)
+	require.Equal(t, "https://docs.example.com/company", normalized)
+
+	for _, invalid := range []string{"javascript:alert(1)", "/company", "ftp://example.com/company"} {
+		_, err = NormalizeCompanyDocumentationURL(invalid)
+		require.Error(t, err, invalid)
+	}
 }
 
 func TestSettingService_GetPublicSettings_ExposesAllowUserViewErrorRequests(t *testing.T) {

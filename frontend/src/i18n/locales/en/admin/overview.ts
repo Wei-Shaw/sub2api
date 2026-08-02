@@ -1006,6 +1006,18 @@ export default {
         peakMultiplier: 'Peak multiplier',
         multiplierHint: 'Applies to token billing multiplier; image tokens in token billing are also affected. 0 means peak token requests are billed at 0x.'
       },
+      profitControl: {
+        enable: 'Enable profit control',
+        enabledHint: 'Scheduling only admits accounts whose account multiplier ≤ the request\'s effective downstream multiplier × (1 − min margin − safety buffer). Account multipliers may be maintained manually or synchronized from probes; existing ordering, stickiness and breakers keep working among qualified accounts. Image/video scheduling is not covered yet.',
+        disabledHint: 'When disabled, scheduling does no profit filtering: accounts whose account multiplier exceeds the downstream multiplier can still be selected, which may produce loss-making requests.',
+        minMargin: 'Min gross margin (%)',
+        minMarginHint: 'Percent input, e.g. 30 means 30%; stored as a decimal on the backend',
+        safetyBuffer: 'Safety buffer (%)',
+        safetyBufferHint: 'Added to min margin and deducted from the downstream multiplier; defaults to 0',
+        marginRangeError: 'Min gross margin must be between 0 and 99.99',
+        bufferRangeError: 'Safety buffer must be between 0 and 99.99',
+        sumTooHigh: 'Min gross margin plus safety buffer must be less than 100%, otherwise every account would be excluded'
+      },
       modelsList: {
         title: 'Custom /v1/models Model List',
         hint: 'Only changes the /v1/models response. Whitelist model calls and account routing are unchanged.',
@@ -1031,6 +1043,7 @@ export default {
         endpoint: 'Endpoint',
         targetPlatform: 'Target Platform',
         upstreamModel: 'Upstream Model',
+        upstreamModelHint: 'Leave empty to pass the original requested model through: under prefix match each matched model forwards verbatim (e.g. deepseek-v4-flash and deepseek-v4-pro each forwarded as-is); set a value to forward every matched request to that fixed model.',
         notes: 'Notes',
         enabled: 'Enabled',
         preview: 'Preview',
@@ -1094,6 +1107,14 @@ export default {
         targetModel: 'Target Model',
         targetModelPlaceholder: 'e.g., gpt-5.4',
         removeExactMapping: 'Remove Exact Mapping'
+      },
+      openaiLive: {
+        title: 'OpenAI Live',
+        allow: 'Allow Live access',
+        hint: 'When enabled, API keys in this OpenAI group can create and control Live voice sessions. Disabled by default. The Sub2API server must run on Apple Silicon macOS with the official ChatGPT app installed; client platforms are unrestricted.',
+        unsupportedTitle: 'Current server does not support Live',
+        unsupportedMessage: 'This Sub2API server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
+        enableAnyway: 'Enable anyway'
       },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',

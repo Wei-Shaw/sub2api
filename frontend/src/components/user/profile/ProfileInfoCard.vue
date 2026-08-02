@@ -39,9 +39,43 @@
               </div>
 
               <div class="space-y-1">
-                <p class="truncate text-sm text-gray-600 dark:text-gray-300">
+                <p data-testid="profile-primary-email" class="truncate text-sm text-gray-600 dark:text-gray-300">
                   {{ primaryEmailDisplay }}
                 </p>
+                <div
+                  data-testid="profile-account-identity"
+                  class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm"
+                >
+                  <div class="inline-flex min-w-0 items-center gap-2">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('organization.accountId') }}</span>
+                    <span data-testid="profile-account-id" class="break-all font-mono font-medium text-gray-900 dark:text-white">
+                      {{ user?.account_id || '-' }}
+                    </span>
+                  </div>
+
+                  <div class="inline-flex items-center gap-2">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('organization.accountType.label') }}</span>
+                    <span data-testid="profile-account-type" class="badge badge-gray">
+                      {{ t(accountTypeTranslationKey) }}
+                    </span>
+                  </div>
+
+                  <div class="inline-flex items-center gap-2">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('organization.accountIdentity.label') }}</span>
+                    <span data-testid="profile-account-identity-type" class="badge badge-gray">
+                      {{ t(accountIdentityTranslationKey) }}
+                    </span>
+                  </div>
+
+                  <router-link
+                    v-if="showCompanyUpgrade"
+                    to="/profile/company-upgrade"
+                    data-testid="profile-company-upgrade"
+                    class="btn btn-primary btn-sm"
+                  >
+                    {{ t('organization.upgrade.title') }}
+                  </router-link>
+                </div>
                 <div
                   v-if="sourceHints.length"
                   class="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400"
@@ -186,6 +220,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
 import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
+import { canOpenCompanyUpgrade } from '@/router/organizationAccess'
 import type { User, UserAuthBindingStatus, UserAuthProvider, UserProfileSourceContext } from '@/types'
 
 const props = withDefaults(defineProps<{
@@ -197,6 +232,7 @@ const props = withDefaults(defineProps<{
   wechatEnabled?: boolean
   wechatOpenEnabled?: boolean
   wechatMpEnabled?: boolean
+  companyApplicationsEnabled?: boolean
 }>(), {
   linuxdoEnabled: false,
   dingtalkEnabled: false,
@@ -205,6 +241,7 @@ const props = withDefaults(defineProps<{
   wechatEnabled: false,
   wechatOpenEnabled: undefined,
   wechatMpEnabled: undefined,
+  companyApplicationsEnabled: false,
 })
 
 const { t } = useI18n()
@@ -233,6 +270,16 @@ function isEmailBound(user: User | null | undefined): boolean {
 }
 
 const avatarUrl = computed(() => props.user?.avatar_url?.trim() || '')
+const accountTypeTranslationKey = computed(() => props.user?.organization
+  ? 'organization.accountType.company'
+  : 'organization.accountType.personal')
+const accountIdentityTranslationKey = computed(() => props.user?.identity_type === 'iam'
+  ? 'organization.accountIdentity.iam'
+  : 'organization.accountIdentity.root')
+const showCompanyUpgrade = computed(() => canOpenCompanyUpgrade(
+  props.user,
+  props.companyApplicationsEnabled,
+))
 const displayName = computed(() => props.user?.username?.trim() || props.user?.email?.trim() || t('profile.user'))
 const primaryEmailDisplay = computed(() => {
   const email = props.user?.email?.trim() || ''

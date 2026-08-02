@@ -60,6 +60,8 @@ type BatchImageSettlementService struct {
 	UsageLogRepo UsageLogRepository
 	Pricing      BatchImagePricingResolver
 	AuthCache    APIKeyAuthCacheInvalidator
+	BalanceCache UserBalanceCacheInvalidator
+	SpendLimits  *BillingContextResolver
 	Config       *config.Config
 }
 
@@ -156,7 +158,7 @@ func (s *BatchImageSettlementService) Settle(ctx context.Context, batchID string
 		}
 		return nil, err
 	}
-	s.invalidateAuthCache(ctx, job.UserID)
+	s.invalidateBillingCaches(ctx, job)
 
 	now := time.Now()
 	outputExpiresAt := now.Add(s.outputRetentionAfterTerminal())
@@ -178,6 +180,12 @@ func (s *BatchImageSettlementService) Settle(ctx context.Context, batchID string
 		return nil, err
 	}
 	s.recordUsageLog(ctx, job, actualCost, result.RequestID, now)
+	if s.SpendLimits != nil {
+		billing := &BillingContext{ConsumerUserID: job.UserID, OrganizationID: job.OrganizationID, PayerUserID: batchImagePayerUserID(job), BalanceSource: batchImageDerefString(job.BalanceSource)}
+		if err := s.SpendLimits.RecordSpendLimitAlert(ctx, billing); err != nil {
+			logger.L().Warn("batch_image.spend_limit_alert_failed", zap.String("batch_id", job.BatchID), zap.Error(err))
+		}
+	}
 
 	return result, nil
 }
@@ -230,7 +238,7 @@ func (s *BatchImageSettlementService) failExhaustedSettlement(ctx context.Contex
 		}
 		return ErrBatchImageSettlementBillingFailed.WithCause(err)
 	}
-	s.invalidateAuthCache(ctx, job.UserID)
+	s.invalidateBillingCaches(ctx, job)
 	msg := strings.TrimSpace(message)
 	if msg == "" {
 		msg = "settlement billing retry limit reached"
@@ -260,6 +268,10 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 	imageSize := "1K"
 	usageLog := &UsageLog{
 		UserID:                job.UserID,
+		OrganizationID:        job.OrganizationID,
+		PayerUserID:           job.PayerUserID,
+		BalanceSource:         job.BalanceSource,
+		AuthzGeneration:       job.AuthzGeneration,
 		APIKeyID:              *job.APIKeyID,
 		AccountID:             *job.AccountID,
 		RequestID:             strings.TrimSpace(requestID),
@@ -277,14 +289,24 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 		RequestType:           RequestTypeSync,
 		BillingMode:           &billingMode,
 		ImageSize:             &imageSize,
+		SessionID:             job.SessionID,
 		CreatedAt:             createdAt,
 	}
 	writeUsageLogBestEffort(ctx, s.UsageLogRepo, usageLog, "service.batch_image_settlement")
 }
 
-func (s *BatchImageSettlementService) invalidateAuthCache(ctx context.Context, userID int64) {
+func (s *BatchImageSettlementService) invalidateBillingCaches(ctx context.Context, job *BatchImageJob) {
+	if batchImageUsesCompanyBalance(job) {
+		return
+	}
+	userID := batchImagePayerUserID(job)
 	if s != nil && s.AuthCache != nil && userID > 0 {
 		s.AuthCache.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+	if s != nil && s.BalanceCache != nil && userID > 0 {
+		if err := s.BalanceCache.InvalidateUserBalance(ctx, userID); err != nil {
+			logger.L().Warn("batch_image.balance_cache_invalidate_failed", zap.Int64("payer_user_id", userID), zap.Error(err))
+		}
 	}
 }
 

@@ -9,6 +9,23 @@ import (
 	"github.com/google/wire"
 )
 
+func ProvideAuthHandler(
+	cfg *config.Config,
+	authService *service.AuthService,
+	userService *service.UserService,
+	settingService *service.SettingService,
+	promoService *service.PromoService,
+	redeemService *service.RedeemService,
+	totpService *service.TotpService,
+	userAttributeService *service.UserAttributeService,
+	ssoSessionService *service.SsoSessionService,
+	organizationService *service.OrganizationService,
+) *AuthHandler {
+	h := NewAuthHandler(cfg, authService, userService, settingService, promoService, redeemService, totpService, userAttributeService, ssoSessionService)
+	h.SetOrganizationService(organizationService)
+	return h
+}
+
 // ProvideAdminHandlers creates the AdminHandlers struct
 func ProvideAdminHandlers(
 	dashboardHandler *admin.DashboardHandler,
@@ -131,7 +148,11 @@ func ProvideGatewayHandler(
 	cfg *config.Config,
 	settingService *service.SettingService,
 	coordinator *securityaudit.Coordinator,
+	billingContextResolver *service.BillingContextResolver,
 ) *GatewayHandler {
+	gatewayService.SetBillingContextResolver(billingContextResolver)
+	openAIGatewayService.SetBillingContextResolver(billingContextResolver)
+	usageService.SetBillingContextResolver(billingContextResolver)
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService)
@@ -206,10 +227,12 @@ func ProvideHandlers(
 	falGatewayHandler *FalGatewayHandler,
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
+	passkeyHandler *PasskeyHandler,
 	paymentHandler *PaymentHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
 	plazaHandler *PlazaHandler,
+	modelPlazaHandler *ModelPlazaHandler,
 	supportTicketHandler *SupportTicketHandler,
 	supportTicketAttachmentHandler *SupportTicketAttachmentHandler,
 	supportTicketNotificationHandler *SupportTicketNotificationHandler,
@@ -217,6 +240,7 @@ func ProvideHandlers(
 	oidcProviderHandler *OidcProviderHandler,
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
+	organizationHandler *OrganizationHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -235,10 +259,12 @@ func ProvideHandlers(
 		FalGateway:                falGatewayHandler,
 		Setting:                   settingHandler,
 		Totp:                      totpHandler,
+		Passkey:                   passkeyHandler,
 		Payment:                   paymentHandler,
 		PaymentWebhook:            paymentWebhookHandler,
 		AvailableChannel:          availableChannelHandler,
 		Plaza:                     plazaHandler,
+		ModelPlaza:                modelPlazaHandler,
 		SupportTicket:             supportTicketHandler,
 		SupportTicketAttachment:   supportTicketAttachmentHandler,
 		SupportTicketNotification: supportTicketNotificationHandler,
@@ -246,13 +272,14 @@ func ProvideHandlers(
 		OidcProvider:              oidcProviderHandler,
 		AsyncImage:                asyncImageHandler,
 		BatchImage:                batchImageHandler,
+		Organization:              organizationHandler,
 	}
 }
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
-	NewAuthHandler,
+	ProvideAuthHandler,
 	NewUserHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
@@ -264,11 +291,13 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAIGatewayHandler,
 	NewFalGatewayHandler,
 	NewTotpHandler,
+	NewPasskeyHandler,
 	ProvideSettingHandler,
 	NewPaymentHandler,
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewPlazaHandler,
+	NewModelPlazaHandler,
 	NewSupportTicketHandler,             // 工单系统：用户端
 	NewSupportTicketAttachmentHandler,   // 工单系统：用户端附件上传
 	NewSupportTicketNotificationHandler, // 工单通知/未读计数：用户端
@@ -276,6 +305,7 @@ var ProviderSet = wire.NewSet(
 	NewOidcProviderHandler,
 	NewAsyncImageHandler,
 	ProvideBatchImageHandler,
+	NewOrganizationHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

@@ -10,19 +10,25 @@ import (
 )
 
 type User struct {
-	ID            int64      `json:"id"`
-	Email         string     `json:"email"`
-	Username      string     `json:"username"`
-	Role          string     `json:"role"`
-	Balance       float64    `json:"balance"`
-	FrozenBalance float64    `json:"frozen_balance"`
-	Concurrency   int        `json:"concurrency"`
-	Status        string     `json:"status"`
-	AllowedGroups []int64    `json:"allowed_groups"`
-	LastActiveAt  *time.Time `json:"last_active_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	DeletedAt     *time.Time `json:"deleted_at,omitempty"`
+	ID                 int64      `json:"id"`
+	Email              string     `json:"email"`
+	AccountID          string     `json:"account_id"`
+	ExternalUserID     string     `json:"external_user_id"`
+	IdentityType       string     `json:"identity_type"`
+	LoginName          string     `json:"login_name,omitempty"`
+	IAMPrincipal       string     `json:"iam_principal,omitempty"`
+	MustChangePassword bool       `json:"must_change_password"`
+	Username           string     `json:"username"`
+	Role               string     `json:"role"`
+	Balance            float64    `json:"balance"`
+	FrozenBalance      float64    `json:"frozen_balance"`
+	Concurrency        int        `json:"concurrency"`
+	Status             string     `json:"status"`
+	AllowedGroups      []int64    `json:"allowed_groups"`
+	LastActiveAt       *time.Time `json:"last_active_at,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	DeletedAt          *time.Time `json:"deleted_at,omitempty"`
 
 	// 余额不足通知
 	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`
@@ -43,29 +49,37 @@ type User struct {
 type AdminUser struct {
 	User
 
-	Notes      string     `json:"notes"`
-	LastUsedAt *time.Time `json:"last_used_at"`
+	Notes            string     `json:"notes"`
+	LastUsedAt       *time.Time `json:"last_used_at"`
+	RecoveryEmail    string     `json:"recovery_email,omitempty"`
+	CompanyID        string     `json:"company_id,omitempty"`
+	CompanyName      string     `json:"company_name,omitempty"`
+	OrganizationRole string     `json:"organization_role,omitempty"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`
 }
 
 type APIKey struct {
-	ID          int64      `json:"id"`
-	UserID      int64      `json:"user_id"`
-	Key         string     `json:"key"`
-	Name        string     `json:"name"`
-	GroupID     *int64     `json:"group_id"`
-	Status      string     `json:"status"`
-	IPWhitelist []string   `json:"ip_whitelist"`
-	IPBlacklist []string   `json:"ip_blacklist"`
-	LastUsedAt  *time.Time `json:"last_used_at"`
-	LastUsedIP  *string    `json:"last_used_ip"`
-	Quota       float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
-	QuotaUsed   float64    `json:"quota_used"` // Used quota amount in USD
-	ExpiresAt   *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID               int64   `json:"id"`
+	UserID           int64   `json:"user_id"`
+	Key              string  `json:"key"`
+	Name             string  `json:"name"`
+	GroupID          *int64  `json:"group_id"`
+	FallbackGroupIDs []int64 `json:"fallback_group_ids"`
+	// OrganizationSubscriptionID is set for enterprise API keys bound to a
+	// company subscription.
+	OrganizationSubscriptionID *int64     `json:"organization_subscription_id,omitempty"`
+	Status                     string     `json:"status"`
+	IPWhitelist                []string   `json:"ip_whitelist"`
+	IPBlacklist                []string   `json:"ip_blacklist"`
+	LastUsedAt                 *time.Time `json:"last_used_at"`
+	LastUsedIP                 *string    `json:"last_used_ip"`
+	Quota                      float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
+	QuotaUsed                  float64    `json:"quota_used"` // Used quota amount in USD
+	ExpiresAt                  *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
+	CreatedAt                  time.Time  `json:"created_at"`
+	UpdatedAt                  time.Time  `json:"updated_at"`
 	// CurrentConcurrency is the real-time active request count for this API key.
 	CurrentConcurrency int `json:"current_concurrency"`
 
@@ -140,6 +154,8 @@ type Group struct {
 
 	// OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch"`
+	// OpenAI Live 接口开关
+	AllowLive bool `json:"allow_live"`
 
 	// 账号过滤控制（仅 OpenAI/Antigravity 平台有效）
 	RequireOAuthOnly  bool `json:"require_oauth_only"`
@@ -167,6 +183,13 @@ type Group struct {
 // 注意：普通用户接口不得返回 model_routing/account_count/account_groups 等内部信息。
 type AdminGroup struct {
 	Group
+
+	// 分组利润控制（五个 token 平台分组可启用；margin/buffer 为小数存储）。
+	// 仅管理员可见：这三个字段与同响应中的 rate_multiplier 相乘即可反推出
+	// 运营方的上游成本上限，属于内部经营信息，不得下放到 dto.Group。
+	ProfitControlEnabled bool    `json:"profit_control_enabled"`
+	ProfitMinMargin      float64 `json:"profit_min_margin"`
+	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
 
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
@@ -550,6 +573,9 @@ type UsageLog struct {
 	UserAgent *string `json:"user_agent"`
 	// IPAddress is visible to the owner of the usage record.
 	IPAddress *string `json:"ip_address,omitempty"`
+	// SessionID is the explicit client-provided request correlation identifier
+	// (e.g. the session_id / X-Session-Id headers). Omitted when absent.
+	SessionID *string `json:"session_id,omitempty"`
 
 	// Cache TTL Override 标记
 	CacheTTLOverridden bool `json:"cache_ttl_overridden"`

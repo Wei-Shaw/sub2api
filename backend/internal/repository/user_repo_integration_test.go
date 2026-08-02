@@ -155,7 +155,7 @@ func (s *UserRepoSuite) TestUpdate() {
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
 	got.Username = "updated"
-	s.Require().NoError(s.repo.Update(s.ctx, got), "Update")
+	s.Require().NoError(s.repo.Update(s.ctx, got, service.UserUpdateFields{Username: true}), "Update")
 
 	updated, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err, "GetByID after update")
@@ -233,7 +233,7 @@ func (s *UserRepoSuite) TestUpdateIgnoresNoRowsFromConflictingEmailIdentityUpser
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
 	got.Username = "updated"
-	s.Require().NoError(s.repo.Update(s.ctx, got), "Update should tolerate ON CONFLICT DO NOTHING returning no rows")
+	s.Require().NoError(s.repo.Update(s.ctx, got, service.UserUpdateFields{Username: true}), "Update should tolerate ON CONFLICT DO NOTHING returning no rows")
 
 	updated, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
@@ -333,6 +333,56 @@ func (s *UserRepoSuite) TestListWithFilters_SearchByUsername() {
 	s.Require().NoError(err)
 	s.Require().Len(users, 1)
 	s.Require().Equal("JohnDoe", users[0].Username)
+}
+
+func (s *UserRepoSuite) TestListWithFilters_LoadsIAMCompanyID() {
+	owner := s.mustCreateUser(&service.User{Email: "iam-owner@test.com"})
+	member := s.mustCreateUser(&service.User{
+		Email:        "iam-member@test.com",
+		IdentityType: "iam",
+		LoginName:    "finance",
+		AccountID:    owner.AccountID,
+	})
+
+	var organizationID int64
+	err := integrationDB.QueryRowContext(s.ctx, `
+		INSERT INTO organizations(account_id,company_id,owner_user_id,name,normalized_name,status,member_limit,effective_at)
+		VALUES($1,$2,$3,$4,$5,'active',20,NOW())
+		RETURNING id
+	`, owner.AccountID, "c123456789012345", owner.ID, "IAM Test Company", "iam test company").Scan(&organizationID)
+	s.Require().NoError(err)
+	s.T().Cleanup(func() {
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM organization_memberships WHERE organization_id=$1", organizationID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM organizations WHERE id=$1", organizationID)
+	})
+	_, err = integrationDB.ExecContext(s.ctx, `
+		INSERT INTO organization_memberships(organization_id,user_id,role,status)
+		VALUES($1,$2,'owner','active'),($1,$3,'member','active')
+	`, organizationID, owner.ID, member.ID)
+	s.Require().NoError(err)
+
+	users, _, err := s.repo.ListWithFilters(
+		s.ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 10},
+		service.UserListFilters{Search: "iam-member@"},
+	)
+	s.Require().NoError(err)
+	s.Require().Len(users, 1)
+	s.Require().Equal("c123456789012345", users[0].CompanyID)
+	s.Require().Equal("IAM Test Company", users[0].CompanyName)
+	s.Require().Equal("member", users[0].OrganizationRole)
+	s.Require().Equal("finance@c123456789012345.opentk.ai", users[0].IAMPrincipal())
+
+	users, _, err = s.repo.ListWithFilters(
+		s.ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 10},
+		service.UserListFilters{Search: "iam-owner@"},
+	)
+	s.Require().NoError(err)
+	s.Require().Len(users, 1)
+	s.Require().Equal("c123456789012345", users[0].CompanyID)
+	s.Require().Equal("IAM Test Company", users[0].CompanyName)
+	s.Require().Equal("owner", users[0].OrganizationRole)
 }
 
 // TestListWithFilters_SearchByID 覆盖 "#123" 和纯数字两种 ID 精确匹配路径，
@@ -683,7 +733,7 @@ func (s *UserRepoSuite) TestCRUD_And_Filters_And_AtomicUpdates() {
 	s.Require().Equal(user2.ID, gotByEmail.ID, "GetByEmail ID mismatch")
 
 	got.Username = "Alice2"
-	s.Require().NoError(s.repo.Update(s.ctx, got), "Update")
+	s.Require().NoError(s.repo.Update(s.ctx, got, service.UserUpdateFields{Username: true}), "Update")
 	got2, err := s.repo.GetByID(s.ctx, user1.ID)
 	s.Require().NoError(err, "GetByID after update")
 	s.Require().Equal("Alice2", got2.Username, "Update did not persist")

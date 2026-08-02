@@ -84,7 +84,12 @@ type CreateOrderRequest struct {
 	PaymentSource   string
 	OrderType       string
 	PlanID          int64
-	Locale          string
+	// OrganizationID 非零表示这是一笔企业订阅订单：付费主体仍是下单的
+	// owner 用户（走个人支付网关），但履约时订阅挂到该公司主体
+	// （organization_subscriptions）而非个人 user_subscriptions。
+	// 仅对 OrderType = subscription 有意义；为 0 时保持个人订单行为不变。
+	OrganizationID int64
+	Locale         string
 	// ClientExpectedBonus 携带前端在提交瞬间、对 Amount 算出的赠送
 	// 预览金额（mirror 算法 = ResolveRechargeBonus）。仅当前端正在向
 	// 用户展示一笔 > 0 的赠送时才有值；订阅订单 / 未到档 / 无活动
@@ -158,28 +163,32 @@ type RefundResult struct {
 }
 
 type DashboardStats struct {
-	TodayAmount   float64 `json:"today_amount"`
-	TotalAmount   float64 `json:"total_amount"`
-	TodayCount    int     `json:"today_count"`
-	TotalCount    int     `json:"total_count"`
-	AvgAmount     float64 `json:"avg_amount"`
-	PendingOrders int     `json:"pending_orders"`
+	TodayAmount   CurrencyAmounts `json:"today_amount"`
+	TotalAmount   CurrencyAmounts `json:"total_amount"`
+	TodayCount    int             `json:"today_count"`
+	TotalCount    int             `json:"total_count"`
+	AvgAmount     CurrencyAmounts `json:"avg_amount"`
+	PendingOrders int             `json:"pending_orders"`
 
 	DailySeries    []DailyStats        `json:"daily_series"`
 	PaymentMethods []PaymentMethodStat `json:"payment_methods"`
-	TopUsers       []TopUserStat       `json:"top_users"`
+	TopUsers       TopUsersByCurrency  `json:"top_users"`
 }
 
+// CurrencyAmounts holds payment amounts keyed by their ISO 4217 currency.
+// Amounts in different currencies must never be added together.
+type CurrencyAmounts map[string]float64
+
 type DailyStats struct {
-	Date   string  `json:"date"`
-	Amount float64 `json:"amount"`
-	Count  int     `json:"count"`
+	Date   string          `json:"date"`
+	Amount CurrencyAmounts `json:"amount"`
+	Count  int             `json:"count"`
 }
 
 type PaymentMethodStat struct {
-	Type   string  `json:"type"`
-	Amount float64 `json:"amount"`
-	Count  int     `json:"count"`
+	Type   string          `json:"type"`
+	Amount CurrencyAmounts `json:"amount"`
+	Count  int             `json:"count"`
 }
 
 type TopUserStat struct {
@@ -187,6 +196,10 @@ type TopUserStat struct {
 	Email  string  `json:"email"`
 	Amount float64 `json:"amount"`
 }
+
+// TopUsersByCurrency contains an independent ranked user list for each
+// currency. A single cross-currency leaderboard would be misleading.
+type TopUsersByCurrency map[string][]TopUserStat
 
 // --- Service ---
 
@@ -204,6 +217,17 @@ type PaymentService struct {
 	resumeService            *PaymentResumeService
 	affiliateService         *AffiliateService
 	notificationEmailService *NotificationEmailService
+	orgSubFulfiller          OrganizationSubscriptionFulfiller
+}
+
+// OrganizationSubscriptionFulfiller provisions (or extends) a company
+// subscription when a paid enterprise subscription order is confirmed. It is
+// the organization-scoped counterpart of the personal
+// assignOrExtendSubscription path. Implementations must be idempotent with
+// respect to orderID so that webhook retries / manual re-fulfillment do not
+// double-provision.
+type OrganizationSubscriptionFulfiller interface {
+	FulfillOrganizationSubscriptionOrder(ctx context.Context, orgID, groupID int64, validityDays int, orderID int64) error
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
@@ -214,6 +238,13 @@ func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, load
 
 func (s *PaymentService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
 	s.notificationEmailService = notificationEmailService
+}
+
+// SetOrganizationSubscriptionFulfiller injects the enterprise subscription
+// fulfillment path used when a paid subscription order carries an
+// OrganizationID.
+func (s *PaymentService) SetOrganizationSubscriptionFulfiller(f OrganizationSubscriptionFulfiller) {
+	s.orgSubFulfiller = f
 }
 
 // --- Provider Registry ---

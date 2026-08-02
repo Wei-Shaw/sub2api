@@ -45,3 +45,13 @@ func TestAPIKeyFromService_MapsNilLastUsedAt(t *testing.T) {
 	require.Nil(t, out.LastUsedAt)
 	require.Nil(t, out.LastUsedIP)
 }
+
+func TestAPIKeyFromService_MapsFallbackGroupOrder(t *testing.T) {
+	src := &service.APIKey{
+		ID: 1, UserID: 2, Key: "sk-map-fallbacks", Name: "Mapper", Status: service.StatusActive,
+		FallbackGroupIDs: []int64{8, 3, 11},
+	}
+
+	out := APIKeyFromService(src)
+	require.Equal(t, []int64{8, 3, 11}, out.FallbackGroupIDs)
+}

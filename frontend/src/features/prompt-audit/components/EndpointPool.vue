@@ -68,9 +68,9 @@
 
           <div class="min-w-0">
             <p class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 xl:hidden">{{ t('admin.promptAudit.pool.credential') }}</p>
-            <div class="flex items-center gap-1.5 text-xs font-medium" :class="hasCredential(endpoint) ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-500 dark:text-dark-400'">
-              <span class="h-1.5 w-1.5 rounded-full" :class="hasCredential(endpoint) ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-dark-500'" aria-hidden="true" />
-              {{ hasCredential(endpoint) ? t('admin.promptAudit.pool.configured') : t('admin.promptAudit.pool.missing') }}
+            <div class="flex items-center gap-1.5 text-xs font-medium" :class="credentialInvalid(endpoint) ? 'text-red-600 dark:text-red-300' : hasCredential(endpoint) ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-500 dark:text-dark-400'">
+              <span class="h-1.5 w-1.5 rounded-full" :class="credentialInvalid(endpoint) ? 'bg-red-500' : hasCredential(endpoint) ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-dark-500'" aria-hidden="true" />
+              {{ credentialInvalid(endpoint) ? t('admin.promptAudit.pool.invalid') : hasCredential(endpoint) ? t('admin.promptAudit.pool.configured') : t('admin.promptAudit.pool.missing') }}
             </div>
             <p v-if="probingIds.includes(endpoint.id)" class="mt-1.5 text-xs text-primary-600 dark:text-primary-300">
               {{ t('admin.promptAudit.pool.probeProgress') }}
@@ -108,7 +108,7 @@
         </label>
         <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200 sm:col-span-2">
           <span>{{ t('admin.promptAudit.pool.apiKey') }}</span>
-          <input v-model="editing.token" class="input w-full" type="password" autocomplete="new-password" :placeholder="editing.has_token ? t('admin.promptAudit.pool.keepSecret') : ''" :aria-label="t('admin.promptAudit.pool.apiKey')" />
+          <input v-model="editing.token" class="input w-full" type="password" autocomplete="new-password" :placeholder="editing.has_token ? (editing.token_status === 'invalid' ? t('admin.promptAudit.pool.reenterSecret') : t('admin.promptAudit.pool.keepSecret')) : ''" :aria-label="t('admin.promptAudit.pool.apiKey')" />
           <span class="block text-xs text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.pool.secretHint') }}</span>
         </label>
         <label v-if="editing.has_token" class="flex items-center gap-2 text-sm text-red-600 dark:text-red-300 sm:col-span-2">
@@ -189,5 +189,8 @@ function removeEndpoint(endpoint: PromptAuditEndpointDraft) {
 }
 function hasCredential(endpoint: PromptAuditEndpointDraft): boolean {
   return Boolean(endpoint.token.trim() || (endpoint.has_token && !endpoint.clear_token))
+}
+function credentialInvalid(endpoint: PromptAuditEndpointDraft): boolean {
+  return endpoint.token_status === 'invalid' && !endpoint.token.trim() && !endpoint.clear_token
 }
 </script>

@@ -184,18 +184,23 @@
                 class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
               >
                 <span class="text-sm font-medium text-primary-700 dark:text-primary-300">
-                  {{ userColumnMode === 'email'
+                  {{ row.subject_type === 'organization'
+                    ? (row.organization?.name?.charAt(0).toUpperCase() || '?')
+                    : userColumnMode === 'email'
                     ? (row.user?.email?.charAt(0).toUpperCase() || '?')
                     : (row.user?.username?.charAt(0).toUpperCase() || '?')
                   }}
                 </span>
               </div>
               <span class="font-medium text-gray-900 dark:text-white">
-                {{ userColumnMode === 'email'
+                {{ row.subject_type === 'organization'
+                  ? row.organization?.name
+                  : userColumnMode === 'email'
                   ? (row.user?.email || t('admin.redeem.userPrefix', { id: row.user_id }))
                   : (row.user?.username || '-')
                 }}
               </span>
+              <span v-if="row.subject_type === 'organization'" class="badge badge-info text-xs">{{ t('admin.subscriptions.enterprise') }}</span>
             </div>
           </template>
 
@@ -353,9 +358,14 @@
               >
                 {{ formatDateTimeToMinute(value) }}
               </span>
-              <div v-if="getDaysRemaining(value) !== null" class="text-xs text-gray-500">
-                {{ getDaysRemaining(value) }} {{ t('admin.subscriptions.daysRemaining') }}
-              </div>
+              <template
+                v-for="remainingExpiry in [formatRemainingExpiry(value)]"
+                :key="remainingExpiry ?? 'expired'"
+              >
+                <div v-if="remainingExpiry" class="text-xs text-gray-500">
+                  {{ remainingExpiry }}
+                </div>
+              </template>
             </div>
             <span v-else class="text-sm text-gray-500">{{
               t('admin.subscriptions.noExpiration')
@@ -405,7 +415,7 @@
                 <span class="text-xs">{{ t('admin.subscriptions.revoke') }}</span>
               </button>
               <button
-                v-if="row.status === 'revoked'"
+                v-if="row.status === 'revoked' && row.subject_type !== 'organization'"
                 @click="handleRestore(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
               >
@@ -452,6 +462,17 @@
         class="space-y-5"
       >
         <div>
+          <label class="input-label">{{ t('admin.subscriptions.form.targetType') }}</label>
+          <div class="inline-flex rounded-md border border-gray-300 p-0.5 dark:border-dark-600">
+            <button type="button" class="rounded px-3 py-1.5 text-sm" :class="assignTarget === 'user' ? 'bg-primary-600 text-white' : 'text-gray-600 dark:text-gray-300'" @click="assignTarget = 'user'">
+              {{ t('admin.subscriptions.form.personalUser') }}
+            </button>
+            <button type="button" class="rounded px-3 py-1.5 text-sm" :class="assignTarget === 'organization' ? 'bg-primary-600 text-white' : 'text-gray-600 dark:text-gray-300'" @click="assignTarget = 'organization'">
+              {{ t('admin.subscriptions.form.enterprise') }}
+            </button>
+          </div>
+        </div>
+        <div v-if="assignTarget === 'user'">
           <label class="input-label">{{ t('admin.subscriptions.form.user') }}</label>
           <div class="relative" data-assign-user-search>
             <input
@@ -499,6 +520,15 @@
               </button>
             </div>
           </div>
+        </div>
+        <div v-else>
+          <label class="input-label">{{ t('admin.subscriptions.form.enterprise') }}</label>
+          <Select
+            v-model="assignForm.organization_id"
+            :options="organizationOptions"
+            :placeholder="t('admin.subscriptions.selectEnterprise')"
+            :disabled="organizationsLoading"
+          />
         </div>
         <div>
           <label class="input-label">{{ t('admin.subscriptions.form.group') }}</label>
@@ -590,7 +620,7 @@
           <p class="text-sm text-gray-600 dark:text-gray-400">
             {{ t('admin.subscriptions.adjustingFor') }}
             <span class="font-medium text-gray-900 dark:text-white">{{
-              extendingSubscription.user?.email
+              subscriptionSubjectName(extendingSubscription)
             }}</span>
           </p>
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -645,7 +675,7 @@
     <ConfirmDialog
       :show="showRevokeDialog"
       :title="t('admin.subscriptions.revokeSubscription')"
-      :message="t('admin.subscriptions.revokeConfirm', { user: revokingSubscription?.user?.email })"
+      :message="t('admin.subscriptions.revokeConfirm', { user: subscriptionSubjectName(revokingSubscription) })"
       :confirm-text="t('admin.subscriptions.revoke')"
       :cancel-text="t('common.cancel')"
       :danger="true"
@@ -668,7 +698,7 @@
     <ConfirmDialog
       :show="showResetQuotaConfirm"
       :title="t('admin.subscriptions.resetQuotaTitle')"
-      :message="t('admin.subscriptions.resetQuotaConfirm', { user: resettingSubscription?.user?.email })"
+      :message="t('admin.subscriptions.resetQuotaConfirm', { user: subscriptionSubjectName(resettingSubscription) })"
       :confirm-text="t('admin.subscriptions.resetQuota')"
       :cancel-text="t('common.cancel')"
       @confirm="confirmResetQuota"
@@ -757,11 +787,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { UserSubscription, Group, GroupPlatform, SubscriptionType } from '@/types'
+import { organizationAPI } from '@/api/organization'
+import type { UserSubscription, Group, GroupPlatform, SubscriptionType, AdminOrganization, OrganizationSubscription } from '@/types'
 import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@/components/common/types'
 import { formatDateTimeToMinute } from '@/utils/format'
@@ -777,7 +808,12 @@ import Select from '@/components/common/Select.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { getRemainingDurationParts, isOneTimeDailyQuota, type RemainingDurationParts } from '@/utils/subscriptionQuota'
+import {
+  getRemainingDurationParts,
+  getRemainingExpiryDuration,
+  isOneTimeDailyQuota,
+  type RemainingDurationParts
+} from '@/utils/subscriptionQuota'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -915,7 +951,12 @@ const statusOptions = computed(() => [
   { value: 'revoked', label: t('admin.subscriptions.status.revoked') }
 ])
 
-const subscriptions = ref<UserSubscription[]>([])
+type AdminSubscriptionRow = UserSubscription & {
+  subject_type?: 'user' | 'organization'
+  organization?: { id: number; name: string; company_id?: string }
+}
+
+const subscriptions = ref<AdminSubscriptionRow[]>([])
 const groups = ref<Group[]>([])
 const loading = ref(false)
 let abortController: AbortController | null = null
@@ -935,6 +976,9 @@ const userSearchLoading = ref(false)
 const showUserDropdown = ref(false)
 const selectedUser = ref<SimpleUser | null>(null)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
+const assignTarget = ref<'user' | 'organization'>('user')
+const organizations = ref<AdminOrganization[]>([])
+const organizationsLoading = ref(false)
 
 const filters = reactive({
   status: 'active',
@@ -962,16 +1006,45 @@ const showRevokeDialog = ref(false)
 const showRestoreDialog = ref(false)
 const showResetQuotaConfirm = ref(false)
 const submitting = ref(false)
-const resettingSubscription = ref<UserSubscription | null>(null)
+const resettingSubscription = ref<AdminSubscriptionRow | null>(null)
 const resettingQuota = ref(false)
-const extendingSubscription = ref<UserSubscription | null>(null)
-const revokingSubscription = ref<UserSubscription | null>(null)
+const extendingSubscription = ref<AdminSubscriptionRow | null>(null)
+const revokingSubscription = ref<AdminSubscriptionRow | null>(null)
 const restoringSubscription = ref<UserSubscription | null>(null)
 
 const assignForm = reactive({
   user_id: null as number | null,
+  organization_id: null as number | null,
   group_id: null as number | null,
   validity_days: 30
+})
+
+const organizationOptions = computed(() => organizations.value.map(organization => ({
+  value: organization.id,
+  label: `${organization.name} (${organization.company_id || organization.account_id})`
+})))
+
+watch(showAssignModal, async show => {
+  if (!show || organizations.value.length > 0) return
+  organizationsLoading.value = true
+  try {
+    const items: AdminOrganization[] = []
+    let page = 1
+    let total = 0
+    do {
+      const result = await organizationAPI.listOrganizations({ status: 'active', page, page_size: 100 })
+      items.push(...result.items)
+      total = result.total
+      page += 1
+      if (result.items.length === 0) break
+    } while (items.length < total)
+    organizations.value = items
+  } catch (error) {
+    console.error('Failed to load organizations:', error)
+    appStore.showError(t('admin.subscriptions.failedToLoadEnterprises'))
+  } finally {
+    organizationsLoading.value = false
+  }
 })
 
 const extendForm = reactive({
@@ -1022,25 +1095,23 @@ const loadSubscriptions = async () => {
 
   loading.value = true
   try {
-    const response = await adminAPI.subscriptions.list(
-      pagination.page,
-      pagination.page_size,
-      {
-        status: (filters.status as any) || undefined,
-        group_id: filters.group_id ? parseInt(filters.group_id) : undefined,
-        platform: filters.platform || undefined,
-        user_id: filters.user_id || undefined,
-        sort_by: sortState.sort_by,
-        sort_order: sortState.sort_order
-      },
-      {
-        signal
-      }
-    )
+    const commonFilters = {
+      status: (filters.status as any) || undefined,
+      group_id: filters.group_id ? parseInt(filters.group_id) : undefined,
+      platform: filters.platform || undefined,
+      sort_by: sortState.sort_by,
+      sort_order: sortState.sort_order
+    }
+    const userRows = await loadAllUserSubscriptionRows(commonFilters, signal)
+    const organizationRows = filters.user_id || filters.status === 'revoked'
+      ? []
+      : await loadAllOrganizationSubscriptionRows(commonFilters, signal)
     if (signal.aborted || abortController !== requestController) return
-    subscriptions.value = response.items
-    pagination.total = response.total
-    pagination.pages = response.pages
+    const rows = [...userRows, ...organizationRows].sort(compareSubscriptionRows)
+    const offset = (pagination.page - 1) * pagination.page_size
+    subscriptions.value = rows.slice(offset, offset + pagination.page_size)
+    pagination.total = rows.length
+    pagination.pages = Math.ceil(rows.length / pagination.page_size)
   } catch (error: any) {
     if (signal.aborted || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
       return
@@ -1052,6 +1123,73 @@ const loadSubscriptions = async () => {
       loading.value = false
       abortController = null
     }
+  }
+}
+
+async function loadAllUserSubscriptionRows(filtersForRequest: Record<string, any>, signal: AbortSignal): Promise<AdminSubscriptionRow[]> {
+  const rows: AdminSubscriptionRow[] = []
+  let page = 1
+  let pages = 1
+  do {
+    const response = await adminAPI.subscriptions.list(page, 100, {
+      ...filtersForRequest,
+      user_id: filters.user_id || undefined,
+    }, { signal })
+    rows.push(...response.items.map(item => ({ ...item, subject_type: 'user' as const })))
+    pages = response.pages
+    page += 1
+  } while (page <= pages && !signal.aborted)
+  return rows
+}
+
+async function loadAllOrganizationSubscriptionRows(filtersForRequest: Record<string, any>, signal: AbortSignal): Promise<AdminSubscriptionRow[]> {
+  const rows: AdminSubscriptionRow[] = []
+  let page = 1
+  let pages = 1
+  do {
+    const response = await organizationAPI.listAdminOrganizationSubscriptions({ page, page_size: 100, ...filtersForRequest }, signal)
+    rows.push(...response.items.map(organizationSubscriptionRow))
+    pages = response.pages
+    page += 1
+  } while (page <= pages && !signal.aborted)
+  return rows
+}
+
+function compareSubscriptionRows(left: AdminSubscriptionRow, right: AdminSubscriptionRow): number {
+  const key = sortState.sort_by === 'expires_at' ? 'expires_at' : sortState.sort_by === 'status' ? 'status' : 'created_at'
+  const leftValue = String(left[key] || '')
+  const rightValue = String(right[key] || '')
+  const comparison = leftValue.localeCompare(rightValue)
+  return sortState.sort_order === 'asc' ? comparison : -comparison
+}
+
+function organizationSubscriptionRow(item: OrganizationSubscription): AdminSubscriptionRow {
+  return {
+    id: item.id,
+    user_id: 0,
+    group_id: item.group_id,
+    subject_type: 'organization',
+    organization: { id: item.organization_id, name: item.organization_name || `#${item.organization_id}`, company_id: item.company_id },
+    status: item.status === 'cancelled' ? 'revoked' : item.status,
+    starts_at: item.starts_at,
+    expires_at: item.expires_at,
+    daily_usage_usd: Number(item.daily_usage_usd),
+    weekly_usage_usd: Number(item.weekly_usage_usd),
+    monthly_usage_usd: Number(item.monthly_usage_usd),
+    daily_window_start: null,
+    weekly_window_start: null,
+    monthly_window_start: null,
+    created_at: item.created_at,
+    updated_at: item.created_at,
+    group: {
+      id: item.group_id,
+      name: item.group_name,
+      platform: item.platform,
+      subscription_type: item.subscription_type,
+      daily_limit_usd: item.daily_limit_usd ? Number(item.daily_limit_usd) : null,
+      weekly_limit_usd: item.weekly_limit_usd ? Number(item.weekly_limit_usd) : null,
+      monthly_limit_usd: item.monthly_limit_usd ? Number(item.monthly_limit_usd) : null,
+    } as Group,
   }
 }
 
@@ -1159,6 +1297,7 @@ const clearUserSelection = () => {
   userSearchKeyword.value = ''
   userSearchResults.value = []
   assignForm.user_id = null
+  assignForm.organization_id = null
 }
 
 const handlePageChange = (page: number) => {
@@ -1189,11 +1328,16 @@ const closeAssignModal = () => {
   userSearchKeyword.value = ''
   userSearchResults.value = []
   showUserDropdown.value = false
+  assignTarget.value = 'user'
 }
 
 const handleAssignSubscription = async () => {
-  if (!assignForm.user_id) {
+  if (assignTarget.value === 'user' && !assignForm.user_id) {
     appStore.showError(t('admin.subscriptions.pleaseSelectUser'))
+    return
+  }
+  if (assignTarget.value === 'organization' && !assignForm.organization_id) {
+    appStore.showError(t('admin.subscriptions.pleaseSelectEnterprise'))
     return
   }
   if (!assignForm.group_id) {
@@ -1207,11 +1351,15 @@ const handleAssignSubscription = async () => {
 
   submitting.value = true
   try {
-    await adminAPI.subscriptions.assign({
-      user_id: assignForm.user_id,
-      group_id: assignForm.group_id,
-      validity_days: assignForm.validity_days
-    })
+    if (assignTarget.value === 'organization') {
+      await organizationAPI.assignOrganizationSubscription(assignForm.organization_id!, assignForm.group_id, assignForm.validity_days)
+    } else {
+      await adminAPI.subscriptions.assign({
+        user_id: assignForm.user_id!,
+        group_id: assignForm.group_id,
+        validity_days: assignForm.validity_days
+      })
+    }
     appStore.showSuccess(t('admin.subscriptions.subscriptionAssigned'))
     closeAssignModal()
     loadSubscriptions()
@@ -1223,7 +1371,7 @@ const handleAssignSubscription = async () => {
   }
 }
 
-const handleExtend = (subscription: UserSubscription) => {
+const handleExtend = (subscription: AdminSubscriptionRow) => {
   extendingSubscription.value = subscription
   extendForm.days = 30
   showExtendModal.value = true
@@ -1249,9 +1397,11 @@ const handleExtendSubscription = async () => {
 
   submitting.value = true
   try {
-    await adminAPI.subscriptions.extend(extendingSubscription.value.id, {
-      days: extendForm.days
-    })
+    if (extendingSubscription.value.subject_type === 'organization') {
+      await organizationAPI.extendAdminOrganizationSubscription(extendingSubscription.value.id, extendForm.days)
+    } else {
+      await adminAPI.subscriptions.extend(extendingSubscription.value.id, { days: extendForm.days })
+    }
     appStore.showSuccess(t('admin.subscriptions.subscriptionAdjusted'))
     closeExtendModal()
     loadSubscriptions()
@@ -1263,7 +1413,7 @@ const handleExtendSubscription = async () => {
   }
 }
 
-const handleRevoke = (subscription: UserSubscription) => {
+const handleRevoke = (subscription: AdminSubscriptionRow) => {
   revokingSubscription.value = subscription
   showRevokeDialog.value = true
 }
@@ -1272,7 +1422,11 @@ const confirmRevoke = async () => {
   if (!revokingSubscription.value) return
 
   try {
-    await adminAPI.subscriptions.revoke(revokingSubscription.value.id)
+    if (revokingSubscription.value.subject_type === 'organization') {
+      await organizationAPI.revokeAdminOrganizationSubscription(revokingSubscription.value.id)
+    } else {
+      await adminAPI.subscriptions.revoke(revokingSubscription.value.id)
+    }
     appStore.showSuccess(t('admin.subscriptions.subscriptionRevoked'))
     showRevokeDialog.value = false
     revokingSubscription.value = null
@@ -1303,7 +1457,7 @@ const confirmRestore = async () => {
   }
 }
 
-const handleResetQuota = (subscription: UserSubscription) => {
+const handleResetQuota = (subscription: AdminSubscriptionRow) => {
   resettingSubscription.value = subscription
   showResetQuotaConfirm.value = true
 }
@@ -1313,7 +1467,11 @@ const confirmResetQuota = async () => {
   if (resettingQuota.value) return
   resettingQuota.value = true
   try {
-    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, { daily: true, weekly: true, monthly: true })
+    if (resettingSubscription.value.subject_type === 'organization') {
+      await organizationAPI.resetAdminOrganizationSubscriptionQuota(resettingSubscription.value.id)
+    } else {
+      await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, { daily: true, weekly: true, monthly: true })
+    }
     appStore.showSuccess(t('admin.subscriptions.quotaResetSuccess'))
     showResetQuotaConfirm.value = false
     resettingSubscription.value = null
@@ -1327,12 +1485,34 @@ const confirmResetQuota = async () => {
 }
 
 // Helper functions
+const subscriptionSubjectName = (subscription: AdminSubscriptionRow | null): string => {
+  if (!subscription) return ''
+  return subscription.subject_type === 'organization'
+    ? subscription.organization?.name || `#${subscription.organization?.id || subscription.id}`
+    : subscription.user?.email || `#${subscription.user_id}`
+}
+
 const getDaysRemaining = (expiresAt: string): number | null => {
   const now = new Date()
   const expires = new Date(expiresAt)
   const diff = expires.getTime() - now.getTime()
   if (diff < 0) return null
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
+}
+
+const formatRemainingExpiry = (expiresAt: string): string | null => {
+  const duration = getRemainingExpiryDuration(expiresAt)
+  if (!duration) return null
+  if (duration.unit === 'days') {
+    return t('admin.subscriptions.daysRemaining', { days: duration.days })
+  }
+  if (duration.hours) {
+    return t('admin.subscriptions.hoursMinutesRemaining', {
+      hours: duration.hours,
+      minutes: duration.minutes
+    })
+  }
+  return t('admin.subscriptions.minutesRemaining', { minutes: duration.minutes })
 }
 
 const isExpiringSoon = (expiresAt: string): boolean => {

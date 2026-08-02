@@ -110,6 +110,8 @@ func provideCleanup(
 	batchImageWorker *service.BatchImageWorkerRuntime,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
+	notificationOutbox *service.NotificationOutboxWorker,
+	companyOperations *service.CompanyOperationsMonitor,
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	subscriptionService *service.SubscriptionService,
@@ -146,6 +148,18 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"CompanyOperationsMonitor", func() error {
+				if companyOperations != nil {
+					companyOperations.Stop()
+				}
+				return nil
+			}},
+			{"NotificationOutboxWorker", func() error {
+				if notificationOutbox != nil {
+					notificationOutbox.Stop()
+				}
+				return nil
+			}},
 			{"OpsIngressRejectAggregator", func() error {
 				if opsIngressReject != nil {
 					opsIngressReject.Stop()

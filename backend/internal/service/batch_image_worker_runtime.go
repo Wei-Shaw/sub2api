@@ -29,6 +29,8 @@ func ProvideBatchImageWorkerRuntime(
 	usageLogRepo UsageLogRepository,
 	pricing *BatchImageModelPricingResolver,
 	authCache APIKeyAuthCacheInvalidator,
+	balanceCache *BillingCacheService,
+	spendLimits *BillingContextResolver,
 	cfg *config.Config,
 ) *BatchImageWorkerRuntime {
 	processor := &BatchImagePipelineProcessor{
@@ -38,6 +40,7 @@ func ProvideBatchImageWorkerRuntime(
 			AccountResolver:  &BatchImageAccountRepositoryResolver{Repo: accountRepo},
 			BillingRepo:      billingRepo,
 			AuthCache:        authCache,
+			BalanceCache:     balanceCache,
 		},
 		SettlementService: &BatchImageSettlementService{
 			Repo:         repo,
@@ -45,17 +48,20 @@ func ProvideBatchImageWorkerRuntime(
 			UsageLogRepo: usageLogRepo,
 			Pricing:      pricing,
 			AuthCache:    authCache,
+			BalanceCache: balanceCache,
+			SpendLimits:  spendLimits,
 			Config:       cfg,
 		},
 	}
 	runtime := NewBatchImageWorkerRuntime(NewBatchImageWorker(queue, processor, NewBatchImageWorkerOptionsFromConfig(cfg)), cfg)
 	runtime.billingRecovery = &BatchImageBillingRecoveryService{
-		Repo:       repo,
-		Billing:    billingRepo,
-		AuthCache:  authCache,
-		Queue:      queue,
-		StaleAfter: NewBatchImageWorkerOptionsFromConfig(cfg).StaleActiveAfter,
-		Limit:      NewBatchImageWorkerOptionsFromConfig(cfg).RecoverLimit,
+		Repo:         repo,
+		Billing:      billingRepo,
+		AuthCache:    authCache,
+		BalanceCache: balanceCache,
+		Queue:        queue,
+		StaleAfter:   NewBatchImageWorkerOptionsFromConfig(cfg).StaleActiveAfter,
+		Limit:        NewBatchImageWorkerOptionsFromConfig(cfg).RecoverLimit,
 	}
 	runtime.Start()
 	return runtime

@@ -400,6 +400,7 @@ export default {
     noActiveSubscription: 'No active subscription',
     tabTopUp: 'Top Up',
     tabSubscribe: 'Subscribe',
+    organizationSubscriptionNotice: 'You are provisioning a subscription for the company. The current owner pays, and the subscription is provisioned onto the company subject.',
     noPlans: 'No subscription plans available',
     notAvailable: 'Top-up is currently unavailable',
     confirmSubscription: 'Confirm Subscription',

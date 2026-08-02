@@ -57,6 +57,7 @@ type BatchImageSubmitRequest struct {
 	AspectRatio      string                 `json:"aspect_ratio"`
 	ImageSize        string                 `json:"image_size"`
 	Metadata         map[string]string      `json:"metadata"`
+	SessionID        *string                `json:"-"`
 }
 
 type BatchImageSubmitItem struct {
@@ -81,16 +82,24 @@ type BatchImageOwner struct {
 }
 
 type BatchImagePublicService struct {
-	Repo              BatchImageRepository
-	AccountRepo       BatchImageAccountSelectionRepository
-	GroupRepo         BatchImageGroupPricingRepository
-	UserGroupRateRepo BatchImageUserGroupRateRepository
-	Queue             BatchImageQueue
-	ProviderRegistry  *BatchImageProviderRegistry
-	Pricing           BatchImagePricingResolver
-	BillingRepo       UsageBillingRepository
-	AuthCache         APIKeyAuthCacheInvalidator
-	Config            *config.Config
+	Repo                   BatchImageRepository
+	AccountRepo            BatchImageAccountSelectionRepository
+	GroupRepo              BatchImageGroupPricingRepository
+	UserGroupRateRepo      BatchImageUserGroupRateRepository
+	Queue                  BatchImageQueue
+	ProviderRegistry       *BatchImageProviderRegistry
+	Pricing                BatchImagePricingResolver
+	BillingRepo            UsageBillingRepository
+	AuthCache              APIKeyAuthCacheInvalidator
+	BalanceCache           UserBalanceCacheInvalidator
+	Config                 *config.Config
+	BillingContextResolver *BillingContextResolver
+}
+
+func (s *BatchImagePublicService) SetBillingContextResolver(resolver *BillingContextResolver) {
+	if s != nil {
+		s.BillingContextResolver = resolver
+	}
 }
 
 type BatchImagePricingSnapshot struct {
@@ -230,7 +239,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		}
 	}
 
-	provider, account, err := s.selectProviderAndAccount(ctx, owner, normalized.Provider, normalized.Model)
+	provider, account, err := s.selectProviderAndAccount(ctx, &owner, normalized.Provider, normalized.Model)
 	if err != nil {
 		return nil, err
 	}
@@ -254,11 +263,22 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	}
 	apiKeyID := owner.APIKeyID
 	accountID := account.ID
-	holdID := BatchImageHoldRequestID(batchID)
 	holdAmount := pricingSnapshot.HoldAmount
+	billingContext := &BillingContext{ConsumerUserID: owner.UserID, PayerUserID: owner.UserID, BalanceSource: BalanceSourceSelf}
+	if s.BillingContextResolver != nil {
+		billingContext, err = s.BillingContextResolver.ResolveForAmount(ctx, owner.UserID, holdAmount)
+		if err != nil {
+			return nil, err
+		}
+	}
+	holdID := BatchImageHoldRequestID(batchID)
 	job, err := s.Repo.CreateBatchImageJob(ctx, CreateBatchImageJobParams{
 		BatchID:                 batchID,
 		UserID:                  owner.UserID,
+		OrganizationID:          billingContext.OrganizationID,
+		PayerUserID:             batchImageInt64Ptr(billingContext.PayerUserID),
+		BalanceSource:           batchImageStringPtr(billingContext.BalanceSource),
+		AuthzGeneration:         batchImageInt64Ptr(billingContext.AuthzGeneration),
 		APIKeyID:                &apiKeyID,
 		AccountID:               &accountID,
 		Provider:                provider.Name(),
@@ -281,6 +301,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		HoldID:                  &holdID,
 		IdempotencyKey:          batchImageOptionalStringPtr(idempotencyKey),
 		RequestHash:             batchImageStringPtr(requestHash),
+		SessionID:               normalized.SessionID,
 	})
 	if err != nil {
 		return nil, err
@@ -294,7 +315,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		s.hidePreUpstreamSubmitFailure(ctx, owner, job)
 		return nil, err
 	}
-	s.invalidateAuthCache(ctx, owner.UserID)
+	s.invalidateBillingCaches(ctx, job)
 	if err := s.createPendingItems(ctx, job.BatchID, requestHash, normalized.Items); err != nil {
 		if releaseErr := s.releaseFailedSubmitHold(ctx, job, requestHash); releaseErr != nil {
 			return nil, releaseErr
@@ -405,7 +426,7 @@ func (s *BatchImagePublicService) releaseFailedSubmitHold(ctx context.Context, j
 		s.enqueueBillingRetry(ctx, job.BatchID)
 		return ErrBatchImageBillingHoldFailed
 	}
-	s.invalidateAuthCache(ctx, job.UserID)
+	s.invalidateBillingCaches(ctx, job)
 	return nil
 }
 
@@ -713,7 +734,7 @@ func (s *BatchImagePublicService) Cancel(ctx context.Context, owner BatchImageOw
 				s.enqueueBillingRetry(ctx, job.BatchID)
 				return nil, ErrBatchImageCancelFailed
 			}
-			s.invalidateAuthCache(ctx, owner.UserID)
+			s.invalidateBillingCaches(ctx, job)
 		}
 		return BatchImageJobToPublic(job), nil
 	}
@@ -759,7 +780,7 @@ func (s *BatchImagePublicService) Cancel(ctx context.Context, owner BatchImageOw
 		s.enqueueBillingRetry(ctx, job.BatchID)
 		return nil, ErrBatchImageCancelFailed
 	}
-	s.invalidateAuthCache(ctx, owner.UserID)
+	s.invalidateBillingCaches(ctx, job)
 	updated, err := s.Repo.GetBatchImageJobByBatchIDForOwner(ctx, owner.UserID, owner.APIKeyID, batchID)
 	if err != nil {
 		return nil, err
@@ -931,7 +952,42 @@ func maxBatchImageReferenceImagesForModel(model string) int {
 	return 0
 }
 
-func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, owner BatchImageOwner, requestedProvider, model string) (BatchImageProvider, *Account, error) {
+func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, owner *BatchImageOwner, requestedProvider, model string) (BatchImageProvider, *Account, error) {
+	if owner == nil {
+		return nil, nil, ErrBatchImageNoAccountAvailable
+	}
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(owner.GroupID)) == 0 {
+		return s.selectProviderAndAccountSingle(ctx, *owner, requestedProvider, model)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, nil, lastErr
+			}
+			return nil, nil, err
+		}
+		owner.GroupID = cloneInt64Pointer(state.apiKey.GroupID)
+		if err := s.ensureGroupAllowsBatchImage(ctx, owner.GroupID); err != nil {
+			return nil, nil, err
+		}
+		provider, account, err := s.selectProviderAndAccountSingle(ctx, *owner, requestedProvider, model)
+		if err == nil {
+			state.Commit(index)
+			return provider, account, nil
+		}
+		if !errors.Is(err, ErrBatchImageNoAccountAvailable) {
+			return nil, nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+func (s *BatchImagePublicService) selectProviderAndAccountSingle(ctx context.Context, owner BatchImageOwner, requestedProvider, model string) (BatchImageProvider, *Account, error) {
 	providers := batchImageProviderSelectionOrder(requestedProvider)
 	for _, providerName := range providers {
 		provider, ok := s.ProviderRegistry.Get(providerName)
@@ -1089,9 +1145,18 @@ func (s *BatchImagePublicService) enabled() bool {
 	return s != nil && s.Repo != nil && s.AccountRepo != nil && s.Config != nil && s.Config.BatchImage.Enabled
 }
 
-func (s *BatchImagePublicService) invalidateAuthCache(ctx context.Context, userID int64) {
+func (s *BatchImagePublicService) invalidateBillingCaches(ctx context.Context, job *BatchImageJob) {
+	if batchImageUsesCompanyBalance(job) {
+		return
+	}
+	userID := batchImagePayerUserID(job)
 	if s != nil && s.AuthCache != nil && userID > 0 {
 		s.AuthCache.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+	if s != nil && s.BalanceCache != nil && userID > 0 {
+		if err := s.BalanceCache.InvalidateUserBalance(ctx, userID); err != nil {
+			logger.L().Warn("batch_image.balance_cache_invalidate_failed", zap.Int64("payer_user_id", userID), zap.Error(err))
+		}
 	}
 }
 

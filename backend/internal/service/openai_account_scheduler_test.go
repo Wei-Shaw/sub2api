@@ -25,6 +25,26 @@ type schedulerTestOpenAIAccountRepo struct {
 	accounts []Account
 }
 
+type fallbackTrackingOpenAIAccountScheduler struct {
+	requests []OpenAIAccountScheduleRequest
+	account  *Account
+	succeed  int64
+}
+
+func (s *fallbackTrackingOpenAIAccountScheduler) Select(_ context.Context, req OpenAIAccountScheduleRequest) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	s.requests = append(s.requests, req)
+	if req.GroupID == nil || *req.GroupID != s.succeed {
+		return nil, OpenAIAccountScheduleDecision{}, ErrNoAvailableAccounts
+	}
+	return &AccountSelectionResult{Account: s.account, ReleaseFunc: func() {}}, OpenAIAccountScheduleDecision{SelectedAccountID: s.account.ID}, nil
+}
+
+func (*fallbackTrackingOpenAIAccountScheduler) ReportResult(int64, bool, *int) {}
+func (*fallbackTrackingOpenAIAccountScheduler) ReportSwitch()                  {}
+func (*fallbackTrackingOpenAIAccountScheduler) SnapshotMetrics() OpenAIAccountSchedulerMetricsSnapshot {
+	return OpenAIAccountSchedulerMetricsSnapshot{}
+}
+
 func (r schedulerTestOpenAIAccountRepo) GetByID(ctx context.Context, id int64) (*Account, error) {
 	for i := range r.accounts {
 		if r.accounts[i].ID == id {
@@ -155,7 +175,7 @@ func (c *schedulerTestGatewayCache) GetSessionAccountID(ctx context.Context, gro
 	if id, ok := c.sessionBindings[sessionHash]; ok {
 		return id, nil
 	}
-	return 0, errors.New("not found")
+	return 0, ErrStickySessionNotFound
 }
 
 func (c *schedulerTestGatewayCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
@@ -269,6 +289,71 @@ func newOpenAIAdvancedSchedulerRateLimitService(enabled string, values ...string
 	return &RateLimitService{
 		settingService: NewSettingService(repo, &config.Config{}),
 	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_APIKeyFallbackGroups(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	defer resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	primary := &Group{ID: 10, Platform: PlatformOpenAI, Status: StatusActive}
+	fallback := &Group{ID: 20, Platform: PlatformOpenAI, Status: StatusActive}
+	account := &Account{ID: 200, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true}
+	scheduler := &fallbackTrackingOpenAIAccountScheduler{account: account, succeed: fallback.ID}
+	apiKey := &APIKey{GroupID: &primary.ID, Group: primary}
+	routing := NewAPIKeyRoutingState(apiKey, []APIKeyRoutingCandidate{{Group: primary}, {Group: fallback}})
+	ctx := WithAPIKeyRoutingState(context.Background(), routing)
+	svc := &OpenAIGatewayService{
+		openaiScheduler:  scheduler,
+		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService("true"),
+	}
+
+	selection, _, err := svc.SelectAccountWithScheduler(ctx, apiKey.GroupID, "resp-primary", "", "gpt-test", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.NotNil(t, selection.EffectiveGroupID)
+	require.Equal(t, fallback.ID, *selection.EffectiveGroupID)
+	require.Equal(t, fallback.ID, *apiKey.GroupID)
+	require.Len(t, scheduler.requests, 2)
+	require.Equal(t, primary.ID, *scheduler.requests[0].GroupID)
+	require.Equal(t, fallback.ID, *scheduler.requests[1].GroupID)
+	require.Equal(t, "resp-primary", scheduler.requests[0].PreviousResponseID)
+	require.Empty(t, scheduler.requests[1].PreviousResponseID, "previous response affinity must not leak across groups")
+
+	scheduler.requests = nil
+	selection, _, err = svc.SelectAccountWithScheduler(ctx, apiKey.GroupID, "", "", "gpt-test", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.Len(t, scheduler.requests, 1)
+	require.Equal(t, fallback.ID, *scheduler.requests[0].GroupID)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_FallbackUsesCandidateMessagesDispatch(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	defer resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	primary := &Group{
+		ID: 10, Platform: PlatformOpenAI, Status: StatusActive,
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{SonnetMappedModel: "gpt-primary"},
+	}
+	fallback := &Group{
+		ID: 20, Platform: PlatformOpenAI, Status: StatusActive,
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{SonnetMappedModel: "gpt-fallback"},
+	}
+	account := &Account{ID: 200, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true}
+	scheduler := &fallbackTrackingOpenAIAccountScheduler{account: account, succeed: fallback.ID}
+	apiKey := &APIKey{GroupID: &primary.ID, Group: primary}
+	routing := NewAPIKeyRoutingState(apiKey, []APIKeyRoutingCandidate{{Group: primary}, {Group: fallback}})
+	ctx := WithOpenAIMessagesRequestedModel(WithAPIKeyRoutingState(context.Background(), routing), "claude-sonnet-4-5")
+	svc := &OpenAIGatewayService{
+		openaiScheduler:  scheduler,
+		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService("true"),
+	}
+
+	_, _, err := svc.SelectAccountWithScheduler(ctx, apiKey.GroupID, "", "", "gpt-primary", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.Len(t, scheduler.requests, 2)
+	require.Equal(t, "gpt-primary", scheduler.requests[0].RequestedModel)
+	require.Equal(t, "gpt-fallback", scheduler.requests[1].RequestedModel)
 }
 
 func (s *openAISnapshotCacheStub) GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error) {
@@ -1473,6 +1558,44 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SkipsQuarantinedSharedP
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
 	require.Equal(t, int64(469803), selection.Account.ID)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_FailsOpenWhenAllProxiesQuarantined(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	// Every schedulable account shares the quarantined proxy: the circuit must
+	// degrade to a preference instead of zeroing out capacity (#5056).
+	proxyA := int64(5056)
+	accounts := []Account{
+		{ID: 505601, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, ProxyID: &proxyA},
+		{ID: 505602, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, ProxyID: &proxyA},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		openaiProxyStreamCircuit: newOpenAIProxyStreamCircuit(openAIProxyStreamCircuitSettings{
+			failureThreshold: 1,
+			failureWindow:    time.Minute,
+			quarantineTTL:    10 * time.Minute,
+			maxEntries:       16,
+		}),
+	}
+	tripped, _ := svc.openaiProxyStreamCircuit.recordFailure(proxyA, time.Now())
+	require.True(t, tripped)
+
+	selection, _, err := svc.SelectAccountWithScheduler(
+		context.Background(), nil, "", "", "gpt-5.6-sol", nil, OpenAIUpstreamTransportAny, false,
+	)
+	require.NoError(t, err, "quarantine must fail open instead of returning no available accounts")
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.NotNil(t, selection.Account.ProxyID)
+	require.Equal(t, proxyA, *selection.Account.ProxyID)
+	require.True(t, svc.openaiProxyStreamCircuit.isBlocked(proxyA, time.Now()),
+		"fail-open must not clear the quarantine; only a completed stream or TTL expiry does")
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyRateLimitedAccountFallsBackToFreshCandidate(t *testing.T) {

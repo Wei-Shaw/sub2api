@@ -34,6 +34,62 @@ func (_c *BatchImageJobCreate) SetUserID(v int64) *BatchImageJobCreate {
 	return _c
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_c *BatchImageJobCreate) SetOrganizationID(v int64) *BatchImageJobCreate {
+	_c.mutation.SetOrganizationID(v)
+	return _c
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillableOrganizationID(v *int64) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetOrganizationID(*v)
+	}
+	return _c
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_c *BatchImageJobCreate) SetPayerUserID(v int64) *BatchImageJobCreate {
+	_c.mutation.SetPayerUserID(v)
+	return _c
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillablePayerUserID(v *int64) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetPayerUserID(*v)
+	}
+	return _c
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_c *BatchImageJobCreate) SetBalanceSource(v string) *BatchImageJobCreate {
+	_c.mutation.SetBalanceSource(v)
+	return _c
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillableBalanceSource(v *string) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetBalanceSource(*v)
+	}
+	return _c
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_c *BatchImageJobCreate) SetAuthzGeneration(v int64) *BatchImageJobCreate {
+	_c.mutation.SetAuthzGeneration(v)
+	return _c
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillableAuthzGeneration(v *int64) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetAuthzGeneration(*v)
+	}
+	return _c
+}
+
 // SetAPIKeyID sets the "api_key_id" field.
 func (_c *BatchImageJobCreate) SetAPIKeyID(v int64) *BatchImageJobCreate {
 	_c.mutation.SetAPIKeyID(v)
@@ -636,6 +692,11 @@ func (_c *BatchImageJobCreate) check() error {
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "BatchImageJob.user_id"`)}
 	}
+	if v, ok := _c.mutation.BalanceSource(); ok {
+		if err := batchimagejob.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.balance_source": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Provider(); !ok {
 		return &ValidationError{Name: "provider", err: errors.New(`ent: missing required field "BatchImageJob.provider"`)}
 	}
@@ -787,6 +848,22 @@ func (_c *BatchImageJobCreate) createSpec() (*BatchImageJob, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.UserID(); ok {
 		_spec.SetField(batchimagejob.FieldUserID, field.TypeInt64, value)
 		_node.UserID = value
+	}
+	if value, ok := _c.mutation.OrganizationID(); ok {
+		_spec.SetField(batchimagejob.FieldOrganizationID, field.TypeInt64, value)
+		_node.OrganizationID = &value
+	}
+	if value, ok := _c.mutation.PayerUserID(); ok {
+		_spec.SetField(batchimagejob.FieldPayerUserID, field.TypeInt64, value)
+		_node.PayerUserID = &value
+	}
+	if value, ok := _c.mutation.BalanceSource(); ok {
+		_spec.SetField(batchimagejob.FieldBalanceSource, field.TypeString, value)
+		_node.BalanceSource = &value
+	}
+	if value, ok := _c.mutation.AuthzGeneration(); ok {
+		_spec.SetField(batchimagejob.FieldAuthzGeneration, field.TypeInt64, value)
+		_node.AuthzGeneration = &value
 	}
 	if value, ok := _c.mutation.APIKeyID(); ok {
 		_spec.SetField(batchimagejob.FieldAPIKeyID, field.TypeInt64, value)
@@ -1007,6 +1084,96 @@ func (u *BatchImageJobUpsert) UpdateUserID() *BatchImageJobUpsert {
 // AddUserID adds v to the "user_id" field.
 func (u *BatchImageJobUpsert) AddUserID(v int64) *BatchImageJobUpsert {
 	u.Add(batchimagejob.FieldUserID, v)
+	return u
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *BatchImageJobUpsert) SetOrganizationID(v int64) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldOrganizationID, v)
+	return u
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdateOrganizationID() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldOrganizationID)
+	return u
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *BatchImageJobUpsert) AddOrganizationID(v int64) *BatchImageJobUpsert {
+	u.Add(batchimagejob.FieldOrganizationID, v)
+	return u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *BatchImageJobUpsert) ClearOrganizationID() *BatchImageJobUpsert {
+	u.SetNull(batchimagejob.FieldOrganizationID)
+	return u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *BatchImageJobUpsert) SetPayerUserID(v int64) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldPayerUserID, v)
+	return u
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdatePayerUserID() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldPayerUserID)
+	return u
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *BatchImageJobUpsert) AddPayerUserID(v int64) *BatchImageJobUpsert {
+	u.Add(batchimagejob.FieldPayerUserID, v)
+	return u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *BatchImageJobUpsert) ClearPayerUserID() *BatchImageJobUpsert {
+	u.SetNull(batchimagejob.FieldPayerUserID)
+	return u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *BatchImageJobUpsert) SetBalanceSource(v string) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldBalanceSource, v)
+	return u
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdateBalanceSource() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldBalanceSource)
+	return u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *BatchImageJobUpsert) ClearBalanceSource() *BatchImageJobUpsert {
+	u.SetNull(batchimagejob.FieldBalanceSource)
+	return u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *BatchImageJobUpsert) SetAuthzGeneration(v int64) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldAuthzGeneration, v)
+	return u
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdateAuthzGeneration() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldAuthzGeneration)
+	return u
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *BatchImageJobUpsert) AddAuthzGeneration(v int64) *BatchImageJobUpsert {
+	u.Add(batchimagejob.FieldAuthzGeneration, v)
+	return u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *BatchImageJobUpsert) ClearAuthzGeneration() *BatchImageJobUpsert {
+	u.SetNull(batchimagejob.FieldAuthzGeneration)
 	return u
 }
 
@@ -1730,6 +1897,111 @@ func (u *BatchImageJobUpsertOne) AddUserID(v int64) *BatchImageJobUpsertOne {
 func (u *BatchImageJobUpsertOne) UpdateUserID() *BatchImageJobUpsertOne {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *BatchImageJobUpsertOne) SetOrganizationID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *BatchImageJobUpsertOne) AddOrganizationID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdateOrganizationID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *BatchImageJobUpsertOne) ClearOrganizationID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearOrganizationID()
+	})
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *BatchImageJobUpsertOne) SetPayerUserID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetPayerUserID(v)
+	})
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *BatchImageJobUpsertOne) AddPayerUserID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddPayerUserID(v)
+	})
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdatePayerUserID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdatePayerUserID()
+	})
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *BatchImageJobUpsertOne) ClearPayerUserID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearPayerUserID()
+	})
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *BatchImageJobUpsertOne) SetBalanceSource(v string) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetBalanceSource(v)
+	})
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdateBalanceSource() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateBalanceSource()
+	})
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *BatchImageJobUpsertOne) ClearBalanceSource() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearBalanceSource()
+	})
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *BatchImageJobUpsertOne) SetAuthzGeneration(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetAuthzGeneration(v)
+	})
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *BatchImageJobUpsertOne) AddAuthzGeneration(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddAuthzGeneration(v)
+	})
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdateAuthzGeneration() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateAuthzGeneration()
+	})
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *BatchImageJobUpsertOne) ClearAuthzGeneration() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearAuthzGeneration()
 	})
 }
 
@@ -2728,6 +3000,111 @@ func (u *BatchImageJobUpsertBulk) AddUserID(v int64) *BatchImageJobUpsertBulk {
 func (u *BatchImageJobUpsertBulk) UpdateUserID() *BatchImageJobUpsertBulk {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *BatchImageJobUpsertBulk) SetOrganizationID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *BatchImageJobUpsertBulk) AddOrganizationID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdateOrganizationID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *BatchImageJobUpsertBulk) ClearOrganizationID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearOrganizationID()
+	})
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *BatchImageJobUpsertBulk) SetPayerUserID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetPayerUserID(v)
+	})
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *BatchImageJobUpsertBulk) AddPayerUserID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddPayerUserID(v)
+	})
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdatePayerUserID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdatePayerUserID()
+	})
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *BatchImageJobUpsertBulk) ClearPayerUserID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearPayerUserID()
+	})
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *BatchImageJobUpsertBulk) SetBalanceSource(v string) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetBalanceSource(v)
+	})
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdateBalanceSource() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateBalanceSource()
+	})
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *BatchImageJobUpsertBulk) ClearBalanceSource() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearBalanceSource()
+	})
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *BatchImageJobUpsertBulk) SetAuthzGeneration(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetAuthzGeneration(v)
+	})
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *BatchImageJobUpsertBulk) AddAuthzGeneration(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddAuthzGeneration(v)
+	})
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdateAuthzGeneration() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateAuthzGeneration()
+	})
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *BatchImageJobUpsertBulk) ClearAuthzGeneration() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearAuthzGeneration()
 	})
 }
 

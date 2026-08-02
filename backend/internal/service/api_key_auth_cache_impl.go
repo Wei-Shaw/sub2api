@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 17 // v17: combined image matrix, batch image, video, peak-rate, Kiro fields and web search per-call pricing
+const apiKeyAuthSnapshotVersion = 21 // v21: preserve API key fallbacks and group profit control fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -165,8 +165,9 @@ func (s *APIKeyService) invalidateLocalAuthCache(cacheKey string) {
 }
 
 type AuthCacheInvalidationSubscriberHealth struct {
-	Connected bool   `json:"connected"`
-	Failures  uint64 `json:"failures"`
+	Connected         bool   `json:"connected"`
+	Failures          uint64 `json:"failures"`
+	DatabaseFallbacks uint64 `json:"database_fallbacks"`
 }
 
 func (s *APIKeyService) AuthCacheInvalidationSubscriberHealth() AuthCacheInvalidationSubscriberHealth {
@@ -174,8 +175,9 @@ func (s *APIKeyService) AuthCacheInvalidationSubscriberHealth() AuthCacheInvalid
 		return AuthCacheInvalidationSubscriberHealth{}
 	}
 	return AuthCacheInvalidationSubscriberHealth{
-		Connected: s.authInvalidationConnected.Load(),
-		Failures:  s.authInvalidationFailures.Load(),
+		Connected:         s.authInvalidationConnected.Load(),
+		Failures:          s.authInvalidationFailures.Load(),
+		DatabaseFallbacks: s.organizationAuthDBFallbacks.Load(),
 	}
 }
 
@@ -336,22 +338,29 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		return nil
 	}
 	snapshot := &APIKeyAuthSnapshot{
-		Version:     apiKeyAuthSnapshotVersion,
-		APIKeyID:    apiKey.ID,
-		UserID:      apiKey.UserID,
-		GroupID:     apiKey.GroupID,
-		Name:        apiKey.Name,
-		Status:      apiKey.Status,
-		IPWhitelist: apiKey.IPWhitelist,
-		IPBlacklist: apiKey.IPBlacklist,
-		Quota:       apiKey.Quota,
-		QuotaUsed:   apiKey.QuotaUsed,
-		ExpiresAt:   apiKey.ExpiresAt,
-		RateLimit5h: apiKey.RateLimit5h,
-		RateLimit1d: apiKey.RateLimit1d,
-		RateLimit7d: apiKey.RateLimit7d,
+		Version:                    apiKeyAuthSnapshotVersion,
+		APIKeyID:                   apiKey.ID,
+		UserID:                     apiKey.UserID,
+		GroupID:                    apiKey.GroupID,
+		FallbackGroupIDs:           append([]int64(nil), apiKey.FallbackGroupIDs...),
+		OrganizationSubscriptionID: apiKey.OrganizationSubscriptionID,
+		Name:                       apiKey.Name,
+		Status:                     apiKey.Status,
+		IPWhitelist:                apiKey.IPWhitelist,
+		IPBlacklist:                apiKey.IPBlacklist,
+		Quota:                      apiKey.Quota,
+		QuotaUsed:                  apiKey.QuotaUsed,
+		ExpiresAt:                  apiKey.ExpiresAt,
+		RateLimit5h:                apiKey.RateLimit5h,
+		RateLimit1d:                apiKey.RateLimit1d,
+		RateLimit7d:                apiKey.RateLimit7d,
 		User: APIKeyAuthUserSnapshot{
 			ID:                         apiKey.User.ID,
+			IdentityType:               apiKey.User.IdentityType,
+			AccountID:                  apiKey.User.AccountID,
+			ExternalUserID:             apiKey.User.ExternalUserID,
+			AuthzGeneration:            apiKey.User.AuthzGeneration,
+			MustChangePassword:         apiKey.User.MustChangePassword,
 			Status:                     apiKey.User.Status,
 			Role:                       apiKey.User.Role,
 			Balance:                    apiKey.User.Balance,
@@ -414,6 +423,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			MCPXMLInject:                    apiKey.Group.MCPXMLInject,
 			SupportedModelScopes:            apiKey.Group.SupportedModelScopes,
 			AllowMessagesDispatch:           apiKey.Group.AllowMessagesDispatch,
+			AllowLive:                       apiKey.Group.AllowLive,
 			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
 			ModelsListConfig:                apiKey.Group.ModelsListConfig,
@@ -429,6 +439,9 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			KiroStickySessionTTLSeconds:     apiKey.Group.EffectiveKiroStickySessionTTLSeconds(),
 			KiroCacheEmulationRatio:         apiKey.Group.EffectiveKiroCacheEmulationRatio(),
 			KiroEndpointMode:                apiKey.Group.EffectiveKiroEndpointMode(),
+			ProfitControlEnabled:            apiKey.Group.ProfitControlEnabled,
+			ProfitMinMargin:                 apiKey.Group.ProfitMinMargin,
+			ProfitSafetyBuffer:              apiKey.Group.ProfitSafetyBuffer,
 		}
 	}
 	return snapshot
@@ -439,22 +452,29 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		return nil
 	}
 	apiKey := &APIKey{
-		ID:          snapshot.APIKeyID,
-		UserID:      snapshot.UserID,
-		GroupID:     snapshot.GroupID,
-		Key:         key,
-		Name:        snapshot.Name,
-		Status:      snapshot.Status,
-		IPWhitelist: snapshot.IPWhitelist,
-		IPBlacklist: snapshot.IPBlacklist,
-		Quota:       snapshot.Quota,
-		QuotaUsed:   snapshot.QuotaUsed,
-		ExpiresAt:   snapshot.ExpiresAt,
-		RateLimit5h: snapshot.RateLimit5h,
-		RateLimit1d: snapshot.RateLimit1d,
-		RateLimit7d: snapshot.RateLimit7d,
+		ID:                         snapshot.APIKeyID,
+		UserID:                     snapshot.UserID,
+		GroupID:                    snapshot.GroupID,
+		FallbackGroupIDs:           append([]int64(nil), snapshot.FallbackGroupIDs...),
+		OrganizationSubscriptionID: snapshot.OrganizationSubscriptionID,
+		Key:                        key,
+		Name:                       snapshot.Name,
+		Status:                     snapshot.Status,
+		IPWhitelist:                snapshot.IPWhitelist,
+		IPBlacklist:                snapshot.IPBlacklist,
+		Quota:                      snapshot.Quota,
+		QuotaUsed:                  snapshot.QuotaUsed,
+		ExpiresAt:                  snapshot.ExpiresAt,
+		RateLimit5h:                snapshot.RateLimit5h,
+		RateLimit1d:                snapshot.RateLimit1d,
+		RateLimit7d:                snapshot.RateLimit7d,
 		User: &User{
 			ID:                         snapshot.User.ID,
+			IdentityType:               snapshot.User.IdentityType,
+			AccountID:                  snapshot.User.AccountID,
+			ExternalUserID:             snapshot.User.ExternalUserID,
+			AuthzGeneration:            snapshot.User.AuthzGeneration,
+			MustChangePassword:         snapshot.User.MustChangePassword,
 			Status:                     snapshot.User.Status,
 			Role:                       snapshot.User.Role,
 			Balance:                    snapshot.User.Balance,
@@ -509,6 +529,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			MCPXMLInject:                    snapshot.Group.MCPXMLInject,
 			SupportedModelScopes:            snapshot.Group.SupportedModelScopes,
 			AllowMessagesDispatch:           snapshot.Group.AllowMessagesDispatch,
+			AllowLive:                       snapshot.Group.AllowLive,
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			ModelsListConfig:                snapshot.Group.ModelsListConfig,
@@ -524,6 +545,9 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			KiroStickySessionTTLSeconds:     snapshot.Group.KiroStickySessionTTLSeconds,
 			KiroCacheEmulationRatio:         snapshot.Group.KiroCacheEmulationRatio,
 			KiroEndpointMode:                snapshot.Group.KiroEndpointMode,
+			ProfitControlEnabled:            snapshot.Group.ProfitControlEnabled,
+			ProfitMinMargin:                 snapshot.Group.ProfitMinMargin,
+			ProfitSafetyBuffer:              snapshot.Group.ProfitSafetyBuffer,
 		}
 		normalizeKiroCacheEmulationFields(apiKey.Group)
 		normalizeKiroEndpointFields(apiKey.Group)

@@ -39,8 +39,12 @@ func (s *balanceLedgerServer) Deduct(ctx context.Context, req *balancepb.DeductR
 		return nil, toTRPCError(err)
 	}
 	return &balancepb.DeductResponse{
-		Applied:      res.Applied,
-		BalanceAfter: formatAmount(res.BalanceAfter),
+		Applied:         res.Applied,
+		BalanceAfter:    formatAmount(res.BalanceAfter),
+		PayerUserId:     res.PayerUserID,
+		BalanceSource:   res.BalanceSource,
+		OrganizationId:  int64Value(res.OrganizationID),
+		AuthzGeneration: res.AuthzGeneration,
 	}, nil
 }
 
@@ -61,9 +65,13 @@ func (s *balanceLedgerServer) Refund(ctx context.Context, req *balancepb.RefundR
 		return nil, toTRPCError(err)
 	}
 	return &balancepb.RefundResponse{
-		Applied:       res.Applied,
-		BalanceAfter:  formatAmount(res.BalanceAfter),
-		RefundedTotal: formatAmount(res.RefundedTotal),
+		Applied:         res.Applied,
+		BalanceAfter:    formatAmount(res.BalanceAfter),
+		RefundedTotal:   formatAmount(res.RefundedTotal),
+		PayerUserId:     res.PayerUserID,
+		BalanceSource:   res.BalanceSource,
+		OrganizationId:  int64Value(res.OrganizationID),
+		AuthzGeneration: res.AuthzGeneration,
 	}, nil
 }
 
@@ -72,7 +80,14 @@ func (s *balanceLedgerServer) GetBalance(ctx context.Context, req *balancepb.Get
 	if err != nil {
 		return nil, toTRPCError(err)
 	}
-	return &balancepb.GetBalanceResponse{Balance: formatAmount(balance)}, nil
+	return &balancepb.GetBalanceResponse{Balance: formatAmount(balance.Balance), PayerUserId: balance.PayerUserID, BalanceSource: balance.BalanceSource, OrganizationId: int64Value(balance.OrganizationID), AuthzGeneration: balance.AuthzGeneration}, nil
+}
+
+func int64Value(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 // parseAmount 解析十进制字符串金额；拒绝空 / 非法 / 负数 / NaN / Inf。

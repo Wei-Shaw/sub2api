@@ -101,18 +101,26 @@ type subscriptionCacheInvalidationPubSub interface {
 	SubscribeSubscriptionCacheInvalidation(ctx context.Context, handler func(cacheKey string)) error
 }
 
+type billingEligibilityContextResolver interface {
+	Resolve(ctx context.Context, consumerUserID int64) (*BillingContext, error)
+	ResolveForAmount(ctx context.Context, consumerUserID int64, requiredAmount float64) (*BillingContext, error)
+	CheckSpendLimit(ctx context.Context, billing *BillingContext, amount float64) error
+	GetOrganizationBalance(ctx context.Context, billing *BillingContext) (float64, error)
+}
+
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
-	cache                 BillingCache
-	userRepo              UserRepository
-	subRepo               UserSubscriptionRepository
-	apiKeyRateLimitLoader apiKeyRateLimitLoader
-	userRPMCache          UserRPMCache
-	userGroupRateRepo     UserGroupRateRepository
-	cfg                   *config.Config
-	circuitBreaker        *billingCircuitBreaker
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	cache                  BillingCache
+	userRepo               UserRepository
+	subRepo                UserSubscriptionRepository
+	apiKeyRateLimitLoader  apiKeyRateLimitLoader
+	userRPMCache           UserRPMCache
+	userGroupRateRepo      UserGroupRateRepository
+	cfg                    *config.Config
+	circuitBreaker         *billingCircuitBreaker
+	userPlatformQuotaRepo  UserPlatformQuotaRepository
+	billingContextResolver billingEligibilityContextResolver
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -126,6 +134,14 @@ type BillingCacheService struct {
 	cacheWriteDropFullLastLog   int64
 	cacheWriteDropClosedCount   uint64
 	cacheWriteDropClosedLastLog int64
+}
+
+// SetBillingContextResolver makes balance preflight use the same effective
+// payer selection as the eventual usage deduction.
+func (s *BillingCacheService) SetBillingContextResolver(resolver billingEligibilityContextResolver) {
+	if s != nil {
+		s.billingContextResolver = resolver
+	}
 }
 
 // NewBillingCacheService 创建计费缓存服务
@@ -733,6 +749,20 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
+	if state := APIKeyRoutingStateFromContext(ctx); state != nil {
+		state.SetEligibilityChecker(func(candidateCtx context.Context, candidateKey *APIKey, candidateGroup *Group, candidateSubscription *UserSubscription) error {
+			candidatePlatform := ""
+			if candidateGroup != nil {
+				candidatePlatform = candidateGroup.Platform
+			}
+			return s.checkBillingEligibility(candidateCtx, user, candidateKey, candidateGroup, candidateSubscription, candidatePlatform)
+		})
+		return state.EnsureEligible(ctx)
+	}
+	return s.checkBillingEligibility(ctx, user, apiKey, group, subscription, platform)
+}
+
+func (s *BillingCacheService) checkBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
 	// 简易模式：跳过所有计费检查
 	if s.cfg.RunMode == config.RunModeSimple {
 		return nil
@@ -741,15 +771,62 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		return ErrBillingServiceUnavailable
 	}
 
-	// 判断计费模式
-	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
+	// 企业 Key 直接绑定 organization_subscriptions，不携带个人
+	// UserSubscription；它仍然必须按订阅模式处理，不能回退检查 IAM 划拨余额。
+	isEnterpriseSubscription := apiKey != nil && apiKey.OrganizationSubscriptionID != nil
+	isSubscriptionMode := isEnterpriseSubscription ||
+		(group != nil && group.IsSubscriptionType() && subscription != nil)
 
 	if isSubscriptionMode {
-		if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
-			return err
+		// 订阅消费也计入企业成员限额。普通个人账号没有有效的企业成员关系，
+		// repository 会直接放行，因此这里可以统一预检两种订阅来源。
+		if s.billingContextResolver != nil {
+			if err := s.billingContextResolver.CheckSpendLimit(ctx, &BillingContext{
+				ConsumerUserID: user.ID,
+				BalanceSource:  BalanceSourceSubscription,
+			}, 0); err != nil {
+				return err
+			}
+		}
+		// 企业订阅的活跃性和日/周/月限额由 API Key 认证中间件通过
+		// ValidateEnterpriseSubscription 校验；普通订阅仍使用个人订阅资格检查。
+		if !isEnterpriseSubscription {
+			if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
+				return err
+			}
 		}
 	} else {
-		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+		// Gateway preflight does not know the final charge. A small positive
+		// allocation may look sufficient here but still fall back to the company
+		// wallet after the upstream response. Fail closed once existing sponsored
+		// usage is exhausted so that fallback cannot repeatedly bypass the limit.
+		if s.billingContextResolver != nil {
+			if err := s.billingContextResolver.CheckSpendLimit(ctx, &BillingContext{
+				ConsumerUserID: user.ID,
+				BalanceSource:  BalanceSourceCompany,
+			}, 0); err != nil {
+				return err
+			}
+		}
+		payerUserID := user.ID
+		var resolved *BillingContext
+		if s.billingContextResolver != nil {
+			var err error
+			resolved, err = s.billingContextResolver.ResolveForAmount(ctx, user.ID, s.minimumBalanceReserve())
+			if err != nil {
+				logger.LegacyPrintf("service.billing_cache", "ALERT: billing payer resolution failed for user %d: %v", user.ID, err)
+				return err
+			}
+			if resolved == nil || resolved.PayerUserID <= 0 {
+				return ErrBillingServiceUnavailable.WithCause(fmt.Errorf("invalid billing payer for user %d", user.ID))
+			}
+			payerUserID = resolved.PayerUserID
+		}
+		if resolved != nil && resolved.UsesCompanyBalance() {
+			if err := s.checkOrganizationBalanceEligibility(ctx, resolved); err != nil {
+				return err
+			}
+		} else if err := s.checkBalanceEligibility(ctx, payerUserID); err != nil {
 			return err
 		}
 	}
@@ -893,6 +970,24 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 		return ErrInsufficientBalance
 	}
 
+	return nil
+}
+
+func (s *BillingCacheService) checkOrganizationBalanceEligibility(ctx context.Context, billing *BillingContext) error {
+	balance, err := s.billingContextResolver.GetOrganizationBalance(ctx, billing)
+	if err != nil {
+		if s.circuitBreaker != nil {
+			s.circuitBreaker.OnFailure(err)
+		}
+		logger.LegacyPrintf("service.billing_cache", "ALERT: organization balance check failed: %v", err)
+		return ErrBillingServiceUnavailable.WithCause(err)
+	}
+	if s.circuitBreaker != nil {
+		s.circuitBreaker.OnSuccess()
+	}
+	if s.balanceBelowEligibilityThreshold(balance) {
+		return ErrInsufficientBalance
+	}
 	return nil
 }
 

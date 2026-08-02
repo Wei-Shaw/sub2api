@@ -1003,6 +1003,18 @@ export default {
         peakMultiplier: '高峰倍率',
         multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费'
       },
+      profitControl: {
+        enable: '启用利润控制',
+        enabledHint: '调度时仅允许"账号倍率 ≤ 请求实际下游倍率 ×（1 − 最低毛利率 − 安全缓冲）"的账号进入候选池；账号倍率可手工维护或由探测同步，既有排序、粘性与熔断在合格账号间照常工作。图片/视频调度暂不参与。',
+        disabledHint: '关闭后调度不做利润过滤，账号倍率高于下游倍率的账号也会被选中，可能产生亏损请求。',
+        minMargin: '最低毛利率（%）',
+        minMarginHint: '百分比输入，如 30 表示 30%；后端按小数存储',
+        safetyBuffer: '安全缓冲（%）',
+        safetyBufferHint: '与最低毛利率相加后从下游倍率中扣除，默认 0',
+        marginRangeError: '最低毛利率应在 0 到 99.99 之间',
+        bufferRangeError: '安全缓冲应在 0 到 99.99 之间',
+        sumTooHigh: '最低毛利率与安全缓冲之和必须小于 100%，否则将排除全部账号'
+      },
       modelsList: {
         title: '自定义 /v1/models 模型列表',
         hint: '仅影响 /v1/models 展示结果，不影响白名单模型调用和账号调度。',
@@ -1028,6 +1040,7 @@ export default {
         endpoint: '端点',
         targetPlatform: '目标平台',
         upstreamModel: '上游模型',
+        upstreamModelHint: '留空表示透传原始请求模型：前缀匹配下每个命中模型各自原样转发（如 deepseek-v4-flash、deepseek-v4-pro 分别转发）；填写则所有命中请求都固定转发该模型。',
         notes: '备注',
         enabled: '启用',
         preview: '预览',
@@ -1092,6 +1105,14 @@ export default {
         targetModel: '目标模型',
         targetModelPlaceholder: '例如: gpt-5.4',
         removeExactMapping: '删除精确映射'
+      },
+      openaiLive: {
+        title: 'OpenAI Live',
+        allow: '允许访问 Live',
+        hint: '启用后，此 OpenAI 分组的 API Key 可以创建并控制 Live 语音会话。默认关闭。运行 Sub2API 的服务端必须是 Apple Silicon Mac，并安装官方 ChatGPT App；客户端平台不受限制。',
+        unsupportedTitle: '当前服务端不支持 Live',
+        unsupportedMessage: '当前 Sub2API 服务端无法生成 Live 所需的设备证明，即使开启也不能使用。是否仍然开启？',
+        enableAnyway: '仍然开启'
       },
       invalidRequestFallback: {
         title: '无效请求兜底分组',

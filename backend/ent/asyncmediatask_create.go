@@ -124,6 +124,62 @@ func (_c *AsyncMediaTaskCreate) SetUserID(v int64) *AsyncMediaTaskCreate {
 	return _c
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_c *AsyncMediaTaskCreate) SetOrganizationID(v int64) *AsyncMediaTaskCreate {
+	_c.mutation.SetOrganizationID(v)
+	return _c
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_c *AsyncMediaTaskCreate) SetNillableOrganizationID(v *int64) *AsyncMediaTaskCreate {
+	if v != nil {
+		_c.SetOrganizationID(*v)
+	}
+	return _c
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_c *AsyncMediaTaskCreate) SetPayerUserID(v int64) *AsyncMediaTaskCreate {
+	_c.mutation.SetPayerUserID(v)
+	return _c
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_c *AsyncMediaTaskCreate) SetNillablePayerUserID(v *int64) *AsyncMediaTaskCreate {
+	if v != nil {
+		_c.SetPayerUserID(*v)
+	}
+	return _c
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_c *AsyncMediaTaskCreate) SetBalanceSource(v string) *AsyncMediaTaskCreate {
+	_c.mutation.SetBalanceSource(v)
+	return _c
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_c *AsyncMediaTaskCreate) SetNillableBalanceSource(v *string) *AsyncMediaTaskCreate {
+	if v != nil {
+		_c.SetBalanceSource(*v)
+	}
+	return _c
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_c *AsyncMediaTaskCreate) SetAuthzGeneration(v int64) *AsyncMediaTaskCreate {
+	_c.mutation.SetAuthzGeneration(v)
+	return _c
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_c *AsyncMediaTaskCreate) SetNillableAuthzGeneration(v *int64) *AsyncMediaTaskCreate {
+	if v != nil {
+		_c.SetAuthzGeneration(*v)
+	}
+	return _c
+}
+
 // SetGroupID sets the "group_id" field.
 func (_c *AsyncMediaTaskCreate) SetGroupID(v int64) *AsyncMediaTaskCreate {
 	_c.mutation.SetGroupID(v)
@@ -514,6 +570,11 @@ func (_c *AsyncMediaTaskCreate) check() error {
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "AsyncMediaTask.user_id"`)}
 	}
+	if v, ok := _c.mutation.BalanceSource(); ok {
+		if err := asyncmediatask.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "AsyncMediaTask.balance_source": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Facade(); !ok {
 		return &ValidationError{Name: "facade", err: errors.New(`ent: missing required field "AsyncMediaTask.facade"`)}
 	}
@@ -657,6 +718,22 @@ func (_c *AsyncMediaTaskCreate) createSpec() (*AsyncMediaTask, *sqlgraph.CreateS
 	if value, ok := _c.mutation.UserID(); ok {
 		_spec.SetField(asyncmediatask.FieldUserID, field.TypeInt64, value)
 		_node.UserID = value
+	}
+	if value, ok := _c.mutation.OrganizationID(); ok {
+		_spec.SetField(asyncmediatask.FieldOrganizationID, field.TypeInt64, value)
+		_node.OrganizationID = &value
+	}
+	if value, ok := _c.mutation.PayerUserID(); ok {
+		_spec.SetField(asyncmediatask.FieldPayerUserID, field.TypeInt64, value)
+		_node.PayerUserID = &value
+	}
+	if value, ok := _c.mutation.BalanceSource(); ok {
+		_spec.SetField(asyncmediatask.FieldBalanceSource, field.TypeString, value)
+		_node.BalanceSource = &value
+	}
+	if value, ok := _c.mutation.AuthzGeneration(); ok {
+		_spec.SetField(asyncmediatask.FieldAuthzGeneration, field.TypeInt64, value)
+		_node.AuthzGeneration = &value
 	}
 	if value, ok := _c.mutation.GroupID(); ok {
 		_spec.SetField(asyncmediatask.FieldGroupID, field.TypeInt64, value)
@@ -933,6 +1010,96 @@ func (u *AsyncMediaTaskUpsert) UpdateUserID() *AsyncMediaTaskUpsert {
 // AddUserID adds v to the "user_id" field.
 func (u *AsyncMediaTaskUpsert) AddUserID(v int64) *AsyncMediaTaskUpsert {
 	u.Add(asyncmediatask.FieldUserID, v)
+	return u
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *AsyncMediaTaskUpsert) SetOrganizationID(v int64) *AsyncMediaTaskUpsert {
+	u.Set(asyncmediatask.FieldOrganizationID, v)
+	return u
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsert) UpdateOrganizationID() *AsyncMediaTaskUpsert {
+	u.SetExcluded(asyncmediatask.FieldOrganizationID)
+	return u
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *AsyncMediaTaskUpsert) AddOrganizationID(v int64) *AsyncMediaTaskUpsert {
+	u.Add(asyncmediatask.FieldOrganizationID, v)
+	return u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *AsyncMediaTaskUpsert) ClearOrganizationID() *AsyncMediaTaskUpsert {
+	u.SetNull(asyncmediatask.FieldOrganizationID)
+	return u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *AsyncMediaTaskUpsert) SetPayerUserID(v int64) *AsyncMediaTaskUpsert {
+	u.Set(asyncmediatask.FieldPayerUserID, v)
+	return u
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsert) UpdatePayerUserID() *AsyncMediaTaskUpsert {
+	u.SetExcluded(asyncmediatask.FieldPayerUserID)
+	return u
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *AsyncMediaTaskUpsert) AddPayerUserID(v int64) *AsyncMediaTaskUpsert {
+	u.Add(asyncmediatask.FieldPayerUserID, v)
+	return u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *AsyncMediaTaskUpsert) ClearPayerUserID() *AsyncMediaTaskUpsert {
+	u.SetNull(asyncmediatask.FieldPayerUserID)
+	return u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *AsyncMediaTaskUpsert) SetBalanceSource(v string) *AsyncMediaTaskUpsert {
+	u.Set(asyncmediatask.FieldBalanceSource, v)
+	return u
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsert) UpdateBalanceSource() *AsyncMediaTaskUpsert {
+	u.SetExcluded(asyncmediatask.FieldBalanceSource)
+	return u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *AsyncMediaTaskUpsert) ClearBalanceSource() *AsyncMediaTaskUpsert {
+	u.SetNull(asyncmediatask.FieldBalanceSource)
+	return u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *AsyncMediaTaskUpsert) SetAuthzGeneration(v int64) *AsyncMediaTaskUpsert {
+	u.Set(asyncmediatask.FieldAuthzGeneration, v)
+	return u
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsert) UpdateAuthzGeneration() *AsyncMediaTaskUpsert {
+	u.SetExcluded(asyncmediatask.FieldAuthzGeneration)
+	return u
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *AsyncMediaTaskUpsert) AddAuthzGeneration(v int64) *AsyncMediaTaskUpsert {
+	u.Add(asyncmediatask.FieldAuthzGeneration, v)
+	return u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *AsyncMediaTaskUpsert) ClearAuthzGeneration() *AsyncMediaTaskUpsert {
+	u.SetNull(asyncmediatask.FieldAuthzGeneration)
 	return u
 }
 
@@ -1529,6 +1696,111 @@ func (u *AsyncMediaTaskUpsertOne) AddUserID(v int64) *AsyncMediaTaskUpsertOne {
 func (u *AsyncMediaTaskUpsertOne) UpdateUserID() *AsyncMediaTaskUpsertOne {
 	return u.Update(func(s *AsyncMediaTaskUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *AsyncMediaTaskUpsertOne) SetOrganizationID(v int64) *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *AsyncMediaTaskUpsertOne) AddOrganizationID(v int64) *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.AddOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsertOne) UpdateOrganizationID() *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *AsyncMediaTaskUpsertOne) ClearOrganizationID() *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.ClearOrganizationID()
+	})
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *AsyncMediaTaskUpsertOne) SetPayerUserID(v int64) *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.SetPayerUserID(v)
+	})
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *AsyncMediaTaskUpsertOne) AddPayerUserID(v int64) *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.AddPayerUserID(v)
+	})
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsertOne) UpdatePayerUserID() *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.UpdatePayerUserID()
+	})
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *AsyncMediaTaskUpsertOne) ClearPayerUserID() *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.ClearPayerUserID()
+	})
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *AsyncMediaTaskUpsertOne) SetBalanceSource(v string) *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.SetBalanceSource(v)
+	})
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsertOne) UpdateBalanceSource() *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.UpdateBalanceSource()
+	})
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *AsyncMediaTaskUpsertOne) ClearBalanceSource() *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.ClearBalanceSource()
+	})
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *AsyncMediaTaskUpsertOne) SetAuthzGeneration(v int64) *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.SetAuthzGeneration(v)
+	})
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *AsyncMediaTaskUpsertOne) AddAuthzGeneration(v int64) *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.AddAuthzGeneration(v)
+	})
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsertOne) UpdateAuthzGeneration() *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.UpdateAuthzGeneration()
+	})
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *AsyncMediaTaskUpsertOne) ClearAuthzGeneration() *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.ClearAuthzGeneration()
 	})
 }
 
@@ -2356,6 +2628,111 @@ func (u *AsyncMediaTaskUpsertBulk) AddUserID(v int64) *AsyncMediaTaskUpsertBulk 
 func (u *AsyncMediaTaskUpsertBulk) UpdateUserID() *AsyncMediaTaskUpsertBulk {
 	return u.Update(func(s *AsyncMediaTaskUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *AsyncMediaTaskUpsertBulk) SetOrganizationID(v int64) *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *AsyncMediaTaskUpsertBulk) AddOrganizationID(v int64) *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.AddOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsertBulk) UpdateOrganizationID() *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *AsyncMediaTaskUpsertBulk) ClearOrganizationID() *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.ClearOrganizationID()
+	})
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *AsyncMediaTaskUpsertBulk) SetPayerUserID(v int64) *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.SetPayerUserID(v)
+	})
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *AsyncMediaTaskUpsertBulk) AddPayerUserID(v int64) *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.AddPayerUserID(v)
+	})
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsertBulk) UpdatePayerUserID() *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.UpdatePayerUserID()
+	})
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *AsyncMediaTaskUpsertBulk) ClearPayerUserID() *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.ClearPayerUserID()
+	})
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *AsyncMediaTaskUpsertBulk) SetBalanceSource(v string) *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.SetBalanceSource(v)
+	})
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsertBulk) UpdateBalanceSource() *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.UpdateBalanceSource()
+	})
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *AsyncMediaTaskUpsertBulk) ClearBalanceSource() *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.ClearBalanceSource()
+	})
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *AsyncMediaTaskUpsertBulk) SetAuthzGeneration(v int64) *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.SetAuthzGeneration(v)
+	})
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *AsyncMediaTaskUpsertBulk) AddAuthzGeneration(v int64) *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.AddAuthzGeneration(v)
+	})
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsertBulk) UpdateAuthzGeneration() *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.UpdateAuthzGeneration()
+	})
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *AsyncMediaTaskUpsertBulk) ClearAuthzGeneration() *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.ClearAuthzGeneration()
 	})
 }
 

@@ -24,6 +24,10 @@ message DeductRequest {
 message DeductResponse {
   bool   applied       = 1;  // false = 幂等重放
   string balance_after = 2;
+  int64  payer_user_id = 3;
+  string balance_source = 4;
+  int64  organization_id = 5;
+  int64  authz_generation = 6;
 }
 
 message RefundRequest {
@@ -38,7 +42,17 @@ message RefundResponse {
   bool   applied        = 1;
   string balance_after  = 2;
   string refunded_total = 3;  // 原扣累计已退
+  int64  payer_user_id = 4;
+  string balance_source = 5;
+  int64  organization_id = 6;
+  int64  authz_generation = 7;
 }
 
 message GetBalanceRequest  { int64 user_id = 1; }
-message GetBalanceResponse { string balance = 1; }
+message GetBalanceResponse {
+  string balance = 1;
+  int64 payer_user_id = 2;
+  string balance_source = 3;
+  int64 organization_id = 4;
+  int64 authz_generation = 5;
+}

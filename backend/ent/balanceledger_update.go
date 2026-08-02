@@ -83,6 +83,107 @@ func (_u *BalanceLedgerUpdate) AddUserID(v int64) *BalanceLedgerUpdate {
 	return _u
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_u *BalanceLedgerUpdate) SetOrganizationID(v int64) *BalanceLedgerUpdate {
+	_u.mutation.ResetOrganizationID()
+	_u.mutation.SetOrganizationID(v)
+	return _u
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_u *BalanceLedgerUpdate) SetNillableOrganizationID(v *int64) *BalanceLedgerUpdate {
+	if v != nil {
+		_u.SetOrganizationID(*v)
+	}
+	return _u
+}
+
+// AddOrganizationID adds value to the "organization_id" field.
+func (_u *BalanceLedgerUpdate) AddOrganizationID(v int64) *BalanceLedgerUpdate {
+	_u.mutation.AddOrganizationID(v)
+	return _u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (_u *BalanceLedgerUpdate) ClearOrganizationID() *BalanceLedgerUpdate {
+	_u.mutation.ClearOrganizationID()
+	return _u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_u *BalanceLedgerUpdate) SetPayerUserID(v int64) *BalanceLedgerUpdate {
+	_u.mutation.ResetPayerUserID()
+	_u.mutation.SetPayerUserID(v)
+	return _u
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_u *BalanceLedgerUpdate) SetNillablePayerUserID(v *int64) *BalanceLedgerUpdate {
+	if v != nil {
+		_u.SetPayerUserID(*v)
+	}
+	return _u
+}
+
+// AddPayerUserID adds value to the "payer_user_id" field.
+func (_u *BalanceLedgerUpdate) AddPayerUserID(v int64) *BalanceLedgerUpdate {
+	_u.mutation.AddPayerUserID(v)
+	return _u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (_u *BalanceLedgerUpdate) ClearPayerUserID() *BalanceLedgerUpdate {
+	_u.mutation.ClearPayerUserID()
+	return _u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_u *BalanceLedgerUpdate) SetBalanceSource(v string) *BalanceLedgerUpdate {
+	_u.mutation.SetBalanceSource(v)
+	return _u
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_u *BalanceLedgerUpdate) SetNillableBalanceSource(v *string) *BalanceLedgerUpdate {
+	if v != nil {
+		_u.SetBalanceSource(*v)
+	}
+	return _u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (_u *BalanceLedgerUpdate) ClearBalanceSource() *BalanceLedgerUpdate {
+	_u.mutation.ClearBalanceSource()
+	return _u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_u *BalanceLedgerUpdate) SetAuthzGeneration(v int64) *BalanceLedgerUpdate {
+	_u.mutation.ResetAuthzGeneration()
+	_u.mutation.SetAuthzGeneration(v)
+	return _u
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_u *BalanceLedgerUpdate) SetNillableAuthzGeneration(v *int64) *BalanceLedgerUpdate {
+	if v != nil {
+		_u.SetAuthzGeneration(*v)
+	}
+	return _u
+}
+
+// AddAuthzGeneration adds value to the "authz_generation" field.
+func (_u *BalanceLedgerUpdate) AddAuthzGeneration(v int64) *BalanceLedgerUpdate {
+	_u.mutation.AddAuthzGeneration(v)
+	return _u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (_u *BalanceLedgerUpdate) ClearAuthzGeneration() *BalanceLedgerUpdate {
+	_u.mutation.ClearAuthzGeneration()
+	return _u
+}
+
 // SetKind sets the "kind" field.
 func (_u *BalanceLedgerUpdate) SetKind(v int8) *BalanceLedgerUpdate {
 	_u.mutation.ResetKind()
@@ -274,6 +375,11 @@ func (_u *BalanceLedgerUpdate) check() error {
 			return &ValidationError{Name: "app_id", err: fmt.Errorf(`ent: validator failed for field "BalanceLedger.app_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BalanceSource(); ok {
+		if err := balanceledger.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "BalanceLedger.balance_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RefundOf(); ok {
 		if err := balanceledger.RefundOfValidator(v); err != nil {
 			return &ValidationError{Name: "refund_of", err: fmt.Errorf(`ent: validator failed for field "BalanceLedger.refund_of": %w`, err)}
@@ -313,6 +419,39 @@ func (_u *BalanceLedgerUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(balanceledger.FieldUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.OrganizationID(); ok {
+		_spec.SetField(balanceledger.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOrganizationID(); ok {
+		_spec.AddField(balanceledger.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if _u.mutation.OrganizationIDCleared() {
+		_spec.ClearField(balanceledger.FieldOrganizationID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PayerUserID(); ok {
+		_spec.SetField(balanceledger.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPayerUserID(); ok {
+		_spec.AddField(balanceledger.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.PayerUserIDCleared() {
+		_spec.ClearField(balanceledger.FieldPayerUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BalanceSource(); ok {
+		_spec.SetField(balanceledger.FieldBalanceSource, field.TypeString, value)
+	}
+	if _u.mutation.BalanceSourceCleared() {
+		_spec.ClearField(balanceledger.FieldBalanceSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.AuthzGeneration(); ok {
+		_spec.SetField(balanceledger.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedAuthzGeneration(); ok {
+		_spec.AddField(balanceledger.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if _u.mutation.AuthzGenerationCleared() {
+		_spec.ClearField(balanceledger.FieldAuthzGeneration, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Kind(); ok {
 		_spec.SetField(balanceledger.FieldKind, field.TypeInt8, value)
@@ -425,6 +564,107 @@ func (_u *BalanceLedgerUpdateOne) SetNillableUserID(v *int64) *BalanceLedgerUpda
 // AddUserID adds value to the "user_id" field.
 func (_u *BalanceLedgerUpdateOne) AddUserID(v int64) *BalanceLedgerUpdateOne {
 	_u.mutation.AddUserID(v)
+	return _u
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (_u *BalanceLedgerUpdateOne) SetOrganizationID(v int64) *BalanceLedgerUpdateOne {
+	_u.mutation.ResetOrganizationID()
+	_u.mutation.SetOrganizationID(v)
+	return _u
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_u *BalanceLedgerUpdateOne) SetNillableOrganizationID(v *int64) *BalanceLedgerUpdateOne {
+	if v != nil {
+		_u.SetOrganizationID(*v)
+	}
+	return _u
+}
+
+// AddOrganizationID adds value to the "organization_id" field.
+func (_u *BalanceLedgerUpdateOne) AddOrganizationID(v int64) *BalanceLedgerUpdateOne {
+	_u.mutation.AddOrganizationID(v)
+	return _u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (_u *BalanceLedgerUpdateOne) ClearOrganizationID() *BalanceLedgerUpdateOne {
+	_u.mutation.ClearOrganizationID()
+	return _u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_u *BalanceLedgerUpdateOne) SetPayerUserID(v int64) *BalanceLedgerUpdateOne {
+	_u.mutation.ResetPayerUserID()
+	_u.mutation.SetPayerUserID(v)
+	return _u
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_u *BalanceLedgerUpdateOne) SetNillablePayerUserID(v *int64) *BalanceLedgerUpdateOne {
+	if v != nil {
+		_u.SetPayerUserID(*v)
+	}
+	return _u
+}
+
+// AddPayerUserID adds value to the "payer_user_id" field.
+func (_u *BalanceLedgerUpdateOne) AddPayerUserID(v int64) *BalanceLedgerUpdateOne {
+	_u.mutation.AddPayerUserID(v)
+	return _u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (_u *BalanceLedgerUpdateOne) ClearPayerUserID() *BalanceLedgerUpdateOne {
+	_u.mutation.ClearPayerUserID()
+	return _u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_u *BalanceLedgerUpdateOne) SetBalanceSource(v string) *BalanceLedgerUpdateOne {
+	_u.mutation.SetBalanceSource(v)
+	return _u
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_u *BalanceLedgerUpdateOne) SetNillableBalanceSource(v *string) *BalanceLedgerUpdateOne {
+	if v != nil {
+		_u.SetBalanceSource(*v)
+	}
+	return _u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (_u *BalanceLedgerUpdateOne) ClearBalanceSource() *BalanceLedgerUpdateOne {
+	_u.mutation.ClearBalanceSource()
+	return _u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_u *BalanceLedgerUpdateOne) SetAuthzGeneration(v int64) *BalanceLedgerUpdateOne {
+	_u.mutation.ResetAuthzGeneration()
+	_u.mutation.SetAuthzGeneration(v)
+	return _u
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_u *BalanceLedgerUpdateOne) SetNillableAuthzGeneration(v *int64) *BalanceLedgerUpdateOne {
+	if v != nil {
+		_u.SetAuthzGeneration(*v)
+	}
+	return _u
+}
+
+// AddAuthzGeneration adds value to the "authz_generation" field.
+func (_u *BalanceLedgerUpdateOne) AddAuthzGeneration(v int64) *BalanceLedgerUpdateOne {
+	_u.mutation.AddAuthzGeneration(v)
+	return _u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (_u *BalanceLedgerUpdateOne) ClearAuthzGeneration() *BalanceLedgerUpdateOne {
+	_u.mutation.ClearAuthzGeneration()
 	return _u
 }
 
@@ -632,6 +872,11 @@ func (_u *BalanceLedgerUpdateOne) check() error {
 			return &ValidationError{Name: "app_id", err: fmt.Errorf(`ent: validator failed for field "BalanceLedger.app_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BalanceSource(); ok {
+		if err := balanceledger.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "BalanceLedger.balance_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RefundOf(); ok {
 		if err := balanceledger.RefundOfValidator(v); err != nil {
 			return &ValidationError{Name: "refund_of", err: fmt.Errorf(`ent: validator failed for field "BalanceLedger.refund_of": %w`, err)}
@@ -688,6 +933,39 @@ func (_u *BalanceLedgerUpdateOne) sqlSave(ctx context.Context) (_node *BalanceLe
 	}
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(balanceledger.FieldUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.OrganizationID(); ok {
+		_spec.SetField(balanceledger.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOrganizationID(); ok {
+		_spec.AddField(balanceledger.FieldOrganizationID, field.TypeInt64, value)
+	}
+	if _u.mutation.OrganizationIDCleared() {
+		_spec.ClearField(balanceledger.FieldOrganizationID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PayerUserID(); ok {
+		_spec.SetField(balanceledger.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPayerUserID(); ok {
+		_spec.AddField(balanceledger.FieldPayerUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.PayerUserIDCleared() {
+		_spec.ClearField(balanceledger.FieldPayerUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BalanceSource(); ok {
+		_spec.SetField(balanceledger.FieldBalanceSource, field.TypeString, value)
+	}
+	if _u.mutation.BalanceSourceCleared() {
+		_spec.ClearField(balanceledger.FieldBalanceSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.AuthzGeneration(); ok {
+		_spec.SetField(balanceledger.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedAuthzGeneration(); ok {
+		_spec.AddField(balanceledger.FieldAuthzGeneration, field.TypeInt64, value)
+	}
+	if _u.mutation.AuthzGenerationCleared() {
+		_spec.ClearField(balanceledger.FieldAuthzGeneration, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Kind(); ok {
 		_spec.SetField(balanceledger.FieldKind, field.TypeInt8, value)

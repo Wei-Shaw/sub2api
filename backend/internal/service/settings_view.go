@@ -20,9 +20,17 @@ type SystemSettings struct {
 	FrontendURL                      string
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
+	PasskeyEnabled                   bool // Passkey 登录
 	SessionBindingEnabled            bool // 会话 IP/UA 绑定（变更即失效）
 	StepUpEnabled                    bool // 敏感操作 step-up 2FA 门控
-	AuditLogRetentionDays            int  // 审计日志保留天数（<=0 永久保留）
+	CompanyUpgradeChargeEnabled      bool // 企业升级是否收费/冻结资金（默认开启）
+	CompanyUpgradeFee                float64
+	CompanyApplicationsEnabled       bool // 企业升级申请开关（配置文件默认，系统设置覆盖）
+	CompanyIAMEnabled                bool // 企业 IAM 开关（配置文件默认，系统设置覆盖）
+	CompanyPublicIDsFinalized        bool // 公共 ID 就绪开关（配置文件默认，系统设置覆盖）
+	CompanyBillingIntegrationEnabled bool // 企业计费链路就绪开关（配置文件默认，系统设置覆盖）
+	CompanyDocumentationURL          string
+	AuditLogRetentionDays            int // 审计日志保留天数（<=0 永久保留）
 
 	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
 	TrustedProxiesDynamicEnabled    bool                        // 总开关
@@ -165,6 +173,7 @@ type SystemSettings struct {
 	DocURL                      string
 	HomeContent                 string
 	HomeProductMenuItems        string // JSON array of homepage product menu items
+	CompactHomeEnabled          bool
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
@@ -212,6 +221,11 @@ type SystemSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// Model Plaza feature (public group/model pricing showcase)
+	ModelPlazaEnabled     bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth bool   `json:"model_plaza_require_auth"`
+	ModelPlazaDescription string `json:"model_plaza_description"`
 
 	// Claude Code version check
 	MinClaudeCodeVersion string
@@ -366,6 +380,7 @@ type PublicSettings struct {
 	PasswordResetEnabled             bool
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
+	PasskeyEnabled                   bool
 	LoginAgreementEnabled            bool
 	LoginAgreementMode               string
 	LoginAgreementUpdatedAt          string
@@ -384,6 +399,7 @@ type PublicSettings struct {
 	DocURL                           string
 	HomeContent                      string
 	HomeProductMenuItems             string // JSON array of homepage product menu items
+	CompactHomeEnabled               bool
 	HideCcsImportButton              bool
 
 	PurchaseSubscriptionEnabled bool
@@ -395,19 +411,22 @@ type PublicSettings struct {
 	CustomMenuVersion           string // 自定义菜单派生版本 hash（缓存值，前端红点周期锚点）
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	LinuxDoOAuthEnabled      bool
-	DingTalkOAuthEnabled     bool
-	WeChatOAuthEnabled       bool
-	WeChatOAuthOpenEnabled   bool
-	WeChatOAuthMPEnabled     bool
-	WeChatOAuthMobileEnabled bool
-	BackendModeEnabled       bool
-	PaymentEnabled           bool
-	OIDCOAuthEnabled         bool
-	OIDCOAuthProviderName    string
-	GitHubOAuthEnabled       bool
-	GoogleOAuthEnabled       bool
-	Version                  string
+	LinuxDoOAuthEnabled        bool
+	DingTalkOAuthEnabled       bool
+	WeChatOAuthEnabled         bool
+	WeChatOAuthOpenEnabled     bool
+	WeChatOAuthMPEnabled       bool
+	WeChatOAuthMobileEnabled   bool
+	BackendModeEnabled         bool
+	CompanyApplicationsEnabled bool
+	CompanyIAMEnabled          bool
+	CompanyDocumentationURL    string
+	PaymentEnabled             bool
+	OIDCOAuthEnabled           bool
+	OIDCOAuthProviderName      string
+	GitHubOAuthEnabled         bool
+	GoogleOAuthEnabled         bool
+	Version                    string
 
 	BalanceLowNotifyEnabled     bool
 	AccountQuotaNotifyEnabled   bool
@@ -420,6 +439,10 @@ type PublicSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// Model Plaza feature (public group/model pricing showcase)
+	ModelPlazaEnabled     bool `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth bool `json:"model_plaza_require_auth"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`

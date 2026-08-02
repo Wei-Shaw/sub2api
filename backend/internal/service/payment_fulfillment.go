@@ -586,7 +586,15 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder, lease
 	if err != nil || g.Status != payment.EntityStatusActive {
 		return fmt.Errorf("group %d no longer exists or inactive", gid)
 	}
-	if err := s.ensurePaymentSubscriptionAssigned(ctx, o, gid, days); err != nil {
+	// Enterprise subscription order: fulfill onto the company subject
+	// (organization_subscriptions) instead of the buyer's personal
+	// subscription. Payment itself already went through the standard personal
+	// gateway pipeline; only the provisioning target differs.
+	if o.OrganizationID != nil {
+		if err := s.ensurePaymentOrganizationSubscriptionAssigned(ctx, o, *o.OrganizationID, gid, days); err != nil {
+			return err
+		}
+	} else if err := s.ensurePaymentSubscriptionAssigned(ctx, o, gid, days); err != nil {
 		return err
 	}
 	// 订阅成功后结算邀请返利。
@@ -595,6 +603,48 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder, lease
 		return err
 	}
 	return s.markCompleted(ctx, o, lease, "SUBSCRIPTION_SUCCESS")
+}
+
+// ensurePaymentOrganizationSubscriptionAssigned provisions/extends the
+// company subscription for a paid enterprise subscription order. It mirrors the
+// idempotency guarantees of ensurePaymentSubscriptionAssigned: the
+// SUBSCRIPTION_ASSIGNED audit log gates re-entry, and the underlying fulfiller
+// is itself idempotent on orderID.
+func (s *PaymentService) ensurePaymentOrganizationSubscriptionAssigned(ctx context.Context, o *dbent.PaymentOrder, orgID, groupID int64, days int) error {
+	if s.orgSubFulfiller == nil {
+		return errors.New("organization subscription fulfiller is unavailable")
+	}
+	alreadyAssigned, err := hasPaymentSubscriptionAssignmentAudit(ctx, s.entClient, o.ID)
+	if err != nil {
+		return fmt.Errorf("check subscription assignment audit: %w", err)
+	}
+	if alreadyAssigned {
+		slog.Info("organization subscription already assigned for order, skipping", "orderID", o.ID, "orgID", orgID, "groupID", groupID)
+		return nil
+	}
+	if err := s.orgSubFulfiller.FulfillOrganizationSubscriptionOrder(ctx, orgID, groupID, days, o.ID); err != nil {
+		return fmt.Errorf("assign organization subscription: %w", err)
+	}
+	detail, _ := json.Marshal(map[string]any{
+		"organizationID": orgID,
+		"groupID":        groupID,
+		"validityDays":   days,
+	})
+	if _, err := s.entClient.PaymentAuditLog.Create().
+		SetOrderID(strconv.FormatInt(o.ID, 10)).
+		SetAction("SUBSCRIPTION_ASSIGNED").
+		SetDetail(string(detail)).
+		SetOperator("system").
+		Save(ctx); err != nil {
+		if dbent.IsConstraintError(err) {
+			claimed, checkErr := hasPaymentSubscriptionAssignmentAudit(ctx, s.entClient, o.ID)
+			if checkErr == nil && claimed {
+				return nil
+			}
+		}
+		return fmt.Errorf("record subscription assignment audit: %w", err)
+	}
+	return nil
 }
 
 func (s *PaymentService) ensurePaymentSubscriptionAssigned(ctx context.Context, o *dbent.PaymentOrder, groupID int64, days int) error {

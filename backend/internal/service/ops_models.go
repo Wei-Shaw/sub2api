@@ -102,8 +102,10 @@ type OpsErrorLogDetail struct {
 }
 
 type OpsErrorLogFilter struct {
-	StartTime *time.Time
-	EndTime   *time.Time
+	ID             *int64
+	OrganizationID *int64
+	StartTime      *time.Time
+	EndTime        *time.Time
 
 	Platform  string
 	GroupID   *int64
@@ -125,6 +127,7 @@ type OpsErrorLogFilter struct {
 	// User-scoped filters (used by the user-facing error requests endpoint and
 	// by admin drill-down from the usage page).
 	UserID   *int64
+	UserIDs  []int64
 	APIKeyID *int64
 
 	// Model matches against requested_model first, then model.

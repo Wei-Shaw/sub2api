@@ -13,6 +13,7 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import { canAccessOrganizationRoute, canOpenCompanyUpgrade, isIAMFinancialRouteRestricted } from './organizationAccess'
 
 /**
  * Route definitions with lazy loading
@@ -48,6 +49,12 @@ const routes: RouteRecordRaw[] = [
       title: 'Login',
       titleKey: 'home.login'
     }
+  },
+  {
+    path: '/iam-login',
+    name: 'IAMLogin',
+    component: () => import('@/views/auth/IAMLoginView.vue'),
+    meta: { requiresAuth: false, requiresIAM: true, titleKey: 'organization.login.title' }
   },
   {
     path: '/register',
@@ -198,6 +205,16 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: false,
       title: 'Pricing Plaza',
       titleKey: 'plaza.title'
+    }
+  },
+  {
+    path: '/model-plaza',
+    name: 'ModelPlaza',
+    component: () => import('@/views/ModelPlazaView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Model Plaza',
+      titleKey: 'modelPlaza.title'
     }
   },
 
@@ -355,6 +372,28 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'profile.title',
       descriptionKey: 'profile.description'
     }
+  },
+  {
+    path: '/profile/company-upgrade',
+    name: 'CompanyUpgrade',
+    component: () => import('@/views/user/ProfileView.vue'),
+    meta: { requiresAuth: true, titleKey: 'organization.upgrade.title' }
+  },
+  {
+    path: '/organization/upgrade',
+    redirect: '/profile/company-upgrade'
+  },
+  {
+    path: '/organization',
+    name: 'OrganizationConsole',
+    component: () => import('@/views/user/OrganizationConsoleView.vue'),
+    meta: { requiresAuth: true, requiresOrganization: true, titleKey: 'organization.console' }
+  },
+  {
+    path: '/organization/change-password',
+    name: 'IAMPasswordChange',
+    component: () => import('@/views/user/IAMPasswordChangeView.vue'),
+    meta: { requiresAuth: true, allowFirstLogin: true, titleKey: 'organization.password.title' }
   },
   {
     path: '/subscriptions',
@@ -516,6 +555,12 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'admin.users.title',
       descriptionKey: 'admin.users.description'
     }
+  },
+  {
+    path: '/admin/company-applications',
+    name: 'AdminCompanyApplications',
+    component: () => import('@/views/admin/CompanyApplicationsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, titleKey: 'organization.admin.title' }
   },
   {
     path: '/admin/groups',
@@ -951,10 +996,24 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
+  const needsCompanySettings = to.meta.requiresIAM || to.name === 'CompanyUpgrade'
+  if (needsCompanySettings && !appStore.publicSettingsLoaded) {
+    try {
+      await appStore.fetchPublicSettings()
+    } catch (error) {
+      console.warn('Failed to load public settings for IAM login', error)
+    }
+  }
+
+  if (to.meta.requiresIAM && appStore.cachedPublicSettings?.company_iam_enabled !== true) {
+    next('/login')
+    return
+  }
+
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
-    if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
+    if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/iam-login' || to.path === '/register')) {
       // In backend mode, non-admin users should NOT be redirected away from login
       // (they are blocked from all protected routes, so redirecting would cause a loop)
       if (appStore.backendModeEnabled && !authStore.isAdmin) {
@@ -964,6 +1023,37 @@ router.beforeEach(async (to, _from, next) => {
       // Admin users go to admin dashboard, regular users go to user dashboard
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
+    }
+    // Model Plaza:公开路由但受「启用开关 + 可选强制登录」双重控制(后端同口径 fail-closed)
+    if (to.path === '/model-plaza') {
+      if (!appStore.publicSettingsLoaded) {
+        try {
+          await appStore.fetchPublicSettings()
+        } catch (error) {
+          console.warn('Failed to load public settings in route guard', error)
+        }
+      }
+      const plazaSettings = appStore.cachedPublicSettings
+      // 仅在设置成功加载且明确为 false 时拦截(瞬时加载失败视为未知,由后端 404 兜底)
+      if (appStore.publicSettingsLoaded && plazaSettings?.model_plaza_enabled === false) {
+        next(
+          authStore.isAuthenticated
+            ? authStore.isAdmin
+              ? '/admin/dashboard'
+              : '/dashboard'
+            : '/home'
+        )
+        return
+      }
+      if (plazaSettings?.model_plaza_require_auth === true && !authStore.isAuthenticated) {
+        next({ path: '/login', query: { redirect: to.fullPath } })
+        return
+      }
+      // Backend mode:登录的非管理员也不可见(匿名由下方公共拦截处理,广场不在白名单)
+      if (appStore.backendModeEnabled && authStore.isAuthenticated && !authStore.isAdmin) {
+        next('/login')
+        return
+      }
     }
     // Backend mode: block public pages for unauthenticated users (except login, key-usage, setup)
     if (appStore.backendModeEnabled && !authStore.isAuthenticated) {
@@ -985,6 +1075,27 @@ router.beforeEach(async (to, _from, next) => {
       query: { redirect: to.fullPath } // Save intended destination
     })
     return
+  }
+
+  const currentUser = authStore.user
+	if (isIAMFinancialRouteRestricted(to.path, currentUser)) {
+		next('/dashboard')
+		return
+	}
+	if (to.name === 'CompanyUpgrade' && !canOpenCompanyUpgrade(currentUser, appStore.cachedPublicSettings?.company_applications_enabled === true)) {
+		next('/dashboard')
+		return
+	}
+  if (currentUser?.must_change_password && to.meta.allowFirstLogin !== true) {
+    next('/organization/change-password')
+    return
+  }
+
+  if (to.meta.requiresOrganization) {
+    if (!canAccessOrganizationRoute(currentUser, to.meta.requiresOrganizationAction, to.meta.requiresOrganizationOwner === true)) {
+      next('/dashboard')
+      return
+    }
   }
 
   // Check admin requirement

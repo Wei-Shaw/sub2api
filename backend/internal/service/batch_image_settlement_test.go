@@ -18,9 +18,17 @@ func TestBatchImageSettlementService_SettlesAndChargesSuccessfulImagesOnly(t *te
 	job.SuccessCount = 3
 	job.FailCount = 2
 	job.ItemCount = 5
+	organizationID, payerUserID, authzGeneration, balanceSource := int64(88), int64(99), int64(7), "shared"
+	job.OrganizationID, job.PayerUserID, job.AuthzGeneration, job.BalanceSource = &organizationID, &payerUserID, &authzGeneration, &balanceSource
+	job.SessionID = batchImageStringPtr("batch-settlement-session")
 	repo.jobs[job.BatchID] = job
 	billing := &fakeBatchImageBillingRepo{}
-	svc := &BatchImageSettlementService{Repo: repo, BillingRepo: billing, Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.25}}
+	cache := &fakeBalanceInvalidator{}
+	usageLogs := &openAIRecordUsageLogRepoStub{}
+	svc := &BatchImageSettlementService{
+		Repo: repo, BillingRepo: billing, Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.25},
+		UsageLogRepo: usageLogs, BalanceCache: cache,
+	}
 
 	result, err := svc.Settle(context.Background(), job.BatchID)
 	require.NoError(t, err)
@@ -32,15 +40,41 @@ func TestBatchImageSettlementService_SettlesAndChargesSuccessfulImagesOnly(t *te
 	require.Equal(t, 0.75, *repo.jobs[job.BatchID].ActualCost)
 	require.NotEmpty(t, batchImageDerefString(repo.jobs[job.BatchID].ManifestHash))
 	require.NotNil(t, repo.jobs[job.BatchID].SettledAt)
+	require.Equal(t, "batch-settlement-session", batchImageDerefString(usageLogs.lastLog.SessionID))
 	require.Len(t, billing.captures, 1)
 	require.Equal(t, int64(321), billing.captures[0].APIKeyID)
 	require.Equal(t, job.UserID, billing.captures[0].UserID)
+	require.Equal(t, organizationID, *billing.captures[0].OrganizationID)
+	require.Equal(t, payerUserID, billing.captures[0].PayerUserID)
+	require.Equal(t, balanceSource, billing.captures[0].BalanceSource)
+	require.Equal(t, authzGeneration, billing.captures[0].AuthzGeneration)
 	require.Equal(t, job.BatchID, billing.captures[0].BatchID)
 	require.Equal(t, 0.75, billing.captures[0].ActualAmount)
 	require.Equal(t, 1.25, billing.captures[0].HoldAmount)
+	require.Equal(t, []int64{payerUserID}, cache.userIDs)
 	require.NotContains(t, fmt.Sprintf("%+v", billing.captures[0]), batchImageTestData)
 	require.NotContains(t, fmt.Sprintf("%+v", billing.captures[0]), "gs://")
 	require.NotContains(t, fmt.Sprintf("%+v", billing.captures[0]), "prompt")
+}
+
+func TestBatchImageSettlementService_CompanyBalanceSkipsOwnerBalanceCache(t *testing.T) {
+	repo := newFakeBatchImageRepository()
+	job := testSettlingBatchImageJob("imgbatch_company_cache")
+	job.SuccessCount = 1
+	job.FailCount = 0
+	job.ItemCount = 1
+	organizationID, ownerID, source := int64(88), int64(99), BalanceSourceCompany
+	job.OrganizationID, job.PayerUserID, job.BalanceSource = &organizationID, &ownerID, &source
+	repo.jobs[job.BatchID] = job
+	cache := &fakeBalanceInvalidator{}
+	svc := &BatchImageSettlementService{
+		Repo: repo, BillingRepo: &fakeBatchImageBillingRepo{}, BalanceCache: cache,
+		Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.25},
+	}
+
+	_, err := svc.Settle(context.Background(), job.BatchID)
+	require.NoError(t, err)
+	require.Empty(t, cache.userIDs)
 }
 
 func TestBatchImageSettlementService_ZeroSuccessCanComplete(t *testing.T) {

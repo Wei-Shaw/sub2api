@@ -30,6 +30,10 @@ func (BatchImageJob) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("batch_id").MaxLen(64).Immutable(),
 		field.Int64("user_id"),
+		field.Int64("organization_id").Optional().Nillable(),
+		field.Int64("payer_user_id").Optional().Nillable(),
+		field.String("balance_source").MaxLen(16).Optional().Nillable(),
+		field.Int64("authz_generation").Optional().Nillable(),
 		field.Int64("api_key_id").Optional().Nillable(),
 		field.Int64("account_id").Optional().Nillable(),
 		field.String("provider").MaxLen(32),
@@ -75,6 +79,7 @@ func (BatchImageJob) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("batch_id").Unique(),
 		index.Fields("user_id", "created_at"),
+		index.Fields("organization_id", "created_at"),
 		index.Fields("status"),
 		index.Fields("provider", "status"),
 		index.Fields("idempotency_key").Annotations(entsql.IndexWhere("idempotency_key IS NOT NULL AND idempotency_key <> ''")),

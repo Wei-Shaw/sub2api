@@ -68,6 +68,62 @@ func (_c *BalanceLedgerCreate) SetUserID(v int64) *BalanceLedgerCreate {
 	return _c
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_c *BalanceLedgerCreate) SetOrganizationID(v int64) *BalanceLedgerCreate {
+	_c.mutation.SetOrganizationID(v)
+	return _c
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_c *BalanceLedgerCreate) SetNillableOrganizationID(v *int64) *BalanceLedgerCreate {
+	if v != nil {
+		_c.SetOrganizationID(*v)
+	}
+	return _c
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_c *BalanceLedgerCreate) SetPayerUserID(v int64) *BalanceLedgerCreate {
+	_c.mutation.SetPayerUserID(v)
+	return _c
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_c *BalanceLedgerCreate) SetNillablePayerUserID(v *int64) *BalanceLedgerCreate {
+	if v != nil {
+		_c.SetPayerUserID(*v)
+	}
+	return _c
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_c *BalanceLedgerCreate) SetBalanceSource(v string) *BalanceLedgerCreate {
+	_c.mutation.SetBalanceSource(v)
+	return _c
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_c *BalanceLedgerCreate) SetNillableBalanceSource(v *string) *BalanceLedgerCreate {
+	if v != nil {
+		_c.SetBalanceSource(*v)
+	}
+	return _c
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_c *BalanceLedgerCreate) SetAuthzGeneration(v int64) *BalanceLedgerCreate {
+	_c.mutation.SetAuthzGeneration(v)
+	return _c
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_c *BalanceLedgerCreate) SetNillableAuthzGeneration(v *int64) *BalanceLedgerCreate {
+	if v != nil {
+		_c.SetAuthzGeneration(*v)
+	}
+	return _c
+}
+
 // SetKind sets the "kind" field.
 func (_c *BalanceLedgerCreate) SetKind(v int8) *BalanceLedgerCreate {
 	_c.mutation.SetKind(v)
@@ -222,6 +278,11 @@ func (_c *BalanceLedgerCreate) check() error {
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "BalanceLedger.user_id"`)}
 	}
+	if v, ok := _c.mutation.BalanceSource(); ok {
+		if err := balanceledger.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "BalanceLedger.balance_source": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Kind(); !ok {
 		return &ValidationError{Name: "kind", err: errors.New(`ent: missing required field "BalanceLedger.kind"`)}
 	}
@@ -293,6 +354,22 @@ func (_c *BalanceLedgerCreate) createSpec() (*BalanceLedger, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.UserID(); ok {
 		_spec.SetField(balanceledger.FieldUserID, field.TypeInt64, value)
 		_node.UserID = value
+	}
+	if value, ok := _c.mutation.OrganizationID(); ok {
+		_spec.SetField(balanceledger.FieldOrganizationID, field.TypeInt64, value)
+		_node.OrganizationID = &value
+	}
+	if value, ok := _c.mutation.PayerUserID(); ok {
+		_spec.SetField(balanceledger.FieldPayerUserID, field.TypeInt64, value)
+		_node.PayerUserID = &value
+	}
+	if value, ok := _c.mutation.BalanceSource(); ok {
+		_spec.SetField(balanceledger.FieldBalanceSource, field.TypeString, value)
+		_node.BalanceSource = &value
+	}
+	if value, ok := _c.mutation.AuthzGeneration(); ok {
+		_spec.SetField(balanceledger.FieldAuthzGeneration, field.TypeInt64, value)
+		_node.AuthzGeneration = &value
 	}
 	if value, ok := _c.mutation.Kind(); ok {
 		_spec.SetField(balanceledger.FieldKind, field.TypeInt8, value)
@@ -425,6 +502,96 @@ func (u *BalanceLedgerUpsert) UpdateUserID() *BalanceLedgerUpsert {
 // AddUserID adds v to the "user_id" field.
 func (u *BalanceLedgerUpsert) AddUserID(v int64) *BalanceLedgerUpsert {
 	u.Add(balanceledger.FieldUserID, v)
+	return u
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *BalanceLedgerUpsert) SetOrganizationID(v int64) *BalanceLedgerUpsert {
+	u.Set(balanceledger.FieldOrganizationID, v)
+	return u
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *BalanceLedgerUpsert) UpdateOrganizationID() *BalanceLedgerUpsert {
+	u.SetExcluded(balanceledger.FieldOrganizationID)
+	return u
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *BalanceLedgerUpsert) AddOrganizationID(v int64) *BalanceLedgerUpsert {
+	u.Add(balanceledger.FieldOrganizationID, v)
+	return u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *BalanceLedgerUpsert) ClearOrganizationID() *BalanceLedgerUpsert {
+	u.SetNull(balanceledger.FieldOrganizationID)
+	return u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *BalanceLedgerUpsert) SetPayerUserID(v int64) *BalanceLedgerUpsert {
+	u.Set(balanceledger.FieldPayerUserID, v)
+	return u
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *BalanceLedgerUpsert) UpdatePayerUserID() *BalanceLedgerUpsert {
+	u.SetExcluded(balanceledger.FieldPayerUserID)
+	return u
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *BalanceLedgerUpsert) AddPayerUserID(v int64) *BalanceLedgerUpsert {
+	u.Add(balanceledger.FieldPayerUserID, v)
+	return u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *BalanceLedgerUpsert) ClearPayerUserID() *BalanceLedgerUpsert {
+	u.SetNull(balanceledger.FieldPayerUserID)
+	return u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *BalanceLedgerUpsert) SetBalanceSource(v string) *BalanceLedgerUpsert {
+	u.Set(balanceledger.FieldBalanceSource, v)
+	return u
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *BalanceLedgerUpsert) UpdateBalanceSource() *BalanceLedgerUpsert {
+	u.SetExcluded(balanceledger.FieldBalanceSource)
+	return u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *BalanceLedgerUpsert) ClearBalanceSource() *BalanceLedgerUpsert {
+	u.SetNull(balanceledger.FieldBalanceSource)
+	return u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *BalanceLedgerUpsert) SetAuthzGeneration(v int64) *BalanceLedgerUpsert {
+	u.Set(balanceledger.FieldAuthzGeneration, v)
+	return u
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *BalanceLedgerUpsert) UpdateAuthzGeneration() *BalanceLedgerUpsert {
+	u.SetExcluded(balanceledger.FieldAuthzGeneration)
+	return u
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *BalanceLedgerUpsert) AddAuthzGeneration(v int64) *BalanceLedgerUpsert {
+	u.Add(balanceledger.FieldAuthzGeneration, v)
+	return u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *BalanceLedgerUpsert) ClearAuthzGeneration() *BalanceLedgerUpsert {
+	u.SetNull(balanceledger.FieldAuthzGeneration)
 	return u
 }
 
@@ -653,6 +820,111 @@ func (u *BalanceLedgerUpsertOne) AddUserID(v int64) *BalanceLedgerUpsertOne {
 func (u *BalanceLedgerUpsertOne) UpdateUserID() *BalanceLedgerUpsertOne {
 	return u.Update(func(s *BalanceLedgerUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *BalanceLedgerUpsertOne) SetOrganizationID(v int64) *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *BalanceLedgerUpsertOne) AddOrganizationID(v int64) *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.AddOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *BalanceLedgerUpsertOne) UpdateOrganizationID() *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *BalanceLedgerUpsertOne) ClearOrganizationID() *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.ClearOrganizationID()
+	})
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *BalanceLedgerUpsertOne) SetPayerUserID(v int64) *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.SetPayerUserID(v)
+	})
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *BalanceLedgerUpsertOne) AddPayerUserID(v int64) *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.AddPayerUserID(v)
+	})
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *BalanceLedgerUpsertOne) UpdatePayerUserID() *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.UpdatePayerUserID()
+	})
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *BalanceLedgerUpsertOne) ClearPayerUserID() *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.ClearPayerUserID()
+	})
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *BalanceLedgerUpsertOne) SetBalanceSource(v string) *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.SetBalanceSource(v)
+	})
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *BalanceLedgerUpsertOne) UpdateBalanceSource() *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.UpdateBalanceSource()
+	})
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *BalanceLedgerUpsertOne) ClearBalanceSource() *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.ClearBalanceSource()
+	})
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *BalanceLedgerUpsertOne) SetAuthzGeneration(v int64) *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.SetAuthzGeneration(v)
+	})
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *BalanceLedgerUpsertOne) AddAuthzGeneration(v int64) *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.AddAuthzGeneration(v)
+	})
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *BalanceLedgerUpsertOne) UpdateAuthzGeneration() *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.UpdateAuthzGeneration()
+	})
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *BalanceLedgerUpsertOne) ClearAuthzGeneration() *BalanceLedgerUpsertOne {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.ClearAuthzGeneration()
 	})
 }
 
@@ -1067,6 +1339,111 @@ func (u *BalanceLedgerUpsertBulk) AddUserID(v int64) *BalanceLedgerUpsertBulk {
 func (u *BalanceLedgerUpsertBulk) UpdateUserID() *BalanceLedgerUpsertBulk {
 	return u.Update(func(s *BalanceLedgerUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *BalanceLedgerUpsertBulk) SetOrganizationID(v int64) *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *BalanceLedgerUpsertBulk) AddOrganizationID(v int64) *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.AddOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *BalanceLedgerUpsertBulk) UpdateOrganizationID() *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *BalanceLedgerUpsertBulk) ClearOrganizationID() *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.ClearOrganizationID()
+	})
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *BalanceLedgerUpsertBulk) SetPayerUserID(v int64) *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.SetPayerUserID(v)
+	})
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *BalanceLedgerUpsertBulk) AddPayerUserID(v int64) *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.AddPayerUserID(v)
+	})
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *BalanceLedgerUpsertBulk) UpdatePayerUserID() *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.UpdatePayerUserID()
+	})
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *BalanceLedgerUpsertBulk) ClearPayerUserID() *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.ClearPayerUserID()
+	})
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *BalanceLedgerUpsertBulk) SetBalanceSource(v string) *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.SetBalanceSource(v)
+	})
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *BalanceLedgerUpsertBulk) UpdateBalanceSource() *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.UpdateBalanceSource()
+	})
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *BalanceLedgerUpsertBulk) ClearBalanceSource() *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.ClearBalanceSource()
+	})
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *BalanceLedgerUpsertBulk) SetAuthzGeneration(v int64) *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.SetAuthzGeneration(v)
+	})
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *BalanceLedgerUpsertBulk) AddAuthzGeneration(v int64) *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.AddAuthzGeneration(v)
+	})
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *BalanceLedgerUpsertBulk) UpdateAuthzGeneration() *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.UpdateAuthzGeneration()
+	})
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *BalanceLedgerUpsertBulk) ClearAuthzGeneration() *BalanceLedgerUpsertBulk {
+	return u.Update(func(s *BalanceLedgerUpsert) {
+		s.ClearAuthzGeneration()
 	})
 }
 

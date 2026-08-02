@@ -162,6 +162,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 		SupportedModelScopes:            []string{"claude", "gemini_text"},
 		SortOrder:                       9,
 		AllowMessagesDispatch:           true,
+		AllowLive:                       true,
 		RequireOAuthOnly:                true,
 		RequirePrivacySet:               true,
 		DefaultMappedModel:              "gpt-5.4",

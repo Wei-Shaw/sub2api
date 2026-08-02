@@ -27,6 +27,7 @@ vendor/
 
 # Go 编译缓存
 backend/.gocache/
+backend/.go-build-cache/
 
 # ===================
 # Node.js / Vue 前端
@@ -131,6 +132,8 @@ AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
+.go-build-cache/
+.golangci-lint-cache/
 vite.config.js
 docs/*
 !docs/PAYMENT.md

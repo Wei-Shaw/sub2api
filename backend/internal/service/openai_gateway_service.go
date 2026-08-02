@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/platform/liveattestation"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
@@ -420,21 +421,25 @@ type OpenAIGatewayService struct {
 	settingService            *SettingService
 	userPlatformQuotaRepo     UserPlatformQuotaRepository
 	cosService                *COSImageTransferService
+	billingContextResolver    *BillingContextResolver
+	liveAttestation           liveattestation.Provider
+	liveAttestationCipher     SecretEncryptor
 
-	openaiWSPoolOnce              sync.Once
-	openaiWSStateStoreOnce        sync.Once
-	openaiSchedulerOnce           sync.Once
-	openaiProxyStreamCircuitOnce  sync.Once
-	openaiWSPassthroughDialerOnce sync.Once
-	openaiModelTransientOnce      sync.Once
-	agentIdentityTaskMu           sync.Mutex
-	openaiWSPool                  *openAIWSConnPool
-	openaiWSStateStore            OpenAIWSStateStore
-	openaiScheduler               OpenAIAccountScheduler
-	openaiWSPassthroughDialer     openAIWSClientDialer
-	openaiAccountStats            *openAIAccountRuntimeStats
-	openaiModelTransient          *openAIAccountModelTransientState
-	openaiProxyStreamCircuit      *openAIProxyStreamCircuit
+	openaiWSPoolOnce               sync.Once
+	openaiWSStateStoreOnce         sync.Once
+	openaiSchedulerOnce            sync.Once
+	openaiProxyStreamCircuitOnce   sync.Once
+	openaiWSPassthroughDialerOnce  sync.Once
+	openaiModelTransientOnce       sync.Once
+	agentIdentityTaskMu            sync.Mutex
+	openaiWSPool                   *openAIWSConnPool
+	openaiWSStateStore             OpenAIWSStateStore
+	openaiScheduler                OpenAIAccountScheduler
+	openaiWSPassthroughDialer      openAIWSClientDialer
+	openaiAccountStats             *openAIAccountRuntimeStats
+	openaiModelTransient           *openAIAccountModelTransientState
+	openaiProxyStreamCircuit       *openAIProxyStreamCircuit
+	openaiProxyStreamFailOpenLogAt atomic.Int64
 
 	openaiWSFallbackUntil               sync.Map // key: int64(accountID), value: time.Time
 	openaiAccountRuntimeBlockUntil      sync.Map // key: int64(accountID), value: time.Time
@@ -450,6 +455,12 @@ type OpenAIGatewayService struct {
 	codexModelsManifestCache            codexModelsManifestCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
+}
+
+func (s *OpenAIGatewayService) SetBillingContextResolver(resolver *BillingContextResolver) {
+	if s != nil {
+		s.billingContextResolver = resolver
+	}
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -513,6 +524,8 @@ func NewOpenAIGatewayService(
 		settingService:        settingService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 		cosService:            cosService,
+		liveAttestation:       liveattestation.NewProvider(),
+		liveAttestationCipher: newLiveAttestationCipher(cfg),
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 		openaiModelTransient:  newOpenAIAccountModelTransientState(openAIModelTransientDefaultMax),
@@ -620,13 +633,15 @@ func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle 
 
 func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 	return &billingDeps{
-		accountRepo:           s.accountRepo,
-		userRepo:              s.userRepo,
-		userSubRepo:           s.userSubRepo,
-		billingCacheService:   s.billingCacheService,
-		deferredService:       s.deferredService,
-		balanceNotifyService:  s.balanceNotifyService,
-		userPlatformQuotaRepo: s.userPlatformQuotaRepo,
+		accountRepo:            s.accountRepo,
+		userRepo:               s.userRepo,
+		userSubRepo:            s.userSubRepo,
+		billingCacheService:    s.billingCacheService,
+		deferredService:        s.deferredService,
+		balanceNotifyService:   s.balanceNotifyService,
+		userPlatformQuotaRepo:  s.userPlatformQuotaRepo,
+		billingContextResolver: s.billingContextResolver,
+		cfg:                    s.cfg,
 	}
 }
 

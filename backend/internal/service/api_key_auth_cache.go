@@ -8,16 +8,18 @@ import (
 
 // APIKeyAuthSnapshot API Key 认证缓存快照（仅包含认证所需字段）
 type APIKeyAuthSnapshot struct {
-	Version     int                      `json:"version"`
-	APIKeyID    int64                    `json:"api_key_id"`
-	UserID      int64                    `json:"user_id"`
-	GroupID     *int64                   `json:"group_id,omitempty"`
-	Name        string                   `json:"name"`
-	Status      string                   `json:"status"`
-	IPWhitelist []string                 `json:"ip_whitelist,omitempty"`
-	IPBlacklist []string                 `json:"ip_blacklist,omitempty"`
-	User        APIKeyAuthUserSnapshot   `json:"user"`
-	Group       *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
+	Version                    int                      `json:"version"`
+	APIKeyID                   int64                    `json:"api_key_id"`
+	UserID                     int64                    `json:"user_id"`
+	GroupID                    *int64                   `json:"group_id,omitempty"`
+	FallbackGroupIDs           []int64                  `json:"fallback_group_ids,omitempty"`
+	OrganizationSubscriptionID *int64                   `json:"organization_subscription_id,omitempty"`
+	Name                       string                   `json:"name"`
+	Status                     string                   `json:"status"`
+	IPWhitelist                []string                 `json:"ip_whitelist,omitempty"`
+	IPBlacklist                []string                 `json:"ip_blacklist,omitempty"`
+	User                       APIKeyAuthUserSnapshot   `json:"user"`
+	Group                      *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
 
 	// Quota fields for API Key independent quota feature
 	Quota     float64 `json:"quota"`      // Quota limit in USD (0 = unlimited)
@@ -34,12 +36,17 @@ type APIKeyAuthSnapshot struct {
 
 // APIKeyAuthUserSnapshot 用户快照
 type APIKeyAuthUserSnapshot struct {
-	ID            int64   `json:"id"`
-	Status        string  `json:"status"`
-	Role          string  `json:"role"`
-	Balance       float64 `json:"balance"`
-	Concurrency   int     `json:"concurrency"`
-	AllowedGroups []int64 `json:"allowed_groups,omitempty"`
+	ID                 int64   `json:"id"`
+	IdentityType       string  `json:"identity_type,omitempty"`
+	AccountID          string  `json:"account_id,omitempty"`
+	ExternalUserID     string  `json:"external_user_id,omitempty"`
+	AuthzGeneration    int64   `json:"authz_generation,omitempty"`
+	MustChangePassword bool    `json:"must_change_password,omitempty"`
+	Status             string  `json:"status"`
+	Role               string  `json:"role"`
+	Balance            float64 `json:"balance"`
+	Concurrency        int     `json:"concurrency"`
+	AllowedGroups      []int64 `json:"allowed_groups,omitempty"`
 
 	// Balance notification fields (required for CheckBalanceAfterDeduction)
 	Email                      string             `json:"email"`
@@ -102,6 +109,7 @@ type APIKeyAuthGroupSnapshot struct {
 
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool                              `json:"allow_messages_dispatch"`
+	AllowLive                   bool                              `json:"allow_live"`
 	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
 	ModelsListConfig            GroupModelsListConfig             `json:"models_list_config,omitempty"`
@@ -127,6 +135,17 @@ type APIKeyAuthGroupSnapshot struct {
 	KiroStickySessionTTLSeconds int     `json:"kiro_sticky_session_ttl_seconds"`
 	KiroCacheEmulationRatio     float64 `json:"kiro_cache_emulation_ratio"`
 	KiroEndpointMode            string  `json:"kiro_endpoint_mode"`
+
+	// 分组利润控制：调度准入门在直连热路径上读的就是这份快照——门解析
+	// （resolveOpenAIProfitControlGate / resolveProfitControlGroup）优先取
+	// 认证中间件放入 ctx 的 Group，而它正是本快照物化出来的对象，生产绝大
+	// 多数流量走的都是这条路；只有 composite/模型路由等被调度分组与认证分组
+	// 不一致时才回源 schedulerSnapshot。
+	// 因此这三个字段与 GetByKeyForAuth 的投影都不得删减：漏掉任何一个，
+	// 门会拿到零值 ProfitControlEnabled=false 而静默失效（有集成测试兜底）。
+	ProfitControlEnabled bool    `json:"profit_control_enabled"`
+	ProfitMinMargin      float64 `json:"profit_min_margin"`
+	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

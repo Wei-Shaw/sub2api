@@ -45,6 +45,10 @@ func (BalanceLedger) Fields() []ent.Field {
 			MaxLen(64).
 			NotEmpty(),
 		field.Int64("user_id"),
+		field.Int64("organization_id").Optional().Nillable(),
+		field.Int64("payer_user_id").Optional().Nillable(),
+		field.String("balance_source").MaxLen(16).Optional().Nillable(),
+		field.Int64("authz_generation").Optional().Nillable(),
 		// 1=deduct, 2=refund
 		field.Int8("kind"),
 		// 本笔金额（正数，方向由 kind 决定）。与 users.balance 对齐 decimal(20,8)。

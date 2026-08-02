@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -74,4 +75,100 @@ func TestHasResolvableTokenPricing(t *testing.T) {
 	// billingService 缺失时 fail-closed（不误判有价）
 	empty := &GatewayService{}
 	require.False(t, empty.hasResolvableTokenPricing(ctx, "claude-sonnet-4", apiKey))
+}
+
+func TestApplyUsageBillingLegacyFallbackUsesResolvedPayerAndSnapshotsUsage(t *testing.T) {
+	organizationID := int64(8)
+	resolved := &BillingContext{
+		ConsumerUserID:  22,
+		OrganizationID:  &organizationID,
+		PayerUserID:     99,
+		BalanceSource:   BalanceSourceCompany,
+		AuthzGeneration: 7,
+	}
+	userRepo := &fakeUserRepo{balance: 100}
+	usageLog := &UsageLog{RequestID: "legacy-shared"}
+	organizationRepo := &organizationRepoStub{resolved: resolved, organizationBalance: 100}
+	applied, err := applyUsageBilling(context.Background(), usageLog.RequestID, usageLog, &postUsageBillingParams{
+		Cost:    &CostBreakdown{ActualCost: 2},
+		User:    &User{ID: 22},
+		APIKey:  &APIKey{},
+		Account: &Account{},
+	}, &billingDeps{
+		userRepo:               userRepo,
+		billingContextResolver: NewBillingContextResolver(organizationRepo),
+	}, nil)
+
+	require.NoError(t, err)
+	require.True(t, applied)
+	require.Empty(t, userRepo.deductUserIDs)
+	require.Equal(t, []float64{2}, organizationRepo.organizationBalanceDebits)
+	require.Equal(t, 98.0, organizationRepo.organizationBalance)
+	require.Equal(t, &organizationID, usageLog.OrganizationID)
+	require.Equal(t, int64(99), *usageLog.PayerUserID)
+	require.Equal(t, BalanceSourceCompany, *usageLog.BalanceSource)
+	require.Equal(t, int64(7), *usageLog.AuthzGeneration)
+	require.Equal(t, 2.0, organizationRepo.requiredAmount)
+}
+
+func TestApplyUsageBillingReusesPreResolvedContext(t *testing.T) {
+	organizationID := int64(8)
+	resolved := &BillingContext{
+		ConsumerUserID: 22, OrganizationID: &organizationID, PayerUserID: 99,
+		BalanceSource: BalanceSourceCompany, AuthzGeneration: 7,
+	}
+	userRepo := &fakeUserRepo{balance: 100}
+	usageLog := &UsageLog{RequestID: "pre-resolved-shared"}
+	_, err := applyUsageBilling(context.Background(), usageLog.RequestID, usageLog, &postUsageBillingParams{
+		Cost: &CostBreakdown{ActualCost: 2}, User: &User{ID: 22}, APIKey: &APIKey{}, Account: &Account{},
+		BillingContext: resolved,
+	}, &billingDeps{
+		userRepo: userRepo,
+		billingContextResolver: NewBillingContextResolver(&organizationRepoStub{
+			resolveErr:          errors.New("must not resolve twice"),
+			organizationBalance: 100,
+		}),
+	}, nil)
+
+	require.NoError(t, err)
+	require.Empty(t, userRepo.deductUserIDs)
+}
+
+func TestApplyUsageBillingPersistsCompletedUsageAfterLimitWasReached(t *testing.T) {
+	organizationID := int64(8)
+	resolved := &BillingContext{
+		ConsumerUserID: 22, OrganizationID: &organizationID, PayerUserID: 99,
+		BalanceSource: BalanceSourceCompany, AuthzGeneration: 7,
+	}
+	organizationRepo := &organizationRepoStub{
+		resolved:            resolved,
+		spendCheckErr:       ErrDailySpendLimitExceeded,
+		organizationBalance: 100,
+	}
+	usageLog := &UsageLog{RequestID: "completed-after-limit"}
+
+	applied, err := applyUsageBilling(context.Background(), usageLog.RequestID, usageLog, &postUsageBillingParams{
+		Cost: &CostBreakdown{ActualCost: 2}, User: &User{ID: 22}, APIKey: &APIKey{}, Account: &Account{},
+	}, &billingDeps{billingContextResolver: NewBillingContextResolver(organizationRepo)}, nil)
+
+	require.NoError(t, err)
+	require.True(t, applied)
+	require.Zero(t, organizationRepo.spendCheckCalls)
+	require.Equal(t, []float64{2}, organizationRepo.organizationBalanceDebits)
+	require.Equal(t, BalanceSourceCompany, *usageLog.BalanceSource)
+}
+
+func TestResolveAndSnapshotBillingContextPopulatesNonBillableUsage(t *testing.T) {
+	organizationID := int64(8)
+	usageLog := &UsageLog{}
+	resolved, err := resolveAndSnapshotBillingContext(context.Background(), usageLog, &User{ID: 22}, NewBillingContextResolver(&organizationRepoStub{resolved: &BillingContext{
+		ConsumerUserID: 22, OrganizationID: &organizationID, PayerUserID: 99,
+		BalanceSource: BalanceSourceCompany, AuthzGeneration: 7,
+	}}), 0)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(99), resolved.PayerUserID)
+	require.Equal(t, &organizationID, usageLog.OrganizationID)
+	require.Equal(t, int64(99), *usageLog.PayerUserID)
+	require.Equal(t, BalanceSourceCompany, *usageLog.BalanceSource)
 }

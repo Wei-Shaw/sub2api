@@ -42,10 +42,12 @@ type RecordUsageInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription  // 可选：订阅信息
+	PricingAt          time.Time          // token 售价固定时刻；零值保持既有的记录时刻语义
 	InboundEndpoint    string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
 	UserAgent          string             // 请求的 User-Agent
 	IPAddress          string             // 请求的客户端 IP 地址
+	SessionID          string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
@@ -80,6 +82,27 @@ type postUsageBillingParams struct {
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	BillingContext        *BillingContext
+}
+
+func isSubscriptionBillingForAPIKey(apiKey *APIKey, subscription *UserSubscription) bool {
+	if apiKey == nil {
+		return false
+	}
+	// A validated organization subscription binding is authoritative. Do not
+	// fall back to balance billing because a stale/partial group snapshot lacks
+	// SubscriptionType.
+	if apiKey.OrganizationSubscriptionID != nil {
+		return true
+	}
+	return apiKey.Group != nil && apiKey.Group.IsSubscriptionType() && subscription != nil && subscription.ID > 0
+}
+
+func effectiveSubscriptionForAPIKey(apiKey *APIKey, subscription *UserSubscription) *UserSubscription {
+	if !isSubscriptionBillingForAPIKey(apiKey, subscription) || subscription == nil || subscription.ID <= 0 {
+		return nil
+	}
+	return subscription
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -130,27 +153,45 @@ func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
 // postUsageBilling is the legacy fallback billing path used when the unified
 // billing repo is unavailable (nil). Production uses applyUsageBilling → repo.Apply
 // for atomic billing. This path only runs in tests or degraded mode.
-func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps) {
+func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, resolved *BillingContext) {
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
 
 	cost := p.Cost
+	payerUserID := p.User.ID
+	if resolved != nil && resolved.PayerUserID > 0 {
+		payerUserID = resolved.PayerUserID
+	}
 
 	if p.IsSubscriptionBill {
 		// Subscription usage tracked by ActualCost so group rate multiplier
 		// consumes the quota at the expected speed.
 		if cost.ActualCost > 0 {
-			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.ActualCost); err != nil {
-				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
+			if enterpriseUpdater, ok := p.APIKeyService.(interface {
+				IncrementEnterpriseSubscriptionUsage(context.Context, int64, float64) error
+			}); p.APIKey.OrganizationSubscriptionID != nil && ok {
+				if err := enterpriseUpdater.IncrementEnterpriseSubscriptionUsage(billingCtx, *p.APIKey.OrganizationSubscriptionID, cost.ActualCost); err != nil {
+					slog.Error("increment enterprise subscription usage failed", "subscription_id", *p.APIKey.OrganizationSubscriptionID, "error", err)
+				}
+			} else if p.Subscription != nil {
+				if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.ActualCost); err != nil {
+					slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
+				}
 			}
 		}
 	} else {
 		if cost.ActualCost > 0 {
-			if err := deps.userRepo.DeductBalance(billingCtx, p.User.ID, cost.ActualCost); err != nil {
-				slog.Error("deduct balance failed", "user_id", p.User.ID, "error", err)
-			} else if deps.billingCacheService != nil {
-				if err := deps.billingCacheService.InvalidateUserBalance(billingCtx, p.User.ID); err != nil {
-					slog.Warn("invalidate balance cache after legacy deduction failed", "user_id", p.User.ID, "error", err)
+			var err error
+			if resolved != nil && resolved.UsesCompanyBalance() && deps.billingContextResolver != nil {
+				_, err = deps.billingContextResolver.DeductOrganizationBalance(billingCtx, resolved, cost.ActualCost)
+			} else {
+				err = deps.userRepo.DeductBalance(billingCtx, payerUserID, cost.ActualCost)
+			}
+			if err != nil {
+				slog.Error("deduct balance failed", "consumer_user_id", p.User.ID, "payer_user_id", payerUserID, "error", err)
+			} else if deps.billingCacheService != nil && (resolved == nil || !resolved.UsesCompanyBalance()) {
+				if err := deps.billingCacheService.InvalidateUserBalance(billingCtx, payerUserID); err != nil {
+					slog.Warn("invalidate balance cache after legacy deduction failed", "payer_user_id", payerUserID, "error", err)
 				}
 			}
 		}
@@ -267,7 +308,11 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	// user-specific) rate multiplier consumes subscription quota at the expected
 	// speed. TotalCost remains the raw (pre-multiplier) value; downstream guards
 	// on "> 0" still correctly skip free subscriptions (RateMultiplier == 0).
-	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
+	if p.IsSubscriptionBill && p.Cost.TotalCost > 0 && p.APIKey.OrganizationSubscriptionID != nil {
+		// Enterprise API key: consume the bound company subscription.
+		cmd.OrganizationSubscriptionID = p.APIKey.OrganizationSubscriptionID
+		cmd.SubscriptionCost = p.Cost.ActualCost
+	} else if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
 		cmd.SubscriptionID = &p.Subscription.ID
 		cmd.SubscriptionCost = p.Cost.ActualCost
 	} else if p.Cost.ActualCost > 0 {
@@ -293,14 +338,33 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		return false, nil
 	}
 
-	cmd := buildUsageBillingCommand(requestID, usageLog, p)
-	if cmd == nil || cmd.RequestID == "" || repo == nil {
-		postUsageBilling(ctx, p, deps)
-		return true, nil
-	}
-
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
+
+	resolved := p.BillingContext
+	if resolved == nil {
+		requiredAmount := 0.0
+		if p.Cost != nil {
+			requiredAmount = p.Cost.ActualCost
+		}
+		var err error
+		resolved, err = resolveAndSnapshotBillingContext(billingCtx, usageLog, p.User, deps.billingContextResolver, requiredAmount)
+		if err != nil {
+			return false, err
+		}
+	}
+	snapshotEnterpriseSubscriptionSource(usageLog, p, resolved)
+	cmd := buildUsageBillingCommand(requestID, usageLog, p)
+	if cmd == nil || cmd.RequestID == "" || repo == nil {
+		postUsageBilling(ctx, p, deps, resolved)
+		return true, nil
+	}
+	cmd.OrganizationID = resolved.OrganizationID
+	cmd.PayerUserID = resolved.PayerUserID
+	cmd.BalanceSource = resolved.BalanceSource
+	cmd.AuthzGeneration = resolved.AuthzGeneration
+	cmd.RequestFingerprint = ""
+	cmd.Normalize()
 
 	result, err := repo.Apply(billingCtx, cmd)
 	if err != nil {
@@ -317,9 +381,49 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 			invalidator.InvalidateAuthCacheByKey(billingCtx, p.APIKey.Key)
 		}
 	}
+	if deps.billingContextResolver != nil {
+		if err := deps.billingContextResolver.RecordSpendLimitAlert(billingCtx, resolved); err != nil {
+			slog.WarnContext(billingCtx, "failed to enqueue organization spend limit alert", "consumer_user_id", resolved.ConsumerUserID, "error", err)
+		}
+	}
 
 	finalizePostUsageBilling(billingCtx, p, deps, result)
 	return true, nil
+}
+
+func usageBillingInt64Ptr(value int64) *int64 { return &value }
+
+func usageBillingStringPtr(value string) *string { return &value }
+
+func snapshotEnterpriseSubscriptionSource(usageLog *UsageLog, p *postUsageBillingParams, resolved *BillingContext) {
+	if p == nil || resolved == nil || !p.IsSubscriptionBill || p.APIKey == nil || p.APIKey.OrganizationSubscriptionID == nil {
+		return
+	}
+	resolved.BalanceSource = BalanceSourceSubscription
+	if usageLog != nil {
+		usageLog.BalanceSource = usageBillingStringPtr(resolved.BalanceSource)
+	}
+}
+
+func resolveAndSnapshotBillingContext(ctx context.Context, usageLog *UsageLog, user *User, resolver *BillingContextResolver, requiredAmount float64) (*BillingContext, error) {
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+	resolved := &BillingContext{ConsumerUserID: user.ID, PayerUserID: user.ID, BalanceSource: BalanceSourceSelf}
+	if resolver != nil {
+		var err error
+		resolved, err = resolver.ResolveForSettlement(ctx, user.ID, requiredAmount)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if usageLog != nil {
+		usageLog.OrganizationID = resolved.OrganizationID
+		usageLog.PayerUserID = usageBillingInt64Ptr(resolved.PayerUserID)
+		usageLog.BalanceSource = usageBillingStringPtr(resolved.BalanceSource)
+		usageLog.AuthzGeneration = usageBillingInt64Ptr(resolved.AuthzGeneration)
+	}
+	return resolved, nil
 }
 
 func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
@@ -328,7 +432,10 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	}
 
 	if p.IsSubscriptionBill {
-		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+		// 企业 Key 消费公司订阅，直接落库（IncrementOrganizationSubscriptionUsage），
+		// 不走个人订阅用量缓存队列。
+		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil &&
+			p.APIKey.OrganizationSubscriptionID == nil {
 			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
@@ -385,10 +492,14 @@ func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingPara
 	if p == nil || p.Cost == nil || p.User == nil || deps == nil || deps.billingCacheService == nil {
 		return
 	}
+	if result != nil && result.BalanceSource == BalanceSourceCompany {
+		return
+	}
+	payerUserID := effectiveUsagePayerID(p, result)
 	if result != nil && result.NewBalance != nil && deps.billingCacheService.balanceBelowEligibilityThreshold(*result.NewBalance) {
-		if err := deps.billingCacheService.InvalidateUserBalance(ctx, p.User.ID); err != nil {
+		if err := deps.billingCacheService.InvalidateUserBalance(ctx, payerUserID); err != nil {
 			slog.Warn("invalidate balance cache after exhausted deduction failed",
-				"user_id", p.User.ID,
+				"user_id", payerUserID,
 				"new_balance", *result.NewBalance,
 				"balance_overdrafted", result.BalanceOverdrafted,
 				"error", err,
@@ -396,7 +507,17 @@ func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingPara
 		}
 		return
 	}
-	deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
+	deps.billingCacheService.QueueDeductBalance(payerUserID, p.Cost.ActualCost)
+}
+
+func effectiveUsagePayerID(p *postUsageBillingParams, result *UsageBillingApplyResult) int64 {
+	if result != nil && result.PayerUserID > 0 {
+		return result.PayerUserID
+	}
+	if p != nil && p.User != nil {
+		return p.User.ID
+	}
+	return 0
 }
 
 // notifyBalanceLow sends balance low notification after deduction.
@@ -408,7 +529,7 @@ func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *Usag
 			slog.Error("panic in notifyBalanceLow", "recover", r)
 		}
 	}()
-	if p.IsSubscriptionBill || p.Cost.ActualCost <= 0 || p.User == nil || deps.balanceNotifyService == nil {
+	if p.IsSubscriptionBill || p.Cost.ActualCost <= 0 || p.User == nil || deps.balanceNotifyService == nil || (result != nil && result.BalanceSource == BalanceSourceCompany) {
 		slog.Debug("notifyBalanceLow: skipped",
 			"is_subscription", p.IsSubscriptionBill,
 			"actual_cost", p.Cost.ActualCost,
@@ -418,16 +539,26 @@ func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *Usag
 		return
 	}
 
+	targetUser := p.User
+	payerUserID := effectiveUsagePayerID(p, result)
+	if payerUserID != p.User.ID && deps.userRepo != nil {
+		payer, err := deps.userRepo.GetByID(context.Background(), payerUserID)
+		if err != nil {
+			slog.Warn("load effective payer for balance notification failed", "payer_user_id", payerUserID, "error", err)
+			return
+		}
+		targetUser = payer
+	}
 	oldBalance := resolveOldBalance(p, result)
 	slog.Debug("notifyBalanceLow: calling CheckBalanceAfterDeduction",
-		"user_id", p.User.ID,
+		"user_id", payerUserID,
 		"old_balance", oldBalance,
 		"cost", p.Cost.ActualCost,
-		"notify_enabled", p.User.BalanceNotifyEnabled,
-		"threshold", p.User.BalanceNotifyThreshold,
+		"notify_enabled", targetUser.BalanceNotifyEnabled,
+		"threshold", targetUser.BalanceNotifyThreshold,
 		"result_has_new_balance", result != nil && result.NewBalance != nil,
 	)
-	deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, oldBalance, p.Cost.ActualCost)
+	deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), targetUser, oldBalance, p.Cost.ActualCost)
 }
 
 // resolveOldBalance returns the pre-deduction balance.
@@ -498,26 +629,28 @@ func detachUpstreamContext(ctx context.Context) (context.Context, context.Cancel
 
 // billingDeps 扣费逻辑依赖的服务（由各 gateway service 提供）
 type billingDeps struct {
-	accountRepo           AccountRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	billingCacheService   *BillingCacheService
-	deferredService       *DeferredService
-	balanceNotifyService  *BalanceNotifyService
-	userPlatformQuotaRepo UserPlatformQuotaRepository
-	cfg                   *config.Config
+	accountRepo            AccountRepository
+	userRepo               UserRepository
+	userSubRepo            UserSubscriptionRepository
+	billingCacheService    *BillingCacheService
+	deferredService        *DeferredService
+	balanceNotifyService   *BalanceNotifyService
+	userPlatformQuotaRepo  UserPlatformQuotaRepository
+	cfg                    *config.Config
+	billingContextResolver *BillingContextResolver
 }
 
 func (s *GatewayService) billingDeps() *billingDeps {
 	return &billingDeps{
-		accountRepo:           s.accountRepo,
-		userRepo:              s.userRepo,
-		userSubRepo:           s.userSubRepo,
-		billingCacheService:   s.billingCacheService,
-		deferredService:       s.deferredService,
-		balanceNotifyService:  s.balanceNotifyService,
-		userPlatformQuotaRepo: s.userPlatformQuotaRepo,
-		cfg:                   s.cfg,
+		accountRepo:            s.accountRepo,
+		userRepo:               s.userRepo,
+		userSubRepo:            s.userSubRepo,
+		billingCacheService:    s.billingCacheService,
+		deferredService:        s.deferredService,
+		balanceNotifyService:   s.balanceNotifyService,
+		userPlatformQuotaRepo:  s.userPlatformQuotaRepo,
+		cfg:                    s.cfg,
+		billingContextResolver: s.billingContextResolver,
 	}
 }
 
@@ -571,10 +704,12 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		User:               input.User,
 		Account:            input.Account,
 		Subscription:       input.Subscription,
+		PricingAt:          input.PricingAt,
 		InboundEndpoint:    input.InboundEndpoint,
 		UpstreamEndpoint:   input.UpstreamEndpoint,
 		UserAgent:          input.UserAgent,
 		IPAddress:          input.IPAddress,
+		SessionID:          input.SessionID,
 		RequestPayloadHash: input.RequestPayloadHash,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
@@ -590,10 +725,12 @@ type RecordUsageLongContextInput struct {
 	User                  *User
 	Account               *Account
 	Subscription          *UserSubscription  // 可选：订阅信息
+	PricingAt             time.Time          // token 售价固定时刻；零值保持既有的记录时刻语义
 	InboundEndpoint       string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint      string             // 上游端点（标准化后的上游路径）
 	UserAgent             string             // 请求的 User-Agent
 	IPAddress             string             // 请求的客户端 IP 地址
+	SessionID             string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
 	RequestPayloadHash    string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
 	LongContextThreshold  int                // 长上下文阈值（如 200000）
 	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
@@ -612,10 +749,12 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		User:               input.User,
 		Account:            input.Account,
 		Subscription:       input.Subscription,
+		PricingAt:          input.PricingAt,
 		InboundEndpoint:    input.InboundEndpoint,
 		UpstreamEndpoint:   input.UpstreamEndpoint,
 		UserAgent:          input.UserAgent,
 		IPAddress:          input.IPAddress,
+		SessionID:          input.SessionID,
 		RequestPayloadHash: input.RequestPayloadHash,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
@@ -634,10 +773,12 @@ type recordUsageCoreInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription
+	PricingAt          time.Time
 	InboundEndpoint    string
 	UpstreamEndpoint   string
 	UserAgent          string
 	IPAddress          string
+	SessionID          string
 	RequestPayloadHash string
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
@@ -649,6 +790,7 @@ type recordUsageCoreInput struct {
 // LongContextThreshold > 0 时 Token 计费回退走 CalculateCostWithLongContext。
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
 	result := input.Result
+	input.Subscription = effectiveSubscriptionForAPIKey(input.APIKey, input.Subscription)
 	apiKey := input.APIKey
 	user := input.User
 	account := input.Account
@@ -683,7 +825,11 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
 	// 不并入上面的 getUserGroupRateMultiplier，以免污染 user:group 倍率缓存。
-	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, timezone.Now())
+	pricingAt := input.PricingAt
+	if pricingAt.IsZero() {
+		pricingAt = timezone.Now()
+	}
+	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, pricingAt)
 
 	// 确定计费模型
 	concreteBillingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
@@ -715,8 +861,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	opts.IsKiroAccount = account != nil && account.Platform == PlatformKiro
 	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
 
-	// 判断计费方式：订阅模式 vs 余额模式
-	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+	// 判断计费方式：订阅模式 vs 余额模式。
+	// 企业 API Key（绑定公司订阅）即使没有个人订阅，也按订阅模式计费，消费走公司订阅计数器。
+	isSubscriptionBilling := isSubscriptionBillingForAPIKey(apiKey, subscription)
 	billingType := BillingTypeBalance
 	if isSubscriptionBilling {
 		billingType = BillingTypeSubscription
@@ -742,6 +889,10 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 			},
 			cost.TotalCost,
 		)
+	}
+	resolvedBillingContext, err := resolveAndSnapshotBillingContext(ctx, usageLog, user, s.billingContextResolver, cost.ActualCost)
+	if err != nil {
+		return err
 	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
@@ -773,6 +924,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		AccountRateMultiplier: accountRateMultiplier,
 		APIKeyService:         input.APIKeyService,
 		Platform:              quotaPlatform,
+		BillingContext:        resolvedBillingContext,
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {
@@ -1009,7 +1161,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		RequestID:             requestID,
 		Model:                 result.Model,
 		RequestedModel:        requestedModel,
-		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		UpstreamModel:         optionalTrimmedStringPtr(result.UpstreamModel),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
@@ -1038,6 +1190,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
 		UserAgent:             optionalTrimmedStringPtr(input.UserAgent),
 		IPAddress:             optionalTrimmedStringPtr(input.IPAddress),
+		SessionID:             optionalTrimmedStringPtr(input.SessionID),
 		GroupID:               apiKey.GroupID,
 		SubscriptionID:        optionalSubscriptionID(subscription),
 		CreatedAt:             time.Now(),
@@ -1078,7 +1231,7 @@ func resolveBillingMode(result *ForwardResult, cost *CostBreakdown) *string {
 }
 
 func optionalSubscriptionID(subscription *UserSubscription) *int64 {
-	if subscription != nil {
+	if subscription != nil && subscription.ID > 0 {
 		return &subscription.ID
 	}
 	return nil

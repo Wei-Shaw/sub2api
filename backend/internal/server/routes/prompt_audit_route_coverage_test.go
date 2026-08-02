@@ -34,6 +34,8 @@ func TestEveryGatewayPOSTRouteIsClassifiedForPromptAuditCoverage(t *testing.T) {
 		"/chat/completions":         {"gateway_handler_chat_completions.go", "openai_chat_completions.go"},
 		"/embeddings":               {"openai_embeddings.go"},
 		"/alpha/search":             {"openai_alpha_search.go"},
+		"/live":                     {"openai_live.go"},
+		"/realtime/calls":           {"openai_live.go"},
 		"/images/generations":       {"openai_images.go", "grok_media.go"},
 		"/images/edits":             {"openai_images.go", "grok_media.go"},
 		"/images/generations/async": {"image_task_handler.go"},
@@ -113,7 +115,7 @@ func TestPromptAuditAdminRoutesRejectUnauthenticatedAndNonAdminRequests(t *testi
 	})
 	auditLog := servermiddleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() })
 	stepUp := servermiddleware.StepUpAuthMiddleware(func(c *gin.Context) { c.Next() })
-	RegisterAdminRoutes(router.Group("/api/v1"), handlers, adminAuth, auditLog, stepUp, nil)
+	RegisterAdminRoutes(router.Group("/api/v1"), handlers, adminAuth, auditLog, stepUp, nil, nil)
 
 	for _, tc := range []struct {
 		name       string

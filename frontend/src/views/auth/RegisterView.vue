@@ -134,6 +134,27 @@
           </transition>
         </div>
 
+        <!-- Affiliate Invitation Code Input (Optional) -->
+        <div v-else-if="affiliateEnabled" data-testid="affiliate-invitation-field">
+          <label for="affiliate_code" class="input-label">
+            {{ t('auth.invitationCodeLabel') }}
+            <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">({{ t('common.optional') }})</span>
+          </label>
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <Icon name="key" size="md" class="text-gray-400 dark:text-dark-500" />
+            </div>
+            <input
+              id="affiliate_code"
+              v-model="formData.aff_code"
+              type="text"
+              :disabled="registrationActionDisabled"
+              class="input pl-11"
+              :placeholder="t('auth.invitationCodePlaceholder')"
+            />
+          </div>
+        </div>
+
         <!-- Promo Code Input (Optional) -->
         <div v-if="promoCodeEnabled">
           <label for="promo_code" class="input-label">
@@ -183,7 +204,10 @@
         </div>
 
         <!-- Captcha Widget -->
-        <div v-if="captchaEnabled && captchaSiteKey">
+        <div
+          v-if="captchaEnabled && captchaSiteKey"
+          :data-testid="captchaProvider === 'turnstile' ? 'registration-turnstile' : undefined"
+        >
           <CaptchaWidget
             ref="captchaRef"
             :provider="captchaProvider"
@@ -356,6 +380,7 @@ const invitationCodeEnabled = ref<boolean>(false)
 const captchaEnabled = ref<boolean>(false)
 const captchaProvider = ref<'turnstile' | 'hcaptcha' | 'tencent_captcha'>('turnstile')
 const captchaSiteKey = ref<string>('')
+const affiliateEnabled = ref<boolean>(false)
 const siteName = ref<string>('Sub2API')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
@@ -470,6 +495,7 @@ onMounted(async () => {
           ? 'tencent_captcha'
           : 'turnstile'
     captchaSiteKey.value = settings.captcha_site_key || settings.turnstile_site_key || ''
+    affiliateEnabled.value = settings.affiliate_enabled
     siteName.value = settings.site_name || 'Sub2API'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)

@@ -157,6 +157,47 @@ func TestUpdateSettingsOmittedSecuritySwitchesKeepDisabled(t *testing.T) {
 	require.Equal(t, "false", repo.values[service.SettingKeySessionBindingEnabled])
 }
 
+func TestUpdateSettingsCompanyFeatureRequiresReadiness(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"company_applications_enabled": true,
+	}, nil)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.NotEqual(t, "true", repo.values[service.SettingKeyCompanyApplicationsEnabled])
+}
+
+func TestUpdateSettingsCompanyFeatureAndDocumentation(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"company_applications_enabled":        true,
+		"company_iam_enabled":                 true,
+		"company_public_ids_finalized":        true,
+		"company_billing_integration_enabled": true,
+		"company_documentation_url":           " https://docs.example.com/company ",
+	}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "true", repo.values[service.SettingKeyCompanyApplicationsEnabled])
+	require.Equal(t, "true", repo.values[service.SettingKeyCompanyIAMEnabled])
+	require.Equal(t, "true", repo.values[service.SettingKeyCompanyPublicIDsFinalized])
+	require.Equal(t, "true", repo.values[service.SettingKeyCompanyBillingIntegrationEnabled])
+	require.Equal(t, "https://docs.example.com/company", repo.values[service.SettingKeyCompanyDocumentationURL])
+}
+
+func TestUpdateSettingsRejectsInvalidCompanyDocumentationURL(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"company_documentation_url": "javascript:alert(1)",
+	}, nil)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Empty(t, repo.values[service.SettingKeyCompanyDocumentationURL])
+}
+
 func TestUpdateSettingsForwardedClientIPHeadersOmittedPreservesAndEmptyClears(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
 		service.SettingKeyForwardedClientIPHeaders: `["X-Cdn-Ip","True-Client-Ip"]`,

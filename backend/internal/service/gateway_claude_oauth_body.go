@@ -854,26 +854,42 @@ func ValidateClaudeOAuthSystemPromptBlocksConfig(raw string) error {
 	return nil
 }
 
+func extractSystemTextAndCacheControl(system any) (string, any) {
+	switch v := system.(type) {
+	case string:
+		return strings.TrimSpace(v), nil
+	case []any:
+		var parts []string
+		var cacheControl any
+		for _, item := range v {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			text, ok := m["text"].(string)
+			if !ok || strings.TrimSpace(text) == "" {
+				continue
+			}
+			parts = append(parts, text)
+			// system blocks are collapsed into one messages text block below.
+			// Preserve the last original breakpoint as the closest equivalent
+			// boundary, including its client-selected TTL.
+			if cc, exists := m["cache_control"]; exists && cc != nil {
+				cacheControl = cc
+			}
+		}
+		return strings.Join(parts, "\n\n"), cacheControl
+	default:
+		return "", nil
+	}
+}
+
 func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expansionPrompt string, blocksConfig string) []byte {
 	system = normalizeSystemParam(system)
 	expansionPrompt = defaultClaudeOAuthExpansionPrompt(expansionPrompt)
 
-	// 1. 提取原始 system prompt 文本
-	var originalSystemText string
-	switch v := system.(type) {
-	case string:
-		originalSystemText = strings.TrimSpace(v)
-	case []any:
-		var parts []string
-		for _, item := range v {
-			if m, ok := item.(map[string]any); ok {
-				if text, ok := m["text"].(string); ok && strings.TrimSpace(text) != "" {
-					parts = append(parts, text)
-				}
-			}
-		}
-		originalSystemText = strings.Join(parts, "\n\n")
-	}
+	// 1. 提取原始 system prompt 文本及其缓存断点
+	originalSystemText, originalSystemCacheControl := extractSystemTextAndCacheControl(system)
 
 	// 2. 构造 system 数组，对齐真实 Claude Code CLI 的 3-block 形态：
 	//    [0] billing attribution block（cc_version={cliVer}.{fp}; cc_entrypoint=cli;）
@@ -906,10 +922,17 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expa
 	//    模型仍通过 messages 接收完整指令，保留客户端功能
 	ccPromptTrimmed := strings.TrimSpace(claudeCodeSystemPrompt)
 	if originalSystemText != "" && originalSystemText != ccPromptTrimmed && !hasClaudeCodePrefix(originalSystemText) {
+		instructionBlock := map[string]any{
+			"type": "text",
+			"text": "[System Instructions]\n" + originalSystemText,
+		}
+		if originalSystemCacheControl != nil {
+			instructionBlock["cache_control"] = originalSystemCacheControl
+		}
 		instrMsg, err1 := json.Marshal(map[string]any{
 			"role": "user",
 			"content": []map[string]any{
-				{"type": "text", "text": "[System Instructions]\n" + originalSystemText},
+				instructionBlock,
 			},
 		})
 		ackMsg, err2 := json.Marshal(map[string]any{
@@ -1207,4 +1230,29 @@ func (s *GatewayService) claudeOAuthSystemPromptInjectionSettings(ctx context.Co
 		return true, "", ""
 	}
 	return s.settingService.GetClaudeOAuthSystemPromptInjectionSettings(ctx)
+}
+
+// systemHasBillingAttributionBlock 检查请求体的 system 字段中是否包含真实 Claude Code
+// 客户端注入的 billing attribution block。该 block 格式稳定（见 gateway_billing_block.go），
+// 仅由真实 Claude Code CLI 生成；第三方客户端（opencode 等）不会生成此 block。
+//
+// 用于识别被上游 API 网关代理的真实 Claude Code 流量：此类请求的 User-Agent 被网关替换
+// 为 Go-http-client，但 body 保留了完整的客户端特征。如果不识别这类请求而走 mimicry
+// 重写 system，会破坏 Anthropic prompt cache 的前缀一致性，导致 messages 级缓存永不命中。
+func systemHasBillingAttributionBlock(body []byte) bool {
+	system := gjson.GetBytes(body, "system")
+	if !system.IsArray() {
+		return false
+	}
+	found := false
+	system.ForEach(func(_, item gjson.Result) bool {
+		text := item.Get("text").String()
+		if strings.HasPrefix(text, claudeCodeBillingHeaderPrefix) &&
+			strings.Contains(text, claudeCodeEntrypointMarker) {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }

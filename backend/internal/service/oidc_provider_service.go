@@ -793,7 +793,7 @@ func (s *OidcProviderService) BuildUserInfo(ctx context.Context, accessTokenValu
 		claims["name"] = user.Username
 		claims["preferred_username"] = user.Username
 	}
-	if containsString(scopes, OidcScopeEmail) {
+	if containsString(scopes, OidcScopeEmail) && strings.TrimSpace(user.Email) != "" {
 		claims["email"] = user.Email
 		claims["email_verified"] = true
 	}
@@ -900,7 +900,7 @@ func (s *OidcProviderService) signIDToken(ctx context.Context, clientID string, 
 				claims["name"] = user.Username
 				claims["preferred_username"] = user.Username
 			}
-			if containsString(scopes, OidcScopeEmail) {
+			if containsString(scopes, OidcScopeEmail) && strings.TrimSpace(user.Email) != "" {
 				claims["email"] = user.Email
 				claims["email_verified"] = true
 			}

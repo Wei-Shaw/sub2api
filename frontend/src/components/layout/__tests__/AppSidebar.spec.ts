@@ -46,6 +46,25 @@ describe('AppSidebar scroll position persistence', () => {
   })
 })
 
+describe('AppSidebar company console navigation', () => {
+  it('keeps the company console visible for every active organization member in simple mode', () => {
+    expect(componentSource).toContain('if (canAccessOrganizationRoute(authStore.user))')
+    expect(componentSource).toContain("path: '/organization'")
+  })
+
+  it('places the company console first for IAM users', () => {
+    expect(componentSource).toContain("const organizationIndex = authStore.user?.identity_type === 'iam' ? 0 : (withDashboard ? 1 : 0)")
+    expect(componentSource).toContain('items.splice(organizationIndex, 0,')
+  })
+
+  it('shows a sanitized new-window documentation link beside the company console', () => {
+    expect(componentSource).toContain("sanitizeUrl(appStore.cachedPublicSettings?.company_documentation_url || '')")
+    expect(componentSource).toContain('v-if="item.docUrl && !sidebarCollapsed"')
+    expect(componentSource).toContain('target="_blank"')
+    expect(componentSource).toContain('rel="noopener noreferrer"')
+  })
+})
+
 describe('AppSidebar header styles', () => {
   it('does not clip the version badge dropdown', () => {
     const sidebarHeaderBlockMatch = styleSource.match(/\.sidebar-header\s*\{[\s\S]*?\n {2}\}/)

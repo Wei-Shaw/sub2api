@@ -151,3 +151,19 @@ func TestBuildOpsErrorLogsWhere_UserOwnershipIsDirectOnly(t *testing.T) {
 		t.Fatalf("user ownership must not depend on deleted-key attribution: %s", where)
 	}
 }
+
+func TestBuildOpsErrorLogsWhere_OrganizationScopeUsesBillingEvidence(t *testing.T) {
+	organizationID := int64(17)
+	where, args := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{
+		OrganizationID: &organizationID,
+		UserIDs:        []int64{3, 4},
+	})
+	for _, want := range []string{"ul.organization_id = $1", "ul.request_id=e.request_id", "ok.organization_subscription_id", "os.organization_id=$1", "e.user_id = ANY($2)"} {
+		if !strings.Contains(where, want) {
+			t.Fatalf("organization scope missing %q\nfull: %s", want, where)
+		}
+	}
+	if len(args) != 2 || args[0] != organizationID {
+		t.Fatalf("unexpected organization scope args: %v", args)
+	}
+}

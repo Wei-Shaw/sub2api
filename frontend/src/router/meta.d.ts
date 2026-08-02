@@ -54,6 +54,11 @@ declare module 'vue-router' {
      * @default false
      */
     requiresRiskControl?: boolean
+    requiresIAM?: boolean
+    requiresOrganization?: boolean
+    requiresOrganizationOwner?: boolean
+    requiresOrganizationAction?: string
+    allowFirstLogin?: boolean
 
     /**
      * i18n key for the page title

@@ -36,16 +36,34 @@ const (
 //
 // 余额账本仅对 BillingTypeBalance 生效；订阅计费的额度核算沿用既有 usage_log 记录路径。
 type AsyncMediaService struct {
-	taskRepo  AsyncMediaTaskRepository
-	userRepo  UserRepository
-	groupRepo GroupRepository
-	billing   *BillingService
-	resolver  *ModelPricingResolver
-	cos       *COSImageTransferService
-	deferred  *DeferredService
+	taskRepo               AsyncMediaTaskRepository
+	userRepo               UserRepository
+	groupRepo              GroupRepository
+	billing                *BillingService
+	resolver               *ModelPricingResolver
+	cos                    *COSImageTransferService
+	deferred               *DeferredService
+	billingContextResolver *BillingContextResolver
+	balanceCache           interface {
+		InvalidateUserBalance(ctx context.Context, userID int64) error
+	}
 
 	pollInterval time.Duration
 	failTimeout  time.Duration
+}
+
+func (s *AsyncMediaService) SetBalanceCache(cache interface {
+	InvalidateUserBalance(ctx context.Context, userID int64) error
+}) {
+	if s != nil {
+		s.balanceCache = cache
+	}
+}
+
+func (s *AsyncMediaService) SetBillingContextResolver(resolver *BillingContextResolver) {
+	if s != nil {
+		s.billingContextResolver = resolver
+	}
 }
 
 // NewAsyncMediaService 创建异步媒体执行内核。
@@ -149,7 +167,14 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 	if err != nil {
 		return nil, fmt.Errorf("async media: estimate cost: %w", err)
 	}
-	if err := s.charge(ctx, in.BillingType, in.UserID, heldCost); err != nil {
+	billingContext := &BillingContext{ConsumerUserID: in.UserID, PayerUserID: in.UserID, BalanceSource: BalanceSourceSelf}
+	if s.billingContextResolver != nil {
+		billingContext, err = s.billingContextResolver.ResolveForAmount(ctx, in.UserID, heldCost)
+		if err != nil {
+			return nil, fmt.Errorf("async media: resolve payer: %w", err)
+		}
+	}
+	if err := s.charge(ctx, in.BillingType, billingContext, heldCost); err != nil {
 		return nil, fmt.Errorf("async media: pre-charge: %w", err)
 	}
 
@@ -158,6 +183,10 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 		InternalRequestID: in.InternalRequestID,
 		APIKeyID:          in.APIKeyID,
 		UserID:            in.UserID,
+		OrganizationID:    billingContext.OrganizationID,
+		PayerUserID:       amInt64Ptr(billingContext.PayerUserID),
+		BalanceSource:     amStrPtr(billingContext.BalanceSource),
+		AuthzGeneration:   amInt64Ptr(billingContext.AuthzGeneration),
 		AccountID:         amOptInt64(in.AccountID),
 		GroupID:           in.GroupID,
 		ChannelID:         in.ChannelID,
@@ -181,7 +210,7 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 	}
 	if err := s.taskRepo.Create(ctx, task); err != nil {
 		// 落库失败：回滚预扣费，避免漏退。
-		s.refund(ctx, in.BillingType, in.UserID, heldCost)
+		s.refund(ctx, in.BillingType, billingContext, heldCost)
 		return nil, fmt.Errorf("async media: create task: %w", err)
 	}
 
@@ -412,7 +441,7 @@ func (s *AsyncMediaService) markSucceeded(ctx context.Context, task *AsyncMediaT
 
 	// 退还预扣与结算的差额。
 	if refundDelta := task.HeldCost - finalCost; refundDelta > 0 {
-		s.refund(ctx, billingType, task.UserID, refundDelta)
+		s.refund(ctx, billingType, asyncMediaBillingContext(task), refundDelta)
 	}
 
 	s.writeTerminalUsageLog(ctx, task, billingType, finalCost, BillingStatusCharged, imageURLs, cosURLs)
@@ -436,7 +465,7 @@ func (s *AsyncMediaService) markFailedAndRefund(ctx context.Context, task *Async
 	task.Status = status
 	task.ErrorReason = amStrPtr(reason)
 	if task.HeldCost > 0 {
-		s.refund(ctx, billingType, task.UserID, task.HeldCost)
+		s.refund(ctx, billingType, asyncMediaBillingContext(task), task.HeldCost)
 	}
 	s.writeTerminalUsageLog(ctx, task, billingType, 0, BillingStatusRefunded, nil, nil)
 }
@@ -451,27 +480,31 @@ func (s *AsyncMediaService) writeTerminalUsageLog(
 	imageURLs, cosURLs []string,
 ) {
 	in := &TerminalUsageLogInput{
-		UserID:         task.UserID,
-		APIKeyID:       task.APIKeyID,
-		AccountID:      amDerefInt64(task.AccountID),
-		RequestID:      task.InternalRequestID,
-		Model:          amDerefStr(task.UpstreamModel),
-		RequestedModel: task.RequestedModel,
-		UpstreamModel:  amDerefStr(task.UpstreamModel),
-		GroupID:        task.GroupID,
-		ChannelID:      task.ChannelID,
-		TotalCost:      cost,
-		ActualCost:     cost,
-		RateMultiplier: task.RateMultiplier,
-		BillingType:    billingType,
-		RequestType:    int16(RequestTypeSync),
-		ImageCount:     task.NumImages,
-		ImageSize:      amDerefStr(task.ImageSize),
-		BillingTier:    amDerefStr(task.SizeTier),
-		TaskID:         task.ID,
-		ImageURLs:      imageURLs,
-		CosURLs:        cosURLs,
-		BillingStatus:  billingStatus,
+		UserID:          task.UserID,
+		APIKeyID:        task.APIKeyID,
+		AccountID:       amDerefInt64(task.AccountID),
+		RequestID:       task.InternalRequestID,
+		OrganizationID:  task.OrganizationID,
+		PayerUserID:     task.PayerUserID,
+		BalanceSource:   task.BalanceSource,
+		AuthzGeneration: task.AuthzGeneration,
+		Model:           amDerefStr(task.UpstreamModel),
+		RequestedModel:  task.RequestedModel,
+		UpstreamModel:   amDerefStr(task.UpstreamModel),
+		GroupID:         task.GroupID,
+		ChannelID:       task.ChannelID,
+		TotalCost:       cost,
+		ActualCost:      cost,
+		RateMultiplier:  task.RateMultiplier,
+		BillingType:     billingType,
+		RequestType:     int16(RequestTypeSync),
+		ImageCount:      task.NumImages,
+		ImageSize:       amDerefStr(task.ImageSize),
+		BillingTier:     amDerefStr(task.SizeTier),
+		TaskID:          task.ID,
+		ImageURLs:       imageURLs,
+		CosURLs:         cosURLs,
+		BillingStatus:   billingStatus,
 
 		ClientIP:         amDerefStr(task.ClientIP),
 		UserAgent:        amDerefStr(task.UserAgent),
@@ -482,8 +515,40 @@ func (s *AsyncMediaService) writeTerminalUsageLog(
 	if _, err := s.taskRepo.InsertTerminalUsageLog(ctx, in); err != nil {
 		logger.L().Warn("async_media.terminal_usage_log_failed",
 			zap.Int64("task_id", task.ID), zap.String("billing_status", billingStatus), zap.Error(err))
+		return
+	}
+	if billingStatus == BillingStatusCharged && s.billingContextResolver != nil {
+		billing := &BillingContext{ConsumerUserID: task.UserID, OrganizationID: task.OrganizationID, PayerUserID: asyncMediaPayerID(task), BalanceSource: amDerefStr(task.BalanceSource)}
+		if err := s.billingContextResolver.RecordSpendLimitAlert(ctx, billing); err != nil {
+			logger.L().Warn("async_media.spend_limit_alert_failed", zap.Int64("task_id", task.ID), zap.Error(err))
+		}
 	}
 }
+
+func asyncMediaPayerID(task *AsyncMediaTask) int64 {
+	if task != nil && task.PayerUserID != nil && *task.PayerUserID > 0 {
+		return *task.PayerUserID
+	}
+	if task != nil {
+		return task.UserID
+	}
+	return 0
+}
+
+func asyncMediaBillingContext(task *AsyncMediaTask) *BillingContext {
+	if task == nil {
+		return nil
+	}
+	return &BillingContext{
+		ConsumerUserID:  task.UserID,
+		OrganizationID:  task.OrganizationID,
+		PayerUserID:     asyncMediaPayerID(task),
+		BalanceSource:   amDerefStr(task.BalanceSource),
+		AuthzGeneration: amDerefInt64(task.AuthzGeneration),
+	}
+}
+
+func amInt64Ptr(value int64) *int64 { return &value }
 
 // estimateCost 通过统一计费入口估算 (size × quality × count) 的实际费用。
 //
@@ -581,21 +646,58 @@ func (s *AsyncMediaService) buildGroupImagePriceConfig(ctx context.Context, grou
 }
 
 // charge 预扣费用（仅 BillingTypeBalance 走余额账本）。
-func (s *AsyncMediaService) charge(ctx context.Context, billingType int8, userID int64, amount float64) error {
+func (s *AsyncMediaService) charge(ctx context.Context, billingType int8, billing *BillingContext, amount float64) error {
 	if amount <= 0 || billingType != BillingTypeBalance || s.userRepo == nil {
 		return nil
 	}
-	return s.userRepo.DeductBalance(ctx, userID, amount)
+	if billing == nil {
+		return ErrUserNotFound
+	}
+	if billing.UsesCompanyBalance() {
+		if s.billingContextResolver == nil {
+			return fmt.Errorf("organization balance resolver is unavailable")
+		}
+		_, err := s.billingContextResolver.DeductOrganizationBalance(ctx, billing, amount)
+		return err
+	}
+	if err := s.userRepo.DeductBalance(ctx, billing.PayerUserID, amount); err != nil {
+		return err
+	}
+	if s.balanceCache != nil {
+		if err := s.balanceCache.InvalidateUserBalance(ctx, billing.PayerUserID); err != nil {
+			logger.L().Warn("async_media.balance_cache_invalidate_failed", zap.Int64("payer_user_id", billing.PayerUserID), zap.Error(err))
+		}
+	}
+	return nil
 }
 
 // refund 退还费用（仅 BillingTypeBalance 走余额账本）。
-func (s *AsyncMediaService) refund(ctx context.Context, billingType int8, userID int64, amount float64) {
+func (s *AsyncMediaService) refund(ctx context.Context, billingType int8, billing *BillingContext, amount float64) {
 	if amount <= 0 || billingType != BillingTypeBalance || s.userRepo == nil {
 		return
 	}
-	if err := s.userRepo.UpdateBalance(ctx, userID, amount); err != nil {
+	if billing == nil {
+		return
+	}
+	if billing.UsesCompanyBalance() {
+		if s.billingContextResolver == nil {
+			logger.L().Error("async_media.refund_failed", zap.Error(errors.New("organization balance resolver is unavailable")))
+			return
+		}
+		if _, err := s.billingContextResolver.CreditOrganizationBalance(ctx, billing, amount); err != nil {
+			logger.L().Error("async_media.refund_failed", zap.Int64("organization_id", *billing.OrganizationID), zap.Float64("amount", amount), zap.Error(err))
+		}
+		return
+	}
+	if err := s.userRepo.UpdateBalance(ctx, billing.PayerUserID, amount); err != nil {
 		logger.L().Error("async_media.refund_failed",
-			zap.Int64("user_id", userID), zap.Float64("amount", amount), zap.Error(err))
+			zap.Int64("user_id", billing.PayerUserID), zap.Float64("amount", amount), zap.Error(err))
+		return
+	}
+	if s.balanceCache != nil {
+		if err := s.balanceCache.InvalidateUserBalance(ctx, billing.PayerUserID); err != nil {
+			logger.L().Warn("async_media.balance_cache_invalidate_failed", zap.Int64("payer_user_id", billing.PayerUserID), zap.Error(err))
+		}
 	}
 }
 

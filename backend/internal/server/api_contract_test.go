@@ -5,6 +5,7 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"math"
@@ -49,6 +50,10 @@ func TestAPIContracts(t *testing.T) {
 				"message": "success",
 				"data": {
 					"id": 1,
+					"account_id": "1719905235756637",
+					"external_user_id": "1719905235756637",
+					"identity_type": "root",
+					"must_change_password": false,
 					"email": "alice@example.com",
 					"email_bound": true,
 					"username": "alice",
@@ -230,6 +235,7 @@ func TestAPIContracts(t *testing.T) {
 					"key": "sk_custom_1234567890",
 					"name": "Key One",
 					"group_id": null,
+					"fallback_group_ids": [],
 					"status": "active",
 					"ip_whitelist": null,
 					"ip_blacklist": null,
@@ -281,6 +287,7 @@ func TestAPIContracts(t *testing.T) {
 							"key": "sk_custom_1234567890",
 							"name": "Key One",
 							"group_id": null,
+							"fallback_group_ids": [],
 							"status": "active",
 							"ip_whitelist": null,
 							"ip_blacklist": null,
@@ -314,19 +321,23 @@ func TestAPIContracts(t *testing.T) {
 			name: "GET /api/v1/groups/available",
 			setup: func(t *testing.T, deps *contractDeps) {
 				t.Helper()
-				// 普通用户可见的分组列表不应包含内部字段（如 model_routing/account_count）。
+				// 普通用户可见的分组列表不应包含内部字段（如 model_routing/account_count），
+				// 也不得包含利润控制配置——它与同响应的 rate_multiplier 相乘即可反推上游成本上限。
 				deps.groupRepo.SetActive([]service.Group{
 					{
-						ID:                  10,
-						Name:                "Group One",
-						Description:         "desc",
-						Platform:            service.PlatformAnthropic,
-						RateMultiplier:      1.5,
-						PeakRateMultiplier:  1.0,
-						IsExclusive:         false,
-						Status:              service.StatusActive,
-						SubscriptionType:    service.SubscriptionTypeStandard,
-						ModelRoutingEnabled: true,
+						ID:                   10,
+						Name:                 "Group One",
+						Description:          "desc",
+						Platform:             service.PlatformAnthropic,
+						RateMultiplier:       1.5,
+						PeakRateMultiplier:   1.0,
+						IsExclusive:          false,
+						Status:               service.StatusActive,
+						SubscriptionType:     service.SubscriptionTypeStandard,
+						ProfitControlEnabled: true,
+						ProfitMinMargin:      0.3,
+						ProfitSafetyBuffer:   0.05,
+						ModelRoutingEnabled:  true,
 						ModelRouting: map[string][]int64{
 							"claude-3-*": []int64{101, 102},
 						},
@@ -377,6 +388,7 @@ func TestAPIContracts(t *testing.T) {
 						"video_rate_multiplier": 0,
 						"claude_code_only": false,
 						"allow_messages_dispatch": false,
+						"allow_live": false,
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
 						"require_oauth_only": false,
@@ -715,6 +727,10 @@ func TestAPIContracts(t *testing.T) {
 						"frontend_url": "",
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
+						"passkey_enabled": false,
+						"passkey_configured": false,
+						"passkey_rp_id": "",
+						"passkey_rp_origins": [],
 						"session_binding_enabled": false,
 						"step_up_enabled": false,
 						"audit_log_retention_days": 180,
@@ -819,6 +835,13 @@ func TestAPIContracts(t *testing.T) {
 						"api_key_acl_trust_forwarded_ip": false,
 					"forwarded_client_ip_headers": [],
 					"contact_info": "support",
+					"company_upgrade_charge_enabled": true,
+					"company_upgrade_fee": 20,
+					"company_applications_enabled": false,
+					"company_iam_enabled": false,
+					"company_public_ids_finalized": false,
+					"company_billing_integration_enabled": false,
+					"company_documentation_url": "",
 					"doc_url": "https://docs.example.com",
 					"auth_source_default_email_balance": 0,
 					"auth_source_default_email_concurrency": 5,
@@ -894,6 +917,7 @@ func TestAPIContracts(t *testing.T) {
 					"max_codex_version": "",
 					"codex_cli_only_blacklist": "",
 					"codex_cli_only_whitelist": "",
+					"compact_home_enabled": false,
 					"codex_cli_only_allow_app_server_clients": false,
 					"codex_cli_only_engine_fingerprint_signals": "[{\"type\":\"header_prefix\",\"match\":[\"x-codex-\"],\"required\":true},{\"type\":\"header_exact\",\"match\":[\"session-id\",\"session_id\"],\"required\":false},{\"type\":\"header_exact\",\"match\":[\"thread-id\",\"thread_id\"],\"required\":false},{\"type\":\"body_path\",\"match\":[\"client_metadata.x-codex-window-id\",\"client_metadata.x-codex-installation-id\"],\"required\":false}]",
 					"allow_ungrouped_key_scheduling": false,
@@ -980,6 +1004,9 @@ func TestAPIContracts(t *testing.T) {
 					"channel_monitor_enabled": true,
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
+					"model_plaza_enabled": false,
+					"model_plaza_require_auth": false,
+					"model_plaza_description": "",
 					"risk_control_enabled": false,
 					"cyber_session_block_enabled": false,
 					"cyber_session_block_ttl_seconds": 3600,
@@ -1086,6 +1113,10 @@ func TestAPIContracts(t *testing.T) {
 						"invitation_code_enabled": false,
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
+						"passkey_enabled": false,
+						"passkey_configured": false,
+						"passkey_rp_id": "",
+						"passkey_rp_origins": [],
 						"session_binding_enabled": false,
 						"step_up_enabled": false,
 						"audit_log_retention_days": 180,
@@ -1186,6 +1217,13 @@ func TestAPIContracts(t *testing.T) {
 					"api_key_acl_trust_forwarded_ip": false,
 					"forwarded_client_ip_headers": [],
 					"contact_info": "",
+					"company_upgrade_charge_enabled": true,
+					"company_upgrade_fee": 20,
+					"company_applications_enabled": false,
+					"company_iam_enabled": false,
+					"company_public_ids_finalized": false,
+					"company_billing_integration_enabled": false,
+					"company_documentation_url": "",
 					"doc_url": "",
 					"home_content": "",
 					"home_product_menu_items": [],
@@ -1244,6 +1282,7 @@ func TestAPIContracts(t *testing.T) {
 					"max_codex_version": "",
 					"codex_cli_only_blacklist": "",
 					"codex_cli_only_whitelist": "",
+					"compact_home_enabled": false,
 					"codex_cli_only_allow_app_server_clients": false,
 					"codex_cli_only_engine_fingerprint_signals": "[{\"type\":\"header_prefix\",\"match\":[\"x-codex-\"],\"required\":true},{\"type\":\"header_exact\",\"match\":[\"session-id\",\"session_id\"],\"required\":false},{\"type\":\"header_exact\",\"match\":[\"thread-id\",\"thread_id\"],\"required\":false},{\"type\":\"body_path\",\"match\":[\"client_metadata.x-codex-window-id\",\"client_metadata.x-codex-installation-id\"],\"required\":false}]",
 					"web_search_emulation_enabled": false,
@@ -1314,6 +1353,9 @@ func TestAPIContracts(t *testing.T) {
 					"channel_monitor_enabled": true,
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
+					"model_plaza_enabled": false,
+					"model_plaza_require_auth": false,
+					"model_plaza_description": "",
 					"risk_control_enabled": false,
 					"cyber_session_block_enabled": false,
 					"cyber_session_block_ttl_seconds": 3600,
@@ -1446,6 +1488,76 @@ func TestAPIContracts(t *testing.T) {
 	}
 }
 
+func TestAPIKeyFallbackGroupsPersistThroughHTTP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	deps := newContractDeps(t)
+	deps.groupRepo.SetActive([]service.Group{
+		{ID: 10, Name: "OpenAI Subscription", Platform: service.PlatformOpenAI, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeSubscription},
+		{ID: 20, Name: "OpenAI Metered", Platform: service.PlatformOpenAI, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard},
+		{ID: 30, Name: "OpenAI Backup Subscription", Platform: service.PlatformOpenAI, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeSubscription},
+	})
+	deps.userSubRepo.SetActiveByUserID(1, []service.UserSubscription{
+		{GroupID: 10},
+		{GroupID: 30},
+	})
+
+	type apiKeyResponse struct {
+		Code int `json:"code"`
+		Data struct {
+			ID               int64   `json:"id"`
+			GroupID          *int64  `json:"group_id"`
+			FallbackGroupIDs []int64 `json:"fallback_group_ids"`
+		} `json:"data"`
+	}
+	decodeAPIKey := func(body string) apiKeyResponse {
+		t.Helper()
+		var payload apiKeyResponse
+		require.NoError(t, json.Unmarshal([]byte(body), &payload))
+		require.Zero(t, payload.Code, body)
+		return payload
+	}
+	headers := map[string]string{"Content-Type": "application/json"}
+
+	status, body := doRequest(t, deps.router, http.MethodPost, "/api/v1/keys",
+		`{"name":"Subscription Key","custom_key":"sk_fallback_contract_123456","group_id":10,"fallback_group_ids":[20,30]}`,
+		headers,
+	)
+	require.Equal(t, http.StatusOK, status, body)
+	created := decodeAPIKey(body)
+	require.Equal(t, int64(100), created.Data.ID)
+	require.Equal(t, ptr(int64(10)), created.Data.GroupID)
+	require.Equal(t, []int64{20, 30}, created.Data.FallbackGroupIDs)
+
+	status, body = doRequest(t, deps.router, http.MethodPut, "/api/v1/keys/100",
+		`{"fallback_group_ids":[30,20]}`,
+		headers,
+	)
+	require.Equal(t, http.StatusOK, status, body)
+	updated := decodeAPIKey(body)
+	require.Equal(t, []int64{30, 20}, updated.Data.FallbackGroupIDs)
+
+	status, body = doRequest(t, deps.router, http.MethodGet, "/api/v1/keys/100", "", nil)
+	require.Equal(t, http.StatusOK, status, body)
+	reloaded := decodeAPIKey(body)
+	require.Equal(t, []int64{30, 20}, reloaded.Data.FallbackGroupIDs)
+
+	status, body = doRequest(t, deps.router, http.MethodGet, "/api/v1/keys?page=1&page_size=10", "", nil)
+	require.Equal(t, http.StatusOK, status, body)
+	var listed struct {
+		Code int `json:"code"`
+		Data struct {
+			Items []struct {
+				FallbackGroupIDs []int64 `json:"fallback_group_ids"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &listed))
+	require.Zero(t, listed.Code, body)
+	require.Len(t, listed.Data.Items, 1)
+	require.Equal(t, []int64{30, 20}, listed.Data.Items[0].FallbackGroupIDs)
+}
+
 type contractDeps struct {
 	now         time.Time
 	router      http.Handler
@@ -1466,17 +1578,20 @@ func newContractDeps(t *testing.T) *contractDeps {
 	userRepo := &stubUserRepo{
 		users: map[int64]*service.User{
 			1: {
-				ID:            1,
-				Email:         "alice@example.com",
-				Username:      "alice",
-				Notes:         "hello",
-				Role:          service.RoleUser,
-				Balance:       12.5,
-				Concurrency:   5,
-				Status:        service.StatusActive,
-				AllowedGroups: nil,
-				CreatedAt:     now,
-				UpdatedAt:     now,
+				ID:             1,
+				AccountID:      "1719905235756637",
+				ExternalUserID: "1719905235756637",
+				IdentityType:   service.IdentityTypeRoot,
+				Email:          "alice@example.com",
+				Username:       "alice",
+				Notes:          "hello",
+				Role:           service.RoleUser,
+				Balance:        12.5,
+				Concurrency:    5,
+				Status:         service.StatusActive,
+				AllowedGroups:  nil,
+				CreatedAt:      now,
+				UpdatedAt:      now,
 			},
 		},
 	}
@@ -1547,6 +1662,8 @@ func newContractDeps(t *testing.T) *contractDeps {
 	v1Keys.Use(jwtAuth)
 	v1Keys.GET("/keys", apiKeyHandler.List)
 	v1Keys.POST("/keys", apiKeyHandler.Create)
+	v1Keys.GET("/keys/:id", apiKeyHandler.GetByID)
+	v1Keys.PUT("/keys/:id", apiKeyHandler.Update)
 	v1Keys.GET("/groups/available", apiKeyHandler.GetAvailableGroups)
 
 	v1Usage := v1.Group("")
@@ -1607,6 +1724,10 @@ func (r *stubUserRepo) Create(ctx context.Context, user *service.User) error {
 	return errors.New("not implemented")
 }
 
+func (r *stubUserRepo) CreateWithEmailAliasGuard(ctx context.Context, user *service.User) error {
+	return errors.New("not implemented")
+}
+
 func (r *stubUserRepo) GetByID(ctx context.Context, id int64) (*service.User, error) {
 	user, ok := r.users[id]
 	if !ok {
@@ -1649,7 +1770,7 @@ func (r *stubUserRepo) ListAdmins(ctx context.Context) ([]service.User, error) {
 	return out, nil
 }
 
-func (r *stubUserRepo) Update(ctx context.Context, user *service.User) error {
+func (r *stubUserRepo) Update(ctx context.Context, user *service.User, fields service.UserUpdateFields) error {
 	return errors.New("not implemented")
 }
 
@@ -1685,6 +1806,14 @@ func (r *stubUserRepo) DeductBalance(ctx context.Context, id int64, amount float
 	return errors.New("not implemented")
 }
 
+func (r *stubUserRepo) AdjustBalance(ctx context.Context, id int64, delta float64) (service.BalanceChange, error) {
+	return service.BalanceChange{}, errors.New("not implemented")
+}
+
+func (r *stubUserRepo) SetBalance(ctx context.Context, id int64, value float64) (service.BalanceChange, error) {
+	return service.BalanceChange{}, errors.New("not implemented")
+}
+
 func (r *stubUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
 	return errors.New("not implemented")
 }
@@ -1696,6 +1825,10 @@ func (r *stubUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (
 }
 
 func (r *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+	return false, errors.New("not implemented")
+}
+
+func (r *stubUserRepo) ExistsByEmailAlias(ctx context.Context, email string) (bool, error) {
 	return false, errors.New("not implemented")
 }
 
@@ -1801,12 +1934,18 @@ func (stubGroupRepo) Create(ctx context.Context, group *service.Group) error {
 	return errors.New("not implemented")
 }
 
-func (stubGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+func (r *stubGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+	for i := range r.active {
+		if r.active[i].ID == id {
+			group := r.active[i]
+			return &group, nil
+		}
+	}
 	return nil, service.ErrGroupNotFound
 }
 
-func (stubGroupRepo) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
-	return nil, service.ErrGroupNotFound
+func (r *stubGroupRepo) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
+	return r.GetByID(ctx, id)
 }
 
 func (stubGroupRepo) Update(ctx context.Context, group *service.Group) error {
@@ -1909,6 +2048,16 @@ func (s *stubAccountRepo) FindByExtraField(ctx context.Context, key string, valu
 }
 
 func (s *stubAccountRepo) Update(ctx context.Context, account *service.Account) error {
+	return errors.New("not implemented")
+}
+
+func (s *stubAccountRepo) UpdateWithAccountBillingSettings(
+	ctx context.Context,
+	account *service.Account,
+	probeEnabled *bool,
+	rateSyncEnabled *bool,
+	rateMultiplier *float64,
+) error {
 	return errors.New("not implemented")
 }
 
@@ -2248,8 +2397,14 @@ func (stubUserSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, id in
 func (stubUserSubscriptionRepo) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
-	return nil, errors.New("not implemented")
+func (r *stubUserSubscriptionRepo) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+	for i := range r.activeByUser[userID] {
+		if r.activeByUser[userID][i].GroupID == groupID {
+			sub := r.activeByUser[userID][i]
+			return &sub, nil
+		}
+	}
+	return nil, service.ErrSubscriptionNotFound
 }
 func (stubUserSubscriptionRepo) Update(ctx context.Context, sub *service.UserSubscription) error {
 	return errors.New("not implemented")
@@ -2391,7 +2546,7 @@ func (r *stubApiKeyRepo) GetByKeyForAuth(ctx context.Context, key string) (*serv
 	return r.GetByKey(ctx, key)
 }
 
-func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.APIKey) error {
+func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.APIKey, _ service.APIKeyUpdateFields) error {
 	if key == nil {
 		return errors.New("nil key")
 	}

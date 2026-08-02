@@ -302,6 +302,7 @@ import {
 import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
 import type { CustomMenuItem } from '@/types'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import { canAccessOrganizationRoute } from '@/router/organizationAccess'
 
 interface NavItem {
   path: string
@@ -331,7 +332,7 @@ interface NavItem {
   showDot?: () => boolean
   /**
    * 可选的"使用指南"文档链接。当非空且 sidebar 未折叠时，label 右侧渲染问号图标，
-   * 点击（阻止导航冒泡）在新标签页打开该链接。当前只由自定义菜单填充。
+   * 点击（阻止导航冒泡）在新标签页打开该链接。
    */
   docUrl?: string
 }
@@ -888,6 +889,18 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map(customMenuToNavItem),
   )
+  if (canAccessOrganizationRoute(authStore.user)) {
+    const organizationIndex = authStore.user?.identity_type === 'iam' ? 0 : (withDashboard ? 1 : 0)
+    items.splice(organizationIndex, 0, {
+      path: '/organization',
+      label: t('organization.console'),
+      icon: UsersIcon,
+      docUrl: sanitizeUrl(appStore.cachedPublicSettings?.company_documentation_url || ''),
+    })
+  }
+  if (authStore.user?.identity_type === 'iam') {
+    return items.filter(item => !['/subscriptions', '/purchase', '/orders', '/redeem', '/affiliate'].includes(item.path))
+  }
   return items
 }
 
@@ -925,6 +938,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
+    { path: '/admin/company-applications', label: t('organization.admin.title'), icon: ShieldIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
     {
       path: '/admin/channels',

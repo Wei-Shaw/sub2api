@@ -33,6 +33,62 @@ func (_c *UsageLogCreate) SetUserID(v int64) *UsageLogCreate {
 	return _c
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_c *UsageLogCreate) SetOrganizationID(v int64) *UsageLogCreate {
+	_c.mutation.SetOrganizationID(v)
+	return _c
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableOrganizationID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetOrganizationID(*v)
+	}
+	return _c
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (_c *UsageLogCreate) SetPayerUserID(v int64) *UsageLogCreate {
+	_c.mutation.SetPayerUserID(v)
+	return _c
+}
+
+// SetNillablePayerUserID sets the "payer_user_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillablePayerUserID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetPayerUserID(*v)
+	}
+	return _c
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (_c *UsageLogCreate) SetBalanceSource(v string) *UsageLogCreate {
+	_c.mutation.SetBalanceSource(v)
+	return _c
+}
+
+// SetNillableBalanceSource sets the "balance_source" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableBalanceSource(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetBalanceSource(*v)
+	}
+	return _c
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (_c *UsageLogCreate) SetAuthzGeneration(v int64) *UsageLogCreate {
+	_c.mutation.SetAuthzGeneration(v)
+	return _c
+}
+
+// SetNillableAuthzGeneration sets the "authz_generation" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableAuthzGeneration(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetAuthzGeneration(*v)
+	}
+	return _c
+}
+
 // SetAPIKeyID sets the "api_key_id" field.
 func (_c *UsageLogCreate) SetAPIKeyID(v int64) *UsageLogCreate {
 	_c.mutation.SetAPIKeyID(v)
@@ -796,6 +852,11 @@ func (_c *UsageLogCreate) check() error {
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "UsageLog.user_id"`)}
 	}
+	if v, ok := _c.mutation.BalanceSource(); ok {
+		if err := usagelog.BalanceSourceValidator(v); err != nil {
+			return &ValidationError{Name: "balance_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.balance_source": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.APIKeyID(); !ok {
 		return &ValidationError{Name: "api_key_id", err: errors.New(`ent: missing required field "UsageLog.api_key_id"`)}
 	}
@@ -979,6 +1040,22 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec = sqlgraph.NewCreateSpec(usagelog.Table, sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64))
 	)
 	_spec.OnConflict = _c.conflict
+	if value, ok := _c.mutation.OrganizationID(); ok {
+		_spec.SetField(usagelog.FieldOrganizationID, field.TypeInt64, value)
+		_node.OrganizationID = &value
+	}
+	if value, ok := _c.mutation.PayerUserID(); ok {
+		_spec.SetField(usagelog.FieldPayerUserID, field.TypeInt64, value)
+		_node.PayerUserID = &value
+	}
+	if value, ok := _c.mutation.BalanceSource(); ok {
+		_spec.SetField(usagelog.FieldBalanceSource, field.TypeString, value)
+		_node.BalanceSource = &value
+	}
+	if value, ok := _c.mutation.AuthzGeneration(); ok {
+		_spec.SetField(usagelog.FieldAuthzGeneration, field.TypeInt64, value)
+		_node.AuthzGeneration = &value
+	}
 	if value, ok := _c.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)
 		_node.RequestID = value
@@ -1301,6 +1378,96 @@ func (u *UsageLogUpsert) SetUserID(v int64) *UsageLogUpsert {
 // UpdateUserID sets the "user_id" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateUserID() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldUserID)
+	return u
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *UsageLogUpsert) SetOrganizationID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldOrganizationID, v)
+	return u
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateOrganizationID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldOrganizationID)
+	return u
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *UsageLogUpsert) AddOrganizationID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldOrganizationID, v)
+	return u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *UsageLogUpsert) ClearOrganizationID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldOrganizationID)
+	return u
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *UsageLogUpsert) SetPayerUserID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldPayerUserID, v)
+	return u
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdatePayerUserID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldPayerUserID)
+	return u
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *UsageLogUpsert) AddPayerUserID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldPayerUserID, v)
+	return u
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *UsageLogUpsert) ClearPayerUserID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldPayerUserID)
+	return u
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *UsageLogUpsert) SetBalanceSource(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldBalanceSource, v)
+	return u
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateBalanceSource() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldBalanceSource)
+	return u
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *UsageLogUpsert) ClearBalanceSource() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldBalanceSource)
+	return u
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *UsageLogUpsert) SetAuthzGeneration(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldAuthzGeneration, v)
+	return u
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateAuthzGeneration() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldAuthzGeneration)
+	return u
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *UsageLogUpsert) AddAuthzGeneration(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldAuthzGeneration, v)
+	return u
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *UsageLogUpsert) ClearAuthzGeneration() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldAuthzGeneration)
 	return u
 }
 
@@ -2200,6 +2367,111 @@ func (u *UsageLogUpsertOne) SetUserID(v int64) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateUserID() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *UsageLogUpsertOne) SetOrganizationID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *UsageLogUpsertOne) AddOrganizationID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateOrganizationID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *UsageLogUpsertOne) ClearOrganizationID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearOrganizationID()
+	})
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *UsageLogUpsertOne) SetPayerUserID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPayerUserID(v)
+	})
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *UsageLogUpsertOne) AddPayerUserID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddPayerUserID(v)
+	})
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdatePayerUserID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePayerUserID()
+	})
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *UsageLogUpsertOne) ClearPayerUserID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPayerUserID()
+	})
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *UsageLogUpsertOne) SetBalanceSource(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBalanceSource(v)
+	})
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateBalanceSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBalanceSource()
+	})
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *UsageLogUpsertOne) ClearBalanceSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearBalanceSource()
+	})
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *UsageLogUpsertOne) SetAuthzGeneration(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAuthzGeneration(v)
+	})
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *UsageLogUpsertOne) AddAuthzGeneration(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAuthzGeneration(v)
+	})
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateAuthzGeneration() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAuthzGeneration()
+	})
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *UsageLogUpsertOne) ClearAuthzGeneration() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAuthzGeneration()
 	})
 }
 
@@ -3405,6 +3677,111 @@ func (u *UsageLogUpsertBulk) SetUserID(v int64) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateUserID() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *UsageLogUpsertBulk) SetOrganizationID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// AddOrganizationID adds v to the "organization_id" field.
+func (u *UsageLogUpsertBulk) AddOrganizationID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateOrganizationID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *UsageLogUpsertBulk) ClearOrganizationID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearOrganizationID()
+	})
+}
+
+// SetPayerUserID sets the "payer_user_id" field.
+func (u *UsageLogUpsertBulk) SetPayerUserID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPayerUserID(v)
+	})
+}
+
+// AddPayerUserID adds v to the "payer_user_id" field.
+func (u *UsageLogUpsertBulk) AddPayerUserID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddPayerUserID(v)
+	})
+}
+
+// UpdatePayerUserID sets the "payer_user_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdatePayerUserID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePayerUserID()
+	})
+}
+
+// ClearPayerUserID clears the value of the "payer_user_id" field.
+func (u *UsageLogUpsertBulk) ClearPayerUserID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPayerUserID()
+	})
+}
+
+// SetBalanceSource sets the "balance_source" field.
+func (u *UsageLogUpsertBulk) SetBalanceSource(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBalanceSource(v)
+	})
+}
+
+// UpdateBalanceSource sets the "balance_source" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateBalanceSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBalanceSource()
+	})
+}
+
+// ClearBalanceSource clears the value of the "balance_source" field.
+func (u *UsageLogUpsertBulk) ClearBalanceSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearBalanceSource()
+	})
+}
+
+// SetAuthzGeneration sets the "authz_generation" field.
+func (u *UsageLogUpsertBulk) SetAuthzGeneration(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAuthzGeneration(v)
+	})
+}
+
+// AddAuthzGeneration adds v to the "authz_generation" field.
+func (u *UsageLogUpsertBulk) AddAuthzGeneration(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAuthzGeneration(v)
+	})
+}
+
+// UpdateAuthzGeneration sets the "authz_generation" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateAuthzGeneration() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAuthzGeneration()
+	})
+}
+
+// ClearAuthzGeneration clears the value of the "authz_generation" field.
+func (u *UsageLogUpsertBulk) ClearAuthzGeneration() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAuthzGeneration()
 	})
 }
 

@@ -53,6 +53,9 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if user.Status != payment.EntityStatusActive {
 		return nil, infraerrors.Forbidden("USER_INACTIVE", "user account is disabled")
 	}
+	if err := GuardIAMFinancialOperation(user); err != nil {
+		return nil, err
+	}
 	if s.notificationEmailService != nil {
 		s.notificationEmailService.RememberRecipientLocale(ctx, req.UserID, user.Email, req.Locale)
 	}
@@ -268,6 +271,10 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	}
 	if plan != nil {
 		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit))
+	}
+	// 企业订阅订单：标记公司主体，履约时挂到 organization_subscriptions。
+	if req.OrganizationID > 0 {
+		b.SetOrganizationID(req.OrganizationID)
 	}
 	order, err := b.Save(ctx)
 	if err != nil {

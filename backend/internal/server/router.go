@@ -76,8 +76,8 @@ func SetupRouter(
 
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {
-		frontendServer, err := web.NewFrontendServer(settingService)
-		if err != nil {
+		frontendServer, err := web.NewFrontendServer(settingService) //nolint:staticcheck // SA4023: the !embed stub always errors; embed builds can return nil
+		if err != nil {                                              //nolint:staticcheck // SA4023: see above
 			log.Printf("Warning: Failed to create frontend server with settings injection: %v, using legacy mode", err)
 			r.Use(web.ServeEmbeddedFrontend())
 			settingService.SetOnUpdateCallback(refreshFrameOrigins)
@@ -125,13 +125,19 @@ func registerRoutes(
 	// API v1
 	v1 := r.Group("/api/v1")
 
+	// 面板 API 限流器：认证接口按用户 ID、公开接口按安全客户端 IP，
+	// 防止高频刷管理面接口打爆数据库（阈值可在系统设置中调整）。
+	panelRateLimiter := middleware2.NewPanelRateLimiter(redisClient, settingService)
+
 	// 注册各模块路由
-	routes.RegisterAuthRoutes(v1, h, jwtAuth, auditLog, redisClient, settingService)
-	routes.RegisterUserRoutes(v1, h, jwtAuth, auditLog, settingService)
+	routes.RegisterAuthRoutes(v1, h, jwtAuth, auditLog, redisClient, settingService, panelRateLimiter)
+	routes.RegisterUserRoutes(v1, h, jwtAuth, auditLog, settingService, panelRateLimiter)
+	routes.RegisterOrganizationRoutes(v1, h, jwtAuth, auditLog, settingService)
 	routes.RegisterSupportRoutes(v1, h, jwtAuth, optionalJWTAuth, settingService, middleware.NewRateLimiter(redisClient))
-	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService)
+	routes.RegisterModelPlazaRoutes(v1, h, optionalJWTAuth, settingService, panelRateLimiter)
+	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService, panelRateLimiter)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg)
-	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, h.Admin.RechargePromo, jwtAuth, adminAuth, auditLog, settingService)
+	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, h.Admin.RechargePromo, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter)
 	routes.RegisterPlazaRoutes(v1, h, redisClient)
 	routes.RegisterOidcProviderRoutes(r, h)
 	routes.RegisterInboxRoutes(v1, inboxHandler, inboxWS, jwtAuth, adminAuth)

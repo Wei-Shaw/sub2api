@@ -9,6 +9,35 @@ import (
 )
 
 func (s *GatewayService) SelectFalAccountInGroup(ctx context.Context, groupID *int64, sessionHash, requestedModel string, excludedIDs map[int64]struct{}, api string) (*Account, error) {
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(groupID)) == 0 {
+		return s.selectFalAccountInGroupSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs, api)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, err
+		}
+		candidateModel := s.apiKeyFallbackCandidateModel(ctx, state.apiKey.GroupID, requestedModel)
+		account, err := s.selectFalAccountInGroupSingle(ctx, state.apiKey.GroupID, sessionHash, candidateModel, excludedIDs, api)
+		if err == nil {
+			state.Commit(index)
+			return account, nil
+		}
+		if !IsAPIKeyFallbackSelectionError(err) {
+			return nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+func (s *GatewayService) selectFalAccountInGroupSingle(ctx context.Context, groupID *int64, sessionHash, requestedModel string, excludedIDs map[int64]struct{}, api string) (*Account, error) {
 	account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, PlatformFal, api)
 	if err != nil {
 		return nil, err
@@ -17,6 +46,44 @@ func (s *GatewayService) SelectFalAccountInGroup(ctx context.Context, groupID *i
 }
 
 func (s *GatewayService) SelectImageAccountMixed(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	imageCapability OpenAIImagesCapability,
+	falAPI string,
+	preferPlatform string,
+) (*Account, error) {
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(groupID)) == 0 {
+		return s.selectImageAccountMixedSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs, imageCapability, falAPI, preferPlatform)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, err
+		}
+		candidateModel := s.apiKeyFallbackCandidateModel(ctx, state.apiKey.GroupID, requestedModel)
+		account, err := s.selectImageAccountMixedSingle(ctx, state.apiKey.GroupID, sessionHash, candidateModel, excludedIDs, imageCapability, falAPI, preferPlatform)
+		if err == nil {
+			state.Commit(index)
+			return account, nil
+		}
+		if !IsAPIKeyFallbackSelectionError(err) {
+			return nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+func (s *GatewayService) selectImageAccountMixedSingle(
 	ctx context.Context,
 	groupID *int64,
 	sessionHash string,

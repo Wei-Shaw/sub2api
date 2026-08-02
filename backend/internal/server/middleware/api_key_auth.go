@@ -157,6 +157,30 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
 			return
 		}
+		if err := apiKeyService.ValidateOrganizationAccess(c.Request.Context(), apiKey.User); err != nil {
+			MarkIngressRejected(c, IngressRejectUserInactive)
+			AbortWithError(c, 403, "ORGANIZATION_ACCESS_DENIED", "Organization access is unavailable")
+			return
+		}
+		billingInfoRequest := c.Request.URL.Path == "/v1/sub2api/billing"
+		// Async image task polling only reads data that already belongs to the
+		// authenticated key and must remain available after the completed
+		// generation consumes the key's remaining balance.
+		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest || isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path)
+		routingState, routingErr := prepareAPIKeyRoutingState(
+			c.Request.Context(),
+			apiKeyService,
+			subscriptionService,
+			apiKey,
+			skipBilling || cfg.RunMode == config.RunModeSimple,
+		)
+		if routingErr != nil {
+			AbortWithError(c, http.StatusForbidden, "NO_AVAILABLE_GROUP", "No available API key group")
+			return
+		}
+		if routingState != nil {
+			c.Request = c.Request.WithContext(service.WithAPIKeyRoutingState(c.Request.Context(), routingState))
+		}
 		if abortIfAPIKeyGroupUnavailable(c, apiKey) {
 			return
 		}
@@ -165,11 +189,6 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		}
 		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID)
 		c.Request = c.Request.WithContext(ctx)
-		billingInfoRequest := c.Request.URL.Path == "/v1/sub2api/billing"
-		// Async image task polling only reads data that already belongs to the
-		// authenticated key and must remain available after the completed
-		// generation consumes the key's remaining balance.
-		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest || isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path)
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 
@@ -191,10 +210,15 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// ── 5. 按端点需要加载订阅 ───────────────────────────────────
 
 		var subscription *service.UserSubscription
+		if routingState != nil {
+			subscription = routingState.EffectiveSubscription()
+		}
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+		// 企业 API Key 绑定公司订阅：消费走组织订阅计数器，不加载个人订阅。
+		isEnterpriseKey := apiKey.OrganizationSubscriptionID != nil
 
 		// 倍率自省不需要订阅数据；/v1/usage 仍保留原有订阅读取行为。
-		if isSubscriptionType && subscriptionService != nil && !billingInfoRequest {
+		if routingState == nil && isSubscriptionType && subscriptionService != nil && !billingInfoRequest && !isEnterpriseKey {
 			sub, subErr := subscriptionService.GetActiveSubscription(
 				c.Request.Context(),
 				apiKey.User.ID,
@@ -234,8 +258,27 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				return
 			}
 
-			// 订阅模式：验证订阅限额
-			if subscription != nil {
+			// 企业 Key：校验所绑定公司订阅的活跃性与限额（不检查个人余额）
+			if isEnterpriseKey {
+				if validateErr := apiKeyService.ValidateEnterpriseSubscription(c.Request.Context(), apiKey); validateErr != nil {
+					code := "SUBSCRIPTION_INVALID"
+					status := 403
+					if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
+						errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
+						errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
+						code = "USAGE_LIMIT_EXCEEDED"
+						status = 429
+					} else if errors.Is(validateErr, service.ErrOrgSubscriptionNotFound) {
+						code = "SUBSCRIPTION_NOT_FOUND"
+					}
+					AbortWithError(c, status, code, validateErr.Error())
+					return
+				}
+			} else if routingState != nil {
+				// Candidate-specific billing is checked by BillingCacheService, which
+				// can advance from metered to subscription groups (and vice versa).
+			} else if subscription != nil {
+				// 订阅模式：验证订阅限额
 				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
 				if needsMaintenance {
 					refreshed, maintenanceErr := subscriptionService.EnsureWindowMaintenance(c.Request.Context(), subscription)
@@ -372,6 +415,11 @@ func GetOpsFallbackAPIKey(c *gin.Context) (*service.APIKey, bool) {
 
 // GetSubscriptionFromContext 从上下文中获取订阅信息
 func GetSubscriptionFromContext(c *gin.Context) (*service.UserSubscription, bool) {
+	if c != nil && c.Request != nil {
+		if state := service.APIKeyRoutingStateFromContext(c.Request.Context()); state != nil {
+			return state.SubscriptionRef(), true
+		}
+	}
 	value, exists := c.Get(string(ContextKeySubscription))
 	if !exists {
 		return nil, false

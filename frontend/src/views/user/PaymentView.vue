@@ -1,6 +1,6 @@
 <template>
-  <AppLayout>
-    <div class="mx-auto max-w-4xl space-y-6">
+  <component :is="embedded ? 'div' : AppLayout">
+    <div class="mx-auto max-w-4xl space-y-6" :class="{ 'py-2': embedded }">
       <div v-if="loading" class="flex items-center justify-center py-20">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
       </div>
@@ -146,6 +146,10 @@
           </template>
           <!-- Subscribe Tab -->
           <template v-else-if="activeTab === 'subscription'">
+            <!-- Enterprise subscription banner: the order is placed on behalf of the company -->
+            <div v-if="isOrganizationMode" class="mb-4 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-300">
+              {{ t('payment.organizationSubscriptionNotice') }}
+            </div>
             <!-- Subscription confirm (inline, replaces plan list) -->
             <template v-if="selectedPlan">
               <div class="card p-5">
@@ -230,7 +234,7 @@
                 </span>
                 <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(subTotalAmount) }}</span>
               </button>
-              <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
+              <button class="btn btn-secondary w-full" @click="cancelSubscription">{{ t('common.cancel') }}</button>
             </template>
             <!-- Plan list -->
             <template v-else>
@@ -361,7 +365,7 @@
         </div>
       </Transition>
     </Teleport>
-  </AppLayout>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -373,6 +377,7 @@ import { usePaymentStore } from '@/stores/payment'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
+import { organizationAPI } from '@/api/organization'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
@@ -403,6 +408,30 @@ import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './p
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
 import { useRechargePromoDot } from '@/composables/useRechargePromoDot'
 
+// `embedded` 模式：作为部件被内嵌进企业控制台（不渲染 AppLayout，
+// 且强制企业订阅口径），而非以独立 /purchase 页面呈现。
+// `initialPlanId`：内嵌模式下由宿主（企业控制台的套餐卡片）指定要购买的套餐，
+// 挂载后直接进入该套餐的付款确认页，跳过再展示一次套餐列表。
+const props = withDefaults(defineProps<{ embedded?: boolean; initialPlanId?: number | null }>(), {
+  embedded: false,
+  initialPlanId: null,
+})
+const embedded = computed(() => props.embedded)
+
+// 嵌入模式下，企业订阅支付成功后通知宿主（企业控制台）刷新订阅列表；
+// 取消购买时通知宿主关闭内嵌弹窗（而非退回本部件的套餐列表）。
+const emit = defineEmits<{ (e: 'refresh-subscriptions'): void; (e: 'cancel'): void }>()
+
+// 取消订阅套餐购买：嵌入模式下应关闭宿主的内嵌弹窗（回到企业控制台的订阅页面），
+// 而非仅清空 selectedPlan 退回本部件自己的套餐列表。
+function cancelSubscription(): void {
+  if (embedded.value) {
+    emit('cancel')
+    return
+  }
+  selectedPlan.value = null
+}
+
 const i18n = useI18n()
 const { t } = i18n
 const route = useRoute()
@@ -414,6 +443,16 @@ const appStore = useAppStore()
 
 const user = computed(() => authStore.user)
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
+
+// Enterprise subscription mode. Primarily reached by embedding this component
+// inside the organization console (`<PaymentView embedded />`), and also still
+// supported via `/purchase?subject=organization`. The full personal
+// subscription purchase flow (plan cards, payment method selection, gateway QR
+// / redirect) is reused verbatim; only the order is placed on behalf of the
+// company (owner pays through the same gateway, subscription is fulfilled onto
+// the company subject). Recharge is not applicable, so only the subscription
+// tab shows.
+const isOrganizationMode = computed(() => embedded.value || route.query.subject === 'organization')
 
 function getDaysRemaining(expiresAt: string): number {
   const diff = new Date(expiresAt).getTime() - Date.now()
@@ -432,7 +471,9 @@ const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
 const errorHintMessage = ref('')
-const activeTab = ref<'recharge' | 'subscription'>('recharge')
+// 企业模式（含控制台内嵌部件）只做订阅，初始就落在订阅 tab，避免先渲染
+// 充值/付费界面再切换造成的闪烁。
+const activeTab = ref<'recharge' | 'subscription'>(isOrganizationMode.value ? 'subscription' : 'recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
@@ -560,6 +601,23 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
   })
 }
 
+// 支付完成后的统一收尾。独立页面沿用跳转到支付结果页；嵌入模式（企业控制台
+// 内联部件）则原地重置回选择态、提示成功并通知宿主刷新订阅，避免离开控制台。
+async function finalizePaymentResult(state: PaymentRecoverySnapshot): Promise<void> {
+  if (embedded.value) {
+    if (state.orderType === 'subscription') emit('refresh-subscriptions')
+    appStore.showSuccess(
+      state.orderType === 'subscription'
+        ? t('payment.result.subscriptionSuccess')
+        : t('payment.result.success'),
+    )
+    resetPayment()
+    selectedPlan.value = null
+    return
+  }
+  await redirectToPaymentResult(state)
+}
+
 function buildWechatOAuthAuthorizeUrl(
   authorizeUrl: string,
   context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number },
@@ -603,6 +661,7 @@ function onPaymentDone() {
   selectedPlan.value = null
   if (wasSubscription) {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
+    if (embedded.value) emit('refresh-subscriptions')
   }
 }
 
@@ -613,7 +672,7 @@ async function onPaymentSuccess() {
   if (paymentState.value.orderType === 'subscription') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
-  await redirectToPaymentResult(completedPayment)
+  await finalizePaymentResult(completedPayment)
 }
 
 function onPaymentSettled() {
@@ -628,6 +687,11 @@ const checkout = ref<CheckoutInfoResponse>({
 
 const tabs = computed(() => {
   const result: { key: 'recharge' | 'subscription'; label: string }[] = []
+  // Enterprise mode only ever purchases subscriptions for the company.
+  if (isOrganizationMode.value) {
+    result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
+    return result
+  }
   if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
   result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
   return result
@@ -1104,7 +1168,20 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       payload.wechat_resume_token = options.wechatResumeToken
     }
 
-    const result = await paymentStore.createOrder(payload) as CreateOrderResult & { resume_token?: string }
+    // Enterprise subscription: place the order on the company subject. The
+    // response shape matches the personal createOrder result, so all downstream
+    // gateway handling (QR dialog, Stripe / Airwallex redirect, popup) below is
+    // reused unchanged.
+    const result = (isOrganizationMode.value && orderType === 'subscription'
+      ? await organizationAPI.createSubscriptionOrder({
+        plan_id: planId as number,
+        payment_type: payload.payment_type,
+        openid: payload.openid,
+        return_url: payload.return_url,
+        payment_source: payload.payment_source,
+        is_mobile: payload.is_mobile,
+      })
+      : await paymentStore.createOrder(payload)) as CreateOrderResult & { resume_token?: string }
     const openWindow = (url: string) => {
       const win = window.open(url, 'paymentPopup', getPaymentPopupFeatures())
       if (!win || win.closed) {
@@ -1206,7 +1283,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         } else {
           const resultState = { ...decision.paymentState }
           resetPayment()
-          await redirectToPaymentResult(resultState)
+          await finalizePaymentResult(resultState)
         }
       } catch (err: unknown) {
         resetPayment()
@@ -1472,6 +1549,20 @@ onMounted(async () => {
       }
     }
     await resumeWechatPaymentFromQuery()
+    // 企业模式（含控制台内嵌部件）只做企业订阅，充值 tab 不适用，默认落在
+    // 订阅套餐列表，而非充值/付费界面。
+    if (isOrganizationMode.value) {
+      activeTab.value = 'subscription'
+    }
+    // 内嵌模式下宿主指定了套餐（企业控制台点某张套餐卡进入）：直接预选该套餐，
+    // 跳过再展示一次套餐列表，进入付款确认页。
+    if (embedded.value && props.initialPlanId != null && !selectedPlan.value) {
+      const match = checkout.value.plans.find((p) => p.id === props.initialPlanId)
+      if (match) {
+        activeTab.value = 'subscription'
+        selectedPlan.value = match
+      }
+    }
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
     }

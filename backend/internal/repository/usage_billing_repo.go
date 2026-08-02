@@ -50,7 +50,7 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 		return &service.UsageBillingApplyResult{Applied: false}, nil
 	}
 
-	result := &service.UsageBillingApplyResult{Applied: true}
+	result := &service.UsageBillingApplyResult{Applied: true, OrganizationID: cmd.OrganizationID, PayerUserID: cmd.PayerUserID, BalanceSource: cmd.BalanceSource, AuthzGeneration: cmd.AuthzGeneration}
 	if err := r.applyUsageBillingEffects(ctx, tx, cmd, result); err != nil {
 		return nil, err
 	}
@@ -172,14 +172,33 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 }
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
-	if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
+	if cmd.SubscriptionCost > 0 && cmd.OrganizationSubscriptionID != nil {
+		// Enterprise API key: charge the bound company subscription.
+		if err := incrementUsageBillingOrgSubscription(ctx, tx, *cmd.OrganizationSubscriptionID, cmd.SubscriptionCost); err != nil {
+			return err
+		}
+	} else if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
 		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost); err != nil {
 			return err
 		}
 	}
 
 	if cmd.BalanceCost > 0 {
-		newBalance, sufficient, err := deductUsageBillingBalance(ctx, tx, cmd.UserID, cmd.BalanceCost)
+		if cmd.BalanceSource == service.BalanceSourceCompany && (cmd.OrganizationID == nil || *cmd.OrganizationID <= 0) {
+			return service.ErrCompanyNotFound
+		}
+		var newBalance float64
+		var sufficient bool
+		var err error
+		if usageBillingUsesOrganizationBalance(cmd.BalanceSource, cmd.OrganizationID) {
+			newBalance, sufficient, err = deductUsageBillingOrganizationBalance(ctx, tx, *cmd.OrganizationID, cmd.BalanceCost)
+		} else {
+			payerUserID := cmd.PayerUserID
+			if payerUserID == 0 {
+				payerUserID = cmd.UserID
+			}
+			newBalance, sufficient, err = deductUsageBillingBalance(ctx, tx, payerUserID, cmd.BalanceCost)
+		}
 		if err != nil {
 			return err
 		}
@@ -240,6 +259,36 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 	return service.ErrSubscriptionNotFound
 }
 
+// incrementUsageBillingOrgSubscription charges a company subscription's usage
+// counters within the billing transaction. It is window-aware, mirroring the
+// rolling-window reset semantics used for personal subscriptions: a NULL or
+// expired window is (re)started at NOW() with usage set to costUSD.
+func incrementUsageBillingOrgSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64) error {
+	const updateSQL = `
+		UPDATE organization_subscriptions SET
+			daily_usage_usd = CASE WHEN daily_window_start IS NULL OR NOW() - daily_window_start >= INTERVAL '24 hours' THEN $1 ELSE daily_usage_usd + $1 END,
+			daily_window_start = CASE WHEN daily_window_start IS NULL OR NOW() - daily_window_start >= INTERVAL '24 hours' THEN NOW() ELSE daily_window_start END,
+			weekly_usage_usd = CASE WHEN weekly_window_start IS NULL OR NOW() - weekly_window_start >= INTERVAL '7 days' THEN $1 ELSE weekly_usage_usd + $1 END,
+			weekly_window_start = CASE WHEN weekly_window_start IS NULL OR NOW() - weekly_window_start >= INTERVAL '7 days' THEN NOW() ELSE weekly_window_start END,
+			monthly_usage_usd = CASE WHEN monthly_window_start IS NULL OR NOW() - monthly_window_start >= INTERVAL '30 days' THEN $1 ELSE monthly_usage_usd + $1 END,
+			monthly_window_start = CASE WHEN monthly_window_start IS NULL OR NOW() - monthly_window_start >= INTERVAL '30 days' THEN NOW() ELSE monthly_window_start END,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+	res, err := tx.ExecContext(ctx, updateSQL, costUSD, subscriptionID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected > 0 {
+		return nil
+	}
+	return service.ErrOrgSubscriptionNotFound
+}
+
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, bool, error) {
 	var newBalance float64
 	err := tx.QueryRowContext(ctx, `
@@ -256,25 +305,50 @@ func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, am
 		return 0, false, err
 	}
 
-	err = tx.QueryRowContext(ctx, `
-		UPDATE users
-		SET balance = balance - $1,
-			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
-		RETURNING balance
-	`, amount, userID).Scan(&newBalance)
-	if errors.Is(err, sql.ErrNoRows) {
+	if exists, existsErr := userExistsForBilling(ctx, tx, userID); existsErr != nil {
+		return 0, false, existsErr
+	} else if !exists {
 		return 0, false, service.ErrUserNotFound
 	}
-	if err != nil {
+	return 0, false, service.ErrBalanceInsufficient
+}
+
+func usageBillingUsesOrganizationBalance(balanceSource string, organizationID *int64) bool {
+	return balanceSource == service.BalanceSourceCompany && organizationID != nil && *organizationID > 0
+}
+
+func deductUsageBillingOrganizationBalance(ctx context.Context, tx *sql.Tx, organizationID int64, amount float64) (float64, bool, error) {
+	var newBalance float64
+	err := tx.QueryRowContext(ctx, `
+		UPDATE organizations
+		SET balance = balance - $1,
+			updated_at = NOW()
+		WHERE id = $2 AND balance >= $1
+		RETURNING balance
+	`, amount, organizationID).Scan(&newBalance)
+	if err == nil {
+		return newBalance, true, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, false, err
 	}
-	return newBalance, false, nil
+	if exists, existsErr := organizationExistsForBilling(ctx, tx, organizationID); existsErr != nil {
+		return 0, false, existsErr
+	} else if !exists {
+		return 0, false, service.ErrCompanyNotFound
+	}
+	return 0, false, service.ErrBalanceInsufficient
 }
 
 func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
 	if cmd.HoldAmount <= 0 {
 		return &service.BatchImageBalanceHoldResult{}, nil
+	}
+	if cmd.BalanceSource == service.BalanceSourceCompany && (cmd.OrganizationID == nil || *cmd.OrganizationID <= 0) {
+		return nil, service.ErrCompanyNotFound
+	}
+	if usageBillingUsesOrganizationBalance(cmd.BalanceSource, cmd.OrganizationID) {
+		return reserveUsageBillingBatchImageOrganizationBalance(ctx, tx, cmd)
 	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
@@ -284,19 +358,29 @@ func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL AND balance >= $1
 		RETURNING balance, frozen_balance
-	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
+	`, cmd.HoldAmount, effectiveBatchImagePayer(cmd)).Scan(&balance, &frozen)
 	if err == nil {
 		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	if exists, existsErr := userExistsForBilling(ctx, tx, cmd.UserID); existsErr != nil {
+	if exists, existsErr := userExistsForBilling(ctx, tx, effectiveBatchImagePayer(cmd)); existsErr != nil {
 		return nil, existsErr
 	} else if !exists {
 		return nil, service.ErrUserNotFound
 	}
 	return nil, service.ErrBatchImageInsufficientBalance
+}
+
+func effectiveBatchImagePayer(cmd *service.BatchImageBalanceHoldCommand) int64 {
+	if cmd != nil && cmd.PayerUserID > 0 {
+		return cmd.PayerUserID
+	}
+	if cmd == nil {
+		return 0
+	}
+	return cmd.UserID
 }
 
 func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
@@ -305,6 +389,12 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	}
 	if cmd.ActualAmount-cmd.HoldAmount > 0.00000001 {
 		return nil, service.ErrBatchImageSettlementCostExceedsHold
+	}
+	if cmd.BalanceSource == service.BalanceSourceCompany && (cmd.OrganizationID == nil || *cmd.OrganizationID <= 0) {
+		return nil, service.ErrCompanyNotFound
+	}
+	if usageBillingUsesOrganizationBalance(cmd.BalanceSource, cmd.OrganizationID) {
+		return captureUsageBillingBatchImageOrganizationBalance(ctx, tx, cmd)
 	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
@@ -316,14 +406,14 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 			updated_at = NOW()
 		WHERE id = $3 AND deleted_at IS NULL AND COALESCE(frozen_balance, 0) >= $1
 		RETURNING balance, frozen_balance
-	`, cmd.HoldAmount, cmd.ActualAmount, cmd.UserID).Scan(&balance, &frozen)
+	`, cmd.HoldAmount, cmd.ActualAmount, effectiveBatchImagePayer(cmd)).Scan(&balance, &frozen)
 	if err == nil {
 		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	if exists, existsErr := userExistsForBilling(ctx, tx, cmd.UserID); existsErr != nil {
+	if exists, existsErr := userExistsForBilling(ctx, tx, effectiveBatchImagePayer(cmd)); existsErr != nil {
 		return nil, existsErr
 	} else if !exists {
 		return nil, service.ErrUserNotFound
@@ -335,6 +425,9 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	if cmd.HoldAmount <= 0 {
 		return &service.BatchImageBalanceHoldResult{}, nil
 	}
+	if cmd.BalanceSource == service.BalanceSourceCompany && (cmd.OrganizationID == nil || *cmd.OrganizationID <= 0) {
+		return nil, service.ErrCompanyNotFound
+	}
 	// 释放前校验该 job 确实预留过 hold（hold request id 已被 claim），
 	// 防止从未成功冻结的 job 触发"幻影释放"，从其他用户的冻结资金池中凭空生成余额。
 	held, heldErr := batchImageHoldClaimExists(ctx, tx, service.BatchImageHoldRequestID(cmd.BatchID), cmd.APIKeyID)
@@ -345,6 +438,9 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 		logger.LegacyPrintf("repository.usage_billing", "[BatchImage] release skipped, hold was never reserved: batch=%s", cmd.BatchID)
 		return &service.BatchImageBalanceHoldResult{}, nil
 	}
+	if usageBillingUsesOrganizationBalance(cmd.BalanceSource, cmd.OrganizationID) {
+		return releaseUsageBillingBatchImageOrganizationBalance(ctx, tx, cmd)
+	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
 		UPDATE users
@@ -353,19 +449,93 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL AND COALESCE(frozen_balance, 0) >= $1
 		RETURNING balance, frozen_balance
-	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
+	`, cmd.HoldAmount, effectiveBatchImagePayer(cmd)).Scan(&balance, &frozen)
 	if err == nil {
 		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	if exists, existsErr := userExistsForBilling(ctx, tx, cmd.UserID); existsErr != nil {
+	if exists, existsErr := userExistsForBilling(ctx, tx, effectiveBatchImagePayer(cmd)); existsErr != nil {
 		return nil, existsErr
 	} else if !exists {
 		return nil, service.ErrUserNotFound
 	}
 	return nil, errors.New("batch image frozen balance is insufficient")
+}
+
+func reserveUsageBillingBatchImageOrganizationBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	var balance, frozen float64
+	err := tx.QueryRowContext(ctx, `
+		UPDATE organizations
+		SET balance = balance - $1,
+			frozen_balance = COALESCE(frozen_balance, 0) + $1,
+			updated_at = NOW()
+		WHERE id = $2 AND balance >= $1
+		RETURNING balance, frozen_balance
+	`, cmd.HoldAmount, *cmd.OrganizationID).Scan(&balance, &frozen)
+	if err == nil {
+		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if exists, existsErr := organizationExistsForBilling(ctx, tx, *cmd.OrganizationID); existsErr != nil {
+		return nil, existsErr
+	} else if !exists {
+		return nil, service.ErrCompanyNotFound
+	}
+	return nil, service.ErrBatchImageInsufficientBalance
+}
+
+func captureUsageBillingBatchImageOrganizationBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	var balance, frozen float64
+	err := tx.QueryRowContext(ctx, `
+		UPDATE organizations
+		SET balance = balance
+				+ CASE WHEN $1 > $2 THEN $1 - $2 ELSE 0 END
+				- CASE WHEN $2 > $1 THEN $2 - $1 ELSE 0 END,
+			frozen_balance = COALESCE(frozen_balance, 0) - $1,
+			updated_at = NOW()
+		WHERE id = $3 AND COALESCE(frozen_balance, 0) >= $1
+		RETURNING balance, frozen_balance
+	`, cmd.HoldAmount, cmd.ActualAmount, *cmd.OrganizationID).Scan(&balance, &frozen)
+	if err == nil {
+		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if exists, existsErr := organizationExistsForBilling(ctx, tx, *cmd.OrganizationID); existsErr != nil {
+		return nil, existsErr
+	} else if !exists {
+		return nil, service.ErrCompanyNotFound
+	}
+	return nil, errors.New("batch image organization frozen balance is insufficient")
+}
+
+func releaseUsageBillingBatchImageOrganizationBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	var balance, frozen float64
+	err := tx.QueryRowContext(ctx, `
+		UPDATE organizations
+		SET balance = balance + $1,
+			frozen_balance = COALESCE(frozen_balance, 0) - $1,
+			updated_at = NOW()
+		WHERE id = $2 AND COALESCE(frozen_balance, 0) >= $1
+		RETURNING balance, frozen_balance
+	`, cmd.HoldAmount, *cmd.OrganizationID).Scan(&balance, &frozen)
+	if err == nil {
+		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if exists, existsErr := organizationExistsForBilling(ctx, tx, *cmd.OrganizationID); existsErr != nil {
+		return nil, existsErr
+	} else if !exists {
+		return nil, service.ErrCompanyNotFound
+	}
+	return nil, errors.New("batch image organization frozen balance is insufficient")
 }
 
 // batchImageHoldClaimExists 检查 hold request id 是否已在 dedup（或归档）表中被 claim，
@@ -404,6 +574,18 @@ func userExistsForBilling(ctx context.Context, tx *sql.Tx, userID int64) (bool, 
 		FROM users
 		WHERE id = $1 AND deleted_at IS NULL
 	`, userID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func organizationExistsForBilling(ctx context.Context, tx *sql.Tx, organizationID int64) (bool, error) {
+	var exists int
+	err := tx.QueryRowContext(ctx, `SELECT 1 FROM organizations WHERE id = $1`, organizationID).Scan(&exists)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
