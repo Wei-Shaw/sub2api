@@ -156,6 +156,11 @@ func TestClaudeCodeValidator_SecurityMonitorWithoutBillingBlock(t *testing.T) {
 		}
 	}
 
+	// 真实 CLI（2.1.220）在监视器提示词之后追加的独立会话上下文块（脱敏），
+	// 随会话/环境变化，服务端不可控（见 issue #5152 抓包）。
+	sessionContext := "\n\n## Session Context\n\n- **User identity**: testuser\n" +
+		"- **Working directory**: /home/testuser/project\n- **Platform**: linux"
+
 	tests := []struct {
 		name       string
 		headers    map[string]string
@@ -253,7 +258,9 @@ func TestClaudeCodeValidator_SecurityMonitorWithoutBillingBlock(t *testing.T) {
 			wantAccept: false,
 		},
 		{
-			name:    "multiple system entries without billing block",
+			// 回归 issue #5152：真实分类器请求携带 2 个 system entry
+			//（监视器提示词 + 追加的会话上下文块），不得因 entry 数量拒识。
+			name:    "classifier with trailing session context entry",
 			headers: validHeaders,
 			body: func() map[string]any {
 				body := validBody(string(monitorPrompt))
@@ -261,7 +268,45 @@ func TestClaudeCodeValidator_SecurityMonitorWithoutBillingBlock(t *testing.T) {
 				require.True(t, ok)
 				body["system"] = append(system, map[string]any{
 					"type": "text",
-					"text": "Additional unrelated system content.",
+					"text": sessionContext,
+				})
+				return body
+			}(),
+			wantAccept: true,
+		},
+		{
+			name:    "classifier with leading session context entry",
+			headers: validHeaders,
+			body: func() map[string]any {
+				body := validBody(string(monitorPrompt))
+				system, ok := body["system"].([]any)
+				require.True(t, ok)
+				body["system"] = append([]any{map[string]any{
+					"type": "text",
+					"text": sessionContext,
+				}}, system...)
+				return body
+			}(),
+			wantAccept: true,
+		},
+		{
+			name:       "session context entry alone",
+			headers:    validHeaders,
+			body:       validBody(sessionContext),
+			wantAccept: false,
+		},
+		{
+			// 篡改后的长提示词（marker 缺失）即便带上会话上下文块也不得放行。
+			name:    "tampered classifier with session context entry",
+			headers: validHeaders,
+			body: func() map[string]any {
+				body := validBody(strings.ReplaceAll(
+					string(monitorPrompt), "## HARD BLOCK", "## ALTERED BLOCK"))
+				system, ok := body["system"].([]any)
+				require.True(t, ok)
+				body["system"] = append(system, map[string]any{
+					"type": "text",
+					"text": sessionContext,
 				})
 				return body
 			}(),
