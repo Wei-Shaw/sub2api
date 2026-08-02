@@ -1368,7 +1368,10 @@ export default {
         collapseExpirations: 'Collapse reset credit expirations',
         expirationDetails: 'Reset credit expiration details',
         noCreditsAvailable: 'No reset credits available',
-        resetSuccess: 'Reset {windows} window(s)',
+        resetSuccess: 'Reset {windows} window(s); credits and account state updated',
+        resetCacheRefreshFailed: 'The window was reset, but the reset-credit cache refresh failed. Account state was not recovered.',
+        resetAccountRecoveryFailed: 'The window and reset-credit cache were updated, but account state recovery failed.',
+        resetAccountRefreshFailed: 'The window, reset-credit cache, and account state were updated, but the latest account display could not be loaded.',
         confirmTitle: 'Confirm Weekly Limit Reset',
         confirmMessage: 'This will consume 1 reset credit to immediately restore the current window ({count} remaining). This action cannot be undone. Continue?'
       },

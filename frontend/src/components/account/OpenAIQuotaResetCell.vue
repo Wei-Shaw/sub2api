@@ -112,6 +112,12 @@
       {{ truncatedError }}
     </div>
     <div
+      v-else-if="resetWarning"
+      class="text-[10px] text-amber-600 dark:text-amber-400"
+    >
+      {{ resetWarning }}
+    </div>
+    <div
       v-else-if="resetMessage"
       class="text-[10px] text-emerald-600 dark:text-emerald-400"
     >
@@ -147,6 +153,10 @@ const props = defineProps<{
   account: Account
 }>()
 
+const emit = defineEmits<{
+  'account-updated': [account: Account]
+}>()
+
 const { t } = useI18n()
 
 // Visible only for OpenAI OAuth accounts.
@@ -158,6 +168,7 @@ const error = ref<string | null>(null)
 const data = ref<OpenAIQuotaUsage | null>(null)
 const cachedData = ref<OpenAIQuotaUsage | null>(null)
 const resetMessage = ref<string | null>(null)
+const resetWarning = ref<string | null>(null)
 const showResetConfirm = ref(false)
 const showResetCreditDetails = ref(false)
 
@@ -298,6 +309,7 @@ const handleQuery = async (options?: { persistResetCredits?: boolean }) => {
   loading.value = true
   error.value = null
   resetMessage.value = null
+  resetWarning.value = null
   showResetCreditDetails.value = false
   try {
     const result = options
@@ -331,15 +343,30 @@ const confirmReset = async () => {
   resetting.value = true
   error.value = null
   resetMessage.value = null
+  resetWarning.value = null
   try {
     const result: OpenAIQuotaResetResult = await resetOpenAIQuota(props.account.id)
-    // Refresh the badge without changing the snapshot saved by the count button.
-    // handleQuery clears resetMessage on entry, so the success toast is set
-    // AFTER it resolves.
-    await handleQuery()
-    resetMessage.value = t('admin.accounts.openaiQuotaReset.resetSuccess', {
-      windows: result.windows_reset
-    })
+    if (result.cache_refreshed && result.quota) {
+      data.value = result.quota
+      cachedData.value = result.quota
+      showResetCreditDetails.value = false
+    }
+    if (result.account) emit('account-updated', result.account)
+
+    if (result.warning_code === 'reset_credit_cache_refresh_failed') {
+      // The persisted snapshot is intentionally preserved, but it is no longer
+      // authoritative enough to allow another credit consumption.
+      data.value = null
+      resetWarning.value = t('admin.accounts.openaiQuotaReset.resetCacheRefreshFailed')
+    } else if (result.warning_code === 'account_state_recovery_failed') {
+      resetWarning.value = t('admin.accounts.openaiQuotaReset.resetAccountRecoveryFailed')
+    } else if (result.warning_code === 'account_state_refresh_failed') {
+      resetWarning.value = t('admin.accounts.openaiQuotaReset.resetAccountRefreshFailed')
+    } else {
+      resetMessage.value = t('admin.accounts.openaiQuotaReset.resetSuccess', {
+        windows: result.windows_reset
+      })
+    }
   } catch (e) {
     error.value = extractErrorMessage(e)
   } finally {
@@ -355,6 +382,7 @@ watch(
     data.value = cachedData.value
     error.value = null
     resetMessage.value = null
+    resetWarning.value = null
     loading.value = false
     resetting.value = false
     showResetConfirm.value = false

@@ -834,6 +834,14 @@ export interface OpenAIQuotaResetResult {
   code: string
   credit?: OpenAIQuotaResetCredit | null
   windows_reset: number
+  quota?: OpenAIQuotaUsage | null
+  account?: Account | null
+  cache_refreshed: boolean
+  account_state_recovered: boolean
+  warning_code?:
+    | 'reset_credit_cache_refresh_failed'
+    | 'account_state_recovery_failed'
+    | 'account_state_refresh_failed'
 }
 
 /**

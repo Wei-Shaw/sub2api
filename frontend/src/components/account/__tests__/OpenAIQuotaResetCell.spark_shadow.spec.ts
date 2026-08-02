@@ -162,17 +162,25 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
     wrapper.unmount()
   })
 
-  it('重置后的界面刷新不更新持久化缓存', async () => {
+  it('重置成功后直接使用响应中的最新缓存并回传恢复后的账号', async () => {
+    const recoveredAccount = makeAccount({
+      parent_account_id: null,
+      status: 'active',
+      error_message: null,
+    })
     vi.mocked(resetOpenAIQuota).mockResolvedValue({
       code: 'success',
       windows_reset: 1,
-    })
-    vi.mocked(queryOpenAIQuota).mockResolvedValue({
-      rate_limit_reset_credits: {
-        available_count: 0,
-        credits: [],
+      cache_refreshed: true,
+      account_state_recovered: true,
+      quota: {
+        rate_limit_reset_credits: {
+          available_count: 0,
+          credits: [],
+        },
+        fetched_at: 1770000000,
       },
-      fetched_at: 1770000000,
+      account: recoveredAccount,
     })
     const account = makeAccount({
       parent_account_id: null,
@@ -190,8 +198,78 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
     await flushPromises()
 
     expect(resetOpenAIQuota).toHaveBeenCalledWith(1)
-    expect(queryOpenAIQuota).toHaveBeenCalledWith(1)
+    expect(queryOpenAIQuota).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('admin.accounts.openaiQuotaReset.expiresAt:')
+    expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.resetSuccess')
+    expect(wrapper.emitted('account-updated')).toEqual([[recoveredAccount]])
+    wrapper.unmount()
+  })
+
+  it('缓存刷新失败时保留旧缓存并显示部分成功警告', async () => {
+    vi.mocked(resetOpenAIQuota).mockResolvedValue({
+      code: 'success',
+      windows_reset: 1,
+      cache_refreshed: false,
+      account_state_recovered: false,
+      warning_code: 'reset_credit_cache_refresh_failed',
+    })
+    const account = makeAccount({
+      parent_account_id: null,
+      extra: {
+        codex_reset_credit_snapshot: {
+          available_count: 1,
+          credits: [{ expires_at: '2026-07-03T04:05:06Z' }],
+        },
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+
+    await resetButton(wrapper).trigger('click')
+    wrapper.findComponent(ConfirmDialog).vm.$emit('confirm')
+    await flushPromises()
+
+    expect(queryOpenAIQuota).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.expiresAt:')
+    expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.resetCacheRefreshFailed')
+    expect(resetButton(wrapper).attributes('disabled')).toBeDefined()
+    expect(wrapper.emitted('account-updated')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('账号恢复失败时使用已刷新的缓存并显示部分成功警告', async () => {
+    vi.mocked(resetOpenAIQuota).mockResolvedValue({
+      code: 'success',
+      windows_reset: 1,
+      cache_refreshed: true,
+      account_state_recovered: false,
+      warning_code: 'account_state_recovery_failed',
+      quota: {
+        rate_limit_reset_credits: {
+          available_count: 0,
+          credits: [],
+        },
+        fetched_at: 1770000000,
+      },
+    })
+    const account = makeAccount({
+      parent_account_id: null,
+      extra: {
+        codex_reset_credit_snapshot: {
+          available_count: 1,
+          credits: [{ expires_at: '2026-07-03T04:05:06Z' }],
+        },
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+
+    await resetButton(wrapper).trigger('click')
+    wrapper.findComponent(ConfirmDialog).vm.$emit('confirm')
+    await flushPromises()
+
+    expect(queryOpenAIQuota).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('admin.accounts.openaiQuotaReset.expiresAt:')
+    expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.resetAccountRecoveryFailed')
+    expect(wrapper.emitted('account-updated')).toBeUndefined()
     wrapper.unmount()
   })
 })
