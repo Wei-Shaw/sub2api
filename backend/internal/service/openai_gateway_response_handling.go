@@ -249,6 +249,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			return
 		}
 		clientDisconnected = true
+		releaseOpenAIRequestCompressionPayload(c)
 		logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 	}
 	completeGuardedEvent := func(queueDrained bool) {
@@ -262,8 +263,12 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if shouldFlush {
 				if err := flushBuffered(); err != nil {
 					clientDisconnected = true
+					releaseOpenAIRequestCompressionPayload(c)
 					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
 				} else {
+					if !clientOutputStarted {
+						releaseOpenAIRequestCompressionPayload(c)
+					}
 					clientOutputStarted = true
 					lastDownstreamWriteAt = time.Now()
 				}
@@ -286,15 +291,21 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		payload := `{"type":"error","sequence_number":0,"error":{"type":"upstream_error","message":` + strconv.Quote(reason) + `,"code":` + strconv.Quote(reason) + `}}`
 		if err := flushBuffered(); err != nil {
 			clientDisconnected = true
+			releaseOpenAIRequestCompressionPayload(c)
 			return
 		}
 		if _, err := writePendingString("data: " + payload + "\n\n"); err != nil {
 			clientDisconnected = true
+			releaseOpenAIRequestCompressionPayload(c)
 			return
 		}
 		if err := flushBuffered(); err != nil {
 			clientDisconnected = true
+			releaseOpenAIRequestCompressionPayload(c)
 			return
+		}
+		if !clientOutputStarted {
+			releaseOpenAIRequestCompressionPayload(c)
 		}
 		clientOutputStarted = true
 		lastDownstreamWriteAt = time.Now()
@@ -324,8 +335,12 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		}
 		if err := flushBuffered(); err != nil {
 			clientDisconnected = true
+			releaseOpenAIRequestCompressionPayload(c)
 			logger.LegacyPrintf("service.openai_gateway", "%s", disconnectMessage)
 			return
+		}
+		if !clientOutputStarted {
+			releaseOpenAIRequestCompressionPayload(c)
 		}
 		clientOutputStarted = true
 		lastDownstreamWriteAt = time.Now()
@@ -599,8 +614,12 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				if shouldFlush {
 					if err := flushBuffered(); err != nil {
 						clientDisconnected = true
+						releaseOpenAIRequestCompressionPayload(c)
 						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
 					} else {
+						if !clientOutputStarted {
+							releaseOpenAIRequestCompressionPayload(c)
+						}
 						clientOutputStarted = true
 						lastDownstreamWriteAt = time.Now()
 					}
@@ -752,6 +771,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				// committed here, but account headers remain private until semantic output.
 				if _, err := w.Write([]byte(":\n\n")); err != nil {
 					clientDisconnected = true
+					releaseOpenAIRequestCompressionPayload(c)
 					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 					continue
 				}
@@ -761,11 +781,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			}
 			if _, err := writePendingString(":\n\n"); err != nil {
 				clientDisconnected = true
+				releaseOpenAIRequestCompressionPayload(c)
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 				continue
 			}
 			if err := flushBuffered(); err != nil {
 				clientDisconnected = true
+				releaseOpenAIRequestCompressionPayload(c)
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during keepalive flush, continuing to drain upstream for billing")
 			} else {
 				lastDownstreamWriteAt = time.Now()

@@ -53,7 +53,10 @@ const (
 	OpsClientBusinessLimitedReasonLocalPolicyDenied      = "local_policy_denied"
 )
 
-func MarkResponseCommitted(c *gin.Context) { c.Set(ResponseCommittedKey, true) }
+func MarkResponseCommitted(c *gin.Context) {
+	c.Set(ResponseCommittedKey, true)
+	releaseOpenAIRequestCompressionPayload(c)
+}
 
 func IsResponseCommitted(c *gin.Context) bool {
 	v, ok := c.Get(ResponseCommittedKey)

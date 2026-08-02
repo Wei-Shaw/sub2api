@@ -934,6 +934,9 @@ type GatewayConfig struct {
 	// OpenAICompactModel: /responses/compact 上游使用的模型。
 	// compact 端点支持模型滞后于普通 /responses 时，可用该配置降级规避上游错误。
 	OpenAICompactModel string `mapstructure:"openai_compact_model"`
+	// OpenAIRequestCompression: OpenAI OAuth 账号向官方 Codex HTTP /responses 端点发送请求时的压缩策略。
+	// Enabled 是硬总闸；关闭时账号级配置不能开启压缩。
+	OpenAIRequestCompression GatewayOpenAIRequestCompressionConfig `mapstructure:"openai_request_compression"`
 	// OpenAIWS: OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
 	OpenAIWS GatewayOpenAIWSConfig `mapstructure:"openai_ws"`
 	// Live: ChatGPT Frameless Live 会话配置。
@@ -1060,6 +1063,15 @@ type GatewayGrokConfig struct {
 type GatewayLiveConfig struct {
 	// MaxSessionDurationSeconds 是 Live 会话的硬上限。
 	MaxSessionDurationSeconds int `mapstructure:"max_session_duration_seconds"`
+}
+
+// GatewayOpenAIRequestCompressionConfig controls zstd compression for eligible
+// OpenAI OAuth requests sent to the official ChatGPT Codex HTTP backend.
+type GatewayOpenAIRequestCompressionConfig struct {
+	// Enabled is the hard global gate. Account-level settings may only opt out.
+	Enabled bool `mapstructure:"enabled"`
+	// FallbackUncompressed allows one compatibility retry without compression.
+	FallbackUncompressed bool `mapstructure:"fallback_uncompressed"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -2274,6 +2286,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.4")
+	viper.SetDefault("gateway.openai_request_compression.enabled", false)
+	viper.SetDefault("gateway.openai_request_compression.fallback_uncompressed", true)
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
