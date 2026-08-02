@@ -271,6 +271,7 @@ func FinalizeAnthropicResponsesStream(state *AnthropicEventToResponsesState) []R
 	// Preserve any deltas received before an abrupt EOF, then close the item.
 	events = append(events, anthToResHandleContentBlockStop(nil, state)...)
 	events = append(events, closeCurrentResponsesItem(state)...)
+	events = append(events, closeActiveWebSearch(state, "failed")...)
 
 	status, incompleteDetails := anthropicResponsesStreamTerminalState(state.StopReason)
 	if state.StopReason == "" {
@@ -387,11 +388,13 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 			state.PendingStatusTextReady = false
 
 			events = append(events, closeCurrentResponsesItem(state)...)
+			// A new search supersedes any prior unfinished one (e.g. its result
+			// block never arrived); close it as failed instead of leaking it.
+			events = append(events, closeActiveWebSearch(state, "failed")...)
 
 			state.WebSearchItemID = generateItemID()
 			state.WebSearchToolUseID = evt.ContentBlock.ID
 			state.WebSearchActive = true
-			state.CurrentItemType = "web_search_call"
 
 			query := anthropicExtractWebSearchQuery(evt.ContentBlock.Input)
 			state.WebSearchQuery = query
@@ -413,43 +416,7 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 	case "web_search_tool_result":
 		if state.WebSearchActive && evt.ContentBlock != nil &&
 			evt.ContentBlock.ToolUseID == state.WebSearchToolUseID {
-			state.WebSearchActive = false
-			state.CurrentItemType = ""
-
-			// If query wasn't available at block_start (e.g. streamed via input_json_delta),
-			// try extracting from accumulated args.
-			query := state.WebSearchQuery
-			if query == "" && state.CurrentArgs != "" {
-				query = anthropicExtractWebSearchQuery(json.RawMessage(state.CurrentArgs))
-			}
-
-			events = append(events, makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
-				OutputIndex: state.OutputIndex,
-				Item: &ResponsesOutput{
-					Type:   "web_search_call",
-					ID:     state.WebSearchItemID,
-					Status: "completed",
-					Action: &WebSearchAction{
-						Type:  "search",
-						Query: query,
-					},
-				},
-			}))
-
-			state.Outputs = append(state.Outputs, ResponsesOutput{
-				Type:   "web_search_call",
-				ID:     state.WebSearchItemID,
-				Status: "completed",
-				Action: &WebSearchAction{
-					Type:  "search",
-					Query: query,
-				},
-			})
-			state.OutputIndex++
-			state.WebSearchItemID = ""
-			state.WebSearchToolUseID = ""
-			state.WebSearchQuery = ""
-			state.CurrentArgs = ""
+			events = append(events, closeActiveWebSearch(state, "completed")...)
 		}
 	}
 
@@ -529,7 +496,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.PartialJSON == "" {
 			return nil
 		}
-		if state.CurrentItemType == "web_search_call" {
+		if state.WebSearchActive {
 			// Server tool input arrives as streaming JSON fragments; accumulate
 			// for query extraction but don't emit function_call events.
 			state.CurrentArgs += evt.Delta.PartialJSON
@@ -659,6 +626,7 @@ func anthToResHandleMessageStop(state *AnthropicEventToResponsesState) []Respons
 	}
 
 	events = append(events, closeCurrentResponsesItem(state)...)
+	events = append(events, closeActiveWebSearch(state, "failed")...)
 
 	status, incompleteDetails := anthropicResponsesStreamTerminalState(state.StopReason)
 	events = append(events, makeResponsesCompletedEvent(state, status, incompleteDetails))
@@ -854,6 +822,50 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 		OutputIndex: state.OutputIndex - 1, // Use the index before increment
 		Item:        &item,
 	})}
+}
+
+// closeActiveWebSearch finishes an in-progress web_search_call, emitting
+// output_item.done and folding the item into Outputs. It is used both for the
+// normal path (matching web_search_tool_result → "completed") and for abnormal
+// termination (missing/mismatched result → "failed"), so the item never leaks
+// with an empty ID or a fake completed status.
+func closeActiveWebSearch(state *AnthropicEventToResponsesState, status string) []ResponsesStreamEvent {
+	if !state.WebSearchActive {
+		return nil
+	}
+
+	// If query wasn't available at block_start (e.g. streamed via
+	// input_json_delta), try extracting from accumulated args.
+	query := state.WebSearchQuery
+	if query == "" && state.CurrentArgs != "" {
+		query = anthropicExtractWebSearchQuery(json.RawMessage(state.CurrentArgs))
+	}
+
+	item := ResponsesOutput{
+		Type:   "web_search_call",
+		ID:     state.WebSearchItemID,
+		Status: status,
+		Action: &WebSearchAction{
+			Type:  "search",
+			Query: query,
+		},
+	}
+	state.Outputs = append(state.Outputs, item)
+	outputIndex := state.OutputIndex
+	state.OutputIndex++
+
+	state.WebSearchActive = false
+	state.WebSearchItemID = ""
+	state.WebSearchToolUseID = ""
+	state.WebSearchQuery = ""
+	state.CurrentArgs = ""
+
+	return []ResponsesStreamEvent{
+		makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+			OutputIndex: outputIndex,
+			Item:        &item,
+		}),
+	}
 }
 
 func makeResponsesCreatedEvent(state *AnthropicEventToResponsesState) ResponsesStreamEvent {

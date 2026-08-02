@@ -594,3 +594,161 @@ func TestStreaming_WebSearchWithThinking(t *testing.T) {
 		}
 	}
 }
+
+// TestStreaming_WebSearchMissingResult_ClosesFailed verifies that when the
+// stream ends (message_stop) without a web_search_tool_result, the in-progress
+// web_search_call is closed as failed with a consistent ID — never as an
+// empty-ID completed item.
+func TestStreaming_WebSearchMissingResult_ClosesFailed(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+	state.Model = "k3-256k"
+
+	var events []ResponsesStreamEvent
+	feed := func(evt *AnthropicStreamEvent) {
+		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
+	}
+
+	idx0 := 0
+	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_miss"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &idx0, ContentBlock: &AnthropicContentBlock{
+		Type: "server_tool_use", ID: "srvtoolu_miss", Name: "web_search",
+		Input: json.RawMessage(`{"query":"lost query"}`),
+	}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &idx0})
+	// No web_search_tool_result; stream ends normally.
+	feed(&AnthropicStreamEvent{Type: "message_delta", Delta: &AnthropicDelta{StopReason: "end_turn"}})
+	feed(&AnthropicStreamEvent{Type: "message_stop"})
+
+	var addedID string
+	var doneItem *ResponsesOutput
+	for i := range events {
+		e := &events[i]
+		if e.Type == "response.output_item.added" && e.Item != nil && e.Item.Type == "web_search_call" {
+			addedID = e.Item.ID
+		}
+		if e.Type == "response.output_item.done" && e.Item != nil && e.Item.Type == "web_search_call" {
+			doneItem = e.Item
+		}
+	}
+	if addedID == "" {
+		t.Fatal("web_search_call output_item.added missing")
+	}
+	if doneItem == nil {
+		t.Fatal("web_search_call output_item.done missing on message_stop")
+	}
+	if doneItem.ID == "" {
+		t.Error("web_search_call done must not have an empty ID")
+	}
+	if doneItem.ID != addedID {
+		t.Errorf("added/done ID mismatch: added=%q done=%q", addedID, doneItem.ID)
+	}
+	if doneItem.Status == "completed" {
+		t.Error("unfinished web_search_call must not be marked completed")
+	}
+	if doneItem.Status != "failed" {
+		t.Errorf("unfinished web_search_call status = %q, want failed", doneItem.Status)
+	}
+	if doneItem.Action == nil || doneItem.Action.Query != "lost query" {
+		t.Errorf("done item should carry the query, got %+v", doneItem.Action)
+	}
+
+	// Terminal output must contain the same coherent item.
+	var completed *ResponsesStreamEvent
+	for i := range events {
+		if events[i].Type == "response.completed" {
+			completed = &events[i]
+		}
+	}
+	if completed == nil || completed.Response == nil {
+		t.Fatal("response.completed not emitted")
+	}
+	foundWS := false
+	for _, o := range completed.Response.Output {
+		if o.Type == "web_search_call" {
+			foundWS = true
+			if o.ID != addedID || o.Status != "failed" || o.Action == nil {
+				t.Errorf("terminal web_search_call item incoherent: %+v", o)
+			}
+		}
+	}
+	if !foundWS {
+		t.Error("terminal output missing web_search_call")
+	}
+}
+
+// TestStreaming_WebSearchMismatchedResult_DoesNotComplete verifies that a
+// web_search_tool_result with a different tool_use_id neither completes the
+// active search nor produces a second phantom item; the original search is
+// closed as failed at message_stop.
+func TestStreaming_WebSearchMismatchedResult_DoesNotComplete(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+	state.Model = "k3-256k"
+
+	var events []ResponsesStreamEvent
+	feed := func(evt *AnthropicStreamEvent) {
+		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
+	}
+
+	idx0, idx1 := 0, 1
+	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_mism"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &idx0, ContentBlock: &AnthropicContentBlock{
+		Type: "server_tool_use", ID: "srvtoolu_a", Name: "web_search",
+		Input: json.RawMessage(`{"query":"query a"}`),
+	}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &idx0})
+	// Result for a DIFFERENT tool_use_id — must not complete srvtoolu_a.
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &idx1, ContentBlock: &AnthropicContentBlock{
+		Type: "web_search_tool_result", ToolUseID: "srvtoolu_b",
+	}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &idx1})
+	feed(&AnthropicStreamEvent{Type: "message_delta", Delta: &AnthropicDelta{StopReason: "end_turn"}})
+	feed(&AnthropicStreamEvent{Type: "message_stop"})
+
+	var addedID string
+	var doneItems []*ResponsesOutput
+	for i := range events {
+		e := &events[i]
+		if e.Type == "response.output_item.added" && e.Item != nil && e.Item.Type == "web_search_call" {
+			addedID = e.Item.ID
+		}
+		if e.Type == "response.output_item.done" && e.Item != nil && e.Item.Type == "web_search_call" {
+			doneItems = append(doneItems, e.Item)
+		}
+	}
+	if addedID == "" {
+		t.Fatal("web_search_call output_item.added missing")
+	}
+	if len(doneItems) != 1 {
+		t.Fatalf("expected exactly 1 web_search_call done event, got %d", len(doneItems))
+	}
+	done := doneItems[0]
+	if done.ID == "" || done.ID != addedID {
+		t.Errorf("done ID mismatch: added=%q done=%q", addedID, done.ID)
+	}
+	if done.Status != "failed" {
+		t.Errorf("mismatched result must not complete the search; status = %q, want failed", done.Status)
+	}
+
+	// Terminal output must have exactly one web_search_call, coherent with the stream.
+	var completed *ResponsesStreamEvent
+	for i := range events {
+		if events[i].Type == "response.completed" {
+			completed = &events[i]
+		}
+	}
+	if completed == nil || completed.Response == nil {
+		t.Fatal("response.completed not emitted")
+	}
+	wsCount := 0
+	for _, o := range completed.Response.Output {
+		if o.Type == "web_search_call" {
+			wsCount++
+			if o.ID != addedID || o.Status != "failed" {
+				t.Errorf("terminal web_search_call item incoherent: %+v", o)
+			}
+		}
+	}
+	if wsCount != 1 {
+		t.Errorf("expected exactly 1 web_search_call in terminal output, got %d", wsCount)
+	}
+}
