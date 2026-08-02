@@ -5,9 +5,11 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
@@ -151,6 +153,38 @@ func TestAdminService_BulkUpdateAccounts_AllSuccessIDs(t *testing.T) {
 	require.ElementsMatch(t, []int64{1, 2, 3}, result.SuccessIDs)
 	require.Empty(t, result.FailedIDs)
 	require.Len(t, result.Results, 3)
+}
+
+func TestAdminService_BulkUpdateAccounts_RejectsRateChangeForSyncedAccounts(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{
+			{
+				ID: 1,
+				Extra: map[string]any{
+					UpstreamBillingProbeEnabledExtraKey:    true,
+					UpstreamBillingRateSyncEnabledExtraKey: true,
+				},
+			},
+			{ID: 2, Extra: map[string]any{}},
+		},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+	rateMultiplier := 0.5
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:     []int64{1, 2},
+		RateMultiplier: &rateMultiplier,
+	})
+
+	require.Nil(t, result)
+	require.Error(t, err)
+	var appErr *infraerrors.ApplicationError
+	require.ErrorAs(t, err, &appErr)
+	require.Equal(t, int32(http.StatusConflict), appErr.Code)
+	require.Equal(t, "UPSTREAM_BILLING_RATE_SYNC_BULK_CONFLICT", appErr.Reason)
+	require.Equal(t, "1", appErr.Metadata["count"])
+	require.True(t, repo.getByIDsCalled)
+	require.Empty(t, repo.bulkUpdateIDs, "rate conflict must be rejected before any write")
 }
 
 // TestAdminService_BulkUpdateAccounts_PartialFailureIDs 验证部分失败时 success_ids/failed_ids 正确。
