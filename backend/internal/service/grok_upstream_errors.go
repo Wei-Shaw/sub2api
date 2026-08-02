@@ -235,7 +235,12 @@ func (s *OpenAIGatewayService) applyGrokConfiguredUnschedulablePolicy(ctx contex
 	// honors the configured duration instead of silently falling back to 30m.
 	cooldown := time.Duration(match.rule.DurationMinutes) * time.Minute
 	if cooldown > 0 {
-		s.tempUnscheduleGrok(ctx, account, cooldown, fmt.Sprintf("grok configured status %d rule", statusCode))
+		reason := fmt.Sprintf("grok configured status %d rule", statusCode)
+		// Preserve the historical 403 reason string used by admin rule tests.
+		if statusCode == http.StatusForbidden {
+			reason = "grok configured forbidden rule"
+		}
+		s.tempUnscheduleGrok(ctx, account, cooldown, reason)
 	}
 	return true
 }

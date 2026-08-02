@@ -1138,13 +1138,16 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotForResponse(
 		stateCtx, cancel = openAIAccountStateContext(ctx)
 		defer cancel()
 	}
-	if hasActiveLimit || freeRecoveryPending {
+	// Pool-mode API keys keep the snapshot for observability but leave account
+	// health to the upstream pool — never install runtime/durable rate-limit blocks.
+	poolMode := account.IsPoolMode()
+	if (hasActiveLimit || freeRecoveryPending) && !poolMode {
 		resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
 		// Block the in-memory scheduler before any persistence call. This closes
 		// the window where another request could select the same account.
 		s.blockGrokScheduling(account, resetAt)
 	}
-	if freeRecoveryPending {
+	if freeRecoveryPending && !poolMode {
 		if err := persistGrokFreeRecoveryPendingState(stateCtx, s.accountRepo, account, extraUpdates, resetAt); err != nil {
 			slog.Warn("persist_grok_free_recovery_pending_failed", "account_id", accountID, "error", err)
 		}
@@ -1153,14 +1156,12 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotForResponse(
 			slog.Warn("persist_grok_usage_snapshot_failed", "account_id", accountID, "error", err)
 		}
 	}
-	// Error responses are reconciled by handleGrokAccountUpstreamError. Pool-mode
-	// API keys retain the snapshot for observability but leave account health to
-	// the upstream pool. Successful non-pool responses can still consume the last
-	// available request/token, so persist that exhausted window as a real rate limit.
-	if hasActiveLimit && !freeRecoveryPending && !account.IsPoolMode() {
+	// Successful non-pool responses can still consume the last available
+	// request/token, so persist that exhausted window as a real rate limit.
+	if hasActiveLimit && !freeRecoveryPending && !poolMode {
 		s.blockGrokScheduling(account, resetAt)
 		persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
-	} else if recovery {
+	} else if recovery && !poolMode {
 		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
 	}
 }
@@ -1507,22 +1508,17 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
 		return false
 	}
 	s.updateGrokUsageSnapshotForResponse(ctx, account, snapshot, responseBody)
-	// Pool-mode API keys retain the snapshot for observability but leave account
-	// health to the upstream pool (origin/main pool-mode policy).
-	if account.IsPoolMode() {
-		slog.Info("grok_pool_mode_error_state_skipped", "account_id", account.ID, "status_code", statusCode)
+
+	// Admin-configured temp rules always apply (pool and non-pool).
+	if s.applyGrokConfiguredUnschedulablePolicy(ctx, account, statusCode, responseBody) {
 		return false
 	}
+
+	// Layered account-scoped policy for 402/403/404 (pool and non-pool):
+	// 1) model/endpoint scope  2) hard permanent death
+	// 3) soft entitlement/billing temp cooldown  4) ambiguous → no state change
 	switch statusCode {
-	case http.StatusUnauthorized:
-		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
 	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound:
-		// Layered account-scoped policy (see grok account failure decision tree):
-		// 1) admin temp rules  2) model/endpoint scope  3) hard permanent death
-		// 4) soft entitlement/billing temp cooldown  5) ambiguous → no state change
-		if statusCode == http.StatusForbidden && s.applyGrokConfiguredUnschedulablePolicy(ctx, account, statusCode, responseBody) {
-			return false
-		}
 		if s.handleGrokModelOrEndpointError(ctx, account, model, statusCode, responseBody) {
 			return false
 		}
@@ -1531,19 +1527,33 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
 			return true
 		}
 		if grokResponseIndicatesSoftEntitlementOrBilling(statusCode, responseBody) {
+			// Pool mode must not treat bare 402 as a default cooldown (origin
+			// pool bypass). Soft entitlement still applies when the body has
+			// explicit billing/entitlement markers (or non-402 statuses).
+			if account.IsPoolMode() && statusCode == http.StatusPaymentRequired &&
+				!grokSoftEntitlementHasExplicitBodySignal(responseBody) {
+				return false
+			}
 			s.tempUnscheduleGrok(ctx, account, grokSoftEntitlementCooldown, grokSoftEntitlementReason)
 			return false
 		}
 		// Ambiguous 403/404: leave durable and runtime scheduling state alone.
 		return false
+	}
+
+	// Pool-mode: skip default cooldowns (401 / 405 generic / 5xx). Snapshot already
+	// retained above; permanent/soft/admin handled in the layered path.
+	if account.IsPoolMode() {
+		slog.Info("grok_pool_mode_default_cooldown_skipped", "account_id", account.ID, "status_code", statusCode)
+		return false
+	}
+
+	switch statusCode {
+	case http.StatusUnauthorized:
+		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
 	case http.StatusMethodNotAllowed:
 		// Account-scoped: a custom base_url that does not implement /v1/responses
 		// fails identically on every retry and sticky reconnect (upstream #4668).
-		// Admin temp rules take precedence; otherwise bench the account so the
-		// scheduler and the sticky-session runtime check stop selecting it.
-		if s.applyGrokConfiguredUnschedulablePolicy(ctx, account, statusCode, responseBody) {
-			return false
-		}
 		applyGrokMethodNotAllowedCooldown(ctx, s, s.accountRepo, account)
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs both runtime and durable rate-limit state.
@@ -1798,6 +1808,21 @@ func grokResponseIndicatesPermanentAccountFailure(statusCode int, responseBody [
 // grokResponseIndicatesSoftEntitlementOrBilling matches recoverable billing or
 // entitlement rejections. These should temporarily leave the pool, not be
 // permanently disabled (subscription churn / payment lag / plan glitches).
+func grokSoftEntitlementHasExplicitBodySignal(responseBody []byte) bool {
+	codes := grokStructuredErrorValues(responseBody, "code", "error.code", "error.type", "response.error.code", "response.error.type")
+	for _, code := range codes {
+		switch normalizeGrokErrorMarker(code) {
+		case "subscription_required", "billing_required", "entitlement_denied", "entitlement_required",
+			"no_active_subscription", "not_entitled", "plan_required":
+			return true
+		}
+	}
+	combined := strings.ToLower(strings.TrimSpace(string(responseBody)))
+	return containsAnyGrokErrorMarker(combined,
+		"subscription required", "no active grok subscription", "billing account disabled",
+		"billing required", "entitlement required", "entitlement denied", "not entitled")
+}
+
 func grokResponseIndicatesSoftEntitlementOrBilling(statusCode int, responseBody []byte) bool {
 	if statusCode != http.StatusPaymentRequired && statusCode != http.StatusForbidden {
 		return false
@@ -1813,19 +1838,7 @@ func grokResponseIndicatesSoftEntitlementOrBilling(statusCode int, responseBody 
 		// Bare 402 is a billing signal unless the payload proved model/endpoint.
 		return true
 	}
-
-	codes := grokStructuredErrorValues(responseBody, "code", "error.code", "error.type", "response.error.code", "response.error.type")
-	for _, code := range codes {
-		switch normalizeGrokErrorMarker(code) {
-		case "subscription_required", "billing_required", "entitlement_denied", "entitlement_required",
-			"no_active_subscription", "not_entitled", "plan_required":
-			return true
-		}
-	}
-	combined := strings.ToLower(strings.TrimSpace(string(responseBody)))
-	return containsAnyGrokErrorMarker(combined,
-		"subscription required", "no active grok subscription", "billing account disabled",
-		"billing required", "entitlement required", "entitlement denied", "not entitled")
+	return grokSoftEntitlementHasExplicitBodySignal(responseBody)
 }
 
 func grokResponseIndicatesModelOrEndpointFailure(responseBody []byte) bool {

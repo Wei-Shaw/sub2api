@@ -277,7 +277,9 @@ func TestHandleGrokAccountUpstreamErrorDefaultCooldownsRespectPoolMode(t *testin
 					"pool_mode": true,
 				},
 			}
-			body := []byte(`{"error":{"message":"grok access or entitlement denied"}}`)
+			// Neutral body: must not trip soft-entitlement free-text classifiers so
+			// this case only asserts default cooldown bypass for pool mode.
+			body := []byte(`{"error":{"message":"generic upstream failure"}}`)
 
 			svc.handleGrokAccountUpstreamError(
 				context.Background(), account, statusCode, nil, body,
