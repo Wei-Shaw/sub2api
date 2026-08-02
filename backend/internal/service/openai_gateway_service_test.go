@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
@@ -1947,6 +1949,218 @@ func TestOpenAIStreamingNormalizesTerminalOutputFromDeltas(t *testing.T) {
 	require.True(t, output.IsArray())
 	require.Len(t, output.Array(), 1)
 	require.Equal(t, "pong", gjson.GetBytes(terminalPayload, "response.output.0.content.0.text").String())
+}
+
+func TestOpenAIStreamingTerminalOutputUsesLatestAuthoritativeDoneItem(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_old","type":"message","role":"assistant","status":"in_progress","content":[{"type":"output_text","text":"old","annotations":[]}]}}`,
+			"",
+			`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_done","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"final","annotations":[]}]}}`,
+			"",
+			`data: {"type":"response.completed","response":{"id":"resp_done","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"final"}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+			"",
+		}, "\n"))),
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	terminalType, terminalPayload, ok := extractOpenAISSETerminalEvent(rec.Body.String())
+	require.True(t, ok)
+	require.Equal(t, "response.completed", terminalType)
+	item := gjson.GetBytes(terminalPayload, "response.output.0")
+	require.Equal(t, "msg_done", item.Get("id").String())
+	require.Equal(t, "completed", item.Get("status").String())
+	require.Equal(t, "final", item.Get("content.0.text").String())
+	annotations := item.Get("content.0.annotations")
+	require.True(t, annotations.Exists())
+	require.True(t, annotations.IsArray())
+}
+
+func TestResponsesDoneOutputItemsMergeSparseOutOfOrder(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":2,"item":{"id":"done-2","type":"function_call"}}`), "response.output_item.done")
+	items.ProcessEvent([]byte(`{"output_index":0,"item":{"id":"done-0","type":"reasoning"}}`), "response.output_item.done")
+
+	output := gjson.Parse(`[{"id":"slim-0","type":"reasoning"},{"id":"terminal-1","type":"message"}]`)
+	merged, ok := items.MergeTerminalOutput(output, nil)
+	require.True(t, ok)
+	require.Equal(t, "done-0", gjson.GetBytes(merged, "0.id").String())
+	require.Equal(t, "terminal-1", gjson.GetBytes(merged, "1.id").String())
+	require.Equal(t, "done-2", gjson.GetBytes(merged, "2.id").String())
+}
+
+func TestResponsesDoneOutputItemsMergeRetainsDeltaFallback(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":0,"item":{"id":"compact-0","type":"compaction","encrypted_content":"opaque"}}`), "response.output_item.done")
+	acc := apicompat.NewBufferedResponseAccumulator()
+	acc.ProcessEvent(&apicompat.ResponsesStreamEvent{Type: "response.output_text.delta", Delta: "fallback text"})
+
+	terminal := []byte(`{"type":"response.completed","response":{"output":[]}}`)
+	normalized, ok := normalizeResponsesStreamingTerminalOutput(terminal, acc, items, nil)
+	require.True(t, ok)
+	require.Equal(t, "compact-0", gjson.GetBytes(normalized, "response.output.0.id").String())
+	require.Equal(t, "fallback text", gjson.GetBytes(normalized, "response.output.1.content.0.text").String())
+}
+
+func TestResponsesDoneOutputItemsRejectsMalformedIndicesAndAssignsMissing(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":-1,"item":{"id":"negative"}}`), "response.output_item.done")
+	items.ProcessEvent([]byte(`{"output_index":0.5,"item":{"id":"fractional"}}`), "response.output_item.done")
+	items.ProcessEvent([]byte(`{"output_index":"0","item":{"id":"string"}}`), "response.output_item.done")
+	items.ProcessEvent([]byte(`{"item":{"id":"missing-0"}}`), "response.output_item.done")
+	items.ProcessEvent([]byte(`{"item":{"id":"missing-1"}}`), "response.output_item.done")
+
+	require.Empty(t, items.byIndex)
+	require.Equal(t, []json.RawMessage{
+		json.RawMessage(`{"id":"missing-0"}`),
+		json.RawMessage(`{"id":"missing-1"}`),
+	}, items.withoutIndex)
+}
+
+func TestResponsesDoneOutputItemsRejectsHugeIndexWithoutGrowingOutput(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":999999999999999999999999,"item":{"id":"huge"}}`), "response.output_item.done")
+	items.ProcessEvent([]byte(`{"output_index":4097,"item":{"id":"over-limit"}}`), "response.output_item.done")
+
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[{"id":"terminal"}]`), nil)
+	require.False(t, ok)
+	require.Nil(t, merged)
+	require.Empty(t, items.byIndex)
+}
+
+func TestResponsesDoneOutputItemsKeepsMissingItemWhenExplicitIndexArrives(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"item":{"id":"missing"}}`), "response.output_item.done")
+	items.ProcessEvent([]byte(`{"output_index":0,"item":{"id":"explicit"}}`), "response.output_item.done")
+
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[]`), nil)
+	require.True(t, ok)
+	require.Equal(t, "explicit", gjson.GetBytes(merged, "0.id").String())
+	require.Equal(t, "missing", gjson.GetBytes(merged, "1.id").String())
+}
+
+func TestResponsesDoneOutputItemsMissingIndexAlreadyInTerminalOutput(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"item":{"id":"msg-1","type":"message","status":"completed"}}`), "response.output_item.done")
+
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[{"id":"msg-1","type":"message"}]`), nil)
+	require.True(t, ok)
+	require.Len(t, gjson.ParseBytes(merged).Array(), 1)
+	require.Equal(t, "completed", gjson.GetBytes(merged, "0.status").String())
+}
+
+func TestResponsesDoneOutputItemsDuplicateIdentityAtDifferentIndices(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":0,"item":{"id":"fc-1","type":"function_call","arguments":"old"}}`), "response.output_item.done")
+	items.ProcessEvent([]byte(`{"output_index":4,"item":{"id":"fc-1","type":"function_call","arguments":"final"}}`), "response.output_item.done")
+
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[]`), nil)
+	require.True(t, ok)
+	require.Len(t, gjson.ParseBytes(merged).Array(), 1)
+	require.Equal(t, "final", gjson.GetBytes(merged, "0.arguments").String())
+}
+
+func TestResponsesDoneOutputItemsRetainsMultipleSameTypeFallbackItems(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	fallback := []byte(`[{"type":"message","content":[{"type":"output_text","text":"one"}]},{"type":"message","content":[{"type":"output_text","text":"two"}]}]`)
+
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[]`), fallback)
+	require.True(t, ok)
+	require.Len(t, gjson.ParseBytes(merged).Array(), 2)
+	require.Equal(t, "one", gjson.GetBytes(merged, "0.content.0.text").String())
+	require.Equal(t, "two", gjson.GetBytes(merged, "1.content.0.text").String())
+}
+
+func TestResponsesDoneOutputItemsSparseIndicesDoNotOverwriteFallbackItems(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":3,"item":{"id":"fc-done","type":"function_call","call_id":"call-1"}}`), "response.output_item.done")
+	fallback := []byte(`[{"id":"reasoning-fallback","type":"reasoning"},{"id":"message-fallback","type":"message"},{"id":"fc-fallback","type":"function_call","call_id":"call-2"}]`)
+
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[]`), fallback)
+	require.True(t, ok)
+	require.JSONEq(t, `[{"id":"reasoning-fallback","type":"reasoning"},{"id":"message-fallback","type":"message"},{"id":"fc-fallback","type":"function_call","call_id":"call-2"},{"id":"fc-done","type":"function_call","call_id":"call-1"}]`, string(merged))
+}
+
+func TestResponsesDoneMessageSuppressesTextDeltaFallback(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":0,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"final"}]}}`), "response.output_item.done")
+	acc := apicompat.NewBufferedResponseAccumulator()
+	acc.ProcessEvent(&apicompat.ResponsesStreamEvent{Type: "response.output_text.delta", Delta: "final"})
+	fallback, ok := buildResponsesOutputJSON(acc, nil)
+	require.True(t, ok)
+
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[]`), fallback)
+	require.True(t, ok)
+	require.Len(t, gjson.ParseBytes(merged).Array(), 1)
+	require.Equal(t, "final", gjson.GetBytes(merged, "0.content.0.text").String())
+}
+
+func TestResponsesDoneReasoningSuppressesReasoningDeltaFallback(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":0,"item":{"type":"reasoning","summary":[{"type":"summary_text","text":"thought"}]}}`), "response.output_item.done")
+	acc := apicompat.NewBufferedResponseAccumulator()
+	acc.ProcessEvent(&apicompat.ResponsesStreamEvent{Type: "response.reasoning_summary_text.delta", Delta: "thought"})
+	fallback, ok := buildResponsesOutputJSON(acc, nil)
+	require.True(t, ok)
+
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[]`), fallback)
+	require.True(t, ok)
+	require.Len(t, gjson.ParseBytes(merged).Array(), 1)
+	require.Equal(t, "thought", gjson.GetBytes(merged, "0.summary.0.text").String())
+}
+
+func TestResponsesDoneImageSuppressesIDLessImageFallback(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":0,"item":{"type":"image_generation_call","status":"completed","output_format":"png","result":"image-data"}}`), "response.output_item.done")
+	fallback := []byte(`[{"type":"image_generation_call","status":"completed","output_format":"png","result":"image-data"}]`)
+
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[]`), fallback)
+	require.True(t, ok)
+	require.Len(t, gjson.ParseBytes(merged).Array(), 1)
+	require.Equal(t, "image-data", gjson.GetBytes(merged, "0.result").String())
+}
+
+func TestResponsesDoneOutputItemsNilWithFallback(t *testing.T) {
+	fallback := []byte(`[{"type":"message","content":[{"type":"output_text","text":"fallback"}]}]`)
+
+	merged, ok := (*responsesDoneOutputItems)(nil).MergeTerminalOutput(gjson.Parse(`[]`), fallback)
+	require.True(t, ok)
+	require.JSONEq(t, string(fallback), string(merged))
+}
+
+func TestResponsesDoneOutputItemsOverflowFallsBackToTerminalOutput(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	for index := 0; index <= maxResponsesDoneOutputItems; index++ {
+		items.ProcessEvent([]byte(fmt.Sprintf(`{"item":{"id":"item-%d"}}`, index)), "response.output_item.done")
+	}
+
+	require.True(t, items.overflowed)
+	require.False(t, items.HasContent())
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[{"id":"terminal","type":"message"}]`), nil)
+	require.False(t, ok)
+	require.Nil(t, merged)
+}
+
+func TestResponsesDoneOutputItemsSparseDoneOnlyOutputHasNoNulls(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":1000,"item":{"id":"done-1000"}}`), "response.output_item.done")
+	items.ProcessEvent([]byte(`{"output_index":2,"item":{"id":"done-2"}}`), "response.output_item.done")
+
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[]`), nil)
+	require.True(t, ok)
+	require.JSONEq(t, `[{"id":"done-2"},{"id":"done-1000"}]`, string(merged))
+	require.NotContains(t, string(merged), "null")
 }
 
 func TestOpenAIStreamingNormalizesTerminalOutputToEmptyArray(t *testing.T) {

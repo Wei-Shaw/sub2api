@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -286,6 +288,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 
 	needModelReplace := originalModel != mappedModel
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
+	streamDoneOutputItems := newResponsesDoneOutputItems()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
 	streamSeenImages := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
@@ -479,7 +482,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					streamOutputAccumulator.ProcessEvent(&streamEvent)
 				}
 			}
-			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, streamOutputAccumulator, streamImageOutputs); normalized {
+			streamDoneOutputItems.ProcessEvent(dataBytes, eventType)
+			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, streamOutputAccumulator, streamDoneOutputItems, streamImageOutputs); normalized {
 				dataBytes = normalizedData
 				data = string(normalizedData)
 				line = "data: " + data
@@ -1459,7 +1463,243 @@ func normalizeCompletedImageGenerationStatus(data []byte) ([]byte, bool) {
 	}
 }
 
-func normalizeResponsesStreamingTerminalOutput(data []byte, acc *apicompat.BufferedResponseAccumulator, imageOutputs []json.RawMessage) ([]byte, bool) {
+type responsesDoneOutputItems struct {
+	byIndex      map[int]json.RawMessage
+	withoutIndex []json.RawMessage
+	totalBytes   int
+	overflowed   bool
+}
+
+const (
+	maxResponsesOutputIndex     = 4096
+	maxResponsesDoneOutputItems = 1024
+	maxResponsesDoneOutputBytes = 8 << 20
+)
+
+func newResponsesDoneOutputItems() *responsesDoneOutputItems {
+	return &responsesDoneOutputItems{byIndex: make(map[int]json.RawMessage)}
+}
+
+func (items *responsesDoneOutputItems) ProcessEvent(data []byte, eventType string) {
+	if items == nil || eventType != "response.output_item.done" {
+		return
+	}
+	item := gjson.GetBytes(data, "item")
+	if !item.IsObject() {
+		return
+	}
+	if items.overflowed {
+		return
+	}
+	raw := json.RawMessage(item.Raw)
+	if len(raw) > maxResponsesDoneOutputBytes {
+		items.discardOnOverflow()
+		return
+	}
+	indexResult := gjson.GetBytes(data, "output_index")
+	if !indexResult.Exists() {
+		items.removeIdentity(responsesOutputItemIdentity(raw))
+		if !items.reserve(raw, 0) {
+			return
+		}
+		items.withoutIndex = append(items.withoutIndex, raw)
+		items.totalBytes += len(raw)
+		return
+	}
+	index, ok := validResponsesOutputIndex(indexResult)
+	if !ok {
+		return
+	}
+	items.removeIdentity(responsesOutputItemIdentity(raw))
+	previous := items.byIndex[index]
+	if !items.reserve(raw, len(previous)) {
+		return
+	}
+	if previous, ok := items.byIndex[index]; ok {
+		items.totalBytes -= len(previous)
+	}
+	items.byIndex[index] = raw
+	items.totalBytes += len(raw)
+}
+
+func (items *responsesDoneOutputItems) reserve(item json.RawMessage, replacedBytes int) bool {
+	count := len(items.byIndex) + len(items.withoutIndex)
+	if (replacedBytes == 0 && count >= maxResponsesDoneOutputItems) || items.totalBytes-replacedBytes+len(item) > maxResponsesDoneOutputBytes {
+		items.discardOnOverflow()
+		return false
+	}
+	return true
+}
+
+func (items *responsesDoneOutputItems) discardOnOverflow() {
+	items.byIndex = make(map[int]json.RawMessage)
+	items.withoutIndex = nil
+	items.totalBytes = 0
+	items.overflowed = true
+}
+
+func (items *responsesDoneOutputItems) removeIdentity(identity string) {
+	if identity == "" {
+		return
+	}
+	for index, item := range items.byIndex {
+		if responsesOutputItemIdentity(item) == identity {
+			items.totalBytes -= len(item)
+			delete(items.byIndex, index)
+		}
+	}
+	for index := len(items.withoutIndex) - 1; index >= 0; index-- {
+		if responsesOutputItemIdentity(items.withoutIndex[index]) == identity {
+			items.totalBytes -= len(items.withoutIndex[index])
+			items.withoutIndex = append(items.withoutIndex[:index], items.withoutIndex[index+1:]...)
+		}
+	}
+}
+
+func validResponsesOutputIndex(result gjson.Result) (int, bool) {
+	if result.Type != gjson.Number {
+		return 0, false
+	}
+	value, err := strconv.ParseUint(result.Raw, 10, strconv.IntSize)
+	if err != nil || value > maxResponsesOutputIndex {
+		return 0, false
+	}
+	return int(value), true
+}
+
+func (items *responsesDoneOutputItems) HasContent() bool {
+	return items != nil && !items.overflowed && (len(items.byIndex) > 0 || len(items.withoutIndex) > 0)
+}
+
+func (items *responsesDoneOutputItems) MergeTerminalOutput(output gjson.Result, fallback []byte) ([]byte, bool) {
+	if (items == nil || !items.HasContent()) && len(fallback) == 0 {
+		return nil, false
+	}
+	positioned := make(map[int]json.RawMessage)
+	var fallbackItems []json.RawMessage
+	if output.Exists() && output.IsArray() {
+		for index, terminalItem := range output.Array() {
+			positioned[index] = json.RawMessage(terminalItem.Raw)
+		}
+	}
+	if len(fallback) > 0 {
+		_ = json.Unmarshal(fallback, &fallbackItems)
+	}
+	if items == nil {
+		encoded, err := json.Marshal(fallbackItems)
+		return encoded, err == nil
+	}
+	doneIndices := make([]int, 0, len(items.byIndex))
+	for index := range items.byIndex {
+		doneIndices = append(doneIndices, index)
+	}
+	sort.Ints(doneIndices)
+	for _, index := range doneIndices {
+		doneItem := items.byIndex[index]
+		positioned[index] = doneItem
+	}
+
+	for _, fallbackItem := range fallbackItems {
+		if responsesFallbackRepresentedByDoneItem(fallbackItem, items) {
+			continue
+		}
+		index := 0
+		for {
+			if _, occupied := positioned[index]; !occupied {
+				positioned[index] = fallbackItem
+				break
+			}
+			index++
+		}
+	}
+
+	positions := make([]int, 0, len(positioned))
+	for index := range positioned {
+		positions = append(positions, index)
+	}
+	sort.Ints(positions)
+	merged := make([]json.RawMessage, 0, len(positioned)+len(items.withoutIndex))
+	for _, index := range positions {
+		merged = appendResponsesOutputItem(merged, positioned[index])
+	}
+	for _, doneItem := range items.withoutIndex {
+		merged = appendResponsesOutputItem(merged, doneItem)
+	}
+	encoded, err := json.Marshal(merged)
+	return encoded, err == nil
+}
+
+func responsesFallbackRepresentedByDoneItem(fallback json.RawMessage, items *responsesDoneOutputItems) bool {
+	for _, done := range items.byIndex {
+		if responsesSyntheticItemsEquivalent(fallback, done) {
+			return true
+		}
+	}
+	for _, done := range items.withoutIndex {
+		if responsesSyntheticItemsEquivalent(fallback, done) {
+			return true
+		}
+	}
+	return false
+}
+
+func responsesSyntheticItemsEquivalent(fallback, done json.RawMessage) bool {
+	fallbackItem := gjson.ParseBytes(fallback)
+	doneItem := gjson.ParseBytes(done)
+	itemType := strings.TrimSpace(fallbackItem.Get("type").String())
+	if itemType == "" || itemType != strings.TrimSpace(doneItem.Get("type").String()) {
+		return false
+	}
+	switch itemType {
+	case "message":
+		fallbackText := responsesItemText(fallbackItem, "content")
+		return fallbackText != "" && fallbackItem.Get("role").String() == doneItem.Get("role").String() &&
+			fallbackText == responsesItemText(doneItem, "content")
+	case "reasoning":
+		fallbackText := responsesItemText(fallbackItem, "summary")
+		return fallbackText != "" && fallbackText == responsesItemText(doneItem, "summary")
+	case "image_generation_call":
+		return fallbackItem.Get("result").String() != "" &&
+			fallbackItem.Get("result").String() == doneItem.Get("result").String() &&
+			fallbackItem.Get("output_format").String() == doneItem.Get("output_format").String()
+	default:
+		return false
+	}
+}
+
+func responsesItemText(item gjson.Result, path string) string {
+	var text strings.Builder
+	for _, part := range item.Get(path).Array() {
+		text.WriteString(part.Get("text").String())
+	}
+	return text.String()
+}
+
+func responsesOutputItemIdentity(item json.RawMessage) string {
+	parsed := gjson.ParseBytes(item)
+	if id := strings.TrimSpace(parsed.Get("id").String()); id != "" {
+		return "id:" + id
+	}
+	if callID := strings.TrimSpace(parsed.Get("call_id").String()); callID != "" {
+		return "call_id:" + callID
+	}
+	return ""
+}
+
+func appendResponsesOutputItem(output []json.RawMessage, item json.RawMessage) []json.RawMessage {
+	identity := responsesOutputItemIdentity(item)
+	if identity != "" {
+		for index, candidate := range output {
+			if responsesOutputItemIdentity(candidate) == identity {
+				output[index] = item
+				return output
+			}
+		}
+	}
+	return append(output, item)
+}
+
+func normalizeResponsesStreamingTerminalOutput(data []byte, acc *apicompat.BufferedResponseAccumulator, doneItems *responsesDoneOutputItems, imageOutputs []json.RawMessage) ([]byte, bool) {
 	eventType := strings.TrimSpace(gjson.GetBytes(data, "type").String())
 	switch eventType {
 	case "response.completed", "response.done", "response.incomplete", "response.cancelled", "response.canceled":
@@ -1468,22 +1708,40 @@ func normalizeResponsesStreamingTerminalOutput(data []byte, acc *apicompat.Buffe
 	}
 
 	output := gjson.GetBytes(data, "response.output")
-	hasAccumulatedOutput := (acc != nil && acc.HasContent()) || len(imageOutputs) > 0
+	hasAccumulatedOutput := (acc != nil && acc.HasContent()) || doneItems.HasContent() || len(imageOutputs) > 0
 	if output.Exists() && output.IsArray() {
-		if len(output.Array()) > 0 || !hasAccumulatedOutput {
+		if len(output.Array()) > 0 && !doneItems.HasContent() {
+			return data, false
+		}
+		if len(output.Array()) == 0 && !hasAccumulatedOutput {
 			return data, false
 		}
 	}
 
 	outputJSON := []byte("[]")
-	if reconstructed, ok := buildResponsesOutputJSON(acc, imageOutputs); ok {
+	fallback, _ := buildResponsesOutputJSON(acc, imageOutputs)
+	if reconstructed, ok := doneItems.MergeTerminalOutput(output, fallback); ok {
 		outputJSON = reconstructed
+	} else if len(fallback) > 0 {
+		outputJSON = fallback
+	}
+	if output.Exists() && output.IsArray() && jsonValuesEqual(outputJSON, []byte(output.Raw)) {
+		return data, false
 	}
 	updated, err := sjson.SetRawBytes(data, "response.output", outputJSON)
 	if err != nil {
 		return data, false
 	}
 	return updated, true
+}
+
+func jsonValuesEqual(left, right []byte) bool {
+	var leftValue any
+	var rightValue any
+	if json.Unmarshal(left, &leftValue) != nil || json.Unmarshal(right, &rightValue) != nil {
+		return false
+	}
+	return reflect.DeepEqual(leftValue, rightValue)
 }
 
 func responsesStreamEventMayContributeToOutput(eventType string) bool {
