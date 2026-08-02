@@ -15,11 +15,17 @@ on:
         required: false
         type: boolean
         default: false
+      skip_docker:
+        description: 'Skip Docker/GHCR (binaries + GitHub Release only). Use when GHCR write_package is denied.'
+        required: false
+        type: boolean
+        default: false
 
 # 环境变量：合并 workflow_dispatch 输入和 repository variable
-# tag push 触发时读取 vars.SIMPLE_RELEASE，workflow_dispatch 时使用输入参数
+# tag push 触发时读取 vars.SIMPLE_RELEASE / vars.SKIP_DOCKER
 env:
   SIMPLE_RELEASE: ${{ github.event.inputs.simple_release == 'true' || vars.SIMPLE_RELEASE == 'true' }}
+  SKIP_DOCKER: ${{ github.event.inputs.skip_docker == 'true' || vars.SKIP_DOCKER == 'true' }}
 
 permissions:
   contents: write
@@ -176,7 +182,12 @@ jobs:
         uses: goreleaser/goreleaser-action@v7
         with:
           version: '~> v2'
-          args: release --clean --skip=validate ${{ env.SIMPLE_RELEASE == 'true' && '--config=.goreleaser.simple.yaml' || '' }}
+          # simple_release: slim GHCR-only config
+          # skip_docker: full multi-OS archives + GitHub Release, no container push
+          args: >-
+            release --clean --skip=validate
+            ${{ env.SIMPLE_RELEASE == 'true' && '--config=.goreleaser.simple.yaml' || '' }}
+            ${{ env.SKIP_DOCKER == 'true' && '--skip=docker' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_MESSAGE: ${{ steps.tag_message.outputs.message }}
