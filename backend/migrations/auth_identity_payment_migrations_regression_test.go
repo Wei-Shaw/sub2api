@@ -252,3 +252,20 @@ func TestMigration200KeepsChannelServiceTierExpansionRollbackCompatible(t *testi
 	require.Contains(t, sql, "service_tier_config IS NULL OR jsonb_typeof(service_tier_config) = 'object'")
 	require.Contains(t, sql, "NOT VALID")
 }
+
+func TestMigrations201And202KeepGroupProfitControlRollbackCompatible(t *testing.T) {
+	expansion, err := FS.ReadFile("201_group_profit_control.sql")
+	require.NoError(t, err)
+
+	expansionSQL := strings.ToLower(string(expansion))
+	require.Contains(t, expansionSQL, "add column if not exists profit_control_enabled boolean;")
+	require.Contains(t, expansionSQL, "add column if not exists profit_min_margin decimal(10,4);")
+	require.Contains(t, expansionSQL, "add column if not exists profit_safety_buffer decimal(10,4);")
+	require.NotContains(t, expansionSQL, "profit_control_enabled boolean not null")
+	require.NotContains(t, expansionSQL, "profit_min_margin decimal(10,4) not null")
+	require.NotContains(t, expansionSQL, "profit_safety_buffer decimal(10,4) not null")
+
+	invalidation, err := FS.ReadFile("202_group_profit_control_auth_cache_invalidation.sql")
+	require.NoError(t, err)
+	require.Contains(t, string(invalidation), "sub2api-managed-update: reviewed-compatible")
+}

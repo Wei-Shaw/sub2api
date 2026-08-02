@@ -7,6 +7,10 @@
 -- InvalidateAuthCacheByGroupID; this trigger is the durable backstop. Based on
 -- the latest function body from 186_group_auth_cache_image_generation.sql.
 
+-- This replacement only adds comparisons for nullable expansion columns. The
+-- trigger remains callable by both old and new application versions, and the
+-- existing enqueue behavior is unchanged.
+-- sub2api-managed-update: reviewed-compatible
 CREATE OR REPLACE FUNCTION enqueue_group_auth_cache_invalidation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
