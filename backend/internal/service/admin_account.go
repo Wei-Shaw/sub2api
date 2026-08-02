@@ -309,6 +309,9 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	if err != nil {
 		return nil, fmt.Errorf("normalize duplicate account extra: %w", err)
 	}
+	if err := ValidateOpenAIRequestCompressionExtra(input.Platform, accountExtra); err != nil {
+		return nil, fmt.Errorf("normalize duplicate account extra: %w", err)
+	}
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
 		return nil, err
 	}
@@ -394,6 +397,47 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 	return normalized, nil
 }
 
+// ValidateOpenAIRequestCompressionExtra validates the optional OpenAI account
+// request-compression override. Omitting the key inherits the global setting.
+func ValidateOpenAIRequestCompressionExtra(platform string, extra map[string]any) error {
+	if platform != PlatformOpenAI || extra == nil {
+		return nil
+	}
+	raw, exists := extra[openAIRequestCompressionExtraKey]
+	if !exists {
+		return nil
+	}
+	if _, ok := raw.(bool); !ok {
+		return infraerrors.BadRequest(
+			"OPENAI_REQUEST_COMPRESSION_INVALID",
+			"openai_request_compression must be a boolean",
+		)
+	}
+	return nil
+}
+
+func normalizeOpenAIRequestCompressionUpdateExtra(account *Account, input *UpdateAccountInput, normalized map[string]any) (map[string]any, error) {
+	if account == nil || account.Platform != PlatformOpenAI {
+		return normalized, nil
+	}
+	if err := ValidateOpenAIRequestCompressionExtra(account.Platform, input.Extra); err != nil {
+		return nil, err
+	}
+	if _, provided := input.Extra[openAIRequestCompressionExtraKey]; provided {
+		return normalized, nil
+	}
+	current, exists := account.Extra[openAIRequestCompressionExtraKey]
+	if !exists {
+		return normalized, nil
+	}
+	normalized = maps.Clone(normalized)
+	if normalized == nil {
+		normalized = make(map[string]any)
+	}
+	normalized[openAIRequestCompressionExtraKey] = current
+	return normalized, nil
+}
+
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
@@ -461,6 +505,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
+		return nil, err
+	}
+	if err := ValidateOpenAIRequestCompressionExtra(input.Platform, accountExtra); err != nil {
 		return nil, err
 	}
 	accountExtra, err = normalizeGrokMediaEligibilityExtra(input.Platform, accountExtra)
@@ -553,6 +600,10 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 		normalizedExtra, err = normalizeGrokMediaEligibilityUpdateExtra(account, input, normalizedExtra)
+		if err != nil {
+			return nil, err
+		}
+		normalizedExtra, err = normalizeOpenAIRequestCompressionUpdateExtra(account, input, normalizedExtra)
 		if err != nil {
 			return nil, err
 		}
@@ -858,12 +909,17 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
-	if _, exists := updates[openAILongContextBillingEnabledKey]; exists {
+	_, updatesLongContextBilling := updates[openAILongContextBillingEnabledKey]
+	_, updatesRequestCompression := updates[openAIRequestCompressionExtraKey]
+	if updatesLongContextBilling || updatesRequestCompression {
 		account, err := s.accountRepo.GetByID(ctx, id)
 		if err != nil {
 			return err
 		}
 		if err := ValidateOpenAILongContextBillingExtra(account.Platform, updates); err != nil {
+			return err
+		}
+		if err := ValidateOpenAIRequestCompressionExtra(account.Platform, updates); err != nil {
 			return err
 		}
 	}
@@ -909,10 +965,11 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 	_, hasLongContextBillingUpdate := input.Extra[openAILongContextBillingEnabledKey]
+	_, hasRequestCompressionUpdate := input.Extra[openAIRequestCompressionExtraKey]
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || hasRequestCompressionUpdate || input.ProbeEnabled != nil || input.RateMultiplier != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -942,6 +999,17 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 				continue
 			}
 			if err := ValidateOpenAILongContextBillingExtra(account.Platform, input.Extra); err != nil {
+				return nil, err
+			}
+			break
+		}
+	}
+	if hasRequestCompressionUpdate {
+		for _, account := range cachedTargets {
+			if account == nil || account.Platform != PlatformOpenAI {
+				continue
+			}
+			if err := ValidateOpenAIRequestCompressionExtra(account.Platform, input.Extra); err != nil {
 				return nil, err
 			}
 			break

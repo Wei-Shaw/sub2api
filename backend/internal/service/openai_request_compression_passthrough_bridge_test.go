@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
@@ -163,6 +165,137 @@ func (u *bridgeCompressionCloseCheckingUpstream) Do(req *http.Request, proxyURL 
 		u.closedBeforeRetry = u.firstBody.closed
 	}
 	return u.httpUpstreamRecorder.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+type blockingShadowCompressionRepo struct {
+	AccountRepository
+	parent  *Account
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (r *blockingShadowCompressionRepo) GetByID(ctx context.Context, id int64) (*Account, error) {
+	r.once.Do(func() {
+		close(r.entered)
+		select {
+		case <-r.release:
+		case <-ctx.Done():
+		}
+	})
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.parent == nil || r.parent.ID != id {
+		return nil, ErrAccountNotFound
+	}
+	return r.parent, nil
+}
+
+type timedBridgeCompressionUpstream struct {
+	*httpUpstreamRecorder
+	firstDelay  time.Duration
+	secondDelay time.Duration
+	firstDoAt   time.Time
+}
+
+func (u *timedBridgeCompressionUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	if len(u.requests) == 0 {
+		u.firstDoAt = time.Now()
+		time.Sleep(u.firstDelay)
+	} else {
+		time.Sleep(u.secondDelay)
+	}
+	return u.httpUpstreamRecorder.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+func TestOpenAIWSHTTPBridgeTimingStartsAtFirstDoAndIncludesCompressionFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	payload := []byte(`{"type":"response.create","model":"gpt-5","stream":true,"input":"hello"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+
+	parent := passthroughCompressionTestAccount(60)
+	parentID := parent.ID
+	shadow := passthroughCompressionTestAccount(61)
+	shadow.ParentAccountID = &parentID
+	repo := &blockingShadowCompressionRepo{
+		parent:  parent,
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	sseBody := strings.Join([]string{
+		`data: {"type":"response.output_text.delta","response":{"id":"resp_timing"},"delta":"ok"}`,
+		"",
+		`data: {"type":"response.completed","response":{"id":"resp_timing","model":"gpt-5","usage":{"input_tokens":1,"output_tokens":1}}}`,
+		"",
+	}, "\n")
+	baseUpstream := &httpUpstreamRecorder{responses: []*http.Response{
+		compressionErrorResponse(http.StatusUnsupportedMediaType, "unsupported_content_encoding", "unsupported content-encoding: zstd"),
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(sseBody)),
+		},
+	}}
+	upstream := &timedBridgeCompressionUpstream{
+		httpUpstreamRecorder: baseUpstream,
+		firstDelay:           80 * time.Millisecond,
+		secondDelay:          40 * time.Millisecond,
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          passthroughCompressionTestConfig(),
+		accountRepo:  repo,
+		httpUpstream: upstream,
+	}
+
+	type bridgeResult struct {
+		result     *OpenAIForwardResult
+		err        error
+		returnedAt time.Time
+	}
+	resultCh := make(chan bridgeResult, 1)
+	var tokenAt time.Time
+	callStartedAt := time.Now()
+	go func() {
+		result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+			context.Background(), c, shadow, "oauth-token", payload, len(payload),
+			"gpt-5", "", "", "", "", 1,
+			func(message []byte) error {
+				if len(message) > 0 && tokenAt.IsZero() {
+					tokenAt = time.Now()
+				}
+				return nil
+			},
+		)
+		resultCh <- bridgeResult{result: result, err: err, returnedAt: time.Now()}
+	}()
+
+	select {
+	case <-repo.entered:
+	case <-time.After(time.Second):
+		t.Fatal("request builder did not resolve shadow credentials")
+	}
+	time.Sleep(150 * time.Millisecond)
+	close(repo.release)
+
+	var got bridgeResult
+	select {
+	case got = <-resultCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("HTTP bridge did not finish")
+	}
+	require.NoError(t, got.err)
+	require.NotNil(t, got.result)
+	require.NotNil(t, got.result.FirstTokenMs)
+	require.Len(t, baseUpstream.requests, 2)
+	require.Equal(t, "zstd", baseUpstream.requests[0].Header.Get("Content-Encoding"))
+	require.Empty(t, baseUpstream.requests[1].Header.Get("Content-Encoding"))
+	require.GreaterOrEqual(t, upstream.firstDoAt.Sub(callStartedAt), 140*time.Millisecond)
+	require.WithinDuration(t, got.returnedAt, upstream.firstDoAt.Add(got.result.Duration), 50*time.Millisecond)
+	require.WithinDuration(t, tokenAt, upstream.firstDoAt.Add(time.Duration(*got.result.FirstTokenMs)*time.Millisecond), 50*time.Millisecond)
+	require.GreaterOrEqual(t, time.Duration(*got.result.FirstTokenMs)*time.Millisecond, upstream.firstDelay)
 }
 
 func TestOpenAIWSHTTPBridgeCompressionFallbackRebuildsAndDisablesConnection(t *testing.T) {

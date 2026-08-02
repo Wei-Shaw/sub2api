@@ -254,7 +254,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				return nil, err
 			}
 			if requestCompressionScope != nil && requestCompressionScope.TryConsumeFallback() {
-				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Retrying request once without zstd after upstream content-encoding rejection (account: %s, status: %d)", account.Name, resp.StatusCode)
+				logOpenAIRequestCompressionFallback(ctx, "passthrough", account, resp.StatusCode, upstreamCode)
 				continue
 			}
 		}

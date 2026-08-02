@@ -214,7 +214,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 	}
 
-	turnStart := time.Now()
+	var turnStart time.Time
 	var requestCompressionScope *openAIRequestCompressionScope
 	if account.Platform != PlatformGrok && s.isOpenAIRequestCompressionEnabled() {
 		requestCompressionScope = ensureOpenAIRequestCompressionScope(c)
@@ -246,6 +246,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			upstreamReq.Header.Set(responsesLiteHeader, "true")
 		}
 
+		if turnStart.IsZero() {
+			turnStart = time.Now()
+		}
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if isOpenAIRequestZstdCompressed(upstreamReq, account) {
 			releaseOpenAIRequestReplayReferences(upstreamReq, resp)
@@ -275,12 +278,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				return nil, err
 			}
 			if requestCompressionScope != nil && requestCompressionScope.TryConsumeFallback() {
-				logOpenAIWSModeInfo(
-					"ingress_ws_http_bridge_request_compression_fallback account_id=%d turn=%d status=%d",
-					account.ID,
-					turn,
-					resp.StatusCode,
-				)
+				logOpenAIRequestCompressionFallback(ctx, "ws_http_bridge", account, resp.StatusCode, upstreamCode)
 				continue
 			}
 		}

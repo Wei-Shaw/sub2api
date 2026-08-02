@@ -1253,16 +1253,20 @@ func (a *Account) IsOpenAILongContextBillingEnabled() bool {
 }
 
 // GetOpenAIRequestCompressionOverride returns the optional account-level
-// request-compression setting. Missing, null, or malformed values are unset.
-// The global configuration remains the hard gate; this value is only used to
-// opt an account out when the global feature is enabled.
+// request-compression setting. Missing values inherit the global setting;
+// malformed persisted values fail closed and opt the account out.
+// The global configuration remains the hard gate.
 func (a *Account) GetOpenAIRequestCompressionOverride() *bool {
-	if a == nil || a.Extra == nil {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
 		return nil
 	}
-	enabled, ok := a.Extra[openAIRequestCompressionExtraKey].(bool)
-	if !ok {
+	raw, exists := a.Extra[openAIRequestCompressionExtraKey]
+	if !exists {
 		return nil
+	}
+	enabled, ok := raw.(bool)
+	if !ok {
+		enabled = false
 	}
 	return &enabled
 }

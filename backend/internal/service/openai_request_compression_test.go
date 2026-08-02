@@ -5,11 +5,16 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestPrepareOpenAIRequestWireBodyEligibility(t *testing.T) {
@@ -232,6 +237,104 @@ func TestShouldFallbackOpenAIRequestCompression(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := shouldFallbackOpenAIRequestCompression(tt.status, tt.code, tt.message)
 			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestClaimOpenAIRequestCompressionMetricsLogRateLimitsByTime(t *testing.T) {
+	var lastLogAt atomic.Int64
+	startedAt := time.Unix(1000, 0)
+
+	require.True(t, claimOpenAIRequestCompressionMetricsLog(&lastLogAt, startedAt))
+	require.False(t, claimOpenAIRequestCompressionMetricsLog(&lastLogAt, startedAt.Add(time.Second)))
+	require.False(t, claimOpenAIRequestCompressionMetricsLog(&lastLogAt, startedAt.Add(openAIRequestCompressionMetricsLogInterval-time.Nanosecond)))
+	require.True(t, claimOpenAIRequestCompressionMetricsLog(&lastLogAt, startedAt.Add(openAIRequestCompressionMetricsLogInterval)))
+	require.False(t, claimOpenAIRequestCompressionMetricsLog(&lastLogAt, startedAt.Add(openAIRequestCompressionMetricsLogInterval)))
+	require.False(t, claimOpenAIRequestCompressionMetricsLog(nil, startedAt))
+}
+
+func TestOpenAIRequestCompressionMetricsCountOnlyEnabledEvaluations(t *testing.T) {
+	body := []byte(`{"stream":true,"input":"hello"}`)
+	before := SnapshotOpenAIRequestCompressionMetrics()
+
+	disabled := &OpenAIGatewayService{cfg: &config.Config{}}
+	disabled.prepareOpenAIRequestWireBody(context.Background(), openAIRequestCompressionOAuthAccount(1, nil), chatgptCodexURL, body, openAIUpstreamRequestBuildOptions{AllowRequestCompression: true})
+
+	enabledCfg := &config.Config{}
+	enabledCfg.Gateway.OpenAIRequestCompression.Enabled = true
+	enabled := &OpenAIGatewayService{cfg: enabledCfg}
+	enabled.prepareOpenAIRequestWireBody(context.Background(), openAIRequestCompressionOAuthAccount(1, nil), chatgptCodexURL, body, openAIUpstreamRequestBuildOptions{})
+
+	afterDisabled := SnapshotOpenAIRequestCompressionMetrics()
+	require.Equal(t, before.EvaluatedAttemptsTotal, afterDisabled.EvaluatedAttemptsTotal)
+
+	enabled.prepareOpenAIRequestWireBody(context.Background(), &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, openaiPlatformAPIURL, body, openAIUpstreamRequestBuildOptions{AllowRequestCompression: true})
+	enabled.prepareOpenAIRequestWireBody(context.Background(), openAIRequestCompressionOAuthAccount(2, map[string]any{openAIRequestCompressionExtraKey: false}), chatgptCodexURL, body, openAIUpstreamRequestBuildOptions{AllowRequestCompression: true})
+	enabled.prepareOpenAIRequestWireBody(context.Background(), openAIRequestCompressionOAuthAccount(3, nil), chatgptCodexURL+"/compact", body, openAIUpstreamRequestBuildOptions{AllowRequestCompression: true})
+	enabled.prepareOpenAIRequestWireBody(context.Background(), openAIRequestCompressionOAuthAccount(4, nil), chatgptCodexURL, []byte(`{"stream":false}`), openAIUpstreamRequestBuildOptions{AllowRequestCompression: true})
+	forcedScope := newOpenAIRequestCompressionScope()
+	require.True(t, forcedScope.TryConsumeFallback())
+	enabled.prepareOpenAIRequestWireBody(context.Background(), openAIRequestCompressionOAuthAccount(5, nil), chatgptCodexURL, body, openAIUpstreamRequestBuildOptions{AllowRequestCompression: true, CompressionScope: forcedScope})
+
+	after := SnapshotOpenAIRequestCompressionMetrics()
+	require.Equal(t, afterDisabled.EvaluatedAttemptsTotal+5, after.EvaluatedAttemptsTotal)
+	require.Equal(t, afterDisabled.SkipNotOAuthTotal+1, after.SkipNotOAuthTotal)
+	require.Equal(t, afterDisabled.SkipAccountOverrideTotal+1, after.SkipAccountOverrideTotal)
+	require.Equal(t, afterDisabled.SkipEndpointTotal+1, after.SkipEndpointTotal)
+	require.Equal(t, afterDisabled.SkipNotStreamingTotal+1, after.SkipNotStreamingTotal)
+	require.Equal(t, afterDisabled.SkipForcedUncompressedTotal+1, after.SkipForcedUncompressedTotal)
+}
+
+func TestLogOpenAIRequestCompressionMetricsIsStructuredAndBodyFree(t *testing.T) {
+	core, observed := observer.New(zap.InfoLevel)
+	logOpenAIRequestCompressionMetrics(zap.New(core), OpenAIRequestCompressionMetricsSnapshot{
+		EvaluatedAttemptsTotal:      7,
+		CompressedAttemptsTotal:     5,
+		CompressionOperationsTotal:  4,
+		CompressionCacheHitsTotal:   1,
+		FallbackUncompressedTotal:   1,
+		CompressionErrorsTotal:      0,
+		PreCompressionBytesTotal:    1000,
+		PostCompressionBytesTotal:   400,
+		CompressionDurationNsTotal:  uint64(2500 * time.Microsecond),
+		SkipNotOAuthTotal:           1,
+		SkipAccountOverrideTotal:    2,
+		SkipEndpointTotal:           3,
+		SkipNotStreamingTotal:       4,
+		SkipForcedUncompressedTotal: 5,
+	})
+
+	entries := observed.FilterMessage("openai.request_compression_metrics").All()
+	require.Len(t, entries, 1)
+	fields := entries[0].ContextMap()
+	require.EqualValues(t, 7, fields["evaluated_attempts_total"])
+	require.EqualValues(t, 5, fields["compressed_attempts_total"])
+	require.EqualValues(t, 2500, fields["compression_duration_us_total"])
+	require.InDelta(t, 2.5, fields["compression_ratio"], 0.001)
+	require.InDelta(t, 60, fields["savings_percent"], 0.001)
+	require.Equal(t, "service.openai_gateway.request_compression", fields["component"])
+	require.NotContains(t, fields, "body")
+	require.NotContains(t, fields, "request_id")
+	require.NotContains(t, fields, "path")
+}
+
+func TestLogOpenAIRequestCompressionFallbackIsStructuredAndBodyFree(t *testing.T) {
+	for _, flow := range []string{"converted", "passthrough", "ws_http_bridge"} {
+		t.Run(flow, func(t *testing.T) {
+			core, observed := observer.New(zap.InfoLevel)
+			ctx := logger.IntoContext(context.Background(), zap.New(core).With(zap.String("request_id", "rid-test")))
+			logOpenAIRequestCompressionFallback(ctx, flow, &Account{ID: 42}, http.StatusUnsupportedMediaType, "unsupported-content-encoding")
+
+			entries := observed.FilterMessage("openai.request_compression_fallback").All()
+			require.Len(t, entries, 1)
+			fields := entries[0].ContextMap()
+			require.Equal(t, flow, fields["flow"])
+			require.EqualValues(t, 42, fields["account_id"])
+			require.EqualValues(t, http.StatusUnsupportedMediaType, fields["status_code"])
+			require.Equal(t, "unsupported_content_encoding", fields["upstream_error_code"])
+			require.Equal(t, true, fields["fallback_uncompressed"])
+			require.Equal(t, "rid-test", fields["request_id"])
+			require.NotContains(t, fields, "body")
 		})
 	}
 }

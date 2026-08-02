@@ -163,3 +163,108 @@ func TestOpenAIOAuthCodexPATBoundaryRejectsMalformedOpenAILongContextBillingValu
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &responseBody))
 	require.Equal(t, "OPENAI_LONG_CONTEXT_BILLING_INVALID", responseBody.Reason)
 }
+
+func TestAccountAdminBoundariesRejectMalformedOpenAIRequestCompressionValue(t *testing.T) {
+	const malformedExtra = `"extra":{"openai_request_compression":"false"}`
+	tests := []struct {
+		name  string
+		path  string
+		body  string
+		mount func(*gin.Engine, *AccountHandler)
+	}{
+		{
+			name: "create",
+			path: "/accounts",
+			body: `{"name":"account","platform":"openai","type":"apikey","credentials":{"api_key":"test"},` + malformedExtra + `}`,
+			mount: func(router *gin.Engine, handler *AccountHandler) {
+				router.POST("/accounts", handler.Create)
+			},
+		},
+		{
+			name: "batch create",
+			path: "/accounts/batch",
+			body: `{"accounts":[{"name":"account","platform":"openai","type":"apikey","credentials":{"api_key":"test"},` + malformedExtra + `}]}`,
+			mount: func(router *gin.Engine, handler *AccountHandler) {
+				router.POST("/accounts/batch", handler.BatchCreate)
+			},
+		},
+		{
+			name: "Codex session import",
+			path: "/accounts/import-codex-session",
+			body: `{"content":"token",` + malformedExtra + `}`,
+			mount: func(router *gin.Engine, handler *AccountHandler) {
+				router.POST("/accounts/import-codex-session", handler.ImportCodexSession)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			stub := newStubAdminService()
+			handler := NewAccountHandler(stub, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+			router := gin.New()
+			tt.mount(router, handler)
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, tt.path, bytes.NewBufferString(tt.body))
+			request.Header.Set("Content-Type", "application/json")
+
+			router.ServeHTTP(recorder, request)
+
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+			var responseBody struct {
+				Reason string `json:"reason"`
+			}
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &responseBody))
+			require.Equal(t, "OPENAI_REQUEST_COMPRESSION_INVALID", responseBody.Reason)
+			require.Empty(t, stub.createdAccounts)
+		})
+	}
+}
+
+func TestApplyOAuthCredentialsRejectsMalformedOpenAIRequestCompressionBeforeMutation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := newStubAdminService()
+	stub.getAccountResult = &service.Account{ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth}
+	handler := NewAccountHandler(stub, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.POST("/accounts/:id/apply-oauth-credentials", handler.ApplyOAuthCredentials)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/accounts/1/apply-oauth-credentials", bytes.NewBufferString(
+		`{"type":"oauth","credentials":{"access_token":"new-token"},"extra":{"openai_request_compression":null}}`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	var responseBody struct {
+		Reason string `json:"reason"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &responseBody))
+	require.Equal(t, "OPENAI_REQUEST_COMPRESSION_INVALID", responseBody.Reason)
+	require.Zero(t, stub.updateAccountCalls)
+	require.Zero(t, stub.updateAccountExtraCalls)
+}
+
+func TestOpenAIOAuthCodexPATBoundaryRejectsMalformedOpenAIRequestCompressionBeforeTokenValidation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewOpenAIOAuthHandler(nil, newStubAdminService(), nil)
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.POST("/openai/create-from-codex-pat", handler.CreateAccountFromCodexPAT)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/openai/create-from-codex-pat", bytes.NewBufferString(
+		`{"access_token":"token","extra":{"openai_request_compression":1}}`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	var responseBody struct {
+		Reason string `json:"reason"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &responseBody))
+	require.Equal(t, "OPENAI_REQUEST_COMPRESSION_INVALID", responseBody.Reason)
+}

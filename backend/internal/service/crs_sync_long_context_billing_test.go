@@ -128,6 +128,60 @@ func TestCRSSyncOpenAILongContextBilling(t *testing.T) {
 	}
 }
 
+func TestCRSSyncRejectsMalformedOpenAIRequestCompression(t *testing.T) {
+	tests := []struct {
+		name          string
+		collection    string
+		credentials   map[string]any
+		sourceExtra   map[string]any
+		existingExtra map[string]any
+	}{
+		{
+			name:        "OAuth create rejects malformed source",
+			collection:  "openaiOAuthAccounts",
+			credentials: map[string]any{"access_token": "oauth-token"},
+			sourceExtra: map[string]any{openAIRequestCompressionExtraKey: "false"},
+		},
+		{
+			name:          "OAuth update rejects malformed existing value",
+			collection:    "openaiOAuthAccounts",
+			credentials:   map[string]any{"access_token": "oauth-token"},
+			existingExtra: map[string]any{openAIRequestCompressionExtraKey: nil},
+		},
+		{
+			name:        "API key create rejects malformed source",
+			collection:  "openaiResponsesAccounts",
+			credentials: map[string]any{"api_key": "sk-test"},
+			sourceExtra: map[string]any{openAIRequestCompressionExtraKey: 0},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			const crsID = "crs-openai-1"
+			var existing *Account
+			if tt.existingExtra != nil {
+				existingExtra := mergeMap(tt.existingExtra, map[string]any{"crs_account_id": crsID})
+				accountType := AccountTypeOAuth
+				if tt.collection == "openaiResponsesAccounts" {
+					accountType = AccountTypeAPIKey
+				}
+				existing = &Account{ID: 41, Platform: PlatformOpenAI, Type: accountType, Extra: existingExtra}
+			}
+			repo := newCRSLongContextAccountRepo(existing)
+			result := runCRSOpenAILongContextSync(t, repo, crsOpenAILongContextSource{
+				collection:  tt.collection,
+				credentials: tt.credentials,
+				extra:       tt.sourceExtra,
+			})
+
+			require.Len(t, result.Items, 1)
+			require.Equal(t, "failed", result.Items[0].Action)
+			require.Contains(t, result.Items[0].Error, "openai_request_compression must be a boolean")
+		})
+	}
+}
+
 func runCRSOpenAILongContextSync(t *testing.T, repo AccountRepository, source crsOpenAILongContextSource) *SyncFromCRSResult {
 	t.Helper()
 	account := map[string]any{
