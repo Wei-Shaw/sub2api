@@ -87,9 +87,7 @@ func normalizeLemonSqueezyAPIBase(raw string) (string, error) {
 	parsed.Fragment = ""
 	parsed.RawPath = ""
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
-	if strings.HasSuffix(parsed.Path, "/v1") {
-		parsed.Path = strings.TrimSuffix(parsed.Path, "/v1")
-	}
+	parsed.Path = strings.TrimSuffix(parsed.Path, "/v1")
 	return parsed.String(), nil
 }
 
@@ -397,7 +395,9 @@ func (l *LemonSqueezy) doJSON(ctx context.Context, method, path string, payload 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	limitedBody := io.LimitReader(resp.Body, lemonSqueezyMaxResponseSize)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
