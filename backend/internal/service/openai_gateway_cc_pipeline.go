@@ -88,7 +88,9 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	upstreamMsg string,
 	upstreamModel string,
 ) *UpstreamFailoverError {
-	shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
+	workspaceMismatch := account != nil && account.Platform == PlatformOpenAI && account.IsOpenAIOAuth() &&
+		isChatGPTWorkspaceAccountMismatch(resp.StatusCode, respBody)
+	shouldFailover := workspaceMismatch || s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
 	if account != nil && account.Platform == PlatformGrok {
 		shouldFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
 	}
@@ -116,9 +118,12 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 		Message:            upstreamMsg,
 		Detail:             upstreamDetail,
 	})
-	shouldDisable := false
-	if account.Platform != PlatformGrok {
+	shouldDisable := workspaceMismatch
+	if account.Platform != PlatformGrok && !workspaceMismatch {
 		shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
+	}
+	if workspaceMismatch {
+		s.blockChatGPTWorkspaceMismatch(account)
 	}
 	return newOpenAIUpstreamFailoverError(
 		resp.StatusCode,
