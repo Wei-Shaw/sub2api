@@ -1465,11 +1465,96 @@ export async function resetWebSearchUsage(payload: {
   );
 }
 
+export interface NotificationChannelEndpointView {
+  url: string;
+  body_template?: string;
+}
+
+export interface NotificationChannelEvent {
+  event: string;
+  label: string;
+  description: string;
+  category: string;
+  audience: "user" | "admin";
+  optional: boolean;
+  email: boolean;
+  webhook: boolean;
+  endpoint?: NotificationChannelEndpointView;
+  placeholders: string[];
+}
+
+export interface NotificationChannelConfigResponse {
+  webhook: {
+    enabled: boolean;
+    endpoint: NotificationChannelEndpointView;
+    /** Shared with the receiver, so unlike the SMTP password it is returned. */
+    secret: string;
+    timeout_seconds: number;
+    max_retries: number;
+  };
+  events: NotificationChannelEvent[];
+  webhook_placeholders: string[];
+}
+
+export interface NotificationChannelEndpointInput {
+  url?: string;
+  body_template?: string;
+}
+
+export interface NotificationChannelUpdateRequest {
+  webhook: {
+    enabled: boolean;
+    endpoint: NotificationChannelEndpointInput;
+    /** Omit to keep the stored secret; the server generates one when enabling. */
+    secret?: string;
+    timeout_seconds?: number;
+    max_retries?: number;
+  };
+  events?: Record<
+    string,
+    {
+      email?: boolean;
+      webhook?: boolean;
+      endpoint?: NotificationChannelEndpointInput;
+    }
+  >;
+}
+
+export async function getNotificationChannels(): Promise<NotificationChannelConfigResponse> {
+  const { data } = await apiClient.get<NotificationChannelConfigResponse>(
+    "/admin/settings/notification-channels",
+  );
+  return data;
+}
+
+export async function updateNotificationChannels(
+  request: NotificationChannelUpdateRequest,
+): Promise<NotificationChannelConfigResponse> {
+  const { data } = await apiClient.put<NotificationChannelConfigResponse>(
+    "/admin/settings/notification-channels",
+    request,
+  );
+  return data;
+}
+
+export async function testNotificationWebhook(
+  event: string,
+): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>(
+    "/admin/settings/notification-channels/test",
+    { event },
+  );
+  return data;
+}
+
 export const settingsAPI = {
   getSettings,
   updateSettings,
   testSmtpConnection,
   sendTestEmail,
+  getNotificationChannels,
+  updateNotificationChannels,
+  testNotificationWebhook,
   getEmailTemplates,
   getEmailTemplate,
   updateEmailTemplate,

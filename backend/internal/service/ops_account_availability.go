@@ -158,9 +158,9 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 }
 
 type OpsAccountAvailability struct {
-	Group       *GroupAvailability
-	Accounts    map[int64]*AccountAvailability
-	CollectedAt *time.Time
+	Group       *GroupAvailability             `json:"group"`
+	Accounts    map[int64]*AccountAvailability `json:"accounts"`
+	CollectedAt *time.Time                     `json:"collected_at"`
 }
 
 func (s *OpsService) GetAccountAvailability(ctx context.Context, platformFilter string, groupIDFilter *int64) (*OpsAccountAvailability, error) {

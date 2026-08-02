@@ -220,8 +220,65 @@ type opsScheduledReport struct {
 }
 
 type opsScheduledReportContent struct {
-	html     string
-	overview *OpsDashboardOverview
+	html                string
+	startTime           time.Time
+	endTime             time.Time
+	overview            *OpsDashboardOverview
+	errorDigest         *opsErrorDigestAggregate
+	accountAvailability *OpsAccountAvailability
+}
+
+// opsErrorDigestAggregate is the non-identifying aggregate produced by an
+// error-digest run. Individual request logs remain local to the email renderer.
+type opsErrorDigestAggregate struct {
+	Total int `json:"total"`
+}
+
+// opsScheduledReportWebhookData is the raw result of one scheduled report
+// execution. Email HTML remains only on the mail path.
+type opsScheduledReportWebhookData struct {
+	Report              opsScheduledReportWebhookReport `json:"report"`
+	Overview            *OpsDashboardOverview           `json:"overview,omitempty"`
+	ErrorDigest         *opsErrorDigestAggregate        `json:"error_digest,omitempty"`
+	AccountAvailability *OpsAccountAvailability         `json:"account_availability,omitempty"`
+}
+
+type opsScheduledReportWebhookReport struct {
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	Schedule  string    `json:"schedule"`
+	StartTime time.Time `json:"start_time"`
+	EndTime   time.Time `json:"end_time"`
+}
+
+func newOpsScheduledReportWebhookData(report *opsScheduledReport, now time.Time, content opsScheduledReportContent) opsScheduledReportWebhookData {
+	end := content.endTime.UTC()
+	if end.IsZero() {
+		end = now.UTC()
+	}
+	start := content.startTime.UTC()
+	if start.IsZero() {
+		start = end
+	}
+	data := opsScheduledReportWebhookData{
+		Overview:            content.overview,
+		ErrorDigest:         content.errorDigest,
+		AccountAvailability: content.accountAvailability,
+	}
+	if report == nil {
+		return data
+	}
+	if start.Equal(end) && report.TimeRange > 0 {
+		start = end.Add(-report.TimeRange)
+	}
+	data.Report = opsScheduledReportWebhookReport{
+		Name:      strings.TrimSpace(report.Name),
+		Type:      strings.TrimSpace(report.ReportType),
+		Schedule:  strings.TrimSpace(report.Schedule),
+		StartTime: start,
+		EndTime:   end,
+	}
+	return data
 }
 
 func (s *OpsScheduledReportService) listScheduledReports(ctx context.Context, now time.Time) []*opsScheduledReport {
@@ -337,8 +394,43 @@ func (s *OpsScheduledReportService) runReport(ctx context.Context, report *opsSc
 			recipients = []string{strings.TrimSpace(admin.Email)}
 		}
 	}
+	// A report run is one event even though it fans out over several admin
+	// mailboxes, so the webhook is dispatched once here rather than inside the
+	// loop. Dispatching per recipient would let a failed delivery restart with
+	// a fresh retry budget for every mailbox.
+	webhookDispatched := s.dispatchScheduledReportWebhook(ctx, report, now, content)
+
 	if len(recipients) == 0 {
+		// With the webhook channel on, a report with no mail recipients is a
+		// valid webhook-only configuration rather than nothing to do.
+		if webhookDispatched {
+			return 1, nil
+		}
 		return 0, nil
+	}
+
+	attempts := 0
+	if webhookDispatched {
+		attempts++
+	}
+	attempts += s.sendScheduledReportEmails(ctx, report, now, content, recipients)
+	return attempts, nil
+}
+
+// sendScheduledReportEmails delivers one report run to each admin mailbox.
+//
+// Extracted from runReport so the email-only fan-out is reachable from tests
+// without generating real report content: the webhook for this run is
+// dispatched once by the caller, and every Send here must stay email-only.
+func (s *OpsScheduledReportService) sendScheduledReportEmails(
+	ctx context.Context,
+	report *opsScheduledReport,
+	now time.Time,
+	content opsScheduledReportContent,
+	recipients []string,
+) int {
+	if s == nil || s.emailService == nil || report == nil {
+		return 0
 	}
 
 	attempts := 0
@@ -366,6 +458,8 @@ func (s *OpsScheduledReportService) runReport(ctx context.Context, report *opsSc
 				ReminderKey:      now.UTC().Format("2006-01-02T15:04"),
 				Variables:        templateVariables,
 				RawHTMLVariables: rawHTMLVariables,
+				// The webhook for this report run was dispatched by the caller.
+				emailOnly: true,
 			}); err == nil {
 				continue
 			} else if !shouldFallbackNotificationEmail(err) {
@@ -386,7 +480,7 @@ func (s *OpsScheduledReportService) runReport(ctx context.Context, report *opsSc
 			continue
 		}
 	}
-	return attempts, nil
+	return attempts
 }
 
 func opsScheduledReportDeliverySourceID(report *opsScheduledReport) string {
@@ -591,8 +685,10 @@ func (s *OpsScheduledReportService) generateReportContent(ctx context.Context, r
 			}
 		}
 		return opsScheduledReportContent{
-			html:     buildOpsSummaryEmailHTML(report.Name, start, end, overview),
-			overview: overview,
+			html:      buildOpsSummaryEmailHTML(report.Name, start, end, overview),
+			startTime: start,
+			endTime:   end,
+			overview:  overview,
 		}, nil
 	case "error_digest":
 		// Lightweight digest: list recent errors (status>=400) and breakdown by type.
@@ -611,7 +707,16 @@ func (s *OpsScheduledReportService) generateReportContent(ctx context.Context, r
 		if report.ErrorDigestMinCount > 0 && out != nil && out.Total < report.ErrorDigestMinCount {
 			return opsScheduledReportContent{}, nil
 		}
-		return opsScheduledReportContent{html: buildOpsErrorDigestEmailHTML(report.Name, start, end, out)}, nil
+		total := 0
+		if out != nil {
+			total = out.Total
+		}
+		return opsScheduledReportContent{
+			html:        buildOpsErrorDigestEmailHTML(report.Name, start, end, out),
+			startTime:   start,
+			endTime:     end,
+			errorDigest: &opsErrorDigestAggregate{Total: total},
+		}, nil
 	case "account_health":
 		// Best-effort: use account availability (not error rate yet).
 		avail, err := s.opsService.GetAccountAvailability(ctx, "", nil)
@@ -619,7 +724,12 @@ func (s *OpsScheduledReportService) generateReportContent(ctx context.Context, r
 			return opsScheduledReportContent{}, err
 		}
 		_ = report.AccountHealthErrorRateThreshold // reserved for future per-account error rate report
-		return opsScheduledReportContent{html: buildOpsAccountHealthEmailHTML(report.Name, start, end, avail)}, nil
+		return opsScheduledReportContent{
+			html:                buildOpsAccountHealthEmailHTML(report.Name, start, end, avail),
+			startTime:           start,
+			endTime:             end,
+			accountAvailability: avail,
+		}, nil
 	default:
 		return opsScheduledReportContent{}, fmt.Errorf("unknown report type: %s", report.ReportType)
 	}
@@ -923,4 +1033,47 @@ func normalizeEmails(in []string) []string {
 		out = append(out, addr)
 	}
 	return out
+}
+
+// dispatchScheduledReportWebhook sends the channel-agnostic copy of one report
+// run, before and independent of the mailbox loop.
+//
+// There is no recipient mailbox to resolve a locale from, so the payload is
+// rendered in the default locale; the per-mailbox emails still use each
+// recipient's own locale.
+func (s *OpsScheduledReportService) dispatchScheduledReportWebhook(
+	ctx context.Context,
+	report *opsScheduledReport,
+	now time.Time,
+	content opsScheduledReportContent,
+) bool {
+	if s == nil || s.emailService == nil || s.emailService.notificationEmailService == nil || report == nil {
+		return false
+	}
+	notificationService := s.emailService.notificationEmailService
+	if !notificationService.ResolveChannels(ctx, NotificationEmailEventOpsScheduledReport).Webhook {
+		return false
+	}
+
+	locale := notificationEmailDefaultLocale
+	templateVariables := opsScheduledReportLocalizedEmailVariables(report, now, locale)
+	if isOpsSummaryReport(report) {
+		templateVariables = opsSummaryReportEmailVariables(report, now, content.overview, locale)
+	}
+
+	if err := notificationService.Send(ctx, NotificationEmailSendInput{
+		Event:             NotificationEmailEventOpsScheduledReport,
+		Locale:            locale,
+		SourceType:        "ops_scheduled_report",
+		SourceID:          opsScheduledReportDeliverySourceID(report),
+		ReminderKey:       now.UTC().Format("2006-01-02T15:04"),
+		Variables:         templateVariables,
+		RawHTMLVariables:  map[string]string{"report_html": content.html},
+		WebhookData:       newOpsScheduledReportWebhookData(report, now, content),
+		WebhookOccurredAt: now,
+	}); err != nil {
+		log.Printf("[OpsScheduledReport] webhook dispatch failed report=%s: %v", report.ReportType, err)
+		return false
+	}
+	return true
 }

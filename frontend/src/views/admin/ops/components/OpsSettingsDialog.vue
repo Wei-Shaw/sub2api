@@ -85,9 +85,9 @@ const reportRecipientInput = ref('')
 // 严重级别选项
 const severityOptions: Array<{ value: AlertSeverity | ''; label: string }> = [
   { value: '', label: t('admin.ops.email.minSeverityAll') },
-  { value: 'critical', label: t('common.critical') },
-  { value: 'warning', label: t('common.warning') },
-  { value: 'info', label: t('common.info') }
+  { value: 'critical', label: `${t('common.critical')} (P0)` },
+  { value: 'warning', label: `${t('common.warning')} (P1)` },
+  { value: 'info', label: `${t('common.info')} (P2/P3)` }
 ]
 
 // 验证邮箱
@@ -303,9 +303,12 @@ async function saveAllSettings() {
             </p>
           </div>
 
-          <div v-if="emailConfig.alert.enabled">
+          <div>
             <label class="input-label">{{ t('admin.ops.settings.minSeverity') }}</label>
             <Select v-model="emailConfig.alert.min_severity" :options="severityOptions" />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.ops.settings.minSeverityHint') }}
+            </p>
           </div>
         </div>
       </div>

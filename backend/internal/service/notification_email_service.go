@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -81,6 +82,17 @@ var (
 type NotificationEmailService struct {
 	settingRepo  SettingRepository
 	emailService *EmailService
+
+	// webhookInFlight de-duplicates concurrent webhook deliveries that share a
+	// delivery key, which the persisted marker alone cannot do because it is
+	// only written after a delivery succeeds.
+	webhookInFlight sync.Map
+
+	// webhookSlots caps how many deliveries may be in flight at once. Without
+	// it a burst of notifications (a moderation spike, many alerts firing
+	// together) would spawn one unbounded goroutine and HTTP client per event
+	// against an endpoint that may already be slow.
+	webhookSlots chan struct{}
 }
 
 type NotificationEmailEventInfo struct {
@@ -126,6 +138,32 @@ type NotificationEmailSendInput struct {
 	ReminderKey      string
 	Variables        map[string]string
 	RawHTMLVariables map[string]string
+
+	// WebhookData and WebhookOccurredAt carry the raw event contract for the
+	// default webhook payload. They are intentionally separate from email
+	// variables, which may contain template-only or presentation values.
+	WebhookData       any
+	WebhookOccurredAt time.Time
+
+	// emailOnly restricts this call to the email channel.
+	//
+	// Admin notifications fan out over several mailboxes but are a single
+	// event, so the caller dispatches the webhook once ahead of the mailbox
+	// loop and marks the loop email-only. Relying on the webhook delivery key
+	// to absorb the loop is not enough: a first dispatch that *fails* leaves no
+	// persisted marker and releases its in-flight claim, so every remaining
+	// recipient would start a fresh delivery with its own retry budget —
+	// blowing past an explicitly configured max_retries and re-sending a
+	// message the receiver may already have consumed.
+	emailOnly bool
+}
+
+// NotificationSendResult distinguishes an accepted webhook delivery from an
+// email that was actually sent. Callers that persist channel-specific state
+// must use this result instead of treating a nil error as an email success.
+type NotificationSendResult struct {
+	EmailSent     bool
+	WebhookQueued bool
 }
 
 type NotificationEmailUnsubscribeResult struct {
@@ -188,7 +226,11 @@ type notificationEmailUnsubscribeClaims struct {
 }
 
 func NewNotificationEmailService(settingRepo SettingRepository, emailService *EmailService) *NotificationEmailService {
-	svc := &NotificationEmailService{settingRepo: settingRepo, emailService: emailService}
+	svc := &NotificationEmailService{
+		settingRepo:  settingRepo,
+		emailService: emailService,
+		webhookSlots: make(chan struct{}, notificationWebhookMaxConcurrentDeliveries),
+	}
 	if emailService != nil {
 		emailService.SetNotificationEmailService(svc)
 	}
@@ -373,22 +415,49 @@ func (s *NotificationEmailService) PreviewTemplate(ctx context.Context, input No
 }
 
 func (s *NotificationEmailService) Send(ctx context.Context, input NotificationEmailSendInput) error {
+	_, err := s.SendWithResult(ctx, input)
+	return err
+}
+
+// SendWithResult delivers the enabled channels and reports which channels
+// completed their synchronous portion. WebhookQueued means the delivery was
+// accepted by the bounded background dispatcher; it does not mean the remote
+// endpoint has acknowledged the request yet.
+func (s *NotificationEmailService) SendWithResult(ctx context.Context, input NotificationEmailSendInput) (NotificationSendResult, error) {
+	result := NotificationSendResult{}
 	info, normalizedEvent, err := s.eventInfo(input.Event)
 	if err != nil {
-		return notificationEmailTemplateErr(err)
+		return result, notificationEmailTemplateErr(err)
 	}
 	recipient := strings.TrimSpace(input.RecipientEmail)
-	if recipient == "" {
-		return nil
+	channels := s.ResolveChannels(ctx, normalizedEvent)
+	if input.emailOnly {
+		channels.Webhook = false
 	}
-	if info.Optional {
+	if recipient == "" {
+		// Admin-audience events can run webhook-only: with every admin mailbox
+		// removed there is nobody to email, but the consumer still needs the
+		// event. User-facing events are addressed by mailbox, so without one
+		// there is nothing to deliver.
+		channels.Email = false
+		if notificationAudienceForCategory(info.Category) != NotificationAudienceAdmin {
+			return result, nil
+		}
+	}
+	if !channels.Email && !channels.Webhook {
+		return result, nil
+	}
+
+	// Unsubscribing expresses "stop notifying me about this", not "stop
+	// emailing me", so it silences every channel.
+	if info.Optional && recipient != "" {
 		unsubscribed, err := s.IsUnsubscribed(ctx, recipient, normalizedEvent)
 		if err != nil {
-			return err
+			return result, err
 		}
 		if unsubscribed {
-			slog.Info("notification email suppressed by unsubscribe preference", "event", normalizedEvent, "recipient_hash", notificationEmailHash(recipient))
-			return nil
+			slog.Info("notification suppressed by unsubscribe preference", "event", normalizedEvent, "recipient_hash", notificationEmailHash(recipient))
+			return result, nil
 		}
 	}
 
@@ -396,19 +465,43 @@ func (s *NotificationEmailService) Send(ctx context.Context, input NotificationE
 	if strings.TrimSpace(input.Locale) == "" {
 		locale = s.ResolveRecipientLocale(ctx, input.UserID, recipient)
 	}
-	tmpl, err := s.GetTemplate(ctx, normalizedEvent, locale)
-	if err != nil {
-		return notificationEmailTemplateErr(err)
-	}
-	variables := s.runtimeVariables(ctx, normalizedEvent, locale, input)
-	rendered, err := renderNotificationEmail(normalizedEvent, tmpl.Subject, tmpl.HTML, variables, input.RawHTMLVariables)
-	if err != nil {
-		return notificationEmailTemplateErr(err)
+
+	if channels.Webhook {
+		result.WebhookQueued = s.dispatchWebhook(ctx, channels, normalizedEvent, info, locale, recipient, input)
 	}
 
-	deliveryKey := notificationEmailDeliveryKey(normalizedEvent, input.SourceType, input.SourceID, recipient, input.ReminderKey)
+	if !channels.Email {
+		// Returning nil is load-bearing: callers fall back to a hardcoded
+		// email body on template/config errors, which would defeat an
+		// operator who deliberately turned the email channel off.
+		return result, nil
+	}
+
+	variables := s.runtimeVariables(ctx, normalizedEvent, locale, input)
+	tmpl, err := s.GetTemplate(ctx, normalizedEvent, locale)
+	if err != nil {
+		return result, notificationEmailTemplateErr(err)
+	}
+	rendered, err := renderNotificationEmail(normalizedEvent, tmpl.Subject, tmpl.HTML, variables, input.RawHTMLVariables)
+	if err != nil {
+		return result, notificationEmailTemplateErr(err)
+	}
+	if err := s.deliverEmail(ctx, normalizedEvent, recipient, input, rendered); err != nil {
+		return result, err
+	}
+	result.EmailSent = true
+	return result, nil
+}
+
+func (s *NotificationEmailService) deliverEmail(
+	ctx context.Context,
+	event, recipient string,
+	input NotificationEmailSendInput,
+	rendered NotificationEmailPreview,
+) error {
+	deliveryKey := notificationChannelDeliveryKey(NotificationChannelEmail, event, input.SourceType, input.SourceID, recipient, input.ReminderKey)
 	if deliveryKey != "" {
-		sent, err := s.deliveryExists(ctx, deliveryKey, legacyNotificationEmailDeliveryKey(normalizedEvent, input.SourceType, input.SourceID, recipient, input.ReminderKey))
+		sent, err := s.deliveryExists(ctx, deliveryKey, legacyNotificationEmailDeliveryKey(event, input.SourceType, input.SourceID, recipient, input.ReminderKey))
 		if err != nil {
 			return err
 		}
@@ -429,6 +522,148 @@ func (s *NotificationEmailService) Send(ctx context.Context, input NotificationE
 		}
 	}
 	return nil
+}
+
+// dispatchWebhook delivers in the background so a slow or dead endpoint never
+// stalls the request that produced the notification.
+func (s *NotificationEmailService) dispatchWebhook(
+	ctx context.Context,
+	channels ResolvedNotificationChannels,
+	event string,
+	info NotificationEmailEventInfo,
+	locale, recipient string,
+	input NotificationEmailSendInput,
+) bool {
+	// Admin notifications fan out over several mailboxes, but they are one
+	// event: keying the webhook by recipient would push a duplicate message
+	// per configured admin address.
+	keyRecipient := recipient
+	if notificationAudienceForCategory(info.Category) == NotificationAudienceAdmin {
+		keyRecipient = ""
+	}
+	deliveryKey := notificationChannelDeliveryKey(NotificationChannelWebhook, event, input.SourceType, input.SourceID, keyRecipient, input.ReminderKey)
+	if deliveryKey != "" {
+		if sent, err := s.deliveryExists(ctx, deliveryKey); err == nil && sent {
+			return true
+		}
+		// The persisted marker is only written after a successful delivery, so
+		// a synchronous fan-out loop would race past it. Claim the key in
+		// process first and release it once this attempt finishes.
+		if _, inFlight := s.webhookInFlight.LoadOrStore(deliveryKey, struct{}{}); inFlight {
+			return true
+		}
+	}
+
+	now := time.Now().UTC()
+	occurredAt := input.WebhookOccurredAt.UTC()
+	if occurredAt.IsZero() {
+		occurredAt = now
+	}
+
+	payloadInput := notificationWebhookPayloadInput{
+		Event:         event,
+		Info:          info,
+		Locale:        locale,
+		SiteName:      s.siteName(ctx),
+		Recipient:     recipient,
+		RecipientName: strings.TrimSpace(input.RecipientName),
+		UserID:        input.UserID,
+		SourceType:    input.SourceType,
+		SourceID:      input.SourceID,
+		DeliveryID:    notificationWebhookDeliveryID(deliveryKey),
+		OccurredAt:    occurredAt.Format(time.RFC3339),
+		Timestamp:     now.Format(time.RFC3339),
+		Variables:     input.Variables,
+		Data:          input.WebhookData,
+	}
+
+	// Reserve the slot before spawning, not inside the goroutine: reserving
+	// afterwards would still create one goroutine per event and merely make
+	// them queue, which is not a bound on anything that matters under a burst.
+	release, ok := s.acquireWebhookSlot()
+	if !ok {
+		slog.Warn("notification webhook dropped: delivery concurrency saturated",
+			"event", event, "delivery_id", notificationWebhookDeliveryID(deliveryKey),
+			"recipient_hash", notificationEmailHash(recipient), "reason", "slots_exhausted")
+		if deliveryKey != "" {
+			s.webhookInFlight.Delete(deliveryKey)
+		}
+		return false
+	}
+
+	go func() {
+		defer func() {
+			release()
+			if deliveryKey != "" {
+				s.webhookInFlight.Delete(deliveryKey)
+			}
+			if r := recover(); r != nil {
+				slog.Error("panic in notification webhook delivery", "event", event, "recover", r)
+			}
+		}()
+
+		bgCtx, cancel := context.WithTimeout(context.Background(), notificationWebhookOverallTimeout(channels))
+		defer cancel()
+		if err := s.deliverWebhook(bgCtx, channels, payloadInput); err != nil {
+			logNotificationWebhookFailure(event, recipient, err)
+			return
+		}
+		if deliveryKey != "" {
+			if err := s.settingRepo.Set(bgCtx, deliveryKey, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+				slog.Warn("failed to record notification webhook delivery", "event", event, "error", err.Error())
+			}
+		}
+	}()
+	return true
+}
+
+// notificationWebhookOverallTimeout bounds the whole retry sequence: one
+// timeout per attempt plus the accumulated backoff.
+func notificationWebhookOverallTimeout(channels ResolvedNotificationChannels) time.Duration {
+	timeout := time.Duration(channels.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = notificationWebhookDefaultTimeoutSeconds * time.Second
+	}
+	attempts := channels.MaxRetries + 1
+	backoff := time.Duration(0)
+	for attempt := 1; attempt < attempts; attempt++ {
+		backoff += time.Duration(1<<uint(attempt-1)) * time.Second
+	}
+	return timeout*time.Duration(attempts) + backoff + 5*time.Second
+}
+
+func notificationWebhookDeliveryID(deliveryKey string) string {
+	if strings.TrimSpace(deliveryKey) != "" {
+		return notificationEmailHash(deliveryKey)
+	}
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return strconv.FormatInt(time.Now().UTC().UnixNano(), 16)
+	}
+	return hex.EncodeToString(buf)
+}
+
+// notificationChannelDeliveryKey scopes idempotency per channel so a successful
+// email does not mark the webhook as already delivered. The email channel keeps
+// the original key shape to preserve dedup across the upgrade.
+func notificationChannelDeliveryKey(channel, event, sourceType, sourceID, recipient, reminderKey string) string {
+	if channel == NotificationChannelEmail {
+		return notificationEmailDeliveryKey(event, sourceType, sourceID, recipient, reminderKey)
+	}
+	// Unlike email, a webhook is not addressed to a mailbox, so an empty
+	// recipient still yields a usable key.
+	if strings.TrimSpace(sourceType) == "" || strings.TrimSpace(sourceID) == "" {
+		return ""
+	}
+	identity := strings.Join([]string{
+		strings.TrimSpace(channel),
+		strings.ToLower(strings.TrimSpace(event)),
+		safeNotificationEmailKeyPart(sourceType),
+		safeNotificationEmailKeyPart(sourceID),
+		strings.ToLower(strings.TrimSpace(recipient)),
+		safeNotificationEmailKeyPart(reminderKey),
+	}, "\x00")
+	return notificationEmailDeliveryKeyPrefix + "v2:" + notificationEmailHash(identity)
 }
 
 func (s *NotificationEmailService) RememberRecipientLocale(ctx context.Context, userID int64, email, acceptLanguage string) {
@@ -725,8 +960,44 @@ func renderNotificationEmail(event, subject, htmlBody string, variables map[stri
 	return NotificationEmailPreview{Subject: sanitizeEmailHeader(renderedSubject), HTML: renderedHTML}, nil
 }
 
+// notificationEscapeMode selects how substituted values are escaped. Getting
+// this wrong is a correctness and injection problem, so callers must be
+// explicit: HTML escaping inside a JSON body produces mangled text, and no
+// escaping at all lets a value break out of the surrounding literal.
+type notificationEscapeMode int
+
+const (
+	notificationEscapeHeader notificationEscapeMode = iota
+	notificationEscapeHTML
+	notificationEscapeJSON
+)
+
 func renderNotificationEmailString(event, raw string, variables map[string]string, rawHTMLVariables map[string]string, escapeHTML bool) (string, error) {
+	mode := notificationEscapeHeader
+	if escapeHTML {
+		mode = notificationEscapeHTML
+	}
 	allowed := notificationEmailAllowedPlaceholderSet(event)
+	rendered, err := renderNotificationTemplateString(allowed, raw, variables, rawHTMLVariables, mode, func(name string) bool {
+		return notificationEmailRawHTMLAllowed(event, name)
+	})
+	if err != nil {
+		return "", notificationPlaceholderEventErr(err, event)
+	}
+	return rendered, nil
+}
+
+// renderNotificationTemplateString substitutes {{placeholder}} tokens that are
+// present in allowed, escaping each value according to mode. rawHTMLAllowed may
+// be nil; it only applies in HTML mode.
+func renderNotificationTemplateString(
+	allowed map[string]struct{},
+	raw string,
+	variables map[string]string,
+	rawHTMLVariables map[string]string,
+	mode notificationEscapeMode,
+	rawHTMLAllowed func(string) bool,
+) (string, error) {
 	var renderErr error
 	rendered := notificationEmailPlaceholderPattern.ReplaceAllStringFunc(raw, func(match string) string {
 		if renderErr != nil {
@@ -738,11 +1009,11 @@ func renderNotificationEmailString(event, raw string, variables map[string]strin
 		}
 		name := parts[1]
 		if _, ok := allowed[name]; !ok {
-			renderErr = fmt.Errorf("unsupported placeholder {{%s}} for event %s", name, event)
+			renderErr = fmt.Errorf("unsupported placeholder {{%s}}", name)
 			return ""
 		}
 		value := variables[name]
-		if escapeHTML && notificationEmailRawHTMLAllowed(event, name) {
+		if mode == notificationEscapeHTML && rawHTMLAllowed != nil && rawHTMLAllowed(name) {
 			if rawHTMLVariables != nil {
 				if rawValue, ok := rawHTMLVariables[name]; ok {
 					return rawValue
@@ -752,15 +1023,38 @@ func renderNotificationEmailString(event, raw string, variables map[string]strin
 		if strings.HasSuffix(name, "_url") && !isSafeNotificationEmailURL(value) {
 			value = ""
 		}
-		if escapeHTML {
+		switch mode {
+		case notificationEscapeHTML:
 			return html.EscapeString(value)
+		case notificationEscapeJSON:
+			return escapeNotificationJSONString(value)
+		default:
+			return sanitizeEmailHeader(value)
 		}
-		return sanitizeEmailHeader(value)
 	})
 	if renderErr != nil {
 		return "", renderErr
 	}
 	return rendered, nil
+}
+
+// notificationPlaceholderEventErr re-attaches the event name so existing
+// callers keep seeing the original "... for event X" message.
+func notificationPlaceholderEventErr(err error, event string) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w for event %s", err, event)
+}
+
+// escapeNotificationJSONString escapes a value for embedding inside a JSON
+// string literal, without the surrounding quotes.
+func escapeNotificationJSONString(value string) string {
+	encoded, err := json.Marshal(value)
+	if err != nil || len(encoded) < 2 {
+		return ""
+	}
+	return string(encoded[1 : len(encoded)-1])
 }
 
 func notificationEmailRawHTMLAllowed(event, placeholder string) bool {
