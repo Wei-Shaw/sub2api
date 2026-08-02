@@ -2000,6 +2000,22 @@ func TestResponsesDoneOutputItemsMergeSparseOutOfOrder(t *testing.T) {
 	require.Equal(t, "done-2", gjson.GetBytes(merged, "2.id").String())
 }
 
+func TestResponsesDoneOutputItemsMergeMatchesTerminalIdentityBeforeIndex(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":0,"item":{"id":"call-search","type":"tool_search_call","status":"completed"}}`), "response.output_item.done")
+	items.ProcessEvent([]byte(`{"output_index":1,"item":{"id":"call-function","type":"function_call","status":"completed"}}`), "response.output_item.done")
+
+	output := gjson.Parse(`[{"id":"call-function","type":"function_call","status":"in_progress"},{"id":"call-search","type":"tool_search_call","status":"in_progress"}]`)
+	merged, ok := items.MergeTerminalOutput(output, nil)
+	require.True(t, ok)
+	require.Equal(t, "call-function", gjson.GetBytes(merged, "0.id").String())
+	require.Equal(t, "function_call", gjson.GetBytes(merged, "0.type").String())
+	require.Equal(t, "completed", gjson.GetBytes(merged, "0.status").String())
+	require.Equal(t, "call-search", gjson.GetBytes(merged, "1.id").String())
+	require.Equal(t, "tool_search_call", gjson.GetBytes(merged, "1.type").String())
+	require.Equal(t, "completed", gjson.GetBytes(merged, "1.status").String())
+}
+
 func TestResponsesDoneOutputItemsMergeRetainsDeltaFallback(t *testing.T) {
 	items := newResponsesDoneOutputItems()
 	items.ProcessEvent([]byte(`{"output_index":0,"item":{"id":"compact-0","type":"compaction","encrypted_content":"opaque"}}`), "response.output_item.done")

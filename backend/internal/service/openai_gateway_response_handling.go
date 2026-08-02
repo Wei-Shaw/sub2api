@@ -1596,7 +1596,16 @@ func (items *responsesDoneOutputItems) MergeTerminalOutput(output gjson.Result, 
 	sort.Ints(doneIndices)
 	for _, index := range doneIndices {
 		doneItem := items.byIndex[index]
-		positioned[index] = doneItem
+		targetIndex := index
+		if identity := responsesOutputItemIdentity(doneItem); identity != "" {
+			for terminalIndex, terminalItem := range positioned {
+				if responsesOutputItemIdentity(terminalItem) == identity {
+					targetIndex = terminalIndex
+					break
+				}
+			}
+		}
+		positioned[targetIndex] = doneItem
 	}
 
 	for _, fallbackItem := range fallbackItems {
@@ -1670,7 +1679,7 @@ func responsesSyntheticItemsEquivalent(fallback, done json.RawMessage) bool {
 func responsesItemText(item gjson.Result, path string) string {
 	var text strings.Builder
 	for _, part := range item.Get(path).Array() {
-		text.WriteString(part.Get("text").String())
+		_, _ = text.WriteString(part.Get("text").String())
 	}
 	return text.String()
 }
