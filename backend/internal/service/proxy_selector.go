@@ -103,17 +103,3 @@ func stickyScore(accountID uint64, proxyID int64) uint64 {
 	_, _ = h.Write(buf[:])
 	return h.Sum64()
 }
-
-// stickyIndex is retained for tests/compat; prefer stickySelectByProxyID.
-func stickyIndex(accountID uint64, n int) int {
-	if n <= 0 {
-		return 0
-	}
-	h := fnv.New64a()
-	var buf [8]byte
-	for i := 0; i < 8; i++ {
-		buf[i] = byte(accountID >> (8 * i))
-	}
-	_, _ = h.Write(buf[:])
-	return int(h.Sum64() % uint64(n))
-}

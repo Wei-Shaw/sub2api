@@ -592,7 +592,7 @@ func (r *proxyRepository) ListHealthIsolated(ctx context.Context, limit int) ([]
 		}
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]service.Proxy, 0, limit)
 	for rows.Next() {
 		var p service.Proxy

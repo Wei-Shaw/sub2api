@@ -93,16 +93,16 @@ func NewProxyHealthService(
 	settingRepo SettingRepository,
 ) *ProxyHealthService {
 	s := &ProxyHealthService{
-		cfg:       cfg,
-		proxyRepo: proxyRepo,
-		groupRepo: groupRepo,
-		prober:    prober,
-		health:    health,
-		latency:   latency,
-		resolver:  resolver,
-		metrics:   metrics,
-		log:       slog.Default().With("component", "proxy_health"),
-		now:       time.Now,
+		cfg:         cfg,
+		proxyRepo:   proxyRepo,
+		groupRepo:   groupRepo,
+		prober:      prober,
+		health:      health,
+		latency:     latency,
+		resolver:    resolver,
+		metrics:     metrics,
+		log:         slog.Default().With("component", "proxy_health"),
+		now:         time.Now,
 		settingRepo: settingRepo,
 	}
 	if cfg != nil {

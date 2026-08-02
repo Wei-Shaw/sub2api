@@ -479,19 +479,19 @@ type CreateProxyInput struct {
 //   - BackupProxyIDProvided: when true, BackupProxyID nil clears backup
 //   - ExpiryWarnDays nil = unchanged
 type UpdateProxyInput struct {
-	Name                 string
-	Protocol             string
-	Host                 string
-	Port                 int
-	Username             *string
-	Password             *string
-	Status               string
-	ExpiresAtProvided    bool
-	ExpiresAt            *time.Time
-	FallbackMode         *string
+	Name                  string
+	Protocol              string
+	Host                  string
+	Port                  int
+	Username              *string
+	Password              *string
+	Status                string
+	ExpiresAtProvided     bool
+	ExpiresAt             *time.Time
+	FallbackMode          *string
 	BackupProxyIDProvided bool
-	BackupProxyID        *int64
-	ExpiryWarnDays       *int
+	BackupProxyID         *int64
+	ExpiryWarnDays        *int
 }
 
 type GenerateRedeemCodesInput struct {

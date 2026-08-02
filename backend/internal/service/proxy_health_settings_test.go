@@ -113,7 +113,7 @@ func TestProxyHealthUpdateConfigPersistsAndApplies(t *testing.T) {
 		t.Fatalf("runtime config: %+v", rt.Config)
 	}
 	if rt.Metrics.Ticks != 0 {
-		// just ensure snapshot works
+		t.Fatalf("expected zero ticks before worker start, got %d", rt.Metrics.Ticks)
 	}
 }
 

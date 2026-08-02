@@ -30,15 +30,15 @@ type ProxyHealthSettings struct {
 
 // ProxyHealthRuntime is the admin monitoring payload.
 type ProxyHealthRuntime struct {
-	Config            ProxyHealthSettings         `json:"config"`
-	YAMLEnabled       bool                        `json:"yaml_enabled"`
-	WorkerRunning     bool                        `json:"worker_running"`
-	WorkerInstanceID  string                      `json:"worker_instance_id,omitempty"`
-	Metrics           ProxyHealthMetricsSnapshot  `json:"metrics"`
-	LastTickAgeSec    *int64                      `json:"last_tick_age_sec,omitempty"`
-	IsolatedCount     int64                       `json:"isolated_count"`
-	RecentIsolated    []ProxyHealthIsolatedItem   `json:"recent_isolated"`
-	NowUnix           int64                       `json:"now_unix"`
+	Config           ProxyHealthSettings        `json:"config"`
+	YAMLEnabled      bool                       `json:"yaml_enabled"`
+	WorkerRunning    bool                       `json:"worker_running"`
+	WorkerInstanceID string                     `json:"worker_instance_id,omitempty"`
+	Metrics          ProxyHealthMetricsSnapshot `json:"metrics"`
+	LastTickAgeSec   *int64                     `json:"last_tick_age_sec,omitempty"`
+	IsolatedCount    int64                      `json:"isolated_count"`
+	RecentIsolated   []ProxyHealthIsolatedItem  `json:"recent_isolated"`
+	NowUnix          int64                      `json:"now_unix"`
 }
 
 // ProxyHealthIsolatedItem is a compact row for the monitoring table.
