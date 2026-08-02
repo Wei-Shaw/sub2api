@@ -12,6 +12,7 @@ import {
   shouldMarkAdminUIRequest,
   shouldMarkUserUIRequest,
 REDACTED from './adminUIRequest'
+import { refreshAuthTokens REDACTED from './tokenRefresh'
 import { getAPIBaseURL REDACTED from './url'
 export { buildApiUrl, buildGatewayUrl REDACTED from './url'
 
@@ -25,28 +26,6 @@ export const apiClient: AxiosInstance = axios.create({
     'Content-Type': 'application/json'
   REDACTED
 REDACTED)
-
-// ==================== Token Refresh State ====================
-
-// Track if a token refresh is in progress to prevent multiple simultaneous refresh requests
-let isRefreshing = false
-// Queue of requests waiting for token refresh
-let refreshSubscribers: Array<(token: string) => void> = []
-
-/**
- * Subscribe to token refresh completion
- */
-function subscribeTokenRefresh(callback: (token: string) => void): void {
-  refreshSubscribers.push(callback)
-REDACTED
-
-/**
- * Notify all subscribers that token has been refreshed
- */
-function onTokenRefreshed(token: string): void {
-  refreshSubscribers.forEach((callback) => callback(token))
-  refreshSubscribers = []
-REDACTED
 
 // ==================== Request Interceptor ====================
 
@@ -190,74 +169,36 @@ apiClient.interceptors.response.use(
 
         // If we have a refresh token and this is not an auth endpoint, try to refresh
         if (refreshToken && !isAuthEndpoint) {
-          if (isRefreshing) {
-            // Wait for the ongoing refresh to complete
-            return new Promise((resolve, reject) => {
-              subscribeTokenRefresh((newToken: string) => {
-                if (newToken) {
-                  // Mark as retried to prevent infinite loop if retry also returns 401
-                  originalRequest._retry = true
-                  if (originalRequest.headers) {
-                    originalRequest.headers.Authorization = `Bearer ${newTokenREDACTED`
-                  REDACTED
-                  resolve(apiClient(originalRequest))
-                REDACTED else {
-                  // Refresh failed, reject with original error
-                  reject({
-                    status,
-                    code: apiData.code,
-                    message: apiData.message || apiData.detail || error.message
-                  REDACTED)
-                REDACTED
-              REDACTED)
-            REDACTED)
-          REDACTED
-
+          const refreshSessionUser = localStorage.getItem('auth_user')
           originalRequest._retry = true
-          isRefreshing = true
 
           try {
-            // Call refresh endpoint directly to avoid circular dependency
-            const refreshResponse = await axios.post(
-              `${getAPIBaseURL()REDACTED/auth/refresh`,
-              { refresh_token: refreshToken REDACTED,
-              // 显式设置超时：裸 axios 默认无限等待，若刷新请求挂起会导致 isRefreshing
-              // 永远为 true，所有排队的 401 重试请求永久卡死，页面 loading 无法恢复。
-              { headers: { 'Content-Type': 'application/json' REDACTED, timeout: 30000 REDACTED
-            )
+            const headers = originalRequest.headers as Record<string, unknown> | undefined
+            const authHeader = headers?.Authorization ?? headers?.authorization
+            const failedAccessToken =
+              typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+                ? authHeader.slice('Bearer '.length)
+                : null
+            const tokens = await refreshAuthTokens({ failedAccessToken REDACTED)
 
-            const refreshData = refreshResponse.data as ApiResponse<{
-              access_token: string
-              refresh_token: string
-              expires_in: number
-            REDACTED>
-
-            if (refreshData.code === 0 && refreshData.data) {
-              const { access_token, refresh_token: newRefreshToken, expires_in REDACTED = refreshData.data
-
-              // Update tokens in localStorage (convert expires_in to timestamp)
-              localStorage.setItem('auth_token', access_token)
-              localStorage.setItem('refresh_token', newRefreshToken)
-              localStorage.setItem('token_expires_at', String(Date.now() + expires_in * 1000))
-
-              // Notify subscribers with new token
-              onTokenRefreshed(access_token)
-
-              // Retry the original request with new token
-              if (originalRequest.headers) {
-                originalRequest.headers.Authorization = `Bearer ${access_tokenREDACTED`
-              REDACTED
-
-              isRefreshing = false
-              return apiClient(originalRequest)
+            // Retry the original request with the refreshed token
+            if (originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${tokens.access_tokenREDACTED`
             REDACTED
-
-            // Refresh response was not successful, fall through to clear auth
-            throw new Error('Token refresh failed')
-          REDACTED catch (refreshError) {
-            // Refresh failed - notify subscribers with empty token
-            onTokenRefreshed('')
-            isRefreshing = false
+            return apiClient(originalRequest)
+          REDACTED catch {
+            // A stale request must never destroy a session that was logged out or replaced while
+            // its refresh was in flight (for example, when another tab signs in as another user).
+            const sessionChanged =
+              localStorage.getItem('refresh_token') !== refreshToken ||
+              localStorage.getItem('auth_user') !== refreshSessionUser
+            if (sessionChanged) {
+              return Promise.reject({
+                status: 401,
+                code: 'AUTH_SESSION_CHANGED',
+                message: 'Authentication session changed while refreshing.'
+              REDACTED)
+            REDACTED
 
             // Clear tokens and redirect to login
             localStorage.removeItem('auth_token')
