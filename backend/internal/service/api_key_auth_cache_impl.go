@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 20 // v20: preserve ordered API key fallback groups
+const apiKeyAuthSnapshotVersion = 21 // v21: preserve API key fallbacks and group profit control fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -439,6 +439,9 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			KiroStickySessionTTLSeconds:     apiKey.Group.EffectiveKiroStickySessionTTLSeconds(),
 			KiroCacheEmulationRatio:         apiKey.Group.EffectiveKiroCacheEmulationRatio(),
 			KiroEndpointMode:                apiKey.Group.EffectiveKiroEndpointMode(),
+			ProfitControlEnabled:            apiKey.Group.ProfitControlEnabled,
+			ProfitMinMargin:                 apiKey.Group.ProfitMinMargin,
+			ProfitSafetyBuffer:              apiKey.Group.ProfitSafetyBuffer,
 		}
 	}
 	return snapshot
@@ -542,6 +545,9 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			KiroStickySessionTTLSeconds:     snapshot.Group.KiroStickySessionTTLSeconds,
 			KiroCacheEmulationRatio:         snapshot.Group.KiroCacheEmulationRatio,
 			KiroEndpointMode:                snapshot.Group.KiroEndpointMode,
+			ProfitControlEnabled:            snapshot.Group.ProfitControlEnabled,
+			ProfitMinMargin:                 snapshot.Group.ProfitMinMargin,
+			ProfitSafetyBuffer:              snapshot.Group.ProfitSafetyBuffer,
 		}
 		normalizeKiroCacheEmulationFields(apiKey.Group)
 		normalizeKiroEndpointFields(apiKey.Group)

@@ -81,8 +81,8 @@ func TestLockAndMergeAccountProbeExtraUsesCurrentDatabaseSnapshot(t *testing.T) 
 
 			mock.ExpectQuery(`(?s)`+regexp.QuoteMeta("SELECT")+`.*`+regexp.QuoteMeta("FOR NO KEY UPDATE")).
 				WithArgs(int64(27), service.PlatformOpenAI, service.AccountTypeAPIKey, `{"api_key":"sk-test"}`, nil).
-				WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "ollama_group_unchanged", "ollama_proxy_unchanged", "enabled", "snapshot", "ollama_session", "ollama_auto", "ollama_snapshot"}).
-					AddRow(tt.identityUnchanged, false, true, tt.databaseEnabled, tt.databaseSnapshot, nil, nil, nil))
+				WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "ollama_group_unchanged", "ollama_proxy_unchanged", "enabled", "rate_sync_enabled", "snapshot", "ollama_session", "ollama_auto", "ollama_snapshot"}).
+					AddRow(tt.identityUnchanged, false, true, tt.databaseEnabled, nil, tt.databaseSnapshot, nil, nil, nil))
 
 			account := &service.Account{
 				ID:          27,
@@ -91,7 +91,7 @@ func TestLockAndMergeAccountProbeExtraUsesCurrentDatabaseSnapshot(t *testing.T) 
 				Credentials: map[string]any{"api_key": "sk-test"},
 				Extra:       tt.inputExtra,
 			}
-			got, err := lockAndMergeAccountProbeExtra(context.Background(), client, account, nil)
+			got, err := lockAndMergeAccountProbeExtra(context.Background(), client, account, nil, nil)
 			require.NoError(t, err)
 			if tt.wantSnapshot == nil {
 				require.NotContains(t, got, service.UpstreamBillingProbeExtraKey)
@@ -99,6 +99,102 @@ func TestLockAndMergeAccountProbeExtraUsesCurrentDatabaseSnapshot(t *testing.T) 
 				require.Equal(t, tt.wantSnapshot, got[service.UpstreamBillingProbeExtraKey])
 			}
 			require.Equal(t, tt.wantEnabled, got[service.UpstreamBillingProbeEnabledExtraKey])
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func probeBoolPtr(value bool) *bool {
+	return &value
+}
+
+// The probe switch drives the rate-sync switch and never the other way round:
+// syncing depends on probing, so a row where sync is on but the probe key is
+// missing must lose the sync flag instead of silently gaining periodic
+// outbound calls on the next unrelated edit.
+func TestLockAndMergeAccountProbeExtraNeverInfersProbeFromRateSync(t *testing.T) {
+	tests := []struct {
+		name                 string
+		databaseEnabled      any
+		databaseRateSync     any
+		explicitProbeEnabled *bool
+		explicitRateSync     *bool
+		wantEnabled          any
+		wantRateSync         any
+	}{
+		{
+			name:             "sync on with missing probe key zeroes sync and keeps probing off",
+			databaseEnabled:  nil,
+			databaseRateSync: []byte(`true`),
+			wantEnabled:      nil,
+			wantRateSync:     false,
+		},
+		{
+			name:             "sync on with probe off zeroes sync",
+			databaseEnabled:  []byte(`false`),
+			databaseRateSync: []byte(`true`),
+			wantEnabled:      false,
+			wantRateSync:     false,
+		},
+		{
+			name:             "both on in database stay on",
+			databaseEnabled:  []byte(`true`),
+			databaseRateSync: []byte(`true`),
+			wantEnabled:      true,
+			wantRateSync:     true,
+		},
+		{
+			name:                 "admin enabling both explicitly still turns probing on",
+			databaseEnabled:      nil,
+			databaseRateSync:     nil,
+			explicitProbeEnabled: probeBoolPtr(true),
+			explicitRateSync:     probeBoolPtr(true),
+			wantEnabled:          true,
+			wantRateSync:         true,
+		},
+		{
+			name:                 "explicit probe disable clears sync",
+			databaseEnabled:      []byte(`true`),
+			databaseRateSync:     []byte(`true`),
+			explicitProbeEnabled: probeBoolPtr(false),
+			wantEnabled:          false,
+			wantRateSync:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+			t.Cleanup(func() { _ = client.Close() })
+
+			mock.ExpectQuery(`(?s)`+regexp.QuoteMeta("SELECT")+`.*`+regexp.QuoteMeta("FOR NO KEY UPDATE")).
+				WithArgs(int64(31), service.PlatformOpenAI, service.AccountTypeAPIKey, `{"api_key":"sk-test"}`, nil).
+				WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "ollama_group_unchanged", "ollama_proxy_unchanged", "enabled", "rate_sync_enabled", "snapshot", "ollama_session", "ollama_auto", "ollama_snapshot"}).
+					AddRow(true, false, true, tt.databaseEnabled, tt.databaseRateSync, nil, nil, nil, nil))
+
+			account := &service.Account{
+				ID:          31,
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "sk-test"},
+			}
+			got, err := lockAndMergeAccountProbeExtra(
+				context.Background(), client, account, tt.explicitProbeEnabled, tt.explicitRateSync,
+			)
+			require.NoError(t, err)
+			if tt.wantEnabled == nil {
+				require.NotContains(t, got, service.UpstreamBillingProbeEnabledExtraKey)
+			} else {
+				require.Equal(t, tt.wantEnabled, got[service.UpstreamBillingProbeEnabledExtraKey])
+			}
+			if tt.wantRateSync == nil {
+				require.NotContains(t, got, service.UpstreamBillingRateSyncEnabledExtraKey)
+			} else {
+				require.Equal(t, tt.wantRateSync, got[service.UpstreamBillingRateSyncEnabledExtraKey])
+			}
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
@@ -115,8 +211,8 @@ func TestLockAndMergeAccountProbeExtraProtectsOllamaManagedFields(t *testing.T) 
 
 			mock.ExpectQuery(`(?s)`+regexp.QuoteMeta("SELECT")+`.*`+regexp.QuoteMeta("FOR NO KEY UPDATE")).
 				WithArgs(int64(29), service.PlatformAnthropic, service.AccountTypeAPIKey, `{"api_key":"key","base_url":"https://ollama.com"}`, nil).
-				WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "ollama_group_unchanged", "ollama_proxy_unchanged", "enabled", "snapshot", "ollama_session", "ollama_auto", "ollama_snapshot"}).
-					AddRow(identityUnchanged, identityUnchanged, true, nil, nil, []byte(`"local-ciphertext"`), []byte(`true`), []byte(`{"status":"ok"}`)))
+				WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "ollama_group_unchanged", "ollama_proxy_unchanged", "enabled", "rate_sync_enabled", "snapshot", "ollama_session", "ollama_auto", "ollama_snapshot"}).
+					AddRow(identityUnchanged, identityUnchanged, true, nil, nil, nil, []byte(`"local-ciphertext"`), []byte(`true`), []byte(`{"status":"ok"}`)))
 
 			account := &service.Account{
 				ID: 29, Platform: service.PlatformAnthropic, Type: service.AccountTypeAPIKey,
@@ -127,7 +223,7 @@ func TestLockAndMergeAccountProbeExtraProtectsOllamaManagedFields(t *testing.T) 
 					service.OllamaCloudUsageSnapshotExtraKey:    map[string]any{"status": "forged"},
 				},
 			}
-			got, err := lockAndMergeAccountProbeExtra(context.Background(), client, account, nil)
+			got, err := lockAndMergeAccountProbeExtra(context.Background(), client, account, nil, nil)
 			require.NoError(t, err)
 			if identityUnchanged {
 				require.Equal(t, "local-ciphertext", got[service.OllamaCloudUsageSessionExtraKey])
@@ -227,8 +323,8 @@ func TestBulkUpdateProbeEligibilityMismatchRollsBack(t *testing.T) {
 
 	enabled := true
 	mock.ExpectBegin()
-	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* WHERE id = ANY\(\$2\) AND deleted_at IS NULL AND platform = \$3 AND type = \$4`).
-		WithArgs(sqlmock.AnyArg(), `{27,28}`, service.PlatformOpenAI, service.AccountTypeAPIKey).
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* WHERE id = ANY\(\$2\) AND deleted_at IS NULL AND type = \$3`).
+		WithArgs(sqlmock.AnyArg(), `{27,28}`, service.AccountTypeAPIKey).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectRollback()
 
@@ -265,7 +361,7 @@ func TestUpdateCredentialsAtomicallyClearsProbeForOpenAIAPIKeyIdentityChange(t *
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestUpdateWithUpstreamBillingProbeEnabledRollsBackWhenOutboxFails(t *testing.T) {
+func TestUpdateWithAccountBillingSettingsRollsBackWhenOutboxFails(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -275,13 +371,13 @@ func TestUpdateWithUpstreamBillingProbeEnabledRollsBackWhenOutboxFails(t *testin
 	mock.ExpectBegin()
 	mock.ExpectQuery(`(?s)`+regexp.QuoteMeta("SELECT")+`.*`+regexp.QuoteMeta("FOR NO KEY UPDATE")).
 		WithArgs(int64(27), service.PlatformOpenAI, service.AccountTypeAPIKey, `{"api_key":"sk-test"}`, nil).
-		WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "ollama_group_unchanged", "ollama_proxy_unchanged", "enabled", "snapshot", "ollama_session", "ollama_auto", "ollama_snapshot"}).
-			AddRow(true, false, true, []byte(`true`), []byte(`{"status":"ok"}`), nil, nil, nil))
+		WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "ollama_group_unchanged", "ollama_proxy_unchanged", "enabled", "rate_sync_enabled", "snapshot", "ollama_session", "ollama_auto", "ollama_snapshot"}).
+			AddRow(true, false, true, []byte(`true`), []byte(`true`), []byte(`{"status":"ok"}`), nil, nil, nil))
 	mock.ExpectExec(`(?s)UPDATE .*accounts.*SET.*WHERE .*id.*`).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(`(?s)SELECT .* FROM "accounts" WHERE "id" = \$1`).
 		WithArgs(int64(27)).
-		WillReturnRows(updatedAccountRows(27, `{"upstream_billing_probe_enabled":false}`))
+		WillReturnRows(updatedAccountRows(27, `{"upstream_billing_probe_enabled":false,"upstream_billing_rate_sync_enabled":false}`))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).WillReturnError(errors.New("outbox failed"))
 	mock.ExpectRollback()
 
@@ -301,10 +397,12 @@ func TestUpdateWithUpstreamBillingProbeEnabledRollsBackWhenOutboxFails(t *testin
 		Schedulable: true,
 	}
 
-	err = repo.UpdateWithUpstreamBillingProbeEnabled(context.Background(), account, false)
+	probeDisabled := false
+	err = repo.UpdateWithAccountBillingSettings(context.Background(), account, &probeDisabled, nil, nil)
 
 	require.EqualError(t, err, "outbox failed")
 	require.Equal(t, false, account.Extra[service.UpstreamBillingProbeEnabledExtraKey])
+	require.Equal(t, false, account.Extra[service.UpstreamBillingRateSyncEnabledExtraKey])
 	require.NotContains(t, account.Extra, service.UpstreamBillingProbeExtraKey)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
