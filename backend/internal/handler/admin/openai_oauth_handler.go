@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -426,6 +427,75 @@ func (h *OpenAIOAuthHandler) QueryQuota(c *gin.Context) {
 		return
 	}
 	response.Success(c, usage)
+}
+
+// QueryResetCredits returns admin-only reset-credit details, including the
+// opaque IDs required for targeted redemption.
+// GET /api/v1/admin/openai/accounts/:id/reset-credits
+func (h *OpenAIOAuthHandler) QueryResetCredits(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.quotaService == nil {
+		response.BadRequest(c, "openai quota service is not enabled")
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	credits, err := h.quotaService.QueryResetCredits(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, credits)
+}
+
+// ConsumeResetCreditRequest selects the opaque reset-credit ID to redeem.
+type ConsumeResetCreditRequest struct {
+	CreditID string `json:"credit_id"`
+}
+
+// ConsumeResetCredit consumes a selected reset credit using a caller-provided
+// idempotency key. The same key must be reused when retrying the request.
+// POST /api/v1/admin/openai/accounts/:id/reset-credits/consume
+func (h *OpenAIOAuthHandler) ConsumeResetCredit(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.quotaService == nil {
+		response.BadRequest(c, "openai quota service is not enabled")
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	if idempotencyKey == "" {
+		response.BadRequest(c, "Idempotency-Key header is required")
+		return
+	}
+	var req ConsumeResetCreditRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	idempotencyPayload := struct {
+		AccountID int64  `json:"account_id"`
+		CreditID  string `json:"credit_id"`
+	}{
+		AccountID: accountID,
+		CreditID:  strings.TrimSpace(req.CreditID),
+	}
+	executeAdminIdempotentJSONFailOpenOnStoreUnavailable(
+		c,
+		"admin.openai.reset_credit.consume",
+		idempotencyPayload,
+		service.DefaultWriteIdempotencyTTL(),
+		func(ctx context.Context) (any, error) {
+			return h.quotaService.ResetCreditByID(ctx, accountID, req.CreditID, idempotencyKey)
+		},
+	)
 }
 
 // CreateShadowRequest is the request body for CreateShadow.

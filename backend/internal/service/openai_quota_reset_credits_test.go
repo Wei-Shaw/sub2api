@@ -14,8 +14,8 @@ func TestParseOpenAIRateLimitResetCreditDetails_PreservesAvailableCreditOrder(t 
 		"availableCount":"2",
 		"credits":[
 			{"reset_type":"codex_rate_limits","status":"redeemed","expires_at":"2026-07-01T04:05:06Z"},
-			{"reset_type":"codex_rate_limits","status":"available","expires_at":"2026-07-04T04:05:06Z"},
-			{"resetType":"codex_rate_limits","status":"available","expiresAt":"2026-07-03T04:05:06Z"},
+			{"id":"credit-2","reset_type":"codex_rate_limits","status":"available","granted_at":"2026-06-04T04:05:06Z","expires_at":"2026-07-04T04:05:06Z","title":"Weekly reset"},
+			{"id":"credit-1","resetType":"codex_rate_limits","status":"available","grantedAt":"2026-06-03T04:05:06Z","expiresAt":"2026-07-03T04:05:06Z","description":"Ready"},
 			{"reset_type":"other","status":"available","expires_at":"2026-07-02T04:05:06Z"}
 		]
 	}`)
@@ -28,6 +28,13 @@ func TestParseOpenAIRateLimitResetCreditDetails_PreservesAvailableCreditOrder(t 
 		{ExpiresAt: "2026-07-04T04:05:06Z"},
 		{ExpiresAt: "2026-07-03T04:05:06Z"},
 	}, details.Credits)
+	require.Len(t, details.SelectableCredits, 2)
+	require.Equal(t, "credit-2", details.SelectableCredits[0].ID)
+	require.Equal(t, "2026-06-04T04:05:06Z", details.SelectableCredits[0].GrantedAt)
+	require.Equal(t, "2026-07-04T04:05:06Z", *details.SelectableCredits[0].ExpiresAt)
+	require.Equal(t, "Weekly reset", details.SelectableCredits[0].Title)
+	require.Equal(t, "credit-1", details.SelectableCredits[1].ID)
+	require.Equal(t, "Ready", details.SelectableCredits[1].Description)
 }
 
 func TestQueryUsageResetCreditCountPrecedence(t *testing.T) {
