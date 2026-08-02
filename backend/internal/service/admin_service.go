@@ -123,6 +123,7 @@ type AdminService interface {
 	DeleteProxy(ctx context.Context, id int64) error
 	BatchDeleteProxies(ctx context.Context, ids []int64) (*ProxyBatchDeleteResult, error)
 	GetProxyAccounts(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error)
+	GetProxyStats(ctx context.Context, proxyID int64) (*ProxyStats, error)
 	CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error)
 	TestProxy(ctx context.Context, id int64) (*ProxyTestResult, error)
 	CheckProxyQuality(ctx context.Context, id int64) (*ProxyQualityCheckResult, error)
@@ -470,18 +471,27 @@ type CreateProxyInput struct {
 	ExpiryWarnDays int
 }
 
+// UpdateProxyInput is a partial update. Empty strings / zero Port leave those
+// fields unchanged. Pointer fields distinguish omit vs explicit set:
+//   - Username/Password nil = unchanged; non-nil (incl. "") = set/clear
+//   - ExpiresAtProvided: when true, ExpiresAt nil clears expiry
+//   - FallbackMode nil = unchanged
+//   - BackupProxyIDProvided: when true, BackupProxyID nil clears backup
+//   - ExpiryWarnDays nil = unchanged
 type UpdateProxyInput struct {
-	Name           string
-	Protocol       string
-	Host           string
-	Port           int
-	Username       string
-	Password       string
-	Status         string
-	ExpiresAt      *time.Time
-	FallbackMode   string
-	BackupProxyID  *int64
-	ExpiryWarnDays int
+	Name                 string
+	Protocol             string
+	Host                 string
+	Port                 int
+	Username             *string
+	Password             *string
+	Status               string
+	ExpiresAtProvided    bool
+	ExpiresAt            *time.Time
+	FallbackMode         *string
+	BackupProxyIDProvided bool
+	BackupProxyID        *int64
+	ExpiryWarnDays       *int
 }
 
 type GenerateRedeemCodesInput struct {
@@ -491,6 +501,22 @@ type GenerateRedeemCodesInput struct {
 	GroupID      *int64 // 订阅类型专用：关联的分组ID
 	ValidityDays int    // 订阅类型专用：有效天数
 	ExpiresAt    *time.Time
+}
+
+// ProxyStats is the admin GET /proxies/:id/stats payload.
+// Request totals are not tracked per-proxy in usage logs today; latency comes
+// from the latest probe cache when available.
+type ProxyStats struct {
+	TotalAccounts  int64    `json:"total_accounts"`
+	ActiveAccounts int64    `json:"active_accounts"`
+	TotalRequests  int64    `json:"total_requests"`
+	SuccessRate    float64  `json:"success_rate"`
+	AverageLatency *float64 `json:"average_latency"`
+	LatencyStatus  string   `json:"latency_status,omitempty"`
+	ExitIP         string   `json:"exit_ip,omitempty"`
+	QualityStatus  string   `json:"quality_status,omitempty"`
+	QualityScore   *int     `json:"quality_score,omitempty"`
+	QualityGrade   string   `json:"quality_grade,omitempty"`
 }
 
 type ProxyBatchDeleteResult struct {

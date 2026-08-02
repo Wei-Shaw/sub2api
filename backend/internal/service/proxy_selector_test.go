@@ -151,6 +151,54 @@ func TestSelectProxyFromGroup_StickyRemapsOnCandidateChange(t *testing.T) {
 	require.NotEqual(t, before.ID, after.ID)
 }
 
+func TestSelectProxyFromGroup_StickyStableAcrossOrderAndPeerRemoval(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	ordered := []Proxy{
+		mkSelectableProxy(1, StatusActive, nil, now),
+		mkSelectableProxy(2, StatusActive, nil, now),
+		mkSelectableProxy(3, StatusActive, nil, now),
+		mkSelectableProxy(4, StatusActive, nil, now),
+	}
+	reversed := []Proxy{ordered[3], ordered[2], ordered[1], ordered[0]}
+	accountID := uint64(99)
+
+	a, ok := SelectProxyFromGroup(ordered, ProxyGroupStrategySticky, now, accountID)
+	require.True(t, ok)
+	b, ok := SelectProxyFromGroup(reversed, ProxyGroupStrategySticky, now, accountID)
+	require.True(t, ok)
+	require.Equal(t, a.ID, b.ID, "slice order must not change sticky pick")
+
+	// Remove a peer that is NOT the preferred proxy — sticky must hold.
+	withoutPeer := make([]Proxy, 0, 3)
+	for _, p := range ordered {
+		if p.ID == a.ID {
+			withoutPeer = append(withoutPeer, p)
+			continue
+		}
+		// drop one other id
+		if p.ID == 1 && a.ID != 1 {
+			continue
+		}
+		if p.ID == 4 && a.ID == 1 {
+			continue
+		}
+		withoutPeer = append(withoutPeer, p)
+	}
+	// Ensure preferred still present and set size reduced.
+	hasPreferred := false
+	for _, p := range withoutPeer {
+		if p.ID == a.ID {
+			hasPreferred = true
+		}
+	}
+	require.True(t, hasPreferred)
+	require.Less(t, len(withoutPeer), len(ordered))
+	c, ok := SelectProxyFromGroup(withoutPeer, ProxyGroupStrategySticky, now, accountID)
+	require.True(t, ok)
+	require.Equal(t, a.ID, c.ID, "removing a non-preferred peer must not move sticky account")
+}
+
 func TestSelectProxyFromGroup_UnknownStrategyFallsBack(t *testing.T) {
 	t.Parallel()
 	now := time.Now()

@@ -3,6 +3,7 @@ package dto
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -508,7 +509,8 @@ func ProxyWithAccountCountFromService(p *service.ProxyWithAccountCount) *ProxyWi
 }
 
 // ProxyFromServiceAdmin converts a service Proxy to AdminProxy DTO for admin users.
-// It includes the password field - user-facing endpoints must not use this.
+// Password plaintext is omitted; PasswordSet indicates credentials exist.
+// User-facing endpoints must not use this DTO.
 func ProxyFromServiceAdmin(p *service.Proxy) *AdminProxy {
 	if p == nil {
 		return nil
@@ -518,9 +520,19 @@ func ProxyFromServiceAdmin(p *service.Proxy) *AdminProxy {
 		return nil
 	}
 	return &AdminProxy{
-		Proxy:    *base,
-		Password: p.Password,
+		Proxy:       *base,
+		PasswordSet: strings.TrimSpace(p.Password) != "",
 	}
+}
+
+// ProxyFromServiceAdminWithPassword includes plaintext password (export / step-up only).
+func ProxyFromServiceAdminWithPassword(p *service.Proxy) *AdminProxy {
+	out := ProxyFromServiceAdmin(p)
+	if out == nil || p == nil {
+		return out
+	}
+	out.Password = p.Password
+	return out
 }
 
 // ProxyWithAccountCountFromServiceAdmin converts a service ProxyWithAccountCount to AdminProxyWithAccountCount DTO.

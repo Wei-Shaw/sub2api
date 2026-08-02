@@ -60,6 +60,24 @@ type ProxyHealthService struct {
 	// group threshold cache for current RunOnce
 	groupFailTh map[int64]int
 	groupSuccTh map[int64]int
+
+	// runtime override (DB settings)
+	runtimeMu sync.RWMutex
+	runtime   *ProxyHealthSettings
+
+	// worker reference (for Apply after update)
+	workerMu sync.Mutex
+	worker   *ProxyHealthWorker
+
+	// optional settings store (for DB persistence)
+	settingRepo SettingRepository
+
+	// yamlBaselineEnabled is the process YAML value before panel overrides.
+	yamlBaselineEnabled bool
+
+	// batchCursor rotates which slice of candidates is probed when BatchSize caps a large pool.
+	batchMu     sync.Mutex
+	batchCursor int
 }
 
 // NewProxyHealthService constructs the domain service (not started).
@@ -72,8 +90,9 @@ func NewProxyHealthService(
 	latency ProxyLatencyCache,
 	resolver ProxyGroupResolver,
 	metrics *ProxyHealthMetrics,
+	settingRepo SettingRepository,
 ) *ProxyHealthService {
-	return &ProxyHealthService{
+	s := &ProxyHealthService{
 		cfg:       cfg,
 		proxyRepo: proxyRepo,
 		groupRepo: groupRepo,
@@ -84,11 +103,17 @@ func NewProxyHealthService(
 		metrics:   metrics,
 		log:       slog.Default().With("component", "proxy_health"),
 		now:       time.Now,
+		settingRepo: settingRepo,
 	}
+	if cfg != nil {
+		s.yamlBaselineEnabled = cfg.ProxyHealth.Enabled
+	}
+	s.bootstrapRuntimeSettings()
+	return s
 }
 
 func (s *ProxyHealthService) conf() config.ProxyHealthConfig {
-	if s == nil || s.cfg == nil {
+	if s == nil {
 		return config.ProxyHealthConfig{
 			IntervalSec:      60,
 			TimeoutMS:        10000,
@@ -102,7 +127,18 @@ func (s *ProxyHealthService) conf() config.ProxyHealthConfig {
 			ProbeMode:        "connectivity",
 		}
 	}
-	return s.cfg.ProxyHealth
+	// Prefer applied runtime settings (DB/panel), fall back to YAML.
+	s.runtimeMu.RLock()
+	if s.runtime != nil {
+		cfg := s.runtime.toConfig()
+		s.runtimeMu.RUnlock()
+		return cfg
+	}
+	s.runtimeMu.RUnlock()
+	if s.cfg != nil {
+		return s.cfg.ProxyHealth
+	}
+	return DefaultProxyHealthSettingsFromYAML(nil).toConfig()
 }
 
 // Metrics returns the process-local metrics holder (may be nil).
@@ -180,7 +216,7 @@ func (s *ProxyHealthService) RunOnce(ctx context.Context) (*ProxyHealthRunResult
 		return result, nil
 	}
 	if cfg.BatchSize > 0 && len(candidates) > cfg.BatchSize {
-		candidates = candidates[:cfg.BatchSize]
+		candidates = s.takeBatchWindow(candidates, cfg.BatchSize)
 	}
 
 	type job struct {
@@ -317,6 +353,24 @@ func (s *ProxyHealthService) shouldSkip(p Proxy) bool {
 		}
 	}
 	return false
+}
+
+// takeBatchWindow returns the next BatchSize candidates using a rotating cursor
+// so large pools eventually probe every member instead of always the first N.
+func (s *ProxyHealthService) takeBatchWindow(candidates []Proxy, batchSize int) []Proxy {
+	if batchSize <= 0 || len(candidates) <= batchSize {
+		return candidates
+	}
+	s.batchMu.Lock()
+	start := s.batchCursor % len(candidates)
+	s.batchCursor = (start + batchSize) % len(candidates)
+	s.batchMu.Unlock()
+
+	out := make([]Proxy, 0, batchSize)
+	for i := 0; i < batchSize; i++ {
+		out = append(out, candidates[(start+i)%len(candidates)])
+	}
+	return out
 }
 
 func (s *ProxyHealthService) listCandidates(ctx context.Context) ([]Proxy, error) {
@@ -569,11 +623,12 @@ func (s *ProxyHealthService) writeLatencyFail(ctx context.Context, proxyID int64
 	if s.latency == nil {
 		return
 	}
-	_ = s.latency.SetProxyLatency(ctx, proxyID, &ProxyLatencyInfo{
+	info := &ProxyLatencyInfo{
 		Success:   false,
 		Message:   message,
 		UpdatedAt: now,
-	})
+	}
+	s.mergeAndSaveLatency(ctx, proxyID, info)
 }
 
 func (s *ProxyHealthService) writeLatencyOK(ctx context.Context, proxyID int64, exit *ProxyExitInfo, latencyMs int64, now time.Time) {
@@ -594,7 +649,36 @@ func (s *ProxyHealthService) writeLatencyOK(ctx context.Context, proxyID int64, 
 		info.Region = exit.Region
 		info.City = exit.City
 	}
-	_ = s.latency.SetProxyLatency(ctx, proxyID, info)
+	s.mergeAndSaveLatency(ctx, proxyID, info)
+}
+
+// mergeAndSaveLatency preserves quality_* snapshot fields when the health
+// poller only updates connectivity latency (mirrors admin saveProxyLatency).
+func (s *ProxyHealthService) mergeAndSaveLatency(ctx context.Context, proxyID int64, info *ProxyLatencyInfo) {
+	if s.latency == nil || info == nil {
+		return
+	}
+	merged := *info
+	if latencies, err := s.latency.GetProxyLatencies(ctx, []int64{proxyID}); err == nil {
+		if existing := latencies[proxyID]; existing != nil {
+			if merged.QualityCheckedAt == nil &&
+				merged.QualityScore == nil &&
+				merged.QualityGrade == "" &&
+				merged.QualityStatus == "" &&
+				merged.QualitySummary == "" &&
+				merged.QualityCFRay == "" {
+				merged.QualityStatus = existing.QualityStatus
+				merged.QualityScore = existing.QualityScore
+				merged.QualityGrade = existing.QualityGrade
+				merged.QualitySummary = existing.QualitySummary
+				merged.QualityCheckedAt = existing.QualityCheckedAt
+				merged.QualityCFRay = existing.QualityCFRay
+			}
+		}
+	}
+	if err := s.latency.SetProxyLatency(ctx, proxyID, &merged); err != nil {
+		s.log.Warn("proxy health latency save failed", "proxy_id", proxyID, "err", err)
+	}
 }
 
 func truncateErr(s string, n int) string {

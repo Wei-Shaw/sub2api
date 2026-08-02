@@ -547,6 +547,71 @@ func (r *proxyRepository) GetHealthAudit(ctx context.Context, proxyID int64) (fa
 	return failCount, lastHealthAt, isolatedBy, nil
 }
 
+// CountHealthIsolated counts proxies currently isolated by the health poller.
+func (r *proxyRepository) CountHealthIsolated(ctx context.Context) (int64, error) {
+	if r == nil || r.sql == nil {
+		return 0, nil
+	}
+	var c int64
+	err := scanSingleRow(ctx, r.sql, `
+		SELECT COUNT(*) FROM proxies
+		WHERE deleted_at IS NULL
+		  AND health_isolated_by = 'health'`,
+		[]any{}, &c)
+	if err != nil {
+		if strings.Contains(err.Error(), "health_isolated_by") || strings.Contains(err.Error(), "does not exist") {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return c, nil
+}
+
+// ListHealthIsolated returns recent health-isolated proxies for the admin monitor.
+func (r *proxyRepository) ListHealthIsolated(ctx context.Context, limit int) ([]service.Proxy, error) {
+	if r == nil || r.sql == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id, name, protocol, host, port, status,
+		       COALESCE(health_fail_count, 0), last_health_at, COALESCE(health_isolated_by, '')
+		FROM proxies
+		WHERE deleted_at IS NULL
+		  AND health_isolated_by = 'health'
+		ORDER BY last_health_at DESC NULLS LAST, id DESC
+		LIMIT $1`, limit)
+	if err != nil {
+		if strings.Contains(err.Error(), "health_isolated_by") || strings.Contains(err.Error(), "does not exist") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]service.Proxy, 0, limit)
+	for rows.Next() {
+		var p service.Proxy
+		var lha sql.NullTime
+		if err := rows.Scan(
+			&p.ID, &p.Name, &p.Protocol, &p.Host, &p.Port, &p.Status,
+			&p.HealthFailCount, &lha, &p.HealthIsolatedBy,
+		); err != nil {
+			return nil, err
+		}
+		if lha.Valid {
+			t := lha.Time
+			p.LastHealthAt = &t
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // ExistsByHostPortAuth checks if a proxy with the same host, port, username, and password exists
 func (r *proxyRepository) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error) {
 	q := r.client.Proxy.Query().

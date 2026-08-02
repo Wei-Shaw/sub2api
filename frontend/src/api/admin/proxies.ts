@@ -207,6 +207,68 @@ export async function getHealth(id: number): Promise<ProxyHealthDetail> {
   return data
 }
 
+export interface ProxyHealthSettings {
+  enabled: boolean
+  interval_sec: number
+  timeout_ms: number
+  concurrency: number
+  fail_threshold: number
+  success_threshold: number
+  probe_scope: 'group_members' | 'all_active' | string
+  auto_recover: boolean
+  skip_name_prefix: string[]
+  leader_lock_ttl_sec: number
+  batch_size: number
+  probe_mode: 'connectivity' | 'quality' | string
+}
+
+export interface ProxyHealthIsolatedItem {
+  id: number
+  name: string
+  host: string
+  port: number
+  protocol: string
+  status: string
+  health_fail_count: number
+  health_isolated_by: string
+  last_health_at?: number
+}
+
+export interface ProxyHealthRuntime {
+  config: ProxyHealthSettings
+  yaml_enabled: boolean
+  worker_running: boolean
+  worker_instance_id?: string
+  metrics: NonNullable<ProxyHealthScanResult['metrics']>
+  last_tick_age_sec?: number
+  isolated_count: number
+  recent_isolated: ProxyHealthIsolatedItem[]
+  now_unix: number
+}
+
+/** Get effective proxy health poller settings. */
+export async function getHealthConfig(): Promise<ProxyHealthSettings> {
+  const { data } = await apiClient.get<ProxyHealthSettings>('/admin/proxies/health/config')
+  return data
+}
+
+/** Update proxy health poller settings (persisted + hot-applied). */
+export async function updateHealthConfig(
+  settings: ProxyHealthSettings
+): Promise<ProxyHealthSettings> {
+  const { data } = await apiClient.put<ProxyHealthSettings>(
+    '/admin/proxies/health/config',
+    settings
+  )
+  return data
+}
+
+/** Runtime monitoring snapshot for the health poller. */
+export async function getHealthRuntime(): Promise<ProxyHealthRuntime> {
+  const { data } = await apiClient.get<ProxyHealthRuntime>('/admin/proxies/health/runtime')
+  return data
+}
+
 /**
  * Get proxy usage statistics
  * @param id - Proxy ID
@@ -217,14 +279,24 @@ export async function getStats(id: number): Promise<{
   active_accounts: number
   total_requests: number
   success_rate: number
-  average_latency: number
+  average_latency?: number | null
+  latency_status?: string
+  exit_ip?: string
+  quality_status?: string
+  quality_score?: number | null
+  quality_grade?: string
 }> {
   const { data } = await apiClient.get<{
     total_accounts: number
     active_accounts: number
     total_requests: number
     success_rate: number
-    average_latency: number
+    average_latency?: number | null
+    latency_status?: string
+    exit_ip?: string
+    quality_status?: string
+    quality_score?: number | null
+    quality_grade?: string
   }>(`/admin/proxies/${id}/stats`)
   return data
 }
@@ -246,6 +318,7 @@ export async function getProxyAccounts(id: number): Promise<ProxyAccountSummary[
  */
 export async function batchCreate(
   proxies: Array<{
+    name?: string
     protocol: string
     host: string
     port: number
@@ -255,10 +328,14 @@ export async function batchCreate(
 ): Promise<{
   created: number
   skipped: number
+  failed?: number
+  errors?: Array<{ index: number; host?: string; port?: number; reason: string }>
 }> {
   const { data } = await apiClient.post<{
     created: number
     skipped: number
+    failed?: number
+    errors?: Array<{ index: number; host?: string; port?: number; reason: string }>
   }>('/admin/proxies/batch', { proxies })
   return data
 }
@@ -319,6 +396,9 @@ export const proxiesAPI = {
   checkProxyQuality,
   healthScan,
   getHealth,
+  getHealthConfig,
+  updateHealthConfig,
+  getHealthRuntime,
   getStats,
   getProxyAccounts,
   batchCreate,

@@ -63,6 +63,27 @@ func TestCreateStartHealthPoolRotate(t *testing.T) {
 	if len(pool) != 3 {
 		t.Fatalf("pool size %d", len(pool))
 	}
+	// Second batch with same prefix must allocate next free names (no collision).
+	pool2, err := mgr.CreatePool(ctx, service.CreatePoolRequest{
+		NamePrefix: "pool",
+		Count:      2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pool2) != 2 {
+		t.Fatalf("second pool size %d", len(pool2))
+	}
+	names := map[string]struct{}{}
+	for _, inst := range append(pool, pool2...) {
+		if _, dup := names[inst.Name]; dup {
+			t.Fatalf("duplicate pool name %q across batches", inst.Name)
+		}
+		names[inst.Name] = struct{}{}
+	}
+	if pool2[0].Name != "pool-04" || pool2[1].Name != "pool-05" {
+		t.Fatalf("expected pool-04/05 after first batch of 3, got %q %q", pool2[0].Name, pool2[1].Name)
+	}
 
 	// Force duplicate exit IP for alert
 	_, err = mgr.Create(ctx, service.CreateRequest{

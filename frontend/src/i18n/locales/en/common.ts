@@ -185,6 +185,7 @@ export default {
     proxies: 'Proxies',
     proxiesList: 'Proxy List',
     proxyGroups: 'Proxy Pools',
+    proxyHealth: 'Health Monitor',
     warp: 'Cloudflare WARP',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',

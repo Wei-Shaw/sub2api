@@ -49,7 +49,9 @@ func (p *Proxy) URL() string {
 		Scheme: p.Protocol,
 		Host:   net.JoinHostPort(p.Host, strconv.Itoa(p.Port)),
 	}
-	if p.Username != "" && p.Password != "" {
+	// Either credential alone is enough: some providers use username-only or
+	// password-only (token) auth. Requiring both dropped auth from the URL.
+	if p.Username != "" || p.Password != "" {
 		u.User = url.UserPassword(p.Username, p.Password)
 	}
 	return u.String()

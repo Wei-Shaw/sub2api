@@ -43,6 +43,9 @@ type ProxyRepository interface {
 	// Health audit snapshot (Phase 3 DB fields; independent of Redis meta).
 	UpdateHealthAudit(ctx context.Context, proxyID int64, failCount int, lastHealthAt *time.Time, isolatedBy string) error
 	GetHealthAudit(ctx context.Context, proxyID int64) (failCount int, lastHealthAt *time.Time, isolatedBy string, err error)
+	// Health isolation monitoring (admin dashboard).
+	CountHealthIsolated(ctx context.Context) (int64, error)
+	ListHealthIsolated(ctx context.Context, limit int) ([]Proxy, error)
 }
 
 // CreateProxyRequest 创建代理请求
@@ -69,6 +72,7 @@ type UpdateProxyRequest struct {
 // ProxyService 代理管理服务
 type ProxyService struct {
 	proxyRepo ProxyRepository
+	prober    ProxyExitInfoProber // optional; used by TestConnection
 }
 
 // NewProxyService 创建代理服务实例
@@ -76,6 +80,22 @@ func NewProxyService(proxyRepo ProxyRepository) *ProxyService {
 	return &ProxyService{
 		proxyRepo: proxyRepo,
 	}
+}
+
+// NewProxyServiceWithProber wires an exit-info prober for TestConnection.
+func NewProxyServiceWithProber(proxyRepo ProxyRepository, prober ProxyExitInfoProber) *ProxyService {
+	return &ProxyService{
+		proxyRepo: proxyRepo,
+		prober:    prober,
+	}
+}
+
+// SetProber attaches a probe implementation (for DI after construction).
+func (s *ProxyService) SetProber(prober ProxyExitInfoProber) {
+	if s == nil {
+		return
+	}
+	s.prober = prober
 }
 
 // Create 创建代理
@@ -183,17 +203,23 @@ func (s *ProxyService) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// TestConnection 测试代理连接（需要实现具体测试逻辑）
+// TestConnection probes the proxy exit via the shared exit-info prober when configured.
+// Without a prober it still validates the proxy row exists and builds a URL.
 func (s *ProxyService) TestConnection(ctx context.Context, id int64) error {
 	proxy, err := s.proxyRepo.GetByID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get proxy: %w", err)
 	}
-
-	// TODO: 实现代理连接测试逻辑
-	// 可以尝试通过代理发送测试请求
-	_ = proxy
-
+	if s.prober == nil {
+		if proxy.URL() == "" {
+			return fmt.Errorf("proxy url is empty")
+		}
+		return fmt.Errorf("proxy prober not configured")
+	}
+	_, _, err = s.prober.ProbeProxy(ctx, proxy.URL())
+	if err != nil {
+		return fmt.Errorf("probe proxy: %w", err)
+	}
 	return nil
 }
 

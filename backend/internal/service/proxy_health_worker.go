@@ -43,6 +43,9 @@ func ProvideProxyHealthWorker(
 		log:        slog.Default().With("component", "proxy_health_worker"),
 		stop:       make(chan struct{}),
 	}
+	if svc != nil {
+		svc.SetWorker(w)
+	}
 	w.Start()
 	return w
 }
@@ -61,13 +64,16 @@ func (w *ProxyHealthWorker) Start() {
 		w.log.Info("proxy health worker not started (disabled or service nil)")
 		return
 	}
+	if w.stop == nil {
+		w.stop = make(chan struct{})
+	}
 	w.on = true
 	w.wg.Add(1)
 	go w.run()
 	w.log.Info("proxy health worker started", "interval_sec", w.intervalSec())
 }
 
-// Stop ends the background loop.
+// Stop ends the background loop and allows a later Start/Apply.
 func (w *ProxyHealthWorker) Stop() {
 	if w == nil {
 		return
@@ -82,8 +88,50 @@ func (w *ProxyHealthWorker) Stop() {
 	default:
 		close(w.stop)
 	}
+	w.on = false
 	w.mu.Unlock()
 	w.wg.Wait()
+	w.mu.Lock()
+	w.stop = make(chan struct{})
+	w.mu.Unlock()
+	w.log.Info("proxy health worker stopped")
+}
+
+// Apply re-reads cfg.ProxyHealth.Enabled and starts or stops the loop.
+func (w *ProxyHealthWorker) Apply() {
+	if w == nil {
+		return
+	}
+	enabled := w.cfg != nil && w.cfg.ProxyHealth.Enabled
+	if enabled {
+		// Restart so interval changes take effect promptly.
+		if w.Running() {
+			w.Stop()
+		}
+		w.Start()
+		return
+	}
+	if w.Running() {
+		w.Stop()
+	}
+}
+
+// Running reports whether the background loop is active.
+func (w *ProxyHealthWorker) Running() bool {
+	if w == nil {
+		return false
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.on
+}
+
+// InstanceID returns the leader-lock owner token for this process.
+func (w *ProxyHealthWorker) InstanceID() string {
+	if w == nil {
+		return ""
+	}
+	return w.instanceID
 }
 
 func (w *ProxyHealthWorker) intervalSec() int {
@@ -127,12 +175,46 @@ func (w *ProxyHealthWorker) run() {
 	}
 }
 
+func (w *ProxyHealthWorker) tickTimeout() time.Duration {
+	// Scale with batch × per-proxy timeout / concurrency, floor 2m, cap 15m.
+	timeout := 2 * time.Minute
+	if w.svc == nil {
+		return timeout
+	}
+	cfg := w.svc.conf()
+	batch := cfg.BatchSize
+	if batch <= 0 {
+		batch = 100
+	}
+	conc := cfg.Concurrency
+	if conc <= 0 {
+		conc = 8
+	}
+	perProxyMS := cfg.TimeoutMS
+	if perProxyMS <= 0 {
+		perProxyMS = 10000
+	}
+	if cfg.ProbeMode == "quality" && perProxyMS < 30000 {
+		perProxyMS = 30000
+	}
+	// Rough wall time: ceil(batch/conc) * per-proxy, plus 30s slack.
+	waves := (batch + conc - 1) / conc
+	est := time.Duration(waves*perProxyMS)*time.Millisecond + 30*time.Second
+	if est > timeout {
+		timeout = est
+	}
+	if timeout > 15*time.Minute {
+		timeout = 15 * time.Minute
+	}
+	return timeout
+}
+
 func (w *ProxyHealthWorker) tick() {
 	if w.svc == nil {
 		return
 	}
 	// Bound whole tick: probes themselves use per-proxy timeout.
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), w.tickTimeout())
 	defer cancel()
 
 	if w.lock != nil {

@@ -46,6 +46,14 @@
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
+            <RouterLink
+              to="/admin/proxy-health"
+              class="btn btn-secondary"
+              :title="t('admin.proxyHealth.title')"
+            >
+              <Icon name="chart" size="md" class="mr-2" />
+              {{ t('nav.proxyHealth') }}
+            </RouterLink>
             <button
               @click="handleHealthScan"
               :disabled="healthScanning || loading"
@@ -173,11 +181,18 @@
           </template>
 
           <template #cell-auth="{ row }">
-            <div v-if="row.username || row.password" class="flex items-center gap-1.5">
+            <div v-if="row.username || row.password || row.password_set" class="flex items-center gap-1.5">
               <div class="flex flex-col text-xs">
                 <span v-if="row.username" class="text-gray-700 dark:text-gray-200">{{ row.username }}</span>
-                <span v-if="row.password" class="font-mono text-gray-500 dark:text-gray-400">
-                  {{ visiblePasswordIds.has(row.id) ? row.password : '••••••' }}
+                <span
+                  v-if="row.password || row.password_set"
+                  class="font-mono text-gray-500 dark:text-gray-400"
+                >
+                  {{
+                    row.password && visiblePasswordIds.has(row.id)
+                      ? row.password
+                      : '••••••'
+                  }}
                 </span>
               </div>
               <button
@@ -1044,6 +1059,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
@@ -1433,9 +1449,15 @@ const handleBatchCreate = async () => {
     const result = await adminAPI.proxies.batchCreate(batchParseResult.proxies)
     const created = result.created || 0
     const skipped = result.skipped || 0
+    const failed = result.failed || 0
 
-    if (created > 0) {
+    if (created > 0 && failed === 0) {
       appStore.showSuccess(t('admin.proxies.batchImportSuccess', { created, skipped }))
+    } else if (created > 0 && failed > 0) {
+      appStore.showSuccess(t('admin.proxies.batchImportSuccess', { created, skipped }))
+      appStore.showError(`${failed} failed` + (result.errors?.[0]?.reason ? `: ${result.errors[0].reason}` : ''))
+    } else if (failed > 0) {
+      appStore.showError(result.errors?.[0]?.reason || t('admin.proxies.failedToImport'))
     } else {
       appStore.showInfo(t('admin.proxies.batchImportAllSkipped', { skipped }))
     }
@@ -1488,13 +1510,14 @@ const handleCreateProxy = async () => {
   }
 }
 
-const handleEdit = (proxy: Proxy) => {
+const handleEdit = async (proxy: Proxy) => {
   editingProxy.value = proxy
   editForm.name = proxy.name
   editForm.protocol = proxy.protocol
   editForm.host = proxy.host
   editForm.port = proxy.port
   editForm.username = proxy.username || ''
+  // List no longer returns plaintext password; leave empty unless user changes it.
   editForm.password = proxy.password || ''
   editForm.status = proxy.status === 'expired' ? 'inactive' : proxy.status
   editForm.expires_at = proxy.expires_at ? proxy.expires_at.slice(0, 10) : ''
@@ -1504,6 +1527,16 @@ const handleEdit = (proxy: Proxy) => {
   editPasswordVisible.value = false
   editPasswordDirty.value = false
   showEditModal.value = true
+  // Optional: refresh detail for latest fields (password still redacted).
+  try {
+    const fresh = await adminAPI.proxies.getById(proxy.id)
+    if (editingProxy.value?.id === fresh.id) {
+      editForm.username = fresh.username || editForm.username
+      editForm.status = fresh.status === 'expired' ? 'inactive' : fresh.status
+    }
+  } catch {
+    // keep list snapshot
+  }
 }
 
 const closeEditModal = () => {

@@ -186,6 +186,9 @@ const (
 	// 异常连接检测设置（JSON：ConnectionRiskSettings）
 	SettingKeyConnectionRiskSettings = "connection_risk_settings"
 
+	// 代理池轮询测活设置（JSON：ProxyHealthSettings）
+	SettingKeyProxyHealthSettings = "proxy_health_settings"
+
 	// 操作审计日志设置
 	SettingKeyAuditLogRetentionDays = "audit_log_retention_days" // 审计日志保留天数（<=0 永久保留），默认 180
 

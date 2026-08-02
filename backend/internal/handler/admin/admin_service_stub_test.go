@@ -649,6 +649,10 @@ func (s *stubAdminService) GetProxyAccounts(ctx context.Context, proxyID int64) 
 	return []service.ProxyAccountSummary{{ID: 1, Name: "account"}}, nil
 }
 
+func (s *stubAdminService) GetProxyStats(ctx context.Context, proxyID int64) (*service.ProxyStats, error) {
+	return &service.ProxyStats{TotalAccounts: 1, ActiveAccounts: 1}, nil
+}
+
 func (s *stubAdminService) CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error) {
 	return false, nil
 }

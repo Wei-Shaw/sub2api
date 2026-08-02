@@ -564,6 +564,18 @@ const routes: RouteRecordRaw[] = [
 		},
 	},
 	{
+		path: "/admin/proxy-health",
+		name: "AdminProxyHealth",
+		component: () => import("@/views/admin/ProxyHealthView.vue"),
+		meta: {
+			requiresAuth: true,
+			requiresAdmin: true,
+			title: "Proxy Health Monitor",
+			titleKey: "admin.proxyHealth.title",
+			descriptionKey: "admin.proxyHealth.description",
+		},
+	},
+	{
 		path: "/admin/warp",
 		name: "AdminWarp",
 		component: () => import("@/views/admin/WarpView.vue"),

@@ -288,9 +288,32 @@ func BuildAttachPlan(snap *WarpPoolSnapshot, groupName string) WarpPoolAttachPla
 	for _, id := range snap.UnhealthyIDs {
 		unhealthy[id] = struct{}{}
 	}
+	usedNames := map[string]struct{}{}
 	for _, inst := range snap.Instances {
 		status := StatusActive
 		name := "warp-" + inst.Name
+		// Within one snapshot, gateway used to emit duplicate instance names on
+		// multi-batch create; disambiguate so each SOCKS endpoint gets its own proxy.
+		if _, taken := usedNames[name]; taken {
+			if inst.ListenPort > 0 {
+				name = fmt.Sprintf("%s-%d", name, inst.ListenPort)
+			} else if inst.ID != "" {
+				short := inst.ID
+				if len(short) > 8 {
+					short = short[:8]
+				}
+				name = fmt.Sprintf("%s-%s", name, short)
+			}
+		}
+		// Still colliding (rare): keep appending short id.
+		if _, taken := usedNames[name]; taken && inst.ID != "" {
+			short := inst.ID
+			if len(short) > 8 {
+				short = short[:8]
+			}
+			name = fmt.Sprintf("%s-%s", name, short)
+		}
+		usedNames[name] = struct{}{}
 		if inst.Status == "unhealthy" || inst.Status == "error" {
 			status = StatusError
 			plan.DetachProxyNames = append(plan.DetachProxyNames, name)

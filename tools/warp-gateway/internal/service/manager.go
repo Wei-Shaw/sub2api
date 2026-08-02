@@ -149,6 +149,10 @@ func (m *Manager) CreatePool(ctx context.Context, req CreatePoolRequest) ([]stor
 			req.Profiles = append(req.Profiles, r.Profile)
 		}
 	}
+	names, err := m.allocatePoolNames(prefix, req.Count)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]store.Instance, 0, req.Count)
 	for i := 0; i < req.Count; i++ {
 		var profile store.Profile
@@ -165,13 +169,13 @@ func (m *Manager) CreatePool(ctx context.Context, req CreatePoolRequest) ([]stor
 			port = req.StartPort + i
 		}
 		inst, err := m.Create(ctx, CreateRequest{
-			Name:       fmt.Sprintf("%s-%02d", prefix, i+1),
+			Name:       names[i],
 			ListenPort: port,
 			Profile:    profile,
 			AutoStart:  req.AutoStart,
 		})
 		if err != nil {
-			return out, fmt.Errorf("create pool member %d: %w", i+1, err)
+			return out, fmt.Errorf("create pool member %d (%s): %w", i+1, names[i], err)
 		}
 		// Stagger real WARP handshakes.
 		if m.runtime.Name() == "sing-box" && i+1 < req.Count {
@@ -180,6 +184,40 @@ func (m *Manager) CreatePool(ctx context.Context, req CreatePoolRequest) ([]stor
 		out = append(out, RedactInstance(*inst))
 	}
 	return out, nil
+}
+
+// allocatePoolNames returns count unique names under prefix, skipping ones already
+// present in the store. First batch → prefix-01..N; second batch continues from
+// the next free index so multi-add never collides (e.g. warp-01..03 then warp-04..06).
+func (m *Manager) allocatePoolNames(prefix string, count int) ([]string, error) {
+	if count <= 0 {
+		return nil, fmt.Errorf("count must be > 0")
+	}
+	existing := map[string]struct{}{}
+	if m.store != nil {
+		existing = m.store.NameSet()
+	}
+	names := make([]string, 0, count)
+	for i := 1; len(names) < count; i++ {
+		var name string
+		if i < 100 {
+			name = fmt.Sprintf("%s-%02d", prefix, i)
+		} else {
+			name = fmt.Sprintf("%s-%d", prefix, i)
+		}
+		if _, taken := existing[name]; taken {
+			if i > 100000 {
+				return nil, fmt.Errorf("could not allocate %d unique names with prefix %q", count, prefix)
+			}
+			continue
+		}
+		existing[name] = struct{}{}
+		names = append(names, name)
+		if i > 100000 {
+			return nil, fmt.Errorf("could not allocate %d unique names with prefix %q", count, prefix)
+		}
+	}
+	return names, nil
 }
 
 // RegisterProfiles registers free WARP profiles and returns them for pool creation (internal secrets kept until Create).

@@ -63,7 +63,7 @@ func TestApplyProbeResult_AutoRecoverDisabled(t *testing.T) {
 }
 
 func TestProxyHealthService_ShouldSkipWarpPrefix(t *testing.T) {
-	s := NewProxyHealthService(nil, nil, nil, nil, nil, nil, nil, nil)
+	s := NewProxyHealthService(nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	// Default skip includes warp-
 	require.True(t, s.shouldSkip(Proxy{Name: "warp-abc"}))
 	require.False(t, s.shouldSkip(Proxy{Name: "pool-1"}))

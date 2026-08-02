@@ -17,6 +17,8 @@ import (
 type proxyGroupRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
+	// db enables multi-statement transactions (SetGroupMembers). Nil in pure mocks.
+	db *sql.DB
 }
 
 func NewProxyGroupRepository(client *dbent.Client, sqlDB *sql.DB) service.ProxyGroupRepository {
@@ -24,7 +26,11 @@ func NewProxyGroupRepository(client *dbent.Client, sqlDB *sql.DB) service.ProxyG
 }
 
 func newProxyGroupRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *proxyGroupRepository {
-	return &proxyGroupRepository{client: client, sql: sqlq}
+	r := &proxyGroupRepository{client: client, sql: sqlq}
+	if db, ok := sqlq.(*sql.DB); ok {
+		r.db = db
+	}
+	return r
 }
 
 func (r *proxyGroupRepository) Create(ctx context.Context, group *service.ProxyGroup) error {
@@ -253,6 +259,8 @@ func (r *proxyGroupRepository) CountAccountsByGroupID(ctx context.Context, group
 }
 
 // SetGroupMembers 全量替换组成员：先清空该组既有成员，再把 proxyIDs 写入 group_id。
+// Clear + assign run in one transaction when *sql.DB is available so a failed
+// second step cannot leave the group empty.
 func (r *proxyGroupRepository) SetGroupMembers(ctx context.Context, groupID int64, proxyIDs []int64) error {
 	if groupID <= 0 {
 		return service.ErrProxyGroupNotFound
@@ -271,22 +279,37 @@ func (r *proxyGroupRepository) SetGroupMembers(ctx context.Context, groupID int6
 		uniq = append(uniq, id)
 	}
 
-	if _, err := r.sql.ExecContext(ctx,
-		`UPDATE proxies SET group_id = NULL, updated_at = NOW() WHERE group_id = $1 AND deleted_at IS NULL`,
-		groupID,
-	); err != nil {
-		return err
-	}
-	if len(uniq) == 0 {
+	apply := func(ex sqlExecutor) error {
+		if _, err := ex.ExecContext(ctx,
+			`UPDATE proxies SET group_id = NULL, updated_at = NOW() WHERE group_id = $1 AND deleted_at IS NULL`,
+			groupID,
+		); err != nil {
+			return err
+		}
+		if len(uniq) == 0 {
+			return nil
+		}
+		if _, err := ex.ExecContext(ctx,
+			`UPDATE proxies SET group_id = $1, updated_at = NOW() WHERE id = ANY($2) AND deleted_at IS NULL`,
+			groupID, pq.Array(uniq),
+		); err != nil {
+			return err
+		}
 		return nil
 	}
-	if _, err := r.sql.ExecContext(ctx,
-		`UPDATE proxies SET group_id = $1, updated_at = NOW() WHERE id = ANY($2) AND deleted_at IS NULL`,
-		groupID, pq.Array(uniq),
-	); err != nil {
-		return err
+
+	if r.db != nil {
+		tx, err := r.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		if err := apply(tx); err != nil {
+			return err
+		}
+		return tx.Commit()
 	}
-	return nil
+	return apply(r.sql)
 }
 
 func proxyGroupListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {

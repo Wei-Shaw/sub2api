@@ -121,6 +121,9 @@ func (m *mockProxyRepoForOAuth) UpdateHealthAudit(context.Context, int64, int, *
 func (m *mockProxyRepoForOAuth) GetHealthAudit(context.Context, int64) (int, *time.Time, string, error) {
 	return 0, nil, "", nil
 }
+func (m *mockProxyRepoForOAuth) CountHealthIsolated(context.Context) (int64, error) { return 0, nil }
+func (m *mockProxyRepoForOAuth) ListHealthIsolated(context.Context, int) ([]Proxy, error) { return nil, nil }
+
 
 // =====================
 // 测试用例

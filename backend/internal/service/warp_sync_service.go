@@ -275,17 +275,24 @@ func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string)
 	}
 
 	memberIDs := make([]int64, 0, len(plan.ProxySpecs))
+	seenMember := map[int64]struct{}{}
 	keepNames := map[string]struct{}{}
 	keepKeys := map[string]struct{}{}
 	for _, spec := range plan.ProxySpecs {
 		key := proxyHostPortKey(spec.Host, spec.Port)
+		// Ensure proxy name is unique among this sync pass + existing rows when
+		// the same gateway name is reused for a different host:port (legacy bug).
+		spec.Name = ensureUniqueWarpProxyName(spec.Name, key, byName, byKey)
 		keepNames[spec.Name] = struct{}{}
 		keepKeys[key] = struct{}{}
 		var p *Proxy
 		if existing, ok := byKey[key]; ok {
-			// update status/name
+			// Same SOCKS endpoint: update status/name in place.
 			needUpdate := existing.Name != spec.Name || existing.Protocol != spec.Protocol || existing.Status != spec.Status
 			if needUpdate {
+				if existing.Name != spec.Name {
+					delete(byName, existing.Name)
+				}
 				existing.Name = spec.Name
 				existing.Protocol = spec.Protocol
 				existing.Status = spec.Status
@@ -296,9 +303,9 @@ func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string)
 			}
 			p = &existing
 			byName[spec.Name] = existing
-		} else if existing, ok := byName[spec.Name]; ok {
-			existing.Host = spec.Host
-			existing.Port = spec.Port
+		} else if existing, ok := byName[spec.Name]; ok &&
+			proxyHostPortKey(existing.Host, existing.Port) == key {
+			// Same name + same endpoint (defensive; byKey should have hit).
 			existing.Protocol = spec.Protocol
 			existing.Status = spec.Status
 			if err := s.proxyRepo.Update(ctx, &existing); err != nil {
@@ -308,6 +315,8 @@ func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string)
 			p = &existing
 			byKey[key] = existing
 		} else {
+			// New endpoint. Never hijack an existing proxy that only shares the name
+			// (that was the multi-add bug: second batch overwrote first batch rows).
 			created, err := s.proxyRepoCreate(ctx, spec)
 			if err != nil {
 				return nil, err
@@ -324,7 +333,10 @@ func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string)
 			include = true
 		}
 		if include {
-			memberIDs = append(memberIDs, p.ID)
+			if _, dup := seenMember[p.ID]; !dup {
+				seenMember[p.ID] = struct{}{}
+				memberIDs = append(memberIDs, p.ID)
+			}
 		} else {
 			result.DetachedIDs = append(result.DetachedIDs, p.ID)
 		}
@@ -355,14 +367,62 @@ func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string)
 		if err != nil {
 			return nil, err
 		}
+		// Preserve non-warp members that operators mixed into the managed group.
+		// WARP sync owns only warp-* rows; full replace would silently drop others.
+		memberIDs, err = s.mergeNonWarpGroupMembers(ctx, group.ID, memberIDs)
+		if err != nil {
+			return nil, err
+		}
 		withMembers, err := s.groupSvc.SetMembers(ctx, group.ID, memberIDs)
 		if err != nil {
 			return nil, fmt.Errorf("set group members: %w", err)
 		}
 		result.Group = withMembers
+		// Soft consistency check: gateway healthy count vs group members.
+		if snap != nil && snap.HealthyCount > 0 && len(memberIDs) < snap.HealthyCount {
+			msg := fmt.Sprintf("warp sync member count %d < gateway healthy %d (possible index gap or detach)", len(memberIDs), snap.HealthyCount)
+			result.Alerts = append(result.Alerts, msg)
+			s.log.Warn(msg)
+		}
 	}
 	result.MemberIDs = memberIDs
 	return result, nil
+}
+
+// mergeNonWarpGroupMembers keeps existing group members that are not warp-*
+// managed proxies so SetMembers does not eject manually added endpoints.
+func (s *WarpSyncService) mergeNonWarpGroupMembers(ctx context.Context, groupID int64, warpMemberIDs []int64) ([]int64, error) {
+	if s.proxyRepo == nil || groupID <= 0 {
+		return warpMemberIDs, nil
+	}
+	existing, err := s.proxyRepo.ListByGroupID(ctx, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("list group members before warp set: %w", err)
+	}
+	out := make([]int64, 0, len(warpMemberIDs)+len(existing))
+	seen := map[int64]struct{}{}
+	for _, id := range warpMemberIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	for i := range existing {
+		p := existing[i]
+		if strings.HasPrefix(p.Name, "warp-") {
+			continue
+		}
+		if _, ok := seen[p.ID]; ok {
+			continue
+		}
+		seen[p.ID] = struct{}{}
+		out = append(out, p.ID)
+	}
+	return out, nil
 }
 
 func (s *WarpSyncService) proxyRepoCreate(ctx context.Context, spec WarpProxySpec) (*Proxy, error) {
@@ -395,27 +455,32 @@ func (s *WarpSyncService) ensureGroup(ctx context.Context, name string) (*ProxyG
 			return &active[i], nil
 		}
 	}
-	// Also search non-active via List
-	groups, _, err := s.groupSvc.List(ctx, pagination.PaginationParams{Page: 1, PageSize: 200})
-	if err == nil {
+	// Also search non-active via paginated List (may exceed one page).
+	for page := 1; page <= 50; page++ {
+		groups, pageResult, err := s.groupSvc.List(ctx, pagination.PaginationParams{Page: page, PageSize: 200})
+		if err != nil {
+			break
+		}
 		for i := range groups {
-			if groups[i].Name == name {
-				g := groups[i].ProxyGroup
-				if g.Status != StatusActive {
-					// reactivate
-					st := StatusActive
-					_, err := s.groupSvc.Update(ctx, g.ID, UpdateProxyGroupInput{Status: &st})
-					if err != nil {
-						return nil, err
-					}
-					got, err := s.groupSvc.GetByID(ctx, g.ID)
-					if err != nil {
-						return nil, err
-					}
-					return &got.ProxyGroup, nil
-				}
-				return &g, nil
+			if groups[i].Name != name {
+				continue
 			}
+			g := groups[i].ProxyGroup
+			if g.Status != StatusActive {
+				st := StatusActive
+				if _, err := s.groupSvc.Update(ctx, g.ID, UpdateProxyGroupInput{Status: &st}); err != nil {
+					return nil, err
+				}
+				got, err := s.groupSvc.GetByID(ctx, g.ID)
+				if err != nil {
+					return nil, err
+				}
+				return &got.ProxyGroup, nil
+			}
+			return &g, nil
+		}
+		if pageResult == nil || int64(page*200) >= pageResult.Total || len(groups) == 0 {
+			break
 		}
 	}
 	created, err := s.groupSvc.Create(ctx, CreateProxyGroupInput{
@@ -433,21 +498,40 @@ func (s *WarpSyncService) ensureGroup(ctx context.Context, name string) (*ProxyG
 func (s *WarpSyncService) indexProxies(ctx context.Context) (byKey map[string]Proxy, byName map[string]Proxy, err error) {
 	byKey = make(map[string]Proxy)
 	byName = make(map[string]Proxy)
-	// Prefer filtered list for warp- prefix; fall back to paging.
-	list, _, listErr := s.proxyRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 1000}, "", "", "warp-")
-	if listErr != nil {
-		// fallback ListActive only
-		active, aerr := s.proxyRepo.ListActive(ctx)
-		if aerr != nil {
-			return nil, nil, aerr
+
+	// Page through all warp-* matches (PageSize hard-capped at 1000).
+	const pageSize = 1000
+	for page := 1; page <= 100; page++ {
+		list, pageResult, listErr := s.proxyRepo.ListWithFilters(ctx, pagination.PaginationParams{
+			Page: page, PageSize: pageSize, SortBy: "id", SortOrder: "asc",
+		}, "", "", "warp-")
+		if listErr != nil {
+			if page == 1 {
+				// fallback ListActive only on first-page failure
+				active, aerr := s.proxyRepo.ListActive(ctx)
+				if aerr != nil {
+					return nil, nil, aerr
+				}
+				for _, p := range active {
+					byKey[proxyHostPortKey(p.Host, p.Port)] = p
+					byName[p.Name] = p
+				}
+				return byKey, byName, nil
+			}
+			return nil, nil, listErr
 		}
-		list = active
+		for _, p := range list {
+			byKey[proxyHostPortKey(p.Host, p.Port)] = p
+			byName[p.Name] = p
+		}
+		if len(list) < pageSize {
+			break
+		}
+		if pageResult != nil && int64(page*pageSize) >= pageResult.Total {
+			break
+		}
 	}
-	for _, p := range list {
-		byKey[proxyHostPortKey(p.Host, p.Port)] = p
-		byName[p.Name] = p
-	}
-	// Also index all active (in case name filter missed)
+	// Also index all active (catches non-warp and any filter misses).
 	active, aerr := s.proxyRepo.ListActive(ctx)
 	if aerr == nil {
 		for _, p := range active {
@@ -460,4 +544,40 @@ func (s *WarpSyncService) indexProxies(ctx context.Context) (byKey map[string]Pr
 
 func proxyHostPortKey(host string, port int) string {
 	return strings.ToLower(strings.TrimSpace(host)) + ":" + fmt.Sprintf("%d", port)
+}
+
+// ensureUniqueWarpProxyName keeps proxy names unique when gateway reuses a display
+// name for a different SOCKS endpoint. Prefer the planned name; on collision with
+// a different host:port, append -<port> (and numeric suffix if still taken).
+func ensureUniqueWarpProxyName(name, hostPortKey string, byName, byKey map[string]Proxy) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "warp-unnamed"
+	}
+	if existing, ok := byName[name]; !ok {
+		return name
+	} else if proxyHostPortKey(existing.Host, existing.Port) == hostPortKey {
+		return name
+	}
+	// Collision with a different endpoint.
+	base := name
+	// Prefer port disambiguation from hostPortKey ("host:port").
+	port := ""
+	if i := strings.LastIndex(hostPortKey, ":"); i >= 0 && i+1 < len(hostPortKey) {
+		port = hostPortKey[i+1:]
+	}
+	if port != "" {
+		cand := fmt.Sprintf("%s-%s", base, port)
+		if existing, ok := byName[cand]; !ok || proxyHostPortKey(existing.Host, existing.Port) == hostPortKey {
+			return cand
+		}
+		base = cand
+	}
+	for i := 2; i < 10000; i++ {
+		cand := fmt.Sprintf("%s-%d", base, i)
+		if existing, ok := byName[cand]; !ok || proxyHostPortKey(existing.Host, existing.Port) == hostPortKey {
+			return cand
+		}
+	}
+	return fmt.Sprintf("%s-%d", base, time.Now().UnixNano()%100000)
 }

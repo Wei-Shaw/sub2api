@@ -829,6 +829,9 @@ func (m *mockGeminiProxyRepo) UpdateHealthAudit(context.Context, int64, int, *ti
 func (m *mockGeminiProxyRepo) GetHealthAudit(context.Context, int64) (int, *time.Time, string, error) {
 	return 0, nil, "", nil
 }
+func (m *mockGeminiProxyRepo) CountHealthIsolated(context.Context) (int64, error) { return 0, nil }
+func (m *mockGeminiProxyRepo) ListHealthIsolated(context.Context, int) ([]Proxy, error) { return nil, nil }
+
 
 // mockDriveClient implements geminicli.DriveClient for tests.
 type mockDriveClient struct {

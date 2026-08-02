@@ -861,7 +861,10 @@ export interface Proxy {
 	host: string;
 	port: number;
 	username: string | null;
+	/** Plaintext only on export; list/detail use password_set instead. */
 	password?: string | null;
+	/** True when a password is stored (list/detail redacts plaintext). */
+	password_set?: boolean;
 	status: "active" | "inactive" | "expired";
 	account_count?: number; // Number of accounts using this proxy
 	latency_ms?: number;

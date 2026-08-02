@@ -515,6 +515,9 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth
 		proxies.POST("/data", h.Admin.Proxy.ImportData)
 		// Static paths before /:id
 		proxies.POST("/health-scan", h.Admin.Proxy.HealthScan)
+		proxies.GET("/health/config", h.Admin.Proxy.GetHealthConfig)
+		proxies.PUT("/health/config", h.Admin.Proxy.UpdateHealthConfig)
+		proxies.GET("/health/runtime", h.Admin.Proxy.GetHealthRuntime)
 		proxies.POST("/batch-delete", h.Admin.Proxy.BatchDelete)
 		proxies.POST("/batch", h.Admin.Proxy.BatchCreate)
 		proxies.GET("/:id", h.Admin.Proxy.GetByID)

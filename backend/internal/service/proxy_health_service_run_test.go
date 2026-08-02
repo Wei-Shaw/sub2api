@@ -129,6 +129,9 @@ func (r *healthProxyRepoStub) UpdateHealthAudit(context.Context, int64, int, *ti
 func (r *healthProxyRepoStub) GetHealthAudit(context.Context, int64) (int, *time.Time, string, error) {
 	return 0, nil, "", nil
 }
+func (r *healthProxyRepoStub) CountHealthIsolated(context.Context) (int64, error) { return 0, nil }
+func (r *healthProxyRepoStub) ListHealthIsolated(context.Context, int) ([]Proxy, error) { return nil, nil }
+
 
 type healthGroupRepoStub struct {
 	groups []ProxyGroup
@@ -217,7 +220,7 @@ func TestProxyHealthService_RunOnceIsolatesAndSkipsWarp(t *testing.T) {
 		TimeoutMS:        1000,
 		SkipNamePrefix:   []string{"warp-"},
 	}}
-	svc := NewProxyHealthService(cfg, repo, groups, &healthProberStub{}, health, nil, resolver, ProvideProxyHealthMetrics())
+	svc := NewProxyHealthService(cfg, repo, groups, &healthProberStub{}, health, nil, resolver, ProvideProxyHealthMetrics(), nil)
 
 	// First fail — not isolated yet
 	res, err := svc.RunOnce(context.Background())
@@ -265,7 +268,7 @@ func TestProxyHealthService_RunOnceRecoversHealthIsolated(t *testing.T) {
 		TimeoutMS:        1000,
 		SkipNamePrefix:   []string{"warp-"},
 	}}
-	svc := NewProxyHealthService(cfg, repo, groups, &healthProberStub{}, health, nil, &healthResolverStub{}, nil)
+	svc := NewProxyHealthService(cfg, repo, groups, &healthProberStub{}, health, nil, &healthResolverStub{}, nil, nil)
 
 	_, err := svc.RunOnce(context.Background())
 	require.NoError(t, err)

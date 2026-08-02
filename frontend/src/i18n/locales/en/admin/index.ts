@@ -8,6 +8,7 @@ import audit from './audit'
 import promptAudit from './promptAudit'
 import connectionRisk from './connectionRisk'
 import warp from './warp'
+import proxyHealth from './proxyHealth'
 
 export default {
   ...overview,
@@ -20,4 +21,5 @@ export default {
   ...promptAudit,
   ...connectionRisk,
   ...warp,
+  ...proxyHealth,
 }

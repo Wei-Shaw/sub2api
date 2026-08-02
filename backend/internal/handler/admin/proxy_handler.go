@@ -2,7 +2,9 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -73,6 +75,48 @@ func (h *ProxyHandler) GetHealth(c *gin.Context) {
 		return
 	}
 	response.Success(c, detail)
+}
+
+// GetHealthConfig GET /api/v1/admin/proxies/health/config
+func (h *ProxyHandler) GetHealthConfig(c *gin.Context) {
+	if h.healthSvc == nil {
+		response.ErrorFrom(c, fmt.Errorf("proxy health service not configured"))
+		return
+	}
+	cfg, err := h.healthSvc.GetConfig(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
+}
+
+// UpdateHealthConfig PUT /api/v1/admin/proxies/health/config
+func (h *ProxyHandler) UpdateHealthConfig(c *gin.Context) {
+	if h.healthSvc == nil {
+		response.ErrorFrom(c, fmt.Errorf("proxy health service not configured"))
+		return
+	}
+	var req service.ProxyHealthSettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	out, err := h.healthSvc.UpdateConfig(c.Request.Context(), &req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, out)
+}
+
+// GetHealthRuntime GET /api/v1/admin/proxies/health/runtime
+func (h *ProxyHandler) GetHealthRuntime(c *gin.Context) {
+	if h.healthSvc == nil {
+		response.ErrorFrom(c, fmt.Errorf("proxy health service not configured"))
+		return
+	}
+	response.Success(c, h.healthSvc.RuntimeSnapshot(c.Request.Context()))
 }
 
 // CreateProxyRequest represents create proxy request
@@ -219,6 +263,9 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 
 // Update handles updating a proxy
 // PUT /api/v1/admin/proxies/:id
+// Partial updates: omitted JSON keys leave existing values unchanged. Explicit
+// null on expires_at / backup_proxy_id clears those fields. Empty password is
+// only applied when the key is present (so clients can clear credentials).
 func (h *ProxyHandler) Update(c *gin.Context) {
 	proxyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -226,30 +273,61 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		return
 	}
 
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	// Re-validate known shape (oneof / port range) via typed bind.
 	var req UpdateProxyRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
 
-	var expiresAt *time.Time
-	if req.ExpiresAt != nil && *req.ExpiresAt > 0 {
-		t := time.Unix(*req.ExpiresAt, 0).UTC()
-		expiresAt = &t
+	input := &service.UpdateProxyInput{
+		Name:     strings.TrimSpace(req.Name),
+		Protocol: strings.TrimSpace(req.Protocol),
+		Host:     strings.TrimSpace(req.Host),
+		Port:     req.Port,
+		Status:   strings.TrimSpace(req.Status),
 	}
-	proxy, err := h.adminService.UpdateProxy(c.Request.Context(), proxyID, &service.UpdateProxyInput{
-		Name:           strings.TrimSpace(req.Name),
-		Protocol:       strings.TrimSpace(req.Protocol),
-		Host:           strings.TrimSpace(req.Host),
-		Port:           req.Port,
-		Username:       strings.TrimSpace(req.Username),
-		Password:       strings.TrimSpace(req.Password),
-		Status:         strings.TrimSpace(req.Status),
-		ExpiresAt:      expiresAt,
-		FallbackMode:   strings.TrimSpace(req.FallbackMode),
-		BackupProxyID:  req.BackupProxyID,
-		ExpiryWarnDays: req.ExpiryWarnDays,
-	})
+	if _, ok := raw["username"]; ok {
+		u := strings.TrimSpace(req.Username)
+		input.Username = &u
+	}
+	if _, ok := raw["password"]; ok {
+		p := strings.TrimSpace(req.Password)
+		input.Password = &p
+	}
+	if rawExp, ok := raw["expires_at"]; ok {
+		input.ExpiresAtProvided = true
+		if string(rawExp) != "null" && req.ExpiresAt != nil && *req.ExpiresAt > 0 {
+			t := time.Unix(*req.ExpiresAt, 0).UTC()
+			input.ExpiresAt = &t
+		}
+	}
+	if _, ok := raw["fallback_mode"]; ok {
+		mode := strings.TrimSpace(req.FallbackMode)
+		input.FallbackMode = &mode
+	}
+	if rawBackup, ok := raw["backup_proxy_id"]; ok {
+		input.BackupProxyIDProvided = true
+		if string(rawBackup) != "null" {
+			input.BackupProxyID = req.BackupProxyID
+		}
+	}
+	if _, ok := raw["expiry_warn_days"]; ok {
+		d := req.ExpiryWarnDays
+		input.ExpiryWarnDays = &d
+	}
+
+	proxy, err := h.adminService.UpdateProxy(c.Request.Context(), proxyID, input)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -334,7 +412,7 @@ func (h *ProxyHandler) CheckQuality(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// GetStats handles getting proxy statistics
+// GetStats returns real proxy usage stats (account count + request summary).
 // GET /api/v1/admin/proxies/:id/stats
 func (h *ProxyHandler) GetStats(c *gin.Context) {
 	proxyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -343,15 +421,12 @@ func (h *ProxyHandler) GetStats(c *gin.Context) {
 		return
 	}
 
-	// Return mock data for now
-	_ = proxyID
-	response.Success(c, gin.H{
-		"total_accounts":  0,
-		"active_accounts": 0,
-		"total_requests":  0,
-		"success_rate":    100.0,
-		"average_latency": 0,
-	})
+	stats, err := h.adminService.GetProxyStats(c.Request.Context(), proxyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, stats)
 }
 
 // GetProxyAccounts handles getting accounts using a proxy
@@ -378,6 +453,7 @@ func (h *ProxyHandler) GetProxyAccounts(c *gin.Context) {
 
 // BatchCreateProxyItem represents a single proxy in batch create request
 type BatchCreateProxyItem struct {
+	Name     string `json:"name"`
 	Protocol string `json:"protocol" binding:"required,oneof=http https socks5 socks5h"`
 	Host     string `json:"host" binding:"required"`
 	Port     int    `json:"port" binding:"required,min=1,max=65535"`
@@ -388,6 +464,32 @@ type BatchCreateProxyItem struct {
 // BatchCreateRequest represents batch create proxies request
 type BatchCreateRequest struct {
 	Proxies []BatchCreateProxyItem `json:"proxies" binding:"required,min=1"`
+}
+
+// BatchCreateError is one failed/skipped item in a batch create response.
+type BatchCreateError struct {
+	Index  int    `json:"index"`
+	Host   string `json:"host,omitempty"`
+	Port   int    `json:"port,omitempty"`
+	Reason string `json:"reason"`
+}
+
+// defaultBatchProxyName builds a stable display name from endpoint fields.
+func defaultBatchProxyName(protocol, host string, port int) string {
+	protocol = strings.TrimSpace(protocol)
+	host = strings.TrimSpace(host)
+	if protocol == "" {
+		protocol = "proxy"
+	}
+	if host == "" {
+		host = "unknown"
+	}
+	name := fmt.Sprintf("%s://%s:%d", protocol, host, port)
+	// Proxy.name MaxLen(100) in schema.
+	if len(name) > 100 {
+		name = name[:100]
+	}
+	return name
 }
 
 // BatchCreate handles batch creating proxies
@@ -401,29 +503,42 @@ func (h *ProxyHandler) BatchCreate(c *gin.Context) {
 
 	created := 0
 	skipped := 0
+	failed := 0
+	errors := make([]BatchCreateError, 0)
 
-	for _, item := range req.Proxies {
+	for i, item := range req.Proxies {
 		// Trim all string fields
 		host := strings.TrimSpace(item.Host)
 		protocol := strings.TrimSpace(item.Protocol)
 		username := strings.TrimSpace(item.Username)
 		password := strings.TrimSpace(item.Password)
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			name = defaultBatchProxyName(protocol, host, item.Port)
+		} else if len(name) > 100 {
+			name = name[:100]
+		}
 
 		// Check for duplicates (same host, port, username, password)
 		exists, err := h.adminService.CheckProxyExists(c.Request.Context(), host, item.Port, username, password)
 		if err != nil {
-			response.ErrorFrom(c, err)
-			return
+			failed++
+			errors = append(errors, BatchCreateError{
+				Index: i, Host: host, Port: item.Port, Reason: err.Error(),
+			})
+			continue
 		}
 
 		if exists {
 			skipped++
+			errors = append(errors, BatchCreateError{
+				Index: i, Host: host, Port: item.Port, Reason: "duplicate host/port/auth",
+			})
 			continue
 		}
 
-		// Create proxy with default name
 		_, err = h.adminService.CreateProxy(c.Request.Context(), &service.CreateProxyInput{
-			Name:     "default",
+			Name:     name,
 			Protocol: protocol,
 			Host:     host,
 			Port:     item.Port,
@@ -431,8 +546,10 @@ func (h *ProxyHandler) BatchCreate(c *gin.Context) {
 			Password: password,
 		})
 		if err != nil {
-			// If creation fails due to duplicate, count as skipped
-			skipped++
+			failed++
+			errors = append(errors, BatchCreateError{
+				Index: i, Host: host, Port: item.Port, Reason: err.Error(),
+			})
 			continue
 		}
 
@@ -442,5 +559,7 @@ func (h *ProxyHandler) BatchCreate(c *gin.Context) {
 	response.Success(c, gin.H{
 		"created": created,
 		"skipped": skipped,
+		"failed":  failed,
+		"errors":  errors,
 	})
 }

@@ -88,7 +88,13 @@ func (m *memProxyRepo) CountExpiringSoon(ctx context.Context, now time.Time) (in
 	return 0, nil
 }
 func (m *memProxyRepo) ListByGroupID(ctx context.Context, groupID int64) ([]Proxy, error) {
-	return nil, nil
+	out := make([]Proxy, 0)
+	for _, p := range m.proxies {
+		if p.GroupID != nil && *p.GroupID == groupID {
+			out = append(out, *p)
+		}
+	}
+	return out, nil
 }
 func (m *memProxyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	return 0, nil
@@ -99,6 +105,9 @@ func (m *memProxyRepo) UpdateHealthAudit(context.Context, int64, int, *time.Time
 func (m *memProxyRepo) GetHealthAudit(context.Context, int64) (int, *time.Time, string, error) {
 	return 0, nil, "", nil
 }
+func (m *memProxyRepo) CountHealthIsolated(context.Context) (int64, error) { return 0, nil }
+func (m *memProxyRepo) ListHealthIsolated(context.Context, int) ([]Proxy, error) { return nil, nil }
+
 
 type memGroupRepo struct {
 	nextID  int64
@@ -155,6 +164,34 @@ func (m *memGroupRepo) CountAccountsByGroupID(ctx context.Context, groupID int64
 func (m *memGroupRepo) SetGroupMembers(ctx context.Context, groupID int64, proxyIDs []int64) error {
 	m.members[groupID] = append([]int64(nil), proxyIDs...)
 	return nil
+}
+
+func TestMergeNonWarpGroupMembers(t *testing.T) {
+	proxyRepo := newMemProxyRepo()
+	gid := int64(7)
+	// Manual non-warp member already in group.
+	manual := &Proxy{Name: "office-proxy", Host: "10.0.0.1", Port: 1080, Status: StatusActive, GroupID: &gid}
+	_ = proxyRepo.Create(context.Background(), manual)
+	// Existing warp member (should not be double-kept via merge path alone).
+	warpOld := &Proxy{Name: "warp-warp-01", Host: "127.0.0.1", Port: 20001, Status: StatusActive, GroupID: &gid}
+	_ = proxyRepo.Create(context.Background(), warpOld)
+
+	svc := &WarpSyncService{proxyRepo: proxyRepo}
+	// New warp member set from sync plan (only the new warp id).
+	merged, err := svc.mergeNonWarpGroupMembers(context.Background(), gid, []int64{warpOld.ID, 99})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[int64]bool{}
+	for _, id := range merged {
+		seen[id] = true
+	}
+	if !seen[manual.ID] {
+		t.Fatalf("expected non-warp member %d preserved, got %v", manual.ID, merged)
+	}
+	if !seen[warpOld.ID] || !seen[99] {
+		t.Fatalf("expected warp members kept, got %v", merged)
+	}
 }
 
 type noopResolver struct{}
@@ -219,5 +256,73 @@ func TestWarpSyncService_SyncFromGateway(t *testing.T) {
 	}
 	if len(res2.CreatedProxies) != 0 {
 		t.Fatalf("expected 0 creates, got %d", len(res2.CreatedProxies))
+	}
+}
+
+// Multi-batch gateway snapshots historically reused instance names (warp-01 twice
+// on different ports). Sync must keep both endpoints in the proxy pool.
+func TestWarpSyncFromGateway_DuplicateNamesDifferentPortsCreateBoth(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/pools/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(WarpPoolSnapshot{
+			Instances: []WarpInstance{
+				{ID: "a1", Name: "warp-01", ListenHost: "127.0.0.1", ListenPort: 20001, Status: "running", ExitIP: "1.1.1.1"},
+				{ID: "a2", Name: "warp-01", ListenHost: "127.0.0.1", ListenPort: 20002, Status: "running", ExitIP: "1.1.1.2"},
+				{ID: "a3", Name: "warp-02", ListenHost: "127.0.0.1", ListenPort: 20003, Status: "running", ExitIP: "1.1.1.3"},
+			},
+			HealthyCount: 3,
+			TotalCount:   3,
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: srv.URL, Timeout: time.Second})
+	proxyRepo := newMemProxyRepo()
+	groupRepo := newMemGroupRepo()
+	groupSvc := NewProxyGroupService(groupRepo, proxyRepo, noopResolver{})
+	cfg := &config.Config{Warp: config.WarpConfig{
+		Enabled:             true,
+		AutoDetachUnhealthy: false,
+		DefaultGroupName:    "warp-pool",
+		Gateway:             config.WarpGatewayConfig{BaseURL: srv.URL},
+	}}
+	svc := NewWarpSyncService(cfg, client, proxyRepo, groupSvc, nil)
+
+	res, err := svc.SyncFromGateway(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.CreatedProxies) != 3 {
+		t.Fatalf("created=%d want 3 (duplicate names must not collapse)", len(res.CreatedProxies))
+	}
+	if len(res.MemberIDs) != 3 {
+		t.Fatalf("members=%v want 3", res.MemberIDs)
+	}
+	names := map[string]struct{}{}
+	for _, p := range res.CreatedProxies {
+		if _, dup := names[p.Name]; dup {
+			t.Fatalf("duplicate proxy name after sync: %q", p.Name)
+		}
+		names[p.Name] = struct{}{}
+	}
+}
+
+func TestEnsureUniqueWarpProxyName(t *testing.T) {
+	byName := map[string]Proxy{
+		"warp-warp-01": {ID: 1, Name: "warp-warp-01", Host: "127.0.0.1", Port: 10001},
+	}
+	byKey := map[string]Proxy{
+		"127.0.0.1:10001": byName["warp-warp-01"],
+	}
+	// Same endpoint keeps name.
+	got := ensureUniqueWarpProxyName("warp-warp-01", "127.0.0.1:10001", byName, byKey)
+	if got != "warp-warp-01" {
+		t.Fatalf("same endpoint: %q", got)
+	}
+	// Different port must disambiguate.
+	got = ensureUniqueWarpProxyName("warp-warp-01", "127.0.0.1:10002", byName, byKey)
+	if got != "warp-warp-01-10002" {
+		t.Fatalf("diff endpoint: %q", got)
 	}
 }

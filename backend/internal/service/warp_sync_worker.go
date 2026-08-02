@@ -2,31 +2,41 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
+const warpSyncWorkerLockKey = "warp_sync_worker"
+
 // WarpSyncWorker periodically health-checks warp-gateway and syncs proxies into DB.
 type WarpSyncWorker struct {
-	cfg  *config.Config
-	svc  *WarpSyncService
-	log  *slog.Logger
-	mu   sync.Mutex
-	wg   sync.WaitGroup
-	stop chan struct{}
-	on   bool
+	cfg        *config.Config
+	svc        *WarpSyncService
+	lock       LeaderLockCache
+	instanceID string
+	log        *slog.Logger
+	mu         sync.Mutex
+	wg         sync.WaitGroup
+	stop       chan struct{}
+	on         bool
 }
 
 // ProvideWarpSyncWorker constructs and starts the worker when warp is enabled.
-func ProvideWarpSyncWorker(cfg *config.Config, svc *WarpSyncService) *WarpSyncWorker {
+// lock may be nil (single-instance / tests); multi-instance deploys should pass Redis leader lock.
+func ProvideWarpSyncWorker(cfg *config.Config, svc *WarpSyncService, lock LeaderLockCache) *WarpSyncWorker {
+	host, _ := os.Hostname()
 	w := &WarpSyncWorker{
-		cfg:  cfg,
-		svc:  svc,
-		log:  slog.Default().With("component", "warp_sync_worker"),
-		stop: make(chan struct{}),
+		cfg:        cfg,
+		svc:        svc,
+		lock:       lock,
+		instanceID: fmt.Sprintf("%s-%d", host, os.Getpid()),
+		log:        slog.Default().With("component", "warp_sync_worker"),
+		stop:       make(chan struct{}),
 	}
 	w.Start()
 	return w
@@ -96,9 +106,41 @@ func (w *WarpSyncWorker) run() {
 	}
 }
 
+func (w *WarpSyncWorker) lockTTL() time.Duration {
+	// Keep lock at least one reconcile interval so multi-instance ticks do not pile up.
+	sec := w.intervalSec()
+	ttl := time.Duration(sec) * time.Second
+	if ttl < 15*time.Second {
+		ttl = 15 * time.Second
+	}
+	// Cap so a crashed leader recovers within a few minutes.
+	if ttl > 5*time.Minute {
+		ttl = 5 * time.Minute
+	}
+	return ttl
+}
+
 func (w *WarpSyncWorker) tick() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+
+	if w.lock != nil {
+		ok, err := w.lock.TryAcquireLeaderLock(ctx, warpSyncWorkerLockKey, w.instanceID, w.lockTTL())
+		if err != nil {
+			w.log.Warn("warp sync leader lock error, skip tick", "err", err)
+			return
+		}
+		if !ok {
+			return
+		}
+		defer func() {
+			_ = w.lock.ReleaseLeaderLock(context.Background(), warpSyncWorkerLockKey, w.instanceID)
+		}()
+	}
+
+	if w.svc == nil {
+		return
+	}
 	group := ""
 	if w.cfg != nil {
 		group = w.cfg.Warp.DefaultGroupName

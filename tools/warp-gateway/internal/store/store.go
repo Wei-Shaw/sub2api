@@ -15,6 +15,7 @@ var (
 	ErrPortInUse     = errors.New("listen port already allocated")
 	ErrNoFreePort    = errors.New("no free port in range")
 	ErrAlreadyExists = errors.New("instance already exists")
+	ErrNameExists    = errors.New("instance name already exists")
 )
 
 type Status string
@@ -229,6 +230,20 @@ func (s *Store) AllocatePort(preferred int) (int, error) {
 	return 0, ErrNoFreePort
 }
 
+// NameSet returns a copy of all instance names currently registered.
+func (s *Store) NameSet() map[string]struct{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string]struct{}, len(s.byID))
+	for _, inst := range s.byID {
+		if inst == nil || inst.Name == "" {
+			continue
+		}
+		out[inst.Name] = struct{}{}
+	}
+	return out
+}
+
 func (s *Store) Create(inst *Instance) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -237,6 +252,12 @@ func (s *Store) Create(inst *Instance) error {
 	}
 	if owner, used := s.ports[inst.ListenPort]; used {
 		return fmt.Errorf("%w: %d owned by %s", ErrPortInUse, inst.ListenPort, owner)
+	}
+	// Reject duplicate display names so multi-batch pool creation stays unique.
+	for _, existing := range s.byID {
+		if existing != nil && existing.Name == inst.Name {
+			return fmt.Errorf("%w: %q", ErrNameExists, inst.Name)
+		}
 	}
 	now := time.Now().UTC()
 	inst.CreatedAt = now

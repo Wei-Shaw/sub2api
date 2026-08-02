@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -91,20 +92,14 @@ func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyIn
 }
 
 func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *UpdateProxyInput) (*Proxy, error) {
+	if input == nil {
+		return nil, infraerrors.BadRequest("PROXY_UPDATE_REQUIRED", "update input is required")
+	}
 	// 校验：backup_proxy_id 不能是自身
-	if input.BackupProxyID != nil && *input.BackupProxyID == id {
+	if input.BackupProxyIDProvided && input.BackupProxyID != nil && *input.BackupProxyID == id {
 		return nil, infraerrors.BadRequest("PROXY_BACKUP_SELF", "backup proxy cannot be itself")
 	}
-	// 规范化 fallback_mode
-	mode := input.FallbackMode
-	if mode == "" {
-		mode = FallbackModeNone
-	}
-	// 校验：mode=proxy 必须有 backup
-	if mode == FallbackModeProxy && input.BackupProxyID == nil {
-		return nil, infraerrors.BadRequest("PROXY_BACKUP_REQUIRED", "backup proxy required when fallback_mode=proxy")
-	}
-	if input.ExpiryWarnDays < 0 {
+	if input.ExpiryWarnDays != nil && *input.ExpiryWarnDays < 0 {
 		return nil, infraerrors.BadRequest("PROXY_WARN_DAYS_INVALID", "expiry_warn_days must be >= 0")
 	}
 
@@ -125,20 +120,41 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 	if input.Port != 0 {
 		proxy.Port = input.Port
 	}
-	if input.Username != "" {
-		proxy.Username = input.Username
+	if input.Username != nil {
+		proxy.Username = *input.Username
 	}
-	if input.Password != "" {
-		proxy.Password = input.Password
+	if input.Password != nil {
+		proxy.Password = *input.Password
 	}
 	if input.Status != "" {
 		proxy.Status = input.Status
 	}
-	// 透传有效期与回退字段
-	proxy.ExpiresAt = input.ExpiresAt
-	proxy.FallbackMode = mode
-	proxy.BackupProxyID = input.BackupProxyID
-	proxy.ExpiryWarnDays = input.ExpiryWarnDays
+	if input.ExpiresAtProvided {
+		proxy.ExpiresAt = input.ExpiresAt
+	}
+	if input.FallbackMode != nil {
+		mode := strings.TrimSpace(*input.FallbackMode)
+		if mode == "" {
+			mode = FallbackModeNone
+		}
+		proxy.FallbackMode = mode
+	}
+	if input.BackupProxyIDProvided {
+		proxy.BackupProxyID = input.BackupProxyID
+	}
+	if input.ExpiryWarnDays != nil {
+		proxy.ExpiryWarnDays = *input.ExpiryWarnDays
+	}
+
+	// Validate fallback consistency against the post-patch state.
+	mode := proxy.FallbackMode
+	if mode == "" {
+		mode = FallbackModeNone
+		proxy.FallbackMode = mode
+	}
+	if mode == FallbackModeProxy && proxy.BackupProxyID == nil {
+		return nil, infraerrors.BadRequest("PROXY_BACKUP_REQUIRED", "backup proxy required when fallback_mode=proxy")
+	}
 
 	if err := s.proxyRepo.Update(ctx, proxy); err != nil {
 		return nil, err
@@ -194,6 +210,51 @@ func (s *adminServiceImpl) BatchDeleteProxies(ctx context.Context, ids []int64) 
 
 func (s *adminServiceImpl) GetProxyAccounts(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
 	return s.proxyRepo.ListAccountSummariesByProxyID(ctx, proxyID)
+}
+
+// GetProxyStats builds admin stats from account bindings + latest latency cache.
+func (s *adminServiceImpl) GetProxyStats(ctx context.Context, proxyID int64) (*ProxyStats, error) {
+	if _, err := s.proxyRepo.GetByID(ctx, proxyID); err != nil {
+		return nil, err
+	}
+	total, err := s.proxyRepo.CountAccountsByProxyID(ctx, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	stats := &ProxyStats{
+		TotalAccounts:  total,
+		ActiveAccounts: total, // summaries do not carry status; treat bound as active bindings
+		// Usage logs are not keyed by proxy_id; surface 0 rather than fake 100% success.
+		TotalRequests: 0,
+		SuccessRate:   0,
+	}
+	if summaries, err := s.proxyRepo.ListAccountSummariesByProxyID(ctx, proxyID); err == nil {
+		// Prefer summary length when count query and list disagree (soft-delete races).
+		if int64(len(summaries)) > stats.TotalAccounts {
+			stats.TotalAccounts = int64(len(summaries))
+			stats.ActiveAccounts = stats.TotalAccounts
+		}
+	}
+	if s.proxyLatencyCache != nil {
+		if latencies, err := s.proxyLatencyCache.GetProxyLatencies(ctx, []int64{proxyID}); err == nil {
+			if info := latencies[proxyID]; info != nil {
+				if info.Success {
+					stats.LatencyStatus = "success"
+				} else {
+					stats.LatencyStatus = "failed"
+				}
+				if info.LatencyMs != nil {
+					v := float64(*info.LatencyMs)
+					stats.AverageLatency = &v
+				}
+				stats.ExitIP = info.IPAddress
+				stats.QualityStatus = info.QualityStatus
+				stats.QualityScore = info.QualityScore
+				stats.QualityGrade = info.QualityGrade
+			}
+		}
+	}
+	return stats, nil
 }
 
 func (s *adminServiceImpl) CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error) {

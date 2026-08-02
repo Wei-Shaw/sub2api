@@ -38,6 +38,27 @@ func TestBuildAttachPlan_Phase3(t *testing.T) {
 	}
 }
 
+func TestBuildAttachPlan_DisambiguatesDuplicateInstanceNames(t *testing.T) {
+	snap := &WarpPoolSnapshot{
+		Instances: []WarpInstance{
+			{ID: "a1", Name: "warp-01", ListenHost: "127.0.0.1", ListenPort: 20001, Status: "running"},
+			{ID: "a2", Name: "warp-01", ListenHost: "127.0.0.1", ListenPort: 20002, Status: "running"},
+		},
+		TotalCount:   2,
+		HealthyCount: 2,
+	}
+	plan := BuildAttachPlan(snap, "warp-pool")
+	if len(plan.ProxySpecs) != 2 {
+		t.Fatalf("specs=%d", len(plan.ProxySpecs))
+	}
+	if plan.ProxySpecs[0].Name == plan.ProxySpecs[1].Name {
+		t.Fatalf("expected unique proxy names, both %q", plan.ProxySpecs[0].Name)
+	}
+	if plan.ProxySpecs[1].Name != "warp-warp-01-20002" {
+		t.Fatalf("second name=%q", plan.ProxySpecs[1].Name)
+	}
+}
+
 func TestWarpGatewayClient_ListAndSnapshot(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/instances", func(w http.ResponseWriter, r *http.Request) {
