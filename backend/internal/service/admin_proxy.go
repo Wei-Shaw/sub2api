@@ -15,6 +15,22 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/httputil"
 )
 
+// warpManagedProxyNamePrefix marks proxies owned by warp-gateway sync.
+// Admin free create/mutate/delete of these rows races orphan prune and pool routing.
+const warpManagedProxyNamePrefix = "warp-"
+
+func isWarpManagedProxyName(name string) bool {
+	return strings.HasPrefix(strings.TrimSpace(name), warpManagedProxyNamePrefix)
+}
+
+// errProxyWarpManaged is returned when admin APIs try to freely mutate warp-* inventory.
+func errProxyWarpManaged(action string) error {
+	return infraerrors.BadRequest(
+		"PROXY_WARP_MANAGED",
+		fmt.Sprintf("%s warp-* proxies via WARP admin APIs (sync/create-pool/delete-instance), not free proxy CRUD", action),
+	)
+}
+
 // Proxy management implementations
 func (s *adminServiceImpl) ListProxies(ctx context.Context, page, pageSize int, protocol, status, search string, sortBy, sortOrder string) ([]Proxy, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
@@ -57,6 +73,13 @@ func (s *adminServiceImpl) GetProxiesByIDs(ctx context.Context, ids []int64) ([]
 }
 
 func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyInput) (*Proxy, error) {
+	if input == nil {
+		return nil, infraerrors.BadRequest("PROXY_CREATE_REQUIRED", "create input is required")
+	}
+	// W1: warp-* names are owned by WarpSyncService; free admin create races sync.
+	if isWarpManagedProxyName(input.Name) {
+		return nil, errProxyWarpManaged("create")
+	}
 	// 规范化 fallback_mode
 	mode := input.FallbackMode
 	if mode == "" {
@@ -108,6 +131,32 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 		return nil, err
 	}
 
+	// W1: warp-* inventory identity is managed by WARP sync. Allow status/expiry
+	// (and soft operational fields) only; block name/host/port/protocol/auth changes
+	// and renames onto the warp-* prefix.
+	if isWarpManagedProxyName(proxy.Name) {
+		if input.Name != "" && input.Name != proxy.Name {
+			return nil, errProxyWarpManaged("rename")
+		}
+		if input.Protocol != "" && input.Protocol != proxy.Protocol {
+			return nil, errProxyWarpManaged("change protocol of")
+		}
+		if input.Host != "" && input.Host != proxy.Host {
+			return nil, errProxyWarpManaged("change host of")
+		}
+		if input.Port != 0 && input.Port != proxy.Port {
+			return nil, errProxyWarpManaged("change port of")
+		}
+		if input.Username != nil && *input.Username != proxy.Username {
+			return nil, errProxyWarpManaged("change username of")
+		}
+		if input.Password != nil && *input.Password != proxy.Password {
+			return nil, errProxyWarpManaged("change password of")
+		}
+	} else if input.Name != "" && isWarpManagedProxyName(input.Name) {
+		return nil, errProxyWarpManaged("rename to")
+	}
+
 	if input.Name != "" {
 		proxy.Name = input.Name
 	}
@@ -156,13 +205,59 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 		return nil, infraerrors.BadRequest("PROXY_BACKUP_REQUIRED", "backup proxy required when fallback_mode=proxy")
 	}
 
+	statusChanged := input.Status != ""
 	if err := s.proxyRepo.Update(ctx, proxy); err != nil {
 		return nil, err
 	}
+
+	// Manual status change clears durable + Redis health isolation marks so the
+	// health poller does not keep treating the proxy as auto-isolated.
+	// Version is bumped (or key force-written with Version++) so an in-flight
+	// poller CAS with the pre-clear expected version fails instead of writing
+	// IsolatedBy=health back over the admin clear.
+	if statusChanged {
+		if err := s.proxyRepo.UpdateHealthAudit(ctx, id, 0, nil, ""); err != nil {
+			logger.LegacyPrintf("service.admin", "Warning: clear proxy health audit failed (id=%d): %v", id, err)
+		}
+		if s.proxyHealth != nil {
+			meta, gerr := s.proxyHealth.GetProxyHealth(ctx, id)
+			if gerr != nil {
+				logger.LegacyPrintf("service.admin", "Warning: get proxy health cache failed (id=%d): %v", id, gerr)
+			}
+			if meta == nil {
+				meta = &ProxyHealthMeta{}
+			}
+			meta.IsolatedBy = ""
+			meta.IsolatedAt = 0
+			meta.FailCount = 0
+			meta.SuccessCount = 0
+			// Bump version so concurrent saveMetaCAS(expected=old) cannot clobber.
+			if meta.Version < 1 {
+				meta.Version = 1
+			} else {
+				meta.Version++
+			}
+			if err := s.proxyHealth.SetProxyHealth(ctx, id, meta); err != nil {
+				logger.LegacyPrintf("service.admin", "Warning: clear proxy health cache failed (id=%d): %v", id, err)
+			}
+		}
+	}
+
+	// Any successful update can affect group routing (status, host, auth, fallback…).
+	// Always invalidate when the proxy belongs to a group.
+	s.invalidateProxyGroup(proxy)
 	return proxy, nil
 }
 
 func (s *adminServiceImpl) DeleteProxy(ctx context.Context, id int64) error {
+	// W1: always load for warp-* guard (lifecycle is orphan prune / delete-instance).
+	existing, err := s.proxyRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if isWarpManagedProxyName(existing.Name) {
+		return errProxyWarpManaged("delete")
+	}
 	count, err := s.proxyRepo.CountAccountsByProxyID(ctx, id)
 	if err != nil {
 		return err
@@ -170,7 +265,16 @@ func (s *adminServiceImpl) DeleteProxy(ctx context.Context, id int64) error {
 	if count > 0 {
 		return ErrProxyInUse
 	}
-	return s.proxyRepo.Delete(ctx, id)
+	// Soft-delete does not fire ON DELETE SET NULL; clear primary + backup +
+	// sticky origin bindings first (same as warp orphan prune).
+	if _, cerr := s.proxyRepo.ClearAccountProxyBindings(ctx, id); cerr != nil {
+		return fmt.Errorf("clear account proxy bindings before delete: %w", cerr)
+	}
+	if err := s.proxyRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+	s.invalidateProxyGroup(existing)
+	return nil
 }
 
 func (s *adminServiceImpl) BatchDeleteProxies(ctx context.Context, ids []int64) (*ProxyBatchDeleteResult, error) {
@@ -180,6 +284,22 @@ func (s *adminServiceImpl) BatchDeleteProxies(ctx context.Context, ids []int64) 
 	}
 
 	for _, id := range ids {
+		existing, gerr := s.proxyRepo.GetByID(ctx, id)
+		if gerr != nil {
+			result.Skipped = append(result.Skipped, ProxyBatchDeleteSkipped{
+				ID:     id,
+				Reason: gerr.Error(),
+			})
+			continue
+		}
+		// W1: warp-* rows are not freely batch-deletable.
+		if isWarpManagedProxyName(existing.Name) {
+			result.Skipped = append(result.Skipped, ProxyBatchDeleteSkipped{
+				ID:     id,
+				Reason: errProxyWarpManaged("delete").Error(),
+			})
+			continue
+		}
 		count, err := s.proxyRepo.CountAccountsByProxyID(ctx, id)
 		if err != nil {
 			result.Skipped = append(result.Skipped, ProxyBatchDeleteSkipped{
@@ -195,6 +315,13 @@ func (s *adminServiceImpl) BatchDeleteProxies(ctx context.Context, ids []int64) 
 			})
 			continue
 		}
+		if _, cerr := s.proxyRepo.ClearAccountProxyBindings(ctx, id); cerr != nil {
+			result.Skipped = append(result.Skipped, ProxyBatchDeleteSkipped{
+				ID:     id,
+				Reason: cerr.Error(),
+			})
+			continue
+		}
 		if err := s.proxyRepo.Delete(ctx, id); err != nil {
 			result.Skipped = append(result.Skipped, ProxyBatchDeleteSkipped{
 				ID:     id,
@@ -202,6 +329,7 @@ func (s *adminServiceImpl) BatchDeleteProxies(ctx context.Context, ids []int64) 
 			})
 			continue
 		}
+		s.invalidateProxyGroup(existing)
 		result.DeletedIDs = append(result.DeletedIDs, id)
 	}
 

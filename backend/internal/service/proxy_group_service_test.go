@@ -92,6 +92,16 @@ type memProxyRepoForGroupSvc struct {
 	byID map[int64]Proxy
 }
 
+func (r *memProxyRepoForGroupSvc) ListByIDs(_ context.Context, ids []int64) ([]Proxy, error) {
+	out := make([]Proxy, 0, len(ids))
+	for _, id := range ids {
+		if p, ok := r.byID[id]; ok {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 func (r *memProxyRepoForGroupSvc) ListByGroupID(_ context.Context, groupID int64) ([]Proxy, error) {
 	// not used by Create path until GetByID; implement via members lookup outside
 	out := make([]Proxy, 0)
@@ -149,4 +159,85 @@ func TestProxyGroupService_NormalizeStrategy(t *testing.T) {
 	require.Equal(t, ProxyGroupStrategyRoundRobin, normalizeProxyGroupStrategy(""))
 	require.Equal(t, ProxyGroupStrategySticky, normalizeProxyGroupStrategy("STICKY"))
 	require.Equal(t, ProxyGroupStrategyRoundRobin, normalizeProxyGroupStrategy("weird"))
+}
+
+// TestProxyGroupService_SetMembersInvalidatesSourceGroups ensures that when
+// proxies are moved from group B into group A, both A (target) and B (source)
+// are invalidated — not only the target.
+func TestProxyGroupService_SetMembersInvalidatesSourceGroups(t *testing.T) {
+	t.Parallel()
+	groupRepo := newMemProxyGroupRepo()
+	srcGID := int64(0) // filled after Create
+	// Seed two groups; proxy 10 currently belongs to source group.
+	src, err := NewProxyGroupService(groupRepo, &memProxyRepoForGroupSvc{byID: map[int64]Proxy{}}, &memResolver{}).
+		Create(context.Background(), CreateProxyGroupInput{Name: "source", Strategy: "round_robin"})
+	require.NoError(t, err)
+	srcGID = src.ID
+
+	dst, err := NewProxyGroupService(groupRepo, &memProxyRepoForGroupSvc{byID: map[int64]Proxy{}}, &memResolver{}).
+		Create(context.Background(), CreateProxyGroupInput{Name: "target", Strategy: "round_robin"})
+	require.NoError(t, err)
+
+	gidCopy := srcGID
+	proxyRepo := &memProxyRepoForGroupSvc{
+		byID: map[int64]Proxy{
+			10: {ID: 10, Status: StatusActive, GroupID: &gidCopy},
+			11: {ID: 11, Status: StatusActive, GroupID: &gidCopy},
+			20: {ID: 20, Status: StatusActive}, // ungrouped
+		},
+	}
+	// Simulate source group currently holding 10,11.
+	groupRepo.members[srcGID] = []int64{10, 11}
+
+	resolver := &memResolver{}
+	svc := NewProxyGroupService(groupRepo, proxyRepo, resolver)
+
+	// Move 10+11 from source → target; also add ungrouped 20.
+	_, err = svc.SetMembers(context.Background(), dst.ID, []int64{10, 11, 20})
+	require.NoError(t, err)
+
+	require.Contains(t, resolver.invalidated, dst.ID, "target group must be invalidated")
+	require.Contains(t, resolver.invalidated, srcGID, "source group must be invalidated when members leave")
+	// Target once, source once (map iteration order is non-deterministic for extras).
+	require.Equal(t, 1, countID(resolver.invalidated, dst.ID))
+	require.Equal(t, 1, countID(resolver.invalidated, srcGID))
+	require.Len(t, resolver.invalidated, 2)
+}
+
+func countID(ids []int64, want int64) int {
+	n := 0
+	for _, id := range ids {
+		if id == want {
+			n++
+		}
+	}
+	return n
+}
+
+// TestProxyGroupService_SetMembersSkipsTargetAsSource ensures proxies already
+// in the target group do not produce a duplicate "source" invalidation entry
+// beyond the single target invalidate.
+func TestProxyGroupService_SetMembersSameGroupOnlyTarget(t *testing.T) {
+	t.Parallel()
+	groupRepo := newMemProxyGroupRepo()
+	resolver := &memResolver{}
+	created, err := NewProxyGroupService(groupRepo, &memProxyRepoForGroupSvc{byID: map[int64]Proxy{}}, resolver).
+		Create(context.Background(), CreateProxyGroupInput{Name: "solo", ProxyIDs: nil})
+	require.NoError(t, err)
+	// Reset resolver after Create (no members → no invalidate from replaceMembers...
+	// Create with nil ProxyIDs does not call replaceMembers).
+	resolver.invalidated = nil
+
+	gid := created.ID
+	proxyRepo := &memProxyRepoForGroupSvc{
+		byID: map[int64]Proxy{
+			1: {ID: 1, Status: StatusActive, GroupID: &gid},
+		},
+	}
+	groupRepo.members[gid] = []int64{1}
+	svc := NewProxyGroupService(groupRepo, proxyRepo, resolver)
+
+	_, err = svc.SetMembers(context.Background(), gid, []int64{1})
+	require.NoError(t, err)
+	require.Equal(t, []int64{gid}, resolver.invalidated)
 }

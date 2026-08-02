@@ -22,13 +22,21 @@ end
 return 0
 `)
 
+// leaderLockRefreshScript extends TTL only while the caller still owns the lock.
+var leaderLockRefreshScript = redis.NewScript(`
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("PEXPIRE", KEYS[1], ARGV[2])
+end
+return 0
+`)
+
 type leaderLockCache struct {
 	rdb *redis.Client
 }
 
 // NewLeaderLockCache returns a Redis-backed implementation of
 // service.LeaderLockCache used by periodic background jobs to elect a single
-// runner across instances.
+// runner across instances. Also implements service.LeaderLockRefresher.
 func NewLeaderLockCache(rdb *redis.Client) service.LeaderLockCache {
 	return &leaderLockCache{rdb: rdb}
 }
@@ -39,4 +47,23 @@ func (c *leaderLockCache) TryAcquireLeaderLock(ctx context.Context, key, owner s
 
 func (c *leaderLockCache) ReleaseLeaderLock(ctx context.Context, key, owner string) error {
 	return leaderLockReleaseScript.Run(ctx, c.rdb, []string{leaderLockKeyPrefix + key}, owner).Err()
+}
+
+// RefreshLeaderLock extends the lock TTL iff still owned by owner.
+func (c *leaderLockCache) RefreshLeaderLock(ctx context.Context, key, owner string, ttl time.Duration) (bool, error) {
+	if c == nil || c.rdb == nil || key == "" || owner == "" {
+		return false, nil
+	}
+	if ttl <= 0 {
+		ttl = time.Second
+	}
+	ms := ttl.Milliseconds()
+	if ms < 1 {
+		ms = 1
+	}
+	res, err := leaderLockRefreshScript.Run(ctx, c.rdb, []string{leaderLockKeyPrefix + key}, owner, ms).Int()
+	if err != nil {
+		return false, err
+	}
+	return res == 1, nil
 }

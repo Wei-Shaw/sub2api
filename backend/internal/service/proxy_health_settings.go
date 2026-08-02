@@ -77,10 +77,6 @@ func DefaultProxyHealthSettingsFromYAML(cfg *config.Config) ProxyHealthSettings 
 }
 
 func proxyHealthConfigToSettings(c config.ProxyHealthConfig) ProxyHealthSettings {
-	prefixes := append([]string(nil), c.SkipNamePrefix...)
-	if len(prefixes) == 0 {
-		prefixes = []string{"warp-"}
-	}
 	return ProxyHealthSettings{
 		Enabled:          c.Enabled,
 		IntervalSec:      c.IntervalSec,
@@ -90,7 +86,9 @@ func proxyHealthConfigToSettings(c config.ProxyHealthConfig) ProxyHealthSettings
 		SuccessThreshold: c.SuccessThreshold,
 		ProbeScope:       c.ProbeScope,
 		AutoRecover:      c.AutoRecover,
-		SkipNamePrefix:   prefixes,
+		// Always include "warp-" so health never isolates warp proxies
+		// (warp sync rewrites status → fight with health isolation).
+		SkipNamePrefix:   config.EnsureWarpSkipNamePrefix(c.SkipNamePrefix),
 		LeaderLockTTLSec: c.LeaderLockTTLSec,
 		BatchSize:        c.BatchSize,
 		ProbeMode:        c.ProbeMode,
@@ -174,17 +172,7 @@ func normalizeProxyHealthSettings(s *ProxyHealthSettings) error {
 	if s.BatchSize > 500 {
 		s.BatchSize = 500
 	}
-	cleaned := make([]string, 0, len(s.SkipNamePrefix))
-	for _, p := range s.SkipNamePrefix {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			cleaned = append(cleaned, p)
-		}
-	}
-	if len(cleaned) == 0 {
-		cleaned = []string{"warp-"}
-	}
-	s.SkipNamePrefix = cleaned
+	s.SkipNamePrefix = config.EnsureWarpSkipNamePrefix(s.SkipNamePrefix)
 	return nil
 }
 

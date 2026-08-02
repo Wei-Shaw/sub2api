@@ -14,6 +14,13 @@ type updatingProxyRepoStub struct {
 	*proxyRepoStub
 	proxy       *Proxy
 	updateCalls int
+
+	healthAuditCalls []struct {
+		proxyID      int64
+		failCount    int
+		lastHealthAt *time.Time
+		isolatedBy   string
+	}
 }
 
 func (s *updatingProxyRepoStub) GetByID(context.Context, int64) (*Proxy, error) {
@@ -25,6 +32,16 @@ func (s *updatingProxyRepoStub) Update(_ context.Context, proxy *Proxy) error {
 	s.updateCalls++
 	copy := *proxy
 	s.proxy = &copy
+	return nil
+}
+
+func (s *updatingProxyRepoStub) UpdateHealthAudit(_ context.Context, proxyID int64, failCount int, lastHealthAt *time.Time, isolatedBy string) error {
+	s.healthAuditCalls = append(s.healthAuditCalls, struct {
+		proxyID      int64
+		failCount    int
+		lastHealthAt *time.Time
+		isolatedBy   string
+	}{proxyID: proxyID, failCount: failCount, lastHealthAt: lastHealthAt, isolatedBy: isolatedBy})
 	return nil
 }
 

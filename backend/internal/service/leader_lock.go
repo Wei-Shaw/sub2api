@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"database/sql"
+	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -18,20 +20,85 @@ type LeaderLockCache interface {
 	ReleaseLeaderLock(ctx context.Context, key, owner string) error
 }
 
+// LeaderLockRefresher is an optional extension implemented by Redis-backed locks.
+// Holders of long critical sections (WARP register create, large health scans)
+// should renew TTL so peers cannot enter while work is still running.
+type LeaderLockRefresher interface {
+	// RefreshLeaderLock extends TTL iff key is still owned by owner.
+	// Returns true when the refresh succeeded.
+	RefreshLeaderLock(ctx context.Context, key, owner string, ttl time.Duration) (bool, error)
+}
+
+// startLeaderLockHeartbeat renews the lock every ttl/3 while work runs.
+// It returns a derived context that is canceled when a refresh attempt fails
+// (lost ownership or redis error) so in-flight work can abort, and a stop func
+// that ends the heartbeat goroutine (safe to call multiple times).
+// No-op when cache does not implement LeaderLockRefresher or ttl is tiny:
+// parent is returned unchanged with a no-op stop.
+// First refresh is after ttl/3 — does not cancel on start.
+func startLeaderLockHeartbeat(parent context.Context, cache LeaderLockCache, key, owner string, ttl time.Duration) (ctx context.Context, stop func()) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	refresher, ok := cache.(LeaderLockRefresher)
+	if !ok || refresher == nil || ttl < 6*time.Second || key == "" || owner == "" {
+		return parent, func() {}
+	}
+	interval := ttl / 3
+	if interval < 2*time.Second {
+		interval = 2 * time.Second
+	}
+	hbCtx, cancel := context.WithCancel(parent)
+	stopCh := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-parent.Done():
+				return
+			case <-t.C:
+				rctx, rcancel := context.WithTimeout(context.Background(), 2*time.Second)
+				ok, err := refresher.RefreshLeaderLock(rctx, key, owner, ttl)
+				rcancel()
+				if err != nil || !ok {
+					slog.Warn("leader lock heartbeat lost ownership",
+						"key", key,
+						"owner", owner,
+						"refresh_ok", ok,
+						"err", err,
+					)
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	var once sync.Once
+	return hbCtx, func() {
+		once.Do(func() {
+			close(stopCh)
+			<-done
+			cancel()
+		})
+	}
+}
+
 // tryAcquireSingletonLeaderLock provides best-effort single-flight execution of a
-// periodic background job across multiple instances. It prefers the Redis-backed
-// LeaderLockCache and falls back to a Postgres advisory lock when the cache is
-// unavailable or errors, mirroring the approach used by the Ops background
-// services.
+// periodic background job across multiple instances.
 //
-// Semantics:
-//   - acquired      -> returns a non-nil release func and true; callers should
-//     defer the release once the job finishes.
-//   - held by peer  -> returns (nil, false); callers should skip this cycle.
-//   - no backend    -> when neither the cache nor a DB is configured (e.g. unit
-//     tests, or a single-instance deployment without Redis) it runs without
-//     gating, returning a no-op release and true, so the job is never silently
-//     starved.
+// Semantics (no Redis+DB split-brain):
+//   - cache != nil, acquire ok  -> returns redis release and true.
+//   - cache != nil, held by peer -> returns (nil, false).
+//   - cache != nil, Redis error  -> SKIP (nil, false). Do NOT fall through to DB:
+//     peers may still hold the Redis lock; falling through would double-run.
+//   - cache == nil, db != nil    -> try Postgres advisory lock.
+//   - no backend                 -> ungated no-op release and true (unit tests /
+//     single-instance without Redis).
 //
 // The TTL is purely a crash-safety bound: callers release the lock as soon as the
 // job completes, so leadership is re-contested every cycle rather than pinned to
@@ -55,14 +122,18 @@ func tryAcquireSingletonLeaderLock(ctx context.Context, cache LeaderLockCache, d
 			}
 			return release, true
 		}
-		// Cache error: fall through to the DB advisory lock so a flaky Redis does
-		// not stampede the job across every instance.
+		// Redis configured but errored: SKIP. Do not fall through to DB —
+		// peers may still hold the Redis lock (split-brain if we ran via DB).
+		// Also covers canceled/deadline ctx: skip rather than stampede.
+		return nil, false
 	}
 
 	if db != nil {
 		return tryAcquireDBAdvisoryLock(ctx, db, hashAdvisoryLockID(key))
 	}
 
-	// No coordination backend available: run without gating.
+	// No coordination backend available (unit tests / single-instance without
+	// Redis+DB): run without gating so the job is never silently starved.
+	// Production always passes db (and usually cache) via SetLeaderLock.
 	return func() {}, true
 }

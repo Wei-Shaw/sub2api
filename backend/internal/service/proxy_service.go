@@ -12,6 +12,9 @@ import (
 var (
 	ErrProxyNotFound = infraerrors.NotFound("PROXY_NOT_FOUND", "proxy not found")
 	ErrProxyInUse    = infraerrors.Conflict("PROXY_IN_USE", "proxy is in use by accounts")
+	// ErrProxyHealthScanBusy is returned when a process-local or cluster-wide
+	// proxy health scan is already in flight (singleflight / leader lock).
+	ErrProxyHealthScanBusy = infraerrors.Conflict("PROXY_HEALTH_SCAN_BUSY", "proxy health scan already running")
 )
 
 type ProxyRepository interface {
@@ -46,6 +49,19 @@ type ProxyRepository interface {
 	// Health isolation monitoring (admin dashboard).
 	CountHealthIsolated(ctx context.Context) (int64, error)
 	ListHealthIsolated(ctx context.Context, limit int) ([]Proxy, error)
+	// ListHealthIsolatedByID returns inactive health-isolated proxies with id > afterID
+	// ordered by id ASC for rotating AutoRecover probes (avoids last_health_at starvation).
+	ListHealthIsolatedByID(ctx context.Context, afterID int64, limit int) ([]Proxy, error)
+
+	// ClearAccountProxyBindings nulls accounts.proxy_id (and backup_proxy_id
+	// self-refs) so a proxy can be deleted/orphaned without dangling FKs.
+	// Returns the number of accounts unbound.
+	ClearAccountProxyBindings(ctx context.Context, proxyID int64) (int64, error)
+
+	// UpdateStatusWithHealthIsolation atomically sets status + health audit
+	// columns so isolate/recover cannot leave inactive without health_isolated_by
+	// (or the reverse) if the process crashes between two writes.
+	UpdateStatusWithHealthIsolation(ctx context.Context, proxyID int64, status string, failCount int, lastHealthAt *time.Time, isolatedBy string) error
 }
 
 // CreateProxyRequest 创建代理请求

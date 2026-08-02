@@ -2069,6 +2069,15 @@ func (stubProxyRepo) CountHealthIsolated(context.Context) (int64, error) { retur
 func (stubProxyRepo) ListHealthIsolated(context.Context, int) ([]service.Proxy, error) {
 	return nil, nil
 }
+func (stubProxyRepo) ListHealthIsolatedByID(context.Context, int64, int) ([]service.Proxy, error) {
+	return nil, nil
+}
+func (stubProxyRepo) UpdateStatusWithHealthIsolation(context.Context, int64, string, int, *time.Time, string) error {
+	return nil
+}
+func (stubProxyRepo) ClearAccountProxyBindings(context.Context, int64) (int64, error) {
+	return 0, nil
+}
 
 type stubRedeemCodeRepo struct {
 	byUser map[int64][]service.RedeemCode

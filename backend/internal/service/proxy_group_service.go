@@ -201,11 +201,43 @@ func (s *ProxyGroupService) replaceMembers(ctx context.Context, groupID int64, p
 	if s.groupRepo == nil {
 		return fmt.Errorf("proxy group repository not configured")
 	}
+
+	// Proxies being assigned may currently belong to other groups; those source
+	// groups must be invalidated after membership moves (not only the target).
+	oldGroupIDs := s.collectSourceGroupIDs(ctx, groupID, proxyIDs)
+
 	if err := s.groupRepo.SetGroupMembers(ctx, groupID, proxyIDs); err != nil {
 		return err
 	}
 	s.invalidate(groupID)
+	for oldID := range oldGroupIDs {
+		s.invalidate(oldID)
+	}
 	return nil
+}
+
+// collectSourceGroupIDs returns unique group IDs that currently own any of
+// proxyIDs and differ from target groupID. Best-effort: if proxyRepo is nil
+// or ListByIDs fails, returns an empty set (target still invalidated by caller).
+func (s *ProxyGroupService) collectSourceGroupIDs(ctx context.Context, groupID int64, proxyIDs []int64) map[int64]struct{} {
+	out := make(map[int64]struct{})
+	if s == nil || s.proxyRepo == nil || len(proxyIDs) == 0 {
+		return out
+	}
+	proxies, err := s.proxyRepo.ListByIDs(ctx, proxyIDs)
+	if err != nil {
+		// Do not block membership update on a pre-query failure; target
+		// invalidation still runs. Source-group staleness is bounded by TTL.
+		return out
+	}
+	for i := range proxies {
+		gid := proxies[i].GroupID
+		if gid == nil || *gid <= 0 || *gid == groupID {
+			continue
+		}
+		out[*gid] = struct{}{}
+	}
+	return out
 }
 
 func (s *ProxyGroupService) invalidate(groupID int64) {

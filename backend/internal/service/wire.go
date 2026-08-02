@@ -705,6 +705,18 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+// ProvideProxyGroupResolver constructs DefaultProxyGroupResolver with optional
+// cross-instance generation store for multi-instance cache coherence.
+func ProvideProxyGroupResolver(
+	groupRepo ProxyGroupRepository,
+	proxyRepo ProxyRepository,
+	versions ProxyGroupCacheVersionStore,
+) *DefaultProxyGroupResolver {
+	r := NewDefaultProxyGroupResolver(groupRepo, proxyRepo)
+	r.SetVersionStore(versions)
+	return r
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -718,7 +730,7 @@ var ProviderSet = wire.NewSet(
 	NewCompositeRouteResolver,
 	NewAccountService,
 	NewProxyService,
-	NewDefaultProxyGroupResolver,
+	ProvideProxyGroupResolver,
 	wire.Bind(new(ProxyGroupResolver), new(*DefaultProxyGroupResolver)),
 	NewProxyGroupService,
 	NewRedeemService,
@@ -729,7 +741,7 @@ var ProviderSet = wire.NewSet(
 	NewBillingService,
 	ProvideBillingCacheService,
 	NewAnnouncementService,
-	NewAdminService,
+	ProvideAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,

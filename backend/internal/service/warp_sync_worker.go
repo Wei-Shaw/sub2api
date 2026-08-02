@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -18,6 +20,7 @@ type WarpSyncWorker struct {
 	cfg        *config.Config
 	svc        *WarpSyncService
 	lock       LeaderLockCache
+	db         *sql.DB
 	instanceID string
 	log        *slog.Logger
 	mu         sync.Mutex
@@ -28,15 +31,22 @@ type WarpSyncWorker struct {
 
 // ProvideWarpSyncWorker constructs and starts the worker when warp is enabled.
 // lock may be nil (single-instance / tests); multi-instance deploys should pass Redis leader lock.
-func ProvideWarpSyncWorker(cfg *config.Config, svc *WarpSyncService, lock LeaderLockCache) *WarpSyncWorker {
+// db is used only when lock is nil: Postgres advisory single-flight. Redis configured
+// but errored → skip tick (no DB fallthrough; anti split-brain).
+func ProvideWarpSyncWorker(cfg *config.Config, svc *WarpSyncService, lock LeaderLockCache, db *sql.DB) *WarpSyncWorker {
 	host, _ := os.Hostname()
 	w := &WarpSyncWorker{
 		cfg:        cfg,
 		svc:        svc,
 		lock:       lock,
+		db:         db,
 		instanceID: fmt.Sprintf("%s-%d", host, os.Getpid()),
 		log:        slog.Default().With("component", "warp_sync_worker"),
 		stop:       make(chan struct{}),
+	}
+	if svc != nil {
+		// Share lock with admin SyncFromGateway so both paths single-flight.
+		svc.SetLeaderLock(lock, w.instanceID, db)
 	}
 	w.Start()
 	return w
@@ -55,12 +65,16 @@ func (w *WarpSyncWorker) Start() {
 		w.log.Info("warp sync worker not started (disabled or gateway not configured)")
 		return
 	}
+	if w.stop == nil {
+		w.stop = make(chan struct{})
+	}
 	w.on = true
 	w.wg.Add(1)
 	go w.run()
 	w.log.Info("warp sync worker started", "interval_sec", w.intervalSec())
 }
 
+// Stop ends the background loop and allows a later Start (recreates stop chan).
 func (w *WarpSyncWorker) Stop() {
 	if w == nil {
 		return
@@ -75,8 +89,13 @@ func (w *WarpSyncWorker) Stop() {
 	default:
 		close(w.stop)
 	}
+	w.on = false
 	w.mu.Unlock()
 	w.wg.Wait()
+	w.mu.Lock()
+	w.stop = make(chan struct{})
+	w.mu.Unlock()
+	w.log.Info("warp sync worker stopped")
 }
 
 func (w *WarpSyncWorker) intervalSec() int {
@@ -106,38 +125,20 @@ func (w *WarpSyncWorker) run() {
 	}
 }
 
-func (w *WarpSyncWorker) lockTTL() time.Duration {
-	// Keep lock at least one reconcile interval so multi-instance ticks do not pile up.
-	sec := w.intervalSec()
-	ttl := time.Duration(sec) * time.Second
-	if ttl < 15*time.Second {
-		ttl = 15 * time.Second
-	}
-	// Cap so a crashed leader recovers within a few minutes.
-	if ttl > 5*time.Minute {
-		ttl = 5 * time.Minute
-	}
-	return ttl
-}
-
 func (w *WarpSyncWorker) tick() {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// Align tick deadline with leadership lock TTL so HealthAll+Sync under lock
+	// is not canceled early (lock floor is 90s; was fixed 60s).
+	tickTimeout := 90 * time.Second
+	if w.svc != nil {
+		if ttl := w.svc.syncLockTTL(); ttl > tickTimeout {
+			tickTimeout = ttl
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), tickTimeout)
 	defer cancel()
 
-	if w.lock != nil {
-		ok, err := w.lock.TryAcquireLeaderLock(ctx, warpSyncWorkerLockKey, w.instanceID, w.lockTTL())
-		if err != nil {
-			w.log.Warn("warp sync leader lock error, skip tick", "err", err)
-			return
-		}
-		if !ok {
-			return
-		}
-		defer func() {
-			_ = w.lock.ReleaseLeaderLock(context.Background(), warpSyncWorkerLockKey, w.instanceID)
-		}()
-	}
-
+	// Leader lock + process singleflight live inside withSyncLeadership so admin
+	// Sync / HealthAllAndSync share the same gate (avoids double-acquire).
 	if w.svc == nil {
 		return
 	}
@@ -147,6 +148,10 @@ func (w *WarpSyncWorker) tick() {
 	}
 	res, err := w.svc.HealthAllAndSync(ctx, group)
 	if err != nil {
+		if errors.Is(err, ErrWarpSyncBusy) {
+			w.log.Debug("warp health-sync skipped: sync already running or peer holds lock")
+			return
+		}
 		w.log.Warn("warp health-sync failed", "err", err)
 		return
 	}

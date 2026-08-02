@@ -2,14 +2,21 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
+
+// ErrWarpSyncBusy is returned when process-local sync is already running or the
+// peer leader lock could not be acquired (another instance is syncing).
+var ErrWarpSyncBusy = infraerrors.Conflict("WARP_SYNC_BUSY", "warp sync already running")
 
 // WarpSyncService syncs warp-gateway instances into proxies + proxy_groups (auto 落库).
 type WarpSyncService struct {
@@ -19,7 +26,27 @@ type WarpSyncService struct {
 	groupSvc    *ProxyGroupService
 	accountRepo AccountRepository
 	log         *slog.Logger
+
+	// Shared leader lock for worker tick + admin Sync so multi-instance and
+	// concurrent manual syncs do not race on upsert/orphan prune.
+	lock       LeaderLockCache
+	db         *sql.DB
+	instanceID string
+	syncMu     sync.Mutex
+	syncActive bool
+
+	// drasticStreak counts consecutive drastic-drop snapshots with the same
+	// (localWarpN, specN) shape. After drasticPruneConfirmRounds, orphan prune
+	// is allowed so intentional shrink is not permanently blocked.
+	drasticStreak   int
+	drasticLocalN   int
+	drasticSpecN    int
+	drasticStreakMu sync.Mutex
 }
+
+// drasticPruneConfirmRounds is how many consecutive drastic-drop observations
+// are required before orphan prune is permitted (process-local counter).
+const drasticPruneConfirmRounds = 3
 
 func NewWarpSyncService(
 	cfg *config.Config,
@@ -39,6 +66,19 @@ func NewWarpSyncService(
 		groupSvc:    groupSvc,
 		accountRepo: accountRepo,
 		log:         slog.Default().With("component", "warp_sync"),
+	}
+}
+
+// SetLeaderLock wires the distributed lock shared with WarpSyncWorker.
+// db is only used when lock is nil (advisory single-flight). Redis error → skip.
+func (s *WarpSyncService) SetLeaderLock(lock LeaderLockCache, instanceID string, db *sql.DB) {
+	if s == nil {
+		return
+	}
+	s.lock = lock
+	s.db = db
+	if instanceID != "" {
+		s.instanceID = instanceID
 	}
 }
 
@@ -104,6 +144,8 @@ func (s *WarpSyncService) CreatePoolAndSync(ctx context.Context, namePrefix stri
 }
 
 // CreatePoolAndSyncEx adds register flag for real Cloudflare WARP pools.
+// Gateway mutate + sync share one leadership lock so a peer holding the lock
+// cannot leave a partial fork (create succeeded, sync skipped).
 func (s *WarpSyncService) CreatePoolAndSyncEx(ctx context.Context, namePrefix string, count int, groupName string, register bool) (*WarpSyncResult, error) {
 	if !s.Enabled() {
 		return nil, fmt.Errorf("warp gateway is disabled")
@@ -111,10 +153,21 @@ func (s *WarpSyncService) CreatePoolAndSyncEx(ctx context.Context, namePrefix st
 	if count <= 0 {
 		return nil, fmt.Errorf("count must be > 0")
 	}
-	if _, err := s.client.CreatePoolEx(ctx, namePrefix, count, register); err != nil {
-		return nil, err
+	// Soft cap protects gateway + DB from accidental bulk create storms.
+	if count > 50 {
+		return nil, infraerrors.BadRequest("WARP_POOL_COUNT_TOO_LARGE", "count must be <= 50")
 	}
-	return s.SyncFromGateway(ctx, groupName)
+	return s.withSyncLeadershipTTL(ctx, s.createLockTTL(count, register), func(ctx context.Context) (*WarpSyncResult, error) {
+		if _, err := s.client.CreatePoolEx(ctx, namePrefix, count, register); err != nil {
+			return nil, err
+		}
+		res, err := s.syncFromGatewayLocked(ctx, groupName)
+		if err != nil {
+			// W3: create already committed on gateway — surface partial success clearly.
+			return nil, fmt.Errorf("gateway create succeeded but sync failed (instances may exist on gateway): %w", err)
+		}
+		return res, nil
+	})
 }
 
 // RegisterProfilesAndSync registers free WARP profiles into a new pool then syncs.
@@ -152,13 +205,25 @@ func (s *WarpSyncService) BindAccountsToGroup(ctx context.Context, accountIDs []
 	if err != nil {
 		return nil, err
 	}
-	// Ensure group has members from latest gateway snapshot.
+	// W4: fail-closed — bind must not proceed on a stale/empty pool when sync fails
+	// (including ErrWarpSyncBusy → 409). Previously Warn-and-continue left accounts
+	// pointed at an unsynced group.
 	if _, err := s.SyncFromGateway(ctx, groupName); err != nil {
-		s.log.Warn("bind: sync before bind failed", "err", err)
+		return nil, err
 	}
 	// re-load group after sync
 	if g2, err := s.ensureGroup(ctx, groupName); err == nil {
 		group = g2
+	}
+	// Require at least one member so bind does not attach accounts to an empty pool.
+	if s.proxyRepo != nil {
+		n, cerr := s.proxyRepo.CountByGroupID(ctx, group.ID)
+		if cerr != nil {
+			return nil, fmt.Errorf("count warp group members: %w", cerr)
+		}
+		if n == 0 {
+			return nil, infraerrors.BadRequest("WARP_GROUP_EMPTY", "warp pool group has no members after sync; create/sync pool first")
+		}
 	}
 
 	ids := accountIDs
@@ -203,14 +268,18 @@ func (s *WarpSyncService) BindAccountsToGroup(ctx context.Context, accountIDs []
 }
 
 // HealthAllAndSync runs gateway health then syncs (unhealthy → detach if configured).
+// HealthAll and sync share one leadership lock so peer contention returns
+// ErrWarpSyncBusy before either mutates local inventory.
 func (s *WarpSyncService) HealthAllAndSync(ctx context.Context, groupName string) (*WarpSyncResult, error) {
 	if !s.Enabled() {
 		return nil, fmt.Errorf("warp gateway is disabled")
 	}
-	if _, _, _, err := s.client.HealthAll(ctx); err != nil {
-		return nil, err
-	}
-	return s.SyncFromGateway(ctx, groupName)
+	return s.withSyncLeadership(ctx, func(ctx context.Context) (*WarpSyncResult, error) {
+		if _, _, _, err := s.client.HealthAll(ctx); err != nil {
+			return nil, err
+		}
+		return s.syncFromGatewayLocked(ctx, groupName)
+	})
 }
 
 // RotateAndSync rotates one gateway instance and re-syncs the pool.
@@ -218,10 +287,12 @@ func (s *WarpSyncService) RotateAndSync(ctx context.Context, instanceID, groupNa
 	if !s.Enabled() {
 		return nil, fmt.Errorf("warp gateway is disabled")
 	}
-	if _, err := s.client.Rotate(ctx, instanceID); err != nil {
-		return nil, err
-	}
-	return s.SyncFromGateway(ctx, groupName)
+	return s.withSyncLeadership(ctx, func(ctx context.Context) (*WarpSyncResult, error) {
+		if _, err := s.client.Rotate(ctx, instanceID); err != nil {
+			return nil, err
+		}
+		return s.syncFromGatewayLocked(ctx, groupName)
+	})
 }
 
 // DeleteInstanceAndSync deletes a gateway instance (optionally CF unregister) then syncs proxies.
@@ -232,13 +303,17 @@ func (s *WarpSyncService) DeleteInstanceAndSync(ctx context.Context, instanceID,
 	if strings.TrimSpace(instanceID) == "" {
 		return nil, fmt.Errorf("instance id required")
 	}
-	if err := s.client.DeleteInstance(ctx, instanceID, deregisterCloudflare); err != nil {
-		return nil, err
-	}
-	return s.SyncFromGateway(ctx, groupName)
+	return s.withSyncLeadership(ctx, func(ctx context.Context) (*WarpSyncResult, error) {
+		if err := s.client.DeleteInstance(ctx, instanceID, deregisterCloudflare); err != nil {
+			return nil, err
+		}
+		return s.syncFromGatewayLocked(ctx, groupName)
+	})
 }
 
 // SyncFromGateway pulls snapshot and upserts proxies + group membership.
+// Process-local singleflight + shared leader lock gate worker ticks and admin
+// Sync so concurrent runs cannot double-create or race orphan prune.
 func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string) (*WarpSyncResult, error) {
 	if !s.Enabled() {
 		return nil, fmt.Errorf("warp gateway is disabled")
@@ -246,6 +321,124 @@ func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string)
 	if s.proxyRepo == nil {
 		return nil, fmt.Errorf("proxy repository not configured")
 	}
+	return s.withSyncLeadership(ctx, func(ctx context.Context) (*WarpSyncResult, error) {
+		return s.syncFromGatewayLocked(ctx, groupName)
+	})
+}
+
+// withSyncLeadership runs fn while holding process singleflight + leader lock.
+// fn should call syncFromGatewayLocked or gateway mutate+sync.
+// Returns ErrWarpSyncBusy before any gateway mutate when the lock is held.
+func (s *WarpSyncService) withSyncLeadership(ctx context.Context, fn func(ctx context.Context) (*WarpSyncResult, error)) (*WarpSyncResult, error) {
+	return s.withSyncLeadershipTTL(ctx, s.syncLockTTL(), fn)
+}
+
+// withSyncLeadershipTTL is like withSyncLeadership but uses an explicit lock TTL
+// (e.g. register create whose HTTP timeout far exceeds the default sync TTL).
+// When the Redis lock implements LeaderLockRefresher, a heartbeat renews TTL
+// every ttl/3 so long create+sync cannot be overtaken by a peer.
+func (s *WarpSyncService) withSyncLeadershipTTL(ctx context.Context, ttl time.Duration, fn func(ctx context.Context) (*WarpSyncResult, error)) (*WarpSyncResult, error) {
+	if s == nil {
+		return nil, fmt.Errorf("warp sync service is nil")
+	}
+	if !s.Enabled() {
+		return nil, fmt.Errorf("warp gateway is disabled")
+	}
+	if ttl <= 0 {
+		ttl = s.syncLockTTL()
+	}
+
+	s.syncMu.Lock()
+	if s.syncActive {
+		s.syncMu.Unlock()
+		return nil, ErrWarpSyncBusy
+	}
+	s.syncActive = true
+	s.syncMu.Unlock()
+	defer func() {
+		s.syncMu.Lock()
+		s.syncActive = false
+		s.syncMu.Unlock()
+	}()
+
+	owner := s.instanceID
+	if owner == "" {
+		owner = "warp-sync"
+	}
+	// Independent short context so a long parent deadline (or cancelled admin
+	// request) does not leave acquire hanging or race release.
+	lockCtx, lockCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	release, ok := tryAcquireSingletonLeaderLock(lockCtx, s.lock, s.db, warpSyncWorkerLockKey, owner, ttl)
+	lockCancel()
+	if !ok {
+		s.log.Debug("warp sync skipped: leader lock held by peer or backend unavailable")
+		return nil, ErrWarpSyncBusy
+	}
+	if release != nil {
+		defer release()
+	}
+	// Heartbeat ctx cancels when leadership is lost mid-sync so fn aborts.
+	hbCtx, stopHB := startLeaderLockHeartbeat(ctx, s.lock, warpSyncWorkerLockKey, owner, ttl)
+	defer stopHB()
+
+	return fn(hbCtx)
+}
+
+// syncLockTTL is the leader-lock hold time for one withSyncLeadership critical section.
+// Must exceed worst-case HealthAll+Sync (worker tick timeout aligns to this) with headroom.
+// Floor 90s; ceiling 5m; prefers ReconcileInterval when larger than the floor.
+// Heartbeat renews while held; ceiling is a crash-safety bound between renewals.
+func (s *WarpSyncService) syncLockTTL() time.Duration {
+	sec := 90
+	if s.cfg.Gateway.ReconcileInterval > 0 {
+		sec = s.cfg.Gateway.ReconcileInterval
+	}
+	ttl := time.Duration(sec) * time.Second
+	if ttl < 90*time.Second {
+		ttl = 90 * time.Second
+	}
+	if ttl > 5*time.Minute {
+		ttl = 5 * time.Minute
+	}
+	return ttl
+}
+
+// createLockTTL covers CreatePoolEx HTTP timeout (especially register=true) plus
+// a sync budget so leadership cannot expire mid-create while a peer HealthAllAndSyncs.
+// Mirrors WarpGatewayClient.CreatePoolEx timeout selection.
+func (s *WarpSyncService) createLockTTL(count int, register bool) time.Duration {
+	base := s.syncLockTTL()
+	if count < 1 {
+		count = 1
+	}
+	createTO := 30 * time.Second
+	if s.client != nil && s.client.cfg.Timeout > 0 {
+		createTO = s.client.cfg.Timeout
+	}
+	if register {
+		// Same formula as WarpGatewayClient.CreatePoolEx for real WARP handshakes.
+		regTO := time.Duration(30+count*25) * time.Second
+		if createTO < 120*time.Second {
+			createTO = regTO
+		}
+		if createTO < regTO {
+			createTO = regTO
+		}
+	}
+	// Snapshot + upsert + prune headroom after gateway returns.
+	syncBudget := 2*time.Minute + time.Duration(count)*2*time.Second
+	ttl := createTO + syncBudget + 30*time.Second
+	if ttl < base {
+		ttl = base
+	}
+	// Hard cap: count=50 register is ~21min create; allow up to 30m + heartbeat.
+	if ttl > 30*time.Minute {
+		ttl = 30 * time.Minute
+	}
+	return ttl
+}
+
+func (s *WarpSyncService) syncFromGatewayLocked(ctx context.Context, groupName string) (*WarpSyncResult, error) {
 	if groupName == "" {
 		groupName = s.cfg.DefaultGroupName
 	}
@@ -272,6 +465,105 @@ func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string)
 	byKey, byName, err := s.indexProxies(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	localWarpN := 0
+	for name := range byName {
+		if strings.HasPrefix(name, "warp-") {
+			localWarpN++
+		}
+	}
+
+	// Circuit breaker: successful empty gateway snapshot must not wipe local
+	// warp-* inventory (transient gateway bug / empty body / wrong env).
+	// Also treat TotalCount>0 with empty Instances as inconsistent empty.
+	instancesEmpty := snap == nil || len(snap.Instances) == 0
+	gatewayEmpty := instancesEmpty || len(plan.ProxySpecs) == 0
+	inconsistentEmpty := snap != nil && snap.TotalCount > 0 && len(snap.Instances) == 0
+	if gatewayEmpty {
+		if localWarpN > 0 {
+			var msg string
+			if inconsistentEmpty {
+				msg = fmt.Sprintf("inconsistent empty gateway snapshot: TotalCount=%d but Instances empty; refusing to prune %d local warp-* proxies", snap.TotalCount, localWarpN)
+			} else {
+				msg = fmt.Sprintf("empty gateway snapshot: refusing to prune %d local warp-* proxies", localWarpN)
+			}
+			result.Alerts = append(result.Alerts, msg)
+			s.log.Warn(msg)
+			// Skip orphan prune and SetMembers that would drop all warp members.
+			return result, nil
+		}
+		if inconsistentEmpty {
+			msg := fmt.Sprintf("inconsistent empty gateway snapshot: TotalCount=%d but Instances empty", snap.TotalCount)
+			result.Alerts = append(result.Alerts, msg)
+			s.log.Warn(msg)
+			return result, nil
+		}
+	}
+
+	// Drastic drop: gateway returned far fewer specs than local warp-* inventory.
+	// Still upsert present specs. Refuse orphan prune + SetMembers replace for the
+	// first few consecutive identical drastic observations so a flaky snapshot
+	// cannot wipe inventory or shrink group membership used for routing.
+	// After drasticPruneConfirmRounds with TotalCount==specN, allow prune + SetMembers
+	// (intentional shrink).
+	//
+	// C3: streak is process-local under leader singleflight (only the leader runs
+	// sync). Leadership move resets streak → delayed prune (safe). TotalCount must
+	// match len(ProxySpecs) before a round counts toward confirmed shrink so a
+	// truncated Instances array with stale TotalCount cannot arm prune.
+	allowOrphanPrune := true
+	allowMemberReplace := true
+	specN := len(plan.ProxySpecs)
+	if localWarpN >= 4 && specN > 0 && specN*2 < localWarpN {
+		totalConsistent := snap != nil && snap.TotalCount == specN
+		s.drasticStreakMu.Lock()
+		if !totalConsistent {
+			// Shape mismatch: refuse prune/replace; do not advance streak.
+			allowOrphanPrune = false
+			allowMemberReplace = false
+			tc := 0
+			if snap != nil {
+				tc = snap.TotalCount
+			}
+			msg := fmt.Sprintf("gateway snapshot dropped from %d local warp-* to %d specs (TotalCount=%d inconsistent); refusing orphan prune and member replace",
+				localWarpN, specN, tc)
+			result.Alerts = append(result.Alerts, msg)
+			s.log.Warn(msg)
+		} else {
+			if s.drasticLocalN == localWarpN && s.drasticSpecN == specN {
+				s.drasticStreak++
+			} else {
+				s.drasticStreak = 1
+				s.drasticLocalN = localWarpN
+				s.drasticSpecN = specN
+			}
+			streak := s.drasticStreak
+			if streak < drasticPruneConfirmRounds {
+				allowOrphanPrune = false
+				allowMemberReplace = false
+				msg := fmt.Sprintf("gateway snapshot dropped from %d local warp-* to %d specs; refusing orphan prune (%d/%d consistent rounds)",
+					localWarpN, specN, streak, drasticPruneConfirmRounds)
+				result.Alerts = append(result.Alerts, msg)
+				s.log.Warn(msg)
+			} else {
+				// Confirmed shrink: allow prune + SetMembers; reset streak so a later drop re-arms.
+				s.drasticStreak = 0
+				s.drasticLocalN = 0
+				s.drasticSpecN = 0
+				msg := fmt.Sprintf("gateway snapshot dropped from %d local warp-* to %d specs; allowing orphan prune after %d consistent rounds",
+					localWarpN, specN, drasticPruneConfirmRounds)
+				result.Alerts = append(result.Alerts, msg)
+				s.log.Warn(msg)
+			}
+		}
+		s.drasticStreakMu.Unlock()
+	} else {
+		s.drasticStreakMu.Lock()
+		s.drasticStreak = 0
+		s.drasticLocalN = 0
+		s.drasticSpecN = 0
+		s.drasticStreakMu.Unlock()
 	}
 
 	memberIDs := make([]int64, 0, len(plan.ProxySpecs))
@@ -343,46 +635,61 @@ func (s *WarpSyncService) SyncFromGateway(ctx context.Context, groupName string)
 	}
 
 	// Prune orphan warp-* proxies no longer present on gateway.
-	for name, p := range byName {
-		if !strings.HasPrefix(name, "warp-") {
-			continue
+	// Soft-delete leaves accounts.proxy_id dangling unless we unbind first;
+	// also skip (with alert) when count fails rather than deleting blind.
+	// Drastic-drop rounds skip prune while still upserting present specs.
+	if allowOrphanPrune {
+		for name, p := range byName {
+			if !strings.HasPrefix(name, "warp-") {
+				continue
+			}
+			key := proxyHostPortKey(p.Host, p.Port)
+			if _, ok := keepNames[name]; ok {
+				continue
+			}
+			if _, ok := keepKeys[key]; ok {
+				continue
+			}
+			if err := s.deleteOrphanWarpProxy(ctx, p, result); err != nil {
+				s.log.Warn("delete orphan warp proxy failed", "name", name, "id", p.ID, "err", err)
+				continue
+			}
 		}
-		key := proxyHostPortKey(p.Host, p.Port)
-		if _, ok := keepNames[name]; ok {
-			continue
-		}
-		if _, ok := keepKeys[key]; ok {
-			continue
-		}
-		if err := s.proxyRepo.Delete(ctx, p.ID); err != nil {
-			s.log.Warn("delete orphan warp proxy failed", "name", name, "id", p.ID, "err", err)
-			continue
-		}
-		result.DeletedProxies = append(result.DeletedProxies, p)
 	}
 
 	// Ensure group exists and set members.
+	// W2: when drastic refuse (allowMemberReplace=false), skip SetMembers so
+	// routing keeps existing warp-* group members (same safety as empty path).
 	if s.groupSvc != nil {
 		group, err := s.ensureGroup(ctx, groupName)
 		if err != nil {
 			return nil, err
 		}
-		// Preserve non-warp members that operators mixed into the managed group.
-		// WARP sync owns only warp-* rows; full replace would silently drop others.
-		memberIDs, err = s.mergeNonWarpGroupMembers(ctx, group.ID, memberIDs)
-		if err != nil {
-			return nil, err
-		}
-		withMembers, err := s.groupSvc.SetMembers(ctx, group.ID, memberIDs)
-		if err != nil {
-			return nil, fmt.Errorf("set group members: %w", err)
-		}
-		result.Group = withMembers
-		// Soft consistency check: gateway healthy count vs group members.
-		if snap != nil && snap.HealthyCount > 0 && len(memberIDs) < snap.HealthyCount {
-			msg := fmt.Sprintf("warp sync member count %d < gateway healthy %d (possible index gap or detach)", len(memberIDs), snap.HealthyCount)
-			result.Alerts = append(result.Alerts, msg)
-			s.log.Warn(msg)
+		if allowMemberReplace {
+			// Preserve non-warp members that operators mixed into the managed group.
+			// WARP sync owns only warp-* rows; full replace would silently drop others.
+			memberIDs, err = s.mergeNonWarpGroupMembers(ctx, group.ID, memberIDs)
+			if err != nil {
+				return nil, err
+			}
+			withMembers, err := s.groupSvc.SetMembers(ctx, group.ID, memberIDs)
+			if err != nil {
+				return nil, fmt.Errorf("set group members: %w", err)
+			}
+			result.Group = withMembers
+			// Soft consistency check: gateway healthy count vs group members.
+			if snap != nil && snap.HealthyCount > 0 && len(memberIDs) < snap.HealthyCount {
+				msg := fmt.Sprintf("warp sync member count %d < gateway healthy %d (possible index gap or detach)", len(memberIDs), snap.HealthyCount)
+				result.Alerts = append(result.Alerts, msg)
+				s.log.Warn(msg)
+			}
+		} else {
+			// Keep existing membership; still surface group for callers.
+			if with, gerr := s.groupSvc.GetByID(ctx, group.ID); gerr == nil {
+				result.Group = with
+			} else {
+				result.Group = &ProxyGroupWithProxies{ProxyGroup: *group}
+			}
 		}
 	}
 	result.MemberIDs = memberIDs
@@ -423,6 +730,42 @@ func (s *WarpSyncService) mergeNonWarpGroupMembers(ctx context.Context, groupID 
 		out = append(out, p.ID)
 	}
 	return out, nil
+}
+
+// deleteOrphanWarpProxy unbinds accounts (and backup refs) then soft-deletes a
+// warp-* proxy that disappeared from the gateway. In-use rows are unbound rather
+// than skipped so sticky accounts do not keep a dead SOCKS endpoint forever.
+func (s *WarpSyncService) deleteOrphanWarpProxy(ctx context.Context, p Proxy, result *WarpSyncResult) error {
+	if s.proxyRepo == nil || result == nil {
+		return nil
+	}
+	count, err := s.proxyRepo.CountAccountsByProxyID(ctx, p.ID)
+	if err != nil {
+		msg := fmt.Sprintf("orphan warp proxy %s (id=%d): count accounts failed: %v", p.Name, p.ID, err)
+		result.Alerts = append(result.Alerts, msg)
+		return err
+	}
+	if count > 0 {
+		unbound, cerr := s.proxyRepo.ClearAccountProxyBindings(ctx, p.ID)
+		if cerr != nil {
+			msg := fmt.Sprintf("orphan warp proxy %s (id=%d): clear %d account binding(s) failed: %v", p.Name, p.ID, count, cerr)
+			result.Alerts = append(result.Alerts, msg)
+			return cerr
+		}
+		msg := fmt.Sprintf("orphan warp proxy %s (id=%d): unbound %d account(s) before delete", p.Name, p.ID, unbound)
+		result.Alerts = append(result.Alerts, msg)
+		s.log.Warn(msg)
+	} else {
+		// Still clear backup_proxy_id self-refs even when no accounts are bound.
+		if _, cerr := s.proxyRepo.ClearAccountProxyBindings(ctx, p.ID); cerr != nil {
+			s.log.Debug("clear orphan proxy backup refs failed", "id", p.ID, "err", cerr)
+		}
+	}
+	if err := s.proxyRepo.Delete(ctx, p.ID); err != nil {
+		return err
+	}
+	result.DeletedProxies = append(result.DeletedProxies, p)
+	return nil
 }
 
 func (s *WarpSyncService) proxyRepoCreate(ctx context.Context, spec WarpProxySpec) (*Proxy, error) {

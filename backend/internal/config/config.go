@@ -3736,12 +3736,31 @@ func normalizeProxyHealthConfig(cfg *ProxyHealthConfig) error {
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = 100
 	}
-	if len(cfg.SkipNamePrefix) == 0 {
-		cfg.SkipNamePrefix = []string{"warp-"}
-	} else {
-		cfg.SkipNamePrefix = normalizeStringSlice(cfg.SkipNamePrefix)
-	}
+	// Always include "warp-" so health never isolates warp proxies
+	// (warp sync rewrites status → fight with health isolation).
+	cfg.SkipNamePrefix = EnsureWarpSkipNamePrefix(cfg.SkipNamePrefix)
 	return nil
+}
+
+// EnsureWarpSkipNamePrefix cleans skip prefixes and always includes "warp-".
+// Empty input becomes ["warp-"]; non-empty lists missing "warp-" get it appended.
+func EnsureWarpSkipNamePrefix(prefixes []string) []string {
+	cleaned := make([]string, 0, len(prefixes)+1)
+	hasWarp := false
+	for _, p := range prefixes {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if p == "warp-" {
+			hasWarp = true
+		}
+		cleaned = append(cleaned, p)
+	}
+	if !hasWarp {
+		cleaned = append(cleaned, "warp-")
+	}
+	return cleaned
 }
 
 func normalizeStringSlice(values []string) []string {

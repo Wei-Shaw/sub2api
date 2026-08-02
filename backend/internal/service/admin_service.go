@@ -664,6 +664,11 @@ type adminServiceImpl struct {
 	affiliateService     adminRechargeAffiliateAccruer
 	compositeRouteRepo   CompositeModelRouteRepository
 	compositeResolver    *CompositeRouteResolver
+	// proxyGroupResolver optional; used to invalidate group member cache after
+	// proxy status/delete changes. Nil-safe for unit tests.
+	proxyGroupResolver ProxyGroupResolver
+	// proxyHealth optional; clears Redis isolation marks on manual status change.
+	proxyHealth ProxyHealthCache
 }
 
 type adminRechargeAffiliateAccruer interface {
@@ -723,4 +728,54 @@ func NewAdminService(
 		compositeRouteRepo:   compositeRouteRepo,
 		compositeResolver:    compositeResolver,
 	}
+}
+
+// ProvideAdminService wires AdminService with optional ProxyGroupResolver for
+// multi-instance proxy-group member cache invalidation, and optional
+// ProxyHealthCache to clear isolation marks on manual status changes.
+func ProvideAdminService(
+	userRepo UserRepository,
+	groupRepo AdminGroupRepository,
+	accountRepo AdminAccountRepository,
+	proxyRepo ProxyRepository,
+	apiKeyRepo APIKeyRepository,
+	redeemCodeRepo RedeemCodeRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	userRPMCache UserRPMCache,
+	billingCacheService *BillingCacheService,
+	proxyProber ProxyExitInfoProber,
+	proxyLatencyCache ProxyLatencyCache,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	entClient *dbent.Client,
+	settingService *SettingService,
+	defaultSubAssigner DefaultSubscriptionAssigner,
+	userSubRepo UserSubscriptionRepository,
+	privacyClientFactory PrivacyClientFactory,
+	runtimeBlocker AccountRuntimeBlocker,
+	affiliateService *AffiliateService,
+	compositeRouteRepo CompositeModelRouteRepository,
+	compositeResolver *CompositeRouteResolver,
+	proxyGroupResolver ProxyGroupResolver,
+	proxyHealthCache ProxyHealthCache,
+) AdminService {
+	svc := NewAdminService(
+		userRepo, groupRepo, accountRepo, proxyRepo, apiKeyRepo, redeemCodeRepo,
+		userGroupRateRepo, userRPMCache, billingCacheService, proxyProber,
+		proxyLatencyCache, authCacheInvalidator, entClient, settingService,
+		defaultSubAssigner, userSubRepo, privacyClientFactory, runtimeBlocker,
+		affiliateService, compositeRouteRepo, compositeResolver,
+	)
+	if impl, ok := svc.(*adminServiceImpl); ok && impl != nil {
+		impl.proxyGroupResolver = proxyGroupResolver
+		impl.proxyHealth = proxyHealthCache
+	}
+	return svc
+}
+
+// invalidateProxyGroup drops the resolver cache for the proxy's group (if any).
+func (s *adminServiceImpl) invalidateProxyGroup(proxy *Proxy) {
+	if s == nil || s.proxyGroupResolver == nil || proxy == nil || proxy.GroupID == nil || *proxy.GroupID <= 0 {
+		return
+	}
+	s.proxyGroupResolver.InvalidateGroup(*proxy.GroupID)
 }

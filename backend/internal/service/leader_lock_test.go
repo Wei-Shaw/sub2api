@@ -75,15 +75,24 @@ func TestTryAcquireSingletonLeaderLock_ContendedThenReleased(t *testing.T) {
 	releaseB()
 }
 
-// When the cache errors, the helper must fall through rather than acquire via the
-// cache. With no DB configured it runs ungated so the job is never starved by a
-// flaky Redis.
-func TestTryAcquireSingletonLeaderLock_CacheErrorFallsThrough(t *testing.T) {
+// When Redis is configured but errors, skip — never fall through to ungated
+// run or DB. Peers may still hold the Redis lock (avoids split-brain).
+func TestTryAcquireSingletonLeaderLock_CacheErrorSkips(t *testing.T) {
 	cache := &fakeLeaderLockCache{acquireErr: context.DeadlineExceeded}
 	release, ok := tryAcquireSingletonLeaderLock(context.Background(), cache, nil, "k", "inst", time.Minute)
-	require.True(t, ok, "cache error with no DB must run ungated, not skip")
-	require.NotNil(t, release)
-	require.NotPanics(t, release)
+	require.False(t, ok, "cache error with live ctx must skip, not run ungated")
+	require.Nil(t, release)
+}
+
+// When the cache errors AND the caller ctx is already canceled/deadline, still
+// skip (same path as any cache error — no ungated fallthrough).
+func TestTryAcquireSingletonLeaderLock_CacheErrorCanceledCtxSkips(t *testing.T) {
+	cache := &fakeLeaderLockCache{acquireErr: context.DeadlineExceeded}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	release, ok := tryAcquireSingletonLeaderLock(ctx, cache, nil, "k", "inst", time.Minute)
+	require.False(t, ok, "dead ctx + cache error must skip, not run ungated")
+	require.Nil(t, release)
 }
 
 func TestSubscriptionExpiryService_ReminderSkipsScanWhenNotLeader(t *testing.T) {
@@ -141,4 +150,69 @@ func TestSubscriptionExpiryService_ReminderRunsEveryCycleSingleInstance(t *testi
 			require.Equal(t, 3, repo.listCalls, "single instance must run every cycle")
 		})
 	}
+}
+
+// fakeRefreshLeaderLock implements LeaderLockRefresher for heartbeat tests.
+type fakeRefreshLeaderLock struct {
+	fakeLeaderLockCache
+	mu         sync.Mutex
+	refreshOK  bool
+	refreshErr error
+	refreshes  int
+}
+
+func (f *fakeRefreshLeaderLock) RefreshLeaderLock(_ context.Context, _, _ string, _ time.Duration) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.refreshes++
+	return f.refreshOK, f.refreshErr
+}
+
+func (f *fakeRefreshLeaderLock) refreshCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.refreshes
+}
+
+// H2: when Refresh returns false, derived context is canceled (after first tick).
+func TestStartLeaderLockHeartbeat_CancelsOnRefreshFalse(t *testing.T) {
+	cache := &fakeRefreshLeaderLock{refreshOK: false}
+	// ttl=6s → interval=2s; first refresh after ~2s, not on start.
+	ctx, stop := startLeaderLockHeartbeat(context.Background(), cache, "leader:hb:test", "owner-a", 6*time.Second)
+	defer stop()
+
+	require.Nil(t, ctx.Err(), "must not cancel before first refresh")
+	require.Equal(t, 0, cache.refreshCount())
+
+	select {
+	case <-ctx.Done():
+		// leadership lost after failed refresh
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected heartbeat to cancel ctx after refresh returned false")
+	}
+	require.GreaterOrEqual(t, cache.refreshCount(), 1)
+	stop() // idempotent
+}
+
+// H2: Refresh error also cancels.
+func TestStartLeaderLockHeartbeat_CancelsOnRefreshError(t *testing.T) {
+	cache := &fakeRefreshLeaderLock{refreshOK: false, refreshErr: context.DeadlineExceeded}
+	ctx, stop := startLeaderLockHeartbeat(context.Background(), cache, "leader:hb:err", "owner-b", 6*time.Second)
+	defer stop()
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected cancel on refresh error")
+	}
+}
+
+// H2: no refresher → parent ctx returned, no-op stop.
+func TestStartLeaderLockHeartbeat_NoRefresherPassthrough(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cache := &fakeLeaderLockCache{} // no RefreshLeaderLock
+	ctx, stop := startLeaderLockHeartbeat(parent, cache, "k", "o", time.Minute)
+	require.Equal(t, parent, ctx)
+	require.NotPanics(t, stop)
 }

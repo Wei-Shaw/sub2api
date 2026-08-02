@@ -833,6 +833,15 @@ func (m *mockGeminiProxyRepo) CountHealthIsolated(context.Context) (int64, error
 func (m *mockGeminiProxyRepo) ListHealthIsolated(context.Context, int) ([]Proxy, error) {
 	return nil, nil
 }
+func (m *mockGeminiProxyRepo) ListHealthIsolatedByID(context.Context, int64, int) ([]Proxy, error) {
+	return nil, nil
+}
+func (m *mockGeminiProxyRepo) UpdateStatusWithHealthIsolation(context.Context, int64, string, int, *time.Time, string) error {
+	return nil
+}
+func (m *mockGeminiProxyRepo) ClearAccountProxyBindings(context.Context, int64) (int64, error) {
+	return 0, nil
+}
 
 // mockDriveClient implements geminicli.DriveClient for tests.
 type mockDriveClient struct {

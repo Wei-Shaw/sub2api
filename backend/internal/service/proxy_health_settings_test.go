@@ -58,6 +58,73 @@ func TestNormalizeProxyHealthSettings(t *testing.T) {
 	}
 }
 
+func TestNormalizeProxyHealthSettings_CustomSkipAlwaysIncludesWarp(t *testing.T) {
+	s := &ProxyHealthSettings{
+		IntervalSec:    30,
+		ProbeScope:     "group_members",
+		ProbeMode:      "connectivity",
+		SkipNamePrefix: []string{"foo-"},
+	}
+	if err := normalizeProxyHealthSettings(s); err != nil {
+		t.Fatal(err)
+	}
+	foundFoo, foundWarp := false, false
+	for _, p := range s.SkipNamePrefix {
+		if p == "foo-" {
+			foundFoo = true
+		}
+		if p == "warp-" {
+			foundWarp = true
+		}
+	}
+	if !foundFoo || !foundWarp {
+		t.Fatalf("custom skip must keep foo- and always include warp-: %#v", s.SkipNamePrefix)
+	}
+
+	// Already present: do not duplicate.
+	s2 := &ProxyHealthSettings{
+		IntervalSec:    30,
+		ProbeScope:     "group_members",
+		ProbeMode:      "connectivity",
+		SkipNamePrefix: []string{"warp-", "tmp-"},
+	}
+	if err := normalizeProxyHealthSettings(s2); err != nil {
+		t.Fatal(err)
+	}
+	warpCount := 0
+	for _, p := range s2.SkipNamePrefix {
+		if p == "warp-" {
+			warpCount++
+		}
+	}
+	if warpCount != 1 {
+		t.Fatalf("expected single warp- entry, got %#v", s2.SkipNamePrefix)
+	}
+}
+
+func TestProxyHealthService_CustomSkipNamePrefixStillSkipsWarp(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.ProxyHealth = config.ProxyHealthConfig{
+		Enabled:        true,
+		IntervalSec:    60,
+		TimeoutMS:      10000,
+		Concurrency:    4,
+		ProbeScope:     "group_members",
+		ProbeMode:      "connectivity",
+		SkipNamePrefix: []string{"foo-"},
+	}
+	svc := NewProxyHealthService(cfg, nil, nil, nil, nil, nil, nil, nil, nil)
+	if !svc.shouldSkip(Proxy{Name: "warp-xxx"}) {
+		t.Fatalf("custom skip [foo-] must still skip warp-xxx; prefixes=%#v", svc.conf().SkipNamePrefix)
+	}
+	if !svc.shouldSkip(Proxy{Name: "foo-bar"}) {
+		t.Fatal("custom skip foo- must match foo-bar")
+	}
+	if svc.shouldSkip(Proxy{Name: "pool-1"}) {
+		t.Fatal("pool-1 must not be skipped")
+	}
+}
+
 func TestProxyHealthUpdateConfigPersistsAndApplies(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.ProxyHealth = config.ProxyHealthConfig{
@@ -122,7 +189,7 @@ func TestProxyHealthWorkerApplyStartStop(t *testing.T) {
 	cfg.ProxyHealth.Enabled = false
 	cfg.ProxyHealth.IntervalSec = 60
 	svc := NewProxyHealthService(cfg, nil, nil, nil, nil, nil, nil, nil, nil)
-	w := ProvideProxyHealthWorker(cfg, svc, nil)
+	w := ProvideProxyHealthWorker(cfg, svc, nil, nil)
 	if w.Running() {
 		t.Fatal("should not run when disabled")
 	}

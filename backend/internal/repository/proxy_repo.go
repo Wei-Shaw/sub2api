@@ -512,6 +512,37 @@ func (r *proxyRepository) UpdateHealthAudit(ctx context.Context, proxyID int64, 
 	return err
 }
 
+// UpdateStatusWithHealthIsolation sets status and health audit columns in one
+// UPDATE so isolate/recover cannot leave a crash window with inactive status
+// but empty health_isolated_by (which would block AutoRecover forever).
+func (r *proxyRepository) UpdateStatusWithHealthIsolation(ctx context.Context, proxyID int64, status string, failCount int, lastHealthAt *time.Time, isolatedBy string) error {
+	if r == nil || r.sql == nil || proxyID <= 0 {
+		return nil
+	}
+	if failCount < 0 {
+		failCount = 0
+	}
+	var last any
+	if lastHealthAt != nil {
+		last = *lastHealthAt
+	}
+	var iso any
+	if isolatedBy != "" {
+		iso = isolatedBy
+	}
+	_, err := r.sql.ExecContext(ctx, `
+		UPDATE proxies
+		SET status = $2,
+		    health_fail_count = $3,
+		    last_health_at = $4,
+		    health_isolated_by = $5,
+		    updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`,
+		proxyID, status, failCount, last, iso,
+	)
+	return err
+}
+
 // GetHealthAudit loads durable health snapshot columns.
 func (r *proxyRepository) GetHealthAudit(ctx context.Context, proxyID int64) (failCount int, lastHealthAt *time.Time, isolatedBy string, err error) {
 	if r == nil || r.sql == nil || proxyID <= 0 {
@@ -612,6 +643,59 @@ func (r *proxyRepository) ListHealthIsolated(ctx context.Context, limit int) ([]
 	return out, rows.Err()
 }
 
+// ListHealthIsolatedByID returns inactive health-isolated proxies with id > afterID
+// ordered by id ASC. Used by the health poller AutoRecover path so a rotating
+// cursor can eventually re-probe every isolated row (avoids last_health_at DESC
+// starvation where the same hot 200 always win).
+func (r *proxyRepository) ListHealthIsolatedByID(ctx context.Context, afterID int64, limit int) ([]service.Proxy, error) {
+	if r == nil || r.sql == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if afterID < 0 {
+		afterID = 0
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id, name, protocol, host, port, status,
+		       COALESCE(health_fail_count, 0), last_health_at, COALESCE(health_isolated_by, '')
+		FROM proxies
+		WHERE deleted_at IS NULL
+		  AND status = 'inactive'
+		  AND health_isolated_by = 'health'
+		  AND id > $1
+		ORDER BY id ASC
+		LIMIT $2`, afterID, limit)
+	if err != nil {
+		if strings.Contains(err.Error(), "health_isolated_by") || strings.Contains(err.Error(), "does not exist") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]service.Proxy, 0, limit)
+	for rows.Next() {
+		var p service.Proxy
+		var lha sql.NullTime
+		if err := rows.Scan(
+			&p.ID, &p.Name, &p.Protocol, &p.Host, &p.Port, &p.Status,
+			&p.HealthFailCount, &lha, &p.HealthIsolatedBy,
+		); err != nil {
+			return nil, err
+		}
+		if lha.Valid {
+			t := lha.Time
+			p.LastHealthAt = &t
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // ExistsByHostPortAuth checks if a proxy with the same host, port, username, and password exists
 func (r *proxyRepository) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error) {
 	q := r.client.Proxy.Query().
@@ -639,6 +723,37 @@ func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID in
 		return 0, err
 	}
 	return count, nil
+}
+
+// ClearAccountProxyBindings nulls account bindings, fallback origin refs, and
+// backup_proxy_id self-refs so orphan/admin deletes do not leave dangling FKs.
+func (r *proxyRepository) ClearAccountProxyBindings(ctx context.Context, proxyID int64) (int64, error) {
+	if r == nil || r.sql == nil || proxyID <= 0 {
+		return 0, nil
+	}
+	res, err := r.sql.ExecContext(ctx, `
+		UPDATE accounts
+		SET proxy_id = NULL, updated_at = NOW()
+		WHERE proxy_id = $1 AND deleted_at IS NULL`, proxyID)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	// Clear sticky fallback origin so deleted proxies cannot be restored as origin.
+	if _, err := r.sql.ExecContext(ctx, `
+		UPDATE accounts
+		SET proxy_fallback_origin_id = NULL, updated_at = NOW()
+		WHERE proxy_fallback_origin_id = $1 AND deleted_at IS NULL`, proxyID); err != nil {
+		return n, err
+	}
+	// Drop backup pointers so soft-deleted orphans do not pin expired rows.
+	if _, err := r.sql.ExecContext(ctx, `
+		UPDATE proxies
+		SET backup_proxy_id = NULL, updated_at = NOW()
+		WHERE backup_proxy_id = $1 AND deleted_at IS NULL`, proxyID); err != nil {
+		return n, err
+	}
+	return n, nil
 }
 
 func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {

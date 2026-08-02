@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -29,10 +31,14 @@ type ProxyHealthWorker struct {
 
 // ProvideProxyHealthWorker constructs and starts the worker when enabled.
 // metrics is optional (may be nil); counters live on the service when provided.
+// db is used only when lock is nil (no Redis): Postgres advisory single-flight.
+// When Redis lock is configured, acquire errors SKIP the tick (no DB fallthrough)
+// to avoid Redis+DB split-brain; see tryAcquireSingletonLeaderLock.
 func ProvideProxyHealthWorker(
 	cfg *config.Config,
 	svc *ProxyHealthService,
 	lock LeaderLockCache,
+	db *sql.DB,
 ) *ProxyHealthWorker {
 	host, _ := os.Hostname()
 	w := &ProxyHealthWorker{
@@ -45,6 +51,8 @@ func ProvideProxyHealthWorker(
 	}
 	if svc != nil {
 		svc.SetWorker(w)
+		// Share the same leader lock with admin RunScan so both paths single-flight.
+		svc.SetLeaderLock(lock, w.instanceID, db)
 	}
 	w.Start()
 	return w
@@ -145,20 +153,6 @@ func (w *ProxyHealthWorker) intervalSec() int {
 	return sec
 }
 
-func (w *ProxyHealthWorker) lockTTL() time.Duration {
-	sec := 50
-	if w.cfg != nil && w.cfg.ProxyHealth.LeaderLockTTLSec > 0 {
-		sec = w.cfg.ProxyHealth.LeaderLockTTLSec
-	}
-	ttl := time.Duration(sec) * time.Second
-	// Keep lock longer than one interval so multi-instance ticks do not pile up.
-	minTTL := time.Duration(w.intervalSec()) * time.Second
-	if ttl < minTTL {
-		ttl = minTTL
-	}
-	return ttl
-}
-
 func (w *ProxyHealthWorker) run() {
 	defer w.wg.Done()
 	// Short boot delay so Redis/DB are ready.
@@ -214,25 +208,17 @@ func (w *ProxyHealthWorker) tick() {
 		return
 	}
 	// Bound whole tick: probes themselves use per-proxy timeout.
+	// Leader lock + process singleflight live inside RunOnce so admin RunScan
+	// shares the same gate (avoids double-acquire if we locked here too).
 	ctx, cancel := context.WithTimeout(context.Background(), w.tickTimeout())
 	defer cancel()
 
-	if w.lock != nil {
-		ok, err := w.lock.TryAcquireLeaderLock(ctx, proxyHealthWorkerLockKey, w.instanceID, w.lockTTL())
-		if err != nil {
-			w.log.Warn("proxy health leader lock error, skip tick", "err", err)
-			return
-		}
-		if !ok {
-			return
-		}
-		defer func() {
-			_ = w.lock.ReleaseLeaderLock(context.Background(), proxyHealthWorkerLockKey, w.instanceID)
-		}()
-	}
-
 	res, err := w.svc.RunOnce(ctx)
 	if err != nil {
+		if errors.Is(err, ErrProxyHealthScanBusy) {
+			w.log.Debug("proxy health tick skipped: scan already running")
+			return
+		}
 		w.log.Warn("proxy health run failed", "err", err)
 		return
 	}
