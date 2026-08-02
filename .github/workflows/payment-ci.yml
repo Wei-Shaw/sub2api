@@ -1,0 +1,124 @@
+name: Payment CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/payment-ci.yml'
+      - 'backend/go.mod'
+      - 'backend/go.sum'
+      - 'backend/internal/payment/**'
+      - 'backend/internal/service/payment*.go'
+      - 'backend/internal/service/payment*_test.go'
+      - 'backend/internal/handler/payment*.go'
+      - 'backend/internal/server/routes/payment.go'
+      - 'frontend/package.json'
+      - 'frontend/pnpm-lock.yaml'
+      - 'frontend/src/api/payment.ts'
+      - 'frontend/src/api/admin/payment.ts'
+      - 'frontend/src/components/payment/**'
+      - 'frontend/src/types/payment.ts'
+      - 'frontend/src/views/user/Payment*.vue'
+      - 'frontend/src/views/user/payment*.ts'
+      - 'frontend/src/views/user/__tests__/Payment*.spec.ts'
+      - 'frontend/src/views/user/__tests__/payment*.spec.ts'
+      - 'frontend/src/views/admin/SettingsView.vue'
+      - 'frontend/src/i18n/locales/**'
+  pull_request:
+    paths:
+      - '.github/workflows/payment-ci.yml'
+      - 'backend/go.mod'
+      - 'backend/go.sum'
+      - 'backend/internal/payment/**'
+      - 'backend/internal/service/payment*.go'
+      - 'backend/internal/service/payment*_test.go'
+      - 'backend/internal/handler/payment*.go'
+      - 'backend/internal/server/routes/payment.go'
+      - 'frontend/package.json'
+      - 'frontend/pnpm-lock.yaml'
+      - 'frontend/src/api/payment.ts'
+      - 'frontend/src/api/admin/payment.ts'
+      - 'frontend/src/components/payment/**'
+      - 'frontend/src/types/payment.ts'
+      - 'frontend/src/views/user/Payment*.vue'
+      - 'frontend/src/views/user/payment*.ts'
+      - 'frontend/src/views/user/__tests__/Payment*.spec.ts'
+      - 'frontend/src/views/user/__tests__/payment*.spec.ts'
+      - 'frontend/src/views/admin/SettingsView.vue'
+      - 'frontend/src/i18n/locales/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: payment-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-payment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Verify Go version
+        run: |
+          go version | grep -q 'go1.26.5'
+
+      - name: Run payment provider tests
+        working-directory: backend
+        run: go test ./internal/payment/... -v
+
+      - name: Run payment service tests
+        working-directory: backend
+        run: go test ./internal/service -run 'Test.*(Payment|Webhook|Refund)' -v
+
+      - name: Run payment handler tests
+        working-directory: backend
+        run: go test ./internal/handler -run 'Test.*(Payment|Webhook)' -v
+
+  frontend-payment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend payment typecheck
+        working-directory: frontend
+        run: pnpm typecheck
+
+      - name: Run payment-focused Vitest suite
+        working-directory: frontend
+        run: >
+          pnpm vitest run
+          src/components/payment/__tests__/providerConfig.spec.ts
+          src/components/payment/__tests__/PaymentProviderDialog.spec.ts
+          src/components/payment/__tests__/paymentFlow.spec.ts
+          src/views/user/__tests__/paymentUx.spec.ts
+          src/views/user/__tests__/PaymentView.spec.ts
+          src/views/user/__tests__/PaymentResultView.spec.ts
+          src/views/user/__tests__/StripePaymentView.spec.ts
+          src/views/user/__tests__/AirwallexPaymentView.spec.ts
