@@ -657,6 +657,28 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.upstream_billing_probe_enabled).toBe(true)
   REDACTED)
 
+  it('exposes the upstream billing auto-probe toggle for non-OpenAI API-key accounts', async () => {
+    // 探测已放宽到全部 API-key 平台：grok 账号同样能开启并保存。
+    const account = buildAccount()
+    account.platform = 'grok'
+    account.name = 'grok-relay'
+    account.credentials = { api_key: 'sk-grok', base_url: 'https://relay.example/v1' REDACTED
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false REDACTED)
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.upstream_billing_probe_enabled).toBe(true)
+  REDACTED)
+
   it('clears OpenAI APIKey Responses override when set back to auto', async () => {
     const account = buildAccount()
     account.extra = {

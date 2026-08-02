@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,6 +40,10 @@ const (
 	upstreamBillingProbeMaxPerCycle            = 20
 	upstreamBillingProbeConcurrency            = 4
 	upstreamBillingProbeMaxDelay               = 24 * time.Hour
+	// unsupported 账号的重探间隔倍数：上游不是 sub2api 中转就不会突然长出
+	// /v1/sub2api/billing，按常规 interval 重排只会持续占满每周期
+	// upstreamBillingProbeMaxPerCycle 个名额。
+	upstreamBillingProbeUnsupportedDelayFactor = 8
 	upstreamBillingProbeLeaderLockKey          = "upstream:billing:probe:leader"
 	upstreamBillingProbeLeaderLockTTL          = 2 * time.Minute
 )
@@ -51,7 +56,7 @@ var (
 		"UPSTREAM_BILLING_PROBE_UNAVAILABLE", "upstream billing probe is unavailable",
 	)
 	ErrUpstreamBillingProbeAccountInvalid = infraerrors.BadRequest(
-		"UPSTREAM_BILLING_PROBE_ACCOUNT_INVALID", "account is not an OpenAI API key account",
+		"UPSTREAM_BILLING_PROBE_ACCOUNT_INVALID", "account is not an API key account",
 	)
 	ErrUpstreamBillingProbeIdentityChanged = infraerrors.Conflict(
 		"UPSTREAM_BILLING_PROBE_IDENTITY_CHANGED", "account identity changed during upstream billing probe; retry the probe",
@@ -551,13 +556,24 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	if s.accountTestService == nil || s.accountTestService.httpUpstream == nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "transport_unavailable", 0)
 REDACTED
-	apiKey := account.GetOpenAIApiKey()
+	// 平台放宽后取数直读 credentials：所有 API-key 平台的密钥与自定义上游
+	// 统一存放在 credentials.api_key / credentials.base_url。
+	apiKey := account.GetCredential("api_key")
 	if apiKey == "" {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "missing_api_key", 0)
 REDACTED
-	baseURL := account.GetOpenAIBaseURL()
-	if baseURL == "" {
-		baseURL = "https://api.openai.com"
+	baseURL := account.GetCredential("base_url")
+	if account.Platform == PlatformOpenAI {
+		if baseURL == "" {
+			// 保持官方语义：OpenAI 账号无自定义 base 时探官方域（404 → unsupported）。
+			baseURL = "https://api.openai.com"
+	REDACTED
+REDACTED else if upstreamBillingProbeTargetIsOfficialAPI(baseURL) {
+		// 其他平台 base_url 为空或指向官方 API 根域（前端创建时会把空值
+		// 填成官方默认域，且提供 us-east-1.api.x.ai 等官方区域预设）⇒
+		// 必无 /v1/sub2api/billing；不发请求，直接记 unsupported，避免
+		// 拿账号 Key 周期性请求官方域的不存在路径。
+		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "unsupported", 0)
 REDACTED
 	normalizedBaseURL, err := s.accountTestService.validateUpstreamBaseURL(baseURL)
 	if err != nil {
@@ -580,7 +596,12 @@ REDACTED
 	if err != nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "request_build_failed", 0)
 REDACTED
-	reqCtx := WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI)
+	// OpenAI 账号保持官方 openai 传输画像；其他平台探测走默认画像。
+	profile := HTTPUpstreamProfileDefault
+	if account.Platform == PlatformOpenAI {
+		profile = HTTPUpstreamProfileOpenAI
+REDACTED
+	reqCtx := WithHTTPUpstreamProfile(req.Context(), profile)
 	req = req.WithContext(WithHTTPUpstreamRedirectsDisabled(reqCtx))
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -644,13 +665,15 @@ func (s *UpstreamBillingProbeService) persistProbeFailure(
 		failureCount = previous.FailureCount + 1
 REDACTED
 	status := UpstreamBillingProbeStatusFailed
+	delay := nextProbeDelay(intervalMinutes, retryAfterDuration)
 	if reason == "unsupported" {
 		status = UpstreamBillingProbeStatusUnsupported
+		delay = unsupportedProbeDelay(intervalMinutes, retryAfterDuration)
 REDACTED
 	snapshot := &UpstreamBillingProbeSnapshot{
 		Status:        status,
 		LastAttemptAt: now,
-		NextProbeAt:   now.Add(nextProbeDelay(intervalMinutes, retryAfterDuration)),
+		NextProbeAt:   now.Add(delay),
 		FailureCount:  failureCount,
 		HTTPStatus:    statusCode,
 		LastError:     reason,
@@ -840,8 +863,67 @@ REDACTED
 	return &snapshot
 REDACTED
 
+// IsUpstreamBillingProbeIdentity reports whether an account identity may opt
+// in to the upstream billing probe. `/v1/sub2api/billing` is a key-scoped
+// sub2api convention: any API-key account whose base_url points at a
+// sub2api-compatible upstream answers it regardless of the account platform,
+// so eligibility is not restricted to OpenAI.
+// Non-sub2api upstreams return 404 and the snapshot records "unsupported".
+// Only AccountTypeAPIKey is in scope. OAuth/Bedrock hold no static API key to
+// present at all; AccountTypeUpstream (antigravity relay accounts) does carry
+// a base_url plus a static api_key, but it is deliberately left out of the
+// current supported set. New antigravity relay accounts are created with
+// type=apikey by the admin form, so only pre-existing type=upstream rows
+// cannot turn the probe on.
+func IsUpstreamBillingProbeIdentity(platform, accountType string) bool {
+	return platform != "" && accountType == AccountTypeAPIKey
+REDACTED
+
 func isUpstreamBillingProbeAccount(account *Account) bool {
-	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey
+	return account != nil && IsUpstreamBillingProbeIdentity(account.Platform, account.Type)
+REDACTED
+
+// upstreamBillingProbeOfficialAPIDomains lists the root domains of official
+// provider APIs. The create form fills empty base_url values with official
+// defaults (and offers official regional presets like us-east-1.api.x.ai),
+// so probing them would send the account key to an official API path that
+// cannot exist. Matching is by registrable root domain — exact host or any
+// subdomain, after stripping the port and a trailing DNS dot — because no
+// third-party sub2api relay can live under these domains, while custom
+// relays (the only targets that can answer /v1/sub2api/billing) always do
+// probe. OpenAI-platform accounts never reach this check: they keep the
+// upstream-official behavior of probing api.openai.com.
+// ollama.com is a first-class configuration here (Ollama Cloud accounts are
+// platform openai/anthropic with base_url https://ollama.com/v1), and it is
+// an official provider API just like the rest, so it belongs on this list.
+var upstreamBillingProbeOfficialAPIDomains = []string{
+	"anthropic.com",
+	"googleapis.com",
+	"x.ai",
+	"grok.com",
+	"openai.com",
+	"ollama.com",
+REDACTED
+
+func upstreamBillingProbeTargetIsOfficialAPI(baseURL string) bool {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		return true
+REDACTED
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return false
+REDACTED
+	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	if host == "" {
+		return true
+REDACTED
+	for _, domain := range upstreamBillingProbeOfficialAPIDomains {
+		if host == domain || strings.HasSuffix(host, "."+domain) {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func upstreamBillingProbeEnabled(account *Account) bool {
@@ -883,6 +965,23 @@ REDACTED
 		return upstreamBillingProbeMaxDelay
 REDACTED
 	return interval
+REDACTED
+
+// unsupportedProbeDelay 拉长 unsupported 账号的重探间隔，让无效候选自然退出
+// 热队列，不再和真正接入 sub2api 的中转账号抢每周期的探测名额。
+// 仍按 upstreamBillingProbeMaxDelay 封顶，保证上游后来接入 sub2api 时最迟一天
+// 内会被重新发现；base 本身已达上限（例如 Retry-After 明确要求更久）时原样返回，
+// 不缩短上游指令。
+func unsupportedProbeDelay(intervalMinutes int, retryAfterDuration time.Duration) time.Duration {
+	base := nextProbeDelay(intervalMinutes, retryAfterDuration)
+	if base >= upstreamBillingProbeMaxDelay {
+		return base
+REDACTED
+	stretched := base * upstreamBillingProbeUnsupportedDelayFactor
+	if stretched > upstreamBillingProbeMaxDelay {
+		return upstreamBillingProbeMaxDelay
+REDACTED
+	return stretched
 REDACTED
 
 func retryAfter(header http.Header, now time.Time) time.Duration {

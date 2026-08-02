@@ -625,7 +625,7 @@ REDACTED {
 		delete(extra, key)
 REDACTED
 	probeExplicitlyDisabled := false
-	probeAccount := account.Platform == service.PlatformOpenAI && account.Type == service.AccountTypeAPIKey
+	probeAccount := service.IsUpstreamBillingProbeIdentity(account.Platform, account.Type)
 	if probeAccount && explicitProbeEnabled != nil {
 		extra[service.UpstreamBillingProbeEnabledExtraKey] = *explicitProbeEnabled
 		probeExplicitlyDisabled = !*explicitProbeEnabled
@@ -709,7 +709,7 @@ REDACTED
 			credentials = $1::jsonb,
 			extra = CASE
 				-- 凭证整体未变化 ⇒ Ollama 组身份必然未变化；顶层 DISTINCT 守卫防止
-				-- 非 Ollama 账号的无变化持久化误清 openai 探测快照或重写 NULL extra。
+				-- 非 Ollama 账号的无变化持久化误清探测快照或重写 NULL extra。
 				WHEN platform IN ('openai', 'anthropic')
 					AND type = 'apikey'
 					AND credentials IS DISTINCT FROM $1::jsonb
@@ -720,15 +720,14 @@ REDACTED
 							AND `+ollamaCloudBaseURLMatchesSQL("$1::jsonb ->> 'base_url'")+`
 						)
 					)
-				THEN (CASE
-						WHEN platform = 'openai' THEN COALESCE(extra, '{REDACTED'::jsonb) - 'upstream_billing_probe'
-						ELSE COALESCE(extra, '{REDACTED'::jsonb)
-					END)
+				THEN COALESCE(extra, '{REDACTED'::jsonb)
+					- 'upstream_billing_probe'
 					- 'ollama_cloud_usage_session'
 					- 'ollama_cloud_usage_auto_refresh'
 					- 'ollama_cloud_usage_snapshot'
-				WHEN platform = 'openai'
-					AND type = 'apikey'
+				-- 上游倍率探测已放宽到全部 API-key 平台：凭证变化即视为探测
+				-- 身份变化，丢弃 stale 快照。
+				WHEN type = 'apikey'
 					AND credentials IS DISTINCT FROM $1::jsonb
 				THEN COALESCE(extra, '{REDACTED'::jsonb) - 'upstream_billing_probe'
 				ELSE extra
@@ -2839,8 +2838,8 @@ REDACTED
 	args = append(args, pq.Array(ids))
 	idx++
 	if updates.ProbeEnabled != nil {
-		whereClause += " AND platform = $" + itoa(idx) + " AND type = $" + itoa(idx+1)
-		args = append(args, service.PlatformOpenAI, service.AccountTypeAPIKey)
+		whereClause += " AND type = $" + itoa(idx)
+		args = append(args, service.AccountTypeAPIKey)
 REDACTED
 	query := "UPDATE accounts SET " + joinClauses(setClauses, ", ") + whereClause
 
@@ -3382,7 +3381,6 @@ REDACTED
 			FROM accounts
 			WHERE deleted_at IS NULL
 				AND status = 'active'
-				AND platform = 'openai'
 				AND type = 'apikey'
 				AND extra @> '{"upstream_billing_probe_enabled": trueREDACTED'::jsonb
 		), parsed AS MATERIALIZED (

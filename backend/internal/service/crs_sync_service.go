@@ -1173,7 +1173,7 @@ REDACTED
 		return
 REDACTED
 	target := &Account{Platform: targetPlatform, Type: targetType, Credentials: targetCredentialsREDACTED
-	if targetPlatform == PlatformOpenAI && targetType == AccountTypeAPIKey {
+	if IsUpstreamBillingProbeIdentity(targetPlatform, targetType) {
 		if enabled, ok := existing.Extra[UpstreamBillingProbeEnabledExtraKey]; ok {
 			extra[UpstreamBillingProbeEnabledExtraKey] = enabled
 	REDACTED

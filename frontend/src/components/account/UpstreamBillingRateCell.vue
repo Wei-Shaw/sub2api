@@ -105,7 +105,8 @@ REDACTED>()
 
 const { t REDACTED = useI18n()
 const CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1000
-const eligible = computed(() => props.account.platform === 'openai' && props.account.type === 'apikey')
+// 探测资格已放宽到全部 API-key 平台（上游是 sub2api 即可应答）。
+const eligible = computed(() => props.account.type === 'apikey')
 const snapshot = computed<UpstreamBillingProbeSnapshot | undefined>(() => props.account.extra?.upstream_billing_probe)
 const data = computed(() => snapshot.value?.data)
 const probeEnabled = computed(() => props.account.extra?.upstream_billing_probe_enabled === true)
