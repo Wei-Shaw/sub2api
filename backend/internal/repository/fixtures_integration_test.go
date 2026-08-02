@@ -89,7 +89,10 @@ REDACTED
 		SetStatus(g.Status).
 		SetSubscriptionType(g.SubscriptionType).
 		SetRateMultiplier(g.RateMultiplier).
-		SetIsExclusive(g.IsExclusive)
+		SetIsExclusive(g.IsExclusive).
+		SetProfitControlEnabled(g.ProfitControlEnabled).
+		SetProfitMinMargin(g.ProfitMinMargin).
+		SetProfitSafetyBuffer(g.ProfitSafetyBuffer)
 	if g.Description != "" {
 		create.SetDescription(g.Description)
 REDACTED

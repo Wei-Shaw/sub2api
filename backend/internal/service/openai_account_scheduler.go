@@ -406,7 +406,7 @@ REDACTED()
 			decision.SelectedAccountID = selection.Account.ID
 			decision.SelectedAccountType = selection.Account.Type
 			if req.SessionHash != "" {
-				_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, selection.Account.ID)
+				_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, selection.Account.ID)
 		REDACTED
 			return selection, decision, nil
 	REDACTED
@@ -512,11 +512,11 @@ REDACTED
 	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 	if acquireErr == nil && result != nil && result.Acquired {
 		_ = s.service.refreshStickySessionTTL(ctx, req.GroupID, sessionHash, s.service.openAIWSSessionStickyTTL())
-		return &AccountSelectionResult{
+		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account:     account,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
-	REDACTED, false, nil
+	REDACTED), false, nil
 REDACTED
 
 	cfg := s.service.schedulingConfig()
@@ -532,7 +532,7 @@ REDACTED
 			)
 			return nil, true, nil
 	REDACTED
-		return &AccountSelectionResult{
+		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account: account,
 			WaitPlan: &AccountWaitPlan{
 				AccountID:      accountID,
@@ -540,7 +540,7 @@ REDACTED
 				Timeout:        cfg.StickySessionWaitTimeout,
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 		REDACTED,
-	REDACTED, false, nil
+	REDACTED), false, nil
 REDACTED
 	return nil, false, nil
 REDACTED
@@ -1168,13 +1168,13 @@ REDACTED
 		REDACTED
 	REDACTED
 		if req.SessionHash != "" && !req.PreserveStickyBinding {
-			_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, fresh.ID)
+			_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, fresh.ID)
 	REDACTED
-		return &AccountSelectionResult{
+		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account:     fresh,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
-	REDACTED, compactBlocked, nil
+	REDACTED), compactBlocked, nil
 REDACTED
 	return nil, compactBlocked, nil
 REDACTED
@@ -1247,17 +1247,17 @@ REDACTED
 	REDACTED
 		if result != nil && result.Acquired {
 			if req.SessionHash != "" && !req.PreserveStickyBinding {
-				_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, account.ID)
+				_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, account.ID)
 		REDACTED
-			return &AccountSelectionResult{
+			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 				Account:     account,
 				Acquired:    true,
 				ReleaseFunc: result.ReleaseFunc,
-		REDACTED, nil
+		REDACTED), nil
 	REDACTED
 		if s.service.concurrencyService != nil {
 			cfg := s.service.schedulingConfig()
-			return &AccountSelectionResult{
+			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 				Account: account,
 				WaitPlan: &AccountWaitPlan{
 					AccountID:      account.ID,
@@ -1265,7 +1265,7 @@ REDACTED
 					Timeout:        cfg.StickySessionWaitTimeout,
 					MaxWaiting:     cfg.StickySessionMaxWaiting,
 			REDACTED,
-		REDACTED, nil
+		REDACTED), nil
 	REDACTED
 REDACTED
 	return nil, nil
@@ -1622,7 +1622,7 @@ REDACTED
 				compactBlocked = true
 				continue
 		REDACTED
-			return &AccountSelectionResult{
+			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 				Account: fresh,
 				WaitPlan: &AccountWaitPlan{
 					AccountID:      fresh.ID,
@@ -1630,7 +1630,7 @@ REDACTED
 					Timeout:        cfg.FallbackWaitTimeout,
 					MaxWaiting:     cfg.FallbackMaxWaiting,
 			REDACTED,
-		REDACTED, candidateCount, topK, loadSkew, nil
+		REDACTED), candidateCount, topK, loadSkew, nil
 	REDACTED
 REDACTED
 
@@ -1711,6 +1711,11 @@ REDACTED
 REDACTED
 	if !accountSupportsOpenAICapabilities(account, req.RequiredCapability, req.RequiredImageCapability) {
 		return false, "capability_mismatch"
+REDACTED
+	// 分组利润控制：不合格账号在候选过滤与抢槽后终检阶段即被排除，
+	// 排序/评分/粘性/熔断只在合格账号之间工作；named reason 进入 filter stats。
+	if vetoed, reason := openAIProfitControlVetoReason(ctx, account); vetoed {
+		return false, reason
 REDACTED
 	return true, ""
 REDACTED
@@ -2093,6 +2098,17 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
+	// 分组利润控制：唯一文本调度入口的防御性装门。handler 文本
+	// 入口已在请求开始经 WithOpenAIRequestPricingContext 装门并固定 pricingAt，
+	// 此处对同分组门直接复用（failover 重入阈值稳定），仅为不经 handler 装配的
+	// 内部调用兜底。图片/视频调度不在利润门范围：requiredImageCapability 非空的
+	// Images 调度不装门；requiredCapability == OpenAIEndpointCapabilityResponses
+	// 当前仅显式生图意图的 /v1/responses 设置（HTTP openAIResponsesRequiredCapability
+	// 与 WS 桥同款判定），同样不装门——若未来把该 capability 用于非生图流量，
+	// 需要同步收窄本条件（有测试钉死该映射）。
+	if requiredImageCapability == "" && requiredCapability != OpenAIEndpointCapabilityResponses {
+		ctx = s.withOpenAIProfitControlGate(ctx, groupID)
+REDACTED
 	platform = normalizeOpenAICompatiblePlatform(platform)
 	decision := OpenAIAccountScheduleDecision{REDACTED
 	scheduler := s.getOpenAIAccountScheduler(ctx)
