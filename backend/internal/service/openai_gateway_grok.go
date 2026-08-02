@@ -1153,12 +1153,12 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotForResponse(
 			slog.Warn("persist_grok_usage_snapshot_failed", "account_id", accountID, "error", err)
 		}
 	}
-	// Error responses are reconciled by handleGrokAccountUpstreamError, which
-	// also installs the immediate in-memory scheduling block. Successful
-	// responses can still consume the last available request/token, so persist
-	// that exhausted window here as a real rate limit rather than relying only
-	// on the passive snapshot scheduler check.
-	if hasActiveLimit && !freeRecoveryPending {
+	// Error responses are reconciled by handleGrokAccountUpstreamError. Pool-mode
+	// API keys retain the snapshot for observability but leave account health to
+	// the upstream pool. Successful non-pool responses can still consume the last
+	// available request/token, so persist that exhausted window as a real rate limit.
+	if hasActiveLimit && !freeRecoveryPending && !account.IsPoolMode() {
+		s.blockGrokScheduling(account, resetAt)
 		persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
 	} else if recovery {
 		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
@@ -1507,6 +1507,12 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
 		return false
 	}
 	s.updateGrokUsageSnapshotForResponse(ctx, account, snapshot, responseBody)
+	// Pool-mode API keys retain the snapshot for observability but leave account
+	// health to the upstream pool (origin/main pool-mode policy).
+	if account.IsPoolMode() {
+		slog.Info("grok_pool_mode_error_state_skipped", "account_id", account.ID, "status_code", statusCode)
+		return false
+	}
 	switch statusCode {
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
@@ -1543,7 +1549,7 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
 		// updateGrokUsageSnapshot installs both runtime and durable rate-limit state.
 		// free-usage-exhausted is parsed from responseBody into the snapshot first.
 	default:
-		if statusCode >= 500 && !account.IsPoolMode() {
+		if statusCode >= 500 {
 			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")
 		}
 	}

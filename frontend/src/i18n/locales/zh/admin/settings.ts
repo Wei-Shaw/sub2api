@@ -354,7 +354,7 @@ export default {
       },
       upstreamBillingProbe: {
         title: '上游倍率自动探测',
-        description: '定期获取 OpenAI API Key 所连接上游 Sub2API 站点声明的计费倍率。',
+        description: '定期获取 API Key 账号所连接上游 Sub2API 站点声明的计费倍率；只有另行开启“同步上游声明倍率”的账号才会更新账号倍率。',
         enabled: '启用全局自动探测',
         enabledHint: '开启后，仅对账号自身已启用自动检测的账号执行定时探测；关闭后停止所有定时探测，手动探测不受影响。',
         intervalMinutes: '探测周期（分钟）',
@@ -544,6 +544,8 @@ export default {
           '自定义首页内容，支持 Markdown/HTML。如果输入的是链接（以 http:// 或 https:// 开头），则会使用该链接作为 iframe 的 src 属性，这允许你设置任意网页作为首页。设置后首页的状态信息将不再显示。',
         homeContentIframeWarning:
           '⚠️ iframe 模式提示：部分网站设置了 X-Frame-Options 或 CSP 安全策略，禁止被嵌入到 iframe 中。如果页面显示空白或报错，请确认目标网站允许被嵌入，或考虑使用 HTML 模式自行构建页面内容。',
+        compactHome: '简洁首页',
+        compactHomeHint: '未设置自定义首页内容时，展示简洁的站点信息页面。',
         hideCcsImportButton: '隐藏 CCS 导入按钮',
         hideCcsImportButtonHint: '启用后将在 API Keys 页面隐藏"导入 CCS"按钮'
       },

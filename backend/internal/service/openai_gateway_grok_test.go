@@ -3003,6 +3003,30 @@ func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testi
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
+func TestHandleGrokAccountUpstreamError429PoolModeKeepsSchedulingState(t *testing.T) {
+	account := &Account{
+		ID:       613,
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+	}
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+
+	svc.handleGrokAccountUpstreamError(
+		context.Background(), account, http.StatusTooManyRequests,
+		http.Header{"Retry-After": []string{"45"}}, nil,
+	)
+
+	require.Equal(t, 1, repo.updateCalls, "pool mode should retain the quota snapshot for observability")
+	require.Zero(t, repo.rateLimitedCalls)
+	require.Zero(t, repo.tempUnschedCalls)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Nil(t, account.RateLimitResetAt)
+}
+
 func TestHandleGrokAccountUpstreamError429FreeUsesProbeRecoveryLease(t *testing.T) {
 	limit := xai.GrokFreeRolling24hTokenLimit
 	remaining := int64(0)

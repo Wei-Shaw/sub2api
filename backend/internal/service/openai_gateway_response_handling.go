@@ -450,7 +450,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					}
 					if s.shouldFailoverOpenAIStreamFailedEvent(account, dataBytes, failedMessage) {
 						sawFailedEvent = true
-						streamEarlyErr = s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, dataBytes, failedMessage)
+						streamEarlyErr = s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, dataBytes, failedMessage, resp.Header)
 						return
 					}
 				}

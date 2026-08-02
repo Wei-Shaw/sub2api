@@ -846,6 +846,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					ResponseBody: body,
 				}
 			}
+			// 流中断（缺失 terminal 事件、读错误、数据间隔超时等）时保留已观测到的
+			// usage 与错误一起返回，handler 在错误处理完成后照常提交 usage 记录。
+			if partial := partialStreamUsageResult(resp, streamResult, originalModel, mappedModel, startTime, err); partial != nil {
+				return partial, err
+			}
 			return nil, err
 		}
 		usage = streamResult.usage
