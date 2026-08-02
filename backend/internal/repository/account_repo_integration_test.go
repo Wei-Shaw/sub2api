@@ -11,6 +11,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
@@ -1386,24 +1387,38 @@ func (s *AccountRepoSuite) TestUpdateErrorStatusUnschedulesAccount() {
 	s.Require().False(got.Schedulable)
 }
 
-func (s *AccountRepoSuite) TestClearError_SyncSchedulerSnapshotOnRecovery() {
+func (s *AccountRepoSuite) TestSuccessfulTestRecovery_ReschedulesErroredAccount() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{
-		Name:         "acc-clear-err",
-		Status:       service.StatusError,
-		ErrorMessage: "temporary error",
+		Name:        "acc-successful-test-recovery",
+		Status:      service.StatusActive,
+		Schedulable: true,
 	})
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
 
-	s.Require().NoError(s.repo.ClearError(s.ctx, account.ID))
+	s.Require().NoError(s.repo.SetError(s.ctx, account.ID, "temporary error"))
 
 	got, err := s.repo.GetByID(s.ctx, account.ID)
 	s.Require().NoError(err)
+	s.Require().Equal(service.StatusError, got.Status)
+	s.Require().False(got.Schedulable)
+
+	rateLimitService := service.NewRateLimitService(s.repo, nil, &config.Config{}, nil, nil)
+	_, err = rateLimitService.RecoverAccountAfterSuccessfulTest(s.ctx, account.ID)
+	s.Require().NoError(err)
+
+	got, err = s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
 	s.Require().Equal(service.StatusActive, got.Status)
+	s.Require().True(got.Schedulable)
 	s.Require().Empty(got.ErrorMessage)
-	s.Require().Len(cacheRecorder.setAccounts, 1)
+	s.Require().Len(cacheRecorder.setAccounts, 2)
 	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
-	s.Require().Equal(service.StatusActive, cacheRecorder.setAccounts[0].Status)
+	s.Require().Equal(service.StatusError, cacheRecorder.setAccounts[0].Status)
+	s.Require().False(cacheRecorder.setAccounts[0].Schedulable)
+	s.Require().Equal(account.ID, cacheRecorder.setAccounts[1].ID)
+	s.Require().Equal(service.StatusActive, cacheRecorder.setAccounts[1].Status)
+	s.Require().True(cacheRecorder.setAccounts[1].Schedulable)
 }
 
 // --- UpdateSessionWindow ---
