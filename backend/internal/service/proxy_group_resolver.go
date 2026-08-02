@@ -14,7 +14,7 @@ type cachedGroupMembers struct {
 	group     ProxyGroup
 	members   []Proxy
 	fetchedAt time.Time
-	gen       int64 // cross-instance generation at fill time (0 if versions nil)
+	gen       int64  // cross-instance generation at fill time (0 if versions nil)
 	ExitIP    string // added for ExitIP honesty in group resolution
 }
 

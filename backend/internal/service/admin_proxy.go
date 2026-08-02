@@ -800,8 +800,3 @@ func (s *adminServiceImpl) saveProxyLatency(ctx context.Context, proxyID int64, 
 		logger.LegacyPrintf("service.admin", "Warning: store proxy latency cache failed: %v", err)
 	}
 }
-
-// enhance 409 responses with detail field for ProxiesView
-func (s *adminServiceImpl) errProxyHealthScanBusy() error {
-	return infraerrors.Conflict("PROXY_HEALTH_SCAN_BUSY", "proxy health scan already running")
-}

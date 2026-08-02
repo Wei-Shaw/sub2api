@@ -19,7 +19,7 @@ type ProxyHealthMeta struct {
 	IsolatedAt int64  `json:"isolated_at,omitempty"`
 	// Version is a monotonic CAS token. Callers load meta, mutate, bump Version,
 	// then CompareAndSetProxyHealth with the previous Version as expected.
-	Version int64 `json:"version,omitempty"`
+	Version    int64 `json:"version,omitempty"`
 	Generation int64 `json:"generation,omitempty"`
 }
 
