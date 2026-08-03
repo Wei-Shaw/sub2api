@@ -14,7 +14,7 @@ import type {
   SendVerifyCodeRequest,
   SendVerifyCodeResponse,
   PublicSettings,
-  TencentCaptchaRequestProof,
+  ActionCaptchaRequestProof,
   TotpLoginResponse,
   TotpLogin2FARequest
 REDACTED from '@/types'
@@ -51,7 +51,7 @@ REDACTED
 
 export async function startOAuthLogin(
   request: OAuthLoginStart,
-  proof: TencentCaptchaRequestProof
+  proof: ActionCaptchaRequestProof
 ): Promise<OAuthLoginStartResponse> {
   const { data REDACTED = await apiClient.post<OAuthLoginStartResponse>(
     `/auth/oauth/${request.providerREDACTED/start`,

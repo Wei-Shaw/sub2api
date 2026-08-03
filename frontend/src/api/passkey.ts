@@ -1,5 +1,5 @@
 import { apiClient REDACTED from './client'
-import type { AuthResponse, TencentCaptchaRequestProof REDACTED from '@/types'
+import type { ActionCaptchaRequestProof, AuthResponse REDACTED from '@/types'
 
 export interface PasskeyCredentialSummary {
   id: number
@@ -104,7 +104,7 @@ function serializeAssertionCredential(credential: PublicKeyCredential): Record<s
   REDACTED
 REDACTED
 
-async function login(proof?: TencentCaptchaRequestProof): Promise<AuthResponse> {
+async function login(proof?: ActionCaptchaRequestProof): Promise<AuthResponse> {
   requirePasskeySupport()
   const { data: begin REDACTED = proof
     ? await apiClient.post<CeremonyOptionsResponse>('/auth/passkey/login/begin', proof)

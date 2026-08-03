@@ -59,7 +59,7 @@ func (h *AuthHandler) CompleteGoogleOAuthRegistration(c *gin.Context) {
 REDACTED
 
 func (h *AuthHandler) emailOAuthStart(c *gin.Context, provider string) {
-	if !h.requireTencentCaptchaForOAuthLoginStart(c) {
+	if !h.requireActionCaptchaForOAuthLoginStart(c) {
 		return
 REDACTED
 	cfg, err := h.getEmailOAuthConfig(c.Request.Context(), provider)

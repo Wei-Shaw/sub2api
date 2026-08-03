@@ -11,7 +11,7 @@ import type {
   LoginRequest,
   RegisterRequest,
   AuthResponse,
-  TencentCaptchaRequestProof
+  ActionCaptchaRequestProof
 REDACTED from '@/types'
 
 const AUTH_TOKEN_KEY = 'auth_token'
@@ -281,7 +281,7 @@ export const useAuthStore = defineStore('auth', () => {
     REDACTED
   REDACTED
 
-  async function loginWithPasskey(proof?: TencentCaptchaRequestProof): Promise<User> {
+  async function loginWithPasskey(proof?: ActionCaptchaRequestProof): Promise<User> {
     try {
       const response = await passkeyAPI.login(proof)
       setAuthFromResponse(response)

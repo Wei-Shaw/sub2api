@@ -183,6 +183,16 @@ export default {
         secretKeyHint: 'Server-side verification key (keep this secret)',
         secretKeyConfiguredHint: 'Secret key configured. Leave empty to keep the current value.'
       REDACTED,
+      captcha: {
+        title: 'CAPTCHA',
+        description: 'Bot protection for login and registration',
+        enable: 'Enable CAPTCHA',
+        enableHint: 'Require human verification on login, registration and related flows',
+        provider: 'Provider',
+        providerTurnstile: 'Cloudflare Turnstile',
+        providerTencent: 'Tencent Captcha',
+        providerAliyun: 'Aliyun Captcha 2.0'
+      REDACTED,
       tencentCaptcha: {
         title: 'Tencent Captcha',
         description: 'Slider captcha protection for login, registration, and third-party account creation',
@@ -191,7 +201,7 @@ export default {
         keepExisting: 'Leave empty to keep current value',
         configured: 'Configured. Leave empty to keep it.',
         required: 'Required before enabling.',
-        mutualExclusion: 'Tencent Captcha and Cloudflare Turnstile are mutually exclusive. Enabling one disables the other.',
+        mutualExclusion: 'Tencent Captcha, Cloudflare Turnstile and Aliyun Captcha are mutually exclusive. Enabling one disables the others.',
         appCredentialsTitle: 'Captcha application credentials',
         appCredentialsHint: 'Get CaptchaAppId and AppSecretKey from Verification Management in the Captcha console.',
         cloudCredentialsTitle: 'Cloud API credentials',
@@ -205,6 +215,21 @@ export default {
         openCaptchaConsole: 'Open Captcha console',
         createCloudKeys: 'Create SecretId / SecretKey',
         openWebDocs: 'View Web integration guide'
+      REDACTED,
+      aliyunCaptcha: {
+        accessKeyId: 'AccessKey ID',
+        accessKeyIdHint: 'Alibaba Cloud AccessKey ID used for server-side verification; a captcha-only RAM user is recommended',
+        accessKeySecret: 'AccessKey Secret',
+        accessKeySecretHint: 'Server-side verification secret (keep this secret)',
+        accessKeySecretConfiguredHint: 'Secret configured. Leave empty to keep the current value.',
+        sceneId: 'Scene ID',
+        sceneIdHint: 'Create a verification scene in the Alibaba Cloud Captcha console; the captcha type (invisible/slider/puzzle) is configured per scene there',
+        prefix: 'Prefix',
+        prefixHint: 'Found in the instance information on the console overview page',
+        region: 'Region',
+        regionCn: 'Mainland China',
+        regionSgp: 'Singapore',
+        regionHint: 'Determines the frontend script region and the server endpoint; must match your captcha instance region'
       REDACTED,
       apiKeyAcl: {
         title: 'API Key IP Access Control',

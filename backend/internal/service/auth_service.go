@@ -76,6 +76,7 @@ type AuthService struct {
 	emailService          *EmailService
 	turnstileService      *TurnstileService
 	tencentCaptchaService *TencentCaptchaService
+	aliyunCaptchaService  *AliyunCaptchaService
 	emailQueueService     *EmailQueueService
 	promoService          *PromoService
 	affiliateService      *AffiliateService
@@ -84,6 +85,7 @@ type AuthService struct {
 REDACTED
 
 type CaptchaProof struct {
+	// TurnstileToken 承载 Cloudflare Turnstile token；阿里云验证码复用该字段承载 captchaVerifyParam
 	TurnstileToken string
 	TencentTicket  string
 	TencentRandstr string
@@ -142,6 +144,10 @@ REDACTED
 
 func (s *AuthService) SetTencentCaptchaService(tencentCaptchaService *TencentCaptchaService) {
 	s.tencentCaptchaService = tencentCaptchaService
+REDACTED
+
+func (s *AuthService) SetAliyunCaptchaService(aliyunCaptchaService *AliyunCaptchaService) {
+	s.aliyunCaptchaService = aliyunCaptchaService
 REDACTED
 
 // Register 用户注册，返回token和用户
@@ -412,7 +418,8 @@ REDACTED
 REDACTED
 	turnstileEnabled := providerConfig.TurnstileEnabled
 	tencentEnabled := providerConfig.Tencent.Enabled
-	if turnstileEnabled && tencentEnabled {
+	aliyunEnabled := providerConfig.Aliyun.Enabled
+	if captchaProvidersConflict(turnstileEnabled, tencentEnabled, aliyunEnabled) {
 		return ErrCaptchaProviderConflict
 REDACTED
 	if tencentEnabled {
@@ -420,6 +427,12 @@ REDACTED
 			return ErrTencentCaptchaNotConfigured
 	REDACTED
 		return s.tencentCaptchaService.VerifyTicketWithConfig(ctx, providerConfig.Tencent, proof.TencentTicket, proof.TencentRandstr, remoteIP)
+REDACTED
+	if aliyunEnabled {
+		if s.aliyunCaptchaService == nil {
+			return ErrAliyunCaptchaNotConfigured
+	REDACTED
+		return s.aliyunCaptchaService.VerifyParamWithConfig(ctx, providerConfig.Aliyun, proof.TurnstileToken)
 REDACTED
 	if turnstileEnabled {
 		if s.turnstileService == nil || strings.TrimSpace(providerConfig.TurnstileSecretKey) == "" {
@@ -433,9 +446,20 @@ REDACTED
 	return nil
 REDACTED
 
-// VerifyTencentCaptchaIfEnabled 仅保护新增的腾讯验证码动作入口，
-// 不扩大 Cloudflare Turnstile 的既有覆盖范围。
-func (s *AuthService) VerifyTencentCaptchaIfEnabled(ctx context.Context, proof CaptchaProof, remoteIP string) error {
+// captchaProvidersConflict 同一时间仅允许启用一家人机验证服务商
+func captchaProvidersConflict(enabled ...bool) bool {
+	count := 0
+	for _, e := range enabled {
+		if e {
+			count++
+	REDACTED
+REDACTED
+	return count > 1
+REDACTED
+
+// VerifyActionCaptchaIfEnabled 仅保护动作触发的扩展入口（OAuth 登录启动、passkey 登录），
+// 腾讯天御与阿里云验证码启用时拦截；不扩大 Cloudflare Turnstile 的既有覆盖范围。
+func (s *AuthService) VerifyActionCaptchaIfEnabled(ctx context.Context, proof CaptchaProof, remoteIP string) error {
 	if s == nil || s.settingService == nil {
 		return ErrServiceUnavailable
 REDACTED
@@ -445,11 +469,19 @@ REDACTED
 		logger.LegacyPrintf("service.auth", "%s", "[Auth] Failed to read captcha provider settings")
 		return ErrServiceUnavailable
 REDACTED
-	if !providerConfig.Tencent.Enabled {
+	tencentEnabled := providerConfig.Tencent.Enabled
+	aliyunEnabled := providerConfig.Aliyun.Enabled
+	if !tencentEnabled && !aliyunEnabled {
 		return nil
 REDACTED
-	if providerConfig.TurnstileEnabled {
+	if captchaProvidersConflict(providerConfig.TurnstileEnabled, tencentEnabled, aliyunEnabled) {
 		return ErrCaptchaProviderConflict
+REDACTED
+	if aliyunEnabled {
+		if s.aliyunCaptchaService == nil {
+			return ErrAliyunCaptchaNotConfigured
+	REDACTED
+		return s.aliyunCaptchaService.VerifyParamWithConfig(ctx, providerConfig.Aliyun, proof.TurnstileToken)
 REDACTED
 	if s.tencentCaptchaService == nil {
 		return ErrTencentCaptchaNotConfigured

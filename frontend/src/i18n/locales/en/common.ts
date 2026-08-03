@@ -245,6 +245,8 @@ export default {
     turnstileFailed: 'Verification failed, please try again',
     captchaVerified: 'Verification completed',
     captchaLoading: 'Loading verification…',
+    captchaClickToVerify: 'Click to complete verification',
+    captchaVerifying: 'Verifying…',
     completeVerification: 'Please complete the verification',
     verifyYourEmail: 'Verify Your Email',
     sessionExpired: 'Session expired',

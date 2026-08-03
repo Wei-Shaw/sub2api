@@ -115,7 +115,7 @@ REDACTED
 // OIDCOAuthStart 启动通用 OIDC OAuth 登录流程。
 // GET /api/v1/auth/oauth/oidc/start?redirect=/dashboard
 func (h *AuthHandler) OIDCOAuthStart(c *gin.Context) {
-	if !h.requireTencentCaptchaForOAuthLoginStart(c) {
+	if !h.requireActionCaptchaForOAuthLoginStart(c) {
 		return
 REDACTED
 	cfg, err := h.getOIDCOAuthConfig(c.Request.Context())

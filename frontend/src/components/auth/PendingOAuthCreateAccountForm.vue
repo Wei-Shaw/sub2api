@@ -24,6 +24,10 @@
         :turnstile-site-key="turnstileSiteKey"
         :tencent-enabled="tencentCaptchaEnabled"
         :tencent-app-id="tencentCaptchaAppId"
+        :aliyun-enabled="aliyunCaptchaEnabled"
+        :aliyun-scene-id="aliyunCaptchaSceneId"
+        :aliyun-prefix="aliyunCaptchaPrefix"
+        :aliyun-region="aliyunCaptchaRegion"
         @verify="onTurnstileVerify"
         @expire="onTurnstileExpire"
         @error="onTurnstileError"
@@ -137,13 +141,28 @@ const turnstileEnabled = ref(false)
 const turnstileSiteKey = ref('')
 const tencentCaptchaEnabled = ref(false)
 const tencentCaptchaAppId = ref('')
+const aliyunCaptchaEnabled = ref(false)
+const aliyunCaptchaSceneId = ref('')
+const aliyunCaptchaPrefix = ref('')
+const aliyunCaptchaRegion = ref('cn')
 const turnstileToken = ref('')
 const tencentCaptchaRandstr = ref('')
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+const aliyunCaptchaReady = computed(
+  () =>
+    aliyunCaptchaEnabled.value &&
+    Boolean(aliyunCaptchaSceneId.value) &&
+    Boolean(aliyunCaptchaPrefix.value)
+)
+// 动作触发式验证码（腾讯/阿里云）：发送验证码、提交时弹窗验证
+const actionCaptchaEnabled = computed(
+  () =>
+    (tencentCaptchaEnabled.value && Boolean(tencentCaptchaAppId.value)) ||
+    aliyunCaptchaReady.value
+)
 const captchaEnabled = computed(
   () =>
-    (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) ||
-    (tencentCaptchaEnabled.value && Boolean(tencentCaptchaAppId.value))
+    (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) || actionCaptchaEnabled.value
 )
 
 let countdownTimer: ReturnType<typeof setInterval> | null = null
@@ -229,13 +248,13 @@ function onTurnstileError() {
   sendCodeError.value = t('auth.turnstileFailed')
 REDACTED
 
-async function acquireTencentProof(): Promise<boolean> {
-  if (!tencentCaptchaEnabled.value) return true
+async function acquireActionProof(): Promise<boolean> {
+  if (!actionCaptchaEnabled.value) return true
 
-  const proof = await turnstileRef.value?.verifyTencent()
+  const proof = await turnstileRef.value?.verifyAction()
   if (!proof) return false
 
-  turnstileToken.value = proof.ticket
+  turnstileToken.value = proof.token
   tencentCaptchaRandstr.value = proof.randstr
   return true
 REDACTED
@@ -251,7 +270,7 @@ async function handleSendCode() {
     return
   REDACTED
 
-  if (!(await acquireTencentProof())) {
+  if (!(await acquireActionProof())) {
     return
   REDACTED
 
@@ -262,7 +281,8 @@ async function handleSendCode() {
   try {
     const response = await sendPendingOAuthVerifyCode({
       email: trimmedEmail,
-      turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
+      turnstile_token:
+        turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
       tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
       tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined
     REDACTED)
@@ -292,7 +312,7 @@ async function handleSubmit() {
     return
   REDACTED
 
-  if (!(await acquireTencentProof())) {
+  if (!(await acquireActionProof())) {
     return
   REDACTED
 
@@ -300,7 +320,9 @@ async function handleSubmit() {
     email: trimmedEmail,
     password: password.value,
     verifyCode: emailVerifyEnabled.value ? verifyCode.value.trim() : '',
-    ...(turnstileEnabled.value && turnstileToken.value ? { turnstileToken: turnstileToken.value REDACTED : {REDACTED),
+    ...((turnstileEnabled.value || aliyunCaptchaEnabled.value) && turnstileToken.value
+      ? { turnstileToken: turnstileToken.value REDACTED
+      : {REDACTED),
     ...(tencentCaptchaEnabled.value && turnstileToken.value
       ? {
           tencentCaptchaTicket: turnstileToken.value,
@@ -310,7 +332,7 @@ async function handleSubmit() {
     invitationCode: invitationCode.value.trim() || undefined
   REDACTED)
 
-  if (tencentCaptchaEnabled.value) {
+  if (actionCaptchaEnabled.value) {
     resetTurnstile()
   REDACTED
 REDACTED
@@ -328,6 +350,10 @@ onMounted(async () => {
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
     tencentCaptchaAppId.value = settings.tencent_captcha_app_id || ''
+    aliyunCaptchaEnabled.value = settings.aliyun_captcha_enabled === true
+    aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
+    aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
+    aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
   REDACTED catch {
     invitationCodeEnabled.value = false
     emailVerifyEnabled.value = true
@@ -335,6 +361,10 @@ onMounted(async () => {
     turnstileSiteKey.value = ''
     tencentCaptchaEnabled.value = false
     tencentCaptchaAppId.value = ''
+    aliyunCaptchaEnabled.value = false
+    aliyunCaptchaSceneId.value = ''
+    aliyunCaptchaPrefix.value = ''
+    aliyunCaptchaRegion.value = 'cn'
   REDACTED
 REDACTED)
 

@@ -7,7 +7,7 @@ const loginMock = vi.fn()
 const loginWithPasskeyMock = vi.fn()
 const getPublicSettingsMock = vi.fn()
 const startOAuthLoginMock = vi.fn()
-const verifyTencentMock = vi.fn()
+const verifyActionMock = vi.fn()
 const captchaResetMock = vi.fn()
 const locationState = { href: 'http://localhost/login' REDACTED
 
@@ -54,7 +54,7 @@ REDACTED)
 const CaptchaChallengeStub = defineComponent({
   setup(_, { expose REDACTED) {
     expose({
-      verifyTencent: verifyTencentMock,
+      verifyAction: verifyActionMock,
       reset: captchaResetMock
     REDACTED)
     return () => h('div')
@@ -101,7 +101,7 @@ describe('Tencent captcha action gate', () => {
     loginWithPasskeyMock.mockReset()
     getPublicSettingsMock.mockReset()
     startOAuthLoginMock.mockReset()
-    verifyTencentMock.mockReset()
+    verifyActionMock.mockReset()
     captchaResetMock.mockReset()
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
@@ -117,7 +117,7 @@ describe('Tencent captcha action gate', () => {
     loginMock.mockResolvedValue({REDACTED)
     loginWithPasskeyMock.mockResolvedValue({REDACTED)
     startOAuthLoginMock.mockResolvedValue({ authorize_url: 'https://github.example/authorize' REDACTED)
-    verifyTencentMock.mockResolvedValue({ ticket: 'ticket-1', randstr: '@rand-1' REDACTED)
+    verifyActionMock.mockResolvedValue({ token: 'ticket-1', randstr: '@rand-1' REDACTED)
     Object.defineProperty(window, 'PublicKeyCredential', {
       configurable: true,
       value: class PublicKeyCredential {REDACTED
@@ -138,7 +138,7 @@ describe('Tencent captcha action gate', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(verifyTencentMock).toHaveBeenCalledOnce()
+    expect(verifyActionMock).toHaveBeenCalledOnce()
     expect(loginMock).toHaveBeenCalledWith(expect.objectContaining({
       tencent_captcha_ticket: 'ticket-1',
       tencent_captcha_randstr: '@rand-1'
@@ -146,7 +146,7 @@ describe('Tencent captcha action gate', () => {
   REDACTED)
 
   it('does not call login when Tencent captcha is closed', async () => {
-    verifyTencentMock.mockResolvedValue(null)
+    verifyActionMock.mockResolvedValue(null)
     const wrapper = mountLogin()
     await flushPromises()
     await wrapper.get('#email').setValue('user@example.com')
@@ -155,7 +155,7 @@ describe('Tencent captcha action gate', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(verifyTencentMock).toHaveBeenCalledOnce()
+    expect(verifyActionMock).toHaveBeenCalledOnce()
     expect(loginMock).not.toHaveBeenCalled()
   REDACTED)
 
@@ -166,7 +166,7 @@ describe('Tencent captcha action gate', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(verifyTencentMock).not.toHaveBeenCalled()
+    expect(verifyActionMock).not.toHaveBeenCalled()
     expect(loginMock).not.toHaveBeenCalled()
   REDACTED)
 
@@ -177,7 +177,7 @@ describe('Tencent captcha action gate', () => {
     await wrapper.get('[data-testid="oauth-start"]').trigger('click')
     await flushPromises()
 
-    expect(verifyTencentMock).toHaveBeenCalledOnce()
+    expect(verifyActionMock).toHaveBeenCalledOnce()
     expect(startOAuthLoginMock).toHaveBeenCalledWith(
       { provider: 'github', params: { redirect: '/dashboard' REDACTED REDACTED,
       {
@@ -190,7 +190,7 @@ describe('Tencent captcha action gate', () => {
   REDACTED)
 
   it('does not start OAuth when Tencent captcha is closed', async () => {
-    verifyTencentMock.mockResolvedValue(null)
+    verifyActionMock.mockResolvedValue(null)
     const wrapper = mountLogin()
     await flushPromises()
 
@@ -208,7 +208,7 @@ describe('Tencent captcha action gate', () => {
     await wrapper.get('button.btn-secondary.w-full').trigger('click')
     await flushPromises()
 
-    expect(verifyTencentMock).toHaveBeenCalledOnce()
+    expect(verifyActionMock).toHaveBeenCalledOnce()
     expect(loginWithPasskeyMock).toHaveBeenCalledWith({
       tencent_captcha_ticket: 'ticket-1',
       tencent_captcha_randstr: '@rand-1'
@@ -217,7 +217,7 @@ describe('Tencent captcha action gate', () => {
   REDACTED)
 
   it('does not invoke Passkey when Tencent captcha is closed', async () => {
-    verifyTencentMock.mockResolvedValue(null)
+    verifyActionMock.mockResolvedValue(null)
     const wrapper = mountLogin()
     await flushPromises()
 

@@ -150,11 +150,11 @@ REDACTED, "203.0.113.10")
 	require.Zero(t, verifier.calls)
 REDACTED
 
-func TestVerifyTencentCaptchaIfEnabledVerifiesTencentProof(t *testing.T) {
+func TestVerifyActionCaptchaIfEnabledVerifiesTencentProof(t *testing.T) {
 	verifier := &tencentCaptchaVerifierStub{response: &TencentCaptchaVerifyResponse{CaptchaCode: 1REDACTEDREDACTED
 	svc := newAuthServiceForCaptchaTest(tencentCaptchaSettings(), false, nil, verifier)
 
-	err := svc.VerifyTencentCaptchaIfEnabled(context.Background(), CaptchaProof{
+	err := svc.VerifyActionCaptchaIfEnabled(context.Background(), CaptchaProof{
 		TencentTicket:  "ticket",
 		TencentRandstr: "@rand",
 REDACTED, "203.0.113.10")
@@ -164,7 +164,7 @@ REDACTED
 	require.Equal(t, TencentCaptchaProof{Ticket: "ticket", Randstr: "@rand"REDACTED, verifier.proof)
 REDACTED
 
-func TestVerifyTencentCaptchaIfEnabledDoesNotExpandTurnstileCoverage(t *testing.T) {
+func TestVerifyActionCaptchaIfEnabledDoesNotExpandTurnstileCoverage(t *testing.T) {
 	settings := map[string]string{
 		SettingKeyTurnstileEnabled:   "true",
 		SettingKeyTurnstileSecretKey: "turnstile-secret",
@@ -172,17 +172,17 @@ REDACTED
 	turnstileVerifier := &turnstileVerifierSpy{REDACTED
 	svc := newAuthServiceForCaptchaTest(settings, false, turnstileVerifier, nil)
 
-	err := svc.VerifyTencentCaptchaIfEnabled(context.Background(), CaptchaProof{REDACTED, "203.0.113.10")
+	err := svc.VerifyActionCaptchaIfEnabled(context.Background(), CaptchaProof{REDACTED, "203.0.113.10")
 
 REDACTED
 	require.Zero(t, turnstileVerifier.called)
 REDACTED
 
-func TestVerifyTencentCaptchaIfEnabledFailsClosedOnSettingReadError(t *testing.T) {
+func TestVerifyActionCaptchaIfEnabledFailsClosedOnSettingReadError(t *testing.T) {
 	repo := &settingRepoStub{err: errors.New("settings unavailable")REDACTED
 	svc := newAuthServiceForCaptchaRepoTest(repo, false, &turnstileVerifierSpy{REDACTED, &tencentCaptchaVerifierStub{REDACTED)
 
-	err := svc.VerifyTencentCaptchaIfEnabled(context.Background(), CaptchaProof{REDACTED, "203.0.113.10")
+	err := svc.VerifyActionCaptchaIfEnabled(context.Background(), CaptchaProof{REDACTED, "203.0.113.10")
 
 	require.ErrorIs(t, err, ErrServiceUnavailable)
 REDACTED

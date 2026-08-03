@@ -47,6 +47,8 @@ type passkeyFinishRequest struct {
 REDACTED
 
 type passkeyBeginLoginRequest struct {
+	// TurnstileToken 承载阿里云验证码的 captchaVerifyParam（复用既有请求字段名）
+	TurnstileToken        string `json:"turnstile_token"`
 	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
 	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
 REDACTED
@@ -78,7 +80,8 @@ func (h *PasskeyHandler) BeginLogin(c *gin.Context) {
 REDACTED
 	var req passkeyBeginLoginRequest
 	_ = c.ShouldBindJSON(&req)
-	if err := h.authService.VerifyTencentCaptchaIfEnabled(c.Request.Context(), service.CaptchaProof{
+	if err := h.authService.VerifyActionCaptchaIfEnabled(c.Request.Context(), service.CaptchaProof{
+		TurnstileToken: req.TurnstileToken,
 		TencentTicket:  req.TencentCaptchaTicket,
 		TencentRandstr: req.TencentCaptchaRandstr,
 REDACTED, ip.GetClientIP(c)); err != nil {

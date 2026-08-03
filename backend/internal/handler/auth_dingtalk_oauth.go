@@ -113,7 +113,7 @@ REDACTED
 // DingTalkOAuthStart 启动 DingTalk Connect OAuth 登录流程。
 // GET /api/v1/auth/oauth/dingtalk/start?redirect=/dashboard&intent=login
 func (h *AuthHandler) DingTalkOAuthStart(c *gin.Context) {
-	if !h.requireTencentCaptchaForOAuthLoginStart(c) {
+	if !h.requireActionCaptchaForOAuthLoginStart(c) {
 		return
 REDACTED
 	cfg, err := h.getDingTalkOAuthConfig(c.Request.Context())
