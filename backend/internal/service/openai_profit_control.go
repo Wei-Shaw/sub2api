@@ -348,15 +348,20 @@ type OpenAITerminalAdmissionResult struct {
 	ClientRestriction CodexClientRestrictionDetectionResult
 }
 
-// OpenAITerminalAdmissionLatest performs one cache-first post-slot refresh and
-// evaluates both admission policies against the same object. The scheduler
-// snapshot falls back to the repository on cache misses; refresh failures keep
-// the existing fail-open behavior and are observable.
-func (s *OpenAIGatewayService) OpenAITerminalAdmissionLatest(ctx context.Context, selected *Account) OpenAITerminalAdmissionResult {
+// OpenAITerminalAdmissionLatest performs one post-slot refresh and evaluates
+// both admission policies against the same object. Client-restricted OAuth
+// traffic reads the repository authoritatively; profit-only traffic preserves
+// the scheduler cache-first behavior. Profit refresh failures remain fail-open,
+// while client-policy refresh failures fail closed.
+func (s *OpenAIGatewayService) OpenAITerminalAdmissionLatest(ctx context.Context, selected *Account) (OpenAITerminalAdmissionResult, error) {
 	result := OpenAITerminalAdmissionResult{Account: selected}
-	if s == nil || selected == nil {
-		return result
+	if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok && snapshot.enforcementActive {
+		snapshot.clearTerminalAdmission()
 	}
+	if s == nil || selected == nil {
+		return result, nil
+	}
+	clientAdmissionApplies := codexClientAdmissionAppliesToAccount(ctx, selected)
 
 	latest, err := s.refreshOpenAITerminalAdmissionAccount(ctx, selected)
 	result.Account = latest
@@ -365,19 +370,52 @@ func (s *OpenAIGatewayService) OpenAITerminalAdmissionLatest(ctx context.Context
 			slog.Warn("profit_control_account_refresh_failed", "group_id", gate.groupID, "platform", gate.platform, "account_id", selected.ID, "error", err)
 			openAIProfitControlObserverInstance.recordRefreshFailure(gate.groupID, gate.platform, gate.threshold)
 		}
-		if codexClientAdmissionActive(ctx) {
+		if clientAdmissionApplies {
 			slog.Warn("codex_client_admission_account_refresh_failed", "account_id", selected.ID, "error", err)
+			if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok {
+				snapshot.recordUnavailable()
+			}
+			return result, fmt.Errorf("%w: refresh account %d: %v", ErrCodexClientAdmissionUnavailable, selected.ID, err)
 		}
 	}
 
 	result.ProfitVetoed, result.ProfitReason = openAIProfitControlVetoReason(ctx, latest)
-	result.ClientVetoed, result.ClientRestriction = s.codexClientAdmissionVeto(ctx, latest)
-	return result
+	var clientErr error
+	result.ClientVetoed, result.ClientRestriction, clientErr = s.codexClientAdmissionVeto(ctx, latest)
+	if clientErr != nil {
+		slog.Warn("codex_client_admission_policy_resolution_failed", "account_id", selected.ID, "error", clientErr)
+		if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok {
+			snapshot.recordUnavailable()
+		}
+		return result, fmt.Errorf("%w: resolve account %d policy: %v", ErrCodexClientAdmissionUnavailable, selected.ID, clientErr)
+	}
+	if !result.ClientVetoed && codexClientAdmissionAppliesToAccount(ctx, latest) {
+		if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok {
+			snapshot.recordTerminalAdmission(latest)
+		}
+	}
+	return result, nil
 }
 
 func (s *OpenAIGatewayService) refreshOpenAITerminalAdmissionAccount(ctx context.Context, selected *Account) (*Account, error) {
-	if selected == nil || s == nil || s.schedulerSnapshot == nil ||
+	if selected == nil || s == nil ||
 		(!gatewayProfitControlGateActive(ctx) && !codexClientAdmissionAppliesToAccount(ctx, selected)) {
+		return selected, nil
+	}
+	if codexClientAdmissionAppliesToAccount(ctx, selected) {
+		if s.accountRepo == nil {
+			return selected, errors.New("account repository is unavailable for client admission refresh")
+		}
+		refreshed, err := s.accountRepo.GetByID(ctx, selected.ID)
+		if err != nil {
+			return selected, err
+		}
+		if refreshed == nil {
+			return selected, fmt.Errorf("selected account %d not found during client admission refresh", selected.ID)
+		}
+		return refreshed, nil
+	}
+	if s.schedulerSnapshot == nil {
 		return selected, nil
 	}
 	refreshed, err := s.schedulerSnapshot.GetAccount(ctx, selected.ID)

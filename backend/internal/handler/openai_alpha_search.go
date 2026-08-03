@@ -175,6 +175,10 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			}
 			continue
 		}
+		if slotResult == openAISlotAcquireClientAdmissionUnavailable {
+			h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), false, false)
+			return
+		}
 		if slotResult == openAISlotAcquireClientVetoed {
 			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
@@ -203,6 +207,10 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			if result != nil {
 				h.recordAlphaSearchUsage(c, apiKey, account, subscription, channelMapping, requestedModel, body, result, subject.UserID)
 			}
+			return
+		}
+		if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+			h.handleOpenAICodexAdmissionError(c, err, false, false)
 			return
 		}
 		if errors.Is(err, service.ErrCodexClientRestricted) {

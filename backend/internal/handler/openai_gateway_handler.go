@@ -542,6 +542,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 			continue
 		}
+		if slotResult == openAISlotAcquireClientAdmissionUnavailable {
+			h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
+			return
+		}
 		if slotResult == openAISlotAcquireClientVetoed {
 			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
@@ -588,6 +592,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
+			if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+				h.handleOpenAICodexAdmissionError(c, err, streamStarted, false)
+				return
+			}
 			if errors.Is(err, service.ErrCodexClientRestricted) {
 				if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 					h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
@@ -1124,6 +1132,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}
 			continue
 		}
+		if slotResult == openAISlotAcquireClientAdmissionUnavailable {
+			h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, true)
+			return
+		}
 		if slotResult == openAISlotAcquireClientVetoed {
 			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, true)
@@ -1167,6 +1179,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
+			if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+				h.handleOpenAICodexAdmissionError(c, err, streamStarted, true)
+				return
+			}
 			if errors.Is(err, service.ErrCodexClientRestricted) {
 				if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 					h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, true)
@@ -1443,6 +1459,10 @@ const (
 	// openAISlotAcquireClientVetoed：槽位获取成功后发现账号最新客户端限制
 	// 与本请求不兼容。槽位已释放、未写响应；调用方应排除该账号重新选号。
 	openAISlotAcquireClientVetoed
+	// openAISlotAcquireClientAdmissionUnavailable：槽位获取成功后无法从数据库
+	// 权威确认账号客户端策略。槽位已释放、未写响应；调用方应立即返回
+	// 503，不得换号放大数据库故障，也不得冒充真实策略拒绝返回 403。
+	openAISlotAcquireClientAdmissionUnavailable
 )
 
 // openAIWSTurnPricing 持有 WebSocket 连接内「当前 turn」的计费定价时刻。
@@ -1520,7 +1540,14 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 	ctx := service.ContextWithSelectionProfitGate(c.Request.Context(), selection)
 	account := selection.Account
 	if selection.Acquired {
-		admission := h.gatewayService.OpenAITerminalAdmissionLatest(ctx, account)
+		admission, admissionErr := h.gatewayService.OpenAITerminalAdmissionLatest(ctx, account)
+		if admissionErr != nil {
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			reqLog.Warn("openai.account_slot_client_admission_unavailable", zap.Int64("account_id", account.ID), zap.Error(admissionErr))
+			return nil, openAISlotAcquireClientAdmissionUnavailable
+		}
 		if admission.ProfitVetoed {
 			if selection.ReleaseFunc != nil {
 				selection.ReleaseFunc()
@@ -1565,7 +1592,14 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 	if fastAcquired {
 		// 分组利润控制：快速抢槽成功后终检。选号与抢槽之间账号
 		// 倍率可能刷新，越线则释放槽位交由调用方排除重选，不绑定粘连。
-		admission := h.gatewayService.OpenAITerminalAdmissionLatest(ctx, account)
+		admission, admissionErr := h.gatewayService.OpenAITerminalAdmissionLatest(ctx, account)
+		if admissionErr != nil {
+			if fastReleaseFunc != nil {
+				fastReleaseFunc()
+			}
+			reqLog.Warn("openai.account_slot_client_admission_unavailable", zap.Int64("account_id", account.ID), zap.Error(admissionErr))
+			return nil, openAISlotAcquireClientAdmissionUnavailable
+		}
 		if admission.ProfitVetoed {
 			if fastReleaseFunc != nil {
 				fastReleaseFunc()
@@ -1627,7 +1661,14 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 	releaseWait()
 	// 分组利润控制：WaitPlan 排队成功后终检。排队期间账号倍率
 	// 可能上调，越线则释放槽位交由调用方排除重选，不绑定粘连。
-	admission := h.gatewayService.OpenAITerminalAdmissionLatest(ctx, account)
+	admission, admissionErr := h.gatewayService.OpenAITerminalAdmissionLatest(ctx, account)
+	if admissionErr != nil {
+		if accountReleaseFunc != nil {
+			accountReleaseFunc()
+		}
+		reqLog.Warn("openai.account_slot_client_admission_unavailable", zap.Int64("account_id", account.ID), zap.Error(admissionErr))
+		return nil, openAISlotAcquireClientAdmissionUnavailable
+	}
 	if admission.ProfitVetoed {
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
@@ -1970,11 +2011,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			)
 			if lastFailoverErr == nil && (errors.Is(err, service.ErrCodexClientRestricted) ||
 				allExcludedOpenAIAccountsWereClientVetoed(failedAccountIDs, clientVetoCount)) {
-				result, _ := service.CodexClientRestrictionResultFromError(err)
+				admissionErr := err
 				if !errors.Is(err, service.ErrCodexClientRestricted) {
-					result, _ = service.CodexClientRestrictionResultFromError(service.CodexClientAdmissionErrorFromContext(ctx))
+					admissionErr = service.CodexClientAdmissionErrorFromContext(ctx)
 				}
-				closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.CodexClientRestrictionMessage(result))
+				result, _ := service.CodexClientRestrictionResultFromError(admissionErr)
+				status, message := openAIClientAdmissionWSClose(admissionErr, result)
+				closeOpenAIClientWS(wsConn, status, message)
 			} else if lastFailoverErr != nil {
 				closeOpenAIWSFailoverExhausted(wsConn, lastFailoverErr)
 			} else {
@@ -2002,7 +2045,16 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		accountReleaseFunc := selection.ReleaseFunc
 		if selection.Acquired {
 			// 调度器已抢槽路径同样终检：选号与抢槽之间账号倍率可能刷新。
-			admission := h.gatewayService.OpenAITerminalAdmissionLatest(admissionCtx, account)
+			admission, admissionErr := h.gatewayService.OpenAITerminalAdmissionLatest(admissionCtx, account)
+			if admissionErr != nil {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				reqLog.Warn("openai.websocket_account_slot_client_admission_unavailable", zap.Int64("account_id", account.ID), zap.Error(admissionErr))
+				status, message := openAIClientAdmissionWSClose(admissionErr, service.CodexClientRestrictionDetectionResult{})
+				closeOpenAIClientWS(wsConn, status, message)
+				return
+			}
 			if admission.ProfitVetoed {
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
@@ -2050,7 +2102,16 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			}
 			// 分组利润控制：WS 快速抢槽成功后终检，越线则释放
 			// 槽位、排除该账号重新选号，全池耗尽由下一轮选号关闭连接。
-			admission := h.gatewayService.OpenAITerminalAdmissionLatest(admissionCtx, account)
+			admission, admissionErr := h.gatewayService.OpenAITerminalAdmissionLatest(admissionCtx, account)
+			if admissionErr != nil {
+				if fastReleaseFunc != nil {
+					fastReleaseFunc()
+				}
+				reqLog.Warn("openai.websocket_account_slot_client_admission_unavailable", zap.Int64("account_id", account.ID), zap.Error(admissionErr))
+				status, message := openAIClientAdmissionWSClose(admissionErr, service.CodexClientRestrictionDetectionResult{})
+				closeOpenAIClientWS(wsConn, status, message)
+				return
+			}
 			if admission.ProfitVetoed {
 				if fastReleaseFunc != nil {
 					fastReleaseFunc()
@@ -2170,7 +2231,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				turnCtx, turnAt := h.gatewayService.WithOpenAITurnPricingContext(ctx, apiKey.GroupID)
 				turnPricing.freeze(turnAt)
 				if turn == 1 {
-					admission := h.gatewayService.OpenAITerminalAdmissionLatest(turnCtx, account)
+					admission, admissionErr := h.gatewayService.OpenAITerminalAdmissionLatest(turnCtx, account)
+					if admissionErr != nil {
+						releaseTurnSlots()
+						status, message := openAIClientAdmissionWSClose(admissionErr, service.CodexClientRestrictionDetectionResult{})
+						return service.NewOpenAIWSClientCloseError(status, message, admissionErr)
+					}
 					if admission.ProfitVetoed {
 						releaseTurnSlots()
 						reqLog.Info("openai.websocket_turn_profit_vetoed",
@@ -2186,6 +2252,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 							zap.Int64("account_id", account.ID),
 							zap.String("reason", admission.ClientRestriction.Reason))
 						return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, service.CodexClientRestrictionMessage(admission.ClientRestriction), nil)
+					}
+					if !h.gatewayService.GrantOpenAIWSTerminalAdmission(turnCtx, account, admission.Account) {
+						releaseTurnSlots()
+						reqLog.Warn("openai.websocket_turn_account_binding_changed",
+							zap.Int("turn", turn),
+							zap.Int64("account_id", account.ID))
+						return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account binding changed, please reconnect", nil)
 					}
 					return nil
 				}
@@ -2214,7 +2287,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				currentUserRelease = wrapReleaseOnDone(ctx, userReleaseFunc)
 				currentAccountRelease = wrapReleaseOnDone(ctx, accountReleaseFunc)
-				admission := h.gatewayService.OpenAITerminalAdmissionLatest(turnCtx, account)
+				admission, admissionErr := h.gatewayService.OpenAITerminalAdmissionLatest(turnCtx, account)
+				if admissionErr != nil {
+					releaseTurnSlots()
+					status, message := openAIClientAdmissionWSClose(admissionErr, service.CodexClientRestrictionDetectionResult{})
+					return service.NewOpenAIWSClientCloseError(status, message, admissionErr)
+				}
 				if admission.ProfitVetoed {
 					releaseTurnSlots()
 					reqLog.Info("openai.websocket_turn_profit_vetoed",
@@ -2230,6 +2308,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						zap.Int64("account_id", account.ID),
 						zap.String("reason", admission.ClientRestriction.Reason))
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, service.CodexClientRestrictionMessage(admission.ClientRestriction), nil)
+				}
+				if !h.gatewayService.GrantOpenAIWSTerminalAdmission(turnCtx, account, admission.Account) {
+					releaseTurnSlots()
+					reqLog.Warn("openai.websocket_turn_account_binding_changed",
+						zap.Int("turn", turn),
+						zap.Int64("account_id", account.ID))
+					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account binding changed, please reconnect", nil)
 				}
 				return nil
 			},
@@ -2349,11 +2434,18 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		requestPayloadHash = service.HashUsageRequestPayload(wsFirstMessage)
 
 		if err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks); err != nil {
+			if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+				releaseAccountSlot()
+				status, message := openAIClientAdmissionWSClose(err, service.CodexClientRestrictionDetectionResult{})
+				closeOpenAIClientWS(wsConn, status, message)
+				return
+			}
 			if errors.Is(err, service.ErrCodexClientRestricted) {
 				releaseAccountSlot()
 				if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 					result, _ := service.CodexClientRestrictionResultFromError(err)
-					closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.CodexClientRestrictionMessage(result))
+					status, message := openAIClientAdmissionWSClose(err, result)
+					closeOpenAIClientWS(wsConn, status, message)
 					return
 				}
 				continue

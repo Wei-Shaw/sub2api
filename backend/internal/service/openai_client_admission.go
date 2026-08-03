@@ -20,6 +20,7 @@ const (
 )
 
 var ErrCodexClientRestricted = errors.New("request is not allowed by codex client restriction")
+var ErrCodexClientAdmissionUnavailable = errors.New("codex client admission policy is unavailable")
 
 type CodexClientAdmissionError struct {
 	Result CodexClientRestrictionDetectionResult
@@ -50,6 +51,8 @@ type codexClientAdmissionSnapshot struct {
 	mu                      sync.Mutex
 	lastDenied              *CodexClientRestrictionDetectionResult
 	skippedStickyAccountIDs map[int64]struct{}
+	terminallyAdmitted      *Account
+	admissionUnavailable    bool
 }
 
 func (s *OpenAIGatewayService) WithOpenAICodexClientAdmission(
@@ -138,6 +141,24 @@ func (snapshot *codexClientAdmissionSnapshot) deniedResult() (CodexClientRestric
 	return *snapshot.lastDenied, true
 }
 
+func (snapshot *codexClientAdmissionSnapshot) recordUnavailable() {
+	if snapshot == nil {
+		return
+	}
+	snapshot.mu.Lock()
+	snapshot.admissionUnavailable = true
+	snapshot.mu.Unlock()
+}
+
+func (snapshot *codexClientAdmissionSnapshot) unavailable() bool {
+	if snapshot == nil {
+		return false
+	}
+	snapshot.mu.Lock()
+	defer snapshot.mu.Unlock()
+	return snapshot.admissionUnavailable
+}
+
 // hadDenied reports whether this request actually encountered an account that
 // the frozen client policy rejected. The precomputed standard/app-server
 // results describe what would happen if such an account were evaluated; they
@@ -173,6 +194,68 @@ func (snapshot *codexClientAdmissionSnapshot) stickyWasSkipped(accountID int64) 
 	return ok
 }
 
+func (snapshot *codexClientAdmissionSnapshot) recordTerminalAdmission(account *Account) {
+	if snapshot == nil || account == nil || account.ID <= 0 {
+		return
+	}
+	snapshot.mu.Lock()
+	snapshot.terminallyAdmitted = account
+	snapshot.mu.Unlock()
+}
+
+func (snapshot *codexClientAdmissionSnapshot) clearTerminalAdmission() {
+	if snapshot == nil {
+		return
+	}
+	snapshot.mu.Lock()
+	snapshot.terminallyAdmitted = nil
+	snapshot.mu.Unlock()
+}
+
+func (snapshot *codexClientAdmissionSnapshot) terminalAdmissionRecorded(account *Account) bool {
+	if snapshot == nil || account == nil || account.ID <= 0 {
+		return false
+	}
+	snapshot.mu.Lock()
+	defer snapshot.mu.Unlock()
+	return snapshot.terminallyAdmitted == account
+}
+
+func sameOpenAIWSAdmissionBinding(bound, authoritative *Account) bool {
+	if bound == nil || authoritative == nil || bound.ID != authoritative.ID ||
+		bound.Platform != authoritative.Platform || bound.Type != authoritative.Type {
+		return false
+	}
+	if bound.ParentAccountID == nil || authoritative.ParentAccountID == nil {
+		return bound.ParentAccountID == nil && authoritative.ParentAccountID == nil
+	}
+	return *bound.ParentAccountID == *authoritative.ParentAccountID
+}
+
+// GrantOpenAIWSTerminalAdmission transfers a freshly verified terminal grant
+// to the stable account object owned by an established WebSocket connection.
+// HTTP callers keep the stricter exact-pointer grant: this exception is only
+// safe when the database object already holds the grant and the connection
+// binding identity (including the shadow parent) has not changed.
+func (s *OpenAIGatewayService) GrantOpenAIWSTerminalAdmission(
+	ctx context.Context,
+	bound *Account,
+	authoritative *Account,
+) bool {
+	if !sameOpenAIWSAdmissionBinding(bound, authoritative) {
+		return false
+	}
+	snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx)
+	if !ok || !snapshot.enforcementActive || !codexClientAdmissionAppliesToAccount(ctx, bound) {
+		return true
+	}
+	if !snapshot.terminalAdmissionRecorded(authoritative) {
+		return false
+	}
+	snapshot.recordTerminalAdmission(bound)
+	return true
+}
+
 func recordCodexClientAdmissionStickySkip(ctx context.Context, accountID int64) {
 	snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx)
 	if !ok {
@@ -203,6 +286,9 @@ func codexClientAdmissionErrorFromContext(ctx context.Context) error {
 	snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx)
 	if !ok {
 		return ErrCodexClientRestricted
+	}
+	if snapshot.unavailable() {
+		return ErrCodexClientAdmissionUnavailable
 	}
 	result, ok := snapshot.deniedResult()
 	if !ok {
@@ -263,6 +349,24 @@ func (s *OpenAIGatewayService) codexRestrictionAccountLatest(ctx context.Context
 	return parent, nil
 }
 
+func (s *OpenAIGatewayService) codexRestrictionAccountAuthoritative(ctx context.Context, account *Account) (*Account, error) {
+	if account == nil || account.ParentAccountID == nil {
+		return account, nil
+	}
+	parentID := *account.ParentAccountID
+	if s == nil || s.accountRepo == nil {
+		return nil, fmt.Errorf("account repository is unavailable for shadow parent %d", parentID)
+	}
+	parent, err := s.accountRepo.GetByID(ctx, parentID)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateCodexRestrictionParent(parent, parentID); err != nil {
+		return nil, err
+	}
+	return parent, nil
+}
+
 func validateCodexRestrictionParent(parent *Account, parentID int64) error {
 	if parent == nil {
 		return fmt.Errorf("shadow parent %d not found", parentID)
@@ -290,7 +394,7 @@ func (s *OpenAIGatewayService) codexClientAdmissionVetoReason(
 	lookup func(int64) *Account,
 ) (bool, string) {
 	snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx)
-	if !ok {
+	if !ok || !snapshot.enforcementActive {
 		return false, ""
 	}
 	effective, err := s.codexRestrictionAccount(ctx, account, lookup)
@@ -315,27 +419,25 @@ func (s *OpenAIGatewayService) codexClientAdmissionVetoReason(
 func (s *OpenAIGatewayService) codexClientAdmissionVeto(
 	ctx context.Context,
 	account *Account,
-) (bool, CodexClientRestrictionDetectionResult) {
+) (bool, CodexClientRestrictionDetectionResult, error) {
 	if account == nil {
-		return false, CodexClientRestrictionDetectionResult{}
+		return false, CodexClientRestrictionDetectionResult{}, nil
 	}
 	snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx)
-	if !ok {
-		return false, CodexClientRestrictionDetectionResult{}
+	if !ok || !snapshot.enforcementActive {
+		return false, CodexClientRestrictionDetectionResult{}, nil
 	}
-	effective, err := s.codexRestrictionAccountLatest(ctx, account)
+	effective, err := s.codexRestrictionAccountAuthoritative(ctx, account)
 	if err != nil {
-		logger.LegacyPrintf("service.openai_gateway", "[CodexAdmission] shadow parent refresh failed: account_id=%d parent_id=%v error=%v", account.ID, account.ParentAccountID, err)
-		result := codexClientAdmissionShadowParentUnresolvedResult()
-		snapshot.recordDenied(result)
-		return true, result
+		return false, CodexClientRestrictionDetectionResult{}, err
 	}
 	result, active := snapshot.resultFor(effective)
 	if !active || result.Matched {
-		return false, result
+		return false, result, nil
 	}
 	snapshot.recordDenied(result)
-	return true, result
+	snapshot.recordSkippedSticky(account.ID)
+	return true, result, nil
 }
 
 func (s *OpenAIGatewayService) detectCodexClientRestrictionForForward(
@@ -364,10 +466,23 @@ func (s *OpenAIGatewayService) enforceOpenAICodexClientAdmissionForForward(
 	account *Account,
 	body []byte,
 ) error {
+	if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok && !snapshot.enforcementActive {
+		return nil
+	}
 	var result CodexClientRestrictionDetectionResult
 	denied := false
 	if codexClientAdmissionActive(ctx) {
-		denied, result = s.codexClientAdmissionVeto(ctx, account)
+		if !codexClientAdmissionAppliesToAccount(ctx, account) {
+			return nil
+		}
+		snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx)
+		if !ok || !snapshot.terminalAdmissionRecorded(account) {
+			if ok {
+				snapshot.recordUnavailable()
+			}
+			return fmt.Errorf("%w: missing terminal admission grant for account %d", ErrCodexClientAdmissionUnavailable, account.ID)
+		}
+		return nil
 	} else {
 		result = s.detectCodexClientRestrictionForForward(ctx, c, account, body)
 		denied = result.Enabled && !result.Matched

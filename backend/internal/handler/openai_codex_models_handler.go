@@ -64,7 +64,11 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", "No available OpenAI accounts")
 			return
 		}
-		admission := h.gatewayService.OpenAITerminalAdmissionLatest(c.Request.Context(), account)
+		admission, admissionErr := h.gatewayService.OpenAITerminalAdmissionLatest(c.Request.Context(), account)
+		if admissionErr != nil {
+			h.handleOpenAICodexAdmissionError(c, admissionErr, false, false)
+			return
+		}
 		if admission.ClientVetoed {
 			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), false, false)
@@ -79,6 +83,10 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		manifest, err := h.gatewayService.FetchCodexModelsManifest(c.Request.Context(), account, c.Query("client_version"), c.GetHeader("If-None-Match"))
 		if err != nil {
 			if c.Request.Context().Err() != nil {
+				return
+			}
+			if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+				h.handleOpenAICodexAdmissionError(c, err, false, false)
 				return
 			}
 			if errors.Is(err, service.ErrCodexClientRestricted) {

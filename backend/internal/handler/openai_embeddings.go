@@ -188,6 +188,10 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			}
 			continue
 		}
+		if slotResult == openAISlotAcquireClientAdmissionUnavailable {
+			h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), false, false)
+			return
+		}
 		if slotResult == openAISlotAcquireClientVetoed {
 			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
@@ -226,6 +230,10 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
 
 		if err != nil {
+			if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+				h.handleOpenAICodexAdmissionError(c, err, false, false)
+				return
+			}
 			if errors.Is(err, service.ErrCodexClientRestricted) {
 				if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 					h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)

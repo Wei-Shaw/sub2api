@@ -168,6 +168,8 @@ func liveCallIdentity(
 
 func (h *OpenAIGatewayHandler) writeLiveCreateError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, service.ErrCodexClientAdmissionUnavailable):
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Account client policy is temporarily unavailable, please retry later")
 	case errors.Is(err, service.ErrCodexClientRestricted):
 		h.handleOpenAICodexAdmissionError(c, err, false, false)
 	case errors.Is(err, service.ErrLiveConcurrencyFull):
@@ -235,9 +237,10 @@ func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
 	}
 	defer func() { _ = downstream.CloseNow() }()
 	if err := h.gatewayService.ProxyLiveSideband(c.Request.Context(), record, downstream); err != nil {
-		if errors.Is(err, service.ErrCodexClientRestricted) {
+		if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) || errors.Is(err, service.ErrCodexClientRestricted) {
 			result, _ := service.CodexClientRestrictionResultFromError(err)
-			_ = downstream.Close(coderws.StatusPolicyViolation, service.CodexClientRestrictionMessage(result))
+			status, message := openAIClientAdmissionWSClose(err, result)
+			_ = downstream.Close(status, message)
 			return
 		}
 		_ = downstream.Close(coderws.StatusInternalError, "live sideband closed")

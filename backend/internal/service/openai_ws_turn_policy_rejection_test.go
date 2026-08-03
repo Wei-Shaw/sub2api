@@ -146,65 +146,79 @@ func TestOpenAIWSIngressRejectsSubsequentTurnBeforeUpstreamWrite(t *testing.T) {
 }
 
 func TestOpenAIWSPassthroughRejectsSubsequentTurnBeforeUpstreamWrite(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	controlCtx, cancelControl := context.WithCancelCause(context.Background())
-	defer cancelControl(context.Canceled)
+	for _, tc := range []struct {
+		name    string
+		msgType coderws.MessageType
+	}{
+		{name: "text", msgType: coderws.MessageText},
+		{name: "binary", msgType: coderws.MessageBinary},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			controlCtx, cancelControl := context.WithCancelCause(context.Background())
+			defer cancelControl(context.Canceled)
 
-	upstream := newStagedPassthroughConn()
-	upstream.Send(`{"type":"response.completed","response":{"id":"resp_passthrough_policy_1","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`)
-	var hooksMu sync.Mutex
-	var hookCalls []int
-	hooks := wsTurnPolicyRejectOnSecond(&hookCalls, &hooksMu)
-	server, serverErr := startPassthroughHookRecordingServer(
-		t,
-		controlCtx,
-		newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream),
-		passthroughLifecycleAccount(),
-		hooks,
-	)
-	defer server.Close()
-	client := dialPassthroughLifecycleClient(t, server)
-	defer func() { _ = client.CloseNow() }()
+			upstream := newStagedPassthroughConn()
+			upstream.Send(`{"type":"response.completed","response":{"id":"resp_passthrough_policy_1","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`)
+			var hooksMu sync.Mutex
+			var hookCalls []int
+			hooks := wsTurnPolicyRejectOnSecond(&hookCalls, &hooksMu)
+			server, serverErr := startPassthroughHookRecordingServer(
+				t,
+				controlCtx,
+				newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream),
+				passthroughLifecycleAccount(),
+				hooks,
+			)
+			defer server.Close()
+			client := dialPassthroughLifecycleClient(t, server)
+			defer func() { _ = client.CloseNow() }()
 
-	firstUpstream := requirePassthroughUpstreamWrite(t, upstream, time.Second)
-	require.Equal(t, "response.create", gjson.GetBytes(firstUpstream, "type").String())
-	first, err := readPassthroughLifecycleFrame(t, client, 3*time.Second)
-	require.NoError(t, err)
-	require.Equal(t, "resp_passthrough_policy_1", gjson.GetBytes(first, "response.id").String())
+			firstUpstream := requirePassthroughUpstreamWrite(t, upstream, time.Second)
+			require.Equal(t, "response.create", gjson.GetBytes(firstUpstream, "type").String())
+			first, err := readPassthroughLifecycleFrame(t, client, 3*time.Second)
+			require.NoError(t, err)
+			require.Equal(t, "resp_passthrough_policy_1", gjson.GetBytes(first, "response.id").String())
 
-	writeWSFrame(t, client, `{"type":"response.create","model":"gpt-5.1","stream":false,"previous_response_id":"resp_passthrough_policy_1"}`)
-	_, err = readPassthroughLifecycleFrame(t, client, 3*time.Second)
-	var websocketCloseErr coderws.CloseError
-	require.ErrorAs(t, err, &websocketCloseErr)
-	require.Equal(t, coderws.StatusPolicyViolation, websocketCloseErr.Code)
-	require.Equal(t, testWSTurnPolicyRejectionReason, websocketCloseErr.Reason)
+			writeWSFrameType(t, client, tc.msgType, `{"type":"response.create","model":"gpt-5.1","stream":false,"previous_response_id":"resp_passthrough_policy_1"}`)
+			_, err = readPassthroughLifecycleFrame(t, client, 3*time.Second)
+			var websocketCloseErr coderws.CloseError
+			require.ErrorAs(t, err, &websocketCloseErr)
+			require.Equal(t, coderws.StatusPolicyViolation, websocketCloseErr.Code)
+			require.Equal(t, testWSTurnPolicyRejectionReason, websocketCloseErr.Reason)
 
-	select {
-	case err := <-serverErr:
-		var closeErr *OpenAIWSClientCloseError
-		require.ErrorAs(t, err, &closeErr)
-		require.Equal(t, coderws.StatusPolicyViolation, closeErr.StatusCode())
-		require.Equal(t, testWSTurnPolicyRejectionReason, closeErr.Reason())
-	case <-time.After(3 * time.Second):
-		t.Fatal("passthrough policy rejection did not terminate")
+			select {
+			case err := <-serverErr:
+				var closeErr *OpenAIWSClientCloseError
+				require.ErrorAs(t, err, &closeErr)
+				require.Equal(t, coderws.StatusPolicyViolation, closeErr.StatusCode())
+				require.Equal(t, testWSTurnPolicyRejectionReason, closeErr.Reason())
+			case <-time.After(3 * time.Second):
+				t.Fatal("passthrough policy rejection did not terminate")
+			}
+
+			select {
+			case unexpected := <-upstream.writes:
+				t.Fatalf("第二轮策略拒绝后不应再写上游，got %s", unexpected)
+			case <-time.After(150 * time.Millisecond):
+			}
+			hooksMu.Lock()
+			gotCalls := append([]int(nil), hookCalls...)
+			hooksMu.Unlock()
+			require.Equal(t, []int{1, 2}, gotCalls)
+		})
 	}
-
-	select {
-	case unexpected := <-upstream.writes:
-		t.Fatalf("第二轮策略拒绝后不应再写上游，got %s", unexpected)
-	case <-time.After(150 * time.Millisecond):
-	}
-	hooksMu.Lock()
-	gotCalls := append([]int(nil), hookCalls...)
-	hooksMu.Unlock()
-	require.Equal(t, []int{1, 2}, gotCalls)
 }
 
 func writeWSFrame(t *testing.T, conn *coderws.Conn, payload string) {
+	writeWSFrameType(t, conn, coderws.MessageText, payload)
+}
+
+func writeWSFrameType(t *testing.T, conn *coderws.Conn, msgType coderws.MessageType, payload string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	require.NoError(t, conn.Write(ctx, coderws.MessageText, []byte(payload)))
+	require.NoError(t, conn.Write(ctx, msgType, []byte(payload)))
 }
 
 func readWSFrame(t *testing.T, conn *coderws.Conn) []byte {

@@ -37,7 +37,7 @@ func (r *countTokensRuntimeStateRepo) SetError(_ context.Context, _ int64, _ str
 	return nil
 }
 
-func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_EnforcesCodexClientRestriction(t *testing.T) {
+func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_RequiresTerminalAdmissionGrant(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-5.1","messages":[{"role":"user","content":"hello"}]}`)
 	rec := httptest.NewRecorder()
@@ -60,9 +60,9 @@ func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_EnforcesCodexClientR
 	c.Request = c.Request.WithContext(ctx)
 
 	err := svc.ForwardCountTokensAsAnthropic(ctx, c, account, body, "gpt-5.1")
-	require.ErrorIs(t, err, ErrCodexClientRestricted)
-	require.Zero(t, rec.Body.Len(), "service 不得提前写 403，handler 需要排除账号并重选")
-	require.Nil(t, upstream.lastReq, "客户端限制必须在任何上游请求之前生效")
+	require.ErrorIs(t, err, ErrCodexClientAdmissionUnavailable)
+	require.Zero(t, rec.Body.Len(), "service 不得提前写响应，handler 统一映射 503")
+	require.Nil(t, upstream.lastReq, "缺少本请求权威终检 grant 时不得触达上游")
 }
 
 func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_APIKeyUsesResponsesInputTokens(t *testing.T) {

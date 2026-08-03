@@ -199,7 +199,14 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 		}
 
 		account := selection.Account
-		admission := h.gatewayService.OpenAITerminalAdmissionLatest(c.Request.Context(), account)
+		admission, admissionErr := h.gatewayService.OpenAITerminalAdmissionLatest(c.Request.Context(), account)
+		if admissionErr != nil {
+			if selection.Acquired && selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			h.handleOpenAICodexAdmissionError(c, admissionErr, false, true)
+			return
+		}
 		if admission.ClientVetoed {
 			if selection.Acquired && selection.ReleaseFunc != nil {
 				selection.ReleaseFunc()
@@ -224,6 +231,10 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 			}
 			return h.gatewayService.ForwardCountTokensAsAnthropic(c.Request.Context(), c, account, forwardBody, defaultMappedModel)
 		}()
+		if errors.Is(forwardErr, service.ErrCodexClientAdmissionUnavailable) {
+			h.handleOpenAICodexAdmissionError(c, forwardErr, false, true)
+			return
+		}
 		if errors.Is(forwardErr, service.ErrCodexClientRestricted) {
 			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), false, true)

@@ -241,6 +241,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			}
 			continue
 		}
+		if slotResult == openAISlotAcquireClientAdmissionUnavailable {
+			h.handleOpenAIClientAdmissionExhausted(c, requestCtx, streamStarted, false)
+			return
+		}
 		if slotResult == openAISlotAcquireClientVetoed {
 			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 				h.handleOpenAIClientAdmissionExhausted(c, requestCtx, streamStarted, false)
@@ -279,6 +283,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
+			if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+				h.handleOpenAICodexAdmissionError(c, err, streamStarted, false)
+				return
+			}
 			if errors.Is(err, service.ErrCodexClientRestricted) {
 				if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
 					h.handleOpenAIClientAdmissionExhausted(c, requestCtx, streamStarted, false)

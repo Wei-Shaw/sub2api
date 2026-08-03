@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 )
 
@@ -44,6 +45,15 @@ func (h *OpenAIGatewayHandler) handleOpenAICodexAdmissionError(
 	streamStarted bool,
 	anthropicFormat bool,
 ) bool {
+	if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+		const message = "Account client policy is temporarily unavailable, please retry later"
+		if anthropicFormat {
+			h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", message, streamStarted)
+		} else {
+			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", message, streamStarted)
+		}
+		return true
+	}
 	if !errors.Is(err, service.ErrCodexClientRestricted) {
 		return false
 	}
@@ -62,4 +72,11 @@ func (h *OpenAIGatewayHandler) handleOpenAICodexAdmissionError(
 		h.handleStreamingAwareError(c, http.StatusForbidden, "forbidden_error", message, streamStarted)
 	}
 	return true
+}
+
+func openAIClientAdmissionWSClose(err error, result service.CodexClientRestrictionDetectionResult) (coderws.StatusCode, string) {
+	if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+		return coderws.StatusTryAgainLater, "account client policy is temporarily unavailable, please retry"
+	}
+	return coderws.StatusPolicyViolation, service.CodexClientRestrictionMessage(result)
 }

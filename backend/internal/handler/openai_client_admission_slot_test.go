@@ -4,13 +4,16 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -21,6 +24,27 @@ type clientAdmissionSequenceConcurrencyCache struct {
 	fakeConcurrencyCache
 	acquireCalls   atomic.Int64
 	accountRelease atomic.Int64
+}
+
+type clientAdmissionAccountRepo struct {
+	service.AccountRepository
+	getErr error
+}
+
+func (r clientAdmissionAccountRepo) GetByID(_ context.Context, id int64) (*service.Account, error) {
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	return clientAdmissionRejectedAccount(id), nil
+}
+
+func newClientAdmissionGateway(repo service.AccountRepository) *service.OpenAIGatewayService {
+	return service.NewOpenAIGatewayService(
+		repo,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil,
+		nil, nil, nil, nil, nil, nil, nil, nil,
+	)
 }
 
 func (c *clientAdmissionSequenceConcurrencyCache) AcquireAccountSlot(context.Context, int64, int, string) (bool, error) {
@@ -64,7 +88,7 @@ func clientAdmissionRejectedContext(t *testing.T, gw *service.OpenAIGatewayServi
 
 func TestAcquireResponsesAccountSlotClientAdmissionRecheckAllSlotPaths(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	gw := &service.OpenAIGatewayService{}
+	gw := newClientAdmissionGateway(clientAdmissionAccountRepo{})
 	groupID := int64(50)
 
 	t.Run("scheduler already acquired", func(t *testing.T) {
@@ -146,13 +170,14 @@ func TestAcquireResponsesAccountSlotClientAdmissionRecheckAllSlotPaths(t *testin
 
 func TestOpenAIClientAdmissionAllPoolVetoReturnsExactForbidden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	gw := &service.OpenAIGatewayService{}
+	gw := newClientAdmissionGateway(clientAdmissionAccountRepo{})
 	h := &OpenAIGatewayHandler{}
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	ctx := clientAdmissionRejectedContext(t, gw, c)
 
-	admission := gw.OpenAITerminalAdmissionLatest(ctx, clientAdmissionRejectedAccount(201))
+	admission, admissionErr := gw.OpenAITerminalAdmissionLatest(ctx, clientAdmissionRejectedAccount(201))
+	require.NoError(t, admissionErr)
 	require.True(t, admission.ClientVetoed, "必须先实际否决账号，不能仅凭预计算结果推断 403")
 
 	failed := make(map[int64]struct{})
@@ -170,4 +195,117 @@ func TestOpenAIClientAdmissionAllPoolVetoReturnsExactForbidden(t *testing.T) {
 	require.Equal(t, service.CodexOfficialClientsOnlyMessage, gjson.Get(w.Body.String(), "error.message").String())
 	require.Len(t, failed, maxClientAdmissionVetoAttempts)
 	require.Equal(t, maxClientAdmissionVetoAttempts, vetoCount)
+}
+
+func TestOpenAIClientAdmissionUnavailableReturns503AndReleasesSlot(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	gw := newClientAdmissionGateway(clientAdmissionAccountRepo{getErr: errors.New("database unavailable")})
+	h := &OpenAIGatewayHandler{}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	ctx := clientAdmissionRejectedContext(t, gw, c)
+	var directRelease atomic.Int64
+	selection := &service.AccountSelectionResult{
+		Account:  clientAdmissionRejectedAccount(301),
+		Acquired: true,
+		ReleaseFunc: func() {
+			directRelease.Add(1)
+		},
+	}
+	h.gatewayService = gw
+	streamStarted := false
+
+	release, result := h.acquireResponsesAccountSlot(c, nil, "", selection, false, &streamStarted, zap.NewNop())
+	require.Equal(t, openAISlotAcquireClientAdmissionUnavailable, result)
+	require.Nil(t, release)
+	require.Equal(t, int64(1), directRelease.Load())
+	require.Zero(t, w.Body.Len())
+
+	h.handleOpenAIClientAdmissionExhausted(c, ctx, false, false)
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, "api_error", gjson.Get(w.Body.String(), "error.type").String())
+	require.NotContains(t, w.Body.String(), service.CodexOfficialClientsOnlyMessage)
+	require.False(t, service.HasOpsClientBusinessLimited(c), "数据库故障不得被标记为客户端业务限流")
+}
+
+func TestOpenAIClientAdmissionUnavailableReleasesFastAndWaitSlots(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	gw := newClientAdmissionGateway(clientAdmissionAccountRepo{getErr: errors.New("database unavailable")})
+
+	t.Run("fast acquire", func(t *testing.T) {
+		cache := &profitCountingConcurrencyCache{}
+		h := &OpenAIGatewayHandler{
+			gatewayService:    gw,
+			concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatClaude, 0),
+		}
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		clientAdmissionRejectedContext(t, gw, c)
+		account := clientAdmissionRejectedAccount(302)
+		selection := &service.AccountSelectionResult{
+			Account:  account,
+			Acquired: false,
+			WaitPlan: &service.AccountWaitPlan{AccountID: account.ID, MaxConcurrency: 2, Timeout: time.Second, MaxWaiting: 2},
+		}
+		streamStarted := false
+
+		release, result := h.acquireResponsesAccountSlot(c, nil, "", selection, false, &streamStarted, zap.NewNop())
+		require.Equal(t, openAISlotAcquireClientAdmissionUnavailable, result)
+		require.Nil(t, release)
+		require.Equal(t, int64(1), cache.accountReleases.Load())
+		require.Zero(t, w.Body.Len())
+	})
+
+	t.Run("wait plan", func(t *testing.T) {
+		cache := &clientAdmissionSequenceConcurrencyCache{}
+		h := &OpenAIGatewayHandler{
+			gatewayService:    gw,
+			concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatClaude, 0),
+		}
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		clientAdmissionRejectedContext(t, gw, c)
+		account := clientAdmissionRejectedAccount(303)
+		selection := &service.AccountSelectionResult{
+			Account:  account,
+			Acquired: false,
+			WaitPlan: &service.AccountWaitPlan{AccountID: account.ID, MaxConcurrency: 2, Timeout: time.Second, MaxWaiting: 2},
+		}
+		streamStarted := false
+
+		release, result := h.acquireResponsesAccountSlot(c, nil, "", selection, false, &streamStarted, zap.NewNop())
+		require.Equal(t, openAISlotAcquireClientAdmissionUnavailable, result)
+		require.Nil(t, release)
+		require.Equal(t, int64(2), cache.acquireCalls.Load())
+		require.Equal(t, int64(1), cache.accountRelease.Load())
+		require.Zero(t, w.Body.Len())
+	})
+}
+
+func TestOpenAIClientAdmissionWSCloseClassification(t *testing.T) {
+	status, message := openAIClientAdmissionWSClose(service.ErrCodexClientAdmissionUnavailable, service.CodexClientRestrictionDetectionResult{})
+	require.Equal(t, coderws.StatusTryAgainLater, status)
+	require.Contains(t, message, "temporarily unavailable")
+
+	restricted := &service.CodexClientAdmissionError{Result: service.CodexClientRestrictionDetectionResult{
+		Enabled: true,
+		Matched: false,
+		Reason:  service.CodexClientRestrictionReasonNotMatchedUA,
+	}}
+	status, message = openAIClientAdmissionWSClose(restricted, restricted.Result)
+	require.Equal(t, coderws.StatusPolicyViolation, status)
+	require.Equal(t, service.CodexOfficialClientsOnlyMessage, message)
+}
+
+func TestOpenAIClientAdmissionUnavailablePreservesStreamingResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	h := &OpenAIGatewayHandler{}
+
+	require.True(t, h.handleOpenAICodexAdmissionError(c, service.ErrCodexClientAdmissionUnavailable, true, false))
+	require.Contains(t, w.Body.String(), "event: error")
+	require.Contains(t, w.Body.String(), "temporarily unavailable")
+	require.False(t, strings.HasPrefix(strings.TrimSpace(w.Body.String()), "{"), "已开始的 Images SSE 不得尾随普通 JSON")
 }

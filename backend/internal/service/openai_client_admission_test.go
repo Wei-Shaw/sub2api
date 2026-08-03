@@ -56,8 +56,11 @@ func codexAdmissionAccount(id int64, restricted bool) Account {
 
 type codexAdmissionAccountRepo struct {
 	AccountRepository
-	accounts []Account
-	byID     map[int64]*Account
+	accounts   []Account
+	byID       map[int64]*Account
+	getErr     error
+	getErrByID map[int64]error
+	getCalls   atomic.Int64
 }
 
 func (r *codexAdmissionAccountRepo) ListSchedulableByGroupIDAndPlatform(context.Context, int64, string) ([]Account, error) {
@@ -73,6 +76,13 @@ func (r *codexAdmissionAccountRepo) ListSchedulableByPlatform(context.Context, s
 }
 
 func (r *codexAdmissionAccountRepo) GetByID(_ context.Context, id int64) (*Account, error) {
+	r.getCalls.Add(1)
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	if err := r.getErrByID[id]; err != nil {
+		return nil, err
+	}
 	if r.byID == nil || r.byID[id] == nil {
 		return nil, nil
 	}
@@ -104,6 +114,7 @@ func (d *mutableCodexAdmissionDetector) Detect(_ *gin.Context, _ *Account, _ Cod
 type codexAdmissionSnapshotCache struct {
 	SchedulerCache
 	account *Account
+	err     error
 	calls   atomic.Int64
 }
 
@@ -144,6 +155,9 @@ func (r *recoveringCodexAdmissionRepo) GetByID(_ context.Context, _ int64) (*Acc
 
 func (c *codexAdmissionSnapshotCache) GetAccount(context.Context, int64) (*Account, error) {
 	c.calls.Add(1)
+	if c.err != nil {
+		return nil, c.err
+	}
 	if c.account == nil {
 		return nil, nil
 	}
@@ -333,9 +347,9 @@ func TestCodexClientAdmissionShadowParentTransientRecoveryCannotBypass(t *testin
 	svc := &OpenAIGatewayService{accountRepo: repo, codexDetector: detector}
 	ctx := newCodexAdmissionContext(t, svc)
 
-	vetoed, result := svc.codexClientAdmissionVeto(ctx, &shadow)
-	require.True(t, vetoed, "母账号首次读取失败时必须在终检 fail-closed")
-	require.Equal(t, codexClientAdmissionShadowParentUnresolvedReason, result.Reason)
+	_, admissionErr := svc.OpenAITerminalAdmissionLatest(ctx, &shadow)
+	require.ErrorIs(t, admissionErr, ErrCodexClientAdmissionUnavailable, "母账号首次读取失败时必须在终检 fail-closed")
+	require.False(t, errors.Is(admissionErr, ErrCodexClientRestricted), "读取失败不能冒充真实客户端策略拒绝")
 
 	resolved, err := resolveCredentialAccount(ctx, repo, &shadow)
 	require.NoError(t, err)
@@ -385,6 +399,26 @@ func TestLiveSidebandLateGuardRejectsBeforeCredentialOrDial(t *testing.T) {
 	conn, err := svc.dialLiveSideband(ctx, &LiveCallRecord{AccountID: restricted.ID, CallID: "call_restricted"})
 	require.Nil(t, conn)
 	require.ErrorIs(t, err, ErrCodexClientRestricted, "晚期保护必须在读取 OAuth 凭据或拨号前拒绝")
+}
+
+func TestLiveSidebandAccountReadFailureIsAdmissionUnavailable(t *testing.T) {
+	repo := &codexAdmissionAccountRepo{getErr: errors.New("database unavailable")}
+	svc := &OpenAIGatewayService{accountRepo: repo, codexDetector: &accountAwareCodexAdmissionDetector{}}
+	ctx := newCodexAdmissionContext(t, svc)
+	record := &LiveCallRecord{AccountID: 490, CallID: "call_unavailable"}
+
+	t.Run("before upgrade", func(t *testing.T) {
+		err := svc.ValidateLiveSidebandClientAdmission(ctx, record)
+		require.ErrorIs(t, err, ErrCodexClientAdmissionUnavailable)
+		require.False(t, errors.Is(err, ErrCodexClientRestricted))
+	})
+
+	t.Run("after upgrade", func(t *testing.T) {
+		conn, err := svc.dialLiveSideband(ctx, record)
+		require.Nil(t, conn)
+		require.ErrorIs(t, err, ErrCodexClientAdmissionUnavailable)
+		require.False(t, errors.Is(err, ErrCodexClientRestricted))
+	})
 }
 
 func TestCodexClientAdmissionPreviousResponseBindingIsPreserved(t *testing.T) {
@@ -539,7 +573,7 @@ func TestCodexClientAdmissionOrdinaryFailoverStillReplacesStickyBinding(t *testi
 	require.Equal(t, newAccount.ID, cache.sessionBindings[svc.openAISessionCacheKey(sessionHash)], "未被客户端门否决的旧账号不得阻止普通 failover 更新粘性")
 }
 
-func TestCodexClientAdmissionLateVetoDoesNotPreserveNewlyWrittenStickyBinding(t *testing.T) {
+func TestCodexClientAdmissionLateVetoPreservesExistingStickyBinding(t *testing.T) {
 	detector := &accountAwareCodexAdmissionDetector{}
 	groupID := int64(81)
 	restricted := codexAdmissionAccount(482, true)
@@ -555,10 +589,11 @@ func TestCodexClientAdmissionLateVetoDoesNotPreserveNewlyWrittenStickyBinding(t 
 	const sessionHash = "late-client-veto"
 	require.NoError(t, svc.setStickySessionAccountID(ctx, &groupID, sessionHash, restricted.ID, time.Hour))
 
-	vetoed, _ := svc.codexClientAdmissionVetoReason(ctx, &restricted, nil)
+	vetoed, _, vetoErr := svc.codexClientAdmissionVeto(ctx, &restricted)
+	require.NoError(t, vetoErr)
 	require.True(t, vetoed, "模拟准入后、发送前才发现限制变化")
 	require.NoError(t, svc.BindStickySessionAfterProfitAdmission(ctx, &groupID, sessionHash, replacement.ID))
-	require.Equal(t, replacement.ID, cache.sessionBindings[svc.openAISessionCacheKey(sessionHash)], "只有入口前实际跳过的旧 sticky 才能被保留")
+	require.Equal(t, restricted.ID, cache.sessionBindings[svc.openAISessionCacheKey(sessionHash)], "槽后终检否决也必须保留原 sticky，兼容客户端恢复后可自动重粘连")
 }
 
 func TestOpenAITerminalAdmissionRefreshesOnceAndNeverDowngradesFreshSelection(t *testing.T) {
@@ -568,13 +603,16 @@ func TestOpenAITerminalAdmissionRefreshesOnceAndNeverDowngradesFreshSelection(t 
 	stale := codexAdmissionAccount(50, false)
 	stale.UpdatedAt = selected.UpdatedAt.Add(-time.Minute)
 	cache := &codexAdmissionSnapshotCache{account: &stale}
-	snapshot := NewSchedulerSnapshotService(cache, nil, &codexAdmissionAccountRepo{}, nil, nil)
-	svc := &OpenAIGatewayService{schedulerSnapshot: snapshot, codexDetector: detector}
+	repo := &codexAdmissionAccountRepo{byID: map[int64]*Account{selected.ID: &selected}}
+	snapshot := NewSchedulerSnapshotService(cache, nil, repo, nil, nil)
+	svc := &OpenAIGatewayService{accountRepo: repo, schedulerSnapshot: snapshot, codexDetector: detector}
 	ctx := newCodexAdmissionContext(t, svc)
 
-	result := svc.OpenAITerminalAdmissionLatest(ctx, &selected)
-	require.Equal(t, int64(1), cache.calls.Load(), "利润与客户端终检必须共享一次账号刷新")
-	require.Same(t, &selected, result.Account, "旧缓存不得覆盖刚做过 DB recheck 的新对象")
+	result, err := svc.OpenAITerminalAdmissionLatest(ctx, &selected)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), repo.getCalls.Load(), "客户端终检必须只做一次权威账号刷新")
+	require.Zero(t, cache.calls.Load(), "客户端安全门不得采用可能陈旧的 scheduler cache")
+	require.NotSame(t, &selected, result.Account)
 	require.True(t, result.ClientVetoed)
 	require.Equal(t, CodexClientRestrictionReasonNotMatchedUA, result.ClientRestriction.Reason)
 }
@@ -585,17 +623,144 @@ func TestOpenAITerminalAdmissionUsesNewerReplacementObject(t *testing.T) {
 	selected.UpdatedAt = time.Now().UTC().Add(-time.Minute)
 	replacement := codexAdmissionAccount(51, true)
 	replacement.UpdatedAt = selected.UpdatedAt.Add(time.Minute)
-	cache := &codexAdmissionSnapshotCache{account: &replacement}
-	snapshot := NewSchedulerSnapshotService(cache, nil, &codexAdmissionAccountRepo{}, nil, nil)
-	svc := &OpenAIGatewayService{schedulerSnapshot: snapshot, codexDetector: detector}
+	stale := selected
+	cache := &codexAdmissionSnapshotCache{account: &stale}
+	repo := &codexAdmissionAccountRepo{byID: map[int64]*Account{selected.ID: &replacement}}
+	snapshot := NewSchedulerSnapshotService(cache, nil, repo, nil, nil)
+	svc := &OpenAIGatewayService{accountRepo: repo, schedulerSnapshot: snapshot, codexDetector: detector}
 	ctx := newCodexAdmissionContext(t, svc)
 
-	result := svc.OpenAITerminalAdmissionLatest(ctx, &selected)
-	require.Equal(t, int64(1), cache.calls.Load(), "利润与客户端终检必须共享一次账号刷新")
+	result, err := svc.OpenAITerminalAdmissionLatest(ctx, &selected)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), repo.getCalls.Load(), "客户端终检必须只做一次权威账号刷新")
+	require.Zero(t, cache.calls.Load(), "陈旧 cache 不得掩盖数据库中新开启的限制")
 	require.NotSame(t, &selected, result.Account, "终检必须采用缓存中替换后的新对象")
 	require.Equal(t, replacement.UpdatedAt, result.Account.UpdatedAt)
 	require.True(t, result.ClientVetoed)
 	require.False(t, selected.IsCodexCLIOnlyEnabled(), "终检不得通过原地修改旧指针伪造刷新")
+}
+
+func TestOpenAITerminalAdmissionRefreshFailureFailsClosed(t *testing.T) {
+	detector := &accountAwareCodexAdmissionDetector{}
+	selected := codexAdmissionAccount(53, false)
+	cache := &codexAdmissionSnapshotCache{account: &selected}
+	repo := &codexAdmissionAccountRepo{getErr: errors.New("database unavailable")}
+	snapshot := NewSchedulerSnapshotService(cache, nil, repo, nil, nil)
+	svc := &OpenAIGatewayService{accountRepo: repo, schedulerSnapshot: snapshot, codexDetector: detector}
+	ctx := newCodexAdmissionContext(t, svc)
+
+	result, err := svc.OpenAITerminalAdmissionLatest(ctx, &selected)
+	require.ErrorIs(t, err, ErrCodexClientAdmissionUnavailable)
+	require.False(t, result.ClientVetoed)
+	require.Equal(t, int64(1), repo.getCalls.Load())
+	require.Zero(t, cache.calls.Load(), "读取失败不能回退到可能陈旧的安全策略缓存")
+	ctxErr := CodexClientAdmissionErrorFromContext(ctx)
+	require.ErrorIs(t, ctxErr, ErrCodexClientAdmissionUnavailable)
+	require.False(t, errors.Is(ctxErr, ErrCodexClientRestricted))
+}
+
+func TestOpenAITerminalAdmissionShadowUsesFreshParentPolicy(t *testing.T) {
+	detector := &accountAwareCodexAdmissionDetector{}
+	parent := codexAdmissionAccount(54, true)
+	parentID := parent.ID
+	shadow := codexAdmissionAccount(55, false)
+	shadow.ParentAccountID = &parentID
+	staleParent := parent
+	staleParent.Extra = map[string]any{}
+	cache := &codexAdmissionSnapshotCache{account: &staleParent}
+	repo := &codexAdmissionAccountRepo{byID: map[int64]*Account{
+		shadow.ID: &shadow,
+		parent.ID: &parent,
+	}}
+	snapshot := NewSchedulerSnapshotService(cache, nil, repo, nil, nil)
+	svc := &OpenAIGatewayService{accountRepo: repo, schedulerSnapshot: snapshot, codexDetector: detector}
+	ctx := newCodexAdmissionContext(t, svc)
+
+	result, err := svc.OpenAITerminalAdmissionLatest(ctx, &shadow)
+	require.NoError(t, err)
+	require.True(t, result.ClientVetoed)
+	require.Equal(t, CodexClientRestrictionReasonNotMatchedUA, result.ClientRestriction.Reason)
+	require.Equal(t, int64(2), repo.getCalls.Load(), "影子账号与其母账号都必须从数据库权威读取")
+	require.Zero(t, cache.calls.Load(), "陈旧母账号缓存不得绕过客户端限制")
+}
+
+func TestOpenAITerminalAdmissionShadowUsesFreshParentTopology(t *testing.T) {
+	detector := &accountAwareCodexAdmissionDetector{}
+	oldParent := codexAdmissionAccount(56, false)
+	newParent := codexAdmissionAccount(57, true)
+	oldParentID := oldParent.ID
+	newParentID := newParent.ID
+	selected := codexAdmissionAccount(58, false)
+	selected.ParentAccountID = &oldParentID
+	freshShadow := selected
+	freshShadow.ParentAccountID = &newParentID
+	repo := &codexAdmissionAccountRepo{byID: map[int64]*Account{
+		freshShadow.ID: &freshShadow,
+		newParent.ID:   &newParent,
+	}}
+	svc := &OpenAIGatewayService{accountRepo: repo, codexDetector: detector}
+	ctx := newCodexAdmissionContext(t, svc)
+
+	result, err := svc.OpenAITerminalAdmissionLatest(ctx, &selected)
+	require.NoError(t, err)
+	require.True(t, result.ClientVetoed)
+	require.Equal(t, newParentID, *result.Account.ParentAccountID)
+	require.Equal(t, int64(2), repo.getCalls.Load())
+}
+
+func TestOpenAITerminalAdmissionShadowParentReadFailureIsUnavailable(t *testing.T) {
+	detector := &accountAwareCodexAdmissionDetector{}
+	parentID := int64(59)
+	shadow := codexAdmissionAccount(60, false)
+	shadow.ParentAccountID = &parentID
+	repo := &codexAdmissionAccountRepo{
+		byID:       map[int64]*Account{shadow.ID: &shadow},
+		getErrByID: map[int64]error{parentID: errors.New("parent read failed")},
+	}
+	svc := &OpenAIGatewayService{accountRepo: repo, codexDetector: detector}
+	ctx := newCodexAdmissionContext(t, svc)
+
+	result, err := svc.OpenAITerminalAdmissionLatest(ctx, &shadow)
+	require.ErrorIs(t, err, ErrCodexClientAdmissionUnavailable)
+	require.False(t, result.ClientVetoed)
+	require.Equal(t, int64(2), repo.getCalls.Load())
+}
+
+func TestOpenAITerminalAdmissionInactiveOfficialClientSkipsDB(t *testing.T) {
+	selected := codexAdmissionAccount(61, true)
+	repo := &codexAdmissionAccountRepo{getErr: errors.New("must not be called")}
+	svc := &OpenAIGatewayService{accountRepo: repo, codexDetector: alwaysMatchedCodexAdmissionDetector{}}
+	ctx := newCodexAdmissionContext(t, svc)
+	require.False(t, codexClientAdmissionActive(ctx))
+
+	result, err := svc.OpenAITerminalAdmissionLatest(ctx, &selected)
+	require.NoError(t, err)
+	require.Same(t, &selected, result.Account)
+	require.Zero(t, repo.getCalls.Load())
+}
+
+func TestOpenAITerminalAdmissionInactiveOfficialShadowSkipsDB(t *testing.T) {
+	parentID := int64(611)
+	shadow := codexAdmissionAccount(612, true)
+	shadow.ParentAccountID = &parentID
+	repo := &codexAdmissionAccountRepo{getErr: errors.New("must not be called")}
+	svc := &OpenAIGatewayService{accountRepo: repo, codexDetector: alwaysMatchedCodexAdmissionDetector{}}
+	ctx := newCodexAdmissionContext(t, svc)
+	require.False(t, codexClientAdmissionActive(ctx))
+
+	result, err := svc.OpenAITerminalAdmissionLatest(ctx, &shadow)
+	require.NoError(t, err)
+	require.Same(t, &shadow, result.Account)
+	require.False(t, result.ClientVetoed)
+	require.Zero(t, repo.getCalls.Load(), "官方客户端的影子账号不得新增母账号数据库读取")
+	lookupCalls := 0
+	vetoed, reason := svc.codexClientAdmissionVetoReason(ctx, &shadow, func(int64) *Account {
+		lookupCalls++
+		panic("inactive admission must not resolve shadow parent")
+	})
+	require.False(t, vetoed)
+	require.Empty(t, reason)
+	require.Zero(t, lookupCalls, "官方客户端候选过滤不得解析影子母账号")
 }
 
 func TestOpenAITerminalAdmissionSkipsRefreshForAPIKeyAccount(t *testing.T) {
@@ -607,8 +772,34 @@ func TestOpenAITerminalAdmissionSkipsRefreshForAPIKeyAccount(t *testing.T) {
 	svc := &OpenAIGatewayService{schedulerSnapshot: snapshot, codexDetector: &accountAwareCodexAdmissionDetector{}}
 	ctx := newCodexAdmissionContext(t, svc)
 
-	result := svc.OpenAITerminalAdmissionLatest(ctx, &selected)
+	result, err := svc.OpenAITerminalAdmissionLatest(ctx, &selected)
+	require.NoError(t, err)
 	require.Zero(t, cache.calls.Load(), "账号级 Codex 限制不适用于 API Key，普通请求不得增加快照读取")
 	require.Same(t, &selected, result.Account)
 	require.False(t, result.ClientVetoed)
+}
+
+func TestOpenAITerminalAdmissionAPIKeyProfitRefreshFailureRemainsFailOpen(t *testing.T) {
+	selected := codexAdmissionAccount(62, false)
+	selected.Type = AccountTypeAPIKey
+	rate := 0.1
+	selected.RateMultiplier = &rate
+	cache := &codexAdmissionSnapshotCache{err: errors.New("scheduler cache unavailable")}
+	repo := &codexAdmissionAccountRepo{getErr: errors.New("database unavailable")}
+	snapshot := NewSchedulerSnapshotService(cache, nil, repo, nil, nil)
+	svc := &OpenAIGatewayService{accountRepo: repo, schedulerSnapshot: snapshot, codexDetector: &accountAwareCodexAdmissionDetector{}}
+	ctx := newCodexAdmissionContext(t, svc)
+	ctx = context.WithValue(ctx, openAIProfitControlGateCtxKey{}, &openAIProfitControlGate{
+		groupID:   1,
+		platform:  PlatformOpenAI,
+		threshold: 0.2,
+	})
+
+	result, err := svc.OpenAITerminalAdmissionLatest(ctx, &selected)
+	require.NoError(t, err, "API Key 仅有利润门时仍沿用快照刷新失败 fail-open 语义")
+	require.Same(t, &selected, result.Account)
+	require.False(t, result.ProfitVetoed)
+	require.False(t, result.ClientVetoed)
+	require.Equal(t, int64(1), cache.calls.Load())
+	require.Equal(t, int64(1), repo.getCalls.Load(), "利润门快照 miss 仍沿用既有数据库 fallback；失败后必须 fail-open")
 }

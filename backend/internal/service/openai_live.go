@@ -178,6 +178,9 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			if lastErr != nil {
 				return nil, lastErr
 			}
+			if codexClientAdmissionDenied(ctx) {
+				return nil, codexClientAdmissionErrorFromContext(ctx)
+			}
 			return nil, selectErr
 		}
 		if selection == nil || selection.Account == nil || !selection.Acquired {
@@ -187,7 +190,13 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			return nil, ErrLiveConcurrencyFull
 		}
 
-		admission := s.OpenAITerminalAdmissionLatest(ctx, selection.Account)
+		admission, admissionErr := s.OpenAITerminalAdmissionLatest(ctx, selection.Account)
+		if admissionErr != nil {
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			return nil, admissionErr
+		}
 		if admission.ClientVetoed {
 			if selection.ReleaseFunc != nil {
 				selection.ReleaseFunc()
@@ -220,6 +229,9 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 		selection.ReleaseFunc()
 		if createErr != nil {
 			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID)
+			if errors.Is(createErr, ErrCodexClientAdmissionUnavailable) {
+				return nil, createErr
+			}
 			if errors.Is(createErr, ErrCodexClientRestricted) {
 				excluded[account.ID] = struct{}{}
 				budget.clientVetoes++
@@ -477,12 +489,25 @@ func (s *OpenAIGatewayService) liveSidebandHeaders(
 func (s *OpenAIGatewayService) dialLiveSideband(ctx context.Context, record *LiveCallRecord) (liveFrameConn, error) {
 	account, err := s.accountRepo.GetByID(ctx, record.AccountID)
 	if err != nil {
+		if codexClientAdmissionActive(ctx) {
+			if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok {
+				snapshot.recordUnavailable()
+			}
+			return nil, fmt.Errorf("%w: load live sideband account %d: %v", ErrCodexClientAdmissionUnavailable, record.AccountID, err)
+		}
 		return nil, err
 	}
 	if account == nil || !account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityLive) {
 		return nil, ErrLiveUnavailable
 	}
-	if vetoed, result := s.codexClientAdmissionVeto(ctx, account); vetoed {
+	vetoed, result, admissionErr := s.codexClientAdmissionVeto(ctx, account)
+	if admissionErr != nil {
+		if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok {
+			snapshot.recordUnavailable()
+		}
+		return nil, fmt.Errorf("%w: resolve live sideband account %d policy: %v", ErrCodexClientAdmissionUnavailable, account.ID, admissionErr)
+	}
+	if vetoed {
 		return nil, &CodexClientAdmissionError{Result: result}
 	}
 	headers, err := s.liveSidebandHeaders(ctx, account, record)
@@ -514,16 +539,29 @@ func (s *OpenAIGatewayService) ValidateLiveSidebandClientAdmission(ctx context.C
 		return nil
 	}
 	if s == nil || s.accountRepo == nil {
-		return ErrLiveUnavailable
+		if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok {
+			snapshot.recordUnavailable()
+		}
+		return fmt.Errorf("%w: live sideband account repository is unavailable", ErrCodexClientAdmissionUnavailable)
 	}
 	account, err := s.accountRepo.GetByID(ctx, record.AccountID)
 	if err != nil {
-		return fmt.Errorf("load live sideband account %d: %w", record.AccountID, err)
+		if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok {
+			snapshot.recordUnavailable()
+		}
+		return fmt.Errorf("%w: load live sideband account %d: %v", ErrCodexClientAdmissionUnavailable, record.AccountID, err)
 	}
 	if account == nil {
 		return ErrLiveUnavailable
 	}
-	if vetoed, result := s.codexClientAdmissionVeto(ctx, account); vetoed {
+	vetoed, result, admissionErr := s.codexClientAdmissionVeto(ctx, account)
+	if admissionErr != nil {
+		if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok {
+			snapshot.recordUnavailable()
+		}
+		return fmt.Errorf("%w: resolve live sideband account %d policy: %v", ErrCodexClientAdmissionUnavailable, account.ID, admissionErr)
+	}
+	if vetoed {
 		return &CodexClientAdmissionError{Result: result}
 	}
 	return nil
