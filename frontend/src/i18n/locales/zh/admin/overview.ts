@@ -1099,8 +1099,16 @@ export default {
         },
         sources: {
           route: '路由',
+          endpointDefault: '端点默认',
           detector: '内置识别'
         }
+      },
+      endpointDefaultRouting: {
+        title: '启用端点默认路由',
+        tooltip:
+          '兜底开关：当显式路由规则和内置模型名识别都无法判定目标平台时，按请求端点选择——Messages（含 Count Tokens）路由到 Anthropic，Responses、Chat Completions 和 Embeddings 路由到 OpenAI，Gemini 原生接口路由到 Gemini。显式路由规则和内置模型名识别的优先级都高于该兜底，因此开启后不会改变任何原本就能正常路由的请求，只会救回此前“无法匹配任何路由”的自定义模型名（例如非 gpt-/claude-/gemini- 开头的聚合站模型）。Images、Videos 等多供应商端点不参与该兜底。',
+        enabled: '已启用',
+        disabled: '未启用'
       },
       claudeCode: {
         title: 'Claude Code 客户端限制',

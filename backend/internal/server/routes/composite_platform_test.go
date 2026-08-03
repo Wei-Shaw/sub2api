@@ -240,3 +240,118 @@ func TestCompositeGeminiTargetPlatformMiddlewareUsesPathRoute(t *testing.T) {
 
 	require.Equal(t, http.StatusNoContent, w.Code)
 }
+
+// endpointDefaultCompositeRouter builds a router whose composite group has
+// endpoint-default routing enabled, so middleware-level precedence can be
+// asserted end to end.
+func endpointDefaultCompositeRouter(t *testing.T, routes []service.CompositeModelRoute, use func(*service.CompositeRouteResolver) gin.HandlerFunc) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	resolver := service.NewCompositeRouteResolver(compositeRouteRepoStub{routes: routes})
+	router.Use(gin.HandlerFunc(servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+		groupID := int64(1)
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+			GroupID: &groupID,
+			Group: &service.Group{
+				ID:                            groupID,
+				Platform:                      service.PlatformComposite,
+				EndpointDefaultRoutingEnabled: true,
+			},
+		})
+		c.Next()
+	})))
+	router.Use(use(resolver))
+	return router
+}
+
+func TestCompositeTargetPlatformMiddlewareAppliesEndpointDefault(t *testing.T) {
+	router := endpointDefaultCompositeRouter(t, nil, compositeTargetPlatformMiddleware)
+	router.POST("/v1/messages", func(c *gin.Context) {
+		platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, service.PlatformAnthropic, platform)
+		source, ok := service.CompositeRouteSourceFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, service.CompositeRouteSourceEndpointDefault, source)
+		c.Status(http.StatusNoContent)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"house-blend-1","messages":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+// TestCompositeTargetPlatformMiddlewareExplicitAnyRuleOutranksEndpointDefault
+// is the operator-override guard at the middleware layer: turning the flag on
+// must not retarget traffic that an `any` rule already covers.
+func TestCompositeTargetPlatformMiddlewareExplicitAnyRuleOutranksEndpointDefault(t *testing.T) {
+	router := endpointDefaultCompositeRouter(t, []service.CompositeModelRoute{
+		{
+			ID:             1,
+			GroupID:        1,
+			PublicModel:    "shared-model",
+			MatchType:      service.CompositeRouteMatchExact,
+			TargetPlatform: service.PlatformOpenAI,
+			Endpoint:       service.CompositeRouteEndpointAny,
+			Enabled:        true,
+		},
+	}, compositeTargetPlatformMiddleware)
+	router.POST("/v1/messages", func(c *gin.Context) {
+		platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, service.PlatformOpenAI, platform)
+		source, ok := service.CompositeRouteSourceFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, service.CompositeRouteSourceExplicit, source)
+		c.Status(http.StatusNoContent)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"shared-model","messages":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestCompositeGeminiTargetPlatformMiddlewareAppliesEndpointDefault(t *testing.T) {
+	router := endpointDefaultCompositeRouter(t, nil, compositeGeminiTargetPlatformMiddleware)
+	router.POST("/v1beta/models/*modelAction", func(c *gin.Context) {
+		platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, service.PlatformGemini, platform)
+		source, ok := service.CompositeRouteSourceFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, service.CompositeRouteSourceEndpointDefault, source)
+		c.Status(http.StatusNoContent)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1beta/models/house-blend-1:generateContent", strings.NewReader(`{"contents":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+// TestCompositeRouteEndpointForPathCoversDefaultedEndpoints keeps the path
+// classifier and the endpoint-default table in sync: every endpoint the router
+// can emit must be a value the resolver recognizes.
+func TestCompositeRouteEndpointForPathCoversDefaultedEndpoints(t *testing.T) {
+	tests := map[string]string{
+		"/v1/messages":              service.CompositeRouteEndpointMessages,
+		"/v1/messages/count_tokens": service.CompositeRouteEndpointCountTokens,
+		"/v1/responses":             service.CompositeRouteEndpointResponses,
+		"/v1/chat/completions":      service.CompositeRouteEndpointChatCompletions,
+		"/v1/embeddings":            service.CompositeRouteEndpointEmbeddings,
+		"/v1/images/generations":    service.CompositeRouteEndpointImages,
+		"/v1beta/models/x":          service.CompositeRouteEndpointGemini,
+	}
+	for path, want := range tests {
+		require.Equal(t, want, compositeRouteEndpointForPath(path), path)
+	}
+}

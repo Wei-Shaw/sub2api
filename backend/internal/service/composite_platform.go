@@ -170,7 +170,9 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 			Endpoint:       normalizeCompositeRouteEndpoint(endpoint),
 		}, true, nil
 	}
-	decision, err := s.compositeResolver.Resolve(ctx, group.ID, requestedModel, endpoint)
+	decision, err := s.compositeResolver.ResolveWithOptions(ctx, group.ID, requestedModel, endpoint, CompositeRouteResolveOptions{
+		EndpointDefaultRoutingEnabled: group.EndpointDefaultRoutingEnabled,
+	})
 	if err != nil {
 		return decision, false, err
 	}

@@ -21,8 +21,9 @@ const (
 	CompositeRouteEndpointImages          = "images"
 	CompositeRouteEndpointGemini          = "gemini"
 
-	CompositeRouteSourceExplicit = "route"
-	CompositeRouteSourceDetector = "detector"
+	CompositeRouteSourceExplicit        = "route"
+	CompositeRouteSourceEndpointDefault = "endpoint_default"
+	CompositeRouteSourceDetector        = "detector"
 )
 
 var (
@@ -62,6 +63,10 @@ type CompositeRouteDecision struct {
 	Endpoint       string               `json:"endpoint"`
 	Route          *CompositeModelRoute `json:"route,omitempty"`
 	Reason         string               `json:"reason,omitempty"`
+}
+
+type CompositeRouteResolveOptions struct {
+	EndpointDefaultRoutingEnabled bool
 }
 
 type CompositeRouteInput struct {

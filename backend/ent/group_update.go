@@ -989,6 +989,20 @@ func (_u *GroupUpdate) SetNillableAllowLive(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field.
+func (_u *GroupUpdate) SetEndpointDefaultRoutingEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetEndpointDefaultRoutingEnabled(v)
+	return _u
+}
+
+// SetNillableEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableEndpointDefaultRoutingEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetEndpointDefaultRoutingEnabled(*v)
+	}
+	return _u
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_u *GroupUpdate) SetRequireOauthOnly(v bool) *GroupUpdate {
 	_u.mutation.SetRequireOauthOnly(v)
@@ -1796,6 +1810,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AllowLive(); ok {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.EndpointDefaultRoutingEnabled(); ok {
+		_spec.SetField(group.FieldEndpointDefaultRoutingEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
@@ -3110,6 +3127,20 @@ func (_u *GroupUpdateOne) SetNillableAllowLive(v *bool) *GroupUpdateOne {
 	return _u
 }
 
+// SetEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field.
+func (_u *GroupUpdateOne) SetEndpointDefaultRoutingEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetEndpointDefaultRoutingEnabled(v)
+	return _u
+}
+
+// SetNillableEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableEndpointDefaultRoutingEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetEndpointDefaultRoutingEnabled(*v)
+	}
+	return _u
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_u *GroupUpdateOne) SetRequireOauthOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetRequireOauthOnly(v)
@@ -3947,6 +3978,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AllowLive(); ok {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.EndpointDefaultRoutingEnabled(); ok {
+		_spec.SetField(group.FieldEndpointDefaultRoutingEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)

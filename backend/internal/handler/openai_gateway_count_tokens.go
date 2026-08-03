@@ -78,7 +78,10 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 	)
 
-	if apiKey.Group != nil && !apiKey.Group.AllowMessagesDispatch {
+	// count_tokens shares the Messages bridge authorization so the two endpoints
+	// cannot drift apart; the composite route was already resolved by the
+	// compositeTarget middleware before this handler runs.
+	if !allowOpenAICompatibleMessagesDispatch(c.Request.Context(), apiKey) {
 		h.anthropicErrorResponse(c, http.StatusForbidden, "permission_error",
 			"This group does not allow /v1/messages dispatch")
 		return

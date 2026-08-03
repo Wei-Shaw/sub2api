@@ -16,6 +16,26 @@ func NewCompositeRouteResolver(repo CompositeModelRouteRepository) *CompositeRou
 }
 
 func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, model, endpoint string) (CompositeRouteDecision, error) {
+	return r.ResolveWithOptions(ctx, groupID, model, endpoint, CompositeRouteResolveOptions{})
+}
+
+// ResolveWithOptions resolves a composite route with group-level options applied.
+//
+// Precedence is: explicit rules first (ranked by matchCompositeRoute, whose
+// comparator is intentionally left untouched by endpoint-default routing), then
+// the built-in model detector, then the endpoint default when the group opted
+// in.
+//
+// The endpoint default deliberately runs last. It infers a platform from the
+// protocol the caller spoke rather than from the model, so letting it outrank
+// the detector would send a `gpt-*` request arriving on /v1/messages to
+// Anthropic. Running it last also makes the flag purely additive: it can only
+// produce a decision where resolution previously failed outright, so enabling
+// it never retargets traffic that already worked.
+//
+// The `images` endpoint has no built-in default on purpose, because image
+// models are cross-provider.
+func (r *CompositeRouteResolver) ResolveWithOptions(ctx context.Context, groupID int64, model, endpoint string, options CompositeRouteResolveOptions) (CompositeRouteDecision, error) {
 	model = strings.TrimSpace(model)
 	endpoint = normalizeCompositeRouteEndpoint(endpoint)
 	decision := CompositeRouteDecision{
@@ -62,8 +82,40 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 			Endpoint:       endpoint,
 		}, nil
 	}
-	decision.Reason = "no explicit route or built-in detector match"
+
+	if options.EndpointDefaultRoutingEnabled {
+		if platform, ok := compositeEndpointDefaultPlatform(endpoint); ok {
+			return CompositeRouteDecision{
+				Matched:        true,
+				Source:         CompositeRouteSourceEndpointDefault,
+				GroupID:        groupID,
+				PublicModel:    model,
+				TargetPlatform: platform,
+				UpstreamModel:  model,
+				Endpoint:       endpoint,
+			}, nil
+		}
+	}
+
+	decision.Reason = "no explicit route, built-in detector, or endpoint default match"
 	return decision, nil
+}
+
+// compositeEndpointDefaultPlatform maps a normalized composite endpoint to the
+// provider that serves it natively. `images` and `any` are deliberately absent:
+// image models are cross-provider, and `any` means the caller's endpoint could
+// not be identified, so both must keep falling through to the detector.
+func compositeEndpointDefaultPlatform(endpoint string) (string, bool) {
+	switch normalizeCompositeRouteEndpoint(endpoint) {
+	case CompositeRouteEndpointMessages, CompositeRouteEndpointCountTokens:
+		return PlatformAnthropic, true
+	case CompositeRouteEndpointResponses, CompositeRouteEndpointChatCompletions, CompositeRouteEndpointEmbeddings:
+		return PlatformOpenAI, true
+	case CompositeRouteEndpointGemini:
+		return PlatformGemini, true
+	default:
+		return "", false
+	}
 }
 
 func matchCompositeRoute(routes []CompositeModelRoute, model, endpoint string) (CompositeModelRoute, bool) {

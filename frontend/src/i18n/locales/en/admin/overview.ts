@@ -1102,8 +1102,16 @@ export default {
         },
         sources: {
           route: 'Route',
+          endpointDefault: 'Endpoint Default',
           detector: 'Detector'
         }
+      },
+      endpointDefaultRouting: {
+        title: 'Enable Endpoint Default Routing',
+        tooltip:
+          'Last-resort fallback: when neither an explicit route rule nor the built-in model-name detector can determine a target platform, the request endpoint picks one — Messages (including Count Tokens) routes to Anthropic; Responses, Chat Completions, and Embeddings route to OpenAI; Gemini native endpoints route to Gemini. Explicit rules and the detector both outrank this fallback, so enabling it never changes a request that already routed correctly; it only rescues custom model names that previously matched no route at all (for example aggregator models not starting with gpt-, claude-, or gemini-). Multi-provider endpoints such as Images and Videos do not participate.',
+        enabled: 'Enabled',
+        disabled: 'Disabled'
       },
       claudeCode: {
         title: 'Claude Code Client Restriction',

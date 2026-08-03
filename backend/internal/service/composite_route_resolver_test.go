@@ -265,3 +265,214 @@ func TestCompositeRouteResolverExplicitRoutesCoverBucketTwoProviders(t *testing.
 		})
 	}
 }
+
+func endpointDefaultOptions() CompositeRouteResolveOptions {
+	return CompositeRouteResolveOptions{EndpointDefaultRoutingEnabled: true}
+}
+
+// TestCompositeRouteResolverEndpointDefaultsPerEndpoint pins the built-in
+// default provider for every endpoint that participates in endpoint-default
+// routing. The model name here is deliberately undetectable so only the
+// endpoint default can produce a match.
+func TestCompositeRouteResolverEndpointDefaultsPerEndpoint(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{})
+
+	tests := []struct {
+		endpoint string
+		want     string
+	}{
+		{CompositeRouteEndpointMessages, PlatformAnthropic},
+		{CompositeRouteEndpointCountTokens, PlatformAnthropic},
+		{CompositeRouteEndpointResponses, PlatformOpenAI},
+		{CompositeRouteEndpointChatCompletions, PlatformOpenAI},
+		{CompositeRouteEndpointEmbeddings, PlatformOpenAI},
+		{CompositeRouteEndpointGemini, PlatformGemini},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.endpoint, func(t *testing.T) {
+			decision, err := resolver.ResolveWithOptions(context.Background(), 7, "house-blend-1", tt.endpoint, endpointDefaultOptions())
+			require.NoError(t, err)
+			require.True(t, decision.Matched)
+			require.Equal(t, CompositeRouteSourceEndpointDefault, decision.Source)
+			require.Equal(t, tt.want, decision.TargetPlatform)
+			require.Equal(t, "house-blend-1", decision.UpstreamModel)
+		})
+	}
+}
+
+// TestCompositeRouteResolverImagesEndpointHasNoDefault documents the images
+// boundary: image models are cross-provider, so the images endpoint keeps
+// falling through to the detector even with the flag on.
+func TestCompositeRouteResolverImagesEndpointHasNoDefault(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{})
+
+	detected, err := resolver.ResolveWithOptions(context.Background(), 7, "gpt-image-1", CompositeRouteEndpointImages, endpointDefaultOptions())
+	require.NoError(t, err)
+	require.True(t, detected.Matched)
+	require.Equal(t, CompositeRouteSourceDetector, detected.Source)
+	require.Equal(t, PlatformOpenAI, detected.TargetPlatform)
+
+	undetected, err := resolver.ResolveWithOptions(context.Background(), 7, "house-blend-1", CompositeRouteEndpointImages, endpointDefaultOptions())
+	require.NoError(t, err)
+	require.False(t, undetected.Matched)
+}
+
+// TestCompositeRouteResolverAnyRuleOutranksEndpointDefault is the collision
+// case: an operator-configured `any` rule must win over the built-in endpoint
+// default, otherwise enabling the flag would silently retarget configured
+// traffic.
+func TestCompositeRouteResolverAnyRuleOutranksEndpointDefault(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{
+		routes: []CompositeModelRoute{
+			{
+				ID:             40,
+				GroupID:        7,
+				PublicModel:    "claude-",
+				MatchType:      CompositeRouteMatchPrefix,
+				TargetPlatform: PlatformOpenAI,
+				Endpoint:       CompositeRouteEndpointAny,
+				Priority:       100,
+				Enabled:        true,
+			},
+		},
+	})
+
+	decision, err := resolver.ResolveWithOptions(context.Background(), 7, "claude-sonnet-4-5", CompositeRouteEndpointMessages, endpointDefaultOptions())
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.Equal(t, CompositeRouteSourceExplicit, decision.Source)
+	require.Equal(t, PlatformOpenAI, decision.TargetPlatform, "explicit any rule must outrank the messages endpoint default")
+}
+
+// TestCompositeRouteResolverExplicitComparatorUnchangedByEndpointDefault pins
+// the pre-existing explicit-rule ranking: match strength is compared before
+// endpoint specificity, so an `any`-scope exact rule beats a concrete-endpoint
+// prefix rule. Endpoint-default routing must not alter this.
+func TestCompositeRouteResolverExplicitComparatorUnchangedByEndpointDefault(t *testing.T) {
+	repo := compositeRouteRepoStub{
+		routes: []CompositeModelRoute{
+			{
+				ID:             50,
+				GroupID:        7,
+				PublicModel:    "claude-sonnet-4-5",
+				MatchType:      CompositeRouteMatchExact,
+				TargetPlatform: PlatformGemini,
+				Endpoint:       CompositeRouteEndpointAny,
+				Priority:       100,
+				Enabled:        true,
+			},
+			{
+				ID:             51,
+				GroupID:        7,
+				PublicModel:    "claude-",
+				MatchType:      CompositeRouteMatchPrefix,
+				TargetPlatform: PlatformOpenAI,
+				Endpoint:       CompositeRouteEndpointMessages,
+				Priority:       100,
+				Enabled:        true,
+			},
+		},
+	}
+	resolver := NewCompositeRouteResolver(repo)
+
+	for _, options := range []CompositeRouteResolveOptions{{}, endpointDefaultOptions()} {
+		decision, err := resolver.ResolveWithOptions(context.Background(), 7, "claude-sonnet-4-5", CompositeRouteEndpointMessages, options)
+		require.NoError(t, err)
+		require.True(t, decision.Matched)
+		require.Equal(t, CompositeRouteSourceExplicit, decision.Source)
+		require.Equal(t, PlatformGemini, decision.TargetPlatform, "exact match must still outrank concrete-endpoint prefix match")
+	}
+}
+
+// TestCompositeRouteResolverFlagOffMatchesLegacyBehavior asserts the opt-in
+// promise: with the flag off, resolution is identical to Resolve.
+func TestCompositeRouteResolverFlagOffMatchesLegacyBehavior(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{})
+
+	legacy, err := resolver.Resolve(context.Background(), 7, "house-blend-1", CompositeRouteEndpointMessages)
+	require.NoError(t, err)
+	require.False(t, legacy.Matched)
+
+	flagOff, err := resolver.ResolveWithOptions(context.Background(), 7, "house-blend-1", CompositeRouteEndpointMessages, CompositeRouteResolveOptions{})
+	require.NoError(t, err)
+	require.Equal(t, legacy, flagOff)
+
+	detected, err := resolver.ResolveWithOptions(context.Background(), 7, "claude-sonnet-4-5", CompositeRouteEndpointResponses, CompositeRouteResolveOptions{})
+	require.NoError(t, err)
+	require.True(t, detected.Matched)
+	require.Equal(t, CompositeRouteSourceDetector, detected.Source)
+	require.Equal(t, PlatformAnthropic, detected.TargetPlatform)
+}
+
+// TestCompositeRouteResolverDetectorOutranksEndpointDefault is the
+// no-configuration promise: a gpt-* model arriving on /v1/messages must still
+// resolve to OpenAI by model name, not be pulled to the messages endpoint
+// default. The endpoint default is a last resort for names the detector cannot
+// identify.
+func TestCompositeRouteResolverDetectorOutranksEndpointDefault(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{})
+
+	decision, err := resolver.ResolveWithOptions(context.Background(), 7, "gpt-5.6-sol", CompositeRouteEndpointMessages, endpointDefaultOptions())
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.Equal(t, CompositeRouteSourceDetector, decision.Source)
+	require.Equal(t, PlatformOpenAI, decision.TargetPlatform)
+
+	claude, err := resolver.ResolveWithOptions(context.Background(), 7, "claude-opus-5", CompositeRouteEndpointChatCompletions, endpointDefaultOptions())
+	require.NoError(t, err)
+	require.Equal(t, CompositeRouteSourceDetector, claude.Source)
+	require.Equal(t, PlatformAnthropic, claude.TargetPlatform)
+}
+
+// TestCompositeRouteResolverEndpointDefaultIsPurelyAdditive asserts the flag
+// only ever rescues a request that previously had no route at all.
+func TestCompositeRouteResolverEndpointDefaultIsPurelyAdditive(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{
+		routes: []CompositeModelRoute{
+			{
+				ID:             60,
+				GroupID:        7,
+				PublicModel:    "house-blend-",
+				MatchType:      CompositeRouteMatchPrefix,
+				TargetPlatform: PlatformGemini,
+				Endpoint:       CompositeRouteEndpointAny,
+				Priority:       100,
+				Enabled:        true,
+			},
+		},
+	})
+
+	for _, model := range []string{"house-blend-1", "gpt-5.6-sol", "claude-opus-5"} {
+		off, err := resolver.ResolveWithOptions(context.Background(), 7, model, CompositeRouteEndpointMessages, CompositeRouteResolveOptions{})
+		require.NoError(t, err)
+		require.True(t, off.Matched, model)
+
+		on, err := resolver.ResolveWithOptions(context.Background(), 7, model, CompositeRouteEndpointMessages, endpointDefaultOptions())
+		require.NoError(t, err)
+		require.Equal(t, off, on, "flag must not change an already-resolvable request: %s", model)
+	}
+
+	unresolvable, err := resolver.ResolveWithOptions(context.Background(), 7, "mystery-model-1", CompositeRouteEndpointMessages, CompositeRouteResolveOptions{})
+	require.NoError(t, err)
+	require.False(t, unresolvable.Matched)
+
+	rescued, err := resolver.ResolveWithOptions(context.Background(), 7, "mystery-model-1", CompositeRouteEndpointMessages, endpointDefaultOptions())
+	require.NoError(t, err)
+	require.True(t, rescued.Matched)
+	require.Equal(t, CompositeRouteSourceEndpointDefault, rescued.Source)
+	require.Equal(t, PlatformAnthropic, rescued.TargetPlatform)
+}
+
+// TestCompositeRouteResolverUnknownEndpointFallsThroughToDetector guards the
+// `any` normalization path: an unidentified endpoint has no default.
+func TestCompositeRouteResolverUnknownEndpointFallsThroughToDetector(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{})
+
+	decision, err := resolver.ResolveWithOptions(context.Background(), 7, "claude-sonnet-4-5", "totally-unknown", endpointDefaultOptions())
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.Equal(t, CompositeRouteSourceDetector, decision.Source)
+	require.Equal(t, PlatformAnthropic, decision.TargetPlatform)
+	require.Equal(t, CompositeRouteEndpointAny, decision.Endpoint)
+}

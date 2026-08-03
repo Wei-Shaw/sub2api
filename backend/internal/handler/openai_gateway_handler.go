@@ -182,14 +182,49 @@ func openAIResponsesRequiredCapability(imageIntent bool, platform string) servic
 	return service.OpenAIEndpointCapabilityChatCompletions
 }
 
-func allowOpenAICompatibleMessagesDispatch(apiKey *service.APIKey) bool {
+// allowOpenAICompatibleMessagesDispatch reports whether the request may enter
+// the Anthropic-Messages-to-OpenAI compatibility bridge.
+//
+// Direct platforms keep their existing semantics: the group-level
+// allow_messages_dispatch switch gates them, and Grok groups are always
+// allowed.
+//
+// Composite groups are authorized by the resolved route instead, because
+// sanitizeGroupMessagesDispatchFields force-clears allow_messages_dispatch for
+// every non-OpenAI platform, so the switch can never be true for a composite
+// group and cannot serve as its gate. A composite request may bridge when the
+// route it resolved to actually points at an OpenAI-compatible upstream —
+// whether that came from an operator rule or from the built-in model detector,
+// so `gpt-*` models work through Claude Code without any route configuration.
+// The endpoint default is deliberately excluded: it selects a platform from the
+// caller's protocol rather than from the model, so it must not be able to open
+// the bridge on its own.
+func allowOpenAICompatibleMessagesDispatch(ctx context.Context, apiKey *service.APIKey) bool {
 	if apiKey == nil || apiKey.Group == nil {
 		return true
 	}
 	if apiKey.Group.Platform == service.PlatformGrok {
 		return true
 	}
-	return apiKey.Group.AllowMessagesDispatch
+	if apiKey.Group.Platform != service.PlatformComposite {
+		return apiKey.Group.AllowMessagesDispatch
+	}
+
+	targetPlatform, ok := service.ResolvedTargetPlatformFromContext(ctx)
+	if !ok {
+		return false
+	}
+	if targetPlatform == service.PlatformGrok {
+		return true
+	}
+	if targetPlatform != service.PlatformOpenAI {
+		return false
+	}
+	routeSource, ok := service.CompositeRouteSourceFromContext(ctx)
+	if !ok {
+		return false
+	}
+	return routeSource == service.CompositeRouteSourceExplicit || routeSource == service.CompositeRouteSourceDetector
 }
 
 func openAICompatibleTextTargetAllowed(c *gin.Context, apiKey *service.APIKey, model string) bool {
@@ -910,7 +945,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	)
 
 	// 检查分组是否允许 /v1/messages 调度
-	if !allowOpenAICompatibleMessagesDispatch(apiKey) {
+	if !allowOpenAICompatibleMessagesDispatch(c.Request.Context(), apiKey) {
 		h.anthropicErrorResponse(c, http.StatusForbidden, "permission_error",
 			"This group does not allow /v1/messages dispatch")
 		return

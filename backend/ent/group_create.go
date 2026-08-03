@@ -704,6 +704,20 @@ func (_c *GroupCreate) SetNillableAllowLive(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field.
+func (_c *GroupCreate) SetEndpointDefaultRoutingEnabled(v bool) *GroupCreate {
+	_c.mutation.SetEndpointDefaultRoutingEnabled(v)
+	return _c
+}
+
+// SetNillableEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableEndpointDefaultRoutingEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetEndpointDefaultRoutingEnabled(*v)
+	}
+	return _c
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_c *GroupCreate) SetRequireOauthOnly(v bool) *GroupCreate {
 	_c.mutation.SetRequireOauthOnly(v)
@@ -1095,6 +1109,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowLive
 		_c.mutation.SetAllowLive(v)
 	}
+	if _, ok := _c.mutation.EndpointDefaultRoutingEnabled(); !ok {
+		v := group.DefaultEndpointDefaultRoutingEnabled
+		_c.mutation.SetEndpointDefaultRoutingEnabled(v)
+	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		v := group.DefaultRequireOauthOnly
 		_c.mutation.SetRequireOauthOnly(v)
@@ -1285,6 +1303,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowLive(); !ok {
 		return &ValidationError{Name: "allow_live", err: errors.New(`ent: missing required field "Group.allow_live"`)}
+	}
+	if _, ok := _c.mutation.EndpointDefaultRoutingEnabled(); !ok {
+		return &ValidationError{Name: "endpoint_default_routing_enabled", err: errors.New(`ent: missing required field "Group.endpoint_default_routing_enabled"`)}
 	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		return &ValidationError{Name: "require_oauth_only", err: errors.New(`ent: missing required field "Group.require_oauth_only"`)}
@@ -1559,6 +1580,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowLive(); ok {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
 		_node.AllowLive = value
+	}
+	if value, ok := _c.mutation.EndpointDefaultRoutingEnabled(); ok {
+		_spec.SetField(group.FieldEndpointDefaultRoutingEnabled, field.TypeBool, value)
+		_node.EndpointDefaultRoutingEnabled = value
 	}
 	if value, ok := _c.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
@@ -2615,6 +2640,18 @@ func (u *GroupUpsert) SetAllowLive(v bool) *GroupUpsert {
 // UpdateAllowLive sets the "allow_live" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowLive() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowLive)
+	return u
+}
+
+// SetEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field.
+func (u *GroupUpsert) SetEndpointDefaultRoutingEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldEndpointDefaultRoutingEnabled, v)
+	return u
+}
+
+// UpdateEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateEndpointDefaultRoutingEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldEndpointDefaultRoutingEnabled)
 	return u
 }
 
@@ -3814,6 +3851,20 @@ func (u *GroupUpsertOne) SetAllowLive(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowLive() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowLive()
+	})
+}
+
+// SetEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field.
+func (u *GroupUpsertOne) SetEndpointDefaultRoutingEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetEndpointDefaultRoutingEnabled(v)
+	})
+}
+
+// UpdateEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateEndpointDefaultRoutingEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateEndpointDefaultRoutingEnabled()
 	})
 }
 
@@ -5204,6 +5255,20 @@ func (u *GroupUpsertBulk) SetAllowLive(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateAllowLive() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowLive()
+	})
+}
+
+// SetEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field.
+func (u *GroupUpsertBulk) SetEndpointDefaultRoutingEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetEndpointDefaultRoutingEnabled(v)
+	})
+}
+
+// UpdateEndpointDefaultRoutingEnabled sets the "endpoint_default_routing_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateEndpointDefaultRoutingEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateEndpointDefaultRoutingEnabled()
 	})
 }
 

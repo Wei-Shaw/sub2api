@@ -290,6 +290,11 @@ func AllowLive(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowLive, v))
 }
 
+// EndpointDefaultRoutingEnabled applies equality check predicate on the "endpoint_default_routing_enabled" field. It's identical to EndpointDefaultRoutingEnabledEQ.
+func EndpointDefaultRoutingEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldEndpointDefaultRoutingEnabled, v))
+}
+
 // RequireOauthOnly applies equality check predicate on the "require_oauth_only" field. It's identical to RequireOauthOnlyEQ.
 func RequireOauthOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRequireOauthOnly, v))
@@ -2268,6 +2273,16 @@ func AllowLiveEQ(v bool) predicate.Group {
 // AllowLiveNEQ applies the NEQ predicate on the "allow_live" field.
 func AllowLiveNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowLive, v))
+}
+
+// EndpointDefaultRoutingEnabledEQ applies the EQ predicate on the "endpoint_default_routing_enabled" field.
+func EndpointDefaultRoutingEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldEndpointDefaultRoutingEnabled, v))
+}
+
+// EndpointDefaultRoutingEnabledNEQ applies the NEQ predicate on the "endpoint_default_routing_enabled" field.
+func EndpointDefaultRoutingEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldEndpointDefaultRoutingEnabled, v))
 }
 
 // RequireOauthOnlyEQ applies the EQ predicate on the "require_oauth_only" field.

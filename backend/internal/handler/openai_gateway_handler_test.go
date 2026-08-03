@@ -3001,3 +3001,229 @@ data: {"type":"response.failed","error":{"message":"This content was flagged"}}
 		require.False(t, openAIForwardErrorAlreadyCommunicated(c, c.Writer.Size(), errors.New("openai cyber_policy: blocked")))
 	})
 }
+
+// TestAllowOpenAICompatibleMessagesDispatch pins the full authorization matrix
+// for the Anthropic-Messages-to-OpenAI compatibility bridge.
+//
+// Direct platforms keep allow_messages_dispatch as their gate (unchanged from
+// main). Composite groups do not: sanitizeGroupMessagesDispatchFields clears
+// that field for every non-OpenAI platform, so it can never be true for a
+// composite group. Composite is authorized by the resolved route instead —
+// explicit rules and the model detector may open the bridge, the endpoint
+// default may not, because it infers a platform from the caller's protocol
+// rather than from the model.
+func TestAllowOpenAICompatibleMessagesDispatch(t *testing.T) {
+	compositeCtx := func(source, target string) context.Context {
+		return service.WithCompositeRouteDecision(context.Background(), service.CompositeRouteDecision{
+			Matched:        true,
+			Source:         source,
+			TargetPlatform: target,
+		})
+	}
+	// allow_messages_dispatch is force-cleared for every non-OpenAI platform by
+	// sanitizeGroupMessagesDispatchFields, so a composite group always has it
+	// false; composite authorization must not depend on it.
+	compositeGroup := func() *service.APIKey {
+		return &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
+	}
+
+	tests := []struct {
+		name   string
+		ctx    context.Context
+		apiKey *service.APIKey
+		want   bool
+	}{
+		// Unchanged from main: no key/group context means the caller is not a
+		// group-gated request and the gate does not apply.
+		{name: "nil_api_key_is_allowed", ctx: context.Background(), want: true},
+		{name: "nil_group_is_allowed", ctx: context.Background(), apiKey: &service.APIKey{}, want: true},
+
+		// Unchanged from main: direct platforms keep their existing semantics.
+		{
+			name:   "openai_group_without_dispatch_flag_is_rejected",
+			ctx:    context.Background(),
+			apiKey: &service.APIKey{Group: &service.Group{Platform: service.PlatformOpenAI}},
+			want:   false,
+		},
+		{
+			name:   "openai_group_with_dispatch_flag_is_allowed",
+			ctx:    context.Background(),
+			apiKey: &service.APIKey{Group: &service.Group{Platform: service.PlatformOpenAI, AllowMessagesDispatch: true}},
+			want:   true,
+		},
+		{
+			name:   "grok_group_is_allowed_without_dispatch_flag",
+			ctx:    context.Background(),
+			apiKey: &service.APIKey{Group: &service.Group{Platform: service.PlatformGrok}},
+			want:   true,
+		},
+		{
+			name:   "anthropic_group_follows_dispatch_flag",
+			ctx:    context.Background(),
+			apiKey: &service.APIKey{Group: &service.Group{Platform: service.PlatformAnthropic, AllowMessagesDispatch: true}},
+			want:   true,
+		},
+
+		// Composite: the resolved route authorizes, not the group switch.
+		{
+			name:   "composite_explicit_openai_route_is_allowed",
+			ctx:    compositeCtx(service.CompositeRouteSourceExplicit, service.PlatformOpenAI),
+			apiKey: compositeGroup(),
+			want:   true,
+		},
+		{
+			// The no-configuration case: Claude Code sends gpt-* to /v1/messages
+			// and the built-in detector resolves OpenAI without any route rule.
+			name:   "composite_detector_openai_route_is_allowed",
+			ctx:    compositeCtx(service.CompositeRouteSourceDetector, service.PlatformOpenAI),
+			apiKey: compositeGroup(),
+			want:   true,
+		},
+		{
+			// The endpoint default infers a platform from the caller's protocol,
+			// not from the model, so it must not open the bridge by itself.
+			name:   "composite_endpoint_default_openai_route_is_rejected",
+			ctx:    compositeCtx(service.CompositeRouteSourceEndpointDefault, service.PlatformOpenAI),
+			apiKey: compositeGroup(),
+			want:   false,
+		},
+		{
+			name:   "composite_openai_target_without_source_is_rejected",
+			ctx:    service.WithResolvedTargetPlatform(context.Background(), service.PlatformOpenAI),
+			apiKey: compositeGroup(),
+			want:   false,
+		},
+		{
+			name:   "composite_explicit_non_openai_route_is_rejected",
+			ctx:    compositeCtx(service.CompositeRouteSourceExplicit, service.PlatformGemini),
+			apiKey: compositeGroup(),
+			want:   false,
+		},
+		{
+			name:   "composite_grok_route_is_allowed",
+			ctx:    compositeCtx(service.CompositeRouteSourceDetector, service.PlatformGrok),
+			apiKey: compositeGroup(),
+			want:   true,
+		},
+		{
+			name:   "composite_without_resolved_route_is_rejected",
+			ctx:    context.Background(),
+			apiKey: compositeGroup(),
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, allowOpenAICompatibleMessagesDispatch(tt.ctx, tt.apiKey))
+		})
+	}
+}
+
+// TestMessagesAndCountTokensDispatchGateParity drives the real handlers so the
+// two endpoints cannot drift apart: whatever Messages accepts or rejects,
+// count_tokens must decide identically. 403 with the permission message means
+// the gate rejected; anything else means it passed the gate (the request then
+// fails later on missing gateway dependencies, which is fine here).
+func TestMessagesAndCountTokensDispatchGateParity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const gateMessage = "This group does not allow /v1/messages dispatch"
+
+	compositeDecision := func(source, target string) service.CompositeRouteDecision {
+		return service.CompositeRouteDecision{
+			Matched:        true,
+			Source:         source,
+			TargetPlatform: target,
+			PublicModel:    "gpt-5.6",
+			UpstreamModel:  "gpt-5.6",
+		}
+	}
+
+	tests := []struct {
+		name       string
+		group      *service.Group
+		decision   *service.CompositeRouteDecision
+		wantReject bool
+	}{
+		{
+			name:       "openai_group_without_dispatch_flag_is_rejected",
+			group:      &service.Group{ID: 7101, Platform: service.PlatformOpenAI},
+			wantReject: true,
+		},
+		{
+			name:       "openai_group_with_dispatch_flag_passes_gate",
+			group:      &service.Group{ID: 7102, Platform: service.PlatformOpenAI, AllowMessagesDispatch: true},
+			wantReject: false,
+		},
+		{
+			name:       "composite_explicit_openai_route_passes_gate",
+			group:      &service.Group{ID: 7103, Platform: service.PlatformComposite},
+			decision:   ptrCompositeDecision(compositeDecision(service.CompositeRouteSourceExplicit, service.PlatformOpenAI)),
+			wantReject: false,
+		},
+		{
+			name:       "composite_detector_openai_route_passes_gate_without_any_configuration",
+			group:      &service.Group{ID: 7104, Platform: service.PlatformComposite},
+			decision:   ptrCompositeDecision(compositeDecision(service.CompositeRouteSourceDetector, service.PlatformOpenAI)),
+			wantReject: false,
+		},
+		{
+			name:       "composite_endpoint_default_openai_route_is_rejected",
+			group:      &service.Group{ID: 7105, Platform: service.PlatformComposite},
+			decision:   ptrCompositeDecision(compositeDecision(service.CompositeRouteSourceEndpointDefault, service.PlatformOpenAI)),
+			wantReject: true,
+		},
+		{
+			name:       "composite_without_resolved_route_is_rejected",
+			group:      &service.Group{ID: 7106, Platform: service.PlatformComposite},
+			wantReject: true,
+		},
+	}
+
+	newContext := func(t *testing.T, path string, tt struct {
+		name       string
+		group      *service.Group
+		decision   *service.CompositeRouteDecision
+		wantReject bool
+	}) (*gin.Context, *httptest.ResponseRecorder) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-5.6","messages":[{"role":"user","content":"hi"}]}`))
+		if tt.decision != nil {
+			c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), *tt.decision))
+		}
+		groupID := tt.group.ID
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+			ID:      groupID + 1000,
+			GroupID: &groupID,
+			User:    &service.User{ID: groupID + 2000},
+			Group:   tt.group,
+		})
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: groupID + 2000, Concurrency: 1})
+		return c, rec
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &OpenAIGatewayHandler{}
+
+			messagesCtx, messagesRec := newContext(t, "/v1/messages", tt)
+			h.Messages(messagesCtx)
+			messagesRejected := messagesRec.Code == http.StatusForbidden && strings.Contains(messagesRec.Body.String(), gateMessage)
+
+			countTokensCtx, countTokensRec := newContext(t, "/v1/messages/count_tokens", tt)
+			h.CountTokens(countTokensCtx)
+			countTokensRejected := countTokensRec.Code == http.StatusForbidden && strings.Contains(countTokensRec.Body.String(), gateMessage)
+
+			require.Equal(t, tt.wantReject, messagesRejected, "messages gate: %d %s", messagesRec.Code, messagesRec.Body.String())
+			require.Equal(t, tt.wantReject, countTokensRejected, "count_tokens gate: %d %s", countTokensRec.Code, countTokensRec.Body.String())
+			require.Equal(t, messagesRejected, countTokensRejected, "messages and count_tokens must agree")
+		})
+	}
+}
+
+func ptrCompositeDecision(d service.CompositeRouteDecision) *service.CompositeRouteDecision {
+	return &d
+}
