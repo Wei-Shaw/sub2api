@@ -146,7 +146,6 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetProfitControlEnabled(groupIn.ProfitControlEnabled).
 		SetProfitMinMargin(groupIn.ProfitMinMargin).
 		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer)
-		SetPeakRateMultiplier(groupIn.PeakRateMultiplier)
 	if groupIn.UpstreamPlan != "" {
 		builder = builder.SetUpstreamPlan(groupIn.UpstreamPlan)
 	}
