@@ -14,6 +14,8 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+const openAIWSTransientFailureClientMessage = "Upstream service temporarily unavailable"
+
 func (s *OpenAIGatewayService) isOpenAIWSGeneratePrewarmEnabled() bool {
 	return s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.PrewarmGenerateEnabled
 }
@@ -225,6 +227,9 @@ func openAIWSPayloadTransientStatus(payload []byte) int {
 	if len(payload) == 0 {
 		return 0
 	}
+	if isOpenAITransientProcessingError(http.StatusBadRequest, "", payload) {
+		return http.StatusServiceUnavailable
+	}
 	status := int(gjson.GetBytes(payload, "response.error.status_code").Int())
 	if status == 0 {
 		status = int(gjson.GetBytes(payload, "response.error.status").Int())
@@ -262,6 +267,92 @@ func openAIWSPayloadTransientStatus(payload []byte) int {
 	default:
 		return 0
 	}
+}
+
+func (s *OpenAIGatewayService) newOpenAIWSTransientResponseFailoverError(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	canonicalModel string,
+	headers http.Header,
+	payload []byte,
+) *UpstreamFailoverError {
+	eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
+	if eventType != "response.failed" {
+		return nil
+	}
+	upstreamMessage := extractOpenAISSEErrorMessage(payload)
+	if !isOpenAITransientProcessingError(http.StatusBadRequest, upstreamMessage, payload) {
+		return nil
+	}
+	status := openAIWSPayloadTransientStatus(payload)
+	if status == 0 {
+		return nil
+	}
+
+	if upstreamMessage == "" {
+		upstreamMessage = "OpenAI upstream response failed"
+	}
+	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, status, headers, payload, canonicalModel)
+	retryableOnSameAccount := account != nil && !shouldDisable && account.IsPoolMode() &&
+		(account.IsPoolModeRetryableStatus(status) || isOpenAITransientProcessingError(http.StatusBadRequest, upstreamMessage, payload))
+
+	if c != nil {
+		setOpsUpstreamError(c, status, upstreamMessage, "")
+		if account != nil {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: status,
+				Kind:               "ws_response_failed",
+				Message:            upstreamMessage,
+			})
+		}
+	}
+
+	responseBody, err := marshalOpenAIUpstreamJSON(gin.H{
+		"error": gin.H{
+			"type":    "upstream_error",
+			"message": openAIWSTransientFailureClientMessage,
+		},
+	})
+	if err != nil {
+		responseBody = []byte(`{"error":{"type":"upstream_error","message":"Upstream service temporarily unavailable"}}`)
+	}
+	failoverErr := newOpenAIUpstreamFailoverError(
+		status,
+		headers,
+		responseBody,
+		upstreamMessage,
+		retryableOnSameAccount,
+	)
+	failoverErr.ClientStatusCode = http.StatusServiceUnavailable
+	failoverErr.ClientMessage = openAIWSTransientFailureClientMessage
+	return failoverErr
+}
+
+func sanitizeOpenAIWSTransientFailureEvent(payload []byte) []byte {
+	if len(payload) == 0 || !gjson.ValidBytes(payload) {
+		return payload
+	}
+	updated, _ := sanitizeOpenAIResponseFailedEventForClient(payload, "response.failed", true)
+	errorPath := "error"
+	if gjson.GetBytes(updated, "response").Exists() {
+		errorPath = "response.error"
+	}
+	for path, value := range map[string]string{
+		errorPath + ".type":    "server_error",
+		errorPath + ".code":    "upstream_temporarily_unavailable",
+		errorPath + ".message": openAIWSTransientFailureClientMessage,
+	} {
+		next, err := sjson.SetBytes(updated, path, value)
+		if err != nil {
+			return payload
+		}
+		updated = next
+	}
+	return updated
 }
 
 func (s *OpenAIGatewayService) handleOpenAIWSTerminalTransientFailure(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) string {

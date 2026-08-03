@@ -167,6 +167,56 @@ func TestOpenAIWSPayloadTransientStatus_Explicit529IsNotModelTransient(t *testin
 	require.Zero(t, openAIWSPayloadTransientStatus(payload))
 }
 
+func TestOpenAIWSTransientResponseFailover_CapacityOnly(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		ID:       5204,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode":             true,
+			"pool_mode_retry_count": float64(1),
+		},
+	}
+	capacityPayload := []byte(`{"type":"response.failed","response":{"error":{"type":"invalid_request_error","message":"Selected model is at capacity. Please try a different model."}}}`)
+
+	failoverErr := svc.newOpenAIWSTransientResponseFailoverError(
+		context.Background(),
+		nil,
+		account,
+		"gpt-5.5",
+		http.Header{},
+		capacityPayload,
+	)
+	require.NotNil(t, failoverErr)
+	require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
+	require.Equal(t, http.StatusServiceUnavailable, failoverErr.ClientStatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.NotContains(t, string(failoverErr.ResponseBody), "Selected model is at capacity")
+	require.Contains(t, string(failoverErr.ResponseBody), openAIWSTransientFailureClientMessage)
+
+	serverErrorPayload := []byte(`{"type":"response.failed","response":{"error":{"code":"server_error","message":"Internal error"}}}`)
+	require.Nil(t, svc.newOpenAIWSTransientResponseFailoverError(
+		context.Background(), nil, account, "gpt-5.5", http.Header{}, serverErrorPayload,
+	))
+
+	contextPayload := []byte(`{"type":"response.failed","response":{"error":{"code":"context_length_exceeded","message":"Your input exceeds the context window of this model."}}}`)
+	require.Nil(t, svc.newOpenAIWSTransientResponseFailoverError(
+		context.Background(), nil, account, "gpt-5.5", http.Header{}, contextPayload,
+	))
+}
+
+func TestSanitizeOpenAIWSTransientFailureEvent_RemovesCapacityDetails(t *testing.T) {
+	payload := []byte(`{"type":"response.failed","response":{"id":"resp_capacity","output":[{"type":"message","content":[{"type":"output_text","text":"partial"}]}],"usage":{"input_tokens":12,"output_tokens":1},"error":{"type":"invalid_request_error","message":"Selected model is at capacity. Please try a different model."}}}`)
+
+	sanitized := sanitizeOpenAIWSTransientFailureEvent(payload)
+	require.NotContains(t, string(sanitized), "Selected model is at capacity")
+	require.NotContains(t, string(sanitized), `"output"`)
+	require.NotContains(t, string(sanitized), `"usage"`)
+	require.Contains(t, string(sanitized), `"code":"upstream_temporarily_unavailable"`)
+	require.Contains(t, string(sanitized), openAIWSTransientFailureClientMessage)
+}
+
 func TestOpenAIWSDial5xxRecordsModelTransient(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)

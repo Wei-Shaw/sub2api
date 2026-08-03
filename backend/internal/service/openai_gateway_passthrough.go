@@ -990,6 +990,10 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 		message = "OpenAI stream disconnected before completion"
 	}
 	statusCode := openAIStreamFailureStatus(payload, message)
+	transientProcessingError := isOpenAITransientProcessingError(http.StatusBadRequest, message, payload)
+	if transientProcessingError {
+		statusCode = http.StatusServiceUnavailable
+	}
 	var headers http.Header
 	if len(responseHeaders) > 0 && responseHeaders[0] != nil {
 		headers = responseHeaders[0].Clone()
@@ -998,6 +1002,10 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 	// 不写账号级限流/封禁状态；重试与切号由 failover 引擎按
 	// StatusCode/RetryableOnSameAccount 决定。
 	message = s.recordOpenAIStreamUpstreamError(c, account, passthrough, upstreamRequestID, "failover", payload, message)
+	clientMessage := message
+	if transientProcessingError {
+		clientMessage = openAIWSTransientFailureClientMessage
+	}
 	errType := "upstream_error"
 	if statusCode == http.StatusTooManyRequests {
 		errType = "rate_limit_error"
@@ -1005,15 +1013,20 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 	body, _ := json.Marshal(gin.H{
 		"error": gin.H{
 			"type":    errType,
-			"message": message,
+			"message": clientMessage,
 		},
 	})
-	return &UpstreamFailoverError{
+	failoverErr := &UpstreamFailoverError{
 		StatusCode:             statusCode,
 		ResponseBody:           body,
 		ResponseHeaders:        headers,
 		RetryableOnSameAccount: openAIStreamFailedEventRetryableOnSameAccount(account, payload, message),
 	}
+	if transientProcessingError {
+		failoverErr.ClientStatusCode = http.StatusServiceUnavailable
+		failoverErr.ClientMessage = openAIWSTransientFailureClientMessage
+	}
+	return failoverErr
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(

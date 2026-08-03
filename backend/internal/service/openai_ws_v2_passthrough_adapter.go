@@ -576,6 +576,15 @@ func openAIWSPassthroughStartsSemanticOutput(payload []byte) bool {
 		strings.HasPrefix(eventType, "response.output")
 }
 
+func openAIWSRetryReplayUnsafeOutput(payload []byte) bool {
+	switch strings.TrimSpace(gjson.GetBytes(payload, "type").String()) {
+	case "", "response.created", "response.queued", "response.in_progress":
+		return false
+	default:
+		return true
+	}
+}
+
 func openAIWSPassthroughIsTerminalOutput(payload []byte) bool {
 	switch strings.TrimSpace(gjson.GetBytes(payload, "type").String()) {
 	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
@@ -902,6 +911,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 
 	completedTurns := atomic.Int32{}
+	replayUnsafeOutputStarted := atomic.Bool{}
 	turnLifecycle := newOpenAIWSPassthroughTurnLifecycle(true)
 	clientFrameConn := &openAIWSClientFrameConn{
 		conn:                 clientConn,
@@ -1158,13 +1168,35 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					return nil
 				}
 				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
+				if eventType == "response.failed" && !replayUnsafeOutputStarted.Load() {
+					if failoverErr := s.newOpenAIWSTransientResponseFailoverError(
+						ctx,
+						c,
+						account,
+						capturedSessionModel,
+						handshakeHeaders,
+						payload,
+					); failoverErr != nil {
+						return failoverErr
+					}
+				}
 				if isOpenAIWSTerminalEvent(eventType) {
 					s.handleOpenAIWSTerminalTransientFailure(ctx, account, capturedSessionModel, handshakeHeaders, payload)
+				}
+				if eventType == "response.failed" && replayUnsafeOutputStarted.Load() && isOpenAITransientProcessingError(http.StatusBadRequest, extractOpenAISSEErrorMessage(payload), payload) {
+					return NewOpenAIWSClientCloseError(
+						coderws.StatusTryAgainLater,
+						openAIWSTransientFailureClientMessage,
+						nil,
+					)
 				}
 				if eventType == "error" {
 					s.handleOpenAIWSErrorEventTransientFailure(ctx, account, capturedSessionModel, handshakeHeaders, payload)
 				}
 				if wroteDownstream || eventType != "error" {
+					if openAIWSRetryReplayUnsafeOutput(payload) {
+						replayUnsafeOutputStarted.Store(true)
+					}
 					return nil
 				}
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
