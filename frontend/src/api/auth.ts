@@ -4,6 +4,8 @@
  */
 
 import { apiClient } from './client'
+import { refreshAuthTokens, type RefreshTokenResponse } from './tokenRefresh'
+export type { RefreshTokenResponse } from './tokenRefresh'
 import type {
   LoginRequest,
   RegisterRequest,
@@ -179,13 +181,6 @@ export async function logout(): Promise<void> {
 /**
  * Refresh token response
  */
-export interface RefreshTokenResponse {
-  access_token: string
-  refresh_token: string
-  expires_in: number
-  token_type: string
-}
-
 export interface OAuthTokenResponse {
   access_token: string
   refresh_token?: string
@@ -293,21 +288,7 @@ export async function prepareOAuthBindAccessTokenCookie(): Promise<void> {
  * @returns New token pair
  */
 export async function refreshToken(): Promise<RefreshTokenResponse> {
-  const currentRefreshToken = getRefreshToken()
-  if (!currentRefreshToken) {
-    throw new Error('No refresh token available')
-  }
-
-  const { data } = await apiClient.post<RefreshTokenResponse>('/auth/refresh', {
-    refresh_token: currentRefreshToken
-  })
-
-  // Update tokens in localStorage
-  setAuthToken(data.access_token)
-  setRefreshToken(data.refresh_token)
-  setTokenExpiresAt(data.expires_in)
-
-  return data
+  return refreshAuthTokens()
 }
 
 /**

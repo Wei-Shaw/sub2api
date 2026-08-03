@@ -286,6 +286,8 @@ export default {
       timeoutMs: 'HTTP 超时 (ms)',
       retryCount: '失败重试次数',
       sampleRate: '采样率',
+      proxy: '代理服务器',
+      proxyHint: '审计请求经指定代理（IP管理-代理服务器）发出，适用于出口 IP 不受 OpenAI 支持的部署；默认直连。',
       recordNonHits: '记录未命中输入',
       recordNonHitsHint: '开启后会记录抽样但未命中的请求摘要，摘要会先脱敏再入库。',
       preHashCheck: '启用前置哈希比对',
