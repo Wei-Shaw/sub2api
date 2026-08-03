@@ -194,6 +194,47 @@ func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testin
 	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)
 }
 
+func TestGatewayServiceRecordUsage_UpstreamBillingSourceUsesUpstreamModel(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	usage := ClaudeUsage{
+		InputTokens:              158,
+		OutputTokens:             7,
+		CacheCreationInputTokens: 50,
+		CacheReadInputTokens:     38952,
+	}
+
+	expected, err := svc.billingService.CalculateCost("claude-sonnet-5", UsageTokens{
+		InputTokens:         usage.InputTokens,
+		OutputTokens:        usage.OutputTokens,
+		CacheCreationTokens: usage.CacheCreationInputTokens,
+		CacheReadTokens:     usage.CacheReadInputTokens,
+	}, 1.1)
+	require.NoError(t, err)
+
+	err = svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:     "gateway_upstream_billing_model",
+			Usage:         usage,
+			Model:         "claude-opus-5",
+			UpstreamModel: "claude-sonnet-5",
+			Duration:      time.Second,
+		},
+		APIKey:  &APIKey{ID: 501, Quota: 100},
+		User:    &User{ID: 601},
+		Account: &Account{ID: 701},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel:      "claude-opus-5",
+			ChannelMappedModel: "claude-opus-5",
+			BillingModelSource: BillingModelSourceUpstream,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, expected.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
+}
+
 func TestGatewayServiceRecordUsage_PreservesChannelMappedUpstreamModel(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})

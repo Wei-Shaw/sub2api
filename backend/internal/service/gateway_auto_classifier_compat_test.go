@@ -88,6 +88,11 @@ func TestGatewayService_Forward_ClaudeAutoClassifierOAuthCompat(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, claude.AutoModeClassifierModel, result.Model)
+	require.Equal(t, claude.AutoModeClassifierModel, result.UpstreamModel)
+	require.Equal(t, 12, result.Usage.InputTokens)
+	require.Equal(t, 7, result.Usage.OutputTokens)
+	require.Equal(t, "claude-opus-5", gjson.GetBytes(rec.Body.Bytes(), "model").String())
 
 	require.Equal(t, "claude-sonnet-5", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, anthropicBetaTokensContains(

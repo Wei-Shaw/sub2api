@@ -880,11 +880,15 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			return nil, err
 		}
 	}
+	resultModel := originalModel
+	if autoClassifierCompat {
+		resultModel = mappedModel
+	}
 
 	return &ForwardResult{
 		RequestID:        resp.Header.Get("x-request-id"),
 		Usage:            *usage,
-		Model:            originalModel, // 使用原始模型用于计费和日志
+		Model:            resultModel,
 		UpstreamModel:    mappedModel,
 		Stream:           reqStream,
 		Duration:         time.Since(startTime),
