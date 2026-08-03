@@ -31,6 +31,22 @@ func bareErrorOverloadedSSE() string {
 	}, "\n")
 }
 
+// largeBareErrorOverloadedSSE 复刻 Codex 线上样例：response.created 会把整段
+// instructions 与 tools schema 回显回来，单帧远超下游 4KB 写缓冲。
+func largeBareErrorOverloadedSSE() string {
+	instructions := strings.Repeat("You are Codex, a coding agent based on GPT-5. ", 1024)
+	return strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_ovl","status":"in_progress","instructions":"` + instructions + `"}}`,
+		"",
+		`data: {"type":"response.in_progress","response":{"id":"resp_ovl","status":"in_progress","instructions":"` + instructions + `"}}`,
+		"",
+		`data: {"type":"error","error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}`,
+		"",
+		`data: {"type":"response.failed","response":{"id":"resp_ovl","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`,
+		"",
+	}, "\n")
+}
+
 func newBareErrorTestService() *OpenAIGatewayService {
 	return &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
 		MaxLineSize: defaultMaxLineSize,
@@ -64,6 +80,81 @@ func TestOpenAINativeStreamBareErrorTriggersFailover(t *testing.T) {
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Empty(t, rec.Body.String(), "裸 error 帧不得写给客户端，否则提交 200 并堵死 failover")
+}
+
+// 大 preamble 会撑破下游 4KB 写缓冲直接写穿到 socket，提交 HTTP 200 并让
+// openAIStreamClientOutputStarted 变真，从而堵死流内错误的 failover 前置门槛。
+func TestOpenAINativeStreamLargePreambleBareErrorTriggersFailover(t *testing.T) {
+	svc := newBareErrorTestService()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(largeBareErrorOverloadedSSE())),
+	}
+	c, rec := newDelayedStatusCodeTestContext(t, &Group{DelayedStatusCode: true})
+
+	_, err := svc.handleStreamingResponse(
+		c.Request.Context(), resp, c,
+		&Account{ID: 1, Platform: PlatformOpenAI}, time.Now(), "model", "model",
+	)
+
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Empty(t, rec.Body.String(), "首个语义输出前不得写出任何字节，否则 200 已提交")
+}
+
+// 首个语义输出到来时，暂存的 preamble 必须按原顺序一并交付，不能被吞掉。
+func TestOpenAINativeStreamLargePreambleReleasedOnFirstOutput(t *testing.T) {
+	svc := newBareErrorTestService()
+	instructions := strings.Repeat("You are Codex, a coding agent based on GPT-5. ", 1024)
+	body := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_ok","status":"in_progress","instructions":"` + instructions + `"}}`,
+		"",
+		`data: {"type":"response.output_text.delta","delta":"hi"}`,
+		"",
+		`data: {"type":"response.completed","response":{"id":"resp_ok","status":"completed"}}`,
+		"",
+	}, "\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	c, rec := newDelayedStatusCodeTestContext(t, &Group{DelayedStatusCode: true})
+
+	_, err := svc.handleStreamingResponse(
+		c.Request.Context(), resp, c,
+		&Account{ID: 1, Platform: PlatformOpenAI}, time.Now(), "model", "model",
+	)
+
+	require.NoError(t, err)
+	out := rec.Body.String()
+	require.Contains(t, out, "response.created", "暂存的 preamble 必须补发")
+	require.Contains(t, out, "response.output_text.delta")
+	require.Less(t, strings.Index(out, "response.created"), strings.Index(out, "response.output_text.delta"),
+		"preamble 必须排在首个语义输出之前")
+}
+
+// 开关关闭时保持现状：大 preamble 写穿提交 200，流内 error 不再换号。
+func TestOpenAINativeStreamLargePreambleSwitchOffKeepsCurrentBehavior(t *testing.T) {
+	svc := newBareErrorTestService()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(largeBareErrorOverloadedSSE())),
+	}
+	c, rec := newDelayedStatusCodeTestContext(t, &Group{DelayedStatusCode: false})
+
+	_, err := svc.handleStreamingResponse(
+		c.Request.Context(), resp, c,
+		&Account{ID: 1, Platform: PlatformOpenAI}, time.Now(), "model", "model",
+	)
+
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr), "开关关闭时维持现状，不换号")
+	require.NotEmpty(t, rec.Body.String(), "开关关闭时 preamble 照旧写穿")
 }
 
 // 裸 error 帧之后没有 response.failed 时，同样要 failover，不能挂到超时。

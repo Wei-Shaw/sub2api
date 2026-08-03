@@ -107,9 +107,20 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			}
 		}()
 	}
+	// bufferedWriter 只有 4KB：Codex 的 response.created 会回显整段 instructions 与
+	// tools schema，单帧就撑破缓冲直接写穿到 socket，提交 HTTP 200 并让
+	// openAIStreamClientOutputStarted 变真，堵死流内错误的 failover 前置门槛。
+	// 「状态码延迟返回」开启时先攒在内存里，首个语义输出前一个字节都不落地。
+	// 能攒下的只有 response.created / response.in_progress：其余事件类型都会
+	// startsClientOutput，error 与 response.failed 走 failover 或强制 flush。
+	delayedStatusHold := !guardFirstOutput && openAIDelayedStatusCodeEnabled(c)
+	var delayedStatusBuf bytes.Buffer
 	writePendingString := func(value string) (int, error) {
 		if firstOutputStage != nil && firstTokenMs == nil && !firstOutputStage.closed {
 			return firstOutputStage.WriteString(value)
+		}
+		if delayedStatusHold {
+			return delayedStatusBuf.WriteString(value)
 		}
 		return bufferedWriter.WriteString(value)
 	}
@@ -117,14 +128,25 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		if firstOutputStage != nil && firstTokenMs == nil && !firstOutputStage.closed {
 			return firstOutputStage.Buffered()
 		}
+		if delayedStatusHold {
+			return int64(delayedStatusBuf.Len())
+		}
 		return int64(bufferedWriter.Buffered())
 	}
 	flushBuffered := func() error {
-		if firstOutputStage != nil && firstTokenMs == nil && !firstOutputStage.closed {
+		switch {
+		case firstOutputStage != nil && firstTokenMs == nil && !firstOutputStage.closed:
 			if err := firstOutputStage.CommitTo(w); err != nil {
 				return err
 			}
-		} else {
+		case delayedStatusHold:
+			// 攒住的 preamble 一次性按原顺序交付，之后回到常规写缓冲。
+			delayedStatusHold = false
+			if _, err := w.Write(delayedStatusBuf.Bytes()); err != nil {
+				return err
+			}
+			delayedStatusBuf.Reset()
+		default:
 			if err := bufferedWriter.Flush(); err != nil {
 				return err
 			}
