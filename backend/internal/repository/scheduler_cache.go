@@ -27,6 +27,8 @@ const (
 	schedulerRetiredPrefix         = "sched:retired:"
 	schedulerSnapshotPrefix        = "sched:"
 	schedulerLockPrefix            = "sched:lock:"
+	schedulerMetadataVersionKey    = "_scheduler_metadata_version"
+	schedulerMetadataVersion       = 1
 
 	defaultSchedulerSnapshotMGetChunkSize  = 128
 	defaultSchedulerSnapshotWriteChunkSize = 256
@@ -299,6 +301,13 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 		account, err := decodeCachedAccount(val)
 		if err != nil {
 			return nil, false, err
+		}
+		if !consumeCurrentSchedulerMetadataVersion(account) {
+			// Metadata snapshots are intentionally compact and their explicit
+			// allow-list grows over time. Treat entries written by older binaries
+			// as misses so a newly required admission field can never silently
+			// default to its zero value until the background rebuild catches up.
+			return nil, false, nil
 		}
 		if err := applySchedulerLastUsed(account, lastUsedValues[i]); err != nil {
 			return nil, false, err
@@ -863,6 +872,13 @@ func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any,
 }
 
 func buildSchedulerMetadataAccount(account service.Account) service.Account {
+	extra := filterSchedulerExtra(account.Extra)
+	if account.Platform == service.PlatformOpenAI {
+		if extra == nil {
+			extra = make(map[string]any, 1)
+		}
+		extra[schedulerMetadataVersionKey] = schedulerMetadataVersion
+	}
 	return service.Account{
 		ID:                      account.ID,
 		Name:                    account.Name,
@@ -890,8 +906,33 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		AccountGroups:           filterSchedulerAccountGroups(account.AccountGroups),
 		GroupIDs:                filterSchedulerGroupIDs(account.GroupIDs, account.AccountGroups),
 		Credentials:             filterSchedulerCredentials(account.Credentials),
-		Extra:                   filterSchedulerExtra(account.Extra),
+		Extra:                   extra,
 	}
+}
+
+func consumeCurrentSchedulerMetadataVersion(account *service.Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.Platform != service.PlatformOpenAI {
+		return true
+	}
+	if account.Extra == nil {
+		return false
+	}
+	raw, ok := account.Extra[schedulerMetadataVersionKey]
+	if !ok {
+		return false
+	}
+	version, ok := raw.(float64)
+	if !ok || version != float64(schedulerMetadataVersion) {
+		return false
+	}
+	delete(account.Extra, schedulerMetadataVersionKey)
+	if len(account.Extra) == 0 {
+		account.Extra = nil
+	}
+	return true
 }
 
 func filterSchedulerAccountGroups(accountGroups []service.AccountGroup) []service.AccountGroup {
@@ -1007,6 +1048,8 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"codex_5h_reset_after_seconds",
 		"codex_7d_reset_after_seconds",
 		"codex_usage_updated_at",
+		"codex_cli_only",
+		"codex_cli_only_allow_app_server",
 		"auto_pause_5h_threshold",
 		"auto_pause_7d_threshold",
 		"auto_pause_5h_disabled",

@@ -60,18 +60,10 @@ func startPassthroughHookRecordingServer(
 	return server, serverErr
 }
 
-// TestPassthroughIngressNeverCallsBeforeTurn 钉死 ws_v2 透传 ingress 与 handler
-// 侧 turn 定价的耦合：透传 relay 只回调 AfterTurn，没有任何 turn 起始回调，
-// 因此 hooks.BeforeTurn 永远不会触发。
-//
-// handler 依赖这一点：openAIWSTurnPricing 零值起步，透传连接的每个 turn 都拿
-// 不到冻结的 pricingAt，RecordUsage 回退到记录时刻——与引入分组利润控制前的
-// 基线一致。若把 turn 定价初始化成建连时刻，透传连接的所有 turn 就会被钉死在
-// 建连时的高峰因子，客户端峰前建连保活即可全程按谷价结算。
-//
-// 若本断言因为透传补齐了 turn 起始回调而失败：这是好事，请同步复核
-// openAIWSTurnPricing 的零值语义与透传路径的 turn 级利润复核。
-func TestPassthroughIngressNeverCallsBeforeTurn(t *testing.T) {
+// TestPassthroughIngressCallsBeforeTurn verifies that passthrough uses the
+// same turn-start lifecycle as pooled ingress. The handler freezes pricing and
+// rechecks terminal admission from this callback.
+func TestPassthroughIngressCallsBeforeTurn(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
@@ -123,6 +115,6 @@ func TestPassthroughIngressNeverCallsBeforeTurn(t *testing.T) {
 	gotBefore, gotAfter := beforeTurnCalls, afterTurnCalls
 	hooksMu.Unlock()
 
-	require.Zero(t, gotBefore, "透传 ingress 没有 turn 起始回调，BeforeTurn 不应被调用")
+	require.Equal(t, 1, gotBefore, "首个 response.create 必须触发 BeforeTurn")
 	require.Positive(t, gotAfter, "透传 ingress 仍应回调 AfterTurn 提交用量")
 }

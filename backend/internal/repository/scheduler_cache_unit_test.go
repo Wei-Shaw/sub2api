@@ -325,6 +325,172 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIWSFlags(t *testing.T) {
 	require.Nil(t, got.Extra["unused_large_field"])
 }
 
+func TestSchedulerCacheMetadataVersionAndCodexAdmissionFields(t *testing.T) {
+	ctx := context.Background()
+	cache, _ := newSchedulerCacheUnitWithRedis(t)
+	parentID := int64(9100)
+	bucket := service.SchedulerBucket{GroupID: 91, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	account := service.Account{
+		ID:              9101,
+		Name:            "shadow-codex",
+		Platform:        service.PlatformOpenAI,
+		Type:            service.AccountTypeOAuth,
+		Status:          service.StatusActive,
+		Schedulable:     true,
+		ParentAccountID: &parentID,
+		GroupIDs:        []int64{bucket.GroupID},
+		Extra: map[string]any{
+			"codex_cli_only":                  true,
+			"codex_cli_only_allow_app_server": true,
+			"unused_large_field":              strings.Repeat("x", 64),
+		},
+	}
+
+	token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+
+	snapshot, hit, err := cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Len(t, snapshot, 1)
+	require.Equal(t, parentID, *snapshot[0].ParentAccountID)
+	require.Equal(t, true, snapshot[0].Extra["codex_cli_only"])
+	require.Equal(t, true, snapshot[0].Extra["codex_cli_only_allow_app_server"])
+	require.NotContains(t, snapshot[0].Extra, schedulerMetadataVersionKey, "内部版本字段不得泄漏给调度器")
+	require.NotContains(t, snapshot[0].Extra, "unused_large_field")
+
+	full, err := cache.GetAccount(ctx, account.ID)
+	require.NoError(t, err)
+	require.NotNil(t, full)
+	require.Equal(t, true, full.Extra["codex_cli_only"])
+	require.Equal(t, true, full.Extra["codex_cli_only_allow_app_server"])
+	require.Equal(t, strings.Repeat("x", 64), full.Extra["unused_large_field"])
+}
+
+func TestSchedulerCacheRejectsStaleOrMalformedMetadataVersions(t *testing.T) {
+	ctx := context.Background()
+	cache, _ := newSchedulerCacheUnitWithRedis(t)
+	bucket := service.SchedulerBucket{GroupID: 92, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	account := service.Account{
+		ID:          9201,
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		GroupIDs:    []int64{bucket.GroupID},
+		Extra:       map[string]any{"codex_cli_only": true},
+	}
+	token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+
+	validRaw, err := cache.rdb.Get(ctx, schedulerAccountMetaKey(strconv.FormatInt(account.ID, 10))).Bytes()
+	require.NoError(t, err)
+	var valid map[string]any
+	require.NoError(t, json.Unmarshal(validRaw, &valid))
+
+	versions := []struct {
+		name  string
+		value any
+		omit  bool
+	}{
+		{name: "missing", omit: true},
+		{name: "old", value: float64(0)},
+		{name: "future", value: float64(schedulerMetadataVersion + 1)},
+		{name: "fractional", value: 1.5},
+		{name: "wrong_type", value: "1"},
+	}
+	for _, tc := range versions {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := make(map[string]any, len(valid))
+			for key, value := range valid {
+				payload[key] = value
+			}
+			extra, _ := payload["Extra"].(map[string]any)
+			if extra == nil {
+				extra = map[string]any{}
+				payload["Extra"] = extra
+			}
+			if tc.omit {
+				delete(extra, schedulerMetadataVersionKey)
+			} else {
+				extra[schedulerMetadataVersionKey] = tc.value
+			}
+			raw, marshalErr := json.Marshal(payload)
+			require.NoError(t, marshalErr)
+			require.NoError(t, cache.rdb.Set(ctx, schedulerAccountMetaKey(strconv.FormatInt(account.ID, 10)), raw, 0).Err())
+
+			got, hit, getErr := cache.GetSnapshot(ctx, bucket)
+			require.NoError(t, getErr)
+			require.False(t, hit)
+			require.Nil(t, got)
+		})
+	}
+}
+
+type schedulerMetadataFallbackAccountRepo struct {
+	service.AccountRepository
+	account service.Account
+	calls   int
+}
+
+func (r *schedulerMetadataFallbackAccountRepo) ListSchedulableByGroupIDAndPlatform(_ context.Context, _ int64, _ string) ([]service.Account, error) {
+	r.calls++
+	return []service.Account{r.account}, nil
+}
+
+func TestSchedulerSnapshotOldMetadataFallsBackAndRebuildsCurrentPayload(t *testing.T) {
+	ctx := context.Background()
+	cache, _ := newSchedulerCacheUnitWithRedis(t)
+	groupID := int64(93)
+	bucket := service.SchedulerBucket{GroupID: groupID, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	account := service.Account{
+		ID:          9301,
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		GroupIDs:    []int64{groupID},
+		Extra: map[string]any{
+			"codex_cli_only":                  true,
+			"codex_cli_only_allow_app_server": true,
+		},
+	}
+	token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+
+	metaKey := schedulerAccountMetaKey(strconv.FormatInt(account.ID, 10))
+	raw, err := cache.rdb.Get(ctx, metaKey).Bytes()
+	require.NoError(t, err)
+	var legacy map[string]any
+	require.NoError(t, json.Unmarshal(raw, &legacy))
+	extra, _ := legacy["Extra"].(map[string]any)
+	require.NotNil(t, extra)
+	delete(extra, schedulerMetadataVersionKey)
+	legacyRaw, err := json.Marshal(legacy)
+	require.NoError(t, err)
+	require.NoError(t, cache.rdb.Set(ctx, metaKey, legacyRaw, 0).Err())
+
+	repo := &schedulerMetadataFallbackAccountRepo{account: account}
+	snapshotService := service.NewSchedulerSnapshotService(cache, nil, repo, nil, nil)
+
+	first, _, err := snapshotService.ListSchedulableAccounts(ctx, &groupID, service.PlatformOpenAI, false)
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.calls, "旧 metadata 必须触发一次数据库回源")
+	require.Len(t, first, 1)
+	require.Equal(t, true, first[0].Extra["codex_cli_only"])
+	require.Equal(t, true, first[0].Extra["codex_cli_only_allow_app_server"])
+
+	second, _, err := snapshotService.ListSchedulableAccounts(ctx, &groupID, service.PlatformOpenAI, false)
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.calls, "回源重建后第二次读取应直接命中新格式 metadata")
+	require.Len(t, second, 1)
+	require.Equal(t, true, second[0].Extra["codex_cli_only"])
+	require.NotContains(t, second[0].Extra, schedulerMetadataVersionKey)
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsGrokMediaEligibility(t *testing.T) {
 	t.Run("explicit override", func(t *testing.T) {
 		account := service.Account{

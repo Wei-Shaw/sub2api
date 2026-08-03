@@ -1909,9 +1909,11 @@ func TestOpenAIGatewayService_CodexCLIOnly_RejectsNonCodexClient(t *testing.T) {
 	}
 
 	_, err := svc.Forward(context.Background(), c, account, inputBody)
-	require.Error(t, err)
-	require.Equal(t, http.StatusForbidden, rec.Code)
-	require.Contains(t, rec.Body.String(), "Codex official clients")
+	require.ErrorIs(t, err, ErrCodexClientRestricted)
+	result, ok := CodexClientRestrictionResultFromError(err)
+	require.True(t, ok)
+	require.Equal(t, CodexClientRestrictionReasonNotMatchedUA, result.Reason)
+	require.Zero(t, rec.Body.Len(), "service 只返回 typed error，handler 才能排除账号后重选")
 }
 
 func TestOpenAIGatewayService_CodexCLIOnly_AllowOfficialClientFamilies(t *testing.T) {

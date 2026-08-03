@@ -37,6 +37,34 @@ func (r *countTokensRuntimeStateRepo) SetError(_ context.Context, _ int64, _ str
 	return nil
 }
 
+func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_EnforcesCodexClientRestriction(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.1","messages":[{"role":"user","content":"hello"}]}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "curl/8.0")
+
+	upstream := &httpUpstreamRecorder{}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          100,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra:       map[string]any{"codex_cli_only": true},
+	}
+	ctx := svc.WithOpenAICodexClientAdmission(c.Request.Context(), c, body)
+	c.Request = c.Request.WithContext(ctx)
+
+	err := svc.ForwardCountTokensAsAnthropic(ctx, c, account, body, "gpt-5.1")
+	require.ErrorIs(t, err, ErrCodexClientRestricted)
+	require.Zero(t, rec.Body.Len(), "service 不得提前写 403，handler 需要排除账号并重选")
+	require.Nil(t, upstream.lastReq, "客户端限制必须在任何上游请求之前生效")
+}
+
 func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_APIKeyUsesResponsesInputTokens(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
