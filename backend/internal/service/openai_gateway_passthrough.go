@@ -443,15 +443,10 @@ REDACTED
 	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		req.Header.Set("user-agent", codexCLIUserAgent)
 REDACTED
-	// 浏览器型 UA 兜底：仅 OAuth（ChatGPT 内部接口）账号生效，若最终 user-agent 仍为浏览器
-	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
-	s.overrideBrowserUserAgent(ctx, account, req)
-
-	// 终态收口：originator 必须与最终 User-Agent 首段配套且为官方身份，非官方 UA 整体回退为
-	// 默认 Codex CLI 身份（承接原「非 Codex UA 安全兜底」，并修复其把 codex-tui 等官方 UA 改写为
-	// codex_cli_rs 造成的 originator 错配 404），详见 issue #3901。
+	// 终态收口：透传路径的 OAuth 与非透传完全一致，同样强制统一出站身份
+	// （User-Agent / originator / version 同源自洽），客户端自报身份不会到达上游。
 	if account.Type == AccountTypeOAuth {
-		enforceCodexIdentityHeaders(req.Header)
+		enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
 REDACTED
 
 	if req.Header.Get("content-type") == "" {
@@ -767,15 +762,34 @@ REDACTED
 	return !openAIStreamEventIsPreamble(eventType)
 REDACTED
 
+// openAIStreamFailedEventErrorCode 提取流内 failed 事件的错误码（小写），
+// 兼容 response.failed 的嵌套形态与裸 error 形态。
+func openAIStreamFailedEventErrorCode(payload []byte) string {
+	code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
+	if code == "" {
+		code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
+REDACTED
+	return code
+REDACTED
+
+// isOpenAIUpstreamCapacityShedEvent 判断流内 failed 事件是否为上游容量降载信号。
+// 上游在容量紧张时会把请求丢进降载路径：HTTP 200 之后立刻推 event: error
+// （code=server_is_overloaded / slow_down）并以 response.failed 收尾。
+func isOpenAIUpstreamCapacityShedEvent(payload []byte) bool {
+	switch openAIStreamFailedEventErrorCode(payload) {
+	case "server_is_overloaded", "slow_down":
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
 func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 	if isOpenAIContextWindowError(message, payload) {
 		return http.StatusBadRequest
 REDACTED
 
-	code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
-	if code == "" {
-		code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
-REDACTED
+	code := openAIStreamFailedEventErrorCode(payload)
 	errType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.type").String()))
 	if errType == "" {
 		errType = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.type").String()))
@@ -925,7 +939,17 @@ REDACTED
 REDACTED
 
 func openAIStreamFailedEventRetryableOnSameAccount(account *Account, payload []byte, message string) bool {
-	if account == nil || !account.IsPoolMode() {
+	if account == nil {
+		return false
+REDACTED
+	// 容量降载是请求级信号，不是账号级故障：上游只是让本次请求稍后再试。
+	// 换账号并不改变被降载的因素（客户端身份、模型容量都与账号无关），
+	// 只会让单个请求把整池账号逐个消耗掉，最终仍以同一个错误告终。
+	// 因此先在同一账号上做有界重试，用尽后才按常规流程切号。
+	if isOpenAIUpstreamCapacityShedEvent(payload) {
+		return true
+REDACTED
+	if !account.IsPoolMode() {
 		return false
 REDACTED
 	semanticStatus := openAIStreamFailedEventSemanticStatus(payload, message)
@@ -1013,6 +1037,7 @@ REDACTED)
 		ResponseBody:           body,
 		ResponseHeaders:        headers,
 		RetryableOnSameAccount: openAIStreamFailedEventRetryableOnSameAccount(account, payload, message),
+		RequestScopedTransient: isOpenAIUpstreamCapacityShedEvent(payload),
 REDACTED
 REDACTED
 

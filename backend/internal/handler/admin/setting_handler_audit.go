@@ -443,6 +443,12 @@ REDACTED
 	if before.OpenAICodexUserAgent != after.OpenAICodexUserAgent {
 		changed = append(changed, "openai_codex_user_agent")
 REDACTED
+	if before.OpenAICodexClientVersion != after.OpenAICodexClientVersion {
+		changed = append(changed, "openai_codex_client_version")
+REDACTED
+	if before.OpenAICodexVersionAutoSyncEnabled != after.OpenAICodexVersionAutoSyncEnabled {
+		changed = append(changed, "openai_codex_version_auto_sync_enabled")
+REDACTED
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")
 REDACTED

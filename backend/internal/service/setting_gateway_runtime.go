@@ -83,8 +83,9 @@ const antigravityUserAgentVersionErrorTTL = 5 * time.Second
 const antigravityUserAgentVersionDBTimeout = 5 * time.Second
 
 // DefaultOpenAICodexUserAgent OpenAI Codex 默认 User-Agent（用于规避 Cloudflare 对浏览器 UA 的质询）。
-// 取官方 CLI 身份而非 TUI 身份：上游按 originator 分桶调度容量，TUI 身份命中降载桶会被回
-// server_is_overloaded 并触发账号冷却，而该默认值是浏览器 UA 兜底路径上最主要的身份来源。
+// 取官方 CLI 身份而非 TUI 身份：上游在容量紧张时按客户端身份分优先级降载，TUI 身份被观测到
+// 优先命中降载，而该默认值是浏览器 UA 兜底路径上最主要的身份来源。版本段随 codexCLIVersion
+// 一起更新——陈旧版本同样会被优先降载。
 const DefaultOpenAICodexUserAgent = codexCLIUserAgent
 
 // cachedOpenAICodexUserAgent 缓存 OpenAI Codex UA（进程内缓存，60s TTL）
@@ -92,6 +93,19 @@ type cachedOpenAICodexUserAgent struct {
 	value     string
 	expiresAt int64 // unix nano
 REDACTED
+
+// cachedOpenAICodexClientVersion 缓存出站 Codex 客户端版本号（进程内缓存，60s TTL）
+type cachedOpenAICodexClientVersion struct {
+	version   string
+	expiresAt int64 // unix nano
+REDACTED
+
+const openAICodexClientVersionCacheTTL = 60 * time.Second
+const openAICodexClientVersionErrorTTL = 5 * time.Second
+const openAICodexClientVersionDBTimeout = 5 * time.Second
+
+// openAICodexClientVersionSFKey singleflight 键。
+const openAICodexClientVersionSFKey = "openai_codex_client_version"
 
 type cachedOpenAIQuotaAutoPauseSettings struct {
 	settings  OpsOpenAIAccountQuotaAutoPauseSettings
@@ -282,6 +296,88 @@ REDACTED)
 		return ua
 REDACTED
 	return fallback
+REDACTED
+
+// GetOpenAICodexClientVersion 返回出站声明的 Codex 客户端版本号。
+// 优先级：管理员在面板覆写的版本 → 自动同步到的官方最新稳定版 → 内置常量。
+// 上游在容量紧张时按客户端身份分优先级降载，陈旧版本会被优先丢弃，故该值需保持跟随官方发布；
+// 自动同步让运维不必为了跟版本而发新版本。
+func (s *SettingService) GetOpenAICodexClientVersion(ctx context.Context) string {
+	fallback := codexCLIVersion
+	if s == nil || s.settingRepo == nil {
+		return fallback
+REDACTED
+	if cached, ok := s.openAICodexVersionCache.Load().(*cachedOpenAICodexClientVersion); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.version
+	REDACTED
+REDACTED
+
+	result, _, _ := s.openAICodexVersionSF.Do(openAICodexClientVersionSFKey, func() (any, error) {
+		if cached, ok := s.openAICodexVersionCache.Load().(*cachedOpenAICodexClientVersion); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.version, nil
+		REDACTED
+	REDACTED
+		if ctx == nil {
+			ctx = context.Background()
+	REDACTED
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAICodexClientVersionDBTimeout)
+		defer cancel()
+		values, err := s.settingRepo.GetMultiple(dbCtx, []string{
+			SettingKeyOpenAICodexClientVersion,
+			SettingKeyOpenAICodexClientVersionSynced,
+	REDACTED)
+		if err != nil {
+			slog.Warn("failed to get openai codex client version setting", "error", err)
+			s.openAICodexVersionCache.Store(&cachedOpenAICodexClientVersion{
+				version:   fallback,
+				expiresAt: time.Now().Add(openAICodexClientVersionErrorTTL).UnixNano(),
+		REDACTED)
+			return fallback, nil
+	REDACTED
+		version := NormalizeCodexClientVersion(values[SettingKeyOpenAICodexClientVersion])
+		if version == "" {
+			version = NormalizeCodexClientVersion(values[SettingKeyOpenAICodexClientVersionSynced])
+	REDACTED
+		if version == "" {
+			version = fallback
+	REDACTED
+		s.openAICodexVersionCache.Store(&cachedOpenAICodexClientVersion{
+			version:   version,
+			expiresAt: time.Now().Add(openAICodexClientVersionCacheTTL).UnixNano(),
+	REDACTED)
+		return version, nil
+REDACTED)
+	if version, ok := result.(string); ok && version != "" {
+		return version
+REDACTED
+	return fallback
+REDACTED
+
+// InvalidateOpenAICodexClientVersionCache 丢弃版本号缓存，下次读取回源。
+// 面板保存与自动同步写入后调用。
+func (s *SettingService) InvalidateOpenAICodexClientVersionCache() {
+	if s == nil {
+		return
+REDACTED
+	s.openAICodexVersionSF.Forget(openAICodexClientVersionSFKey)
+	s.openAICodexVersionCache.Store((*cachedOpenAICodexClientVersion)(nil))
+REDACTED
+
+// GetOpenAICodexCanonicalUserAgent 返回出站规范 Codex User-Agent。
+// 管理员在面板显式填写的完整 UA 优先；否则按当前生效的客户端版本号拼出标准 CLI UA。
+//
+// 面板值等于编译期兜底常量时视同未填写：两者不可区分，而按版本号拼装能拿到更新的版本，
+// 需要固定版本请填「Codex 客户端版本号」并关闭自动同步。
+func (s *SettingService) GetOpenAICodexCanonicalUserAgent(ctx context.Context) string {
+	if s == nil {
+		return codexCLIUserAgent
+REDACTED
+	if ua := strings.TrimSpace(s.GetOpenAICodexUserAgent(ctx)); ua != "" && ua != DefaultOpenAICodexUserAgent {
+		return ua
+REDACTED
+	return buildCodexCLIUserAgent(s.GetOpenAICodexClientVersion(ctx))
 REDACTED
 
 var legacyClaudeCodeCodexWhitelistEntry = openai.AllowedClientEntry{

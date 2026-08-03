@@ -264,8 +264,7 @@ REDACTED
 		req.Header.Set("Session_ID", isolated)
 		req.Header.Set("Conversation_ID", isolated)
 REDACTED
-	s.overrideBrowserUserAgent(ctx, account, req)
-	enforceCodexIdentityHeaders(req.Header)
+	enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
 	account.ApplyHeaderOverrides(req.Header)
 	return req, nil
 REDACTED
@@ -402,8 +401,7 @@ REDACTED
 		if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 			req.Header.Set("User-Agent", codexCLIUserAgent)
 	REDACTED
-		s.overrideBrowserUserAgent(ctx, account, req)
-		enforceCodexIdentityHeaders(req.Header)
+		enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
 REDACTED
 
 	account.ApplyHeaderOverrides(req.Header)

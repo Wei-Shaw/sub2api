@@ -57,17 +57,6 @@ var codexOfficialClientOriginators = map[string]bool{
 	"codex_sdk_ts":          true, // TypeScript SDK
 REDACTED
 
-// IsBrowserUserAgent 判断 User-Agent 是否来自浏览器（Chrome/Firefox/Safari/Edge/Opera 等）。
-// 所有现代浏览器的 UA 均以 "Mozilla/" 作为前缀，CLI 工具（codex/claude/curl/postman/python-requests 等）不会。
-// 该判定用于避免 Cloudflare 对浏览器型 UA 在 OpenAI 上游接口上触发 JS 质询。
-func IsBrowserUserAgent(userAgent string) bool {
-	ua := strings.TrimSpace(userAgent)
-	if ua == "" {
-		return false
-REDACTED
-	return strings.HasPrefix(strings.ToLower(ua), "mozilla/")
-REDACTED
-
 // IsCodexCLIRequest checks if the User-Agent indicates a Codex CLI request
 func IsCodexCLIRequest(userAgent string) bool {
 	ua := normalizeCodexClientHeader(userAgent)
@@ -259,46 +248,21 @@ REDACTED
 // 也是身份归一化的目标身份。
 const CodexCLIOriginator = "codex_cli_rs"
 
-// codexLoadShedOriginators：上游 /backend-api/codex 按 originator 分桶调度容量，命中降载桶的
-// 请求即使 HTTP 200 也会立刻推 SSE `event: error`（code=server_is_overloaded）并以
-// response.failed 收尾。2026-07-29 起 codex-tui 被观测到落入降载桶：同账号、同请求体、同 UA，
-// 仅把 originator 换成 codex_cli_rs 即恢复正常（换言之 UA 不是判定因子，originator 才是）。
-// 网关会把该错误判定为瞬时上游故障并让账号进入冷却，对外表现为「账号过载不可用」，
-// 因此出站前需要把命中的身份改写为 CLI 身份。
-//
-// 该集合是上游容量策略的快照而非协议常量，上游调整分桶后需同步修订。
-var codexLoadShedOriginators = map[string]bool{
-	"codex-tui": true,
-REDACTED
-
-// IsCodexLoadShedOriginator 判断 originator 是否落在上游降载桶。
-func IsCodexLoadShedOriginator(originator string) bool {
-	return codexLoadShedOriginators[normalizeCodexClientHeader(originator)]
-REDACTED
-
-// NormalizeCodexClientIdentityToCLI 把落在降载桶的官方身份改写为 Codex CLI 身份：
-// UA 首段替换为 codex_cli_rs，并裁掉尾部 `(name; version)` 客户端标识组（真实 CLI UA 无该组），
-// 版本 / OS / 架构 / 终端指纹原样保留。返回配套的 originator 与 UA，未命中降载桶时 changed=false。
-//
-// 入参应为 PairCodexClientIdentity 输出的已配对身份；改写后 UA 首段与 originator 仍然配套，
-// 不破坏上游的配对校验。
-func NormalizeCodexClientIdentityToCLI(originator, userAgent string) (string, string, bool) {
-	if !IsCodexLoadShedOriginator(originator) {
-		return originator, userAgent, false
-REDACTED
+// CodexUserAgentVersion 提取 Codex UA 的完整版本段，即 `{clientREDACTED/{versionREDACTED (...` 中的 version。
+// 与 ParseCodexEngineVersion 的区别：后者只取三段数字用于引擎版本比较（会丢掉 -alpha.4
+// 之类的预发布后缀），本函数保留原样，因为出站 version 头必须与 UA 版本段逐字一致。
+// 取不到（非 Codex 形态 UA）时返回空串。
+func CodexUserAgentVersion(userAgent string) string {
 	ua := strings.TrimSpace(userAgent)
 	slash := strings.IndexByte(ua, '/')
 	if slash <= 0 {
-		return CodexCLIOriginator, ua, true
+		return ""
 REDACTED
-	rest := ua[slash:]
-	// 仅当尾部括号组确为官方客户端标识时才裁剪，避免误截合法 UA 尾巴（如 `(Ubuntu 22.4.0; x86_64)`）。
-	if trailer := codexUATrailerName(ua); trailer != "" && IsCodexOfficialClientOriginator(trailer) {
-		if open := strings.LastIndex(rest, "("); open > 0 {
-			rest = strings.TrimRight(rest[:open], " ")
-	REDACTED
+	rest := ua[slash+1:]
+	if space := strings.IndexByte(rest, ' '); space >= 0 {
+		rest = rest[:space]
 REDACTED
-	return CodexCLIOriginator, CodexCLIOriginator + rest, true
+	return strings.TrimSpace(rest)
 REDACTED
 
 // codexEngineVersionPattern 提取版本段开头的三段数字 X.Y.Z（忽略 -alpha 等后缀）。
