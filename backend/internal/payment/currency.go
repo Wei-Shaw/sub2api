@@ -73,6 +73,16 @@ func CurrencyMaxFractionDigits(currency string) int {
 	return paymentCurrencyAmountUnitFor(currency).maxFractionDigits
 }
 
+// MaxFractionDigitsOrDefault 返回币种允许的小数位数；非法/未识别币种时返 fallback。
+// 用于跨币种换算后的舍入（v4.6.2 currency separation）。
+func MaxFractionDigitsOrDefault(currency string, fallback int32) int32 {
+	normalized, err := NormalizePaymentCurrency(currency)
+	if err != nil || normalized == "" {
+		return fallback
+	}
+	return int32(CurrencyMaxFractionDigits(normalized))
+}
+
 // FormatAmountForCurrency 按币种允许的小数位格式化支付金额。
 func FormatAmountForCurrency(amount float64, currency string) string {
 	return decimal.NewFromFloat(amount).StringFixed(int32(CurrencyMaxFractionDigits(currency)))

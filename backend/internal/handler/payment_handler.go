@@ -140,6 +140,19 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		})
 	}
 
+	// v4.6.2: 实时汇率（API 优先）—— 渠道货币取首个可见方法的货币（EPAY=CNY）
+	fxRate := 0.0
+	if h.paymentService != nil && cfg.SettlementCurrency != "" {
+		channelCur := payment.DefaultPaymentCurrency // CNY
+		for _, ml := range limitsResp.Methods {
+			if ml.Currency != "" {
+				channelCur = ml.Currency
+				break
+			}
+		}
+		fxRate = h.paymentService.GetCheckoutFXRate(c.Request.Context(), cfg.SettlementCurrency, channelCur)
+	}
+
 	response.Success(c, checkoutInfoResponse{
 		Methods:                       limitsResp.Methods,
 		GlobalMin:                     limitsResp.GlobalMin,
@@ -149,6 +162,11 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		BalanceRechargeMultiplier:     cfg.BalanceRechargeMultiplier,
 		SubscriptionUSDToCNYRate:      cfg.SubscriptionUSDToCNYRate,
 		RechargeFeeRate:               cfg.RechargeFeeRate,
+		// v4.6.2 currency separation
+		SettlementCurrency: cfg.SettlementCurrency,
+		RechargeCurrency:   cfg.RechargeCurrency,
+		FXFallbackRate:     cfg.FXFallbackRate,
+		FXRate:             fxRate,
 		HelpText:                      cfg.HelpText,
 		HelpImageURL:                  cfg.HelpImageURL,
 		StripePublishableKey:          cfg.StripePublishableKey,
@@ -166,6 +184,11 @@ type checkoutInfoResponse struct {
 	BalanceRechargeMultiplier     float64                         `json:"balance_recharge_multiplier"`
 	SubscriptionUSDToCNYRate      float64                         `json:"subscription_usd_to_cny_rate"`
 	RechargeFeeRate               float64                         `json:"recharge_fee_rate"`
+	// === v4.6.2 currency separation ===
+	SettlementCurrency string  `json:"settlement_currency"`
+	RechargeCurrency   string  `json:"recharge_currency"`
+	FXFallbackRate     float64 `json:"fx_fallback_rate"`
+	FXRate             float64 `json:"fx_rate"` // 实时汇率（API 优先），0=不可用
 	HelpText                      string                          `json:"help_text"`
 	HelpImageURL                  string                          `json:"help_image_url"`
 	StripePublishableKey          string                          `json:"stripe_publishable_key"`

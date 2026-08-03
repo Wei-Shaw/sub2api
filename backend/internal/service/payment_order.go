@@ -59,7 +59,14 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		orderAmount = plan.Price
 		limitAmount = plan.Price
 	} else if req.OrderType == payment.OrderTypeBalance {
+		// 到账 = 输入 × 倍率（输入与到账都是结算货币，如 USD）—— 不乘汇率！
+		// 汇率只影响"支付给渠道的金额"（见 calculateBalanceGatewayBaseAmount）。
 		orderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
+	}
+	// v4.6.2: 结算货币（页面输入/到账单位）
+	settlementCurrency := cfg.SettlementCurrency
+	if settlementCurrency == "" {
+		settlementCurrency = "USD"
 	}
 	feeRate := cfg.RechargeFeeRate
 	methodCurrency := payment.DefaultPaymentCurrency
@@ -69,7 +76,12 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 			return nil, err
 		}
 	}
-	payAmountStr, payAmount, err := calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, methodCurrency, req.OrderType, cfg.SubscriptionUSDToCNYRate)
+	// fxRate: 结算货币 → 渠道货币 的汇率（如 USD→CNY=7），仅跨币种时有值
+	var fxRate float64
+	if s.fxService != nil {
+		fxRate = s.fxService.GetRate(ctx, settlementCurrency, methodCurrency, fxAPICandidates(cfg), cfg.FXFallbackRate)
+	}
+	payAmountStr, payAmount, err := calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, methodCurrency, req.OrderType, cfg.SubscriptionUSDToCNYRate, fxRate, settlementCurrency)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +97,11 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		selectedCurrency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 	}
 	if selectedCurrency != methodCurrency {
-		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, selectedCurrency, req.OrderType, cfg.SubscriptionUSDToCNYRate)
+		// 按选中实例的真实币种重算 fxRate + payAmount（v4.6.2）
+		if s.fxService != nil {
+			fxRate = s.fxService.GetRate(ctx, settlementCurrency, selectedCurrency, fxAPICandidates(cfg), cfg.FXFallbackRate)
+		}
+		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, selectedCurrency, req.OrderType, cfg.SubscriptionUSDToCNYRate, fxRate, settlementCurrency)
 		if err != nil {
 			return nil, err
 		}
@@ -643,12 +659,43 @@ func calculateCreateOrderPayAmount(limitAmount, feeRate float64, currency string
 	return payAmountStr, payAmount, nil
 }
 
-func calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate float64, currency, orderType string, usdToCnyRate float64) (string, float64, error) {
+func calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate float64, currency, orderType string, usdToCnyRate float64, fxRate float64, settlementCurrency string) (string, float64, error) {
 	paymentAmount := limitAmount
 	if orderType == payment.OrderTypeSubscription {
 		paymentAmount = calculateSubscriptionGatewayBaseAmount(limitAmount, usdToCnyRate, currency)
+	} else if orderType == payment.OrderTypeBalance {
+		// v4.6.2: 余额充值走"结算货币 → 充值货币"换算（主人规范）：
+		// 页面输入/到账是结算货币（如 USD），提交给渠道的是充值货币（如 CNY）。
+		paymentAmount = calculateBalanceGatewayBaseAmount(limitAmount, fxRate, currency, settlementCurrency)
 	}
 	return calculateCreateOrderPayAmount(paymentAmount, feeRate, currency)
+}
+
+// fxAPICandidates 返回 FX API URL 候选列表（v4.6.2）：多 URL 回退链优先，单 URL 兼容。
+func fxAPICandidates(cfg *PaymentConfig) []string {
+	if cfg == nil {
+		return nil
+	}
+	if len(cfg.FXApiURLs) > 0 {
+		return cfg.FXApiURLs
+	}
+	if strings.TrimSpace(cfg.FXApiURL) != "" {
+		return []string{cfg.FXApiURL}
+	}
+	return nil
+}
+
+// calculateBalanceGatewayBaseAmount 计算余额充值订单的网关扣款基数（v4.6.2）。
+// 语义：输入金额是结算货币（settlementCurrency，如 USD）；当渠道货币（currency，如 CNY）
+// 与结算货币不同且汇率可用时，按 金额 × fxRate 换算为渠道货币扣款；否则按原金额直付。
+func calculateBalanceGatewayBaseAmount(amount, fxRate float64, currency, settlementCurrency string) float64 {
+	if settlementCurrency == "" || currency == settlementCurrency || fxRate <= 0 {
+		return amount
+	}
+	return decimal.NewFromFloat(amount).
+		Mul(decimal.NewFromFloat(fxRate)).
+		Round(int32(payment.CurrencyMaxFractionDigits(currency))).
+		InexactFloat64()
 }
 
 // calculateSubscriptionGatewayBaseAmount 计算订阅订单的网关扣款基数。
