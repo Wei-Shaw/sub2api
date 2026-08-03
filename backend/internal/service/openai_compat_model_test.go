@@ -1020,6 +1020,7 @@ func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	const tuiUA = "codex-tui/9.9.9 (Mac OS X 14.0; arm64) iTerm (codex-tui; 9.9.9)"
+	const vscodeUA = "codex_vscode/9.9.9 (Mac OS X 14.0; arm64) vscode (codex_vscode; 9.9.9)"
 	tests := []struct {
 		name           string
 		userAgent      string
@@ -1029,10 +1030,17 @@ func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
 	}{
 		{
 			name:           "官方UA逐字保留并重新配对",
+			userAgent:      vscodeUA,
+			originator:     "opencode",
+			wantUserAgent:  vscodeUA,
+			wantOriginator: "codex_vscode",
+		},
+		{
+			name:           "降载身份改写为CLI身份并保留终端指纹",
 			userAgent:      tuiUA,
 			originator:     "opencode",
-			wantUserAgent:  tuiUA,
-			wantOriginator: "codex-tui",
+			wantUserAgent:  "codex_cli_rs/9.9.9 (Mac OS X 14.0; arm64) iTerm",
+			wantOriginator: "codex_cli_rs",
 		},
 		{
 			name:           "第三方UA回退为默认Codex身份",

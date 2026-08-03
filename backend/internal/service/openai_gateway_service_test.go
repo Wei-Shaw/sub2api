@@ -2876,10 +2876,18 @@ func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t 
 		{name: "official ua pairs originator", userAgent: "Codex Desktop/1.2.3", wantOriginator: "Codex Desktop", wantUA: "Codex Desktop/1.2.3"},
 		{
 			name:           "mismatched originator repaired from ua",
-			userAgent:      "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			userAgent:      "codex_vscode/0.140.2 (Mac OS X 14.0; arm64) vscode (codex_vscode; 0.140.2)",
 			originator:     "codex_cli_rs",
-			wantOriginator: "codex-tui",
-			wantUA:         "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			wantOriginator: "codex_vscode",
+			wantUA:         "codex_vscode/0.140.2 (Mac OS X 14.0; arm64) vscode (codex_vscode; 0.140.2)",
+		},
+		{
+			// 降载桶身份改写为 CLI 身份，只替换身份段、保留版本/OS/架构/终端指纹。
+			name:           "load-shed originator normalized to cli identity",
+			userAgent:      "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			originator:     "codex-tui",
+			wantOriginator: "codex_cli_rs",
+			wantUA:         "codex_cli_rs/0.140.2 (Mac OS X 14.0; arm64) iTerm",
 		},
 		{name: "official originator without ua falls back to default identity", originator: "codex_vscode", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgent},
 		{name: "third-party ua masked to default identity", userAgent: "luna/1.2.0", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgent},

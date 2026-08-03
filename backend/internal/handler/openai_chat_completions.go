@@ -144,10 +144,15 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
+	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+
+	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
+	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	c.Request = c.Request.WithContext(ccPricingCtx)
 
 	for {
 		if failoverClientGone(c) {
@@ -207,8 +212,16 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		_ = scheduleDecision
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
-		if !acquired {
+		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
+		if slotResult == openAISlotAcquireProfitVetoed {
+			// 利润终检否决：排除该账号重新选号；否决次数达上限则按无可用账号终止。
+			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
+				h.handleOpenAIProfitVetoExhausted(c, streamStarted, reqLog, profitVetoCount)
+				return
+			}
+			continue
+		}
+		if slotResult != openAISlotAcquireOK {
 			return
 		}
 
@@ -358,6 +371,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				QuotaPlatform:      quotaPlatform,
 				SessionID:          sessionID,
 				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+				PricingAt:          pricingAt,
 				CyberBlocked:       cyberBlocked,
 			}); err != nil {
 				logger.L().With(
