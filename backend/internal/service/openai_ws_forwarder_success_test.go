@@ -769,10 +769,18 @@ REDACTED{
 		{name: "official ua pairs originator", userAgent: "Codex Desktop/1.2.3", wantOriginator: "Codex Desktop", wantUA: "Codex Desktop/1.2.3"REDACTED,
 		{
 			name:           "mismatched originator repaired from ua",
-			userAgent:      "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			userAgent:      "codex_vscode/0.140.2 (Mac OS X 14.0; arm64) vscode (codex_vscode; 0.140.2)",
 			originator:     "codex_cli_rs",
-			wantOriginator: "codex-tui",
-			wantUA:         "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			wantOriginator: "codex_vscode",
+			wantUA:         "codex_vscode/0.140.2 (Mac OS X 14.0; arm64) vscode (codex_vscode; 0.140.2)",
+	REDACTED,
+		{
+			// WS 握手头与 HTTP 出站共用收口，降载桶身份同样改写为 CLI 身份。
+			name:           "load-shed originator normalized to cli identity",
+			userAgent:      "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			originator:     "codex-tui",
+			wantOriginator: "codex_cli_rs",
+			wantUA:         "codex_cli_rs/0.140.2 (Mac OS X 14.0; arm64) iTerm",
 	REDACTED,
 		{name: "official originator without ua falls back to default identity", originator: "codex_vscode", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgentREDACTED,
 REDACTED
