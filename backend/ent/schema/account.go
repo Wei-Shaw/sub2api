@@ -91,6 +91,13 @@ func (Account) Fields() []ent.Field {
 		field.Int64("proxy_id").
 			Optional().
 			Nillable(),
+		// pool_id: 关联的代理池 ID（可选，代理池功能）
+		// 绑定池后由代理池服务在池内健康代理间维护分配（写入 proxy_id）；
+		// 绑定具体代理时 pool_id 为 NULL。池删除时 ON DELETE SET NULL。
+		field.Int64("pool_id").
+			Optional().
+			Nillable().
+			Comment("Proxy pool id; pool service maintains proxy assignment."),
 		field.Int64("proxy_fallback_origin_id").
 			Optional().Nillable().
 			Comment("Original proxy id replaced by expiry-fallback; for manual revert. NULL = not in fallback."),
@@ -217,6 +224,10 @@ func (Account) Edges() []ent.Edge {
 		edge.To("proxy", Proxy.Type).
 			Field("proxy_id").
 			Unique(),
+		// pool: 账户所属代理池（可选的一对一关系）
+		edge.To("pool", ProxyPool.Type).
+			Field("pool_id").
+			Unique(),
 		// children/parent: linked spark shadow relationship.
 		// parent_account_id is nullable, and the active one-shadow-per-parent rule
 		// is enforced by the partial unique index in migration 154a.
@@ -238,6 +249,7 @@ func (Account) Indexes() []ent.Index {
 		index.Fields("type"),                // 按认证类型筛选
 		index.Fields("status"),              // 按状态筛选
 		index.Fields("proxy_id"),            // 按代理筛选
+		index.Fields("pool_id"),            // 按代理池筛选
 		index.Fields("priority"),            // 按优先级排序
 		index.Fields("last_used_at"),        // 按最后使用时间排序
 		index.Fields("schedulable"),         // 筛选可调度账户

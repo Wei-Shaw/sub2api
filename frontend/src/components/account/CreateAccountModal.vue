@@ -2726,7 +2726,23 @@
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
         </div>
-        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label class="input-label">{{ t('admin.proxyPools.proxyPool') }}</label>
+            <Select
+              v-model="form.pool_id"
+              :options="poolSelectOptions"
+              :placeholder="t('admin.proxyPools.noPool')"
+              :clearable="true"
+              @change="onPoolSelectChange"
+            />
+            <p v-if="form.pool_id" class="input-hint">{{ t('admin.proxyPools.poolAssignmentHint') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
+            <ProxySelector v-model="form.proxy_id" :proxies="proxies" @update:model-value="onProxySelectChange" />
+          </div>
+        </div>
       </div>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -3567,6 +3583,7 @@ import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
 import type {
   Proxy,
+  ProxyPool,
   AdminGroup,
   AccountPlatform,
   AccountType,
@@ -3657,10 +3674,27 @@ const apiKeyHint = computed(() => {
 interface Props {
   show: boolean
   proxies: Proxy[]
+  pools?: ProxyPool[]
   groups: AdminGroup[]
 }
 
 const props = defineProps<Props>()
+
+// 代理池选项与互斥逻辑（同 EditAccountModal）
+const poolSelectOptions = computed(() =>
+  (props.pools ?? []).map((pool) => ({ label: pool.name, value: pool.id }))
+)
+
+const onPoolSelectChange = (value: string | number | boolean | null) => {
+  form.pool_id = typeof value === 'number' ? value : null
+  if (form.pool_id) {
+    form.proxy_id = null
+  }
+}
+
+const onProxySelectChange = () => {
+  form.pool_id = 0
+}
 const emit = defineEmits<{
   close: []
   created: []
@@ -4110,6 +4144,7 @@ const form = reactive({
   type: 'oauth' as AccountType, // Will be 'oauth', 'setup-token', or 'apikey'
   credentials: {} as Record<string, unknown>,
   proxy_id: null as number | null,
+  pool_id: null as number | null,
   concurrency: 10,
   load_factor: null as number | null,
   priority: 1,
@@ -5299,7 +5334,8 @@ const createAccountAndFinish = async (
     type,
     credentials,
     extra: finalExtra,
-    proxy_id: form.proxy_id,
+    proxy_id: form.pool_id ? null : form.proxy_id,
+      pool_id: form.pool_id,
     concurrency: form.concurrency,
     load_factor: form.load_factor ?? undefined,
     priority: form.priority,
@@ -5366,7 +5402,8 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           type: 'oauth',
           credentials,
           extra,
-          proxy_id: form.proxy_id,
+          proxy_id: form.pool_id ? null : form.proxy_id,
+      pool_id: form.pool_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -5532,7 +5569,8 @@ const handleOpenAIExchange = async (authCode: string) => {
         type: 'oauth',
         credentials,
         extra,
-        proxy_id: form.proxy_id,
+        proxy_id: form.pool_id ? null : form.proxy_id,
+      pool_id: form.pool_id,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
         priority: form.priority,
@@ -5813,7 +5851,8 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             type: 'oauth',
             credentials,
             extra,
-            proxy_id: form.proxy_id,
+            proxy_id: form.pool_id ? null : form.proxy_id,
+      pool_id: form.pool_id,
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,
             priority: form.priority,
@@ -5912,7 +5951,8 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           type: 'oauth',
           credentials,
           extra: {},
-          proxy_id: form.proxy_id,
+          proxy_id: form.pool_id ? null : form.proxy_id,
+      pool_id: form.pool_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -6293,7 +6333,8 @@ const handleCookieAuth = async (sessionKey: string) => {
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
           extra,
-          proxy_id: form.proxy_id,
+          proxy_id: form.pool_id ? null : form.proxy_id,
+      pool_id: form.pool_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,

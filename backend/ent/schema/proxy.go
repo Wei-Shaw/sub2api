@@ -64,6 +64,19 @@ func (Proxy) Fields() []ent.Field {
 		field.Int("expiry_warn_days").
 			Default(7).
 			Comment("Days before expiry to flag as expiring-soon (per proxy)."),
+		field.Int64("pool_id").
+			Optional().Nillable().
+			Comment("Owning proxy pool id (NULL means standalone proxy)."),
+		field.String("pool_health").
+			MaxLen(20).
+			Default("unknown").
+			Comment("Pool health status: unknown/healthy/unhealthy."),
+		field.Time("pool_checked_at").
+			Optional().Nillable().
+			Comment("Last pool health probe time."),
+		field.Int("pool_failures").
+			Default(0).
+			Comment("Consecutive pool health probe failures."),
 	}
 }
 
@@ -76,6 +89,9 @@ func (Proxy) Edges() []ent.Edge {
 		edge.To("backup_proxy", Proxy.Type).
 			Field("backup_proxy_id").
 			Unique(),
+		edge.To("pool", ProxyPool.Type).
+			Field("pool_id").
+			Unique(),
 	}
 }
 
@@ -85,5 +101,7 @@ func (Proxy) Indexes() []ent.Index {
 		index.Fields("deleted_at"),
 		index.Fields("expires_at"),
 		index.Fields("backup_proxy_id"),
+		index.Fields("pool_id"),
+		index.Fields("pool_health"),
 	}
 }

@@ -521,6 +521,11 @@ func (r *accountRepository) updateLockedAccount(
 	} else {
 		builder.ClearProxyID()
 	}
+	if account.PoolID != nil {
+		builder.SetPoolID(*account.PoolID)
+	} else {
+		builder.ClearPoolID()
+	}
 	if account.LastUsedAt != nil {
 		builder.SetLastUsedAt(*account.LastUsedAt)
 	} else {

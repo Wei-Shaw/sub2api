@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/proxypool"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 )
 
@@ -148,6 +149,26 @@ func (_u *AccountUpdate) SetNillableProxyID(v *int64) *AccountUpdate {
 // ClearProxyID clears the value of the "proxy_id" field.
 func (_u *AccountUpdate) ClearProxyID() *AccountUpdate {
 	_u.mutation.ClearProxyID()
+	return _u
+}
+
+// SetPoolID sets the "pool_id" field.
+func (_u *AccountUpdate) SetPoolID(v int64) *AccountUpdate {
+	_u.mutation.SetPoolID(v)
+	return _u
+}
+
+// SetNillablePoolID sets the "pool_id" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillablePoolID(v *int64) *AccountUpdate {
+	if v != nil {
+		_u.SetPoolID(*v)
+	}
+	return _u
+}
+
+// ClearPoolID clears the value of the "pool_id" field.
+func (_u *AccountUpdate) ClearPoolID() *AccountUpdate {
+	_u.mutation.ClearPoolID()
 	return _u
 }
 
@@ -584,6 +605,11 @@ func (_u *AccountUpdate) SetProxy(v *Proxy) *AccountUpdate {
 	return _u.SetProxyID(v.ID)
 }
 
+// SetPool sets the "pool" edge to the ProxyPool entity.
+func (_u *AccountUpdate) SetPool(v *ProxyPool) *AccountUpdate {
+	return _u.SetPoolID(v.ID)
+}
+
 // SetParentID sets the "parent" edge to the Account entity by ID.
 func (_u *AccountUpdate) SetParentID(id int64) *AccountUpdate {
 	_u.mutation.SetParentID(id)
@@ -662,6 +688,12 @@ func (_u *AccountUpdate) RemoveGroups(v ...*Group) *AccountUpdate {
 // ClearProxy clears the "proxy" edge to the Proxy entity.
 func (_u *AccountUpdate) ClearProxy() *AccountUpdate {
 	_u.mutation.ClearProxy()
+	return _u
+}
+
+// ClearPool clears the "pool" edge to the ProxyPool entity.
+func (_u *AccountUpdate) ClearPool() *AccountUpdate {
+	_u.mutation.ClearPool()
 	return _u
 }
 
@@ -1032,6 +1064,35 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.PoolCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   account.PoolTable,
+			Columns: []string{account.PoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxypool.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.PoolIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   account.PoolTable,
+			Columns: []string{account.PoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxypool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.ParentCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -1288,6 +1349,26 @@ func (_u *AccountUpdateOne) SetNillableProxyID(v *int64) *AccountUpdateOne {
 // ClearProxyID clears the value of the "proxy_id" field.
 func (_u *AccountUpdateOne) ClearProxyID() *AccountUpdateOne {
 	_u.mutation.ClearProxyID()
+	return _u
+}
+
+// SetPoolID sets the "pool_id" field.
+func (_u *AccountUpdateOne) SetPoolID(v int64) *AccountUpdateOne {
+	_u.mutation.SetPoolID(v)
+	return _u
+}
+
+// SetNillablePoolID sets the "pool_id" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillablePoolID(v *int64) *AccountUpdateOne {
+	if v != nil {
+		_u.SetPoolID(*v)
+	}
+	return _u
+}
+
+// ClearPoolID clears the value of the "pool_id" field.
+func (_u *AccountUpdateOne) ClearPoolID() *AccountUpdateOne {
+	_u.mutation.ClearPoolID()
 	return _u
 }
 
@@ -1724,6 +1805,11 @@ func (_u *AccountUpdateOne) SetProxy(v *Proxy) *AccountUpdateOne {
 	return _u.SetProxyID(v.ID)
 }
 
+// SetPool sets the "pool" edge to the ProxyPool entity.
+func (_u *AccountUpdateOne) SetPool(v *ProxyPool) *AccountUpdateOne {
+	return _u.SetPoolID(v.ID)
+}
+
 // SetParentID sets the "parent" edge to the Account entity by ID.
 func (_u *AccountUpdateOne) SetParentID(id int64) *AccountUpdateOne {
 	_u.mutation.SetParentID(id)
@@ -1802,6 +1888,12 @@ func (_u *AccountUpdateOne) RemoveGroups(v ...*Group) *AccountUpdateOne {
 // ClearProxy clears the "proxy" edge to the Proxy entity.
 func (_u *AccountUpdateOne) ClearProxy() *AccountUpdateOne {
 	_u.mutation.ClearProxy()
+	return _u
+}
+
+// ClearPool clears the "pool" edge to the ProxyPool entity.
+func (_u *AccountUpdateOne) ClearPool() *AccountUpdateOne {
+	_u.mutation.ClearPool()
 	return _u
 }
 
@@ -2195,6 +2287,35 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.PoolCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   account.PoolTable,
+			Columns: []string{account.PoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxypool.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.PoolIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   account.PoolTable,
+			Columns: []string{account.PoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxypool.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

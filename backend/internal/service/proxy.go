@@ -28,6 +28,12 @@ type Proxy struct {
 	FallbackMode   string
 	BackupProxyID  *int64
 	ExpiryWarnDays int
+
+	// ProxyPool 归属：池 ID 与池内健康状态（由 ProxyPoolService 周期探测更新）
+	PoolID        *int64
+	PoolHealth    string
+	PoolCheckedAt *time.Time
+	PoolFailures  int
 }
 
 func (p *Proxy) IsActive() bool {

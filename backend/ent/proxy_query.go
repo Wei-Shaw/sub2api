@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/proxypool"
 )
 
 // ProxyQuery is the builder for querying Proxy entities.
@@ -27,6 +28,7 @@ type ProxyQuery struct {
 	predicates      []predicate.Proxy
 	withAccounts    *AccountQuery
 	withBackupProxy *ProxyQuery
+	withPool        *ProxyPoolQuery
 	modifiers       []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -101,6 +103,28 @@ func (_q *ProxyQuery) QueryBackupProxy() *ProxyQuery {
 			sqlgraph.From(proxy.Table, proxy.FieldID, selector),
 			sqlgraph.To(proxy.Table, proxy.FieldID),
 			sqlgraph.Edge(sqlgraph.O2O, false, proxy.BackupProxyTable, proxy.BackupProxyColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryPool chains the current query on the "pool" edge.
+func (_q *ProxyQuery) QueryPool() *ProxyPoolQuery {
+	query := (&ProxyPoolClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(proxy.Table, proxy.FieldID, selector),
+			sqlgraph.To(proxypool.Table, proxypool.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, proxy.PoolTable, proxy.PoolColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -302,6 +326,7 @@ func (_q *ProxyQuery) Clone() *ProxyQuery {
 		predicates:      append([]predicate.Proxy{}, _q.predicates...),
 		withAccounts:    _q.withAccounts.Clone(),
 		withBackupProxy: _q.withBackupProxy.Clone(),
+		withPool:        _q.withPool.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -327,6 +352,17 @@ func (_q *ProxyQuery) WithBackupProxy(opts ...func(*ProxyQuery)) *ProxyQuery {
 		opt(query)
 	}
 	_q.withBackupProxy = query
+	return _q
+}
+
+// WithPool tells the query-builder to eager-load the nodes that are connected to
+// the "pool" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ProxyQuery) WithPool(opts ...func(*ProxyPoolQuery)) *ProxyQuery {
+	query := (&ProxyPoolClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withPool = query
 	return _q
 }
 
@@ -408,9 +444,10 @@ func (_q *ProxyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Proxy,
 	var (
 		nodes       = []*Proxy{}
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [3]bool{
 			_q.withAccounts != nil,
 			_q.withBackupProxy != nil,
+			_q.withPool != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -444,6 +481,12 @@ func (_q *ProxyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Proxy,
 	if query := _q.withBackupProxy; query != nil {
 		if err := _q.loadBackupProxy(ctx, query, nodes, nil,
 			func(n *Proxy, e *Proxy) { n.Edges.BackupProxy = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withPool; query != nil {
+		if err := _q.loadPool(ctx, query, nodes, nil,
+			func(n *Proxy, e *ProxyPool) { n.Edges.Pool = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -515,6 +558,38 @@ func (_q *ProxyQuery) loadBackupProxy(ctx context.Context, query *ProxyQuery, no
 	}
 	return nil
 }
+func (_q *ProxyQuery) loadPool(ctx context.Context, query *ProxyPoolQuery, nodes []*Proxy, init func(*Proxy), assign func(*Proxy, *ProxyPool)) error {
+	ids := make([]int64, 0, len(nodes))
+	nodeids := make(map[int64][]*Proxy)
+	for i := range nodes {
+		if nodes[i].PoolID == nil {
+			continue
+		}
+		fk := *nodes[i].PoolID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(proxypool.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "pool_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (_q *ProxyQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -546,6 +621,9 @@ func (_q *ProxyQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withBackupProxy != nil {
 			_spec.Node.AddColumnOnce(proxy.FieldBackupProxyID)
+		}
+		if _q.withPool != nil {
+			_spec.Node.AddColumnOnce(proxy.FieldPoolID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

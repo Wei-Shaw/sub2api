@@ -125,6 +125,26 @@ func ExpiryWarnDays(v int) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldExpiryWarnDays, v))
 }
 
+// PoolID applies equality check predicate on the "pool_id" field. It's identical to PoolIDEQ.
+func PoolID(v int64) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldPoolID, v))
+}
+
+// PoolHealth applies equality check predicate on the "pool_health" field. It's identical to PoolHealthEQ.
+func PoolHealth(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldPoolHealth, v))
+}
+
+// PoolCheckedAt applies equality check predicate on the "pool_checked_at" field. It's identical to PoolCheckedAtEQ.
+func PoolCheckedAt(v time.Time) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldPoolCheckedAt, v))
+}
+
+// PoolFailures applies equality check predicate on the "pool_failures" field. It's identical to PoolFailuresEQ.
+func PoolFailures(v int) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldPoolFailures, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldCreatedAt, v))
@@ -890,6 +910,191 @@ func ExpiryWarnDaysLTE(v int) predicate.Proxy {
 	return predicate.Proxy(sql.FieldLTE(FieldExpiryWarnDays, v))
 }
 
+// PoolIDEQ applies the EQ predicate on the "pool_id" field.
+func PoolIDEQ(v int64) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldPoolID, v))
+}
+
+// PoolIDNEQ applies the NEQ predicate on the "pool_id" field.
+func PoolIDNEQ(v int64) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldPoolID, v))
+}
+
+// PoolIDIn applies the In predicate on the "pool_id" field.
+func PoolIDIn(vs ...int64) predicate.Proxy {
+	return predicate.Proxy(sql.FieldIn(FieldPoolID, vs...))
+}
+
+// PoolIDNotIn applies the NotIn predicate on the "pool_id" field.
+func PoolIDNotIn(vs ...int64) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotIn(FieldPoolID, vs...))
+}
+
+// PoolIDIsNil applies the IsNil predicate on the "pool_id" field.
+func PoolIDIsNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldIsNull(FieldPoolID))
+}
+
+// PoolIDNotNil applies the NotNil predicate on the "pool_id" field.
+func PoolIDNotNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotNull(FieldPoolID))
+}
+
+// PoolHealthEQ applies the EQ predicate on the "pool_health" field.
+func PoolHealthEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldPoolHealth, v))
+}
+
+// PoolHealthNEQ applies the NEQ predicate on the "pool_health" field.
+func PoolHealthNEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldPoolHealth, v))
+}
+
+// PoolHealthIn applies the In predicate on the "pool_health" field.
+func PoolHealthIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldIn(FieldPoolHealth, vs...))
+}
+
+// PoolHealthNotIn applies the NotIn predicate on the "pool_health" field.
+func PoolHealthNotIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotIn(FieldPoolHealth, vs...))
+}
+
+// PoolHealthGT applies the GT predicate on the "pool_health" field.
+func PoolHealthGT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGT(FieldPoolHealth, v))
+}
+
+// PoolHealthGTE applies the GTE predicate on the "pool_health" field.
+func PoolHealthGTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGTE(FieldPoolHealth, v))
+}
+
+// PoolHealthLT applies the LT predicate on the "pool_health" field.
+func PoolHealthLT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLT(FieldPoolHealth, v))
+}
+
+// PoolHealthLTE applies the LTE predicate on the "pool_health" field.
+func PoolHealthLTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLTE(FieldPoolHealth, v))
+}
+
+// PoolHealthContains applies the Contains predicate on the "pool_health" field.
+func PoolHealthContains(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContains(FieldPoolHealth, v))
+}
+
+// PoolHealthHasPrefix applies the HasPrefix predicate on the "pool_health" field.
+func PoolHealthHasPrefix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasPrefix(FieldPoolHealth, v))
+}
+
+// PoolHealthHasSuffix applies the HasSuffix predicate on the "pool_health" field.
+func PoolHealthHasSuffix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasSuffix(FieldPoolHealth, v))
+}
+
+// PoolHealthEqualFold applies the EqualFold predicate on the "pool_health" field.
+func PoolHealthEqualFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEqualFold(FieldPoolHealth, v))
+}
+
+// PoolHealthContainsFold applies the ContainsFold predicate on the "pool_health" field.
+func PoolHealthContainsFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContainsFold(FieldPoolHealth, v))
+}
+
+// PoolCheckedAtEQ applies the EQ predicate on the "pool_checked_at" field.
+func PoolCheckedAtEQ(v time.Time) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldPoolCheckedAt, v))
+}
+
+// PoolCheckedAtNEQ applies the NEQ predicate on the "pool_checked_at" field.
+func PoolCheckedAtNEQ(v time.Time) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldPoolCheckedAt, v))
+}
+
+// PoolCheckedAtIn applies the In predicate on the "pool_checked_at" field.
+func PoolCheckedAtIn(vs ...time.Time) predicate.Proxy {
+	return predicate.Proxy(sql.FieldIn(FieldPoolCheckedAt, vs...))
+}
+
+// PoolCheckedAtNotIn applies the NotIn predicate on the "pool_checked_at" field.
+func PoolCheckedAtNotIn(vs ...time.Time) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotIn(FieldPoolCheckedAt, vs...))
+}
+
+// PoolCheckedAtGT applies the GT predicate on the "pool_checked_at" field.
+func PoolCheckedAtGT(v time.Time) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGT(FieldPoolCheckedAt, v))
+}
+
+// PoolCheckedAtGTE applies the GTE predicate on the "pool_checked_at" field.
+func PoolCheckedAtGTE(v time.Time) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGTE(FieldPoolCheckedAt, v))
+}
+
+// PoolCheckedAtLT applies the LT predicate on the "pool_checked_at" field.
+func PoolCheckedAtLT(v time.Time) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLT(FieldPoolCheckedAt, v))
+}
+
+// PoolCheckedAtLTE applies the LTE predicate on the "pool_checked_at" field.
+func PoolCheckedAtLTE(v time.Time) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLTE(FieldPoolCheckedAt, v))
+}
+
+// PoolCheckedAtIsNil applies the IsNil predicate on the "pool_checked_at" field.
+func PoolCheckedAtIsNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldIsNull(FieldPoolCheckedAt))
+}
+
+// PoolCheckedAtNotNil applies the NotNil predicate on the "pool_checked_at" field.
+func PoolCheckedAtNotNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotNull(FieldPoolCheckedAt))
+}
+
+// PoolFailuresEQ applies the EQ predicate on the "pool_failures" field.
+func PoolFailuresEQ(v int) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldPoolFailures, v))
+}
+
+// PoolFailuresNEQ applies the NEQ predicate on the "pool_failures" field.
+func PoolFailuresNEQ(v int) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldPoolFailures, v))
+}
+
+// PoolFailuresIn applies the In predicate on the "pool_failures" field.
+func PoolFailuresIn(vs ...int) predicate.Proxy {
+	return predicate.Proxy(sql.FieldIn(FieldPoolFailures, vs...))
+}
+
+// PoolFailuresNotIn applies the NotIn predicate on the "pool_failures" field.
+func PoolFailuresNotIn(vs ...int) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotIn(FieldPoolFailures, vs...))
+}
+
+// PoolFailuresGT applies the GT predicate on the "pool_failures" field.
+func PoolFailuresGT(v int) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGT(FieldPoolFailures, v))
+}
+
+// PoolFailuresGTE applies the GTE predicate on the "pool_failures" field.
+func PoolFailuresGTE(v int) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGTE(FieldPoolFailures, v))
+}
+
+// PoolFailuresLT applies the LT predicate on the "pool_failures" field.
+func PoolFailuresLT(v int) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLT(FieldPoolFailures, v))
+}
+
+// PoolFailuresLTE applies the LTE predicate on the "pool_failures" field.
+func PoolFailuresLTE(v int) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLTE(FieldPoolFailures, v))
+}
+
 // HasAccounts applies the HasEdge predicate on the "accounts" edge.
 func HasAccounts() predicate.Proxy {
 	return predicate.Proxy(func(s *sql.Selector) {
@@ -928,6 +1133,29 @@ func HasBackupProxy() predicate.Proxy {
 func HasBackupProxyWith(preds ...predicate.Proxy) predicate.Proxy {
 	return predicate.Proxy(func(s *sql.Selector) {
 		step := newBackupProxyStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasPool applies the HasEdge predicate on the "pool" edge.
+func HasPool() predicate.Proxy {
+	return predicate.Proxy(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, PoolTable, PoolColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasPoolWith applies the HasEdge predicate on the "pool" edge with a given conditions (other predicates).
+func HasPoolWith(preds ...predicate.ProxyPool) predicate.Proxy {
+	return predicate.Proxy(func(s *sql.Selector) {
+		step := newPoolStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

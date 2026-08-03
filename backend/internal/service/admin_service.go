@@ -126,6 +126,19 @@ type AdminService interface {
 	CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error)
 	TestProxy(ctx context.Context, id int64) (*ProxyTestResult, error)
 	CheckProxyQuality(ctx context.Context, id int64) (*ProxyQualityCheckResult, error)
+	// Proxy Pool management
+	ListProxyPools(ctx context.Context) ([]ProxyPoolWithStats, error)
+	GetProxyPool(ctx context.Context, id int64) (*ProxyPool, error)
+	GetProxyPoolProxies(ctx context.Context, poolID int64) ([]ProxyWithAccountCount, error)
+	CreateProxyPool(ctx context.Context, input *CreateProxyPoolInput) (*ProxyPool, error)
+	UpdateProxyPool(ctx context.Context, id int64, input *UpdateProxyPoolInput) (*ProxyPool, error)
+	DeleteProxyPool(ctx context.Context, id int64) error
+	AssignProxiesToPool(ctx context.Context, poolID int64, proxyIDs []int64) (int64, error)
+	RemoveProxiesFromPool(ctx context.Context, poolID int64, proxyIDs []int64) (int64, error)
+	// RunProxyPoolRebind 手动触发一轮池健康探测 + 自动重绑，返回受影响账号数。
+	RunProxyPoolRebind(ctx context.Context, poolID int64) (int64, error)
+	// ListProxyPoolRebindLogs 返回池内最近的重绑日志。
+	ListProxyPoolRebindLogs(ctx context.Context, poolID int64, limit int) ([]ProxyPoolRebindLog, error)
 
 	// Redeem code management
 	ListRedeemCodes(ctx context.Context, page, pageSize int, codeType, status, search string, sortBy, sortOrder string) ([]RedeemCode, int64, error)
@@ -345,6 +358,7 @@ type CreateAccountInput struct {
 	Credentials        map[string]any
 	Extra              map[string]any
 	ProxyID            *int64
+	PoolID             *int64 // 代理池绑定（选池时由池服务/创建逻辑分配池内健康代理）
 	Concurrency        int
 	Priority           int
 	RateMultiplier     *float64 // 账号计费倍率（>=0，允许 0）
@@ -376,6 +390,7 @@ type UpdateAccountInput struct {
 	Credentials           map[string]any
 	Extra                 map[string]any
 	ProxyID               *int64
+	PoolID                *int64 // 代理池绑定：nil=不改 0=解绑池 >0=绑定池
 	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
 	Priority              *int     // 使用指针区分"未提供"和"设置为0"
 	RateMultiplier        *float64 // 账号计费倍率（>=0，允许 0）
@@ -636,6 +651,8 @@ type adminServiceImpl struct {
 	billingCacheService  *BillingCacheService
 	proxyProber          ProxyExitInfoProber
 	proxyLatencyCache    ProxyLatencyCache
+	poolRepo             ProxyPoolRepository
+	poolService          *ProxyPoolService
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	entClient            *dbent.Client // 用于开启数据库事务
 	settingService       *SettingService
@@ -669,6 +686,8 @@ func NewAdminService(
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
 	proxyLatencyCache ProxyLatencyCache,
+	poolRepo ProxyPoolRepository,
+	poolService *ProxyPoolService,
 	authCacheInvalidator APIKeyAuthCacheInvalidator,
 	entClient *dbent.Client,
 	settingService *SettingService,
@@ -695,6 +714,8 @@ func NewAdminService(
 		billingCacheService:  billingCacheService,
 		proxyProber:          proxyProber,
 		proxyLatencyCache:    proxyLatencyCache,
+		poolRepo:             poolRepo,
+		poolService:          poolService,
 		authCacheInvalidator: authCacheInvalidator,
 		entClient:            entClient,
 		settingService:       settingService,

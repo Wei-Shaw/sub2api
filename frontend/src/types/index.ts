@@ -868,8 +868,44 @@ export interface Proxy {
   fallback_mode: 'none' | 'proxy' | 'direct'
   backup_proxy_id?: number | null
   expiry_warn_days: number
+  pool_id?: number | null
+  pool_health?: 'unknown' | 'healthy' | 'unhealthy'
+  pool_checked_at?: string | null
+  pool_failures?: number
   created_at: string
   updated_at: string
+}
+
+export interface ProxyPool {
+  id: number
+  name: string
+  description?: string | null
+  status: 'active' | 'disabled'
+  health_interval_seconds: number
+  failure_threshold: number
+  auto_rebind: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ProxyPoolWithStats extends ProxyPool {
+  proxy_count: number
+  healthy_count: number
+  unhealthy_count: number
+  unknown_count: number
+  bound_account_sum: number
+}
+
+export interface ProxyPoolRebindLog {
+  id: number
+  pool_id: number
+  from_proxy_id?: number | null
+  to_proxy_id?: number | null
+  from_proxy_name?: string
+  to_proxy_name?: string
+  account_count: number
+  reason: string
+  created_at: string
 }
 
 export interface ProxyAccountSummary {
@@ -1078,6 +1114,8 @@ export interface Account {
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null
   proxy_fallback_origin_name?: string | null
+  pool_id?: number | null
+  pool_name?: string
   concurrency: number
   load_factor?: number | null
   current_concurrency?: number // Real-time concurrency count from Redis
@@ -1349,6 +1387,7 @@ export interface CreateAccountRequest {
   credentials: Record<string, unknown>
   extra?: Record<string, unknown>
   proxy_id?: number | null
+  pool_id?: number | null
   concurrency?: number
   load_factor?: number | null
   priority?: number
@@ -1367,6 +1406,7 @@ export interface UpdateAccountRequest {
   credentials?: Record<string, unknown>
   extra?: Record<string, unknown>
   proxy_id?: number | null
+  pool_id?: number | null
   concurrency?: number
   load_factor?: number | null
   priority?: number

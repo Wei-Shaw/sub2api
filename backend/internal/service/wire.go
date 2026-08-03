@@ -281,6 +281,14 @@ func ProvideProxyExpiryService(proxyRepo ProxyRepository) *ProxyExpiryService {
 	return svc
 }
 
+// ProvideProxyPoolService creates and starts ProxyPoolService.
+func ProvideProxyPoolService(poolRepo ProxyPoolRepository, prober ProxyExitInfoProber, latencyCache ProxyLatencyCache, lockCache LeaderLockCache, db *sql.DB) *ProxyPoolService {
+	svc := NewProxyPoolService(poolRepo, prober, latencyCache, time.Minute)
+	svc.SetLeaderLock(lockCache, db)
+	svc.Start()
+	return svc
+}
+
 // ProvideSubscriptionExpiryService creates and starts SubscriptionExpiryService.
 func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, settingRepo SettingRepository, notificationEmailService *NotificationEmailService, lockCache LeaderLockCache, db *sql.DB) *SubscriptionExpiryService {
 	svc := NewSubscriptionExpiryService(userSubRepo, time.Minute)
@@ -757,6 +765,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(GrokOAuthReconciler), new(*TokenRefreshService)),
 	ProvideAccountExpiryService,
 	ProvideProxyExpiryService,
+	ProvideProxyPoolService,
 	ProvideSubscriptionExpiryService,
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,

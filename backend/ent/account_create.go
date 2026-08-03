@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/proxypool"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 )
 
@@ -121,6 +122,20 @@ func (_c *AccountCreate) SetProxyID(v int64) *AccountCreate {
 func (_c *AccountCreate) SetNillableProxyID(v *int64) *AccountCreate {
 	if v != nil {
 		_c.SetProxyID(*v)
+	}
+	return _c
+}
+
+// SetPoolID sets the "pool_id" field.
+func (_c *AccountCreate) SetPoolID(v int64) *AccountCreate {
+	_c.mutation.SetPoolID(v)
+	return _c
+}
+
+// SetNillablePoolID sets the "pool_id" field if the given value is not nil.
+func (_c *AccountCreate) SetNillablePoolID(v *int64) *AccountCreate {
+	if v != nil {
+		_c.SetPoolID(*v)
 	}
 	return _c
 }
@@ -437,6 +452,11 @@ func (_c *AccountCreate) AddGroups(v ...*Group) *AccountCreate {
 // SetProxy sets the "proxy" edge to the Proxy entity.
 func (_c *AccountCreate) SetProxy(v *Proxy) *AccountCreate {
 	return _c.SetProxyID(v.ID)
+}
+
+// SetPool sets the "pool" edge to the ProxyPool entity.
+func (_c *AccountCreate) SetPool(v *ProxyPool) *AccountCreate {
+	return _c.SetPoolID(v.ID)
 }
 
 // SetParentID sets the "parent" edge to the Account entity by ID.
@@ -838,6 +858,23 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 		_node.ProxyID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.PoolIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   account.PoolTable,
+			Columns: []string{account.PoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxypool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.PoolID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	if nodes := _c.mutation.ParentIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -1062,6 +1099,24 @@ func (u *AccountUpsert) UpdateProxyID() *AccountUpsert {
 // ClearProxyID clears the value of the "proxy_id" field.
 func (u *AccountUpsert) ClearProxyID() *AccountUpsert {
 	u.SetNull(account.FieldProxyID)
+	return u
+}
+
+// SetPoolID sets the "pool_id" field.
+func (u *AccountUpsert) SetPoolID(v int64) *AccountUpsert {
+	u.Set(account.FieldPoolID, v)
+	return u
+}
+
+// UpdatePoolID sets the "pool_id" field to the value that was provided on create.
+func (u *AccountUpsert) UpdatePoolID() *AccountUpsert {
+	u.SetExcluded(account.FieldPoolID)
+	return u
+}
+
+// ClearPoolID clears the value of the "pool_id" field.
+func (u *AccountUpsert) ClearPoolID() *AccountUpsert {
+	u.SetNull(account.FieldPoolID)
 	return u
 }
 
@@ -1620,6 +1675,27 @@ func (u *AccountUpsertOne) UpdateProxyID() *AccountUpsertOne {
 func (u *AccountUpsertOne) ClearProxyID() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearProxyID()
+	})
+}
+
+// SetPoolID sets the "pool_id" field.
+func (u *AccountUpsertOne) SetPoolID(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetPoolID(v)
+	})
+}
+
+// UpdatePoolID sets the "pool_id" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdatePoolID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdatePoolID()
+	})
+}
+
+// ClearPoolID clears the value of the "pool_id" field.
+func (u *AccountUpsertOne) ClearPoolID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearPoolID()
 	})
 }
 
@@ -2405,6 +2481,27 @@ func (u *AccountUpsertBulk) UpdateProxyID() *AccountUpsertBulk {
 func (u *AccountUpsertBulk) ClearProxyID() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearProxyID()
+	})
+}
+
+// SetPoolID sets the "pool_id" field.
+func (u *AccountUpsertBulk) SetPoolID(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetPoolID(v)
+	})
+}
+
+// UpdatePoolID sets the "pool_id" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdatePoolID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdatePoolID()
+	})
+}
+
+// ClearPoolID clears the value of the "pool_id" field.
+func (u *AccountUpsertBulk) ClearPoolID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearPoolID()
 	})
 }
 

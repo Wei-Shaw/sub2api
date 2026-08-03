@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/proxypool"
 )
 
 // ProxyUpdate is the builder for updating Proxy entities.
@@ -247,6 +248,81 @@ func (_u *ProxyUpdate) AddExpiryWarnDays(v int) *ProxyUpdate {
 	return _u
 }
 
+// SetPoolID sets the "pool_id" field.
+func (_u *ProxyUpdate) SetPoolID(v int64) *ProxyUpdate {
+	_u.mutation.SetPoolID(v)
+	return _u
+}
+
+// SetNillablePoolID sets the "pool_id" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillablePoolID(v *int64) *ProxyUpdate {
+	if v != nil {
+		_u.SetPoolID(*v)
+	}
+	return _u
+}
+
+// ClearPoolID clears the value of the "pool_id" field.
+func (_u *ProxyUpdate) ClearPoolID() *ProxyUpdate {
+	_u.mutation.ClearPoolID()
+	return _u
+}
+
+// SetPoolHealth sets the "pool_health" field.
+func (_u *ProxyUpdate) SetPoolHealth(v string) *ProxyUpdate {
+	_u.mutation.SetPoolHealth(v)
+	return _u
+}
+
+// SetNillablePoolHealth sets the "pool_health" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillablePoolHealth(v *string) *ProxyUpdate {
+	if v != nil {
+		_u.SetPoolHealth(*v)
+	}
+	return _u
+}
+
+// SetPoolCheckedAt sets the "pool_checked_at" field.
+func (_u *ProxyUpdate) SetPoolCheckedAt(v time.Time) *ProxyUpdate {
+	_u.mutation.SetPoolCheckedAt(v)
+	return _u
+}
+
+// SetNillablePoolCheckedAt sets the "pool_checked_at" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillablePoolCheckedAt(v *time.Time) *ProxyUpdate {
+	if v != nil {
+		_u.SetPoolCheckedAt(*v)
+	}
+	return _u
+}
+
+// ClearPoolCheckedAt clears the value of the "pool_checked_at" field.
+func (_u *ProxyUpdate) ClearPoolCheckedAt() *ProxyUpdate {
+	_u.mutation.ClearPoolCheckedAt()
+	return _u
+}
+
+// SetPoolFailures sets the "pool_failures" field.
+func (_u *ProxyUpdate) SetPoolFailures(v int) *ProxyUpdate {
+	_u.mutation.ResetPoolFailures()
+	_u.mutation.SetPoolFailures(v)
+	return _u
+}
+
+// SetNillablePoolFailures sets the "pool_failures" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillablePoolFailures(v *int) *ProxyUpdate {
+	if v != nil {
+		_u.SetPoolFailures(*v)
+	}
+	return _u
+}
+
+// AddPoolFailures adds value to the "pool_failures" field.
+func (_u *ProxyUpdate) AddPoolFailures(v int) *ProxyUpdate {
+	_u.mutation.AddPoolFailures(v)
+	return _u
+}
+
 // AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
 func (_u *ProxyUpdate) AddAccountIDs(ids ...int64) *ProxyUpdate {
 	_u.mutation.AddAccountIDs(ids...)
@@ -265,6 +341,11 @@ func (_u *ProxyUpdate) AddAccounts(v ...*Account) *ProxyUpdate {
 // SetBackupProxy sets the "backup_proxy" edge to the Proxy entity.
 func (_u *ProxyUpdate) SetBackupProxy(v *Proxy) *ProxyUpdate {
 	return _u.SetBackupProxyID(v.ID)
+}
+
+// SetPool sets the "pool" edge to the ProxyPool entity.
+func (_u *ProxyUpdate) SetPool(v *ProxyPool) *ProxyUpdate {
+	return _u.SetPoolID(v.ID)
 }
 
 // Mutation returns the ProxyMutation object of the builder.
@@ -296,6 +377,12 @@ func (_u *ProxyUpdate) RemoveAccounts(v ...*Account) *ProxyUpdate {
 // ClearBackupProxy clears the "backup_proxy" edge to the Proxy entity.
 func (_u *ProxyUpdate) ClearBackupProxy() *ProxyUpdate {
 	_u.mutation.ClearBackupProxy()
+	return _u
+}
+
+// ClearPool clears the "pool" edge to the ProxyPool entity.
+func (_u *ProxyUpdate) ClearPool() *ProxyUpdate {
+	_u.mutation.ClearPool()
 	return _u
 }
 
@@ -378,6 +465,11 @@ func (_u *ProxyUpdate) check() error {
 			return &ValidationError{Name: "fallback_mode", err: fmt.Errorf(`ent: validator failed for field "Proxy.fallback_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PoolHealth(); ok {
+		if err := proxy.PoolHealthValidator(v); err != nil {
+			return &ValidationError{Name: "pool_health", err: fmt.Errorf(`ent: validator failed for field "Proxy.pool_health": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -447,6 +539,21 @@ func (_u *ProxyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedExpiryWarnDays(); ok {
 		_spec.AddField(proxy.FieldExpiryWarnDays, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.PoolHealth(); ok {
+		_spec.SetField(proxy.FieldPoolHealth, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PoolCheckedAt(); ok {
+		_spec.SetField(proxy.FieldPoolCheckedAt, field.TypeTime, value)
+	}
+	if _u.mutation.PoolCheckedAtCleared() {
+		_spec.ClearField(proxy.FieldPoolCheckedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PoolFailures(); ok {
+		_spec.SetField(proxy.FieldPoolFailures, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPoolFailures(); ok {
+		_spec.AddField(proxy.FieldPoolFailures, field.TypeInt, value)
+	}
 	if _u.mutation.AccountsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -514,6 +621,35 @@ func (_u *ProxyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    true,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.PoolCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   proxy.PoolTable,
+			Columns: []string{proxy.PoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxypool.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.PoolIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   proxy.PoolTable,
+			Columns: []string{proxy.PoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxypool.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -759,6 +895,81 @@ func (_u *ProxyUpdateOne) AddExpiryWarnDays(v int) *ProxyUpdateOne {
 	return _u
 }
 
+// SetPoolID sets the "pool_id" field.
+func (_u *ProxyUpdateOne) SetPoolID(v int64) *ProxyUpdateOne {
+	_u.mutation.SetPoolID(v)
+	return _u
+}
+
+// SetNillablePoolID sets the "pool_id" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillablePoolID(v *int64) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetPoolID(*v)
+	}
+	return _u
+}
+
+// ClearPoolID clears the value of the "pool_id" field.
+func (_u *ProxyUpdateOne) ClearPoolID() *ProxyUpdateOne {
+	_u.mutation.ClearPoolID()
+	return _u
+}
+
+// SetPoolHealth sets the "pool_health" field.
+func (_u *ProxyUpdateOne) SetPoolHealth(v string) *ProxyUpdateOne {
+	_u.mutation.SetPoolHealth(v)
+	return _u
+}
+
+// SetNillablePoolHealth sets the "pool_health" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillablePoolHealth(v *string) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetPoolHealth(*v)
+	}
+	return _u
+}
+
+// SetPoolCheckedAt sets the "pool_checked_at" field.
+func (_u *ProxyUpdateOne) SetPoolCheckedAt(v time.Time) *ProxyUpdateOne {
+	_u.mutation.SetPoolCheckedAt(v)
+	return _u
+}
+
+// SetNillablePoolCheckedAt sets the "pool_checked_at" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillablePoolCheckedAt(v *time.Time) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetPoolCheckedAt(*v)
+	}
+	return _u
+}
+
+// ClearPoolCheckedAt clears the value of the "pool_checked_at" field.
+func (_u *ProxyUpdateOne) ClearPoolCheckedAt() *ProxyUpdateOne {
+	_u.mutation.ClearPoolCheckedAt()
+	return _u
+}
+
+// SetPoolFailures sets the "pool_failures" field.
+func (_u *ProxyUpdateOne) SetPoolFailures(v int) *ProxyUpdateOne {
+	_u.mutation.ResetPoolFailures()
+	_u.mutation.SetPoolFailures(v)
+	return _u
+}
+
+// SetNillablePoolFailures sets the "pool_failures" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillablePoolFailures(v *int) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetPoolFailures(*v)
+	}
+	return _u
+}
+
+// AddPoolFailures adds value to the "pool_failures" field.
+func (_u *ProxyUpdateOne) AddPoolFailures(v int) *ProxyUpdateOne {
+	_u.mutation.AddPoolFailures(v)
+	return _u
+}
+
 // AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
 func (_u *ProxyUpdateOne) AddAccountIDs(ids ...int64) *ProxyUpdateOne {
 	_u.mutation.AddAccountIDs(ids...)
@@ -777,6 +988,11 @@ func (_u *ProxyUpdateOne) AddAccounts(v ...*Account) *ProxyUpdateOne {
 // SetBackupProxy sets the "backup_proxy" edge to the Proxy entity.
 func (_u *ProxyUpdateOne) SetBackupProxy(v *Proxy) *ProxyUpdateOne {
 	return _u.SetBackupProxyID(v.ID)
+}
+
+// SetPool sets the "pool" edge to the ProxyPool entity.
+func (_u *ProxyUpdateOne) SetPool(v *ProxyPool) *ProxyUpdateOne {
+	return _u.SetPoolID(v.ID)
 }
 
 // Mutation returns the ProxyMutation object of the builder.
@@ -808,6 +1024,12 @@ func (_u *ProxyUpdateOne) RemoveAccounts(v ...*Account) *ProxyUpdateOne {
 // ClearBackupProxy clears the "backup_proxy" edge to the Proxy entity.
 func (_u *ProxyUpdateOne) ClearBackupProxy() *ProxyUpdateOne {
 	_u.mutation.ClearBackupProxy()
+	return _u
+}
+
+// ClearPool clears the "pool" edge to the ProxyPool entity.
+func (_u *ProxyUpdateOne) ClearPool() *ProxyUpdateOne {
+	_u.mutation.ClearPool()
 	return _u
 }
 
@@ -903,6 +1125,11 @@ func (_u *ProxyUpdateOne) check() error {
 			return &ValidationError{Name: "fallback_mode", err: fmt.Errorf(`ent: validator failed for field "Proxy.fallback_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PoolHealth(); ok {
+		if err := proxy.PoolHealthValidator(v); err != nil {
+			return &ValidationError{Name: "pool_health", err: fmt.Errorf(`ent: validator failed for field "Proxy.pool_health": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -989,6 +1216,21 @@ func (_u *ProxyUpdateOne) sqlSave(ctx context.Context) (_node *Proxy, err error)
 	if value, ok := _u.mutation.AddedExpiryWarnDays(); ok {
 		_spec.AddField(proxy.FieldExpiryWarnDays, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.PoolHealth(); ok {
+		_spec.SetField(proxy.FieldPoolHealth, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PoolCheckedAt(); ok {
+		_spec.SetField(proxy.FieldPoolCheckedAt, field.TypeTime, value)
+	}
+	if _u.mutation.PoolCheckedAtCleared() {
+		_spec.ClearField(proxy.FieldPoolCheckedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PoolFailures(); ok {
+		_spec.SetField(proxy.FieldPoolFailures, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPoolFailures(); ok {
+		_spec.AddField(proxy.FieldPoolFailures, field.TypeInt, value)
+	}
 	if _u.mutation.AccountsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1056,6 +1298,35 @@ func (_u *ProxyUpdateOne) sqlSave(ctx context.Context) (_node *Proxy, err error)
 			Bidi:    true,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.PoolCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   proxy.PoolTable,
+			Columns: []string{proxy.PoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxypool.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.PoolIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   proxy.PoolTable,
+			Columns: []string{proxy.PoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxypool.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
