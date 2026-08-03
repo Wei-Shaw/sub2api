@@ -461,6 +461,7 @@ export interface SystemSettings {
   turnstile_secret_key_configured: boolean;
   api_key_acl_trust_forwarded_ip: boolean;
   forwarded_client_ip_headers: string[];
+  ip_blacklist: string[];
 
   // LinuxDo Connect OAuth settings
   linuxdo_connect_enabled: boolean;
@@ -772,6 +773,7 @@ export interface UpdateSettingsRequest {
   turnstile_secret_key?: string;
   api_key_acl_trust_forwarded_ip?: boolean;
   forwarded_client_ip_headers?: string[];
+  ip_blacklist?: string[];
   linuxdo_connect_enabled?: boolean;
   linuxdo_connect_client_id?: string;
   linuxdo_connect_client_secret?: string;
