@@ -1855,6 +1855,7 @@ REDACTED
 export interface UserSpendingRankingItem {
   user_id: number
   email: string
+  username: string
   actual_cost: number
   requests: number
   tokens: number
