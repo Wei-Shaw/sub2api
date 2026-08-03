@@ -44,6 +44,8 @@ type UserPlatformQuota struct {
 	DailyWindowStart *time.Time `json:"daily_window_start,omitempty"`
 	// WeeklyWindowStart holds the value of the "weekly_window_start" field.
 	WeeklyWindowStart *time.Time `json:"weekly_window_start,omitempty"`
+	// WeeklyWindowResetAt holds the value of the "weekly_window_reset_at" field.
+	WeeklyWindowResetAt *time.Time `json:"weekly_window_reset_at,omitempty"`
 	// MonthlyWindowStart holds the value of the "monthly_window_start" field.
 	MonthlyWindowStart *time.Time `json:"monthly_window_start,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -83,7 +85,7 @@ func (*UserPlatformQuota) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case userplatformquota.FieldPlatform:
 			values[i] = new(sql.NullString)
-		case userplatformquota.FieldCreatedAt, userplatformquota.FieldUpdatedAt, userplatformquota.FieldDeletedAt, userplatformquota.FieldDailyWindowStart, userplatformquota.FieldWeeklyWindowStart, userplatformquota.FieldMonthlyWindowStart:
+		case userplatformquota.FieldCreatedAt, userplatformquota.FieldUpdatedAt, userplatformquota.FieldDeletedAt, userplatformquota.FieldDailyWindowStart, userplatformquota.FieldWeeklyWindowStart, userplatformquota.FieldWeeklyWindowResetAt, userplatformquota.FieldMonthlyWindowStart:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -190,6 +192,13 @@ func (_m *UserPlatformQuota) assignValues(columns []string, values []any) error 
 				_m.WeeklyWindowStart = new(time.Time)
 				*_m.WeeklyWindowStart = value.Time
 			}
+		case userplatformquota.FieldWeeklyWindowResetAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field weekly_window_reset_at", values[i])
+			} else if value.Valid {
+				_m.WeeklyWindowResetAt = new(time.Time)
+				*_m.WeeklyWindowResetAt = value.Time
+			}
 		case userplatformquota.FieldMonthlyWindowStart:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field monthly_window_start", values[i])
@@ -286,6 +295,11 @@ func (_m *UserPlatformQuota) String() string {
 	builder.WriteString(", ")
 	if v := _m.WeeklyWindowStart; v != nil {
 		builder.WriteString("weekly_window_start=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.WeeklyWindowResetAt; v != nil {
+		builder.WriteString("weekly_window_reset_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")

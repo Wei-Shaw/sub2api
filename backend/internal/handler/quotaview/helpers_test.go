@@ -131,3 +131,39 @@ func TestNextWeeklyResetTime_FollowsServerTimezone(t *testing.T) {
 		t.Errorf("nextWeeklyResetTime = %v, want %v", got, want)
 	}
 }
+
+func TestWeeklyWindowState_AnchoredWindowActive(t *testing.T) {
+	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	resetAt := start.Add(7 * 24 * time.Hour)
+	now := start.Add(2 * 24 * time.Hour)
+
+	expired, gotStart, gotResetAt := weeklyWindowState(&start, &resetAt, now)
+	if expired {
+		t.Fatal("active anchored window should not be expired")
+	}
+	if gotStart == nil || !gotStart.Equal(start) {
+		t.Fatalf("window start = %v, want %v", gotStart, start)
+	}
+	if gotResetAt == nil || !gotResetAt.Equal(resetAt) {
+		t.Fatalf("reset time = %v, want %v", gotResetAt, resetAt)
+	}
+}
+
+func TestWeeklyWindowState_AnchoredWindowAdvancesAfterDue(t *testing.T) {
+	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	resetAt := start.Add(7 * 24 * time.Hour)
+	now := resetAt.Add(8 * 24 * time.Hour)
+	wantStart := resetAt.Add(7 * 24 * time.Hour)
+	wantResetAt := resetAt.Add(14 * 24 * time.Hour)
+
+	expired, gotStart, gotResetAt := weeklyWindowState(&start, &resetAt, now)
+	if !expired {
+		t.Fatal("expired anchored window should be reported as expired")
+	}
+	if gotStart == nil || !gotStart.Equal(wantStart) {
+		t.Fatalf("window start = %v, want %v", gotStart, wantStart)
+	}
+	if gotResetAt == nil || !gotResetAt.Equal(wantResetAt) {
+		t.Fatalf("reset time = %v, want %v", gotResetAt, wantResetAt)
+	}
+}

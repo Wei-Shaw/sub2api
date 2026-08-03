@@ -16,17 +16,18 @@ import (
 // UserPlatformQuotaRecord 是 repository 层的传输结构体，
 // 与 ent.UserPlatformQuota 实体解耦，供业务层使用。
 type UserPlatformQuotaRecord struct {
-	UserID             int64
-	Platform           string
-	DailyLimitUSD      *float64
-	WeeklyLimitUSD     *float64
-	MonthlyLimitUSD    *float64
-	DailyUsageUSD      float64
-	WeeklyUsageUSD     float64
-	MonthlyUsageUSD    float64
-	DailyWindowStart   *time.Time
-	WeeklyWindowStart  *time.Time
-	MonthlyWindowStart *time.Time
+	UserID              int64
+	Platform            string
+	DailyLimitUSD       *float64
+	WeeklyLimitUSD      *float64
+	MonthlyLimitUSD     *float64
+	DailyUsageUSD       float64
+	WeeklyUsageUSD      float64
+	MonthlyUsageUSD     float64
+	DailyWindowStart    *time.Time
+	WeeklyWindowStart   *time.Time
+	WeeklyWindowResetAt *time.Time
+	MonthlyWindowStart  *time.Time
 }
 
 // ErrUserPlatformQuotaNotFound 用于 ResetExpiredWindow 等需要"必须命中已有记录"的方法。
@@ -38,14 +39,15 @@ var ErrUserPlatformQuotaFKViolation = errors.New("user platform quota snapshot F
 // UserPlatformQuotaSnapshot 是 BatchSnapshotUsage 的输入结构体，
 // 表示 Redis 当前窗口快照（用于绝对值覆盖写入 DB）。
 type UserPlatformQuotaSnapshot struct {
-	UserID             int64
-	Platform           string
-	DailyUsageUSD      float64
-	WeeklyUsageUSD     float64
-	MonthlyUsageUSD    float64
-	DailyWindowStart   time.Time
-	WeeklyWindowStart  time.Time
-	MonthlyWindowStart time.Time
+	UserID              int64
+	Platform            string
+	DailyUsageUSD       float64
+	WeeklyUsageUSD      float64
+	MonthlyUsageUSD     float64
+	DailyWindowStart    time.Time
+	WeeklyWindowStart   time.Time
+	WeeklyWindowResetAt *time.Time
+	MonthlyWindowStart  time.Time
 }
 
 // UserPlatformQuotaRepository 定义用户平台配额的数据访问接口。
@@ -212,7 +214,9 @@ func (r *userPlatformQuotaRepository) IncrementUsageWithReset(ctx context.Contex
 		}
 
 		newDaily := maybeReset(existing.DailyUsageUsd, existing.DailyWindowStart, timezone.StartOfDay(now), cost)
-		newWeekly := maybeReset(existing.WeeklyUsageUsd, existing.WeeklyWindowStart, timezone.StartOfWeek(now), cost)
+		newWeekly, newWeeklyStart, newWeeklyResetAt := weeklyMaybeReset(
+			existing.WeeklyUsageUsd, existing.WeeklyWindowStart, existing.WeeklyWindowResetAt, cost, now,
+		)
 		// 30 天滚动月度窗口：过期时重置为 cost 并以 now 为新起始，否则累加保留原起始
 		newMonthly, newMonthlyStart := monthlyMaybeReset(existing.MonthlyUsageUsd, existing.MonthlyWindowStart, cost, now)
 
@@ -221,7 +225,8 @@ func (r *userPlatformQuotaRepository) IncrementUsageWithReset(ctx context.Contex
 			SetWeeklyUsageUsd(newWeekly).
 			SetMonthlyUsageUsd(newMonthly).
 			SetDailyWindowStart(timezone.StartOfDay(now)).
-			SetWeeklyWindowStart(timezone.StartOfWeek(now)).
+			SetWeeklyWindowStart(newWeeklyStart).
+			SetNillableWeeklyWindowResetAt(newWeeklyResetAt).
 			SetMonthlyWindowStart(newMonthlyStart). // 30 天滚动：仅过期时更新起始
 			Save(txCtx)
 		return e
@@ -253,7 +258,8 @@ func (r *userPlatformQuotaRepository) ResetExpiredWindow(ctx context.Context, us
 	case "daily":
 		upd = upd.SetDailyUsageUsd(0).SetDailyWindowStart(newStart)
 	case "weekly":
-		upd = upd.SetWeeklyUsageUsd(0).SetWeeklyWindowStart(newStart)
+		upd = upd.SetWeeklyUsageUsd(0).SetWeeklyWindowStart(newStart).
+			SetWeeklyWindowResetAt(newStart.Add(7 * 24 * time.Hour))
 	case "monthly":
 		upd = upd.SetMonthlyUsageUsd(0).SetMonthlyWindowStart(newStart)
 	default:
@@ -267,6 +273,39 @@ func (r *userPlatformQuotaRepository) ResetExpiredWindow(ctx context.Context, us
 		return ErrUserPlatformQuotaNotFound
 	}
 	return nil
+}
+
+// ResetAllWeeklyWindows atomically resets every active user quota row for a
+// platform and returns the affected user IDs so callers can invalidate Redis.
+func (r *userPlatformQuotaRepository) ResetAllWeeklyWindows(ctx context.Context, platform string, newStart, newResetAt time.Time) ([]int64, error) {
+	client := clientFromContext(ctx, r.client)
+	if newResetAt.IsZero() {
+		newResetAt = newStart.Add(7 * 24 * time.Hour)
+	}
+	rows, err := client.QueryContext(ctx, `
+		UPDATE user_platform_quotas
+		SET weekly_usage_usd = 0,
+		    weekly_window_start = $2,
+		    weekly_window_reset_at = $3,
+		    updated_at = $4
+		WHERE platform = $1 AND deleted_at IS NULL
+		RETURNING user_id`, platform, newStart, newResetAt, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var userIDs []int64
+	for rows.Next() {
+		var userID int64
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, userID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return userIDs, nil
 }
 
 // withTx 在事务中执行 fn，若 ctx 中已有事务则复用。
@@ -296,17 +335,18 @@ func (r *userPlatformQuotaRepository) withTx(ctx context.Context, fn func(txCtx 
 // 注意 ent 生成字段名为 DailyLimitUsd（非 DailyLimitUSD）。
 func entQuotaToRecord(e *dbent.UserPlatformQuota) *UserPlatformQuotaRecord {
 	return &UserPlatformQuotaRecord{
-		UserID:             e.UserID,
-		Platform:           e.Platform,
-		DailyLimitUSD:      e.DailyLimitUsd,
-		WeeklyLimitUSD:     e.WeeklyLimitUsd,
-		MonthlyLimitUSD:    e.MonthlyLimitUsd,
-		DailyUsageUSD:      e.DailyUsageUsd,
-		WeeklyUsageUSD:     e.WeeklyUsageUsd,
-		MonthlyUsageUSD:    e.MonthlyUsageUsd,
-		DailyWindowStart:   e.DailyWindowStart,
-		WeeklyWindowStart:  e.WeeklyWindowStart,
-		MonthlyWindowStart: e.MonthlyWindowStart,
+		UserID:              e.UserID,
+		Platform:            e.Platform,
+		DailyLimitUSD:       e.DailyLimitUsd,
+		WeeklyLimitUSD:      e.WeeklyLimitUsd,
+		MonthlyLimitUSD:     e.MonthlyLimitUsd,
+		DailyUsageUSD:       e.DailyUsageUsd,
+		WeeklyUsageUSD:      e.WeeklyUsageUsd,
+		MonthlyUsageUSD:     e.MonthlyUsageUsd,
+		DailyWindowStart:    e.DailyWindowStart,
+		WeeklyWindowStart:   e.WeeklyWindowStart,
+		WeeklyWindowResetAt: e.WeeklyWindowResetAt,
+		MonthlyWindowStart:  e.MonthlyWindowStart,
 	}
 }
 
@@ -318,6 +358,29 @@ func maybeReset(prevUsage float64, prevStart *time.Time, currStart time.Time, co
 		return cost
 	}
 	return prevUsage + cost
+}
+
+// weeklyMaybeReset supports both legacy natural-week windows and explicitly
+// anchored rolling seven-day windows. A manual/anchored window keeps its
+// cadence at reset_at + 7 days; a legacy row continues to use Monday 00:00.
+func weeklyMaybeReset(prevUsage float64, prevStart, prevResetAt *time.Time, cost float64, now time.Time) (float64, time.Time, *time.Time) {
+	if prevResetAt != nil {
+		start := prevResetAt.Add(-7 * 24 * time.Hour)
+		if prevStart != nil {
+			start = *prevStart
+		}
+		resetAt := *prevResetAt
+		if !now.Before(resetAt) {
+			for !now.Before(resetAt) {
+				start = resetAt
+				resetAt = resetAt.Add(7 * 24 * time.Hour)
+			}
+			return cost, start, &resetAt
+		}
+		return prevUsage + cost, start, prevResetAt
+	}
+	currStart := timezone.StartOfWeek(now)
+	return maybeReset(prevUsage, prevStart, currStart, cost), currStart, nil
 }
 
 // monthlyMaybeReset 判断 30 天滚动月度窗口是否需要重置。
@@ -441,7 +504,7 @@ func insertLimitsRow(ctx context.Context, client *dbent.Client, userID int64, re
 const batchRows = 6000
 
 // BatchSnapshotUsage 用一条多行 UPSERT 把整批 usage 以绝对值覆盖写入（非累加）。
-// 每批最多 batchRows 行；$1=now 共用；每行 8 个 per-row 参（user_id, platform, 3×usage, 3×window_start）。
+// 每批最多 batchRows 行；$1=now 共用；每行 9 个 per-row 参（user_id, platform, 3×usage, 4×window_start/reset）。
 // FK 违反（user_id 不存在）返回 ErrUserPlatformQuotaFKViolation。
 //
 // 注意:snapshots 超过 batchRows 会分多条 SQL 执行且【非单事务】——若某子批 FK 失败,
@@ -467,22 +530,22 @@ func (r *userPlatformQuotaRepository) BatchSnapshotUsage(ctx context.Context, sn
 		_, _ = sb.WriteString(
 			"INSERT INTO user_platform_quotas" +
 				" (user_id, platform, daily_usage_usd, weekly_usage_usd, monthly_usage_usd," +
-				" daily_window_start, weekly_window_start, monthly_window_start, created_at, updated_at)" +
+				" daily_window_start, weekly_window_start, weekly_window_reset_at, monthly_window_start, created_at, updated_at)" +
 				" VALUES ")
 
-		// $1 = now（共用）；每行 8 个 per-row 参，从 $2 起连续编号。
+		// $1 = now（共用）；每行 9 个 per-row 参，从 $2 起连续编号。
 		args := []any{now}
 		for i, s := range batch {
 			if i > 0 {
 				_, _ = sb.WriteString(",")
 			}
 			b := len(args) // 当前 per-row 第一个参数的 0-based 索引，实际占位符 = b+1
-			fmt.Fprintf(&sb, "($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$1,$1)",
-				b+1, b+2, b+3, b+4, b+5, b+6, b+7, b+8)
+			fmt.Fprintf(&sb, "($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$1,$1)",
+				b+1, b+2, b+3, b+4, b+5, b+6, b+7, b+8, b+9)
 			args = append(args,
 				s.UserID, s.Platform,
 				s.DailyUsageUSD, s.WeeklyUsageUSD, s.MonthlyUsageUSD,
-				s.DailyWindowStart, s.WeeklyWindowStart, s.MonthlyWindowStart,
+				s.DailyWindowStart, s.WeeklyWindowStart, s.WeeklyWindowResetAt, s.MonthlyWindowStart,
 			)
 		}
 
@@ -493,6 +556,7 @@ func (r *userPlatformQuotaRepository) BatchSnapshotUsage(ctx context.Context, sn
 				"  monthly_usage_usd    = EXCLUDED.monthly_usage_usd," +
 				"  daily_window_start   = EXCLUDED.daily_window_start," +
 				"  weekly_window_start  = EXCLUDED.weekly_window_start," +
+				"  weekly_window_reset_at = EXCLUDED.weekly_window_reset_at," +
 				"  monthly_window_start = EXCLUDED.monthly_window_start," +
 				"  updated_at           = EXCLUDED.updated_at")
 

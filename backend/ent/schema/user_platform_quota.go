@@ -85,6 +85,12 @@ func (UserPlatformQuota) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		// NULL keeps the legacy natural-week window. Non-NULL marks a manually
+		// anchored rolling seven-day window and stores its exclusive end time.
+		field.Time("weekly_window_reset_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("monthly_window_start").
 			Optional().
 			Nillable().

@@ -52565,34 +52565,35 @@ func (m *UserAttributeValueMutation) ResetEdge(name string) error {
 // UserPlatformQuotaMutation represents an operation that mutates the UserPlatformQuota nodes in the graph.
 type UserPlatformQuotaMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *int64
-	created_at           *time.Time
-	updated_at           *time.Time
-	deleted_at           *time.Time
-	platform             *string
-	daily_limit_usd      *float64
-	adddaily_limit_usd   *float64
-	weekly_limit_usd     *float64
-	addweekly_limit_usd  *float64
-	monthly_limit_usd    *float64
-	addmonthly_limit_usd *float64
-	daily_usage_usd      *float64
-	adddaily_usage_usd   *float64
-	weekly_usage_usd     *float64
-	addweekly_usage_usd  *float64
-	monthly_usage_usd    *float64
-	addmonthly_usage_usd *float64
-	daily_window_start   *time.Time
-	weekly_window_start  *time.Time
-	monthly_window_start *time.Time
-	clearedFields        map[string]struct{}
-	user                 *int64
-	cleareduser          bool
-	done                 bool
-	oldValue             func(context.Context) (*UserPlatformQuota, error)
-	predicates           []predicate.UserPlatformQuota
+	op                     Op
+	typ                    string
+	id                     *int64
+	created_at             *time.Time
+	updated_at             *time.Time
+	deleted_at             *time.Time
+	platform               *string
+	daily_limit_usd        *float64
+	adddaily_limit_usd     *float64
+	weekly_limit_usd       *float64
+	addweekly_limit_usd    *float64
+	monthly_limit_usd      *float64
+	addmonthly_limit_usd   *float64
+	daily_usage_usd        *float64
+	adddaily_usage_usd     *float64
+	weekly_usage_usd       *float64
+	addweekly_usage_usd    *float64
+	monthly_usage_usd      *float64
+	addmonthly_usage_usd   *float64
+	daily_window_start     *time.Time
+	weekly_window_start    *time.Time
+	weekly_window_reset_at *time.Time
+	monthly_window_start   *time.Time
+	clearedFields          map[string]struct{}
+	user                   *int64
+	cleareduser            bool
+	done                   bool
+	oldValue               func(context.Context) (*UserPlatformQuota, error)
+	predicates             []predicate.UserPlatformQuota
 }
 
 var _ ent.Mutation = (*UserPlatformQuotaMutation)(nil)
@@ -53362,6 +53363,55 @@ func (m *UserPlatformQuotaMutation) ResetWeeklyWindowStart() {
 	delete(m.clearedFields, userplatformquota.FieldWeeklyWindowStart)
 }
 
+// SetWeeklyWindowResetAt sets the "weekly_window_reset_at" field.
+func (m *UserPlatformQuotaMutation) SetWeeklyWindowResetAt(t time.Time) {
+	m.weekly_window_reset_at = &t
+}
+
+// WeeklyWindowResetAt returns the value of the "weekly_window_reset_at" field in the mutation.
+func (m *UserPlatformQuotaMutation) WeeklyWindowResetAt() (r time.Time, exists bool) {
+	v := m.weekly_window_reset_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWeeklyWindowResetAt returns the old "weekly_window_reset_at" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldWeeklyWindowResetAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeeklyWindowResetAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeeklyWindowResetAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeeklyWindowResetAt: %w", err)
+	}
+	return oldValue.WeeklyWindowResetAt, nil
+}
+
+// ClearWeeklyWindowResetAt clears the value of the "weekly_window_reset_at" field.
+func (m *UserPlatformQuotaMutation) ClearWeeklyWindowResetAt() {
+	m.weekly_window_reset_at = nil
+	m.clearedFields[userplatformquota.FieldWeeklyWindowResetAt] = struct{}{}
+}
+
+// WeeklyWindowResetAtCleared returns if the "weekly_window_reset_at" field was cleared in this mutation.
+func (m *UserPlatformQuotaMutation) WeeklyWindowResetAtCleared() bool {
+	_, ok := m.clearedFields[userplatformquota.FieldWeeklyWindowResetAt]
+	return ok
+}
+
+// ResetWeeklyWindowResetAt resets all changes to the "weekly_window_reset_at" field.
+func (m *UserPlatformQuotaMutation) ResetWeeklyWindowResetAt() {
+	m.weekly_window_reset_at = nil
+	delete(m.clearedFields, userplatformquota.FieldWeeklyWindowResetAt)
+}
+
 // SetMonthlyWindowStart sets the "monthly_window_start" field.
 func (m *UserPlatformQuotaMutation) SetMonthlyWindowStart(t time.Time) {
 	m.monthly_window_start = &t
@@ -53472,7 +53522,7 @@ func (m *UserPlatformQuotaMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserPlatformQuotaMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.created_at != nil {
 		fields = append(fields, userplatformquota.FieldCreatedAt)
 	}
@@ -53512,6 +53562,9 @@ func (m *UserPlatformQuotaMutation) Fields() []string {
 	if m.weekly_window_start != nil {
 		fields = append(fields, userplatformquota.FieldWeeklyWindowStart)
 	}
+	if m.weekly_window_reset_at != nil {
+		fields = append(fields, userplatformquota.FieldWeeklyWindowResetAt)
+	}
 	if m.monthly_window_start != nil {
 		fields = append(fields, userplatformquota.FieldMonthlyWindowStart)
 	}
@@ -53549,6 +53602,8 @@ func (m *UserPlatformQuotaMutation) Field(name string) (ent.Value, bool) {
 		return m.DailyWindowStart()
 	case userplatformquota.FieldWeeklyWindowStart:
 		return m.WeeklyWindowStart()
+	case userplatformquota.FieldWeeklyWindowResetAt:
+		return m.WeeklyWindowResetAt()
 	case userplatformquota.FieldMonthlyWindowStart:
 		return m.MonthlyWindowStart()
 	}
@@ -53586,6 +53641,8 @@ func (m *UserPlatformQuotaMutation) OldField(ctx context.Context, name string) (
 		return m.OldDailyWindowStart(ctx)
 	case userplatformquota.FieldWeeklyWindowStart:
 		return m.OldWeeklyWindowStart(ctx)
+	case userplatformquota.FieldWeeklyWindowResetAt:
+		return m.OldWeeklyWindowResetAt(ctx)
 	case userplatformquota.FieldMonthlyWindowStart:
 		return m.OldMonthlyWindowStart(ctx)
 	}
@@ -53687,6 +53744,13 @@ func (m *UserPlatformQuotaMutation) SetField(name string, value ent.Value) error
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetWeeklyWindowStart(v)
+		return nil
+	case userplatformquota.FieldWeeklyWindowResetAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWeeklyWindowResetAt(v)
 		return nil
 	case userplatformquota.FieldMonthlyWindowStart:
 		v, ok := value.(time.Time)
@@ -53818,6 +53882,9 @@ func (m *UserPlatformQuotaMutation) ClearedFields() []string {
 	if m.FieldCleared(userplatformquota.FieldWeeklyWindowStart) {
 		fields = append(fields, userplatformquota.FieldWeeklyWindowStart)
 	}
+	if m.FieldCleared(userplatformquota.FieldWeeklyWindowResetAt) {
+		fields = append(fields, userplatformquota.FieldWeeklyWindowResetAt)
+	}
 	if m.FieldCleared(userplatformquota.FieldMonthlyWindowStart) {
 		fields = append(fields, userplatformquota.FieldMonthlyWindowStart)
 	}
@@ -53852,6 +53919,9 @@ func (m *UserPlatformQuotaMutation) ClearField(name string) error {
 		return nil
 	case userplatformquota.FieldWeeklyWindowStart:
 		m.ClearWeeklyWindowStart()
+		return nil
+	case userplatformquota.FieldWeeklyWindowResetAt:
+		m.ClearWeeklyWindowResetAt()
 		return nil
 	case userplatformquota.FieldMonthlyWindowStart:
 		m.ClearMonthlyWindowStart()
@@ -53902,6 +53972,9 @@ func (m *UserPlatformQuotaMutation) ResetField(name string) error {
 		return nil
 	case userplatformquota.FieldWeeklyWindowStart:
 		m.ResetWeeklyWindowStart()
+		return nil
+	case userplatformquota.FieldWeeklyWindowResetAt:
+		m.ResetWeeklyWindowResetAt()
 		return nil
 	case userplatformquota.FieldMonthlyWindowStart:
 		m.ResetMonthlyWindowStart()
