@@ -48,12 +48,19 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
+import { userAccountsAPI } from '@/api/userAccounts'
 import type { GrokQuotaProbeResult, GrokQuotaWindow } from '@/api/admin/grok'
 import type { Account } from '@/types'
 
-const props = defineProps<{
-  account: Account
-}>()
+const props = withDefaults(
+  defineProps<{
+    account: Account
+    usageApi?: 'admin' | 'user'
+  }>(),
+  {
+    usageApi: 'admin'
+  }
+)
 
 const emit = defineEmits<{ probed: [result: GrokQuotaProbeResult] }>()
 
@@ -127,9 +134,41 @@ const handleProbe = async () => {
   loading.value = true
   error.value = null
   try {
-    data.value = await adminAPI.grok.queryQuota(props.account.id)
-    error.value = data.value.probe_error || null
-    emit('probed', data.value)
+    if (props.usageApi === 'user') {
+      const usage = await userAccountsAPI.getUsage(props.account.id, 'active', true)
+      const probeResult: GrokQuotaProbeResult = {
+        source: 'billing_probe',
+        billing: usage.grok_billing ?? null,
+        snapshot:
+          usage.grok_request_quota ||
+          usage.grok_token_quota ||
+          usage.grok_retry_after_seconds != null ||
+          usage.grok_entitlement_status
+            ? {
+                requests: usage.grok_request_quota,
+                tokens: usage.grok_token_quota,
+                retry_after_seconds: usage.grok_retry_after_seconds,
+                entitlement_status: usage.grok_entitlement_status,
+                headers_observed: Boolean(usage.grok_request_quota || usage.grok_token_quota),
+                updated_at: usage.updated_at || new Date().toISOString()
+              }
+            : null,
+        local_usage_24h: usage.grok_local_usage_24h ?? null,
+        local_usage_7d: usage.grok_local_usage_7d ?? null,
+        local_usage_monthly: usage.grok_local_usage_monthly ?? null,
+        headers_observed: Boolean(usage.grok_request_quota || usage.grok_token_quota),
+        reset_supported: false,
+        fetched_at: Date.now(),
+        probe_error: usage.error || undefined
+      }
+      data.value = probeResult
+      error.value = probeResult.probe_error || null
+      emit('probed', probeResult)
+    } else {
+      data.value = await adminAPI.grok.queryQuota(props.account.id)
+      error.value = data.value.probe_error || null
+      emit('probed', data.value)
+    }
   } catch (e) {
     error.value = extractErrorMessage(e)
   } finally {

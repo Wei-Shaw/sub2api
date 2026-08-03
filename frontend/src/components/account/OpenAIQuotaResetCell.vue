@@ -141,11 +141,18 @@ import {
   type OpenAIQuotaUsage,
   type OpenAIQuotaResetResult
 } from '@/api/admin/accounts'
+import { userAccountsAPI } from '@/api/userAccounts'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 
-const props = defineProps<{
-  account: Account
-}>()
+const props = withDefaults(
+  defineProps<{
+    account: Account
+    usageApi?: 'admin' | 'user'
+  }>(),
+  {
+    usageApi: 'admin'
+  }
+)
 
 const { t } = useI18n()
 
@@ -267,7 +274,11 @@ const handleQuery = async () => {
   resetMessage.value = null
   showResetCreditDetails.value = false
   try {
-    data.value = await queryOpenAIQuota(props.account.id)
+    if (props.usageApi === 'user') {
+      await userAccountsAPI.getUsage(props.account.id, 'active', true)
+    } else {
+      data.value = await queryOpenAIQuota(props.account.id)
+    }
   } catch (e) {
     error.value = extractErrorMessage(e)
   } finally {

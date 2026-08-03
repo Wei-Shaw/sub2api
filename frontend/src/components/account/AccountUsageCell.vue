@@ -114,7 +114,7 @@
       <div v-else class="space-y-1">
         <div class="text-xs text-gray-400">-</div>
         <!-- Always allow on-demand upstream quota probe, even before passive headers exist. -->
-        <GrokQuotaProbeCell :account="account" />
+        <GrokQuotaProbeCell :account="account" :usage-api="usageApi" />
       </div>
     </template>
 
@@ -144,7 +144,7 @@
           refresh button is rendered via the pre-actions slot so the user sees a
           single row of related buttons instead of two stacked rows.
         -->
-        <OpenAIQuotaResetCell :account="account">
+        <OpenAIQuotaResetCell :account="account" :usage-api="usageApi">
           <template #pre-actions>
             <button
               type="button"
@@ -186,7 +186,7 @@
       <div v-else>
         <div class="text-xs text-gray-400">-</div>
         <!-- Always allow on-demand upstream quota query, even before local data exists. -->
-        <OpenAIQuotaResetCell :account="account" class="mt-1" />
+        <OpenAIQuotaResetCell :account="account" :usage-api="usageApi" class="mt-1" />
       </div>
     </template>
 
@@ -425,7 +425,7 @@
         <div v-if="grokQuotaStatusLine" class="text-[10px] text-gray-500 dark:text-gray-400">
           {{ grokQuotaStatusLine }}
         </div>
-        <GrokQuotaProbeCell :account="account" @probed="handleGrokProbed" />
+        <GrokQuotaProbeCell :account="account" :usage-api="usageApi" @probed="handleGrokProbed" />
       </div>
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
