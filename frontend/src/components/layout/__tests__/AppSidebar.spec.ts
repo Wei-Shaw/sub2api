@@ -90,3 +90,15 @@ describe('AppSidebar MCP entry', () => {
     expect(componentSource).not.toMatch(/path: '\/settings\/mcp'[^\n]*PluginIcon/)
   })
 })
+
+describe('AppSidebar Simple mode navigation', () => {
+  it('keeps Composite routing visible for admins', () => {
+    const groupsItemStart = componentSource.indexOf("path: '/admin/groups'")
+    const groupsItem = componentSource.slice(groupsItemStart, groupsItemStart + 220)
+
+    expect(groupsItemStart).toBeGreaterThan(-1)
+    expect(groupsItem).toContain("t('nav.compositeRouting')")
+    expect(groupsItem).not.toContain('hideInSimpleMode: true')
+
+  })
+})
