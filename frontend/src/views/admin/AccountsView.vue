@@ -373,8 +373,62 @@
               @probe="handleProbeUpstreamBilling(row)"
             />
           </template>
-          <template #cell-priority="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
+          <template #cell-priority="{ row }">
+            <div class="flex min-w-[7.5rem] items-center gap-1" @click.stop>
+              <template v-if="editingPriorityAccountID === row.id">
+                <input
+                  v-model.number="priorityDraft"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="input h-8 w-16 px-2 py-1 font-mono text-sm"
+                  :aria-label="t('admin.accounts.priority')"
+                  :disabled="savingPriorityAccountIDs.has(row.id)"
+                  data-testid="account-priority-input"
+                  @keydown.enter.prevent="savePriority(row)"
+                  @keydown.esc.prevent="cancelPriorityEdit"
+                />
+                <button
+                  type="button"
+                  class="inline-flex h-8 w-8 items-center justify-center rounded-md text-emerald-600 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
+                  :title="t('common.save')"
+                  :aria-label="t('common.save')"
+                  :disabled="savingPriorityAccountIDs.has(row.id)"
+                  data-testid="account-priority-save"
+                  @click="savePriority(row)"
+                >
+                  <Icon
+                    :name="savingPriorityAccountIDs.has(row.id) ? 'refresh' : 'check'"
+                    size="sm"
+                    :class="savingPriorityAccountIDs.has(row.id) ? 'animate-spin' : ''"
+                  />
+                </button>
+                <button
+                  type="button"
+                  class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-dark-700"
+                  :title="t('common.cancel')"
+                  :aria-label="t('common.cancel')"
+                  :disabled="savingPriorityAccountIDs.has(row.id)"
+                  data-testid="account-priority-cancel"
+                  @click="cancelPriorityEdit"
+                >
+                  <Icon name="x" size="sm" />
+                </button>
+              </template>
+              <template v-else>
+                <span class="min-w-6 font-mono text-sm text-gray-700 dark:text-gray-300">{{ row.priority }}</span>
+                <button
+                  type="button"
+                  class="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:text-dark-400 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                  :title="t('common.edit')"
+                  :aria-label="`${t('common.edit')} ${t('admin.accounts.priority')}`"
+                  data-testid="account-priority-edit"
+                  @click="startPriorityEdit(row)"
+                >
+                  <Icon name="edit" size="xs" />
+                </button>
+              </template>
+            </div>
           </template>
           <template #header-scheduler_score="{ column }">
             <div class="flex items-center">
@@ -606,6 +660,9 @@ const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
+const editingPriorityAccountID = ref<number | null>(null)
+const priorityDraft = ref<number | null>(null)
+const savingPriorityAccountIDs = reactive(new Set<number>())
 const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
 const upstreamBillingNow = ref(Date.now())
 let lastUpstreamBillingSortRefreshMinute = -1
@@ -1105,7 +1162,8 @@ const isAnyModalOpen = computed(() => {
     showStats.value ||
     showSchedulePanel.value ||
     showErrorPassthrough.value ||
-    showTLSFingerprintProfiles.value
+    showTLSFingerprintProfiles.value ||
+    editingPriorityAccountID.value !== null
   )
 })
 
@@ -1927,6 +1985,44 @@ const handleProbeUpstreamBilling = async (account: Account) => {
 const handleAccountUpdated = (updatedAccount: Account) => {
   patchAccountInList(updatedAccount)
   enterAutoRefreshSilentWindow()
+}
+const startPriorityEdit = (account: Account) => {
+  if (savingPriorityAccountIDs.has(account.id)) return
+  editingPriorityAccountID.value = account.id
+  priorityDraft.value = account.priority
+}
+const cancelPriorityEdit = () => {
+  editingPriorityAccountID.value = null
+  priorityDraft.value = null
+}
+const savePriority = async (account: Account) => {
+  if (editingPriorityAccountID.value !== account.id || savingPriorityAccountIDs.has(account.id)) return
+
+  const nextPriority = Number(priorityDraft.value)
+  if (!Number.isInteger(nextPriority) || nextPriority < 1) {
+    appStore.showError(t('admin.accounts.priorityInvalid'))
+    return
+  }
+  if (nextPriority === account.priority) {
+    cancelPriorityEdit()
+    return
+  }
+
+  savingPriorityAccountIDs.add(account.id)
+  try {
+    const updated = await adminAPI.accounts.update(account.id, { priority: nextPriority })
+    patchAccountInList(updated)
+    enterAutoRefreshSilentWindow()
+    cancelPriorityEdit()
+    if (sortState.sort_by === 'priority') {
+      await reload()
+    }
+  } catch (error) {
+    console.error('Failed to update account priority:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.failedToUpdate')))
+  } finally {
+    savingPriorityAccountIDs.delete(account.id)
+  }
 }
 const formatExportTimestamp = () => {
   const now = new Date()
