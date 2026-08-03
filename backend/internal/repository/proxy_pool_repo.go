@@ -26,10 +26,6 @@ func NewProxyPoolRepository(client *dbent.Client, sqlDB *sql.DB) service.ProxyPo
 	return &proxyPoolRepository{client: client, sql: sqlDB}
 }
 
-func newProxyPoolRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *proxyPoolRepository {
-	return &proxyPoolRepository{client: client, sql: sqlq}
-}
-
 func proxyPoolEntityToService(m *dbent.ProxyPool) *service.ProxyPool {
 	if m == nil {
 		return nil
@@ -122,7 +118,7 @@ func (r *proxyPoolRepository) ListPoolsWithStats(ctx context.Context) ([]service
 	if err != nil {
 		return nil, fmt.Errorf("list proxy pool stats: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type poolStat struct {
 		poolID          int64
@@ -258,7 +254,7 @@ func (r *proxyPoolRepository) CountAccountsByProxyIDs(ctx context.Context, proxy
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	counts := make(map[int64]int64, len(proxyIDs))
 	for rows.Next() {
@@ -285,7 +281,7 @@ func (r *proxyPoolRepository) ListPoolUnassignedAccountIDs(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ids := make([]int64, 0, 8)
 	for rows.Next() {
 		var id int64
@@ -421,7 +417,7 @@ func (r *proxyPoolRepository) ListRebindLogs(ctx context.Context, poolID int64, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]service.ProxyPoolRebindLog, 0, limit)
 	for rows.Next() {

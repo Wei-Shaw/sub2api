@@ -12,6 +12,11 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+// newProxyPoolRepositoryWithSQL 为集成测试提供基于事务的 sqlExecutor 实现。
+func newProxyPoolRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *proxyPoolRepository {
+	return &proxyPoolRepository{client: client, sql: sqlq}
+}
+
 type ProxyPoolRepoSuite struct {
 	suite.Suite
 	ctx       context.Context

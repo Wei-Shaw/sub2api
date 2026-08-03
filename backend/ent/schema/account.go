@@ -249,7 +249,7 @@ func (Account) Indexes() []ent.Index {
 		index.Fields("type"),                // 按认证类型筛选
 		index.Fields("status"),              // 按状态筛选
 		index.Fields("proxy_id"),            // 按代理筛选
-		index.Fields("pool_id"),            // 按代理池筛选
+		index.Fields("pool_id"),             // 按代理池筛选
 		index.Fields("priority"),            // 按优先级排序
 		index.Fields("last_used_at"),        // 按最后使用时间排序
 		index.Fields("schedulable"),         // 筛选可调度账户
