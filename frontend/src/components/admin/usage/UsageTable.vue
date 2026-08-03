@@ -216,6 +216,12 @@
           </div>
         </template>
 
+        <template #cell-tps="{ row }">
+          <span class="font-medium tabular-nums text-gray-900 dark:text-white">
+            {{ formatTps(row) }}
+          </span>
+        </template>
+
         <template #cell-created_at="{ value }">
           <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(value) }}</span>
         </template>
@@ -614,6 +620,20 @@ const formatDuration = (ms: number | null | undefined): string => {
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
+}
+
+const formatTps = (row: Pick<AdminUsageLog, 'output_tokens' | 'duration_ms' | 'image_count' | 'image_output_tokens'>): string => {
+  if (
+    row.image_count > 0
+    || row.image_output_tokens > 0
+    || !Number.isFinite(row.output_tokens)
+    || row.output_tokens <= 0
+    || !Number.isFinite(row.duration_ms)
+    || row.duration_ms == null
+    || row.duration_ms <= 0
+  ) return '-'
+
+  return (row.output_tokens * 1000 / row.duration_ms).toFixed(2)
 }
 
 // Cost tooltip functions
