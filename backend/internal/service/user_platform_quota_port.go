@@ -53,6 +53,12 @@ type UserPlatformQuotaWeeklyResetter interface {
 	ResetAllWeeklyWindows(ctx context.Context, platform string, newStart, newResetAt time.Time) ([]int64, error)
 }
 
+// QuotaResetObserver receives an upstream seven-day transition from a
+// positive usage percentage to zero.
+type QuotaResetObserver interface {
+	ObserveSevenDayReset(ctx context.Context, accountID int64, previousUsed, currentUsed float64, resetAt *time.Time)
+}
+
 // UserPlatformQuotaRepository 定义 service 层所需的 user × platform quota 数据访问端口。
 // repository 包的 userPlatformQuotaRepository 实现此接口。
 type UserPlatformQuotaRepository interface {
