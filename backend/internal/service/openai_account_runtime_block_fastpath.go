@@ -222,6 +222,40 @@ func (s *OpenAIGatewayService) ClearAccountSchedulingBlock(accountID int64) {
 	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
 }
 
+// AccountSchedulingBlockGeneration returns an opaque generation that changes
+// whenever this process installs or clears an account-level runtime block.
+func (s *OpenAIGatewayService) AccountSchedulingBlockGeneration(accountID int64) uint64 {
+	if s == nil || accountID <= 0 {
+		return 0
+	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
+	raw, _ := s.openaiAccountRuntimeBlockGeneration.Load(accountID)
+	generation, _ := raw.(uint64)
+	return generation
+}
+
+// ClearAccountSchedulingBlockIfGeneration removes the runtime block only when
+// no newer block/clear happened after the caller captured observedGeneration.
+func (s *OpenAIGatewayService) ClearAccountSchedulingBlockIfGeneration(accountID int64, observedGeneration uint64) bool {
+	if s == nil || accountID <= 0 {
+		return false
+	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	raw, _ := s.openaiAccountRuntimeBlockGeneration.Load(accountID)
+	current, _ := raw.(uint64)
+	if current != observedGeneration {
+		return false
+	}
+	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
+	return true
+}
+
 func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) bool {
 	if s == nil || !isOpenAIAccount(account) {
 		return false

@@ -139,6 +139,20 @@ func ProvideOpenAIQuotaService(
 	return service
 }
 
+func ProvideOpenAIRateLimitReconcilerService(
+	accountRepo AccountRepository,
+	openAIQuotaService *OpenAIQuotaService,
+	openAIGatewayService *OpenAIGatewayService,
+	cfg *config.Config,
+	lockCache LeaderLockCache,
+	db *sql.DB,
+) *OpenAIRateLimitReconcilerService {
+	service := NewOpenAIRateLimitReconcilerService(accountRepo, openAIQuotaService, openAIGatewayService, cfg)
+	service.SetLeaderLock(lockCache, db)
+	service.Start()
+	return service
+}
+
 func ProvideAccountUsageService(
 	accountRepo AccountRepository,
 	usageLogRepo UsageLogRepository,
@@ -720,6 +734,7 @@ var ProviderSet = wire.NewSet(
 	ProvideGrokTokenProvider,
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
+	ProvideOpenAIRateLimitReconcilerService,
 	ProvideGrokQuotaService,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,

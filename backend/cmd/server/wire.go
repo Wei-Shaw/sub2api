@@ -86,6 +86,7 @@ func provideCleanup(
 	apiKeyService *service.APIKeyService,
 	authCacheInvalidationWorker *service.AuthCacheInvalidationWorker,
 	schedulerSnapshot *service.SchedulerSnapshotService,
+	openAIRateLimitReconciler *service.OpenAIRateLimitReconcilerService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
 	proxyExpiry *service.ProxyExpiryService,
@@ -201,6 +202,12 @@ func provideCleanup(
 			{"SchedulerSnapshotService", func() error {
 				if schedulerSnapshot != nil {
 					schedulerSnapshot.Stop()
+				}
+				return nil
+			}},
+			{"OpenAIRateLimitReconcilerService", func() error {
+				if openAIRateLimitReconciler != nil {
+					openAIRateLimitReconciler.Stop()
 				}
 				return nil
 			}},
