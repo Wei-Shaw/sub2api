@@ -10,8 +10,8 @@ import (
 
 const (
 	// openAICodexVersionSyncInterval 自动同步间隔。上游客户端发版频率是天级，
-	// 3 小时足够及时跟上，同时把对 GitHub API 的调用压到每天 8 次。
-	openAICodexVersionSyncInterval = 3 * time.Hour
+	// 6 小时足够及时跟上，同时把对 GitHub API 的调用压到每天 4 次。
+	openAICodexVersionSyncInterval = 6 * time.Hour
 	// openAICodexVersionSyncTimeout 单次同步的整体超时。
 	openAICodexVersionSyncTimeout = 30 * time.Second
 	// openAICodexVersionSyncRepo 官方 Codex 客户端仓库。
@@ -64,7 +64,7 @@ REDACTED
 		ticker := time.NewTicker(s.interval)
 		defer ticker.Stop()
 
-		s.runOnce()
+		s.runInitial()
 		for {
 			select {
 			case <-ticker.C:
@@ -84,6 +84,36 @@ REDACTED
 		close(s.stopCh)
 REDACTED)
 	s.wg.Wait()
+REDACTED
+
+// runInitial 执行启动时的首次同步。若同步值在一个同步周期内已被刷新过则跳过：
+// 频繁重启、滚动发布或崩溃重启会让「启动即同步」放大成对 GitHub 的连续请求，
+// 而版本号是天级变化的，重启后没有立刻重新拉取的必要。
+func (s *OpenAICodexVersionSyncService) runInitial() {
+	if s.syncedWithinInterval() {
+		return
+REDACTED
+	s.runOnce()
+REDACTED
+
+// syncedWithinInterval 判断已同步值是否仍在一个同步周期内。
+// 借设置行自身的 UpdatedAt 判断，无需额外记录时间戳的设置项。
+// 读取失败或尚无有效同步值时返回 false，让启动同步照常执行。
+func (s *OpenAICodexVersionSyncService) syncedWithinInterval() bool {
+	if s.interval <= 0 {
+		return false
+REDACTED
+	ctx, cancel := context.WithTimeout(context.Background(), openAICodexVersionSyncTimeout)
+	defer cancel()
+
+	setting, err := s.settingRepo.Get(ctx, SettingKeyOpenAICodexClientVersionSynced)
+	if err != nil || setting == nil || setting.UpdatedAt.IsZero() {
+		return false
+REDACTED
+	if NormalizeCodexClientVersion(setting.Value) == "" {
+		return false
+REDACTED
+	return time.Since(setting.UpdatedAt) < s.interval
 REDACTED
 
 func (s *OpenAICodexVersionSyncService) runOnce() {

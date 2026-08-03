@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -14,11 +15,12 @@ import (
 type codexVersionSyncSettingRepoStub struct {
 	SettingRepository // 嵌入接口，未实现的方法会 panic（不应被调用）
 
-	mu     sync.Mutex
-	values map[string]string
-	getErr error
-	setErr error
-	writes []string
+	mu        sync.Mutex
+	values    map[string]string
+	getErr    error
+	setErr    error
+	updatedAt time.Time
+	writes    []string
 REDACTED
 
 func newCodexVersionSyncSettingRepoStub(values map[string]string) *codexVersionSyncSettingRepoStub {
@@ -243,4 +245,79 @@ REDACTEDREDACTED, nil)
 		"codex_cli_rs/0.200.1"+codexCLIUserAgentSuffix,
 		svc.GetOpenAICodexCanonicalUserAgent(context.Background()),
 	)
+REDACTED
+
+func (r *codexVersionSyncSettingRepoStub) Get(_ context.Context, key string) (*Setting, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.getErr != nil {
+		return nil, r.getErr
+REDACTED
+	value, ok := r.values[key]
+	if !ok {
+		return nil, ErrSettingNotFound
+REDACTED
+	return &Setting{Key: key, Value: value, UpdatedAt: r.updatedAtREDACTED, nil
+REDACTED
+
+// 启动同步防抖：同步值仍在一个周期内时跳过，避免频繁重启/滚动发布把启动同步
+// 放大成对 GitHub 的连续请求。
+func TestOpenAICodexVersionSyncInitialSkipsWhenRecentlySynced(t *testing.T) {
+	repo := newCodexVersionSyncSettingRepoStub(map[string]string{
+		SettingKeyOpenAICodexClientVersionSynced: "0.146.0",
+REDACTED)
+	repo.updatedAt = time.Now().Add(-time.Hour)
+	github := &codexVersionSyncGitHubStub{releases: []*GitHubRelease{{TagName: "rust-v0.147.0"REDACTEDREDACTEDREDACTED
+
+	newCodexVersionSyncService(repo, github).runInitial()
+
+	require.Zero(t, github.calls, "同步值仍在周期内时不应请求上游")
+	require.Empty(t, repo.syncedWrites())
+REDACTED
+
+func TestOpenAICodexVersionSyncInitialRunsWhenStaleOrMissing(t *testing.T) {
+	t.Run("同步值已过期", func(t *testing.T) {
+		repo := newCodexVersionSyncSettingRepoStub(map[string]string{
+			SettingKeyOpenAICodexClientVersionSynced: "0.146.0",
+	REDACTED)
+		repo.updatedAt = time.Now().Add(-7 * time.Hour)
+		github := &codexVersionSyncGitHubStub{releases: []*GitHubRelease{{TagName: "rust-v0.147.0"REDACTEDREDACTEDREDACTED
+
+		newCodexVersionSyncService(repo, github).runInitial()
+
+		require.Equal(t, 1, github.calls)
+		require.Equal(t, []string{"0.147.0"REDACTED, repo.syncedWrites())
+REDACTED)
+
+	// 首次部署尚无同步值：必须立刻同步，不能被防抖挡住。
+	t.Run("尚无同步值", func(t *testing.T) {
+		repo := newCodexVersionSyncSettingRepoStub(nil)
+		repo.updatedAt = time.Now()
+		github := &codexVersionSyncGitHubStub{releases: []*GitHubRelease{{TagName: "rust-v0.146.0"REDACTEDREDACTEDREDACTED
+
+		newCodexVersionSyncService(repo, github).runInitial()
+
+		require.Equal(t, 1, github.calls)
+		require.Equal(t, []string{"0.146.0"REDACTED, repo.syncedWrites())
+REDACTED)
+REDACTED
+
+// 版本比较必须按段取数字：字典序会把 0.99.0 判为大于 0.146.0，
+// 从而让「取最大值」和「只向前推进」两处逻辑同时判错。
+func TestCodexVersionComparisonIsNumericNotLexical(t *testing.T) {
+	require.Greater(t, CompareVersions("0.146.0", "0.99.0"), 0)
+
+	require.Equal(t, "0.146.0", latestCodexStableReleaseVersion([]*GitHubRelease{
+		{TagName: "rust-v0.99.0"REDACTED,
+		{TagName: "rust-v0.146.0"REDACTED,
+REDACTED))
+
+	repo := newCodexVersionSyncSettingRepoStub(map[string]string{
+		SettingKeyOpenAICodexClientVersionSynced: "0.146.0",
+REDACTED)
+	github := &codexVersionSyncGitHubStub{releases: []*GitHubRelease{{TagName: "rust-v0.99.0"REDACTEDREDACTEDREDACTED
+
+	newCodexVersionSyncService(repo, github).runOnce()
+
+	require.Empty(t, repo.syncedWrites(), "0.99.0 低于已同步的 0.146.0，不得写入")
 REDACTED

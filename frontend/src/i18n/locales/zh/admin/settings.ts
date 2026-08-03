@@ -422,7 +422,7 @@ export default {
         openaiCodexClientVersionPlaceholder: '留空则跟随自动同步',
         openaiCodexClientVersionHint: '网关对上游声明的 Codex 客户端版本号，User-Agent 与 version 头同源使用。留空表示使用自动同步到的官方最新稳定版；填写后固定为该版本，不再跟随同步。',
         openaiCodexVersionAutoSync: '自动同步 Codex 版本号',
-        openaiCodexVersionAutoSyncHint: '每 3 小时从官方仓库获取最新稳定版客户端版本号，无需为了跟版本而升级本服务。关闭后仅使用上方手填版本或内置版本。',
+        openaiCodexVersionAutoSyncHint: '每 6 小时从官方仓库获取最新稳定版客户端版本号，无需为了跟版本而升级本服务。关闭后仅使用上方手填版本或内置版本。',
         openaiCodexVersionSyncedValue: '当前同步到：{versionREDACTED',
         codexHardeningTitle: 'Codex 设置',
         codexClientRestrictionTitle: 'Codex 客户端限制',

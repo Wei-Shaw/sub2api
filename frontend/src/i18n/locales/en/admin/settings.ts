@@ -429,7 +429,7 @@ export default {
         openaiCodexClientVersionPlaceholder: 'Leave empty to follow auto-sync',
         openaiCodexClientVersionHint: 'The Codex client version this gateway declares upstream, shared by the User-Agent and the version header. Leave empty to use the auto-synced latest stable release; setting a value pins it and stops following auto-sync.',
         openaiCodexVersionAutoSync: 'Auto-sync Codex version',
-        openaiCodexVersionAutoSyncHint: 'Fetches the latest stable client version from the official repository every 3 hours, so you never need to upgrade this service just to keep the version current. When disabled, only the version above or the built-in default is used.',
+        openaiCodexVersionAutoSyncHint: 'Fetches the latest stable client version from the official repository every 6 hours, so you never need to upgrade this service just to keep the version current. When disabled, only the version above or the built-in default is used.',
         openaiCodexVersionSyncedValue: 'Currently synced: {versionREDACTED',
         codexHardeningTitle: "Codex Settings",
         codexClientRestrictionTitle: "Codex client restriction",
