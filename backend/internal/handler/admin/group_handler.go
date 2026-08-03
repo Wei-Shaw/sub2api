@@ -122,6 +122,9 @@ type CreateGroupRequest struct {
 	PeakStart                       string   `json:"peak_start"`
 	PeakEnd                         string   `json:"peak_end"`
 	PeakRateMultiplier              *float64 `json:"peak_rate_multiplier"`
+	ProfitControlEnabled            bool     `json:"profit_control_enabled"`
+	ProfitMinMargin                 *float64 `json:"profit_min_margin"`
+	ProfitSafetyBuffer              *float64 `json:"profit_safety_buffer"`
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
@@ -185,6 +188,9 @@ type UpdateGroupRequest struct {
 	PeakStart                       *string  `json:"peak_start"`
 	PeakEnd                         *string  `json:"peak_end"`
 	PeakRateMultiplier              *float64 `json:"peak_rate_multiplier"`
+	ProfitControlEnabled            *bool    `json:"profit_control_enabled"`
+	ProfitMinMargin                 *float64 `json:"profit_min_margin"`
+	ProfitSafetyBuffer              *float64 `json:"profit_safety_buffer"`
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
@@ -485,6 +491,13 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// platform 是 omitempty：预校验必须用与 CreateGroup 落库一致的归一化平台，
+	// 否则省略 platform 的请求会被误判成「平台不支持利润控制」。
+	if err := service.ValidateProfitControlConfig(service.NormalizeGroupPlatform(req.Platform), req.ProfitControlEnabled, float64ValueOrDefault(req.ProfitMinMargin, 0), float64ValueOrDefault(req.ProfitSafetyBuffer, 0)); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
 		Name:                            req.Name,
 		Description:                     req.Description,
@@ -508,6 +521,9 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
 		PeakRateMultiplier:              req.PeakRateMultiplier,
+		ProfitControlEnabled:            req.ProfitControlEnabled,
+		ProfitMinMargin:                 req.ProfitMinMargin,
+		ProfitSafetyBuffer:              req.ProfitSafetyBuffer,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
@@ -630,6 +646,9 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
 		PeakRateMultiplier:              req.PeakRateMultiplier,
+		ProfitControlEnabled:            req.ProfitControlEnabled,
+		ProfitMinMargin:                 req.ProfitMinMargin,
+		ProfitSafetyBuffer:              req.ProfitSafetyBuffer,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,

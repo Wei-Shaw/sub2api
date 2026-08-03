@@ -342,6 +342,7 @@ export const useAppStore = defineStore('app', () => {
         contact_info: contactInfo.value,
         doc_url: docUrl.value,
         home_content: '',
+        compact_home_enabled: false,
         hide_ccs_import_button: false,
         payment_enabled: false,
         table_default_page_size: 20,

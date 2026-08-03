@@ -31,6 +31,18 @@ type stubOpenAIAccountRepo struct {
 	accounts []Account
 }
 
+type tempUnschedulableOpenAIAccountRepo struct {
+	stubOpenAIAccountRepo
+	modelRateLimitAccountID int64
+	modelRateLimitKey       string
+}
+
+func (r *tempUnschedulableOpenAIAccountRepo) SetModelRateLimit(_ context.Context, accountID int64, modelKey string, _ time.Time, _ ...string) error {
+	r.modelRateLimitAccountID = accountID
+	r.modelRateLimitKey = modelKey
+	return nil
+}
+
 type snapshotUpdateAccountRepo struct {
 	stubOpenAIAccountRepo
 	updateExtraCalls chan map[string]any
@@ -78,6 +90,113 @@ func (r stubOpenAIAccountRepo) ListSchedulableByPlatform(ctx context.Context, pl
 
 func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	return r.ListSchedulableByPlatform(ctx, platform)
+}
+
+func TestOpenAIGatewayService_ForwardAsAnthropic_TempUnschedulableReturnsFailoverWithoutCommit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.4","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := []byte(`{"error":{"message":"Our servers are currently overloaded. Please try again later."}}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewReader(upstreamBody)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+				`data: {"type":"response.output_text.delta","delta":"ok"}`,
+				"",
+				`data: {"type":"response.completed","response":{"id":"resp_second","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+				"",
+			}, "\n"))),
+		},
+	}}
+	repo := &tempUnschedulableOpenAIAccountRepo{}
+	rateLimitService := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{
+			Enabled: false, AllowInsecureHTTP: true,
+		}}},
+		httpUpstream:     upstream,
+		rateLimitService: rateLimitService,
+	}
+	account := &Account{
+		ID: 5099, Name: "temporary-unschedulable", Platform: PlatformOpenAI,
+		Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":                    "sk-test",
+			"base_url":                   "http://upstream.example",
+			"model_provider":             "env-openai",
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{map[string]any{
+				"error_code":       float64(http.StatusBadRequest),
+				"keywords":         []any{"our servers are currently overloaded", "please try again later"},
+				"duration_minutes": float64(1),
+			}},
+		},
+	}
+
+	_, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "")
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	require.True(t, failoverErr.ShouldRetryNextAccount())
+	require.Equal(t, account.ID, repo.modelRateLimitAccountID, "temporary unschedulability should exclude this account from reselection")
+	require.Equal(t, "gpt-5.4", repo.modelRateLimitKey)
+	require.False(t, IsResponseCommitted(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Empty(t, rec.Body.String())
+
+	secondRec := httptest.NewRecorder()
+	secondContext, _ := gin.CreateTestContext(secondRec)
+	secondContext.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	secondContext.Request.Header.Set("Content-Type", "application/json")
+	secondAccount := *account
+	secondAccount.ID = 5100
+	secondAccount.Name = "healthy-failover-account"
+	result, secondErr := svc.ForwardAsAnthropic(context.Background(), secondContext, &secondAccount, body, "", "")
+	require.NoError(t, secondErr)
+	require.NotNil(t, result)
+	require.Equal(t, "resp_second", result.ResponseID)
+	require.NotEmpty(t, secondRec.Body.String())
+}
+
+func TestFailoverOpenAIUpstreamHTTPError_NilContextSkipsTempUnschedulablePolicy(t *testing.T) {
+	repo := &tempUnschedulableOpenAIAccountRepo{}
+	svc := &OpenAIGatewayService{
+		rateLimitService: NewRateLimitService(repo, nil, &config.Config{}, nil, nil),
+	}
+	account := &Account{
+		ID: 5099, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{map[string]any{
+				"error_code":       float64(http.StatusBadRequest),
+				"keywords":         []any{"servers are currently overloaded"},
+				"duration_minutes": float64(1),
+			}},
+		},
+	}
+	body := []byte(`{"error":{"message":"Our servers are currently overloaded."}}`)
+	resp := &http.Response{StatusCode: http.StatusBadRequest, Header: http.Header{}}
+
+	got := svc.failoverOpenAIUpstreamHTTPError(
+		context.Background(), nil, account, resp, body,
+		"Our servers are currently overloaded.", "gpt-5.4",
+	)
+
+	require.Nil(t, got)
+	require.Zero(t, repo.modelRateLimitAccountID)
+	require.Empty(t, repo.modelRateLimitKey)
 }
 
 type groupAwareStubOpenAIAccountRepo struct {
@@ -1482,6 +1601,7 @@ func TestOpenAIStreamingResponseFailedBeforeOutputReturnsFailover(t *testing.T) 
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount)
 	require.Contains(t, string(failoverErr.ResponseBody), "An error occurred while processing your request")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
@@ -1518,11 +1638,21 @@ func TestOpenAIStreamingResponseFailedBeforeOutputCapacityErrorReturnsFailover(t
 		Header: http.Header{"X-Request-Id": []string{"rid-capacity-failed"}},
 	}
 
-	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Name:     "pool-account",
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+	}
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
 	require.Error(t, err)
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
 	require.Contains(t, string(failoverErr.ResponseBody), "Selected model is at capacity")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
@@ -1564,6 +1694,117 @@ func TestOpenAIStreamingResponseFailedBeforeOutputServerOverloadedCodeReturnsFai
 	require.Contains(t, string(failoverErr.ResponseBody), "Please retry later")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIStreamingResponseFailedBeforeOutputRateLimitUsesPoolRetryPolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+			"",
+			"event: response.failed",
+			`data: {"type":"response.failed","response":{"id":"resp_1","status":"failed","error":{"code":"rate_limit_exceeded","message":"Concurrency limit exceeded for account, please retry later"}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{
+			"X-Request-Id": []string{"rid-rate-limit-failed"},
+			"Retry-After":  []string{"1"},
+		},
+	}
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Name:     "pool-account",
+		Credentials: map[string]any{
+			"pool_mode":                    true,
+			"pool_mode_retry_count":        float64(1),
+			"pool_mode_retry_status_codes": []any{float64(http.StatusTooManyRequests)},
+		},
+	}
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.Equal(t, "1", failoverErr.ResponseHeaders.Get("Retry-After"))
+	require.Equal(t, "rate_limit_error", gjson.GetBytes(failoverErr.ResponseBody, "error.type").String())
+	require.Contains(t, string(failoverErr.ResponseBody), "Concurrency limit exceeded")
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+
+	opsVal, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	opsEvents, ok := opsVal.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.NotEmpty(t, opsEvents)
+	require.Equal(t, http.StatusTooManyRequests, opsEvents[len(opsEvents)-1].UpstreamStatusCode)
+}
+
+// 流内 rate limit 只产生 failover 错误，不写账号级限流/封禁状态：
+// HTTP 200 流的 x-codex-* 头是正常配额快照，不能按 429 头驱动账号冷却。
+func TestOpenAIStreamingResponseFailedRateLimitDoesNotBlockAccountScheduling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+			"",
+			"event: response.failed",
+			`data: {"type":"response.failed","response":{"id":"resp_1","status":"failed","error":{"code":"rate_limit_exceeded","message":"Concurrency limit exceeded for account, please retry later"}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{
+			"X-Codex-Primary-Used-Percent":        []string{"12"},
+			"X-Codex-Primary-Reset-After-Seconds": []string{"604800"},
+			"Retry-After":                         []string{"1"},
+		},
+	}
+	account := &Account{
+		ID:       11,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Name:     "oauth-account",
+	}
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }
 
 func TestOpenAIStreamingResponseFailedAfterOutputSanitizesVerboseResponseForClient(t *testing.T) {
@@ -2754,10 +2995,18 @@ func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t 
 		{name: "official ua pairs originator", userAgent: "Codex Desktop/1.2.3", wantOriginator: "Codex Desktop", wantUA: "Codex Desktop/1.2.3"},
 		{
 			name:           "mismatched originator repaired from ua",
-			userAgent:      "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			userAgent:      "codex_vscode/0.140.2 (Mac OS X 14.0; arm64) vscode (codex_vscode; 0.140.2)",
 			originator:     "codex_cli_rs",
-			wantOriginator: "codex-tui",
-			wantUA:         "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			wantOriginator: "codex_vscode",
+			wantUA:         "codex_vscode/0.140.2 (Mac OS X 14.0; arm64) vscode (codex_vscode; 0.140.2)",
+		},
+		{
+			// 降载桶身份改写为 CLI 身份，只替换身份段、保留版本/OS/架构/终端指纹。
+			name:           "load-shed originator normalized to cli identity",
+			userAgent:      "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			originator:     "codex-tui",
+			wantOriginator: "codex_cli_rs",
+			wantUA:         "codex_cli_rs/0.140.2 (Mac OS X 14.0; arm64) iTerm",
 		},
 		{name: "official originator without ua falls back to default identity", originator: "codex_vscode", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgent},
 		{name: "third-party ua masked to default identity", userAgent: "luna/1.2.0", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgent},
