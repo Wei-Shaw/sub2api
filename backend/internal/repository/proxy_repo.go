@@ -603,6 +603,10 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 	if m.Password != nil {
 		out.Password = *m.Password
 	}
+	out.PoolID = m.PoolID
+	out.PoolHealth = m.PoolHealth
+	out.PoolCheckedAt = m.PoolCheckedAt
+	out.PoolFailures = m.PoolFailures
 	return out
 }
 
