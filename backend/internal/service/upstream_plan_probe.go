@@ -100,7 +100,7 @@ func planCredentialKey(platform string) string {
 	}
 }
 
-// ExtractProbedPlanRaw 从账号 credentials 提取可用于 ApplyProbedPlan 的原始 plan 串。
+// ExtractProbedPlanRaw 从账号 credentials / extra 提取可用于 ApplyProbedPlan 的原始 plan 串。
 func ExtractProbedPlanRaw(account *Account) string {
 	if account == nil {
 		return ""
@@ -121,9 +121,50 @@ func ExtractProbedPlanRaw(account *Account) string {
 			return v
 		}
 	}
+	// Grok：列表角标常来自 extra.grok_billing_snapshot.plan，credentials 未必有 subscription_tier
+	if strings.EqualFold(account.Platform, PlatformGrok) {
+		if v := extractGrokPlanFromExtra(account.Extra); v != "" {
+			return v
+		}
+	}
 	// 其它平台兜底 plan_type
 	if key != "plan_type" {
-		return strings.TrimSpace(account.GetCredential("plan_type"))
+		if v := strings.TrimSpace(account.GetCredential("plan_type")); v != "" {
+			return v
+		}
+	}
+	// 通用 extra.subscription_tier / plan
+	if account.Extra != nil {
+		if v, ok := account.Extra["subscription_tier"].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+func extractGrokPlanFromExtra(extra map[string]any) string {
+	if extra == nil {
+		return ""
+	}
+	if v, ok := extra["subscription_tier"].(string); ok && strings.TrimSpace(v) != "" {
+		return strings.TrimSpace(v)
+	}
+	// billing / quota 快照
+	for _, key := range []string{"grok_billing_snapshot", "grok_quota_snapshot"} {
+		raw, ok := extra[key]
+		if !ok || raw == nil {
+			continue
+		}
+		m, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if v, ok := m["plan"].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+		if v, ok := m["subscription_tier"].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
 	}
 	return ""
 }
