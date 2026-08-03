@@ -1231,6 +1231,14 @@ func (r *contentModerationHandlerTestRepo) UpdateLogEmailSent(ctx context.Contex
 	return nil
 }
 
+func (r *contentModerationHandlerTestRepo) CreateRequestPayload(ctx context.Context, payload *service.CyberPolicyRequestPayload) error {
+	return nil
+}
+
+func (r *contentModerationHandlerTestRepo) GetRequestPayload(ctx context.Context, moderationLogID int64) (*service.CyberPolicyRequestPayload, error) {
+	return nil, nil
+}
+
 func TestOpenAIResponsesWebSocket_ContentModerationBlocksFirstFrame(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -47,14 +47,20 @@ type contentModerationConfigRequest struct {
 	ViolationWindowHours *int                `json:"violation_window_hours"`
 	// cyber_policy 命中是否排除出自动封号计数；前端 RiskControlView 已发送该字段，
 	// service.UpdateContentModerationConfigInput 已支持，此前 handler 层缺透传导致开关静默失效。
-	CyberPolicyExcludeFromBanCount *bool                                 `json:"cyber_policy_exclude_from_ban_count"`
-	RetryCount                     *int                                  `json:"retry_count"`
-	HitRetentionDays               *int                                  `json:"hit_retention_days"`
-	NonHitRetentionDays            *int                                  `json:"non_hit_retention_days"`
-	PreHashCheckEnabled            *bool                                 `json:"pre_hash_check_enabled"`
-	BlockedKeywords                *[]string                             `json:"blocked_keywords"`
-	KeywordBlockingMode            *string                               `json:"keyword_blocking_mode"`
-	ModelFilter                    *service.ContentModerationModelFilter `json:"model_filter"`
+	CyberPolicyExcludeFromBanCount *bool `json:"cyber_policy_exclude_from_ban_count"`
+	// 以下字段同理：前端已发送、service 已支持，缺了 handler 透传就会静默失效。
+	CyberPolicyCaptureRequest *bool                                 `json:"cyber_policy_capture_request"`
+	ChunkModerationEnabled    *bool                                 `json:"chunk_moderation_enabled"`
+	ChunkTokens               *int                                  `json:"chunk_tokens"`
+	ChunkConcurrency          *int                                  `json:"chunk_concurrency"`
+	ChunkMaxChunks            *int                                  `json:"chunk_max_chunks"`
+	RetryCount                *int                                  `json:"retry_count"`
+	HitRetentionDays          *int                                  `json:"hit_retention_days"`
+	NonHitRetentionDays       *int                                  `json:"non_hit_retention_days"`
+	PreHashCheckEnabled       *bool                                 `json:"pre_hash_check_enabled"`
+	BlockedKeywords           *[]string                             `json:"blocked_keywords"`
+	KeywordBlockingMode       *string                               `json:"keyword_blocking_mode"`
+	ModelFilter               *service.ContentModerationModelFilter `json:"model_filter"`
 }
 
 type contentModerationAPIKeyTestRequest struct {
@@ -112,6 +118,11 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		BanThreshold:                   req.BanThreshold,
 		ViolationWindowHours:           req.ViolationWindowHours,
 		CyberPolicyExcludeFromBanCount: req.CyberPolicyExcludeFromBanCount,
+		CyberPolicyCaptureRequest:      req.CyberPolicyCaptureRequest,
+		ChunkModerationEnabled:         req.ChunkModerationEnabled,
+		ChunkTokens:                    req.ChunkTokens,
+		ChunkConcurrency:               req.ChunkConcurrency,
+		ChunkMaxChunks:                 req.ChunkMaxChunks,
 		RetryCount:                     req.RetryCount,
 		HitRetentionDays:               req.HitRetentionDays,
 		NonHitRetentionDays:            req.NonHitRetentionDays,
@@ -203,6 +214,36 @@ func (h *ContentModerationHandler) ListLogs(c *gin.Context) {
 		return
 	}
 	response.Paginated(c, items, pageResult.Total, pageResult.Page, pageResult.PageSize)
+}
+
+// GetLogRequest 返回 cyber_policy 命中留存的完整原始请求体（懒加载，不进列表接口）。
+func (h *ContentModerationHandler) GetLogRequest(c *gin.Context) {
+	logID, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if err != nil || logID <= 0 {
+		response.BadRequest(c, "Invalid log id")
+		return
+	}
+	payload, err := h.service.GetCyberPolicyRequest(c.Request.Context(), logID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, payload)
+}
+
+// ReplayLogRequest 把留存的请求重放到 moderation 审核接口，即时返回评分（不落库）。
+func (h *ContentModerationHandler) ReplayLogRequest(c *gin.Context) {
+	logID, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if err != nil || logID <= 0 {
+		response.BadRequest(c, "Invalid log id")
+		return
+	}
+	result, err := h.service.ReplayCyberPolicyRequest(c.Request.Context(), logID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 func (h *ContentModerationHandler) UnbanUser(c *gin.Context) {

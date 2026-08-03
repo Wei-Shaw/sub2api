@@ -172,6 +172,21 @@ type ContentModerationConfig struct {
 	// 当次不判定封号，且历史 cyber 行在 CountFlaggedByUserSince 中被排除。
 	// 默认 false（计入，与历史行为一致；旧配置 JSON 无此字段时反序列化为 false）。
 	CyberPolicyExcludeFromBanCount bool `json:"cyber_policy_exclude_from_ban_count"`
+	// CyberPolicyCaptureRequest 为 true 时，cyber_policy 命中会把完整原始请求体
+	// 留存到 cyber_policy_request_payloads（不截断、不脱敏），随风控记录级联删除。
+	CyberPolicyCaptureRequest bool `json:"cyber_policy_capture_request"`
+	// ChunkModerationEnabled 为 true 时，前置审核与观察模式改走分块审核：
+	// 按 ChunkTokens 切分全文、逐片送审、各分类取最高分。
+	//
+	// 默认关闭。开启会显著放大审核调用量与延迟（前置审核是同步阻塞在用户请求上的），
+	// 因此交由管理员在评估成本后显式启用；关闭时行为与启用分块前完全一致。
+	ChunkModerationEnabled bool `json:"chunk_moderation_enabled"`
+	// ChunkTokens 单个审核分片的 token 上限（上游超过约 4000 token 会静默失效）。
+	ChunkTokens int `json:"chunk_tokens"`
+	// ChunkConcurrency 分片审核的并发数。
+	ChunkConcurrency int `json:"chunk_concurrency"`
+	// ChunkMaxChunks 单次审核最多送审的分片数，超出部分丢弃。
+	ChunkMaxChunks int `json:"chunk_max_chunks"`
 }
 
 type ContentModerationConfigView struct {
@@ -207,6 +222,11 @@ type ContentModerationConfigView struct {
 	KeywordBlockingMode            string                          `json:"keyword_blocking_mode"`
 	ModelFilter                    ContentModerationModelFilter    `json:"model_filter"`
 	CyberPolicyExcludeFromBanCount bool                            `json:"cyber_policy_exclude_from_ban_count"`
+	CyberPolicyCaptureRequest      bool                            `json:"cyber_policy_capture_request"`
+	ChunkModerationEnabled         bool                            `json:"chunk_moderation_enabled"`
+	ChunkTokens                    int                             `json:"chunk_tokens"`
+	ChunkConcurrency               int                             `json:"chunk_concurrency"`
+	ChunkMaxChunks                 int                             `json:"chunk_max_chunks"`
 }
 
 type ContentModerationAPIKeyStatus struct {
@@ -299,6 +319,11 @@ type UpdateContentModerationConfigInput struct {
 	KeywordBlockingMode            *string                       `json:"keyword_blocking_mode"`
 	ModelFilter                    *ContentModerationModelFilter `json:"model_filter"`
 	CyberPolicyExcludeFromBanCount *bool                         `json:"cyber_policy_exclude_from_ban_count"`
+	CyberPolicyCaptureRequest      *bool                         `json:"cyber_policy_capture_request"`
+	ChunkModerationEnabled         *bool                         `json:"chunk_moderation_enabled"`
+	ChunkTokens                    *int                          `json:"chunk_tokens"`
+	ChunkConcurrency               *int                          `json:"chunk_concurrency"`
+	ChunkMaxChunks                 *int                          `json:"chunk_max_chunks"`
 }
 
 type ContentModerationModelFilter struct {
@@ -324,14 +349,33 @@ type ContentModerationCheckInput struct {
 type ContentModerationInput struct {
 	Text   string
 	Images []string
+	// FullText 是未经 maxModerationInputRunes 截断的原文，只供分块审核使用。
+	//
+	// Text 保持截断语义不变，是因为它还同时喂给关键词匹配、去重 Hash 和落库摘要——
+	// 让这三者改看全文会连带改变缓存命中、日志体积和拦截行为，而分块开关本该只
+	// 影响送审内容本身。
+	FullText string
 }
 
 func (in *ContentModerationInput) Normalize() {
 	if in == nil {
 		return
 	}
-	in.Text = trimRunes(normalizeContentModerationText(in.Text), maxModerationInputRunes)
+	normalized := normalizeContentModerationText(in.Text)
+	if in.FullText == "" {
+		in.FullText = normalized
+	}
+	in.Text = trimRunes(normalized, maxModerationInputRunes)
 	in.Images = normalizeModerationImages(in.Images)
+}
+
+// chunkSourceText 返回分块审核应当切分的文本：优先用未截断的全文，
+// 没有全文时（例如重放路径本就传入不截断的内容）退回 Text。
+func (in ContentModerationInput) chunkSourceText() string {
+	if in.FullText != "" {
+		return in.FullText
+	}
+	return in.Text
 }
 
 func (in ContentModerationInput) IsEmpty() bool {
@@ -416,6 +460,24 @@ type ContentModerationLog struct {
 	CreatedAt         time.Time          `json:"created_at"`
 }
 
+// CyberPolicyRequestPayload 是一次 cyber_policy 硬阻断留存的完整原始请求体。
+// 与 content_moderation_logs 一对一，随其级联删除（不设独立保留期）。
+type CyberPolicyRequestPayload struct {
+	ID              int64     `json:"id"`
+	ModerationLogID int64     `json:"moderation_log_id"`
+	RequestID       string    `json:"request_id"`
+	UserID          *int64    `json:"user_id,omitempty"`
+	UserEmail       string    `json:"user_email"`
+	APIKeyID        *int64    `json:"api_key_id,omitempty"`
+	GroupID         *int64    `json:"group_id,omitempty"`
+	Endpoint        string    `json:"endpoint"`
+	Protocol        string    `json:"protocol"`
+	Model           string    `json:"model"`
+	RequestBody     string    `json:"request_body"`
+	BodyBytes       int       `json:"body_bytes"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
 type ContentModerationLogFilter struct {
 	Pagination pagination.PaginationParams
 	Result     string
@@ -487,6 +549,10 @@ type ContentModerationRepository interface {
 	CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*ContentModerationCleanupResult, error)
 	// UpdateLogEmailSent 回写邮件发送结果（F7：CreateLog 先行后补 EmailSent）。
 	UpdateLogEmailSent(ctx context.Context, id int64, sent bool) error
+	// CreateRequestPayload 留存 cyber_policy 命中的完整原始请求体。
+	CreateRequestPayload(ctx context.Context, payload *CyberPolicyRequestPayload) error
+	// GetRequestPayload 按风控记录 ID 取回请求体；未留存时返回 (nil, nil)。
+	GetRequestPayload(ctx context.Context, moderationLogID int64) (*CyberPolicyRequestPayload, error)
 }
 
 type ContentModerationHashCache interface {
@@ -698,6 +764,21 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	}
 	if input.CyberPolicyExcludeFromBanCount != nil {
 		cfg.CyberPolicyExcludeFromBanCount = *input.CyberPolicyExcludeFromBanCount
+	}
+	if input.CyberPolicyCaptureRequest != nil {
+		cfg.CyberPolicyCaptureRequest = *input.CyberPolicyCaptureRequest
+	}
+	if input.ChunkModerationEnabled != nil {
+		cfg.ChunkModerationEnabled = *input.ChunkModerationEnabled
+	}
+	if input.ChunkTokens != nil {
+		cfg.ChunkTokens = *input.ChunkTokens
+	}
+	if input.ChunkConcurrency != nil {
+		cfg.ChunkConcurrency = *input.ChunkConcurrency
+	}
+	if input.ChunkMaxChunks != nil {
+		cfg.ChunkMaxChunks = *input.ChunkMaxChunks
 	}
 	if input.Thresholds != nil {
 		cfg.Thresholds = mergeContentModerationThresholds(ContentModerationDefaultThresholds(), *input.Thresholds)
@@ -1052,7 +1133,7 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 		defer s.preBlockActive.Add(-1)
 	}
 	start := time.Now()
-	result, err := s.callModeration(ctx, cfg, content.ModerationInput(), trackPreBlock)
+	scores, chunked, err := s.moderateForCheck(ctx, cfg, content, trackPreBlock)
 	latency := int(time.Since(start).Milliseconds())
 	if err != nil {
 		if trackPreBlock {
@@ -1079,7 +1160,7 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 		return allow
 	}
 
-	flagged, highestCategory, highestScore := evaluateModerationScores(result.CategoryScores, cfg.Thresholds)
+	flagged, highestCategory, highestScore := evaluateModerationScores(scores, cfg.Thresholds)
 	action := ContentModerationActionAllow
 	blocked := false
 	if allowBlock && flagged && cfg.Mode == ContentModerationModePreBlock {
@@ -1088,6 +1169,19 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 	}
 	if trackPreBlock {
 		s.recordPreBlockSyncMetric(latency, action)
+	}
+	if chunked != nil && chunked.DroppedChunks > 0 {
+		// 分片数超过 ChunkMaxChunks，本次并未覆盖全文。必须留痕：静默的不完全
+		// 审核正是分块要修的问题本身。
+		slog.Warn("content_moderation.chunk_limit_reached",
+			"user_id", input.UserID,
+			"api_key_id", input.APIKeyID,
+			"endpoint", input.Endpoint,
+			"protocol", input.Protocol,
+			"scanned_chunks", chunked.ChunkCount,
+			"dropped_chunks", chunked.DroppedChunks,
+			"token_count", chunked.TokenCount,
+			"chunk_max_chunks", cfg.ChunkMaxChunks)
 	}
 	slog.Info("content_moderation.audit_result",
 		"user_id", input.UserID,
@@ -1103,10 +1197,12 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 		"action", action,
 		"highest_category", highestCategory,
 		"highest_score", highestScore,
+		"chunked", chunked != nil,
+		"chunk_count", chunkedCount(chunked),
 		"latency_ms", latency,
 		"queue_delay_ms", queueDelay)
 	if flagged || cfg.RecordNonHits {
-		log := s.buildLog(input, cfg, action, flagged, highestCategory, highestScore, result.CategoryScores, content.ExcerptText(), &latency, queueDelay, "")
+		log := s.buildLog(input, cfg, action, flagged, highestCategory, highestScore, scores, content.ExcerptText(), &latency, queueDelay, "")
 		if queueDelay == nil && cfg.Mode == ContentModerationModePreBlock {
 			s.enqueueRecord(input, cfg, log, hashText, flagged, flagged)
 		} else {
@@ -1122,7 +1218,7 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 			StatusCode:      cfg.BlockStatus,
 			HighestCategory: highestCategory,
 			HighestScore:    highestScore,
-			CategoryScores:  result.CategoryScores,
+			CategoryScores:  scores,
 			Action:          action,
 		}
 	}
@@ -1132,7 +1228,7 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 		Message:         "",
 		HighestCategory: highestCategory,
 		HighestScore:    highestScore,
-		CategoryScores:  result.CategoryScores,
+		CategoryScores:  scores,
 		Action:          action,
 	}
 }
@@ -2107,6 +2203,10 @@ func defaultContentModerationConfig() *ContentModerationConfig {
 			Models: []string{},
 		},
 		CyberPolicyExcludeFromBanCount: false,
+		CyberPolicyCaptureRequest:      true,
+		ChunkTokens:                    defaultContentModerationChunkTokens,
+		ChunkConcurrency:               defaultContentModerationChunkConcurrency,
+		ChunkMaxChunks:                 defaultContentModerationChunkMaxChunks,
 	}
 }
 
@@ -2202,6 +2302,31 @@ func (cfg *ContentModerationConfig) normalize() {
 	}
 	if cfg.NonHitRetentionDays > maxContentModerationNonHitRetentionDays {
 		cfg.NonHitRetentionDays = maxContentModerationNonHitRetentionDays
+	}
+	if cfg.ChunkTokens <= 0 {
+		cfg.ChunkTokens = defaultContentModerationChunkTokens
+	}
+	if cfg.ChunkTokens < minContentModerationChunkTokens {
+		cfg.ChunkTokens = minContentModerationChunkTokens
+	}
+	// 硬性封顶：超过此值会落入上游静默失效区间（返回固定分数且 flagged=false）。
+	if cfg.ChunkTokens > maxContentModerationChunkTokens {
+		cfg.ChunkTokens = maxContentModerationChunkTokens
+	}
+	if cfg.ChunkConcurrency <= 0 {
+		cfg.ChunkConcurrency = defaultContentModerationChunkConcurrency
+	}
+	if cfg.ChunkConcurrency > maxContentModerationChunkConcurrency {
+		cfg.ChunkConcurrency = maxContentModerationChunkConcurrency
+	}
+	if cfg.ChunkMaxChunks <= 0 {
+		cfg.ChunkMaxChunks = defaultContentModerationChunkMaxChunks
+	}
+	if cfg.ChunkMaxChunks < minContentModerationChunkMaxChunks {
+		cfg.ChunkMaxChunks = minContentModerationChunkMaxChunks
+	}
+	if cfg.ChunkMaxChunks > maxContentModerationChunkMaxChunks {
+		cfg.ChunkMaxChunks = maxContentModerationChunkMaxChunks
 	}
 	cfg.GroupIDs = normalizeInt64IDs(cfg.GroupIDs)
 	cfg.Thresholds = mergeContentModerationThresholds(ContentModerationDefaultThresholds(), cfg.Thresholds)
@@ -2439,6 +2564,11 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		KeywordBlockingMode:            cfg.KeywordBlockingMode,
 		ModelFilter:                    cloneContentModerationModelFilter(cfg.ModelFilter),
 		CyberPolicyExcludeFromBanCount: cfg.CyberPolicyExcludeFromBanCount,
+		CyberPolicyCaptureRequest:      cfg.CyberPolicyCaptureRequest,
+		ChunkModerationEnabled:         cfg.ChunkModerationEnabled,
+		ChunkTokens:                    cfg.ChunkTokens,
+		ChunkConcurrency:               cfg.ChunkConcurrency,
+		ChunkMaxChunks:                 cfg.ChunkMaxChunks,
 	}
 }
 
@@ -2983,6 +3113,11 @@ type CyberPolicyRecordInput struct {
 	UpstreamStatus  int
 	UpstreamInTok   int
 	UpstreamOutTok  int
+	// Protocol 标识请求体的协议格式，重放时据此提取待审文本。
+	Protocol string
+	// RequestBody 是触发拦截的完整原始请求体（不截断、不脱敏）；
+	// 为空表示该路径未采集（如 WS 流式路径）。
+	RequestBody string
 }
 
 // RecordCyberPolicyEvent 把一次 cyber_policy 硬阻断写入风控中心日志、计入违规计数、
@@ -3046,6 +3181,24 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 	if err := s.repo.CreateLog(ctx, log); err != nil {
 		logPersisted = false
 		slog.Warn("content_moderation.cyber_create_log_failed", "user_id", in.UserID, "error", err)
+	}
+	if logPersisted && cfg.CyberPolicyCaptureRequest && strings.TrimSpace(in.RequestBody) != "" {
+		payload := &CyberPolicyRequestPayload{
+			ModerationLogID: log.ID,
+			RequestID:       in.RequestID,
+			UserID:          userID,
+			UserEmail:       in.UserEmail,
+			APIKeyID:        apiKeyID,
+			GroupID:         cloneInt64Ptr(in.GroupID),
+			Endpoint:        in.Endpoint,
+			Protocol:        in.Protocol,
+			Model:           in.Model,
+			RequestBody:     in.RequestBody,
+			BodyBytes:       len(in.RequestBody),
+		}
+		if err := s.repo.CreateRequestPayload(ctx, payload); err != nil {
+			slog.Warn("content_moderation.cyber_create_payload_failed", "user_id", in.UserID, "log_id", log.ID, "error", err)
+		}
 	}
 	emailSent := false
 	if s.emailService != nil && strings.TrimSpace(log.UserEmail) != "" {

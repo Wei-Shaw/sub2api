@@ -77,14 +77,17 @@ func (r *contentModerationTestSettingRepo) Delete(ctx context.Context, key strin
 }
 
 type contentModerationTestRepo struct {
-	mu   sync.Mutex
-	logs []ContentModerationLog
+	mu       sync.Mutex
+	logs     []ContentModerationLog
+	payloads []CyberPolicyRequestPayload
 }
 
 func (r *contentModerationTestRepo) CreateLog(ctx context.Context, log *ContentModerationLog) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if log != nil {
+		// 模拟数据库分配 ID，使 UpdateLogEmailSent 与请求体外键关联可用。
+		log.ID = int64(len(r.logs) + 1)
 		r.logs = append(r.logs, *log)
 	}
 	return nil
@@ -121,11 +124,41 @@ func (r *contentModerationTestRepo) UpdateLogEmailSent(ctx context.Context, id i
 	return nil
 }
 
+func (r *contentModerationTestRepo) CreateRequestPayload(ctx context.Context, payload *CyberPolicyRequestPayload) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if payload != nil {
+		payload.ID = int64(len(r.payloads) + 1)
+		r.payloads = append(r.payloads, *payload)
+	}
+	return nil
+}
+
+func (r *contentModerationTestRepo) GetRequestPayload(ctx context.Context, moderationLogID int64) (*CyberPolicyRequestPayload, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.payloads {
+		if r.payloads[i].ModerationLogID == moderationLogID {
+			out := r.payloads[i]
+			return &out, nil
+		}
+	}
+	return nil, nil
+}
+
 func (r *contentModerationTestRepo) snapshotLogs() []ContentModerationLog {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := make([]ContentModerationLog, len(r.logs))
 	copy(out, r.logs)
+	return out
+}
+
+func (r *contentModerationTestRepo) snapshotPayloads() []CyberPolicyRequestPayload {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]CyberPolicyRequestPayload, len(r.payloads))
+	copy(out, r.payloads)
 	return out
 }
 

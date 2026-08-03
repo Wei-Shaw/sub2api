@@ -13,7 +13,18 @@ func ExtractContentModerationText(protocol string, body []byte) string {
 	return ExtractContentModerationInput(protocol, body).Text
 }
 
+// ExtractContentModerationInput 提取待审内容，并按 maxModerationInputRunes 截断。
+// 前置审核走这条路径：每轮只审新增的用户输入，截断可控成本。
 func ExtractContentModerationInput(protocol string, body []byte) ContentModerationInput {
+	out := ExtractContentModerationInputFull(protocol, body)
+	out.Normalize()
+	return out
+}
+
+// ExtractContentModerationInputFull 与 ExtractContentModerationInput 相同，但**不做**
+// maxModerationInputRunes 截断，供分片审核使用——分片需要全文，截断会让超出部分
+// 从未被审核。
+func ExtractContentModerationInputFull(protocol string, body []byte) ContentModerationInput {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return ContentModerationInput{}
 	}
@@ -36,12 +47,10 @@ func ExtractContentModerationInput(protocol string, body []byte) ContentModerati
 		collectLastRoleMessage(gjson.GetBytes(body, "messages"), "user", &parts, &images)
 		collectLastGeminiContent(gjson.GetBytes(body, "contents"), &parts, &images)
 	}
-	out := ContentModerationInput{
+	return ContentModerationInput{
 		Text:   normalizeContentModerationText(strings.Join(parts, "\n")),
 		Images: normalizeModerationImages(images),
 	}
-	out.Normalize()
-	return out
 }
 
 func collectLastRoleMessage(messages gjson.Result, role string, parts *[]string, images *[]string) {

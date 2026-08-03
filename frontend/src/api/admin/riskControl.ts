@@ -42,6 +42,11 @@ export interface ContentModerationConfig {
   keyword_blocking_mode: KeywordBlockingMode
   model_filter: ContentModerationModelFilter
   cyber_policy_exclude_from_ban_count: boolean
+  cyber_policy_capture_request: boolean
+  chunk_moderation_enabled: boolean
+  chunk_tokens: number
+  chunk_concurrency: number
+  chunk_max_chunks: number
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -122,6 +127,11 @@ export interface UpdateContentModerationConfig {
   keyword_blocking_mode?: KeywordBlockingMode
   model_filter?: ContentModerationModelFilter
   cyber_policy_exclude_from_ban_count?: boolean
+  cyber_policy_capture_request?: boolean
+  chunk_moderation_enabled?: boolean
+  chunk_tokens?: number
+  chunk_concurrency?: number
+  chunk_max_chunks?: number
 }
 
 export interface ContentModerationRuntimeStatus {
@@ -199,6 +209,39 @@ export interface ContentModerationLog {
   user_status: string
   queue_delay_ms: number | null
   created_at: string
+}
+
+/** cyber_policy 命中留存的完整原始请求体（不截断、不脱敏）。 */
+export interface CyberPolicyRequestPayload {
+  id: number
+  moderation_log_id: number
+  request_id: string
+  user_id: number | null
+  user_email: string
+  api_key_id: number | null
+  group_id: number | null
+  endpoint: string
+  protocol: string
+  model: string
+  request_body: string
+  body_bytes: number
+  created_at: string
+}
+
+/** 把留存请求重放到 moderation 审核接口的结果（即时返回，不落库）。 */
+export interface CyberPolicyReplayResult {
+  scanned_text: string
+  image_count: number
+  flagged: boolean
+  highest_category: string
+  highest_score: number
+  category_scores: Record<string, number>
+  thresholds: Record<string, number>
+  model: string
+  latency_ms: number
+  chunk_count: number
+  token_count: number
+  chunk_tokens: number
 }
 
 export interface ListContentModerationLogsParams {
@@ -286,6 +329,16 @@ export async function clearFlaggedHashes(): Promise<ClearFlaggedHashesResponse> 
   return data
 }
 
+export async function getLogRequest(logID: number): Promise<CyberPolicyRequestPayload> {
+  const { data } = await apiClient.get<CyberPolicyRequestPayload>(`/admin/risk-control/logs/${logID}/request`)
+  return data
+}
+
+export async function replayLogRequest(logID: number): Promise<CyberPolicyReplayResult> {
+  const { data } = await apiClient.post<CyberPolicyReplayResult>(`/admin/risk-control/logs/${logID}/replay`)
+  return data
+}
+
 export const riskControlAPI = {
   getConfig,
   updateConfig,
@@ -295,6 +348,8 @@ export const riskControlAPI = {
   unbanUser,
   deleteFlaggedHash,
   clearFlaggedHashes,
+  getLogRequest,
+  replayLogRequest,
 }
 
 export default riskControlAPI

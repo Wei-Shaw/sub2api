@@ -48,6 +48,17 @@ func (r *cyberOrderingTestRepo) CleanupExpiredLogs(ctx context.Context, hitBefor
 	return &ContentModerationCleanupResult{}, nil
 }
 
+func (r *cyberOrderingTestRepo) CreateRequestPayload(ctx context.Context, payload *CyberPolicyRequestPayload) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, "create_payload")
+	return nil
+}
+
+func (r *cyberOrderingTestRepo) GetRequestPayload(ctx context.Context, moderationLogID int64) (*CyberPolicyRequestPayload, error) {
+	return nil, nil
+}
+
 func (r *cyberOrderingTestRepo) snapshot() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -302,4 +313,69 @@ func TestRecordCyberPolicyEvent_DefaultCountsTowardBan(t *testing.T) {
 	logs := repo.snapshotLogs()
 	require.Len(t, logs, 1)
 	require.GreaterOrEqual(t, logs[0].ViolationCount, 1, "默认路径行为不变（现状回归）")
+}
+
+func TestRecordCyberPolicyEvent_StoresRequestPayloadWhenEnabled(t *testing.T) {
+	repo := &contentModerationTestRepo{}
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled: "true",
+		}},
+		repo, nil, nil, nil, nil, nil, nil,
+	)
+
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		UserID:          1,
+		UserEmail:       "u@x.com",
+		Model:           "gpt-5",
+		Endpoint:        "/v1/responses",
+		Protocol:        ContentModerationProtocolOpenAIResponses,
+		RequestBody:     `{"input":"hello"}`,
+		UpstreamMessage: "flagged",
+	})
+
+	payloads := repo.snapshotPayloads()
+	require.Len(t, payloads, 1)
+	require.Equal(t, `{"input":"hello"}`, payloads[0].RequestBody)
+	require.Equal(t, ContentModerationProtocolOpenAIResponses, payloads[0].Protocol)
+	require.Equal(t, len(`{"input":"hello"}`), payloads[0].BodyBytes)
+	require.NotZero(t, payloads[0].ModerationLogID)
+}
+
+func TestRecordCyberPolicyEvent_SkipsPayloadWhenCaptureDisabled(t *testing.T) {
+	repo := &contentModerationTestRepo{}
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: `{"cyber_policy_capture_request":false}`,
+		}},
+		repo, nil, nil, nil, nil, nil, nil,
+	)
+
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		UserID:      1,
+		RequestBody: `{"input":"hello"}`,
+		Protocol:    ContentModerationProtocolOpenAIResponses,
+	})
+
+	require.Empty(t, repo.snapshotPayloads())
+	require.Len(t, repo.snapshotLogs(), 1)
+}
+
+func TestRecordCyberPolicyEvent_SkipsPayloadWhenBodyEmpty(t *testing.T) {
+	repo := &contentModerationTestRepo{}
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled: "true",
+		}},
+		repo, nil, nil, nil, nil, nil, nil,
+	)
+
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		UserID:   1,
+		Protocol: ContentModerationProtocolOpenAIResponses,
+	})
+
+	require.Empty(t, repo.snapshotPayloads())
+	require.Len(t, repo.snapshotLogs(), 1)
 }

@@ -429,6 +429,28 @@
                 <ProxySelector v-model="configForm.proxy_id" :proxies="proxies" />
                 <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.proxyHint') }}</p>
               </div>
+              <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700 lg:col-span-2">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.chunkModerationEnabled') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.chunkModerationEnabledHint') }}</p>
+                </div>
+                <Toggle v-model="configForm.chunk_moderation_enabled" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.riskControl.chunkTokens') }}</label>
+                <input v-model.number="configForm.chunk_tokens" type="number" min="200" max="3500" step="100" class="input" />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.chunkTokensHint') }}</p>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.riskControl.chunkConcurrency') }}</label>
+                <input v-model.number="configForm.chunk_concurrency" type="number" min="1" max="8" step="1" class="input" />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.chunkConcurrencyHint') }}</p>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.riskControl.chunkMaxChunks') }}</label>
+                <input v-model.number="configForm.chunk_max_chunks" type="number" min="1" max="64" step="1" class="input" />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.chunkMaxChunksHint') }}</p>
+              </div>
             </div>
 
             <div class="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-800">
@@ -896,6 +918,13 @@
                 </div>
                 <Toggle v-model="configForm.cyber_policy_exclude_from_ban_count" />
               </div>
+              <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700 lg:col-span-2">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberPolicyCaptureRequest') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberPolicyCaptureRequestHint') }}</p>
+                </div>
+                <Toggle v-model="configForm.cyber_policy_capture_request" />
+              </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.banThreshold') }}</label>
                 <input v-model.number="configForm.ban_threshold" type="number" min="1" max="1000" class="input" />
@@ -1106,6 +1135,73 @@
             </div>
             <pre class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50">{{ inputDetailText }}</pre>
           </div>
+
+          <div v-if="inputDetailRow.action === 'cyber_policy'" class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.requestBodyTitle') }}</p>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  class="btn btn-secondary inline-flex items-center gap-2"
+                  :disabled="requestPayloadLoading"
+                  @click="loadRequestPayload"
+                >
+                  <Icon name="eye" size="sm" :class="requestPayloadLoading ? 'animate-pulse' : ''" />
+                  {{ requestPayloadLoading ? t('admin.riskControl.requestBodyLoading') : t('admin.riskControl.requestBodyLoad') }}
+                </button>
+                <button
+                  v-if="requestPayload"
+                  type="button"
+                  class="btn btn-primary inline-flex items-center gap-2"
+                  :disabled="replayLoading"
+                  @click="replayRequest"
+                >
+                  <Icon name="refresh" size="sm" :class="replayLoading ? 'animate-spin' : ''" />
+                  {{ replayLoading ? t('admin.riskControl.replaying') : t('admin.riskControl.replayToModeration') }}
+                </button>
+              </div>
+            </div>
+
+            <p v-if="requestPayloadMissing" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.requestBodyMissing') }}</p>
+
+            <pre v-if="requestPayload" class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50">{{ requestPayload.request_body }}</pre>
+
+            <div v-if="replayResult" class="mt-4 rounded-lg border border-gray-100 bg-white p-3 dark:border-dark-700 dark:bg-dark-800">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.replayResultTitle') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.riskControl.auditTestHighest', { category: replayResult.highest_category || '-', score: percent(replayResult.highest_score) }) }}
+                  </p>
+                </div>
+                <span class="inline-flex rounded-full px-2 py-1 text-xs font-medium" :class="replayResult.flagged ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'">
+                  {{ replayResult.flagged ? t('admin.riskControl.auditTestFlagged') : t('admin.riskControl.auditTestPassed') }}
+                </span>
+              </div>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.riskControl.replayChunkInfo', { tokens: replayResult.token_count, chunks: replayResult.chunk_count, limit: replayResult.chunk_tokens }) }}
+              </p>
+              <p v-if="!replayResult.flagged && replayResult.highest_category === 'illicit'" class="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                {{ t('admin.riskControl.replayCyberDimensionNote') }}
+              </p>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.replayNote') }}</p>
+              <div class="mt-3 max-h-52 space-y-2 overflow-y-auto pr-1">
+                <div v-for="score in replayScoreRows" :key="score.category">
+                  <div class="mb-1 flex items-center justify-between gap-3 text-xs">
+                    <span class="truncate text-gray-600 dark:text-gray-300">{{ score.category }}</span>
+                    <span class="font-mono text-gray-500 dark:text-gray-400">{{ percent(score.score) }} / {{ percent(score.threshold) }}</span>
+                  </div>
+                  <div class="h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+                    <div class="h-full rounded-full" :class="score.hit ? 'bg-red-500' : 'bg-primary-500'" :style="{ width: percentWidth(score.score) }"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3">
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.replayScannedText') }}</p>
+                <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-700 dark:bg-dark-900 dark:text-gray-300">{{ replayResult.scanned_text }}</pre>
+              </div>
+            </div>
+          </div>
         </div>
 
         <template #footer>
@@ -1139,6 +1235,8 @@ import type {
   ContentModerationModelFilterType,
   ContentModerationRuntimeStatus,
   ContentModerationTestAuditResult,
+  CyberPolicyReplayResult,
+  CyberPolicyRequestPayload,
   KeywordBlockingMode,
   ModerationMode,
   UpdateContentModerationConfig,
@@ -1221,6 +1319,11 @@ const moderationTestPrompt = ref('')
 const moderationTestImages = ref<string[]>([])
 const moderationTestResult = ref<ContentModerationTestAuditResult | null>(null)
 const inputDetailRow = ref<ContentModerationLog | null>(null)
+const requestPayload = ref<CyberPolicyRequestPayload | null>(null)
+const requestPayloadLoading = ref(false)
+const requestPayloadMissing = ref(false)
+const replayResult = ref<CyberPolicyReplayResult | null>(null)
+const replayLoading = ref(false)
 let statusTimer: number | null = null
 
 const configForm = reactive({
@@ -1250,6 +1353,11 @@ const configForm = reactive({
   email_on_hit: true,
   auto_ban_enabled: true,
   cyber_policy_exclude_from_ban_count: false,
+  cyber_policy_capture_request: true,
+  chunk_moderation_enabled: false,
+  chunk_tokens: 3000,
+  chunk_concurrency: 2,
+  chunk_max_chunks: 2,
   ban_threshold: 10,
   violation_window_hours: 720,
   hit_retention_days: 180,
@@ -1576,6 +1684,17 @@ const moderationScoreRows = computed<ModerationScoreRow[]>(() => {
     .sort((a, b) => b.score - a.score)
 })
 
+const replayScoreRows = computed<ModerationScoreRow[]>(() => {
+  const result = replayResult.value
+  if (!result) return []
+  return Object.entries(result.category_scores || {})
+    .map(([category, score]) => {
+      const threshold = result.thresholds?.[category] ?? 1
+      return { category, score, threshold, hit: score >= threshold }
+    })
+    .sort((a, b) => b.score - a.score)
+})
+
 const riskThresholdRows = computed<RiskThresholdRow[]>(() => (
   riskThresholdCategories.map((category) => ({
     category,
@@ -1728,6 +1847,11 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.email_on_hit = config.email_on_hit ?? true
   configForm.auto_ban_enabled = config.auto_ban_enabled ?? true
   configForm.cyber_policy_exclude_from_ban_count = config.cyber_policy_exclude_from_ban_count ?? false
+  configForm.cyber_policy_capture_request = config.cyber_policy_capture_request ?? true
+  configForm.chunk_moderation_enabled = config.chunk_moderation_enabled ?? false
+  configForm.chunk_tokens = config.chunk_tokens ?? 3000
+  configForm.chunk_concurrency = config.chunk_concurrency ?? 2
+  configForm.chunk_max_chunks = config.chunk_max_chunks ?? 2
   configForm.ban_threshold = config.ban_threshold || 10
   configForm.violation_window_hours = config.violation_window_hours || 720
   configForm.hit_retention_days = config.hit_retention_days || 180
@@ -1814,6 +1938,11 @@ async function saveConfig() {
       email_on_hit: configForm.email_on_hit,
       auto_ban_enabled: configForm.auto_ban_enabled,
       cyber_policy_exclude_from_ban_count: configForm.cyber_policy_exclude_from_ban_count,
+      cyber_policy_capture_request: configForm.cyber_policy_capture_request,
+      chunk_moderation_enabled: configForm.chunk_moderation_enabled,
+      chunk_tokens: Number(configForm.chunk_tokens) || 3000,
+      chunk_concurrency: Number(configForm.chunk_concurrency) || 2,
+      chunk_max_chunks: Number(configForm.chunk_max_chunks) || 2,
       ban_threshold: Number(configForm.ban_threshold) || 10,
       violation_window_hours: Number(configForm.violation_window_hours) || 720,
       hit_retention_days: Number(configForm.hit_retention_days) || 180,
@@ -1884,12 +2013,50 @@ function inputSummaryText(row: ContentModerationLog): string {
   return row.input_excerpt || row.error || '-'
 }
 
+function resetRequestDetailState() {
+  requestPayload.value = null
+  requestPayloadMissing.value = false
+  replayResult.value = null
+}
+
 function openInputDetail(row: ContentModerationLog) {
   inputDetailRow.value = row
+  resetRequestDetailState()
 }
 
 function closeInputDetail() {
   inputDetailRow.value = null
+  resetRequestDetailState()
+}
+
+async function loadRequestPayload() {
+  const row = inputDetailRow.value
+  if (!row || requestPayloadLoading.value) return
+  requestPayloadLoading.value = true
+  requestPayloadMissing.value = false
+  try {
+    requestPayload.value = await adminAPI.riskControl.getLogRequest(row.id)
+  } catch (err: unknown) {
+    requestPayload.value = null
+    requestPayloadMissing.value = true
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.requestBodyFailed')))
+  } finally {
+    requestPayloadLoading.value = false
+  }
+}
+
+async function replayRequest() {
+  const row = inputDetailRow.value
+  if (!row || replayLoading.value) return
+  replayLoading.value = true
+  try {
+    replayResult.value = await adminAPI.riskControl.replayLogRequest(row.id)
+  } catch (err: unknown) {
+    replayResult.value = null
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.replayFailed')))
+  } finally {
+    replayLoading.value = false
+  }
 }
 
 async function unbanUser(row: ContentModerationLog) {
