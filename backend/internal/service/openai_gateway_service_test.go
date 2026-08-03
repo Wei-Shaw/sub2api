@@ -31,6 +31,18 @@ type stubOpenAIAccountRepo struct {
 	accounts []Account
 REDACTED
 
+type tempUnschedulableOpenAIAccountRepo struct {
+	stubOpenAIAccountRepo
+	modelRateLimitAccountID int64
+	modelRateLimitKey       string
+REDACTED
+
+func (r *tempUnschedulableOpenAIAccountRepo) SetModelRateLimit(_ context.Context, accountID int64, modelKey string, _ time.Time, _ ...string) error {
+	r.modelRateLimitAccountID = accountID
+	r.modelRateLimitKey = modelKey
+	return nil
+REDACTED
+
 type snapshotUpdateAccountRepo struct {
 	stubOpenAIAccountRepo
 	updateExtraCalls chan map[string]any
@@ -78,6 +90,113 @@ REDACTED
 
 func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	return r.ListSchedulableByPlatform(ctx, platform)
+REDACTED
+
+func TestOpenAIGatewayService_ForwardAsAnthropic_TempUnschedulableReturnsFailoverWithoutCommit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.4","max_tokens":32,"messages":[{"role":"user","content":"hello"REDACTED],"stream":falseREDACTED`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := []byte(`{"error":{"message":"Our servers are currently overloaded. Please try again later."REDACTEDREDACTED`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+			Body:       io.NopCloser(bytes.NewReader(upstreamBody)),
+	REDACTED,
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+			Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+				`data: {"type":"response.output_text.delta","delta":"ok"REDACTED`,
+				"",
+				`data: {"type":"response.completed","response":{"id":"resp_second","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`,
+				"",
+		REDACTED, "\n"))),
+	REDACTED,
+REDACTEDREDACTED
+	repo := &tempUnschedulableOpenAIAccountRepo{REDACTED
+	rateLimitService := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{
+			Enabled: false, AllowInsecureHTTP: true,
+	REDACTEDREDACTEDREDACTED,
+		httpUpstream:     upstream,
+		rateLimitService: rateLimitService,
+REDACTED
+	account := &Account{
+		ID: 5099, Name: "temporary-unschedulable", Platform: PlatformOpenAI,
+		Type: AccountTypeAPIKey, Concurrency: 1,
+REDACTED
+			"api_key":                    "sk-test",
+			"base_url":                   "http://upstream.example",
+			"model_provider":             "env-openai",
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{map[string]any{
+				"error_code":       float64(http.StatusBadRequest),
+				"keywords":         []any{"our servers are currently overloaded", "please try again later"REDACTED,
+				"duration_minutes": float64(1),
+	REDACTED
+	REDACTED,
+REDACTED
+
+	_, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "")
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	require.True(t, failoverErr.ShouldRetryNextAccount())
+	require.Equal(t, account.ID, repo.modelRateLimitAccountID, "temporary unschedulability should exclude this account from reselection")
+	require.Equal(t, "gpt-5.4", repo.modelRateLimitKey)
+	require.False(t, IsResponseCommitted(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Empty(t, rec.Body.String())
+
+	secondRec := httptest.NewRecorder()
+	secondContext, _ := gin.CreateTestContext(secondRec)
+	secondContext.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	secondContext.Request.Header.Set("Content-Type", "application/json")
+	secondAccount := *account
+	secondAccount.ID = 5100
+	secondAccount.Name = "healthy-failover-account"
+	result, secondErr := svc.ForwardAsAnthropic(context.Background(), secondContext, &secondAccount, body, "", "")
+	require.NoError(t, secondErr)
+	require.NotNil(t, result)
+	require.Equal(t, "resp_second", result.ResponseID)
+	require.NotEmpty(t, secondRec.Body.String())
+REDACTED
+
+func TestFailoverOpenAIUpstreamHTTPError_NilContextSkipsTempUnschedulablePolicy(t *testing.T) {
+	repo := &tempUnschedulableOpenAIAccountRepo{REDACTED
+	svc := &OpenAIGatewayService{
+		rateLimitService: NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil),
+REDACTED
+	account := &Account{
+		ID: 5099, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+REDACTED
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{map[string]any{
+				"error_code":       float64(http.StatusBadRequest),
+				"keywords":         []any{"servers are currently overloaded"REDACTED,
+				"duration_minutes": float64(1),
+	REDACTED
+	REDACTED,
+REDACTED
+	body := []byte(`{"error":{"message":"Our servers are currently overloaded."REDACTEDREDACTED`)
+	resp := &http.Response{StatusCode: http.StatusBadRequest, Header: http.Header{REDACTEDREDACTED
+
+	got := svc.failoverOpenAIUpstreamHTTPError(
+		context.Background(), nil, account, resp, body,
+		"Our servers are currently overloaded.", "gpt-5.4",
+	)
+
+	require.Nil(t, got)
+	require.Zero(t, repo.modelRateLimitAccountID)
+	require.Empty(t, repo.modelRateLimitKey)
 REDACTED
 
 type groupAwareStubOpenAIAccountRepo struct {
