@@ -1375,9 +1375,10 @@ export default {
         expirationDetails: 'Reset credit expiration details',
         noCreditsAvailable: 'No reset credits available',
         resetSuccess: 'Reset {windowsREDACTED window(s); credits and account state updated',
-        resetCacheRefreshFailed: 'The window was reset, but the reset-credit cache refresh failed. Account state was not recovered.',
-        resetAccountRecoveryFailed: 'The window and reset-credit cache were updated, but account state recovery failed.',
-        resetAccountRefreshFailed: 'The window, reset-credit cache, and account state were updated, but the latest account display could not be loaded.',
+        resetCacheRefreshFailed: 'The window was reset and account state recovered, but the reset-credit count could not be read back. Query it again.',
+        resetAccountRecoveryFailed: 'The window was reset, but account state recovery failed. Recover the account state manually.',
+        resetAccountRefreshFailed: 'The window, account state, and reset-credit cache were updated, but the latest account display could not be loaded.',
+        refreshCachePersistFailed: 'Showing the live count, but its expiration details were unavailable, so the cached details were kept.',
         confirmTitle: 'Confirm Weekly Limit Reset',
         confirmMessage: 'This will consume 1 reset credit to immediately restore the current window ({countREDACTED remaining). This action cannot be undone. Continue?'
       REDACTED,

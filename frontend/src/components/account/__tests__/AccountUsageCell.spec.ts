@@ -509,8 +509,8 @@ REDACTED)
 
 	await flushPromises()
 	expect(getUsage).toHaveBeenCalledTimes(2)
-	  expect(wrapper.text()).toContain('5h|0|200')
-REDACTED)
+	expect(wrapper.text()).toContain('5h|0|200')
+  REDACTED)
 
   it('OpenAI 重置响应更新账号行时不会额外拉取 usage', async () => {
     getUsage.mockResolvedValue({

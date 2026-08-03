@@ -318,7 +318,7 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
-              @account-updated="patchAccountInList"
+              @account-updated="handleAccountUpdated"
             />
           </template>
           <template #cell-proxy="{ row REDACTED">
