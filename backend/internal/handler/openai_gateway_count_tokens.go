@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -145,55 +146,94 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	requestStart := time.Now()
 	// count_tokens 不计费：显式豁免利润门，避免高倍率账号池被门排除后连
 	// token 计数都返回 no available accounts。
-	c.Request = c.Request.WithContext(service.WithOpenAIProfitControlSuppressed(c.Request.Context()))
+	countCtx := service.WithOpenAIProfitControlSuppressed(c.Request.Context())
+	countCtx = h.gatewayService.WithOpenAICodexClientAdmission(countCtx, c, body)
+	c.Request = c.Request.WithContext(countCtx)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	currentRoutingModel := routingModel
 	if preferredMappedModel != "" {
 		currentRoutingModel = preferredMappedModel
 	}
-	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-		c.Request.Context(),
-		apiKey.GroupID,
-		"",
-		sessionHash,
-		currentRoutingModel,
-		nil,
-		service.OpenAIUpstreamTransportAny,
-		service.OpenAIEndpointCapabilityChatCompletions,
-		false,
-		false,
-		false,
-		openAICompatibleRequestPlatform(c.Request.Context(), apiKey),
-	)
-	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
-	if err != nil {
-		requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
-		reqLog.Warn("openai_count_tokens.account_select_failed", zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)))
-		cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel)
-		if !cls.ModelNotFound {
-			markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+	failedAccountIDs := make(map[int64]struct{})
+	clientVetoCount := 0
+	for {
+		selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
+			c.Request.Context(),
+			apiKey.GroupID,
+			"",
+			sessionHash,
+			currentRoutingModel,
+			failedAccountIDs,
+			service.OpenAIUpstreamTransportAny,
+			service.OpenAIEndpointCapabilityChatCompletions,
+			false,
+			false,
+			false,
+			openAICompatibleRequestPlatform(c.Request.Context(), apiKey),
+		)
+		service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
+		if err != nil {
+			requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
+			reqLog.Warn("openai_count_tokens.account_select_failed", zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)))
+			if h.handleOpenAICodexAdmissionError(c, err, false, true) {
+				return
+			}
+			if allExcludedOpenAIAccountsWereClientVetoed(failedAccountIDs, clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), false, true)
+				return
+			}
+			cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel)
+			if !cls.ModelNotFound {
+				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+			}
+			h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
+			return
 		}
-		h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
-		return
-	}
-	if selection == nil || selection.Account == nil {
-		cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel)
-		if !cls.ModelNotFound {
-			markOpsRoutingCapacityLimited(c)
+		if selection == nil || selection.Account == nil {
+			cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel)
+			if !cls.ModelNotFound {
+				markOpsRoutingCapacityLimited(c)
+			}
+			h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
+			return
 		}
-		h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
+
+		account := selection.Account
+		admission := h.gatewayService.OpenAITerminalAdmissionLatest(c.Request.Context(), account)
+		if admission.ClientVetoed {
+			if selection.Acquired && selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), false, true)
+				return
+			}
+			continue
+		}
+		account = admission.Account
+		if err := h.gatewayService.BindStickySessionAfterProfitAdmission(c.Request.Context(), apiKey.GroupID, sessionHash, account.ID); err != nil {
+			reqLog.Warn("openai_count_tokens.bind_sticky_session_after_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		}
+		setOpsSelectedAccount(c, account.ID, account.Platform)
+		forwardBody := mappedBodyForMessages(channelMapping.Mapped, channelMapping.MappedModel)
+		defaultMappedModel := preferredMappedModel
+
+		forwardErr := func() error {
+			if selection.Acquired && selection.ReleaseFunc != nil {
+				defer selection.ReleaseFunc()
+			}
+			return h.gatewayService.ForwardCountTokensAsAnthropic(c.Request.Context(), c, account, forwardBody, defaultMappedModel)
+		}()
+		if errors.Is(forwardErr, service.ErrCodexClientRestricted) {
+			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), false, true)
+				return
+			}
+			continue
+		}
+		if forwardErr != nil {
+			reqLog.Error("openai_count_tokens.forward_failed", zap.Int64("account_id", account.ID), zap.Error(forwardErr))
+		}
 		return
-	}
-
-	account := selection.Account
-	setOpsSelectedAccount(c, account.ID, account.Platform)
-	if selection.Acquired && selection.ReleaseFunc != nil {
-		defer selection.ReleaseFunc()
-	}
-	forwardBody := mappedBodyForMessages(channelMapping.Mapped, channelMapping.MappedModel)
-	defaultMappedModel := preferredMappedModel
-
-	if err := h.gatewayService.ForwardCountTokensAsAnthropic(c.Request.Context(), c, account, forwardBody, defaultMappedModel); err != nil {
-		reqLog.Error("openai_count_tokens.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 	}
 }

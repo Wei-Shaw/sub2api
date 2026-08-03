@@ -108,6 +108,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 	searchID := strings.TrimSpace(gjson.GetBytes(body, "id").String())
 	sessionHash := h.gatewayService.GenerateSessionHashWithFallback(c, nil, searchID)
 	profitVetoCount := 0
+	clientVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	var lastFailoverErr *service.UpstreamFailoverError
 	switchCount := 0
@@ -117,6 +118,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 	// 分组利润控制：alpha search 文本入口请求级装门并固定 pricingAt
 	//（记录路径经 service.OpenAIPricingAtFromContext 从请求 ctx 回读）。
 	asPricingCtx, _ := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	asPricingCtx = h.gatewayService.WithOpenAICodexClientAdmission(asPricingCtx, c, body)
 	c.Request = c.Request.WithContext(asPricingCtx)
 
 	for {
@@ -137,6 +139,13 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		if err != nil || selection == nil || selection.Account == nil {
 			if failoverClientGone(c) {
 				reqLog.Info("openai_alpha_search.account_select_aborted_client_disconnected", zap.Error(err))
+				return
+			}
+			if lastFailoverErr == nil && h.handleOpenAICodexAdmissionError(c, err, streamStarted, false) {
+				return
+			}
+			if lastFailoverErr == nil && allExcludedOpenAIAccountsWereClientVetoed(failedAccountIDs, clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
 				return
 			}
 			if len(failedAccountIDs) == 0 {
@@ -166,9 +175,17 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			}
 			continue
 		}
+		if slotResult == openAISlotAcquireClientVetoed {
+			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
+				return
+			}
+			continue
+		}
 		if slotResult != openAISlotAcquireOK {
 			return
 		}
+		account = selection.Account
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		writerSizeBeforeForward := c.Writer.Size()
 		forwardStart := time.Now()
@@ -187,6 +204,13 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 				h.recordAlphaSearchUsage(c, apiKey, account, subscription, channelMapping, requestedModel, body, result, subject.UserID)
 			}
 			return
+		}
+		if errors.Is(err, service.ErrCodexClientRestricted) {
+			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
+				return
+			}
+			continue
 		}
 
 		var failoverErr *service.UpstreamFailoverError
