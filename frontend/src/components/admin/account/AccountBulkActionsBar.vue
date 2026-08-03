@@ -89,17 +89,18 @@ withDefaults(
   }>(),
   { mineScope: false }
 )
-defineEmits([
-  'delete',
-  'edit-selected',
-  'edit-filtered',
-  'clear',
-  'select-page',
-  'toggle-schedulable',
-  'reset-status',
-  'refresh-token',
-  'probe-upstream-billing'
-])
+defineEmits<{
+  delete: []
+  'edit-selected': []
+  'edit-filtered': []
+  clear: []
+  'select-page': []
+  'select-all-results': []
+  'toggle-schedulable': [schedulable: boolean]
+  'reset-status': []
+  'refresh-token': []
+  'probe-upstream-billing': []
+}>()
 
 const { t } = useI18n()
 </script>
