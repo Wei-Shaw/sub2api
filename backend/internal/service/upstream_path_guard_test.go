@@ -27,7 +27,9 @@ func TestSanitizedUpstreamPathSuffixRejectsNonConformingSegments(t *testing.T) {
 		"//double",
 		"/compact//detail",
 		"/compact/",
+		" /compact",
 		"/ compact",
+		"/compact ",
 		"/compact\x00",
 		"/compact\nX-Injected: 1",
 		"/模型",
@@ -115,6 +117,7 @@ func TestOpenAIResponsesRequestPathSuffixRejectsNonConformingSubpaths(t *testing
 		"/v1/responses/%3fa=b",
 		"/v1/responses/x%23frag",
 		"/v1/responses//double",
+		"/v1/responses/compact%20",
 	}
 	for _, path := range nonConformingPaths {
 		t.Run(path, func(t *testing.T) {
@@ -136,13 +139,28 @@ func TestOpenAIResponsesRequestPathSuffixRejectsNonConformingSubpaths(t *testing
 		"/v1/responses/compact":                "/compact",
 		"/responses/compact/":                  "/compact",
 		"/backend-api/codex/responses/compact": "/compact",
+		"/v1/responses/foo/responses/compact":  "/foo/responses/compact",
 	} {
 		t.Run("forwardable_"+path, func(t *testing.T) {
 			c := newResponsesSuffixTestContext(t, path)
 			require.True(t, IsForwardableOpenAIResponsesRequestPath(c))
 			require.Equal(t, want, openAIResponsesRequestPathSuffix(c))
+			if path == "/v1/responses/foo/responses/compact" {
+				require.False(t, isOpenAIResponsesCompactPath(c))
+			}
 		})
 	}
+}
+
+func TestOpenAIResponsesRequestPathSuffixUsesMatchedWildcardSubpath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/foo/responses/compact", nil)
+	c.Params = gin.Params{{Key: "subpath", Value: "/foo/responses/compact"}}
+
+	require.True(t, IsForwardableOpenAIResponsesRequestPath(c))
+	require.Equal(t, "/foo/responses/compact", openAIResponsesRequestPathSuffix(c))
+	require.False(t, isOpenAIResponsesCompactPath(c))
 }
 
 func TestAppendOpenAIResponsesRequestPathSuffixRefusesUnsafeSuffix(t *testing.T) {

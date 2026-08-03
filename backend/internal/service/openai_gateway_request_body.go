@@ -395,11 +395,21 @@ func rawOpenAIResponsesRequestPathSuffix(c *gin.Context) string {
 	if c == nil || c.Request == nil || c.Request.URL == nil {
 		return ""
 	}
-	normalizedPath := strings.TrimRight(strings.TrimSpace(c.Request.URL.Path), "/")
+	// Gin 的通配参数准确对应当前匹配路由中的 *subpath，不能重新从完整路径里
+	// 搜索最后一个 /responses；否则 /responses/foo/responses/compact 会被静默
+	// 截短成 /compact，改变客户端请求语义。
+	if subpath := strings.TrimRight(c.Param("subpath"), "/"); subpath != "" {
+		return subpath
+	}
+
+	// Forward 的单元测试和少数内部调用不会经过 Gin 路由匹配，因此保留 URL.Path
+	// 回退。取第一个 /responses 才能保留完整后缀；仅允许去掉路由已兼容的尾斜杠，
+	// 不修剪空白等非法字符，留给路径护栏显式拒绝。
+	normalizedPath := strings.TrimRight(c.Request.URL.Path, "/")
 	if normalizedPath == "" {
 		return ""
 	}
-	idx := strings.LastIndex(normalizedPath, "/responses")
+	idx := strings.Index(normalizedPath, "/responses")
 	if idx < 0 {
 		return ""
 	}

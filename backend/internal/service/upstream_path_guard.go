@@ -65,7 +65,7 @@ func isSafeUpstreamPathSegment(segment string) bool {
 // ok=false 表示后缀不可转发，调用方必须拒绝请求，而不是降级成空后缀——否则
 // /responses/compact 之类的请求语义会被静默改写。空后缀合法，表示"没有子路径"。
 func sanitizedUpstreamPathSuffix(raw string) (string, bool) {
-	suffix := strings.TrimSpace(raw)
+	suffix := raw
 	if suffix == "" {
 		return "", true
 	}

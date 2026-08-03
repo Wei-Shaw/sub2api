@@ -349,6 +349,7 @@ func TestGatewayRoutesResponsesSubpathRejectsNonConformingSubpaths(t *testing.T)
 		"/v1/responses/%3fa=b",
 		"/v1/responses/x%23frag",
 		"/v1/responses/compact%2f..",
+		"/v1/responses/compact%20",
 	} {
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-5"}`))
 		req.Header.Set("Content-Type", "application/json")
