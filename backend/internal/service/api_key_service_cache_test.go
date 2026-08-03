@@ -296,8 +296,8 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesReasoningEffortPolicy(t *testi
 	REDACTED,
 		Group: &Group{
 			ID:                 groupID,
-			Name:               "openai",
-			Platform:           PlatformOpenAI,
+			Name:               "composite",
+			Platform:           PlatformComposite,
 			Status:             StatusActive,
 			SubscriptionType:   SubscriptionTypeStandard,
 			RateMultiplier:     1,
@@ -313,6 +313,7 @@ REDACTED
 
 	require.NotNil(t, roundTrip)
 	require.NotNil(t, roundTrip.Group)
+	require.Equal(t, PlatformComposite, roundTrip.Group.Platform)
 	require.Equal(t, "medium", roundTrip.Group.MaxReasoningEffort)
 	require.Equal(t, apiKey.Group.ReasoningEffortMappings, roundTrip.Group.ReasoningEffortMappings)
 REDACTED

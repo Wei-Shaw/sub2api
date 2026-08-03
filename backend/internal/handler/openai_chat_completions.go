@@ -80,10 +80,8 @@ REDACTED
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
 		return
 REDACTED
-	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
-		if cappedBody, changed := service.ApplyOpenAIReasoningEffortPolicy(body, apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings); changed {
-			body = cappedBody
-	REDACTED
+	if cappedBody, changed := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body); changed {
+		body = cappedBody
 REDACTED
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
