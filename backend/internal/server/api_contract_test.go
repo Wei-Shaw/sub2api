@@ -926,6 +926,9 @@ REDACTED{
 					"openai_advanced_scheduler_effective_weight_previous_response": "5",
 					"openai_advanced_scheduler_effective_weight_session_sticky": "3",
 					"openai_codex_user_agent":           "",
+					"openai_codex_client_version":       "",
+					"openai_codex_client_version_synced": "",
+					"openai_codex_version_auto_sync_enabled": true,
 					"openai_fast_policy_settings": {
 						"rules": []
 				REDACTED,
@@ -1216,6 +1219,9 @@ REDACTED{
 					"openai_advanced_scheduler_effective_weight_previous_response": "5",
 					"openai_advanced_scheduler_effective_weight_session_sticky": "3",
 					"openai_codex_user_agent":           "",
+					"openai_codex_client_version":       "",
+					"openai_codex_client_version_synced": "",
+					"openai_codex_version_auto_sync_enabled": true,
 					"openai_fast_policy_settings": {
 						"rules": []
 				REDACTED,
