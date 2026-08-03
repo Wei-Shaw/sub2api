@@ -119,10 +119,10 @@ REDACTED
 REDACTED
 REDACTED
 
-// 账号级自定义 UA 是管理员的显式配置，仍然生效；但必须被重新配对出配套的 originator
-// 与同源 version，不允许出现自相矛盾的身份。
+// 账号级自定义 UA 是管理员的显式配置，仍然生效；但它只贡献客户端名与 OS / 架构 / 终端指纹，
+// originator 与版本段一律由规范身份重建，不允许出现自相矛盾或陈旧的身份。
 func TestEnforceCodexIdentityHeadersWithAccountOverrideUA(t *testing.T) {
-	t.Run("官方形态覆写 UA 被配对并对齐 version", func(t *testing.T) {
+	t.Run("官方形态覆写 UA 保留指纹但重建版本段", func(t *testing.T) {
 		h := make(http.Header)
 		h.Set("originator", "codex-tui")
 		h.Set("user-agent", "luna/1.0.0")
@@ -131,8 +131,8 @@ func TestEnforceCodexIdentityHeadersWithAccountOverrideUA(t *testing.T) {
 		enforceCodexIdentityHeadersWithUA(h, "codex_vscode/0.150.0 (Ubuntu 22.4.0; x86_64) vscode")
 
 		require.Equal(t, "codex_vscode", h.Get("originator"))
-		require.Equal(t, "codex_vscode/0.150.0 (Ubuntu 22.4.0; x86_64) vscode", h.Get("user-agent"))
-		require.Equal(t, "0.150.0", h.Get("version"))
+		require.Equal(t, "codex_vscode/"+codexCLIVersion+" (Ubuntu 22.4.0; x86_64) vscode", h.Get("user-agent"))
+		require.Equal(t, codexCLIVersion, h.Get("version"))
 REDACTED)
 
 	t.Run("非官方形态覆写 UA 回退规范身份", func(t *testing.T) {
@@ -146,16 +146,36 @@ REDACTED)
 		require.Equal(t, codexCLIVersion, h.Get("version"))
 REDACTED)
 
-	// 覆写 UA 自报版本低于上游门槛时 version 头必须抬升，否则上游 404（issue #3901）。
-	t.Run("覆写 UA 版本低于门槛时抬升 version", func(t *testing.T) {
+	// 回归：覆写 UA 填写于某个历史版本时，其版本段必须被重建而不是逐字沿用——
+	// 否则这条配置会绕过版本自动同步，把出站身份永久钉死在陈旧版本上，
+	// 稳定落在上游优先降载的那一侧（UA 与 version 头也不再同源）。
+	t.Run("陈旧覆写 UA 的版本段被重建", func(t *testing.T) {
 		h := make(http.Header)
 		h.Set("originator", "codex_cli_rs")
 
 		enforceCodexIdentityHeadersWithUA(h, "codex_cli_rs/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color")
 
 		require.Equal(t, "codex_cli_rs", h.Get("originator"))
-		require.Equal(t, "codex_cli_rs/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color", h.Get("user-agent"))
+		require.Equal(t, "codex_cli_rs/"+codexCLIVersion+" (Ubuntu 22.4.0; x86_64) xterm-256color", h.Get("user-agent"))
 		require.Equal(t, codexCLIVersion, h.Get("version"))
+		require.NotContains(t, h.Get("user-agent"), "0.125.0")
+REDACTED)
+
+	// 陈旧覆写 UA 同样跟随自动同步到的新版本，无需管理员重新编辑那条 UA。
+	t.Run("陈旧覆写 UA 跟随同步版本", func(t *testing.T) {
+		SetCodexCanonicalUserAgentResolver(func() string {
+			return "codex_cli_rs/0.200.1" + codexCLIUserAgentSuffix
+	REDACTED)
+		t.Cleanup(func() { SetCodexCanonicalUserAgentResolver(nil) REDACTED)
+
+		h := make(http.Header)
+		h.Set("originator", "codex_cli_rs")
+
+		enforceCodexIdentityHeadersWithUA(h, "codex-tui/0.125.0 (Mac OS X 14.0; arm64) iTerm")
+
+		require.Equal(t, "codex-tui", h.Get("originator"))
+		require.Equal(t, "codex-tui/0.200.1 (Mac OS X 14.0; arm64) iTerm", h.Get("user-agent"))
+		require.Equal(t, "0.200.1", h.Get("version"))
 REDACTED)
 REDACTED
 

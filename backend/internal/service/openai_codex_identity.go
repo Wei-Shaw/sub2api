@@ -100,23 +100,40 @@ REDACTED
 
 // resolveCodexOutboundIdentity 由候选 User-Agent 推导自洽的出站身份。
 // candidateUA 为空时使用规范 User-Agent；推导不出官方身份时整体回退为规范 CLI 身份。
+//
+// 候选 UA（面板 / 账号级的管理员显式配置）只贡献客户端名与 OS / 架构 / 终端指纹，
+// 其自带的版本段一律用当前生效版本重建：一条填写于某个历史版本的 UA 否则会把出站身份
+// 永久钉死在陈旧版本上，绕过版本自动同步，落回上游优先降载的那一侧。
+// 需要固定版本请填「Codex 客户端版本号」并关闭自动同步。
 func resolveCodexOutboundIdentity(candidateUA string) codexOutboundIdentity {
+	canonical := codexCanonicalUserAgent()
 	ua := strings.TrimSpace(candidateUA)
 	if ua == "" {
-		ua = codexCanonicalUserAgent()
+		ua = canonical
 REDACTED
 	originator, pairedUA, ok := openai.PairCodexClientIdentity(ua)
 	if !ok {
-		canonical := codexCanonicalUserAgent()
 		if originator, pairedUA, ok = openai.PairCodexClientIdentity(canonical); !ok {
 			originator, pairedUA = openai.CodexCLIOriginator, codexCLIUserAgent
 	REDACTED
 REDACTED
-	version := NormalizeCodexClientVersion(openai.CodexUserAgentVersion(pairedUA))
-	if version == "" || CompareVersions(version, codexUpstreamMinVersion) < 0 {
-		version = codexCLIVersion
+	// 生效版本只有一个来源：规范身份（面板版本号 → 自动同步值 → 内置常量，见
+	// SettingService.GetOpenAICodexClientVersion）。UA 与 version 头由此同源派生。
+	version := codexClientVersionFromUA(canonical)
+	if rebuilt := openai.SetCodexUserAgentVersion(pairedUA, version); rebuilt != "" {
+		pairedUA = rebuilt
 REDACTED
 	return codexOutboundIdentity{userAgent: pairedUA, originator: originator, version: versionREDACTED
+REDACTED
+
+// codexClientVersionFromUA 取 UA 的版本段作为生效版本；
+// 非法或低于上游门槛（低于则上游 404，issue #3901）时回退编译期常量。
+func codexClientVersionFromUA(ua string) string {
+	version := NormalizeCodexClientVersion(openai.CodexUserAgentVersion(ua))
+	if version == "" || CompareVersions(version, codexUpstreamMinVersion) < 0 {
+		return codexCLIVersion
+REDACTED
+	return version
 REDACTED
 
 // ensureCodexIdentityHeaders 补齐 OAuth（ChatGPT 内部接口）出站请求所需的 Codex 身份头。
@@ -158,8 +175,8 @@ REDACTED
 // 降载，被降载的请求会拿到 HTTP 200 + 流内 server_is_overloaded；统一出口可确保没有请求带着
 // 第三方或陈旧身份出站，也天然满足 originator 与 UA 首段配套的上游校验（issue #3901）。
 //
-// overrideUA 是账号级自定义 User-Agent：管理员的显式配置仍然生效，但会被重新配对出配套的
-// originator 与同源 version，不允许出现自相矛盾的身份。
+// overrideUA 是账号级自定义 User-Agent：管理员的显式配置仍然生效，但只贡献客户端名与
+// OS / 架构 / 终端指纹——版本段与 originator 都由规范身份重建，不允许出现自相矛盾或陈旧的身份。
 //
 // 强制统一被 gateway.disable_codex_identity_enforcement 关闭时，退回「按最终 User-Agent 配对
 // originator + version 门槛校正」的收口语义，供上游策略变动时回滚。

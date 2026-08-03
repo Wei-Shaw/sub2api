@@ -424,7 +424,7 @@ export default {
         antigravityUserAgentVersionHint: 'Leave empty to use ANTIGRAVITY_USER_AGENT_VERSION or the built-in default 1.23.2; when set, the admin setting takes precedence.',
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex_cli_rs/0.146.0 (Ubuntu 22.4.0; x86_64) xterm-256color',
-        openaiCodexUserAgentHint: 'The full Codex User-Agent used for all outbound requests. Leave empty to build the standard codex_cli_rs identity from the version below (recommended). Under capacity pressure the upstream sheds load by client identity and drops stale or non-official identities first with server_is_overloaded.',
+        openaiCodexUserAgentHint: 'The full Codex User-Agent used for all outbound requests, for customizing the OS / arch / terminal fingerprint. Leave empty to build the standard codex_cli_rs identity from the version below (recommended). If set, its version segment is still replaced by the version below, so the UA never stays pinned to whatever release you typed it on — under capacity pressure the upstream sheds load by client identity and drops stale or non-official identities first with server_is_overloaded.',
         openaiCodexClientVersion: 'Codex client version',
         openaiCodexClientVersionPlaceholder: 'Leave empty to follow auto-sync',
         openaiCodexClientVersionHint: 'The Codex client version this gateway declares upstream, shared by the User-Agent and the version header. Leave empty to use the auto-synced latest stable release; setting a value pins it and stops following auto-sync.',

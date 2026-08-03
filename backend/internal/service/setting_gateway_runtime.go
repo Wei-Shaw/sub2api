@@ -366,18 +366,27 @@ REDACTED
 REDACTED
 
 // GetOpenAICodexCanonicalUserAgent 返回出站规范 Codex User-Agent。
-// 管理员在面板显式填写的完整 UA 优先；否则按当前生效的客户端版本号拼出标准 CLI UA。
+// 未填面板 UA 时按当前生效的客户端版本号拼出标准 CLI UA。
 //
-// 面板值等于编译期兜底常量时视同未填写：两者不可区分，而按版本号拼装能拿到更新的版本，
+// 面板 UA 只贡献客户端名与 OS / 架构 / 终端指纹，版本段一律用生效版本重建：该输入框是
+// 唯一能改 UA 后缀的地方，但它填写于某个历史版本，逐字沿用会把出站身份永久钉死在陈旧
+// 版本上并绕过自动同步——而陈旧身份正是上游优先降载的那一侧。
 // 需要固定版本请填「Codex 客户端版本号」并关闭自动同步。
 func (s *SettingService) GetOpenAICodexCanonicalUserAgent(ctx context.Context) string {
 	if s == nil {
 		return codexCLIUserAgent
 REDACTED
-	if ua := strings.TrimSpace(s.GetOpenAICodexUserAgent(ctx)); ua != "" && ua != DefaultOpenAICodexUserAgent {
-		return ua
+	version := s.GetOpenAICodexClientVersion(ctx)
+	ua := strings.TrimSpace(s.GetOpenAICodexUserAgent(ctx))
+	if ua == "" {
+		return buildCodexCLIUserAgent(version)
 REDACTED
-	return buildCodexCLIUserAgent(s.GetOpenAICodexClientVersion(ctx))
+	if rebuilt := openai.SetCodexUserAgentVersion(ua, version); rebuilt != "" {
+		return rebuilt
+REDACTED
+	// 非 `{clientREDACTED/{versionREDACTED` 形态：交给 PairCodexClientIdentity 判定，
+	// 推导不出官方身份时由收口整体回退规范身份。
+	return ua
 REDACTED
 
 var legacyClaudeCodeCodexWhitelistEntry = openai.AllowedClientEntry{
