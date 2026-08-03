@@ -537,6 +537,7 @@ type UsageLog struct {
 	CacheReadCost             float64 `json:"cache_read_cost"`
 	TotalCost                 float64 `json:"total_cost"`
 	ActualCost                float64 `json:"actual_cost"`
+	BillingStatus             string  `json:"billing_status"`
 	RateMultiplier            float64 `json:"rate_multiplier"`
 	LongContextBillingApplied bool    `json:"long_context_billing_applied"`
 

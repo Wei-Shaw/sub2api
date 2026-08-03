@@ -16,7 +16,7 @@ import (
 // UsageLog 定义使用日志实体的 schema。
 //
 // 使用日志记录每次 API 调用的详细信息，包括 token 使用量、成本计算等。
-// 这是一个只追加的表，不支持更新和删除。
+// 常规写入只追加；唯一例外是同一请求从 unsettled 单向对账为 settled。
 type UsageLog struct {
 	ent.Schema
 }
@@ -97,6 +97,10 @@ func (UsageLog) Fields() []ent.Field {
 		field.Float("actual_cost").
 			Default(0).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+		field.String("billing_status").
+			MaxLen(16).
+			Default("settled").
+			Comment("Billing settlement state: settled or unsettled"),
 		field.Float("rate_multiplier").
 			Default(1).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),

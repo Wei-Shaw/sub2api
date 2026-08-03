@@ -2098,6 +2098,9 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
+	if err := OpenAIProfitControlErrorFromContext(ctx); err != nil {
+		return nil, OpenAIAccountScheduleDecision{}, err
+	}
 	// 分组利润控制：唯一文本调度入口的防御性装门。handler 文本
 	// 入口已在请求开始经 WithOpenAIRequestPricingContext 装门并固定 pricingAt，
 	// 此处对同分组门直接复用（failover 重入阈值稳定），仅为不经 handler 装配的
@@ -2107,7 +2110,11 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	// 与 WS 桥同款判定），同样不装门——若未来把该 capability 用于非生图流量，
 	// 需要同步收窄本条件（有测试钉死该映射）。
 	if requiredImageCapability == "" && requiredCapability != OpenAIEndpointCapabilityResponses {
-		ctx = s.withOpenAIProfitControlGate(ctx, groupID)
+		var err error
+		ctx, err = s.withOpenAIProfitControlGate(ctx, groupID)
+		if err != nil {
+			return nil, OpenAIAccountScheduleDecision{}, err
+		}
 	}
 	platform = normalizeOpenAICompatiblePlatform(platform)
 	decision := OpenAIAccountScheduleDecision{}

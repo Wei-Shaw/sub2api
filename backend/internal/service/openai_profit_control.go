@@ -1,6 +1,6 @@
 package service
 
-// 分组利润控制（配套 migration 192/193 的 groups.profit_* 字段）。
+// 分组利润控制（配套 migration 192/193/195 的 groups.profit_* 字段）。
 //
 // 定位：利润控制是"候选准入过滤"，只决定账号能否进入调度候选池；既有的排序、
 // 评分、粘性、熔断、负载均衡在合格账号之间照常工作，本文件不改变它们的行为。
@@ -50,9 +50,8 @@ package service
 //     排队成功后复核，越线则释放槽位、加入本请求排除集重新选号，全池耗尽才
 //     返回标准 no available accounts。
 //
-// 失败语义：分组配置读取失败时放行并告警（fail-open）。这是"配置系统故障时
-// 可用性优先"的显式取舍——该异常窗口内利润保证不成立，靠 WARN 与采样观测
-// 暴露，绝不把瞬时 DB 抖动放大成全站不可调度。
+// 失败语义：分组配置读取失败时告警并显式返回错误，禁止在利润阈值未知时
+// 绕过准入控制。HTTP 选号和 WebSocket turn 都会把该错误返回到请求边界。
 //
 // 可观测性：按分组和平台累计装门/threshold 否决/invalid-rate 否决/终检刷新
 // 失败计数，≥5 分钟采样输出一条 Info（profit_control_activity），无逐请求日志。
@@ -68,7 +67,13 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+)
+
+var ErrProfitControlUnavailable = infraerrors.ServiceUnavailable(
+	"PROFIT_CONTROL_UNAVAILABLE",
+	"profit control configuration is temporarily unavailable",
 )
 
 const (
@@ -86,6 +91,7 @@ const (
 )
 
 type openAIProfitControlGateCtxKey struct{}
+type openAIProfitControlErrorCtxKey struct{}
 
 // openAIProfitControlSuppressCtxKey 标记本请求显式跳过利润门（独立图片/视频
 // 端点、Grok 媒体、count_tokens、live 等利润门范围外流量）。所有装门点看到该
@@ -134,7 +140,11 @@ type openAIProfitControlGate struct {
 func (s *OpenAIGatewayService) WithOpenAIRequestPricingContext(ctx context.Context, groupID *int64) (context.Context, time.Time) {
 	pricingAt := timezone.Now()
 	ctx = context.WithValue(ctx, openAIPricingAtCtxKey{}, pricingAt)
-	return s.withOpenAIProfitControlGate(ctx, groupID), pricingAt
+	ctx, err := s.withOpenAIProfitControlGate(ctx, groupID)
+	if err != nil {
+		ctx = context.WithValue(ctx, openAIProfitControlErrorCtxKey{}, err)
+	}
+	return ctx, pricingAt
 }
 
 // WithOpenAIProfitControlSuppressed 标记本请求在利润门范围之外（独立图片/视频
@@ -159,10 +169,12 @@ func (s *OpenAIGatewayService) WithOpenAITurnPricingContext(ctx context.Context,
 		gid := existing.groupID
 		groupID = &gid
 	}
-	gate := s.resolveOpenAIProfitControlGate(ctx, groupID)
+	gate, err := s.resolveOpenAIProfitControlGate(ctx, groupID)
+	if err != nil {
+		return context.WithValue(ctx, openAIProfitControlErrorCtxKey{}, err), pricingAt
+	}
 	if gate == nil {
-		// 分组已关门（或配置读取失败 fail-open）：清除旧 turn 的门，后续 turn
-		// 按无门放行，与 HTTP 路径的开关语义一致。
+		// 分组已关闭利润控制：清除旧 turn 的门，后续 turn 按无门放行。
 		if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); ok && existing != nil {
 			return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, (*openAIProfitControlGate)(nil)), pricingAt
 		}
@@ -170,6 +182,13 @@ func (s *OpenAIGatewayService) WithOpenAITurnPricingContext(ctx context.Context,
 	}
 	openAIProfitControlObserverInstance.recordInstall(gate.groupID, gate.platform, gate.threshold)
 	return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, gate), pricingAt
+}
+
+// OpenAIProfitControlErrorFromContext exposes an installation failure at
+// boundaries that cannot return an error directly, such as a websocket turn hook.
+func OpenAIProfitControlErrorFromContext(ctx context.Context) error {
+	err, _ := ctx.Value(openAIProfitControlErrorCtxKey{}).(error)
+	return err
 }
 
 // openAIPricingAtFromContext 返回请求级定价时刻；未装配（内部调用、非文本
@@ -188,35 +207,41 @@ func OpenAIPricingAtFromContext(ctx context.Context) time.Time {
 }
 
 // withOpenAIProfitControlGate 解析分组利润控制配置；启用时把预计算好的准入门
-// 装进 ctx。抑制标记、未启用/非 openai 分组/无法取到分组配置时原样返回 ctx
-// （门不存在，全部否决点自动放行，既有行为零变化）。ctx 已有同分组门时直接
-// 复用：同一请求的全部 failover 重入共享同一阈值。
-func (s *OpenAIGatewayService) withOpenAIProfitControlGate(ctx context.Context, groupID *int64) context.Context {
+// 装进 ctx。抑制标记、未启用或非 openai 分组时原样返回 ctx；配置读取失败
+// 则显式返回错误。ctx 已有同分组门时直接复用，使同一请求的全部 failover
+// 重入共享同一阈值。
+func (s *OpenAIGatewayService) withOpenAIProfitControlGate(ctx context.Context, groupID *int64) (context.Context, error) {
+	if err := OpenAIProfitControlErrorFromContext(ctx); err != nil {
+		return ctx, err
+	}
 	if _, suppressed := ctx.Value(openAIProfitControlSuppressCtxKey{}).(struct{}); suppressed {
-		return ctx
+		return ctx, nil
 	}
 	if groupID != nil {
 		if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); ok && existing != nil && existing.groupID == *groupID {
-			return ctx
+			return ctx, nil
 		}
 	}
-	gate := s.resolveOpenAIProfitControlGate(ctx, groupID)
+	gate, err := s.resolveOpenAIProfitControlGate(ctx, groupID)
+	if err != nil {
+		return ctx, err
+	}
 	if gate == nil {
 		// 被调度分组无门（未启用/非 openai/配置读取失败）而 ctx 带着其他分组的
 		// 请求门时清除之：门配置取被调度分组，父分组阈值不得泄漏到成员分组
 		//（composite/模型路由等跨分组调度）。typed-nil 覆盖值由否决点按无门放行。
 		if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); ok && existing != nil && groupID != nil && existing.groupID != *groupID {
-			return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, (*openAIProfitControlGate)(nil))
+			return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, (*openAIProfitControlGate)(nil)), nil
 		}
-		return ctx
+		return ctx, nil
 	}
 	openAIProfitControlObserverInstance.recordInstall(gate.groupID, gate.platform, gate.threshold)
-	return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, gate)
+	return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, gate), nil
 }
 
-func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Context, groupID *int64) *openAIProfitControlGate {
+func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Context, groupID *int64) (*openAIProfitControlGate, error) {
 	if s == nil || groupID == nil || *groupID <= 0 {
-		return nil
+		return nil, nil
 	}
 	// 门配置取被调度分组。直连请求（ctx 认证分组即调度分组，生产绝大多数流量）
 	// 直接复用 auth cache 分组，热路径零额外查询；composite 父分组路由到成员
@@ -229,16 +254,15 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 		// Lite 读取：门只用平台/倍率/利润/高峰字段，不需要账号计数聚合。
 		loaded, err := s.schedulerSnapshot.GetGroupByIDLite(ctx, *groupID)
 		if err != nil {
-			// fail-open：配置系统故障时可用性优先，该窗口内利润保证不成立，
-			// 依赖 WARN 暴露；不把瞬时 DB 抖动放大成全站不可调度。
 			slog.Warn("profit_control_group_load_failed", "group_id", *groupID, "error", err)
-			return nil
+			cause := fmt.Errorf("load profit control group %d: %w", *groupID, err)
+			return nil, ErrProfitControlUnavailable.WithCause(cause)
 		}
 		group = loaded
 	}
 	if group == nil || !group.ProfitControlEnabled ||
 		(group.Platform != PlatformOpenAI && group.Platform != PlatformGrok) {
-		return nil
+		return nil, nil
 	}
 
 	pricingAt, ok := openAIPricingAtFromContext(ctx)
@@ -266,7 +290,7 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 		platform:  group.Platform,
 		threshold: threshold,
 		pricingAt: pricingAt,
-	}
+	}, nil
 }
 
 // attachSelectionProfitGate 把调度上下文里生效的利润门记录到选号结果上。门在

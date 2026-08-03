@@ -610,6 +610,7 @@ func TestGatewayServiceRecordUsage_BillingErrorWritesUnsettledUsageLog(t *testin
 	require.Greater(t, usageRepo.lastLog.OutputCost, 0.0)
 	require.Greater(t, usageRepo.lastLog.TotalCost, 0.0)
 	require.Zero(t, usageRepo.lastLog.ActualCost)
+	require.Equal(t, UsageBillingStatusUnsettled, usageRepo.lastLog.BillingStatus)
 }
 
 func TestGatewayServiceRecordUsage_ReasoningEffortPersisted(t *testing.T) {

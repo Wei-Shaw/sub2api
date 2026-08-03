@@ -337,6 +337,20 @@ func (_c *UsageLogCreate) SetNillableActualCost(v *float64) *UsageLogCreate {
 	return _c
 }
 
+// SetBillingStatus sets the "billing_status" field.
+func (_c *UsageLogCreate) SetBillingStatus(v string) *UsageLogCreate {
+	_c.mutation.SetBillingStatus(v)
+	return _c
+}
+
+// SetNillableBillingStatus sets the "billing_status" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableBillingStatus(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetBillingStatus(*v)
+	}
+	return _c
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (_c *UsageLogCreate) SetRateMultiplier(v float64) *UsageLogCreate {
 	_c.mutation.SetRateMultiplier(v)
@@ -717,6 +731,10 @@ func (_c *UsageLogCreate) defaults() {
 		v := usagelog.DefaultActualCost
 		_c.mutation.SetActualCost(v)
 	}
+	if _, ok := _c.mutation.BillingStatus(); !ok {
+		v := usagelog.DefaultBillingStatus
+		_c.mutation.SetBillingStatus(v)
+	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		v := usagelog.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
@@ -838,6 +856,14 @@ func (_c *UsageLogCreate) check() error {
 	}
 	if _, ok := _c.mutation.ActualCost(); !ok {
 		return &ValidationError{Name: "actual_cost", err: errors.New(`ent: missing required field "UsageLog.actual_cost"`)}
+	}
+	if _, ok := _c.mutation.BillingStatus(); !ok {
+		return &ValidationError{Name: "billing_status", err: errors.New(`ent: missing required field "UsageLog.billing_status"`)}
+	}
+	if v, ok := _c.mutation.BillingStatus(); ok {
+		if err := usagelog.BillingStatusValidator(v); err != nil {
+			return &ValidationError{Name: "billing_status", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_status": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "UsageLog.rate_multiplier"`)}
@@ -1013,6 +1039,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ActualCost(); ok {
 		_spec.SetField(usagelog.FieldActualCost, field.TypeFloat64, value)
 		_node.ActualCost = value
+	}
+	if value, ok := _c.mutation.BillingStatus(); ok {
+		_spec.SetField(usagelog.FieldBillingStatus, field.TypeString, value)
+		_node.BillingStatus = value
 	}
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
@@ -1654,6 +1684,18 @@ func (u *UsageLogUpsert) UpdateActualCost() *UsageLogUpsert {
 // AddActualCost adds v to the "actual_cost" field.
 func (u *UsageLogUpsert) AddActualCost(v float64) *UsageLogUpsert {
 	u.Add(usagelog.FieldActualCost, v)
+	return u
+}
+
+// SetBillingStatus sets the "billing_status" field.
+func (u *UsageLogUpsert) SetBillingStatus(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldBillingStatus, v)
+	return u
+}
+
+// UpdateBillingStatus sets the "billing_status" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateBillingStatus() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldBillingStatus)
 	return u
 }
 
@@ -2544,6 +2586,20 @@ func (u *UsageLogUpsertOne) AddActualCost(v float64) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateActualCost() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateActualCost()
+	})
+}
+
+// SetBillingStatus sets the "billing_status" field.
+func (u *UsageLogUpsertOne) SetBillingStatus(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBillingStatus(v)
+	})
+}
+
+// UpdateBillingStatus sets the "billing_status" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateBillingStatus() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBillingStatus()
 	})
 }
 
@@ -3658,6 +3714,20 @@ func (u *UsageLogUpsertBulk) AddActualCost(v float64) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateActualCost() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateActualCost()
+	})
+}
+
+// SetBillingStatus sets the "billing_status" field.
+func (u *UsageLogUpsertBulk) SetBillingStatus(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBillingStatus(v)
+	})
+}
+
+// UpdateBillingStatus sets the "billing_status" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateBillingStatus() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBillingStatus()
 	})
 }
 

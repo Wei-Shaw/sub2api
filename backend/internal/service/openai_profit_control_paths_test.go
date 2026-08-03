@@ -251,12 +251,12 @@ func TestProfitControl_GateUsesUserOverrideRate(t *testing.T) {
 	group.RateMultiplier = 2.0
 
 	ctx := context.WithValue(profitControlTestCtx(group), ctxkey.UserID, int64(42))
-	gate := svc.resolveOpenAIProfitControlGate(ctx, &groupID)
+	gate := resolveOpenAIProfitControlGateForTest(t, svc, ctx, &groupID)
 	require.NotNil(t, gate)
 	require.InDelta(t, 0.5, gate.threshold, 1e-12, "阈值必须基于用户覆盖倍率 0.5，而不是分组默认 2.0")
 
 	// 无用户身份（内部调用）时按分组默认倍率计算。
-	gate = svc.resolveOpenAIProfitControlGate(profitControlTestCtx(group), &groupID)
+	gate = resolveOpenAIProfitControlGateForTest(t, svc, profitControlTestCtx(group), &groupID)
 	require.NotNil(t, gate)
 	require.InDelta(t, 2.0, gate.threshold, 1e-12)
 }
@@ -295,7 +295,7 @@ func TestProfitControl_CompositeUsesBillingGroupRate(t *testing.T) {
 	}
 
 	ctx := profitControlTestCtx(billingGroup)
-	gate := svc.resolveOpenAIProfitControlGate(ctx, &memberGroupID)
+	gate := resolveOpenAIProfitControlGateForTest(t, svc, ctx, &memberGroupID)
 	require.NotNil(t, gate)
 	require.InDelta(t, 0.5, gate.threshold, 1e-12, "D 必须来自计费分组（composite 父分组）倍率 1.0")
 }

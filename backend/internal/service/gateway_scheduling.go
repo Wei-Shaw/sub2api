@@ -64,7 +64,11 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		// 无分组时只使用原生 anthropic 平台
 		platform = PlatformAnthropic
 	}
-	ctx = s.withGatewayProfitControlGate(ctx, groupID)
+	gatedCtx, gateErr := s.withGatewayProfitControlGate(ctx, groupID)
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	ctx = gatedCtx
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
@@ -117,7 +121,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return nil, err
 	}
 	ctx = s.withGroupContext(ctx, group)
-	ctx = s.withGatewayProfitControlGate(ctx, groupID)
+	gatedCtx, gateErr := s.withGatewayProfitControlGate(ctx, groupID)
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	ctx = gatedCtx
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。

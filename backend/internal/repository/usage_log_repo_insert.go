@@ -80,6 +80,7 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // billing_mode
 	"numeric",     // account_stats_cost
 	"text",        // session_id
+	"text",        // billing_status
 	"timestamptz", // created_at
 }
 
@@ -116,6 +117,7 @@ type usageLogBestEffortRequest struct {
 type usageLogInsertPrepared struct {
 	createdAt      time.Time
 	requestID      string
+	billingStatus  string
 	rateMultiplier float64
 	requestType    int16
 	args           []any
@@ -186,7 +188,7 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.
 		apiKeyID: log.APIKeyID,
 		resultCh: make(chan error, 1),
 	}
-	if key, ok := r.bestEffortRecentKey(req.prepared.requestID, req.apiKeyID); ok {
+	if key, ok := r.bestEffortRecentKey(req.prepared.requestID, req.apiKeyID, req.prepared.billingStatus); ok {
 		if _, exists := r.bestEffortRecent.Get(key); exists {
 			return nil
 		}
@@ -276,6 +278,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			billing_mode,
 			account_stats_cost,
 			session_id,
+			billing_status,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
@@ -283,13 +286,18 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58
 		)
-		ON CONFLICT (request_id, api_key_id) DO NOTHING
-		RETURNING id, created_at
+		ON CONFLICT (request_id, api_key_id) DO UPDATE
+		SET actual_cost = EXCLUDED.actual_cost,
+			billing_status = EXCLUDED.billing_status
+		WHERE usage_logs.billing_status = 'unsettled'
+		  AND EXCLUDED.billing_status = 'settled'
+		RETURNING id, created_at, (xmax = 0) AS inserted
 	`
 
-	if err := scanSingleRow(ctx, sqlq, query, prepared.args, &log.ID, &log.CreatedAt); err != nil {
+	var inserted bool
+	if err := scanSingleRow(ctx, sqlq, query, prepared.args, &log.ID, &log.CreatedAt, &inserted); err != nil {
 		if errors.Is(err, sql.ErrNoRows) && prepared.requestID != "" {
 			selectQuery := "SELECT id, created_at FROM usage_logs WHERE request_id = $1 AND api_key_id = $2"
 			if err := scanSingleRow(ctx, sqlq, selectQuery, []any{prepared.requestID, log.APIKeyID}, &log.ID, &log.CreatedAt); err != nil {
@@ -302,7 +310,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 		}
 	}
 	log.RateMultiplier = prepared.rateMultiplier
-	return true, nil
+	return inserted, nil
 }
 
 func (r *usageLogRepository) createBatched(ctx context.Context, log *service.UsageLog) (bool, error) {
@@ -474,6 +482,8 @@ func (r *usageLogRepository) flushCreateBatch(db *sql.DB, batch []usageLogCreate
 		if _, exists := requestsByKey[key]; !exists {
 			uniqueOrder = append(uniqueOrder, key)
 			preparedByKey[key] = prepared
+		} else if preferUsageLogSettlement(prepared, preparedByKey[key]) {
+			preparedByKey[key] = prepared
 		}
 		requestsByKey[key] = append(requestsByKey[key], req)
 	}
@@ -557,13 +567,11 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 	type bestEffortGroup struct {
 		prepared usageLogInsertPrepared
 		apiKeyID int64
-		key      string
 		reqs     []usageLogBestEffortRequest
 	}
 
 	groupsByKey := make(map[string]*bestEffortGroup, len(batch))
 	groupOrder := make([]*bestEffortGroup, 0, len(batch))
-	preparedList := make([]usageLogInsertPrepared, 0, len(batch))
 
 	for idx, req := range batch {
 		prepared := req.prepared
@@ -576,13 +584,17 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 			group = &bestEffortGroup{
 				prepared: prepared,
 				apiKeyID: req.apiKeyID,
-				key:      key,
 			}
 			groupsByKey[key] = group
 			groupOrder = append(groupOrder, group)
-			preparedList = append(preparedList, prepared)
+		} else if preferUsageLogSettlement(prepared, group.prepared) {
+			group.prepared = prepared
 		}
 		group.reqs = append(group.reqs, req)
+	}
+	preparedList := make([]usageLogInsertPrepared, 0, len(groupOrder))
+	for _, group := range groupOrder {
+		preparedList = append(preparedList, group.prepared)
 	}
 
 	if len(preparedList) == 0 {
@@ -602,8 +614,8 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 			singleErr := execUsageLogInsertNoResult(ctx, db, group.prepared)
 			if singleErr != nil {
 				logger.LegacyPrintf("repository.usage_log", "best-effort single fallback insert failed: %v", singleErr)
-			} else if group.prepared.requestID != "" && r != nil && r.bestEffortRecent != nil {
-				r.bestEffortRecent.SetDefault(group.key, struct{}{})
+			} else if recentKey, ok := r.bestEffortRecentKey(group.prepared.requestID, group.apiKeyID, group.prepared.billingStatus); ok {
+				r.bestEffortRecent.SetDefault(recentKey, struct{}{})
 			}
 			for _, req := range group.reqs {
 				sendUsageLogBestEffortResult(req.resultCh, singleErr)
@@ -612,8 +624,8 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 		return
 	}
 	for _, group := range groupOrder {
-		if group.prepared.requestID != "" && r != nil && r.bestEffortRecent != nil {
-			r.bestEffortRecent.SetDefault(group.key, struct{}{})
+		if recentKey, ok := r.bestEffortRecentKey(group.prepared.requestID, group.apiKeyID, group.prepared.billingStatus); ok {
+			r.bestEffortRecent.SetDefault(recentKey, struct{}{})
 		}
 		for _, req := range group.reqs {
 			sendUsageLogBestEffortResult(req.resultCh, nil)
@@ -731,6 +743,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			billing_mode,
 			account_stats_cost,
 			session_id,
+			billing_status,
 			created_at
 		) AS (VALUES `)
 
@@ -821,6 +834,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				billing_mode,
 				account_stats_cost,
 				session_id,
+				billing_status,
 				created_at
 			)
 			SELECT
@@ -880,10 +894,15 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				billing_mode,
 				account_stats_cost,
 				session_id,
+				billing_status,
 				created_at
 			FROM input
-			ON CONFLICT (request_id, api_key_id) DO NOTHING
-			RETURNING request_id, api_key_id, id, created_at
+			ON CONFLICT (request_id, api_key_id) DO UPDATE
+			SET actual_cost = EXCLUDED.actual_cost,
+				billing_status = EXCLUDED.billing_status
+			WHERE usage_logs.billing_status = 'unsettled'
+			  AND EXCLUDED.billing_status = 'settled'
+			RETURNING request_id, api_key_id, id, created_at, (xmax = 0) AS was_inserted
 		),
 		resolved AS (
 			SELECT
@@ -892,7 +911,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				input.api_key_id,
 				COALESCE(inserted.id, existing.id) AS id,
 				COALESCE(inserted.created_at, existing.created_at) AS created_at,
-				(inserted.id IS NOT NULL) AS inserted
+				COALESCE(inserted.was_inserted, FALSE) AS inserted
 			FROM input
 			LEFT JOIN inserted
 				ON inserted.request_id = input.request_id
@@ -979,10 +998,11 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_mode,
 			account_stats_cost,
 			session_id,
+			billing_status,
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*57)
+	args := make([]any, 0, len(preparedList)*58)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1064,6 +1084,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_mode,
 			account_stats_cost,
 			session_id,
+			billing_status,
 			created_at
 		)
 		SELECT
@@ -1123,9 +1144,14 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_mode,
 			account_stats_cost,
 			session_id,
+			billing_status,
 			created_at
 		FROM input
-		ON CONFLICT (request_id, api_key_id) DO NOTHING
+		ON CONFLICT (request_id, api_key_id) DO UPDATE
+		SET actual_cost = EXCLUDED.actual_cost,
+			billing_status = EXCLUDED.billing_status
+		WHERE usage_logs.billing_status = 'unsettled'
+		  AND EXCLUDED.billing_status = 'settled'
 	`)
 
 	return query.String(), args
@@ -1190,6 +1216,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			billing_mode,
 			account_stats_cost,
 			session_id,
+			billing_status,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
@@ -1197,9 +1224,13 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57
-		)
-		ON CONFLICT (request_id, api_key_id) DO NOTHING
+				$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58
+			)
+			ON CONFLICT (request_id, api_key_id) DO UPDATE
+			SET actual_cost = EXCLUDED.actual_cost,
+				billing_status = EXCLUDED.billing_status
+			WHERE usage_logs.billing_status = 'unsettled'
+			  AND EXCLUDED.billing_status = 'settled'
 	`, prepared.args...)
 	return err
 }
@@ -1212,6 +1243,11 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 
 	requestID := strings.TrimSpace(log.RequestID)
 	log.RequestID = requestID
+	billingStatus := strings.TrimSpace(log.BillingStatus)
+	if billingStatus == "" {
+		billingStatus = service.UsageBillingStatusSettled
+	}
+	log.BillingStatus = billingStatus
 
 	rateMultiplier := log.RateMultiplier
 	log.SyncRequestTypeAndLegacyFields()
@@ -1253,6 +1289,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	return usageLogInsertPrepared{
 		createdAt:      createdAt,
 		requestID:      requestID,
+		billingStatus:  billingStatus,
 		rateMultiplier: rateMultiplier,
 		requestType:    requestType,
 		args: []any{
@@ -1312,6 +1349,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			billingMode,
 			log.AccountStatsCost, // account_stats_cost
 			sessionID,            // session_id
+			billingStatus,        // billing_status
 			createdAt,
 		},
 	}
@@ -1331,10 +1369,15 @@ func sendUsageLogCreateResult(ch chan usageLogCreateResult, res usageLogCreateRe
 	}
 }
 
-func (r *usageLogRepository) bestEffortRecentKey(requestID string, apiKeyID int64) (string, bool) {
+func preferUsageLogSettlement(candidate, current usageLogInsertPrepared) bool {
+	return candidate.billingStatus == service.UsageBillingStatusSettled &&
+		current.billingStatus == service.UsageBillingStatusUnsettled
+}
+
+func (r *usageLogRepository) bestEffortRecentKey(requestID string, apiKeyID int64, billingStatus string) (string, bool) {
 	requestID = strings.TrimSpace(requestID)
 	if requestID == "" || r == nil || r.bestEffortRecent == nil {
 		return "", false
 	}
-	return usageLogBatchKey(requestID, apiKeyID), true
+	return usageLogBatchKey(requestID, apiKeyID) + "\x1f" + billingStatus, true
 }

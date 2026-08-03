@@ -180,6 +180,11 @@ func ActualCost(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldActualCost, v))
 }
 
+// BillingStatus applies equality check predicate on the "billing_status" field. It's identical to BillingStatusEQ.
+func BillingStatus(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingStatus, v))
+}
+
 // RateMultiplier applies equality check predicate on the "rate_multiplier" field. It's identical to RateMultiplierEQ.
 func RateMultiplier(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldRateMultiplier, v))
@@ -1428,6 +1433,71 @@ func ActualCostLT(v float64) predicate.UsageLog {
 // ActualCostLTE applies the LTE predicate on the "actual_cost" field.
 func ActualCostLTE(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldLTE(FieldActualCost, v))
+}
+
+// BillingStatusEQ applies the EQ predicate on the "billing_status" field.
+func BillingStatusEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingStatus, v))
+}
+
+// BillingStatusNEQ applies the NEQ predicate on the "billing_status" field.
+func BillingStatusNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldBillingStatus, v))
+}
+
+// BillingStatusIn applies the In predicate on the "billing_status" field.
+func BillingStatusIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldBillingStatus, vs...))
+}
+
+// BillingStatusNotIn applies the NotIn predicate on the "billing_status" field.
+func BillingStatusNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldBillingStatus, vs...))
+}
+
+// BillingStatusGT applies the GT predicate on the "billing_status" field.
+func BillingStatusGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldBillingStatus, v))
+}
+
+// BillingStatusGTE applies the GTE predicate on the "billing_status" field.
+func BillingStatusGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldBillingStatus, v))
+}
+
+// BillingStatusLT applies the LT predicate on the "billing_status" field.
+func BillingStatusLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldBillingStatus, v))
+}
+
+// BillingStatusLTE applies the LTE predicate on the "billing_status" field.
+func BillingStatusLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldBillingStatus, v))
+}
+
+// BillingStatusContains applies the Contains predicate on the "billing_status" field.
+func BillingStatusContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldBillingStatus, v))
+}
+
+// BillingStatusHasPrefix applies the HasPrefix predicate on the "billing_status" field.
+func BillingStatusHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldBillingStatus, v))
+}
+
+// BillingStatusHasSuffix applies the HasSuffix predicate on the "billing_status" field.
+func BillingStatusHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldBillingStatus, v))
+}
+
+// BillingStatusEqualFold applies the EqualFold predicate on the "billing_status" field.
+func BillingStatusEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldBillingStatus, v))
+}
+
+// BillingStatusContainsFold applies the ContainsFold predicate on the "billing_status" field.
+func BillingStatusContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldBillingStatus, v))
 }
 
 // RateMultiplierEQ applies the EQ predicate on the "rate_multiplier" field.

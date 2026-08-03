@@ -62,14 +62,16 @@ func TestGatewayProfitControlInstallsForFivePlatformsOnlyOnTokenRequests(t *test
 			groupID := group.ID
 			svc := &GatewayService{}
 
-			tokenCtx := svc.withGatewayProfitControlGate(gatewayProfitTestContext(group), &groupID)
+			tokenCtx, err := svc.withGatewayProfitControlGate(gatewayProfitTestContext(group), &groupID)
+			require.NoError(t, err)
 			gate, _ := tokenCtx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate)
 			require.NotNil(t, gate)
 			require.Equal(t, platform, gate.platform)
 			require.InDelta(t, 0.5, gate.threshold, 1e-12)
 
 			metadataCtx := context.WithValue(context.Background(), ctxkey.Group, group)
-			metadataCtx = svc.withGatewayProfitControlGate(metadataCtx, &groupID)
+			metadataCtx, err = svc.withGatewayProfitControlGate(metadataCtx, &groupID)
+			require.NoError(t, err)
 			gate, _ = metadataCtx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate)
 			require.Nil(t, gate, "未显式标记为 token 请求的入口不得装门")
 		})
@@ -100,7 +102,8 @@ func TestGatewayProfitControlCompositeBillingUsesScheduledMemberConfig(t *testin
 			nil,
 		),
 	}
-	ctx = svc.withGatewayProfitControlGate(ctx, &memberGroup.ID)
+	ctx, err := svc.withGatewayProfitControlGate(ctx, &memberGroup.ID)
+	require.NoError(t, err)
 	gate, _ := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate)
 	require.NotNil(t, gate)
 	require.Equal(t, memberGroup.ID, gate.groupID)
@@ -109,7 +112,7 @@ func TestGatewayProfitControlCompositeBillingUsesScheduledMemberConfig(t *testin
 	require.InDelta(t, 0.4*(1-0.25), gate.threshold, 1e-12, "D 必须取 composite 计费父分组，margin 取被调度成员分组")
 }
 
-func TestGatewayProfitControlGroupLoadFailureClearsForeignGate(t *testing.T) {
+func TestGatewayProfitControlGroupLoadFailureReturnsError(t *testing.T) {
 	billingGroup := &Group{
 		ID:               211,
 		Platform:         PlatformComposite,
@@ -135,13 +138,9 @@ func TestGatewayProfitControlGroupLoadFailureClearsForeignGate(t *testing.T) {
 		),
 	}
 
-	ctx = svc.withGatewayProfitControlGate(ctx, &targetGroupID)
-	gate, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate)
-	require.True(t, ok)
-	require.Nil(t, gate, "加载新分组失败时必须清除其他分组遗留的门")
-
-	account := gatewayProfitTestAccount(213, PlatformAnthropic, 0.8, targetGroupID)
-	require.True(t, svc.isGatewayAccountProfitEligible(ctx, &account), "配置读取失败按既定语义 fail-open")
+	_, err := svc.withGatewayProfitControlGate(ctx, &targetGroupID)
+	require.ErrorIs(t, err, ErrProfitControlUnavailable)
+	require.ErrorContains(t, err, "load profit control group 212")
 }
 
 type profitControlFailingGroupRepo struct {
@@ -275,8 +274,10 @@ func TestGatewayProfitControlStickyVetoKeepsBindingUntilRateRecovers(t *testing.
 	require.Equal(t, cheap.ID, selected.ID)
 	require.Equal(t, expensive.ID, cache.sessionBindings["sticky-profit"], "候选过滤不得覆盖旧粘性绑定")
 
+	gateCtx, err := svc.withGatewayProfitControlGate(ctx, &group.ID)
+	require.NoError(t, err)
 	require.NoError(t, svc.BindStickySessionAfterProfitAdmission(
-		svc.withGatewayProfitControlGate(ctx, &group.ID),
+		gateCtx,
 		&group.ID,
 		"sticky-profit",
 		cheap.ID,
@@ -395,7 +396,8 @@ func TestGatewayProfitControlSelectionCarriesGateToHandlerContext(t *testing.T) 
 	svc := &GatewayService{}
 	expensive := gatewayProfitTestAccount(161, PlatformAnthropic, 0.9, group.ID)
 
-	gateCtx := svc.withGatewayProfitControlGate(gatewayProfitTestContext(group), &group.ID)
+	gateCtx, err := svc.withGatewayProfitControlGate(gatewayProfitTestContext(group), &group.ID)
+	require.NoError(t, err)
 	selection, err := svc.newSelectionResult(gateCtx, &expensive, true, nil, nil)
 	require.NoError(t, err)
 	require.True(t, selection.ProfitGateActive(), "选号结果必须携带调度栈内生效的门")
@@ -426,7 +428,8 @@ func TestGatewayProfitControlImageIntentDoesNotDisableGate(t *testing.T) {
 
 	ctx := gatewayProfitTestContext(group)
 	ctx = WithOpenAIImageGenerationIntent(ctx)
-	gateCtx := svc.withGatewayProfitControlGate(ctx, &group.ID)
+	gateCtx, err := svc.withGatewayProfitControlGate(ctx, &group.ID)
+	require.NoError(t, err)
 	require.False(t, svc.isGatewayAccountProfitEligible(gateCtx, &expensive),
 		"请求体里的生图声明（含被动 image_gen namespace）不得关闭利润门")
 }

@@ -482,7 +482,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	firstOutputTimeoutSwitchCount := 0
-	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
@@ -582,12 +581,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if slotResult == openAISlotAcquireProfitVetoed {
-			// 利润终检否决：排除该账号重新选号，全池耗尽由下一轮选号报错；
-			// 否决次数达上限则直接终止，避免排队抢槽后才终检的延迟放大。
-			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
-				h.handleOpenAIProfitVetoExhausted(c, streamStarted, reqLog, profitVetoCount)
-				return
-			}
+			recordOpenAIProfitVeto(failedAccountIDs, account.ID)
 			continue
 		}
 		if slotResult != openAISlotAcquireOK {
@@ -1062,7 +1056,6 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
-	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
@@ -1139,12 +1132,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if slotResult == openAISlotAcquireProfitVetoed {
-			// 利润终检否决：排除该账号重新选号，全池耗尽由下一轮选号报错；
-			// 否决次数达上限则直接终止，避免排队抢槽后才终检的延迟放大。
-			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
-				h.handleOpenAIProfitVetoExhausted(c, streamStarted, reqLog, profitVetoCount)
-				return
-			}
+			recordOpenAIProfitVeto(failedAccountIDs, account.ID)
 			continue
 		}
 		if slotResult != openAISlotAcquireOK {
@@ -1477,32 +1465,10 @@ func (p *openAIWSTurnPricing) current() time.Time {
 	return p.at
 }
 
-// recordOpenAIProfitVeto 记录 OpenAI 侧选号循环的一次利润门终检否决：把账号
-// 加入本请求排除集并递增否决计数。返回 false 表示否决次数已达
-// maxProfitVetoAttempts，调用方必须停止重选并按「无可用账号」终止。
-//
-// OpenAI 路径用的是各自的 failedAccountIDs map + for 循环（不是 FailoverState），
-// 这里用一个独立计数器复用同一上限语义。上限是必需的：WaitPlan 分支先阻塞
-// 排队（sticky 45s / fallback 30s）拿到槽位才终检，无上限重选会把单次请求的
-// 延迟放大到 N × WaitPlan.Timeout。
-func recordOpenAIProfitVeto(failedAccountIDs map[int64]struct{}, accountID int64, vetoCount *int) bool {
+// recordOpenAIProfitVeto excludes a terminally vetoed account. The next
+// selection pass stops when no eligible candidates remain.
+func recordOpenAIProfitVeto(failedAccountIDs map[int64]struct{}, accountID int64) {
 	failedAccountIDs[accountID] = struct{}{}
-	*vetoCount++
-	return *vetoCount < maxProfitVetoAttempts
-}
-
-// handleOpenAIProfitVetoExhausted 在利润否决预算耗尽时写出错误响应。
-// 与 acquireResponsesAccountSlot 内部的 no-available-accounts 失败分支同形，
-// 保证同一调用方在两条路径上拿到一致的响应格式。
-func (h *OpenAIGatewayHandler) handleOpenAIProfitVetoExhausted(
-	c *gin.Context,
-	streamStarted bool,
-	reqLog *zap.Logger,
-	vetoCount int,
-) {
-	reqLog.Warn("openai.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", vetoCount))
-	markOpsRoutingCapacityLimited(c)
-	h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", profitVetoExhaustedMessage, streamStarted)
 }
 
 func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
@@ -1877,7 +1843,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	)
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
-	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
@@ -1993,11 +1958,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					accountReleaseFunc()
 				}
 				reqLog.Debug("openai.websocket_account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
-				if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
-					reqLog.Warn("openai.websocket_profit_veto_attempts_exhausted", zap.Int("profit_veto_count", profitVetoCount))
-					closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "no available account")
-					return
-				}
+				recordOpenAIProfitVeto(failedAccountIDs, account.ID)
 				continue
 			}
 			account = latest
@@ -2030,11 +1991,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					fastReleaseFunc()
 				}
 				reqLog.Debug("openai.websocket_account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
-				if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
-					reqLog.Warn("openai.websocket_profit_veto_attempts_exhausted", zap.Int("profit_veto_count", profitVetoCount))
-					closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "no available account")
-					return
-				}
+				recordOpenAIProfitVeto(failedAccountIDs, account.ID)
 				continue
 			}
 			account = latest
@@ -2136,6 +2093,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 当前账号，越线即要求客户端重连重选（连接绑定单一上游账号，
 				// 无法中途换号）。本 turn 的准入与计费共用同一 pricingAt。
 				turnCtx, turnAt := h.gatewayService.WithOpenAITurnPricingContext(ctx, apiKey.GroupID)
+				if err := service.OpenAIProfitControlErrorFromContext(turnCtx); err != nil {
+					return err
+				}
 				if _, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(turnCtx, account); vetoed {
 					reqLog.Info("openai.websocket_turn_profit_vetoed",
 						zap.Int("turn", turn),

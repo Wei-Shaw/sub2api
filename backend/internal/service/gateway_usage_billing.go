@@ -535,7 +535,7 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 			logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
 			// 计费已在此前完成，日志必须落库：dropped（批处理队列超时）同样走同步兜底，
 			// 否则会出现“已扣费但无 usage_log”的对账缺口（issue #3656）。
-			// 重复写入由 usage_logs 的 ON CONFLICT (request_id, api_key_id) DO NOTHING 防护。
+			// 重复写入由 usage_logs 的唯一键防护；已结算重试只会纠正未结算行。
 			fallbackCtx := usageCtx
 			if usageCtx.Err() != nil {
 				// usageCtx 已耗尽（best-effort 入队阻塞到期限）：换新的 detached 窗口，避免兜底必然失败。
@@ -787,9 +787,11 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	if billingErr != nil {
 		usageLog.ActualCost = 0
+		usageLog.BillingStatus = UsageBillingStatusUnsettled
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		return billingErr
 	}
+	usageLog.BillingStatus = UsageBillingStatusSettled
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 
 	return nil

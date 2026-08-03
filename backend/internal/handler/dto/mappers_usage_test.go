@@ -197,6 +197,7 @@ func TestUsageLogFromService_KeepsUserBillingAndIPWithoutAdminCostFields(t *test
 		CacheReadCost:         0.04,
 		TotalCost:             0.10,
 		ActualCost:            0.08,
+		BillingStatus:         service.UsageBillingStatusSettled,
 		RateMultiplier:        0.8,
 		IPAddress:             &ipAddress,
 		AccountRateMultiplier: &accountRateMultiplier,
@@ -210,6 +211,7 @@ func TestUsageLogFromService_KeepsUserBillingAndIPWithoutAdminCostFields(t *test
 	require.Equal(t, 0.04, userDTO.CacheReadCost)
 	require.Equal(t, 0.10, userDTO.TotalCost)
 	require.Equal(t, 0.08, userDTO.ActualCost)
+	require.Equal(t, service.UsageBillingStatusSettled, userDTO.BillingStatus)
 	require.Equal(t, 0.8, userDTO.RateMultiplier)
 	require.NotNil(t, userDTO.IPAddress)
 	require.Equal(t, ipAddress, *userDTO.IPAddress)

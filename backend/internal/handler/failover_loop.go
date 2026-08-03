@@ -40,17 +40,7 @@ const (
 	// Service 层在 SingleAccountRetry 模式下已做充分原地重试（最多 3 次、总等待 30s），
 	// Handler 层只需短暂间隔后重新进入 Service 层即可。
 	singleAccountBackoffDelay = 2 * time.Second
-	// maxProfitVetoAttempts 单次请求内允许的分组利润门终检否决次数上限。
-	// 利润否决不产生上游请求，因此不会推进 SwitchCount；没有独立上限的话，
-	// 「选号 → 终检否决 → 重选」在候选池与账号快照短暂不一致时可以空转很久。
-	// 取值与 maxAccountSwitches 默认值一致：混合定价的大分组仍有充分重选机会，
-	// 同时把整池越线时的无谓选号开销限制在常数级。
-	maxProfitVetoAttempts = 10
 )
-
-// profitVetoExhaustedMessage 是利润否决次数耗尽时返回给客户端的文案。
-// 语义上等同于「无可用账号」：候选账号都不满足分组的利润约束。
-const profitVetoExhaustedMessage = "No available accounts: all candidates rejected by group profit control"
 
 // FailoverState 跨循环迭代共享的 failover 状态
 type FailoverState struct {
@@ -68,7 +58,7 @@ type FailoverState struct {
 	// 请求开始冻结），被清空的账号会被立即重选并再次否决，形成没有任何上游请求、
 	// SwitchCount 也不前进的活锁。清空后必须把它们放回排除集。
 	profitVetoedAccountIDs map[int64]struct{}
-	// profitVetoCount 本次请求累计的利润否决次数，用于 maxProfitVetoAttempts 上限。
+	// profitVetoCount 本次请求累计的利润否决次数，仅用于观测。
 	profitVetoCount int
 }
 
@@ -83,23 +73,15 @@ func NewFailoverState(maxSwitches int, hasBoundSession bool) *FailoverState {
 	}
 }
 
-// RecordProfitVeto 记录一次分组利润门终检否决：把账号加入排除列表（同时登记到
-// 利润否决集，使其不被 503 退避分支清掉）并递增否决计数。
-//
-// 返回 FailoverContinue 表示调用方可以继续重选下一个账号；返回 FailoverExhausted
-// 表示本次请求的利润否决次数已达上限，调用方应按「无可用账号」终止，
-// 不得继续 continue。
-func (s *FailoverState) RecordProfitVeto(accountID int64) FailoverAction {
+// RecordProfitVeto records a terminal profit veto and excludes that account.
+// Selection terminates naturally when the eligible candidate set is exhausted.
+func (s *FailoverState) RecordProfitVeto(accountID int64) {
 	s.FailedAccountIDs[accountID] = struct{}{}
 	if s.profitVetoedAccountIDs == nil {
 		s.profitVetoedAccountIDs = make(map[int64]struct{})
 	}
 	s.profitVetoedAccountIDs[accountID] = struct{}{}
 	s.profitVetoCount++
-	if s.profitVetoCount >= maxProfitVetoAttempts {
-		return FailoverExhausted
-	}
-	return FailoverContinue
 }
 
 // ProfitVetoCount 返回本次请求累计的利润否决次数（供日志使用）。

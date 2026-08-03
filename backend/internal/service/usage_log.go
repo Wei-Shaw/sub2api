@@ -149,12 +149,15 @@ type UsageLog struct {
 	ImageOutputTokens int
 	ImageOutputCost   float64
 
-	InputCost                 float64
-	OutputCost                float64
-	CacheCreationCost         float64
-	CacheReadCost             float64
-	TotalCost                 float64
-	ActualCost                float64
+	InputCost         float64
+	OutputCost        float64
+	CacheCreationCost float64
+	CacheReadCost     float64
+	TotalCost         float64
+	ActualCost        float64
+	// BillingStatus distinguishes successfully committed billing from a
+	// request whose billing transaction failed and still needs reconciliation.
+	BillingStatus             string
 	RateMultiplier            float64
 	LongContextBillingApplied bool
 	// AccountRateMultiplier 账号计费倍率快照（nil 表示历史数据，按 1.0 处理）
@@ -200,6 +203,11 @@ type UsageLog struct {
 	Group        *Group
 	Subscription *UserSubscription
 }
+
+const (
+	UsageBillingStatusSettled   = "settled"
+	UsageBillingStatusUnsettled = "unsettled"
+)
 
 func (u *UsageLog) TotalTokens() int {
 	return u.InputTokens + u.OutputTokens + u.CacheCreationTokens + u.CacheReadTokens

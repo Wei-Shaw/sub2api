@@ -323,6 +323,7 @@ func TestOpenAIGatewayServiceRecordUsage_ZeroUsageStillWritesUsageLog(t *testing
 	require.Zero(t, usageRepo.lastLog.OutputCost)
 	require.Zero(t, usageRepo.lastLog.TotalCost)
 	require.Zero(t, usageRepo.lastLog.ActualCost)
+	require.Equal(t, UsageBillingStatusSettled, usageRepo.lastLog.BillingStatus)
 
 	require.NotNil(t, billingRepo.lastCmd)
 	require.Zero(t, billingRepo.lastCmd.BalanceCost)
@@ -1015,6 +1016,7 @@ func TestOpenAIGatewayServiceRecordUsage_BillingErrorWritesUnsettledUsageLog(t *
 	require.Greater(t, usageRepo.lastLog.OutputCost, 0.0)
 	require.Greater(t, usageRepo.lastLog.TotalCost, 0.0)
 	require.Zero(t, usageRepo.lastLog.ActualCost)
+	require.Equal(t, UsageBillingStatusUnsettled, usageRepo.lastLog.BillingStatus)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_UpdatesAPIKeyQuotaWhenConfigured(t *testing.T) {

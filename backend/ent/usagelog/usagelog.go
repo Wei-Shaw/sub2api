@@ -64,6 +64,8 @@ const (
 	FieldTotalCost = "total_cost"
 	// FieldActualCost holds the string denoting the actual_cost field in the database.
 	FieldActualCost = "actual_cost"
+	// FieldBillingStatus holds the string denoting the billing_status field in the database.
+	FieldBillingStatus = "billing_status"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
 	// FieldLongContextBillingApplied holds the string denoting the long_context_billing_applied field in the database.
@@ -181,6 +183,7 @@ var Columns = []string{
 	FieldCacheReadCost,
 	FieldTotalCost,
 	FieldActualCost,
+	FieldBillingStatus,
 	FieldRateMultiplier,
 	FieldLongContextBillingApplied,
 	FieldAccountRateMultiplier,
@@ -252,6 +255,10 @@ var (
 	DefaultTotalCost float64
 	// DefaultActualCost holds the default value on creation for the "actual_cost" field.
 	DefaultActualCost float64
+	// DefaultBillingStatus holds the default value on creation for the "billing_status" field.
+	DefaultBillingStatus string
+	// BillingStatusValidator is a validator for the "billing_status" field. It is called by the builders before save.
+	BillingStatusValidator func(string) error
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
 	// DefaultLongContextBillingApplied holds the default value on creation for the "long_context_billing_applied" field.
@@ -415,6 +422,11 @@ func ByTotalCost(opts ...sql.OrderTermOption) OrderOption {
 // ByActualCost orders the results by the actual_cost field.
 func ByActualCost(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldActualCost, opts...).ToFunc()
+}
+
+// ByBillingStatus orders the results by the billing_status field.
+func ByBillingStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBillingStatus, opts...).ToFunc()
 }
 
 // ByRateMultiplier orders the results by the rate_multiplier field.

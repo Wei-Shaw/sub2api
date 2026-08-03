@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -10,21 +11,22 @@ import (
 // withGatewayProfitControlGate installs the gate only for explicitly marked
 // token requests. This keeps media, metadata, and models-list paths outside
 // the profit-control surface by construction.
-func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, groupID *int64) context.Context {
+func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, groupID *int64) (context.Context, error) {
 	if _, ok := gatewayTokenRequestPricingAtFromContext(ctx); !ok || groupID == nil || *groupID <= 0 {
-		return ctx
+		return ctx, nil
 	}
 	if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); ok && existing != nil && existing.groupID == *groupID {
-		return ctx
+		return ctx, nil
 	}
 
 	group, err := s.resolveProfitControlGroup(ctx, *groupID)
 	if err != nil {
 		slog.Warn("profit_control_group_load_failed", "group_id", *groupID, "error", err)
-		return s.clearForeignProfitControlGate(ctx, groupID)
+		cause := fmt.Errorf("load profit control group %d: %w", *groupID, err)
+		return ctx, ErrProfitControlUnavailable.WithCause(cause)
 	}
 	if group == nil || !group.ProfitControlEnabled || !profitControlPlatformSupported(group.Platform) {
-		return s.clearForeignProfitControlGate(ctx, groupID)
+		return s.clearForeignProfitControlGate(ctx, groupID), nil
 	}
 
 	pricingAt, _ := gatewayTokenRequestPricingAtFromContext(ctx)
@@ -51,7 +53,7 @@ func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, group
 		pricingAt: pricingAt,
 	}
 	openAIProfitControlObserverInstance.recordInstall(gate.groupID, gate.platform, gate.threshold)
-	return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, gate)
+	return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, gate), nil
 }
 
 func (s *GatewayService) clearForeignProfitControlGate(ctx context.Context, groupID *int64) context.Context {

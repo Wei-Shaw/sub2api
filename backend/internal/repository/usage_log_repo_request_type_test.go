@@ -97,9 +97,10 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // session_id
+			service.UsageBillingStatusSettled,
 			createdAt,
 		).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "inserted"}).AddRow(int64(99), createdAt, true))
 
 	inserted, err := repo.Create(context.Background(), log)
 	require.NoError(t, err)
@@ -109,6 +110,33 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 	require.Equal(t, service.RequestTypeWSV2, log.RequestType)
 	require.True(t, log.Stream)
 	require.True(t, log.OpenAIWSMode)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryReconciliationIsNotReportedAsInsert(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+	createdAt := time.Date(2025, 1, 1, 13, 0, 0, 0, time.UTC)
+	log := &service.UsageLog{
+		UserID:        1,
+		APIKeyID:      2,
+		AccountID:     3,
+		RequestID:     "req-reconciled",
+		Model:         "gpt-5",
+		ActualCost:    1,
+		BillingStatus: service.UsageBillingStatusSettled,
+		CreatedAt:     createdAt,
+	}
+	prepared := prepareUsageLogInsert(log)
+
+	mock.ExpectQuery("INSERT INTO usage_logs").
+		WithArgs(anySliceToDriverValues(prepared.args)...).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "inserted"}).AddRow(int64(101), createdAt, false))
+
+	inserted, err := repo.Create(context.Background(), log)
+	require.NoError(t, err)
+	require.False(t, inserted)
+	require.Equal(t, int64(101), log.ID)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -187,9 +215,10 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // session_id
+			service.UsageBillingStatusSettled,
 			createdAt,
 		).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "inserted"}).AddRow(int64(100), createdAt, true))
 
 	inserted, err := repo.Create(context.Background(), log)
 	require.NoError(t, err)
@@ -846,6 +875,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullFloat64{},
 			sql.NullString{},
+			service.UsageBillingStatusSettled,
 			now,
 		}})
 		require.NoError(t, err)
@@ -921,6 +951,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			service.UsageBillingStatusSettled,
 			now,
 		}})
 		require.NoError(t, err)
@@ -979,6 +1010,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			service.UsageBillingStatusSettled,
 			now,
 		}})
 		require.NoError(t, err)
@@ -1037,6 +1069,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			service.UsageBillingStatusSettled,
 			now,
 		}})
 		require.NoError(t, err)

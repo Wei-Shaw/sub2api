@@ -236,11 +236,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				accountReleaseFunc()
 			}
 			reqLog.Debug("gateway.responses.account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
-			if fs.RecordProfitVeto(account.ID) == FailoverExhausted {
-				reqLog.Warn("gateway.responses.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", fs.ProfitVetoCount()))
-				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", profitVetoExhaustedMessage)
-				return
-			}
+			fs.RecordProfitVeto(account.ID)
 			continue
 		}
 		account = latest

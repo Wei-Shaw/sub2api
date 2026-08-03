@@ -74,7 +74,7 @@ func TestAPIKeyAuthSnapshotProfitControlRoundtrip(t *testing.T) {
 	// 中间件语义：materialized.Group 进请求 ctx → 门必须按快照配置装上。
 	ctx := context.WithValue(context.Background(), ctxkey.Group, materialized.Group)
 	gwSvc := &OpenAIGatewayService{}
-	gate := gwSvc.resolveOpenAIProfitControlGate(ctx, materialized.GroupID)
+	gate := resolveOpenAIProfitControlGateForTest(t, gwSvc, ctx, materialized.GroupID)
 	require.NotNil(t, gate, "还原后的认证分组必须能装门（投影漏列时本断言最先失败）")
 	require.InDelta(t, 0.06*(1-0.25), gate.threshold, 1e-12)
 }

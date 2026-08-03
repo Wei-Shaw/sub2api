@@ -47,10 +47,7 @@ func runProfitVetoLoop(t *testing.T, fs *FailoverState, pool []int64, vetoed map
 			}
 		}
 		if vetoed[picked] {
-			if fs.RecordProfitVeto(picked) == FailoverExhausted {
-				res.outcome = "exhausted"
-				return res
-			}
+			fs.RecordProfitVeto(picked)
 			continue
 		}
 		res.outcome = "forwarded"
@@ -99,9 +96,9 @@ func TestProfitVetoKeepsBackoffUsefulForHealthyAccount(t *testing.T) {
 	require.Contains(t, fs.FailedAccountIDs, int64(2), "利润否决的账号在退避清空后必须被放回排除集")
 }
 
-// TestProfitVetoAttemptsCapped 钉死没有 503 参与时，大分组整池越线也会在
-// 常数步内终止，而不是把整池逐个选一遍。
-func TestProfitVetoAttemptsCapped(t *testing.T) {
+// TestProfitVetoExhaustsCandidatePool verifies that every distinct candidate
+// can be evaluated before selection reports exhaustion.
+func TestProfitVetoExhaustsCandidatePool(t *testing.T) {
 	fs := NewFailoverState(10, false)
 	pool := make([]int64, 0, 64)
 	vetoed := make(map[int64]bool, 64)
@@ -113,15 +110,15 @@ func TestProfitVetoAttemptsCapped(t *testing.T) {
 	res := runProfitVetoLoop(t, fs, pool, vetoed, 200)
 
 	require.Equal(t, "exhausted", res.outcome)
-	require.Equal(t, maxProfitVetoAttempts, fs.ProfitVetoCount())
-	require.Equal(t, maxProfitVetoAttempts, res.iterations, "达到上限即终止，不应继续遍历候选池")
+	require.Equal(t, len(pool), fs.ProfitVetoCount())
+	require.Equal(t, len(pool)+1, res.iterations, "应逐个排除全部候选后由选号耗尽终止")
 }
 
 // TestRecordProfitVetoExcludesAccount 钉死 RecordProfitVeto 仍然把账号加入
 // 调度排除列表（选号入参用的就是 FailedAccountIDs）。
 func TestRecordProfitVetoExcludesAccount(t *testing.T) {
 	fs := NewFailoverState(10, false)
-	require.Equal(t, FailoverContinue, fs.RecordProfitVeto(42))
+	fs.RecordProfitVeto(42)
 	require.Contains(t, fs.FailedAccountIDs, int64(42))
 	require.Equal(t, 1, fs.ProfitVetoCount())
 }

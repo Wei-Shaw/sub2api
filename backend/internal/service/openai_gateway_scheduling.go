@@ -851,7 +851,11 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
 	// 分组利润控制：legacy 公共入口同样装门，保证不经
 	// selectAccountWithScheduler 的调用方也无法绕过利润准入。
-	ctx = s.withOpenAIProfitControlGate(ctx, groupID)
+	var err error
+	ctx, err = s.withOpenAIProfitControlGate(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
 	return s.selectAccountWithLoadAwareness(ctx, groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "", true)
 }
 
