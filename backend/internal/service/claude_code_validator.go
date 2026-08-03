@@ -234,17 +234,19 @@ func isClaudeCodeSecurityMonitorPrompt(systemEntries []any) bool {
 		}
 
 		text, ok := entry["text"].(string)
-		if !ok || len(text) < claudeCodeSecurityMonitorPromptMinLen ||
-			!strings.HasPrefix(text, claudeCodeSecurityMonitorPromptPrefix) {
+		if !ok || !isClaudeCodeSecurityMonitorPromptText(text) {
 			continue
 		}
-
-		if hasAllClaudeCodeSecurityMonitorMarkers(text) {
-			return true
-		}
+		return true
 	}
 
 	return false
+}
+
+func isClaudeCodeSecurityMonitorPromptText(text string) bool {
+	return len(text) >= claudeCodeSecurityMonitorPromptMinLen &&
+		strings.HasPrefix(text, claudeCodeSecurityMonitorPromptPrefix) &&
+		hasAllClaudeCodeSecurityMonitorMarkers(text)
 }
 
 func hasAllClaudeCodeSecurityMonitorMarkers(text string) bool {

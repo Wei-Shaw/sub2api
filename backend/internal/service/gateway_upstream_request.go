@@ -501,7 +501,11 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 			return mergeAnthropicBetaDropping(claude.FullClaudeCodeMimicryBetas(), "", effectiveDropSet), true
 		}
 		// 真 Claude Code 客户端透传路径
-		return stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBeta), effectiveDropSet), true
+		finalBeta := s.getBetaHeader(modelID, clientBeta)
+		if isClaudeCodeAutoClassifierBody(body) {
+			finalBeta = mergeAnthropicBeta([]string{claude.BetaAutoModeClassifier}, finalBeta)
+		}
+		return stripBetaTokensWithSet(finalBeta, effectiveDropSet), true
 	}
 
 	// API-key accounts

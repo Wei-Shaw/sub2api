@@ -158,6 +158,27 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		})
 	}
 
+	// Claude Code uses a legacy Auto classifier request shape when it is pointed at
+	// a relay through ANTHROPIC_BASE_URL. Subscription OAuth rejects that shape with
+	// an opaque 429 even though the same classifier succeeds on the first-party path.
+	// Upgrade only this narrowly identified subrequest and preserve its prompt/messages.
+	autoClassifierCompat := false
+	if account.IsOAuth() {
+		var compatBody []byte
+		var err error
+		compatBody, autoClassifierCompat, err = prepareClaudeAutoClassifierOAuthBody(body)
+		if err != nil {
+			return nil, err
+		}
+		if autoClassifierCompat {
+			if err := replaceBody(compatBody); err != nil {
+				return nil, err
+			}
+			reqModel = claude.AutoModeClassifierModel
+			parsed.Model = reqModel
+		}
+	}
+
 	// Claude Code 客户端判定：UA 匹配 claude-cli/* 且携带 metadata.user_id。
 	// 真正的 Claude Code 客户端自带完整的 system prompt、cache_control 断点和 header，
 	// 不需要代理做任何 body 级别的 mimicry；强行替换反而会破坏客户端的缓存策略
@@ -169,7 +190,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if c != nil {
 		clientUserAgent = c.GetHeader("User-Agent")
 	}
-	isClaudeCode := IsClaudeCodeClient(ctx) || isClaudeCodeClient(clientUserAgent, parsed.MetadataUserID)
+	isClaudeCode := autoClassifierCompat || IsClaudeCodeClient(ctx) || isClaudeCodeClient(clientUserAgent, parsed.MetadataUserID)
 
 	// 补充判定：上游 API 网关（如 new-api）转发真实 Claude Code 流量时，
 	// UA 会变成 Go-http-client 但 body 保留了完整的 Claude Code 特征
