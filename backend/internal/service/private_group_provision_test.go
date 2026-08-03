@@ -603,8 +603,12 @@ func (s *userSubRepoStubForAvailable) BatchUpdateExpiredStatus(context.Context) 
 
 func TestGetAvailableGroups_ExcludesFullListActive(t *testing.T) {
 	userRepo := &userRepoStub{user: &User{ID: 1, Role: RoleUser, Status: StatusActive}}
+	// 10=普通公开组（非共享池）→ 不可选；11=公开共享池 → 可选
 	groupRepo := &stubGroupRepoForProvision{
-		listExcl: []Group{{ID: 10, Name: "public", SubscriptionType: SubscriptionTypeStandard, Status: StatusActive}},
+		listExcl: []Group{
+			{ID: 10, Name: "public", SubscriptionType: SubscriptionTypeStandard, Status: StatusActive},
+			{ID: 11, Name: "share-pool", SubscriptionType: SubscriptionTypeStandard, Status: StatusActive, IsSharePool: true},
+		},
 	}
 	groupRepo.listByIDsFn = func(ids []int64) ([]Group, error) {
 		out := make([]Group, 0)
@@ -635,8 +639,27 @@ func TestGetAvailableGroups_ExcludesFullListActive(t *testing.T) {
 	for _, g := range groups {
 		ids = append(ids, g.ID)
 	}
-	require.Contains(t, ids, int64(10))
-	require.Contains(t, ids, int64(20))
+	require.NotContains(t, ids, int64(10), "plain public ops group must not be selectable for keys")
+	require.Contains(t, ids, int64(11), "public share-pool group must be selectable")
+	require.Contains(t, ids, int64(20), "own private group must be selectable")
+}
+
+func TestIsAPIKeySelectableGroupCategory(t *testing.T) {
+	require.True(t, isAPIKeySelectableGroupCategory(5, &Group{
+		Name: PrivateGroupName(5, PlatformOpenAI), IsExclusive: true,
+	}))
+	require.False(t, isAPIKeySelectableGroupCategory(5, &Group{
+		Name: PrivateGroupName(9, PlatformOpenAI), IsExclusive: true,
+	}), "other user's private group")
+	require.True(t, isAPIKeySelectableGroupCategory(1, &Group{
+		Name: "ops-exclusive", IsExclusive: true,
+	}))
+	require.True(t, isAPIKeySelectableGroupCategory(1, &Group{
+		Name: "pool", IsSharePool: true,
+	}))
+	require.False(t, isAPIKeySelectableGroupCategory(1, &Group{
+		Name: "plain-public", IsExclusive: false, IsSharePool: false,
+	}))
 }
 
 func TestSyncPrivateSubscriptionExpiresAt_RequiresConfiguredDate(t *testing.T) {
