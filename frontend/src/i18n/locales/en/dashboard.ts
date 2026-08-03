@@ -569,7 +569,7 @@ export default {
     },
     reasons: {
       planProbeFailed: 'plan probe failed',
-      planProbeUnsupported: 'type does not support public plan probe',
+      planProbeUnsupported: 'cannot set public for this account type',
       planEmpty: 'upstream plan unknown and no empty-plan share-pool group',
       noSharePoolMatch: 'no matching share-pool group'
     },
@@ -589,9 +589,9 @@ export default {
       oauthPasteHint: 'Paste a valid access_token. Refresh-token based OAuth wizard is not available yet.',
       visibility: 'Visibility',
       visibilityHint:
-        'Private binds only your private platform group. Public also joins matching share-pool groups when an upstream plan can be detected.',
+        'Private binds only your private platform group. Public joins share-pool groups by platform + upstream plan (including both empty). Mismatch keeps private.',
       publicUnsupportedHint:
-        'This platform/type cannot probe plan for public sharing; create as public will be forced private by the server.'
+        'If no share-pool group matches, the account stays private and the server reports the reason.'
     }
   },
 

@@ -2724,14 +2724,8 @@ const authStore = useAuthStore()
 
 const isUserMode = computed(() => props.mode === 'user')
 
-/** openai apikey 不可选公用（与创建表单一致；后端也会拒绝） */
-const userModeSupportsPublic = computed(() => {
-  if (!props.account) return true
-  if (props.account.platform === 'openai' && props.account.type === 'apikey') {
-    return false
-  }
-  return true
-})
+/** 所有允许的账号类型均可选公用；最终是否 public 由后端共享池匹配决定 */
+const userModeSupportsPublic = computed(() => true)
 
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。

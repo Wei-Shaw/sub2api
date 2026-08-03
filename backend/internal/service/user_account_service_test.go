@@ -465,16 +465,60 @@ func TestDeleteUser_CascadesOwnedAccounts(t *testing.T) {
 	require.NoError(t, err, "other user's account must remain")
 }
 
-func TestUserAccountService_OpenAIAPIKeyPublic_ForcePrivateUnsupported(t *testing.T) {
+func TestUserAccountService_OpenAIAPIKeyPublic_UsesSharePoolMatch(t *testing.T) {
 	repo := newUserAccountRepoStub()
-	prov := &userAccountProvisionerStub{}
-	svc := newUserAccountServiceForTest(repo, prov, newTestSettingService(true, 10))
+	// 无私有组 Ensure 时仍可 Create；有 plus 共享池则应升 public
+	priv := &Group{
+		ID: 601, Name: PrivateGroupName(3, PlatformOpenAI), Platform: PlatformOpenAI, Status: StatusActive,
+	}
+	pool := &Group{
+		ID: 602, Name: "openai-plus-pool", Platform: PlatformOpenAI,
+		IsSharePool: true, UpstreamPlan: "plus", Status: StatusActive,
+	}
+	prov := &userAccountProvisionerStub{groups: map[string]*Group{PlatformOpenAI: priv}}
+	groupRepo := newRecomputeGroupRepo(priv, pool)
+	svc := NewUserAccountService(repo, groupRepo, prov, newTestSettingService(true, 10), nil, nil)
 
 	acc, err := svc.Create(context.Background(), 3, &CreateUserAccountInput{
 		Name: "key", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Visibility: VisibilityPublic,
 		Credentials: map[string]any{"api_key": "sk-x", "plan_type": "plus"},
 	})
 	require.NoError(t, err)
+	require.Equal(t, "plus", acc.UpstreamPlan)
+	require.Equal(t, VisibilityPublic, acc.Visibility)
+	require.Empty(t, acc.VisibilityReason)
+}
+
+func TestUserAccountService_OpenAIAPIKeyPublic_EmptyPlanNeedsEmptySharePool(t *testing.T) {
+	repo := newUserAccountRepoStub()
+	priv := &Group{
+		ID: 611, Name: PrivateGroupName(4, PlatformOpenAI), Platform: PlatformOpenAI, Status: StatusActive,
+	}
+	// 仅有 plus 池，空档位账号不应匹配
+	pool := &Group{
+		ID: 612, Name: "openai-plus-only", Platform: PlatformOpenAI,
+		IsSharePool: true, UpstreamPlan: "plus", Status: StatusActive,
+	}
+	prov := &userAccountProvisionerStub{groups: map[string]*Group{PlatformOpenAI: priv}}
+	groupRepo := newRecomputeGroupRepo(priv, pool)
+	svc := NewUserAccountService(repo, groupRepo, prov, newTestSettingService(true, 10), nil, nil)
+
+	acc, err := svc.Create(context.Background(), 4, &CreateUserAccountInput{
+		Name: "pexi-like", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Visibility: VisibilityPublic,
+		Credentials: map[string]any{"api_key": "sk-x"}, // 无 plan
+	})
+	require.NoError(t, err)
 	require.Equal(t, VisibilityPrivate, acc.Visibility)
-	require.Equal(t, VisibilityReasonPlanProbeUnsupported, acc.VisibilityReason)
+	require.Equal(t, VisibilityReasonPlanEmpty, acc.VisibilityReason)
+
+	// 增加空档位共享池后 SetVisibility 应成功
+	emptyPool := &Group{
+		ID: 613, Name: "openai-empty-pool", Platform: PlatformOpenAI,
+		IsSharePool: true, UpstreamPlan: "", Status: StatusActive,
+	}
+	groupRepo.byID[emptyPool.ID] = emptyPool
+	updated, err := svc.SetVisibility(context.Background(), 4, acc.ID, VisibilityPublic)
+	require.NoError(t, err)
+	require.Equal(t, VisibilityPublic, updated.Visibility)
+	require.Empty(t, updated.VisibilityReason)
 }

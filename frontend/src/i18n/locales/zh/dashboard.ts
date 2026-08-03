@@ -574,7 +574,7 @@ export default {
     },
     reasons: {
       planProbeFailed: '套餐探测失败',
-      planProbeUnsupported: '该类型不支持公用探测',
+      planProbeUnsupported: '该类型暂无法设为公用',
       planEmpty: '上游档位未知且无匹配的空档位共享池',
       noSharePoolMatch: '没有匹配的共享池分组'
     },
@@ -594,9 +594,9 @@ export default {
       oauthPasteHint: '粘贴有效的 access_token。基于 refresh_token 的完整 OAuth 流程尚未提供。',
       visibility: '可见性',
       visibilityHint:
-        '私有仅绑定您的私有平台组；公用在探测到上游档位后还会加入匹配的共享池分组。',
+        '私有仅绑定您的私有平台组；公用按平台+上游档位匹配共享池（含双方都无档位）。匹配失败则保持私有。',
       publicUnsupportedHint:
-        '该平台/类型无法探测套餐，请求公用时服务端会强制为私有。'
+        '若无法匹配共享池，保存后会保持私有并提示原因。'
     }
   },
 

@@ -4141,13 +4141,8 @@ const form = reactive({
   visibility: 'private' as 'private' | 'public'
 })
 
-/** 用户模式：openai apikey 不可选公用（后端会强制 private） */
-const userModeSupportsPublic = computed(() => {
-  if (form.platform === 'openai' && (form.type === 'apikey' || accountCategory.value === 'apikey')) {
-    return false
-  }
-  return true
-})
+/** 所有允许类型均可选公用；最终是否 public 由后端共享池匹配决定 */
+const userModeSupportsPublic = computed(() => true)
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {

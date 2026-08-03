@@ -259,12 +259,8 @@ func (s *userAccountService) Create(ctx context.Context, userID int64, input *Cr
 		return nil, ErrUserAccountInvalidVisibility
 	}
 
-	// openai apikey 禁止 public（设计 type 表）
+	// 所有允许的账号类型均可请求 public；是否真正 public 仅由共享池匹配（平台+档位，含空==空）决定
 	forcePrivateReason := ""
-	if requestedVisibility == VisibilityPublic && !userAccountTypeSupportsPublicProbe(platform, accountType) {
-		requestedVisibility = VisibilityPrivate
-		forcePrivateReason = VisibilityReasonPlanProbeUnsupported
-	}
 
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
 		return nil, err
@@ -837,33 +833,25 @@ func (s *userAccountService) SetVisibility(ctx context.Context, userID, accountI
 
 	reason := ""
 	if visibility == VisibilityPublic {
-		// 类型不支持 public
-		if !userAccountTypeSupportsPublicProbe(account.Platform, account.Type) {
-			visibility = VisibilityPrivate
-			reason = VisibilityReasonPlanProbeUnsupported
-		} else {
-			// Ensure 私有组（K18：SetVisibility→public 显式 Ensure）
-			if s.privateGroups != nil {
-				var prov *ProvisionResult
-				group, result, ensErr := s.privateGroups.EnsurePrivateGroupForPlatform(ctx, userID, account.Platform)
-				if ensErr != nil {
-					return nil, ensErr
-				}
-				prov = result
-				_ = group
-				if prov != nil && prov.NeedsAfterCommit {
-					s.privateGroups.AfterCommit(ctx, prov)
-				}
+		// Ensure 私有组（K18：SetVisibility→public 显式 Ensure）
+		if s.privateGroups != nil {
+			group, result, ensErr := s.privateGroups.EnsurePrivateGroupForPlatform(ctx, userID, account.Platform)
+			if ensErr != nil {
+				return nil, ensErr
 			}
-			// 若 plan 空：尝试从 credentials 提取（成功则按有档位匹配）
-			if strings.TrimSpace(account.UpstreamPlan) == "" {
-				_ = ApplyProbedPlanFromCredentials(ctx, s.accountRepo, s.recomputer, account)
-				if reloaded, gerr := s.accountRepo.GetByID(ctx, account.ID); gerr == nil && reloaded != nil {
-					account = reloaded
-				}
+			_ = group
+			if result != nil && result.NeedsAfterCommit {
+				s.privateGroups.AfterCommit(ctx, result)
 			}
-			// 空档位仍允许尝试 public，靠空==空匹配共享池；无匹配则下方 demote
 		}
+		// 若 plan 空：尝试从 credentials/extra 提取（成功则按有档位匹配）
+		if strings.TrimSpace(account.UpstreamPlan) == "" {
+			_ = ApplyProbedPlanFromCredentials(ctx, s.accountRepo, s.recomputer, account)
+			if reloaded, gerr := s.accountRepo.GetByID(ctx, account.ID); gerr == nil && reloaded != nil {
+				account = reloaded
+			}
+		}
+		// 任意类型均可尝试 public；空档位靠空==空匹配共享池；无匹配则下方 demote
 	}
 
 	if visibility == VisibilityPublic && reason == "" {
@@ -1025,16 +1013,15 @@ func isUserAllowedAccountType(platform, accountType string) bool {
 	}
 }
 
-// userAccountTypeSupportsPublicProbe 是否允许请求 public（探测路径）。
-// openai apikey 禁止 public。
-func userAccountTypeSupportsPublicProbe(platform, accountType string) bool {
-	platform = strings.ToLower(strings.TrimSpace(platform))
-	accountType = strings.TrimSpace(accountType)
-	if platform == PlatformOpenAI && accountType == AccountTypeAPIKey {
-		return false
-	}
-	// 允许的 type 均可尝试；anthropic/gemini probe 可能失败并降 private
+// userAccountTypeSupportsPublic 是否允许请求 public。
+// 统一规则：凡 isUserAllowedAccountType 的类型均可请求；最终是否 public 仅由共享池匹配决定。
+func userAccountTypeSupportsPublic(platform, accountType string) bool {
 	return isUserAllowedAccountType(platform, accountType)
+}
+
+// Deprecated alias — 保留供旧测试/调用方编译，语义同 userAccountTypeSupportsPublic。
+func userAccountTypeSupportsPublicProbe(platform, accountType string) bool {
+	return userAccountTypeSupportsPublic(platform, accountType)
 }
 
 // ensureUserOwnedAntigravityPrivacy 用户自建号补写 privacy_mode（与 admin EnsureAntigravityPrivacy 同探测逻辑，无 proxy）。
