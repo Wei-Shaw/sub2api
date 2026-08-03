@@ -293,6 +293,65 @@ func TestPromptSnapshotIncludesClientControlledInstructions(t *testing.T) {
 	}
 }
 
+func TestBlockingPromptSnapshotLimitsInputToLatestUserAndPreviousOutput(t *testing.T) {
+	tests := []struct {
+		name, protocol, body, want string
+		omitted                    []string
+	}{
+		{
+			name:     "chat keeps multipart latest user and prior assistant",
+			protocol: "openai_chat_completions",
+			body: `{"messages":[
+				{"role":"system","content":"system instruction"},
+				{"role":"user","content":"older user input"},
+				{"role":"assistant","content":"older assistant output"},
+				{"role":"tool","content":"tool payload"},
+				{"role":"assistant","content":"previous assistant output"},
+				{"role":"user","content":[{"type":"text","text":"latest user first part"},{"type":"text","text":"latest user second part"}]}
+			]}`,
+			want:    "latest user first part\n\nlatest user second part" + promptAuditPrioritySeparator + "previous assistant output",
+			omitted: []string{"system instruction", "older user input", "older assistant output", "tool payload"},
+		},
+		{
+			name:     "gemini keeps prior model output",
+			protocol: "gemini",
+			body: `{"systemInstruction":{"parts":[{"text":"system instruction"}]},"contents":[
+				{"role":"user","parts":[{"text":"older user input"}]},
+				{"role":"model","parts":[{"text":"previous model output"}]},
+				{"role":"user","parts":[{"text":"latest user input"}]}
+			]}`,
+			want:    "latest user input" + promptAuditPrioritySeparator + "previous model output",
+			omitted: []string{"system instruction", "older user input"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			snapshot, err := ExtractBlockingPromptSnapshot(Request{Protocol: tt.protocol, Body: []byte(tt.body)}, true)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, snapshot.ScanText)
+			for _, omitted := range tt.omitted {
+				require.NotContains(t, snapshot.ScanText, omitted)
+			}
+		})
+	}
+}
+
+func TestBlockingPromptSnapshotPreservesFullScopeByDefaultAndWithoutUserInput(t *testing.T) {
+	req := Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"system","content":"system instruction"},{"role":"user","content":"older user input"},{"role":"assistant","content":"previous output"},{"role":"user","content":"latest user input"}]}`)}
+	full, err := ExtractPromptSnapshot(req)
+	require.NoError(t, err)
+	defaultBlocking, err := ExtractBlockingPromptSnapshot(req, false)
+	require.NoError(t, err)
+	require.Equal(t, full, defaultBlocking)
+
+	noUser := Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"system","content":"system instruction"},{"role":"assistant","content":"assistant output"}]}`)}
+	fullWithoutUser, err := ExtractPromptSnapshot(noUser)
+	require.NoError(t, err)
+	narrowWithoutUser, err := ExtractBlockingPromptSnapshot(noUser, true)
+	require.NoError(t, err)
+	require.Equal(t, fullWithoutUser, narrowWithoutUser)
+}
+
 func TestBuildPromptPreviewWithholdsMajorityOfOrdinaryText(t *testing.T) {
 	prompt := strings.Repeat("机密业务提示词内容", 40)
 	preview := BuildPromptPreview(prompt, DefaultPromptPreviewMaxRunes)
