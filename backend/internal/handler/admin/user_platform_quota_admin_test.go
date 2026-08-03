@@ -27,6 +27,9 @@ type upsertCapturingQuotaRepo struct {
 	upsertErr   error
 	resetCalls  []resetCall
 	resetErr    error
+	batchCalls  []batchResetCall
+	batchKeys   []service.UserPlatformQuotaKey
+	batchErr    error
 }
 
 type upsertCall struct {
@@ -38,6 +41,12 @@ type resetCall struct {
 	platform string
 	window   string
 	newStart time.Time
+}
+type batchResetCall struct {
+	userIDs   []int64
+	platforms []string
+	windows   []string
+	newStart  time.Time
 }
 
 func (r *upsertCapturingQuotaRepo) ListByUser(_ context.Context, _ int64) ([]service.UserPlatformQuotaRecord, error) {
@@ -52,6 +61,15 @@ func (r *upsertCapturingQuotaRepo) UpsertForUser(_ context.Context, userID int64
 func (r *upsertCapturingQuotaRepo) ResetExpiredWindow(_ context.Context, userID int64, platform string, window string, newStart time.Time) error {
 	r.resetCalls = append(r.resetCalls, resetCall{userID, platform, window, newStart})
 	return r.resetErr
+}
+func (r *upsertCapturingQuotaRepo) BatchResetWindows(_ context.Context, userIDs []int64, platforms, windows []string, newStart time.Time) ([]service.UserPlatformQuotaKey, error) {
+	r.batchCalls = append(r.batchCalls, batchResetCall{
+		userIDs:   append([]int64(nil), userIDs...),
+		platforms: append([]string(nil), platforms...),
+		windows:   append([]string(nil), windows...),
+		newStart:  newStart,
+	})
+	return append([]service.UserPlatformQuotaKey(nil), r.batchKeys...), r.batchErr
 }
 
 // billingCacheStub 实现 service.BillingCache 中本测试关心的 Delete 方法；其他方法 panic。
@@ -183,6 +201,43 @@ func TestUpdateUserPlatformQuotas_ReturnsLatestState(t *testing.T) {
 	}
 }
 
+func TestUpdateUserPlatformQuotas_OmittedFiveHourLimitPreservesExistingValue(t *testing.T) {
+	existing := 7.5
+	repo := &upsertCapturingQuotaRepo{listRecords: []service.UserPlatformQuotaRecord{{
+		UserID: 42, Platform: "anthropic", FiveHourLimitUSD: &existing,
+	}}}
+	h := buildTestHandler(repo, &billingCacheStub{})
+	c, w := putReq(t, `{"quotas":[{"platform":"anthropic","daily_limit_usd":10}]}`)
+
+	h.UpdateUserPlatformQuotas(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	got := repo.upsertCalls[0].records[0].FiveHourLimitUSD
+	if got == nil || *got != existing {
+		t.Errorf("omitted five_hour_limit_usd = %v, want preserved %v", got, existing)
+	}
+}
+
+func TestUpdateUserPlatformQuotas_ExplicitNullClearsFiveHourLimit(t *testing.T) {
+	existing := 7.5
+	repo := &upsertCapturingQuotaRepo{listRecords: []service.UserPlatformQuotaRecord{{
+		UserID: 42, Platform: "anthropic", FiveHourLimitUSD: &existing,
+	}}}
+	h := buildTestHandler(repo, &billingCacheStub{})
+	c, w := putReq(t, `{"quotas":[{"platform":"anthropic","five_hour_limit_usd":null}]}`)
+
+	h.UpdateUserPlatformQuotas(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := repo.upsertCalls[0].records[0].FiveHourLimitUSD; got != nil {
+		t.Errorf("explicit null should clear five-hour limit, got %v", *got)
+	}
+}
+
 // ───────── T4: Reset 测试 ─────────
 
 func postReq(t *testing.T, body string) (*gin.Context, *httptest.ResponseRecorder) {
@@ -219,6 +274,21 @@ func TestResetUserPlatformQuotaWindow_Success(t *testing.T) {
 		cache.deleteCalls[0].userID != 42 ||
 		cache.deleteCalls[0].platform != "anthropic" {
 		t.Errorf("expected 1 cache delete for anthropic, got %+v", cache.deleteCalls)
+	}
+}
+
+func TestResetUserPlatformQuotaWindow_FiveHourSuccess(t *testing.T) {
+	repo := &upsertCapturingQuotaRepo{}
+	h := buildTestHandler(repo, &billingCacheStub{})
+	c, w := postReq(t, `{"platform":"openai","window":"five_hour"}`)
+
+	h.ResetUserPlatformQuotaWindow(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(repo.resetCalls) != 1 || repo.resetCalls[0].window != "five_hour" {
+		t.Errorf("unexpected reset calls: %+v", repo.resetCalls)
 	}
 }
 
@@ -300,5 +370,68 @@ func TestResetUserPlatformQuotaWindow_UserNotFound(t *testing.T) {
 	h.ResetUserPlatformQuotaWindow(c)
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404 when user not found, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestBatchResetUserPlatformQuotaWindows_Success(t *testing.T) {
+	repo := &upsertCapturingQuotaRepo{batchKeys: []service.UserPlatformQuotaKey{
+		{UserID: 11, Platform: "openai"},
+		{UserID: 12, Platform: "openai"},
+	}}
+	cache := &billingCacheStub{}
+	h := buildTestHandler(repo, cache)
+	c, w := postReq(t, `{"user_ids":[11,12],"platforms":["openai"],"windows":["five_hour","daily"]}`)
+
+	h.BatchResetUserPlatformQuotaWindows(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(repo.batchCalls) != 1 {
+		t.Fatalf("expected one batch reset call, got %d", len(repo.batchCalls))
+	}
+	call := repo.batchCalls[0]
+	if len(call.userIDs) != 2 || len(call.platforms) != 1 || len(call.windows) != 2 {
+		t.Errorf("unexpected batch reset call: %+v", call)
+	}
+	if len(cache.deleteCalls) != 2 {
+		t.Errorf("expected two cache invalidations, got %+v", cache.deleteCalls)
+	}
+	if !strings.Contains(w.Body.String(), `"affected":2`) {
+		t.Errorf("unexpected response: %s", w.Body.String())
+	}
+}
+
+func TestBatchResetUserPlatformQuotaWindows_RejectsDuplicateUser(t *testing.T) {
+	h := buildTestHandler(&upsertCapturingQuotaRepo{}, &billingCacheStub{})
+	c, w := postReq(t, `{"user_ids":[11,11],"platforms":["openai"],"windows":["five_hour"]}`)
+
+	h.BatchResetUserPlatformQuotaWindows(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestBatchResetUserPlatformQuotaWindows_RejectsMoreThan500Users(t *testing.T) {
+	ids := make([]int64, 501)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+	body, err := json.Marshal(map[string]any{
+		"user_ids":  ids,
+		"platforms": []string{"openai"},
+		"windows":   []string{"five_hour"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := buildTestHandler(&upsertCapturingQuotaRepo{}, &billingCacheStub{})
+	c, w := postReq(t, string(body))
+
+	h.BatchResetUserPlatformQuotaWindows(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }

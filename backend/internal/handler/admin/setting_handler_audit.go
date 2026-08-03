@@ -758,6 +758,8 @@ func slotOf(s *service.DefaultPlatformQuotaSetting, win string) *float64 {
 		return nil
 	}
 	switch win {
+	case "five_hour":
+		return s.FiveHourLimitUSD
 	case "daily":
 		return s.DailyLimitUSD
 	case "weekly":
@@ -773,6 +775,9 @@ func equalPlatformQuotaSettings(before, after map[string]*service.DefaultPlatfor
 	for _, platform := range service.AllowedQuotaPlatforms {
 		b := before[platform]
 		a := after[platform]
+		if !equalNullableFloat(slotOf(b, "five_hour"), slotOf(a, "five_hour")) {
+			return false
+		}
 		if !equalNullableFloat(slotOf(b, "daily"), slotOf(a, "daily")) {
 			return false
 		}

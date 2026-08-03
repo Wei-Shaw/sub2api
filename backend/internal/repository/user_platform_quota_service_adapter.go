@@ -34,7 +34,7 @@ func (a *userPlatformQuotaServiceAdapter) GetByUserPlatform(ctx context.Context,
 	return toServiceRecord(rec), nil
 }
 
-// IncrementUsageWithReset 原子累加 cost 到 (user, platform) 三个窗口的用量。
+// IncrementUsageWithReset 原子累加 cost 到 (user, platform) 四个窗口的用量。
 func (a *userPlatformQuotaServiceAdapter) IncrementUsageWithReset(ctx context.Context, userID int64, platform string, cost float64, now time.Time) error {
 	return a.inner.IncrementUsageWithReset(ctx, userID, platform, cost, now)
 }
@@ -48,17 +48,21 @@ func (a *userPlatformQuotaServiceAdapter) ListByUser(ctx context.Context, userID
 	out := make([]service.UserPlatformQuotaRecord, len(rows))
 	for i, r := range rows {
 		out[i] = service.UserPlatformQuotaRecord{
-			UserID:             r.UserID,
-			Platform:           r.Platform,
-			DailyLimitUSD:      r.DailyLimitUSD,
-			WeeklyLimitUSD:     r.WeeklyLimitUSD,
-			MonthlyLimitUSD:    r.MonthlyLimitUSD,
-			DailyUsageUSD:      r.DailyUsageUSD,
-			WeeklyUsageUSD:     r.WeeklyUsageUSD,
-			MonthlyUsageUSD:    r.MonthlyUsageUSD,
-			DailyWindowStart:   r.DailyWindowStart,
-			WeeklyWindowStart:  r.WeeklyWindowStart,
-			MonthlyWindowStart: r.MonthlyWindowStart,
+			UserID:              r.UserID,
+			Platform:            r.Platform,
+			FiveHourLimitUSD:    r.FiveHourLimitUSD,
+			DailyLimitUSD:       r.DailyLimitUSD,
+			WeeklyLimitUSD:      r.WeeklyLimitUSD,
+			MonthlyLimitUSD:     r.MonthlyLimitUSD,
+			FiveHourUsageUSD:    r.FiveHourUsageUSD,
+			DailyUsageUSD:       r.DailyUsageUSD,
+			WeeklyUsageUSD:      r.WeeklyUsageUSD,
+			MonthlyUsageUSD:     r.MonthlyUsageUSD,
+			FiveHourWindowStart: r.FiveHourWindowStart,
+			DailyWindowStart:    r.DailyWindowStart,
+			WeeklyWindowStart:   r.WeeklyWindowStart,
+			MonthlyWindowStart:  r.MonthlyWindowStart,
+			ResetGeneration:     r.ResetGeneration,
 		}
 	}
 	return out, nil
@@ -69,11 +73,12 @@ func (a *userPlatformQuotaServiceAdapter) BulkInsertInitial(ctx context.Context,
 	repoRecords := make([]UserPlatformQuotaRecord, len(records))
 	for i, r := range records {
 		repoRecords[i] = UserPlatformQuotaRecord{
-			UserID:          r.UserID,
-			Platform:        r.Platform,
-			DailyLimitUSD:   r.DailyLimitUSD,
-			WeeklyLimitUSD:  r.WeeklyLimitUSD,
-			MonthlyLimitUSD: r.MonthlyLimitUSD,
+			UserID:           r.UserID,
+			Platform:         r.Platform,
+			FiveHourLimitUSD: r.FiveHourLimitUSD,
+			DailyLimitUSD:    r.DailyLimitUSD,
+			WeeklyLimitUSD:   r.WeeklyLimitUSD,
+			MonthlyLimitUSD:  r.MonthlyLimitUSD,
 		}
 	}
 	return a.inner.BulkInsertInitial(ctx, repoRecords)
@@ -94,20 +99,35 @@ func (a *userPlatformQuotaServiceAdapter) ResetExpiredWindow(ctx context.Context
 	return err
 }
 
+func (a *userPlatformQuotaServiceAdapter) BatchResetWindows(ctx context.Context, userIDs []int64, platforms, windows []string, newStart time.Time) ([]service.UserPlatformQuotaKey, error) {
+	keys, err := a.inner.BatchResetWindows(ctx, userIDs, platforms, windows, newStart)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.UserPlatformQuotaKey, len(keys))
+	for i, key := range keys {
+		out[i] = service.UserPlatformQuotaKey{UserID: key.UserID, Platform: key.Platform}
+	}
+	return out, nil
+}
+
 // BatchSnapshotUsage 转换 []service.UserPlatformQuotaSnapshot → []UserPlatformQuotaSnapshot，
 // 调底层 repo，并将 repository FK sentinel 包装为 service sentinel。
 func (a *userPlatformQuotaServiceAdapter) BatchSnapshotUsage(ctx context.Context, snapshots []service.UserPlatformQuotaSnapshot, now time.Time) error {
 	repoSnaps := make([]UserPlatformQuotaSnapshot, len(snapshots))
 	for i, s := range snapshots {
 		repoSnaps[i] = UserPlatformQuotaSnapshot{
-			UserID:             s.UserID,
-			Platform:           s.Platform,
-			DailyUsageUSD:      s.DailyUsageUSD,
-			WeeklyUsageUSD:     s.WeeklyUsageUSD,
-			MonthlyUsageUSD:    s.MonthlyUsageUSD,
-			DailyWindowStart:   s.DailyWindowStart,
-			WeeklyWindowStart:  s.WeeklyWindowStart,
-			MonthlyWindowStart: s.MonthlyWindowStart,
+			UserID:              s.UserID,
+			Platform:            s.Platform,
+			FiveHourUsageUSD:    s.FiveHourUsageUSD,
+			DailyUsageUSD:       s.DailyUsageUSD,
+			WeeklyUsageUSD:      s.WeeklyUsageUSD,
+			MonthlyUsageUSD:     s.MonthlyUsageUSD,
+			FiveHourWindowStart: s.FiveHourWindowStart,
+			DailyWindowStart:    s.DailyWindowStart,
+			WeeklyWindowStart:   s.WeeklyWindowStart,
+			MonthlyWindowStart:  s.MonthlyWindowStart,
+			ResetGeneration:     s.ResetGeneration,
 		}
 	}
 	err := a.inner.BatchSnapshotUsage(ctx, repoSnaps, now)
@@ -144,17 +164,21 @@ func (a *genericUserPlatformQuotaAdapter) ListByUser(ctx context.Context, userID
 	out := make([]service.UserPlatformQuotaRecord, len(rows))
 	for i, r := range rows {
 		out[i] = service.UserPlatformQuotaRecord{
-			UserID:             r.UserID,
-			Platform:           r.Platform,
-			DailyLimitUSD:      r.DailyLimitUSD,
-			WeeklyLimitUSD:     r.WeeklyLimitUSD,
-			MonthlyLimitUSD:    r.MonthlyLimitUSD,
-			DailyUsageUSD:      r.DailyUsageUSD,
-			WeeklyUsageUSD:     r.WeeklyUsageUSD,
-			MonthlyUsageUSD:    r.MonthlyUsageUSD,
-			DailyWindowStart:   r.DailyWindowStart,
-			WeeklyWindowStart:  r.WeeklyWindowStart,
-			MonthlyWindowStart: r.MonthlyWindowStart,
+			UserID:              r.UserID,
+			Platform:            r.Platform,
+			FiveHourLimitUSD:    r.FiveHourLimitUSD,
+			DailyLimitUSD:       r.DailyLimitUSD,
+			WeeklyLimitUSD:      r.WeeklyLimitUSD,
+			MonthlyLimitUSD:     r.MonthlyLimitUSD,
+			FiveHourUsageUSD:    r.FiveHourUsageUSD,
+			DailyUsageUSD:       r.DailyUsageUSD,
+			WeeklyUsageUSD:      r.WeeklyUsageUSD,
+			MonthlyUsageUSD:     r.MonthlyUsageUSD,
+			FiveHourWindowStart: r.FiveHourWindowStart,
+			DailyWindowStart:    r.DailyWindowStart,
+			WeeklyWindowStart:   r.WeeklyWindowStart,
+			MonthlyWindowStart:  r.MonthlyWindowStart,
+			ResetGeneration:     r.ResetGeneration,
 		}
 	}
 	return out, nil
@@ -165,11 +189,12 @@ func (a *genericUserPlatformQuotaAdapter) BulkInsertInitial(ctx context.Context,
 	repoRecords := make([]UserPlatformQuotaRecord, len(records))
 	for i, r := range records {
 		repoRecords[i] = UserPlatformQuotaRecord{
-			UserID:          r.UserID,
-			Platform:        r.Platform,
-			DailyLimitUSD:   r.DailyLimitUSD,
-			WeeklyLimitUSD:  r.WeeklyLimitUSD,
-			MonthlyLimitUSD: r.MonthlyLimitUSD,
+			UserID:           r.UserID,
+			Platform:         r.Platform,
+			FiveHourLimitUSD: r.FiveHourLimitUSD,
+			DailyLimitUSD:    r.DailyLimitUSD,
+			WeeklyLimitUSD:   r.WeeklyLimitUSD,
+			MonthlyLimitUSD:  r.MonthlyLimitUSD,
 		}
 	}
 	return a.inner.BulkInsertInitial(ctx, repoRecords)
@@ -190,20 +215,35 @@ func (a *genericUserPlatformQuotaAdapter) ResetExpiredWindow(ctx context.Context
 	return err
 }
 
+func (a *genericUserPlatformQuotaAdapter) BatchResetWindows(ctx context.Context, userIDs []int64, platforms, windows []string, newStart time.Time) ([]service.UserPlatformQuotaKey, error) {
+	keys, err := a.inner.BatchResetWindows(ctx, userIDs, platforms, windows, newStart)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.UserPlatformQuotaKey, len(keys))
+	for i, key := range keys {
+		out[i] = service.UserPlatformQuotaKey{UserID: key.UserID, Platform: key.Platform}
+	}
+	return out, nil
+}
+
 // BatchSnapshotUsage 转换 []service.UserPlatformQuotaSnapshot → []UserPlatformQuotaSnapshot（通用 adapter），
 // 并将 repository FK sentinel 包装为 service sentinel。
 func (a *genericUserPlatformQuotaAdapter) BatchSnapshotUsage(ctx context.Context, snapshots []service.UserPlatformQuotaSnapshot, now time.Time) error {
 	repoSnaps := make([]UserPlatformQuotaSnapshot, len(snapshots))
 	for i, s := range snapshots {
 		repoSnaps[i] = UserPlatformQuotaSnapshot{
-			UserID:             s.UserID,
-			Platform:           s.Platform,
-			DailyUsageUSD:      s.DailyUsageUSD,
-			WeeklyUsageUSD:     s.WeeklyUsageUSD,
-			MonthlyUsageUSD:    s.MonthlyUsageUSD,
-			DailyWindowStart:   s.DailyWindowStart,
-			WeeklyWindowStart:  s.WeeklyWindowStart,
-			MonthlyWindowStart: s.MonthlyWindowStart,
+			UserID:              s.UserID,
+			Platform:            s.Platform,
+			FiveHourUsageUSD:    s.FiveHourUsageUSD,
+			DailyUsageUSD:       s.DailyUsageUSD,
+			WeeklyUsageUSD:      s.WeeklyUsageUSD,
+			MonthlyUsageUSD:     s.MonthlyUsageUSD,
+			FiveHourWindowStart: s.FiveHourWindowStart,
+			DailyWindowStart:    s.DailyWindowStart,
+			WeeklyWindowStart:   s.WeeklyWindowStart,
+			MonthlyWindowStart:  s.MonthlyWindowStart,
+			ResetGeneration:     s.ResetGeneration,
 		}
 	}
 	err := a.inner.BatchSnapshotUsage(ctx, repoSnaps, now)
@@ -216,17 +256,21 @@ func (a *genericUserPlatformQuotaAdapter) BatchSnapshotUsage(ctx context.Context
 // toServiceRecord 将 repository.UserPlatformQuotaRecord 转换为 service.UserPlatformQuotaRecord。
 func toServiceRecord(rec *UserPlatformQuotaRecord) *service.UserPlatformQuotaRecord {
 	return &service.UserPlatformQuotaRecord{
-		UserID:             rec.UserID,
-		Platform:           rec.Platform,
-		DailyLimitUSD:      rec.DailyLimitUSD,
-		WeeklyLimitUSD:     rec.WeeklyLimitUSD,
-		MonthlyLimitUSD:    rec.MonthlyLimitUSD,
-		DailyUsageUSD:      rec.DailyUsageUSD,
-		WeeklyUsageUSD:     rec.WeeklyUsageUSD,
-		MonthlyUsageUSD:    rec.MonthlyUsageUSD,
-		DailyWindowStart:   rec.DailyWindowStart,
-		WeeklyWindowStart:  rec.WeeklyWindowStart,
-		MonthlyWindowStart: rec.MonthlyWindowStart,
+		UserID:              rec.UserID,
+		Platform:            rec.Platform,
+		FiveHourLimitUSD:    rec.FiveHourLimitUSD,
+		DailyLimitUSD:       rec.DailyLimitUSD,
+		WeeklyLimitUSD:      rec.WeeklyLimitUSD,
+		MonthlyLimitUSD:     rec.MonthlyLimitUSD,
+		FiveHourUsageUSD:    rec.FiveHourUsageUSD,
+		DailyUsageUSD:       rec.DailyUsageUSD,
+		WeeklyUsageUSD:      rec.WeeklyUsageUSD,
+		MonthlyUsageUSD:     rec.MonthlyUsageUSD,
+		FiveHourWindowStart: rec.FiveHourWindowStart,
+		DailyWindowStart:    rec.DailyWindowStart,
+		WeeklyWindowStart:   rec.WeeklyWindowStart,
+		MonthlyWindowStart:  rec.MonthlyWindowStart,
+		ResetGeneration:     rec.ResetGeneration,
 	}
 }
 
@@ -235,17 +279,21 @@ func toRepoRecords(records []service.UserPlatformQuotaRecord) []UserPlatformQuot
 	out := make([]UserPlatformQuotaRecord, len(records))
 	for i, r := range records {
 		out[i] = UserPlatformQuotaRecord{
-			UserID:             r.UserID,
-			Platform:           r.Platform,
-			DailyLimitUSD:      r.DailyLimitUSD,
-			WeeklyLimitUSD:     r.WeeklyLimitUSD,
-			MonthlyLimitUSD:    r.MonthlyLimitUSD,
-			DailyUsageUSD:      r.DailyUsageUSD,
-			WeeklyUsageUSD:     r.WeeklyUsageUSD,
-			MonthlyUsageUSD:    r.MonthlyUsageUSD,
-			DailyWindowStart:   r.DailyWindowStart,
-			WeeklyWindowStart:  r.WeeklyWindowStart,
-			MonthlyWindowStart: r.MonthlyWindowStart,
+			UserID:              r.UserID,
+			Platform:            r.Platform,
+			FiveHourLimitUSD:    r.FiveHourLimitUSD,
+			DailyLimitUSD:       r.DailyLimitUSD,
+			WeeklyLimitUSD:      r.WeeklyLimitUSD,
+			MonthlyLimitUSD:     r.MonthlyLimitUSD,
+			FiveHourUsageUSD:    r.FiveHourUsageUSD,
+			DailyUsageUSD:       r.DailyUsageUSD,
+			WeeklyUsageUSD:      r.WeeklyUsageUSD,
+			MonthlyUsageUSD:     r.MonthlyUsageUSD,
+			FiveHourWindowStart: r.FiveHourWindowStart,
+			DailyWindowStart:    r.DailyWindowStart,
+			WeeklyWindowStart:   r.WeeklyWindowStart,
+			MonthlyWindowStart:  r.MonthlyWindowStart,
+			ResetGeneration:     r.ResetGeneration,
 		}
 	}
 	return out

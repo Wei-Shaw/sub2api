@@ -119,6 +119,16 @@ const BulkEditUserModalStub = {
   `
 }
 
+const BatchResetPlatformQuotaModalStub = {
+  props: ['show', 'selectedIds'],
+  emits: ['close', 'success'],
+  template: `
+    <div v-if="show" data-test="batch-quota-reset-modal">
+      <span data-test="batch-quota-reset-ids">{{ selectedIds.join(',') }}</span>
+    </div>
+  `
+}
+
 describe('admin UsersView', () => {
   beforeEach(() => {
     vi.useRealTimers()
@@ -166,6 +176,7 @@ describe('admin UsersView', () => {
           UserCreateModal: true,
           UserEditModal: true,
           BulkEditUserModal: BulkEditUserModalStub,
+          BatchResetPlatformQuotaModal: BatchResetPlatformQuotaModalStub,
           UserPlatformQuotaModal: true,
           UserApiKeysModal: true,
           UserAllowedGroupsModal: true,
@@ -252,6 +263,7 @@ describe('admin UsersView', () => {
           UserCreateModal: true,
           UserEditModal: true,
           BulkEditUserModal: BulkEditUserModalStub,
+          BatchResetPlatformQuotaModal: BatchResetPlatformQuotaModalStub,
           UserPlatformQuotaModal: true,
           UserApiKeysModal: true,
           UserAllowedGroupsModal: true,
@@ -330,6 +342,7 @@ describe('admin UsersView', () => {
           UserCreateModal: true,
           UserEditModal: true,
           BulkEditUserModal: BulkEditUserModalStub,
+          BatchResetPlatformQuotaModal: BatchResetPlatformQuotaModalStub,
           UserPlatformQuotaModal: true,
           UserApiKeysModal: true,
           UserAllowedGroupsModal: true,
@@ -348,6 +361,10 @@ describe('admin UsersView', () => {
     await wrapper.get('[data-test="select-42"]').trigger('click')
     expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('42')
     expect(wrapper.find('[data-test="bulk-edit-limits"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="bulk-reset-platform-quotas"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="bulk-reset-platform-quotas"]').trigger('click')
+    expect(wrapper.get('[data-test="batch-quota-reset-ids"]').text()).toBe('42')
 
     await wrapper.get('[data-test="next-page"]').trigger('click')
     await flushPromises()

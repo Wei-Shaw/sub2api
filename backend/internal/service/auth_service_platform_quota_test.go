@@ -47,6 +47,10 @@ func (f *fakeInsertRecorder) ResetExpiredWindow(_ context.Context, _ int64, _ st
 	return nil
 }
 
+func (f *fakeInsertRecorder) BatchResetWindows(_ context.Context, _ []int64, _, _ []string, _ time.Time) ([]UserPlatformQuotaKey, error) {
+	return nil, nil
+}
+
 func (f *fakeInsertRecorder) BatchSnapshotUsage(_ context.Context, _ []UserPlatformQuotaSnapshot, _ time.Time) error {
 	return nil
 }
@@ -55,10 +59,11 @@ func TestSnapshotPlatformQuotaDefaults_PassesToRepoBulkInsert(t *testing.T) {
 	fakeRepo := &fakeInsertRecorder{}
 	s := &AuthService{userPlatformQuotaRepo: fakeRepo}
 
+	two := 2.0
 	five := 5.0
 	plan := &signupGrantPlan{
 		PlatformQuotas: map[string]*DefaultPlatformQuotaSetting{
-			"anthropic":   {DailyLimitUSD: &five},
+			"anthropic":   {FiveHourLimitUSD: &two, DailyLimitUSD: &five},
 			"openai":      {},
 			"gemini":      {},
 			"antigravity": {},
@@ -72,12 +77,14 @@ func TestSnapshotPlatformQuotaDefaults_PassesToRepoBulkInsert(t *testing.T) {
 	}
 	found := false
 	for _, r := range fakeRepo.records {
-		if r.UserID == 999 && r.Platform == "anthropic" && r.DailyLimitUSD != nil && *r.DailyLimitUSD == 5 {
+		if r.UserID == 999 && r.Platform == "anthropic" &&
+			r.FiveHourLimitUSD != nil && *r.FiveHourLimitUSD == 2 &&
+			r.DailyLimitUSD != nil && *r.DailyLimitUSD == 5 {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("anthropic daily = 5 not snapshotted")
+		t.Error("anthropic five-hour = 2 and daily = 5 were not snapshotted")
 	}
 }
 
@@ -155,7 +162,7 @@ func TestResolveSignupGrantPlan_GlobalQuotaLoadedBeforeAuthSource(t *testing.T) 
 	settings := map[string]string{
 		SettingKeyRegistrationEnabled: "true",
 		SettingKeyDefaultPlatformQuotas: `{
-			"anthropic":   {"daily": 10, "weekly": 50, "monthly": 200},
+			"anthropic":   {"five_hour": 2, "daily": 10, "weekly": 50, "monthly": 200},
 			"openai":      {"daily": 5,  "weekly": 25, "monthly": 100},
 			"gemini":      {"daily": 5,  "weekly": 25, "monthly": 100},
 			"antigravity": {"daily": 5,  "weekly": 25, "monthly": 100}
@@ -172,6 +179,9 @@ func TestResolveSignupGrantPlan_GlobalQuotaLoadedBeforeAuthSource(t *testing.T) 
 	}
 	if q.DailyLimitUSD == nil || *q.DailyLimitUSD != 10 {
 		t.Errorf("expected anthropic daily=10, got %v", q.DailyLimitUSD)
+	}
+	if q.FiveHourLimitUSD == nil || *q.FiveHourLimitUSD != 2 {
+		t.Errorf("expected anthropic five-hour=2, got %v", q.FiveHourLimitUSD)
 	}
 }
 

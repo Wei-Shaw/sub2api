@@ -12,27 +12,48 @@ import (
 // LazyZeroQuotaForResponse 按 D14 规则把过期档位归零（不写 DB）。
 // includeWindowStart=true 时输出 *_window_start 字段（admin 视角调试用）
 func LazyZeroQuotaForResponse(r service.UserPlatformQuotaRecord, now time.Time, includeWindowStart bool) map[string]any {
+	fiveHour := buildWindowSlice(r.FiveHourUsageUSD, r.FiveHourLimitUSD, r.FiveHourWindowStart, NeedsFiveHourReset(r.FiveHourWindowStart, now), NextFiveHourResetTimeFrom(r.FiveHourWindowStart, now), includeWindowStart)
 	daily := buildWindowSlice(r.DailyUsageUSD, r.DailyLimitUSD, r.DailyWindowStart, NeedsDailyReset(r.DailyWindowStart, now), nextDailyResetTime(now), includeWindowStart)
 	weekly := buildWindowSlice(r.WeeklyUsageUSD, r.WeeklyLimitUSD, r.WeeklyWindowStart, NeedsWeeklyReset(r.WeeklyWindowStart, now), nextWeeklyResetTime(now), includeWindowStart)
 	monthly := buildWindowSlice(r.MonthlyUsageUSD, r.MonthlyLimitUSD, r.MonthlyWindowStart, NeedsMonthlyReset(r.MonthlyWindowStart, now), NextMonthlyResetTimeFrom(r.MonthlyWindowStart, now), includeWindowStart)
 	out := map[string]any{
-		"platform":                 r.Platform,
-		"daily_usage_usd":          daily.usage,
-		"daily_limit_usd":          daily.limit,
-		"daily_window_resets_at":   daily.resetsAt,
-		"weekly_usage_usd":         weekly.usage,
-		"weekly_limit_usd":         weekly.limit,
-		"weekly_window_resets_at":  weekly.resetsAt,
-		"monthly_usage_usd":        monthly.usage,
-		"monthly_limit_usd":        monthly.limit,
-		"monthly_window_resets_at": monthly.resetsAt,
+		"platform":                   r.Platform,
+		"five_hour_usage_usd":        fiveHour.usage,
+		"five_hour_limit_usd":        fiveHour.limit,
+		"five_hour_window_resets_at": fiveHour.resetsAt,
+		"daily_usage_usd":            daily.usage,
+		"daily_limit_usd":            daily.limit,
+		"daily_window_resets_at":     daily.resetsAt,
+		"weekly_usage_usd":           weekly.usage,
+		"weekly_limit_usd":           weekly.limit,
+		"weekly_window_resets_at":    weekly.resetsAt,
+		"monthly_usage_usd":          monthly.usage,
+		"monthly_limit_usd":          monthly.limit,
+		"monthly_window_resets_at":   monthly.resetsAt,
 	}
 	if includeWindowStart {
+		out["five_hour_window_start"] = fiveHour.windowStart
 		out["daily_window_start"] = daily.windowStart
 		out["weekly_window_start"] = weekly.windowStart
 		out["monthly_window_start"] = monthly.windowStart
 	}
 	return out
+}
+
+// NeedsFiveHourReset reports whether the rolling five-hour window has expired.
+func NeedsFiveHourReset(start *time.Time, now time.Time) bool {
+	if start == nil {
+		return false
+	}
+	return now.Sub(*start) >= 5*time.Hour
+}
+
+// NextFiveHourResetTimeFrom returns the end of the active rolling five-hour window.
+func NextFiveHourResetTimeFrom(start *time.Time, now time.Time) time.Time {
+	if start == nil || NeedsFiveHourReset(start, now) {
+		return now.Add(5 * time.Hour)
+	}
+	return start.Add(5 * time.Hour)
 }
 
 type windowSlice struct {

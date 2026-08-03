@@ -332,10 +332,11 @@ export default {
         subscriptionValidityDays: 'Validity (days)',
         defaultPlatformQuotas: 'Default Platform Quotas (on signup)',
         defaultPlatformQuotasHint: 'Automatically assigned to new users on signup; existing users are not affected. Leave blank = unlimited.',
-        platformQuotaNotice: 'Monthly quota uses a 30-day rolling window, not a calendar month.',
+        platformQuotaNotice: 'The 5-hour and monthly quotas use rolling 5-hour and 30-day windows.',
       },
       platformQuota: {
         platform:    'Platform',
+        fiveHour:    '5-hour (USD)',
         daily:       'Daily (USD)',
         weekly:      'Weekly (USD)',
         monthly:     'Monthly (USD, 30d rolling)',

@@ -331,19 +331,23 @@ export async function bindUserAuthIdentity(
  * Platform quota types
  */
 export type PlatformQuotaPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
-export type PlatformQuotaWindow = 'daily' | 'weekly' | 'monthly'
+export type PlatformQuotaWindow = 'five_hour' | 'daily' | 'weekly' | 'monthly'
 
 export interface PlatformQuotaItem {
   platform: PlatformQuotaPlatform
+  five_hour_limit_usd?: number | null
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
+  five_hour_usage_usd?: number
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
+  five_hour_window_start?: string | null
   daily_window_start?: string | null
   weekly_window_start?: string | null
   monthly_window_start?: string | null
+  five_hour_window_resets_at?: string | null
   daily_window_resets_at?: string | null
   weekly_window_resets_at?: string | null
   monthly_window_resets_at?: string | null
@@ -351,9 +355,20 @@ export interface PlatformQuotaItem {
 
 export interface PlatformQuotaUpdateItem {
   platform: PlatformQuotaPlatform
+  five_hour_limit_usd: number | null
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
+}
+
+export interface BatchResetPlatformQuotaWindowsRequest {
+  user_ids: number[]
+  platforms: PlatformQuotaPlatform[]
+  windows: PlatformQuotaWindow[]
+}
+
+export interface BatchResetPlatformQuotaWindowsResponse {
+  affected: number
 }
 
 export interface PlatformQuotasResponse {
@@ -399,6 +414,16 @@ export async function resetPlatformQuotaWindow(
   return data
 }
 
+export async function batchResetPlatformQuotaWindows(
+  request: BatchResetPlatformQuotaWindowsRequest
+): Promise<BatchResetPlatformQuotaWindowsResponse> {
+  const { data } = await apiClient.post<BatchResetPlatformQuotaWindowsResponse>(
+    '/admin/users/batch-platform-quotas/reset',
+    request
+  )
+  return data
+}
+
 export const usersAPI = {
   list,
   getById,
@@ -417,6 +442,7 @@ export const usersAPI = {
   getPlatformQuotas,
   updatePlatformQuotas,
   resetPlatformQuotaWindow,
+  batchResetPlatformQuotaWindows,
 }
 
 export default usersAPI

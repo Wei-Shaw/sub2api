@@ -145,6 +145,7 @@ func TestUserPlatformQuotaRepository_IncrementUsageWithReset_SameWindow(t *testi
 	rec, err := repo.GetByUserPlatform(ctx, userID, "anthropic")
 	require.NoError(t, err)
 	require.NotNil(t, rec)
+	require.InDelta(t, 1.5, rec.FiveHourUsageUSD, 1e-9, "initial five-hour usage")
 	require.InDelta(t, 1.5, rec.DailyUsageUSD, 1e-9, "initial daily usage")
 	require.InDelta(t, 1.5, rec.WeeklyUsageUSD, 1e-9, "initial weekly usage")
 	require.InDelta(t, 1.5, rec.MonthlyUsageUSD, 1e-9, "initial monthly usage")
@@ -154,6 +155,7 @@ func TestUserPlatformQuotaRepository_IncrementUsageWithReset_SameWindow(t *testi
 
 	rec, err = repo.GetByUserPlatform(ctx, userID, "anthropic")
 	require.NoError(t, err)
+	require.InDelta(t, 2.0, rec.FiveHourUsageUSD, 1e-9, "accumulated five-hour usage")
 	require.InDelta(t, 2.0, rec.DailyUsageUSD, 1e-9, "accumulated daily usage")
 	require.InDelta(t, 2.0, rec.WeeklyUsageUSD, 1e-9, "accumulated weekly usage")
 	require.InDelta(t, 2.0, rec.MonthlyUsageUSD, 1e-9, "accumulated monthly usage")
@@ -243,6 +245,106 @@ func TestUserPlatformQuotaRepository_ResetExpiredWindow_UnknownWindow(t *testing
 	repo := NewUserPlatformQuotaRepository(client)
 	err := repo.ResetExpiredWindow(ctx, 999, "anthropic", "yearly", time.Now())
 	require.Error(t, err, "unknown window should return error")
+}
+
+func TestUserPlatformQuotaRepository_ResetFiveHourWindowIncrementsGeneration(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	userID := mustCreateUserForQuota(t, client)
+	repo := NewUserPlatformQuotaRepository(client)
+	oldStart := time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC)
+
+	_, err := client.UserPlatformQuota.Create().
+		SetUserID(userID).
+		SetPlatform("openai").
+		SetFiveHourUsageUsd(7.5).
+		SetFiveHourWindowStart(oldStart).
+		Save(ctx)
+	require.NoError(t, err)
+
+	newStart := oldStart.Add(time.Hour)
+	require.NoError(t, repo.ResetExpiredWindow(ctx, userID, "openai", "five_hour", newStart))
+	rec, err := repo.GetByUserPlatform(ctx, userID, "openai")
+	require.NoError(t, err)
+	require.Zero(t, rec.FiveHourUsageUSD)
+	require.NotNil(t, rec.FiveHourWindowStart)
+	require.True(t, rec.FiveHourWindowStart.Equal(newStart))
+	require.Equal(t, int64(1), rec.ResetGeneration)
+}
+
+func TestUserPlatformQuotaRepository_BatchResetWindows(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	userID1 := mustCreateUserForQuota(t, client)
+	userID2 := mustCreateUserForQuota(t, client)
+	repo := NewUserPlatformQuotaRepository(client)
+	start := time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC)
+
+	for _, userID := range []int64{userID1, userID2} {
+		_, err := client.UserPlatformQuota.Create().
+			SetUserID(userID).
+			SetPlatform("anthropic").
+			SetFiveHourUsageUsd(4).
+			SetDailyUsageUsd(8).
+			SetFiveHourWindowStart(start).
+			SetDailyWindowStart(start).
+			Save(ctx)
+		require.NoError(t, err)
+	}
+
+	newStart := start.Add(time.Hour)
+	keys, err := repo.BatchResetWindows(ctx, []int64{userID1, userID2}, []string{"anthropic"}, []string{"five_hour", "daily"}, newStart)
+	require.NoError(t, err)
+	require.Len(t, keys, 2)
+	for _, userID := range []int64{userID1, userID2} {
+		rec, err := repo.GetByUserPlatform(ctx, userID, "anthropic")
+		require.NoError(t, err)
+		require.Zero(t, rec.FiveHourUsageUSD)
+		require.Zero(t, rec.DailyUsageUSD)
+		require.Equal(t, int64(1), rec.ResetGeneration)
+	}
+}
+
+func TestBatchSnapshotUsage_StaleGenerationCannotOverwriteReset(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	userID := mustCreateUserForQuota(t, client)
+	repo := NewUserPlatformQuotaRepository(client)
+	start := time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC)
+
+	_, err := client.UserPlatformQuota.Create().
+		SetUserID(userID).
+		SetPlatform("openai").
+		SetFiveHourUsageUsd(5).
+		SetDailyUsageUsd(5).
+		SetFiveHourWindowStart(start).
+		SetDailyWindowStart(start).
+		SetWeeklyWindowStart(start).
+		SetMonthlyWindowStart(start).
+		Save(ctx)
+	require.NoError(t, err)
+	require.NoError(t, repo.ResetExpiredWindow(ctx, userID, "openai", "five_hour", start.Add(time.Hour)))
+
+	stale := UserPlatformQuotaSnapshot{
+		UserID:              userID,
+		Platform:            "openai",
+		FiveHourUsageUSD:    99,
+		DailyUsageUSD:       99,
+		WeeklyUsageUSD:      99,
+		MonthlyUsageUSD:     99,
+		FiveHourWindowStart: start,
+		DailyWindowStart:    start,
+		WeeklyWindowStart:   start,
+		MonthlyWindowStart:  start,
+		ResetGeneration:     0,
+	}
+	require.NoError(t, repo.BatchSnapshotUsage(ctx, []UserPlatformQuotaSnapshot{stale}, start.Add(2*time.Hour)))
+
+	rec, err := repo.GetByUserPlatform(ctx, userID, "openai")
+	require.NoError(t, err)
+	require.Zero(t, rec.FiveHourUsageUSD)
+	require.InDelta(t, 5, rec.DailyUsageUSD, 1e-9)
+	require.Equal(t, int64(1), rec.ResetGeneration)
 }
 
 func TestUserPlatformQuotaRepository_BulkInsertInitial_MultiRow(t *testing.T) {

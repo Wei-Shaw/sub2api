@@ -21,15 +21,35 @@
           <thead>
             <tr class="border-b border-gray-200 text-gray-700 dark:border-dark-700 dark:text-gray-300">
               <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.platform') }}</th>
+              <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.fiveHour') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.daily') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.weekly') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.monthly') }}</th>
-              <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.usage') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="row in quotas" :key="row.platform" class="border-b border-gray-100 dark:border-dark-800">
               <td class="px-3 py-2 font-mono text-gray-900 dark:text-white">{{ row.platform }}</td>
+              <td class="px-3 py-2">
+                <div class="flex items-center gap-1">
+                  <input
+                    v-model.number="row.five_hour_limit_usd"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="input w-24"
+                    :placeholder="t('admin.users.platformQuota.placeholder')"
+                  />
+                  <button
+                    type="button"
+                    class="inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-400 hover:text-amber-500 disabled:opacity-50"
+                    :disabled="!!resetting[`${row.platform}.five_hour`]"
+                    :title="t('admin.users.platformQuota.reset.button')"
+                    @click="onReset(row.platform, 'five_hour')"
+                  ><Icon name="refresh" size="xs" /></button>
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ formatUsage(row.five_hour_usage_usd) }}</p>
+              </td>
               <td class="px-3 py-2">
                 <div class="flex items-center gap-1">
                   <input
@@ -42,12 +62,13 @@
                   />
                   <button
                     type="button"
-                    class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
+                    class="inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-400 hover:text-amber-500 disabled:opacity-50"
                     :disabled="!!resetting[`${row.platform}.daily`]"
                     :title="t('admin.users.platformQuota.reset.button')"
                     @click="onReset(row.platform, 'daily')"
-                  >↻</button>
+                  ><Icon name="refresh" size="xs" /></button>
                 </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ formatUsage(row.daily_usage_usd) }}</p>
               </td>
               <td class="px-3 py-2">
                 <div class="flex items-center gap-1">
@@ -61,12 +82,13 @@
                   />
                   <button
                     type="button"
-                    class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
+                    class="inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-400 hover:text-amber-500 disabled:opacity-50"
                     :disabled="!!resetting[`${row.platform}.weekly`]"
                     :title="t('admin.users.platformQuota.reset.button')"
                     @click="onReset(row.platform, 'weekly')"
-                  >↻</button>
+                  ><Icon name="refresh" size="xs" /></button>
                 </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ formatUsage(row.weekly_usage_usd) }}</p>
               </td>
               <td class="px-3 py-2">
                 <div class="flex items-center gap-1">
@@ -80,15 +102,13 @@
                   />
                   <button
                     type="button"
-                    class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
+                    class="inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-400 hover:text-amber-500 disabled:opacity-50"
                     :disabled="!!resetting[`${row.platform}.monthly`]"
                     :title="t('admin.users.platformQuota.reset.button')"
                     @click="onReset(row.platform, 'monthly')"
-                  >↻</button>
+                  ><Icon name="refresh" size="xs" /></button>
                 </div>
-              </td>
-              <td class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                {{ formatUsage(row.daily_usage_usd) }} / {{ formatUsage(row.weekly_usage_usd) }} / {{ formatUsage(row.monthly_usage_usd) }}
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ formatUsage(row.monthly_usage_usd) }}</p>
               </td>
             </tr>
           </tbody>
@@ -121,6 +141,7 @@ import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { AdminUser, PlatformQuotaItem, PlatformQuotaPlatform, PlatformQuotaWindow } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Icon from '@/components/icons/Icon.vue'
 
 const props = defineProps<{ show: boolean; user: AdminUser | null }>()
 const emit = defineEmits(['close', 'success'])
@@ -132,9 +153,11 @@ const PLATFORMS: PlatformQuotaPlatform[] = ['anthropic', 'openai', 'gemini', 'an
 
 interface QuotaRow {
   platform: PlatformQuotaPlatform
+  five_hour_limit_usd: number | null
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
+  five_hour_usage_usd: number
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
@@ -152,9 +175,11 @@ const quotas = ref<QuotaRow[]>([])
 function emptyRow(p: PlatformQuotaPlatform): QuotaRow {
   return {
     platform: p,
+    five_hour_limit_usd: null,
     daily_limit_usd: null,
     weekly_limit_usd: null,
     monthly_limit_usd: null,
+    five_hour_usage_usd: 0,
     daily_usage_usd: 0,
     weekly_usage_usd: 0,
     monthly_usage_usd: 0,
@@ -169,9 +194,11 @@ function normalize(items: PlatformQuotaItem[]): QuotaRow[] {
     if (!it) return emptyRow(p)
     return {
       platform: p,
+      five_hour_limit_usd: it.five_hour_limit_usd ?? null,
       daily_limit_usd: it.daily_limit_usd ?? null,
       weekly_limit_usd: it.weekly_limit_usd ?? null,
       monthly_limit_usd: it.monthly_limit_usd ?? null,
+      five_hour_usage_usd: it.five_hour_usage_usd ?? 0,
       daily_usage_usd: it.daily_usage_usd ?? 0,
       weekly_usage_usd: it.weekly_usage_usd ?? 0,
       monthly_usage_usd: it.monthly_usage_usd ?? 0,
@@ -204,11 +231,12 @@ watch(
 )
 
 function onClearAll() {
-  // 二次确认：一键清空全部平台的 daily/weekly/monthly 限额属于高风险批量操作，
+  // 二次确认：一键清空全部平台的四档限额属于高风险批量操作，
   // 误点后所有平台变为"无限额"，且本地无 undo 机制（需要逐个手动重填或取消保存）。
   const confirmed = window.confirm(t('admin.users.platformQuota.clearAllConfirm'))
   if (!confirmed) return
   for (const row of quotas.value) {
+    row.five_hour_limit_usd = null
     row.daily_limit_usd = null
     row.weekly_limit_usd = null
     row.monthly_limit_usd = null
@@ -222,7 +250,7 @@ async function onSave() {
   // 这里在 save 前显式检测 NaN，提示用户修正后再提交。
   const invalid: string[] = []
   for (const row of quotas.value) {
-    for (const win of ['daily', 'weekly', 'monthly'] as const) {
+    for (const win of ['five_hour', 'daily', 'weekly', 'monthly'] as const) {
       const v = row[`${win}_limit_usd` as const]
       if (typeof v === 'number' && Number.isNaN(v)) {
         invalid.push(`${row.platform}.${win}`)
@@ -238,6 +266,7 @@ async function onSave() {
   try {
     const payload = quotas.value.map((r) => ({
       platform: r.platform,
+      five_hour_limit_usd: normalizeLimit(r.five_hour_limit_usd),
       daily_limit_usd: normalizeLimit(r.daily_limit_usd),
       weekly_limit_usd: normalizeLimit(r.weekly_limit_usd),
       monthly_limit_usd: normalizeLimit(r.monthly_limit_usd),
@@ -263,7 +292,13 @@ function normalizeLimit(v: number | null | undefined): number | null {
 
 async function onReset(platform: PlatformQuotaPlatform, quotaWindow: PlatformQuotaWindow) {
   if (!props.user) return
-  const windowLabel = t(`admin.users.platformQuota.window${quotaWindow.charAt(0).toUpperCase() + quotaWindow.slice(1)}`)
+  const windowLabelKeys: Record<PlatformQuotaWindow, string> = {
+    five_hour: 'admin.users.platformQuota.windowFiveHour',
+    daily: 'admin.users.platformQuota.windowDaily',
+    weekly: 'admin.users.platformQuota.windowWeekly',
+    monthly: 'admin.users.platformQuota.windowMonthly',
+  }
+  const windowLabel = t(windowLabelKeys[quotaWindow])
   const confirmed = window.confirm(
     t('admin.users.platformQuota.reset.confirm', { platform, window: windowLabel })
   )

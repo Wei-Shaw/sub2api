@@ -970,7 +970,7 @@ func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings 
 	return s.settingRepo.Set(ctx, SettingKeyStreamTimeoutSettings, string(data))
 }
 
-// GetDefaultPlatformQuotas 读取系统全局 platform quota JSON key，返回全部允许平台 x 3 window 的设置。
+// GetDefaultPlatformQuotas 读取系统全局 platform quota JSON key，返回全部允许平台 x 4 window 的设置。
 // 永远返回包含全部允许 platform key 的 map（值可能为零值/nil 字段，表示"上层未配置 = 不限制"）。
 //
 // 使用单个 JSON key（default_platform_quotas），一次 DB roundtrip，消除旧 12-KV 格式的 N+1 问题。
@@ -1016,6 +1016,9 @@ func (s *SettingService) GetAuthSourcePlatformQuotas(ctx context.Context, source
 func mergePlatformQuotaDefaults(dst, src *DefaultPlatformQuotaSetting) {
 	if src == nil || dst == nil {
 		return
+	}
+	if src.FiveHourLimitUSD != nil {
+		dst.FiveHourLimitUSD = src.FiveHourLimitUSD
 	}
 	if src.DailyLimitUSD != nil {
 		dst.DailyLimitUSD = src.DailyLimitUSD

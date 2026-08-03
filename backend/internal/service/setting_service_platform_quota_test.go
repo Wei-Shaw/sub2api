@@ -14,8 +14,9 @@ import (
 func TestMergePlatformQuotaDefaults_PatchSemantics(t *testing.T) {
 	five := 5.0
 	base := DefaultPlatformQuotaSetting{
-		DailyLimitUSD:  &five,
-		WeeklyLimitUSD: &five,
+		FiveHourLimitUSD: &five,
+		DailyLimitUSD:    &five,
+		WeeklyLimitUSD:   &five,
 	}
 	ten := 10.0
 	patch := DefaultPlatformQuotaSetting{DailyLimitUSD: &ten}
@@ -26,6 +27,9 @@ func TestMergePlatformQuotaDefaults_PatchSemantics(t *testing.T) {
 	}
 	if base.WeeklyLimitUSD == nil || *base.WeeklyLimitUSD != 5.0 {
 		t.Errorf("weekly should remain 5.0: %+v", base.WeeklyLimitUSD)
+	}
+	if base.FiveHourLimitUSD == nil || *base.FiveHourLimitUSD != 5.0 {
+		t.Errorf("five-hour should remain 5.0: %+v", base.FiveHourLimitUSD)
 	}
 }
 
@@ -64,7 +68,7 @@ func TestGetDefaultPlatformQuotas_ReturnsAllowedPlatforms(t *testing.T) {
 	zero := 0.0
 	svc := newSettingServiceForPlatformQuotaTest(map[string]string{
 		// 新 JSON 格式：anthropic daily=10.5, openai monthly=0, 其他平台无配置
-		SettingKeyDefaultPlatformQuotas: `{"anthropic":{"daily":10.5},"openai":{"monthly":0}}`,
+		SettingKeyDefaultPlatformQuotas: `{"anthropic":{"five_hour":2,"daily":10.5},"openai":{"monthly":0}}`,
 	})
 	got, err := svc.GetDefaultPlatformQuotas(context.Background())
 	if err != nil {
@@ -79,6 +83,9 @@ func TestGetDefaultPlatformQuotas_ReturnsAllowedPlatforms(t *testing.T) {
 	// anthropic daily = 10.5
 	if v := got["anthropic"].DailyLimitUSD; v == nil || *v != 10.5 {
 		t.Errorf("anthropic daily want 10.5, got %v", v)
+	}
+	if v := got["anthropic"].FiveHourLimitUSD; v == nil || *v != 2 {
+		t.Errorf("anthropic five-hour want 2, got %v", v)
 	}
 	// openai monthly = 0（显式禁用）
 	if v := got["openai"].MonthlyLimitUSD; v == nil || *v != zero {
@@ -157,10 +164,11 @@ func TestSystemPlatformQuotas_WriteReadRoundTrip(t *testing.T) {
 	svc := newSettingServiceForPlatformQuotaTest(nil)
 	ctx := context.Background()
 
+	two := 2.0
 	ten := 10.0
 	ss := &SystemSettings{
 		DefaultPlatformQuotas: map[string]*DefaultPlatformQuotaSetting{
-			"anthropic": {DailyLimitUSD: &ten, WeeklyLimitUSD: nil, MonthlyLimitUSD: nil},
+			"anthropic": {FiveHourLimitUSD: &two, DailyLimitUSD: &ten, WeeklyLimitUSD: nil, MonthlyLimitUSD: nil},
 		},
 	}
 	if err := svc.UpdateSettings(ctx, ss); err != nil {
@@ -180,6 +188,9 @@ func TestSystemPlatformQuotas_WriteReadRoundTrip(t *testing.T) {
 	// 写入值正确往返
 	if v := got["anthropic"].DailyLimitUSD; v == nil || *v != ten {
 		t.Fatalf("anthropic daily round-trip failed: got %v, want 10", v)
+	}
+	if v := got["anthropic"].FiveHourLimitUSD; v == nil || *v != two {
+		t.Fatalf("anthropic five-hour round-trip failed: got %v, want 2", v)
 	}
 	// 未写入的平台字段为 nil
 	if got["openai"].DailyLimitUSD != nil {
@@ -227,7 +238,7 @@ func TestSystemPlatformQuotas_EmptyMapClearsAll(t *testing.T) {
 		if pq == nil {
 			continue
 		}
-		if pq.DailyLimitUSD != nil || pq.WeeklyLimitUSD != nil || pq.MonthlyLimitUSD != nil {
+		if pq.FiveHourLimitUSD != nil || pq.DailyLimitUSD != nil || pq.WeeklyLimitUSD != nil || pq.MonthlyLimitUSD != nil {
 			t.Errorf("platform %q should have all-nil limits after empty-map write, got %+v", p, pq)
 		}
 	}

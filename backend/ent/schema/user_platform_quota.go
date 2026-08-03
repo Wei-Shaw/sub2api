@@ -48,10 +48,14 @@ func (UserPlatformQuota) Fields() []ent.Field {
 				}
 			}),
 
-		// 日 / 周 / 月 USD 上限：
+		// 5 小时 / 日 / 周 / 月 USD 上限：
 		//   nil / not set → 无限额（完全放行）
 		//   0            → 完全禁用（任何请求都会被拒绝，因为 usage >= 0 恒成立）
 		//   > 0          → USD 限额上限
+		field.Float("five_hour_limit_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("daily_limit_usd").
 			Optional().
 			Nillable().
@@ -66,6 +70,9 @@ func (UserPlatformQuota) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 
 		// 当前窗口已用量（USD，preflight 时与 limit 比较）
+		field.Float("five_hour_usage_usd").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("daily_usage_usd").
 			Default(0).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
@@ -77,6 +84,10 @@ func (UserPlatformQuota) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 
 		// 窗口起点（NULL = 首次还未初始化，由 InitWindowStarts 用 COALESCE 兜底）
+		field.Time("five_hour_window_start").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("daily_window_start").
 			Optional().
 			Nillable().
@@ -89,6 +100,11 @@ func (UserPlatformQuota) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+
+		// 管理员重置代次。缓存快照仅能覆盖相同代次的数据库记录。
+		field.Int64("reset_generation").
+			Default(0).
+			NonNegative(),
 	}
 }
 

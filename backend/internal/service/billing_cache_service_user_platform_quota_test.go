@@ -89,6 +89,10 @@ func (f *fakeQuotaRepo) ResetExpiredWindow(_ context.Context, _ int64, _ string,
 	return nil
 }
 
+func (f *fakeQuotaRepo) BatchResetWindows(_ context.Context, _ []int64, _, _ []string, _ time.Time) ([]UserPlatformQuotaKey, error) {
+	return nil, nil
+}
+
 func (f *fakeQuotaRepo) BatchSnapshotUsage(_ context.Context, _ []UserPlatformQuotaSnapshot, _ time.Time) error {
 	return nil
 }
@@ -227,6 +231,11 @@ func currentDayStart() *time.Time {
 	return &s
 }
 
+func currentFiveHourStart() *time.Time {
+	s := time.Now().UTC().Add(-time.Hour)
+	return &s
+}
+
 func TestCheckUserPlatformQuotaEligibility_AllowsWhenUnderLimit(t *testing.T) {
 	daily := 10.0
 	repo := &fakeQuotaRepo{rec: &UserPlatformQuotaRecord{
@@ -236,7 +245,7 @@ func TestCheckUserPlatformQuotaEligibility_AllowsWhenUnderLimit(t *testing.T) {
 		DailyUsageUSD:    4.5,
 		DailyLimitUSD:    &daily,
 		DailyWindowStart: currentDayStart(),
-		SchemaVersion:    UserPlatformQuotaCacheSchemaV1,
+		SchemaVersion:    UserPlatformQuotaCacheSchemaV2,
 	}}
 	s := newServiceForPreflight(t, repo, cache)
 	if err := s.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic"); err != nil {
@@ -253,12 +262,57 @@ func TestCheckUserPlatformQuotaEligibility_DailyExhausted(t *testing.T) {
 		DailyUsageUSD:    5.0,
 		DailyLimitUSD:    &daily,
 		DailyWindowStart: currentDayStart(),
-		SchemaVersion:    UserPlatformQuotaCacheSchemaV1,
+		SchemaVersion:    UserPlatformQuotaCacheSchemaV2,
 	}}
 	s := newServiceForPreflight(t, repo, cache)
 	err := s.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic")
 	if !errors.Is(err, ErrUserPlatformDailyQuotaExhausted) {
 		t.Errorf("expected ErrUserPlatformDailyQuotaExhausted, got %v", err)
+	}
+}
+
+func TestCheckUserPlatformQuotaEligibility_FiveHourExhausted(t *testing.T) {
+	limit := 5.0
+	cache := &fakeFullCache{entry: &UserPlatformQuotaCacheEntry{
+		FiveHourUsageUSD:    5.0,
+		FiveHourLimitUSD:    &limit,
+		FiveHourWindowStart: currentFiveHourStart(),
+		SchemaVersion:       UserPlatformQuotaCacheSchemaV2,
+	}}
+	s := newServiceForPreflight(t, &fakeQuotaRepo{}, cache)
+
+	err := s.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic")
+	if !errors.Is(err, ErrUserPlatformFiveHourQuotaExhausted) {
+		t.Errorf("expected ErrUserPlatformFiveHourQuotaExhausted, got %v", err)
+	}
+}
+
+func TestCheckUserPlatformQuotaEligibility_FiveHourExpiredAllowsWithoutStartingWindow(t *testing.T) {
+	limit := 5.0
+	now := time.Now().UTC()
+	past := now.Add(-5 * time.Hour)
+	dayStart := timezone.StartOfDay(now)
+	weekStart := timezone.StartOfWeek(now)
+	cache := &fakeFullCache{entry: &UserPlatformQuotaCacheEntry{
+		FiveHourUsageUSD:    8.0,
+		FiveHourLimitUSD:    &limit,
+		FiveHourWindowStart: &past,
+		DailyWindowStart:    &dayStart,
+		WeeklyWindowStart:   &weekStart,
+		MonthlyWindowStart:  &now,
+		SchemaVersion:       UserPlatformQuotaCacheSchemaV2,
+	}}
+	s := newServiceForPreflight(t, &fakeQuotaRepo{}, cache)
+
+	if err := s.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic"); err != nil {
+		t.Fatalf("expired five-hour window should allow request, got %v", err)
+	}
+	if cache.getSetCalls() != 0 {
+		t.Fatalf("preflight must not start or refresh the rolling window, got %d cache writes", cache.getSetCalls())
+	}
+	entry := cache.getEntry()
+	if entry == nil || entry.FiveHourWindowStart == nil || !entry.FiveHourWindowStart.Equal(past) {
+		t.Errorf("preflight changed the five-hour window start: %+v", entry)
 	}
 }
 
@@ -269,7 +323,7 @@ func TestCheckUserPlatformQuotaEligibility_NilLimitMeansUnlimited(t *testing.T) 
 	cache := &fakeFullCache{entry: &UserPlatformQuotaCacheEntry{
 		DailyUsageUSD:    999,
 		DailyWindowStart: currentDayStart(),
-		SchemaVersion:    UserPlatformQuotaCacheSchemaV1,
+		SchemaVersion:    UserPlatformQuotaCacheSchemaV2,
 		// DailyLimitUSD nil → 无限额
 	}}
 	s := newServiceForPreflight(t, repo, cache)
@@ -287,7 +341,7 @@ func TestCheckUserPlatformQuotaEligibility_ZeroLimitImmediateBlock(t *testing.T)
 		DailyUsageUSD:    0,
 		DailyLimitUSD:    &zero,
 		DailyWindowStart: currentDayStart(),
-		SchemaVersion:    UserPlatformQuotaCacheSchemaV1,
+		SchemaVersion:    UserPlatformQuotaCacheSchemaV2,
 	}}
 	s := newServiceForPreflight(t, repo, cache)
 	err := s.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic")
@@ -335,7 +389,7 @@ func TestCheckUserPlatformQuotaEligibility_WindowExpiredInCache(t *testing.T) {
 		DailyUsageUSD:    10.0, // 超限，但窗口已过期
 		DailyLimitUSD:    &daily,
 		DailyWindowStart: &past,
-		SchemaVersion:    UserPlatformQuotaCacheSchemaV1,
+		SchemaVersion:    UserPlatformQuotaCacheSchemaV2,
 	}}
 	s := newServiceForPreflight(t, repo, cache)
 	err := s.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic")
@@ -345,7 +399,7 @@ func TestCheckUserPlatformQuotaEligibility_WindowExpiredInCache(t *testing.T) {
 }
 
 // TestCheckUserPlatformQuotaEligibility_WindowExpiredRefreshesCache 验证:
-// V1 HIT 路径检测到窗口过期时,用 reset 后的 entry 同步覆盖 Redis(而非 Delete):
+// V2 HIT 路径检测到窗口过期时,用 reset 后的 entry 同步覆盖 Redis(而非 Delete):
 //  1. 当前请求以本地清零值判断 → 放行
 //  2. cache entry 被替换为新 entry: usage 清零 + window_start 更新到当前窗口
 //     limit 保留;这样并发 IncrUserPlatformQuotaUsage 的 Lua INCR 可正确累加到新窗口。
@@ -360,7 +414,7 @@ func TestCheckUserPlatformQuotaEligibility_WindowExpiredRefreshesCache(t *testin
 		DailyUsageUSD:    10.0, // 超限,但窗口已过期 → 应被本地清零后放行
 		DailyLimitUSD:    &daily,
 		DailyWindowStart: &past,
-		SchemaVersion:    UserPlatformQuotaCacheSchemaV1,
+		SchemaVersion:    UserPlatformQuotaCacheSchemaV2,
 	}}
 	s := newServiceForPreflight(t, repo, cache)
 
@@ -381,8 +435,8 @@ func TestCheckUserPlatformQuotaEligibility_WindowExpiredRefreshesCache(t *testin
 	if refreshed.DailyLimitUSD == nil || *refreshed.DailyLimitUSD != daily {
 		t.Errorf("刷新后 DailyLimitUSD = %v, want %v(保留)", refreshed.DailyLimitUSD, daily)
 	}
-	if refreshed.SchemaVersion != UserPlatformQuotaCacheSchemaV1 {
-		t.Errorf("刷新后 SchemaVersion = %d, want V1", refreshed.SchemaVersion)
+	if refreshed.SchemaVersion != UserPlatformQuotaCacheSchemaV2 {
+		t.Errorf("刷新后 SchemaVersion = %d, want V2", refreshed.SchemaVersion)
 	}
 	if refreshed.DailyWindowStart == nil || refreshed.DailyWindowStart.Equal(past) {
 		t.Errorf("刷新后 DailyWindowStart = %v, 应更新到当前窗口而非保留 past=%v", refreshed.DailyWindowStart, past)
@@ -410,6 +464,29 @@ func TestMonthlyQuotaWindowExpired_Active(t *testing.T) {
 	start := time.Now().UTC().Add(-29 * 24 * time.Hour)
 	if monthlyQuotaWindowExpired(&start, time.Now().UTC()) {
 		t.Error("start 29 days ago should NOT be expired")
+	}
+}
+
+func TestRollingQuotaWindowExpired_FiveHourBoundary(t *testing.T) {
+	start := time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC)
+	if rollingQuotaWindowExpired(&start, start.Add(5*time.Hour-time.Nanosecond), 5*time.Hour) {
+		t.Error("five-hour window should remain active one nanosecond before the boundary")
+	}
+	if !rollingQuotaWindowExpired(&start, start.Add(5*time.Hour), 5*time.Hour) {
+		t.Error("five-hour window should expire at the exact boundary")
+	}
+}
+
+func TestNextFiveHourResetFrom(t *testing.T) {
+	start := time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC)
+	activeNow := start.Add(time.Hour)
+	if got := nextFiveHourResetFrom(&start, activeNow); !got.Equal(start.Add(5 * time.Hour)) {
+		t.Errorf("active reset time = %v, want %v", got, start.Add(5*time.Hour))
+	}
+
+	expiredNow := start.Add(6 * time.Hour)
+	if got := nextFiveHourResetFrom(&start, expiredNow); !got.Equal(expiredNow.Add(5 * time.Hour)) {
+		t.Errorf("expired reset time = %v, want %v", got, expiredNow.Add(5*time.Hour))
 	}
 }
 
@@ -509,7 +586,7 @@ func (f *fakeZeroQuotaCache) GetUserPlatformQuotaCache(_ context.Context, _ int6
 		DailyUsageUSD:    0,
 		DailyLimitUSD:    &daily,
 		DailyWindowStart: func() *time.Time { t := time.Now().UTC(); return &t }(),
-		SchemaVersion:    UserPlatformQuotaCacheSchemaV1,
+		SchemaVersion:    UserPlatformQuotaCacheSchemaV2,
 	}
 	return entry, true, nil
 }
@@ -670,7 +747,7 @@ func TestMonthlyQuotaWindowExpired_BoundaryTable(t *testing.T) {
 }
 
 // TestCheckUserPlatformQuotaEligibility_NoRow_WritesSentinel 验证:
-// cache MISS + DB 无行时,回填 sentinel entry(三 limit 全 nil,三 window_start 全 non-nil),
+// cache MISS + DB 无行时,回填 sentinel entry(四个 limit 全 nil,四个 window_start 全 non-nil),
 // TTL = UserPlatformQuotaSentinelTTLSeconds,函数返回 nil(fail-open)。
 func TestCheckUserPlatformQuotaEligibility_NoRow_WritesSentinel(t *testing.T) {
 	repo := &fakeQuotaRepo{rec: nil} // DB 无行
@@ -688,14 +765,14 @@ func TestCheckUserPlatformQuotaEligibility_NoRow_WritesSentinel(t *testing.T) {
 	if sentinel == nil {
 		t.Fatal("expected sentinel entry backfilled")
 	}
-	if sentinel.DailyLimitUSD != nil || sentinel.WeeklyLimitUSD != nil || sentinel.MonthlyLimitUSD != nil {
+	if sentinel.FiveHourLimitUSD != nil || sentinel.DailyLimitUSD != nil || sentinel.WeeklyLimitUSD != nil || sentinel.MonthlyLimitUSD != nil {
 		t.Errorf("sentinel must have all-nil limits")
 	}
-	if sentinel.DailyWindowStart == nil || sentinel.WeeklyWindowStart == nil || sentinel.MonthlyWindowStart == nil {
+	if sentinel.FiveHourWindowStart == nil || sentinel.DailyWindowStart == nil || sentinel.WeeklyWindowStart == nil || sentinel.MonthlyWindowStart == nil {
 		t.Errorf("sentinel must have non-nil window_start to avoid refresh churn")
 	}
-	if sentinel.SchemaVersion != UserPlatformQuotaCacheSchemaV1 {
-		t.Errorf("sentinel schema = %d, want V1", sentinel.SchemaVersion)
+	if sentinel.SchemaVersion != UserPlatformQuotaCacheSchemaV2 {
+		t.Errorf("sentinel schema = %d, want V2", sentinel.SchemaVersion)
 	}
 	if cache.getLastSetTTL() != 3600*time.Second {
 		t.Errorf("sentinel ttl = %v, want 3600s", cache.getLastSetTTL())
@@ -746,7 +823,7 @@ func TestCheckUserPlatformQuotaEligibility_SentinelCrossDay_NoRefresh(t *testing
 	lastWeek := timezone.StartOfWeek(time.Now().AddDate(0, 0, -7))
 	monthAgoOK := time.Now().AddDate(0, 0, -5) // <30d, monthly 不过期
 	sentinel := &UserPlatformQuotaCacheEntry{
-		SchemaVersion:      UserPlatformQuotaCacheSchemaV1,
+		SchemaVersion:      UserPlatformQuotaCacheSchemaV2,
 		DailyWindowStart:   &yesterday, // 跨日 → daily windowExpired = true
 		WeeklyWindowStart:  &lastWeek,  // 跨周 → weekly windowExpired = true
 		MonthlyWindowStart: &monthAgoOK,
@@ -767,11 +844,12 @@ func TestCheckUserPlatformQuotaEligibility_SentinelCrossDay_NoRefresh(t *testing
 
 func TestHasUserPlatformQuotaLimit(t *testing.T) {
 	daily := 5.0
+	fiveHour := 2.0
 
 	tests := []struct {
-		name    string
-		setup   func() *BillingCacheService
-		want    bool
+		name  string
+		setup func() *BillingCacheService
+		want  bool
 	}{
 		{
 			name: "has_limit",
@@ -779,6 +857,14 @@ func TestHasUserPlatformQuotaLimit(t *testing.T) {
 				entry := &UserPlatformQuotaCacheEntry{DailyLimitUSD: &daily}
 				svc := newServiceForPreflight(t, &fakeQuotaRepo{}, &fakeFullCache{entry: entry})
 				return svc
+			},
+			want: true,
+		},
+		{
+			name: "has_five_hour_limit",
+			setup: func() *BillingCacheService {
+				entry := &UserPlatformQuotaCacheEntry{FiveHourLimitUSD: &fiveHour}
+				return newServiceForPreflight(t, &fakeQuotaRepo{}, &fakeFullCache{entry: entry})
 			},
 			want: true,
 		},

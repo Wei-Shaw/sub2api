@@ -111,6 +111,20 @@ func TestEqualPlatformQuotaSettings_DetectsPerWindowChange(t *testing.T) {
 	}
 }
 
+func TestEqualPlatformQuotaSettings_DetectsFiveHourChange(t *testing.T) {
+	five := 5.0
+	ten := 10.0
+	before := map[string]*service.DefaultPlatformQuotaSetting{
+		"anthropic": {FiveHourLimitUSD: &five},
+	}
+	after := map[string]*service.DefaultPlatformQuotaSetting{
+		"anthropic": {FiveHourLimitUSD: &ten},
+	}
+	if equalPlatformQuotaSettings(before, after) {
+		t.Error("expected five-hour limit change to be detected")
+	}
+}
+
 func TestAppendAuthSourceDefaultChanges_DetectsPerWindow(t *testing.T) {
 	five := 5.0
 	ten := 10.0

@@ -450,6 +450,19 @@ export default {
         success: '已更新 {count} 个用户的限制',
         failed: '批量更新用户限制失败'
       },
+      bulkQuotaReset: {
+        action: '批量重置配额（{count}）',
+        title: '批量重置平台配额',
+        selectedCount: '已选择 {count} 个用户',
+        platforms: '平台',
+        windows: '配额窗口',
+        selectionLimit: '一次最多选择 {max} 个用户。',
+        submit: '重置配额',
+        resetting: '重置中...',
+        confirm: '确认重置 {count} 个用户在以下平台和窗口的用量？\n平台：{platforms}\n窗口：{windows}',
+        success: '已重置 {count} 条平台配额记录',
+        failed: '批量重置平台配额失败'
+      },
       editUser: '编辑用户',
       deleteUser: '删除用户',
       deleteConfirmMessage: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
@@ -730,9 +743,10 @@ export default {
       platformQuota: {
         menuItem: '平台限额',
         title: '平台限额',
-        subtitle: '为用户 {email} 配置各上游平台的日 / 周 / 月用量上限',
+        subtitle: '为用户 {email} 配置各上游平台的 5 小时 / 日 / 周 / 月用量上限',
         columns: {
           platform: '平台',
+          fiveHour: '5 小时 (USD)',
           daily: '日 (USD)',
           weekly: '周 (USD)',
           monthly: '月 (USD, 30天滚动)',
@@ -743,7 +757,7 @@ export default {
         saving: '保存中...',
         cancel: '取消',
         clearAll: '全部清空（取消所有限额）',
-        clearAllConfirm: '确认清空全部平台的日 / 周 / 月限额？所有平台将变为"无限额"，本地无法撤销，需要在保存前手动重填。',
+        clearAllConfirm: '确认清空全部平台的 5 小时 / 日 / 周 / 月限额？所有平台将变为"无限额"，本地无法撤销，需要在保存前手动重填。',
         reset: {
           button: '重置该窗口',
           confirm: '确认重置该用户 {platform} 平台的 {window} 用量？此操作立即生效。',
@@ -754,6 +768,7 @@ export default {
         updateFailed: '保存失败',
         loadFailed: '加载失败',
         hint: '留空 = 不限制该窗口。',
+        windowFiveHour: '5 小时',
         windowDaily: '日',
         windowWeekly: '周',
         windowMonthly: '月',

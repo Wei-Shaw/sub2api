@@ -11,6 +11,10 @@
     >
       <span class="w-20 shrink-0 font-mono text-gray-700 dark:text-gray-300">{{ row.platform }}</span>
       <span class="text-gray-500 dark:text-gray-400">
+        {{ t('admin.users.platformQuota.windowFiveHour') }}
+        <span class="text-gray-900 dark:text-white">{{ fmtUsd(row.five_hour_usage_usd ?? 0) }}/{{ fmtLimit(row.five_hour_limit_usd ?? null) }}</span>
+      </span>
+      <span class="text-gray-500 dark:text-gray-400">
         {{ t('admin.users.platformQuota.windowDaily') }}
         <span class="text-gray-900 dark:text-white">{{ fmtUsd(row.daily_usage_usd) }}/{{ fmtLimit(row.daily_limit_usd) }}</span>
       </span>
@@ -42,6 +46,7 @@ const configured = computed(() => {
   return props.quotas
     .filter(
       (q) =>
+        q.five_hour_limit_usd != null ||
         q.daily_limit_usd != null ||
         q.weekly_limit_usd != null ||
         q.monthly_limit_usd != null

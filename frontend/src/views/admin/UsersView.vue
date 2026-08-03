@@ -252,6 +252,16 @@
               {{ t('admin.users.bulkLimits.action', { count: selectedCount }) }}
             </button>
 
+            <button
+              v-if="selectedCount > 0"
+              class="btn btn-secondary flex-1 md:flex-initial"
+              data-test="bulk-reset-platform-quotas"
+              @click="showBulkQuotaResetModal = true"
+            >
+              <Icon name="refresh" size="md" class="mr-2" />
+              {{ t('admin.users.bulkQuotaReset.action', { count: selectedCount }) }}
+            </button>
+
             <!-- Create User Button (full width on mobile, auto width on desktop) -->
             <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
               <Icon name="plus" size="md" class="mr-2" />
@@ -756,6 +766,12 @@
       @close="showBulkEditModal = false"
       @success="handleBulkLimitsSuccess"
     />
+    <BatchResetPlatformQuotaModal
+      :show="showBulkQuotaResetModal"
+      :selected-ids="selectedIds"
+      @close="showBulkQuotaResetModal = false"
+      @success="handleBulkLimitsSuccess"
+    />
     <UserPlatformQuotaModal
       :show="showPlatformQuotaModal"
       :user="platformQuotaUser"
@@ -804,6 +820,7 @@ import UserPlatformQuotaCell from '@/components/user/UserPlatformQuotaCell.vue'
 import UserCreateModal from '@/components/admin/user/UserCreateModal.vue'
 import UserEditModal from '@/components/admin/user/UserEditModal.vue'
 import BulkEditUserModal from '@/components/admin/user/BulkEditUserModal.vue'
+import BatchResetPlatformQuotaModal from '@/components/admin/user/BatchResetPlatformQuotaModal.vue'
 import UserPlatformQuotaModal from '@/components/admin/user/UserPlatformQuotaModal.vue'
 import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
 import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsModal.vue'
@@ -1321,6 +1338,7 @@ const pagination = reactive({
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showBulkEditModal = ref(false)
+const showBulkQuotaResetModal = ref(false)
 const showDeleteDialog = ref(false)
 const showApiKeysModal = ref(false)
 const showAttributesModal = ref(false)

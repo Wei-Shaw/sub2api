@@ -18,30 +18,37 @@ var ErrUserPlatformQuotaFKViolation = errors.New("user platform quota snapshot F
 // UserPlatformQuotaSnapshot 是 service 层 flusher 向 DB 写入快照时使用的传输结构。
 // 字段语义与 repository.UserPlatformQuotaSnapshot 完全对应，由 adapter 负责转换。
 type UserPlatformQuotaSnapshot struct {
-	UserID             int64
-	Platform           string
-	DailyUsageUSD      float64
-	WeeklyUsageUSD     float64
-	MonthlyUsageUSD    float64
-	DailyWindowStart   time.Time
-	WeeklyWindowStart  time.Time
-	MonthlyWindowStart time.Time
+	UserID              int64
+	Platform            string
+	FiveHourUsageUSD    float64
+	DailyUsageUSD       float64
+	WeeklyUsageUSD      float64
+	MonthlyUsageUSD     float64
+	FiveHourWindowStart time.Time
+	DailyWindowStart    time.Time
+	WeeklyWindowStart   time.Time
+	MonthlyWindowStart  time.Time
+	ResetGeneration     int64
 }
 
 // UserPlatformQuotaRecord service 层传输结构体（与 repository 层解耦）。
 type UserPlatformQuotaRecord struct {
-	UserID          int64
-	Platform        string
-	DailyLimitUSD   *float64
-	WeeklyLimitUSD  *float64
-	MonthlyLimitUSD *float64
-	DailyUsageUSD   float64
-	WeeklyUsageUSD  float64
-	MonthlyUsageUSD float64
+	UserID           int64
+	Platform         string
+	FiveHourLimitUSD *float64
+	DailyLimitUSD    *float64
+	WeeklyLimitUSD   *float64
+	MonthlyLimitUSD  *float64
+	FiveHourUsageUSD float64
+	DailyUsageUSD    float64
+	WeeklyUsageUSD   float64
+	MonthlyUsageUSD  float64
 	// 窗口起始时间（可选，用于未来 reset 校验）
-	DailyWindowStart   *time.Time
-	WeeklyWindowStart  *time.Time
-	MonthlyWindowStart *time.Time
+	FiveHourWindowStart *time.Time
+	DailyWindowStart    *time.Time
+	WeeklyWindowStart   *time.Time
+	MonthlyWindowStart  *time.Time
+	ResetGeneration     int64
 }
 
 // UserPlatformQuotaRepository 定义 service 层所需的 user × platform quota 数据访问端口。
@@ -61,9 +68,11 @@ type UserPlatformQuotaRepository interface {
 	//      仅改 *_limit_usd + deleted_at + updated_at，保留 *_usage_usd / *_window_start。
 	// records 为空时仅执行步骤 1。
 	UpsertForUser(ctx context.Context, userID int64, records []UserPlatformQuotaRecord) error
-	// ResetExpiredWindow 重置指定窗口（"daily"|"weekly"|"monthly"）的用量与起始时间。
+	// ResetExpiredWindow 重置指定窗口（"five_hour"|"daily"|"weekly"|"monthly"）的用量与起始时间。
 	// 未命中活跃记录时返回（service-side wrapper of repository.ErrUserPlatformQuotaNotFound）。
 	ResetExpiredWindow(ctx context.Context, userID int64, platform string, window string, newStart time.Time) error
+	// BatchResetWindows 批量重置显式选中的用户、平台和窗口，返回实际命中的 user×platform key。
+	BatchResetWindows(ctx context.Context, userIDs []int64, platforms, windows []string, newStart time.Time) ([]UserPlatformQuotaKey, error)
 	// BatchSnapshotUsage 绝对值覆盖写入整批 usage 快照。FK 违反返回 ErrUserPlatformQuotaFKViolation。
 	BatchSnapshotUsage(ctx context.Context, snapshots []UserPlatformQuotaSnapshot, now time.Time) error
 }

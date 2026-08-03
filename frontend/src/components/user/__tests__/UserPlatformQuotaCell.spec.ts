@@ -15,7 +15,9 @@ import type { PlatformQuotaItem } from '@/api/admin/users'
 
 function item(over: Partial<PlatformQuotaItem> & { platform: PlatformQuotaItem['platform'] }): PlatformQuotaItem {
   return {
+    five_hour_limit_usd: null,
     daily_limit_usd: null, weekly_limit_usd: null, monthly_limit_usd: null,
+    five_hour_usage_usd: 0,
     daily_usage_usd: 0, weekly_usage_usd: 0, monthly_usage_usd: 0,
     ...over,
   } as PlatformQuotaItem
@@ -26,6 +28,14 @@ describe('UserPlatformQuotaCell', () => {
     const w = mount(UserPlatformQuotaCell, { props: { quotas: undefined } })
     expect(w.text()).toContain('…')
     expect(w.html()).not.toContain('admin.users.platformQuota.cellNotConfigured')
+  })
+
+  it('仅配置 5 小时限额时也视为已配置', () => {
+    const w = mount(UserPlatformQuotaCell, {
+      props: { quotas: [item({ platform: 'openai', five_hour_limit_usd: 5, five_hour_usage_usd: 2 })] },
+    })
+    expect(w.html()).not.toContain('admin.users.platformQuota.cellNotConfigured')
+    expect(w.text()).toContain('2/5')
   })
 
   it('空数组渲染「未配置」', () => {

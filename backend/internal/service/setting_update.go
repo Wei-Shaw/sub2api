@@ -502,7 +502,7 @@ func validateDefaultPlatformQuotaMap(m map[string]*DefaultPlatformQuotaSetting) 
 		if pq == nil {
 			continue
 		}
-		for _, v := range []*float64{pq.DailyLimitUSD, pq.WeeklyLimitUSD, pq.MonthlyLimitUSD} {
+		for _, v := range []*float64{pq.FiveHourLimitUSD, pq.DailyLimitUSD, pq.WeeklyLimitUSD, pq.MonthlyLimitUSD} {
 			if v != nil && (*v < 0 || math.IsNaN(*v) || math.IsInf(*v, 0)) {
 				return infraerrors.BadRequest("INVALID_DEFAULT_PLATFORM_QUOTA", "platform quota limit must be a finite non-negative number")
 			}
