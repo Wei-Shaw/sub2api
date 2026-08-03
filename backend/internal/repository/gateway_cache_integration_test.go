@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -25,7 +24,7 @@ func (s *GatewayCacheSuite) SetupTest() {
 
 func (s *GatewayCacheSuite) TestGetSessionAccountID_Missing() {
 	_, err := s.cache.GetSessionAccountID(s.ctx, 1, "nonexistent")
-	require.True(s.T(), errors.Is(err, redis.Nil), "expected redis.Nil for missing session")
+	require.True(s.T(), errors.Is(err, service.ErrStickySessionNotFound), "expected ErrStickySessionNotFound for missing session")
 }
 
 func (s *GatewayCacheSuite) TestSetAndGetSessionAccountID() {
@@ -88,7 +87,7 @@ func (s *GatewayCacheSuite) TestDeleteSessionAccountID() {
 	require.NoError(s.T(), s.cache.DeleteSessionAccountID(s.ctx, groupID, sessionID), "DeleteSessionAccountID")
 
 	_, err := s.cache.GetSessionAccountID(s.ctx, groupID, sessionID)
-	require.True(s.T(), errors.Is(err, redis.Nil), "expected redis.Nil after delete")
+	require.True(s.T(), errors.Is(err, service.ErrStickySessionNotFound), "expected ErrStickySessionNotFound after delete")
 }
 
 func (s *GatewayCacheSuite) TestGetSessionAccountID_CorruptedValue() {
@@ -101,7 +100,7 @@ func (s *GatewayCacheSuite) TestGetSessionAccountID_CorruptedValue() {
 
 	_, err := s.cache.GetSessionAccountID(s.ctx, groupID, sessionID)
 	require.Error(s.T(), err, "expected error for corrupted value")
-	require.False(s.T(), errors.Is(err, redis.Nil), "expected parsing error, not redis.Nil")
+	require.False(s.T(), errors.Is(err, service.ErrStickySessionNotFound), "expected parsing error, not a miss")
 }
 
 func TestGatewayCacheSuite(t *testing.T) {

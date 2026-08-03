@@ -173,7 +173,13 @@ func Relay(
 		return writeUpstream(msgType, payload)
 	}
 	writeClient := func(msgType coderws.MessageType, payload []byte) error {
-		writeCtx, cancel := context.WithTimeout(relayCtx, writeTimeout)
+		// 下行写超时故意不挂在 relayCtx 上：coder/websocket 在已武装的 write
+		// ctx 被取消时会直接硬关连接（context.AfterFunc 的 stop 不等待执行中
+		// 的回调），外部取消若落在一次已成功写入的解除武装窗口内，会连同尚未
+		// 发出的 close 帧一起冲掉，客户端只能看到裸 EOF 而收不到关闭码。与读
+		// 侧 conn.Read(context.Background()) 同理，取消路径的连接回收由各退出
+		// 分支的显式 Close/CloseNow 兜底。
+		writeCtx, cancel := context.WithTimeout(context.Background(), writeTimeout)
 		defer cancel()
 		return clientConn.WriteFrame(writeCtx, msgType, payload)
 	}
