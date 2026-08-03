@@ -776,6 +776,15 @@ export default {
     groups: {
       title: 'Group Management',
       description: 'Manage API key groups and rate multipliers',
+      simpleMode: {
+        bannerTitle: 'Composite routing for Simple mode',
+        bannerDescription: 'Bind an API key to one Composite group, then route public model names to the shared provider account pool. Billing and subscription controls are not used in Simple mode.',
+        create: 'Create Composite Group',
+        emptyTitle: 'No Composite groups yet',
+        emptyDescription: 'Create a Composite group, bind it to an API key, and add model routes.',
+        platformLabel: 'Platform',
+        platformDescription: 'Simple mode only exposes Composite groups here. Provider accounts remain in the global account pool.',
+      },
       searchGroups: 'Search groups...',
       createGroup: 'Create Group',
       editGroup: 'Edit Group',

@@ -773,6 +773,15 @@ export default {
     groups: {
       title: '分组管理',
       description: '管理 API 密钥分组和费率配置',
+      simpleMode: {
+        bannerTitle: 'Simple 模式的 Composite 路由',
+        bannerDescription: '将一个 API 密钥绑定到一个 Composite 分组，再把公开模型名称路由到共享的供应商账号池。Simple 模式不使用计费和订阅控制。',
+        create: '创建 Composite 分组',
+        emptyTitle: '暂无 Composite 分组',
+        emptyDescription: '创建 Composite 分组，将其绑定到 API 密钥，然后添加模型路由。',
+        platformLabel: '平台',
+        platformDescription: '此页面在 Simple 模式下仅显示 Composite 分组；供应商账号仍使用全局账号池。',
+      },
       searchGroups: '搜索分组...',
       createGroup: '创建分组',
       editGroup: '编辑分组',
