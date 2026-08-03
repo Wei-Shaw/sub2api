@@ -759,6 +759,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		Stream:                reqStream,
 		OpenAIWSMode:          true,
 		UpstreamTerminalEvent: upstreamTerminalEvent,
+		CompactRequest:        HasCompactionTriggerInInput(payloadAsJSONBytes(payload)),
 		ResponseHeaders:       lease.HandshakeHeaders(),
 		Duration:              time.Since(startTime),
 		FirstTokenMs:          firstTokenMs,
