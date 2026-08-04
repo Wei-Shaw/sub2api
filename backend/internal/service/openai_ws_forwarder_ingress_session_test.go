@@ -43,6 +43,7 @@ func (d *openAIWSSingleConnDialer) Dial(
 	wsURL string,
 	headers http.Header,
 	proxyURL string,
+	_ int64,
 ) (openAIWSClientConn, int, http.Header, error) {
 	return d.conn, 0, nil, nil
 }
