@@ -171,7 +171,11 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldID,
 				group.FieldName,
 				group.FieldPlatform,
+				// 共享池分账：ResolveShareRevenueMode 依赖 IsSharePool；
+				// UpstreamPlan 供共享池匹配/展示；漏选则鉴权快照永久为 false/空。
+				group.FieldUpstreamPlan,
 				group.FieldIsExclusive,
+				group.FieldIsSharePool,
 				group.FieldStatus,
 				group.FieldSubscriptionType,
 				group.FieldRateMultiplier,

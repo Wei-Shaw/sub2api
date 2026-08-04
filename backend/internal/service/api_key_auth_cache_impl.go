@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 19 // v19: include group is_share_pool / upstream_plan for share-revenue split
+const apiKeyAuthSnapshotVersion = 20 // v20: GetByKeyForAuth 投影补 is_share_pool/upstream_plan，强制旧快照回源
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int

@@ -352,6 +352,12 @@ func prepareShareRevenuePlan(ctx context.Context, p *postUsageBillingParams, dep
 	if !cfg.Enabled {
 		return nil
 	}
+	// 调度/鉴权缓存偶发丢 OwnerUserID：扣费前按 ID 回源一次，避免贡献者被当系统号。
+	if (p.Account.OwnerUserID == nil || *p.Account.OwnerUserID <= 0) && deps.accountRepo != nil && p.Account.ID > 0 {
+		if latest, err := deps.accountRepo.GetByID(ctx, p.Account.ID); err == nil && latest != nil && latest.OwnerUserID != nil {
+			p.Account.OwnerUserID = latest.OwnerUserID
+		}
+	}
 	var group *Group
 	if p.APIKey != nil {
 		group = p.APIKey.Group
