@@ -197,6 +197,27 @@ func TestAnthropicToResponses_ThinkingSignatureBecomesReasoning(t *testing.T) {
 	assert.Equal(t, "function_call", items[3].Type)
 }
 
+func TestAnthropicToResponses_CodexThinkingSignatureBecomesReasoning(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.6-sol",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Hello"`)},
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"plan","signature":"gAAAAAB-codex-encrypted-reasoning"},{"type":"text","text":"Hi!"}]`)},
+			{Role: "user", Content: json.RawMessage(`"Continue"`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 4)
+	assert.Equal(t, "reasoning", items[1].Type)
+	assert.Equal(t, "gAAAAAB-codex-encrypted-reasoning", items[1].EncryptedContent)
+}
+
 func TestAnthropicToResponses_MaxTokensFloor(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",

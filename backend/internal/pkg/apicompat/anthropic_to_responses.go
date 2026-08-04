@@ -287,9 +287,10 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 			continue
 		}
 		sig := strings.TrimSpace(b.Signature)
-		// Only replay provider ciphertext. Skip GPT/Codex-style gAAAA blobs and
-		// empty placeholders — xAI returns 400 on decrypt for foreign signatures.
-		if sig == "" || strings.HasPrefix(sig, "gAAAA") {
+		// The signature is provider-owned encrypted reasoning. The generic
+		// converter cannot infer its provider from the ciphertext prefix, so
+		// preserve it and let provider-specific retry paths handle decrypt errors.
+		if sig == "" {
 			continue
 		}
 		items = append(items, ResponsesInputItem{
