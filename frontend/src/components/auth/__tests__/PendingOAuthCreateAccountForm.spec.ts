@@ -328,4 +328,99 @@ describe('PendingOAuthCreateAccountForm', () => {
       turnstile_token: 'turnstile-token'
     REDACTED)
   REDACTED)
+
+  it('requires a turnstile token before submitting when turnstile is enabled', async () => {
+    getPublicSettings.mockResolvedValue({
+      turnstile_enabled: true,
+      turnstile_site_key: 'site-key'
+    REDACTED)
+
+    const wrapper = mount(PendingOAuthCreateAccountForm, {
+      props: {
+        testIdPrefix: 'linuxdo',
+        initialEmail: 'user@example.com',
+        isSubmitting: false
+      REDACTED,
+      global: {
+        stubs: {
+          TurnstileWidget: {
+            template: '<button data-testid="turnstile-verify" @click="$emit(\'verify\', \'turnstile-token\')">verify</button>',
+            methods: { reset: turnstileReset REDACTED
+          REDACTED
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+    await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+
+    expect(wrapper.get('[data-testid="linuxdo-create-account-submit"]').attributes('disabled')).toBeDefined()
+
+    // 隐式提交（输入框回车）绕过按钮 disabled，仍不能带着空票据发出请求
+    await wrapper.get('form').trigger('submit.prevent')
+    expect(wrapper.emitted('submit')).toBeUndefined()
+
+    await wrapper.get('[data-testid="turnstile-verify"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="linuxdo-create-account-submit"]').attributes('disabled')).toBeUndefined()
+
+    await wrapper.get('[data-testid="linuxdo-create-account-submit"]').trigger('click')
+
+    expect(wrapper.emitted('submit')).toEqual([
+      [
+        {
+          email: 'user@example.com',
+          password: 'secret-123',
+          verifyCode: '',
+          turnstileToken: 'turnstile-token',
+          invitationCode: undefined
+        REDACTED
+      ]
+    ])
+  REDACTED)
+
+  it('blocks submit again after sending a verify code consumes the turnstile proof', async () => {
+    getPublicSettings.mockResolvedValue({
+      turnstile_enabled: true,
+      turnstile_site_key: 'site-key'
+    REDACTED)
+    sendPendingOAuthVerifyCode.mockResolvedValue({ message: 'sent', countdown: 60 REDACTED)
+
+    const wrapper = mount(PendingOAuthCreateAccountForm, {
+      props: {
+        testIdPrefix: 'linuxdo',
+        initialEmail: 'user@example.com',
+        isSubmitting: false
+      REDACTED,
+      global: {
+        stubs: {
+          TurnstileWidget: {
+            template: '<button data-testid="turnstile-verify" @click="$emit(\'verify\', \'turnstile-token\')">verify</button>',
+            methods: { reset: turnstileReset REDACTED
+          REDACTED
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+    await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="turnstile-verify"]').trigger('click')
+    await wrapper.get('[data-testid="linuxdo-create-account-send-code"]').trigger('click')
+    await flushPromises()
+
+    // 发码消耗掉票据并 reset 组件，新票据回调前提交必须保持关闭
+    expect(turnstileReset).toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="linuxdo-create-account-submit"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.get('form').trigger('submit.prevent')
+    expect(wrapper.emitted('submit')).toBeUndefined()
+
+    // 新票据回调后恢复可提交，且带上新票据
+    await wrapper.get('[data-testid="turnstile-verify"]').trigger('click')
+    await wrapper.get('[data-testid="linuxdo-create-account-submit"]').trigger('click')
+
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
+      turnstileToken: 'turnstile-token'
+    REDACTED)
+  REDACTED)
 REDACTED)
