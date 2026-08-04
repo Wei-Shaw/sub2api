@@ -191,18 +191,14 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 }
 
 func (s *PaymentService) transitionOrderToPaid(ctx context.Context, o *dbent.PaymentOrder, tradeNo string, paid float64, pk string, now time.Time, recovery *paymentRecoveryContextValue) (int, error) {
-	grace := now.Add(-paymentGraceMinutes * time.Minute)
 	update := func(callCtx context.Context, client *dbent.Client) (int, error) {
 		return client.PaymentOrder.Update().Where(
 			paymentorder.IDEQ(o.ID),
-			paymentorder.Or(
-				paymentorder.StatusEQ(OrderStatusPending),
-				paymentorder.StatusEQ(OrderStatusCancelled),
-				paymentorder.And(
-					paymentorder.StatusEQ(OrderStatusExpired),
-					paymentorder.UpdatedAtGTE(grace),
-				),
-			),
+			// A provider can still accept payment after our local checkout timer
+			// expires. Once provider identity, order metadata, and amount have all
+			// been verified, retaining the money without fulfilling the order is
+			// unsafe. Terminal refund states remain excluded by this allow-list.
+			paymentorder.StatusIn(OrderStatusPending, OrderStatusCancelled, OrderStatusExpired),
 		).SetStatus(OrderStatusPaid).SetPayAmount(paid).SetPaymentTradeNo(tradeNo).SetPaidAt(now).ClearFailedAt().ClearFailedReason().Save(callCtx)
 	}
 	if recovery == nil {
@@ -260,17 +256,20 @@ func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentO
 	case OrderStatusFailed, OrderStatusPaid, OrderStatusRecharging:
 		return s.executeFulfillment(ctx, o.ID)
 	case OrderStatusExpired:
-		slog.Warn("webhook payment success for expired order beyond grace period",
+		// transitionOrderToPaid accepts EXPIRED orders, so reaching this branch
+		// means expiry raced with payment recovery. Ask the provider to retry
+		// instead of acknowledging a verified payment that was not fulfilled.
+		slog.Warn("webhook payment recovery raced with order expiry",
 			"orderID", o.ID,
 			"status", cur.Status,
 			"updatedAt", cur.UpdatedAt,
 		)
-		s.writeAuditLog(ctx, o.ID, "PAYMENT_AFTER_EXPIRY", "system", map[string]any{
+		s.writeAuditLogOnce(ctx, o.ID, "PAYMENT_RECOVERY_RACE", "system", map[string]any{
 			"status":    cur.Status,
 			"updatedAt": cur.UpdatedAt,
-			"reason":    "payment arrived after expiry grace period",
+			"reason":    "order remained expired during verified payment recovery",
 		})
-		return nil
+		return errors.New("verified payment recovery raced with order expiry; retry required")
 	default:
 		return nil
 	}

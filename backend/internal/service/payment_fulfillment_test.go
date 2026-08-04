@@ -999,6 +999,126 @@ func TestDuplicatePaymentNotificationDoesNotReprocessCompletedBalanceOrder(t *te
 	require.Empty(t, redeemRepo.useCalls, "a duplicate notification must not redeem the balance code again")
 }
 
+func TestLatePaymentNotificationRecoversExpiredBalanceOrderExactlyOnce(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+	staleAt := time.Now().Add(-24 * time.Hour)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusExpired, staleAt)
+	order, err := client.PaymentOrder.UpdateOneID(order.ID).
+		SetOrderType(payment.OrderTypeBalance).
+		ClearPlanID().
+		ClearSubscriptionGroupID().
+		ClearSubscriptionDays().
+		ClearPaidAt().
+		SetExpiresAt(staleAt.Add(-time.Minute)).
+		SetUpdatedAt(staleAt).
+		Save(ctx)
+	require.NoError(t, err)
+
+	redeemRepo := &paymentFulfillmentRedeemRepo{}
+	credited := 0.0
+	userRepo := &mockUserRepo{getByIDUser: &User{ID: order.UserID}}
+	userRepo.updateBalanceFn = func(_ context.Context, id int64, amount float64) error {
+		require.Equal(t, order.UserID, id)
+		credited += amount
+		return nil
+	}
+	redeemService := NewRedeemService(
+		redeemRepo,
+		userRepo,
+		nil,
+		&paymentFulfillmentRedeemCacheStub{},
+		nil,
+		client,
+		nil,
+		nil,
+	)
+	svc := &PaymentService{entClient: client, redeemService: redeemService, userRepo: userRepo}
+	notification := &payment.PaymentNotification{
+		TradeNo: "alipay-trade-late-payment",
+		OrderID: order.OutTradeNo,
+		Amount:  order.PayAmount,
+		Status:  payment.NotificationStatusSuccess,
+	}
+
+	require.NoError(t, svc.HandlePaymentNotification(ctx, notification, payment.TypeAlipay))
+	require.NoError(t, svc.HandlePaymentNotification(ctx, notification, payment.TypeAlipay))
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+	require.Equal(t, notification.TradeNo, reloaded.PaymentTradeNo)
+	require.NotNil(t, reloaded.PaidAt)
+	require.InDelta(t, order.Amount, credited, 1e-8)
+	require.Equal(t, 1, redeemRepo.createCalls)
+	require.Len(t, redeemRepo.useCalls, 1)
+
+	for _, action := range []string{"ORDER_RECOVERED", "ORDER_PAID", "RECHARGE_SUCCESS"} {
+		count, countErr := client.PaymentAuditLog.Query().
+			Where(
+				paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)),
+				paymentauditlog.ActionEQ(action),
+			).
+			Count(ctx)
+		require.NoError(t, countErr)
+		require.Equal(t, 1, count, action)
+	}
+}
+
+func TestLatePaymentNotificationDoesNotRecoverRefundedOrder(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	staleAt := time.Now().Add(-24 * time.Hour)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusRefunded, staleAt)
+	order, err := client.PaymentOrder.UpdateOneID(order.ID).
+		SetOrderType(payment.OrderTypeBalance).
+		ClearPlanID().
+		ClearSubscriptionGroupID().
+		ClearSubscriptionDays().
+		ClearPaidAt().
+		SetExpiresAt(staleAt.Add(-time.Minute)).
+		SetUpdatedAt(staleAt).
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{entClient: client}
+	err = svc.HandlePaymentNotification(ctx, &payment.PaymentNotification{
+		TradeNo: "alipay-trade-refunded-replay",
+		OrderID: order.OutTradeNo,
+		Amount:  order.PayAmount,
+		Status:  payment.NotificationStatusSuccess,
+	}, payment.TypeAlipay)
+	require.NoError(t, err)
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusRefunded, reloaded.Status)
+	require.Nil(t, reloaded.PaidAt)
+}
+
+func TestLatePaymentRecoveryRaceReturnsErrorForProviderRetry(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusExpired, time.Now())
+	svc := &PaymentService{entClient: client}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		err := svc.alreadyProcessed(ctx, order)
+		require.ErrorContains(t, err, "retry required")
+	}
+
+	count, err := client.PaymentAuditLog.Query().
+		Where(
+			paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)),
+			paymentauditlog.ActionEQ("PAYMENT_RECOVERY_RACE"),
+		).
+		Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, count, "retries must keep a single durable race audit")
+}
+
 func TestPaymentNotificationRejectsAmountMismatchBeforeFulfillment(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
