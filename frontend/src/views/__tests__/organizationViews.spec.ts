@@ -115,6 +115,7 @@ describe('organization views', () => {
     expect(wrapper.get('[data-testid="company-finance-summary"]').text().match(/organization\.finance\.noPermission/g)).toHaveLength(3)
     expect(wrapper.get('[data-testid="organization-members"]').text()).toContain('self')
     expect(wrapper.get('[data-testid="organization-members"]').text()).not.toContain('other-member')
+    expect(wrapper.get('[data-testid="member-username-99"]').text()).toBe('self')
     expect(wrapper.find('th.text-right').exists()).toBe(false)
     expect(api.listMembers).toHaveBeenCalledOnce()
     expect(api.listPolicies).not.toHaveBeenCalled()
@@ -177,7 +178,7 @@ describe('organization views', () => {
       finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
     })
     api.getDashboardSpendingRanking.mockResolvedValue({
-      ranking: [{ user_id: 42, email: 'reader@c123456789012345.opentk.ai', actual_cost: 1.25, requests: 7, tokens: 1000 }],
+      ranking: [{ user_id: 42, username: 'Finance Reader', email: 'reader@c123456789012345.opentk.ai', actual_cost: 1.25, requests: 7, tokens: 1000 }],
       total_actual_cost: 1.25,
       total_requests: 7,
       total_tokens: 1000,
@@ -190,6 +191,8 @@ describe('organization views', () => {
 
     const rankingButton = wrapper.findAll('button').find((button) => button.text() === 'admin.dashboard.viewSpendingRanking')
     await rankingButton!.trigger('click')
+    expect(wrapper.get('[data-testid="spending-ranking-row-42"]').text()).toContain('Finance Reader')
+    expect(wrapper.get('[data-testid="spending-ranking-row-42"]').text()).not.toContain('reader@c123456789012345.opentk.ai')
     api.getUsageCharts.mockResolvedValueOnce({
       trend: [], groups: [], endpoints: [],
       models: [{ model: 'gpt-5.4', requests: 7, input_tokens: 600, output_tokens: 400, cache_creation_tokens: 0, cache_read_tokens: 0, total_tokens: 1000, cost: 2, actual_cost: 1.25 }],
@@ -207,20 +210,25 @@ describe('organization views', () => {
       finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
     })
     api.listMembers.mockResolvedValue({
-      items: [{ user_id: 42, login_name: 'reader', principal: 'reader@company.opentk.ai', external_user_id: '201705485041478971', status: 'active', balance: '0', frozen_balance: '0', recovery_email: 'reader@example.com', recovery_email_verified_at: '2026-01-01T00:00:00Z', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' }],
+      items: [{ user_id: 42, username: 'Finance Reader', login_name: 'reader', principal: 'reader@company.opentk.ai', external_user_id: '201705485041478971', status: 'active', balance: '0', frozen_balance: '0', recovery_email: 'reader@example.com', recovery_email_verified_at: '2026-01-01T00:00:00Z', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' }],
       member_limit: 20,
       used_slots: 1,
     })
-    api.getSpendLimitUsage.mockResolvedValue([{ member_user_id: 42, member_login: 'reader', daily_used_usd: '10', monthly_used_usd: '8', daily_limit_usd: '10', monthly_limit_usd: '50' }])
+    api.listSpendLimits.mockResolvedValue([{ id: 1, organization_id: 1, member_user_id: 42, member_login: 'reader', member_username: 'Finance Reader', daily_limit_usd: '10', monthly_limit_usd: '50', alert_enabled: false, alert_threshold_pct: 80, additional_recipients: [], revision: 1, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }])
+    api.getSpendLimitUsage.mockResolvedValue([{ member_user_id: 42, member_login: 'reader', member_username: 'Finance Reader', daily_used_usd: '10', monthly_used_usd: '8', daily_limit_usd: '10', monthly_limit_usd: '50' }])
 
     const wrapper = mount(OrganizationConsoleView, mountOptions)
     await flushPromises()
+    expect(wrapper.get('[data-testid="organization-members"]').text()).toContain('Finance Reader')
     await wrapper.get('#organization-tab-limits').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[data-testid="spend-limit-form"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="spend-limit-form"]').classes()).toContain('card')
+    expect(wrapper.get('[data-testid="spend-limit-rules"]').text()).toContain('Finance Reader')
+    expect(wrapper.get('[data-testid="spend-limit-rules"]').text()).toContain('reader')
     expect(wrapper.get('[data-testid="spend-limit-usage"]').classes()).toContain('card')
+    expect(wrapper.get('[data-testid="spend-limit-usage"]').text()).toContain('Finance Reader')
     expect(wrapper.get('[data-testid="spend-limit-usage"]').text()).toContain('$10.00 / $10.00')
     expect(wrapper.get('[data-testid="spend-limit-usage"]').text()).not.toContain('US$')
     expect(wrapper.get('[data-testid="spend-limit-daily-42"]').classes()).toContain('text-red-600')
@@ -268,6 +276,7 @@ describe('organization views', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="spend-limit-form"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="spend-limit-usage-username-99"]').text()).toBe('self')
     expect(wrapper.get('[data-testid="spend-limit-usage"]').text()).toContain('$1.00 · organization.spendLimits.unlimited')
     expect(api.listSpendLimits).not.toHaveBeenCalled()
   })

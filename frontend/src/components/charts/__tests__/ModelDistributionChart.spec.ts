@@ -188,6 +188,30 @@ describe('ModelDistributionChart', () => {
     expect(rows[2].text()).toContain('$10.00')
   })
 
+  it('uses username, login name, then email in the spending ranking', async () => {
+    const wrapper = mount(ModelDistributionChart, {
+      props: {
+        modelStats: [],
+        enableRankingView: true,
+        rankingItems: [
+          { user_id: 1, username: 'Finance Reader', email: 'reader@example.com', actual_cost: 2, requests: 3, tokens: 100 },
+          { user_id: 2, login_name: 'fallback-login', email: 'fallback@example.com', actual_cost: 1, requests: 2, tokens: 50 },
+          { user_id: 3, email: 'email-only@example.com', actual_cost: 0.5, requests: 1, tokens: 25 },
+        ],
+      },
+      global: { stubs: { LoadingSpinner: true } },
+    })
+
+    const rankingButton = wrapper.findAll('button').find((button) => button.text() === 'User Spending Ranking')
+    await rankingButton!.trigger('click')
+
+    expect(wrapper.get('[data-testid="spending-ranking-row-1"]').text()).toContain('Finance Reader')
+    expect(wrapper.get('[data-testid="spending-ranking-row-1"]').text()).not.toContain('reader@example.com')
+    expect(wrapper.get('[data-testid="spending-ranking-row-2"]').text()).toContain('fallback-login')
+    expect(wrapper.get('[data-testid="spending-ranking-row-2"]').text()).not.toContain('fallback@example.com')
+    expect(wrapper.get('[data-testid="spending-ranking-row-3"]').text()).toContain('email-only@example.com')
+  })
+
   it('expands a ranked user into model request, token, and spend totals', async () => {
     const rankingBreakdownLoader = vi.fn().mockResolvedValue([
       { model: 'claude-sonnet-4-6', requests: 7, input_tokens: 600, output_tokens: 300, cache_creation_tokens: 50, cache_read_tokens: 50, total_tokens: 1000, cost: 2, actual_cost: 1.25 },

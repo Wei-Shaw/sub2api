@@ -401,6 +401,7 @@ type OrganizationSpendLimitRule struct {
 	OrganizationID       int64     `json:"organization_id"`
 	MemberUserID         *int64    `json:"member_user_id,omitempty"`
 	MemberLogin          string    `json:"member_login,omitempty"`
+	MemberUsername       string    `json:"member_username,omitempty"`
 	DailyLimitUSD        *string   `json:"daily_limit_usd,omitempty"`
 	MonthlyLimitUSD      *string   `json:"monthly_limit_usd,omitempty"`
 	AlertEnabled         bool      `json:"alert_enabled"`
@@ -414,6 +415,7 @@ type OrganizationSpendLimitRule struct {
 type OrganizationSpendUsage struct {
 	MemberUserID    int64   `json:"member_user_id"`
 	MemberLogin     string  `json:"member_login"`
+	MemberUsername  string  `json:"member_username"`
 	DailyUsedUSD    string  `json:"daily_used_usd"`
 	MonthlyUsedUSD  string  `json:"monthly_used_usd"`
 	DailyLimitUSD   *string `json:"daily_limit_usd,omitempty"`

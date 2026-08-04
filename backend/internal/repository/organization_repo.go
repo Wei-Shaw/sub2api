@@ -2163,11 +2163,14 @@ func (r *organizationRepository) OrganizationDashboard(ctx context.Context, user
 	if org.EffectiveAt.After(todayStart) {
 		todayStart = org.EffectiveAt
 	}
+	var totalIAMUsers, activeIAMUsers int64
 	if err := r.db.QueryRowContext(ctx, `
-		SELECT count(*), count(*) FILTER (WHERE created_at >= $2)
+		SELECT count(*), count(*) FILTER (WHERE created_at >= $2),
+			count(*) FILTER (WHERE role='member'),
+			count(*) FILTER (WHERE role='member' AND status='active')
 		FROM organization_memberships
 		WHERE organization_id=$1 AND status<>'archived'`, org.OrganizationID, todayStart).
-		Scan(&stats.TotalUsers, &stats.TodayNewUsers); err != nil {
+		Scan(&stats.TotalUsers, &stats.TodayNewUsers, &totalIAMUsers, &activeIAMUsers); err != nil {
 		return nil, err
 	}
 	if err := r.db.QueryRowContext(ctx, `
@@ -2192,6 +2195,8 @@ func (r *organizationRepository) OrganizationDashboard(ctx context.Context, user
 		Scan(&stats.TotalAccounts, &stats.NormalAccounts, &stats.ErrorAccounts, &stats.RateLimitAccounts, &stats.OverloadAccounts); err != nil {
 		return nil, err
 	}
+	stats.TotalAccounts += totalIAMUsers
+	stats.NormalAccounts += activeIAMUsers
 	if err := r.db.QueryRowContext(ctx, `
 		SELECT count(*), COALESCE(sum(input_tokens),0), COALESCE(sum(output_tokens),0),
 			COALESCE(sum(cache_creation_tokens),0), COALESCE(sum(cache_read_tokens),0),
@@ -2311,6 +2316,8 @@ func (r *organizationRepository) OrganizationSpendingRanking(ctx context.Context
 			return nil, err
 		}
 		item.Email = organizationRankingUserLabel(username, email, loginName, identityType, companyID)
+		item.Username = username
+		item.LoginName = loginName
 		result.Ranking = append(result.Ranking, item)
 	}
 	return result, rows.Err()
@@ -2403,7 +2410,7 @@ func (r *organizationRepository) OrganizationUserBreakdown(ctx context.Context, 
 func scanSpendLimitRule(row interface{ Scan(...any) error }) (*service.OrganizationSpendLimitRule, error) {
 	var rule service.OrganizationSpendLimitRule
 	var daily, monthly sql.NullString
-	if err := row.Scan(&rule.ID, &rule.OrganizationID, &rule.MemberUserID, &rule.MemberLogin, &daily, &monthly,
+	if err := row.Scan(&rule.ID, &rule.OrganizationID, &rule.MemberUserID, &rule.MemberLogin, &rule.MemberUsername, &daily, &monthly,
 		&rule.AlertEnabled, &rule.AlertThresholdPct, pq.Array(&rule.AdditionalRecipients), &rule.Revision,
 		&rule.CreatedAt, &rule.UpdatedAt); err != nil {
 		return nil, err
@@ -2421,7 +2428,7 @@ func scanSpendLimitRule(row interface{ Scan(...any) error }) (*service.Organizat
 }
 
 const spendLimitRuleSelect = `
-	SELECT l.id,l.organization_id,l.member_user_id,COALESCE(u.login_name,''),
+	SELECT l.id,l.organization_id,l.member_user_id,COALESCE(u.login_name,''),COALESCE(u.username,''),
 	       l.daily_limit_usd::text,l.monthly_limit_usd::text,l.alert_enabled,
 	       l.alert_threshold_pct::float8,l.additional_recipients,l.revision,l.created_at,l.updated_at
 	FROM organization_member_spend_limits l
@@ -2542,6 +2549,7 @@ func (r *organizationRepository) ListSpendLimitUsage(ctx context.Context, actorI
 	}
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT m.user_id,COALESCE(NULLIF(u.login_name,''),NULLIF(u.username,''),COALESCE(u.email,'')),
+		       COALESCE(u.username,''),
 		       COALESCE((SELECT GREATEST(sum(CASE WHEN l.billing_status='refunded' THEN -abs(l.actual_cost) ELSE l.actual_cost END),0)::text
 		                 FROM usage_logs l WHERE l.organization_id=m.organization_id AND l.user_id=m.user_id
 		                   AND l.balance_source IN ('company','shared','subscription')
@@ -2568,7 +2576,7 @@ func (r *organizationRepository) ListSpendLimitUsage(ctx context.Context, actorI
 	for rows.Next() {
 		var item service.OrganizationSpendUsage
 		var daily, monthly sql.NullString
-		if err := rows.Scan(&item.MemberUserID, &item.MemberLogin, &item.DailyUsedUSD, &item.MonthlyUsedUSD, &daily, &monthly); err != nil {
+		if err := rows.Scan(&item.MemberUserID, &item.MemberLogin, &item.MemberUsername, &item.DailyUsedUSD, &item.MonthlyUsedUSD, &daily, &monthly); err != nil {
 			return nil, err
 		}
 		if daily.Valid {

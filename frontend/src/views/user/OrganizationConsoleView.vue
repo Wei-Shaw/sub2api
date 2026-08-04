@@ -79,6 +79,7 @@
           <table class="w-full min-w-[960px] text-sm">
             <thead class="bg-gray-50 text-left dark:bg-dark-800">
               <tr>
+                <th class="p-3">{{ t('organization.usage.username') }}</th>
                 <th class="p-3">{{ t('organization.login.loginName') }}</th>
                 <th class="p-3">{{ t('organization.iamUserId') }}</th>
                 <th class="p-3">{{ t('common.status') }}</th>
@@ -89,6 +90,7 @@
             </thead>
             <tbody>
               <tr v-for="member in visibleMembers" :key="member.user_id" class="border-t border-gray-100 dark:border-dark-700">
+                <td class="p-3 font-medium" :data-testid="`member-username-${member.user_id}`">{{ member.username || member.login_name }}</td>
                 <td class="p-3">
                   <div class="font-medium">{{ member.login_name }}</div>
                   <div class="flex items-center gap-1">
@@ -158,7 +160,10 @@
           <div v-if="spendLimitForm.target === 'members'" class="max-h-48 space-y-1 overflow-y-auto rounded-md border border-gray-200 p-2 dark:border-dark-600">
             <label v-for="member in configurableMembers" :key="member.user_id" class="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-700">
               <input v-model="spendLimitMemberIDs" type="checkbox" :value="member.user_id" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500">
-              <span class="min-w-0 flex-1 truncate">{{ member.login_name }}</span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate">{{ member.username || member.login_name }}</span>
+                <span class="block truncate text-xs text-gray-500">{{ member.login_name }}</span>
+              </span>
               <span class="font-mono text-xs text-gray-400">{{ member.external_user_id }}</span>
             </label>
             <p v-if="configurableMembers.length === 0" class="p-2 text-sm text-gray-500">{{ t('organization.spendLimits.noMembers') }}</p>
@@ -241,7 +246,13 @@
             </tr></thead>
             <tbody>
               <tr v-for="rule in spendLimitRules" :key="rule.id" class="border-t border-gray-100 dark:border-dark-700">
-                <td class="p-3 font-medium">{{ rule.member_user_id ? rule.member_login : t('organization.spendLimits.allMembers') }}</td>
+                <td class="p-3">
+                  <template v-if="rule.member_user_id">
+                    <div class="font-medium" :data-testid="`spend-limit-rule-username-${rule.member_user_id}`">{{ rule.member_username || rule.member_login || '-' }}</div>
+                    <div class="text-xs text-gray-500">{{ rule.member_login }}</div>
+                  </template>
+                  <span v-else class="font-medium">{{ t('organization.spendLimits.allMembers') }}</span>
+                </td>
                 <td class="p-3 font-mono">{{ rule.daily_limit_usd ? formatMoney(rule.daily_limit_usd) : '-' }}</td>
                 <td class="p-3 font-mono">{{ rule.monthly_limit_usd ? formatMoney(rule.monthly_limit_usd) : '-' }}</td>
                 <td class="p-3">{{ rule.alert_enabled ? `${rule.alert_threshold_pct}%` : t('common.disabled') }}</td>
@@ -263,7 +274,10 @@
             </tr></thead>
             <tbody>
               <tr v-for="item in spendLimitUsage" :key="item.member_user_id" class="border-t border-gray-100 dark:border-dark-700">
-                <td class="p-3 font-medium">{{ item.member_login }}</td>
+                <td class="p-3">
+                  <div class="font-medium" :data-testid="`spend-limit-usage-username-${item.member_user_id}`">{{ item.member_username || item.member_login }}</div>
+                  <div class="text-xs text-gray-500">{{ item.member_login }}</div>
+                </td>
                 <td
                   :class="['p-3 font-mono', spendUsageExceeded(item.daily_used_usd, item.daily_limit_usd) ? 'font-semibold text-red-600 dark:text-red-400' : '']"
                   :data-testid="`spend-limit-daily-${item.member_user_id}`"
