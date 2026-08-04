@@ -200,13 +200,13 @@ describe('UseKeyModal', () => {
     await nextTick()
 
     let codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
-    const configToml = codeBlocks.find((content) => content.includes('[model_providers.sub2api_grok]'))
+    const configToml = codeBlocks.find((content) => content.includes('[model_providers.wode_ai_grok]'))
     expect(configToml).toBeDefined()
-    expect(configToml).toContain('model_provider = "sub2api_grok"')
+    expect(configToml).toContain('model_provider = "wode_ai_grok"')
     expect(configToml).toContain('model = "grok-4.5"')
     expect(configToml).toContain('model_context_window = 1000000')
     expect(configToml).toContain('base_url = "https://example.com/v1"')
-    expect(configToml).toContain('env_key = "SUB2API_API_KEY"')
+    expect(configToml).toContain('env_key = "WODE_AI_API_KEY"')
     expect(configToml).toContain('wire_api = "responses"')
     expect(configToml).toContain('supports_websockets = true')
     expect(configToml).not.toContain('requires_openai_auth')
@@ -215,7 +215,7 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('windows_wsl_setup_acknowledged')
     expect(configToml).toContain('[features]\nresponses_websockets_v2 = true')
     expect(configToml).not.toContain('goals = true')
-    expect(codeBlocks).toContain('export SUB2API_API_KEY="sk-grok-codex-test"')
+    expect(codeBlocks).toContain('export WODE_AI_API_KEY="sk-grok-codex-test"')
     expect(wrapper.text()).not.toContain('auth.json')
 
     const windowsTab = wrapper.findAll('button').find(
@@ -227,7 +227,7 @@ describe('UseKeyModal', () => {
 
     codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
     expect(wrapper.text()).toContain('%USERPROFILE%\\.codex\\config.toml')
-    expect(codeBlocks).toContain('$env:SUB2API_API_KEY="sk-grok-codex-test"')
+    expect(codeBlocks).toContain('$env:WODE_AI_API_KEY="sk-grok-codex-test"')
   })
 
   it('keeps legacy OpenAI Codex config as the default', () => {

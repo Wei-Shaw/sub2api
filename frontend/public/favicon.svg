@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">沃德AI</title>
+  <defs>
+    <linearGradient id="background" x1="16" y1="8" x2="112" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17315F"/>
+      <stop offset="1" stop-color="#071329"/>
+    </linearGradient>
+    <linearGradient id="glyph" x1="30" y1="25" x2="98" y2="103" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#79F4BD"/>
+      <stop offset=".55" stop-color="#39D9E7"/>
+      <stop offset="1" stop-color="#6B8CFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="30" fill="url(#background)"/>
+  <rect x="5" y="5" width="118" height="118" rx="29" fill="none" stroke="#A5BFFF" stroke-opacity=".2" stroke-width="2"/>
+  <text x="64" y="88" text-anchor="middle" fill="url(#glyph)" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="70" font-weight="700">沃</text>
+</svg>
