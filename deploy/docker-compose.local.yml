@@ -115,6 +115,14 @@ services:
       - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
 
       # =======================================================================
+      # WebAuthn / Passkey Configuration
+      # =======================================================================
+      - WEBAUTHN_ENABLED
+      - WEBAUTHN_RP_DISPLAY_NAME
+      - WEBAUTHN_RP_ID
+      - WEBAUTHN_RP_ORIGINS
+
+      # =======================================================================
       # Timezone Configuration
       # This affects ALL time operations in the application:
       # - Database timestamps

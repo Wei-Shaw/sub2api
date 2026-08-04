@@ -52,6 +52,30 @@ if grep -Eq 'ReadWritePaths=.*(/opt/sub2api/\.deployer\.env|/etc/nginx/conf\.d/s
 fi
 
 grep -Fq 'SUB2API_DEPLOYER_SOCKET_GID:?SUB2API_DEPLOYER_SOCKET_GID is required' "$COMPOSE"
+for variable in WEBAUTHN_ENABLED WEBAUTHN_RP_DISPLAY_NAME WEBAUTHN_RP_ID WEBAUTHN_RP_ORIGINS; do
+  grep -Fq "$variable" "$COMPOSE"
+done
+env -u WEBAUTHN_ENABLED -u WEBAUTHN_RP_DISPLAY_NAME -u WEBAUTHN_RP_ID -u WEBAUTHN_RP_ORIGINS \
+  SUB2API_IMAGE=ghcr.io/ssharkkky/sub2api:test \
+  SUB2API_DEPLOYER_SOCKET_GID=1000 \
+  docker compose --env-file /dev/null -f "$COMPOSE" config --format json | jq -e '
+    .services.sub2api.environment.WEBAUTHN_ENABLED == null
+    and .services.sub2api.environment.WEBAUTHN_RP_DISPLAY_NAME == null
+    and .services.sub2api.environment.WEBAUTHN_RP_ID == null
+    and .services.sub2api.environment.WEBAUTHN_RP_ORIGINS == null
+  ' >/dev/null
+WEBAUTHN_ENABLED=true \
+  WEBAUTHN_RP_DISPLAY_NAME=TokenSupply \
+  WEBAUTHN_RP_ID=tokensupply.net \
+  WEBAUTHN_RP_ORIGINS=https://www.tokensupply.net \
+  SUB2API_IMAGE=ghcr.io/ssharkkky/sub2api:test \
+  SUB2API_DEPLOYER_SOCKET_GID=1000 \
+  docker compose --env-file /dev/null -f "$COMPOSE" config --format json | jq -e '
+    .services.sub2api.environment.WEBAUTHN_ENABLED == "true"
+    and .services.sub2api.environment.WEBAUTHN_RP_DISPLAY_NAME == "TokenSupply"
+    and .services.sub2api.environment.WEBAUTHN_RP_ID == "tokensupply.net"
+    and .services.sub2api.environment.WEBAUTHN_RP_ORIGINS == "https://www.tokensupply.net"
+  ' >/dev/null
 grep -Fq 'include /var/lib/sub2api-deployer/nginx/managed-upstream.conf;' "$LOADER"
 
 jq -e '

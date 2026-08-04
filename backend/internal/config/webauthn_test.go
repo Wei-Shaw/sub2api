@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -101,4 +103,77 @@ func TestValidateWebAuthnConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLoadWebAuthnConfigFromEnvironment(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
+	t.Setenv("WEBAUTHN_ENABLED", "true")
+	t.Setenv("WEBAUTHN_RP_DISPLAY_NAME", "TokenSupply")
+	t.Setenv("WEBAUTHN_RP_ID", "tokensupply.net")
+	t.Setenv("WEBAUTHN_RP_ORIGINS", " https://www.tokensupply.net,https://tokensupply.net ")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, WebAuthnConfig{
+		Enabled:       true,
+		RPDisplayName: "TokenSupply",
+		RPID:          "tokensupply.net",
+		RPOrigins:     []string{"https://www.tokensupply.net", "https://tokensupply.net"},
+	}, cfg.WebAuthn)
+}
+
+func TestLoadWebAuthnConfigRejectsEmptyEnvironmentOrigins(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
+	t.Setenv("WEBAUTHN_ENABLED", "true")
+	t.Setenv("WEBAUTHN_RP_ID", "tokensupply.net")
+	t.Setenv("WEBAUTHN_RP_ORIGINS", " , ")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "webauthn.rp_origins")
+}
+
+func TestLoadWebAuthnConfigFromFileWhenEnvironmentIsUnset(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	for _, name := range []string{
+		"WEBAUTHN_ENABLED",
+		"WEBAUTHN_RP_DISPLAY_NAME",
+		"WEBAUTHN_RP_ID",
+		"WEBAUTHN_RP_ORIGINS",
+	} {
+		value, existed := os.LookupEnv(name)
+		require.NoError(t, os.Unsetenv(name))
+		t.Cleanup(func() {
+			if existed {
+				_ = os.Setenv(name, value)
+			} else {
+				_ = os.Unsetenv(name)
+			}
+		})
+	}
+
+	configFile := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configFile, []byte(`
+webauthn:
+  enabled: true
+  rp_display_name: Existing Deployment
+  rp_id: existing.example.com
+  rp_origins:
+    - https://existing.example.com
+`), 0o600))
+	t.Setenv("CONFIG_FILE", configFile)
+	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, WebAuthnConfig{
+		Enabled:       true,
+		RPDisplayName: "Existing Deployment",
+		RPID:          "existing.example.com",
+		RPOrigins:     []string{"https://existing.example.com"},
+	}, cfg.WebAuthn)
 }

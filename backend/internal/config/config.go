@@ -1679,6 +1679,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 	trustedProxiesEnv, trustedProxiesEnvConfigured := os.LookupEnv("SERVER_TRUSTED_PROXIES")
 	forwardedClientIPHeadersEnv, forwardedClientIPHeadersEnvConfigured := os.LookupEnv("SECURITY_FORWARDED_CLIENT_IP_HEADERS")
+	webAuthnRPOriginsEnv, webAuthnRPOriginsEnvConfigured := os.LookupEnv("WEBAUTHN_RP_ORIGINS")
 	trustedProxiesConfigured := viper.InConfig("server.trusted_proxies") ||
 		viper.IsSet("server.trusted_proxies") || trustedProxiesEnvConfigured
 
@@ -1691,6 +1692,9 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 	if forwardedClientIPHeadersEnvConfigured {
 		cfg.Security.ForwardedClientIPHeaders = normalizeStringSlice(strings.Split(forwardedClientIPHeadersEnv, ","))
+	}
+	if webAuthnRPOriginsEnvConfigured {
+		cfg.WebAuthn.RPOrigins = normalizeStringSlice(strings.Split(webAuthnRPOriginsEnv, ","))
 	}
 	cfg.Server.TrustedProxiesConfigured = trustedProxiesConfigured
 	if cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs == 0 {

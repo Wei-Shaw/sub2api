@@ -10,6 +10,10 @@ services:
       UPDATE_MODE: docker-managed
       UPDATE_DEPLOYER_SOCKET: /run/sub2api-deployer/deployer.sock
       SERVER_SHUTDOWN_TIMEOUT: "90"
+      WEBAUTHN_ENABLED:
+      WEBAUTHN_RP_DISPLAY_NAME:
+      WEBAUTHN_RP_ID:
+      WEBAUTHN_RP_ORIGINS:
     healthcheck:
       test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
       interval: 10s
