@@ -38,12 +38,20 @@ type SystemSettings struct {
 	SMTPFromName           string
 	SMTPUseTLS             bool
 
-	TurnstileEnabled             bool
-	TurnstileSiteKey             string
-	TurnstileSecretKey           string
-	TurnstileSecretKeyConfigured bool
-	APIKeyACLTrustForwardedIP    bool
-	ForwardedClientIPHeaders     []string
+	TurnstileEnabled                       bool
+	TurnstileSiteKey                       string
+	TurnstileSecretKey                     string
+	TurnstileSecretKeyConfigured           bool
+	TencentCaptchaEnabled                  bool
+	TencentCaptchaAppID                    string
+	TencentCaptchaAppSecretKey             string
+	TencentCaptchaAppSecretKeyConfigured   bool
+	TencentCaptchaCloudSecretID            string
+	TencentCaptchaCloudSecretIDConfigured  bool
+	TencentCaptchaCloudSecretKey           string
+	TencentCaptchaCloudSecretKeyConfigured bool
+	APIKeyACLTrustForwardedIP              bool
+	ForwardedClientIPHeaders               []string
 
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled                bool
@@ -302,6 +310,8 @@ type PublicSettings struct {
 	LoginAgreementDocuments          []LoginAgreementDocument
 	TurnstileEnabled                 bool
 	TurnstileSiteKey                 string
+	TencentCaptchaEnabled            bool
+	TencentCaptchaAppID              string
 	SiteName                         string
 	SiteLogo                         string
 	SiteSubtitle                     string

@@ -31,6 +31,7 @@ import { useRoute REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import GitHubMark from './GitHubMark.vue'
 import GoogleMark from './GoogleMark.vue'
+import type { OAuthLoginStart REDACTED from '@/api/auth'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode REDACTED from '@/utils/oauthAffiliate'
 
 type EmailOAuthProvider = 'github' | 'google'
@@ -45,6 +46,9 @@ const props = withDefaults(defineProps<{
 REDACTED>(), {
   showDivider: true
 REDACTED)
+const emit = defineEmits<{
+  start: [request: OAuthLoginStart]
+REDACTED>()
 
 const route = useRoute()
 const { t REDACTED = useI18n()
@@ -75,13 +79,10 @@ function startLogin(provider: EmailOAuthProvider): void {
   const affiliateCode = resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code)
   storeOAuthAffiliateCode(affiliateCode)
   window.sessionStorage.setItem(EMAIL_OAUTH_PENDING_PROVIDER_KEY, provider)
-  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
-  const normalized = apiBase.replace(/\/$/, '')
-  const params = new URLSearchParams({ redirect: redirectTo REDACTED)
+  const params: Record<string, string> = { redirect: redirectTo REDACTED
   if (affiliateCode) {
-    params.set('aff_code', affiliateCode)
+    params.aff_code = affiliateCode
   REDACTED
-  const startURL = `${normalizedREDACTED/auth/oauth/${providerREDACTED/start?${params.toString()REDACTED`
-  window.location.href = startURL
+  emit('start', { provider, params REDACTED)
 REDACTED
 </script>
