@@ -419,7 +419,7 @@ func contentTexts(value any) []string {
 				continue
 		REDACTED
 			typeName := strings.ToLower(stringValue(object["type"]))
-			if typeName != "" && typeName != "text" && typeName != "input_text" {
+			if typeName != "" && typeName != "text" && typeName != "input_text" && typeName != "output_text" {
 				continue
 		REDACTED
 			if text := stringValue(object["text"]); text != "" {

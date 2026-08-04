@@ -336,6 +336,38 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestContentTextsIncludesSupportedTextTypes(t *testing.T) {
+	value := []any{
+		map[string]any{"type": "text", "text": "plain text"REDACTED,
+		map[string]any{"type": "input_text", "text": "input text"REDACTED,
+		map[string]any{"type": "output_text", "text": "output text"REDACTED,
+		map[string]any{"type": "image_url", "text": "ignored text"REDACTED,
+REDACTED
+
+	require.Equal(t, []string{"plain text", "input text", "output text"REDACTED, contentTexts(value))
+REDACTED
+
+func TestResponsesOutputTextIncludedInFullAndLatestTurnSnapshots(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"earlier user input"REDACTED]REDACTED,
+		{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","annotations":[],"text":"captured previous assistant output"REDACTED]REDACTED,
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"captured latest user input"REDACTED]REDACTED
+	]REDACTED`)
+
+	req := Request{Protocol: "openai_responses", Body: bodyREDACTED
+	full, err := ExtractPromptSnapshot(req)
+REDACTED
+	require.Contains(t, full.ScanText, "captured previous assistant output")
+	require.Contains(t, full.FullPrompt, "captured previous assistant output")
+	require.Equal(t, 3, full.MessageCount)
+
+	latestTurn, err := ExtractBlockingPromptSnapshot(req, true)
+REDACTED
+	require.Equal(t, "captured latest user input"+promptAuditPrioritySeparator+"captured previous assistant output", latestTurn.ScanText)
+	require.Equal(t, 2, latestTurn.MessageCount)
+	require.NotContains(t, latestTurn.ScanText, "earlier user input")
+REDACTED
+
 func TestBlockingPromptSnapshotPreservesFullScopeByDefaultAndWithoutUserInput(t *testing.T) {
 	req := Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"system","content":"system instruction"REDACTED,{"role":"user","content":"older user input"REDACTED,{"role":"assistant","content":"previous output"REDACTED,{"role":"user","content":"latest user input"REDACTED]REDACTED`)REDACTED
 	full, err := ExtractPromptSnapshot(req)
