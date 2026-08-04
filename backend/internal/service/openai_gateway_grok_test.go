@@ -23,6 +23,24 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestPreserveGrokClientResponsesInclude(t *testing.T) {
+	t.Parallel()
+
+	withoutInclude, err := preserveGrokClientResponsesInclude(
+		[]byte(`{"include":["reasoning.encrypted_content"],"store":false}`),
+		[]byte(`{"input":"hello"}`),
+	)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(withoutInclude, "include").Exists())
+
+	withExplicitInclude, err := preserveGrokClientResponsesInclude(
+		[]byte(`{"include":["reasoning.encrypted_content"],"store":false}`),
+		[]byte(`{"include":["reasoning.summary"]}`),
+	)
+	require.NoError(t, err)
+	require.Equal(t, "reasoning.summary", gjson.GetBytes(withExplicitInclude, "include.0").String())
+}
+
 func TestPatchGrokResponsesBodySetsMappedModelAndDropsUnsupportedFields(t *testing.T) {
 	t.Parallel()
 
@@ -41,6 +59,94 @@ func TestPatchGrokResponsesBodySetsMappedModelAndDropsUnsupportedFields(t *testi
 	require.False(t, gjson.GetBytes(patched, "prompt_cache_retention").Exists())
 	require.False(t, gjson.GetBytes(patched, "safety_identifier").Exists())
 	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning.effort").String())
+	require.False(t, gjson.GetBytes(patched, "store").Bool())
+	require.Equal(t, "reasoning.encrypted_content", gjson.GetBytes(patched, "include.0").String())
+}
+
+func TestPatchGrokResponsesBodyWithClientToolsMatchesGrokBuildPromptShape(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok",
+		"instructions": "Follow the workspace rules.",
+		"client_metadata": {"x-codex-window-id": "window-1"},
+		"input": "Inspect the repository.",
+		"reasoning": {"effort": "medium", "summary": "concise", "context": {"turn": 1}}
+	}`)
+
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
+	require.NoError(t, err)
+
+	require.False(t, gjson.GetBytes(patched, "instructions").Exists())
+	require.False(t, gjson.GetBytes(patched, "client_metadata").Exists())
+	require.False(t, gjson.GetBytes(patched, "reasoning.context").Exists())
+	require.Equal(t, "system", gjson.GetBytes(patched, "input.0.role").String())
+	require.Equal(t, "Follow the workspace rules.", gjson.GetBytes(patched, "input.0.content").String())
+	require.Equal(t, "user", gjson.GetBytes(patched, "input.1.role").String())
+	require.Equal(t, "Inspect the repository.", gjson.GetBytes(patched, "input.1.content").String())
+	require.Equal(t, "medium", gjson.GetBytes(patched, "reasoning.effort").String())
+	require.Equal(t, "concise", gjson.GetBytes(patched, "reasoning.summary").String())
+}
+
+func TestPatchGrokResponsesBodyWithClientToolsPrependsInstructionsToExistingInput(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"instructions": "System rules",
+		"input": [
+			{"type":"message","role":"user","content":"hello"},
+			{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}"}
+		]
+	}`)
+
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
+	require.NoError(t, err)
+	require.Equal(t, 3, len(gjson.GetBytes(patched, "input").Array()))
+	require.Equal(t, "system", gjson.GetBytes(patched, "input.0.role").String())
+	require.Equal(t, "System rules", gjson.GetBytes(patched, "input.0.content").String())
+	require.Equal(t, "user", gjson.GetBytes(patched, "input.1.role").String())
+	require.Equal(t, "function_call", gjson.GetBytes(patched, "input.2.type").String())
+}
+
+func TestPatchGrokResponsesBodyWithClientToolsDropsEmptyOrInvalidPromptMetadata(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"instructions": null,
+		"client_metadata": {"installation": "test"},
+		"input": [{"type":"message","role":"user","content":"hello"}],
+		"reasoning": {"context": "private"}
+	}`)
+
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(patched, "instructions").Exists())
+	require.False(t, gjson.GetBytes(patched, "client_metadata").Exists())
+	require.False(t, gjson.GetBytes(patched, "reasoning.context").Exists())
+	require.Equal(t, "user", gjson.GetBytes(patched, "input.0.role").String())
+}
+
+func TestPatchGrokResponsesBodyWithClientToolsNormalizesCodexHistoryWithoutTools(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"tools": [],
+		"input": [
+			{"type":"message","role":"developer","content":[{"type":"input_text","text":"rules"}]},
+			{"type":"reasoning","content":null,"encrypted_content":"ciphertext"},
+			{"type":"custom_tool_call","call_id":"call_1","name":"apply_patch","input":"*** Begin Patch"},
+			{"type":"custom_tool_call_output","call_id":"call_1","output":"Done!"}
+		]
+	}`)
+
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
+	require.NoError(t, err)
+	require.Equal(t, "system", gjson.GetBytes(patched, "input.0.role").String())
+	require.False(t, gjson.GetBytes(patched, "input.1.content").Exists())
+	require.Equal(t, "function_call", gjson.GetBytes(patched, "input.2.type").String())
+	require.JSONEq(t, `{"input":"*** Begin Patch"}`, gjson.GetBytes(patched, "input.2.arguments").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.3.type").String())
+	require.False(t, bytes.Contains(patched, []byte(`"custom_tool_call`)))
 }
 
 func TestPatchGrokResponsesBodySanitizesComposerReasoningParameters(t *testing.T) {
@@ -85,6 +191,49 @@ func TestPatchGrokResponsesBodySanitizesComposerReasoningParameters(t *testing.T
 			require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
 		})
 	}
+}
+
+func TestPatchGrokResponsesBodyNormalizesGrok45ResponsesReasoningEffort(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "minimal", want: "low"},
+		{input: "low", want: "low"},
+		{input: "medium", want: "medium"},
+		{input: "high", want: "high"},
+		{input: "xhigh", want: "high"},
+		{input: "max", want: "high"},
+		{input: "unknown", want: "medium"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			body := []byte(`{"input":"hello","reasoning":{"effort":"` + tt.input + `"}}`)
+			patched, err := patchGrokResponsesBody(body, "grok-4.5")
+			require.NoError(t, err)
+			require.Equal(t, tt.want, gjson.GetBytes(patched, "reasoning.effort").String())
+		})
+	}
+}
+
+func TestPatchGrokResponsesBodyNormalizesAllGrok45ReasoningAliases(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"input":"hello",
+		"reasoning":{"effort":"xhigh"},
+		"reasoning_effort":"max",
+		"reasoningEffort":"minimal"
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "xai/grok-4.5")
+	require.NoError(t, err)
+	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning.effort").String())
+	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning_effort").String())
+	require.Equal(t, "low", gjson.GetBytes(patched, "reasoningEffort").String())
 }
 
 func TestExtractGrokResponsesReasoningEffortSupportsOpenAICompatibleField(t *testing.T) {
@@ -318,7 +467,7 @@ func TestPatchGrokResponsesBodyPromotesCodexAdditionalTools(t *testing.T) {
 	require.False(t, gjson.GetBytes(patched, `tools.#(type=="custom")`).Exists())
 	require.False(t, gjson.GetBytes(patched, `tools.#(type=="namespace")`).Exists())
 	require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
-	require.Equal(t, "developer", gjson.GetBytes(patched, "input.0.role").String())
+	require.Equal(t, "system", gjson.GetBytes(patched, "input.0.role").String())
 	require.Equal(t, "system prompt", gjson.GetBytes(patched, "input.0.content.0.text").String())
 	require.Equal(t, "user", gjson.GetBytes(patched, "input.1.role").String())
 	require.Equal(t, "hello", gjson.GetBytes(patched, "input.1.content.0.text").String())
@@ -389,6 +538,7 @@ func TestForwardGrokResponsesCodexAdditionalToolsUsesMixedCacheIntent(t *testing
 	require.NotEmpty(t, identity)
 	require.Equal(t, identity, upstream.lastReq.Header.Get(grokConversationIDHeader))
 	require.Empty(t, upstream.lastReq.Header.Get(grokClientToolCacheOptInHeader))
+	require.False(t, gjson.GetBytes(upstream.lastBody, "include").Exists())
 }
 
 func TestForwardGrokResponsesClaudeDesktopClientToolsUseCacheRoute(t *testing.T) {
@@ -1570,7 +1720,7 @@ func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *test
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"input":"hi","stream":true,"reasoning_effort":"high"}`)
+	body := []byte(`{"input":"hi","stream":true,"reasoning":{"effort":"high","summary":"auto"}}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("OpenAI-Beta", "responses=experimental")
@@ -1617,7 +1767,8 @@ func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *test
 	require.Equal(t, "web_search", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
 	require.Equal(t, "x_search", gjson.GetBytes(upstream.lastBody, "tools.1.type").String())
 	require.Equal(t, "none", gjson.GetBytes(upstream.lastBody, "tool_choice").String())
-	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "reasoning_effort").String())
+	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning_effort").Exists())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.True(t, result.Stream)
 	require.Equal(t, "resp_grok", result.ResponseID)

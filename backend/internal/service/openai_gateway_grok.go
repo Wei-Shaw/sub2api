@@ -23,7 +23,7 @@ const (
 	grokComposerImageBridgeVisionModel     = "grok-build-0.1"
 	grokComposerImageBridgeMaxOutputTokens = 512
 	grokUpstreamUserAgent                  = "sub2api-grok/1.0"
-	grokCLIVersion                         = "0.2.93"
+	grokCLIVersion                         = "0.2.111"
 	grokDefaultResponsesModel              = "grok-4.5"
 	grokRateLimitFallbackCooldown          = 2 * time.Minute
 	grokRateLimitRepeatCooldown            = 10 * time.Minute
@@ -68,6 +68,15 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		patchedBody, err = buildGrokCompactRequestBody(patchedBody)
 		if err != nil {
 			return nil, err
+		}
+	} else {
+		// The Grok-build default is useful for internal Chat bridge requests,
+		// but native Responses clients may not support the Grok-specific
+		// reasoning.encrypted_content include. Preserve the client's original
+		// include contract on the native Responses path.
+		patchedBody, err = preserveGrokClientResponsesInclude(patchedBody, body)
+		if err != nil {
+			return nil, fmt.Errorf("preserve client Responses include: %w", err)
 		}
 	}
 	// Derive the identity from the request xAI will actually see. This makes
@@ -391,7 +400,11 @@ func patchGrokResponsesBodyWithClientTools(body []byte, upstreamModel string) ([
 	if !json.Valid(body) {
 		return nil, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("invalid json request body")
 	}
-	promoted, err := sanitizeGrokResponsesInput(body)
+	normalized, err := normalizeGrokResponsesPromptFields(body)
+	if err != nil {
+		return nil, apicompat.ResponsesClientToolMapping{}, err
+	}
+	promoted, err := sanitizeGrokResponsesInput(normalized)
 	if err != nil {
 		return nil, apicompat.ResponsesClientToolMapping{}, err
 	}
@@ -406,6 +419,165 @@ func patchGrokResponsesBodyWithClientTools(body []byte, upstreamModel string) ([
 	return patched, mapping, nil
 }
 
+// preserveGrokClientResponsesInclude prevents applyGrokResponsesDefaults from
+// expanding a native client's Responses contract. Chat bridge requests are
+// internal and may use the Grok-build default, but a native Responses request
+// must not receive reasoning.encrypted_content unless the client requested it.
+func preserveGrokClientResponsesInclude(body, clientBody []byte) ([]byte, error) {
+	clientInclude := gjson.GetBytes(clientBody, "include")
+	if !clientInclude.Exists() || clientInclude.Type == gjson.Null {
+		if !gjson.GetBytes(body, "include").Exists() {
+			return body, nil
+		}
+		return sjson.DeleteBytes(body, "include")
+	}
+	return sjson.SetRawBytes(body, "include", []byte(clientInclude.Raw))
+}
+
+// normalizeGrokResponsesPromptFields adapts OpenAI/Codex-only request fields
+// to the shape emitted by grok-build. grok-build puts its rendered system
+// prompt in input[0] and does not send the top-level instructions field.
+// xAI also rejects the Codex-only reasoning.context and client_metadata
+// fields, so remove them before the request reaches the Responses endpoint.
+func normalizeGrokResponsesPromptFields(body []byte) ([]byte, error) {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("decode Grok Responses request body: %w", err)
+	}
+
+	changed := false
+	if rawInstructions, ok := payload["instructions"]; ok {
+		var instructions string
+		if err := json.Unmarshal(rawInstructions, &instructions); err == nil && strings.TrimSpace(instructions) != "" {
+			inputItems, err := grokResponsesInputItemsWithSystemPrompt(payload["input"], instructions)
+			if err != nil {
+				return nil, err
+			}
+			encoded, err := json.Marshal(inputItems)
+			if err != nil {
+				return nil, fmt.Errorf("encode Grok Responses system input: %w", err)
+			}
+			payload["input"] = encoded
+		}
+		// Grok-build leaves this field unset. Drop it even when it is empty or
+		// has an invalid type so xAI never sees an unsupported top-level field.
+		delete(payload, "instructions")
+		changed = true
+	}
+
+	if rawReasoning, ok := payload["reasoning"]; ok {
+		var reasoning map[string]json.RawMessage
+		if err := json.Unmarshal(rawReasoning, &reasoning); err == nil {
+			if _, exists := reasoning["context"]; exists {
+				delete(reasoning, "context")
+				encoded, marshalErr := json.Marshal(reasoning)
+				if marshalErr != nil {
+					return nil, fmt.Errorf("encode Grok Responses reasoning: %w", marshalErr)
+				}
+				payload["reasoning"] = encoded
+				changed = true
+			}
+		}
+	}
+
+	if _, ok := payload["client_metadata"]; ok {
+		delete(payload, "client_metadata")
+		changed = true
+	}
+
+	if normalizedInput, rolesChanged, err := normalizeGrokResponsesInputRoles(payload["input"]); err != nil {
+		return nil, err
+	} else if rolesChanged {
+		payload["input"] = normalizedInput
+		changed = true
+	}
+
+	if !changed {
+		return body, nil
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("encode normalized Grok Responses request: %w", err)
+	}
+	return encoded, nil
+}
+
+// normalizeGrokResponsesInputRoles folds OpenAI's developer role into xAI's
+// system role. Grok Responses accepts system/user/assistant message roles but
+// rejects developer as a ModelInput variant.
+func normalizeGrokResponsesInputRoles(rawInput json.RawMessage) (json.RawMessage, bool, error) {
+	var items []json.RawMessage
+	if err := json.Unmarshal(rawInput, &items); err != nil {
+		return rawInput, false, nil // String and null input forms contain no roles.
+	}
+
+	changed := false
+	for i, rawItem := range items {
+		var item map[string]json.RawMessage
+		if err := json.Unmarshal(rawItem, &item); err != nil || item == nil {
+			continue
+		}
+		var role string
+		if json.Unmarshal(item["role"], &role) != nil || !strings.EqualFold(role, "developer") {
+			continue
+		}
+		var typ string
+		if rawType, exists := item["type"]; exists && json.Unmarshal(rawType, &typ) == nil && typ != "" && typ != "message" {
+			continue
+		}
+		item["role"] = json.RawMessage(`"system"`)
+		encoded, err := json.Marshal(item)
+		if err != nil {
+			return nil, false, fmt.Errorf("encode Grok Responses message role: %w", err)
+		}
+		items[i] = encoded
+		changed = true
+	}
+	if !changed {
+		return rawInput, false, nil
+	}
+	encoded, err := json.Marshal(items)
+	if err != nil {
+		return nil, false, fmt.Errorf("encode Grok Responses input roles: %w", err)
+	}
+	return encoded, true, nil
+}
+
+func grokResponsesInputItemsWithSystemPrompt(rawInput json.RawMessage, instructions string) ([]json.RawMessage, error) {
+	systemItem, err := json.Marshal(map[string]any{
+		"type":    "message",
+		"role":    "system",
+		"content": instructions,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode Grok Responses system message: %w", err)
+	}
+
+	items := []json.RawMessage{systemItem}
+	if len(rawInput) == 0 || string(rawInput) == "null" {
+		return items, nil
+	}
+
+	var inputString string
+	if err := json.Unmarshal(rawInput, &inputString); err == nil {
+		userItem, marshalErr := json.Marshal(map[string]any{
+			"type":    "message",
+			"role":    "user",
+			"content": inputString,
+		})
+		if marshalErr != nil {
+			return nil, fmt.Errorf("encode Grok Responses user message: %w", marshalErr)
+		}
+		return append(items, userItem), nil
+	}
+
+	var inputItems []json.RawMessage
+	if err := json.Unmarshal(rawInput, &inputItems); err != nil {
+		return nil, fmt.Errorf("decode Grok Responses input: %w", err)
+	}
+	return append(items, inputItems...), nil
+}
+
 func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, error) {
 	if !json.Valid(body) {
 		return nil, fmt.Errorf("invalid json request body")
@@ -415,6 +587,10 @@ func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, erro
 		return nil, err
 	}
 	out, err = sanitizeGrokResponsesModelCapabilities(out, upstreamModel)
+	if err != nil {
+		return nil, err
+	}
+	out, err = applyGrokResponsesDefaults(out)
 	if err != nil {
 		return nil, err
 	}
@@ -460,6 +636,9 @@ func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, erro
 }
 
 func sanitizeGrokResponsesModelCapabilities(body []byte, upstreamModel string) ([]byte, error) {
+	if grokModelSupportsOnlyStandardReasoningEffort(upstreamModel) {
+		return normalizeGrok45ReasoningEffortFields(body)
+	}
 	if !grokModelRejectsReasoningEffort(upstreamModel) {
 		return body, nil
 	}
@@ -478,6 +657,49 @@ func sanitizeGrokResponsesModelCapabilities(body []byte, upstreamModel string) (
 	return out, nil
 }
 
+func normalizeGrok45ReasoningEffortFields(body []byte) ([]byte, error) {
+	out := body
+	for _, field := range []string{"reasoning.effort", "reasoning_effort", "reasoningEffort"} {
+		value := gjson.GetBytes(out, field)
+		if !value.Exists() || value.Type != gjson.String {
+			continue
+		}
+		normalized := normalizeGrok45ReasoningEffort(value.String())
+		if normalized == "" || normalized == value.String() {
+			continue
+		}
+		updated, err := sjson.SetBytes(out, field, normalized)
+		if err != nil {
+			return nil, fmt.Errorf("normalize Grok 4.5 %s: %w", field, err)
+		}
+		out = updated
+	}
+	return out, nil
+}
+
+func normalizeGrok45ReasoningEffort(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "minimal", "none", "low":
+		return "low"
+	case "medium":
+		return "medium"
+	case "high", "xhigh", "extrahigh", "max":
+		return "high"
+	default:
+		// Keep the request within Grok 4.5's accepted enum even when a
+		// client sends a provider-specific or future effort name.
+		return "medium"
+	}
+}
+
+func grokModelSupportsOnlyStandardReasoningEffort(model string) bool {
+	model = strings.TrimSpace(strings.ToLower(model))
+	if slash := strings.LastIndex(model, "/"); slash >= 0 {
+		model = strings.TrimSpace(model[slash+1:])
+	}
+	return model == "grok-4.5"
+}
+
 func grokModelRejectsReasoningEffort(model string) bool {
 	model = strings.TrimSpace(strings.ToLower(model))
 	if slash := strings.LastIndex(model, "/"); slash >= 0 {
@@ -489,6 +711,40 @@ func grokModelRejectsReasoningEffort(model string) bool {
 	default:
 		return false
 	}
+}
+
+// applyGrokResponsesDefaults mirrors Grok Build's Responses request defaults.
+func applyGrokResponsesDefaults(body []byte) ([]byte, error) {
+	out := body
+	var err error
+	if !gjson.GetBytes(out, "store").Exists() {
+		out, err = sjson.SetBytes(out, "store", false)
+		if err != nil {
+			return nil, fmt.Errorf("set Grok Responses store default: %w", err)
+		}
+	}
+
+	includes := gjson.GetBytes(out, "include")
+	if !includes.Exists() {
+		out, err = sjson.SetBytes(out, "include", []string{"reasoning.encrypted_content"})
+		if err != nil {
+			return nil, fmt.Errorf("set Grok Responses include default: %w", err)
+		}
+		return out, nil
+	}
+	if !includes.IsArray() {
+		return out, nil
+	}
+	for _, value := range includes.Array() {
+		if value.String() == "reasoning.encrypted_content" {
+			return out, nil
+		}
+	}
+	out, err = sjson.SetBytes(out, "include.-1", "reasoning.encrypted_content")
+	if err != nil {
+		return nil, fmt.Errorf("append Grok Responses include default: %w", err)
+	}
+	return out, nil
 }
 
 var grokResponsesUnsupportedRecursiveFields = map[string]struct{}{

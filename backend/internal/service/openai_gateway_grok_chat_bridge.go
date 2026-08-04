@@ -53,9 +53,8 @@ func grokChatResponsesBridgeEligibility(body []byte) (bool, string) {
 
 	// These fields have no effect when explicitly set to JSON null. Accepting
 	// that common SDK representation keeps the request on the bridge path,
-	// while non-null values remain unsupported because the Responses converter
-	// cannot preserve their Chat Completions semantics.
-	for _, field := range []string{"stop", "reasoning_effort"} {
+	// while non-null stop values remain unsupported by the Responses converter.
+	for _, field := range []string{"stop"} {
 		if raw, exists := root[field]; exists && !grokChatJSONNull(raw) {
 			return false, "unsupported_" + field
 		}
@@ -522,12 +521,7 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	cacheIdentity := resolveGrokCacheIdentity(c, body, promptCacheKey, upstreamModel)
-	// Image inputs must go through the Responses bridge: the raw Chat
-	// Completions path cannot forward image_url parts to Grok's native vision
-	// for non-composer models, so they would be silently dropped. Route them to
-	// Responses even when no prompt-cache identity is available.
-	hasImageInput := openAIJSONValueMayContainImageInput(gjson.GetBytes(body, "messages"))
-	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) && (!hasImageInput || strings.TrimSpace(upstreamModel) != "grok-4.5") {
+	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 
@@ -537,15 +531,13 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	}
 	responsesReq.Model = upstreamModel
 	responsesReq.Stream = true
-	// Keep Chat and native Responses paths aligned for OpenAI-compatible
-	// service_tier aliases (for example, "fast" -> "priority"). Unknown
-	// values are omitted by the shared normalizer instead of reaching xAI.
-	normalizeResponsesRequestServiceTier(responsesReq)
-	// These fields are useful to Codex but are not needed by the Grok CLI
-	// protocol. Keep the bridge request as close as possible to native Grok.
-	responsesReq.Include = nil
-	responsesReq.Store = nil
-
+	if responsesReq.Reasoning != nil {
+		responsesReq.Reasoning.Summary = "concise"
+	}
+	// Match grok-build's native Responses request defaults. Its ConversationRequest
+	// conversion omits service_tier, forces store=false, and the sampler adds
+	// reasoning.encrypted_content to include before serializing the request.
+	applyGrokBuildResponsesDefaults(responsesReq)
 	responsesBody, err := json.Marshal(responsesReq)
 	if err != nil {
 		return nil, fmt.Errorf("marshal grok responses bridge request: %w", err)
@@ -650,4 +642,24 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 		result.ReasoningEffort = extractOpenAIReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)
 	}
 	return result, err
+}
+
+func applyGrokBuildResponsesDefaults(req *apicompat.ResponsesRequest) {
+	if req == nil {
+		return
+	}
+
+	// grok-build's ConversationRequest -> CreateResponse conversion does not
+	// carry service_tier onto the native Grok Responses wire request.
+	req.ServiceTier = ""
+
+	storeFalse := false
+	req.Store = &storeFalse
+
+	for _, include := range req.Include {
+		if include == "reasoning.encrypted_content" {
+			return
+		}
+	}
+	req.Include = append(req.Include, "reasoning.encrypted_content")
 }

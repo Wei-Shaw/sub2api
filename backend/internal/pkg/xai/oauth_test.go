@@ -88,7 +88,7 @@ func TestBuildAuthorizationURLIncludesHermesCompatibleParameters(t *testing.T) {
 	require.Equal(t, "challenge", values.Get("code_challenge"))
 	require.Equal(t, "S256", values.Get("code_challenge_method"))
 	require.Equal(t, "generic", values.Get("plan"))
-	require.Equal(t, "sub2api", values.Get("referrer"))
+	require.Equal(t, "grok-build", values.Get("referrer"))
 }
 
 func TestValidateXAIURLsAllowOfficialOAuthAndGatewayHosts(t *testing.T) {

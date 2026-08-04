@@ -175,9 +175,9 @@ func TestGrokChatResponsesBridgeEligibility(t *testing.T) {
 			reason: "invalid_parallel_tool_calls",
 		},
 		{
-			name:   "reasoning effort falls back because conversion adds summary",
-			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"high"}`,
-			reason: "unsupported_reasoning_effort",
+			name: "reasoning effort bridges to responses",
+			body: `{"model":"grok","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"high"}`,
+			want: true,
 		},
 		{
 			name:   "both token limits fall back",
@@ -264,8 +264,8 @@ func TestForwardGrokChatViaResponsesNonStreamingCachesAndReturnsChat(t *testing.
 	require.Equal(t, "system", gjson.GetBytes(upstream.lastBody, "input.0.role").String())
 	require.Equal(t, "user", gjson.GetBytes(upstream.lastBody, "input.1.role").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "instructions").Exists())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "include").Exists())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Exists())
+	require.Equal(t, "reasoning.encrypted_content", gjson.GetBytes(upstream.lastBody, "include.0").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "cached ok", gjson.Get(recorder.Body.String(), "choices.0.message.content").String())
@@ -434,7 +434,10 @@ func TestForwardGrokChatViaResponsesTraeCompatibilityFieldsKeepCacheRoute(t *tes
 	require.Equal(t, extendedTurnIdentity, upstream.lastReq.Header.Get(grokConversationIDHeader))
 	require.Equal(t, "Return concise JSON", gjson.GetBytes(upstream.lastBody, "instructions").String())
 	require.Equal(t, "json_object", gjson.GetBytes(upstream.lastBody, "text.format.type").String())
-	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
+	require.Equal(t, "reasoning.encrypted_content", gjson.GetBytes(upstream.lastBody, "include.0").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "store").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "stop").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning").Exists())
 	require.Contains(t, gjson.GetBytes(upstream.lastBody, "input.1.content.0.text").String(), "<thinking>I should use lookup</thinking>")
@@ -647,6 +650,37 @@ func TestForwardGrokRawChatErrorRecordsActualEndpoint(t *testing.T) {
 	require.Nil(t, result)
 	require.Equal(t, xai.DefaultCLIBaseURL+"/chat/completions", upstream.lastReq.URL.String())
 	require.Equal(t, grokChatRawEndpoint, GetActualOpenAIUpstreamEndpoint(c))
+}
+
+func TestForwardGrokChatReasoningEffortBridgesToResponses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"grok","messages":[{"role":"user","content":"hi"}],"stream":false,"reasoning_effort":"xhigh"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, grokChatRawEndpoint, bytes.NewReader(body))
+	c.Set("api_key", &APIKey{ID: 7701})
+
+	account := grokChatBridgeTestAccount(77)
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: account},
+	}}
+	upstream := &httpUpstreamRecorder{resp: grokChatBridgeCompletedResponse("resp_grok_reasoning", 0)}
+	svc := &OpenAIGatewayService{
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		accountRepo:       repo,
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
+	require.Equal(t, grokChatResponsesEndpoint, result.UpstreamEndpoint)
+	// Grok 4.5 only accepts low/medium/high; xhigh is normalized upstream.
+	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.Equal(t, "concise", gjson.GetBytes(upstream.lastBody, "reasoning.summary").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning_effort").Exists())
 }
 
 func grokChatBridgeTestAccount(id int64) *Account {
