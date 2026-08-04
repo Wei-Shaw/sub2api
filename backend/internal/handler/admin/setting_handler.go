@@ -365,6 +365,12 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		UserOwnedAccountsEnabled: settings.UserOwnedAccountsEnabled,
 		MaxUserOwnedAccounts:     settings.MaxUserOwnedAccounts,
 
+		ShareRevenueSplitEnabled: settings.ShareRevenueSplitEnabled,
+		ShareSplitInvitePct:      settings.ShareSplitInvitePct,
+		ShareSplitUserPct:        settings.ShareSplitUserPct,
+		ShareSplitPlatformPct:    settings.ShareSplitPlatformPct,
+		PrivateSelfEnvFeePct:     settings.PrivateSelfEnvFeePct,
+
 		ModelPlazaEnabled:     settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth: settings.ModelPlazaRequireAuth,
 		ModelPlazaDescription: settings.ModelPlazaDescription,

@@ -419,6 +419,13 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		updates[SettingKeyMaxUserOwnedAccounts] = strconv.Itoa(v)
 	}
 
+	// 共享收益分配
+	updates[SettingKeyShareRevenueSplitEnabled] = strconv.FormatBool(settings.ShareRevenueSplitEnabled)
+	updates[SettingKeyShareSplitInvitePct] = formatSharePct(settings.ShareSplitInvitePct)
+	updates[SettingKeyShareSplitUserPct] = formatSharePct(settings.ShareSplitUserPct)
+	updates[SettingKeyShareSplitPlatformPct] = formatSharePct(settings.ShareSplitPlatformPct)
+	updates[SettingKeyPrivateSelfEnvFeePct] = formatSharePct(settings.PrivateSelfEnvFeePct)
+
 	// Model plaza feature switches + description
 	updates[SettingKeyModelPlazaEnabled] = strconv.FormatBool(settings.ModelPlazaEnabled)
 	updates[SettingKeyModelPlazaRequireAuth] = strconv.FormatBool(settings.ModelPlazaRequireAuth)

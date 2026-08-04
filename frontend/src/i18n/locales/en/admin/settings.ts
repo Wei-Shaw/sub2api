@@ -38,6 +38,23 @@ export default {
           maxAccounts: 'Max accounts per user',
           maxAccountsHint: 'Soft cap on non-deleted user-owned accounts per user. Range 1 – 1000, default 10.',
         },
+        shareRevenue: {
+          title: 'Share revenue split',
+          description:
+            'When user B uses user A’s account via a share-pool group, split B’s charge into invite rebate, contributor revenue, and platform. Private self-use only pays an environment fee. Disabled by default.',
+          enabled: 'Enable share revenue split',
+          enabledHint: 'When off, billing matches legacy (caller only); no three-way split.',
+          invitePct: 'Invite rebate (%)',
+          invitePctHint: 'Goes to B’s inviter; merges into platform if none or affiliate is off.',
+          userPct: 'Contributor revenue (%)',
+          userPctHint: 'Goes to account owner A (immediate balance credit).',
+          platformPct: 'Platform share (%)',
+          platformPctHint: 'Prefer sum of three = 100%; remainder goes to platform.',
+          pctSum: 'Current sum: {sum}% (prefer 100%)',
+          envFeePct: 'Private self-use env fee (%)',
+          envFeePctHint:
+            'When a user calls their own account via private-{id}-* group, charge normal cost × this rate to the platform only.',
+        },
         modelPlaza: {
           title: 'Model Plaza',
           description: 'A public page showcasing available models and pricing by group. Disabled by default.',

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -414,6 +415,34 @@ func clampMaxUserOwnedAccounts(v int) int {
 		return maxUserOwnedAccountsMax
 	}
 	return v
+}
+
+// parseSharePct 解析 0–100 的分账/费率百分比；非法回退 def。
+func parseSharePct(raw string, def float64) float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+		return def
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
+func formatSharePct(v float64) string {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return "0"
+	}
+	if v < 0 {
+		v = 0
+	}
+	if v > 100 {
+		v = 100
+	}
+	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
 // ChannelMonitorRuntime is the lightweight view of the channel monitor feature

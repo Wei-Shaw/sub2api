@@ -38,6 +38,22 @@ export default {
           maxAccounts: '每用户账号上限',
           maxAccountsHint: '单个用户可持有的未删除自建账号数量软上限。范围 1 – 1000，默认 10。',
         },
+        shareRevenue: {
+          title: '共享账号收益分配',
+          description:
+            '用户 B 经共享池使用用户 A 的账号时，将 B 应付金额拆为邀请返利、贡献者收益与平台；自用 private 组仅收环境费率。默认关闭。',
+          enabled: '启用共享收益分配',
+          enabledHint: '关闭后计费与现网一致（仅扣调用方），不做三方分账。',
+          invitePct: '邀请返利占比 (%)',
+          invitePctHint: '归调用方 B 的邀请人；无邀请人或邀请返利关闭时并入平台。',
+          userPct: '贡献者收益占比 (%)',
+          userPctHint: '归账号 owner A，即时入余额。',
+          platformPct: '平台占比 (%)',
+          platformPctHint: '三者之和建议为 100；余量归平台。',
+          pctSum: '当前合计：{sum}%（建议 100%）',
+          envFeePct: 'Private 自用环境费率 (%)',
+          envFeePctHint: '用户用自己的 private 组打自己的号时，按正常计费 × 该比例扣款，全部归平台。',
+        },
         modelPlaza: {
           title: '模型广场',
           description: '以分组为单位向访客展示可用模型与价格的公开页面。默认关闭。',

@@ -799,6 +799,13 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.UserOwnedAccountsEnabled = settings[SettingKeyUserOwnedAccountsEnabled] == "true"
 	result.MaxUserOwnedAccounts = parseMaxUserOwnedAccounts(settings[SettingKeyMaxUserOwnedAccounts])
 
+	// 共享收益分配（默认关；比例默认 10/40/50；自用环境费 1%）
+	result.ShareRevenueSplitEnabled = settings[SettingKeyShareRevenueSplitEnabled] == "true"
+	result.ShareSplitInvitePct = parseSharePct(settings[SettingKeyShareSplitInvitePct], 10)
+	result.ShareSplitUserPct = parseSharePct(settings[SettingKeyShareSplitUserPct], 40)
+	result.ShareSplitPlatformPct = parseSharePct(settings[SettingKeyShareSplitPlatformPct], 50)
+	result.PrivateSelfEnvFeePct = parseSharePct(settings[SettingKeyPrivateSelfEnvFeePct], 1)
+
 	// Model plaza feature (default: disabled; strict true)
 	result.ModelPlazaEnabled = settings[SettingKeyModelPlazaEnabled] == "true"
 	result.ModelPlazaRequireAuth = settings[SettingKeyModelPlazaRequireAuth] == "true"

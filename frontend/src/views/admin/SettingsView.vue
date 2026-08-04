@@ -6704,6 +6704,120 @@
           </div>
         </div>
 
+        <!-- 共享账号收益分配 -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.shareRevenue.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.shareRevenue.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.shareRevenue.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.shareRevenue.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.share_revenue_split_enabled" />
+            </div>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.shareRevenue.invitePct') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.shareRevenue.invitePctHint') }}
+                </p>
+                <input
+                  v-model.number="form.share_split_invite_pct"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  class="input mt-2 w-full"
+                />
+              </div>
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.shareRevenue.userPct') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.shareRevenue.userPctHint') }}
+                </p>
+                <input
+                  v-model.number="form.share_split_user_pct"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  class="input mt-2 w-full"
+                />
+              </div>
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.shareRevenue.platformPct') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.shareRevenue.platformPctHint') }}
+                </p>
+                <input
+                  v-model.number="form.share_split_platform_pct"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  class="input mt-2 w-full"
+                />
+              </div>
+            </div>
+            <p
+              class="text-xs"
+              :class="
+                Math.abs(
+                  Number(form.share_split_invite_pct || 0) +
+                    Number(form.share_split_user_pct || 0) +
+                    Number(form.share_split_platform_pct || 0) -
+                    100
+                ) < 0.05
+                  ? 'text-gray-500 dark:text-gray-400'
+                  : 'text-amber-600 dark:text-amber-400'
+              "
+            >
+              {{
+                t('admin.settings.features.shareRevenue.pctSum', {
+                  sum: (
+                    Number(form.share_split_invite_pct || 0) +
+                    Number(form.share_split_user_pct || 0) +
+                    Number(form.share_split_platform_pct || 0)
+                  ).toFixed(1)
+                })
+              }}
+            </p>
+            <div>
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.features.shareRevenue.envFeePct') }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.features.shareRevenue.envFeePctHint') }}
+              </p>
+              <input
+                v-model.number="form.private_self_env_fee_pct"
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                class="input mt-2 w-40"
+              />
+            </div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -9352,6 +9466,12 @@ const form = reactive<SettingsForm>({
   // User-owned accounts feature switch + soft cap
   user_owned_accounts_enabled: false,
   max_user_owned_accounts: 10,
+  // 共享账号收益分配
+  share_revenue_split_enabled: false,
+  share_split_invite_pct: 10,
+  share_split_user_pct: 40,
+  share_split_platform_pct: 50,
+  private_self_env_fee_pct: 1,
   // Model Plaza feature switches + description
   model_plaza_enabled: false,
   model_plaza_require_auth: false,
@@ -10966,6 +11086,12 @@ async function saveSettings() {
       user_owned_accounts_enabled: form.user_owned_accounts_enabled,
       max_user_owned_accounts:
         Number(form.max_user_owned_accounts) || 10,
+      // 共享账号收益分配
+      share_revenue_split_enabled: form.share_revenue_split_enabled,
+      share_split_invite_pct: Number(form.share_split_invite_pct) || 0,
+      share_split_user_pct: Number(form.share_split_user_pct) || 0,
+      share_split_platform_pct: Number(form.share_split_platform_pct) || 0,
+      private_self_env_fee_pct: Number(form.private_self_env_fee_pct) || 0,
       // Model Plaza feature switches + description
       model_plaza_enabled: form.model_plaza_enabled,
       model_plaza_require_auth: form.model_plaza_require_auth,

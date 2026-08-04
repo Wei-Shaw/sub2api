@@ -323,6 +323,13 @@ type UpdateSettingsRequest struct {
 	UserOwnedAccountsEnabled *bool `json:"user_owned_accounts_enabled"`
 	MaxUserOwnedAccounts     *int  `json:"max_user_owned_accounts"`
 
+	// 共享账号收益分配
+	ShareRevenueSplitEnabled *bool    `json:"share_revenue_split_enabled"`
+	ShareSplitInvitePct      *float64 `json:"share_split_invite_pct"`
+	ShareSplitUserPct        *float64 `json:"share_split_user_pct"`
+	ShareSplitPlatformPct    *float64 `json:"share_split_platform_pct"`
+	PrivateSelfEnvFeePct     *float64 `json:"private_self_env_fee_pct"`
+
 	// Model Plaza feature switches + description
 	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth *bool   `json:"model_plaza_require_auth"`
@@ -1720,6 +1727,36 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.MaxUserOwnedAccounts
 		}(),
+		ShareRevenueSplitEnabled: func() bool {
+			if req.ShareRevenueSplitEnabled != nil {
+				return *req.ShareRevenueSplitEnabled
+			}
+			return previousSettings.ShareRevenueSplitEnabled
+		}(),
+		ShareSplitInvitePct: func() float64 {
+			if req.ShareSplitInvitePct != nil {
+				return *req.ShareSplitInvitePct
+			}
+			return previousSettings.ShareSplitInvitePct
+		}(),
+		ShareSplitUserPct: func() float64 {
+			if req.ShareSplitUserPct != nil {
+				return *req.ShareSplitUserPct
+			}
+			return previousSettings.ShareSplitUserPct
+		}(),
+		ShareSplitPlatformPct: func() float64 {
+			if req.ShareSplitPlatformPct != nil {
+				return *req.ShareSplitPlatformPct
+			}
+			return previousSettings.ShareSplitPlatformPct
+		}(),
+		PrivateSelfEnvFeePct: func() float64 {
+			if req.PrivateSelfEnvFeePct != nil {
+				return *req.PrivateSelfEnvFeePct
+			}
+			return previousSettings.PrivateSelfEnvFeePct
+		}(),
 		ModelPlazaEnabled: func() bool {
 			if req.ModelPlazaEnabled != nil {
 				return *req.ModelPlazaEnabled
@@ -2138,6 +2175,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		UserOwnedAccountsEnabled: updatedSettings.UserOwnedAccountsEnabled,
 		MaxUserOwnedAccounts:     updatedSettings.MaxUserOwnedAccounts,
+
+		ShareRevenueSplitEnabled: updatedSettings.ShareRevenueSplitEnabled,
+		ShareSplitInvitePct:      updatedSettings.ShareSplitInvitePct,
+		ShareSplitUserPct:        updatedSettings.ShareSplitUserPct,
+		ShareSplitPlatformPct:    updatedSettings.ShareSplitPlatformPct,
+		PrivateSelfEnvFeePct:     updatedSettings.PrivateSelfEnvFeePct,
 
 		ModelPlazaEnabled:     updatedSettings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth: updatedSettings.ModelPlazaRequireAuth,

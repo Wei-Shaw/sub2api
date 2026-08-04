@@ -196,6 +196,13 @@ type SystemSettings struct {
 	// MaxUserOwnedAccounts soft cap per user (admin-only; not public-injected)
 	MaxUserOwnedAccounts int `json:"max_user_owned_accounts"`
 
+	// 共享账号收益分配（admin-only；默认关）
+	ShareRevenueSplitEnabled bool    `json:"share_revenue_split_enabled"`
+	ShareSplitInvitePct      float64 `json:"share_split_invite_pct"`
+	ShareSplitUserPct        float64 `json:"share_split_user_pct"`
+	ShareSplitPlatformPct    float64 `json:"share_split_platform_pct"`
+	PrivateSelfEnvFeePct     float64 `json:"private_self_env_fee_pct"`
+
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled     bool   `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth bool   `json:"model_plaza_require_auth"`

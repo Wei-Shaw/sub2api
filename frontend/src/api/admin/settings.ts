@@ -680,6 +680,13 @@ export interface SystemSettings {
   user_owned_accounts_enabled: boolean;
   max_user_owned_accounts: number;
 
+  // 共享账号收益分配
+  share_revenue_split_enabled: boolean;
+  share_split_invite_pct: number;
+  share_split_user_pct: number;
+  share_split_platform_pct: number;
+  private_self_env_fee_pct: number;
+
   // Model Plaza feature switches + description
   model_plaza_enabled: boolean;
   model_plaza_require_auth: boolean;
@@ -967,6 +974,13 @@ export interface UpdateSettingsRequest {
   // User-owned accounts feature switch + soft cap
   user_owned_accounts_enabled?: boolean;
   max_user_owned_accounts?: number;
+
+  // 共享账号收益分配
+  share_revenue_split_enabled?: boolean;
+  share_split_invite_pct?: number;
+  share_split_user_pct?: number;
+  share_split_platform_pct?: number;
+  private_self_env_fee_pct?: number;
 
   // Model Plaza feature switches + description
   model_plaza_enabled?: boolean;
