@@ -117,13 +117,16 @@ partially finalized non-transactional migration journal or index. An unlock
 failure discards the database session instead of returning a possibly
 lock-owning connection to the pool.
 
-Existing migration files are immutable. Drops (including constraints and
-defaults), renames, type changes, constraints on existing tables, truncation,
-and data updates/deletes/merges/copies require a maintenance release after all
-rollback candidates no longer depend on the old schema. Unknown SQL forms fail
-closed. A new migration filename must also sort strictly after the last migration
-in the prior release, matching the runner's ordering and preventing fresh and
-already-upgraded databases from applying the same file at different positions.
+Existing migration files are immutable. Table, column, and default drops;
+renames; type changes; truncation; and data deletes, merges, or copies require a
+maintenance release after all rollback candidates no longer depend on the old
+schema. Changes to constraints on existing tables and top-level data updates
+also require a maintenance release unless the exact statement form is listed
+as review-eligible below and carries the required statement-level annotation
+after compatibility review. Unknown SQL forms fail closed. A new migration
+filename must also sort strictly after the last migration in the prior release,
+matching the runner's ordering and preventing fresh and already-upgraded
+databases from applying the same file at different positions.
 
 The checker compares every release cumulatively to the immutable commit for
 `v0.1.164-ts.1` (`0572569c6e0187fd02655bec2d9439e30d9edc04`). The base must be
@@ -203,21 +206,26 @@ administrator view to verify the two rulesets and the sole writable deploy key.
 Changing the fixed baseline requires a reviewed code change after a maintenance
 migration has completed and old images are no longer rollback candidates.
 
-Behavior-defining statements supported by the checker (`CREATE FUNCTION`,
-`CREATE PROCEDURE`, and `CREATE TRIGGER`, including supported `OR REPLACE`
-forms) require explicit statement-level review. After verifying that both the
-old and new application images remain compatible with the behavior, place this
-exact line immediately before that one statement:
+Statements marked as review-eligible by the checker require explicit
+statement-level review. These forms are limited to supported behavior-defining
+statements (`CREATE FUNCTION`, `CREATE PROCEDURE`, and `CREATE TRIGGER`,
+including supported `OR REPLACE` forms), an explicitly reviewed top-level
+`UPDATE`, and supported constraint rollout operations (`ADD CONSTRAINT ... CHECK`,
+`VALIDATE CONSTRAINT`, and `DROP CONSTRAINT`). After verifying rollback and
+that both the old and new application images remain compatible with the data or
+behavior change, place this exact line immediately before that one statement:
 
 ```sql
 -- sub2api-managed-update: reviewed-compatible
 CREATE OR REPLACE FUNCTION example_function() ...;
 ```
 
-The annotation cannot override destructive/data-rewrite statements, unsafe
-`ALTER TABLE`, a unique index on an existing table, or an unknown SQL form. The
-Release workflow will not publish an automatically deployable image when any
-part of the cumulative check fails.
+The annotation only overrides forms that the checker explicitly marks as
+review-eligible; it is not a general migration bypass. It cannot override
+`DROP`, `TRUNCATE`, `DELETE`, `MERGE`, or `COPY`, an unsupported or unsafe
+`ALTER TABLE`, a unique constraint or unique index on an existing table, or an
+unknown SQL form. The Release workflow will not publish an automatically
+deployable image when any part of the cumulative check fails.
 
 ## Initial installation
 

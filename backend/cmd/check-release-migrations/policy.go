@@ -72,7 +72,19 @@ func evaluateStatement(statement sqlStatement, newlyCreatedTables map[relationNa
 	case "INSERT":
 		return evaluateInsert(tokens)
 
-	case "DROP", "TRUNCATE", "UPDATE", "DELETE", "MERGE", "COPY":
+	case "UPDATE":
+		decision := policyDecision{
+			reviewEligible: true,
+			description:    "data-rewrite UPDATE statement",
+			reason:         fmt.Sprintf("top-level UPDATE requires a leading %q annotation after explicit rollback-compatibility review", reviewedCompatibleAnnotation),
+		}
+		if statement.reviewedCompatible {
+			decision.allowed = true
+			decision.reason = ""
+		}
+		return decision
+
+	case "DROP", "TRUNCATE", "DELETE", "MERGE", "COPY":
 		return policyDecision{
 			description: "destructive or data-rewrite statement",
 			reason:      fmt.Sprintf("top-level %s is never rollback-compatible", keywordAt(tokens, 0)),
@@ -198,6 +210,21 @@ func evaluateAlter(tokens []sqlToken) policyDecision {
 			reviewEligible: true,
 			description:    "ALTER TABLE DROP CONSTRAINT",
 			reason:         fmt.Sprintf("constraint removal requires a leading %q annotation after explicit compatibility review", reviewedCompatibleAnnotation),
+		}
+	}
+	if keywordAt(tokens, i) == "VALIDATE" {
+		i++
+		if keywordAt(tokens, i) != "CONSTRAINT" {
+			return rejected("ALTER TABLE VALIDATE", "only a single named constraint can be reviewed")
+		}
+		i++
+		if _, next, ok := parseIdentifier(tokens, i); !ok || next != len(tokens) {
+			return rejected("ALTER TABLE VALIDATE CONSTRAINT", "only a single named constraint can be reviewed")
+		}
+		return policyDecision{
+			reviewEligible: true,
+			description:    "ALTER TABLE VALIDATE CONSTRAINT",
+			reason:         fmt.Sprintf("constraint validation requires a leading %q annotation after explicit compatibility review", reviewedCompatibleAnnotation),
 		}
 	}
 	if keywordAt(tokens, i) != "ADD" {

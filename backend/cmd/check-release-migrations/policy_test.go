@@ -168,6 +168,46 @@ ALTER TABLE users ADD CONSTRAINT users_email_key UNIQUE (email);
 	require.False(t, evaluateStatement(reviewedUniqueConstraint, nil, "002_test.sql").allowed)
 }
 
+func TestReviewedCompatibleUpdateRequiresExplicitAnnotation(t *testing.T) {
+	t.Parallel()
+
+	reviewed := mustOneStatement(t, `
+-- sub2api-managed-update: reviewed-compatible
+UPDATE ops_alert_rules
+SET minimum_bad_count = 0
+WHERE metric_type = 'ttft_p99_seconds';
+`)
+	require.True(t, evaluateStatement(reviewed, nil, "203_test.sql").allowed)
+
+	unreviewed := mustOneStatement(t, `
+UPDATE ops_alert_rules
+SET minimum_bad_count = 0
+WHERE metric_type = 'ttft_p99_seconds';
+`)
+	decision := evaluateStatement(unreviewed, nil, "203_test.sql")
+	require.False(t, decision.allowed)
+	require.True(t, decision.reviewEligible)
+}
+
+func TestReviewedCompatibleConstraintValidationRequiresExplicitAnnotation(t *testing.T) {
+	t.Parallel()
+
+	reviewed := mustOneStatement(t, `
+-- sub2api-managed-update: reviewed-compatible
+ALTER TABLE ops_alert_rule_evaluations
+VALIDATE CONSTRAINT ops_alert_rule_evaluations_status_check_v3;
+`)
+	require.True(t, evaluateStatement(reviewed, nil, "204_test.sql").allowed)
+
+	unreviewed := mustOneStatement(t, `
+ALTER TABLE ops_alert_rule_evaluations
+VALIDATE CONSTRAINT ops_alert_rule_evaluations_status_check_v3;
+`)
+	decision := evaluateStatement(unreviewed, nil, "204_test.sql")
+	require.False(t, decision.allowed)
+	require.True(t, decision.reviewEligible)
+}
+
 func TestRecordNewTableProofRequiresUnconditionalEarlierCreate(t *testing.T) {
 	t.Parallel()
 
