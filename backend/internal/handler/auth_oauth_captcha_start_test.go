@@ -122,7 +122,7 @@ func TestOAuthStartPostReturnsAuthorizeURLAfterTencentVerification(t *testing.T)
 			)
 			c.Request.Header.Set("Content-Type", "application/json")
 
-			require.True(t, handler.requireTencentCaptchaForOAuthLoginStart(c))
+			require.True(t, handler.requireActionCaptchaForOAuthLoginStart(c))
 			respondOAuthStart(c, "https://provider.example/authorize")
 
 			require.Equal(t, http.StatusOK, recorder.Code)
@@ -143,7 +143,7 @@ func TestOAuthStartPostRequiresTencentProofWhenEnabled(t *testing.T) {
 			c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/"+provider+"/start", strings.NewReader(`{REDACTED`))
 			c.Request.Header.Set("Content-Type", "application/json")
 
-			require.False(t, handler.requireTencentCaptchaForOAuthLoginStart(c))
+			require.False(t, handler.requireActionCaptchaForOAuthLoginStart(c))
 			require.Equal(t, http.StatusBadRequest, recorder.Code)
 			require.Contains(t, recorder.Body.String(), "TENCENT_CAPTCHA_VERIFICATION_FAILED")
 			require.Zero(t, verifier.calls)
@@ -158,7 +158,7 @@ func TestOAuthBindingPathRemainsOutsideTencentGate(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/bind/start", nil)
 
-	require.True(t, handler.requireTencentCaptchaForOAuthLoginStart(c))
+	require.True(t, handler.requireActionCaptchaForOAuthLoginStart(c))
 	require.Equal(t, http.StatusOK, recorder.Code)
 REDACTED
 
@@ -169,7 +169,7 @@ func TestOAuthStartGetRemainsCompatibleWhenTencentDisabled(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/github/start", nil)
 
-	require.True(t, handler.requireTencentCaptchaForOAuthLoginStart(c))
+	require.True(t, handler.requireActionCaptchaForOAuthLoginStart(c))
 	respondOAuthStart(c, "https://provider.example/authorize")
 
 	require.Equal(t, http.StatusFound, recorder.Code)

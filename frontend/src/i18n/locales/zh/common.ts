@@ -244,6 +244,8 @@ export default {
     turnstileFailed: '验证失败，请重试',
     captchaVerified: '验证已完成',
     captchaLoading: '正在加载验证码…',
+    captchaClickToVerify: '点击完成人机验证',
+    captchaVerifying: '验证中…',
     completeVerification: '请完成验证',
     verifyYourEmail: '验证您的邮箱',
     sessionExpired: '会话已过期',

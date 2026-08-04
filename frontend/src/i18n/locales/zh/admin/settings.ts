@@ -183,6 +183,16 @@ export default {
         secretKeyHint: '服务端验证密钥（请保密）',
         secretKeyConfiguredHint: '密钥已配置，留空以保留当前值。'
       REDACTED,
+      captcha: {
+        title: '人机验证',
+        description: '登录和注册的机器人防护',
+        enable: '启用人机验证',
+        enableHint: '开启后登录、注册等入口需要通过人机验证',
+        provider: '验证服务商',
+        providerTurnstile: 'Cloudflare Turnstile',
+        providerTencent: '腾讯天御验证码',
+        providerAliyun: '阿里云验证码 2.0'
+      REDACTED,
       tencentCaptcha: {
         title: '腾讯天御验证码',
         description: '为登录、注册及第三方登录创建账号流程提供滑动验证码保护',
@@ -191,7 +201,7 @@ export default {
         keepExisting: '留空以保留当前值',
         configured: '已配置，留空不会覆盖。',
         required: '启用前必须填写此项。',
-        mutualExclusion: '腾讯天御验证码与 Cloudflare Turnstile 互斥，开启其中一个会自动关闭另一个。',
+        mutualExclusion: '腾讯天御验证码与 Cloudflare Turnstile、阿里云验证码互斥，开启其中一个会自动关闭其它。',
         appCredentialsTitle: '验证码应用密钥',
         appCredentialsHint: 'CaptchaAppId 与 AppSecretKey 来自验证码控制台的验证管理页面。',
         cloudCredentialsTitle: '云 API 调用密钥',
@@ -205,6 +215,21 @@ export default {
         openCaptchaConsole: '打开验证码控制台',
         createCloudKeys: '创建 SecretId / SecretKey',
         openWebDocs: '查看 Web 接入文档'
+      REDACTED,
+      aliyunCaptcha: {
+        accessKeyId: 'AccessKey ID',
+        accessKeyIdHint: '用于服务端验证的阿里云 AccessKey ID，建议使用仅含验证码权限的 RAM 子账号',
+        accessKeySecret: 'AccessKey Secret',
+        accessKeySecretHint: '服务端验证密钥（请保密）',
+        accessKeySecretConfiguredHint: '密钥已配置，留空以保留当前值。',
+        sceneId: '场景 ID',
+        sceneIdHint: '在阿里云验证码控制台创建验证场景后获取；验证方式（无痕/滑块/拼图）在控制台按场景配置',
+        prefix: '身份标（prefix）',
+        prefixHint: '在控制台概览页实例基本信息中获取',
+        region: '服务地域',
+        regionCn: '中国内地',
+        regionSgp: '新加坡',
+        regionHint: '决定前端脚本接入区域与服务端接入点，需与阿里云验证码实例所属地域一致'
       REDACTED,
       apiKeyAcl: {
         title: 'API Key IP 访问控制',

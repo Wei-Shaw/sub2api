@@ -465,10 +465,21 @@ type TencentCaptchaConfig struct {
 	CloudSecretKey string
 REDACTED
 
+// AliyunCaptchaConfig contains the credentials required by Aliyun Captcha 2.0's
+// server-side verification API. It must never be returned by a public handler.
+type AliyunCaptchaConfig struct {
+	Enabled         bool
+	AccessKeyID     string
+	AccessKeySecret string
+	SceneID         string
+	Region          string
+REDACTED
+
 type CaptchaProviderConfig struct {
 	TurnstileEnabled   bool
 	TurnstileSecretKey string
 	Tencent            TencentCaptchaConfig
+	Aliyun             AliyunCaptchaConfig
 REDACTED
 
 func (s *SettingService) GetCaptchaProviderConfig(ctx context.Context) (CaptchaProviderConfig, error) {
@@ -480,6 +491,11 @@ func (s *SettingService) GetCaptchaProviderConfig(ctx context.Context) (CaptchaP
 		SettingKeyTencentCaptchaAppSecretKey,
 		SettingKeyTencentCaptchaCloudSecretID,
 		SettingKeyTencentCaptchaCloudSecretKey,
+		SettingKeyAliyunCaptchaEnabled,
+		SettingKeyAliyunCaptchaAccessKeyID,
+		SettingKeyAliyunCaptchaAccessKeySecret,
+		SettingKeyAliyunCaptchaSceneID,
+		SettingKeyAliyunCaptchaRegion,
 REDACTED)
 	if err != nil {
 		return CaptchaProviderConfig{REDACTED, fmt.Errorf("read captcha provider settings: %w", err)
@@ -493,6 +509,13 @@ REDACTED
 			AppSecretKey:   values[SettingKeyTencentCaptchaAppSecretKey],
 			CloudSecretID:  values[SettingKeyTencentCaptchaCloudSecretID],
 			CloudSecretKey: values[SettingKeyTencentCaptchaCloudSecretKey],
+	REDACTED,
+		Aliyun: AliyunCaptchaConfig{
+			Enabled:         values[SettingKeyAliyunCaptchaEnabled] == "true",
+			AccessKeyID:     values[SettingKeyAliyunCaptchaAccessKeyID],
+			AccessKeySecret: values[SettingKeyAliyunCaptchaAccessKeySecret],
+			SceneID:         values[SettingKeyAliyunCaptchaSceneID],
+			Region:          normalizeAliyunCaptchaRegion(values[SettingKeyAliyunCaptchaRegion]),
 	REDACTED,
 REDACTED, nil
 REDACTED

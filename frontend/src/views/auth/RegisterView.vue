@@ -211,6 +211,10 @@
             :turnstile-site-key="turnstileSiteKey"
             :tencent-enabled="tencentCaptchaEnabled"
             :tencent-app-id="tencentCaptchaAppId"
+            :aliyun-enabled="aliyunCaptchaEnabled"
+            :aliyun-scene-id="aliyunCaptchaSceneId"
+            :aliyun-prefix="aliyunCaptchaPrefix"
+            :aliyun-region="aliyunCaptchaRegion"
             @verify="onTurnstileVerify"
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
@@ -388,6 +392,10 @@ const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const tencentCaptchaEnabled = ref<boolean>(false)
 const tencentCaptchaAppId = ref<string>('')
+const aliyunCaptchaEnabled = ref<boolean>(false)
+const aliyunCaptchaSceneId = ref<string>('')
+const aliyunCaptchaPrefix = ref<string>('')
+const aliyunCaptchaRegion = ref<string>('cn')
 const siteName = ref<string>('Sub2API')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
@@ -408,10 +416,21 @@ const showAgreementModal = ref<boolean>(false)
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const turnstileToken = ref<string>('')
 const tencentCaptchaRandstr = ref<string>('')
+const aliyunCaptchaReady = computed(
+  () =>
+    aliyunCaptchaEnabled.value &&
+    Boolean(aliyunCaptchaSceneId.value) &&
+    Boolean(aliyunCaptchaPrefix.value)
+)
+// 动作触发式验证码（腾讯/阿里云）：提交、OAuth 启动时弹窗验证
+const actionCaptchaEnabled = computed(
+  () =>
+    (tencentCaptchaEnabled.value && Boolean(tencentCaptchaAppId.value)) ||
+    aliyunCaptchaReady.value
+)
 const captchaEnabled = computed(
   () =>
-    (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) ||
-    (tencentCaptchaEnabled.value && Boolean(tencentCaptchaAppId.value))
+    (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) || actionCaptchaEnabled.value
 )
 
 // Promo code validation
@@ -505,6 +524,10 @@ onMounted(async () => {
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
     tencentCaptchaAppId.value = settings.tencent_captcha_app_id || ''
+    aliyunCaptchaEnabled.value = settings.aliyun_captcha_enabled === true
+    aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
+    aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
+    aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
     siteName.value = settings.site_name || 'Sub2API'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
@@ -778,13 +801,13 @@ function resetCaptchaProof(): void {
   errors.turnstile = ''
 REDACTED
 
-async function acquireTencentProof(): Promise<boolean> {
-  if (!tencentCaptchaEnabled.value) return true
+async function acquireActionProof(): Promise<boolean> {
+  if (!actionCaptchaEnabled.value) return true
 
-  const proof = await turnstileRef.value?.verifyTencent()
+  const proof = await turnstileRef.value?.verifyAction()
   if (!proof) return false
 
-  turnstileToken.value = proof.ticket
+  turnstileToken.value = proof.token
   tencentCaptchaRandstr.value = proof.randstr
   return true
 REDACTED
@@ -792,20 +815,25 @@ REDACTED
 async function handleOAuthStart(request: OAuthLoginStart): Promise<void> {
   if (registrationActionDisabled.value) return
 
-  if (!tencentCaptchaEnabled.value) {
+  if (!actionCaptchaEnabled.value) {
     window.location.href = buildOAuthLoginStartURL(request)
     return
   REDACTED
 
   isLoading.value = true
   try {
-    const proof = await turnstileRef.value?.verifyTencent()
+    const proof = await turnstileRef.value?.verifyAction()
     if (!proof) return
 
-    const result = await startOAuthLogin(request, {
-      tencent_captcha_ticket: proof.ticket,
-      tencent_captcha_randstr: proof.randstr
-    REDACTED)
+    const result = await startOAuthLogin(
+      request,
+      tencentCaptchaEnabled.value
+        ? {
+            tencent_captcha_ticket: proof.token,
+            tencent_captcha_randstr: proof.randstr
+          REDACTED
+        : { turnstile_token: proof.token REDACTED
+    )
     window.location.href = result.authorize_url
   REDACTED catch (error: unknown) {
     errorMessage.value = extractI18nErrorMessage(
@@ -950,7 +978,7 @@ async function handleRegister(): Promise<void> {
     REDACTED
   REDACTED
 
-  if (!(await acquireTencentProof())) {
+  if (!(await acquireActionProof())) {
     return
   REDACTED
 
@@ -970,7 +998,8 @@ async function handleRegister(): Promise<void> {
         JSON.stringify({
           email: formData.email,
           password: formData.password,
-          turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
+          turnstile_token:
+            turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
           tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
           tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
           promo_code: formData.promo_code || undefined,
@@ -988,7 +1017,8 @@ async function handleRegister(): Promise<void> {
     await authStore.register({
       email: formData.email,
       password: formData.password,
-      turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
+      turnstile_token:
+        turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
       tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
       tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
       promo_code: formData.promo_code || undefined,

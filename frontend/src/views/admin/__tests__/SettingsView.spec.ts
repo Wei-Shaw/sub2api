@@ -772,24 +772,24 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   REDACTED);
 
-  it("腾讯天御验证码与 Turnstile 开关互斥并保存四项配置", async () => {
+  it("人机验证切换到腾讯天御并保存四项配置", async () => {
     const wrapper = mountView();
     await flushPromises();
     await openSecurityTab(wrapper);
 
-    const turnstileToggle = wrapper.get('[data-testid="turnstile-enabled-toggle"]');
-    const tencentToggle = wrapper.get('[data-testid="tencent-captcha-enabled-toggle"]');
-    await turnstileToggle.setValue(true);
-    expect((turnstileToggle.element as HTMLInputElement).checked).toBe(true);
+    const masterToggle = wrapper.get('[data-testid="captcha-enabled-toggle"]');
+    await masterToggle.setValue(true);
+    // 默认选中 Turnstile
+    expect(wrapper.text()).toContain("admin.settings.turnstile.siteKey");
 
-    await tencentToggle.setValue(true);
-    expect((turnstileToggle.element as HTMLInputElement).checked).toBe(false);
-    expect((tencentToggle.element as HTMLInputElement).checked).toBe(true);
+    await wrapper.get('[data-testid="captcha-provider-tencent"]').trigger("click");
+    await flushPromises();
 
     const card = wrapper
       .findAll(".card")
-      .find((node) => node.text().includes("admin.settings.tencentCaptcha.title"));
+      .find((node) => node.text().includes("admin.settings.captcha.title"));
     expect(card).toBeDefined();
+    expect(card!.text()).not.toContain("admin.settings.turnstile.siteKey");
     expect(card!.get('a[href="https://console.cloud.tencent.com/captcha"]').exists()).toBe(true);
     expect(card!.get('a[href="https://console.cloud.tencent.com/cam/capi"]').exists()).toBe(true);
     expect(
@@ -808,10 +808,82 @@ describe("admin SettingsView payment visible method controls", () => {
       expect.objectContaining({
         turnstile_enabled: false,
         tencent_captcha_enabled: true,
+        aliyun_captcha_enabled: false,
         tencent_captcha_app_id: "123456789",
         tencent_captcha_app_secret_key: "app-secret-value",
         tencent_captcha_cloud_secret_id: "cloud-secret-id-value",
         tencent_captcha_cloud_secret_key: "cloud-secret-key-value",
+      REDACTED),
+    );
+  REDACTED);
+
+  it("人机验证切换到阿里云并保存配置", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const masterToggle = wrapper.get('[data-testid="captcha-enabled-toggle"]');
+    await masterToggle.setValue(true);
+
+    await wrapper.get('[data-testid="captcha-provider-aliyun"]').trigger("click");
+    await flushPromises();
+
+    const card = wrapper
+      .findAll(".card")
+      .find((node) => node.text().includes("admin.settings.captcha.title"));
+    expect(card).toBeDefined();
+    expect(card!.text()).toContain("admin.settings.aliyunCaptcha.region");
+    expect(card!.text()).not.toContain("admin.settings.turnstile.siteKey");
+    const inputs = card!.findAll("input").filter((input) => input.attributes("type") !== "checkbox");
+    await inputs[0]!.setValue("prefix-1");
+    await inputs[1]!.setValue("scene-1");
+    await inputs[2]!.setValue("ak-id");
+    await inputs[3]!.setValue("ak-secret-value");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        turnstile_enabled: false,
+        tencent_captcha_enabled: false,
+        aliyun_captcha_enabled: true,
+        aliyun_captcha_prefix: "prefix-1",
+        aliyun_captcha_scene_id: "scene-1",
+        aliyun_captcha_access_key_id: "ak-id",
+        aliyun_captcha_access_key_secret: "ak-secret-value",
+        aliyun_captcha_region: "cn",
+      REDACTED),
+    );
+  REDACTED);
+
+  it("关闭人机验证总开关会同时关闭所有服务商", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      tencent_captcha_enabled: true,
+      tencent_captcha_app_id: "123456789",
+      tencent_captcha_app_secret_key_configured: true,
+      tencent_captcha_cloud_secret_id_configured: true,
+      tencent_captcha_cloud_secret_key_configured: true,
+    REDACTED);
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const masterToggle = wrapper.get('[data-testid="captcha-enabled-toggle"]');
+    expect((masterToggle.element as HTMLInputElement).checked).toBe(true);
+    // 加载后选中项跟随已启用的服务商
+    expect(wrapper.text()).toContain("admin.settings.tencentCaptcha.appId");
+
+    await masterToggle.setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        turnstile_enabled: false,
+        tencent_captcha_enabled: false,
+        aliyun_captcha_enabled: false,
       REDACTED),
     );
   REDACTED);

@@ -124,6 +124,12 @@ export interface TencentCaptchaRequestProof {
   tencent_captcha_randstr: string
 REDACTED
 
+// 动作触发式验证码（OAuth 启动、passkey 等入口）的请求凭据：
+// 腾讯填 tencent_captcha_*，阿里云的 captchaVerifyParam 复用 turnstile_token 字段
+export interface ActionCaptchaRequestProof extends Partial<TencentCaptchaRequestProof> {
+  turnstile_token?: string
+REDACTED
+
 export interface RegisterRequest {
   email: string
   password: string
@@ -216,6 +222,10 @@ export interface PublicSettings {
   tencent_captcha_app_id?: string
   passkey_enabled?: boolean
   turnstile_site_key: string
+  aliyun_captcha_enabled?: boolean
+  aliyun_captcha_scene_id?: string
+  aliyun_captcha_prefix?: string
+  aliyun_captcha_region?: string
   site_name: string
   site_logo: string
   site_subtitle: string

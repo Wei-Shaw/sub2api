@@ -122,6 +122,24 @@ REDACTED
 	if req.TencentCaptchaCloudSecretKey != "" {
 		changed = append(changed, "tencent_captcha_cloud_secret_key")
 REDACTED
+	if before.AliyunCaptchaEnabled != after.AliyunCaptchaEnabled {
+		changed = append(changed, "aliyun_captcha_enabled")
+REDACTED
+	if before.AliyunCaptchaAccessKeyID != after.AliyunCaptchaAccessKeyID {
+		changed = append(changed, "aliyun_captcha_access_key_id")
+REDACTED
+	if req.AliyunCaptchaAccessKeySecret != "" {
+		changed = append(changed, "aliyun_captcha_access_key_secret")
+REDACTED
+	if before.AliyunCaptchaSceneID != after.AliyunCaptchaSceneID {
+		changed = append(changed, "aliyun_captcha_scene_id")
+REDACTED
+	if before.AliyunCaptchaPrefix != after.AliyunCaptchaPrefix {
+		changed = append(changed, "aliyun_captcha_prefix")
+REDACTED
+	if before.AliyunCaptchaRegion != after.AliyunCaptchaRegion {
+		changed = append(changed, "aliyun_captcha_region")
+REDACTED
 	if before.APIKeyACLTrustForwardedIP != after.APIKeyACLTrustForwardedIP {
 		changed = append(changed, "api_key_acl_trust_forwarded_ip")
 REDACTED

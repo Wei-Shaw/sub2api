@@ -74,6 +74,10 @@
             :turnstile-site-key="turnstileSiteKey"
             :tencent-enabled="tencentCaptchaEnabled"
             :tencent-app-id="tencentCaptchaAppId"
+            :aliyun-enabled="aliyunCaptchaEnabled"
+            :aliyun-scene-id="aliyunCaptchaSceneId"
+            :aliyun-prefix="aliyunCaptchaPrefix"
+            :aliyun-region="aliyunCaptchaRegion"
             @verify="onTurnstileVerify"
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
@@ -153,15 +157,30 @@ const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const tencentCaptchaEnabled = ref<boolean>(false)
 const tencentCaptchaAppId = ref<string>('')
+const aliyunCaptchaEnabled = ref<boolean>(false)
+const aliyunCaptchaSceneId = ref<string>('')
+const aliyunCaptchaPrefix = ref<string>('')
+const aliyunCaptchaRegion = ref<string>('cn')
 
 // Turnstile
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const turnstileToken = ref<string>('')
 const tencentCaptchaRandstr = ref<string>('')
+const aliyunCaptchaReady = computed(
+  () =>
+    aliyunCaptchaEnabled.value &&
+    Boolean(aliyunCaptchaSceneId.value) &&
+    Boolean(aliyunCaptchaPrefix.value)
+)
+// 动作触发式验证码（腾讯/阿里云）：提交时弹窗验证
+const actionCaptchaEnabled = computed(
+  () =>
+    (tencentCaptchaEnabled.value && Boolean(tencentCaptchaAppId.value)) ||
+    aliyunCaptchaReady.value
+)
 const captchaEnabled = computed(
   () =>
-    (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) ||
-    (tencentCaptchaEnabled.value && Boolean(tencentCaptchaAppId.value))
+    (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) || actionCaptchaEnabled.value
 )
 
 const formData = reactive({
@@ -190,6 +209,10 @@ onMounted(async () => {
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
     tencentCaptchaAppId.value = settings.tencent_captcha_app_id || ''
+    aliyunCaptchaEnabled.value = settings.aliyun_captcha_enabled === true
+    aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
+    aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
+    aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
   REDACTED catch (error) {
     console.error('Failed to load public settings:', error)
   REDACTED
@@ -222,13 +245,13 @@ function resetCaptchaProof(): void {
   errors.turnstile = ''
 REDACTED
 
-async function acquireTencentProof(): Promise<boolean> {
-  if (!tencentCaptchaEnabled.value) return true
+async function acquireActionProof(): Promise<boolean> {
+  if (!actionCaptchaEnabled.value) return true
 
-  const proof = await turnstileRef.value?.verifyTencent()
+  const proof = await turnstileRef.value?.verifyAction()
   if (!proof) return false
 
-  turnstileToken.value = proof.ticket
+  turnstileToken.value = proof.token
   tencentCaptchaRandstr.value = proof.randstr
   return true
 REDACTED
@@ -268,7 +291,7 @@ async function handleSubmit(): Promise<void> {
     return
   REDACTED
 
-  if (!(await acquireTencentProof())) {
+  if (!(await acquireActionProof())) {
     return
   REDACTED
 
@@ -277,7 +300,8 @@ async function handleSubmit(): Promise<void> {
   try {
     await forgotPassword({
       email: formData.email,
-      turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
+      turnstile_token:
+        turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
       tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
       tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined
     REDACTED)

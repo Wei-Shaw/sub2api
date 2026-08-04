@@ -96,7 +96,7 @@ REDACTED
 // WeChatOAuthStart starts the WeChat OAuth login flow and stores the short-lived
 // browser cookies required by the rebuild pending-auth bridge.
 func (h *AuthHandler) WeChatOAuthStart(c *gin.Context) {
-	if !h.requireTencentCaptchaForOAuthLoginStart(c) {
+	if !h.requireActionCaptchaForOAuthLoginStart(c) {
 		return
 REDACTED
 	cfg, err := h.getWeChatOAuthConfig(c.Request.Context(), c.Query("mode"), c)
