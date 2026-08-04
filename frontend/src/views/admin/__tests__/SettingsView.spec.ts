@@ -380,6 +380,7 @@ const baseSettingsResponse = {
   home_content: "",
   compact_home_enabled: false,
   hide_ccs_import_button: false,
+  ccs_openai_default_model: "gpt-5.5",
   table_default_page_size: 20,
   table_page_size_options: [10, 20, 50, 100],
   backend_mode_enabled: false,

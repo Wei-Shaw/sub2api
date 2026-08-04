@@ -335,6 +335,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		HomeContent:                      settings[SettingKeyHomeContent],
 		CompactHomeEnabled:               settings[SettingKeyCompactHomeEnabled] == "true",
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
+		CcsOpenAIDefaultModel:            s.getStringOrDefault(settings, SettingKeyCcsOpenAIDefaultModel, "gpt-5.5"),
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
