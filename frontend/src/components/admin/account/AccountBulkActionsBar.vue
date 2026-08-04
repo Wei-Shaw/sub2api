@@ -18,12 +18,16 @@
         {{ t('admin.accounts.bulkActions.clear') }}
       </button>
     </div>
-    <div class="flex gap-2">
+    <div class="flex flex-wrap justify-end gap-2">
       <button @click="$emit('delete')" class="btn btn-danger btn-sm">{{ t('admin.accounts.bulkActions.delete') }}</button>
       <button @click="$emit('reset-status')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.resetStatus') }}</button>
       <button @click="$emit('refresh-token')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.refreshToken') }}</button>
       <button @click="$emit('toggle-schedulable', true)" class="btn btn-success btn-sm">{{ t('admin.accounts.bulkActions.enableScheduling') }}</button>
       <button @click="$emit('toggle-schedulable', false)" class="btn btn-warning btn-sm">{{ t('admin.accounts.bulkActions.disableScheduling') }}</button>
+      <button @click="$emit('bind-proxy-pool')" class="btn btn-secondary btn-sm">
+        <Icon name="link" size="sm" class="mr-1.5" />
+        {{ t('admin.accounts.bulkActions.bindProxyPool') }}
+      </button>
       <button @click="$emit('edit')" class="btn btn-primary btn-sm">{{ t('admin.accounts.bulkActions.edit') }}</button>
     </div>
   </div>
@@ -31,5 +35,6 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-defineProps(['selectedIds']); defineEmits(['delete', 'edit', 'clear', 'select-page', 'toggle-schedulable', 'reset-status', 'refresh-token']); const { t } = useI18n()
+import Icon from '@/components/icons/Icon.vue'
+defineProps(['selectedIds']); defineEmits(['delete', 'edit', 'clear', 'select-page', 'toggle-schedulable', 'reset-status', 'refresh-token', 'bind-proxy-pool']); const { t } = useI18n()
 </script>

@@ -456,6 +456,24 @@ func ProxyWithAccountCountFromServiceAdmin(p *service.ProxyWithAccountCount) *Ad
 	}
 }
 
+func ProxyPoolProxyFromService(p *service.ProxyPoolProxy) *ProxyPoolProxy {
+	if p == nil {
+		return nil
+	}
+	return &ProxyPoolProxy{
+		Proxy:         *ProxyFromService(&p.Proxy),
+		PoolID:        p.PoolID,
+		PoolHealth:    p.PoolHealth,
+		PoolCheckedAt: p.PoolCheckedAt,
+		PoolFailures:  p.PoolFailures,
+		AccountCount:  p.AccountCount,
+		LatencyMs:     p.LatencyMs,
+		IPAddress:     p.IPAddress,
+		Country:       p.Country,
+		CountryCode:   p.CountryCode,
+	}
+}
+
 func ProxyAccountSummaryFromService(a *service.ProxyAccountSummary) *ProxyAccountSummary {
 	if a == nil {
 		return nil
