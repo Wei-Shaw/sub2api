@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -63,4 +64,28 @@ func TestNormalizeShareSplitPercents(t *testing.T) {
 	require.InDelta(t, 10, i, 1e-9)
 	require.InDelta(t, 40, u, 1e-9)
 	require.InDelta(t, 50, p, 1e-9)
+}
+
+// TestOpenAIGatewayBillingDeps_ShareRevenue 回归：Grok/OpenAI 计费必须带上分账依赖，
+// 否则 prepareShareRevenuePlan 因 settingService==nil 永远返回 nil，贡献者永不入账。
+func TestOpenAIGatewayBillingDeps_ShareRevenue(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	deps := svc.billingDeps()
+	require.NotNil(t, deps)
+	require.Nil(t, deps.settingService, "unset service should leave setting nil")
+	require.Nil(t, deps.shareRevenueLedger)
+
+	fakeLedger := &stubShareRevenueLedger{}
+	svc.SetShareRevenueDeps(nil, fakeLedger)
+	// settingService still nil until assigned — simulate production fields
+	svc.settingService = &SettingService{}
+	deps2 := svc.billingDeps()
+	require.Same(t, svc.settingService, deps2.settingService)
+	require.Same(t, fakeLedger, deps2.shareRevenueLedger)
+}
+
+type stubShareRevenueLedger struct{}
+
+func (s *stubShareRevenueLedger) InsertShareRevenueLedger(ctx context.Context, row *ShareRevenueLedgerRow) error {
+	return nil
 }
