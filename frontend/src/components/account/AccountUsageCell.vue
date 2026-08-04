@@ -666,7 +666,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'account-state-changed', accountId: number): void
-  'account-updated': [account: Account]
+  (e: 'account-updated', account: Account): void
 }>()
 
 const { t } = useI18n()
