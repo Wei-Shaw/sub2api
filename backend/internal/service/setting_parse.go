@@ -205,6 +205,13 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAffiliateEnabled:              "false",
 		SettingKeyAffiliateAdminRechargeEnabled: strconv.FormatBool(AdminRechargeRebateEnabledDefault),
 
+		// 共享收益分配（默认关闭）
+		SettingKeyShareRevenueSplitEnabled: "false",
+		SettingKeyShareSplitInvitePct:      "10",
+		SettingKeyShareSplitUserPct:        "40",
+		SettingKeyShareSplitPlatformPct:    "50",
+		SettingKeyPrivateSelfEnvFeePct:     "1",
+
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
 

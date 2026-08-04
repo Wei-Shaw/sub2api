@@ -81,6 +81,59 @@ func (s *SettingService) IsAffiliateEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsShareRevenueSplitEnabled 共享账号收益分配总开关。
+func (s *SettingService) IsShareRevenueSplitEnabled(ctx context.Context) bool {
+	if s == nil {
+		return false
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyShareRevenueSplitEnabled)
+	if err != nil {
+		return false
+	}
+	return value == "true"
+}
+
+func (s *SettingService) getSharePctSetting(ctx context.Context, key string, def float64) float64 {
+	if s == nil {
+		return def
+	}
+	raw, err := s.settingRepo.GetValue(ctx, key)
+	if err != nil {
+		return def
+	}
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+		return def
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
+// GetShareSplitInvitePct 共享池邀请返利占比。
+func (s *SettingService) GetShareSplitInvitePct(ctx context.Context) float64 {
+	return s.getSharePctSetting(ctx, SettingKeyShareSplitInvitePct, 10)
+}
+
+// GetShareSplitUserPct 共享池贡献者收益占比。
+func (s *SettingService) GetShareSplitUserPct(ctx context.Context) float64 {
+	return s.getSharePctSetting(ctx, SettingKeyShareSplitUserPct, 40)
+}
+
+// GetShareSplitPlatformPct 共享池平台占比。
+func (s *SettingService) GetShareSplitPlatformPct(ctx context.Context) float64 {
+	return s.getSharePctSetting(ctx, SettingKeyShareSplitPlatformPct, 50)
+}
+
+// GetPrivateSelfEnvFeePct private 自用环境费率。
+func (s *SettingService) GetPrivateSelfEnvFeePct(ctx context.Context) float64 {
+	return s.getSharePctSetting(ctx, SettingKeyPrivateSelfEnvFeePct, 1)
+}
+
 // IsAffiliateAdminRechargeEnabled reports whether admin balance
 // deposits should participate in the affiliate rebate program.
 func (s *SettingService) IsAffiliateAdminRechargeEnabled(ctx context.Context) bool {

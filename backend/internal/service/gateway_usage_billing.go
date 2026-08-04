@@ -295,9 +295,23 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		return false, nil
 	}
 
+	// 共享收益：在扣费前调整 ActualCost（self_private_env），并在扣费成功后入账/写流水
+	sharePlan := prepareShareRevenuePlan(ctx, p, deps, requestID)
+	if sharePlan != nil && sharePlan.Mode == RevenueModeSelfPrivateEnv && p.Cost != nil {
+		// 自用 private：只扣环境费；同步 usage_log.actual_cost
+		p.Cost.ActualCost = sharePlan.BilledAmount
+		if usageLog != nil {
+			usageLog.ActualCost = sharePlan.BilledAmount
+		}
+	}
+
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
 		postUsageBilling(ctx, p, deps)
+		// legacy 路径也尝试分账（若扣费成功难以判断，仅在 balance 路径尽力）
+		if sharePlan != nil && !p.IsSubscriptionBill {
+			applyShareRevenueAfterBilling(ctx, deps, requestID, p, *sharePlan)
+		}
 		return true, nil
 	}
 
@@ -321,7 +335,74 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	}
 
 	finalizePostUsageBilling(billingCtx, p, deps, result)
+
+	// 余额扣费成功后：贡献者/邀请人入账（订阅路径 v1 不给现金）
+	if sharePlan != nil && !p.IsSubscriptionBill {
+		applyShareRevenueAfterBilling(billingCtx, deps, requestID, p, *sharePlan)
+	}
 	return true, nil
+}
+
+// prepareShareRevenuePlan 计算分账计划；flag 关或非适用场景返回 nil。
+func prepareShareRevenuePlan(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, requestID string) *ShareRevenuePlan {
+	if p == nil || p.Cost == nil || p.User == nil || p.Account == nil || deps == nil {
+		return nil
+	}
+	cfg := LoadShareRevenueSettings(ctx, deps.settingService)
+	if !cfg.Enabled {
+		return nil
+	}
+	var group *Group
+	if p.APIKey != nil {
+		group = p.APIKey.Group
+	}
+	mode := ResolveShareRevenueMode(cfg.Enabled, group, p.Account, p.User.ID)
+	if mode == RevenueModeLegacy {
+		return nil
+	}
+
+	var inviter *int64
+	if mode == RevenueModeShareSplit && cfg.AffiliateEnabled && deps.shareInviterLookup != nil {
+		if id, err := deps.shareInviterLookup.GetAffiliateInviterUserID(ctx, p.User.ID); err == nil {
+			inviter = id
+		}
+	}
+
+	total := p.Cost.ActualCost
+	if total <= 0 {
+		return nil
+	}
+	plan := ComputeShareRevenuePlan(mode, total, cfg, p.Account.OwnerUserID, inviter)
+	_ = requestID
+	return &plan
+}
+
+func applyShareRevenueAfterBilling(ctx context.Context, deps *billingDeps, requestID string, p *postUsageBillingParams, plan ShareRevenuePlan) {
+	if deps == nil || p == nil || p.User == nil || p.Account == nil {
+		return
+	}
+	if plan.Mode == RevenueModeLegacy || plan.Mode == "" {
+		return
+	}
+	// share_split 需给 A/邀请人加余额；self_private 仅写 ledger
+	if plan.Mode == RevenueModeShareSplit && deps.userRepo == nil {
+		return
+	}
+	var groupID *int64
+	if p.APIKey != nil && p.APIKey.GroupID != nil {
+		groupID = p.APIKey.GroupID
+	}
+	ApplyShareRevenueCredits(
+		ctx,
+		deps.userRepo,
+		deps.billingCacheService,
+		deps.shareRevenueLedger,
+		requestID,
+		p.User.ID,
+		p.Account.ID,
+		groupID,
+		plan,
+	)
 }
 
 func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
@@ -508,6 +589,9 @@ type billingDeps struct {
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	cfg                   *config.Config
+	settingService        *SettingService
+	shareInviterLookup   AffiliateInviterLookup
+	shareRevenueLedger    ShareRevenueLedgerWriter
 }
 
 func (s *GatewayService) billingDeps() *billingDeps {
@@ -520,6 +604,9 @@ func (s *GatewayService) billingDeps() *billingDeps {
 		balanceNotifyService:  s.balanceNotifyService,
 		userPlatformQuotaRepo: s.userPlatformQuotaRepo,
 		cfg:                   s.cfg,
+		settingService:        s.settingService,
+		shareInviterLookup:   s.shareInviterLookup,
+		shareRevenueLedger:    s.shareRevenueLedger,
 	}
 }
 

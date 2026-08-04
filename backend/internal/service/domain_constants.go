@@ -150,6 +150,13 @@ const (
 	SettingKeyAffiliateRebateDurationDays      = "affiliate_rebate_duration_days"      // 返利有效期（天，0=永久）
 	SettingKeyAffiliateRebatePerInviteeCap     = "affiliate_rebate_per_invitee_cap"    // 单人返利上限（0=无上限）
 	SettingKeyAffiliateAdminRechargeEnabled    = "affiliate_admin_recharge_enabled"    // 管理员充值是否产生返利
+
+	// 共享账号收益分配（docs/design/share-revenue-split.md）
+	SettingKeyShareRevenueSplitEnabled = "share_revenue_split_enabled" // 总开关，默认 false
+	SettingKeyShareSplitInvitePct      = "share_split_invite_pct"      // 邀请返利占比 0-100
+	SettingKeyShareSplitUserPct        = "share_split_user_pct"        // 贡献者占比 0-100
+	SettingKeyShareSplitPlatformPct    = "share_split_platform_pct"    // 平台占比 0-100
+	SettingKeyPrivateSelfEnvFeePct     = "private_self_env_fee_pct"    // private 自用环境费率 0-100
 	SettingKeyRiskControlEnabled               = "risk_control_enabled"                // 是否启用风控中心入口与审计链路
 	SettingKeyContentModerationConfig          = "content_moderation_config"           // 内容审计配置（JSON）
 	SettingKeyCyberSessionBlockEnabled         = "cyber_session_block_enabled"         // cyber 命中后会话级自动屏蔽总开关(默认关)
