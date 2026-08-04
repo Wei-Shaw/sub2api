@@ -59,7 +59,12 @@ type APIKeyAuthGroupSnapshot struct {
 	ID                              int64    `json:"id"`
 	Name                            string   `json:"name"`
 	Platform                        string   `json:"platform"`
+	// UpstreamPlan / IsSharePool 必须随鉴权快照缓存：扣费路径上的
+	// ResolveShareRevenueMode 读的就是这份物化 Group；漏掉 IsSharePool 会导致
+	// 共享池永远被判成 legacy、贡献者永不入账（与利润控制字段同理）。
+	UpstreamPlan                    string   `json:"upstream_plan,omitempty"`
 	IsExclusive                     bool     `json:"is_exclusive"`
+	IsSharePool                     bool     `json:"is_share_pool"`
 	Status                          string   `json:"status"`
 	SubscriptionType                string   `json:"subscription_type"`
 	RateMultiplier                  float64  `json:"rate_multiplier"`

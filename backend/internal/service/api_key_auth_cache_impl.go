@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 18 // v18: include group profit control fields (force refresh of pre-fix snapshots)
+const apiKeyAuthSnapshotVersion = 19 // v19: include group is_share_pool / upstream_plan for share-revenue split
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -381,7 +381,9 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ID:                              apiKey.Group.ID,
 			Name:                            apiKey.Group.Name,
 			Platform:                        apiKey.Group.Platform,
+			UpstreamPlan:                    apiKey.Group.UpstreamPlan,
 			IsExclusive:                     apiKey.Group.IsExclusive,
+			IsSharePool:                     apiKey.Group.IsSharePool,
 			Status:                          apiKey.Group.Status,
 			SubscriptionType:                apiKey.Group.SubscriptionType,
 			RateMultiplier:                  apiKey.Group.RateMultiplier,
@@ -470,7 +472,9 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ID:                              snapshot.Group.ID,
 			Name:                            snapshot.Group.Name,
 			Platform:                        snapshot.Group.Platform,
+			UpstreamPlan:                    snapshot.Group.UpstreamPlan,
 			IsExclusive:                     snapshot.Group.IsExclusive,
+			IsSharePool:                     snapshot.Group.IsSharePool,
 			Status:                          snapshot.Group.Status,
 			Hydrated:                        true,
 			SubscriptionType:                snapshot.Group.SubscriptionType,
