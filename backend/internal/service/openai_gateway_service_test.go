@@ -2049,6 +2049,8 @@ func TestOpenAIStreamingNormalizesTerminalOutputFromDeltas(t *testing.T) {
 		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
 			`data: {"type":"response.created","response":{"id":"resp_sdk_parse"}}`,
 			"",
+			`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant"}}`,
+			"",
 			`data: {"type":"response.output_text.delta","delta":"pon"}`,
 			"",
 			`data: {"type":"response.output_text.delta","delta":"g"}`,
@@ -2070,6 +2072,15 @@ func TestOpenAIStreamingNormalizesTerminalOutputFromDeltas(t *testing.T) {
 	require.True(t, output.IsArray())
 	require.Len(t, output.Array(), 1)
 	require.Equal(t, "pong", gjson.GetBytes(terminalPayload, "response.output.0.content.0.text").String())
+	messageID := gjson.GetBytes(terminalPayload, "response.output.0.id").String()
+	require.True(t, strings.HasPrefix(messageID, "msg_"))
+	require.Equal(t, "completed", gjson.GetBytes(terminalPayload, "response.output.0.status").String())
+	require.True(t, gjson.GetBytes(terminalPayload, "response.output.0.content.0.annotations").IsArray())
+	require.True(t, gjson.GetBytes(terminalPayload, "response.output.0.content.0.logprobs").IsArray())
+
+	events := collectSSEDataPayloads(t, rec.Body.String())
+	added := findSSEEvent(t, events, "response.output_item.added", "")
+	require.Equal(t, messageID, gjson.Get(added, "item.id").String())
 }
 
 func TestOpenAIStreamingNormalizesTerminalOutputToEmptyArray(t *testing.T) {

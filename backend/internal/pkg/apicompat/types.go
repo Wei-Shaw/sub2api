@@ -295,9 +295,11 @@ func (i *ResponsesInputItem) UnmarshalJSON(data []byte) error {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
-	Text     string `json:"text,omitempty"`
-	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+	Type        string            `json:"type"` // "input_text" | "output_text" | "input_image"
+	Text        string            `json:"text,omitempty"`
+	ImageURL    string            `json:"image_url,omitempty"` // data URI for input_image
+	Annotations []json.RawMessage `json:"annotations,omitempty"`
+	Logprobs    []json.RawMessage `json:"logprobs,omitempty"`
 }
 
 // ResponsesTool describes a tool in the Responses API.
@@ -384,26 +386,19 @@ type ResponsesOutput struct {
 	Action *WebSearchAction `json:"action,omitempty"`
 }
 
-// MarshalJSON 处理 tool_search_call 项的线上形态（复用 CallID/Arguments 字段）：
-// execution 固定为 "client"（codex 的必填字段，非 client 的调用会被静默忽略），
-// arguments 是 JSON 对象而非 function_call 语义下的字符串。其余类型走默认结构体
-// 序列化，输出逐字节不变。
+// MarshalJSON 统一输出 Responses output item 的线上形态：
+//   - tool_search_call / message / function_call / custom_tool_call / reasoning
+//     走 responsesItemWire，保证 message 带 id/status、output_text 带
+//     annotations/logprobs 等严格客户端（Codex/Grok）必填字段；
+//   - 其余类型（web_search_call、image_generation_call、compaction 等）保留
+//     默认结构体序列化，避免误丢 opaque 字段。
 func (o ResponsesOutput) MarshalJSON() ([]byte, error) {
+	if responsesItemUsesStrictWire(o.Type) {
+		// 非流式终态默认 completed；调用方若已设 Status 则优先保留。
+		return json.Marshal(responsesItemWire(&o, "completed"))
+	}
 	type responsesOutputAlias ResponsesOutput
-	if o.Type != "tool_search_call" {
-		return json.Marshal(responsesOutputAlias(o))
-	}
-	m := map[string]any{
-		"type":      o.Type,
-		"id":        o.ID,
-		"call_id":   o.CallID,
-		"execution": "client",
-		"arguments": toolSearchCallArgumentsJSON(o.Arguments),
-	}
-	if o.Status != "" {
-		m["status"] = o.Status
-	}
-	return json.Marshal(m)
+	return json.Marshal(responsesOutputAlias(o))
 }
 
 // UnmarshalJSON accepts both the Responses function-call string form and the

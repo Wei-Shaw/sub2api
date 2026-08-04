@@ -286,6 +286,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 
 	needModelReplace := originalModel != mappedModel
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
+	strictClientWireNormalizer := apicompat.NewResponsesStrictClientWireNormalizer()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
 	streamSeenImages := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
@@ -470,6 +471,14 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				line = "data: " + data
 				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
 			}
+			// Normalize item lifecycle events before accumulation so a generated
+			// message id can be reused when an empty terminal output is rebuilt.
+			if normalizedData, normalized := strictClientWireNormalizer.Normalize(dataBytes); normalized {
+				dataBytes = normalizedData
+				data = string(normalizedData)
+				line = "data: " + data
+				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			}
 			if imageOutput, ok := extractImageGenerationOutputFromSSEData(dataBytes, streamSeenImages); ok {
 				streamImageOutputs = append(streamImageOutputs, imageOutput)
 			}
@@ -480,6 +489,14 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				}
 			}
 			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, streamOutputAccumulator, streamImageOutputs); normalized {
+				dataBytes = normalizedData
+				data = string(normalizedData)
+				line = "data: " + data
+				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			}
+			// Fill missing message id/status and output_text annotations/logprobs
+			// so strict clients (Grok/Codex) can deserialize response.completed.
+			if normalizedData, normalized := strictClientWireNormalizer.Normalize(dataBytes); normalized {
 				dataBytes = normalizedData
 				data = string(normalizedData)
 				line = "data: " + data
@@ -1153,6 +1170,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	if originalModel != mappedModel {
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 	}
+	if normalized, ok := apicompat.NormalizeResponsesStrictClientWireJSON(body); ok {
+		body = normalized
+	}
 	body, err = restoreGrokResponsesClientToolPayload(c, body)
 	if err != nil {
 		return nil, fmt.Errorf("restore Grok Responses client tool response: %w", err)
@@ -1224,6 +1244,9 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			}
 		}
 		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
+		if normalized, ok := apicompat.NormalizeResponsesStrictClientWireJSON(finalResponse); ok {
+			finalResponse = normalized
+		}
 		body = finalResponse
 		if originalModel != mappedModel {
 			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
