@@ -632,3 +632,11 @@ func generateItemID() string {
 	_, _ = rand.Read(b)
 	return "item_" + hex.EncodeToString(b)
 }
+
+// generateMessageItemID returns an OpenAI-style message output item id (msg_…).
+// Strict clients expect message items under response.output to carry this form.
+func generateMessageItemID() string {
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	return "msg_" + hex.EncodeToString(b)
+}
