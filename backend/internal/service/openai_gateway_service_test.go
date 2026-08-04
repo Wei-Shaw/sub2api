@@ -3456,6 +3456,32 @@ REDACTED
 	require.Contains(t, rec.Body.String(), "processing data: 1,2,3 then event: click finished")
 REDACTED
 
+func TestHandleNonStreamingResponse_ObservesUpstreamModelBeforeClientRewrite(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{REDACTEDREDACTED
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"resp_model_audit","object":"response","model":"gpt-5.5","status":"completed","output":[],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5REDACTEDREDACTED`,
+		)),
+REDACTED
+	account := &Account{ID: 1, Type: AccountTypeAPIKeyREDACTED
+
+	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, account, "gpt-5.6-sol", "gpt-5.5")
+REDACTED
+	require.NotNil(t, result)
+
+	// 客户端仍看到自己请求的模型名，审计观察器则保留改写前的上游声明。
+	require.Equal(t, "gpt-5.6-sol", gjson.Get(rec.Body.String(), "model").String())
+	require.Equal(t, "gpt-5.5", observedUpstreamResponseModel(c))
+	require.False(t, observedUpstreamResponseModelConflict(c))
+REDACTED
+
 func TestHandleSSEToJSON_ReconstructsImageGenerationOutputItemDone(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
