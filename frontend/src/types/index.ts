@@ -241,6 +241,7 @@ export interface PublicSettings {
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
   user_owned_accounts_enabled: boolean
+  share_revenue_split_enabled?: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
   service_quota_enabled: boolean

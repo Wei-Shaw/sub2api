@@ -520,6 +520,37 @@ export default {
     }
   },
 
+  // Share contributor earnings
+  shareRevenue: {
+    title: 'Share Earnings',
+    description: 'Earnings you receive as an account contributor when others use your accounts via share pools.',
+    disabledHint:
+      'Share revenue split is not enabled yet. After it is turned on, you earn a share when others use your accounts via share-pool groups.',
+    stats: {
+      totalEarned: 'Total earned',
+      totalEarnedHint: 'Already credited to balance',
+      records: 'Split records',
+      userPct: 'Contributor share',
+      split: 'Global split',
+      splitDetail: 'Invite {invite}% / Contributor {user}% / Platform {platform}%'
+    },
+    ledgersTitle: 'Earnings history',
+    ledgersHint: 'Only user_amount credited to you as account owner.',
+    empty: 'No contributor earnings yet',
+    loadFailed: 'Failed to load share earnings',
+    retry: 'Retry',
+    prev: 'Previous',
+    next: 'Next',
+    pageInfo: 'Page {page}/{pages}, {total} total',
+    columns: {
+      time: 'Time',
+      account: 'Account',
+      total: 'Call amount',
+      earned: 'My earnings',
+      request: 'Request ID'
+    }
+  },
+
   // User-owned upstream accounts (feature flag: user_owned_accounts_enabled)
   myAccounts: {
     title: 'My Accounts',

@@ -362,6 +362,9 @@ type PublicSettings struct {
 	// User-owned accounts feature switch (user-facing "My Accounts")
 	UserOwnedAccountsEnabled bool `json:"user_owned_accounts_enabled"`
 
+	// 共享收益分配开关（用户侧「贡献收益」入口）
+	ShareRevenueSplitEnabled bool `json:"share_revenue_split_enabled"`
+
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled     bool `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth bool `json:"model_plaza_require_auth"`

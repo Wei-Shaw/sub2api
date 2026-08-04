@@ -397,6 +397,8 @@ type PublicSettings struct {
 
 	UserOwnedAccountsEnabled bool `json:"user_owned_accounts_enabled"`
 
+	ShareRevenueSplitEnabled bool `json:"share_revenue_split_enabled"`
+
 	ModelPlazaEnabled     bool `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth bool `json:"model_plaza_require_auth"`
 

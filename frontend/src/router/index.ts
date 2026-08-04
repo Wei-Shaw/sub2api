@@ -291,6 +291,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/share-revenue',
+    name: 'ShareRevenue',
+    component: () => import('@/views/user/ShareRevenueView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Share Earnings',
+      titleKey: 'shareRevenue.title',
+      descriptionKey: 'shareRevenue.description'
+    }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/user/ProfileView.vue'),

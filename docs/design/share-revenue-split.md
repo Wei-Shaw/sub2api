@@ -5,7 +5,7 @@
 | **文档标题** | 共享账号收益分配 |
 | **作者** | Sub2API / grilling 共识归档 |
 | **日期** | 2026-08-03 |
-| **状态** | **已锁定，待实现** |
+| **状态** | **已实现**（核心分账 + 管理端 Settings + 用户「贡献收益」页；flag 默认关） |
 | **关联需求** | 用户贡献账号进共享池后，调用方付费可拆为邀请返利 / 贡献者收益 / 平台；自用 private 组仅收环境费率 |
 | **相关设计** | [`user-owned-shared-accounts.md`](./user-owned-shared-accounts.md)、[`user-oauth-for-owned-accounts.md`](./user-oauth-for-owned-accounts.md) |
 | **代码锚点** | `gateway_usage_billing.go`、`AffiliateService`、`BillingCacheService`、`accounts.owner_user_id`、`groups.is_share_pool` |
@@ -245,12 +245,11 @@ applyUsageBilling / postUsageBilling 成功路径
 - 三滑块/数字：invite / user / platform（联动和=100）  
 - Private 自用环境费率  
 
-### 用户侧（可选 v1.1）
+### 用户侧（已实现）
 
-- 「我的账号」展示累计贡献收益  
-- 流水列表  
-
-v1 可不做用户 UI，仅后台账本正确。
+- 侧栏「贡献收益」入口（feature flag：`share_revenue_split_enabled`）
+- `GET /api/v1/user/share-revenue/summary`：累计收益 / 笔数 / 当前分成比例
+- `GET /api/v1/user/share-revenue/ledgers`：贡献者流水（`user_amount`）
 
 ---
 

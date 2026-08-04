@@ -167,6 +167,7 @@ export default {
     channels: 'Channels',
     availableChannels: 'Available Channels',
     myAccounts: 'My Accounts',
+    shareRevenue: 'Share Earnings',
     modelPlaza: 'Model Plaza',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',

@@ -40,6 +40,15 @@ func RegisterUserRoutes(
 			user.GET("/api-keys/:id/usage/daily", panelRateLimiter.Heavy(), h.Usage.GetMyAPIKeyDailyUsage)
 			user.GET("/platform-quotas", h.User.GetMyPlatformQuotas)
 
+			// 共享贡献收益（用户作为账号 owner 的分账流水）
+			if h.ShareRevenue != nil {
+				sr := user.Group("/share-revenue")
+				{
+					sr.GET("/summary", h.ShareRevenue.GetSummary)
+					sr.GET("/ledgers", h.ShareRevenue.ListLedgers)
+				}
+			}
+
 			// 用户自建上游账号（feature flag: user_owned_accounts_enabled）
 			if h.UserAccount != nil {
 				accounts := user.Group("/accounts")

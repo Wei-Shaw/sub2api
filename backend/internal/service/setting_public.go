@@ -224,6 +224,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyUserOwnedAccountsEnabled,
+		SettingKeyShareRevenueSplitEnabled,
 		SettingKeyModelPlazaEnabled,
 		SettingKeyModelPlazaRequireAuth,
 		SettingKeyAffiliateEnabled,
@@ -341,6 +342,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 
 		UserOwnedAccountsEnabled: settings[SettingKeyUserOwnedAccountsEnabled] == "true",
+
+		ShareRevenueSplitEnabled: settings[SettingKeyShareRevenueSplitEnabled] == "true",
 
 		ModelPlazaEnabled:     settings[SettingKeyModelPlazaEnabled] == "true",
 		ModelPlazaRequireAuth: settings[SettingKeyModelPlazaRequireAuth] == "true",
@@ -634,6 +637,7 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
 	UserOwnedAccountsEnabled             bool `json:"user_owned_accounts_enabled"`
+	ShareRevenueSplitEnabled             bool `json:"share_revenue_split_enabled"`
 	ModelPlazaEnabled                    bool `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth                bool `json:"model_plaza_require_auth"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
@@ -704,6 +708,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		UserOwnedAccountsEnabled:             settings.UserOwnedAccountsEnabled,
+		ShareRevenueSplitEnabled:             settings.ShareRevenueSplitEnabled,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
 		AffiliateEnabled:                     settings.AffiliateEnabled,

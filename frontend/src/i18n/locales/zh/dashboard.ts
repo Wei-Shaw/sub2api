@@ -525,6 +525,36 @@ export default {
     }
   },
 
+  // 共享贡献收益
+  shareRevenue: {
+    title: '贡献收益',
+    description: '查看您作为账号贡献者从共享池调度中获得的分成。',
+    disabledHint: '平台尚未开启共享收益分配。开启后，他人经共享池使用您的账号时，您将按比例获得收益。',
+    stats: {
+      totalEarned: '累计收益',
+      totalEarnedHint: '已即时计入余额',
+      records: '分成笔数',
+      userPct: '当前贡献者占比',
+      split: '全局分成比例',
+      splitDetail: '邀请 {invite}% / 贡献者 {user}% / 平台 {platform}%'
+    },
+    ledgersTitle: '收益流水',
+    ledgersHint: '仅展示您作为账号 owner 获得的 user_amount。',
+    empty: '暂无贡献收益记录',
+    loadFailed: '加载贡献收益失败',
+    retry: '重试',
+    prev: '上一页',
+    next: '下一页',
+    pageInfo: '第 {page}/{pages} 页，共 {total} 条',
+    columns: {
+      time: '时间',
+      account: '账号',
+      total: '调用金额',
+      earned: '我的收益',
+      request: '请求 ID'
+    }
+  },
+
   // 用户自建上游账号（feature flag: user_owned_accounts_enabled）
   myAccounts: {
     title: '我的账号',

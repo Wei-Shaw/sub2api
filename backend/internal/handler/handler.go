@@ -49,6 +49,7 @@ type Handlers struct {
 	User             *UserHandler
 	UserAccount      *UserAccountHandler
 	UserOAuth        *UserOAuthHandler
+	ShareRevenue     *ShareRevenueHandler
 	APIKey           *APIKeyHandler
 	Usage            *UsageHandler
 	Redeem           *RedeemHandler

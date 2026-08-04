@@ -299,3 +299,84 @@ type ShareRevenueLedgerWriter interface {
 type AffiliateInviterLookup interface {
 	GetAffiliateInviterUserID(ctx context.Context, userID int64) (*int64, error)
 }
+
+// ShareRevenueQuery 用户侧贡献收益查询。
+type ShareRevenueQuery interface {
+	// SummarizeContributor 汇总作为贡献者(owner)的 user_amount。
+	SummarizeContributor(ctx context.Context, ownerUserID int64) (*ShareRevenueSummary, error)
+	// ListContributorLedgers 分页列出作为贡献者的流水。
+	ListContributorLedgers(ctx context.Context, ownerUserID int64, page, pageSize int) ([]ShareRevenueLedgerItem, int64, error)
+}
+
+// ShareRevenueSummary 贡献收益汇总。
+type ShareRevenueSummary struct {
+	TotalEarned   float64 `json:"total_earned"`
+	TotalRecords  int64   `json:"total_records"`
+	Enabled       bool    `json:"enabled"`
+	UserPct       float64 `json:"user_pct"`
+	InvitePct     float64 `json:"invite_pct"`
+	PlatformPct   float64 `json:"platform_pct"`
+}
+
+// ShareRevenueLedgerItem 用户可见的流水项。
+type ShareRevenueLedgerItem struct {
+	ID           int64   `json:"id"`
+	RequestID    string  `json:"request_id"`
+	AccountID    int64   `json:"account_id"`
+	GroupID      int64   `json:"group_id"`
+	RevenueMode  string  `json:"revenue_mode"`
+	TotalCost    float64 `json:"total_cost"`
+	UserAmount   float64 `json:"user_amount"`
+	CreatedAt    string  `json:"created_at"`
+}
+
+// ShareRevenueService 用户贡献收益查询服务。
+type ShareRevenueService struct {
+	query    ShareRevenueQuery
+	settings *SettingService
+}
+
+// NewShareRevenueService 构造。
+func NewShareRevenueService(query ShareRevenueQuery, settings *SettingService) *ShareRevenueService {
+	return &ShareRevenueService{query: query, settings: settings}
+}
+
+// GetMySummary 当前用户作为贡献者的汇总。
+func (s *ShareRevenueService) GetMySummary(ctx context.Context, userID int64) (*ShareRevenueSummary, error) {
+	cfg := LoadShareRevenueSettings(ctx, s.settings)
+	out := &ShareRevenueSummary{
+		Enabled:     cfg.Enabled,
+		UserPct:     cfg.UserPct,
+		InvitePct:   cfg.InvitePct,
+		PlatformPct: cfg.PlatformPct,
+	}
+	if s.query == nil || userID <= 0 {
+		return out, nil
+	}
+	sum, err := s.query.SummarizeContributor(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if sum != nil {
+		out.TotalEarned = sum.TotalEarned
+		out.TotalRecords = sum.TotalRecords
+	}
+	return out, nil
+}
+
+// ListMyLedgers 当前用户作为贡献者的流水。
+func (s *ShareRevenueService) ListMyLedgers(ctx context.Context, userID int64, page, pageSize int) ([]ShareRevenueLedgerItem, int64, error) {
+	if s.query == nil || userID <= 0 {
+		return []ShareRevenueLedgerItem{}, 0, nil
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	return s.query.ListContributorLedgers(ctx, userID, page, pageSize)
+}

@@ -102,6 +102,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		UserOwnedAccountsEnabled: settings.UserOwnedAccountsEnabled,
 
+		ShareRevenueSplitEnabled: settings.ShareRevenueSplitEnabled,
+
 		ModelPlazaEnabled:     settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth: settings.ModelPlazaRequireAuth,
 

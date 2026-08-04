@@ -868,6 +868,28 @@ func TestAPIContracts(t *testing.T) {
 						"invitation_code_enabled": false,
 						"home_content": "",
 					"hide_ccs_import_button": false,
+					"private_group_expires_date": "",
+					"group_upstream_plans": {
+						"anthropic": [],
+						"antigravity": [
+							{"code": "free-tier", "label": "Free"},
+							{"code": "g1-pro-tier", "label": "Pro"},
+							{"code": "g1-ultra-tier", "label": "Ultra"}
+						],
+						"gemini": [],
+						"grok": [
+							{"code": "free", "label": "Grok Free"},
+							{"code": "basic", "label": "Basic"},
+							{"code": "supergrok", "label": "SuperGrok"},
+							{"code": "supergrokheavy", "label": "SuperGrok Heavy"}
+						],
+						"openai": [
+							{"code": "free", "label": "Free"},
+							{"code": "plus", "label": "Plus"},
+							{"code": "team", "label": "Team"},
+							{"code": "pro", "label": "Pro"}
+						]
+					},
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
@@ -965,6 +987,11 @@ func TestAPIContracts(t *testing.T) {
 					"available_channels_enabled": false,
 					"user_owned_accounts_enabled": false,
 					"max_user_owned_accounts": 10,
+					"share_revenue_split_enabled": false,
+					"share_split_invite_pct": 10,
+					"share_split_user_pct": 40,
+					"share_split_platform_pct": 50,
+					"private_self_env_fee_pct": 1,
 					"model_plaza_enabled": false,
 					"model_plaza_require_auth": false,
 					"model_plaza_description": "",
@@ -1130,6 +1157,28 @@ func TestAPIContracts(t *testing.T) {
 					"doc_url": "",
 					"home_content": "",
 					"hide_ccs_import_button": false,
+					"private_group_expires_date": "",
+					"group_upstream_plans": {
+						"anthropic": [],
+						"antigravity": [
+							{"code": "free-tier", "label": "Free"},
+							{"code": "g1-pro-tier", "label": "Pro"},
+							{"code": "g1-ultra-tier", "label": "Ultra"}
+						],
+						"gemini": [],
+						"grok": [
+							{"code": "free", "label": "Grok Free"},
+							{"code": "basic", "label": "Basic"},
+							{"code": "supergrok", "label": "SuperGrok"},
+							{"code": "supergrokheavy", "label": "SuperGrok Heavy"}
+						],
+						"openai": [
+							{"code": "free", "label": "Free"},
+							{"code": "plus", "label": "Plus"},
+							{"code": "team", "label": "Team"},
+							{"code": "pro", "label": "Pro"}
+						]
+					},
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
@@ -1255,6 +1304,11 @@ func TestAPIContracts(t *testing.T) {
 					"available_channels_enabled": false,
 					"user_owned_accounts_enabled": false,
 					"max_user_owned_accounts": 10,
+					"share_revenue_split_enabled": false,
+					"share_split_invite_pct": 10,
+					"share_split_user_pct": 40,
+					"share_split_platform_pct": 50,
+					"private_self_env_fee_pct": 1,
 					"model_plaza_enabled": false,
 					"model_plaza_require_auth": false,
 					"model_plaza_description": "",
