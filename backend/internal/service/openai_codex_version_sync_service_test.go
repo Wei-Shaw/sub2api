@@ -59,9 +59,23 @@ REDACTED
 type codexVersionSyncGitHubStub struct {
 	GitHubReleaseClient // 嵌入接口，未实现的方法会 panic（不应被调用）
 
+	// 主路径 /releases/latest；latest 为 nil 且 latestErr 为 nil 时模拟「拿不到可用值」，
+	// 使调用落到回退的列表扫描上。
+	latest      *GitHubRelease
+	latestErr   error
+	latestCalls int
+
 	releases []*GitHubRelease
 	err      error
 	calls    int
+REDACTED
+
+func (c *codexVersionSyncGitHubStub) FetchLatestRelease(_ context.Context, _ string) (*GitHubRelease, error) {
+	c.latestCalls++
+	if c.latestErr != nil {
+		return nil, c.latestErr
+REDACTED
+	return c.latest, nil
 REDACTED
 
 func (c *codexVersionSyncGitHubStub) FetchRecentReleases(_ context.Context, _ string, _ int) ([]*GitHubRelease, error) {
@@ -131,6 +145,7 @@ REDACTED)
 
 	newCodexVersionSyncService(repo, github).runOnce()
 
+	require.Zero(t, github.latestCalls, "关闭自动同步后不应请求上游")
 	require.Zero(t, github.calls, "关闭自动同步后不应请求上游")
 	require.Empty(t, repo.syncedWrites())
 REDACTED
@@ -149,19 +164,96 @@ func TestOpenAICodexVersionSyncEnabledByDefault(t *testing.T) {
 REDACTED
 REDACTED
 
-// 抓取失败保持既有值，不清空、不降级。
+// 抓取失败保持既有值，不清空、不降级。两条取数路径都失败才算真正拿不到。
 func TestOpenAICodexVersionSyncKeepsValueOnFetchError(t *testing.T) {
 	repo := newCodexVersionSyncSettingRepoStub(map[string]string{
 		SettingKeyOpenAICodexClientVersionSynced: "0.146.0",
 REDACTED)
-	github := &codexVersionSyncGitHubStub{err: errors.New("network down")REDACTED
+	github := &codexVersionSyncGitHubStub{
+		latestErr: errors.New("network down"),
+		err:       errors.New("network down"),
+REDACTED
 
 	newCodexVersionSyncService(repo, github).runOnce()
 
+	require.Equal(t, 1, github.latestCalls)
+	require.Equal(t, 1, github.calls)
 	require.Empty(t, repo.syncedWrites())
 	value, err := repo.GetValue(context.Background(), SettingKeyOpenAICodexClientVersionSynced)
 REDACTED
 	require.Equal(t, "0.146.0", value)
+REDACTED
+
+// 主路径 /releases/latest：该端点已排除 draft / prerelease，直接给出最新正式发布，
+// 因此不受该仓库预发布密度影响，也不必再去拉 ~10MB 的列表页。
+func TestOpenAICodexVersionSyncUsesLatestReleaseEndpoint(t *testing.T) {
+	repo := newCodexVersionSyncSettingRepoStub(nil)
+	github := &codexVersionSyncGitHubStub{
+		latest: &GitHubRelease{TagName: "rust-v0.146.0"REDACTED,
+		// 列表若被调用会给出不同答案，用于证明取值确实来自主路径。
+		releases: []*GitHubRelease{{TagName: "rust-v0.145.0"REDACTEDREDACTED,
+REDACTED
+
+	newCodexVersionSyncService(repo, github).runOnce()
+
+	require.Equal(t, 1, github.latestCalls)
+	require.Zero(t, github.calls, "主路径可用时不应再拉列表页")
+	require.Equal(t, []string{"0.146.0"REDACTED, repo.syncedWrites())
+REDACTED
+
+// 回退列表扫描：latest 是跨 tag 家族按 published_at 取的，主路径拿不到客户端稳定版时
+// 必须继续扫一页 release，否则版本号会静默停更。三种拿不到的形态都要回退。
+func TestOpenAICodexVersionSyncFallsBackToReleaseList(t *testing.T) {
+	tests := []struct {
+		name      string
+		latest    *GitHubRelease
+		latestErr error
+REDACTED{
+		// 同仓库其他组件（rusty-v8-*）某天发了正式 release 而成为 latest。
+		{name: "latest 属于其他 tag 家族", latest: &GitHubRelease{TagName: "rusty-v8-v150.4.0"REDACTEDREDACTED,
+		// 端点语义若变化（返回 draft/prerelease），过滤仍然拦得住，并照常回退。
+		{name: "latest 是预发布", latest: &GitHubRelease{TagName: "rust-v0.147.0-alpha.4", Prerelease: trueREDACTEDREDACTED,
+		{name: "latest 抓取失败", latestErr: errors.New("network down")REDACTED,
+		// 上游返回空对象：不得因此 panic，按拿不到处理。
+		{name: "latest 为空", latest: nilREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newCodexVersionSyncSettingRepoStub(nil)
+			github := &codexVersionSyncGitHubStub{
+				latest:    tt.latest,
+				latestErr: tt.latestErr,
+				releases: []*GitHubRelease{
+					{TagName: "rust-v0.147.0-alpha.4", Prerelease: trueREDACTED,
+					{TagName: "rust-v0.146.0"REDACTED,
+					{TagName: "rust-v0.145.0"REDACTED,
+			REDACTED,
+		REDACTED
+
+			newCodexVersionSyncService(repo, github).runOnce()
+
+			require.Equal(t, 1, github.latestCalls)
+			require.Equal(t, 1, github.calls)
+			require.Equal(t, []string{"0.146.0"REDACTED, repo.syncedWrites())
+	REDACTED)
+REDACTED
+REDACTED
+
+// 两条路径共用同一套过滤：主路径的单条 latest 同样要过前缀 / 版本号形态校验，
+// 不能因为「端点保证是正式发布」就直接采信 tag。
+func TestOpenAICodexVersionSyncLatestSharesFiltering(t *testing.T) {
+	repo := newCodexVersionSyncSettingRepoStub(nil)
+	github := &codexVersionSyncGitHubStub{
+		// 仓库里确实存在 rust-vv0.99.0-alpha.8 / rust-vrust-v0.145.0-alpha.6 这类畸形 tag：
+		// 剥掉前缀后不是合法版本号，必须被拒绝而不是写成 v0.99.0。
+		latest:   &GitHubRelease{TagName: "rust-vv0.99.0"REDACTED,
+		releases: []*GitHubRelease{{TagName: "rust-v0.146.0"REDACTEDREDACTED,
+REDACTED
+
+	newCodexVersionSyncService(repo, github).runOnce()
+
+	require.Equal(t, []string{"0.146.0"REDACTED, repo.syncedWrites())
 REDACTED
 
 // 依赖缺失时 Start 必须直接返回，不能起一个空转的 goroutine。
