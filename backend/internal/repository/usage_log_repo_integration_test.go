@@ -688,6 +688,28 @@ func (s *UsageLogRepoSuite) TestListWithFilters() {
 	s.Require().Equal(int64(1), page.Total)
 }
 
+func (s *UsageLogRepoSuite) TestListWithFilters_PlatformUsesResolvedCompositeAccount() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "filters-platform@test.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-filters-platform", Name: "k"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-filters-platform", Platform: service.PlatformOpenAI})
+	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "group-filters-platform", Platform: service.PlatformComposite})
+
+	log := &service.UsageLog{
+		UserID: user.ID, APIKeyID: apiKey.ID, AccountID: account.ID, GroupID: &group.ID,
+		RequestID: uuid.NewString(), Model: "gpt-5", InputTokens: 10, OutputTokens: 20,
+		TotalCost: 0.5, ActualCost: 0.5, CreatedAt: time.Now().UTC(),
+	}
+	_, err := s.repo.Create(s.ctx, log)
+	s.Require().NoError(err)
+
+	filters := usagestats.UsageLogFilters{Platform: service.PlatformOpenAI, ExactTotal: true}
+	logs, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, filters)
+	s.Require().NoError(err)
+	s.Require().Len(logs, 1)
+	s.Require().Equal(log.ID, logs[0].ID)
+	s.Require().Equal(int64(1), page.Total)
+}
+
 // --- GetDashboardStats ---
 
 func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {

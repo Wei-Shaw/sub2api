@@ -5,7 +5,19 @@ export default {
       sections: {
         overview: 'Overview & Incidents',
         analysis: 'Trend Analysis',
-        logs: 'System Logs'
+        logs: 'Logs'
+      },
+      logViews: {
+        errors: 'Error Logs',
+        system: 'System Logs'
+      },
+      errorExplorer: {
+        title: 'Error Logs',
+        total: '{total} entries',
+        searchPlaceholder: 'Search message, request ID, or model',
+        unresolved: 'Unresolved',
+        resolved: 'Resolved',
+        loadFailed: 'Failed to load error logs'
       },
       // Dashboard
       systemHealth: 'System Health',
@@ -578,6 +590,10 @@ export default {
 		evaluation: {
 		  ok: 'OK',
 		  breached: 'Breached',
+		  insufficient_samples: 'Insufficient samples',
+		  insufficient_bad_count: 'Insufficient bad samples',
+		  awaiting_sustained_duration: 'Awaiting duration',
+		  alert_firing: 'Alert firing',
 		  no_data: 'No data',
 		  stale: 'Stale',
 		  error: 'Evaluation error',
@@ -663,8 +679,21 @@ export default {
         hints: {
           recommended: 'Recommended: operator {operator}, threshold {threshold}{unit}',
           groupRequired: 'This is a group-level metric; selecting a group (group_id) is required.',
-          groupOptional: 'Optional: limit the rule to a specific group via group_id.'
+		  groupOptional: 'Optional: limit the rule to a specific group via group_id.',
+		  ttftMinimumSamples: 'TTFT percentiles only use the total sample gate; at least 100 samples is recommended for P99.'
         },
+		summary: {
+		  allScopes: 'All scopes',
+		  aggregatePercentile: '{scope} · {window}-minute window · at least {samples} TTFT samples · {metric} {operator} {threshold} for {sustained} minutes',
+		  sampleCount: '{count} TTFT samples',
+		  badAndTotalCount: '{bad} bad / {total} total',
+		  insufficientSamples: 'Current {value}, threshold {threshold}; only {current}/{required} samples, not triggered',
+		  insufficientBadCount: 'Current {value}, threshold {threshold}; only {current}/{required} bad samples, not triggered',
+		  awaitingSustained: 'Current {value}, above {threshold}; awaiting duration {current}/{required}',
+		  alertFiring: 'Current {value}, above {threshold}; alert event created',
+		  breached: 'Current {value}, above {threshold}',
+		  ok: 'Current {value}, below threshold {threshold}'
+		},
         table: {
           name: 'Name',
           metric: 'Metric',

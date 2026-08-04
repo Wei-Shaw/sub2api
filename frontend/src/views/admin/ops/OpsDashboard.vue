@@ -114,12 +114,36 @@
       <!-- Alert Events -->
       <OpsAlertEventsCard v-if="opsEnabled && showAlertEvents && !(loading && !hasLoadedOnce) && (isFullscreen || activeSection === 'overview')" />
 
-      <!-- System Logs -->
-      <OpsSystemLogTable
-        v-if="opsEnabled && !(loading && !hasLoadedOnce) && (isFullscreen || activeSection === 'logs')"
-        :platform-filter="platform"
-        :refresh-token="dashboardRefreshToken"
-      />
+      <!-- Logs -->
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce) && (isFullscreen || activeSection === 'logs')" class="space-y-4">
+        <div v-if="!isFullscreen" class="inline-flex gap-1 rounded-md bg-gray-100 p-1 dark:bg-dark-800">
+          <button
+            v-for="view in logViews"
+            :key="view.value"
+            type="button"
+            class="rounded px-3 py-1.5 text-sm font-medium transition"
+            :class="activeLogView === view.value
+              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+              : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+            @click="activeLogView = view.value"
+          >
+            {{ view.label }}
+          </button>
+        </div>
+
+        <OpsErrorLogExplorer
+          v-if="isFullscreen || activeLogView === 'errors'"
+          :platform-filter="platform"
+          :group-id-filter="groupId"
+          :refresh-token="dashboardRefreshToken"
+          @openErrorDetail="openErrorFromLog"
+        />
+        <OpsSystemLogTable
+          v-if="isFullscreen || activeLogView === 'system'"
+          :platform-filter="platform"
+          :refresh-token="dashboardRefreshToken"
+        />
+      </div>
 
       <!-- Settings Dialog (hidden in fullscreen mode) -->
       <template v-if="!isFullscreen">
@@ -184,6 +208,7 @@ import OpsSwitchRateTrendChart from './components/OpsSwitchRateTrendChart.vue'
 import OpsAlertEventsCard from './components/OpsAlertEventsCard.vue'
 import OpsOpenAITokenStatsCard from './components/OpsOpenAITokenStatsCard.vue'
 import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
+import OpsErrorLogExplorer from './components/OpsErrorLogExplorer.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset } from './components/OpsRequestDetailsModal.vue'
 import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
 import OpsAlertRulesCard from './components/OpsAlertRulesCard.vue'
@@ -201,6 +226,12 @@ const dashboardSections = computed<Array<{ value: DashboardSection; label: strin
   { value: 'overview', label: t('admin.ops.sections.overview') },
   { value: 'analysis', label: t('admin.ops.sections.analysis') },
   { value: 'logs', label: t('admin.ops.sections.logs') }
+])
+type LogView = 'errors' | 'system'
+const activeLogView = ref<LogView>('errors')
+const logViews = computed<Array<{ value: LogView; label: string }>>(() => [
+  { value: 'errors', label: t('admin.ops.logViews.errors') },
+  { value: 'system', label: t('admin.ops.logViews.system') }
 ])
 
 type TimeRange = '5m' | '30m' | '1h' | '6h' | '24h' | 'custom'
@@ -535,6 +566,11 @@ function openError(id: number) {
   showErrorDetails.value = false
   showRequestDetails.value = false
   showErrorModal.value = true
+}
+
+function openErrorFromLog(id: number, kind: 'request' | 'upstream') {
+  errorDetailsType.value = kind
+  openError(id)
 }
 
 function buildApiParams() {

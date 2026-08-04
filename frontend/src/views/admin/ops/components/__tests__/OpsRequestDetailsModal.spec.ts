@@ -4,13 +4,19 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import OpsRequestDetailsModal from '../OpsRequestDetailsModal.vue'
 
-const { listRequestDetails } = vi.hoisted(() => ({
-  listRequestDetails: vi.fn()
+const { listRequestDetails, listUsage } = vi.hoisted(() => ({
+  listRequestDetails: vi.fn(),
+  listUsage: vi.fn()
 }))
 
 vi.mock('@/api/admin/ops', () => {
   const opsAPI = { listRequestDetails }
   return { opsAPI, default: opsAPI }
+})
+
+vi.mock('@/api/admin/usage', () => {
+  const adminUsageAPI = { list: listUsage }
+  return { adminUsageAPI, default: adminUsageAPI }
 })
 
 vi.mock('@vueuse/core', () => ({
@@ -45,14 +51,76 @@ describe('OpsRequestDetailsModal', () => {
       page: 1,
       page_size: 10
     })
+    listUsage.mockReset().mockResolvedValue({
+      items: [{
+        id: 101,
+        user_id: 8,
+        request_id: 'req-usage-test',
+        model: 'gpt-test',
+        first_token_ms: 1234,
+        duration_ms: 4567,
+        created_at: '2026-08-02T12:00:00Z',
+        user: { email: 'user@example.com' }
+      }],
+      total: 1,
+      page: 1,
+      page_size: 10,
+      pages: 1
+    })
   })
 
-  it('shows per-request TTFT and total duration in seconds and changes TTFT ordering', async () => {
+  it('uses the full admin usage table for TTFT details and preserves TTFT ordering', async () => {
     const wrapper = mount(OpsRequestDetailsModal, {
       props: {
         modelValue: false,
         timeRange: '1h',
-        preset: { title: 'TTFT', kind: 'success', sort: 'ttft_desc', has_ttft: true }
+        preset: { title: 'TTFT', kind: 'success', sort: 'ttft_desc', has_ttft: true },
+        platform: 'openai',
+        groupId: 9
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /></div>' },
+          Pagination: true,
+          UsageTable: {
+            props: ['data', 'columns', 'userClickable'],
+            template: '<div data-testid="usage-table">{{ data.length }}:{{ data[0] && data[0].first_token_ms }}:{{ userClickable }}</div>'
+          }
+        }
+      }
+    })
+
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+
+    expect(listUsage).toHaveBeenLastCalledWith(expect.objectContaining({
+      platform: 'openai',
+      group_id: 9,
+      has_ttft: true,
+      exact_total: true,
+      sort_by: 'first_token_ms',
+      sort_order: 'desc',
+      start_time: expect.any(String),
+      end_time: expect.any(String)
+    }))
+    expect(listRequestDetails).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="usage-table"]').text()).toBe('1:1234:false')
+
+    await wrapper.get('[data-testid="ops-request-sort"]').setValue('ttft_asc')
+    await flushPromises()
+
+    expect(listUsage).toHaveBeenLastCalledWith(expect.objectContaining({
+      sort_by: 'first_token_ms',
+      sort_order: 'asc'
+    }))
+  })
+
+  it('keeps non-TTFT drilldowns on the ops request details API', async () => {
+    const wrapper = mount(OpsRequestDetailsModal, {
+      props: {
+        modelValue: false,
+        timeRange: '1h',
+        preset: { title: 'Slow requests', kind: 'success', sort: 'duration_desc' }
       },
       global: {
         stubs: {
@@ -65,17 +133,10 @@ describe('OpsRequestDetailsModal', () => {
     await wrapper.setProps({ modelValue: true })
     await flushPromises()
 
-    expect(listRequestDetails).toHaveBeenLastCalledWith(expect.objectContaining({
+    expect(listRequestDetails).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'success',
-      sort: 'ttft_desc',
-      has_ttft: true
+      sort: 'duration_desc'
     }))
-    expect(wrapper.text()).toContain('1.23 s')
-    expect(wrapper.text()).toContain('4.57 s')
-
-    await wrapper.get('[data-testid="ops-request-sort"]').setValue('ttft_asc')
-    await flushPromises()
-
-    expect(listRequestDetails).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'ttft_asc' }))
+    expect(listUsage).not.toHaveBeenCalled()
   })
 })

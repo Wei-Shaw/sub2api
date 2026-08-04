@@ -216,6 +216,15 @@ func TestOpsAlertRuleValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "ttft_p99_seconds", validated.MetricType)
 	require.Equal(t, 5.25, validated.Threshold)
+
+	raw["minimum_bad_count"] = json.RawMessage(`10`)
+	_, err = validateOpsAlertRulePayload(raw)
+	require.EqualError(t, err, "minimum_bad_count must be 0 for aggregate percentile metric_type ttft_p99_seconds")
+
+	raw["minimum_bad_count"] = json.RawMessage(`0`)
+	validated, err = validateOpsAlertRulePayload(raw)
+	require.NoError(t, err)
+	require.Zero(t, validated.MinimumBadCount)
 }
 
 func TestOpsWSHelpers(t *testing.T) {

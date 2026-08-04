@@ -42,3 +42,44 @@ func TestOpsV2ReleaseMigrationsRemainBlueGreenCompatible(t *testing.T) {
 	require.Equal(t, 5, strings.Count(indexSQL, "create index concurrently if not exists"))
 	require.NotContains(t, indexSQL, "\nupdate ")
 }
+
+func TestTTFTAlertRuleNormalizationMigrationIsStrictlyScoped(t *testing.T) {
+	migration, err := migrations.FS.ReadFile("203_normalize_ttft_alert_minimum_bad_count.sql")
+	require.NoError(t, err)
+	sqlText := strings.ToLower(string(migration))
+
+	require.Contains(t, sqlText, "sub2api-managed-update: reviewed-compatible")
+	require.Contains(t, sqlText, "update ops_alert_rules")
+	require.Contains(t, sqlText, "set minimum_bad_count = 0")
+	require.Contains(t, sqlText, "'ttft_p95_seconds'")
+	require.Contains(t, sqlText, "'ttft_p99_seconds'")
+	require.Contains(t, sqlText, "'ttft_max_seconds'")
+	require.Contains(t, sqlText, "and minimum_bad_count <> 0")
+	require.NotContains(t, sqlText, "threshold =")
+	require.NotContains(t, sqlText, "notify_email =")
+	require.NotContains(t, sqlText, "enabled =")
+}
+
+func TestTTFTAlertEvaluationStatusMigrationKeepsV2AndV3WritersCompatible(t *testing.T) {
+	addMigration, err := migrations.FS.ReadFile("204_expand_ops_alert_evaluation_status.sql")
+	require.NoError(t, err)
+	validateMigration, err := migrations.FS.ReadFile("205_validate_ops_alert_evaluation_status.sql")
+	require.NoError(t, err)
+	dropMigration, err := migrations.FS.ReadFile("206_drop_ops_alert_evaluation_status_v2.sql")
+	require.NoError(t, err)
+	addSQL := strings.ToLower(string(addMigration))
+	validateSQL := strings.ToLower(string(validateMigration))
+	dropSQL := strings.ToLower(string(dropMigration))
+
+	require.Contains(t, addSQL, "add constraint ops_alert_rule_evaluations_status_check_v3")
+	require.Contains(t, addSQL, "'insufficient_samples'")
+	require.Contains(t, addSQL, "'insufficient_bad_count'")
+	require.Contains(t, addSQL, "not valid")
+	require.NotContains(t, addSQL, "validate constraint")
+	require.NotContains(t, addSQL, "drop constraint")
+	require.Contains(t, validateSQL, "validate constraint ops_alert_rule_evaluations_status_check_v3")
+	require.NotContains(t, validateSQL, "add constraint")
+	require.NotContains(t, validateSQL, "drop constraint")
+	require.Contains(t, dropSQL, "drop constraint if exists ops_alert_rule_evaluations_status_check")
+	require.NotContains(t, dropSQL, "validate constraint")
+}

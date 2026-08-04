@@ -112,6 +112,17 @@ func (h *UsageHandler) List(c *gin.Context) {
 	model := c.Query("model")
 	requestID := strings.TrimSpace(c.Query("request_id"))
 	billingMode := strings.TrimSpace(c.Query("billing_mode"))
+	platform := strings.TrimSpace(c.Query("platform"))
+
+	var hasTTFT *bool
+	if raw := strings.TrimSpace(c.Query("has_ttft")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid has_ttft value, use true or false")
+			return
+		}
+		hasTTFT = &value
+	}
 
 	var requestType *int16
 	var stream *bool
@@ -143,10 +154,30 @@ func (h *UsageHandler) List(c *gin.Context) {
 		billingType = &bt
 	}
 
-	// Parse date range
+	// Parse date range. Exact RFC3339 timestamps take precedence over the
+	// legacy day-based filters used by the main usage page.
 	var startTime, endTime *time.Time
 	userTZ := c.Query("timezone") // Get user's timezone from request
-	if startDateStr := c.Query("start_date"); startDateStr != "" {
+	exactStart := strings.TrimSpace(c.Query("start_time"))
+	exactEnd := strings.TrimSpace(c.Query("end_time"))
+	if exactStart != "" || exactEnd != "" {
+		if exactStart == "" || exactEnd == "" {
+			response.BadRequest(c, "start_time and end_time must be provided together")
+			return
+		}
+		start, startErr := time.Parse(time.RFC3339Nano, exactStart)
+		end, endErr := time.Parse(time.RFC3339Nano, exactEnd)
+		if startErr != nil || endErr != nil {
+			response.BadRequest(c, "Invalid start_time or end_time, use RFC3339")
+			return
+		}
+		if !start.Before(end) || end.Sub(start) > 30*24*time.Hour {
+			response.BadRequest(c, "Invalid exact time range")
+			return
+		}
+		startTime = &start
+		endTime = &end
+	} else if startDateStr := c.Query("start_date"); startDateStr != "" {
 		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
@@ -155,15 +186,17 @@ func (h *UsageHandler) List(c *gin.Context) {
 		startTime = &t
 	}
 
-	if endDateStr := c.Query("end_date"); endDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
-		if err != nil {
-			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
-			return
+	if exactStart == "" && exactEnd == "" {
+		if endDateStr := c.Query("end_date"); endDateStr != "" {
+			t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+			if err != nil {
+				response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+				return
+			}
+			// Use half-open range [start, end), move to next calendar day start (DST-safe).
+			t = t.AddDate(0, 0, 1)
+			endTime = &t
 		}
-		// Use half-open range [start, end), move to next calendar day start (DST-safe).
-		t = t.AddDate(0, 0, 1)
-		endTime = &t
 	}
 
 	params := pagination.PaginationParams{
@@ -179,6 +212,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		GroupID:           groupID,
 		RequestID:         requestID,
 		Model:             model,
+		Platform:          platform,
 		ModelFilterSource: usagestats.ModelSourceRequested,
 		RequestType:       requestType,
 		Stream:            stream,
@@ -186,6 +220,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		BillingMode:       billingMode,
 		StartTime:         startTime,
 		EndTime:           endTime,
+		HasTTFT:           hasTTFT,
 		ExactTotal:        exactTotal,
 	}
 

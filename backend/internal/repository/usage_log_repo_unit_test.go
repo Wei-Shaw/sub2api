@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -64,4 +65,45 @@ func TestBuildUsageLogBatchInsertQuery_UsesConflictDoNothing(t *testing.T) {
 
 	require.Contains(t, query, "ON CONFLICT (request_id, api_key_id) DO NOTHING")
 	require.NotContains(t, strings.ToUpper(query), "DO UPDATE")
+}
+
+func TestUsageLogOrderByLatencyColumns(t *testing.T) {
+	tests := []struct {
+		name     string
+		params   pagination.PaginationParams
+		expected string
+	}{
+		{name: "ttft descending", params: pagination.PaginationParams{SortBy: "first_token_ms", SortOrder: "desc"}, expected: "first_token_ms DESC, id DESC"},
+		{name: "ttft ascending", params: pagination.PaginationParams{SortBy: "first_token_ms", SortOrder: "asc"}, expected: "first_token_ms ASC, id ASC"},
+		{name: "duration descending", params: pagination.PaginationParams{SortBy: "duration_ms", SortOrder: "desc"}, expected: "duration_ms DESC, id DESC"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, usageLogOrderBy(tt.params))
+		})
+	}
+}
+
+func TestAppendUsageLogPlatformWhereCondition(t *testing.T) {
+	conditions, args := appendUsageLogPlatformWhereCondition([]string{"user_id = $1"}, []any{int64(7)}, " OpenAI ")
+
+	require.Len(t, conditions, 2)
+	require.Contains(t, conditions[1], "effective_platform")
+	require.Contains(t, conditions[1], "= $2")
+	require.NotContains(t, strings.ToUpper(conditions[1]), "SELECT")
+	require.Equal(t, []any{int64(7), "openai"}, args)
+
+	require.Contains(t, usageLogPlatformListSource, "LEFT JOIN groups g ON g.id = ul.group_id")
+	require.Contains(t, usageLogPlatformListSource, "LEFT JOIN accounts a ON a.id = ul.account_id")
+	require.Contains(t, usageLogPlatformListSource, usageLogEffectivePlatformExpr)
+}
+
+func TestAppendUsageLogTTFTWhereCondition(t *testing.T) {
+	hasTTFT := true
+	withoutTTFT := false
+
+	require.Equal(t, []string{"first_token_ms IS NOT NULL"}, appendUsageLogTTFTWhereCondition(nil, &hasTTFT))
+	require.Equal(t, []string{"first_token_ms IS NULL"}, appendUsageLogTTFTWhereCondition(nil, &withoutTTFT))
+	require.Empty(t, appendUsageLogTTFTWhereCondition(nil, nil))
 }

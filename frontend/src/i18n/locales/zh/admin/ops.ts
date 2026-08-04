@@ -5,7 +5,19 @@ export default {
       sections: {
         overview: '总览与事件',
         analysis: '趋势分析',
-        logs: '系统日志'
+        logs: '日志'
+      },
+      logViews: {
+        errors: '错误日志',
+        system: '系统日志'
+      },
+      errorExplorer: {
+        title: '错误日志',
+        total: '共 {total} 条',
+        searchPlaceholder: '搜索错误消息、请求 ID 或模型',
+        unresolved: '未处理',
+        resolved: '已处理',
+        loadFailed: '加载错误日志失败'
       },
       // Dashboard
       systemHealth: '系统健康',
@@ -583,6 +595,10 @@ export default {
 		evaluation: {
 		  ok: '正常',
 		  breached: '已越界',
+		  insufficient_samples: '样本不足',
+		  insufficient_bad_count: '坏样本不足',
+		  awaiting_sustained_duration: '等待持续时间',
+		  alert_firing: '告警中',
 		  no_data: '无数据',
 		  stale: '数据陈旧',
 		  error: '评估错误',
@@ -663,8 +679,21 @@ export default {
         hints: {
           recommended: '推荐：运算符 {operator}，阈值 {threshold}{unit}',
           groupRequired: '该指标为分组级别指标，必须选择分组（group_id）。',
-          groupOptional: '可选：通过 group_id 将规则限定到某个分组。'
+		  groupOptional: '可选：通过 group_id 将规则限定到某个分组。',
+		  ttftMinimumSamples: 'TTFT 百分位只使用总样本门槛；P99 建议至少 100 个样本。'
         },
+		summary: {
+		  allScopes: '全部范围',
+		  aggregatePercentile: '{scope} · {window} 分钟窗口 · 至少 {samples} 个 TTFT 样本 · {metric} {operator} {threshold} 并持续 {sustained} 分钟',
+		  sampleCount: '{count} 个 TTFT 样本',
+		  badAndTotalCount: '{bad} 个坏样本 / 共 {total} 个',
+		  insufficientSamples: '当前 {value}，阈值 {threshold}；仅 {current}/{required} 个样本，未触发',
+		  insufficientBadCount: '当前 {value}，阈值 {threshold}；仅 {current}/{required} 个坏样本，未触发',
+		  awaitingSustained: '当前 {value}，已超过 {threshold}；等待持续时间 {current}/{required}',
+		  alertFiring: '当前 {value}，已超过 {threshold}；告警事件已创建',
+		  breached: '当前 {value}，已超过 {threshold}',
+		  ok: '当前 {value}，未超过阈值 {threshold}'
+		},
         table: {
           name: '名称',
           metric: '指标',

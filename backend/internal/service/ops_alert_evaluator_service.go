@@ -27,7 +27,7 @@ const (
 	opsAlertEvaluatorLeaderLockTTL   = 90 * time.Second
 	opsAlertEvaluatorSkipLogInterval = 1 * time.Minute
 	opsAlertSystemMetricsMaxAge      = 3 * time.Minute
-	opsAlertEvaluatorVersion         = "v2"
+	opsAlertEvaluatorVersion         = "v3"
 )
 
 var opsAlertEvaluatorReleaseScript = redis.NewScript(`
@@ -254,6 +254,18 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 		windowEnd := safeEnd
 
 		metric := s.evaluateRuleMetric(ctx, rule, systemMetrics, windowStart, windowEnd, scopePlatform, scopeGroupID, now, ttftCache)
+		state, stateErr := s.loadAlertRuleState(ctx, rule.ID)
+		if stateErr == nil {
+			resetAlertRuleStateAfterGap(state, now, interval)
+		}
+
+		var activeEvent *OpsAlertEvent
+		var activeEventErr error
+		activeEvent, activeEventErr = s.opsRepo.GetActiveAlertEvent(ctx, rule.ID)
+		if stateErr == nil && activeEventErr == nil {
+			annotateOpsAlertEvaluationProgress(&metric, rule, state, activeEvent, interval)
+		}
+
 		evaluation := &OpsAlertRuleEvaluation{
 			RuleID: rule.ID, EvaluatedAt: now, WindowStart: windowStart, WindowEnd: windowEnd,
 			Status: metric.Status, Breached: metric.Breached, MetricValue: metric.Value,
@@ -272,12 +284,29 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 		rulesEvaluated++
 		evaluationStatuses[evaluation.Status]++
 
-		state, err := s.loadAlertRuleState(ctx, rule.ID)
-		if err != nil {
-			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] load rule state failed (rule=%d): %v", rule.ID, err)
+		if activeEventErr != nil {
+			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] get active event failed (rule=%d): %v", rule.ID, activeEventErr)
 			continue
 		}
-		resetAlertRuleStateAfterGap(state, now, interval)
+		if activeEvent != nil && !activeEvent.EmailQueued {
+			outcome := s.maybeEnqueueAlertEmail(ctx, runtimeCfg, opsAlertEmailTransitionFiring, rule, activeEvent)
+			emailsQueued += outcome.Created
+			if outcome.Complete {
+				if err := s.opsRepo.UpdateAlertEventEmailQueued(ctx, activeEvent.ID, true); err != nil {
+					logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] mark retried email queued failed (event=%d): %v", activeEvent.ID, err)
+					continue
+				}
+				activeEvent.EmailQueued = true
+			}
+			if outcome.RetryNeeded {
+				continue
+			}
+		}
+
+		if stateErr != nil {
+			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] load rule state failed (rule=%d): %v", rule.ID, stateErr)
+			continue
+		}
 		state.LastEvaluatedAt = opsAlertTimePtr(now)
 
 		if metric.Status != OpsAlertEvaluationStatusOK && metric.Status != OpsAlertEvaluationStatusBreached {
@@ -294,12 +323,6 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 			metricValue = *metric.Value
 		}
 		breachedNow := metric.Breached
-
-		activeEvent, err := s.opsRepo.GetActiveAlertEvent(ctx, rule.ID)
-		if err != nil {
-			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] get active event failed (rule=%d): %v", rule.ID, err)
-			continue
-		}
 
 		if activeEvent != nil {
 			if familyEvent := activeIncidents[incidentKey]; familyEvent != nil && familyEvent.ID != activeEvent.ID &&
@@ -341,9 +364,9 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				}
 				activeEvent.Status = OpsAlertStatusResolved
 				activeEvent.ResolvedAt = &resolvedAt
-				queued := s.maybeEnqueueAlertEmail(ctx, runtimeCfg, opsAlertEmailTransitionResolved, rule, activeEvent)
-				emailsQueued += queued
-				if queued > 0 {
+				outcome := s.maybeEnqueueAlertEmail(ctx, runtimeCfg, opsAlertEmailTransitionResolved, rule, activeEvent)
+				emailsQueued += outcome.Created
+				if outcome.Complete {
 					if err := s.opsRepo.UpdateAlertEventEmailQueued(ctx, activeEvent.ID, true); err != nil {
 						logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] mark email queued failed (event=%d): %v", activeEvent.ID, err)
 					}
@@ -427,9 +450,9 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 			eventsCreated++
 			if created != nil && created.ID > 0 {
 				activeIncidents[incidentKey] = created
-				queued := s.maybeEnqueueAlertEmail(ctx, runtimeCfg, opsAlertEmailTransitionFiring, rule, created)
-				emailsQueued += queued
-				if queued > 0 {
+				outcome := s.maybeEnqueueAlertEmail(ctx, runtimeCfg, opsAlertEmailTransitionFiring, rule, created)
+				emailsQueued += outcome.Created
+				if outcome.Complete {
 					if err := s.opsRepo.UpdateAlertEventEmailQueued(ctx, created.ID, true); err != nil {
 						logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] mark email queued failed (event=%d): %v", created.ID, err)
 					}
@@ -441,9 +464,10 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 	}
 
 	result := truncateString(fmt.Sprintf(
-		"rules=%d enabled=%d evaluated=%d ok=%d breached=%d no_data=%d stale=%d error=%d unsupported=%d shadow=%d created=%d resolved=%d emails_queued=%d",
+		"rules=%d enabled=%d evaluated=%d ok=%d breached=%d insufficient_samples=%d insufficient_bad_count=%d no_data=%d stale=%d error=%d unsupported=%d shadow=%d created=%d resolved=%d emails_queued=%d",
 		rulesTotal, rulesEnabled, rulesEvaluated,
 		evaluationStatuses[OpsAlertEvaluationStatusOK], evaluationStatuses[OpsAlertEvaluationStatusBreached],
+		evaluationStatuses[OpsAlertEvaluationStatusInsufficientSamples], evaluationStatuses[OpsAlertEvaluationStatusInsufficientBadCount],
 		evaluationStatuses[OpsAlertEvaluationStatusNoData], evaluationStatuses[OpsAlertEvaluationStatusStale],
 		evaluationStatuses[OpsAlertEvaluationStatusError], evaluationStatuses[OpsAlertEvaluationStatusUnsupported],
 		evaluationStatuses[OpsAlertEvaluationStatusShadow], eventsCreated, eventsResolved, emailsQueued,
@@ -463,6 +487,42 @@ func requiredSustainedBreaches(sustainedMinutes int, interval time.Duration) int
 		return 1
 	}
 	return required
+}
+
+func annotateOpsAlertEvaluationProgress(
+	metric *opsAlertMetricEvaluation,
+	rule *OpsAlertRule,
+	state *OpsAlertRuleState,
+	activeEvent *OpsAlertEvent,
+	interval time.Duration,
+) {
+	if metric == nil || rule == nil || state == nil || !metric.Breached {
+		return
+	}
+	if activeEvent != nil {
+		metric.ErrorCode = "alert_firing"
+		metric.ErrorMessage = "threshold remains breached; an alert event is already firing"
+		return
+	}
+	if rule.ShadowMode {
+		metric.ErrorCode = "shadow_mode"
+		metric.ErrorMessage = "threshold breached, but shadow mode does not create alert events"
+		return
+	}
+
+	required := requiredSustainedBreaches(rule.SustainedMinutes, interval)
+	current := state.ConsecutiveBreaches + 1
+	if current < required {
+		metric.ErrorCode = "awaiting_sustained_duration"
+		metric.ErrorMessage = fmt.Sprintf(
+			"threshold breached; waiting for sustained duration (%d/%d evaluations)",
+			current,
+			required,
+		)
+		return
+	}
+	metric.ErrorCode = "threshold_breached_ready"
+	metric.ErrorMessage = "threshold breached and sustained duration is satisfied"
 }
 
 func parseOpsAlertRuleScope(filters map[string]any) (platform string, groupID *int64, region *string) {
@@ -656,14 +716,32 @@ func (s *OpsAlertEvaluatorService) evaluateRuleMetric(
 		return result
 	}
 	rawBreached := compareMetric(*result.Value, rule.Operator, rule.Threshold)
-	if result.BadCount == 0 && rawBreached && !isBusinessRateOpsAlertMetric(metricType) {
+	supportsMinimumBadCount := OpsMetricSupportsMinimumBadCount(metricType)
+	if result.BadCount == 0 && rawBreached && supportsMinimumBadCount && !isBusinessRateOpsAlertMetric(metricType) {
 		result.BadCount = 1
 	}
 	meetsSamples := rule.MinimumSamples <= 0 || result.SampleCount >= int64(rule.MinimumSamples)
-	meetsBadCount := rule.MinimumBadCount <= 0 || result.BadCount >= int64(rule.MinimumBadCount)
+	meetsBadCount := !supportsMinimumBadCount || rule.MinimumBadCount <= 0 || result.BadCount >= int64(rule.MinimumBadCount)
 	result.Breached = rawBreached && meetsSamples && meetsBadCount
-	if result.Breached {
+	switch {
+	case result.Breached:
 		result.Status = OpsAlertEvaluationStatusBreached
+	case rawBreached && !meetsSamples:
+		result.Status = OpsAlertEvaluationStatusInsufficientSamples
+		result.ErrorCode = OpsAlertEvaluationStatusInsufficientSamples
+		result.ErrorMessage = fmt.Sprintf(
+			"metric breached threshold, but only %d/%d total samples are available",
+			result.SampleCount,
+			rule.MinimumSamples,
+		)
+	case rawBreached && !meetsBadCount:
+		result.Status = OpsAlertEvaluationStatusInsufficientBadCount
+		result.ErrorCode = OpsAlertEvaluationStatusInsufficientBadCount
+		result.ErrorMessage = fmt.Sprintf(
+			"metric breached threshold, but only %d/%d bad samples are available",
+			result.BadCount,
+			rule.MinimumBadCount,
+		)
 	}
 	return result
 }
@@ -1116,39 +1194,45 @@ func buildOpsAlertDescription(rule *OpsAlertRule, value float64, sampleCount, ba
 	)
 }
 
-func (s *OpsAlertEvaluatorService) maybeEnqueueAlertEmail(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, transition string, rule *OpsAlertRule, event *OpsAlertEvent) int {
+type opsAlertEmailEnqueueOutcome struct {
+	Created     int
+	Complete    bool
+	RetryNeeded bool
+}
+
+func (s *OpsAlertEvaluatorService) maybeEnqueueAlertEmail(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, transition string, rule *OpsAlertRule, event *OpsAlertEvent) opsAlertEmailEnqueueOutcome {
 	if s == nil || s.notificationDispatcher == nil || s.opsService == nil || event == nil || rule == nil {
-		return 0
+		return opsAlertEmailEnqueueOutcome{}
 	}
 	if !rule.NotifyEmail {
-		return 0
+		return opsAlertEmailEnqueueOutcome{}
 	}
 
 	emailCfg, err := s.opsService.GetEmailNotificationConfig(ctx)
 	if err != nil || emailCfg == nil {
-		return 0
+		return opsAlertEmailEnqueueOutcome{RetryNeeded: true}
 	}
 	alertEnabled := emailCfg.Alert.Enabled
 	recipients := normalizeEmails(emailCfg.Alert.Recipients)
 	if notificationService := s.notificationDispatcher.emailService; notificationService != nil {
 		channel, configured, channelErr := notificationService.GetChannelPolicyState(ctx, NotificationEmailChannelOpsAlert)
 		if channelErr != nil {
-			return 0
+			return opsAlertEmailEnqueueOutcome{RetryNeeded: true}
 		}
 		if configured {
 			alertEnabled = channel.Enabled
 			resolved, resolveErr := notificationService.ResolveGroupRecipients(ctx, NotificationEmailChannelOpsAlert)
 			if resolveErr != nil {
-				return 0
+				return opsAlertEmailEnqueueOutcome{RetryNeeded: true}
 			}
 			recipients = resolved
 		}
 	}
 	if !alertEnabled || len(recipients) == 0 {
-		return 0
+		return opsAlertEmailEnqueueOutcome{}
 	}
 	if !shouldSendOpsAlertEmailByMinSeverity(strings.TrimSpace(emailCfg.Alert.MinSeverity), strings.TrimSpace(rule.Severity)) {
-		return 0
+		return opsAlertEmailEnqueueOutcome{}
 	}
 
 	transition = strings.ToLower(strings.TrimSpace(transition))
@@ -1156,19 +1240,19 @@ func (s *OpsAlertEvaluatorService) maybeEnqueueAlertEmail(ctx context.Context, r
 	case opsAlertEmailTransitionFiring:
 	case opsAlertEmailTransitionResolved:
 		if !emailCfg.Alert.IncludeResolvedAlerts {
-			return 0
+			return opsAlertEmailEnqueueOutcome{}
 		}
 	default:
-		return 0
+		return opsAlertEmailEnqueueOutcome{}
 	}
 
 	if runtimeCfg != nil && runtimeCfg.Silencing.Enabled {
 		if isOpsAlertSilenced(time.Now().UTC(), rule, event, runtimeCfg.Silencing) {
-			return 0
+			return opsAlertEmailEnqueueOutcome{}
 		}
 	}
 
-	queued := 0
+	outcome := opsAlertEmailEnqueueOutcome{Complete: true}
 	incidentKey := opsAlertIncidentKeyFromEvent(rule, event)
 	reminderKey := transition
 	if incidentKey != "" {
@@ -1176,6 +1260,16 @@ func (s *OpsAlertEvaluatorService) maybeEnqueueAlertEmail(ctx context.Context, r
 	}
 	reminderKey = truncateString(reminderKey, 200)
 	for _, recipient := range recipients {
+		exists, existsErr := s.hasOpsAlertEmailDelivery(ctx, event.ID, recipient, reminderKey)
+		if existsErr != nil {
+			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] inspect existing email delivery failed (event=%d transition=%s): %v", event.ID, transition, existsErr)
+			outcome.Complete = false
+			outcome.RetryNeeded = true
+			continue
+		}
+		if exists {
+			continue
+		}
 		suppressed, suppressReason, suppressErr := s.shouldSuppressOpsAlertEmail(
 			ctx,
 			recipient,
@@ -1186,10 +1280,13 @@ func (s *OpsAlertEvaluatorService) maybeEnqueueAlertEmail(ctx context.Context, r
 		)
 		if suppressErr != nil {
 			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] inspect email limits failed (event=%d transition=%s): %v", event.ID, transition, suppressErr)
+			outcome.Complete = false
+			outcome.RetryNeeded = true
 			continue
 		}
 		if suppressed {
 			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] email suppressed (event=%d transition=%s recipient=%s reason=%s)", event.ID, transition, maskNotificationEmail(recipient), suppressReason)
+			outcome.Complete = false
 			continue
 		}
 		result, enqueueErr := s.notificationDispatcher.Enqueue(ctx, NotificationEmailSendInput{
@@ -1205,13 +1302,39 @@ func (s *OpsAlertEvaluatorService) maybeEnqueueAlertEmail(ctx context.Context, r
 			if !errors.Is(enqueueErr, ErrNotificationEmailChannelDisabled) {
 				logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] enqueue email failed (event=%d transition=%s): %v", event.ID, transition, enqueueErr)
 			}
+			outcome.Complete = false
+			outcome.RetryNeeded = true
+			continue
+		}
+		if result.ID <= 0 {
+			outcome.Complete = false
+			outcome.RetryNeeded = true
 			continue
 		}
 		if result.Created {
-			queued++
+			outcome.Created++
 		}
 	}
-	return queued
+	return outcome
+}
+
+func (s *OpsAlertEvaluatorService) hasOpsAlertEmailDelivery(ctx context.Context, eventID int64, recipient, reminderKey string) (bool, error) {
+	if s == nil || s.notificationDispatcher == nil || s.notificationDispatcher.repo == nil || eventID <= 0 {
+		return false, nil
+	}
+	result, err := s.notificationDispatcher.repo.List(ctx, NotificationEmailDeliveryListFilter{
+		Page:          1,
+		PageSize:      1,
+		Event:         NotificationEmailEventOpsAlert,
+		SourceType:    "ops_alert_event",
+		SourceID:      fmt.Sprintf("%d", eventID),
+		RecipientHash: notificationEmailHash(strings.ToLower(strings.TrimSpace(recipient))),
+		ReminderKey:   reminderKey,
+	})
+	if err != nil {
+		return false, err
+	}
+	return result.Total > 0 || len(result.Items) > 0, nil
 }
 
 func (s *OpsAlertEvaluatorService) shouldSuppressOpsAlertEmail(

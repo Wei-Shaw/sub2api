@@ -4,9 +4,13 @@ import { useMediaQuery } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
+import UsageTable from '@/components/admin/usage/UsageTable.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsRequestDetailsParams, type OpsRequestDetail } from '@/api/admin/ops'
+import { adminUsageAPI, type AdminUsageQueryParams } from '@/api/admin/usage'
+import type { AdminUsageLog } from '@/types'
+import type { Column } from '@/components/common/types'
 import { parseTimeRangeMinutes, formatDateTime } from '../utils/opsFormatters'
 
 export interface OpsRequestDetailsPreset {
@@ -41,10 +45,31 @@ const isDesktopViewport = useMediaQuery('(min-width: 768px)')
 
 const loading = ref(false)
 const items = ref<OpsRequestDetail[]>([])
+const usageItems = ref<AdminUsageLog[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
 const currentSort = ref<NonNullable<OpsRequestDetailsParams['sort']>>('created_at_desc')
+
+const usesUsageTable = computed(
+  () => props.preset.kind === 'success' && props.preset.has_ttft === true
+)
+
+const usageColumns = computed<Column[]>(() => [
+  { key: 'user', label: t('admin.usage.user'), sortable: false },
+  { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
+  { key: 'account', label: t('admin.usage.account'), sortable: false },
+  { key: 'model', label: t('usage.model'), sortable: false },
+  { key: 'endpoint', label: t('usage.endpoint'), sortable: false },
+  { key: 'group', label: t('admin.usage.group'), sortable: false },
+  { key: 'stream', label: t('usage.type'), sortable: false },
+  { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
+  { key: 'tokens', label: t('usage.tokens'), sortable: false },
+  { key: 'cost', label: t('usage.cost'), sortable: false },
+  { key: 'latency', label: t('usage.latency'), sortable: false },
+  { key: 'created_at', label: t('usage.time'), sortable: false },
+  { key: 'ip_address', label: t('admin.usage.ipAddress'), sortable: false }
+])
 
 const close = () => emit('update:modelValue', false)
 
@@ -68,6 +93,36 @@ const fetchData = async () => {
   if (!props.modelValue) return
   loading.value = true
   try {
+    if (usesUsageTable.value) {
+      const sortMap: Record<
+        NonNullable<OpsRequestDetailsParams['sort']>,
+        Pick<AdminUsageQueryParams, 'sort_by' | 'sort_order'>
+      > = {
+        created_at_desc: { sort_by: 'created_at', sort_order: 'desc' },
+        ttft_desc: { sort_by: 'first_token_ms', sort_order: 'desc' },
+        ttft_asc: { sort_by: 'first_token_ms', sort_order: 'asc' },
+        duration_desc: { sort_by: 'duration_ms', sort_order: 'desc' }
+      }
+      const params: AdminUsageQueryParams = {
+        ...buildTimeParams(),
+        ...sortMap[currentSort.value],
+        page: page.value,
+        page_size: pageSize.value,
+        has_ttft: true,
+        exact_total: true
+      }
+
+      const platform = (props.platform || '').trim()
+      if (platform) params.platform = platform
+      if (typeof props.groupId === 'number' && props.groupId > 0) params.group_id = props.groupId
+
+      const res = await adminUsageAPI.list(params)
+      usageItems.value = res.items || []
+      items.value = []
+      total.value = res.total || 0
+      return
+    }
+
     const params: OpsRequestDetailsParams = {
       ...buildTimeParams(),
       page: page.value,
@@ -86,11 +141,13 @@ const fetchData = async () => {
 
     const res = await opsAPI.listRequestDetails(params)
     items.value = res.items || []
+    usageItems.value = []
     total.value = res.total || 0
   } catch (e: any) {
     console.error('[OpsRequestDetailsModal] Failed to fetch request details', e)
     appStore.showError(e?.message || t('admin.ops.requestDetails.failedToLoad'))
     items.value = []
+    usageItems.value = []
     total.value = 0
   } finally {
     loading.value = false
@@ -217,9 +274,30 @@ const kindBadgeClass = (kind: string) => {
 
         <!-- Table -->
         <div v-else class="flex min-h-0 flex-1 flex-col">
-          <div v-if="items.length === 0" class="rounded-xl border border-dashed border-gray-200 p-10 text-center dark:border-dark-700">
+          <div v-if="!usesUsageTable && items.length === 0" class="rounded-xl border border-dashed border-gray-200 p-10 text-center dark:border-dark-700">
             <div class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ t('admin.ops.requestDetails.empty') }}</div>
             <div class="mt-1 text-xs text-gray-400">{{ t('admin.ops.requestDetails.emptyHint') }}</div>
+          </div>
+
+          <div v-else-if="usesUsageTable" class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
+            <div class="min-h-0 flex-1 overflow-auto">
+              <UsageTable
+                flat
+                :data="usageItems"
+                :columns="usageColumns"
+                :loading="false"
+                :server-side-sort="false"
+                :user-clickable="false"
+              />
+            </div>
+            <Pagination
+              v-if="total > 0"
+              :total="total"
+              :page="page"
+              :page-size="pageSize"
+              @update:page="handlePageChange"
+              @update:pageSize="handlePageSizeChange"
+            />
           </div>
 
           <div v-else class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">

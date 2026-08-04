@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -65,16 +65,28 @@ function evaluationFor(rule: AlertRule): AlertRuleEvaluation | null {
 
 function evaluationStatusFor(rule: AlertRule): string {
 	if (!rule.enabled) return 'disabled'
-	return evaluationFor(rule)?.status ?? 'pending'
+	const evaluation = evaluationFor(rule)
+	if (!evaluation) return 'pending'
+	if (evaluation.status === 'breached' && evaluation.error_code === 'awaiting_sustained_duration') {
+		return 'awaiting_sustained_duration'
+	}
+	if (evaluation.status === 'breached' && evaluation.error_code === 'alert_firing') {
+		return 'alert_firing'
+	}
+	return evaluation.status
 }
 
 function evaluationStatusClass(status?: string): string {
 	switch (status) {
 		case 'breached': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+		case 'alert_firing': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+		case 'awaiting_sustained_duration': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
 		case 'error':
 		case 'unsupported': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
 		case 'stale':
-		case 'no_data': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+		case 'no_data':
+		case 'insufficient_samples':
+		case 'insufficient_bad_count': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
 		case 'shadow': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
 		case 'ok': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
 		default: return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
@@ -85,6 +97,7 @@ const showEditor = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
 const draft = ref<AlertRule | null>(null)
+const rememberedMinimumBadCount = ref(10)
 
 type MetricGroup = 'system' | 'group' | 'account'
 
@@ -103,6 +116,39 @@ const groupMetricTypes = new Set<MetricType>([
   'group_available_ratio',
   'group_rate_limit_ratio'
 ])
+
+const aggregatePercentileMetricTypes = new Set<MetricType>([
+	'ttft_p95_seconds',
+	'ttft_p99_seconds',
+	'ttft_max_seconds'
+])
+
+function isAggregatePercentileMetric(metricType?: MetricType | null): boolean {
+	return metricType ? aggregatePercentileMetricTypes.has(metricType) : false
+}
+
+const selectedMetricSupportsMinimumBadCount = computed(
+	() => !isAggregatePercentileMetric(draft.value?.metric_type)
+)
+
+watch(
+	() => draft.value?.metric_type,
+	(metricType, previousMetricType) => {
+		if (!draft.value || !metricType) return
+		if (isAggregatePercentileMetric(metricType)) {
+			if (draft.value.minimum_bad_count > 0) {
+				rememberedMinimumBadCount.value = draft.value.minimum_bad_count
+			}
+			draft.value.minimum_bad_count = 0
+			return
+		}
+		if (isAggregatePercentileMetric(previousMetricType) && draft.value.minimum_bad_count === 0) {
+			draft.value.minimum_bad_count = rememberedMinimumBadCount.value > 0
+				? rememberedMinimumBadCount.value
+				: 10
+		}
+	}
+)
 
 function parsePositiveInt(value: unknown): number | null {
   if (value == null) return null
@@ -386,6 +432,79 @@ const selectedMetricDefinition = computed(() => {
   return metricDefinitions.value.find((m) => m.type === metricType) ?? null
 })
 
+function metricDefinitionFor(metricType: MetricType) {
+	return metricDefinitions.value.find((metric) => metric.type === metricType)
+}
+
+function metricValueLabel(rule: AlertRule, value: number | null | undefined): string {
+	if (value == null || !Number.isFinite(value)) return '-'
+	const unit = metricDefinitionFor(rule.metric_type)?.unit || ''
+	return `${Number(value.toFixed(2))}${unit}`
+}
+
+function ruleScopeLabel(rule: AlertRule): string {
+	const groupId = parsePositiveInt(rule.filters?.group_id)
+	if (!groupId) return t('admin.ops.alertRules.summary.allScopes')
+	const group = groupOptionsBase.value.find((option) => Number(option.value) === groupId)
+	return group?.label || `#${groupId}`
+}
+
+function ruleConditionSummary(rule: AlertRule): string {
+	if (!isAggregatePercentileMetric(rule.metric_type)) return ''
+	return t('admin.ops.alertRules.summary.aggregatePercentile', {
+		scope: ruleScopeLabel(rule),
+		window: rule.window_minutes,
+		samples: rule.minimum_samples,
+		metric: metricDefinitionFor(rule.metric_type)?.label || rule.metric_type,
+		operator: rule.operator,
+		threshold: metricValueLabel(rule, rule.threshold),
+		sustained: rule.sustained_minutes
+	})
+}
+
+function evaluationSummary(rule: AlertRule): string {
+	const evaluation = evaluationFor(rule)
+	if (!evaluation) return ''
+	const value = metricValueLabel(rule, evaluation.metric_value)
+	const threshold = metricValueLabel(rule, evaluation.threshold_value ?? rule.threshold)
+
+	if (evaluation.status === 'insufficient_samples') {
+		return t('admin.ops.alertRules.summary.insufficientSamples', {
+			value,
+			threshold,
+			current: evaluation.sample_count,
+			required: rule.minimum_samples
+		})
+	}
+	if (evaluation.status === 'insufficient_bad_count') {
+		return t('admin.ops.alertRules.summary.insufficientBadCount', {
+			value,
+			threshold,
+			current: evaluation.bad_count,
+			required: rule.minimum_bad_count
+		})
+	}
+	if (evaluation.status === 'breached' && evaluation.error_code === 'awaiting_sustained_duration') {
+		const match = evaluation.error_message?.match(/\((\d+)\/(\d+) evaluations\)/)
+		return t('admin.ops.alertRules.summary.awaitingSustained', {
+			value,
+			threshold,
+			current: match?.[1] || '-',
+			required: match?.[2] || '-'
+		})
+	}
+	if (evaluation.status === 'breached' && evaluation.error_code === 'alert_firing') {
+		return t('admin.ops.alertRules.summary.alertFiring', { value, threshold })
+	}
+	if (evaluation.status === 'breached') {
+		return t('admin.ops.alertRules.summary.breached', { value, threshold })
+	}
+	if (evaluation.status === 'ok') {
+		return t('admin.ops.alertRules.summary.ok', { value, threshold })
+	}
+	return evaluation.error_message || evaluation.error_code || ''
+}
+
 const metricOptions = computed(() => {
   const buildGroup = (group: MetricGroup): SelectOption[] => {
     const items = metricDefinitions.value.filter((m) => m.group === group)
@@ -477,7 +596,9 @@ const editorValidation = computed(() => {
 		errors.push(t('admin.ops.alertRules.validation.cooldownRange'))
 	}
 	if (!(Number.isInteger(r.minimum_samples) && r.minimum_samples >= 0)) errors.push(t('admin.ops.alertRules.validation.minimumSamplesRange'))
-	if (!(Number.isInteger(r.minimum_bad_count) && r.minimum_bad_count >= 0)) errors.push(t('admin.ops.alertRules.validation.minimumBadCountRange'))
+	if (!isAggregatePercentileMetric(r.metric_type) && !(Number.isInteger(r.minimum_bad_count) && r.minimum_bad_count >= 0)) {
+		errors.push(t('admin.ops.alertRules.validation.minimumBadCountRange'))
+	}
 	if (!r.incident_family || !/^[a-z0-9_-]{1,64}$/.test(r.incident_family)) errors.push(t('admin.ops.alertRules.validation.incidentFamily'))
 	if ((r.recovery_operator && r.recovery_threshold == null) || (!r.recovery_operator && r.recovery_threshold != null)) {
 		errors.push(t('admin.ops.alertRules.validation.recoveryPair'))
@@ -496,10 +617,16 @@ async function save() {
   }
   saving.value = true
   try {
+	const payload: AlertRule = {
+		...draft.value,
+		minimum_bad_count: isAggregatePercentileMetric(draft.value.metric_type)
+			? 0
+			: draft.value.minimum_bad_count
+	}
     if (editingId.value) {
-      await opsAPI.updateAlertRule(editingId.value, draft.value)
+		await opsAPI.updateAlertRule(editingId.value, payload)
     } else {
-      await opsAPI.createAlertRule(draft.value)
+		await opsAPI.createAlertRule(payload)
     }
     showEditor.value = false
     draft.value = null
@@ -616,13 +743,21 @@ function cancelDelete() {
               <span class="mx-1 text-gray-400">{{ row.operator }}</span>
               <span class="font-mono">{{ row.threshold }}</span>
 				</div>
+				<div v-if="ruleConditionSummary(row)" class="text-[10px] leading-4 text-gray-500 dark:text-gray-400">
+					{{ ruleConditionSummary(row) }}
+				</div>
 				<div class="flex flex-wrap items-center gap-2">
 					<span class="rounded px-2 py-0.5 text-[10px] font-bold" :class="evaluationStatusClass(evaluationStatusFor(row))">
 						{{ t(`admin.ops.alertRules.evaluation.${evaluationStatusFor(row)}`) }}
 					</span>
 					<span v-if="evaluationFor(row)" class="text-[10px] text-gray-500 dark:text-gray-400">
-						{{ evaluationFor(row)?.bad_count }} / {{ evaluationFor(row)?.sample_count }}
+						{{ isAggregatePercentileMetric(row.metric_type)
+							? t('admin.ops.alertRules.summary.sampleCount', { count: evaluationFor(row)?.sample_count })
+							: t('admin.ops.alertRules.summary.badAndTotalCount', { bad: evaluationFor(row)?.bad_count, total: evaluationFor(row)?.sample_count }) }}
 					</span>
+				</div>
+				<div v-if="evaluationSummary(row)" class="text-[10px] leading-4 text-gray-500 dark:text-gray-400">
+					{{ evaluationSummary(row) }}
 				</div>
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs text-gray-700 dark:text-gray-200">
@@ -672,10 +807,13 @@ function cancelDelete() {
                   {{ formatDateTime(row.updated_at) }}
                 </div>
               </td>
-              <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-700 dark:text-gray-200">
+              <td class="max-w-[320px] px-4 py-3 text-xs text-gray-700 dark:text-gray-200">
                 <span class="font-mono">{{ row.metric_type }}</span>
                 <span class="mx-1 text-gray-400">{{ row.operator }}</span>
                 <span class="font-mono">{{ row.threshold }}</span>
+				<div v-if="ruleConditionSummary(row)" class="mt-1 whitespace-normal text-[10px] leading-4 text-gray-500 dark:text-gray-400">
+					{{ ruleConditionSummary(row) }}
+				</div>
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-200">
                 {{ row.severity }}
@@ -689,11 +827,13 @@ function cancelDelete() {
 							{{ t(`admin.ops.alertRules.evaluation.${evaluationStatusFor(row)}`) }}
 						</span>
 						<span v-if="evaluationFor(row)" class="text-[10px] text-gray-500 dark:text-gray-400">
-							{{ evaluationFor(row)?.bad_count }} / {{ evaluationFor(row)?.sample_count }}
+							{{ isAggregatePercentileMetric(row.metric_type)
+								? t('admin.ops.alertRules.summary.sampleCount', { count: evaluationFor(row)?.sample_count })
+								: t('admin.ops.alertRules.summary.badAndTotalCount', { bad: evaluationFor(row)?.bad_count, total: evaluationFor(row)?.sample_count }) }}
 						</span>
 					</div>
-					<div v-if="evaluationFor(row)?.error_code" class="mt-1 max-w-[180px] truncate text-[10px] text-gray-500 dark:text-gray-400">
-						{{ evaluationFor(row)?.error_code }}
+					<div v-if="evaluationSummary(row)" class="mt-1 max-w-[260px] whitespace-normal text-[10px] leading-4 text-gray-500 dark:text-gray-400" :title="evaluationFor(row)?.error_message || ''">
+						{{ evaluationSummary(row) }}
 					</div>
 				</td>
               <td class="whitespace-nowrap px-4 py-3 text-right text-xs">
@@ -733,7 +873,7 @@ function cancelDelete() {
 
           <div>
             <label class="input-label">{{ t('admin.ops.alertRules.form.metric') }}</label>
-            <Select v-model="draft!.metric_type" :options="metricOptions" />
+            <Select v-model="draft!.metric_type" :options="metricOptions" data-testid="metric-select" />
             <div v-if="selectedMetricDefinition" class="mt-1 space-y-0.5 text-xs text-gray-500 dark:text-gray-400">
               <p>{{ selectedMetricDefinition.description }}</p>
               <p>
@@ -815,8 +955,11 @@ function cancelDelete() {
               <div>
                 <label class="input-label">{{ t('admin.ops.alertRules.form.minimumSamples') }}</label>
                 <input v-model.number="draft!.minimum_samples" class="input" type="number" min="0" />
+				<p v-if="isAggregatePercentileMetric(draft?.metric_type)" class="mt-1 text-xs text-gray-500 dark:text-gray-400" data-testid="ttft-minimum-samples-hint">
+					{{ t('admin.ops.alertRules.hints.ttftMinimumSamples') }}
+				</p>
               </div>
-              <div>
+			<div v-if="selectedMetricSupportsMinimumBadCount" data-testid="minimum-bad-count-field">
                 <label class="input-label">{{ t('admin.ops.alertRules.form.minimumBadCount') }}</label>
                 <input v-model.number="draft!.minimum_bad_count" class="input" type="number" min="0" />
               </div>

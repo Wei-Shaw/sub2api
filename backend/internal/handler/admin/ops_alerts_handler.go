@@ -297,6 +297,9 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 			}
 		}
 	}
+	if !service.OpsMetricSupportsMinimumBadCount(metricType) && validated.MinimumBadCount > 0 {
+		return nil, fmt.Errorf("minimum_bad_count must be 0 for aggregate percentile metric_type %s", metricType)
+	}
 
 	if v, ok := raw["recovery_operator"]; ok {
 		if err := json.Unmarshal(v, &validated.RecoveryOperator); err != nil {

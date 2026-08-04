@@ -787,7 +787,17 @@ export interface AlertRule {
   last_triggered_at?: string | null
 }
 
-export type AlertEvaluationStatus = 'ok' | 'breached' | 'no_data' | 'stale' | 'error' | 'unsupported' | 'disabled' | 'shadow'
+export type AlertEvaluationStatus =
+	| 'ok'
+	| 'breached'
+	| 'insufficient_samples'
+	| 'insufficient_bad_count'
+	| 'no_data'
+	| 'stale'
+	| 'error'
+	| 'unsupported'
+	| 'disabled'
+	| 'shadow'
 
 export interface AlertRuleEvaluation {
 	id: number

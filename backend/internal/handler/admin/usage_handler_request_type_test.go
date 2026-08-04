@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
@@ -128,6 +129,45 @@ func TestAdminUsageListInvalidExactTotal(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminUsageListExactTimePlatformAndTTFTFilters(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?start_time=2026-08-04T01%3A02%3A03Z&end_time=2026-08-04T02%3A03%3A04Z&platform=OpenAI&has_ttft=true", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, repo.listFilters.StartTime)
+	require.NotNil(t, repo.listFilters.EndTime)
+	require.Equal(t, time.Date(2026, 8, 4, 1, 2, 3, 0, time.UTC), *repo.listFilters.StartTime)
+	require.Equal(t, time.Date(2026, 8, 4, 2, 3, 4, 0, time.UTC), *repo.listFilters.EndTime)
+	require.Equal(t, "OpenAI", repo.listFilters.Platform)
+	require.NotNil(t, repo.listFilters.HasTTFT)
+	require.True(t, *repo.listFilters.HasTTFT)
+}
+
+func TestAdminUsageListExactTimeValidation(t *testing.T) {
+	tests := []string{
+		"?start_time=2026-08-04T01%3A02%3A03Z",
+		"?start_time=bad&end_time=2026-08-04T02%3A03%3A04Z",
+		"?start_time=2026-08-04T02%3A03%3A04Z&end_time=2026-08-04T01%3A02%3A03Z",
+		"?start_time=2026-08-01T00%3A00%3A00Z&end_time=2026-09-01T00%3A00%3A01Z",
+		"?has_ttft=maybe",
+	}
+
+	for _, query := range tests {
+		t.Run(query, func(t *testing.T) {
+			repo := &adminUsageRepoCapture{}
+			router := newAdminUsageRequestTypeTestRouter(repo)
+			req := httptest.NewRequest(http.MethodGet, "/admin/usage"+query, nil)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+		})
+	}
 }
 
 func TestAdminUsageStatsRequestTypePriority(t *testing.T) {

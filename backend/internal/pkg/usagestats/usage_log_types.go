@@ -272,6 +272,7 @@ type UsageLogFilters struct {
 	GroupID   int64
 	RequestID string
 	Model     string
+	Platform  string
 	// ModelFilterSource controls how Model is matched. Empty preserves raw usage_logs.model semantics.
 	ModelFilterSource string
 	RequestType       *int16
@@ -280,6 +281,7 @@ type UsageLogFilters struct {
 	BillingMode       string
 	StartTime         *time.Time
 	EndTime           *time.Time
+	HasTTFT           *bool
 	// ExactTotal requests exact COUNT(*) for pagination. Default false for fast large-table paging.
 	ExactTotal bool
 }

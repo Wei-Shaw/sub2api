@@ -2018,12 +2018,16 @@ export interface UsageQueryParams {
   account_id?: number
   group_id?: number
   model?: string
+  platform?: string
   request_type?: UsageRequestType
   stream?: boolean
   billing_type?: number | null
   billing_mode?: string | null
   start_date?: string
   end_date?: string
+  start_time?: string
+  end_time?: string
+  has_ttft?: boolean
   timezone?: string
   sort_by?: string
   sort_order?: 'asc' | 'desc'

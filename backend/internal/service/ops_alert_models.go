@@ -29,14 +29,16 @@ const (
 	OpsAlertStatusResolved       = "resolved"
 	OpsAlertStatusManualResolved = "manual_resolved"
 
-	OpsAlertEvaluationStatusOK          = "ok"
-	OpsAlertEvaluationStatusBreached    = "breached"
-	OpsAlertEvaluationStatusNoData      = "no_data"
-	OpsAlertEvaluationStatusStale       = "stale"
-	OpsAlertEvaluationStatusError       = "error"
-	OpsAlertEvaluationStatusUnsupported = "unsupported"
-	OpsAlertEvaluationStatusDisabled    = "disabled"
-	OpsAlertEvaluationStatusShadow      = "shadow"
+	OpsAlertEvaluationStatusOK                   = "ok"
+	OpsAlertEvaluationStatusBreached             = "breached"
+	OpsAlertEvaluationStatusInsufficientSamples  = "insufficient_samples"
+	OpsAlertEvaluationStatusInsufficientBadCount = "insufficient_bad_count"
+	OpsAlertEvaluationStatusNoData               = "no_data"
+	OpsAlertEvaluationStatusStale                = "stale"
+	OpsAlertEvaluationStatusError                = "error"
+	OpsAlertEvaluationStatusUnsupported          = "unsupported"
+	OpsAlertEvaluationStatusDisabled             = "disabled"
+	OpsAlertEvaluationStatusShadow               = "shadow"
 )
 
 type OpsAlertRule struct {

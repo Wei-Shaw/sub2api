@@ -28,15 +28,20 @@ func (notificationEmailTestEncryptor) Decrypt(value string) (string, error) {
 }
 
 type fakeNotificationEmailDeliveryRepository struct {
-	mu         sync.Mutex
-	items      []NotificationEmailDelivery
-	byDedup    map[string]int64
-	nextID     int64
-	enqueueErr error
+	mu                    sync.Mutex
+	items                 []NotificationEmailDelivery
+	byDedup               map[string]int64
+	nextID                int64
+	enqueueErr            error
+	enqueueErrByRecipient map[string]error
 }
 
 func newFakeNotificationEmailDeliveryRepository() *fakeNotificationEmailDeliveryRepository {
-	return &fakeNotificationEmailDeliveryRepository{byDedup: map[string]int64{}, nextID: 1}
+	return &fakeNotificationEmailDeliveryRepository{
+		byDedup:               map[string]int64{},
+		enqueueErrByRecipient: map[string]error{},
+		nextID:                1,
+	}
 }
 
 func (r *fakeNotificationEmailDeliveryRepository) Enqueue(_ context.Context, delivery NotificationEmailDelivery) (int64, bool, error) {
@@ -44,6 +49,9 @@ func (r *fakeNotificationEmailDeliveryRepository) Enqueue(_ context.Context, del
 	defer r.mu.Unlock()
 	if r.enqueueErr != nil {
 		return 0, false, r.enqueueErr
+	}
+	if err := r.enqueueErrByRecipient[delivery.RecipientEmail]; err != nil {
+		return 0, false, err
 	}
 	if id, ok := r.byDedup[delivery.DedupKey]; ok {
 		return id, false, nil
