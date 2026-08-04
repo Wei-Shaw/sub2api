@@ -145,6 +145,25 @@ type upstreamBillingProbeResponse struct {
 	ObservedAt              string   `json:"observed_at"`
 }
 
+type upstreamDeepSeekBalanceResponse struct {
+	IsAvailable  *bool                         `json:"is_available"`
+	BalanceInfos []upstreamDeepSeekBalanceInfo `json:"balance_infos"`
+}
+
+type upstreamDeepSeekBalanceInfo struct {
+	Currency        string `json:"currency"`
+	TotalBalance    string `json:"total_balance"`
+	GrantedBalance  string `json:"granted_balance"`
+	ToppedUpBalance string `json:"topped_up_balance"`
+}
+
+type upstreamBillingProbeKind uint8
+
+const (
+	upstreamBillingProbeKindSub2API upstreamBillingProbeKind = iota
+	upstreamBillingProbeKindDeepSeek
+)
+
 // GetUpstreamBillingProbeSettings returns defaults when the setting is absent.
 func (s *SettingService) GetUpstreamBillingProbeSettings(ctx context.Context) (*UpstreamBillingProbeSettings, error) {
 	defaults := defaultUpstreamBillingProbeSettings()
@@ -207,7 +226,7 @@ func normalizeUpstreamBillingProbeSettings(settings *UpstreamBillingProbeSetting
 	}
 }
 
-// UpstreamBillingProbeService discovers a remote Sub2API billing snapshot.
+// UpstreamBillingProbeService discovers a sanitized upstream billing snapshot.
 type UpstreamBillingProbeService struct {
 	accountRepo        AccountRepository
 	accountTestService *AccountTestService
@@ -613,6 +632,10 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	if err != nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "invalid_base_url", 0)
 	}
+	probeKind := upstreamBillingProbeKindSub2API
+	if account.Platform == PlatformOpenAI && upstreamBillingProbeTargetIsDeepSeekOfficialAPI(normalizedBaseURL) {
+		probeKind = upstreamBillingProbeKindDeepSeek
+	}
 	proxyURL := ""
 	if account.ProxyID != nil {
 		if account.Proxy == nil {
@@ -624,6 +647,9 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		proxyURL = account.Proxy.URL()
 	}
 	probeURL := buildOpenAIEndpointURL(normalizedBaseURL, "/v1/sub2api/billing")
+	if probeKind == upstreamBillingProbeKindDeepSeek {
+		probeURL = buildDeepSeekBalanceURL(normalizedBaseURL)
+	}
 	probeCtx, cancel := context.WithTimeout(ctx, upstreamBillingProbeRequestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, probeURL, bytes.NewReader(nil))
@@ -665,7 +691,12 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "http_error", retryAfter(resp.Header, now))
 	}
-	data, err := parseUpstreamBillingProbeResponse(body)
+	var data map[string]any
+	if probeKind == upstreamBillingProbeKindDeepSeek {
+		data, err = parseDeepSeekBalanceResponse(body)
+	} else {
+		data, err = parseUpstreamBillingProbeResponse(body)
+	}
 	if err != nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "invalid_response", retryAfter(resp.Header, now))
 	}
@@ -683,7 +714,7 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	// 指数退避——探测本身成功了，原始声明照常存进快照供展示。
 	var syncRate *float64
 	previousRate := account.BillingRateMultiplier()
-	if upstreamBillingRateSyncEnabled(account) {
+	if probeKind == upstreamBillingProbeKindSub2API && upstreamBillingRateSyncEnabled(account) {
 		if value, valid := upstreamBillingProbeSyncRate(data); valid {
 			syncRate = &value
 			snapshot.SyncedRateMultiplier = &value
@@ -849,6 +880,92 @@ func parseUpstreamBillingProbeResponse(body []byte) (map[string]any, error) {
 	return data, nil
 }
 
+func parseDeepSeekBalanceResponse(body []byte) (map[string]any, error) {
+	var response upstreamDeepSeekBalanceResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, err
+	}
+	if response.IsAvailable == nil {
+		return nil, fmt.Errorf("missing is_available")
+	}
+	if *response.IsAvailable && len(response.BalanceInfos) == 0 {
+		return nil, fmt.Errorf("available balance has no balance_infos")
+	}
+	if len(response.BalanceInfos) > 16 {
+		return nil, fmt.Errorf("too many balance_infos")
+	}
+
+	balances := make([]map[string]any, 0, len(response.BalanceInfos))
+	seenCurrencies := make(map[string]struct{}, len(response.BalanceInfos))
+	for _, balance := range response.BalanceInfos {
+		currency, ok := normalizeDeepSeekBalanceCurrency(balance.Currency)
+		if !ok {
+			return nil, fmt.Errorf("invalid balance currency")
+		}
+		if _, exists := seenCurrencies[currency]; exists {
+			return nil, fmt.Errorf("duplicate balance currency")
+		}
+		seenCurrencies[currency] = struct{}{}
+
+		total, totalOK := normalizeNonNegativeDecimal(balance.TotalBalance)
+		granted, grantedOK := normalizeNonNegativeDecimal(balance.GrantedBalance)
+		toppedUp, toppedUpOK := normalizeNonNegativeDecimal(balance.ToppedUpBalance)
+		if !totalOK || !grantedOK || !toppedUpOK {
+			return nil, fmt.Errorf("invalid balance amount")
+		}
+		balances = append(balances, map[string]any{
+			"currency":          currency,
+			"total_balance":     total,
+			"granted_balance":   granted,
+			"topped_up_balance": toppedUp,
+		})
+	}
+
+	return map[string]any{
+		"object":         "deepseek.user_balance",
+		"schema_version": 1,
+		"provider":       "deepseek",
+		"is_available":   *response.IsAvailable,
+		"balance_infos":  balances,
+	}, nil
+}
+
+func normalizeDeepSeekBalanceCurrency(value string) (string, bool) {
+	currency := strings.ToUpper(strings.TrimSpace(value))
+	if len(currency) != 3 {
+		return "", false
+	}
+	for i := range len(currency) {
+		if currency[i] < 'A' || currency[i] > 'Z' {
+			return "", false
+		}
+	}
+	return currency, true
+}
+
+func normalizeNonNegativeDecimal(value string) (string, bool) {
+	decimal := strings.TrimSpace(value)
+	if decimal == "" || len(decimal) > 128 {
+		return "", false
+	}
+	digits := 0
+	dots := 0
+	for i := range len(decimal) {
+		switch {
+		case decimal[i] >= '0' && decimal[i] <= '9':
+			digits++
+		case decimal[i] == '.':
+			dots++
+			if dots > 1 || i == 0 || i == len(decimal)-1 {
+				return "", false
+			}
+		default:
+			return "", false
+		}
+	}
+	return decimal, digits > 0
+}
+
 func upstreamBillingRateAt(data map[string]any, now time.Time) (float64, bool) {
 	if scope, _ := data["billing_scope"].(string); scope != "token" {
 		return 0, false
@@ -1004,11 +1121,34 @@ func isUpstreamBillingProbeAccount(account *Account) bool {
 // an official provider API just like the rest, so it belongs on this list.
 var upstreamBillingProbeOfficialAPIDomains = []string{
 	"anthropic.com",
+	"deepseek.com",
 	"googleapis.com",
 	"x.ai",
 	"grok.com",
 	"openai.com",
 	"ollama.com",
+}
+
+func upstreamBillingProbeTargetIsDeepSeekOfficialAPI(baseURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return false
+	}
+	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	return host == "api.deepseek.com"
+}
+
+func buildDeepSeekBalanceURL(baseURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return strings.TrimRight(strings.TrimSpace(baseURL), "/") + "/user/balance"
+	}
+	parsed.Path = "/user/balance"
+	parsed.RawPath = ""
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func upstreamBillingProbeTargetIsOfficialAPI(baseURL string) bool {

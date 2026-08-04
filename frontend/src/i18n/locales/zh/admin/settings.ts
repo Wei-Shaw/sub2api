@@ -401,14 +401,14 @@ export default {
         allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
       },
       upstreamBillingProbe: {
-        title: '上游倍率自动探测',
-        description: '定期获取 API Key 账号所连接上游 Sub2API 站点声明的计费倍率；只有另行开启“同步上游声明倍率”的账号才会更新账号倍率。',
+        title: '上游账务信息自动探测',
+        description: '定期获取上游 Sub2API 站点声明的倍率或受支持官方服务商提供的余额；仅中转倍率响应且账号另行开启“同步上游声明倍率”时才会更新账号倍率。',
         enabled: '启用全局自动探测',
         enabledHint: '开启后，仅对账号自身已启用自动检测的账号执行定时探测；关闭后停止所有定时探测，手动探测不受影响。',
         intervalMinutes: '探测周期（分钟）',
         intervalHint: '范围 5–1440 分钟。成功探测结果的有效期为两个探测周期。',
-        saved: '上游倍率自动探测设置已保存',
-        saveFailed: '保存上游倍率自动探测设置失败'
+        saved: '上游账务信息自动探测设置已保存',
+        saveFailed: '保存上游账务信息自动探测设置失败'
       },
       ollamaCloudUsage: {
         title: 'Ollama Cloud 用量刷新',
