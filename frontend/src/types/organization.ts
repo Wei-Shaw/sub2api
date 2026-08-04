@@ -158,6 +158,7 @@ export interface OrganizationSpendLimitRule {
   organization_id: number
   member_user_id?: number
   member_login?: string
+  member_username?: string
   daily_limit_usd?: string
   monthly_limit_usd?: string
   alert_enabled: boolean
@@ -171,6 +172,7 @@ export interface OrganizationSpendLimitRule {
 export interface OrganizationSpendUsage {
   member_user_id: number
   member_login: string
+  member_username: string
   daily_used_usd: string
   monthly_used_usd: string
   daily_limit_usd?: string

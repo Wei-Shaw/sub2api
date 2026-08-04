@@ -568,6 +568,8 @@ const formatNumber = (value: number): string => {
 }
 
 const getRankingUserLabel = (item: UserSpendingRankingItem): string => {
+  if (item.username) return item.username
+  if (item.login_name) return item.login_name
   if (item.email) return item.email
   return t('admin.redeem.userPrefix', { id: item.user_id })
 }
