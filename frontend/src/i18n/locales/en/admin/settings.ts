@@ -183,6 +183,29 @@ export default {
         secretKeyHint: 'Server-side verification key (keep this secret)',
         secretKeyConfiguredHint: 'Secret key configured. Leave empty to keep the current value.'
       REDACTED,
+      tencentCaptcha: {
+        title: 'Tencent Captcha',
+        description: 'Slider captcha protection for login, registration, and third-party account creation',
+        enable: 'Enable Tencent Captcha',
+        enableHint: 'Use Tencent slider captcha in every existing Turnstile flow',
+        keepExisting: 'Leave empty to keep current value',
+        configured: 'Configured. Leave empty to keep it.',
+        required: 'Required before enabling.',
+        mutualExclusion: 'Tencent Captcha and Cloudflare Turnstile are mutually exclusive. Enabling one disables the other.',
+        appCredentialsTitle: 'Captcha application credentials',
+        appCredentialsHint: 'Get CaptchaAppId and AppSecretKey from Verification Management in the Captcha console.',
+        cloudCredentialsTitle: 'Cloud API credentials',
+        cloudCredentialsHint: 'SecretId and SecretKey authorize server-side DescribeCaptchaResult requests.',
+        appId: 'CaptchaAppId',
+        appSecretKey: 'AppSecretKey',
+        cloudSecretId: 'Tencent Cloud SecretId',
+        cloudSecretKey: 'Tencent Cloud SecretKey',
+        camPermissionHint: 'Create a CAM sub-user with QcloudCaptchaFullAccess instead of using permanent root-account credentials.',
+        aidEncryptedHint: 'aidEncrypted is not supported yet. Keep CaptchaAppId mandatory verification disabled in the Captcha console.',
+        openCaptchaConsole: 'Open Captcha console',
+        createCloudKeys: 'Create SecretId / SecretKey',
+        openWebDocs: 'View Web integration guide'
+      REDACTED,
       apiKeyAcl: {
         title: 'API Key IP Access Control',
         description:

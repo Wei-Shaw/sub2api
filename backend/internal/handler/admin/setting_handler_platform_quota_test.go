@@ -64,6 +64,23 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestSettingsAuditRequestDoesNotInheritStoredTencentSecrets(t *testing.T) {
+	req := UpdateSettingsRequest{
+		TencentCaptchaAppSecretKey:   "  ",
+		TencentCaptchaCloudSecretID:  "\t",
+		TencentCaptchaCloudSecretKey: "\n",
+REDACTED
+
+	auditReq := settingsAuditRequest(req)
+	req.TencentCaptchaAppSecretKey = "stored-app-secret"
+	req.TencentCaptchaCloudSecretID = "stored-secret-id"
+	req.TencentCaptchaCloudSecretKey = "stored-secret-key"
+
+	require.Empty(t, auditReq.TencentCaptchaAppSecretKey)
+	require.Empty(t, auditReq.TencentCaptchaCloudSecretID)
+	require.Empty(t, auditReq.TencentCaptchaCloudSecretKey)
+REDACTED
+
 func TestDiffSettings_DetectsCompactHomeChange(t *testing.T) {
 	changed := diffSettings(
 		&service.SystemSettings{REDACTED,

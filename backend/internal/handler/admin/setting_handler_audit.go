@@ -107,6 +107,21 @@ REDACTED
 	if req.TurnstileSecretKey != "" {
 		changed = append(changed, "turnstile_secret_key")
 REDACTED
+	if before.TencentCaptchaEnabled != after.TencentCaptchaEnabled {
+		changed = append(changed, "tencent_captcha_enabled")
+REDACTED
+	if before.TencentCaptchaAppID != after.TencentCaptchaAppID {
+		changed = append(changed, "tencent_captcha_app_id")
+REDACTED
+	if req.TencentCaptchaAppSecretKey != "" {
+		changed = append(changed, "tencent_captcha_app_secret_key")
+REDACTED
+	if req.TencentCaptchaCloudSecretID != "" {
+		changed = append(changed, "tencent_captcha_cloud_secret_id")
+REDACTED
+	if req.TencentCaptchaCloudSecretKey != "" {
+		changed = append(changed, "tencent_captcha_cloud_secret_key")
+REDACTED
 	if before.APIKeyACLTrustForwardedIP != after.APIKeyACLTrustForwardedIP {
 		changed = append(changed, "api_key_acl_trust_forwarded_ip")
 REDACTED

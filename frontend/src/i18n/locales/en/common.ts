@@ -243,6 +243,8 @@ export default {
     reloginRequired: 'Session expired. Please log in again.',
     turnstileExpired: 'Verification expired, please try again',
     turnstileFailed: 'Verification failed, please try again',
+    captchaVerified: 'Verification completed',
+    captchaLoading: 'Loading verification…',
     completeVerification: 'Please complete the verification',
     verifyYourEmail: 'Verify Your Email',
     sessionExpired: 'Session expired',

@@ -204,10 +204,13 @@
         </div>
 
         <!-- Turnstile Widget -->
-        <div v-if="turnstileEnabled && turnstileSiteKey" data-testid="registration-turnstile">
+        <div v-if="captchaEnabled" data-testid="registration-turnstile">
           <TurnstileWidget
             ref="turnstileRef"
-            :site-key="turnstileSiteKey"
+            :turnstile-enabled="turnstileEnabled"
+            :turnstile-site-key="turnstileSiteKey"
+            :tencent-enabled="tencentCaptchaEnabled"
+            :tencent-app-id="tencentCaptchaAppId"
             @verify="onTurnstileVerify"
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
@@ -279,6 +282,7 @@
           :github-enabled="githubOAuthEnabled"
           :google-enabled="googleOAuthEnabled"
           :show-divider="false"
+          @start="handleOAuthStart"
         />
 
         <LinuxDoOAuthSection
@@ -286,12 +290,14 @@
           :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
           :show-divider="false"
+          @start="handleOAuthStart"
         />
         <WechatOAuthSection
           v-if="wechatOAuthEnabled"
           :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
           :show-divider="false"
+          @start="handleOAuthStart"
         />
         <OidcOAuthSection
           v-if="oidcOAuthEnabled"
@@ -299,6 +305,7 @@
           :provider-name="oidcOAuthProviderName"
           :aff-code="formData.aff_code"
           :show-divider="false"
+          @start="handleOAuthStart"
         />
       </div>
     </div>
@@ -329,15 +336,19 @@ import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
 import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
 import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
 import Icon from '@/components/icons/Icon.vue'
-import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
 import {
+  buildOAuthLoginStartURL,
   getPublicSettings,
   isWeChatWebOAuthEnabled,
+  startOAuthLogin,
+  type OAuthLoginStart,
   validatePromoCode,
   validateInvitationCode
 REDACTED from '@/api/auth'
 import { buildAuthErrorMessage REDACTED from '@/utils/authError'
+import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import {
   formatRegistrationEmailSuffixWhitelistForMessage,
   isRegistrationEmailSuffixAllowed,
@@ -375,6 +386,8 @@ const invitationCodeEnabled = ref<boolean>(false)
 const affiliateEnabled = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
+const tencentCaptchaEnabled = ref<boolean>(false)
+const tencentCaptchaAppId = ref<string>('')
 const siteName = ref<string>('Sub2API')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
@@ -394,6 +407,12 @@ const showAgreementModal = ref<boolean>(false)
 // Turnstile
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const turnstileToken = ref<string>('')
+const tencentCaptchaRandstr = ref<string>('')
+const captchaEnabled = computed(
+  () =>
+    (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) ||
+    (tencentCaptchaEnabled.value && Boolean(tencentCaptchaAppId.value))
+)
 
 // Promo code validation
 const promoValidating = ref<boolean>(false)
@@ -484,6 +503,8 @@ onMounted(async () => {
     affiliateEnabled.value = settings.affiliate_enabled
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
+    tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
+    tencentCaptchaAppId.value = settings.tencent_captcha_app_id || ''
     siteName.value = settings.site_name || 'Sub2API'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
@@ -732,19 +753,72 @@ REDACTED
 
 // ==================== Turnstile Handlers ====================
 
-function onTurnstileVerify(token: string): void {
+function onTurnstileVerify(token: string, randstr = ''): void {
   turnstileToken.value = token
+  tencentCaptchaRandstr.value = randstr
   errors.turnstile = ''
 REDACTED
 
 function onTurnstileExpire(): void {
   turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
   errors.turnstile = t('auth.turnstileExpired')
 REDACTED
 
 function onTurnstileError(): void {
   turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
   errors.turnstile = t('auth.turnstileFailed')
+REDACTED
+
+function resetCaptchaProof(): void {
+  turnstileRef.value?.reset()
+  turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
+  errors.turnstile = ''
+REDACTED
+
+async function acquireTencentProof(): Promise<boolean> {
+  if (!tencentCaptchaEnabled.value) return true
+
+  const proof = await turnstileRef.value?.verifyTencent()
+  if (!proof) return false
+
+  turnstileToken.value = proof.ticket
+  tencentCaptchaRandstr.value = proof.randstr
+  return true
+REDACTED
+
+async function handleOAuthStart(request: OAuthLoginStart): Promise<void> {
+  if (registrationActionDisabled.value) return
+
+  if (!tencentCaptchaEnabled.value) {
+    window.location.href = buildOAuthLoginStartURL(request)
+    return
+  REDACTED
+
+  isLoading.value = true
+  try {
+    const proof = await turnstileRef.value?.verifyTencent()
+    if (!proof) return
+
+    const result = await startOAuthLogin(request, {
+      tencent_captcha_ticket: proof.ticket,
+      tencent_captcha_randstr: proof.randstr
+    REDACTED)
+    window.location.href = result.authorize_url
+  REDACTED catch (error: unknown) {
+    errorMessage.value = extractI18nErrorMessage(
+      error,
+      t,
+      'auth.errors',
+      t('auth.turnstileFailed')
+    )
+    appStore.showError(errorMessage.value)
+  REDACTED finally {
+    resetCaptchaProof()
+    isLoading.value = false
+  REDACTED
 REDACTED
 
 // ==================== Validation ====================
@@ -876,6 +950,10 @@ async function handleRegister(): Promise<void> {
     REDACTED
   REDACTED
 
+  if (!(await acquireTencentProof())) {
+    return
+  REDACTED
+
   isLoading.value = true
 
   try {
@@ -892,7 +970,9 @@ async function handleRegister(): Promise<void> {
         JSON.stringify({
           email: formData.email,
           password: formData.password,
-          turnstile_token: turnstileToken.value,
+          turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
+          tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
+          tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
           promo_code: formData.promo_code || undefined,
           invitation_code: formData.invitation_code || undefined,
           ...(affCode ? { aff_code: affCode REDACTED : {REDACTED)
@@ -909,6 +989,8 @@ async function handleRegister(): Promise<void> {
       email: formData.email,
       password: formData.password,
       turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
+      tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
+      tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
       promo_code: formData.promo_code || undefined,
       invitation_code: formData.invitation_code || undefined,
       ...(affCode ? { aff_code: affCode REDACTED : {REDACTED)
@@ -921,12 +1003,6 @@ async function handleRegister(): Promise<void> {
     // Redirect to dashboard
     await router.push('/dashboard')
   REDACTED catch (error: unknown) {
-    // Reset Turnstile on error
-    if (turnstileRef.value) {
-      turnstileRef.value.reset()
-      turnstileToken.value = ''
-    REDACTED
-
     // Handle registration error
     errorMessage.value = buildAuthErrorMessage(error, {
       fallback: t('auth.registrationFailed')
@@ -935,6 +1011,9 @@ async function handleRegister(): Promise<void> {
     // Also show error toast
     appStore.showError(errorMessage.value)
   REDACTED finally {
+    if (captchaEnabled.value) {
+      resetCaptchaProof()
+    REDACTED
     isLoading.value = false
   REDACTED
 REDACTED

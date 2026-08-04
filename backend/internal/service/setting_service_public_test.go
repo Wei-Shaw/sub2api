@@ -12,6 +12,7 @@ import (
 
 type settingPublicRepoStub struct {
 	values map[string]string
+	err    error
 REDACTED
 
 func (s *settingPublicRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
@@ -27,6 +28,9 @@ func (s *settingPublicRepoStub) Set(ctx context.Context, key, value string) erro
 REDACTED
 
 func (s *settingPublicRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	if s.err != nil {
+		return nil, s.err
+REDACTED
 	out := make(map[string]string, len(keys))
 	for _, key := range keys {
 		if value, ok := s.values[key]; ok {

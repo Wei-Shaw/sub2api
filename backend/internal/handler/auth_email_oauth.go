@@ -59,6 +59,9 @@ func (h *AuthHandler) CompleteGoogleOAuthRegistration(c *gin.Context) {
 REDACTED
 
 func (h *AuthHandler) emailOAuthStart(c *gin.Context, provider string) {
+	if !h.requireTencentCaptchaForOAuthLoginStart(c) {
+		return
+REDACTED
 	cfg, err := h.getEmailOAuthConfig(c.Request.Context(), provider)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -90,7 +93,7 @@ REDACTED
 		response.ErrorFrom(c, infraerrors.InternalServer("OAUTH_BUILD_URL_FAILED", "failed to build oauth authorization url").WithCause(err))
 		return
 REDACTED
-	c.Redirect(http.StatusFound, authURL)
+	respondOAuthStart(c, authURL)
 REDACTED
 
 func (h *AuthHandler) emailOAuthCallback(c *gin.Context, provider string) {

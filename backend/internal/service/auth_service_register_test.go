@@ -14,8 +14,10 @@ import (
 )
 
 type settingRepoStub struct {
-	values map[string]string
-	err    error
+	values           map[string]string
+	err              error
+	getValueCalls    int
+	getMultipleCalls int
 REDACTED
 
 func (s *settingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
@@ -23,6 +25,7 @@ func (s *settingRepoStub) Get(ctx context.Context, key string) (*Setting, error)
 REDACTED
 
 func (s *settingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	s.getValueCalls++
 	if s.err != nil {
 		return "", s.err
 REDACTED
@@ -37,6 +40,7 @@ func (s *settingRepoStub) Set(ctx context.Context, key, value string) error {
 REDACTED
 
 func (s *settingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	s.getMultipleCalls++
 	if s.err != nil {
 		return nil, s.err
 REDACTED

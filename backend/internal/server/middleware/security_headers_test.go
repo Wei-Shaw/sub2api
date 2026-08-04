@@ -192,6 +192,7 @@ REDACTED)
 		assert.NotEmpty(t, csp)
 		// Default policy should contain these elements
 		assert.Contains(t, csp, "default-src 'self'")
+		assert.Contains(t, csp, TencentCaptchaDomain)
 REDACTED)
 
 	t.Run("uses_default_policy_when_whitespace_only", func(t *testing.T) {
@@ -311,6 +312,16 @@ REDACTED)
 
 		count := strings.Count(enhanced, CloudflareInsightsDomain)
 		assert.Equal(t, 1, count)
+REDACTED)
+
+	t.Run("adds_tencent_captcha_domain_for_web_sdk", func(t *testing.T) {
+		policy := "default-src 'self'; script-src 'self' __CSP_NONCE__"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", TencentCaptchaDomain))
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", TencentCaptchaDomain))
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", TencentCaptchaStaticDomain))
+		assert.Contains(t, config.DefaultCSPPolicy, "style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com")
 REDACTED)
 
 	t.Run("handles_policy_without_script_src", func(t *testing.T) {
