@@ -247,6 +247,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			}
 		}
 	}
+	if account.Platform == PlatformOpenAI {
+		if policyBody, changed := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, responsesBody); changed {
+			responsesBody = policyBody
+			if responsesReq.Reasoning != nil {
+				responsesReq.Reasoning.Effort = gjson.GetBytes(responsesBody, "reasoning.effort").String()
+			}
+		}
+	}
 
 	// 4c. Apply OpenAI fast policy (may filter service_tier or block the request).
 	// Mirrors the Claude anthropic-beta "fast-mode-2026-02-01" filter, but keyed

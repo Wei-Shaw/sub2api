@@ -90,6 +90,11 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 ) *UpstreamFailoverError {
 	accountDisabled := false
 	shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
+	tempUnscheduled := false
+	if c != nil && account != nil && account.Platform != PlatformGrok && !shouldFailover && !IsResponseCommitted(c) && s.rateLimitService != nil {
+		tempUnscheduled = s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody, upstreamModel) == ErrorPolicyTempUnscheduled
+		shouldFailover = tempUnscheduled
+	}
 	if account != nil && account.Platform == PlatformGrok {
 		// Body-aware: content-policy 403 must not failover/drain the pool.
 		shouldFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
@@ -116,15 +121,18 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 		Message:            upstreamMsg,
 		Detail:             upstreamDetail,
 	})
-	if account.Platform != PlatformGrok {
-		accountDisabled = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
+	// Grok 路径已写入 accountDisabled；非 Grok 的 tempUnscheduled 视为已处置，
+	// 避免再走 handleOpenAIAccountUpstreamError 二次写状态。
+	shouldDisable := accountDisabled || tempUnscheduled
+	if account.Platform != PlatformGrok && !tempUnscheduled {
+		shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 	}
 	return newOpenAIUpstreamFailoverError(
 		resp.StatusCode,
 		resp.Header,
 		respBody,
 		upstreamMsg,
-		!accountDisabled && account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+		!shouldDisable && account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 	)
 }
 
