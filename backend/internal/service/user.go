@@ -60,6 +60,9 @@ type User struct {
 	// 避免每请求查 DB。字段不持久化到数据库。
 	UserGroupRPMOverride *int
 
+	// SystemTokenHash 系统访问令牌 SHA-256 哈希（nil 表示未设置）
+	SystemTokenHash *string
+
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription
 }

@@ -259,3 +259,12 @@ func (s *stubUserRepo) DisableTotp(ctx context.Context, userID int64) error {
 func (s *stubUserRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
 	panic("unexpected GetByIDIncludeDeleted call")
 }
+func (s *stubUserRepo) SetSystemTokenHash(context.Context, int64, *string) error {
+	panic("unexpected")
+}
+func (s *stubUserRepo) GetUserBySystemTokenHash(context.Context, string) (*service.User, error) {
+	panic("unexpected")
+}
+func (s *stubUserRepo) HasSystemToken(context.Context, int64) (bool, error) {
+	panic("unexpected")
+}

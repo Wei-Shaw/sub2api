@@ -3289,6 +3289,15 @@ func (r *oauthPendingFlowUserRepo) DisableTotp(ctx context.Context, userID int64
 func (r *oauthPendingFlowUserRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
 	return r.GetByID(ctx, id)
 }
+func (r *oauthPendingFlowUserRepo) SetSystemTokenHash(context.Context, int64, *string) error {
+	return nil
+}
+func (r *oauthPendingFlowUserRepo) GetUserBySystemTokenHash(context.Context, string) (*service.User, error) {
+	return nil, nil
+}
+func (r *oauthPendingFlowUserRepo) HasSystemToken(context.Context, int64) (bool, error) {
+	return false, nil
+}
 
 func oauthPendingFlowServiceUser(entity *dbent.User) *service.User {
 	if entity == nil {

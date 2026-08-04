@@ -115,6 +115,12 @@ func (User) Fields() []ent.Field {
 		// 用户级每分钟请求数上限（0 = 不限制）。仅当所在分组未设置 rpm_limit 时作为兜底生效。
 		field.Int("rpm_limit").
 			Default(0),
+
+		// 系统访问令牌 SHA-256 哈希（每用户至多一个）
+		field.String("system_token_hash").
+			MaxLen(64).
+			Optional().
+			Nillable(),
 	}
 }
 

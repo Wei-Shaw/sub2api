@@ -208,6 +208,15 @@ func (s *userRepoStub) DisableTotp(ctx context.Context, userID int64) error {
 func (s *userRepoStub) GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error) {
 	return s.GetByID(ctx, id)
 }
+func (s *userRepoStub) SetSystemTokenHash(context.Context, int64, *string) error {
+	return nil
+}
+func (s *userRepoStub) GetUserBySystemTokenHash(context.Context, string) (*User, error) {
+	return nil, ErrUserNotFound
+}
+func (s *userRepoStub) HasSystemToken(context.Context, int64) (bool, error) {
+	return false, nil
+}
 
 type groupRepoStub struct {
 	affectedUserIDs []int64

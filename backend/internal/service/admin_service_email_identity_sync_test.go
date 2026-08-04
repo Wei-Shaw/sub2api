@@ -174,6 +174,16 @@ func (s *emailSyncRepoStub) ReplaceEmailAuthIdentity(_ context.Context, userID i
 	return s.replaceErr
 }
 
+func (s *emailSyncRepoStub) SetSystemTokenHash(context.Context, int64, *string) error {
+	panic("unexpected")
+}
+func (s *emailSyncRepoStub) GetUserBySystemTokenHash(context.Context, string) (*User, error) {
+	panic("unexpected")
+}
+func (s *emailSyncRepoStub) HasSystemToken(context.Context, int64) (bool, error) {
+	panic("unexpected")
+}
+
 func TestAdminService_CreateUser_DoesNotReturnPartialSuccessFromEmailIdentityResync(t *testing.T) {
 	repo := &emailSyncRepoStub{
 		nextID:    55,

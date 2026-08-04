@@ -179,6 +179,11 @@ type UserRepository interface {
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
 	EnableTotp(ctx context.Context, userID int64) error
 	DisableTotp(ctx context.Context, userID int64) error
+
+	// 系统访问令牌
+	SetSystemTokenHash(ctx context.Context, userID int64, hash *string) error
+	GetUserBySystemTokenHash(ctx context.Context, hash string) (*User, error)
+	HasSystemToken(ctx context.Context, userID int64) (bool, error)
 }
 
 // RedeemUserAdjustmentRepository provides the atomic, floor-at-zero updates

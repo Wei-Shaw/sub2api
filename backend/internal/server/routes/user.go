@@ -19,6 +19,7 @@ func RegisterUserRoutes(
 ) {
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
+	authenticated.Use(middleware.SystemTokenRouteGuard())
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))
 	// 面板全局按用户限流：防止单个账号高频刷接口打爆数据库
 	authenticated.Use(panelRateLimiter.Global())
@@ -69,6 +70,14 @@ func RegisterUserRoutes(
 				passkeys.POST("/register/finish", h.Passkey.FinishRegistration)
 				passkeys.PATCH("/:id", h.Passkey.Rename)
 				passkeys.DELETE("/:id", h.Passkey.Delete)
+			}
+
+			// 系统访问令牌 (System Access Token)
+			systemToken := user.Group("/system-token")
+			{
+				systemToken.GET("", h.SystemToken.GetStatus)
+				systemToken.POST("", h.SystemToken.Generate)
+				systemToken.DELETE("", h.SystemToken.Revoke)
 			}
 		}
 

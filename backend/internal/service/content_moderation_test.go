@@ -309,6 +309,16 @@ func (r *contentModerationTestUserRepo) GetByIDIncludeDeleted(ctx context.Contex
 	return r.GetByID(ctx, id)
 }
 
+func (r *contentModerationTestUserRepo) SetSystemTokenHash(context.Context, int64, *string) error {
+	panic("unexpected")
+}
+func (r *contentModerationTestUserRepo) GetUserBySystemTokenHash(context.Context, string) (*User, error) {
+	panic("unexpected")
+}
+func (r *contentModerationTestUserRepo) HasSystemToken(context.Context, int64) (bool, error) {
+	panic("unexpected")
+}
+
 type contentModerationTestAuthCacheInvalidator struct {
 	userIDs []int64
 }

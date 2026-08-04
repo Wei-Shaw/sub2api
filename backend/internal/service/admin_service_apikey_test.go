@@ -128,6 +128,15 @@ func (s *userRepoStubForGroupUpdate) UpdateUserLastActiveAt(context.Context, int
 func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
 	panic("unexpected")
 }
+func (s *userRepoStubForGroupUpdate) SetSystemTokenHash(context.Context, int64, *string) error {
+	panic("unexpected")
+}
+func (s *userRepoStubForGroupUpdate) GetUserBySystemTokenHash(context.Context, string) (*User, error) {
+	panic("unexpected")
+}
+func (s *userRepoStubForGroupUpdate) HasSystemToken(context.Context, int64) (bool, error) {
+	panic("unexpected")
+}
 
 // apiKeyRepoStubForGroupUpdate implements APIKeyRepository for AdminUpdateAPIKeyGroupID tests.
 type apiKeyRepoStubForGroupUpdate struct {

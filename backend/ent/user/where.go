@@ -175,6 +175,11 @@ func RpmLimit(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// SystemTokenHash applies equality check predicate on the "system_token_hash" field. It's identical to SystemTokenHashEQ.
+func SystemTokenHash(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSystemTokenHash, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -1383,6 +1388,81 @@ func RpmLimitLT(v int) predicate.User {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// SystemTokenHashEQ applies the EQ predicate on the "system_token_hash" field.
+func SystemTokenHashEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSystemTokenHash, v))
+}
+
+// SystemTokenHashNEQ applies the NEQ predicate on the "system_token_hash" field.
+func SystemTokenHashNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldSystemTokenHash, v))
+}
+
+// SystemTokenHashIn applies the In predicate on the "system_token_hash" field.
+func SystemTokenHashIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldSystemTokenHash, vs...))
+}
+
+// SystemTokenHashNotIn applies the NotIn predicate on the "system_token_hash" field.
+func SystemTokenHashNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldSystemTokenHash, vs...))
+}
+
+// SystemTokenHashGT applies the GT predicate on the "system_token_hash" field.
+func SystemTokenHashGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldSystemTokenHash, v))
+}
+
+// SystemTokenHashGTE applies the GTE predicate on the "system_token_hash" field.
+func SystemTokenHashGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldSystemTokenHash, v))
+}
+
+// SystemTokenHashLT applies the LT predicate on the "system_token_hash" field.
+func SystemTokenHashLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldSystemTokenHash, v))
+}
+
+// SystemTokenHashLTE applies the LTE predicate on the "system_token_hash" field.
+func SystemTokenHashLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldSystemTokenHash, v))
+}
+
+// SystemTokenHashContains applies the Contains predicate on the "system_token_hash" field.
+func SystemTokenHashContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldSystemTokenHash, v))
+}
+
+// SystemTokenHashHasPrefix applies the HasPrefix predicate on the "system_token_hash" field.
+func SystemTokenHashHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldSystemTokenHash, v))
+}
+
+// SystemTokenHashHasSuffix applies the HasSuffix predicate on the "system_token_hash" field.
+func SystemTokenHashHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldSystemTokenHash, v))
+}
+
+// SystemTokenHashIsNil applies the IsNil predicate on the "system_token_hash" field.
+func SystemTokenHashIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldSystemTokenHash))
+}
+
+// SystemTokenHashNotNil applies the NotNil predicate on the "system_token_hash" field.
+func SystemTokenHashNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldSystemTokenHash))
+}
+
+// SystemTokenHashEqualFold applies the EqualFold predicate on the "system_token_hash" field.
+func SystemTokenHashEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldSystemTokenHash, v))
+}
+
+// SystemTokenHashContainsFold applies the ContainsFold predicate on the "system_token_hash" field.
+func SystemTokenHashContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldSystemTokenHash, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

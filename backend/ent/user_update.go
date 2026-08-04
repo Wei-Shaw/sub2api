@@ -432,6 +432,26 @@ func (_u *UserUpdate) AddRpmLimit(v int) *UserUpdate {
 	return _u
 }
 
+// SetSystemTokenHash sets the "system_token_hash" field.
+func (_u *UserUpdate) SetSystemTokenHash(v string) *UserUpdate {
+	_u.mutation.SetSystemTokenHash(v)
+	return _u
+}
+
+// SetNillableSystemTokenHash sets the "system_token_hash" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableSystemTokenHash(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetSystemTokenHash(*v)
+	}
+	return _u
+}
+
+// ClearSystemTokenHash clears the value of the "system_token_hash" field.
+func (_u *UserUpdate) ClearSystemTokenHash() *UserUpdate {
+	_u.mutation.ClearSystemTokenHash()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdate) AddAPIKeyIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -979,6 +999,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SystemTokenHash(); ok {
+		if err := user.SystemTokenHashValidator(v); err != nil {
+			return &ValidationError{Name: "system_token_hash", err: fmt.Errorf(`ent: validator failed for field "User.system_token_hash": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1098,6 +1123,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(user.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.SystemTokenHash(); ok {
+		_spec.SetField(user.FieldSystemTokenHash, field.TypeString, value)
+	}
+	if _u.mutation.SystemTokenHashCleared() {
+		_spec.ClearField(user.FieldSystemTokenHash, field.TypeString)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2108,6 +2139,26 @@ func (_u *UserUpdateOne) AddRpmLimit(v int) *UserUpdateOne {
 	return _u
 }
 
+// SetSystemTokenHash sets the "system_token_hash" field.
+func (_u *UserUpdateOne) SetSystemTokenHash(v string) *UserUpdateOne {
+	_u.mutation.SetSystemTokenHash(v)
+	return _u
+}
+
+// SetNillableSystemTokenHash sets the "system_token_hash" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableSystemTokenHash(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetSystemTokenHash(*v)
+	}
+	return _u
+}
+
+// ClearSystemTokenHash clears the value of the "system_token_hash" field.
+func (_u *UserUpdateOne) ClearSystemTokenHash() *UserUpdateOne {
+	_u.mutation.ClearSystemTokenHash()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdateOne) AddAPIKeyIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2668,6 +2719,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SystemTokenHash(); ok {
+		if err := user.SystemTokenHashValidator(v); err != nil {
+			return &ValidationError{Name: "system_token_hash", err: fmt.Errorf(`ent: validator failed for field "User.system_token_hash": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -2804,6 +2860,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(user.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.SystemTokenHash(); ok {
+		_spec.SetField(user.FieldSystemTokenHash, field.TypeString, value)
+	}
+	if _u.mutation.SystemTokenHashCleared() {
+		_spec.ClearField(user.FieldSystemTokenHash, field.TypeString)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

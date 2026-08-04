@@ -1018,6 +1018,16 @@ func (s *emailBindUserRepoStub) GetByIDIncludeDeleted(ctx context.Context, id in
 	return s.GetByID(ctx, id)
 }
 
+func (s *emailBindUserRepoStub) SetSystemTokenHash(context.Context, int64, *string) error {
+	panic("unexpected")
+}
+func (s *emailBindUserRepoStub) GetUserBySystemTokenHash(context.Context, string) (*service.User, error) {
+	panic("unexpected")
+}
+func (s *emailBindUserRepoStub) HasSystemToken(context.Context, int64) (bool, error) {
+	panic("unexpected")
+}
+
 func cloneEmailBindUser(user *service.User) *service.User {
 	if user == nil {
 		return nil
