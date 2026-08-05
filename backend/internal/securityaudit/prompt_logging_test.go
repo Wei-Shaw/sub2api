@@ -2,7 +2,9 @@ package securityaudit
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -63,4 +65,42 @@ func TestPromptGuardFailureLogUsesCompleteAllowlistedContextAndNoSideEffects(t *
 	require.Equal(t, false, entry["upstream_dispatched"])
 	require.Equal(t, false, entry["billing_preconsumed"])
 	require.EqualValues(t, 25, entry["latency_ms"])
+}
+
+func TestConfigManagerReloadLogsOnlyMaterialChangesAndRecovery(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	values := map[string]string{
+		SettingKeyPromptAuditConfig: "",
+		SettingKeyRiskControl:       "false",
+	}
+	repository := &switchableSettingRepository{staticSettingRepository: staticSettingRepository{values: values}}
+	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{}, testTotpKeyConfig())
+
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 1, bytes.Count(output.Bytes(), []byte(EventConfigLoaded)), "initial load must be observable")
+
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 1, bytes.Count(output.Bytes(), []byte(EventConfigLoaded)), "unchanged fallback refresh must stay silent")
+
+	values[SettingKeyRiskControl] = "true"
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 2, bytes.Count(output.Bytes(), []byte(EventConfigLoaded)), "global risk-control changes must be observable")
+
+	storage := DefaultStorageConfig()
+	storage.ConfigVersion = 2
+	raw, err := json.Marshal(storage)
+	require.NoError(t, err)
+	values[SettingKeyPromptAuditConfig] = string(raw)
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 3, bytes.Count(output.Bytes(), []byte(EventConfigLoaded)), "config version changes must be observable")
+
+	repository.loadErr = errors.New("settings temporarily unavailable")
+	require.Error(t, manager.Reload(context.Background()))
+	repository.loadErr = nil
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 4, bytes.Count(output.Bytes(), []byte(EventConfigLoaded)), "recovery from a load error must be observable")
 }
