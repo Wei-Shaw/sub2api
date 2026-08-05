@@ -140,7 +140,30 @@ func TestDefaultProxyGroupResolver_NoHealthyMembers(t *testing.T) {
 	)
 	r.now = func() time.Time { return now }
 	p, err := r.ResolveProxy(context.Background(), 1, 1)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrProxyGroupNoHealthyMember)
+	require.Nil(t, p)
+}
+
+func TestDefaultProxyGroupResolver_InactiveGroupFailClosed(t *testing.T) {
+	t.Parallel()
+	group := &ProxyGroup{ID: 3, Status: StatusDisabled, Strategy: ProxyGroupStrategyRoundRobin}
+	r := NewDefaultProxyGroupResolver(
+		&stubProxyGroupRepo{group: group},
+		&stubProxyRepoForGroup{members: []Proxy{{ID: 1, Status: StatusActive}}},
+	)
+	p, err := r.ResolveProxy(context.Background(), 3, 9)
+	require.ErrorIs(t, err, ErrProxyGroupNoHealthyMember)
+	require.Nil(t, p, "inactive group must not silently fall back to direct egress")
+}
+
+func TestDefaultProxyGroupResolver_MissingGroupFailClosed(t *testing.T) {
+	t.Parallel()
+	r := NewDefaultProxyGroupResolver(
+		&stubProxyGroupRepo{err: ErrProxyGroupNotFound},
+		&stubProxyRepoForGroup{members: nil},
+	)
+	p, err := r.ResolveProxy(context.Background(), 99, 1)
+	require.ErrorIs(t, err, ErrProxyGroupNoHealthyMember)
 	require.Nil(t, p)
 }
 

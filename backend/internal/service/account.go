@@ -65,6 +65,10 @@ type Account struct {
 	GroupIDs      []int64
 	Groups        []*Group
 
+	// ProxyGroupExhausted 是运行时标记（不落库）：账号绑定了 proxy_group_id，
+	// 但组内无健康成员/组不可用。调度必须 fail-closed，禁止静默直连。
+	ProxyGroupExhausted bool
+
 	// model_mapping 热路径缓存（非持久化字段）
 	modelMappingCache               map[string]string
 	modelMappingCacheReady          bool
@@ -217,6 +221,10 @@ func (a *Account) EffectiveLoadFactor() int {
 
 func (a *Account) IsSchedulable() bool {
 	if !a.IsActive() || !a.Schedulable {
+		return false
+	}
+	// 绑定代理池但解析失败：不可调度，避免本机出口泄露 / OAuth 裂。
+	if a.ProxyGroupExhausted {
 		return false
 	}
 	if a.IsGrokFreeRecoveryPending() {

@@ -75,14 +75,26 @@ func TestApplyProxyGroupSelection_PriorityAndNoProxyIDWrite(t *testing.T) {
 		require.Nil(t, acc.ProxyID)
 	})
 
-	t.Run("resolver 失败不 panic 且不写 Proxy", func(t *testing.T) {
+	t.Run("resolver 失败不 panic 且不写 Proxy，并 fail-closed", func(t *testing.T) {
 		t.Parallel()
-		r := &stubProxyGroupResolver{err: service.ErrProxyGroupNotFound}
+		r := &stubProxyGroupResolver{err: service.ErrProxyGroupNoHealthyMember}
 		repo := &accountRepository{proxyGroupResolver: r}
-		acc := &service.Account{ID: 9, ProxyGroupID: &groupID}
+		acc := &service.Account{ID: 9, ProxyGroupID: &groupID, Schedulable: true, Status: service.StatusActive}
 		repo.applyProxyGroupSelection(context.Background(), acc)
 		require.Equal(t, 1, r.calls)
 		require.Nil(t, acc.Proxy)
 		require.Nil(t, acc.ProxyID)
+		require.True(t, acc.ProxyGroupExhausted)
+		require.False(t, acc.IsSchedulable(), "exhausted pool account must not be schedulable")
+	})
+
+	t.Run("resolver 返回 nil 代理也 fail-closed", func(t *testing.T) {
+		t.Parallel()
+		r := &stubProxyGroupResolver{selected: nil}
+		repo := &accountRepository{proxyGroupResolver: r}
+		acc := &service.Account{ID: 10, ProxyGroupID: &groupID, Schedulable: true, Status: service.StatusActive}
+		repo.applyProxyGroupSelection(context.Background(), acc)
+		require.True(t, acc.ProxyGroupExhausted)
+		require.False(t, acc.IsSchedulable())
 	})
 }

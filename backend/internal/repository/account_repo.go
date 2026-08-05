@@ -3533,6 +3533,7 @@ func buildSchedulerGroupPayload(groupIDs []int64) any {
 
 // applyProxyGroupSelection 在账号未绑定单个 proxy_id 但绑定了 proxy_group_id 时，
 // 从组内选出一个健康代理填入 account.Proxy。MUST NOT 写 account.ProxyID。
+// 无健康成员时 fail-closed：标记 ProxyGroupExhausted，调度侧跳过该账号（禁止静默直连）。
 func (r *accountRepository) applyProxyGroupSelection(ctx context.Context, account *service.Account) {
 	if r == nil || account == nil || account.Proxy != nil {
 		return
@@ -3541,17 +3542,26 @@ func (r *accountRepository) applyProxyGroupSelection(ctx context.Context, accoun
 		return
 	}
 	if r.proxyGroupResolver == nil {
+		// 配置了池但 resolver 未装配：同样 fail-closed，避免误直连。
+		account.ProxyGroupExhausted = true
+		logger.LegacyPrintf("repository.account", "[ProxyGroup] resolver nil with proxy_group_id set: account=%d group=%d", account.ID, *account.ProxyGroupID)
 		return
 	}
 	selected, err := r.proxyGroupResolver.ResolveProxy(ctx, *account.ProxyGroupID, account.ID)
 	if err != nil {
-		logger.LegacyPrintf("repository.account", "[ProxyGroup] resolve failed: account=%d group=%d err=%v", account.ID, *account.ProxyGroupID, err)
+		account.ProxyGroupExhausted = true
+		logger.LegacyPrintf("repository.account", "[ProxyGroup] resolve failed (fail-closed): account=%d group=%d err=%v", account.ID, *account.ProxyGroupID, err)
 		return
 	}
 	if selected != nil {
 		account.Proxy = selected
+		account.ProxyGroupExhausted = false
 		// 刻意不写 account.ProxyID —— 见 openspec design C1（grok OAuth CAS）。
+		return
 	}
+	// 契约：健康成员缺失应返回 ErrProxyGroupNoHealthyMember；若仍拿到 (nil,nil) 也 fail-closed。
+	account.ProxyGroupExhausted = true
+	logger.LegacyPrintf("repository.account", "[ProxyGroup] resolve returned nil proxy (fail-closed): account=%d group=%d", account.ID, *account.ProxyGroupID)
 }
 
 func accountEntityToService(m *dbent.Account) *service.Account {

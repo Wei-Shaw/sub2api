@@ -17,6 +17,12 @@ const (
 var (
 	ErrProxyGroupNotFound = infraerrors.NotFound("PROXY_GROUP_NOT_FOUND", "proxy group not found")
 	ErrProxyGroupInUse    = infraerrors.Conflict("PROXY_GROUP_IN_USE", "proxy group is in use by proxies or accounts")
+	// ErrProxyGroupNoHealthyMember：组存在但无健康成员（或组未激活）。
+	// 绑定了 proxy_group_id 的账号必须 fail-closed，禁止静默直连本机出口。
+	ErrProxyGroupNoHealthyMember = infraerrors.ServiceUnavailable(
+		"PROXY_GROUP_NO_HEALTHY_MEMBER",
+		"proxy group has no healthy members",
+	)
 )
 
 // ProxyGroup 代理池/分组领域模型。

@@ -1,3 +1,5 @@
+//go:build unit
+
 package service
 
 import (
@@ -89,4 +91,64 @@ func (f *clearThrottleStub) LoadBaselineSamples(context.Context, int64, []string
 func (f *clearThrottleStub) SetBaselineP95(context.Context, int64, float64, int) error { return nil }
 func (f *clearThrottleStub) GetBaselineP95(context.Context, int64) (float64, int, bool, error) {
 	return 0, 0, false, nil
+}
+
+type riskAuthInvStub struct {
+	invalidated []int64
+}
+
+func (s *riskAuthInvStub) InvalidateAuthCacheByUserID(_ context.Context, userID int64) {
+	s.invalidated = append(s.invalidated, userID)
+}
+
+func TestRiskActionPolicy_AutoDisableUser_UsesUpdateStatusField(t *testing.T) {
+	uid := int64(77)
+	repo := &mockUserRepo{
+		getByIDUser: &User{ID: uid, Role: RoleUser, Status: StatusActive},
+	}
+	var updated *User
+	repo.updateFn = func(_ context.Context, user *User) error {
+		cp := *user
+		updated = &cp
+		return nil
+	}
+	auth := &riskAuthInvStub{}
+	policy := &RiskActionPolicy{users: repo, authInv: auth}
+
+	event := &ConnectionRiskEvent{
+		UserID:      &uid,
+		SubjectType: ConnectionRiskSubjectUser,
+		Severity:    connectionRiskSeverityCritical,
+	}
+	policy.HandleNewEvent(context.Background(), event, ConnectionRiskSettings{
+		Actions: ConnectionRiskActionSettings{AutoDisableEnabled: true},
+	})
+
+	require.Equal(t, 1, repo.updateCalls)
+	require.Len(t, repo.updateFields, 1)
+	require.True(t, repo.updateFields[0].Status, "must use UserUpdateFields{Status:true}, not dead UpdateStatus assert")
+	require.NotNil(t, updated)
+	require.Equal(t, StatusDisabled, updated.Status)
+	require.Equal(t, []int64{uid}, auth.invalidated)
+	require.Equal(t, "disabled_user", event.ActionTaken)
+}
+
+func TestRiskActionPolicy_AutoDisableUser_SkipsAdmin(t *testing.T) {
+	uid := int64(1)
+	repo := &mockUserRepo{
+		getByIDUser: &User{ID: uid, Role: RoleAdmin, Status: StatusActive},
+	}
+	policy := &RiskActionPolicy{users: repo}
+
+	event := &ConnectionRiskEvent{
+		UserID:      &uid,
+		SubjectType: ConnectionRiskSubjectUser,
+		Severity:    connectionRiskSeverityCritical,
+	}
+	policy.HandleNewEvent(context.Background(), event, ConnectionRiskSettings{
+		Actions: ConnectionRiskActionSettings{AutoDisableEnabled: true},
+	})
+
+	require.Equal(t, 0, repo.updateCalls, "admin must never be auto-disabled")
+	require.Empty(t, event.ActionTaken)
 }

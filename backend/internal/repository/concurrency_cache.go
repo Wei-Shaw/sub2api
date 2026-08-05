@@ -330,17 +330,21 @@ var (
 		return 1
 	`)
 
-	// startupCleanupSlotScript 清理单个槽位 key 中非当前进程前缀的成员，避免 Redis Cluster CROSSSLOT。
-	// KEYS[1] 是有序集合键，ARGV[1] 是当前进程前缀，ARGV[2] 是槽位 TTL。
-	// 返回 {清除数量, 剩余成员数}，Go 侧据剩余数决定索引 member 去留，无需再回读槽位。
+	// startupCleanupSlotScript 仅清理 score 已过期的槽位成员（多实例安全）。
+	// 旧实现按「非当前进程前缀」删除，会在滚动重启时清掉 peer 实例的在途槽位。
+	// KEYS[1]=slot ZSET；ARGV[1]=slotTTL；ARGV[2]=nowUnix。
+	// 返回 {清除数量, 剩余成员数}；Go 侧据剩余数决定索引 member 去留。
+	// 不再无条件删除 wait key：等待计数带 TTL，由过期自愈；避免多实例互清 wait 队列。
 	startupCleanupSlotScript = redis.NewScript(`
 		local key = KEYS[1]
-		local activePrefix = ARGV[1]
-		local slotTTL = tonumber(ARGV[2])
+		local slotTTL = tonumber(ARGV[1])
+		local now = tonumber(ARGV[2])
 		local removed = 0
-		local members = redis.call('ZRANGE', key, 0, -1)
-		for _, member in ipairs(members) do
-			if string.sub(member, 1, string.len(activePrefix)) ~= activePrefix then
+		local members = redis.call('ZRANGE', key, 0, -1, 'WITHSCORES')
+		for i = 1, #members, 2 do
+			local member = members[i]
+			local score = tonumber(members[i + 1])
+			if score ~= nil and score < now then
 				removed = removed + redis.call('ZREM', key, member)
 			end
 		end
@@ -1136,15 +1140,15 @@ func (c *concurrencyCache) reconcileExpiredIndexCandidates(ctx context.Context, 
 	return nil
 }
 
-// CleanupStaleProcessSlots 启动时清理非当前进程前缀的槽位。
-// 清理范围来自活跃索引（含 score 已过期的成员——它们往往正是崩溃进程留下的残留），
+// CleanupStaleProcessSlots 启动时清理活跃索引上 **score 已过期** 的槽位成员。
+// 多实例安全：不再按进程前缀删除 peer 在途槽位，也不再无条件 DEL wait key。
+// 清理范围来自活跃索引（含 score 已过期的索引成员——常对应崩溃残留），
 // 避免在 Redis 上 SCAN 全部 concurrency:* 键；另有一次性迁移清扫兜底索引机制上线前的遗留等待计数。
 // API Key 槽位（concurrency:api_key:*）是 stats-only 数据：每次 Track/读取都会按分数
 // 裁剪过期成员，key 自带 TTL，可在一个 slot TTL 内自愈，因此不参与启动清理。
+// activeRequestPrefix 保留以兼容接口；清理逻辑不再依赖它。
 func (c *concurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error {
-	if activeRequestPrefix == "" {
-		return nil
-	}
+	_ = activeRequestPrefix
 	if err := c.sweepLegacyWaitKeysOnce(ctx); err != nil {
 		return err
 	}
@@ -1157,7 +1161,7 @@ func (c *concurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeR
 	if err != nil {
 		return err
 	}
-	if err := c.cleanupStaleProcessSlotsForIndex(ctx, accountSlotIndex, accountMembers, activeRequestPrefix, now); err != nil {
+	if err := c.cleanupStaleProcessSlotsForIndex(ctx, accountSlotIndex, accountMembers, now); err != nil {
 		return err
 	}
 
@@ -1165,7 +1169,7 @@ func (c *concurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeR
 	if err != nil {
 		return err
 	}
-	return c.cleanupStaleProcessSlotsForIndex(ctx, userSlotIndex, userMembers, activeRequestPrefix, now)
+	return c.cleanupStaleProcessSlotsForIndex(ctx, userSlotIndex, userMembers, now)
 }
 
 // sweepLegacyWaitKeysOnce 一次性清扫活跃索引机制上线前遗留的等待计数键。
@@ -1215,13 +1219,12 @@ func (c *concurrencyCache) allIndexMembers(ctx context.Context, indexKey string)
 }
 
 // cleanupStaleProcessSlotsForIndex 逐个处理索引中的账号/用户。
-// Lua 脚本一次只碰一个槽位 key，兼容 Redis Cluster，随后删除重启后已失效的等待计数；
-// 索引 member 的去留由脚本返回的剩余槽位数决定，最后批量写回。
+// Lua 脚本一次只碰一个槽位 key（只删 score < now 的成员），兼容 Redis Cluster。
+// 索引 member 的去留由脚本返回的剩余槽位数决定；wait key 保留给 peer / TTL 自愈。
 func (c *concurrencyCache) cleanupStaleProcessSlotsForIndex(
 	ctx context.Context,
 	spec slotIndexSpec,
 	members []string,
-	activeRequestPrefix string,
 	now int64,
 ) error {
 	staleMembers := make([]string, 0)
@@ -1233,13 +1236,9 @@ func (c *concurrencyCache) cleanupStaleProcessSlotsForIndex(
 			continue
 		}
 
-		_, remaining, err := runScriptInt64Pair(ctx, c.rdb, startupCleanupSlotScript, []string{spec.slotKey(id)}, activeRequestPrefix, c.slotTTLSeconds)
+		_, remaining, err := runScriptInt64Pair(ctx, c.rdb, startupCleanupSlotScript, []string{spec.slotKey(id)}, c.slotTTLSeconds, now)
 		if err != nil {
 			return fmt.Errorf("cleanup stale process slots %s: %w", spec.slotKey(id), err)
-		}
-		// 等待计数属于已死进程，直接删除；剩余槽位（当前进程前缀）决定索引 member 去留。
-		if err := c.rdb.Del(ctx, spec.waitKey(id)).Err(); err != nil {
-			return fmt.Errorf("delete stale wait key %s: %w", spec.waitKey(id), err)
 		}
 		if remaining > 0 {
 			refreshed = append(refreshed, redis.Z{

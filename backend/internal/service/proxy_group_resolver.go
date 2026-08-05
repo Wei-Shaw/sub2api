@@ -122,8 +122,15 @@ func (r *DefaultProxyGroupResolver) ResolveProxy(ctx context.Context, groupID, a
 	if err != nil {
 		return nil, err
 	}
+	// 账号已绑定 proxy_group_id 时：组缺失/未激活/无健康成员一律 fail-closed，
+	// 禁止返回 (nil,nil) 让调用方静默降级为直连出口。
 	if snap == nil || !snap.group.IsActive() {
-		return nil, nil
+		slog.Warn("proxy_group_unavailable",
+			"group_id", groupID,
+			"account_id", accountID,
+			"missing", snap == nil,
+		)
+		return nil, ErrProxyGroupNoHealthyMember
 	}
 
 	strategy := snap.group.EffectiveStrategy()
@@ -136,7 +143,7 @@ func (r *DefaultProxyGroupResolver) ResolveProxy(ctx context.Context, groupID, a
 			"member_count", len(snap.members),
 			"strategy", strategy,
 		)
-		return nil, nil
+		return nil, ErrProxyGroupNoHealthyMember
 	}
 	return selected, nil
 }

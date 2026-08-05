@@ -77,21 +77,15 @@ func (p *RiskActionPolicy) autoDisable(ctx context.Context, event *ConnectionRis
 		if err != nil || u == nil || u.IsAdmin() {
 			return
 		}
-		// Soft path: mark disabled via repo if available through a minimal update interface.
-		// UserRepository does not expose UpdateStatus directly in all impls; use type assert.
-		type statusUpdater interface {
-			UpdateStatus(ctx context.Context, id int64, status string) error
+		u.Status = StatusDisabled
+		if err := p.users.Update(ctx, u, UserUpdateFields{Status: true}); err != nil {
+			slog.Warn("connection risk auto-disable user failed", "error", err, "user_id", *event.UserID)
+			return
 		}
-		if su, ok := any(p.users).(statusUpdater); ok {
-			if err := su.UpdateStatus(ctx, *event.UserID, StatusDisabled); err != nil {
-				slog.Warn("connection risk auto-disable user failed", "error", err, "user_id", *event.UserID)
-				return
-			}
-			if p.authInv != nil {
-				p.authInv.InvalidateAuthCacheByUserID(ctx, *event.UserID)
-			}
-			event.ActionTaken = "disabled_user"
+		if p.authInv != nil {
+			p.authInv.InvalidateAuthCacheByUserID(ctx, *event.UserID)
 		}
+		event.ActionTaken = "disabled_user"
 	}
 }
 
