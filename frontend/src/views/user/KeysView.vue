@@ -472,8 +472,41 @@
             :placeholder="t('keys.selectGroup')"
             :searchable="true"
             :search-placeholder="t('keys.searchGroup')"
+            :filter-option="filterGroupOptionByPlatform"
             data-tour="key-form-group"
           >
+            <template #after-search>
+              <div
+                v-if="groupPlatformFilters.length > 2"
+                class="border-b border-gray-100 px-2 py-2 dark:border-dark-700"
+                role="group"
+                :aria-label="t('keys.filterGroupsByPlatform')"
+              >
+                <div class="flex max-w-full gap-1.5 overflow-x-auto">
+                  <button
+                    v-for="platform in groupPlatformFilters"
+                    :key="platform"
+                    type="button"
+                    :data-test="`group-platform-filter-${platform}`"
+                    :aria-pressed="groupPlatformFilter === platform"
+                    :class="[
+                      'inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
+                      groupPlatformFilter === platform
+                        ? 'border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                        : 'border-transparent bg-gray-50 text-gray-600 hover:bg-gray-100 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600'
+                    ]"
+                    @click.stop="groupPlatformFilter = platform"
+                  >
+                    <PlatformIcon
+                      v-if="platform !== 'all'"
+                      :platform="platform"
+                      size="xs"
+                    />
+                    {{ platform === 'all' ? t('keys.allPlatforms') : platformLabel(platform) }}
+                  </button>
+                </div>
+              </div>
+            </template>
             <template #selected="{ option }">
               <GroupBadge
                 v-if="option"
@@ -1140,11 +1173,13 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
+	import PlatformIcon from '@/components/common/PlatformIcon.vue'
 	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
+import { platformLabel } from '@/utils/platformColors'
 import {
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
@@ -1170,6 +1205,17 @@ interface GroupOption {
   subscriptionType: SubscriptionType
   platform: GroupPlatform
 }
+
+type GroupPlatformFilter = GroupPlatform | 'all'
+
+const GROUP_PLATFORM_ORDER: GroupPlatform[] = [
+  'openai',
+  'anthropic',
+  'gemini',
+  'grok',
+  'antigravity',
+  'composite'
+]
 
 const appStore = useAppStore()
 const onboardingStore = useOnboardingStore()
@@ -1423,6 +1469,18 @@ const groupOptions = computed(() =>
     platform: group.platform
   }))
 )
+
+const groupPlatformFilter = ref<GroupPlatformFilter>('all')
+const groupPlatformFilters = computed<GroupPlatformFilter[]>(() => {
+  const availablePlatforms = new Set(groupOptions.value.map((option) => option.platform))
+  return [
+    'all',
+    ...GROUP_PLATFORM_ORDER.filter((platform) => availablePlatforms.has(platform))
+  ]
+})
+
+const filterGroupOptionByPlatform = (option: Record<string, unknown>) =>
+  groupPlatformFilter.value === 'all' || option.platform === groupPlatformFilter.value
 
 // Group dropdown search
 const groupSearchQuery = ref('')
@@ -1787,6 +1845,7 @@ const closeModals = () => {
   showCreateModal.value = false
   showEditModal.value = false
   selectedKey.value = null
+  groupPlatformFilter.value = 'all'
   formData.value = {
     name: '',
     group_id: null,

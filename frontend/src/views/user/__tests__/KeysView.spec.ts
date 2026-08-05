@@ -36,9 +36,11 @@ const messages: Record<string, string> = {
   'common.status': 'Status',
   'keys.apiKey': 'API Key',
   'keys.allGroups': 'All Groups',
+  'keys.allPlatforms': 'All',
   'keys.allStatus': 'All Status',
   'keys.columnSettings': 'Column Settings',
   'keys.createKey': 'Create API Key',
+  'keys.filterGroupsByPlatform': 'Filter groups by platform',
   'keys.created': 'Created',
   'keys.expiresAt': 'Expires',
   'keys.group': 'Group',
@@ -185,11 +187,30 @@ const DataTableStub = {
   `,
 }
 
+const BaseDialogStub = {
+  props: ['show'],
+  template: '<div v-if="show"><slot /><slot name="footer" /></div>',
+}
+
 const SelectStub = {
   name: 'Select',
-  props: ['modelValue', 'options'],
+  props: ['modelValue', 'options', 'filterOption'],
   emits: ['update:modelValue'],
-  template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"></select>',
+  template: `
+    <div>
+      <select :value="modelValue" @change="$emit('update:modelValue', $event.target.value)">
+        <option
+          v-for="option in options.filter((item) => !filterOption || filterOption(item))"
+          :key="option.value"
+          :value="option.value"
+          data-test="select-option"
+        >
+          {{ option.label }}
+        </option>
+      </select>
+      <slot name="after-search" />
+    </div>
+  `,
 }
 
 const SearchInputStub = {
@@ -223,7 +244,7 @@ const mountView = async () => {
         TablePageLayout: TablePageLayoutStub,
         DataTable: DataTableStub,
         Pagination: PaginationStub,
-        BaseDialog: true,
+        BaseDialog: BaseDialogStub,
         ConfirmDialog: true,
         EmptyState: true,
         Select: SelectStub,
@@ -256,7 +277,7 @@ const getButtonByText = (wrapper: VueWrapper, text: string) => {
   return button
 }
 
-describe('user KeysView column settings', () => {
+describe('user KeysView', () => {
   beforeEach(() => {
     localStorage.clear()
 
@@ -437,5 +458,60 @@ describe('user KeysView column settings', () => {
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+  })
+
+  it('filters create-key group options by the platforms present in available groups', async () => {
+    getAvailableGroups.mockResolvedValueOnce([
+      {
+        id: 10,
+        name: 'OpenAI Standard',
+        description: null,
+        platform: 'openai',
+        subscription_type: 'standard',
+        rate_multiplier: 1,
+        peak_rate_enabled: false,
+        peak_start: '',
+        peak_end: '',
+        peak_rate_multiplier: 1,
+      },
+      {
+        id: 20,
+        name: 'Claude Standard',
+        description: null,
+        platform: 'anthropic',
+        subscription_type: 'standard',
+        rate_multiplier: 1,
+        peak_rate_enabled: false,
+        peak_start: '',
+        peak_end: '',
+        peak_rate_multiplier: 1,
+      },
+    ])
+
+    const wrapper = await mountView()
+    await getButtonByText(wrapper, 'Create API Key').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('[data-test="group-platform-filter-openai"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="group-platform-filter-anthropic"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="group-platform-filter-gemini"]').exists()).toBe(false)
+
+    const groupSelect = wrapper
+      .findAllComponents({ name: 'Select' })
+      .find((select) => select.attributes('data-tour') === 'key-form-group')
+    expect(groupSelect).toBeDefined()
+
+    const optionLabels = () =>
+      groupSelect!.findAll('[data-test="select-option"]').map((option) => option.text())
+
+    expect(optionLabels()).toEqual(['OpenAI Standard', 'Claude Standard'])
+
+    await wrapper.get('[data-test="group-platform-filter-openai"]').trigger('click')
+    await nextTick()
+    expect(optionLabels()).toEqual(['OpenAI Standard'])
+
+    await wrapper.get('[data-test="group-platform-filter-all"]').trigger('click')
+    await nextTick()
+    expect(optionLabels()).toEqual(['OpenAI Standard', 'Claude Standard'])
   })
 })
