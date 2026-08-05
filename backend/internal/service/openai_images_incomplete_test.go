@@ -18,6 +18,7 @@ func TestExtractImagesUpstreamError_IncompleteIsRetryable(t *testing.T) {
 	got := extractOpenAIImagesUpstreamError([]byte(body))
 	if got == nil {
 		t.Fatal("incomplete event should produce an upstream error, got nil")
+		return
 	}
 	if got.StatusCode != http.StatusBadGateway {
 		t.Fatalf("incomplete(max_output_tokens) should be 502 retryable, got %d", got.StatusCode)
@@ -39,6 +40,7 @@ func TestExtractImagesUpstreamError_IncompleteContentFilterNotRetryable(t *testi
 	got := extractOpenAIImagesUpstreamError([]byte(body))
 	if got == nil {
 		t.Fatal("content_filter incomplete should produce error")
+		return
 	}
 	if got.StatusCode != http.StatusBadRequest {
 		t.Fatalf("content_filter should be 400 (non-retryable), got %d", got.StatusCode)

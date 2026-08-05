@@ -31,7 +31,7 @@
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { resolveWeChatOAuthStart } from '@/api/auth'
+import { resolveWeChatOAuthStart, type OAuthLoginStart } from '@/api/auth'
 import { useAppStore } from '@/stores'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
 
@@ -43,6 +43,9 @@ const props = withDefaults(defineProps<{
 }>(), {
   showDivider: true,
 })
+const emit = defineEmits<{
+  start: [request: OAuthLoginStart]
+}>()
 
 const appStore = useAppStore()
 const route = useRoute()
@@ -88,14 +91,14 @@ function startLogin(): void {
   }
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   storeOAuthAffiliateCode(resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code))
-  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
-  const normalized = apiBase.replace(/\/$/, '')
   const mode = resolvedStart.value.mode
-  const params = new URLSearchParams({ mode, redirect: redirectTo })
+  const params: Record<string, string> = { mode, redirect: redirectTo }
   if (props.promoCode?.trim()) {
-    params.set('promo_code', props.promoCode.trim())
+    params.promo_code = props.promoCode.trim()
   }
-  const startURL = `${normalized}/auth/oauth/wechat/start?${params.toString()}`
-  window.location.href = startURL
+  emit('start', {
+    provider: 'wechat',
+    params
+  })
 }
 </script>
