@@ -45,6 +45,24 @@ func RegisterGatewayRoutes(
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
 	requireGroupGoogle := middleware.RequireGroupAssignment(settingService, middleware.GoogleErrorWriter)
 
+	// 自定义客户端余额查询（Bearer API Key）
+	// 支持:
+	//   POST/GET /v1/user/balance
+	//   POST/GET /user/balance
+	// 只需鉴权，不强制分组、不执行计费拦截，方便配额耗尽/过期 Key 仍可查余额。
+	registerUserBalanceRoutes := func(group *gin.RouterGroup) {
+		group.POST("/user/balance", h.Gateway.UsageBalance)
+		group.GET("/user/balance", h.Gateway.UsageBalance)
+	}
+	for _, prefix := range []string{"/v1", ""} {
+		userBalance := r.Group(prefix)
+		userBalance.Use(bodyLimit)
+		userBalance.Use(clientRequestID)
+		userBalance.Use(opsErrorLogger)
+		userBalance.Use(gin.HandlerFunc(apiKeyAuth))
+		registerUserBalanceRoutes(userBalance)
+	}
+
 	isOpenAIResponsesCompatibleGatewayPlatform := func(c *gin.Context) bool {
 		switch getGroupPlatform(c) {
 		case service.PlatformOpenAI, service.PlatformGrok:

@@ -166,6 +166,15 @@ export default defineConfig(({ mode }) => {
           target: backendUrl,
           changeOrigin: true
         },
+        // 余额查询：必须代理到后端，否则会被 SPA 回退成 index.html
+        '/user/balance': {
+          target: backendUrl,
+          changeOrigin: true
+        },
+        '/user': {
+          target: backendUrl,
+          changeOrigin: true
+        },
         '/setup': {
           target: backendUrl,
           changeOrigin: true
