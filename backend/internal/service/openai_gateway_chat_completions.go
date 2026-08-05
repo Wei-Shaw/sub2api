@@ -463,7 +463,7 @@ REDACTED
 	// When the terminal event has an empty output array, reconstruct from
 	// accumulated delta events so the client receives the full content.
 	acc.SupplementResponseOutput(finalResponse)
-	if account != nil && account.Platform == PlatformGrok && !hasBillableOpenAIUsage(usage) {
+	if requiresBillableGrokChatUsage(account, originalModel, billingModel, upstreamModel, finalResponse.Model) && !hasBillableOpenAIUsage(usage) {
 		return nil, s.newOpenAIStreamFailoverError(
 			c,
 			account,

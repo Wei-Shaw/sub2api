@@ -14,3 +14,19 @@ func hasBillableOpenAIUsage(usage OpenAIUsage) bool {
 		usage.CacheReadInputTokens > 0 ||
 		usage.ImageOutputTokens > 0
 REDACTED
+
+// requiresBillableGrokChatUsage identifies Grok traffic by both account
+// platform and model identity. Grok models may be served through generic
+// OpenAI-compatible accounts, so account.Platform alone is not a safe billing
+// boundary.
+func requiresBillableGrokChatUsage(account *Account, models ...string) bool {
+	if account != nil && account.Platform == PlatformGrok {
+		return true
+REDACTED
+	for _, model := range models {
+		if platform, ok := DetectModelPlatform(model); ok && platform == PlatformGrok {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
