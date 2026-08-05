@@ -7,10 +7,11 @@ import (
 	"time"
 )
 
-const GrokFreeRolling24hTokenLimit int64 = 1_000_000
+const GrokFreeRolling24hTokenLimit int64 = 500_000
 
 var grokFreeRolling24hTokenLimits = map[int64]struct{}{
 	GrokFreeRolling24hTokenLimit: {},
+	1_000_000:                    {}, // Legacy Free limit observed before August 2026.
 	2_000_000:                    {}, // Legacy Free limit observed before July 2026.
 }
 
