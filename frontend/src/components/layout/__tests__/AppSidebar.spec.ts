@@ -42,6 +42,15 @@ describe('AppSidebar scroll position persistence', () => {
   })
 })
 
+describe('AppSidebar simple mode navigation', () => {
+  it('keeps admin user management visible', () => {
+    const userManagementItem = componentSource.match(/\{ path: '\/admin\/users'[^}]*\}/)?.[0]
+
+    expect(userManagementItem).toBeDefined()
+    expect(userManagementItem).not.toContain('hideInSimpleMode')
+  })
+})
+
 describe('AppSidebar header styles', () => {
   it('does not clip the version badge dropdown', () => {
     const sidebarHeaderBlockMatch = styleSource.match(/\.sidebar-header\s*\{[\s\S]*?\n {2}\}/)
