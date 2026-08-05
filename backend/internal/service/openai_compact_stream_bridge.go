@@ -13,16 +13,16 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-// openAICompactClientStreamKey 标记 body-signal compact 请求（Codex remote
-// compact v2，见 #3777）的原始 body 携带 stream:true。白名单归一化会删除
-// stream 字段并让上游走 unary /responses/compact（JSON），但客户端仍按
-// Responses SSE 协议消费响应：它必须收到 response.output_item.done（其中恰好
-// 一个 type=compaction 的 item）和 response.completed，否则报
-// "stream closed before response.completed" 并无限重连（#3875）。
+// openAICompactClientStreamKey 标记 compact 请求的原始 body 携带
+// stream:true。legacy body-signal 归一化和 provider compatibility bridge
+// 都可能让上游改走 unary JSON，但客户端仍按 Responses SSE 协议消费响应：
+// 它必须收到 response.output_item.done（其中恰好一个 type=compaction 的
+// item）和 response.completed，否则报 "stream closed before
+// response.completed" 并无限重连（#3875）。
 const openAICompactClientStreamKey = "openai_compact_client_stream"
 
-// MarkOpenAICompactClientStream 由 handler 在 body-signal 提升时调用，记录
-// 客户端的原始 stream 意图，供响应写回阶段决定是否合成 SSE。
+// MarkOpenAICompactClientStream 由 handler 在 compact 协议识别时调用，记录
+// 客户端的原始 stream 意图，供心跳和响应写回阶段使用。
 func MarkOpenAICompactClientStream(c *gin.Context) {
 	if c == nil {
 		return

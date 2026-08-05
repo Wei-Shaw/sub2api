@@ -1133,6 +1133,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	if account.Type == AccountTypeOAuth && bodyLooksLikeSSE {
 		return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
 	}
+	body, err = convertDeepSeekCompactResponseIfNeeded(c, body)
+	if err != nil {
+		return nil, fmt.Errorf("convert DeepSeek compact response: %w", err)
+	}
 	if account != nil && account.IsGrok() && isOpenAIResponsesCompactPath(c) {
 		body, err = convertGrokResponseToOpenAICompact(body)
 		if err != nil {
@@ -1224,6 +1228,11 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			}
 		}
 		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
+		convertedResponse, convertErr := convertDeepSeekCompactResponseIfNeeded(c, finalResponse)
+		if convertErr != nil {
+			return nil, fmt.Errorf("convert DeepSeek compact SSE response: %w", convertErr)
+		}
+		finalResponse = convertedResponse
 		body = finalResponse
 		if originalModel != mappedModel {
 			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)

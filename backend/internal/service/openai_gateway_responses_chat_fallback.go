@@ -140,7 +140,21 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
-	c.JSON(http.StatusOK, responsesResp)
+	if isDeepSeekLocalCompactBridge(c) {
+		responseBody, marshalErr := json.Marshal(responsesResp)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("marshal DeepSeek compact chat fallback response: %w", marshalErr)
+		}
+		responseBody, convertErr := convertDeepSeekCompactResponseIfNeeded(c, responseBody)
+		if convertErr != nil {
+			return nil, fmt.Errorf("convert DeepSeek compact chat fallback response: %w", convertErr)
+		}
+		if !writeOpenAICompactSSEBridge(c, http.StatusOK, responseBody) {
+			c.Data(http.StatusOK, "application/json; charset=utf-8", responseBody)
+		}
+	} else {
+		c.JSON(http.StatusOK, responsesResp)
+	}
 
 	return &OpenAIForwardResult{
 		RequestID:       requestID,

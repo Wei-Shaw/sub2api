@@ -15,11 +15,11 @@ import (
 const openAICompactSSEKeepaliveKey = "openai_compact_sse_keepalive"
 
 // openAICompactSSEKeepalive 在 compact 上游 unary 等待期间向下游写 SSE 注释行
-// 心跳。上游 /responses/compact 在模型处理期间不发送任何字节（大上下文可长达
-// 数分钟），下游若经过反向代理（Nginx/Cloudflare Tunnel 等），零字节静默会触发
-// 代理的空闲/读超时并掐断连接，Codex 只会盲目重连并重复消耗上游 compact
-// 配额（#3887）。SSE 注释行在 eventsource 解析层被直接忽略，不会进入客户端
-// 事件流。
+// 心跳。上游 /responses/compact 或 provider compatibility bridge 在模型处理
+// 期间不发送任何字节（大上下文可长达数分钟），下游若经过反向代理
+// （Nginx/Cloudflare Tunnel 等），零字节静默会触发代理的空闲/读超时并掐断
+// 连接，Codex 只会盲目重连并重复消耗上游 compact 配额（#3887）。SSE 注释行
+// 在 eventsource 解析层被直接忽略，不会进入客户端事件流。
 //
 // 首拍延迟一个 interval：绝大多数硬错误（鉴权/参数/限流）在此之前返回，仍走
 // 原 JSON+状态码链路（Codex 按 HTTP 状态码重试）；首拍之后状态码固化为 200，
@@ -36,8 +36,8 @@ type openAICompactSSEKeepalive struct {
 	stop  chan struct{}
 }
 
-// StartOpenAICompactSSEKeepalive 为已标记 body-signal 客户端流式的 compact
-// 请求启动下游心跳，返回幂等的停止函数。interval<=0 或请求未标记时为 no-op。
+// StartOpenAICompactSSEKeepalive 为已标记客户端流式的 compact 请求启动下游
+// 心跳，返回幂等的停止函数。interval<=0 或请求未标记时为 no-op。
 //
 // 同时把 c.Writer 替换为 openAICompactKeepaliveWriter：请求 goroutine 的任何
 // 响应构造都会先在心跳互斥锁下停拍，未被显式拦截的写回路径（如 Forward

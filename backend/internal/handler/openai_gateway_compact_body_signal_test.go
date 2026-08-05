@@ -57,8 +57,9 @@ func TestNormalizeOpenAIResponsesCompactRequest_RemoteV2StaysOnResponses(t *test
 
 	_, seedExists := c.Get(service.OpenAICompactSessionSeedKeyForTest())
 	require.False(t, seedExists)
-	_, streamMarkerExists := c.Get(service.OpenAICompactClientStreamKeyForTest())
-	require.False(t, streamMarkerExists)
+	streamMarker, streamMarkerExists := c.Get(service.OpenAICompactClientStreamKeyForTest())
+	require.True(t, streamMarkerExists)
+	require.Equal(t, true, streamMarker)
 }
 
 func TestNormalizeOpenAIResponsesCompactRequest_RemoteV2PathAliasesStayOnResponses(t *testing.T) {

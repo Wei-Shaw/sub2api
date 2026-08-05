@@ -383,6 +383,13 @@ func openAIResponsesRequestPathSuffix(c *gin.Context) string {
 	return suffix
 }
 
+func openAIResponsesUpstreamPathSuffix(c *gin.Context) string {
+	if isDeepSeekLocalCompactBridge(c) {
+		return ""
+	}
+	return openAIResponsesRequestPathSuffix(c)
+}
+
 // IsForwardableOpenAIResponsesRequestPath 判断入站请求携带的 /responses 子路径
 // 是否可以安全转发。路由层用它在鉴权后、调度前直接拒绝畸形子路径。
 func IsForwardableOpenAIResponsesRequestPath(c *gin.Context) bool {
