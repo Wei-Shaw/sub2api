@@ -121,6 +121,7 @@ func TestGetUserErrorRequestDetail_OwnershipEnforced(t *testing.T) {
 	}
 	if got2 == nil {
 		t.Fatal("expected non-nil detail for legitimate access")
+		return
 	}
 	if got2.ID != 42 {
 		t.Errorf("want ID=42, got %d", got2.ID)

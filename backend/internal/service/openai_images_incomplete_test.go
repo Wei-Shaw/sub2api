@@ -40,6 +40,7 @@ func TestExtractImagesUpstreamError_IncompleteContentFilterNotRetryable(t *testi
 	got := extractOpenAIImagesUpstreamError([]byte(body))
 	if got == nil {
 		t.Fatal("content_filter incomplete should produce error")
+		return
 	}
 	if got.StatusCode != http.StatusBadRequest {
 		t.Fatalf("content_filter should be 400 (non-retryable), got %d", got.StatusCode)
