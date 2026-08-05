@@ -1,4 +1,4 @@
--- Proxy pools provide persistent account-to-pool binding while keeping the
+-- Proxy pools persist account-to-pool binding while keeping the
 -- existing accounts.proxy_id hot path unchanged.
 
 CREATE TABLE IF NOT EXISTS proxy_pools (
