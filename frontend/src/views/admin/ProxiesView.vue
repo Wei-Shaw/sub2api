@@ -1029,9 +1029,56 @@
         </table>
       </div>
       <template #footer>
-        <div class="flex justify-end">
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="assignableAccounts.length === 0"
+            @click="openReassign"
+          >
+            {{ t('admin.proxies.reassignAccounts', { count: assignableAccounts.length }) }}
+          </button>
           <button @click="closeAccountsModal" class="btn btn-secondary">
             {{ t('common.close') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <!-- 分配到其它 IP：轻量选择器，复用账号批量更新接口 -->
+    <BaseDialog
+      :show="showReassign"
+      :title="t('admin.proxies.reassignTitle')"
+      width="narrow"
+      @close="closeReassign"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+          {{ t('admin.proxies.reassignHint', { count: reassignAccountIds.length }) }}
+        </p>
+        <ProxySelector
+          v-model="reassignTargetId"
+          :proxies="reassignProxyOptions"
+          :disabled="reassignSubmitting"
+        />
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            :disabled="reassignSubmitting"
+            @click="closeReassign"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="reassignSubmitting"
+            @click="submitReassign"
+          >
+            {{ reassignSubmitting ? t('common.saving') : t('common.confirm') }}
           </button>
         </div>
       </template>
@@ -1067,6 +1114,7 @@ import Icon from '@/components/icons/Icon.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import { AccountStatusIndicator, TempUnschedStatusModal } from '@/components/account'
+import ProxySelector from '@/components/common/ProxySelector.vue'
 import { platformLabel, platformBadgeLightClass } from '@/utils/platformColors'
 import { useClipboard } from '@/composables/useClipboard'
 import { useSwipeSelect } from '@/composables/useSwipeSelect'
@@ -1194,6 +1242,19 @@ const filteredProxyAccounts = computed(() =>
 // 临时不可调度详情弹窗（AccountStatusIndicator 的状态徽章可点击）
 const showTempUnsched = ref(false)
 const tempUnschedAcc = ref<Account | null>(null)
+
+// ── 把弹窗内展示的账号批量分配到其它 IP（复用账号批量更新接口）──
+const showReassign = ref(false)
+const reassignSubmitting = ref(false)
+const reassignTargetId = ref<number | null>(null)
+// 影子账号的 proxy 恒继承母账号，后端在批量携带 proxy 时会整体拒绝，这里先剔除
+const assignableAccounts = computed(() => filteredProxyAccounts.value.filter((a) => !a.parent_account_id))
+// 打开时快照，避免弹窗开着期间列表变动导致改动目标漂移
+const reassignAccountIds = ref<number[]>([])
+// 目标不含当前 IP 自身（分配到自己是空操作）
+const reassignProxyOptions = computed(() =>
+  allProxiesForBackup.value.filter((p) => p.id !== accountsProxy.value?.id)
+)
 const editingProxy = ref<Proxy | null>(null)
 const deletingProxy = ref<Proxy | null>(null)
 const showQualityReportDialog = ref(false)
@@ -2111,6 +2172,59 @@ const closeAccountsModal = () => {
 const handleShowTempUnsched = (a: Account) => {
   tempUnschedAcc.value = a
   showTempUnsched.value = true
+}
+
+const openReassign = () => {
+  const targets = assignableAccounts.value
+  if (targets.length === 0) return
+
+  const skipped = filteredProxyAccounts.value.length - targets.length
+  if (skipped > 0) {
+    appStore.showInfo(t('admin.proxies.reassignSkippedShadows', { count: skipped }))
+  }
+
+  reassignAccountIds.value = targets.map((a) => a.id)
+  reassignTargetId.value = null
+  showReassign.value = true
+}
+
+const closeReassign = () => {
+  if (reassignSubmitting.value) return
+  showReassign.value = false
+  reassignAccountIds.value = []
+  reassignTargetId.value = null
+}
+
+const submitReassign = async () => {
+  if (reassignAccountIds.value.length === 0) return
+  reassignSubmitting.value = true
+  try {
+    // 与账号管理一致：null（无代理）在接口上用 0 表达「清除代理」
+    const proxyId = reassignTargetId.value === null ? 0 : reassignTargetId.value
+    const result = await adminAPI.accounts.bulkUpdate(reassignAccountIds.value, { proxy_id: proxyId })
+    if (result.failed > 0) {
+      appStore.showError(
+        t('admin.proxies.reassignPartial', { success: result.success, failed: result.failed })
+      )
+    } else {
+      appStore.showSuccess(t('admin.proxies.reassignSuccess', { count: result.success }))
+    }
+
+    showReassign.value = false
+    reassignAccountIds.value = []
+    reassignTargetId.value = null
+
+    // 代理归属变了：刷新列表的账号数/异常数，并重载弹窗内的账号
+    await loadProxies()
+    if (accountsProxy.value) {
+      await openAccountsModal(accountsProxy.value, accountsPlatformFilter.value)
+    }
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.proxies.reassignFailed'))
+    console.error('Error reassigning proxy accounts:', error)
+  } finally {
+    reassignSubmitting.value = false
+  }
 }
 
 // 重置成功后刷新弹窗内的账号列表（保留当前平台筛选）

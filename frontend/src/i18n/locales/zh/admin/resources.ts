@@ -161,6 +161,13 @@ export default {
       platformAccountsTooltip: '{platform}：{count} 个账号',
       accountsFilteredBy: '已筛选：{platform}',
       accountsAllPlatforms: '全部平台',
+      reassignAccounts: '分配到其它IP ({count})',
+      reassignTitle: '分配到其它IP',
+      reassignHint: '将当前展示的 {count} 个账号分配到所选 IP（选「无代理」则解除绑定）',
+      reassignSkippedShadows: '已排除 {count} 个影子账号，其代理继承自母账号',
+      reassignSuccess: '已分配 {count} 个账号',
+      reassignPartial: '成功 {success} 个，失败 {failed} 个',
+      reassignFailed: '分配账号失败',
       // Batch import
       standardAdd: '标准添加',
       batchAdd: '快捷添加',
