@@ -169,6 +169,18 @@
       <div class="space-y-3">
         <input v-model.trim="proxySearch" class="input" :placeholder="t('admin.proxies.searchProxies')" />
         <div class="max-h-96 overflow-y-auto border-y border-gray-200 py-2 dark:border-dark-600">
+          <label v-if="assignableProxies.length" class="sticky top-0 z-10 flex cursor-pointer items-center gap-3 border-b border-gray-200 bg-gray-50 px-2 py-2 text-sm font-medium text-gray-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200">
+            <input
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+              :checked="allVisibleProxiesSelected"
+              :indeterminate="someVisibleProxiesSelected"
+              :aria-label="t('common.selectAll')"
+              data-test="select-all-proxies"
+              @change="toggleAllVisibleProxies(($event.target as HTMLInputElement).checked)"
+            />
+            <span>{{ t('common.selectAll') }}</span>
+          </label>
           <label v-for="proxy in assignableProxies" :key="proxy.id" class="flex cursor-pointer items-center gap-3 px-2 py-2 hover:bg-gray-50 dark:hover:bg-dark-700">
             <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" :checked="selectedProxyIds.has(proxy.id)" @change="toggleProxy(proxy.id)" />
             <span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-white">{{ proxy.name }}</span>
@@ -243,6 +255,9 @@ const assignableProxies = computed(() => {
   const query = proxySearch.value.toLowerCase()
   return allProxies.value.filter((proxy) => !memberIds.has(proxy.id) && (!query || proxy.name.toLowerCase().includes(query) || proxy.host.toLowerCase().includes(query)))
 })
+const visibleSelectedProxyCount = computed(() => assignableProxies.value.filter((proxy) => selectedProxyIds.value.has(proxy.id)).length)
+const allVisibleProxiesSelected = computed(() => assignableProxies.value.length > 0 && visibleSelectedProxyCount.value === assignableProxies.value.length)
+const someVisibleProxiesSelected = computed(() => visibleSelectedProxyCount.value > 0 && !allVisibleProxiesSelected.value)
 
 async function loadPools() { loading.value = true; try { pools.value = await adminAPI.proxyPools.list() } catch { appStore.showError(t('admin.proxyPools.loadFailed')) } finally { loading.value = false } }
 function resetForm() { Object.assign(form, { name: '', description: '', status: 'active', health_interval_seconds: 300, failure_threshold: 2, auto_rebind: true }) }
@@ -272,6 +287,13 @@ async function openAssign() {
   }
 }
 function toggleProxy(id: number) { const next = new Set(selectedProxyIds.value); next.has(id) ? next.delete(id) : next.add(id); selectedProxyIds.value = next }
+function toggleAllVisibleProxies(checked: boolean) {
+  const next = new Set(selectedProxyIds.value)
+  for (const proxy of assignableProxies.value) {
+    checked ? next.add(proxy.id) : next.delete(proxy.id)
+  }
+  selectedProxyIds.value = next
+}
 async function assignProxies() { if (!detailPool.value) return; assigning.value = true; try { await adminAPI.proxyPools.assignProxies(detailPool.value.id, [...selectedProxyIds.value]); showAssign.value = false; await Promise.all([refreshDetail(), loadPools()]) } catch { appStore.showError(t('admin.proxyPools.assignFailed')) } finally { assigning.value = false } }
 async function removeProxy(id: number) { if (!detailPool.value) return; try { await adminAPI.proxyPools.removeProxies(detailPool.value.id, [id]); await Promise.all([refreshDetail(), loadPools()]) } catch { appStore.showError(t('admin.proxyPools.removeFailed')) } }
 function healthClass(health: string) { return ['badge', health === 'healthy' ? 'badge-success' : health === 'unhealthy' ? 'badge-danger' : 'badge-gray'] }

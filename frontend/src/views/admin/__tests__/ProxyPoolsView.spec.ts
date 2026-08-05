@@ -7,6 +7,8 @@ import ProxyPoolsView from '../ProxyPoolsView.vue'
 const {
   listPools,
   listProxies,
+  getAllProxies,
+  assignProxies,
   rebindLogs,
   rebind,
   showError,
@@ -14,6 +16,8 @@ const {
 } = vi.hoisted(() => ({
   listPools: vi.fn(),
   listProxies: vi.fn(),
+  getAllProxies: vi.fn(),
+  assignProxies: vi.fn(),
   rebindLogs: vi.fn(),
   rebind: vi.fn(),
   showError: vi.fn(),
@@ -30,11 +34,11 @@ vi.mock('@/api/admin', () => ({
       create: vi.fn(),
       update: vi.fn(),
       remove: vi.fn(),
-      assignProxies: vi.fn(),
+      assignProxies,
       removeProxies: vi.fn()
     },
     proxies: {
-      getAll: vi.fn()
+      getAll: getAllProxies
     }
   }
 }))
@@ -127,6 +131,12 @@ describe('ProxyPoolsView', () => {
     ])
     rebindLogs.mockResolvedValue([])
     rebind.mockResolvedValue(2)
+    getAllProxies.mockResolvedValue([
+      { id: 11, name: 'exit-a', host: 'proxy.example', port: 8080 },
+      { id: 12, name: 'exit-b', host: 'proxy-b.example', port: 8081 },
+      { id: 13, name: 'exit-c', host: 'proxy-c.example', port: 8082 }
+    ])
+    assignProxies.mockResolvedValue({ assigned: 2 })
   })
 
   it('loads proxy pools on mount', async () => {
@@ -165,5 +175,31 @@ describe('ProxyPoolsView', () => {
     expect(rebind).toHaveBeenCalledWith(1)
     expect(listProxies).toHaveBeenCalledTimes(2)
     expect(showSuccess).toHaveBeenCalled()
+  })
+
+  it('selects and assigns all available proxies', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('button[title="admin.proxyPools.details"]').trigger('click')
+    await flushPromises()
+
+    const addButton = wrapper.findAll('button').find((button) => button.text().includes('admin.proxyPools.addProxies'))
+    expect(addButton).toBeDefined()
+    await addButton!.trigger('click')
+    await flushPromises()
+
+    const selectAll = wrapper.get<HTMLInputElement>('input[data-test="select-all-proxies"]')
+    await selectAll.setValue(true)
+
+    const proxyCheckboxes = wrapper.findAll<HTMLInputElement>('input[type="checkbox"]').filter((input) => input.attributes('data-test') !== 'select-all-proxies')
+    expect(proxyCheckboxes).toHaveLength(2)
+    expect(proxyCheckboxes.every((input) => input.element.checked)).toBe(true)
+
+    const assignButton = wrapper.findAll('button').find((button) => button.text().includes('admin.proxyPools.addSelected'))
+    expect(assignButton).toBeDefined()
+    await assignButton!.trigger('click')
+    await flushPromises()
+
+    expect(assignProxies).toHaveBeenCalledWith(1, [12, 13])
   })
 })
