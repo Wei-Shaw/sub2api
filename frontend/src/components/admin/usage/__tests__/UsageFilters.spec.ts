@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 
 import UsageFilters from '../UsageFilters.vue'
 
@@ -91,6 +92,7 @@ function mountFilters(filters = defaultFilters()) {
       modelOptions: [],
     },
     global: {
+      plugins: [createPinia()],
       stubs: {
         Select: true,
         Teleport: true,
@@ -244,7 +246,7 @@ describe('UsageFilters — model options come from prop (no dup request)', () =>
         showActions: false,
         modelOptions: ['claude-3', 'gpt-4o'],
       },
-      global: { stubs: { Select: true, Teleport: true } },
+      global: { plugins: [createPinia()], stubs: { Select: true, Teleport: true } },
     })
     await flushPromises()
 

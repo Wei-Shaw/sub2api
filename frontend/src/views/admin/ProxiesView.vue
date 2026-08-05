@@ -16,6 +16,7 @@
               :placeholder="t('admin.proxies.searchProxies')"
               class="input pl-10"
               @input="handleSearch"
+              @keyup.enter="searchProxies"
             />
           </div>
 
@@ -38,6 +39,9 @@
 
           <!-- Right: All action buttons -->
           <div class="flex flex-1 flex-wrap items-center justify-end gap-2">
+            <button type="button" @click="searchProxies" class="btn btn-primary">
+              {{ t('common.search') }}
+            </button>
             <button
               @click="loadProxies"
               :disabled="loading"
@@ -1228,6 +1232,13 @@ const handleSearch = () => {
     pagination.page = 1
     loadProxies()
   }, 300)
+}
+
+// Reset to page 1 and search immediately (used by the search button/enter key)
+const searchProxies = () => {
+  clearTimeout(searchTimeout)
+  pagination.page = 1
+  loadProxies()
 }
 
 const handlePageChange = (page: number) => {

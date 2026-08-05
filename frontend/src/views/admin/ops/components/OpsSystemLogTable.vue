@@ -465,43 +465,43 @@ onMounted(async () => {
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         {{ t('admin.ops.systemLogs.component') }}
-        <input v-model="filters.component" type="text" class="input mt-1" :placeholder="t('admin.ops.systemLogs.componentPlaceholder')" />
+        <input v-model="filters.component" type="text" class="input mt-1" :placeholder="t('admin.ops.systemLogs.componentPlaceholder')" @keyup.enter="applyFilters" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         {{ t('admin.ops.systemLogs.host') }}
-        <input v-model="filters.host" type="text" class="input mt-1" />
+        <input v-model="filters.host" type="text" class="input mt-1" @keyup.enter="applyFilters" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         request_id
-        <input v-model="filters.request_id" type="text" class="input mt-1" />
+        <input v-model="filters.request_id" type="text" class="input mt-1" @keyup.enter="applyFilters" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         client_request_id
-        <input v-model="filters.client_request_id" type="text" class="input mt-1" />
+        <input v-model="filters.client_request_id" type="text" class="input mt-1" @keyup.enter="applyFilters" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         user_id
-        <input v-model="filters.user_id" type="text" class="input mt-1" />
+        <input v-model="filters.user_id" type="text" class="input mt-1" @keyup.enter="applyFilters" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         {{ t('admin.ops.systemLogs.keyId') }}
-        <input v-model="filters.api_key_id" type="text" class="input mt-1" />
+        <input v-model="filters.api_key_id" type="text" class="input mt-1" @keyup.enter="applyFilters" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         account_id
-        <input v-model="filters.account_id" type="text" class="input mt-1" />
+        <input v-model="filters.account_id" type="text" class="input mt-1" @keyup.enter="applyFilters" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         {{ t('admin.ops.systemLogs.platform') }}
-        <input v-model="filters.platform" type="text" class="input mt-1" />
+        <input v-model="filters.platform" type="text" class="input mt-1" @keyup.enter="applyFilters" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         {{ t('admin.ops.systemLogs.model') }}
-        <input v-model="filters.model" type="text" class="input mt-1" />
+        <input v-model="filters.model" type="text" class="input mt-1" @keyup.enter="applyFilters" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         {{ t('admin.ops.systemLogs.keyword') }}
-        <input v-model="filters.q" type="text" class="input mt-1" :placeholder="t('admin.ops.systemLogs.keywordPlaceholder')" />
+        <input v-model="filters.q" type="text" class="input mt-1" :placeholder="t('admin.ops.systemLogs.keywordPlaceholder')" @keyup.enter="applyFilters" />
       </label>
     </div>
 

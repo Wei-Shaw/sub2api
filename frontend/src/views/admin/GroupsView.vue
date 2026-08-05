@@ -19,6 +19,7 @@
                 :placeholder="t('admin.groups.searchGroups')"
                 class="input pl-10"
                 @input="handleSearch"
+                @keyup.enter="searchGroups"
               />
             </div>
             <Select
@@ -48,6 +49,13 @@
           <div
             class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto"
           >
+            <button
+              type="button"
+              @click="searchGroups"
+              class="btn btn-primary"
+            >
+              {{ t('common.search') }}
+            </button>
             <button
               @click="loadGroups"
               :disabled="loading"
@@ -5469,6 +5477,13 @@ const handleSearch = () => {
     pagination.page = 1;
     loadGroups();
   }, 300);
+};
+
+// Reset to page 1 and search immediately (used by the search button/enter key)
+const searchGroups = () => {
+  clearTimeout(searchTimeout);
+  pagination.page = 1;
+  loadGroups();
 };
 
 const handlePageChange = (page: number) => {

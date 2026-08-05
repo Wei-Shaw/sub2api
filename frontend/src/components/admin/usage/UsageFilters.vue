@@ -14,6 +14,7 @@
             :placeholder="t('admin.usage.searchUserPlaceholder')"
             @input="debounceUserSearch"
             @focus="showUserDropdown = true"
+            @keyup.enter="onSearchClick"
           />
           <button
             v-if="filters.user_id"
@@ -51,6 +52,7 @@
             :placeholder="t('admin.usage.searchApiKeyPlaceholder')"
             @input="debounceApiKeySearch"
             @focus="onApiKeyFocus"
+            @keyup.enter="onSearchClick"
           />
           <button
             v-if="filters.api_key_id"
@@ -94,6 +96,7 @@
             :placeholder="t('admin.usage.searchAccountPlaceholder')"
             @input="debounceAccountSearch"
             @focus="showAccountDropdown = true"
+            @keyup.enter="onSearchClick"
           />
           <button
             v-if="filters.account_id"
@@ -167,6 +170,9 @@
 
       <!-- Right: actions -->
       <div v-if="showActions" class="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
+        <button type="button" @click="onSearchClick" :disabled="searching" class="btn btn-primary">
+          {{ t('common.search') }}
+        </button>
         <button type="button" @click="$emit('refresh')" class="btn btn-secondary">
           {{ t('common.refresh') }}
         </button>
@@ -190,6 +196,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, toRef, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import { COMMON_ERROR_STATUS_CODES } from '@/utils/errorBadges'
@@ -228,6 +235,7 @@ const emit = defineEmits([
 ])
 
 const { t } = useI18n()
+const appStore = useAppStore()
 const filters = toRef(props, 'modelValue')
 
 const userSearchRef = ref<HTMLElement | null>(null)
@@ -237,12 +245,15 @@ const accountSearchRef = ref<HTMLElement | null>(null)
 const userKeyword = ref('')
 const userResults = ref<SimpleUser[]>([])
 const showUserDropdown = ref(false)
+// 记录下拉选中时的展示文案：查询按钮据此判断输入框文字是否已改动、需要重新解析
+const selectedUserLabel = ref('')
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
 let userSearchSequence = 0
 
 const apiKeyKeyword = ref('')
 const apiKeyResults = ref<SimpleApiKey[]>([])
 const showApiKeyDropdown = ref(false)
+const selectedApiKeyLabel = ref('')
 let apiKeySearchTimeout: ReturnType<typeof setTimeout> | null = null
 
 interface SimpleAccount {
@@ -252,6 +263,7 @@ interface SimpleAccount {
 const accountKeyword = ref('')
 const accountResults = ref<SimpleAccount[]>([])
 const showAccountDropdown = ref(false)
+const selectedAccountLabel = ref('')
 let accountSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
 const modelOptions = computed<SelectOption[]>(() => [
@@ -358,6 +370,7 @@ const debounceApiKeySearch = () => {
 const selectUser = async (u: SimpleUser) => {
   clearPendingUserSearch()
   userKeyword.value = u.email
+  selectedUserLabel.value = u.email
   showUserDropdown.value = false
   filters.value.user_id = u.id
   clearApiKey()
@@ -375,6 +388,7 @@ const selectUser = async (u: SimpleUser) => {
 const clearUser = () => {
   clearPendingUserSearch()
   userKeyword.value = ''
+  selectedUserLabel.value = ''
   userResults.value = []
   showUserDropdown.value = false
   filters.value.user_id = undefined
@@ -384,6 +398,7 @@ const clearUser = () => {
 
 const selectApiKey = (k: SimpleApiKey) => {
   apiKeyKeyword.value = k.name || String(k.id)
+  selectedApiKeyLabel.value = apiKeyKeyword.value
   showApiKeyDropdown.value = false
   filters.value.api_key_id = k.id
   emitChange()
@@ -391,6 +406,7 @@ const selectApiKey = (k: SimpleApiKey) => {
 
 const clearApiKey = () => {
   apiKeyKeyword.value = ''
+  selectedApiKeyLabel.value = ''
   apiKeyResults.value = []
   showApiKeyDropdown.value = false
   filters.value.api_key_id = undefined
@@ -419,6 +435,7 @@ const debounceAccountSearch = () => {
 
 const selectAccount = (a: SimpleAccount) => {
   accountKeyword.value = a.name
+  selectedAccountLabel.value = a.name
   showAccountDropdown.value = false
   filters.value.account_id = a.id
   emitChange()
@@ -426,10 +443,106 @@ const selectAccount = (a: SimpleAccount) => {
 
 const clearAccount = () => {
   accountKeyword.value = ''
+  selectedAccountLabel.value = ''
   accountResults.value = []
   showAccountDropdown.value = false
   filters.value.account_id = undefined
   emitChange()
+}
+
+// 查询按钮/回车触发：把输入框里尚未通过下拉选中的关键词解析成 ID 过滤条件。
+// 优先取精确匹配，否则取搜索结果第一条；解析不到时提示并中止本次查询。
+const resolveKeywordFilters = async (): Promise<boolean> => {
+  const userQ = userKeyword.value.trim()
+  const keyQ = apiKeyKeyword.value.trim()
+  const accQ = accountKeyword.value.trim()
+
+  if (userQ && (!filters.value.user_id || userQ !== selectedUserLabel.value)) {
+    clearPendingUserSearch()
+    let match: SimpleUser | undefined
+    try {
+      const results = await adminAPI.usage.searchUsers(userQ)
+      match = results.find((u) => u.email === userQ) ?? results[0]
+    } catch {
+      match = undefined
+    }
+    if (!match) {
+      appStore.showError(t('admin.usage.noMatchedUser'))
+      return false
+    }
+    const changed = filters.value.user_id !== match.id
+    filters.value.user_id = match.id
+    userKeyword.value = match.email
+    selectedUserLabel.value = match.email
+    userResults.value = []
+    showUserDropdown.value = false
+    // 换了用户后，原先选中的 API Key 不再属于当前用户（与 selectUser 行为一致）
+    if (changed && filters.value.api_key_id) {
+      filters.value.api_key_id = undefined
+    }
+  }
+
+  if (keyQ && (!filters.value.api_key_id || keyQ !== selectedApiKeyLabel.value)) {
+    if (apiKeySearchTimeout) {
+      clearTimeout(apiKeySearchTimeout)
+      apiKeySearchTimeout = null
+    }
+    let match: SimpleApiKey | undefined
+    try {
+      const results = await adminAPI.usage.searchApiKeys(filters.value.user_id, keyQ)
+      match = results.find((k) => k.name === keyQ) ?? results[0]
+    } catch {
+      match = undefined
+    }
+    if (!match) {
+      appStore.showError(t('admin.usage.noMatchedApiKey'))
+      return false
+    }
+    filters.value.api_key_id = match.id
+    apiKeyKeyword.value = match.name || String(match.id)
+    selectedApiKeyLabel.value = apiKeyKeyword.value
+    apiKeyResults.value = []
+    showApiKeyDropdown.value = false
+  }
+
+  if (accQ && (!filters.value.account_id || accQ !== selectedAccountLabel.value)) {
+    if (accountSearchTimeout) {
+      clearTimeout(accountSearchTimeout)
+      accountSearchTimeout = null
+    }
+    let match: SimpleAccount | undefined
+    try {
+      const res = await adminAPI.accounts.list(1, 20, { search: accQ })
+      const items = res.items.map((a) => ({ id: a.id, name: a.name }))
+      match = items.find((a) => a.name === accQ) ?? items[0]
+    } catch {
+      match = undefined
+    }
+    if (!match) {
+      appStore.showError(t('admin.usage.noMatchedAccount'))
+      return false
+    }
+    filters.value.account_id = match.id
+    accountKeyword.value = match.name
+    selectedAccountLabel.value = match.name
+    accountResults.value = []
+    showAccountDropdown.value = false
+  }
+
+  return true
+}
+
+const searching = ref(false)
+const onSearchClick = async () => {
+  if (searching.value) return
+  searching.value = true
+  try {
+    if (await resolveKeywordFilters()) {
+      emitChange()
+    }
+  } finally {
+    searching.value = false
+  }
 }
 
 const onApiKeyFocus = () => {
@@ -475,6 +588,7 @@ watch(
     if (!userId) {
       clearPendingUserSearch()
       userKeyword.value = ''
+      selectedUserLabel.value = ''
       userResults.value = []
     }
   }
@@ -485,6 +599,7 @@ watch(
   (apiKeyId) => {
     if (!apiKeyId) {
       apiKeyKeyword.value = ''
+      selectedApiKeyLabel.value = ''
       apiKeyResults.value = []
     }
   }
@@ -495,6 +610,7 @@ watch(
   (accountId) => {
     if (!accountId) {
       accountKeyword.value = ''
+      selectedAccountLabel.value = ''
       accountResults.value = []
     }
   }
@@ -519,6 +635,7 @@ onUnmounted(() => {
 const setUserKeyword = (email: string) => {
   clearPendingUserSearch()
   userKeyword.value = email
+  selectedUserLabel.value = email
   userResults.value = []
   showUserDropdown.value = false
 }

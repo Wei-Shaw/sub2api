@@ -10,12 +10,16 @@
             @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
+            @enter="applyFilters"
           />
           <AccountTableActions
             :loading="loading"
             @refresh="handleManualRefresh"
             @create="showCreate = true"
           >
+            <template #before>
+              <button type="button" class="btn btn-primary" @click="applyFilters">{{ t('common.search') }}</button>
+            </template>
             <template #after>
               <!-- Auto Refresh Dropdown -->
               <div class="relative" ref="autoRefreshDropdownRef">
@@ -1040,6 +1044,11 @@ const debouncedReload = () => {
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = true
   baseDebouncedReload()
+}
+
+const applyFilters = () => {
+  clearSelection()
+  reload()
 }
 
 const handlePageChange = (page: number) => {

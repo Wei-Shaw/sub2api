@@ -17,6 +17,7 @@
                 :placeholder="t('admin.channels.searchChannels', 'Search channels...')"
                 class="input pl-10"
                 @input="handleSearch"
+                @keyup.enter="searchChannels"
               />
             </div>
 
@@ -31,6 +32,9 @@
 
           <!-- Right: Actions -->
           <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
+            <button type="button" @click="searchChannels" class="btn btn-primary">
+              {{ t('common.search') }}
+            </button>
             <button
               @click="loadChannels"
               :disabled="loading"
@@ -1296,6 +1300,13 @@ function handleSearch() {
     pagination.page = 1
     loadChannels()
   }, 300)
+}
+
+// Reset to page 1 and search immediately (used by the search button/enter key)
+function searchChannels() {
+  clearTimeout(searchTimeout)
+  pagination.page = 1
+  loadChannels()
 }
 
 function handlePageChange(page: number) {

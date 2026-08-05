@@ -6,6 +6,7 @@
       class="w-full sm:w-64"
       @update:model-value="$emit('update:searchQuery', $event)"
       @search="$emit('change')"
+      @enter="$emit('enter')"
     />
     <Select :model-value="filters.platform" class="w-40" :options="pOpts" @update:model-value="updatePlatform" @change="$emit('change')" />
     <Select :model-value="filters.type" class="w-40" :options="tOpts" @update:model-value="updateType" @change="$emit('change')" />
@@ -19,7 +20,7 @@
 import { computed } from 'vue'; import { useI18n } from 'vue-i18n'; import Select from '@/components/common/Select.vue'; import SearchInput from '@/components/common/SearchInput.vue'
 import type { AdminGroup } from '@/types'
 const props = defineProps<{ searchQuery: string; filters: Record<string, any>; groups?: AdminGroup[] }>()
-const emit = defineEmits(['update:searchQuery', 'update:filters', 'change']); const { t } = useI18n()
+const emit = defineEmits(['update:searchQuery', 'update:filters', 'change', 'enter']); const { t } = useI18n()
 const updatePlatform = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, platform: value }) }
 const updateType = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, type: value }) }
 const updateStatus = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, status: value }) }

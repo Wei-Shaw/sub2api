@@ -19,6 +19,7 @@
                 :placeholder="t('admin.users.searchUsers')"
                 class="input pl-10"
                 @input="handleSearch"
+                @keyup.enter="searchUsers"
               />
             </div>
 
@@ -127,6 +128,16 @@
           <div class="flex flex-wrap items-center justify-end gap-2">
             <!-- Mobile: Secondary buttons (icon only) -->
             <div class="flex items-center gap-2 md:contents">
+              <!-- Search Button -->
+              <button
+                type="button"
+                @click="searchUsers"
+                class="btn btn-primary px-2 md:px-3"
+                :title="t('common.search')"
+              >
+                <Icon name="search" size="sm" class="md:mr-1.5" />
+                <span class="hidden md:inline">{{ t('common.search') }}</span>
+              </button>
               <!-- Refresh Button -->
               <button
                 @click="loadUsers"
@@ -1707,6 +1718,13 @@ const updateAttributeFilter = (attrId: number, value: string) => {
 const applyFilter = () => {
   saveFiltersToStorage()
   loadUsers()
+}
+
+// Reset to page 1 and search immediately (used by the search button/enter key)
+const searchUsers = () => {
+  clearTimeout(searchTimeout)
+  pagination.page = 1
+  applyFilter()
 }
 
 const handleEdit = (user: AdminUser) => {

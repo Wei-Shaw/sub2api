@@ -11,6 +11,7 @@
               :placeholder="t('admin.promo.searchCodes')"
               class="input"
               @input="handleSearch"
+              @keyup.enter="searchCodes"
             />
           </div>
           <Select
@@ -22,6 +23,9 @@
 
           <!-- Right: Action buttons -->
           <div class="flex flex-1 flex-wrap items-center justify-end gap-2">
+            <button type="button" @click="searchCodes" class="btn btn-primary">
+              {{ t('common.search') }}
+            </button>
             <button
               @click="loadCodes"
               :disabled="loading"
@@ -561,6 +565,13 @@ const handleSearch = () => {
     pagination.page = 1
     loadCodes()
   }, 300)
+}
+
+// Reset to page 1 and search immediately (used by the search button/enter key)
+const searchCodes = () => {
+  clearTimeout(searchTimeout)
+  pagination.page = 1
+  loadCodes()
 }
 
 const handlePageChange = (page: number) => {

@@ -122,6 +122,9 @@
           </div>
 
           <div class="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
+            <button type="button" @click="applySearch" :disabled="activeTab === 'errors' ? errorLoading : loading" class="btn btn-primary">
+              {{ t('common.search') }}
+            </button>
             <button type="button" @click="refreshData" :disabled="activeTab === 'errors' ? errorLoading : loading" class="btn btn-secondary">
               {{ t('common.refresh') }}
             </button>
@@ -541,6 +544,14 @@ const refreshData = () => {
   void loadModelStats()
   void loadChartData()
   if (activeTab.value === 'errors') void loadErrors()
+}
+
+const applySearch = () => {
+  if (activeTab.value === 'errors') {
+    applyErrorFilters()
+  } else {
+    applyFilters()
+  }
 }
 
 const resetFilters = () => {

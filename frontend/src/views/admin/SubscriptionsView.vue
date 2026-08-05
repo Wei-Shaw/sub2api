@@ -23,6 +23,7 @@
                 class="input pl-10 pr-8"
                 @input="debounceSearchFilterUsers"
                 @focus="showFilterUserDropdown = true"
+                @keyup.enter="onSearchClick"
               />
               <button
                 v-if="selectedFilterUser"
@@ -93,6 +94,9 @@
 
           <!-- Right: Actions -->
           <div class="ml-auto flex flex-wrap items-center justify-end gap-3">
+            <button type="button" @click="onSearchClick" :disabled="loading" class="btn btn-primary">
+              {{ t('common.search') }}
+            </button>
             <button
               @click="loadSubscriptions"
               :disabled="loading"
@@ -1121,6 +1125,45 @@ const clearFilterUser = () => {
   showFilterUserDropdown.value = false
   filters.user_id = null
   applyFilters()
+}
+
+// 查询按钮/回车触发：把输入框里尚未通过下拉选中的关键词解析成用户过滤条件。
+// 优先取精确匹配，否则取搜索结果第一条；解析不到时提示并中止本次查询。
+const resolveFilterUserKeyword = async (): Promise<boolean> => {
+  const keyword = filterUserKeyword.value.trim()
+  if (!keyword || (selectedFilterUser.value && keyword === selectedFilterUser.value.email)) {
+    return true
+  }
+  if (filterUserSearchTimeout) {
+    clearTimeout(filterUserSearchTimeout)
+    filterUserSearchTimeout = null
+  }
+  filterUserLoading.value = true
+  let match: SimpleUser | undefined
+  try {
+    const results = await adminAPI.usage.searchUsers(keyword)
+    match = results.find((u) => u.email === keyword) ?? results[0]
+  } catch {
+    match = undefined
+  } finally {
+    filterUserLoading.value = false
+  }
+  if (!match) {
+    appStore.showError(t('admin.usage.noMatchedUser'))
+    return false
+  }
+  selectedFilterUser.value = match
+  filterUserKeyword.value = match.email
+  filterUserResults.value = []
+  showFilterUserDropdown.value = false
+  filters.user_id = match.id
+  return true
+}
+
+const onSearchClick = async () => {
+  if (await resolveFilterUserKeyword()) {
+    applyFilters()
+  }
 }
 
 // User search with debounce
