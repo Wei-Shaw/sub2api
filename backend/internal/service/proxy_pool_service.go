@@ -31,15 +31,15 @@ type ProxyPoolService struct {
 }
 
 const (
-	proxyPoolSweepInterval          = 30 * time.Second
-	proxyPoolRunTimeout             = 10 * time.Minute
-	proxyPoolProbeLimit             = 32
-	proxyPoolBindHealthyWait        = 20 * time.Second
+	proxyPoolSweepInterval           = 30 * time.Second
+	proxyPoolRunTimeout              = 10 * time.Minute
+	proxyPoolProbeLimit              = 32
+	proxyPoolBindHealthyWait         = 20 * time.Second
 	proxyPoolBindHealthyPollInterval = 250 * time.Millisecond
-	proxyPoolLockAcquireTimeout     = 2 * time.Second
-	proxyPoolLockTTL                = 15 * time.Minute
-	proxyPoolHealthWriteTimeout     = 5 * time.Second
-	proxyPoolPostProcessTimeout     = 30 * time.Second
+	proxyPoolLockAcquireTimeout      = 2 * time.Second
+	proxyPoolLockTTL                 = 15 * time.Minute
+	proxyPoolHealthWriteTimeout      = 5 * time.Second
+	proxyPoolPostProcessTimeout      = 30 * time.Second
 )
 
 func NewProxyPoolService(repo ProxyPoolRepository, prober ProxyExitInfoProber, latencyCache ProxyLatencyCache, rdb *redis.Client, db *sql.DB) *ProxyPoolService {
@@ -540,8 +540,9 @@ func leastLoadedProxy(proxies []*ProxyPoolProxy, counts map[int64]int64, exclude
 	return best
 }
 
-// BindAccounts assigns every selected account to one healthy proxy in the pool.
-// Assignment is load balanced and persisted as both pool_id and proxy_id.
+// BindAccounts binds every selected account to the pool. Healthy members are
+// assigned immediately; otherwise the binding remains pending until a health
+// check finds an available member.
 func (s *ProxyPoolService) BindAccounts(ctx context.Context, poolID int64, accountIDs []int64) (*ProxyPoolBindResult, error) {
 	pool, err := s.repo.GetPoolByID(ctx, poolID)
 	if err != nil {
@@ -549,6 +550,10 @@ func (s *ProxyPoolService) BindAccounts(ctx context.Context, poolID int64, accou
 	}
 	if !pool.IsActive() {
 		return nil, ErrProxyPoolDisabled
+	}
+	uniqueAccountIDs := uniquePositiveIDs(accountIDs)
+	if len(uniqueAccountIDs) == 0 {
+		return &ProxyPoolBindResult{Results: []ProxyPoolAccountAssignment{}}, nil
 	}
 	release, ok := s.acquirePoolBind(ctx, poolID)
 	if !ok {
@@ -572,22 +577,27 @@ func (s *ProxyPoolService) BindAccounts(ctx context.Context, poolID int64, accou
 		}
 	}
 	if len(healthy) == 0 {
-		return nil, ErrProxyPoolNoHealthyProxy
+		pendingIDs, err := s.repo.MarkAccountsPendingInPool(ctx, poolID, uniqueAccountIDs)
+		if err != nil {
+			return nil, err
+		}
+		results := make([]ProxyPoolAccountAssignment, 0, len(pendingIDs))
+		for _, accountID := range pendingIDs {
+			results = append(results, ProxyPoolAccountAssignment{AccountID: accountID})
+		}
+		return &ProxyPoolBindResult{
+			Assigned: len(pendingIDs),
+			Pending:  len(pendingIDs),
+			Failed:   len(uniqueAccountIDs) - len(pendingIDs),
+			Results:  results,
+		}, nil
 	}
 	counts, err := s.repo.CountAccountsByProxyIDs(ctx, proxyIDs(healthy))
 	if err != nil {
 		return nil, err
 	}
-	unique := make(map[int64]struct{}, len(accountIDs))
-	assignments := make([]ProxyPoolAccountAssignment, 0, len(accountIDs))
-	for _, accountID := range accountIDs {
-		if accountID <= 0 {
-			continue
-		}
-		if _, exists := unique[accountID]; exists {
-			continue
-		}
-		unique[accountID] = struct{}{}
+	assignments := make([]ProxyPoolAccountAssignment, 0, len(uniqueAccountIDs))
+	for _, accountID := range uniqueAccountIDs {
 		target := leastLoadedProxy(healthy, counts, 0)
 		assignments = append(assignments, ProxyPoolAccountAssignment{AccountID: accountID, ProxyID: target.ID})
 		counts[target.ID]++
@@ -597,6 +607,22 @@ func (s *ProxyPoolService) BindAccounts(ctx context.Context, poolID int64, accou
 		return nil, err
 	}
 	return &ProxyPoolBindResult{Assigned: len(applied), Failed: len(assignments) - len(applied), Results: applied}, nil
+}
+
+func uniquePositiveIDs(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	result := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
 }
 
 func healthyPoolProxies(proxies []ProxyPoolProxy) []*ProxyPoolProxy {

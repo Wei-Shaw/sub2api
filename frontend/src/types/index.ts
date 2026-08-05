@@ -936,6 +936,7 @@ export interface ProxyPoolRebindLog {
 
 export interface ProxyPoolBindResult {
   assigned: number
+  pending?: number
   failed: number
   results: Array<{ account_id: number; proxy_id: number }>
 }

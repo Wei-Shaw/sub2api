@@ -71,7 +71,7 @@ function mountModal() {
 describe('BindProxyPoolModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    bindAccounts.mockResolvedValue({ assigned: 2, failed: 0, results: [] })
+    bindAccounts.mockResolvedValue({ assigned: 2, pending: 0, failed: 0, results: [] })
   })
 
   it('binds every selected account to the active pool', async () => {
@@ -90,7 +90,7 @@ describe('BindProxyPoolModal', () => {
   })
 
   it('reports a partial batch result', async () => {
-    bindAccounts.mockResolvedValue({ assigned: 1, failed: 1, results: [] })
+    bindAccounts.mockResolvedValue({ assigned: 1, pending: 0, failed: 1, results: [] })
     const wrapper = mountModal()
     await wrapper.setProps({ show: true })
     await flushPromises()
@@ -101,5 +101,19 @@ describe('BindProxyPoolModal', () => {
 
     expect(showError).toHaveBeenCalled()
     expect(showSuccess).not.toHaveBeenCalled()
+  })
+
+  it('reports bindings waiting for a healthy proxy', async () => {
+    bindAccounts.mockResolvedValue({ assigned: 2, pending: 2, failed: 0, results: [] })
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const bindButton = wrapper.findAll('button').find((button) => button.text().includes('admin.proxyPools.bindAccounts'))
+    await bindButton!.trigger('click')
+    await flushPromises()
+
+    expect(showSuccess).toHaveBeenCalledWith('admin.proxyPools.bindPending')
+    expect(showError).not.toHaveBeenCalled()
   })
 })

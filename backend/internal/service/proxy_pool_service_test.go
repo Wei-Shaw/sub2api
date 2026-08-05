@@ -19,6 +19,7 @@ type proxyPoolServiceTestRepo struct {
 	accountProxy  map[int64]int64
 	unassigned    []int64
 	assignments   []ProxyPoolAccountAssignment
+	pending       []int64
 	healthUpdates []proxyPoolHealthUpdate
 	logs          []ProxyPoolRebindLog
 }
@@ -177,6 +178,13 @@ func (r *proxyPoolServiceTestRepo) BindAccountsToPool(_ context.Context, _ int64
 	return append([]ProxyPoolAccountAssignment(nil), assignments...), nil
 }
 
+func (r *proxyPoolServiceTestRepo) MarkAccountsPendingInPool(_ context.Context, _ int64, accountIDs []int64) ([]int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.pending = append(r.pending, accountIDs...)
+	return append([]int64(nil), accountIDs...), nil
+}
+
 func (r *proxyPoolServiceTestRepo) UnbindAccountsFromPool(_ context.Context, _ int64, _ []int64) (int64, error) {
 	return 0, nil
 }
@@ -296,6 +304,25 @@ func TestProxyPoolBindAccountsUsesLeastLoadedHealthyProxy(t *testing.T) {
 		{AccountID: 101, ProxyID: 2},
 		{AccountID: 102, ProxyID: 1},
 	}, repo.assignments)
+}
+
+func TestProxyPoolBindAccountsQueuesUntilAHealthyProxyIsAvailable(t *testing.T) {
+	pool := &ProxyPool{ID: 1, Status: ProxyPoolStatusActive, HealthIntervalSeconds: 300, FailureThreshold: 2, AutoRebind: true}
+	repo := newProxyPoolServiceTestRepo(pool, proxyPoolServiceTestProxy(1, 1, ProxyPoolHealthUnknown, nil))
+	service := NewProxyPoolService(repo, nil, nil, nil, nil)
+
+	result, err := service.BindAccounts(context.Background(), pool.ID, []int64{100, 101, 100, 0})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Assigned)
+	require.Equal(t, 2, result.Pending)
+	require.Zero(t, result.Failed)
+	require.Equal(t, []int64{100, 101}, repo.pending)
+	require.Equal(t, []ProxyPoolAccountAssignment{
+		{AccountID: 100, ProxyID: 0},
+		{AccountID: 101, ProxyID: 0},
+	}, result.Results)
+	require.Empty(t, repo.assignments)
 }
 
 func TestProxyPoolRunPoolRebindsAfterFailureThreshold(t *testing.T) {

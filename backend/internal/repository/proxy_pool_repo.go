@@ -520,6 +520,47 @@ func (r *proxyPoolRepository) BindAccountsToPool(ctx context.Context, poolID int
 	return applied, nil
 }
 
+func (r *proxyPoolRepository) MarkAccountsPendingInPool(ctx context.Context, poolID int64, accountIDs []int64) ([]int64, error) {
+	if len(accountIDs) == 0 {
+		return []int64{}, nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Keep the current proxy until a healthy pool member is available. The
+	// regular assignment pass recognizes NULL or out-of-pool proxy IDs as pending.
+	rows, err := tx.QueryContext(ctx, `
+		UPDATE accounts
+		SET pool_id = $1, updated_at = NOW()
+		WHERE id = ANY($2) AND deleted_at IS NULL
+		RETURNING id
+	`, poolID, pq.Array(accountIDs))
+	if err != nil {
+		return nil, err
+	}
+	appliedIDs, err := scanInt64Rows(rows)
+	_ = rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	if len(appliedIDs) > 0 {
+		if err := enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, map[string]any{
+			"account_ids": appliedIDs,
+			"pool_id":     poolID,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	sort.Slice(appliedIDs, func(i, j int) bool { return appliedIDs[i] < appliedIDs[j] })
+	return appliedIDs, nil
+}
+
 func (r *proxyPoolRepository) UnbindAccountsFromPool(ctx context.Context, poolID int64, accountIDs []int64) (int64, error) {
 	if len(accountIDs) == 0 {
 		return 0, nil

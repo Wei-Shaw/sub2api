@@ -82,6 +82,8 @@ async function bindAccounts() {
     const result = await adminAPI.proxyPools.bindAccounts(selectedPoolId.value, props.accountIds)
     if (result.failed > 0) {
       appStore.showError(t('admin.proxyPools.bindPartial', { assigned: result.assigned, failed: result.failed }))
+    } else if ((result.pending ?? 0) > 0) {
+      appStore.showSuccess(t('admin.proxyPools.bindPending', { count: result.pending ?? 0 }))
     } else {
       appStore.showSuccess(t('admin.proxyPools.bindSuccess', { count: result.assigned }))
     }

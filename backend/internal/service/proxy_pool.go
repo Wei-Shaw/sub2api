@@ -98,6 +98,7 @@ type ProxyPoolAccountAssignment struct {
 
 type ProxyPoolBindResult struct {
 	Assigned int                          `json:"assigned"`
+	Pending  int                          `json:"pending"`
 	Failed   int                          `json:"failed"`
 	Results  []ProxyPoolAccountAssignment `json:"results"`
 }
@@ -137,6 +138,7 @@ type ProxyPoolRepository interface {
 	ListAccountIDsByProxy(ctx context.Context, poolID, proxyID int64) ([]int64, error)
 	CountAccountsByProxyIDs(ctx context.Context, proxyIDs []int64) (map[int64]int64, error)
 	BindAccountsToPool(ctx context.Context, poolID int64, assignments []ProxyPoolAccountAssignment) ([]ProxyPoolAccountAssignment, error)
+	MarkAccountsPendingInPool(ctx context.Context, poolID int64, accountIDs []int64) ([]int64, error)
 	UnbindAccountsFromPool(ctx context.Context, poolID int64, accountIDs []int64) (int64, error)
 
 	RecordRebindLog(ctx context.Context, entry *ProxyPoolRebindLog) error
