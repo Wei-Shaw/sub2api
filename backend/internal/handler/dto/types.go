@@ -377,6 +377,21 @@ type AdminProxyWithAccountCount struct {
 	QualityChecked *int64 `json:"quality_checked,omitempty"`
 }
 
+// ProxyPoolProxy is the admin representation of a proxy pool member.
+// It deliberately uses the non-admin Proxy DTO so credentials are never exposed.
+type ProxyPoolProxy struct {
+	Proxy
+	PoolID        int64      `json:"pool_id"`
+	PoolHealth    string     `json:"pool_health"`
+	PoolCheckedAt *time.Time `json:"pool_checked_at,omitempty"`
+	PoolFailures  int        `json:"pool_failures"`
+	AccountCount  int64      `json:"account_count"`
+	LatencyMs     *int64     `json:"latency_ms,omitempty"`
+	IPAddress     string     `json:"ip_address,omitempty"`
+	Country       string     `json:"country,omitempty"`
+	CountryCode   string     `json:"country_code,omitempty"`
+}
+
 type ProxyAccountSummary struct {
 	ID       int64   `json:"id"`
 	Name     string  `json:"name"`

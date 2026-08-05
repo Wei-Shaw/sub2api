@@ -895,6 +895,51 @@ export interface Proxy {
   updated_at: string
 }
 
+export interface ProxyPool {
+  id: number
+  name: string
+  description?: string | null
+  status: 'active' | 'disabled'
+  health_interval_seconds: number
+  failure_threshold: number
+  auto_rebind: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ProxyPoolWithStats extends ProxyPool {
+  proxy_count: number
+  healthy_proxy_count: number
+  unhealthy_proxy_count: number
+  bound_account_count: number
+}
+
+export interface ProxyPoolProxy extends Proxy {
+  pool_id: number
+  pool_health: 'unknown' | 'healthy' | 'unhealthy'
+  pool_checked_at?: string | null
+  pool_failures: number
+  account_count: number
+}
+
+export interface ProxyPoolRebindLog {
+  id: number
+  pool_id: number
+  from_proxy_id?: number | null
+  to_proxy_id?: number | null
+  from_proxy_name?: string
+  to_proxy_name?: string
+  account_count: number
+  reason: string
+  created_at: string
+}
+
+export interface ProxyPoolBindResult {
+  assigned: number
+  failed: number
+  results: Array<{ account_id: number; proxy_id: number }>
+}
+
 export interface ProxyAccountSummary {
   id: number
   name: string

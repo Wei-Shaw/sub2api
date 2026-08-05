@@ -193,6 +193,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
@@ -470,6 +471,10 @@ const ServerIcon = {
         })
       ]
     )
+}
+
+const ProxyPoolIcon = {
+  render: () => h(Icon, { name: 'database', size: 'md' })
 }
 
 const BellIcon = {
@@ -771,6 +776,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
+    { path: '/admin/proxy-pools', label: t('nav.proxyPools'), icon: ProxyPoolIcon },
     {
       path: '/admin/security-audit',
       label: t('nav.securityAudit'),

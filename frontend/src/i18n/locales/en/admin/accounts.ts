@@ -407,6 +407,7 @@ export default {
         resetStatus: 'Reset Status',
         refreshToken: 'Refresh Token',
         probeUpstreamBilling: 'Probe Upstream Rate',
+        bindProxyPool: 'Bind Proxy Pool',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
         partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'

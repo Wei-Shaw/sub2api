@@ -184,6 +184,7 @@
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
           @probe-upstream-billing="handleBulkProbeUpstreamBilling"
+          @bind-proxy-pool="showBindProxyPool = true"
           @edit-selected="openBulkEditSelected"
           @edit-filtered="openBulkEditFiltered"
           @clear="clearSelection"
@@ -465,6 +466,13 @@
       @close="showBulkEdit = false"
       @updated="handleBulkUpdated"
     />
+    <BindProxyPoolModal
+      :show="showBindProxyPool"
+      :account-ids="selIds"
+      :pools="proxyPools"
+      @close="showBindProxyPool = false"
+      @bound="handleProxyPoolBound"
+    />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
     <ConfirmDialog :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
@@ -502,6 +510,7 @@ import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrs
 import AccountTableActions from '@/components/admin/account/AccountTableActions.vue'
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
+import BindProxyPoolModal from '@/components/admin/account/BindProxyPoolModal.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
@@ -527,13 +536,14 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
-import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, ProxyPoolWithStats, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
+const proxyPools = ref<ProxyPoolWithStats[]>([])
 const groups = ref<AdminGroup[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
 const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
@@ -583,6 +593,7 @@ const showImportData = ref(false)
 const showExportDataDialog = ref(false)
 const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
+const showBindProxyPool = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
@@ -1098,6 +1109,7 @@ const isAnyModalOpen = computed(() => {
     showImportData.value ||
     showExportDataDialog.value ||
     showBulkEdit.value ||
+    showBindProxyPool.value ||
     showTempUnsched.value ||
     showDeleteDialog.value ||
     showReAuth.value ||
@@ -1795,6 +1807,12 @@ const handleBulkUpdated = () => {
   clearSelection()
   reload()
 }
+const handleProxyPoolBound = () => {
+  showBindProxyPool.value = false
+  clearSelection()
+  reload()
+  void loadProxyPools()
+}
 const handleDataImported = () => { showImportData.value = false; reload() }
 const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
 const ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE = '__unset__'
@@ -2182,6 +2200,14 @@ const handleClickOutside = (event: MouseEvent) => {
   }
 }
 
+const loadProxyPools = async () => {
+  try {
+    proxyPools.value = await adminAPI.proxyPools.list()
+  } catch (error) {
+    console.error('Failed to load proxy pools:', error)
+  }
+}
+
 onMounted(async () => {
   load()
   loadUpstreamBillingProbeGlobalState()
@@ -2192,6 +2218,7 @@ onMounted(async () => {
   } catch (error) {
     console.error('Failed to load proxies/groups:', error)
   }
+  await loadProxyPools()
   window.addEventListener('scroll', handleScroll, true)
   window.addEventListener('resize', handleViewportResize)
   document.addEventListener('click', handleClickOutside)
