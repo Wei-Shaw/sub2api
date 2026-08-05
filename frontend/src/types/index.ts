@@ -874,6 +874,8 @@ export interface Proxy {
   password?: string | null
   status: 'active' | 'inactive' | 'expired'
   account_count?: number // Number of accounts using this proxy
+  error_account_count?: number // Number of accounts in error status (status === 'error')
+  platform_counts?: ProxyPlatformAccountCount[] // Per-platform breakdown, only platforms with count > 0
   latency_ms?: number
   latency_status?: 'success' | 'failed'
   latency_message?: string
@@ -895,12 +897,10 @@ export interface Proxy {
   updated_at: string
 }
 
-export interface ProxyAccountSummary {
-  id: number
-  name: string
+export interface ProxyPlatformAccountCount {
   platform: AccountPlatform
-  type: AccountType
-  notes?: string | null
+  count: number
+  error_count: number
 }
 
 export interface ProxyQualityCheckItem {

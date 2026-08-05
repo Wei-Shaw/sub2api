@@ -478,26 +478,44 @@ func ProxyFromService(p *service.Proxy) *Proxy {
 	}
 }
 
+// proxyPlatformCountsFromService 转换平台维度的账号统计；空切片返回 nil 以便 omitempty 生效
+func proxyPlatformCountsFromService(in []service.ProxyPlatformAccountCount) []ProxyPlatformAccountCount {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ProxyPlatformAccountCount, 0, len(in))
+	for i := range in {
+		out = append(out, ProxyPlatformAccountCount{
+			Platform:   in[i].Platform,
+			Count:      in[i].Count,
+			ErrorCount: in[i].ErrorCount,
+		})
+	}
+	return out
+}
+
 func ProxyWithAccountCountFromService(p *service.ProxyWithAccountCount) *ProxyWithAccountCount {
 	if p == nil {
 		return nil
 	}
 	return &ProxyWithAccountCount{
-		Proxy:          *ProxyFromService(&p.Proxy),
-		AccountCount:   p.AccountCount,
-		LatencyMs:      p.LatencyMs,
-		LatencyStatus:  p.LatencyStatus,
-		LatencyMessage: p.LatencyMessage,
-		IPAddress:      p.IPAddress,
-		Country:        p.Country,
-		CountryCode:    p.CountryCode,
-		Region:         p.Region,
-		City:           p.City,
-		QualityStatus:  p.QualityStatus,
-		QualityScore:   p.QualityScore,
-		QualityGrade:   p.QualityGrade,
-		QualitySummary: p.QualitySummary,
-		QualityChecked: p.QualityChecked,
+		Proxy:             *ProxyFromService(&p.Proxy),
+		AccountCount:      p.AccountCount,
+		ErrorAccountCount: p.ErrorAccountCount,
+		PlatformCounts:    proxyPlatformCountsFromService(p.PlatformCounts),
+		LatencyMs:         p.LatencyMs,
+		LatencyStatus:     p.LatencyStatus,
+		LatencyMessage:    p.LatencyMessage,
+		IPAddress:         p.IPAddress,
+		Country:           p.Country,
+		CountryCode:       p.CountryCode,
+		Region:            p.Region,
+		City:              p.City,
+		QualityStatus:     p.QualityStatus,
+		QualityScore:      p.QualityScore,
+		QualityGrade:      p.QualityGrade,
+		QualitySummary:    p.QualitySummary,
+		QualityChecked:    p.QualityChecked,
 	}
 }
 
@@ -528,34 +546,23 @@ func ProxyWithAccountCountFromServiceAdmin(p *service.ProxyWithAccountCount) *Ad
 		return nil
 	}
 	return &AdminProxyWithAccountCount{
-		AdminProxy:     *admin,
-		AccountCount:   p.AccountCount,
-		LatencyMs:      p.LatencyMs,
-		LatencyStatus:  p.LatencyStatus,
-		LatencyMessage: p.LatencyMessage,
-		IPAddress:      p.IPAddress,
-		Country:        p.Country,
-		CountryCode:    p.CountryCode,
-		Region:         p.Region,
-		City:           p.City,
-		QualityStatus:  p.QualityStatus,
-		QualityScore:   p.QualityScore,
-		QualityGrade:   p.QualityGrade,
-		QualitySummary: p.QualitySummary,
-		QualityChecked: p.QualityChecked,
-	}
-}
-
-func ProxyAccountSummaryFromService(a *service.ProxyAccountSummary) *ProxyAccountSummary {
-	if a == nil {
-		return nil
-	}
-	return &ProxyAccountSummary{
-		ID:       a.ID,
-		Name:     a.Name,
-		Platform: a.Platform,
-		Type:     a.Type,
-		Notes:    a.Notes,
+		AdminProxy:        *admin,
+		AccountCount:      p.AccountCount,
+		ErrorAccountCount: p.ErrorAccountCount,
+		PlatformCounts:    proxyPlatformCountsFromService(p.PlatformCounts),
+		LatencyMs:         p.LatencyMs,
+		LatencyStatus:     p.LatencyStatus,
+		LatencyMessage:    p.LatencyMessage,
+		IPAddress:         p.IPAddress,
+		Country:           p.Country,
+		CountryCode:       p.CountryCode,
+		Region:            p.Region,
+		City:              p.City,
+		QualityStatus:     p.QualityStatus,
+		QualityScore:      p.QualityScore,
+		QualityGrade:      p.QualityGrade,
+		QualitySummary:    p.QualitySummary,
+		QualityChecked:    p.QualityChecked,
 	}
 }
 

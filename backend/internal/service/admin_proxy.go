@@ -192,8 +192,41 @@ func (s *adminServiceImpl) BatchDeleteProxies(ctx context.Context, ids []int64) 
 	return result, nil
 }
 
-func (s *adminServiceImpl) GetProxyAccounts(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
-	return s.proxyRepo.ListAccountSummariesByProxyID(ctx, proxyID)
+// GetProxyAccounts 返回使用该 proxy 的账号完整信息。
+// 返回完整 Account（而非精简 summary）是为了让前端能直接复用账号管理页的状态展示组件。
+func (s *adminServiceImpl) GetProxyAccounts(ctx context.Context, proxyID int64) ([]Account, error) {
+	summaries, err := s.proxyRepo.ListAccountSummariesByProxyID(ctx, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	if len(summaries) == 0 {
+		return []Account{}, nil
+	}
+
+	ids := make([]int64, 0, len(summaries))
+	for i := range summaries {
+		ids = append(ids, summaries[i].ID)
+	}
+
+	accounts, err := s.accountRepo.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	// GetByIDs 内部是 IDIn 查询、没有 ORDER BY，这里按 summaries 的 id DESC 顺序回填
+	byID := make(map[int64]*Account, len(accounts))
+	for _, a := range accounts {
+		if a != nil {
+			byID[a.ID] = a
+		}
+	}
+	out := make([]Account, 0, len(ids))
+	for _, id := range ids {
+		if a, ok := byID[id]; ok {
+			out = append(out, *a)
+		}
+	}
+	return out, nil
 }
 
 func (s *adminServiceImpl) CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error) {

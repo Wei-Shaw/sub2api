@@ -122,7 +122,7 @@ type AdminService interface {
 	UpdateProxy(ctx context.Context, id int64, input *UpdateProxyInput) (*Proxy, error)
 	DeleteProxy(ctx context.Context, id int64) error
 	BatchDeleteProxies(ctx context.Context, ids []int64) (*ProxyBatchDeleteResult, error)
-	GetProxyAccounts(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error)
+	GetProxyAccounts(ctx context.Context, proxyID int64) ([]Account, error)
 	CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error)
 	TestProxy(ctx context.Context, id int64) (*ProxyTestResult, error)
 	CheckProxyQuality(ctx context.Context, id int64) (*ProxyQualityCheckResult, error)

@@ -647,8 +647,8 @@ func (s *stubAdminService) BatchDeleteProxies(ctx context.Context, ids []int64) 
 	return &service.ProxyBatchDeleteResult{DeletedIDs: ids}, nil
 }
 
-func (s *stubAdminService) GetProxyAccounts(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
-	return []service.ProxyAccountSummary{{ID: 1, Name: "account"}}, nil
+func (s *stubAdminService) GetProxyAccounts(ctx context.Context, proxyID int64) ([]service.Account, error) {
+	return []service.Account{{ID: 1, Name: "account"}}, nil
 }
 
 func (s *stubAdminService) CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error) {

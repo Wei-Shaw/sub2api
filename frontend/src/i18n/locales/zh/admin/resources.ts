@@ -156,6 +156,11 @@ export default {
       accountName: '账号名称',
       accountPlatform: '所属平台',
       accountNotes: '备注',
+      abnormalCount: '异常 {count}',
+      abnormalTooltip: '{count} 个账号处于错误状态',
+      platformAccountsTooltip: '{platform}：{count} 个账号',
+      accountsFilteredBy: '已筛选：{platform}',
+      accountsAllPlatforms: '全部平台',
       // Batch import
       standardAdd: '标准添加',
       batchAdd: '快捷添加',
