@@ -36,7 +36,7 @@ func prepareClaudeAutoClassifierOAuthBody(body []byte) ([]byte, bool, error) {
 
 	system := gjson.GetBytes(next, "system")
 	if !system.IsArray() {
-		return nil, false, fmt.Errorf("Claude Auto classifier system must be an array")
+		return nil, false, fmt.Errorf("auto classifier system must be an array")
 	}
 	items := make([][]byte, 0, len(system.Array())+1)
 	items = append(items, billingBlock)
