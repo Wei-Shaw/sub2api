@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -23,7 +24,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -1480,6 +1484,89 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	}
 
 	h.usageUnrestricted(c, ctx, apiKey, subject, usageData, dailyUsage, modelStats)
+}
+
+// UsageLogs handles listing per-request usage records for the authenticated API key
+// GET /v1/usage/logs
+//
+// 与 /v1/usage 同一鉴权口径（API Key 自身），记录永远只限定在当前 Key。
+// 支持分页（page/page_size，上限 100）与可选 start_date/end_date/timezone/model 过滤。
+func (h *GatewayHandler) UsageLogs(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
+
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
+
+	if h.usageService == nil {
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Usage service not available")
+		return
+	}
+
+	page, pageSize := response.ParsePagination(c)
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	userTZ := c.Query("timezone")
+	var startPtr, endPtr *time.Time
+	if s := strings.TrimSpace(c.Query("start_date")); s != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", s, userTZ)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid start_date format, use YYYY-MM-DD")
+			return
+		}
+		startPtr = &t
+	}
+	if s := strings.TrimSpace(c.Query("end_date")); s != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", s, userTZ)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid end_date format, use YYYY-MM-DD")
+			return
+		}
+		// Use half-open range [start, end), move to next calendar day start (DST-safe).
+		end := t.AddDate(0, 0, 1)
+		endPtr = &end
+	}
+
+	params := pagination.PaginationParams{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    "created_at",
+		SortOrder: "desc",
+	}
+	filters := usagestats.UsageLogFilters{
+		UserID:            subject.UserID,
+		APIKeyID:          apiKey.ID,
+		Model:             strings.TrimSpace(c.Query("model")),
+		ModelFilterSource: usagestats.ModelSourceRequested,
+		StartTime:         startPtr,
+		EndTime:           endPtr,
+	}
+
+	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
+	if err != nil {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to list usage records")
+		return
+	}
+
+	items := make([]dto.UsageLog, 0, len(records))
+	for i := range records {
+		items = append(items, *dto.UsageLogFromService(&records[i]))
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"items":     items,
+		"page":      params.Page,
+		"page_size": params.PageSize,
+		"total":     result.Total,
+	})
 }
 
 // parseUsageDateRange 解析 start_date / end_date query params，默认返回近 30 天范围

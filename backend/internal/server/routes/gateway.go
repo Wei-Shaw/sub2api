@@ -199,6 +199,7 @@ func RegisterGatewayRoutes(
 		// Codex manifest format; other clients keep the OpenAI-style list.
 		gateway.GET("/models", modelsHandler)
 		gateway.GET("/usage", h.Gateway.Usage)
+		gateway.GET("/usage/logs", h.Gateway.UsageLogs)
 		gateway.POST("/live", h.OpenAIGateway.Live)
 		gateway.GET("/live/:call_id", h.OpenAIGateway.LiveSideband)
 		// OpenAI Responses API: auto-route based on group platform
@@ -357,6 +358,7 @@ func RegisterGatewayRoutes(
 		antigravityV1.POST("/messages/count_tokens", h.Gateway.CountTokens)
 		antigravityV1.GET("/models", h.Gateway.AntigravityModels)
 		antigravityV1.GET("/usage", h.Gateway.Usage)
+		antigravityV1.GET("/usage/logs", h.Gateway.UsageLogs)
 	}
 
 	antigravityV1Beta := r.Group("/antigravity/v1beta")
