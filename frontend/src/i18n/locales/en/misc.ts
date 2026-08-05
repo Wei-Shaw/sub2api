@@ -48,6 +48,7 @@ export default {
     controlPlaneUpgradeTimeout: 'The application was updated, but the host deployer upgrade is taking too long; check the deployer before retrying',
     updateCompletedWithWarning: 'Update completed with an operations warning',
     deploymentStages: {
+      backing_up: 'Creating and verifying pre-update backup',
       pulling: 'Pulling and verifying image',
       preparing: 'Preparing inactive slot',
       starting_candidate: 'Starting candidate container',

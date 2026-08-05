@@ -373,6 +373,7 @@ func (m *Manager) ReconcileWithOptions(ctx context.Context, slotName string, all
 	defer m.mu.Unlock()
 	next := cloneState(m.state)
 	if oldActiveContainer != "" && oldActiveContainer != container.Name {
+		next.OlderVersion, next.OlderImage = nextOlderRelease(next, version, image, oldActiveVersion, oldActiveImage)
 		next.PreviousSlot = oldActiveSlot
 		next.PreviousContainer = oldActiveContainer
 		next.PreviousContainerID = oldActiveContainerID
@@ -556,6 +557,10 @@ func (m *Manager) Start(req DeployRequest) (*Job, error) {
 		CreatedAt:            now,
 		StartedAt:            now,
 		UpdatedAt:            now,
+	}
+	if req.Action == "update" {
+		job.Stage = StageBackingUp
+		job.Message = "Creating and verifying pre-update backup"
 	}
 	next := cloneState(m.state)
 	archiveTerminalJob(&next, now)
@@ -815,6 +820,7 @@ func (m *Manager) completeRecoveredDeployment(jobID string) error {
 		_ = m.writeControlPlaneUpgradeStatus(job, "failed", controlPlaneErr.Error())
 		cleanupWarning = "application update recovered successfully, but the deployer control-plane upgrade could not be prepared: " + controlPlaneErr.Error()
 	}
+	cleanupWarning = joinWarnings(cleanupWarning, m.performPostSuccessMaintenance(jobID))
 	job.CleanupWarning = cleanupWarning
 	if err := m.finishRecoveredJob(*job, JobStatusSucceeded, "Recovered deployment after deployer restart", ""); err != nil {
 		if activationLock != nil {
@@ -866,6 +872,31 @@ func (m *Manager) execute(jobID string) {
 			return
 		}
 	}
+	if job.Action == "update" && job.BackupPath == "" {
+		if err := m.updateJob(jobID, StageBackingUp, "Creating and verifying pre-update backup", nil); err != nil {
+			_ = m.fail(jobID, fmt.Errorf("persist backup intent: %w", err))
+			return
+		}
+		job, err = m.Job(jobID)
+		if err != nil {
+			return
+		}
+		backupPath, backupErr := m.createAutomaticBackup(ctx, job)
+		if backupErr != nil {
+			_ = m.fail(jobID, fmt.Errorf("pre-update backup failed; update was blocked: %w", backupErr))
+			return
+		}
+		if err := m.updateJob(jobID, StagePulling, "Pre-update backup verified; pulling target image", func(current *Job) {
+			current.BackupPath = backupPath
+		}); err != nil {
+			_ = m.fail(jobID, fmt.Errorf("persist verified backup result: %w", err))
+			return
+		}
+		job, err = m.Job(jobID)
+		if err != nil {
+			return
+		}
+	}
 	if job.Action == "rollback" {
 		candidate, ok, retainedErr := m.retainedRollbackCandidate(ctx, job.TargetVersion)
 		if retainedErr != nil {
@@ -877,25 +908,34 @@ func (m *Manager) execute(jobID string) {
 			return
 		}
 	}
-	taggedImage := m.cfg.ImageRepository + ":" + job.TargetVersion
-	if err := m.updateJob(jobID, StagePulling, "Pulling target image", func(j *Job) { j.TargetImage = taggedImage }); err != nil {
-		_ = m.fail(jobID, fmt.Errorf("persist image pull intent: %w", err))
-		return
+	var targetImage, digest string
+	retainedImage := false
+	if job.Action == "rollback" {
+		targetImage, digest, retainedImage = m.retainedRollbackImage(job.TargetVersion)
 	}
-	if _, err := m.runner.Run(ctx, nil, m.cfg.DockerBinary, "pull", taggedImage); err != nil {
-		_ = m.fail(jobID, fmt.Errorf("pull target image: %w", err))
-		return
+	if !retainedImage {
+		taggedImage := m.cfg.ImageRepository + ":" + job.TargetVersion
+		if err := m.updateJob(jobID, StagePulling, "Pulling target image", func(j *Job) { j.TargetImage = taggedImage }); err != nil {
+			_ = m.fail(jobID, fmt.Errorf("persist image pull intent: %w", err))
+			return
+		}
+		if _, err := m.runner.Run(ctx, nil, m.cfg.DockerBinary, "pull", taggedImage); err != nil {
+			_ = m.fail(jobID, fmt.Errorf("pull target image: %w", err))
+			return
+		}
+		digest, err = m.resolveDigest(ctx, taggedImage)
+		if err != nil {
+			_ = m.fail(jobID, err)
+			return
+		}
+		if job.ExpectedTargetDigest != "" && digest != job.ExpectedTargetDigest {
+			_ = m.fail(jobID, fmt.Errorf("target image digest does not match the verified release ledger: expected %s, got %s", job.ExpectedTargetDigest, digest))
+			return
+		}
+		targetImage = m.cfg.ImageRepository + "@" + digest
+	} else {
+		log.Printf("sub2api-deployer job_id=%q action=rollback retained_image=%q", job.ID, targetImage)
 	}
-	digest, err := m.resolveDigest(ctx, taggedImage)
-	if err != nil {
-		_ = m.fail(jobID, err)
-		return
-	}
-	if job.ExpectedTargetDigest != "" && digest != job.ExpectedTargetDigest {
-		_ = m.fail(jobID, fmt.Errorf("target image digest does not match the verified release ledger: expected %s, got %s", job.ExpectedTargetDigest, digest))
-		return
-	}
-	targetImage := m.cfg.ImageRepository + "@" + digest
 	if err := m.verifyImageLabels(ctx, targetImage); err != nil {
 		_ = m.fail(jobID, err)
 		return
@@ -975,6 +1015,25 @@ func (m *Manager) retainedRollbackCandidate(ctx context.Context, targetVersion s
 		version:   previousVersion,
 		image:     previousImage,
 	}, true, nil
+}
+
+func (m *Manager) retainedRollbackImage(targetVersion string) (string, string, bool) {
+	m.mu.RLock()
+	version := m.state.OlderVersion
+	image := m.state.OlderImage
+	m.mu.RUnlock()
+	if strings.TrimPrefix(version, "v") != strings.TrimPrefix(targetVersion, "v") {
+		return "", "", false
+	}
+	prefix := m.cfg.ImageRepository + "@"
+	if !strings.HasPrefix(image, prefix) {
+		return "", "", false
+	}
+	digest := strings.TrimPrefix(image, prefix)
+	if !digestPattern.MatchString(digest) {
+		return "", "", false
+	}
+	return image, digest, true
 }
 
 func (m *Manager) executeRetainedRollback(ctx context.Context, jobID string, candidate retainedCandidate) {
@@ -1108,6 +1167,7 @@ func (m *Manager) finishCandidateDeployment(ctx context.Context, jobID string, c
 		_ = m.writeControlPlaneUpgradeStatus(job, "failed", controlPlaneErr.Error())
 		cleanupWarning = "application update succeeded, but the deployer control-plane upgrade could not be prepared: " + controlPlaneErr.Error()
 	}
+	cleanupWarning = joinWarnings(cleanupWarning, m.performPostSuccessMaintenance(jobID))
 	if err := m.complete(jobID, "Deployment completed", cleanupWarning); err != nil {
 		if activationLock != nil {
 			m.discardPreparedControlPlaneUpgrade(job.ID)
@@ -1123,6 +1183,16 @@ func (m *Manager) finishCandidateDeployment(ctx context.Context, jobID string, c
 			_ = m.appendCleanupWarning(jobID, "application update succeeded, but the deployer control-plane upgrade was not scheduled: "+err.Error())
 		}
 	}
+}
+
+func joinWarnings(warnings ...string) string {
+	var joined []string
+	for _, warning := range warnings {
+		if warning = strings.TrimSpace(warning); warning != "" {
+			joined = append(joined, warning)
+		}
+	}
+	return strings.Join(joined, "; ")
 }
 
 type controlPlaneUpgradeStatus struct {
@@ -1589,7 +1659,7 @@ func (m *Manager) recoveryTimeout() time.Duration {
 func (m *Manager) executionTimeout() time.Duration {
 	// Pulling and registry resolution share the parent context, so reserve a
 	// bounded overhead in addition to every configured deployment phase.
-	timeout := 10*time.Minute + 2*m.cfg.HealthTimeout.Duration + m.cfg.StabilizeDuration.Duration +
+	timeout := 10*time.Minute + m.cfg.BackupTimeout.Duration + 2*m.cfg.HealthTimeout.Duration + m.cfg.StabilizeDuration.Duration +
 		m.cfg.DrainTimeout.Duration + 2*m.cfg.StopTimeout.Duration + 2*m.cfg.RouteConfirmationTimeout.Duration
 	if timeout < 15*time.Minute {
 		return 15 * time.Minute
@@ -1631,6 +1701,7 @@ func (m *Manager) persistSuccessfulDeployment(job *Job) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	next := m.state
+	next.OlderVersion, next.OlderImage = nextOlderRelease(next, job.TargetVersion, job.TargetImage, job.FromVersion, job.FromImage)
 	if next.ActiveContainer != job.CandidateContainer {
 		next.PreviousSlot = next.ActiveSlot
 		next.PreviousContainer = next.ActiveContainer

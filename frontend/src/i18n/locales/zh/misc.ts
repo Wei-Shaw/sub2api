@@ -47,6 +47,7 @@ export default {
     controlPlaneUpgradeTimeout: '应用已更新，但宿主机 deployer 升级超时，请检查 deployer 后再重试',
     updateCompletedWithWarning: '更新已完成，但有运维告警需处理',
     deploymentStages: {
+      backing_up: '创建并校验更新前备份',
       pulling: '拉取并校验镜像',
       preparing: '准备备用槽位',
       starting_candidate: '启动候选容器',

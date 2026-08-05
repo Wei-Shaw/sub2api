@@ -150,6 +150,7 @@ docs/*
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/ASYNC_IMAGE_TASKS.md
 !docs/DOCKER_MANAGED_UPDATES.md
+!docs/MANAGED_UPDATE_RETENTION.md
 !docs/legal/
 !docs/legal/*.md
 .serena/

@@ -285,7 +285,8 @@ case "${1:-}" in
                   SERVER_SHUTDOWN_TIMEOUT: "90"
                 },
                 healthcheck: {test: ["CMD", "true"]}
-              }
+              },
+              postgres: {image: "postgres:18-alpine"}
             }
           }
         '
@@ -324,6 +325,8 @@ make_root() {
 services:
   sub2api:
     image: $CURRENT_IMAGE
+  postgres:
+    image: postgres:18-alpine
 EOF
   : > "$root/app/.env"
   cat > "$root/nginx/site.conf" <<EOF
@@ -513,6 +516,12 @@ if ! jq -e \
     and .compose_service == "sub2api"
     and .image_repository == "ghcr.io/ssharkkky/sub2api"
     and .socket_gid == 987
+    and .backup_root_path == ($state | sub("/image.env$"; "/backups"))
+    and .backup_database_service == "postgres"
+    and (.backup_application_config_path | endswith("/app/data/config.yaml"))
+    and (.backup_docker_config_path | endswith("/etc/sub2api-deployer/docker/config.json"))
+    and (.backup_deployer_binary_path | endswith("/usr/local/sbin/sub2api-deployer"))
+    and .backup_timeout == "30m"
     and .control_plane_upgrade_path == ($state | sub("/image.env$"; "/control-plane-upgrade.json"))
     and (.control_plane_upgrade_command | length == 4)
   ' "$UPGRADE_ROOT/etc/sub2api-deployer/config.json" >/dev/null; then

@@ -22,6 +22,7 @@ const (
 
 const (
 	StagePulling           = "pulling"
+	StageBackingUp         = "backing_up"
 	StagePreparing         = "preparing"
 	StageStartingCandidate = "starting_candidate"
 	StageCheckingCandidate = "checking_candidate"
@@ -80,6 +81,7 @@ type Job struct {
 	RollbackPerformed              bool       `json:"rollback_performed"`
 	RollbackError                  string     `json:"rollback_error,omitempty"`
 	CleanupWarning                 string     `json:"cleanup_warning,omitempty"`
+	BackupPath                     string     `json:"backup_path,omitempty"`
 	ControlPlaneUpgradeStatus      string     `json:"control_plane_upgrade_status,omitempty"`
 	ControlPlaneUpgradeError       string     `json:"control_plane_upgrade_error,omitempty"`
 	ControlPlaneUpgradeAttempt     int        `json:"control_plane_upgrade_attempt,omitempty"`
@@ -104,6 +106,8 @@ type State struct {
 	PreviousPort        int       `json:"previous_port,omitempty"`
 	PreviousVersion     string    `json:"previous_version,omitempty"`
 	PreviousImage       string    `json:"previous_image,omitempty"`
+	OlderVersion        string    `json:"older_version,omitempty"`
+	OlderImage          string    `json:"older_image,omitempty"`
 	Degraded            bool      `json:"degraded"`
 	DegradedReason      string    `json:"degraded_reason,omitempty"`
 	Job                 *Job      `json:"job,omitempty"`

@@ -47,6 +47,7 @@ RUNTIME_PRESERVE_DROPIN="/run/systemd/system/sub2api-deployer.service.d/10-prese
 INSTALLED_BINARY="/usr/local/sbin/sub2api-deployer"
 INSTALLED_UPGRADER="/usr/local/sbin/sub2api-deployer-upgrade"
 STATE_DIR="/var/lib/sub2api-deployer"
+BACKUP_ROOT="$STATE_DIR/backups"
 CONTROL_PLANE_UPGRADE_REQUEST="$STATE_DIR/control-plane-upgrade.json"
 IMAGE_STATE_FILE="$STATE_DIR/image.env"
 RUNTIME_DIR="$STATE_DIR/runtime"
@@ -644,7 +645,9 @@ compose_preflight() {
     --arg image "$CURRENT_IMAGE" \
     --arg gid "$SOCKET_GID" '
       .services[$service] as $app
+      | .services.postgres as $database
       | ($app | type == "object")
+        and ($database | type == "object")
         and $app.image == $image
         and (($app.group_add // []) | map(tostring) | index($gid) != null)
         and (($app.volumes // []) | any(.[];
@@ -966,7 +969,10 @@ EOF
     --argjson socket_gid "$SOCKET_GID" \
     --arg nginx_binary "$(command -v nginx)" \
     --arg control_plane_upgrade_path "$CONTROL_PLANE_UPGRADE_REQUEST" \
-    --arg systemctl_binary "$(command -v systemctl)" '
+    --arg systemctl_binary "$(command -v systemctl)" \
+    --arg deployer_binary "$INSTALLED_BINARY" \
+    --arg application_config "$INSTALL_DIR/data/config.yaml" \
+    --arg docker_config "$DOCKER_CONFIG_FILE" '
       .socket_path = $socket_path
       | .state_path = $state_path
       | .image_state_path = $image_state
@@ -989,6 +995,12 @@ EOF
       | .nginx_dump_command = [$nginx_binary, "-T"]
       | .control_plane_upgrade_path = $control_plane_upgrade_path
       | .control_plane_upgrade_command = [$systemctl_binary, "start", "--no-block", "sub2api-deployer-upgrade.service"]
+      | .backup_root_path = ($state_path | sub("/state.json$"; "/backups"))
+      | .backup_database_service = "postgres"
+      | .backup_application_config_path = $application_config
+      | .backup_docker_config_path = $docker_config
+      | .backup_deployer_binary_path = $deployer_binary
+      | .backup_timeout = "30m"
       | .route_confirmation_timeout = (.route_confirmation_timeout // "10s")
       | if .health_timeout == "2m" then .health_timeout = "12m" else . end
       | .socket_gid = $socket_gid
@@ -1050,6 +1062,10 @@ EOF
     --arg nginx_site_path "$NGINX_SITE" \
     --arg nginx_binary "$(command -v nginx)" \
     --arg systemctl_binary "$(command -v systemctl)" \
+    --arg deployer_binary "$INSTALLED_BINARY" \
+    --arg backup_root_path "$BACKUP_ROOT" \
+    --arg application_config "$INSTALL_DIR/data/config.yaml" \
+    --arg docker_config "$DOCKER_CONFIG_FILE" \
     --arg control_plane_upgrade_path "$CONTROL_PLANE_UPGRADE_REQUEST" \
     --arg nginx_probe_url "$NGINX_PROBE_URL" \
     --arg nginx_probe_host "$NGINX_PROBE_HOST" '
@@ -1088,6 +1104,12 @@ EOF
         nginx_reload_command: [$systemctl_binary, "reload", "nginx"],
         control_plane_upgrade_path: $control_plane_upgrade_path,
         control_plane_upgrade_command: [$systemctl_binary, "start", "--no-block", "sub2api-deployer-upgrade.service"],
+        backup_root_path: $backup_root_path,
+        backup_database_service: "postgres",
+        backup_application_config_path: $application_config,
+        backup_docker_config_path: $docker_config,
+        backup_deployer_binary_path: $deployer_binary,
+        backup_timeout: "30m",
         nginx_probe_url: $nginx_probe_url,
         nginx_probe_host: $nginx_probe_host,
         health_path: "/health",

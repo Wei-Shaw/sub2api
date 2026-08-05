@@ -912,6 +912,7 @@ let deploymentPollToken = 0
 let reloadTimer: ReturnType<typeof setTimeout> | null = null
 
 const deploymentStages = [
+  'backing_up',
   'pulling',
   'preparing',
   'starting_candidate',

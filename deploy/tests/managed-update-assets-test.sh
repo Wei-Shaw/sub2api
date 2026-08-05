@@ -84,6 +84,12 @@ jq -e '
   and (.compose_project | strings | length > 0)
   and (.nginx_dump_command | length) > 0
   and (.nginx_probe_url | startswith("http://"))
+  and .backup_root_path == "/var/lib/sub2api-deployer/backups"
+  and .backup_database_service == "postgres"
+  and .backup_application_config_path == "/opt/sub2api/data/config.yaml"
+  and .backup_docker_config_path == "/etc/sub2api-deployer/docker/config.json"
+  and .backup_deployer_binary_path == "/usr/local/sbin/sub2api-deployer"
+  and .backup_timeout == "30m"
 ' "$EXAMPLE" >/dev/null
 
 grep -Fq -- '--nginx-probe-url' "$INSTALLER"

@@ -313,6 +313,12 @@ func (f *fakeRunner) Run(_ context.Context, _ map[string]string, name string, ar
 	if strings.Contains(command, "image inspect --format {{json .Config.Labels}}") {
 		return `{"org.opencontainers.image.source":"https://github.com/ssharkkky/sub2api","io.tokensupply.sub2api.update-protocol":"2"}`, nil
 	}
+	if strings.Contains(command, " pg_dump ") {
+		return "PGDMPtest-backup", nil
+	}
+	if strings.Contains(command, "image ls --all --no-trunc --quiet") {
+		return "", nil
+	}
 	if strings.Contains(command, "container inspect --format") {
 		container := fakeContainerName(args[len(args)-1])
 		if container == "sub2api-green" && !f.candidate {
@@ -395,6 +401,25 @@ func (f *fakeRunner) Run(_ context.Context, _ map[string]string, name string, ar
 	return "ok", nil
 }
 
+type blockingMaintenanceRunner struct {
+	base    CommandRunner
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (r *blockingMaintenanceRunner) Run(ctx context.Context, env map[string]string, name string, args ...string) (string, error) {
+	if strings.HasPrefix(strings.Join(args, " "), "image ls --all --no-trunc --quiet") {
+		r.once.Do(func() { close(r.started) })
+		select {
+		case <-r.release:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	return r.base.Run(ctx, env, name, args...)
+}
+
 func listenerTCPPort(t *testing.T, listener net.Listener) int {
 	t.Helper()
 	address, ok := listener.Addr().(*net.TCPAddr)
@@ -434,6 +459,25 @@ func testConfig(t *testing.T, candidatePort int) Config {
 	if err := os.WriteFile(site, []byte("proxy_pass http://sub2api_managed;\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	envFile := filepath.Join(dir, ".env")
+	imageStateFile := filepath.Join(dir, ".deployer.env")
+	composeFile := filepath.Join(dir, "compose.yaml")
+	applicationConfig := filepath.Join(dir, "data", "config.yaml")
+	deployerBinary := filepath.Join(dir, "sub2api-deployer")
+	if err := os.MkdirAll(filepath.Dir(applicationConfig), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for path, data := range map[string]string{
+		envFile:           "POSTGRES_USER=sub2api\nPOSTGRES_DB=sub2api\n",
+		imageStateFile:    "SUB2API_IMAGE=ghcr.io/ssharkkky/sub2api:0.1.1-ts.1\n",
+		composeFile:       "services:\n  postgres:\n    image: postgres:18-alpine\n",
+		applicationConfig: "server:\n  port: 8080\n",
+		deployerBinary:    "test deployer binary\n",
+	} {
+		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		port, readErr := readUpstreamPort(upstream)
 		if readErr != nil {
@@ -461,7 +505,7 @@ func testConfig(t *testing.T, candidatePort int) Config {
 		SocketMode:      0660,
 		SocketGID:       os.Getgid(),
 		StatePath:       filepath.Join(dir, "state.json"),
-		ImageStatePath:  filepath.Join(dir, ".deployer.env"),
+		ImageStatePath:  imageStateFile,
 		ImageRepository: "ghcr.io/ssharkkky/sub2api",
 		RequiredImageLabels: map[string]string{
 			"org.opencontainers.image.source":        "https://github.com/ssharkkky/sub2api",
@@ -470,8 +514,8 @@ func testConfig(t *testing.T, candidatePort int) Config {
 		DockerBinary:        "docker",
 		ComposeWorkDir:      dir,
 		ComposeProject:      "sub2api",
-		ComposeEnvFiles:     []string{filepath.Join(dir, ".env"), filepath.Join(dir, ".deployer.env")},
-		ComposeFiles:        []string{filepath.Join(dir, "compose.yaml")},
+		ComposeEnvFiles:     []string{envFile, imageStateFile},
+		ComposeFiles:        []string{composeFile},
 		ComposeService:      "sub2api",
 		ImageEnvironment:    "SUB2API_IMAGE",
 		ContainerPort:       8080,
@@ -489,15 +533,20 @@ func testConfig(t *testing.T, candidatePort int) Config {
 		NginxReloadCommand: []string{
 			"/usr/bin/systemctl", "reload", "nginx",
 		},
-		RouteConfirmationTimeout:   Duration{Duration: time.Second},
-		HealthPath:                 "/health",
-		HealthTimeout:              Duration{Duration: time.Second},
-		StabilizeDuration:          Duration{Duration: 10 * time.Millisecond},
-		DrainDuration:              Duration{Duration: time.Millisecond},
-		DrainTimeout:               Duration{Duration: time.Second},
-		StopTimeout:                Duration{Duration: time.Second},
-		ControlPlaneUpgradePath:    filepath.Join(dir, "control-plane-upgrade.json"),
-		ControlPlaneUpgradeCommand: []string{"/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service"},
+		RouteConfirmationTimeout:    Duration{Duration: time.Second},
+		HealthPath:                  "/health",
+		HealthTimeout:               Duration{Duration: time.Second},
+		StabilizeDuration:           Duration{Duration: 10 * time.Millisecond},
+		DrainDuration:               Duration{Duration: time.Millisecond},
+		DrainTimeout:                Duration{Duration: time.Second},
+		StopTimeout:                 Duration{Duration: time.Second},
+		ControlPlaneUpgradePath:     filepath.Join(dir, "control-plane-upgrade.json"),
+		ControlPlaneUpgradeCommand:  []string{"/bin/systemctl", "start", "--no-block", "sub2api-deployer-upgrade.service"},
+		BackupRootPath:              filepath.Join(dir, "backups"),
+		BackupDatabaseService:       "postgres",
+		BackupApplicationConfigPath: applicationConfig,
+		BackupDeployerBinaryPath:    deployerBinary,
+		BackupTimeout:               Duration{Duration: time.Minute},
 	}
 }
 
@@ -516,7 +565,10 @@ func TestManagedDeploymentSucceedsAndPinsDigest(t *testing.T) {
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Close() })
 
-	runner := &fakeRunner{runtimeState: &runtimeState}
+	baseRunner := &fakeRunner{runtimeState: &runtimeState}
+	runner := &blockingMaintenanceRunner{
+		base: baseRunner, started: make(chan struct{}), release: make(chan struct{}),
+	}
 	cfg := testConfig(t, port)
 	manager, err := NewManager(cfg, runner)
 	if err != nil {
@@ -531,6 +583,17 @@ func TestManagedDeploymentSucceedsAndPinsDigest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	select {
+	case <-runner.started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("deployment did not reach post-success maintenance")
+	}
+	if _, err := manager.Start(DeployRequest{
+		Action: "update", TargetVersion: "0.1.3-ts.1", RequestID: "overlapping-maintenance-0001",
+	}); !errors.Is(err, ErrJobRunning) {
+		t.Fatalf("overlapping update error=%v, want ErrJobRunning", err)
+	}
+	close(runner.release)
 	job = waitForFinishedJob(t, manager, job.ID)
 	if job.Status != JobStatusSucceeded {
 		t.Fatalf("deployment status=%s error=%s rollback=%s", job.Status, job.Error, job.RollbackError)
@@ -557,9 +620,9 @@ func TestManagedDeploymentSucceedsAndPinsDigest(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(marker)) != "sub2api-green" {
 		t.Fatalf("active slot marker=%q err=%v", marker, err)
 	}
-	runner.mu.Lock()
-	commands := strings.Join(runner.commands, "\n")
-	runner.mu.Unlock()
+	baseRunner.mu.Lock()
+	commands := strings.Join(baseRunner.commands, "\n")
+	baseRunner.mu.Unlock()
 	standbyIndex := strings.Index(commands, "-e DEPLOYMENT_STANDBY=true")
 	stopIndex := strings.Index(commands, "stop --time 1 "+fakeContainerID("sub2api"))
 	activateIndex := strings.Index(commands, "kill --signal=USR1 "+fakeContainerID("sub2api-green"))
@@ -2561,6 +2624,10 @@ func TestDegradedLatchBlocksStartUntilSafeReconciliation(t *testing.T) {
 		ActivePort:      cfg.Slots[0].Port,
 		ActiveVersion:   "0.1.1-ts.1",
 		ActiveImage:     "ghcr.io/ssharkkky/sub2api:0.1.1-ts.1",
+		PreviousVersion: "0.1.0-ts.2",
+		PreviousImage:   managedTestImage('b'),
+		OlderVersion:    "0.1.0-ts.1",
+		OlderImage:      managedTestImage('c'),
 		Degraded:        true,
 		DegradedReason:  "rollback route was uncertain",
 		Job: &Job{
@@ -2598,6 +2665,9 @@ func TestDegradedLatchBlocksStartUntilSafeReconciliation(t *testing.T) {
 	}
 	if err := manager.Reconcile(context.Background(), "blue"); err != nil {
 		t.Fatalf("reconcile active slot: %v", err)
+	}
+	if manager.state.PreviousVersion != "0.1.0-ts.2" || manager.state.OlderVersion != "0.1.0-ts.1" {
+		t.Fatalf("same-release reconciliation rotated retained releases: %+v", manager.state)
 	}
 	job, err := manager.Start(request)
 	if err != nil {
