@@ -59,11 +59,6 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://www.aicodemirror.ai/register?invitecode=KMVZQM"><img src="assets/partners/logos/AICodeMirror.jpg" alt="AICodeMirror" width="150"></a></td>
-<td>AICodeMirror のご支援に感謝します！AICodeMirror は Claude Code / Codex / Gemini CLI の公式高安定性リレーサービスを提供しており、エンタープライズグレードの同時実行、迅速な請求書発行、24時間年中無休の専属テクニカルサポートを備えています。Claude Code / Codex / Gemini の公式チャネルを定価の 38% / 2% / 9% で利用可能、チャージ時にはさらに追加割引！AICodeMirror は sub2api ユーザー向けに特別特典を提供中：<a href="https://www.aicodemirror.ai/register?invitecode=KMVZQM">こちらのリンク</a>から登録すると、初回チャージが 20% オフ、法人のお客様は最大 25% オフ！</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://shop.bmoplus.com/?utm_source=github"><img src="assets/partners/logos/bmoplus.jpg" alt="bmoplus" width="150"></a></td>
 <td>本プロジェクトにご支援いただいた BmoPlus に感謝いたします！BmoPlusは、AIサブスクリプションのヘビーユーザー向けに特化した信頼性の高いAIアカウントサービスプロバイダーであり、安定した ChatGPT Plus / ChatGPT Pro (完全保証) / Claude Pro / Super Grok / Gemini Pro の公式代行チャージおよび即納アカウントを提供しています。こちらの<a href="https://shop.bmoplus.com/?utm_source=github">BmoPlus AIアカウント専門店/代行チャージ</a>経由でご登録・ご注文いただいたユーザー様は、GPTを 公式サイト価格の約1割（90% OFF） という驚異的な価格でご利用いただけます！</td>
 </tr>
@@ -101,16 +96,6 @@
 <tr>
 <td width="180"><a href="https://sui-xiang.com/"><img src="assets/partners/logos/sui-xiang.jpg" alt="sui-xiang" width="150"></a></td>
 <td>随想AI ゲートウェイのご支援に感謝します！<a href="https://sui-xiang.com/">随想AI ゲートウェイ</a> は信頼性と効率に優れた API 中継サービスプロバイダーで、Claude、Codex、Gemini などの中継サービスを提供しています。プライバシー重視の中継ステーション・データ転売なし・モデル水増しなし、プライバシー・透明性・超高速アフターサービス。新規アカウント登録後、毎日サインインで 0.5 元のテストクレジットがもらえ、チャージは 1:1、サブスクリプション不要、従量課金。マルチライン冗長、クロスリージョン災害復旧、自動フェイルオーバー、長時間 SSE 接続が途切れません。99.9% の可用性、重要な呼び出しは決して遅れません。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://anpin.ai"><img src="assets/partners/logos/anpin.jpg" alt="anpin" width="150"></a></td>
-<td><a href="https://anpin.ai">anpin.ai</a> のご支援に感謝します！anpin.ai は AI の普及推進に取り組むハイエンド AI 中継サービスプラットフォームです。先進的な技術アーキテクチャとグローバル分散デプロイメントにより、国際トップクラスの大規模モデルへの高速直通ルートを提供します。<br>
-自社構築の一次アカウントプール：1-3秒の超高速応答、同業者への配布に対応<br>
-極めて高い安定性：マルチライン・インテリジェントルーティング + 冗長バックアップシステムにより、年中無休の高可用性運用を確保；<br>
-モデルの真正性：一切のコンテンツ介入や二次フィルタリングを行わず、最も純粋で強力なネイティブモデル能力を体験できます。<br>
-チャージ 1:1、エンタープライズグレードサービスは請求書発行可能。安品 AI は単なる中継所ではなく、最先端のインテリジェント世界へと繋がる安全・信頼性・高効率の橋渡し役です。
 </td>
 </tr>
 

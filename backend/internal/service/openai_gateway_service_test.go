@@ -1692,6 +1692,10 @@ func TestOpenAIStreamingResponseFailedBeforeOutputServerOverloadedCodeReturnsFai
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
 	require.Contains(t, string(failoverErr.ResponseBody), "Please retry later")
+	// 容量降载是请求级信号：非池模式账号也要先在同账号重试，且不得据此临时封禁账号。
+	// 否则单个被降载的请求会把整池账号逐个消耗掉，而降载因素在每个账号上都相同。
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
 }
@@ -2983,33 +2987,26 @@ func TestOpenAIBuildUpstreamRequestPreservesCodexIdentityHeaders(t *testing.T) {
 func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// 上游要求 originator 与最终 User-Agent 首段配套（issue #3901）：
-	// originator 一律由最终 UA 推导；推导不出官方身份时整体回退默认 Codex CLI 身份。
+	// 强制统一出口：客户端自报的 originator / User-Agent 都不参与上游身份构造，
+	// 一律改写为网关规范身份，天然满足 originator 与 UA 首段配套的上游校验（issue #3901）。
 	tests := []struct {
-		name           string
-		userAgent      string
-		originator     string
-		wantOriginator string
-		wantUA         string
+		name       string
+		userAgent  string
+		originator string
 	}{
-		{name: "official ua pairs originator", userAgent: "Codex Desktop/1.2.3", wantOriginator: "Codex Desktop", wantUA: "Codex Desktop/1.2.3"},
+		{name: "official desktop ua", userAgent: "Codex Desktop/1.2.3"},
 		{
-			name:           "mismatched originator repaired from ua",
-			userAgent:      "codex_vscode/0.140.2 (Mac OS X 14.0; arm64) vscode (codex_vscode; 0.140.2)",
-			originator:     "codex_cli_rs",
-			wantOriginator: "codex_vscode",
-			wantUA:         "codex_vscode/0.140.2 (Mac OS X 14.0; arm64) vscode (codex_vscode; 0.140.2)",
+			name:       "mismatched originator",
+			userAgent:  "codex_vscode/0.140.2 (Mac OS X 14.0; arm64) vscode (codex_vscode; 0.140.2)",
+			originator: "codex_cli_rs",
 		},
 		{
-			// 降载桶身份改写为 CLI 身份，只替换身份段、保留版本/OS/架构/终端指纹。
-			name:           "load-shed originator normalized to cli identity",
-			userAgent:      "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
-			originator:     "codex-tui",
-			wantOriginator: "codex_cli_rs",
-			wantUA:         "codex_cli_rs/0.140.2 (Mac OS X 14.0; arm64) iTerm",
+			name:       "tui identity",
+			userAgent:  "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			originator: "codex-tui",
 		},
-		{name: "official originator without ua falls back to default identity", originator: "codex_vscode", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgent},
-		{name: "third-party ua masked to default identity", userAgent: "luna/1.2.0", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgent},
+		{name: "official originator without ua", originator: "codex_vscode"},
+		{name: "third-party ua", userAgent: "luna/1.2.0"},
 	}
 
 	for _, tt := range tests {
@@ -3033,8 +3030,9 @@ func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t 
 			isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
 			req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", isCodexCLI)
 			require.NoError(t, err)
-			require.Equal(t, tt.wantOriginator, req.Header.Get("originator"))
-			require.Equal(t, tt.wantUA, req.Header.Get("User-Agent"))
+			require.Equal(t, "codex_cli_rs", req.Header.Get("originator"))
+			require.Equal(t, codexCLIUserAgent, req.Header.Get("User-Agent"))
+			require.Equal(t, codexCLIVersion, req.Header.Get("version"))
 		})
 	}
 }
