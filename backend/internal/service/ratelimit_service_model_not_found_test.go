@@ -69,6 +69,56 @@ func TestRateLimitService_HandleUpstreamError_ModelNotFoundUsesModelRateLimit(t 
 	require.WithinDuration(t, time.Now().Add(upstreamModelNotFoundCooldown), call.resetAt, 5*time.Second)
 }
 
+func TestRateLimitService_HandleUpstreamError_PoolModeModelNotFoundUsesModelRateLimit(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &RateLimitService{accountRepo: repo}
+	account := openAIModelNotFoundTempAccount()
+	account.Platform = PlatformAnthropic
+	account.Credentials["pool_mode"] = true
+	delete(account.Credentials, "temp_unschedulable_enabled")
+	delete(account.Credentials, "temp_unschedulable_rules")
+
+	handled := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusNotFound,
+		http.Header{},
+		[]byte(`{"error":{"type":"model_not_found","message":"Model \"claude-sonnet-4-5\" is not supported"}}`),
+		"claude-sonnet-4-5",
+	)
+
+	require.True(t, handled)
+	require.Zero(t, repo.tempCalls)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	call := repo.modelRateLimitCalls[0]
+	require.Equal(t, account.ID, call.accountID)
+	require.Equal(t, "claude-sonnet-4-5", call.scope)
+	require.Equal(t, upstreamModelNotFoundReason, call.reason)
+}
+
+func TestRateLimitService_HandleUpstreamError_PoolModeBare404DoesNotFailover(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &RateLimitService{accountRepo: repo}
+	account := openAIModelNotFoundTempAccount()
+	account.Platform = PlatformAnthropic
+	account.Credentials["pool_mode"] = true
+	delete(account.Credentials, "temp_unschedulable_enabled")
+	delete(account.Credentials, "temp_unschedulable_rules")
+
+	handled := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusNotFound,
+		http.Header{},
+		[]byte(`{"error":{"message":"endpoint not found"}}`),
+		"claude-sonnet-4-5",
+	)
+
+	require.False(t, handled)
+	require.Zero(t, repo.tempCalls)
+	require.Empty(t, repo.modelRateLimitCalls)
+}
+
 func TestRateLimitService_HandleUpstreamError_ModelNotFoundWriteFailureDoesNotTempUnschedule(t *testing.T) {
 	repo := &modelNotFoundAccountRepoStub{modelRateLimitErr: errors.New("write failed")}
 	svc := &RateLimitService{accountRepo: repo}

@@ -179,6 +179,14 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
+	// Deterministic model incompatibility is account+model scoped, not an
+	// account-wide pool health mutation. Handle it before the pool-mode early
+	// return so the current request can fail over and future requests skip only
+	// this account/model pair.
+	if len(requestedModel) > 0 && s.HandleUpstreamModelNotFound(ctx, account, requestedModel[0], statusCode, responseBody) {
+		return true
+	}
+
 	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
 	// 401 保留现有认证错误语义，不在这里改变池模式的认证处理。
 	if account.IsPoolMode() && !customErrorCodesEnabled {
@@ -194,10 +202,6 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	if !account.ShouldHandleErrorCode(statusCode) {
 		slog.Info("account_error_code_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
-	}
-
-	if len(requestedModel) > 0 && s.HandleUpstreamModelNotFound(ctx, account, requestedModel[0], statusCode, responseBody) {
-		return true
 	}
 
 	// Anthropic official 5h / 7d window exhaustion is a hard account limit.

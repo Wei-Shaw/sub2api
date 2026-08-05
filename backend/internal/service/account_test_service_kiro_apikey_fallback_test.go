@@ -54,6 +54,43 @@ func TestAccountTestService_KiroAPIKeyUsesGenericAnthropicCompatiblePath(t *test
 	require.Equal(t, claude.APIKeyBetaHeader, req.Header.Get("anthropic-beta"))
 }
 
+func TestAccountTestService_AnthropicAPIKeyVersionedBaseURL(t *testing.T) {
+	ctx, _ := newTestContext()
+
+	account := &Account{
+		ID:          21,
+		Name:        "anthropic-apikey-versioned-base-url",
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"base_url": "https://anthropic-upstream.example.com/v1/",
+			"api_key":  "anthropic-api-key",
+			"model_mapping": map[string]any{
+				"claude-sonnet-4-6": "claude-sonnet-4-6",
+			},
+		},
+	}
+	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
+	upstream := &queuedHTTPUpstream{
+		responses: []*http.Response{
+			newJSONResponse(http.StatusUnauthorized, `{"type":"error","error":{"type":"authentication_error","message":"invalid api key"}}`),
+		},
+	}
+	svc := &AccountTestService{
+		accountRepo:         repo,
+		httpUpstream:        upstream,
+		cfg:                 &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+
+	err := svc.TestAccountConnection(ctx, account.ID, "claude-sonnet-4-6", "", AccountTestModeDefault)
+	require.Error(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "/v1/messages", upstream.requests[0].URL.Path)
+	require.Equal(t, "true", upstream.requests[0].URL.Query().Get("beta"))
+}
+
 func TestAccountTestService_KiroAPIKeyWithoutBaseURLErrors(t *testing.T) {
 	ctx, _ := newTestContext()
 

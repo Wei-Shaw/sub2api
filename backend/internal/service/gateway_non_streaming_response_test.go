@@ -140,6 +140,84 @@ func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_ValidJSONUnchanged
 	require.JSONEq(t, string(body), rec.Body.String())
 }
 
+func TestHandleErrorResponse_PoolModeModelNotFoundTriggersFailoverBeforeCommit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	repo := &nonJSONTempUnschedAccountRepo{}
+	svc := &GatewayService{
+		cfg:              &config.Config{},
+		rateLimitService: NewRateLimitService(repo, nil, &config.Config{}, nil, nil),
+	}
+	account := &Account{
+		ID:       22,
+		Name:     "pool-model-not-found",
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+	}
+	body := []byte(`{"error":{"type":"model_not_found","message":"Model \"claude-sonnet-4-5\" is not supported"}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusNotFound,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+
+	result, err := svc.handleErrorResponse(context.Background(), resp, c, account, "claude-sonnet-4-5")
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusNotFound, failoverErr.StatusCode)
+	require.Equal(t, body, failoverErr.ResponseBody)
+	require.False(t, c.Writer.Written(), "failover must happen before the upstream error is committed")
+	require.Equal(t, 1, repo.modelRateLimitCalls)
+	require.Equal(t, "claude-sonnet-4-5", repo.modelScope)
+	require.Equal(t, upstreamModelNotFoundReason, repo.modelReason)
+}
+
+func TestHandleErrorResponse_PoolModeBare404DoesNotTriggerFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	repo := &nonJSONTempUnschedAccountRepo{}
+	svc := &GatewayService{
+		cfg:              &config.Config{},
+		rateLimitService: NewRateLimitService(repo, nil, &config.Config{}, nil, nil),
+	}
+	account := &Account{
+		ID:       23,
+		Name:     "pool-endpoint-not-found",
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+	}
+	body := []byte(`{"error":{"message":"endpoint not found"}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusNotFound,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+
+	result, err := svc.handleErrorResponse(context.Background(), resp, c, account, "claude-sonnet-4-5")
+
+	require.Nil(t, result)
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.True(t, c.Writer.Written())
+	require.Zero(t, repo.tempUnschedCalls)
+	require.Zero(t, repo.modelRateLimitCalls)
+}
+
 func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_ForceCacheBillingResponse(t *testing.T) {
 	tests := []struct {
 		name string

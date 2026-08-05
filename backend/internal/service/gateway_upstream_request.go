@@ -33,7 +33,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			if err != nil {
 				return nil, nil, err
 			}
-			targetURL = validatedURL + "/v1/messages?beta=true"
+			targetURL = buildAnthropicUpstreamURL(validatedURL, "/v1/messages")
 		}
 	} else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
@@ -889,7 +889,7 @@ func truncateForLog(b []byte, maxBytes int) string {
 // buildCustomRelayURL 构建自定义中继转发 URL
 // 在 path 后附加 beta=true 和可选的 proxy 查询参数
 func (s *GatewayService) buildCustomRelayURL(baseURL, path string, account *Account) string {
-	u := strings.TrimRight(baseURL, "/") + path + "?beta=true"
+	u := buildAnthropicUpstreamURL(baseURL, path)
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL := account.Proxy.URL()
 		if proxyURL != "" {

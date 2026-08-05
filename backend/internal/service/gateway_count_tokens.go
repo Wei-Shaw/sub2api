@@ -374,7 +374,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 		if err != nil {
 			return nil, err
 		}
-		targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
+		targetURL = buildAnthropicUpstreamURL(validatedURL, "/v1/messages/count_tokens")
 	}
 	body = sanitizeCountTokensRequestBody(body)
 
@@ -439,7 +439,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 			if err != nil {
 				return nil, nil, err
 			}
-			targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
+			targetURL = buildAnthropicUpstreamURL(validatedURL, "/v1/messages/count_tokens")
 		}
 	} else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
